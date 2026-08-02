@@ -30,6 +30,8 @@ const HASH = Object.freeze({
   admission: "7".repeat(64),
   revision: "8".repeat(64),
 });
+const RUNTIME_AUTHORITY = Object.freeze({ runtime: "trusted" });
+const CLAIMED_JOB_AUTHORITY = Object.freeze({ claim: "trusted" });
 
 function controlledExperimentObservation(
   storyId = "primary-ready",
@@ -2461,6 +2463,7 @@ test("T-70 anchors one exact private unscheduled object without creating release
   assert.equal(t90.verdict, "GREEN");
 
   let state = null;
+  let prestageInput = null;
   const result =
     await handlers.prestage_governed_youtube_release(
       {
@@ -2535,7 +2538,10 @@ test("T-70 anchors one exact private unscheduled object without creating release
             live_publish_enabled: true,
           };
         },
-        async prestageExactGovernedYoutubeRelease() {
+        runtimeAuthority: RUNTIME_AUTHORITY,
+        claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
+        async prestageExactGovernedYoutubeRelease(input) {
+          prestageInput = input;
           state = {
             lifecycle_state:
               "PLATFORM_OBJECT_CREATED",
@@ -2563,6 +2569,8 @@ test("T-70 anchors one exact private unscheduled object without creating release
     JSON.stringify(result),
   );
   assert.equal(result.verdict, "GREEN");
+  assert.equal(prestageInput.runtimeAuthority, RUNTIME_AUTHORITY);
+  assert.equal(prestageInput.claimedJobAuthority, CLAIMED_JOB_AUTHORITY);
   assert.equal(
     result.private_unscheduled_object_created,
     true,
@@ -2718,6 +2726,7 @@ test("T-60 verifies one exact private processed unscheduled object without disar
     },
   };
   let disarmCalls = 0;
+  let verifyInput = null;
   let promotionCalls = 0;
   const env = {
     PULSE_STATE_ROOT: outDir,
@@ -2751,6 +2760,8 @@ test("T-60 verifies one exact private processed unscheduled object without disar
         env,
         workerId: "critical-window-worker",
         assertLeaseHealthy() {},
+        runtimeAuthority: RUNTIME_AUTHORITY,
+        claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
         irreversibleBoundaryNow: () =>
           new Date("2026-07-28T18:00:00.000Z"),
         repos: {
@@ -2770,7 +2781,8 @@ test("T-60 verifies one exact private processed unscheduled object without disar
             live_publish_enabled: true,
           };
         },
-        async verifyExactGovernedYoutubePrivatePrestage() {
+        async verifyExactGovernedYoutubePrivatePrestage(input) {
+          verifyInput = input;
           state = {
             lifecycle_state: "PLATFORM_OBJECT_CREATED",
             external_id: "youtube-primary-object",
@@ -2813,6 +2825,8 @@ test("T-60 verifies one exact private processed unscheduled object without disar
     JSON.stringify(result),
   );
   assert.equal(result.verdict, "GREEN");
+  assert.equal(verifyInput.runtimeAuthority, RUNTIME_AUTHORITY);
+  assert.equal(verifyInput.claimedJobAuthority, CLAIMED_JOB_AUTHORITY);
   assert.equal(result.private_unscheduled_verified, true);
   assert.equal(result.upload_processed, true);
   assert.equal(result.publish_at_absent, true);
@@ -3141,6 +3155,7 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
   };
   let readCalls = 0;
   let confirmCalls = 0;
+  let confirmInput = null;
   const analyticsJobs = [];
   let clockNow = "2026-07-28T19:00:00.000Z";
   const job = {
@@ -3198,6 +3213,8 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
     env,
     workerId: "critical-window-worker",
     assertLeaseHealthy() {},
+    runtimeAuthority: RUNTIME_AUTHORITY,
+    claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
     irreversibleBoundaryNow: () =>
       new Date(clockNow),
     async verifyYoutubePublicObject(candidate, options) {
@@ -3242,6 +3259,7 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
       };
     },
     async confirmExactGovernedYoutubeScheduledRelease(input) {
+      confirmInput = input;
       confirmCalls += 1;
       const replayed = await input.verifyPublic({
         platform: "youtube",
@@ -3321,6 +3339,8 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
     "published",
     JSON.stringify(confirmed),
   );
+  assert.equal(confirmInput.runtimeAuthority, RUNTIME_AUTHORITY);
+  assert.equal(confirmInput.claimedJobAuthority, CLAIMED_JOB_AUTHORITY);
   assert.equal(confirmed.verdict, "GREEN");
   assert.equal(
     confirmed.release_commitment_asserted,
@@ -3686,6 +3706,7 @@ test("T-60 immediately disarms an exact anchored object when verification discov
     },
   };
   let disarmCalls = 0;
+  let disarmInput = null;
   const env = {
     PULSE_STATE_ROOT: runway.runwayRoot,
     PULSE_OPERATING_MODE: "LIVE_GUARDED",
@@ -3722,6 +3743,8 @@ test("T-60 immediately disarms an exact anchored object when verification discov
         env,
         workerId: "critical-window-worker",
         assertLeaseHealthy() {},
+        runtimeAuthority: RUNTIME_AUTHORITY,
+        claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
         irreversibleBoundaryNow: () =>
           new Date("2026-07-28T18:00:00.000Z"),
         repos: {
@@ -3753,7 +3776,8 @@ test("T-60 immediately disarms an exact anchored object when verification discov
           error.remoteDisarmRequired = true;
           throw error;
         },
-        async disarmExactGovernedYoutubeScheduledRelease() {
+        async disarmExactGovernedYoutubeScheduledRelease(input) {
+          disarmInput = input;
           disarmCalls += 1;
           return {
             disarmed: true,
@@ -3771,6 +3795,8 @@ test("T-60 immediately disarms an exact anchored object when verification discov
   assert.equal(result.remote_disarm_attempted, true);
   assert.equal(result.remote_disarm_confirmed, true);
   assert.equal(disarmCalls, 1);
+  assert.equal(disarmInput.runtimeAuthority, RUNTIME_AUTHORITY);
+  assert.equal(disarmInput.claimedJobAuthority, CLAIMED_JOB_AUTHORITY);
 });
 
 test("T-60 trusts an exact emergency-containment proof and never launches a second normal disarm", async (t) => {
@@ -4016,6 +4042,8 @@ test("T-15 revalidates the official source and arms the exact private object onc
   let armCalls = 0;
   let experimentVerificationCalls = 0;
   let replayVerificationCalls = 0;
+  let armInput = null;
+  let replayInput = null;
   let disarmCalls = 0;
   const sourceRevisionSha256 = "b".repeat(64);
   const t15Job = {
@@ -4047,6 +4075,8 @@ test("T-15 revalidates the official source and arms the exact private object onc
         env,
         workerId: "critical-window-worker",
         assertLeaseHealthy() {},
+        runtimeAuthority: RUNTIME_AUTHORITY,
+        claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
         repos: {
           ...runway.context.repos,
           publicationGovernance: governance,
@@ -4089,6 +4119,7 @@ test("T-15 revalidates the official source and arms the exact private object onc
         async armExactGovernedYoutubeScheduledRelease(
           input,
         ) {
+          armInput = input;
           armCalls += 1;
           assert.equal(
             input.exactStagedBinding.story_id,
@@ -4150,6 +4181,7 @@ test("T-15 revalidates the official source and arms the exact private object onc
         async verifyExactGovernedYoutubeScheduledReplay(
           input,
         ) {
+          replayInput = input;
           replayVerificationCalls += 1;
           assert.equal(
             input.externalId,
@@ -4315,6 +4347,20 @@ test("T-15 revalidates the official source and arms the exact private object onc
   assert.equal(armCalls, 1);
   assert.equal(experimentVerificationCalls, 2);
   assert.equal(replayVerificationCalls, 1);
+  assert.deepEqual(
+    [
+      armInput.runtimeAuthority,
+      armInput.claimedJobAuthority,
+      replayInput.runtimeAuthority,
+      replayInput.claimedJobAuthority,
+    ],
+    [
+      RUNTIME_AUTHORITY,
+      CLAIMED_JOB_AUTHORITY,
+      RUNTIME_AUTHORITY,
+      CLAIMED_JOB_AUTHORITY,
+    ],
+  );
   assert.equal(disarmCalls, 0);
 });
 

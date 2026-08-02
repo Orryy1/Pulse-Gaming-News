@@ -11,6 +11,7 @@ const { runMigrations } = require("../../lib/migrate");
 const { bindRepositories } = require("../../lib/repositories");
 const { acquirePublisherLease } = require("../../lib/services/publisher-lock");
 const {
+  buildClaimedJobAuthority,
   inspectBoundedRuntimeDbAuthority,
 } = require("../../lib/stabilisation/bounded-runtime-db-authority");
 const {
@@ -167,6 +168,7 @@ function schedulerMetadata(overrides = {}) {
 function addScheduledAdmission(
   db,
   {
+    channelId = "pulse-gaming",
     storyId = "story-73",
     scheduledFor = "2026-08-02T19:00:00.000Z",
     dispatchIdempotencyKey = "publish:2026-08-02:19",
@@ -174,12 +176,16 @@ function addScheduledAdmission(
     runwayLockSha256 = "c".repeat(64),
   } = {},
 ) {
+  db.prepare(
+    "INSERT OR IGNORE INTO channels (id, name) VALUES (?, ?)",
+  ).run(channelId, "Bounded runtime fixture channel");
   db.prepare("INSERT OR IGNORE INTO stories (id, title) VALUES (?, ?)").run(
     storyId,
     "Bounded runtime fixture story",
   );
   const evidence = {
     schedule_verified: true,
+    channel_id: channelId,
     control_tower_verdict: "GREEN",
     control_tower_checked_at: "2026-08-02T18:55:00.000Z",
     scheduled_for: scheduledFor,
@@ -212,6 +218,7 @@ function addScheduledAdmission(
        lifecycle_state = excluded.lifecycle_state`,
   ).run(storyId);
   return {
+    channel_id: channelId,
     story_id: storyId,
     platform: "youtube",
     scheduled_event_id: Number(inserted.lastInsertRowid),
@@ -219,6 +226,101 @@ function addScheduledAdmission(
     dispatch_idempotency_key: dispatchIdempotencyKey,
     request_fingerprint: requestFingerprint,
     runway_lock_sha256: runwayLockSha256,
+  };
+}
+
+function runtimeAuthority() {
+  return {
+    runtime_instance_id: RUNTIME_INSTANCE_ID,
+    child_pid: process.pid,
+    child_started_at: START,
+    authority_fingerprint: AUTHORITY_FINGERPRINT,
+  };
+}
+
+function claimedJobKindForOperation(operation) {
+  return {
+    publish_next_story: "dispatch_governed_publication",
+    verify_governed_youtube_scheduled_replay:
+      "verify_governed_youtube_release_tminus15",
+    verify_governed_youtube_private_prestage:
+      "governed_youtube_runway_t60",
+  }[operation];
+}
+
+function publisherFixture(
+  t,
+  {
+    operation = "publish_next_story",
+    now = new Date(),
+    admission: admissionOverrides = {},
+  } = {},
+) {
+  const state = fixture(t);
+  const admission = addScheduledAdmission(state.db, admissionOverrides);
+  const workerId = `server-${RUNTIME_INSTANCE_ID}-critical_publication-1`;
+  const jobKind = claimedJobKindForOperation(operation);
+  assert.ok(jobKind, `publisher fixture operation is mapped: ${operation}`);
+  state.repos.runtimeLeases.acquire({
+    name: "scheduler:primary",
+    ownerId: "scheduler-owner-private-fixture",
+    now,
+    leaseMs: 90_000,
+    metadata: schedulerMetadata({ process_id: process.pid }),
+  });
+  state.repos.workers.register({ id: workerId, status: "idle" });
+  state.db
+    .prepare("UPDATE main.workers SET last_seen_at = ? WHERE id = ?")
+    .run(now.toISOString(), workerId);
+  const queued = state.repos.jobs.enqueue({
+    kind: jobKind,
+    channel_id: admission.channel_id,
+    story_id: admission.story_id,
+    payload: {
+      operation,
+      runway_lock_sha256: admission.runway_lock_sha256,
+    },
+    idempotency_key: `${admission.dispatch_idempotency_key}:job:${jobKind}`,
+  });
+  const claimed = state.repos.jobs.claim(workerId, {
+    kinds: [jobKind],
+    channelId: admission.channel_id,
+    leaseMs: 90_000,
+  });
+  assert.equal(claimed.id, queued.id);
+  const claimedJobAuthority = buildClaimedJobAuthority({
+    db: state.db,
+    jobId: claimed.id,
+    workerId,
+    claimToken: claimed.claim_token,
+  });
+  return {
+    ...state,
+    now,
+    admission,
+    workerId,
+    claimed,
+    claimedJobAuthority,
+    runtimeAuthority: runtimeAuthority(),
+    expected: expected({
+      child_pid: process.pid,
+      database_identity_sha256: databaseIdentitySha256(state.dbPath),
+      worker_topology: [
+        {
+          pool_id: "critical_publication",
+          instances: 1,
+          kinds: [jobKind],
+        },
+      ],
+      runtime_claim_set_count: 1,
+      runtime_claim_set_sha256: claimSetSha256({
+        workerId,
+        jobId: claimed.id,
+        kind: jobKind,
+        runId: Number(claimed.claim_token),
+        attempt: claimed.attempt_count,
+      }),
+    }),
   };
 }
 
@@ -295,53 +397,27 @@ test("rejects an active job claimed by a predecessor worker", (t) => {
 });
 
 test("rejects a publisher lease bound to a superseded SCHEDULED admission", (t) => {
-  const { db, dbPath, repos } = fixture(t);
-  const now = new Date();
-  const currentExpected = expected({
-    child_pid: process.pid,
-    database_identity_sha256: databaseIdentitySha256(dbPath),
-  });
-  const workerId = `server-${RUNTIME_INSTANCE_ID}-critical_publication-1`;
-  repos.runtimeLeases.acquire({
-    name: "scheduler:primary",
-    ownerId: "scheduler-owner-private-fixture",
-    now,
-    leaseMs: 90_000,
-    metadata: schedulerMetadata({ process_id: process.pid }),
-  });
-  repos.workers.register({ id: workerId, status: "idle" });
-  repos.jobs.enqueue({ kind: "publish", payload: { admitted: true } });
-  assert.ok(
-    repos.jobs.claim(workerId, {
-      kinds: ["publish"],
-      leaseMs: 90_000,
-    }),
-  );
-  const supersededAdmission = addScheduledAdmission(db);
+  const state = publisherFixture(t);
   acquirePublisherLease({
-    db,
-    leases: repos.runtimeLeases,
+    db: state.db,
+    leases: state.repos.runtimeLeases,
     ownerId: "publisher-owner-private-fixture",
     operation: "publish_next_story",
-    now,
+    now: state.now,
     leaseMs: 90_000,
-    runtimeAuthority: {
-      runtime_instance_id: RUNTIME_INSTANCE_ID,
-      child_pid: process.pid,
-      child_started_at: START,
-      authority_fingerprint: AUTHORITY_FINGERPRINT,
-    },
-    admissionContext: supersededAdmission,
+    runtimeAuthority: state.runtimeAuthority,
+    claimedJobAuthority: state.claimedJobAuthority,
+    admissionContext: state.admission,
   });
-  addScheduledAdmission(db, {
+  addScheduledAdmission(state.db, {
     dispatchIdempotencyKey: "publish:2026-08-02:19:replacement",
   });
 
   const result = inspectBoundedRuntimeDbAuthority({
-    db,
+    db: state.db,
     mode: "LIVE",
-    expected: currentExpected,
-    now,
+    expected: state.expected,
+    now: state.now,
   });
 
   assert.equal(result.ok, false);
@@ -354,49 +430,24 @@ test("rejects a publisher lease bound to a superseded SCHEDULED admission", (t) 
 });
 
 test("accepts an active publisher lease only for the current durable admission", (t) => {
-  const { db, dbPath, repos } = fixture(t);
-  const now = new Date();
-  const workerId = `server-${RUNTIME_INSTANCE_ID}-critical_publication-1`;
-  repos.runtimeLeases.acquire({
-    name: "scheduler:primary",
-    ownerId: "scheduler-current-private-owner",
-    now,
-    leaseMs: 90_000,
-    metadata: schedulerMetadata({ process_id: process.pid }),
-  });
-  repos.workers.register({ id: workerId, status: "idle" });
-  repos.jobs.enqueue({ kind: "publish", payload: { admitted: true } });
-  assert.ok(
-    repos.jobs.claim(workerId, {
-      kinds: ["publish"],
-      leaseMs: 90_000,
-    }),
-  );
-  const admission = addScheduledAdmission(db);
+  const state = publisherFixture(t);
   acquirePublisherLease({
-    db,
-    leases: repos.runtimeLeases,
+    db: state.db,
+    leases: state.repos.runtimeLeases,
     ownerId: "publisher-current-private-owner",
     operation: "publish_next_story",
-    now,
+    now: state.now,
     leaseMs: 90_000,
-    runtimeAuthority: {
-      runtime_instance_id: RUNTIME_INSTANCE_ID,
-      child_pid: process.pid,
-      child_started_at: START,
-      authority_fingerprint: AUTHORITY_FINGERPRINT,
-    },
-    admissionContext: admission,
+    runtimeAuthority: state.runtimeAuthority,
+    claimedJobAuthority: state.claimedJobAuthority,
+    admissionContext: state.admission,
   });
 
   const result = inspectBoundedRuntimeDbAuthority({
-    db,
+    db: state.db,
     mode: "LIVE",
-    expected: expected({
-      child_pid: process.pid,
-      database_identity_sha256: databaseIdentitySha256(dbPath),
-    }),
-    now,
+    expected: state.expected,
+    now: state.now,
   });
 
   assert.equal(result.ok, true);
@@ -413,19 +464,16 @@ test("accepts an active publisher lease only for the current durable admission",
     "RETRACTED",
     "ARBITRARY_UNKNOWN_STATE",
   ]) {
-    db.prepare(
+    state.db.prepare(
       `UPDATE platform_publication_state
        SET lifecycle_state = ?
        WHERE story_id = ? AND platform = 'youtube'`,
-    ).run(lifecycleState, admission.story_id);
+    ).run(lifecycleState, state.admission.story_id);
     const held = inspectBoundedRuntimeDbAuthority({
-      db,
+      db: state.db,
       mode: "LIVE",
-      expected: expected({
-        child_pid: process.pid,
-        database_identity_sha256: databaseIdentitySha256(dbPath),
-      }),
-      now,
+      expected: state.expected,
+      now: state.now,
     });
     assert.equal(held.ok, false, lifecycleState);
     assert.deepEqual(
@@ -981,57 +1029,35 @@ test("rejects newer cancellation or reconciliation hidden by a stale SCHEDULED p
     "ADMISSION_CANCELLED_BEFORE_DISPATCH",
     "RECONCILIATION_REQUIRED",
   ]) {
-    const { db, dbPath, repos } = fixture(t);
-    const now = new Date();
-    const workerId = `server-${RUNTIME_INSTANCE_ID}-critical_publication-1`;
-    repos.runtimeLeases.acquire({
-      name: "scheduler:primary",
-      ownerId: "scheduler-current-private-owner",
-      now,
-      leaseMs: 90_000,
-      metadata: schedulerMetadata({ process_id: process.pid }),
-    });
-    repos.workers.register({ id: workerId, status: "idle" });
-    repos.jobs.enqueue({ kind: "publish", payload: { admitted: true } });
-    assert.ok(
-      repos.jobs.claim(workerId, { kinds: ["publish"], leaseMs: 90_000 }),
-    );
-    const admission = addScheduledAdmission(db);
+    const state = publisherFixture(t);
     acquirePublisherLease({
-      db,
-      leases: repos.runtimeLeases,
+      db: state.db,
+      leases: state.repos.runtimeLeases,
       ownerId: "publisher-current-private-owner",
       operation: "publish_next_story",
-      now,
+      now: state.now,
       leaseMs: 90_000,
-      runtimeAuthority: {
-        runtime_instance_id: RUNTIME_INSTANCE_ID,
-        child_pid: process.pid,
-        child_started_at: START,
-        authority_fingerprint: AUTHORITY_FINGERPRINT,
-      },
-      admissionContext: admission,
+      runtimeAuthority: state.runtimeAuthority,
+      claimedJobAuthority: state.claimedJobAuthority,
+      admissionContext: state.admission,
     });
-    db.prepare(
+    state.db.prepare(
       `INSERT INTO main.publication_lifecycle_events
        (story_id, platform, from_state, to_state, event_reason,
         retryability_class, actor_type, evidence_json, idempotency_key)
      VALUES (?, 'youtube', 'SCHEDULED', ?,
              'authority changed', 'none', 'system', '{}', ?)`,
     ).run(
-      admission.story_id,
+      state.admission.story_id,
       newerState,
-      `${admission.dispatch_idempotency_key}:${newerState}`,
+      `${state.admission.dispatch_idempotency_key}:${newerState}`,
     );
 
     const result = inspectBoundedRuntimeDbAuthority({
-      db,
+      db: state.db,
       mode: "LIVE",
-      expected: expected({
-        child_pid: process.pid,
-        database_identity_sha256: databaseIdentitySha256(dbPath),
-      }),
-      now,
+      expected: state.expected,
+      now: state.now,
     });
 
     assert.equal(result.ok, false, newerState);
@@ -1043,26 +1069,20 @@ test("rejects newer cancellation or reconciliation hidden by a stale SCHEDULED p
 });
 
 test("publisher lease binds the canonical finite operation set", (t) => {
-  const { db, repos } = fixture(t);
-  const now = new Date();
-  const admission = addScheduledAdmission(db);
+  const state = publisherFixture(t);
   acquirePublisherLease({
-    db,
-    leases: repos.runtimeLeases,
+    db: state.db,
+    leases: state.repos.runtimeLeases,
     ownerId: "publisher-current-private-owner",
     operation: "publish_next_story",
-    now,
+    now: state.now,
     leaseMs: 90_000,
-    runtimeAuthority: {
-      runtime_instance_id: RUNTIME_INSTANCE_ID,
-      child_pid: process.pid,
-      child_started_at: START,
-      authority_fingerprint: AUTHORITY_FINGERPRINT,
-    },
-    admissionContext: admission,
+    runtimeAuthority: state.runtimeAuthority,
+    claimedJobAuthority: state.claimedJobAuthority,
+    admissionContext: state.admission,
   });
   const metadata = JSON.parse(
-    db
+    state.db
       .prepare(
         "SELECT metadata FROM main.runtime_leases WHERE name = 'publisher:global'",
       )
@@ -1070,6 +1090,46 @@ test("publisher lease binds the canonical finite operation set", (t) => {
   );
 
   assert.match(metadata.publisher_operation_set_sha256, /^[a-f0-9]{64}$/);
+  assert.match(metadata.lease_instance_sha256, /^[a-f0-9]{64}$/);
+});
+
+test("rejects a publisher lease with a malformed lease instance digest", (t) => {
+  const state = publisherFixture(t);
+  acquirePublisherLease({
+    db: state.db,
+    leases: state.repos.runtimeLeases,
+    ownerId: "publisher-instance-private-owner",
+    operation: "publish_next_story",
+    now: state.now,
+    leaseMs: 90_000,
+    runtimeAuthority: state.runtimeAuthority,
+    claimedJobAuthority: state.claimedJobAuthority,
+    admissionContext: state.admission,
+  });
+  const row = state.db
+    .prepare(
+      "SELECT metadata FROM main.runtime_leases WHERE name = 'publisher:global'",
+    )
+    .get();
+  const metadata = JSON.parse(row.metadata);
+  metadata.lease_instance_sha256 = "malformed";
+  state.db
+    .prepare(
+      "UPDATE main.runtime_leases SET metadata = ? WHERE name = 'publisher:global'",
+    )
+    .run(JSON.stringify(metadata));
+
+  const result = inspectBoundedRuntimeDbAuthority({
+    db: state.db,
+    mode: "LIVE",
+    expected: state.expected,
+    now: state.now,
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.blockers.includes("runtime_db_publisher_admission_mismatch"),
+  );
 });
 
 test("rejects a duplicate scheduler decoy when the authority table lacks its canonical primary key", (t) => {
@@ -1451,26 +1511,19 @@ test("accepts exact scheduler lease time boundaries", (t) => {
 });
 
 test("enforces exact publisher lease freshness and TTL boundaries", (t) => {
-  const state = liveFixture(t, {
-    schedulerMetadata: { process_id: process.pid },
-    expected: { child_pid: process.pid },
-    now: new Date("2026-08-02T10:00:00.000Z"),
-  });
-  const admission = addScheduledAdmission(state.db);
+  const now = new Date();
+  const boundaryHeartbeat = new Date(now.getTime() - 5 * 60_000);
+  const state = publisherFixture(t, { now });
   acquirePublisherLease({
     db: state.db,
     leases: state.repos.runtimeLeases,
     ownerId: "publisher-time-private-owner",
     operation: "publish_next_story",
-    now: new Date("2026-08-02T09:55:00.000Z"),
+    now: boundaryHeartbeat,
     leaseMs: 900_000,
-    runtimeAuthority: {
-      runtime_instance_id: RUNTIME_INSTANCE_ID,
-      child_pid: process.pid,
-      child_started_at: START,
-      authority_fingerprint: AUTHORITY_FINGERPRINT,
-    },
-    admissionContext: admission,
+    runtimeAuthority: state.runtimeAuthority,
+    claimedJobAuthority: state.claimedJobAuthority,
+    admissionContext: state.admission,
   });
 
   const boundary = inspectBoundedRuntimeDbAuthority({
@@ -1484,11 +1537,14 @@ test("enforces exact publisher lease freshness and TTL boundaries", (t) => {
   state.db
     .prepare(
       `UPDATE main.runtime_leases
-       SET heartbeat_at = '2026-08-02T09:54:59.999Z',
-           expires_at = '2026-08-02T10:10:00.000Z'
+       SET heartbeat_at = ?,
+           expires_at = ?
        WHERE name = 'publisher:global'`,
     )
-    .run();
+    .run(
+      new Date(boundaryHeartbeat.getTime() - 1).toISOString(),
+      new Date(now.getTime() + 10 * 60_000).toISOString(),
+    );
   const overTtl = inspectBoundedRuntimeDbAuthority({
     db: state.db,
     mode: "LIVE",
@@ -1579,46 +1635,42 @@ test("QUIESCENT evidence never echoes lease metadata even when it is well formed
 });
 
 test("publisher acquisition rejects pre-existing reconciliation for a fresh dispatch", (t) => {
-  const { db, repos } = fixture(t);
-  const admission = addScheduledAdmission(db);
-  db.prepare(
+  const state = publisherFixture(t);
+  state.db.prepare(
     `INSERT INTO publication_lifecycle_events
        (story_id, platform, from_state, to_state, event_reason,
         retryability_class, actor_type, evidence_json, idempotency_key)
      VALUES (?, 'youtube', 'SCHEDULED', 'RECONCILIATION_REQUIRED',
              'pre-existing reconciliation', 'manual_reconcile', 'system', '{}', ?)`,
-  ).run(admission.story_id, `${admission.dispatch_idempotency_key}:reconcile`);
-  db.prepare(
+  ).run(
+    state.admission.story_id,
+    `${state.admission.dispatch_idempotency_key}:reconcile`,
+  );
+  state.db.prepare(
     `UPDATE platform_publication_state
      SET lifecycle_state = 'RECONCILIATION_REQUIRED'
      WHERE story_id = ? AND platform = 'youtube'`,
-  ).run(admission.story_id);
+  ).run(state.admission.story_id);
 
   assert.throws(
     () =>
       acquirePublisherLease({
-        db,
-        leases: repos.runtimeLeases,
+        db: state.db,
+        leases: state.repos.runtimeLeases,
         operation: "publish_next_story",
-        runtimeAuthority: {
-          runtime_instance_id: RUNTIME_INSTANCE_ID,
-          child_pid: process.pid,
-          child_started_at: START,
-          authority_fingerprint: AUTHORITY_FINGERPRINT,
-        },
-        admissionContext: admission,
+        runtimeAuthority: state.runtimeAuthority,
+        claimedJobAuthority: state.claimedJobAuthority,
+        admissionContext: state.admission,
       }),
     /publisher_start_lifecycle_authority_invalid/,
   );
-  assert.equal(repos.runtimeLeases.get("publisher:global"), null);
+  assert.equal(state.repos.runtimeLeases.get("publisher:global"), null);
 });
 
 test("publisher recovery binds a separate exact recovery phase", (t) => {
-  const state = liveFixture(t, {
-    schedulerMetadata: { process_id: process.pid },
-    expected: { child_pid: process.pid },
+  const state = publisherFixture(t, {
+    operation: "verify_governed_youtube_scheduled_replay",
   });
-  const admission = addScheduledAdmission(state.db);
   const recoveryStart = state.db
     .prepare(
       `INSERT INTO publication_lifecycle_events
@@ -1628,14 +1680,14 @@ test("publisher recovery binds a separate exact recovery phase", (t) => {
                'recovery required', 'manual_reconcile', 'system', '{}', ?)`,
     )
     .run(
-      admission.story_id,
-      `${admission.dispatch_idempotency_key}:recovery:start`,
+      state.admission.story_id,
+      `${state.admission.dispatch_idempotency_key}:recovery:start`,
     );
   state.db.prepare(
     `UPDATE platform_publication_state
      SET lifecycle_state = 'RECONCILIATION_REQUIRED'
      WHERE story_id = ? AND platform = 'youtube'`,
-  ).run(admission.story_id);
+  ).run(state.admission.story_id);
   acquirePublisherLease({
     db: state.db,
     leases: state.repos.runtimeLeases,
@@ -1643,16 +1695,16 @@ test("publisher recovery binds a separate exact recovery phase", (t) => {
     operation: "verify_governed_youtube_scheduled_replay",
     now: state.now,
     leaseMs: 90_000,
-    runtimeAuthority: {
-      runtime_instance_id: RUNTIME_INSTANCE_ID,
-      child_pid: process.pid,
-      child_started_at: START,
-      authority_fingerprint: AUTHORITY_FINGERPRINT,
-    },
-    admissionContext: admission,
+    runtimeAuthority: state.runtimeAuthority,
+    claimedJobAuthority: state.claimedJobAuthority,
+    admissionContext: state.admission,
   });
   const metadata = JSON.parse(
-    state.repos.runtimeLeases.get("publisher:global").metadata,
+    state.db
+      .prepare(
+        "SELECT metadata FROM main.runtime_leases WHERE name = 'publisher:global'",
+      )
+      .get().metadata,
   );
   assert.equal(metadata.publisher_phase, "RECOVERY_COMPENSATION");
   assert.equal(
@@ -1673,11 +1725,9 @@ test("publisher recovery binds a separate exact recovery phase", (t) => {
 });
 
 test("publisher continuation accepts a recovery event ordered after acquisition", (t) => {
-  const state = liveFixture(t, {
-    schedulerMetadata: { process_id: process.pid },
-    expected: { child_pid: process.pid },
+  const state = publisherFixture(t, {
+    operation: "verify_governed_youtube_private_prestage",
   });
-  const admission = addScheduledAdmission(state.db);
   const objectCreated = state.db
     .prepare(
       `INSERT INTO publication_lifecycle_events
@@ -1687,14 +1737,14 @@ test("publisher continuation accepts a recovery event ordered after acquisition"
                'private object created', 'none', 'system', '{}', ?)`,
     )
     .run(
-      admission.story_id,
-      `${admission.dispatch_idempotency_key}:object-created`,
+      state.admission.story_id,
+      `${state.admission.dispatch_idempotency_key}:object-created`,
     );
   state.db.prepare(
     `UPDATE platform_publication_state
      SET lifecycle_state = 'PLATFORM_OBJECT_CREATED'
      WHERE story_id = ? AND platform = 'youtube'`,
-  ).run(admission.story_id);
+  ).run(state.admission.story_id);
   acquirePublisherLease({
     db: state.db,
     leases: state.repos.runtimeLeases,
@@ -1702,16 +1752,16 @@ test("publisher continuation accepts a recovery event ordered after acquisition"
     operation: "verify_governed_youtube_private_prestage",
     now: state.now,
     leaseMs: 90_000,
-    runtimeAuthority: {
-      runtime_instance_id: RUNTIME_INSTANCE_ID,
-      child_pid: process.pid,
-      child_started_at: START,
-      authority_fingerprint: AUTHORITY_FINGERPRINT,
-    },
-    admissionContext: admission,
+    runtimeAuthority: state.runtimeAuthority,
+    claimedJobAuthority: state.claimedJobAuthority,
+    admissionContext: state.admission,
   });
   const metadata = JSON.parse(
-    state.repos.runtimeLeases.get("publisher:global").metadata,
+    state.db
+      .prepare(
+        "SELECT metadata FROM main.runtime_leases WHERE name = 'publisher:global'",
+      )
+      .get().metadata,
   );
   assert.equal(metadata.publisher_phase, "CONTINUATION");
   assert.equal(
@@ -1726,12 +1776,15 @@ test("publisher continuation accepts a recovery event ordered after acquisition"
      VALUES (?, 'youtube', 'PLATFORM_OBJECT_CREATED',
              'RECONCILIATION_REQUIRED', 'verification uncertain',
              'manual_reconcile', 'system', '{}', ?)`,
-  ).run(admission.story_id, `${admission.dispatch_idempotency_key}:reconcile`);
+  ).run(
+    state.admission.story_id,
+    `${state.admission.dispatch_idempotency_key}:reconcile`,
+  );
   state.db.prepare(
     `UPDATE platform_publication_state
      SET lifecycle_state = 'RECONCILIATION_REQUIRED'
      WHERE story_id = ? AND platform = 'youtube'`,
-  ).run(admission.story_id);
+  ).run(state.admission.story_id);
 
   const result = inspectBoundedRuntimeDbAuthority({
     db: state.db,

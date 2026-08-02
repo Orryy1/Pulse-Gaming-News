@@ -123,6 +123,8 @@ test("governed dispatch re-resolves and passes the exact fresh scheduled binding
   const db = scheduledDb();
   t.after(() => db.close());
   let received = null;
+  const runtimeAuthority = Object.freeze({ runtime: "trusted" });
+  const claimedJobAuthority = Object.freeze({ claim: "trusted" });
   const result = await handlers.dispatch_governed_publication(dispatchJob(), {
     repos: { db },
     env: liveGuardedEnv(),
@@ -136,6 +138,8 @@ test("governed dispatch re-resolves and passes the exact fresh scheduled binding
       };
     },
     assertLeaseHealthy() {},
+    runtimeAuthority,
+    claimedJobAuthority,
   });
 
   assert.equal(result.status, "dispatched");
@@ -143,6 +147,8 @@ test("governed dispatch re-resolves and passes the exact fresh scheduled binding
   assert.equal(received.exactDispatchBinding.storyId, STORY_ID);
   assert.equal(received.exactDispatchBinding.scheduledEventId, EVENT_ID);
   assert.equal(received.exactDispatchBinding.requestFingerprint, FINGERPRINT);
+  assert.equal(received.runtimeAuthority, runtimeAuthority);
+  assert.equal(received.claimedJobAuthority, claimedJobAuthority);
   assert.equal(
     Number.isInteger(received.exactDispatchBinding.databaseDataVersion),
     true,

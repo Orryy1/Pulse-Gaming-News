@@ -1569,6 +1569,7 @@ test("operator admission atomically records exact evidence through SCHEDULED and
     evidenceByState.SCHEDULED.request_fingerprint,
     expectedFingerprint.request_fingerprint,
   );
+  assert.equal(evidenceByState.SCHEDULED.channel_id, input.channelId);
   assert.deepEqual(
     evidenceByState.SCHEDULED.publication_evidence,
     publicationEvidence,

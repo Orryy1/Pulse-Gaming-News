@@ -262,6 +262,15 @@ test("runtime-bound multi-lane workers use deterministic generation IDs", async 
           "server-ri-11111111-2222-4333-8444-555555555555-evergreen_production-1",
         ],
       );
+      for (const laneRunner of state.runners) {
+        assert.deepEqual(laneRunner.options.runtimeAuthority, {
+          runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+          child_pid: process.pid,
+          child_started_at: "2026-08-02T10:00:00.000Z",
+          authority_fingerprint: "a".repeat(64),
+        });
+        assert.equal(Object.isFrozen(laneRunner.options.runtimeAuthority), true);
+      }
       assert.equal(
         state.workerId,
         "server-ri-11111111-2222-4333-8444-555555555555",

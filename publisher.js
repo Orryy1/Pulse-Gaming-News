@@ -19,6 +19,9 @@ const {
   runWithPublisherLease,
 } = require("./lib/services/publisher-lock");
 const {
+  buildAdmittedPublicationOperation,
+} = require("./lib/stabilisation/bounded-runtime-db-authority");
+const {
   resolveOperatingContract,
 } = require("./lib/stabilisation/operating-contract");
 const {
@@ -577,30 +580,15 @@ async function _publishToAllPlatformsUnlocked(assertLeaseHealthy) {
 
 // --- Compatibility entrypoint: hunt → review queue → governed production hold ---
 async function publishToAllPlatforms(options = {}) {
-  const leases =
-    options.leases ||
-    (typeof db.useSqlite === "function" && db.useSqlite()
-      ? require("./lib/repositories").getRepos().runtimeLeases
-      : null);
-  const result = await runWithPublisherLease({
-    leases,
-    channelId: options.channelId || process.env.CHANNEL || "pulse-gaming",
-    operation: "publish_batch",
-    leaseMs: options.leaseMs,
-    heartbeatIntervalMs: options.heartbeatIntervalMs,
-    log: (message) => console.log(message),
-    task: ({ assertHealthy }) =>
-      _publishToAllPlatformsUnlocked(assertHealthy),
-  });
-  if (result?.publish_dispatch_blocked) {
-    return {
-      ...result,
-      youtube: [],
-      tiktok: [],
-      instagram: [],
-    };
-  }
-  return result;
+  return {
+    youtube: [],
+    tiktok: [],
+    instagram: [],
+    publish_dispatch_blocked: true,
+    status: "blocked",
+    top_reason:
+      "legacy_batch_publish_disabled_use_durable_single_story_queue",
+  };
 }
 
 async function fullAutonomousCycle() {
@@ -866,6 +854,10 @@ async function publishNextStory(options = {}) {
     }
     exactDispatchBinding = normaliseExactDispatchBinding(
       options.exactDispatchBinding,
+      {
+        channelId:
+          options.channelId || process.env.CHANNEL || "pulse-gaming",
+      },
     );
   } catch (error) {
     const topReason =
@@ -889,9 +881,17 @@ async function publishNextStory(options = {}) {
       : null);
   const leases = options.leases || resolvedRepos?.runtimeLeases || null;
   return runWithPublisherLease({
+    db: resolvedRepos?.db,
     leases,
     channelId: options.channelId || process.env.CHANNEL || "pulse-gaming",
     operation: "publish_next_story",
+    runtimeAuthority: options.runtimeAuthority,
+    claimedJobAuthority: options.claimedJobAuthority,
+    admissionContext: buildAdmittedPublicationOperation(
+      "publish_next_story",
+      exactDispatchBinding,
+    ),
+    env: runtimeEnv,
     leaseMs: options.leaseMs,
     heartbeatIntervalMs: options.heartbeatIntervalMs,
     log: (message) => console.log(message),
@@ -993,34 +993,52 @@ function createTrustedPublisherClock(options = {}, env = process.env) {
   };
 }
 
-function normaliseExactDispatchBinding(value) {
+function normaliseExactDispatchBinding(value, { channelId = null } = {}) {
   if (value === undefined || value === null) return null;
   if (typeof value !== "object" || Array.isArray(value)) {
     throw publicationDispatchError("guarded_exact_dispatch_binding_invalid");
   }
-  const scheduled = new Date(value.scheduledFor);
+  const scheduled = new Date(value.scheduledFor ?? value.scheduled_for);
+  const scheduledEventId =
+    value.scheduledEventId ?? value.scheduled_event_id;
   const binding = {
-    storyId: String(value.storyId || "").trim(),
+    channelId: String(
+      value.channelId ?? value.channel_id ?? channelId ?? "",
+    ).trim(),
+    storyId: String(value.storyId ?? value.story_id ?? "").trim(),
     platform: String(value.platform || "").trim(),
     scheduledFor: Number.isNaN(scheduled.getTime())
       ? ""
       : scheduled.toISOString(),
-    scheduledEventId: String(value.scheduledEventId ?? "").trim(),
+    scheduledEventId,
     dispatchIdempotencyKey: String(
-      value.dispatchIdempotencyKey || "",
+      value.dispatchIdempotencyKey ?? value.dispatch_idempotency_key ?? "",
     ).trim(),
-    requestFingerprint: String(value.requestFingerprint || "")
+    requestFingerprint: String(
+      value.requestFingerprint ?? value.request_fingerprint ?? "",
+    )
       .trim()
       .toLowerCase(),
-    databaseDataVersion: Number(value.databaseDataVersion),
+    runwayLockSha256: String(
+      value.runwayLockSha256 ?? value.runway_lock_sha256 ?? "",
+    )
+      .trim()
+      .toLowerCase(),
+    databaseDataVersion: Number(
+      value.databaseDataVersion ?? value.database_data_version,
+    ),
   };
   if (
+    !binding.channelId ||
     !binding.storyId ||
     binding.platform !== "youtube" ||
     !binding.scheduledFor ||
-    !binding.scheduledEventId ||
+    typeof binding.scheduledEventId !== "number" ||
+    !Number.isSafeInteger(binding.scheduledEventId) ||
+    binding.scheduledEventId <= 0 ||
     !binding.dispatchIdempotencyKey ||
     !/^[a-f0-9]{64}$/.test(binding.requestFingerprint) ||
+    !/^[a-f0-9]{64}$/.test(binding.runwayLockSha256) ||
     !Number.isSafeInteger(binding.databaseDataVersion) ||
     binding.databaseDataVersion < 1
   ) {
@@ -1069,6 +1087,11 @@ function assertExactDispatchBinding(binding, storyId, scheduled) {
   if (!binding) return;
   const comparisons = [
     [
+      String(scheduled?.channelId || "").trim(),
+      binding.channelId,
+      "guarded_exact_dispatch_channel_mismatch",
+    ],
+    [
       String(storyId || "").trim(),
       binding.storyId,
       "guarded_exact_dispatch_story_mismatch",
@@ -1084,7 +1107,7 @@ function assertExactDispatchBinding(binding, storyId, scheduled) {
       "guarded_exact_dispatch_schedule_mismatch",
     ],
     [
-      String(scheduled?.event?.id ?? "").trim(),
+      Number(scheduled?.event?.id),
       binding.scheduledEventId,
       "guarded_exact_dispatch_event_mismatch",
     ],
@@ -1099,6 +1122,13 @@ function assertExactDispatchBinding(binding, storyId, scheduled) {
         .toLowerCase(),
       binding.requestFingerprint,
       "guarded_exact_dispatch_fingerprint_mismatch",
+    ],
+    [
+      String(scheduled?.runwayLockSha256 || "")
+        .trim()
+        .toLowerCase(),
+      binding.runwayLockSha256,
+      "guarded_exact_dispatch_runway_lock_mismatch",
     ],
   ];
   for (const [actual, expected, code] of comparisons) {
@@ -1128,6 +1158,11 @@ function assertSameScheduledDispatchTicket(
       String(current?.requestFingerprint || "").trim().toLowerCase(),
       String(initial?.requestFingerprint || "").trim().toLowerCase(),
     ],
+    [
+      String(current?.runwayLockSha256 || "").trim().toLowerCase(),
+      String(initial?.runwayLockSha256 || "").trim().toLowerCase(),
+    ],
+    [String(current?.channelId || "").trim(), String(initial?.channelId || "").trim()],
     [
       String(current?.event?.evidence_json || "").trim(),
       String(initial?.event?.evidence_json || "").trim(),
@@ -1351,6 +1386,12 @@ function readScheduledDispatchEvidence(
   const requestFingerprint = String(
     evidence.request_fingerprint || "",
   ).trim();
+  const evidenceChannelId = String(evidence.channel_id || "").trim();
+  const runwayLockSha256 = String(
+    evidence.runway_lock_sha256 || "",
+  )
+    .trim()
+    .toLowerCase();
   if (!idempotencyKey) {
     throw publicationDispatchError(
       "scheduled_dispatch_idempotency_key_required",
@@ -1360,6 +1401,12 @@ function readScheduledDispatchEvidence(
     throw publicationDispatchError(
       "scheduled_dispatch_request_fingerprint_required",
     );
+  }
+  if (!evidenceChannelId || evidenceChannelId !== String(channelId || "").trim()) {
+    throw publicationDispatchError("scheduled_dispatch_channel_mismatch");
+  }
+  if (!/^[a-f0-9]{64}$/.test(runwayLockSha256)) {
+    throw publicationDispatchError("scheduled_dispatch_runway_lock_required");
   }
   const publicationEvidence =
     readScheduledPublicationEvidence(evidence);
@@ -1433,6 +1480,8 @@ function readScheduledDispatchEvidence(
     evidence,
     idempotencyKey,
     requestFingerprint,
+    channelId: evidenceChannelId,
+    runwayLockSha256,
     publicationEvidence,
     scheduledFor: scheduledFor.toISOString(),
   };

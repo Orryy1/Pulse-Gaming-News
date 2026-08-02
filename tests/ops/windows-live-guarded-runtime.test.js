@@ -315,9 +315,13 @@ function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
     engine_pid: 4100,
     supervisor_pid: 4100,
     supervisor_creation_time_utc: expected.supervisorCreationTimeUtc,
+    supervisor_executable_path: expected.supervisorExecutablePath,
+    supervisor_command_sha256: expected.supervisorCommandSha256,
     child_pid: 4200,
     child_creation_time_utc: expected.childCreationTimeUtc,
     child_parent_pid: 4100,
+    child_executable_path: expected.childExecutablePath,
+    child_command_sha256: expected.childCommandSha256,
     child_in_job: true,
     listener_port: 3001,
     listener_pid: 4200,
@@ -361,6 +365,13 @@ function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
     probes: {
       taskDefinitionInspector: async () => ({
         state: "managed_current",
+        blockers: [],
+      }),
+      conflictInspector: async () => ({
+        clear: true,
+        tasks: [
+          { task_name: "PulseGaming-Stabilisation-Runtime", state: "disabled" },
+        ],
         blockers: [],
       }),
       activationReceiptInspector: async () => activation,
@@ -423,6 +434,7 @@ function taskBoundActivation({
     valid: true,
     schema_version: "pulse-windows-live-guarded-activation-receipt-v2",
     receipt_sha256: receiptSha,
+    task_definition_sha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
     runtime_instance_id: BOUNDED_RUNTIME_ID,
     authority_binding: authorityBinding,
     authority_fingerprint: require("node:crypto")
@@ -441,7 +453,7 @@ function taskBoundActivation({
   };
 }
 
-function taskBoundHandoffObservation(child) {
+function taskBoundHandoffObservation(child, expected = {}) {
   return {
     ok: true,
     task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
@@ -453,18 +465,26 @@ function taskBoundHandoffObservation(child) {
     supervisor: {
       pid: process.pid,
       creation_time_utc: TEST_PROCESS_STARTED_AT,
-      executable_path: process.execPath.replace(/\\/g, "/"),
-      command_sha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
+      executable_path:
+        expected.expectedSupervisorExecutablePath ||
+        process.execPath.replace(/\\/g, "/"),
+      command_sha256:
+        expected.expectedSupervisorCommandSha256 ||
+        BOUNDED_SUPERVISOR_COMMAND_SHA,
     },
     child: {
       pid: child.pid,
       parent_pid: process.pid,
       creation_time_utc: TEST_REUSED_PROCESS_STARTED_AT,
-      executable_path: process.execPath.replace(/\\/g, "/"),
-      command_sha256: BOUNDED_CHILD_COMMAND_SHA,
+      executable_path:
+        expected.expectedChildExecutablePath ||
+        process.execPath.replace(/\\/g, "/"),
+      command_sha256:
+        expected.expectedChildCommandSha256 || BOUNDED_CHILD_COMMAND_SHA,
     },
     job_membership: {
       process_ids: [process.pid, child.pid],
+      supervisor_present: true,
       child_present: true,
     },
     blockers: [],
@@ -540,6 +560,125 @@ test("ACTIVE_BOUND independently checks every expected task and process identity
   }
 });
 
+test("ACTIVE_BOUND rejects omitted or malformed expected live identity fields", async () => {
+  for (const [field, value] of [
+    ["taskInstanceGuid", undefined],
+    ["taskInstanceGuid", "not-a-guid"],
+    ["taskInstanceGuid", `{${BOUNDED_INSTANCE_GUID}`],
+    ["supervisorPid", undefined],
+    ["supervisorPid", 0],
+    ["supervisorPid", "4100"],
+    ["supervisorCreationTimeUtc", undefined],
+    ["supervisorCreationTimeUtc", "yesterday"],
+    ["supervisorExecutablePath", undefined],
+    ["supervisorExecutablePath", "node.exe"],
+    ["supervisorCommandSha256", undefined],
+    ["supervisorCommandSha256", "not-a-sha"],
+    ["childPid", undefined],
+    ["childPid", -1],
+    ["childPid", "4200"],
+    ["childCreationTimeUtc", undefined],
+    ["childCreationTimeUtc", "not-a-time"],
+    ["childExecutablePath", undefined],
+    ["childExecutablePath", "server.js"],
+    ["childCommandSha256", undefined],
+    ["childCommandSha256", "short"],
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    if (value === undefined) delete fixture.expected[field];
+    else fixture.expected[field] = value;
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", `${field}:${value}`);
+    assert.deepEqual(
+      result.blockers,
+      ["live_task_authority_expected_identity_invalid"],
+      `${field}:${value}`,
+    );
+  }
+});
+
+test("ACTIVE_BOUND rejects malformed owner-v2 and observed task/process structures", async () => {
+  const cases = [
+    ["owner", "task_instance_guid", undefined],
+    ["owner", "engine_pid", "4100"],
+    ["owner", "supervisor_creation_time_utc", "invalid"],
+    ["owner", "supervisor_executable_path", "node.exe"],
+    ["owner", "supervisor_command_sha256", "invalid"],
+    ["owner", "child_pid", 0],
+    ["owner", "child_creation_time_utc", "invalid"],
+    ["owner", "child_parent_pid", "4100"],
+    ["owner", "child_executable_path", "node.exe"],
+    ["owner", "child_command_sha256", "invalid"],
+    ["authority.task_instance", "engine_pid", "4100"],
+    ["authority.task_instance", "state", undefined],
+    ["authority.supervisor", "pid", "4100"],
+    ["authority.supervisor", "creation_time_utc", "invalid"],
+    ["authority.supervisor", "executable_path", "node.exe"],
+    ["authority.supervisor", "command_sha256", "invalid"],
+    ["authority.child", "pid", "4200"],
+    ["authority.child", "creation_time_utc", "invalid"],
+    ["authority.child", "parent_pid", "4100"],
+    ["authority.child", "executable_path", "node.exe"],
+    ["authority.child", "command_sha256", "invalid"],
+    ["authority.job_membership", "process_ids", ["4100", 4200]],
+  ];
+  for (const [target, field, value] of cases) {
+    const fixture = activeBoundedAuthorityFixture();
+    if (target === "owner") {
+      const original = fixture.probes.ownerReceiptInspector;
+      fixture.probes.ownerReceiptInspector = async () => {
+        const record = { ...(await original()) };
+        if (value === undefined) delete record[field];
+        else record[field] = value;
+        return record;
+      };
+    } else {
+      const section = target.split(".")[1];
+      const original = fixture.probes.authorityObserver;
+      fixture.probes.authorityObserver = async () => {
+        const record = await original();
+        return {
+          ...record,
+          [section]: { ...record[section], [field]: value },
+        };
+      };
+    }
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", `${target}.${field}`);
+    assert.ok(
+      result.blockers.includes("live_task_authority_evidence_malformed"),
+      `${target}.${field}:${inspect(result.blockers)}`,
+    );
+  }
+});
+
+test("ACTIVE_BOUND joins owner-v2 executable and command authority to the observation", async () => {
+  for (const [field, value] of [
+    ["supervisor_executable_path", "D:/other/node.exe"],
+    ["supervisor_command_sha256", "1".repeat(64)],
+    ["child_executable_path", "D:/other/node.exe"],
+    ["child_command_sha256", "2".repeat(64)],
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    const original = fixture.probes.ownerReceiptInspector;
+    fixture.probes.ownerReceiptInspector = async () => ({
+      ...(await original()),
+      [field]: value,
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", field);
+    assert.ok(result.blockers.includes("live_task_instance_receipt_mismatch"));
+  }
+
+  const taskName = activeBoundedAuthorityFixture();
+  const original = taskName.probes.authorityObserver;
+  taskName.probes.authorityObserver = async () => ({
+    ...(await original()),
+    task_name: "Different-Task",
+  });
+  assert.equal((await inspectBoundedWindowsAuthority(taskName)).state, "HOLD");
+});
+
 function stoppedBoundedAuthorityFixture() {
   const expected = {
     taskName: "PulseGaming-LiveGuarded-YouTube-Runtime",
@@ -571,7 +710,7 @@ function stoppedBoundedAuthorityFixture() {
       }),
       activationReceiptInspector: async () => ({
         present: false,
-        blockers: ["token-shaped command sk-live-secret"],
+        blockers: [],
       }),
       ownerReceiptInspector: async () => ({
         state: "absent",
@@ -600,6 +739,61 @@ test("STOPPED_BOUND requires two stable quiescent observations", async () => {
   assert.match(result.authority_fingerprint, /^[a-f0-9]{64}$/);
 });
 
+test("STOPPED_BOUND rejects unarchived exact-stale owners and validates governed owner-v2 archives", async () => {
+  const unarchived = stoppedBoundedAuthorityFixture();
+  unarchived.probes.ownerReceiptInspector = async () => ({
+    state: "exact_stale",
+    blockers: [],
+  });
+  const unarchivedResult = await inspectBoundedWindowsAuthority(unarchived);
+  assert.equal(unarchivedResult.state, "HOLD");
+  assert.ok(
+    unarchivedResult.blockers.includes(
+      "quiescent_owner_receipt_not_governed_stale",
+    ),
+  );
+
+  const active = activeBoundedAuthorityFixture();
+  const ownerV2 = await active.probes.ownerReceiptInspector();
+  for (const mutation of [
+    { authority_fingerprint: "0".repeat(64) },
+    { supervisor_command_sha256: "invalid" },
+    { child_executable_path: "node.exe" },
+    { archive_receipt_sha256: "invalid" },
+    { archive_policy_applied: false },
+  ]) {
+    const fixture = stoppedBoundedAuthorityFixture();
+    fixture.probes.ownerReceiptInspector = async () => ({
+      ...ownerV2,
+      state: "governed_stale",
+      archived: true,
+      archive_policy_applied: true,
+      archive_receipt_sha256: "f".repeat(64),
+      blockers: [],
+      ...mutation,
+    });
+    assert.equal(
+      (await inspectBoundedWindowsAuthority(fixture)).state,
+      "HOLD",
+      inspect(mutation),
+    );
+  }
+
+  const governed = stoppedBoundedAuthorityFixture();
+  governed.probes.ownerReceiptInspector = async () => ({
+    ...ownerV2,
+    state: "governed_stale",
+    archived: true,
+    archive_policy_applied: true,
+    archive_receipt_sha256: "f".repeat(64),
+    blockers: [],
+  });
+  assert.equal(
+    (await inspectBoundedWindowsAuthority(governed)).state,
+    "STOPPED_BOUND",
+  );
+});
+
 test("changing bounded observations are HOLD", async () => {
   const fixture = stoppedBoundedAuthorityFixture();
   let reads = 0;
@@ -619,6 +813,20 @@ test("bounded verdicts never expose raw command text or database lease owners", 
   const serialised = JSON.stringify(result);
   assert.equal(serialised.includes("sk-live-secret"), false);
   assert.equal(serialised.includes("scheduler:raw-private-owner"), false);
+});
+
+test("HOLD exposes a runtime instance ID only after strict validation", async () => {
+  for (const unsafeRuntimeInstanceId of [
+    "ri-sk-live-secret",
+    `ri-${"a".repeat(4096)}-sk-live-secret`,
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    fixture.expected.runtimeInstanceId = unsafeRuntimeInstanceId;
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD");
+    assert.equal(result.runtime_instance_id, null);
+    assert.equal(JSON.stringify(result).includes("sk-live-secret"), false);
+  }
 });
 
 test("bounded verdicts reject contradictory probe states without copying raw blockers", async () => {
@@ -648,6 +856,92 @@ test("bounded verdicts reject contradictory probe states without copying raw blo
   assert.equal(
     JSON.stringify(databaseResult).includes("scheduler:raw-private-owner"),
     false,
+  );
+});
+
+test("ACTIVE_BOUND requires blocker-free evidence from every live authority probe", async () => {
+  for (const probe of [
+    "taskDefinitionInspector",
+    "conflictInspector",
+    "activationReceiptInspector",
+    "ownerReceiptInspector",
+    "authorityObserver",
+    "listenerInspector",
+    "healthRequester",
+    "databaseAuthorityInspector",
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    const original = fixture.probes[probe];
+    fixture.probes[probe] = async (...args) => ({
+      ...(await original(...args)),
+      blockers: [`raw-${probe}-sk-live-secret`],
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", probe);
+    assert.equal(
+      JSON.stringify(result).includes("sk-live-secret"),
+      false,
+      probe,
+    );
+  }
+});
+
+test("STOPPED_BOUND requires blocker-free evidence from every quiescent authority probe", async () => {
+  for (const probe of [
+    "taskDefinitionInspector",
+    "taskInstancesInspector",
+    "conflictInspector",
+    "activationReceiptInspector",
+    "ownerReceiptInspector",
+    "listenerInspector",
+    "databaseAuthorityInspector",
+  ]) {
+    const fixture = stoppedBoundedAuthorityFixture();
+    const original = fixture.probes[probe];
+    fixture.probes[probe] = async (...args) => ({
+      ...(await original(...args)),
+      blockers: [`raw-${probe}-sk-live-secret`],
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", probe);
+    assert.equal(
+      JSON.stringify(result).includes("sk-live-secret"),
+      false,
+      probe,
+    );
+  }
+});
+
+test("ACTIVE_BOUND requires complete clear evidence for bounded legacy-task conflicts", async () => {
+  for (const conflictResult of [
+    {
+      clear: false,
+      tasks: [
+        { task_name: "PulseGaming-Stabilisation-Runtime", state: "enabled" },
+      ],
+      blockers: ["conflicting_runtime_task_enabled"],
+    },
+    { clear: true, blockers: [] },
+    { clear: "yes", tasks: [], blockers: [] },
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    fixture.probes.conflictInspector = async () => conflictResult;
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", inspect(conflictResult));
+    assert.ok(
+      result.blockers.includes("live_conflicting_task_authority_untrusted"),
+    );
+  }
+
+  const unrelated = activeBoundedAuthorityFixture();
+  unrelated.probes.conflictInspector = async () => ({
+    clear: true,
+    tasks: [{ task_name: "Unrelated-Backup-Task", state: "enabled" }],
+    blockers: [],
+  });
+  assert.equal(
+    (await inspectBoundedWindowsAuthority(unrelated)).state,
+    "ACTIVE_BOUND",
   );
 });
 
@@ -1037,6 +1331,80 @@ test("stopped-runtime inspection accepts only an exact dead stale owner that the
       "live_supervisor_owner_process_identity_unavailable",
     ),
   );
+});
+
+test("stopped-runtime inspection validates owner-v2 task authority before declaring exact stale", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const activation = taskBoundActivation({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+    receiptSha: "c".repeat(64),
+  });
+  const binding = activation.authority_binding;
+  const exactOwnerV2 = {
+    schema_version: "pulse-windows-live-guarded-owner-v2",
+    runtime_instance_id: activation.runtime_instance_id,
+    task_name: profile.task_name,
+    task_instance_guid: BOUNDED_INSTANCE_GUID,
+    engine_pid: 4100,
+    supervisor_pid: 4100,
+    supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
+    supervisor_creation_time_utc: TEST_PROCESS_STARTED_AT,
+    supervisor_executable_path: binding.node_path,
+    supervisor_command_sha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
+    child_pid: 4200,
+    child_process_started_at: TEST_PROCESS_STARTED_AT,
+    child_creation_time_utc: TEST_PROCESS_STARTED_AT,
+    child_parent_pid: 4100,
+    child_executable_path: binding.node_path,
+    child_command_sha256: BOUNDED_CHILD_COMMAND_SHA,
+    child_in_job: true,
+    listener_port: profile.port,
+    listener_pid: 4200,
+    port: profile.port,
+    repo_root: ROOT.replace(/\\/g, "/"),
+    commit_sha: expectedCommit,
+    release_sha: expectedCommit,
+    profile_sha256: binding.profile_sha256,
+    database_identity_sha256: binding.database_identity_sha256,
+    authority_binding: binding,
+    authority_fingerprint: activation.authority_fingerprint,
+    activation_receipt_sha256: activation.receipt_sha256,
+    platform: "youtube",
+    blockers: [],
+  };
+  const inspectOwner = (owner) =>
+    inspectStoppedLiveRuntime({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      listenerInspector: () => ({ available: true, listeningPids: [] }),
+      existsSync: () => true,
+      readFileSync: () => JSON.stringify(owner),
+      processIdentityInspector: processIdentityInspector({}),
+    });
+
+  assert.equal(inspectOwner(exactOwnerV2).owner_state, "exact_stale");
+  for (const mutation of [
+    { runtime_instance_id: undefined },
+    { task_instance_guid: "invalid" },
+    { supervisor_executable_path: "node.exe" },
+    { supervisor_command_sha256: "invalid" },
+    { child_parent_pid: 4999 },
+    { child_command_sha256: "invalid" },
+    { child_in_job: false },
+    { authority_fingerprint: "0".repeat(64) },
+  ]) {
+    const result = inspectOwner({ ...exactOwnerV2, ...mutation });
+    assert.equal(result.owner_state, "mismatch", inspect(mutation));
+    assert.ok(
+      result.blockers.includes("live_supervisor_owner_receipt_mismatch"),
+      inspect(mutation),
+    );
+  }
 });
 
 test("start operation lock is durable, cross-process exclusive and nonce-owned", () => {
@@ -1662,6 +2030,7 @@ test("the real supervision-generation path borrows the exact parent transition l
       "activation-receipt.json",
     ),
   };
+  fs.writeFileSync(profile.database_path, "bounded database identity\n");
   const child = new EventEmitter();
   child.pid = 7412;
   const kills = [];
@@ -1691,6 +2060,7 @@ test("the real supervision-generation path borrows the exact parent transition l
     receiptSha: activationReceiptSha256,
   });
   let boundedListenerReads = 0;
+  const activationInspections = [];
 
   const generation = await startLiveSupervisionGeneration({
     repoRoot: ROOT,
@@ -1722,8 +2092,26 @@ test("the real supervision-generation path borrows the exact parent transition l
       activation_receipt_sha256: activationReceiptSha256,
       runtime_environment: {},
     }),
-    activationInspector: () => boundedActivation,
-    taskAuthorityObserver: async () => taskBoundHandoffObservation(child),
+    activationInspector: (options) => {
+      activationInspections.push(options);
+      return boundedActivation;
+    },
+    taskAuthorityObserver: async (options) => {
+      assert.equal(
+        options.expectedSupervisorExecutablePath,
+        boundedActivation.authority_binding.node_path,
+      );
+      assert.equal(
+        options.expectedSupervisorCommandSha256,
+        boundedActivation.task_definition_sha256,
+      );
+      assert.equal(
+        options.expectedChildExecutablePath,
+        boundedActivation.authority_binding.node_path,
+      );
+      assert.match(options.expectedChildCommandSha256, /^[a-f0-9]{64}$/);
+      return taskBoundHandoffObservation(child, options);
+    },
     startOperationInspector: () => ({
       present: true,
       valid: true,
@@ -1829,6 +2217,142 @@ test("the real supervision-generation path borrows the exact parent transition l
   assert.equal(owner.supervisor_process_started_at, TEST_PROCESS_STARTED_AT);
   assert.equal(owner.child_process_started_at, TEST_REUSED_PROCESS_STARTED_AT);
   assert.equal(owner.start_operation_nonce, START_OPERATION_NONCE);
+  assert.ok(activationInspections.length >= 3);
+  for (const options of activationInspections) {
+    assert.equal(
+      options.nodePath,
+      fs.realpathSync.native(process.execPath).replace(/\\/g, "/"),
+    );
+    assert.equal(
+      options.checkoutRealPath,
+      fs.realpathSync.native(ROOT).replace(/\\/g, "/"),
+    );
+    assert.equal(
+      options.databaseIdentitySha256,
+      require("node:crypto")
+        .createHash("sha256")
+        .update(fs.readFileSync(profile.database_path))
+        .digest("hex"),
+    );
+  }
+});
+
+test("owner-v2 publication rejects executable, command or complete Job membership drift", async (t) => {
+  let childPid = 7800;
+  const run = async (mutateObservation) => {
+    const temp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pulse-live-handoff-authority-"),
+    );
+    t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+    const expectedCommit = "9".repeat(40);
+    const receiptSha = "8".repeat(64);
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      database_path: path.join(temp, "pulse.db"),
+      state_root: path.join(temp, "state"),
+      activation_receipt_path: path.join(temp, "activation.json"),
+    };
+    const activation = taskBoundActivation({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      receiptSha,
+    });
+    const child = new EventEmitter();
+    child.pid = ++childPid;
+    child.kill = (signal) => {
+      queueMicrotask(() => child.emit("exit", 0, signal));
+      return true;
+    };
+    let listenerReads = 0;
+    let ownerWrites = 0;
+    await assert.rejects(
+      startLiveSupervisionGeneration({
+        repoRoot: ROOT,
+        expectedCommit,
+        platform: "win32",
+        profileLoader: () => profile,
+        doctorBuilder: () => ({
+          checks: { activation: { valid: true, receipt_sha256: receiptSha } },
+        }),
+        supervisionPreparer: () => ({
+          activation_receipt_sha256: receiptSha,
+          runtime_environment: {},
+        }),
+        activationInspector: () => activation,
+        startOperationInspector: () => ({
+          present: false,
+          valid: true,
+          operation_nonce: null,
+          blockers: [],
+        }),
+        transitionLeaseAcquirer: () => ({
+          renew: () => true,
+          sealForHandoff: () => true,
+          release: () => true,
+        }),
+        listenerInspector: () => ({
+          available: true,
+          listeningPids: listenerReads++ === 0 ? [] : [child.pid],
+        }),
+        processIdentityInspector: processIdentityInspector({
+          [process.pid]: TEST_PROCESS_STARTED_AT,
+          [child.pid]: TEST_REUSED_PROCESS_STARTED_AT,
+        }),
+        healthRequester: async () => ({
+          status: "ok",
+          schedulerActive: true,
+          build: { commit_sha: expectedCommit },
+          deployment: { mode: "local", primary: true },
+          runtime: {
+            operating_mode: "LIVE_GUARDED",
+            auto_publish: true,
+            legacy_auto_publish_armed: true,
+            use_sqlite: true,
+            use_job_queue_explicit: "true",
+          },
+        }),
+        spawnImpl: () => child,
+        taskAuthorityObserver: async (options) =>
+          mutateObservation(taskBoundHandoffObservation(child, options)),
+        lifecycleReceiptWriter: () => ({ receipt_path: "unused" }),
+        ownerWriter: () => {
+          ownerWrites += 1;
+        },
+      }),
+      /live_task_handoff_authority_mismatch/,
+    );
+    assert.equal(ownerWrites, 0);
+  };
+
+  for (const mutate of [
+    (value) => ({
+      ...value,
+      supervisor: { ...value.supervisor, executable_path: "D:/wrong/node.exe" },
+    }),
+    (value) => ({
+      ...value,
+      supervisor: { ...value.supervisor, command_sha256: "0".repeat(64) },
+    }),
+    (value) => ({
+      ...value,
+      child: { ...value.child, executable_path: "D:/wrong/node.exe" },
+    }),
+    (value) => ({
+      ...value,
+      child: { ...value.child, command_sha256: "0".repeat(64) },
+    }),
+    (value) => ({
+      ...value,
+      job_membership: {
+        process_ids: [value.child.pid],
+        supervisor_present: false,
+        child_present: true,
+      },
+    }),
+  ]) {
+    await run(mutate);
+  }
 });
 
 test("an owned generation keeps a sealed transition durable until the owner receipt is published", async (t) => {
@@ -1884,7 +2408,8 @@ test("an owned generation keeps a sealed transition durable until the owner rece
       runtime_environment: {},
     }),
     activationInspector: () => boundedActivation,
-    taskAuthorityObserver: async () => taskBoundHandoffObservation(child),
+    taskAuthorityObserver: async (options) =>
+      taskBoundHandoffObservation(child, options),
     startOperationInspector: () => ({
       present: false,
       valid: true,
@@ -2007,7 +2532,8 @@ test("an owned transition release failure terminates the child and removes its o
         runtime_environment: {},
       }),
       activationInspector: () => boundedActivation,
-      taskAuthorityObserver: async () => taskBoundHandoffObservation(child),
+      taskAuthorityObserver: async (options) =>
+        taskBoundHandoffObservation(child, options),
       startOperationInspector: () => ({
         present: false,
         valid: true,
@@ -4943,6 +5469,19 @@ test("activation v2 binds the planned runtime authority without claiming future 
     assert.equal(exact.runtime_instance_id, BOUNDED_RUNTIME_ID);
     assert.equal(exact.authority_fingerprint, receipt.authority_fingerprint);
 
+    const selfTrusted = inspectLiveActivationReceipt({
+      profile,
+      expectedCommit,
+      migrationsDir,
+      receiptPath,
+    });
+    assert.equal(selfTrusted.valid, false);
+    assert.ok(
+      selfTrusted.blockers.includes(
+        "activation_receipt_independent_authority_required",
+      ),
+    );
+
     const databaseDrift = inspectLiveActivationReceipt({
       profile,
       expectedCommit,
@@ -5057,6 +5596,7 @@ test("AUTO_PUBLISH cannot enter a child environment without one exact activation
       expectedCommit,
       migrationsDir,
       receiptPath,
+      ...activationAuthorityOptions(),
     });
     assert.equal(activation.valid, true);
     assert.deepEqual(activation.blockers, []);
@@ -5138,6 +5678,7 @@ test("activation authority has no silent calendar expiry but every commit, profi
         expectedCommit,
         migrationsDir,
         receiptPath,
+        ...activationAuthorityOptions(),
         ...overrides,
       });
     };

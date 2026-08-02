@@ -202,7 +202,7 @@ test("governed admission requires an exact human packet before any lifecycle mut
   assert.ok(result.blockers.includes("exact_human_admission_packet_required"));
 });
 
-test("governed admission maps the exact reviewed packet into the canonical admission service", async () => {
+test("LIVE_GUARDED human admission stays held until a separately reviewed authority exists", async () => {
   const evidence = {
     source_evidence_sha256: "1".repeat(64),
     qa_report_sha256: "2".repeat(64),
@@ -279,20 +279,13 @@ test("governed admission maps the exact reviewed packet into the canonical admis
     },
   );
 
-  assert.equal(result.status, "scheduled");
-  assert.equal(received.storyId, "evergreen-admit-002");
-  assert.equal(received.confirmationStoryId, "evergreen-admit-002");
-  assert.equal(received.actorId, "operator-001");
-  assert.equal(received.scheduledFor, SCHEDULED_FOR);
-  assert.deepEqual(received.evidence, evidence);
-  assert.equal(received.repos.marker, true);
-  assert.deepEqual(received.dispatchJob, {
-    laneId: "evergreen_short",
-    priority: 18,
-    maxAttempts: 3,
-  });
-  assert.equal(result.dispatch_job_id, 779);
-  assert.equal(result.dispatch_job_run_at, SCHEDULED_FOR);
+  assert.equal(result.status, "held");
+  assert.deepEqual(result.blockers, [
+    "publication_admission_authority_required",
+  ]);
+  assert.equal(result.lifecycle_mutation_attempted, false);
+  assert.equal(result.no_external_posting, true);
+  assert.equal(received, null);
 });
 
 function autonomousAdmissionPacket({
@@ -344,7 +337,7 @@ function autonomousAdmissionPacket({
   };
 }
 
-test("T-75 routes a fresh autonomous official-source packet to the separate non-human admission seam", async () => {
+test("T-75 rejects a prebuilt autonomous packet that bypasses JIT admission authority", async () => {
   const packet = autonomousAdmissionPacket();
   let received = null;
   const result = await handlers.admit_governed_publication(
@@ -396,22 +389,13 @@ test("T-75 routes a fresh autonomous official-source packet to the separate non-
     },
   );
 
-  assert.equal(result.status, "scheduled", JSON.stringify(result));
-  assert.equal(received.storyId, "breaking-autonomous-001");
-  assert.equal(received.laneId, "breaking_short");
-  assert.equal(received.authority, packet.autonomous_publication_authority);
-  assert.equal(received.publicationEvidence, packet.publication_evidence);
-  assert.equal(
-    received.requestFingerprint,
-    packet.autonomous_publication_authority.request_fingerprint,
-  );
-  assert.equal(
-    received.runwayLockSha256,
-    packet.autonomous_publication_authority.runway_lock_sha256,
-  );
-  assert.equal(Object.hasOwn(received, "actorId"), false);
-  assert.equal(Object.hasOwn(received, "reason"), false);
+  assert.equal(result.status, "held", JSON.stringify(result));
+  assert.deepEqual(result.blockers, [
+    "publication_admission_authority_required",
+  ]);
+  assert.equal(result.lifecycle_mutation_attempted, false);
   assert.equal(result.no_external_posting, true);
+  assert.equal(received, null);
 });
 
 test("T-75 rejects an expired autonomous authority before lifecycle mutation", async () => {

@@ -151,7 +151,7 @@ function fixtureValues() {
     final_mp4_sha256: "f".repeat(64),
     publication_metadata_sha256: "0".repeat(64),
     kill_switch_proof_sha256: "1a".repeat(32),
-    single_owner_proof_sha256: "2b".repeat(32),
+    publication_admission_owner_proof_sha256: "2b".repeat(32),
   };
   const gates = gateInput();
   const synthetic = {
@@ -199,8 +199,8 @@ function fixtureValues() {
 
 function autonomousReport(lineage, inputFiles = {}) {
   const reportPayload = {
-    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v3",
-    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v3",
+    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v4",
+    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v4",
     mode: "LOCAL_PROOF",
     generated_at: "2026-07-29T09:59:30.000Z",
     valid_until: "2026-07-29T10:01:30.000Z",
@@ -240,7 +240,7 @@ function autonomousReport(lineage, inputFiles = {}) {
     lineage,
     controls: {
       kill_switch: "FRESH_HEALTHY",
-      scheduler_and_publisher_ownership: "SINGLE_OWNER",
+      scheduler_and_publication_admission_ownership: "SINGLE_OWNER",
       kill_switch_proof: {
         declared_path: "output/proof/kill-switch.json",
         resolved_path: "C:\\proof\\kill-switch.json",
@@ -248,11 +248,12 @@ function autonomousReport(lineage, inputFiles = {}) {
         observed_sha256: lineage.kill_switch_proof_sha256,
         size_bytes: 300,
       },
-      single_owner_proof: {
+      publication_admission_owner_proof: {
         declared_path: "output/proof/single-owner.json",
         resolved_path: "C:\\proof\\single-owner.json",
         real_path: "C:\\proof\\single-owner.json",
-        observed_sha256: lineage.single_owner_proof_sha256,
+        observed_sha256:
+          lineage.publication_admission_owner_proof_sha256,
         size_bytes: 400,
       },
     },
@@ -446,8 +447,10 @@ async function fixture(t) {
       admission_controls: {
         kill_switch_proof_sha256: lineage.kill_switch_proof_sha256,
         kill_switch_checked_at: "2026-07-29T09:59:40.000Z",
-        single_owner_proof_sha256: lineage.single_owner_proof_sha256,
-        single_owner_checked_at: "2026-07-29T09:59:45.000Z",
+        publication_admission_owner_proof_sha256:
+          lineage.publication_admission_owner_proof_sha256,
+        publication_admission_owner_checked_at:
+          "2026-07-29T09:59:45.000Z",
       },
     },
   };
@@ -523,7 +526,7 @@ test("creates a closed immutable, single-use admission authority without dispatc
     boundary: "T_MINUS_15",
     official_source_revalidation_required: true,
     kill_switch_revalidation_required: true,
-    single_owner_revalidation_required: true,
+    publication_admission_owner_revalidation_required: true,
     exact_binding_revalidation_required: true,
     max_control_age_ms: 60000,
     disarm_on_failure: true,
@@ -924,7 +927,7 @@ test("runs the existing publication gates and rejects rights or lineage drift", 
   );
 
   const controlDrift = await fixture(t);
-  controlDrift.request.admission_controls.single_owner_proof_sha256 =
+  controlDrift.request.admission_controls.publication_admission_owner_proof_sha256 =
     "ef".repeat(32);
   await assert.rejects(
     createAutonomousOfficialPublicationAuthority(controlDrift.request, {

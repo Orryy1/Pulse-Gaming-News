@@ -37,6 +37,12 @@ test("pre-T90 handler derives a closed no-authority request from the durable win
     path.join(os.tmpdir(), "pulse-pre-t90-handler-"),
   );
   const calls = [];
+  const runtimeAuthority = {
+    runtime_authority_sha256: "a".repeat(64),
+  };
+  const claimedJobAuthority = {
+    claimed_job_authority_sha256: "b".repeat(64),
+  };
   const preparation = await handlers[
     "prepare_governed_autonomous_pre_t90_window"
   ](
@@ -55,6 +61,8 @@ test("pre-T90 handler derives a closed no-authority request from the durable win
     {
       autonomousProductionWorkspaceRoot: workspaceRoot,
       repos: { db: {}, runtimeLeases: {} },
+      runtimeAuthority,
+      claimedJobAuthority,
       governedAutonomousPreT90Dependencies: {
         marker: "injected-test-options",
       },
@@ -95,6 +103,14 @@ test("pre-T90 handler derives a closed no-authority request from the durable win
     external_posting: false,
   });
   assert.equal(calls[0].options.workspaceRoot, workspaceRoot);
+  assert.equal(
+    calls[0].options.runtimeAuthority,
+    runtimeAuthority,
+  );
+  assert.equal(
+    calls[0].options.claimedJobAuthority,
+    claimedJobAuthority,
+  );
   assert.equal(
     calls[0].options.marker,
     "injected-test-options",

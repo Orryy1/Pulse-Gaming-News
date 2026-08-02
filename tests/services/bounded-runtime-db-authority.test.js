@@ -11,6 +11,9 @@ const { runMigrations } = require("../../lib/migrate");
 const { bindRepositories } = require("../../lib/repositories");
 const { acquirePublisherLease } = require("../../lib/services/publisher-lock");
 const {
+  acquirePublicationAdmissionLease,
+} = require("../../lib/services/publication-admission-lock");
+const {
   buildClaimedJobAuthority,
   inspectBoundedRuntimeDbAuthority,
 } = require("../../lib/stabilisation/bounded-runtime-db-authority");
@@ -324,6 +327,90 @@ function publisherFixture(
   };
 }
 
+function publicationAdmissionFixture(t, { windowScoped = false } = {}) {
+  const state = fixture(t);
+  const now = new Date();
+  const workerId =
+    `server-${RUNTIME_INSTANCE_ID}-critical_publication-1`;
+  const channelId = windowScoped ? null : "pulse-gaming";
+  const storyId = windowScoped ? null : "admission-story-91";
+  const jobKind = windowScoped
+    ? "prepare_governed_autonomous_pre_t90_window"
+    : "admit_governed_publication";
+  const operation = windowScoped
+    ? "governed_autonomous_pre_t90_window_preparation"
+    : "autonomous_t75_jit_admission";
+  if (!windowScoped) {
+    state.db
+      .prepare("INSERT OR IGNORE INTO channels (id, name) VALUES (?, ?)")
+      .run(channelId, "Publication admission fixture channel");
+    state.db
+      .prepare("INSERT OR IGNORE INTO stories (id, title) VALUES (?, ?)")
+      .run(storyId, "Publication admission fixture story");
+  }
+  state.repos.runtimeLeases.acquire({
+    name: "scheduler:primary",
+    ownerId: "scheduler-admission-private-fixture",
+    now,
+    leaseMs: 90_000,
+    metadata: schedulerMetadata({ process_id: process.pid }),
+  });
+  state.repos.workers.register({ id: workerId, status: "idle" });
+  state.db
+    .prepare("UPDATE main.workers SET last_seen_at = ? WHERE id = ?")
+    .run(now.toISOString(), workerId);
+  const queued = state.repos.jobs.enqueue({
+    kind: jobKind,
+    channel_id: channelId,
+    story_id: storyId,
+    payload: {
+      scheduled_for: "2026-08-02T19:00:00.000Z",
+      publish_hour_utc: 19,
+    },
+    idempotency_key: `admit:publication-admission:${jobKind}:91`,
+  });
+  const claimed = state.repos.jobs.claim(workerId, {
+    kinds: [jobKind],
+    ...(windowScoped ? {} : { channelId }),
+    leaseMs: 90_000,
+  });
+  assert.equal(claimed.id, queued.id);
+  const claimedJobAuthority = buildClaimedJobAuthority({
+    db: state.db,
+    jobId: claimed.id,
+    workerId,
+    claimToken: claimed.claim_token,
+  });
+  return {
+    ...state,
+    now,
+    workerId,
+    claimed,
+    operation,
+    claimedJobAuthority,
+    runtimeAuthority: runtimeAuthority(),
+    expected: expected({
+      child_pid: process.pid,
+      database_identity_sha256: databaseIdentitySha256(state.dbPath),
+      worker_topology: [
+        {
+          pool_id: "critical_publication",
+          instances: 1,
+          kinds: [jobKind],
+        },
+      ],
+      runtime_claim_set_count: 1,
+      runtime_claim_set_sha256: claimSetSha256({
+        workerId,
+        jobId: claimed.id,
+        kind: jobKind,
+        runId: Number(claimed.claim_token),
+        attempt: claimed.attempt_count,
+      }),
+    }),
+  };
+}
+
 test("accepts only scheduler lease and workers from the bound runtime", (t) => {
   const { db, dbPath, repos } = fixture(t);
   const now = new Date();
@@ -417,7 +504,7 @@ test("rejects a publisher lease bound to a superseded SCHEDULED admission", (t) 
     db: state.db,
     mode: "LIVE",
     expected: state.expected,
-    now: state.now,
+    now: new Date(),
   });
 
   assert.equal(result.ok, false);
@@ -447,7 +534,7 @@ test("accepts an active publisher lease only for the current durable admission",
     db: state.db,
     mode: "LIVE",
     expected: state.expected,
-    now: state.now,
+    now: new Date(),
   });
 
   assert.equal(result.ok, true);
@@ -473,13 +560,159 @@ test("accepts an active publisher lease only for the current durable admission",
       db: state.db,
       mode: "LIVE",
       expected: state.expected,
-      now: state.now,
+      now: new Date(),
     });
     assert.equal(held.ok, false, lifecycleState);
     assert.deepEqual(
       held.blockers,
       ["runtime_db_publisher_admission_mismatch"],
       lifecycleState,
+    );
+  }
+});
+
+test("accepts an active publication-admission lease only for its exact runtime and claimed job", (t) => {
+  const state = publicationAdmissionFixture(t);
+  acquirePublicationAdmissionLease({
+    db: state.db,
+    leases: state.repos.runtimeLeases,
+    ownerId: "publication-admission-current-private-owner",
+    operation: "autonomous_t75_jit_admission",
+    runtimeAuthority: state.runtimeAuthority,
+    claimedJobAuthority: state.claimedJobAuthority,
+  });
+
+  const result = inspectBoundedRuntimeDbAuthority({
+    db: state.db,
+    mode: "LIVE",
+    expected: state.expected,
+    now: new Date(),
+  });
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.deepEqual(result.blockers, []);
+  assert.match(
+    result.evidence.publication_admission_lease.owner_sha256,
+    /^[a-f0-9]{64}$/,
+  );
+  const serialised = JSON.stringify(result);
+  assert.equal(
+    serialised.includes("publication-admission-current-private-owner"),
+    false,
+  );
+  assert.equal(serialised.includes(state.workerId), false);
+});
+
+test("inspector accepts the exact production-shaped WINDOW admission claim", (t) => {
+  const state = publicationAdmissionFixture(t, { windowScoped: true });
+  acquirePublicationAdmissionLease({
+    db: state.db,
+    leases: state.repos.runtimeLeases,
+    ownerId: "publication-admission-window-private-owner",
+    operation: state.operation,
+    runtimeAuthority: state.runtimeAuthority,
+    claimedJobAuthority: state.claimedJobAuthority,
+  });
+
+  const result = inspectBoundedRuntimeDbAuthority({
+    db: state.db,
+    mode: "LIVE",
+    expected: state.expected,
+    now: new Date(),
+  });
+  const metadata = JSON.parse(
+    state.repos.runtimeLeases.get("publication-admission:global").metadata,
+  );
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(metadata.claim_scope, "WINDOW");
+  assert.equal(metadata.channel_id, null);
+  assert.equal(metadata.story_id, null);
+});
+
+test("inspector rejects STORY/WINDOW metadata scope substitution both ways", (t) => {
+  for (const windowScoped of [false, true]) {
+    const state = publicationAdmissionFixture(t, { windowScoped });
+    acquirePublicationAdmissionLease({
+      db: state.db,
+      leases: state.repos.runtimeLeases,
+      ownerId: `publication-admission-scope-${windowScoped}-private-owner`,
+      operation: state.operation,
+      runtimeAuthority: state.runtimeAuthority,
+      claimedJobAuthority: state.claimedJobAuthority,
+    });
+    const row = state.repos.runtimeLeases.get(
+      "publication-admission:global",
+    );
+    const metadata = JSON.parse(row.metadata);
+    metadata.claim_scope = windowScoped ? "STORY" : "WINDOW";
+    state.db
+      .prepare(
+        "UPDATE main.runtime_leases SET metadata = ? WHERE name = 'publication-admission:global'",
+      )
+      .run(JSON.stringify(metadata));
+
+    const result = inspectBoundedRuntimeDbAuthority({
+      db: state.db,
+      mode: "LIVE",
+      expected: state.expected,
+      now: new Date(),
+    });
+
+    assert.equal(result.ok, false, JSON.stringify(result));
+    assert.ok(
+      result.blockers.includes(
+        "runtime_db_publication_admission_claim_mismatch",
+      ),
+      JSON.stringify(result),
+    );
+  }
+});
+
+test("rejects publisher/admission schema substitution and claimed-job digest drift", (t) => {
+  for (const mutation of ["schema", "claim"]) {
+    const state = publicationAdmissionFixture(t);
+    acquirePublicationAdmissionLease({
+      db: state.db,
+      leases: state.repos.runtimeLeases,
+      ownerId: `publication-admission-${mutation}-private-owner`,
+      operation: "autonomous_t75_jit_admission",
+      runtimeAuthority: state.runtimeAuthority,
+      claimedJobAuthority: state.claimedJobAuthority,
+    });
+    const row = state.db
+      .prepare(
+        "SELECT metadata FROM main.runtime_leases WHERE name = 'publication-admission:global'",
+      )
+      .get();
+    const metadata = JSON.parse(row.metadata);
+    if (mutation === "schema") {
+      metadata.schema_version =
+        "pulse-runtime-generation-publisher-lease-v1";
+    } else {
+      metadata.claimed_job_authority_sha256 = "f".repeat(64);
+    }
+    state.db
+      .prepare(
+        "UPDATE main.runtime_leases SET metadata = ? WHERE name = 'publication-admission:global'",
+      )
+      .run(JSON.stringify(metadata));
+
+    const result = inspectBoundedRuntimeDbAuthority({
+      db: state.db,
+      mode: "LIVE",
+      expected: state.expected,
+      now: new Date(),
+    });
+
+    assert.equal(result.ok, false, mutation);
+    assert.ok(
+      result.blockers.includes(
+        mutation === "schema"
+          ? "runtime_db_publication_admission_lease_binding_mismatch"
+          : "runtime_db_publication_admission_claim_mismatch",
+      ),
+      `${mutation}: ${JSON.stringify(result)}`,
     );
   }
 });
@@ -507,6 +740,10 @@ test("quiescent authority rejects every live lease and open execution", (t) => {
   for (const [name, ownerId] of [
     ["scheduler:primary", "quiescent-scheduler-private-owner"],
     ["publisher:global", "quiescent-publisher-private-owner"],
+    [
+      "publication-admission:global",
+      "quiescent-publication-admission-private-owner",
+    ],
   ]) {
     repos.runtimeLeases.acquire({
       name,
@@ -538,12 +775,17 @@ test("quiescent authority rejects every live lease and open execution", (t) => {
   assert.deepEqual(result.blockers, [
     "runtime_db_quiescent_scheduler_lease_active",
     "runtime_db_quiescent_publisher_lease_active",
+    "runtime_db_quiescent_publication_admission_lease_active",
     "runtime_db_quiescent_active_job_present",
     "runtime_db_quiescent_open_job_run_present",
   ]);
   const serialised = JSON.stringify(result);
   assert.equal(serialised.includes("quiescent-scheduler-private-owner"), false);
   assert.equal(serialised.includes("quiescent-publisher-private-owner"), false);
+  assert.equal(
+    serialised.includes("quiescent-publication-admission-private-owner"),
+    false,
+  );
 });
 
 test("refuses to inspect a different SQLite file than Task 2 bound", (t) => {

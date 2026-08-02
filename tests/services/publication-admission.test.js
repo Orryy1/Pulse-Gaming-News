@@ -384,7 +384,7 @@ async function autonomousAdmissionInput(repos, story, overrides = {}) {
     publication_metadata_sha256:
       publicationEvidence.publication_metadata_sha256,
     kill_switch_proof_sha256: "ac".repeat(32),
-    single_owner_proof_sha256: "ad".repeat(32),
+    publication_admission_owner_proof_sha256: "ad".repeat(32),
   };
   const visualQaPath = path.join(
     os.tmpdir(),
@@ -478,8 +478,8 @@ async function autonomousAdmissionInput(repos, story, overrides = {}) {
     network_used: false,
   };
   const reportPayload = {
-    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v3",
-    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v3",
+    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v4",
+    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v4",
     mode: "LOCAL_PROOF",
     generated_at: "2026-07-27T08:54:30.000Z",
     valid_until: "2026-07-27T08:56:30.000Z",
@@ -519,7 +519,7 @@ async function autonomousAdmissionInput(repos, story, overrides = {}) {
     lineage,
     controls: {
       kill_switch: "FRESH_HEALTHY",
-      scheduler_and_publisher_ownership: "SINGLE_OWNER",
+      scheduler_and_publication_admission_ownership: "SINGLE_OWNER",
       kill_switch_proof: {
         declared_path: "output/proof/kill-switch.json",
         resolved_path: "C:\\proof\\kill-switch.json",
@@ -527,11 +527,12 @@ async function autonomousAdmissionInput(repos, story, overrides = {}) {
         observed_sha256: lineage.kill_switch_proof_sha256,
         size_bytes: 300,
       },
-      single_owner_proof: {
+      publication_admission_owner_proof: {
         declared_path: "output/proof/single-owner.json",
         resolved_path: "C:\\proof\\single-owner.json",
         real_path: "C:\\proof\\single-owner.json",
-        observed_sha256: lineage.single_owner_proof_sha256,
+        observed_sha256:
+          lineage.publication_admission_owner_proof_sha256,
         size_bytes: 400,
       },
     },
@@ -624,8 +625,10 @@ async function autonomousAdmissionInput(repos, story, overrides = {}) {
       admission_controls: {
         kill_switch_proof_sha256: lineage.kill_switch_proof_sha256,
         kill_switch_checked_at: "2026-07-27T08:54:40.000Z",
-        single_owner_proof_sha256: lineage.single_owner_proof_sha256,
-        single_owner_checked_at: "2026-07-27T08:54:45.000Z",
+        publication_admission_owner_proof_sha256:
+          lineage.publication_admission_owner_proof_sha256,
+        publication_admission_owner_checked_at:
+          "2026-07-27T08:54:45.000Z",
       },
     },
     {
@@ -846,6 +849,97 @@ test("autonomous official admission atomically records its exact authority, sche
     db.prepare("SELECT COUNT(*) AS count FROM platform_posts").get().count,
     0,
   );
+});
+
+test("autonomous admission reasserts publication-admission authority at every transaction fence", async (t) => {
+  const { db, repos, story } = fixture(t);
+  const checkpoints = [];
+  const publicationAdmissionLease = {
+    assertHealthy() {
+      checkpoints.push({ checkpoint: "before_begin", inTransaction: db.inTransaction });
+      return true;
+    },
+    assertHealthyInTransaction() {
+      checkpoints.push({ checkpoint: "in_transaction", inTransaction: db.inTransaction });
+      return true;
+    },
+  };
+  const input = await autonomousAdmissionInput(repos, story, {
+    publicationAdmissionLease,
+    transactionBoundaryCheck() {
+      checkpoints.push({ checkpoint: "boundary", inTransaction: db.inTransaction });
+    },
+    transactionCompletionCheck() {
+      checkpoints.push({ checkpoint: "completion", inTransaction: db.inTransaction });
+    },
+  });
+
+  const admitted = await admitAutonomousOfficialPublication(input);
+
+  assert.equal(admitted.admitted, true);
+  assert.deepEqual(checkpoints, [
+    { checkpoint: "before_begin", inTransaction: false },
+    { checkpoint: "boundary", inTransaction: true },
+    { checkpoint: "in_transaction", inTransaction: true },
+    { checkpoint: "in_transaction", inTransaction: true },
+    { checkpoint: "completion", inTransaction: true },
+    { checkpoint: "in_transaction", inTransaction: true },
+  ]);
+});
+
+test("publication-admission lease loss at every transaction fence rolls back all autonomous writes", async (t) => {
+  for (const target of ["before_begin", "after_boundary", "before_completion", "before_commit"]) {
+    await t.test(target, async (subtest) => {
+      const { db, repos, story } = fixture(subtest);
+      let transactionAssertion = 0;
+      const publicationAdmissionLease = {
+        assertHealthy() {
+          if (target === "before_begin") throw new Error(`lease_lost_${target}`);
+          return true;
+        },
+        assertHealthyInTransaction() {
+          assert.equal(db.inTransaction, true);
+          transactionAssertion += 1;
+          const selected = {
+            after_boundary: 1,
+            before_completion: 2,
+            before_commit: 3,
+          }[target];
+          if (transactionAssertion === selected) {
+            throw new Error(`lease_lost_${target}`);
+          }
+          return true;
+        },
+      };
+      const input = await autonomousAdmissionInput(repos, story, {
+        publicationAdmissionLease,
+      });
+
+      await assert.rejects(
+        admitAutonomousOfficialPublication(input),
+        new RegExp(`lease_lost_${target}`),
+      );
+
+      assert.deepEqual(
+        {
+          authority: db
+            .prepare("SELECT COUNT(*) AS count FROM publication_authority_audit_log")
+            .get().count,
+          lifecycle: db
+            .prepare("SELECT COUNT(*) AS count FROM publication_lifecycle_events")
+            .get().count,
+          state: db
+            .prepare("SELECT COUNT(*) AS count FROM platform_publication_state")
+            .get().count,
+          jobs: db.prepare("SELECT COUNT(*) AS count FROM jobs").get().count,
+          operator: db
+            .prepare("SELECT COUNT(*) AS count FROM operator_audit_log")
+            .get().count,
+        },
+        { authority: 0, lifecycle: 0, state: 0, jobs: 0, operator: 0 },
+      );
+    });
+  }
 });
 
 test("autonomous official admission requires the GREEN supplement lineage digest before any database write", async (t) => {

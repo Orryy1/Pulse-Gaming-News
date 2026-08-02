@@ -352,7 +352,9 @@ async function buildRealT75AdmissionPacket({
     publication_metadata_sha256:
       publicationEvidence.publication_metadata_sha256,
     kill_switch_proof_sha256: sha256(`${storyId}:kill-switch-proof`),
-    single_owner_proof_sha256: sha256(`${storyId}:single-owner-proof`),
+    publication_admission_owner_proof_sha256: sha256(
+      `${storyId}:publication-admission-owner-proof`,
+    ),
   };
   const visualGateDecisionBody = {
     schema_version:
@@ -417,8 +419,8 @@ async function buildRealT75AdmissionPacket({
   );
   const sourceReportBody = {
     schema_version:
-      "pulse-autonomous-official-source-evidence-apply-report-v3",
-    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v3",
+      "pulse-autonomous-official-source-evidence-apply-report-v4",
+    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v4",
     mode: "LOCAL_PROOF",
     generated_at: "2026-07-30T07:44:30.000Z",
     valid_until: "2026-07-30T07:46:30.000Z",
@@ -458,7 +460,7 @@ async function buildRealT75AdmissionPacket({
     lineage,
     controls: {
       kill_switch: "FRESH_HEALTHY",
-      scheduler_and_publisher_ownership: "SINGLE_OWNER",
+      scheduler_and_publication_admission_ownership: "SINGLE_OWNER",
       kill_switch_proof: {
         declared_path: "output/proof/kill-switch.json",
         resolved_path: "C:\\proof\\kill-switch.json",
@@ -466,11 +468,14 @@ async function buildRealT75AdmissionPacket({
         observed_sha256: lineage.kill_switch_proof_sha256,
         size_bytes: 300,
       },
-      single_owner_proof: {
-        declared_path: "output/proof/single-owner.json",
-        resolved_path: "C:\\proof\\single-owner.json",
-        real_path: "C:\\proof\\single-owner.json",
-        observed_sha256: lineage.single_owner_proof_sha256,
+      publication_admission_owner_proof: {
+        declared_path:
+          "output/proof/publication-admission-owner.json",
+        resolved_path:
+          "C:\\proof\\publication-admission-owner.json",
+        real_path: "C:\\proof\\publication-admission-owner.json",
+        observed_sha256:
+          lineage.publication_admission_owner_proof_sha256,
         size_bytes: 400,
       },
     },
@@ -564,9 +569,10 @@ async function buildRealT75AdmissionPacket({
       admission_controls: {
         kill_switch_proof_sha256: lineage.kill_switch_proof_sha256,
         kill_switch_checked_at: "2026-07-30T07:44:40.000Z",
-        single_owner_proof_sha256:
-          lineage.single_owner_proof_sha256,
-        single_owner_checked_at: "2026-07-30T07:44:45.000Z",
+        publication_admission_owner_proof_sha256:
+          lineage.publication_admission_owner_proof_sha256,
+        publication_admission_owner_checked_at:
+          "2026-07-30T07:44:45.000Z",
       },
     },
     {
@@ -984,7 +990,10 @@ test("real pre-T90 composition and T90 lock reach canonical T75 SCHEDULED state 
     runwayLock,
   });
   const t75Result = await handlers.admit_governed_publication(
-    afterT90[0],
+    {
+      ...afterT90[0],
+      attempt_count: 1,
+    },
     {
       repos,
       env,
@@ -993,19 +1002,28 @@ test("real pre-T90 composition and T90 lock reach canonical T75 SCHEDULED state 
       channel: realT75.channel,
       resolveMediaPath: realT75.resolveMediaPath,
       assertLeaseHealthy() {},
-      async runWithPublisherLease(options) {
+      async runWithPublicationAdmissionLease(options) {
         assert.equal(
           options.operation,
           "autonomous_t75_jit_admission",
         );
+        const publicationAdmissionLease = {
+          acquired: true,
+          lease_name: "publication-admission:global",
+          expires_at: "2026-07-30T07:47:00.000Z",
+          current_lock_owner_sha256: "a".repeat(64),
+          claimed_job_authority_sha256: "b".repeat(64),
+          assertHealthy() {
+            return true;
+          },
+          assertHealthyInTransaction() {
+            assert.equal(repos.db.inTransaction, true);
+            return true;
+          },
+        };
         return options.task({
           assertHealthy() {},
-          lease: {
-            acquired: true,
-            lease_name: "publisher:global",
-            owner_id: "publisher:joined-integration",
-            expires_at: "2026-07-30T07:47:00.000Z",
-          },
+          publicationAdmissionLease,
         });
       },
       async materialiseAutonomousOfficialJitAdmissionPacket(request) {
@@ -1023,8 +1041,16 @@ test("real pre-T90 composition and T90 lock reach canonical T75 SCHEDULED state 
             .preparation_sha256,
         );
         return {
+          schema_version:
+            "pulse-autonomous-official-jit-admission-packet-result-v4",
           verdict: "GREEN",
           role: "PRIMARY",
+          attempt_count: 1,
+          resolved_plan: {
+            schema_version:
+              "pulse-autonomous-official-jit-resolved-plan-v4",
+            resolved_plan_sha256: "f".repeat(64),
+          },
           runway_lock_sha256: runwayLock.lock_sha256,
           admission_packet: realT75.admissionPacket,
         };

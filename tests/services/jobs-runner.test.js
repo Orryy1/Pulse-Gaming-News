@@ -16,13 +16,14 @@ const TRUSTED_RUNTIME_AUTHORITY = {
 function claimedJobFixture({
   jobKind = "dispatch_governed_publication",
   storyId = "runner-story",
+  channelId = "pulse-gaming",
 } = {}) {
   const db = new Database(":memory:");
   db.exec(`
     CREATE TABLE jobs (
       id INTEGER PRIMARY KEY,
       kind TEXT NOT NULL,
-      channel_id TEXT NOT NULL,
+      channel_id TEXT,
       story_id TEXT,
       payload TEXT NOT NULL,
       run_at TEXT NOT NULL,
@@ -45,13 +46,19 @@ function claimedJobFixture({
     "server-ri-11111111-2222-4333-8444-555555555555-critical_publication-1";
   const payload = {
     ...(storyId ? { story_id: storyId } : {}),
+    ...(jobKind === "prepare_governed_autonomous_pre_t90_window"
+      ? {
+          scheduled_for: "2026-08-03T09:00:00.000Z",
+          publish_hour_utc: 9,
+        }
+      : {}),
     runtimeAuthority: { authority_fingerprint: "f".repeat(64) },
     claimedJobAuthority: { claimed_job_authority_sha256: "e".repeat(64) },
   };
   const job = {
     id: 71,
     kind: jobKind,
-    channel_id: "pulse-gaming",
+    channel_id: channelId,
     story_id: storyId,
     payload,
     run_at: "2026-08-02 18:55:00",
@@ -142,6 +149,77 @@ test("runner supplies frozen bootstrap runtime and exact repository-backed claim
     () => handlerContext.assertClaimedJobAuthority(),
     /publisher_claimed_job_authority_invalid/,
   );
+});
+
+test("runner supplies exact claimed-job authority to each pre-admission job kind", async (t) => {
+  for (const jobKind of [
+    "prepare_governed_autonomous_pre_t90_window",
+    "admit_governed_publication",
+    "prestage_governed_youtube_release",
+    "governed_youtube_runway_t60",
+  ]) {
+    const windowScoped =
+      jobKind === "prepare_governed_autonomous_pre_t90_window";
+    const { db, job, workerId } = claimedJobFixture({
+      jobKind,
+      ...(windowScoped
+        ? { channelId: null, storyId: null }
+        : {}),
+    });
+    t.after(() => db.close());
+    let claimed = false;
+    let handlerContext = null;
+    const runner = new JobsRunner({
+      workerId,
+      handlers: {
+        [jobKind]: async (_job, ctx) => {
+          handlerContext = ctx;
+          return { held: true };
+        },
+      },
+      runtimeAuthority: TRUSTED_RUNTIME_AUTHORITY,
+      reposProvider: () => ({
+        db,
+        jobs: {
+          claim() {
+            if (claimed) return null;
+            claimed = true;
+            return structuredClone(job);
+          },
+          complete() {
+            return true;
+          },
+          fail() {
+            throw new Error("pre_admission_job_must_not_fail");
+          },
+        },
+        workers: { register() {}, heartbeat() {} },
+      }),
+      log() {},
+    });
+    runner.running = true;
+    runner._schedule = () => {};
+
+    await runner._tick();
+
+    assert.ok(handlerContext, jobKind);
+    assert.match(
+      handlerContext.claimedJobAuthority?.claimed_job_authority_sha256 || "",
+      /^[a-f0-9]{64}$/,
+      jobKind,
+    );
+    assert.equal(
+      handlerContext.claimedJobAuthority.channel_id,
+      windowScoped ? null : "pulse-gaming",
+      jobKind,
+    );
+    assert.equal(
+      handlerContext.claimedJobAuthority.story_id,
+      windowScoped ? null : "runner-story",
+      jobKind,
+    );
+    assert.equal(handlerContext.assertClaimedJobAuthority(), true, jobKind);
+  }
 });
 
 test("trusted runtime executes null-story non-publication work without publisher claim authority", async (t) => {

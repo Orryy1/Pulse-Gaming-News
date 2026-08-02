@@ -9,6 +9,7 @@ const { test } = require("node:test");
 
 const {
   PREPARATION_SCHEMA_VERSION,
+  RESOLVED_PLAN_SCHEMA_VERSION,
   RESULT_SCHEMA_VERSION,
   STATIC_ARTIFACT_FIELDS,
   canonicalSha256,
@@ -45,7 +46,9 @@ const {
 const {
   fingerprintRendererManifest,
 } = require("../../lib/stabilisation/renderer-governance");
-const { PUBLISHER_LEASE_NAME } = require("../../lib/services/publisher-lock");
+const {
+  PUBLICATION_ADMISSION_LEASE_NAME,
+} = require("../../lib/services/publication-admission-lock");
 const { SCHEDULER_LEASE_NAME } = require("../../lib/services/scheduler-lock");
 
 const SHA = Object.freeze({
@@ -1063,12 +1066,27 @@ async function createEndToEndFixture(t) {
     heartbeat_at: now,
     expires_at: "2026-07-29T17:47:00.000Z",
   };
-  const publisher = {
-    name: PUBLISHER_LEASE_NAME,
-    owner_id: "publisher:test-owner",
+  const publicationAdmission = {
+    name: PUBLICATION_ADMISSION_LEASE_NAME,
+    owner_id: "publication-admission:test-owner",
     acquired_at: now,
     heartbeat_at: now,
     expires_at: "2026-07-29T17:47:00.000Z",
+    metadata: JSON.stringify({
+      schema_version: "pulse-runtime-generation-publication-admission-lease-v1",
+      scope: "PUBLICATION_ADMISSION_ONLY",
+      operation: "autonomous_t75_jit_admission",
+      job_kind: "admit_governed_publication",
+      claim_scope: "STORY",
+      channel_id: "pulse-gaming",
+      story_id: storyId,
+      claimed_job_authority_sha256: "c".repeat(64),
+      operational_publish_authority: false,
+      dispatch_authorised: false,
+      external_create_authority: false,
+      platform_mutation_authority: false,
+      platform_contact_authority: false,
+    }),
   };
   const repos = {
     stories: {
@@ -1081,8 +1099,8 @@ async function createEndToEndFixture(t) {
         if (name === SCHEDULER_LEASE_NAME) {
           return { ...scheduler };
         }
-        if (name === PUBLISHER_LEASE_NAME) {
-          return { ...publisher };
+        if (name === PUBLICATION_ADMISSION_LEASE_NAME) {
+          return { ...publicationAdmission };
         }
         return null;
       },
@@ -1114,12 +1132,23 @@ async function createEndToEndFixture(t) {
     repos,
     env,
     channel,
-    publisherLease: {
+    publicationAdmissionLease: Object.defineProperties({
       acquired: true,
-      lease_name: PUBLISHER_LEASE_NAME,
-      owner_id: publisher.owner_id,
-      expires_at: publisher.expires_at,
-    },
+      lease_name: PUBLICATION_ADMISSION_LEASE_NAME,
+      expires_at: publicationAdmission.expires_at,
+      current_lock_owner_sha256: crypto
+        .createHash("sha256")
+        .update(publicationAdmission.owner_id)
+        .digest("hex"),
+      claimed_job_authority_sha256: "c".repeat(64),
+    }, {
+      assertHealthy: {
+        enumerable: false,
+        value() {
+          return true;
+        },
+      },
+    }),
   };
 }
 
@@ -1136,6 +1165,10 @@ test("T-90 preparation manifest is a closed hash-bound static plan with no dynam
   );
   assert.equal(Object.hasOwn(validated.artifacts, "kill_switch_proof"), false);
   assert.equal(Object.hasOwn(validated.artifacts, "single_owner_proof"), false);
+  assert.equal(
+    Object.hasOwn(validated.artifacts, "publication_admission_owner_proof"),
+    false,
+  );
   assert.equal(Object.hasOwn(validated, "report_path"), false);
   assert.equal(Object.hasOwn(validated, "authority"), false);
   assert.equal(Object.hasOwn(validated, "operator"), false);
@@ -1232,7 +1265,8 @@ test("JIT packet request rejects operator, human approval and pre-issued authori
     env: {},
     workspace_root: "unused",
     attempt_output_root: "unused",
-    publisher_lease: {},
+    attempt_count: 1,
+    publication_admission_lease: {},
     resolve_media_path: async () => "unused",
     channel: { id: "pulse-gaming" },
   };
@@ -1240,6 +1274,11 @@ test("JIT packet request rejects operator, human approval and pre-issued authori
   for (const forbidden of [
     { operator: { id: "operator-1" } },
     { human_approval: true },
+    {
+      publisher_lease: {
+        lease_name: "publisher:global",
+      },
+    },
     {
       autonomous_publication_authority: {
         authority_sha256: "a".repeat(64),
@@ -1590,7 +1629,7 @@ test("static plan resolution rejects rights evidence that widens use to sponsors
 
 test("JIT materialisation creates a fresh exact admission packet from static T-90 preparation and live leases without DB or platform authority", async (t) => {
   const fixture = await createEndToEndFixture(t);
-  const attemptRoot = path.join(fixture.root, "attempts", "attempt-job-401");
+  const attemptRoot = path.join(fixture.root, "attempts", "attempt-1");
   const sourceCalls = [];
   const request = {
     runway_lock: fixture.runwayLock,
@@ -1601,7 +1640,8 @@ test("JIT materialisation creates a fresh exact admission packet from static T-9
     env: fixture.env,
     workspace_root: fixture.root,
     attempt_output_root: attemptRoot,
-    publisher_lease: fixture.publisherLease,
+    attempt_count: 1,
+    publication_admission_lease: fixture.publicationAdmissionLease,
     resolve_media_path: async (storedPath) => storedPath,
     channel: fixture.channel,
   };
@@ -1625,7 +1665,24 @@ test("JIT materialisation creates a fresh exact admission packet from static T-9
   );
 
   assert.equal(result.schema_version, RESULT_SCHEMA_VERSION);
+  assert.deepEqual(Object.keys(result.resolved_plan).sort(), [
+    "resolved_plan_sha256",
+    "schema_version",
+  ]);
+  assert.equal(
+    result.resolved_plan.schema_version,
+    RESOLVED_PLAN_SCHEMA_VERSION,
+  );
+  assert.match(
+    result.resolved_plan.resolved_plan_sha256,
+    /^[a-f0-9]{64}$/,
+  );
   assert.equal(result.verdict, "GREEN");
+  assert.equal(result.attempt_count, 1);
+  assert.match(
+    result.control_proofs.publication_admission_owner.sha256,
+    /^[a-f0-9]{64}$/,
+  );
   assert.equal(result.story_id, fixture.storyId);
   assert.equal(result.role, "PRIMARY");
   assert.equal(result.runway_lock_sha256, fixture.runwayLock.lock_sha256);
@@ -1707,6 +1764,7 @@ test("JIT materialisation creates a fresh exact admission packet from static T-9
     path.dirname(path.dirname(result.control_proofs.kill_switch.path)),
     attemptRoot,
   );
+  const attemptOneReportBytes = await fs.readFile(result.source_report.path);
 
   await assert.rejects(
     materialiseAutonomousOfficialJitAdmissionPacket(request, options),
@@ -1716,6 +1774,30 @@ test("JIT materialisation creates a fresh exact admission packet from static T-9
   );
   assert.deepEqual(sourceCalls, [fixture.sourceUrl]);
 
+  const attemptTwoRoot = path.join(
+    fixture.root,
+    "attempts",
+    "attempt-2",
+  );
+  const attemptTwo =
+    await materialiseAutonomousOfficialJitAdmissionPacket(
+      {
+        ...request,
+        attempt_output_root: attemptTwoRoot,
+        attempt_count: 2,
+      },
+      options,
+    );
+  assert.equal(attemptTwo.verdict, "GREEN");
+  assert.equal(attemptTwo.attempt_count, 2);
+  assert.equal(path.dirname(attemptTwo.source_report.path), attemptTwoRoot);
+  assert.notEqual(attemptTwo.source_report.path, result.source_report.path);
+  assert.deepEqual(
+    await fs.readFile(result.source_report.path),
+    attemptOneReportBytes,
+  );
+  assert.deepEqual(sourceCalls, [fixture.sourceUrl, fixture.sourceUrl]);
+
   await assert.rejects(
     materialiseAutonomousOfficialJitAdmissionPacket(
       {
@@ -1723,8 +1805,9 @@ test("JIT materialisation creates a fresh exact admission packet from static T-9
         attempt_output_root: path.join(
           fixture.root,
           "attempts",
-          "attempt-stale-window",
+          "attempt-3",
         ),
+        attempt_count: 3,
       },
       {
         ...options,
@@ -1735,5 +1818,5 @@ test("JIT materialisation creates a fresh exact admission packet from static T-9
       code: "autonomous_jit_packet_window_invalid",
     },
   );
-  assert.deepEqual(sourceCalls, [fixture.sourceUrl]);
+  assert.deepEqual(sourceCalls, [fixture.sourceUrl, fixture.sourceUrl]);
 });

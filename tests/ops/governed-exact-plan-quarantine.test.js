@@ -29,6 +29,9 @@ const {
   DEFAULT_LIVE_RUNTIME_TRANSITION_LEASE_MS,
   LIVE_RUNTIME_TRANSITION_LEASE_NAME,
 } = require("../../lib/stabilisation/live-runtime-transition-lease");
+const {
+  inspectLiveDatabaseIdentity,
+} = require("../../lib/stabilisation/windows-live-guarded-runtime");
 
 const {
   QUARANTINE_REQUEST_SCHEMA_VERSION,
@@ -42,6 +45,12 @@ const PLAN_SHA = "c".repeat(64);
 const PLAN_FILE_SHA = "d".repeat(64);
 const RESERVATION_FILE_SHA = "e".repeat(64);
 const RESERVATION_SHA = "f".repeat(64);
+const TASK_NAME = "PulseGaming-Fixture";
+const CONFLICTING_TASK_NAME = "PulseGaming-Fixture-Predecessor";
+const BOUNDED_AUTHORITY_SCHEMA = "pulse-windows-bounded-authority-v1";
+const AUTHORITY_FINGERPRINT = "9".repeat(64);
+const OBSERVATION_SHA256 = "8".repeat(64);
+const DATABASE_SNAPSHOT_SHA256 = "7".repeat(64);
 
 function hash(file) {
   return crypto
@@ -191,7 +200,11 @@ function fixture(t) {
   fs.writeFileSync(plan, "{}");
   fs.writeFileSync(
     profile,
-    JSON.stringify({ activation_receipt_path: receipt }),
+    JSON.stringify({
+      task_name: TASK_NAME,
+      conflicting_task_names: [CONFLICTING_TASK_NAME],
+      activation_receipt_path: receipt,
+    }),
   );
   const backup = path.join(root, "backup.db");
   const restore = path.join(root, "restore.db");
@@ -518,8 +531,16 @@ function realBindingRequest(v, extra = {}) {
   };
 }
 
-function greenQuiescence() {
+function greenQuiescence(overrides = {}) {
   return {
+    schema: BOUNDED_AUTHORITY_SCHEMA,
+    verdict: "GREEN",
+    state: "STOPPED_BOUND",
+    authority_fingerprint: AUTHORITY_FINGERPRINT,
+    runtime_instance_id: null,
+    observation_sha256: OBSERVATION_SHA256,
+    database_snapshot_sha256: DATABASE_SNAPSHOT_SHA256,
+    blockers: [],
     available: true,
     probe_attestations: {
       listeners: true,
@@ -531,11 +552,20 @@ function greenQuiescence() {
     scheduler_process_pids: [],
     enabled_tasks: [],
     running_tasks: [],
+    task_states: [],
+    absent_task_names: [TASK_NAME, CONFLICTING_TASK_NAME],
+    diagnostics: null,
+    ...overrides,
   };
 }
 
 function exactDurableLease(v, options = {}) {
-  return ({ metadata, now }) => {
+  return ({
+    metadata,
+    now,
+    authorityContextSha256,
+    authorityContextProvider,
+  }) => {
     const ownerId = options.ownerId || "fixture-transition-owner";
     const acquiredAt = (options.acquiredAt || now).toISOString();
     const heartbeatAt = (options.heartbeatAt || now).toISOString();
@@ -565,6 +595,7 @@ function exactDurableLease(v, options = {}) {
         JSON.stringify({
           transition_owner_schema_version:
             "pulse-live-runtime-transition-owner-v2",
+          authority_context_sha256: authorityContextSha256,
           admission_state: "OPEN",
           context: { ...metadata },
           participants: [{ ...participantIdentity }],
@@ -575,6 +606,14 @@ function exactDurableLease(v, options = {}) {
       lease_ms: leaseMs,
       participant_id: participantIdentity.participant_id,
       participant_identity: participantIdentity,
+      authority_context_sha256: authorityContextSha256,
+      assertCurrentAuthority() {
+        const measured = authorityContextProvider();
+        if (measured !== authorityContextSha256) {
+          throw new Error("quarantine_lease_lost");
+        }
+        return measured;
+      },
       renew() {
         return true;
       },
@@ -677,7 +716,11 @@ function deps(v, extra = {}) {
           scheduled_for: "2026-07-31T09:00:00.000Z",
           production_jobs: [v.primary, v.standby],
         },
-        profile: { activation_receipt_path: v.receipt },
+        profile: {
+          task_name: TASK_NAME,
+          conflicting_task_names: [CONFLICTING_TASK_NAME],
+          activation_receipt_path: v.receipt,
+        },
         activation_receipt_path: v.receipt,
         workspace: { available: true, commit: COMMIT, tracked_clean: true },
         database: { path: v.dbPath, real_path: v.dbPath },
@@ -881,7 +924,7 @@ test("an activation receipt that appears inside the transaction aborts the exact
   });
   await assert.rejects(
     () => quarantineExactGovernedProductionPlan(request(v), d),
-    /quarantine_activation_receipt_present/,
+    /quarantine_lease_release_failed/,
   );
   assert.equal(
     v.db.prepare("SELECT status FROM jobs WHERE id=135781").get().status,
@@ -908,7 +951,7 @@ test("database hard-link races immediately before transaction and commit fail cl
           request(v),
           deps(v, { acquireLease: raceLease }),
         ),
-      /quarantine_file_link_forbidden/,
+      /quarantine_lease_release_failed/,
     );
     assert.equal(
       v.db.prepare("SELECT status FROM jobs WHERE id=135781").get().status,
@@ -929,7 +972,7 @@ test("database hard-link races immediately before transaction and commit fail cl
     });
     await assert.rejects(
       () => quarantineExactGovernedProductionPlan(request(v), d),
-      /quarantine_file_link_forbidden/,
+      /quarantine_lease_release_failed/,
     );
     assert.equal(
       v.db.prepare("SELECT status FROM jobs WHERE id=135781").get().status,
@@ -1119,7 +1162,7 @@ test("a pathname swap at lease acquisition cannot redirect the lease write", asy
         request(v),
         deps(v, { acquireLease: redirectAtAcquisition }),
       ),
-    /quarantine_file_link_forbidden/,
+    /quarantine_lease_release_failed/,
   );
 
   const replacementCheck = new Database(replacementPath, { readonly: true });
@@ -1148,7 +1191,7 @@ test("a pathname swap at lease acquisition cannot redirect the lease write", asy
   );
   assert.equal(
     v.db.prepare("SELECT COUNT(*) count FROM runtime_leases").get().count,
-    0,
+    1,
   );
 });
 
@@ -1258,7 +1301,7 @@ test("every leased fence requires the exact live row and authoritative fresh tim
             }),
           }),
         ),
-      /quarantine_database_physical_state_mismatch/,
+      /quarantine_lease_release_failed/,
     );
   });
 
@@ -1475,7 +1518,85 @@ test("authoritative quiescence is re-probed immediately before commit", async (t
     () => quarantineExactGovernedProductionPlan(request(v), d),
     /quarantine_runtime_not_quiescent/,
   );
-  assert.equal(probes, 3);
+  assert.equal(probes, 4);
+  assert.equal(
+    v.db.prepare("SELECT status FROM jobs WHERE id=135781").get().status,
+    "pending",
+  );
+  assert.equal(
+    v.db.prepare("SELECT COUNT(*) count FROM operator_audit_log").get().count,
+    0,
+  );
+});
+
+test("quarantine reconciles task-state evidence and refuses a present disabled exact task", async (t) => {
+  const v = fixture(t);
+  const d = deps(v, {
+    inspectQuiescence: async () =>
+      greenQuiescence({
+        task_states: [
+          {
+            task_name: TASK_NAME,
+            task_path: TASK_NAME,
+            state: "Ready",
+            enabled: false,
+          },
+        ],
+      }),
+  });
+  await assert.rejects(
+    () => quarantineExactGovernedProductionPlan(request(v), d),
+    /quarantine_runtime_not_quiescent/,
+  );
+  assert.equal(
+    v.db.prepare("SELECT status FROM jobs WHERE id=135781").get().status,
+    "pending",
+  );
+  assert.equal(
+    v.db.prepare("SELECT COUNT(*) count FROM operator_audit_log").get().count,
+    0,
+  );
+});
+
+test("quarantine requires explicit absence for every reviewed predecessor task", async (t) => {
+  const v = fixture(t);
+  const d = deps(v, {
+    inspectQuiescence: async () =>
+      greenQuiescence({ absent_task_names: [TASK_NAME] }),
+  });
+  await assert.rejects(
+    () => quarantineExactGovernedProductionPlan(request(v), d),
+    /quarantine_runtime_not_quiescent/,
+  );
+  assert.equal(
+    v.db.prepare("SELECT status FROM jobs WHERE id=135781").get().status,
+    "pending",
+  );
+  assert.equal(
+    v.db.prepare("SELECT COUNT(*) count FROM operator_audit_log").get().count,
+    0,
+  );
+});
+
+test("quarantine refuses a non-null ambiguity diagnostic that contradicts quiescent summaries", async (t) => {
+  const v = fixture(t);
+  const secretTaskIdentity = "AWS_SECRET_ACCESS_KEY_QUARANTINE_DIAGNOSTIC";
+  const d = deps(v, {
+    inspectQuiescence: async () =>
+      greenQuiescence({
+        diagnostics: {
+          probe: "processes",
+          kind: "AMBIGUOUS",
+          pids: [999],
+          task_identities: [secretTaskIdentity],
+          reasons: ["OPAQUE_ENCODED_POWERSHELL_HOST"],
+        },
+      }),
+  });
+  await assert.rejects(
+    () => quarantineExactGovernedProductionPlan(request(v), d),
+    /quarantine_runtime_not_quiescent/,
+  );
   assert.equal(
     v.db.prepare("SELECT status FROM jobs WHERE id=135781").get().status,
     "pending",
@@ -1517,7 +1638,7 @@ test("an activation receipt racing during the final source hash is fenced before
         request(v),
         deps(v, { fs: racingFs }),
       ),
-    /quarantine_activation_receipt_present/,
+    /quarantine_lease_release_failed/,
   );
   assert.equal(raced, true);
   assert.equal(
@@ -2190,8 +2311,132 @@ test("the transition lease stays held through evidence and a new activation rece
 
   assert.equal(leaseObservedDuringJsonInstall, true);
   assert.equal(result.verdict, "HOLD");
+  assert.equal(result.status, "RECOVERY_REQUIRED");
+  assert.equal(result.blocker, "quarantine_lease_release_failed");
+  assert.equal(quarantineCommitExists(req.output_dir), false);
+  assert.equal(
+    v.db
+      .prepare("SELECT COUNT(*) count FROM runtime_leases WHERE name=?")
+      .get(LIVE_RUNTIME_TRANSITION_LEASE_NAME).count,
+    1,
+  );
+});
+
+test("an activation receipt created immediately after the commit hard-link revokes the canonical marker", async (t) => {
+  const v = fixture(t);
+  const req = request(v);
+  const secretReceipt = "AWS_SECRET_ACCESS_KEY_COMMIT_LINK_BOUNDARY";
+  let commitLinked = false;
+  const racingFs = new Proxy(fsp, {
+    get(target, property) {
+      if (property !== "link") return Reflect.get(target, property);
+      return async (existingPath, newPath) => {
+        const result = await target.link(existingPath, newPath);
+        if (String(newPath).endsWith("quarantine.commit.json")) {
+          commitLinked = true;
+          fs.writeFileSync(v.receipt, secretReceipt);
+        }
+        return result;
+      };
+    },
+  });
+
+  const result = await quarantineExactGovernedProductionPlan(
+    req,
+    deps(v, { fs: racingFs }),
+  );
+
+  assert.equal(commitLinked, true);
+  assert.equal(result.verdict, "HOLD");
+  assert.equal(result.status, "RECOVERY_REQUIRED");
+  assert.equal(result.blocker, "quarantine_lease_release_failed");
+  assert.equal(JSON.stringify(result).includes(secretReceipt), false);
+  assert.equal(quarantineCommitExists(req.output_dir), false);
+  assert.equal(
+    v.db
+      .prepare("SELECT COUNT(*) count FROM runtime_leases WHERE name=?")
+      .get(LIVE_RUNTIME_TRANSITION_LEASE_NAME).count,
+    1,
+  );
+});
+
+test("a body component identity swap at the commit-link boundary revokes the canonical marker", async (t) => {
+  const v = fixture(t);
+  const req = request(v);
+  let componentSwapped = false;
+  const racingFs = new Proxy(fsp, {
+    get(target, property) {
+      if (property !== "link") return Reflect.get(target, property);
+      return async (existingPath, newPath) => {
+        const result = await target.link(existingPath, newPath);
+        if (String(newPath).endsWith("quarantine.commit.json")) {
+          const jsonPath = path.join(path.dirname(newPath), "quarantine.json");
+          const displacedPath = `${jsonPath}.displaced-by-boundary-race`;
+          const bytes = fs.readFileSync(jsonPath);
+          fs.renameSync(jsonPath, displacedPath);
+          fs.writeFileSync(jsonPath, bytes);
+          componentSwapped = true;
+        }
+        return result;
+      };
+    },
+  });
+
+  const result = await quarantineExactGovernedProductionPlan(
+    req,
+    deps(v, { fs: racingFs }),
+  );
+
+  assert.equal(componentSwapped, true);
+  assert.equal(result.verdict, "HOLD");
   assert.equal(result.status, "EVIDENCE_PENDING");
   assert.equal(result.blocker, "quarantine_evidence_pending");
+  assert.equal(quarantineCommitExists(req.output_dir), false);
+  assert.equal(
+    v.db
+      .prepare("SELECT COUNT(*) count FROM runtime_leases WHERE name=?")
+      .get(LIVE_RUNTIME_TRANSITION_LEASE_NAME).count,
+    0,
+  );
+});
+
+test("a post-link commit fsync failure revokes the canonical marker", async (t) => {
+  const v = fixture(t);
+  const req = request(v);
+  const secretFailure = "AWS_SECRET_ACCESS_KEY_COMMIT_FSYNC";
+  let commitFsyncFailed = false;
+  const failingFs = new Proxy(fsp, {
+    get(target, property) {
+      if (property !== "open") return Reflect.get(target, property);
+      return async (file, flags, mode) => {
+        const handle = await target.open(file, flags, mode);
+        if (
+          String(file).endsWith("quarantine.commit.json") &&
+          flags === "r+"
+        ) {
+          return {
+            sync: async () => {
+              commitFsyncFailed = true;
+              throw new Error(secretFailure);
+            },
+            close: handle.close.bind(handle),
+          };
+        }
+        return handle;
+      };
+    },
+  });
+
+  const result = await quarantineExactGovernedProductionPlan(
+    req,
+    deps(v, { fs: failingFs }),
+  );
+
+  assert.equal(commitFsyncFailed, true);
+  assert.equal(result.verdict, "HOLD");
+  assert.equal(result.status, "EVIDENCE_PENDING");
+  assert.equal(result.blocker, "quarantine_evidence_pending");
+  assert.equal(JSON.stringify(result).includes(secretFailure), false);
   assert.equal(quarantineCommitExists(req.output_dir), false);
   assert.equal(
     v.db
@@ -2537,7 +2782,12 @@ test("a post-COMMIT crash with durable WAL and an expired dead lease replays exa
     process_started_at: "2026-08-01T10:00:00.000Z",
     process_start_source: "injected",
   });
-  const crashAfterCommitLease = ({ metadata, now }) => {
+  const crashAfterCommitLease = ({
+    metadata,
+    now,
+    authorityContextSha256,
+    authorityContextProvider,
+  }) => {
     const ownerId = "crashed-quarantine-owner";
     const leaseMs = 1_000;
     const leaseDb = new Database(v.dbPath);
@@ -2554,10 +2804,11 @@ test("a post-COMMIT crash with durable WAL and an expired dead lease replays exa
           now.toISOString(),
           now.toISOString(),
           new Date(now.getTime() + leaseMs).toISOString(),
-          JSON.stringify({
-            transition_owner_schema_version:
-              "pulse-live-runtime-transition-owner-v2",
-            admission_state: "OPEN",
+           JSON.stringify({
+             transition_owner_schema_version:
+               "pulse-live-runtime-transition-owner-v2",
+             authority_context_sha256: authorityContextSha256,
+             admission_state: "OPEN",
             context: { ...metadata },
             participants: [{ ...participantIdentity }],
           }),
@@ -2570,6 +2821,10 @@ test("a post-COMMIT crash with durable WAL and an expired dead lease replays exa
       lease_ms: leaseMs,
       participant_id: participantIdentity.participant_id,
       participant_identity: participantIdentity,
+      authority_context_sha256: authorityContextSha256,
+      assertCurrentAuthority() {
+        return authorityContextProvider();
+      },
       renew: () => true,
       release: () => false,
     };
@@ -2778,4 +3033,174 @@ test("the real exact-binding helper is exercised rather than accepting a prebuil
     /exact_plan_(structure|schema)_invalid/,
   );
   assert.equal(Object.hasOwn(req, "ready"), false);
+});
+
+test("bounded authority drift holds before the standby or audit mutation", async (t) => {
+  for (const [field, changed] of [
+    ["authority_fingerprint", "1".repeat(64)],
+    ["observation_sha256", "2".repeat(64)],
+    ["database_snapshot_sha256", "3".repeat(64)],
+  ]) {
+    await t.test(field, async (t) => {
+      const v = fixture(t);
+      let inspections = 0;
+      await assert.rejects(
+        () =>
+          quarantineExactGovernedProductionPlan(
+            request(v),
+            deps(v, {
+              inspectQuiescence: async () => {
+                inspections += 1;
+                return greenQuiescence(
+                  inspections === 1 ? {} : { [field]: changed },
+                );
+              },
+            }),
+          ),
+        { message: "quarantine_runtime_authority_context_drift" },
+      );
+      assert.equal(inspections, 2);
+      assert.equal(
+        v.db.prepare("SELECT status FROM jobs WHERE id=135781").get().status,
+        "pending",
+      );
+      assert.equal(
+        v.db
+          .prepare("SELECT COUNT(*) AS count FROM operator_audit_log")
+          .get().count,
+        0,
+      );
+      assert.equal(quarantineCommitExists(request(v).output_dir), false);
+    });
+  }
+});
+
+test("a changed exact live database identity holds before transition lease acquisition", async (t) => {
+  const v = fixture(t);
+  const admitted = inspectLiveDatabaseIdentity({ databasePath: v.dbPath });
+  let identityInspections = 0;
+  let leaseAcquisitions = 0;
+  await assert.rejects(
+    () =>
+      quarantineExactGovernedProductionPlan(
+        request(v),
+        deps(v, {
+          inspectDatabaseIdentity: () => {
+            identityInspections += 1;
+            return identityInspections === 1
+              ? admitted
+              : {
+                  ...admitted,
+                  database_identity_sha256: "4".repeat(64),
+                };
+          },
+          acquireLease: (options) => {
+            leaseAcquisitions += 1;
+            return exactDurableLease(v)(options);
+          },
+        }),
+      ),
+    { message: "quarantine_open_database_identity_mismatch" },
+  );
+  assert.equal(identityInspections, 2);
+  assert.equal(leaseAcquisitions, 0);
+  assert.equal(
+    v.db.prepare("SELECT status FROM jobs WHERE id=135781").get().status,
+    "pending",
+  );
+  assert.equal(
+    v.db
+      .prepare("SELECT COUNT(*) AS count FROM operator_audit_log")
+      .get().count,
+    0,
+  );
+});
+
+test("a transition lease without the admitted authority context holds before database mutation", async (t) => {
+  const v = fixture(t);
+  const acquireLegacyLease = (options) => {
+    const handle = exactDurableLease(v)(options);
+    const row = v.db
+      .prepare("SELECT metadata FROM runtime_leases WHERE name=?")
+      .get(LIVE_RUNTIME_TRANSITION_LEASE_NAME);
+    const metadata = JSON.parse(row.metadata);
+    delete metadata.authority_context_sha256;
+    v.db
+      .prepare("UPDATE runtime_leases SET metadata=? WHERE name=?")
+      .run(JSON.stringify(metadata), LIVE_RUNTIME_TRANSITION_LEASE_NAME);
+    delete handle.authority_context_sha256;
+    delete handle.assertCurrentAuthority;
+    return handle;
+  };
+  await assert.rejects(
+    () =>
+      quarantineExactGovernedProductionPlan(
+        request(v),
+        deps(v, { acquireLease: acquireLegacyLease }),
+      ),
+    { message: "quarantine_lease_release_failed" },
+  );
+  assert.equal(
+    v.db.prepare("SELECT status FROM jobs WHERE id=135781").get().status,
+    "pending",
+  );
+  assert.equal(
+    v.db
+      .prepare("SELECT COUNT(*) AS count FROM operator_audit_log")
+      .get().count,
+    0,
+  );
+  assert.equal(quarantineCommitExists(request(v).output_dir), false);
+});
+
+test("a legacy shape and a failed bounded probe are secret-safe holds before acquisition", async (t) => {
+  for (const report of [
+    {
+      available: true,
+      probe_attestations: {
+        listeners: true,
+        processes: true,
+        scheduled_tasks: true,
+      },
+      owner_pids: [],
+      listener_pids: [],
+      scheduler_process_pids: [],
+      enabled_tasks: [],
+      running_tasks: [],
+      absent_task_names: [TASK_NAME, CONFLICTING_TASK_NAME],
+      diagnostics: null,
+    },
+    greenQuiescence({
+      probe_attestations: {
+        listeners: true,
+        processes: false,
+        scheduled_tasks: true,
+      },
+      diagnostics: { probe: "processes", raw: "SUPER_SECRET_SENTINEL" },
+    }),
+  ]) {
+    await t.test(report.schema || "legacy", async (t) => {
+      const v = fixture(t);
+      let leaseAcquisitions = 0;
+      await assert.rejects(
+        () =>
+          quarantineExactGovernedProductionPlan(
+            request(v),
+            deps(v, {
+              inspectQuiescence: async () => report,
+              acquireLease: (options) => {
+                leaseAcquisitions += 1;
+                return exactDurableLease(v)(options);
+              },
+            }),
+          ),
+        { message: "quarantine_runtime_not_quiescent" },
+      );
+      assert.equal(leaseAcquisitions, 0);
+      assert.equal(
+        v.db.prepare("SELECT status FROM jobs WHERE id=135781").get().status,
+        "pending",
+      );
+    });
+  }
 });

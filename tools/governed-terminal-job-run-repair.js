@@ -139,14 +139,10 @@ function exactArtifactIdentity(identity, staged, linkCount) {
   );
 }
 
-function removeOwnedArtifact(record, { expectedLinkCount = null } = {}) {
+function removeOwnedArtifact(record, { expectedLinkCount = 1 } = {}) {
   if (!record?.path || !record?.identity) return false;
   const current = artifactFileIdentity(record.path);
-  if (!sameArtifactInode(current, record.identity)) return false;
-  if (
-    expectedLinkCount !== null &&
-    !exactArtifactIdentity(current, record, expectedLinkCount)
-  ) {
+  if (!exactArtifactIdentity(current, record, expectedLinkCount)) {
     return false;
   }
   fs.rmSync(record.path, { force: true });
@@ -217,7 +213,7 @@ function publishStagedExclusive(staged, targetPath) {
         flag: "wx",
       });
     }
-    if (!removeOwnedArtifact(staged)) {
+    if (!removeOwnedArtifact(staged, { expectedLinkCount: 2 })) {
       throw new Error("terminal_job_run_repair_staged_artifact_rebound");
     }
     const published = artifactFileIdentity(targetPath);

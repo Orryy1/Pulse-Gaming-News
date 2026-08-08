@@ -133,6 +133,7 @@ jobs:
           tests/ops/governed-exact-plan-quarantine.test.js
           tests/ops/governed-exact-plan-quarantine-cli.test.js
           tests/ops/governed-source-wal-clean-close.test.js
+          tests/ops/governed-terminal-job-run-repair.test.js
           tests/ops/sqlite-canonical-logical-snapshot.test.js
           tests/services/governed-autonomous-window-production-planning-handler.test.js
           tests/services/governed-autonomous-window-reservation-set.test.js

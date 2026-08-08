@@ -51,6 +51,46 @@ test("canonical SQLite digest excludes only the exact live transition lease row"
   db.close();
 });
 
+test("canonical operation exclusions retain unrelated NULL authority rows", () => {
+  const db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE operator_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor_id TEXT NOT NULL,
+      idempotency_key TEXT
+    );
+    CREATE TABLE runtime_leases (
+      name TEXT PRIMARY KEY,
+      owner_id TEXT
+    );
+  `);
+  const options = {
+    excludeOperationRows: {
+      audit_idempotency_key: "repair-key",
+      operator_audit_sequence: true,
+    },
+  };
+  const baseline = canonicalSqliteSnapshotDigest(db, options);
+  db.prepare(
+    "INSERT INTO operator_audit_log(actor_id, idempotency_key) VALUES ('repair', 'repair-key')",
+  ).run();
+  assert.equal(canonicalSqliteSnapshotDigest(db, options), baseline);
+
+  db.prepare(
+    "INSERT INTO operator_audit_log(actor_id, idempotency_key) VALUES ('unrelated', NULL)",
+  ).run();
+  assert.notEqual(canonicalSqliteSnapshotDigest(db, options), baseline);
+
+  const beforeNullLease = canonicalSqliteSnapshotDigest(db, options);
+  db.prepare("INSERT INTO runtime_leases(name, owner_id) VALUES (NULL, 'other')").run();
+  assert.notEqual(canonicalSqliteSnapshotDigest(db, options), beforeNullLease);
+
+  const beforeNullSequence = canonicalSqliteSnapshotDigest(db, options);
+  db.prepare("INSERT INTO sqlite_sequence(name, seq) VALUES (NULL, 99)").run();
+  assert.notEqual(canonicalSqliteSnapshotDigest(db, options), beforeNullSequence);
+  db.close();
+});
+
 test("streaming digest is insertion-order independent and type sensitive", () => {
   const left = new Database(":memory:");
   const right = new Database(":memory:");

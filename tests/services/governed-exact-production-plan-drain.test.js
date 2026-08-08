@@ -3548,6 +3548,7 @@ test("a non-cooperative handler keeps the environment and evidence sink fenced u
   let releaseHandler;
   let markHandlerStarted;
   let markHandlerExited;
+  let markDrainBoundObserved;
   const handlerRelease = new Promise((resolve) => {
     releaseHandler = resolve;
   });
@@ -3556,6 +3557,9 @@ test("a non-cooperative handler keeps the environment and evidence sink fenced u
   });
   const handlerExited = new Promise((resolve) => {
     markHandlerExited = resolve;
+  });
+  const drainBoundObserved = new Promise((resolve) => {
+    markDrainBoundObserved = resolve;
   });
   let settled = false;
   const drainPromise = drainExactGovernedProductionPlan(
@@ -3574,6 +3578,12 @@ test("a non-cooperative handler keeps the environment and evidence sink fenced u
       {
         processEnvironment,
         baseEnvironment: processEnvironment,
+        sleep: async (milliseconds) => {
+          if (milliseconds === 10) {
+            markDrainBoundObserved();
+          }
+          await new Promise((resolve) => setTimeout(resolve, milliseconds));
+        },
       },
     ),
   );
@@ -3587,7 +3597,7 @@ test("a non-cooperative handler keeps the environment and evidence sink fenced u
   );
 
   await handlerStarted;
-  await new Promise((resolve) => setTimeout(resolve, 2100));
+  await drainBoundObserved;
   const beforeRelease = {
     settled,
     autoPublish: processEnvironment.AUTO_PUBLISH,

@@ -7,7 +7,7 @@ const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { test } = require("node:test");
+const { after, test } = require("node:test");
 const { inspect } = require("node:util");
 
 const ROOT = path.resolve(__dirname, "..", "..");
@@ -298,13 +298,43 @@ function sha256(value) {
   return crypto.createHash("sha256").update(String(value)).digest("hex");
 }
 
+let isolatedTransitionAuthorityRoot = null;
+
+function transitionAuthorityDatabasePath(profile) {
+  const configuredPath = path.resolve(profile.database_path);
+  if (
+    canonicalAuthorityPath(profile.database_path) !== "D:/pulse-data/pulse.db"
+  ) {
+    return configuredPath;
+  }
+  if (!isolatedTransitionAuthorityRoot) {
+    isolatedTransitionAuthorityRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pulse-live-transition-authority-"),
+    );
+    fs.writeFileSync(
+      path.join(isolatedTransitionAuthorityRoot, "pulse.db"),
+      "isolated transition authority identity\n",
+    );
+  }
+  return path.join(isolatedTransitionAuthorityRoot, "pulse.db");
+}
+
+after(() => {
+  if (isolatedTransitionAuthorityRoot) {
+    fs.rmSync(isolatedTransitionAuthorityRoot, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
 function independentlyMeasuredTransitionAuthorityContext({
   profile,
   repoRoot,
   expectedCommit,
 }) {
   const databaseRealPath = fs.realpathSync.native(
-    path.resolve(profile.database_path),
+    transitionAuthorityDatabasePath(profile),
   );
   const databaseStats = fs.statSync(databaseRealPath, { bigint: true });
   const databaseIdentity = {
@@ -7834,6 +7864,7 @@ test("live task inspection distinguishes proven absence from query ambiguity", (
     repoRoot: "C:/Pulse/runtime/pulse-v1",
     expectedCommit: "d".repeat(40),
     nodeExecutable: "C:/Program Files/nodejs/node.exe",
+    platform: "win32",
   };
 
   let absentCalls = 0;
@@ -7910,6 +7941,7 @@ test("live task inspection rejects malformed or contradictory exact-presence tra
     repoRoot: "C:/Pulse/runtime/pulse-v1",
     expectedCommit: "d".repeat(40),
     nodeExecutable: "C:/Program Files/nodejs/node.exe",
+    platform: "win32",
   };
   const variants = [
     ["invalid JSON", "not-json"],
@@ -7998,7 +8030,7 @@ test("live task inspection rejects malformed or contradictory exact-presence tra
 
 test("live task installation never mutates through ambiguous presence and never force-replaces a raced task", (t) => {
   const temp = fs.mkdtempSync(
-    path.join("D:/pulse-worktrees", "pulse-live-task-presence-install-"),
+    path.join(os.tmpdir(), "pulse-live-task-presence-install-"),
   );
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
   const profile = {
@@ -8116,6 +8148,15 @@ test("enable and disable reject a causal task identity flip at the name-based mu
           activationInspector: () => activation,
           conflictInspector: () => ({ clear: true, blockers: [] }),
           taskInspector: () => taskStates.shift(),
+          transitionLeaseAcquirer: () => ({
+            assertCurrentAuthority() {},
+            renew() {
+              return true;
+            },
+            release() {
+              return true;
+            },
+          }),
           execFileSyncImpl(command, args) {
             mutations.push({ command, args });
             return "";

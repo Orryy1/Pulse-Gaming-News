@@ -2322,15 +2322,22 @@ test("the fenced request window permits twenty-five-minute real-database proofs 
 
 test("request generation may precede the operation and backup verification clocks", async (t) => {
   const v = fixture(t),
-    operationClock = new Date(Date.now() - 30_000),
+    lateStartBase = new Date(Date.parse(NOW) + 60 * 1000),
+    operationClock = new Date(lateStartBase),
     generated = new Date(operationClock.getTime() - 60_000),
-    expires = new Date(Date.now() + 5 * 60_000);
+    quiescenceClock = new Date(operationClock.getTime() + 1_000),
+    completionClock = new Date(operationClock.getTime() + 2_000),
+    expires = new Date(operationClock.getTime() + 5 * 60_000);
   const result = await cleanCloseGovernedSourceWal(
     request(v, {
       generated_at: generated.toISOString(),
       expires_at: expires.toISOString(),
     }),
-    deps({ now: () => operationClock, completionNow: () => new Date() }),
+    deps({
+      now: () => operationClock,
+      quiescenceNow: () => quiescenceClock,
+      completionNow: () => completionClock,
+    }),
   );
   assert.equal(result.verdict, "PASS", JSON.stringify(result));
   const evidence = JSON.parse(
@@ -2339,6 +2346,32 @@ test("request generation may precede the operation and backup verification clock
   assert.ok(
     Date.parse(evidence.verified_at) > Date.parse(generated.toISOString()),
   );
+});
+
+test("a backwards quiescence clock remains a fail-closed lease HOLD", async (t) => {
+  const v = fixture(t),
+    testBase = new Date(Date.parse(NOW) + 60 * 1000),
+    generated = new Date(testBase.getTime() - 60_000),
+    backwardsQuiescenceClock = new Date(testBase.getTime() - 1_000),
+    completionClock = new Date(testBase.getTime() + 2_000),
+    expires = new Date(testBase.getTime() + 5 * 60_000);
+  const result = await cleanCloseGovernedSourceWal(
+    request(v, {
+      generated_at: generated.toISOString(),
+      expires_at: expires.toISOString(),
+      change_id: "backwards-quiescence-clock",
+      confirmation_id: "backwards-quiescence-clock",
+    }),
+    deps({
+      now: () => testBase,
+      quiescenceNow: () => backwardsQuiescenceClock,
+      completionNow: () => completionClock,
+    }),
+  );
+
+  assert.equal(result.verdict, "HOLD", JSON.stringify(result));
+  assert.ok(result.blockers.includes("source_wal_lease_lost"));
+  assert.equal(result.backup_evidence_json, undefined);
 });
 
 test("expiry at the final commit boundary preserves its precise HOLD blocker", async (t) => {

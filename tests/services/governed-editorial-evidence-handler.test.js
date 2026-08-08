@@ -467,6 +467,7 @@ test("editorial evidence discovery stops after sufficient official body proof an
         },
       },
       {
+        now: NOW,
         async captureBreakingSourceEvidence(options) {
           assert.equal(
             options.stopAfterOfficialConfirmation,

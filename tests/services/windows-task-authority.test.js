@@ -51,7 +51,11 @@ function authorityExpected() {
   };
 }
 
-function boundedPowerShell({ instances, jobPids = [4100, 4200] } = {}) {
+function boundedPowerShell({
+  instances,
+  jobPids = [4100, 4200],
+  probePid = 4300,
+} = {}) {
   const requestedPids = [];
   const rows = {
     4100: {
@@ -95,7 +99,7 @@ function boundedPowerShell({ instances, jobPids = [4100, 4200] } = {}) {
         return rows[pid] || null;
       }
       if (script.includes("QueryInformationJobObject")) {
-        return { ProcessIds: jobPids };
+        return { ProbePid: probePid, ProcessIds: [...jobPids, probePid] };
       }
       throw new Error("unexpected probe");
     },
@@ -185,15 +189,17 @@ test("reads the current Windows Job membership with fixed probe code", async () 
   const result = await inspectCurrentWindowsJobMembership({
     runPowerShell: async ({ script }) => {
       scriptSeen = script;
-      return { ProcessIds: [4100, 4200] };
+      return { ProbePid: 4300, ProcessIds: [4100, 4200, 4300] };
     },
   });
 
   assert.match(scriptSeen, /Add-Type/);
   assert.match(scriptSeen, /QueryInformationJobObject/);
   assert.match(scriptSeen, /JobObjectBasicProcessIdList/);
+  assert.match(scriptSeen, /ProbePid=\$PID/);
   assert.deepEqual(result, {
     ok: true,
+    probe_pid: 4300,
     process_ids: [4100, 4200],
     blockers: [],
   });
@@ -215,7 +221,10 @@ test("fails closed when current Job membership cannot be probed", async () => {
 });
 
 test("rejects missing or null Job membership data without rejecting an explicit empty list", async () => {
-  for (const value of [{}, { ProcessIds: null }]) {
+  for (const value of [
+    { ProbePid: 4300 },
+    { ProbePid: 4300, ProcessIds: null },
+  ]) {
     const result = await inspectCurrentWindowsJobMembership({
       runPowerShell: async () => value,
     });
@@ -228,13 +237,55 @@ test("rejects missing or null Job membership data without rejecting an explicit 
   }
 
   const explicitEmpty = await inspectCurrentWindowsJobMembership({
-    runPowerShell: async () => ({ ProcessIds: [] }),
+    runPowerShell: async () => ({ ProbePid: 4300, ProcessIds: [4300] }),
   });
   assert.deepEqual(explicitEmpty, {
     ok: true,
+    probe_pid: 4300,
     process_ids: [],
     blockers: [],
   });
+});
+
+test("rejects a missing, invalid, absent or duplicate Job probe identity", async () => {
+  const invalidValues = [
+    { ProcessIds: [4100] },
+    { ProbePid: null, ProcessIds: [4100] },
+    { ProbePid: "4300", ProcessIds: [4100, 4300] },
+    { ProbePid: 4300, ProcessIds: [4100] },
+    { ProbePid: 4300, ProcessIds: [4100, 4300, 4300] },
+  ];
+
+  for (const value of invalidValues) {
+    const result = await inspectCurrentWindowsJobMembership({
+      runPowerShell: async () => value,
+    });
+
+    assert.deepEqual(result, {
+      ok: false,
+      process_ids: [],
+      blockers: ["windows_job_probe_identity_invalid"],
+    });
+  }
+});
+
+test("rejects non-canonical Job membership transport", async () => {
+  const invalidValues = [
+    { ProbePid: 4300, ProcessIds: 4300 },
+    { ProbePid: 4300, ProcessIds: ["4100", "4300"] },
+  ];
+
+  for (const value of invalidValues) {
+    const result = await inspectCurrentWindowsJobMembership({
+      runPowerShell: async () => value,
+    });
+
+    assert.deepEqual(result, {
+      ok: false,
+      process_ids: [],
+      blockers: ["windows_job_membership_invalid"],
+    });
+  }
 });
 
 test("compares canonical authority observations without key-order drift", () => {
@@ -271,12 +322,99 @@ test("observes only the exact task, supervisor and child authority chain", async
     state: 4,
   });
   assert.equal(result.job_membership.child_present, true);
+  assert.deepEqual(result.job_membership.process_ids, [4100, 4200]);
   assert.equal(
     JSON.stringify(result).includes("unrelated secret command"),
     false,
   );
   assert.equal(JSON.stringify(result).includes(SUPERVISOR_COMMAND), false);
   assert.equal(JSON.stringify(result).includes(CHILD_COMMAND), false);
+});
+
+test("excludes the transient Job probe PID from stable bounded evidence", async () => {
+  const firstProbe = boundedPowerShell({ probePid: 4300 });
+  const secondProbe = boundedPowerShell({ probePid: 4301 });
+  const first = await observeBoundedWindowsAuthority({
+    expected: authorityExpected(),
+    runPowerShell: firstProbe.runPowerShell,
+  });
+  const second = await observeBoundedWindowsAuthority({
+    expected: authorityExpected(),
+    runPowerShell: secondProbe.runPowerShell,
+  });
+
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(first.job_membership, "probe_pid"),
+    false,
+  );
+  const stable = compareStableAuthorityObservations(first, second);
+  assert.equal(stable.ok, true);
+  assert.match(stable.observation_sha256, /^[a-f0-9]{64}$/);
+});
+
+test("rejects every unexpected persistent Job member", async () => {
+  const powershell = boundedPowerShell({
+    jobPids: [4100, 4200, 9999],
+  });
+  const result = await observeBoundedWindowsAuthority({
+    expected: authorityExpected(),
+    runPowerShell: powershell.runPowerShell,
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.blockers, [
+    "windows_authority_unexpected_job_member",
+  ]);
+  assert.equal(
+    result.blockers.some((blocker) => blocker.includes("9999")),
+    false,
+  );
+});
+
+test("bounded observation rejects duplicate or unnormalised Job membership", async () => {
+  const cases = [
+    {
+      job: {
+        ok: true,
+        probe_pid: 4300,
+        process_ids: [4100, 4200, 4200],
+        blockers: [],
+      },
+      blocker: "windows_authority_job_membership_invalid",
+    },
+    {
+      job: {
+        ok: true,
+        probe_pid: 4300,
+        process_ids: [4100, 4200, 4300],
+        blockers: [],
+      },
+      blocker: "windows_job_probe_identity_invalid",
+    },
+    {
+      job: {
+        ok: true,
+        probe_pid: 4300,
+        process_ids: [4100, 4200],
+        blockers: ["untrusted raw probe detail"],
+      },
+      blocker: "windows_job_membership_probe_failed",
+    },
+  ];
+
+  for (const { job, blocker } of cases) {
+    const powershell = boundedPowerShell();
+    const result = await observeBoundedWindowsAuthority({
+      expected: authorityExpected(),
+      runPowerShell: powershell.runPowerShell,
+      probes: {
+        inspectCurrentWindowsJobMembership: async () => job,
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.blockers, [blocker]);
+  }
 });
 
 test("bounded observation rejects a legacy authority before any probe", async () => {
@@ -452,10 +590,18 @@ test("fails closed when the task engine, process chain or Job membership drifts"
     expected: authorityExpected(),
     runPowerShell: jobDrift.runPowerShell,
   });
+  const supervisorDrift = boundedPowerShell({ jobPids: [4200] });
+  const missingSupervisor = await observeBoundedWindowsAuthority({
+    expected: authorityExpected(),
+    runPowerShell: supervisorDrift.runPowerShell,
+  });
 
   assert.deepEqual(wrongEngine.blockers, ["windows_task_engine_pid_mismatch"]);
   assert.deepEqual(engineDrift.requestedPids, []);
   assert.deepEqual(missingChild.blockers, [
     "windows_authority_child_not_in_job",
+  ]);
+  assert.deepEqual(missingSupervisor.blockers, [
+    "windows_authority_supervisor_not_in_job",
   ]);
 });

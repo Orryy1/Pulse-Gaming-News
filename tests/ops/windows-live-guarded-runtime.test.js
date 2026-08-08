@@ -240,6 +240,7 @@ const {
   prepareLiveSupervision,
   inspectLiveActivationReceipt,
   inspectLiveDatabaseIdentity,
+  inspectLiveWindowsTask,
   inspectWindowsProcessIdentity,
   inspectLiveStartOperationLock,
   inspectLiveTaskConflicts,
@@ -266,6 +267,9 @@ const {
 const {
   borrowLiveRuntimeTransitionLease,
 } = require("../../lib/stabilisation/live-runtime-transition-lease");
+const {
+  observeBoundedWindowsAuthority,
+} = require("../../lib/stabilisation/windows-task-authority");
 
 const BOUNDED_INSTANCE_GUID = "11111111-2222-4333-8444-555555555555";
 const BOUNDED_RUNTIME_ID = "ri-11111111-2222-4333-8444-555555555555";
@@ -516,6 +520,7 @@ function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
     },
     job_membership: {
       process_ids: [4100, 4200],
+      supervisor_present: true,
       child_present: true,
       blockers: [],
     },
@@ -687,6 +692,58 @@ test("ACTIVE_BOUND requires one continuous task-to-lease identity", async () => 
   assert.equal(result.verdict, "GREEN");
   assert.equal(result.state, "ACTIVE_BOUND");
   assert.match(result.authority_fingerprint, /^[a-f0-9]{64}$/);
+});
+
+test("ACTIVE_BOUND accepts the successful real Windows authority observation contract", async () => {
+  const fixture = activeBoundedAuthorityFixture();
+  fixture.probes.authorityObserver = ({ expected }) =>
+    observeBoundedWindowsAuthority({
+      expected,
+      probes: {
+        inspectExactWindowsTaskInstances: async () => ({
+          ok: true,
+          instances: [
+            {
+              instance_guid: expected.taskInstanceGuid,
+              engine_pid: expected.supervisorPid,
+              state: 4,
+            },
+          ],
+          blockers: [],
+        }),
+        inspectWindowsAuthorityProcess: async ({ pid }) =>
+          pid === expected.supervisorPid
+            ? {
+                ok: true,
+                pid,
+                creation_time_utc: expected.supervisorCreationTimeUtc,
+                parent_pid: 900,
+                executable_path: expected.supervisorExecutablePath,
+                command_sha256: expected.supervisorCommandSha256,
+                blockers: [],
+              }
+            : {
+                ok: true,
+                pid,
+                creation_time_utc: expected.childCreationTimeUtc,
+                parent_pid: expected.supervisorPid,
+                executable_path: expected.childExecutablePath,
+                command_sha256: expected.childCommandSha256,
+                blockers: [],
+              },
+        inspectCurrentWindowsJobMembership: async () => ({
+          ok: true,
+          probe_pid: 4300,
+          process_ids: [expected.supervisorPid, expected.childPid],
+          blockers: [],
+        }),
+      },
+    });
+
+  const result = await inspectBoundedWindowsAuthority(fixture);
+  assert.equal(result.verdict, "GREEN");
+  assert.equal(result.state, "ACTIVE_BOUND");
+  assert.deepEqual(result.blockers, []);
 });
 
 test("ACTIVE_BOUND supplies the exact runtime generation and worker topology to database authority", async () => {
@@ -880,6 +937,7 @@ test("ACTIVE_BOUND rejects malformed owner-v2 and observed task/process structur
     ["authority.child", "executable_path", "node.exe"],
     ["authority.child", "command_sha256", "invalid"],
     ["authority.job_membership", "process_ids", ["4100", 4200]],
+    ["authority.job_membership", "process_ids", [4100, 4200, 9999]],
   ];
   for (const [target, field, value] of cases) {
     const fixture = activeBoundedAuthorityFixture();
@@ -2836,7 +2894,10 @@ test("handoff command fingerprints use semantic argv independently of valid Wind
           _test_only_command_line: independentlyAuthoredChildCommandLine,
         });
       }
-      return JSON.stringify({ ProcessIds: [4100, 4200] });
+      return JSON.stringify({
+        ProbePid: 4300,
+        ProcessIds: [4100, 4200, 4300],
+      });
     },
   });
   assert.equal(handoff.ok, true);
@@ -3256,6 +3317,13 @@ test("owner-v2 publication rejects incomplete or contradictory task, process, Jo
       job_membership: {
         ...value.job_membership,
         blockers: ["windows_job_membership_probe_failed"],
+      },
+    }),
+    (value) => ({
+      ...value,
+      job_membership: {
+        ...value.job_membership,
+        process_ids: [value.supervisor.pid, value.child.pid, 9999],
       },
     }),
   ]) {
@@ -5959,6 +6027,7 @@ test("enable revalidates source, receipt and competing-task state at the mutatio
   const transition = inMemoryTransitionLease();
   const taskStates = [
     { state: "managed_disabled", blockers: [] },
+    { state: "managed_disabled", blockers: [] },
     { state: "managed_current", blockers: [] },
   ];
   const activation = {
@@ -6020,6 +6089,7 @@ test("enable revalidates source, receipt and competing-task state at the mutatio
       "source_database",
       "activation",
       "conflicts",
+      "task",
       "task",
       "exec",
       "task",
@@ -6177,13 +6247,18 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
   assert.equal(receiptCall.details.child_pid, owner.child_pid);
   assert.equal(receiptCall.details.listener_pid, owner.child_pid);
   assert.equal(receiptCall.details.operation_nonce, START_OPERATION_NONCE);
-  for (const check of ["source_database", "activation", "conflicts", "task"]) {
+  for (const check of ["source_database", "activation", "conflicts"]) {
     assert.equal(
       calls.filter(([name]) => name === check).length,
       2,
       `${check} must be revalidated after launch`,
     );
   }
+  assert.equal(
+    calls.filter(([name]) => name === "task").length,
+    3,
+    "task must be revalidated at the Run boundary and after launch",
+  );
 });
 
 test("guarded start redacts finalizer failures from thrown errors", async (t) => {
@@ -6309,6 +6384,9 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
     { state: "managed_disabled", blockers: [] },
   ];
   const activationStates = [activation, driftedActivation];
@@ -6414,6 +6492,9 @@ test("an ambiguous schtasks Run error is redacted from durable evidence and the 
     blockers: [],
   };
   const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
@@ -6537,6 +6618,9 @@ test("runtime identity is re-read after authority revalidation before started_ve
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
     { state: "managed_disabled", blockers: [] },
   ];
   let healthReads = 0;
@@ -6633,6 +6717,9 @@ test("guarded start ends and disables only the re-inspected managed task when ex
     blockers: [],
   };
   const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
@@ -6754,6 +6841,9 @@ test("cleanup command failures and an orphan listener are durably reported witho
     child_pid: 4123,
   };
   const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
@@ -6888,7 +6978,7 @@ test("an unexpected cleanup inspection error still produces failure evidence", a
       },
       taskInspector() {
         taskInspections += 1;
-        if (taskInspections > 1) {
+        if (taskInspections > 2) {
           throw new Error(
             `task inspection unavailable ${cleanupSecretSentinel}`,
           );
@@ -7497,6 +7587,824 @@ test("the live task validator accepts Task Scheduler's normalised restart-policy
     assert.equal(result.valid, false);
     assert.ok(result.blockers.includes("task_restart_policy_invalid"));
   }
+});
+
+test("the live task validator accepts and binds the in-memory Task Scheduler COM normalisation", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const repoRoot = "D:/pulse/releases/pulse-v1";
+  const nodeExecutable = "D:/pulse-tools/node-v22.17.1/node.exe";
+  const xml = fs.readFileSync(
+    path.join(
+      __dirname,
+      "../fixtures/windows-live-guarded-runtime-normalised.xml",
+    ),
+    "utf8",
+  );
+
+  assert.deepEqual(
+    validateLiveScheduledTaskXml({
+      xml,
+      profile,
+      repoRoot,
+      expectedCommit,
+      nodeExecutable,
+      expectedEnabled: false,
+    }),
+    {
+      valid: true,
+      enabled: false,
+      blockers: [],
+    },
+  );
+
+  for (const [name, unsafeXml, blocker] of [
+    [
+      "start on demand",
+      xml.replace(
+        "<AllowStartOnDemand>true</AllowStartOnDemand>",
+        "<AllowStartOnDemand>false</AllowStartOnDemand>",
+      ),
+      "task_start_on_demand_policy_invalid",
+    ],
+    [
+      "run only if idle",
+      xml.replace(
+        "<RunOnlyIfIdle>false</RunOnlyIfIdle>",
+        "<RunOnlyIfIdle>true</RunOnlyIfIdle>",
+      ),
+      "task_idle_policy_invalid",
+    ],
+    [
+      "remote app session",
+      xml.replace(
+        "<DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession>",
+        "<DisallowStartOnRemoteAppSession>true</DisallowStartOnRemoteAppSession>",
+      ),
+      "task_remote_session_policy_invalid",
+    ],
+    [
+      "unified scheduler",
+      xml.replace(
+        "<UseUnifiedSchedulingEngine>false</UseUnifiedSchedulingEngine>",
+        "<UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>",
+      ),
+      "task_scheduler_engine_policy_invalid",
+    ],
+    [
+      "stop on idle end",
+      xml.replace(
+        "<StopOnIdleEnd>true</StopOnIdleEnd>",
+        "<StopOnIdleEnd>false</StopOnIdleEnd>",
+      ),
+      "task_idle_policy_invalid",
+    ],
+    [
+      "restart on idle",
+      xml.replace(
+        "<RestartOnIdle>false</RestartOnIdle>",
+        "<RestartOnIdle>true</RestartOnIdle>",
+      ),
+      "task_idle_policy_invalid",
+    ],
+  ]) {
+    const result = validateLiveScheduledTaskXml({
+      xml: unsafeXml,
+      profile,
+      repoRoot,
+      expectedCommit,
+      nodeExecutable,
+      expectedEnabled: false,
+    });
+    assert.equal(result.valid, false, name);
+    assert.ok(
+      result.blockers.includes(blocker),
+      `${name}: ${inspect(result.blockers)}`,
+    );
+  }
+});
+
+test("the live task validator binds the exact trigger, principal and Exec structure", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const repoRoot = "C:/Pulse/runtime/pulse-v1";
+  const nodeExecutable = "C:/Program Files/nodejs/node.exe";
+  const xml = buildLiveScheduledTaskXml({
+    profile,
+    repoRoot,
+    expectedCommit,
+    nodeExecutable,
+  });
+
+  const variants = [
+    {
+      name: "foreign command with expected identity planted in metadata",
+      xml: xml
+        .replace(
+          "<Description>",
+          `<Description>${nodeExecutable} `,
+        )
+        .replace(
+          `<Command>${nodeExecutable}</Command>`,
+          "<Command>C:/Foreign/runner.exe</Command>",
+        ),
+      blocker: "task_node_identity_invalid",
+    },
+    {
+      name: "foreign working directory",
+      xml: xml.replace(
+        /<WorkingDirectory>[\s\S]*?<\/WorkingDirectory>/,
+        "<WorkingDirectory>C:/Foreign/runtime</WorkingDirectory>",
+      ),
+      blocker: "task_working_directory_invalid",
+    },
+    {
+      name: "additional trigger",
+      xml: xml.replace(
+        "</Triggers>",
+        "<EventTrigger><Enabled>true</Enabled></EventTrigger></Triggers>",
+      ),
+      blocker: "task_trigger_set_invalid",
+    },
+    {
+      name: "mismatched action context",
+      xml: xml.replace(
+        '<Actions Context="PulseLiveGuarded">',
+        '<Actions Context="DifferentPrincipal">',
+      ),
+      blocker: "task_action_principal_binding_invalid",
+    },
+    {
+      name: "additional principal",
+      xml: xml.replace(
+        "</Principals>",
+        '<Principal id="Other"><UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel></Principal></Principals>',
+      ),
+      blocker: "task_principal_set_invalid",
+    },
+  ];
+
+  for (const variant of variants) {
+    const result = validateLiveScheduledTaskXml({
+      xml: variant.xml,
+      profile,
+      repoRoot,
+      expectedCommit,
+      nodeExecutable,
+      expectedEnabled: false,
+    });
+    assert.equal(result.valid, false, variant.name);
+    assert.ok(
+      result.blockers.includes(variant.blocker),
+      `${variant.name}: ${inspect(result.blockers)}`,
+    );
+  }
+});
+
+test("the live task validator accepts only the exact XML declaration and forbids active XML constructs", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const repoRoot = "C:/Pulse/runtime/pulse-v1";
+  const nodeExecutable = "C:/Program Files/nodejs/node.exe";
+  const xml = buildLiveScheduledTaskXml({
+    profile,
+    repoRoot,
+    expectedCommit,
+    nodeExecutable,
+  });
+  const declaration = '<?xml version="1.0" encoding="UTF-16"?>';
+  const variants = [
+    [
+      "stylesheet processing instruction in place of the declaration",
+      xml.replace(
+        declaration,
+        '<?xml-stylesheet type="text/xsl" href="foreign.xsl"?>',
+      ),
+    ],
+    ["arbitrary xml-prefixed processing instruction", xml.replace(declaration, "<?xmlfoo?>")],
+    [
+      "unsupported declaration version",
+      xml.replace(declaration, '<?xml version="1.1" encoding="UTF-16"?>'),
+    ],
+    ["missing declaration", xml.replace(`${declaration}\r\n`, "")],
+    ["declaration after leading whitespace", ` ${xml}`],
+    [
+      "processing instruction inside the document",
+      xml.replace("<RegistrationInfo>", "<?foreign instruction?><RegistrationInfo>"),
+    ],
+    [
+      "document type declaration",
+      xml.replace("<Task ", '<!DOCTYPE Task SYSTEM "foreign.dtd"><Task '),
+    ],
+    [
+      "CDATA construct",
+      xml.replace("<Description>", "<Description><![CDATA["),
+    ],
+    [
+      "duplicate attribute",
+      xml.replace('<Task version="1.4"', '<Task version="1.4" version="1.4"'),
+    ],
+    [
+      "broken nesting",
+      xml.replace("</RegistrationInfo>", "</Triggers>"),
+    ],
+  ];
+
+  for (const [name, unsafeXml] of variants) {
+    const result = validateLiveScheduledTaskXml({
+      xml: unsafeXml,
+      profile,
+      repoRoot,
+      expectedCommit,
+      nodeExecutable,
+      expectedEnabled: false,
+    });
+    assert.equal(result.valid, false, name);
+    assert.ok(
+      result.blockers.includes("task_xml_structure_invalid"),
+      `${name}: ${inspect(result.blockers)}`,
+    );
+  }
+});
+
+test("live task inspection distinguishes proven absence from query ambiguity", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const common = {
+    profile,
+    repoRoot: "C:/Pulse/runtime/pulse-v1",
+    expectedCommit: "d".repeat(40),
+    nodeExecutable: "C:/Program Files/nodejs/node.exe",
+  };
+
+  let absentCalls = 0;
+  const absent = inspectLiveWindowsTask({
+    ...common,
+    execFileSyncImpl(command, args) {
+      absentCalls += 1;
+      assert.equal(command, "powershell.exe");
+      const script = args.at(-1);
+      assert.match(script, /GetFolders\(0\)/);
+      assert.match(script, /candidateName -ieq/);
+      assert.match(script, /candidateName -ceq/);
+      assert.match(script, /candidatePath -ceq/);
+      return JSON.stringify({
+        RootFound: false,
+        Present: false,
+        ExactName: null,
+        MatchCount: 0,
+        ExactRootCount: 0,
+      });
+    },
+  });
+  assert.deepEqual(absent, {
+    state: "absent",
+    task_name: profile.task_name,
+    blockers: [],
+  });
+  assert.equal(absentCalls, 1);
+
+  const ambiguousPresence = inspectLiveWindowsTask({
+    ...common,
+    execFileSyncImpl() {
+      throw new Error("sensitive query timeout");
+    },
+  });
+  assert.deepEqual(ambiguousPresence, {
+    state: "unavailable",
+    task_name: profile.task_name,
+    blockers: ["windows_task_inspection_unavailable"],
+  });
+  assert.equal(JSON.stringify(ambiguousPresence).includes("sensitive"), false);
+
+  let presentCalls = 0;
+  const ambiguousXml = inspectLiveWindowsTask({
+    ...common,
+    execFileSyncImpl(command) {
+      presentCalls += 1;
+      if (command === "powershell.exe") {
+        return JSON.stringify({
+          RootFound: true,
+          Present: true,
+          ExactName: profile.task_name,
+          MatchCount: 1,
+          ExactRootCount: 1,
+        });
+      }
+      assert.equal(command, "schtasks.exe");
+      throw new Error("sensitive XML query failure");
+    },
+  });
+  assert.deepEqual(ambiguousXml, {
+    state: "unavailable",
+    task_name: profile.task_name,
+    blockers: ["windows_task_xml_inspection_unavailable"],
+  });
+  assert.equal(presentCalls, 2);
+  assert.equal(JSON.stringify(ambiguousXml).includes("sensitive"), false);
+});
+
+test("live task inspection rejects malformed or contradictory exact-presence transport", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const common = {
+    profile,
+    repoRoot: "C:/Pulse/runtime/pulse-v1",
+    expectedCommit: "d".repeat(40),
+    nodeExecutable: "C:/Program Files/nodejs/node.exe",
+  };
+  const variants = [
+    ["invalid JSON", "not-json"],
+    [
+      "extra field",
+      JSON.stringify({
+        RootFound: false,
+        Present: false,
+        ExactName: null,
+        MatchCount: 0,
+        ExactRootCount: 0,
+        Foreign: false,
+      }),
+    ],
+    [
+      "case-variant root collision",
+      JSON.stringify({
+        RootFound: true,
+        Present: false,
+        ExactName: null,
+        MatchCount: 1,
+        ExactRootCount: 0,
+      }),
+    ],
+    [
+      "child-folder collision",
+      JSON.stringify({
+        RootFound: false,
+        Present: false,
+        ExactName: null,
+        MatchCount: 1,
+        ExactRootCount: 0,
+      }),
+    ],
+    [
+      "multiple same-name tasks",
+      JSON.stringify({
+        RootFound: true,
+        Present: false,
+        ExactName: null,
+        MatchCount: 2,
+        ExactRootCount: 1,
+      }),
+    ],
+    [
+      "wrong exact name",
+      JSON.stringify({
+        RootFound: true,
+        Present: true,
+        ExactName: profile.task_name.toLowerCase(),
+        MatchCount: 1,
+        ExactRootCount: 1,
+      }),
+    ],
+    [
+      "wrong types",
+      JSON.stringify({
+        RootFound: "false",
+        Present: "false",
+        ExactName: null,
+        MatchCount: "0",
+        ExactRootCount: "0",
+      }),
+    ],
+  ];
+
+  for (const [name, output] of variants) {
+    const result = inspectLiveWindowsTask({
+      ...common,
+      execFileSyncImpl(command) {
+        assert.equal(command, "powershell.exe", name);
+        return output;
+      },
+    });
+    assert.deepEqual(
+      result,
+      {
+        state: "unavailable",
+        task_name: profile.task_name,
+        blockers: ["windows_task_inspection_unavailable"],
+      },
+      name,
+    );
+  }
+});
+
+test("live task installation never mutates through ambiguous presence and never force-replaces a raced task", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join("D:/pulse-worktrees", "pulse-live-task-presence-install-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+  };
+  fs.writeFileSync(profile.database_path, "task-presence-authority\n");
+  const expectedCommit = "d".repeat(40);
+  const lease = () => ({
+    assertCurrentAuthority() {},
+    renew() {
+      return true;
+    },
+    release() {
+      return true;
+    },
+  });
+
+  let ambiguousMutations = 0;
+  assert.throws(
+    () =>
+      installLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        enabled: false,
+        platform: "win32",
+        sourceDatabaseInspector: () => ({ ready: true }),
+        taskInspector: () => ({
+          state: "unavailable",
+          blockers: ["windows_task_inspection_unavailable"],
+        }),
+        transitionLeaseAcquirer: lease,
+        execFileSyncImpl() {
+          ambiguousMutations += 1;
+        },
+      }),
+    /refusing_to_replace_live_scheduled_task/,
+  );
+  assert.equal(ambiguousMutations, 0);
+
+  const taskStates = [
+    { state: "absent", blockers: [] },
+    {
+      state: "managed_disabled",
+      command_fingerprint: "a".repeat(64),
+      blockers: [],
+    },
+  ];
+  const mutations = [];
+  const result = installLiveScheduledTask({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+    enabled: false,
+    platform: "win32",
+    sourceDatabaseInspector: () => ({ ready: true }),
+    taskInspector: () => taskStates.shift(),
+    taskXmlBuilder: () => "<Task/>",
+    transitionLeaseAcquirer: lease,
+    execFileSyncImpl(command, args) {
+      mutations.push({ command, args });
+      return "";
+    },
+    lifecycleReceiptWriter: ({ details }) => ({ outcome: details.outcome }),
+  });
+  assert.equal(result.outcome, "installed_disabled");
+  assert.equal(taskStates.length, 0);
+  assert.equal(mutations.length, 1);
+  assert.equal(mutations[0].command, "schtasks.exe");
+  assert.deepEqual(mutations[0].args.slice(0, 4), [
+    "/Create",
+    "/TN",
+    profile.task_name,
+    "/XML",
+  ]);
+  assert.equal(mutations[0].args.includes("/F"), false);
+});
+
+test("enable and disable reject a causal task identity flip at the name-based mutation boundary", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+  };
+  const commandFingerprint = "a".repeat(64);
+
+  for (const enabled of [true, false]) {
+    const initialState = enabled ? "managed_disabled" : "managed_current";
+    const taskStates = [
+      {
+        state: initialState,
+        command_fingerprint: commandFingerprint,
+        blockers: [],
+      },
+      {
+        state: initialState,
+        command_fingerprint: "b".repeat(64),
+        blockers: [],
+      },
+    ];
+    const mutations = [];
+
+    assert.throws(
+      () =>
+        setLiveScheduledTaskEnabled({
+          profile,
+          repoRoot: ROOT,
+          expectedCommit: "d".repeat(40),
+          enabled,
+          activation,
+          platform: "win32",
+          sourceDatabaseInspector: () => ({ ready: true }),
+          activationInspector: () => activation,
+          conflictInspector: () => ({ clear: true, blockers: [] }),
+          taskInspector: () => taskStates.shift(),
+          execFileSyncImpl(command, args) {
+            mutations.push({ command, args });
+            return "";
+          },
+        }),
+      /live_task_enablement_mutation_boundary_identity_lost/,
+      enabled ? "enable" : "disable",
+    );
+    assert.equal(taskStates.length, 0, enabled ? "enable" : "disable");
+    assert.deepEqual(mutations, [], enabled ? "enable" : "disable");
+  }
+});
+
+test("guarded start rejects a causal task identity flip immediately before name-based Run", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    blockers: [],
+  };
+  const taskStates = [
+    {
+      state: "managed_current",
+      command_fingerprint: "a".repeat(64),
+      blockers: [],
+    },
+    {
+      state: "managed_current",
+      command_fingerprint: "b".repeat(64),
+      blockers: [],
+    },
+  ];
+  const mutations = [];
+
+  await assert.rejects(
+    startLiveScheduledTask({
+      ...inMemoryStartLock(),
+      profile,
+      repoRoot: ROOT,
+      expectedCommit: "d".repeat(40),
+      activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      platform: "win32",
+      timeoutMs: 0,
+      sourceDatabaseInspector: () => ({ ready: true }),
+      activationInspector: () => activation,
+      conflictInspector: () => ({ clear: true, blockers: [] }),
+      taskInspector: () => taskStates.shift(),
+      runtimeInspector: () => ({
+        stopped: true,
+        owner_state: "absent",
+        listening_pids: [],
+        blockers: [],
+      }),
+      listenerInspector: () => ({ available: true, listeningPids: [] }),
+      healthRequester: () => null,
+      ownerReader: () => null,
+      execFileSyncImpl(command, args) {
+        mutations.push({ command, args });
+        return "";
+      },
+      delayImpl() {},
+    }),
+    /live_task_start_mutation_boundary_identity_lost/,
+  );
+  assert.equal(taskStates.length, 0);
+  assert.deepEqual(mutations, []);
+});
+
+test("failed-start cleanup rejects causal task flips before name-based End and disable", async (t) => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    blockers: [],
+  };
+  const currentTask = () => ({
+    state: "managed_current",
+    command_fingerprint: "a".repeat(64),
+    blockers: [],
+  });
+  const flippedTask = () => ({
+    state: "managed_current",
+    command_fingerprint: "b".repeat(64),
+    blockers: [],
+  });
+  const scenarios = [
+    {
+      name: "End",
+      taskStates: [
+        currentTask(),
+        currentTask(),
+        currentTask(),
+        flippedTask(),
+      ],
+      allowedCommands: ["/Run"],
+    },
+    {
+      name: "disable",
+      taskStates: [
+        currentTask(),
+        currentTask(),
+        currentTask(),
+        currentTask(),
+        currentTask(),
+        flippedTask(),
+        flippedTask(),
+      ],
+      allowedCommands: ["/Run", "/End"],
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async () => {
+      const taskStates = [...scenario.taskStates];
+      const mutations = [];
+      const evidence = [];
+
+      await assert.rejects(
+        startLiveScheduledTask({
+          ...inMemoryStartLock(),
+          profile,
+          repoRoot: ROOT,
+          expectedCommit: "d".repeat(40),
+          activation,
+          workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+          platform: "win32",
+          timeoutMs: 0,
+          shutdownTimeoutMs: 0,
+          sourceDatabaseInspector: () => ({ ready: true }),
+          activationInspector: () => activation,
+          conflictInspector: () => ({ clear: true, blockers: [] }),
+          taskInspector: () => taskStates.shift(),
+          runtimeInspector: () => ({
+            stopped: true,
+            owner_state: "absent",
+            listening_pids: [],
+            blockers: [],
+          }),
+          listenerInspector: () => ({ available: true, listeningPids: [] }),
+          healthRequester: () => null,
+          ownerReader: () => null,
+          execFileSyncImpl(command, args) {
+            mutations.push({ command, args });
+            return "";
+          },
+          delayImpl() {},
+          lifecycleReceiptWriter(options) {
+            evidence.push(options);
+            return { receipt_path: "D:/pulse/evidence/start-failed.json" };
+          },
+        }),
+        /live_task_start_fail_closed_incomplete/,
+      );
+
+      assert.deepEqual(
+        mutations.map(({ args }) => args[0]),
+        scenario.allowedCommands,
+      );
+      assert.equal(evidence.length, 1);
+      assert.equal(evidence[0].action, "start-failed");
+      assert.equal(evidence[0].details.stopped_verified, false);
+    });
+  }
+});
+
+test("uninstall rejects a causal task identity flip immediately before name-based Delete", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-uninstall-boundary-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+  };
+  fs.writeFileSync(profile.database_path, "uninstall boundary authority\n");
+  const taskStates = [
+    {
+      state: "managed_disabled",
+      command_fingerprint: "a".repeat(64),
+      blockers: [],
+    },
+    {
+      state: "managed_disabled",
+      command_fingerprint: "b".repeat(64),
+      blockers: [],
+    },
+  ];
+  const mutations = [];
+
+  assert.throws(
+    () =>
+      uninstallLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        platform: "win32",
+        taskInspector: () => taskStates.shift(),
+        transitionLeaseAcquirer: () => ({
+          assertCurrentAuthority() {
+            return true;
+          },
+          renew() {
+            return true;
+          },
+          release() {
+            return true;
+          },
+        }),
+        execFileSyncImpl(command, args) {
+          mutations.push({ command, args });
+          return "";
+        },
+      }),
+    /live_task_uninstall_mutation_boundary_identity_lost/,
+  );
+  assert.equal(taskStates.length, 0);
+  assert.deepEqual(mutations, []);
+});
+
+test("uninstall writes no success evidence until authoritative exact absence is proven", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-uninstall-absence-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+  };
+  fs.writeFileSync(profile.database_path, "uninstall absence authority\n");
+  const taskStates = [
+    {
+      state: "managed_disabled",
+      command_fingerprint: "a".repeat(64),
+      blockers: [],
+    },
+    {
+      state: "managed_disabled",
+      command_fingerprint: "a".repeat(64),
+      blockers: [],
+    },
+    {
+      state: "unavailable",
+      blockers: ["windows_task_inspection_unavailable"],
+    },
+  ];
+  const mutations = [];
+  let receiptWrites = 0;
+
+  assert.throws(
+    () =>
+      uninstallLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        platform: "win32",
+        taskInspector: () => taskStates.shift(),
+        transitionLeaseAcquirer: () => ({
+          assertCurrentAuthority() {
+            return true;
+          },
+          renew() {
+            return true;
+          },
+          release() {
+            return true;
+          },
+        }),
+        execFileSyncImpl(command, args) {
+          mutations.push({ command, args });
+          return "";
+        },
+        lifecycleReceiptWriter() {
+          receiptWrites += 1;
+          return { outcome: "must_not_write" };
+        },
+      }),
+    /live_task_post_uninstall_absence_failed/,
+  );
+  assert.equal(taskStates.length, 0);
+  assert.deepEqual(
+    mutations.map(({ args }) => args[0]),
+    ["/Delete"],
+  );
+  assert.equal(receiptWrites, 0);
 });
 
 test("activation v2 binds the planned runtime authority without claiming future process identity", () => {

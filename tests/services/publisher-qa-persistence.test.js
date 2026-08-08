@@ -178,6 +178,10 @@ test("publisher.js: multi-candidate loop uses MAX_PUBLISH_CANDIDATES_PER_WINDOW 
 // ---------- integration: publishNextStory end-to-end ----------
 
 const PUBLISHER_RESOLVED = require.resolve("../../publisher.js");
+const PUBLISHER_LOCK_RESOLVED = require.resolve(
+  "../../lib/services/publisher-lock.js",
+);
+const REAL_PUBLISHER_LOCK = require(PUBLISHER_LOCK_RESOLVED);
 const DB_RESOLVED = require.resolve("../../lib/db.js");
 const CQA_RESOLVED = require.resolve("../../lib/services/content-qa.js");
 const AUTONOMOUS_CQA_RESOLVED = require.resolve(
@@ -199,6 +203,7 @@ const DISCORD_POST_GATE_RESOLVED =
 const MIGRATIONS = path.resolve(__dirname, "..", "..", "db", "migrations");
 const PUBLISH_NOW = new Date("2026-07-27T09:05:00.000Z");
 const TEST_YOUTUBE_OAUTH_CLIENT_SHA256 = "f".repeat(64);
+const TEST_RUNWAY_LOCK_SHA256 = "9".repeat(64);
 
 function testOfficialSourceBinding(
   storyId,
@@ -496,6 +501,47 @@ function stubModule(resolvedPath, exports) {
   };
 }
 
+function stubPublisherAuthorityBoundary() {
+  stubModule(PUBLISHER_LOCK_RESOLVED, {
+    ...REAL_PUBLISHER_LOCK,
+    async runWithPublisherLease({ task }) {
+      return task({
+        assertHealthy() {
+          return true;
+        },
+        heartbeatNow() {
+          return true;
+        },
+      });
+    },
+  });
+}
+
+function withTestScheduledAuthority(repos, channelId) {
+  const governance = repos?.publicationGovernance;
+  if (typeof governance?.getLatestLifecycleEvent !== "function") return repos;
+  const wrappedGovernance = Object.create(governance);
+  wrappedGovernance.getLatestLifecycleEvent = (...args) => {
+    const event = governance.getLatestLifecycleEvent(...args);
+    if (!event) return event;
+    let evidence;
+    try {
+      evidence = JSON.parse(event.evidence_json || "{}");
+    } catch {
+      return event;
+    }
+    return {
+      ...event,
+      evidence_json: JSON.stringify({
+        channel_id: channelId,
+        runway_lock_sha256: TEST_RUNWAY_LOCK_SHA256,
+        ...evidence,
+      }),
+    };
+  };
+  return { ...repos, publicationGovernance: wrappedGovernance };
+}
+
 // Neutralise every downstream module publisher.js loads AFTER a
 // successful upload — engagement, blog, discord. Without these
 // stubs: engageFirstHour schedules a 5-min setTimeout that keeps
@@ -598,6 +644,8 @@ function withTestPublisherLease(publisher) {
           platform,
           to_state: "SCHEDULED",
           evidence_json: JSON.stringify({
+            channel_id: "pulse-gaming",
+            runway_lock_sha256: TEST_RUNWAY_LOCK_SHA256,
             dispatch_idempotency_key: `youtube:${storyId}:test-operation`,
             request_fingerprint: "a".repeat(64),
             scheduled_for: "2026-07-27T09:00:00.000Z",
@@ -675,16 +723,19 @@ function withTestPublisherLease(publisher) {
       // The publisher will exercise the supplied deterministic fallback DB.
     }
     return {
+      channelId: "pulse-gaming",
       storyId,
       platform: "youtube",
       scheduledFor:
         evidence.scheduled_for || "2026-07-27T09:00:00.000Z",
-      scheduledEventId: event?.id ?? "test-scheduled-event",
+      scheduledEventId: event?.id ?? 90,
       dispatchIdempotencyKey:
         evidence.dispatch_idempotency_key ||
         `youtube:${storyId}:test-operation`,
       requestFingerprint:
         evidence.request_fingerprint || "a".repeat(64),
+      runwayLockSha256:
+        evidence.runway_lock_sha256 || TEST_RUNWAY_LOCK_SHA256,
       databaseDataVersion,
     };
   }
@@ -692,7 +743,15 @@ function withTestPublisherLease(publisher) {
     ...publisher,
     publishNextStory(options = {}) {
       const { testExactStoryId, ...callerOptions } = options;
-      const requestedRepos = callerOptions.repos || publicationRepos;
+      const requestedChannelId =
+        callerOptions.channelId ||
+        callerOptions.env?.CHANNEL ||
+        liveGuardedEnv.CHANNEL ||
+        "pulse-gaming";
+      const requestedRepos = withTestScheduledAuthority(
+        callerOptions.repos || publicationRepos,
+        requestedChannelId,
+      );
       const repos =
         typeof requestedRepos?.db?.pragma === "function"
           ? requestedRepos
@@ -712,7 +771,14 @@ function withTestPublisherLease(publisher) {
         "exactDispatchBinding",
       );
       const exactDispatchBinding = hasExplicitBinding
-        ? callerOptions.exactDispatchBinding
+        ? callerOptions.exactDispatchBinding &&
+          typeof callerOptions.exactDispatchBinding === "object"
+          ? {
+              channelId: requestedChannelId,
+              runwayLockSha256: TEST_RUNWAY_LOCK_SHA256,
+              ...callerOptions.exactDispatchBinding,
+            }
+          : callerOptions.exactDispatchBinding
         : buildExactDispatchBinding({
             storyId:
               testExactStoryId ||
@@ -888,6 +954,7 @@ function setupMocks({
   }
 
   clearPublisherCache();
+  stubPublisherAuthorityBoundary();
   return withTestPublisherLease(require("../../publisher.js"));
 }
 
@@ -989,6 +1056,7 @@ function setupMocksPerStory({
   }
 
   clearPublisherCache();
+  stubPublisherAuthorityBoundary();
   return withTestPublisherLease(require("../../publisher.js"));
 }
 
@@ -1271,6 +1339,38 @@ test("publishNextStory: exact binding cannot be displaced by a higher-score conc
       .youtube_post_id,
     undefined,
   );
+});
+
+test("publishNextStory: exact authority binding accepts the canonical snake-case shape", async () => {
+  const story = {
+    id: "rss_exact_snake_shape",
+    title: "Exact snake authority",
+    approved: true,
+    exported_path: "/tmp/exact-snake.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+
+  const result = await publishNextStory({
+    exactDispatchBinding: {
+      channel_id: "pulse-gaming",
+      story_id: story.id,
+      platform: "youtube",
+      scheduled_for: "2026-07-27T09:00:00.000Z",
+      scheduled_event_id: 90,
+      dispatch_idempotency_key: `youtube:${story.id}:test-operation`,
+      request_fingerprint: "a".repeat(64),
+      runway_lock_sha256: TEST_RUNWAY_LOCK_SHA256,
+      database_data_version: 1,
+    },
+  });
+
+  assert.equal(result.story_id, story.id);
+  assert.equal(governedDispatchCalls.length, 1);
+  assert.equal(governedDispatchCalls[0].storyId, story.id);
 });
 
 test("publishNextStory: exact binding is re-enforced against the persisted scheduled event", async () => {

@@ -257,22 +257,56 @@ test("runway monitors run serially in isolated short-lease capacity", () => {
   );
 });
 
-test("T-90 deadline work has two isolated short-lease runners that hunt and planning cannot starve", () => {
+test("exact-window planning has bounded isolated capacity that hunt cannot starve", () => {
+  const definitions = buildMultiLaneWorkerDefinitions({
+    handlers: {
+      plan_governed_autonomous_window_production() {},
+      hunt() {},
+      governed_multi_lane_plan() {},
+    },
+  });
+  const exactWindow = definitions.find(
+    (definition) =>
+      definition.pool_id === "exact_window_planning",
+  );
+  const sharedPlanning = definitions.find(
+    (definition) =>
+      definition.pool_id === "critical_planning",
+  );
+
+  assert.equal(exactWindow.instances, 1);
+  assert.deepEqual(exactWindow.kinds, [
+    "plan_governed_autonomous_window_production",
+  ]);
+  assert.deepEqual(sharedPlanning.kinds.sort(), [
+    "governed_multi_lane_plan",
+    "hunt",
+  ]);
+  assert.notEqual(
+    exactWindow.pool_id,
+    sharedPlanning.pool_id,
+  );
+});
+
+test("T-90 deadline work has two isolated short-lease runners that hunt and exact-window planning cannot starve", () => {
   const deadlineKinds = [
     "prepare_governed_autonomous_pre_t90_window",
     "governed_youtube_runway_t90",
   ];
   const planningKinds = [
-    "plan_governed_autonomous_window_production",
     "hunt",
     "governed_editorial_evidence_backfill",
   ];
+  const exactWindowKinds = [
+    "plan_governed_autonomous_window_production",
+  ];
   const definitions = buildMultiLaneWorkerDefinitions({
     handlers: Object.fromEntries(
-      [...deadlineKinds, ...planningKinds].map((kind) => [
-        kind,
-        () => {},
-      ]),
+      [
+        ...deadlineKinds,
+        ...planningKinds,
+        ...exactWindowKinds,
+      ].map((kind) => [kind, () => {}]),
     ),
   });
   const deadline = definitions.find(
@@ -281,6 +315,10 @@ test("T-90 deadline work has two isolated short-lease runners that hunt and plan
   const planning = definitions.find(
     (definition) =>
       definition.pool_id === "critical_planning",
+  );
+  const exactWindow = definitions.find(
+    (definition) =>
+      definition.pool_id === "exact_window_planning",
   );
 
   assert.equal(deadline.instances, 2);
@@ -294,5 +332,11 @@ test("T-90 deadline work has two isolated short-lease runners that hunt and plan
     planning.kinds.sort(),
     planningKinds.sort(),
   );
+  assert.deepEqual(
+    exactWindow.kinds,
+    exactWindowKinds,
+  );
   assert.notEqual(deadline.pool_id, planning.pool_id);
+  assert.notEqual(deadline.pool_id, exactWindow.pool_id);
+  assert.notEqual(exactWindow.pool_id, planning.pool_id);
 });

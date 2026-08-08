@@ -139,6 +139,7 @@ function fixture() {
   });
   const job = {
     id: 401,
+    attempt_count: 1,
     kind: "admit_governed_publication",
     channel_id: "pulse-gaming",
     run_at: NOW,
@@ -185,9 +186,24 @@ function liveEnv() {
   };
 }
 
-test("T-75 acquires the publisher lease, materialises fresh authority and immediately admits it without human fields", async () => {
+test("T-75 acquires the publication-admission lease, binds the durable attempt and immediately admits it without human fields", async () => {
   const value = fixture();
   const calls = [];
+  const db = { marker: "admission-db" };
+  const runtimeAuthority = {
+    runtime_authority_sha256: "b".repeat(64),
+  };
+  const claimedJobAuthority = {
+    claimed_job_authority_sha256: "c".repeat(64),
+  };
+  const publicationAdmissionLease = {
+    acquired: true,
+    lease_name: "publication-admission:global",
+    expires_at: "2026-07-29T17:47:00.000Z",
+    current_lock_owner_sha256: "d".repeat(64),
+    claimed_job_authority_sha256:
+      claimedJobAuthority.claimed_job_authority_sha256,
+  };
   const authority = {
     authority_id: "autonomous-official-publication:fresh",
     authority_sha256: "e".repeat(64),
@@ -200,11 +216,13 @@ test("T-75 acquires the publisher lease, materialises fresh authority and immedi
   const result = await handlers.admit_governed_publication(
     value.job,
     {
-      repos: { marker: true, runtimeLeases: {} },
+      repos: { marker: true, db, runtimeLeases: {} },
       env: liveEnv(),
       now: () => new Date(NOW),
       autonomousWorkspaceRoot: process.cwd(),
       channel: { id: "pulse-gaming" },
+      runtimeAuthority,
+      claimedJobAuthority,
       assertLeaseHealthy() {},
       async loadGovernedRunwayEnvelope() {
         return {
@@ -212,20 +230,21 @@ test("T-75 acquires the publisher lease, materialises fresh authority and immedi
           blockers: [],
         };
       },
-      async runWithPublisherLease(options) {
+      async runWithPublicationAdmissionLease(options) {
         calls.push("lease");
+        assert.equal(options.db, db);
+        assert.equal(options.runtimeAuthority, runtimeAuthority);
+        assert.equal(
+          options.claimedJobAuthority,
+          claimedJobAuthority,
+        );
         assert.equal(
           options.operation,
           "autonomous_t75_jit_admission",
         );
         return options.task({
           assertHealthy() {},
-          lease: {
-            acquired: true,
-            lease_name: "publisher:global",
-            owner_id: "publisher:test",
-            expires_at: "2026-07-29T17:47:00.000Z",
-          },
+          publicationAdmissionLease,
         });
       },
       async materialiseAutonomousOfficialJitAdmissionPacket(
@@ -243,14 +262,38 @@ test("T-75 acquires the publisher lease, materialises fresh authority and immedi
           request.preparation_manifest,
           value.preparation,
         );
+        assert.equal(request.attempt_count, 1);
+        assert.equal(
+          request.attempt_output_root
+            .replaceAll("\\", "/")
+            .endsWith("/admission-401/attempt-1"),
+          true,
+          request.attempt_output_root,
+        );
+        assert.equal(
+          request.publication_admission_lease,
+          publicationAdmissionLease,
+        );
+        assert.equal(
+          Object.hasOwn(request, "publisher_lease"),
+          false,
+        );
         assert.equal(
           Object.hasOwn(request, "authority"),
           false,
         );
         assert.equal(options.clock().toISOString(), NOW);
         return {
+          schema_version:
+            "pulse-autonomous-official-jit-admission-packet-result-v4",
           verdict: "GREEN",
           role: "PRIMARY",
+          attempt_count: 1,
+          resolved_plan: {
+            schema_version:
+              "pulse-autonomous-official-jit-resolved-plan-v4",
+            resolved_plan_sha256: "f".repeat(64),
+          },
           runway_lock_sha256: LOCK_SHA256,
           admission_packet: {
             authority,
@@ -275,6 +318,10 @@ test("T-75 acquires the publisher lease, materialises fresh authority and immedi
         assert.equal(
           options.publicationEvidence,
           publicationEvidence,
+        );
+        assert.equal(
+          options.publicationAdmissionLease,
+          publicationAdmissionLease,
         );
         assert.equal(Object.hasOwn(options, "actorId"), false);
         assert.equal(Object.hasOwn(options, "reason"), false);
@@ -321,7 +368,7 @@ test("T-75 rejects a preissued authority in the eligibility job before lease or 
       repos: {},
       env: liveEnv(),
       now: () => new Date(NOW),
-      async runWithPublisherLease() {
+      async runWithPublicationAdmissionLease() {
         called = true;
       },
     },
@@ -335,4 +382,169 @@ test("T-75 rejects a preissued authority in the eligibility job before lease or 
     JSON.stringify(result),
   );
   assert.equal(result.lifecycle_mutation_attempted, false);
+});
+
+test("LIVE_GUARDED refuses every non-JIT admission before lifecycle mutation", async () => {
+  const value = fixture();
+  value.job.payload.autonomous_jit_materialisation_required = false;
+  value.job.payload.human_admission_required = true;
+  value.job.payload.admission = {
+    human_review_status: "approved",
+    actor_id: "human:test",
+    reason: "approved exact candidate",
+    confirmation_story_id: STORY_ID,
+    scheduled_for: SCHEDULED_FOR,
+    evidence: { final_mp4_sha256: HASHES.media_sha256 },
+  };
+  let admitted = false;
+
+  const result = await handlers.admit_governed_publication(
+    value.job,
+    {
+      env: liveEnv(),
+      now: () => new Date(NOW),
+      async admitPublication() {
+        admitted = true;
+      },
+    },
+  );
+
+  assert.equal(admitted, false);
+  assert.equal(result.status, "held");
+  assert.deepEqual(result.blockers, [
+    "publication_admission_authority_required",
+  ]);
+  assert.equal(result.lifecycle_mutation_attempted, false);
+  assert.equal(result.no_external_posting, true);
+});
+
+test("T-75 rejects legacy, cross-attempt or non-v4-resolved JIT results before admission", async () => {
+  const resultV4 =
+    "pulse-autonomous-official-jit-admission-packet-result-v4";
+  const resolvedV4 = {
+    schema_version: "pulse-autonomous-official-jit-resolved-plan-v4",
+    resolved_plan_sha256: "f".repeat(64),
+  };
+  for (const { jobAttempt = 1, jitResult } of [
+    {
+      jitResult: {
+        schema_version:
+          "pulse-autonomous-official-jit-admission-packet-result-v3",
+        attempt_count: 1,
+        resolved_plan: resolvedV4,
+      },
+    },
+    {
+      jitResult: {
+        schema_version: resultV4,
+        attempt_count: 2,
+        resolved_plan: resolvedV4,
+      },
+    },
+    {
+      jobAttempt: 2,
+      jitResult: {
+        schema_version: resultV4,
+        attempt_count: 1,
+        resolved_plan: resolvedV4,
+      },
+    },
+    {
+      jitResult: {
+        schema_version: resultV4,
+        resolved_plan: resolvedV4,
+      },
+    },
+    {
+      jitResult: {
+        schema_version: resultV4,
+        attempt_count: 0,
+        resolved_plan: resolvedV4,
+      },
+    },
+    {
+      jitResult: {
+        schema_version: resultV4,
+        attempt_count: Number.MAX_SAFE_INTEGER + 1,
+        resolved_plan: resolvedV4,
+      },
+    },
+    {
+      jitResult: {
+        schema_version: resultV4,
+        attempt_count: 1,
+        resolved_plan: {
+          ...resolvedV4,
+          schema_version:
+            "pulse-autonomous-official-jit-resolved-plan-v3",
+        },
+      },
+    },
+    {
+      jitResult: {
+        schema_version: resultV4,
+        attempt_count: 1,
+      },
+    },
+  ]) {
+    const value = fixture();
+    value.job.attempt_count = jobAttempt;
+    let admissionCalls = 0;
+    const result = await handlers.admit_governed_publication(
+      value.job,
+      {
+        repos: { db: {}, runtimeLeases: {} },
+        env: liveEnv(),
+        now: () => new Date(NOW),
+        autonomousWorkspaceRoot: process.cwd(),
+        channel: { id: "pulse-gaming" },
+        runtimeAuthority: {
+          runtime_authority_sha256: "b".repeat(64),
+        },
+        claimedJobAuthority: {
+          claimed_job_authority_sha256: "c".repeat(64),
+        },
+        assertLeaseHealthy() {},
+        async loadGovernedRunwayEnvelope() {
+          return { lock: value.lock, blockers: [] };
+        },
+        async runWithPublicationAdmissionLease(options) {
+          return options.task({
+            assertHealthy() {},
+            publicationAdmissionLease: {
+              acquired: true,
+              lease_name: "publication-admission:global",
+              expires_at: "2026-07-29T17:47:00.000Z",
+              current_lock_owner_sha256: "d".repeat(64),
+              claimed_job_authority_sha256: "c".repeat(64),
+            },
+          });
+        },
+        async materialiseAutonomousOfficialJitAdmissionPacket() {
+          return {
+            ...jitResult,
+            verdict: "GREEN",
+            role: "PRIMARY",
+            runway_lock_sha256: LOCK_SHA256,
+            admission_packet: {
+              authority: {
+                valid_until: "2026-07-29T17:46:00.000Z",
+              },
+            },
+          };
+        },
+        async admitAutonomousOfficialPublication() {
+          admissionCalls += 1;
+          return { admitted: true };
+        },
+      },
+    );
+
+    assert.equal(result.status, "held", JSON.stringify(result));
+    assert.deepEqual(result.blockers, [
+      "autonomous_t75_jit_admission_packet_invalid",
+    ]);
+    assert.equal(admissionCalls, 0);
+    assert.equal(result.lifecycle_mutation_attempted, false);
+  }
 });

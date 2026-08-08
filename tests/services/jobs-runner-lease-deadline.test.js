@@ -192,7 +192,8 @@ test("a heartbeat that returns after the local deadline cannot renew authority",
   const tick = runner._tick();
   while (!handlerContext) await new Promise((resolve) => setImmediate(resolve));
   const heartbeat = runner._heartbeat();
-  while (!heartbeatStarted) await new Promise((resolve) => setImmediate(resolve));
+  while (!heartbeatStarted)
+    await new Promise((resolve) => setImmediate(resolve));
   await delay(80);
   resolveHeartbeat(true);
   const heartbeatResult = await heartbeat;
@@ -471,4 +472,28 @@ test("JobsRunner uses one lease duration for claim and heartbeat", async () => {
 
   assert.equal(claimOptions.leaseMs, 400);
   assert.equal(heartbeatLeaseMs, 400);
+});
+
+test("JobsRunner refreshes its worker registry row while idle", async () => {
+  const heartbeats = [];
+  const runner = new JobsRunner({
+    workerId: "worker-idle",
+    handlers: {},
+    reposProvider: () => ({
+      jobs: {},
+      workers: {
+        heartbeat(workerId, details) {
+          heartbeats.push({ workerId, details });
+        },
+      },
+    }),
+    log() {},
+  });
+  runner.running = true;
+  runner.current = null;
+
+  assert.equal(await runner._heartbeat(), true);
+  assert.deepEqual(heartbeats, [
+    { workerId: "worker-idle", details: { status: "idle" } },
+  ]);
 });

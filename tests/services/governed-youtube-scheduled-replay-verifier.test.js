@@ -36,6 +36,7 @@ function fixture() {
     mutation: 0,
   };
   const scheduledEvidence = {
+    channel_id: BINDING.channel_id,
     schedule_verified: true,
     control_tower_verdict: "GREEN",
     control_tower_checked_at: NOW,
@@ -183,6 +184,56 @@ function fixture() {
     },
   };
 }
+
+test("scheduled replay threads trusted runtime, claimed job and canonical admission authority into its one lease", async () => {
+  const runtimeAuthority = Object.freeze({
+    runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+    child_pid: process.pid,
+    child_started_at: "2026-08-02T10:00:00.000Z",
+    authority_fingerprint: "a".repeat(64),
+  });
+  const claimedJobAuthority = Object.freeze({
+    schema_version: "pulse-claimed-job-authority-v1",
+    job_id: 73,
+    claimed_job_authority_sha256: "9".repeat(64),
+  });
+  const db = { authority: true };
+  let leaseInput = null;
+  const result = await verifyExactGovernedYoutubeScheduledReplay({
+    exactStagedBinding: BINDING,
+    externalId: EXTERNAL_ID,
+    repos: {
+      db,
+      runtimeLeases: {},
+      publicationGovernance: {
+        getLatestLifecycleEvent() {},
+        assertScheduledPlatformReleaseCommitment() {},
+      },
+    },
+    runtimeAuthority,
+    claimedJobAuthority,
+    admissionContext: { channel_id: "stacked", story_id: "forged" },
+    runWithPublisherLease(input) {
+      leaseInput = input;
+      return { captured: true };
+    },
+  });
+  assert.deepEqual(result, { captured: true });
+  assert.equal(leaseInput.db, db);
+  assert.equal(leaseInput.runtimeAuthority, runtimeAuthority);
+  assert.equal(leaseInput.claimedJobAuthority, claimedJobAuthority);
+  assert.deepEqual(leaseInput.admissionContext, {
+    schema_version: "pulse-admitted-publication-operation-v2",
+    channel_id: BINDING.channel_id,
+    story_id: BINDING.story_id,
+    platform: "youtube",
+    scheduled_event_id: BINDING.scheduled_event_id,
+    scheduled_for: BINDING.scheduled_for,
+    dispatch_idempotency_key: BINDING.dispatch_idempotency_key,
+    request_fingerprint: BINDING.request_fingerprint,
+    runway_lock_sha256: BINDING.runway_lock_sha256,
+  });
+});
 
 test("PLATFORM_SCHEDULED replay uses one fresh account-bound session for a read-only remote verification inside the publisher lease", async () => {
   const exact = fixture();

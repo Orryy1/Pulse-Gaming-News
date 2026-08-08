@@ -105,7 +105,9 @@ jobs:
           tests/services/weekly-longform-runtime-capability-probe.test.js
           tests/ops/weekly-longform-runtime-capabilities-cli.test.js
           tests/services/governed-breaking-watcher.test.js
+          tests/services/elevenlabs-credit-durable-governor.test.js
           tests/services/governed-autonomous-breaking-candidate-contract-compiler.test.js
+          tests/services/governed-autonomous-narration-timing-evidence.test.js
           tests/services/governed-autonomous-candidate-completion-receipt.test.js
           tests/services/governed-autonomous-candidate-completion-receipt-index.test.js
           tests/services/governed-autonomous-content-qa.test.js
@@ -118,11 +120,21 @@ jobs:
           tests/services/governed-autonomous-production-coordinator.test.js
           tests/services/governed-autonomous-production-job-handler.test.js
           tests/services/governed-autonomous-production-job-runner.test.js
+          tests/services/governed-autonomous-production-media-adapters.test.js
           tests/services/governed-autonomous-production-request-builder.test.js
           tests/services/governed-autonomous-production-runtime.test.js
           tests/services/governed-autonomous-t90-eligibility-source-report.test.js
           tests/services/governed-autonomous-visual-gate-decision.test.js
           tests/services/governed-autonomous-window-production-planner.test.js
+          tests/services/governed-exact-production-plan-drain.test.js
+          tests/services/autonomous-green-supplement-materializer.test.js
+          tests/services/live-runtime-transition-lease.test.js
+          tests/ops/cutover-backup-evidence.test.js
+          tests/ops/governed-exact-plan-quarantine.test.js
+          tests/ops/governed-exact-plan-quarantine-cli.test.js
+          tests/ops/governed-source-wal-clean-close.test.js
+          tests/ops/governed-terminal-job-run-repair.test.js
+          tests/ops/sqlite-canonical-logical-snapshot.test.js
           tests/services/governed-autonomous-window-production-planning-handler.test.js
           tests/services/governed-autonomous-window-reservation-set.test.js
           tests/services/governed-owned-programme-pack.test.js
@@ -143,6 +155,7 @@ jobs:
           tests/services/governed-story-intake-inventory-bridge.test.js
           tests/ops/governed-story-intake-cli.test.js
           tests/ops/governed-story-intake-inventory-bridge-cli.test.js
+          tests/ops/governed-exact-production-plan-drain-cli.test.js
           tests/services/governed-worker-containment.test.js
           tests/ops/governed-worker-containment-cli.test.js
           tests/services/sqlite-restore-rehearsal.test.js

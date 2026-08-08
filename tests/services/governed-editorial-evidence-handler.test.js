@@ -56,6 +56,93 @@ function governedDecision(storyId, overrides = {}) {
   };
 }
 
+function governedEditorialEvidenceRequest() {
+  const queued = [];
+  const ingress = enqueueGovernedEditorialEvidence({
+    story: governedStory(),
+    latestDecision: governedDecision(
+      "rss-xbox-classics",
+      {
+        decision: "review",
+        total: 70,
+      },
+    ),
+    jobs: {
+      enqueue(input) {
+        queued.push(input);
+        return { id: 80, ...input };
+      },
+    },
+    now: NOW,
+  });
+  assert.equal(ingress.queued, true);
+  assert.equal(queued.length, 1);
+  return queued[0];
+}
+
+async function runGovernedEditorialEvidenceAttempt({
+  outDir,
+  attemptCount = 1,
+  maxAttempts = 3,
+  attemptNow = "2026-07-28T14:07:00.000Z",
+  payloadOverrides = {},
+  captureBreakingSourceEvidenceOverride,
+  fetchCapture = async ({ url }) => ({
+    status: 200,
+    final_url: url,
+    content_type: "text/html",
+    bytes: Buffer.from(
+      "<article>Xbox confirmed four classic games are coming to PC with achievements planned.</article>",
+    ),
+  }),
+  claimExtractor = async () => {
+    throw new Error("editorial_transport_failed");
+  },
+  persistBreakingSourceEvidencePacket,
+} = {}) {
+  const request = governedEditorialEvidenceRequest();
+  const queued = [];
+  const result =
+    await handlers.governed_editorial_evidence_discovery(
+      {
+        ...request,
+        attempt_count: attemptCount,
+        max_attempts: maxAttempts,
+        payload: {
+          ...request.payload,
+          out_dir: outDir,
+          ...payloadOverrides,
+        },
+      },
+      {
+        now: () => attemptNow,
+        captureBreakingSourceEvidence:
+          captureBreakingSourceEvidenceOverride ||
+          captureBreakingSourceEvidence,
+        breakingFetchCapture: fetchCapture,
+        breakingClaimExtractor: claimExtractor,
+        ...(persistBreakingSourceEvidencePacket
+          ? { persistBreakingSourceEvidencePacket }
+          : {}),
+        repos: {
+          stories: {
+            get() {
+              return governedStory();
+            },
+          },
+          jobs: {
+            enqueue(input) {
+              queued.push(input);
+              return { id: queued.length, ...input };
+            },
+          },
+        },
+        log() {},
+      },
+    );
+  return { queued, result };
+}
+
 test("ordinary hunt routes governed current stories into breaking and editorial evidence lanes, never publishing", async () => {
   const breaking = governedStory();
   const editorial = governedStory({
@@ -380,6 +467,7 @@ test("editorial evidence discovery stops after sufficient official body proof an
         },
       },
       {
+        now: NOW,
         async captureBreakingSourceEvidence(options) {
           assert.equal(
             options.stopAfterOfficialConfirmation,
@@ -444,6 +532,231 @@ test("editorial evidence discovery stops after sufficient official body proof an
   assert.equal(await fs.pathExists(result.source_evidence_json), true);
   const report = await fs.readJson(result.report_json);
   assert.equal(report.capture_deadline_ms, 90_000);
+});
+
+test("editorial evidence transport failure retries the same immutable job before becoming a terminal HOLD", async (t) => {
+  const rootDir = await fs.mkdtemp(
+    path.join(
+      os.tmpdir(),
+      "pulse-editorial-evidence-retry-",
+    ),
+  );
+  t.after(() => fs.remove(rootDir));
+  async function runAttempt(attemptCount) {
+    const outDir = path.join(
+      rootDir,
+      `attempt-${attemptCount}`,
+    );
+    return runGovernedEditorialEvidenceAttempt({
+      outDir,
+      attemptCount,
+    });
+  }
+
+  const retry = await runAttempt(1);
+  assert.equal(retry.result.status, "held");
+  assert.equal(retry.result.job_outcome, "RETRY");
+  assert.equal(retry.result.retryable, true);
+  assert.equal(retry.result.retry_after_seconds, 60);
+  assert.equal(retry.result.attempt_count, 1);
+  assert.equal(retry.result.max_attempts, 3);
+  assert.equal(retry.queued.length, 0);
+  const retryPacket = await fs.readJson(
+    retry.result.source_evidence_json,
+  );
+  assert.equal(
+    retryPacket.generated_at,
+    "2026-07-28T14:07:00.000Z",
+  );
+  assert.deepEqual(retryPacket.sources[0].blockers, [
+    "source_claim_extraction_failed",
+  ]);
+  const retryReport = await fs.readJson(
+    retry.result.report_json,
+  );
+  assert.equal(
+    retryReport.attempt_observed_at,
+    "2026-07-28T14:07:00.000Z",
+  );
+
+  const terminal = await runAttempt(3);
+  assert.equal(terminal.result.status, "held");
+  assert.equal(terminal.result.job_outcome, "TERMINAL");
+  assert.equal(terminal.result.retryable, false);
+  assert.equal(
+    Object.hasOwn(
+      terminal.result,
+      "retry_after_seconds",
+    ),
+    false,
+  );
+  assert.equal(terminal.result.attempt_count, 3);
+  assert.equal(terminal.result.max_attempts, 3);
+  assert.equal(terminal.queued.length, 0);
+});
+
+test("transient source fetch failure retries but prompt-injection evidence remains terminal", async (t) => {
+  const rootDir = await fs.mkdtemp(
+    path.join(
+      os.tmpdir(),
+      "pulse-editorial-evidence-taxonomy-",
+    ),
+  );
+  t.after(() => fs.remove(rootDir));
+
+  const fetchFailure =
+    await runGovernedEditorialEvidenceAttempt({
+      outDir: path.join(rootDir, "fetch"),
+      fetchCapture: async () => {
+        throw new Error("temporary_network_failure");
+      },
+    });
+  assert.equal(fetchFailure.result.job_outcome, "RETRY");
+  assert.equal(fetchFailure.result.retryable, true);
+  assert.equal(
+    fetchFailure.result.retry_classification,
+    "TRANSIENT_SOURCE_EVIDENCE_FAILURE",
+  );
+
+  const promptInjection =
+    await runGovernedEditorialEvidenceAttempt({
+      outDir: path.join(rootDir, "prompt-injection"),
+      claimExtractor: async () => ({
+        prompt_injection_detected: true,
+      }),
+    });
+  assert.equal(
+    promptInjection.result.job_outcome,
+    "TERMINAL",
+  );
+  assert.equal(promptInjection.result.retryable, false);
+  assert.equal(
+    Object.hasOwn(
+      promptInjection.result,
+      "retry_after_seconds",
+    ),
+    false,
+  );
+});
+
+test("capture deadline and verified-packet persistence failure receive bounded retries", async (t) => {
+  const rootDir = await fs.mkdtemp(
+    path.join(
+      os.tmpdir(),
+      "pulse-editorial-evidence-transient-io-",
+    ),
+  );
+  t.after(() => fs.remove(rootDir));
+
+  const deadline =
+    await runGovernedEditorialEvidenceAttempt({
+      outDir: path.join(rootDir, "deadline"),
+      captureBreakingSourceEvidenceOverride: async () => {
+        const error = new Error(
+          "breaking_source_evidence_capture_deadline_exceeded",
+        );
+        error.code =
+          "BREAKING_SOURCE_EVIDENCE_CAPTURE_DEADLINE_EXCEEDED";
+        throw error;
+      },
+    });
+  assert.equal(deadline.result.job_outcome, "RETRY");
+  assert.equal(deadline.result.retryable, true);
+
+  const exactClaim =
+    "Xbox confirmed four classic games are coming to PC with achievements planned.";
+  const persistence =
+    await runGovernedEditorialEvidenceAttempt({
+      outDir: path.join(rootDir, "persistence"),
+      claimExtractor: async () => ({
+        extractor: {
+          id: "fixture-editorial-body-extractor",
+          version: "1.0.0",
+        },
+        claims: [
+          {
+            claim_key: "xbox.classics.pc.achievements",
+            text: exactClaim,
+            location: "body",
+          },
+        ],
+      }),
+      persistBreakingSourceEvidencePacket: async () => {
+        const error = new Error("temporary_storage_failure");
+        error.code = "EACCES";
+        throw error;
+      },
+    });
+  assert.equal(persistence.result.verdict, "HOLD");
+  assert.equal(persistence.result.job_outcome, "RETRY");
+  assert.equal(persistence.result.retryable, true);
+  assert.equal(persistence.queued.length, 0);
+});
+
+test("immutable evidence fingerprint mismatch remains terminal even when extraction also fails transiently", async (t) => {
+  const rootDir = await fs.mkdtemp(
+    path.join(
+      os.tmpdir(),
+      "pulse-editorial-evidence-integrity-",
+    ),
+  );
+  t.after(() => fs.remove(rootDir));
+
+  const result = await runGovernedEditorialEvidenceAttempt({
+    outDir: rootDir,
+    payloadOverrides: {
+      evidence_fingerprint_sha256: "0".repeat(64),
+    },
+  });
+
+  assert.ok(
+    result.result.blockers.includes(
+      "governed_editorial_evidence_fingerprint_mismatch",
+    ),
+  );
+  assert.equal(result.result.job_outcome, "TERMINAL");
+  assert.equal(result.result.retryable, false);
+  assert.equal(
+    Object.hasOwn(
+      result.result,
+      "retry_after_seconds",
+    ),
+    false,
+  );
+});
+
+test("editorial evidence retry re-evaluates a stale ingress payload against the trusted attempt clock", async (t) => {
+  const rootDir = await fs.mkdtemp(
+    path.join(
+      os.tmpdir(),
+      "pulse-editorial-evidence-stale-retry-",
+    ),
+  );
+  t.after(() => fs.remove(rootDir));
+  const attemptNow = "2026-08-10T14:07:00.000Z";
+
+  const { result } =
+    await runGovernedEditorialEvidenceAttempt({
+      outDir: rootDir,
+      attemptNow,
+    });
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.includes(
+      "editorial_story_outside_current_window",
+    ),
+    JSON.stringify(result),
+  );
+  assert.equal(result.job_outcome, "TERMINAL");
+  assert.equal(result.retryable, false);
+  assert.equal(
+    Object.hasOwn(result, "retry_after_seconds"),
+    false,
+  );
+  const report = await fs.readJson(result.report_json);
+  assert.equal(report.generated_at, attemptNow);
+  assert.equal(report.attempt_observed_at, attemptNow);
 });
 
 test("READY editorial inventory immediately wakes both evergreen and flagship planning", async (t) => {

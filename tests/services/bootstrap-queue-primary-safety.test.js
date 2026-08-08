@@ -182,6 +182,119 @@ test("bootstrap-queue reports inactive lease handles truthfully", async () => {
   }
 });
 
+test("live-guarded bootstrap self-binds the child runtime generation before scheduler start", async () => {
+  await withEnv(
+    {
+      USE_SQLITE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      PULSE_OPERATING_MODE: "LIVE_GUARDED",
+      OPERATING_MODE: "LIVE_GUARDED",
+      PULSE_LIVE_RUNTIME_INSTANCE_ID: "ri-11111111-2222-4333-8444-555555555555",
+      PULSE_LIVE_AUTHORITY_FINGERPRINT: "a".repeat(64),
+    },
+    async () => {
+      const bootstrap = loadFreshBootstrap();
+      let schedulerOptions = null;
+      const observed = [];
+      try {
+        const state = await bootstrap.start({
+          workerId: "legacy-unbound-worker",
+          autoSeed: false,
+          runRunner: false,
+          runBreakingWatcher: false,
+          repos: {},
+          runtimeAuthorityProvider({ env, pid }) {
+            observed.push({
+              runtime_instance_id: env.PULSE_LIVE_RUNTIME_INSTANCE_ID,
+              authority_fingerprint: env.PULSE_LIVE_AUTHORITY_FINGERPRINT,
+              pid,
+            });
+            return {
+              runtime_instance_id: env.PULSE_LIVE_RUNTIME_INSTANCE_ID,
+              child_pid: pid,
+              child_started_at: "2026-08-02T10:00:00.000Z",
+              authority_fingerprint: env.PULSE_LIVE_AUTHORITY_FINGERPRINT,
+            };
+          },
+          schedulerStarter(options) {
+            schedulerOptions = options;
+            return { active: true, stop() {} };
+          },
+          log() {},
+        });
+
+        assert.equal(observed.length, 1);
+        assert.equal(observed[0].pid, process.pid);
+        assert.deepEqual(schedulerOptions.runtimeAuthority, {
+          runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+          child_pid: process.pid,
+          child_started_at: "2026-08-02T10:00:00.000Z",
+          authority_fingerprint: "a".repeat(64),
+        });
+        assert.equal(
+          state.workerId,
+          "server-ri-11111111-2222-4333-8444-555555555555",
+        );
+      } finally {
+        await bootstrap.stop();
+      }
+    },
+  );
+});
+
+test("live runtime authority takes PID and canonical start time only from the child process probe", () => {
+  const bootstrap = loadFreshBootstrap();
+  const probed = [];
+  const authority = bootstrap.resolveLiveRuntimeAuthority({
+    env: {
+      PULSE_OPERATING_MODE: "LIVE_GUARDED",
+      PULSE_LIVE_RUNTIME_INSTANCE_ID: "ri-11111111-2222-4333-8444-555555555555",
+      PULSE_LIVE_AUTHORITY_FINGERPRINT: "a".repeat(64),
+      PULSE_LIVE_CHILD_PID: "9999",
+      PULSE_LIVE_CHILD_STARTED_AT: "2099-01-01T00:00:00.000Z",
+    },
+    pid: 4200,
+    processIdentityInspector(options) {
+      probed.push(options);
+      return {
+        available: true,
+        exists: true,
+        process_id: 4200,
+        process_started_at: "2026-08-02T10:00:00.000Z",
+      };
+    },
+  });
+
+  assert.deepEqual(probed, [{ pid: 4200 }]);
+  assert.deepEqual(authority, {
+    runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+    child_pid: 4200,
+    child_started_at: "2026-08-02T10:00:00.000Z",
+    authority_fingerprint: "a".repeat(64),
+  });
+  assert.throws(
+    () =>
+      bootstrap.resolveLiveRuntimeAuthority({
+        env: {
+          PULSE_OPERATING_MODE: "LIVE_GUARDED",
+          PULSE_LIVE_RUNTIME_INSTANCE_ID:
+            "ri-11111111-2222-4333-8444-555555555555",
+          PULSE_LIVE_AUTHORITY_FINGERPRINT: "a".repeat(64),
+        },
+        pid: 4200,
+        processIdentityInspector() {
+          return {
+            available: false,
+            exists: null,
+            process_id: 4200,
+            process_started_at: null,
+          };
+        },
+      }),
+    /live_runtime_generation_authority_unavailable/,
+  );
+});
+
 test("bootstrap-queue autoSeed writes through the injected repository", async () => {
   const previousSqlite = process.env.USE_SQLITE;
   const previousPrimary = process.env.PULSE_PRIMARY_INSTANCE;

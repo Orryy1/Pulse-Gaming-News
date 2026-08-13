@@ -700,6 +700,659 @@ test("platform packs keep scheduled beta access separate from paid Steam early a
   assert.equal(packs.platformNativeEvidence.verdict, "pass", JSON.stringify(packs.platformNativeEvidence, null, 2));
 });
 
+test("YouTube packs preserve approved long-form metadata separately from canonical editorial copy", () => {
+  const approvedYoutubeDescription = [
+    "Half-Life 2 RTX rebuilds the lighting, materials and models, but is it the right first trip through City 17?",
+    "Footage: NVIDIA GeForce and Digital Foundry, used as brief transformed excerpts for commentary, comparison and review.",
+    "Sources:",
+    "https://www.nvidia.com/en-eu/geforce/news/rtx-remix-half-life-2-rtx-demo-launching-march-18/",
+    "https://www.youtube.com/watch?v=QHRS0TO89UI",
+  ].join("\n\n");
+  const canonicalDescription =
+    "Half-Life 2 RTX is a spectacular visual revisit, while the original remains the better first journey. Source: NVIDIA GeForce.";
+  const packs = buildPlatformNativePublishPacks({
+    story: {
+      id: "half-life-2-rtx-evergreen",
+      canonical_subject: "Half-Life 2 RTX",
+      public_title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+      full_script: "Half-Life 2 RTX is the best-looking return to City 17, but not the best first trip.",
+      primary_source: "NVIDIA GeForce",
+      youtube_description: approvedYoutubeDescription,
+      youtube_altered_or_synthetic_content: "YES",
+      ai_usage: {
+        label_required: true,
+        realistic_altered_or_synthetic: true,
+      },
+    },
+    canonical: {
+      story_id: "half-life-2-rtx-evergreen",
+      canonical_subject: "Half-Life 2 RTX",
+      canonical_title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+      selected_title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+      description: canonicalDescription,
+      public_description: canonicalDescription,
+      youtube_description: approvedYoutubeDescription,
+      narration_script: "Half-Life 2 RTX is the best-looking return to City 17, but not the best first trip.",
+      first_spoken_line: "Half-Life 2 RTX is the best-looking return to City 17.",
+      primary_source: "NVIDIA GeForce",
+    },
+  });
+
+  assert.equal(packs.outputs.youtube_shorts.description, approvedYoutubeDescription);
+  assert.equal(packs.outputs.youtube_shorts.synthetic_media_required, true);
+  assert.equal(packs.outputs.youtube_shorts.altered_synthetic_disclosure_required, true);
+  assert.equal(packs.outputs.youtube_shorts.altered_synthetic_disclosure_setting, "YES");
+  assert.equal(packs.outputs.youtube_shorts.altered_synthetic_disclosure_present, false);
+  assert.doesNotMatch(canonicalDescription, /https?:\/\//);
+  assert.ok(canonicalDescription.length <= 420);
+});
+
+test("goal proof package keeps canonical copy concise while carrying the approved YouTube description", () => {
+  const source = greenStory();
+  const canonicalDescription =
+    "Half-Life 2 RTX is a spectacular visual revisit, while the original remains the better first journey. Source: NVIDIA GeForce.";
+  const approvedYoutubeDescription = [
+    "Half-Life 2 RTX rebuilds the lighting, materials and models, but is it the right first trip through City 17?",
+    "Synthetic narration was generated locally with Chatterbox TTS from the authorised Liam voice reference.",
+    "Sources:",
+    "https://www.nvidia.com/en-eu/geforce/news/rtx-remix-half-life-2-rtx-demo-launching-march-18/",
+  ].join("\n\n");
+  Object.assign(source, {
+    id: "half-life-2-rtx-evergreen",
+    canonical_subject: "Half-Life 2 RTX",
+    canonical_game: "Half-Life 2",
+    canonical_angle: "spectacular visual revisit with the original as the better first journey",
+    title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+    public_title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+    suggested_title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+    suggested_thumbnail_text: "BEST-LOOKING RETURN",
+    primary_source: "NVIDIA GeForce",
+    source_name: "NVIDIA GeForce",
+    description: canonicalDescription,
+    public_description: canonicalDescription,
+    youtube_description: approvedYoutubeDescription,
+    youtube_altered_or_synthetic_content: "YES",
+    platform_disclosures: {},
+    ai_usage: {
+      label_required: true,
+      realistic_altered_or_synthetic: true,
+    },
+  });
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger,
+    platforms: ["youtube"],
+    generatedAt: "2026-08-13T13:00:00.000Z",
+  });
+
+  assert.equal(pack.canonical_story_manifest.description, canonicalDescription);
+  assert.equal(pack.canonical_story_manifest.public_description, canonicalDescription);
+  assert.equal(pack.canonical_story_manifest.youtube_description, approvedYoutubeDescription);
+  assert.equal(pack.youtube_publish_pack.description, approvedYoutubeDescription);
+  assert.equal(pack.youtube_publish_pack.altered_synthetic_disclosure_setting, "YES");
+  assert.equal(pack.youtube_publish_pack.altered_synthetic_disclosure_present, false);
+  assert.equal(
+    pack.coherence_report.manifest.thumbnail_headline,
+    pack.canonical_story_manifest.thumbnail_headline,
+  );
+  assert.equal(
+    pack.coherence_report.manifest.description,
+    pack.canonical_story_manifest.description,
+  );
+  assert.equal(pack.platform_policy_report.ai_disclosure_gate.disclosure_required, true);
+  assert.equal(pack.platform_policy_report.ai_disclosure_gate.disclosure_present, false);
+  assert.deepEqual(
+    pack.platform_policy_report.ai_disclosure_gate.failures,
+    ["policy:ai_disclosure_required_missing"],
+  );
+  assert.equal(
+    pack.platform_policy_report.disclosure_requirements.altered_or_synthetic_content,
+    true,
+  );
+  assert.equal(pack.platform_policy_report.disclosure_requirements.affiliate, false);
+  assert.equal(
+    pack.publish_verdict.reason_codes.includes("public_output:raw_article_title_shape"),
+    false,
+  );
+});
+
+test("goal proof package makes final coherence warnings authoritative", () => {
+  const source = greenStory();
+  source.public_description = `${source.canonical_subject} gives players a clear new consequence.`;
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger: rightsForGreenStory(source),
+    platforms: ["youtube"],
+    generatedAt: "2026-08-13T13:01:00.000Z",
+  });
+
+  assert.equal(pack.coherence_report.result, "warn");
+  assert.ok(pack.coherence_report.warnings.includes("public_output:description_source_not_explicit"));
+  assert.ok(pack.publish_verdict.warnings.includes("public_output:description_source_not_explicit"));
+  assert.notEqual(pack.publish_verdict.verdict, "GREEN");
+  assert.equal(pack.publish_verdict.can_auto_publish, false);
+  assert.ok(pack.acceptance_entry.blockers.includes("governance:AMBER"));
+});
+
+test("goal proof package preserves satisfied paid-promotion disclosure state", () => {
+  const source = greenStory();
+  source.paid_promotion_required = true;
+  source.platform_disclosures = {
+    ...source.platform_disclosures,
+    youtube: {
+      paid_promotion_toggle: true,
+      paid_promotion_disclosed: true,
+    },
+  };
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger: rightsForGreenStory(source),
+    platforms: ["youtube"],
+    generatedAt: "2026-08-13T13:01:30.000Z",
+  });
+
+  assert.equal(pack.platform_policy_report.platform_policy_gate.paid_promotion_required, true);
+  assert.equal(pack.platform_policy_report.platform_policy_gate.paid_promotion_present, true);
+  assert.equal(pack.platform_policy_report.disclosure_requirements.paid_promotion, true);
+  assert.equal(pack.platform_policy_report.disclosure_evidence.paid_promotion.present, true);
+  assert.equal(pack.youtube_publish_pack.paid_promotion_disclosure_required, true);
+  assert.equal(pack.youtube_publish_pack.paid_promotion_disclosure_present, true);
+});
+
+test("YouTube paid-promotion state accepts affirmative legacy evidence and makes presence monotonic", () => {
+  const packs = buildPlatformNativePublishPacks({
+    story: {
+      id: "paid-promotion-legacy",
+      canonical_subject: "Half-Life 2 RTX",
+      full_script: "Half-Life 2 RTX rebuilds City 17.",
+      youtube_paid_promotion_disclosed: "applied",
+      platform_disclosures: {
+        youtube: {
+          paid_promotion_disclosure_present: "YES",
+        },
+      },
+    },
+    canonical: {
+      story_id: "paid-promotion-legacy",
+      canonical_subject: "Half-Life 2 RTX",
+      selected_title: "Half-Life 2 RTX Rebuilds City 17",
+      description: "Half-Life 2 RTX rebuilds City 17. Source: NVIDIA GeForce.",
+      narration_script: "Half-Life 2 RTX rebuilds City 17.",
+      first_spoken_line: "Half-Life 2 RTX rebuilds City 17.",
+      primary_source: "NVIDIA GeForce",
+    },
+  });
+
+  assert.equal(packs.outputs.youtube_shorts.paid_promotion_disclosure_required, true);
+  assert.equal(packs.outputs.youtube_shorts.paid_promotion_disclosure_present, true);
+});
+
+test("YouTube synthetic disclosure state merges authority monotonically and rejects false-like presence", () => {
+  const baseCanonical = {
+    story_id: "synthetic-monotonic-authority",
+    canonical_subject: "Synthetic disclosure test",
+    selected_title: "Synthetic Disclosure Test",
+    description: "A source-backed disclosure test. Source: Pulse Gaming.",
+    narration_script: "This is a source-backed disclosure test.",
+    first_spoken_line: "This is a source-backed disclosure test.",
+    primary_source: "Pulse Gaming",
+  };
+  const canonicalYes = buildPlatformNativePublishPacks({
+    story: {
+      id: baseCanonical.story_id,
+      canonical_subject: baseCanonical.canonical_subject,
+      full_script: baseCanonical.narration_script,
+      primary_source: baseCanonical.primary_source,
+      youtube_altered_or_synthetic_content: "NO",
+    },
+    canonical: {
+      ...baseCanonical,
+      youtube_altered_or_synthetic_content: "YES",
+    },
+  }).outputs.youtube_shorts;
+  assert.equal(canonicalYes.synthetic_media_required, true);
+  assert.equal(canonicalYes.altered_synthetic_disclosure_setting, "YES");
+  assert.equal(canonicalYes.altered_synthetic_disclosure_present, false);
+
+  const falseLikePresence = buildPlatformNativePublishPacks({
+    story: {
+      id: baseCanonical.story_id,
+      canonical_subject: baseCanonical.canonical_subject,
+      full_script: baseCanonical.narration_script,
+      primary_source: baseCanonical.primary_source,
+      ai_usage: { label_required: true },
+      platform_disclosures: {
+        youtube: { altered_or_synthetic: "false", ai_disclosure: "NO" },
+      },
+    },
+    canonical: baseCanonical,
+  }).outputs.youtube_shorts;
+  assert.equal(falseLikePresence.synthetic_media_required, true);
+  assert.equal(falseLikePresence.altered_synthetic_disclosure_setting, "YES");
+  assert.equal(falseLikePresence.altered_synthetic_disclosure_present, false);
+
+  const monotonicPresence = buildPlatformNativePublishPacks({
+    story: {
+      id: baseCanonical.story_id,
+      canonical_subject: baseCanonical.canonical_subject,
+      full_script: baseCanonical.narration_script,
+      primary_source: baseCanonical.primary_source,
+      ai_disclosure_gate: { disclosure_present: false },
+    },
+    canonical: {
+      ...baseCanonical,
+      ai_disclosure_gate: { disclosure_required: true, disclosure_present: true },
+    },
+  }).outputs.youtube_shorts;
+  assert.equal(monotonicPresence.synthetic_media_required, true);
+  assert.equal(monotonicPresence.altered_synthetic_disclosure_present, true);
+});
+
+test("goal proof package carries supplied narration and timestamp lineage into acceptance artefacts", async () => {
+  const source = greenStory();
+  const audioSha256 = "a".repeat(64);
+  const timestampsSha256 = "b".repeat(64);
+  source.audio_manifest = {
+    ...source.audio_manifest,
+    narration_audio_sha256: audioSha256,
+    resolved_narration_audio_path: source.audio_path,
+    word_timestamps_path: source.word_timestamps_path,
+    resolved_word_timestamps_path: source.word_timestamps_path,
+    word_timestamps_sha256: timestampsSha256,
+  };
+  source.narration_manifest = {
+    schema_version: 1,
+    story_id: source.id,
+    verdict: "GREEN",
+    status: "PASS",
+    audio_sha256: audioSha256,
+    word_timestamps_sha256: timestampsSha256,
+    blockers: [],
+    local_only: true,
+  };
+  source.caption_manifest = {
+    ...source.caption_manifest,
+    narration_audio_sha256: audioSha256,
+    word_timestamps_path: source.word_timestamps_path,
+    resolved_word_timestamps_path: source.word_timestamps_path,
+    word_timestamps_sha256: timestampsSha256,
+  };
+  source.render_manifest = {
+    ...source.render_manifest,
+    input_fingerprint: {
+      audio_sha256: audioSha256,
+      word_timestamps_sha256: timestampsSha256,
+    },
+  };
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger,
+    platforms: ["youtube"],
+    generatedAt: "2026-08-13T13:02:00.000Z",
+  });
+  assert.equal(pack.audio_manifest.narration_audio_sha256, audioSha256);
+  assert.equal(pack.audio_manifest.schema_version, 1);
+  assert.equal(pack.audio_manifest.story_id, source.id);
+  assert.equal(pack.audio_manifest.word_timestamps_sha256, timestampsSha256);
+  assert.equal(pack.narration_manifest.audio_sha256, audioSha256);
+  assert.equal(pack.narration_manifest.verdict, "GREEN");
+  assert.equal(pack.narration_manifest.word_timestamps_sha256, timestampsSha256);
+  assert.equal(pack.caption_manifest.word_timestamps_sha256, timestampsSha256);
+  assert.equal(pack.render_manifest.input_fingerprint.audio_sha256, audioSha256);
+  assert.equal(pack.render_manifest.input_fingerprint.word_timestamps_sha256, timestampsSha256);
+  assert.equal(
+    pack.publish_verdict.reason_codes.some((reason) => reason.startsWith("lineage:")),
+    false,
+  );
+
+  source.narration_manifest.verdict = "OK";
+  source.narration_manifest.status = "COMPLETE";
+  const compatibleLegacyPack = buildGoalProofPackage({
+    story: source,
+    rightsLedger,
+    platforms: ["youtube"],
+    generatedAt: "2026-08-13T13:02:01.000Z",
+  });
+  assert.equal(
+    compatibleLegacyPack.publish_verdict.reason_codes.includes(
+      "lineage:narration_manifest_not_green",
+    ),
+    false,
+  );
+
+  const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-lineage-"));
+  await writeGoalProofPackageArtifacts(pack, { outputDir });
+  assert.deepEqual(
+    await fs.readJson(path.join(outputDir, "narration_manifest.json")),
+    pack.narration_manifest,
+  );
+});
+
+test("goal proof package blocks incomplete GREEN final narration lineage", () => {
+  const source = greenStory();
+  const audioSha256 = "a".repeat(64);
+  const timestampsSha256 = "b".repeat(64);
+  source.audio_manifest = {
+    ...source.audio_manifest,
+    narration_audio_sha256: audioSha256,
+    word_timestamps_sha256: timestampsSha256,
+  };
+  source.narration_manifest = {
+    schema_version: 1,
+    story_id: source.id,
+    verdict: "GREEN",
+    audio_sha256: audioSha256,
+    word_timestamps_sha256: timestampsSha256,
+    blockers: [],
+  };
+  source.caption_manifest = {
+    ...source.caption_manifest,
+    word_timestamps_sha256: timestampsSha256,
+  };
+  source.render_manifest = {
+    ...source.render_manifest,
+    input_fingerprint: {
+      audio_sha256: audioSha256,
+      word_timestamps_sha256: timestampsSha256,
+    },
+  };
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger: rightsForGreenStory(source),
+    platforms: ["youtube"],
+    generatedAt: "2026-08-13T13:02:15.000Z",
+  });
+
+  assert.equal(pack.publish_verdict.verdict, "RED");
+  assert.ok(
+    pack.publish_verdict.reason_codes.includes(
+      "lineage:caption_manifest_audio_sha256_missing",
+    ),
+  );
+});
+
+test("goal proof package blocks failed or internally blocked narration evidence", () => {
+  for (const { notGreen, ...narrationPatch } of [
+    { verdict: "RED", status: "FAIL", blockers: [], notGreen: true },
+    { verdict: "GREEN", status: "FAIL", blockers: [], notGreen: true },
+    { verdict: "INDETERMINATE", status: "PASS", blockers: [], notGreen: true },
+    { verdict: "GREEN", status: "AMBER", blockers: [], notGreen: true },
+    { verdict: "GREEN", status: "PASS", blockers: ["voice_quality_hold"], notGreen: false },
+  ]) {
+    const source = greenStory();
+    const hash = "a".repeat(64);
+    const timestamps = "b".repeat(64);
+    source.audio_manifest = {
+      ...source.audio_manifest,
+      narration_audio_sha256: hash,
+      word_timestamps_sha256: timestamps,
+    };
+    source.narration_manifest = {
+      schema_version: 1,
+      story_id: source.id,
+      audio_sha256: hash,
+      word_timestamps_sha256: timestamps,
+      ...narrationPatch,
+    };
+    source.caption_manifest = {
+      ...source.caption_manifest,
+      narration_audio_sha256: hash,
+      word_timestamps_sha256: timestamps,
+    };
+    source.render_manifest = {
+      ...source.render_manifest,
+      input_fingerprint: {
+        audio_sha256: hash,
+        word_timestamps_sha256: timestamps,
+      },
+    };
+
+    const pack = buildGoalProofPackage({
+      story: source,
+      rightsLedger: rightsForGreenStory(source),
+      platforms: ["youtube"],
+      generatedAt: "2026-08-13T13:13:00.000Z",
+    });
+
+    assert.equal(pack.publish_verdict.verdict, "RED");
+    if (notGreen) {
+      assert.ok(pack.publish_verdict.reason_codes.includes("lineage:narration_manifest_not_green"));
+    }
+    if (narrationPatch.blockers.length) {
+      assert.ok(
+        pack.publish_verdict.reason_codes.includes("lineage:narration_manifest_blockers_present"),
+      );
+    }
+  }
+});
+
+test("goal proof package canonicalises supplied lineage identity and blocks conflicting hashes", () => {
+  const source = greenStory();
+  source.audio_manifest = {
+    ...source.audio_manifest,
+    schema_version: 88,
+    story_id: "another-story",
+    narration_audio_sha256: "a".repeat(64),
+    word_timestamps_sha256: "b".repeat(64),
+  };
+  source.narration_manifest = {
+    schema_version: 99,
+    story_id: "another-story",
+    verdict: "GREEN",
+    status: "PASS",
+    audio_sha256: "c".repeat(64),
+    lineage: { final_audio_sha256: "1".repeat(64) },
+    word_timestamps_sha256: "d".repeat(64),
+    blockers: [],
+  };
+  source.caption_manifest = {
+    ...source.caption_manifest,
+    schema_version: 77,
+    story_id: "another-story",
+    narration_audio_sha256: "not-a-sha256",
+    word_timestamps_sha256: "e".repeat(64),
+  };
+  source.render_manifest = {
+    ...source.render_manifest,
+    schema_version: 66,
+    story_id: "another-story",
+    input_fingerprint: {
+      audio_sha256: "f".repeat(64),
+      word_timestamps_sha256: "0".repeat(64),
+    },
+  };
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger: rightsForGreenStory(source),
+    platforms: ["youtube"],
+    generatedAt: "2026-08-13T13:02:30.000Z",
+  });
+
+  assert.equal(pack.narration_manifest.schema_version, 1);
+  assert.equal(pack.narration_manifest.story_id, source.id);
+  assert.equal(pack.caption_manifest.schema_version, 1);
+  assert.equal(pack.caption_manifest.story_id, source.id);
+  assert.equal(pack.render_manifest.schema_version, 1);
+  assert.equal(pack.render_manifest.story_id, source.id);
+  assert.equal(pack.publish_verdict.verdict, "RED");
+  for (const blocker of [
+    "lineage:narration_manifest_story_id_mismatch",
+    "lineage:narration_manifest_schema_version_mismatch",
+    "lineage:audio_manifest_story_id_mismatch",
+    "lineage:audio_manifest_schema_version_mismatch",
+    "lineage:caption_manifest_story_id_mismatch",
+    "lineage:render_manifest_story_id_mismatch",
+    "lineage:audio_sha256_conflict",
+    "lineage:audio_sha256_invalid",
+    "lineage:word_timestamps_sha256_conflict",
+  ]) {
+    assert.ok(
+      pack.publish_verdict.reason_codes.includes(blocker),
+      `${blocker}: ${JSON.stringify(pack.publish_verdict.reason_codes)}`,
+    );
+  }
+});
+
+test("goal proof package prefers bounded public copy over a long URL-bearing article description", () => {
+  const source = greenStory();
+  const publicDescription =
+    "Half-Life 2 RTX rebuilds City 17, while the original remains the better first journey. Source: NVIDIA GeForce.";
+  Object.assign(source, {
+    id: "half-life-2-rtx-bounded-copy",
+    canonical_subject: "Half-Life 2 RTX",
+    canonical_game: "Half-Life 2",
+    public_description: publicDescription,
+    description: `${"Article background ".repeat(26)}https://example.com/long-source`,
+  });
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger,
+    platforms: ["youtube"],
+    generatedAt: "2026-08-13T13:05:00.000Z",
+  });
+
+  assert.equal(pack.canonical_story_manifest.description, publicDescription);
+  assert.equal(pack.canonical_story_manifest.public_description, publicDescription);
+  assert.ok(pack.canonical_story_manifest.description.length <= 420);
+  assert.doesNotMatch(pack.canonical_story_manifest.description, /https?:\/\//);
+});
+
+test("goal proof package skips a URL-only public candidate when bounding canonical copy", () => {
+  const source = greenStory();
+  Object.assign(source, {
+    id: "half-life-2-rtx-url-only-public-copy",
+    canonical_subject: "Half-Life 2 RTX",
+    canonical_game: "Half-Life 2",
+    public_description: "https://example.com/only-a-link",
+    description: `Half-Life 2 RTX rebuilds City 17. ${"The review compares the remake and original. ".repeat(14)}`,
+  });
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger,
+    platforms: ["youtube"],
+    generatedAt: "2026-08-13T13:06:00.000Z",
+  });
+
+  assert.ok(pack.canonical_story_manifest.description.length > 0);
+  assert.ok(pack.canonical_story_manifest.description.length <= 420);
+  assert.doesNotMatch(pack.canonical_story_manifest.description, /https?:\/\//);
+  assert.equal(
+    pack.canonical_story_manifest.public_description,
+    pack.canonical_story_manifest.description,
+  );
+});
+
+test("goal proof package rejects bare-domain and protocol-relative canonical copy candidates", () => {
+  const source = greenStory();
+  Object.assign(source, {
+    id: "half-life-2-rtx-bare-domain-copy",
+    canonical_subject: "Half-Life 2 RTX",
+    canonical_game: "Half-Life 2",
+    public_description: "Read the full breakdown at www.example.com/half-life-2-rtx",
+    description:
+      "Half-Life 2 RTX rebuilds City 17. Source notes live at //example.org/source and example.net/review.",
+  });
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger,
+    platforms: ["youtube"],
+    generatedAt: "2026-08-13T13:12:00.000Z",
+  });
+
+  assert.ok(pack.canonical_story_manifest.description.length > 0);
+  assert.ok(pack.canonical_story_manifest.description.length <= 420);
+  assert.doesNotMatch(
+    pack.canonical_story_manifest.description,
+    /(?:https?:)?\/\/|\bwww\.|\bexample\.(?:com|org|net)\b/i,
+  );
+});
+
+test("YouTube packs preserve established synthetic-disclosure evidence and resolve required NO contradictions", () => {
+  const canonical = {
+    story_id: "synthetic-disclosure-compatibility",
+    canonical_subject: "Half-Life 2 RTX",
+    selected_title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+    description: "Half-Life 2 RTX rebuilds City 17. Source: NVIDIA GeForce.",
+    narration_script: "Half-Life 2 RTX rebuilds City 17.",
+    first_spoken_line: "Half-Life 2 RTX rebuilds City 17.",
+    primary_source: "NVIDIA GeForce",
+    ai_disclosure_gate: {
+      disclosure_required: true,
+      disclosure_present: true,
+      verdict: "pass",
+    },
+  };
+  const compatible = buildPlatformNativePublishPacks({
+    story: {
+      id: canonical.story_id,
+      canonical_subject: canonical.canonical_subject,
+      full_script: canonical.narration_script,
+      primary_source: canonical.primary_source,
+      platform_disclosures: {
+        youtube: { altered_or_synthetic: true },
+      },
+    },
+    canonical,
+  }).outputs.youtube_shorts;
+  assert.equal(compatible.synthetic_media_required, true);
+  assert.equal(compatible.altered_synthetic_disclosure_setting, "YES");
+  assert.equal(compatible.altered_synthetic_disclosure_present, true);
+
+  const canonicalAuthority = buildPlatformNativePublishPacks({
+    story: {
+      id: canonical.story_id,
+      canonical_subject: canonical.canonical_subject,
+      full_script: canonical.narration_script,
+      primary_source: canonical.primary_source,
+      platform_disclosures: {},
+      ai_disclosure_gate: {},
+    },
+    canonical,
+  }).outputs.youtube_shorts;
+  assert.equal(canonicalAuthority.synthetic_media_required, true);
+  assert.equal(canonicalAuthority.altered_synthetic_disclosure_setting, "YES");
+  assert.equal(canonicalAuthority.altered_synthetic_disclosure_present, true);
+
+  const canonicalUsage = buildPlatformNativePublishPacks({
+    story: {
+      id: canonical.story_id,
+      canonical_subject: canonical.canonical_subject,
+      full_script: canonical.narration_script,
+      primary_source: canonical.primary_source,
+    },
+    canonical: {
+      ...canonical,
+      ai_disclosure_gate: {},
+      ai_usage: { label_required: true },
+    },
+  }).outputs.youtube_shorts;
+  assert.equal(canonicalUsage.synthetic_media_required, true);
+  assert.equal(canonicalUsage.altered_synthetic_disclosure_setting, "YES");
+  assert.equal(canonicalUsage.altered_synthetic_disclosure_present, false);
+
+  const contradictory = buildPlatformNativePublishPacks({
+    story: {
+      id: canonical.story_id,
+      canonical_subject: canonical.canonical_subject,
+      full_script: canonical.narration_script,
+      primary_source: canonical.primary_source,
+      youtube_altered_or_synthetic_content: "NO",
+      ai_usage: { label_required: true },
+    },
+    canonical: { ...canonical, ai_disclosure_gate: {} },
+  }).outputs.youtube_shorts;
+  assert.equal(contradictory.synthetic_media_required, true);
+  assert.equal(contradictory.altered_synthetic_disclosure_setting, "YES");
+  assert.equal(contradictory.altered_synthetic_disclosure_present, false);
+});
+
 test("YouTube platform packs preserve required Microsoft game-content notices", () => {
   const editorialDescription =
     "Xbox Backward Compatibility on PC launches with its first four games, all included in every Game Pass plan. " +
@@ -745,6 +1398,134 @@ test("YouTube platform packs preserve required Microsoft game-content notices", 
     false,
   );
   assert.equal(mediaHousePrivate.platformCopyTooPlain({ outputs: packs.outputs }), false);
+});
+
+test("explicit YouTube rights notice survives generated-description fallback verbatim", () => {
+  const story = greenStory();
+  story.id = "explicit_youtube_rights_notice_variant";
+  story.youtube_required_rights_notice =
+    "Required creator-use wording variant: retain this exact rights notice in the YouTube description.";
+  delete story.youtube_description;
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-08-13T08:36:00.000Z",
+  });
+
+  assert.match(
+    pack.canonical_story_manifest.youtube_description,
+    /Required creator-use wording variant: retain this exact rights notice in the YouTube description\.$/,
+  );
+  assert.match(
+    pack.youtube_publish_pack.description,
+    /Required creator-use wording variant: retain this exact rights notice in the YouTube description\.$/,
+  );
+});
+
+test("approved YouTube copy cannot bypass a required Microsoft game-content notice", () => {
+  const approvedDescription = "The original Xbox classics are now available on PC. Source: Xbox Wire.";
+  const rightsNotice =
+    "BLiNX, Conker, Crimson Skies and Fuzion Frenzy © Microsoft Corporation. " +
+    "This video was created under Microsoft's Game Content Usage Rules and is not endorsed by Microsoft. " +
+    "Rules: https://www.xbox.com/en-us/developers/rules";
+  const canonical = {
+    story_id: "xbox_bc_pc_approved_copy_notice",
+    canonical_subject: "Xbox Backward Compatibility on PC",
+    selected_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    description: "Four original Xbox games are now available on PC. Source: Xbox Wire.",
+    narration_script: "Four original Xbox games just crossed onto PC.",
+    first_spoken_line: "Four original Xbox games just crossed onto PC.",
+    primary_source: "Xbox Wire",
+  };
+  const packs = buildPlatformNativePublishPacks({
+    story: {
+      id: canonical.story_id,
+      canonical_subject: canonical.canonical_subject,
+      full_script: canonical.narration_script,
+      primary_source: canonical.primary_source,
+      youtube_description: approvedDescription,
+      youtube_required_rights_notice: rightsNotice,
+    },
+    canonical,
+  });
+
+  assert.equal(
+    packs.outputs.youtube_shorts.description,
+    `${approvedDescription}\n\n${rightsNotice}`,
+  );
+});
+
+test("approved YouTube copy does not duplicate an equivalent Microsoft game-content notice", () => {
+  const requiredNotice =
+    "BLiNX, Conker, Crimson Skies and Fuzion Frenzy © Microsoft Corporation. " +
+    "This video was created under Microsoft's Game Content Usage Rules and is not endorsed by Microsoft. " +
+    "Rules: https://www.xbox.com/en-us/developers/rules";
+  const approvedDescription =
+    "The original Xbox classics are now available on PC. " +
+    "BLiNX, Conker, Crimson Skies and Fuzion Frenzy © Microsoft Corporation. " +
+    "This video was created under Microsoft’s Game Content Usage Rules and is not endorsed by Microsoft. " +
+    "Rules: https://www.xbox.com/en-us/developers/rules";
+  const packs = buildPlatformNativePublishPacks({
+    story: {
+      id: "xbox_notice_deduplication",
+      canonical_subject: "Xbox Backward Compatibility on PC",
+      full_script: "Four original Xbox games just crossed onto PC.",
+      primary_source: "Xbox Wire",
+      youtube_description: approvedDescription,
+      youtube_required_rights_notice: requiredNotice,
+    },
+    canonical: {
+      story_id: "xbox_notice_deduplication",
+      canonical_subject: "Xbox Backward Compatibility on PC",
+      selected_title: "4 Xbox Classics Hit PC",
+      description: "Four original Xbox games are now available on PC. Source: Xbox Wire.",
+      narration_script: "Four original Xbox games just crossed onto PC.",
+      first_spoken_line: "Four original Xbox games just crossed onto PC.",
+      primary_source: "Xbox Wire",
+    },
+  });
+
+  assert.equal(packs.outputs.youtube_shorts.description, approvedDescription);
+  assert.equal(
+    (packs.outputs.youtube_shorts.description.match(/game content usage rules/gi) || []).length,
+    1,
+  );
+});
+
+test("approved YouTube copy cannot replace game-specific attribution with a generic Microsoft notice", () => {
+  const requiredNotice =
+    "BLiNX, Conker, Crimson Skies and Fuzion Frenzy © Microsoft Corporation. " +
+    "This video was created under Microsoft's Game Content Usage Rules and is not endorsed by Microsoft. " +
+    "Rules: https://www.xbox.com/en-us/developers/rules";
+  const partialNotice =
+    "The original Xbox classics are now available on PC. " +
+    "This video was created under Microsoft’s Game Content Usage Rules and is not endorsed by Microsoft. " +
+    "Rules: https://www.xbox.com/en-us/developers/rules";
+  const packs = buildPlatformNativePublishPacks({
+    story: {
+      id: "xbox_notice_game_attribution_required",
+      canonical_subject: "Xbox Backward Compatibility on PC",
+      full_script: "Four original Xbox games just crossed onto PC.",
+      primary_source: "Xbox Wire",
+      youtube_description: partialNotice,
+      youtube_required_rights_notice: requiredNotice,
+    },
+    canonical: {
+      story_id: "xbox_notice_game_attribution_required",
+      canonical_subject: "Xbox Backward Compatibility on PC",
+      selected_title: "4 Xbox Classics Hit PC",
+      description: "Four original Xbox games are now available on PC. Source: Xbox Wire.",
+      narration_script: "Four original Xbox games just crossed onto PC.",
+      first_spoken_line: "Four original Xbox games just crossed onto PC.",
+      primary_source: "Xbox Wire",
+    },
+  });
+
+  assert.equal(
+    packs.outputs.youtube_shorts.description,
+    `${partialNotice}\n\n${requiredNotice}`,
+  );
 });
 
 test("goal proof package turns source-admin copy into attention-led Shorts packaging", () => {

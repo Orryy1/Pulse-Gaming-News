@@ -323,6 +323,39 @@ test("Studio Governance Engine hard-fails leaked templates, missing rights, mess
   assert.ok(report.correction_plan.actions.length >= 5);
 });
 
+test("Studio Governance Engine treats YouTube YES as required without accepting false-like disclosure evidence", () => {
+  const story = cleanStory({
+    youtube_altered_or_synthetic_content: "YES",
+    platform_disclosures: {
+      youtube: {
+        altered_or_synthetic: "false",
+        ai_disclosure: "NO",
+        paid_promotion: true,
+        paid_promotion_toggle: "false",
+      },
+      tiktok: { ai_generated_content_label: "NO" },
+    },
+  });
+
+  const report = buildStudioGovernanceReport({
+    story,
+    rightsLedger: rightsLedgerFor(story),
+    generatedAt: "2026-08-13T13:11:00.000Z",
+  });
+
+  assert.equal(report.ai_disclosure_gate.disclosure_required, true);
+  assert.equal(report.ai_disclosure_gate.disclosure_present, false);
+  assert.equal(report.platform_policy_gate.paid_promotion_required, true);
+  assert.equal(report.platform_policy_gate.paid_promotion_present, false);
+  assert.equal(report.publish_manifest.publish_status, "RED");
+  assert.ok(report.rejection_reasons.reason_codes.includes("policy:ai_disclosure_required_missing"));
+  assert.ok(
+    report.rejection_reasons.reason_codes.includes(
+      "policy:youtube_paid_promotion_disclosure_missing",
+    ),
+  );
+});
+
 // goal-test:finance_crypto_unsafe_wording_rejection
 test("Studio Governance Engine blocks finance and crypto promotion without approval", () => {
   const story = cleanStory({

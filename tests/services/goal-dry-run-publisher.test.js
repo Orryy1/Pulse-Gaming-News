@@ -2737,6 +2737,274 @@ test("goal dry-run publisher carries an explicit no-affiliate decision into the 
   });
 });
 
+test("goal dry-run publisher resolves an affiliate requirement from its governed caption evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-affiliate-disclosure-"));
+  const storyPackage = await makeStoryPackage(root);
+  const policyPath = path.join(storyPackage.artifact_dir, "platform_policy_report.json");
+  await fs.writeJson(policyPath, {
+    status: "pass",
+    disclosure_requirements: { affiliate: true },
+    disclosure_text: "Affiliate links may earn us a commission.",
+  }, { spaces: 2 });
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    disclosure_status: {
+      required: true,
+      type: "affiliate",
+      caption: "Affiliate links may earn us a commission.",
+    },
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-08-13T14:00:30.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  const youtube = plan.actions.find((item) => item.platform === "youtube_shorts");
+  assert.ok(youtube, JSON.stringify({ blocked: plan.blocked_stories }));
+  assert.equal(youtube.disclosure_requirements.affiliate, true);
+  assert.equal(youtube.disclosure_requirements_resolved, true);
+});
+
+test("goal dry-run publisher rejects affiliate denial text as disclosure evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-affiliate-denial-"));
+  const storyPackage = await makeStoryPackage(root);
+  const policyPath = path.join(storyPackage.artifact_dir, "platform_policy_report.json");
+  await fs.writeJson(policyPath, {
+    status: "pass",
+    disclosure_requirements: { affiliate: true },
+    disclosure_text: "Affiliate links may earn us a commission.",
+  }, { spaces: 2 });
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    disclosure_status: {
+      required: true,
+      type: "affiliate",
+      caption: "Forza Horizon 6: this is not an affiliate link.",
+    },
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-08-13T14:00:31.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.actions.some((item) => item.platform === "youtube_shorts"), false);
+  assert.ok(
+    plan.blocked_actions.some((item) => item.blockers.includes("disclosure_requirements_unresolved")),
+    JSON.stringify({ blockedStories: plan.blocked_stories, blockedActions: plan.blocked_actions }),
+  );
+});
+
+test("goal dry-run publisher accepts a governed #ad affiliate disclosure", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-affiliate-hashtag-"));
+  const storyPackage = await makeStoryPackage(root);
+  const policyPath = path.join(storyPackage.artifact_dir, "platform_policy_report.json");
+  await fs.writeJson(policyPath, {
+    status: "pass",
+    disclosure_requirements: { affiliate: true },
+    disclosure_text: "Affiliate links may earn us a commission.",
+  }, { spaces: 2 });
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    disclosure_status: {
+      required: true,
+      type: "affiliate",
+      caption: "#ad",
+    },
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-08-13T14:00:32.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  const youtube = plan.actions.find((item) => item.platform === "youtube_shorts");
+  assert.ok(youtube, JSON.stringify({ blocked: plan.blocked_stories, actions: plan.blocked_actions }));
+  assert.equal(youtube.disclosure_requirements_resolved, true);
+});
+
+test("goal dry-run publisher resolves production-shaped commercial disclosure repair evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-commercial-disclosure-"));
+  const storyPackage = await makeStoryPackage(root);
+  const disclosureRecord = {
+    platform: "youtube",
+    commercial_disclosure_required: true,
+    affiliate_disclosure_required: false,
+    paid_promotion_required: false,
+    caption_copy: "No affiliate link is attached to this story.",
+  };
+  const perPlatformDisclosure = {
+    youtube: disclosureRecord,
+    instagram: { ...disclosureRecord, platform: "instagram" },
+    facebook: { ...disclosureRecord, platform: "facebook" },
+  };
+  const policyPath = path.join(storyPackage.artifact_dir, "platform_policy_report.json");
+  await fs.writeJson(policyPath, {
+    status: "pass",
+    disclosure_requirements: {
+      commercial: true,
+      affiliate: false,
+      paid_promotion: false,
+    },
+    platform_disclosure: perPlatformDisclosure,
+    disclosure_text: disclosureRecord.caption_copy,
+  }, { spaces: 2 });
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.platform_disclosure = perPlatformDisclosure;
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-08-13T14:00:33.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  const youtube = plan.actions.find((item) => item.platform === "youtube_shorts");
+  assert.ok(youtube, JSON.stringify({ blocked: plan.blocked_stories, actions: plan.blocked_actions }));
+  assert.equal(youtube.disclosure_requirements.commercial, true);
+  assert.equal(youtube.disclosure_requirements_resolved, true);
+  assert.equal(
+    plan.actions.find((item) => item.platform === "instagram_reels")
+      ?.disclosure_requirements_resolved,
+    true,
+  );
+  assert.equal(
+    plan.actions.find((item) => item.platform === "facebook_reels")
+      ?.disclosure_requirements_resolved,
+    true,
+  );
+});
+
+test("goal dry-run publisher keeps a required synthetic-media disclosure unresolved", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-synthetic-disclosure-"));
+  const storyPackage = await makeStoryPackage(root);
+  const policyPath = path.join(storyPackage.artifact_dir, "platform_policy_report.json");
+  await fs.writeJson(policyPath, {
+    status: "fail",
+    disclosure_requirements: {
+      altered_or_synthetic_content: false,
+    },
+    disclosures: {
+      legacy_marker: "preserved",
+    },
+    ai_disclosure_gate: {
+      disclosure_required: true,
+      disclosure_present: false,
+      verdict: "fail",
+      failures: ["policy:ai_disclosure_required_missing"],
+    },
+  }, { spaces: 2 });
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    disclosure_status: {
+      required: false,
+      type: "none",
+    },
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-08-13T14:00:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  const blockedStory = plan.blocked_stories.find((item) => item.story_id === storyPackage.story_id);
+  assert.ok(blockedStory);
+  assert.ok(blockedStory.blockers.includes("incident:platform_disclosure_missing"));
+  assert.equal(plan.actions.length, 0);
+  assert.equal(plan.blocked_actions.length, 0);
+});
+
+test("goal dry-run publisher resolves a present paid-promotion disclosure", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-paid-promotion-"));
+  const storyPackage = await makeStoryPackage(root);
+  const policyPath = path.join(storyPackage.artifact_dir, "platform_policy_report.json");
+  await fs.writeJson(policyPath, {
+    status: "pass",
+    disclosure_requirements: { paid_promotion: true },
+    platform_policy_gate: {
+      paid_promotion_required: true,
+      paid_promotion_present: true,
+      verdict: "pass",
+      failures: [],
+    },
+  }, { spaces: 2 });
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    paid_promotion_disclosure_required: true,
+    paid_promotion_disclosure_present: true,
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-08-13T14:01:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  const youtube = plan.actions.find((item) => item.platform === "youtube_shorts");
+  assert.ok(youtube, JSON.stringify({ blocked_stories: plan.blocked_stories, blocked_actions: plan.blocked_actions }));
+  assert.equal(youtube.disclosure_requirements.paid_promotion, true);
+  assert.equal(youtube.disclosure_requirements_resolved, true);
+});
+
+test("goal dry-run publisher preserves monotonic disclosure requirements and accepts present synthetic evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-synthetic-present-"));
+  const storyPackage = await makeStoryPackage(root);
+  const policyPath = path.join(storyPackage.artifact_dir, "platform_policy_report.json");
+  await fs.writeJson(policyPath, {
+    status: "pass",
+    disclosures: { altered_or_synthetic_content: true },
+    disclosure_requirements: { altered_or_synthetic_content: false },
+    ai_disclosure_gate: {
+      disclosure_required: true,
+      disclosure_present: true,
+      verdict: "pass",
+      failures: [],
+    },
+  }, { spaces: 2 });
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    altered_synthetic_disclosure_required: true,
+    altered_synthetic_disclosure_setting: "YES",
+    altered_synthetic_disclosure_present: false,
+    youtube_synthetic_media_disclosed: true,
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-08-13T14:02:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  const youtube = plan.actions.find((item) => item.platform === "youtube_shorts");
+  assert.ok(youtube);
+  assert.equal(youtube.disclosure_requirements.altered_or_synthetic_content, true);
+  assert.equal(youtube.disclosure_requirements_resolved, true);
+});
+
 test("goal dry-run publisher resolves TikTok disclosure requirements from an explicit governed not-required flag", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-tiktok-disclosure-"));
   const storyPackage = await makeStoryPackage(root);
@@ -3005,6 +3273,109 @@ test("goal dry-run publisher falls back to canonical public copy when the YouTub
     persistedManifest.outputs.youtube_shorts.description,
     longFormRightsDescription,
   );
+});
+
+test("goal dry-run publisher preserves an approved multi-paragraph YouTube description exactly", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-youtube-approved-copy-"));
+  const safePublicDescription =
+    "Four original Xbox games have joined Xbox Backward Compatibility on PC. Source: Eurogamer.";
+  const requiredNotice = [
+    "BLiNX, Conker and the other named Xbox titles are trademarks of Microsoft Corporation.",
+    "This video is independent commentary and is not endorsed by Microsoft.",
+    "Microsoft Game Content Usage Rules: https://www.xbox.com/en-US/developers/rules",
+  ].join(" ");
+  const approvedYoutubeDescription = [
+    safePublicDescription,
+    "This review explains what carries over for existing owners and what is still coming later.",
+    "Sources:\nhttps://www.eurogamer.net/example\nhttps://news.xbox.com/example",
+    requiredNotice,
+  ].join("\n\n");
+  assert.ok(approvedYoutubeDescription.length > 420);
+  assert.ok(approvedYoutubeDescription.length < 5_000);
+
+  const storyPackage = await makeStoryPackage(
+    root,
+    "youtube-approved-description",
+    "GREEN",
+    "4 Xbox Classics Hit PC, Achievements Come Later",
+    {
+      canonicalSubject: "Xbox",
+      coherenceMatchesCanonical: true,
+      canonicalPatch: {
+        description: safePublicDescription,
+        public_description: safePublicDescription,
+        youtube_description: approvedYoutubeDescription,
+      },
+    },
+  );
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    description: approvedYoutubeDescription,
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-08-13T13:10:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  const youtube = plan.actions.find((action) => action.platform === "youtube_shorts");
+  assert.ok(youtube, JSON.stringify({ summary: plan.summary, blocked: plan.blocked_stories }));
+  assert.equal(youtube.description, approvedYoutubeDescription);
+  assert.equal(youtube.caption, approvedYoutubeDescription);
+  assert.equal(youtube.page_caption, approvedYoutubeDescription);
+  assert.match(youtube.description, /Microsoft Game Content Usage Rules/);
+  assert.match(youtube.description, /https:\/\/www\.xbox\.com\/en-US\/developers\/rules/);
+});
+
+test("goal dry-run publisher blocks governed YouTube copy over 5000 characters", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-youtube-oversize-copy-"));
+  const safePublicDescription =
+    "Four original Xbox games have joined Xbox Backward Compatibility on PC. Source: Eurogamer.";
+  const requiredNotice =
+    "Microsoft Game Content Usage Rules: https://www.xbox.com/en-US/developers/rules";
+  const approvedPrefix = "Half-Life 2 RTX source notes. ";
+  const approvedYoutubeDescription = `${approvedPrefix}${"x".repeat(
+    5_001 - approvedPrefix.length - 2 - requiredNotice.length,
+  )}\n\n${requiredNotice}`;
+  assert.equal(approvedYoutubeDescription.length, 5_001);
+
+  const storyPackage = await makeStoryPackage(
+    root,
+    "youtube-oversize-description",
+    "GREEN",
+    "4 Xbox Classics Hit PC, Achievements Come Later",
+    {
+      canonicalSubject: "Xbox",
+      coherenceMatchesCanonical: true,
+      canonicalPatch: {
+        description: safePublicDescription,
+        public_description: safePublicDescription,
+        youtube_description: approvedYoutubeDescription,
+      },
+    },
+  );
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    description: approvedYoutubeDescription,
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-08-13T13:10:30.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  const youtube = plan.blocked_actions.find((action) => action.platform === "youtube_shorts");
+  assert.ok(youtube, JSON.stringify({ actions: plan.actions, blocked: plan.blocked_actions }));
+  assert.ok(youtube.blockers.includes("youtube_description_exceeds_5000_characters"));
 });
 
 test("goal dry-run publisher rejects a short YouTube action description that still contains article residue", async () => {

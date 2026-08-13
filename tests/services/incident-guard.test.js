@@ -875,16 +875,148 @@ test("incident guard blocks required platform disclosures that are not applied",
       publish_status: "GREEN",
       platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
       outputs: {
-        youtube_shorts: { title: "Cyberpunk 2077 Just Got A New Trailer" },
+        youtube_shorts: {
+          title: "Cyberpunk 2077 Just Got A New Trailer",
+          altered_synthetic_disclosure_required: true,
+          altered_synthetic_disclosure_setting: "YES",
+          altered_synthetic_disclosure_present: false,
+        },
       },
     },
     platform_policy_report: {
       status: "pass",
       disclosure_requirements: {
-        ai_disclosure: true,
+        ai_disclosure: false,
       },
+      ai_disclosure_gate: { disclosure_required: true, disclosure_present: false },
       platform_disclosure: {
         youtube: { ai_disclosure: false },
+      },
+    },
+    affiliate_link_manifest: {
+      disclosure_text: "No commercial link is attached to this video.",
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+      rights_ledger_ready: true,
+    },
+  });
+
+  assert.equal(report.safe_to_publish_boolean, false);
+  assert.ok(report.disaster_upload_blockers.includes("incident:platform_disclosure_missing"));
+});
+
+test("incident guard accepts explicit applied synthetic disclosure evidence", () => {
+  const report = evaluateIncidentGuard({
+    story_id: "applied-platform-disclosure",
+    canonical_story_manifest: {
+      story_id: "applied-platform-disclosure",
+      canonical_subject: "Cyberpunk 2077",
+      selected_title: "Cyberpunk 2077 Just Got A New Trailer",
+      thumbnail_headline: "CYBERPUNK 2077 TRAILER",
+      first_spoken_line: "Cyberpunk 2077 just got a new trailer.",
+      narration_script:
+        "Cyberpunk 2077 just got a new trailer. CD Projekt Red showed the update and kept the claim to what appears in the official video.",
+      description: "CD Projekt Red showed a new Cyberpunk 2077 trailer. Source: CD Projekt Red.",
+      primary_source: "CD Projekt Red",
+      discovery_source: "CD Projekt Red",
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("Cyberpunk 2077"),
+    sfx_manifest: cleanSfxEvidence(),
+    publish_verdict: { verdict: "RED" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+      outputs: {
+        youtube_shorts: {
+          title: "Cyberpunk 2077 Just Got A New Trailer",
+          altered_synthetic_disclosure_required: true,
+          altered_synthetic_disclosure_setting: "YES",
+          altered_synthetic_disclosure_present: true,
+        },
+      },
+    },
+    platform_policy_report: {
+      status: "pass",
+      disclosure_requirements: { altered_or_synthetic_content: true },
+      ai_disclosure_gate: { disclosure_required: true, disclosure_present: true },
+      disclosure_evidence: {
+        altered_or_synthetic_content: { required: true, present: true },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+      rights_ledger_ready: true,
+    },
+  });
+
+  assert.equal(
+    report.disaster_upload_blockers.includes("incident:platform_disclosure_missing"),
+    false,
+  );
+  assert.equal(report.safe_to_publish_boolean, false);
+  assert.ok(report.disaster_upload_blockers.includes("incident:control_tower_verdict_not_green"));
+});
+
+test("incident guard does not let synthetic evidence satisfy a commercial disclosure", () => {
+  const report = evaluateIncidentGuard({
+    story_id: "commercial-disclosure-category-isolation",
+    canonical_story_manifest: {
+      story_id: "commercial-disclosure-category-isolation",
+      canonical_subject: "Mixtape",
+      selected_title: "Mixtape Just Dodged Delisting Trouble",
+      thumbnail_headline: "MIXTAPE WON'T VANISH",
+      first_spoken_line: "Mixtape just dodged one of gaming's worst preservation problems.",
+      narration_script:
+        "Mixtape just dodged one of gaming's worst preservation problems. Rock Paper Shotgun reports the team paid extra to keep the licensed soundtrack intact.",
+      description: "Mixtape lowered its delisting risk. Source: Rock Paper Shotgun.",
+      primary_source: "Rock Paper Shotgun",
+      discovery_source: "Rock Paper Shotgun",
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("Mixtape"),
+    sfx_manifest: cleanSfxEvidence(),
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+      outputs: {
+        youtube_shorts: {
+          title: "Mixtape Just Dodged Delisting Trouble",
+          altered_synthetic_disclosure_present: true,
+        },
+      },
+    },
+    platform_policy_report: {
+      status: "pass",
+      disclosure_requirements: {
+        altered_or_synthetic_content: true,
+        commercial: true,
+      },
+      ai_disclosure_gate: { disclosure_required: true, disclosure_present: true },
+      disclosure_evidence: {
+        altered_or_synthetic_content: { required: true, present: true },
       },
     },
     file_evidence: {

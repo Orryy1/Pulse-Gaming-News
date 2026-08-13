@@ -7,6 +7,11 @@ const { buildFootageEmpirePlan } = require("../../lib/studio/v4/footage-empire")
 const {
   buildVisualV4DirectorPlan,
 } = require("../../lib/studio/v4/director-brain");
+const {
+  mintPrevalidatedPulseEditorialAcceptanceAuthority:
+    createPrevalidatedPulseEditorialAcceptanceAuthority,
+  mintPrevalidatedPulseRightsAuthority: createPrevalidatedPulseRightsAuthority,
+} = require("../../lib/internal/pulse-editorial-authority-handles");
 
 function story() {
   return {
@@ -427,6 +432,310 @@ test("Visual V4 Director carries the gameplay-first animated platform grammar in
   assert.equal(
     plan.engagement_element_plan.animation_rule,
     "clarify_or_intensify_story_beat",
+  );
+  assert.equal(
+    plan.motion_canvas_contract.default_canvas,
+    "FULL_BLEED_GAME_MOTION",
+  );
+  assert.equal(plan.motion_canvas_contract.required_timeline_coverage_ratio, 1);
+  assert.equal(
+    plan.engagement_element_plan.text_and_evidence_default_presentation,
+    "OVERLAY",
+  );
+  assert.equal(
+    plan.visual_obligations.continuous_full_bleed_game_motion_canvas_required,
+    true,
+  );
+  assert.equal(
+    plan.visual_obligations.comparison_footage_counts_as_full_bleed_motion,
+    true,
+  );
+  assert.equal(plan.visual_obligations.unrelated_filler_forbidden, true);
+  assert.equal(
+    plan.visual_obligations.cta_and_outro_require_game_motion_canvas,
+    true,
+  );
+  assert.equal(
+    plan.shot_plan
+      .filter((shot) => shot.kind === "motion_clip")
+      .every((shot) => shot.canvas_role === "FULL_BLEED_MOTION_CANVAS"),
+    true,
+  );
+  assert.equal(
+    plan.shot_plan
+      .filter((shot) => shot.kind !== "motion_clip")
+      .every((shot) => shot.presentation_role === "OVERLAY"),
+    true,
+  );
+});
+
+test("Visual V4 Director surfaces unresolved AMBER excerpt review instead of treating credit as clearance", () => {
+  const episodeStory = {
+    ...story(),
+    motion_canvas_editorial_exceptions: [
+      {
+        segment_id: "review-comparison",
+        start_s: 12,
+        end_s: 16,
+        canvas_type: "COMPARISON",
+        full_bleed: true,
+        story_relevant: true,
+        rights_record_id: "rights-review-comparison",
+        rights_verdict: "AMBER",
+        source_asset_id: "creator-review-source",
+        source_owner: "Review Creator",
+        source_url: "https://example.test/review",
+        source_media_sha256: "a".repeat(64),
+        source_start_s: 31,
+        source_end_s: 35,
+        directly_tied_to_narrated_claim: true,
+        narrated_claim_id: "claim-frame-rate-comparison",
+        editorial_purpose: "CRITICISM_REVIEW",
+        permanent_visible_attribution: true,
+        attribution_text: "Footage: Review Creator",
+        source_audio_muted: true,
+        contains_creator_narration: false,
+        contains_third_party_music: false,
+        transformation_applied: true,
+        transformation_notes: "Vertical crop synchronised to the narrated comparison.",
+        annotation_present: true,
+        annotation_notes: "Labels identify the compared frame-rate states.",
+        minimum_necessary: true,
+        minimum_necessary_rationale: "The exact four-second window demonstrates the claim.",
+        fact_specific_rights_record: true,
+        rights_decision_basis: "validated_bounded_editorial_exception",
+        rights_record_episode_id: "forza-v4-director",
+        licence_clearance_claimed: false,
+        legal_clearance_claimed: false,
+        ownership_claimed: false,
+        decorative_use: false,
+        generic_wallpaper: false,
+        watermark_removed: false,
+        long_unanalysed_sequence: false,
+      },
+    ],
+  };
+  const footagePlan = buildFootageEmpirePlan({
+    story: episodeStory,
+    trustedFootageReport: trustedReport(),
+    localMotionClips: localClips(8),
+  });
+  const plan = buildVisualV4DirectorPlan({
+    story: episodeStory,
+    footagePlan,
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+
+  assert.equal(
+    plan.editorial_exception_plan.verdict,
+    "AMBER_HUMAN_REVIEW_REQUIRED",
+  );
+  assert.equal(plan.editorial_exception_plan.credit_is_clearance, false);
+  assert.equal(plan.editorial_exception_plan.legal_clearance_claimed, false);
+  assert.equal(plan.readiness.status, "director_blocked");
+  assert.ok(
+    plan.readiness.blockers.includes(
+      "editorial_exception:review-comparison:human_review_unresolved",
+    ),
+  );
+  assert.ok(
+    plan.readiness.warnings.includes(
+      "editorial_exception:review-comparison:copyright_exception_is_fact_specific_and_not_a_licence",
+    ),
+  );
+  assert.equal(
+    plan.editorial_exception_plan.publish_gate,
+    "GREEN_CONTROL_TOWER_REQUIRED",
+  );
+});
+
+test("Visual V4 Director accepts separately supplied prevalidated authorities for the exact AMBER window", () => {
+  const segment = {
+    segment_id: "trusted-review-comparison",
+    start_s: 12,
+    end_s: 16,
+    canvas_type: "COMPARISON",
+    full_bleed: true,
+    story_relevant: true,
+    rights_record_id: "rights-trusted-review-comparison",
+    rights_verdict: "AMBER",
+    source_asset_id: "trusted-review-source",
+    source_owner: "Review Creator",
+    source_url: "https://example.test/trusted-review",
+    source_media_sha256: "8".repeat(64),
+    source_start_s: 31,
+    source_end_s: 35,
+    directly_tied_to_narrated_claim: true,
+    narrated_claim_id: "claim-trusted-comparison",
+    editorial_purpose: "CRITICISM_REVIEW",
+    permanent_visible_attribution: true,
+    attribution_text: "Footage: Review Creator",
+    source_audio_muted: true,
+    contains_creator_narration: false,
+    contains_third_party_music: false,
+    transformation_applied: true,
+    transformation_notes: "Vertical crop synchronised to the narrated comparison.",
+    annotation_present: true,
+    annotation_notes: "Labels identify the compared states.",
+    minimum_necessary: true,
+    minimum_necessary_rationale: "The exact four-second window proves the claim.",
+    fact_specific_rights_record: true,
+    rights_decision_basis: "validated_bounded_editorial_exception",
+    rights_record_episode_id: "forza-v4-director",
+    licence_clearance_claimed: false,
+    legal_clearance_claimed: false,
+    ownership_claimed: false,
+    decorative_use: false,
+    generic_wallpaper: false,
+    watermark_removed: false,
+    long_unanalysed_sequence: false,
+  };
+  const episodeStory = {
+    ...story(),
+    motion_canvas_editorial_exceptions: [segment],
+  };
+  const footagePlan = buildFootageEmpirePlan({
+    story: episodeStory,
+    trustedFootageReport: trustedReport(),
+    localMotionClips: localClips(8),
+  });
+  const trustedRightsAuthority = createPrevalidatedPulseRightsAuthority({
+    evidenceBytes: Buffer.from(JSON.stringify({
+      schema_version: 1,
+      authority_type: "PULSE_VISUAL_RIGHTS_AUTHORITY",
+      issued_by: { id: "MORR", role: "RIGHTS_OWNER" },
+      issued_at: "2026-08-13T18:20:00.000Z",
+      records: [
+        {
+          rights_record_id: segment.rights_record_id,
+          source_asset_id: segment.source_asset_id,
+          canonical_media_sha256: segment.source_media_sha256,
+          verdict: "AMBER",
+          assessed_platforms: ["youtube_shorts"],
+          editorial_exception_review_allowed: true,
+          ypp_risk_reviewed: true,
+          legal_clearance_claimed: false,
+          licence_clearance_claimed: false,
+        },
+      ],
+    })),
+  });
+  const trustedAcceptanceAuthority =
+    createPrevalidatedPulseEditorialAcceptanceAuthority({
+      evidenceBytes: Buffer.from(JSON.stringify({
+        schema_version: 1,
+        authority_type: "PULSE_EDITORIAL_RISK_ACCEPTANCE_AUTHORITY",
+        issued_by: { id: "MORR", role: "EDITORIAL_RISK_OWNER" },
+        issued_at: "2026-08-13T18:21:00.000Z",
+        acceptances: [
+          {
+            acceptance_id: "accept-trusted-review-comparison",
+            status: "ACCEPTED_FOR_THIS_EPISODE",
+            scope: "THIS_EPISODE_EXACT_WINDOW",
+            episode_id: "forza-v4-director",
+            rights_record_id: segment.rights_record_id,
+            source_asset_id: segment.source_asset_id,
+            canonical_media_sha256: segment.source_media_sha256,
+            timeline_start_s: segment.start_s,
+            timeline_end_s: segment.end_s,
+            source_start_s: 31,
+            source_end_s: 35,
+            accepted_by: "MORR",
+            accepted_role: "EDITORIAL_RISK_OWNER",
+            accepted_at: "2026-08-13T18:21:00.000Z",
+          },
+        ],
+      })),
+    });
+
+  const plan = buildVisualV4DirectorPlan({
+    story: episodeStory,
+    footagePlan,
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+    trustedRightsAuthority,
+    trustedAcceptanceAuthority,
+  });
+
+  assert.equal(
+    plan.editorial_exception_plan.verdict,
+    "GOVERNANCE_RESOLVED_FOR_EPISODE",
+  );
+  assert.equal(plan.editorial_exception_plan.planning_valid, true);
+  assert.equal(plan.readiness.status, "director_ready", plan.readiness.blockers.join(", "));
+});
+
+test("an empty story exception array cannot mask footage-plan exceptions", () => {
+  const episodeStory = {
+    ...story(),
+    motion_canvas_editorial_exceptions: [],
+  };
+  const footagePlan = buildFootageEmpirePlan({
+    story: episodeStory,
+    trustedFootageReport: trustedReport(),
+    localMotionClips: localClips(8),
+  });
+  footagePlan.editorial_exception_segments = [
+    {
+      segment_id: "footage-plan-review-comparison",
+      start_s: 12,
+      end_s: 16,
+      canvas_type: "COMPARISON",
+      full_bleed: true,
+      story_relevant: true,
+      rights_record_id: "rights-footage-plan-review-comparison",
+      rights_verdict: "AMBER",
+      source_asset_id: "footage-plan-review-source",
+      source_owner: "Review Creator",
+      source_url: "https://example.test/review",
+      source_media_sha256: "9".repeat(64),
+      source_start_s: 31,
+      source_end_s: 35,
+      directly_tied_to_narrated_claim: true,
+      narrated_claim_id: "claim-footage-plan-comparison",
+      editorial_purpose: "CRITICISM_REVIEW",
+      permanent_visible_attribution: true,
+      attribution_text: "Footage: Review Creator",
+      source_audio_muted: true,
+      contains_creator_narration: false,
+      contains_third_party_music: false,
+      transformation_applied: true,
+      transformation_notes: "Vertical crop synchronised to the claim.",
+      annotation_present: true,
+      annotation_notes: "Labels identify the compared states.",
+      minimum_necessary: true,
+      minimum_necessary_rationale: "The exact window demonstrates the claim.",
+      fact_specific_rights_record: true,
+      rights_decision_basis: "validated_bounded_editorial_exception",
+      rights_record_episode_id: "forza-v4-director",
+      licence_clearance_claimed: false,
+      legal_clearance_claimed: false,
+      ownership_claimed: false,
+      decorative_use: false,
+      generic_wallpaper: false,
+      watermark_removed: false,
+      long_unanalysed_sequence: false,
+    },
+  ];
+
+  const plan = buildVisualV4DirectorPlan({
+    story: episodeStory,
+    footagePlan,
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+
+  assert.equal(plan.editorial_exception_plan.used, true);
+  assert.equal(
+    plan.editorial_exception_plan.verdict,
+    "AMBER_HUMAN_REVIEW_REQUIRED",
+  );
+  assert.equal(plan.readiness.status, "director_blocked");
+  assert.ok(
+    plan.readiness.blockers.includes(
+      "editorial_exception:footage-plan-review-comparison:trusted_acceptance_authority_required",
+    ),
   );
 });
 

@@ -3155,6 +3155,47 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
 });
 
+test("goal production render materializer does not invoke the renderer for unresolved AMBER authority", async () => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-production-render-editorial-authority-"),
+  );
+  const storyId = "story-editorial-authority-required";
+  const artifactDir = await makePackage(root, storyId, {
+    motion_canvas_editorial_exceptions: [
+      {
+        segment_id: "unresolved-comparison",
+        rights_verdict: "AMBER",
+      },
+    ],
+  });
+  let rendererInvoked = false;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob(storyId, artifactDir)] },
+    generatedAt: "2026-08-13T18:10:00.000Z",
+    operatingMode: "LOCAL_PROOF",
+    renderProof: async () => {
+      rendererInvoked = true;
+      throw new Error("renderer_must_not_be_invoked");
+    },
+  });
+
+  assert.equal(rendererInvoked, false);
+  assert.equal(report.operating_mode, "LOCAL_PROOF");
+  assert.deepEqual(report.editorial_authority, {
+    bundle_id: null,
+    supplied_by: "operator_option_only",
+    opaque_handles_serialized: false,
+  });
+  assert.equal(report.summary.rendered_count, 0);
+  assert.equal(report.summary.failed_count, 1);
+  assert.match(
+    report.jobs[0].error,
+    /editorial_authority:registered_bundle_id_required/,
+  );
+});
+
 test("goal production render materializer finalises strict ElevenLabs rights against the exact promoted media", async () => {
   const root = await fs.mkdtemp(
     path.join(os.tmpdir(), "pulse-production-render-elevenlabs-lineage-"),

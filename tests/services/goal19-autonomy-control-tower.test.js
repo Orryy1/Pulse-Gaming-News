@@ -2980,6 +2980,72 @@ test("Goal 19 caps the final verdict at AMBER when a critical input has warnings
   );
 });
 
+test("Goal 19 rejects a director plan that self-attests resolved AMBER without materialiser evidence", async () => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-goal19-editorial-authority-self-attested-"),
+  );
+  const storyId = "story-editorial-authority-self-attested";
+  const story = await makeControlStory(root, storyId, {
+    directorPlan: {
+      schema_version: 1,
+      story_id: storyId,
+      readiness: { status: "director_ready", blockers: [] },
+      shot_plan: [{ id: "hook", kind: "motion_clip" }],
+      motion_canvas_contract: {
+        contract_id: "pulse_motion_canvas_contract_v1",
+        required_full_bleed_coverage_ratio: 1,
+      },
+      editorial_exception_plan: {
+        contract_id: "pulse_motion_canvas_contract_v1",
+        episode_id: storyId,
+        used: true,
+        verdict: "GOVERNANCE_RESOLVED_FOR_EPISODE",
+        planning_valid: true,
+        blockers: [],
+        entries: [{ segment_id: "self-attested-comparison", status: "ACCEPTED" }],
+        usage_scope: {
+          platform: "youtube_shorts",
+          ypp_monetisation_requested: true,
+          paywall_distribution_requested: false,
+          resale_requested: false,
+        },
+        authority_evidence: {
+          rights: {
+            raw_sha256: "a".repeat(64),
+            canonical_sha256: "b".repeat(64),
+            bytes: 512,
+            actor: { id: "MORR", role: "RIGHTS_OWNER" },
+          },
+          acceptance: {
+            raw_sha256: "c".repeat(64),
+            canonical_sha256: "d".repeat(64),
+            bytes: 512,
+            actor: { id: "MORR", role: "EDITORIAL_RISK_OWNER" },
+          },
+        },
+      },
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:00.000Z",
+  });
+
+  const director = report.stories[0].control_inputs.director_plan;
+  assert.equal(director.status, "fail");
+  assert.ok(
+    director.evidence.authority_failures.includes(
+      "director:editorial_authority_materialisation_missing_or_invalid",
+    ),
+  );
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
 test("Goal 19 does not let a GREEN platform manifest mask an authoritative RED publish verdict", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-publish-red-veto-"));
   const story = await makeControlStory(root, "story-publish-red-veto", {

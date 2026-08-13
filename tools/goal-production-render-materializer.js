@@ -33,6 +33,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     refreshQualityOnly: false,
     refreshFlagshipInventory: false,
     ownedMotionOnly: false,
+    editorialAuthorityBundleId: "",
+    operatingMode: "LOCAL_PROOF",
     storyId: "",
     artifactDir: "",
     json: false,
@@ -51,7 +53,11 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--refresh-quality-only") args.refreshQualityOnly = true;
     else if (arg === "--refresh-flagship-inventory") args.refreshFlagshipInventory = true;
     else if (arg === "--owned-motion-only") args.ownedMotionOnly = true;
-    else if (arg === "--story-id") args.storyId = argv[++i] || "";
+    else if (arg === "--editorial-authority-bundle-id") {
+      args.editorialAuthorityBundleId = argv[++i] || "";
+    } else if (arg === "--operating-mode") {
+      args.operatingMode = String(argv[++i] || "").trim().toUpperCase();
+    } else if (arg === "--story-id") args.storyId = argv[++i] || "";
     else if (arg === "--artifact-dir") args.artifactDir = argv[++i] || "";
     else if (arg === "--json") args.json = true;
   }
@@ -66,6 +72,8 @@ function printHelp() {
       "       node tools/goal-production-render-materializer.js --refresh-flagship-inventory --story-id id --artifact-dir path [--json]",
       "",
       "Materialises fresh Visual V4 final renders from the ready final-render work order.",
+      "--editorial-authority-bundle-id accepts only an operator-registered fixed-root bundle and should be paired with --story-id.",
+      "--operating-mode is limited to LOCAL_PROOF or DRY_RUN_PUBLISH.",
       "--owned-motion-only requires a hash-bound, cross-platform owned-motion pool and excludes prior third-party footage.",
       "Quality-refresh mode rebuilds post-render benchmark/visual QA for an existing final MP4.",
       "Flagship-inventory refresh snapshots current used assets and rights without rendering or changing publish authority.",
@@ -80,6 +88,12 @@ async function main(argv = process.argv.slice(2)) {
   if (args.help) {
     printHelp();
     return { args, report: null, written: null };
+  }
+  if (!["LOCAL_PROOF", "DRY_RUN_PUBLISH"].includes(args.operatingMode)) {
+    throw new Error("editorial_authority_operating_mode_forbidden");
+  }
+  if (args.editorialAuthorityBundleId && !args.storyId) {
+    throw new Error("editorial_authority_bundle_requires_exact_story_id");
   }
   if (args.refreshFlagshipInventory) {
     const job = await refreshFlagshipInventoryEvidence({
@@ -118,6 +132,8 @@ async function main(argv = process.argv.slice(2)) {
       storyId: args.storyId,
       artifactDir: args.artifactDir,
       generatedAt: args.generatedAt,
+      editorialAuthorityBundleId: args.editorialAuthorityBundleId,
+      operatingMode: args.operatingMode,
     });
     const report = {
       schema_version: 1,
@@ -163,6 +179,8 @@ async function main(argv = process.argv.slice(2)) {
     force: args.force,
     inspectOnly: args.inspectOnly,
     ownedMotionOnly: args.ownedMotionOnly,
+    editorialAuthorityBundleId: args.editorialAuthorityBundleId,
+    operatingMode: args.operatingMode,
   });
   const written = await writeGoalProductionRenderMaterializationReport(report, {
     outputDir: path.resolve(args.outDir),

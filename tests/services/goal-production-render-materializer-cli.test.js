@@ -24,6 +24,10 @@ test("goal production render materializer CLI parses final render arguments", ()
     "2026-05-22T07:10:00.000Z",
     "--limit",
     "3",
+    "--editorial-authority-bundle-id",
+    "episode-bundle-v1",
+    "--operating-mode",
+    "DRY_RUN_PUBLISH",
     "--inspect-only",
     "--json",
   ]);
@@ -33,6 +37,8 @@ test("goal production render materializer CLI parses final render arguments", ()
   assert.equal(args.workspaceRoot, "workspace");
   assert.equal(args.generatedAt, "2026-05-22T07:10:00.000Z");
   assert.equal(args.limit, 3);
+  assert.equal(args.editorialAuthorityBundleId, "episode-bundle-v1");
+  assert.equal(args.operatingMode, "DRY_RUN_PUBLISH");
   assert.equal(args.inspectOnly, true);
   assert.equal(args.json, true);
 });

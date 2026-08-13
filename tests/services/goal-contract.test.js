@@ -20,10 +20,50 @@ const {
   REQUIRED_TESTS,
   buildGoalContractReport,
   buildPublishCutoverGate,
+  buildFinalRenderInputFingerprint,
   renderGoalContractMarkdown,
   verifyFinalRenderInputLineage,
   writeGoalContractArtifacts,
 } = require("../../lib/goal-contract");
+
+test("goal contract builds the exact aggregate final-render input fingerprint that its verifier accepts", async (t) => {
+  const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-final-input-fingerprint-"));
+  t.after(() => fs.remove(artifactDir));
+  const audioPath = path.join(artifactDir, "narration.wav");
+  const timestampsPath = path.join(artifactDir, "word-timestamps.json");
+  const canonical = {
+    story_id: "fingerprint-story",
+    selected_title: "Exact title",
+    thumbnail_headline: "EXACT COVER",
+    first_spoken_line: "Exact opening line.",
+    narration_script: "Exact opening line. Exact second line.",
+    canonical_subject: "Exact subject",
+    canonical_angle: "Exact angle",
+    primary_source: "Exact source",
+  };
+  await fs.writeFile(audioPath, Buffer.from("exact-audio-bytes"));
+  await fs.writeFile(timestampsPath, "{\"words\":[]}");
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), canonical);
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+  });
+
+  const fingerprint = buildFinalRenderInputFingerprint({
+    canonical,
+    audioPath,
+    timestampsPath,
+  });
+  const verification = verifyFinalRenderInputLineage(
+    { story_id: canonical.story_id, artifact_dir: artifactDir },
+    { final_publish_render: true, input_fingerprint: fingerprint },
+  );
+
+  assert.equal(fingerprint.algorithm, "sha256");
+  assert.match(fingerprint.signature, /^[a-f0-9]{64}$/);
+  assert.equal(verification.pass, true);
+  assert.deepEqual(verification.blockers, []);
+});
 
 function completeStoryPackage(id) {
   return {

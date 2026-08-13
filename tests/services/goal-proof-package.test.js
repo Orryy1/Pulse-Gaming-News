@@ -1,9 +1,12 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
+const sharp = require("sharp");
 const test = require("node:test");
 
 const {
@@ -15,6 +18,9 @@ const {
 const { buildAffiliateLinkManifest } = require("../../lib/commercial-intelligence-engine");
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
 const { _private: mediaHousePrivate } = require("../../lib/pulse-media-house-score");
+const {
+  buildGovernedYouTubeUploadPlan,
+} = require("../../lib/services/governed-youtube-upload-request");
 
 const story = require("../../test/fixtures/goal/mixtape-governance-story.json");
 const rightsLedger = require("../../test/fixtures/goal/mixtape-rights-ledger.json");
@@ -171,6 +177,83 @@ function greenStory() {
   };
 }
 
+async function attachAuthoritativeCaptionTimeline(target, rootDir) {
+  const displayText = String(
+    target.canonical_story_manifest?.narration_script ||
+      target.canonical_story_manifest?.spoken_narration_script ||
+      target.full_script ||
+      target.caption_manifest?.display_text ||
+      "",
+  ).replace(/\s+/g, " ").trim();
+  assert.ok(displayText, "authoritative caption fixture requires display text");
+  const audioSha256 =
+    target.caption_manifest?.narration_audio_sha256 ||
+    target.audio_manifest?.narration_audio_sha256 ||
+    target.narration_manifest?.audio_sha256 ||
+    "a".repeat(64);
+  const timestampsSha256 =
+    target.caption_manifest?.word_timestamps_sha256 ||
+    target.audio_manifest?.word_timestamps_sha256 ||
+    target.narration_manifest?.word_timestamps_sha256 ||
+    "b".repeat(64);
+  const durationSeconds = Number(
+    target.render_manifest?.duration_seconds ||
+      target.render_manifest?.rendered_duration_s ||
+      target.render_manifest?.duration_s ||
+      48.2,
+  );
+  const sentences = displayText.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const usableDuration = Math.max(1, durationSeconds - 0.52);
+  const cueDuration = usableDuration / sentences.length;
+  const groups = sentences.map((text, index) => ({
+    id: `fixture-g${index}`,
+    text,
+    start: 0.26 + index * cueDuration,
+    end: 0.26 + (index + 1) * cueDuration,
+  }));
+  const mappingPath = path.join(rootDir, "authoritative-caption-mapping.fixture.json");
+  await fs.ensureDir(rootDir);
+  await fs.writeJson(mappingPath, {
+    display_text: displayText,
+    groups,
+    sources: { alignment: { sha256: timestampsSha256 } },
+    alignment_provenance: { audio_sha256: audioSha256 },
+  });
+  const mappingSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(mappingPath))
+    .digest("hex");
+  target.caption_manifest = {
+    ...(target.caption_manifest || {}),
+    display_text: displayText,
+    narration_audio_sha256: audioSha256,
+    word_timestamps_sha256: timestampsSha256,
+    karaoke_mapping_path: mappingPath,
+    karaoke_mapping_sha256: mappingSha256,
+    caption_timeline_authoritative: true,
+  };
+  target.audio_manifest = {
+    ...(target.audio_manifest || {}),
+    narration_audio_sha256: audioSha256,
+    word_timestamps_sha256: timestampsSha256,
+  };
+  if (target.narration_manifest && Object.keys(target.narration_manifest).length) {
+    target.narration_manifest = {
+      ...target.narration_manifest,
+      audio_sha256: audioSha256,
+      word_timestamps_sha256: timestampsSha256,
+    };
+  }
+  target.render_manifest = {
+    ...(target.render_manifest || {}),
+    input_fingerprint: {
+      ...(target.render_manifest?.input_fingerprint || {}),
+      audio_sha256: audioSha256,
+      word_timestamps_sha256: timestampsSha256,
+    },
+  };
+}
+
 function rightsForGreenStory(story) {
   return [
     ...story.video_clips.map((clip) => ({
@@ -207,6 +290,45 @@ function rightsForGreenStory(story) {
 
 function normalise(value) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+async function materialiseReviewedVisualCtaFixture(root, storyId) {
+  const renderPath = path.join(root, "reviewed-final.mp4");
+  const samplePath = path.join(root, "visual-cta-sample.png");
+  execFileSync("ffmpeg", [
+    "-y", "-hide_banner", "-loglevel", "error",
+    "-f", "lavfi", "-i", "color=c=0x19212c:size=64x64:rate=30:duration=2",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", renderPath,
+  ]);
+  execFileSync("ffmpeg", [
+    "-y", "-hide_banner", "-loglevel", "error",
+    "-i", renderPath, "-ss", "1.4", "-frames:v", "1", samplePath,
+  ]);
+  const renderSha256 = crypto.createHash("sha256").update(await fs.readFile(renderPath)).digest("hex");
+  const sampleSha256 = crypto.createHash("sha256").update(await fs.readFile(samplePath)).digest("hex");
+  const evidencePath = path.join(root, "visual-cta-evidence.json");
+  const evidence = {
+    schema_version: 1,
+    story_id: storyId,
+    verdict: "GREEN",
+    exact_text: "Follow Pulse Gaming so you never miss a beat",
+    delivery_mode: "visual_end_card",
+    start_seconds: 0.8,
+    end_seconds: 2,
+    render_sha256: renderSha256,
+    dom_verified: true,
+    sampled_visual_verified: true,
+    reviewer: { id: "independent-visual-reviewer", independent: true },
+    full_visual_review: true,
+    sampled_frame: {
+      time_seconds: 1.4,
+      path: samplePath,
+      sha256: sampleSha256,
+    },
+  };
+  await fs.writeJson(evidencePath, evidence);
+  const evidenceSha256 = crypto.createHash("sha256").update(await fs.readFile(evidencePath)).digest("hex");
+  return { renderPath, samplePath, renderSha256, evidencePath, evidence, evidenceSha256 };
 }
 
 test("goal proof rights gate evaluates only explicitly enabled publish platforms", () => {
@@ -316,6 +438,223 @@ test("goal proof package preserves a concrete claim-backed Langrisser cover", ()
     pack.platform_publish_manifest.outputs.youtube_shorts.cover_frame.headline,
     "BREAK WALLS. CUT BRIDGES.",
   );
+});
+
+test("goal proof package preserves an exact first-frame headline when hash-bound render evidence verifies it", () => {
+  const candidate = greenStory();
+  Object.assign(candidate, {
+    id: "verified-first-frame-copy",
+    canonical_subject: "Half-Life 2 RTX",
+    canonical_game: "Half-Life 2 RTX",
+    canonical_angle: "the best-looking return to City 17 is not the best first trip",
+    title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+    public_title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+    suggested_title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+    suggested_thumbnail_text: "BEST-LOOKING RETURN",
+    first_frame_text: "BEST-LOOKING RETURN",
+    first_frame_text_evidence: {
+      status: "PASS",
+      verified: true,
+      exact_text: "BEST-LOOKING RETURN",
+      render_sha256: "a".repeat(64),
+      source_master_sha256: "b".repeat(64),
+      source_kind: "hash_pinned_authored_scene",
+    },
+    render_manifest: {
+      ...candidate.render_manifest,
+      reviewed_sha256: "a".repeat(64),
+      output_sha256: "a".repeat(64),
+    },
+    description:
+      "Half-Life 2 RTX makes City 17 spectacular, but the demo scope makes Valve's original the better first journey.",
+    full_script:
+      "Half-Life 2 RTX is the best-looking return to City 17, but not the best first trip. The demo covers Ravenholm and Nova Prospekt, so first-time players should begin with Valve's original.",
+  });
+
+  const pack = buildGoalProofPackage({
+    story: candidate,
+    rightsLedger: rightsForGreenStory(candidate),
+    generatedAt: "2026-08-13T16:00:00.000Z",
+  });
+
+  assert.equal(pack.canonical_story_manifest.thumbnail_headline, "BEST-LOOKING RETURN");
+  assert.equal(pack.canonical_story_manifest.thumbnail_text, "BEST-LOOKING RETURN");
+  assert.equal(pack.canonical_story_manifest.first_frame_text, "BEST-LOOKING RETURN");
+  assert.equal(pack.visual_quality_report.frame_rules.first_frame_text, "BEST-LOOKING RETURN");
+});
+
+test("goal proof keeps a verified in-video cover selection separate from the immutable first frame", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-cover-contract-"));
+  t.after(async () => fs.remove(root));
+  const sourceFramePath = path.join(root, "source-frame.png");
+  const renderPath = path.join(root, "accepted-render.mp4");
+  const framePath = path.join(root, "accepted-frame-1.500.png");
+  await sharp({
+    create: {
+      width: 1080,
+      height: 1920,
+      channels: 4,
+      background: { r: 13, g: 17, b: 20, alpha: 1 },
+    },
+  }).composite([{
+    input: Buffer.from([
+      '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920">',
+      '<style>.h{font:700 96px Arial;fill:#f1eee7}.s{font:700 52px Arial;fill:#ff6b1a}</style>',
+      '<text class="h" x="72" y="540">BEST-LOOKING RETURN</text>',
+      '<text class="s" x="72" y="1510">HALF-LIFE 2 RTX</text>',
+      '</svg>',
+    ].join("")),
+  }]).png().toFile(sourceFramePath);
+  execFileSync("ffmpeg", [
+    "-y", "-hide_banner", "-loglevel", "error",
+    "-loop", "1", "-i", sourceFramePath,
+    "-t", "2", "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p", renderPath,
+  ]);
+  execFileSync("ffmpeg", [
+    "-y", "-hide_banner", "-loglevel", "error",
+    "-i", renderPath, "-ss", "1.5", "-frames:v", "1", framePath,
+  ]);
+  const renderSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(renderPath))
+    .digest("hex");
+  const frameSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(framePath))
+    .digest("hex");
+
+  const candidate = greenStory();
+  Object.assign(candidate, {
+    id: "verified-platform-cover-copy",
+    canonical_subject: "Half-Life 2 RTX",
+    canonical_game: "Half-Life 2 RTX",
+    canonical_angle: "the best-looking return to City 17 is not the best first trip",
+    title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+    public_title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+    suggested_title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+    suggested_thumbnail_text: "BEST-LOOKING RETURN",
+    first_frame_text: "BEST-LOOKING RETURN",
+    primary_source: "Digital Foundry, NVIDIA GeForce and Pulse Gaming local capture",
+    source_name: "Digital Foundry, NVIDIA GeForce and Pulse Gaming local capture",
+    thumbnail_source_label: "Digital Foundry, NVIDIA GeForce and Pulse Gaming local capture",
+    first_frame_text_evidence: {
+      status: "PASS",
+      verified: true,
+      exact_text: "BEST-LOOKING RETURN",
+      render_sha256: renderSha256,
+      source_master_sha256: crypto
+        .createHash("sha256")
+        .update(await fs.readFile(sourceFramePath))
+        .digest("hex"),
+      source_kind: "hash_pinned_authored_scene",
+    },
+    render_manifest: {
+      ...candidate.render_manifest,
+      output_path: renderPath,
+      reviewed_sha256: renderSha256,
+      output_sha256: renderSha256,
+      rendered_duration_s: 2,
+    },
+    platform_cover_manifest: {
+      schema_version: 1,
+      story_id: "verified-platform-cover-copy",
+      status: "PASS",
+      verified: true,
+      headline: "HALF-LIFE 2 RTX: BEST-LOOKING RETURN",
+      source_label: "Digital Foundry, NVIDIA GeForce and Pulse Gaming local capture",
+      accepted_render_sha256: renderSha256,
+      frame_time_seconds: 1.5,
+      visible_text_evidence: [
+        "HALF-LIFE 2 RTX",
+        "BEST-LOOKING RETURN",
+        "TO CITY 17",
+      ],
+      frame_asset: {
+        asset_id: "accepted-v11-frame-1-500",
+        path: framePath,
+        sha256: frameSha256,
+        width: 1080,
+        height: 1920,
+        mime_type: "image/png",
+      },
+      derivation: {
+        type: "exact_frame_extracted_from_accepted_render",
+        external_generated_imagery_used: false,
+        pulse_authored_graphics_only: true,
+      },
+      platforms: {
+        youtube_shorts: {
+          selection_mode: "in_video_frame",
+          frame_time_seconds: 1.5,
+          custom_thumbnail_upload_allowed: false,
+          application_status: "NOT_APPLIED",
+        },
+        instagram_reels: {
+          selection_mode: "separate_cover_image",
+          application_status: "NOT_APPLIED",
+        },
+        facebook_reels: {
+          selection_mode: "in_video_frame",
+          frame_time_seconds: 1.5,
+          application_status: "NOT_APPLIED",
+        },
+      },
+      blockers: [],
+    },
+    description:
+      "Half-Life 2 RTX makes City 17 spectacular, but the demo scope makes Valve's original the better first journey.",
+    full_script:
+      "Half-Life 2 RTX is the best-looking return to City 17, but not the best first trip. The demo covers Ravenholm and Nova Prospekt, so first-time players should begin with Valve's original.",
+  });
+
+  const pack = buildGoalProofPackage({
+    story: candidate,
+    rightsLedger: rightsForGreenStory(candidate),
+    generatedAt: "2026-08-13T17:30:00.000Z",
+  });
+
+  assert.equal(pack.canonical_story_manifest.first_frame_text, "BEST-LOOKING RETURN");
+  assert.equal(
+    pack.canonical_story_manifest.thumbnail_headline,
+    "HALF-LIFE 2 RTX: BEST-LOOKING RETURN",
+  );
+  assert.equal(pack.visual_quality_report.frame_rules.first_frame_text, "BEST-LOOKING RETURN");
+  for (const platform of ["youtube_shorts", "instagram_reels", "facebook_reels"]) {
+    const cover = pack.platform_publish_manifest.outputs[platform].cover_frame;
+    assert.equal(cover.headline, "HALF-LIFE 2 RTX: BEST-LOOKING RETURN");
+    assert.equal(cover.asset.sha256, frameSha256);
+    assert.equal(cover.asset.width, 1080);
+    assert.equal(cover.asset.height, 1920);
+  }
+  assert.equal(
+    pack.platform_publish_manifest.outputs.youtube_shorts.cover_frame.selection_mode,
+    "in_video_frame",
+  );
+  assert.equal(
+    pack.platform_publish_manifest.outputs.youtube_shorts.cover_frame.custom_thumbnail_upload_allowed,
+    false,
+  );
+  assert.equal(
+    pack.platform_publish_manifest.platform_native_evidence.failures.some(
+      (failure) => failure.reason === "weak_cover_headline",
+    ),
+    false,
+  );
+
+  const forgedCandidate = structuredClone(candidate);
+  forgedCandidate.platform_cover_manifest.frame_asset.sha256 = "0".repeat(64);
+  const forgedPack = buildGoalProofPackage({
+    story: forgedCandidate,
+    rightsLedger: rightsForGreenStory(forgedCandidate),
+    generatedAt: "2026-08-13T17:31:00.000Z",
+  });
+  assert.ok(
+    forgedPack.publish_verdict.reason_codes.includes(
+      "platform_cover:frame_asset_sha256_mismatch",
+    ),
+  );
+  assert.equal(forgedPack.platform_cover_manifest.verified, false);
+  assert.equal(forgedPack.canonical_story_manifest.first_frame_text, "BEST-LOOKING RETURN");
 });
 
 test("goal proof package builds the remaining creative and commercial artefacts", () => {
@@ -743,6 +1082,15 @@ test("YouTube packs preserve approved long-form metadata separately from canonic
   assert.equal(packs.outputs.youtube_shorts.altered_synthetic_disclosure_required, true);
   assert.equal(packs.outputs.youtube_shorts.altered_synthetic_disclosure_setting, "YES");
   assert.equal(packs.outputs.youtube_shorts.altered_synthetic_disclosure_present, false);
+  assert.equal(
+    packs.platformNativeEvidence.failures.some(
+      (failure) =>
+        failure.platform === "youtube_shorts" &&
+        failure.reason === "plain_platform_description",
+    ),
+    false,
+    JSON.stringify(packs.platformNativeEvidence.failures),
+  );
   assert.doesNotMatch(canonicalDescription, /https?:\/\//);
   assert.ok(canonicalDescription.length <= 420);
 });
@@ -792,6 +1140,12 @@ test("goal proof package keeps canonical copy concise while carrying the approve
   assert.equal(pack.youtube_publish_pack.description, approvedYoutubeDescription);
   assert.equal(pack.youtube_publish_pack.altered_synthetic_disclosure_setting, "YES");
   assert.equal(pack.youtube_publish_pack.altered_synthetic_disclosure_present, false);
+  assert.ok(
+    !pack.publish_verdict.reason_codes.includes(
+      "platform_native:youtube_shorts:plain_platform_description",
+    ),
+    JSON.stringify(pack.publish_verdict.reason_codes),
+  );
   assert.equal(
     pack.coherence_report.manifest.thumbnail_headline,
     pack.canonical_story_manifest.thumbnail_headline,
@@ -1023,6 +1377,7 @@ test("goal proof package carries supplied narration and timestamp lineage into a
   );
 
   const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-lineage-"));
+  await attachAuthoritativeCaptionTimeline(pack, outputDir);
   await writeGoalProofPackageArtifacts(pack, { outputDir });
   assert.deepEqual(
     await fs.readJson(path.join(outputDir, "narration_manifest.json")),
@@ -3198,6 +3553,7 @@ test("goal proof package writes media-house score and blocks weak Shorts packagi
   );
 
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-house-pack-"));
+  await attachAuthoritativeCaptionTimeline(pack, tmp);
   await writeGoalProofPackageArtifacts(pack, { outputDir: tmp });
   assert.ok(await fs.pathExists(path.join(tmp, "pulse_media_house_score.json")));
 });
@@ -3513,6 +3869,514 @@ test("goal proof package writes goal-named artefacts", async () => {
   assert.equal(Object.keys(written).length >= 15, true);
 });
 
+test("goal proof package writes full authoritative karaoke mapping captions", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-captions-"));
+  const mappingPath = path.join(tmp, "narration.karaoke.mapping.json");
+  const cueTexts = [
+    "Alpha beta.",
+    "Gamma delta.",
+    "Epsilon zeta.",
+    "Eta theta.",
+    "Iota kappa.",
+    "Lambda mu.",
+    "Nu xi.",
+    "Omicron pi.",
+    "Rho sigma.",
+    "Tau upsilon.",
+    "Phi chi.",
+    "Psi omega.",
+  ];
+  const displayText = cueTexts.join(" ");
+  const groups = cueTexts.map((text, index) => ({
+    id: `g${index}`,
+    text,
+    start: 0.26 + index * 1.2,
+    end: 1.06 + index * 1.2,
+  }));
+  const expectedSrt = `${groups.map((group, index) => [
+    String(index + 1),
+    `${String(Math.floor(group.start / 3600)).padStart(2, "0")}:${String(Math.floor((group.start % 3600) / 60)).padStart(2, "0")}:${String(Math.floor(group.start % 60)).padStart(2, "0")},${String(Math.round((group.start % 1) * 1000)).padStart(3, "0")} --> ${String(Math.floor(group.end / 3600)).padStart(2, "0")}:${String(Math.floor((group.end % 3600) / 60)).padStart(2, "0")}:${String(Math.floor(group.end % 60)).padStart(2, "0")},${String(Math.round((group.end % 1) * 1000)).padStart(3, "0")}`,
+    group.text,
+  ].join("\n")).join("\n\n")}\n`;
+  const audioSha256 = "a".repeat(64);
+  const timestampsSha256 = "b".repeat(64);
+  await fs.writeJson(mappingPath, {
+    display_text: displayText,
+    groups,
+    sources: { alignment: { sha256: timestampsSha256 } },
+    alignment_provenance: { audio_sha256: audioSha256 },
+  });
+  const mappingSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(mappingPath))
+    .digest("hex");
+  await fs.outputFile(path.join(tmp, "visual_v4_render.mp4"), Buffer.alloc(4096, 9));
+  const captionStory = greenStory();
+  captionStory.full_script = displayText;
+  captionStory.youtube_altered_or_synthetic_content = "YES";
+  captionStory.ai_usage = {
+    realistic_altered_or_synthetic: true,
+    label_required: true,
+    basis: "locally generated synthetic narration",
+  };
+  captionStory.caption_manifest = {
+    ...captionStory.caption_manifest,
+    display_text: displayText,
+    karaoke_mapping_path: mappingPath,
+    karaoke_mapping_sha256: mappingSha256,
+    caption_timeline_authoritative: true,
+    narration_audio_sha256: audioSha256,
+    word_timestamps_sha256: timestampsSha256,
+  };
+  captionStory.audio_manifest = {
+    ...captionStory.audio_manifest,
+    narration_audio_sha256: audioSha256,
+    word_timestamps_sha256: timestampsSha256,
+  };
+  captionStory.render_manifest = {
+    ...captionStory.render_manifest,
+    input_fingerprint: {
+      audio_sha256: audioSha256,
+      word_timestamps_sha256: timestampsSha256,
+    },
+  };
+  const pack = buildGoalProofPackage({
+    story: captionStory,
+    rightsLedger: rightsForGreenStory(captionStory),
+    generatedAt: "2026-08-13T14:00:00.000Z",
+  });
+
+  await writeGoalProofPackageArtifacts(pack, { outputDir: tmp });
+
+  assert.equal(await fs.readFile(path.join(tmp, "captions.srt"), "utf8"), expectedSrt);
+  assert.equal((expectedSrt.match(/-->/g) || []).length, 12);
+  assert.match(expectedSrt, /00:00:13,460 --> 00:00:14,260/);
+  const youtubePack = await fs.readJson(path.join(tmp, "youtube_publish_pack.json"));
+  const finalVideoBytes = await fs.readFile(path.join(tmp, "visual_v4_render.mp4"));
+  const finalCaptionBytes = await fs.readFile(path.join(tmp, "captions.srt"));
+  assert.equal(youtubePack.schema_version, 1);
+  assert.equal(youtubePack.story_id, captionStory.id);
+  assert.equal(youtubePack.youtube_upload_request.closed, true);
+  assert.equal(youtubePack.youtube_upload_request.video_file, "visual_v4_render.mp4");
+  assert.equal(
+    youtubePack.youtube_upload_request.video_sha256,
+    crypto.createHash("sha256").update(finalVideoBytes).digest("hex"),
+  );
+  assert.equal(youtubePack.youtube_upload_request.captions.file, "captions.srt");
+  assert.equal(
+    youtubePack.youtube_upload_request.captions.sha256,
+    crypto.createHash("sha256").update(finalCaptionBytes).digest("hex"),
+  );
+  assert.equal(youtubePack.youtube_upload_request.status.privacyStatus, "private");
+  assert.equal(youtubePack.youtube_upload_request.notifySubscribers, false);
+  const requestPlan = buildGovernedYouTubeUploadPlan({
+    packageDocument: youtubePack,
+    packageRoot: tmp,
+    storyId: captionStory.id,
+  });
+  assert.equal(requestPlan.verdict, "REQUEST_SHAPE_PASS");
+  assert.equal(requestPlan.can_publish, false);
+});
+
+test("goal proof package rejects a final render without authoritative caption timing", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-caption-authority-"));
+  const captionStory = greenStory();
+  const pack = buildGoalProofPackage({
+    story: captionStory,
+    rightsLedger: rightsForGreenStory(captionStory),
+    generatedAt: "2026-08-13T14:00:30.000Z",
+  });
+  const outputDir = path.join(root, "package");
+
+  await assert.rejects(
+    writeGoalProofPackageArtifacts(pack, { outputDir }),
+    /final_publish_caption_timeline_authority_required/,
+  );
+  assert.equal(await fs.pathExists(path.join(outputDir, "captions.srt")), false);
+  assert.equal(await fs.pathExists(path.join(outputDir, "canonical_story_manifest.json")), false);
+});
+
+test("goal proof captions keep dry alignment audio distinct from the rendered programme mix", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-caption-programme-audio-"));
+  const mappingPath = path.join(root, "narration.karaoke.mapping.json");
+  const audioSha256 = "a".repeat(64);
+  const timestampsSha256 = "b".repeat(64);
+  const programmeAudioSha256 = "c".repeat(64);
+  const displayText = "Alpha beta. Gamma delta.";
+  const groups = [
+    { id: "g0", text: "Alpha beta.", start: 0.26, end: 1.26 },
+    { id: "g1", text: "Gamma delta.", start: 1.4, end: 2.4 },
+  ];
+  await fs.writeJson(mappingPath, {
+    display_text: displayText,
+    groups,
+    sources: { alignment: { sha256: timestampsSha256 } },
+    alignment_provenance: { audio_sha256: audioSha256 },
+  });
+  const mappingSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(mappingPath))
+    .digest("hex");
+  await fs.outputFile(path.join(root, "visual_v4_render.mp4"), Buffer.alloc(4096, 7));
+
+  const captionStory = greenStory();
+  captionStory.full_script = displayText;
+  captionStory.caption_manifest = {
+    ...captionStory.caption_manifest,
+    display_text: displayText,
+    karaoke_mapping_path: mappingPath,
+    karaoke_mapping_sha256: mappingSha256,
+    caption_timeline_authoritative: true,
+    alignment_audio_sha256: audioSha256,
+    narration_audio_sha256: audioSha256,
+    word_timestamps_sha256: timestampsSha256,
+  };
+  captionStory.audio_manifest = {
+    ...captionStory.audio_manifest,
+    audio_sha256: programmeAudioSha256,
+    narration_audio_sha256: audioSha256,
+    programme_audio_sha256: programmeAudioSha256,
+    word_timestamps_sha256: timestampsSha256,
+  };
+  captionStory.render_manifest = {
+    ...captionStory.render_manifest,
+    input_fingerprint: {
+      audio_sha256: programmeAudioSha256,
+      programme_audio_sha256: programmeAudioSha256,
+      caption_alignment_audio_sha256: audioSha256,
+      word_timestamps_sha256: timestampsSha256,
+    },
+  };
+  const pack = buildGoalProofPackage({
+    story: captionStory,
+    rightsLedger: rightsForGreenStory(captionStory),
+    generatedAt: "2026-08-13T14:00:35.000Z",
+  });
+
+  await writeGoalProofPackageArtifacts(pack, { outputDir: root });
+
+  assert.equal(pack.render_manifest.input_fingerprint.audio_sha256, programmeAudioSha256);
+  assert.equal(pack.audio_manifest.programme_audio_sha256, programmeAudioSha256);
+  assert.equal(pack.publish_verdict.reason_codes.includes("lineage:audio_sha256_conflict"), false);
+  assert.equal(pack.publish_verdict.reason_codes.includes("lineage:programme_audio_sha256_conflict"), false);
+  assert.match(await fs.readFile(path.join(root, "captions.srt"), "utf8"), /Alpha beta\./);
+});
+
+test("goal proof requires the explicit rendered programme-audio fingerprint in a dual-audio contract", () => {
+  const source = greenStory();
+  source.audio_manifest = {
+    ...source.audio_manifest,
+    audio_sha256: "c".repeat(64),
+    narration_audio_sha256: "a".repeat(64),
+    programme_audio_sha256: "c".repeat(64),
+  };
+  source.caption_manifest = {
+    ...source.caption_manifest,
+    alignment_audio_sha256: "a".repeat(64),
+    narration_audio_sha256: "a".repeat(64),
+  };
+  source.render_manifest = {
+    ...source.render_manifest,
+    input_fingerprint: {
+      audio_sha256: "c".repeat(64),
+      caption_alignment_audio_sha256: "a".repeat(64),
+      word_timestamps_sha256: "b".repeat(64),
+    },
+  };
+  source.narration_manifest = {
+    schema_version: 1,
+    story_id: source.id,
+    verdict: "GREEN",
+    status: "PASS",
+    audio_sha256: "a".repeat(64),
+    word_timestamps_sha256: "b".repeat(64),
+    blockers: [],
+  };
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger: rightsForGreenStory(source),
+    generatedAt: "2026-08-13T14:00:37.000Z",
+  });
+
+  assert.equal(pack.publish_verdict.verdict, "RED");
+  assert.ok(
+    pack.publish_verdict.reason_codes.includes(
+      "lineage:render_manifest_programme_audio_sha256_missing",
+    ),
+  );
+});
+
+test("goal proof package rejects conflicting rendered programme-audio lineage", () => {
+  const source = greenStory();
+  source.audio_manifest = {
+    ...source.audio_manifest,
+    narration_audio_sha256: "a".repeat(64),
+    programme_audio_sha256: "c".repeat(64),
+  };
+  source.caption_manifest = {
+    ...source.caption_manifest,
+    alignment_audio_sha256: "a".repeat(64),
+    narration_audio_sha256: "a".repeat(64),
+  };
+  source.render_manifest = {
+    ...source.render_manifest,
+    input_fingerprint: {
+      audio_sha256: "d".repeat(64),
+      programme_audio_sha256: "d".repeat(64),
+      caption_alignment_audio_sha256: "a".repeat(64),
+    },
+  };
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger: rightsForGreenStory(source),
+    generatedAt: "2026-08-13T14:00:40.000Z",
+  });
+
+  assert.equal(pack.publish_verdict.verdict, "RED");
+  assert.ok(
+    pack.publish_verdict.reason_codes.includes("lineage:programme_audio_sha256_conflict"),
+  );
+});
+
+test("goal proof accepts the exact Pulse CTA from a hash-bound reviewed end card", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-visual-cta-"));
+  const source = greenStory();
+  const fixture = await materialiseReviewedVisualCtaFixture(root, source.id);
+  const { renderPath, renderSha256, evidencePath, evidence, evidenceSha256 } = fixture;
+  source.full_script =
+    "Half-Life 2 RTX is the best-looking return to City 17—but not the best first trip. " +
+    "Orbifold rebuilt the lighting, materials and models without changing the game underneath. " +
+    "In Ravenholm, lamps, fire and wet concrete reshape familiar rooms. City 17 feels unfamiliar again. " +
+    "But the demo only covers Ravenholm and Nova Prospekt. It requires Half-Life 2 and an RTX 3060 Ti. " +
+    "That makes RTX a spectacular revisit, not the cleanest introduction. First time in City 17? Play the original. " +
+    "Then return for the spectacular light show. Because the brighter the technology becomes, the more completely Ravenholm belongs in the darkness.";
+  source.render_manifest = {
+    ...source.render_manifest,
+    output_path: renderPath,
+    reviewed_sha256: renderSha256,
+    rendered_duration_s: 2,
+  };
+  source.visual_cta_manifest = {
+    ...evidence,
+    evidence_path: evidencePath,
+    evidence_sha256: evidenceSha256,
+  };
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger: rightsForGreenStory(source),
+    generatedAt: "2026-08-13T14:00:42.000Z",
+  });
+
+  assert.equal(pack.script_scorecard.blockers.includes("missing_exact_cta"), false);
+  assert.equal(pack.script_scorecard.cta.delivery_mode, "visual_end_card");
+  assert.equal(pack.script_scorecard.cta.render_sha256, renderSha256);
+  assert.equal(Object.hasOwn(pack.script_scorecard.cta, "evidence_path"), false);
+  assert.equal(pack.script_scorecard.cta.evidence_sha256, evidenceSha256);
+  assert.equal(
+    pack.publish_verdict.reason_codes.some((code) => code.startsWith("visual_cta:")),
+    false,
+  );
+});
+
+test("goal proof rejects a duplicate spoken and visual Pulse CTA", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-visual-cta-duplicate-"));
+  const source = greenStory();
+  const fixture = await materialiseReviewedVisualCtaFixture(root, source.id);
+  const { renderPath, renderSha256, evidencePath, evidence, evidenceSha256 } = fixture;
+  source.render_manifest = {
+    ...source.render_manifest,
+    output_path: renderPath,
+    reviewed_sha256: renderSha256,
+    rendered_duration_s: 2,
+  };
+  source.visual_cta_manifest = {
+    ...evidence,
+    evidence_path: evidencePath,
+    evidence_sha256: evidenceSha256,
+  };
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger: rightsForGreenStory(source),
+    generatedAt: "2026-08-13T14:00:42.500Z",
+  });
+
+  assert.equal(pack.script_scorecard.verdict, "rewrite_required");
+  assert.ok(pack.script_scorecard.blockers.includes("duplicated_cta"));
+  assert.equal(pack.script_scorecard.cta.spoken_count, 1);
+  assert.equal(pack.script_scorecard.cta.visual_count, 1);
+  assert.equal(pack.script_scorecard.cta.count, 2);
+});
+
+test("goal proof rejects a CTA sample that was not extracted from the reviewed render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-visual-cta-wrong-frame-"));
+  const source = greenStory();
+  source.full_script = source.full_script.replace(
+    /\s*Follow Pulse Gaming so you never miss a beat\.?$/,
+    "",
+  );
+  const fixture = await materialiseReviewedVisualCtaFixture(root, source.id);
+  await fs.writeFile(fixture.samplePath, Buffer.from("not a decoded render frame"));
+  fixture.evidence.sampled_frame.sha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(fixture.samplePath))
+    .digest("hex");
+  await fs.writeJson(fixture.evidencePath, fixture.evidence);
+  source.render_manifest = {
+    ...source.render_manifest,
+    output_path: fixture.renderPath,
+    reviewed_sha256: fixture.renderSha256,
+    rendered_duration_s: 2,
+  };
+  source.visual_cta_manifest = {
+    ...fixture.evidence,
+    evidence_path: fixture.evidencePath,
+    evidence_sha256: crypto
+      .createHash("sha256")
+      .update(await fs.readFile(fixture.evidencePath))
+      .digest("hex"),
+  };
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger: rightsForGreenStory(source),
+    generatedAt: "2026-08-13T14:00:42.750Z",
+  });
+
+  assert.ok(pack.script_scorecard.blockers.includes("missing_exact_cta"));
+  assert.ok(
+    pack.publish_verdict.reason_codes.includes("visual_cta:sampled_frame_not_from_render"),
+  );
+});
+
+test("goal proof keeps a changed visual CTA evidence file fail-closed", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-visual-cta-red-"));
+  const evidencePath = path.join(root, "visual-cta-evidence.json");
+  const source = greenStory();
+  source.full_script =
+    "Half-Life 2 RTX is the best-looking return to City 17—but not the best first trip. " +
+    "Orbifold rebuilt the lighting, materials and models without changing the game underneath. " +
+    "In Ravenholm, lamps, fire and wet concrete reshape familiar rooms. City 17 feels unfamiliar again. " +
+    "But the demo only covers Ravenholm and Nova Prospekt. It requires Half-Life 2 and an RTX 3060 Ti. " +
+    "That makes RTX a spectacular revisit, not the cleanest introduction. First time in City 17? Play the original. " +
+    "Then return for the spectacular light show. Because the brighter the technology becomes, the more completely Ravenholm belongs in the darkness.";
+  source.render_manifest = {
+    ...source.render_manifest,
+    reviewed_sha256: "d".repeat(64),
+    rendered_duration_s: 58.6,
+  };
+  await fs.writeJson(evidencePath, { changed: true });
+  source.visual_cta_manifest = {
+    schema_version: 1,
+    story_id: source.id,
+    verdict: "GREEN",
+    exact_text: "Follow Pulse Gaming so you never miss a beat",
+    delivery_mode: "visual_end_card",
+    start_seconds: 57.2,
+    end_seconds: 58.5,
+    render_sha256: "d".repeat(64),
+    dom_verified: true,
+    sampled_visual_verified: true,
+    evidence_path: evidencePath,
+    evidence_sha256: "e".repeat(64),
+  };
+
+  const pack = buildGoalProofPackage({
+    story: source,
+    rightsLedger: rightsForGreenStory(source),
+    generatedAt: "2026-08-13T14:00:43.000Z",
+  });
+
+  assert.ok(pack.script_scorecard.blockers.includes("missing_exact_cta"));
+  assert.ok(pack.publish_verdict.reason_codes.includes("visual_cta:evidence_sha256_mismatch"));
+});
+
+test("goal proof package rejects authoritative captions with conflicting embedded lineage", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-caption-lineage-"));
+  const mappingPath = path.join(root, "narration.karaoke.mapping.json");
+  const audioSha256 = "a".repeat(64);
+  const timestampsSha256 = "b".repeat(64);
+  await fs.writeJson(mappingPath, {
+    display_text: "Alpha beta.",
+    groups: [{ id: "g0", text: "Alpha beta.", start: 0.26, end: 1.682 }],
+    sources: { alignment: { sha256: "c".repeat(64) } },
+    alignment_provenance: { audio_sha256: audioSha256 },
+  });
+  const mappingSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(mappingPath))
+    .digest("hex");
+  const captionStory = greenStory();
+  captionStory.full_script = "Alpha beta.";
+  captionStory.caption_manifest = {
+    ...captionStory.caption_manifest,
+    display_text: "Alpha beta.",
+    karaoke_mapping_path: mappingPath,
+    karaoke_mapping_sha256: mappingSha256,
+    caption_timeline_authoritative: true,
+    narration_audio_sha256: audioSha256,
+    word_timestamps_sha256: timestampsSha256,
+  };
+  captionStory.audio_manifest = {
+    ...captionStory.audio_manifest,
+    narration_audio_sha256: audioSha256,
+    word_timestamps_sha256: timestampsSha256,
+  };
+  captionStory.render_manifest = {
+    ...captionStory.render_manifest,
+    input_fingerprint: {
+      audio_sha256: audioSha256,
+      word_timestamps_sha256: timestampsSha256,
+    },
+  };
+  const pack = buildGoalProofPackage({
+    story: captionStory,
+    rightsLedger: rightsForGreenStory(captionStory),
+    generatedAt: "2026-08-13T14:00:45.000Z",
+  });
+  const outputDir = path.join(root, "package");
+
+  await assert.rejects(
+    writeGoalProofPackageArtifacts(pack, { outputDir }),
+    /authoritative_caption_alignment_sha256_mismatch/,
+  );
+  assert.equal(await fs.pathExists(path.join(outputDir, "captions.srt")), false);
+  assert.equal(await fs.pathExists(path.join(outputDir, "canonical_story_manifest.json")), false);
+});
+
+test("goal proof package rejects a changed authoritative karaoke mapping", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-caption-tamper-"));
+  const mappingPath = path.join(root, "narration.karaoke.mapping.json");
+  await fs.writeJson(mappingPath, {
+    display_text: "Alpha beta.",
+    groups: [{ id: "g0", text: "Alpha beta.", start: 0.26, end: 1.682 }],
+  });
+  const captionStory = greenStory();
+  captionStory.caption_manifest = {
+    ...captionStory.caption_manifest,
+    display_text: "Alpha beta.",
+    karaoke_mapping_path: mappingPath,
+    karaoke_mapping_sha256: "f".repeat(64),
+    caption_timeline_authoritative: true,
+  };
+  const pack = buildGoalProofPackage({
+    story: captionStory,
+    rightsLedger: rightsForGreenStory(captionStory),
+    generatedAt: "2026-08-13T14:01:00.000Z",
+  });
+  const outputDir = path.join(root, "package");
+
+  await assert.rejects(
+    writeGoalProofPackageArtifacts(pack, { outputDir }),
+    /authoritative_caption_mapping_sha256_mismatch/,
+  );
+  assert.equal(await fs.pathExists(path.join(outputDir, "captions.srt")), false);
+  assert.equal(await fs.pathExists(path.join(outputDir, "canonical_story_manifest.json")), false);
+});
+
 test("goal proof artefact writer never emits an empty no-offer package", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-no-offer-write-"));
   const pack = buildGoalProofPackage({
@@ -3581,6 +4445,7 @@ test("goal proof package writes explicit materialised motion clip evidence", asy
     generatedAt: "2026-06-23T10:00:00.000Z",
   });
 
+  await attachAuthoritativeCaptionTimeline(pack, tmp);
   await writeGoalProofPackageArtifacts(pack, { outputDir: tmp });
   const motion = await fs.readJson(path.join(tmp, "materialised_motion_clips.json"));
 
@@ -3604,6 +4469,7 @@ test("goal proof package keeps declared-only motion RED when final media is only
   assert.ok(
     pack.acceptance_entry.blockers.includes("media_house:direct_motion_not_verified"),
   );
+  await attachAuthoritativeCaptionTimeline(pack, tmp);
   await writeGoalProofPackageArtifacts(pack, { outputDir: tmp });
 
   for (const basename of pack.acceptance_entry.artefacts) {
@@ -3666,6 +4532,7 @@ test("goal proof package does not overwrite an existing final render with a loca
   });
 
   assert.equal(pack.render_manifest.final_publish_render, true);
+  await attachAuthoritativeCaptionTimeline(pack, tmp);
   await writeGoalProofPackageArtifacts(pack, { outputDir: tmp });
 
   assert.deepEqual(await fs.readFile(finalRenderPath), existingBytes);
@@ -3698,6 +4565,7 @@ test("goal proof package materialises the exact declared final render instead of
     output: sourceRenderPath,
   };
 
+  await attachAuthoritativeCaptionTimeline(pack, outputDir);
   await writeGoalProofPackageArtifacts(pack, { outputDir });
 
   const materialisedPath = path.join(outputDir, "visual_v4_render.mp4");

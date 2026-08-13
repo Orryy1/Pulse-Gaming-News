@@ -5,6 +5,7 @@ const test = require("node:test");
 
 const {
   buildPulseMediaHouseScore,
+  _private,
 } = require("../../lib/pulse-media-house-score");
 
 function strongStory(overrides = {}) {
@@ -124,6 +125,28 @@ test("strong Pulse-original package passes competitor-informed score", () => {
   assert.equal(report.professional_source_diversity_report.status, "not_required");
   assert.equal(report.production_grammar_alignment_report.status, "pass");
   assert.deepEqual(report.hard_failures, []);
+});
+
+test("approved YouTube descriptions are judged on editorial copy rather than retained credit administration", () => {
+  const approvedDescription = [
+    "Half-Life 2 RTX makes Ravenholm and Nova Prospekt look spectacular, but this demo carries hefty PC requirements. First-time players should start with Valve's release before returning for the lighting showcase.",
+    "Source: Digital Foundry (muted comparison excerpt)",
+    "https://www.youtube.com/watch?v=QHRS0TO89UI",
+    "Footage: NVIDIA GeForce (muted RTX ON/OFF excerpt)",
+    "https://www.youtube.com/watch?v=j31ISEd8xRM",
+    "Music: Carbon by Truvio via Epidemic Sound.",
+  ].join("\n\n");
+
+  assert.equal(
+    _private.platformCopyTooPlain({
+      outputs: {
+        youtube_shorts: {
+          description: approvedDescription,
+        },
+      },
+    }),
+    false,
+  );
 });
 
 test("media-house score fails closed when exact final inputs are abstract despite unused real-media inventory", () => {

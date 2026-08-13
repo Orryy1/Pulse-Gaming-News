@@ -15,6 +15,35 @@ const STORY = {
   source_name: "Twisted Voxel",
 };
 
+test("viral intelligence recognises a concrete revisit-versus-first-trip verdict", () => {
+  const script =
+    "Half-Life 2 RTX is the best-looking return to City 17—but not the best first trip. " +
+    "Orbifold rebuilt the lighting, materials and models without changing the game underneath. " +
+    "In Ravenholm, lamps, fire and wet concrete reshape familiar rooms. City 17 feels unfamiliar again. " +
+    "But the demo only covers Ravenholm and Nova Prospekt. It requires Half-Life 2, 50 GB of storage and at least an RTX 3060 Ti. " +
+    "An RTX 4070 is recommended. That makes RTX a spectacular revisit, not the cleanest introduction. " +
+    "The original still gives you the complete journey, deliberate pacing and physics-led combat without making every shadow a hardware test. " +
+    "First time in City 17? Play the original. Then return for the spectacular light show. " +
+    "Because the brighter the technology becomes, the more completely Ravenholm belongs in the darkness.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "half-life-2-rtx-evergreen",
+      title: "Half-Life 2 RTX: The Best-Looking Return to City 17",
+      canonical_subject: "Half-Life 2 RTX",
+    },
+    script,
+    ctaPolicy: "optional",
+  });
+
+  assert.equal(result.verdict, "viral_ready");
+  assert.ok(result.viral_score >= 85);
+  assert.equal(result.blockers.includes("missing_debate_trigger"), false);
+  assert.equal(result.blockers.includes("missing_relatable_stakes"), false);
+  assert.equal(result.blockers.includes("missing_story_specific_payoff"), false);
+  assert.equal(result.blockers.includes("missing_exact_cta"), false);
+});
+
 test("viral script intelligence rejects boring recap, repeated hook wording and duplicate CTA", () => {
   const draft =
     "Forza Horizon 6 Hits 92 on Metacritic, Steam Numbers Skyrocket. " +

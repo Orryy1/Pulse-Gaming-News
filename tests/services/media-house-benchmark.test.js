@@ -524,6 +524,88 @@ test("media-house benchmark does not let stripped audit asset rows overwrite app
   assert.ok(!benchmark.failures.includes("gold_standard:rights_risk_above_reference"));
 });
 
+test("media-house benchmark evaluates the authoritative selected-media ledger and preserves a governed bounded editorial exception as an exception", () => {
+  const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
+  const selectedAssets = [
+    {
+      asset_id: "df-comparison",
+      path: "D:\\media\\df-comparison.mp4",
+      source_url: "https://www.youtube.com/watch?v=DigitalFoundryExample",
+      source_type: "publicly_released_editorial_video",
+    },
+    {
+      asset_id: "nvidia-comparison",
+      path: "D:\\media\\nvidia-comparison.mp4",
+      source_url: "https://www.youtube.com/watch?v=NvidiaExample",
+      source_type: "official_publicly_released_demo_video",
+    },
+  ];
+  const rightsRecords = selectedAssets.map((asset) => ({
+    ...asset,
+    licence_basis: "uk_fair_dealing_criticism_review_bounded_excerpt",
+    allowed_use: "bounded_transformative_editorial_excerpt",
+    commercial_use_allowed: true,
+    live_publish_allowed: true,
+    approval_status: "approved",
+    verdict: "GREEN",
+    risk_score: 0.35,
+    rights_basis_category: "bounded_editorial_excerpt",
+    legal_exception_reliance: true,
+    transformative_rights_evidence_verified: true,
+    evidence_reference: "rights/operator-policy-attestation.json",
+    evidence_kind: "bounded_editorial_excerpt_policy",
+    credit_required: true,
+    on_screen_credit: `SOURCE: ${asset.asset_id}`,
+    editorial_policy_acceptance: {
+      accepted_by: "Pulse Gaming owner",
+      accepted_at: "2026-08-13T11:31:05.227Z",
+    },
+  }));
+  const authoredSegments = Array.from({ length: 8 }, (_, index) => ({
+    id: `authored-scene-${index + 1}`,
+    path: `D:\\rendered-scenes\\scene-${index + 1}.mp4`,
+    source_type: "pulse_studio_authored_hyperframes_scene_segment",
+    source_family: `pulse_authored_scene_${index + 1}`,
+    commercial_use_allowed: true,
+    approval_status: "approved_for_commercial_editorial_use",
+  }));
+
+  const benchmark = runMediaHouseBenchmark({
+    story: {
+      id: "governed-editorial-exception",
+      canonical_subject: "Half-Life 2 RTX",
+      title: "Half-Life 2 RTX Has One Catch",
+      suggested_title: "Half-Life 2 RTX Has One Catch",
+      hook: "Half-Life 2 RTX has one catch before your first trip to City 17.",
+      full_script:
+        "Half-Life 2 RTX has one catch before your first trip to City 17. The comparison shows why the remix is a revisit rather than the cleanest introduction.",
+      suggested_thumbnail_text: "RTX HAS A CATCH",
+      source_card_label: "Digital Foundry · NVIDIA · Pulse",
+      video_clips: authoredSegments,
+      rights_ledger: rightsRecords,
+      render_manifest: {
+        selected_input_assets: {
+          authoritative: true,
+          complete_for_declared_media_scope: true,
+          inventory_scope: "selected_embedded_media_only",
+          asset_count: selectedAssets.length,
+          assets: selectedAssets,
+        },
+      },
+      clean_manual_captions: true,
+      subtitle_timing_source: "timestamps",
+    },
+    directorPlan: strongDirectorPlan(),
+    requireGate: true,
+  });
+
+  assert.equal(benchmark.scores.rights_risk_score, 100);
+  assert.ok(!benchmark.failures.includes("gold_standard:rights_risk_above_reference"));
+  assert.equal(benchmark.rights_evidence.evaluation_scope, "authoritative_selected_media_inputs");
+  assert.equal(benchmark.rights_evidence.governed_editorial_exception_count, 2);
+  assert.equal(benchmark.rights_evidence.licence_or_ownership_claim_inferred, false);
+});
+
 test("media-house benchmark rewards proof cards for strong non-stat stories", () => {
   const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
   const shotPlan = [

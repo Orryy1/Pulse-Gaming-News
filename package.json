@@ -91,6 +91,8 @@
     "ops:goal-batch": "node tools/goal-batch-packages.js",
     "ops:goal-baseline-audit": "node tools/goal-baseline-audit.js",
     "ops:goal-dry-run-publish": "node tools/goal-dry-run-publish.js",
+    "ops:governed-youtube-upload-plan": "node tools/governed-youtube-upload-request-plan.js",
+    "ops:governed-youtube-private-dispatch": "node tools/governed-youtube-private-dispatch.js",
     "ops:publication-evidence-snapshot": "node tools/publication-evidence-snapshot.js",
     "ops:goal-stale-temporal-review": "node tools/goal-stale-temporal-review.js",
     "ops:goal-visual-source-review": "node tools/goal-visual-source-review.js",

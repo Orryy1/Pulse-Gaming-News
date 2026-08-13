@@ -42,7 +42,7 @@ async function makePackage(root, id, durationS, manifestOverrides = {}) {
 test("retention repair duration contracts separate hard publish windows from target windows", () => {
   const contracts = buildRetentionRepairDurationContracts(22.08);
 
-  assert.deepEqual(contracts.youtube_shorts.publish_duration_seconds, { min: 15, max: 60 });
+  assert.deepEqual(contracts.youtube_shorts.publish_duration_seconds, { min: 15, max: 180 });
   assert.deepEqual(contracts.youtube_shorts.target_duration_seconds, { min: 22, max: 30 });
   assert.equal(contracts.youtube_shorts.duration_strategy, "retention_repair_short_cut");
   assert.equal(contracts.tiktok.creator_rewards_eligible, false);
@@ -181,8 +181,12 @@ test("platform duration contract repair emits platform variant jobs when the 60s
   });
 
   assert.equal(report.summary.updated_count, 1);
-  assert.equal(report.summary.variant_repair_required_count, 3);
-  assert.equal(report.variant_repair_work_order.jobs.length, 3);
+  assert.equal(report.summary.variant_repair_required_count, 2);
+  assert.equal(report.variant_repair_work_order.jobs.length, 2);
+  assert.equal(
+    report.variant_repair_work_order.jobs.some((job) => job.platform === "youtube_shorts"),
+    false,
+  );
   const instagramJob = report.variant_repair_work_order.jobs.find((job) => job.platform === "instagram_reels");
   assert.equal(instagramJob.story_id, "ps5-price");
   assert.equal(instagramJob.status, "needs_platform_duration_variant");
@@ -190,6 +194,38 @@ test("platform duration contract repair emits platform variant jobs when the 60s
   assert.ok(
     instagramJob.actions.includes("materialize_platform_specific_duration_variant"),
   );
+});
+
+test("platform duration contract repair accepts a two-minute YouTube Short while requesting other platform variants", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-youtube-two-minutes-"));
+  const storyPackage = await makePackage(root, "youtube-two-minutes", 120);
+
+  const report = await repairGoalPlatformDurationContracts({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-08-13T12:00:00.000Z",
+  });
+
+  assert.equal(report.summary.updated_count, 1);
+  assert.equal(report.summary.blocked_count, 0);
+  assert.equal(
+    report.variant_repair_work_order.jobs.some((job) => job.platform === "youtube_shorts"),
+    false,
+  );
+  assert.ok(report.variant_repair_work_order.jobs.some((job) => job.platform === "instagram_reels"));
+});
+
+test("platform duration contract repair fails closed above the three-minute YouTube Shorts cap", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-youtube-over-cap-"));
+  const storyPackage = await makePackage(root, "youtube-over-three-minutes", 180.001);
+
+  const report = await repairGoalPlatformDurationContracts({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-08-13T12:00:00.000Z",
+  });
+
+  assert.equal(report.summary.updated_count, 0);
+  assert.equal(report.summary.blocked_count, 1);
+  assert.deepEqual(report.blocked[0].blockers, ["render_duration_above_longest_platform_max:180"]);
 });
 
 test("platform duration contract repair does not request platform variant already materialized in window", async () => {

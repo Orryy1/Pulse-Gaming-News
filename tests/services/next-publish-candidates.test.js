@@ -8471,6 +8471,7 @@ test("scheduler effective preflight story uses platform variants when enabled pl
     duration_seconds: 63.633,
     runtime_seconds: 63.633,
     audio_duration: 63.633,
+    target_video_duration_seconds_max: 60,
     max_video_duration_seconds: 60,
     platform_publish_manifest: {
       outputs: {
@@ -8495,7 +8496,7 @@ test("scheduler effective preflight story uses platform variants when enabled pl
 
   assert.equal(effective.scheduler_effective_platform_media_applied, true);
   assert.equal(effective.max_video_duration_seconds, 75);
-  assert.equal(effective.target_video_duration_seconds_max, 75);
+  assert.equal(effective.target_video_duration_seconds_max, 60);
   assert.equal(effective.duration_seconds, 63.633);
   assert.deepEqual(
     effective.scheduler_effective_platform_media.map((item) => [
@@ -8508,6 +8509,51 @@ test("scheduler effective preflight story uses platform variants when enabled pl
       ["instagram_reels", "platform_variant", 59.8],
       ["facebook_reels", "base_render", 63.633],
     ],
+  );
+});
+
+test("scheduler effective preflight keeps a 63-second YouTube-only base eligible without widening its creative target", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-effective-youtube-three-minute-"));
+  const baseVideo = path.join(root, "visual_v4_render.mp4");
+  await fs.outputFile(baseVideo, Buffer.alloc(2048));
+
+  const story = baseStory({
+    id: "half-life-2-rtx-evergreen",
+    exported_path: baseVideo,
+    scheduler_bridge_artifact_dir: root,
+    duration_lane: "normal_production",
+    duration_seconds: 63.466667,
+    runtime_seconds: 63.466667,
+    audio_duration: 63.466667,
+    target_video_duration_seconds_max: 60,
+    max_video_duration_seconds: 60,
+    platform_publish_manifest: {
+      enabled_platforms: ["youtube_shorts"],
+      outputs: {
+        youtube_shorts: {},
+      },
+    },
+  });
+
+  const effective = schedulerEffectivePreflightStory(story, { env: {} });
+
+  assert.equal(effective.scheduler_effective_platform_media_applied, true);
+  assert.equal(effective.duration_seconds, 63.466667);
+  assert.equal(effective.max_video_duration_seconds, 180);
+  assert.equal(effective.target_video_duration_seconds_max, 60);
+  assert.deepEqual(durationVerdict(effective), {
+    status: "review",
+    score: 2,
+    reason: "normal_production_extended_review",
+    duration_seconds: 63.466667,
+  });
+  assert.deepEqual(
+    effective.scheduler_effective_platform_media.map((item) => [
+      item.platform,
+      item.source,
+      item.duration_seconds,
+    ]),
+    [["youtube_shorts", "base_render", 63.466667]],
   );
 });
 
@@ -8550,7 +8596,7 @@ test("scheduler effective preflight story refuses variant relief when an enabled
   assert.equal(effective.duration_seconds, 63.633);
 });
 
-test("next publish report ranks scheduler-effective variant media as publish-ready", async () => {
+test("next publish report keeps scheduler-effective extended media in creative review", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-effective-platform-media-ranking-"));
   const baseVideo = path.join(root, "visual_v4_render.mp4");
   const youtubeVariant = path.join(root, "platform_variants", "youtube_shorts", "visual_v4_render_youtube.mp4");
@@ -8573,6 +8619,7 @@ test("next publish report ranks scheduler-effective variant media as publish-rea
         duration_seconds: 63.633,
         runtime_seconds: 63.633,
         audio_duration: 63.633,
+        target_video_duration_seconds_max: 60,
         max_video_duration_seconds: 60,
         platform_publish_manifest: {
           outputs: {
@@ -8597,8 +8644,8 @@ test("next publish report ranks scheduler-effective variant media as publish-rea
   );
 
   assert.equal(report.candidates.length, 1);
-  assert.equal(report.candidates[0].status, "publish_ready");
-  assert.ok(report.candidates[0].reasons.includes("normal_production_duration_window"));
+  assert.equal(report.candidates[0].status, "review");
+  assert.ok(report.candidates[0].reasons.includes("normal_production_extended_review"));
 });
 
 test("runPreflightQaForStory passes scheduler-effective platform media to content and video QA", async () => {
@@ -8621,6 +8668,7 @@ test("runPreflightQaForStory passes scheduler-effective platform media to conten
       duration_seconds: 63.633,
       runtime_seconds: 63.633,
       audio_duration: 63.633,
+      target_video_duration_seconds_max: 60,
       max_video_duration_seconds: 60,
       full_script:
         "MARVEL Tokon Fighting Souls just gave fighting-game fans three reasons to argue before launch. GameSpot's footage shows Arc System Works building a 4v4 tag fighter around assists, team routing and comic-book chaos. That matters because the roster is not just fan service. It decides whether this becomes a PlayStation 5 and PC party fighter or a serious lab monster. Follow Pulse Gaming so you never miss a beat.",
@@ -8678,7 +8726,7 @@ test("runPreflightQaForStory passes scheduler-effective platform media to conten
   assert.equal(preflight.status, "pass");
   assert.equal(seen.content.scheduler_effective_platform_media_applied, true);
   assert.equal(seen.videoStory.max_video_duration_seconds, 75);
-  assert.equal(seen.videoStory.target_video_duration_seconds_max, 75);
+  assert.equal(seen.videoStory.target_video_duration_seconds_max, 60);
   assert.equal(seen.videoPath, baseVideo);
   assert.equal(seen.platformPath, baseVideo);
 });

@@ -90,7 +90,7 @@ const DEFAULT_SOURCE_AGE_POLICY_HOURS = 168;
 const DEFAULT_PUBLICATION_EVIDENCE_MAX_AGE_HOURS = 24;
 const DEFAULT_ENABLED_SCHEDULER_GOVERNANCE_PLATFORMS = ["youtube", "instagram", "facebook"];
 const DEFAULT_PUBLISH_PLATFORM_MAX_SECONDS = {
-  youtube_shorts: 60,
+  youtube_shorts: 180,
   instagram_reels: 60,
   facebook_reels: 75,
 };
@@ -4677,8 +4677,8 @@ function platformDurationWindowMax(platform = "", output = {}, story = {}) {
     numberOrNull(output.duration_seconds?.max) ??
     numberOrNull(output.max_duration_s) ??
     numberOrNull(output.platform_variant_render?.max_duration_s) ??
-    numberOrNull(story.max_video_duration_seconds) ??
     DEFAULT_PUBLISH_PLATFORM_MAX_SECONDS[platform] ??
+    numberOrNull(story.max_video_duration_seconds) ??
     60
   );
 }
@@ -4758,7 +4758,6 @@ function schedulerEffectivePreflightStory(story = {}, opts = {}) {
     platformEffectiveMediaForStory(story, platform, { fsImpl: opts.fs || fs }),
   );
   if (media.some((item) => item.blocker)) return cloned;
-  if (!media.some((item) => item.source === "platform_variant")) return cloned;
 
   const representative =
     media.find((item) => item.source === "base_render") ||
@@ -4779,7 +4778,6 @@ function schedulerEffectivePreflightStory(story = {}, opts = {}) {
     runtime_seconds: effectiveDuration,
     video_duration_seconds: effectiveDuration,
     audio_duration: effectiveDuration,
-    target_video_duration_seconds_max: effectiveMax,
     max_video_duration_seconds: effectiveMax,
     scheduler_effective_platform_media: media,
     scheduler_effective_platform_media_applied: true,

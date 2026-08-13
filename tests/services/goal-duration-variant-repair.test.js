@@ -1489,7 +1489,7 @@ test("duration variant repair refreshes normal publish duration windows on exist
   assert.equal(report.summary.skipped_existing_count, 1);
 
   const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
-  assert.deepEqual(platformManifest.outputs.youtube_shorts.publish_duration_seconds, { min: 15, max: 60 });
+  assert.deepEqual(platformManifest.outputs.youtube_shorts.publish_duration_seconds, { min: 15, max: 180 });
   assert.deepEqual(platformManifest.outputs.tiktok.publish_duration_seconds, { min: 15, max: 90 });
   assert.equal(platformManifest.outputs.tiktok.creator_rewards_eligible, false);
   assert.ok(platformManifest.outputs.tiktok.duration_warnings.includes("below_creator_rewards_duration"));

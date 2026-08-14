@@ -1,0 +1,118 @@
+{
+  "schema": "pulse_system_trace_youtube_buffer_live_audit_v1",
+  "generated_at": "2026-08-14T19:29:33.001Z",
+  "verdict": "GREEN",
+  "channel": {
+    "id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "name": "Pulse Gaming"
+  },
+  "release_mode": "YOUTUBE_NATIVE_DAILY_SCHEDULE",
+  "requires_local_runtime_after_scheduling": false,
+  "remote_video_readback": {
+    "source": "youtube_data_api_videos_list",
+    "retry": false,
+    "count": 7,
+    "all_exact": true,
+    "checks": [
+      "channel",
+      "title",
+      "description",
+      "tags",
+      "category",
+      "defaultLanguage",
+      "defaultAudioLanguage",
+      "privacyStatus",
+      "publishAt",
+      "uploadStatus",
+      "processingStatus",
+      "license",
+      "embeddable",
+      "publicStatsViewable",
+      "selfDeclaredMadeForKids",
+      "caption",
+      "fileSize",
+      "regionRestriction",
+      "contentRating",
+      "paidProductPlacement"
+    ]
+  },
+  "caption_readback": {
+    "source": "youtube_studio_video_subtitles_ui",
+    "all_manual_en_gb_tracks_published": true,
+    "published_date": "2026-08-14",
+    "api_content_details_caption_true_for_all": true,
+    "local_srt_hash_bound_for_all": true
+  },
+  "episodes": [
+    {
+      "story_id": "system-trace-frame-pacing",
+      "video_id": "rzOvNGGhbN8",
+      "title": "Why 60 FPS Can Still Stutter",
+      "publish_at_utc": "2026-08-15T19:00:00.000Z",
+      "effective_evidence": "system-trace-frame-pacing-schedule-reconciliation.json",
+      "effective_evidence_sha256": "6480a072055f63168b32ae62ea3ff3cef100520fed62a72cfcbe85020880401c",
+      "verdict": "GREEN"
+    },
+    {
+      "story_id": "system-trace-shader-compilation",
+      "video_id": "j14Rs4DNDgU",
+      "title": "Why PC Games Stutter the First Time",
+      "publish_at_utc": "2026-08-16T19:00:00.000Z",
+      "effective_evidence": "system-trace-shader-compilation-schedule-receipt.json",
+      "effective_evidence_sha256": "ef5ff219eb4e2aab2e2cf88d5ef8656904e89167ee37374ecd155dc51464d234",
+      "verdict": "GREEN"
+    },
+    {
+      "story_id": "system-trace-temporal-upscaling",
+      "video_id": "PTC9E_8pnqU",
+      "title": "How Games Rebuild Detail From Previous Frames",
+      "publish_at_utc": "2026-08-17T19:00:00.000Z",
+      "effective_evidence": "system-trace-temporal-upscaling-schedule-receipt.json",
+      "effective_evidence_sha256": "4fc8c62f9f5ea3daa6804a9d115dbc075a82432ccec4447a1133bd389ad07a2a",
+      "verdict": "GREEN"
+    },
+    {
+      "story_id": "system-trace-spatial-headphone-audio",
+      "video_id": "sqHT2IskSis",
+      "title": "How Headphones Put Sounds Behind You",
+      "publish_at_utc": "2026-08-18T19:00:00.000Z",
+      "effective_evidence": "system-trace-spatial-headphone-audio-schedule-receipt.json",
+      "effective_evidence_sha256": "cc994897f3274f06ae134223144f7d3b112fef37d30f0fe4bc29efdfd0c24c7d",
+      "verdict": "GREEN"
+    },
+    {
+      "story_id": "system-trace-texture-streaming",
+      "video_id": "nvV1AhSGAP4",
+      "title": "Why Games Do Not Keep Every Texture in VRAM",
+      "publish_at_utc": "2026-08-19T19:00:00.000Z",
+      "effective_evidence": "system-trace-texture-streaming-schedule-receipt.json",
+      "effective_evidence_sha256": "d7f22580f5f95249c3aff76b6df53e86f0d70385f433012f58da6d4c48064750",
+      "verdict": "GREEN"
+    },
+    {
+      "story_id": "system-trace-ray-tracing-bvh",
+      "video_id": "mOMdA1j_y0c",
+      "title": "How Ray Tracing Skips Millions of Triangles",
+      "publish_at_utc": "2026-08-20T19:00:00.000Z",
+      "effective_evidence": "system-trace-ray-tracing-bvh-schedule-receipt.json",
+      "effective_evidence_sha256": "3a228994fcb72ad6ccb2a40e813ddbbb805a37106e26a35315fcaccc32804f1a",
+      "verdict": "GREEN"
+    },
+    {
+      "story_id": "system-trace-render-queue-latency",
+      "video_id": "Por3we514ds",
+      "title": "Why More FPS Does Not Always Mean Faster Input",
+      "publish_at_utc": "2026-08-21T19:00:00.000Z",
+      "effective_evidence": "system-trace-render-queue-latency-schedule-receipt.json",
+      "effective_evidence_sha256": "289c37a417c38beb96d6f154c2fc7f1cd8d08f8695dbbc6f2f6186cfa8067fd6",
+      "verdict": "GREEN"
+    }
+  ],
+  "safety": {
+    "notify_subscribers_on_upload": false,
+    "contains_synthetic_media_requested": true,
+    "token_file_mutation_count": 0,
+    "duplicate_upload_count": 0,
+    "schedule_update_count": 7
+  }
+}

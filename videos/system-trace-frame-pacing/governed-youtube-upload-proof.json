@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-14T18:01:14.878Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-frame-pacing",
+  "source": {
+    "package_dir": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-frame-pacing",
+    "publish_pack_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-frame-pacing\\youtube_publish_pack.json",
+    "publish_pack_sha256": "0318cde3cece3a8a6439bd45e6a0db964fdfe033a5822ee935d19914d28ffa1c",
+    "canonical_manifest_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-frame-pacing\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "f9fdde736a7741371286ed1a7ed4783a690cc607e1d55ac497ebae821406c362",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-frame-pacing",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "Why 60 FPS Can Still Stutter",
+          "description": "A 60 FPS counter can look perfect while one long frame makes the game feel rough. This short animation shows what frame pacing measures, why 16.7 milliseconds matters at 60 FPS and how one 40 millisecond hitch can hide inside a healthy average.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/smooth-frame-rate-in-unreal-engine\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-flip-model\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #FramePacing #SystemTrace",
+          "tags": [
+            "frame pacing",
+            "60 FPS",
+            "PC gaming",
+            "game stutter",
+            "frame time",
+            "gaming performance",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-frame-pacing\\renders\\system-trace-frame-pacing.mp4",
+      "media_sha256": "31609fc434ce44248cb2a43918a4af4d1c3de40437e8a7d4c09b2f3f4abf1d6f"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-frame-pacing\\captions.srt",
+      "media_sha256": "ff70a10398cd2eaea78e28a40d2712fcdca05d9c7862e23308a28f7586806d4a"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-frame-pacing\\renders\\system-trace-frame-pacing.mp4",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-frame-pacing\\renders\\system-trace-frame-pacing.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 5432736,
+      "sha256": "31609fc434ce44248cb2a43918a4af4d1c3de40437e8a7d4c09b2f3f4abf1d6f",
+      "probe": {
+        "duration_seconds": 51.1,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-frame-pacing\\captions.srt",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-frame-pacing\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2725,
+      "sha256": "ff70a10398cd2eaea78e28a40d2712fcdca05d9c7862e23308a28f7586806d4a",
+      "qa": {
+        "parsed": true,
+        "cue_count": 59,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 51.1,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-14T18:01:14.878Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-frame-pacing",
+    "request_plan_fingerprint_sha256": "61a84f6bf8d64987ce07c3cb5bb9e4b822f15b9e1ea171acb0cb40ea26bd3a03",
+    "video_insert_fingerprint_sha256": "7fff8ec60fb2ed8cd218a4511fee00b5ad30820c787ae27e19e57e2a63f597a5",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "85b6944efc2f1507d3cffc8a4d651842a4bdf9e511ecf0d1f00b6ce726daba0b",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "Why 60 FPS Can Still Stutter",
+            "description": "A 60 FPS counter can look perfect while one long frame makes the game feel rough. This short animation shows what frame pacing measures, why 16.7 milliseconds matters at 60 FPS and how one 40 millisecond hitch can hide inside a healthy average.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/smooth-frame-rate-in-unreal-engine\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-flip-model\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #FramePacing #SystemTrace",
+            "tags": [
+              "frame pacing",
+              "60 FPS",
+              "PC gaming",
+              "game stutter",
+              "frame time",
+              "gaming performance",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-frame-pacing\\renders\\system-trace-frame-pacing.mp4",
+        "media_sha256": "31609fc434ce44248cb2a43918a4af4d1c3de40437e8a7d4c09b2f3f4abf1d6f"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-frame-pacing\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

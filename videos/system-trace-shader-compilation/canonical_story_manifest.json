@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-shader-compilation",
+  "project_id": "system-trace-shader-compilation",
+  "narration_script": "Ever notice a PC game hitch when an effect first appears, then glide through the same moment later? The scene may not be the problem. Modern graphics, APIs, bundle shaders, and fixed settings into pipeline state objects. The GPU needs the right combination before it draws. If that pipeline is missing, the game may build it as the effect arrives. That work can interrupt an otherwise steady frame. Once cached, that pipeline can be reused. A second run may feel smoother even when the graphics settings have not changed. Engines pre -build likely pipelines and preserve caches, but the possible combinations are huge. Driver updates may also invalidate old data. Not every hitch is shader compilation, but a one -time pause tied to a new effect is a clue. The game may be building tomorrow's smooth frame today.",
+  "final_container": {
+    "path": "renders/system-trace-shader-compilation.mp4",
+    "sha256": "d6a0221633399e5393a1cd8dcb91ca5c628c3c3f7488b771a6a07962c160a2a2",
+    "bytes": 5252730
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "c6f93953d9af40c94172eadf989edc006f31813c6d08593cee2ce1ebf36fd61f",
+    "bytes": 2877
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-16T19:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

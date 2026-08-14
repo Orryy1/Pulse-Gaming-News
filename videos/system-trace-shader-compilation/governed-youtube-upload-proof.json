@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-14T18:01:14.999Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-shader-compilation",
+  "source": {
+    "package_dir": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-shader-compilation",
+    "publish_pack_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-shader-compilation\\youtube_publish_pack.json",
+    "publish_pack_sha256": "16c357c4d60b77e5970adb4ecbcd2388f7989b94f19412b7fde70c54315968d6",
+    "canonical_manifest_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-shader-compilation\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "a328d18593e8eb7e049b52352e02e7a5025e553dd0be32e71630da244e719acf",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-shader-compilation",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "Why PC Games Stutter the First Time",
+          "description": "A new effect appears, the game hitches once and the same scene runs smoothly the next time. This short animation explains pipeline state objects, why a missing graphics pipeline can interrupt a frame and how a cached pipeline changes the second run.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d12/managing-graphics-pipeline-state-in-direct3d-12\nhttps://learn.microsoft.com/en-us/samples/microsoft/directx-graphics-samples/d3d12-pipeline-state-cache-sample-win32/\nhttps://developer.nvidia.com/blog/advanced-api-performance-pipeline-state-objects/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #ShaderCompilation #SystemTrace",
+          "tags": [
+            "shader compilation",
+            "PC gaming",
+            "game stutter",
+            "pipeline state",
+            "graphics pipeline",
+            "gaming performance",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-shader-compilation\\renders\\system-trace-shader-compilation.mp4",
+      "media_sha256": "d6a0221633399e5393a1cd8dcb91ca5c628c3c3f7488b771a6a07962c160a2a2"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-shader-compilation\\captions.srt",
+      "media_sha256": "c6f93953d9af40c94172eadf989edc006f31813c6d08593cee2ce1ebf36fd61f"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-shader-compilation\\renders\\system-trace-shader-compilation.mp4",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-shader-compilation\\renders\\system-trace-shader-compilation.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 5252730,
+      "sha256": "d6a0221633399e5393a1cd8dcb91ca5c628c3c3f7488b771a6a07962c160a2a2",
+      "probe": {
+        "duration_seconds": 55.133333,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-shader-compilation\\captions.srt",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-shader-compilation\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2877,
+      "sha256": "c6f93953d9af40c94172eadf989edc006f31813c6d08593cee2ce1ebf36fd61f",
+      "qa": {
+        "parsed": true,
+        "cue_count": 61,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 55.133,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-14T18:01:14.999Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-shader-compilation",
+    "request_plan_fingerprint_sha256": "da77179faaba6b05ff8ae32ce9397bedc20bb46f08534a9852b6cf877b2b57e2",
+    "video_insert_fingerprint_sha256": "92229f433e6b2c6322193aa79adaff8c09ecb1c5508081116804c2bf9a7717c9",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "66ce8d310eddb6bd57870f107df8f284d07d9955cf782d41ce2aeea6f71f86d6",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "Why PC Games Stutter the First Time",
+            "description": "A new effect appears, the game hitches once and the same scene runs smoothly the next time. This short animation explains pipeline state objects, why a missing graphics pipeline can interrupt a frame and how a cached pipeline changes the second run.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d12/managing-graphics-pipeline-state-in-direct3d-12\nhttps://learn.microsoft.com/en-us/samples/microsoft/directx-graphics-samples/d3d12-pipeline-state-cache-sample-win32/\nhttps://developer.nvidia.com/blog/advanced-api-performance-pipeline-state-objects/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #ShaderCompilation #SystemTrace",
+            "tags": [
+              "shader compilation",
+              "PC gaming",
+              "game stutter",
+              "pipeline state",
+              "graphics pipeline",
+              "gaming performance",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-shader-compilation\\renders\\system-trace-shader-compilation.mp4",
+        "media_sha256": "d6a0221633399e5393a1cd8dcb91ca5c628c3c3f7488b771a6a07962c160a2a2"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-shader-compilation\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

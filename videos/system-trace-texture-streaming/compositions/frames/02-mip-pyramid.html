@@ -1,0 +1,734 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "F02 Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "F02 IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "F02 IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "F02 IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    #root {
+      position: relative;
+      width: 100cqw;
+      height: 100cqh;
+      overflow: hidden;
+      color: #f0f0f0;
+      font-family: "F02 Space Grotesk", sans-serif;
+      isolation: isolate;
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .f02-ground {
+      z-index: 0;
+      background: #0d0d0f;
+    }
+
+    .f02-ground-rule {
+      position: absolute;
+      background: #282726;
+      opacity: 0.72;
+    }
+
+    .f02-ground-rule--v1 {
+      top: 0;
+      bottom: 0;
+      left: 25cqw;
+      width: 1px;
+    }
+
+    .f02-ground-rule--v2 {
+      top: 0;
+      bottom: 0;
+      left: 50cqw;
+      width: 1px;
+    }
+
+    .f02-ground-rule--v3 {
+      top: 0;
+      bottom: 0;
+      left: 75cqw;
+      width: 1px;
+    }
+
+    .f02-ground-rule--h1 {
+      top: 27.67cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+    }
+
+    .f02-ground-rule--h2 {
+      top: 55.33cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+    }
+
+    .f02-ground-rule--safe {
+      top: 83cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #ff6b1a;
+      opacity: 0.32;
+    }
+
+    .f02-stage {
+      z-index: 1;
+    }
+
+    .f02-viewport {
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    .f02-header {
+      position: absolute;
+      z-index: 40;
+      top: 3.35cqh;
+      left: 5.4cqw;
+      right: 5.4cqw;
+      height: 7.25cqh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-bottom: 1px solid #504b48;
+      opacity: 0;
+    }
+
+    .f02-kicker {
+      margin-top: 0.2cqh;
+      font-family: "F02 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+    }
+
+    .f02-kicker-accent {
+      color: #ff6b1a;
+    }
+
+    .f02-index {
+      font-family: "F02 IBM Plex Mono", monospace;
+      font-size: 2.3cqw;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: 0.04em;
+      color: #ff6b1a;
+    }
+
+    .f02-world {
+      position: absolute;
+      z-index: 5;
+      top: 0;
+      left: 0;
+      width: 100cqw;
+      height: 90cqh;
+      will-change: transform;
+    }
+
+    .f02-level {
+      position: absolute;
+      opacity: 0;
+      transform-origin: 50% 100%;
+    }
+
+    .f02-level--0 {
+      z-index: 6;
+      top: 17cqh;
+      left: 14cqw;
+      width: 50cqw;
+    }
+
+    .f02-level--1 {
+      z-index: 7;
+      top: 45.5cqh;
+      left: 39cqw;
+      width: 25cqw;
+    }
+
+    .f02-level--2 {
+      z-index: 8;
+      top: 60cqh;
+      left: 52cqw;
+      width: 12.5cqw;
+    }
+
+    .f02-level--3 {
+      z-index: 9;
+      top: 68cqh;
+      left: 59cqw;
+      width: 6.25cqw;
+    }
+
+    .f02-level--4 {
+      z-index: 10;
+      top: 72cqh;
+      left: 63cqw;
+      width: 3.125cqw;
+    }
+
+    .f02-texture {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1;
+      overflow: hidden;
+      border: 1px solid #f0f0f0;
+      background: #1a1918;
+    }
+
+    .f02-texture svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .f02-level-tag {
+      position: absolute;
+      top: 1.25cqw;
+      left: 1.25cqw;
+      z-index: 2;
+      padding: 0.58cqw 0.72cqw 0.5cqw;
+      border: 1px solid #f0f0f0;
+      background: #0d0d0f;
+      font-family: "F02 IBM Plex Mono", monospace;
+      font-size: 1.48cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .f02-level--3 .f02-level-tag,
+    .f02-level--4 .f02-level-tag {
+      display: none;
+    }
+
+    .f02-ratio {
+      position: absolute;
+      right: calc(100% + 1.9cqw);
+      top: 0;
+      min-width: 10.2cqw;
+      padding-top: 0.45cqh;
+      border-top: 1px solid #504b48;
+      font-family: "F02 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 500;
+      line-height: 1.15;
+      letter-spacing: 0.08em;
+      text-align: right;
+      color: #f0f0f0;
+      opacity: 0;
+    }
+
+    .f02-ratio-key {
+      color: #ff6b1a;
+    }
+
+    .f02-close-chip {
+      position: absolute;
+      z-index: 12;
+      top: 18.4cqh;
+      left: 67cqw;
+      display: flex;
+      align-items: center;
+      gap: 1.25cqw;
+      font-family: "F02 IBM Plex Mono", monospace;
+      font-size: 1.5cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+      opacity: 0;
+    }
+
+    .f02-close-chip::before {
+      content: "";
+      display: block;
+      width: 6cqw;
+      height: 1px;
+      background: #ff6b1a;
+    }
+
+    .f02-map {
+      position: absolute;
+      z-index: 20;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .f02-map-lines {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .f02-route {
+      fill: none;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+    }
+
+    .f02-route--close {
+      stroke: #ff6b1a;
+    }
+
+    .f02-route--mid {
+      stroke: #f0f0f0;
+    }
+
+    .f02-route--far {
+      stroke: #504b48;
+    }
+
+    .f02-route-node {
+      fill: #0d0d0f;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+      opacity: 0;
+    }
+
+    .f02-route-node--close {
+      stroke: #ff6b1a;
+    }
+
+    .f02-route-node--mid {
+      stroke: #f0f0f0;
+    }
+
+    .f02-route-node--far {
+      stroke: #504b48;
+    }
+
+    .f02-camera {
+      position: absolute;
+      top: 43.5cqh;
+      left: 82.5cqw;
+      width: 12cqw;
+      min-height: 7.8cqh;
+      padding: 1.25cqw 1cqw;
+      border: 1px solid #f0f0f0;
+      background: #0d0d0f;
+      opacity: 0;
+    }
+
+    .f02-camera-eye {
+      width: 3.2cqw;
+      height: 3.2cqw;
+      margin: 0 auto 0.85cqh;
+      border: 1px solid #ff6b1a;
+      background: #1a1918;
+    }
+
+    .f02-camera-label {
+      display: block;
+      font-family: "F02 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .f02-map-label {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      gap: 0.8cqw;
+      padding: 0.7cqw 0.82cqw 0.62cqw;
+      border: 1px solid #504b48;
+      background: #0d0d0f;
+      font-family: "F02 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      opacity: 0;
+    }
+
+    .f02-map-label::before {
+      content: "";
+      width: 1.25cqw;
+      height: 1.25cqw;
+      border: 1px solid currentColor;
+    }
+
+    .f02-map-label--close {
+      top: 29cqh;
+      left: 69cqw;
+      color: #ff6b1a;
+    }
+
+    .f02-map-label--mid {
+      top: 60.5cqh;
+      left: 68cqw;
+      color: #f0f0f0;
+    }
+
+    .f02-map-label--far {
+      top: 69.5cqh;
+      left: 69cqw;
+      color: #a49d98;
+    }
+
+    .f02-lockup {
+      position: absolute;
+      z-index: 30;
+      top: 69.3cqh;
+      left: 5.4cqw;
+      width: 26cqw;
+      padding-top: 1.15cqh;
+      border-top: 2px solid #ff6b1a;
+      opacity: 0;
+    }
+
+    .f02-lockup-main {
+      font-family: "F02 Space Grotesk", sans-serif;
+      font-size: 4.5cqw;
+      font-weight: 900;
+      line-height: 0.88;
+      letter-spacing: -0.05em;
+      text-transform: lowercase;
+      color: #f0f0f0;
+    }
+
+    .f02-lockup-sub {
+      margin-top: 0.8cqh;
+      font-family: "F02 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+  </style>
+
+  <div id="root" data-composition-id="02-mip-pyramid" data-width="1080" data-height="1920" data-start="0" data-duration="9.887">
+    <div class="clip f02-ground" data-start="0" data-duration="9.887" data-track-index="0">
+      <div class="f02-ground-rule f02-ground-rule--v1"></div>
+      <div class="f02-ground-rule f02-ground-rule--v2"></div>
+      <div class="f02-ground-rule f02-ground-rule--v3"></div>
+      <div class="f02-ground-rule f02-ground-rule--h1"></div>
+      <div class="f02-ground-rule f02-ground-rule--h2"></div>
+      <div class="f02-ground-rule f02-ground-rule--safe"></div>
+    </div>
+
+    <div class="clip f02-stage" data-start="0" data-duration="9.887" data-track-index="1">
+      <div class="f02-viewport">
+        <header class="f02-header" id="f02-header">
+          <div class="f02-kicker"><span class="f02-kicker-accent">texture</span> / projected size</div>
+          <div class="f02-index">02</div>
+        </header>
+
+        <div class="f02-world" id="f02-world">
+          <div class="f02-close-chip" id="f02-close-chip">close</div>
+
+          <div class="f02-level f02-level--0" id="f02-level-0">
+            <div class="f02-ratio" id="f02-ratio-0"><span class="f02-ratio-key">MIP 0</span><br>FULL</div>
+            <div class="f02-texture">
+              <span class="f02-level-tag">MIP 0</span>
+              <svg viewBox="0 0 100 100" aria-hidden="true" shape-rendering="crispEdges">
+                <rect width="100" height="100" fill="#1a1918"/>
+                <rect x="4" y="4" width="43" height="29" fill="#f0f0f0"/>
+                <rect x="52" y="4" width="44" height="29" fill="#ff6b1a"/>
+                <rect x="4" y="38" width="22" height="25" fill="#504b48"/>
+                <rect x="31" y="38" width="42" height="25" fill="#0d0d0f" stroke="#f0f0f0" stroke-width="1"/>
+                <rect x="78" y="38" width="18" height="25" fill="#f0f0f0"/>
+                <rect x="4" y="68" width="43" height="28" fill="#ff6b1a"/>
+                <rect x="52" y="68" width="20" height="28" fill="#504b48"/>
+                <rect x="77" y="68" width="19" height="28" fill="#0d0d0f" stroke="#f0f0f0" stroke-width="1"/>
+                <path d="M13 4V33M22 4V33M31 4V33M40 4V33M52 13H96M52 22H96M4 47H26M4 55H26M40 38V63M51 38V63M62 38V63M4 77H47M4 87H47M59 68V96M84 68V96" stroke="#282726" stroke-width="1"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="f02-level f02-level--1" id="f02-level-1">
+            <div class="f02-ratio" id="f02-ratio-1"><span class="f02-ratio-key">MIP 1</span><br>1/2</div>
+            <div class="f02-texture">
+              <span class="f02-level-tag">MIP 1</span>
+              <svg viewBox="0 0 100 100" aria-hidden="true" shape-rendering="crispEdges">
+                <rect width="100" height="100" fill="#1a1918"/>
+                <rect x="5" y="5" width="42" height="28" fill="#f0f0f0"/>
+                <rect x="53" y="5" width="42" height="28" fill="#ff6b1a"/>
+                <rect x="5" y="39" width="22" height="24" fill="#504b48"/>
+                <rect x="33" y="39" width="39" height="24" fill="#0d0d0f" stroke="#f0f0f0" stroke-width="2"/>
+                <rect x="78" y="39" width="17" height="24" fill="#f0f0f0"/>
+                <rect x="5" y="69" width="42" height="26" fill="#ff6b1a"/>
+                <rect x="53" y="69" width="19" height="26" fill="#504b48"/>
+                <rect x="78" y="69" width="17" height="26" fill="#0d0d0f" stroke="#f0f0f0" stroke-width="2"/>
+                <path d="M19 5V33M33 5V33M53 19H95M5 51H27M46 39V63M59 39V63M5 82H47M63 69V95" stroke="#282726" stroke-width="2"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="f02-level f02-level--2" id="f02-level-2">
+            <div class="f02-ratio" id="f02-ratio-2"><span class="f02-ratio-key">MIP 2</span><br>1/4</div>
+            <div class="f02-texture">
+              <span class="f02-level-tag">MIP 2</span>
+              <svg viewBox="0 0 100 100" aria-hidden="true" shape-rendering="crispEdges">
+                <rect width="100" height="100" fill="#1a1918"/>
+                <rect x="6" y="6" width="41" height="27" fill="#f0f0f0"/>
+                <rect x="53" y="6" width="41" height="27" fill="#ff6b1a"/>
+                <rect x="6" y="39" width="21" height="23" fill="#504b48"/>
+                <rect x="33" y="39" width="39" height="23" fill="#0d0d0f" stroke="#f0f0f0" stroke-width="3"/>
+                <rect x="78" y="39" width="16" height="23" fill="#f0f0f0"/>
+                <rect x="6" y="68" width="41" height="26" fill="#ff6b1a"/>
+                <rect x="53" y="68" width="19" height="26" fill="#504b48"/>
+                <rect x="78" y="68" width="16" height="26" fill="#0d0d0f"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="f02-level f02-level--3" id="f02-level-3">
+            <div class="f02-ratio" id="f02-ratio-3"><span class="f02-ratio-key">MIP 3</span><br>1/8</div>
+            <div class="f02-texture">
+              <span class="f02-level-tag">MIP 3</span>
+              <svg viewBox="0 0 100 100" aria-hidden="true" shape-rendering="crispEdges">
+                <rect width="100" height="100" fill="#1a1918"/>
+                <rect x="7" y="7" width="40" height="26" fill="#f0f0f0"/>
+                <rect x="53" y="7" width="40" height="26" fill="#ff6b1a"/>
+                <rect x="7" y="40" width="20" height="22" fill="#504b48"/>
+                <rect x="34" y="40" width="38" height="22" fill="#0d0d0f"/>
+                <rect x="79" y="40" width="14" height="22" fill="#f0f0f0"/>
+                <rect x="7" y="69" width="40" height="24" fill="#ff6b1a"/>
+                <rect x="53" y="69" width="40" height="24" fill="#504b48"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="f02-level f02-level--4" id="f02-level-4">
+            <div class="f02-ratio" id="f02-ratio-4"><span class="f02-ratio-key">MIP 4</span><br>1/16</div>
+            <div class="f02-texture">
+              <span class="f02-level-tag">MIP 4</span>
+              <svg viewBox="0 0 100 100" aria-hidden="true" shape-rendering="crispEdges">
+                <rect width="100" height="100" fill="#1a1918"/>
+                <rect x="8" y="8" width="39" height="25" fill="#f0f0f0"/>
+                <rect x="53" y="8" width="39" height="25" fill="#ff6b1a"/>
+                <rect x="8" y="40" width="39" height="22" fill="#504b48"/>
+                <rect x="53" y="40" width="39" height="22" fill="#0d0d0f"/>
+                <rect x="8" y="69" width="39" height="23" fill="#ff6b1a"/>
+                <rect x="53" y="69" width="39" height="23" fill="#504b48"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="f02-map" id="f02-map">
+            <svg class="f02-map-lines" viewBox="0 0 1000 900" preserveAspectRatio="none" aria-hidden="true">
+              <path class="f02-route f02-route--close" id="f02-route-close" pathLength="1" d="M885 475 L760 310 L640 310"/>
+              <path class="f02-route f02-route--mid" id="f02-route-mid" pathLength="1" d="M885 475 L760 634 L645 634"/>
+              <path class="f02-route f02-route--far" id="f02-route-far" pathLength="1" d="M885 475 L735 730 L661 730"/>
+              <rect class="f02-route-node f02-route-node--close" id="f02-node-close" x="630" y="302" width="16" height="16"/>
+              <rect class="f02-route-node f02-route-node--mid" id="f02-node-mid" x="635" y="626" width="16" height="16"/>
+              <rect class="f02-route-node f02-route-node--far" id="f02-node-far" x="651" y="722" width="16" height="16"/>
+            </svg>
+
+            <div class="f02-camera" id="f02-camera">
+              <div class="f02-camera-eye"></div>
+              <span class="f02-camera-label">screen</span>
+            </div>
+
+            <div class="f02-map-label f02-map-label--close" id="f02-map-close">close</div>
+            <div class="f02-map-label f02-map-label--mid" id="f02-map-mid">mid</div>
+            <div class="f02-map-label f02-map-label--far" id="f02-map-far">far</div>
+          </div>
+
+          <div class="f02-lockup" id="f02-lockup">
+            <div class="f02-lockup-main">one texture</div>
+            <div class="f02-lockup-sub">five levels</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const timeline = gsap.timeline({ paused: true });
+      const hold = { progress: 0 };
+
+      timeline
+        .fromTo("#f02-header",
+          { opacity: 0, y: -18 },
+          { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
+          0
+        )
+        .fromTo("#f02-level-0",
+          { opacity: 0, y: 42, scale: 0.94 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "power3.out" },
+          0.05
+        )
+        .fromTo("#f02-ratio-0",
+          { opacity: 0, x: -14 },
+          { opacity: 1, x: 0, duration: 0.35, ease: "power2.out" },
+          0.28
+        )
+        .fromTo("#f02-close-chip",
+          { opacity: 0, x: -18 },
+          { opacity: 1, x: 0, duration: 0.38, ease: "power2.out" },
+          0.38
+        )
+
+        .fromTo("#f02-world",
+          { y: 0 },
+          { y: -52, duration: 1.05, ease: "power2.inOut" },
+          2.8
+        )
+        .fromTo("#f02-level-1",
+          { opacity: 0, y: 34, scale: 0.92 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.48, ease: "power3.out" },
+          2.86
+        )
+        .fromTo("#f02-ratio-1",
+          { opacity: 0, x: -14 },
+          { opacity: 1, x: 0, duration: 0.32, ease: "power2.out" },
+          3.08
+        )
+        .fromTo("#f02-level-2",
+          { opacity: 0, y: 32, scale: 0.9 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.46, ease: "power3.out" },
+          3.48
+        )
+        .fromTo("#f02-ratio-2",
+          { opacity: 0, x: -14 },
+          { opacity: 1, x: 0, duration: 0.32, ease: "power2.out" },
+          3.7
+        )
+        .to("#f02-world",
+          { y: -92, duration: 1.05, ease: "power2.inOut" },
+          4.08
+        )
+        .fromTo("#f02-level-3",
+          { opacity: 0, y: 30, scale: 0.88 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.44, ease: "power3.out" },
+          4.12
+        )
+        .fromTo("#f02-ratio-3",
+          { opacity: 0, x: -14 },
+          { opacity: 1, x: 0, duration: 0.3, ease: "power2.out" },
+          4.33
+        )
+        .fromTo("#f02-level-4",
+          { opacity: 0, y: 28, scale: 0.84 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.44, ease: "back.out(1.35)" },
+          4.76
+        )
+        .fromTo("#f02-ratio-4",
+          { opacity: 0, x: -14 },
+          { opacity: 1, x: 0, duration: 0.3, ease: "power2.out" },
+          4.98
+        )
+
+        .fromTo("#f02-camera",
+          { opacity: 0, x: 24 },
+          { opacity: 1, x: 0, duration: 0.42, ease: "power2.out" },
+          5.8
+        )
+        .fromTo("#f02-route-close",
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.58, ease: "power2.inOut" },
+          5.92
+        )
+        .fromTo("#f02-node-close",
+          { opacity: 0, scale: 0.4, transformOrigin: "50% 50%" },
+          { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(1.5)" },
+          6.28
+        )
+        .fromTo("#f02-map-close",
+          { opacity: 0, x: 14 },
+          { opacity: 1, x: 0, duration: 0.32, ease: "power2.out" },
+          6.34
+        )
+        .fromTo("#f02-route-mid",
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.58, ease: "power2.inOut" },
+          6.18
+        )
+        .fromTo("#f02-node-mid",
+          { opacity: 0, scale: 0.4, transformOrigin: "50% 50%" },
+          { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(1.5)" },
+          6.55
+        )
+        .fromTo("#f02-map-mid",
+          { opacity: 0, x: 14 },
+          { opacity: 1, x: 0, duration: 0.32, ease: "power2.out" },
+          6.6
+        )
+        .fromTo("#f02-route-far",
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.58, ease: "power2.inOut" },
+          6.46
+        )
+        .fromTo("#f02-node-far",
+          { opacity: 0, scale: 0.4, transformOrigin: "50% 50%" },
+          { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(1.5)" },
+          6.83
+        )
+        .fromTo("#f02-map-far",
+          { opacity: 0, x: 14 },
+          { opacity: 1, x: 0, duration: 0.32, ease: "power2.out" },
+          6.88
+        )
+        .fromTo("#f02-lockup",
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.44, ease: "power3.out" },
+          7.16
+        )
+        .to(hold, { progress: 1, duration: 1.787, ease: "none" }, 7.6);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["02-mip-pyramid"] = timeline;
+    })();
+  </script>
+</template>

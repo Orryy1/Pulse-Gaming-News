@@ -1,0 +1,723 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+      isolation: isolate;
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    #root [class~="05-build-cost-ground"] {
+      z-index: 0;
+      background: #0d0d0f;
+    }
+
+    #root [class~="05-build-cost-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 83cqh;
+    }
+
+    #root [class~="05-build-cost-grid"] path {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="05-build-cost-safe-rule"] {
+      position: absolute;
+      top: 83cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #ff6b1a;
+      opacity: 0.34;
+    }
+
+    #root [class~="05-build-cost-content"] {
+      z-index: 1;
+    }
+
+    #root [class~="05-build-cost-viewport"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 83cqh;
+      overflow: hidden;
+      perspective: 1200px;
+    }
+
+    #root [class~="05-build-cost-header"] {
+      position: absolute;
+      z-index: 40;
+      top: 3.35cqh;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      height: 7.25cqh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-bottom: 1px solid #504b48;
+    }
+
+    #root [class~="05-build-cost-kicker"] {
+      margin-top: 0.2cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="05-build-cost-kicker-accent"] {
+      color: #ff6b1a;
+    }
+
+    #root [class~="05-build-cost-index"] {
+      font-family: "IBM Plex Mono";
+      font-size: 2.3cqw;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: 0.08em;
+      color: #ff6b1a;
+    }
+
+    #root [class~="05-build-cost-spine"] {
+      position: absolute;
+      z-index: 2;
+      top: 12.8cqh;
+      left: 3.7cqw;
+      width: 0.72cqw;
+      height: 53cqh;
+      background: #ff6b1a;
+    }
+
+    #root [class~="05-build-cost-panel"] {
+      position: absolute;
+      z-index: 5;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 25.35cqh;
+      overflow: hidden;
+      border: 1px solid #504b48;
+      background: #1a1918;
+      transform-style: preserve-3d;
+    }
+
+    #root [class~="05-build-cost-static-panel"] {
+      top: 12.8cqh;
+      transform-origin: 100% 50%;
+    }
+
+    #root [class~="05-build-cost-moving-panel"] {
+      top: 40.25cqh;
+      transform-origin: 0 50%;
+    }
+
+    #root [class~="05-build-cost-case"] {
+      position: absolute;
+      z-index: 5;
+      top: 2.8cqh;
+      left: 2.8cqw;
+      width: 19cqw;
+    }
+
+    #root [class~="05-build-cost-case-label"] {
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+
+    #root [class~="05-build-cost-case-title"] {
+      margin-top: 1.2cqh;
+      font-family: "Space Grotesk";
+      font-size: 5.7cqw;
+      font-weight: 900;
+      line-height: 0.86;
+      letter-spacing: -0.055em;
+      text-transform: lowercase;
+      color: #f0f0f0;
+    }
+
+    #root [class~="05-build-cost-proof-badge"] {
+      position: absolute;
+      z-index: 12;
+      left: 2.8cqw;
+      bottom: 2.35cqh;
+      min-width: 19cqw;
+      padding: 0.95cqw 1cqw 0.82cqw;
+      border: 1px solid #ff6b1a;
+      background: #0d0d0f;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-align: center;
+      text-transform: uppercase;
+      color: #ff6b1a;
+      transform-origin: 50% 100%;
+    }
+
+    #root [class~="05-build-cost-tree"] {
+      position: absolute;
+      z-index: 4;
+      top: 3.1cqh;
+      left: 23.5cqw;
+      width: 37.5cqw;
+      height: 19.1cqh;
+      overflow: visible;
+    }
+
+    #root [class~="05-build-cost-tree"] [class~="05-build-cost-tree-rail"] {
+      fill: none;
+      stroke: #504b48;
+      stroke-width: 2;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="05-build-cost-tree"] [class~="05-build-cost-tree-box"] {
+      fill: #0d0d0f;
+      stroke: #f0f0f0;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="05-build-cost-tree"] [class~="05-build-cost-tree-box-muted"] {
+      stroke: #504b48;
+    }
+
+    #root [class~="05-build-cost-tree"] [class~="05-build-cost-tree-triangle"] {
+      fill: #f0f0f0;
+    }
+
+    #root [class~="05-build-cost-tree"] [class~="05-build-cost-tree-triangle-accent"] {
+      fill: #ff6b1a;
+    }
+
+    #root [class~="05-build-cost-tree"] [class~="05-build-cost-refit-path"] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+    }
+
+    #root [class~="05-build-cost-meter"] {
+      position: absolute;
+      z-index: 5;
+      top: 4.15cqh;
+      left: 64cqw;
+      right: 3.1cqw;
+    }
+
+    #root [class~="05-build-cost-meter-label"] {
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+    }
+
+    #root [class~="05-build-cost-meter-status"] {
+      position: absolute;
+      top: 3.05cqh;
+      right: 0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+
+    #root [class~="05-build-cost-meter-track"] {
+      position: relative;
+      width: 100%;
+      height: 3cqh;
+      margin-top: 4.7cqh;
+      overflow: hidden;
+      border: 1px solid #504b48;
+      background: #0d0d0f;
+    }
+
+    #root [class~="05-build-cost-meter-fill"] {
+      position: absolute;
+      inset: 0;
+      background: #ff6b1a;
+      transform-origin: 0 50%;
+    }
+
+    #root [class~="05-build-cost-meter-ticks"] {
+      position: absolute;
+      z-index: 2;
+      inset: 0;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+    }
+
+    #root [class~="05-build-cost-meter-tick"] {
+      border-right: 1px solid #0d0d0f;
+    }
+
+    #root [class~="05-build-cost-meter-tick"]:last-child {
+      border-right: 0;
+    }
+
+    #root [class~="05-build-cost-meter-notes"] {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 1.2cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #84817f;
+    }
+
+    #root [class~="05-build-cost-work-tags"] {
+      display: flex;
+      gap: 1cqw;
+      margin-top: 2.05cqh;
+    }
+
+    #root [class~="05-build-cost-work-tag"] {
+      flex: 1;
+      padding: 0.72cqw 0.55cqw 0.62cqw;
+      border-top: 1px solid #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.09em;
+      text-align: center;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+
+    #root [class~="05-build-cost-balance"] {
+      position: absolute;
+      z-index: 8;
+      top: 68.35cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 12.6cqh;
+      overflow: hidden;
+      border-top: 1px solid #504b48;
+      border-bottom: 1px solid #504b48;
+      background: #1a1918;
+    }
+
+    #root [class~="05-build-cost-balance-label"] {
+      position: absolute;
+      z-index: 5;
+      top: 1.1cqh;
+      left: 2cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+
+    #root [class~="05-build-cost-balance-rail"] {
+      position: absolute;
+      z-index: 1;
+      top: 6.15cqh;
+      left: 7.5cqw;
+      width: 74cqw;
+      height: 2px;
+      background: #ff6b1a;
+      transform-origin: 0 50%;
+    }
+
+    #root [class~="05-build-cost-balance-cell"] {
+      position: absolute;
+      z-index: 4;
+      top: 4.65cqh;
+      width: 29.666cqw;
+      height: 6.9cqh;
+      text-align: center;
+    }
+
+    #root [class~="05-build-cost-balance-cell-a"] {
+      left: 0;
+    }
+
+    #root [class~="05-build-cost-balance-cell-b"] {
+      left: 29.666cqw;
+      border-left: 1px solid #504b48;
+      border-right: 1px solid #504b48;
+    }
+
+    #root [class~="05-build-cost-balance-cell-c"] {
+      left: 59.332cqw;
+    }
+
+    #root [class~="05-build-cost-balance-node"] {
+      width: 2.5cqw;
+      height: 2.5cqw;
+      margin: 0 auto 1.3cqh;
+      border: 2px solid #ff6b1a;
+      background: #0d0d0f;
+      transform-origin: 50% 50%;
+    }
+
+    #root [class~="05-build-cost-balance-name"] {
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+    }
+  </style>
+
+  <div id="root" data-composition-id="05-build-cost" data-width="1080" data-height="1920" data-start="0" data-duration="10.797">
+    <div class="clip 05-build-cost-ground" data-start="0" data-duration="10.797" data-track-index="0" aria-hidden="true">
+      <svg class="05-build-cost-grid" viewBox="0 0 1080 1594" preserveAspectRatio="none">
+        <path d="M60 0V1594M300 0V1594M540 0V1594M780 0V1594M1020 0V1594" />
+        <path d="M0 204H1080M0 482H1080M0 760H1080M0 1038H1080M0 1316H1080M0 1593H1080" />
+      </svg>
+      <div class="05-build-cost-safe-rule"></div>
+    </div>
+
+    <div class="clip 05-build-cost-content" data-start="0" data-duration="10.797" data-track-index="1">
+      <div class="05-build-cost-viewport">
+        <header class="05-build-cost-header" id="05-build-cost-header">
+          <div class="05-build-cost-kicker"><span class="05-build-cost-kicker-accent">bvh</span> / maintenance cost</div>
+          <div class="05-build-cost-index">05</div>
+        </header>
+
+        <div class="05-build-cost-spine"></div>
+
+        <section class="05-build-cost-panel 05-build-cost-static-panel" id="05-build-cost-static-panel" aria-label="Static geometry comparison case">
+          <div class="05-build-cost-case">
+            <div class="05-build-cost-case-label">case / stable</div>
+            <div class="05-build-cost-case-title">static</div>
+          </div>
+
+          <div class="05-build-cost-proof-badge" id="05-build-cost-static-badge">traversal saved</div>
+
+          <svg class="05-build-cost-tree" id="05-build-cost-static-tree" viewBox="0 0 360 260" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            <path class="05-build-cost-tree-rail" d="M180 52V72H95V80M180 72H265V80M95 135V155H40V180M95 155H120V180M265 135V155H240V180M265 155H320V180" />
+            <rect class="05-build-cost-tree-box" x="135" y="10" width="90" height="42" />
+            <rect class="05-build-cost-tree-box 05-build-cost-tree-box-muted" x="50" y="80" width="90" height="55" />
+            <rect class="05-build-cost-tree-box 05-build-cost-tree-box-muted" x="220" y="80" width="90" height="55" />
+            <g>
+              <rect class="05-build-cost-tree-box" x="10" y="180" width="60" height="60" />
+              <polygon class="05-build-cost-tree-triangle" points="20,232 40,192 60,232" />
+            </g>
+            <g>
+              <rect class="05-build-cost-tree-box" x="90" y="180" width="60" height="60" />
+              <polygon class="05-build-cost-tree-triangle 05-build-cost-tree-triangle-accent" points="100,232 120,192 140,232" />
+            </g>
+            <g>
+              <rect class="05-build-cost-tree-box" x="210" y="180" width="60" height="60" />
+              <polygon class="05-build-cost-tree-triangle 05-build-cost-tree-triangle-accent" points="220,232 240,192 260,232" />
+            </g>
+            <g>
+              <rect class="05-build-cost-tree-box" x="290" y="180" width="60" height="60" />
+              <polygon class="05-build-cost-tree-triangle" points="300,232 320,192 340,232" />
+            </g>
+          </svg>
+
+          <div class="05-build-cost-meter">
+            <div class="05-build-cost-meter-label">update work</div>
+            <div class="05-build-cost-meter-status" id="05-build-cost-static-status">low</div>
+            <div class="05-build-cost-meter-track">
+              <div class="05-build-cost-meter-fill" id="05-build-cost-static-fill"></div>
+              <div class="05-build-cost-meter-ticks" aria-hidden="true">
+                <span class="05-build-cost-meter-tick"></span><span class="05-build-cost-meter-tick"></span><span class="05-build-cost-meter-tick"></span>
+                <span class="05-build-cost-meter-tick"></span><span class="05-build-cost-meter-tick"></span><span class="05-build-cost-meter-tick"></span>
+              </div>
+            </div>
+            <div class="05-build-cost-meter-notes"><span>stable</span><span>work</span></div>
+          </div>
+        </section>
+
+        <section class="05-build-cost-panel 05-build-cost-moving-panel" id="05-build-cost-moving-panel" aria-label="Moving geometry comparison case">
+          <div class="05-build-cost-case">
+            <div class="05-build-cost-case-label">case / changed</div>
+            <div class="05-build-cost-case-title">moving</div>
+          </div>
+
+          <div class="05-build-cost-proof-badge" id="05-build-cost-moving-badge">structure updated</div>
+
+          <svg class="05-build-cost-tree" id="05-build-cost-moving-tree" viewBox="0 0 360 260" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            <path class="05-build-cost-tree-rail" d="M180 52V72H95V80M180 72H265V80M95 135V155H40V180M95 155H120V180M265 135V155H240V180M265 155H320V180" />
+            <path class="05-build-cost-refit-path" id="05-build-cost-refit-a" pathLength="1" d="M95 135V155H132V170" />
+            <path class="05-build-cost-refit-path" id="05-build-cost-refit-b" pathLength="1" d="M265 135V155H228V190" />
+            <rect class="05-build-cost-tree-box" x="135" y="10" width="90" height="42" />
+            <rect class="05-build-cost-tree-box 05-build-cost-tree-box-muted" x="50" y="80" width="90" height="55" />
+            <rect class="05-build-cost-tree-box 05-build-cost-tree-box-muted" x="220" y="80" width="90" height="55" />
+            <g>
+              <rect class="05-build-cost-tree-box" x="10" y="180" width="60" height="60" />
+              <polygon class="05-build-cost-tree-triangle" points="20,232 40,192 60,232" />
+            </g>
+            <g id="05-build-cost-moving-leaf-a">
+              <rect class="05-build-cost-tree-box" x="90" y="180" width="60" height="60" />
+              <polygon class="05-build-cost-tree-triangle 05-build-cost-tree-triangle-accent" points="100,232 120,192 140,232" />
+            </g>
+            <g id="05-build-cost-moving-leaf-b">
+              <rect class="05-build-cost-tree-box" x="210" y="180" width="60" height="60" />
+              <polygon class="05-build-cost-tree-triangle 05-build-cost-tree-triangle-accent" points="220,232 240,192 260,232" />
+            </g>
+            <g>
+              <rect class="05-build-cost-tree-box" x="290" y="180" width="60" height="60" />
+              <polygon class="05-build-cost-tree-triangle" points="300,232 320,192 340,232" />
+            </g>
+          </svg>
+
+          <div class="05-build-cost-meter">
+            <div class="05-build-cost-meter-label">update work</div>
+            <div class="05-build-cost-meter-status" id="05-build-cost-moving-status">rising</div>
+            <div class="05-build-cost-meter-track">
+              <div class="05-build-cost-meter-fill" id="05-build-cost-moving-fill"></div>
+              <div class="05-build-cost-meter-ticks" aria-hidden="true">
+                <span class="05-build-cost-meter-tick"></span><span class="05-build-cost-meter-tick"></span><span class="05-build-cost-meter-tick"></span>
+                <span class="05-build-cost-meter-tick"></span><span class="05-build-cost-meter-tick"></span><span class="05-build-cost-meter-tick"></span>
+              </div>
+            </div>
+            <div class="05-build-cost-work-tags">
+              <div class="05-build-cost-work-tag" id="05-build-cost-refit-tag">refit</div>
+              <div class="05-build-cost-work-tag" id="05-build-cost-rebuild-tag">rebuild</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="05-build-cost-balance" id="05-build-cost-balance" aria-label="Three-way engine balance">
+          <div class="05-build-cost-balance-label">three-way balance</div>
+          <div class="05-build-cost-balance-rail" id="05-build-cost-balance-rail"></div>
+          <div class="05-build-cost-balance-cell 05-build-cost-balance-cell-a" id="05-build-cost-balance-a">
+            <div class="05-build-cost-balance-node" id="05-build-cost-balance-node-a"></div>
+            <div class="05-build-cost-balance-name">quality</div>
+          </div>
+          <div class="05-build-cost-balance-cell 05-build-cost-balance-cell-b" id="05-build-cost-balance-b">
+            <div class="05-build-cost-balance-node" id="05-build-cost-balance-node-b"></div>
+            <div class="05-build-cost-balance-name">update cost</div>
+          </div>
+          <div class="05-build-cost-balance-cell 05-build-cost-balance-cell-c" id="05-build-cost-balance-c">
+            <div class="05-build-cost-balance-node" id="05-build-cost-balance-node-c"></div>
+            <div class="05-build-cost-balance-name">ray count</div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const header = document.getElementById("05-build-cost-header");
+      const staticPanel = document.getElementById("05-build-cost-static-panel");
+      const staticTree = document.getElementById("05-build-cost-static-tree");
+      const staticFill = document.getElementById("05-build-cost-static-fill");
+      const staticStatus = document.getElementById("05-build-cost-static-status");
+      const staticBadge = document.getElementById("05-build-cost-static-badge");
+      const movingPanel = document.getElementById("05-build-cost-moving-panel");
+      const movingTree = document.getElementById("05-build-cost-moving-tree");
+      const movingLeafA = document.getElementById("05-build-cost-moving-leaf-a");
+      const movingLeafB = document.getElementById("05-build-cost-moving-leaf-b");
+      const refitA = document.getElementById("05-build-cost-refit-a");
+      const refitB = document.getElementById("05-build-cost-refit-b");
+      const movingFill = document.getElementById("05-build-cost-moving-fill");
+      const movingStatus = document.getElementById("05-build-cost-moving-status");
+      const refitTag = document.getElementById("05-build-cost-refit-tag");
+      const rebuildTag = document.getElementById("05-build-cost-rebuild-tag");
+      const movingBadge = document.getElementById("05-build-cost-moving-badge");
+      const balance = document.getElementById("05-build-cost-balance");
+      const balanceRail = document.getElementById("05-build-cost-balance-rail");
+      const balanceNodeA = document.getElementById("05-build-cost-balance-node-a");
+      const balanceNodeB = document.getElementById("05-build-cost-balance-node-b");
+      const balanceNodeC = document.getElementById("05-build-cost-balance-node-c");
+      const hold = { progress: 0 };
+      const timeline = gsap.timeline({ paused: true });
+
+      timeline
+        .fromTo(header,
+          { opacity: 0, y: -18 },
+          { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" },
+          0
+        )
+        .fromTo(staticPanel,
+          { opacity: 0, x: -72, rotationY: 9, scale: 0.97 },
+          { opacity: 1, x: 0, rotationY: 0, scale: 1, duration: 0.46, ease: "power3.out" },
+          0.04
+        )
+        .fromTo(staticTree,
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.38, ease: "power2.out" },
+          0.12
+        )
+        .fromTo(staticFill,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 0.18, duration: 0.76, ease: "power2.out" },
+          0.72
+        )
+        .fromTo(staticStatus,
+          { opacity: 0, x: 12 },
+          { opacity: 1, x: 0, duration: 0.28, ease: "power2.out" },
+          1.34
+        )
+        .fromTo(staticBadge,
+          { opacity: 0, y: 18, scale: 0.88 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.38, ease: "back.out(1.35)" },
+          2.12
+        )
+
+        .fromTo(movingPanel,
+          { opacity: 0, x: 72, rotationY: -9, scale: 0.97 },
+          { opacity: 1, x: 0, rotationY: 0, scale: 1, duration: 0.46, ease: "power3.out" },
+          3
+        )
+        .fromTo(movingTree,
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.38, ease: "power2.out" },
+          3.12
+        )
+        .fromTo(movingFill,
+          { scaleX: 0.18, transformOrigin: "0% 50%" },
+          { scaleX: 0.92, duration: 1.1, ease: "power2.inOut" },
+          4.28
+        )
+        .fromTo(movingLeafA,
+          { x: 0, y: 0 },
+          { x: 12, y: -10, duration: 0.5, ease: "power2.inOut" },
+          3.72
+        )
+        .fromTo(movingLeafB,
+          { x: 0, y: 0 },
+          { x: -12, y: 10, duration: 0.5, ease: "power2.inOut" },
+          4.02
+        )
+        .fromTo(refitA,
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.48, ease: "power2.inOut" },
+          4.2
+        )
+        .fromTo(refitB,
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.48, ease: "power2.inOut" },
+          4.48
+        )
+        .fromTo(refitTag,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.26, ease: "power2.out" },
+          4.62
+        )
+        .fromTo(rebuildTag,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.26, ease: "power2.out" },
+          5.02
+        )
+        .fromTo(movingStatus,
+          { opacity: 0, x: 12 },
+          { opacity: 1, x: 0, duration: 0.28, ease: "power2.out" },
+          5.28
+        )
+        .fromTo(movingBadge,
+          { opacity: 0, y: -18, scale: 0.88 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.38, ease: "back.out(1.35)" },
+          5.66
+        )
+
+        .fromTo(balance,
+          { opacity: 0, y: 24 },
+          { opacity: 1, y: 0, duration: 0.18, ease: "power3.out" },
+          6.4
+        )
+        .fromTo(balanceRail,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 0.9, ease: "power2.inOut" },
+          6.46
+        )
+        .fromTo(balanceNodeA,
+          { opacity: 0, y: 12, scale: 0.4 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.28, ease: "back.out(1.35)" },
+          6.85
+        )
+        .fromTo(balanceNodeB,
+          { opacity: 0, y: 12, scale: 0.4 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.28, ease: "back.out(1.35)" },
+          7.25
+        )
+        .fromTo(balanceNodeC,
+          { opacity: 0, y: 12, scale: 0.4 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.28, ease: "back.out(1.35)" },
+          7.65
+        )
+        .to(hold, { progress: 1, duration: 1.097, ease: "none" }, 9.1);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["05-build-cost"] = timeline;
+    })();
+  </script>
+</template>

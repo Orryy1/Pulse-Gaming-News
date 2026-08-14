@@ -1,0 +1,964 @@
+{
+  "bgm": {
+    "path": "assets/bgm/system-trace-tension-bed.wav",
+    "volume": 0.1
+  },
+  "bgm_pending": false,
+  "voices": [
+    {
+      "frame": 1,
+      "path": "assets/voice/01.wav",
+      "duration_s": 7.552,
+      "words": [
+        {
+          "text": "60",
+          "word": "60",
+          "start": 0,
+          "end": 0.42
+        },
+        {
+          "text": "frames",
+          "word": "frames",
+          "start": 0.42,
+          "end": 0.76
+        },
+        {
+          "text": "per",
+          "word": "per",
+          "start": 0.76,
+          "end": 1.1
+        },
+        {
+          "text": "second",
+          "word": "second",
+          "start": 1.1,
+          "end": 1.5
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 1.5,
+          "end": 1.82
+        },
+        {
+          "text": "still",
+          "word": "still",
+          "start": 1.82,
+          "end": 2.1
+        },
+        {
+          "text": "feel",
+          "word": "feel",
+          "start": 2.1,
+          "end": 2.36
+        },
+        {
+          "text": "stuttery.",
+          "word": "stuttery.",
+          "start": 2.36,
+          "end": 3.1
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 3.34,
+          "end": 3.52
+        },
+        {
+          "text": "number",
+          "word": "number",
+          "start": 3.52,
+          "end": 3.7
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 3.7,
+          "end": 4.02
+        },
+        {
+          "text": "real,",
+          "word": "real,",
+          "start": 4.02,
+          "end": 4.4
+        },
+        {
+          "text": "but",
+          "word": "but",
+          "start": 4.78,
+          "end": 4.96
+        },
+        {
+          "text": "it",
+          "word": "it",
+          "start": 4.96,
+          "end": 5.08
+        },
+        {
+          "text": "does",
+          "word": "does",
+          "start": 5.08,
+          "end": 5.22
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 5.22,
+          "end": 5.46
+        },
+        {
+          "text": "tell",
+          "word": "tell",
+          "start": 5.46,
+          "end": 5.7
+        },
+        {
+          "text": "you",
+          "word": "you",
+          "start": 5.7,
+          "end": 5.92
+        },
+        {
+          "text": "when",
+          "word": "when",
+          "start": 5.92,
+          "end": 6.14
+        },
+        {
+          "text": "each",
+          "word": "each",
+          "start": 6.14,
+          "end": 6.4
+        },
+        {
+          "text": "frame",
+          "word": "frame",
+          "start": 6.4,
+          "end": 6.76
+        },
+        {
+          "text": "arrived.",
+          "word": "arrived.",
+          "start": 6.76,
+          "end": 7.24
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "60 frames per second can still feel stuttery. The number is real, but it does not tell you when each frame arrived."
+      }
+    },
+    {
+      "frame": 2,
+      "path": "assets/voice/02.wav",
+      "duration_s": 8.32,
+      "words": [
+        {
+          "text": "FPS",
+          "word": "FPS",
+          "start": 0,
+          "end": 0.36
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 0.36,
+          "end": 0.98
+        },
+        {
+          "text": "an",
+          "word": "an",
+          "start": 0.98,
+          "end": 1.12
+        },
+        {
+          "text": "average",
+          "word": "average",
+          "start": 1.12,
+          "end": 1.46
+        },
+        {
+          "text": "across",
+          "word": "across",
+          "start": 1.46,
+          "end": 1.82
+        },
+        {
+          "text": "time.",
+          "word": "time.",
+          "start": 1.82,
+          "end": 2.24
+        },
+        {
+          "text": "Smoothness",
+          "word": "Smoothness",
+          "start": 3.02,
+          "end": 3.34
+        },
+        {
+          "text": "also",
+          "word": "also",
+          "start": 3.34,
+          "end": 3.78
+        },
+        {
+          "text": "lives",
+          "word": "lives",
+          "start": 3.78,
+          "end": 4.16
+        },
+        {
+          "text": "in",
+          "word": "in",
+          "start": 4.16,
+          "end": 4.46
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 4.46,
+          "end": 4.6
+        },
+        {
+          "text": "gaps,",
+          "word": "gaps,",
+          "start": 4.6,
+          "end": 4.92
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 5.36,
+          "end": 5.48
+        },
+        {
+          "text": "rhythm",
+          "word": "rhythm",
+          "start": 5.48,
+          "end": 5.72
+        },
+        {
+          "text": "between",
+          "word": "between",
+          "start": 5.72,
+          "end": 6.1
+        },
+        {
+          "text": "one",
+          "word": "one",
+          "start": 6.1,
+          "end": 6.46
+        },
+        {
+          "text": "finished",
+          "word": "finished",
+          "start": 6.46,
+          "end": 6.82
+        },
+        {
+          "text": "frame",
+          "word": "frame",
+          "start": 6.82,
+          "end": 7.28
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 7.28,
+          "end": 7.7
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 7.7,
+          "end": 7.8
+        },
+        {
+          "text": "next.",
+          "word": "next.",
+          "start": 7.8,
+          "end": 8.06
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "FPS is an average across time. Smoothness also lives in the gaps, the rhythm between one finished frame and the next."
+      }
+    },
+    {
+      "frame": 3,
+      "path": "assets/voice/03.wav",
+      "duration_s": 8.981,
+      "words": [
+        {
+          "text": "At",
+          "word": "At",
+          "start": 0,
+          "end": 0.14
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 0.14,
+          "end": 0.3
+        },
+        {
+          "text": "clean",
+          "word": "clean",
+          "start": 0.3,
+          "end": 0.46
+        },
+        {
+          "text": "60,",
+          "word": "60,",
+          "start": 0.46,
+          "end": 0.84
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 1.32,
+          "end": 1.48
+        },
+        {
+          "text": "new",
+          "word": "new",
+          "start": 1.48,
+          "end": 1.68
+        },
+        {
+          "text": "image",
+          "word": "image",
+          "start": 1.68,
+          "end": 2.04
+        },
+        {
+          "text": "arrives",
+          "word": "arrives",
+          "start": 2.04,
+          "end": 2.46
+        },
+        {
+          "text": "about",
+          "word": "about",
+          "start": 2.46,
+          "end": 2.84
+        },
+        {
+          "text": "every",
+          "word": "every",
+          "start": 2.84,
+          "end": 3.12
+        },
+        {
+          "text": "16",
+          "word": "16",
+          "start": 3.12,
+          "end": 3.62
+        },
+        {
+          "text": ".7",
+          "word": ".7",
+          "start": 3.62,
+          "end": 4.4
+        },
+        {
+          "text": "milliseconds,",
+          "word": "milliseconds,",
+          "start": 4.4,
+          "end": 4.92
+        },
+        {
+          "text": "tick,",
+          "word": "tick,",
+          "start": 5.86,
+          "end": 5.88
+        },
+        {
+          "text": "tick,",
+          "word": "tick,",
+          "start": 6.14,
+          "end": 6.36
+        },
+        {
+          "text": "tick,",
+          "word": "tick,",
+          "start": 6.64,
+          "end": 6.88
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 7.3,
+          "end": 7.44
+        },
+        {
+          "text": "even",
+          "word": "even",
+          "start": 7.44,
+          "end": 7.7
+        },
+        {
+          "text": "visual",
+          "word": "visual",
+          "start": 7.7,
+          "end": 8.14
+        },
+        {
+          "text": "cadence.",
+          "word": "cadence.",
+          "start": 8.14,
+          "end": 8.76
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "At a clean 60, a new image arrives about every 16.7 milliseconds, tick, tick, tick, and even visual cadence."
+      }
+    },
+    {
+      "frame": 4,
+      "path": "assets/voice/04.wav",
+      "duration_s": 8.64,
+      "words": [
+        {
+          "text": "Now",
+          "word": "Now",
+          "start": 0,
+          "end": 0.18
+        },
+        {
+          "text": "let",
+          "word": "let",
+          "start": 0.18,
+          "end": 0.36
+        },
+        {
+          "text": "one",
+          "word": "one",
+          "start": 0.36,
+          "end": 0.58
+        },
+        {
+          "text": "frame",
+          "word": "frame",
+          "start": 0.58,
+          "end": 0.96
+        },
+        {
+          "text": "take",
+          "word": "take",
+          "start": 0.96,
+          "end": 1.34
+        },
+        {
+          "text": "40",
+          "word": "40",
+          "start": 1.34,
+          "end": 1.74
+        },
+        {
+          "text": "milliseconds.",
+          "word": "milliseconds.",
+          "start": 1.74,
+          "end": 2.24
+        },
+        {
+          "text": "Faster",
+          "word": "Faster",
+          "start": 3.26,
+          "end": 3.28
+        },
+        {
+          "text": "frames",
+          "word": "frames",
+          "start": 3.28,
+          "end": 3.84
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 3.84,
+          "end": 4.14
+        },
+        {
+          "text": "pull",
+          "word": "pull",
+          "start": 4.14,
+          "end": 4.38
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 4.38,
+          "end": 4.54
+        },
+        {
+          "text": "average",
+          "word": "average",
+          "start": 4.54,
+          "end": 4.84
+        },
+        {
+          "text": "back",
+          "word": "back",
+          "start": 4.84,
+          "end": 5.18
+        },
+        {
+          "text": "up,",
+          "word": "up,",
+          "start": 5.18,
+          "end": 5.68
+        },
+        {
+          "text": "yet",
+          "word": "yet",
+          "start": 5.78,
+          "end": 6
+        },
+        {
+          "text": "your",
+          "word": "your",
+          "start": 6,
+          "end": 6.22
+        },
+        {
+          "text": "eye",
+          "word": "eye",
+          "start": 6.22,
+          "end": 6.52
+        },
+        {
+          "text": "still",
+          "word": "still",
+          "start": 6.52,
+          "end": 6.84
+        },
+        {
+          "text": "catches",
+          "word": "catches",
+          "start": 6.84,
+          "end": 7.26
+        },
+        {
+          "text": "that",
+          "word": "that",
+          "start": 7.26,
+          "end": 7.6
+        },
+        {
+          "text": "single",
+          "word": "single",
+          "start": 7.6,
+          "end": 7.94
+        },
+        {
+          "text": "pause.",
+          "word": "pause.",
+          "start": 7.94,
+          "end": 8.36
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Now let one frame take 40 milliseconds. Faster frames can pull the average back up, yet your eye still catches that single pause."
+      }
+    },
+    {
+      "frame": 5,
+      "path": "assets/voice/05.wav",
+      "duration_s": 9.899,
+      "words": [
+        {
+          "text": "that",
+          "word": "that",
+          "start": 0,
+          "end": 0.12
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 0.12,
+          "end": 0.26
+        },
+        {
+          "text": "uneven",
+          "word": "uneven",
+          "start": 0.26,
+          "end": 0.6
+        },
+        {
+          "text": "frame",
+          "word": "frame",
+          "start": 0.6,
+          "end": 1.12
+        },
+        {
+          "text": "pacing.",
+          "word": "pacing.",
+          "start": 1.12,
+          "end": 1.6
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 2.26,
+          "end": 2.34
+        },
+        {
+          "text": "engine,",
+          "word": "engine,",
+          "start": 2.34,
+          "end": 2.72
+        },
+        {
+          "text": "driver",
+          "word": "driver",
+          "start": 3.1,
+          "end": 3.44
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 3.44,
+          "end": 3.72
+        },
+        {
+          "text": "display",
+          "word": "display",
+          "start": 3.72,
+          "end": 4.12
+        },
+        {
+          "text": "must",
+          "word": "must",
+          "start": 4.12,
+          "end": 4.6
+        },
+        {
+          "text": "hand",
+          "word": "hand",
+          "start": 4.6,
+          "end": 4.94
+        },
+        {
+          "text": "frames",
+          "word": "frames",
+          "start": 4.94,
+          "end": 5.44
+        },
+        {
+          "text": "over",
+          "word": "over",
+          "start": 5.44,
+          "end": 5.74
+        },
+        {
+          "text": "steadily,",
+          "word": "steadily,",
+          "start": 5.74,
+          "end": 6.28
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 6.76,
+          "end": 6.96
+        },
+        {
+          "text": "merely",
+          "word": "merely",
+          "start": 6.96,
+          "end": 7.22
+        },
+        {
+          "text": "finish",
+          "word": "finish",
+          "start": 7.22,
+          "end": 7.56
+        },
+        {
+          "text": "60",
+          "word": "60",
+          "start": 7.56,
+          "end": 8.02
+        },
+        {
+          "text": "somewhere",
+          "word": "somewhere",
+          "start": 8.02,
+          "end": 8.48
+        },
+        {
+          "text": "inside",
+          "word": "inside",
+          "start": 8.48,
+          "end": 9.12
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 9.12,
+          "end": 9.36
+        },
+        {
+          "text": "second.",
+          "word": "second.",
+          "start": 9.36,
+          "end": 9.56
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "that is uneven frame pacing. The engine, driver and display must hand frames over steadily, not merely finish 60 somewhere inside a second."
+      }
+    },
+    {
+      "frame": 6,
+      "path": "assets/voice/06.wav",
+      "duration_s": 7.701,
+      "words": [
+        {
+          "text": "So",
+          "word": "So",
+          "start": 0,
+          "end": 0.16
+        },
+        {
+          "text": "when",
+          "word": "when",
+          "start": 0.16,
+          "end": 0.3
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 0.3,
+          "end": 0.42
+        },
+        {
+          "text": "game",
+          "word": "game",
+          "start": 0.42,
+          "end": 0.62
+        },
+        {
+          "text": "feels",
+          "word": "feels",
+          "start": 0.62,
+          "end": 0.98
+        },
+        {
+          "text": "rough,",
+          "word": "rough,",
+          "start": 0.98,
+          "end": 1.36
+        },
+        {
+          "text": "watch",
+          "word": "watch",
+          "start": 1.7,
+          "end": 1.96
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 1.96,
+          "end": 2.18
+        },
+        {
+          "text": "frame",
+          "word": "frame",
+          "start": 2.18,
+          "end": 2.4
+        },
+        {
+          "text": "time",
+          "word": "time",
+          "start": 2.4,
+          "end": 2.7
+        },
+        {
+          "text": "graph",
+          "word": "graph",
+          "start": 2.7,
+          "end": 3.12
+        },
+        {
+          "text": "as",
+          "word": "as",
+          "start": 3.12,
+          "end": 3.62
+        },
+        {
+          "text": "well",
+          "word": "well",
+          "start": 3.62,
+          "end": 3.84
+        },
+        {
+          "text": "as",
+          "word": "as",
+          "start": 3.84,
+          "end": 4.02
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 4.02,
+          "end": 4.18
+        },
+        {
+          "text": "FPS",
+          "word": "FPS",
+          "start": 4.18,
+          "end": 4.74
+        },
+        {
+          "text": "counter.",
+          "word": "counter.",
+          "start": 4.74,
+          "end": 5.36
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 5.9,
+          "end": 6.02
+        },
+        {
+          "text": "average",
+          "word": "average",
+          "start": 6.02,
+          "end": 6.38
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 6.38,
+          "end": 6.7
+        },
+        {
+          "text": "hide",
+          "word": "hide",
+          "start": 6.7,
+          "end": 7.02
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 7.02,
+          "end": 7.24
+        },
+        {
+          "text": "hitch.",
+          "word": "hitch.",
+          "start": 7.24,
+          "end": 7.42
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "So when a game feels rough, watch the frame time graph as well as the FPS counter. The average can hide the hitch."
+      }
+    }
+  ],
+  "sfx": [
+    {
+      "frame": 1,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 1,
+      "file": "assets/sfx/glitch-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.64,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/whoosh-short.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/glitch-2.mp3",
+      "offset_s": 0,
+      "duration_s": 3.5,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/click.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/whoosh.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/chime.mp3",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    }
+  ]
+}

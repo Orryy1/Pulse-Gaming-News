@@ -1,0 +1,563 @@
+<template>
+  <div
+    id="root"
+    data-composition-id="01-too-much"
+    data-width="1080"
+    data-height="1920"
+    data-duration="9.183"
+    data-start="0"
+  >
+    <div
+      class="clip 01-too-much-ground"
+      data-start="0"
+      data-duration="9.183"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <div class="01-too-much-field" data-01-too-much-field="ambient">
+        <span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <section
+      class="clip 01-too-much-content"
+      data-start="0"
+      data-duration="9.183"
+      data-track-index="1"
+      aria-label="Texture residency comparison"
+    >
+      <div class="01-too-much-headline-stage">
+        <h1 class="01-too-much-headline" data-01-too-much-headline="assumption">load the whole world?</h1>
+        <h1 class="01-too-much-headline" data-01-too-much-headline="constraint">keep what matters</h1>
+      </div>
+
+      <div class="01-too-much-archive" data-01-too-much-subject="archive">
+        <div class="01-too-much-section-label">
+          <span>WORLD DATA</span>
+          <span>TEXTURE ARCHIVE</span>
+        </div>
+
+        <div class="01-too-much-tile-grid" data-01-too-much-grid="archive">
+          <div class="01-too-much-tile" data-01-too-much-tile="gap-a"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="gap-b"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="base"></div>
+          <div class="01-too-much-tile" data-01-too-much-tile="gap-c"></div>
+        </div>
+
+        <div class="01-too-much-selected-overlay" aria-hidden="true">
+          <div class="01-too-much-tile 01-too-much-selected-tile" data-01-too-much-tile="selected-a"></div>
+          <div class="01-too-much-tile 01-too-much-selected-tile" data-01-too-much-tile="selected-b"></div>
+          <div class="01-too-much-tile 01-too-much-selected-tile" data-01-too-much-tile="selected-c"></div>
+        </div>
+
+        <div class="01-too-much-capacity-gauge" data-01-too-much-gauge="capacity">
+          <div class="01-too-much-gauge-rule"></div>
+          <div class="01-too-much-gauge-fill"></div>
+          <div class="01-too-much-gauge-marker"></div>
+          <div class="01-too-much-gauge-label">FITS IN VRAM</div>
+        </div>
+      </div>
+
+      <div class="01-too-much-bay" data-01-too-much-subject="vram">
+        <div class="01-too-much-bay-label">
+          <span>VRAM BAY</span>
+          <span data-01-too-much-working-label="true">WORKING SET</span>
+        </div>
+        <div class="01-too-much-bay-shell">
+          <i class="01-too-much-bay-line 01-too-much-line-top"></i>
+          <i class="01-too-much-bay-line 01-too-much-line-right"></i>
+          <i class="01-too-much-bay-line 01-too-much-line-bottom"></i>
+          <i class="01-too-much-bay-line 01-too-much-line-left"></i>
+          <div class="01-too-much-slot"></div>
+          <div class="01-too-much-slot"></div>
+          <div class="01-too-much-slot"></div>
+        </div>
+      </div>
+    </section>
+
+    <style>
+      @font-face {
+        font-family: "Space Grotesk";
+        src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 300 900;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Mono";
+        src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Mono";
+        src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Mono";
+        src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+      }
+
+      #root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        container-type: size;
+        color: #F0F0F0;
+      }
+
+      #root,
+      #root * {
+        box-sizing: border-box;
+      }
+
+      [class~="01-too-much-ground"] {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background: #0D0D0F;
+      }
+
+      [class~="01-too-much-field"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0.16;
+      }
+
+      [class~="01-too-much-field"] span {
+        position: absolute;
+        border: 1px solid #282726;
+      }
+
+      [class~="01-too-much-field"] span:nth-child(1) { left: -7cqw; top: 13cqh; width: 23cqw; height: 18cqh; }
+      [class~="01-too-much-field"] span:nth-child(2) { left: 82cqw; top: 7cqh; width: 24cqw; height: 14cqh; }
+      [class~="01-too-much-field"] span:nth-child(3) { left: -8cqw; top: 49cqh; width: 17cqw; height: 19cqh; }
+      [class~="01-too-much-field"] span:nth-child(4) { left: 90cqw; top: 39cqh; width: 19cqw; height: 25cqh; }
+      [class~="01-too-much-field"] span:nth-child(5) { left: 4cqw; top: 73cqh; width: 26cqw; height: 9cqh; }
+      [class~="01-too-much-field"] span:nth-child(6) { left: 75cqw; top: 75cqh; width: 22cqw; height: 7cqh; }
+
+      [class~="01-too-much-content"] {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        font-family: "Space Grotesk", sans-serif;
+      }
+
+      [class~="01-too-much-headline-stage"] {
+        position: absolute;
+        left: 5.5cqw;
+        top: 5.4cqh;
+        width: 89cqw;
+        height: 15cqh;
+        perspective: 900px;
+      }
+
+      [class~="01-too-much-headline"] {
+        position: absolute;
+        inset: 0;
+        width: 89cqw;
+        margin: 0;
+        color: #F0F0F0;
+        font-size: 9.2cqw;
+        font-weight: 900;
+        line-height: 0.89;
+        letter-spacing: -0.04em;
+        text-transform: lowercase;
+        transform-origin: 50% 55%;
+      }
+
+      [data-01-too-much-headline="constraint"] {
+        color: #FF6B1A;
+      }
+
+      [class~="01-too-much-archive"] {
+        position: absolute;
+        left: 7.5cqw;
+        top: 23cqh;
+        width: 85cqw;
+        height: 34cqh;
+      }
+
+      [class~="01-too-much-section-label"],
+      [class~="01-too-much-bay-label"] {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: -2.8cqh;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: #FF6B1A;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 1.4cqw;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      [class~="01-too-much-section-label"] span:last-child {
+        color: #7D7977;
+      }
+
+      [class~="01-too-much-tile-grid"] {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 85cqw;
+        height: 34cqh;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: repeat(5, 1fr);
+        gap: 1.2cqw;
+      }
+
+      [class~="01-too-much-tile"] {
+        position: relative;
+        min-width: 0;
+        min-height: 0;
+        background: #282726;
+        border-top: 1px solid #504B48;
+        transform-origin: 50% 50%;
+      }
+
+      [class~="01-too-much-tile"]::before {
+        content: "";
+        position: absolute;
+        left: 1.2cqw;
+        top: 1.2cqh;
+        width: 8cqw;
+        height: 1px;
+        background: #504B48;
+      }
+
+      [class~="01-too-much-tile"]::after {
+        content: "";
+        position: absolute;
+        right: 1.2cqw;
+        bottom: 1.2cqh;
+        width: 2.4cqw;
+        height: 2.4cqw;
+        border: 1px solid #504B48;
+      }
+
+      [data-01-too-much-tile^="gap-"] {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      [class~="01-too-much-selected-overlay"] {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      [class~="01-too-much-selected-tile"] {
+        position: absolute;
+        width: 27.53cqw;
+        height: 5.84cqh;
+        z-index: 5;
+      }
+
+      [class~="01-too-much-selected-tile"][data-01-too-much-tile="selected-a"] {
+        left: 0;
+        top: 0;
+        opacity: 1;
+      }
+
+      [class~="01-too-much-selected-tile"][data-01-too-much-tile="selected-b"] {
+        left: 28.73cqw;
+        top: 14.08cqh;
+      }
+
+      [class~="01-too-much-selected-tile"][data-01-too-much-tile="selected-c"] {
+        left: 57.47cqw;
+        top: 28.16cqh;
+        opacity: 1;
+      }
+
+      [class~="01-too-much-capacity-gauge"] {
+        position: absolute;
+        left: 87.5cqw;
+        top: 0;
+        width: 5cqw;
+        height: 34cqh;
+      }
+
+      [class~="01-too-much-gauge-rule"] {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1px;
+        height: 100%;
+        background: #504B48;
+        transform-origin: 50% 100%;
+      }
+
+      [class~="01-too-much-gauge-fill"] {
+        position: absolute;
+        left: -0.45cqw;
+        bottom: 0;
+        width: 0.9cqw;
+        height: 22%;
+        background: #FF6B1A;
+        transform-origin: 50% 100%;
+      }
+
+      [class~="01-too-much-gauge-marker"] {
+        position: absolute;
+        left: -1.3cqw;
+        bottom: 22%;
+        width: 2.6cqw;
+        height: 1px;
+        background: #FF6B1A;
+      }
+
+      [class~="01-too-much-gauge-label"] {
+        position: absolute;
+        left: 1.4cqw;
+        bottom: 0;
+        height: 22%;
+        color: #FF6B1A;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 1.4cqw;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        writing-mode: vertical-rl;
+      }
+
+      [class~="01-too-much-bay"] {
+        position: absolute;
+        left: 23cqw;
+        top: 64cqh;
+        width: 54cqw;
+        height: 12cqh;
+      }
+
+      [class~="01-too-much-bay-label"] {
+        top: -3.1cqh;
+        color: #F0F0F0;
+      }
+
+      [class~="01-too-much-bay-label"] span:last-child {
+        color: #FF6B1A;
+      }
+
+      [class~="01-too-much-bay-shell"] {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1cqw;
+        padding: 2cqw;
+        background: #1A1918;
+      }
+
+      [class~="01-too-much-bay-line"] {
+        position: absolute;
+        display: block;
+        background: #FF6B1A;
+      }
+
+      [class~="01-too-much-line-top"],
+      [class~="01-too-much-line-bottom"] {
+        left: 0;
+        width: 100%;
+        height: 1px;
+        transform-origin: 0 50%;
+      }
+
+      [class~="01-too-much-line-top"] { top: 0; }
+      [class~="01-too-much-line-bottom"] { bottom: 0; }
+
+      [class~="01-too-much-line-left"],
+      [class~="01-too-much-line-right"] {
+        top: 0;
+        width: 1px;
+        height: 100%;
+        transform-origin: 50% 0;
+      }
+
+      [class~="01-too-much-line-left"] { left: 0; }
+      [class~="01-too-much-line-right"] { right: 0; }
+
+      [class~="01-too-much-slot"] {
+        min-width: 0;
+        border: 1px solid #504B48;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script>
+      (() => {
+        const assumption = document.querySelector('[data-01-too-much-headline="assumption"]');
+        const constraint = document.querySelector('[data-01-too-much-headline="constraint"]');
+        const archive = document.querySelector('[data-01-too-much-subject="archive"]');
+        const tiles = Array.from(document.querySelectorAll('[data-01-too-much-grid="archive"] [data-01-too-much-tile]'))
+          .filter((tile) => tile.dataset["01TooMuchTile"] === "base");
+        const restingTiles = tiles;
+        const selectedTiles = Array.from(document.querySelectorAll('[class~="01-too-much-selected-tile"]'));
+        const gauge = document.querySelector('[data-01-too-much-gauge="capacity"]');
+        const gaugeRule = gauge.querySelector('[class~="01-too-much-gauge-rule"]');
+        const gaugeFill = gauge.querySelector('[class~="01-too-much-gauge-fill"]');
+        const gaugeMarker = gauge.querySelector('[class~="01-too-much-gauge-marker"]');
+        const gaugeLabel = gauge.querySelector('[class~="01-too-much-gauge-label"]');
+        const bay = document.querySelector('[data-01-too-much-subject="vram"]');
+        const bayLinesHorizontal = Array.from(bay.querySelectorAll('[class~="01-too-much-line-top"], [class~="01-too-much-line-bottom"]'));
+        const bayLinesVertical = Array.from(bay.querySelectorAll('[class~="01-too-much-line-left"], [class~="01-too-much-line-right"]'));
+        const workingLabel = document.querySelector('[data-01-too-much-working-label="true"]');
+
+        const timeline = gsap.timeline({ paused: true });
+
+        timeline
+          .addLabel("scene-1-archive", 0)
+          .set([constraint, bay, gauge, workingLabel], { opacity: 0 }, 0)
+          .fromTo(
+            assumption,
+            { x: -54, opacity: 0 },
+            { x: 0, opacity: 1, duration: 0.5, ease: "power3.out" },
+            0
+          )
+          .fromTo(
+            archive.querySelector('[class~="01-too-much-section-label"]'),
+            { x: -34, opacity: 0 },
+            { x: 0, opacity: 1, duration: 0.38, ease: "power3.out" },
+            0.28
+          )
+          .fromTo(
+            tiles,
+            { y: 34, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.42, stagger: 0.13, ease: "power3.out" },
+            0.48
+          )
+          .fromTo(
+            selectedTiles,
+            { y: 34, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.42, stagger: 0.77, ease: "power3.out" },
+            0.48
+          )
+
+          .addLabel("scene-2-capacity", 2.6)
+          .fromTo(
+            bay,
+            { y: 54, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.52, ease: "power3.out" },
+            2.6
+          )
+          .fromTo(
+            bayLinesHorizontal,
+            { scaleX: 0 },
+            { scaleX: 1, duration: 0.72, stagger: 0.09, ease: "power3.out" },
+            2.78
+          )
+          .fromTo(
+            bayLinesVertical,
+            { scaleY: 0 },
+            { scaleY: 1, duration: 0.72, stagger: 0.09, ease: "power3.out" },
+            3.0
+          )
+          .fromTo(
+            gauge,
+            { opacity: 0 },
+            { opacity: 1, duration: 0.34, ease: "none" },
+            3.42
+          )
+          .fromTo(
+            gaugeRule,
+            { scaleY: 0 },
+            { scaleY: 1, duration: 0.72, ease: "power3.out" },
+            3.42
+          )
+          .fromTo(
+            gaugeFill,
+            { scaleY: 0 },
+            { scaleY: 1, duration: 0.64, ease: "power3.out" },
+            4.28
+          )
+          .fromTo(
+            [gaugeMarker, gaugeLabel],
+            { x: -18, opacity: 0 },
+            { x: 0, opacity: 1, duration: 0.44, stagger: 0.1, ease: "power3.out" },
+            5.02
+          )
+
+          .addLabel("scene-3-working-set", 5.9)
+          .to(
+            assumption,
+            { scale: 0.8, filter: "blur(10px)", duration: 0.2, ease: "power3.in" },
+            5.9
+          )
+          .to(
+            assumption,
+            { opacity: 0.15, duration: 0.2, ease: "none" },
+            5.9
+          )
+          .set(assumption, { opacity: 0 }, 6.1)
+          .set(constraint, { opacity: 0.15, scale: 1.25, filter: "blur(10px)" }, 6.1)
+          .to(
+            constraint,
+            { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.5, ease: "expo.out" },
+            6.1
+          )
+          .to(
+            restingTiles,
+            { opacity: 0.22, duration: 0.52, stagger: 0.018, ease: "power2.out" },
+            6.12
+          )
+          .to(
+            selectedTiles,
+            { backgroundColor: "#FF6B1A", borderColor: "#FF6B1A", duration: 0.28, stagger: 0.1, ease: "none" },
+            6.18
+          )
+          .to(
+            selectedTiles[0],
+            { x: 124, y: 845, scale: 0.56, duration: 1.18, ease: "power3.inOut" },
+            6.38
+          )
+          .to(
+            selectedTiles[1],
+            { x: -2, y: 575, scale: 0.56, duration: 1.18, ease: "power3.inOut" },
+            6.64
+          )
+          .to(
+            selectedTiles[2],
+            { x: -129, y: 305, scale: 0.56, duration: 1.18, ease: "power3.inOut" },
+            6.9
+          )
+          .fromTo(
+            workingLabel,
+            { x: 24, opacity: 0 },
+            { x: 0, opacity: 1, duration: 0.46, ease: "power3.out" },
+            7.92
+          );
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["01-too-much"] = timeline;
+      })();
+    </script>
+  </div>
+</template>

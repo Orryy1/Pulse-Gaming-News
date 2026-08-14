@@ -1,0 +1,433 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    #root * {
+      box-sizing: border-box;
+    }
+
+    [class~="01-fewer-pixels-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background: #0d0d0f;
+    }
+
+    [class~="01-fewer-pixels-scene"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      width: 100%;
+      height: 83cqh;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    [class~="01-fewer-pixels-headline-stage"] {
+      position: absolute;
+      top: 4.8cqh;
+      left: 50%;
+      width: 78cqw;
+      height: 18.5cqh;
+      margin-left: -39cqw;
+      perspective: 1200px;
+    }
+
+    [class~="01-fewer-pixels-headline"] {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #f0f0f0;
+      font-size: 7.4cqw;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.9;
+      text-align: center;
+      text-transform: lowercase;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity, filter;
+    }
+
+    [id="01-fewer-pixels-question"] {
+      font-size: 6.1cqw;
+    }
+
+    [class~="01-fewer-pixels-headline"] span {
+      color: #ff6b1a;
+    }
+
+    [class~="01-fewer-pixels-grid-stage"] {
+      position: absolute;
+      top: 28.8cqh;
+      left: 16cqw;
+      width: 68cqw;
+      height: 43cqh;
+      overflow: visible;
+    }
+
+    [class~="01-fewer-pixels-cell-grid"] {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      grid-template-rows: repeat(8, 1fr);
+      gap: 4px;
+      z-index: 1;
+    }
+
+    [class~="01-fewer-pixels-cell"] {
+      display: block;
+      min-width: 0;
+      min-height: 0;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    [class~="01-fewer-pixels-source-cell"] {
+      background: #ff6b1a;
+    }
+
+    [class~="01-fewer-pixels-target-cell"] {
+      background: #f0f0f0;
+    }
+
+    [class~="01-fewer-pixels-lattice"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    [class~="01-fewer-pixels-lattice-lines"],
+    [class~="01-fewer-pixels-boundary"] {
+      fill: none;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="01-fewer-pixels-lattice-lines"] {
+      stroke: #282726;
+      stroke-width: 1;
+    }
+
+    [class~="01-fewer-pixels-boundary"] {
+      stroke: #f0f0f0;
+      stroke-width: 2;
+    }
+
+    [class~="01-fewer-pixels-label"] {
+      position: absolute;
+      z-index: 4;
+      min-width: 7.5cqw;
+      padding-top: 1cqh;
+      border-top: 1px solid #282726;
+      font-family: "IBM Plex Mono";
+      font-size: 1.15cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [id="01-fewer-pixels-source-label"] {
+      top: -4.6cqh;
+      left: 0;
+      color: #ff6b1a;
+      border-top-color: #ff6b1a;
+    }
+
+    [id="01-fewer-pixels-output-label"] {
+      top: -4.6cqh;
+      right: 0;
+      color: #f0f0f0;
+      text-align: right;
+    }
+
+    [class~="01-fewer-pixels-slice-label"] {
+      position: absolute;
+      left: 6.2cqw;
+      width: 6cqw;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 0.78cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [id="01-fewer-pixels-slice-label-1"] {
+      top: 42.2cqh;
+    }
+
+    [id="01-fewer-pixels-slice-label-2"] {
+      top: 50.4cqh;
+    }
+
+    [id="01-fewer-pixels-slice-label-3"] {
+      top: 58.6cqh;
+    }
+
+    [class~="01-fewer-pixels-slice-label"]::before {
+      content: "/";
+      padding-right: 0.55cqw;
+      color: #ff6b1a;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="01-fewer-pixels"
+    data-width="1080"
+    data-height="1920"
+    data-duration="9.887"
+  >
+    <div
+      class="clip 01-fewer-pixels-ground"
+      data-start="0"
+      data-duration="9.887"
+      data-track-index="0"
+      aria-hidden="true"
+    ></div>
+
+    <div
+      class="clip 01-fewer-pixels-scene"
+      data-start="0"
+      data-duration="9.887"
+      data-track-index="1"
+    >
+      <div class="01-fewer-pixels-headline-stage">
+        <div id="01-fewer-pixels-fewer" class="01-fewer-pixels-headline">
+          fewer <span>pixels</span>
+        </div>
+        <div id="01-fewer-pixels-question" class="01-fewer-pixels-headline">
+          pull <span>/ not stretch?</span>
+        </div>
+        <div id="01-fewer-pixels-denser" class="01-fewer-pixels-headline">
+          denser <span>output</span>
+        </div>
+      </div>
+
+      <div class="01-fewer-pixels-grid-stage">
+        <div id="01-fewer-pixels-cell-grid" class="01-fewer-pixels-cell-grid" aria-hidden="true"></div>
+
+        <svg class="01-fewer-pixels-lattice" viewBox="0 0 1400 800" preserveAspectRatio="none" aria-hidden="true">
+          <path
+            id="01-fewer-pixels-lattice-lines"
+            class="01-fewer-pixels-lattice-lines"
+            d="M87.5 0V800 M175 0V800 M262.5 0V800 M350 0V800 M437.5 0V800 M525 0V800 M612.5 0V800 M700 0V800 M787.5 0V800 M875 0V800 M962.5 0V800 M1050 0V800 M1137.5 0V800 M1225 0V800 M1312.5 0V800 M0 100H1400 M0 200H1400 M0 300H1400 M0 400H1400 M0 500H1400 M0 600H1400 M0 700H1400"
+          />
+          <rect
+            id="01-fewer-pixels-boundary"
+            class="01-fewer-pixels-boundary"
+            data-draw="true"
+            x="2"
+            y="2"
+            width="1396"
+            height="796"
+          />
+        </svg>
+
+        <div id="01-fewer-pixels-source-label" class="01-fewer-pixels-label">1080p</div>
+        <div id="01-fewer-pixels-output-label" class="01-fewer-pixels-label">4k</div>
+      </div>
+
+      <div id="01-fewer-pixels-slice-label-1" class="01-fewer-pixels-slice-label">t−1</div>
+      <div id="01-fewer-pixels-slice-label-2" class="01-fewer-pixels-slice-label">t−2</div>
+      <div id="01-fewer-pixels-slice-label-3" class="01-fewer-pixels-slice-label">t−3</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="01-fewer-pixels"]');
+      if (!root || typeof gsap === "undefined") return;
+
+      const byId = (id) => document.getElementById(id);
+      const cellGrid = byId("01-fewer-pixels-cell-grid");
+
+      for (let row = 0; row < 8; row += 1) {
+        for (let column = 0; column < 16; column += 1) {
+          const cell = document.createElement("span");
+          const isSource = row % 2 === 0 && column % 2 === 0;
+          cell.className = "01-fewer-pixels-cell";
+          if (isSource) {
+            cell.classList.add("01-fewer-pixels-source-cell");
+          } else {
+            const slice = ((row * 16 + column) % 3) + 1;
+            cell.classList.add("01-fewer-pixels-target-cell", `01-fewer-pixels-slice-${slice}`);
+          }
+          cellGrid.appendChild(cell);
+        }
+      }
+
+      const sourceCells = root.querySelectorAll('[class~="01-fewer-pixels-source-cell"]');
+      const targetCells = root.querySelectorAll('[class~="01-fewer-pixels-target-cell"]');
+      const slice1 = root.querySelectorAll('[class~="01-fewer-pixels-slice-1"]');
+      const slice2 = root.querySelectorAll('[class~="01-fewer-pixels-slice-2"]');
+      const slice3 = root.querySelectorAll('[class~="01-fewer-pixels-slice-3"]');
+      const fewer = byId("01-fewer-pixels-fewer");
+      const question = byId("01-fewer-pixels-question");
+      const denser = byId("01-fewer-pixels-denser");
+      const lattice = byId("01-fewer-pixels-lattice-lines");
+      const boundary = byId("01-fewer-pixels-boundary");
+      const outputLabel = byId("01-fewer-pixels-output-label");
+      const sourceLabel = byId("01-fewer-pixels-source-label");
+      const sliceLabel1 = byId("01-fewer-pixels-slice-label-1");
+      const sliceLabel2 = byId("01-fewer-pixels-slice-label-2");
+      const sliceLabel3 = byId("01-fewer-pixels-slice-label-3");
+
+      const boundaryLength = boundary.getTotalLength();
+      boundary.style.strokeDasharray = `${boundaryLength}`;
+      boundary.style.strokeDashoffset = `${boundaryLength}`;
+
+      const tl = gsap.timeline({ paused: true });
+
+      tl.set(question, { opacity: 0 }, 0);
+      tl.set(denser, { opacity: 0 }, 0);
+      tl.set(targetCells, { opacity: 0 }, 0);
+      tl.set(lattice, { opacity: 0 }, 0);
+      tl.set(outputLabel, { opacity: 0 }, 0);
+      tl.set([sliceLabel1, sliceLabel2, sliceLabel3], { opacity: 0 }, 0);
+
+      tl.fromTo(
+        fewer,
+        { opacity: 0, y: 24 },
+        { opacity: 1, y: 0, duration: 0.72, ease: "power3.out" },
+        0.05,
+      );
+      tl.fromTo(
+        sourceLabel,
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.46, ease: "power2.out" },
+        0.12,
+      );
+      tl.fromTo(
+        sourceCells,
+        { opacity: 0, scale: 0.25 },
+        { opacity: 1, scale: 1, duration: 0.3, stagger: 0.042, ease: "power2.out" },
+        0.2,
+      );
+
+      tl.to(boundary, { strokeDashoffset: 0, duration: 0.82, ease: "power2.out" }, 2.7);
+      tl.fromTo(
+        lattice,
+        { opacity: 0 },
+        { opacity: 0.7, duration: 0.62, ease: "power1.out" },
+        2.82,
+      );
+      tl.fromTo(
+        outputLabel,
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.46, ease: "power2.out" },
+        3.05,
+      );
+
+      tl.to(
+        fewer,
+        { scale: 1.2, filter: "blur(10px)", duration: 0.2, ease: "power3.in" },
+        3.65,
+      );
+      tl.to(fewer, { opacity: 0.15, duration: 0.2, ease: "none" }, 3.65);
+      tl.set(fewer, { opacity: 0 }, 3.85);
+      tl.set(question, { opacity: 0.15, scale: 0.75, filter: "blur(10px)" }, 3.85);
+      tl.to(
+        question,
+        { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.5, ease: "expo.out" },
+        3.85,
+      );
+
+      tl.fromTo(
+        sliceLabel1,
+        { opacity: 0, x: -18 },
+        { opacity: 1, x: 0, duration: 0.35, ease: "power2.out" },
+        6.0,
+      );
+      tl.fromTo(
+        slice1,
+        { opacity: 0, x: -100 },
+        { opacity: 0.92, x: 0, duration: 0.45, stagger: 0.018, ease: "power3.out" },
+        6.05,
+      );
+      tl.fromTo(
+        sliceLabel2,
+        { opacity: 0, x: -18 },
+        { opacity: 1, x: 0, duration: 0.35, ease: "power2.out" },
+        6.4,
+      );
+      tl.fromTo(
+        slice2,
+        { opacity: 0, x: 100 },
+        { opacity: 0.68, x: 0, duration: 0.45, stagger: 0.018, ease: "power3.out" },
+        6.45,
+      );
+      tl.fromTo(
+        sliceLabel3,
+        { opacity: 0, x: -18 },
+        { opacity: 1, x: 0, duration: 0.35, ease: "power2.out" },
+        6.8,
+      );
+      tl.fromTo(
+        slice3,
+        { opacity: 0, y: -70 },
+        { opacity: 0.46, y: 0, duration: 0.45, stagger: 0.018, ease: "power3.out" },
+        6.85,
+      );
+
+      tl.to(
+        question,
+        { scale: 0.8, filter: "blur(10px)", duration: 0.2, ease: "power3.in" },
+        7.25,
+      );
+      tl.to(question, { opacity: 0.15, duration: 0.2, ease: "none" }, 7.25);
+      tl.set(question, { opacity: 0 }, 7.45);
+      tl.set(denser, { opacity: 0.15, scale: 1.25, filter: "blur(10px)" }, 7.45);
+      tl.to(
+        denser,
+        { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.5, ease: "expo.out" },
+        7.45,
+      );
+
+      tl.to({}, { duration: 9.387 }, 0);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["01-fewer-pixels"] = tl;
+    })();
+  </script>
+</template>

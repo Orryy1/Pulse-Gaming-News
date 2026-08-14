@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_buffer_rights_ledger_v1",
+  "generated_at": "2026-08-14T17:00:58.3471256Z",
+  "scope": {
+    "series": "SYSTEM TRACE",
+    "episode_count": 7,
+    "platform": "youtube_shorts",
+    "finished_editorial_video_only": true
+  },
+  "visuals": {
+    "verdict": "GREEN",
+    "origin": "Pulse Gaming original CSS and SVG motion diagrams",
+    "third_party_visual_assets_embedded": false,
+    "gameplay_embedded": false,
+    "logos_embedded": false,
+    "reference_urls_are_fact_sources_only": true
+  },
+  "narration": {
+    "verdict": "GREEN",
+    "provider": "local Kokoro TTS",
+    "voice": "bm_george",
+    "synthetic_media": true,
+    "operator_authorised": true,
+    "disclosure_required": true,
+    "disclosure_setting": "YES"
+  },
+  "music": {
+    "verdict": "GREEN",
+    "asset_id": "elevenlabs_cinematic_tension_bed_e11567720957",
+    "file": "system-trace-tension-bed.wav",
+    "sha256": "c6b19bed70080badc1da03a04ffe24ba87b75f5c11d36cea73ff972bd85b10fd",
+    "bytes": 2880102,
+    "provider": "ElevenLabs sound effects",
+    "generated_during_paid_subscription": true,
+    "commercial_use_allowed": true,
+    "allowed_use": "finished_editorial_video_only",
+    "raw_redistribution_allowed": false,
+    "secondary_layer_only": true,
+    "mix_volume": 0.1,
+    "declared_reuse_limit": 12,
+    "planned_episode_placements": 7,
+    "reuse_limit_pass": true,
+    "terms_evidence_url": "https://help.elevenlabs.io/hc/en-us/articles/13313564601361-Can-I-publish-the-content-I-generate-on-the-platform"
+  },
+  "sound_effects": {
+    "verdict": "GREEN",
+    "provider": "Pixabay",
+    "licence": "Pixabay Content License",
+    "licence_url": "https://pixabay.com/service/license-summary/",
+    "use": "embedded and mixed into finished editorial videos",
+    "standalone_distribution": false,
+    "attribution_required": false,
+    "assets": [
+      { "file": "chime.mp3", "bytes": 27309, "sha256": "74823b1b27703c56e0652db838f503c150ce9c2442d47d27430af3d5121d6d12" },
+      { "file": "click.mp3", "bytes": 11702, "sha256": "075e17bdac5c13662a1c9530050e0046f81d4138e00eb3bf30427a7b4404103d" },
+      { "file": "click-soft.mp3", "bytes": 11702, "sha256": "075e17bdac5c13662a1c9530050e0046f81d4138e00eb3bf30427a7b4404103d" },
+      { "file": "glitch-1.mp3", "bytes": 84427, "sha256": "760b72bdaad71f83350e2ef3a9d037daf58f44855a05a6cce25d990f1ffb888a" },
+      { "file": "glitch-2.mp3", "bytes": 112128, "sha256": "b326efdf687f18f68f0df7443a65b0ea7a4a1287dfe3143ea23707cc645257f1" },
+      { "file": "impact-bass-1.mp3", "bytes": 67709, "sha256": "634d5eda5eb7b501aca98393a64f3815eccf24157cd1d95df55aaec1b5000bd7" },
+      { "file": "notification.mp3", "bytes": 78576, "sha256": "b1559967dedb7994a82371f10cec9f7f3992e6b147b4cd88d62112bcdc3f9ba3" },
+      { "file": "whoosh.mp3", "bytes": 18390, "sha256": "c2efd9d902a59bf9ec5019035d7deadd17762136896b6e3cb6dd99ea50997a30" },
+      { "file": "whoosh-short.mp3", "bytes": 18390, "sha256": "c2efd9d902a59bf9ec5019035d7deadd17762136896b6e3cb6dd99ea50997a30" }
+    ]
+  },
+  "fonts": {
+    "verdict": "GREEN",
+    "licence": "SIL Open Font License 1.1",
+    "embedded_in_finished_video": true,
+    "assets": [
+      { "file": "IBM_Plex_Mono_400.woff2", "bytes": 14708, "sha256": "08949f728dc52d528e69b1667d15c89a5686a4ee9a296ff90983985f99c380f7" },
+      { "file": "IBM_Plex_Mono_500.woff2", "bytes": 14888, "sha256": "01d285447409c8a588692162439a038b8cbd7871309ee20267b0d2d91c6e8e22" },
+      { "file": "IBM_Plex_Mono_700.woff2", "bytes": 14908, "sha256": "4f84d86cfd060f4ded334358ff8a4c81d4db2ed5addd568359d693f44a87765a" },
+      { "file": "Space_Grotesk_Variable.woff2", "bytes": 22288, "sha256": "0640890476fc1198ab4de571fb658de443c4d85b66466ec09534a8737ab1ce9d" }
+    ]
+  },
+  "placement_verdict": "GREEN",
+  "blockers": [],
+  "legal_clearance_claimed": false,
+  "licence_clearance_claimed": false,
+  "public_release_scope": "exact rendered seven-episode System Trace buffer only"
+}

@@ -1,0 +1,651 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      isolation: isolate;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    #root > [data-part="05-history-failures-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background-color: #0d0d0f;
+    }
+
+    #root [data-part="05-history-failures-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.46;
+    }
+
+    #root [data-part="05-history-failures-grid-line"] {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="05-history-failures-edge-rule"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 0.45cqh;
+      background-color: #ff6b1a;
+    }
+
+    #root > [data-part="05-history-failures-content"] {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    #root [data-part="05-history-failures-chrome"] {
+      position: absolute;
+      top: 5.5cqh;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      z-index: 8;
+      height: 4.2cqh;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      background-color: #0d0d0f;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 1.42cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [data-part="05-history-failures-chrome"] span:last-child {
+      color: #7d7977;
+    }
+
+    #root [data-part="05-history-failures-camera"] {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      transform-origin: 50% 41.5cqh;
+    }
+
+    #root [data-instrument] {
+      position: absolute;
+      top: 20cqh;
+      z-index: 3;
+      width: 42cqw;
+      height: 43cqh;
+      overflow: hidden;
+      border-top: 1px solid #282726;
+      background-color: #1a1918;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-instrument="ghost"] {
+      left: 6cqw;
+    }
+
+    #root [data-instrument="shimmer"] {
+      right: 6cqw;
+    }
+
+    #root [data-part="05-history-failures-instrument-stub"] {
+      position: absolute;
+      top: -1px;
+      left: 0;
+      width: 8cqw;
+      height: 2px;
+      background-color: #ff6b1a;
+    }
+
+    #root [data-part="05-history-failures-title"] {
+      position: absolute;
+      top: 2.2cqh;
+      left: 2.8cqw;
+      right: 2.8cqw;
+      color: #ff6b1a;
+      font-size: 5.6cqw;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.9;
+      text-transform: lowercase;
+      white-space: nowrap;
+    }
+
+    #root [data-part="05-history-failures-field"] {
+      position: absolute;
+      top: 10.2cqh;
+      left: 2.8cqw;
+      right: 2.8cqw;
+      height: 15.4cqh;
+      overflow: hidden;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      background-color: #0d0d0f;
+    }
+
+    #root [data-part="05-history-failures-trace-baseline"] {
+      position: absolute;
+      top: 7.7cqh;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      background-color: #504b48;
+    }
+
+    #root [data-part="05-history-failures-trace-baseline"]::before,
+    #root [data-part="05-history-failures-trace-baseline"]::after {
+      content: "";
+      position: absolute;
+      top: -1.2cqh;
+      width: 1px;
+      height: 2.4cqh;
+      background-color: #282726;
+    }
+
+    #root [data-part="05-history-failures-trace-baseline"]::before {
+      left: 32%;
+    }
+
+    #root [data-part="05-history-failures-trace-baseline"]::after {
+      left: 68%;
+    }
+
+    #root [data-part="05-history-failures-ghost-old"],
+    #root [data-part="05-history-failures-ghost-current"] {
+      position: absolute;
+      top: 4.25cqh;
+      left: 13.5cqw;
+      width: 6.4cqw;
+      height: 6.4cqw;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-part="05-history-failures-ghost-old"] {
+      border: 1px solid #ff6b1a;
+      background-color: #504b48;
+    }
+
+    #root [data-part="05-history-failures-ghost-current"] {
+      background-color: #ff6b1a;
+    }
+
+    #root [data-part="05-history-failures-ghost-current"]::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 20%;
+      right: 20%;
+      height: 2px;
+      background-color: #0d0d0f;
+    }
+
+    #root [data-part="05-history-failures-shimmer-svg"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    #root [data-part="05-history-failures-thin-edge"] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 3;
+      stroke-linecap: square;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-sample-pattern] rect {
+      fill: #f0f0f0;
+    }
+
+    #root [data-sample-pattern] rect[data-accent="true"] {
+      fill: #ff6b1a;
+    }
+
+    #root [data-part="05-history-failures-meter"] {
+      position: absolute;
+      top: 28.4cqh;
+      left: 2.8cqw;
+      right: 2.8cqw;
+      height: 6.2cqh;
+      transform-origin: 0 50%;
+    }
+
+    #root [data-part="05-history-failures-meter-label"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      color: #f0f0f0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.42cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [data-part="05-history-failures-meter-track"] {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      height: 1.1cqh;
+      overflow: hidden;
+      border-left: 1px solid #504b48;
+      border-right: 1px solid #504b48;
+      background-color: #282726;
+    }
+
+    #root [data-meter-fill] {
+      position: absolute;
+      inset: 0;
+      background-color: #ff6b1a;
+      transform-origin: 0 50%;
+    }
+
+    #root [data-part="05-history-failures-diagnosis"] {
+      position: absolute;
+      right: 2.8cqw;
+      bottom: 2.4cqh;
+      left: 2.8cqw;
+      display: flex;
+      align-items: center;
+      gap: 1.4cqw;
+      min-height: 3.2cqh;
+      border-top: 1px solid #ff6b1a;
+      color: #f0f0f0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.42cqw;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      line-height: 1.2;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [data-part="05-history-failures-diagnosis"]::before {
+      content: "/";
+      color: #ff6b1a;
+    }
+
+    #root [data-part="05-history-failures-divider"] {
+      position: absolute;
+      top: 20cqh;
+      left: calc(50% - 0.5px);
+      z-index: 2;
+      width: 1px;
+      height: 43cqh;
+      background-color: #282726;
+      transform-origin: 50% 0;
+    }
+  </style>
+
+  <div id="root" data-composition-id="05-history-failures" data-width="1080" data-height="1920" data-duration="10.691">
+    <div
+      class="clip"
+      data-part="05-history-failures-ground"
+      data-start="0"
+      data-duration="10.691"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <svg
+        data-part="05-history-failures-grid"
+        viewBox="0 0 1080 1920"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path data-part="05-history-failures-grid-line" d="M 108 0 V 1920 M 216 0 V 1920 M 324 0 V 1920 M 432 0 V 1920 M 540 0 V 1920 M 648 0 V 1920 M 756 0 V 1920 M 864 0 V 1920 M 972 0 V 1920" />
+        <path data-part="05-history-failures-grid-line" d="M 0 120 H 1080 M 0 240 H 1080 M 0 360 H 1080 M 0 480 H 1080 M 0 600 H 1080 M 0 720 H 1080 M 0 840 H 1080 M 0 960 H 1080 M 0 1080 H 1080 M 0 1200 H 1080 M 0 1320 H 1080 M 0 1440 H 1080 M 0 1560 H 1080 M 0 1680 H 1080 M 0 1800 H 1080" />
+      </svg>
+      <div data-part="05-history-failures-edge-rule"></div>
+    </div>
+
+    <div
+      class="clip"
+      data-part="05-history-failures-content"
+      data-start="0"
+      data-duration="10.691"
+      data-track-index="1"
+    >
+      <div data-part="05-history-failures-chrome">
+        <span>reference trace / failures</span>
+        <span>05</span>
+      </div>
+
+      <div data-part="05-history-failures-camera">
+        <section data-instrument="ghost" aria-label="Ghosting instrument">
+          <span data-part="05-history-failures-instrument-stub"></span>
+          <span data-part="05-history-failures-title">ghosting</span>
+
+          <div data-part="05-history-failures-field" data-field="ghost">
+            <span data-part="05-history-failures-trace-baseline"></span>
+            <span data-part="05-history-failures-ghost-old" aria-hidden="true"></span>
+            <span data-part="05-history-failures-ghost-current" aria-hidden="true"></span>
+          </div>
+
+          <div data-part="05-history-failures-meter" data-meter="old-sample">
+            <span data-part="05-history-failures-meter-label">old sample</span>
+            <span data-part="05-history-failures-meter-track">
+              <span data-meter-fill="old-sample"></span>
+            </span>
+          </div>
+
+          <div data-part="05-history-failures-diagnosis" data-diagnosis="sticky">
+            <span>history too sticky</span>
+          </div>
+        </section>
+
+        <section data-instrument="shimmer" aria-label="Shimmer instrument">
+          <span data-part="05-history-failures-instrument-stub"></span>
+          <span data-part="05-history-failures-title">shimmer</span>
+
+          <div data-part="05-history-failures-field" data-field="shimmer">
+            <svg
+              data-part="05-history-failures-shimmer-svg"
+              viewBox="0 0 420 260"
+              preserveAspectRatio="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path
+                id="05-history-failures-thin-edge"
+                data-part="05-history-failures-thin-edge"
+                d="M 36 224 L 384 36"
+              />
+              <g data-part="05-history-failures-sample-jitter">
+                <g data-sample-pattern="a">
+                  <rect x="76" y="190" width="12" height="12" />
+                  <rect x="132" y="156" width="12" height="12" data-accent="true" />
+                  <rect x="201" y="122" width="12" height="12" />
+                  <rect x="286" y="76" width="12" height="12" />
+                  <rect x="346" y="42" width="12" height="12" data-accent="true" />
+                </g>
+                <g data-sample-pattern="b">
+                  <rect x="58" y="201" width="8" height="17" data-accent="true" />
+                  <rect x="151" y="148" width="8" height="17" />
+                  <rect x="232" y="105" width="8" height="17" data-accent="true" />
+                  <rect x="328" y="53" width="8" height="17" />
+                </g>
+              </g>
+            </svg>
+          </div>
+
+          <div data-part="05-history-failures-meter" data-meter="low-evidence">
+            <span data-part="05-history-failures-meter-label">low evidence</span>
+            <span data-part="05-history-failures-meter-track">
+              <span data-meter-fill="low-evidence"></span>
+            </span>
+          </div>
+
+          <div data-part="05-history-failures-diagnosis" data-diagnosis="insufficient">
+            <span>not enough history</span>
+          </div>
+        </section>
+
+        <span data-part="05-history-failures-divider" aria-hidden="true"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="05-history-failures"]');
+      const camera = root.querySelector('[data-part="05-history-failures-camera"]');
+      const ghostPanel = root.querySelector('[data-instrument="ghost"]');
+      const shimmerPanel = root.querySelector('[data-instrument="shimmer"]');
+      const ghostTitle = ghostPanel.querySelector('[data-part="05-history-failures-title"]');
+      const shimmerTitle = shimmerPanel.querySelector('[data-part="05-history-failures-title"]');
+      const ghostField = ghostPanel.querySelector('[data-field="ghost"]');
+      const shimmerField = shimmerPanel.querySelector('[data-field="shimmer"]');
+      const oldGhost = root.querySelector('[data-part="05-history-failures-ghost-old"]');
+      const currentGhost = root.querySelector('[data-part="05-history-failures-ghost-current"]');
+      const ghostMeter = root.querySelector('[data-meter="old-sample"]');
+      const shimmerMeter = root.querySelector('[data-meter="low-evidence"]');
+      const ghostFill = root.querySelector('[data-meter-fill="old-sample"]');
+      const shimmerFill = root.querySelector('[data-meter-fill="low-evidence"]');
+      const thinEdge = root.querySelector('[data-part="05-history-failures-thin-edge"]');
+      const patternA = root.querySelector('[data-sample-pattern="a"]');
+      const patternB = root.querySelector('[data-sample-pattern="b"]');
+      const sampleJitter = root.querySelector('[data-part="05-history-failures-sample-jitter"]');
+      const stickyDiagnosis = root.querySelector('[data-diagnosis="sticky"]');
+      const insufficientDiagnosis = root.querySelector('[data-diagnosis="insufficient"]');
+      const divider = root.querySelector('[data-part="05-history-failures-divider"]');
+
+      const edgeLength = thinEdge.getTotalLength();
+      thinEdge.style.strokeDasharray = `${edgeLength}`;
+      thinEdge.style.strokeDashoffset = `${edgeLength}`;
+
+      const timeline = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["05-history-failures"] = timeline;
+
+      timeline.fromTo(
+        camera,
+        { x: 385, scale: 1.55 },
+        { x: 360, scale: 1.58, duration: 3.1, ease: "sine.inOut" },
+        0,
+      );
+      timeline.fromTo(
+        ghostPanel,
+        { opacity: 0, x: -20 },
+        { opacity: 1, x: 0, duration: 0.42, ease: "power3.out" },
+        0.02,
+      );
+      timeline.fromTo(
+        ghostTitle,
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" },
+        0.16,
+      );
+      timeline.fromTo(
+        ghostField,
+        { opacity: 0, scale: 0.98 },
+        { opacity: 1, scale: 1, duration: 0.4, ease: "power3.out" },
+        0.34,
+      );
+      timeline.fromTo(
+        currentGhost,
+        { opacity: 0, x: -140 },
+        { opacity: 1, x: 118, duration: 1.12, ease: "power2.inOut" },
+        0.56,
+      );
+      timeline.fromTo(
+        oldGhost,
+        { opacity: 0, scale: 0.92 },
+        { opacity: 0.28, scale: 1, duration: 0.34, ease: "power3.out" },
+        1.18,
+      );
+      timeline.fromTo(
+        ghostMeter,
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.38, ease: "power3.out" },
+        1.58,
+      );
+      timeline.fromTo(
+        ghostFill,
+        { scaleX: 0 },
+        { scaleX: 0.76, duration: 0.72, ease: "power2.out" },
+        1.78,
+      );
+
+      timeline.to(
+        camera,
+        { x: -385, scale: 1.55, duration: 0.78, ease: "power3.inOut" },
+        3.1,
+      );
+      timeline.to(
+        camera,
+        { x: -360, scale: 1.59, duration: 3.12, ease: "sine.inOut" },
+        3.88,
+      );
+      timeline.fromTo(
+        shimmerPanel,
+        { opacity: 0, x: 20 },
+        { opacity: 1, x: 0, duration: 0.44, ease: "power3.out" },
+        3.24,
+      );
+      timeline.fromTo(
+        shimmerTitle,
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" },
+        3.4,
+      );
+      timeline.fromTo(
+        shimmerField,
+        { opacity: 0, scale: 0.98 },
+        { opacity: 1, scale: 1, duration: 0.4, ease: "power3.out" },
+        3.56,
+      );
+      timeline.to(
+        thinEdge,
+        { strokeDashoffset: 0, duration: 0.7, ease: "power2.out" },
+        3.72,
+      );
+
+      timeline.fromTo(
+        patternA,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.24, ease: "none" },
+        4.16,
+      );
+      timeline.to(patternA, { opacity: 0, duration: 0.18, ease: "none" }, 4.78);
+      timeline.fromTo(
+        patternB,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.22, ease: "none" },
+        4.78,
+      );
+      timeline.to(sampleJitter, { x: 5, duration: 0.1, ease: "none" }, 4.78);
+      timeline.to(sampleJitter, { x: -4, duration: 0.1, ease: "none" }, 4.88);
+      timeline.to(sampleJitter, { x: 0, duration: 0.1, ease: "none" }, 4.98);
+
+      timeline.fromTo(
+        patternA,
+        { opacity: 0 },
+        {
+          opacity: 1,
+          duration: 0.22,
+          ease: "none",
+          immediateRender: false,
+        },
+        5.38,
+      );
+      timeline.to(patternB, { opacity: 0, duration: 0.18, ease: "none" }, 5.38);
+      timeline.fromTo(
+        shimmerMeter,
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.38, ease: "power3.out" },
+        5.4,
+      );
+      timeline.fromTo(
+        shimmerFill,
+        { scaleX: 0 },
+        { scaleX: 0.3, duration: 0.68, ease: "power2.out" },
+        5.6,
+      );
+
+      timeline.to(patternA, { opacity: 0, duration: 0.16, ease: "none" }, 5.98);
+      timeline.fromTo(
+        patternB,
+        { opacity: 0 },
+        {
+          opacity: 1,
+          duration: 0.2,
+          ease: "none",
+          immediateRender: false,
+        },
+        5.98,
+      );
+      timeline.to(sampleJitter, { x: 4, duration: 0.1, ease: "none" }, 5.98);
+      timeline.to(sampleJitter, { x: -3, duration: 0.1, ease: "none" }, 6.08);
+      timeline.to(sampleJitter, { x: 0, duration: 0.1, ease: "none" }, 6.18);
+
+      timeline.to(
+        camera,
+        { x: 0, scale: 1, duration: 0.28, ease: "power4.out" },
+        7,
+      );
+      timeline.fromTo(
+        divider,
+        { opacity: 0, scaleY: 0 },
+        { opacity: 1, scaleY: 1, duration: 0.32, ease: "power3.out" },
+        7,
+      );
+      timeline.fromTo(
+        stickyDiagnosis,
+        { opacity: 0, x: -18 },
+        { opacity: 1, x: 0, duration: 0.4, ease: "power3.out" },
+        7.12,
+      );
+      timeline.fromTo(
+        insufficientDiagnosis,
+        { opacity: 0, x: 18 },
+        { opacity: 1, x: 0, duration: 0.4, ease: "power3.out" },
+        7.4,
+      );
+
+      const holdDriver = { t: 0 };
+      timeline.to(
+        holdDriver,
+        { t: 1, duration: 2.271, ease: "none" },
+        7.82,
+      );
+    })();
+  </script>
+</template>

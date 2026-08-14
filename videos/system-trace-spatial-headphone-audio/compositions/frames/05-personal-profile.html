@@ -1,0 +1,681 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      isolation: isolate;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    #root > [data-part="05-personal-profile-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background-color: #0d0d0f;
+    }
+
+    #root [data-part="05-personal-profile-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.46;
+    }
+
+    #root [data-part="05-personal-profile-grid-line"] {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="05-personal-profile-edge"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 0.45cqh;
+      background-color: #ff6b1a;
+    }
+
+    #root > [data-part="05-personal-profile-content"] {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    #root [data-part="05-personal-profile-viewport"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    #root [data-part="05-personal-profile-chrome"] {
+      position: absolute;
+      top: 5.5cqh;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      z-index: 10;
+      height: 4.2cqh;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      background-color: #0d0d0f;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 1.42cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [data-part="05-personal-profile-chrome"] span:last-child {
+      color: #7d7977;
+    }
+
+    #root [data-part="05-personal-profile-compare"] {
+      position: absolute;
+      top: 12cqh;
+      left: 5.5cqw;
+      z-index: 2;
+      width: 89cqw;
+      height: 63.5cqh;
+      perspective: 1200px;
+      transform-style: preserve-3d;
+    }
+
+    #root [data-case] {
+      position: absolute;
+      left: 0;
+      z-index: 2;
+      width: 100%;
+      overflow: hidden;
+      border-top: 1px solid #282726;
+      background-color: #1a1918;
+      backface-visibility: hidden;
+      transform-origin: 50% 50%;
+      transform-style: preserve-3d;
+    }
+
+    #root [data-case="generic"] {
+      top: 0;
+      height: 28.5cqh;
+    }
+
+    #root [data-case="personal"] {
+      top: 32.5cqh;
+      height: 31cqh;
+      border-top-color: #ff6b1a;
+    }
+
+    #root [data-part="05-personal-profile-panel-stub"] {
+      position: absolute;
+      top: -1px;
+      left: 0;
+      width: 9cqw;
+      height: 2px;
+      background-color: #ff6b1a;
+    }
+
+    #root [data-part="05-personal-profile-case-title"] {
+      position: absolute;
+      top: 1.8cqh;
+      left: 2.8cqw;
+      z-index: 6;
+      color: #f0f0f0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.5cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [data-part="05-personal-profile-input-svg"] {
+      position: absolute;
+      top: 4.9cqh;
+      left: 2.8cqw;
+      width: 83.4cqw;
+      height: 7.6cqh;
+      overflow: visible;
+    }
+
+    #root [data-part="05-personal-profile-source"] {
+      fill: #ff6b1a;
+    }
+
+    #root [data-part="05-personal-profile-source-mark"] {
+      fill: none;
+      stroke: #0d0d0f;
+      stroke-width: 5;
+      stroke-linecap: square;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="05-personal-profile-feed"] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-ear-profile] {
+      fill: none;
+      stroke: #f0f0f0;
+      stroke-width: 4;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-ear-profile="b"] {
+      opacity: 0.68;
+    }
+
+    #root [data-ear-profile="c"] {
+      opacity: 0.42;
+    }
+
+    #root [data-part="05-personal-profile-can-improve"] {
+      position: absolute;
+      top: 5.1cqh;
+      right: 2.8cqw;
+      z-index: 6;
+      color: #ff6b1a;
+      font-size: 5.8cqw;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.9;
+      text-align: right;
+      text-transform: lowercase;
+      white-space: nowrap;
+    }
+
+    #root [data-part="05-personal-profile-chart-label"] {
+      position: absolute;
+      top: 12.8cqh;
+      left: 2.8cqw;
+      z-index: 6;
+      display: flex;
+      align-items: center;
+      gap: 1.4cqw;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 1.42cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [data-part="05-personal-profile-chart-label"]::before {
+      content: "";
+      display: block;
+      width: 5cqw;
+      height: 2px;
+      background-color: #ff6b1a;
+    }
+
+    #root [data-part="05-personal-profile-chart-svg"] {
+      position: absolute;
+      top: 15.1cqh;
+      left: 2.8cqw;
+      width: 83.4cqw;
+      height: 11.6cqh;
+      overflow: visible;
+    }
+
+    #root [data-case="personal"] [data-part="05-personal-profile-chart-svg"] {
+      top: 16.1cqh;
+      height: 12.5cqh;
+    }
+
+    #root [data-case="personal"] [data-part="05-personal-profile-chart-label"] {
+      top: 13.7cqh;
+    }
+
+    #root [data-part="05-personal-profile-analysis-grid"] {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-target-curve] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 4;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-response-curve] {
+      fill: none;
+      stroke: #f0f0f0;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-response-curve="b"] {
+      opacity: 0.66;
+    }
+
+    #root [data-response-curve="c"] {
+      opacity: 0.38;
+    }
+
+    #root [data-part="05-personal-profile-match-tick"] {
+      fill: none;
+      stroke: #f0f0f0;
+      stroke-width: 2;
+      stroke-linecap: square;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="05-personal-profile-result-tag"] {
+      position: absolute;
+      top: 1.25cqh;
+      right: 2.8cqw;
+      z-index: 8;
+      min-width: 28cqw;
+      padding: 1.15cqh 1.8cqw;
+      border: 1px solid #ff6b1a;
+      background-color: #0d0d0f;
+      color: #f0f0f0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.42cqw;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      line-height: 1;
+      text-align: center;
+      text-transform: uppercase;
+      white-space: nowrap;
+      transform-origin: 100% 50%;
+    }
+
+    #root [data-part="05-personal-profile-result-tag"] span {
+      color: #ff6b1a;
+    }
+
+    #root [data-part="05-personal-profile-divider"] {
+      position: absolute;
+      top: 30.35cqh;
+      left: 0;
+      z-index: 1;
+      width: 100%;
+      height: 1px;
+      background-color: #282726;
+      transform-origin: 0 50%;
+    }
+  </style>
+
+  <div id="root" data-composition-id="05-personal-profile" data-width="1080" data-height="1920" data-duration="11.267">
+    <div
+      class="clip"
+      data-part="05-personal-profile-ground"
+      data-start="0"
+      data-duration="11.267"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <svg
+        data-part="05-personal-profile-grid"
+        viewBox="0 0 1080 1920"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path data-part="05-personal-profile-grid-line" d="M 108 0 V 1920 M 216 0 V 1920 M 324 0 V 1920 M 432 0 V 1920 M 540 0 V 1920 M 648 0 V 1920 M 756 0 V 1920 M 864 0 V 1920 M 972 0 V 1920" />
+        <path data-part="05-personal-profile-grid-line" d="M 0 120 H 1080 M 0 240 H 1080 M 0 360 H 1080 M 0 480 H 1080 M 0 600 H 1080 M 0 720 H 1080 M 0 840 H 1080 M 0 960 H 1080 M 0 1080 H 1080 M 0 1200 H 1080 M 0 1320 H 1080 M 0 1440 H 1080 M 0 1560 H 1080 M 0 1680 H 1080 M 0 1800 H 1080" />
+      </svg>
+      <div data-part="05-personal-profile-edge"></div>
+    </div>
+
+    <div
+      class="clip"
+      data-part="05-personal-profile-content"
+      data-start="0"
+      data-duration="11.267"
+      data-track-index="1"
+    >
+      <div data-part="05-personal-profile-viewport">
+        <div data-part="05-personal-profile-chrome">
+          <span>ear response / profile match</span>
+          <span>05</span>
+        </div>
+
+        <div data-part="05-personal-profile-compare">
+          <section data-case="generic" aria-label="Generic response comparison">
+            <span data-part="05-personal-profile-panel-stub" aria-hidden="true"></span>
+            <span data-part="05-personal-profile-case-title">generic profile</span>
+            <div data-part="05-personal-profile-result-tag" data-result="generic">
+              generic / <span>shared</span>
+            </div>
+
+            <svg
+              data-part="05-personal-profile-input-svg"
+              viewBox="0 0 900 150"
+              preserveAspectRatio="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <rect data-part="05-personal-profile-source" data-source="generic" x="22" y="43" width="62" height="62" />
+              <path data-part="05-personal-profile-source-mark" d="M 39 74 H 67" />
+              <path id="05-personal-profile-generic-feed" data-part="05-personal-profile-feed" data-draw="generic-feed" d="M 84 74 H 158 M 158 74 L 236 74 M 158 74 L 452 74 M 158 74 L 674 74" />
+
+              <path data-ear-profile="a" d="M 272 24 C 230 23 216 54 222 84 C 228 116 262 130 290 112 C 310 99 304 73 284 70 C 264 67 254 84 264 98 C 274 110 291 102 290 88" />
+              <path data-ear-profile="b" d="M 492 18 C 452 20 430 48 438 82 C 446 116 480 134 512 112 C 536 96 530 66 508 64 C 484 61 472 82 482 99 C 490 112 512 108 514 91" />
+              <path data-ear-profile="c" d="M 718 26 C 680 24 654 52 660 88 C 666 122 702 132 730 110 C 752 92 744 64 722 62 C 700 60 686 80 696 98 C 704 112 724 106 726 90" />
+            </svg>
+
+            <span data-part="05-personal-profile-chart-label">target cue</span>
+            <svg
+              data-part="05-personal-profile-chart-svg"
+              viewBox="0 0 900 260"
+              preserveAspectRatio="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path data-part="05-personal-profile-analysis-grid" d="M 30 30 V 232 M 170 30 V 232 M 310 30 V 232 M 450 30 V 232 M 590 30 V 232 M 730 30 V 232 M 870 30 V 232 M 30 48 H 870 M 30 100 H 870 M 30 152 H 870 M 30 204 H 870" />
+              <path id="05-personal-profile-generic-target" data-target-curve="generic" data-draw="generic-target" d="M 30 164 C 130 72 224 76 310 148 S 488 224 585 138 S 752 58 870 104" />
+              <path id="05-personal-profile-response-a" data-response-curve="a" data-draw="response-a" d="M 30 188 C 128 120 218 62 308 130 S 470 206 578 170 S 748 92 870 124" />
+              <path id="05-personal-profile-response-b" data-response-curve="b" data-draw="response-b" d="M 30 146 C 140 54 232 106 316 176 S 486 240 598 120 S 762 40 870 88" />
+              <path id="05-personal-profile-response-c" data-response-curve="c" data-draw="response-c" d="M 30 202 C 118 92 210 94 300 116 S 470 178 570 202 S 730 112 870 144" />
+            </svg>
+          </section>
+
+          <section data-case="personal" aria-label="Personalised response comparison">
+            <span data-part="05-personal-profile-panel-stub" aria-hidden="true"></span>
+            <span data-part="05-personal-profile-case-title">personalised profile</span>
+            <span data-part="05-personal-profile-can-improve">can improve</span>
+            <div data-part="05-personal-profile-result-tag" data-result="personal">
+              personalised / <span>closer match</span>
+            </div>
+
+            <svg
+              data-part="05-personal-profile-input-svg"
+              viewBox="0 0 900 150"
+              preserveAspectRatio="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <rect data-part="05-personal-profile-source" data-source="personal" x="22" y="43" width="62" height="62" />
+              <path data-part="05-personal-profile-source-mark" d="M 39 74 H 67" />
+              <path id="05-personal-profile-personal-feed" data-part="05-personal-profile-feed" data-draw="personal-feed" d="M 84 74 H 194 L 248 74" />
+              <path data-ear-profile="personal" d="M 294 18 C 252 20 230 48 238 82 C 246 116 280 134 312 112 C 336 96 330 66 308 64 C 284 61 272 82 282 99 C 290 112 312 108 314 91" />
+            </svg>
+
+            <span data-part="05-personal-profile-chart-label">target cue</span>
+            <svg
+              data-part="05-personal-profile-chart-svg"
+              viewBox="0 0 900 260"
+              preserveAspectRatio="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path data-part="05-personal-profile-analysis-grid" d="M 30 30 V 232 M 170 30 V 232 M 310 30 V 232 M 450 30 V 232 M 590 30 V 232 M 730 30 V 232 M 870 30 V 232 M 30 48 H 870 M 30 100 H 870 M 30 152 H 870 M 30 204 H 870" />
+              <path id="05-personal-profile-personal-target" data-target-curve="personal" data-draw="personal-target" d="M 30 164 C 130 72 224 76 310 148 S 488 224 585 138 S 752 58 870 104" />
+              <path id="05-personal-profile-personal-response" data-response-curve="personal" data-draw="personal-response" d="M 30 172 C 132 80 224 84 312 154 S 486 216 586 144 S 750 66 870 110" />
+              <path id="05-personal-profile-match-ticks" data-part="05-personal-profile-match-tick" data-draw="match-ticks" d="M 310 148 V 154 M 585 138 V 144 M 752 78 V 84" />
+            </svg>
+          </section>
+
+          <span data-part="05-personal-profile-divider" aria-hidden="true"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="05-personal-profile"]');
+      const genericPanel = root.querySelector('[data-case="generic"]');
+      const personalPanel = root.querySelector('[data-case="personal"]');
+      const genericTitle = genericPanel.querySelector('[data-part="05-personal-profile-case-title"]');
+      const personalTitle = personalPanel.querySelector('[data-part="05-personal-profile-case-title"]');
+      const genericSource = root.querySelector('[data-source="generic"]');
+      const personalSource = root.querySelector('[data-source="personal"]');
+      const genericEars = Array.from(genericPanel.querySelectorAll('[data-ear-profile]'));
+      const personalEar = personalPanel.querySelector('[data-ear-profile="personal"]');
+      const genericChartLabel = genericPanel.querySelector('[data-part="05-personal-profile-chart-label"]');
+      const personalChartLabel = personalPanel.querySelector('[data-part="05-personal-profile-chart-label"]');
+      const canImprove = root.querySelector('[data-part="05-personal-profile-can-improve"]');
+      const genericResult = root.querySelector('[data-result="generic"]');
+      const personalResult = root.querySelector('[data-result="personal"]');
+      const divider = root.querySelector('[data-part="05-personal-profile-divider"]');
+      const drawPaths = Array.from(root.querySelectorAll('[data-draw]'));
+
+      const draw = {};
+      drawPaths.forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+        draw[path.dataset.draw] = path;
+      });
+
+      const timeline = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["05-personal-profile"] = timeline;
+
+      timeline.fromTo(
+        genericPanel,
+        { opacity: 0, x: -110, scale: 0.96, rotationY: 9 },
+        {
+          opacity: 1,
+          x: 0,
+          scale: 1,
+          rotationY: 0,
+          duration: 0.54,
+          ease: "power3.out",
+        },
+        0,
+      );
+      timeline.fromTo(
+        genericTitle,
+        { opacity: 0, y: -14 },
+        { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" },
+        0.12,
+      );
+      timeline.fromTo(
+        genericSource,
+        { opacity: 0, scale: 0.78, svgOrigin: "53 74" },
+        {
+          opacity: 1,
+          scale: 1,
+          svgOrigin: "53 74",
+          duration: 0.34,
+          ease: "power3.out",
+        },
+        0.34,
+      );
+      timeline.to(
+        draw["generic-feed"],
+        { strokeDashoffset: 0, duration: 0.72, ease: "power2.out" },
+        0.48,
+      );
+      genericEars.forEach((ear, index) => {
+        timeline.fromTo(
+          ear,
+          { opacity: 0, y: 12 },
+          {
+            opacity: index === 0 ? 1 : index === 1 ? 0.68 : 0.42,
+            y: 0,
+            duration: 0.34,
+            ease: "power3.out",
+          },
+          0.72 + index * 0.28,
+        );
+      });
+      timeline.fromTo(
+        genericChartLabel,
+        { opacity: 0, x: -14 },
+        { opacity: 1, x: 0, duration: 0.34, ease: "power3.out" },
+        0.54,
+      );
+      timeline.to(
+        draw["generic-target"],
+        { strokeDashoffset: 0, duration: 0.76, ease: "power2.out" },
+        0.46,
+      );
+      ["response-a", "response-b", "response-c"].forEach((key, index) => {
+        timeline.to(
+          draw[key],
+          { strokeDashoffset: 0, duration: 0.62, ease: "power2.out" },
+          1.42 + index * 0.38,
+        );
+      });
+
+      timeline.fromTo(
+        personalPanel,
+        { opacity: 0, x: 110, scale: 0.96, rotationY: -9 },
+        {
+          opacity: 1,
+          x: 0,
+          scale: 1,
+          rotationY: 0,
+          duration: 0.56,
+          ease: "power3.out",
+        },
+        3.2,
+      );
+      timeline.fromTo(
+        personalTitle,
+        { opacity: 0, y: -14 },
+        { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" },
+        3.34,
+      );
+      timeline.fromTo(
+        personalSource,
+        { opacity: 0, scale: 0.78, svgOrigin: "53 74" },
+        {
+          opacity: 1,
+          scale: 1,
+          svgOrigin: "53 74",
+          duration: 0.34,
+          ease: "power3.out",
+        },
+        3.58,
+      );
+      timeline.to(
+        draw["personal-feed"],
+        { strokeDashoffset: 0, duration: 0.56, ease: "power2.out" },
+        3.68,
+      );
+      timeline.fromTo(
+        personalEar,
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.36, ease: "power3.out" },
+        3.9,
+      );
+      timeline.fromTo(
+        personalChartLabel,
+        { opacity: 0, x: -14 },
+        { opacity: 1, x: 0, duration: 0.34, ease: "power3.out" },
+        4.08,
+      );
+      timeline.to(
+        draw["personal-target"],
+        { strokeDashoffset: 0, duration: 0.76, ease: "power2.out" },
+        4.12,
+      );
+      timeline.to(
+        draw["personal-response"],
+        { strokeDashoffset: 0, duration: 0.82, ease: "power2.out" },
+        4.7,
+      );
+      timeline.to(
+        draw["match-ticks"],
+        { strokeDashoffset: 0, duration: 0.48, ease: "power2.out" },
+        5.12,
+      );
+      timeline.fromTo(
+        canImprove,
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.46, ease: "power3.out" },
+        5.42,
+      );
+
+      timeline.fromTo(
+        divider,
+        { opacity: 0, scaleX: 0 },
+        { opacity: 1, scaleX: 1, duration: 0.38, ease: "power3.out" },
+        6.8,
+      );
+      timeline.fromTo(
+        genericResult,
+        { opacity: 0, scale: 0.82, x: 20 },
+        { opacity: 1, scale: 1, x: 0, duration: 0.4, ease: "back.out(1.5)" },
+        6.72,
+      );
+      timeline.fromTo(
+        personalResult,
+        { opacity: 0, scale: 0.82, x: -20 },
+        { opacity: 1, scale: 1, x: 0, duration: 0.4, ease: "back.out(1.5)" },
+        6.94,
+      );
+
+      const holdDriver = { t: 0 };
+      timeline.to(
+        holdDriver,
+        { t: 1, duration: 3.327, ease: "none" },
+        7.34,
+      );
+    })();
+  </script>
+</template>

@@ -1,0 +1,583 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+      isolation: isolate;
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    #root [class~="02-nested-boxes-ground"] {
+      z-index: 0;
+      background: #0d0d0f;
+    }
+
+    #root [class~="02-nested-boxes-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 83cqh;
+    }
+
+    #root [class~="02-nested-boxes-grid"] path {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="02-nested-boxes-safe-rule"] {
+      position: absolute;
+      top: 83cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #ff6b1a;
+      opacity: 0.34;
+    }
+
+    #root [class~="02-nested-boxes-content"] {
+      z-index: 1;
+    }
+
+    #root [class~="02-nested-boxes-viewport"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    #root [class~="02-nested-boxes-header"] {
+      position: absolute;
+      z-index: 50;
+      top: 3.35cqh;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      height: 7.25cqh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-bottom: 1px solid #504b48;
+    }
+
+    #root [class~="02-nested-boxes-kicker"] {
+      margin-top: 0.2cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="02-nested-boxes-kicker-accent"] {
+      color: #ff6b1a;
+    }
+
+    #root [class~="02-nested-boxes-index"] {
+      font-family: "IBM Plex Mono";
+      font-size: 2.3cqw;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: 0.08em;
+      color: #ff6b1a;
+    }
+
+    #root [class~="02-nested-boxes-world"] {
+      position: absolute;
+      z-index: 5;
+      top: 0;
+      left: 0;
+      width: 100cqw;
+      height: 100cqh;
+      will-change: transform;
+    }
+
+    #root [class~="02-nested-boxes-rails"] {
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    #root [class~="02-nested-boxes-rail"] {
+      fill: none;
+      stroke: #504b48;
+      stroke-width: 2;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+    }
+
+    #root [class~="02-nested-boxes-rail-node"] {
+      fill: #0d0d0f;
+      stroke: #ff6b1a;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="02-nested-boxes-station"] {
+      position: absolute;
+      z-index: 4;
+      overflow: visible;
+      transform-origin: 50% 50%;
+    }
+
+    #root [class~="02-nested-boxes-world-station"] {
+      top: 20cqh;
+      left: 9cqw;
+      width: 82cqw;
+      height: 20cqh;
+    }
+
+    #root [class~="02-nested-boxes-branch-a"] {
+      top: 47cqh;
+      left: 6cqw;
+      width: 41cqw;
+      height: 18.5cqh;
+    }
+
+    #root [class~="02-nested-boxes-branch-b"] {
+      top: 47cqh;
+      left: 53cqw;
+      width: 41cqw;
+      height: 18.5cqh;
+    }
+
+    #root [class~="02-nested-boxes-leaf-a"] {
+      top: 75cqh;
+      left: 7cqw;
+      width: 22cqw;
+      height: 13.4cqh;
+    }
+
+    #root [class~="02-nested-boxes-leaf-b"] {
+      top: 75cqh;
+      left: 32cqw;
+      width: 22cqw;
+      height: 13.4cqh;
+    }
+
+    #root [class~="02-nested-boxes-outline"] {
+      position: absolute;
+      z-index: 2;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    #root [class~="02-nested-boxes-outline-path"] {
+      fill: #1a1918;
+      fill-opacity: 0.86;
+      stroke: #f0f0f0;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+    }
+
+    #root [class~="02-nested-boxes-outline-path-accent"] {
+      stroke: #ff6b1a;
+    }
+
+    #root [class~="02-nested-boxes-station-label"] {
+      position: absolute;
+      z-index: 8;
+      top: 1.15cqh;
+      left: 2.1cqw;
+      padding: 0.72cqw 0.85cqw 0.62cqw;
+      border: 1px solid #504b48;
+      background: #0d0d0f;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+    }
+
+    #root [class~="02-nested-boxes-station-label-accent"] {
+      border-color: #ff6b1a;
+      color: #ff6b1a;
+    }
+
+    #root [class~="02-nested-boxes-geometry"] {
+      position: absolute;
+      z-index: 5;
+      left: 7%;
+      right: 7%;
+      top: 22%;
+      bottom: 10%;
+      width: 86%;
+      height: 68%;
+      overflow: visible;
+    }
+
+    #root [class~="02-nested-boxes-geometry"] polygon {
+      fill: #f0f0f0;
+      stroke: #0d0d0f;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="02-nested-boxes-geometry"] [class~="02-nested-boxes-triangle-accent"] {
+      fill: #ff6b1a;
+    }
+
+    #root [class~="02-nested-boxes-geometry"] [class~="02-nested-boxes-triangle-muted"] {
+      fill: #504b48;
+    }
+
+    #root [class~="02-nested-boxes-leaf-a"] [class~="02-nested-boxes-station-label"],
+    #root [class~="02-nested-boxes-leaf-b"] [class~="02-nested-boxes-station-label"] {
+      top: 0.9cqh;
+      left: 1.1cqw;
+      padding: 0.62cqw 0.68cqw 0.52cqw;
+    }
+
+    #root [class~="02-nested-boxes-leaf-a"] [class~="02-nested-boxes-geometry"],
+    #root [class~="02-nested-boxes-leaf-b"] [class~="02-nested-boxes-geometry"] {
+      top: 30%;
+      bottom: 8%;
+      height: 62%;
+    }
+
+    #root [class~="02-nested-boxes-bvh-lockup"] {
+      position: absolute;
+      z-index: 12;
+      top: 72.5cqh;
+      left: 62cqw;
+      width: 32.5cqw;
+      padding-top: 1.2cqh;
+      border-top: 2px solid #ff6b1a;
+      transform-origin: 0 100%;
+    }
+
+    #root [class~="02-nested-boxes-bvh-word"] {
+      font-family: "Space Grotesk";
+      font-size: 10.8cqw;
+      font-weight: 900;
+      line-height: 0.84;
+      letter-spacing: -0.055em;
+      text-transform: lowercase;
+      color: #ff6b1a;
+    }
+
+    #root [class~="02-nested-boxes-bvh-note"] {
+      margin-top: 3cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+    }
+  </style>
+
+  <div id="root" data-composition-id="02-nested-boxes" data-width="1080" data-height="1920" data-start="0" data-duration="11.124">
+    <div class="clip 02-nested-boxes-ground" data-start="0" data-duration="11.124" data-track-index="0" aria-hidden="true">
+      <svg class="02-nested-boxes-grid" viewBox="0 0 1080 1594" preserveAspectRatio="none">
+        <path d="M60 0V1594M300 0V1594M540 0V1594M780 0V1594M1020 0V1594" />
+        <path d="M0 204H1080M0 482H1080M0 760H1080M0 1038H1080M0 1316H1080M0 1593H1080" />
+      </svg>
+      <div class="02-nested-boxes-safe-rule"></div>
+    </div>
+
+    <div class="clip 02-nested-boxes-content" data-start="0" data-duration="11.124" data-track-index="1">
+      <div class="02-nested-boxes-viewport">
+        <header class="02-nested-boxes-header" id="02-nested-boxes-header">
+          <div class="02-nested-boxes-kicker"><span class="02-nested-boxes-kicker-accent">geometry</span> / spatial index</div>
+          <div class="02-nested-boxes-index">02</div>
+        </header>
+
+        <div class="02-nested-boxes-world" id="02-nested-boxes-world">
+          <svg class="02-nested-boxes-rails" viewBox="0 0 1080 1920" preserveAspectRatio="none" aria-hidden="true">
+            <path class="02-nested-boxes-rail" id="02-nested-boxes-world-rail" pathLength="1" d="M540 768V835H286V902M540 835H794V902" />
+            <path class="02-nested-boxes-rail" id="02-nested-boxes-leaf-rail" pathLength="1" d="M286 1258V1340H194V1440M286 1340H464V1440" />
+            <rect class="02-nested-boxes-rail-node" id="02-nested-boxes-world-node" x="532" y="827" width="16" height="16" />
+            <rect class="02-nested-boxes-rail-node" id="02-nested-boxes-leaf-node" x="278" y="1332" width="16" height="16" />
+          </svg>
+
+          <section class="02-nested-boxes-station 02-nested-boxes-world-station" id="02-nested-boxes-world-station" aria-label="World bounding box around all geometry">
+            <svg class="02-nested-boxes-outline" viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true">
+              <rect class="02-nested-boxes-outline-path 02-nested-boxes-outline-path-accent" id="02-nested-boxes-world-outline" pathLength="1" x="2" y="2" width="996" height="396" />
+            </svg>
+            <div class="02-nested-boxes-station-label 02-nested-boxes-station-label-accent" id="02-nested-boxes-world-label">world</div>
+            <svg class="02-nested-boxes-geometry" id="02-nested-boxes-world-geometry" viewBox="0 0 800 250" preserveAspectRatio="none" aria-hidden="true">
+              <polygon points="18,220 82,55 146,220" />
+              <polygon class="02-nested-boxes-triangle-muted" points="122,220 190,90 258,220" />
+              <polygon class="02-nested-boxes-triangle-accent" points="238,220 318,32 398,220" />
+              <polygon points="380,220 438,112 496,220" />
+              <polygon class="02-nested-boxes-triangle-muted" points="472,220 548,62 624,220" />
+              <polygon points="596,220 650,126 704,220" />
+              <polygon class="02-nested-boxes-triangle-accent" points="672,220 728,78 784,220" />
+            </svg>
+          </section>
+
+          <section class="02-nested-boxes-station 02-nested-boxes-branch-a" id="02-nested-boxes-branch-a" aria-label="First branch bounding box">
+            <svg class="02-nested-boxes-outline" viewBox="0 0 500 360" preserveAspectRatio="none" aria-hidden="true">
+              <rect class="02-nested-boxes-outline-path" id="02-nested-boxes-branch-a-outline" pathLength="1" x="2" y="2" width="496" height="356" />
+            </svg>
+            <div class="02-nested-boxes-station-label" id="02-nested-boxes-branch-a-label">branch A</div>
+            <svg class="02-nested-boxes-geometry" id="02-nested-boxes-branch-a-geometry" viewBox="0 0 400 250" preserveAspectRatio="none" aria-hidden="true">
+              <polygon points="12,220 80,65 148,220" />
+              <polygon class="02-nested-boxes-triangle-accent" points="120,220 202,30 284,220" />
+              <polygon class="02-nested-boxes-triangle-muted" points="254,220 320,92 386,220" />
+            </svg>
+          </section>
+
+          <section class="02-nested-boxes-station 02-nested-boxes-branch-b" id="02-nested-boxes-branch-b" aria-label="Second branch bounding box">
+            <svg class="02-nested-boxes-outline" viewBox="0 0 500 360" preserveAspectRatio="none" aria-hidden="true">
+              <rect class="02-nested-boxes-outline-path" id="02-nested-boxes-branch-b-outline" pathLength="1" x="2" y="2" width="496" height="356" />
+            </svg>
+            <div class="02-nested-boxes-station-label" id="02-nested-boxes-branch-b-label">branch B</div>
+            <svg class="02-nested-boxes-geometry" id="02-nested-boxes-branch-b-geometry" viewBox="0 0 400 250" preserveAspectRatio="none" aria-hidden="true">
+              <polygon class="02-nested-boxes-triangle-muted" points="10,48 80,220 150,48" />
+              <polygon points="118,72 205,220 292,72" />
+              <polygon class="02-nested-boxes-triangle-accent" points="250,34 320,220 390,34" />
+            </svg>
+          </section>
+
+          <section class="02-nested-boxes-station 02-nested-boxes-leaf-a" id="02-nested-boxes-leaf-a" aria-label="First leaf bounding box">
+            <svg class="02-nested-boxes-outline" viewBox="0 0 300 260" preserveAspectRatio="none" aria-hidden="true">
+              <rect class="02-nested-boxes-outline-path 02-nested-boxes-outline-path-accent" id="02-nested-boxes-leaf-a-outline" pathLength="1" x="2" y="2" width="296" height="256" />
+            </svg>
+            <div class="02-nested-boxes-station-label 02-nested-boxes-station-label-accent" id="02-nested-boxes-leaf-a-label">leaf A</div>
+            <svg class="02-nested-boxes-geometry" id="02-nested-boxes-leaf-a-geometry" viewBox="0 0 240 160" preserveAspectRatio="none" aria-hidden="true">
+              <polygon class="02-nested-boxes-triangle-accent" points="8,150 62,28 116,150" />
+              <polygon points="96,150 164,18 232,150" />
+            </svg>
+          </section>
+
+          <section class="02-nested-boxes-station 02-nested-boxes-leaf-b" id="02-nested-boxes-leaf-b" aria-label="Second leaf bounding box">
+            <svg class="02-nested-boxes-outline" viewBox="0 0 300 260" preserveAspectRatio="none" aria-hidden="true">
+              <rect class="02-nested-boxes-outline-path 02-nested-boxes-outline-path-accent" id="02-nested-boxes-leaf-b-outline" pathLength="1" x="2" y="2" width="296" height="256" />
+            </svg>
+            <div class="02-nested-boxes-station-label 02-nested-boxes-station-label-accent" id="02-nested-boxes-leaf-b-label">leaf B</div>
+            <svg class="02-nested-boxes-geometry" id="02-nested-boxes-leaf-b-geometry" viewBox="0 0 240 160" preserveAspectRatio="none" aria-hidden="true">
+              <polygon class="02-nested-boxes-triangle-muted" points="8,24 64,150 120,24" />
+              <polygon class="02-nested-boxes-triangle-accent" points="100,42 166,150 232,42" />
+            </svg>
+          </section>
+
+          <div class="02-nested-boxes-bvh-lockup" id="02-nested-boxes-bvh-lockup">
+            <div class="02-nested-boxes-bvh-word">bvh</div>
+            <div class="02-nested-boxes-bvh-note">complete tree</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const header = document.getElementById("02-nested-boxes-header");
+      const world = document.getElementById("02-nested-boxes-world");
+      const worldStation = document.getElementById("02-nested-boxes-world-station");
+      const worldOutline = document.getElementById("02-nested-boxes-world-outline");
+      const worldLabel = document.getElementById("02-nested-boxes-world-label");
+      const worldGeometry = document.getElementById("02-nested-boxes-world-geometry");
+      const worldRail = document.getElementById("02-nested-boxes-world-rail");
+      const worldNode = document.getElementById("02-nested-boxes-world-node");
+      const branchA = document.getElementById("02-nested-boxes-branch-a");
+      const branchB = document.getElementById("02-nested-boxes-branch-b");
+      const branchAOutline = document.getElementById("02-nested-boxes-branch-a-outline");
+      const branchBOutline = document.getElementById("02-nested-boxes-branch-b-outline");
+      const branchAGeometry = document.getElementById("02-nested-boxes-branch-a-geometry");
+      const branchBGeometry = document.getElementById("02-nested-boxes-branch-b-geometry");
+      const leafRail = document.getElementById("02-nested-boxes-leaf-rail");
+      const leafNode = document.getElementById("02-nested-boxes-leaf-node");
+      const leafA = document.getElementById("02-nested-boxes-leaf-a");
+      const leafB = document.getElementById("02-nested-boxes-leaf-b");
+      const leafAOutline = document.getElementById("02-nested-boxes-leaf-a-outline");
+      const leafBOutline = document.getElementById("02-nested-boxes-leaf-b-outline");
+      const leafAGeometry = document.getElementById("02-nested-boxes-leaf-a-geometry");
+      const leafBGeometry = document.getElementById("02-nested-boxes-leaf-b-geometry");
+      const bvhLockup = document.getElementById("02-nested-boxes-bvh-lockup");
+      const hold = { progress: 0 };
+      const timeline = gsap.timeline({ paused: true });
+
+      timeline
+        .fromTo(header,
+          { opacity: 0, y: -18 },
+          { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" },
+          0
+        )
+        .fromTo(worldStation,
+          { opacity: 0, y: 28, scale: 0.985 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.46, ease: "power3.out" },
+          0.02
+        )
+        .fromTo(worldGeometry,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" },
+          0.04
+        )
+        .fromTo(worldOutline,
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 1.15, ease: "power2.inOut" },
+          0.08
+        )
+        .fromTo(worldLabel,
+          { opacity: 0, x: -14 },
+          { opacity: 1, x: 0, duration: 0.3, ease: "power2.out" },
+          0.3
+        )
+
+        .fromTo(world,
+          { y: 0 },
+          { y: -58, duration: 0.86, ease: "power2.inOut" },
+          2.8
+        )
+        .fromTo(worldRail,
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.72, ease: "power2.inOut" },
+          2.88
+        )
+        .fromTo(worldNode,
+          { opacity: 0, scale: 0.4, transformOrigin: "50% 50%" },
+          { opacity: 1, scale: 1, duration: 0.26, ease: "back.out(1.4)" },
+          3.3
+        )
+        .fromTo(branchA,
+          { opacity: 0, x: -38, scale: 0.97 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.48, ease: "power3.out" },
+          3.18
+        )
+        .fromTo(branchAOutline,
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.76, ease: "power2.inOut" },
+          3.3
+        )
+        .fromTo(branchAGeometry,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.38, ease: "power2.out" },
+          3.68
+        )
+        .fromTo(branchB,
+          { opacity: 0, x: 38, scale: 0.97 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.48, ease: "power3.out" },
+          3.5
+        )
+        .fromTo(branchBOutline,
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.76, ease: "power2.inOut" },
+          3.62
+        )
+        .fromTo(branchBGeometry,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.38, ease: "power2.out" },
+          4.02
+        )
+
+        .to(world,
+          { y: -173, duration: 0.92, ease: "power2.inOut" },
+          6
+        )
+        .fromTo(leafRail,
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.6, ease: "power2.inOut" },
+          6.04
+        )
+        .fromTo(leafNode,
+          { opacity: 0, scale: 0.4, transformOrigin: "50% 50%" },
+          { opacity: 1, scale: 1, duration: 0.26, ease: "back.out(1.4)" },
+          6.22
+        )
+        .fromTo(leafA,
+          { opacity: 0, y: 28, scale: 0.94 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.28, ease: "power3.out" },
+          6.06
+        )
+        .fromTo(leafAOutline,
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.48, ease: "power2.inOut" },
+          6.08
+        )
+        .fromTo(leafAGeometry,
+          { opacity: 0, y: 16 },
+          { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" },
+          6.96
+        )
+        .fromTo(leafB,
+          { opacity: 0, y: 28, scale: 0.94 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.26, ease: "power3.out" },
+          6.14
+        )
+        .fromTo(leafBOutline,
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.5, ease: "power2.inOut" },
+          6.18
+        )
+        .fromTo(leafBGeometry,
+          { opacity: 0, y: 16 },
+          { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" },
+          7.3
+        )
+        .fromTo(bvhLockup,
+          { opacity: 0, x: 24, scale: 0.94 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.5, ease: "back.out(1.3)" },
+          8
+        )
+        .to(hold, { progress: 1, duration: 1.624, ease: "none" }, 9);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["02-nested-boxes"] = timeline;
+    })();
+  </script>
+</template>

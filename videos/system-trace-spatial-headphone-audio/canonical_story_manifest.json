@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-spatial-headphone-audio",
+  "project_id": "system-trace-spatial-headphone-audio",
+  "narration_script": "Headphones have only two speakers, yet a game can place footsteps behind you and above. The trick begins before either channel reaches your ears. A spatial audio engine treats each sound as an object with a position, then calculates how that direction should arrive at your left and right ears. Tiny timing, level and frequency differences come from the head and outer ear. Together, those direction -dependent cues form an HRTF. Turn the camera and the filters change. Each channel's waveform shifts while your brain interprets the pattern as a sound moving through space. Ears differ so one generic profile will not feel equally precise for everyone. Personalised profiles can improve the match where a system supports them. There are still only two channels at the end. The three -dimensional stage happens in the filtering and your brain finishes the render.",
+  "final_container": {
+    "path": "renders/system-trace-spatial-headphone-audio.mp4",
+    "sha256": "c28c13902504a47195d401d094aa926ae51d751c9d1fdfd577071f4e09790908",
+    "bytes": 6022636
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "fe17445ffbadd9467baac30972ac738f171a1d6bec8a4a001d5728ead7cb4353",
+    "bytes": 2723
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-18T19:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

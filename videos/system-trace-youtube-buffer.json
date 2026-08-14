@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_buffer_v1",
+  "channel": {
+    "id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "title": "Pulse Gaming"
+  },
+  "platform": "youtube_shorts",
+  "timezone": "UTC",
+  "cadence": "one_per_day",
+  "initial_privacy_status": "private",
+  "notify_subscribers_on_upload": false,
+  "synthetic_media_disclosure": true,
+  "episodes": [
+    {
+      "story_id": "system-trace-frame-pacing",
+      "project_dir": "videos/system-trace-frame-pacing",
+      "publish_at_utc": "2026-08-15T19:00:00Z",
+      "title": "Why 60 FPS Can Still Stutter",
+      "description": "A 60 FPS counter can look perfect while one long frame makes the game feel rough. This short animation shows what frame pacing measures, why 16.7 milliseconds matters at 60 FPS and how one 40 millisecond hitch can hide inside a healthy average.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/smooth-frame-rate-in-unreal-engine\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-flip-model\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #FramePacing #SystemTrace",
+      "tags": ["frame pacing", "60 FPS", "PC gaming", "game stutter", "frame time", "gaming performance", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-shader-compilation",
+      "project_dir": "videos/system-trace-shader-compilation",
+      "publish_at_utc": "2026-08-16T19:00:00Z",
+      "title": "Why PC Games Stutter the First Time",
+      "description": "A new effect appears, the game hitches once and the same scene runs smoothly the next time. This short animation explains pipeline state objects, why a missing graphics pipeline can interrupt a frame and how a cached pipeline changes the second run.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d12/managing-graphics-pipeline-state-in-direct3d-12\nhttps://learn.microsoft.com/en-us/samples/microsoft/directx-graphics-samples/d3d12-pipeline-state-cache-sample-win32/\nhttps://developer.nvidia.com/blog/advanced-api-performance-pipeline-state-objects/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #ShaderCompilation #SystemTrace",
+      "tags": ["shader compilation", "PC gaming", "game stutter", "pipeline state", "graphics pipeline", "gaming performance", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-temporal-upscaling",
+      "project_dir": "videos/system-trace-temporal-upscaling",
+      "publish_at_utc": "2026-08-17T19:00:00Z",
+      "title": "How Games Rebuild Detail From Previous Frames",
+      "description": "A sharp 4K image may begin with fewer newly rendered pixels. This short animation shows how temporal upscalers combine the current frame with motion vectors, depth and history, then reject stale samples that could cause ghosting or shimmer.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-upscalers-in-unreal-engine\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-super-resolution-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #Upscaling #SystemTrace",
+      "tags": ["temporal upscaling", "4K gaming", "motion vectors", "ghosting", "gaming graphics", "PC gaming", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-spatial-headphone-audio",
+      "project_dir": "videos/system-trace-spatial-headphone-audio",
+      "publish_at_utc": "2026-08-18T19:00:00Z",
+      "title": "How Headphones Put Sounds Behind You",
+      "description": "Headphones have only two speakers, yet games can place footsteps behind or above you. This short animation explains positioned sound objects, HRTF filtering and the tiny timing, level and frequency cues your brain interprets as direction.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/coreaudio/spatial-sound\nhttps://learn.microsoft.com/en-us/windows/win32/api/hrtfapoapi/nn-hrtfapoapi-ihrtfapo\nhttps://blog.playstation.com/2024/07/24/introducing-personalized-3d-audio-profiles-for-headphones-and-earbuds-on-ps5/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#GamingAudio #HRTF #SystemTrace",
+      "tags": ["spatial audio", "HRTF", "headphone audio", "3D audio", "gaming audio", "PC gaming", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-texture-streaming",
+      "project_dir": "videos/system-trace-texture-streaming",
+      "publish_at_utc": "2026-08-19T19:00:00Z",
+      "title": "Why Games Do Not Keep Every Texture in VRAM",
+      "description": "A modern game can contain more texture data than graphics memory can hold. This short animation explains mip levels, camera-driven residency and why a detailed surface may arrive late or disappear when the VRAM budget gets tight.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/texture-streaming-overview-for-unreal-engine\nhttps://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VRAM #SystemTrace",
+      "tags": ["texture streaming", "VRAM", "mip levels", "texture pop in", "gaming graphics", "PC gaming", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-ray-tracing-bvh",
+      "project_dir": "videos/system-trace-ray-tracing-bvh",
+      "publish_at_utc": "2026-08-20T19:00:00Z",
+      "title": "How Ray Tracing Skips Millions of Triangles",
+      "description": "One ray could face millions of triangles, but a real-time renderer does not test them all. This short animation explains bounding volume hierarchies, branch rejection and how nested boxes make empty space cheap to search.\n\nSources:\nhttps://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html\nhttps://developer.nvidia.com/blog/thinking-parallel-part-ii-tree-traversal-gpu/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#RayTracing #PCGaming #SystemTrace",
+      "tags": ["ray tracing", "BVH", "bounding volume hierarchy", "gaming graphics", "GPU rendering", "PC gaming", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-render-queue-latency",
+      "project_dir": "videos/system-trace-render-queue-latency",
+      "publish_at_utc": "2026-08-21T19:00:00Z",
+      "title": "Why More FPS Does Not Always Mean Faster Input",
+      "description": "A high frame rate can still feel behind your hands. This short animation follows one input through the CPU, render queue, GPU and display, then shows why reducing queued work can make the frame on screen feel fresher.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-1-3-presentation-improvements\nhttps://developer.nvidia.com/performance-rendering-tools/reflex\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#InputLatency #PCGaming #SystemTrace",
+      "tags": ["input latency", "render queue", "FPS", "PC gaming", "gaming performance", "GPU latency", "System Trace", "gaming Shorts"]
+    }
+  ]
+}

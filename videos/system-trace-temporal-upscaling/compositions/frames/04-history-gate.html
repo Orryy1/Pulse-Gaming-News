@@ -1,0 +1,641 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      isolation: isolate;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    #root [class~="04-history-gate-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background-color: #0d0d0f;
+    }
+
+    #root [class~="04-history-gate-scene"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      z-index: 1;
+      width: 100%;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    #root [class~="04-history-gate-kicker"] {
+      position: absolute;
+      top: 2.8cqh;
+      left: 5.5cqw;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.82cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [class~="04-history-gate-index"] {
+      position: absolute;
+      top: 2.8cqh;
+      right: 5.5cqw;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 0.82cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [class~="04-history-gate-stack"] {
+      position: absolute;
+      top: 6cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 53.5cqh;
+    }
+
+    #root [class~="04-history-gate-panel"] {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 25.6cqh;
+      border-top: 1px solid #282726;
+    }
+
+    #root [class~="04-history-gate-keep-panel"] {
+      top: 0;
+    }
+
+    #root [class~="04-history-gate-reject-panel"] {
+      bottom: 0;
+    }
+
+    #root [class~="04-history-gate-panel-copy"] {
+      position: absolute;
+      top: 4.5cqh;
+      left: 0;
+      width: 20cqw;
+    }
+
+    #root [class~="04-history-gate-panel-name"] {
+      display: block;
+      color: #f0f0f0;
+      font-size: 4.25cqw;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+      text-transform: lowercase;
+    }
+
+    #root [class~="04-history-gate-panel-meta"] {
+      display: block;
+      margin-top: 2.4cqh;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 0.78cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [class~="04-history-gate-panel-meta"]::before {
+      content: "/";
+      padding-right: 0.55cqw;
+      color: #ff6b1a;
+    }
+
+    #root [class~="04-history-gate-stage"] {
+      position: absolute;
+      top: 1.8cqh;
+      right: 0;
+      width: 65cqw;
+      height: 21.6cqh;
+      border-left: 1px solid #282726;
+      background-color: #1a1918;
+      overflow: visible;
+    }
+
+    #root [class~="04-history-gate-stage-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.72;
+      pointer-events: none;
+    }
+
+    #root [class~="04-history-gate-stage-grid-line"] {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="04-history-gate-gate-line"] {
+      position: absolute;
+      top: 3.1cqh;
+      left: 13.2cqw;
+      width: 2px;
+      height: 15.4cqh;
+      background-color: #ff6b1a;
+      transform-origin: 50% 0%;
+    }
+
+    #root [class~="04-history-gate-gate-label"] {
+      position: absolute;
+      top: 1.25cqh;
+      left: 11.45cqw;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.68cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [class~="04-history-gate-sample-outline"],
+    #root [class~="04-history-gate-sample-tile"],
+    #root [class~="04-history-gate-foreground"],
+    #root [class~="04-history-gate-new-region"],
+    #root [class~="04-history-gate-reject-slot"] {
+      position: absolute;
+      top: 5.5cqh;
+      left: 24.5cqw;
+      width: 8.2cqw;
+      height: 10.7cqh;
+    }
+
+    #root [class~="04-history-gate-sample-outline"] {
+      z-index: 3;
+      border: 3px solid #f0f0f0;
+      background-color: transparent;
+    }
+
+    #root [class~="04-history-gate-accepted-tile"] {
+      z-index: 8;
+      border: 1px solid #ff6b1a;
+      background-color: #504b48;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    #root [class~="04-history-gate-match-mark"] {
+      position: absolute;
+      top: 8.35cqh;
+      left: 35.6cqw;
+      z-index: 4;
+      width: 6.8cqw;
+      height: 2px;
+      background-color: #ff6b1a;
+      transform-origin: 0% 50%;
+    }
+
+    #root [class~="04-history-gate-match-label"] {
+      position: absolute;
+      top: 11.2cqh;
+      left: 35.6cqw;
+      z-index: 4;
+      color: #f0f0f0;
+      font-family: "IBM Plex Mono";
+      font-size: 0.74cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [class~="04-history-gate-new-region"] {
+      z-index: 1;
+      border: 1px solid #ff6b1a;
+      background-color: #ff6b1a;
+      clip-path: inset(0 100% 0 0);
+    }
+
+    #root [class~="04-history-gate-stale-tile"] {
+      z-index: 2;
+      border: 1px solid #f0f0f0;
+      background-color: #504b48;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    #root [class~="04-history-gate-foreground"] {
+      z-index: 4;
+      background-color: #f0f0f0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    #root [class~="04-history-gate-reject-slot"] {
+      left: 48.2cqw;
+      z-index: 1;
+      border: 1px solid #504b48;
+      background-color: #0d0d0f;
+    }
+
+    #root [class~="04-history-gate-reject-slot"]::after {
+      content: "reject";
+      position: absolute;
+      top: -2.25cqh;
+      left: 0;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 0.68cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [class~="04-history-gate-strike"] {
+      position: absolute;
+      top: 50%;
+      left: -0.6cqw;
+      z-index: 5;
+      width: 9.4cqw;
+      height: 2px;
+      background-color: #ff6b1a;
+      transform-origin: 0% 50%;
+    }
+
+    #root [class~="04-history-gate-output"] {
+      position: absolute;
+      top: 63cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 15.8cqh;
+      border-top: 1px solid #282726;
+    }
+
+    #root [class~="04-history-gate-output-copy"] {
+      position: absolute;
+      top: 2.2cqh;
+      left: 0;
+      width: 54cqw;
+    }
+
+    #root [class~="04-history-gate-output-label"] {
+      display: block;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.76cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [class~="04-history-gate-output-proof"] {
+      display: block;
+      margin-top: 2.1cqh;
+      color: #f0f0f0;
+      font-size: 3.45cqw;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.9;
+      text-transform: lowercase;
+      white-space: nowrap;
+    }
+
+    #root [class~="04-history-gate-output-proof"] em {
+      color: #ff6b1a;
+      font-style: normal;
+    }
+
+    #root [class~="04-history-gate-output-grid"] {
+      position: absolute;
+      top: 2.1cqh;
+      right: 0;
+      width: 31cqw;
+      height: 11.3cqh;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid #282726;
+      background-color: #1a1918;
+    }
+
+    #root [class~="04-history-gate-output-cell"] {
+      display: block;
+      min-width: 0;
+      min-height: 0;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    #root [class~="04-history-gate-history-cell"] {
+      background-color: #f0f0f0;
+    }
+
+    #root [class~="04-history-gate-current-cell"] {
+      background-color: #ff6b1a;
+    }
+
+    #root [class~="04-history-gate-output-cell"][data-density="quiet"] {
+      background-color: #504b48;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="04-history-gate"
+    data-width="1080"
+    data-height="1920"
+    data-start="0"
+    data-duration="9.46"
+  >
+    <div
+      class="clip 04-history-gate-ground"
+      data-start="0"
+      data-duration="9.46"
+      data-track-index="0"
+      aria-hidden="true"
+    ></div>
+
+    <div
+      class="clip 04-history-gate-scene"
+      data-start="0"
+      data-duration="9.46"
+      data-track-index="1"
+    >
+      <span class="04-history-gate-kicker">history validation</span>
+      <span class="04-history-gate-index">04 / gate</span>
+
+      <div class="04-history-gate-stack">
+        <section id="04-history-gate-keep-panel" class="04-history-gate-panel 04-history-gate-keep-panel">
+          <div class="04-history-gate-panel-copy">
+            <strong class="04-history-gate-panel-name">keep</strong>
+            <span class="04-history-gate-panel-meta">aligned sample</span>
+          </div>
+
+          <div class="04-history-gate-stage">
+            <svg class="04-history-gate-stage-grid" viewBox="0 0 1300 240" preserveAspectRatio="none" aria-hidden="true">
+              <path class="04-history-gate-stage-grid-line" d="M130 0V240 M260 0V240 M390 0V240 M520 0V240 M650 0V240 M780 0V240 M910 0V240 M1040 0V240 M1170 0V240 M0 80H1300 M0 160H1300" />
+            </svg>
+            <span class="04-history-gate-gate-label">validate</span>
+            <span id="04-history-gate-keep-gate" class="04-history-gate-gate-line"></span>
+            <span id="04-history-gate-current-outline" class="04-history-gate-sample-outline"></span>
+            <span id="04-history-gate-accepted-tile" class="04-history-gate-sample-tile 04-history-gate-accepted-tile"></span>
+            <span id="04-history-gate-match-mark" class="04-history-gate-match-mark"></span>
+            <span id="04-history-gate-match-label" class="04-history-gate-match-label">exact match</span>
+          </div>
+        </section>
+
+        <section id="04-history-gate-reject-panel" class="04-history-gate-panel 04-history-gate-reject-panel">
+          <div class="04-history-gate-panel-copy">
+            <strong class="04-history-gate-panel-name">reject</strong>
+            <span class="04-history-gate-panel-meta">exposed sample</span>
+          </div>
+
+          <div class="04-history-gate-stage">
+            <svg class="04-history-gate-stage-grid" viewBox="0 0 1300 240" preserveAspectRatio="none" aria-hidden="true">
+              <path class="04-history-gate-stage-grid-line" d="M130 0V240 M260 0V240 M390 0V240 M520 0V240 M650 0V240 M780 0V240 M910 0V240 M1040 0V240 M1170 0V240 M0 80H1300 M0 160H1300" />
+            </svg>
+            <span class="04-history-gate-gate-label">validate</span>
+            <span id="04-history-gate-reject-gate" class="04-history-gate-gate-line"></span>
+            <span id="04-history-gate-new-region" class="04-history-gate-new-region"></span>
+            <span id="04-history-gate-stale-tile" class="04-history-gate-sample-tile 04-history-gate-stale-tile">
+              <span id="04-history-gate-strike" class="04-history-gate-strike"></span>
+            </span>
+            <span id="04-history-gate-foreground" class="04-history-gate-foreground"></span>
+            <span id="04-history-gate-reject-slot" class="04-history-gate-reject-slot"></span>
+          </div>
+        </section>
+      </div>
+
+      <div id="04-history-gate-output" class="04-history-gate-output">
+        <div class="04-history-gate-output-copy">
+          <span class="04-history-gate-output-label">accepted output</span>
+          <strong id="04-history-gate-output-proof" class="04-history-gate-output-proof">
+            useful past <em>/</em> current truth
+          </strong>
+        </div>
+        <div id="04-history-gate-output-grid" class="04-history-gate-output-grid" aria-hidden="true"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="04-history-gate"]');
+      if (!root || typeof gsap === "undefined") return;
+
+      const byId = (id) => document.getElementById(id);
+      const outputGrid = byId("04-history-gate-output-grid");
+
+      for (let index = 0; index < 48; index += 1) {
+        const cell = document.createElement("span");
+        const usesCurrent = index % 5 === 0 || index % 7 === 0;
+        const isQuiet = index === 17 || index === 34;
+        cell.className = `04-history-gate-output-cell ${usesCurrent ? "04-history-gate-current-cell" : "04-history-gate-history-cell"}`;
+        cell.dataset.source = usesCurrent ? "current" : "history";
+        if (isQuiet) cell.dataset.density = "quiet";
+        outputGrid.appendChild(cell);
+      }
+
+      const keepPanel = byId("04-history-gate-keep-panel");
+      const rejectPanel = byId("04-history-gate-reject-panel");
+      const keepGate = byId("04-history-gate-keep-gate");
+      const rejectGate = byId("04-history-gate-reject-gate");
+      const currentOutline = byId("04-history-gate-current-outline");
+      const acceptedTile = byId("04-history-gate-accepted-tile");
+      const matchMark = byId("04-history-gate-match-mark");
+      const matchLabel = byId("04-history-gate-match-label");
+      const newRegion = byId("04-history-gate-new-region");
+      const staleTile = byId("04-history-gate-stale-tile");
+      const foreground = byId("04-history-gate-foreground");
+      const rejectSlot = byId("04-history-gate-reject-slot");
+      const strike = byId("04-history-gate-strike");
+      const output = byId("04-history-gate-output");
+      const outputProof = byId("04-history-gate-output-proof");
+      const historyCells = root.querySelectorAll('[data-source="history"]');
+      const currentCells = root.querySelectorAll('[data-source="current"]');
+
+      const tl = gsap.timeline({ paused: true });
+
+      tl.set(rejectPanel, { opacity: 0 }, 0);
+      tl.set([matchMark, matchLabel], { opacity: 0 }, 0);
+      tl.set(rejectSlot, { opacity: 0 }, 0);
+      tl.set(strike, { scaleX: 0 }, 0);
+      tl.set(output, { opacity: 0 }, 0);
+      tl.set(outputProof, { opacity: 0 }, 0);
+      tl.set([...historyCells, ...currentCells], { opacity: 0, scale: 0.25 }, 0);
+
+      tl.fromTo(
+        keepPanel,
+        { opacity: 0, y: 16 },
+        { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" },
+        0.05,
+      );
+      tl.fromTo(
+        keepGate,
+        { opacity: 0, scaleY: 0 },
+        { opacity: 1, scaleY: 1, duration: 0.44, ease: "power2.out" },
+        0.16,
+      );
+      tl.fromTo(
+        currentOutline,
+        { opacity: 0, scale: 0.88 },
+        { opacity: 1, scale: 1, duration: 0.46, ease: "power3.out" },
+        0.28,
+      );
+      tl.fromTo(
+        acceptedTile,
+        { opacity: 0, x: -220, scale: 0.84 },
+        { opacity: 1, x: 0, scale: 1, duration: 0.78, ease: "power3.out" },
+        0.72,
+      );
+      tl.to(
+        acceptedTile,
+        { backgroundColor: "#f0f0f0", borderColor: "#ff6b1a", duration: 0.28, ease: "none" },
+        1.48,
+      );
+      tl.fromTo(
+        matchMark,
+        { opacity: 0, scaleX: 0 },
+        { opacity: 1, scaleX: 1, duration: 0.42, ease: "power2.out" },
+        1.78,
+      );
+      tl.fromTo(
+        matchLabel,
+        { opacity: 0, x: -12 },
+        { opacity: 1, x: 0, duration: 0.36, ease: "power2.out" },
+        2.08,
+      );
+
+      tl.fromTo(
+        rejectPanel,
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.46, ease: "power3.out" },
+        2.8,
+      );
+      tl.fromTo(
+        rejectGate,
+        { opacity: 0, scaleY: 0 },
+        { opacity: 1, scaleY: 1, duration: 0.42, ease: "power2.out" },
+        3.0,
+      );
+      tl.to(
+        foreground,
+        { x: -230, duration: 0.72, ease: "power3.inOut" },
+        3.35,
+      );
+      tl.to(
+        newRegion,
+        { clipPath: "inset(0 0% 0 0)", duration: 0.58, ease: "power2.out" },
+        3.48,
+      );
+      tl.fromTo(
+        rejectSlot,
+        { opacity: 0, scale: 0.94 },
+        { opacity: 1, scale: 1, duration: 0.36, ease: "power2.out" },
+        4.02,
+      );
+      tl.to(
+        staleTile,
+        {
+          x: 455,
+          opacity: 0.34,
+          backgroundColor: "#1a1918",
+          borderColor: "#504b48",
+          duration: 0.74,
+          ease: "power3.inOut",
+        },
+        4.18,
+      );
+      tl.to(
+        strike,
+        { scaleX: 1, duration: 0.38, ease: "power2.out" },
+        4.86,
+      );
+      tl.fromTo(
+        rejectPanel.querySelector('[class~="04-history-gate-panel-name"]'),
+        { color: "#f0f0f0" },
+        { color: "#ff6b1a", duration: 0.24, ease: "none", immediateRender: false },
+        5.18,
+      );
+
+      tl.fromTo(
+        output,
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" },
+        6.1,
+      );
+      tl.to(
+        acceptedTile,
+        { x: 290, y: 592, scale: 0.36, duration: 0.76, ease: "power3.inOut" },
+        6.12,
+      );
+      tl.fromTo(
+        currentCells,
+        { opacity: 0, scale: 0.25 },
+        { opacity: 1, scale: 1, duration: 0.22, stagger: 0.026, ease: "power2.out" },
+        6.48,
+      );
+      tl.fromTo(
+        historyCells,
+        { opacity: 0, scale: 0.25 },
+        { opacity: 1, scale: 1, duration: 0.22, stagger: 0.018, ease: "power2.out" },
+        6.72,
+      );
+      tl.to(
+        acceptedTile,
+        { opacity: 0, scale: 0.12, duration: 0.3, ease: "power2.in" },
+        6.84,
+      );
+      tl.fromTo(
+        outputProof,
+        { opacity: 0, y: 16 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+        7.18,
+      );
+
+      const holdState = { progress: 0 };
+      tl.to(holdState, { progress: 1, duration: 8.96, ease: "none" }, 0);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["04-history-gate"] = tl;
+    })();
+  </script>
+</template>

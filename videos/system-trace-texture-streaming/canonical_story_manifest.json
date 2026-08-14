@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-texture-streaming",
+  "project_id": "system-trace-texture-streaming",
+  "narration_script": "A modern game can contain far more texture data than graphics memory can hold. The solution is not to load the whole world. Textures come in MIP levels, large detailed versions for close views and progressively smaller versions for distant or tiny surfaces. The streamer estimates which levels matter for the current camera. Useful detail moves in while less valuable data can move out. That makes VRAM a changing working set, not a warehouse. Residency updates as you move, turn, and reveal new parts of the scene. If a detailed MIP arrives late, a soft surface may snap into focus. With a tight budget, sharper levels may not stay resident. So the texture on disk is not always the texture on screen. You see the best level the streaming system has ready for that moment.",
+  "final_container": {
+    "path": "renders/system-trace-texture-streaming.mp4",
+    "sha256": "47f84104c452bfb0c592d76bc38849ab3ce46d4027abdb437d1f0e619d2ff936",
+    "bytes": 5393462
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "820cd3f3d0d61c15d7fc22bb842900e07964bab98edeb7fe7fd485da3891fee4",
+    "bytes": 2702
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-19T19:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

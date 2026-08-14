@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "series": "SYSTEM TRACE",
+  "channel": "Pulse Gaming",
+  "format": "1080x1920",
+  "language": "en-GB",
+  "release_cadence": "one_per_day",
+  "episodes": [
+    {
+      "number": "01",
+      "slug": "frame-pacing",
+      "title": "Why 60 FPS Can Still Stutter",
+      "thesis": "A steady frame-time rhythm matters as much as the FPS counter.",
+      "frames": [
+        "Sixty frames per second can still feel stuttery. The number is real — but it does not tell you when each frame arrived.",
+        "FPS is an average across time. Smoothness also lives in the gaps — the rhythm between one finished frame and the next.",
+        "At a clean sixty, a new image arrives about every sixteen point seven milliseconds. Tick — tick — tick — an even visual cadence.",
+        "Now let one frame take forty milliseconds. Faster frames can pull the average back up, yet your eye still catches that single pause.",
+        "That is uneven frame pacing. The engine, driver and display must hand frames over steadily — not merely finish sixty somewhere inside a second.",
+        "So when a game feels rough, watch the frame-time graph as well as the FPS counter. The average can hide the hitch."
+      ],
+      "sources": [
+        "https://dev.epicgames.com/documentation/en-us/unreal-engine/smooth-frame-rate-in-unreal-engine",
+        "https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-flip-model"
+      ]
+    },
+    {
+      "number": "02",
+      "slug": "shader-compilation",
+      "title": "Why Some PC Games Stutter the First Time",
+      "thesis": "A game can pause while preparing a new graphics pipeline, then run that same moment smoothly from cache.",
+      "frames": [
+        "Ever notice a PC game hitch the first time an effect appears, then glide through the same moment later? The scene may not be the problem.",
+        "Modern graphics APIs bundle shader choices and fixed settings into pipeline state objects. The GPU needs the right combination before it can draw.",
+        "If that pipeline is not ready, the game may compile or create it just as the effect arrives. That preparation can interrupt an otherwise steady frame.",
+        "Once cached, the same pipeline can be reused. That is why a second run may feel smoother even when the graphics settings have not changed.",
+        "Good engines pre-build likely pipelines and preserve useful caches, but the possible combinations can be huge. Driver updates may also invalidate old cache data.",
+        "Not every hitch is shader compilation. But a one-time pause tied to a new effect is a useful clue: the game may be building tomorrow's smooth frame today."
+      ],
+      "sources": [
+        "https://learn.microsoft.com/en-us/windows/win32/direct3d12/managing-graphics-pipeline-state-in-direct3d-12",
+        "https://learn.microsoft.com/en-us/samples/microsoft/directx-graphics-samples/d3d12-pipeline-state-cache-sample-win32/",
+        "https://developer.nvidia.com/blog/advanced-api-performance-pipeline-state-objects/"
+      ]
+    },
+    {
+      "number": "03",
+      "slug": "temporal-upscaling",
+      "title": "How Games Rebuild Detail From Previous Frames",
+      "thesis": "Temporal upscalers combine a new low-resolution frame with motion-aware history rather than simply stretching one image.",
+      "frames": [
+        "That sharp four-K image may not begin as four-K. Many games render fewer pixels, then rebuild detail with information gathered across time.",
+        "A temporal upscaler receives the new frame plus motion vectors, depth and samples saved from earlier frames. Each input answers a different question.",
+        "Motion vectors show where surfaces moved. Depth helps separate foreground from background. History supplies detail that one lower-resolution frame cannot hold alone.",
+        "The system then reprojects useful history into the current view and rejects information that no longer belongs. Done well, the final image looks far denser.",
+        "Fast reveals, thin geometry and particles can break that history. Old samples may linger as ghosting, or fresh pixels may shimmer before enough evidence arrives.",
+        "So temporal upscaling is not a fancy stretch. It is a moving reconstruction problem — borrowing from the past without letting the past haunt the present."
+      ],
+      "sources": [
+        "https://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-upscalers-in-unreal-engine",
+        "https://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-super-resolution-in-unreal-engine"
+      ]
+    },
+    {
+      "number": "04",
+      "slug": "spatial-headphone-audio",
+      "title": "How Stereo Headphones Place Sounds Behind You",
+      "thesis": "Spatial audio filters sound with direction-dependent head and ear cues before sending it through two headphone channels.",
+      "frames": [
+        "Your headphones have only two speakers, yet a game can place footsteps behind you and above you. The trick begins before the sound reaches either ear.",
+        "A spatial audio engine treats each sound as an object with a position. It then calculates how that direction should arrive at your left and right ears.",
+        "The filter models tiny timing, level and frequency differences caused by the head and outer ear. Together, those cues are called an H-R-T-F.",
+        "Turn the camera and the filters change. The waveform in each channel shifts, while your brain interprets those changes as a sound moving through space.",
+        "People have different ears, so one generic profile will not feel equally precise for everyone. Personalised profiles can improve the match where a platform supports them.",
+        "There are still only two headphone channels at the end. The three-dimensional stage happens in the filtering — and your brain finishes the render."
+      ],
+      "sources": [
+        "https://learn.microsoft.com/en-us/windows/win32/coreaudio/spatial-sound",
+        "https://learn.microsoft.com/en-us/windows/win32/api/hrtfapoapi/nn-hrtfapoapi-ihrtfapo",
+        "https://blog.playstation.com/2024/07/24/introducing-personalized-3d-audio-profiles-for-headphones-and-earbuds-on-ps5/"
+      ]
+    },
+    {
+      "number": "05",
+      "slug": "texture-streaming",
+      "title": "Why Games Do Not Keep Every Texture in VRAM",
+      "thesis": "Texture streaming keeps the most useful mip levels resident and moves detail as the camera and memory budget change.",
+      "frames": [
+        "A modern game can contain far more texture data than your graphics memory can hold at once. The solution is not to load the whole world.",
+        "Textures are stored in mip levels: large detailed versions for close views and progressively smaller versions for distant or tiny surfaces.",
+        "The streaming system estimates which levels matter for the current camera. Useful detail moves into memory while less valuable data can be released.",
+        "That turns V-RAM into a working set rather than a warehouse. The engine keeps changing residency as you move, turn and reveal new parts of the scene.",
+        "If the detailed mip arrives late, you may briefly see a soft surface snap into focus. If the budget is too tight, sharper levels may never stay resident.",
+        "So the texture on disk is not always the texture on screen. What you see is the best level the streaming system has ready for that moment."
+      ],
+      "sources": [
+        "https://dev.epicgames.com/documentation/en-us/unreal-engine/texture-streaming-overview-for-unreal-engine",
+        "https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html"
+      ]
+    },
+    {
+      "number": "06",
+      "slug": "ray-tracing-bvh",
+      "title": "How Ray Tracing Avoids Testing Every Triangle",
+      "thesis": "A bounding volume hierarchy lets rays discard large empty regions before testing nearby geometry.",
+      "frames": [
+        "Ray tracing sounds impossible at game speed. A single ray could meet millions of triangles — unless the renderer learns where not to look.",
+        "Common real-time ray-tracing systems organise geometry into a bounding volume hierarchy, or B-V-H. Think of nested boxes around smaller groups of shapes.",
+        "A ray first tests a large box. If it misses, every triangle inside that branch is rejected at once. Only promising branches are opened further.",
+        "The search narrows from world-sized regions to smaller boxes, then finally to the few triangles that might actually be hit. Empty space becomes cheap.",
+        "Building and updating that structure still costs time, especially when geometry moves. Engines balance rebuild quality, update cost and how many rays they can afford.",
+        "So real-time ray tracing does not brute-force the whole scene. It wins by asking a better first question: which parts can this ray ignore?"
+      ],
+      "sources": [
+        "https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html",
+        "https://developer.nvidia.com/blog/thinking-parallel-part-ii-tree-traversal-gpu/"
+      ]
+    },
+    {
+      "number": "07",
+      "slug": "render-queue-latency",
+      "title": "Why More FPS Does Not Always Mean Faster Input",
+      "thesis": "Input latency depends on how long work waits across the CPU, render queue, GPU and display, not only the final frame rate.",
+      "frames": [
+        "A high frame rate can still feel slightly behind your hands. The missing number is not frames per second — it is how long your newest input waits.",
+        "The CPU prepares rendering work and the GPU executes it. To keep the GPU busy, a system may queue more than one frame ahead.",
+        "That queue can improve utilisation, but an input sampled now may sit behind older prepared frames. The counter stays high while the response arrives later.",
+        "Latency controls reduce that waiting by synchronising CPU work more closely with GPU capacity. A sensible frame cap can also prevent a deep queue in some workloads.",
+        "The result depends on the bottleneck. If the game is not GPU-bound, or another stage dominates, the same setting may produce a smaller change.",
+        "So judge responsiveness across the whole path: input, simulation, render queue, GPU and display. The fastest counter is not automatically the freshest frame."
+      ],
+      "sources": [
+        "https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-1-3-presentation-improvements",
+        "https://developer.nvidia.com/performance-rendering-tools/reflex"
+      ]
+    }
+  ]
+}

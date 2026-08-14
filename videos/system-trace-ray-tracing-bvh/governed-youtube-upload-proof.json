@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-14T18:01:15.468Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-ray-tracing-bvh",
+  "source": {
+    "package_dir": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-ray-tracing-bvh",
+    "publish_pack_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-ray-tracing-bvh\\youtube_publish_pack.json",
+    "publish_pack_sha256": "ca8d37a96e24211aeaa44e24f1fb9763e5e1a039d4bd2a77ccf074265a1c91a2",
+    "canonical_manifest_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-ray-tracing-bvh\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "f53c155fb5e9b3f6d21ce0bbae03c8fab580388fae38827672ca9d2b660f2b89",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-ray-tracing-bvh",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "How Ray Tracing Skips Millions of Triangles",
+          "description": "One ray could face millions of triangles, but a real-time renderer does not test them all. This short animation explains bounding volume hierarchies, branch rejection and how nested boxes make empty space cheap to search.\n\nSources:\nhttps://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html\nhttps://developer.nvidia.com/blog/thinking-parallel-part-ii-tree-traversal-gpu/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#RayTracing #PCGaming #SystemTrace",
+          "tags": [
+            "ray tracing",
+            "BVH",
+            "bounding volume hierarchy",
+            "gaming graphics",
+            "GPU rendering",
+            "PC gaming",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-ray-tracing-bvh\\renders\\system-trace-ray-tracing-bvh.mp4",
+      "media_sha256": "60451f27450991983c45712a7d5ea7a57f3b9826ada69014a3052a192dff37d8"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-ray-tracing-bvh\\captions.srt",
+      "media_sha256": "c0aa5bc20e027bd91742f5b63729395481c0dd986e7721214890fb8835be3d14"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-ray-tracing-bvh\\renders\\system-trace-ray-tracing-bvh.mp4",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-ray-tracing-bvh\\renders\\system-trace-ray-tracing-bvh.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 5996038,
+      "sha256": "60451f27450991983c45712a7d5ea7a57f3b9826ada69014a3052a192dff37d8",
+      "probe": {
+        "duration_seconds": 55.466667,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-ray-tracing-bvh\\captions.srt",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-ray-tracing-bvh\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2541,
+      "sha256": "c0aa5bc20e027bd91742f5b63729395481c0dd986e7721214890fb8835be3d14",
+      "qa": {
+        "parsed": true,
+        "cue_count": 52,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 55.467,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-14T18:01:15.468Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-ray-tracing-bvh",
+    "request_plan_fingerprint_sha256": "2336858d81a1d925b561e0b8ad7c9b1d2246472a7f95136e0d1f5c8167534250",
+    "video_insert_fingerprint_sha256": "97147484b55518741afddf5ed0aa024b262a6e911a9f357e09da62857783388f",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "671a37f55eeb4a5dd68b00096a19067a792ffd764187cb5018a615829ea6c53f",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "How Ray Tracing Skips Millions of Triangles",
+            "description": "One ray could face millions of triangles, but a real-time renderer does not test them all. This short animation explains bounding volume hierarchies, branch rejection and how nested boxes make empty space cheap to search.\n\nSources:\nhttps://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html\nhttps://developer.nvidia.com/blog/thinking-parallel-part-ii-tree-traversal-gpu/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#RayTracing #PCGaming #SystemTrace",
+            "tags": [
+              "ray tracing",
+              "BVH",
+              "bounding volume hierarchy",
+              "gaming graphics",
+              "GPU rendering",
+              "PC gaming",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-ray-tracing-bvh\\renders\\system-trace-ray-tracing-bvh.mp4",
+        "media_sha256": "60451f27450991983c45712a7d5ea7a57f3b9826ada69014a3052a192dff37d8"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-ray-tracing-bvh\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

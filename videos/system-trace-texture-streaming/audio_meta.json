@@ -1,0 +1,989 @@
+{
+  "bgm": {
+    "path": "assets/bgm/system-trace-tension-bed.wav",
+    "volume": 0.1
+  },
+  "bgm_pending": false,
+  "voices": [
+    {
+      "frame": 1,
+      "path": "assets/voice/01.wav",
+      "duration_s": 8.683,
+      "words": [
+        {
+          "text": "A",
+          "word": "A",
+          "start": 0,
+          "end": 0.14
+        },
+        {
+          "text": "modern",
+          "word": "modern",
+          "start": 0.14,
+          "end": 0.32
+        },
+        {
+          "text": "game",
+          "word": "game",
+          "start": 0.32,
+          "end": 0.72
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 0.72,
+          "end": 1.12
+        },
+        {
+          "text": "contain",
+          "word": "contain",
+          "start": 1.12,
+          "end": 1.56
+        },
+        {
+          "text": "far",
+          "word": "far",
+          "start": 1.56,
+          "end": 1.94
+        },
+        {
+          "text": "more",
+          "word": "more",
+          "start": 1.94,
+          "end": 2.18
+        },
+        {
+          "text": "texture",
+          "word": "texture",
+          "start": 2.18,
+          "end": 2.5
+        },
+        {
+          "text": "data",
+          "word": "data",
+          "start": 2.5,
+          "end": 3
+        },
+        {
+          "text": "than",
+          "word": "than",
+          "start": 3,
+          "end": 3.66
+        },
+        {
+          "text": "graphics",
+          "word": "graphics",
+          "start": 3.66,
+          "end": 4
+        },
+        {
+          "text": "memory",
+          "word": "memory",
+          "start": 4,
+          "end": 4.42
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 4.42,
+          "end": 4.84
+        },
+        {
+          "text": "hold.",
+          "word": "hold.",
+          "start": 4.84,
+          "end": 5.3
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 5.88,
+          "end": 6
+        },
+        {
+          "text": "solution",
+          "word": "solution",
+          "start": 6,
+          "end": 6.36
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 6.36,
+          "end": 6.9
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 6.9,
+          "end": 7.12
+        },
+        {
+          "text": "to",
+          "word": "to",
+          "start": 7.12,
+          "end": 7.32
+        },
+        {
+          "text": "load",
+          "word": "load",
+          "start": 7.32,
+          "end": 7.58
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 7.58,
+          "end": 7.8
+        },
+        {
+          "text": "whole",
+          "word": "whole",
+          "start": 7.8,
+          "end": 8.06
+        },
+        {
+          "text": "world.",
+          "word": "world.",
+          "start": 8.06,
+          "end": 8.4
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "A modern game can contain far more texture data than graphics memory can hold. The solution is not to load the whole world."
+      }
+    },
+    {
+      "frame": 2,
+      "path": "assets/voice/02.wav",
+      "duration_s": 9.387,
+      "words": [
+        {
+          "text": "Textures",
+          "word": "Textures",
+          "start": 0,
+          "end": 0.52
+        },
+        {
+          "text": "come",
+          "word": "come",
+          "start": 0.52,
+          "end": 0.74
+        },
+        {
+          "text": "in",
+          "word": "in",
+          "start": 0.74,
+          "end": 0.96
+        },
+        {
+          "text": "MIP",
+          "word": "MIP",
+          "start": 0.96,
+          "end": 1.18
+        },
+        {
+          "text": "levels,",
+          "word": "levels,",
+          "start": 1.18,
+          "end": 1.58
+        },
+        {
+          "text": "large",
+          "word": "large",
+          "start": 2.22,
+          "end": 2.52
+        },
+        {
+          "text": "detailed",
+          "word": "detailed",
+          "start": 2.52,
+          "end": 2.96
+        },
+        {
+          "text": "versions",
+          "word": "versions",
+          "start": 2.96,
+          "end": 3.46
+        },
+        {
+          "text": "for",
+          "word": "for",
+          "start": 3.46,
+          "end": 3.8
+        },
+        {
+          "text": "close",
+          "word": "close",
+          "start": 3.8,
+          "end": 4.08
+        },
+        {
+          "text": "views",
+          "word": "views",
+          "start": 4.08,
+          "end": 4.46
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 4.46,
+          "end": 5.06
+        },
+        {
+          "text": "progressively",
+          "word": "progressively",
+          "start": 5.06,
+          "end": 5.54
+        },
+        {
+          "text": "smaller",
+          "word": "smaller",
+          "start": 5.54,
+          "end": 6.12
+        },
+        {
+          "text": "versions",
+          "word": "versions",
+          "start": 6.12,
+          "end": 6.64
+        },
+        {
+          "text": "for",
+          "word": "for",
+          "start": 6.64,
+          "end": 7.22
+        },
+        {
+          "text": "distant",
+          "word": "distant",
+          "start": 7.22,
+          "end": 7.62
+        },
+        {
+          "text": "or",
+          "word": "or",
+          "start": 7.62,
+          "end": 8.08
+        },
+        {
+          "text": "tiny",
+          "word": "tiny",
+          "start": 8.08,
+          "end": 8.46
+        },
+        {
+          "text": "surfaces.",
+          "word": "surfaces.",
+          "start": 8.46,
+          "end": 8.94
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Textures come in MIP levels, large detailed versions for close views and progressively smaller versions for distant or tiny surfaces."
+      }
+    },
+    {
+      "frame": 3,
+      "path": "assets/voice/03.wav",
+      "duration_s": 8.747,
+      "words": [
+        {
+          "text": "The",
+          "word": "The",
+          "start": 0,
+          "end": 0.16
+        },
+        {
+          "text": "streamer",
+          "word": "streamer",
+          "start": 0.16,
+          "end": 0.64
+        },
+        {
+          "text": "estimates",
+          "word": "estimates",
+          "start": 0.64,
+          "end": 1.04
+        },
+        {
+          "text": "which",
+          "word": "which",
+          "start": 1.04,
+          "end": 1.6
+        },
+        {
+          "text": "levels",
+          "word": "levels",
+          "start": 1.6,
+          "end": 2
+        },
+        {
+          "text": "matter",
+          "word": "matter",
+          "start": 2,
+          "end": 2.36
+        },
+        {
+          "text": "for",
+          "word": "for",
+          "start": 2.36,
+          "end": 2.74
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 2.74,
+          "end": 2.88
+        },
+        {
+          "text": "current",
+          "word": "current",
+          "start": 2.88,
+          "end": 3.2
+        },
+        {
+          "text": "camera.",
+          "word": "camera.",
+          "start": 3.2,
+          "end": 3.74
+        },
+        {
+          "text": "Useful",
+          "word": "Useful",
+          "start": 4.4,
+          "end": 4.62
+        },
+        {
+          "text": "detail",
+          "word": "detail",
+          "start": 4.62,
+          "end": 5.16
+        },
+        {
+          "text": "moves",
+          "word": "moves",
+          "start": 5.16,
+          "end": 5.6
+        },
+        {
+          "text": "in",
+          "word": "in",
+          "start": 5.6,
+          "end": 6.02
+        },
+        {
+          "text": "while",
+          "word": "while",
+          "start": 6.02,
+          "end": 6.48
+        },
+        {
+          "text": "less",
+          "word": "less",
+          "start": 6.48,
+          "end": 6.72
+        },
+        {
+          "text": "valuable",
+          "word": "valuable",
+          "start": 6.72,
+          "end": 7.16
+        },
+        {
+          "text": "data",
+          "word": "data",
+          "start": 7.16,
+          "end": 7.6
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 7.6,
+          "end": 8
+        },
+        {
+          "text": "move",
+          "word": "move",
+          "start": 8,
+          "end": 8.22
+        },
+        {
+          "text": "out.",
+          "word": "out.",
+          "start": 8.22,
+          "end": 8.58
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "The streamer estimates which levels matter for the current camera. Useful detail moves in while less valuable data can move out."
+      }
+    },
+    {
+      "frame": 4,
+      "path": "assets/voice/04.wav",
+      "duration_s": 8.96,
+      "words": [
+        {
+          "text": "That",
+          "word": "That",
+          "start": 0,
+          "end": 0.14
+        },
+        {
+          "text": "makes",
+          "word": "makes",
+          "start": 0.14,
+          "end": 0.38
+        },
+        {
+          "text": "VRAM",
+          "word": "VRAM",
+          "start": 0.38,
+          "end": 1.04
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 1.04,
+          "end": 1.34
+        },
+        {
+          "text": "changing",
+          "word": "changing",
+          "start": 1.34,
+          "end": 1.68
+        },
+        {
+          "text": "working",
+          "word": "working",
+          "start": 1.68,
+          "end": 2.08
+        },
+        {
+          "text": "set,",
+          "word": "set,",
+          "start": 2.08,
+          "end": 2.5
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 2.88,
+          "end": 2.98
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 2.98,
+          "end": 3.14
+        },
+        {
+          "text": "warehouse.",
+          "word": "warehouse.",
+          "start": 3.14,
+          "end": 3.56
+        },
+        {
+          "text": "Residency",
+          "word": "Residency",
+          "start": 4.4,
+          "end": 4.74
+        },
+        {
+          "text": "updates",
+          "word": "updates",
+          "start": 4.74,
+          "end": 5.28
+        },
+        {
+          "text": "as",
+          "word": "as",
+          "start": 5.28,
+          "end": 5.66
+        },
+        {
+          "text": "you",
+          "word": "you",
+          "start": 5.66,
+          "end": 5.84
+        },
+        {
+          "text": "move,",
+          "word": "move,",
+          "start": 5.84,
+          "end": 6.16
+        },
+        {
+          "text": "turn,",
+          "word": "turn,",
+          "start": 6.42,
+          "end": 6.74
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 7.1,
+          "end": 7.16
+        },
+        {
+          "text": "reveal",
+          "word": "reveal",
+          "start": 7.16,
+          "end": 7.46
+        },
+        {
+          "text": "new",
+          "word": "new",
+          "start": 7.46,
+          "end": 7.8
+        },
+        {
+          "text": "parts",
+          "word": "parts",
+          "start": 7.8,
+          "end": 8.08
+        },
+        {
+          "text": "of",
+          "word": "of",
+          "start": 8.08,
+          "end": 8.3
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 8.3,
+          "end": 8.4
+        },
+        {
+          "text": "scene.",
+          "word": "scene.",
+          "start": 8.4,
+          "end": 8.68
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "That makes VRAM a changing working set, not a warehouse. Residency updates as you move, turn, and reveal new parts of the scene."
+      }
+    },
+    {
+      "frame": 5,
+      "path": "assets/voice/05.wav",
+      "duration_s": 8.704,
+      "words": [
+        {
+          "text": "If",
+          "word": "If",
+          "start": 0,
+          "end": 0.12
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 0.12,
+          "end": 0.24
+        },
+        {
+          "text": "detailed",
+          "word": "detailed",
+          "start": 0.24,
+          "end": 0.66
+        },
+        {
+          "text": "MIP",
+          "word": "MIP",
+          "start": 0.66,
+          "end": 1.04
+        },
+        {
+          "text": "arrives",
+          "word": "arrives",
+          "start": 1.04,
+          "end": 1.58
+        },
+        {
+          "text": "late,",
+          "word": "late,",
+          "start": 1.58,
+          "end": 1.98
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 2.36,
+          "end": 2.5
+        },
+        {
+          "text": "soft",
+          "word": "soft",
+          "start": 2.5,
+          "end": 2.76
+        },
+        {
+          "text": "surface",
+          "word": "surface",
+          "start": 2.76,
+          "end": 3.28
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 3.28,
+          "end": 3.58
+        },
+        {
+          "text": "snap",
+          "word": "snap",
+          "start": 3.58,
+          "end": 3.94
+        },
+        {
+          "text": "into",
+          "word": "into",
+          "start": 3.94,
+          "end": 4.22
+        },
+        {
+          "text": "focus.",
+          "word": "focus.",
+          "start": 4.22,
+          "end": 4.7
+        },
+        {
+          "text": "With",
+          "word": "With",
+          "start": 5.22,
+          "end": 5.48
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 5.48,
+          "end": 5.6
+        },
+        {
+          "text": "tight",
+          "word": "tight",
+          "start": 5.6,
+          "end": 5.82
+        },
+        {
+          "text": "budget,",
+          "word": "budget,",
+          "start": 5.82,
+          "end": 6.28
+        },
+        {
+          "text": "sharper",
+          "word": "sharper",
+          "start": 6.74,
+          "end": 6.9
+        },
+        {
+          "text": "levels",
+          "word": "levels",
+          "start": 6.9,
+          "end": 7.32
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 7.32,
+          "end": 7.5
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 7.5,
+          "end": 7.68
+        },
+        {
+          "text": "stay",
+          "word": "stay",
+          "start": 7.68,
+          "end": 7.98
+        },
+        {
+          "text": "resident.",
+          "word": "resident.",
+          "start": 7.98,
+          "end": 8.38
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "If a detailed MIP arrives late, a soft surface may snap into focus. With a tight budget, sharper levels may not stay resident."
+      }
+    },
+    {
+      "frame": 6,
+      "path": "assets/voice/06.wav",
+      "duration_s": 8.277,
+      "words": [
+        {
+          "text": "So",
+          "word": "So",
+          "start": 0,
+          "end": 0.14
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 0.14,
+          "end": 0.28
+        },
+        {
+          "text": "texture",
+          "word": "texture",
+          "start": 0.28,
+          "end": 0.64
+        },
+        {
+          "text": "on",
+          "word": "on",
+          "start": 0.64,
+          "end": 0.9
+        },
+        {
+          "text": "disk",
+          "word": "disk",
+          "start": 0.9,
+          "end": 1.16
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 1.16,
+          "end": 1.68
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 1.68,
+          "end": 1.9
+        },
+        {
+          "text": "always",
+          "word": "always",
+          "start": 1.9,
+          "end": 2.3
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 2.3,
+          "end": 2.52
+        },
+        {
+          "text": "texture",
+          "word": "texture",
+          "start": 2.52,
+          "end": 2.92
+        },
+        {
+          "text": "on",
+          "word": "on",
+          "start": 2.92,
+          "end": 3.2
+        },
+        {
+          "text": "screen.",
+          "word": "screen.",
+          "start": 3.2,
+          "end": 3.62
+        },
+        {
+          "text": "You",
+          "word": "You",
+          "start": 4.2,
+          "end": 4.36
+        },
+        {
+          "text": "see",
+          "word": "see",
+          "start": 4.36,
+          "end": 4.54
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 4.54,
+          "end": 4.7
+        },
+        {
+          "text": "best",
+          "word": "best",
+          "start": 4.7,
+          "end": 4.98
+        },
+        {
+          "text": "level",
+          "word": "level",
+          "start": 4.98,
+          "end": 5.32
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 5.32,
+          "end": 5.66
+        },
+        {
+          "text": "streaming",
+          "word": "streaming",
+          "start": 5.66,
+          "end": 5.98
+        },
+        {
+          "text": "system",
+          "word": "system",
+          "start": 5.98,
+          "end": 6.5
+        },
+        {
+          "text": "has",
+          "word": "has",
+          "start": 6.5,
+          "end": 6.92
+        },
+        {
+          "text": "ready",
+          "word": "ready",
+          "start": 6.92,
+          "end": 7.2
+        },
+        {
+          "text": "for",
+          "word": "for",
+          "start": 7.2,
+          "end": 7.48
+        },
+        {
+          "text": "that",
+          "word": "that",
+          "start": 7.48,
+          "end": 7.66
+        },
+        {
+          "text": "moment.",
+          "word": "moment.",
+          "start": 7.66,
+          "end": 7.96
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "So the texture on disk is not always the texture on screen. You see the best level the streaming system has ready for that moment."
+      }
+    }
+  ],
+  "sfx": [
+    {
+      "frame": 1,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 1,
+      "file": "assets/sfx/glitch-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.64,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/whoosh-short.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/click.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/whoosh.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/glitch-2.mp3",
+      "offset_s": 0,
+      "duration_s": 3.5,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/chime.mp3",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    }
+  ]
+}

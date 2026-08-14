@@ -1,0 +1,633 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      isolation: isolate;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    #root [class~="03-shape-cues-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background-color: #0d0d0f;
+    }
+
+    #root [class~="03-shape-cues-lab-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.55;
+    }
+
+    #root [class~="03-shape-cues-grid-line"] {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="03-shape-cues-grid-mark"] {
+      fill: #504b48;
+    }
+
+    #root [class~="03-shape-cues-scene"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      z-index: 1;
+      width: 100%;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    #root [class~="03-shape-cues-chrome"] {
+      position: absolute;
+      top: 3cqh;
+      z-index: 8;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.8cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-shape-cues-chrome-left"] {
+      left: 5.5cqw;
+    }
+
+    #root [class~="03-shape-cues-chrome-right"] {
+      right: 5.5cqw;
+      color: #7d7977;
+      font-weight: 500;
+    }
+
+    #root [class~="03-shape-cues-instruments"] {
+      position: absolute;
+      top: 7cqh;
+      left: 5.5cqw;
+      z-index: 3;
+      width: 58cqw;
+      height: 68cqh;
+    }
+
+    #root [class~="03-shape-cues-instrument"] {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 19.4cqh;
+      border-top: 1px solid #282726;
+      transform-origin: 0% 50%;
+      will-change: transform, opacity;
+    }
+
+    #root [class~="03-shape-cues-timing"] {
+      top: 0;
+    }
+
+    #root [class~="03-shape-cues-level"] {
+      top: 22cqh;
+    }
+
+    #root [class~="03-shape-cues-frequency"] {
+      top: 44cqh;
+    }
+
+    #root [class~="03-shape-cues-instrument-label"] {
+      position: absolute;
+      top: 5.2cqh;
+      left: 0;
+      width: 12cqw;
+      color: #f0f0f0;
+      font-size: 2.7cqw;
+      font-weight: 900;
+      letter-spacing: -0.035em;
+      line-height: 0.9;
+      text-transform: lowercase;
+    }
+
+    #root [class~="03-shape-cues-instrument-label"]::before {
+      content: "/";
+      display: block;
+      margin-bottom: 1.4cqh;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.76cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+    }
+
+    #root [class~="03-shape-cues-chart"] {
+      position: absolute;
+      top: 2.7cqh;
+      left: 14cqw;
+      width: 42cqw;
+      height: 14.4cqh;
+      overflow: visible;
+    }
+
+    #root [class~="03-shape-cues-chart-axis"] {
+      fill: none;
+      stroke: #504b48;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="03-shape-cues-chart-trace"] {
+      fill: none;
+      stroke: #f0f0f0;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="03-shape-cues-chart-accent"] {
+      stroke: #ff6b1a;
+    }
+
+    #root [class~="03-shape-cues-chart-text"] {
+      fill: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-shape-cues-arrival-mark"] {
+      fill: #ff6b1a;
+    }
+
+    #root [class~="03-shape-cues-level-meter"] {
+      position: absolute;
+      top: 4.1cqh;
+      right: 1cqw;
+      width: 1.1cqw;
+      height: 10.2cqh;
+      border-left: 1px solid #282726;
+    }
+
+    #root [class~="03-shape-cues-level-bar"] {
+      position: absolute;
+      bottom: 0;
+      left: 0.34cqw;
+      width: 0.38cqw;
+      background-color: #ff6b1a;
+      transform-origin: 50% 100%;
+    }
+
+    #root [class~="03-shape-cues-level-bar"][data-channel="left"] {
+      height: 8.2cqh;
+    }
+
+    #root [class~="03-shape-cues-level-bar"][data-channel="right"] {
+      left: 0.82cqw;
+      height: 5.4cqh;
+      background-color: #504b48;
+    }
+
+    #root [class~="03-shape-cues-head"] {
+      position: absolute;
+      top: 8cqh;
+      right: 4.5cqw;
+      z-index: 1;
+      width: 27cqw;
+      height: 50cqh;
+      opacity: 0.46;
+      pointer-events: none;
+      will-change: opacity;
+    }
+
+    #root [class~="03-shape-cues-head-outline"],
+    #root [class~="03-shape-cues-ear-outline"] {
+      fill: none;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="03-shape-cues-head-outline"] {
+      stroke: #282726;
+      stroke-width: 4;
+    }
+
+    #root [class~="03-shape-cues-ear-outline"] {
+      stroke: #ff6b1a;
+      stroke-width: 3;
+    }
+
+    #root [class~="03-shape-cues-rails"] {
+      position: absolute;
+      top: 7cqh;
+      left: 5.5cqw;
+      z-index: 4;
+      width: 89cqw;
+      height: 68cqh;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    #root [class~="03-shape-cues-converge-rail"] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 2;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="03-shape-cues-hrtf-block"] {
+      position: absolute;
+      top: 23cqh;
+      right: 5.5cqw;
+      z-index: 6;
+      width: 26cqw;
+      height: 33cqh;
+      border: 1px solid #282726;
+      border-top: 2px solid #282726;
+      background-color: #1a1918;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    #root [class~="03-shape-cues-hrtf-port"] {
+      position: absolute;
+      left: -0.55cqw;
+      width: 1.1cqw;
+      height: 1.1cqw;
+      border: 1px solid #504b48;
+      background-color: #0d0d0f;
+      transform-origin: 50% 50%;
+    }
+
+    #root [class~="03-shape-cues-hrtf-port"][data-port="timing"] {
+      top: 6.1cqh;
+    }
+
+    #root [class~="03-shape-cues-hrtf-port"][data-port="level"] {
+      top: 15.1cqh;
+    }
+
+    #root [class~="03-shape-cues-hrtf-port"][data-port="frequency"] {
+      top: 24.1cqh;
+    }
+
+    #root [class~="03-shape-cues-hrtf-kicker"] {
+      position: absolute;
+      top: 4.5cqh;
+      left: 3cqw;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.78cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-shape-cues-hrtf-title"] {
+      position: absolute;
+      top: 9cqh;
+      left: 3cqw;
+      color: #f0f0f0;
+      font-size: 5.4cqw;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+      text-transform: lowercase;
+      will-change: transform, opacity;
+    }
+
+    #root [class~="03-shape-cues-hrtf-rule"] {
+      position: absolute;
+      top: 21.3cqh;
+      left: 3cqw;
+      width: 4.8cqw;
+      height: 2px;
+      background-color: #ff6b1a;
+      transform-origin: 0% 50%;
+    }
+
+    #root [class~="03-shape-cues-hrtf-subtitle"] {
+      position: absolute;
+      top: 24.6cqh;
+      left: 3cqw;
+      color: #f0f0f0;
+      font-family: "IBM Plex Mono";
+      font-size: 0.82cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+      will-change: transform, opacity;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="03-shape-cues"
+    data-width="1080"
+    data-height="1920"
+    data-start="0"
+    data-duration="10.42"
+  >
+    <div
+      class="clip 03-shape-cues-ground"
+      data-start="0"
+      data-duration="10.42"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <svg class="03-shape-cues-lab-grid" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+        <path class="03-shape-cues-grid-line" d="M192 0V1080 M384 0V1080 M576 0V1080 M768 0V1080 M960 0V1080 M1152 0V1080 M1344 0V1080 M1536 0V1080 M1728 0V1080 M0 108H1920 M0 216H1920 M0 324H1920 M0 432H1920 M0 540H1920 M0 648H1920 M0 756H1920 M0 864H1920 M0 972H1920" />
+        <rect class="03-shape-cues-grid-mark" x="188" y="212" width="8" height="8" />
+        <rect class="03-shape-cues-grid-mark" x="764" y="428" width="8" height="8" />
+        <rect class="03-shape-cues-grid-mark" x="1340" y="644" width="8" height="8" />
+        <rect class="03-shape-cues-grid-mark" x="1724" y="860" width="8" height="8" />
+      </svg>
+    </div>
+
+    <div
+      class="clip 03-shape-cues-scene"
+      data-start="0"
+      data-duration="10.42"
+      data-track-index="1"
+    >
+      <span class="03-shape-cues-chrome 03-shape-cues-chrome-left">cue instruments</span>
+      <span class="03-shape-cues-chrome 03-shape-cues-chrome-right">03 / spatial</span>
+
+      <div class="03-shape-cues-instruments">
+        <section id="03-shape-cues-timing" class="03-shape-cues-instrument 03-shape-cues-timing">
+          <strong class="03-shape-cues-instrument-label">timing</strong>
+          <svg class="03-shape-cues-chart" viewBox="0 0 800 180" preserveAspectRatio="none" aria-label="Paired left and right pulse arrivals">
+            <path class="03-shape-cues-chart-axis" d="M52 54H770 M52 132H770" />
+            <text class="03-shape-cues-chart-text" x="0" y="60">L</text>
+            <text class="03-shape-cues-chart-text" x="0" y="138">R</text>
+            <path id="03-shape-cues-timing-left" class="03-shape-cues-chart-trace" data-draw="timing" d="M52 54H276V14H302V54H770" />
+            <path id="03-shape-cues-timing-right" class="03-shape-cues-chart-trace 03-shape-cues-chart-accent" data-draw="timing" d="M52 132H340V92H366V132H770" />
+            <rect id="03-shape-cues-arrival-left" class="03-shape-cues-arrival-mark" x="276" y="6" width="26" height="8" />
+            <rect id="03-shape-cues-arrival-right" class="03-shape-cues-arrival-mark" x="340" y="84" width="26" height="8" />
+          </svg>
+        </section>
+
+        <section id="03-shape-cues-level" class="03-shape-cues-instrument 03-shape-cues-level">
+          <strong class="03-shape-cues-instrument-label">level</strong>
+          <svg class="03-shape-cues-chart" viewBox="0 0 800 180" preserveAspectRatio="none" aria-label="Paired waveforms with different amplitudes">
+            <path class="03-shape-cues-chart-axis" d="M52 54H770 M52 132H770" />
+            <text class="03-shape-cues-chart-text" x="0" y="60">L</text>
+            <text class="03-shape-cues-chart-text" x="0" y="138">R</text>
+            <path id="03-shape-cues-level-left" class="03-shape-cues-chart-trace" data-draw="level" d="M52 54 C90 8 128 100 166 54 S242 8 280 54 S356 100 394 54 S470 8 508 54 S584 100 622 54 S698 8 770 54" />
+            <path id="03-shape-cues-level-right" class="03-shape-cues-chart-trace 03-shape-cues-chart-accent" data-draw="level" d="M52 132 C90 111 128 153 166 132 S242 111 280 132 S356 153 394 132 S470 111 508 132 S584 153 622 132 S698 111 770 132" />
+          </svg>
+          <span class="03-shape-cues-level-meter" aria-hidden="true">
+            <span id="03-shape-cues-level-bar-left" class="03-shape-cues-level-bar" data-channel="left"></span>
+            <span id="03-shape-cues-level-bar-right" class="03-shape-cues-level-bar" data-channel="right"></span>
+          </span>
+        </section>
+
+        <section id="03-shape-cues-frequency" class="03-shape-cues-instrument 03-shape-cues-frequency">
+          <strong class="03-shape-cues-instrument-label">frequency</strong>
+          <svg class="03-shape-cues-chart" viewBox="0 0 800 180" preserveAspectRatio="none" aria-label="Direction-shaped frequency response">
+            <path class="03-shape-cues-chart-axis" d="M52 145H770 M52 16V145" />
+            <path id="03-shape-cues-frequency-response" class="03-shape-cues-chart-trace 03-shape-cues-chart-accent" data-draw="frequency" d="M52 92 C170 92 288 92 406 92 C524 92 642 92 770 92" />
+          </svg>
+        </section>
+      </div>
+
+      <svg id="03-shape-cues-head" class="03-shape-cues-head" viewBox="0 0 480 540" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <path id="03-shape-cues-head-outline" class="03-shape-cues-head-outline" data-draw="head" d="M276 30 C172 34 94 118 94 232 C94 324 142 374 176 418 C195 442 200 476 200 516 M276 30 C364 44 414 112 414 204 C414 262 388 310 350 338 C326 356 316 378 314 420" />
+        <path id="03-shape-cues-ear-outline" class="03-shape-cues-ear-outline" data-draw="head" d="M298 180 C352 156 378 202 366 254 C356 300 318 328 288 296 C270 276 276 246 300 238 C326 230 336 258 316 274" />
+      </svg>
+
+      <svg class="03-shape-cues-rails" viewBox="0 0 1710 735" preserveAspectRatio="none" aria-hidden="true">
+        <path id="03-shape-cues-rail-timing" class="03-shape-cues-converge-rail" data-draw="rail" d="M1115 104H1162L1220 244" />
+        <path id="03-shape-cues-rail-level" class="03-shape-cues-converge-rail" data-draw="rail" d="M1115 341H1220" />
+        <path id="03-shape-cues-rail-frequency" class="03-shape-cues-converge-rail" data-draw="rail" d="M1115 578H1162L1220 438" />
+      </svg>
+
+      <div id="03-shape-cues-hrtf-block" class="03-shape-cues-hrtf-block">
+        <span id="03-shape-cues-port-timing" class="03-shape-cues-hrtf-port" data-port="timing"></span>
+        <span id="03-shape-cues-port-level" class="03-shape-cues-hrtf-port" data-port="level"></span>
+        <span id="03-shape-cues-port-frequency" class="03-shape-cues-hrtf-port" data-port="frequency"></span>
+        <span id="03-shape-cues-hrtf-kicker" class="03-shape-cues-hrtf-kicker">three cues / one filter</span>
+        <strong id="03-shape-cues-hrtf-title" class="03-shape-cues-hrtf-title">hrtf</strong>
+        <span id="03-shape-cues-hrtf-rule" class="03-shape-cues-hrtf-rule"></span>
+        <span id="03-shape-cues-hrtf-subtitle" class="03-shape-cues-hrtf-subtitle">direction filter</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="03-shape-cues"]');
+      if (!root || typeof gsap === "undefined") return;
+
+      const byId = (id) => document.getElementById(id);
+      const timing = byId("03-shape-cues-timing");
+      const level = byId("03-shape-cues-level");
+      const frequency = byId("03-shape-cues-frequency");
+      const timingLeft = byId("03-shape-cues-timing-left");
+      const timingRight = byId("03-shape-cues-timing-right");
+      const arrivalLeft = byId("03-shape-cues-arrival-left");
+      const arrivalRight = byId("03-shape-cues-arrival-right");
+      const levelLeft = byId("03-shape-cues-level-left");
+      const levelRight = byId("03-shape-cues-level-right");
+      const levelBarLeft = byId("03-shape-cues-level-bar-left");
+      const levelBarRight = byId("03-shape-cues-level-bar-right");
+      const frequencyResponse = byId("03-shape-cues-frequency-response");
+      const head = byId("03-shape-cues-head");
+      const headPaths = root.querySelectorAll('[data-draw="head"]');
+      const hrtfBlock = byId("03-shape-cues-hrtf-block");
+      const hrtfKicker = byId("03-shape-cues-hrtf-kicker");
+      const hrtfTitle = byId("03-shape-cues-hrtf-title");
+      const hrtfRule = byId("03-shape-cues-hrtf-rule");
+      const hrtfSubtitle = byId("03-shape-cues-hrtf-subtitle");
+      const rails = [
+        byId("03-shape-cues-rail-timing"),
+        byId("03-shape-cues-rail-level"),
+        byId("03-shape-cues-rail-frequency"),
+      ];
+      const ports = [
+        byId("03-shape-cues-port-timing"),
+        byId("03-shape-cues-port-level"),
+        byId("03-shape-cues-port-frequency"),
+      ];
+
+      root.querySelectorAll("[data-draw]").forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      const tl = gsap.timeline({ paused: true });
+
+      tl.set([level, frequency, head], { opacity: 0 }, 0);
+      tl.set([arrivalLeft, arrivalRight], { opacity: 0, scaleX: 0 }, 0);
+      tl.set([levelBarLeft, levelBarRight], { scaleY: 0 }, 0);
+      tl.set(rails, { opacity: 0 }, 0);
+      tl.set(ports, { backgroundColor: "#0d0d0f", borderColor: "#504b48" }, 0);
+      tl.set([hrtfKicker, hrtfTitle, hrtfSubtitle], { opacity: 0 }, 0);
+      tl.set(hrtfRule, { scaleX: 0 }, 0);
+
+      tl.fromTo(
+        timing,
+        { opacity: 0, x: -24 },
+        { opacity: 1, x: 0, duration: 0.44, ease: "power3.out" },
+        0.05,
+      );
+      tl.fromTo(
+        hrtfBlock,
+        { opacity: 0, scale: 0.97 },
+        { opacity: 0.22, scale: 1, duration: 0.44, ease: "power3.out" },
+        0.08,
+      );
+      tl.to(timingLeft, { strokeDashoffset: 0, duration: 1.0, ease: "power2.out" }, 0.34);
+      tl.to(timingRight, { strokeDashoffset: 0, duration: 1.0, ease: "power2.out" }, 0.72);
+      tl.fromTo(
+        arrivalLeft,
+        { opacity: 0, scaleX: 0 },
+        { opacity: 1, scaleX: 1, duration: 0.3, ease: "power2.out" },
+        1.58,
+      );
+      tl.fromTo(
+        arrivalRight,
+        { opacity: 0, scaleX: 0 },
+        { opacity: 1, scaleX: 1, duration: 0.3, ease: "power2.out" },
+        1.92,
+      );
+
+      tl.fromTo(
+        level,
+        { opacity: 0, x: -24 },
+        { opacity: 1, x: 0, duration: 0.44, ease: "power3.out" },
+        3.02,
+      );
+      tl.to(levelLeft, { strokeDashoffset: 0, duration: 0.92, ease: "power2.out" }, 3.3);
+      tl.to(levelRight, { strokeDashoffset: 0, duration: 0.92, ease: "power2.out" }, 3.58);
+      tl.fromTo(
+        levelBarLeft,
+        { scaleY: 0 },
+        { scaleY: 1, duration: 0.46, ease: "power3.out" },
+        4.04,
+      );
+      tl.fromTo(
+        levelBarRight,
+        { scaleY: 0 },
+        { scaleY: 1, duration: 0.46, ease: "power3.out" },
+        4.22,
+      );
+
+      tl.fromTo(
+        frequency,
+        { opacity: 0, x: -24 },
+        { opacity: 1, x: 0, duration: 0.44, ease: "power3.out" },
+        4.42,
+      );
+      tl.fromTo(
+        head,
+        { opacity: 0 },
+        { opacity: 0.46, duration: 0.5, ease: "power2.out" },
+        4.48,
+      );
+      headPaths.forEach((path, index) => {
+        tl.to(
+          path,
+          { strokeDashoffset: 0, duration: 0.72, ease: "power2.out" },
+          4.68 + index * 0.32,
+        );
+      });
+      tl.to(frequencyResponse, { strokeDashoffset: 0, duration: 0.72, ease: "power2.out" }, 4.78);
+      tl.to(
+        frequencyResponse,
+        {
+          attr: {
+            d: "M52 92 C170 20 288 150 406 72 C524 24 642 136 770 58",
+          },
+          duration: 0.72,
+          ease: "power2.inOut",
+        },
+        5.36,
+      );
+
+      tl.to(
+        hrtfBlock,
+        { opacity: 1, borderColor: "#ff6b1a", borderTopColor: "#ff6b1a", duration: 0.42, ease: "none" },
+        6.2,
+      );
+      tl.to(head, { opacity: 0.18, duration: 0.44, ease: "none" }, 6.2);
+      rails.forEach((rail, index) => {
+        const railAt = 6.28 + index * 0.34;
+        tl.set(rail, { opacity: 1 }, railAt);
+        tl.to(rail, { strokeDashoffset: 0, duration: 0.68, ease: "power2.out" }, railAt);
+        tl.to(
+          ports[index],
+          { backgroundColor: "#f0f0f0", borderColor: "#f0f0f0", duration: 0.18, ease: "none" },
+          railAt + 0.58,
+        );
+      });
+      tl.fromTo(
+        hrtfKicker,
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.36, ease: "power2.out" },
+        7.18,
+      );
+      tl.fromTo(
+        hrtfTitle,
+        { opacity: 0, x: -22 },
+        { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" },
+        7.42,
+      );
+      tl.to(hrtfRule, { scaleX: 1, duration: 0.4, ease: "power2.out" }, 7.78);
+      tl.fromTo(
+        hrtfSubtitle,
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" },
+        8.02,
+      );
+
+      const holdState = { progress: 0 };
+      tl.to(holdState, { progress: 1, duration: 9.92, ease: "none" }, 0);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["03-shape-cues"] = tl;
+    })();
+  </script>
+</template>

@@ -1,0 +1,648 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    #root * {
+      box-sizing: border-box;
+    }
+
+    [class~="04-hidden-hitch-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background: #0d0d0f;
+    }
+
+    [class~="04-hidden-hitch-scene"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      width: 100%;
+      height: 83cqh;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    [id="04-hidden-hitch-world"] {
+      position: absolute;
+      inset: 0;
+      overflow: visible;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    [class~="04-hidden-hitch-chrome"] {
+      position: absolute;
+      top: 4.6cqh;
+      left: 5.8cqw;
+      width: 88.4cqw;
+      min-height: 4.6cqh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-bottom: 1px solid #282726;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.72cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [class~="04-hidden-hitch-chrome-index"] {
+      color: #504b48;
+    }
+
+    [class~="04-hidden-hitch-instrument"] {
+      position: absolute;
+      top: 11.2cqh;
+      left: 5.8cqw;
+      width: 88.4cqw;
+      height: 66.2cqh;
+      overflow: visible;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+    }
+
+    [class~="04-hidden-hitch-grid"],
+    [class~="04-hidden-hitch-target-line"],
+    [class~="04-hidden-hitch-steady-trace"],
+    [class~="04-hidden-hitch-spike-trace"],
+    [class~="04-hidden-hitch-recovery-trace"],
+    [class~="04-hidden-hitch-gap-guide"],
+    [class~="04-hidden-hitch-marker-ring"] {
+      fill: none;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="04-hidden-hitch-grid"] {
+      stroke: #282726;
+      stroke-width: 1;
+    }
+
+    [class~="04-hidden-hitch-target-line"] {
+      stroke: #504b48;
+      stroke-width: 2;
+    }
+
+    [class~="04-hidden-hitch-steady-trace"],
+    [class~="04-hidden-hitch-recovery-trace"] {
+      stroke: #f0f0f0;
+      stroke-width: 5;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+
+    [class~="04-hidden-hitch-steady-trace"] {
+      opacity: 0.82;
+    }
+
+    [class~="04-hidden-hitch-recovery-trace"] {
+      opacity: 0.95;
+    }
+
+    [class~="04-hidden-hitch-pre-point"],
+    [class~="04-hidden-hitch-post-point"] {
+      fill: #f0f0f0;
+    }
+
+    [class~="04-hidden-hitch-pre-point"] {
+      opacity: 0.82;
+    }
+
+    [class~="04-hidden-hitch-spike-trace"] {
+      stroke: #ff6b1a;
+      stroke-width: 9;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+
+    [class~="04-hidden-hitch-spike-point"] {
+      fill: #ff6b1a;
+    }
+
+    [class~="04-hidden-hitch-hitch-gap"] {
+      fill: #ff6b1a;
+      transform-origin: 940px 125px;
+    }
+
+    [class~="04-hidden-hitch-gap-guide"] {
+      stroke: #ff6b1a;
+      stroke-width: 2;
+      stroke-linecap: square;
+    }
+
+    [class~="04-hidden-hitch-marker-ring"] {
+      stroke: #ff6b1a;
+      stroke-width: 4;
+    }
+
+    [class~="04-hidden-hitch-axis-label"] {
+      position: absolute;
+      left: 1.25%;
+      top: 53.3%;
+      color: #f0f0f0;
+      font-family: "IBM Plex Mono";
+      font-size: 0.78cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [class~="04-hidden-hitch-axis-label"]::before {
+      content: "/";
+      padding-right: 0.55cqw;
+      color: #ff6b1a;
+    }
+
+    [class~="04-hidden-hitch-average"] {
+      position: absolute;
+      top: 4.2%;
+      right: 2.2%;
+      width: 12.8cqw;
+      min-height: 8.2cqh;
+      display: flex;
+      align-items: baseline;
+      justify-content: flex-end;
+      gap: 0.5cqw;
+      padding-top: 1.25cqh;
+      border-top: 1px solid #ff6b1a;
+      transform-origin: 100% 0%;
+    }
+
+    [class~="04-hidden-hitch-average-prefix"] {
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.72cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [class~="04-hidden-hitch-average-value"] {
+      display: inline-block;
+      width: 4.2cqw;
+      color: #f0f0f0;
+      font-size: 2.6cqw;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.04em;
+      line-height: 0.8;
+      text-align: right;
+      transform-origin: 100% 50%;
+    }
+
+    [class~="04-hidden-hitch-spike-label"] {
+      position: absolute;
+      top: 1.8%;
+      left: 58.75%;
+      width: 13cqw;
+      margin-left: -6.5cqw;
+      color: #ff6b1a;
+      font-size: 4.2cqw;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+      text-align: center;
+      text-transform: lowercase;
+    }
+
+    [class~="04-hidden-hitch-spike-label"] span {
+      margin-left: 0.35cqw;
+      font-size: 1.55cqw;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="04-hidden-hitch"
+    data-width="1080"
+    data-height="1920"
+    data-duration="9.14"
+  >
+    <div
+      class="clip 04-hidden-hitch-ground"
+      data-start="0"
+      data-duration="9.14"
+      data-track-index="0"
+      aria-hidden="true"
+    ></div>
+
+    <div
+      class="clip 04-hidden-hitch-scene"
+      data-start="0"
+      data-duration="9.14"
+      data-track-index="1"
+    >
+      <div id="04-hidden-hitch-world" class="04-hidden-hitch-world">
+        <div class="04-hidden-hitch-chrome">
+          <span>frame time / ms</span>
+          <span class="04-hidden-hitch-chrome-index">04 / trace</span>
+        </div>
+
+        <div class="04-hidden-hitch-instrument">
+          <div id="04-hidden-hitch-target-label" class="04-hidden-hitch-axis-label">16.7 ms</div>
+
+          <div id="04-hidden-hitch-average" class="04-hidden-hitch-average">
+            <span class="04-hidden-hitch-average-prefix">avg ≈</span>
+            <span id="04-hidden-hitch-average-value" class="04-hidden-hitch-average-value">0</span>
+          </div>
+
+          <div id="04-hidden-hitch-spike-label" class="04-hidden-hitch-spike-label">
+            40<span>ms</span>
+          </div>
+
+          <svg
+            viewBox="0 0 1600 680"
+            width="100%"
+            height="100%"
+            preserveAspectRatio="none"
+            role="img"
+            aria-label="Frame-time trace with a single forty millisecond spike"
+          >
+            <defs>
+              <filter id="04-hidden-hitch-streak-filter" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur
+                  id="04-hidden-hitch-streak-blur"
+                  in="SourceGraphic"
+                  stdDeviation="0 0"
+                />
+              </filter>
+            </defs>
+
+            <g aria-hidden="true">
+              <path class="04-hidden-hitch-grid" d="M70 70H1530 M70 180H1530 M70 290H1530 M70 400H1530 M70 510H1530 M70 610H1530" />
+              <path class="04-hidden-hitch-grid" d="M70 70V610 M250 70V610 M430 70V610 M610 70V610 M790 70V610 M970 70V610 M1150 70V610 M1330 70V610 M1530 70V610" />
+            </g>
+
+            <path
+              id="04-hidden-hitch-target-line"
+              class="04-hidden-hitch-target-line"
+              data-draw="true"
+              d="M70 400H1530"
+            />
+
+            <path
+              id="04-hidden-hitch-steady-1"
+              class="04-hidden-hitch-steady-trace"
+              data-draw="true"
+              d="M70 401L160 394L250 404"
+            />
+            <path
+              id="04-hidden-hitch-steady-2"
+              class="04-hidden-hitch-steady-trace"
+              data-draw="true"
+              d="M250 404L340 397L430 407L520 396"
+            />
+            <path
+              id="04-hidden-hitch-steady-3"
+              class="04-hidden-hitch-steady-trace"
+              data-draw="true"
+              d="M520 396L610 402L690 393L760 398"
+            />
+
+            <g aria-hidden="true">
+              <circle class="04-hidden-hitch-pre-point" cx="70" cy="401" r="7" />
+              <circle class="04-hidden-hitch-pre-point" cx="160" cy="394" r="7" />
+              <circle class="04-hidden-hitch-pre-point" cx="250" cy="404" r="7" />
+              <circle class="04-hidden-hitch-pre-point" cx="340" cy="397" r="7" />
+              <circle class="04-hidden-hitch-pre-point" cx="430" cy="407" r="7" />
+              <circle class="04-hidden-hitch-pre-point" cx="520" cy="396" r="7" />
+              <circle class="04-hidden-hitch-pre-point" cx="610" cy="402" r="7" />
+              <circle class="04-hidden-hitch-pre-point" cx="690" cy="393" r="7" />
+              <circle class="04-hidden-hitch-pre-point" cx="760" cy="398" r="7" />
+            </g>
+
+            <rect
+              id="04-hidden-hitch-hitch-gap"
+              class="04-hidden-hitch-hitch-gap"
+              x="924"
+              y="125"
+              width="32"
+              height="275"
+            />
+
+            <g filter="url(#04-hidden-hitch-streak-filter)">
+              <path
+                id="04-hidden-hitch-spike-up"
+                class="04-hidden-hitch-spike-trace"
+                data-draw="true"
+                d="M760 398L850 400L940 125"
+              />
+              <circle
+                id="04-hidden-hitch-spike-point"
+                class="04-hidden-hitch-spike-point"
+                cx="940"
+                cy="125"
+                r="13"
+              />
+            </g>
+
+            <path
+              id="04-hidden-hitch-spike-down"
+              class="04-hidden-hitch-spike-trace"
+              data-draw="true"
+              d="M940 125L1010 405"
+            />
+
+            <path
+              id="04-hidden-hitch-gap-guide"
+              class="04-hidden-hitch-gap-guide"
+              data-draw="true"
+              d="M979 125V400M964 125H994M964 400H994"
+            />
+
+            <path
+              id="04-hidden-hitch-recovery-1"
+              class="04-hidden-hitch-recovery-trace"
+              data-draw="true"
+              d="M1010 405L1045 430L1080 445L1115 438L1150 426L1185 419L1220 412L1255 407"
+            />
+            <path
+              id="04-hidden-hitch-recovery-2"
+              class="04-hidden-hitch-recovery-trace"
+              data-draw="true"
+              d="M1255 407L1290 404L1330 401L1370 399L1410 400L1450 398L1510 400"
+            />
+
+            <g aria-hidden="true">
+              <circle class="04-hidden-hitch-post-point" cx="1010" cy="405" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1045" cy="430" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1080" cy="445" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1115" cy="438" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1150" cy="426" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1185" cy="419" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1220" cy="412" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1255" cy="407" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1290" cy="404" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1330" cy="401" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1370" cy="399" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1410" cy="400" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1450" cy="398" r="7" />
+              <circle class="04-hidden-hitch-post-point" cx="1510" cy="400" r="7" />
+            </g>
+
+            <circle
+              id="04-hidden-hitch-marker-ring"
+              class="04-hidden-hitch-marker-ring"
+              data-draw="true"
+              cx="940"
+              cy="125"
+              r="30"
+            />
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="04-hidden-hitch"]');
+      if (!root || typeof gsap === "undefined") return;
+
+      const byId = (id) => Array.from(root.querySelectorAll("[id]")).find((node) => node.id === id);
+      const world = byId("04-hidden-hitch-world");
+      const scene = root.querySelector('[class~="04-hidden-hitch-scene"]');
+      const spikePoint = byId("04-hidden-hitch-spike-point");
+      const blurNode = byId("04-hidden-hitch-streak-blur");
+      const average = byId("04-hidden-hitch-average");
+      const averageValue = byId("04-hidden-hitch-average-value");
+
+      root.querySelectorAll("[data-draw]").forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      const cam = { scale: 1, x: 0, y: 0 };
+      const drift = { p: 0 };
+      const applyCamera = () => {
+        const dx = Math.sin(drift.p) * 4;
+        const dy = Math.sin(drift.p * 1.31) * 2;
+        world.style.transform = `translate(${cam.x + dx}px, ${cam.y + dy}px) scale(${cam.scale})`;
+      };
+
+      applyCamera();
+      const sceneRect = scene.getBoundingClientRect();
+      const spikeRect = spikePoint.getBoundingClientRect();
+      const spikeOffsetX = spikeRect.left + spikeRect.width / 2 - (sceneRect.left + sceneRect.width / 2);
+      const spikeOffsetY = spikeRect.top + spikeRect.height / 2 - (sceneRect.top + sceneRect.height / 2);
+      const focusScale = 1.18;
+      const focusX = -spikeOffsetX * focusScale;
+      const focusY = -spikeOffsetY * focusScale;
+
+      cam.scale = 0.96;
+      cam.x = 36;
+      cam.y = 0;
+      applyCamera();
+
+      const blurProxy = { v: 20 };
+      const writeBlur = () => blurNode.setAttribute("stdDeviation", `0 ${blurProxy.v}`);
+      writeBlur();
+
+      const countState = { value: 0 };
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo(
+        root.querySelector('[class~="04-hidden-hitch-chrome"]'),
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+        0.05,
+      );
+      tl.to(
+        byId("04-hidden-hitch-target-line"),
+        { strokeDashoffset: 0, duration: 0.75, ease: "power2.out" },
+        0.05,
+      );
+
+      ["04-hidden-hitch-steady-1", "04-hidden-hitch-steady-2", "04-hidden-hitch-steady-3"].forEach(
+        (id, index) => {
+          tl.to(
+            byId(id),
+            { strokeDashoffset: 0, duration: 0.62, ease: "power2.out" },
+            0.22 + index * 0.46,
+          );
+        },
+      );
+
+      tl.fromTo(
+        root.querySelectorAll('[class~="04-hidden-hitch-pre-point"]'),
+        { opacity: 0, scale: 0.45, transformOrigin: "center center" },
+        { opacity: 0.82, scale: 1, duration: 0.22, stagger: 0.13, ease: "power2.out" },
+        0.3,
+      );
+
+      tl.fromTo(
+        average,
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.52, ease: "power2.out" },
+        0.12,
+      );
+      tl.to(
+        countState,
+        {
+          value: 60,
+          duration: 1.62,
+          ease: "power3.out",
+          onUpdate: () => {
+            averageValue.textContent = Math.round(countState.value).toString();
+          },
+        },
+        0.22,
+      );
+      tl.fromTo(
+        averageValue,
+        { scale: 0.52 },
+        { scale: 1, duration: 1.62, ease: "power3.out" },
+        0.22,
+      );
+      tl.fromTo(
+        byId("04-hidden-hitch-target-label"),
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power1.out" },
+        1.18,
+      );
+
+      tl.to(
+        cam,
+        {
+          scale: focusScale,
+          x: focusX,
+          y: focusY,
+          duration: 1.25,
+          ease: "power3.inOut",
+          onUpdate: applyCamera,
+        },
+        2.3,
+      );
+
+      tl.to(
+        byId("04-hidden-hitch-spike-up"),
+        { strokeDashoffset: 0, duration: 0.58, ease: "power4.out" },
+        2.68,
+      );
+      tl.fromTo(
+        spikePoint,
+        { y: 275, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.58, ease: "power4.out" },
+        2.68,
+      );
+      tl.to(
+        blurProxy,
+        { v: 0, duration: 0.58, ease: "power4.out", onUpdate: writeBlur },
+        2.68,
+      );
+      tl.to(
+        byId("04-hidden-hitch-spike-down"),
+        { strokeDashoffset: 0, duration: 0.58, ease: "power2.out" },
+        3.18,
+      );
+      tl.fromTo(
+        byId("04-hidden-hitch-spike-label"),
+        { opacity: 0, y: 16 },
+        { opacity: 1, y: 0, duration: 0.52, ease: "power2.out" },
+        3.24,
+      );
+      tl.fromTo(
+        byId("04-hidden-hitch-hitch-gap"),
+        { opacity: 0, scaleY: 0.08 },
+        { opacity: 0.1, scaleY: 1, duration: 0.56, ease: "power2.out" },
+        3.58,
+      );
+      tl.to(
+        byId("04-hidden-hitch-gap-guide"),
+        { strokeDashoffset: 0, duration: 0.62, ease: "power2.out" },
+        4.08,
+      );
+
+      tl.to(
+        cam,
+        {
+          scale: 0.98,
+          x: 0,
+          y: 0,
+          duration: 1.28,
+          ease: "power2.inOut",
+          onUpdate: applyCamera,
+        },
+        6.3,
+      );
+      tl.to(
+        byId("04-hidden-hitch-recovery-1"),
+        { strokeDashoffset: 0, duration: 0.62, ease: "power2.out" },
+        6.32,
+      );
+      tl.to(
+        byId("04-hidden-hitch-recovery-2"),
+        { strokeDashoffset: 0, duration: 0.62, ease: "power2.out" },
+        6.76,
+      );
+      tl.fromTo(
+        root.querySelectorAll('[class~="04-hidden-hitch-post-point"]'),
+        { opacity: 0, scale: 0.42, transformOrigin: "center center" },
+        { opacity: 1, scale: 1, duration: 0.2, stagger: 0.065, ease: "power2.out" },
+        6.38,
+      );
+      tl.to(average, { scale: 1.045, duration: 0.24, ease: "power2.out" }, 6.72);
+      tl.to(average, { scale: 1, duration: 0.46, ease: "power2.inOut" }, 6.96);
+      tl.to(
+        byId("04-hidden-hitch-marker-ring"),
+        { strokeDashoffset: 0, duration: 0.5, ease: "power2.out" },
+        7.28,
+      );
+
+      tl.to(
+        drift,
+        {
+          p: Math.PI * 2 * 1.35,
+          duration: 8.64,
+          ease: "none",
+          onUpdate: applyCamera,
+        },
+        0,
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["04-hidden-hitch"] = tl;
+    })();
+  </script>
+</template>

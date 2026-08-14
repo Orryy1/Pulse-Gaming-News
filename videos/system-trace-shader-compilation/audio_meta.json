@@ -1,0 +1,1007 @@
+{
+  "bgm": {
+    "path": "assets/bgm/system-trace-tension-bed.wav",
+    "volume": 0.1
+  },
+  "bgm_pending": false,
+  "voices": [
+    {
+      "frame": 1,
+      "path": "assets/voice/01.wav",
+      "duration_s": 8.576,
+      "words": [
+        {
+          "text": "Ever",
+          "word": "Ever",
+          "start": 0,
+          "end": 0.22
+        },
+        {
+          "text": "notice",
+          "word": "notice",
+          "start": 0.22,
+          "end": 0.6
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 0.6,
+          "end": 0.84
+        },
+        {
+          "text": "PC",
+          "word": "PC",
+          "start": 0.84,
+          "end": 1.22
+        },
+        {
+          "text": "game",
+          "word": "game",
+          "start": 1.22,
+          "end": 1.54
+        },
+        {
+          "text": "hitch",
+          "word": "hitch",
+          "start": 1.54,
+          "end": 1.84
+        },
+        {
+          "text": "when",
+          "word": "when",
+          "start": 1.84,
+          "end": 2.32
+        },
+        {
+          "text": "an",
+          "word": "an",
+          "start": 2.32,
+          "end": 2.42
+        },
+        {
+          "text": "effect",
+          "word": "effect",
+          "start": 2.42,
+          "end": 2.76
+        },
+        {
+          "text": "first",
+          "word": "first",
+          "start": 2.76,
+          "end": 3.08
+        },
+        {
+          "text": "appears,",
+          "word": "appears,",
+          "start": 3.08,
+          "end": 3.66
+        },
+        {
+          "text": "then",
+          "word": "then",
+          "start": 4.06,
+          "end": 4.32
+        },
+        {
+          "text": "glide",
+          "word": "glide",
+          "start": 4.32,
+          "end": 4.68
+        },
+        {
+          "text": "through",
+          "word": "through",
+          "start": 4.68,
+          "end": 5.04
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 5.04,
+          "end": 5.2
+        },
+        {
+          "text": "same",
+          "word": "same",
+          "start": 5.2,
+          "end": 5.46
+        },
+        {
+          "text": "moment",
+          "word": "moment",
+          "start": 5.46,
+          "end": 5.74
+        },
+        {
+          "text": "later?",
+          "word": "later?",
+          "start": 5.74,
+          "end": 6.24
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 6.76,
+          "end": 6.88
+        },
+        {
+          "text": "scene",
+          "word": "scene",
+          "start": 6.88,
+          "end": 7.2
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 7.2,
+          "end": 7.5
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 7.5,
+          "end": 7.66
+        },
+        {
+          "text": "be",
+          "word": "be",
+          "start": 7.66,
+          "end": 7.86
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 7.86,
+          "end": 8
+        },
+        {
+          "text": "problem.",
+          "word": "problem.",
+          "start": 8,
+          "end": 8.28
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Ever notice a PC game hitch when an effect first appears, then glide through the same moment later? The scene may not be the problem."
+      }
+    },
+    {
+      "frame": 2,
+      "path": "assets/voice/02.wav",
+      "duration_s": 10.176,
+      "words": [
+        {
+          "text": "Modern",
+          "word": "Modern",
+          "start": 0,
+          "end": 0.3
+        },
+        {
+          "text": "graphics,",
+          "word": "graphics,",
+          "start": 0.3,
+          "end": 0.76
+        },
+        {
+          "text": "APIs,",
+          "word": "APIs,",
+          "start": 1.22,
+          "end": 1.62
+        },
+        {
+          "text": "bundle",
+          "word": "bundle",
+          "start": 1.92,
+          "end": 2.16
+        },
+        {
+          "text": "shaders,",
+          "word": "shaders,",
+          "start": 2.16,
+          "end": 2.68
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 3.02,
+          "end": 3.16
+        },
+        {
+          "text": "fixed",
+          "word": "fixed",
+          "start": 3.16,
+          "end": 3.44
+        },
+        {
+          "text": "settings",
+          "word": "settings",
+          "start": 3.44,
+          "end": 3.94
+        },
+        {
+          "text": "into",
+          "word": "into",
+          "start": 3.94,
+          "end": 4.5
+        },
+        {
+          "text": "pipeline",
+          "word": "pipeline",
+          "start": 4.5,
+          "end": 4.98
+        },
+        {
+          "text": "state",
+          "word": "state",
+          "start": 4.98,
+          "end": 5.4
+        },
+        {
+          "text": "objects.",
+          "word": "objects.",
+          "start": 5.4,
+          "end": 6.02
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 6.6,
+          "end": 6.72
+        },
+        {
+          "text": "GPU",
+          "word": "GPU",
+          "start": 6.72,
+          "end": 7.1
+        },
+        {
+          "text": "needs",
+          "word": "needs",
+          "start": 7.1,
+          "end": 7.82
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 7.82,
+          "end": 8.06
+        },
+        {
+          "text": "right",
+          "word": "right",
+          "start": 8.06,
+          "end": 8.24
+        },
+        {
+          "text": "combination",
+          "word": "combination",
+          "start": 8.24,
+          "end": 8.86
+        },
+        {
+          "text": "before",
+          "word": "before",
+          "start": 8.86,
+          "end": 9.34
+        },
+        {
+          "text": "it",
+          "word": "it",
+          "start": 9.34,
+          "end": 9.52
+        },
+        {
+          "text": "draws.",
+          "word": "draws.",
+          "start": 9.52,
+          "end": 9.84
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Modern graphics, APIs, bundle shaders, and fixed settings into pipeline state objects. The GPU needs the right combination before it draws."
+      }
+    },
+    {
+      "frame": 3,
+      "path": "assets/voice/03.wav",
+      "duration_s": 8.235,
+      "words": [
+        {
+          "text": "If",
+          "word": "If",
+          "start": 0,
+          "end": 0.14
+        },
+        {
+          "text": "that",
+          "word": "that",
+          "start": 0.14,
+          "end": 0.34
+        },
+        {
+          "text": "pipeline",
+          "word": "pipeline",
+          "start": 0.34,
+          "end": 0.8
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 0.8,
+          "end": 1.1
+        },
+        {
+          "text": "missing,",
+          "word": "missing,",
+          "start": 1.1,
+          "end": 1.54
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 1.94,
+          "end": 2.06
+        },
+        {
+          "text": "game",
+          "word": "game",
+          "start": 2.06,
+          "end": 2.3
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 2.3,
+          "end": 2.56
+        },
+        {
+          "text": "build",
+          "word": "build",
+          "start": 2.56,
+          "end": 2.9
+        },
+        {
+          "text": "it",
+          "word": "it",
+          "start": 2.9,
+          "end": 3.1
+        },
+        {
+          "text": "as",
+          "word": "as",
+          "start": 3.1,
+          "end": 3.46
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 3.46,
+          "end": 3.64
+        },
+        {
+          "text": "effect",
+          "word": "effect",
+          "start": 3.64,
+          "end": 3.96
+        },
+        {
+          "text": "arrives.",
+          "word": "arrives.",
+          "start": 3.96,
+          "end": 4.56
+        },
+        {
+          "text": "That",
+          "word": "That",
+          "start": 5.18,
+          "end": 5.34
+        },
+        {
+          "text": "work",
+          "word": "work",
+          "start": 5.34,
+          "end": 5.58
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 5.58,
+          "end": 5.82
+        },
+        {
+          "text": "interrupt",
+          "word": "interrupt",
+          "start": 5.82,
+          "end": 6.28
+        },
+        {
+          "text": "an",
+          "word": "an",
+          "start": 6.28,
+          "end": 6.56
+        },
+        {
+          "text": "otherwise",
+          "word": "otherwise",
+          "start": 6.56,
+          "end": 7.02
+        },
+        {
+          "text": "steady",
+          "word": "steady",
+          "start": 7.02,
+          "end": 7.46
+        },
+        {
+          "text": "frame.",
+          "word": "frame.",
+          "start": 7.46,
+          "end": 7.9
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "If that pipeline is missing, the game may build it as the effect arrives. That work can interrupt an otherwise steady frame."
+      }
+    },
+    {
+      "frame": 4,
+      "path": "assets/voice/04.wav",
+      "duration_s": 8.021,
+      "words": [
+        {
+          "text": "Once",
+          "word": "Once",
+          "start": 0,
+          "end": 0.3
+        },
+        {
+          "text": "cached,",
+          "word": "cached,",
+          "start": 0.3,
+          "end": 0.78
+        },
+        {
+          "text": "that",
+          "word": "that",
+          "start": 1.06,
+          "end": 1.18
+        },
+        {
+          "text": "pipeline",
+          "word": "pipeline",
+          "start": 1.18,
+          "end": 1.64
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 1.64,
+          "end": 1.96
+        },
+        {
+          "text": "be",
+          "word": "be",
+          "start": 1.96,
+          "end": 2.14
+        },
+        {
+          "text": "reused.",
+          "word": "reused.",
+          "start": 2.14,
+          "end": 2.76
+        },
+        {
+          "text": "A",
+          "word": "A",
+          "start": 3.36,
+          "end": 3.48
+        },
+        {
+          "text": "second",
+          "word": "second",
+          "start": 3.48,
+          "end": 3.74
+        },
+        {
+          "text": "run",
+          "word": "run",
+          "start": 3.74,
+          "end": 4
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 4,
+          "end": 4.24
+        },
+        {
+          "text": "feel",
+          "word": "feel",
+          "start": 4.24,
+          "end": 4.52
+        },
+        {
+          "text": "smoother",
+          "word": "smoother",
+          "start": 4.52,
+          "end": 5
+        },
+        {
+          "text": "even",
+          "word": "even",
+          "start": 5,
+          "end": 5.62
+        },
+        {
+          "text": "when",
+          "word": "when",
+          "start": 5.62,
+          "end": 5.82
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 5.82,
+          "end": 5.96
+        },
+        {
+          "text": "graphics",
+          "word": "graphics",
+          "start": 5.96,
+          "end": 6.22
+        },
+        {
+          "text": "settings",
+          "word": "settings",
+          "start": 6.22,
+          "end": 6.66
+        },
+        {
+          "text": "have",
+          "word": "have",
+          "start": 6.66,
+          "end": 7.02
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 7.02,
+          "end": 7.22
+        },
+        {
+          "text": "changed.",
+          "word": "changed.",
+          "start": 7.22,
+          "end": 7.7
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Once cached, that pipeline can be reused. A second run may feel smoother even when the graphics settings have not changed."
+      }
+    },
+    {
+      "frame": 5,
+      "path": "assets/voice/05.wav",
+      "duration_s": 10.24,
+      "words": [
+        {
+          "text": "Engines",
+          "word": "Engines",
+          "start": 0,
+          "end": 0.52
+        },
+        {
+          "text": "pre",
+          "word": "pre",
+          "start": 0.52,
+          "end": 0.78
+        },
+        {
+          "text": "-build",
+          "word": "-build",
+          "start": 0.78,
+          "end": 1.1
+        },
+        {
+          "text": "likely",
+          "word": "likely",
+          "start": 1.1,
+          "end": 1.5
+        },
+        {
+          "text": "pipelines",
+          "word": "pipelines",
+          "start": 1.5,
+          "end": 2.08
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 2.08,
+          "end": 2.66
+        },
+        {
+          "text": "preserve",
+          "word": "preserve",
+          "start": 2.66,
+          "end": 3.04
+        },
+        {
+          "text": "caches,",
+          "word": "caches,",
+          "start": 3.04,
+          "end": 3.54
+        },
+        {
+          "text": "but",
+          "word": "but",
+          "start": 4.04,
+          "end": 4.26
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 4.26,
+          "end": 4.38
+        },
+        {
+          "text": "possible",
+          "word": "possible",
+          "start": 4.38,
+          "end": 4.76
+        },
+        {
+          "text": "combinations",
+          "word": "combinations",
+          "start": 4.76,
+          "end": 5.44
+        },
+        {
+          "text": "are",
+          "word": "are",
+          "start": 5.44,
+          "end": 6.04
+        },
+        {
+          "text": "huge.",
+          "word": "huge.",
+          "start": 6.04,
+          "end": 6.44
+        },
+        {
+          "text": "Driver",
+          "word": "Driver",
+          "start": 7.44,
+          "end": 7.44
+        },
+        {
+          "text": "updates",
+          "word": "updates",
+          "start": 7.44,
+          "end": 7.94
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 7.94,
+          "end": 8.22
+        },
+        {
+          "text": "also",
+          "word": "also",
+          "start": 8.22,
+          "end": 8.6
+        },
+        {
+          "text": "invalidate",
+          "word": "invalidate",
+          "start": 8.6,
+          "end": 9.36
+        },
+        {
+          "text": "old",
+          "word": "old",
+          "start": 9.36,
+          "end": 9.62
+        },
+        {
+          "text": "data.",
+          "word": "data.",
+          "start": 9.62,
+          "end": 9.94
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Engines pre-build likely pipelines and preserve caches, but the possible combinations are huge. Driver updates may also invalidate old data."
+      }
+    },
+    {
+      "frame": 6,
+      "path": "assets/voice/06.wav",
+      "duration_s": 9.856,
+      "words": [
+        {
+          "text": "Not",
+          "word": "Not",
+          "start": 0,
+          "end": 0.16
+        },
+        {
+          "text": "every",
+          "word": "every",
+          "start": 0.16,
+          "end": 0.48
+        },
+        {
+          "text": "hitch",
+          "word": "hitch",
+          "start": 0.48,
+          "end": 0.74
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 0.74,
+          "end": 1.14
+        },
+        {
+          "text": "shader",
+          "word": "shader",
+          "start": 1.14,
+          "end": 1.48
+        },
+        {
+          "text": "compilation,",
+          "word": "compilation,",
+          "start": 1.48,
+          "end": 2.12
+        },
+        {
+          "text": "but",
+          "word": "but",
+          "start": 2.6,
+          "end": 2.84
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 2.84,
+          "end": 2.96
+        },
+        {
+          "text": "one",
+          "word": "one",
+          "start": 2.96,
+          "end": 3.14
+        },
+        {
+          "text": "-time",
+          "word": "-time",
+          "start": 3.14,
+          "end": 3.48
+        },
+        {
+          "text": "pause",
+          "word": "pause",
+          "start": 3.48,
+          "end": 3.96
+        },
+        {
+          "text": "tied",
+          "word": "tied",
+          "start": 3.96,
+          "end": 4.34
+        },
+        {
+          "text": "to",
+          "word": "to",
+          "start": 4.34,
+          "end": 4.58
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 4.58,
+          "end": 4.7
+        },
+        {
+          "text": "new",
+          "word": "new",
+          "start": 4.7,
+          "end": 4.88
+        },
+        {
+          "text": "effect",
+          "word": "effect",
+          "start": 4.88,
+          "end": 5.24
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 5.24,
+          "end": 5.72
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 5.72,
+          "end": 5.88
+        },
+        {
+          "text": "clue.",
+          "word": "clue.",
+          "start": 5.88,
+          "end": 6.18
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 6.72,
+          "end": 6.82
+        },
+        {
+          "text": "game",
+          "word": "game",
+          "start": 6.82,
+          "end": 7.06
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 7.06,
+          "end": 7.28
+        },
+        {
+          "text": "be",
+          "word": "be",
+          "start": 7.28,
+          "end": 7.4
+        },
+        {
+          "text": "building",
+          "word": "building",
+          "start": 7.4,
+          "end": 7.68
+        },
+        {
+          "text": "tomorrow's",
+          "word": "tomorrow's",
+          "start": 7.68,
+          "end": 8.36
+        },
+        {
+          "text": "smooth",
+          "word": "smooth",
+          "start": 8.36,
+          "end": 8.7
+        },
+        {
+          "text": "frame",
+          "word": "frame",
+          "start": 8.7,
+          "end": 9.12
+        },
+        {
+          "text": "today.",
+          "word": "today.",
+          "start": 9.12,
+          "end": 9.56
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Not every hitch is shader compilation, but a one-time pause tied to a new effect is a clue. The game may be building tomorrow's smooth frame today."
+      }
+    }
+  ],
+  "sfx": [
+    {
+      "frame": 1,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 1,
+      "file": "assets/sfx/glitch-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.64,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/whoosh-short.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/click.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/glitch-2.mp3",
+      "offset_s": 0,
+      "duration_s": 3.5,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/whoosh-short.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/chime.mp3",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    }
+  ]
+}

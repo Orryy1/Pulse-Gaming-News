@@ -1,0 +1,609 @@
+<template>
+  <div
+    id="root"
+    data-composition-id="04-narrow-search"
+    data-width="1080"
+    data-height="1920"
+    data-duration="9.716"
+    data-start="0"
+  >
+    <div
+      class="clip 04-narrow-search-ground"
+      data-start="0"
+      data-duration="9.716"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <div class="04-narrow-search-stack" data-04-narrow-search-background="traversal-stack">
+        <div><span>WORLD</span></div>
+        <div><span>BRANCH</span></div>
+        <div><span>LEAF</span></div>
+      </div>
+      <div class="04-narrow-search-ground-rule 04-narrow-search-rule-a"></div>
+      <div class="04-narrow-search-ground-rule 04-narrow-search-rule-b"></div>
+    </div>
+
+    <section
+      class="clip 04-narrow-search-content"
+      data-start="0"
+      data-duration="9.716"
+      data-track-index="1"
+      aria-label="Ray traversal narrowing through a hierarchy"
+    >
+      <div class="04-narrow-search-headline-stage">
+        <h1 class="04-narrow-search-headline" data-04-narrow-search-headline="world" data-layout-allow-overlap>world <span>/ hit</span></h1>
+        <h1 class="04-narrow-search-headline" data-04-narrow-search-headline="branch" data-layout-allow-overlap>branch <span>/ hit</span></h1>
+        <h1 class="04-narrow-search-headline" data-04-narrow-search-headline="leaf" data-layout-allow-overlap>leaf <span>/ hit</span></h1>
+        <h1 class="04-narrow-search-headline 04-narrow-search-headline-final" data-04-narrow-search-headline="empty" data-layout-allow-overlap>empty space: <span>cheap</span></h1>
+      </div>
+
+      <div class="04-narrow-search-viewport" data-04-narrow-search-viewport="hierarchy">
+        <div class="04-narrow-search-hierarchy" data-04-narrow-search-hierarchy="canvas">
+          <div class="04-narrow-search-rail"></div>
+          <div class="04-narrow-search-rail-step" data-04-narrow-search-rail-step="world-branch"></div>
+          <div class="04-narrow-search-rail-step" data-04-narrow-search-rail-step="branch-leaf"></div>
+          <div class="04-narrow-search-rail-node" data-04-narrow-search-node="world"></div>
+          <div class="04-narrow-search-rail-node" data-04-narrow-search-node="branch"></div>
+          <div class="04-narrow-search-rail-node" data-04-narrow-search-node="leaf"></div>
+          <div class="04-narrow-search-ray-marker" data-04-narrow-search-subject="ray"><span></span></div>
+
+          <div class="04-narrow-search-station 04-narrow-search-station-world" data-04-narrow-search-station="world">
+            <div class="04-narrow-search-station-label">WORLD BOUNDS</div>
+            <div class="04-narrow-search-box 04-narrow-search-world-box">
+              <div class="04-narrow-search-children">
+                <div class="04-narrow-search-child 04-narrow-search-rejected"><span>MISS</span></div>
+                <div class="04-narrow-search-child 04-narrow-search-active" data-04-narrow-search-active="world"><span>HIT</span></div>
+                <div class="04-narrow-search-child 04-narrow-search-rejected"><span>MISS</span></div>
+              </div>
+            </div>
+            <i class="04-narrow-search-station-ray" data-04-narrow-search-ray-segment="world"></i>
+          </div>
+
+          <div class="04-narrow-search-station 04-narrow-search-station-branch" data-04-narrow-search-station="branch">
+            <div class="04-narrow-search-station-label">BRANCH BOUNDS</div>
+            <div class="04-narrow-search-box 04-narrow-search-branch-box">
+              <div class="04-narrow-search-children">
+                <div class="04-narrow-search-child 04-narrow-search-rejected" data-04-narrow-search-reject="branch-a"><span>REJECT</span></div>
+                <div class="04-narrow-search-child 04-narrow-search-active" data-04-narrow-search-active="branch"><span>HIT</span></div>
+                <div class="04-narrow-search-child 04-narrow-search-rejected" data-04-narrow-search-reject="branch-b"><span>REJECT</span></div>
+              </div>
+            </div>
+            <i class="04-narrow-search-station-ray" data-04-narrow-search-ray-segment="branch"></i>
+          </div>
+
+          <div class="04-narrow-search-station 04-narrow-search-station-leaf" data-04-narrow-search-station="leaf">
+            <div class="04-narrow-search-station-label">LEAF BOUNDS / TRIANGLE TESTS</div>
+            <div class="04-narrow-search-box 04-narrow-search-leaf-box">
+              <svg class="04-narrow-search-triangles" viewBox="0 0 600 220" preserveAspectRatio="none" aria-hidden="true">
+                <polygon data-04-narrow-search-triangle="reject-a" points="20,200 100,30 180,200"></polygon>
+                <polygon data-04-narrow-search-triangle="hit" points="220,200 300,30 380,200"></polygon>
+                <polygon data-04-narrow-search-triangle="reject-b" points="420,200 500,30 580,200"></polygon>
+              </svg>
+              <div class="04-narrow-search-hit-point" data-04-narrow-search-hit-point="true"></div>
+            </div>
+            <i class="04-narrow-search-station-ray 04-narrow-search-leaf-ray" data-04-narrow-search-ray-segment="leaf"></i>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <style>
+      @font-face {
+        font-family: "Space Grotesk";
+        src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 300 900;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Mono";
+        src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Mono";
+        src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Mono";
+        src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+      }
+
+      #root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        container-type: size;
+        color: #F0F0F0;
+      }
+
+      #root,
+      #root * {
+        box-sizing: border-box;
+      }
+
+      [class~="04-narrow-search-ground"] {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background: #0D0D0F;
+      }
+
+      [class~="04-narrow-search-stack"] {
+        position: absolute;
+        left: 1.8cqw;
+        top: 21cqh;
+        width: 10cqw;
+        height: 49cqh;
+        display: grid;
+        grid-template-rows: repeat(3, 1fr);
+        gap: 4.5cqh;
+        opacity: 0.28;
+      }
+
+      [class~="04-narrow-search-stack"] div {
+        position: relative;
+        border: 1px solid #504B48;
+        background: #1A1918;
+      }
+
+      [class~="04-narrow-search-stack"] span {
+        position: absolute;
+        left: 1cqw;
+        bottom: 1cqh;
+        color: #7F7B79;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 1.2cqw;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: 0.14em;
+        writing-mode: vertical-rl;
+      }
+
+      [class~="04-narrow-search-ground-rule"] {
+        position: absolute;
+        left: 0;
+        width: 100%;
+        height: 1px;
+        background: #282726;
+      }
+
+      [class~="04-narrow-search-rule-a"] { top: 20cqh; }
+      [class~="04-narrow-search-rule-b"] { top: 72cqh; }
+
+      [class~="04-narrow-search-content"] {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        font-family: "Space Grotesk", sans-serif;
+      }
+
+      [class~="04-narrow-search-headline-stage"] {
+        position: absolute;
+        left: 5.5cqw;
+        top: 5.2cqh;
+        width: 89cqw;
+        height: 11.5cqh;
+        perspective: 900px;
+        z-index: 8;
+      }
+
+      [class~="04-narrow-search-headline"] {
+        position: absolute;
+        inset: 0;
+        width: 89cqw;
+        margin: 0;
+        color: #F0F0F0;
+        font-size: 9.4cqw;
+        font-weight: 900;
+        line-height: 0.88;
+        letter-spacing: -0.04em;
+        text-transform: lowercase;
+        transform-origin: 50% 55%;
+      }
+
+      [class~="04-narrow-search-headline"] span {
+        color: #FF6B1A;
+      }
+
+      [class~="04-narrow-search-headline-final"] {
+        font-size: 7.5cqw;
+      }
+
+      [class~="04-narrow-search-viewport"] {
+        position: absolute;
+        left: 5.5cqw;
+        top: 21cqh;
+        width: 89cqw;
+        height: 50cqh;
+        overflow: hidden;
+        border-top: 1px solid #282726;
+        border-bottom: 1px solid #282726;
+      }
+
+      [class~="04-narrow-search-hierarchy"] {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 89cqw;
+        height: 82cqh;
+      }
+
+      [class~="04-narrow-search-rail"] {
+        position: absolute;
+        left: 8.2cqw;
+        top: 9.8cqh;
+        width: 1px;
+        height: 58cqh;
+        background: #504B48;
+      }
+
+      [class~="04-narrow-search-rail-step"] {
+        position: absolute;
+        left: 8.05cqw;
+        width: 0.4cqw;
+        height: 29cqh;
+        background: #FF6B1A;
+        transform-origin: 50% 0;
+      }
+
+      [data-04-narrow-search-rail-step="world-branch"] { top: 9.8cqh; }
+      [data-04-narrow-search-rail-step="branch-leaf"] { top: 38.8cqh; }
+
+      [class~="04-narrow-search-rail-node"] {
+        position: absolute;
+        left: 6.95cqw;
+        width: 2.6cqw;
+        height: 2.6cqw;
+        background: #282726;
+        border: 1px solid #504B48;
+      }
+
+      [data-04-narrow-search-node="world"] { top: 8.9cqh; background: #FF6B1A; border-color: #FF6B1A; }
+      [data-04-narrow-search-node="branch"] { top: 37.9cqh; }
+      [data-04-narrow-search-node="leaf"] { top: 66.9cqh; }
+
+      [class~="04-narrow-search-ray-marker"] {
+        position: absolute;
+        left: 6.65cqw;
+        top: 8.55cqh;
+        width: 3.2cqw;
+        height: 3.2cqw;
+        background: #FF6B1A;
+        border: 2px solid #0D0D0F;
+        z-index: 7;
+      }
+
+      [class~="04-narrow-search-ray-marker"] span {
+        position: absolute;
+        left: 0.75cqw;
+        top: 0.75cqw;
+        width: 1.1cqw;
+        height: 1.1cqw;
+        background: #0D0D0F;
+      }
+
+      [class~="04-narrow-search-station"] {
+        position: absolute;
+        left: 0;
+        width: 89cqw;
+        height: 22cqh;
+      }
+
+      [class~="04-narrow-search-station-world"] { top: 0; }
+      [class~="04-narrow-search-station-branch"] { top: 29cqh; }
+      [class~="04-narrow-search-station-leaf"] { top: 58cqh; }
+
+      [class~="04-narrow-search-station-label"] {
+        position: absolute;
+        left: 16cqw;
+        top: 0;
+        color: #FF6B1A;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 1.4cqw;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      [class~="04-narrow-search-box"] {
+        position: absolute;
+        top: 2.2cqh;
+        height: 17cqh;
+        background: #0D0D0F;
+        border: 1px solid #504B48;
+        transform-origin: 50% 50%;
+      }
+
+      [class~="04-narrow-search-world-box"] { left: 16cqw; width: 66cqw; }
+      [class~="04-narrow-search-branch-box"] { left: 22cqw; width: 55cqw; }
+      [class~="04-narrow-search-leaf-box"] { left: 29cqw; width: 43cqw; border-color: #FF6B1A; }
+
+      [class~="04-narrow-search-children"] {
+        position: absolute;
+        left: 2cqw;
+        right: 2cqw;
+        top: 4.3cqh;
+        bottom: 2cqh;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1cqw;
+      }
+
+      [class~="04-narrow-search-child"] {
+        position: relative;
+        display: grid;
+        place-items: center;
+        background: #1A1918;
+        border: 1px solid #504B48;
+        color: #F0F0F0;
+      }
+
+      [class~="04-narrow-search-child"] span {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 1.4cqw;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      [class~="04-narrow-search-rejected"] {
+        opacity: 0.24;
+      }
+
+      [class~="04-narrow-search-active"] {
+        border-color: #FF6B1A;
+        color: #FF6B1A;
+      }
+
+      [class~="04-narrow-search-station-ray"] {
+        position: absolute;
+        left: 8.2cqw;
+        top: 10.5cqh;
+        width: 40cqw;
+        height: 0.35cqw;
+        display: block;
+        background: #FF6B1A;
+        transform-origin: 0 50%;
+        z-index: 5;
+      }
+
+      [class~="04-narrow-search-triangles"] {
+        position: absolute;
+        left: 3cqw;
+        top: 3.5cqh;
+        width: 37cqw;
+        height: 11cqh;
+        overflow: visible;
+      }
+
+      [class~="04-narrow-search-triangles"] polygon {
+        fill: none;
+        stroke: #504B48;
+        stroke-width: 2;
+        vector-effect: non-scaling-stroke;
+      }
+
+      [class~="04-narrow-search-hit-point"] {
+        position: absolute;
+        left: 20.6cqw;
+        top: 7.4cqh;
+        width: 2.2cqw;
+        height: 2.2cqw;
+        background: #FF6B1A;
+        border: 2px solid #0D0D0F;
+        transform-origin: 50% 50%;
+        z-index: 6;
+      }
+
+      [class~="04-narrow-search-leaf-ray"] {
+        width: 42.5cqw;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script>
+      (() => {
+        const headlineWorld = document.querySelector('[data-04-narrow-search-headline="world"]');
+        const headlineBranch = document.querySelector('[data-04-narrow-search-headline="branch"]');
+        const headlineLeaf = document.querySelector('[data-04-narrow-search-headline="leaf"]');
+        const headlineEmpty = document.querySelector('[data-04-narrow-search-headline="empty"]');
+        const viewport = document.querySelector('[data-04-narrow-search-viewport="hierarchy"]');
+        const hierarchy = document.querySelector('[data-04-narrow-search-hierarchy="canvas"]');
+        const marker = document.querySelector('[data-04-narrow-search-subject="ray"]');
+        const railWorldBranch = document.querySelector('[data-04-narrow-search-rail-step="world-branch"]');
+        const railBranchLeaf = document.querySelector('[data-04-narrow-search-rail-step="branch-leaf"]');
+        const nodeWorld = document.querySelector('[data-04-narrow-search-node="world"]');
+        const nodeBranch = document.querySelector('[data-04-narrow-search-node="branch"]');
+        const nodeLeaf = document.querySelector('[data-04-narrow-search-node="leaf"]');
+        const worldBox = document.querySelector('[class~="04-narrow-search-world-box"]');
+        const branchBox = document.querySelector('[class~="04-narrow-search-branch-box"]');
+        const leafBox = document.querySelector('[class~="04-narrow-search-leaf-box"]');
+        const worldRejected = Array.from(document.querySelectorAll('[data-04-narrow-search-station="world"] [class~="04-narrow-search-rejected"]'));
+        const branchRejected = Array.from(document.querySelectorAll('[data-04-narrow-search-reject]'));
+        const activeWorld = document.querySelector('[data-04-narrow-search-active="world"]');
+        const activeBranch = document.querySelector('[data-04-narrow-search-active="branch"]');
+        const rayWorld = document.querySelector('[data-04-narrow-search-ray-segment="world"]');
+        const rayBranch = document.querySelector('[data-04-narrow-search-ray-segment="branch"]');
+        const rayLeaf = document.querySelector('[data-04-narrow-search-ray-segment="leaf"]');
+        const triangleRejectA = document.querySelector('[data-04-narrow-search-triangle="reject-a"]');
+        const triangleHit = document.querySelector('[data-04-narrow-search-triangle="hit"]');
+        const triangleRejectB = document.querySelector('[data-04-narrow-search-triangle="reject-b"]');
+        const triangles = [triangleRejectA, triangleHit, triangleRejectB];
+        const hitPoint = document.querySelector('[data-04-narrow-search-hit-point="true"]');
+
+        const timeline = gsap.timeline({ paused: true });
+
+        timeline
+          .addLabel("scene-1-world", 0)
+          .set([headlineBranch, headlineLeaf, headlineEmpty, branchBox, leafBox, railWorldBranch, railBranchLeaf, activeWorld, activeBranch, ...worldRejected, ...branchRejected, ...triangles, hitPoint], { opacity: 0 }, 0)
+          .fromTo(
+            headlineWorld,
+            { x: -54, opacity: 0 },
+            { x: 0, opacity: 1, duration: 0.5, ease: "power3.out" },
+            0
+          )
+          .fromTo(
+            viewport,
+            { y: 42, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.55, ease: "power3.out" },
+            0.08
+          )
+          .fromTo(
+            marker,
+            { x: -130, opacity: 0 },
+            { x: 0, opacity: 1, duration: 0.5, ease: "power3.out" },
+            0.12
+          )
+          .fromTo(
+            worldBox,
+            { scale: 0.96, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.46, ease: "power3.out" },
+            0.42
+          )
+          .fromTo(
+            worldRejected,
+            { y: 22, opacity: 0 },
+            { y: 0, opacity: 0.24, duration: 0.36, stagger: 0.2, ease: "power3.out" },
+            0.88
+          )
+          .fromTo(
+            activeWorld,
+            { y: 22, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.36, ease: "power3.out" },
+            1.08
+          )
+          .fromTo(
+            rayWorld,
+            { scaleX: 0 },
+            { scaleX: 1, duration: 0.72, ease: "power3.out" },
+            1.56
+          )
+          .to(
+            activeWorld,
+            { backgroundColor: "#FF6B1A", color: "#0D0D0F", duration: 0.32, ease: "none" },
+            2.18
+          )
+
+          .addLabel("scene-2-branch", 2.8)
+          .to(headlineWorld, { y: -230, duration: 0.34, ease: "power4.in" }, 2.8)
+          .to(headlineWorld, { opacity: 0, duration: 0.18, ease: "power1.in" }, 2.94)
+          .set(headlineWorld, { opacity: 0 }, 3.14)
+          .set(headlineBranch, { y: 230, opacity: 0.35 }, 3.14)
+          .to(headlineBranch, { y: 0, opacity: 1, duration: 0.34, ease: "power4.out" }, 3.14)
+          .to(hierarchy, { y: -557, duration: 1.05, ease: "power3.inOut" }, 2.8)
+          .to(marker, { y: 557, duration: 1.05, ease: "power3.inOut" }, 2.8)
+          .fromTo(
+            railWorldBranch,
+            { scaleY: 0, opacity: 0 },
+            { scaleY: 1, opacity: 1, duration: 0.72, ease: "power3.out" },
+            3.48
+          )
+          .to(nodeWorld, { backgroundColor: "#282726", borderColor: "#504B48", duration: 0.22, ease: "none" }, 3.44)
+          .to(nodeBranch, { backgroundColor: "#FF6B1A", borderColor: "#FF6B1A", duration: 0.22, ease: "none" }, 3.66)
+          .fromTo(
+            branchBox,
+            { scale: 0.96, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.46, ease: "power3.out" },
+            3.58
+          )
+          .fromTo(
+            branchRejected,
+            { y: 20, opacity: 0 },
+            { y: 0, opacity: 0.24, duration: 0.38, stagger: 0.22, ease: "power3.out" },
+            4.02
+          )
+          .fromTo(
+            activeBranch,
+            { y: 20, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.38, ease: "power3.out" },
+            4.2
+          )
+          .fromTo(
+            rayBranch,
+            { scaleX: 0 },
+            { scaleX: 1, duration: 0.68, ease: "power3.out" },
+            4.66
+          )
+          .to(
+            activeBranch,
+            { backgroundColor: "#FF6B1A", color: "#0D0D0F", duration: 0.32, ease: "none" },
+            5.24
+          )
+
+          .addLabel("scene-3-leaf", 5.9)
+          .to(headlineBranch, { y: -230, duration: 0.34, ease: "power4.in" }, 5.9)
+          .to(headlineBranch, { opacity: 0, duration: 0.18, ease: "power1.in" }, 6.04)
+          .set(headlineBranch, { opacity: 0 }, 6.24)
+          .set(headlineLeaf, { y: 230, opacity: 0.35 }, 6.24)
+          .to(headlineLeaf, { y: 0, opacity: 1, duration: 0.34, ease: "power4.out" }, 6.24)
+          .to(hierarchy, { y: -1114, duration: 1.05, ease: "power3.inOut" }, 5.9)
+          .to(marker, { y: 1114, duration: 1.05, ease: "power3.inOut" }, 5.9)
+          .fromTo(
+            railBranchLeaf,
+            { scaleY: 0, opacity: 0 },
+            { scaleY: 1, opacity: 1, duration: 0.72, ease: "power3.out" },
+            6.48
+          )
+          .to(nodeBranch, { backgroundColor: "#282726", borderColor: "#504B48", duration: 0.22, ease: "none" }, 6.44)
+          .to(nodeLeaf, { backgroundColor: "#FF6B1A", borderColor: "#FF6B1A", duration: 0.22, ease: "none" }, 6.66)
+          .fromTo(
+            leafBox,
+            { scale: 0.96, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.46, ease: "power3.out" },
+            6.52
+          )
+          .fromTo(
+            triangles,
+            { y: 20, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.34, stagger: 0.18, ease: "power3.out" },
+            6.74
+          )
+          .fromTo(
+            rayLeaf,
+            { scaleX: 0 },
+            { scaleX: 1, duration: 0.78, ease: "power3.out" },
+            6.78
+          )
+          .to(triangleRejectA, { stroke: "#F0F0F0", duration: 0.2, ease: "none" }, 7.14)
+          .to(triangleRejectA, { stroke: "#282726", opacity: 0.25, duration: 0.24, ease: "none" }, 7.36)
+          .to(triangleRejectB, { stroke: "#F0F0F0", duration: 0.2, ease: "none" }, 7.42)
+          .to(triangleRejectB, { stroke: "#282726", opacity: 0.25, duration: 0.24, ease: "none" }, 7.64)
+          .to(marker, { x: 450, duration: 0.84, ease: "power3.inOut" }, 7.04)
+          .to(triangleHit, { stroke: "#FF6B1A", fill: "#FF6B1A", duration: 0.32, ease: "none" }, 7.7)
+          .fromTo(
+            hitPoint,
+            { scale: 0.2, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.38, ease: "power3.out" },
+            7.7
+          )
+          .to(headlineLeaf, { scale: 0.8, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 7.72)
+          .to(headlineLeaf, { opacity: 0.15, duration: 0.2, ease: "none" }, 7.72)
+          .set(headlineLeaf, { opacity: 0 }, 7.92)
+          .set(headlineEmpty, { opacity: 0.15, scale: 1.25, filter: "blur(10px)" }, 7.92)
+          .to(
+            headlineEmpty,
+            { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.5, ease: "expo.out" },
+            7.92
+          );
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["04-narrow-search"] = timeline;
+      })();
+    </script>
+  </div>
+</template>

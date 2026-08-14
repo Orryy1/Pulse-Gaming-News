@@ -1,0 +1,763 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      isolation: isolate;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    [class~="01-two-speakers-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background: #0D0D0F;
+    }
+
+    [class~="01-two-speakers-ground-rule"] {
+      position: absolute;
+      top: 5.5cqh;
+      left: 5.5cqw;
+      width: 3.35cqw;
+      height: 2px;
+      background: #FF6B1A;
+    }
+
+    [class~="01-two-speakers-ground-vline"] {
+      position: absolute;
+      top: 5.5cqh;
+      bottom: 17cqh;
+      width: 1px;
+      background: #282726;
+    }
+
+    [class~="01-two-speakers-ground-vline-a"] {
+      left: 5.5cqw;
+    }
+
+    [class~="01-two-speakers-ground-vline-b"] {
+      left: 50cqw;
+    }
+
+    [class~="01-two-speakers-ground-vline-c"] {
+      right: 5.5cqw;
+    }
+
+    [class~="01-two-speakers-ground-hline"] {
+      position: absolute;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      height: 1px;
+      background: #282726;
+    }
+
+    [class~="01-two-speakers-ground-hline-a"] {
+      top: 29.4cqh;
+    }
+
+    [class~="01-two-speakers-ground-hline-b"] {
+      top: 64.2cqh;
+    }
+
+    [class~="01-two-speakers-ground-hline-c"] {
+      top: 78.3cqh;
+    }
+
+    [class~="01-two-speakers-scene"] {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    [class~="01-two-speakers-headline"] {
+      position: absolute;
+      top: 7.55cqh;
+      left: 5.5cqw;
+      width: 78cqw;
+      min-height: 20cqh;
+      z-index: 9;
+      margin: 0;
+      transform-origin: 42% 45%;
+      font-family: "Space Grotesk";
+      font-size: 12.4cqw;
+      font-weight: 900;
+      line-height: 0.86;
+      letter-spacing: -0.04em;
+      text-transform: lowercase;
+    }
+
+    [class~="01-two-speakers-headline-row"] {
+      display: block;
+      white-space: nowrap;
+    }
+
+    [class~="01-two-speakers-headline-word"] {
+      display: inline-block;
+    }
+
+    [class~="01-two-speakers-headline-word"] + [class~="01-two-speakers-headline-word"] {
+      margin-left: 4cqw;
+    }
+
+    [class~="01-two-speakers-accent-word"] {
+      color: #FF6B1A;
+    }
+
+    [class~="01-two-speakers-spatial-field"] {
+      position: absolute;
+      top: 25.25cqh;
+      left: 9cqw;
+      width: 82cqw;
+      height: 39cqh;
+      z-index: 2;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    [class~="01-two-speakers-spatial-ring"] {
+      fill: none;
+      stroke: #504B48;
+      stroke-width: 2;
+      stroke-linecap: square;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="01-two-speakers-spatial-ring-accent"] {
+      stroke: #FF6B1A;
+      stroke-width: 3;
+    }
+
+    [class~="01-two-speakers-depth-target"] {
+      position: absolute;
+      top: 27.15cqh;
+      left: 60.9cqw;
+      width: 10.2cqw;
+      height: 7.3cqh;
+      z-index: 5;
+      border-top: 2px solid #FF6B1A;
+      border-right: 2px solid #FF6B1A;
+      transform-origin: 50% 50%;
+    }
+
+    [class~="01-two-speakers-depth-target"]::before,
+    [class~="01-two-speakers-depth-target"]::after {
+      content: "";
+      position: absolute;
+      background: #FF6B1A;
+    }
+
+    [class~="01-two-speakers-depth-target"]::before {
+      top: -2px;
+      left: 0;
+      width: 2.3cqw;
+      height: 2px;
+    }
+
+    [class~="01-two-speakers-depth-target"]::after {
+      top: -2px;
+      right: -2px;
+      width: 2px;
+      height: 2.3cqw;
+    }
+
+    [class~="01-two-speakers-listener"] {
+      position: absolute;
+      top: 30.7cqh;
+      left: 34cqw;
+      width: 32cqw;
+      height: 31.5cqh;
+      z-index: 4;
+      transform-origin: 50% 68%;
+    }
+
+    [class~="01-two-speakers-listener-svg"] {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    [class~="01-two-speakers-listener-fill"] {
+      fill: #1A1918;
+      stroke: #F0F0F0;
+      stroke-width: 4;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="01-two-speakers-listener-detail"] {
+      fill: none;
+      stroke: #504B48;
+      stroke-width: 3;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="01-two-speakers-listener-ear"] {
+      fill: #FF6B1A;
+    }
+
+    [class~="01-two-speakers-listener-axis"] {
+      fill: none;
+      stroke: #FF6B1A;
+      stroke-width: 2;
+      stroke-dasharray: 8 10;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="01-two-speakers-footstep"] {
+      position: absolute;
+      top: 44cqh;
+      left: 47cqw;
+      width: 6.4cqw;
+      height: 5.3cqh;
+      z-index: 6;
+      border: 1px solid #FF6B1A;
+      background: #0D0D0F;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    [class~="01-two-speakers-footstep-core"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1.05cqw;
+      height: 100%;
+      background: #FF6B1A;
+    }
+
+    [class~="01-two-speakers-footstep-label"] {
+      position: absolute;
+      top: 1.15cqh;
+      left: 1.65cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 0.82cqw;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: #F0F0F0;
+      text-transform: uppercase;
+    }
+
+    [class~="01-two-speakers-footstep-tick"] {
+      position: absolute;
+      right: -1.15cqw;
+      top: 50%;
+      width: 1.15cqw;
+      height: 1px;
+      background: #FF6B1A;
+    }
+
+    [class~="01-two-speakers-channel"] {
+      position: absolute;
+      top: 66.2cqh;
+      width: 39cqw;
+      height: 9.8cqh;
+      z-index: 5;
+      overflow: hidden;
+      border-top: 1px solid #504B48;
+      background: #1A1918;
+      color: #F0F0F0;
+      transform-origin: 50% 50%;
+    }
+
+    [data-01-two-speakers-channel="left"] {
+      left: 5.5cqw;
+    }
+
+    [data-01-two-speakers-channel="right"] {
+      right: 5.5cqw;
+    }
+
+    [class~="01-two-speakers-channel"]::before {
+      content: "";
+      position: absolute;
+      top: -1px;
+      left: 0;
+      width: 4.2cqw;
+      height: 2px;
+      background: #FF6B1A;
+    }
+
+    [class~="01-two-speakers-channel-label"] {
+      position: absolute;
+      top: 1.15cqh;
+      left: 1.55cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 0.88cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #84817F;
+      text-transform: uppercase;
+    }
+
+    [class~="01-two-speakers-channel-letter"] {
+      position: absolute;
+      left: 1.35cqw;
+      bottom: 0.7cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 4.4cqw;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    [class~="01-two-speakers-channel-bars"] {
+      position: absolute;
+      right: 1.6cqw;
+      bottom: 1.35cqh;
+      width: 20cqw;
+      height: 3.8cqh;
+      border-left: 1px solid #504B48;
+    }
+
+    [class~="01-two-speakers-channel-bar"] {
+      position: absolute;
+      left: 0;
+      height: 2px;
+      background: #504B48;
+    }
+
+    [class~="01-two-speakers-channel-bar-a"] {
+      top: 0.45cqh;
+      width: 17cqw;
+    }
+
+    [class~="01-two-speakers-channel-bar-b"] {
+      top: 1.85cqh;
+      width: 12.8cqw;
+    }
+
+    [class~="01-two-speakers-channel-bar-c"] {
+      top: 3.25cqh;
+      width: 8.5cqw;
+      background: #FF6B1A;
+    }
+
+    [class~="01-two-speakers-prefilter"] {
+      position: absolute;
+      top: 58.25cqh;
+      left: 38cqw;
+      width: 24cqw;
+      height: 4.35cqh;
+      z-index: 8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #0D0D0F;
+      background: #FF6B1A;
+      font-family: "IBM Plex Mono";
+      font-size: 1.4cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      transform-origin: 50% 50%;
+    }
+
+    [class~="01-two-speakers-cue-field"] {
+      position: absolute;
+      inset: 0;
+      z-index: 6;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    [class~="01-two-speakers-cue-path"] {
+      fill: none;
+      stroke: #FF6B1A;
+      stroke-width: 2;
+      stroke-linecap: square;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="01-two-speakers-cue-pulse"] {
+      position: absolute;
+      top: 61.75cqh;
+      left: 49cqw;
+      width: 2cqw;
+      height: 1.35cqh;
+      z-index: 7;
+      background: #FF6B1A;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    [class~="01-two-speakers-bottom-rule"] {
+      position: absolute;
+      top: 78.3cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 1px;
+      z-index: 3;
+      background: #282726;
+      transform-origin: 0% 50%;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="01-two-speakers"
+    data-width="1080"
+    data-height="1920"
+    data-duration="9.972"
+    data-start="0"
+  >
+    <div
+      class="clip 01-two-speakers-ground"
+      data-start="0"
+      data-duration="9.972"
+      data-track-index="0"
+    >
+      <div class="01-two-speakers-ground-rule"></div>
+      <div class="01-two-speakers-ground-vline 01-two-speakers-ground-vline-a"></div>
+      <div class="01-two-speakers-ground-vline 01-two-speakers-ground-vline-b"></div>
+      <div class="01-two-speakers-ground-vline 01-two-speakers-ground-vline-c"></div>
+      <div class="01-two-speakers-ground-hline 01-two-speakers-ground-hline-a"></div>
+      <div class="01-two-speakers-ground-hline 01-two-speakers-ground-hline-b"></div>
+      <div class="01-two-speakers-ground-hline 01-two-speakers-ground-hline-c"></div>
+    </div>
+
+    <div
+      class="clip 01-two-speakers-scene"
+      data-start="0"
+      data-duration="9.972"
+      data-track-index="1"
+    >
+      <h1 class="01-two-speakers-headline 01-two-speakers-headline-only">
+        <span class="01-two-speakers-headline-row">
+          <span class="01-two-speakers-headline-word" data-01-two-speakers-only-word data-layout-allow-overlap>only</span>
+          <span class="01-two-speakers-headline-word 01-two-speakers-accent-word" data-01-two-speakers-only-word data-layout-allow-overlap>two</span>
+        </span>
+        <span class="01-two-speakers-headline-row">
+          <span class="01-two-speakers-headline-word" data-01-two-speakers-only-word data-layout-allow-overlap>speakers</span>
+        </span>
+      </h1>
+
+      <h1 class="01-two-speakers-headline 01-two-speakers-headline-whole">
+        <span class="01-two-speakers-headline-row">
+          <span class="01-two-speakers-headline-word" data-layout-allow-overlap>a</span>
+          <span class="01-two-speakers-headline-word" data-layout-allow-overlap>whole</span>
+        </span>
+        <span class="01-two-speakers-headline-row">
+          <span class="01-two-speakers-headline-word 01-two-speakers-accent-word" data-layout-allow-overlap>space</span>
+        </span>
+      </h1>
+
+      <svg
+        class="01-two-speakers-spatial-field"
+        viewBox="0 0 900 760"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path
+          id="01-two-speakers-ring-a"
+          class="01-two-speakers-spatial-ring"
+          d="M 70 430 C 70 170 235 45 450 45 C 665 45 830 170 830 430"
+        ></path>
+        <path
+          id="01-two-speakers-ring-b"
+          class="01-two-speakers-spatial-ring"
+          d="M 145 455 C 145 245 275 130 450 130 C 625 130 755 245 755 455"
+        ></path>
+        <path
+          id="01-two-speakers-ring-c"
+          class="01-two-speakers-spatial-ring 01-two-speakers-spatial-ring-accent"
+          d="M 225 480 C 225 325 315 220 450 220 C 585 220 675 325 675 480"
+        ></path>
+      </svg>
+
+      <div class="01-two-speakers-depth-target"></div>
+
+      <div class="01-two-speakers-listener">
+        <svg
+          class="01-two-speakers-listener-svg"
+          viewBox="0 0 360 560"
+          preserveAspectRatio="xMidYMid meet"
+          aria-hidden="true"
+        >
+          <circle class="01-two-speakers-listener-fill" cx="180" cy="118" r="76"></circle>
+          <path
+            class="01-two-speakers-listener-fill"
+            d="M 55 505 C 62 354 111 278 180 278 C 249 278 298 354 305 505 Z"
+          ></path>
+          <path class="01-two-speakers-listener-detail" d="M 180 278 L 180 505"></path>
+          <path class="01-two-speakers-listener-detail" d="M 105 387 L 255 387"></path>
+          <path class="01-two-speakers-listener-axis" d="M 180 20 L 180 247"></path>
+          <rect class="01-two-speakers-listener-ear" x="90" y="103" width="16" height="42"></rect>
+          <rect class="01-two-speakers-listener-ear" x="254" y="103" width="16" height="42"></rect>
+        </svg>
+      </div>
+
+      <div class="01-two-speakers-footstep">
+        <span class="01-two-speakers-footstep-core"></span>
+        <span class="01-two-speakers-footstep-label">step</span>
+        <span class="01-two-speakers-footstep-tick"></span>
+      </div>
+
+      <div class="01-two-speakers-channel" data-01-two-speakers-channel="left">
+        <span class="01-two-speakers-channel-label">channel</span>
+        <span class="01-two-speakers-channel-letter">L</span>
+        <span class="01-two-speakers-channel-bars">
+          <span class="01-two-speakers-channel-bar 01-two-speakers-channel-bar-a"></span>
+          <span class="01-two-speakers-channel-bar 01-two-speakers-channel-bar-b"></span>
+          <span class="01-two-speakers-channel-bar 01-two-speakers-channel-bar-c"></span>
+        </span>
+      </div>
+
+      <div class="01-two-speakers-channel" data-01-two-speakers-channel="right">
+        <span class="01-two-speakers-channel-label">channel</span>
+        <span class="01-two-speakers-channel-letter">R</span>
+        <span class="01-two-speakers-channel-bars">
+          <span class="01-two-speakers-channel-bar 01-two-speakers-channel-bar-a"></span>
+          <span class="01-two-speakers-channel-bar 01-two-speakers-channel-bar-b"></span>
+          <span class="01-two-speakers-channel-bar 01-two-speakers-channel-bar-c"></span>
+        </span>
+      </div>
+
+      <div class="01-two-speakers-prefilter">pre-filtered</div>
+
+      <svg
+        class="01-two-speakers-cue-field"
+        viewBox="0 0 1080 1920"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path
+          id="01-two-speakers-cue-left"
+          class="01-two-speakers-cue-path"
+          d="M 540 1202 C 470 1218 365 1248 270 1273"
+        ></path>
+        <path
+          id="01-two-speakers-cue-right"
+          class="01-two-speakers-cue-path"
+          d="M 540 1202 C 610 1218 715 1248 810 1273"
+        ></path>
+      </svg>
+
+      <div class="01-two-speakers-cue-pulse" data-01-two-speakers-cue="left"></div>
+      <div class="01-two-speakers-cue-pulse" data-01-two-speakers-cue="right"></div>
+      <div class="01-two-speakers-bottom-rule"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="01-two-speakers"]');
+      const select = (selector) => root.querySelector(selector);
+      const selectAll = (selector) => Array.from(root.querySelectorAll(selector));
+
+      const onlyHeadline = select('[class~="01-two-speakers-headline-only"]');
+      const wholeHeadline = select('[class~="01-two-speakers-headline-whole"]');
+      const onlyWords = selectAll('[data-01-two-speakers-only-word]');
+      const channelLeft = select('[data-01-two-speakers-channel="left"]');
+      const channelRight = select('[data-01-two-speakers-channel="right"]');
+      const listener = select('[class~="01-two-speakers-listener"]');
+      const footstep = select('[class~="01-two-speakers-footstep"]');
+      const depthTarget = select('[class~="01-two-speakers-depth-target"]');
+      const prefilter = select('[class~="01-two-speakers-prefilter"]');
+      const pulseLeft = select('[data-01-two-speakers-cue="left"]');
+      const pulseRight = select('[data-01-two-speakers-cue="right"]');
+      const bottomRule = select('[class~="01-two-speakers-bottom-rule"]');
+      const ringA = document.getElementById("01-two-speakers-ring-a");
+      const ringB = document.getElementById("01-two-speakers-ring-b");
+      const ringC = document.getElementById("01-two-speakers-ring-c");
+      const cueLeft = document.getElementById("01-two-speakers-cue-left");
+      const cueRight = document.getElementById("01-two-speakers-cue-right");
+
+      [ringA, ringB, ringC, cueLeft, cueRight].forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = String(length);
+        path.style.strokeDashoffset = String(length);
+      });
+
+      const timeline = gsap.timeline({ paused: true });
+
+      timeline.set(wholeHeadline, { opacity: 0 }, 0);
+      timeline.addLabel("01-two-speakers-scene-1", 0);
+      timeline.fromTo(
+        onlyWords,
+        { autoAlpha: 0, y: 42 },
+        { autoAlpha: 1, y: 0, duration: 0.42, stagger: 0.12, ease: "power3.out" },
+        0.04
+      );
+      timeline.fromTo(
+        channelLeft,
+        { autoAlpha: 0, y: 44 },
+        { autoAlpha: 1, y: 0, duration: 0.46, ease: "power3.out" },
+        1.08
+      );
+      timeline.fromTo(
+        channelRight,
+        { autoAlpha: 0, y: 44 },
+        { autoAlpha: 1, y: 0, duration: 0.46, ease: "power3.out" },
+        1.42
+      );
+      timeline.fromTo(
+        bottomRule,
+        { scaleX: 0 },
+        { scaleX: 1, duration: 0.54, ease: "power2.out" },
+        2.02
+      );
+
+      timeline.addLabel("01-two-speakers-scene-2", 2.8);
+      timeline.fromTo(
+        listener,
+        { autoAlpha: 0, y: 34, scale: 0.97 },
+        { autoAlpha: 1, y: 0, scale: 1, duration: 0.54, ease: "power3.out" },
+        2.82
+      );
+      timeline.to(ringA, { strokeDashoffset: 0, duration: 0.86, ease: "power1.inOut" }, 3.0);
+      timeline.to(ringB, { strokeDashoffset: 0, duration: 0.82, ease: "power1.inOut" }, 3.42);
+      timeline.to(ringC, { strokeDashoffset: 0, duration: 0.78, ease: "power1.inOut" }, 3.84);
+      timeline.fromTo(
+        footstep,
+        { autoAlpha: 0, scale: 0.62 },
+        { autoAlpha: 1, scale: 1, duration: 0.38, ease: "power3.out" },
+        3.2
+      );
+      timeline.to(
+        footstep,
+        {
+          keyframes: [
+            { x: 45, y: -60, scale: 0.93, rotation: -4, duration: 0.46, ease: "power1.in" },
+            { x: 108, y: -172, scale: 0.81, rotation: -8, duration: 0.5, ease: "none" },
+            { x: 165, y: -300, scale: 0.68, rotation: -12, duration: 0.54, ease: "power2.out" }
+          ],
+          ease: "none"
+        },
+        3.72
+      );
+      timeline.fromTo(
+        depthTarget,
+        { opacity: 0, scale: 0.76 },
+        { opacity: 1, scale: 1, duration: 0.42, ease: "power3.out" },
+        5.06
+      );
+
+      timeline.addLabel("01-two-speakers-scene-3", 6.2);
+      timeline.to(
+        onlyHeadline,
+        { scale: 0.8, filter: "blur(10px)", duration: 0.2, ease: "power3.in" },
+        6.2
+      );
+      timeline.to(onlyHeadline, { opacity: 0.15, duration: 0.2, ease: "none" }, 6.2);
+      timeline.set(onlyHeadline, { opacity: 0 }, 6.4);
+      timeline.set(wholeHeadline, { opacity: 0.15, scale: 1.25, filter: "blur(10px)" }, 6.4);
+      timeline.to(
+        wholeHeadline,
+        { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.5, ease: "expo.out" },
+        6.4
+      );
+      timeline.fromTo(
+        prefilter,
+        { autoAlpha: 0, y: 24, scale: 0.96 },
+        { autoAlpha: 1, y: 0, scale: 1, duration: 0.42, ease: "power3.out" },
+        6.92
+      );
+      timeline.to(cueLeft, { strokeDashoffset: 0, duration: 0.58, ease: "power1.inOut" }, 7.18);
+      timeline.to(cueRight, { strokeDashoffset: 0, duration: 0.58, ease: "power1.inOut" }, 7.28);
+      timeline.fromTo(
+        [pulseLeft, pulseRight],
+        { opacity: 0, scale: 0.55 },
+        { opacity: 1, scale: 1, duration: 0.2, ease: "power2.out" },
+        7.38
+      );
+      timeline.to(
+        pulseLeft,
+        {
+          keyframes: [
+            { x: -68, y: 20, duration: 0.22, ease: "power1.in" },
+            { x: -178, y: 52, duration: 0.28, ease: "none" },
+            { x: -270, y: 76, duration: 0.3, ease: "power2.out" }
+          ],
+          ease: "none"
+        },
+        7.48
+      );
+      timeline.to(
+        pulseRight,
+        {
+          keyframes: [
+            { x: 68, y: 20, duration: 0.22, ease: "power1.in" },
+            { x: 178, y: 52, duration: 0.28, ease: "none" },
+            { x: 270, y: 76, duration: 0.3, ease: "power2.out" }
+          ],
+          ease: "none"
+        },
+        7.48
+      );
+      timeline.to(
+        [channelLeft, channelRight],
+        {
+          backgroundColor: "#FF6B1A",
+          color: "#0D0D0F",
+          scale: 1.025,
+          duration: 0.14,
+          ease: "power1.out"
+        },
+        8.22
+      );
+      timeline.to(
+        [channelLeft, channelRight],
+        {
+          backgroundColor: "#1A1918",
+          color: "#F0F0F0",
+          scale: 1,
+          duration: 0.3,
+          ease: "power2.out"
+        },
+        8.36
+      );
+      timeline.to(
+        [pulseLeft, pulseRight],
+        { opacity: 0.22, scale: 0.72, duration: 0.18, ease: "power1.out" },
+        8.3
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["01-two-speakers"] = timeline;
+    })();
+  </script>
+</template>

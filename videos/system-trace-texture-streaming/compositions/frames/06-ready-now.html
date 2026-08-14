@@ -1,0 +1,734 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+    }
+
+    #root {
+      --ready-now-ink: #0d0d0f;
+      --ready-now-ink-alt: #1a1918;
+      --ready-now-orange: #ff6b1a;
+      --ready-now-cream: #f0f0f0;
+      --ready-now-hint: #7d7977;
+      --ready-now-line: #282726;
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: var(--ready-now-cream);
+      font-family: "Space Grotesk", sans-serif;
+    }
+
+    #root [class~="06-ready-now-ground"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: var(--ready-now-ink);
+    }
+
+    #root [class~="06-ready-now-ground-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 83cqh;
+      opacity: 0.32;
+    }
+
+    #root [class~="06-ready-now-content"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    #root [class~="06-ready-now-scene"] {
+      position: relative;
+      width: 100%;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    #root [class~="06-ready-now-chrome"] {
+      position: absolute;
+      top: 49px;
+      left: 106px;
+      right: 106px;
+      z-index: 4;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding-top: 15px;
+      border-top: 1px solid var(--ready-now-line);
+      color: var(--ready-now-hint);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ready-now-process"] {
+      position: absolute;
+      top: 250px;
+      left: 60px;
+      z-index: 3;
+      width: 1708px;
+      height: 682px;
+      overflow: hidden;
+      border-top: 1px solid var(--ready-now-line);
+      border-bottom: 1px solid var(--ready-now-line);
+      transform: scale(0.5625);
+      transform-origin: 0 0;
+    }
+
+    #root [class~="06-ready-now-stage"] {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      box-sizing: border-box;
+    }
+
+    #root [class~="06-ready-now-stage-disk"] {
+      left: 0;
+      width: 488px;
+      border-right: 1px solid var(--ready-now-line);
+    }
+
+    #root [class~="06-ready-now-stage-vram"] {
+      left: 572px;
+      width: 472px;
+      border-right: 1px solid var(--ready-now-line);
+    }
+
+    #root [class~="06-ready-now-stage-view"] {
+      right: 0;
+      width: 566px;
+    }
+
+    #root [class~="06-ready-now-stage-label"] {
+      position: absolute;
+      top: 20px;
+      left: 0;
+      margin: 0;
+      color: var(--ready-now-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ready-now-stage-note"] {
+      position: absolute;
+      top: 52px;
+      left: 0;
+      color: var(--ready-now-hint);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ready-now-pyramid"] {
+      position: absolute;
+      top: 106px;
+      left: 14px;
+      width: 422px;
+      height: 452px;
+    }
+
+    #root [class~="06-ready-now-mip-plane"] {
+      position: absolute;
+      box-sizing: border-box;
+      border: 1px solid var(--ready-now-hint);
+      background: var(--ready-now-ink-alt);
+    }
+
+    #root [class~="06-ready-now-mip-plane"]::before,
+    #root [class~="06-ready-now-mip-plane"]::after {
+      content: "";
+      position: absolute;
+      background: var(--ready-now-line);
+    }
+
+    #root [class~="06-ready-now-mip-plane"]::before {
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: 1px;
+    }
+
+    #root [class~="06-ready-now-mip-plane"]::after {
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 1px;
+    }
+
+    #root [class~="06-ready-now-mip-full"] {
+      left: 0;
+      bottom: 0;
+      width: 400px;
+      height: 178px;
+      border-color: var(--ready-now-orange);
+    }
+
+    #root [class~="06-ready-now-mip-large"] {
+      left: 58px;
+      bottom: 166px;
+      width: 284px;
+      height: 126px;
+    }
+
+    #root [class~="06-ready-now-mip-medium"] {
+      left: 116px;
+      bottom: 280px;
+      width: 168px;
+      height: 76px;
+    }
+
+    #root [class~="06-ready-now-mip-small"] {
+      left: 166px;
+      bottom: 344px;
+      width: 68px;
+      height: 34px;
+    }
+
+    #root [class~="06-ready-now-pyramid-axis"] {
+      position: absolute;
+      left: 411px;
+      bottom: 0;
+      width: 1px;
+      height: 378px;
+      background: var(--ready-now-line);
+    }
+
+    #root [class~="06-ready-now-pyramid-axis"]::before,
+    #root [class~="06-ready-now-pyramid-axis"]::after {
+      content: "";
+      position: absolute;
+      left: -5px;
+      width: 11px;
+      height: 1px;
+      background: var(--ready-now-line);
+    }
+
+    #root [class~="06-ready-now-pyramid-axis"]::before {
+      top: 0;
+    }
+
+    #root [class~="06-ready-now-pyramid-axis"]::after {
+      bottom: 0;
+    }
+
+    #root [class~="06-ready-now-complete-mark"] {
+      position: absolute;
+      left: 14px;
+      bottom: 43px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--ready-now-cream);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ready-now-complete-mark"]::before {
+      content: "";
+      width: 36px;
+      height: 2px;
+      background: var(--ready-now-orange);
+    }
+
+    #root [class~="06-ready-now-vram-stack"] {
+      position: absolute;
+      top: 118px;
+      left: 26px;
+      width: 382px;
+      height: 416px;
+    }
+
+    #root [class~="06-ready-now-vram-slot"] {
+      position: relative;
+      width: 100%;
+      height: 82px;
+      margin-bottom: 16px;
+      box-sizing: border-box;
+      border-top: 1px solid var(--ready-now-line);
+      border-bottom: 1px solid var(--ready-now-line);
+      color: var(--ready-now-hint);
+    }
+
+    #root [class~="06-ready-now-vram-slot"]::before {
+      content: "";
+      position: absolute;
+      top: 15px;
+      left: 0;
+      width: 50px;
+      height: 50px;
+      box-sizing: border-box;
+      border: 1px solid currentColor;
+      background: var(--ready-now-ink-alt);
+    }
+
+    #root [class~="06-ready-now-vram-slot"]::after {
+      content: "resident";
+      position: absolute;
+      top: 35px;
+      left: 76px;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ready-now-vram-slot-selected"] {
+      border-color: rgba(255, 107, 26, 0.72);
+      color: var(--ready-now-orange);
+    }
+
+    #root [class~="06-ready-now-vram-slot-empty"]::before {
+      border-style: dashed;
+      opacity: 0.45;
+    }
+
+    #root [class~="06-ready-now-vram-slot-empty"]::after {
+      content: "open";
+      opacity: 0.5;
+    }
+
+    #root [class~="06-ready-now-selected-mark"] {
+      position: absolute;
+      left: 26px;
+      bottom: 43px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--ready-now-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ready-now-selected-mark"]::before {
+      content: "";
+      width: 36px;
+      height: 2px;
+      background: var(--ready-now-orange);
+    }
+
+    #root [class~="06-ready-now-view-port"] {
+      position: absolute;
+      top: 112px;
+      left: 46px;
+      width: 456px;
+      height: 400px;
+      box-sizing: border-box;
+      border: 1px solid var(--ready-now-orange);
+      background: var(--ready-now-ink-alt);
+    }
+
+    #root [class~="06-ready-now-view-port"]::before {
+      content: "";
+      position: absolute;
+      inset: 26px;
+      border: 1px solid var(--ready-now-line);
+    }
+
+    #root [class~="06-ready-now-view-grid"] {
+      position: absolute;
+      inset: 60px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      border-top: 1px solid var(--ready-now-hint);
+      border-left: 1px solid var(--ready-now-hint);
+    }
+
+    #root [class~="06-ready-now-view-cell"] {
+      box-sizing: border-box;
+      border-right: 1px solid var(--ready-now-hint);
+      border-bottom: 1px solid var(--ready-now-hint);
+      background: var(--ready-now-ink);
+    }
+
+    #root [class~="06-ready-now-view-cell-ready"] {
+      background: var(--ready-now-orange);
+    }
+
+    #root [class~="06-ready-now-view-reticle"] {
+      position: absolute;
+      top: 42px;
+      left: 42px;
+      width: 76px;
+      height: 76px;
+      box-sizing: border-box;
+      border-top: 2px solid var(--ready-now-cream);
+      border-left: 2px solid var(--ready-now-cream);
+    }
+
+    #root [class~="06-ready-now-view-reticle"]::after {
+      content: "";
+      position: absolute;
+      right: -296px;
+      bottom: -256px;
+      width: 74px;
+      height: 74px;
+      box-sizing: border-box;
+      border-right: 2px solid var(--ready-now-cream);
+      border-bottom: 2px solid var(--ready-now-cream);
+    }
+
+    #root [class~="06-ready-now-view-ready"] {
+      position: absolute;
+      left: 46px;
+      bottom: 43px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--ready-now-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ready-now-view-ready"]::before {
+      content: "";
+      width: 36px;
+      height: 2px;
+      background: var(--ready-now-orange);
+    }
+
+    #root [class~="06-ready-now-route-layer"] {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    #root [class~="06-ready-now-route"] {
+      fill: none;
+      stroke: var(--ready-now-orange);
+      stroke-width: 2;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="06-ready-now-route-node"] {
+      fill: var(--ready-now-ink);
+      stroke: var(--ready-now-orange);
+      stroke-width: 2;
+    }
+
+    #root [class~="06-ready-now-transfer"] {
+      position: absolute;
+      z-index: 10;
+      width: 38px;
+      height: 38px;
+      box-sizing: border-box;
+      border: 2px solid var(--ready-now-orange);
+      background: var(--ready-now-ink);
+    }
+
+    #root [class~="06-ready-now-transfer-disk"] {
+      left: 438px;
+      top: 434px;
+    }
+
+    #root [class~="06-ready-now-transfer-view"] {
+      left: 1000px;
+      top: 329px;
+    }
+
+    #root [class~="06-ready-now-rule-card"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      z-index: 20;
+      width: 100%;
+      height: 83cqh;
+      overflow: hidden;
+      background: var(--ready-now-orange);
+      color: var(--ready-now-ink);
+    }
+
+    #root [class~="06-ready-now-rule-inner"] {
+      position: absolute;
+      inset: 0;
+      padding: 65px 64px 62px;
+      box-sizing: border-box;
+    }
+
+    #root [class~="06-ready-now-rule-kicker"] {
+      display: flex;
+      justify-content: space-between;
+      padding-top: 16px;
+      border-top: 1px solid rgba(13, 13, 15, 0.2);
+      color: rgba(13, 13, 15, 0.58);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ready-now-rule-copy"] {
+      position: absolute;
+      left: 64px;
+      top: 250px;
+      margin: 0;
+      max-width: 860px;
+      font-size: 132px;
+      font-weight: 900;
+      line-height: 0.83;
+      letter-spacing: -0.055em;
+      text-transform: lowercase;
+    }
+
+    #root [class~="06-ready-now-rule-line"] {
+      display: block;
+    }
+
+    #root [class~="06-ready-now-rule-now"] {
+      margin-top: 24px;
+      color: rgba(13, 13, 15, 0.68);
+      font-size: 108px;
+      letter-spacing: -0.045em;
+    }
+
+    #root [class~="06-ready-now-rule-aside"] {
+      position: absolute;
+      top: 850px;
+      right: 64px;
+      width: 430px;
+      height: 300px;
+      border-left: 1px solid rgba(13, 13, 15, 0.2);
+      padding-left: 30px;
+      box-sizing: border-box;
+    }
+
+    #root [class~="06-ready-now-mini-stage"] {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      height: 74px;
+      border-bottom: 1px solid rgba(13, 13, 15, 0.2);
+      color: rgba(13, 13, 15, 0.7);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ready-now-mini-box"] {
+      width: 28px;
+      height: 28px;
+      box-sizing: border-box;
+      border: 2px solid currentColor;
+    }
+
+    #root [class~="06-ready-now-mini-arrow"] {
+      margin-left: auto;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    #root [class~="06-ready-now-lock-rule"] {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 400px;
+      height: 4px;
+      background: var(--ready-now-ink);
+    }
+  </style>
+
+  <div id="root" data-composition-id="06-ready-now" data-width="1080" data-height="1920" data-start="0" data-duration="8.277">
+    <div class="clip 06-ready-now-ground" data-start="0" data-duration="8.277" data-track-index="0" aria-hidden="true">
+      <svg class="06-ready-now-ground-grid" viewBox="0 0 1920 896" preserveAspectRatio="none">
+        <g fill="none" stroke="#282726" stroke-width="1">
+          <path d="M106 125H1814M106 352H1814M106 579H1814M106 807H1814" />
+          <path d="M106 49V896M594 49V896M1150 49V896M1814 49V896" />
+        </g>
+      </svg>
+    </div>
+
+    <div class="clip 06-ready-now-content" data-start="0" data-duration="8.277" data-track-index="1">
+      <section class="06-ready-now-scene" aria-label="Mip storage to current-view selection">
+        <div class="06-ready-now-chrome">
+          <span>texture stream / resolution path</span>
+          <span>frame 06</span>
+        </div>
+
+        <div class="06-ready-now-process">
+          <section id="06-ready-now-disk-stage" class="06-ready-now-stage 06-ready-now-stage-disk">
+            <h2 class="06-ready-now-stage-label">on disk</h2>
+            <div class="06-ready-now-stage-note">complete pyramid</div>
+            <div class="06-ready-now-pyramid" aria-hidden="true">
+              <div id="06-ready-now-mip-full" class="06-ready-now-mip-plane 06-ready-now-mip-full"></div>
+              <div id="06-ready-now-mip-large" class="06-ready-now-mip-plane 06-ready-now-mip-large"></div>
+              <div id="06-ready-now-mip-medium" class="06-ready-now-mip-plane 06-ready-now-mip-medium"></div>
+              <div id="06-ready-now-mip-small" class="06-ready-now-mip-plane 06-ready-now-mip-small"></div>
+              <div class="06-ready-now-pyramid-axis"></div>
+            </div>
+            <div id="06-ready-now-complete-mark" class="06-ready-now-complete-mark">all levels</div>
+          </section>
+
+          <section id="06-ready-now-vram-stage" class="06-ready-now-stage 06-ready-now-stage-vram">
+            <h2 class="06-ready-now-stage-label">in vram</h2>
+            <div class="06-ready-now-stage-note">selected subset</div>
+            <div class="06-ready-now-vram-stack" aria-hidden="true">
+              <div class="06-ready-now-vram-slot 06-ready-now-vram-slot-selected"></div>
+              <div class="06-ready-now-vram-slot 06-ready-now-vram-slot-selected"></div>
+              <div class="06-ready-now-vram-slot 06-ready-now-vram-slot-selected"></div>
+              <div class="06-ready-now-vram-slot 06-ready-now-vram-slot-empty"></div>
+            </div>
+            <div id="06-ready-now-selected-mark" class="06-ready-now-selected-mark">resident now</div>
+          </section>
+
+          <section id="06-ready-now-view-stage" class="06-ready-now-stage 06-ready-now-stage-view">
+            <h2 class="06-ready-now-stage-label">current view</h2>
+            <div class="06-ready-now-stage-note">best available</div>
+            <div class="06-ready-now-view-port" aria-hidden="true">
+              <div id="06-ready-now-view-grid" class="06-ready-now-view-grid">
+                <span class="06-ready-now-view-cell"></span>
+                <span class="06-ready-now-view-cell"></span>
+                <span class="06-ready-now-view-cell"></span>
+                <span class="06-ready-now-view-cell"></span>
+                <span class="06-ready-now-view-cell"></span>
+                <span class="06-ready-now-view-cell 06-ready-now-view-cell-ready"></span>
+                <span class="06-ready-now-view-cell 06-ready-now-view-cell-ready"></span>
+                <span class="06-ready-now-view-cell"></span>
+                <span class="06-ready-now-view-cell"></span>
+                <span class="06-ready-now-view-cell 06-ready-now-view-cell-ready"></span>
+                <span class="06-ready-now-view-cell 06-ready-now-view-cell-ready"></span>
+                <span class="06-ready-now-view-cell"></span>
+                <span class="06-ready-now-view-cell"></span>
+                <span class="06-ready-now-view-cell"></span>
+                <span class="06-ready-now-view-cell"></span>
+                <span class="06-ready-now-view-cell"></span>
+              </div>
+              <div id="06-ready-now-reticle" class="06-ready-now-view-reticle"></div>
+            </div>
+            <div id="06-ready-now-view-ready" class="06-ready-now-view-ready">ready level</div>
+          </section>
+
+          <svg class="06-ready-now-route-layer" viewBox="0 0 1708 682" preserveAspectRatio="none" aria-hidden="true">
+            <path id="06-ready-now-route-disk" class="06-ready-now-route" pathLength="1" d="M488 453H572" />
+            <path id="06-ready-now-route-view" class="06-ready-now-route" pathLength="1" d="M1044 348H1142" />
+            <rect id="06-ready-now-route-node-disk" class="06-ready-now-route-node" x="525" y="446" width="14" height="14" />
+            <rect id="06-ready-now-route-node-view" class="06-ready-now-route-node" x="1086" y="341" width="14" height="14" />
+          </svg>
+
+          <div id="06-ready-now-transfer-disk" class="06-ready-now-transfer 06-ready-now-transfer-disk"></div>
+          <div id="06-ready-now-transfer-view" class="06-ready-now-transfer 06-ready-now-transfer-view"></div>
+        </div>
+
+        <section id="06-ready-now-rule-card" class="06-ready-now-rule-card">
+          <div class="06-ready-now-rule-inner">
+            <div class="06-ready-now-rule-kicker">
+              <span>system trace // 05</span>
+              <span>display rule</span>
+            </div>
+            <h1 class="06-ready-now-rule-copy">
+              <span id="06-ready-now-rule-best" class="06-ready-now-rule-line">best ready</span>
+              <span id="06-ready-now-rule-level" class="06-ready-now-rule-line">level</span>
+              <span id="06-ready-now-rule-now" class="06-ready-now-rule-line 06-ready-now-rule-now">right now</span>
+            </h1>
+            <aside class="06-ready-now-rule-aside" aria-label="Disk to display path">
+              <div class="06-ready-now-mini-stage"><span class="06-ready-now-mini-box"></span>on disk<span class="06-ready-now-mini-arrow">→</span></div>
+              <div class="06-ready-now-mini-stage"><span class="06-ready-now-mini-box"></span>in vram<span class="06-ready-now-mini-arrow">→</span></div>
+              <div class="06-ready-now-mini-stage"><span class="06-ready-now-mini-box"></span>current view</div>
+              <div class="06-ready-now-lock-rule"></div>
+            </aside>
+          </div>
+        </section>
+      </section>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const byId = (id) => document.getElementById(id);
+      const tl = gsap.timeline({ paused: true });
+      const holdState = { progress: 0 };
+
+      tl.addLabel("complete-pyramid", 0);
+      tl.fromTo('[class~="06-ready-now-chrome"]', { y: -10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.38, ease: "power2.out" }, 0);
+      tl.fromTo(byId("06-ready-now-disk-stage"), { x: -20, opacity: 0 }, { x: 0, opacity: 1, duration: 0.42, ease: "power3.out" }, 0.04);
+      tl.fromTo(byId("06-ready-now-mip-full"), { scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.48, ease: "power3.out", transformOrigin: "50% 50%" }, 0.2);
+      tl.fromTo(byId("06-ready-now-mip-large"), { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.72);
+      tl.fromTo(byId("06-ready-now-mip-medium"), { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 1.24);
+      tl.fromTo(byId("06-ready-now-mip-small"), { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 1.76);
+      tl.fromTo(byId("06-ready-now-complete-mark"), { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.42, ease: "power2.out" }, 2.24);
+      tl.fromTo(byId("06-ready-now-route-disk"), { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 1, duration: 0.66, ease: "power2.out" }, 2.34);
+      tl.fromTo(byId("06-ready-now-route-node-disk"), { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: "back.out(1.5)", transformOrigin: "50% 50%" }, 2.66);
+
+      tl.addLabel("resident-subset", 3);
+      tl.fromTo(byId("06-ready-now-vram-stage"), { x: 24, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 3.02);
+      tl.fromTo('[class~="06-ready-now-vram-slot"]', { x: 20, opacity: 0 }, { x: 0, opacity: 1, duration: 0.38, stagger: 0.18, ease: "power2.out" }, 3.28);
+      tl.fromTo(byId("06-ready-now-transfer-disk"), { x: 0, scale: 0.72, opacity: 0 }, { x: 166, scale: 1, opacity: 1, duration: 0.82, ease: "power2.inOut" }, 3.78);
+      tl.fromTo(byId("06-ready-now-selected-mark"), { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.42, ease: "power2.out" }, 4.52);
+      tl.fromTo(byId("06-ready-now-view-stage"), { x: 24, opacity: 0 }, { x: 0, opacity: 1, duration: 0.48, ease: "power3.out" }, 4.82);
+      tl.fromTo(byId("06-ready-now-route-view"), { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 1, duration: 0.62, ease: "power2.out" }, 5.04);
+      tl.fromTo(byId("06-ready-now-route-node-view"), { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: "back.out(1.5)", transformOrigin: "50% 50%" }, 5.32);
+      tl.fromTo(byId("06-ready-now-transfer-view"), { x: 0, scale: 0.72, opacity: 0 }, { x: 194, scale: 1, opacity: 1, duration: 0.82, ease: "power2.inOut" }, 5.44);
+      tl.fromTo(byId("06-ready-now-view-grid"), { scale: 0.94, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.52, ease: "power2.out", transformOrigin: "50% 50%" }, 5.72);
+      tl.fromTo(byId("06-ready-now-reticle"), { scale: 1.08, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.42, ease: "power2.out", transformOrigin: "50% 50%" }, 5.94);
+      tl.fromTo(byId("06-ready-now-view-ready"), { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.38, ease: "power2.out" }, 6.12);
+
+      tl.addLabel("operative-rule", 6.6);
+      tl.fromTo(byId("06-ready-now-rule-card"), { clipPath: "inset(100% 0% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.34, ease: "power3.inOut" }, 6.28);
+      tl.fromTo('[class~="06-ready-now-rule-kicker"]', { y: -10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.32, ease: "power2.out" }, 6.48);
+      tl.fromTo(byId("06-ready-now-rule-best"), { x: -42, opacity: 0 }, { x: 0, opacity: 1, duration: 0.42, ease: "power3.out" }, 6.54);
+      tl.fromTo(byId("06-ready-now-rule-level"), { x: -42, opacity: 0 }, { x: 0, opacity: 1, duration: 0.42, ease: "power3.out" }, 6.7);
+      tl.fromTo(byId("06-ready-now-rule-now"), { x: -42, opacity: 0 }, { x: 0, opacity: 1, duration: 0.42, ease: "power3.out" }, 6.88);
+      tl.fromTo('[class~="06-ready-now-rule-aside"]', { x: 24, opacity: 0 }, { x: 0, opacity: 1, duration: 0.46, ease: "power3.out" }, 7.02);
+      tl.fromTo('[class~="06-ready-now-lock-rule"]', { scaleX: 0, opacity: 0 }, { scaleX: 1, opacity: 1, duration: 0.48, ease: "power2.out", transformOrigin: "100% 50%" }, 7.34);
+      tl.to(holdState, { progress: 1, duration: 8.277, ease: "none" }, 0);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["06-ready-now"] = tl;
+    })();
+  </script>
+</template>

@@ -1,0 +1,965 @@
+{
+  "bgm": {
+    "path": "assets/bgm/system-trace-tension-bed.wav",
+    "volume": 0.1
+  },
+  "bgm_pending": false,
+  "voices": [
+    {
+      "frame": 1,
+      "path": "assets/voice/01.wav",
+      "duration_s": 8.427,
+      "words": [
+        {
+          "text": "A",
+          "word": "A",
+          "start": 0,
+          "end": 0.14
+        },
+        {
+          "text": "high",
+          "word": "high",
+          "start": 0.14,
+          "end": 0.34
+        },
+        {
+          "text": "frame",
+          "word": "frame",
+          "start": 0.34,
+          "end": 0.7
+        },
+        {
+          "text": "rate",
+          "word": "rate",
+          "start": 0.7,
+          "end": 1
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 1,
+          "end": 1.26
+        },
+        {
+          "text": "still",
+          "word": "still",
+          "start": 1.26,
+          "end": 1.54
+        },
+        {
+          "text": "feel",
+          "word": "feel",
+          "start": 1.54,
+          "end": 1.8
+        },
+        {
+          "text": "behind",
+          "word": "behind",
+          "start": 1.8,
+          "end": 2.22
+        },
+        {
+          "text": "your",
+          "word": "your",
+          "start": 2.22,
+          "end": 2.48
+        },
+        {
+          "text": "hands.",
+          "word": "hands.",
+          "start": 2.48,
+          "end": 2.94
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 3.48,
+          "end": 3.6
+        },
+        {
+          "text": "missing",
+          "word": "missing",
+          "start": 3.6,
+          "end": 3.8
+        },
+        {
+          "text": "number",
+          "word": "number",
+          "start": 3.8,
+          "end": 4.18
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 4.18,
+          "end": 4.64
+        },
+        {
+          "text": "how",
+          "word": "how",
+          "start": 4.64,
+          "end": 4.86
+        },
+        {
+          "text": "long",
+          "word": "long",
+          "start": 4.86,
+          "end": 5.14
+        },
+        {
+          "text": "your",
+          "word": "your",
+          "start": 5.14,
+          "end": 5.38
+        },
+        {
+          "text": "newest",
+          "word": "newest",
+          "start": 5.38,
+          "end": 5.78
+        },
+        {
+          "text": "input",
+          "word": "input",
+          "start": 5.78,
+          "end": 6.16
+        },
+        {
+          "text": "waits",
+          "word": "waits",
+          "start": 6.16,
+          "end": 6.66
+        },
+        {
+          "text": "before",
+          "word": "before",
+          "start": 6.66,
+          "end": 7.26
+        },
+        {
+          "text": "reaching",
+          "word": "reaching",
+          "start": 7.26,
+          "end": 7.58
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 7.58,
+          "end": 7.8
+        },
+        {
+          "text": "screen.",
+          "word": "screen.",
+          "start": 7.8,
+          "end": 8.12
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "A high frame rate can still feel behind your hands. The missing number is how long your newest input waits before reaching the screen."
+      }
+    },
+    {
+      "frame": 2,
+      "path": "assets/voice/02.wav",
+      "duration_s": 8.832,
+      "words": [
+        {
+          "text": "The",
+          "word": "The",
+          "start": 0,
+          "end": 0.16
+        },
+        {
+          "text": "CPU",
+          "word": "CPU",
+          "start": 0.16,
+          "end": 0.56
+        },
+        {
+          "text": "prepares",
+          "word": "prepares",
+          "start": 0.56,
+          "end": 1.34
+        },
+        {
+          "text": "rendering",
+          "word": "rendering",
+          "start": 1.34,
+          "end": 1.78
+        },
+        {
+          "text": "work",
+          "word": "work",
+          "start": 1.78,
+          "end": 2.26
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 2.26,
+          "end": 2.76
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 2.76,
+          "end": 2.88
+        },
+        {
+          "text": "GPU",
+          "word": "GPU",
+          "start": 2.88,
+          "end": 3.28
+        },
+        {
+          "text": "executes",
+          "word": "executes",
+          "start": 3.28,
+          "end": 4.08
+        },
+        {
+          "text": "it.",
+          "word": "it.",
+          "start": 4.08,
+          "end": 4.56
+        },
+        {
+          "text": "A",
+          "word": "A",
+          "start": 4.94,
+          "end": 5.02
+        },
+        {
+          "text": "system",
+          "word": "system",
+          "start": 5.02,
+          "end": 5.38
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 5.38,
+          "end": 5.68
+        },
+        {
+          "text": "queue",
+          "word": "queue",
+          "start": 5.68,
+          "end": 5.94
+        },
+        {
+          "text": "frames",
+          "word": "frames",
+          "start": 5.94,
+          "end": 6.4
+        },
+        {
+          "text": "ahead",
+          "word": "ahead",
+          "start": 6.4,
+          "end": 6.76
+        },
+        {
+          "text": "to",
+          "word": "to",
+          "start": 6.76,
+          "end": 7.24
+        },
+        {
+          "text": "keep",
+          "word": "keep",
+          "start": 7.24,
+          "end": 7.44
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 7.44,
+          "end": 7.66
+        },
+        {
+          "text": "GPU",
+          "word": "GPU",
+          "start": 7.66,
+          "end": 8.12
+        },
+        {
+          "text": "busy.",
+          "word": "busy.",
+          "start": 8.12,
+          "end": 8.5
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "The CPU prepares rendering work and the GPU executes it. A system may queue frames ahead to keep the GPU busy."
+      }
+    },
+    {
+      "frame": 3,
+      "path": "assets/voice/03.wav",
+      "duration_s": 7.979,
+      "words": [
+        {
+          "text": "An",
+          "word": "An",
+          "start": 0,
+          "end": 0.14
+        },
+        {
+          "text": "input",
+          "word": "input",
+          "start": 0.14,
+          "end": 0.46
+        },
+        {
+          "text": "sampled",
+          "word": "sampled",
+          "start": 0.46,
+          "end": 0.96
+        },
+        {
+          "text": "now",
+          "word": "now",
+          "start": 0.96,
+          "end": 1.26
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 1.26,
+          "end": 1.5
+        },
+        {
+          "text": "sit",
+          "word": "sit",
+          "start": 1.5,
+          "end": 1.76
+        },
+        {
+          "text": "behind",
+          "word": "behind",
+          "start": 1.76,
+          "end": 2.16
+        },
+        {
+          "text": "older",
+          "word": "older",
+          "start": 2.16,
+          "end": 2.6
+        },
+        {
+          "text": "prepared",
+          "word": "prepared",
+          "start": 2.6,
+          "end": 2.98
+        },
+        {
+          "text": "frames.",
+          "word": "frames.",
+          "start": 2.98,
+          "end": 3.58
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 4.26,
+          "end": 4.38
+        },
+        {
+          "text": "counter",
+          "word": "counter",
+          "start": 4.38,
+          "end": 4.66
+        },
+        {
+          "text": "stays",
+          "word": "stays",
+          "start": 4.66,
+          "end": 5.02
+        },
+        {
+          "text": "high",
+          "word": "high",
+          "start": 5.02,
+          "end": 5.52
+        },
+        {
+          "text": "while",
+          "word": "while",
+          "start": 5.52,
+          "end": 6.04
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 6.04,
+          "end": 6.16
+        },
+        {
+          "text": "response",
+          "word": "response",
+          "start": 6.16,
+          "end": 6.62
+        },
+        {
+          "text": "arrives",
+          "word": "arrives",
+          "start": 6.62,
+          "end": 7.28
+        },
+        {
+          "text": "later.",
+          "word": "later.",
+          "start": 7.28,
+          "end": 7.62
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "An input sampled now can sit behind older prepared frames. The counter stays high while the response arrives later."
+      }
+    },
+    {
+      "frame": 4,
+      "path": "assets/voice/04.wav",
+      "duration_s": 11.008,
+      "words": [
+        {
+          "text": "Latency",
+          "word": "Latency",
+          "start": 0,
+          "end": 0.52
+        },
+        {
+          "text": "controls",
+          "word": "controls",
+          "start": 0.52,
+          "end": 1.02
+        },
+        {
+          "text": "reduce",
+          "word": "reduce",
+          "start": 1.02,
+          "end": 1.54
+        },
+        {
+          "text": "that",
+          "word": "that",
+          "start": 1.54,
+          "end": 2.06
+        },
+        {
+          "text": "weight",
+          "word": "weight",
+          "start": 2.06,
+          "end": 2.34
+        },
+        {
+          "text": "by",
+          "word": "by",
+          "start": 2.34,
+          "end": 2.8
+        },
+        {
+          "text": "matching",
+          "word": "matching",
+          "start": 2.8,
+          "end": 3.24
+        },
+        {
+          "text": "CPU",
+          "word": "CPU",
+          "start": 3.24,
+          "end": 3.72
+        },
+        {
+          "text": "work",
+          "word": "work",
+          "start": 3.72,
+          "end": 4.26
+        },
+        {
+          "text": "more",
+          "word": "more",
+          "start": 4.26,
+          "end": 4.74
+        },
+        {
+          "text": "closely",
+          "word": "closely",
+          "start": 4.74,
+          "end": 5.26
+        },
+        {
+          "text": "to",
+          "word": "to",
+          "start": 5.26,
+          "end": 5.52
+        },
+        {
+          "text": "GPU",
+          "word": "GPU",
+          "start": 5.52,
+          "end": 5.98
+        },
+        {
+          "text": "capacity.",
+          "word": "capacity.",
+          "start": 5.98,
+          "end": 6.8
+        },
+        {
+          "text": "A",
+          "word": "A",
+          "start": 7.48,
+          "end": 7.56
+        },
+        {
+          "text": "sensible",
+          "word": "sensible",
+          "start": 7.56,
+          "end": 7.94
+        },
+        {
+          "text": "frame",
+          "word": "frame",
+          "start": 7.94,
+          "end": 8.38
+        },
+        {
+          "text": "cap",
+          "word": "cap",
+          "start": 8.38,
+          "end": 8.8
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 8.8,
+          "end": 9.28
+        },
+        {
+          "text": "also",
+          "word": "also",
+          "start": 9.28,
+          "end": 9.6
+        },
+        {
+          "text": "prevent",
+          "word": "prevent",
+          "start": 9.6,
+          "end": 10.02
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 10.02,
+          "end": 10.26
+        },
+        {
+          "text": "deep",
+          "word": "deep",
+          "start": 10.26,
+          "end": 10.44
+        },
+        {
+          "text": "queue.",
+          "word": "queue.",
+          "start": 10.44,
+          "end": 10.76
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Latency controls reduce that weight by matching CPU work more closely to GPU capacity. A sensible frame cap can also prevent a deep queue."
+      }
+    },
+    {
+      "frame": 5,
+      "path": "assets/voice/05.wav",
+      "duration_s": 8.789,
+      "words": [
+        {
+          "text": "The",
+          "word": "The",
+          "start": 0,
+          "end": 0.12
+        },
+        {
+          "text": "result",
+          "word": "result",
+          "start": 0.12,
+          "end": 0.46
+        },
+        {
+          "text": "depends",
+          "word": "depends",
+          "start": 0.46,
+          "end": 1
+        },
+        {
+          "text": "on",
+          "word": "on",
+          "start": 1,
+          "end": 1.28
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 1.28,
+          "end": 1.4
+        },
+        {
+          "text": "bottleneck.",
+          "word": "bottleneck.",
+          "start": 1.4,
+          "end": 1.78
+        },
+        {
+          "text": "If",
+          "word": "If",
+          "start": 2.42,
+          "end": 2.56
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 2.56,
+          "end": 2.72
+        },
+        {
+          "text": "game",
+          "word": "game",
+          "start": 2.72,
+          "end": 3
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 3,
+          "end": 3.28
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 3.28,
+          "end": 3.52
+        },
+        {
+          "text": "GPU",
+          "word": "GPU",
+          "start": 3.52,
+          "end": 3.96
+        },
+        {
+          "text": "bound",
+          "word": "bound",
+          "start": 3.96,
+          "end": 4.4
+        },
+        {
+          "text": "or",
+          "word": "or",
+          "start": 4.4,
+          "end": 5.06
+        },
+        {
+          "text": "another",
+          "word": "another",
+          "start": 5.06,
+          "end": 5.38
+        },
+        {
+          "text": "stage",
+          "word": "stage",
+          "start": 5.38,
+          "end": 5.82
+        },
+        {
+          "text": "dominates,",
+          "word": "dominates,",
+          "start": 5.82,
+          "end": 6.34
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 6.86,
+          "end": 6.96
+        },
+        {
+          "text": "same",
+          "word": "same",
+          "start": 6.96,
+          "end": 7.22
+        },
+        {
+          "text": "change",
+          "word": "change",
+          "start": 7.22,
+          "end": 7.68
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 7.68,
+          "end": 7.92
+        },
+        {
+          "text": "help",
+          "word": "help",
+          "start": 7.92,
+          "end": 8.18
+        },
+        {
+          "text": "less.",
+          "word": "less.",
+          "start": 8.18,
+          "end": 8.46
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "The result depends on the bottleneck. If the game is not GPU bound or another stage dominates, the same change may help less."
+      }
+    },
+    {
+      "frame": 6,
+      "path": "assets/voice/06.wav",
+      "duration_s": 9.515,
+      "words": [
+        {
+          "text": "Judge",
+          "word": "Judge",
+          "start": 0,
+          "end": 0.26
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 0.26,
+          "end": 0.46
+        },
+        {
+          "text": "whole",
+          "word": "whole",
+          "start": 0.46,
+          "end": 0.7
+        },
+        {
+          "text": "path,",
+          "word": "path,",
+          "start": 0.7,
+          "end": 1.06
+        },
+        {
+          "text": "input,",
+          "word": "input,",
+          "start": 1.58,
+          "end": 1.82
+        },
+        {
+          "text": "simulation,",
+          "word": "simulation,",
+          "start": 2.18,
+          "end": 2.6
+        },
+        {
+          "text": "render",
+          "word": "render",
+          "start": 3.14,
+          "end": 3.26
+        },
+        {
+          "text": "queue,",
+          "word": "queue,",
+          "start": 3.26,
+          "end": 3.68
+        },
+        {
+          "text": "GPU",
+          "word": "GPU",
+          "start": 4.06,
+          "end": 4.34
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 4.34,
+          "end": 4.92
+        },
+        {
+          "text": "display.",
+          "word": "display.",
+          "start": 4.92,
+          "end": 5.32
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 5.92,
+          "end": 6.1
+        },
+        {
+          "text": "fastest",
+          "word": "fastest",
+          "start": 6.1,
+          "end": 6.46
+        },
+        {
+          "text": "counter",
+          "word": "counter",
+          "start": 6.46,
+          "end": 6.82
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 6.82,
+          "end": 7.2
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 7.2,
+          "end": 7.44
+        },
+        {
+          "text": "automatically",
+          "word": "automatically",
+          "start": 7.44,
+          "end": 8.1
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 8.1,
+          "end": 8.4
+        },
+        {
+          "text": "freshest",
+          "word": "freshest",
+          "start": 8.4,
+          "end": 8.84
+        },
+        {
+          "text": "frame.",
+          "word": "frame.",
+          "start": 8.84,
+          "end": 9.2
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Judge the whole path, input, simulation, render queue, GPU and display. The fastest counter is not automatically the freshest frame."
+      }
+    }
+  ],
+  "sfx": [
+    {
+      "frame": 1,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 1,
+      "file": "assets/sfx/glitch-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.64,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/whoosh-short.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/click.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/whoosh.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/glitch-2.mp3",
+      "offset_s": 0,
+      "duration_s": 3.5,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/chime.mp3",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    }
+  ]
+}

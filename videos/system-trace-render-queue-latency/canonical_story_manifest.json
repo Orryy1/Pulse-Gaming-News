@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-render-queue-latency",
+  "project_id": "system-trace-render-queue-latency",
+  "narration_script": "A high frame rate can still feel behind your hands. The missing number is how long your newest input waits before reaching the screen. The CPU prepares rendering work and the GPU executes it. A system may queue frames ahead to keep the GPU busy. An input sampled now can sit behind older prepared frames. The counter stays high while the response arrives later. Latency controls reduce that weight by matching CPU work more closely to GPU capacity. A sensible frame cap can also prevent a deep queue. The result depends on the bottleneck. If the game is not GPU bound or another stage dominates, the same change may help less. Judge the whole path, input, simulation, render queue, GPU and display. The fastest counter is not automatically the freshest frame.",
+  "final_container": {
+    "path": "renders/system-trace-render-queue-latency.mp4",
+    "sha256": "1b4443b1c9bd1520550f719b31dd31bf481d64db2dbeebfd6f213952954b1549",
+    "bytes": 5450315
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "98e6e3b323a912de3ee7e597b7ff1777eee93e08c170ce4c71ef248d969cf068",
+    "bytes": 2654
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-21T19:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

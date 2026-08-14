@@ -1,0 +1,947 @@
+{
+  "bgm": {
+    "path": "assets/bgm/system-trace-tension-bed.wav",
+    "volume": 0.1
+  },
+  "bgm_pending": false,
+  "voices": [
+    {
+      "frame": 1,
+      "path": "assets/voice/01.wav",
+      "duration_s": 9.387,
+      "words": [
+        {
+          "text": "that",
+          "word": "that",
+          "start": 0,
+          "end": 0.16
+        },
+        {
+          "text": "sharp",
+          "word": "sharp",
+          "start": 0.16,
+          "end": 0.46
+        },
+        {
+          "text": "4K",
+          "word": "4K",
+          "start": 0.46,
+          "end": 0.9
+        },
+        {
+          "text": "image",
+          "word": "image",
+          "start": 0.9,
+          "end": 1.32
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 1.32,
+          "end": 1.78
+        },
+        {
+          "text": "start",
+          "word": "start",
+          "start": 1.78,
+          "end": 2.12
+        },
+        {
+          "text": "smaller.",
+          "word": "smaller.",
+          "start": 2.12,
+          "end": 2.72
+        },
+        {
+          "text": "Many",
+          "word": "Many",
+          "start": 3.28,
+          "end": 3.5
+        },
+        {
+          "text": "games",
+          "word": "games",
+          "start": 3.5,
+          "end": 3.92
+        },
+        {
+          "text": "render",
+          "word": "render",
+          "start": 3.92,
+          "end": 4.18
+        },
+        {
+          "text": "fewer",
+          "word": "fewer",
+          "start": 4.18,
+          "end": 4.48
+        },
+        {
+          "text": "pixels,",
+          "word": "pixels,",
+          "start": 4.48,
+          "end": 5
+        },
+        {
+          "text": "then",
+          "word": "then",
+          "start": 5.3,
+          "end": 5.7
+        },
+        {
+          "text": "rebuild",
+          "word": "rebuild",
+          "start": 5.7,
+          "end": 6.08
+        },
+        {
+          "text": "detail",
+          "word": "detail",
+          "start": 6.08,
+          "end": 6.64
+        },
+        {
+          "text": "using",
+          "word": "using",
+          "start": 6.64,
+          "end": 7.1
+        },
+        {
+          "text": "information",
+          "word": "information",
+          "start": 7.1,
+          "end": 7.68
+        },
+        {
+          "text": "gathered",
+          "word": "gathered",
+          "start": 7.68,
+          "end": 8.3
+        },
+        {
+          "text": "across",
+          "word": "across",
+          "start": 8.3,
+          "end": 8.7
+        },
+        {
+          "text": "time.",
+          "word": "time.",
+          "start": 8.7,
+          "end": 9.12
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "that sharp 4K image may start smaller. Many games render fewer pixels, then rebuild detail using information gathered across time."
+      }
+    },
+    {
+      "frame": 2,
+      "path": "assets/voice/02.wav",
+      "duration_s": 9.109,
+      "words": [
+        {
+          "text": "A",
+          "word": "A",
+          "start": 0,
+          "end": 0.16
+        },
+        {
+          "text": "temporal",
+          "word": "temporal",
+          "start": 0.16,
+          "end": 0.44
+        },
+        {
+          "text": "upscaler",
+          "word": "upscaler",
+          "start": 0.44,
+          "end": 1.04
+        },
+        {
+          "text": "gets",
+          "word": "gets",
+          "start": 1.04,
+          "end": 1.42
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 1.42,
+          "end": 1.64
+        },
+        {
+          "text": "new",
+          "word": "new",
+          "start": 1.64,
+          "end": 1.86
+        },
+        {
+          "text": "frame,",
+          "word": "frame,",
+          "start": 1.86,
+          "end": 2.3
+        },
+        {
+          "text": "motion",
+          "word": "motion",
+          "start": 2.76,
+          "end": 2.98
+        },
+        {
+          "text": "vectors,",
+          "word": "vectors,",
+          "start": 2.98,
+          "end": 3.46
+        },
+        {
+          "text": "depth",
+          "word": "depth",
+          "start": 3.92,
+          "end": 4.12
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 4.12,
+          "end": 4.52
+        },
+        {
+          "text": "samples",
+          "word": "samples",
+          "start": 4.52,
+          "end": 4.9
+        },
+        {
+          "text": "from",
+          "word": "from",
+          "start": 4.9,
+          "end": 5.24
+        },
+        {
+          "text": "earlier",
+          "word": "earlier",
+          "start": 5.24,
+          "end": 5.62
+        },
+        {
+          "text": "frames.",
+          "word": "frames.",
+          "start": 5.62,
+          "end": 6.16
+        },
+        {
+          "text": "Each",
+          "word": "Each",
+          "start": 6.86,
+          "end": 7.02
+        },
+        {
+          "text": "input",
+          "word": "input",
+          "start": 7.02,
+          "end": 7.46
+        },
+        {
+          "text": "answers",
+          "word": "answers",
+          "start": 7.46,
+          "end": 7.9
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 7.9,
+          "end": 8.14
+        },
+        {
+          "text": "different",
+          "word": "different",
+          "start": 8.14,
+          "end": 8.38
+        },
+        {
+          "text": "question.",
+          "word": "question.",
+          "start": 8.38,
+          "end": 8.8
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "A temporal upscaler gets the new frame, motion vectors, depth and samples from earlier frames. Each input answers a different question."
+      }
+    },
+    {
+      "frame": 3,
+      "path": "assets/voice/03.wav",
+      "duration_s": 10.603,
+      "words": [
+        {
+          "text": "Motion",
+          "word": "Motion",
+          "start": 0,
+          "end": 0.36
+        },
+        {
+          "text": "vectors",
+          "word": "vectors",
+          "start": 0.36,
+          "end": 0.8
+        },
+        {
+          "text": "show",
+          "word": "show",
+          "start": 0.8,
+          "end": 1.16
+        },
+        {
+          "text": "where",
+          "word": "where",
+          "start": 1.16,
+          "end": 1.44
+        },
+        {
+          "text": "surfaces",
+          "word": "surfaces",
+          "start": 1.44,
+          "end": 1.86
+        },
+        {
+          "text": "moved.",
+          "word": "moved.",
+          "start": 1.86,
+          "end": 2.52
+        },
+        {
+          "text": "Depth",
+          "word": "Depth",
+          "start": 3.26,
+          "end": 3.26
+        },
+        {
+          "text": "separates",
+          "word": "separates",
+          "start": 3.26,
+          "end": 3.88
+        },
+        {
+          "text": "foreground",
+          "word": "foreground",
+          "start": 3.88,
+          "end": 4.36
+        },
+        {
+          "text": "from",
+          "word": "from",
+          "start": 4.36,
+          "end": 4.7
+        },
+        {
+          "text": "background.",
+          "word": "background.",
+          "start": 4.7,
+          "end": 5.3
+        },
+        {
+          "text": "History",
+          "word": "History",
+          "start": 6.08,
+          "end": 6.26
+        },
+        {
+          "text": "supplies",
+          "word": "supplies",
+          "start": 6.26,
+          "end": 6.84
+        },
+        {
+          "text": "detail",
+          "word": "detail",
+          "start": 6.84,
+          "end": 7.38
+        },
+        {
+          "text": "that",
+          "word": "that",
+          "start": 7.38,
+          "end": 7.92
+        },
+        {
+          "text": "one",
+          "word": "one",
+          "start": 7.92,
+          "end": 8.12
+        },
+        {
+          "text": "lower",
+          "word": "lower",
+          "start": 8.12,
+          "end": 8.38
+        },
+        {
+          "text": "resolution",
+          "word": "resolution",
+          "start": 8.38,
+          "end": 8.9
+        },
+        {
+          "text": "frame",
+          "word": "frame",
+          "start": 8.9,
+          "end": 9.4
+        },
+        {
+          "text": "cannot",
+          "word": "cannot",
+          "start": 9.4,
+          "end": 9.88
+        },
+        {
+          "text": "hold.",
+          "word": "hold.",
+          "start": 9.88,
+          "end": 10.34
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Motion vectors show where surfaces moved. Depth separates foreground from background. History supplies detail that one lower resolution frame cannot hold."
+      }
+    },
+    {
+      "frame": 4,
+      "path": "assets/voice/04.wav",
+      "duration_s": 8.96,
+      "words": [
+        {
+          "text": "The",
+          "word": "The",
+          "start": 0,
+          "end": 0.16
+        },
+        {
+          "text": "system",
+          "word": "system",
+          "start": 0.16,
+          "end": 0.54
+        },
+        {
+          "text": "reprojects",
+          "word": "reprojects",
+          "start": 0.54,
+          "end": 1.32
+        },
+        {
+          "text": "useful",
+          "word": "useful",
+          "start": 1.32,
+          "end": 1.68
+        },
+        {
+          "text": "history",
+          "word": "history",
+          "start": 1.68,
+          "end": 2.12
+        },
+        {
+          "text": "into",
+          "word": "into",
+          "start": 2.12,
+          "end": 2.44
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 2.44,
+          "end": 2.62
+        },
+        {
+          "text": "current",
+          "word": "current",
+          "start": 2.62,
+          "end": 2.9
+        },
+        {
+          "text": "view",
+          "word": "view",
+          "start": 2.9,
+          "end": 3.26
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 3.26,
+          "end": 3.8
+        },
+        {
+          "text": "rejects",
+          "word": "rejects",
+          "start": 3.8,
+          "end": 4.2
+        },
+        {
+          "text": "what",
+          "word": "what",
+          "start": 4.2,
+          "end": 4.5
+        },
+        {
+          "text": "no",
+          "word": "no",
+          "start": 4.5,
+          "end": 4.76
+        },
+        {
+          "text": "longer",
+          "word": "longer",
+          "start": 4.76,
+          "end": 5.04
+        },
+        {
+          "text": "belongs.",
+          "word": "belongs.",
+          "start": 5.04,
+          "end": 5.6
+        },
+        {
+          "text": "Done",
+          "word": "Done",
+          "start": 6.24,
+          "end": 6.46
+        },
+        {
+          "text": "well,",
+          "word": "well,",
+          "start": 6.46,
+          "end": 6.78
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 7.08,
+          "end": 7.26
+        },
+        {
+          "text": "result",
+          "word": "result",
+          "start": 7.26,
+          "end": 7.58
+        },
+        {
+          "text": "looks",
+          "word": "looks",
+          "start": 7.58,
+          "end": 7.98
+        },
+        {
+          "text": "far",
+          "word": "far",
+          "start": 7.98,
+          "end": 8.32
+        },
+        {
+          "text": "denser.",
+          "word": "denser.",
+          "start": 8.32,
+          "end": 8.86
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "The system reprojects useful history into the current view and rejects what no longer belongs. Done well, the result looks far denser."
+      }
+    },
+    {
+      "frame": 5,
+      "path": "assets/voice/05.wav",
+      "duration_s": 10.091,
+      "words": [
+        {
+          "text": "Fast",
+          "word": "Fast",
+          "start": 0,
+          "end": 0.32
+        },
+        {
+          "text": "reveals,",
+          "word": "reveals,",
+          "start": 0.32,
+          "end": 0.86
+        },
+        {
+          "text": "thin",
+          "word": "thin",
+          "start": 1.3,
+          "end": 1.48
+        },
+        {
+          "text": "geometry",
+          "word": "geometry",
+          "start": 1.48,
+          "end": 1.9
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 1.9,
+          "end": 2.32
+        },
+        {
+          "text": "particles",
+          "word": "particles",
+          "start": 2.32,
+          "end": 2.86
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 2.86,
+          "end": 3.32
+        },
+        {
+          "text": "break",
+          "word": "break",
+          "start": 3.32,
+          "end": 3.62
+        },
+        {
+          "text": "history.",
+          "word": "history.",
+          "start": 3.62,
+          "end": 4.14
+        },
+        {
+          "text": "Old",
+          "word": "Old",
+          "start": 4.8,
+          "end": 4.92
+        },
+        {
+          "text": "samples",
+          "word": "samples",
+          "start": 4.92,
+          "end": 5.4
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 5.4,
+          "end": 5.68
+        },
+        {
+          "text": "ghost,",
+          "word": "ghost,",
+          "start": 5.68,
+          "end": 6.14
+        },
+        {
+          "text": "while",
+          "word": "while",
+          "start": 6.48,
+          "end": 6.68
+        },
+        {
+          "text": "fresh",
+          "word": "fresh",
+          "start": 6.68,
+          "end": 7
+        },
+        {
+          "text": "pixels",
+          "word": "pixels",
+          "start": 7,
+          "end": 7.46
+        },
+        {
+          "text": "may",
+          "word": "may",
+          "start": 7.46,
+          "end": 7.74
+        },
+        {
+          "text": "shimmer",
+          "word": "shimmer",
+          "start": 7.74,
+          "end": 8.1
+        },
+        {
+          "text": "before",
+          "word": "before",
+          "start": 8.1,
+          "end": 8.52
+        },
+        {
+          "text": "enough",
+          "word": "enough",
+          "start": 8.52,
+          "end": 8.8
+        },
+        {
+          "text": "evidence",
+          "word": "evidence",
+          "start": 8.8,
+          "end": 9.24
+        },
+        {
+          "text": "arrives.",
+          "word": "arrives.",
+          "start": 9.24,
+          "end": 9.72
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Fast reveals, thin geometry and particles can break history. Old samples may ghost, while fresh pixels may shimmer before enough evidence arrives."
+      }
+    },
+    {
+      "frame": 6,
+      "path": "assets/voice/06.wav",
+      "duration_s": 8.747,
+      "words": [
+        {
+          "text": "Temporal",
+          "word": "Temporal",
+          "start": 0,
+          "end": 0.42
+        },
+        {
+          "text": "upscaling",
+          "word": "upscaling",
+          "start": 0.42,
+          "end": 1.02
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 1.02,
+          "end": 1.36
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 1.36,
+          "end": 1.54
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 1.54,
+          "end": 1.74
+        },
+        {
+          "text": "fancy",
+          "word": "fancy",
+          "start": 1.74,
+          "end": 2.08
+        },
+        {
+          "text": "stretch.",
+          "word": "stretch.",
+          "start": 2.08,
+          "end": 2.62
+        },
+        {
+          "text": "It",
+          "word": "It",
+          "start": 3.16,
+          "end": 3.26
+        },
+        {
+          "text": "reconstructs",
+          "word": "reconstructs",
+          "start": 3.26,
+          "end": 4.04
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 4.04,
+          "end": 4.14
+        },
+        {
+          "text": "moving",
+          "word": "moving",
+          "start": 4.14,
+          "end": 4.44
+        },
+        {
+          "text": "image",
+          "word": "image",
+          "start": 4.44,
+          "end": 4.94
+        },
+        {
+          "text": "borrowing",
+          "word": "borrowing",
+          "start": 4.94,
+          "end": 5.66
+        },
+        {
+          "text": "from",
+          "word": "from",
+          "start": 5.66,
+          "end": 6.02
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 6.02,
+          "end": 6.18
+        },
+        {
+          "text": "past",
+          "word": "past",
+          "start": 6.18,
+          "end": 6.6
+        },
+        {
+          "text": "without",
+          "word": "without",
+          "start": 6.6,
+          "end": 7.18
+        },
+        {
+          "text": "letting",
+          "word": "letting",
+          "start": 7.18,
+          "end": 7.52
+        },
+        {
+          "text": "it",
+          "word": "it",
+          "start": 7.52,
+          "end": 7.72
+        },
+        {
+          "text": "haunt",
+          "word": "haunt",
+          "start": 7.72,
+          "end": 8.02
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 8.02,
+          "end": 8.22
+        },
+        {
+          "text": "present.",
+          "word": "present.",
+          "start": 8.22,
+          "end": 8.46
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Temporal upscaling is not a fancy stretch. It reconstructs a moving image borrowing from the past without letting it haunt the present."
+      }
+    }
+  ],
+  "sfx": [
+    {
+      "frame": 1,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 1,
+      "file": "assets/sfx/glitch-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.64,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/whoosh-short.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/click.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/whoosh.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/glitch-2.mp3",
+      "offset_s": 0,
+      "duration_s": 3.5,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/chime.mp3",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    }
+  ]
+}

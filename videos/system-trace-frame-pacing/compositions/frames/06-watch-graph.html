@@ -1,0 +1,444 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      isolation: isolate;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    #root > [data-part="06-watch-graph-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background-color: #0d0d0f;
+    }
+
+    #root [data-part="06-watch-graph-halo"] {
+      position: absolute;
+      top: 13cqh;
+      left: 18cqw;
+      width: 64cqw;
+      height: 51cqh;
+      background-color: rgba(255, 107, 26, 0.035);
+    }
+
+    #root [data-part="06-watch-graph-edge"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 0.42cqw;
+      height: 83cqh;
+      background-color: #ff6b1a;
+    }
+
+    #root > [data-part="06-watch-graph-content"] {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+    }
+
+    #root [data-part="06-watch-graph-swap-stage"] {
+      position: absolute;
+      inset: 0;
+    }
+
+    #root [data-part="06-watch-graph-fps-badge"] {
+      position: absolute;
+      top: 23cqh;
+      left: 34cqw;
+      z-index: 2;
+      width: 32cqw;
+      height: 24cqh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background-color: #ff6b1a;
+      color: #0d0d0f;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-part="06-watch-graph-fps-text"] {
+      font-size: 10.5cqw;
+      font-weight: 900;
+      letter-spacing: -0.055em;
+      line-height: 0.82;
+      text-transform: lowercase;
+    }
+
+    #root [data-part="06-watch-graph-fps-cut"] {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 2.4cqw;
+      height: 100%;
+      border-left: 1px solid rgba(13, 13, 15, 0.24);
+      background-color: rgba(13, 13, 15, 0.08);
+    }
+
+    #root [data-part="06-watch-graph-graph-shell"] {
+      position: absolute;
+      top: 13.5cqh;
+      left: 5.5cqw;
+      z-index: 3;
+      width: 89cqw;
+      height: 51cqh;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-part="06-watch-graph-title"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      color: #f0f0f0;
+      font-size: 4.5cqw;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.9;
+      text-transform: lowercase;
+    }
+
+    #root [data-part="06-watch-graph-title-accent"] {
+      color: #ff6b1a;
+    }
+
+    #root [data-part="06-watch-graph-series"] {
+      position: absolute;
+      top: 2.1cqh;
+      right: 0;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.72cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [data-part="06-watch-graph-chart"] {
+      position: absolute;
+      top: 12cqh;
+      left: 0;
+      width: 100%;
+      height: 33cqh;
+      overflow: hidden;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+    }
+
+    #root [data-part="06-watch-graph-svg"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    #root [data-part="06-watch-graph-grid-line"] {
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="06-watch-graph-trace"] {
+      fill: none;
+      stroke: #f0f0f0;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="06-watch-graph-spike"] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 5;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="06-watch-graph-circle"] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="06-watch-graph-spike-label"] {
+      position: absolute;
+      top: 13.8cqh;
+      left: 38.7cqw;
+      display: flex;
+      align-items: center;
+      gap: 0.65cqw;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.86cqw;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      line-height: 1;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [data-part="06-watch-graph-spike-label"]::before {
+      content: "";
+      display: block;
+      width: 1.6cqw;
+      height: 2px;
+      background-color: #ff6b1a;
+    }
+
+    #root [data-part="06-watch-graph-source-rail"] {
+      position: absolute;
+      top: 67.2cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 10cqh;
+      display: flex;
+      align-items: center;
+      gap: 1.3cqw;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+    }
+
+    #root [data-part="06-watch-graph-rail-stub"] {
+      flex: 0 0 auto;
+      width: 1.9cqw;
+      height: 2px;
+      background-color: #ff6b1a;
+    }
+
+    #root [data-part="06-watch-graph-rail-copy"] {
+      color: #f0f0f0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.4cqw;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      line-height: 1.2;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+  </style>
+
+  <div id="root" data-composition-id="06-watch-graph" data-width="1080" data-height="1920">
+    <div
+      class="clip"
+      data-part="06-watch-graph-ground"
+      data-start="0"
+      data-duration="7.701"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <div data-part="06-watch-graph-halo"></div>
+      <div data-part="06-watch-graph-edge"></div>
+    </div>
+
+    <div
+      class="clip"
+      data-part="06-watch-graph-content"
+      data-start="0"
+      data-duration="7.701"
+      data-track-index="1"
+    >
+      <div data-part="06-watch-graph-swap-stage">
+        <div data-part="06-watch-graph-fps-badge">
+          <span data-part="06-watch-graph-fps-text">fps</span>
+          <span data-part="06-watch-graph-fps-cut"></span>
+        </div>
+
+        <div data-part="06-watch-graph-graph-shell">
+          <div data-part="06-watch-graph-title">frame <span data-part="06-watch-graph-title-accent">time</span></div>
+          <div data-part="06-watch-graph-series">system trace // 01</div>
+
+          <div data-part="06-watch-graph-chart" aria-hidden="true">
+            <svg
+              data-part="06-watch-graph-svg"
+              viewBox="0 0 1708 356"
+              preserveAspectRatio="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <line data-part="06-watch-graph-grid-line" x1="0" y1="90" x2="1708" y2="90" />
+              <line data-part="06-watch-graph-grid-line" x1="0" y1="178" x2="1708" y2="178" />
+              <line data-part="06-watch-graph-grid-line" x1="0" y1="266" x2="1708" y2="266" />
+              <path
+                id="06-watch-graph-trace-path"
+                data-part="06-watch-graph-trace"
+                d="M 0 247 C 74 241 132 252 205 244 S 337 249 414 241 S 546 253 620 246 L 674 244 L 705 67 L 738 250 C 807 246 860 239 928 245 S 1058 253 1137 243 S 1278 249 1350 242 S 1497 252 1578 244 S 1652 246 1708 240"
+              />
+              <path
+                id="06-watch-graph-spike-path"
+                data-part="06-watch-graph-spike"
+                d="M 620 246 L 674 244 L 705 67 L 738 250 L 790 247"
+              />
+              <path
+                id="06-watch-graph-circle-path"
+                data-part="06-watch-graph-circle"
+                d="M 634 112 C 629 57 667 29 715 33 C 770 37 800 75 788 123 C 779 166 744 187 696 179 C 652 173 627 146 634 112 Z"
+              />
+            </svg>
+          </div>
+
+          <div data-part="06-watch-graph-spike-label">40 ms</div>
+        </div>
+      </div>
+
+      <div data-part="06-watch-graph-source-rail">
+        <span data-part="06-watch-graph-rail-stub"></span>
+        <span data-part="06-watch-graph-rail-copy">measure the rhythm, not only the count.</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="06-watch-graph"]');
+      const fpsBadge = root.querySelector('[data-part="06-watch-graph-fps-badge"]');
+      const graphShell = root.querySelector('[data-part="06-watch-graph-graph-shell"]');
+      const graphTitle = root.querySelector('[data-part="06-watch-graph-title"]');
+      const seriesMarker = root.querySelector('[data-part="06-watch-graph-series"]');
+      const tracePath = root.querySelector('[id="06-watch-graph-trace-path"]');
+      const spikePath = root.querySelector('[id="06-watch-graph-spike-path"]');
+      const circlePath = root.querySelector('[id="06-watch-graph-circle-path"]');
+      const spikeLabel = root.querySelector('[data-part="06-watch-graph-spike-label"]');
+      const sourceRail = root.querySelector('[data-part="06-watch-graph-source-rail"]');
+
+      const timeline = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["06-watch-graph"] = timeline;
+
+      [tracePath, spikePath, circlePath].forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      timeline.fromTo(
+        fpsBadge,
+        { opacity: 0, scale: 1.08 },
+        { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" },
+        0,
+      );
+
+      timeline.to(
+        fpsBadge,
+        {
+          x: 749,
+          y: -290,
+          scale: 0.3,
+          opacity: 0.72,
+          duration: 0.45,
+          ease: "power2.in",
+        },
+        2.2,
+      );
+
+      timeline.fromTo(
+        graphShell,
+        { opacity: 0, scale: 0.72 },
+        {
+          opacity: 1,
+          scale: 1,
+          duration: 0.62,
+          ease: "back.out(1.4)",
+        },
+        2.5,
+      );
+
+      timeline.fromTo(
+        graphTitle,
+        { opacity: 0, y: 46 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+        3.15,
+      );
+      timeline.fromTo(
+        seriesMarker,
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" },
+        3.25,
+      );
+      timeline.to(
+        tracePath,
+        { strokeDashoffset: 0, duration: 1.35, ease: "power2.out" },
+        3.3,
+      );
+      timeline.to(
+        spikePath,
+        { strokeDashoffset: 0, duration: 0.48, ease: "power2.out" },
+        4.2,
+      );
+      timeline.to(
+        circlePath,
+        { strokeDashoffset: 0, duration: 0.7, ease: "power2.out" },
+        4.75,
+      );
+      timeline.fromTo(
+        spikeLabel,
+        { opacity: 0, y: 20 },
+        { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" },
+        4.86,
+      );
+
+      timeline.fromTo(
+        sourceRail,
+        { opacity: 0, y: 28 },
+        { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" },
+        5.7,
+      );
+
+      const holdDriver = { t: 0 };
+      timeline.to(
+        holdDriver,
+        { t: 1, duration: 2.001, ease: "none" },
+        5.7,
+      );
+    })();
+  </script>
+</template>

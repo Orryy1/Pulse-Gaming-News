@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-ray-tracing-bvh",
+  "project_id": "system-trace-ray-tracing-bvh",
+  "narration_script": "Ray tracing sounds impossible at game speed. One ray could meet millions of triangles unless the renderer learns where not to look. Real -time systems organize geometry into a bounding volume hierarchy or BVH. Nested boxes around progressively smaller groups of shapes. Array first tests a large box. If it misses, every triangle inside that branch is rejected at once. The search narrows from world -sized regions to smaller boxes, then to the few triangles that might be hit. Empty space becomes cheap. building and updating that structure still costs time, especially when geometry moves. Engines balance rebuild quality, update cost and ray count. Real -time ray tracing does not brute force the scene. It wins by asking a better first question. Which parts can this ray ignore?",
+  "final_container": {
+    "path": "renders/system-trace-ray-tracing-bvh.mp4",
+    "sha256": "60451f27450991983c45712a7d5ea7a57f3b9826ada69014a3052a192dff37d8",
+    "bytes": 5996038
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "c0aa5bc20e027bd91742f5b63729395481c0dd986e7721214890fb8835be3d14",
+    "bytes": 2541
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-20T19:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

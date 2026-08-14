@@ -1,0 +1,712 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "F05 Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "F05 IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "F05 IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "F05 IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    #root {
+      position: relative;
+      width: 100cqw;
+      height: 100cqh;
+      overflow: hidden;
+      color: #f0f0f0;
+      font-family: "F05 Space Grotesk", sans-serif;
+      isolation: isolate;
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .f05-ground {
+      z-index: 0;
+      background: #0d0d0f;
+    }
+
+    .f05-ground-rule {
+      position: absolute;
+      background: #282726;
+      opacity: 0.78;
+    }
+
+    .f05-ground-rule--v1 {
+      top: 0;
+      bottom: 0;
+      left: 33.333cqw;
+      width: 1px;
+    }
+
+    .f05-ground-rule--v2 {
+      top: 0;
+      bottom: 0;
+      left: 66.666cqw;
+      width: 1px;
+    }
+
+    .f05-ground-rule--h1 {
+      top: 20.75cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+    }
+
+    .f05-ground-rule--h2 {
+      top: 41.5cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+    }
+
+    .f05-ground-rule--h3 {
+      top: 62.25cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+    }
+
+    .f05-ground-rule--safe {
+      top: 83cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #ff6b1a;
+      opacity: 0.34;
+    }
+
+    .f05-stage {
+      z-index: 1;
+    }
+
+    .f05-viewport {
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    .f05-header {
+      position: absolute;
+      z-index: 30;
+      top: 3.35cqh;
+      left: 5.4cqw;
+      right: 5.4cqw;
+      height: 7.25cqh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-bottom: 1px solid #504b48;
+      opacity: 0;
+    }
+
+    .f05-kicker {
+      margin-top: 0.2cqh;
+      font-family: "F05 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .f05-kicker-accent {
+      color: #ff6b1a;
+    }
+
+    .f05-index {
+      font-family: "F05 IBM Plex Mono", monospace;
+      font-size: 2.3cqw;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: 0.04em;
+      color: #ff6b1a;
+    }
+
+    .f05-spine {
+      position: absolute;
+      z-index: 2;
+      top: 12.75cqh;
+      left: 3.6cqw;
+      width: 0.72cqw;
+      height: 59.25cqh;
+      background: #ff6b1a;
+    }
+
+    .f05-panel {
+      position: absolute;
+      z-index: 5;
+      left: 5.4cqw;
+      width: 89.2cqw;
+      height: 28.5cqh;
+      overflow: hidden;
+      border: 1px solid #504b48;
+      background: #1a1918;
+      opacity: 0;
+      transform-origin: 50% 50%;
+    }
+
+    .f05-panel::before {
+      content: "";
+      position: absolute;
+      z-index: 1;
+      top: 0;
+      bottom: 0;
+      left: 59.4%;
+      width: 1px;
+      background: #504b48;
+    }
+
+    .f05-panel--late {
+      top: 12.75cqh;
+    }
+
+    .f05-panel--budget {
+      top: 43.5cqh;
+    }
+
+    .f05-cause {
+      position: absolute;
+      z-index: 4;
+      top: 3cqh;
+      left: 3cqw;
+      width: 23.5cqw;
+    }
+
+    .f05-cause-label {
+      font-family: "F05 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+
+    .f05-cause-title {
+      margin-top: 1.05cqh;
+      font-family: "F05 Space Grotesk", sans-serif;
+      font-size: 5.1cqw;
+      font-weight: 900;
+      line-height: 0.84;
+      letter-spacing: -0.055em;
+      text-transform: lowercase;
+      color: #f0f0f0;
+    }
+
+    .f05-diagnostic {
+      position: absolute;
+      z-index: 12;
+      left: 3cqw;
+      bottom: 2.35cqh;
+      min-width: 23.5cqw;
+      padding: 1.05cqw 1.1cqw 0.9cqw;
+      border: 1px solid #ff6b1a;
+      background: #0d0d0f;
+      font-family: "F05 IBM Plex Mono", monospace;
+      font-size: 1.7cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.13em;
+      text-align: center;
+      text-transform: uppercase;
+      color: #ff6b1a;
+      opacity: 0;
+    }
+
+    .f05-texture-stack {
+      position: absolute;
+      z-index: 4;
+      top: 4.15cqh;
+      left: 31cqw;
+      width: 25cqw;
+      aspect-ratio: 1;
+      border: 1px solid #f0f0f0;
+      background: #0d0d0f;
+      overflow: hidden;
+    }
+
+    .f05-surface {
+      position: absolute;
+      inset: 0;
+      background: #1a1918;
+      transform-origin: 50% 50%;
+    }
+
+    .f05-surface svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .f05-late-soft,
+    .f05-budget-sharp {
+      opacity: 1;
+    }
+
+    .f05-late-sharp,
+    .f05-budget-soft {
+      opacity: 0;
+    }
+
+    .f05-state {
+      position: absolute;
+      z-index: 8;
+      top: 20.15cqh;
+      left: 31cqw;
+      width: 25cqw;
+      padding-top: 0.85cqh;
+      border-top: 1px solid #504b48;
+      font-family: "F05 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.09em;
+      text-align: right;
+      text-transform: uppercase;
+    }
+
+    .f05-state--active {
+      color: #f0f0f0;
+    }
+
+    .f05-state--next {
+      color: #ff6b1a;
+      opacity: 0;
+    }
+
+    .f05-instrument {
+      position: absolute;
+      z-index: 4;
+      top: 5.1cqh;
+      left: 63.5cqw;
+      right: 3.2cqw;
+    }
+
+    .f05-instrument-label {
+      font-family: "F05 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+    }
+
+    .f05-instrument-status {
+      position: absolute;
+      top: 3.15cqh;
+      right: 0;
+      font-family: "F05 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+
+    .f05-instrument-status--next {
+      opacity: 0;
+    }
+
+    .f05-meter {
+      position: relative;
+      width: 100%;
+      height: 3.15cqh;
+      margin-top: 4.85cqh;
+      overflow: hidden;
+      border: 1px solid #504b48;
+      background: #0d0d0f;
+    }
+
+    .f05-meter-fill {
+      position: absolute;
+      inset: 0;
+      background: #ff6b1a;
+      transform-origin: 0 50%;
+    }
+
+    .f05-meter-ticks {
+      position: absolute;
+      z-index: 3;
+      inset: 0;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+    }
+
+    .f05-meter-tick {
+      border-right: 1px solid #0d0d0f;
+    }
+
+    .f05-meter-tick:last-child {
+      border-right: 0;
+    }
+
+    .f05-meter-caption {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 1.15cqh;
+      font-family: "F05 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #a49d98;
+    }
+
+    .f05-snap-line {
+      position: absolute;
+      z-index: 9;
+      top: 3.2cqh;
+      left: 30.05cqw;
+      width: 26.9cqw;
+      height: 0.42cqh;
+      background: #ff6b1a;
+      transform-origin: 0 50%;
+      opacity: 0;
+    }
+
+    .f05-evict-flag {
+      position: absolute;
+      z-index: 9;
+      top: 16.4cqh;
+      right: 3.2cqw;
+      width: 26.5cqw;
+      padding: 0.95cqw 1cqw 0.82cqw;
+      border: 1px solid #ff6b1a;
+      background: #0d0d0f;
+      font-family: "F05 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.13em;
+      text-align: center;
+      text-transform: uppercase;
+      color: #ff6b1a;
+      opacity: 0;
+    }
+
+    .f05-footer {
+      position: absolute;
+      z-index: 20;
+      top: 75.25cqh;
+      left: 5.4cqw;
+      right: 5.4cqw;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 1.05cqh;
+      border-top: 1px solid #504b48;
+      font-family: "F05 IBM Plex Mono", monospace;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #a49d98;
+      opacity: 0;
+    }
+
+    .f05-footer-key {
+      color: #ff6b1a;
+    }
+  </style>
+
+  <div id="root" data-composition-id="05-late-detail" data-width="1080" data-height="1920" data-start="0" data-duration="9.304">
+    <div class="clip f05-ground" data-start="0" data-duration="9.304" data-track-index="0">
+      <div class="f05-ground-rule f05-ground-rule--v1"></div>
+      <div class="f05-ground-rule f05-ground-rule--v2"></div>
+      <div class="f05-ground-rule f05-ground-rule--h1"></div>
+      <div class="f05-ground-rule f05-ground-rule--h2"></div>
+      <div class="f05-ground-rule f05-ground-rule--h3"></div>
+      <div class="f05-ground-rule f05-ground-rule--safe"></div>
+    </div>
+
+    <div class="clip f05-stage" data-start="0" data-duration="9.304" data-track-index="1">
+      <div class="f05-viewport">
+        <header class="f05-header" id="f05-header">
+          <div class="f05-kicker"><span class="f05-kicker-accent">detail</span> / failure paths</div>
+          <div class="f05-index">05</div>
+        </header>
+
+        <div class="f05-spine"></div>
+
+        <section class="f05-panel f05-panel--late" id="f05-panel-late">
+          <div class="f05-cause">
+            <div class="f05-cause-label">cause / transfer</div>
+            <div class="f05-cause-title">late<br>arrival</div>
+          </div>
+
+          <div class="f05-diagnostic" id="f05-diagnostic-pop">pop-in</div>
+
+          <div class="f05-texture-stack">
+            <div class="f05-surface f05-late-soft" id="f05-late-soft">
+              <svg viewBox="0 0 100 100" aria-hidden="true" shape-rendering="crispEdges">
+                <rect width="100" height="100" fill="#1a1918"/>
+                <rect x="5" y="5" width="42" height="28" fill="#f0f0f0"/>
+                <rect x="53" y="5" width="42" height="28" fill="#ff6b1a"/>
+                <rect x="5" y="39" width="42" height="24" fill="#504b48"/>
+                <rect x="53" y="39" width="42" height="24" fill="#0d0d0f"/>
+                <rect x="5" y="69" width="42" height="26" fill="#ff6b1a"/>
+                <rect x="53" y="69" width="42" height="26" fill="#504b48"/>
+              </svg>
+            </div>
+            <div class="f05-surface f05-late-sharp" id="f05-late-sharp">
+              <svg viewBox="0 0 100 100" aria-hidden="true" shape-rendering="crispEdges">
+                <rect width="100" height="100" fill="#1a1918"/>
+                <rect x="4" y="4" width="43" height="29" fill="#f0f0f0"/>
+                <rect x="52" y="4" width="44" height="29" fill="#ff6b1a"/>
+                <rect x="4" y="38" width="22" height="25" fill="#504b48"/>
+                <rect x="31" y="38" width="42" height="25" fill="#0d0d0f" stroke="#f0f0f0" stroke-width="1"/>
+                <rect x="78" y="38" width="18" height="25" fill="#f0f0f0"/>
+                <rect x="4" y="68" width="43" height="28" fill="#ff6b1a"/>
+                <rect x="52" y="68" width="20" height="28" fill="#504b48"/>
+                <rect x="77" y="68" width="19" height="28" fill="#0d0d0f" stroke="#f0f0f0" stroke-width="1"/>
+                <path d="M13 4V33M22 4V33M31 4V33M40 4V33M52 13H96M52 22H96M4 47H26M4 55H26M40 38V63M51 38V63M62 38V63M4 77H47M4 87H47M59 68V96M84 68V96" stroke="#282726" stroke-width="1"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="f05-state f05-state--active" id="f05-late-state-soft">MIP 3 / soft</div>
+          <div class="f05-state f05-state--next" id="f05-late-state-sharp">MIP 0 / sharp</div>
+
+          <div class="f05-instrument">
+            <div class="f05-instrument-label">transfer</div>
+            <div class="f05-instrument-status" id="f05-transfer-flight">in flight</div>
+            <div class="f05-instrument-status f05-instrument-status--next" id="f05-transfer-complete">complete</div>
+            <div class="f05-meter">
+              <div class="f05-meter-fill" id="f05-transfer-fill"></div>
+              <div class="f05-meter-ticks" aria-hidden="true">
+                <span class="f05-meter-tick"></span><span class="f05-meter-tick"></span><span class="f05-meter-tick"></span>
+                <span class="f05-meter-tick"></span><span class="f05-meter-tick"></span><span class="f05-meter-tick"></span>
+              </div>
+            </div>
+            <div class="f05-meter-caption"><span>queued</span><span>arrived</span></div>
+          </div>
+
+          <div class="f05-snap-line" id="f05-snap-line"></div>
+        </section>
+
+        <section class="f05-panel f05-panel--budget" id="f05-panel-budget">
+          <div class="f05-cause">
+            <div class="f05-cause-label">cause / residency</div>
+            <div class="f05-cause-title">tight<br>budget</div>
+          </div>
+
+          <div class="f05-diagnostic" id="f05-diagnostic-resident">not resident</div>
+
+          <div class="f05-texture-stack">
+            <div class="f05-surface f05-budget-sharp" id="f05-budget-sharp">
+              <svg viewBox="0 0 100 100" aria-hidden="true" shape-rendering="crispEdges">
+                <rect width="100" height="100" fill="#1a1918"/>
+                <rect x="4" y="4" width="43" height="29" fill="#f0f0f0"/>
+                <rect x="52" y="4" width="44" height="29" fill="#ff6b1a"/>
+                <rect x="4" y="38" width="22" height="25" fill="#504b48"/>
+                <rect x="31" y="38" width="42" height="25" fill="#0d0d0f" stroke="#f0f0f0" stroke-width="1"/>
+                <rect x="78" y="38" width="18" height="25" fill="#f0f0f0"/>
+                <rect x="4" y="68" width="43" height="28" fill="#ff6b1a"/>
+                <rect x="52" y="68" width="20" height="28" fill="#504b48"/>
+                <rect x="77" y="68" width="19" height="28" fill="#0d0d0f" stroke="#f0f0f0" stroke-width="1"/>
+                <path d="M13 4V33M22 4V33M31 4V33M40 4V33M52 13H96M52 22H96M4 47H26M4 55H26M40 38V63M51 38V63M62 38V63M4 77H47M4 87H47M59 68V96M84 68V96" stroke="#282726" stroke-width="1"/>
+              </svg>
+            </div>
+            <div class="f05-surface f05-budget-soft" id="f05-budget-soft">
+              <svg viewBox="0 0 100 100" aria-hidden="true" shape-rendering="crispEdges">
+                <rect width="100" height="100" fill="#1a1918"/>
+                <rect x="5" y="5" width="42" height="28" fill="#f0f0f0"/>
+                <rect x="53" y="5" width="42" height="28" fill="#ff6b1a"/>
+                <rect x="5" y="39" width="42" height="24" fill="#504b48"/>
+                <rect x="53" y="39" width="42" height="24" fill="#0d0d0f"/>
+                <rect x="5" y="69" width="42" height="26" fill="#ff6b1a"/>
+                <rect x="53" y="69" width="42" height="26" fill="#504b48"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="f05-state f05-state--active" id="f05-budget-state-sharp">MIP 0 / sharp</div>
+          <div class="f05-state f05-state--next" id="f05-budget-state-soft">MIP 3 / soft</div>
+
+          <div class="f05-instrument">
+            <div class="f05-instrument-label">memory budget</div>
+            <div class="f05-instrument-status" id="f05-budget-headroom">headroom</div>
+            <div class="f05-instrument-status f05-instrument-status--next" id="f05-budget-limit">limit</div>
+            <div class="f05-meter">
+              <div class="f05-meter-fill" id="f05-budget-fill"></div>
+              <div class="f05-meter-ticks" aria-hidden="true">
+                <span class="f05-meter-tick"></span><span class="f05-meter-tick"></span><span class="f05-meter-tick"></span>
+                <span class="f05-meter-tick"></span><span class="f05-meter-tick"></span><span class="f05-meter-tick"></span>
+              </div>
+            </div>
+            <div class="f05-meter-caption"><span>headroom</span><span>limit</span></div>
+          </div>
+
+          <div class="f05-evict-flag" id="f05-evict-flag">evict MIP 0</div>
+        </section>
+
+        <div class="f05-footer" id="f05-footer">
+          <span><span class="f05-footer-key">late</span> or displaced</span>
+          <span>same lower detail</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const timeline = gsap.timeline({ paused: true });
+      const hold = { progress: 0 };
+
+      timeline
+        .fromTo("#f05-header",
+          { opacity: 0, y: -18 },
+          { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" },
+          0
+        )
+        .fromTo("#f05-panel-late",
+          { opacity: 0, x: -64, scale: 0.985 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.46, ease: "power3.out" },
+          0.04
+        )
+        .fromTo("#f05-transfer-fill",
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 1.55, ease: "power1.inOut" },
+          0.64
+        )
+        .to("#f05-transfer-flight",
+          { opacity: 0, duration: 0.1, ease: "none" },
+          2.08
+        )
+        .fromTo("#f05-transfer-complete",
+          { opacity: 0, y: 8 },
+          { opacity: 1, y: 0, duration: 0.16, ease: "power2.out" },
+          2.08
+        )
+        .to("#f05-late-soft",
+          { opacity: 0, duration: 0.08, ease: "none" },
+          2.16
+        )
+        .fromTo("#f05-late-sharp",
+          { opacity: 0, scale: 1.025 },
+          { opacity: 1, scale: 1, duration: 0.12, ease: "power3.out" },
+          2.16
+        )
+        .to("#f05-late-state-soft",
+          { opacity: 0, duration: 0.08, ease: "none" },
+          2.16
+        )
+        .fromTo("#f05-late-state-sharp",
+          { opacity: 0, x: 12 },
+          { opacity: 1, x: 0, duration: 0.18, ease: "power2.out" },
+          2.16
+        )
+        .fromTo("#f05-snap-line",
+          { opacity: 1, scaleX: 0, transformOrigin: "0% 50%" },
+          { opacity: 1, scaleX: 1, duration: 0.16, ease: "power2.out" },
+          2.14
+        )
+        .to("#f05-snap-line",
+          { opacity: 0, duration: 0.16, ease: "none" },
+          2.38
+        )
+
+        .fromTo("#f05-panel-budget",
+          { opacity: 0, x: 64, scale: 0.985 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.46, ease: "power3.out" },
+          3
+        )
+        .fromTo("#f05-budget-fill",
+          { scaleX: 0.28, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 1.45, ease: "power1.inOut" },
+          3.52
+        )
+        .to("#f05-budget-headroom",
+          { opacity: 0, duration: 0.1, ease: "none" },
+          4.92
+        )
+        .fromTo("#f05-budget-limit",
+          { opacity: 0, y: 8 },
+          { opacity: 1, y: 0, duration: 0.16, ease: "power2.out" },
+          4.92
+        )
+        .fromTo("#f05-evict-flag",
+          { opacity: 0, x: 16 },
+          { opacity: 1, x: 0, duration: 0.2, ease: "power2.out" },
+          5.02
+        )
+        .to("#f05-budget-sharp",
+          { opacity: 0, duration: 0.14, ease: "none" },
+          5.06
+        )
+        .fromTo("#f05-budget-soft",
+          { opacity: 0, scale: 0.96 },
+          { opacity: 1, scale: 1, duration: 0.18, ease: "power2.out" },
+          5.06
+        )
+        .to("#f05-budget-state-sharp",
+          { opacity: 0, duration: 0.1, ease: "none" },
+          5.06
+        )
+        .fromTo("#f05-budget-state-soft",
+          { opacity: 0, x: 12 },
+          { opacity: 1, x: 0, duration: 0.2, ease: "power2.out" },
+          5.06
+        )
+
+        .fromTo("#f05-diagnostic-pop",
+          { opacity: 0, x: -24, scale: 0.94 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.1, ease: "back.out(1.35)" },
+          6.38
+        )
+        .fromTo("#f05-diagnostic-resident",
+          { opacity: 0, x: 24, scale: 0.94 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.1, ease: "back.out(1.35)" },
+          6.4
+        )
+        .fromTo("#f05-footer",
+          { opacity: 0, y: 14 },
+          { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" },
+          6.5
+        )
+        .to(hold, { progress: 1, duration: 1.954, ease: "none" }, 6.75);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["05-late-detail"] = timeline;
+    })();
+  </script>
+</template>

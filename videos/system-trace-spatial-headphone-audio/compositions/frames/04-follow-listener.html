@@ -1,0 +1,749 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      isolation: isolate;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    [class~="04-follow-listener-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background: #0D0D0F;
+    }
+
+    [class~="04-follow-listener-ground-rule"] {
+      position: absolute;
+      top: 5.5cqh;
+      left: 5.5cqw;
+      width: 3.35cqw;
+      height: 2px;
+      background: #FF6B1A;
+    }
+
+    [class~="04-follow-listener-ground-vline"] {
+      position: absolute;
+      top: 5.5cqh;
+      bottom: 17cqh;
+      width: 1px;
+      background: #282726;
+    }
+
+    [class~="04-follow-listener-ground-vline-a"] {
+      left: 5.5cqw;
+    }
+
+    [class~="04-follow-listener-ground-vline-b"] {
+      left: 50cqw;
+    }
+
+    [class~="04-follow-listener-ground-vline-c"] {
+      right: 5.5cqw;
+    }
+
+    [class~="04-follow-listener-ground-hline"] {
+      position: absolute;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      height: 1px;
+      background: #282726;
+    }
+
+    [class~="04-follow-listener-ground-hline-a"] {
+      top: 17.3cqh;
+    }
+
+    [class~="04-follow-listener-ground-hline-b"] {
+      top: 47.6cqh;
+    }
+
+    [class~="04-follow-listener-ground-hline-c"] {
+      top: 72.1cqh;
+    }
+
+    [class~="04-follow-listener-scene"] {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    [class~="04-follow-listener-headline"] {
+      position: absolute;
+      top: 7.2cqh;
+      left: 5.5cqw;
+      width: 78cqw;
+      z-index: 8;
+      margin: 0;
+      font-family: "Space Grotesk";
+      font-size: 8.6cqw;
+      font-weight: 900;
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+      text-transform: lowercase;
+    }
+
+    [class~="04-follow-listener-headline"] span {
+      color: #FF6B1A;
+    }
+
+    [class~="04-follow-listener-world-vector"] {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    [class~="04-follow-listener-world-vector-path"] {
+      fill: none;
+      stroke: #504B48;
+      stroke-width: 2;
+      stroke-linecap: square;
+      stroke-dasharray: 9 10;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="04-follow-listener-sound-marker"] {
+      position: absolute;
+      top: 38.25cqh;
+      left: 13cqw;
+      width: 9cqw;
+      height: 5.8cqh;
+      z-index: 6;
+      overflow: visible;
+      border: 1px solid #FF6B1A;
+      background: #0D0D0F;
+      transform-origin: 50% 50%;
+    }
+
+    [class~="04-follow-listener-sound-core"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1.2cqw;
+      height: 100%;
+      background: #FF6B1A;
+    }
+
+    [class~="04-follow-listener-sound-bar"] {
+      position: absolute;
+      left: 2.3cqw;
+      height: 2px;
+      background: #F0F0F0;
+    }
+
+    [class~="04-follow-listener-sound-bar-a"] {
+      top: 1.25cqh;
+      width: 5cqw;
+    }
+
+    [class~="04-follow-listener-sound-bar-b"] {
+      top: 2.85cqh;
+      width: 3.6cqw;
+      background: #504B48;
+    }
+
+    [class~="04-follow-listener-sound-bar-c"] {
+      top: 4.35cqh;
+      width: 4.4cqw;
+      background: #FF6B1A;
+    }
+
+    [class~="04-follow-listener-sound-tick"] {
+      position: absolute;
+      top: 50%;
+      right: -2.1cqw;
+      width: 2.1cqw;
+      height: 1px;
+      background: #FF6B1A;
+    }
+
+    [class~="04-follow-listener-listener-stage"] {
+      position: absolute;
+      top: 18.2cqh;
+      left: 25cqw;
+      width: 50cqw;
+      height: 29cqh;
+      z-index: 5;
+      transform-origin: 50% 50%;
+    }
+
+    [class~="04-follow-listener-listener-svg"] {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    [class~="04-follow-listener-angle-ring"] {
+      fill: #0D0D0F;
+      stroke: #282726;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="04-follow-listener-angle-arc"] {
+      fill: none;
+      stroke: #FF6B1A;
+      stroke-width: 3;
+      stroke-linecap: square;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="04-follow-listener-angle-tick"] {
+      stroke: #504B48;
+      stroke-width: 3;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="04-follow-listener-angle-label"] {
+      fill: #504B48;
+      font-family: "IBM Plex Mono";
+      font-size: 1.4cqw;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+    }
+
+    [class~="04-follow-listener-listener-orient"] {
+      transform-box: view-box;
+      transform-origin: 270px 270px;
+    }
+
+    [class~="04-follow-listener-head"] {
+      fill: #1A1918;
+      stroke: #F0F0F0;
+      stroke-width: 4;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="04-follow-listener-head-axis"] {
+      fill: none;
+      stroke: #504B48;
+      stroke-width: 3;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="04-follow-listener-ear"] {
+      fill: #FF6B1A;
+    }
+
+    [class~="04-follow-listener-facing-wedge"] {
+      fill: #FF6B1A;
+    }
+
+    [class~="04-follow-listener-centre-mark"] {
+      fill: #0D0D0F;
+      stroke: #FF6B1A;
+      stroke-width: 3;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="04-follow-listener-wave-panel"] {
+      position: absolute;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 10.2cqh;
+      z-index: 5;
+      overflow: hidden;
+      border-top: 1px solid #504B48;
+      background: #1A1918;
+      transform-origin: 50% 50%;
+    }
+
+    [data-04-follow-listener-wave="left"] {
+      top: 49cqh;
+    }
+
+    [data-04-follow-listener-wave="right"] {
+      top: 61.1cqh;
+    }
+
+    [class~="04-follow-listener-wave-label"] {
+      position: absolute;
+      top: 1.25cqh;
+      left: 1.5cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 3.8cqw;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    [class~="04-follow-listener-wave-chrome"] {
+      position: absolute;
+      left: 1.55cqw;
+      bottom: 1cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 0.86cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #504B48;
+      text-transform: uppercase;
+    }
+
+    [class~="04-follow-listener-emphasis"] {
+      position: absolute;
+      top: 1.15cqh;
+      right: 1.4cqw;
+      width: 1.15cqw;
+      height: 1.15cqw;
+      background: #FF6B1A;
+    }
+
+    [class~="04-follow-listener-wave-zone"] {
+      position: absolute;
+      top: 1.2cqh;
+      right: 3.8cqw;
+      bottom: 1.2cqh;
+      left: 13cqw;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-left: 1px solid #504B48;
+      border-bottom: 1px solid #282726;
+      padding: 0 1.5cqw;
+    }
+
+    [class~="04-follow-listener-wave-bar"] {
+      display: block;
+      width: 1.05cqw;
+      min-height: 2px;
+      background: #F0F0F0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    [class~="04-follow-listener-wave-bar-accent"] {
+      background: #FF6B1A;
+    }
+
+    [class~="04-follow-listener-brain-card"] {
+      position: absolute;
+      top: 73.35cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 7.2cqh;
+      z-index: 7;
+      overflow: hidden;
+      border-top: 1px solid #504B48;
+      background: #1A1918;
+      transform-origin: 50% 50%;
+    }
+
+    [class~="04-follow-listener-brain-copy"] {
+      position: absolute;
+      top: 1.65cqh;
+      left: 1.7cqw;
+      margin: 0;
+      font-family: "Space Grotesk";
+      font-size: 3.1cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      text-transform: lowercase;
+      white-space: nowrap;
+    }
+
+    [class~="04-follow-listener-brain-copy"] span {
+      color: #FF6B1A;
+    }
+
+    [class~="04-follow-listener-estimate"] {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 31cqw;
+      height: 100%;
+      overflow: hidden;
+      border-left: 1px solid #504B48;
+    }
+
+    [class~="04-follow-listener-estimate-origin"] {
+      position: absolute;
+      top: 3.18cqh;
+      left: 15cqw;
+      width: 1.15cqw;
+      height: 1.15cqw;
+      background: #F0F0F0;
+    }
+
+    [class~="04-follow-listener-estimate-ray"] {
+      position: absolute;
+      top: 3.45cqh;
+      left: 15.5cqw;
+      width: 9cqw;
+      height: 2px;
+      background: #FF6B1A;
+      transform-origin: 0% 50%;
+    }
+
+    [class~="04-follow-listener-estimate-ray"]::after {
+      content: "";
+      position: absolute;
+      top: -0.45cqw;
+      right: -0.5cqw;
+      width: 1cqw;
+      height: 1cqw;
+      background: #FF6B1A;
+    }
+
+    [class~="04-follow-listener-estimate-rule"] {
+      position: absolute;
+      right: 1.5cqw;
+      bottom: 1.05cqh;
+      width: 26cqw;
+      height: 1px;
+      background: #504B48;
+      transform-origin: 100% 50%;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="04-follow-listener"
+    data-width="1080"
+    data-height="1920"
+    data-duration="9.78"
+    data-start="0"
+  >
+    <div
+      class="clip 04-follow-listener-ground"
+      data-start="0"
+      data-duration="9.78"
+      data-track-index="0"
+    >
+      <div class="04-follow-listener-ground-rule"></div>
+      <div class="04-follow-listener-ground-vline 04-follow-listener-ground-vline-a"></div>
+      <div class="04-follow-listener-ground-vline 04-follow-listener-ground-vline-b"></div>
+      <div class="04-follow-listener-ground-vline 04-follow-listener-ground-vline-c"></div>
+      <div class="04-follow-listener-ground-hline 04-follow-listener-ground-hline-a"></div>
+      <div class="04-follow-listener-ground-hline 04-follow-listener-ground-hline-b"></div>
+      <div class="04-follow-listener-ground-hline 04-follow-listener-ground-hline-c"></div>
+    </div>
+
+    <div
+      class="clip 04-follow-listener-scene"
+      data-start="0"
+      data-duration="9.78"
+      data-track-index="1"
+    >
+      <h1 class="04-follow-listener-headline">sound <span>fixed</span></h1>
+
+      <svg
+        class="04-follow-listener-world-vector"
+        viewBox="0 0 1080 1920"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path
+          id="04-follow-listener-world-path"
+          class="04-follow-listener-world-vector-path"
+          d="M 189 790 C 300 770 415 688 540 628"
+        ></path>
+      </svg>
+
+      <div class="04-follow-listener-sound-marker">
+        <span class="04-follow-listener-sound-core"></span>
+        <span class="04-follow-listener-sound-bar 04-follow-listener-sound-bar-a"></span>
+        <span class="04-follow-listener-sound-bar 04-follow-listener-sound-bar-b"></span>
+        <span class="04-follow-listener-sound-bar 04-follow-listener-sound-bar-c"></span>
+        <span class="04-follow-listener-sound-tick"></span>
+      </div>
+
+      <div class="04-follow-listener-listener-stage">
+        <svg
+          class="04-follow-listener-listener-svg"
+          viewBox="0 0 540 540"
+          preserveAspectRatio="xMidYMid meet"
+          aria-hidden="true"
+        >
+          <circle class="04-follow-listener-angle-ring" cx="270" cy="270" r="220"></circle>
+          <path
+            id="04-follow-listener-angle-arc"
+            class="04-follow-listener-angle-arc"
+            d="M 270 50 A 220 220 0 0 1 490 270"
+          ></path>
+          <line class="04-follow-listener-angle-tick" x1="270" y1="50" x2="270" y2="70"></line>
+          <line class="04-follow-listener-angle-tick" x1="354" y1="67" x2="347" y2="86"></line>
+          <line class="04-follow-listener-angle-tick" x1="426" y1="114" x2="412" y2="129"></line>
+          <line class="04-follow-listener-angle-tick" x1="473" y1="186" x2="454" y2="193"></line>
+          <line class="04-follow-listener-angle-tick" x1="490" y1="270" x2="470" y2="270"></line>
+          <text class="04-follow-listener-angle-label" x="242" y="37">0 DEG</text>
+          <text class="04-follow-listener-angle-label" data-04-follow-listener-angle-end x="495" y="278">90 DEG</text>
+          <g class="04-follow-listener-listener-orient">
+            <circle class="04-follow-listener-head" cx="270" cy="270" r="98"></circle>
+            <path class="04-follow-listener-head-axis" d="M 270 180 L 270 365"></path>
+            <path class="04-follow-listener-head-axis" d="M 194 270 L 346 270"></path>
+            <rect class="04-follow-listener-ear" x="155" y="244" width="34" height="52"></rect>
+            <rect class="04-follow-listener-ear" x="351" y="244" width="34" height="52"></rect>
+            <path class="04-follow-listener-facing-wedge" d="M 270 122 L 234 186 L 306 186 Z"></path>
+            <rect class="04-follow-listener-centre-mark" x="258" y="258" width="24" height="24"></rect>
+          </g>
+        </svg>
+      </div>
+
+      <div class="04-follow-listener-wave-panel" data-04-follow-listener-wave="left">
+        <span class="04-follow-listener-wave-label">L</span>
+        <span class="04-follow-listener-wave-chrome">trace</span>
+        <span class="04-follow-listener-emphasis" data-04-follow-listener-emphasis="left"></span>
+        <div class="04-follow-listener-wave-zone">
+          <span class="04-follow-listener-wave-bar" style="height: 2.1cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 4.8cqh;"></span>
+          <span class="04-follow-listener-wave-bar 04-follow-listener-wave-bar-accent" style="height: 6.2cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 3.4cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 5.4cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 4.1cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 6.5cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 3.2cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 5.9cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 3.8cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 5.1cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 2.8cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 4.4cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 2.4cqh;"></span>
+        </div>
+      </div>
+
+      <div class="04-follow-listener-wave-panel" data-04-follow-listener-wave="right">
+        <span class="04-follow-listener-wave-label">R</span>
+        <span class="04-follow-listener-wave-chrome">trace</span>
+        <span class="04-follow-listener-emphasis" data-04-follow-listener-emphasis="right"></span>
+        <div class="04-follow-listener-wave-zone">
+          <span class="04-follow-listener-wave-bar" style="height: 1.8cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 2.7cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 3.5cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 2.4cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 3.9cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 2.9cqh;"></span>
+          <span class="04-follow-listener-wave-bar 04-follow-listener-wave-bar-accent" style="height: 4.5cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 3.1cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 4.1cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 2.6cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 3.7cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 2.3cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 3.2cqh;"></span>
+          <span class="04-follow-listener-wave-bar" style="height: 2cqh;"></span>
+        </div>
+      </div>
+
+      <div class="04-follow-listener-brain-card">
+        <p class="04-follow-listener-brain-copy">brain <span>/ position</span></p>
+        <div class="04-follow-listener-estimate">
+          <span class="04-follow-listener-estimate-origin"></span>
+          <span class="04-follow-listener-estimate-ray"></span>
+          <span class="04-follow-listener-estimate-rule"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="04-follow-listener"]');
+      const select = (selector) => root.querySelector(selector);
+      const selectAll = (selector) => Array.from(root.querySelectorAll(selector));
+
+      const headline = select('[class~="04-follow-listener-headline"]');
+      const worldPath = document.getElementById("04-follow-listener-world-path");
+      const angleArc = document.getElementById("04-follow-listener-angle-arc");
+      const listenerStage = select('[class~="04-follow-listener-listener-stage"]');
+      const listenerOrient = select('[class~="04-follow-listener-listener-orient"]');
+      const soundMarker = select('[class~="04-follow-listener-sound-marker"]');
+      const angleTicks = selectAll('[class~="04-follow-listener-angle-tick"]');
+      const angleEnd = select('[data-04-follow-listener-angle-end]');
+      const leftPanel = select('[data-04-follow-listener-wave="left"]');
+      const rightPanel = select('[data-04-follow-listener-wave="right"]');
+      const leftBars = selectAll('[data-04-follow-listener-wave="left"] [class~="04-follow-listener-wave-bar"]');
+      const rightBars = selectAll('[data-04-follow-listener-wave="right"] [class~="04-follow-listener-wave-bar"]');
+      const leftEmphasis = select('[data-04-follow-listener-emphasis="left"]');
+      const rightEmphasis = select('[data-04-follow-listener-emphasis="right"]');
+      const brainCard = select('[class~="04-follow-listener-brain-card"]');
+      const estimateRay = select('[class~="04-follow-listener-estimate-ray"]');
+      const estimateRule = select('[class~="04-follow-listener-estimate-rule"]');
+
+      [worldPath, angleArc].forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = String(length);
+        path.style.strokeDashoffset = String(length);
+      });
+
+      const leftStates = [
+        [1.08, 0.94, 1.12, 0.82, 1.16, 0.76, 1.04, 0.68, 0.92, 0.62, 0.78, 0.54, 0.66, 0.48],
+        [0.82, 0.74, 0.88, 0.7, 0.78, 0.66, 0.74, 0.58, 0.68, 0.52, 0.6, 0.46, 0.54, 0.42],
+        [0.46, 0.62, 0.5, 0.58, 0.42, 0.55, 0.38, 0.46, 0.35, 0.4, 0.32, 0.38, 0.3, 0.35]
+      ];
+
+      const rightStates = [
+        [0.62, 0.68, 0.74, 0.82, 0.7, 0.9, 0.78, 0.98, 0.86, 1.04, 0.94, 1.12, 1.02, 1.18],
+        [0.86, 0.94, 0.9, 1.04, 0.96, 1.14, 1.02, 1.22, 1.08, 1.28, 1.16, 1.34, 1.2, 1.3],
+        [1.15, 1.28, 1.05, 1.38, 1.1, 1.48, 1.18, 1.55, 1.25, 1.6, 1.3, 1.5, 1.2, 1.38]
+      ];
+
+      const timeline = gsap.timeline({ paused: true });
+
+      const updateWave = (bars, state, start, duration) => {
+        bars.forEach((bar, index) => {
+          timeline.to(
+            bar,
+            { scaleY: state[index], duration, ease: "sine.inOut" },
+            start
+          );
+        });
+      };
+
+      timeline.addLabel("04-follow-listener-scene-1", 0);
+      timeline.fromTo(
+        headline,
+        { autoAlpha: 0, y: 36 },
+        { autoAlpha: 1, y: 0, duration: 0.44, ease: "power3.out" },
+        0.03
+      );
+      timeline.fromTo(
+        listenerStage,
+        { autoAlpha: 0, scale: 0.96 },
+        { autoAlpha: 1, scale: 1, duration: 0.54, ease: "power3.out" },
+        0.14
+      );
+      timeline.fromTo(
+        soundMarker,
+        { autoAlpha: 0, scale: 0.72 },
+        { autoAlpha: 1, scale: 1, duration: 0.4, ease: "power3.out" },
+        0.54
+      );
+      timeline.to(worldPath, { strokeDashoffset: 0, duration: 0.72, ease: "power1.inOut" }, 0.72);
+      timeline.to(angleArc, { strokeDashoffset: 0, duration: 0.72, ease: "power1.inOut" }, 0.82);
+      timeline.fromTo(
+        angleTicks,
+        { autoAlpha: 0 },
+        { autoAlpha: 1, duration: 0.22, stagger: 0.09, ease: "power1.out" },
+        1.02
+      );
+      timeline.fromTo(
+        leftPanel,
+        { autoAlpha: 0, y: 34 },
+        { autoAlpha: 1, y: 0, duration: 0.42, ease: "power3.out" },
+        1.38
+      );
+      timeline.fromTo(
+        rightPanel,
+        { autoAlpha: 0, y: 34 },
+        { autoAlpha: 1, y: 0, duration: 0.42, ease: "power3.out" },
+        1.74
+      );
+      timeline.fromTo(
+        leftBars,
+        { scaleY: 0 },
+        { scaleY: 1, duration: 0.32, stagger: 0.025, ease: "power2.out" },
+        2.08
+      );
+      timeline.fromTo(
+        rightBars,
+        { scaleY: 0 },
+        { scaleY: 1, duration: 0.32, stagger: 0.025, ease: "power2.out" },
+        2.34
+      );
+      timeline.set(angleEnd, { opacity: 0 }, 0);
+      timeline.set(rightEmphasis, { opacity: 0.25 }, 0);
+
+      timeline.addLabel("04-follow-listener-scene-2", 3.0);
+      timeline.to(
+        listenerOrient,
+        { rotation: 90, svgOrigin: "270 270", duration: 3.3, ease: "power1.inOut" },
+        3.0
+      );
+      updateWave(leftBars, leftStates[0], 3.0, 1.05);
+      updateWave(rightBars, rightStates[0], 3.0, 1.05);
+      updateWave(leftBars, leftStates[1], 4.05, 1.1);
+      updateWave(rightBars, rightStates[1], 4.05, 1.1);
+      updateWave(leftBars, leftStates[2], 5.15, 1.15);
+      updateWave(rightBars, rightStates[2], 5.15, 1.15);
+      timeline.to(leftEmphasis, { opacity: 0.25, duration: 3.3, ease: "power1.inOut" }, 3.0);
+      timeline.to(rightEmphasis, { opacity: 1, duration: 3.3, ease: "power1.inOut" }, 3.0);
+      timeline.fromTo(
+        angleEnd,
+        { autoAlpha: 0, x: 10 },
+        { autoAlpha: 1, x: 0, duration: 0.32, ease: "power2.out" },
+        5.96
+      );
+
+      timeline.addLabel("04-follow-listener-scene-3", 6.5);
+      timeline.fromTo(
+        brainCard,
+        { autoAlpha: 0, y: 28 },
+        { autoAlpha: 1, y: 0, duration: 0.48, ease: "power3.out" },
+        6.52
+      );
+      timeline.fromTo(
+        estimateRay,
+        { autoAlpha: 0, scaleX: 0.35, rotation: 0 },
+        { autoAlpha: 1, scaleX: 1, rotation: 145, duration: 0.64, ease: "power3.out" },
+        6.92
+      );
+      timeline.fromTo(
+        estimateRule,
+        { scaleX: 0 },
+        { scaleX: 1, duration: 0.42, ease: "power2.out" },
+        7.48
+      );
+      timeline.to(
+        brainCard,
+        { borderTopColor: "#FF6B1A", duration: 0.14, ease: "power1.out" },
+        7.72
+      );
+      timeline.to(
+        brainCard,
+        { borderTopColor: "#504B48", duration: 0.28, ease: "power2.out" },
+        7.86
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["04-follow-listener"] = timeline;
+    })();
+  </script>
+</template>

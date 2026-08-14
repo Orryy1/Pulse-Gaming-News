@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-14T18:01:15.235Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-spatial-headphone-audio",
+  "source": {
+    "package_dir": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-spatial-headphone-audio",
+    "publish_pack_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-spatial-headphone-audio\\youtube_publish_pack.json",
+    "publish_pack_sha256": "0ea5c31e03ac5cb753cfadfd51193e8ee63c47c607a6bc76cf9d57b7b7ab764b",
+    "canonical_manifest_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-spatial-headphone-audio\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "aa39b0b11a0f5d220717c141ae19a7d3a6b41d21c3437fbf4ae10e3492318def",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-spatial-headphone-audio",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "How Headphones Put Sounds Behind You",
+          "description": "Headphones have only two speakers, yet games can place footsteps behind or above you. This short animation explains positioned sound objects, HRTF filtering and the tiny timing, level and frequency cues your brain interprets as direction.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/coreaudio/spatial-sound\nhttps://learn.microsoft.com/en-us/windows/win32/api/hrtfapoapi/nn-hrtfapoapi-ihrtfapo\nhttps://blog.playstation.com/2024/07/24/introducing-personalized-3d-audio-profiles-for-headphones-and-earbuds-on-ps5/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#GamingAudio #HRTF #SystemTrace",
+          "tags": [
+            "spatial audio",
+            "HRTF",
+            "headphone audio",
+            "3D audio",
+            "gaming audio",
+            "PC gaming",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-spatial-headphone-audio\\renders\\system-trace-spatial-headphone-audio.mp4",
+      "media_sha256": "c28c13902504a47195d401d094aa926ae51d751c9d1fdfd577071f4e09790908"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-spatial-headphone-audio\\captions.srt",
+      "media_sha256": "fe17445ffbadd9467baac30972ac738f171a1d6bec8a4a001d5728ead7cb4353"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-spatial-headphone-audio\\renders\\system-trace-spatial-headphone-audio.mp4",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-spatial-headphone-audio\\renders\\system-trace-spatial-headphone-audio.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 6022636,
+      "sha256": "c28c13902504a47195d401d094aa926ae51d751c9d1fdfd577071f4e09790908",
+      "probe": {
+        "duration_seconds": 57.366667,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-spatial-headphone-audio\\captions.srt",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-spatial-headphone-audio\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2723,
+      "sha256": "fe17445ffbadd9467baac30972ac738f171a1d6bec8a4a001d5728ead7cb4353",
+      "qa": {
+        "parsed": true,
+        "cue_count": 55,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 57.367,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-14T18:01:15.235Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-spatial-headphone-audio",
+    "request_plan_fingerprint_sha256": "1e1935e9de9b69c615f2a9bfea15e87f5efa4dba3c54bc6f9849ac24732eef74",
+    "video_insert_fingerprint_sha256": "81f41c98a2a387ff1e3312429b352d9cc3fb4056717fd7c653402ce2e0b022a4",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "c0c03a750cb8857f12bc75e9eb8c7867a5ed25415fb52e72b2e44c502215fbd7",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "How Headphones Put Sounds Behind You",
+            "description": "Headphones have only two speakers, yet games can place footsteps behind or above you. This short animation explains positioned sound objects, HRTF filtering and the tiny timing, level and frequency cues your brain interprets as direction.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/coreaudio/spatial-sound\nhttps://learn.microsoft.com/en-us/windows/win32/api/hrtfapoapi/nn-hrtfapoapi-ihrtfapo\nhttps://blog.playstation.com/2024/07/24/introducing-personalized-3d-audio-profiles-for-headphones-and-earbuds-on-ps5/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#GamingAudio #HRTF #SystemTrace",
+            "tags": [
+              "spatial audio",
+              "HRTF",
+              "headphone audio",
+              "3D audio",
+              "gaming audio",
+              "PC gaming",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-spatial-headphone-audio\\renders\\system-trace-spatial-headphone-audio.mp4",
+        "media_sha256": "c28c13902504a47195d401d094aa926ae51d751c9d1fdfd577071f4e09790908"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-spatial-headphone-audio\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

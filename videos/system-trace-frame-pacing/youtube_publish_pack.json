@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_publish_pack_v1",
+  "story_id": "system-trace-frame-pacing",
+  "project_id": "system-trace-frame-pacing",
+  "platform": "youtube_shorts",
+  "review_scope": "PRIVATE_FIRST_SCHEDULED_PUBLICATION",
+  "title": "Why 60 FPS Can Still Stutter",
+  "description": "A 60 FPS counter can look perfect while one long frame makes the game feel rough. This short animation shows what frame pacing measures, why 16.7 milliseconds matters at 60 FPS and how one 40 millisecond hitch can hide inside a healthy average.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/smooth-frame-rate-in-unreal-engine\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-flip-model\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #FramePacing #SystemTrace",
+  "tags": [
+    "frame pacing",
+    "60 FPS",
+    "PC gaming",
+    "game stutter",
+    "frame time",
+    "gaming performance",
+    "System Trace",
+    "gaming Shorts"
+  ],
+  "captions": {
+    "file": "captions.srt",
+    "sha256": "ff70a10398cd2eaea78e28a40d2712fcdca05d9c7862e23308a28f7586806d4a",
+    "clean_manual_captions_required": true
+  },
+  "synthetic_media_required": true,
+  "altered_synthetic_disclosure_required": true,
+  "altered_synthetic_disclosure_setting": "YES",
+  "public_publish_authorised": true,
+  "unlisted_publish_authorised": false,
+  "scheduler_authorised": true,
+  "database_mutation_authorised": false,
+  "playlist_mutation_authorised": false,
+  "thumbnail_upload_authorised": false,
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "rights_placement_blocker_count": 0,
+  "rights_clearance_claimed": false,
+  "scheduled_publish_at_utc": "2026-08-15T19:00:00.000Z",
+  "youtube_upload_request": {
+    "schema_version": 1,
+    "closed": true,
+    "authority_scope": "EXACT_PRIVATE_FIRST_SCHEDULE_REQUEST_SHAPE_ONLY",
+    "publish_authority": "EXTERNALLY_EVALUATED",
+    "video_file": "renders/system-trace-frame-pacing.mp4",
+    "video_sha256": "31609fc434ce44248cb2a43918a4af4d1c3de40437e8a7d4c09b2f3f4abf1d6f",
+    "notifySubscribers": false,
+    "snippet": {
+      "title": "Why 60 FPS Can Still Stutter",
+      "description": "A 60 FPS counter can look perfect while one long frame makes the game feel rough. This short animation shows what frame pacing measures, why 16.7 milliseconds matters at 60 FPS and how one 40 millisecond hitch can hide inside a healthy average.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/smooth-frame-rate-in-unreal-engine\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-flip-model\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #FramePacing #SystemTrace",
+      "tags": [
+        "frame pacing",
+        "60 FPS",
+        "PC gaming",
+        "game stutter",
+        "frame time",
+        "gaming performance",
+        "System Trace",
+        "gaming Shorts"
+      ],
+      "categoryId": "20",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "status": {
+      "privacyStatus": "private",
+      "selfDeclaredMadeForKids": false,
+      "containsSyntheticMedia": true,
+      "license": "youtube",
+      "embeddable": true,
+      "publicStatsViewable": true
+    },
+    "paidProductPlacementDetails": {
+      "hasPaidProductPlacement": false
+    },
+    "captions": {
+      "file": "captions.srt",
+      "sha256": "ff70a10398cd2eaea78e28a40d2712fcdca05d9c7862e23308a28f7586806d4a",
+      "language": "en-GB",
+      "name": "English (United Kingdom)",
+      "isDraft": false
+    },
+    "cover_selection": {
+      "selection_mode": "in_video_frame",
+      "frame_time_seconds": 1.5,
+      "custom_thumbnail_upload_allowed": false,
+      "application_status": "NOT_APPLIED"
+    }
+  }
+}

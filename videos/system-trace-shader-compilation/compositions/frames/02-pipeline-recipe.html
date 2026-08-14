@@ -1,0 +1,664 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      isolation: isolate;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    #root > [data-part="02-pipeline-recipe-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background-color: #0d0d0f;
+    }
+
+    #root [data-part="02-pipeline-recipe-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.55;
+    }
+
+    #root [data-part="02-pipeline-recipe-grid-line"] {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-pipeline-recipe-edge"] {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 0.7cqw;
+      height: 83cqh;
+      background-color: #ff6b1a;
+    }
+
+    #root > [data-part="02-pipeline-recipe-content"] {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    #root [data-part="02-pipeline-recipe-world"] {
+      position: absolute;
+      inset: 0;
+      height: 100cqh;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-part="02-pipeline-recipe-rails"] {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    #root [data-part="02-pipeline-recipe-rail"] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-station] {
+      position: absolute;
+      z-index: 2;
+      width: 39cqw;
+      height: 8cqh;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 3.2cqw;
+      border: 1px solid #282726;
+      border-top-color: #ff6b1a;
+      background-color: #1a1918;
+      color: #f0f0f0;
+    }
+
+    #root [data-station="shader"] {
+      top: 10cqh;
+      left: 6cqw;
+    }
+
+    #root [data-station="blend"] {
+      top: 21cqh;
+      right: 6cqw;
+    }
+
+    #root [data-station="depth"] {
+      top: 69cqh;
+      left: 6cqw;
+    }
+
+    #root [data-station="raster"] {
+      top: 80cqh;
+      right: 6cqw;
+    }
+
+    #root [data-part="02-pipeline-recipe-station-label"] {
+      font-family: "IBM Plex Mono";
+      font-size: 2.2cqw;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [data-part="02-pipeline-recipe-station-mark"] {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.8cqw;
+      width: 6cqw;
+      height: 2.3cqh;
+    }
+
+    #root [data-part="02-pipeline-recipe-station-mark"] span {
+      display: block;
+      background-color: currentColor;
+    }
+
+    #root [data-part="02-pipeline-recipe-card"] {
+      position: absolute;
+      top: 34cqh;
+      left: 10cqw;
+      z-index: 4;
+      width: 80cqw;
+      height: 25cqh;
+      overflow: hidden;
+      border: 1px solid #504b48;
+      background-color: #0d0d0f;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-part="02-pipeline-recipe-card-header"] {
+      position: absolute;
+      top: 2.2cqh;
+      left: 4cqw;
+      z-index: 8;
+      display: flex;
+      align-items: center;
+      gap: 2cqw;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 1.65cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [data-part="02-pipeline-recipe-card-header"]::before {
+      content: "";
+      display: block;
+      width: 5.5cqw;
+      height: 2px;
+      background-color: #ff6b1a;
+    }
+
+    #root [data-part="02-pipeline-recipe-slot-grid"] {
+      position: absolute;
+      top: 7.5cqh;
+      left: 4cqw;
+      right: 4cqw;
+      bottom: 3cqh;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+
+    #root [data-part="02-pipeline-recipe-slot"] {
+      position: relative;
+      overflow: hidden;
+      border-top: 1px solid #282726;
+    }
+
+    #root [data-part="02-pipeline-recipe-slot"]:nth-child(odd) {
+      border-right: 1px solid #282726;
+    }
+
+    #root [data-slot-fill] {
+      position: absolute;
+      top: 1.2cqh;
+      right: 2cqw;
+      bottom: 1.2cqh;
+      left: 2cqw;
+      background-color: #ff6b1a;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-part="02-pipeline-recipe-payload"] {
+      position: absolute;
+      z-index: 3;
+      width: 8cqw;
+      height: 4cqh;
+      border-top: 1px solid rgba(13, 13, 15, 0.25);
+      background-color: #ff6b1a;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-payload="shader"] {
+      top: 12cqh;
+      left: 41.5cqw;
+    }
+
+    #root [data-payload="blend"] {
+      top: 23cqh;
+      left: 54cqw;
+    }
+
+    #root [data-payload="depth"] {
+      top: 71cqh;
+      left: 41.5cqw;
+    }
+
+    #root [data-payload="raster"] {
+      top: 82cqh;
+      left: 54cqw;
+    }
+
+    #root [data-part="02-pipeline-recipe-fold-leaf"] {
+      position: absolute;
+      left: 0;
+      z-index: 6;
+      width: 100%;
+      height: 50%;
+      border-color: #282726;
+      background-color: #1a1918;
+    }
+
+    #root [data-fold="top"] {
+      top: 0;
+      border-bottom: 1px solid #282726;
+      transform-origin: 50% 100%;
+    }
+
+    #root [data-fold="bottom"] {
+      bottom: 0;
+      border-top: 1px solid #282726;
+      transform-origin: 50% 0%;
+    }
+
+    #root [data-part="02-pipeline-recipe-stamp"] {
+      position: absolute;
+      top: 9.8cqh;
+      left: 4cqw;
+      right: 4cqw;
+      z-index: 9;
+      color: #f0f0f0;
+      font-size: 7.4cqw;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.92;
+      text-align: center;
+      text-transform: lowercase;
+      white-space: nowrap;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-part="02-pipeline-recipe-ready-gate"] {
+      position: absolute;
+      top: 61cqh;
+      left: 33cqw;
+      z-index: 7;
+      width: 34cqw;
+      height: 5.5cqh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #504b48;
+      background-color: #0d0d0f;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 1.75cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+  </style>
+
+  <div id="root" data-composition-id="02-pipeline-recipe" data-width="1080" data-height="1920" data-duration="10.676">
+    <div
+      class="clip"
+      data-part="02-pipeline-recipe-ground"
+      data-start="0"
+      data-duration="10.676"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <svg
+        data-part="02-pipeline-recipe-grid"
+        viewBox="0 0 1080 1920"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path data-part="02-pipeline-recipe-grid-line" d="M 108 0 V 1920 M 216 0 V 1920 M 324 0 V 1920 M 432 0 V 1920 M 540 0 V 1920 M 648 0 V 1920 M 756 0 V 1920 M 864 0 V 1920 M 972 0 V 1920" />
+        <path data-part="02-pipeline-recipe-grid-line" d="M 0 120 H 1080 M 0 240 H 1080 M 0 360 H 1080 M 0 480 H 1080 M 0 600 H 1080 M 0 720 H 1080 M 0 840 H 1080 M 0 960 H 1080 M 0 1080 H 1080 M 0 1200 H 1080 M 0 1320 H 1080 M 0 1440 H 1080 M 0 1560 H 1080 M 0 1680 H 1080 M 0 1800 H 1080" />
+      </svg>
+      <div data-part="02-pipeline-recipe-edge"></div>
+    </div>
+
+    <div
+      class="clip"
+      data-part="02-pipeline-recipe-content"
+      data-start="0"
+      data-duration="10.676"
+      data-track-index="1"
+    >
+      <div data-part="02-pipeline-recipe-world">
+        <svg
+          data-part="02-pipeline-recipe-rails"
+          viewBox="0 0 1080 1920"
+          preserveAspectRatio="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path id="02-pipeline-recipe-rail-shader" data-rail="shader" data-part="02-pipeline-recipe-rail" d="M 486 269 L 324 749" />
+          <path id="02-pipeline-recipe-rail-blend" data-rail="blend" data-part="02-pipeline-recipe-rail" d="M 594 480 L 756 749" />
+          <path id="02-pipeline-recipe-rail-depth" data-rail="depth" data-part="02-pipeline-recipe-rail" d="M 486 1402 L 324 960" />
+          <path id="02-pipeline-recipe-rail-raster" data-rail="raster" data-part="02-pipeline-recipe-rail" d="M 594 1613 L 756 960" />
+        </svg>
+
+        <div data-station="shader">
+          <span data-part="02-pipeline-recipe-station-label">shader</span>
+          <span data-part="02-pipeline-recipe-station-mark"><span></span><span></span></span>
+        </div>
+        <div data-station="blend">
+          <span data-part="02-pipeline-recipe-station-label">blend</span>
+          <span data-part="02-pipeline-recipe-station-mark"><span></span><span></span></span>
+        </div>
+        <div data-station="depth">
+          <span data-part="02-pipeline-recipe-station-label">depth</span>
+          <span data-part="02-pipeline-recipe-station-mark"><span></span><span></span></span>
+        </div>
+        <div data-station="raster">
+          <span data-part="02-pipeline-recipe-station-label">raster</span>
+          <span data-part="02-pipeline-recipe-station-mark"><span></span><span></span></span>
+        </div>
+
+        <div data-part="02-pipeline-recipe-card">
+          <div data-part="02-pipeline-recipe-card-header">pipeline recipe</div>
+          <div data-part="02-pipeline-recipe-slot-grid" aria-hidden="true">
+            <span data-part="02-pipeline-recipe-slot"><span data-slot-fill="shader"></span></span>
+            <span data-part="02-pipeline-recipe-slot"><span data-slot-fill="blend"></span></span>
+            <span data-part="02-pipeline-recipe-slot"><span data-slot-fill="depth"></span></span>
+            <span data-part="02-pipeline-recipe-slot"><span data-slot-fill="raster"></span></span>
+          </div>
+          <div data-part="02-pipeline-recipe-fold-leaf" data-fold="top"></div>
+          <div data-part="02-pipeline-recipe-fold-leaf" data-fold="bottom"></div>
+          <div data-part="02-pipeline-recipe-stamp">pipeline state</div>
+        </div>
+
+        <span data-part="02-pipeline-recipe-payload" data-payload="shader"></span>
+        <span data-part="02-pipeline-recipe-payload" data-payload="blend"></span>
+        <span data-part="02-pipeline-recipe-payload" data-payload="depth"></span>
+        <span data-part="02-pipeline-recipe-payload" data-payload="raster"></span>
+
+        <div data-part="02-pipeline-recipe-ready-gate">gpu ready</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="02-pipeline-recipe"]');
+      const world = root.querySelector('[data-part="02-pipeline-recipe-world"]');
+      const card = root.querySelector('[data-part="02-pipeline-recipe-card"]');
+      const stations = {
+        shader: root.querySelector('[data-station="shader"]'),
+        blend: root.querySelector('[data-station="blend"]'),
+        depth: root.querySelector('[data-station="depth"]'),
+        raster: root.querySelector('[data-station="raster"]'),
+      };
+      const rails = {
+        shader: root.querySelector('[data-rail="shader"]'),
+        blend: root.querySelector('[data-rail="blend"]'),
+        depth: root.querySelector('[data-rail="depth"]'),
+        raster: root.querySelector('[data-rail="raster"]'),
+      };
+      const payloads = {
+        shader: root.querySelector('[data-payload="shader"]'),
+        blend: root.querySelector('[data-payload="blend"]'),
+        depth: root.querySelector('[data-payload="depth"]'),
+        raster: root.querySelector('[data-payload="raster"]'),
+      };
+      const slotFills = {
+        shader: root.querySelector('[data-slot-fill="shader"]'),
+        blend: root.querySelector('[data-slot-fill="blend"]'),
+        depth: root.querySelector('[data-slot-fill="depth"]'),
+        raster: root.querySelector('[data-slot-fill="raster"]'),
+      };
+      const foldTop = root.querySelector('[data-fold="top"]');
+      const foldBottom = root.querySelector('[data-fold="bottom"]');
+      const stamp = root.querySelector('[data-part="02-pipeline-recipe-stamp"]');
+      const readyGate = root.querySelector('[data-part="02-pipeline-recipe-ready-gate"]');
+
+      const timeline = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["02-pipeline-recipe"] = timeline;
+
+      Object.values(rails).forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      timeline.fromTo(
+        card,
+        { opacity: 0, scale: 0.97 },
+        { opacity: 1, scale: 1, duration: 0.48, ease: "power3.out" },
+        0,
+      );
+
+      timeline.fromTo(
+        stations.shader,
+        { opacity: 0, x: -34 },
+        { opacity: 1, x: 0, duration: 0.42, ease: "power3.out" },
+        0.28,
+      );
+      timeline.to(
+        stations.shader,
+        { backgroundColor: "#ff6b1a", color: "#0d0d0f", duration: 0.18, ease: "none" },
+        0.62,
+      );
+      timeline.to(
+        rails.shader,
+        { strokeDashoffset: 0, duration: 0.68, ease: "power2.out" },
+        0.72,
+      );
+      timeline.fromTo(
+        payloads.shader,
+        { opacity: 0, x: 0, y: 0, scale: 0.7 },
+        { opacity: 1, x: -178, y: 518, scale: 1, duration: 0.72, ease: "power2.inOut" },
+        0.96,
+      );
+      timeline.fromTo(
+        slotFills.shader,
+        { opacity: 0, scale: 0.68 },
+        { opacity: 1, scale: 1, duration: 0.22, ease: "power2.out" },
+        1.58,
+      );
+      timeline.to(
+        stations.shader,
+        { opacity: 0.42, backgroundColor: "#1a1918", color: "#f0f0f0", duration: 0.24, ease: "power1.out" },
+        1.72,
+      );
+
+      timeline.fromTo(
+        stations.blend,
+        { opacity: 0, x: 34 },
+        { opacity: 1, x: 0, duration: 0.42, ease: "power3.out" },
+        1.48,
+      );
+      timeline.to(
+        stations.blend,
+        { backgroundColor: "#ff6b1a", color: "#0d0d0f", duration: 0.18, ease: "none" },
+        1.82,
+      );
+      timeline.to(
+        rails.blend,
+        { strokeDashoffset: 0, duration: 0.68, ease: "power2.out" },
+        1.92,
+      );
+      timeline.fromTo(
+        payloads.blend,
+        { opacity: 0, x: 0, y: 0, scale: 0.7 },
+        { opacity: 1, x: 130, y: 307, scale: 1, duration: 0.72, ease: "power2.inOut" },
+        2.16,
+      );
+      timeline.fromTo(
+        slotFills.blend,
+        { opacity: 0, scale: 0.68 },
+        { opacity: 1, scale: 1, duration: 0.22, ease: "power2.out" },
+        2.78,
+      );
+      timeline.to(
+        stations.blend,
+        { opacity: 0.42, backgroundColor: "#1a1918", color: "#f0f0f0", duration: 0.24, ease: "power1.out" },
+        2.9,
+      );
+
+      timeline.to(
+        world,
+        { y: -154, duration: 1.12, ease: "power2.inOut" },
+        3.1,
+      );
+
+      timeline.fromTo(
+        stations.depth,
+        { opacity: 0, x: -34 },
+        { opacity: 1, x: 0, duration: 0.46, ease: "power3.out" },
+        3.45,
+      );
+      timeline.to(
+        stations.depth,
+        { backgroundColor: "#ff6b1a", color: "#0d0d0f", duration: 0.18, ease: "none" },
+        3.82,
+      );
+      timeline.to(
+        rails.depth,
+        { strokeDashoffset: 0, duration: 0.68, ease: "power2.out" },
+        4,
+      );
+      timeline.fromTo(
+        payloads.depth,
+        { opacity: 0, x: 0, y: 0, scale: 0.7 },
+        { opacity: 1, x: -178, y: -403, scale: 1, duration: 0.74, ease: "power2.inOut" },
+        4.24,
+      );
+      timeline.fromTo(
+        slotFills.depth,
+        { opacity: 0, scale: 0.68 },
+        { opacity: 1, scale: 1, duration: 0.22, ease: "power2.out" },
+        4.88,
+      );
+      timeline.to(
+        stations.depth,
+        { opacity: 0.42, backgroundColor: "#1a1918", color: "#f0f0f0", duration: 0.24, ease: "power1.out" },
+        5.02,
+      );
+
+      timeline.fromTo(
+        stations.raster,
+        { opacity: 0, x: 34 },
+        { opacity: 1, x: 0, duration: 0.46, ease: "power3.out" },
+        5.02,
+      );
+      timeline.to(
+        stations.raster,
+        { backgroundColor: "#ff6b1a", color: "#0d0d0f", duration: 0.18, ease: "none" },
+        5.4,
+      );
+      timeline.to(
+        rails.raster,
+        { strokeDashoffset: 0, duration: 0.68, ease: "power2.out" },
+        5.5,
+      );
+      timeline.fromTo(
+        payloads.raster,
+        { opacity: 0, x: 0, y: 0, scale: 0.7 },
+        { opacity: 1, x: 130, y: -614, scale: 1, duration: 0.76, ease: "power2.inOut" },
+        5.72,
+      );
+      timeline.fromTo(
+        slotFills.raster,
+        { opacity: 0, scale: 0.68 },
+        { opacity: 1, scale: 1, duration: 0.22, ease: "power2.out" },
+        6.38,
+      );
+      timeline.to(
+        stations.raster,
+        { opacity: 0.42, backgroundColor: "#1a1918", color: "#f0f0f0", duration: 0.24, ease: "power1.out" },
+        6.5,
+      );
+
+      timeline.fromTo(
+        foldTop,
+        { opacity: 0, scaleY: 0 },
+        { opacity: 1, scaleY: 1, duration: 0.5, ease: "power3.out" },
+        6.7,
+      );
+      timeline.fromTo(
+        foldBottom,
+        { opacity: 0, scaleY: 0 },
+        { opacity: 1, scaleY: 1, duration: 0.5, ease: "power3.out" },
+        6.82,
+      );
+      timeline.to(
+        Object.values(rails),
+        { opacity: 0.18, duration: 0.45, ease: "power1.out" },
+        6.72,
+      );
+      timeline.to(
+        card,
+        { borderColor: "#ff6b1a", duration: 0.28, ease: "none" },
+        7.2,
+      );
+      timeline.fromTo(
+        stamp,
+        { opacity: 0, scale: 1.16 },
+        { opacity: 1, scale: 1, duration: 0.48, ease: "power3.out" },
+        7.38,
+      );
+
+      timeline.fromTo(
+        readyGate,
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.36, ease: "power3.out" },
+        7.92,
+      );
+      timeline.to(
+        readyGate,
+        {
+          backgroundColor: "#f0f0f0",
+          borderColor: "#f0f0f0",
+          color: "#0d0d0f",
+          duration: 0.22,
+          ease: "none",
+        },
+        8.36,
+      );
+
+      const holdDriver = { t: 0 };
+      timeline.to(
+        holdDriver,
+        { t: 1, duration: 1.596, ease: "none" },
+        8.58,
+      );
+    })();
+  </script>
+</template>

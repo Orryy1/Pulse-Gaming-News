@@ -1,0 +1,555 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      perspective: 1680px;
+      color: #f0f0f0;
+    }
+
+    [id="02-average-rhythm-ground"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0d0d0f;
+      z-index: 0;
+    }
+
+    [id="02-average-rhythm-amber-glow"],
+    [id="02-average-rhythm-cream-glow"] {
+      position: absolute;
+      top: 19cqh;
+      width: 4.2cqw;
+      height: 54cqh;
+      filter: blur(4.2cqw);
+      pointer-events: none;
+    }
+
+    [id="02-average-rhythm-amber-glow"] {
+      left: -2.6cqw;
+      background: #ff6b1a;
+      opacity: 0.34;
+    }
+
+    [id="02-average-rhythm-cream-glow"] {
+      right: -2.6cqw;
+      background: #f0f0f0;
+      opacity: 0.11;
+    }
+
+    [id="02-average-rhythm-title-wrap"] {
+      position: absolute;
+      top: 6.6cqh;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      min-width: 89cqw;
+      white-space: nowrap;
+      text-align: center;
+      z-index: 5;
+      will-change: transform, opacity;
+    }
+
+    [id="02-average-rhythm-title"] {
+      display: block;
+      font-family: "Space Grotesk";
+      font-size: 10.5cqw;
+      font-weight: 900;
+      line-height: 0.88;
+      letter-spacing: -0.04em;
+      text-transform: lowercase;
+      color: #f0f0f0;
+    }
+
+    [id="02-average-rhythm-ruler"] {
+      position: absolute;
+      top: 20.8cqh;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      height: 3.2cqh;
+      z-index: 3;
+    }
+
+    [id="02-average-rhythm-ruler-line"] {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #504b48;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    [id="02-average-rhythm-ruler-line"]::before,
+    [id="02-average-rhythm-ruler-line"]::after {
+      content: "";
+      position: absolute;
+      top: -1.55cqh;
+      width: 1px;
+      height: 3.1cqh;
+      background: #ff6b1a;
+    }
+
+    [id="02-average-rhythm-ruler-line"]::before {
+      left: 0;
+    }
+
+    [id="02-average-rhythm-ruler-line"]::after {
+      right: 0;
+    }
+
+    [id="02-average-rhythm-even-card"],
+    [id="02-average-rhythm-uneven-card"] {
+      position: absolute;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 20.5cqh;
+      box-sizing: border-box;
+      padding: 2.5cqh 4.2cqw 2.2cqh;
+      background: #1a1918;
+      border-top: 1px solid #282726;
+      transform-style: preserve-3d;
+      will-change: transform, opacity;
+      z-index: 4;
+    }
+
+    [id="02-average-rhythm-even-card"] {
+      top: 27.9cqh;
+      border-top-color: #ff6b1a;
+    }
+
+    [id="02-average-rhythm-uneven-card"] {
+      top: 53.6cqh;
+      border-top-color: #504b48;
+    }
+
+    [id="02-average-rhythm-even-card"]::after,
+    [id="02-average-rhythm-uneven-card"]::after {
+      content: "";
+      position: absolute;
+      top: 1.3cqh;
+      bottom: -1.3cqh;
+      width: 0.75cqw;
+      opacity: 0.2;
+      z-index: -1;
+    }
+
+    [id="02-average-rhythm-even-card"]::after {
+      right: -0.9cqw;
+      background: #ff6b1a;
+    }
+
+    [id="02-average-rhythm-uneven-card"]::after {
+      left: -0.9cqw;
+      background: #f0f0f0;
+      opacity: 0.09;
+    }
+
+    [data-02-average-rhythm-card-head] {
+      position: relative;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      min-height: 5.7cqh;
+      z-index: 1;
+    }
+
+    [data-02-average-rhythm-card-name] {
+      font-family: "Space Grotesk";
+      font-size: 5.8cqw;
+      font-weight: 900;
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+      text-transform: lowercase;
+      color: #f0f0f0;
+      will-change: transform, opacity;
+    }
+
+    [data-02-average-rhythm-count] {
+      display: inline-block;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+      white-space: nowrap;
+      will-change: transform, opacity;
+    }
+
+    [id="02-average-rhythm-uneven-card"] [data-02-average-rhythm-count] {
+      color: #f0f0f0;
+      opacity: 0.72;
+    }
+
+    [id="02-average-rhythm-even-marks"],
+    [id="02-average-rhythm-uneven-marks"] {
+      position: absolute;
+      left: 4.2cqw;
+      right: 4.2cqw;
+      bottom: 2.65cqh;
+      height: 7.2cqh;
+      box-sizing: border-box;
+      border-bottom: 1px solid #282726;
+      align-items: end;
+      overflow: hidden;
+      will-change: clip-path, opacity;
+    }
+
+    [id="02-average-rhythm-even-marks"] {
+      display: grid;
+      grid-template-columns: repeat(60, 1fr);
+    }
+
+    [id="02-average-rhythm-even-marks"] > span {
+      justify-self: center;
+      width: 2px;
+      height: 5.3cqh;
+      background: #504b48;
+    }
+
+    [id="02-average-rhythm-even-marks"] > span:nth-child(5n) {
+      height: 6.7cqh;
+      background: #ff6b1a;
+    }
+
+    [id="02-average-rhythm-uneven-marks"] {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    [data-02-average-rhythm-cluster] {
+      display: flex;
+      align-items: end;
+      gap: 3px;
+      height: 100%;
+    }
+
+    [data-02-average-rhythm-cluster] > span {
+      display: block;
+      width: 3px;
+      height: 5.2cqh;
+      background: #f0f0f0;
+      opacity: 0.58;
+    }
+
+    [data-02-average-rhythm-cluster] > span:nth-child(5n) {
+      height: 6.6cqh;
+      background: #ff6b1a;
+      opacity: 1;
+    }
+
+    [id="02-average-rhythm-equal-badge"],
+    [id="02-average-rhythm-bunched-badge"] {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      gap: 1.2cqw;
+      min-height: 3.9cqh;
+      padding: 0 2cqw;
+      box-sizing: border-box;
+      background: #0d0d0f;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      z-index: 8;
+      will-change: transform, opacity;
+    }
+
+    [id="02-average-rhythm-equal-badge"] {
+      top: 46.9cqh;
+      right: 8.4cqw;
+      transform-origin: 100% 50%;
+    }
+
+    [id="02-average-rhythm-bunched-badge"] {
+      top: 50.8cqh;
+      left: 8.4cqw;
+      transform-origin: 0% 50%;
+    }
+
+    [data-02-average-rhythm-punctuation] {
+      font-family: "IBM Plex Mono";
+      font-size: 1.7cqw;
+      font-weight: 700;
+      line-height: 1;
+      color: #ff6b1a;
+    }
+
+    [data-02-average-rhythm-gap-label] {
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+      white-space: nowrap;
+    }
+  </style>
+
+  <section id="root" data-composition-id="02-average-rhythm" data-width="1080" data-height="1920" data-duration="8.82">
+    <div
+      id="02-average-rhythm-ground"
+      class="clip"
+      data-start="0"
+      data-duration="8.82"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <div id="02-average-rhythm-amber-glow"></div>
+      <div id="02-average-rhythm-cream-glow"></div>
+    </div>
+
+    <div
+      id="02-average-rhythm-ruler"
+      class="clip"
+      data-start="0"
+      data-duration="8.82"
+      data-track-index="1"
+      aria-hidden="true"
+    >
+      <div id="02-average-rhythm-ruler-line"></div>
+    </div>
+
+    <div
+      id="02-average-rhythm-title-wrap"
+      class="clip"
+      data-start="0"
+      data-duration="8.82"
+      data-track-index="2"
+    >
+      <span id="02-average-rhythm-title">same count</span>
+    </div>
+
+    <article
+      id="02-average-rhythm-even-card"
+      class="clip"
+      data-start="1.9"
+      data-duration="6.92"
+      data-track-index="3"
+    >
+      <div data-02-average-rhythm-card-head>
+        <span data-02-average-rhythm-card-name>even</span>
+        <span data-02-average-rhythm-count>60 frames</span>
+      </div>
+      <div id="02-average-rhythm-even-marks" aria-label="Sixty evenly spaced frame marks"></div>
+    </article>
+
+    <article
+      id="02-average-rhythm-uneven-card"
+      class="clip"
+      data-start="1.9"
+      data-duration="6.92"
+      data-track-index="4"
+    >
+      <div data-02-average-rhythm-card-head>
+        <span data-02-average-rhythm-card-name>uneven</span>
+        <span data-02-average-rhythm-count>60 frames</span>
+      </div>
+      <div id="02-average-rhythm-uneven-marks" aria-label="Sixty bunched frame marks">
+        <div data-02-average-rhythm-cluster></div>
+        <div data-02-average-rhythm-cluster></div>
+        <div data-02-average-rhythm-cluster></div>
+        <div data-02-average-rhythm-cluster></div>
+        <div data-02-average-rhythm-cluster></div>
+        <div data-02-average-rhythm-cluster></div>
+      </div>
+    </article>
+
+    <div
+      id="02-average-rhythm-equal-badge"
+      class="clip"
+      data-start="5.8"
+      data-duration="3.02"
+      data-track-index="5"
+    >
+      <span data-02-average-rhythm-punctuation>/</span>
+      <span data-02-average-rhythm-gap-label>equal gaps</span>
+    </div>
+
+    <div
+      id="02-average-rhythm-bunched-badge"
+      class="clip"
+      data-start="5.8"
+      data-duration="3.02"
+      data-track-index="6"
+    >
+      <span data-02-average-rhythm-punctuation>/</span>
+      <span data-02-average-rhythm-gap-label>bunched gaps</span>
+    </div>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const evenMarks = document.getElementById("02-average-rhythm-even-marks");
+      const unevenClusters = document.querySelectorAll("[data-02-average-rhythm-cluster]");
+
+      for (let index = 0; index < 60; index += 1) {
+        evenMarks.appendChild(document.createElement("span"));
+      }
+
+      unevenClusters.forEach((cluster) => {
+        for (let index = 0; index < 10; index += 1) {
+          cluster.appendChild(document.createElement("span"));
+        }
+      });
+
+      const titleWrap = document.getElementById("02-average-rhythm-title-wrap");
+      const title = document.getElementById("02-average-rhythm-title");
+      const rulerLine = document.getElementById("02-average-rhythm-ruler-line");
+      const evenCard = document.getElementById("02-average-rhythm-even-card");
+      const unevenCard = document.getElementById("02-average-rhythm-uneven-card");
+      const evenTexture = document.getElementById("02-average-rhythm-even-marks");
+      const unevenTexture = document.getElementById("02-average-rhythm-uneven-marks");
+      const equalBadge = document.getElementById("02-average-rhythm-equal-badge");
+      const bunchedBadge = document.getElementById("02-average-rhythm-bunched-badge");
+      const cardNames = document.querySelectorAll("[data-02-average-rhythm-card-name]");
+      const countBadges = document.querySelectorAll("[data-02-average-rhythm-count]");
+
+      const titleStates = [
+        { t: 0, text: "same count", color: "#f0f0f0" },
+        { t: 6.72, text: "different feel", color: "#ff6b1a" },
+      ];
+
+      function titleStateAt(time) {
+        for (let index = titleStates.length - 1; index >= 0; index -= 1) {
+          if (time >= titleStates[index].t) return titleStates[index];
+        }
+        return titleStates[0];
+      }
+
+      const titleDriver = { t: 0 };
+      const tl = gsap.timeline({ paused: true });
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["02-average-rhythm"] = tl;
+
+      tl.to(
+        titleDriver,
+        {
+          t: 8.32,
+          duration: 8.32,
+          ease: "none",
+          onUpdate: () => {
+            const state = titleStateAt(titleDriver.t);
+            title.textContent = state.text;
+            title.style.color = state.color;
+          },
+        },
+        0,
+      );
+
+      tl.fromTo(
+        titleWrap,
+        { y: -150, opacity: 0 },
+        { y: 0, opacity: 1, duration: 1.2, ease: "power3.out" },
+        0.04,
+      );
+
+      tl.fromTo(
+        rulerLine,
+        { scaleX: 0, opacity: 0 },
+        { scaleX: 1, opacity: 1, duration: 1.05, ease: "power3.out" },
+        0.34,
+      );
+
+      tl.fromTo(
+        evenCard,
+        { x: -360, rotateY: 24, opacity: 0 },
+        { x: 0, rotateY: 14, opacity: 1, duration: 1.05, ease: "power3.out" },
+        1.9,
+      );
+
+      tl.fromTo(
+        unevenCard,
+        { x: 360, rotateY: -24, opacity: 0 },
+        { x: 0, rotateY: -14, opacity: 1, duration: 1.05, ease: "power3.out" },
+        2.12,
+      );
+
+      tl.fromTo(
+        cardNames,
+        { y: 18, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.58, stagger: 0.22, ease: "power2.out" },
+        2.4,
+      );
+
+      tl.fromTo(
+        countBadges,
+        { y: 12, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.52, stagger: 0.22, ease: "power2.out" },
+        2.58,
+      );
+
+      tl.fromTo(
+        evenTexture,
+        { clipPath: "inset(0 100% 0 0)", opacity: 0 },
+        { clipPath: "inset(0 0% 0 0)", opacity: 1, duration: 1.25, ease: "power2.out" },
+        2.82,
+      );
+
+      tl.fromTo(
+        unevenTexture,
+        { clipPath: "inset(0 0 0 100%)", opacity: 0 },
+        { clipPath: "inset(0 0 0 0%)", opacity: 1, duration: 1.25, ease: "power2.out" },
+        3.68,
+      );
+
+      tl.to(evenCard, { y: -5, duration: 0.7, ease: "sine.inOut" }, 4.45);
+      tl.to(unevenCard, { y: 5, duration: 0.7, ease: "sine.inOut" }, 4.45);
+      tl.to(evenCard, { y: 0, duration: 0.7, ease: "sine.inOut" }, 5.15);
+      tl.to(unevenCard, { y: 0, duration: 0.7, ease: "sine.inOut" }, 5.15);
+
+      tl.fromTo(
+        equalBadge,
+        { scale: 0, y: 10, opacity: 0 },
+        { scale: 1, y: 0, opacity: 1, duration: 0.58, ease: "power3.out" },
+        5.88,
+      );
+
+      tl.fromTo(
+        bunchedBadge,
+        { scale: 0, y: 10, opacity: 0 },
+        { scale: 1, y: 0, opacity: 1, duration: 0.58, ease: "power3.out" },
+        6.3,
+      );
+    })();
+  </script>
+</template>

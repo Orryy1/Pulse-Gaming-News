@@ -1,0 +1,694 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+    }
+
+    #root {
+      --ignore-first-ink: #0d0d0f;
+      --ignore-first-ink-alt: #1a1918;
+      --ignore-first-orange: #ff6b1a;
+      --ignore-first-cream: #f0f0f0;
+      --ignore-first-hint: #7d7977;
+      --ignore-first-line: #282726;
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: var(--ignore-first-cream);
+      font-family: "Space Grotesk", sans-serif;
+    }
+
+    #root [class~="06-ignore-first-ground"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: var(--ignore-first-ink);
+    }
+
+    #root [class~="06-ignore-first-ground-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 83cqh;
+      opacity: 0.34;
+    }
+
+    #root [class~="06-ignore-first-content"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    #root [class~="06-ignore-first-scene"] {
+      position: relative;
+      width: 100%;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    #root [class~="06-ignore-first-chrome"] {
+      position: absolute;
+      top: 50px;
+      left: 106px;
+      right: 106px;
+      z-index: 5;
+      display: flex;
+      justify-content: space-between;
+      padding-top: 16px;
+      border-top: 1px solid var(--ignore-first-line);
+      color: var(--ignore-first-hint);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ignore-first-map"] {
+      position: absolute;
+      top: 230px;
+      left: 60px;
+      z-index: 4;
+      width: 1708px;
+      height: 688px;
+      overflow: hidden;
+      border-top: 1px solid var(--ignore-first-line);
+      border-bottom: 1px solid var(--ignore-first-line);
+      transform: scale(0.5625);
+      transform-origin: 0 0;
+    }
+
+    #root [class~="06-ignore-first-map-label"] {
+      position: absolute;
+      top: 19px;
+      left: 0;
+      color: var(--ignore-first-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ignore-first-map-label"]::before {
+      content: "/";
+      margin-right: 12px;
+    }
+
+    #root [class~="06-ignore-first-origin"] {
+      position: absolute;
+      left: 24px;
+      top: 390px;
+      z-index: 8;
+      width: 78px;
+      height: 78px;
+      box-sizing: border-box;
+      border: 2px solid var(--ignore-first-orange);
+      background: var(--ignore-first-ink);
+    }
+
+    #root [class~="06-ignore-first-origin"]::before,
+    #root [class~="06-ignore-first-origin"]::after {
+      content: "";
+      position: absolute;
+      background: var(--ignore-first-orange);
+    }
+
+    #root [class~="06-ignore-first-origin"]::before {
+      top: 36px;
+      left: -12px;
+      width: 98px;
+      height: 2px;
+    }
+
+    #root [class~="06-ignore-first-origin"]::after {
+      top: -12px;
+      left: 36px;
+      width: 2px;
+      height: 98px;
+    }
+
+    #root [class~="06-ignore-first-origin-core"] {
+      position: absolute;
+      top: 28px;
+      left: 28px;
+      width: 18px;
+      height: 18px;
+      border: 4px solid var(--ignore-first-ink);
+      box-sizing: border-box;
+      background: var(--ignore-first-orange);
+    }
+
+    #root [class~="06-ignore-first-origin-label"] {
+      position: absolute;
+      left: 0;
+      top: 96px;
+      color: var(--ignore-first-hint);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [class~="06-ignore-first-root-node"] {
+      position: absolute;
+      left: 196px;
+      top: 364px;
+      z-index: 7;
+      width: 126px;
+      height: 126px;
+      box-sizing: border-box;
+      border: 2px solid var(--ignore-first-cream);
+      background: var(--ignore-first-ink);
+    }
+
+    #root [class~="06-ignore-first-root-node"]::before,
+    #root [class~="06-ignore-first-root-node"]::after {
+      content: "";
+      position: absolute;
+      background: var(--ignore-first-line);
+    }
+
+    #root [class~="06-ignore-first-root-node"]::before {
+      top: 61px;
+      left: 0;
+      right: 0;
+      height: 1px;
+    }
+
+    #root [class~="06-ignore-first-root-node"]::after {
+      top: 0;
+      bottom: 0;
+      left: 61px;
+      width: 1px;
+    }
+
+    #root [class~="06-ignore-first-root-label"] {
+      position: absolute;
+      left: 0;
+      bottom: calc(100% + 12px);
+      color: var(--ignore-first-cream);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ignore-first-branch"] {
+      position: absolute;
+      z-index: 3;
+      box-sizing: border-box;
+      background: var(--ignore-first-ink-alt);
+    }
+
+    #root [class~="06-ignore-first-branch-miss"] {
+      left: 436px;
+      top: 74px;
+      width: 480px;
+      height: 238px;
+      border: 2px solid var(--ignore-first-orange);
+    }
+
+    #root [class~="06-ignore-first-branch-live"] {
+      left: 436px;
+      top: 358px;
+      width: 480px;
+      height: 242px;
+      border: 1px solid var(--ignore-first-hint);
+    }
+
+    #root [class~="06-ignore-first-branch-label"] {
+      position: absolute;
+      left: -1px;
+      bottom: calc(100% + 11px);
+      color: var(--ignore-first-hint);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [class~="06-ignore-first-branch-miss"] [class~="06-ignore-first-branch-label"] {
+      color: var(--ignore-first-orange);
+    }
+
+    #root [class~="06-ignore-first-geometry"] {
+      position: absolute;
+      inset: 36px 28px 24px;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      place-items: center;
+      gap: 9px 15px;
+    }
+
+    #root [class~="06-ignore-first-geometry-live"] {
+      grid-template-columns: repeat(6, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      inset: 45px 28px 30px;
+    }
+
+    #root [class~="06-ignore-first-triangle"] {
+      display: block;
+      width: 26px;
+      height: 23px;
+      clip-path: polygon(50% 0, 100% 100%, 0 100%);
+      background: var(--ignore-first-cream);
+      opacity: 0.55;
+    }
+
+    #root [class~="06-ignore-first-triangle-selected"] {
+      background: var(--ignore-first-orange);
+      opacity: 1;
+    }
+
+    #root [class~="06-ignore-first-leaf"] {
+      position: absolute;
+      left: 1042px;
+      top: 378px;
+      z-index: 5;
+      width: 252px;
+      height: 196px;
+      box-sizing: border-box;
+      border: 2px solid var(--ignore-first-orange);
+      background: var(--ignore-first-ink-alt);
+    }
+
+    #root [class~="06-ignore-first-leaf-label"] {
+      position: absolute;
+      left: -2px;
+      bottom: calc(100% + 11px);
+      color: var(--ignore-first-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ignore-first-leaf-geometry"] {
+      position: absolute;
+      inset: 46px 26px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #root [class~="06-ignore-first-leaf-triangle"] {
+      display: block;
+      width: 42px;
+      height: 38px;
+      clip-path: polygon(50% 0, 100% 100%, 0 100%);
+      background: var(--ignore-first-hint);
+    }
+
+    #root [class~="06-ignore-first-leaf-triangle-hit"] {
+      background: var(--ignore-first-orange);
+    }
+
+    #root [class~="06-ignore-first-hit-zone"] {
+      position: absolute;
+      left: 1420px;
+      top: 392px;
+      z-index: 8;
+      width: 150px;
+      height: 150px;
+    }
+
+    #root [class~="06-ignore-first-hit-triangle"] {
+      position: absolute;
+      left: 34px;
+      top: 32px;
+      width: 82px;
+      height: 74px;
+      clip-path: polygon(50% 0, 100% 100%, 0 100%);
+      background: var(--ignore-first-orange);
+    }
+
+    #root [class~="06-ignore-first-hit-bracket"] {
+      position: absolute;
+      inset: 0;
+      box-sizing: border-box;
+      border-top: 2px solid var(--ignore-first-cream);
+      border-left: 2px solid var(--ignore-first-cream);
+    }
+
+    #root [class~="06-ignore-first-hit-bracket"]::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 64px;
+      height: 64px;
+      box-sizing: border-box;
+      border-right: 2px solid var(--ignore-first-cream);
+      border-bottom: 2px solid var(--ignore-first-cream);
+    }
+
+    #root [class~="06-ignore-first-hit-label"] {
+      position: absolute;
+      left: 0;
+      top: 168px;
+      color: var(--ignore-first-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ignore-first-miss-label"] {
+      position: absolute;
+      left: 965px;
+      top: 151px;
+      z-index: 9;
+      margin: 0;
+      color: var(--ignore-first-orange);
+      font-size: 82px;
+      font-weight: 900;
+      line-height: 0.84;
+      letter-spacing: -0.05em;
+      text-transform: lowercase;
+    }
+
+    #root [class~="06-ignore-first-route-layer"] {
+      position: absolute;
+      inset: 0;
+      z-index: 7;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    #root [class~="06-ignore-first-route"] {
+      fill: none;
+      stroke: var(--ignore-first-orange);
+      stroke-width: 3;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="06-ignore-first-route-muted"] {
+      stroke: var(--ignore-first-hint);
+      stroke-width: 2;
+    }
+
+    #root [class~="06-ignore-first-ray"] {
+      fill: none;
+      stroke: var(--ignore-first-cream);
+      stroke-width: 4;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="06-ignore-first-ray-head"] {
+      fill: var(--ignore-first-orange);
+    }
+
+    #root [class~="06-ignore-first-rule-card"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      z-index: 20;
+      width: 100%;
+      height: 83cqh;
+      overflow: hidden;
+      background: var(--ignore-first-orange);
+      color: var(--ignore-first-ink);
+    }
+
+    #root [class~="06-ignore-first-rule-inner"] {
+      position: absolute;
+      inset: 0;
+      padding: 65px 64px 60px;
+      box-sizing: border-box;
+    }
+
+    #root [class~="06-ignore-first-rule-kicker"] {
+      display: flex;
+      justify-content: space-between;
+      padding-top: 16px;
+      border-top: 1px solid rgba(13, 13, 15, 0.2);
+      color: rgba(13, 13, 15, 0.58);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ignore-first-rule-copy"] {
+      position: absolute;
+      left: 64px;
+      top: 220px;
+      margin: 0;
+      max-width: 1235px;
+      font-size: 126px;
+      font-weight: 900;
+      line-height: 0.86;
+      letter-spacing: -0.052em;
+      text-transform: lowercase;
+    }
+
+    #root [class~="06-ignore-first-rule-line"] {
+      display: block;
+    }
+
+    #root [class~="06-ignore-first-rule-slash"] {
+      margin: 25px 0 20px;
+      color: rgba(13, 13, 15, 0.4);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 52px;
+      font-weight: 500;
+      line-height: 0.65;
+      letter-spacing: 0;
+    }
+
+    #root [class~="06-ignore-first-rule-aside"] {
+      position: absolute;
+      top: 800px;
+      right: 64px;
+      width: 430px;
+      height: 320px;
+      box-sizing: border-box;
+      border-left: 1px solid rgba(13, 13, 15, 0.2);
+      padding-left: 29px;
+    }
+
+    #root [class~="06-ignore-first-mini-row"] {
+      display: grid;
+      grid-template-columns: 40px 1fr;
+      align-items: center;
+      column-gap: 15px;
+      height: 88px;
+      border-bottom: 1px solid rgba(13, 13, 15, 0.2);
+      color: rgba(13, 13, 15, 0.7);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="06-ignore-first-mini-box"] {
+      width: 40px;
+      height: 32px;
+      box-sizing: border-box;
+      border: 2px solid currentColor;
+    }
+
+    #root [class~="06-ignore-first-mini-leaf"] {
+      width: 24px;
+      height: 22px;
+      clip-path: polygon(50% 0, 100% 100%, 0 100%);
+      background: currentColor;
+    }
+
+    #root [class~="06-ignore-first-mini-rule"] {
+      position: absolute;
+      left: 29px;
+      right: 0;
+      bottom: 0;
+      height: 4px;
+      background: var(--ignore-first-ink);
+    }
+  </style>
+
+  <div id="root" data-composition-id="06-ignore-first" data-width="1080" data-height="1920" data-start="0" data-duration="9.045">
+    <div class="clip 06-ignore-first-ground" data-start="0" data-duration="9.045" data-track-index="0" aria-hidden="true">
+      <svg class="06-ignore-first-ground-grid" viewBox="0 0 1920 896" preserveAspectRatio="none">
+        <g fill="none" stroke="#282726" stroke-width="1">
+          <path d="M106 120H1814M106 349H1814M106 578H1814M106 808H1814" />
+          <path d="M106 50V896M448 50V896M790 50V896M1132 50V896M1474 50V896M1814 50V896" />
+        </g>
+      </svg>
+    </div>
+
+    <div class="clip 06-ignore-first-content" data-start="0" data-duration="9.045" data-track-index="1">
+      <section class="06-ignore-first-scene" aria-label="A BVH traversal rejects one region and follows one surviving path">
+        <div class="06-ignore-first-chrome">
+          <span>bvh traversal / final principle</span>
+          <span>frame 06</span>
+        </div>
+
+        <div class="06-ignore-first-map">
+          <div class="06-ignore-first-map-label">complete scene</div>
+
+          <div id="06-ignore-first-origin" class="06-ignore-first-origin">
+            <div class="06-ignore-first-origin-core"></div>
+            <span class="06-ignore-first-origin-label">ray / fixed</span>
+          </div>
+
+          <div id="06-ignore-first-root-node" class="06-ignore-first-root-node">
+            <span class="06-ignore-first-root-label">root</span>
+          </div>
+
+          <section id="06-ignore-first-miss-branch" class="06-ignore-first-branch 06-ignore-first-branch-miss">
+            <span class="06-ignore-first-branch-label">region / reject</span>
+            <div class="06-ignore-first-geometry" aria-label="Enclosed geometry">
+              <span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span>
+              <span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span>
+              <span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-missed"></span>
+            </div>
+          </section>
+
+          <section id="06-ignore-first-live-branch" class="06-ignore-first-branch 06-ignore-first-branch-live">
+            <span class="06-ignore-first-branch-label">region / survive</span>
+            <div class="06-ignore-first-geometry 06-ignore-first-geometry-live" aria-label="Candidate geometry">
+              <span class="06-ignore-first-triangle 06-ignore-first-triangle-live"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-live"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-live"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-live"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-live"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-live"></span>
+              <span class="06-ignore-first-triangle 06-ignore-first-triangle-live"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-live"></span><span id="06-ignore-first-selected-triangle" class="06-ignore-first-triangle 06-ignore-first-triangle-live 06-ignore-first-triangle-selected"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-live"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-live"></span><span class="06-ignore-first-triangle 06-ignore-first-triangle-live"></span>
+            </div>
+          </section>
+
+          <section id="06-ignore-first-leaf" class="06-ignore-first-leaf">
+            <span class="06-ignore-first-leaf-label">leaf</span>
+            <div class="06-ignore-first-leaf-geometry" aria-hidden="true">
+              <span class="06-ignore-first-leaf-triangle"></span>
+              <span class="06-ignore-first-leaf-triangle 06-ignore-first-leaf-triangle-hit"></span>
+              <span class="06-ignore-first-leaf-triangle"></span>
+            </div>
+          </section>
+
+          <div id="06-ignore-first-hit-zone" class="06-ignore-first-hit-zone">
+            <div class="06-ignore-first-hit-triangle"></div>
+            <div class="06-ignore-first-hit-bracket"></div>
+            <div class="06-ignore-first-hit-label">triangle hit</div>
+          </div>
+
+          <h1 id="06-ignore-first-miss-label" class="06-ignore-first-miss-label">miss</h1>
+
+          <svg class="06-ignore-first-route-layer" viewBox="0 0 1708 688" preserveAspectRatio="none" aria-hidden="true">
+            <path id="06-ignore-first-root-route" class="06-ignore-first-route 06-ignore-first-route-muted" pathLength="1" d="M322 427H376M376 427V193H436M376 427V479H436" />
+            <path id="06-ignore-first-ray-start" class="06-ignore-first-ray" pathLength="1" d="M62 429L432 394" />
+            <path id="06-ignore-first-ray-finish" class="06-ignore-first-ray" pathLength="1" d="M432 394L1493 357" />
+            <path id="06-ignore-first-survive-route" class="06-ignore-first-route" pathLength="1" d="M916 479H1042" />
+            <path id="06-ignore-first-leaf-route" class="06-ignore-first-route" pathLength="1" d="M1294 476L1420 466" />
+            <path id="06-ignore-first-ray-head" class="06-ignore-first-ray-head" d="M1493 357L1465 346L1467 373Z" />
+          </svg>
+        </div>
+
+        <section id="06-ignore-first-rule-card" class="06-ignore-first-rule-card">
+          <div class="06-ignore-first-rule-inner">
+            <div class="06-ignore-first-rule-kicker">
+              <span>system trace // 06</span>
+              <span>traversal rule</span>
+            </div>
+            <h1 class="06-ignore-first-rule-copy">
+              <span id="06-ignore-first-rule-reject" class="06-ignore-first-rule-line">reject the region</span>
+              <span id="06-ignore-first-rule-slash" class="06-ignore-first-rule-line 06-ignore-first-rule-slash">/</span>
+              <span id="06-ignore-first-rule-test" class="06-ignore-first-rule-line">test the few</span>
+            </h1>
+            <aside class="06-ignore-first-rule-aside" aria-label="Reject, traverse and hit">
+              <div class="06-ignore-first-mini-row"><span class="06-ignore-first-mini-box"></span><span>reject region</span></div>
+              <div class="06-ignore-first-mini-row"><span class="06-ignore-first-mini-box"></span><span>follow branch</span></div>
+              <div class="06-ignore-first-mini-row"><span class="06-ignore-first-mini-leaf"></span><span>test leaf</span></div>
+              <div class="06-ignore-first-mini-rule"></div>
+            </aside>
+          </div>
+        </section>
+      </section>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const byId = (id) => document.getElementById(id);
+      const tl = gsap.timeline({ paused: true });
+      const holdState = { progress: 0 };
+
+      tl.addLabel("reject-region", 0);
+      tl.fromTo('[class~="06-ignore-first-chrome"]', { y: -10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.38, ease: "power2.out" }, 0);
+      tl.fromTo(byId("06-ignore-first-origin"), { scale: 0.88, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.42, ease: "power3.out", transformOrigin: "50% 50%" }, 0.04);
+      tl.fromTo(byId("06-ignore-first-root-node"), { scale: 0.86, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.42, ease: "power3.out", transformOrigin: "50% 50%" }, 0.16);
+      tl.fromTo(byId("06-ignore-first-root-route"), { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 0.62, duration: 0.72, ease: "power2.out" }, 0.42);
+      tl.fromTo([byId("06-ignore-first-miss-branch"), byId("06-ignore-first-live-branch")], { scaleX: 0, opacity: 0 }, { scaleX: 1, opacity: 1, duration: 0.58, stagger: 0.16, ease: "power3.out", transformOrigin: "0% 50%" }, 0.56);
+      tl.fromTo('[class~="06-ignore-first-triangle"]', { scale: 0.55, opacity: 0 }, { scale: 1, opacity: 0.55, duration: 0.2, stagger: 0.026, ease: "power2.out", transformOrigin: "50% 50%" }, 0.92);
+      tl.fromTo(byId("06-ignore-first-ray-start"), { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 1, duration: 0.72, ease: "none" }, 1.48);
+      tl.fromTo(byId("06-ignore-first-miss-label"), { scale: 0.76, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.34, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 1.92);
+      tl.to('[class~="06-ignore-first-triangle-missed"]', { scale: 0.72, opacity: 0.09, duration: 0.46, ease: "power2.inOut" }, 2.26);
+      tl.to(byId("06-ignore-first-miss-branch"), { borderColor: "#282726", backgroundColor: "rgba(26, 25, 24, 0.42)", duration: 0.46, ease: "none" }, 2.28);
+      tl.to(byId("06-ignore-first-miss-label"), { scale: 0.92, opacity: 0.28, duration: 0.38, ease: "power2.out" }, 2.58);
+
+      tl.addLabel("test-few", 3);
+      tl.to(byId("06-ignore-first-live-branch"), { borderColor: "#FF6B1A", duration: 0.32, ease: "none" }, 3.02);
+      tl.fromTo(byId("06-ignore-first-survive-route"), { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 1, duration: 0.56, ease: "power2.out" }, 3.18);
+      tl.to('[class~="06-ignore-first-triangle-live"]:not([id="06-ignore-first-selected-triangle"])', { scale: 0.78, opacity: 0.14, duration: 0.46, ease: "power2.inOut" }, 3.62);
+      tl.to(byId("06-ignore-first-selected-triangle"), { scale: 1.18, opacity: 1, backgroundColor: "#FF6B1A", duration: 0.38, ease: "power2.out", transformOrigin: "50% 50%" }, 3.82);
+      tl.fromTo(byId("06-ignore-first-leaf"), { scaleX: 0, opacity: 0 }, { scaleX: 1, opacity: 1, duration: 0.5, ease: "power3.out", transformOrigin: "0% 50%" }, 4.08);
+      tl.fromTo('[class~="06-ignore-first-leaf-triangle"]', { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.28, stagger: 0.14, ease: "power2.out", transformOrigin: "50% 50%" }, 4.42);
+      tl.fromTo(byId("06-ignore-first-ray-finish"), { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 1, duration: 0.92, ease: "none" }, 4.78);
+      tl.fromTo(byId("06-ignore-first-leaf-route"), { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 1, duration: 0.48, ease: "power2.out" }, 5.08);
+      tl.fromTo(byId("06-ignore-first-ray-head"), { x: -52, y: 2, scale: 0.72, opacity: 0 }, { x: 0, y: 0, scale: 1, opacity: 1, duration: 0.5, ease: "power2.out", transformOrigin: "50% 50%" }, 5.32);
+      tl.fromTo(byId("06-ignore-first-hit-zone"), { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.44, ease: "back.out(1.45)", transformOrigin: "50% 50%" }, 5.72);
+
+      tl.addLabel("closing-rule", 6.4);
+      tl.fromTo(byId("06-ignore-first-rule-card"), { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.38, ease: "power3.inOut" }, 6.16);
+      tl.fromTo('[class~="06-ignore-first-rule-kicker"]', { y: -10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.34, ease: "power2.out" }, 6.36);
+      tl.fromTo(byId("06-ignore-first-rule-reject"), { x: -46, opacity: 0 }, { x: 0, opacity: 1, duration: 0.46, ease: "power3.out" }, 6.44);
+      tl.fromTo(byId("06-ignore-first-rule-slash"), { scaleY: 0, opacity: 0 }, { scaleY: 1, opacity: 1, duration: 0.3, ease: "power2.out", transformOrigin: "50% 0%" }, 6.82);
+      tl.fromTo(byId("06-ignore-first-rule-test"), { x: -46, opacity: 0 }, { x: 0, opacity: 1, duration: 0.46, ease: "power3.out" }, 7.02);
+      tl.fromTo('[class~="06-ignore-first-rule-aside"]', { x: 24, opacity: 0 }, { x: 0, opacity: 1, duration: 0.46, ease: "power3.out" }, 7.36);
+      tl.fromTo('[class~="06-ignore-first-mini-rule"]', { scaleX: 0, opacity: 0 }, { scaleX: 1, opacity: 1, duration: 0.5, ease: "power2.out", transformOrigin: "100% 50%" }, 7.78);
+      tl.to(holdState, { progress: 1, duration: 9.045, ease: "none" }, 0);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["06-ignore-first"] = tl;
+    })();
+  </script>
+</template>

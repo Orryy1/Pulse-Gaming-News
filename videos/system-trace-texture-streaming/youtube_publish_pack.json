@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_publish_pack_v1",
+  "story_id": "system-trace-texture-streaming",
+  "project_id": "system-trace-texture-streaming",
+  "platform": "youtube_shorts",
+  "review_scope": "PRIVATE_FIRST_SCHEDULED_PUBLICATION",
+  "title": "Why Games Do Not Keep Every Texture in VRAM",
+  "description": "A modern game can contain more texture data than graphics memory can hold. This short animation explains mip levels, camera-driven residency and why a detailed surface may arrive late or disappear when the VRAM budget gets tight.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/texture-streaming-overview-for-unreal-engine\nhttps://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VRAM #SystemTrace",
+  "tags": [
+    "texture streaming",
+    "VRAM",
+    "mip levels",
+    "texture pop in",
+    "gaming graphics",
+    "PC gaming",
+    "System Trace",
+    "gaming Shorts"
+  ],
+  "captions": {
+    "file": "captions.srt",
+    "sha256": "820cd3f3d0d61c15d7fc22bb842900e07964bab98edeb7fe7fd485da3891fee4",
+    "clean_manual_captions_required": true
+  },
+  "synthetic_media_required": true,
+  "altered_synthetic_disclosure_required": true,
+  "altered_synthetic_disclosure_setting": "YES",
+  "public_publish_authorised": true,
+  "unlisted_publish_authorised": false,
+  "scheduler_authorised": true,
+  "database_mutation_authorised": false,
+  "playlist_mutation_authorised": false,
+  "thumbnail_upload_authorised": false,
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "rights_placement_blocker_count": 0,
+  "rights_clearance_claimed": false,
+  "scheduled_publish_at_utc": "2026-08-19T19:00:00.000Z",
+  "youtube_upload_request": {
+    "schema_version": 1,
+    "closed": true,
+    "authority_scope": "EXACT_PRIVATE_FIRST_SCHEDULE_REQUEST_SHAPE_ONLY",
+    "publish_authority": "EXTERNALLY_EVALUATED",
+    "video_file": "renders/system-trace-texture-streaming.mp4",
+    "video_sha256": "47f84104c452bfb0c592d76bc38849ab3ce46d4027abdb437d1f0e619d2ff936",
+    "notifySubscribers": false,
+    "snippet": {
+      "title": "Why Games Do Not Keep Every Texture in VRAM",
+      "description": "A modern game can contain more texture data than graphics memory can hold. This short animation explains mip levels, camera-driven residency and why a detailed surface may arrive late or disappear when the VRAM budget gets tight.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/texture-streaming-overview-for-unreal-engine\nhttps://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VRAM #SystemTrace",
+      "tags": [
+        "texture streaming",
+        "VRAM",
+        "mip levels",
+        "texture pop in",
+        "gaming graphics",
+        "PC gaming",
+        "System Trace",
+        "gaming Shorts"
+      ],
+      "categoryId": "20",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "status": {
+      "privacyStatus": "private",
+      "selfDeclaredMadeForKids": false,
+      "containsSyntheticMedia": true,
+      "license": "youtube",
+      "embeddable": true,
+      "publicStatsViewable": true
+    },
+    "paidProductPlacementDetails": {
+      "hasPaidProductPlacement": false
+    },
+    "captions": {
+      "file": "captions.srt",
+      "sha256": "820cd3f3d0d61c15d7fc22bb842900e07964bab98edeb7fe7fd485da3891fee4",
+      "language": "en-GB",
+      "name": "English (United Kingdom)",
+      "isDraft": false
+    },
+    "cover_selection": {
+      "selection_mode": "in_video_frame",
+      "frame_time_seconds": 1.5,
+      "custom_thumbnail_upload_allowed": false,
+      "application_status": "NOT_APPLIED"
+    }
+  }
+}

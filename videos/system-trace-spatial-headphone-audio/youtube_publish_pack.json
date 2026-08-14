@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_publish_pack_v1",
+  "story_id": "system-trace-spatial-headphone-audio",
+  "project_id": "system-trace-spatial-headphone-audio",
+  "platform": "youtube_shorts",
+  "review_scope": "PRIVATE_FIRST_SCHEDULED_PUBLICATION",
+  "title": "How Headphones Put Sounds Behind You",
+  "description": "Headphones have only two speakers, yet games can place footsteps behind or above you. This short animation explains positioned sound objects, HRTF filtering and the tiny timing, level and frequency cues your brain interprets as direction.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/coreaudio/spatial-sound\nhttps://learn.microsoft.com/en-us/windows/win32/api/hrtfapoapi/nn-hrtfapoapi-ihrtfapo\nhttps://blog.playstation.com/2024/07/24/introducing-personalized-3d-audio-profiles-for-headphones-and-earbuds-on-ps5/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#GamingAudio #HRTF #SystemTrace",
+  "tags": [
+    "spatial audio",
+    "HRTF",
+    "headphone audio",
+    "3D audio",
+    "gaming audio",
+    "PC gaming",
+    "System Trace",
+    "gaming Shorts"
+  ],
+  "captions": {
+    "file": "captions.srt",
+    "sha256": "fe17445ffbadd9467baac30972ac738f171a1d6bec8a4a001d5728ead7cb4353",
+    "clean_manual_captions_required": true
+  },
+  "synthetic_media_required": true,
+  "altered_synthetic_disclosure_required": true,
+  "altered_synthetic_disclosure_setting": "YES",
+  "public_publish_authorised": true,
+  "unlisted_publish_authorised": false,
+  "scheduler_authorised": true,
+  "database_mutation_authorised": false,
+  "playlist_mutation_authorised": false,
+  "thumbnail_upload_authorised": false,
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "rights_placement_blocker_count": 0,
+  "rights_clearance_claimed": false,
+  "scheduled_publish_at_utc": "2026-08-18T19:00:00.000Z",
+  "youtube_upload_request": {
+    "schema_version": 1,
+    "closed": true,
+    "authority_scope": "EXACT_PRIVATE_FIRST_SCHEDULE_REQUEST_SHAPE_ONLY",
+    "publish_authority": "EXTERNALLY_EVALUATED",
+    "video_file": "renders/system-trace-spatial-headphone-audio.mp4",
+    "video_sha256": "c28c13902504a47195d401d094aa926ae51d751c9d1fdfd577071f4e09790908",
+    "notifySubscribers": false,
+    "snippet": {
+      "title": "How Headphones Put Sounds Behind You",
+      "description": "Headphones have only two speakers, yet games can place footsteps behind or above you. This short animation explains positioned sound objects, HRTF filtering and the tiny timing, level and frequency cues your brain interprets as direction.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/coreaudio/spatial-sound\nhttps://learn.microsoft.com/en-us/windows/win32/api/hrtfapoapi/nn-hrtfapoapi-ihrtfapo\nhttps://blog.playstation.com/2024/07/24/introducing-personalized-3d-audio-profiles-for-headphones-and-earbuds-on-ps5/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#GamingAudio #HRTF #SystemTrace",
+      "tags": [
+        "spatial audio",
+        "HRTF",
+        "headphone audio",
+        "3D audio",
+        "gaming audio",
+        "PC gaming",
+        "System Trace",
+        "gaming Shorts"
+      ],
+      "categoryId": "20",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "status": {
+      "privacyStatus": "private",
+      "selfDeclaredMadeForKids": false,
+      "containsSyntheticMedia": true,
+      "license": "youtube",
+      "embeddable": true,
+      "publicStatsViewable": true
+    },
+    "paidProductPlacementDetails": {
+      "hasPaidProductPlacement": false
+    },
+    "captions": {
+      "file": "captions.srt",
+      "sha256": "fe17445ffbadd9467baac30972ac738f171a1d6bec8a4a001d5728ead7cb4353",
+      "language": "en-GB",
+      "name": "English (United Kingdom)",
+      "isDraft": false
+    },
+    "cover_selection": {
+      "selection_mode": "in_video_frame",
+      "frame_time_seconds": 1.5,
+      "custom_thumbnail_upload_allowed": false,
+      "application_status": "NOT_APPLIED"
+    }
+  }
+}

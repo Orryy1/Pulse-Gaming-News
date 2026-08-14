@@ -1,0 +1,706 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+      isolation: isolate;
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    #root [class~="02-cpu-gpu-queue-ground"] {
+      z-index: 0;
+      background: #0d0d0f;
+    }
+
+    #root [class~="02-cpu-gpu-queue-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 83cqh;
+    }
+
+    #root [class~="02-cpu-gpu-queue-grid"] path {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="02-cpu-gpu-queue-safe-rule"] {
+      position: absolute;
+      top: 83cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #ff6b1a;
+      opacity: 0.34;
+    }
+
+    #root [class~="02-cpu-gpu-queue-content"] {
+      z-index: 1;
+    }
+
+    #root [class~="02-cpu-gpu-queue-viewport"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    #root [class~="02-cpu-gpu-queue-header"] {
+      position: absolute;
+      z-index: 50;
+      top: 3.35cqh;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      height: 7.25cqh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-bottom: 1px solid #504b48;
+    }
+
+    #root [class~="02-cpu-gpu-queue-kicker"] {
+      margin-top: 0.2cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="02-cpu-gpu-queue-kicker-accent"] {
+      color: #ff6b1a;
+    }
+
+    #root [class~="02-cpu-gpu-queue-index"] {
+      padding-top: 5px;
+      font-family: "IBM Plex Mono";
+      font-size: 2.3cqw;
+      font-weight: 700;
+      line-height: 0.9;
+      letter-spacing: 0.08em;
+      color: #ff6b1a;
+    }
+
+    #root [class~="02-cpu-gpu-queue-world"] {
+      position: absolute;
+      z-index: 5;
+      top: 0;
+      left: 0;
+      width: 300cqw;
+      height: 83cqh;
+      will-change: transform;
+    }
+
+    #root [class~="02-cpu-gpu-queue-base-rail"] {
+      position: absolute;
+      z-index: 1;
+      top: 41.5cqh;
+      left: 20cqw;
+      width: 260cqw;
+      height: 1px;
+      background: #504b48;
+    }
+
+    #root [class~="02-cpu-gpu-queue-base-rail"]::before,
+    #root [class~="02-cpu-gpu-queue-base-rail"]::after {
+      content: "";
+      position: absolute;
+      top: -1.2cqh;
+      width: 1px;
+      height: 2.4cqh;
+      background: #504b48;
+    }
+
+    #root [class~="02-cpu-gpu-queue-base-rail"]::before {
+      left: 0;
+    }
+
+    #root [class~="02-cpu-gpu-queue-base-rail"]::after {
+      right: 0;
+    }
+
+    #root [class~="02-cpu-gpu-queue-active-rail"] {
+      position: absolute;
+      z-index: 2;
+      top: 41.32cqh;
+      left: 30cqw;
+      width: 216cqw;
+      height: 0.36cqh;
+      background: #ff6b1a;
+      transform-origin: 0 50%;
+    }
+
+    #root [class~="02-cpu-gpu-queue-station"] {
+      position: absolute;
+      z-index: 4;
+      top: 15.5cqh;
+      width: 80cqw;
+      height: 49.5cqh;
+      overflow: hidden;
+      border: 1px solid #504b48;
+      background: #1a1918;
+      transform-origin: 50% 50%;
+    }
+
+    #root [class~="02-cpu-gpu-queue-cpu-station"] {
+      left: 10cqw;
+    }
+
+    #root [class~="02-cpu-gpu-queue-frame-station"] {
+      left: 110cqw;
+    }
+
+    #root [class~="02-cpu-gpu-queue-gpu-station"] {
+      left: 210cqw;
+    }
+
+    #root [class~="02-cpu-gpu-queue-station-label"] {
+      position: absolute;
+      z-index: 8;
+      top: 2.3cqh;
+      left: 3cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+
+    #root [class~="02-cpu-gpu-queue-station-title"] {
+      position: absolute;
+      z-index: 8;
+      top: 5.3cqh;
+      left: 3cqw;
+      font-family: "Space Grotesk";
+      font-size: 6.3cqw;
+      font-weight: 900;
+      line-height: 0.86;
+      letter-spacing: -0.055em;
+      text-transform: lowercase;
+      color: #f0f0f0;
+    }
+
+    #root [class~="02-cpu-gpu-queue-cpu-grid"] {
+      position: absolute;
+      z-index: 4;
+      top: 17.2cqh;
+      left: 5cqw;
+      width: 33cqw;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.2cqw;
+    }
+
+    #root [class~="02-cpu-gpu-queue-prep-block"] {
+      height: 5.4cqh;
+      border: 1px solid #504b48;
+      background: #0d0d0f;
+    }
+
+    #root [class~="02-cpu-gpu-queue-prep-block-accent"] {
+      border-color: #ff6b1a;
+      background: #ff6b1a;
+    }
+
+    #root [class~="02-cpu-gpu-queue-cpu-note"] {
+      position: absolute;
+      top: 31.5cqh;
+      left: 5cqw;
+      padding-top: 1.05cqh;
+      width: 29cqw;
+      border-top: 1px solid #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+    }
+
+    #root [class~="02-cpu-gpu-queue-queue-slots"] {
+      position: absolute;
+      z-index: 3;
+      top: 20.5cqh;
+      left: 6cqw;
+      right: 6cqw;
+      height: 13cqh;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4cqw;
+    }
+
+    #root [class~="02-cpu-gpu-queue-queue-slot"] {
+      border: 1px solid #504b48;
+      background: #0d0d0f;
+    }
+
+    #root [class~="02-cpu-gpu-queue-queue-bracket"] {
+      position: absolute;
+      z-index: 4;
+      top: 35.4cqh;
+      left: 6cqw;
+      right: 6cqw;
+      display: flex;
+      justify-content: space-between;
+      padding-top: 1.05cqh;
+      border-top: 1px solid #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+
+    #root [class~="02-cpu-gpu-queue-card"] {
+      position: absolute;
+      z-index: 20;
+      top: 38cqh;
+      width: 18cqw;
+      height: 9.5cqh;
+      padding: 1.1cqw 1cqw;
+      border: 2px solid #f0f0f0;
+      background: #0d0d0f;
+      transform-origin: 50% 50%;
+    }
+
+    #root [class~="02-cpu-gpu-queue-card-a"] {
+      left: 30cqw;
+      border-color: #ff6b1a;
+    }
+
+    #root [class~="02-cpu-gpu-queue-card-b"] {
+      left: 142cqw;
+    }
+
+    #root [class~="02-cpu-gpu-queue-card-c"] {
+      left: 166cqw;
+    }
+
+    #root [class~="02-cpu-gpu-queue-card-name"] {
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+    }
+
+    #root [class~="02-cpu-gpu-queue-card-stamp"] {
+      position: absolute;
+      left: 1cqw;
+      bottom: 1.1cqh;
+      padding-top: 0.72cqh;
+      width: calc(100% - 2cqw);
+      border-top: 1px solid #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+
+    #root [class~="02-cpu-gpu-queue-gpu-chamber"] {
+      position: absolute;
+      z-index: 4;
+      top: 17.8cqh;
+      left: 34cqw;
+      width: 24cqw;
+      height: 35.2cqh;
+      border-left: 2px solid #ff6b1a;
+      border-right: 2px solid #ff6b1a;
+    }
+
+    #root [class~="02-cpu-gpu-queue-gpu-chamber"]::before,
+    #root [class~="02-cpu-gpu-queue-gpu-chamber"]::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #504b48;
+    }
+
+    #root [class~="02-cpu-gpu-queue-gpu-chamber"]::before {
+      top: 33%;
+    }
+
+    #root [class~="02-cpu-gpu-queue-gpu-chamber"]::after {
+      top: 66%;
+    }
+
+    #root [class~="02-cpu-gpu-queue-util"] {
+      position: absolute;
+      z-index: 8;
+      top: 18cqh;
+      left: 4cqw;
+      width: 24cqw;
+    }
+
+    #root [class~="02-cpu-gpu-queue-busy-word"] {
+      font-family: "Space Grotesk";
+      font-size: 5.2cqw;
+      font-weight: 900;
+      line-height: 0.86;
+      letter-spacing: -0.05em;
+      text-transform: lowercase;
+      color: #f0f0f0;
+    }
+
+    #root [class~="02-cpu-gpu-queue-busy-value"] {
+      margin-top: 1.4cqh;
+      font-family: "Space Grotesk";
+      font-size: 10.5cqw;
+      font-weight: 900;
+      line-height: 0.84;
+      letter-spacing: -0.055em;
+      color: #ff6b1a;
+    }
+
+    #root [class~="02-cpu-gpu-queue-util-track"] {
+      position: absolute;
+      z-index: 8;
+      top: 38.5cqh;
+      left: 4cqw;
+      width: 24cqw;
+      height: 3.2cqh;
+      overflow: hidden;
+      border: 1px solid #504b48;
+      background: #0d0d0f;
+    }
+
+    #root [class~="02-cpu-gpu-queue-util-fill"] {
+      position: absolute;
+      inset: 0;
+      background: #ff6b1a;
+      transform-origin: 0 50%;
+    }
+
+    #root [class~="02-cpu-gpu-queue-util-ticks"] {
+      position: absolute;
+      z-index: 2;
+      inset: 0;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+    }
+
+    #root [class~="02-cpu-gpu-queue-util-tick"] {
+      border-right: 1px solid #0d0d0f;
+    }
+
+    #root [class~="02-cpu-gpu-queue-util-tick"]:last-child {
+      border-right: 0;
+    }
+
+    #root [class~="02-cpu-gpu-queue-activity"] {
+      position: absolute;
+      z-index: 8;
+      top: 44cqh;
+      left: 4cqw;
+      width: 24cqw;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1cqw;
+    }
+
+    #root [class~="02-cpu-gpu-queue-activity-beat"] {
+      height: 2.5cqh;
+      border: 1px solid #ff6b1a;
+      background: #0d0d0f;
+      transform-origin: 50% 100%;
+    }
+  </style>
+
+  <div id="root" data-composition-id="02-cpu-gpu-queue" data-width="1080" data-height="1920" data-start="0" data-duration="8.832">
+    <div class="clip 02-cpu-gpu-queue-ground" data-start="0" data-duration="8.832" data-track-index="0" aria-hidden="true">
+      <svg class="02-cpu-gpu-queue-grid" viewBox="0 0 1080 1594" preserveAspectRatio="none">
+        <path d="M60 0V1594M300 0V1594M540 0V1594M780 0V1594M1020 0V1594" />
+        <path d="M0 204H1080M0 482H1080M0 760H1080M0 1038H1080M0 1316H1080M0 1593H1080" />
+      </svg>
+      <div class="02-cpu-gpu-queue-safe-rule"></div>
+    </div>
+
+    <div class="clip 02-cpu-gpu-queue-content" data-start="0" data-duration="8.832" data-track-index="1">
+      <div class="02-cpu-gpu-queue-viewport">
+        <header class="02-cpu-gpu-queue-header" id="02-cpu-gpu-queue-header">
+          <div class="02-cpu-gpu-queue-kicker"><span class="02-cpu-gpu-queue-kicker-accent">render</span> / work lanes</div>
+          <div class="02-cpu-gpu-queue-index">02</div>
+        </header>
+
+        <div class="02-cpu-gpu-queue-world" id="02-cpu-gpu-queue-world">
+          <div class="02-cpu-gpu-queue-base-rail"></div>
+          <div class="02-cpu-gpu-queue-active-rail" id="02-cpu-gpu-queue-active-rail"></div>
+
+          <section class="02-cpu-gpu-queue-station 02-cpu-gpu-queue-cpu-station" id="02-cpu-gpu-queue-cpu-station" aria-label="CPU preparation station">
+            <div class="02-cpu-gpu-queue-station-label">station / cpu</div>
+            <div class="02-cpu-gpu-queue-station-title">cpu prep</div>
+            <div class="02-cpu-gpu-queue-cpu-grid" aria-hidden="true">
+              <div class="02-cpu-gpu-queue-prep-block"></div>
+              <div class="02-cpu-gpu-queue-prep-block 02-cpu-gpu-queue-prep-block-accent"></div>
+              <div class="02-cpu-gpu-queue-prep-block"></div>
+              <div class="02-cpu-gpu-queue-prep-block"></div>
+              <div class="02-cpu-gpu-queue-prep-block"></div>
+              <div class="02-cpu-gpu-queue-prep-block"></div>
+            </div>
+            <div class="02-cpu-gpu-queue-cpu-note" id="02-cpu-gpu-queue-cpu-note">work prepared</div>
+          </section>
+
+          <section class="02-cpu-gpu-queue-station 02-cpu-gpu-queue-frame-station" id="02-cpu-gpu-queue-frame-station" aria-label="Short prepared frame queue">
+            <div class="02-cpu-gpu-queue-station-label">station / wait</div>
+            <div class="02-cpu-gpu-queue-station-title">frame queue</div>
+            <div class="02-cpu-gpu-queue-queue-slots" aria-hidden="true">
+              <div class="02-cpu-gpu-queue-queue-slot"></div>
+              <div class="02-cpu-gpu-queue-queue-slot"></div>
+              <div class="02-cpu-gpu-queue-queue-slot"></div>
+            </div>
+            <div class="02-cpu-gpu-queue-queue-bracket" id="02-cpu-gpu-queue-queue-bracket"><span>prepared</span><span>short queue</span></div>
+          </section>
+
+          <section class="02-cpu-gpu-queue-station 02-cpu-gpu-queue-gpu-station" id="02-cpu-gpu-queue-gpu-station" aria-label="GPU execution station">
+            <div class="02-cpu-gpu-queue-station-label">station / gpu</div>
+            <div class="02-cpu-gpu-queue-station-title">gpu execute</div>
+            <div class="02-cpu-gpu-queue-gpu-chamber" aria-hidden="true"></div>
+            <div class="02-cpu-gpu-queue-util" id="02-cpu-gpu-queue-util">
+              <div class="02-cpu-gpu-queue-busy-word">busy</div>
+              <div class="02-cpu-gpu-queue-busy-value">99%</div>
+            </div>
+            <div class="02-cpu-gpu-queue-util-track">
+              <div class="02-cpu-gpu-queue-util-fill" id="02-cpu-gpu-queue-util-fill"></div>
+              <div class="02-cpu-gpu-queue-util-ticks" aria-hidden="true">
+                <span class="02-cpu-gpu-queue-util-tick"></span><span class="02-cpu-gpu-queue-util-tick"></span><span class="02-cpu-gpu-queue-util-tick"></span><span class="02-cpu-gpu-queue-util-tick"></span><span class="02-cpu-gpu-queue-util-tick"></span>
+              </div>
+            </div>
+            <div class="02-cpu-gpu-queue-activity" aria-hidden="true">
+              <div class="02-cpu-gpu-queue-activity-beat" id="02-cpu-gpu-queue-activity-a"></div>
+              <div class="02-cpu-gpu-queue-activity-beat" id="02-cpu-gpu-queue-activity-b"></div>
+              <div class="02-cpu-gpu-queue-activity-beat" id="02-cpu-gpu-queue-activity-c"></div>
+            </div>
+          </section>
+
+          <div class="02-cpu-gpu-queue-card 02-cpu-gpu-queue-card-a" id="02-cpu-gpu-queue-card-a">
+            <div class="02-cpu-gpu-queue-card-name">frame A</div>
+            <div class="02-cpu-gpu-queue-card-stamp" id="02-cpu-gpu-queue-stamp-a">T-2</div>
+          </div>
+
+          <div class="02-cpu-gpu-queue-card 02-cpu-gpu-queue-card-b" id="02-cpu-gpu-queue-card-b">
+            <div class="02-cpu-gpu-queue-card-name">frame B</div>
+          </div>
+
+          <div class="02-cpu-gpu-queue-card 02-cpu-gpu-queue-card-c" id="02-cpu-gpu-queue-card-c">
+            <div class="02-cpu-gpu-queue-card-name">frame C</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const header = document.getElementById("02-cpu-gpu-queue-header");
+      const world = document.getElementById("02-cpu-gpu-queue-world");
+      const cpuStation = document.getElementById("02-cpu-gpu-queue-cpu-station");
+      const cpuNote = document.getElementById("02-cpu-gpu-queue-cpu-note");
+      const queueStation = document.getElementById("02-cpu-gpu-queue-frame-station");
+      const queueBracket = document.getElementById("02-cpu-gpu-queue-queue-bracket");
+      const gpuStation = document.getElementById("02-cpu-gpu-queue-gpu-station");
+      const cardA = document.getElementById("02-cpu-gpu-queue-card-a");
+      const cardB = document.getElementById("02-cpu-gpu-queue-card-b");
+      const cardC = document.getElementById("02-cpu-gpu-queue-card-c");
+      const stampA = document.getElementById("02-cpu-gpu-queue-stamp-a");
+      const activeRail = document.getElementById("02-cpu-gpu-queue-active-rail");
+      const util = document.getElementById("02-cpu-gpu-queue-util");
+      const utilFill = document.getElementById("02-cpu-gpu-queue-util-fill");
+      const activityA = document.getElementById("02-cpu-gpu-queue-activity-a");
+      const activityB = document.getElementById("02-cpu-gpu-queue-activity-b");
+      const activityC = document.getElementById("02-cpu-gpu-queue-activity-c");
+      const prepBlocks = document.querySelectorAll('[class~="02-cpu-gpu-queue-prep-block"]');
+      const hold = { progress: 0 };
+      const timeline = gsap.timeline({ paused: true });
+
+      timeline
+        .fromTo(header,
+          { opacity: 0, y: -18 },
+          { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" },
+          0
+        )
+        .fromTo(cpuStation,
+          { opacity: 0, y: 28, scale: 0.985 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.46, ease: "power3.out" },
+          0.02
+        )
+        .fromTo(prepBlocks,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.28, stagger: 0.08, ease: "power2.out" },
+          0.44
+        )
+        .fromTo(cpuNote,
+          { opacity: 0, x: -14 },
+          { opacity: 1, x: 0, duration: 0.3, ease: "power2.out" },
+          1.02
+        )
+        .fromTo(cardA,
+          { opacity: 0, y: 22, scale: 0.88 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "back.out(1.35)" },
+          1.38
+        )
+        .fromTo(stampA,
+          { opacity: 0, x: -12 },
+          { opacity: 1, x: 0, duration: 0.3, ease: "power2.out" },
+          1.94
+        )
+        .fromTo(activeRail,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 0.34, duration: 0.7, ease: "power2.inOut" },
+          1.9
+        )
+
+        .fromTo(world,
+          { x: 0 },
+          { x: -1080, duration: 0.82, ease: "power2.inOut" },
+          2.7
+        )
+        .fromTo(cardA,
+          { x: 0, y: 0 },
+          { x: 950, y: 0, duration: 0.82, ease: "power2.inOut" },
+          2.7
+        )
+        .fromTo(queueStation,
+          { opacity: 0, y: 26, scale: 0.985 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "power3.out" },
+          2.96
+        )
+        .fromTo(cardB,
+          { opacity: 0, y: 20, scale: 0.9 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.34, ease: "back.out(1.25)" },
+          3.5
+        )
+        .fromTo(cardC,
+          { opacity: 0, y: 20, scale: 0.9 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.34, ease: "back.out(1.25)" },
+          3.86
+        )
+        .fromTo(queueBracket,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" },
+          4.34
+        )
+        .to(activeRail,
+          { scaleX: 0.68, duration: 0.74, ease: "power2.inOut" },
+          4.52
+        )
+
+        .to(world,
+          { x: -2160, duration: 0.4, ease: "power2.inOut" },
+          5.6
+        )
+        .to(cardA,
+          { x: 2333, y: -192, duration: 0.4, ease: "power2.inOut" },
+          5.6
+        )
+        .fromTo(gpuStation,
+          { opacity: 0, y: 24, scale: 0.985 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.3, ease: "power3.out" },
+          5.64
+        )
+        .fromTo(util,
+          { opacity: 0, x: -16 },
+          { opacity: 1, x: 0, duration: 0.16, ease: "power2.out" },
+          5.82
+        )
+        .fromTo(utilFill,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 0.99, duration: 1.05, ease: "power2.inOut" },
+          5.9
+        )
+        .to(cardB,
+          { x: 1123, y: 0, duration: 0.45, ease: "power2.inOut" },
+          6.2
+        )
+        .fromTo(activityA,
+          { opacity: 0, scaleY: 0.2 },
+          { opacity: 1, scaleY: 1, duration: 0.24, ease: "back.out(1.35)" },
+          6.36
+        )
+        .to(cardC,
+          { x: 864, y: 192, duration: 0.45, ease: "power2.inOut" },
+          6.68
+        )
+        .fromTo(activityB,
+          { opacity: 0, scaleY: 0.2 },
+          { opacity: 1, scaleY: 1, duration: 0.24, ease: "back.out(1.35)" },
+          6.82
+        )
+        .fromTo(activityC,
+          { opacity: 0, scaleY: 0.2 },
+          { opacity: 1, scaleY: 1, duration: 0.24, ease: "back.out(1.35)" },
+          7.3
+        )
+        .to(activeRail,
+          { scaleX: 1, duration: 0.7, ease: "power2.inOut" },
+          7.42
+        )
+        .to(hold, { progress: 1, duration: 0.432, ease: "none" }, 8.4);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["02-cpu-gpu-queue"] = timeline;
+    })();
+  </script>
+</template>

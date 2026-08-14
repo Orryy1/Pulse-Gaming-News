@@ -1,0 +1,723 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+      isolation: isolate;
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    #root [class~="05-bottleneck-ground"] {
+      z-index: 0;
+      background: #0d0d0f;
+    }
+
+    #root [class~="05-bottleneck-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 83cqh;
+    }
+
+    #root [class~="05-bottleneck-grid"] path {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="05-bottleneck-safe-rule"] {
+      position: absolute;
+      top: 83cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #ff6b1a;
+      opacity: 0.34;
+    }
+
+    #root [class~="05-bottleneck-content"] {
+      z-index: 1;
+    }
+
+    #root [class~="05-bottleneck-viewport"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    #root [class~="05-bottleneck-header"] {
+      position: absolute;
+      z-index: 50;
+      top: 3.35cqh;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      height: 7.25cqh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-bottom: 1px solid #504b48;
+    }
+
+    #root [class~="05-bottleneck-kicker"] {
+      margin-top: 0.2cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="05-bottleneck-kicker-accent"] {
+      color: #ff6b1a;
+    }
+
+    #root [class~="05-bottleneck-index"] {
+      font-family: "IBM Plex Mono";
+      font-size: 2.3cqw;
+      font-weight: 700;
+      line-height: 0.9;
+      letter-spacing: 0.08em;
+      color: #ff6b1a;
+    }
+
+    #root [class~="05-bottleneck-title-block"] {
+      position: absolute;
+      z-index: 20;
+      top: 12.3cqh;
+      left: 5.5cqw;
+      right: 5.5cqw;
+    }
+
+    #root [class~="05-bottleneck-eyebrow"] {
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+
+    #root [class~="05-bottleneck-title"] {
+      margin-top: 1.15cqh;
+      font-family: "Space Grotesk";
+      font-size: 7.2cqw;
+      font-weight: 900;
+      line-height: 0.86;
+      letter-spacing: -0.055em;
+      text-transform: lowercase;
+      color: #f0f0f0;
+    }
+
+    #root [class~="05-bottleneck-title-accent"] {
+      color: #ff6b1a;
+    }
+
+    #root [class~="05-bottleneck-ruler"] {
+      position: absolute;
+      z-index: 15;
+      top: 23.2cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 3.4cqh;
+    }
+
+    #root [class~="05-bottleneck-ruler-caption"],
+    #root [class~="05-bottleneck-ruler-end"] {
+      position: absolute;
+      top: 0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.4cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+    }
+
+    #root [class~="05-bottleneck-ruler-caption"] {
+      left: 0;
+    }
+
+    #root [class~="05-bottleneck-ruler-end"] {
+      right: 4.5cqw;
+      color: #504b48;
+    }
+
+    #root [class~="05-bottleneck-ruler-axis"] {
+      position: absolute;
+      top: 2.05cqh;
+      left: 34cqw;
+      width: 50cqw;
+      height: 1px;
+      background: #504b48;
+      transform-origin: 0 50%;
+    }
+
+    #root [class~="05-bottleneck-ruler-ticks"] {
+      position: absolute;
+      inset: -0.75cqh 0 auto 0;
+      height: 1.5cqh;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+    }
+
+    #root [class~="05-bottleneck-ruler-tick"] {
+      border-left: 1px solid #504b48;
+    }
+
+    #root [class~="05-bottleneck-ruler-tick"]:last-child {
+      border-right: 1px solid #504b48;
+    }
+
+    #root [class~="05-bottleneck-row"] {
+      position: absolute;
+      z-index: 10;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 14.1cqh;
+      overflow: hidden;
+      border-top: 1px solid #504b48;
+      border-bottom: 1px solid #282726;
+      background: #1a1918;
+    }
+
+    #root [class~="05-bottleneck-row-gpu"] {
+      top: 27.3cqh;
+      --after-width: 35cqw;
+    }
+
+    #root [class~="05-bottleneck-row-cpu"] {
+      top: 42.5cqh;
+      --after-width: 45cqw;
+    }
+
+    #root [class~="05-bottleneck-row-display"] {
+      top: 57.7cqh;
+      --after-width: 46cqw;
+    }
+
+    #root [class~="05-bottleneck-row-marker"] {
+      position: absolute;
+      z-index: 4;
+      top: 0;
+      left: 0;
+      width: 0.75cqw;
+      height: 100%;
+      background: #ff6b1a;
+      transform-origin: 50% 0;
+    }
+
+    #root [class~="05-bottleneck-bound-label"] {
+      position: absolute;
+      top: 2.05cqh;
+      left: 2.25cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 2.1cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+    }
+
+    #root [class~="05-bottleneck-dominant"] {
+      position: absolute;
+      top: 6.2cqh;
+      left: 2.25cqw;
+      width: 19.5cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 1.4cqw;
+      font-weight: 700;
+      line-height: 1.35;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #504b48;
+    }
+
+    #root [class~="05-bottleneck-dominant-stage"] {
+      display: block;
+      margin-top: 0.6cqh;
+      color: #ff6b1a;
+    }
+
+    #root [class~="05-bottleneck-lane-name"] {
+      position: absolute;
+      left: 23cqw;
+      width: 10cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 1.4cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #504b48;
+    }
+
+    #root [class~="05-bottleneck-lane-name-path"] {
+      top: 3.9cqh;
+    }
+
+    #root [class~="05-bottleneck-lane-name-control"] {
+      top: 8.45cqh;
+      color: #f0f0f0;
+    }
+
+    #root [class~="05-bottleneck-bar"] {
+      position: absolute;
+      left: 34cqw;
+      display: flex;
+      overflow: hidden;
+    }
+
+    #root [class~="05-bottleneck-bar-before"] {
+      top: 3cqh;
+      width: 50cqw;
+      height: 2.75cqh;
+      border: 1px solid #504b48;
+      background: #0d0d0f;
+    }
+
+    #root [class~="05-bottleneck-bar-after"] {
+      top: 7.25cqh;
+      width: var(--after-width);
+      height: 3.45cqh;
+      border: 1px solid #504b48;
+      background: #0d0d0f;
+    }
+
+    #root [class~="05-bottleneck-segment"] {
+      position: relative;
+      flex: 0 0 auto;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-right: 1px solid #504b48;
+      background: #282726;
+      transform-origin: 0 50%;
+      font-family: "IBM Plex Mono";
+      font-size: 1.4cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+      white-space: nowrap;
+    }
+
+    #root [class~="05-bottleneck-segment"]:last-child {
+      border-right: 0;
+    }
+
+    #root [class~="05-bottleneck-segment-after"] {
+      color: #f0f0f0;
+    }
+
+    #root [class~="05-bottleneck-segment-dominant"] {
+      background: #ff6b1a;
+    }
+
+    #root [class~="05-bottleneck-gpu-before-sim"],
+    #root [class~="05-bottleneck-gpu-after-sim"] {
+      width: 9cqw;
+    }
+
+    #root [class~="05-bottleneck-gpu-before-queue"] {
+      width: 32cqw;
+    }
+
+    #root [class~="05-bottleneck-gpu-after-queue"] {
+      width: 17cqw;
+    }
+
+    #root [class~="05-bottleneck-gpu-before-scan"],
+    #root [class~="05-bottleneck-gpu-after-scan"] {
+      width: 9cqw;
+    }
+
+    #root [class~="05-bottleneck-cpu-before-sim"],
+    #root [class~="05-bottleneck-cpu-after-sim"] {
+      width: 30cqw;
+    }
+
+    #root [class~="05-bottleneck-cpu-before-queue"] {
+      width: 11cqw;
+    }
+
+    #root [class~="05-bottleneck-cpu-after-queue"] {
+      width: 6cqw;
+    }
+
+    #root [class~="05-bottleneck-cpu-before-scan"],
+    #root [class~="05-bottleneck-cpu-after-scan"] {
+      width: 9cqw;
+    }
+
+    #root [class~="05-bottleneck-display-before-sim"],
+    #root [class~="05-bottleneck-display-after-sim"] {
+      width: 10cqw;
+    }
+
+    #root [class~="05-bottleneck-display-before-queue"] {
+      width: 10cqw;
+    }
+
+    #root [class~="05-bottleneck-display-after-queue"] {
+      width: 6cqw;
+    }
+
+    #root [class~="05-bottleneck-display-before-scan"],
+    #root [class~="05-bottleneck-display-after-scan"] {
+      width: 30cqw;
+    }
+
+    #root [class~="05-bottleneck-reduction"] {
+      position: absolute;
+      top: 12.25cqh;
+      left: calc(34cqw + var(--after-width));
+      width: calc(50cqw - var(--after-width));
+      height: 1px;
+      background: #ff6b1a;
+      transform-origin: 0 50%;
+    }
+
+    #root [class~="05-bottleneck-reduction"]::before,
+    #root [class~="05-bottleneck-reduction"]::after {
+      content: "";
+      position: absolute;
+      top: -0.45cqh;
+      width: 1px;
+      height: 0.9cqh;
+      background: #ff6b1a;
+    }
+
+    #root [class~="05-bottleneck-reduction"]::before {
+      left: 0;
+    }
+
+    #root [class~="05-bottleneck-reduction"]::after {
+      right: 0;
+    }
+
+    #root [class~="05-bottleneck-final"] {
+      position: absolute;
+      z-index: 30;
+      top: 73.55cqh;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      height: 7.4cqh;
+      padding-top: 1.05cqh;
+      border-top: 2px solid #ff6b1a;
+      background: #0d0d0f;
+    }
+
+    #root [class~="05-bottleneck-final-code"] {
+      font-family: "IBM Plex Mono";
+      font-size: 1.4cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #504b48;
+    }
+
+    #root [class~="05-bottleneck-final-title"] {
+      margin-top: 1.05cqh;
+      font-family: "Space Grotesk";
+      font-size: 5.5cqw;
+      font-weight: 900;
+      line-height: 0.86;
+      letter-spacing: -0.05em;
+      text-transform: lowercase;
+      color: #f0f0f0;
+    }
+
+    #root [class~="05-bottleneck-final-accent"] {
+      color: #ff6b1a;
+    }
+  </style>
+
+  <div id="root" data-composition-id="05-bottleneck" data-width="1080" data-height="1920" data-start="0" data-duration="8.789">
+    <div class="clip 05-bottleneck-ground" data-start="0" data-duration="8.789" data-track-index="0" aria-hidden="true">
+      <svg class="05-bottleneck-grid" viewBox="0 0 1080 1594" preserveAspectRatio="none">
+        <path d="M60 0V1594M300 0V1594M540 0V1594M780 0V1594M1020 0V1594" />
+        <path d="M0 204H1080M0 482H1080M0 760H1080M0 1038H1080M0 1316H1080M0 1593H1080" />
+      </svg>
+      <div class="05-bottleneck-safe-rule"></div>
+    </div>
+
+    <div class="clip 05-bottleneck-content" data-start="0" data-duration="8.789" data-track-index="1">
+      <div class="05-bottleneck-viewport">
+        <header class="05-bottleneck-header" id="05-bottleneck-header">
+          <div class="05-bottleneck-kicker"><span class="05-bottleneck-kicker-accent">render</span> / path limits</div>
+          <div class="05-bottleneck-index">05</div>
+        </header>
+
+        <section class="05-bottleneck-title-block" id="05-bottleneck-title-block" aria-label="Latency bottleneck comparison">
+          <div class="05-bottleneck-eyebrow">qualification / pipeline</div>
+          <div class="05-bottleneck-title">where <span class="05-bottleneck-title-accent">delay</span> lives</div>
+        </section>
+
+        <div class="05-bottleneck-ruler" id="05-bottleneck-ruler">
+          <div class="05-bottleneck-ruler-caption">total latency</div>
+          <div class="05-bottleneck-ruler-end">path end</div>
+          <div class="05-bottleneck-ruler-axis" id="05-bottleneck-ruler-axis">
+            <div class="05-bottleneck-ruler-ticks" aria-hidden="true">
+              <span class="05-bottleneck-ruler-tick"></span><span class="05-bottleneck-ruler-tick"></span><span class="05-bottleneck-ruler-tick"></span><span class="05-bottleneck-ruler-tick"></span><span class="05-bottleneck-ruler-tick"></span><span class="05-bottleneck-ruler-tick"></span>
+            </div>
+          </div>
+        </div>
+
+        <section class="05-bottleneck-row 05-bottleneck-row-gpu" id="05-bottleneck-row-gpu" aria-label="GPU-bound latency path">
+          <div class="05-bottleneck-row-marker" id="05-bottleneck-marker-gpu"></div>
+          <div class="05-bottleneck-bound-label">GPU-BOUND</div>
+          <div class="05-bottleneck-dominant">dominant<span class="05-bottleneck-dominant-stage">queue + gpu</span></div>
+          <div class="05-bottleneck-lane-name 05-bottleneck-lane-name-path">path</div>
+          <div class="05-bottleneck-lane-name 05-bottleneck-lane-name-control">queue ctrl</div>
+          <div class="05-bottleneck-bar 05-bottleneck-bar-before" id="05-bottleneck-gpu-before">
+            <div class="05-bottleneck-segment 05-bottleneck-gpu-before-sim">sim</div>
+            <div class="05-bottleneck-segment 05-bottleneck-gpu-before-queue">queue / gpu</div>
+            <div class="05-bottleneck-segment 05-bottleneck-gpu-before-scan">scan</div>
+          </div>
+          <div class="05-bottleneck-bar 05-bottleneck-bar-after" id="05-bottleneck-gpu-after" aria-label="GPU-bound path after queue control">
+            <div class="05-bottleneck-segment 05-bottleneck-segment-after 05-bottleneck-gpu-after-sim">sim</div>
+            <div class="05-bottleneck-segment 05-bottleneck-segment-after 05-bottleneck-segment-dominant 05-bottleneck-gpu-after-queue">queue / gpu</div>
+            <div class="05-bottleneck-segment 05-bottleneck-segment-after 05-bottleneck-gpu-after-scan">scan</div>
+          </div>
+          <div class="05-bottleneck-reduction" id="05-bottleneck-reduction-gpu" aria-hidden="true"></div>
+        </section>
+
+        <section class="05-bottleneck-row 05-bottleneck-row-cpu" id="05-bottleneck-row-cpu" aria-label="CPU-bound latency path">
+          <div class="05-bottleneck-row-marker" id="05-bottleneck-marker-cpu"></div>
+          <div class="05-bottleneck-bound-label">CPU-BOUND</div>
+          <div class="05-bottleneck-dominant">dominant<span class="05-bottleneck-dominant-stage">simulation</span></div>
+          <div class="05-bottleneck-lane-name 05-bottleneck-lane-name-path">path</div>
+          <div class="05-bottleneck-lane-name 05-bottleneck-lane-name-control">queue ctrl</div>
+          <div class="05-bottleneck-bar 05-bottleneck-bar-before" id="05-bottleneck-cpu-before">
+            <div class="05-bottleneck-segment 05-bottleneck-cpu-before-sim">simulation</div>
+            <div class="05-bottleneck-segment 05-bottleneck-cpu-before-queue">queue</div>
+            <div class="05-bottleneck-segment 05-bottleneck-cpu-before-scan">scan</div>
+          </div>
+          <div class="05-bottleneck-bar 05-bottleneck-bar-after" id="05-bottleneck-cpu-after" aria-label="CPU-bound path after queue control">
+            <div class="05-bottleneck-segment 05-bottleneck-segment-after 05-bottleneck-segment-dominant 05-bottleneck-cpu-after-sim">simulation</div>
+            <div class="05-bottleneck-segment 05-bottleneck-segment-after 05-bottleneck-cpu-after-queue">queue</div>
+            <div class="05-bottleneck-segment 05-bottleneck-segment-after 05-bottleneck-cpu-after-scan">scan</div>
+          </div>
+          <div class="05-bottleneck-reduction" id="05-bottleneck-reduction-cpu" aria-hidden="true"></div>
+        </section>
+
+        <section class="05-bottleneck-row 05-bottleneck-row-display" id="05-bottleneck-row-display" aria-label="Display-bound latency path">
+          <div class="05-bottleneck-row-marker" id="05-bottleneck-marker-display"></div>
+          <div class="05-bottleneck-bound-label">DISPLAY-BOUND</div>
+          <div class="05-bottleneck-dominant">dominant<span class="05-bottleneck-dominant-stage">display scan</span></div>
+          <div class="05-bottleneck-lane-name 05-bottleneck-lane-name-path">path</div>
+          <div class="05-bottleneck-lane-name 05-bottleneck-lane-name-control">queue ctrl</div>
+          <div class="05-bottleneck-bar 05-bottleneck-bar-before" id="05-bottleneck-display-before">
+            <div class="05-bottleneck-segment 05-bottleneck-display-before-sim">sim</div>
+            <div class="05-bottleneck-segment 05-bottleneck-display-before-queue">queue</div>
+            <div class="05-bottleneck-segment 05-bottleneck-display-before-scan">display scan</div>
+          </div>
+          <div class="05-bottleneck-bar 05-bottleneck-bar-after" id="05-bottleneck-display-after" aria-label="Display-bound path after queue control">
+            <div class="05-bottleneck-segment 05-bottleneck-segment-after 05-bottleneck-display-after-sim">sim</div>
+            <div class="05-bottleneck-segment 05-bottleneck-segment-after 05-bottleneck-display-after-queue">queue</div>
+            <div class="05-bottleneck-segment 05-bottleneck-segment-after 05-bottleneck-segment-dominant 05-bottleneck-display-after-scan">display scan</div>
+          </div>
+          <div class="05-bottleneck-reduction" id="05-bottleneck-reduction-display" aria-hidden="true"></div>
+        </section>
+
+        <div class="05-bottleneck-final" id="05-bottleneck-final">
+          <div class="05-bottleneck-final-code">queue control / system result</div>
+          <div class="05-bottleneck-final-title">bottleneck <span class="05-bottleneck-final-accent">decides</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const header = document.getElementById("05-bottleneck-header");
+      const titleBlock = document.getElementById("05-bottleneck-title-block");
+      const ruler = document.getElementById("05-bottleneck-ruler");
+      const rulerAxis = document.getElementById("05-bottleneck-ruler-axis");
+      const gpuRow = document.getElementById("05-bottleneck-row-gpu");
+      const cpuRow = document.getElementById("05-bottleneck-row-cpu");
+      const displayRow = document.getElementById("05-bottleneck-row-display");
+      const gpuMarker = document.getElementById("05-bottleneck-marker-gpu");
+      const cpuMarker = document.getElementById("05-bottleneck-marker-cpu");
+      const displayMarker = document.getElementById("05-bottleneck-marker-display");
+      const gpuBefore = document.getElementById("05-bottleneck-gpu-before").querySelectorAll('[class~="05-bottleneck-segment"]');
+      const gpuAfter = document.getElementById("05-bottleneck-gpu-after").querySelectorAll('[class~="05-bottleneck-segment"]');
+      const cpuBefore = document.getElementById("05-bottleneck-cpu-before").querySelectorAll('[class~="05-bottleneck-segment"]');
+      const cpuAfter = document.getElementById("05-bottleneck-cpu-after").querySelectorAll('[class~="05-bottleneck-segment"]');
+      const displayBefore = document.getElementById("05-bottleneck-display-before").querySelectorAll('[class~="05-bottleneck-segment"]');
+      const displayAfter = document.getElementById("05-bottleneck-display-after").querySelectorAll('[class~="05-bottleneck-segment"]');
+      const gpuReduction = document.getElementById("05-bottleneck-reduction-gpu");
+      const cpuReduction = document.getElementById("05-bottleneck-reduction-cpu");
+      const displayReduction = document.getElementById("05-bottleneck-reduction-display");
+      const finalLockup = document.getElementById("05-bottleneck-final");
+      const hold = { progress: 0 };
+      const timeline = gsap.timeline({ paused: true });
+
+      timeline
+        .fromTo(header,
+          { opacity: 0, y: -18 },
+          { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" },
+          0
+        )
+        .fromTo(titleBlock,
+          { opacity: 0, y: 22 },
+          { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" },
+          0.04
+        )
+        .fromTo(ruler,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.32, ease: "power2.out" },
+          0.24
+        )
+        .fromTo(rulerAxis,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 0.58, ease: "power2.inOut" },
+          0.34
+        )
+
+        .fromTo(gpuRow,
+          { opacity: 0, y: 24 },
+          { opacity: 1, y: 0, duration: 0.38, ease: "power3.out" },
+          0.28
+        )
+        .fromTo(gpuMarker,
+          { scaleY: 0, transformOrigin: "50% 0%" },
+          { scaleY: 1, duration: 0.45, ease: "power2.out" },
+          0.34
+        )
+        .fromTo(gpuBefore,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 0.38, stagger: 0.06, ease: "power2.out" },
+          0.58
+        )
+        .fromTo(gpuAfter,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 0.62, stagger: 0.06, ease: "power2.out" },
+          1.02
+        )
+        .fromTo(gpuReduction,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 0.42, ease: "power2.out" },
+          1.58
+        )
+
+        .fromTo(cpuRow,
+          { opacity: 0, y: 24 },
+          { opacity: 1, y: 0, duration: 0.38, ease: "power3.out" },
+          2.8
+        )
+        .fromTo(cpuMarker,
+          { scaleY: 0, transformOrigin: "50% 0%" },
+          { scaleY: 1, duration: 0.45, ease: "power2.out" },
+          2.86
+        )
+        .fromTo(cpuBefore,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 0.38, stagger: 0.06, ease: "power2.out" },
+          3.08
+        )
+        .fromTo(cpuAfter,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 0.6, stagger: 0.06, ease: "power2.out" },
+          3.52
+        )
+        .fromTo(cpuReduction,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 0.38, ease: "power2.out" },
+          4.16
+        )
+
+        .fromTo(displayRow,
+          { opacity: 0, y: 24 },
+          { opacity: 1, y: 0, duration: 0.22, ease: "power3.out" },
+          5.9
+        )
+        .fromTo(displayMarker,
+          { scaleY: 0, transformOrigin: "50% 0%" },
+          { scaleY: 1, duration: 0.3, ease: "power2.out" },
+          5.92
+        )
+        .fromTo(displayBefore,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 0.28, stagger: 0.03, ease: "power2.out" },
+          5.96
+        )
+        .fromTo(displayAfter,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 0.28, stagger: 0.03, ease: "power2.out" },
+          6.02
+        )
+        .fromTo(finalLockup,
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" },
+          5.98
+        )
+        .fromTo(displayReduction,
+          { scaleX: 0, transformOrigin: "0% 50%" },
+          { scaleX: 1, duration: 0.2, ease: "power2.out" },
+          6.18
+        )
+        .to(hold, { progress: 1, duration: 2.389, ease: "none" }, 6.4);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["05-bottleneck"] = timeline;
+    })();
+  </script>
+</template>

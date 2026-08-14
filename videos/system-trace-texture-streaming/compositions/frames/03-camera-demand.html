@@ -1,0 +1,635 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+    }
+
+    #root {
+      --camera-demand-ink: #0d0d0f;
+      --camera-demand-ink-alt: #1a1918;
+      --camera-demand-orange: #ff6b1a;
+      --camera-demand-cream: #f0f0f0;
+      --camera-demand-hint: #7d7977;
+      --camera-demand-line: #282726;
+      --camera-demand-in: #70dce8;
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: var(--camera-demand-cream);
+      font-family: "Space Grotesk", sans-serif;
+    }
+
+    #root [class~="03-camera-demand-ground"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: var(--camera-demand-ink);
+    }
+
+    #root [class~="03-camera-demand-ground-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 83cqh;
+      opacity: 0.34;
+    }
+
+    #root [class~="03-camera-demand-content"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    #root [class~="03-camera-demand-scene"] {
+      position: relative;
+      width: 100%;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    #root [class~="03-camera-demand-header"] {
+      position: absolute;
+      top: 50px;
+      left: 106px;
+      right: 106px;
+      height: 96px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-top: 1px solid var(--camera-demand-line);
+      padding-top: 17px;
+      box-sizing: border-box;
+    }
+
+    #root [class~="03-camera-demand-title"] {
+      margin: 0;
+      font-size: 72px;
+      font-weight: 900;
+      line-height: 0.92;
+      letter-spacing: -0.045em;
+      text-transform: lowercase;
+      white-space: nowrap;
+    }
+
+    #root [class~="03-camera-demand-title-accent"] {
+      color: var(--camera-demand-orange);
+    }
+
+    #root [class~="03-camera-demand-frame-mark"] {
+      padding-top: 4px;
+      color: var(--camera-demand-hint);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-camera-demand-map"] {
+      position: absolute;
+      top: 230px;
+      left: 60px;
+      width: 1708px;
+      height: 650px;
+      overflow: hidden;
+      border-top: 1px solid var(--camera-demand-line);
+      border-bottom: 1px solid var(--camera-demand-line);
+      transform: scale(0.5625);
+      transform-origin: 0 0;
+    }
+
+    #root [class~="03-camera-demand-map-label"] {
+      position: absolute;
+      top: 18px;
+      left: 0;
+      z-index: 6;
+      color: var(--camera-demand-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-camera-demand-camera"] {
+      position: absolute;
+      left: 8px;
+      top: 256px;
+      z-index: 8;
+      width: 220px;
+      height: 118px;
+    }
+
+    #root [class~="03-camera-demand-camera-body"] {
+      position: absolute;
+      left: 0;
+      top: 22px;
+      width: 122px;
+      height: 78px;
+      box-sizing: border-box;
+      border: 2px solid var(--camera-demand-orange);
+      background: var(--camera-demand-ink);
+    }
+
+    #root [class~="03-camera-demand-camera-eye"] {
+      position: absolute;
+      left: 38px;
+      top: 46px;
+      width: 32px;
+      height: 30px;
+      border: 1px solid var(--camera-demand-orange);
+      box-sizing: border-box;
+    }
+
+    #root [class~="03-camera-demand-camera-lens"] {
+      position: absolute;
+      left: 122px;
+      top: 38px;
+      width: 0;
+      height: 0;
+      border-top: 31px solid transparent;
+      border-bottom: 31px solid transparent;
+      border-left: 54px solid var(--camera-demand-orange);
+    }
+
+    #root [class~="03-camera-demand-camera-pin"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: var(--camera-demand-cream);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [class~="03-camera-demand-cone"] {
+      position: absolute;
+      left: 148px;
+      top: 90px;
+      z-index: 1;
+      width: 1010px;
+      height: 490px;
+      transform-origin: 0 50%;
+      clip-path: polygon(0 50%, 100% 0, 100% 100%);
+      background: rgba(255, 107, 26, 0.055);
+      border-right: 1px solid rgba(255, 107, 26, 0.36);
+    }
+
+    #root [class~="03-camera-demand-cone-edge"] {
+      position: absolute;
+      left: 150px;
+      top: 88px;
+      z-index: 2;
+      width: 1018px;
+      height: 494px;
+      pointer-events: none;
+    }
+
+    #root [class~="03-camera-demand-surface"] {
+      position: absolute;
+      z-index: 4;
+      box-sizing: border-box;
+      border: 1px solid var(--camera-demand-hint);
+      background: var(--camera-demand-ink-alt);
+    }
+
+    #root [class~="03-camera-demand-surface"]::before,
+    #root [class~="03-camera-demand-surface"]::after {
+      content: "";
+      position: absolute;
+      background: var(--camera-demand-line);
+    }
+
+    #root [class~="03-camera-demand-surface"]::before {
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 1px;
+    }
+
+    #root [class~="03-camera-demand-surface"]::after {
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 1px;
+    }
+
+    #root [class~="03-camera-demand-surface-near"] {
+      left: 488px;
+      top: 360px;
+      width: 284px;
+      height: 164px;
+      border-color: var(--camera-demand-orange);
+    }
+
+    #root [class~="03-camera-demand-surface-mid"] {
+      left: 788px;
+      top: 238px;
+      width: 210px;
+      height: 122px;
+    }
+
+    #root [class~="03-camera-demand-surface-far"] {
+      left: 1012px;
+      top: 142px;
+      width: 138px;
+      height: 80px;
+    }
+
+    #root [class~="03-camera-demand-surface-tag"] {
+      position: absolute;
+      left: 0;
+      bottom: calc(100% + 9px);
+      color: var(--camera-demand-hint);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-camera-demand-score"] {
+      position: absolute;
+      z-index: 7;
+      min-width: 154px;
+      padding: 10px 12px 9px;
+      box-sizing: border-box;
+      border-left: 3px solid var(--camera-demand-orange);
+      background: var(--camera-demand-ink);
+      color: var(--camera-demand-cream);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [class~="03-camera-demand-score-near"] {
+      left: 496px;
+      top: 532px;
+    }
+
+    #root [class~="03-camera-demand-score-mid"] {
+      left: 796px;
+      top: 368px;
+    }
+
+    #root [class~="03-camera-demand-score-far"] {
+      left: 1019px;
+      top: 229px;
+    }
+
+    #root [class~="03-camera-demand-path-layer"] {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    #root [class~="03-camera-demand-flow-path"] {
+      fill: none;
+      stroke: var(--camera-demand-in);
+      stroke-width: 2;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      opacity: 0.7;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="03-camera-demand-out-path"] {
+      fill: none;
+      stroke: var(--camera-demand-orange);
+      stroke-width: 2;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      opacity: 0.38;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="03-camera-demand-rail"] {
+      position: absolute;
+      top: 56px;
+      right: 0;
+      z-index: 9;
+      width: 404px;
+      height: 536px;
+      box-sizing: border-box;
+      border-left: 1px solid var(--camera-demand-line);
+      background: rgba(13, 13, 15, 0.93);
+      padding: 0 0 0 28px;
+    }
+
+    #root [class~="03-camera-demand-rail-title"] {
+      margin: 0 0 12px;
+      color: var(--camera-demand-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-camera-demand-rail-rule"] {
+      width: 36px;
+      height: 2px;
+      margin-bottom: 30px;
+      background: var(--camera-demand-orange);
+    }
+
+    #root [class~="03-camera-demand-vram-label"] {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 344px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--camera-demand-line);
+      color: var(--camera-demand-cream);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-camera-demand-vram-state"] {
+      color: var(--camera-demand-in);
+      font-size: 11px;
+    }
+
+    #root [class~="03-camera-demand-vram-grid"] {
+      display: grid;
+      grid-template-columns: repeat(4, 58px);
+      grid-template-rows: repeat(4, 58px);
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    #root [class~="03-camera-demand-vram-cell"] {
+      position: relative;
+      width: 58px;
+      height: 58px;
+      box-sizing: border-box;
+      border: 1px solid var(--camera-demand-line);
+      background: var(--camera-demand-ink-alt);
+    }
+
+    #root [class~="03-camera-demand-vram-cell-live"] {
+      border-color: rgba(112, 220, 232, 0.68);
+    }
+
+    #root [class~="03-camera-demand-flow-tag"] {
+      position: absolute;
+      bottom: 22px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-camera-demand-flow-tag-in"] {
+      left: 28px;
+      color: var(--camera-demand-in);
+    }
+
+    #root [class~="03-camera-demand-flow-tag-out"] {
+      left: 152px;
+      color: rgba(255, 107, 26, 0.54);
+    }
+
+    #root [class~="03-camera-demand-flow-swatch"] {
+      width: 24px;
+      height: 2px;
+      background: currentColor;
+    }
+
+    #root [class~="03-camera-demand-moving-tile"] {
+      position: absolute;
+      z-index: 12;
+      width: 24px;
+      height: 24px;
+      box-sizing: border-box;
+      border: 2px solid var(--camera-demand-in);
+      background: var(--camera-demand-ink);
+    }
+
+    #root [class~="03-camera-demand-tile-near"] {
+      left: 720px;
+      top: 458px;
+    }
+
+    #root [class~="03-camera-demand-tile-mid"] {
+      left: 956px;
+      top: 310px;
+    }
+
+    #root [class~="03-camera-demand-tile-far"] {
+      left: 1104px;
+      top: 179px;
+    }
+
+    #root [class~="03-camera-demand-moving-tile-out"] {
+      left: 1535px;
+      top: 410px;
+      border-color: rgba(255, 107, 26, 0.56);
+    }
+
+    #root [class~="03-camera-demand-tick"] {
+      position: absolute;
+      z-index: 7;
+      width: 9px;
+      height: 9px;
+      border: 1px solid var(--camera-demand-orange);
+      box-sizing: border-box;
+    }
+
+    #root [class~="03-camera-demand-tick-a"] {
+      left: 474px;
+      top: 346px;
+    }
+
+    #root [class~="03-camera-demand-tick-b"] {
+      left: 774px;
+      top: 224px;
+    }
+
+    #root [class~="03-camera-demand-tick-c"] {
+      left: 998px;
+      top: 128px;
+    }
+  </style>
+
+  <div id="root" data-composition-id="03-camera-demand" data-width="1080" data-height="1920" data-start="0" data-duration="9.247">
+    <div class="clip 03-camera-demand-ground" data-start="0" data-duration="9.247" data-track-index="0" aria-hidden="true">
+      <svg class="03-camera-demand-ground-grid" viewBox="0 0 1920 896" preserveAspectRatio="none">
+        <g fill="none" stroke="#282726" stroke-width="1">
+          <path d="M106 168H1814M106 330H1814M106 492H1814M106 654H1814M106 816H1814" />
+          <path d="M106 50V896M390 50V896M674 50V896M958 50V896M1242 50V896M1526 50V896M1814 50V896" />
+        </g>
+      </svg>
+    </div>
+
+    <div class="clip 03-camera-demand-content" data-start="0" data-duration="9.247" data-track-index="1">
+      <section class="03-camera-demand-scene" aria-label="Camera-driven mip residency decision map">
+        <header class="03-camera-demand-header">
+          <h1 class="03-camera-demand-title"><span class="03-camera-demand-title-accent">camera</span> demand</h1>
+          <div class="03-camera-demand-frame-mark">system trace / 03</div>
+        </header>
+
+        <div class="03-camera-demand-map">
+          <div class="03-camera-demand-map-label">visible surface scan</div>
+
+          <div id="03-camera-demand-camera" class="03-camera-demand-camera">
+            <div class="03-camera-demand-camera-pin">current camera</div>
+            <div class="03-camera-demand-camera-body"></div>
+            <div class="03-camera-demand-camera-eye"></div>
+            <div class="03-camera-demand-camera-lens"></div>
+          </div>
+
+          <div id="03-camera-demand-cone" class="03-camera-demand-cone"></div>
+          <svg class="03-camera-demand-cone-edge" viewBox="0 0 1018 494" preserveAspectRatio="none" aria-hidden="true">
+            <path id="03-camera-demand-cone-lines" d="M0 247L1016 1M0 247L1016 493" fill="none" stroke="#FF6B1A" stroke-width="1" stroke-dasharray="10 12" opacity="0.58" />
+          </svg>
+
+          <div id="03-camera-demand-surface-near" class="03-camera-demand-surface 03-camera-demand-surface-near">
+            <span class="03-camera-demand-surface-tag" data-layout-allow-overflow>near / selected</span>
+          </div>
+          <div id="03-camera-demand-surface-mid" class="03-camera-demand-surface 03-camera-demand-surface-mid">
+            <span class="03-camera-demand-surface-tag" data-layout-allow-overflow>mid / selected</span>
+          </div>
+          <div id="03-camera-demand-surface-far" class="03-camera-demand-surface 03-camera-demand-surface-far">
+            <span class="03-camera-demand-surface-tag" data-layout-allow-overflow>far / selected</span>
+          </div>
+
+          <div class="03-camera-demand-tick 03-camera-demand-tick-a"></div>
+          <div class="03-camera-demand-tick 03-camera-demand-tick-b"></div>
+          <div class="03-camera-demand-tick 03-camera-demand-tick-c"></div>
+
+          <div id="03-camera-demand-score-near" class="03-camera-demand-score 03-camera-demand-score-near">need mip 0</div>
+          <div id="03-camera-demand-score-mid" class="03-camera-demand-score 03-camera-demand-score-mid">need mip 2</div>
+          <div id="03-camera-demand-score-far" class="03-camera-demand-score 03-camera-demand-score-far">need mip 4</div>
+
+          <svg class="03-camera-demand-path-layer" viewBox="0 0 1708 650" preserveAspectRatio="none" aria-hidden="true">
+            <path id="03-camera-demand-path-near" class="03-camera-demand-flow-path" pathLength="1" d="M732 470C970 470 1115 280 1328 208" />
+            <path id="03-camera-demand-path-mid" class="03-camera-demand-flow-path" pathLength="1" d="M968 322C1118 322 1180 265 1328 274" />
+            <path id="03-camera-demand-path-far" class="03-camera-demand-flow-path" pathLength="1" d="M1116 191C1218 191 1258 294 1328 340" />
+            <path id="03-camera-demand-path-out" class="03-camera-demand-out-path" pathLength="1" d="M1504 423C1580 437 1648 472 1704 530" />
+          </svg>
+
+          <aside id="03-camera-demand-rail" class="03-camera-demand-rail">
+            <h2 class="03-camera-demand-rail-title">residency decision</h2>
+            <div class="03-camera-demand-rail-rule"></div>
+            <div class="03-camera-demand-vram-label">
+              <span>vram</span>
+              <span id="03-camera-demand-vram-state" class="03-camera-demand-vram-state">routing</span>
+            </div>
+            <div class="03-camera-demand-vram-grid" aria-hidden="true">
+              <span class="03-camera-demand-vram-cell"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+              <span id="03-camera-demand-cell-a" class="03-camera-demand-vram-cell 03-camera-demand-vram-cell-live"></span>
+              <span id="03-camera-demand-cell-b" class="03-camera-demand-vram-cell 03-camera-demand-vram-cell-live"></span>
+              <span id="03-camera-demand-cell-c" class="03-camera-demand-vram-cell 03-camera-demand-vram-cell-live"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+              <span class="03-camera-demand-vram-cell"></span>
+            </div>
+            <div id="03-camera-demand-in-tag" class="03-camera-demand-flow-tag 03-camera-demand-flow-tag-in"><span class="03-camera-demand-flow-swatch"></span>in</div>
+            <div id="03-camera-demand-out-tag" class="03-camera-demand-flow-tag 03-camera-demand-flow-tag-out"><span class="03-camera-demand-flow-swatch"></span>out</div>
+          </aside>
+
+          <div id="03-camera-demand-tile-near" class="03-camera-demand-moving-tile 03-camera-demand-tile-near"></div>
+          <div id="03-camera-demand-tile-mid" class="03-camera-demand-moving-tile 03-camera-demand-tile-mid"></div>
+          <div id="03-camera-demand-tile-far" class="03-camera-demand-moving-tile 03-camera-demand-tile-far"></div>
+          <div id="03-camera-demand-tile-out" class="03-camera-demand-moving-tile 03-camera-demand-moving-tile-out"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const byId = (id) => document.getElementById(id);
+      const tl = gsap.timeline({ paused: true });
+      const holdState = { progress: 0 };
+
+      tl.addLabel("camera-selects", 0);
+      tl.fromTo('[class~="03-camera-demand-title"]', { x: -24, opacity: 0 }, { x: 0, opacity: 1, duration: 0.42, ease: "power3.out" }, 0);
+      tl.fromTo(byId("03-camera-demand-camera"), { scale: 0.92, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.42, ease: "power3.out", transformOrigin: "50% 50%" }, 0.04);
+      tl.fromTo('[class~="03-camera-demand-map-label"]', { x: -14, opacity: 0 }, { x: 0, opacity: 1, duration: 0.35, ease: "power2.out" }, 0.22);
+      tl.fromTo(byId("03-camera-demand-cone"), { scaleX: 0, opacity: 0 }, { scaleX: 1, opacity: 1, duration: 1.22, ease: "power2.out", transformOrigin: "0% 50%" }, 0.32);
+      tl.fromTo(byId("03-camera-demand-cone-lines"), { strokeDasharray: 1, strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 0.58, duration: 1.42, ease: "power2.out" }, 0.42);
+      tl.fromTo(byId("03-camera-demand-surface-near"), { scale: 0.86, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.48, ease: "back.out(1.25)", transformOrigin: "50% 50%" }, 0.76);
+      tl.fromTo(byId("03-camera-demand-surface-mid"), { scale: 0.86, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.48, ease: "back.out(1.25)", transformOrigin: "50% 50%" }, 1.26);
+      tl.fromTo(byId("03-camera-demand-surface-far"), { scale: 0.86, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.48, ease: "back.out(1.25)", transformOrigin: "50% 50%" }, 1.76);
+      tl.fromTo('[class~="03-camera-demand-tick"]', { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.34, stagger: 0.18, ease: "back.out(1.6)", transformOrigin: "50% 50%" }, 2.06);
+
+      tl.addLabel("mip-scores", 2.8);
+      tl.fromTo(byId("03-camera-demand-score-near"), { x: -22, opacity: 0 }, { x: 0, opacity: 1, duration: 0.48, ease: "power3.out" }, 2.84);
+      tl.fromTo(byId("03-camera-demand-score-mid"), { x: -22, opacity: 0 }, { x: 0, opacity: 1, duration: 0.48, ease: "power3.out" }, 3.58);
+      tl.fromTo(byId("03-camera-demand-score-far"), { x: -22, opacity: 0 }, { x: 0, opacity: 1, duration: 0.48, ease: "power3.out" }, 4.32);
+      tl.fromTo(byId("03-camera-demand-rail"), { x: 30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.58, ease: "power3.out" }, 5.02);
+      tl.fromTo('[class~="03-camera-demand-vram-cell"]', { opacity: 0.2 }, { opacity: 1, duration: 0.28, stagger: 0.025, ease: "none" }, 5.3);
+
+      tl.addLabel("residency-routes", 5.9);
+      tl.fromTo([byId("03-camera-demand-path-near"), byId("03-camera-demand-path-mid"), byId("03-camera-demand-path-far")], { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 0.7, duration: 0.8, stagger: 0.18, ease: "power2.out" }, 5.92);
+      tl.fromTo(byId("03-camera-demand-in-tag"), { x: -12, opacity: 0 }, { x: 0, opacity: 1, duration: 0.32, ease: "power2.out" }, 6.02);
+      tl.fromTo(byId("03-camera-demand-tile-near"), { x: 0, y: 0, scale: 0.75, opacity: 0 }, { x: 752, y: -250, scale: 1, opacity: 1, duration: 1.02, ease: "power2.inOut" }, 6.12);
+      tl.fromTo(byId("03-camera-demand-tile-mid"), { x: 0, y: 0, scale: 0.75, opacity: 0 }, { x: 516, y: -36, scale: 1, opacity: 1, duration: 1.02, ease: "power2.inOut" }, 6.4);
+      tl.fromTo(byId("03-camera-demand-tile-far"), { x: 0, y: 0, scale: 0.75, opacity: 0 }, { x: 368, y: 161, scale: 1, opacity: 1, duration: 1.02, ease: "power2.inOut" }, 6.68);
+      tl.fromTo(byId("03-camera-demand-path-out"), { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 0.38, duration: 0.72, ease: "power2.out" }, 7.12);
+      tl.fromTo(byId("03-camera-demand-out-tag"), { x: -10, opacity: 0 }, { x: 0, opacity: 1, duration: 0.3, ease: "power2.out" }, 7.16);
+      tl.fromTo(byId("03-camera-demand-tile-out"), { x: 0, y: 0, scale: 1, opacity: 0.56 }, { x: 172, y: 106, scale: 0.72, opacity: 0.2, duration: 0.92, ease: "power2.in" }, 7.24);
+      tl.to(byId("03-camera-demand-vram-state"), { color: "#F0F0F0", duration: 0.3, ease: "none" }, 8.12);
+      tl.to(holdState, { progress: 1, duration: 8.747, ease: "none" }, 0);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["03-camera-demand"] = tl;
+    })();
+  </script>
+</template>

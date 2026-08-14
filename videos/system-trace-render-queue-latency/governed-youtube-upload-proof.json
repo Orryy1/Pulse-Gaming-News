@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-14T18:21:38.995Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-render-queue-latency",
+  "source": {
+    "package_dir": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-render-queue-latency",
+    "publish_pack_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-render-queue-latency\\youtube_publish_pack.json",
+    "publish_pack_sha256": "437c208b132c6243a196857b00f68d5b74b7f01737eba6c8c8935006937cf1a1",
+    "canonical_manifest_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-render-queue-latency\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "89f5bca6ac436b9a1306563479a384a91a9a6128d96795f45241bc85b66e741d",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-render-queue-latency",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "Why More FPS Does Not Always Mean Faster Input",
+          "description": "A high frame rate can still feel behind your hands. This short animation follows one input through the CPU, render queue, GPU and display, then shows why reducing queued work can make the frame on screen feel fresher.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-1-3-presentation-improvements\nhttps://developer.nvidia.com/performance-rendering-tools/reflex\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#InputLatency #PCGaming #SystemTrace",
+          "tags": [
+            "input latency",
+            "render queue",
+            "FPS",
+            "PC gaming",
+            "gaming performance",
+            "GPU latency",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-render-queue-latency\\renders\\system-trace-render-queue-latency.mp4",
+      "media_sha256": "1b4443b1c9bd1520550f719b31dd31bf481d64db2dbeebfd6f213952954b1549"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-render-queue-latency\\captions.srt",
+      "media_sha256": "98e6e3b323a912de3ee7e597b7ff1777eee93e08c170ce4c71ef248d969cf068"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-render-queue-latency\\renders\\system-trace-render-queue-latency.mp4",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-render-queue-latency\\renders\\system-trace-render-queue-latency.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 5450315,
+      "sha256": "1b4443b1c9bd1520550f719b31dd31bf481d64db2dbeebfd6f213952954b1549",
+      "probe": {
+        "duration_seconds": 54.566667,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-render-queue-latency\\captions.srt",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-render-queue-latency\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2654,
+      "sha256": "98e6e3b323a912de3ee7e597b7ff1777eee93e08c170ce4c71ef248d969cf068",
+      "qa": {
+        "parsed": true,
+        "cue_count": 56,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 54.567,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-14T18:21:38.995Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-render-queue-latency",
+    "request_plan_fingerprint_sha256": "076dba98860ed397d84d266c52d77a891ac557531e707e14875c7b20e2b4fff2",
+    "video_insert_fingerprint_sha256": "0b4e717406d2a5adde3a3a9719da413a33d2831d7ee276475be631cae28496ce",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "29ab8ffbc2aa3e0f7292e4447c64844a70515dcac47da8de7cd2a47e97695f6c",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "Why More FPS Does Not Always Mean Faster Input",
+            "description": "A high frame rate can still feel behind your hands. This short animation follows one input through the CPU, render queue, GPU and display, then shows why reducing queued work can make the frame on screen feel fresher.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-1-3-presentation-improvements\nhttps://developer.nvidia.com/performance-rendering-tools/reflex\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#InputLatency #PCGaming #SystemTrace",
+            "tags": [
+              "input latency",
+              "render queue",
+              "FPS",
+              "PC gaming",
+              "gaming performance",
+              "GPU latency",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-render-queue-latency\\renders\\system-trace-render-queue-latency.mp4",
+        "media_sha256": "1b4443b1c9bd1520550f719b31dd31bf481d64db2dbeebfd6f213952954b1549"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-render-queue-latency\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

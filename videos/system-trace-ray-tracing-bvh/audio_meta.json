@@ -1,0 +1,947 @@
+{
+  "bgm": {
+    "path": "assets/bgm/system-trace-tension-bed.wav",
+    "volume": 0.1
+  },
+  "bgm_pending": false,
+  "voices": [
+    {
+      "frame": 1,
+      "path": "assets/voice/01.wav",
+      "duration_s": 8.853,
+      "words": [
+        {
+          "text": "Ray",
+          "word": "Ray",
+          "start": 0,
+          "end": 0.22
+        },
+        {
+          "text": "tracing",
+          "word": "tracing",
+          "start": 0.22,
+          "end": 0.6
+        },
+        {
+          "text": "sounds",
+          "word": "sounds",
+          "start": 0.6,
+          "end": 1.14
+        },
+        {
+          "text": "impossible",
+          "word": "impossible",
+          "start": 1.14,
+          "end": 1.74
+        },
+        {
+          "text": "at",
+          "word": "at",
+          "start": 1.74,
+          "end": 2.24
+        },
+        {
+          "text": "game",
+          "word": "game",
+          "start": 2.24,
+          "end": 2.52
+        },
+        {
+          "text": "speed.",
+          "word": "speed.",
+          "start": 2.52,
+          "end": 3.08
+        },
+        {
+          "text": "One",
+          "word": "One",
+          "start": 3.64,
+          "end": 3.84
+        },
+        {
+          "text": "ray",
+          "word": "ray",
+          "start": 3.84,
+          "end": 4.12
+        },
+        {
+          "text": "could",
+          "word": "could",
+          "start": 4.12,
+          "end": 4.4
+        },
+        {
+          "text": "meet",
+          "word": "meet",
+          "start": 4.4,
+          "end": 4.62
+        },
+        {
+          "text": "millions",
+          "word": "millions",
+          "start": 4.62,
+          "end": 5.02
+        },
+        {
+          "text": "of",
+          "word": "of",
+          "start": 5.02,
+          "end": 5.32
+        },
+        {
+          "text": "triangles",
+          "word": "triangles",
+          "start": 5.32,
+          "end": 5.92
+        },
+        {
+          "text": "unless",
+          "word": "unless",
+          "start": 6.37,
+          "end": 6.68
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 6.68,
+          "end": 6.92
+        },
+        {
+          "text": "renderer",
+          "word": "renderer",
+          "start": 6.92,
+          "end": 7.32
+        },
+        {
+          "text": "learns",
+          "word": "learns",
+          "start": 7.32,
+          "end": 7.68
+        },
+        {
+          "text": "where",
+          "word": "where",
+          "start": 7.68,
+          "end": 8
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 8,
+          "end": 8.22
+        },
+        {
+          "text": "to",
+          "word": "to",
+          "start": 8.22,
+          "end": 8.42
+        },
+        {
+          "text": "look.",
+          "word": "look.",
+          "start": 8.42,
+          "end": 8.62
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Ray tracing sounds impossible at game speed. One ray could meet millions of triangles unless the renderer learns where not to look."
+      }
+    },
+    {
+      "frame": 2,
+      "path": "assets/voice/02.wav",
+      "duration_s": 10.624,
+      "words": [
+        {
+          "text": "Real",
+          "word": "Real",
+          "start": 0,
+          "end": 0.24
+        },
+        {
+          "text": "-time",
+          "word": "-time",
+          "start": 0.24,
+          "end": 0.52
+        },
+        {
+          "text": "systems",
+          "word": "systems",
+          "start": 0.52,
+          "end": 1.16
+        },
+        {
+          "text": "organize",
+          "word": "organize",
+          "start": 1.16,
+          "end": 1.78
+        },
+        {
+          "text": "geometry",
+          "word": "geometry",
+          "start": 1.78,
+          "end": 2.5
+        },
+        {
+          "text": "into",
+          "word": "into",
+          "start": 2.5,
+          "end": 3.08
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 3.08,
+          "end": 3.26
+        },
+        {
+          "text": "bounding",
+          "word": "bounding",
+          "start": 3.26,
+          "end": 3.76
+        },
+        {
+          "text": "volume",
+          "word": "volume",
+          "start": 3.76,
+          "end": 4.04
+        },
+        {
+          "text": "hierarchy",
+          "word": "hierarchy",
+          "start": 4.04,
+          "end": 4.72
+        },
+        {
+          "text": "or",
+          "word": "or",
+          "start": 4.72,
+          "end": 5.4
+        },
+        {
+          "text": "BVH.",
+          "word": "BVH.",
+          "start": 5.4,
+          "end": 6.3
+        },
+        {
+          "text": "Nested",
+          "word": "Nested",
+          "start": 6.84,
+          "end": 7.1
+        },
+        {
+          "text": "boxes",
+          "word": "boxes",
+          "start": 7.1,
+          "end": 7.56
+        },
+        {
+          "text": "around",
+          "word": "around",
+          "start": 7.56,
+          "end": 8.32
+        },
+        {
+          "text": "progressively",
+          "word": "progressively",
+          "start": 8.32,
+          "end": 8.9
+        },
+        {
+          "text": "smaller",
+          "word": "smaller",
+          "start": 8.9,
+          "end": 9.52
+        },
+        {
+          "text": "groups",
+          "word": "groups",
+          "start": 9.52,
+          "end": 9.76
+        },
+        {
+          "text": "of",
+          "word": "of",
+          "start": 9.76,
+          "end": 10.02
+        },
+        {
+          "text": "shapes.",
+          "word": "shapes.",
+          "start": 10.02,
+          "end": 10.3
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Real-time systems organize geometry into a bounding volume hierarchy or BVH. Nested boxes around progressively smaller groups of shapes."
+      }
+    },
+    {
+      "frame": 3,
+      "path": "assets/voice/03.wav",
+      "duration_s": 7.531,
+      "words": [
+        {
+          "text": "Array",
+          "word": "Array",
+          "start": 0,
+          "end": 0.28
+        },
+        {
+          "text": "first",
+          "word": "first",
+          "start": 0.28,
+          "end": 0.78
+        },
+        {
+          "text": "tests",
+          "word": "tests",
+          "start": 0.78,
+          "end": 1.16
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 1.16,
+          "end": 1.4
+        },
+        {
+          "text": "large",
+          "word": "large",
+          "start": 1.4,
+          "end": 1.74
+        },
+        {
+          "text": "box.",
+          "word": "box.",
+          "start": 1.74,
+          "end": 2.2
+        },
+        {
+          "text": "If",
+          "word": "If",
+          "start": 2.78,
+          "end": 2.86
+        },
+        {
+          "text": "it",
+          "word": "it",
+          "start": 2.86,
+          "end": 2.98
+        },
+        {
+          "text": "misses,",
+          "word": "misses,",
+          "start": 2.98,
+          "end": 3.34
+        },
+        {
+          "text": "every",
+          "word": "every",
+          "start": 3.74,
+          "end": 4.06
+        },
+        {
+          "text": "triangle",
+          "word": "triangle",
+          "start": 4.06,
+          "end": 4.56
+        },
+        {
+          "text": "inside",
+          "word": "inside",
+          "start": 4.56,
+          "end": 5.18
+        },
+        {
+          "text": "that",
+          "word": "that",
+          "start": 5.18,
+          "end": 5.48
+        },
+        {
+          "text": "branch",
+          "word": "branch",
+          "start": 5.48,
+          "end": 5.82
+        },
+        {
+          "text": "is",
+          "word": "is",
+          "start": 5.82,
+          "end": 6.2
+        },
+        {
+          "text": "rejected",
+          "word": "rejected",
+          "start": 6.2,
+          "end": 6.66
+        },
+        {
+          "text": "at",
+          "word": "at",
+          "start": 6.66,
+          "end": 6.94
+        },
+        {
+          "text": "once.",
+          "word": "once.",
+          "start": 6.94,
+          "end": 7.24
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Array first tests a large box. If it misses, every triangle inside that branch is rejected at once."
+      }
+    },
+    {
+      "frame": 4,
+      "path": "assets/voice/04.wav",
+      "duration_s": 9.216,
+      "words": [
+        {
+          "text": "The",
+          "word": "The",
+          "start": 0,
+          "end": 0.14
+        },
+        {
+          "text": "search",
+          "word": "search",
+          "start": 0.14,
+          "end": 0.42
+        },
+        {
+          "text": "narrows",
+          "word": "narrows",
+          "start": 0.42,
+          "end": 1
+        },
+        {
+          "text": "from",
+          "word": "from",
+          "start": 1,
+          "end": 1.18
+        },
+        {
+          "text": "world",
+          "word": "world",
+          "start": 1.18,
+          "end": 1.58
+        },
+        {
+          "text": "-sized",
+          "word": "-sized",
+          "start": 1.58,
+          "end": 1.9
+        },
+        {
+          "text": "regions",
+          "word": "regions",
+          "start": 1.9,
+          "end": 2.5
+        },
+        {
+          "text": "to",
+          "word": "to",
+          "start": 2.5,
+          "end": 3.04
+        },
+        {
+          "text": "smaller",
+          "word": "smaller",
+          "start": 3.04,
+          "end": 3.44
+        },
+        {
+          "text": "boxes,",
+          "word": "boxes,",
+          "start": 3.44,
+          "end": 3.92
+        },
+        {
+          "text": "then",
+          "word": "then",
+          "start": 4.32,
+          "end": 4.62
+        },
+        {
+          "text": "to",
+          "word": "to",
+          "start": 4.62,
+          "end": 4.78
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 4.78,
+          "end": 4.9
+        },
+        {
+          "text": "few",
+          "word": "few",
+          "start": 4.9,
+          "end": 5.1
+        },
+        {
+          "text": "triangles",
+          "word": "triangles",
+          "start": 5.1,
+          "end": 5.62
+        },
+        {
+          "text": "that",
+          "word": "that",
+          "start": 5.62,
+          "end": 6
+        },
+        {
+          "text": "might",
+          "word": "might",
+          "start": 6,
+          "end": 6.2
+        },
+        {
+          "text": "be",
+          "word": "be",
+          "start": 6.2,
+          "end": 6.4
+        },
+        {
+          "text": "hit.",
+          "word": "hit.",
+          "start": 6.4,
+          "end": 6.68
+        },
+        {
+          "text": "Empty",
+          "word": "Empty",
+          "start": 7.36,
+          "end": 7.52
+        },
+        {
+          "text": "space",
+          "word": "space",
+          "start": 7.52,
+          "end": 7.96
+        },
+        {
+          "text": "becomes",
+          "word": "becomes",
+          "start": 7.96,
+          "end": 8.52
+        },
+        {
+          "text": "cheap.",
+          "word": "cheap.",
+          "start": 8.52,
+          "end": 8.96
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "The search narrows from world-sized regions to smaller boxes, then to the few triangles that might be hit. Empty space becomes cheap."
+      }
+    },
+    {
+      "frame": 5,
+      "path": "assets/voice/05.wav",
+      "duration_s": 10.197,
+      "words": [
+        {
+          "text": "building",
+          "word": "building",
+          "start": 0,
+          "end": 0.34
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 0.34,
+          "end": 0.58
+        },
+        {
+          "text": "updating",
+          "word": "updating",
+          "start": 0.58,
+          "end": 0.96
+        },
+        {
+          "text": "that",
+          "word": "that",
+          "start": 0.96,
+          "end": 1.3
+        },
+        {
+          "text": "structure",
+          "word": "structure",
+          "start": 1.3,
+          "end": 1.62
+        },
+        {
+          "text": "still",
+          "word": "still",
+          "start": 1.62,
+          "end": 2.12
+        },
+        {
+          "text": "costs",
+          "word": "costs",
+          "start": 2.12,
+          "end": 2.48
+        },
+        {
+          "text": "time,",
+          "word": "time,",
+          "start": 2.48,
+          "end": 3.06
+        },
+        {
+          "text": "especially",
+          "word": "especially",
+          "start": 3.42,
+          "end": 3.86
+        },
+        {
+          "text": "when",
+          "word": "when",
+          "start": 3.86,
+          "end": 4.24
+        },
+        {
+          "text": "geometry",
+          "word": "geometry",
+          "start": 4.24,
+          "end": 4.66
+        },
+        {
+          "text": "moves.",
+          "word": "moves.",
+          "start": 4.66,
+          "end": 5.28
+        },
+        {
+          "text": "Engines",
+          "word": "Engines",
+          "start": 5.96,
+          "end": 6.32
+        },
+        {
+          "text": "balance",
+          "word": "balance",
+          "start": 6.32,
+          "end": 6.68
+        },
+        {
+          "text": "rebuild",
+          "word": "rebuild",
+          "start": 6.68,
+          "end": 7.1
+        },
+        {
+          "text": "quality,",
+          "word": "quality,",
+          "start": 7.1,
+          "end": 7.78
+        },
+        {
+          "text": "update",
+          "word": "update",
+          "start": 8.2,
+          "end": 8.48
+        },
+        {
+          "text": "cost",
+          "word": "cost",
+          "start": 8.48,
+          "end": 8.82
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 8.82,
+          "end": 9.36
+        },
+        {
+          "text": "ray",
+          "word": "ray",
+          "start": 9.36,
+          "end": 9.58
+        },
+        {
+          "text": "count.",
+          "word": "count.",
+          "start": 9.58,
+          "end": 9.94
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "building and updating that structure still costs time, especially when geometry moves. Engines balance rebuild quality, update cost and ray count."
+      }
+    },
+    {
+      "frame": 6,
+      "path": "assets/voice/06.wav",
+      "duration_s": 9.045,
+      "words": [
+        {
+          "text": "Real",
+          "word": "Real",
+          "start": 0,
+          "end": 0.24
+        },
+        {
+          "text": "-time",
+          "word": "-time",
+          "start": 0.24,
+          "end": 0.64
+        },
+        {
+          "text": "ray",
+          "word": "ray",
+          "start": 0.64,
+          "end": 0.9
+        },
+        {
+          "text": "tracing",
+          "word": "tracing",
+          "start": 0.9,
+          "end": 1.4
+        },
+        {
+          "text": "does",
+          "word": "does",
+          "start": 1.4,
+          "end": 1.9
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 1.9,
+          "end": 2.12
+        },
+        {
+          "text": "brute",
+          "word": "brute",
+          "start": 2.12,
+          "end": 2.42
+        },
+        {
+          "text": "force",
+          "word": "force",
+          "start": 2.42,
+          "end": 2.72
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 2.72,
+          "end": 2.98
+        },
+        {
+          "text": "scene.",
+          "word": "scene.",
+          "start": 2.98,
+          "end": 3.36
+        },
+        {
+          "text": "It",
+          "word": "It",
+          "start": 3.88,
+          "end": 4.02
+        },
+        {
+          "text": "wins",
+          "word": "wins",
+          "start": 4.02,
+          "end": 4.32
+        },
+        {
+          "text": "by",
+          "word": "by",
+          "start": 4.32,
+          "end": 4.7
+        },
+        {
+          "text": "asking",
+          "word": "asking",
+          "start": 4.7,
+          "end": 5.12
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 5.12,
+          "end": 5.32
+        },
+        {
+          "text": "better",
+          "word": "better",
+          "start": 5.32,
+          "end": 5.54
+        },
+        {
+          "text": "first",
+          "word": "first",
+          "start": 5.54,
+          "end": 5.92
+        },
+        {
+          "text": "question.",
+          "word": "question.",
+          "start": 5.92,
+          "end": 6.46
+        },
+        {
+          "text": "Which",
+          "word": "Which",
+          "start": 6.94,
+          "end": 7.08
+        },
+        {
+          "text": "parts",
+          "word": "parts",
+          "start": 7.08,
+          "end": 7.42
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 7.42,
+          "end": 7.72
+        },
+        {
+          "text": "this",
+          "word": "this",
+          "start": 7.72,
+          "end": 7.96
+        },
+        {
+          "text": "ray",
+          "word": "ray",
+          "start": 7.96,
+          "end": 8.32
+        },
+        {
+          "text": "ignore?",
+          "word": "ignore?",
+          "start": 8.32,
+          "end": 8.74
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Real-time ray tracing does not brute force the scene. It wins by asking a better first question. Which parts can this ray ignore?"
+      }
+    }
+  ],
+  "sfx": [
+    {
+      "frame": 1,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 1,
+      "file": "assets/sfx/glitch-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.64,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/whoosh-short.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/click.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/whoosh.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/glitch-2.mp3",
+      "offset_s": 0,
+      "duration_s": 3.5,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/chime.mp3",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    }
+  ]
+}

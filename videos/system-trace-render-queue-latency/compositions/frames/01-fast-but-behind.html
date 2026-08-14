@@ -1,0 +1,672 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      color: #F0F0F0;
+      font-family: "IBM Plex Mono";
+    }
+
+    #root *,
+    #root *::before,
+    #root *::after {
+      box-sizing: border-box;
+    }
+
+    [class~="01-fast-but-behind-ground"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background-color: #0D0D0F;
+    }
+
+    [class~="01-fast-but-behind-field"] {
+      position: absolute;
+      inset: 0 0 17cqh;
+      background-color: #1A1918;
+      border-bottom: 0.18cqw solid #282726;
+    }
+
+    [class~="01-fast-but-behind-grid-line"] {
+      position: absolute;
+      top: 0;
+      bottom: 17cqh;
+      width: 0.14cqw;
+      background-color: #282726;
+      opacity: 0.72;
+    }
+
+    [class~="01-fast-but-behind-grid-line-a"] {
+      left: 6.7cqw;
+    }
+
+    [class~="01-fast-but-behind-grid-line-b"] {
+      left: 33.3cqw;
+    }
+
+    [class~="01-fast-but-behind-grid-line-c"] {
+      left: 66.7cqw;
+    }
+
+    [class~="01-fast-but-behind-grid-line-d"] {
+      right: 6.7cqw;
+    }
+
+    [class~="01-fast-but-behind-stage"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    [class~="01-fast-but-behind-counter-strip"] {
+      position: absolute;
+      top: 5.3cqh;
+      left: 6.7cqw;
+      width: 86.6cqw;
+      height: 5.4cqh;
+      display: grid;
+      grid-template-columns: 22cqw 1fr;
+      align-items: center;
+      border-top: 0.18cqw solid #504B48;
+      border-bottom: 0.18cqw solid #504B48;
+    }
+
+    [class~="01-fast-but-behind-counter-readout"] {
+      display: flex;
+      align-items: baseline;
+      gap: 1.2cqw;
+      color: #FF6B1A;
+      font-family: "Space Grotesk";
+      font-size: 5.4cqw;
+      font-weight: 900;
+      line-height: 0.8;
+      letter-spacing: -0.06em;
+    }
+
+    [class~="01-fast-but-behind-counter-unit"] {
+      color: #F0F0F0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.7cqw;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+    }
+
+    [class~="01-fast-but-behind-counter-ticks"] {
+      display: grid;
+      grid-template-columns: repeat(18, 1fr);
+      align-items: center;
+      gap: 0.75cqw;
+      height: 2.5cqh;
+      padding-left: 2.2cqw;
+      border-left: 0.18cqw solid #504B48;
+    }
+
+    [class~="01-fast-but-behind-counter-tick"] {
+      height: 100%;
+      background-color: #FF6B1A;
+    }
+
+    [class~="01-fast-but-behind-scene-one"] {
+      position: absolute;
+      top: 16.1cqh;
+      left: 6.7cqw;
+      width: 86.6cqw;
+      height: 52cqh;
+      overflow: hidden;
+    }
+
+    [class~="01-fast-but-behind-hero-rule"] {
+      width: 13cqw;
+      height: 0.55cqh;
+      margin-bottom: 2.7cqh;
+      background-color: #FF6B1A;
+    }
+
+    [class~="01-fast-but-behind-hero-number-row"] {
+      display: flex;
+      align-items: flex-end;
+      gap: 2.8cqw;
+      border-bottom: 0.28cqw solid #504B48;
+      padding-bottom: 2.2cqh;
+    }
+
+    [class~="01-fast-but-behind-hero-number"] {
+      font-family: "Space Grotesk";
+      font-size: 34cqw;
+      font-weight: 900;
+      line-height: 0.72;
+      letter-spacing: -0.09em;
+      color: #F0F0F0;
+    }
+
+    [class~="01-fast-but-behind-hero-unit"] {
+      margin-bottom: 1.1cqh;
+      color: #FF6B1A;
+      font-size: 4.2cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+    }
+
+    [class~="01-fast-but-behind-hero-claim"] {
+      margin-top: 3.3cqh;
+      font-family: "Space Grotesk";
+      font-size: 10.2cqw;
+      font-weight: 900;
+      line-height: 0.86;
+      letter-spacing: -0.055em;
+      text-transform: lowercase;
+    }
+
+    [class~="01-fast-but-behind-rate-meter"] {
+      position: absolute;
+      left: 0;
+      bottom: 3.6cqh;
+      width: 100%;
+      height: 2.2cqh;
+      border-top: 0.18cqw solid #504B48;
+      border-bottom: 0.18cqw solid #504B48;
+      padding: 0.62cqh 0;
+    }
+
+    [class~="01-fast-but-behind-rate-meter-fill"] {
+      width: 100%;
+      height: 100%;
+      background-color: #FF6B1A;
+      will-change: transform;
+    }
+
+    [class~="01-fast-but-behind-scene-two"] {
+      position: absolute;
+      top: 12.9cqh;
+      left: 6.7cqw;
+      width: 86.6cqw;
+      height: 66.4cqh;
+      will-change: transform, opacity;
+    }
+
+    [class~="01-fast-but-behind-claim-slot"] {
+      position: relative;
+      width: 100%;
+      height: 10.5cqh;
+      border-bottom: 0.28cqw solid #504B48;
+    }
+
+    [class~="01-fast-but-behind-claim"] {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      font-family: "Space Grotesk";
+      font-size: 10.5cqw;
+      font-weight: 900;
+      line-height: 0.84;
+      letter-spacing: -0.06em;
+      text-transform: lowercase;
+      will-change: transform, opacity, filter;
+    }
+
+    [class~="01-fast-but-behind-claim-fresh"] {
+      color: #F0F0F0;
+    }
+
+    [class~="01-fast-but-behind-output"] {
+      position: absolute;
+      top: 13.4cqh;
+      left: 0;
+      width: 100%;
+      height: 4.7cqh;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2.4cqw;
+      border: 0.18cqw solid #504B48;
+      color: #F0F0F0;
+      font-size: 1.65cqw;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+    }
+
+    [class~="01-fast-but-behind-output-marker"] {
+      width: 2.6cqw;
+      height: 1.45cqh;
+      background-color: #F0F0F0;
+    }
+
+    [class~="01-fast-but-behind-spine"] {
+      position: absolute;
+      top: 18.1cqh;
+      left: 49.9%;
+      width: 0.22cqw;
+      height: 35.5cqh;
+      background-color: #504B48;
+    }
+
+    [class~="01-fast-but-behind-spine-live"] {
+      position: absolute;
+      top: 18.1cqh;
+      left: 49.9%;
+      width: 0.48cqw;
+      height: 35.5cqh;
+      background-color: #FF6B1A;
+      will-change: transform;
+    }
+
+    [class~="01-fast-but-behind-frame-card"] {
+      position: absolute;
+      left: 11.2cqw;
+      width: 64.2cqw;
+      height: 7.1cqh;
+      display: grid;
+      grid-template-columns: 1fr 17cqw;
+      align-items: stretch;
+      border: 0.18cqw solid #504B48;
+      background-color: #1A1918;
+      will-change: transform, opacity;
+    }
+
+    [class~="01-fast-but-behind-frame-card-a"] {
+      top: 20.5cqh;
+    }
+
+    [class~="01-fast-but-behind-frame-card-b"] {
+      top: 29cqh;
+    }
+
+    [class~="01-fast-but-behind-frame-card-c"] {
+      top: 37.5cqh;
+    }
+
+    [class~="01-fast-but-behind-frame-card-label"] {
+      display: flex;
+      align-items: center;
+      padding-left: 3cqw;
+      color: #F0F0F0;
+      font-size: 2cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+    }
+
+    [class~="01-fast-but-behind-frame-card-time"] {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-left: 0.18cqw solid #504B48;
+      color: #504B48;
+      font-size: 2.3cqw;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+
+    [class~="01-fast-but-behind-input-pulse"] {
+      position: absolute;
+      top: 47.1cqh;
+      left: 6.5cqw;
+      width: 73.6cqw;
+      height: 7.3cqh;
+      display: grid;
+      grid-template-columns: 1fr 19cqw;
+      border: 0.42cqw solid #FF6B1A;
+      background-color: #0D0D0F;
+      will-change: transform, opacity;
+    }
+
+    [class~="01-fast-but-behind-input-label"] {
+      display: flex;
+      align-items: center;
+      padding-left: 3cqw;
+      color: #F0F0F0;
+      font-size: 2.35cqw;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+    }
+
+    [class~="01-fast-but-behind-input-state"] {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #FF6B1A;
+      color: #0D0D0F;
+      font-size: 1.45cqw;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+    }
+
+    [class~="01-fast-but-behind-latency-clock"] {
+      position: absolute;
+      top: 56.5cqh;
+      left: 0;
+      width: 100%;
+      height: 8.4cqh;
+      padding: 1.4cqh 2.4cqw 1.2cqh;
+      border-top: 0.18cqw solid #504B48;
+      border-bottom: 0.18cqw solid #504B48;
+      background-color: #282726;
+      will-change: transform, opacity;
+    }
+
+    [class~="01-fast-but-behind-latency-label"] {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #F0F0F0;
+      font-size: 1.65cqw;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+    }
+
+    [class~="01-fast-but-behind-latency-status"] {
+      color: #FF6B1A;
+    }
+
+    [class~="01-fast-but-behind-clock-track"] {
+      position: relative;
+      width: 100%;
+      height: 1.35cqh;
+      margin-top: 1.25cqh;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 0.55cqw;
+    }
+
+    [class~="01-fast-but-behind-clock-tick"] {
+      height: 100%;
+      border-left: 0.18cqw solid #504B48;
+      border-right: 0.18cqw solid #504B48;
+      background-color: #1A1918;
+    }
+
+    [class~="01-fast-but-behind-clock-sweep"] {
+      position: absolute;
+      inset: 0;
+      background-color: #FF6B1A;
+      opacity: 0.74;
+      will-change: transform;
+    }
+
+    [class~="01-fast-but-behind-fresh-rule"] {
+      position: absolute;
+      top: 9.5cqh;
+      left: 0;
+      width: 100%;
+      height: 0.42cqh;
+      background-color: #FF6B1A;
+      will-change: transform;
+    }
+  </style>
+
+  <div id="root" data-composition-id="01-fast-but-behind" data-width="1080" data-height="1920" data-duration="8.427" data-start="0">
+    <div class="clip 01-fast-but-behind-ground" data-start="0" data-duration="8.427" data-track-index="0" aria-hidden="true">
+      <div class="01-fast-but-behind-field"></div>
+      <div class="01-fast-but-behind-grid-line 01-fast-but-behind-grid-line-a"></div>
+      <div class="01-fast-but-behind-grid-line 01-fast-but-behind-grid-line-b"></div>
+      <div class="01-fast-but-behind-grid-line 01-fast-but-behind-grid-line-c"></div>
+      <div class="01-fast-but-behind-grid-line 01-fast-but-behind-grid-line-d"></div>
+    </div>
+
+    <div class="clip 01-fast-but-behind-stage" data-start="0" data-duration="8.427" data-track-index="1">
+      <div class="01-fast-but-behind-counter-strip" aria-label="144 FPS activity counter">
+        <div class="01-fast-but-behind-counter-readout">
+          <span>144</span>
+          <span class="01-fast-but-behind-counter-unit">FPS</span>
+        </div>
+        <div class="01-fast-but-behind-counter-ticks" aria-hidden="true">
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+          <span class="01-fast-but-behind-counter-tick"></span>
+        </div>
+      </div>
+
+      <section class="01-fast-but-behind-scene-one" aria-label="High frame rate">
+        <div class="01-fast-but-behind-hero-rule" aria-hidden="true"></div>
+        <div class="01-fast-but-behind-hero-number-row">
+          <div class="01-fast-but-behind-hero-number">144</div>
+          <div class="01-fast-but-behind-hero-unit">FPS</div>
+        </div>
+        <div class="01-fast-but-behind-hero-claim">high fps</div>
+        <div class="01-fast-but-behind-rate-meter" aria-hidden="true">
+          <div class="01-fast-but-behind-rate-meter-fill"></div>
+        </div>
+      </section>
+
+      <section class="01-fast-but-behind-scene-two" aria-label="Input waiting in the frame queue">
+        <div class="01-fast-but-behind-claim-slot">
+          <div class="01-fast-but-behind-claim 01-fast-but-behind-claim-high">high fps</div>
+          <div class="01-fast-but-behind-claim 01-fast-but-behind-claim-fresh">fresh frame?</div>
+          <div class="01-fast-but-behind-fresh-rule" aria-hidden="true"></div>
+        </div>
+
+        <div class="01-fast-but-behind-output">
+          <span>DISPLAY</span>
+          <span class="01-fast-but-behind-output-marker" aria-hidden="true"></span>
+        </div>
+
+        <div class="01-fast-but-behind-spine" aria-hidden="true"></div>
+        <div class="01-fast-but-behind-spine-live" aria-hidden="true"></div>
+
+        <div class="01-fast-but-behind-frame-card 01-fast-but-behind-frame-card-a">
+          <span class="01-fast-but-behind-frame-card-label">OLDER FRAME</span>
+          <span class="01-fast-but-behind-frame-card-time">t&minus;3</span>
+        </div>
+        <div class="01-fast-but-behind-frame-card 01-fast-but-behind-frame-card-b">
+          <span class="01-fast-but-behind-frame-card-label">OLDER FRAME</span>
+          <span class="01-fast-but-behind-frame-card-time">t&minus;2</span>
+        </div>
+        <div class="01-fast-but-behind-frame-card 01-fast-but-behind-frame-card-c">
+          <span class="01-fast-but-behind-frame-card-label">OLDER FRAME</span>
+          <span class="01-fast-but-behind-frame-card-time">t&minus;1</span>
+        </div>
+
+        <div class="01-fast-but-behind-input-pulse">
+          <span class="01-fast-but-behind-input-label">INPUT NOW</span>
+          <span class="01-fast-but-behind-input-state">WAITING</span>
+        </div>
+
+        <div class="01-fast-but-behind-latency-clock">
+          <div class="01-fast-but-behind-latency-label">
+            <span>LATENCY</span>
+            <span class="01-fast-but-behind-latency-status">TICKING</span>
+          </div>
+          <div class="01-fast-but-behind-clock-track" aria-hidden="true">
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-tick"></span>
+            <span class="01-fast-but-behind-clock-sweep"></span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+
+    const frame01Root = document.querySelector('[data-composition-id="01-fast-but-behind"]');
+    const frame01One = frame01Root.querySelector('[class~="01-fast-but-behind-scene-one"]');
+    const frame01Two = frame01Root.querySelector('[class~="01-fast-but-behind-scene-two"]');
+    const frame01Strip = frame01Root.querySelector('[class~="01-fast-but-behind-counter-strip"]');
+    const frame01Ticks = frame01Root.querySelectorAll('[class~="01-fast-but-behind-counter-tick"]');
+    const frame01HeroRule = frame01Root.querySelector('[class~="01-fast-but-behind-hero-rule"]');
+    const frame01HeroNumber = frame01Root.querySelector('[class~="01-fast-but-behind-hero-number-row"]');
+    const frame01HeroClaim = frame01Root.querySelector('[class~="01-fast-but-behind-hero-claim"]');
+    const frame01Meter = frame01Root.querySelector('[class~="01-fast-but-behind-rate-meter-fill"]');
+    const frame01Cards = frame01Root.querySelectorAll('[class~="01-fast-but-behind-frame-card"]');
+    const frame01Input = frame01Root.querySelector('[class~="01-fast-but-behind-input-pulse"]');
+    const frame01Clock = frame01Root.querySelector('[class~="01-fast-but-behind-latency-clock"]');
+    const frame01Sweep = frame01Root.querySelector('[class~="01-fast-but-behind-clock-sweep"]');
+    const frame01Spine = frame01Root.querySelector('[class~="01-fast-but-behind-spine-live"]');
+    const frame01ClaimHigh = frame01Root.querySelector('[class~="01-fast-but-behind-claim-high"]');
+    const frame01ClaimFresh = frame01Root.querySelector('[class~="01-fast-but-behind-claim-fresh"]');
+    const frame01FreshRule = frame01Root.querySelector('[class~="01-fast-but-behind-fresh-rule"]');
+
+    const frame01Timeline = gsap.timeline({ paused: true });
+    window.__timelines["01-fast-but-behind"] = frame01Timeline;
+
+    frame01Timeline
+      .set(frame01Two, { opacity: 0, y: 230 }, 0)
+      .set(frame01Cards, { opacity: 0 }, 0)
+      .set([frame01Input, frame01Clock, frame01ClaimFresh], { opacity: 0 }, 0)
+      .set([frame01Meter, frame01Sweep, frame01FreshRule], { scaleX: 0, transformOrigin: "left center" }, 0)
+      .set(frame01Spine, { scaleY: 0, transformOrigin: "top center" }, 0)
+      .set([frame01ClaimHigh, frame01ClaimFresh], { transformOrigin: "center center" }, 0)
+      .set(frame01Ticks, { opacity: 0.18 }, 0)
+      .fromTo(frame01Strip,
+        { y: -36, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.34, ease: "power3.out" },
+        0.03)
+      .fromTo(frame01One,
+        { y: 54, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.46, ease: "power3.out" },
+        0.04)
+      .fromTo(frame01HeroRule,
+        { scaleX: 0, opacity: 0 },
+        { scaleX: 1, opacity: 1, transformOrigin: "left center", duration: 0.34, ease: "power3.out" },
+        0.12)
+      .fromTo(frame01HeroNumber,
+        { y: 46, scale: 0.94, opacity: 0 },
+        { y: 0, scale: 1, opacity: 1, duration: 0.42, ease: "expo.out" },
+        0.16)
+      .fromTo(frame01HeroClaim,
+        { y: 34, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.38, ease: "power3.out" },
+        0.48)
+      .to(frame01Meter,
+        { scaleX: 1, duration: 2.08, ease: "none" },
+        0.3);
+
+    for (let frame01Wave = 0; frame01Wave < 8; frame01Wave += 1) {
+      frame01Ticks.forEach((frame01Tick, frame01Index) => {
+        const frame01At = 0.35 + frame01Wave + (frame01Index * 0.035);
+        frame01Timeline
+          .to(frame01Tick, { opacity: 1, duration: 0.05, ease: "none" }, frame01At)
+          .to(frame01Tick, { opacity: 0.18, duration: 0.13, ease: "none" }, frame01At + 0.05);
+      });
+    }
+
+    frame01Timeline
+      .to(frame01One,
+        { y: -230, duration: 0.34, ease: "power4.in" },
+        2.36)
+      .to(frame01One,
+        { opacity: 0, duration: 0.28, ease: "power1.in" },
+        2.4)
+      .fromTo(frame01Two,
+        { y: 230, opacity: 0.35 },
+        { y: 0, opacity: 1, duration: 0.34, ease: "power4.out" },
+        2.7)
+      .fromTo(frame01Cards[0],
+        { x: 72, opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.34, ease: "power3.out" },
+        2.98)
+      .fromTo(frame01Cards[1],
+        { x: 72, opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.34, ease: "power3.out" },
+        3.3)
+      .fromTo(frame01Cards[2],
+        { x: 72, opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.34, ease: "power3.out" },
+        3.62)
+      .to(frame01Spine,
+        { scaleY: 1, duration: 1.75, ease: "none" },
+        3.8)
+      .fromTo(frame01Input,
+        { y: 88, scale: 0.9, opacity: 0 },
+        { y: 0, scale: 1, opacity: 1, duration: 0.5, ease: "expo.out" },
+        4.08)
+      .to(frame01Input,
+        { scale: 1.045, duration: 0.18, ease: "power2.out" },
+        4.68)
+      .to(frame01Input,
+        { scale: 1, duration: 0.28, ease: "power2.inOut" },
+        4.86)
+      .fromTo(frame01Clock,
+        { y: 42, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.42, ease: "power3.out" },
+        4.82)
+      .to(frame01Sweep,
+        { scaleX: 1, duration: 3.477, ease: "none" },
+        4.95)
+      .to(frame01ClaimHigh,
+        { scale: 0.8, filter: "blur(10px)", duration: 0.2, ease: "power3.in" },
+        5.5)
+      .to(frame01ClaimHigh,
+        { opacity: 0.15, duration: 0.2, ease: "none" },
+        5.5)
+      .set(frame01ClaimHigh, { opacity: 0 }, 5.7)
+      .set(frame01ClaimFresh, { opacity: 0.15, scale: 1.25, filter: "blur(10px)" }, 5.7)
+      .to(frame01ClaimFresh,
+        { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.5, ease: "expo.out" },
+        5.7)
+      .to(frame01FreshRule,
+        { scaleX: 1, duration: 0.48, ease: "power3.out" },
+        5.9)
+      .to(frame01Cards,
+        { opacity: 0.42, duration: 0.36, stagger: 0.08, ease: "power2.out" },
+        6.18)
+      .to(frame01Input,
+        { scale: 1.055, duration: 0.2, ease: "power2.out" },
+        6.56)
+      .to(frame01Input,
+        { scale: 1, duration: 0.32, ease: "power2.inOut" },
+        6.76);
+  </script>
+</template>

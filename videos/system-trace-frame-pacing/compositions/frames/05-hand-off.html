@@ -1,0 +1,701 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+    }
+
+    [id="05-hand-off-ground"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0d0d0f;
+      z-index: 0;
+    }
+
+    [id="05-hand-off-ground"]::before,
+    [id="05-hand-off-ground"]::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: #282726;
+      opacity: 0.64;
+    }
+
+    [id="05-hand-off-ground"]::before {
+      left: 5.5cqw;
+    }
+
+    [id="05-hand-off-ground"]::after {
+      right: 5.5cqw;
+    }
+
+    [id="05-hand-off-world"] {
+      position: absolute;
+      inset: 0;
+      overflow: visible;
+      transform-origin: 50% 50%;
+      will-change: transform;
+      z-index: 2;
+    }
+
+    [id="05-hand-off-rail"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100cqw;
+      height: 140cqh;
+      overflow: visible;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    [id="05-hand-off-rail-base"],
+    [id="05-hand-off-rail-segment-one"],
+    [id="05-hand-off-rail-segment-two"] {
+      fill: none;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+
+    [id="05-hand-off-rail-base"] {
+      stroke: #282726;
+      stroke-width: 3;
+    }
+
+    [id="05-hand-off-rail-segment-one"],
+    [id="05-hand-off-rail-segment-two"] {
+      stroke: #ff6b1a;
+      stroke-width: 5;
+      will-change: stroke-dashoffset;
+    }
+
+    [data-05-hand-off-station] {
+      position: absolute;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 24cqh;
+      box-sizing: border-box;
+      overflow: visible;
+      background: #0d0d0f;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      z-index: 2;
+      will-change: opacity;
+    }
+
+    [id="05-hand-off-engine-station"] {
+      top: 18cqh;
+    }
+
+    [id="05-hand-off-driver-station"] {
+      top: 64cqh;
+      opacity: 0.22;
+    }
+
+    [id="05-hand-off-display-station"] {
+      top: 110cqh;
+      opacity: 0.18;
+    }
+
+    [data-05-hand-off-station-index] {
+      position: absolute;
+      top: 2.1cqh;
+      left: 0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.1cqw;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #ff6b1a;
+    }
+
+    [data-05-hand-off-station-label] {
+      position: absolute;
+      top: 8.2cqh;
+      left: 0;
+      font-family: "Space Grotesk";
+      font-size: 8.4cqw;
+      font-weight: 900;
+      line-height: 0.88;
+      letter-spacing: -0.04em;
+      text-transform: lowercase;
+      color: #f0f0f0;
+      white-space: nowrap;
+      will-change: transform, opacity, color;
+    }
+
+    [data-05-hand-off-station-rule] {
+      position: absolute;
+      left: 0;
+      top: 18.8cqh;
+      width: 3.4cqw;
+      height: 2px;
+      background: #ff6b1a;
+      transform-origin: 0% 50%;
+      will-change: transform, opacity;
+    }
+
+    [data-05-hand-off-gate] {
+      position: absolute;
+      top: 7.9cqh;
+      left: 63cqw;
+      width: 11cqw;
+      height: 8.2cqh;
+      box-sizing: border-box;
+      border: 1px solid #282726;
+    }
+
+    [data-05-hand-off-gate]::before,
+    [data-05-hand-off-gate]::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 2.2cqw;
+      height: 1px;
+      background: #504b48;
+    }
+
+    [data-05-hand-off-gate]::before {
+      left: -2.2cqw;
+    }
+
+    [data-05-hand-off-gate]::after {
+      right: -2.2cqw;
+    }
+
+    [data-05-hand-off-gate-core] {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 1.5cqw;
+      height: 1.5cqw;
+      margin-top: -0.75cqw;
+      margin-left: -0.75cqw;
+      background: #ff6b1a;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    [id="05-hand-off-driver-queue"] {
+      position: absolute;
+      top: 8.2cqh;
+      left: 76.2cqw;
+      width: 8.5cqw;
+      height: 7.6cqh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 1.05cqh;
+      transform-origin: 0% 50%;
+      will-change: transform, opacity;
+    }
+
+    [id="05-hand-off-driver-queue"] > span {
+      display: block;
+      height: 1px;
+      background: #504b48;
+    }
+
+    [id="05-hand-off-driver-queue"] > span:nth-child(1) {
+      width: 8.5cqw;
+    }
+
+    [id="05-hand-off-driver-queue"] > span:nth-child(2) {
+      width: 5.8cqw;
+      background: #ff6b1a;
+    }
+
+    [id="05-hand-off-driver-queue"] > span:nth-child(3) {
+      width: 3.2cqw;
+    }
+
+    [id="05-hand-off-display-grid"] {
+      position: absolute;
+      top: 7cqh;
+      left: 39.5cqw;
+      width: 34cqw;
+      height: 10cqh;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      box-sizing: border-box;
+      border-top: 1px solid #282726;
+      border-left: 1px solid #282726;
+      z-index: 3;
+    }
+
+    [id="05-hand-off-display-grid"] > span {
+      box-sizing: border-box;
+      border-right: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      background: #0d0d0f;
+    }
+
+    [id="05-hand-off-display-cell"] {
+      background: #ff6b1a !important;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    [id="05-hand-off-scan-line"] {
+      position: absolute;
+      top: 7cqh;
+      left: 39.5cqw;
+      width: 2px;
+      height: 10cqh;
+      background: #ff6b1a;
+      z-index: 5;
+      will-change: transform, opacity;
+    }
+
+    [id="05-hand-off-frame-tile"] {
+      position: absolute;
+      top: 26.9cqh;
+      left: 68.57cqw;
+      width: 11cqw;
+      height: 6.2cqh;
+      z-index: 8;
+      will-change: transform, opacity;
+    }
+
+    [data-05-hand-off-tile-layer] {
+      position: absolute;
+      inset: 0;
+      box-sizing: border-box;
+      border: 1px solid #282726;
+      will-change: transform, opacity;
+    }
+
+    [data-05-hand-off-tile-layer="back"] {
+      background: #282726;
+    }
+
+    [data-05-hand-off-tile-layer="middle"] {
+      background: #504b48;
+    }
+
+    [data-05-hand-off-tile-layer="front"] {
+      display: grid;
+      place-items: center;
+      background: #ff6b1a;
+      border-color: #ff6b1a;
+      color: #0d0d0f;
+    }
+
+    [id="05-hand-off-tile-label"] {
+      display: block;
+      min-width: 7cqw;
+      text-align: center;
+      white-space: nowrap;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      transform-origin: 0% 50%;
+      will-change: transform, opacity;
+    }
+
+    [data-05-hand-off-steady-tile] {
+      position: absolute;
+      left: 70.68cqw;
+      width: 6.8cqw;
+      height: 4cqh;
+      box-sizing: border-box;
+      background: #ff6b1a;
+      border: 1px solid #ff6b1a;
+      z-index: 7;
+      will-change: transform, opacity;
+    }
+
+    [data-05-hand-off-steady-tile="one"] {
+      top: 28cqh;
+    }
+
+    [data-05-hand-off-steady-tile="two"] {
+      top: 58cqh;
+    }
+
+    [data-05-hand-off-steady-tile="three"] {
+      top: 88cqh;
+    }
+  </style>
+
+  <section id="root" data-composition-id="05-hand-off" data-width="1080" data-height="1920" data-duration="10.499">
+    <div
+      id="05-hand-off-ground"
+      class="clip"
+      data-start="0"
+      data-duration="10.499"
+      data-track-index="0"
+      aria-hidden="true"
+    ></div>
+
+    <div
+      id="05-hand-off-world"
+      class="clip"
+      data-start="0"
+      data-duration="10.499"
+      data-track-index="1"
+    >
+      <svg
+        id="05-hand-off-rail"
+        viewBox="0 0 1080 2688"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <path id="05-hand-off-rail-base" d="M 800 576 L 800 1459 L 800 2342 L 624 2342"></path>
+        <path id="05-hand-off-rail-segment-one" d="M 800 576 L 800 1459"></path>
+        <path id="05-hand-off-rail-segment-two" d="M 800 1459 L 800 2342 L 624 2342"></path>
+      </svg>
+
+      <section id="05-hand-off-engine-station" data-05-hand-off-station>
+        <span data-05-hand-off-station-index>/ 01</span>
+        <span id="05-hand-off-engine-label" data-05-hand-off-station-label>engine</span>
+        <span id="05-hand-off-engine-rule" data-05-hand-off-station-rule></span>
+        <div data-05-hand-off-gate>
+          <span id="05-hand-off-engine-gate-core" data-05-hand-off-gate-core></span>
+        </div>
+      </section>
+
+      <section id="05-hand-off-driver-station" data-05-hand-off-station>
+        <span data-05-hand-off-station-index>/ 02</span>
+        <span id="05-hand-off-driver-label" data-05-hand-off-station-label>driver</span>
+        <span id="05-hand-off-driver-rule" data-05-hand-off-station-rule></span>
+        <div data-05-hand-off-gate>
+          <span id="05-hand-off-driver-gate-core" data-05-hand-off-gate-core></span>
+        </div>
+        <div id="05-hand-off-driver-queue" aria-label="Queue depth tick">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </section>
+
+      <section id="05-hand-off-display-station" data-05-hand-off-station>
+        <span data-05-hand-off-station-index>/ 03</span>
+        <span id="05-hand-off-display-label" data-05-hand-off-station-label>display</span>
+        <span id="05-hand-off-display-rule" data-05-hand-off-station-rule></span>
+        <div data-05-hand-off-gate>
+          <span id="05-hand-off-display-gate-core" data-05-hand-off-gate-core></span>
+        </div>
+        <div id="05-hand-off-display-grid" aria-label="Display acceptance grid">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span id="05-hand-off-display-cell"></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div id="05-hand-off-scan-line"></div>
+      </section>
+
+      <div id="05-hand-off-frame-tile" aria-label="Travelling frame tile">
+        <div data-05-hand-off-tile-layer="back"></div>
+        <div data-05-hand-off-tile-layer="middle"></div>
+        <div data-05-hand-off-tile-layer="front">
+          <span id="05-hand-off-tile-label">frame</span>
+        </div>
+      </div>
+
+      <div data-05-hand-off-steady-tile="one" aria-hidden="true"></div>
+      <div data-05-hand-off-steady-tile="two" aria-hidden="true"></div>
+      <div data-05-hand-off-steady-tile="three" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.getElementById("root");
+      const world = document.getElementById("05-hand-off-world");
+      const engineStation = document.getElementById("05-hand-off-engine-station");
+      const driverStation = document.getElementById("05-hand-off-driver-station");
+      const displayStation = document.getElementById("05-hand-off-display-station");
+      const stations = [engineStation, driverStation, displayStation];
+      const engineLabel = document.getElementById("05-hand-off-engine-label");
+      const driverLabel = document.getElementById("05-hand-off-driver-label");
+      const displayLabel = document.getElementById("05-hand-off-display-label");
+      const engineRule = document.getElementById("05-hand-off-engine-rule");
+      const driverRule = document.getElementById("05-hand-off-driver-rule");
+      const displayRule = document.getElementById("05-hand-off-display-rule");
+      const engineGate = document.getElementById("05-hand-off-engine-gate-core");
+      const driverGate = document.getElementById("05-hand-off-driver-gate-core");
+      const displayGate = document.getElementById("05-hand-off-display-gate-core");
+      const railOne = document.getElementById("05-hand-off-rail-segment-one");
+      const railTwo = document.getElementById("05-hand-off-rail-segment-two");
+      const tile = document.getElementById("05-hand-off-frame-tile");
+      const tileLayers = tile.querySelectorAll("[data-05-hand-off-tile-layer]");
+      const tileLabel = document.getElementById("05-hand-off-tile-label");
+      const queueTick = document.getElementById("05-hand-off-driver-queue");
+      const displayCell = document.getElementById("05-hand-off-display-cell");
+      const scanLine = document.getElementById("05-hand-off-scan-line");
+      const steadyTiles = document.querySelectorAll("[data-05-hand-off-steady-tile]");
+
+      [railOne, railTwo].forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      const viewportHeight = root.clientHeight;
+
+      function stationCentreY(station) {
+        return station.offsetTop + station.offsetHeight / 2;
+      }
+
+      function cameraYFor(station, scale, targetScreenY = viewportHeight / 2) {
+        const offsetFromCentre = stationCentreY(station) - viewportHeight / 2;
+        return targetScreenY - viewportHeight / 2 - offsetFromCentre * scale;
+      }
+
+      const engineCentre = stationCentreY(engineStation);
+      const driverCentre = stationCentreY(driverStation);
+      const displayCentre = stationCentreY(displayStation);
+      const driverDeltaY = driverCentre - engineCentre;
+      const displayDeltaY = displayCentre - engineCentre;
+      const displayDeltaX = -176;
+
+      const cam = {
+        scale: 1.18,
+        x: 0,
+        y: cameraYFor(engineStation, 1.18),
+      };
+
+      function applyCamera() {
+        world.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.scale})`;
+      }
+
+      applyCamera();
+
+      const tl = gsap.timeline({ paused: true });
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["05-hand-off"] = tl;
+
+      tileLayers.forEach((layer, index) => {
+        tl.fromTo(
+          layer,
+          {
+            x: -22 + index * 9,
+            y: -22 + index * 9,
+            scale: 0.72 + index * 0.1,
+            opacity: 0,
+          },
+          {
+            x: 0,
+            y: 0,
+            scale: 1,
+            opacity: 1,
+            duration: 0.52,
+            ease: "power3.out",
+          },
+          0.08 + index * 0.1,
+        );
+      });
+
+      tl.fromTo(
+        engineLabel,
+        { y: 26, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.58, ease: "power3.out" },
+        0.74,
+      );
+      tl.fromTo(
+        engineRule,
+        { scaleX: 0, opacity: 0 },
+        { scaleX: 1, opacity: 1, duration: 0.48, ease: "power2.out" },
+        0.86,
+      );
+      tl.fromTo(
+        engineGate,
+        { scale: 0, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.48, ease: "power3.out" },
+        0.66,
+      );
+      tl.fromTo(
+        tileLabel,
+        { scaleX: 0, opacity: 0 },
+        { scaleX: 1, opacity: 1, duration: 0.42, ease: "power2.out" },
+        0.92,
+      );
+      tl.to(
+        railOne,
+        { strokeDashoffset: 0, duration: 0.8, ease: "power2.out" },
+        1.32,
+      );
+
+      tl.to(
+        cam,
+        {
+          scale: 1.08,
+          y: cameraYFor(driverStation, 1.08),
+          duration: 1.2,
+          ease: "power3.inOut",
+          onUpdate: applyCamera,
+        },
+        2.6,
+      );
+      tl.to(
+        tile,
+        { y: driverDeltaY, duration: 1.18, ease: "power2.inOut" },
+        2.76,
+      );
+      tl.to(engineStation, { opacity: 0.24, duration: 0.62, ease: "power1.out" }, 2.78);
+      tl.to(driverStation, { opacity: 1, duration: 0.62, ease: "power1.out" }, 3.42);
+      tl.fromTo(
+        driverLabel,
+        { y: 26, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.58, ease: "power3.out" },
+        3.48,
+      );
+      tl.fromTo(
+        driverRule,
+        { scaleX: 0, opacity: 0 },
+        { scaleX: 1, opacity: 1, duration: 0.48, ease: "power2.out" },
+        3.6,
+      );
+      tl.fromTo(
+        driverGate,
+        { scale: 0, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.48, ease: "power3.out" },
+        3.72,
+      );
+      tl.fromTo(
+        queueTick,
+        { scaleY: 0, opacity: 0 },
+        { scaleY: 1, opacity: 1, duration: 0.34, ease: "power3.out" },
+        3.94,
+      );
+      tl.to(queueTick, { opacity: 0.24, duration: 0.38, ease: "power1.out" }, 4.42);
+
+      tl.to(
+        tile,
+        { y: displayDeltaY, duration: 1.14, ease: "power2.inOut" },
+        5.46,
+      );
+      tl.to(
+        railTwo,
+        { strokeDashoffset: 0, duration: 0.8, ease: "power2.out" },
+        5.54,
+      );
+      tl.to(
+        cam,
+        {
+          scale: 0.62,
+          y: cameraYFor(displayStation, 0.62, viewportHeight * 0.675),
+          duration: 1.05,
+          ease: "power3.inOut",
+          onUpdate: applyCamera,
+        },
+        5.8,
+      );
+      tl.to(driverStation, { opacity: 0.26, duration: 0.58, ease: "power1.out" }, 5.86);
+      tl.to(displayStation, { opacity: 1, duration: 0.62, ease: "power1.out" }, 6.12);
+      tl.fromTo(
+        displayLabel,
+        { y: 26, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.58, ease: "power3.out" },
+        6.18,
+      );
+      tl.fromTo(
+        displayRule,
+        { scaleX: 0, opacity: 0 },
+        { scaleX: 1, opacity: 1, duration: 0.48, ease: "power2.out" },
+        6.28,
+      );
+      tl.fromTo(
+        displayGate,
+        { scale: 0, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.48, ease: "power3.out" },
+        6.34,
+      );
+      tl.to(tile, { x: displayDeltaX, scale: 0.72, duration: 0.42, ease: "power2.inOut" }, 6.52);
+      tl.fromTo(
+        displayCell,
+        { scale: 0.72, opacity: 0.16 },
+        { scale: 1, opacity: 1, duration: 0.42, ease: "power3.out" },
+        6.72,
+      );
+      tl.fromTo(
+        scanLine,
+        { x: 0, opacity: 0 },
+        { x: 365, opacity: 1, duration: 0.62, ease: "none" },
+        7.12,
+      );
+      tl.to(scanLine, { opacity: 0.22, duration: 0.28, ease: "power1.out" }, 7.74);
+
+      tl.to(
+        cam,
+        {
+          scale: 0.56,
+          y: cameraYFor(driverStation, 0.56),
+          duration: 0.86,
+          ease: "power3.inOut",
+          onUpdate: applyCamera,
+        },
+        8.2,
+      );
+      tl.to(stations, { opacity: 0.72, duration: 0.68, ease: "power1.out" }, 8.2);
+      tl.to(tile, { opacity: 0.28, duration: 0.52, ease: "power1.out" }, 8.2);
+      tl.fromTo(
+        steadyTiles,
+        { scale: 0.72, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.38, ease: "power3.out" },
+        8.28,
+      );
+      tl.to(
+        steadyTiles,
+        { y: 269, duration: 1.1, ease: "none" },
+        8.44,
+      );
+    })();
+  </script>
+</template>

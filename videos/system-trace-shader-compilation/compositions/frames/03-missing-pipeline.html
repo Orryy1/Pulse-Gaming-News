@@ -1,0 +1,717 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+    }
+
+    [id="03-missing-pipeline-ground"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0d0d0f;
+      z-index: 0;
+    }
+
+    [data-03-missing-pipeline-grid-line^="v"] {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: #282726;
+      opacity: 0.54;
+    }
+
+    [data-03-missing-pipeline-grid-line^="h"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #282726;
+      opacity: 0.54;
+    }
+
+    [id="03-missing-pipeline-stage"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      z-index: 2;
+    }
+
+    [id="03-missing-pipeline-gate"] {
+      position: absolute;
+      top: 5.5cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 18cqh;
+      box-sizing: border-box;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      background: #0d0d0f;
+      z-index: 6;
+      will-change: transform, opacity;
+    }
+
+    [id="03-missing-pipeline-gate-title"] {
+      position: absolute;
+      top: 2.9cqh;
+      left: 0;
+      display: flex;
+      gap: 2.1cqw;
+      align-items: baseline;
+      white-space: nowrap;
+      font-family: "Space Grotesk";
+      font-size: 9.8cqw;
+      font-weight: 900;
+      line-height: 0.88;
+      letter-spacing: -0.04em;
+      text-transform: lowercase;
+      color: #f0f0f0;
+    }
+
+    [id="03-missing-pipeline-gate-title"] > span:last-child {
+      color: #ff6b1a;
+    }
+
+    [id="03-missing-pipeline-gate-axis"] {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 68.5cqw;
+      width: 2px;
+      background: #ff6b1a;
+      transform-origin: 50% 0%;
+      will-change: transform, opacity;
+    }
+
+    [id="03-missing-pipeline-gate-axis"]::before,
+    [id="03-missing-pipeline-gate-axis"]::after {
+      content: "";
+      position: absolute;
+      left: -2.2cqw;
+      width: 4.4cqw;
+      height: 1px;
+      background: #ff6b1a;
+    }
+
+    [id="03-missing-pipeline-gate-axis"]::before {
+      top: 0;
+    }
+
+    [id="03-missing-pipeline-gate-axis"]::after {
+      bottom: 0;
+    }
+
+    [id="03-missing-pipeline-queue-lane"] {
+      position: absolute;
+      top: 16.9cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 1px;
+      background: #282726;
+      z-index: 7;
+    }
+
+    [data-03-missing-pipeline-steady-tile],
+    [id="03-missing-pipeline-effect-tile"] {
+      position: absolute;
+      left: 5.5cqw;
+      width: 11cqw;
+      height: 4.4cqh;
+      display: grid;
+      place-items: center;
+      box-sizing: border-box;
+      background: #1a1918;
+      border: 1px solid #504b48;
+      z-index: 9;
+      will-change: transform, opacity;
+    }
+
+    [data-03-missing-pipeline-steady-tile] {
+      top: 14.7cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.35cqw;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #f0f0f0;
+      white-space: nowrap;
+    }
+
+    [id="03-missing-pipeline-effect-tile"] {
+      top: 14.2cqh;
+      width: 16cqw;
+      height: 5.4cqh;
+      border-color: #ff6b1a;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 1.35cqw;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    [id="03-missing-pipeline-effect-tile"]::after {
+      content: "";
+      position: absolute;
+      right: -1.6cqw;
+      top: 50%;
+      width: 1.6cqw;
+      height: 2px;
+      background: #ff6b1a;
+    }
+
+    [id="03-missing-pipeline-recipe"] {
+      position: absolute;
+      top: 29cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 26cqh;
+      box-sizing: border-box;
+      background: #0d0d0f;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      z-index: 4;
+      will-change: transform, opacity;
+    }
+
+    [id="03-missing-pipeline-recipe-title"],
+    [id="03-missing-pipeline-recipe-status"],
+    [id="03-missing-pipeline-timer-label"],
+    [id="03-missing-pipeline-trace-label"] {
+      font-family: "IBM Plex Mono";
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    [id="03-missing-pipeline-recipe-title"] {
+      position: absolute;
+      top: 2.1cqh;
+      left: 0;
+      font-size: 1.35cqw;
+      color: #f0f0f0;
+    }
+
+    [id="03-missing-pipeline-recipe-status"] {
+      position: absolute;
+      top: 2.1cqh;
+      right: 0;
+      min-width: 16cqw;
+      text-align: right;
+      white-space: nowrap;
+      font-size: 1.35cqw;
+      color: #ff6b1a;
+    }
+
+    [id="03-missing-pipeline-layer-stack"] {
+      position: absolute;
+      top: 7cqh;
+      left: 12cqw;
+      width: 65cqw;
+      height: 15cqh;
+    }
+
+    [data-03-missing-pipeline-recipe-layer] {
+      position: absolute;
+      width: 52cqw;
+      height: 10cqh;
+      box-sizing: border-box;
+      background: #0d0d0f;
+      border: 1px solid #282726;
+      will-change: transform, opacity;
+    }
+
+    [data-03-missing-pipeline-recipe-layer]::before {
+      content: "";
+      position: absolute;
+      top: -1px;
+      left: 0;
+      width: 4.2cqw;
+      height: 2px;
+      background: #ff6b1a;
+    }
+
+    [data-03-missing-pipeline-recipe-layer="back"] {
+      top: 3.8cqh;
+      left: 8cqw;
+      border-color: #282726;
+    }
+
+    [data-03-missing-pipeline-recipe-layer="middle"] {
+      top: 1.9cqh;
+      left: 4cqw;
+      border-color: #504b48;
+    }
+
+    [data-03-missing-pipeline-recipe-layer="front"] {
+      top: 0;
+      left: 0;
+      border-color: #f0f0f0;
+    }
+
+    [data-03-missing-pipeline-layer-bars] {
+      position: absolute;
+      top: 2.5cqh;
+      left: 3.2cqw;
+      right: 3.2cqw;
+      bottom: 2.5cqh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    [data-03-missing-pipeline-layer-bars] > span {
+      display: block;
+      height: 1px;
+      background: #504b48;
+    }
+
+    [data-03-missing-pipeline-layer-bars] > span:nth-child(1) {
+      width: 82%;
+    }
+
+    [data-03-missing-pipeline-layer-bars] > span:nth-child(2) {
+      width: 58%;
+    }
+
+    [data-03-missing-pipeline-layer-bars] > span:nth-child(3) {
+      width: 71%;
+    }
+
+    [id="03-missing-pipeline-seal"] {
+      position: absolute;
+      left: 12cqw;
+      right: 12cqw;
+      bottom: 2.2cqh;
+      height: 3px;
+      background: #ff6b1a;
+      transform-origin: 0% 50%;
+      will-change: transform, opacity;
+    }
+
+    [id="03-missing-pipeline-timer"] {
+      position: absolute;
+      top: 57.2cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 11.8cqh;
+      z-index: 5;
+      will-change: transform, opacity;
+    }
+
+    [id="03-missing-pipeline-timer-label"] {
+      position: absolute;
+      top: -1.2cqh;
+      left: 0;
+      font-size: 1.35cqw;
+      color: #f0f0f0;
+    }
+
+    [id="03-missing-pipeline-timer-value"] {
+      position: absolute;
+      top: 2cqh;
+      left: 0;
+      min-width: 70cqw;
+      white-space: nowrap;
+      font-family: "Space Grotesk";
+      font-size: 14.8cqw;
+      font-weight: 900;
+      line-height: 0.88;
+      letter-spacing: -0.04em;
+      color: #ff6b1a;
+    }
+
+    [id="03-missing-pipeline-timer-track"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 1px;
+      background: #282726;
+    }
+
+    [id="03-missing-pipeline-timer-fill"] {
+      position: absolute;
+      left: 0;
+      top: -1px;
+      width: 100%;
+      height: 3px;
+      background: #ff6b1a;
+      transform-origin: 0% 50%;
+      will-change: transform;
+    }
+
+    [id="03-missing-pipeline-trace"] {
+      position: absolute;
+      top: 72.2cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 8.4cqh;
+      z-index: 5;
+    }
+
+    [id="03-missing-pipeline-trace-label"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      font-size: 1.05cqw;
+      color: #504b48;
+    }
+
+    [id="03-missing-pipeline-trace-baseline"] {
+      position: absolute;
+      top: 4.3cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #504b48;
+    }
+
+    [data-03-missing-pipeline-trace-tick] {
+      position: absolute;
+      top: 3cqh;
+      width: 2px;
+      height: 2.7cqh;
+      background: #f0f0f0;
+      transform-origin: 50% 100%;
+      will-change: transform, opacity;
+    }
+
+    [id="03-missing-pipeline-stretched-segment"] {
+      position: absolute;
+      top: 4.2cqh;
+      left: 36%;
+      width: 28%;
+      height: 3px;
+      background: #ff6b1a;
+      transform-origin: 0% 50%;
+      will-change: transform, opacity;
+    }
+
+    [id="03-missing-pipeline-marker"] {
+      position: absolute;
+      top: 0.5cqh;
+      left: 31%;
+      width: 38%;
+      height: 7.4cqh;
+      overflow: visible;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    [id="03-missing-pipeline-marker"] ellipse {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 3;
+    }
+  </style>
+
+  <section id="root" data-composition-id="03-missing-pipeline" data-width="1080" data-height="1920" data-duration="8.735">
+    <div
+      id="03-missing-pipeline-ground"
+      class="clip"
+      data-start="0"
+      data-duration="8.735"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <span data-03-missing-pipeline-grid-line="v1" style="left: 5.5cqw"></span>
+      <span data-03-missing-pipeline-grid-line="v2" style="left: 18cqw"></span>
+      <span data-03-missing-pipeline-grid-line="v3" style="left: 30.5cqw"></span>
+      <span data-03-missing-pipeline-grid-line="v4" style="left: 43cqw"></span>
+      <span data-03-missing-pipeline-grid-line="v5" style="left: 55.5cqw"></span>
+      <span data-03-missing-pipeline-grid-line="v6" style="left: 68cqw"></span>
+      <span data-03-missing-pipeline-grid-line="v7" style="left: 80.5cqw"></span>
+      <span data-03-missing-pipeline-grid-line="v8" style="left: 94.5cqw"></span>
+      <span data-03-missing-pipeline-grid-line="h1" style="top: 8cqh"></span>
+      <span data-03-missing-pipeline-grid-line="h2" style="top: 20cqh"></span>
+      <span data-03-missing-pipeline-grid-line="h3" style="top: 32cqh"></span>
+      <span data-03-missing-pipeline-grid-line="h4" style="top: 44cqh"></span>
+      <span data-03-missing-pipeline-grid-line="h5" style="top: 56cqh"></span>
+      <span data-03-missing-pipeline-grid-line="h6" style="top: 68cqh"></span>
+      <span data-03-missing-pipeline-grid-line="h7" style="top: 80cqh"></span>
+    </div>
+
+    <div
+      id="03-missing-pipeline-stage"
+      class="clip"
+      data-start="0"
+      data-duration="8.735"
+      data-track-index="1"
+    >
+      <header id="03-missing-pipeline-gate">
+        <div id="03-missing-pipeline-gate-title"><span>draw</span><span>now</span></div>
+        <div id="03-missing-pipeline-gate-axis"></div>
+      </header>
+
+      <div id="03-missing-pipeline-queue-lane" aria-hidden="true"></div>
+      <div data-03-missing-pipeline-steady-tile="one">16.7 ms</div>
+      <div data-03-missing-pipeline-steady-tile="two">16.7 ms</div>
+      <div data-03-missing-pipeline-steady-tile="three">16.7 ms</div>
+      <div id="03-missing-pipeline-effect-tile">new effect</div>
+
+      <section id="03-missing-pipeline-recipe">
+        <span id="03-missing-pipeline-recipe-title">pipeline</span>
+        <span id="03-missing-pipeline-recipe-status"></span>
+        <div id="03-missing-pipeline-layer-stack">
+          <div data-03-missing-pipeline-recipe-layer="back">
+            <div data-03-missing-pipeline-layer-bars><span></span><span></span><span></span></div>
+          </div>
+          <div data-03-missing-pipeline-recipe-layer="middle">
+            <div data-03-missing-pipeline-layer-bars><span></span><span></span><span></span></div>
+          </div>
+          <div data-03-missing-pipeline-recipe-layer="front">
+            <div data-03-missing-pipeline-layer-bars><span></span><span></span><span></span></div>
+          </div>
+        </div>
+        <div id="03-missing-pipeline-seal"></div>
+      </section>
+
+      <section id="03-missing-pipeline-timer">
+        <span id="03-missing-pipeline-timer-label">frame time</span>
+        <span id="03-missing-pipeline-timer-value">16.7 ms</span>
+        <div id="03-missing-pipeline-timer-track">
+          <div id="03-missing-pipeline-timer-fill"></div>
+        </div>
+      </section>
+
+      <section id="03-missing-pipeline-trace">
+        <span id="03-missing-pipeline-trace-label">frame trace</span>
+        <div id="03-missing-pipeline-trace-baseline"></div>
+        <span data-03-missing-pipeline-trace-tick="one" style="left: 0%"></span>
+        <span data-03-missing-pipeline-trace-tick="two" style="left: 12%"></span>
+        <span data-03-missing-pipeline-trace-tick="three" style="left: 24%"></span>
+        <span data-03-missing-pipeline-trace-tick="four" style="left: 36%"></span>
+        <span data-03-missing-pipeline-trace-tick="five" style="left: 64%"></span>
+        <span data-03-missing-pipeline-trace-tick="six" style="left: 76%"></span>
+        <span data-03-missing-pipeline-trace-tick="seven" style="left: 88%"></span>
+        <span data-03-missing-pipeline-trace-tick="eight" style="left: 100%"></span>
+        <div id="03-missing-pipeline-stretched-segment"></div>
+        <svg id="03-missing-pipeline-marker" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <ellipse cx="50" cy="50" rx="47" ry="40"></ellipse>
+        </svg>
+      </section>
+    </div>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.getElementById("root");
+      const gate = document.getElementById("03-missing-pipeline-gate");
+      const gateAxis = document.getElementById("03-missing-pipeline-gate-axis");
+      const steadyTiles = document.querySelectorAll("[data-03-missing-pipeline-steady-tile]");
+      const effectTile = document.getElementById("03-missing-pipeline-effect-tile");
+      const recipe = document.getElementById("03-missing-pipeline-recipe");
+      const recipeLayers = document.querySelectorAll("[data-03-missing-pipeline-recipe-layer]");
+      const recipeStatus = document.getElementById("03-missing-pipeline-recipe-status");
+      const seal = document.getElementById("03-missing-pipeline-seal");
+      const timer = document.getElementById("03-missing-pipeline-timer");
+      const timerValue = document.getElementById("03-missing-pipeline-timer-value");
+      const timerFill = document.getElementById("03-missing-pipeline-timer-fill");
+      const traceTicks = document.querySelectorAll("[data-03-missing-pipeline-trace-tick]");
+      const stretchedSegment = document.getElementById("03-missing-pipeline-stretched-segment");
+      const marker = document.getElementById("03-missing-pipeline-marker");
+
+      const steadyTravel = root.clientWidth * 0.52;
+      const effectHold = root.clientWidth * 0.72;
+
+      const statusStates = [
+        { t: 0, text: "" },
+        { t: 3.0, text: "missing" },
+        { t: 3.82, text: "building" },
+        { t: 7.4, text: "sealed" },
+      ];
+
+      function statusAt(time) {
+        for (let index = statusStates.length - 1; index >= 0; index -= 1) {
+          if (time >= statusStates[index].t) return statusStates[index].text;
+        }
+        return "";
+      }
+
+      const statusDriver = { t: 0 };
+      const timerDriver = { value: 16.7 };
+      const tl = gsap.timeline({ paused: true });
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["03-missing-pipeline"] = tl;
+
+      tl.to(
+        statusDriver,
+        {
+          t: 8.235,
+          duration: 8.235,
+          ease: "none",
+          onUpdate: () => {
+            recipeStatus.textContent = statusAt(statusDriver.t);
+          },
+        },
+        0,
+      );
+
+      tl.fromTo(
+        gate,
+        { y: -130, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.68, ease: "power3.out" },
+        0.04,
+      );
+      tl.fromTo(
+        gateAxis,
+        { scaleY: 0, opacity: 0 },
+        { scaleY: 1, opacity: 1, duration: 0.52, ease: "power2.out" },
+        0.22,
+      );
+
+      const steadySpacing = root.clientWidth * 0.18;
+      steadyTiles.forEach((tile, index) => {
+        tl.fromTo(
+          tile,
+          { x: -150, opacity: 0 },
+          {
+            x: steadyTravel - (steadyTiles.length - 1 - index) * steadySpacing,
+            opacity: 1,
+            duration: 0.92,
+            ease: "power2.inOut",
+          },
+          0.5 + index * 0.72,
+        );
+      });
+
+      traceTicks.forEach((tick, index) => {
+        if (index > 2) return;
+        tl.fromTo(
+          tick,
+          { scaleY: 0, opacity: 0 },
+          { scaleY: 1, opacity: 0.72, duration: 0.3, ease: "power3.out" },
+          1.08 + index * 0.72,
+        );
+      });
+
+      tl.fromTo(
+        effectTile,
+        { x: effectHold + root.clientWidth * 0.16, opacity: 0 },
+        { x: effectHold, opacity: 1, duration: 0.84, ease: "power3.out" },
+        3.0,
+      );
+      tl.fromTo(
+        recipe,
+        { y: 24, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.58, ease: "power3.out" },
+        3.08,
+      );
+      tl.fromTo(
+        timer,
+        { y: 20, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.52, ease: "power3.out" },
+        3.2,
+      );
+      tl.fromTo(
+        timerFill,
+        { scaleX: 0.44 },
+        { scaleX: 1, duration: 3.7, ease: "none" },
+        3.3,
+      );
+      tl.to(
+        timerDriver,
+        {
+          value: 38,
+          duration: 3.7,
+          ease: "none",
+          onUpdate: () => {
+            timerValue.textContent = timerDriver.value >= 37.95
+              ? "38 ms"
+              : `${timerDriver.value.toFixed(1)} ms`;
+          },
+        },
+        3.3,
+      );
+      tl.fromTo(
+        stretchedSegment,
+        { scaleX: 0, opacity: 0 },
+        { scaleX: 1, opacity: 1, duration: 3.7, ease: "none" },
+        3.3,
+      );
+
+      recipeLayers.forEach((layer, index) => {
+        const direction = index % 2 === 0 ? -1 : 1;
+        tl.fromTo(
+          layer,
+          { x: direction * 86, y: 18, opacity: 0 },
+          { x: 0, y: 0, opacity: 1, duration: 0.62, ease: "power3.out" },
+          3.78 + index * 0.82,
+        );
+      });
+
+      tl.fromTo(
+        seal,
+        { scaleX: 0, opacity: 0 },
+        { scaleX: 1, opacity: 1, duration: 0.34, ease: "power2.out" },
+        7.4,
+      );
+      tl.to(
+        effectTile,
+        { x: effectHold, scale: 1.04, duration: 0.42, ease: "power3.out" },
+        7.43,
+      );
+
+      traceTicks.forEach((tick, index) => {
+        if (index < 3) return;
+        tl.fromTo(
+          tick,
+          { scaleY: 0, opacity: 0 },
+          { scaleY: 1, opacity: 0.72, duration: 0.26, ease: "power3.out" },
+          7.46 + (index - 3) * 0.08,
+        );
+      });
+
+      tl.fromTo(
+        marker,
+        { scale: 0.76, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.42, ease: "power3.out" },
+        7.56,
+      );
+    })();
+  </script>
+</template>

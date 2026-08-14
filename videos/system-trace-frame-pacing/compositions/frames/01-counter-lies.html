@@ -1,0 +1,459 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 100 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+    }
+
+    [class~="01-counter-lies-background"] {
+      background: #0d0d0f;
+      overflow: hidden;
+    }
+
+    [class~="01-counter-lies-scanlines"] {
+      position: absolute;
+      inset: -32px 0 auto;
+      width: 1080px;
+      height: 1984px;
+      opacity: 0.72;
+    }
+
+    [class~="01-counter-lies-field-rail"] {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 58px;
+      width: 1px;
+      background: rgba(255, 107, 26, 0.15);
+    }
+
+    [class~="01-counter-lies-content"] {
+      overflow: hidden;
+      padding: 0 60px;
+      box-sizing: border-box;
+      font-family: "Space Grotesk";
+    }
+
+    [class~="01-counter-lies-top-rail"] {
+      position: absolute;
+      top: 78px;
+      left: 60px;
+      right: 60px;
+      height: 54px;
+      display: flex;
+      align-items: flex-start;
+      border-top: 1px solid #282726;
+      padding-top: 18px;
+      box-sizing: border-box;
+    }
+
+    [class~="01-counter-lies-system-label"] {
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 20px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    [class~="01-counter-lies-hero"] {
+      position: absolute;
+      top: 304px;
+      left: 60px;
+      width: 960px;
+      min-height: 340px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 30px;
+      white-space: nowrap;
+      transform-origin: 50% 62%;
+    }
+
+    [class~="01-counter-lies-number"] {
+      min-width: 430px;
+      color: #f0f0f0;
+      font-size: 326px;
+      font-weight: 900;
+      line-height: 0.82;
+      letter-spacing: -0.055em;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    [class~="01-counter-lies-unit"] {
+      min-width: 204px;
+      padding-bottom: 18px;
+      color: #ff6b1a;
+      font-size: 110px;
+      font-weight: 900;
+      line-height: 0.86;
+      letter-spacing: -0.04em;
+      text-transform: lowercase;
+    }
+
+    [class~="01-counter-lies-hero-rule"] {
+      position: absolute;
+      top: 688px;
+      left: 522px;
+      width: 36px;
+      height: 2px;
+      background: #ff6b1a;
+      transform-origin: left center;
+    }
+
+    [class~="01-counter-lies-token-wrap"] {
+      position: absolute;
+      top: 755px;
+      left: 150px;
+      width: 780px;
+      min-width: 780px;
+      height: 170px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: visible;
+      white-space: nowrap;
+    }
+
+    [class~="01-counter-lies-token"] {
+      min-width: 780px;
+      color: #ff6b1a;
+      font-size: 136px;
+      font-weight: 900;
+      line-height: 0.9;
+      letter-spacing: -0.045em;
+      text-align: center;
+      text-transform: lowercase;
+    }
+
+    [class~="01-counter-lies-trace"] {
+      position: absolute;
+      top: 1040px;
+      left: 90px;
+      width: 900px;
+      height: 300px;
+      overflow: visible;
+    }
+
+    [class~="01-counter-lies-baseline-base"],
+    [class~="01-counter-lies-baseline-ghost"] {
+      fill: none;
+      stroke-width: 4;
+      stroke-linecap: square;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="01-counter-lies-baseline-base"] {
+      stroke: #ff6b1a;
+    }
+
+    [class~="01-counter-lies-baseline-warm"] {
+      stroke: #ff6b1a;
+      opacity: 0;
+      mix-blend-mode: screen;
+    }
+
+    [class~="01-counter-lies-baseline-cool"] {
+      stroke: #f0f0f0;
+      opacity: 0;
+      mix-blend-mode: screen;
+    }
+
+    [class~="01-counter-lies-arrival-tick"] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 5;
+      stroke-linecap: square;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="01-counter-lies-gap-marker"] {
+      position: absolute;
+      top: 1082px;
+      left: 524px;
+      width: 270px;
+      height: 182px;
+      box-sizing: border-box;
+      border: 5px solid #ff6b1a;
+      border-radius: 50%;
+      transform-origin: center;
+      pointer-events: none;
+    }
+  </style>
+
+  <div id="root" data-composition-id="01-counter-lies" data-duration="8.052" data-width="1080" data-height="1920">
+    <div
+      class="clip 01-counter-lies-background"
+      data-start="0"
+      data-duration="8.052"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <svg
+        id="01-counter-lies-scanlines"
+        class="01-counter-lies-scanlines"
+        viewBox="0 0 1080 1984"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <pattern id="01-counter-lies-scan-pattern" width="1080" height="32" patternUnits="userSpaceOnUse">
+            <path d="M0 1 H1080" fill="none" stroke="#ff6b1a" stroke-width="1" opacity="0.065" />
+          </pattern>
+        </defs>
+        <rect width="1080" height="1984" fill="url(#01-counter-lies-scan-pattern)" />
+      </svg>
+      <div class="01-counter-lies-field-rail"></div>
+    </div>
+
+    <div
+      class="clip 01-counter-lies-content"
+      data-start="0"
+      data-duration="8.052"
+      data-track-index="1"
+    >
+      <div id="01-counter-lies-top-rail" class="01-counter-lies-top-rail">
+        <span class="01-counter-lies-system-label">SYSTEM TRACE // 01</span>
+      </div>
+
+      <div id="01-counter-lies-hero" class="01-counter-lies-hero" aria-label="60 frames per second">
+        <span id="01-counter-lies-number" class="01-counter-lies-number">6</span>
+        <span id="01-counter-lies-unit" class="01-counter-lies-unit"></span>
+      </div>
+      <div id="01-counter-lies-hero-rule" class="01-counter-lies-hero-rule" aria-hidden="true"></div>
+
+      <div class="01-counter-lies-token-wrap">
+        <span id="01-counter-lies-token" class="01-counter-lies-token"></span>
+      </div>
+
+      <svg
+        id="01-counter-lies-trace"
+        class="01-counter-lies-trace"
+        viewBox="0 0 900 300"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <path
+          id="01-counter-lies-baseline-warm"
+          class="01-counter-lies-baseline-ghost 01-counter-lies-baseline-warm"
+          d="M0 130 H900"
+        />
+        <path
+          id="01-counter-lies-baseline-cool"
+          class="01-counter-lies-baseline-ghost 01-counter-lies-baseline-cool"
+          d="M0 130 H900"
+        />
+        <path
+          id="01-counter-lies-baseline"
+          class="01-counter-lies-baseline-base"
+          d="M0 130 H900"
+        />
+
+        <path id="01-counter-lies-tick-1" class="01-counter-lies-arrival-tick" data-arrival-tick d="M38 130 V72" />
+        <path id="01-counter-lies-tick-2" class="01-counter-lies-arrival-tick" data-arrival-tick d="M148 130 V204" />
+        <path id="01-counter-lies-tick-3" class="01-counter-lies-arrival-tick" data-arrival-tick d="M250 130 V48" />
+        <path id="01-counter-lies-tick-4" class="01-counter-lies-arrival-tick" data-arrival-tick d="M336 130 V224" />
+        <path id="01-counter-lies-tick-5" class="01-counter-lies-arrival-tick" data-arrival-tick d="M420 130 V66" />
+        <path id="01-counter-lies-tick-6" class="01-counter-lies-arrival-tick" data-arrival-tick d="M462 130 V192" />
+        <path id="01-counter-lies-tick-7" class="01-counter-lies-arrival-tick" data-arrival-tick d="M675 130 V34" />
+        <path id="01-counter-lies-tick-8" class="01-counter-lies-arrival-tick" data-arrival-tick d="M770 130 V215" />
+        <path id="01-counter-lies-tick-9" class="01-counter-lies-arrival-tick" data-arrival-tick d="M855 130 V80" />
+      </svg>
+
+      <div id="01-counter-lies-gap-marker" class="01-counter-lies-gap-marker" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="01-counter-lies"]');
+      const scanlines = document.getElementById("01-counter-lies-scanlines");
+      const topRail = document.getElementById("01-counter-lies-top-rail");
+      const hero = document.getElementById("01-counter-lies-hero");
+      const numberEl = document.getElementById("01-counter-lies-number");
+      const unitEl = document.getElementById("01-counter-lies-unit");
+      const heroRule = document.getElementById("01-counter-lies-hero-rule");
+      const tokenEl = document.getElementById("01-counter-lies-token");
+      const baseline = document.getElementById("01-counter-lies-baseline");
+      const warmGhost = document.getElementById("01-counter-lies-baseline-warm");
+      const coolGhost = document.getElementById("01-counter-lies-baseline-cool");
+      const gapMarker = document.getElementById("01-counter-lies-gap-marker");
+      const arrivalTicks = Array.from(root.querySelectorAll("[data-arrival-tick]"));
+
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["01-counter-lies"] = tl;
+
+      const baselineLength = baseline.getTotalLength();
+      [baseline, warmGhost, coolGhost].forEach((path) => {
+        path.style.strokeDasharray = `${baselineLength}`;
+        path.style.strokeDashoffset = `${baselineLength}`;
+      });
+
+      arrivalTicks.forEach((tick) => {
+        const length = tick.getTotalLength();
+        tick.style.strokeDasharray = `${length}`;
+        tick.style.strokeDashoffset = `${length}`;
+      });
+
+      tl.fromTo(topRail, { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: 0.38, ease: "power3.out" }, 0.04);
+      tl.fromTo(hero, { opacity: 0, y: 42, scale: 1.055 }, { opacity: 1, y: 0, scale: 1, duration: 0.46, ease: "power4.out" }, 0.12);
+      tl.fromTo(unitEl, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.34, ease: "power3.out" }, 0.75);
+      tl.fromTo(heroRule, { scaleX: 0, opacity: 0 }, { scaleX: 1, opacity: 1, duration: 0.34, ease: "power3.out" }, 1.24);
+      tl.fromTo(scanlines, { y: 0 }, { y: 32, duration: 7.552, ease: "none" }, 0);
+
+      const HERO_CONTENT = [
+        { key: "first-digit", title: "6", body: "", hold: 0.13 },
+        { key: "full-number", title: "60", body: "", hold: 0.14 },
+        { key: "unit", title: "60", body: "fps", hold: 0.2 },
+      ];
+      const HERO_BASE_DURATION = 0.18;
+      const HERO_SEC_PER_CHAR = 0.02;
+      let heroCumulative = 0.12;
+      const HERO_TIMELINE = HERO_CONTENT.map((entry) => {
+        const duration = HERO_BASE_DURATION + (entry.title.length + entry.body.length) * HERO_SEC_PER_CHAR + entry.hold;
+        const start = heroCumulative;
+        heroCumulative += duration;
+        return { ...entry, start, end: heroCumulative };
+      });
+
+      const heroEntryAt = (time) => {
+        for (let index = HERO_TIMELINE.length - 1; index >= 0; index -= 1) {
+          if (time >= HERO_TIMELINE[index].start) return HERO_TIMELINE[index];
+        }
+        return HERO_TIMELINE[0];
+      };
+
+      const heroDriver = { t: 0 };
+      let lastHeroKey = "";
+      tl.to(heroDriver, {
+        t: heroCumulative,
+        duration: heroCumulative,
+        ease: "none",
+        onUpdate: () => {
+          const entry = heroEntryAt(heroDriver.t);
+          if (entry.key !== lastHeroKey) {
+            numberEl.textContent = entry.title;
+            unitEl.textContent = entry.body;
+            lastHeroKey = entry.key;
+          }
+        },
+      }, 0);
+
+      tl.to(baseline, { strokeDashoffset: 0, duration: 0.72, ease: "power2.out" }, 1.86);
+      tl.set([warmGhost, coolGhost], { strokeDashoffset: 0 }, 2.62);
+
+      const glitchHash = (value) => {
+        const hash = Math.sin(value * 127.1 + 311.7) * 43758.5453;
+        return hash - Math.floor(hash);
+      };
+      const glitchCopies = [warmGhost, coolGhost];
+      const glitchAmplitude = { value: 0 };
+      const GLITCH_START = 2.66;
+      const GLITCH_DURATION = 0.38;
+      const JITTER_STEP = 1 / 24;
+      const MAX_SPLIT = 12;
+
+      tl.set(glitchAmplitude, { value: 1 }, GLITCH_START);
+      tl.set(glitchCopies, { opacity: 0.72 }, GLITCH_START);
+      tl.to(glitchAmplitude, {
+        value: 0,
+        duration: GLITCH_DURATION,
+        ease: "power3.in",
+        onUpdate: () => {
+          const step = Math.floor(tl.time() / JITTER_STEP);
+          glitchCopies.forEach((copy, layer) => {
+            const x = (glitchHash(step * 13 + layer * 7) * 2 - 1) * MAX_SPLIT * glitchAmplitude.value;
+            const y = (glitchHash(step * 29 + layer * 11) * 2 - 1) * MAX_SPLIT * 0.35 * glitchAmplitude.value;
+            gsap.set(copy, { x, y });
+          });
+        },
+      }, GLITCH_START);
+      tl.set(glitchCopies, { x: 0, y: 0, opacity: 0 }, GLITCH_START + GLITCH_DURATION);
+
+      const TOKEN_SEQUENCE = [
+        { t: 0, text: "" },
+        { t: 3.04, text: "stutter?" },
+      ];
+      const tokenAt = (time) => {
+        for (let index = TOKEN_SEQUENCE.length - 1; index >= 0; index -= 1) {
+          if (time >= TOKEN_SEQUENCE[index].t) return TOKEN_SEQUENCE[index].text;
+        }
+        return "";
+      };
+      const tokenDriver = { t: 0 };
+      let lastToken = "";
+      tl.to(tokenDriver, {
+        t: 7.552,
+        duration: 7.552,
+        ease: "none",
+        onUpdate: () => {
+          const nextToken = tokenAt(tokenDriver.t);
+          if (nextToken !== lastToken) {
+            tokenEl.textContent = nextToken;
+            lastToken = nextToken;
+          }
+        },
+      }, 0);
+
+      const tickStarts = [4.95, 5.17, 5.39, 5.61, 5.83, 6.02, 6.18, 6.34, 6.48];
+      arrivalTicks.forEach((tick, index) => {
+        tl.to(tick, { strokeDashoffset: 0, duration: 0.18, ease: "power2.out" }, tickStarts[index]);
+      });
+
+      tl.fromTo(
+        gapMarker,
+        { opacity: 0, scale: 0, rotation: -8 },
+        { opacity: 1, scale: 1, rotation: -3, duration: 0.56, ease: "power2.out" },
+        6.28,
+      );
+    })();
+  </script>
+</template>

@@ -1,0 +1,922 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      isolation: isolate;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    #root > [data-part="02-position-object-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background-color: #0d0d0f;
+    }
+
+    #root [data-part="02-position-object-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.46;
+    }
+
+    #root [data-part="02-position-object-grid-line"] {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-edge"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 0.45cqh;
+      background-color: #ff6b1a;
+    }
+
+    #root > [data-part="02-position-object-content"] {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    #root [data-part="02-position-object-viewport"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    #root [data-part="02-position-object-chrome"] {
+      position: absolute;
+      top: 5.5cqh;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      z-index: 10;
+      height: 4.2cqh;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      background-color: #0d0d0f;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 1.42cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [data-part="02-position-object-chrome"] span:last-child {
+      color: #7d7977;
+    }
+
+    #root [data-part="02-position-object-world"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 2;
+      width: 100%;
+      height: 160cqh;
+      transform-origin: 50% 0;
+    }
+
+    #root [data-part="02-position-object-spine"] {
+      position: absolute;
+      top: 27cqh;
+      left: 8cqw;
+      z-index: 0;
+      width: 1px;
+      height: 106cqh;
+      background-color: #282726;
+    }
+
+    #root [data-part="02-position-object-spine"]::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -0.4cqw;
+      width: 0.8cqw;
+      height: 17cqh;
+      background-color: #ff6b1a;
+    }
+
+    #root [data-station] {
+      position: absolute;
+      left: 5.5cqw;
+      z-index: 2;
+      width: 89cqw;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-station="object"] {
+      top: 14cqh;
+      height: 39cqh;
+    }
+
+    #root [data-station="transform"] {
+      top: 61.5cqh;
+      height: 39cqh;
+    }
+
+    #root [data-station="channels"] {
+      top: 109cqh;
+      height: 49cqh;
+    }
+
+    #root [data-part="02-position-object-station-tick"] {
+      position: absolute;
+      top: 10.5cqh;
+      left: 1.9cqw;
+      width: 5.2cqw;
+      height: 2px;
+      background-color: #ff6b1a;
+    }
+
+    #root [data-part="02-position-object-title"] {
+      position: absolute;
+      top: 0;
+      left: 6.8cqw;
+      right: 0;
+      z-index: 5;
+      color: #f0f0f0;
+      font-size: 6.2cqw;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.9;
+      text-transform: lowercase;
+      white-space: nowrap;
+    }
+
+    #root [data-station="transform"] [data-part="02-position-object-title"] {
+      font-size: 5.2cqw;
+    }
+
+    #root [data-station="channels"] [data-part="02-position-object-title"] {
+      font-size: 5.4cqw;
+    }
+
+    #root [data-part="02-position-object-ring-wrap"] {
+      position: absolute;
+      top: 6.8cqh;
+      left: 18.5cqw;
+      width: 52cqw;
+      height: 52cqw;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-part="02-position-object-ring-svg"] {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    #root [data-part="02-position-object-orbit"] {
+      fill: none;
+      stroke: #504b48;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-axis"] {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-measure"] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-listener-shape"] rect[data-shell="true"] {
+      fill: #0d0d0f;
+      stroke: #f0f0f0;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-listener-shape"] rect[data-ear="true"] {
+      fill: #ff6b1a;
+    }
+
+    #root [data-part="02-position-object-facing"] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 4;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-sound-object"] rect[data-object="true"] {
+      fill: #ff6b1a;
+    }
+
+    #root [data-part="02-position-object-sound-object"] path {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 4;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-label"] {
+      position: absolute;
+      z-index: 6;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 1.42cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [data-label="angle"] {
+      top: 18cqh;
+      left: 10cqw;
+    }
+
+    #root [data-label="distance"] {
+      top: 31.5cqh;
+      right: 7cqw;
+    }
+
+    #root [data-label="object"] {
+      top: 9.5cqh;
+      right: 6cqw;
+    }
+
+    #root [data-part="02-position-object-transform-plane"] {
+      position: absolute;
+      top: 6.6cqh;
+      left: 10cqw;
+      width: 69cqw;
+      height: 30cqh;
+      overflow: visible;
+    }
+
+    #root [data-part="02-position-object-plane-grid"] {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-world-axes"] {
+      fill: none;
+      stroke: #504b48;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-local-axes"],
+    #root [data-part="02-position-object-object-vector"],
+    #root [data-part="02-position-object-projection"] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-projection"] {
+      stroke: #f0f0f0;
+      stroke-width: 2;
+      stroke-dasharray: 10 12;
+    }
+
+    #root [data-part="02-position-object-resolved-marker"] {
+      fill: #ff6b1a;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-label="facing"] {
+      top: 20.5cqh;
+      left: 47cqw;
+    }
+
+    #root [data-label="resolved"] {
+      top: 10.4cqh;
+      right: 6cqw;
+    }
+
+    #root [data-part="02-position-object-route-hub"] {
+      position: absolute;
+      top: 7cqh;
+      left: calc(50% - 3.2cqw);
+      z-index: 5;
+      width: 6.4cqw;
+      height: 6.4cqw;
+      background-color: #ff6b1a;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-part="02-position-object-route-hub"]::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 20%;
+      right: 20%;
+      height: 2px;
+      background-color: #0d0d0f;
+    }
+
+    #root [data-part="02-position-object-route-hub-label"] {
+      position: absolute;
+      top: 8.5cqh;
+      left: calc(50% + 5cqw);
+      z-index: 5;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 1.42cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [data-part="02-position-object-route-listener"] {
+      position: absolute;
+      top: 17cqh;
+      left: calc(50% - 7cqw);
+      z-index: 5;
+      width: 14cqw;
+      height: 5.2cqh;
+      border: 1px solid #f0f0f0;
+      background-color: #0d0d0f;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-part="02-position-object-route-listener"]::before,
+    #root [data-part="02-position-object-route-listener"]::after {
+      content: "";
+      position: absolute;
+      top: 1.25cqh;
+      width: 1.6cqw;
+      height: 2.7cqh;
+      background-color: #ff6b1a;
+    }
+
+    #root [data-part="02-position-object-route-listener"]::before {
+      left: -1.6cqw;
+    }
+
+    #root [data-part="02-position-object-route-listener"]::after {
+      right: -1.6cqw;
+    }
+
+    #root [data-part="02-position-object-routes-svg"] {
+      position: absolute;
+      top: 6.2cqh;
+      left: 0;
+      z-index: 2;
+      width: 100%;
+      height: 25cqh;
+      overflow: visible;
+    }
+
+    #root [data-route] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-object-feed"] {
+      fill: none;
+      stroke: #504b48;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-ear-card] {
+      position: absolute;
+      top: 29cqh;
+      z-index: 4;
+      width: 42cqw;
+      height: 15.5cqh;
+      overflow: hidden;
+      border-top: 1px solid #ff6b1a;
+      background-color: #1a1918;
+      transform-origin: 50% 50%;
+    }
+
+    #root [data-ear-card="left"] {
+      left: 0;
+    }
+
+    #root [data-ear-card="right"] {
+      right: 0;
+    }
+
+    #root [data-part="02-position-object-ear-label"] {
+      position: absolute;
+      top: 1.8cqh;
+      left: 2.6cqw;
+      color: #f0f0f0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.5cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [data-part="02-position-object-arrival-svg"] {
+      position: absolute;
+      right: 2.4cqw;
+      bottom: 1.9cqh;
+      left: 2.4cqw;
+      width: calc(100% - 4.8cqw);
+      height: 7.5cqh;
+      overflow: visible;
+    }
+
+    #root [data-part="02-position-object-arrival-baseline"] {
+      fill: none;
+      stroke: #504b48;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-arrival-trace] {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 4;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="02-position-object-arrival-marker"] {
+      fill: #f0f0f0;
+    }
+  </style>
+
+  <div id="root" data-composition-id="02-position-object" data-width="1080" data-height="1920" data-duration="10.313">
+    <div
+      class="clip"
+      data-part="02-position-object-ground"
+      data-start="0"
+      data-duration="10.313"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <svg
+        data-part="02-position-object-grid"
+        viewBox="0 0 1080 1920"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path data-part="02-position-object-grid-line" d="M 108 0 V 1920 M 216 0 V 1920 M 324 0 V 1920 M 432 0 V 1920 M 540 0 V 1920 M 648 0 V 1920 M 756 0 V 1920 M 864 0 V 1920 M 972 0 V 1920" />
+        <path data-part="02-position-object-grid-line" d="M 0 120 H 1080 M 0 240 H 1080 M 0 360 H 1080 M 0 480 H 1080 M 0 600 H 1080 M 0 720 H 1080 M 0 840 H 1080 M 0 960 H 1080 M 0 1080 H 1080 M 0 1200 H 1080 M 0 1320 H 1080 M 0 1440 H 1080 M 0 1560 H 1080 M 0 1680 H 1080 M 0 1800 H 1080" />
+      </svg>
+      <div data-part="02-position-object-edge"></div>
+    </div>
+
+    <div
+      class="clip"
+      data-part="02-position-object-content"
+      data-start="0"
+      data-duration="10.313"
+      data-track-index="1"
+    >
+      <div data-part="02-position-object-viewport">
+        <div data-part="02-position-object-chrome">
+          <span>position / listener / routes</span>
+          <span>02</span>
+        </div>
+
+        <div data-part="02-position-object-world">
+          <span data-part="02-position-object-spine" aria-hidden="true"></span>
+
+          <section data-station="object" aria-label="Sound object position station">
+            <span data-part="02-position-object-station-tick" aria-hidden="true"></span>
+            <span data-part="02-position-object-title">sound object</span>
+
+            <div data-part="02-position-object-ring-wrap">
+              <svg
+                data-part="02-position-object-ring-svg"
+                viewBox="0 0 600 600"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path data-part="02-position-object-axis" d="M 300 32 V 568 M 32 300 H 568" />
+                <circle id="02-position-object-orbit" data-part="02-position-object-orbit" data-draw="orbit" cx="300" cy="300" r="228" />
+                <path id="02-position-object-angle" data-part="02-position-object-measure" data-draw="angle" d="M 300 72 A 228 228 0 0 1 454 132" />
+                <path id="02-position-object-distance" data-part="02-position-object-measure" data-draw="distance" d="M 300 300 L 454 132" />
+
+                <g data-part="02-position-object-listener-shape">
+                  <rect data-shell="true" x="270" y="270" width="60" height="60" />
+                  <rect data-ear="true" x="254" y="284" width="10" height="32" />
+                  <rect data-ear="true" x="336" y="284" width="10" height="32" />
+                  <path data-part="02-position-object-facing" d="M 300 270 L 300 216 M 300 216 L 286 238 M 300 216 L 314 238" />
+                </g>
+
+                <g data-part="02-position-object-sound-object">
+                  <rect data-object="true" x="426" y="104" width="56" height="56" />
+                  <path d="M 493 116 H 520 M 493 132 H 536 M 493 148 H 520" />
+                </g>
+              </svg>
+            </div>
+
+            <span data-part="02-position-object-label" data-label="object">object</span>
+            <span data-part="02-position-object-label" data-label="angle">angle</span>
+            <span data-part="02-position-object-label" data-label="distance">distance</span>
+          </section>
+
+          <section data-station="transform" aria-label="Listener-relative transform station">
+            <span data-part="02-position-object-station-tick" aria-hidden="true"></span>
+            <span data-part="02-position-object-title">listener-relative</span>
+
+            <svg
+              data-part="02-position-object-transform-plane"
+              viewBox="0 0 760 560"
+              preserveAspectRatio="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path data-part="02-position-object-plane-grid" d="M 80 40 V 520 M 200 40 V 520 M 320 40 V 520 M 440 40 V 520 M 560 40 V 520 M 680 40 V 520 M 40 80 H 720 M 40 180 H 720 M 40 280 H 720 M 40 380 H 720 M 40 480 H 720" />
+              <path data-part="02-position-object-world-axes" d="M 380 42 V 518 M 42 280 H 718" />
+
+              <g data-part="02-position-object-local-axes">
+                <path d="M 380 470 V 88 M 380 88 L 362 116 M 380 88 L 398 116" />
+                <path d="M 110 280 H 650 M 650 280 L 622 262 M 650 280 L 622 298" />
+              </g>
+
+              <path id="02-position-object-vector" data-part="02-position-object-object-vector" data-draw="vector" d="M 380 280 L 584 112" />
+              <path id="02-position-object-projection" data-part="02-position-object-projection" data-draw="projection" d="M 584 112 V 280 H 380" />
+              <rect data-part="02-position-object-resolved-marker" x="566" y="94" width="36" height="36" />
+
+              <g data-part="02-position-object-listener-shape">
+                <rect data-shell="true" x="350" y="250" width="60" height="60" />
+                <rect data-ear="true" x="334" y="264" width="10" height="32" />
+                <rect data-ear="true" x="416" y="264" width="10" height="32" />
+              </g>
+            </svg>
+
+            <span data-part="02-position-object-label" data-label="facing">facing</span>
+            <span data-part="02-position-object-label" data-label="resolved">resolved</span>
+          </section>
+
+          <section data-station="channels" aria-label="Left and right channel arrival station">
+            <span data-part="02-position-object-station-tick" aria-hidden="true"></span>
+            <span data-part="02-position-object-title">channel arrival</span>
+
+            <span data-part="02-position-object-route-hub" aria-hidden="true"></span>
+            <span data-part="02-position-object-route-hub-label">sound object</span>
+            <span data-part="02-position-object-route-listener" aria-hidden="true"></span>
+
+            <svg
+              data-part="02-position-object-routes-svg"
+              viewBox="0 0 1080 480"
+              preserveAspectRatio="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path id="02-position-object-feed" data-part="02-position-object-object-feed" data-draw="feed" d="M 540 26 V 210" />
+              <path id="02-position-object-route-left" data-route="left" data-draw="route-left" d="M 540 210 L 454 278 L 258 446" />
+              <path id="02-position-object-route-right" data-route="right" data-draw="route-right" d="M 540 210 L 670 264 L 720 338 L 822 446" />
+            </svg>
+
+            <div data-ear-card="left">
+              <span data-part="02-position-object-ear-label">left ear</span>
+              <svg
+                data-part="02-position-object-arrival-svg"
+                viewBox="0 0 420 150"
+                preserveAspectRatio="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path data-part="02-position-object-arrival-baseline" d="M 8 80 H 412" />
+                <path id="02-position-object-arrival-left" data-arrival-trace="left" data-draw="arrival-left" d="M 10 80 H 58 L 78 28 L 104 128 L 132 54 L 158 98 L 182 80 H 410" />
+                <rect data-part="02-position-object-arrival-marker" data-arrival-marker="left" x="396" y="68" width="16" height="24" />
+              </svg>
+            </div>
+
+            <div data-ear-card="right">
+              <span data-part="02-position-object-ear-label">right ear</span>
+              <svg
+                data-part="02-position-object-arrival-svg"
+                viewBox="0 0 420 150"
+                preserveAspectRatio="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path data-part="02-position-object-arrival-baseline" d="M 8 80 H 412" />
+                <path id="02-position-object-arrival-right" data-arrival-trace="right" data-draw="arrival-right" d="M 10 80 H 116 L 140 46 L 166 116 L 192 32 L 220 128 L 246 62 L 272 80 H 410" />
+                <rect data-part="02-position-object-arrival-marker" data-arrival-marker="right" x="396" y="68" width="16" height="24" />
+              </svg>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="02-position-object"]');
+      const world = root.querySelector('[data-part="02-position-object-world"]');
+      const objectStation = root.querySelector('[data-station="object"]');
+      const transformStation = root.querySelector('[data-station="transform"]');
+      const channelStation = root.querySelector('[data-station="channels"]');
+      const objectTitle = objectStation.querySelector('[data-part="02-position-object-title"]');
+      const transformTitle = transformStation.querySelector('[data-part="02-position-object-title"]');
+      const channelTitle = channelStation.querySelector('[data-part="02-position-object-title"]');
+      const ringWrap = root.querySelector('[data-part="02-position-object-ring-wrap"]');
+      const listener = objectStation.querySelector('[data-part="02-position-object-listener-shape"]');
+      const soundObject = root.querySelector('[data-part="02-position-object-sound-object"]');
+      const objectLabels = Array.from(objectStation.querySelectorAll('[data-part="02-position-object-label"]'));
+      const localAxes = root.querySelector('[data-part="02-position-object-local-axes"]');
+      const transformListener = transformStation.querySelector('[data-part="02-position-object-listener-shape"]');
+      const resolvedMarker = root.querySelector('[data-part="02-position-object-resolved-marker"]');
+      const transformLabels = Array.from(transformStation.querySelectorAll('[data-part="02-position-object-label"]'));
+      const routeHub = root.querySelector('[data-part="02-position-object-route-hub"]');
+      const routeHubLabel = root.querySelector('[data-part="02-position-object-route-hub-label"]');
+      const routeListener = root.querySelector('[data-part="02-position-object-route-listener"]');
+      const earCards = Array.from(root.querySelectorAll('[data-ear-card]'));
+      const arrivalMarkers = Array.from(root.querySelectorAll('[data-arrival-marker]'));
+      const drawPaths = Array.from(root.querySelectorAll('[data-draw]'));
+
+      const draw = {};
+      drawPaths.forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+        draw[path.dataset.draw] = path;
+      });
+
+      const timeline = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["02-position-object"] = timeline;
+
+      timeline.fromTo(
+        world,
+        { y: 0 },
+        { y: -12, duration: 3, ease: "sine.inOut" },
+        0,
+      );
+      timeline.fromTo(
+        objectTitle,
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" },
+        0.02,
+      );
+      timeline.fromTo(
+        listener,
+        { opacity: 0, scale: 0.86 },
+        { opacity: 1, scale: 1, duration: 0.4, ease: "power3.out" },
+        0.06,
+      );
+      timeline.fromTo(
+        ringWrap,
+        { opacity: 0, scale: 0.97 },
+        { opacity: 1, scale: 1, duration: 0.48, ease: "power3.out" },
+        0.08,
+      );
+      timeline.to(
+        draw.orbit,
+        { strokeDashoffset: 0, duration: 0.72, ease: "power2.out" },
+        0.12,
+      );
+      timeline.fromTo(
+        soundObject,
+        { opacity: 0, x: 90, y: -100, scale: 0.82 },
+        { opacity: 1, x: 0, y: 0, scale: 1, duration: 0.82, ease: "power3.out" },
+        0.36,
+      );
+      timeline.to(
+        draw.distance,
+        { strokeDashoffset: 0, duration: 0.62, ease: "power2.out" },
+        0.78,
+      );
+      timeline.to(
+        draw.angle,
+        { strokeDashoffset: 0, duration: 0.66, ease: "power2.out" },
+        1.08,
+      );
+      objectLabels.forEach((label, index) => {
+        timeline.fromTo(
+          label,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.34, ease: "power3.out" },
+          1.22 + index * 0.32,
+        );
+      });
+
+      timeline.to(
+        world,
+        { y: -912, duration: 0.72, ease: "power3.inOut" },
+        3,
+      );
+      timeline.to(
+        world,
+        { y: -924, duration: 2.68, ease: "sine.inOut" },
+        3.72,
+      );
+      timeline.fromTo(
+        transformStation,
+        { opacity: 0, x: 24 },
+        { opacity: 1, x: 0, duration: 0.44, ease: "power3.out" },
+        3.22,
+      );
+      timeline.fromTo(
+        transformTitle,
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" },
+        3.4,
+      );
+      timeline.fromTo(
+        transformListener,
+        { opacity: 0, scale: 0.86 },
+        { opacity: 1, scale: 1, duration: 0.38, ease: "power3.out" },
+        3.78,
+      );
+      timeline.fromTo(
+        localAxes,
+        { opacity: 0, rotation: 34, svgOrigin: "380 280" },
+        {
+          opacity: 1,
+          rotation: 0,
+          svgOrigin: "380 280",
+          duration: 0.88,
+          ease: "power3.out",
+        },
+        4.02,
+      );
+      timeline.to(
+        draw.vector,
+        { strokeDashoffset: 0, duration: 0.68, ease: "power2.out" },
+        4.42,
+      );
+      timeline.to(
+        draw.projection,
+        { strokeDashoffset: 0, duration: 0.7, ease: "power2.out" },
+        4.9,
+      );
+      timeline.fromTo(
+        resolvedMarker,
+        { opacity: 0, scale: 0.72 },
+        { opacity: 1, scale: 1, duration: 0.36, ease: "back.out(1.6)" },
+        5.32,
+      );
+      transformLabels.forEach((label, index) => {
+        timeline.fromTo(
+          label,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.34, ease: "power3.out" },
+          5.48 + index * 0.34,
+        );
+      });
+
+      timeline.to(
+        world,
+        { y: -1824, duration: 0.48, ease: "power3.inOut" },
+        6.4,
+      );
+      timeline.fromTo(
+        channelStation,
+        { opacity: 0, x: -24 },
+        { opacity: 1, x: 0, duration: 0.4, ease: "power3.out" },
+        6.44,
+      );
+      timeline.fromTo(
+        channelTitle,
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.38, ease: "power3.out" },
+        6.52,
+      );
+      timeline.fromTo(
+        routeHub,
+        { opacity: 0, scale: 0.78 },
+        { opacity: 1, scale: 1, duration: 0.34, ease: "power3.out" },
+        6.56,
+      );
+      timeline.fromTo(
+        routeHubLabel,
+        { opacity: 0, x: 14 },
+        { opacity: 1, x: 0, duration: 0.32, ease: "power3.out" },
+        6.64,
+      );
+      timeline.fromTo(
+        routeListener,
+        { opacity: 0, scale: 0.86 },
+        { opacity: 1, scale: 1, duration: 0.36, ease: "power3.out" },
+        6.68,
+      );
+      timeline.to(
+        draw.feed,
+        { strokeDashoffset: 0, duration: 0.42, ease: "power2.out" },
+        6.62,
+      );
+      earCards.forEach((card, index) => {
+        timeline.fromTo(
+          card,
+          { opacity: 0, x: index === 0 ? -24 : 24 },
+          { opacity: 1, x: 0, duration: 0.4, ease: "power3.out" },
+          6.66 + index * 0.24,
+        );
+      });
+      timeline.to(
+        draw["route-left"],
+        { strokeDashoffset: 0, duration: 0.62, ease: "power2.out" },
+        6.72,
+      );
+      timeline.to(
+        draw["route-right"],
+        { strokeDashoffset: 0, duration: 0.78, ease: "power2.out" },
+        6.94,
+      );
+      timeline.to(
+        draw["arrival-left"],
+        { strokeDashoffset: 0, duration: 0.72, ease: "power2.out" },
+        7.54,
+      );
+      timeline.to(
+        draw["arrival-right"],
+        { strokeDashoffset: 0, duration: 0.86, ease: "power2.out" },
+        7.86,
+      );
+      arrivalMarkers.forEach((marker, index) => {
+        timeline.fromTo(
+          marker,
+          { opacity: 0, scaleY: 0 },
+          { opacity: 1, scaleY: 1, duration: 0.26, ease: "power3.out" },
+          8.22 + index * 0.28,
+        );
+      });
+
+      const holdDriver = { t: 0 };
+      timeline.to(
+        holdDriver,
+        { t: 1, duration: 1.033, ease: "none" },
+        8.78,
+      );
+    })();
+  </script>
+</template>

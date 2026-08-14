@@ -1,0 +1,484 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    #root * {
+      box-sizing: border-box;
+    }
+
+    [class~="04-cache-replay-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background: #0d0d0f;
+    }
+
+    [class~="04-cache-replay-scene"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      width: 100%;
+      height: 83cqh;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    [class~="04-cache-replay-chrome"] {
+      position: absolute;
+      top: 4.5cqh;
+      left: 5.6cqw;
+      width: 88.8cqw;
+      min-height: 3.7cqh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-bottom: 1px solid #282726;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.72cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [class~="04-cache-replay-chrome-side"] {
+      color: #504b48;
+    }
+
+    [class~="04-cache-replay-panel"] {
+      position: absolute;
+      left: 5.6cqw;
+      width: 88.8cqw;
+      height: 21.5cqh;
+      overflow: hidden;
+      background: #1a1918;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      will-change: transform, opacity;
+    }
+
+    [id="04-cache-replay-first-panel"] {
+      top: 10.2cqh;
+    }
+
+    [id="04-cache-replay-second-panel"] {
+      top: 38.5cqh;
+    }
+
+    [class~="04-cache-replay-panel-label"] {
+      position: absolute;
+      top: 6.3cqh;
+      left: 2.1cqw;
+      width: 14cqw;
+      color: #f0f0f0;
+      font-size: 2.8cqw;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 0.92;
+      text-transform: lowercase;
+    }
+
+    [class~="04-cache-replay-panel-label"]::before {
+      content: "/";
+      display: block;
+      margin-bottom: 1cqh;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.72cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+    }
+
+    [class~="04-cache-replay-trace"] {
+      position: absolute;
+      top: 2.1cqh;
+      left: 17cqw;
+      width: 67.5cqw;
+      height: 17cqh;
+      overflow: visible;
+    }
+
+    [class~="04-cache-replay-grid"],
+    [class~="04-cache-replay-first-path"],
+    [class~="04-cache-replay-second-path"],
+    [class~="04-cache-replay-spike-marker"] {
+      fill: none;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="04-cache-replay-grid"] {
+      stroke: #282726;
+      stroke-width: 1;
+    }
+
+    [class~="04-cache-replay-first-path"],
+    [class~="04-cache-replay-second-path"] {
+      stroke: #f0f0f0;
+      stroke-width: 5;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+
+    [class~="04-cache-replay-effect"] polygon {
+      fill: #ff6b1a;
+    }
+
+    [class~="04-cache-replay-spike-point"] {
+      fill: #ff6b1a;
+    }
+
+    [class~="04-cache-replay-spike-marker"] {
+      stroke: #ff6b1a;
+      stroke-width: 4;
+    }
+
+    [class~="04-cache-replay-spike-label"] {
+      fill: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    [class~="04-cache-replay-drawer"] {
+      position: absolute;
+      top: 31.7cqh;
+      left: 72.3cqw;
+      width: 19.5cqw;
+      height: 7cqh;
+      z-index: 3;
+      overflow: visible;
+      border-top: 1px solid #504b48;
+      border-bottom: 1px solid #282726;
+      background: #0d0d0f;
+    }
+
+    [class~="04-cache-replay-drawer-label"] {
+      position: absolute;
+      top: 1.1cqh;
+      left: 1cqw;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 0.72cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [class~="04-cache-replay-drawer-handle"] {
+      position: absolute;
+      top: 1.2cqh;
+      right: 1cqw;
+      width: 2.2cqw;
+      height: 2px;
+      background: #ff6b1a;
+    }
+
+    [class~="04-cache-replay-drawer-door"] {
+      position: absolute;
+      inset: 0;
+      border-left: 1px solid #282726;
+      border-right: 1px solid #282726;
+      background: #0d0d0f;
+      will-change: transform;
+    }
+
+    [class~="04-cache-replay-recipe"] {
+      position: absolute;
+      top: 1.1cqh;
+      left: 1.4cqw;
+      width: 16.7cqw;
+      min-height: 4.8cqh;
+      display: grid;
+      grid-template-columns: 1.1cqw 1fr;
+      align-items: center;
+      column-gap: 0.9cqw;
+      padding: 0.8cqh 0.8cqw;
+      border-left: 2px solid #ff6b1a;
+      background: #282726;
+      will-change: transform, opacity;
+    }
+
+    [class~="04-cache-replay-recipe-glyph"] {
+      width: 1.1cqw;
+      height: 1.1cqw;
+      background: #ff6b1a;
+    }
+
+    [class~="04-cache-replay-recipe-lines"] {
+      display: grid;
+      gap: 0.55cqh;
+    }
+
+    [class~="04-cache-replay-recipe-lines"] i {
+      display: block;
+      height: 1px;
+      background: #504b48;
+    }
+
+    [class~="04-cache-replay-recipe-lines"] i:last-child {
+      width: 64%;
+    }
+
+    [class~="04-cache-replay-hit"] {
+      position: absolute;
+      top: 32.3cqh;
+      left: 52.7cqw;
+      width: 16cqw;
+      padding-top: 1.2cqh;
+      border-top: 1px solid #f0f0f0;
+      color: #f0f0f0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.45cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+      transform-origin: 0% 50%;
+      will-change: transform, opacity, filter;
+    }
+
+    [class~="04-cache-replay-hit"]::before {
+      content: "/";
+      padding-right: 0.8cqw;
+      color: #ff6b1a;
+    }
+
+    [class~="04-cache-replay-align-guide"] {
+      position: absolute;
+      top: 12.4cqh;
+      left: 57.314cqw;
+      width: 1px;
+      height: 45.8cqh;
+      z-index: 4;
+      background: #ff6b1a;
+      transform-origin: 50% 50%;
+    }
+
+    [class~="04-cache-replay-proof"] {
+      position: absolute;
+      top: 66.2cqh;
+      left: 5.6cqw;
+      width: 88.8cqw;
+      color: #f0f0f0;
+      font-size: 4.25cqw;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 0.95;
+      text-align: center;
+      text-transform: lowercase;
+    }
+
+    [class~="04-cache-replay-proof"] span {
+      color: #ff6b1a;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="04-cache-replay"
+    data-width="1080"
+    data-height="1920"
+    data-duration="8.521"
+  >
+    <div
+      class="clip 04-cache-replay-ground"
+      data-start="0"
+      data-duration="8.521"
+      data-track-index="0"
+      aria-hidden="true"
+    ></div>
+
+    <div
+      class="clip 04-cache-replay-scene"
+      data-start="0"
+      data-duration="8.521"
+      data-track-index="1"
+    >
+      <div class="04-cache-replay-chrome">
+        <span>cache replay // 04</span>
+        <span class="04-cache-replay-chrome-side">same effect</span>
+      </div>
+
+      <section id="04-cache-replay-first-panel" class="04-cache-replay-panel">
+        <div class="04-cache-replay-panel-label">first run</div>
+        <svg class="04-cache-replay-trace" viewBox="0 0 1400 180" preserveAspectRatio="none" role="img" aria-label="First run timing trace with a thirty-eight millisecond spike">
+          <path class="04-cache-replay-grid" d="M35 110H1365 M35 35V150 M245 35V150 M455 35V150 M665 35V150 M875 35V150 M1085 35V150 M1365 35V150" />
+          <path id="04-cache-replay-first-path" class="04-cache-replay-first-path" data-draw="true" d="M35 110L155 106L275 112L395 108L515 111L635 108L720 28L805 110L925 107L1045 112L1165 108L1285 110L1365 108" />
+          <circle class="04-cache-replay-spike-point" cx="720" cy="28" r="10" />
+          <g class="04-cache-replay-effect" transform="translate(720 110) scale(0.3) translate(-50 -50)">
+            <polygon points="50,0 61,31 92,8 69,39 100,50 69,61 92,92 61,69 50,100 39,69 8,92 31,61 0,50 31,39 8,8 39,31" />
+          </g>
+          <text id="04-cache-replay-spike-label" class="04-cache-replay-spike-label" x="720" y="18" text-anchor="middle">38 MS</text>
+          <circle id="04-cache-replay-spike-marker" class="04-cache-replay-spike-marker" data-draw="true" cx="720" cy="28" r="25" />
+        </svg>
+      </section>
+
+      <section id="04-cache-replay-second-panel" class="04-cache-replay-panel">
+        <div class="04-cache-replay-panel-label">second run</div>
+        <svg class="04-cache-replay-trace" viewBox="0 0 1400 180" preserveAspectRatio="none" role="img" aria-label="Second run timing trace with an even cached pass">
+          <path class="04-cache-replay-grid" d="M35 110H1365 M35 35V150 M245 35V150 M455 35V150 M665 35V150 M875 35V150 M1085 35V150 M1365 35V150" />
+          <path id="04-cache-replay-second-path" class="04-cache-replay-second-path" data-draw="true" d="M35 110L155 106L275 112L395 108L515 111L635 108L720 110L805 109L925 107L1045 112L1165 108L1285 110L1365 108" />
+          <g class="04-cache-replay-effect" transform="translate(720 110) scale(0.3) translate(-50 -50)">
+            <polygon points="50,0 61,31 92,8 69,39 100,50 69,61 92,92 61,69 50,100 39,69 8,92 31,61 0,50 31,39 8,8 39,31" />
+          </g>
+        </svg>
+      </section>
+
+      <div id="04-cache-replay-drawer" class="04-cache-replay-drawer">
+        <div id="04-cache-replay-recipe" class="04-cache-replay-recipe" aria-hidden="true">
+          <span class="04-cache-replay-recipe-glyph"></span>
+          <span class="04-cache-replay-recipe-lines"><i></i><i></i><i></i></span>
+        </div>
+        <div id="04-cache-replay-drawer-door" class="04-cache-replay-drawer-door">
+          <span class="04-cache-replay-drawer-label">cache</span>
+          <span class="04-cache-replay-drawer-handle"></span>
+        </div>
+      </div>
+
+      <div id="04-cache-replay-hit" class="04-cache-replay-hit">cache hit</div>
+      <div id="04-cache-replay-align-guide" class="04-cache-replay-align-guide" aria-hidden="true"></div>
+
+      <div id="04-cache-replay-proof" class="04-cache-replay-proof">
+        same settings <span>/ different wait</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="04-cache-replay"]');
+      if (!root || typeof gsap === "undefined") return;
+
+      const byId = (id) => document.getElementById(id);
+      const chrome = root.querySelector('[class~="04-cache-replay-chrome"]');
+      const firstPanel = byId("04-cache-replay-first-panel");
+      const secondPanel = byId("04-cache-replay-second-panel");
+      const firstPath = byId("04-cache-replay-first-path");
+      const secondPath = byId("04-cache-replay-second-path");
+      const drawer = byId("04-cache-replay-drawer");
+      const door = byId("04-cache-replay-drawer-door");
+      const recipe = byId("04-cache-replay-recipe");
+      const hit = byId("04-cache-replay-hit");
+      const alignGuide = byId("04-cache-replay-align-guide");
+      const marker = byId("04-cache-replay-spike-marker");
+      const proof = byId("04-cache-replay-proof");
+
+      root.querySelectorAll("[data-draw]").forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      const tl = gsap.timeline({ paused: true });
+
+      tl.set(secondPanel, { opacity: 0 }, 0);
+      tl.set(recipe, { opacity: 0 }, 0);
+      tl.set(hit, { opacity: 0 }, 0);
+      tl.set(alignGuide, { opacity: 0 }, 0);
+      tl.set(proof, { opacity: 0 }, 0);
+
+      tl.fromTo(
+        chrome,
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.48, ease: "power2.out" },
+        0.04,
+      );
+      tl.fromTo(
+        firstPanel,
+        { x: -230, opacity: 0.35 },
+        { x: 0, opacity: 1, duration: 0.7, ease: "power4.out" },
+        0.05,
+      );
+      tl.to(firstPath, { strokeDashoffset: 0, duration: 1.15, ease: "power2.out" }, 0.35);
+      tl.fromTo(
+        byId("04-cache-replay-spike-label"),
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.45, ease: "power1.out" },
+        1.05,
+      );
+      tl.fromTo(
+        drawer,
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+        1.55,
+      );
+
+      tl.fromTo(
+        secondPanel,
+        { x: 230, opacity: 0.35 },
+        { x: 0, opacity: 1, duration: 0.72, ease: "power4.out" },
+        2.7,
+      );
+      tl.to(secondPath, { strokeDashoffset: 0, duration: 1.05, ease: "power2.out" }, 3.02);
+      tl.to(door, { y: 38, duration: 0.42, ease: "power3.out" }, 3.42);
+      tl.fromTo(
+        recipe,
+        { y: -18, opacity: 0 },
+        { y: 42, opacity: 1, duration: 0.58, ease: "power3.out" },
+        3.64,
+      );
+      tl.fromTo(
+        hit,
+        { opacity: 0.15, scale: 1.3, filter: "blur(10px)" },
+        { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.44, ease: "expo.out" },
+        4.4,
+      );
+
+      tl.fromTo(
+        alignGuide,
+        { opacity: 0, scaleY: 0.08 },
+        { opacity: 0.55, scaleY: 1, duration: 0.5, ease: "power2.out" },
+        6.5,
+      );
+      tl.to(marker, { strokeDashoffset: 0, duration: 0.46, ease: "power2.out" }, 6.56);
+      tl.fromTo(
+        proof,
+        { opacity: 0, y: 24 },
+        { opacity: 1, y: 0, duration: 0.52, ease: "power3.out" },
+        6.76,
+      );
+
+      tl.to({}, { duration: 8.021 }, 0);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["04-cache-replay"] = tl;
+    })();
+  </script>
+</template>

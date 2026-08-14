@@ -1,0 +1,535 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400 900;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: block;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: block;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      isolation: isolate;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    #root > [data-part="03-clean-cadence-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background-color: #0d0d0f;
+    }
+
+    #root [data-part="03-clean-cadence-edge"] {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 0.42cqw;
+      height: 83cqh;
+      background-color: #ff6b1a;
+    }
+
+    #root [data-part="03-clean-cadence-edge-hairline"] {
+      position: absolute;
+      top: 0;
+      right: 0.9cqw;
+      width: 1px;
+      height: 83cqh;
+      background-color: rgba(255, 107, 26, 0.34);
+    }
+
+    #root > [data-part="03-clean-cadence-content"] {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+    }
+
+    #root [data-part="03-clean-cadence-top-rule"] {
+      position: absolute;
+      top: 7.2cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 1px;
+      background-color: #282726;
+    }
+
+    #root [data-part="03-clean-cadence-kicker"] {
+      position: absolute;
+      top: 8.8cqh;
+      left: 5.5cqw;
+      display: flex;
+      align-items: center;
+      gap: 0.9cqw;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 0.72cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #root [data-part="03-clean-cadence-kicker-stub"] {
+      display: block;
+      width: 1.9cqw;
+      height: 2px;
+      background-color: #ff6b1a;
+    }
+
+    #root [data-part="03-clean-cadence-anchor"] {
+      position: absolute;
+      top: 12.6cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 24cqh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      white-space: nowrap;
+      transform-origin: 50% 45%;
+    }
+
+    #root [data-part="03-clean-cadence-anchor-value"] {
+      color: #ff6b1a;
+      font-size: 12.2cqw;
+      font-weight: 900;
+      letter-spacing: -0.055em;
+      line-height: 0.83;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #root [data-part="03-clean-cadence-anchor-unit"] {
+      margin-top: 7.4cqh;
+      margin-left: 1.15cqw;
+      color: #f0f0f0;
+      font-size: 3.2cqw;
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1;
+      text-transform: lowercase;
+    }
+
+    #root [data-part="03-clean-cadence-ruler-stage"] {
+      position: absolute;
+      top: 40.5cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 34.5cqh;
+    }
+
+    #root [data-part="03-clean-cadence-ruler-svg"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    #root [data-part="03-clean-cadence-ruler-path"] {
+      fill: none;
+      stroke: #504b48;
+      stroke-width: 2;
+      stroke-linecap: square;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="03-clean-cadence-gate-path"] {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      stroke-linecap: square;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [data-part="03-clean-cadence-tile-grid"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 12.8cqh;
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    #root [data-gate-tile] {
+      position: relative;
+      align-self: start;
+      justify-self: center;
+      width: 10.8cqw;
+      height: 10.5cqh;
+      overflow: hidden;
+      border-top: 1px solid #ff6b1a;
+      background-color: #ff6b1a;
+      color: #0d0d0f;
+      will-change: opacity, transform;
+    }
+
+    #root [data-part="03-clean-cadence-tile-cap"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2.2cqh;
+      border-bottom: 1px solid rgba(13, 13, 15, 0.24);
+    }
+
+    #root [data-part="03-clean-cadence-tile-index"] {
+      position: absolute;
+      top: 0.62cqh;
+      right: 0.55cqw;
+      color: #0d0d0f;
+      font-family: "IBM Plex Mono";
+      font-size: 0.62cqw;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #root [data-part="03-clean-cadence-tile-field"] {
+      position: absolute;
+      top: 3.5cqh;
+      left: 0.8cqw;
+      right: 0.8cqw;
+      bottom: 1.2cqh;
+      display: grid;
+      grid-template-columns: 1.5fr 0.75fr 1fr;
+      gap: 0.42cqw;
+      align-items: end;
+    }
+
+    #root [data-part="03-clean-cadence-tile-bar"] {
+      display: block;
+      background-color: #0d0d0f;
+    }
+
+    #root [data-part="03-clean-cadence-tile-bar"]:nth-child(1) {
+      height: 3.2cqh;
+    }
+
+    #root [data-part="03-clean-cadence-tile-bar"]:nth-child(2) {
+      height: 5.1cqh;
+      opacity: 0.72;
+    }
+
+    #root [data-part="03-clean-cadence-tile-bar"]:nth-child(3) {
+      height: 2.1cqh;
+      opacity: 0.48;
+    }
+
+    #root [data-part="03-clean-cadence-gate-labels"] {
+      position: absolute;
+      top: 27.1cqh;
+      left: 0;
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    #root [data-gate-label] {
+      justify-self: center;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 0.72cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #root [data-part="03-clean-cadence-endcap"] {
+      position: absolute;
+      top: 23.25cqh;
+      width: 0.42cqw;
+      height: 0.78cqh;
+      background-color: #504b48;
+    }
+
+    #root [data-part="03-clean-cadence-endcap"][data-side="left"] {
+      left: 0.55cqw;
+    }
+
+    #root [data-part="03-clean-cadence-endcap"][data-side="right"] {
+      right: 0.55cqw;
+    }
+  </style>
+
+  <div id="root" data-composition-id="03-clean-cadence" data-width="1080" data-height="1920" data-duration="9.481">
+    <div
+      class="clip"
+      data-part="03-clean-cadence-ground"
+      data-start="0"
+      data-duration="9.481"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <div data-part="03-clean-cadence-edge"></div>
+      <div data-part="03-clean-cadence-edge-hairline"></div>
+    </div>
+
+    <div
+      class="clip"
+      data-part="03-clean-cadence-content"
+      data-start="0"
+      data-duration="9.481"
+      data-track-index="1"
+    >
+      <div data-part="03-clean-cadence-top-rule"></div>
+
+      <div data-part="03-clean-cadence-kicker">
+        <span data-part="03-clean-cadence-kicker-stub"></span>
+        <span>frame budget</span>
+      </div>
+
+      <div data-part="03-clean-cadence-anchor" aria-label="16.7 milliseconds">
+        <span data-part="03-clean-cadence-anchor-value">16.7</span>
+        <span data-part="03-clean-cadence-anchor-unit">ms</span>
+      </div>
+
+      <div data-part="03-clean-cadence-ruler-stage" aria-hidden="true">
+        <svg
+          data-part="03-clean-cadence-ruler-svg"
+          viewBox="0 0 1708 373"
+          preserveAspectRatio="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            id="03-clean-cadence-ruler-line"
+            data-part="03-clean-cadence-ruler-path"
+            d="M 12 250 H 1696"
+          />
+          <path id="03-clean-cadence-gate-line-1" data-gate-line="1" data-part="03-clean-cadence-gate-path" d="M 142 122 V 250" />
+          <path id="03-clean-cadence-gate-line-2" data-gate-line="2" data-part="03-clean-cadence-gate-path" d="M 427 122 V 250" />
+          <path id="03-clean-cadence-gate-line-3" data-gate-line="3" data-part="03-clean-cadence-gate-path" d="M 712 122 V 250" />
+          <path id="03-clean-cadence-gate-line-4" data-gate-line="4" data-part="03-clean-cadence-gate-path" d="M 996 122 V 250" />
+          <path id="03-clean-cadence-gate-line-5" data-gate-line="5" data-part="03-clean-cadence-gate-path" d="M 1281 122 V 250" />
+          <path id="03-clean-cadence-gate-line-6" data-gate-line="6" data-part="03-clean-cadence-gate-path" d="M 1566 122 V 250" />
+        </svg>
+
+        <div data-part="03-clean-cadence-tile-grid">
+          <div data-gate-tile="1">
+            <div data-part="03-clean-cadence-tile-cap"></div>
+            <span data-part="03-clean-cadence-tile-index">01</span>
+            <div data-part="03-clean-cadence-tile-field">
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+            </div>
+          </div>
+          <div data-gate-tile="2">
+            <div data-part="03-clean-cadence-tile-cap"></div>
+            <span data-part="03-clean-cadence-tile-index">02</span>
+            <div data-part="03-clean-cadence-tile-field">
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+            </div>
+          </div>
+          <div data-gate-tile="3">
+            <div data-part="03-clean-cadence-tile-cap"></div>
+            <span data-part="03-clean-cadence-tile-index">03</span>
+            <div data-part="03-clean-cadence-tile-field">
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+            </div>
+          </div>
+          <div data-gate-tile="4">
+            <div data-part="03-clean-cadence-tile-cap"></div>
+            <span data-part="03-clean-cadence-tile-index">04</span>
+            <div data-part="03-clean-cadence-tile-field">
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+            </div>
+          </div>
+          <div data-gate-tile="5">
+            <div data-part="03-clean-cadence-tile-cap"></div>
+            <span data-part="03-clean-cadence-tile-index">05</span>
+            <div data-part="03-clean-cadence-tile-field">
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+            </div>
+          </div>
+          <div data-gate-tile="6">
+            <div data-part="03-clean-cadence-tile-cap"></div>
+            <span data-part="03-clean-cadence-tile-index">06</span>
+            <div data-part="03-clean-cadence-tile-field">
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+              <span data-part="03-clean-cadence-tile-bar"></span>
+            </div>
+          </div>
+        </div>
+
+        <div data-part="03-clean-cadence-gate-labels">
+          <span data-gate-label="1">01</span>
+          <span data-gate-label="2">02</span>
+          <span data-gate-label="3">03</span>
+          <span data-gate-label="4">04</span>
+          <span data-gate-label="5">05</span>
+          <span data-gate-label="6">06</span>
+        </div>
+
+        <span data-part="03-clean-cadence-endcap" data-side="left"></span>
+        <span data-part="03-clean-cadence-endcap" data-side="right"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-composition-id="03-clean-cadence"]');
+      const anchor = root.querySelector('[data-part="03-clean-cadence-anchor"]');
+      const kicker = root.querySelector('[data-part="03-clean-cadence-kicker"]');
+      const topRule = root.querySelector('[data-part="03-clean-cadence-top-rule"]');
+      const rulerPath = root.querySelector('[id="03-clean-cadence-ruler-line"]');
+      const gatePaths = Array.from(root.querySelectorAll("[data-gate-line]"));
+      const tiles = Array.from(root.querySelectorAll("[data-gate-tile]"));
+      const labels = Array.from(root.querySelectorAll("[data-gate-label]"));
+      const endcaps = Array.from(root.querySelectorAll('[data-part="03-clean-cadence-endcap"]'));
+
+      const timeline = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["03-clean-cadence"] = timeline;
+
+      [rulerPath, ...gatePaths].forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      const cadenceStates = [
+        { t: 0, count: 0 },
+        { t: 0.12, count: 1 },
+        { t: 0.88, count: 2 },
+        { t: 1.64, count: 3 },
+        { t: 2.4, count: 4 },
+        { t: 3.16, count: 5 },
+        { t: 3.92, count: 6 },
+      ];
+
+      function cadenceAt(time) {
+        for (let index = cadenceStates.length - 1; index >= 0; index -= 1) {
+          if (time >= cadenceStates[index].t) return cadenceStates[index];
+        }
+        return cadenceStates[0];
+      }
+
+      function applyCadence(time) {
+        const state = cadenceAt(time);
+        const finished = time >= 4.6;
+
+        tiles.forEach((tile, index) => {
+          const visible = index < state.count;
+          const current = index === state.count - 1;
+          tile.style.opacity = visible ? "1" : "0";
+          tile.style.transform = visible ? "translateY(0)" : "translateY(-12px)";
+          tile.style.backgroundColor = finished || current ? "#ff6b1a" : "rgba(255, 107, 26, 0.42)";
+        });
+
+        gatePaths.forEach((path, index) => {
+          const active = index < state.count;
+          path.style.stroke = finished ? "#ff6b1a" : active ? "#ff6b1a" : "#282726";
+          path.style.strokeWidth = finished || active ? "2" : "1";
+        });
+
+        labels.forEach((label, index) => {
+          const active = index < state.count;
+          label.style.color = finished ? "#f0f0f0" : active ? "#ff6b1a" : "#504b48";
+          label.style.opacity = finished ? "1" : active ? "1" : "0.42";
+        });
+
+        rulerPath.style.stroke = finished ? "#f0f0f0" : "#504b48";
+        rulerPath.style.strokeWidth = finished ? "3" : "2";
+        endcaps.forEach((endcap) => {
+          endcap.style.backgroundColor = finished ? "#f0f0f0" : "#504b48";
+        });
+      }
+
+      applyCadence(0);
+
+      timeline.fromTo(
+        anchor,
+        { opacity: 0, y: 28, scale: 0.96 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.48, ease: "power3.out" },
+        0.02,
+      );
+      timeline.fromTo(
+        kicker,
+        { opacity: 0, x: -24 },
+        { opacity: 1, x: 0, duration: 0.42, ease: "power2.out" },
+        0.18,
+      );
+      timeline.fromTo(
+        topRule,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.5, ease: "power1.out" },
+        0.2,
+      );
+
+      timeline.to(
+        rulerPath,
+        { strokeDashoffset: 0, duration: 1.55, ease: "power2.out" },
+        0.55,
+      );
+      gatePaths.forEach((path, index) => {
+        timeline.to(
+          path,
+          { strokeDashoffset: 0, duration: 0.4, ease: "power2.out" },
+          0.55 + index * 0.3,
+        );
+      });
+
+      const cadenceDriver = { t: 0 };
+      timeline.to(
+        cadenceDriver,
+        {
+          t: 6.381,
+          duration: 6.381,
+          ease: "none",
+          onUpdate: () => applyCadence(cadenceDriver.t),
+        },
+        2.6,
+      );
+    })();
+  </script>
+</template>

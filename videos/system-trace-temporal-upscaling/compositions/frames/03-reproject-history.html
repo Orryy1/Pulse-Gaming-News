@@ -1,0 +1,908 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+      isolation: isolate;
+    }
+
+    #root,
+    #root * {
+      box-sizing: border-box;
+    }
+
+    [class~="03-reproject-history-ground"] {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background: #0D0D0F;
+    }
+
+    [class~="03-reproject-history-ground-rule"] {
+      position: absolute;
+      top: 5.5cqh;
+      left: 5.5cqw;
+      width: 3.35cqw;
+      height: 2px;
+      background: #FF6B1A;
+    }
+
+    [class~="03-reproject-history-ground-line"] {
+      position: absolute;
+      top: 5.5cqh;
+      bottom: 17cqh;
+      width: 1px;
+      background: #282726;
+    }
+
+    [class~="03-reproject-history-ground-line-a"] {
+      left: 27.78cqw;
+    }
+
+    [class~="03-reproject-history-ground-line-b"] {
+      right: 5.5cqw;
+    }
+
+    [class~="03-reproject-history-scene"] {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    [class~="03-reproject-history-current-view"] {
+      position: absolute;
+      top: 8.33cqh;
+      left: 27.78cqw;
+      width: 66.67cqw;
+      height: 39.58cqh;
+      z-index: 2;
+      overflow: hidden;
+      border: 1px solid #504B48;
+      background: #1A1918;
+      transform-origin: 100% 0%;
+    }
+
+    [class~="03-reproject-history-current-header"] {
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 4cqh;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2.2cqw;
+      border-bottom: 1px solid #504B48;
+      font-family: "IBM Plex Mono";
+      font-size: 1.12cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    [class~="03-reproject-history-pin"] {
+      width: 1.1cqw;
+      height: 1.1cqw;
+      background: #FF6B1A;
+    }
+
+    [class~="03-reproject-history-current-field"] {
+      position: absolute;
+      inset: 4cqh 0 0 0;
+      overflow: hidden;
+      background: #0D0D0F;
+    }
+
+    [class~="03-reproject-history-view-hairline"] {
+      position: absolute;
+      background: #282726;
+    }
+
+    [class~="03-reproject-history-view-hairline-a"] {
+      top: 35%;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      transform-origin: 0% 50%;
+    }
+
+    [class~="03-reproject-history-view-hairline-b"] {
+      top: 0;
+      left: 61%;
+      width: 1px;
+      height: 100%;
+      transform-origin: 50% 0%;
+    }
+
+    [class~="03-reproject-history-view-block"] {
+      position: absolute;
+      border: 1px solid #282726;
+      background: #1A1918;
+    }
+
+    [class~="03-reproject-history-view-block-a"] {
+      top: 8%;
+      left: 10%;
+      width: 34%;
+      height: 18%;
+    }
+
+    [class~="03-reproject-history-view-block-b"] {
+      top: 48%;
+      right: 8%;
+      width: 25%;
+      height: 27%;
+      border-left-color: #FF6B1A;
+    }
+
+    [class~="03-reproject-history-view-block-c"] {
+      right: 42%;
+      bottom: 7%;
+      width: 19%;
+      height: 13%;
+    }
+
+    [class~="03-reproject-history-time-ruler"] {
+      position: absolute;
+      top: 12.6cqh;
+      left: 5.5cqw;
+      width: 17cqw;
+      height: 35.7cqh;
+      z-index: 1;
+    }
+
+    [class~="03-reproject-history-ruler-line"] {
+      position: absolute;
+      top: 0;
+      left: 2.25cqw;
+      width: 1px;
+      height: 100%;
+      background: #504B48;
+      transform-origin: 50% 0%;
+    }
+
+    [class~="03-reproject-history-ruler-tick"] {
+      position: absolute;
+      left: 1.42cqw;
+      width: 1.7cqw;
+      height: 1px;
+      background: #504B48;
+    }
+
+    [class~="03-reproject-history-ruler-tick-accent"] {
+      left: 0.75cqw;
+      width: 3.05cqw;
+      height: 2px;
+      background: #FF6B1A;
+    }
+
+    [class~="03-reproject-history-ruler-caption"] {
+      position: absolute;
+      top: 0;
+      left: 4.3cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 0.94cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #7D7977;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    [class~="03-reproject-history-history-tile"] {
+      position: absolute;
+      left: 6.48cqw;
+      width: 15.56cqw;
+      height: 7.4cqh;
+      z-index: 5;
+      will-change: transform;
+    }
+
+    [data-03-reproject-history-tile="a"] {
+      top: 16.67cqh;
+    }
+
+    [data-03-reproject-history-tile="b"] {
+      top: 28.13cqh;
+    }
+
+    [data-03-reproject-history-tile="c"] {
+      top: 39.58cqh;
+    }
+
+    [class~="03-reproject-history-tile-face"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      border: 1px solid #504B48;
+      border-left: 3px solid #FF6B1A;
+      background: #1A1918;
+    }
+
+    [class~="03-reproject-history-tile-label"] {
+      position: absolute;
+      top: 0.9cqh;
+      left: 1.15cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 0.86cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #F0F0F0;
+      text-transform: uppercase;
+    }
+
+    [class~="03-reproject-history-tile-band"] {
+      position: absolute;
+      right: 1cqw;
+      bottom: 1cqh;
+      height: 1px;
+      background: #504B48;
+    }
+
+    [class~="03-reproject-history-tile-band-a"] {
+      left: 1.15cqw;
+    }
+
+    [class~="03-reproject-history-tile-band-b"] {
+      left: 4.2cqw;
+      bottom: 2.1cqh;
+      background: #282726;
+    }
+
+    [class~="03-reproject-history-tile-pixel"] {
+      position: absolute;
+      right: 1cqw;
+      top: 0.85cqh;
+      width: 2.15cqw;
+      height: 2.15cqw;
+      border: 1px solid #FF6B1A;
+    }
+
+    [class~="03-reproject-history-destination"] {
+      position: absolute;
+      width: 17.22cqw;
+      height: 8.44cqh;
+      z-index: 6;
+      border: 1px solid #504B48;
+      background: transparent;
+      transform-origin: 50% 50%;
+    }
+
+    [data-03-reproject-history-destination="a"] {
+      top: 16.15cqh;
+      left: 41.76cqw;
+    }
+
+    [data-03-reproject-history-destination="b"] {
+      top: 25.52cqh;
+      left: 66.76cqw;
+    }
+
+    [data-03-reproject-history-destination="c"] {
+      top: 35.42cqh;
+      left: 45.46cqw;
+    }
+
+    [class~="03-reproject-history-destination"]::before,
+    [class~="03-reproject-history-destination"]::after {
+      content: "";
+      position: absolute;
+      background: #FF6B1A;
+    }
+
+    [class~="03-reproject-history-destination"]::before {
+      top: -1px;
+      left: -1px;
+      width: 2.2cqw;
+      height: 2px;
+    }
+
+    [class~="03-reproject-history-destination"]::after {
+      top: -1px;
+      left: -1px;
+      width: 2px;
+      height: 2.2cqw;
+    }
+
+    [class~="03-reproject-history-vector-field"] {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    [class~="03-reproject-history-vector-path"] {
+      fill: none;
+      stroke: #FF6B1A;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [class~="03-reproject-history-vector-arrow"] {
+      fill: #FF6B1A;
+      transform-box: fill-box;
+      transform-origin: 50% 50%;
+    }
+
+    [class~="03-reproject-history-stop-line"] {
+      position: absolute;
+      top: 47.91cqh;
+      left: 45.46cqw;
+      width: 17.22cqw;
+      height: 3px;
+      z-index: 7;
+      background: #FF6B1A;
+      transform-origin: 0% 50%;
+    }
+
+    [class~="03-reproject-history-depth-stage"] {
+      position: absolute;
+      top: 48.44cqh;
+      left: 5.5cqw;
+      width: 89cqw;
+      height: 21.9cqh;
+      z-index: 3;
+      overflow: hidden;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+    }
+
+    [class~="03-reproject-history-depth-axis"] {
+      position: absolute;
+      top: 2.35cqh;
+      left: 0;
+      width: 2.8cqw;
+      height: 1px;
+      background: #FF6B1A;
+      transform-origin: 0% 50%;
+    }
+
+    [class~="03-reproject-history-background-plane"],
+    [class~="03-reproject-history-foreground-plane"] {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      padding: 0 2.2cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 1.02cqw;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      will-change: transform;
+    }
+
+    [class~="03-reproject-history-background-plane"] {
+      top: 9.2cqh;
+      left: 8.2cqw;
+      width: 75cqw;
+      height: 7.1cqh;
+      z-index: 1;
+      border: 1px solid #504B48;
+      color: #84817F;
+      background: #1A1918;
+    }
+
+    [class~="03-reproject-history-foreground-plane"] {
+      top: 2.6cqh;
+      left: 1.4cqw;
+      width: 66.5cqw;
+      height: 7.8cqh;
+      z-index: 2;
+      color: #0D0D0F;
+      background: #FF6B1A;
+    }
+
+    [class~="03-reproject-history-plane-mark"] {
+      display: inline-block;
+      width: 2.5cqw;
+      margin-right: 1.1cqw;
+      height: 2px;
+      background: currentColor;
+    }
+
+    [class~="03-reproject-history-final"] {
+      position: absolute;
+      top: 72.6cqh;
+      left: 5.5cqw;
+      width: 84cqw;
+      z-index: 8;
+    }
+
+    [class~="03-reproject-history-final-rule"] {
+      width: 3.35cqw;
+      height: 2px;
+      margin-bottom: 1.65cqh;
+      background: #FF6B1A;
+      transform-origin: 0% 50%;
+    }
+
+    [class~="03-reproject-history-final-copy"] {
+      margin: 0;
+      font-family: "Space Grotesk";
+      font-size: 4.5cqw;
+      font-weight: 900;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+      text-transform: lowercase;
+      white-space: nowrap;
+    }
+
+    [class~="03-reproject-history-final-copy"] span {
+      color: #FF6B1A;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="03-reproject-history"
+    data-width="1080"
+    data-height="1920"
+    data-duration="11.103"
+    data-start="0"
+  >
+    <div
+      class="clip 03-reproject-history-ground"
+      data-start="0"
+      data-duration="11.103"
+      data-track-index="0"
+    >
+      <div class="03-reproject-history-ground-rule"></div>
+      <div class="03-reproject-history-ground-line 03-reproject-history-ground-line-a"></div>
+      <div class="03-reproject-history-ground-line 03-reproject-history-ground-line-b"></div>
+    </div>
+
+    <div
+      class="clip 03-reproject-history-scene"
+      data-start="0"
+      data-duration="11.103"
+      data-track-index="1"
+    >
+      <div class="03-reproject-history-current-view">
+        <div class="03-reproject-history-current-header">
+          <span>current view</span>
+          <span class="03-reproject-history-pin"></span>
+        </div>
+        <div class="03-reproject-history-current-field">
+          <div class="03-reproject-history-view-hairline 03-reproject-history-view-hairline-a"></div>
+          <div class="03-reproject-history-view-hairline 03-reproject-history-view-hairline-b"></div>
+          <div class="03-reproject-history-view-block 03-reproject-history-view-block-a"></div>
+          <div class="03-reproject-history-view-block 03-reproject-history-view-block-b"></div>
+          <div class="03-reproject-history-view-block 03-reproject-history-view-block-c"></div>
+        </div>
+      </div>
+
+      <div class="03-reproject-history-time-ruler">
+        <div class="03-reproject-history-ruler-line"></div>
+        <span class="03-reproject-history-ruler-caption">history</span>
+        <span class="03-reproject-history-ruler-tick" style="top: 2%;"></span>
+        <span class="03-reproject-history-ruler-tick 03-reproject-history-ruler-tick-accent" style="top: 14%;"></span>
+        <span class="03-reproject-history-ruler-tick" style="top: 27%;"></span>
+        <span class="03-reproject-history-ruler-tick 03-reproject-history-ruler-tick-accent" style="top: 46%;"></span>
+        <span class="03-reproject-history-ruler-tick" style="top: 59%;"></span>
+        <span class="03-reproject-history-ruler-tick 03-reproject-history-ruler-tick-accent" style="top: 78%;"></span>
+        <span class="03-reproject-history-ruler-tick" style="top: 91%;"></span>
+      </div>
+
+      <div class="03-reproject-history-history-tile" data-03-reproject-history-tile="a">
+        <div class="03-reproject-history-tile-face">
+          <span class="03-reproject-history-tile-label">history</span>
+          <span class="03-reproject-history-tile-pixel"></span>
+          <span class="03-reproject-history-tile-band 03-reproject-history-tile-band-a"></span>
+          <span class="03-reproject-history-tile-band 03-reproject-history-tile-band-b"></span>
+        </div>
+      </div>
+
+      <div class="03-reproject-history-history-tile" data-03-reproject-history-tile="b">
+        <div class="03-reproject-history-tile-face">
+          <span class="03-reproject-history-tile-label">history</span>
+          <span class="03-reproject-history-tile-pixel"></span>
+          <span class="03-reproject-history-tile-band 03-reproject-history-tile-band-a"></span>
+          <span class="03-reproject-history-tile-band 03-reproject-history-tile-band-b"></span>
+        </div>
+      </div>
+
+      <div class="03-reproject-history-history-tile" data-03-reproject-history-tile="c">
+        <div class="03-reproject-history-tile-face">
+          <span class="03-reproject-history-tile-label">history</span>
+          <span class="03-reproject-history-tile-pixel"></span>
+          <span class="03-reproject-history-tile-band 03-reproject-history-tile-band-a"></span>
+          <span class="03-reproject-history-tile-band 03-reproject-history-tile-band-b"></span>
+        </div>
+      </div>
+
+      <div class="03-reproject-history-destination" data-03-reproject-history-destination="a"></div>
+      <div class="03-reproject-history-destination" data-03-reproject-history-destination="b"></div>
+      <div class="03-reproject-history-destination" data-03-reproject-history-destination="c"></div>
+
+      <svg
+        class="03-reproject-history-vector-field"
+        viewBox="0 0 1080 1920"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path
+          id="03-reproject-history-path-a"
+          class="03-reproject-history-vector-path"
+          d="M 154 391 C 280 328 420 350 544 391"
+        ></path>
+        <path
+          id="03-reproject-history-path-b"
+          class="03-reproject-history-vector-path"
+          d="M 154 611 C 340 690 610 438 814 571"
+        ></path>
+        <path
+          id="03-reproject-history-path-c"
+          class="03-reproject-history-vector-path"
+          d="M 154 831 C 300 826 442 750 584 761"
+        ></path>
+        <polygon
+          class="03-reproject-history-vector-arrow"
+          data-03-reproject-history-arrow="a"
+          points="544,391 523,378 522,399"
+        ></polygon>
+        <polygon
+          class="03-reproject-history-vector-arrow"
+          data-03-reproject-history-arrow="b"
+          points="814,571 791,568 802,549"
+        ></polygon>
+        <polygon
+          class="03-reproject-history-vector-arrow"
+          data-03-reproject-history-arrow="c"
+          points="584,761 563,750 562,772"
+        ></polygon>
+      </svg>
+
+      <div class="03-reproject-history-stop-line"></div>
+
+      <div class="03-reproject-history-depth-stage">
+        <div class="03-reproject-history-depth-axis"></div>
+        <div class="03-reproject-history-background-plane">
+          <span class="03-reproject-history-plane-mark"></span>
+          background
+        </div>
+        <div class="03-reproject-history-foreground-plane">
+          <span class="03-reproject-history-plane-mark"></span>
+          foreground
+        </div>
+      </div>
+
+      <div class="03-reproject-history-final">
+        <div class="03-reproject-history-final-rule"></div>
+        <p class="03-reproject-history-final-copy">detail <span>from history</span></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const compositionId = "03-reproject-history";
+      const root = document.querySelector('[data-composition-id="' + compositionId + '"]');
+      const select = (selector) => root.querySelector(selector);
+      const selectAll = (selector) => Array.from(root.querySelectorAll(selector));
+
+      const currentView = select('[class~="03-reproject-history-current-view"]');
+      const currentHeader = select('[class~="03-reproject-history-current-header"]');
+      const currentField = select('[class~="03-reproject-history-current-field"]');
+      const fieldLineA = select('[class~="03-reproject-history-view-hairline-a"]');
+      const fieldLineB = select('[class~="03-reproject-history-view-hairline-b"]');
+      const rulerLine = select('[class~="03-reproject-history-ruler-line"]');
+      const rulerCaption = select('[class~="03-reproject-history-ruler-caption"]');
+      const rulerTicks = selectAll('[class~="03-reproject-history-ruler-tick"]');
+      const tileFaces = selectAll('[class~="03-reproject-history-tile-face"]');
+      const tileA = select('[data-03-reproject-history-tile="a"]');
+      const tileB = select('[data-03-reproject-history-tile="b"]');
+      const tileC = select('[data-03-reproject-history-tile="c"]');
+      const destinationA = select('[data-03-reproject-history-destination="a"]');
+      const destinationB = select('[data-03-reproject-history-destination="b"]');
+      const destinationC = select('[data-03-reproject-history-destination="c"]');
+      const arrowA = select('[data-03-reproject-history-arrow="a"]');
+      const arrowB = select('[data-03-reproject-history-arrow="b"]');
+      const arrowC = select('[data-03-reproject-history-arrow="c"]');
+      const pathA = document.getElementById("03-reproject-history-path-a");
+      const pathB = document.getElementById("03-reproject-history-path-b");
+      const pathC = document.getElementById("03-reproject-history-path-c");
+      const stopLine = select('[class~="03-reproject-history-stop-line"]');
+      const depthStage = select('[class~="03-reproject-history-depth-stage"]');
+      const depthAxis = select('[class~="03-reproject-history-depth-axis"]');
+      const backgroundPlane = select('[class~="03-reproject-history-background-plane"]');
+      const foregroundPlane = select('[class~="03-reproject-history-foreground-plane"]');
+      const finalRule = select('[class~="03-reproject-history-final-rule"]');
+      const finalCopy = select('[class~="03-reproject-history-final-copy"]');
+
+      [pathA, pathB, pathC].forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = String(length);
+        path.style.strokeDashoffset = String(length);
+      });
+
+      const routes = {
+        a: [
+          { x: 154, y: 391 },
+          { x: 280, y: 328 },
+          { x: 420, y: 350 },
+          { x: 544, y: 391 }
+        ],
+        b: [
+          { x: 154, y: 611 },
+          { x: 340, y: 690 },
+          { x: 610, y: 438 },
+          { x: 814, y: 571 }
+        ],
+        c: [
+          { x: 154, y: 831 },
+          { x: 300, y: 826 },
+          { x: 442, y: 750 },
+          { x: 584, y: 761 }
+        ]
+      };
+
+      const cubicPoint = (route, t) => {
+        const inverse = 1 - t;
+        return {
+          x:
+            inverse * inverse * inverse * route[0].x +
+            3 * inverse * inverse * t * route[1].x +
+            3 * inverse * t * t * route[2].x +
+            t * t * t * route[3].x,
+          y:
+            inverse * inverse * inverse * route[0].y +
+            3 * inverse * inverse * t * route[1].y +
+            3 * inverse * t * t * route[2].y +
+            t * t * t * route[3].y
+        };
+      };
+
+      const routeKeyframes = (route, duration) => {
+        const stops = [0.16, 0.32, 0.5, 0.68, 0.84, 1];
+        return stops.map((stop) => {
+          const point = cubicPoint(route, stop);
+          return {
+            x: point.x - route[0].x,
+            y: point.y - route[0].y,
+            duration: duration / stops.length,
+            ease: "none"
+          };
+        });
+      };
+
+      const timeline = gsap.timeline({ paused: true });
+
+      timeline.addLabel("03-reproject-history-scene-1", 0);
+      timeline.fromTo(
+        currentView,
+        { autoAlpha: 0, x: 46, scale: 0.985 },
+        { autoAlpha: 1, x: 0, scale: 1, duration: 0.44, ease: "power3.out" },
+        0.02
+      );
+      timeline.fromTo(
+        currentHeader,
+        { autoAlpha: 0, y: -18 },
+        { autoAlpha: 1, y: 0, duration: 0.34, ease: "power2.out" },
+        0.14
+      );
+      timeline.fromTo(
+        currentField,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.42, ease: "power1.out" },
+        0.26
+      );
+      timeline.fromTo(
+        rulerLine,
+        { scaleY: 0 },
+        { scaleY: 1, duration: 0.72, ease: "power2.out" },
+        0.42
+      );
+      timeline.fromTo(
+        rulerCaption,
+        { autoAlpha: 0, x: -18 },
+        { autoAlpha: 1, x: 0, duration: 0.38, ease: "power2.out" },
+        0.54
+      );
+      timeline.fromTo(
+        rulerTicks,
+        { autoAlpha: 0, x: -12 },
+        { autoAlpha: 1, x: 0, duration: 0.24, stagger: 0.08, ease: "power2.out" },
+        0.64
+      );
+      timeline.fromTo(
+        tileFaces[0],
+        { autoAlpha: 0, x: -34 },
+        { autoAlpha: 1, x: 0, duration: 0.42, ease: "power3.out" },
+        0.86
+      );
+      timeline.fromTo(
+        tileFaces[1],
+        { autoAlpha: 0, x: -34 },
+        { autoAlpha: 1, x: 0, duration: 0.42, ease: "power3.out" },
+        1.48
+      );
+      timeline.fromTo(
+        tileFaces[2],
+        { autoAlpha: 0, x: -34 },
+        { autoAlpha: 1, x: 0, duration: 0.42, ease: "power3.out" },
+        2.1
+      );
+      timeline.fromTo(
+        fieldLineA,
+        { scaleX: 0 },
+        { scaleX: 1, duration: 0.52, ease: "power2.out" },
+        2.42
+      );
+      timeline.fromTo(
+        fieldLineB,
+        { scaleY: 0 },
+        { scaleY: 1, duration: 0.52, ease: "power2.out" },
+        2.64
+      );
+
+      timeline.addLabel("03-reproject-history-scene-2", 3.2);
+      timeline.fromTo(
+        destinationA,
+        { opacity: 0, scale: 0.92 },
+        { opacity: 0.42, scale: 1, duration: 0.3, ease: "power2.out" },
+        3.16
+      );
+      timeline.to(pathA, { strokeDashoffset: 0, duration: 0.72, ease: "power1.inOut" }, 3.2);
+      timeline.fromTo(
+        arrowA,
+        { autoAlpha: 0, scale: 0.55 },
+        { autoAlpha: 1, scale: 1, duration: 0.2, ease: "power2.out" },
+        3.76
+      );
+      timeline.to(tileA, { keyframes: routeKeyframes(routes.a, 1.18), ease: "none" }, 3.48);
+
+      timeline.fromTo(
+        destinationB,
+        { opacity: 0, scale: 0.92 },
+        { opacity: 0.42, scale: 1, duration: 0.3, ease: "power2.out" },
+        3.72
+      );
+      timeline.to(pathB, { strokeDashoffset: 0, duration: 0.74, ease: "power1.inOut" }, 3.78);
+      timeline.fromTo(
+        arrowB,
+        { autoAlpha: 0, scale: 0.55 },
+        { autoAlpha: 1, scale: 1, duration: 0.2, ease: "power2.out" },
+        4.36
+      );
+      timeline.to(tileB, { keyframes: routeKeyframes(routes.b, 1.22), ease: "none" }, 4.06);
+
+      timeline.fromTo(
+        destinationC,
+        { opacity: 0, scale: 0.92 },
+        { opacity: 0.42, scale: 1, duration: 0.3, ease: "power2.out" },
+        4.3
+      );
+      timeline.to(pathC, { strokeDashoffset: 0, duration: 0.76, ease: "power1.inOut" }, 4.36);
+      timeline.fromTo(
+        arrowC,
+        { autoAlpha: 0, scale: 0.55 },
+        { autoAlpha: 1, scale: 1, duration: 0.2, ease: "power2.out" },
+        4.96
+      );
+      timeline.to(tileC, { keyframes: routeKeyframes(routes.c, 1.26), ease: "none" }, 4.64);
+
+      timeline.to(
+        destinationA,
+        { opacity: 1, borderColor: "#FF6B1A", scale: 1.06, duration: 0.12, ease: "power1.out" },
+        4.54
+      );
+      timeline.to(
+        destinationA,
+        { opacity: 0.45, borderColor: "#504B48", scale: 1, duration: 0.3, ease: "power2.out" },
+        4.66
+      );
+      timeline.to(
+        destinationB,
+        { opacity: 1, borderColor: "#FF6B1A", scale: 1.06, duration: 0.12, ease: "power1.out" },
+        5.16
+      );
+      timeline.to(
+        destinationB,
+        { opacity: 0.45, borderColor: "#504B48", scale: 1, duration: 0.3, ease: "power2.out" },
+        5.28
+      );
+      timeline.to(
+        destinationC,
+        { opacity: 1, borderColor: "#FF6B1A", scale: 1.06, duration: 0.12, ease: "power1.out" },
+        5.78
+      );
+      timeline.to(
+        destinationC,
+        { opacity: 0.45, borderColor: "#504B48", scale: 1, duration: 0.3, ease: "power2.out" },
+        5.9
+      );
+
+      timeline.addLabel("03-reproject-history-scene-3", 7.0);
+      timeline.fromTo(
+        depthStage,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.3, ease: "power1.out" },
+        7.0
+      );
+      timeline.fromTo(
+        backgroundPlane,
+        { autoAlpha: 0, x: 80 },
+        { autoAlpha: 1, x: 0, duration: 0.58, ease: "power3.out" },
+        7.04
+      );
+      timeline.fromTo(
+        foregroundPlane,
+        { autoAlpha: 0, x: -88, y: 112 },
+        { autoAlpha: 1, x: 0, y: 0, duration: 0.66, ease: "power3.out" },
+        7.24
+      );
+      timeline.fromTo(
+        depthAxis,
+        { scaleX: 0 },
+        { scaleX: 1, duration: 0.36, ease: "power2.out" },
+        7.32
+      );
+      timeline.fromTo(
+        stopLine,
+        { opacity: 0, scaleX: 0 },
+        { opacity: 1, scaleX: 1, duration: 0.32, ease: "power2.out" },
+        7.36
+      );
+      timeline.to(tileC, { y: 22, duration: 0.5, ease: "power2.in" }, 7.38);
+      timeline.to(tileC, { y: 12, duration: 0.22, ease: "power3.out" }, 7.88);
+      timeline.fromTo(
+        finalCopy,
+        { autoAlpha: 0, y: 34 },
+        { autoAlpha: 1, y: 0, duration: 0.58, ease: "power3.out" },
+        8.22
+      );
+      timeline.fromTo(
+        finalRule,
+        { scaleX: 0 },
+        { scaleX: 1, duration: 0.4, ease: "power2.out" },
+        8.76
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["03-reproject-history"] = timeline;
+    })();
+  </script>
+</template>

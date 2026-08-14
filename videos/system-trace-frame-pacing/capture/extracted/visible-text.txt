@@ -1,0 +1,57 @@
+USER REQUEST (verbatim)
+
+I am about to run out of usage for many days and I need videos autonomously
+posting consistently right through the period - make sure this happens
+
+EPISODE TOPIC
+
+SYSTEM TRACE // 01 — Why 60 FPS can still stutter.
+
+TEACHING THESIS
+
+A frame-rate average counts completed frames across a period. Smooth motion also
+depends on when those frames reach the display. At 60 frames per second, an even
+cadence is one frame about every 16.7 milliseconds. If individual frame times
+vary, several quick frames can preserve the average while one long frame creates
+a visible hitch. Frame pacing and synchronisation therefore matter alongside the
+headline FPS number.
+
+PRIMARY SOURCE NOTES
+
+1. Epic Games, Introduction to Performance Profiling and Configuration in
+   Unreal Engine:
+   https://dev.epicgames.com/documentation/unreal-engine/introduction-to-performance-profiling-and-configuration-in-unreal-engine
+   - Unreal documents FPS and frame time as complementary performance measures.
+   - A particularly long frame can cause a momentary hitch even when surrounding
+     frames run faster.
+
+2. Epic Games, Frame Pacing for Mobile Devices:
+   https://dev.epicgames.com/documentation/unreal-engine/frame-pacing-for-mobile-devices
+   - Epic describes frame pacing as prioritising consistency and stability for a
+     smoother experience instead of leaving frame delivery uncapped.
+   - Display times that vary widely can create stalls and input latency.
+
+3. Microsoft, Direct3D 12 Swap Chains:
+   https://learn.microsoft.com/en-us/windows/win32/direct3d12/swap-chains
+   - Microsoft describes a common frame-pacing error where CPU work runs ahead
+     without proper GPU-fence synchronisation, increasing the frame queue and
+     input latency.
+
+4. NVIDIA, Stuttering in Game Graphics:
+   https://developer.nvidia.com/sites/default/files/akamai/gameworks/CN/Stuttering_Analysis_EN.pdf
+   - NVIDIA's technical analysis treats frame-time variation as the basis for
+     visible stutter rather than relying only on average frame rate.
+
+FACTUAL CAVEATS
+
+- Uneven frame pacing is one possible cause of visible stutter, not the only one.
+- VSync, variable refresh rate, the game engine, the driver, CPU work, GPU work,
+  asset loading and the display can all affect the final experience.
+- The video explains a general principle, not a diagnosis of any specific game.
+
+SERIES CONSTRAINTS
+
+- Original abstract graphics only. Do not reproduce vendor diagrams.
+- British English, no rumour language and no claim that one metric explains all
+  perceived smoothness.
+- Target duration: 45–58 seconds. Vertical 1080x1920. Exact captions.

@@ -1,0 +1,582 @@
+<template>
+  <div
+    id="root"
+    data-composition-id="04-working-set"
+    data-width="1080"
+    data-height="1920"
+    data-duration="9.46"
+    data-start="0"
+  >
+    <div
+      class="clip 04-working-set-ground"
+      data-start="0"
+      data-duration="9.46"
+      data-track-index="0"
+      aria-hidden="true"
+    >
+      <div class="04-working-set-archive-field" data-04-working-set-background="archive">
+        <div></div><div></div><div></div><div></div><div></div><div></div>
+      </div>
+      <div class="04-working-set-ground-rule"></div>
+    </div>
+
+    <section
+      class="clip 04-working-set-content"
+      data-start="0"
+      data-duration="9.46"
+      data-track-index="1"
+      aria-label="Changing VRAM working set"
+    >
+      <div class="04-working-set-headline-stage">
+        <h1 class="04-working-set-headline" data-04-working-set-headline="camera-a">camera a</h1>
+        <h1 class="04-working-set-headline" data-04-working-set-headline="camera-b">camera b</h1>
+        <h1 class="04-working-set-headline" data-04-working-set-headline="working-set">working set</h1>
+      </div>
+
+      <div class="04-working-set-camera-path" data-04-working-set-path="camera">
+        <svg viewBox="0 0 842 150" preserveAspectRatio="none" aria-hidden="true">
+          <path class="04-working-set-path-line" d="M30 110 L400 40 L800 105"></path>
+        </svg>
+        <div class="04-working-set-path-node 04-working-set-node-a" data-04-working-set-node="a"><span>A</span></div>
+        <div class="04-working-set-path-node 04-working-set-node-b" data-04-working-set-node="b"><span>B</span></div>
+        <div class="04-working-set-path-node 04-working-set-node-c" data-04-working-set-node="c"><span>C</span></div>
+        <div class="04-working-set-camera-marker" data-04-working-set-marker="camera">
+          <span></span>
+        </div>
+      </div>
+
+      <div class="04-working-set-grid-label">
+        <span>VRAM GRID</span>
+        <span>LIVE RESIDENCY</span>
+      </div>
+
+      <div class="04-working-set-grid" data-04-working-set-anchor="vram-grid">
+        <div class="04-working-set-slot" data-04-working-set-slot="near">
+          <div class="04-working-set-tile 04-working-set-state-a" data-04-working-set-tile="ground">
+            <strong>GROUND</strong><span>RESIDENT</span>
+          </div>
+          <div class="04-working-set-tile 04-working-set-state-c 04-working-set-priority" data-04-working-set-tile="near">
+            <strong>NEAR</strong><span data-04-working-set-priority="c-one">PRIORITY</span>
+          </div>
+        </div>
+
+        <div class="04-working-set-slot" data-04-working-set-slot="sign">
+          <div class="04-working-set-tile 04-working-set-state-a" data-04-working-set-tile="wall">
+            <strong>WALL</strong><span>RESIDENT</span>
+          </div>
+          <div class="04-working-set-tile 04-working-set-state-b 04-working-set-priority" data-04-working-set-tile="sign">
+            <strong>SIGN</strong><span data-04-working-set-priority="b-one">PRIORITY</span>
+          </div>
+        </div>
+
+        <div class="04-working-set-slot" data-04-working-set-slot="path">
+          <div class="04-working-set-tile 04-working-set-state-a" data-04-working-set-tile="path">
+            <strong>PATH</strong><span>RESIDENT</span>
+          </div>
+        </div>
+
+        <div class="04-working-set-slot" data-04-working-set-slot="door">
+          <div class="04-working-set-tile 04-working-set-state-a" data-04-working-set-tile="sky">
+            <strong>SKY</strong><span>RESIDENT</span>
+          </div>
+          <div class="04-working-set-tile 04-working-set-state-b 04-working-set-priority" data-04-working-set-tile="door">
+            <strong>DOOR</strong><span data-04-working-set-priority="b-two">PRIORITY</span>
+          </div>
+        </div>
+
+        <div class="04-working-set-slot" data-04-working-set-slot="corner">
+          <div class="04-working-set-tile 04-working-set-state-a" data-04-working-set-tile="detail">
+            <strong>DETAIL</strong><span>RESIDENT</span>
+          </div>
+          <div class="04-working-set-tile 04-working-set-state-c 04-working-set-priority" data-04-working-set-tile="corner">
+            <strong>CORNER</strong><span data-04-working-set-priority="c-two">PRIORITY</span>
+          </div>
+        </div>
+
+        <div class="04-working-set-slot" data-04-working-set-slot="edge">
+          <div class="04-working-set-tile 04-working-set-state-a" data-04-working-set-tile="edge">
+            <strong>EDGE</strong><span>RESIDENT</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="04-working-set-capacity" data-04-working-set-gauge="fixed">
+        <div class="04-working-set-capacity-copy">
+          <span>FIXED CAPACITY</span>
+          <span>VRAM</span>
+        </div>
+        <div class="04-working-set-capacity-track">
+          <div class="04-working-set-capacity-fill"></div>
+        </div>
+      </div>
+    </section>
+
+    <style>
+      @font-face {
+        font-family: "Space Grotesk";
+        src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 300 900;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Mono";
+        src: url("/assets/fonts/IBM_Plex_Mono_400.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Mono";
+        src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Mono";
+        src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+      }
+
+      #root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        container-type: size;
+        color: #F0F0F0;
+      }
+
+      #root,
+      #root * {
+        box-sizing: border-box;
+      }
+
+      [class~="04-working-set-ground"] {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background: #0D0D0F;
+      }
+
+      [class~="04-working-set-archive-field"] {
+        position: absolute;
+        left: 87cqw;
+        top: 28cqh;
+        width: 22cqw;
+        height: 43cqh;
+        display: grid;
+        grid-template-rows: repeat(6, 1fr);
+        gap: 1cqw;
+        opacity: 0.22;
+      }
+
+      [class~="04-working-set-archive-field"] div {
+        border-top: 1px solid #504B48;
+        background: #1A1918;
+      }
+
+      [class~="04-working-set-ground-rule"] {
+        position: absolute;
+        left: 0;
+        top: 74cqh;
+        width: 100%;
+        height: 1px;
+        background: #282726;
+      }
+
+      [class~="04-working-set-content"] {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        font-family: "Space Grotesk", sans-serif;
+      }
+
+      [class~="04-working-set-headline-stage"] {
+        position: absolute;
+        left: 5.5cqw;
+        top: 5.3cqh;
+        width: 89cqw;
+        height: 9.8cqh;
+        perspective: 900px;
+      }
+
+      [class~="04-working-set-headline"] {
+        position: absolute;
+        inset: 0;
+        width: 89cqw;
+        margin: 0;
+        color: #F0F0F0;
+        font-size: 10.4cqw;
+        font-weight: 900;
+        line-height: 0.88;
+        letter-spacing: -0.04em;
+        text-transform: lowercase;
+        transform-origin: 50% 55%;
+      }
+
+      [data-04-working-set-headline="working-set"] {
+        color: #FF6B1A;
+      }
+
+      [class~="04-working-set-camera-path"] {
+        position: absolute;
+        left: 7.5cqw;
+        top: 17.5cqh;
+        width: 78cqw;
+        height: 8cqh;
+      }
+
+      [class~="04-working-set-camera-path"] svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+
+      [class~="04-working-set-path-line"] {
+        fill: none;
+        stroke: #504B48;
+        stroke-width: 1;
+        stroke-dasharray: 880;
+      }
+
+      [class~="04-working-set-path-node"] {
+        position: absolute;
+        width: 3.1cqw;
+        height: 3.1cqw;
+        display: grid;
+        place-items: center;
+        background: #282726;
+        color: #F0F0F0;
+        border: 1px solid #504B48;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 1.4cqw;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 0.14em;
+      }
+
+      [class~="04-working-set-node-a"] { left: 1.4cqw; top: 5.1cqh; background: #FF6B1A; color: #0D0D0F; border-color: #FF6B1A; }
+      [class~="04-working-set-node-b"] { left: 36.3cqw; top: 1.45cqh; }
+      [class~="04-working-set-node-c"] { left: 73.4cqw; top: 4.85cqh; }
+
+      [class~="04-working-set-camera-marker"] {
+        position: absolute;
+        left: 0.8cqw;
+        top: 4.75cqh;
+        width: 4.4cqw;
+        height: 4.4cqw;
+        border: 2px solid #FF6B1A;
+        background: #0D0D0F;
+        z-index: 3;
+      }
+
+      [class~="04-working-set-camera-marker"]::before {
+        content: "";
+        position: absolute;
+        left: 0.85cqw;
+        top: 0.85cqw;
+        width: 1.4cqw;
+        height: 1.4cqw;
+        border: 1px solid #FF6B1A;
+      }
+
+      [class~="04-working-set-camera-marker"] span {
+        position: absolute;
+        right: -1.4cqw;
+        top: 0.75cqw;
+        width: 1.4cqw;
+        height: 2.5cqw;
+        background: #FF6B1A;
+      }
+
+      [class~="04-working-set-grid-label"] {
+        position: absolute;
+        left: 7.5cqw;
+        top: 27.3cqh;
+        width: 78cqw;
+        display: flex;
+        justify-content: space-between;
+        color: #FF6B1A;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 1.4cqw;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      [class~="04-working-set-grid-label"] span:last-child {
+        color: #504B48;
+      }
+
+      [class~="04-working-set-grid"] {
+        position: absolute;
+        left: 7.5cqw;
+        top: 30cqh;
+        width: 78cqw;
+        height: 34cqh;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(3, 1fr);
+        gap: 1.2cqw;
+      }
+
+      [class~="04-working-set-slot"] {
+        position: relative;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+        border: 1px solid #282726;
+      }
+
+      [class~="04-working-set-tile"] {
+        position: absolute;
+        inset: 0.8cqw;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 2cqw;
+        background: #1A1918;
+        color: #F0F0F0;
+        border-top: 1px solid #504B48;
+      }
+
+      [class~="04-working-set-tile"] strong {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 3.4cqw;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.02em;
+      }
+
+      [class~="04-working-set-tile"] span {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 1.4cqw;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      [class~="04-working-set-priority"] {
+        background: #FF6B1A;
+        color: #0D0D0F;
+        border-color: #FF6B1A;
+      }
+
+      [class~="04-working-set-capacity"] {
+        position: absolute;
+        left: 7.5cqw;
+        top: 67cqh;
+        width: 78cqw;
+        height: 5cqh;
+      }
+
+      [class~="04-working-set-capacity-copy"] {
+        display: flex;
+        justify-content: space-between;
+        color: #F0F0F0;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 1.4cqw;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      [class~="04-working-set-capacity-copy"] span:last-child {
+        color: #FF6B1A;
+      }
+
+      [class~="04-working-set-capacity-track"] {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 1.2cqh;
+        border: 1px solid #504B48;
+      }
+
+      [class~="04-working-set-capacity-fill"] {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: #FF6B1A;
+        transform-origin: 0 50%;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script>
+      (() => {
+        const headlineA = document.querySelector('[data-04-working-set-headline="camera-a"]');
+        const headlineB = document.querySelector('[data-04-working-set-headline="camera-b"]');
+        const headlineWorking = document.querySelector('[data-04-working-set-headline="working-set"]');
+        const pathLine = document.querySelector('[class~="04-working-set-path-line"]');
+        const cameraMarker = document.querySelector('[data-04-working-set-marker="camera"]');
+        const nodeA = document.querySelector('[data-04-working-set-node="a"]');
+        const nodeB = document.querySelector('[data-04-working-set-node="b"]');
+        const nodeC = document.querySelector('[data-04-working-set-node="c"]');
+        const gridLabel = document.querySelector('[class~="04-working-set-grid-label"]');
+        const slots = Array.from(document.querySelectorAll('[class~="04-working-set-slot"]'));
+        const stateA = Array.from(document.querySelectorAll('[class~="04-working-set-state-a"]'));
+        const stateB = Array.from(document.querySelectorAll('[class~="04-working-set-state-b"]'));
+        const stateC = Array.from(document.querySelectorAll('[class~="04-working-set-state-c"]'));
+        const wall = document.querySelector('[data-04-working-set-tile="wall"]');
+        const sign = document.querySelector('[data-04-working-set-tile="sign"]');
+        const sky = document.querySelector('[data-04-working-set-tile="sky"]');
+        const door = document.querySelector('[data-04-working-set-tile="door"]');
+        const ground = document.querySelector('[data-04-working-set-tile="ground"]');
+        const near = document.querySelector('[data-04-working-set-tile="near"]');
+        const detail = document.querySelector('[data-04-working-set-tile="detail"]');
+        const corner = document.querySelector('[data-04-working-set-tile="corner"]');
+        const priorityB = Array.from(document.querySelectorAll('[data-04-working-set-priority^="b-"]'));
+        const priorityC = Array.from(document.querySelectorAll('[data-04-working-set-priority^="c-"]'));
+        const capacity = document.querySelector('[data-04-working-set-gauge="fixed"]');
+        const capacityFill = document.querySelector('[class~="04-working-set-capacity-fill"]');
+
+        const timeline = gsap.timeline({ paused: true });
+
+        timeline
+          .addLabel("scene-1-camera-a", 0)
+          .set([headlineB, headlineWorking, ...stateB, ...stateC, ...priorityB, ...priorityC], { opacity: 0 }, 0)
+          .fromTo(
+            headlineA,
+            { x: -52, opacity: 0 },
+            { x: 0, opacity: 1, duration: 0.5, ease: "power3.out" },
+            0
+          )
+          .fromTo(
+            pathLine,
+            { strokeDashoffset: 880 },
+            { strokeDashoffset: 0, duration: 1.18, ease: "power2.out" },
+            0.16
+          )
+          .fromTo(
+            cameraMarker,
+            { scale: 0.72, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" },
+            0.24
+          )
+          .fromTo(
+            gridLabel,
+            { x: -30, opacity: 0 },
+            { x: 0, opacity: 1, duration: 0.4, ease: "power3.out" },
+            0.28
+          )
+          .fromTo(
+            slots,
+            { y: 26, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.42, stagger: 0.1, ease: "power3.out" },
+            0.36
+          )
+          .fromTo(
+            stateA,
+            { x: 170, opacity: 0 },
+            { x: 0, opacity: 1, duration: 0.55, stagger: 0.35, ease: "power4.out" },
+            0.5
+          )
+          .fromTo(
+            capacity,
+            { y: 28, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.44, ease: "power3.out" },
+            1.9
+          )
+          .fromTo(
+            capacityFill,
+            { scaleX: 0 },
+            { scaleX: 1, duration: 0.62, ease: "power3.out" },
+            2.18
+          )
+
+          .addLabel("scene-2-camera-b", 3.0)
+          .to(headlineA, { x: -180, duration: 0.3, ease: "power4.in" }, 3.0)
+          .to(headlineA, { opacity: 0, duration: 0.18, ease: "power1.in" }, 3.1)
+          .set(headlineA, { opacity: 0 }, 3.3)
+          .set(headlineB, { x: 180, opacity: 0.35 }, 3.3)
+          .to(headlineB, { x: 0, opacity: 1, duration: 0.35, ease: "power4.out" }, 3.3)
+          .to(cameraMarker, { x: 370, y: -70, duration: 1.1, ease: "power3.inOut" }, 3.05)
+          .to(nodeA, { backgroundColor: "#282726", color: "#F0F0F0", borderColor: "#504B48", duration: 0.24, ease: "none" }, 3.1)
+          .to(nodeB, { backgroundColor: "#FF6B1A", color: "#0D0D0F", borderColor: "#FF6B1A", duration: 0.24, ease: "none" }, 3.34)
+
+          .to(wall, { x: -230, duration: 0.34, ease: "power4.in" }, 3.32)
+          .to(wall, { opacity: 0, duration: 0.18, ease: "power1.in" }, 3.46)
+          .set(wall, { opacity: 0 }, 3.66)
+          .set(sign, { x: 230, opacity: 0.35 }, 3.66)
+          .to(sign, { x: 0, opacity: 1, duration: 0.4, ease: "power4.out" }, 3.66)
+          .fromTo(
+            priorityB[0],
+            { y: 12, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.36, ease: "power3.out" },
+            4.12
+          )
+
+          .to(sky, { x: -230, duration: 0.34, ease: "power4.in" }, 4.15)
+          .to(sky, { opacity: 0, duration: 0.18, ease: "power1.in" }, 4.29)
+          .set(sky, { opacity: 0 }, 4.49)
+          .set(door, { x: 230, opacity: 0.35 }, 4.49)
+          .to(door, { x: 0, opacity: 1, duration: 0.4, ease: "power4.out" }, 4.49)
+          .fromTo(
+            priorityB[1],
+            { y: 12, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.36, ease: "power3.out" },
+            5.05
+          )
+
+          .addLabel("scene-3-camera-c", 6.2)
+          .to(headlineB, { scale: 0.8, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 6.2)
+          .to(headlineB, { opacity: 0.15, duration: 0.2, ease: "none" }, 6.2)
+          .set(headlineB, { opacity: 0 }, 6.4)
+          .set(headlineWorking, { opacity: 0.15, scale: 1.25, filter: "blur(10px)" }, 6.4)
+          .to(
+            headlineWorking,
+            { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.5, ease: "expo.out" },
+            6.4
+          )
+          .to(cameraMarker, { x: 770, y: -5, duration: 1.2, ease: "power3.inOut" }, 6.2)
+          .to(nodeB, { backgroundColor: "#282726", color: "#F0F0F0", borderColor: "#504B48", duration: 0.24, ease: "none" }, 6.22)
+          .to(nodeC, { backgroundColor: "#FF6B1A", color: "#0D0D0F", borderColor: "#FF6B1A", duration: 0.24, ease: "none" }, 6.46)
+          .to(priorityB, { opacity: 0, duration: 0.2, ease: "none" }, 6.22)
+          .to([sign, door], { backgroundColor: "#282726", color: "#F0F0F0", borderColor: "#504B48", duration: 0.36, ease: "none" }, 6.26)
+
+          .to(ground, { x: -230, duration: 0.34, ease: "power4.in" }, 6.52)
+          .to(ground, { opacity: 0, duration: 0.18, ease: "power1.in" }, 6.66)
+          .set(ground, { opacity: 0 }, 6.86)
+          .set(near, { x: 230, opacity: 0.35 }, 6.86)
+          .to(near, { x: 0, opacity: 1, duration: 0.4, ease: "power4.out" }, 6.86)
+          .fromTo(
+            priorityC[0],
+            { y: 12, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.36, ease: "power3.out" },
+            7.32
+          )
+
+          .to(detail, { x: -230, duration: 0.34, ease: "power4.in" }, 7.4)
+          .to(detail, { opacity: 0, duration: 0.18, ease: "power1.in" }, 7.54)
+          .set(detail, { opacity: 0 }, 7.74)
+          .set(corner, { x: 230, opacity: 0.35 }, 7.74)
+          .to(corner, { x: 0, opacity: 1, duration: 0.4, ease: "power4.out" }, 7.74)
+          .fromTo(
+            priorityC[1],
+            { y: 12, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.36, ease: "power3.out" },
+            8.2
+          );
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["04-working-set"] = timeline;
+      })();
+    </script>
+  </div>
+</template>

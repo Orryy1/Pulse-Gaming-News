@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_publish_pack_v1",
+  "story_id": "system-trace-shader-compilation",
+  "project_id": "system-trace-shader-compilation",
+  "platform": "youtube_shorts",
+  "review_scope": "PRIVATE_FIRST_SCHEDULED_PUBLICATION",
+  "title": "Why PC Games Stutter the First Time",
+  "description": "A new effect appears, the game hitches once and the same scene runs smoothly the next time. This short animation explains pipeline state objects, why a missing graphics pipeline can interrupt a frame and how a cached pipeline changes the second run.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d12/managing-graphics-pipeline-state-in-direct3d-12\nhttps://learn.microsoft.com/en-us/samples/microsoft/directx-graphics-samples/d3d12-pipeline-state-cache-sample-win32/\nhttps://developer.nvidia.com/blog/advanced-api-performance-pipeline-state-objects/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #ShaderCompilation #SystemTrace",
+  "tags": [
+    "shader compilation",
+    "PC gaming",
+    "game stutter",
+    "pipeline state",
+    "graphics pipeline",
+    "gaming performance",
+    "System Trace",
+    "gaming Shorts"
+  ],
+  "captions": {
+    "file": "captions.srt",
+    "sha256": "c6f93953d9af40c94172eadf989edc006f31813c6d08593cee2ce1ebf36fd61f",
+    "clean_manual_captions_required": true
+  },
+  "synthetic_media_required": true,
+  "altered_synthetic_disclosure_required": true,
+  "altered_synthetic_disclosure_setting": "YES",
+  "public_publish_authorised": true,
+  "unlisted_publish_authorised": false,
+  "scheduler_authorised": true,
+  "database_mutation_authorised": false,
+  "playlist_mutation_authorised": false,
+  "thumbnail_upload_authorised": false,
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "rights_placement_blocker_count": 0,
+  "rights_clearance_claimed": false,
+  "scheduled_publish_at_utc": "2026-08-16T19:00:00.000Z",
+  "youtube_upload_request": {
+    "schema_version": 1,
+    "closed": true,
+    "authority_scope": "EXACT_PRIVATE_FIRST_SCHEDULE_REQUEST_SHAPE_ONLY",
+    "publish_authority": "EXTERNALLY_EVALUATED",
+    "video_file": "renders/system-trace-shader-compilation.mp4",
+    "video_sha256": "d6a0221633399e5393a1cd8dcb91ca5c628c3c3f7488b771a6a07962c160a2a2",
+    "notifySubscribers": false,
+    "snippet": {
+      "title": "Why PC Games Stutter the First Time",
+      "description": "A new effect appears, the game hitches once and the same scene runs smoothly the next time. This short animation explains pipeline state objects, why a missing graphics pipeline can interrupt a frame and how a cached pipeline changes the second run.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d12/managing-graphics-pipeline-state-in-direct3d-12\nhttps://learn.microsoft.com/en-us/samples/microsoft/directx-graphics-samples/d3d12-pipeline-state-cache-sample-win32/\nhttps://developer.nvidia.com/blog/advanced-api-performance-pipeline-state-objects/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #ShaderCompilation #SystemTrace",
+      "tags": [
+        "shader compilation",
+        "PC gaming",
+        "game stutter",
+        "pipeline state",
+        "graphics pipeline",
+        "gaming performance",
+        "System Trace",
+        "gaming Shorts"
+      ],
+      "categoryId": "20",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "status": {
+      "privacyStatus": "private",
+      "selfDeclaredMadeForKids": false,
+      "containsSyntheticMedia": true,
+      "license": "youtube",
+      "embeddable": true,
+      "publicStatsViewable": true
+    },
+    "paidProductPlacementDetails": {
+      "hasPaidProductPlacement": false
+    },
+    "captions": {
+      "file": "captions.srt",
+      "sha256": "c6f93953d9af40c94172eadf989edc006f31813c6d08593cee2ce1ebf36fd61f",
+      "language": "en-GB",
+      "name": "English (United Kingdom)",
+      "isDraft": false
+    },
+    "cover_selection": {
+      "selection_mode": "in_video_frame",
+      "frame_time_seconds": 1.5,
+      "custom_thumbnail_upload_allowed": false,
+      "application_status": "NOT_APPLIED"
+    }
+  }
+}

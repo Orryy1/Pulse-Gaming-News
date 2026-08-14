@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-temporal-upscaling",
+  "project_id": "system-trace-temporal-upscaling",
+  "narration_script": "that sharp 4K image may start smaller. Many games render fewer pixels, then rebuild detail using information gathered across time. A temporal upscaler gets the new frame, motion vectors, depth and samples from earlier frames. Each input answers a different question. Motion vectors show where surfaces moved. Depth separates foreground from background. History supplies detail that one lower resolution frame cannot hold. The system reprojects useful history into the current view and rejects what no longer belongs. Done well, the result looks far denser. Fast reveals, thin geometry and particles can break history. Old samples may ghost, while fresh pixels may shimmer before enough evidence arrives. Temporal upscaling is not a fancy stretch. It reconstructs a moving image borrowing from the past without letting it haunt the present.",
+  "final_container": {
+    "path": "renders/system-trace-temporal-upscaling.mp4",
+    "sha256": "10d596e174f08426598bd5055d0b89f45caebd2826408a4a1d13715e73ab70c4",
+    "bytes": 6003797
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "e0060ef6c3f6692d6823766c78abbe670491032e11527d78e58a9c85be9f2aa4",
+    "bytes": 2496
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-17T19:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

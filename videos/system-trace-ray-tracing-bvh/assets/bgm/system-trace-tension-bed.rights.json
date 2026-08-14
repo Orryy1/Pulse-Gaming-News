@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "asset_id": "elevenlabs_cinematic_tension_bed_e11567720957",
+  "role": "tension_bed",
+  "family": "tension_bed",
+  "provider_id": "elevenlabs_sfx",
+  "prompt": "Seamless urgent but controlled breaking gaming-news soundscape. Subtle low pulse and modern broadcast technology texture, premium cinematic tension without trailer parody, narration-safe, no siren and no vocals. No recognisable melody. No copyrighted melody. No recognisable game sound.",
+  "model": "eleven_text_to_sound_v2",
+  "generation_time": "2026-07-23T13:48:34.226Z",
+  "audio_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\audio\\elevenlabs\\sfx\\cinematic-v1\\elevenlabs_cinematic_tension_bed_v1.wav",
+  "sha256": "c6b19bed70080badc1da03a04ffe24ba87b75f5c11d36cea73ff972bd85b10fd",
+  "rights_note": "Generated for Pulse Gaming during a paid ElevenLabs subscription. Commercial use is limited to finished editorial output and the isolated sound must not be redistributed.",
+  "terms_evidence_url": "https://help.elevenlabs.io/hc/en-us/articles/13313564601361-Can-I-publish-the-content-I-generate-on-the-platform",
+  "allowed_use": "finished_editorial_video_only",
+  "commercial_use_allowed": true,
+  "raw_redistribution_allowed": false,
+  "secondary_layer_only": true,
+  "duration_ms": 10000,
+  "loudness_lufs": -23.69,
+  "true_peak_db": -11.42,
+  "reuse_limit": 12,
+  "usage_count": 0,
+  "generation_parameters": {
+    "duration_seconds": 10,
+    "loop": true,
+    "prompt_influence": 0.72,
+    "output_format": "mp3_44100_192"
+  },
+  "request_evidence": {
+    "request_id": null,
+    "trace_id": "dbfdd6cfad17a14907b70d2ddb3e1c9c",
+    "character_cost": 100
+  }
+}

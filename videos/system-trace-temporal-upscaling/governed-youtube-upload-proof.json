@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-14T18:01:15.117Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-temporal-upscaling",
+  "source": {
+    "package_dir": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-temporal-upscaling",
+    "publish_pack_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-temporal-upscaling\\youtube_publish_pack.json",
+    "publish_pack_sha256": "11f9ee076e898c8e622c4f4511ce8c7a9cf17836394e32587bfa2a20628f4503",
+    "canonical_manifest_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-temporal-upscaling\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "3b4aa0b19383350c0debeeda27b58fbce73743372b3aa0b2adceeaf685331fac",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-temporal-upscaling",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "How Games Rebuild Detail From Previous Frames",
+          "description": "A sharp 4K image may begin with fewer newly rendered pixels. This short animation shows how temporal upscalers combine the current frame with motion vectors, depth and history, then reject stale samples that could cause ghosting or shimmer.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-upscalers-in-unreal-engine\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-super-resolution-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #Upscaling #SystemTrace",
+          "tags": [
+            "temporal upscaling",
+            "4K gaming",
+            "motion vectors",
+            "ghosting",
+            "gaming graphics",
+            "PC gaming",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-temporal-upscaling\\renders\\system-trace-temporal-upscaling.mp4",
+      "media_sha256": "10d596e174f08426598bd5055d0b89f45caebd2826408a4a1d13715e73ab70c4"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-temporal-upscaling\\captions.srt",
+      "media_sha256": "e0060ef6c3f6692d6823766c78abbe670491032e11527d78e58a9c85be9f2aa4"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-temporal-upscaling\\renders\\system-trace-temporal-upscaling.mp4",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-temporal-upscaling\\renders\\system-trace-temporal-upscaling.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 6003797,
+      "sha256": "10d596e174f08426598bd5055d0b89f45caebd2826408a4a1d13715e73ab70c4",
+      "probe": {
+        "duration_seconds": 56.9,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-temporal-upscaling\\captions.srt",
+      "real_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-temporal-upscaling\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2496,
+      "sha256": "e0060ef6c3f6692d6823766c78abbe670491032e11527d78e58a9c85be9f2aa4",
+      "qa": {
+        "parsed": true,
+        "cue_count": 49,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 56.9,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-14T18:01:15.117Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-temporal-upscaling",
+    "request_plan_fingerprint_sha256": "34fa8dd7cac6e406fd5de84a7bd18c68b627bb4e6b57cbd7c27461ae4d3caf0c",
+    "video_insert_fingerprint_sha256": "4f72851d8a504145e3822ea6a0efec9b532712440fe52e6484e638c8c1a6195c",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "e8b5d2511c1f032aed26e9735c5506b7bcebe9ce3f3e808289b8d2399b087651",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "How Games Rebuild Detail From Previous Frames",
+            "description": "A sharp 4K image may begin with fewer newly rendered pixels. This short animation shows how temporal upscalers combine the current frame with motion vectors, depth and history, then reject stale samples that could cause ghosting or shimmer.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-upscalers-in-unreal-engine\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-super-resolution-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #Upscaling #SystemTrace",
+            "tags": [
+              "temporal upscaling",
+              "4K gaming",
+              "motion vectors",
+              "ghosting",
+              "gaming graphics",
+              "PC gaming",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-temporal-upscaling\\renders\\system-trace-temporal-upscaling.mp4",
+        "media_sha256": "10d596e174f08426598bd5055d0b89f45caebd2826408a4a1d13715e73ab70c4"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-temporal-upscaling\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_publish_pack_v1",
+  "story_id": "system-trace-temporal-upscaling",
+  "project_id": "system-trace-temporal-upscaling",
+  "platform": "youtube_shorts",
+  "review_scope": "PRIVATE_FIRST_SCHEDULED_PUBLICATION",
+  "title": "How Games Rebuild Detail From Previous Frames",
+  "description": "A sharp 4K image may begin with fewer newly rendered pixels. This short animation shows how temporal upscalers combine the current frame with motion vectors, depth and history, then reject stale samples that could cause ghosting or shimmer.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-upscalers-in-unreal-engine\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-super-resolution-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #Upscaling #SystemTrace",
+  "tags": [
+    "temporal upscaling",
+    "4K gaming",
+    "motion vectors",
+    "ghosting",
+    "gaming graphics",
+    "PC gaming",
+    "System Trace",
+    "gaming Shorts"
+  ],
+  "captions": {
+    "file": "captions.srt",
+    "sha256": "e0060ef6c3f6692d6823766c78abbe670491032e11527d78e58a9c85be9f2aa4",
+    "clean_manual_captions_required": true
+  },
+  "synthetic_media_required": true,
+  "altered_synthetic_disclosure_required": true,
+  "altered_synthetic_disclosure_setting": "YES",
+  "public_publish_authorised": true,
+  "unlisted_publish_authorised": false,
+  "scheduler_authorised": true,
+  "database_mutation_authorised": false,
+  "playlist_mutation_authorised": false,
+  "thumbnail_upload_authorised": false,
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "rights_placement_blocker_count": 0,
+  "rights_clearance_claimed": false,
+  "scheduled_publish_at_utc": "2026-08-17T19:00:00.000Z",
+  "youtube_upload_request": {
+    "schema_version": 1,
+    "closed": true,
+    "authority_scope": "EXACT_PRIVATE_FIRST_SCHEDULE_REQUEST_SHAPE_ONLY",
+    "publish_authority": "EXTERNALLY_EVALUATED",
+    "video_file": "renders/system-trace-temporal-upscaling.mp4",
+    "video_sha256": "10d596e174f08426598bd5055d0b89f45caebd2826408a4a1d13715e73ab70c4",
+    "notifySubscribers": false,
+    "snippet": {
+      "title": "How Games Rebuild Detail From Previous Frames",
+      "description": "A sharp 4K image may begin with fewer newly rendered pixels. This short animation shows how temporal upscalers combine the current frame with motion vectors, depth and history, then reject stale samples that could cause ghosting or shimmer.\n\nSources:\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-upscalers-in-unreal-engine\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-super-resolution-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: generated locally with Kokoro TTS.\nMusic: an original ElevenLabs sound-effects bed licensed for finished editorial video.\nSynthetic media disclosure: Yes.\n\n#PCGaming #Upscaling #SystemTrace",
+      "tags": [
+        "temporal upscaling",
+        "4K gaming",
+        "motion vectors",
+        "ghosting",
+        "gaming graphics",
+        "PC gaming",
+        "System Trace",
+        "gaming Shorts"
+      ],
+      "categoryId": "20",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "status": {
+      "privacyStatus": "private",
+      "selfDeclaredMadeForKids": false,
+      "containsSyntheticMedia": true,
+      "license": "youtube",
+      "embeddable": true,
+      "publicStatsViewable": true
+    },
+    "paidProductPlacementDetails": {
+      "hasPaidProductPlacement": false
+    },
+    "captions": {
+      "file": "captions.srt",
+      "sha256": "e0060ef6c3f6692d6823766c78abbe670491032e11527d78e58a9c85be9f2aa4",
+      "language": "en-GB",
+      "name": "English (United Kingdom)",
+      "isDraft": false
+    },
+    "cover_selection": {
+      "selection_mode": "in_video_frame",
+      "frame_time_seconds": 1.5,
+      "custom_thumbnail_upload_allowed": false,
+      "application_status": "NOT_APPLIED"
+    }
+  }
+}

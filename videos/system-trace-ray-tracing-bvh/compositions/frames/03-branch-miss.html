@@ -1,0 +1,508 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("/assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 300 900;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("/assets/fonts/IBM_Plex_Mono_700.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 700;
+    }
+
+    #root {
+      --branch-miss-ink: #0d0d0f;
+      --branch-miss-ink-alt: #1a1918;
+      --branch-miss-orange: #ff6b1a;
+      --branch-miss-cream: #f0f0f0;
+      --branch-miss-hint: #7d7977;
+      --branch-miss-line: #282726;
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: var(--branch-miss-cream);
+      font-family: "Space Grotesk", sans-serif;
+    }
+
+    #root [class~="03-branch-miss-ground"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: var(--branch-miss-ink);
+    }
+
+    #root [class~="03-branch-miss-ground-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 83cqh;
+      opacity: 0.35;
+    }
+
+    #root [class~="03-branch-miss-content"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    #root [class~="03-branch-miss-scene"] {
+      position: relative;
+      width: 100%;
+      height: 83cqh;
+      overflow: hidden;
+    }
+
+    #root [class~="03-branch-miss-chrome"] {
+      position: absolute;
+      top: 50px;
+      left: 106px;
+      right: 106px;
+      display: flex;
+      justify-content: space-between;
+      padding-top: 16px;
+      border-top: 1px solid var(--branch-miss-line);
+      color: var(--branch-miss-hint);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-branch-miss-workarea"] {
+      position: absolute;
+      top: 230px;
+      left: 60px;
+      width: 1708px;
+      height: 686px;
+      overflow: hidden;
+      border-top: 1px solid var(--branch-miss-line);
+      border-bottom: 1px solid var(--branch-miss-line);
+      transform: scale(0.5625);
+      transform-origin: 0 0;
+    }
+
+    #root [class~="03-branch-miss-diagram"] {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 1264px;
+      height: 100%;
+      overflow: hidden;
+      border-right: 1px solid var(--branch-miss-line);
+    }
+
+    #root [class~="03-branch-miss-test-label"] {
+      position: absolute;
+      top: 19px;
+      left: 0;
+      color: var(--branch-miss-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-branch-miss-test-label"]::before {
+      content: "/";
+      margin-right: 12px;
+    }
+
+    #root [class~="03-branch-miss-ray-origin"] {
+      position: absolute;
+      left: 36px;
+      top: 242px;
+      z-index: 8;
+      width: 96px;
+      height: 96px;
+      box-sizing: border-box;
+      border: 2px solid var(--branch-miss-orange);
+      background: var(--branch-miss-ink);
+    }
+
+    #root [class~="03-branch-miss-ray-origin"]::before,
+    #root [class~="03-branch-miss-ray-origin"]::after {
+      content: "";
+      position: absolute;
+      background: var(--branch-miss-orange);
+    }
+
+    #root [class~="03-branch-miss-ray-origin"]::before {
+      top: 45px;
+      left: -14px;
+      width: 120px;
+      height: 2px;
+    }
+
+    #root [class~="03-branch-miss-ray-origin"]::after {
+      top: -14px;
+      left: 45px;
+      width: 2px;
+      height: 120px;
+    }
+
+    #root [class~="03-branch-miss-origin-core"] {
+      position: absolute;
+      top: 34px;
+      left: 34px;
+      width: 24px;
+      height: 24px;
+      box-sizing: border-box;
+      border: 4px solid var(--branch-miss-ink);
+      background: var(--branch-miss-orange);
+    }
+
+    #root [class~="03-branch-miss-origin-tag"] {
+      position: absolute;
+      left: 0;
+      top: 116px;
+      color: var(--branch-miss-hint);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [class~="03-branch-miss-branch-box"] {
+      position: absolute;
+      left: 514px;
+      top: 244px;
+      z-index: 3;
+      width: 632px;
+      height: 338px;
+      box-sizing: border-box;
+      border: 2px solid var(--branch-miss-orange);
+      background: rgba(255, 107, 26, 0.035);
+      transform-origin: 0 50%;
+    }
+
+    #root [class~="03-branch-miss-box-label"] {
+      position: absolute;
+      left: -2px;
+      bottom: calc(100% + 14px);
+      color: var(--branch-miss-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #root [class~="03-branch-miss-box-index"] {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      color: rgba(255, 107, 26, 0.5);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-branch-miss-triangle-field"] {
+      position: absolute;
+      inset: 50px 34px 30px;
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(5, 1fr);
+      place-items: center;
+      gap: 8px 12px;
+    }
+
+    #root [class~="03-branch-miss-triangle"] {
+      display: block;
+      width: 28px;
+      height: 25px;
+      clip-path: polygon(50% 0, 100% 100%, 0 100%);
+      background: var(--branch-miss-cream);
+      opacity: 0.56;
+    }
+
+    #root [class~="03-branch-miss-ray-layer"] {
+      position: absolute;
+      inset: 0;
+      z-index: 7;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    #root [class~="03-branch-miss-probe"] {
+      fill: none;
+      stroke: var(--branch-miss-cream);
+      stroke-width: 4;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="03-branch-miss-ray-tail"] {
+      fill: none;
+      stroke: var(--branch-miss-orange);
+      stroke-width: 4;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #root [class~="03-branch-miss-ray-head"] {
+      fill: var(--branch-miss-orange);
+    }
+
+    #root [class~="03-branch-miss-miss-gap"] {
+      position: absolute;
+      left: 491px;
+      top: 198px;
+      z-index: 9;
+      width: 70px;
+      height: 46px;
+      box-sizing: border-box;
+      border-left: 1px solid var(--branch-miss-orange);
+      border-right: 1px solid var(--branch-miss-orange);
+    }
+
+    #root [class~="03-branch-miss-miss-gap"]::after {
+      content: "clear";
+      position: absolute;
+      left: 9px;
+      top: -22px;
+      color: var(--branch-miss-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-branch-miss-word"] {
+      position: absolute;
+      left: 244px;
+      top: 78px;
+      z-index: 10;
+      margin: 0;
+      color: var(--branch-miss-orange);
+      font-size: 112px;
+      font-weight: 900;
+      line-height: 0.86;
+      letter-spacing: -0.05em;
+      text-transform: lowercase;
+    }
+
+    #root [class~="03-branch-miss-proof"] {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 410px;
+      height: 100%;
+      box-sizing: border-box;
+      padding: 20px 0 0 30px;
+    }
+
+    #root [class~="03-branch-miss-proof-kicker"] {
+      margin: 0;
+      color: var(--branch-miss-hint);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-branch-miss-proof-rule"] {
+      width: 36px;
+      height: 2px;
+      margin-top: 22px;
+      background: var(--branch-miss-orange);
+    }
+
+    #root [class~="03-branch-miss-counter"] {
+      position: absolute;
+      left: 30px;
+      right: 0;
+      top: 150px;
+      padding-top: 18px;
+      border-top: 1px solid var(--branch-miss-line);
+    }
+
+    #root [class~="03-branch-miss-counter-label"] {
+      display: block;
+      color: var(--branch-miss-cream);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-branch-miss-counter-value"] {
+      display: block;
+      margin-top: 64px;
+      color: var(--branch-miss-orange);
+      font-size: 150px;
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -0.06em;
+    }
+
+    #root [class~="03-branch-miss-counter-note"] {
+      display: block;
+      margin-top: 70px;
+      color: var(--branch-miss-hint);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.5;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-branch-miss-pruned"] {
+      position: absolute;
+      left: 30px;
+      right: 0;
+      bottom: 53px;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      color: var(--branch-miss-orange);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    #root [class~="03-branch-miss-pruned"]::before {
+      content: "";
+      width: 36px;
+      height: 2px;
+      background: var(--branch-miss-orange);
+    }
+  </style>
+
+  <div id="root" data-composition-id="03-branch-miss" data-width="1080" data-height="1920" data-start="0" data-duration="8.031">
+    <div class="clip 03-branch-miss-ground" data-start="0" data-duration="8.031" data-track-index="0" aria-hidden="true">
+      <svg class="03-branch-miss-ground-grid" viewBox="0 0 1920 896" preserveAspectRatio="none">
+        <g fill="none" stroke="#282726" stroke-width="1">
+          <path d="M106 122H1814M106 350H1814M106 579H1814M106 808H1814" />
+          <path d="M106 50V896M530 50V896M954 50V896M1378 50V896M1814 50V896" />
+        </g>
+      </svg>
+    </div>
+
+    <div class="clip 03-branch-miss-content" data-start="0" data-duration="8.031" data-track-index="1">
+      <section class="03-branch-miss-scene" aria-label="One ray misses a BVH branch and cancels its triangle tests">
+        <div class="03-branch-miss-chrome">
+          <span>bvh traversal / branch proof</span>
+          <span>system trace / 03</span>
+        </div>
+
+        <div class="03-branch-miss-workarea">
+          <div class="03-branch-miss-diagram">
+            <div class="03-branch-miss-test-label">ray test 1</div>
+
+            <div id="03-branch-miss-origin" class="03-branch-miss-ray-origin">
+              <div class="03-branch-miss-origin-core"></div>
+              <span class="03-branch-miss-origin-tag">ray origin / fixed</span>
+            </div>
+
+            <div id="03-branch-miss-box" class="03-branch-miss-branch-box">
+              <span class="03-branch-miss-box-label">branch box</span>
+              <span class="03-branch-miss-box-index">enclosed geometry</span>
+              <div class="03-branch-miss-triangle-field" aria-label="Forty triangle markers">
+                <span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span>
+                <span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span>
+                <span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span>
+                <span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span>
+                <span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span><span class="03-branch-miss-triangle"></span>
+              </div>
+            </div>
+
+            <svg class="03-branch-miss-ray-layer" viewBox="0 0 1264 686" preserveAspectRatio="none" aria-hidden="true">
+              <path id="03-branch-miss-probe" class="03-branch-miss-probe" pathLength="1" d="M84 290L515 222" />
+              <path id="03-branch-miss-tail" class="03-branch-miss-ray-tail" pathLength="1" d="M515 222L1215 112" />
+              <path id="03-branch-miss-head" class="03-branch-miss-ray-head" d="M1215 112L1188 105L1195 132Z" />
+            </svg>
+
+            <div id="03-branch-miss-gap" class="03-branch-miss-miss-gap"></div>
+            <h1 id="03-branch-miss-word" class="03-branch-miss-word">miss</h1>
+          </div>
+
+          <aside class="03-branch-miss-proof">
+            <p class="03-branch-miss-proof-kicker">branch result</p>
+            <div class="03-branch-miss-proof-rule"></div>
+            <div id="03-branch-miss-counter" class="03-branch-miss-counter">
+              <span class="03-branch-miss-counter-label">triangle tests</span>
+              <strong class="03-branch-miss-counter-value">0</strong>
+              <span class="03-branch-miss-counter-note">entire branch</span>
+            </div>
+            <div id="03-branch-miss-pruned" class="03-branch-miss-pruned">rejected at once</div>
+          </aside>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const byId = (id) => document.getElementById(id);
+      const tl = gsap.timeline({ paused: true });
+      const holdState = { progress: 0 };
+
+      tl.addLabel("branch-test", 0);
+      tl.fromTo('[class~="03-branch-miss-chrome"]', { y: -10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.38, ease: "power2.out" }, 0);
+      tl.fromTo(byId("03-branch-miss-origin"), { scale: 0.88, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.42, ease: "power3.out", transformOrigin: "50% 50%" }, 0.04);
+      tl.fromTo('[class~="03-branch-miss-test-label"]', { x: -18, opacity: 0 }, { x: 0, opacity: 1, duration: 0.36, ease: "power2.out" }, 0.2);
+      tl.fromTo(byId("03-branch-miss-box"), { scaleX: 0, opacity: 0 }, { scaleX: 1, opacity: 1, duration: 0.72, ease: "power3.out", transformOrigin: "0% 50%" }, 0.36);
+      tl.fromTo('[class~="03-branch-miss-triangle"]', { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 0.56, duration: 0.24, stagger: 0.028, ease: "power2.out", transformOrigin: "50% 50%" }, 0.78);
+      tl.fromTo(byId("03-branch-miss-probe"), { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 1, duration: 0.88, ease: "none" }, 1.5);
+
+      tl.addLabel("geometric-miss", 2.5);
+      tl.fromTo(byId("03-branch-miss-tail"), { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 1, duration: 1.06, ease: "none" }, 2.52);
+      tl.fromTo(byId("03-branch-miss-head"), { x: -54, y: 9, scale: 0.7, opacity: 0 }, { x: 0, y: 0, scale: 1, opacity: 1, duration: 0.56, ease: "power2.out", transformOrigin: "50% 50%" }, 3.06);
+      tl.fromTo(byId("03-branch-miss-gap"), { scaleY: 0, opacity: 0 }, { scaleY: 1, opacity: 1, duration: 0.36, ease: "power2.out", transformOrigin: "50% 0%" }, 3.28);
+      tl.fromTo(byId("03-branch-miss-word"), { scale: 0.76, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.34, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 3.54);
+      tl.to(byId("03-branch-miss-word"), { scale: 0.92, opacity: 0.3, duration: 0.42, ease: "power2.out" }, 4.46);
+
+      tl.addLabel("branch-pruned", 5.3);
+      tl.to('[class~="03-branch-miss-triangle"]', { scale: 0.72, opacity: 0.1, duration: 0.44, ease: "power2.inOut" }, 5.32);
+      tl.to(byId("03-branch-miss-box"), { borderColor: "#282726", backgroundColor: "rgba(26, 25, 24, 0.42)", duration: 0.46, ease: "none" }, 5.34);
+      tl.fromTo(byId("03-branch-miss-counter"), { x: 24, opacity: 0 }, { x: 0, opacity: 1, duration: 0.52, ease: "power3.out" }, 5.52);
+      tl.fromTo(byId("03-branch-miss-pruned"), { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.4, ease: "power2.out" }, 6.16);
+      tl.to('[class~="03-branch-miss-counter-value"]', { scale: 1.08, duration: 0.2, ease: "power2.out", transformOrigin: "0% 50%" }, 6.52);
+      tl.to('[class~="03-branch-miss-counter-value"]', { scale: 1, duration: 0.24, ease: "power2.inOut", transformOrigin: "0% 50%" }, 6.72);
+      tl.to(holdState, { progress: 1, duration: 7.531, ease: "none" }, 0);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["03-branch-miss"] = tl;
+    })();
+  </script>
+</template>

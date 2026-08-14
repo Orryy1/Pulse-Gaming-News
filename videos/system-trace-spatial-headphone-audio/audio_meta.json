@@ -1,0 +1,1025 @@
+{
+  "bgm": {
+    "path": "assets/bgm/system-trace-tension-bed.wav",
+    "volume": 0.1
+  },
+  "bgm_pending": false,
+  "voices": [
+    {
+      "frame": 1,
+      "path": "assets/voice/01.wav",
+      "duration_s": 9.472,
+      "words": [
+        {
+          "text": "Headphones",
+          "word": "Headphones",
+          "start": 0,
+          "end": 0.48
+        },
+        {
+          "text": "have",
+          "word": "have",
+          "start": 0.48,
+          "end": 0.76
+        },
+        {
+          "text": "only",
+          "word": "only",
+          "start": 0.76,
+          "end": 1.04
+        },
+        {
+          "text": "two",
+          "word": "two",
+          "start": 1.04,
+          "end": 1.28
+        },
+        {
+          "text": "speakers,",
+          "word": "speakers,",
+          "start": 1.28,
+          "end": 1.84
+        },
+        {
+          "text": "yet",
+          "word": "yet",
+          "start": 2.14,
+          "end": 2.4
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 2.4,
+          "end": 2.54
+        },
+        {
+          "text": "game",
+          "word": "game",
+          "start": 2.54,
+          "end": 2.74
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 2.74,
+          "end": 2.98
+        },
+        {
+          "text": "place",
+          "word": "place",
+          "start": 2.98,
+          "end": 3.24
+        },
+        {
+          "text": "footsteps",
+          "word": "footsteps",
+          "start": 3.24,
+          "end": 3.74
+        },
+        {
+          "text": "behind",
+          "word": "behind",
+          "start": 3.74,
+          "end": 4.3
+        },
+        {
+          "text": "you",
+          "word": "you",
+          "start": 4.3,
+          "end": 4.62
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 4.62,
+          "end": 4.92
+        },
+        {
+          "text": "above.",
+          "word": "above.",
+          "start": 4.92,
+          "end": 5.26
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 5.94,
+          "end": 6.02
+        },
+        {
+          "text": "trick",
+          "word": "trick",
+          "start": 6.02,
+          "end": 6.22
+        },
+        {
+          "text": "begins",
+          "word": "begins",
+          "start": 6.22,
+          "end": 6.72
+        },
+        {
+          "text": "before",
+          "word": "before",
+          "start": 6.72,
+          "end": 7.3
+        },
+        {
+          "text": "either",
+          "word": "either",
+          "start": 7.3,
+          "end": 7.6
+        },
+        {
+          "text": "channel",
+          "word": "channel",
+          "start": 7.6,
+          "end": 8
+        },
+        {
+          "text": "reaches",
+          "word": "reaches",
+          "start": 8,
+          "end": 8.46
+        },
+        {
+          "text": "your",
+          "word": "your",
+          "start": 8.46,
+          "end": 8.8
+        },
+        {
+          "text": "ears.",
+          "word": "ears.",
+          "start": 8.8,
+          "end": 9.1
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Headphones have only two speakers, yet a game can place footsteps behind you and above. The trick begins before either channel reaches your ears."
+      }
+    },
+    {
+      "frame": 2,
+      "path": "assets/voice/02.wav",
+      "duration_s": 9.813,
+      "words": [
+        {
+          "text": "A",
+          "word": "A",
+          "start": 0,
+          "end": 0.14
+        },
+        {
+          "text": "spatial",
+          "word": "spatial",
+          "start": 0.14,
+          "end": 0.52
+        },
+        {
+          "text": "audio",
+          "word": "audio",
+          "start": 0.52,
+          "end": 0.92
+        },
+        {
+          "text": "engine",
+          "word": "engine",
+          "start": 0.92,
+          "end": 1.42
+        },
+        {
+          "text": "treats",
+          "word": "treats",
+          "start": 1.42,
+          "end": 1.8
+        },
+        {
+          "text": "each",
+          "word": "each",
+          "start": 1.8,
+          "end": 2.16
+        },
+        {
+          "text": "sound",
+          "word": "sound",
+          "start": 2.16,
+          "end": 2.56
+        },
+        {
+          "text": "as",
+          "word": "as",
+          "start": 2.56,
+          "end": 3.18
+        },
+        {
+          "text": "an",
+          "word": "an",
+          "start": 3.18,
+          "end": 3.3
+        },
+        {
+          "text": "object",
+          "word": "object",
+          "start": 3.3,
+          "end": 3.72
+        },
+        {
+          "text": "with",
+          "word": "with",
+          "start": 3.72,
+          "end": 4.02
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 4.02,
+          "end": 4.12
+        },
+        {
+          "text": "position,",
+          "word": "position,",
+          "start": 4.12,
+          "end": 4.58
+        },
+        {
+          "text": "then",
+          "word": "then",
+          "start": 4.92,
+          "end": 5.32
+        },
+        {
+          "text": "calculates",
+          "word": "calculates",
+          "start": 5.32,
+          "end": 5.92
+        },
+        {
+          "text": "how",
+          "word": "how",
+          "start": 5.92,
+          "end": 6.28
+        },
+        {
+          "text": "that",
+          "word": "that",
+          "start": 6.28,
+          "end": 6.54
+        },
+        {
+          "text": "direction",
+          "word": "direction",
+          "start": 6.54,
+          "end": 6.9
+        },
+        {
+          "text": "should",
+          "word": "should",
+          "start": 6.9,
+          "end": 7.32
+        },
+        {
+          "text": "arrive",
+          "word": "arrive",
+          "start": 7.32,
+          "end": 7.66
+        },
+        {
+          "text": "at",
+          "word": "at",
+          "start": 7.66,
+          "end": 7.9
+        },
+        {
+          "text": "your",
+          "word": "your",
+          "start": 7.9,
+          "end": 8.1
+        },
+        {
+          "text": "left",
+          "word": "left",
+          "start": 8.1,
+          "end": 8.34
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 8.34,
+          "end": 8.94
+        },
+        {
+          "text": "right",
+          "word": "right",
+          "start": 8.94,
+          "end": 9.16
+        },
+        {
+          "text": "ears.",
+          "word": "ears.",
+          "start": 9.16,
+          "end": 9.52
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "A spatial audio engine treats each sound as an object with a position, then calculates how that direction should arrive at your left and right ears."
+      }
+    },
+    {
+      "frame": 3,
+      "path": "assets/voice/03.wav",
+      "duration_s": 9.92,
+      "words": [
+        {
+          "text": "Tiny",
+          "word": "Tiny",
+          "start": 0,
+          "end": 0.34
+        },
+        {
+          "text": "timing,",
+          "word": "timing,",
+          "start": 0.34,
+          "end": 0.82
+        },
+        {
+          "text": "level",
+          "word": "level",
+          "start": 1.26,
+          "end": 1.38
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 1.38,
+          "end": 1.66
+        },
+        {
+          "text": "frequency",
+          "word": "frequency",
+          "start": 1.66,
+          "end": 2.08
+        },
+        {
+          "text": "differences",
+          "word": "differences",
+          "start": 2.08,
+          "end": 2.66
+        },
+        {
+          "text": "come",
+          "word": "come",
+          "start": 2.66,
+          "end": 3.22
+        },
+        {
+          "text": "from",
+          "word": "from",
+          "start": 3.22,
+          "end": 3.44
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 3.44,
+          "end": 3.6
+        },
+        {
+          "text": "head",
+          "word": "head",
+          "start": 3.6,
+          "end": 3.88
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 3.88,
+          "end": 4.14
+        },
+        {
+          "text": "outer",
+          "word": "outer",
+          "start": 4.14,
+          "end": 4.4
+        },
+        {
+          "text": "ear.",
+          "word": "ear.",
+          "start": 4.4,
+          "end": 4.94
+        },
+        {
+          "text": "Together,",
+          "word": "Together,",
+          "start": 5.62,
+          "end": 5.78
+        },
+        {
+          "text": "those",
+          "word": "those",
+          "start": 6.08,
+          "end": 6.44
+        },
+        {
+          "text": "direction",
+          "word": "direction",
+          "start": 6.44,
+          "end": 6.92
+        },
+        {
+          "text": "-dependent",
+          "word": "-dependent",
+          "start": 6.92,
+          "end": 7.36
+        },
+        {
+          "text": "cues",
+          "word": "cues",
+          "start": 7.36,
+          "end": 7.84
+        },
+        {
+          "text": "form",
+          "word": "form",
+          "start": 7.84,
+          "end": 8.42
+        },
+        {
+          "text": "an",
+          "word": "an",
+          "start": 8.42,
+          "end": 8.66
+        },
+        {
+          "text": "HRTF.",
+          "word": "HRTF.",
+          "start": 8.66,
+          "end": 9.48
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Tiny timing, level and frequency differences come from the head and outer ear. Together, those direction-dependent cues form an HRTF."
+      }
+    },
+    {
+      "frame": 4,
+      "path": "assets/voice/04.wav",
+      "duration_s": 9.28,
+      "words": [
+        {
+          "text": "Turn",
+          "word": "Turn",
+          "start": 0,
+          "end": 0.22
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 0.22,
+          "end": 0.38
+        },
+        {
+          "text": "camera",
+          "word": "camera",
+          "start": 0.38,
+          "end": 0.7
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 0.7,
+          "end": 1.08
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 1.08,
+          "end": 1.2
+        },
+        {
+          "text": "filters",
+          "word": "filters",
+          "start": 1.2,
+          "end": 1.56
+        },
+        {
+          "text": "change.",
+          "word": "change.",
+          "start": 1.56,
+          "end": 2.16
+        },
+        {
+          "text": "Each",
+          "word": "Each",
+          "start": 2.82,
+          "end": 3
+        },
+        {
+          "text": "channel's",
+          "word": "channel's",
+          "start": 3,
+          "end": 3.6
+        },
+        {
+          "text": "waveform",
+          "word": "waveform",
+          "start": 3.6,
+          "end": 4.06
+        },
+        {
+          "text": "shifts",
+          "word": "shifts",
+          "start": 4.06,
+          "end": 4.48
+        },
+        {
+          "text": "while",
+          "word": "while",
+          "start": 4.48,
+          "end": 5.06
+        },
+        {
+          "text": "your",
+          "word": "your",
+          "start": 5.06,
+          "end": 5.3
+        },
+        {
+          "text": "brain",
+          "word": "brain",
+          "start": 5.3,
+          "end": 5.64
+        },
+        {
+          "text": "interprets",
+          "word": "interprets",
+          "start": 5.64,
+          "end": 6.28
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 6.28,
+          "end": 6.44
+        },
+        {
+          "text": "pattern",
+          "word": "pattern",
+          "start": 6.44,
+          "end": 6.74
+        },
+        {
+          "text": "as",
+          "word": "as",
+          "start": 6.74,
+          "end": 7.16
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 7.16,
+          "end": 7.32
+        },
+        {
+          "text": "sound",
+          "word": "sound",
+          "start": 7.32,
+          "end": 7.7
+        },
+        {
+          "text": "moving",
+          "word": "moving",
+          "start": 7.7,
+          "end": 8.2
+        },
+        {
+          "text": "through",
+          "word": "through",
+          "start": 8.2,
+          "end": 8.58
+        },
+        {
+          "text": "space.",
+          "word": "space.",
+          "start": 8.58,
+          "end": 8.94
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Turn the camera and the filters change. Each channel's waveform shifts while your brain interprets the pattern as a sound moving through space."
+      }
+    },
+    {
+      "frame": 5,
+      "path": "assets/voice/05.wav",
+      "duration_s": 10.667,
+      "words": [
+        {
+          "text": "Ears",
+          "word": "Ears",
+          "start": 0,
+          "end": 0.32
+        },
+        {
+          "text": "differ",
+          "word": "differ",
+          "start": 0.32,
+          "end": 0.64
+        },
+        {
+          "text": "so",
+          "word": "so",
+          "start": 0.64,
+          "end": 1.1
+        },
+        {
+          "text": "one",
+          "word": "one",
+          "start": 1.1,
+          "end": 1.4
+        },
+        {
+          "text": "generic",
+          "word": "generic",
+          "start": 1.4,
+          "end": 1.82
+        },
+        {
+          "text": "profile",
+          "word": "profile",
+          "start": 1.82,
+          "end": 2.46
+        },
+        {
+          "text": "will",
+          "word": "will",
+          "start": 2.46,
+          "end": 2.78
+        },
+        {
+          "text": "not",
+          "word": "not",
+          "start": 2.78,
+          "end": 2.94
+        },
+        {
+          "text": "feel",
+          "word": "feel",
+          "start": 2.94,
+          "end": 3.22
+        },
+        {
+          "text": "equally",
+          "word": "equally",
+          "start": 3.22,
+          "end": 3.68
+        },
+        {
+          "text": "precise",
+          "word": "precise",
+          "start": 3.68,
+          "end": 4.18
+        },
+        {
+          "text": "for",
+          "word": "for",
+          "start": 4.18,
+          "end": 4.64
+        },
+        {
+          "text": "everyone.",
+          "word": "everyone.",
+          "start": 4.64,
+          "end": 5.16
+        },
+        {
+          "text": "Personalised",
+          "word": "Personalised",
+          "start": 5.88,
+          "end": 6.5
+        },
+        {
+          "text": "profiles",
+          "word": "profiles",
+          "start": 6.5,
+          "end": 7.08
+        },
+        {
+          "text": "can",
+          "word": "can",
+          "start": 7.08,
+          "end": 7.66
+        },
+        {
+          "text": "improve",
+          "word": "improve",
+          "start": 7.66,
+          "end": 8.08
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 8.08,
+          "end": 8.3
+        },
+        {
+          "text": "match",
+          "word": "match",
+          "start": 8.3,
+          "end": 8.66
+        },
+        {
+          "text": "where",
+          "word": "where",
+          "start": 8.66,
+          "end": 9.1
+        },
+        {
+          "text": "a",
+          "word": "a",
+          "start": 9.1,
+          "end": 9.28
+        },
+        {
+          "text": "system",
+          "word": "system",
+          "start": 9.28,
+          "end": 9.58
+        },
+        {
+          "text": "supports",
+          "word": "supports",
+          "start": 9.58,
+          "end": 10.14
+        },
+        {
+          "text": "them.",
+          "word": "them.",
+          "start": 10.14,
+          "end": 10.48
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "Ears differ so one generic profile will not feel equally precise for everyone. Personalised profiles can improve the match where a system supports them."
+      }
+    },
+    {
+      "frame": 6,
+      "path": "assets/voice/06.wav",
+      "duration_s": 8.192,
+      "words": [
+        {
+          "text": "There",
+          "word": "There",
+          "start": 0,
+          "end": 0.12
+        },
+        {
+          "text": "are",
+          "word": "are",
+          "start": 0.12,
+          "end": 0.26
+        },
+        {
+          "text": "still",
+          "word": "still",
+          "start": 0.26,
+          "end": 0.42
+        },
+        {
+          "text": "only",
+          "word": "only",
+          "start": 0.42,
+          "end": 0.74
+        },
+        {
+          "text": "two",
+          "word": "two",
+          "start": 0.74,
+          "end": 1
+        },
+        {
+          "text": "channels",
+          "word": "channels",
+          "start": 1,
+          "end": 1.36
+        },
+        {
+          "text": "at",
+          "word": "at",
+          "start": 1.36,
+          "end": 1.6
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 1.6,
+          "end": 1.72
+        },
+        {
+          "text": "end.",
+          "word": "end.",
+          "start": 1.72,
+          "end": 2.08
+        },
+        {
+          "text": "The",
+          "word": "The",
+          "start": 2.62,
+          "end": 2.72
+        },
+        {
+          "text": "three",
+          "word": "three",
+          "start": 2.72,
+          "end": 2.94
+        },
+        {
+          "text": "-dimensional",
+          "word": "-dimensional",
+          "start": 2.94,
+          "end": 3.4
+        },
+        {
+          "text": "stage",
+          "word": "stage",
+          "start": 3.4,
+          "end": 4.02
+        },
+        {
+          "text": "happens",
+          "word": "happens",
+          "start": 4.02,
+          "end": 4.74
+        },
+        {
+          "text": "in",
+          "word": "in",
+          "start": 4.74,
+          "end": 5.04
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 5.04,
+          "end": 5.16
+        },
+        {
+          "text": "filtering",
+          "word": "filtering",
+          "start": 5.16,
+          "end": 5.6
+        },
+        {
+          "text": "and",
+          "word": "and",
+          "start": 5.92,
+          "end": 6.22
+        },
+        {
+          "text": "your",
+          "word": "your",
+          "start": 6.22,
+          "end": 6.4
+        },
+        {
+          "text": "brain",
+          "word": "brain",
+          "start": 6.4,
+          "end": 6.8
+        },
+        {
+          "text": "finishes",
+          "word": "finishes",
+          "start": 6.8,
+          "end": 7.34
+        },
+        {
+          "text": "the",
+          "word": "the",
+          "start": 7.34,
+          "end": 7.64
+        },
+        {
+          "text": "render.",
+          "word": "render.",
+          "start": 7.64,
+          "end": 7.84
+        }
+      ],
+      "alignment": {
+        "source": "local_whisper_word_alignment",
+        "model": "faster-whisper:small.en",
+        "backend": "faster-whisper",
+        "language": "en",
+        "transcript": "There are still only two channels at the end. The three-dimensional stage happens in the filtering and your brain finishes the render."
+      }
+    }
+  ],
+  "sfx": [
+    {
+      "frame": 1,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 1,
+      "file": "assets/sfx/glitch-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.64,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 2,
+      "file": "assets/sfx/whoosh-short.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/click.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 3,
+      "file": "assets/sfx/whoosh.mp3",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/click-soft.mp3",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "frame": 4,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/glitch-2.mp3",
+      "offset_s": 0,
+      "duration_s": 3.5,
+      "volume": 0.35
+    },
+    {
+      "frame": 5,
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/notification.mp3",
+      "offset_s": 0,
+      "duration_s": 2.46,
+      "volume": 0.35
+    },
+    {
+      "frame": 6,
+      "file": "assets/sfx/chime.mp3",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    }
+  ]
+}

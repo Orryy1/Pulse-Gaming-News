@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pulse-gaming.local/schemas/operator-trust.schema.json",
+  "title": "Pulse Gaming operator trust and decision records",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/trustRecord" },
+    { "$ref": "#/$defs/currentPointer" },
+    { "$ref": "#/$defs/operatorDecision" }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "keyId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "trustRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "key_id",
+        "public_key_pem",
+        "public_key_fingerprint_sha256",
+        "valid_from",
+        "valid_until",
+        "revoked_at"
+      ],
+      "properties": {
+        "schema_version": { "const": "pulse-operator-trust-record-v1" },
+        "key_id": { "$ref": "#/$defs/keyId" },
+        "public_key_pem": {
+          "type": "string",
+          "pattern": "^-----BEGIN PUBLIC KEY-----[\\s\\S]+-----END PUBLIC KEY-----\\n?$"
+        },
+        "public_key_fingerprint_sha256": { "$ref": "#/$defs/sha256" },
+        "valid_from": { "type": "string", "format": "date-time" },
+        "valid_until": {
+          "oneOf": [
+            { "type": "string", "format": "date-time" },
+            { "type": "null" }
+          ]
+        },
+        "revoked_at": {
+          "oneOf": [
+            { "type": "string", "format": "date-time" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "currentPointer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "current_key_id",
+        "current_trust_record_sha256",
+        "updated_at"
+      ],
+      "properties": {
+        "schema_version": { "const": "pulse-operator-trust-pointer-v1" },
+        "current_key_id": { "$ref": "#/$defs/keyId" },
+        "current_trust_record_sha256": { "$ref": "#/$defs/sha256" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "operatorDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "decision_id",
+        "decision_type",
+        "key_id",
+        "key_fingerprint_sha256",
+        "trust_record_sha256",
+        "nonce",
+        "issued_at",
+        "expires_at",
+        "bindings",
+        "signature_algorithm",
+        "signature_base64"
+      ],
+      "properties": {
+        "schema_version": { "const": "pulse-operator-decision-v1" },
+        "decision_id": { "type": "string", "format": "uuid" },
+        "decision_type": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+        },
+        "key_id": { "$ref": "#/$defs/keyId" },
+        "key_fingerprint_sha256": { "$ref": "#/$defs/sha256" },
+        "trust_record_sha256": { "$ref": "#/$defs/sha256" },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{32,128}$"
+        },
+        "issued_at": { "type": "string", "format": "date-time" },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "bindings": {
+          "type": "object",
+          "minProperties": 1
+        },
+        "signature_algorithm": { "const": "Ed25519" },
+        "signature_base64": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+        }
+      }
+    }
+  }
+}

@@ -118,6 +118,12 @@ function controlledApprovalEnv() {
     PULSE_MIGRATION_024_BACKUP_ID: "fresh-create-024-backup",
     PULSE_MIGRATION_024_BACKUP_SHA256: "b".repeat(64),
     PULSE_MIGRATION_024_BACKUP_VERIFIED_AT: "2026-07-27T02:30:00.000Z",
+    PULSE_MIGRATION_025_APPROVED: "true",
+    PULSE_MIGRATION_025_APPROVAL_ID: "fresh-create-025",
+    PULSE_MIGRATION_025_APPROVED_BY: "operator-3",
+    PULSE_MIGRATION_025_BACKUP_ID: "fresh-create-025-backup",
+    PULSE_MIGRATION_025_BACKUP_SHA256: "c".repeat(64),
+    PULSE_MIGRATION_025_BACKUP_VERIFIED_AT: "2026-07-27T02:45:00.000Z",
   };
 }
 
@@ -135,6 +141,11 @@ test("runMigrations creates the hardened schema in a fresh controlled database",
     result.applied.includes("023_stabilisation_governance_hardening.sql"),
   );
   assert.ok(result.applied.includes("024_publication_authority_audit.sql"));
+  assert.ok(result.applied.includes("025_green_autopilot_runtime_control.sql"));
+  assert.deepEqual(
+    db.prepare("SELECT state,version FROM control_switches WHERE name='external_mutations'").get(),
+    { state: "ENGAGED", version: 1 },
+  );
 
   db.prepare("INSERT INTO stories (id, title) VALUES (?, ?)").run(
     "upgrade-story",
@@ -144,7 +155,7 @@ test("runMigrations creates the hardened schema in a fresh controlled database",
   assertDatabaseIntegrity(db);
 });
 
-test("runMigrations gates and then authorises an applied shipped-020 upgrade through 024", (t) => {
+test("runMigrations gates and then authorises an applied shipped-020 upgrade through 025", (t) => {
   const tempRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-applied-020-upgrade-"),
   );
@@ -193,7 +204,10 @@ test("runMigrations gates and then authorises an applied shipped-020 upgrade thr
     now: MIGRATION_NOW,
     env: controlledApprovalEnv(),
   });
-  assert.deepEqual(result.applied, ["024_publication_authority_audit.sql"]);
+  assert.deepEqual(result.applied, [
+    "024_publication_authority_audit.sql",
+    "025_green_autopilot_runtime_control.sql",
+  ]);
   assert.equal(
     db
       .prepare(

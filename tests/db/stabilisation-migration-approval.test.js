@@ -24,6 +24,12 @@ function approvalEnv(overrides = {}) {
     PULSE_MIGRATION_024_BACKUP_ID: "backup-before-024",
     PULSE_MIGRATION_024_BACKUP_SHA256: "b".repeat(64),
     PULSE_MIGRATION_024_BACKUP_VERIFIED_AT: "2026-07-27T02:30:00.000Z",
+    PULSE_MIGRATION_025_APPROVED: "true",
+    PULSE_MIGRATION_025_APPROVAL_ID: "change-window-025",
+    PULSE_MIGRATION_025_APPROVED_BY: "operator-3",
+    PULSE_MIGRATION_025_BACKUP_ID: "backup-before-025",
+    PULSE_MIGRATION_025_BACKUP_SHA256: "c".repeat(64),
+    PULSE_MIGRATION_025_BACKUP_VERIFIED_AT: "2026-07-27T02:45:00.000Z",
     ...overrides,
   };
 }
@@ -482,5 +488,107 @@ test("already-applied migration 024 is restart-safe after its approval is remove
   });
   assert.ok(result.skipped.includes("024_publication_authority_audit.sql"));
   assert.deepEqual(result.applied, []);
+  db.close();
+});
+
+
+test("controlled runtime refuses pending migration 025 without its own backup approval evidence", () => {
+  const db = new Database(":memory:");
+  assert.throws(
+    () => runMigrations(db, {
+      log() {},
+      now: MIGRATION_NOW,
+      env: approvalEnv({
+        PULSE_MIGRATION_025_APPROVED: "false",
+        PULSE_MIGRATION_025_BACKUP_SHA256: "",
+      }),
+    }),
+    /migration 025 requires explicit approval and verified backup evidence/,
+  );
+  assert.equal(
+    db.prepare("SELECT MAX(CAST(version AS INTEGER)) version FROM schema_migrations").get().version,
+    24,
+  );
+  assert.equal(
+    db.prepare("SELECT COUNT(*) count FROM sqlite_master WHERE type='table' AND name='control_switches'").get().count,
+    0,
+  );
+  db.close();
+});
+
+
+test("controlled runtime audits migration 025 against its own change-window evidence", () => {
+  const db = new Database(":memory:");
+  const result = runMigrations(db, {
+    log() {},
+    now: MIGRATION_NOW,
+    env: approvalEnv(),
+  });
+  assert.ok(result.applied.includes("025_green_autopilot_runtime_control.sql"));
+  const audit = db.prepare(`
+    SELECT actor_id,target_id,decision,reason,evidence_json
+    FROM operator_audit_log
+    WHERE action='apply_schema_migration' AND target_id='025'
+  `).get();
+  assert.deepEqual(
+    {
+      actor_id: audit.actor_id,
+      target_id: audit.target_id,
+      decision: audit.decision,
+      reason: audit.reason,
+    },
+    {
+      actor_id: "operator-3",
+      target_id: "025",
+      decision: "APPROVED_AND_VERIFIED",
+      reason: "change-window-025",
+    },
+  );
+  const evidence = JSON.parse(audit.evidence_json);
+  assert.equal(evidence.backup_id, "backup-before-025");
+  assert.equal(evidence.backup_sha256, "c".repeat(64));
+  assert.equal(evidence.migration_filename, "025_green_autopilot_runtime_control.sql");
+  assert.deepEqual(evidence.post_migration_checks, {
+    foreign_key_check: "ok",
+    integrity_check: "ok",
+    quick_check: "ok",
+  });
+  db.close();
+});
+
+
+test("failed migration-025 integrity verification rolls schema and audit back atomically", () => {
+  const db = new Database(":memory:");
+  assert.throws(
+    () => runMigrations(db, {
+      log() {},
+      now: MIGRATION_NOW,
+      env: approvalEnv(),
+      governanceIntegrityVerifier(handle) {
+        const exists = handle.prepare(
+          "SELECT COUNT(*) count FROM sqlite_master WHERE type='table' AND name='control_switches'",
+        ).get().count;
+        if (exists) throw new Error("injected_025_integrity_failure");
+        return {
+          foreign_key_check: "ok",
+          integrity_check: "ok",
+          quick_check: "ok",
+        };
+      },
+    }),
+    /injected_025_integrity_failure/,
+  );
+  assert.equal(
+    db.prepare("SELECT MAX(CAST(version AS INTEGER)) version FROM schema_migrations").get().version,
+    24,
+  );
+  assert.equal(
+    db.prepare("SELECT COUNT(*) count FROM sqlite_master WHERE type='table' AND name='control_switches'").get().count,
+    0,
+  );
+  assert.equal(
+    db.prepare("SELECT COUNT(*) count FROM operator_audit_log WHERE target_id='025'").get().count,
+    0,
+  );
   db.close();
 });

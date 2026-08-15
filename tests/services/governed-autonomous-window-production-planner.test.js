@@ -280,6 +280,12 @@ function fixture(t) {
       "utf8",
     ),
   );
+  db.exec(`
+    ALTER TABLE jobs ADD COLUMN claim_token INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE jobs ADD COLUMN claim_generation INTEGER NOT NULL DEFAULT 0;
+    CREATE INDEX idx_jobs_claim_identity
+      ON jobs(id, claimed_by, claim_token, claim_generation);
+  `);
   db.prepare("INSERT INTO channels (id) VALUES (?)").run(
     "pulse-gaming",
   );

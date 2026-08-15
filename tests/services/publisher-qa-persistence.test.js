@@ -569,6 +569,7 @@ function withTestPublisherLease(publisher) {
         heartbeat_at: new Date(now).toISOString(),
         expires_at: new Date(new Date(now).getTime() + leaseMs).toISOString(),
         metadata: JSON.stringify(metadata),
+        fencing_token: 1,
         acquired: true,
       };
     },

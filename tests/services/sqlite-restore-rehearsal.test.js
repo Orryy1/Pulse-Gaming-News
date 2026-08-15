@@ -99,12 +99,12 @@ test("rehearsal copies an exact verified backup and emits read-only restore evid
     foreign_key_check: "ok",
     foreign_key_violation_count: 0,
   });
-  assert.equal(result.latest_migration, "024");
+  assert.equal(result.latest_migration, "025");
   assert.equal(
     result.latest_migration_filename,
-    "024_publication_authority_audit.sql",
+    "025_green_autopilot_runtime_control.sql",
   );
-  assert.equal(result.migration_count, 24);
+  assert.equal(result.migration_count, 25);
   assert.equal(result.row_counts.stories, 1);
   assert.equal(result.production_database_mutated, false);
   assert.equal(result.restored_copy_opened_read_only, true);

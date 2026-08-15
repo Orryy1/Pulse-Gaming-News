@@ -481,3 +481,107 @@ test("publisher wrapper rechecks the lease after the task returns", async () => 
   assert.equal(Object.hasOwn(result, "falsely_successful"), false);
   db.close();
 });
+
+test("durable kill switch blocks before publisher task execution", async () => {
+  const { db, leases } = fixture();
+  let ran = false;
+  const result = await runWithPublisherLease({
+    leases,
+    killSwitch: {
+      assertExternalMutationAllowed() {
+        const error = new Error("kill_switch_engaged");
+        error.code = "kill_switch_engaged";
+        throw error;
+      },
+    },
+    task: async () => {
+      ran = true;
+    },
+  });
+  assert.equal(ran, false);
+  assert.equal(result.top_reason, "kill_switch_engaged");
+  assert.equal(
+    db.prepare("SELECT COUNT(*) count FROM runtime_leases").get().count,
+    0,
+  );
+  db.close();
+});
+
+test("kill-switch version changes fence a later mutation boundary", async () => {
+  const { db, leases } = fixture();
+  let checks = 0;
+  let effects = 0;
+  const result = await runWithPublisherLease({
+    leases,
+    killSwitch: {
+      assertExternalMutationAllowed({ expectedVersion }) {
+        checks += 1;
+        if (checks >= 3) {
+          const error = new Error("kill_switch_version_changed");
+          error.code = "kill_switch_version_changed";
+          throw error;
+        }
+        return { clear: true, version: expectedVersion ?? 4 };
+      },
+    },
+    task: async ({ assertHealthy }) => {
+      assertHealthy();
+      effects += 1;
+      assertHealthy();
+      effects += 1;
+    },
+  });
+  assert.equal(effects, 1);
+  assert.equal(result.top_reason, "kill_switch_version_changed");
+  db.close();
+});
+
+test("open durable circuit breaker blocks before publisher task execution", async () => {
+  const { db, leases } = fixture();
+  let ran = false;
+  const result = await runWithPublisherLease({
+    leases,
+    circuitBreaker: {
+      beforeAttempt() {
+        const error = new Error("durable_circuit_open");
+        error.code = "durable_circuit_open";
+        throw error;
+      },
+      recordFailure() {},
+      recordSuccess() {},
+    },
+    task: async () => {
+      ran = true;
+    },
+  });
+  assert.equal(ran, false);
+  assert.equal(result.top_reason, "durable_circuit_open");
+  db.close();
+});
+
+test("publisher records durable circuit success after the final health check", async () => {
+  const { db, leases } = fixture();
+  const events = [];
+  const result = await runWithPublisherLease({
+    leases,
+    circuitBreaker: {
+      beforeAttempt() {
+        events.push("before");
+        return { allowed: true, probeToken: "probe" };
+      },
+      recordFailure() {
+        events.push("failure");
+      },
+      recordSuccess(attempt) {
+        events.push(`success:${attempt.probeToken}`);
+      },
+    },
+    task: async ({ assertHealthy }) => {
+      assertHealthy();
+      return { completed: true };
+    },
+  });
+  assert.deepEqual(result, { completed: true });
+  assert.deepEqual(events, ["before", "success:probe"]);
+  db.close();
+});

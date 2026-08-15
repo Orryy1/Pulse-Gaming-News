@@ -1,0 +1,289 @@
+{
+  "schema_version": "pulse-current-release-footage-pool-v1",
+  "generated_at": "2026-08-15T00:55:31.631Z",
+  "selection_policy": {
+    "minimum_views": 500000,
+    "recent_upload_days": 45,
+    "recent_minimum_views": 20000,
+    "cooldown_slots": 3,
+    "top_band_size": 3,
+    "source_audio": "muted",
+    "source_label_required": true,
+    "public_release_requires_rights_review": true,
+    "max_snapshot_age_hours": 24
+  },
+  "official_channel_allowlist": [
+    "UCvNBXWGykQrWb7kPAn5eLUQ",
+    "UCS2iGSouOopNHXFBcWtBQiA",
+    "UC-2Y8dQb0S6DtpxNgAKoJKA",
+    "UCjBp_7RuDBUYbd1LegWEJ8g",
+    "UCvC4D8onUfXzvjTOM-dBfEA",
+    "UCOsVSkmXD1tc6uiJ2hc0wYQ",
+    "UCZS2K8ZsUmujTuj3cNMyBSA",
+    "UCPpddbTbOr_uWWQT9Pw1rbA",
+    "UCHvATl70qssFSzclIIhd8xQ"
+  ],
+  "candidates": [
+    {
+      "id": "battlefield-6-multiplayer",
+      "game": "Battlefield 6",
+      "youtube_video_id": "wFGEMfyAQtI",
+      "youtube_url": "https://youtube.com/watch?v=wFGEMfyAQtI",
+      "official_channel": "Battlefield",
+      "official_channel_id": "UCvNBXWGykQrWb7kPAn5eLUQ",
+      "source_title": "Battlefield 6 Official Multiplayer Gameplay Trailer",
+      "published_at": "2025-07-31T18:33:00.000Z",
+      "current_until": "2026-09-30T23:59:59.000Z",
+      "topic_tags": [
+        "spatial-audio",
+        "latency",
+        "frame-pacing",
+        "combat"
+      ],
+      "start_offset_s": 4,
+      "snapshot": {
+        "views": 15019194,
+        "likes": 324436,
+        "captured_at": "2026-08-15T00:55:31.631Z",
+        "channel_id": "UCvNBXWGykQrWb7kPAn5eLUQ",
+        "channel_title": "Battlefield",
+        "source_title": "Battlefield 6 Official Multiplayer Gameplay Trailer",
+        "privacy_status": "public",
+        "duration": "PT2M27S"
+      },
+      "rights_class": "official-source-editorial-private-review"
+    },
+    {
+      "id": "resident-evil-requiem-reveal",
+      "game": "Resident Evil Requiem",
+      "youtube_video_id": "POz1-EmLsTY",
+      "youtube_url": "https://youtube.com/watch?v=POz1-EmLsTY",
+      "official_channel": "Resident Evil",
+      "official_channel_id": "UCS2iGSouOopNHXFBcWtBQiA",
+      "source_title": "Resident Evil Requiem - Reveal Trailer",
+      "published_at": "2025-06-06T23:05:03.000Z",
+      "current_until": "2026-09-30T23:59:59.000Z",
+      "topic_tags": [
+        "temporal-upscaling",
+        "texture-streaming",
+        "ray-tracing",
+        "horror"
+      ],
+      "start_offset_s": 8,
+      "snapshot": {
+        "views": 5243212,
+        "likes": 225055,
+        "captured_at": "2026-08-15T00:55:31.631Z",
+        "channel_id": "UCS2iGSouOopNHXFBcWtBQiA",
+        "channel_title": "Resident Evil",
+        "source_title": "Resident Evil Requiem - Reveal Trailer",
+        "privacy_status": "public",
+        "duration": "PT3M39S"
+      },
+      "rights_class": "official-source-editorial-private-review"
+    },
+    {
+      "id": "hell-let-loose-vietnam-gameplay",
+      "game": "Hell Let Loose: Vietnam",
+      "youtube_video_id": "8zdQFX0Li8Q",
+      "youtube_url": "https://youtube.com/watch?v=8zdQFX0Li8Q",
+      "official_channel": "PlayStation",
+      "official_channel_id": "UC-2Y8dQb0S6DtpxNgAKoJKA",
+      "source_title": "Hell Let Loose: Vietnam - Gameplay Trailer | PS5 Games",
+      "published_at": "2025-12-11T15:30:06.000Z",
+      "current_until": "2026-11-30T23:59:59.000Z",
+      "topic_tags": [
+        "shader-compilation",
+        "spatial-audio",
+        "combat",
+        "multiplayer"
+      ],
+      "start_offset_s": 2,
+      "snapshot": {
+        "views": 621600,
+        "likes": 10009,
+        "captured_at": "2026-08-15T00:55:31.631Z",
+        "channel_id": "UC-2Y8dQb0S6DtpxNgAKoJKA",
+        "channel_title": "PlayStation",
+        "source_title": "Hell Let Loose: Vietnam - Gameplay Trailer | PS5 Games",
+        "privacy_status": "public",
+        "duration": "PT1M27S"
+      },
+      "rights_class": "official-source-editorial-private-review"
+    },
+    {
+      "id": "beast-of-reincarnation-reveal",
+      "game": "Beast of Reincarnation",
+      "youtube_video_id": "L-qZiMPsNz0",
+      "youtube_url": "https://youtube.com/watch?v=L-qZiMPsNz0",
+      "official_channel": "XBOX",
+      "official_channel_id": "UCjBp_7RuDBUYbd1LegWEJ8g",
+      "source_title": "Beast of Reincarnation - Reveal Trailer | Xbox Games Showcase 2025",
+      "published_at": "2025-06-08T17:19:50.000Z",
+      "current_until": "2026-11-30T23:59:59.000Z",
+      "topic_tags": [
+        "texture-streaming",
+        "temporal-upscaling",
+        "open-world",
+        "combat"
+      ],
+      "start_offset_s": 5,
+      "snapshot": {
+        "views": 2022270,
+        "likes": 9430,
+        "captured_at": "2026-08-15T00:55:31.631Z",
+        "channel_id": "UCjBp_7RuDBUYbd1LegWEJ8g",
+        "channel_title": "XBOX",
+        "source_title": "Beast of Reincarnation - Reveal Trailer | Xbox Games Showcase 2025",
+        "privacy_status": "public",
+        "duration": "PT1M45S"
+      },
+      "rights_class": "official-source-editorial-private-review"
+    },
+    {
+      "id": "marvel-tokon-announce",
+      "game": "MARVEL Tōkon: Fighting Souls",
+      "youtube_video_id": "6fbfrV5qqnU",
+      "youtube_url": "https://youtube.com/watch?v=6fbfrV5qqnU",
+      "official_channel": "Marvel Entertainment",
+      "official_channel_id": "UCvC4D8onUfXzvjTOM-dBfEA",
+      "source_title": "MARVEL Tōkon: Fighting Souls | Announce Trailer",
+      "published_at": "2025-06-04T21:49:08.000Z",
+      "current_until": "2026-11-30T23:59:59.000Z",
+      "topic_tags": [
+        "render-queue-latency",
+        "input-latency",
+        "combat",
+        "fighting"
+      ],
+      "start_offset_s": 7,
+      "snapshot": {
+        "views": 3439473,
+        "likes": 138745,
+        "captured_at": "2026-08-15T00:55:31.631Z",
+        "channel_id": "UCvC4D8onUfXzvjTOM-dBfEA",
+        "channel_title": "Marvel Entertainment",
+        "source_title": "MARVEL Tōkon: Fighting Souls | Announce Trailer",
+        "privacy_status": "public",
+        "duration": "PT2M27S"
+      },
+      "rights_class": "official-source-editorial-private-review"
+    },
+    {
+      "id": "star-wars-zero-company-gameplay",
+      "game": "Star Wars Zero Company",
+      "youtube_video_id": "WxLUZ1omFA8",
+      "youtube_url": "https://youtube.com/watch?v=WxLUZ1omFA8",
+      "official_channel": "EA Star Wars",
+      "official_channel_id": "UCOsVSkmXD1tc6uiJ2hc0wYQ",
+      "source_title": "Star Wars Zero Company | Official Gameplay Trailer",
+      "published_at": "2026-06-05T22:07:33.000Z",
+      "current_until": "2026-11-30T23:59:59.000Z",
+      "topic_tags": [
+        "ray-tracing",
+        "rendering",
+        "strategy",
+        "effects"
+      ],
+      "start_offset_s": 6,
+      "snapshot": {
+        "views": 1492112,
+        "likes": 40223,
+        "captured_at": "2026-08-15T00:55:31.631Z",
+        "channel_id": "UCOsVSkmXD1tc6uiJ2hc0wYQ",
+        "channel_title": "EA Star Wars",
+        "source_title": "Star Wars Zero Company | Official Gameplay Trailer",
+        "privacy_status": "public",
+        "duration": "PT3M9S"
+      },
+      "rights_class": "official-source-editorial-private-review"
+    },
+    {
+      "id": "silksong-release-trailer",
+      "game": "Hollow Knight: Silksong",
+      "youtube_video_id": "6XGeJwsUP9c",
+      "youtube_url": "https://youtube.com/watch?v=6XGeJwsUP9c",
+      "official_channel": "Team Cherry",
+      "official_channel_id": "UCZS2K8ZsUmujTuj3cNMyBSA",
+      "source_title": "Hollow Knight: Silksong - Release Trailer",
+      "published_at": "2025-08-21T14:30:06.000Z",
+      "current_until": "2026-09-30T23:59:59.000Z",
+      "topic_tags": [
+        "input-latency",
+        "frame-pacing",
+        "combat",
+        "platformer"
+      ],
+      "start_offset_s": 4,
+      "snapshot": {
+        "views": 20780584,
+        "likes": 554531,
+        "captured_at": "2026-08-15T00:55:31.631Z",
+        "channel_id": "UCZS2K8ZsUmujTuj3cNMyBSA",
+        "channel_title": "Team Cherry",
+        "source_title": "Hollow Knight: Silksong - Release Trailer",
+        "privacy_status": "public",
+        "duration": "PT1M53S"
+      },
+      "rights_class": "official-source-editorial-private-review"
+    },
+    {
+      "id": "madden-27-reveal",
+      "game": "Madden NFL 27",
+      "youtube_video_id": "bqQtZ9xm_uI",
+      "youtube_url": "https://youtube.com/watch?v=bqQtZ9xm_uI",
+      "official_channel": "EA SPORTS MADDEN NFL",
+      "official_channel_id": "UCPpddbTbOr_uWWQT9Pw1rbA",
+      "source_title": "Madden 27 | Official Reveal Trailer | EA SPORTS",
+      "published_at": "2026-06-05T00:16:29.000Z",
+      "current_until": "2026-11-30T23:59:59.000Z",
+      "topic_tags": [
+        "input-latency",
+        "render-queue-latency",
+        "sports",
+        "animation"
+      ],
+      "start_offset_s": 8,
+      "snapshot": {
+        "views": 576189,
+        "likes": 16082,
+        "captured_at": "2026-08-15T00:55:31.631Z",
+        "channel_id": "UCPpddbTbOr_uWWQT9Pw1rbA",
+        "channel_title": "EA SPORTS MADDEN NFL",
+        "source_title": "Madden 27 | Official Reveal Trailer | EA SPORTS",
+        "privacy_status": "public",
+        "duration": "PT4M26S"
+      },
+      "rights_class": "official-source-editorial-private-review"
+    },
+    {
+      "id": "arc-raiders-launch",
+      "game": "ARC Raiders",
+      "youtube_video_id": "IpeJjQDXNAE",
+      "youtube_url": "https://youtube.com/watch?v=IpeJjQDXNAE",
+      "official_channel": "ARC Raiders",
+      "official_channel_id": "UCHvATl70qssFSzclIIhd8xQ",
+      "source_title": "Launch Trailer | ARC Raiders",
+      "published_at": "2025-10-27T16:00:06.000Z",
+      "current_until": "2026-09-30T23:59:59.000Z",
+      "topic_tags": [
+        "texture-streaming",
+        "spatial-audio",
+        "ray-tracing",
+        "combat"
+      ],
+      "start_offset_s": 5,
+      "snapshot": {
+        "views": 2182961,
+        "likes": 62908,
+        "captured_at": "2026-08-15T00:55:31.631Z",
+        "channel_id": "UCHvATl70qssFSzclIIhd8xQ",
+        "channel_title": "ARC Raiders",
+        "source_title": "Launch Trailer | ARC Raiders",
+        "privacy_status": "public",
+        "duration": "PT2M5S"
+      },
+      "rights_class": "official-source-editorial-private-review"
+    }
+  ]
+}

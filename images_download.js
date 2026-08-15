@@ -967,21 +967,37 @@ async function getBestImage(story) {
     }
   }
 
-  // Fallback B-roll: IGDB / YouTube search for console exclusives + stories
-  // Steam couldn't match. Only fires when Steam returned no video clips.
+  // System Trace and other explicitly configured explainers must use the
+  // governed current-release pool. This path is fail-closed: it never drops
+  // through to an older generic trailer merely because acquisition failed.
   if (videoClips.length === 0) {
+    const {
+      fetchFallbackBroll,
+      requiresCurrentReleaseIllustrativeBroll,
+    } = require("./fetch_broll");
+    const currentReleaseRequired =
+      requiresCurrentReleaseIllustrativeBroll(story);
     try {
-      const { fetchFallbackBroll } = require("./fetch_broll");
       const fallback = await fetchFallbackBroll(story);
       for (const clip of fallback) {
         videoClips.push({
-          path: clip.path,
-          type: "trailer",
+          ...clip,
+          type: clip.type || "trailer",
           source: clip.source,
         });
         if (videoClips.length >= 2) break;
       }
+      if (currentReleaseRequired && videoClips.length === 0) {
+        throw new Error(
+          "current-release illustrative policy produced no usable clips",
+        );
+      }
     } catch (err) {
+      if (currentReleaseRequired) {
+        throw new Error(
+          `Current-release illustrative B-roll is required for ${story.id}: ${err.message}`,
+        );
+      }
       console.log(
         `[images] B-roll fallback failed (non-fatal): ${err.message}`,
       );
@@ -1075,6 +1091,47 @@ async function getBestImage(story) {
         );
       }
     }
+    for (const clip of videoClips) {
+      try {
+        const sourceUrl = clip.source_url || clip.url || null;
+        if (!sourceUrl) continue;
+        await provenance.recordDownload({
+          story_id: story.id,
+          channel_id: story.channel_id || null,
+          source_url: sourceUrl,
+          source_type: classifyProvenanceSourceType(clip),
+          file_path: clip.path,
+          story_relevance_score:
+            clip.type === "current_release_illustrative" ? 0.55 : 0.8,
+          accepted: true,
+          licence_class:
+            clip.rights_class === "official-source-editorial-private-review"
+              ? "fair_use_review"
+              : undefined,
+          skipPrescan: true,
+          raw_meta: {
+            type: clip.type,
+            source: clip.source,
+            source_label: clip.source_label || null,
+            source_audio: clip.source_audio || null,
+            official_channel: clip.official_channel || null,
+            official_channel_id: clip.official_channel_id || null,
+            game: clip.game || null,
+            youtube_video_id: clip.youtube_video_id || null,
+            current_release_candidate_id:
+              clip.current_release_candidate_id || null,
+            public_rights_review_required:
+              clip.public_rights_review_required === true,
+            selection_score: clip.selection_score || null,
+            selection_topic_tags: clip.selection_topic_tags || null,
+          },
+        });
+      } catch (provErr) {
+        console.log(
+          `[images] video provenance record failed (non-fatal): ${provErr.message}`,
+        );
+      }
+    }
   } catch (err) {
     // Module not loadable (USE_SQLITE off / migration not applied) —
     // the produce loop is unaffected.
@@ -1113,6 +1170,7 @@ function classifyProvenanceSourceType(img) {
   if (src === "pexels") return "pexels";
   if (src === "unsplash") return "unsplash";
   if (src === "bing") return "bing";
+  if (src.startsWith("current-release")) return "youtube_broll";
   if (src.startsWith("youtube") || src.startsWith("steam_fallback")) {
     return "steam_trailer";
   }

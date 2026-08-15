@@ -22,6 +22,11 @@
       "sources": [
         "https://dev.epicgames.com/documentation/en-us/unreal-engine/smooth-frame-rate-in-unreal-engine",
         "https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-flip-model"
+      ],
+      "series_id": "system-trace",
+      "visual_mode": "current-release-illustrative",
+      "topic_tags": [
+        "frame-pacing"
       ]
     },
     {
@@ -41,6 +46,13 @@
         "https://learn.microsoft.com/en-us/windows/win32/direct3d12/managing-graphics-pipeline-state-in-direct3d-12",
         "https://learn.microsoft.com/en-us/samples/microsoft/directx-graphics-samples/d3d12-pipeline-state-cache-sample-win32/",
         "https://developer.nvidia.com/blog/advanced-api-performance-pipeline-state-objects/"
+      ],
+      "series_id": "system-trace",
+      "visual_mode": "current-release-illustrative",
+      "topic_tags": [
+        "shader-compilation",
+        "combat",
+        "multiplayer"
       ]
     },
     {
@@ -59,6 +71,12 @@
       "sources": [
         "https://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-upscalers-in-unreal-engine",
         "https://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-super-resolution-in-unreal-engine"
+      ],
+      "series_id": "system-trace",
+      "visual_mode": "current-release-illustrative",
+      "topic_tags": [
+        "temporal-upscaling",
+        "ray-tracing"
       ]
     },
     {
@@ -78,6 +96,13 @@
         "https://learn.microsoft.com/en-us/windows/win32/coreaudio/spatial-sound",
         "https://learn.microsoft.com/en-us/windows/win32/api/hrtfapoapi/nn-hrtfapoapi-ihrtfapo",
         "https://blog.playstation.com/2024/07/24/introducing-personalized-3d-audio-profiles-for-headphones-and-earbuds-on-ps5/"
+      ],
+      "series_id": "system-trace",
+      "visual_mode": "current-release-illustrative",
+      "topic_tags": [
+        "spatial-audio",
+        "combat",
+        "multiplayer"
       ]
     },
     {
@@ -96,6 +121,12 @@
       "sources": [
         "https://dev.epicgames.com/documentation/en-us/unreal-engine/texture-streaming-overview-for-unreal-engine",
         "https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html"
+      ],
+      "series_id": "system-trace",
+      "visual_mode": "current-release-illustrative",
+      "topic_tags": [
+        "texture-streaming",
+        "open-world"
       ]
     },
     {
@@ -114,6 +145,13 @@
       "sources": [
         "https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html",
         "https://developer.nvidia.com/blog/thinking-parallel-part-ii-tree-traversal-gpu/"
+      ],
+      "series_id": "system-trace",
+      "visual_mode": "current-release-illustrative",
+      "topic_tags": [
+        "ray-tracing",
+        "rendering",
+        "effects"
       ]
     },
     {
@@ -132,7 +170,27 @@
       "sources": [
         "https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-1-3-presentation-improvements",
         "https://developer.nvidia.com/performance-rendering-tools/reflex"
+      ],
+      "series_id": "system-trace",
+      "visual_mode": "current-release-illustrative",
+      "topic_tags": [
+        "render-queue-latency",
+        "input-latency"
       ]
     }
-  ]
+  ],
+  "series_id": "system-trace",
+  "channel_id": "pulse-gaming",
+  "visual_policy": {
+    "mode": "current-release-illustrative",
+    "pool_config": "config/current-release-footage-pool.json",
+    "assignment_config": "config/system-trace-current-release-assignments.json",
+    "official_sources_only": true,
+    "fail_closed_if_no_eligible_source": true,
+    "source_audio": "muted",
+    "source_label_required": true,
+    "public_rights_review_required": true,
+    "cooldown_slots": 3,
+    "selection_refresh": "before_each_production_batch"
+  }
 }

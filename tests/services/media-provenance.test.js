@@ -138,3 +138,13 @@ test("media-provenance.listForStory: returns empty array when SQLite off", () =>
   const rows = provenance.listForStory("nonexistent");
   assert.ok(Array.isArray(rows));
 });
+
+test("classifyProvenanceSourceType: governed current-release clips map to youtube_broll", () => {
+  assert.equal(
+    classifyProvenanceSourceType({
+      source: "current-release:Battlefield:Battlefield 6",
+      type: "current_release_illustrative",
+    }),
+    "youtube_broll",
+  );
+});

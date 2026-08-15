@@ -8,17 +8,22 @@
     - cases where Steam search missed the match
 
   Source priority:
-    1. IGDB (Twitch dev creds) — returns a YouTube video_id for a trailer
-    2. YouTube Data API search — "official trailer {game}" first result
-  Both converge on yt-dlp to download and trim a short safe trailer window.
+    1. Explicit System Trace/current-release policy ? official-channel pool,
+       live popularity validation, cooldown and fail-closed selection
+    2. IGDB (Twitch dev creds) ? exact-subject trailer video_id
+    3. YouTube Data API search ? exact-subject trusted-channel trailer
+  All paths converge on yt-dlp to download and trim a short editorial window.
 
-  Fair-use guardrails enforced here:
-    - CLIP_MAX_SECONDS = 12  (short enough that narration transformation dominates)
-    - Skips videos longer than 20 min (full podcasts / reviews, not trailers)
-    - Refuses to download if no game title could be extracted (prevents random
-      footage being stapled onto industry stories)
+  Guardrails enforced here:
+    - CLIP_MAX_SECONDS = 12  (narration and Pulse graphics remain dominant)
+    - Current-release clips are cached by source identity + exact window
+    - Current-release source audio is physically stripped during acquisition
+    - Generic fallback refuses stories with no extractable named game
+    - Explicit current-release mode throws when no eligible official source is
+      available; it never falls through to dated or fan-uploaded filler
 
-  All functions return { path, source } or null. Never throws.
+  Legacy functions return { path, source } or null. The governed
+  current-release path deliberately throws on policy or acquisition failure.
 */
 
 const fs = require("fs-extra");
@@ -27,9 +32,19 @@ const axios = require("axios");
 const { exec } = require("child_process");
 const util = require("util");
 const { extractGameTitles } = require("./lib/script-game-enrichment");
+const {
+  isPoolSnapshotFresh,
+  loadPool: loadCurrentReleaseFootagePool,
+  selectCurrentReleaseFootage,
+} = require("./lib/services/current-release-footage-pool");
 const execAsync = util.promisify(exec);
 
 const VIDEO_CACHE_DIR = path.join("output", "video_cache");
+const CURRENT_RELEASE_POOL_PATH = path.join(
+  __dirname,
+  "config",
+  "current-release-footage-pool.json",
+);
 const CLIP_MAX_SECONDS = 12;
 const CLIP_INTRO_SKIP_SECONDS = 5;
 const MAX_TRAILER_DURATION_SECONDS = 20 * 60; // reject podcasts / reviews
@@ -119,21 +134,225 @@ function deriveBrollSearchTitles(story) {
   return fallback ? [fallback] : [];
 }
 
-function chooseClipWindow(durationSeconds) {
+function chooseClipWindow(durationSeconds, options = {}) {
   const duration = Number(durationSeconds);
+  const requestedMax = Number(options.maxSeconds);
+  const maxSeconds =
+    Number.isFinite(requestedMax) && requestedMax > 0
+      ? requestedMax
+      : CLIP_MAX_SECONDS;
+  const preferredStart = Number(options.preferredStart);
+
   if (!Number.isFinite(duration) || duration <= 0) {
-    return { start: 0, end: CLIP_MAX_SECONDS };
+    const start = Number.isFinite(preferredStart) && preferredStart >= 0
+      ? preferredStart
+      : 0;
+    return { start, end: start + maxSeconds };
   }
-  if (duration <= CLIP_MAX_SECONDS) {
+  if (duration <= maxSeconds) {
     return { start: 0, end: duration };
   }
 
-  const start = Math.min(
-    CLIP_INTRO_SKIP_SECONDS,
-    Math.max(0, duration - CLIP_MAX_SECONDS),
-  );
-  const end = Math.min(duration, start + CLIP_MAX_SECONDS);
+  const latestStart = Math.max(0, duration - maxSeconds);
+  const start = Number.isFinite(preferredStart) && preferredStart >= 0
+    ? Math.min(preferredStart, latestStart)
+    : Math.min(CLIP_INTRO_SKIP_SECONDS, latestStart);
+  const end = Math.min(duration, start + maxSeconds);
   return { start, end };
+}
+
+function requiresCurrentReleaseIllustrativeBroll(story) {
+  const policy = story?.visual_policy || story?.visualPolicy || {};
+  const mode =
+    story?.visual_mode ||
+    story?.visualMode ||
+    policy.mode ||
+    null;
+  const series = String(
+    story?.series || story?.series_id || story?.seriesId || "",
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-");
+  return (
+    mode === "current-release-illustrative" ||
+    series === "system-trace" ||
+    story?.system_trace === true
+  );
+}
+
+function deriveCurrentReleaseTopicTags(story) {
+  const text = [story?.title, story?.full_script, story?.tts_script]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const tags = [];
+  const add = (tag) => {
+    if (!tags.includes(tag)) tags.push(tag);
+  };
+  if (/shader|pipeline state|compil/.test(text)) add("shader-compilation");
+  if (/temporal|upscal|reconstruct|dlss|fsr|motion vector/.test(text)) {
+    add("temporal-upscaling");
+  }
+  if (/spatial audio|headphone|hrtf|h-r-t-f|sound.*behind|3d audio/.test(text)) {
+    add("spatial-audio");
+  }
+  if (/texture|vram|streaming|mip level|residency/.test(text)) {
+    add("texture-streaming");
+  }
+  if (/ray tracing|ray-tracing|bvh|bounding volume/.test(text)) {
+    add("ray-tracing");
+  }
+  if (/render queue|frame queue|queue.*gpu|input latency|faster input/.test(text)) {
+    add("render-queue-latency");
+    add("input-latency");
+  }
+  if (/frame pacing|frame-time|frame time|stutter|fps counter/.test(text)) {
+    add("frame-pacing");
+  }
+  return tags.length > 0 ? tags : ["combat"];
+}
+
+async function fetchLiveCurrentReleaseStats(pool, options = {}) {
+  if (options.statsByVideoId) return options.statsByVideoId;
+  if (typeof options.liveStatsFetcher === "function") {
+    return options.liveStatsFetcher(pool);
+  }
+  if (options.disableLiveStats === true) return null;
+  const apiKey = options.youtubeApiKey || process.env.YOUTUBE_API_KEY;
+  if (!apiKey) return null;
+  const ids = pool.candidates.map((candidate) => candidate.youtube_video_id);
+  const response = await axios.get("https://www.googleapis.com/youtube/v3/videos", {
+    params: {
+      part: "snippet,statistics,status,contentDetails",
+      id: ids.join(","),
+      key: apiKey,
+    },
+    timeout: 15000,
+  });
+  const items = Array.isArray(response.data?.items) ? response.data.items : [];
+  const returned = new Map(items.map((item) => [item.id, item]));
+  return Object.fromEntries(
+    ids.map((id) => {
+      const item = returned.get(id);
+      return [
+        id,
+        item
+          ? {
+              views: Number(item.statistics?.viewCount || 0),
+              channelId: item.snippet?.channelId || null,
+              privacyStatus: item.status?.privacyStatus || null,
+              publishedAt: item.snippet?.publishedAt || null,
+              title: item.snippet?.title || null,
+              duration: item.contentDetails?.duration || null,
+            }
+          : {
+              views: 0,
+              channelId: null,
+              privacyStatus: "missing",
+            },
+      ];
+    }),
+  );
+}
+
+async function fetchCurrentReleaseIllustrativeBroll(story, options = {}) {
+  if (!requiresCurrentReleaseIllustrativeBroll(story)) {
+    throw new Error("current-release B-roll requested for a story without the required visual policy");
+  }
+  if (story?.flair && /rumour|rumor/i.test(story.flair)) {
+    throw new Error("current-release illustrative footage is blocked for rumour stories");
+  }
+
+  const pool = options.pool || loadCurrentReleaseFootagePool(
+    options.poolPath || CURRENT_RELEASE_POOL_PATH,
+  );
+  const freshness = isPoolSnapshotFresh(pool, { now: options.now });
+  let statsByVideoId = options.statsByVideoId || null;
+  let liveStatsError = null;
+  if (!statsByVideoId) {
+    try {
+      statsByVideoId = await fetchLiveCurrentReleaseStats(pool, options);
+    } catch (error) {
+      liveStatsError = error;
+    }
+  }
+  if (!statsByVideoId && !freshness.fresh) {
+    const suffix = liveStatsError ? `: ${liveStatsError.message}` : "";
+    throw new Error(
+      `current-release pool snapshot is stale (${freshness.ageHours}h > ${freshness.maxAgeHours}h) and live refresh is unavailable${suffix}`,
+    );
+  }
+
+  const downloader = options.downloader || downloadYoutubeClip;
+  const maxClips = Math.max(1, Math.min(2, Number(options.maxClips || 2)));
+  const topicTags = options.topicTags || deriveCurrentReleaseTopicTags(story);
+  const selected = [];
+  const usedIds = [];
+  const statsSource = statsByVideoId ? "live_or_injected" : "fresh_snapshot";
+
+  for (let index = 0; index < maxClips; index += 1) {
+    let result;
+    try {
+      result = selectCurrentReleaseFootage(pool, {
+        storyId: `${story.id || "story"}:${index}`,
+        topicTags,
+        seed: `${options.seed || story.id || "pulse"}:${index}`,
+        usedIds,
+        now: options.now,
+        statsByVideoId,
+      });
+    } catch (error) {
+      if (index === 0) throw error;
+      break;
+    }
+    const candidate = result.selected;
+    usedIds.push(candidate.id);
+    const preferredStart = Number(candidate.start_offset_s || 0);
+    const filename = `${story.id || "story"}_current_${index + 1}_${candidate.id}_${candidate.youtube_video_id}_s${preferredStart}_muted.mp4`;
+    const source = `current-release:${candidate.official_channel}:${candidate.game}`;
+    const clip = await downloader(
+      candidate.youtube_video_id,
+      filename,
+      source,
+      {
+        preferredStart,
+        maxSeconds: CLIP_MAX_SECONDS,
+        muteSourceAudio: true,
+      },
+    );
+    if (!clip) {
+      if (index === 0) {
+        throw new Error(`current-release source acquisition failed for ${candidate.id}`);
+      }
+      break;
+    }
+    selected.push({
+      ...clip,
+      type: "current_release_illustrative",
+      source,
+      source_url: candidate.youtube_url,
+      url: candidate.youtube_url,
+      source_label: `ILLUSTRATIVE GAMEPLAY: ${String(candidate.official_channel).toUpperCase()} / ${String(candidate.game).toUpperCase()}`,
+      source_audio: "muted",
+      official_channel: candidate.official_channel,
+      official_channel_id: candidate.official_channel_id,
+      game: candidate.game,
+      youtube_video_id: candidate.youtube_video_id,
+      current_release_candidate_id: candidate.id,
+      rights_class: candidate.rights_class,
+      public_rights_review_required: true,
+      selection_score: result.evaluation.score,
+      selection_topic_tags: topicTags,
+      selection_stats_source: statsSource,
+      pool_snapshot_age_hours: freshness.ageHours,
+    });
+  }
+
+  if (selected.length === 0) {
+    throw new Error("no eligible current-release footage candidate produced a usable clip");
+  }
+  return selected;
 }
 
 // --- IGDB (via Twitch app token) ---
@@ -254,10 +473,13 @@ async function searchYoutubeTrailer(gameTitle) {
 }
 
 // --- yt-dlp download of first N seconds ---
-async function downloadYoutubeClip(youtubeId, filename, source) {
+async function downloadYoutubeClip(youtubeId, filename, source, options = {}) {
   await fs.ensureDir(VIDEO_CACHE_DIR);
   const outPath = path.join(VIDEO_CACHE_DIR, filename);
   if (await fs.pathExists(outPath)) return { path: outPath, source };
+  const rawPath = options.muteSourceAudio
+    ? `${outPath}.source.mp4`
+    : outPath;
 
   const url = `https://www.youtube.com/watch?v=${youtubeId}`;
   let duration = null;
@@ -282,7 +504,7 @@ async function downloadYoutubeClip(youtubeId, filename, source) {
   }
 
   try {
-    const clipWindow = chooseClipWindow(duration);
+    const clipWindow = chooseClipWindow(duration, options);
     // Skip the common rating/logo/title-card intro where possible.
     // Force mp4 container + 720p max (Shorts is 1080 tall but 720 scales fine)
     const dlCmd =
@@ -290,9 +512,17 @@ async function downloadYoutubeClip(youtubeId, filename, source) {
       `--download-sections "*${clipWindow.start}-${clipWindow.end}" ` +
       `--format "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best" ` +
       `--merge-output-format mp4 ` +
-      `-o "${outPath.replace(/\\/g, "/")}" "${url}"`;
+      `-o "${rawPath.replace(/\\/g, "/")}" "${url}"`;
     await execAsync(dlCmd, { timeout: 90000, maxBuffer: 10 * 1024 * 1024 });
 
+    if (!(await fs.pathExists(rawPath))) return null;
+    if (options.muteSourceAudio) {
+      const stripCmd =
+        `ffmpeg -hide_banner -loglevel error -y -i "${rawPath.replace(/\\/g, "/")}" ` +
+        `-map 0:v:0 -c:v copy -an -movflags +faststart "${outPath.replace(/\\/g, "/")}"`;
+      await execAsync(stripCmd, { timeout: 90000, maxBuffer: 10 * 1024 * 1024 });
+      await fs.remove(rawPath);
+    }
     if (!(await fs.pathExists(outPath))) return null;
     const stat = await fs.stat(outPath);
     if (stat.size < 20000) {
@@ -305,6 +535,9 @@ async function downloadYoutubeClip(youtubeId, filename, source) {
     );
     return { path: outPath, source };
   } catch (err) {
+    if (rawPath !== outPath) {
+      await fs.remove(rawPath).catch(() => {});
+    }
     console.log(
       `[broll] yt-dlp download failed for ${youtubeId}: ${err.message}`,
     );
@@ -345,7 +578,11 @@ function extractGameTitle(story) {
 // --- Public entry point ---
 // Returns an array of { path, source } (max 2 clips) or [] if nothing usable.
 // Only called when Steam returned no clips.
-async function fetchFallbackBroll(story) {
+async function fetchFallbackBroll(story, options = {}) {
+  if (requiresCurrentReleaseIllustrativeBroll(story)) {
+    return fetchCurrentReleaseIllustrativeBroll(story, options);
+  }
+
   const searchTitles = deriveBrollSearchTitles(story);
   if (searchTitles.length === 0) {
     console.log(
@@ -417,4 +654,7 @@ module.exports = {
   hasStrongTitleMatch,
   isSafeYoutubeTrailerCandidate,
   selectSafeYoutubeTrailerCandidate,
+  deriveCurrentReleaseTopicTags,
+  fetchCurrentReleaseIllustrativeBroll,
+  requiresCurrentReleaseIllustrativeBroll,
 };

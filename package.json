@@ -327,7 +327,10 @@
     "ops:goal41-definition-missing": "node tools/goal41-definition-missing.js",
     "ops:goal42-definition-missing": "node tools/goal42-definition-missing.js",
     "tts:overnight-report": "node tools/local-tts-overnight-report.js",
-    "tts:generated-voice-review": "node tools/local-generated-voice-rights.js"
+    "tts:generated-voice-review": "node tools/local-generated-voice-rights.js",
+    "media:current-release-refresh": "node tools/current-release-footage-pool.js refresh",
+    "media:current-release-rank": "node tools/current-release-footage-pool.js rank",
+    "media:current-release-assign": "node tools/current-release-footage-pool.js assign"
   },
   "keywords": [],
   "author": "",

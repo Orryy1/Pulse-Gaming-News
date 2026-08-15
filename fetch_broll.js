@@ -213,6 +213,30 @@ function deriveCurrentReleaseTopicTags(story) {
   return tags.length > 0 ? tags : ["combat"];
 }
 
+function deriveCurrentReleaseVisualRequirements(story) {
+  const requirements = story?.visual_requirements || story?.visualRequirements || {};
+  return {
+    minimumTopicMatches: Number.isFinite(Number(requirements.minimum_topic_matches))
+      ? Number(requirements.minimum_topic_matches)
+      : Number.isFinite(Number(requirements.minimumTopicMatches))
+        ? Number(requirements.minimumTopicMatches)
+        : 1,
+    allowedContentTypes:
+      requirements.allowed_content_types || requirements.allowedContentTypes || [],
+    requiredVisualTraits:
+      requirements.required_visual_traits || requirements.requiredVisualTraits || [],
+    forbiddenVisualTraits:
+      requirements.forbidden_visual_traits || requirements.forbiddenVisualTraits || [],
+  };
+}
+
+function currentReleaseStoryId(story) {
+  if (story?.story_id) return String(story.story_id);
+  if (story?.id) return String(story.id);
+  if (story?.slug) return `system-trace-${story.slug}`;
+  return "story";
+}
+
 async function fetchLiveCurrentReleaseStats(pool, options = {}) {
   if (options.statsByVideoId) return options.statsByVideoId;
   if (typeof options.liveStatsFetcher === "function") {
@@ -286,7 +310,9 @@ async function fetchCurrentReleaseIllustrativeBroll(story, options = {}) {
 
   const downloader = options.downloader || downloadYoutubeClip;
   const maxClips = Math.max(1, Math.min(2, Number(options.maxClips || 2)));
-  const topicTags = options.topicTags || deriveCurrentReleaseTopicTags(story);
+  const topicTags = options.topicTags || story?.topic_tags || deriveCurrentReleaseTopicTags(story);
+  const storyId = currentReleaseStoryId(story);
+  const visualRequirements = options.visualRequirements || deriveCurrentReleaseVisualRequirements(story);
   const selected = [];
   const usedIds = [];
   const statsSource = statsByVideoId ? "live_or_injected" : "fresh_snapshot";
@@ -295,9 +321,13 @@ async function fetchCurrentReleaseIllustrativeBroll(story, options = {}) {
     let result;
     try {
       result = selectCurrentReleaseFootage(pool, {
-        storyId: `${story.id || "story"}:${index}`,
+        storyId,
         topicTags,
-        seed: `${options.seed || story.id || "pulse"}:${index}`,
+        minimumTopicMatches: visualRequirements.minimumTopicMatches,
+        allowedContentTypes: visualRequirements.allowedContentTypes,
+        requiredVisualTraits: visualRequirements.requiredVisualTraits,
+        forbiddenVisualTraits: visualRequirements.forbiddenVisualTraits,
+        seed: `${options.seed || storyId || "pulse"}:${index}`,
         usedIds,
         now: options.now,
         statsByVideoId,
@@ -344,6 +374,11 @@ async function fetchCurrentReleaseIllustrativeBroll(story, options = {}) {
       public_rights_review_required: true,
       selection_score: result.evaluation.score,
       selection_topic_tags: topicTags,
+      selection_visual_requirements: visualRequirements,
+      selection_matched_tags: result.evaluation.matchedTags,
+      selection_matched_required_traits: result.evaluation.matchedRequiredTraits,
+      source_content_type: candidate.content_type,
+      source_visual_traits: candidate.visual_traits,
       selection_stats_source: statsSource,
       pool_snapshot_age_hours: freshness.ageHours,
     });
@@ -655,6 +690,7 @@ module.exports = {
   isSafeYoutubeTrailerCandidate,
   selectSafeYoutubeTrailerCandidate,
   deriveCurrentReleaseTopicTags,
+  deriveCurrentReleaseVisualRequirements,
   fetchCurrentReleaseIllustrativeBroll,
   requiresCurrentReleaseIllustrativeBroll,
 };

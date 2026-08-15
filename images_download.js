@@ -1102,7 +1102,7 @@ async function getBestImage(story) {
           source_type: classifyProvenanceSourceType(clip),
           file_path: clip.path,
           story_relevance_score:
-            clip.type === "current_release_illustrative" ? 0.55 : 0.8,
+            clip.type === "current_release_illustrative" ? 0.95 : 0.8,
           accepted: true,
           licence_class:
             clip.rights_class === "official-source-editorial-private-review"
@@ -1124,6 +1124,13 @@ async function getBestImage(story) {
               clip.public_rights_review_required === true,
             selection_score: clip.selection_score || null,
             selection_topic_tags: clip.selection_topic_tags || null,
+            selection_matched_tags: clip.selection_matched_tags || null,
+            selection_visual_requirements:
+              clip.selection_visual_requirements || null,
+            selection_matched_required_traits:
+              clip.selection_matched_required_traits || null,
+            source_content_type: clip.source_content_type || null,
+            source_visual_traits: clip.source_visual_traits || null,
           },
         });
       } catch (provErr) {

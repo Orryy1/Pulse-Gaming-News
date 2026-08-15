@@ -1,14 +1,236 @@
 {
   "schema_version": "pulse-system-trace-current-release-assignments-v1",
-  "generated_at": "2026-08-15T00:55:55.834Z",
+  "generated_at": "2026-08-15T04:11:10.569Z",
   "pool_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\config\\current-release-footage-pool.json",
-  "pool_sha256": "5be167d0d9953e7efb01db02242d41b964a4216af8ef8c29a89ce99eb823f3ae",
-  "selection_seed": "pulse-system-trace-current-release-production-v1",
+  "pool_sha256": "e6d0c1109eb8a88aaa069aa644638775f97cb47477d89a7f04ec68381d621bfe",
+  "manifest_path": "C:\\Users\\MORR\\.codex\\worktrees\\pulse-gaming\\autonomous-buffer-20260814\\videos\\system-trace-series.json",
+  "manifest_sha256": "bfd970aaaea4d0b50a9496b8ef0a9e05ec2cfc82aaafee570bd00507cd925a8d",
+  "selection_seed": "pulse-system-trace-semantic-fit-v2",
   "pool_snapshot_age_hours": 0,
   "pool_snapshot_max_age_hours": 24,
   "assignments": [
     {
       "story_id": "system-trace-shader-compilation",
+      "selected": {
+        "id": "battlefield-6-multiplayer",
+        "game": "Battlefield 6",
+        "youtube_video_id": "wFGEMfyAQtI",
+        "youtube_url": "https://youtube.com/watch?v=wFGEMfyAQtI",
+        "official_channel": "Battlefield",
+        "official_channel_id": "UCvNBXWGykQrWb7kPAn5eLUQ",
+        "source_title": "Battlefield 6 Official Multiplayer Gameplay Trailer",
+        "published_at": "2025-07-31T18:33:00.000Z",
+        "current_until": "2026-09-30T23:59:59.000Z",
+        "topic_tags": [
+          "shader-compilation",
+          "spatial-audio",
+          "render-queue-latency",
+          "input-latency",
+          "competitive-fps",
+          "combat",
+          "multiplayer"
+        ],
+        "start_offset_s": 4,
+        "snapshot": {
+          "views": 15019604,
+          "likes": 324439,
+          "captured_at": "2026-08-15T04:11:10.444Z",
+          "channel_id": "UCvNBXWGykQrWb7kPAn5eLUQ",
+          "channel_title": "Battlefield",
+          "source_title": "Battlefield 6 Official Multiplayer Gameplay Trailer",
+          "privacy_status": "public",
+          "duration": "PT2M27S"
+        },
+        "rights_class": "official-source-editorial-private-review",
+        "content_type": "gameplay-trailer",
+        "visual_traits": [
+          "actual-gameplay",
+          "first-person-gameplay",
+          "competitive-fps",
+          "high-refresh-sensitive",
+          "precision-aiming",
+          "fast-camera-motion",
+          "combat",
+          "multiplayer",
+          "real-time-3d",
+          "modern-rendering",
+          "positional-audio-relevant"
+        ],
+        "approved_story_ids": [
+          "system-trace-shader-compilation",
+          "system-trace-spatial-headphone-audio",
+          "system-trace-render-queue-latency"
+        ]
+      },
+      "evaluation": {
+        "eligible": true,
+        "score": 158.714955,
+        "views": 15019604,
+        "ageDays": 379.402,
+        "matchedTags": [
+          "shader-compilation",
+          "combat",
+          "multiplayer"
+        ],
+        "matchedRequiredTraits": [
+          "real-time-3d",
+          "modern-rendering",
+          "actual-gameplay"
+        ],
+        "contentType": "gameplay-trailer",
+        "jitter": 2.94837
+      },
+      "top_band": [
+        {
+          "id": "battlefield-6-multiplayer",
+          "game": "Battlefield 6",
+          "score": 158.714955,
+          "matched_tags": [
+            "shader-compilation",
+            "combat",
+            "multiplayer"
+          ],
+          "content_type": "gameplay-trailer"
+        }
+      ],
+      "topic_tags": [
+        "shader-compilation",
+        "combat",
+        "multiplayer"
+      ],
+      "semantic_requirements": {
+        "minimum_topic_matches": 1,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer"
+        ],
+        "required_visual_traits": [
+          "real-time-3d",
+          "modern-rendering",
+          "actual-gameplay"
+        ],
+        "forbidden_visual_traits": [
+          "live-action"
+        ]
+      }
+    },
+    {
+      "story_id": "system-trace-temporal-upscaling",
+      "selected": {
+        "id": "beast-of-reincarnation-reveal",
+        "game": "Beast of Reincarnation",
+        "youtube_video_id": "L-qZiMPsNz0",
+        "youtube_url": "https://youtube.com/watch?v=L-qZiMPsNz0",
+        "official_channel": "XBOX",
+        "official_channel_id": "UCjBp_7RuDBUYbd1LegWEJ8g",
+        "source_title": "Beast of Reincarnation - Reveal Trailer | Xbox Games Showcase 2025",
+        "published_at": "2025-06-08T17:19:50.000Z",
+        "current_until": "2026-11-30T23:59:59.000Z",
+        "topic_tags": [
+          "temporal-upscaling",
+          "ray-tracing",
+          "rendering",
+          "effects",
+          "combat"
+        ],
+        "start_offset_s": 5,
+        "snapshot": {
+          "views": 2022293,
+          "likes": 9432,
+          "captured_at": "2026-08-15T04:11:10.444Z",
+          "channel_id": "UCjBp_7RuDBUYbd1LegWEJ8g",
+          "channel_title": "XBOX",
+          "source_title": "Beast of Reincarnation - Reveal Trailer | Xbox Games Showcase 2025",
+          "privacy_status": "public",
+          "duration": "PT1M45S"
+        },
+        "rights_class": "official-source-editorial-private-review",
+        "content_type": "in-engine-cinematic",
+        "visual_traits": [
+          "real-time-3d",
+          "modern-rendering",
+          "effects-heavy",
+          "fast-camera-motion",
+          "combat",
+          "temporal-reconstruction-relevant"
+        ],
+        "approved_story_ids": [
+          "system-trace-temporal-upscaling",
+          "system-trace-ray-tracing-bvh"
+        ]
+      },
+      "evaluation": {
+        "eligible": true,
+        "score": 125.101065,
+        "views": 2022293,
+        "ageDays": 432.452,
+        "matchedTags": [
+          "temporal-upscaling",
+          "ray-tracing"
+        ],
+        "matchedRequiredTraits": [
+          "real-time-3d",
+          "modern-rendering",
+          "temporal-reconstruction-relevant"
+        ],
+        "contentType": "in-engine-cinematic",
+        "jitter": 2.042624
+      },
+      "top_band": [
+        {
+          "id": "resident-evil-requiem-reveal",
+          "game": "Resident Evil Requiem",
+          "score": 127.27511,
+          "matched_tags": [
+            "temporal-upscaling",
+            "ray-tracing"
+          ],
+          "content_type": "in-engine-cinematic"
+        },
+        {
+          "id": "beast-of-reincarnation-reveal",
+          "game": "Beast of Reincarnation",
+          "score": 125.101065,
+          "matched_tags": [
+            "temporal-upscaling",
+            "ray-tracing"
+          ],
+          "content_type": "in-engine-cinematic"
+        },
+        {
+          "id": "arc-raiders-launch",
+          "game": "ARC Raiders",
+          "score": 123.71301,
+          "matched_tags": [
+            "temporal-upscaling",
+            "ray-tracing"
+          ],
+          "content_type": "gameplay-trailer"
+        }
+      ],
+      "topic_tags": [
+        "temporal-upscaling",
+        "ray-tracing"
+      ],
+      "semantic_requirements": {
+        "minimum_topic_matches": 1,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer",
+          "in-engine-cinematic"
+        ],
+        "required_visual_traits": [
+          "real-time-3d",
+          "modern-rendering",
+          "temporal-reconstruction-relevant"
+        ],
+        "forbidden_visual_traits": [
+          "live-action"
+        ]
+      }
+    },
+    {
+      "story_id": "system-trace-spatial-headphone-audio",
       "selected": {
         "id": "hell-let-loose-vietnam-gameplay",
         "game": "Hell Let Loose: Vietnam",
@@ -22,123 +244,312 @@
         "topic_tags": [
           "shader-compilation",
           "spatial-audio",
+          "render-queue-latency",
+          "input-latency",
+          "competitive-fps",
           "combat",
           "multiplayer"
         ],
         "start_offset_s": 2,
         "snapshot": {
-          "views": 621600,
+          "views": 621683,
           "likes": 10009,
-          "captured_at": "2026-08-15T00:55:31.631Z",
+          "captured_at": "2026-08-15T04:11:10.444Z",
           "channel_id": "UC-2Y8dQb0S6DtpxNgAKoJKA",
           "channel_title": "PlayStation",
           "source_title": "Hell Let Loose: Vietnam - Gameplay Trailer | PS5 Games",
           "privacy_status": "public",
           "duration": "PT1M27S"
         },
-        "rights_class": "official-source-editorial-private-review"
+        "rights_class": "official-source-editorial-private-review",
+        "content_type": "gameplay-trailer",
+        "visual_traits": [
+          "actual-gameplay",
+          "first-person-gameplay",
+          "competitive-fps",
+          "high-refresh-sensitive",
+          "precision-aiming",
+          "fast-camera-motion",
+          "combat",
+          "multiplayer",
+          "real-time-3d",
+          "modern-rendering",
+          "positional-audio-relevant"
+        ],
+        "approved_story_ids": [
+          "system-trace-shader-compilation",
+          "system-trace-spatial-headphone-audio",
+          "system-trace-render-queue-latency"
+        ]
       },
       "evaluation": {
         "eligible": true,
-        "score": 124.587563,
-        "views": 621600,
-        "ageDays": 246.393,
+        "score": 140.700271,
+        "views": 621683,
+        "ageDays": 246.529,
         "matchedTags": [
-          "shader-compilation",
+          "spatial-audio",
           "combat",
           "multiplayer"
         ],
-        "jitter": 1.065431
+        "matchedRequiredTraits": [
+          "real-time-3d",
+          "positional-audio-relevant"
+        ],
+        "contentType": "gameplay-trailer",
+        "jitter": 2.764582
       },
       "top_band": [
         {
           "id": "hell-let-loose-vietnam-gameplay",
           "game": "Hell Let Loose: Vietnam",
-          "score": 124.587563
-        },
-        {
-          "id": "battlefield-6-multiplayer",
-          "game": "Battlefield 6",
-          "score": 109.520725
-        },
-        {
-          "id": "silksong-release-trailer",
-          "game": "Hollow Knight: Silksong",
-          "score": 108.961858
+          "score": 140.700271,
+          "matched_tags": [
+            "spatial-audio",
+            "combat",
+            "multiplayer"
+          ],
+          "content_type": "gameplay-trailer"
         }
       ],
       "topic_tags": [
-        "shader-compilation",
+        "spatial-audio",
         "combat",
         "multiplayer"
-      ]
+      ],
+      "semantic_requirements": {
+        "minimum_topic_matches": 1,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer"
+        ],
+        "required_visual_traits": [
+          "real-time-3d",
+          "positional-audio-relevant"
+        ],
+        "forbidden_visual_traits": [
+          "live-action"
+        ]
+      }
     },
     {
-      "story_id": "system-trace-temporal-upscaling",
+      "story_id": "system-trace-texture-streaming",
       "selected": {
-        "id": "arc-raiders-launch",
-        "game": "ARC Raiders",
-        "youtube_video_id": "IpeJjQDXNAE",
-        "youtube_url": "https://youtube.com/watch?v=IpeJjQDXNAE",
-        "official_channel": "ARC Raiders",
-        "official_channel_id": "UCHvATl70qssFSzclIIhd8xQ",
-        "source_title": "Launch Trailer | ARC Raiders",
-        "published_at": "2025-10-27T16:00:06.000Z",
-        "current_until": "2026-09-30T23:59:59.000Z",
+        "id": "gta-vi-trailer-2",
+        "game": "Grand Theft Auto VI",
+        "youtube_video_id": "VQRLujxTm3c",
+        "youtube_url": "https://youtube.com/watch?v=VQRLujxTm3c",
+        "official_channel": "Rockstar Games",
+        "official_channel_id": "UC6VcWc1rAoWdBCM0JxrRQ3A",
+        "source_title": "Grand Theft Auto VI Trailer 2",
+        "published_at": "2025-05-06T13:29:04.000Z",
+        "current_until": "2027-03-31T23:59:59.000Z",
         "topic_tags": [
           "texture-streaming",
-          "spatial-audio",
-          "ray-tracing",
-          "combat"
+          "open-world",
+          "world-streaming",
+          "large-scale-world"
         ],
-        "start_offset_s": 5,
+        "start_offset_s": 6,
         "snapshot": {
-          "views": 2182961,
-          "likes": 62908,
-          "captured_at": "2026-08-15T00:55:31.631Z",
-          "channel_id": "UCHvATl70qssFSzclIIhd8xQ",
-          "channel_title": "ARC Raiders",
-          "source_title": "Launch Trailer | ARC Raiders",
+          "views": 177621180,
+          "likes": 6588395,
+          "captured_at": "2026-08-15T04:11:10.444Z",
+          "channel_id": "UC6VcWc1rAoWdBCM0JxrRQ3A",
+          "channel_title": "Rockstar Games",
+          "source_title": "Grand Theft Auto VI Trailer 2",
           "privacy_status": "public",
-          "duration": "PT2M5S"
+          "duration": "PT2M47S"
         },
+        "content_type": "in-engine-cinematic",
+        "visual_traits": [
+          "open-world",
+          "large-scale-world",
+          "world-traversal",
+          "dense-world",
+          "varied-environments",
+          "real-time-3d",
+          "modern-rendering",
+          "streaming-relevant"
+        ],
+        "approved_story_ids": [
+          "system-trace-texture-streaming"
+        ],
         "rights_class": "official-source-editorial-private-review"
       },
       "evaluation": {
         "eligible": true,
-        "score": 97.115714,
-        "views": 2182961,
-        "ageDays": 291.372,
+        "score": 144.094345,
+        "views": 177621180,
+        "ageDays": 465.613,
         "matchedTags": [
-          "ray-tracing"
+          "texture-streaming",
+          "open-world"
         ],
-        "jitter": 3.047163
+        "matchedRequiredTraits": [
+          "open-world",
+          "large-scale-world",
+          "world-traversal"
+        ],
+        "contentType": "in-engine-cinematic",
+        "jitter": 1.599397
+      },
+      "top_band": [
+        {
+          "id": "gta-vi-trailer-2",
+          "game": "Grand Theft Auto VI",
+          "score": 144.094345,
+          "matched_tags": [
+            "texture-streaming",
+            "open-world"
+          ],
+          "content_type": "in-engine-cinematic"
+        }
+      ],
+      "topic_tags": [
+        "texture-streaming",
+        "open-world"
+      ],
+      "semantic_requirements": {
+        "minimum_topic_matches": 2,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer",
+          "in-engine-cinematic"
+        ],
+        "required_visual_traits": [
+          "open-world",
+          "large-scale-world",
+          "world-traversal"
+        ],
+        "forbidden_visual_traits": [
+          "live-action"
+        ]
+      }
+    },
+    {
+      "story_id": "system-trace-ray-tracing-bvh",
+      "selected": {
+        "id": "resident-evil-requiem-reveal",
+        "game": "Resident Evil Requiem",
+        "youtube_video_id": "POz1-EmLsTY",
+        "youtube_url": "https://youtube.com/watch?v=POz1-EmLsTY",
+        "official_channel": "Resident Evil",
+        "official_channel_id": "UCS2iGSouOopNHXFBcWtBQiA",
+        "source_title": "Resident Evil Requiem - Reveal Trailer",
+        "published_at": "2025-06-06T23:05:03.000Z",
+        "current_until": "2026-09-30T23:59:59.000Z",
+        "topic_tags": [
+          "temporal-upscaling",
+          "ray-tracing",
+          "rendering",
+          "effects",
+          "horror"
+        ],
+        "start_offset_s": 8,
+        "snapshot": {
+          "views": 5243393,
+          "likes": 225056,
+          "captured_at": "2026-08-15T04:11:10.444Z",
+          "channel_id": "UCS2iGSouOopNHXFBcWtBQiA",
+          "channel_title": "Resident Evil",
+          "source_title": "Resident Evil Requiem - Reveal Trailer",
+          "privacy_status": "public",
+          "duration": "PT3M39S"
+        },
+        "rights_class": "official-source-editorial-private-review",
+        "content_type": "in-engine-cinematic",
+        "visual_traits": [
+          "real-time-3d",
+          "modern-rendering",
+          "dense-detail",
+          "effects-heavy",
+          "horror",
+          "ray-tracing-relevant",
+          "temporal-reconstruction-relevant"
+        ],
+        "approved_story_ids": [
+          "system-trace-temporal-upscaling",
+          "system-trace-ray-tracing-bvh"
+        ]
+      },
+      "evaluation": {
+        "eligible": true,
+        "score": 154.518353,
+        "views": 5243393,
+        "ageDays": 434.213,
+        "matchedTags": [
+          "ray-tracing",
+          "rendering",
+          "effects"
+        ],
+        "matchedRequiredTraits": [
+          "real-time-3d",
+          "modern-rendering",
+          "effects-heavy"
+        ],
+        "contentType": "in-engine-cinematic",
+        "jitter": 3.322229
       },
       "top_band": [
         {
           "id": "resident-evil-requiem-reveal",
           "game": "Resident Evil Requiem",
-          "score": 135.541774
-        },
-        {
-          "id": "beast-of-reincarnation-reveal",
-          "game": "Beast of Reincarnation",
-          "score": 98.177272
+          "score": 154.518353,
+          "matched_tags": [
+            "ray-tracing",
+            "rendering",
+            "effects"
+          ],
+          "content_type": "in-engine-cinematic"
         },
         {
           "id": "arc-raiders-launch",
           "game": "ARC Raiders",
-          "score": 97.115714
+          "score": 149.99821,
+          "matched_tags": [
+            "ray-tracing",
+            "rendering",
+            "effects"
+          ],
+          "content_type": "gameplay-trailer"
+        },
+        {
+          "id": "star-wars-zero-company-gameplay",
+          "game": "Star Wars Zero Company",
+          "score": 148.661162,
+          "matched_tags": [
+            "ray-tracing",
+            "rendering",
+            "effects"
+          ],
+          "content_type": "gameplay-trailer"
         }
       ],
       "topic_tags": [
-        "temporal-upscaling",
         "ray-tracing",
-        "horror"
-      ]
+        "rendering",
+        "effects"
+      ],
+      "semantic_requirements": {
+        "minimum_topic_matches": 2,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer",
+          "in-engine-cinematic"
+        ],
+        "required_visual_traits": [
+          "real-time-3d",
+          "modern-rendering",
+          "effects-heavy"
+        ],
+        "forbidden_visual_traits": [
+          "live-action"
+        ]
+      }
     },
     {
-      "story_id": "system-trace-spatial-headphone-audio",
+      "story_id": "system-trace-render-queue-latency",
       "selected": {
         "id": "battlefield-6-multiplayer",
         "game": "Battlefield 6",
@@ -150,254 +561,99 @@
         "published_at": "2025-07-31T18:33:00.000Z",
         "current_until": "2026-09-30T23:59:59.000Z",
         "topic_tags": [
+          "shader-compilation",
           "spatial-audio",
-          "latency",
-          "frame-pacing",
-          "combat"
+          "render-queue-latency",
+          "input-latency",
+          "competitive-fps",
+          "combat",
+          "multiplayer"
         ],
         "start_offset_s": 4,
         "snapshot": {
-          "views": 15019194,
-          "likes": 324436,
-          "captured_at": "2026-08-15T00:55:31.631Z",
+          "views": 15019604,
+          "likes": 324439,
+          "captured_at": "2026-08-15T04:11:10.444Z",
           "channel_id": "UCvNBXWGykQrWb7kPAn5eLUQ",
           "channel_title": "Battlefield",
           "source_title": "Battlefield 6 Official Multiplayer Gameplay Trailer",
           "privacy_status": "public",
           "duration": "PT2M27S"
         },
-        "rights_class": "official-source-editorial-private-review"
+        "rights_class": "official-source-editorial-private-review",
+        "content_type": "gameplay-trailer",
+        "visual_traits": [
+          "actual-gameplay",
+          "first-person-gameplay",
+          "competitive-fps",
+          "high-refresh-sensitive",
+          "precision-aiming",
+          "fast-camera-motion",
+          "combat",
+          "multiplayer",
+          "real-time-3d",
+          "modern-rendering",
+          "positional-audio-relevant"
+        ],
+        "approved_story_ids": [
+          "system-trace-shader-compilation",
+          "system-trace-spatial-headphone-audio",
+          "system-trace-render-queue-latency"
+        ]
       },
       "evaluation": {
         "eligible": true,
-        "score": 126.637518,
-        "views": 15019194,
-        "ageDays": 379.266,
+        "score": 141.780225,
+        "views": 15019604,
+        "ageDays": 379.402,
         "matchedTags": [
-          "spatial-audio",
-          "combat"
+          "render-queue-latency",
+          "input-latency"
         ],
-        "jitter": 4.517759
+        "matchedRequiredTraits": [
+          "actual-gameplay",
+          "competitive-fps",
+          "first-person-gameplay",
+          "high-refresh-sensitive",
+          "precision-aiming"
+        ],
+        "contentType": "gameplay-trailer",
+        "jitter": 2.013641
       },
       "top_band": [
         {
           "id": "battlefield-6-multiplayer",
           "game": "Battlefield 6",
-          "score": 126.637518
-        },
-        {
-          "id": "silksong-release-trailer",
-          "game": "Hollow Knight: Silksong",
-          "score": 106.732914
-        },
-        {
-          "id": "marvel-tokon-announce",
-          "game": "MARVEL Tōkon: Fighting Souls",
-          "score": 101.552593
-        }
-      ],
-      "topic_tags": [
-        "spatial-audio",
-        "combat",
-        "multiplayer"
-      ]
-    },
-    {
-      "story_id": "system-trace-texture-streaming",
-      "selected": {
-        "id": "beast-of-reincarnation-reveal",
-        "game": "Beast of Reincarnation",
-        "youtube_video_id": "L-qZiMPsNz0",
-        "youtube_url": "https://youtube.com/watch?v=L-qZiMPsNz0",
-        "official_channel": "XBOX",
-        "official_channel_id": "UCjBp_7RuDBUYbd1LegWEJ8g",
-        "source_title": "Beast of Reincarnation - Reveal Trailer | Xbox Games Showcase 2025",
-        "published_at": "2025-06-08T17:19:50.000Z",
-        "current_until": "2026-11-30T23:59:59.000Z",
-        "topic_tags": [
-          "texture-streaming",
-          "temporal-upscaling",
-          "open-world",
-          "combat"
-        ],
-        "start_offset_s": 5,
-        "snapshot": {
-          "views": 2022270,
-          "likes": 9430,
-          "captured_at": "2026-08-15T00:55:31.631Z",
-          "channel_id": "UCjBp_7RuDBUYbd1LegWEJ8g",
-          "channel_title": "XBOX",
-          "source_title": "Beast of Reincarnation - Reveal Trailer | Xbox Games Showcase 2025",
-          "privacy_status": "public",
-          "duration": "PT1M45S"
-        },
-        "rights_class": "official-source-editorial-private-review"
-      },
-      "evaluation": {
-        "eligible": true,
-        "score": 130.914141,
-        "views": 2022270,
-        "ageDays": 432.316,
-        "matchedTags": [
-          "texture-streaming",
-          "open-world",
-          "combat"
-        ],
-        "jitter": 1.244071
-      },
-      "top_band": [
-        {
-          "id": "beast-of-reincarnation-reveal",
-          "game": "Beast of Reincarnation",
-          "score": 130.914141
-        },
-        {
-          "id": "silksong-release-trailer",
-          "game": "Hollow Knight: Silksong",
-          "score": 106.02673
-        },
-        {
-          "id": "resident-evil-requiem-reveal",
-          "game": "Resident Evil Requiem",
-          "score": 101.382663
-        }
-      ],
-      "topic_tags": [
-        "texture-streaming",
-        "open-world",
-        "combat"
-      ]
-    },
-    {
-      "story_id": "system-trace-ray-tracing-bvh",
-      "selected": {
-        "id": "star-wars-zero-company-gameplay",
-        "game": "Star Wars Zero Company",
-        "youtube_video_id": "WxLUZ1omFA8",
-        "youtube_url": "https://youtube.com/watch?v=WxLUZ1omFA8",
-        "official_channel": "EA Star Wars",
-        "official_channel_id": "UCOsVSkmXD1tc6uiJ2hc0wYQ",
-        "source_title": "Star Wars Zero Company | Official Gameplay Trailer",
-        "published_at": "2026-06-05T22:07:33.000Z",
-        "current_until": "2026-11-30T23:59:59.000Z",
-        "topic_tags": [
-          "ray-tracing",
-          "rendering",
-          "strategy",
-          "effects"
-        ],
-        "start_offset_s": 6,
-        "snapshot": {
-          "views": 1492112,
-          "likes": 40223,
-          "captured_at": "2026-08-15T00:55:31.631Z",
-          "channel_id": "UCOsVSkmXD1tc6uiJ2hc0wYQ",
-          "channel_title": "EA Star Wars",
-          "source_title": "Star Wars Zero Company | Official Gameplay Trailer",
-          "privacy_status": "public",
-          "duration": "PT3M9S"
-        },
-        "rights_class": "official-source-editorial-private-review"
-      },
-      "evaluation": {
-        "eligible": true,
-        "score": 129.013501,
-        "views": 1492112,
-        "ageDays": 70.117,
-        "matchedTags": [
-          "ray-tracing",
-          "rendering",
-          "effects"
-        ],
-        "jitter": 0.927884
-      },
-      "top_band": [
-        {
-          "id": "star-wars-zero-company-gameplay",
-          "game": "Star Wars Zero Company",
-          "score": 129.013501
-        },
-        {
-          "id": "resident-evil-requiem-reveal",
-          "game": "Resident Evil Requiem",
-          "score": 104.405409
-        },
-        {
-          "id": "silksong-release-trailer",
-          "game": "Hollow Knight: Silksong",
-          "score": 93.80523
-        }
-      ],
-      "topic_tags": [
-        "ray-tracing",
-        "rendering",
-        "effects"
-      ]
-    },
-    {
-      "story_id": "system-trace-render-queue-latency",
-      "selected": {
-        "id": "madden-27-reveal",
-        "game": "Madden NFL 27",
-        "youtube_video_id": "bqQtZ9xm_uI",
-        "youtube_url": "https://youtube.com/watch?v=bqQtZ9xm_uI",
-        "official_channel": "EA SPORTS MADDEN NFL",
-        "official_channel_id": "UCPpddbTbOr_uWWQT9Pw1rbA",
-        "source_title": "Madden 27 | Official Reveal Trailer | EA SPORTS",
-        "published_at": "2026-06-05T00:16:29.000Z",
-        "current_until": "2026-11-30T23:59:59.000Z",
-        "topic_tags": [
-          "input-latency",
-          "render-queue-latency",
-          "sports",
-          "animation"
-        ],
-        "start_offset_s": 8,
-        "snapshot": {
-          "views": 576189,
-          "likes": 16082,
-          "captured_at": "2026-08-15T00:55:31.631Z",
-          "channel_id": "UCPpddbTbOr_uWWQT9Pw1rbA",
-          "channel_title": "EA SPORTS MADDEN NFL",
-          "source_title": "Madden 27 | Official Reveal Trailer | EA SPORTS",
-          "privacy_status": "public",
-          "duration": "PT4M26S"
-        },
-        "rights_class": "official-source-editorial-private-review"
-      },
-      "evaluation": {
-        "eligible": true,
-        "score": 109.498516,
-        "views": 576189,
-        "ageDays": 71.027,
-        "matchedTags": [
-          "input-latency",
-          "render-queue-latency"
-        ],
-        "jitter": 4.371736
-      },
-      "top_band": [
-        {
-          "id": "marvel-tokon-announce",
-          "game": "MARVEL Tōkon: Fighting Souls",
-          "score": 136.148998
-        },
-        {
-          "id": "madden-27-reveal",
-          "game": "Madden NFL 27",
-          "score": 109.498516
-        },
-        {
-          "id": "silksong-release-trailer",
-          "game": "Hollow Knight: Silksong",
-          "score": 107.820761
+          "score": 141.780225,
+          "matched_tags": [
+            "render-queue-latency",
+            "input-latency"
+          ],
+          "content_type": "gameplay-trailer"
         }
       ],
       "topic_tags": [
         "render-queue-latency",
-        "input-latency",
-        "fighting"
-      ]
+        "input-latency"
+      ],
+      "semantic_requirements": {
+        "minimum_topic_matches": 2,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer"
+        ],
+        "required_visual_traits": [
+          "actual-gameplay",
+          "competitive-fps",
+          "first-person-gameplay",
+          "high-refresh-sensitive",
+          "precision-aiming"
+        ],
+        "forbidden_visual_traits": [
+          "live-action",
+          "sports"
+        ]
+      }
     }
   ]
 }

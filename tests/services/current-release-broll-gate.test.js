@@ -6,6 +6,7 @@ const { test } = require("node:test");
 const {
   chooseClipWindow,
   deriveCurrentReleaseTopicTags,
+  deriveCurrentReleaseVisualRequirements,
   fetchFallbackBroll,
   fetchCurrentReleaseIllustrativeBroll,
   requiresCurrentReleaseIllustrativeBroll,
@@ -21,6 +22,7 @@ function makePool() {
       recent_minimum_views: 20000,
       cooldown_slots: 2,
       top_band_size: 1,
+      top_band_max_score_gap: 8,
       max_snapshot_age_hours: 24,
     },
     official_channel_allowlist: ["official-a", "official-b"],
@@ -36,6 +38,14 @@ function makePool() {
         current_until: "2026-12-31T23:59:59.000Z",
         published_at: "2026-08-01T00:00:00.000Z",
         topic_tags: ["spatial-audio"],
+        content_type: "gameplay-trailer",
+        visual_traits: ["actual-gameplay", "real-time-3d"],
+        approved_story_ids: [
+          "system-trace-audio",
+          "system-trace-expired",
+          "system-trace-live",
+          "system-trace-stale",
+        ],
         start_offset_s: 8,
         snapshot: { views: 1000000 },
         rights_class: "official-source-editorial-private-review",
@@ -51,6 +61,14 @@ function makePool() {
         current_until: "2026-12-31T23:59:59.000Z",
         published_at: "2026-08-02T00:00:00.000Z",
         topic_tags: ["spatial-audio", "combat"],
+        content_type: "gameplay-trailer",
+        visual_traits: ["actual-gameplay", "real-time-3d"],
+        approved_story_ids: [
+          "system-trace-audio",
+          "system-trace-expired",
+          "system-trace-live",
+          "system-trace-stale",
+        ],
         start_offset_s: 12,
         snapshot: { views: 900000 },
         rights_class: "official-source-editorial-private-review",
@@ -181,23 +199,26 @@ test("System Trace manifest permanently requires the governed current-release po
   );
   assert.equal(manifest.series_id, "system-trace");
   assert.equal(manifest.channel_id, "pulse-gaming");
-  assert.deepEqual(manifest.visual_policy, {
-    mode: "current-release-illustrative",
-    pool_config: "config/current-release-footage-pool.json",
-    assignment_config: "config/system-trace-current-release-assignments.json",
-    official_sources_only: true,
-    fail_closed_if_no_eligible_source: true,
-    source_audio: "muted",
-    source_label_required: true,
-    public_rights_review_required: true,
-    cooldown_slots: 3,
-    selection_refresh: "before_each_production_batch",
-  });
+  assert.equal(manifest.visual_policy.mode, "current-release-illustrative");
+  assert.equal(manifest.visual_policy.official_sources_only, true);
+  assert.equal(manifest.visual_policy.fail_closed_if_no_eligible_source, true);
+  assert.equal(manifest.visual_policy.semantic_fit_hard_gate, true);
+  assert.equal(manifest.visual_policy.popularity_applied_after_semantic_fit, true);
+  assert.equal(manifest.visual_policy.candidate_story_approval_required, true);
+  assert.equal(manifest.visual_policy.content_type_validation_required, true);
+  assert.equal(manifest.visual_policy.visual_trait_validation_required, true);
+  assert.equal(manifest.visual_policy.live_action_blocked_unless_topic_requires_it, true);
+  assert.equal(manifest.visual_policy.top_band_max_score_gap, 8);
   assert.equal(manifest.episodes.length, 7);
   for (const episode of manifest.episodes) {
     assert.equal(episode.series_id, "system-trace");
     assert.equal(episode.visual_mode, "current-release-illustrative");
     assert.ok(Array.isArray(episode.topic_tags) && episode.topic_tags.length > 0);
+    assert.equal(episode.story_id, `system-trace-${episode.slug}`);
+    assert.ok(episode.visual_requirements);
+    assert.ok(Array.isArray(episode.visual_requirements.allowed_content_types));
+    assert.ok(Array.isArray(episode.visual_requirements.required_visual_traits));
+    assert.ok(Array.isArray(episode.visual_requirements.forbidden_visual_traits));
   }
 });
 
@@ -254,4 +275,23 @@ test("live source identity and views can refresh a stale pool safely", async () 
   assert.equal(clips.length, 1);
   assert.equal(clips[0].selection_stats_source, "live_or_injected");
   assert.equal(clips[0].pool_snapshot_age_hours, 96);
+});
+
+test("visual requirements are normalised from the System Trace manifest shape", () => {
+  assert.deepEqual(
+    deriveCurrentReleaseVisualRequirements({
+      visual_requirements: {
+        minimum_topic_matches: 2,
+        allowed_content_types: ["gameplay-trailer"],
+        required_visual_traits: ["competitive-fps"],
+        forbidden_visual_traits: ["live-action"],
+      },
+    }),
+    {
+      minimumTopicMatches: 2,
+      allowedContentTypes: ["gameplay-trailer"],
+      requiredVisualTraits: ["competitive-fps"],
+      forbiddenVisualTraits: ["live-action"],
+    },
+  );
 });

@@ -29,14 +29,33 @@ function parseArgs(argv) {
   return args;
 }
 
-const STORY_SPECS = [
-  { story_id: "system-trace-shader-compilation", topic_tags: ["shader-compilation", "combat", "multiplayer"] },
-  { story_id: "system-trace-temporal-upscaling", topic_tags: ["temporal-upscaling", "ray-tracing", "horror"] },
-  { story_id: "system-trace-spatial-headphone-audio", topic_tags: ["spatial-audio", "combat", "multiplayer"] },
-  { story_id: "system-trace-texture-streaming", topic_tags: ["texture-streaming", "open-world", "combat"] },
-  { story_id: "system-trace-ray-tracing-bvh", topic_tags: ["ray-tracing", "rendering", "effects"] },
-  { story_id: "system-trace-render-queue-latency", topic_tags: ["render-queue-latency", "input-latency", "fighting"] },
-];
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, "utf8").replace(/^\uFEFF/, ""));
+}
+
+function loadStorySpecs(manifestPath) {
+  const manifest = readJson(manifestPath);
+  if (manifest.series_id !== "system-trace" || !Array.isArray(manifest.episodes)) {
+    throw new Error("invalid System Trace manifest");
+  }
+  return manifest.episodes
+    .filter((episode) => episode.current_release_assignment !== false)
+    .map((episode) => {
+      const requirements = episode.visual_requirements || {};
+      const storyId = episode.story_id || `system-trace-${episode.slug}`;
+      if (!Array.isArray(episode.topic_tags) || episode.topic_tags.length < 1) {
+        throw new Error(`${storyId} lacks topic_tags`);
+      }
+      return {
+        story_id: storyId,
+        topic_tags: episode.topic_tags,
+        minimum_topic_matches: requirements.minimum_topic_matches,
+        allowed_content_types: requirements.allowed_content_types,
+        required_visual_traits: requirements.required_visual_traits,
+        forbidden_visual_traits: requirements.forbidden_visual_traits,
+      };
+    });
+}
 
 async function refreshPool(poolPath, outputPath) {
   const { google } = require("googleapis");
@@ -86,6 +105,7 @@ async function refreshPool(poolPath, outputPath) {
 async function main() {
   const args = parseArgs(process.argv);
   const poolPath = path.resolve(args.pool || path.join(__dirname, "..", "config", "current-release-footage-pool.json"));
+  const manifestPath = path.resolve(args.manifest || path.join(__dirname, "..", "videos", "system-trace-series.json"));
   if (args.command === "refresh") {
     const outputPath = path.resolve(args.output || poolPath);
     const refreshed = await refreshPool(poolPath, outputPath);
@@ -106,9 +126,10 @@ async function main() {
       `current-release pool snapshot is stale (${freshness.ageHours}h > ${freshness.maxAgeHours}h); run media:current-release-refresh first`,
     );
   }
-  const assignments = assignCurrentReleaseFootage(pool, STORY_SPECS, {
+  const storySpecs = loadStorySpecs(manifestPath);
+  const assignments = assignCurrentReleaseFootage(pool, storySpecs, {
     seed: args.seed || "pulse-system-trace-current-release-v1",
-    now: args.now || "2026-08-14T22:30:00.000Z",
+    now: args.now || new Date().toISOString(),
   });
   const outputPath = path.resolve(args.output || path.join(__dirname, "..", "config", "system-trace-current-release-assignments.json"));
   const report = {
@@ -116,6 +137,8 @@ async function main() {
     generated_at: new Date().toISOString(),
     pool_path: poolPath,
     pool_sha256: sha256File(poolPath),
+    manifest_path: manifestPath,
+    manifest_sha256: sha256File(manifestPath),
     selection_seed: args.seed || "pulse-system-trace-current-release-v1",
     pool_snapshot_age_hours: freshness.ageHours,
     pool_snapshot_max_age_hours: freshness.maxAgeHours,

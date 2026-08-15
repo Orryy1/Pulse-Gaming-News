@@ -27,7 +27,23 @@
       "visual_mode": "current-release-illustrative",
       "topic_tags": [
         "frame-pacing"
-      ]
+      ],
+      "story_id": "system-trace-frame-pacing",
+      "visual_requirements": {
+        "minimum_topic_matches": 1,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer"
+        ],
+        "required_visual_traits": [
+          "high-refresh-sensitive",
+          "fast-camera-motion"
+        ],
+        "forbidden_visual_traits": [
+          "live-action"
+        ]
+      },
+      "current_release_assignment": false
     },
     {
       "number": "02",
@@ -53,7 +69,23 @@
         "shader-compilation",
         "combat",
         "multiplayer"
-      ]
+      ],
+      "story_id": "system-trace-shader-compilation",
+      "visual_requirements": {
+        "minimum_topic_matches": 1,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer"
+        ],
+        "required_visual_traits": [
+          "real-time-3d",
+          "modern-rendering",
+          "actual-gameplay"
+        ],
+        "forbidden_visual_traits": [
+          "live-action"
+        ]
+      }
     },
     {
       "number": "03",
@@ -77,7 +109,24 @@
       "topic_tags": [
         "temporal-upscaling",
         "ray-tracing"
-      ]
+      ],
+      "story_id": "system-trace-temporal-upscaling",
+      "visual_requirements": {
+        "minimum_topic_matches": 1,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer",
+          "in-engine-cinematic"
+        ],
+        "required_visual_traits": [
+          "real-time-3d",
+          "modern-rendering",
+          "temporal-reconstruction-relevant"
+        ],
+        "forbidden_visual_traits": [
+          "live-action"
+        ]
+      }
     },
     {
       "number": "04",
@@ -103,7 +152,22 @@
         "spatial-audio",
         "combat",
         "multiplayer"
-      ]
+      ],
+      "story_id": "system-trace-spatial-headphone-audio",
+      "visual_requirements": {
+        "minimum_topic_matches": 1,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer"
+        ],
+        "required_visual_traits": [
+          "real-time-3d",
+          "positional-audio-relevant"
+        ],
+        "forbidden_visual_traits": [
+          "live-action"
+        ]
+      }
     },
     {
       "number": "05",
@@ -127,7 +191,24 @@
       "topic_tags": [
         "texture-streaming",
         "open-world"
-      ]
+      ],
+      "story_id": "system-trace-texture-streaming",
+      "visual_requirements": {
+        "minimum_topic_matches": 2,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer",
+          "in-engine-cinematic"
+        ],
+        "required_visual_traits": [
+          "open-world",
+          "large-scale-world",
+          "world-traversal"
+        ],
+        "forbidden_visual_traits": [
+          "live-action"
+        ]
+      }
     },
     {
       "number": "06",
@@ -152,7 +233,24 @@
         "ray-tracing",
         "rendering",
         "effects"
-      ]
+      ],
+      "story_id": "system-trace-ray-tracing-bvh",
+      "visual_requirements": {
+        "minimum_topic_matches": 2,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer",
+          "in-engine-cinematic"
+        ],
+        "required_visual_traits": [
+          "real-time-3d",
+          "modern-rendering",
+          "effects-heavy"
+        ],
+        "forbidden_visual_traits": [
+          "live-action"
+        ]
+      }
     },
     {
       "number": "07",
@@ -176,7 +274,26 @@
       "topic_tags": [
         "render-queue-latency",
         "input-latency"
-      ]
+      ],
+      "story_id": "system-trace-render-queue-latency",
+      "visual_requirements": {
+        "minimum_topic_matches": 2,
+        "allowed_content_types": [
+          "actual-gameplay",
+          "gameplay-trailer"
+        ],
+        "required_visual_traits": [
+          "actual-gameplay",
+          "competitive-fps",
+          "first-person-gameplay",
+          "high-refresh-sensitive",
+          "precision-aiming"
+        ],
+        "forbidden_visual_traits": [
+          "live-action",
+          "sports"
+        ]
+      }
     }
   ],
   "series_id": "system-trace",
@@ -191,6 +308,13 @@
     "source_label_required": true,
     "public_rights_review_required": true,
     "cooldown_slots": 3,
-    "selection_refresh": "before_each_production_batch"
+    "selection_refresh": "before_each_production_batch",
+    "semantic_fit_hard_gate": true,
+    "popularity_applied_after_semantic_fit": true,
+    "top_band_max_score_gap": 8,
+    "candidate_story_approval_required": true,
+    "content_type_validation_required": true,
+    "visual_trait_validation_required": true,
+    "live_action_blocked_unless_topic_requires_it": true
   }
 }

@@ -25,7 +25,8 @@ function fixture() {
       acquired_at TEXT NOT NULL,
       heartbeat_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
-      metadata TEXT
+      metadata TEXT,
+    fencing_token INTEGER NOT NULL DEFAULT 0
     )
   `);
   return { db, leases: bind(db) };
@@ -127,7 +128,11 @@ test("lease loss blocks subsequent irreversible work and releases cleanly", asyn
     task: async ({ assertHealthy, lease }) => {
       assertHealthy();
       effects += 1;
-      leases.release(lease.lease_name, lease.owner_id);
+      leases.release(
+        lease.lease_name,
+        lease.owner_id,
+        lease.fencing_token,
+      );
       assertHealthy();
       effects += 1;
     },
@@ -145,7 +150,11 @@ test("lease-loss blocking preserves only the compensation metadata needed after 
     channelId: "pulse-gaming",
     operation: "arm_governed_youtube_scheduled_release",
     task: async ({ assertHealthy, lease }) => {
-      leases.release(lease.lease_name, lease.owner_id);
+      leases.release(
+        lease.lease_name,
+        lease.owner_id,
+        lease.fencing_token,
+      );
       try {
         assertHealthy();
       } catch (error) {
@@ -342,4 +351,133 @@ test("every live publisher entrypoint uses one durable coordinator", () => {
     /uploadAll/,
     "legacy batch uploaders cannot perform unfenced multi-item effects",
   );
+});
+
+test("publisher work loses authority after a new fencing token takes over", async () => {
+  const { db, leases } = fixture();
+  let reached = false;
+  const result = await runWithPublisherLease({
+    leases,
+    channelId: "pulse-gaming",
+    operation: "publish_next_story",
+    task: async ({ assertHealthy, lease }) => {
+      assertHealthy();
+      db.prepare(
+        "UPDATE runtime_leases SET expires_at = '2000-01-01T00:00:00.000Z' WHERE name = ?",
+      ).run(lease.lease_name);
+      const takeover = leases.acquire({
+        name: lease.lease_name,
+        ownerId: "replacement-publisher",
+        leaseMs: 60000,
+      });
+      assert.equal(takeover.acquired, true);
+      assert.ok(takeover.fencing_token > lease.fencing_token);
+      assertHealthy();
+      reached = true;
+    },
+  });
+  assert.equal(reached, false);
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(result.top_reason, "durable_publish_lease_lost");
+  const current = leases.get("publisher:global");
+  assert.equal(current.owner_id, "replacement-publisher");
+  db.close();
+});
+
+
+test("publisher lease loss aborts cooperative work before another effect", async () => {
+  const { db, leases } = fixture();
+  let signalSeen = null;
+  let abortedInsideTask = false;
+  const result = await runWithPublisherLease({
+    leases,
+    channelId: "pulse-gaming",
+    operation: "publish_next_story",
+    task: async ({ assertHealthy, lease, signal }) => {
+      signalSeen = signal;
+      assert.equal(signal.aborted, false);
+      leases.release(
+        lease.lease_name,
+        lease.owner_id,
+        lease.fencing_token,
+      );
+      try {
+        assertHealthy();
+      } catch (error) {
+        abortedInsideTask = signal.aborted;
+        throw error;
+      }
+    },
+  });
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(result.top_reason, "durable_publish_lease_lost");
+  assert.ok(signalSeen);
+  assert.equal(abortedInsideTask, true);
+  assert.equal(signalSeen.aborted, true);
+  assert.equal(signalSeen.reason?.code, "durable_publish_lease_lost");
+  db.close();
+});
+
+test("an asynchronous mutation-boundary heartbeat fails closed", async () => {
+  let released = 0;
+  let taskSignal = null;
+  const leases = {
+    acquire({ name, ownerId }) {
+      return {
+        acquired: true,
+        name,
+        owner_id: ownerId,
+        fencing_token: 1,
+        expires_at: "2099-01-01T00:00:00.000Z",
+      };
+    },
+    async heartbeat() {
+      return true;
+    },
+    release() {
+      released += 1;
+      return true;
+    },
+  };
+  const logs = [];
+  const result = await runWithPublisherLease({
+    leases,
+    channelId: "pulse-gaming",
+    operation: "publish_next_story",
+    log(message) {
+      logs.push(message);
+    },
+    task: async ({ assertHealthy, signal }) => {
+      taskSignal = signal;
+      assertHealthy();
+      throw new Error("unreachable_after_async_heartbeat");
+    },
+  });
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(result.top_reason, "durable_publish_lease_lost");
+  assert.equal(taskSignal.aborted, true);
+  assert.equal(released, 1);
+  assert.ok(logs.includes("[publisher] asynchronous mutation-boundary heartbeat is unsupported"));
+});
+
+
+test("publisher wrapper rechecks the lease after the task returns", async () => {
+  const { db, leases } = fixture();
+  const result = await runWithPublisherLease({
+    leases,
+    channelId: "pulse-gaming",
+    operation: "publish_next_story",
+    task: async ({ lease }) => {
+      leases.release(
+        lease.lease_name,
+        lease.owner_id,
+        lease.fencing_token,
+      );
+      return { falsely_successful: true };
+    },
+  });
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(result.top_reason, "durable_publish_lease_lost");
+  assert.equal(Object.hasOwn(result, "falsely_successful"), false);
+  db.close();
 });

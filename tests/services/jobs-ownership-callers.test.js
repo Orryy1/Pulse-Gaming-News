@@ -465,3 +465,61 @@ test("LocalWorker fails closed when heartbeat failures outlast the server lease"
   assert.equal(abortedBeforeTimeout, true);
   assert.throws(() => handlerContext.assertLeaseHealthy(), /job_lease_lost/);
 });
+
+test("JobsRunner exposes the persisted fencing identity to handlers", async () => {
+  let handlerContext = null;
+  let claimed = false;
+  const repos = {
+    jobs: {
+      claim() {
+        if (claimed) return null;
+        claimed = true;
+        return {
+          id: 99,
+          kind: "inspect-fence",
+          attempt_count: 3,
+          claim_token: "909",
+          claim_generation: 7,
+        };
+      },
+      heartbeat(id, workerId, claimToken) {
+        assert.equal(id, 99);
+        assert.equal(workerId, "worker-fenced");
+        assert.equal(claimToken, "909");
+        return true;
+      },
+      complete() {
+        return { status: "done" };
+      },
+      fail() {
+        throw new Error("failure_must_not_run");
+      },
+    },
+    workers: { heartbeat() {} },
+  };
+  const runner = new JobsRunner({
+    workerId: "worker-fenced",
+    leaseMs: 60000,
+    handlers: {
+      async "inspect-fence"(_job, context) {
+        handlerContext = context;
+        assert.equal(context.claimToken, "909");
+        assert.equal(context.claimGeneration, 7);
+        assert.equal(context.attempt, 3);
+        assert.match(context.deadlineAt, /^\d{4}-\d{2}-\d{2}T/);
+        assert.equal(context.leaseDeadline, context.deadlineAt);
+        assert.equal(context.assertLeaseActive(), true);
+        assert.equal(await context.heartbeatNow(), true);
+        assert.equal(context.signal.aborted, false);
+        return { ok: true };
+      },
+    },
+    reposProvider: () => repos,
+    log() {},
+  });
+  runner.running = true;
+  runner._schedule = () => {};
+  await runner._tick();
+  assert.ok(handlerContext);
+  assert.equal(runner.current, null);
+});

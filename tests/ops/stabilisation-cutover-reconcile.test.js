@@ -98,7 +98,8 @@ function createFixture(directory) {
       acquired_at TEXT NOT NULL,
       heartbeat_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
-      metadata TEXT
+      metadata TEXT,
+    fencing_token INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE operator_audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

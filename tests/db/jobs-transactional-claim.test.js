@@ -490,7 +490,7 @@ test("expired or superseded workers cannot heartbeat, complete or fail a job", (
   assert.equal(firstClaim.id, queued.id);
   assert.throws(
     () => jobs.complete(queued.id, "worker-b", firstClaim.claim_token),
-    /job_lease_not_held/,
+    /stale_job_claim:job_lease_not_held/,
   );
   assert.throws(
     () =>
@@ -606,6 +606,8 @@ test("claim token fences a stale generation even when worker identity is reused"
   });
   const first = jobs.claim("same-worker");
   assert.match(first.claim_token, /^\d+$/);
+  assert.equal(first.claim_generation, 1);
+  assert.equal(String(jobs.get(queued.id).claim_token), first.claim_token);
   db.prepare(
     `UPDATE jobs
      SET lease_until = datetime('now', '-1 minute')
@@ -614,6 +616,16 @@ test("claim token fences a stale generation even when worker identity is reused"
   assert.equal(jobs.reapStaleClaims(), 1);
   const second = jobs.claim("same-worker");
   assert.notEqual(second.claim_token, first.claim_token);
+  assert.equal(second.claim_generation, 2);
+  assert.equal(String(jobs.get(queued.id).claim_token), second.claim_token);
+  assert.equal(
+    jobs.heartbeat(queued.id, "same-worker", first.claim_token),
+    false,
+  );
+  assert.throws(
+    () => jobs.fail(queued.id, "same-worker", first.claim_token, new Error("stale")),
+    /stale_job_claim:job_lease_not_held/,
+  );
   assert.throws(
     () => jobs.complete(queued.id, "same-worker", first.claim_token),
     /job_lease_not_held/,

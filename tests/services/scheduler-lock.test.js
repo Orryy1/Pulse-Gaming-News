@@ -21,7 +21,8 @@ function fixture() {
       acquired_at TEXT NOT NULL,
       heartbeat_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
-      metadata TEXT
+      metadata TEXT,
+    fencing_token INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE schedules (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,6 +91,7 @@ test("scheduler lease metadata is truthful and does not claim a later profile", 
   releaseSchedulerLease({
     leases: f.runtimeLeases,
     ownerId: "scheduler-session-1",
+    fencingToken: lease.fencing_token,
   });
   f.db.close();
 });
@@ -102,7 +104,11 @@ test("lease loss changes the live scheduler handle to inactive", () => {
     log() {},
   });
   assert.equal(handle.active, true);
-  f.runtimeLeases.release("scheduler:primary", "scheduler-session-1");
+  f.runtimeLeases.release(
+    "scheduler:primary",
+    "scheduler-session-1",
+    handle.lease.fencing_token,
+  );
   assert.equal(handle.heartbeatNow(), false);
   assert.equal(handle.active, false);
   handle.stop();
@@ -118,10 +124,11 @@ test("scheduler startup releases its lease when registration fails", () => {
         acquired: true,
         owner_id: ownerId,
         expires_at: "2026-07-27T22:10:00.000Z",
+        fencing_token: 7,
       };
     },
-    release(name, ownerId) {
-      calls.push(["release", name, ownerId]);
+    release(name, ownerId, fencingToken) {
+      calls.push(["release", name, ownerId, fencingToken]);
       return true;
     },
   };
@@ -144,7 +151,7 @@ test("scheduler startup releases its lease when registration fails", () => {
   );
   assert.deepEqual(calls, [
     ["acquire", "scheduler-fixture"],
-    ["release", "scheduler:primary", "scheduler-fixture"],
+    ["release", "scheduler:primary", "scheduler-fixture", 7],
   ]);
 });
 
@@ -210,10 +217,15 @@ test("cron fire revalidates ownership in the enqueue transaction", () => {
     cronImpl,
     log() {},
   });
+  let takeover = null;
   try {
     assert.equal(callbacks.length, 1);
-    f.runtimeLeases.release("scheduler:primary", "scheduler-original");
-    f.runtimeLeases.acquire({
+    f.runtimeLeases.release(
+      "scheduler:primary",
+      "scheduler-original",
+      handle.lease.fencing_token,
+    );
+    takeover = f.runtimeLeases.acquire({
       name: "scheduler:primary",
       ownerId: "scheduler-takeover",
       leaseMs: 90_000,
@@ -224,7 +236,13 @@ test("cron fire revalidates ownership in the enqueue transaction", () => {
     assert.equal(handle.active, false);
   } finally {
     handle.stop();
-    f.runtimeLeases.release("scheduler:primary", "scheduler-takeover");
+    if (takeover?.acquired) {
+      f.runtimeLeases.release(
+        "scheduler:primary",
+        "scheduler-takeover",
+        takeover.fencing_token,
+      );
+    }
     f.db.close();
   }
 });
@@ -368,4 +386,92 @@ test("scheduled_for derivation is not injected into unrelated runway rows", () =
     handle.stop();
     f.db.close();
   }
+});
+
+
+test("scheduler uses the shared lease heartbeat and loss deactivates cron ownership", () => {
+  const f = fixture();
+  let factoryInput = null;
+  let stopCalls = 0;
+  const handle = startScheduler({
+    repos: f.repos,
+    ownerId: "scheduler-shared-heartbeat",
+    heartbeatIntervalMs: 4321,
+    monitorIntervalMs: 60_000,
+    leaseHeartbeatFactory(input) {
+      factoryInput = input;
+      return {
+        active: true,
+        heartbeatNow() {
+          return input.heartbeat();
+        },
+        stop() {
+          stopCalls += 1;
+          return true;
+        },
+      };
+    },
+    log() {},
+  });
+  try {
+    assert.equal(handle.active, true);
+    assert.equal(factoryInput.intervalMs, 4321);
+    assert.equal(handle.heartbeatNow(), true);
+    factoryInput.onLost("lease_heartbeat_rejected");
+    assert.equal(handle.active, false);
+    assert.equal(stopCalls, 1);
+  } finally {
+    handle.stop();
+    f.db.close();
+  }
+});
+
+test("scheduler fails closed if its lease store unexpectedly becomes asynchronous", () => {
+  const f = fixture();
+  const logs = [];
+  const handle = startScheduler({
+    repos: f.repos,
+    ownerId: "scheduler-async-heartbeat",
+    monitorIntervalMs: 60_000,
+    leaseHeartbeatFactory() {
+      return {
+        active: true,
+        heartbeatNow() {
+          return Promise.resolve(true);
+        },
+        stop() {
+          return true;
+        },
+      };
+    },
+    log(message) {
+      logs.push(message);
+    },
+  });
+  try {
+    assert.equal(handle.heartbeatNow(), false);
+    assert.equal(handle.active, false);
+    assert.ok(logs.includes("[scheduler] asynchronous scheduler lease heartbeat is unsupported"));
+  } finally {
+    handle.stop();
+    f.db.close();
+  }
+});
+
+
+test("scheduler releases its lease when heartbeat construction fails", () => {
+  const f = fixture();
+  assert.throws(
+    () => startScheduler({
+      repos: f.repos,
+      ownerId: "scheduler-heartbeat-construction-failure",
+      leaseHeartbeatFactory() {
+        throw new Error("heartbeat_factory_failed");
+      },
+      log() {},
+    }),
+    /heartbeat_factory_failed/,
+  );
+  assert.equal(f.runtimeLeases.get("scheduler:primary"), null);
+  f.db.close();
 });

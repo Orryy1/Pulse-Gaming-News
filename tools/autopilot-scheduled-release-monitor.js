@@ -265,7 +265,9 @@ async function deliverDiscordOutbox(stateRoot) {
   const outbox = path.join(stateRoot, "discord-outbox");
   fs.mkdirSync(outbox, { recursive: true });
   const webhook = text(
-    process.env.PULSE_GAMING_DISCORD_WEBHOOK || process.env.DISCORD_WEBHOOK,
+    process.env.PULSE_GAMING_DISCORD_WEBHOOK
+      || process.env.DISCORD_WEBHOOK_URL
+      || process.env.DISCORD_WEBHOOK,
   );
   const results = [];
   for (const file of fs.readdirSync(outbox).filter((name) => name.endsWith(".json")).sort()) {

@@ -1,0 +1,59 @@
+<template>
+  <style>
+    @font-face { font-family: "Space Grotesk"; src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2"); font-style: normal; font-weight: 400 900; }
+    @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2"); font-style: normal; font-weight: 500; }
+    #root { position:relative; width:100%; height:100%; overflow:hidden; }
+    .frame-03-msaa-coverage-ground { position:absolute; inset:0; overflow:hidden; background:#0D0D0F; container-type:size; }
+    .frame-03-msaa-coverage-grid { position:absolute; inset:0; width:100%; height:100%; opacity:.52; }
+    .frame-03-msaa-coverage-scene { position:absolute; inset:0; overflow:hidden; }
+    .frame-03-msaa-coverage-kicker,.frame-03-msaa-coverage-meta,.frame-03-msaa-coverage-probe-label,.frame-03-msaa-coverage-meter-label,.frame-03-msaa-coverage-terminal-prefix { font-family:"IBM Plex Mono"; font-size:1.4cqw; font-weight:500; letter-spacing:.14em; line-height:1; text-transform:uppercase; }
+    .frame-03-msaa-coverage-kicker { position:absolute; top:7.1cqh; left:7.2cqw; color:#FF6B1A; }
+    .frame-03-msaa-coverage-meta { position:absolute; top:7.1cqh; right:7.2cqw; color:#504B48; }
+    .frame-03-msaa-coverage-title { position:absolute; top:13.5cqh; left:7.2cqw; margin:0; color:#F0F0F0; font-family:"Space Grotesk"; font-size:7.2cqw; font-weight:900; letter-spacing:-.065em; line-height:.87; text-transform:lowercase; }
+    .frame-03-msaa-coverage-title span { color:#FF6B1A; }
+    .frame-03-msaa-coverage-rule { position:absolute; top:24.8cqh; left:7.2cqw; width:36px; height:2px; background:#FF6B1A; }
+    .frame-03-msaa-coverage-stage { position:absolute; top:30.5cqh; left:7.2cqw; width:85.6cqw; height:37cqh; border-top:1px solid #282726; border-bottom:1px solid #282726; }
+    .frame-03-msaa-coverage-stage-caption { position:absolute; top:2.7cqh; left:0; color:#504B48; font-family:"IBM Plex Mono"; font-size:1.4cqw; font-weight:500; letter-spacing:.14em; text-transform:uppercase; }
+    .frame-03-msaa-coverage-cell { position:absolute; top:10.5cqh; left:50%; width:32cqw; height:21cqh; margin-left:-16cqw; border:2px solid #F0F0F0; overflow:hidden; }
+    .frame-03-msaa-coverage-cell-fill { position:absolute; inset:0; width:100%; height:100%; background:#FF6B1A; transform-origin:left center; }
+    .frame-03-msaa-coverage-diagonal { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+    .frame-03-msaa-coverage-diagonal path { fill:none; stroke:#F0F0F0; stroke-width:4; stroke-linecap:square; }
+    .frame-03-msaa-coverage-probe { position:absolute; top:50%; left:50%; width:5.2cqw; height:5.2cqw; margin-left:-2.6cqw; margin-top:-2.6cqw; border:2px solid #F0F0F0; background:#0D0D0F; }
+    .frame-03-msaa-coverage-probe-dot { position:absolute; top:50%; left:50%; width:1.15cqw; height:1.15cqw; margin-left:-.575cqw; margin-top:-.575cqw; background:#F0F0F0; }
+    .frame-03-msaa-coverage-probe-label { position:absolute; top:6.2cqw; left:50%; width:9cqw; margin-left:-4.5cqw; color:#504B48; text-align:center; }
+    .frame-03-msaa-coverage-probe--a { --target-x:-18cqw; --target-y:-9.2cqh; }
+    .frame-03-msaa-coverage-probe--b { --target-x:18cqw; --target-y:-9.2cqh; }
+    .frame-03-msaa-coverage-probe--c { --target-x:-18cqw; --target-y:9.2cqh; }
+    .frame-03-msaa-coverage-probe--d { --target-x:18cqw; --target-y:9.2cqh; }
+    .frame-03-msaa-coverage-meter { position:absolute; top:68.8cqh; left:7.2cqw; width:85.6cqw; }
+    .frame-03-msaa-coverage-meter-top { display:flex; justify-content:space-between; border-top:1px solid #282726; padding-top:1.6cqh; }
+    .frame-03-msaa-coverage-meter-label { color:#504B48; }
+    .frame-03-msaa-coverage-meter-value { color:#F0F0F0; font-family:"Space Grotesk"; font-size:3.3cqw; font-weight:900; letter-spacing:-.05em; line-height:.9; text-transform:lowercase; }
+    .frame-03-msaa-coverage-track { position:relative; width:100%; height:2.7cqh; margin-top:1.7cqh; overflow:hidden; background:#282726; }
+    .frame-03-msaa-coverage-fill { width:100%; height:100%; background:#FF6B1A; transform-origin:left center; }
+    .frame-03-msaa-coverage-marks { display:flex; justify-content:space-between; margin-top:1cqh; color:#504B48; font-family:"IBM Plex Mono"; font-size:1.2cqw; font-weight:500; letter-spacing:.12em; }
+    .frame-03-msaa-coverage-terminal { position:absolute; top:78.2cqh; left:7.2cqw; display:flex; align-items:baseline; width:85.6cqw; color:#F0F0F0; font-family:"IBM Plex Mono"; font-size:2.6cqw; font-weight:500; letter-spacing:.02em; line-height:1; white-space:nowrap; }
+    .frame-03-msaa-coverage-terminal-prefix { margin-right:1cqw; color:#FF6B1A; font-size:1.4cqw; }
+    .frame-03-msaa-coverage-terminal-text { display:inline-block; min-width:30cqw; }
+    .frame-03-msaa-coverage-cursor { display:inline-block; width:1.5cqw; color:#FF6B1A; }
+    .frame-03-msaa-coverage-final { position:absolute; top:57.8cqh; left:61.5cqw; width:31.3cqw; color:#F0F0F0; font-family:"Space Grotesk"; font-size:4.4cqw; font-weight:900; letter-spacing:-.065em; line-height:.86; text-transform:lowercase; }
+    .frame-03-msaa-coverage-final span { color:#FF6B1A; }
+  </style>
+  <div id="root" data-composition-id="03-msaa-coverage" data-width="1080" data-height="1920" data-duration="9.4">
+    <div class="clip frame-03-msaa-coverage-ground" data-start="0" data-duration="9.4" data-track-index="0"><svg class="frame-03-msaa-coverage-grid" viewBox="0 0 1920 1080" aria-hidden="true"><path d="M138 0V898M458 0V898M778 0V898M1098 0V898M1418 0V898M1738 0V898M0 180H1920M0 430H1920M0 680H1920" fill="none" stroke="#282726" stroke-width="1" /></svg></div>
+    <div class="clip frame-03-msaa-coverage-scene" data-start="0" data-duration="9.4" data-track-index="1">
+      <div class="frame-03-msaa-coverage-kicker">MSAA / 03</div><div class="frame-03-msaa-coverage-meta">EDGE CELL</div><h1 class="frame-03-msaa-coverage-title">coverage,<br><span>not a guess</span></h1><div class="frame-03-msaa-coverage-rule"></div>
+      <section class="frame-03-msaa-coverage-stage" aria-label="invented sub-pixel coverage diagram"><div class="frame-03-msaa-coverage-stage-caption">SAMPLE POSITIONS</div><div class="frame-03-msaa-coverage-cell"><div class="frame-03-msaa-coverage-cell-fill"></div><svg class="frame-03-msaa-coverage-diagonal" viewBox="0 0 1000 600" aria-hidden="true"><path id="frame-03-msaa-coverage-edge" d="M20 560L980 40" /></svg></div><div class="frame-03-msaa-coverage-probe frame-03-msaa-coverage-probe--a" data-target-x="-346" data-target-y="-99"><span class="frame-03-msaa-coverage-probe-dot"></span><span class="frame-03-msaa-coverage-probe-label" data-layout-allow-overflow>A</span></div><div class="frame-03-msaa-coverage-probe frame-03-msaa-coverage-probe--b" data-target-x="346" data-target-y="-99"><span class="frame-03-msaa-coverage-probe-dot"></span><span class="frame-03-msaa-coverage-probe-label" data-layout-allow-overflow>B</span></div><div class="frame-03-msaa-coverage-probe frame-03-msaa-coverage-probe--c" data-target-x="-346" data-target-y="99"><span class="frame-03-msaa-coverage-probe-dot"></span><span class="frame-03-msaa-coverage-probe-label" data-layout-allow-overflow>C</span></div><div class="frame-03-msaa-coverage-probe frame-03-msaa-coverage-probe--d" data-target-x="346" data-target-y="99"><span class="frame-03-msaa-coverage-probe-dot"></span><span class="frame-03-msaa-coverage-probe-label" data-layout-allow-overflow>D</span></div></section>
+      <section class="frame-03-msaa-coverage-meter" aria-label="invented coverage meter"><div class="frame-03-msaa-coverage-meter-top"><span class="frame-03-msaa-coverage-meter-label">COVERAGE METER</span><span class="frame-03-msaa-coverage-meter-value" id="frame-03-msaa-coverage-meter-value">— / 4</span></div><div class="frame-03-msaa-coverage-track"><div class="frame-03-msaa-coverage-fill"></div></div><div class="frame-03-msaa-coverage-marks"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span></div></section>
+      <div class="frame-03-msaa-coverage-terminal"><span class="frame-03-msaa-coverage-terminal-prefix">RESULT /</span><span class="frame-03-msaa-coverage-terminal-text" id="frame-03-msaa-coverage-terminal-text"></span><span class="frame-03-msaa-coverage-cursor" id="frame-03-msaa-coverage-cursor">_</span></div><div class="frame-03-msaa-coverage-final" id="frame-03-msaa-coverage-final">partial <span>coverage</span></div>
+    </div>
+  </div>
+  <script>
+    (() => { const tl=gsap.timeline({ paused: true }); const edge=document.getElementById("frame-03-msaa-coverage-edge"); const len=edge.getTotalLength(); edge.style.strokeDasharray=`${len}`; edge.style.strokeDashoffset=`${len}`;
+      tl.fromTo(".frame-03-msaa-coverage-kicker",{opacity:0,y:14},{opacity:1,y:0,duration:.28,ease:"power2.out"},.04); tl.fromTo(".frame-03-msaa-coverage-meta",{opacity:0},{opacity:1,duration:.24,ease:"power1.out"},.14); tl.fromTo(".frame-03-msaa-coverage-title",{opacity:0,y:22},{opacity:1,y:0,duration:.44,ease:"power3.out"},.12); tl.fromTo(".frame-03-msaa-coverage-rule",{scaleX:0},{scaleX:1,duration:.32,ease:"power2.out"},.5); tl.fromTo(".frame-03-msaa-coverage-stage",{opacity:0,y:18},{opacity:1,y:0,duration:.42,ease:"power3.out"},.38); tl.to(edge,{strokeDashoffset:0,duration:.86,ease:"power2.out"},.68);
+      document.querySelectorAll(".frame-03-msaa-coverage-probe").forEach((el,i)=>{ tl.fromTo(el,{xPercent:-50,yPercent:-50,x:0,y:0,scale:.58,opacity:0},{x:Number(el.dataset.targetX),y:Number(el.dataset.targetY),scale:1,opacity:1,duration:1.18,ease:"power3.out"},1.08+i*.06); });
+      const words=document.querySelectorAll(".frame-03-msaa-coverage-probe-label"); const timings={A:{start:.18,end:.48},B:{start:.58,end:.88},C:{start:.98,end:1.28},D:{start:1.38,end:1.68}}; const driver={t:0}; function envelope(time,start,end){if(time<start)return 0;if(time<end)return Math.min((time-start)/.14,1);const releaseEnd=end+.34;if(time<releaseEnd)return 1-((time-end)/.34)*.84;return .16;} tl.to(driver,{t:2,duration:2,ease:"none",onUpdate:()=>{words.forEach(el=>{const env=envelope(driver.t,timings[el.textContent].start,timings[el.textContent].end);el.style.color=`rgb(${Math.round(80+(255-80)*env)},${Math.round(75+(107-75)*env)},${Math.round(72+(26-72)*env)})`;el.style.textShadow=`0 0 ${24*env}px rgba(255,107,26,${.65*env})`;el.style.transform=`scale(${1+.17*env})`;});}},3.02);
+      tl.fromTo(".frame-03-msaa-coverage-meter",{opacity:0,y:16},{opacity:1,y:0,duration:.34,ease:"power2.out"},3.18); tl.fromTo(".frame-03-msaa-coverage-fill",{scaleX:0},{scaleX:.5,duration:1.05,ease:"power2.out"},3.44); const value={n:0}; tl.to(value,{n:2,duration:1.05,ease:"power2.out",onUpdate:()=>{document.getElementById("frame-03-msaa-coverage-meter-value").textContent=`${Math.round(value.n)} / 4`; }},3.44);
+      const states=[{t:0,text:"binary"},{t:.48,text:"2 OF 4"},{t:1.08,text:"BLENDED"},{t:1.62,text:"PARTIAL"}]; function textAt(t){for(let i=states.length-1;i>=0;i--){if(t>=states[i].t)return states[i].text;}return "";} const terminal=document.getElementById("frame-03-msaa-coverage-terminal-text"),cursor=document.getElementById("frame-03-msaa-coverage-cursor"),sequence={t:0}; tl.fromTo(".frame-03-msaa-coverage-terminal",{opacity:0,y:14},{opacity:1,y:0,duration:.3,ease:"power2.out"},6.18); tl.to(sequence,{t:2.4,duration:2.4,ease:"none",onUpdate:()=>{terminal.textContent=textAt(sequence.t);}},6.2); const blink={p:0}; tl.to(blink,{p:Math.PI*10,duration:2.4,ease:"none",onUpdate:()=>{cursor.style.opacity=Math.sin(blink.p)>0?"1":"0";}},6.2); tl.fromTo("#frame-03-msaa-coverage-final",{opacity:0,y:14},{opacity:1,y:0,duration:.42,ease:"power3.out"},7.55); window.__timelines=window.__timelines||{}; window.__timelines["03-msaa-coverage"]=tl; })();
+  </script>
+</template>

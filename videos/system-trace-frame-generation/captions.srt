@@ -1,0 +1,167 @@
+1
+00:00:00,000 --> 00:00:01,420
+Frame generation can
+
+2
+00:00:01,420 --> 00:00:01,840
+make motion
+
+3
+00:00:01,840 --> 00:00:03,040
+look much smoother,
+
+4
+00:00:03,700 --> 00:00:03,820
+but the
+
+5
+00:00:03,820 --> 00:00:04,360
+new image
+
+6
+00:00:04,360 --> 00:00:05,600
+between two frames
+
+7
+00:00:05,870 --> 00:00:06,400
+was not
+
+8
+00:00:06,400 --> 00:00:06,980
+fully rendered
+
+9
+00:00:06,980 --> 00:00:07,840
+by the game.
+
+10
+00:00:09,000 --> 00:00:10,000
+The system examines
+
+11
+00:00:10,000 --> 00:00:12,320
+consecutive frames plus motion
+
+12
+00:00:12,320 --> 00:00:14,020
+evidence such as optical
+
+13
+00:00:14,020 --> 00:00:14,480
+flow,
+
+14
+00:00:14,820 --> 00:00:15,720
+motion vectors,
+
+15
+00:00:16,100 --> 00:00:16,800
+depth and
+
+16
+00:00:16,800 --> 00:00:17,600
+camera data.
+
+17
+00:00:17,800 --> 00:00:18,140
+It predicts
+
+18
+00:00:18,140 --> 00:00:19,420
+where visible pixels
+
+19
+00:00:19,420 --> 00:00:21,320
+belong between those moments,
+
+20
+00:00:21,980 --> 00:00:23,320
+then synthesises an
+
+21
+00:00:23,320 --> 00:00:25,060
+intermediate image for the
+
+22
+00:00:25,060 --> 00:00:25,540
+display.
+
+23
+00:00:26,800 --> 00:00:27,200
+The displayed
+
+24
+00:00:27,200 --> 00:00:28,580
+frame rate rises,
+
+25
+00:00:29,120 --> 00:00:29,460
+while game
+
+26
+00:00:29,460 --> 00:00:31,480
+simulation and input sampling
+
+27
+00:00:31,480 --> 00:00:33,360
+still follow the underlying
+
+28
+00:00:33,360 --> 00:00:34,420
+rendered frames.
+
+29
+00:00:35,600 --> 00:00:37,500
+Interpolation also needs careful
+
+30
+00:00:37,500 --> 00:00:39,180
+pacing and can distort
+
+31
+00:00:39,180 --> 00:00:40,140
+rapid motion,
+
+32
+00:00:40,960 --> 00:00:42,120
+scene changes or
+
+33
+00:00:42,120 --> 00:00:43,720
+interface elements when
+
+34
+00:00:43,720 --> 00:00:44,160
+its evidence
+
+35
+00:00:44,160 --> 00:00:44,800
+is weak.
+
+36
+00:00:44,800 --> 00:00:46,220
+Frame generation is
+
+37
+00:00:46,220 --> 00:00:47,460
+best understood as
+
+38
+00:00:47,460 --> 00:00:48,920
+visual interpolation:
+
+39
+00:00:49,140 --> 00:00:51,340
+smoother presentation built on
+
+40
+00:00:51,340 --> 00:00:52,200
+top of
+
+41
+00:00:52,200 --> 00:00:52,540
+a healthy
+
+42
+00:00:52,540 --> 00:00:53,800
+base frame rate.

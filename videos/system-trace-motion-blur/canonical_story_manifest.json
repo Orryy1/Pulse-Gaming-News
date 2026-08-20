@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-motion-blur",
+  "project_id": "system-trace-motion-blur",
+  "narration_script": "Motion blur cannot create extra frames, yet it can make the movement between existing frames feel less harsh. A real camera gathers light while its shutter is open, so a fast object leaves a streak across that exposure. Games often estimate the same path with per-pixel velocity, then sample and blend colour along the direction of travel. That spread hides some of the step between two positions, which can make thirty frames per second look more continuous. It does not update controls sooner, repair a stutter or perfectly handle every reflection, shadow and crossing object. Motion blur is therefore visual glue, not more performance. It can soften the gap, while the game still updates at the same rate.",
+  "final_container": {
+    "path": "renders/system-trace-motion-blur.mp4",
+    "sha256": "97475763e52fd3641ab1a74d12c8e6d5e275dd6dea164ea64a50523a967124d4",
+    "bytes": 6847810
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "fa85f984878a668cc642b6fb9dfe698df4686ca4dc6671ede9421bf54387dc9a",
+    "bytes": 2399
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-27T17:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

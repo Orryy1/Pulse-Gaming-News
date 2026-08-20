@@ -1,0 +1,34 @@
+{
+  "provider": "auto",
+  "speed": 1,
+  "lines": [
+    {
+      "id": "01",
+      "text": "A perfectly straight diagonal can look like a staircase in a game because the screen still draws a square pixel grid."
+    },
+    {
+      "id": "02",
+      "text": "Without anti-aliasing, each edge pixel becomes fully covered or fully empty, creating a hard sequence of visible steps."
+    },
+    {
+      "id": "03",
+      "text": "MSAA checks several sub-pixel coverage positions, letting an edge pixel represent a blend instead of a binary answer."
+    },
+    {
+      "id": "04",
+      "text": "FXAA searches the finished image for jagged patterns and smooths them quickly, though fine detail can become softer."
+    },
+    {
+      "id": "05",
+      "text": "Temporal methods borrow evidence from earlier frames, improving stability but risking ghosting when history no longer matches motion."
+    },
+    {
+      "id": "06",
+      "text": "So anti-aliasing is not one filter. Every method trades cleaner edges against cost, softness or artefacts across time."
+    }
+  ],
+  "bgm": {
+    "mode": "none"
+  },
+  "voice": "bm_george"
+}

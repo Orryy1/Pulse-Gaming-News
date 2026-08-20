@@ -141,6 +141,14 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
   const authenticatedYoutubeClientFactory = dependencies.authenticatedYoutubeClientFactory ||
     currentAuthenticatedGoogleYouTubeClientFactory;
   const log = dependencies.log || console.log;
+  const clock = typeof dependencies.now === "function" ? dependencies.now : () => new Date();
+  const currentTime = () => {
+    const value = clock();
+    if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+      throw new Error("trusted_clock_must_return_valid_date");
+    }
+    return value;
+  };
   const args = parseArgs(argv);
   if (args.help) {
     log(usage());
@@ -279,15 +287,19 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
       const proofInput = await readRegularJson(reconciliationPath, "existing_schedule_reconciliation");
       assertExactDeferredScheduleGreenProof(proofInput.document, intent, authority, sourceSha256);
       const client = await authenticatedYoutubeClientFactory();
+      const now = currentTime();
       await executeDeferredGovernedYouTubeScheduleReconciliation({
         client, intent, authority, sourceReceipt: sourceInput.document, sourceReceiptSha256: sourceSha256,
+        now, generatedAt: now.toISOString(),
       });
       return { receipt: proofInput.document, source_receipt: sourceInput.document, idempotent: true,
         artefacts: { receipt_path: receiptPath, reconciliation_path: reconciliationPath } };
     }
     const client = await authenticatedYoutubeClientFactory();
+    const now = currentTime();
     const proof = await executeDeferredGovernedYouTubeScheduleReconciliation({
       client, intent, authority, sourceReceipt: sourceInput.document, sourceReceiptSha256: sourceSha256,
+      now, generatedAt: now.toISOString(),
     });
     await writeReceipt(reconciliationPath, proof, { exclusive: true });
     log(`[governed-youtube-scheduled-release] GREEN deferred reconciliation: ${storyId}; proof=${reconciliationPath}`);
@@ -297,14 +309,17 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
 
   const reserved = {
     schema_version: 1, receipt_type: "governed_youtube_scheduled_release",
-    generated_at: new Date().toISOString(), story_id: storyId, video_id: intent.video_id,
+    generated_at: currentTime().toISOString(), story_id: storyId, video_id: intent.video_id,
     publish_at_utc: publishAt, verdict: "NOT_EVALUATED", status: "SCHEDULE_ATTEMPT_RESERVED",
     retry_allowed: false, visibility_update_count: 0, authority,
   };
   await writeReceipt(receiptPath, reserved, { exclusive: true });
   try {
     const client = await authenticatedYoutubeClientFactory();
-    const receipt = await executeGovernedYouTubeScheduledRelease({ client, intent, authority });
+    const now = currentTime();
+    const receipt = await executeGovernedYouTubeScheduledRelease({
+      client, intent, authority, now, generatedAt: now.toISOString(),
+    });
     const governedReceipt = {
       ...receipt,
       private_readiness: {
@@ -324,7 +339,7 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
     return { receipt: governedReceipt, artefacts: { receipt_path: receiptPath } };
   } catch (error) {
     const failure = error?.receipt || {
-      ...reserved, generated_at: new Date().toISOString(), verdict: "RED",
+      ...reserved, generated_at: currentTime().toISOString(), verdict: "RED",
       status: "SCHEDULE_ATTEMPT_BLOCKED",
       blockers: Array.isArray(error?.blockers) ? error.blockers : [clean(error?.code || error?.message || error)],
     };

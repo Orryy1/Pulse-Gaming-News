@@ -1,0 +1,54 @@
+<template>
+  <style>
+    @font-face { font-family: "Space Grotesk"; src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2"); font-weight: 300 900; }
+    @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2"); font-weight: 500; }
+    #root { position:relative; width:100%; height:100%; overflow:hidden; container-type:size; color:#F0F0F0; font-family:"Space Grotesk"; }
+    .clip { position:absolute; inset:0; }
+    .f02-fixed-display-variable-delivery-ground { background:#0D0D0F; }
+    .f02-fixed-display-variable-delivery-grid { opacity:.52; }.f02-fixed-display-variable-delivery-grid svg { width:100%;height:100%;display:block; }.f02-fixed-display-variable-delivery-grid line { stroke:#282726;stroke-width:1; }
+    .f02-fixed-display-variable-delivery-chrome { left:5.5cqw;right:5.5cqw;top:5.4cqh;bottom:auto;height:5.2cqh;border-top:1px solid #282726;border-bottom:1px solid #282726;font-family:"IBM Plex Mono";font-size:1.15cqw;font-weight:500;letter-spacing:.14em; }.f02-fixed-display-variable-delivery-chrome span { position:absolute;top:1.55cqh; }.f02-fixed-display-variable-delivery-chrome-left { left:0; }.f02-fixed-display-variable-delivery-chrome-right { right:0;color:#FF6B1A; }
+    .f02-fixed-display-variable-delivery-heading { left:5.5cqw;right:5.5cqw;top:15.1cqh;bottom:auto;height:10cqh; }.f02-fixed-display-variable-delivery-kicker { margin:0 0 1.7cqh;font-family:"IBM Plex Mono";font-size:1.1cqw;font-weight:500;letter-spacing:.14em;color:#FF6B1A; }.f02-fixed-display-variable-delivery-title { margin:0;font-size:7.5cqw;font-weight:900;line-height:.86;letter-spacing:-.05em;text-transform:lowercase; }.f02-fixed-display-variable-delivery-title-word { display:inline-block;margin-right:1.4cqw; }.f02-fixed-display-variable-delivery-title-word:last-child { margin-right:0;color:#FF6B1A; }
+    .f02-fixed-display-variable-delivery-stage { left:5.5cqw;right:5.5cqw;top:30.1cqh;bottom:auto;height:32.8cqh;border-top:1px solid #282726; }
+    .f02-fixed-display-variable-delivery-stage-note { position:absolute;top:2.1cqh;left:0;font-family:"IBM Plex Mono";font-size:1.02cqw;font-weight:500;letter-spacing:.14em;color:#504B48; }
+    .f02-fixed-display-variable-delivery-rail { position:absolute;top:16.8cqh;left:0;right:0;height:1px;background:#504B48;transform-origin:left center; }
+    .f02-fixed-display-variable-delivery-gates { position:absolute;left:0;right:0;top:5.5cqh;height:19.5cqh;overflow:visible; }.f02-fixed-display-variable-delivery-gate { fill:none;stroke:#FF6B1A;stroke-width:6;stroke-linecap:square; }
+    .f02-fixed-display-variable-delivery-burst-wrap { position:absolute;inset:0; }.f02-fixed-display-variable-delivery-burst-item { position:absolute;top:50%;left:50%;width:11.8cqw;height:7.4cqh;border-top:2px solid #F0F0F0;background:#1A1918; }.f02-fixed-display-variable-delivery-marker-dot { position:absolute;left:1.25cqw;top:2.35cqh;width:2.1cqw;height:2.1cqw;background:#F0F0F0; }.f02-fixed-display-variable-delivery-marker-label { position:absolute;left:4.1cqw;top:2.38cqh;font-family:"IBM Plex Mono";font-size:.94cqw;font-weight:500;letter-spacing:.14em;color:#F0F0F0;white-space:nowrap; }
+    .f02-fixed-display-variable-delivery-delivery { left:5.5cqw;right:5.5cqw;top:68.5cqh;bottom:auto;height:11cqh;border-top:1px solid #282726; }.f02-fixed-display-variable-delivery-delivery-label { margin-top:2.0cqh;font-size:6.4cqw;font-weight:900;line-height:.86;letter-spacing:-.05em;text-transform:lowercase; }.f02-fixed-display-variable-delivery-delivery-word { display:inline-block;margin-right:1.3cqw; }.f02-fixed-display-variable-delivery-delivery-word:last-child { color:#FF6B1A;margin-right:0; }.f02-fixed-display-variable-delivery-delivery-note { position:absolute;right:0;bottom:1.5cqh;font-family:"IBM Plex Mono";font-size:1.0cqw;font-weight:500;letter-spacing:.14em;color:#504B48; }
+    .f02-fixed-display-variable-delivery-footer { left:5.5cqw;right:5.5cqw;top:80.5cqh;bottom:auto;height:1px;border-top:1px solid #282726; }
+  </style>
+  <div id="root" data-composition-id="02-fixed-display-variable-delivery" data-width="1080" data-height="1920" data-duration="9.3">
+    <div class="clip f02-fixed-display-variable-delivery-ground" data-start="0" data-duration="9.3" data-track-index="0"></div>
+    <div class="clip f02-fixed-display-variable-delivery-grid" data-start="0" data-duration="9.3" data-track-index="1" aria-hidden="true"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="0" y1="13" x2="100" y2="13"></line><line x1="0" y1="30" x2="100" y2="30"></line><line x1="0" y1="63" x2="100" y2="63"></line><line x1="0" y1="80" x2="100" y2="80"></line><line x1="11" y1="0" x2="11" y2="83"></line><line x1="50" y1="0" x2="50" y2="83"></line><line x1="89" y1="0" x2="89" y2="83"></line></svg></div>
+    <div class="clip f02-fixed-display-variable-delivery-chrome" data-start="0" data-duration="9.3" data-track-index="2"><span class="f02-fixed-display-variable-delivery-chrome-left">SYSTEM TRACE</span><span class="f02-fixed-display-variable-delivery-chrome-right">DISPLAY / CLOCK</span></div>
+    <div class="clip f02-fixed-display-variable-delivery-heading" data-start="0" data-duration="9.3" data-track-index="3"><div class="f02-fixed-display-variable-delivery-kicker">TIMING CONTRAST</div><h1 class="f02-fixed-display-variable-delivery-title"><span class="f02-fixed-display-variable-delivery-title-word">fixed</span><span class="f02-fixed-display-variable-delivery-title-word">display</span></h1></div>
+    <div class="clip f02-fixed-display-variable-delivery-stage" data-start="0" data-duration="9.3" data-track-index="4"><div class="f02-fixed-display-variable-delivery-stage-note">REFRESH BOUNDARIES</div><div class="f02-fixed-display-variable-delivery-rail"></div><svg class="f02-fixed-display-variable-delivery-gates" viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true"><path class="f02-fixed-display-variable-delivery-gate" d="M 220 22 L 220 365"></path><path class="f02-fixed-display-variable-delivery-gate" d="M 500 22 L 500 365"></path><path class="f02-fixed-display-variable-delivery-gate" d="M 780 22 L 780 365"></path></svg><div class="f02-fixed-display-variable-delivery-burst-wrap"><div class="f02-fixed-display-variable-delivery-burst-item" data-target-x="-240" data-target-y="-12"><span class="f02-fixed-display-variable-delivery-marker-dot"></span><span class="f02-fixed-display-variable-delivery-marker-label">EARLY</span></div><div class="f02-fixed-display-variable-delivery-burst-item" data-target-x="48" data-target-y="-12"><span class="f02-fixed-display-variable-delivery-marker-dot"></span><span class="f02-fixed-display-variable-delivery-marker-label">BETWEEN</span></div><div class="f02-fixed-display-variable-delivery-burst-item" data-target-x="248" data-target-y="-12"><span class="f02-fixed-display-variable-delivery-marker-dot"></span><span class="f02-fixed-display-variable-delivery-marker-label">LATE</span></div></div></div>
+    <div class="clip f02-fixed-display-variable-delivery-delivery" data-start="0" data-duration="9.3" data-track-index="5"><div class="f02-fixed-display-variable-delivery-delivery-label"><span class="f02-fixed-display-variable-delivery-delivery-word">variable</span><span class="f02-fixed-display-variable-delivery-delivery-word">delivery</span></div><div class="f02-fixed-display-variable-delivery-delivery-note">UNEQUAL GAPS</div></div>
+    <div class="clip f02-fixed-display-variable-delivery-footer" data-start="0" data-duration="9.3" data-track-index="6" aria-hidden="true"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const id = "02-fixed-display-variable-delivery";
+      const root = document.getElementById("root");
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines[id] = tl;
+      const chrome = root.querySelector(".f02-fixed-display-variable-delivery-chrome");
+      const kicker = root.querySelector(".f02-fixed-display-variable-delivery-kicker");
+      const titleWords = root.querySelectorAll(".f02-fixed-display-variable-delivery-title-word");
+      const gates = root.querySelectorAll(".f02-fixed-display-variable-delivery-gate");
+      gates.forEach((gate) => { const length = gate.getTotalLength(); gate.style.strokeDasharray = `${length}`; gate.style.strokeDashoffset = `${length}`; });
+      tl.fromTo(chrome,{opacity:0,y:10},{opacity:1,y:0,duration:.5,ease:"power3.out"},0);
+      tl.fromTo(kicker,{opacity:0,y:10},{opacity:1,y:0,duration:.5,ease:"power3.out"},.12);
+      const titleContent = [{ target:titleWords[0], chars:5 },{ target:titleWords[1], chars:7 }]; let cursor=.42; const titleTimeline=titleContent.map((item)=>{const duration=.26+item.chars*.04;const start=cursor;cursor+=duration+.1;return {...item,start,duration};}); titleTimeline.forEach((item)=>tl.fromTo(item.target,{opacity:0,y:18},{opacity:1,y:0,duration:item.duration,ease:"power3.out"},item.start));
+      tl.fromTo(root.querySelector(".f02-fixed-display-variable-delivery-stage-note"),{opacity:0,y:8},{opacity:1,y:0,duration:.4,ease:"power3.out"},1.1);
+      tl.fromTo(root.querySelector(".f02-fixed-display-variable-delivery-rail"),{scaleX:0},{scaleX:1,duration:.65,ease:"power3.out"},1.24);
+      gates.forEach((gate,index)=>tl.to(gate,{strokeDashoffset:0,duration:.62,ease:"power2.out"},1.38+index*.48));
+      const markers = root.querySelectorAll(".f02-fixed-display-variable-delivery-burst-item");
+      markers.forEach((marker,index)=>tl.fromTo(marker,{xPercent:-50,yPercent:-50,x:0,y:0,scale:.6,opacity:0},{x:Number(marker.dataset.targetX),y:Number(marker.dataset.targetY),scale:1,opacity:1,duration:1.15,ease:"power3.out"},2.78+index*.07));
+      const deliveryWords=root.querySelectorAll(".f02-fixed-display-variable-delivery-delivery-word");
+      const deliveryContent=[{target:deliveryWords[0],chars:8},{target:deliveryWords[1],chars:8}];let deliveryCursor=6.16;const deliveryTimeline=deliveryContent.map((item)=>{const duration=.25+item.chars*.035;const start=deliveryCursor;deliveryCursor+=duration+.1;return {...item,start,duration};});deliveryTimeline.forEach((item)=>tl.fromTo(item.target,{opacity:0,y:18},{opacity:1,y:0,duration:item.duration,ease:"power3.out"},item.start));
+      tl.fromTo(root.querySelector(".f02-fixed-display-variable-delivery-delivery-note"),{opacity:0,y:8},{opacity:1,y:0,duration:.38,ease:"power3.out"},7.08);
+    })();
+  </script>
+</template>

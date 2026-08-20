@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_buffer_rights_ledger_v1",
+  "generated_at": "2026-08-20T08:48:40.4109349Z",
+  "scope": {
+    "series": "SYSTEM TRACE — DISPLAY PIPELINE",
+    "episode_count": 7,
+    "platform": "youtube_shorts",
+    "finished_editorial_video_only": true
+  },
+  "visuals": {
+    "verdict": "GREEN",
+    "origin": "Pulse Gaming original CSS and SVG motion diagrams",
+    "third_party_visual_assets_embedded": false,
+    "gameplay_embedded": false,
+    "logos_embedded": false,
+    "reference_urls_are_fact_sources_only": true
+  },
+  "narration": {
+    "verdict": "GREEN",
+    "provider": "local Kokoro TTS",
+    "voice": "bm_george",
+    "synthetic_media": true,
+    "operator_authorised": true,
+    "disclosure_required": true,
+    "disclosure_setting": "YES"
+  },
+  "music": {
+    "verdict": "GREEN",
+    "asset_id": "pulse_system_trace_display_pipeline_bed_20260820",
+    "file": "system-trace-display-pipeline-bed.wav",
+    "sha256": "112d9b4f0a37f7d5b498d2249b68ca1e21bab6fb09f5d93675ce3d9fece5457d",
+    "bytes": 12480078,
+    "provider": "Pulse Gaming",
+    "origin": "Pulse Gaming deterministic procedural synthesis generated locally with FFmpeg",
+    "third_party_recording_or_composition": false,
+    "commercial_use_allowed": true,
+    "allowed_use": "finished_editorial_video_only",
+    "raw_redistribution_allowed": false,
+    "attribution_required": false,
+    "mix_volume": 0.1,
+    "planned_episode_placements": 7,
+    "declared_reuse_limit": null,
+    "reuse_limit_pass": true,
+    "rights_evidence_file": "system-trace-display-pipeline-bed.rights.json"
+  },
+  "sound_effects": {
+    "verdict": "GREEN",
+    "provider": null,
+    "use": "none",
+    "assets": []
+  },
+  "fonts": {
+    "verdict": "GREEN",
+    "licence": "SIL Open Font License 1.1",
+    "embedded_in_finished_video": true,
+    "assets": [
+      {
+        "file": "IBM_Plex_Mono_400.woff2",
+        "bytes": 14708,
+        "sha256": "08949f728dc52d528e69b1667d15c89a5686a4ee9a296ff90983985f99c380f7"
+      },
+      {
+        "file": "IBM_Plex_Mono_500.woff2",
+        "bytes": 14888,
+        "sha256": "01d285447409c8a588692162439a038b8cbd7871309ee20267b0d2d91c6e8e22"
+      },
+      {
+        "file": "IBM_Plex_Mono_700.woff2",
+        "bytes": 14908,
+        "sha256": "4f84d86cfd060f4ded334358ff8a4c81d4db2ed5addd568359d693f44a87765a"
+      },
+      {
+        "file": "Space_Grotesk_Variable.woff2",
+        "bytes": 22288,
+        "sha256": "0640890476fc1198ab4de571fb658de443c4d85b66466ec09534a8737ab1ce9d"
+      }
+    ]
+  },
+  "placement_verdict": "GREEN",
+  "blockers": [],
+  "legal_clearance_claimed": false,
+  "licence_clearance_claimed": false,
+  "public_release_scope": "exact rendered seven-episode System Trace buffer only"
+}

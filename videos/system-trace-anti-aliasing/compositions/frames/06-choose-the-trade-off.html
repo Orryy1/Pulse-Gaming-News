@@ -1,0 +1,475 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 100 900;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    [data-node="06-choose-the-trade-off-ground"] {
+      position: absolute;
+      inset: 0;
+      background: #0d0d0f;
+    }
+
+    [data-node="06-choose-the-trade-off-stage"],
+    [data-node="06-choose-the-trade-off-swap"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    [data-node="06-choose-the-trade-off-board"],
+    [data-node="06-choose-the-trade-off-final"] {
+      position: absolute;
+      inset: 0;
+      transform-origin: 50% 50%;
+    }
+
+    [data-node="06-choose-the-trade-off-board"] {
+      z-index: 1;
+      background: #0d0d0f;
+    }
+
+    [data-node="06-choose-the-trade-off-final"] {
+      z-index: 2;
+      background: #ff6b1a;
+      color: #0d0d0f;
+    }
+
+    [data-node="06-choose-the-trade-off-chrome"] {
+      position: absolute;
+      top: 80px;
+      left: 60px;
+      right: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 18px;
+      border-top: 1px solid #282726;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="06-choose-the-trade-off-rail"] {
+      position: absolute;
+      top: 220px;
+      left: 60px;
+      width: 2px;
+      height: 1040px;
+      background: #ff6b1a;
+    }
+
+    [data-node="06-choose-the-trade-off-row"] {
+      position: absolute;
+      left: 120px;
+      width: 900px;
+      height: 270px;
+      box-sizing: border-box;
+      overflow: hidden;
+      border-top: 1px solid #282726;
+      opacity: 0;
+    }
+
+    [data-method="msaa"] {
+      top: 230px;
+    }
+
+    [data-method="fxaa"] {
+      top: 565px;
+    }
+
+    [data-method="temporal"] {
+      top: 900px;
+    }
+
+    [data-node="06-choose-the-trade-off-method-index"] {
+      position: absolute;
+      top: 24px;
+      right: 0;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+    }
+
+    [data-node="06-choose-the-trade-off-method"] {
+      position: absolute;
+      top: 46px;
+      left: 0;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+      font-size: 86px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+      text-transform: lowercase;
+      white-space: nowrap;
+    }
+
+    [data-node="06-choose-the-trade-off-compromise"] {
+      position: absolute;
+      left: 0;
+      bottom: 34px;
+      display: flex;
+      align-items: baseline;
+      width: 100%;
+      min-height: 42px;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 22px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1.1;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    [data-node="06-choose-the-trade-off-keyword"] {
+      display: inline-block;
+      min-width: 610px;
+      margin-left: 16px;
+      color: #ff6b1a;
+      transform-origin: 0 50%;
+      white-space: nowrap;
+      will-change: transform, text-shadow;
+    }
+
+    [data-node="06-choose-the-trade-off-marker"] {
+      position: absolute;
+      top: 1460px;
+      left: 60px;
+      right: 60px;
+      padding-top: 18px;
+      border-top: 1px solid #282726;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="06-choose-the-trade-off-final-marker"] {
+      position: absolute;
+      top: 80px;
+      left: 60px;
+      right: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 18px;
+      border-top: 1px solid rgba(17, 17, 17, 0.2);
+      color: rgba(17, 17, 17, 0.55);
+      font-family: "IBM Plex Mono";
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="06-choose-the-trade-off-final-lock"] {
+      position: absolute;
+      top: 330px;
+      left: 60px;
+      width: 960px;
+    }
+
+    [data-node="06-choose-the-trade-off-final-kicker"] {
+      color: rgba(17, 17, 17, 0.75);
+      font-family: "Space Grotesk";
+      font-size: 58px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      text-transform: lowercase;
+    }
+
+    [data-node="06-choose-the-trade-off-final-rule"] {
+      width: 36px;
+      height: 2px;
+      margin-top: 42px;
+      background: #0d0d0f;
+    }
+
+    [data-node="06-choose-the-trade-off-final-title"] {
+      margin-top: 82px;
+      width: 960px;
+    }
+
+    [data-node="06-choose-the-trade-off-final-word"] {
+      display: block;
+      color: #0d0d0f;
+      font-family: "Space Grotesk";
+      font-size: 144px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+      text-transform: lowercase;
+      white-space: nowrap;
+      will-change: transform, opacity;
+    }
+
+    [data-word="trade-off"] {
+      font-size: 166px;
+    }
+
+    [data-node="06-choose-the-trade-off-final-note"] {
+      margin-top: 84px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(17, 17, 17, 0.2);
+      color: rgba(17, 17, 17, 0.55);
+      font-family: "IBM Plex Mono";
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="06-choose-the-trade-off"
+    data-start="0"
+    data-duration="8.8"
+    data-width="1080"
+    data-height="1920"
+  >
+    <div
+      class="clip"
+      data-node="06-choose-the-trade-off-ground"
+      data-start="0"
+      data-duration="8.8"
+      data-track-index="0"
+    ></div>
+
+    <div
+      class="clip"
+      data-node="06-choose-the-trade-off-stage"
+      data-start="0"
+      data-duration="8.8"
+      data-track-index="1"
+    >
+      <div data-node="06-choose-the-trade-off-swap">
+        <section data-node="06-choose-the-trade-off-board" aria-label="anti-aliasing method decision board">
+          <div data-node="06-choose-the-trade-off-chrome">
+            <span>method / compromise</span>
+            <span>resolve / 06</span>
+          </div>
+          <div data-node="06-choose-the-trade-off-rail"></div>
+
+          <article data-node="06-choose-the-trade-off-row" data-method="msaa">
+            <div data-node="06-choose-the-trade-off-method-index">01 / MSAA</div>
+            <div data-node="06-choose-the-trade-off-method">msaa</div>
+            <div data-node="06-choose-the-trade-off-compromise">
+              <span>trade /</span>
+              <span data-node="06-choose-the-trade-off-keyword" data-keyword="cost"></span>
+            </div>
+          </article>
+
+          <article data-node="06-choose-the-trade-off-row" data-method="fxaa">
+            <div data-node="06-choose-the-trade-off-method-index">02 / FXAA</div>
+            <div data-node="06-choose-the-trade-off-method">fxaa</div>
+            <div data-node="06-choose-the-trade-off-compromise">
+              <span>trade /</span>
+              <span data-node="06-choose-the-trade-off-keyword" data-keyword="softness"></span>
+            </div>
+          </article>
+
+          <article data-node="06-choose-the-trade-off-row" data-method="temporal">
+            <div data-node="06-choose-the-trade-off-method-index">03 / TEMPORAL</div>
+            <div data-node="06-choose-the-trade-off-method">temporal</div>
+            <div data-node="06-choose-the-trade-off-compromise">
+              <span>trade /</span>
+              <span data-node="06-choose-the-trade-off-keyword" data-keyword="history"></span>
+            </div>
+          </article>
+
+          <div data-node="06-choose-the-trade-off-marker">system trace // 12</div>
+        </section>
+
+        <section data-node="06-choose-the-trade-off-final" aria-label="cleaner edges trade-off title card">
+          <div data-node="06-choose-the-trade-off-final-marker">
+            <span>system trace // 12</span>
+            <span>choice / consequence</span>
+          </div>
+          <div data-node="06-choose-the-trade-off-final-lock">
+            <div data-node="06-choose-the-trade-off-final-kicker">cleaner edges</div>
+            <div data-node="06-choose-the-trade-off-final-rule"></div>
+            <div data-node="06-choose-the-trade-off-final-title">
+              <span data-node="06-choose-the-trade-off-final-word" data-word="choose" data-layout-allow-overlap>choose the</span>
+              <span data-node="06-choose-the-trade-off-final-word" data-word="trade-off">trade-off</span>
+            </div>
+            <div data-node="06-choose-the-trade-off-final-note">method / compromise / choice</div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const timeline = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["06-choose-the-trade-off"] = timeline;
+
+      const board = document.querySelector('[data-node="06-choose-the-trade-off-board"]');
+      const finalCard = document.querySelector('[data-node="06-choose-the-trade-off-final"]');
+      const rows = Array.from(document.querySelectorAll('[data-node="06-choose-the-trade-off-row"]'));
+      const keywords = Array.from(document.querySelectorAll('[data-node="06-choose-the-trade-off-keyword"]'));
+
+      const waterfall = [
+        { row: rows[0], start: 0.18, offset: 80, duration: 0.20 },
+        { row: rows[1], start: 0.36, offset: 52, duration: 0.15 },
+        { row: rows[2], start: 0.49, offset: 44, duration: 0.13 }
+      ];
+
+      waterfall.forEach((entry) => {
+        timeline.set(entry.row, { opacity: 1, y: entry.offset }, entry.start);
+        timeline.to(
+          entry.row,
+          { y: 0, duration: entry.duration, ease: "power4.out" },
+          entry.start
+        );
+      });
+
+      const compromiseStates = [
+        { t: 0.00, key: "---", values: ["", "", ""] },
+        { t: 0.32, key: "C--", values: ["COST", "", ""] },
+        { t: 1.18, key: "CS-", values: ["COST", "SOFTNESS", ""] },
+        { t: 2.08, key: "CSH", values: ["COST", "SOFTNESS", "HISTORY ARTEFACTS"] }
+      ];
+
+      const compromiseAt = (time) => {
+        for (let index = compromiseStates.length - 1; index >= 0; index -= 1) {
+          if (time >= compromiseStates[index].t) return compromiseStates[index];
+        }
+        return compromiseStates[0];
+      };
+
+      let lastCompromiseKey = "";
+      const applyCompromiseState = (state) => {
+        if (state.key === lastCompromiseKey) return;
+        keywords.forEach((keyword, index) => {
+          keyword.textContent = state.values[index];
+        });
+        lastCompromiseKey = state.key;
+      };
+
+      applyCompromiseState(compromiseStates[0]);
+      const compromiseDriver = { t: 0 };
+      timeline.to(
+        compromiseDriver,
+        {
+          t: 3.1,
+          duration: 3.1,
+          ease: "none",
+          onUpdate: () => applyCompromiseState(compromiseAt(compromiseDriver.t))
+        },
+        2.9
+      );
+
+      const keywordTimings = {
+        cost: { start: 0.32, end: 0.66 },
+        softness: { start: 1.18, end: 1.62 },
+        history: { start: 2.08, end: 2.74 }
+      };
+      const attackDuration = 0.14;
+      const releaseDuration = 0.35;
+      const restLevel = 0.08;
+      const envelope = (time, start, end) => {
+        if (time < start) return 0;
+        if (time < end) return Math.min((time - start) / attackDuration, 1);
+        const releaseEnd = end + releaseDuration;
+        if (time < releaseEnd) {
+          return 1 - ((time - end) / releaseDuration) * (1 - restLevel);
+        }
+        return restLevel;
+      };
+
+      const glowDriver = { t: 0 };
+      timeline.to(
+        glowDriver,
+        {
+          t: 3.1,
+          duration: 3.1,
+          ease: "none",
+          onUpdate: () => {
+            keywords.forEach((keyword) => {
+              const timing = keywordTimings[keyword.dataset.keyword];
+              const level = envelope(glowDriver.t, timing.start, timing.end);
+              keyword.style.textShadow = `0 0 ${24 * level}px rgba(255,107,26,${0.65 * level})`;
+              keyword.style.transform = `scale(${1 + 0.09 * level})`;
+            });
+          }
+        },
+        2.9
+      );
+
+      timeline.to(
+        board,
+        { scale: 0.76, opacity: 0, duration: 0.42, ease: "power2.in" },
+        6.0
+      );
+      timeline.fromTo(
+        finalCard,
+        { scale: 0.76, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.58, ease: "back.out(1.4)" },
+        6.24
+      );
+      timeline.fromTo(
+        '[data-node="06-choose-the-trade-off-final-kicker"]',
+        { opacity: 0, y: 28 },
+        { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" },
+        6.72
+      );
+      timeline.fromTo(
+        '[data-word="choose"]',
+        { opacity: 0, y: 44 },
+        { opacity: 1, y: 0, duration: 0.52, ease: "power3.out" },
+        6.82
+      );
+      timeline.fromTo(
+        '[data-word="trade-off"]',
+        { opacity: 0, y: 54 },
+        { opacity: 1, y: 0, duration: 0.56, ease: "power3.out" },
+        6.94
+      );
+      timeline.fromTo(
+        '[data-node="06-choose-the-trade-off-final-note"]',
+        { opacity: 0, y: 20 },
+        { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" },
+        7.12
+      );
+    })();
+  </script>
+</template>

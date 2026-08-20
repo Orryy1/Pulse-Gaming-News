@@ -1,0 +1,760 @@
+{
+  "bgm": {
+    "path": "assets/bgm/system-trace-display-pipeline-bed.wav",
+    "volume": 1
+  },
+  "bgm_pending": false,
+  "voices": [
+    {
+      "frame": 1,
+      "path": "assets/voice/01.wav",
+      "duration_s": 7.403,
+      "words": [
+        {
+          "id": "01-001",
+          "text": "Motion",
+          "start": 0,
+          "end": 0.3
+        },
+        {
+          "id": "01-002",
+          "text": "blur",
+          "start": 0.3,
+          "end": 0.6
+        },
+        {
+          "id": "01-003",
+          "text": "cannot",
+          "start": 0.6,
+          "end": 1.14
+        },
+        {
+          "id": "01-004",
+          "text": "create",
+          "start": 1.14,
+          "end": 1.56
+        },
+        {
+          "id": "01-005",
+          "text": "extra",
+          "start": 1.56,
+          "end": 1.9
+        },
+        {
+          "id": "01-006",
+          "text": "frames,",
+          "start": 1.9,
+          "end": 2.56
+        },
+        {
+          "id": "01-007",
+          "text": "yet",
+          "start": 3.06,
+          "end": 3.3
+        },
+        {
+          "id": "01-008",
+          "text": "it",
+          "start": 3.3,
+          "end": 3.42
+        },
+        {
+          "id": "01-009",
+          "text": "can",
+          "start": 3.42,
+          "end": 3.54
+        },
+        {
+          "id": "01-010",
+          "text": "make",
+          "start": 3.54,
+          "end": 3.76
+        },
+        {
+          "id": "01-011",
+          "text": "the",
+          "start": 3.76,
+          "end": 3.98
+        },
+        {
+          "id": "01-012",
+          "text": "movement",
+          "start": 3.98,
+          "end": 4.26
+        },
+        {
+          "id": "01-013",
+          "text": "between",
+          "start": 4.26,
+          "end": 4.84
+        },
+        {
+          "id": "01-014",
+          "text": "existing",
+          "start": 4.84,
+          "end": 5.24
+        },
+        {
+          "id": "01-015",
+          "text": "frames",
+          "start": 5.24,
+          "end": 5.74
+        },
+        {
+          "id": "01-016",
+          "text": "feel",
+          "start": 5.74,
+          "end": 6.24
+        },
+        {
+          "id": "01-017",
+          "text": "less",
+          "start": 6.24,
+          "end": 6.7
+        },
+        {
+          "id": "01-018",
+          "text": "harsh.",
+          "start": 6.7,
+          "end": 7.04
+        }
+      ]
+    },
+    {
+      "frame": 2,
+      "path": "assets/voice/02.wav",
+      "duration_s": 7.147,
+      "words": [
+        {
+          "id": "02-001",
+          "text": "A",
+          "start": 0,
+          "end": 0.06
+        },
+        {
+          "id": "02-002",
+          "text": "real",
+          "start": 0.06,
+          "end": 0.24
+        },
+        {
+          "id": "02-003",
+          "text": "camera",
+          "start": 0.24,
+          "end": 0.6
+        },
+        {
+          "id": "02-004",
+          "text": "gathers",
+          "start": 0.6,
+          "end": 1.3
+        },
+        {
+          "id": "02-005",
+          "text": "light",
+          "start": 1.3,
+          "end": 1.66
+        },
+        {
+          "id": "02-006",
+          "text": "while",
+          "start": 1.66,
+          "end": 2.12
+        },
+        {
+          "id": "02-007",
+          "text": "its",
+          "start": 2.12,
+          "end": 2.26
+        },
+        {
+          "id": "02-008",
+          "text": "shutter",
+          "start": 2.26,
+          "end": 2.5
+        },
+        {
+          "id": "02-009",
+          "text": "is",
+          "start": 2.5,
+          "end": 2.8
+        },
+        {
+          "id": "02-010",
+          "text": "open,",
+          "start": 2.8,
+          "end": 3.12
+        },
+        {
+          "id": "02-011",
+          "text": "so",
+          "start": 3.68,
+          "end": 3.82
+        },
+        {
+          "id": "02-012",
+          "text": "a",
+          "start": 3.82,
+          "end": 3.92
+        },
+        {
+          "id": "02-013",
+          "text": "fast",
+          "start": 3.92,
+          "end": 4.2
+        },
+        {
+          "id": "02-014",
+          "text": "object",
+          "start": 4.2,
+          "end": 4.56
+        },
+        {
+          "id": "02-015",
+          "text": "leaves",
+          "start": 4.56,
+          "end": 5.08
+        },
+        {
+          "id": "02-016",
+          "text": "a",
+          "start": 5.08,
+          "end": 5.28
+        },
+        {
+          "id": "02-017",
+          "text": "streak",
+          "start": 5.28,
+          "end": 5.56
+        },
+        {
+          "id": "02-018",
+          "text": "across",
+          "start": 5.56,
+          "end": 5.92
+        },
+        {
+          "id": "02-019",
+          "text": "that",
+          "start": 5.92,
+          "end": 6.22
+        },
+        {
+          "id": "02-020",
+          "text": "exposure.",
+          "start": 6.22,
+          "end": 6.68
+        }
+      ]
+    },
+    {
+      "frame": 3,
+      "path": "assets/voice/03.wav",
+      "duration_s": 8.341,
+      "words": [
+        {
+          "id": "03-001",
+          "text": "Games",
+          "start": 0,
+          "end": 0.403
+        },
+        {
+          "id": "03-002",
+          "text": "often",
+          "start": 0.403,
+          "end": 0.806
+        },
+        {
+          "id": "03-003",
+          "text": "estimate",
+          "start": 0.806,
+          "end": 1.451
+        },
+        {
+          "id": "03-004",
+          "text": "the",
+          "start": 1.451,
+          "end": 1.693
+        },
+        {
+          "id": "03-005",
+          "text": "same",
+          "start": 1.693,
+          "end": 2.015
+        },
+        {
+          "id": "03-006",
+          "text": "path",
+          "start": 2.015,
+          "end": 2.338
+        },
+        {
+          "id": "03-007",
+          "text": "with",
+          "start": 2.338,
+          "end": 2.66
+        },
+        {
+          "id": "03-008",
+          "text": "per-pixel",
+          "start": 2.66,
+          "end": 3.305
+        },
+        {
+          "id": "03-009",
+          "text": "velocity,",
+          "start": 3.305,
+          "end": 3.95
+        },
+        {
+          "id": "03-010",
+          "text": "then",
+          "start": 3.95,
+          "end": 4.272
+        },
+        {
+          "id": "03-011",
+          "text": "sample",
+          "start": 4.272,
+          "end": 4.756
+        },
+        {
+          "id": "03-012",
+          "text": "and",
+          "start": 4.756,
+          "end": 4.998
+        },
+        {
+          "id": "03-013",
+          "text": "blend",
+          "start": 4.998,
+          "end": 5.401
+        },
+        {
+          "id": "03-014",
+          "text": "colour",
+          "start": 5.401,
+          "end": 5.885
+        },
+        {
+          "id": "03-015",
+          "text": "along",
+          "start": 5.885,
+          "end": 6.288
+        },
+        {
+          "id": "03-016",
+          "text": "the",
+          "start": 6.288,
+          "end": 6.53
+        },
+        {
+          "id": "03-017",
+          "text": "direction",
+          "start": 6.53,
+          "end": 7.255
+        },
+        {
+          "id": "03-018",
+          "text": "of",
+          "start": 7.255,
+          "end": 7.416
+        },
+        {
+          "id": "03-019",
+          "text": "travel.",
+          "start": 7.416,
+          "end": 7.9
+        }
+      ]
+    },
+    {
+      "frame": 4,
+      "path": "assets/voice/04.wav",
+      "duration_s": 7.403,
+      "words": [
+        {
+          "id": "04-001",
+          "text": "That",
+          "start": 0,
+          "end": 0.12
+        },
+        {
+          "id": "04-002",
+          "text": "spread",
+          "start": 0.12,
+          "end": 0.34
+        },
+        {
+          "id": "04-003",
+          "text": "hides",
+          "start": 0.34,
+          "end": 0.72
+        },
+        {
+          "id": "04-004",
+          "text": "some",
+          "start": 0.72,
+          "end": 1.14
+        },
+        {
+          "id": "04-005",
+          "text": "of",
+          "start": 1.14,
+          "end": 1.22
+        },
+        {
+          "id": "04-006",
+          "text": "the",
+          "start": 1.22,
+          "end": 1.34
+        },
+        {
+          "id": "04-007",
+          "text": "step",
+          "start": 1.34,
+          "end": 1.64
+        },
+        {
+          "id": "04-008",
+          "text": "between",
+          "start": 1.64,
+          "end": 2.06
+        },
+        {
+          "id": "04-009",
+          "text": "two",
+          "start": 2.06,
+          "end": 2.36
+        },
+        {
+          "id": "04-010",
+          "text": "positions,",
+          "start": 2.36,
+          "end": 2.74
+        },
+        {
+          "id": "04-011",
+          "text": "which",
+          "start": 3.5,
+          "end": 3.64
+        },
+        {
+          "id": "04-012",
+          "text": "can",
+          "start": 3.64,
+          "end": 3.8
+        },
+        {
+          "id": "04-013",
+          "text": "make",
+          "start": 3.8,
+          "end": 4.04
+        },
+        {
+          "id": "04-014",
+          "text": "thirty",
+          "start": 4.04,
+          "end": 4.36
+        },
+        {
+          "id": "04-015",
+          "text": "frames",
+          "start": 4.36,
+          "end": 4.94
+        },
+        {
+          "id": "04-016",
+          "text": "per",
+          "start": 4.94,
+          "end": 5.26
+        },
+        {
+          "id": "04-017",
+          "text": "second",
+          "start": 5.26,
+          "end": 5.62
+        },
+        {
+          "id": "04-018",
+          "text": "look",
+          "start": 5.62,
+          "end": 6.16
+        },
+        {
+          "id": "04-019",
+          "text": "more",
+          "start": 6.16,
+          "end": 6.38
+        },
+        {
+          "id": "04-020",
+          "text": "continuous.",
+          "start": 6.38,
+          "end": 7.02
+        }
+      ]
+    },
+    {
+      "frame": 5,
+      "path": "assets/voice/05.wav",
+      "duration_s": 7.979,
+      "words": [
+        {
+          "id": "05-001",
+          "text": "It",
+          "start": 0,
+          "end": 0.1
+        },
+        {
+          "id": "05-002",
+          "text": "does",
+          "start": 0.1,
+          "end": 0.24
+        },
+        {
+          "id": "05-003",
+          "text": "not",
+          "start": 0.24,
+          "end": 0.44
+        },
+        {
+          "id": "05-004",
+          "text": "update",
+          "start": 0.44,
+          "end": 0.86
+        },
+        {
+          "id": "05-005",
+          "text": "controls",
+          "start": 0.86,
+          "end": 1.18
+        },
+        {
+          "id": "05-006",
+          "text": "sooner,",
+          "start": 1.18,
+          "end": 1.86
+        },
+        {
+          "id": "05-007",
+          "text": "repair",
+          "start": 2.68,
+          "end": 2.68
+        },
+        {
+          "id": "05-008",
+          "text": "a",
+          "start": 2.68,
+          "end": 2.94
+        },
+        {
+          "id": "05-009",
+          "text": "stutter",
+          "start": 2.94,
+          "end": 3.28
+        },
+        {
+          "id": "05-010",
+          "text": "or",
+          "start": 3.28,
+          "end": 3.76
+        },
+        {
+          "id": "05-011",
+          "text": "perfectly",
+          "start": 3.76,
+          "end": 4.14
+        },
+        {
+          "id": "05-012",
+          "text": "handle",
+          "start": 4.14,
+          "end": 4.66
+        },
+        {
+          "id": "05-013",
+          "text": "every",
+          "start": 4.66,
+          "end": 5.04
+        },
+        {
+          "id": "05-014",
+          "text": "reflection,",
+          "start": 5.04,
+          "end": 5.6
+        },
+        {
+          "id": "05-015",
+          "text": "shadow",
+          "start": 6.04,
+          "end": 6.42
+        },
+        {
+          "id": "05-016",
+          "text": "and",
+          "start": 6.42,
+          "end": 6.88
+        },
+        {
+          "id": "05-017",
+          "text": "crossing",
+          "start": 6.88,
+          "end": 7.08
+        },
+        {
+          "id": "05-018",
+          "text": "object.",
+          "start": 7.08,
+          "end": 7.58
+        }
+      ]
+    },
+    {
+      "frame": 6,
+      "path": "assets/voice/06.wav",
+      "duration_s": 8.085,
+      "words": [
+        {
+          "id": "06-001",
+          "text": "Motion",
+          "start": 0,
+          "end": 0.3
+        },
+        {
+          "id": "06-002",
+          "text": "blur",
+          "start": 0.3,
+          "end": 0.56
+        },
+        {
+          "id": "06-003",
+          "text": "is",
+          "start": 0.56,
+          "end": 0.98
+        },
+        {
+          "id": "06-004",
+          "text": "therefore",
+          "start": 0.98,
+          "end": 1.3
+        },
+        {
+          "id": "06-005",
+          "text": "visual",
+          "start": 1.3,
+          "end": 1.66
+        },
+        {
+          "id": "06-006",
+          "text": "glue,",
+          "start": 1.66,
+          "end": 2.02
+        },
+        {
+          "id": "06-007",
+          "text": "not",
+          "start": 2.34,
+          "end": 2.58
+        },
+        {
+          "id": "06-008",
+          "text": "more",
+          "start": 2.58,
+          "end": 2.78
+        },
+        {
+          "id": "06-009",
+          "text": "performance.",
+          "start": 2.78,
+          "end": 3.12
+        },
+        {
+          "id": "06-010",
+          "text": "It",
+          "start": 4.1,
+          "end": 4.12
+        },
+        {
+          "id": "06-011",
+          "text": "can",
+          "start": 4.12,
+          "end": 4.24
+        },
+        {
+          "id": "06-012",
+          "text": "soften",
+          "start": 4.24,
+          "end": 4.54
+        },
+        {
+          "id": "06-013",
+          "text": "the",
+          "start": 4.54,
+          "end": 4.8
+        },
+        {
+          "id": "06-014",
+          "text": "gap,",
+          "start": 4.8,
+          "end": 5.06
+        },
+        {
+          "id": "06-015",
+          "text": "while",
+          "start": 5.46,
+          "end": 5.66
+        },
+        {
+          "id": "06-016",
+          "text": "the",
+          "start": 5.66,
+          "end": 5.78
+        },
+        {
+          "id": "06-017",
+          "text": "game",
+          "start": 5.78,
+          "end": 5.98
+        },
+        {
+          "id": "06-018",
+          "text": "still",
+          "start": 5.98,
+          "end": 6.32
+        },
+        {
+          "id": "06-019",
+          "text": "updates",
+          "start": 6.32,
+          "end": 6.64
+        },
+        {
+          "id": "06-020",
+          "text": "at",
+          "start": 6.64,
+          "end": 7.1
+        },
+        {
+          "id": "06-021",
+          "text": "the",
+          "start": 7.1,
+          "end": 7.22
+        },
+        {
+          "id": "06-022",
+          "text": "same",
+          "start": 7.22,
+          "end": 7.44
+        },
+        {
+          "id": "06-023",
+          "text": "rate.",
+          "start": 7.44,
+          "end": 7.78
+        }
+      ]
+    }
+  ],
+  "sfx": []
+}

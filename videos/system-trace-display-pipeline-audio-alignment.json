@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_display_pipeline_audio_alignment_v1",
+  "generated_at": "2026-08-20T07:42:02.399Z",
+  "verdict": "GREEN",
+  "episode_count": 7,
+  "frame_count": 42,
+  "alignment_source": "local_whisper_word_alignment",
+  "alignment_model": "faster-whisper:base.en with one bounded small.en repair",
+  "remote_requests": 0,
+  "database_mutations": 0,
+  "blockers": [],
+  "episodes": [
+    {
+      "story_id": "system-trace-screen-tearing",
+      "verdict": "GREEN",
+      "frame_count": 6,
+      "audio_meta_sha256": "1a449e047ed0c445e2b11ab492efefee5996b64f3426b96e87352eb6217a2d8f",
+      "alignment_report_sha256": "b393e4e138bcc3b8e4381392dd2d51b827f873072309539811f5c0fe3fae7ca1"
+    },
+    {
+      "story_id": "system-trace-vsync-latency",
+      "verdict": "GREEN",
+      "frame_count": 6,
+      "audio_meta_sha256": "f7228e4174f11723a43ec3607c68428bf396c461684f175c84993e657049db5f",
+      "alignment_report_sha256": "18602c487ace47ef497e2ebe101215f8dec34518c1bcf2ed1c67b9b4aee5003b"
+    },
+    {
+      "story_id": "system-trace-variable-refresh-rate",
+      "verdict": "GREEN",
+      "frame_count": 6,
+      "audio_meta_sha256": "16d74ede12c8d7a12ad4159dfbf2a7e37b5f8618aeb01259bded47a0da84cb6f",
+      "alignment_report_sha256": "b1392ac4521955692c3414ba0e65af8c8fe8808ae839511661fa0f6f02dd0cd5"
+    },
+    {
+      "story_id": "system-trace-hdr-tone-mapping",
+      "verdict": "GREEN",
+      "frame_count": 6,
+      "audio_meta_sha256": "95d6098c319f97c27dbc61294ce4a42885b5c3a57a939f0680fa7dcd57d3e986",
+      "alignment_report_sha256": "167ae6a860d9df62729a9c2ed81b1efb322307fbc751a351b64fdc871b22c37e"
+    },
+    {
+      "story_id": "system-trace-anti-aliasing",
+      "verdict": "GREEN",
+      "frame_count": 6,
+      "audio_meta_sha256": "d20cb181f6059c76ba92556b1a28805b933be1c9f07488e7c6c657b26c5fcab3",
+      "alignment_report_sha256": "35da29748467a67d00b39df0ee211e84ee5b6f1b2a1be375c7f87f80f75b7364"
+    },
+    {
+      "story_id": "system-trace-motion-blur",
+      "verdict": "GREEN",
+      "frame_count": 6,
+      "audio_meta_sha256": "cb8d96546c22619d63a5dd2feaf49463e730cf8e62c1e6d6f5877d4c6e9e2f9b",
+      "alignment_report_sha256": "38256bade804dd0ecc1ceebdec7f429ba0f935ff7dac4bd021de573e123fd1a6"
+    },
+    {
+      "story_id": "system-trace-frame-generation",
+      "verdict": "GREEN",
+      "frame_count": 6,
+      "audio_meta_sha256": "fa0fb3078927fbafaf36fc3f6bb056220606a93ab675d5da3ecaf853313a35a0",
+      "alignment_report_sha256": "4059c47a06563af4e5ed11957ccf045770bd0c6eaec4b887b9d3613c3fc0f9ad"
+    }
+  ]
+}

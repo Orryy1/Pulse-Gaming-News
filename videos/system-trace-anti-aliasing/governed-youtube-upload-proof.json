@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-20T09:29:10.3996669Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-anti-aliasing",
+  "source": {
+    "package_dir": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-anti-aliasing",
+    "publish_pack_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-anti-aliasing\\youtube_publish_pack.json",
+    "publish_pack_sha256": "255154b86843bc81e60e660a398610f3ca9308cc408240cf056fef6da3f36827",
+    "canonical_manifest_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-anti-aliasing\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "e077bff2556bfe38ee55fbf2b80be3824d811a66939de6dfe0abf311f6a8d831",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-anti-aliasing",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "How Anti-Aliasing Removes Stair-Step Edges",
+          "description": "A diagonal edge has to fit a square pixel grid, which creates visible steps. This short animation compares sub-pixel coverage, screen-space smoothing and temporal history, then explains why MSAA, FXAA and temporal methods trade cost against softness or artefacts.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-rasterizer-stage-rules\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/cinematic-rendering-image-quality-settings-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#AntiAliasing #PCGaming #SystemTrace",
+          "tags": [
+            "anti-aliasing",
+            "MSAA",
+            "FXAA",
+            "TAA",
+            "gaming graphics",
+            "PC gaming",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-anti-aliasing\\renders\\system-trace-anti-aliasing.mp4",
+      "media_sha256": "c174e3ca7c20847b0350671538f141f02edcbcc7aa96f8446109d81bd7cff164"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-anti-aliasing\\captions.srt",
+      "media_sha256": "572d1abbaa79d6439b21d863589cbd0314f71e93c20aba6a44bc5026a27b9cf7"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-anti-aliasing\\renders\\system-trace-anti-aliasing.mp4",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-anti-aliasing\\renders\\system-trace-anti-aliasing.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 8208193,
+      "sha256": "c174e3ca7c20847b0350671538f141f02edcbcc7aa96f8446109d81bd7cff164",
+      "probe": {
+        "duration_seconds": 53.2,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-anti-aliasing\\captions.srt",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-anti-aliasing\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2144,
+      "sha256": "572d1abbaa79d6439b21d863589cbd0314f71e93c20aba6a44bc5026a27b9cf7",
+      "qa": {
+        "parsed": true,
+        "cue_count": 42,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 53.2,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-20T09:29:10.3996669Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-anti-aliasing",
+    "request_plan_fingerprint_sha256": "278d87fc0e184015deb475293beb7ebc5cf359dcca8e8588da914f5b4c3074f5",
+    "video_insert_fingerprint_sha256": "2ae8d9dbab26c819c1b76c30ee9ed9c1b44eaa9f48a26caa2ab8fee4cdf16c85",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "9a13b2d27f55456e5ffd80c508f6471159f640c9c030e1759237d72fd7ceab2c",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "How Anti-Aliasing Removes Stair-Step Edges",
+            "description": "A diagonal edge has to fit a square pixel grid, which creates visible steps. This short animation compares sub-pixel coverage, screen-space smoothing and temporal history, then explains why MSAA, FXAA and temporal methods trade cost against softness or artefacts.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-rasterizer-stage-rules\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/cinematic-rendering-image-quality-settings-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#AntiAliasing #PCGaming #SystemTrace",
+            "tags": [
+              "anti-aliasing",
+              "MSAA",
+              "FXAA",
+              "TAA",
+              "gaming graphics",
+              "PC gaming",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-anti-aliasing\\renders\\system-trace-anti-aliasing.mp4",
+        "media_sha256": "c174e3ca7c20847b0350671538f141f02edcbcc7aa96f8446109d81bd7cff164"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-anti-aliasing\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

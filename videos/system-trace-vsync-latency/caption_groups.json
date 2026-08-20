@@ -1,0 +1,1108 @@
+{
+  "total_duration_s": 53,
+  "width": 1080,
+  "height": 1920,
+  "groups": [
+    {
+      "id": "caption-group-0",
+      "frame": 1,
+      "start": 0,
+      "end": 1.091,
+      "text": "V-Sync can remove",
+      "words": [
+        {
+          "id": "caption-word-0-0",
+          "text": "V-Sync",
+          "start": 0,
+          "end": 0.39
+        },
+        {
+          "id": "caption-word-0-1",
+          "text": "can",
+          "start": 0.39,
+          "end": 0.623
+        },
+        {
+          "id": "caption-word-0-2",
+          "text": "remove",
+          "start": 0.623,
+          "end": 1.091
+        }
+      ]
+    },
+    {
+      "id": "caption-group-1",
+      "frame": 1,
+      "start": 1.091,
+      "end": 2.181,
+      "text": "the visible tear,",
+      "words": [
+        {
+          "id": "caption-word-1-0",
+          "text": "the",
+          "start": 1.091,
+          "end": 1.324
+        },
+        {
+          "id": "caption-word-1-1",
+          "text": "visible",
+          "start": 1.324,
+          "end": 1.87
+        },
+        {
+          "id": "caption-word-1-2",
+          "text": "tear,",
+          "start": 1.87,
+          "end": 2.181
+        }
+      ]
+    },
+    {
+      "id": "caption-group-2",
+      "frame": 1,
+      "start": 2.181,
+      "end": 2.649,
+      "text": "yet the",
+      "words": [
+        {
+          "id": "caption-word-2-0",
+          "text": "yet",
+          "start": 2.181,
+          "end": 2.415
+        },
+        {
+          "id": "caption-word-2-1",
+          "text": "the",
+          "start": 2.415,
+          "end": 2.649
+        }
+      ]
+    },
+    {
+      "id": "caption-group-3",
+      "frame": 1,
+      "start": 2.649,
+      "end": 3.74,
+      "text": "same setting may",
+      "words": [
+        {
+          "id": "caption-word-3-0",
+          "text": "same",
+          "start": 2.649,
+          "end": 2.96
+        },
+        {
+          "id": "caption-word-3-1",
+          "text": "setting",
+          "start": 2.96,
+          "end": 3.506
+        },
+        {
+          "id": "caption-word-3-2",
+          "text": "may",
+          "start": 3.506,
+          "end": 3.74
+        }
+      ]
+    },
+    {
+      "id": "caption-group-4",
+      "frame": 1,
+      "start": 3.74,
+      "end": 4.129,
+      "text": "make a",
+      "words": [
+        {
+          "id": "caption-word-4-0",
+          "text": "make",
+          "start": 3.74,
+          "end": 4.051
+        },
+        {
+          "id": "caption-word-4-1",
+          "text": "a",
+          "start": 4.051,
+          "end": 4.129
+        }
+      ]
+    },
+    {
+      "id": "caption-group-5",
+      "frame": 1,
+      "start": 4.129,
+      "end": 4.752,
+      "text": "fast game",
+      "words": [
+        {
+          "id": "caption-word-5-0",
+          "text": "fast",
+          "start": 4.129,
+          "end": 4.441
+        },
+        {
+          "id": "caption-word-5-1",
+          "text": "game",
+          "start": 4.441,
+          "end": 4.752
+        }
+      ]
+    },
+    {
+      "id": "caption-group-6",
+      "frame": 1,
+      "start": 4.752,
+      "end": 5.999,
+      "text": "feel slightly less",
+      "words": [
+        {
+          "id": "caption-word-6-0",
+          "text": "feel",
+          "start": 4.752,
+          "end": 5.064
+        },
+        {
+          "id": "caption-word-6-1",
+          "text": "slightly",
+          "start": 5.064,
+          "end": 5.687
+        },
+        {
+          "id": "caption-word-6-2",
+          "text": "less",
+          "start": 5.687,
+          "end": 5.999
+        }
+      ]
+    },
+    {
+      "id": "caption-group-7",
+      "frame": 1,
+      "start": 5.999,
+      "end": 6.82,
+      "text": "immediate.",
+      "words": [
+        {
+          "id": "caption-word-7-0",
+          "text": "immediate.",
+          "start": 5.999,
+          "end": 6.7
+        }
+      ]
+    },
+    {
+      "id": "caption-group-8",
+      "frame": 2,
+      "start": 8.4,
+      "end": 10.04,
+      "text": "With synchronisation enabled,",
+      "words": [
+        {
+          "id": "caption-word-8-0",
+          "text": "With",
+          "start": 8.4,
+          "end": 8.52
+        },
+        {
+          "id": "caption-word-8-1",
+          "text": "synchronisation",
+          "start": 8.52,
+          "end": 9.24
+        },
+        {
+          "id": "caption-word-8-2",
+          "text": "enabled,",
+          "start": 9.24,
+          "end": 9.92
+        }
+      ]
+    },
+    {
+      "id": "caption-group-9",
+      "frame": 2,
+      "start": 10.58,
+      "end": 11.02,
+      "text": "a completed",
+      "words": [
+        {
+          "id": "caption-word-9-0",
+          "text": "a",
+          "start": 10.58,
+          "end": 10.64
+        },
+        {
+          "id": "caption-word-9-1",
+          "text": "completed",
+          "start": 10.64,
+          "end": 11.02
+        }
+      ]
+    },
+    {
+      "id": "caption-group-10",
+      "frame": 2,
+      "start": 11.02,
+      "end": 12.96,
+      "text": "frame is presented on",
+      "words": [
+        {
+          "id": "caption-word-10-0",
+          "text": "frame",
+          "start": 11.02,
+          "end": 11.44
+        },
+        {
+          "id": "caption-word-10-1",
+          "text": "is",
+          "start": 11.44,
+          "end": 12.06
+        },
+        {
+          "id": "caption-word-10-2",
+          "text": "presented",
+          "start": 12.06,
+          "end": 12.44
+        },
+        {
+          "id": "caption-word-10-3",
+          "text": "on",
+          "start": 12.44,
+          "end": 12.96
+        }
+      ]
+    },
+    {
+      "id": "caption-group-11",
+      "frame": 2,
+      "start": 12.96,
+      "end": 13.68,
+      "text": "the display's",
+      "words": [
+        {
+          "id": "caption-word-11-0",
+          "text": "the",
+          "start": 12.96,
+          "end": 13.08
+        },
+        {
+          "id": "caption-word-11-1",
+          "text": "display's",
+          "start": 13.08,
+          "end": 13.68
+        }
+      ]
+    },
+    {
+      "id": "caption-group-12",
+      "frame": 2,
+      "start": 13.68,
+      "end": 15.3,
+      "text": "refresh boundary instead",
+      "words": [
+        {
+          "id": "caption-word-12-0",
+          "text": "refresh",
+          "start": 13.68,
+          "end": 13.86
+        },
+        {
+          "id": "caption-word-12-1",
+          "text": "boundary",
+          "start": 13.86,
+          "end": 14.58
+        },
+        {
+          "id": "caption-word-12-2",
+          "text": "instead",
+          "start": 14.58,
+          "end": 15.3
+        }
+      ]
+    },
+    {
+      "id": "caption-group-13",
+      "frame": 2,
+      "start": 15.3,
+      "end": 16.56,
+      "text": "of arriving whenever",
+      "words": [
+        {
+          "id": "caption-word-13-0",
+          "text": "of",
+          "start": 15.3,
+          "end": 15.58
+        },
+        {
+          "id": "caption-word-13-1",
+          "text": "arriving",
+          "start": 15.58,
+          "end": 15.9
+        },
+        {
+          "id": "caption-word-13-2",
+          "text": "whenever",
+          "start": 15.9,
+          "end": 16.56
+        }
+      ]
+    },
+    {
+      "id": "caption-group-14",
+      "frame": 2,
+      "start": 16.56,
+      "end": 17.36,
+      "text": "it finishes.",
+      "words": [
+        {
+          "id": "caption-word-14-0",
+          "text": "it",
+          "start": 16.56,
+          "end": 16.92
+        },
+        {
+          "id": "caption-word-14-1",
+          "text": "finishes.",
+          "start": 16.92,
+          "end": 17.24
+        }
+      ]
+    },
+    {
+      "id": "caption-group-15",
+      "frame": 3,
+      "start": 17.4,
+      "end": 17.78,
+      "text": "Miss that",
+      "words": [
+        {
+          "id": "caption-word-15-0",
+          "text": "Miss",
+          "start": 17.4,
+          "end": 17.52
+        },
+        {
+          "id": "caption-word-15-1",
+          "text": "that",
+          "start": 17.52,
+          "end": 17.78
+        }
+      ]
+    },
+    {
+      "id": "caption-group-16",
+      "frame": 3,
+      "start": 17.78,
+      "end": 18.58,
+      "text": "boundary by",
+      "words": [
+        {
+          "id": "caption-word-16-0",
+          "text": "boundary",
+          "start": 17.78,
+          "end": 18.12
+        },
+        {
+          "id": "caption-word-16-1",
+          "text": "by",
+          "start": 18.12,
+          "end": 18.58
+        }
+      ]
+    },
+    {
+      "id": "caption-group-17",
+      "frame": 3,
+      "start": 18.58,
+      "end": 19.68,
+      "text": "a fraction and",
+      "words": [
+        {
+          "id": "caption-word-17-0",
+          "text": "a",
+          "start": 18.58,
+          "end": 18.7
+        },
+        {
+          "id": "caption-word-17-1",
+          "text": "fraction",
+          "start": 18.7,
+          "end": 19.02
+        },
+        {
+          "id": "caption-word-17-2",
+          "text": "and",
+          "start": 19.02,
+          "end": 19.68
+        }
+      ]
+    },
+    {
+      "id": "caption-group-18",
+      "frame": 3,
+      "start": 19.68,
+      "end": 20.12,
+      "text": "the previous",
+      "words": [
+        {
+          "id": "caption-word-18-0",
+          "text": "the",
+          "start": 19.68,
+          "end": 19.78
+        },
+        {
+          "id": "caption-word-18-1",
+          "text": "previous",
+          "start": 19.78,
+          "end": 20.12
+        }
+      ]
+    },
+    {
+      "id": "caption-group-19",
+      "frame": 3,
+      "start": 20.12,
+      "end": 21.92,
+      "text": "image may remain visible",
+      "words": [
+        {
+          "id": "caption-word-19-0",
+          "text": "image",
+          "start": 20.12,
+          "end": 20.56
+        },
+        {
+          "id": "caption-word-19-1",
+          "text": "may",
+          "start": 20.56,
+          "end": 21.16
+        },
+        {
+          "id": "caption-word-19-2",
+          "text": "remain",
+          "start": 21.16,
+          "end": 21.48
+        },
+        {
+          "id": "caption-word-19-3",
+          "text": "visible",
+          "start": 21.48,
+          "end": 21.92
+        }
+      ]
+    },
+    {
+      "id": "caption-group-20",
+      "frame": 3,
+      "start": 21.92,
+      "end": 24.34,
+      "text": "until another refresh opportunity",
+      "words": [
+        {
+          "id": "caption-word-20-0",
+          "text": "until",
+          "start": 21.92,
+          "end": 22.76
+        },
+        {
+          "id": "caption-word-20-1",
+          "text": "another",
+          "start": 22.76,
+          "end": 23.12
+        },
+        {
+          "id": "caption-word-20-2",
+          "text": "refresh",
+          "start": 23.12,
+          "end": 23.5
+        },
+        {
+          "id": "caption-word-20-3",
+          "text": "opportunity",
+          "start": 23.5,
+          "end": 24.34
+        }
+      ]
+    },
+    {
+      "id": "caption-group-21",
+      "frame": 3,
+      "start": 24.34,
+      "end": 24.94,
+      "text": "arrives.",
+      "words": [
+        {
+          "id": "caption-word-21-0",
+          "text": "arrives.",
+          "start": 24.34,
+          "end": 24.82
+        }
+      ]
+    },
+    {
+      "id": "caption-group-22",
+      "frame": 4,
+      "start": 25.9,
+      "end": 26.2,
+      "text": "At sixty",
+      "words": [
+        {
+          "id": "caption-word-22-0",
+          "text": "At",
+          "start": 25.9,
+          "end": 26
+        },
+        {
+          "id": "caption-word-22-1",
+          "text": "sixty",
+          "start": 26,
+          "end": 26.2
+        }
+      ]
+    },
+    {
+      "id": "caption-group-23",
+      "frame": 4,
+      "start": 26.2,
+      "end": 27.28,
+      "text": "hertz one refresh",
+      "words": [
+        {
+          "id": "caption-word-23-0",
+          "text": "hertz",
+          "start": 26.2,
+          "end": 26.72
+        },
+        {
+          "id": "caption-word-23-1",
+          "text": "one",
+          "start": 26.72,
+          "end": 26.96
+        },
+        {
+          "id": "caption-word-23-2",
+          "text": "refresh",
+          "start": 26.96,
+          "end": 27.28
+        }
+      ]
+    },
+    {
+      "id": "caption-group-24",
+      "frame": 4,
+      "start": 27.28,
+      "end": 29.52,
+      "text": "lasts about sixteen point",
+      "words": [
+        {
+          "id": "caption-word-24-0",
+          "text": "lasts",
+          "start": 27.28,
+          "end": 28.08
+        },
+        {
+          "id": "caption-word-24-1",
+          "text": "about",
+          "start": 28.08,
+          "end": 28.54
+        },
+        {
+          "id": "caption-word-24-2",
+          "text": "sixteen",
+          "start": 28.54,
+          "end": 29
+        },
+        {
+          "id": "caption-word-24-3",
+          "text": "point",
+          "start": 29,
+          "end": 29.52
+        }
+      ]
+    },
+    {
+      "id": "caption-group-25",
+      "frame": 4,
+      "start": 29.52,
+      "end": 30.48,
+      "text": "seven milliseconds.",
+      "words": [
+        {
+          "id": "caption-word-25-0",
+          "text": "seven",
+          "start": 29.52,
+          "end": 29.96
+        },
+        {
+          "id": "caption-word-25-1",
+          "text": "milliseconds.",
+          "start": 29.96,
+          "end": 30.36
+        }
+      ]
+    },
+    {
+      "id": "caption-group-26",
+      "frame": 4,
+      "start": 31.4,
+      "end": 31.64,
+      "text": "At one",
+      "words": [
+        {
+          "id": "caption-word-26-0",
+          "text": "At",
+          "start": 31.4,
+          "end": 31.44
+        },
+        {
+          "id": "caption-word-26-1",
+          "text": "one",
+          "start": 31.44,
+          "end": 31.64
+        }
+      ]
+    },
+    {
+      "id": "caption-group-27",
+      "frame": 4,
+      "start": 31.64,
+      "end": 32.48,
+      "text": "hundred and twenty,",
+      "words": [
+        {
+          "id": "caption-word-27-0",
+          "text": "hundred",
+          "start": 31.64,
+          "end": 32
+        },
+        {
+          "id": "caption-word-27-1",
+          "text": "and",
+          "start": 32,
+          "end": 32.18
+        },
+        {
+          "id": "caption-word-27-2",
+          "text": "twenty,",
+          "start": 32.18,
+          "end": 32.36
+        }
+      ]
+    },
+    {
+      "id": "caption-group-28",
+      "frame": 4,
+      "start": 33.02,
+      "end": 33.22,
+      "text": "it is",
+      "words": [
+        {
+          "id": "caption-word-28-0",
+          "text": "it",
+          "start": 33.02,
+          "end": 33.12
+        },
+        {
+          "id": "caption-word-28-1",
+          "text": "is",
+          "start": 33.12,
+          "end": 33.22
+        }
+      ]
+    },
+    {
+      "id": "caption-group-29",
+      "frame": 4,
+      "start": 33.22,
+      "end": 33.84,
+      "text": "roughly eight",
+      "words": [
+        {
+          "id": "caption-word-29-0",
+          "text": "roughly",
+          "start": 33.22,
+          "end": 33.44
+        },
+        {
+          "id": "caption-word-29-1",
+          "text": "eight",
+          "start": 33.44,
+          "end": 33.84
+        }
+      ]
+    },
+    {
+      "id": "caption-group-30",
+      "frame": 4,
+      "start": 33.84,
+      "end": 34.6,
+      "text": "point three.",
+      "words": [
+        {
+          "id": "caption-word-30-0",
+          "text": "point",
+          "start": 33.84,
+          "end": 34.18
+        },
+        {
+          "id": "caption-word-30-1",
+          "text": "three.",
+          "start": 34.18,
+          "end": 34.58
+        }
+      ]
+    },
+    {
+      "id": "caption-group-31",
+      "frame": 5,
+      "start": 34.6,
+      "end": 34.84,
+      "text": "A deep",
+      "words": [
+        {
+          "id": "caption-word-31-0",
+          "text": "A",
+          "start": 34.6,
+          "end": 34.68
+        },
+        {
+          "id": "caption-word-31-1",
+          "text": "deep",
+          "start": 34.68,
+          "end": 34.84
+        }
+      ]
+    },
+    {
+      "id": "caption-group-32",
+      "frame": 5,
+      "start": 34.84,
+      "end": 35.52,
+      "text": "frame queue",
+      "words": [
+        {
+          "id": "caption-word-32-0",
+          "text": "frame",
+          "start": 34.84,
+          "end": 35.14
+        },
+        {
+          "id": "caption-word-32-1",
+          "text": "queue",
+          "start": 35.14,
+          "end": 35.52
+        }
+      ]
+    },
+    {
+      "id": "caption-group-33",
+      "frame": 5,
+      "start": 35.52,
+      "end": 36.02,
+      "text": "can add",
+      "words": [
+        {
+          "id": "caption-word-33-0",
+          "text": "can",
+          "start": 35.52,
+          "end": 35.8
+        },
+        {
+          "id": "caption-word-33-1",
+          "text": "add",
+          "start": 35.8,
+          "end": 36.02
+        }
+      ]
+    },
+    {
+      "id": "caption-group-34",
+      "frame": 5,
+      "start": 36.02,
+      "end": 37.38,
+      "text": "more waiting because",
+      "words": [
+        {
+          "id": "caption-word-34-0",
+          "text": "more",
+          "start": 36.02,
+          "end": 36.28
+        },
+        {
+          "id": "caption-word-34-1",
+          "text": "waiting",
+          "start": 36.28,
+          "end": 36.56
+        },
+        {
+          "id": "caption-word-34-2",
+          "text": "because",
+          "start": 36.56,
+          "end": 37.38
+        }
+      ]
+    },
+    {
+      "id": "caption-group-35",
+      "frame": 5,
+      "start": 37.38,
+      "end": 38.42,
+      "text": "fresh input sits",
+      "words": [
+        {
+          "id": "caption-word-35-0",
+          "text": "fresh",
+          "start": 37.38,
+          "end": 37.66
+        },
+        {
+          "id": "caption-word-35-1",
+          "text": "input",
+          "start": 37.66,
+          "end": 38.04
+        },
+        {
+          "id": "caption-word-35-2",
+          "text": "sits",
+          "start": 38.04,
+          "end": 38.42
+        }
+      ]
+    },
+    {
+      "id": "caption-group-36",
+      "frame": 5,
+      "start": 38.42,
+      "end": 39.92,
+      "text": "behind work the",
+      "words": [
+        {
+          "id": "caption-word-36-0",
+          "text": "behind",
+          "start": 38.42,
+          "end": 38.92
+        },
+        {
+          "id": "caption-word-36-1",
+          "text": "work",
+          "start": 38.92,
+          "end": 39.3
+        },
+        {
+          "id": "caption-word-36-2",
+          "text": "the",
+          "start": 39.3,
+          "end": 39.92
+        }
+      ]
+    },
+    {
+      "id": "caption-group-37",
+      "frame": 5,
+      "start": 39.92,
+      "end": 41.52,
+      "text": "CPU prepared earlier.",
+      "words": [
+        {
+          "id": "caption-word-37-0",
+          "text": "CPU",
+          "start": 39.92,
+          "end": 40.24
+        },
+        {
+          "id": "caption-word-37-1",
+          "text": "prepared",
+          "start": 40.24,
+          "end": 40.9
+        },
+        {
+          "id": "caption-word-37-2",
+          "text": "earlier.",
+          "start": 40.9,
+          "end": 41.4
+        }
+      ]
+    },
+    {
+      "id": "caption-group-38",
+      "frame": 6,
+      "start": 43.5,
+      "end": 44.783,
+      "text": "V-Sync is therefore",
+      "words": [
+        {
+          "id": "caption-word-38-0",
+          "text": "V-Sync",
+          "start": 43.5,
+          "end": 43.901
+        },
+        {
+          "id": "caption-word-38-1",
+          "text": "is",
+          "start": 43.901,
+          "end": 44.061
+        },
+        {
+          "id": "caption-word-38-2",
+          "text": "therefore",
+          "start": 44.061,
+          "end": 44.783
+        }
+      ]
+    },
+    {
+      "id": "caption-group-39",
+      "frame": 6,
+      "start": 44.783,
+      "end": 45.505,
+      "text": "a trade-off,",
+      "words": [
+        {
+          "id": "caption-word-39-0",
+          "text": "a",
+          "start": 44.783,
+          "end": 44.863
+        },
+        {
+          "id": "caption-word-39-1",
+          "text": "trade-off,",
+          "start": 44.863,
+          "end": 45.505
+        }
+      ]
+    },
+    {
+      "id": "caption-group-40",
+      "frame": 6,
+      "start": 45.505,
+      "end": 45.826,
+      "text": "not a",
+      "words": [
+        {
+          "id": "caption-word-40-0",
+          "text": "not",
+          "start": 45.505,
+          "end": 45.745
+        },
+        {
+          "id": "caption-word-40-1",
+          "text": "a",
+          "start": 45.745,
+          "end": 45.826
+        }
+      ]
+    },
+    {
+      "id": "caption-group-41",
+      "frame": 6,
+      "start": 45.826,
+      "end": 46.948,
+      "text": "fixed lag number:",
+      "words": [
+        {
+          "id": "caption-word-41-0",
+          "text": "fixed",
+          "start": 45.826,
+          "end": 46.227
+        },
+        {
+          "id": "caption-word-41-1",
+          "text": "lag",
+          "start": 46.227,
+          "end": 46.467
+        },
+        {
+          "id": "caption-word-41-2",
+          "text": "number:",
+          "start": 46.467,
+          "end": 46.948
+        }
+      ]
+    },
+    {
+      "id": "caption-group-42",
+      "frame": 6,
+      "start": 46.948,
+      "end": 49.354,
+      "text": "tear-free presentation in exchange",
+      "words": [
+        {
+          "id": "caption-word-42-0",
+          "text": "tear-free",
+          "start": 46.948,
+          "end": 47.59
+        },
+        {
+          "id": "caption-word-42-1",
+          "text": "presentation",
+          "start": 47.59,
+          "end": 48.552
+        },
+        {
+          "id": "caption-word-42-2",
+          "text": "in",
+          "start": 48.552,
+          "end": 48.713
+        },
+        {
+          "id": "caption-word-42-3",
+          "text": "exchange",
+          "start": 48.713,
+          "end": 49.354
+        }
+      ]
+    },
+    {
+      "id": "caption-group-43",
+      "frame": 6,
+      "start": 49.354,
+      "end": 50.397,
+      "text": "for timing that",
+      "words": [
+        {
+          "id": "caption-word-43-0",
+          "text": "for",
+          "start": 49.354,
+          "end": 49.595
+        },
+        {
+          "id": "caption-word-43-1",
+          "text": "timing",
+          "start": 49.595,
+          "end": 50.076
+        },
+        {
+          "id": "caption-word-43-2",
+          "text": "that",
+          "start": 50.076,
+          "end": 50.397
+        }
+      ]
+    },
+    {
+      "id": "caption-group-44",
+      "frame": 6,
+      "start": 50.397,
+      "end": 51.96,
+      "text": "needs careful pacing.",
+      "words": [
+        {
+          "id": "caption-word-44-0",
+          "text": "needs",
+          "start": 50.397,
+          "end": 50.797
+        },
+        {
+          "id": "caption-word-44-1",
+          "text": "careful",
+          "start": 50.797,
+          "end": 51.359
+        },
+        {
+          "id": "caption-word-44-2",
+          "text": "pacing.",
+          "start": 51.359,
+          "end": 51.84
+        }
+      ]
+    }
+  ]
+}

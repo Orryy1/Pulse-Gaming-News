@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_display_audio_alignment_v1",
+  "story_id": "system-trace-variable-refresh-rate",
+  "verdict": "GREEN",
+  "source": "local_whisper_word_alignment",
+  "frame_count": 6,
+  "frames": [
+    {
+      "frame": 1,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "Variable refresh rate does not make the GPU faster. It changes when a compatible monitor begins its next refresh.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 19,
+      "first_word_start": 0,
+      "last_word_end": 8.02
+    },
+    {
+      "frame": 2,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "A fixed display keeps ticking at one rate, even while game frames finish early, late or somewhere between. Queen 8",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 6.5
+    },
+    {
+      "frame": 3,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "With VRR, the monitor can refresh when the next frame is ready, reducing repeated frames, stutter and tearing inside its range.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 21,
+      "first_word_start": 0,
+      "last_word_end": 8.36
+    },
+    {
+      "frame": 4,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "That range has limits. A display might vary between sixty-four and one hundred and twenty hertz, not from zero to infinity.",
+      "reconciliation": "script_high_coverage_retimed",
+      "word_count": 21,
+      "first_word_start": 0,
+      "last_word_end": 7.98
+    },
+    {
+      "frame": 5,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "Fall below the lower bound and frames may be repeated. Exceed the top and familiar fixed-refresh constraints return.",
+      "reconciliation": "script_high_coverage_retimed",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 7.52
+    },
+    {
+      "frame": 6,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "VRR is therefore timing flexibility, not free performance. The GPU, display, connection and presentation path must all support it.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 19,
+      "first_word_start": 0,
+      "last_word_end": 9.42
+    }
+  ],
+  "blockers": [],
+  "generated_at": "2026-08-20T07:42:02.399Z"
+}

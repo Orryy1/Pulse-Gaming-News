@@ -15,6 +15,8 @@ const {
   parseArgs,
 } = require("../../tools/governed-youtube-scheduled-release");
 
+const TEST_NOW = new Date("2026-08-14T12:00:00.000Z");
+
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-schedule-cli-"));
   const packageDir = path.join(root, "videos", "story-one");
@@ -201,6 +203,7 @@ test("CLI reserves its one-use receipt before auth and schedules the manifest ti
       "--apply-schedule",
     ],
     {
+      now: () => TEST_NOW,
       authenticatedYoutubeClientFactory: async () => {
         const reserved = await fs.readJson(data.receiptOut);
         assert.equal(reserved.status, "SCHEDULE_ATTEMPT_RESERVED");
@@ -210,6 +213,7 @@ test("CLI reserves its one-use receipt before auth and schedules the manifest ti
     },
   );
   assert.equal(result.receipt.verdict, "GREEN");
+  assert.equal(result.receipt.generated_at, TEST_NOW.toISOString());
   assert.equal(result.receipt.publish_at_utc, "2026-08-15T19:00:00.000Z");
   assert.equal(operations.length, 1);
   assert.equal(operations[0].request.part[0], "status");
@@ -314,6 +318,7 @@ test("CLI preserves exact schedule RED and exclusively materialises a GREEN sibl
   );
   let updates = 0;
   const deps = {
+    now: () => TEST_NOW,
     authenticatedYoutubeClientFactory: async () => ({
       videos: {
         list: async () => ({
@@ -435,6 +440,7 @@ test("CLI schedules from exact RED plus derived GREEN reconciliation evidence", 
       "--apply-schedule",
     ],
     {
+      now: () => TEST_NOW,
       authenticatedYoutubeClientFactory: async () => ({
         videos: {
           list: async () => ({ data: { items: [reads.shift()] } }),

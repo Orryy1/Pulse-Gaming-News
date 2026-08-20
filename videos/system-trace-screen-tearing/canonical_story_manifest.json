@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-screen-tearing",
+  "project_id": "system-trace-screen-tearing",
+  "narration_script": "That horizontal split is not your GPU failing. It is two finished frames sharing one display refresh. A fixed-refresh screen scans a new image on its own clock, line by line from top to bottom. The GPU finishes frames on a different schedule, and scene complexity changes that delivery time from moment to moment. If the displayed buffer changes mid-scan, the upper lines can show one frame while lower lines show the next. V-Sync waits for a refresh boundary, while variable refresh rate changes the display timing to meet a finished frame. So tearing is a presentation mismatch, not a broken texture or low resolution. Two clocks simply crossed mid-picture.",
+  "final_container": {
+    "path": "renders/system-trace-screen-tearing.mp4",
+    "sha256": "0b434edba48ff9304d13a9e95f5deef1d90d4ce5ff7b58e25faa783fef9033b9",
+    "bytes": 10322657
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "6abd32f121954bf76b58c2489f8ff0277682b9d2b1df857bd50cb283486e7c39",
+    "bytes": 2146
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-22T17:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

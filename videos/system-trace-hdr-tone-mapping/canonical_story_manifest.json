@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-hdr-tone-mapping",
+  "project_id": "system-trace-hdr-tone-mapping",
+  "narration_script": "An HDR game can calculate brighter highlights and deeper contrast than one real screen can reproduce at the same time. The renderer knows the scene's light values, while the display reports minimum, maximum and full-frame brightness limits. Tone mapping bends that wide range into the output range, deciding how highlights, mid-tones and dark detail share the available brightness. Simply clipping everything above the panel limit would turn bright clouds, sparks or reflections into flat white patches. Different displays have different capabilities, so the same scene may need a different curve to preserve its intended balance. HDR is not just more brightness. Tone mapping is the controlled compromise that decides which light survives on this screen.",
+  "final_container": {
+    "path": "renders/system-trace-hdr-tone-mapping.mp4",
+    "sha256": "4fd064ef56226e3746a25b512bdde9744c63bf2007ac7ee2198260feb103457e",
+    "bytes": 6771364
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "3d379bbc1867d7498c60623e0f4f5e910d39dae7e6d3cd4b7bd3a7ae09bd3015",
+    "bytes": 2208
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-25T17:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

@@ -1,0 +1,171 @@
+1
+00:00:00,000 --> 00:00:01,040
+An HDR game
+
+2
+00:00:01,040 --> 00:00:02,280
+can calculate brighter
+
+3
+00:00:02,280 --> 00:00:04,180
+highlights and deeper contrast
+
+4
+00:00:04,180 --> 00:00:05,940
+than one real screen
+
+5
+00:00:05,940 --> 00:00:07,580
+can reproduce at
+
+6
+00:00:07,580 --> 00:00:08,500
+the same time.
+
+7
+00:00:08,700 --> 00:00:09,865
+The renderer knows
+
+8
+00:00:09,865 --> 00:00:10,884
+the scene's light
+
+9
+00:00:10,884 --> 00:00:11,321
+values,
+
+10
+00:00:11,321 --> 00:00:12,413
+while the display
+
+11
+00:00:12,413 --> 00:00:13,432
+reports minimum,
+
+12
+00:00:13,432 --> 00:00:14,815
+maximum and full-frame
+
+13
+00:00:14,815 --> 00:00:16,100
+brightness limits.
+
+14
+00:00:17,600 --> 00:00:18,872
+Tone mapping bends
+
+15
+00:00:18,872 --> 00:00:19,905
+that wide range
+
+16
+00:00:19,905 --> 00:00:20,938
+into the output
+
+17
+00:00:20,938 --> 00:00:21,336
+range,
+
+18
+00:00:21,336 --> 00:00:23,005
+deciding how highlights,
+
+19
+00:00:23,005 --> 00:00:24,197
+mid-tones and dark
+
+20
+00:00:24,197 --> 00:00:25,310
+detail share the
+
+21
+00:00:25,310 --> 00:00:26,800
+available brightness.
+
+22
+00:00:26,800 --> 00:00:27,840
+Simply clipping everything
+
+23
+00:00:27,840 --> 00:00:28,860
+above the panel
+
+24
+00:00:28,860 --> 00:00:30,020
+limit would turn
+
+25
+00:00:30,020 --> 00:00:30,880
+bright clouds,
+
+26
+00:00:31,360 --> 00:00:32,800
+sparks or reflections
+
+27
+00:00:33,130 --> 00:00:33,780
+into flat
+
+28
+00:00:33,780 --> 00:00:34,520
+white patches.
+
+29
+00:00:35,400 --> 00:00:36,780
+Different displays have
+
+30
+00:00:36,780 --> 00:00:37,780
+different capabilities,
+
+31
+00:00:38,480 --> 00:00:38,700
+so the
+
+32
+00:00:38,700 --> 00:00:39,700
+same scene may
+
+33
+00:00:39,700 --> 00:00:40,020
+need a
+
+34
+00:00:40,020 --> 00:00:41,240
+different curve to
+
+35
+00:00:41,240 --> 00:00:42,360
+preserve its intended
+
+36
+00:00:42,360 --> 00:00:43,000
+balance.
+
+37
+00:00:44,100 --> 00:00:45,220
+HDR is not
+
+38
+00:00:45,220 --> 00:00:46,220
+just more brightness.
+
+39
+00:00:47,120 --> 00:00:47,400
+Tone mapping
+
+40
+00:00:47,400 --> 00:00:48,640
+is the controlled
+
+41
+00:00:48,640 --> 00:00:50,840
+compromise that decides which
+
+42
+00:00:50,840 --> 00:00:52,000
+light survives on
+
+43
+00:00:52,000 --> 00:00:53,000
+this screen.

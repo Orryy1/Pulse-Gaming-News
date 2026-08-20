@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-20T08:55:00.000Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-screen-tearing",
+  "source": {
+    "package_dir": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-screen-tearing",
+    "publish_pack_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-screen-tearing\\youtube_publish_pack.json",
+    "publish_pack_sha256": "4c5f18cae3dae1d4199086d8d151bacf07551740529ac552a749271e70c03ba8",
+    "canonical_manifest_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-screen-tearing\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "7da2a800cee6c9eeffb84af342a79eba9cbf056863a66577e8e2ba14f73b3e63",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-screen-tearing",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "Why Your Game Screen Splits in Two",
+          "description": "That horizontal split is two rendered frames sharing one display refresh. This short animation shows how a fixed-refresh screen scans an image, how the GPU can replace that image mid-scan and why V-Sync and VRR solve the timing mismatch in different ways.\n\nSources:\nhttps://developer.apple.com/documentation/quartzcore/cametallayer/displaysyncenabled\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays\nhttps://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #ScreenTearing #SystemTrace",
+          "tags": [
+            "screen tearing",
+            "V-Sync",
+            "VRR",
+            "display refresh",
+            "PC gaming",
+            "gaming graphics",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-screen-tearing\\renders\\system-trace-screen-tearing.mp4",
+      "media_sha256": "0b434edba48ff9304d13a9e95f5deef1d90d4ce5ff7b58e25faa783fef9033b9"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-screen-tearing\\captions.srt",
+      "media_sha256": "6abd32f121954bf76b58c2489f8ff0277682b9d2b1df857bd50cb283486e7c39"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-screen-tearing\\renders\\system-trace-screen-tearing.mp4",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-screen-tearing\\renders\\system-trace-screen-tearing.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 10322657,
+      "sha256": "0b434edba48ff9304d13a9e95f5deef1d90d4ce5ff7b58e25faa783fef9033b9",
+      "probe": {
+        "duration_seconds": 52,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-screen-tearing\\captions.srt",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-screen-tearing\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2146,
+      "sha256": "6abd32f121954bf76b58c2489f8ff0277682b9d2b1df857bd50cb283486e7c39",
+      "qa": {
+        "parsed": true,
+        "cue_count": 44,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 52,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-20T08:55:00.000Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-screen-tearing",
+    "request_plan_fingerprint_sha256": "2e927767bf74921edb7c308f754aa811bb20466693996f488e33105baa4a6bf6",
+    "video_insert_fingerprint_sha256": "8dfc0b9750333c027554d3cc234c65a13733e1c5c8f8b2400d42d9b4a435982d",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "83f9f01338bdad6439b77a3b56270153fe7cd85e937dc76c8023d4d967fc1de7",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "Why Your Game Screen Splits in Two",
+            "description": "That horizontal split is two rendered frames sharing one display refresh. This short animation shows how a fixed-refresh screen scans an image, how the GPU can replace that image mid-scan and why V-Sync and VRR solve the timing mismatch in different ways.\n\nSources:\nhttps://developer.apple.com/documentation/quartzcore/cametallayer/displaysyncenabled\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays\nhttps://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #ScreenTearing #SystemTrace",
+            "tags": [
+              "screen tearing",
+              "V-Sync",
+              "VRR",
+              "display refresh",
+              "PC gaming",
+              "gaming graphics",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-screen-tearing\\renders\\system-trace-screen-tearing.mp4",
+        "media_sha256": "0b434edba48ff9304d13a9e95f5deef1d90d4ce5ff7b58e25faa783fef9033b9"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-screen-tearing\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_publish_pack_v1",
+  "story_id": "system-trace-hdr-tone-mapping",
+  "project_id": "system-trace-hdr-tone-mapping",
+  "platform": "youtube_shorts",
+  "review_scope": "PRIVATE_FIRST_SCHEDULED_PUBLICATION",
+  "title": "Why HDR Games Still Need Tone Mapping",
+  "description": "An HDR scene can contain more luminance than one real display can reproduce. This short animation shows how tone mapping fits highlights, mid-tones and dark detail into the screen's measured brightness range instead of simply clipping everything above its limit.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct2d/hdr-tone-map-effect\nhttps://learn.microsoft.com/en-us/gaming/gdk/docs/reference/system/xdisplay/structs/xdisplayhdrmodeinfo\nhttps://vesa.org/about-displayhdr/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#HDRGaming #ToneMapping #SystemTrace",
+  "tags": [
+    "HDR gaming",
+    "tone mapping",
+    "display brightness",
+    "gaming graphics",
+    "HDR",
+    "PC gaming",
+    "System Trace",
+    "gaming Shorts"
+  ],
+  "captions": {
+    "file": "captions.srt",
+    "sha256": "3d379bbc1867d7498c60623e0f4f5e910d39dae7e6d3cd4b7bd3a7ae09bd3015",
+    "clean_manual_captions_required": true
+  },
+  "synthetic_media_required": true,
+  "altered_synthetic_disclosure_required": true,
+  "altered_synthetic_disclosure_setting": "YES",
+  "public_publish_authorised": true,
+  "unlisted_publish_authorised": false,
+  "scheduler_authorised": true,
+  "database_mutation_authorised": false,
+  "playlist_mutation_authorised": false,
+  "thumbnail_upload_authorised": false,
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "rights_placement_blocker_count": 0,
+  "rights_clearance_claimed": false,
+  "scheduled_publish_at_utc": "2026-08-25T17:00:00.000Z",
+  "youtube_upload_request": {
+    "schema_version": 1,
+    "closed": true,
+    "authority_scope": "EXACT_PRIVATE_FIRST_SCHEDULE_REQUEST_SHAPE_ONLY",
+    "publish_authority": "EXTERNALLY_EVALUATED",
+    "video_file": "renders/system-trace-hdr-tone-mapping.mp4",
+    "video_sha256": "4fd064ef56226e3746a25b512bdde9744c63bf2007ac7ee2198260feb103457e",
+    "notifySubscribers": false,
+    "snippet": {
+      "title": "Why HDR Games Still Need Tone Mapping",
+      "description": "An HDR scene can contain more luminance than one real display can reproduce. This short animation shows how tone mapping fits highlights, mid-tones and dark detail into the screen's measured brightness range instead of simply clipping everything above its limit.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct2d/hdr-tone-map-effect\nhttps://learn.microsoft.com/en-us/gaming/gdk/docs/reference/system/xdisplay/structs/xdisplayhdrmodeinfo\nhttps://vesa.org/about-displayhdr/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#HDRGaming #ToneMapping #SystemTrace",
+      "tags": [
+        "HDR gaming",
+        "tone mapping",
+        "display brightness",
+        "gaming graphics",
+        "HDR",
+        "PC gaming",
+        "System Trace",
+        "gaming Shorts"
+      ],
+      "categoryId": "20",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "status": {
+      "privacyStatus": "private",
+      "selfDeclaredMadeForKids": false,
+      "containsSyntheticMedia": true,
+      "license": "youtube",
+      "embeddable": true,
+      "publicStatsViewable": true
+    },
+    "paidProductPlacementDetails": {
+      "hasPaidProductPlacement": false
+    },
+    "captions": {
+      "file": "captions.srt",
+      "sha256": "3d379bbc1867d7498c60623e0f4f5e910d39dae7e6d3cd4b7bd3a7ae09bd3015",
+      "language": "en-GB",
+      "name": "English (United Kingdom)",
+      "isDraft": false
+    },
+    "cover_selection": {
+      "selection_mode": "in_video_frame",
+      "frame_time_seconds": 1.5,
+      "custom_thumbnail_upload_allowed": false,
+      "application_status": "NOT_APPLIED"
+    }
+  }
+}

@@ -1,0 +1,340 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      container-type: size;
+      overflow: hidden;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+    }
+    .frame-01-vrr-changes-timing-ground {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0D0D0F;
+    }
+    .frame-01-vrr-changes-timing-grid {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.55;
+    }
+    .frame-01-vrr-changes-timing-scene {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+    .frame-01-vrr-changes-timing-world {
+      position: absolute;
+      inset: 0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+    .frame-01-vrr-changes-timing-kicker,
+    .frame-01-vrr-changes-timing-meta,
+    .frame-01-vrr-changes-timing-meter-label,
+    .frame-01-vrr-changes-timing-band-label,
+    .frame-01-vrr-changes-timing-gate-label,
+    .frame-01-vrr-changes-timing-note {
+      font-family: "IBM Plex Mono";
+      font-size: 1.65cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .frame-01-vrr-changes-timing-kicker {
+      position: absolute;
+      top: 7cqh;
+      left: 7.4cqw;
+      color: #FF6B1A;
+    }
+    .frame-01-vrr-changes-timing-meta {
+      position: absolute;
+      top: 7cqh;
+      right: 7.4cqw;
+      color: #504B48;
+    }
+    .frame-01-vrr-changes-timing-label-stage {
+      position: absolute;
+      top: 13.1cqh;
+      left: 7.2cqw;
+      width: 61cqw;
+      min-height: 12cqh;
+      color: #F0F0F0;
+      font-size: 7.1cqw;
+      font-weight: 900;
+      letter-spacing: -0.075em;
+      line-height: 0.86;
+      text-transform: lowercase;
+    }
+    .frame-01-vrr-changes-timing-label-text {
+      display: inline-block;
+      min-width: 58cqw;
+    }
+    .frame-01-vrr-changes-timing-cursor {
+      display: inline-block;
+      width: 2cqw;
+      color: #FF6B1A;
+      font-family: "IBM Plex Mono";
+      font-size: 5cqw;
+      vertical-align: 0.05em;
+    }
+    .frame-01-vrr-changes-timing-gpu-meter {
+      position: absolute;
+      top: 12.8cqh;
+      right: 7.2cqw;
+      width: 23cqw;
+      height: 17cqh;
+      overflow: hidden;
+      border-top: 2px solid #282726;
+    }
+    .frame-01-vrr-changes-timing-meter-label {
+      position: absolute;
+      top: 1.5cqh;
+      left: 0;
+      color: #504B48;
+    }
+    .frame-01-vrr-changes-timing-meter-svg {
+      position: absolute;
+      top: 4.4cqh;
+      left: 1.5cqw;
+      width: 18cqw;
+      height: 11cqh;
+    }
+    .frame-01-vrr-changes-timing-meter-svg path,
+    .frame-01-vrr-changes-timing-meter-svg line {
+      fill: none;
+      stroke: #F0F0F0;
+      stroke-width: 4;
+      stroke-linecap: square;
+    }
+    .frame-01-vrr-changes-timing-meter-svg .frame-01-vrr-changes-timing-meter-needle { stroke: #FF6B1A; stroke-width: 6; }
+    .frame-01-vrr-changes-timing-band {
+      position: absolute;
+      top: 34cqh;
+      left: 7.2cqw;
+      width: 85.6cqw;
+      height: 26.5cqh;
+      overflow: hidden;
+      background: #F0F0F0;
+      color: #0D0D0F;
+    }
+    .frame-01-vrr-changes-timing-band-label {
+      position: absolute;
+      top: 3cqh;
+      left: 3.5cqw;
+      color: rgba(17, 17, 17, 0.55);
+    }
+    .frame-01-vrr-changes-timing-rail {
+      position: absolute;
+      top: 12.6cqh;
+      right: 4.2cqw;
+      left: 4.2cqw;
+      height: 2px;
+      background: rgba(17, 17, 17, 0.40);
+    }
+    .frame-01-vrr-changes-timing-marker {
+      position: absolute;
+      top: 9.7cqh;
+      left: 42.5cqw;
+      width: 4cqw;
+      height: 4cqw;
+      background: #0D0D0F;
+    }
+    .frame-01-vrr-changes-timing-marker::after {
+      position: absolute;
+      top: 5.1cqw;
+      left: 1.9cqw;
+      width: 2px;
+      height: 7.1cqh;
+      background: #0D0D0F;
+      content: "";
+    }
+    .frame-01-vrr-changes-timing-frame-ready {
+      position: absolute;
+      z-index: 2;
+      top: 17.2cqh;
+      left: 23cqw;
+      display: flex;
+      gap: 1.2cqw;
+      isolation: isolate;
+      color: #0D0D0F;
+      font-size: 5.8cqw;
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      line-height: 0.86;
+      text-transform: lowercase;
+    }
+    .frame-01-vrr-changes-timing-frame-ready::before {
+      position: absolute;
+      z-index: -1;
+      inset: -0.5cqh -0.8cqw;
+      background: #F0F0F0;
+      content: "";
+    }
+    .frame-01-vrr-changes-timing-ready-word { display: inline-block; }
+    .frame-01-vrr-changes-timing-ready-word:last-child { color: #FF6B1A; }
+    .frame-01-vrr-changes-timing-gate {
+      position: absolute;
+      z-index: 1;
+      top: 7cqh;
+      left: 66cqw;
+      width: 2.5cqw;
+      height: 15.5cqh;
+      background: #FF6B1A;
+    }
+    .frame-01-vrr-changes-timing-gate-label {
+      position: absolute;
+      top: 23.4cqh;
+      left: 60.4cqw;
+      width: 15cqw;
+      color: rgba(17, 17, 17, 0.55);
+      text-align: center;
+    }
+    .frame-01-vrr-changes-timing-timing-block {
+      position: absolute;
+      top: 66.5cqh;
+      left: 7.2cqw;
+      width: 85.6cqw;
+      height: 11.5cqh;
+      overflow: hidden;
+      border-top: 2px solid #282726;
+    }
+    .frame-01-vrr-changes-timing-timing-block::before,
+    .frame-01-vrr-changes-timing-timing-block::after {
+      position: absolute;
+      top: 4.7cqh;
+      height: 1.1cqh;
+      content: "";
+    }
+    .frame-01-vrr-changes-timing-timing-block::before { left: 0; width: 39cqw; background: #504B48; }
+    .frame-01-vrr-changes-timing-timing-block::after { right: 0; width: 38cqw; background: #FF6B1A; }
+    .frame-01-vrr-changes-timing-timing-marker {
+      position: absolute;
+      top: 2.2cqh;
+      left: 41.2cqw;
+      width: 3cqw;
+      height: 3cqw;
+      background: #F0F0F0;
+    }
+    .frame-01-vrr-changes-timing-note {
+      position: absolute;
+      top: 80.8cqh;
+      left: 7.4cqw;
+      width: 85.2cqw;
+      border-top: 2px solid #282726;
+      color: #504B48;
+      padding-top: 0.9cqh;
+      text-align: center;
+    }
+  </style>
+
+  <div id="root" data-composition-id="01-vrr-changes-timing" data-width="1080" data-height="1920" data-duration="9.1">
+    <div class="clip frame-01-vrr-changes-timing-ground" data-start="0" data-duration="9.1" data-track-index="0">
+      <svg class="frame-01-vrr-changes-timing-grid" viewBox="0 0 1080 1920" aria-hidden="true">
+        <path d="M80 0V1594M280 0V1594M480 0V1594M680 0V1594M880 0V1594M0 220H1080M0 620H1080M0 1020H1080M0 1420H1080" fill="none" stroke="#282726" stroke-width="2" />
+      </svg>
+    </div>
+
+    <div class="clip frame-01-vrr-changes-timing-scene" data-start="0" data-duration="9.1" data-track-index="1">
+      <div class="frame-01-vrr-changes-timing-world" id="frame-01-vrr-changes-timing-world">
+        <div class="frame-01-vrr-changes-timing-kicker">VRR / 01</div>
+        <div class="frame-01-vrr-changes-timing-meta">DISPLAY TIMING</div>
+        <div class="frame-01-vrr-changes-timing-label-stage" id="frame-01-vrr-changes-timing-label-stage"><span class="frame-01-vrr-changes-timing-label-text" id="frame-01-vrr-changes-timing-label-text"></span><span class="frame-01-vrr-changes-timing-cursor" id="frame-01-vrr-changes-timing-cursor">|</span></div>
+
+        <div class="frame-01-vrr-changes-timing-gpu-meter" aria-label="static GPU speedometer">
+          <span class="frame-01-vrr-changes-timing-meter-label">GPU / STATIC</span>
+          <svg class="frame-01-vrr-changes-timing-meter-svg" viewBox="0 0 194 118" aria-hidden="true"><path d="M16 98A80 80 0 0 1 178 98" /><line class="frame-01-vrr-changes-timing-meter-needle" x1="97" y1="98" x2="126" y2="51" /><line x1="18" y1="98" x2="31" y2="90" /><line x1="97" y1="18" x2="97" y2="33" /><line x1="176" y1="98" x2="163" y2="90" /></svg>
+        </div>
+
+        <section class="frame-01-vrr-changes-timing-band" aria-label="invented adaptive refresh timing rail">
+          <span class="frame-01-vrr-changes-timing-band-label">TIMING RAIL</span>
+          <div class="frame-01-vrr-changes-timing-rail"></div>
+          <div class="frame-01-vrr-changes-timing-marker"></div>
+          <div class="frame-01-vrr-changes-timing-frame-ready"><span class="frame-01-vrr-changes-timing-ready-word">frame</span><span class="frame-01-vrr-changes-timing-ready-word">ready</span></div>
+          <div class="frame-01-vrr-changes-timing-gate" id="frame-01-vrr-changes-timing-gate"></div>
+          <span class="frame-01-vrr-changes-timing-gate-label" id="frame-01-vrr-changes-timing-gate-label">REFRESH</span>
+        </section>
+        <div class="frame-01-vrr-changes-timing-timing-block"><span class="frame-01-vrr-changes-timing-timing-marker"></span></div>
+        <div class="frame-01-vrr-changes-timing-note" id="frame-01-vrr-changes-timing-note">GATE MEETS READY FRAME / GPU UNCHANGED</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const tl = gsap.timeline({ paused: true });
+      const world = document.getElementById("frame-01-vrr-changes-timing-world");
+      const cam = { scale: 1, x: 0, y: 0 };
+      function applyCamera() {
+        world.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.scale})`;
+      }
+      applyCamera();
+
+      tl.fromTo(".frame-01-vrr-changes-timing-kicker", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.32, ease: "power2.out" }, 0.04);
+      tl.fromTo(".frame-01-vrr-changes-timing-meta", { opacity: 0 }, { opacity: 1, duration: 0.28, ease: "power1.out" }, 0.16);
+      tl.fromTo(".frame-01-vrr-changes-timing-gpu-meter", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.44, ease: "power2.out" }, 0.12);
+      tl.fromTo(".frame-01-vrr-changes-timing-band", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.42);
+      const readyWords = Array.from(document.querySelectorAll(".frame-01-vrr-changes-timing-ready-word"));
+      const readyItems = [
+        { element: readyWords[0], body: "frame", hold: 0.28 },
+        { element: readyWords[1], body: "ready", hold: 0.52 },
+      ];
+      let cursorTime = 1.0;
+      const readyTimeline = readyItems.map((item) => {
+        const duration = 0.42 + item.body.length * 0.045 + item.hold;
+        const entry = { ...item, start: cursorTime, end: cursorTime + duration };
+        cursorTime = entry.end;
+        return entry;
+      });
+      readyTimeline.forEach((item) => {
+        tl.fromTo(item.element, { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, item.start);
+      });
+      tl.fromTo(".frame-01-vrr-changes-timing-marker", { opacity: 0, scale: 0.5 }, { opacity: 1, scale: 1, duration: 0.34, ease: "power2.out" }, 1.42);
+
+      tl.fromTo("#frame-01-vrr-changes-timing-gate", { opacity: 0, x: 0 }, { opacity: 1, duration: 0.28, ease: "power1.out" }, 2.82);
+      tl.to("#frame-01-vrr-changes-timing-gate", { x: -254, duration: 1.72, ease: "power3.inOut" }, 3.0);
+      tl.to("#frame-01-vrr-changes-timing-gate-label", { x: -254, duration: 1.72, ease: "power3.inOut" }, 3.0);
+      tl.to(cam, { scale: 1.05, x: 10, y: -38, duration: 1.72, ease: "power3.inOut", onUpdate: applyCamera }, 3.0);
+      tl.fromTo(".frame-01-vrr-changes-timing-timing-block", { opacity: 0 }, { opacity: 1, duration: 0.34, ease: "power1.out" }, 4.78);
+
+      const labelText = document.getElementById("frame-01-vrr-changes-timing-label-text");
+      const labelCursor = document.getElementById("frame-01-vrr-changes-timing-cursor");
+      const sequence = [
+        { t: 0, text: "gpu speed" },
+        { t: 5.8, text: "vrr changes timing" },
+      ];
+      function textAt(time) {
+        for (let i = sequence.length - 1; i >= 0; i--) {
+          if (time >= sequence[i].t) return sequence[i].text;
+        }
+        return "";
+      }
+      const textDriver = { t: 0 };
+      tl.fromTo("#frame-01-vrr-changes-timing-label-stage", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.38, ease: "power2.out" }, 0.22);
+      tl.to(textDriver, { t: 8.6, duration: 8.6, ease: "none", onUpdate: () => { labelText.textContent = textAt(textDriver.t); } }, 0);
+      const blink = { p: 0 };
+      tl.to(blink, { p: Math.PI * 20, duration: 8.6, ease: "none", onUpdate: () => { labelCursor.style.opacity = Math.sin(blink.p) > 0 ? "1" : "0"; } }, 0);
+      tl.fromTo("#frame-01-vrr-changes-timing-note", { opacity: 0 }, { opacity: 1, duration: 0.34, ease: "power1.out" }, 7.38);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["01-vrr-changes-timing"] = tl;
+    })();
+  </script>
+</template>

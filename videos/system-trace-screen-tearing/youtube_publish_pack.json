@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_publish_pack_v1",
+  "story_id": "system-trace-screen-tearing",
+  "project_id": "system-trace-screen-tearing",
+  "platform": "youtube_shorts",
+  "review_scope": "PRIVATE_FIRST_SCHEDULED_PUBLICATION",
+  "title": "Why Your Game Screen Splits in Two",
+  "description": "That horizontal split is two rendered frames sharing one display refresh. This short animation shows how a fixed-refresh screen scans an image, how the GPU can replace that image mid-scan and why V-Sync and VRR solve the timing mismatch in different ways.\n\nSources:\nhttps://developer.apple.com/documentation/quartzcore/cametallayer/displaysyncenabled\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays\nhttps://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #ScreenTearing #SystemTrace",
+  "tags": [
+    "screen tearing",
+    "V-Sync",
+    "VRR",
+    "display refresh",
+    "PC gaming",
+    "gaming graphics",
+    "System Trace",
+    "gaming Shorts"
+  ],
+  "captions": {
+    "file": "captions.srt",
+    "sha256": "6abd32f121954bf76b58c2489f8ff0277682b9d2b1df857bd50cb283486e7c39",
+    "clean_manual_captions_required": true
+  },
+  "synthetic_media_required": true,
+  "altered_synthetic_disclosure_required": true,
+  "altered_synthetic_disclosure_setting": "YES",
+  "public_publish_authorised": true,
+  "unlisted_publish_authorised": false,
+  "scheduler_authorised": true,
+  "database_mutation_authorised": false,
+  "playlist_mutation_authorised": false,
+  "thumbnail_upload_authorised": false,
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "rights_placement_blocker_count": 0,
+  "rights_clearance_claimed": false,
+  "scheduled_publish_at_utc": "2026-08-22T17:00:00.000Z",
+  "youtube_upload_request": {
+    "schema_version": 1,
+    "closed": true,
+    "authority_scope": "EXACT_PRIVATE_FIRST_SCHEDULE_REQUEST_SHAPE_ONLY",
+    "publish_authority": "EXTERNALLY_EVALUATED",
+    "video_file": "renders/system-trace-screen-tearing.mp4",
+    "video_sha256": "0b434edba48ff9304d13a9e95f5deef1d90d4ce5ff7b58e25faa783fef9033b9",
+    "notifySubscribers": false,
+    "snippet": {
+      "title": "Why Your Game Screen Splits in Two",
+      "description": "That horizontal split is two rendered frames sharing one display refresh. This short animation shows how a fixed-refresh screen scans an image, how the GPU can replace that image mid-scan and why V-Sync and VRR solve the timing mismatch in different ways.\n\nSources:\nhttps://developer.apple.com/documentation/quartzcore/cametallayer/displaysyncenabled\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays\nhttps://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #ScreenTearing #SystemTrace",
+      "tags": [
+        "screen tearing",
+        "V-Sync",
+        "VRR",
+        "display refresh",
+        "PC gaming",
+        "gaming graphics",
+        "System Trace",
+        "gaming Shorts"
+      ],
+      "categoryId": "20",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "status": {
+      "privacyStatus": "private",
+      "selfDeclaredMadeForKids": false,
+      "containsSyntheticMedia": true,
+      "license": "youtube",
+      "embeddable": true,
+      "publicStatsViewable": true
+    },
+    "paidProductPlacementDetails": {
+      "hasPaidProductPlacement": false
+    },
+    "captions": {
+      "file": "captions.srt",
+      "sha256": "6abd32f121954bf76b58c2489f8ff0277682b9d2b1df857bd50cb283486e7c39",
+      "language": "en-GB",
+      "name": "English (United Kingdom)",
+      "isDraft": false
+    },
+    "cover_selection": {
+      "selection_mode": "in_video_frame",
+      "frame_time_seconds": 1.5,
+      "custom_thumbnail_upload_allowed": false,
+      "application_status": "NOT_APPLIED"
+    }
+  }
+}

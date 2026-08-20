@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-20T09:39:54.5010595Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-hdr-tone-mapping",
+  "source": {
+    "package_dir": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-hdr-tone-mapping",
+    "publish_pack_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-hdr-tone-mapping\\youtube_publish_pack.json",
+    "publish_pack_sha256": "fbc7fd44c76318b586651528c108e1c3f8ddc313ae3ed5c745ed2e6a950b90bb",
+    "canonical_manifest_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-hdr-tone-mapping\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "4035cddc861dc6c9eac9181e003ffd2a9128b38aa3248beed34439e11bc48a58",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-hdr-tone-mapping",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "Why HDR Games Still Need Tone Mapping",
+          "description": "An HDR scene can contain more luminance than one real display can reproduce. This short animation shows how tone mapping fits highlights, mid-tones and dark detail into the screen's measured brightness range instead of simply clipping everything above its limit.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct2d/hdr-tone-map-effect\nhttps://learn.microsoft.com/en-us/gaming/gdk/docs/reference/system/xdisplay/structs/xdisplayhdrmodeinfo\nhttps://vesa.org/about-displayhdr/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#HDRGaming #ToneMapping #SystemTrace",
+          "tags": [
+            "HDR gaming",
+            "tone mapping",
+            "display brightness",
+            "gaming graphics",
+            "HDR",
+            "PC gaming",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-hdr-tone-mapping\\renders\\system-trace-hdr-tone-mapping.mp4",
+      "media_sha256": "4fd064ef56226e3746a25b512bdde9744c63bf2007ac7ee2198260feb103457e"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-hdr-tone-mapping\\captions.srt",
+      "media_sha256": "3d379bbc1867d7498c60623e0f4f5e910d39dae7e6d3cd4b7bd3a7ae09bd3015"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-hdr-tone-mapping\\renders\\system-trace-hdr-tone-mapping.mp4",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-hdr-tone-mapping\\renders\\system-trace-hdr-tone-mapping.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 6771364,
+      "sha256": "4fd064ef56226e3746a25b512bdde9744c63bf2007ac7ee2198260feb103457e",
+      "probe": {
+        "duration_seconds": 53,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-hdr-tone-mapping\\captions.srt",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-hdr-tone-mapping\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2208,
+      "sha256": "3d379bbc1867d7498c60623e0f4f5e910d39dae7e6d3cd4b7bd3a7ae09bd3015",
+      "qa": {
+        "parsed": true,
+        "cue_count": 43,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 53,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-20T09:39:54.5010595Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-hdr-tone-mapping",
+    "request_plan_fingerprint_sha256": "2d81d7f45920bc3fbece335aff8eeafd9c325f9bb4749db2630b4cfe59ffadc8",
+    "video_insert_fingerprint_sha256": "585dadd33470e25dad541819fe6d7b3f6e180f576c2d81a3ec855967c5c2f6f6",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "4013c13b6c301d7cc5d1fa70837f278f93a8a8197471894edba1a396ceaff38b",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "Why HDR Games Still Need Tone Mapping",
+            "description": "An HDR scene can contain more luminance than one real display can reproduce. This short animation shows how tone mapping fits highlights, mid-tones and dark detail into the screen's measured brightness range instead of simply clipping everything above its limit.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct2d/hdr-tone-map-effect\nhttps://learn.microsoft.com/en-us/gaming/gdk/docs/reference/system/xdisplay/structs/xdisplayhdrmodeinfo\nhttps://vesa.org/about-displayhdr/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#HDRGaming #ToneMapping #SystemTrace",
+            "tags": [
+              "HDR gaming",
+              "tone mapping",
+              "display brightness",
+              "gaming graphics",
+              "HDR",
+              "PC gaming",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-hdr-tone-mapping\\renders\\system-trace-hdr-tone-mapping.mp4",
+        "media_sha256": "4fd064ef56226e3746a25b512bdde9744c63bf2007ac7ee2198260feb103457e"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-hdr-tone-mapping\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_publish_pack_v1",
+  "story_id": "system-trace-motion-blur",
+  "project_id": "system-trace-motion-blur",
+  "platform": "youtube_shorts",
+  "review_scope": "PRIVATE_FIRST_SCHEDULED_PUBLICATION",
+  "title": "Why Motion Blur Can Make 30 FPS Look Smoother",
+  "description": "Motion blur cannot create extra frames, yet it can soften the visible jump between two positions. This short animation follows a moving object through a velocity-based blur and shows why the effect does not reduce input latency, repair stutter or handle every scene perfectly.\n\nSources:\nhttps://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-27-motion-blur-post-processing-effect\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/setting-up-motion-blur\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/introduction-to-performance-profiling-and-configuration-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#MotionBlur #PCGaming #SystemTrace",
+  "tags": [
+    "motion blur",
+    "30 FPS",
+    "frame rate",
+    "gaming graphics",
+    "visual smoothness",
+    "PC gaming",
+    "System Trace",
+    "gaming Shorts"
+  ],
+  "captions": {
+    "file": "captions.srt",
+    "sha256": "fa85f984878a668cc642b6fb9dfe698df4686ca4dc6671ede9421bf54387dc9a",
+    "clean_manual_captions_required": true
+  },
+  "synthetic_media_required": true,
+  "altered_synthetic_disclosure_required": true,
+  "altered_synthetic_disclosure_setting": "YES",
+  "public_publish_authorised": true,
+  "unlisted_publish_authorised": false,
+  "scheduler_authorised": true,
+  "database_mutation_authorised": false,
+  "playlist_mutation_authorised": false,
+  "thumbnail_upload_authorised": false,
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "rights_placement_blocker_count": 0,
+  "rights_clearance_claimed": false,
+  "scheduled_publish_at_utc": "2026-08-27T17:00:00.000Z",
+  "youtube_upload_request": {
+    "schema_version": 1,
+    "closed": true,
+    "authority_scope": "EXACT_PRIVATE_FIRST_SCHEDULE_REQUEST_SHAPE_ONLY",
+    "publish_authority": "EXTERNALLY_EVALUATED",
+    "video_file": "renders/system-trace-motion-blur.mp4",
+    "video_sha256": "97475763e52fd3641ab1a74d12c8e6d5e275dd6dea164ea64a50523a967124d4",
+    "notifySubscribers": false,
+    "snippet": {
+      "title": "Why Motion Blur Can Make 30 FPS Look Smoother",
+      "description": "Motion blur cannot create extra frames, yet it can soften the visible jump between two positions. This short animation follows a moving object through a velocity-based blur and shows why the effect does not reduce input latency, repair stutter or handle every scene perfectly.\n\nSources:\nhttps://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-27-motion-blur-post-processing-effect\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/setting-up-motion-blur\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/introduction-to-performance-profiling-and-configuration-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#MotionBlur #PCGaming #SystemTrace",
+      "tags": [
+        "motion blur",
+        "30 FPS",
+        "frame rate",
+        "gaming graphics",
+        "visual smoothness",
+        "PC gaming",
+        "System Trace",
+        "gaming Shorts"
+      ],
+      "categoryId": "20",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "status": {
+      "privacyStatus": "private",
+      "selfDeclaredMadeForKids": false,
+      "containsSyntheticMedia": true,
+      "license": "youtube",
+      "embeddable": true,
+      "publicStatsViewable": true
+    },
+    "paidProductPlacementDetails": {
+      "hasPaidProductPlacement": false
+    },
+    "captions": {
+      "file": "captions.srt",
+      "sha256": "fa85f984878a668cc642b6fb9dfe698df4686ca4dc6671ede9421bf54387dc9a",
+      "language": "en-GB",
+      "name": "English (United Kingdom)",
+      "isDraft": false
+    },
+    "cover_selection": {
+      "selection_mode": "in_video_frame",
+      "frame_time_seconds": 1.5,
+      "custom_thumbnail_upload_allowed": false,
+      "application_status": "NOT_APPLIED"
+    }
+  }
+}

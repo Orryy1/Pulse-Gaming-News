@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_original_procedural_audio_rights_v1",
+  "asset_id": "pulse_system_trace_display_pipeline_bed_20260820",
+  "file": "system-trace-display-pipeline-bed.wav",
+  "sha256": "112d9b4f0a37f7d5b498d2249b68ca1e21bab6fb09f5d93675ce3d9fece5457d",
+  "bytes": 12480078,
+  "duration_seconds": 65,
+  "sample_rate_hz": 48000,
+  "channels": 2,
+  "codec": "pcm_s16le",
+  "origin": "Pulse Gaming deterministic procedural synthesis generated locally with FFmpeg",
+  "generation_formula": "three low sine partials plus two amplitude-modulated upper partials, filtered and faded",
+  "third_party_recording_or_composition": false,
+  "commercial_use_allowed": true,
+  "finished_editorial_video_only": true,
+  "raw_redistribution_allowed": false,
+  "attribution_required": false,
+  "planned_episode_placements": 7,
+  "reuse_limit": null,
+  "verdict": "GREEN",
+  "blockers": []
+}

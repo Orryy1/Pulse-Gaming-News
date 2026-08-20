@@ -1,0 +1,34 @@
+{
+  "provider": "auto",
+  "speed": 1,
+  "lines": [
+    {
+      "id": "01",
+      "text": "Motion blur cannot create extra frames, yet it can make the movement between existing frames feel less harsh."
+    },
+    {
+      "id": "02",
+      "text": "A real camera gathers light while its shutter is open, so a fast object leaves a streak across that exposure."
+    },
+    {
+      "id": "03",
+      "text": "Games often estimate the same path with per-pixel velocity, then sample and blend colour along the direction of travel."
+    },
+    {
+      "id": "04",
+      "text": "That spread hides some of the step between two positions, which can make thirty frames per second look more continuous."
+    },
+    {
+      "id": "05",
+      "text": "It does not update controls sooner, repair a stutter or perfectly handle every reflection, shadow and crossing object."
+    },
+    {
+      "id": "06",
+      "text": "Motion blur is therefore visual glue, not more performance. It can soften the gap, while the game still updates at the same rate."
+    }
+  ],
+  "bgm": {
+    "mode": "none"
+  },
+  "voice": "bm_george"
+}

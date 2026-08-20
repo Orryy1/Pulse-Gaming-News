@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_display_audio_alignment_v1",
+  "story_id": "system-trace-screen-tearing",
+  "verdict": "GREEN",
+  "source": "local_whisper_word_alignment",
+  "frame_count": 6,
+  "frames": [
+    {
+      "frame": 1,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "That horizontal split is not your GPU failing. It is two finished frames sharing one display refresh. Fresh.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 17,
+      "first_word_start": 0,
+      "last_word_end": 6.7
+    },
+    {
+      "frame": 2,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "A fixed-refresh screen scans a new image on its own clock, line by line from top to bottom. Mhm. Mhm. Mhm. Mhm. Yeah,",
+      "reconciliation": "script_high_coverage_retimed",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 6.06
+    },
+    {
+      "frame": 3,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "The GPU finishes frames on a different schedule, and scene complexity changes that delivery time from moment to moment.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 19,
+      "first_word_start": 0,
+      "last_word_end": 7.96
+    },
+    {
+      "frame": 4,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "If the displayed buffer changes mid-scan, the upper lines can show one frame while lower lines show the next. next.",
+      "reconciliation": "script_high_coverage_retimed",
+      "word_count": 19,
+      "first_word_start": 0,
+      "last_word_end": 6.78
+    },
+    {
+      "frame": 5,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "V-Sync waits for a refresh boundary, while variable refresh rate changes the display timing to meet a finished frame.",
+      "reconciliation": "script_high_coverage_retimed",
+      "word_count": 19,
+      "first_word_start": 0,
+      "last_word_end": 7.38
+    },
+    {
+      "frame": 6,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "So tearing is a presentation mismatch, not a broken texture or low resolution. Two clocks simply crossed mid-picture.",
+      "reconciliation": "script_high_coverage_retimed",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 8
+    }
+  ],
+  "blockers": [],
+  "generated_at": "2026-08-20T07:42:02.399Z"
+}

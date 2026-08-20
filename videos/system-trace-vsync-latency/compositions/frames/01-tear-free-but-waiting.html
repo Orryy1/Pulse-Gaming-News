@@ -1,0 +1,416 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      container-type: size;
+      overflow: hidden;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+    }
+    .frame-01-tear-free-but-waiting-ground {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0D0D0F;
+    }
+    .frame-01-tear-free-but-waiting-grid {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.6;
+    }
+    .frame-01-tear-free-but-waiting-scene {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+    .frame-01-tear-free-but-waiting-kicker,
+    .frame-01-tear-free-but-waiting-meta,
+    .frame-01-tear-free-but-waiting-screen-mark,
+    .frame-01-tear-free-but-waiting-wait-label,
+    .frame-01-tear-free-but-waiting-note {
+      font-family: "IBM Plex Mono";
+      font-size: 1.65cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .frame-01-tear-free-but-waiting-kicker {
+      position: absolute;
+      top: 7cqh;
+      left: 7.4cqw;
+      color: #FF6B1A;
+    }
+    .frame-01-tear-free-but-waiting-meta {
+      position: absolute;
+      top: 7cqh;
+      right: 7.4cqw;
+      color: #504B48;
+    }
+    .frame-01-tear-free-but-waiting-heading {
+      position: absolute;
+      top: 11.5cqh;
+      left: 7.2cqw;
+      margin: 0;
+      color: #F0F0F0;
+      font-size: 7.2cqw;
+      font-weight: 900;
+      letter-spacing: -0.075em;
+      line-height: 0.86;
+      text-transform: lowercase;
+    }
+    .frame-01-tear-free-but-waiting-heading-accent { color: #FF6B1A; }
+    .frame-01-tear-free-but-waiting-screen {
+      position: absolute;
+      top: 22.5cqh;
+      left: 7.2cqw;
+      width: 85.6cqw;
+      height: 48.8cqh;
+      overflow: hidden;
+      background: #1A1918;
+    }
+    .frame-01-tear-free-but-waiting-screen-shell {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    .frame-01-tear-free-but-waiting-screen-shell path {
+      fill: none;
+      stroke: #F0F0F0;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+    .frame-01-tear-free-but-waiting-screen-mark {
+      position: absolute;
+      top: 3.1cqh;
+      left: 3.5cqw;
+      z-index: 3;
+      color: #F0F0F0;
+    }
+    .frame-01-tear-free-but-waiting-torn-top,
+    .frame-01-tear-free-but-waiting-torn-bottom,
+    .frame-01-tear-free-but-waiting-clean-field {
+      position: absolute;
+      right: 3.8cqw;
+      left: 3.8cqw;
+      overflow: hidden;
+    }
+    .frame-01-tear-free-but-waiting-torn-top {
+      top: 11cqh;
+      height: 17.4cqh;
+      background: #0D0D0F;
+    }
+    .frame-01-tear-free-but-waiting-torn-bottom {
+      top: 28.4cqh;
+      height: 17.4cqh;
+      background: #0D0D0F;
+    }
+    .frame-01-tear-free-but-waiting-torn-top::before,
+    .frame-01-tear-free-but-waiting-torn-top::after,
+    .frame-01-tear-free-but-waiting-torn-bottom::before,
+    .frame-01-tear-free-but-waiting-torn-bottom::after,
+    .frame-01-tear-free-but-waiting-clean-field::before,
+    .frame-01-tear-free-but-waiting-clean-field::after {
+      position: absolute;
+      height: 1.1cqh;
+      content: "";
+    }
+    .frame-01-tear-free-but-waiting-torn-top::before {
+      top: 6.5cqh;
+      left: 6.2cqw;
+      width: 35cqw;
+      background: #F0F0F0;
+    }
+    .frame-01-tear-free-but-waiting-torn-top::after {
+      top: 13.2cqh;
+      right: 4.4cqw;
+      width: 26cqw;
+      background: #FF6B1A;
+    }
+    .frame-01-tear-free-but-waiting-torn-bottom::before {
+      top: 4.6cqh;
+      right: 8.2cqw;
+      width: 33cqw;
+      background: #F0F0F0;
+    }
+    .frame-01-tear-free-but-waiting-torn-bottom::after {
+      top: 12.3cqh;
+      left: 4.8cqw;
+      width: 28cqw;
+      background: #FF6B1A;
+    }
+    .frame-01-tear-free-but-waiting-torn-block {
+      position: absolute;
+      top: 4.1cqh;
+      left: 8cqw;
+      width: 24cqw;
+      height: 9.6cqh;
+      border: 2px solid #504B48;
+    }
+    .frame-01-tear-free-but-waiting-torn-bottom .frame-01-tear-free-but-waiting-torn-block {
+      top: 6.1cqh;
+      right: 8cqw;
+      left: auto;
+    }
+    .frame-01-tear-free-but-waiting-seam-svg {
+      position: absolute;
+      top: 27.1cqh;
+      right: 3.8cqw;
+      left: 3.8cqw;
+      z-index: 5;
+      width: 77.8cqw;
+      height: 7.5cqh;
+      overflow: visible;
+    }
+    .frame-01-tear-free-but-waiting-seam-svg path {
+      fill: none;
+      stroke: #FF6B1A;
+      stroke-width: 6;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+    .frame-01-tear-free-but-waiting-clean-field {
+      top: 11cqh;
+      height: 34.8cqh;
+      background: #0D0D0F;
+      opacity: 0;
+    }
+    .frame-01-tear-free-but-waiting-clean-field::before {
+      top: 8cqh;
+      left: 7cqw;
+      width: 45cqw;
+      background: #F0F0F0;
+    }
+    .frame-01-tear-free-but-waiting-clean-field::after {
+      top: 16.3cqh;
+      left: 7cqw;
+      width: 59cqw;
+      background: #F0F0F0;
+    }
+    .frame-01-tear-free-but-waiting-clean-block {
+      position: absolute;
+      top: 7.2cqh;
+      right: 7cqw;
+      width: 24cqw;
+      height: 15cqh;
+      border: 2px solid #F0F0F0;
+    }
+    .frame-01-tear-free-but-waiting-clean-rule {
+      position: absolute;
+      top: 25.3cqh;
+      right: 7cqw;
+      width: 52cqw;
+      height: 1.1cqh;
+      background: #FF6B1A;
+    }
+    .frame-01-tear-free-but-waiting-type-stage {
+      position: absolute;
+      top: 73.8cqh;
+      left: 4.5cqw;
+      width: 70cqw;
+      height: 7.8cqh;
+      color: #F0F0F0;
+      font-size: 12.2cqw;
+      font-weight: 900;
+      letter-spacing: -0.09em;
+      line-height: 0.85;
+      text-align: center;
+      text-transform: lowercase;
+    }
+    .frame-01-tear-free-but-waiting-type-text {
+      display: inline-block;
+      min-width: 58cqw;
+    }
+    .frame-01-tear-free-but-waiting-cursor {
+      display: inline-block;
+      width: 2.2cqw;
+      color: #FF6B1A;
+      font-family: "IBM Plex Mono";
+      font-size: 9cqw;
+      font-weight: 500;
+      letter-spacing: 0;
+      vertical-align: 0.05em;
+    }
+    .frame-01-tear-free-but-waiting-wait {
+      position: absolute;
+      top: 72.5cqh;
+      left: 86.5cqw;
+      width: 16cqw;
+      margin-left: -8cqw;
+      color: #F0F0F0;
+      text-align: center;
+    }
+    .frame-01-tear-free-but-waiting-clock-ring {
+      display: block;
+      width: 8cqw;
+      height: 8cqw;
+      margin: 0 auto 0.8cqh;
+    }
+    .frame-01-tear-free-but-waiting-clock-ring circle,
+    .frame-01-tear-free-but-waiting-clock-ring path {
+      fill: none;
+      stroke: #FF6B1A;
+      stroke-width: 6;
+      stroke-linecap: square;
+    }
+    .frame-01-tear-free-but-waiting-clock-value {
+      display: inline-block;
+      width: 12cqw;
+      color: #F0F0F0;
+      font-size: 4.2cqw;
+      font-variant-numeric: tabular-nums;
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      line-height: 0.86;
+      transform-origin: center center;
+    }
+    .frame-01-tear-free-but-waiting-wait-label {
+      display: block;
+      margin-top: 0.6cqh;
+      color: #504B48;
+    }
+    .frame-01-tear-free-but-waiting-note {
+      position: absolute;
+      top: 80.7cqh;
+      left: 7.4cqw;
+      width: 85.2cqw;
+      border-top: 2px solid #282726;
+      color: #504B48;
+      padding-top: 1cqh;
+      text-align: center;
+    }
+  </style>
+
+  <div id="root" data-composition-id="01-tear-free-but-waiting" data-width="1080" data-height="1920" data-duration="8.9">
+    <div class="clip frame-01-tear-free-but-waiting-ground" data-start="0" data-duration="8.9" data-track-index="0">
+      <svg class="frame-01-tear-free-but-waiting-grid" viewBox="0 0 1080 1920" aria-hidden="true">
+        <path d="M80 0V1594M280 0V1594M480 0V1594M680 0V1594M880 0V1594M0 240H1080M0 640H1080M0 1040H1080M0 1440H1080" fill="none" stroke="#282726" stroke-width="2" />
+      </svg>
+    </div>
+
+    <div class="clip frame-01-tear-free-but-waiting-scene" data-start="0" data-duration="8.9" data-track-index="1">
+      <div class="frame-01-tear-free-but-waiting-kicker">SYNC / 01</div>
+      <div class="frame-01-tear-free-but-waiting-meta">PRESENTATION</div>
+      <h1 class="frame-01-tear-free-but-waiting-heading">tear <span class="frame-01-tear-free-but-waiting-heading-accent">line</span></h1>
+
+      <section class="frame-01-tear-free-but-waiting-screen" aria-label="invented synchronised presentation diagram">
+        <svg class="frame-01-tear-free-but-waiting-screen-shell" viewBox="0 0 924 938" aria-hidden="true">
+          <path id="frame-01-tear-free-but-waiting-shell" d="M2 2H922V936H2Z" />
+        </svg>
+        <div class="frame-01-tear-free-but-waiting-screen-mark">DISPLAY FIELD</div>
+        <div class="frame-01-tear-free-but-waiting-torn-top">
+          <div class="frame-01-tear-free-but-waiting-torn-block"></div>
+        </div>
+        <div class="frame-01-tear-free-but-waiting-torn-bottom">
+          <div class="frame-01-tear-free-but-waiting-torn-block"></div>
+        </div>
+        <svg class="frame-01-tear-free-but-waiting-seam-svg" viewBox="0 0 840 144" aria-hidden="true">
+          <path id="frame-01-tear-free-but-waiting-seam" d="M0 68H228V49H432V86H618V66H840" />
+        </svg>
+        <div class="frame-01-tear-free-but-waiting-clean-field" id="frame-01-tear-free-but-waiting-clean-field">
+          <div class="frame-01-tear-free-but-waiting-clean-block"></div>
+          <div class="frame-01-tear-free-but-waiting-clean-rule"></div>
+        </div>
+      </section>
+
+      <div class="frame-01-tear-free-but-waiting-type-stage" id="frame-01-tear-free-but-waiting-type-stage" aria-label="tear free">
+        <span class="frame-01-tear-free-but-waiting-type-text" id="frame-01-tear-free-but-waiting-type-text"></span><span class="frame-01-tear-free-but-waiting-cursor" id="frame-01-tear-free-but-waiting-cursor">|</span>
+      </div>
+
+      <div class="frame-01-tear-free-but-waiting-wait" id="frame-01-tear-free-but-waiting-wait" aria-label="waiting indicator">
+        <svg class="frame-01-tear-free-but-waiting-clock-ring" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="47" /><path d="M60 29V60L82 75" /></svg>
+        <span class="frame-01-tear-free-but-waiting-clock-value" id="frame-01-tear-free-but-waiting-clock-value">0</span>
+        <span class="frame-01-tear-free-but-waiting-wait-label">WAIT</span>
+      </div>
+      <div class="frame-01-tear-free-but-waiting-note" id="frame-01-tear-free-but-waiting-note">CLEAN IMAGE / EXTRA WAIT</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const tl = gsap.timeline({ paused: true });
+      const drawPaths = [
+        document.getElementById("frame-01-tear-free-but-waiting-shell"),
+        document.getElementById("frame-01-tear-free-but-waiting-seam"),
+      ];
+      drawPaths.forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      tl.fromTo(".frame-01-tear-free-but-waiting-kicker", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.32, ease: "power2.out" }, 0.04);
+      tl.fromTo(".frame-01-tear-free-but-waiting-meta", { opacity: 0 }, { opacity: 1, duration: 0.28, ease: "power1.out" }, 0.16);
+      tl.fromTo(".frame-01-tear-free-but-waiting-heading", { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.52, ease: "power3.out" }, 0.12);
+      tl.to(drawPaths[0], { strokeDashoffset: 0, duration: 1.12, ease: "power3.out" }, 0.24);
+      tl.to(drawPaths[1], { strokeDashoffset: 0, duration: 1.34, ease: "power3.out" }, 0.56);
+      tl.fromTo(".frame-01-tear-free-but-waiting-torn-top", { opacity: 0 }, { opacity: 1, duration: 0.36, ease: "power1.out" }, 0.64);
+      tl.fromTo(".frame-01-tear-free-but-waiting-torn-bottom", { opacity: 0 }, { opacity: 1, duration: 0.36, ease: "power1.out" }, 0.84);
+
+      tl.set(".frame-01-tear-free-but-waiting-torn-top, .frame-01-tear-free-but-waiting-torn-bottom, .frame-01-tear-free-but-waiting-seam-svg", { opacity: 0 }, 2.76);
+      tl.set("#frame-01-tear-free-but-waiting-clean-field", { opacity: 1 }, 2.76);
+      const typeText = document.getElementById("frame-01-tear-free-but-waiting-type-text");
+      const typeCursor = document.getElementById("frame-01-tear-free-but-waiting-cursor");
+      const sequence = [
+        { t: 0, text: "tear" },
+        { t: 0.34, text: "tear—" },
+        { t: 0.86, text: "tear-free" },
+      ];
+      function textAt(time) {
+        for (let i = sequence.length - 1; i >= 0; i--) {
+          if (time >= sequence[i].t) return sequence[i].text;
+        }
+        return "";
+      }
+      const textDriver = { t: 0 };
+      tl.fromTo("#frame-01-tear-free-but-waiting-type-stage", { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" }, 2.88);
+      tl.to(textDriver, {
+        t: 2.5,
+        duration: 2.5,
+        ease: "none",
+        onUpdate: () => { typeText.textContent = textAt(textDriver.t); },
+      }, 2.8);
+      const blink = { p: 0 };
+      tl.to(blink, {
+        p: Math.PI * 10,
+        duration: 2.5,
+        ease: "none",
+        onUpdate: () => { typeCursor.style.opacity = Math.sin(blink.p) > 0 ? "1" : "0"; },
+      }, 2.8);
+
+      const counter = document.getElementById("frame-01-tear-free-but-waiting-clock-value");
+      const countState = { value: 0 };
+      tl.fromTo("#frame-01-tear-free-but-waiting-wait", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.42, ease: "power2.out" }, 5.38);
+      tl.to(countState, {
+        value: 1,
+        duration: 1.34,
+        ease: "power3.out",
+        onUpdate: () => { counter.textContent = Math.round(countState.value).toLocaleString(); },
+      }, 5.48);
+      tl.fromTo(counter, { scale: 0.56 }, { scale: 1, duration: 1.34, ease: "power3.out" }, 5.48);
+      tl.fromTo("#frame-01-tear-free-but-waiting-note", { opacity: 0 }, { opacity: 1, duration: 0.36, ease: "power1.out" }, 7.28);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["01-tear-free-but-waiting"] = tl;
+    })();
+  </script>
+</template>

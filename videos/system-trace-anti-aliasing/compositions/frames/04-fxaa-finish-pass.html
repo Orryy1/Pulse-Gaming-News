@@ -1,0 +1,66 @@
+<template>
+  <style>
+    @font-face { font-family:"Space Grotesk"; src:url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2"); font-style:normal; font-weight:400 900; }
+    @font-face { font-family:"IBM Plex Mono"; src:url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2"); font-style:normal; font-weight:500; }
+    #root { position:relative; width:100%; height:100%; overflow:hidden; }
+    .frame-04-fxaa-finish-pass-ground { position:absolute; inset:0; overflow:hidden; background:#0D0D0F; container-type:size; }
+    .frame-04-fxaa-finish-pass-grid { position:absolute; inset:0; width:100%; height:100%; opacity:.54; }
+    .frame-04-fxaa-finish-pass-scene { position:absolute; inset:0; overflow:hidden; }
+    .frame-04-fxaa-finish-pass-kicker,.frame-04-fxaa-finish-pass-meta,.frame-04-fxaa-finish-pass-tile-label,.frame-04-fxaa-finish-pass-detector-label,.frame-04-fxaa-finish-pass-note { font-family:"IBM Plex Mono"; font-size:1.6cqw; font-weight:500; letter-spacing:.14em; line-height:1; text-transform:uppercase; }
+    .frame-04-fxaa-finish-pass-kicker { position:absolute; top:7cqh; left:7.2cqw; color:#FF6B1A; }
+    .frame-04-fxaa-finish-pass-meta { position:absolute; top:7cqh; right:7.2cqw; color:#504B48; }
+    .frame-04-fxaa-finish-pass-title { position:absolute; top:13.2cqh; left:7.2cqw; margin:0; color:#F0F0F0; font-family:"Space Grotesk"; font-size:7.3cqw; font-weight:900; letter-spacing:-.07em; line-height:.86; text-transform:lowercase; }
+    .frame-04-fxaa-finish-pass-title span { color:#FF6B1A; }
+    .frame-04-fxaa-finish-pass-rule { position:absolute; top:24.4cqh; left:7.2cqw; width:36px; height:2px; background:#FF6B1A; }
+    .frame-04-fxaa-finish-pass-stage { position:absolute; top:29cqh; left:7.2cqw; width:85.6cqw; height:43.2cqh; }
+    .frame-04-fxaa-finish-pass-tile { position:absolute; left:0; width:100%; height:15.5cqh; overflow:hidden; border:1px solid #282726; background:#1A1918; transform-origin:50% 50%; }
+    .frame-04-fxaa-finish-pass-finished { top:0; z-index:3; }
+    .frame-04-fxaa-finish-pass-morph { top:0; z-index:4; opacity:0; }
+    .frame-04-fxaa-finish-pass-anchor { top:27.7cqh; z-index:2; opacity:0; background:#0D0D0F; }
+    .frame-04-fxaa-finish-pass-old,.frame-04-fxaa-finish-pass-new { position:absolute; inset:0; }
+    .frame-04-fxaa-finish-pass-new { opacity:0; }
+    .frame-04-fxaa-finish-pass-tile-label { position:absolute; top:2.2cqh; left:2.5cqw; color:#504B48; }
+    .frame-04-fxaa-finish-pass-image { position:absolute; top:5.8cqh; left:2.5cqw; right:2.5cqw; height:7cqh; overflow:hidden; }
+    .frame-04-fxaa-finish-pass-image svg { width:100%; height:100%; }
+    .frame-04-fxaa-finish-pass-image path { fill:none; stroke:#F0F0F0; stroke-width:8; stroke-linecap:square; stroke-linejoin:miter; }
+    .frame-04-fxaa-finish-pass-image .frame-04-fxaa-finish-pass-orange-line { stroke:#FF6B1A; }
+    .frame-04-fxaa-finish-pass-detector { position:absolute; top:18.8cqh; left:0; width:100%; height:5.7cqh; overflow:hidden; border-top:1px solid #282726; border-bottom:1px solid #282726; }
+    .frame-04-fxaa-finish-pass-detector-label { position:absolute; top:2cqh; left:2.5cqw; color:#FF6B1A; }
+    .frame-04-fxaa-finish-pass-scan { position:absolute; top:1.5cqh; left:37cqw; width:2px; height:2.7cqh; background:#FF6B1A; transform-origin:left center; }
+    .frame-04-fxaa-finish-pass-aperture { position:absolute; top:1.5cqh; right:2.5cqw; width:35cqw; height:2.7cqh; overflow:hidden; background:#282726; }
+    .frame-04-fxaa-finish-pass-aperture-fill { width:100%; height:100%; background:#F0F0F0; transform-origin:left center; }
+    .frame-04-fxaa-finish-pass-detail { position:absolute; top:4.9cqh; right:2.5cqw; width:25cqw; height:8.1cqh; overflow:hidden; border-left:1px solid #FF6B1A; background:#1A1918; }
+    .frame-04-fxaa-finish-pass-detail-offfocus { --dof:0px; position:absolute; inset:0; filter:blur(var(--dof)); opacity:1; will-change:filter; }
+    .frame-04-fxaa-finish-pass-detail-line { position:absolute; height:1px; background:#F0F0F0; }
+    .frame-04-fxaa-finish-pass-detail-line--one { top:2cqh; left:1.5cqw; width:18cqw; }
+    .frame-04-fxaa-finish-pass-detail-line--two { top:3.7cqh; left:4.5cqw; width:14cqw; }
+    .frame-04-fxaa-finish-pass-detail-line--three { top:5.5cqh; left:1.5cqw; width:19cqw; }
+    .frame-04-fxaa-finish-pass-detail-focus { position:absolute; top:3.2cqh; left:2.5cqw; width:5cqw; height:1.1cqh; background:#FF6B1A; }
+    .frame-04-fxaa-finish-pass-result-label { position:absolute; top:2.2cqh; left:2.5cqw; color:#F0F0F0; font-family:"Space Grotesk"; font-size:4.3cqw; font-weight:900; letter-spacing:-.06em; line-height:.86; text-transform:lowercase; }
+    .frame-04-fxaa-finish-pass-result-label span { color:#FF6B1A; }
+    .frame-04-fxaa-finish-pass-status { position:absolute; top:75.6cqh; left:7.2cqw; width:85.6cqw; border-top:1px solid #282726; padding-top:1.5cqh; }
+    .frame-04-fxaa-finish-pass-status-label { color:#504B48; font-family:"IBM Plex Mono"; font-size:1.6cqw; font-weight:500; letter-spacing:.14em; text-transform:uppercase; }
+    .frame-04-fxaa-finish-pass-status-text { display:inline-block; min-width:45cqw; margin-top:1.1cqh; color:#F0F0F0; font-family:"Space Grotesk"; font-size:6.3cqw; font-weight:900; letter-spacing:-.07em; line-height:.86; text-transform:lowercase; }
+    .frame-04-fxaa-finish-pass-cursor { display:inline-block; width:1.6cqw; color:#FF6B1A; font-family:"IBM Plex Mono"; font-size:4cqw; }
+  </style>
+  <div id="root" data-composition-id="04-fxaa-finish-pass" data-width="1080" data-height="1920" data-duration="8.9">
+    <div class="clip frame-04-fxaa-finish-pass-ground" data-start="0" data-duration="8.9" data-track-index="0"><svg class="frame-04-fxaa-finish-pass-grid" viewBox="0 0 1080 1920" aria-hidden="true"><path d="M80 0V1594M280 0V1594M480 0V1594M680 0V1594M880 0V1594M0 220H1080M0 620H1080M0 1020H1080M0 1420H1080" fill="none" stroke="#282726" stroke-width="2" /></svg></div>
+    <div class="clip frame-04-fxaa-finish-pass-scene" data-start="0" data-duration="8.9" data-track-index="1">
+      <div class="frame-04-fxaa-finish-pass-kicker">FXAA / 04</div><div class="frame-04-fxaa-finish-pass-meta">SCREEN SPACE</div><h1 class="frame-04-fxaa-finish-pass-title">the fast<br><span>image pass</span></h1><div class="frame-04-fxaa-finish-pass-rule"></div>
+      <section class="frame-04-fxaa-finish-pass-stage" aria-label="invented finished-image edge pass comparison">
+        <div class="frame-04-fxaa-finish-pass-tile frame-04-fxaa-finish-pass-anchor" id="frame-04-fxaa-finish-pass-anchor"><span class="frame-04-fxaa-finish-pass-result-label" data-layout-allow-occlusion>edge <span>softened</span></span><div class="frame-04-fxaa-finish-pass-image"><svg viewBox="0 0 800 160" aria-hidden="true"><path d="M18 138L118 112L216 86L314 61L412 39L510 23L608 12L782 8" /><path class="frame-04-fxaa-finish-pass-orange-line" d="M18 138L118 112L216 86L314 61L412 39L510 23L608 12L782 8" /></svg></div><div class="frame-04-fxaa-finish-pass-detail"><div class="frame-04-fxaa-finish-pass-detail-offfocus"><span class="frame-04-fxaa-finish-pass-detail-line frame-04-fxaa-finish-pass-detail-line--one"></span><span class="frame-04-fxaa-finish-pass-detail-line frame-04-fxaa-finish-pass-detail-line--two"></span><span class="frame-04-fxaa-finish-pass-detail-line frame-04-fxaa-finish-pass-detail-line--three"></span></div><span class="frame-04-fxaa-finish-pass-detail-focus"></span></div></div>
+        <div class="frame-04-fxaa-finish-pass-tile frame-04-fxaa-finish-pass-finished" id="frame-04-fxaa-finish-pass-finished"><span class="frame-04-fxaa-finish-pass-tile-label" data-layout-allow-occlusion>FINISHED IMAGE</span><div class="frame-04-fxaa-finish-pass-image"><svg viewBox="0 0 800 160" aria-hidden="true"><path d="M18 140H108V122H198V104H288V86H378V68H468V50H558V32H648V14H782" /></svg></div></div>
+        <div class="frame-04-fxaa-finish-pass-tile frame-04-fxaa-finish-pass-morph" id="frame-04-fxaa-finish-pass-morph" data-layout-allow-occlusion><div class="frame-04-fxaa-finish-pass-old"><span class="frame-04-fxaa-finish-pass-tile-label">EDGE PASS</span><div class="frame-04-fxaa-finish-pass-image"><svg viewBox="0 0 800 160" aria-hidden="true"><path class="frame-04-fxaa-finish-pass-orange-line" d="M18 140H108V122H198V104H288V86H378V68H468V50H558V32H648V14H782" /></svg></div></div><div class="frame-04-fxaa-finish-pass-new"><span class="frame-04-fxaa-finish-pass-result-label">edge <span>softened</span></span><div class="frame-04-fxaa-finish-pass-image"><svg viewBox="0 0 800 160" aria-hidden="true"><path d="M18 138L118 112L216 86L314 61L412 39L510 23L608 12L782 8" /><path class="frame-04-fxaa-finish-pass-orange-line" d="M18 138L118 112L216 86L314 61L412 39L510 23L608 12L782 8" /></svg></div><div class="frame-04-fxaa-finish-pass-detail"><div class="frame-04-fxaa-finish-pass-detail-offfocus"><span class="frame-04-fxaa-finish-pass-detail-line frame-04-fxaa-finish-pass-detail-line--one"></span><span class="frame-04-fxaa-finish-pass-detail-line frame-04-fxaa-finish-pass-detail-line--two"></span><span class="frame-04-fxaa-finish-pass-detail-line frame-04-fxaa-finish-pass-detail-line--three"></span></div><span class="frame-04-fxaa-finish-pass-detail-focus"></span></div></div></div>
+        <div class="frame-04-fxaa-finish-pass-detector" id="frame-04-fxaa-finish-pass-detector"><span class="frame-04-fxaa-finish-pass-detector-label" data-layout-allow-occlusion>EDGE PASS</span><span class="frame-04-fxaa-finish-pass-scan"></span><span class="frame-04-fxaa-finish-pass-aperture"><span class="frame-04-fxaa-finish-pass-aperture-fill"></span></span></div>
+      </section>
+      <section class="frame-04-fxaa-finish-pass-status" aria-label="finish pass outcome"><div class="frame-04-fxaa-finish-pass-status-label">OUTPUT</div><span class="frame-04-fxaa-finish-pass-status-text" id="frame-04-fxaa-finish-pass-status-text"></span><span class="frame-04-fxaa-finish-pass-cursor" id="frame-04-fxaa-finish-pass-cursor">_</span></section>
+    </div>
+  </div>
+  <script>
+    (() => { const tl=gsap.timeline({ paused:true }); const finished=document.getElementById("frame-04-fxaa-finish-pass-finished"), morph=document.getElementById("frame-04-fxaa-finish-pass-morph"), anchor=document.getElementById("frame-04-fxaa-finish-pass-anchor"), oldContent=morph.querySelector(".frame-04-fxaa-finish-pass-old"), newContent=morph.querySelector(".frame-04-fxaa-finish-pass-new"), anchorRect=anchor.getBoundingClientRect(), morphRect=morph.getBoundingClientRect(), dx=anchorRect.left-morphRect.left, dy=anchorRect.top-morphRect.top;
+      tl.fromTo(".frame-04-fxaa-finish-pass-kicker",{opacity:0,y:18},{opacity:1,y:0,duration:.28,ease:"power2.out"},.04); tl.fromTo(".frame-04-fxaa-finish-pass-meta",{opacity:0},{opacity:1,duration:.24,ease:"power1.out"},.15); tl.fromTo(".frame-04-fxaa-finish-pass-title",{opacity:0,y:24},{opacity:1,y:0,duration:.46,ease:"power3.out"},.1); tl.fromTo(".frame-04-fxaa-finish-pass-rule",{scaleX:0},{scaleX:1,duration:.3,ease:"power2.out"},.48); tl.fromTo(finished,{scale:.72,opacity:0},{scale:1,opacity:1,duration:.62,ease:"back.out(1.4)"},.48); tl.fromTo("#frame-04-fxaa-finish-pass-detector",{opacity:0,y:16},{opacity:1,y:0,duration:.36,ease:"power3.out"},1.45); tl.fromTo(".frame-04-fxaa-finish-pass-scan",{scaleY:0},{scaleY:1,duration:.5,ease:"power2.out"},1.76); tl.fromTo(".frame-04-fxaa-finish-pass-aperture-fill",{scaleX:0},{scaleX:1,duration:.58,ease:"power2.out"},1.72);
+      tl.to(finished,{scale:.72,opacity:0,duration:.4,ease:"power2.in"},2.28); tl.fromTo(morph,{scale:.72,opacity:0},{scale:1,opacity:1,duration:.62,ease:"back.out(1.4)"},2.54); tl.to(morph,{x:dx,y:dy,scale:1,backgroundColor:"#0D0D0F",duration:1.02,ease:"power2.inOut"},3.08); tl.to(oldContent,{opacity:0,duration:.4,ease:"power1.in"},3.08); tl.to(newContent,{opacity:1,duration:.4,ease:"power1.out"},3.32); tl.to(morph,{opacity:0,duration:.18,ease:"power1.in",immediateRender:false},4.02); tl.to(anchor,{opacity:1,duration:.18,ease:"power1.out"},4.02);
+      const detailLayers=[...document.querySelectorAll(".frame-04-fxaa-finish-pass-detail-offfocus")]; detailLayers.forEach((el,i)=>tl.to(el,{"--dof":`${7+i*2}px`,opacity:.58,duration:.82,ease:"power2.inOut"},4.18)); tl.to(detailLayers,{"--dof":"0px",opacity:1,duration:.48,ease:"power2.inOut"},5.35);
+      const states=[{t:0,text:"FAST PASS"},{t:.78,text:"DETAIL"},{t:1.3,text:"DETAIL SOFTER"}]; function textAt(t){for(let i=states.length-1;i>=0;i--){if(t>=states[i].t)return states[i].text;}return "";} const text=document.getElementById("frame-04-fxaa-finish-pass-status-text"),cursor=document.getElementById("frame-04-fxaa-finish-pass-cursor"),driver={t:0}; tl.fromTo(".frame-04-fxaa-finish-pass-status",{opacity:0,y:18},{opacity:1,y:0,duration:.34,ease:"power3.out"},6.08); tl.to(driver,{t:2.15,duration:2.15,ease:"none",onUpdate:()=>{text.textContent=textAt(driver.t);}},6.1); const blink={p:0}; tl.to(blink,{p:Math.PI*9,duration:2.15,ease:"none",onUpdate:()=>{cursor.style.opacity=Math.sin(blink.p)>0?"1":"0";}},6.1); window.__timelines=window.__timelines||{}; window.__timelines["04-fxaa-finish-pass"]=tl; })();
+  </script>
+</template>

@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_display_pipeline_series_v1",
+  "series": "SYSTEM TRACE",
+  "campaign": "DISPLAY PIPELINE",
+  "channel": "Pulse Gaming",
+  "format": "1080x1920",
+  "language": "en-GB",
+  "release_cadence": "one_per_day",
+  "episodes": [
+    {
+      "number": "08",
+      "slug": "screen-tearing",
+      "story_id": "system-trace-screen-tearing",
+      "project_dir": "videos/system-trace-screen-tearing",
+      "title": "Why Your Game Screen Splits in Two",
+      "thesis": "Screen tearing appears when one display refresh contains portions of different rendered frames.",
+      "frames": [
+        "That horizontal split is not your GPU failing. It is two finished frames sharing one display refresh.",
+        "A fixed-refresh screen scans a new image on its own clock, line by line from top to bottom.",
+        "The GPU finishes frames on a different schedule, and scene complexity changes that delivery time from moment to moment.",
+        "If the displayed buffer changes mid-scan, the upper lines can show one frame while lower lines show the next.",
+        "V-Sync waits for a refresh boundary, while variable refresh rate changes the display timing to meet a finished frame.",
+        "So tearing is a presentation mismatch, not a broken texture or low resolution. Two clocks simply crossed mid-picture."
+      ],
+      "sources": [
+        "https://developer.apple.com/documentation/quartzcore/cametallayer/displaysyncenabled",
+        "https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays",
+        "https://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/"
+      ]
+    },
+    {
+      "number": "09",
+      "slug": "vsync-latency",
+      "story_id": "system-trace-vsync-latency",
+      "project_dir": "videos/system-trace-vsync-latency",
+      "title": "Why V-Sync Can Make Controls Feel Slower",
+      "thesis": "V-Sync can add waiting because a completed frame must meet a display refresh boundary.",
+      "frames": [
+        "V-Sync can remove the visible tear, yet the same setting may make a fast game feel slightly less immediate.",
+        "With synchronisation enabled, a completed frame is presented on the display's refresh boundary instead of arriving whenever it finishes.",
+        "Miss that boundary by a fraction and the previous image may remain visible until another refresh opportunity arrives.",
+        "At sixty hertz one refresh lasts about sixteen point seven milliseconds. At one hundred and twenty, it is roughly eight point three.",
+        "A deep frame queue can add more waiting because fresh input sits behind work the CPU prepared earlier.",
+        "V-Sync is therefore a trade-off, not a fixed lag number: tear-free presentation in exchange for timing that needs careful pacing."
+      ],
+      "sources": [
+        "https://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/",
+        "https://learn.microsoft.com/en-us/windows/win32/direct3d12/swap-chains",
+        "https://developer.nvidia.com/blog/advanced-api-performance-swap-chains/"
+      ]
+    },
+    {
+      "number": "10",
+      "slug": "variable-refresh-rate",
+      "story_id": "system-trace-variable-refresh-rate",
+      "project_dir": "videos/system-trace-variable-refresh-rate",
+      "title": "How VRR Makes a Monitor Wait for the GPU",
+      "thesis": "Variable refresh rate lets a compatible display follow GPU frame delivery inside a supported timing window.",
+      "frames": [
+        "Variable refresh rate does not make the GPU faster. It changes when a compatible monitor begins its next refresh.",
+        "A fixed display keeps ticking at one rate, even while game frames finish early, late or somewhere between.",
+        "With VRR, the monitor can refresh when the next frame is ready, reducing repeated frames, stutter and tearing inside its range.",
+        "That range has limits. A display might vary between sixty-four and one hundred and twenty hertz, not from zero to infinity.",
+        "Fall below the lower bound and frames may be repeated. Exceed the top and familiar fixed-refresh constraints return.",
+        "VRR is therefore timing flexibility, not free performance. The GPU, display, connection and presentation path must all support it."
+      ],
+      "sources": [
+        "https://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/",
+        "https://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/",
+        "https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays"
+      ]
+    },
+    {
+      "number": "11",
+      "slug": "hdr-tone-mapping",
+      "story_id": "system-trace-hdr-tone-mapping",
+      "project_dir": "videos/system-trace-hdr-tone-mapping",
+      "title": "Why HDR Games Still Need Tone Mapping",
+      "thesis": "Tone mapping adapts a game's wide luminance range to the real brightness limits of the attached display.",
+      "frames": [
+        "An HDR game can calculate brighter highlights and deeper contrast than one real screen can reproduce at the same time.",
+        "The renderer knows the scene's light values, while the display reports minimum, maximum and full-frame brightness limits.",
+        "Tone mapping bends that wide range into the output range, deciding how highlights, mid-tones and dark detail share the available brightness.",
+        "Simply clipping everything above the panel limit would turn bright clouds, sparks or reflections into flat white patches.",
+        "Different displays have different capabilities, so the same scene may need a different curve to preserve its intended balance.",
+        "HDR is not just more brightness. Tone mapping is the controlled compromise that decides which light survives on this screen."
+      ],
+      "sources": [
+        "https://learn.microsoft.com/en-us/windows/win32/direct2d/hdr-tone-map-effect",
+        "https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/system/xdisplay/structs/xdisplayhdrmodeinfo",
+        "https://vesa.org/about-displayhdr/"
+      ]
+    },
+    {
+      "number": "12",
+      "slug": "anti-aliasing",
+      "story_id": "system-trace-anti-aliasing",
+      "project_dir": "videos/system-trace-anti-aliasing",
+      "title": "How Anti-Aliasing Removes Stair-Step Edges",
+      "thesis": "Anti-aliasing estimates partial coverage or combines image evidence so diagonal geometry does not collapse into hard pixel steps.",
+      "frames": [
+        "A perfectly straight diagonal can look like a staircase in a game because the screen still draws a square pixel grid.",
+        "Without anti-aliasing, each edge pixel becomes fully covered or fully empty, creating a hard sequence of visible steps.",
+        "MSAA checks several sub-pixel coverage positions, letting an edge pixel represent a blend instead of a binary answer.",
+        "FXAA searches the finished image for jagged patterns and smooths them quickly, though fine detail can become softer.",
+        "Temporal methods borrow evidence from earlier frames, improving stability but risking ghosting when history no longer matches motion.",
+        "So anti-aliasing is not one filter. Every method trades cleaner edges against cost, softness or artefacts across time."
+      ],
+      "sources": [
+        "https://learn.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-rasterizer-stage-rules",
+        "https://dev.epicgames.com/documentation/en-us/unreal-engine/cinematic-rendering-image-quality-settings-in-unreal-engine"
+      ]
+    },
+    {
+      "number": "13",
+      "slug": "motion-blur",
+      "story_id": "system-trace-motion-blur",
+      "project_dir": "videos/system-trace-motion-blur",
+      "title": "Why Motion Blur Can Make 30 FPS Look Smoother",
+      "thesis": "Motion blur spreads a moving object across its path, softening visible jumps without creating new simulation updates.",
+      "frames": [
+        "Motion blur cannot create extra frames, yet it can make the movement between existing frames feel less harsh.",
+        "A real camera gathers light while its shutter is open, so a fast object leaves a streak across that exposure.",
+        "Games often estimate the same path with per-pixel velocity, then sample and blend colour along the direction of travel.",
+        "That spread hides some of the step between two positions, which can make thirty frames per second look more continuous.",
+        "It does not update controls sooner, repair a stutter or perfectly handle every reflection, shadow and crossing object.",
+        "Motion blur is therefore visual glue, not more performance. It can soften the gap, while the game still updates at the same rate."
+      ],
+      "sources": [
+        "https://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-27-motion-blur-post-processing-effect",
+        "https://dev.epicgames.com/documentation/en-us/unreal-engine/setting-up-motion-blur",
+        "https://dev.epicgames.com/documentation/en-us/unreal-engine/introduction-to-performance-profiling-and-configuration-in-unreal-engine"
+      ]
+    },
+    {
+      "number": "14",
+      "slug": "frame-generation",
+      "story_id": "system-trace-frame-generation",
+      "project_dir": "videos/system-trace-frame-generation",
+      "title": "How Frame Generation Creates In-Between Frames",
+      "thesis": "Frame generation synthesises intermediate images between rendered frames without adding new game simulation or input samples.",
+      "frames": [
+        "Frame generation can make motion look much smoother, but the new image between two frames was not fully rendered by the game.",
+        "The system examines consecutive frames plus motion evidence such as optical flow, motion vectors, depth and camera data.",
+        "It predicts where visible pixels belong between those moments, then synthesises an intermediate image for the display.",
+        "The displayed frame rate rises, while game simulation and input sampling still follow the underlying rendered frames.",
+        "Interpolation also needs careful pacing and can distort rapid motion, scene changes or interface elements when its evidence is weak.",
+        "Frame generation is best understood as visual interpolation: smoother presentation built on top of a healthy base frame rate."
+      ],
+      "sources": [
+        "https://gpuopen.com/manuals/fidelityfx_sdk/techniques/super-resolution-interpolation/",
+        "https://gpuopen.com/amd-fsr-framegeneration/",
+        "https://developer.nvidia.com/rtx/dlss"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_publish_pack_v1",
+  "story_id": "system-trace-anti-aliasing",
+  "project_id": "system-trace-anti-aliasing",
+  "platform": "youtube_shorts",
+  "review_scope": "PRIVATE_FIRST_SCHEDULED_PUBLICATION",
+  "title": "How Anti-Aliasing Removes Stair-Step Edges",
+  "description": "A diagonal edge has to fit a square pixel grid, which creates visible steps. This short animation compares sub-pixel coverage, screen-space smoothing and temporal history, then explains why MSAA, FXAA and temporal methods trade cost against softness or artefacts.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-rasterizer-stage-rules\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/cinematic-rendering-image-quality-settings-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#AntiAliasing #PCGaming #SystemTrace",
+  "tags": [
+    "anti-aliasing",
+    "MSAA",
+    "FXAA",
+    "TAA",
+    "gaming graphics",
+    "PC gaming",
+    "System Trace",
+    "gaming Shorts"
+  ],
+  "captions": {
+    "file": "captions.srt",
+    "sha256": "572d1abbaa79d6439b21d863589cbd0314f71e93c20aba6a44bc5026a27b9cf7",
+    "clean_manual_captions_required": true
+  },
+  "synthetic_media_required": true,
+  "altered_synthetic_disclosure_required": true,
+  "altered_synthetic_disclosure_setting": "YES",
+  "public_publish_authorised": true,
+  "unlisted_publish_authorised": false,
+  "scheduler_authorised": true,
+  "database_mutation_authorised": false,
+  "playlist_mutation_authorised": false,
+  "thumbnail_upload_authorised": false,
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "rights_placement_blocker_count": 0,
+  "rights_clearance_claimed": false,
+  "scheduled_publish_at_utc": "2026-08-26T17:00:00.000Z",
+  "youtube_upload_request": {
+    "schema_version": 1,
+    "closed": true,
+    "authority_scope": "EXACT_PRIVATE_FIRST_SCHEDULE_REQUEST_SHAPE_ONLY",
+    "publish_authority": "EXTERNALLY_EVALUATED",
+    "video_file": "renders/system-trace-anti-aliasing.mp4",
+    "video_sha256": "c174e3ca7c20847b0350671538f141f02edcbcc7aa96f8446109d81bd7cff164",
+    "notifySubscribers": false,
+    "snippet": {
+      "title": "How Anti-Aliasing Removes Stair-Step Edges",
+      "description": "A diagonal edge has to fit a square pixel grid, which creates visible steps. This short animation compares sub-pixel coverage, screen-space smoothing and temporal history, then explains why MSAA, FXAA and temporal methods trade cost against softness or artefacts.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-rasterizer-stage-rules\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/cinematic-rendering-image-quality-settings-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#AntiAliasing #PCGaming #SystemTrace",
+      "tags": [
+        "anti-aliasing",
+        "MSAA",
+        "FXAA",
+        "TAA",
+        "gaming graphics",
+        "PC gaming",
+        "System Trace",
+        "gaming Shorts"
+      ],
+      "categoryId": "20",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "status": {
+      "privacyStatus": "private",
+      "selfDeclaredMadeForKids": false,
+      "containsSyntheticMedia": true,
+      "license": "youtube",
+      "embeddable": true,
+      "publicStatsViewable": true
+    },
+    "paidProductPlacementDetails": {
+      "hasPaidProductPlacement": false
+    },
+    "captions": {
+      "file": "captions.srt",
+      "sha256": "572d1abbaa79d6439b21d863589cbd0314f71e93c20aba6a44bc5026a27b9cf7",
+      "language": "en-GB",
+      "name": "English (United Kingdom)",
+      "isDraft": false
+    },
+    "cover_selection": {
+      "selection_mode": "in_video_frame",
+      "frame_time_seconds": 1.5,
+      "custom_thumbnail_upload_allowed": false,
+      "application_status": "NOT_APPLIED"
+    }
+  }
+}

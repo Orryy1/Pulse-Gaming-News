@@ -1,0 +1,388 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-weight: 300 900;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+    }
+
+    .f06-presentation-mismatch-ground { background: #0D0D0F; }
+
+    .f06-presentation-mismatch-grid { opacity: 0.52; }
+
+    .f06-presentation-mismatch-grid svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .f06-presentation-mismatch-grid line {
+      stroke: #282726;
+      stroke-width: 1;
+    }
+
+    .f06-presentation-mismatch-chrome {
+      position: absolute;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 5.4cqh;
+      height: 5.2cqh;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      font-family: "IBM Plex Mono";
+      font-size: 1.15cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+    }
+
+    .f06-presentation-mismatch-chrome-left,
+    .f06-presentation-mismatch-chrome-right {
+      position: absolute;
+      top: 1.55cqh;
+    }
+
+    .f06-presentation-mismatch-chrome-left { left: 0; }
+    .f06-presentation-mismatch-chrome-right { right: 0; color: #FF6B1A; }
+
+    .f06-presentation-mismatch-zoom-outer {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      transform-origin: 50% 50%;
+    }
+
+    .f06-presentation-mismatch-zoom-inner {
+      position: absolute;
+      inset: 0;
+    }
+
+    .f06-presentation-mismatch-kicker {
+      position: absolute;
+      top: 15.0cqh;
+      left: 5.5cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 1.12cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #FF6B1A;
+    }
+
+    .f06-presentation-mismatch-kicker-rule {
+      position: absolute;
+      top: 18.7cqh;
+      left: 5.5cqw;
+      width: 5.1cqw;
+      height: 2px;
+      background: #FF6B1A;
+    }
+
+    .f06-presentation-mismatch-rail-stage {
+      position: absolute;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 22.5cqh;
+      height: 29.5cqh;
+    }
+
+    .f06-presentation-mismatch-rail-stage svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .f06-presentation-mismatch-rail-stage path {
+      fill: none;
+      stroke-width: 4;
+      stroke-linecap: square;
+    }
+
+    .f06-presentation-mismatch-display-path { stroke: #F0F0F0; }
+    .f06-presentation-mismatch-gpu-path { stroke: #FF6B1A; }
+
+    .f06-presentation-mismatch-rail-label {
+      position: absolute;
+      left: 0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.12cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+    }
+
+    .f06-presentation-mismatch-display-label { top: 1.2cqh; color: #F0F0F0; }
+    .f06-presentation-mismatch-gpu-label { top: 21.3cqh; color: #FF6B1A; }
+
+    .f06-presentation-mismatch-seam {
+      position: absolute;
+      left: 49.35%;
+      top: 13.9cqh;
+      width: 3.2cqw;
+      height: 3.2cqw;
+      background: #FF6B1A;
+      transform-origin: 50% 50%;
+    }
+
+    .f06-presentation-mismatch-seam::before,
+    .f06-presentation-mismatch-seam::after {
+      content: "";
+      position: absolute;
+      background: #0D0D0F;
+    }
+
+    .f06-presentation-mismatch-seam::before {
+      left: 0.72cqw;
+      right: 0.72cqw;
+      top: 0.72cqw;
+      bottom: 0.72cqw;
+    }
+
+    .f06-presentation-mismatch-seam::after {
+      left: 1.4cqw;
+      top: -1.4cqw;
+      width: 0.45cqw;
+      height: 6cqw;
+    }
+
+    .f06-presentation-mismatch-seam-label {
+      position: absolute;
+      top: 18.5cqh;
+      left: 43.1%;
+      font-family: "IBM Plex Mono";
+      font-size: 0.98cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #FF6B1A;
+    }
+
+    .f06-presentation-mismatch-diagnostic-wrap {
+      position: absolute;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 54.0cqh;
+      height: 24.2cqh;
+    }
+
+    .f06-presentation-mismatch-diagnostic-card {
+      position: absolute;
+      inset: 0;
+      border-top: 2px solid #FF6B1A;
+      background: #1A1918;
+      transform-origin: 50% 50%;
+      z-index: 2;
+    }
+
+    .f06-presentation-mismatch-diagnostic-eyebrow {
+      position: absolute;
+      top: 2.2cqh;
+      left: 2.4cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 1.1cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #FF6B1A;
+    }
+
+    .f06-presentation-mismatch-title {
+      position: absolute;
+      left: 2.2cqw;
+      right: 2.2cqw;
+      top: 6.4cqh;
+      margin: 0;
+      font-size: 7.2cqw;
+      font-weight: 900;
+      line-height: 0.86;
+      letter-spacing: -0.05em;
+      text-transform: lowercase;
+    }
+
+    .f06-presentation-mismatch-title-word {
+      display: inline-block;
+      margin-right: 1.55cqw;
+    }
+
+    .f06-presentation-mismatch-title-word:last-child {
+      margin-right: 0;
+      color: #FF6B1A;
+    }
+
+    .f06-presentation-mismatch-card-line {
+      position: absolute;
+      left: 2.4cqw;
+      right: 2.4cqw;
+      bottom: 5.15cqh;
+      height: 1px;
+      background: #282726;
+    }
+
+    .f06-presentation-mismatch-card-summary {
+      position: absolute;
+      left: 2.4cqw;
+      bottom: 1.95cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.02cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #F0F0F0;
+    }
+
+    .f06-presentation-mismatch-card-system {
+      position: absolute;
+      right: 2.4cqw;
+      bottom: 1.95cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.02cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #FF6B1A;
+    }
+
+    .f06-presentation-mismatch-footer {
+      position: absolute;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 80.5cqh;
+      height: 1px;
+      border-top: 1px solid #282726;
+    }
+  </style>
+
+  <div id="root" data-composition-id="06-presentation-mismatch" data-width="1080" data-height="1920">
+    <div class="clip f06-presentation-mismatch-ground" data-start="0" data-duration="8.6" data-track-index="0"></div>
+    <div class="clip f06-presentation-mismatch-grid" data-start="0" data-duration="8.6" data-track-index="1" aria-hidden="true">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+        <line x1="0" y1="13" x2="100" y2="13"></line>
+        <line x1="0" y1="26" x2="100" y2="26"></line>
+        <line x1="0" y1="52" x2="100" y2="52"></line>
+        <line x1="0" y1="80" x2="100" y2="80"></line>
+        <line x1="11" y1="0" x2="11" y2="83"></line>
+        <line x1="89" y1="0" x2="89" y2="83"></line>
+      </svg>
+    </div>
+
+    <div class="clip f06-presentation-mismatch-chrome" data-start="0" data-duration="8.6" data-track-index="2">
+      <span class="f06-presentation-mismatch-chrome-left">SYSTEM TRACE</span>
+      <span class="f06-presentation-mismatch-chrome-right">DISPLAY / DIAGNOSIS</span>
+    </div>
+
+    <div class="clip f06-presentation-mismatch-zoom-outer" data-start="0" data-duration="8.6" data-track-index="3">
+      <div class="f06-presentation-mismatch-zoom-inner">
+        <div class="f06-presentation-mismatch-kicker">PRESENTATION PATH</div>
+        <div class="f06-presentation-mismatch-kicker-rule" aria-hidden="true"></div>
+        <div class="f06-presentation-mismatch-rail-stage">
+          <svg viewBox="0 0 1000 540" preserveAspectRatio="none" aria-hidden="true">
+            <path class="f06-presentation-mismatch-display-path" d="M 30 120 L 970 420"></path>
+            <path class="f06-presentation-mismatch-gpu-path" d="M 30 420 L 970 120"></path>
+          </svg>
+          <div class="f06-presentation-mismatch-rail-label f06-presentation-mismatch-display-label">DISPLAY CLOCK</div>
+          <div class="f06-presentation-mismatch-rail-label f06-presentation-mismatch-gpu-label">GPU DELIVERY</div>
+          <div class="f06-presentation-mismatch-seam" aria-hidden="true"></div>
+          <div class="f06-presentation-mismatch-seam-label">CROSS</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="clip f06-presentation-mismatch-diagnostic-wrap" data-start="0" data-duration="8.6" data-track-index="4">
+      <div class="f06-presentation-mismatch-diagnostic-card">
+        <div class="f06-presentation-mismatch-diagnostic-eyebrow">FINAL DIAGNOSIS</div>
+        <h1 class="f06-presentation-mismatch-title" aria-label="presentation mismatch">
+          <span class="f06-presentation-mismatch-title-word">presentation</span><span class="f06-presentation-mismatch-title-word">mismatch</span>
+        </h1>
+        <div class="f06-presentation-mismatch-card-line" aria-hidden="true"></div>
+        <div class="f06-presentation-mismatch-card-summary">TWO CLOCKS / ONE SEAM</div>
+        <div class="f06-presentation-mismatch-card-system">SYSTEM TRACE // 08</div>
+      </div>
+    </div>
+
+    <div class="clip f06-presentation-mismatch-footer" data-start="0" data-duration="8.6" data-track-index="5" aria-hidden="true"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const id = "f06-presentation-mismatch";
+      const root = document.getElementById("root");
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["06-presentation-mismatch"] = tl;
+
+      const chrome = root.querySelector(".f06-presentation-mismatch-chrome");
+      const kicker = root.querySelector(".f06-presentation-mismatch-kicker");
+      const kickerRule = root.querySelector(".f06-presentation-mismatch-kicker-rule");
+      const displayPath = root.querySelector(".f06-presentation-mismatch-display-path");
+      const gpuPath = root.querySelector(".f06-presentation-mismatch-gpu-path");
+      [displayPath, gpuPath].forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      const displayLabel = root.querySelector(".f06-presentation-mismatch-display-label");
+      const gpuLabel = root.querySelector(".f06-presentation-mismatch-gpu-label");
+      const seam = root.querySelector(".f06-presentation-mismatch-seam");
+      const seamLabel = root.querySelector(".f06-presentation-mismatch-seam-label");
+      const zoomOuter = root.querySelector(".f06-presentation-mismatch-zoom-outer");
+      const zoomInner = root.querySelector(".f06-presentation-mismatch-zoom-inner");
+      const rootRect = root.getBoundingClientRect();
+      const seamRect = seam.getBoundingClientRect();
+      const seamOffsetX = seamRect.left + seamRect.width / 2 - (rootRect.left + rootRect.width / 2);
+      const seamOffsetY = seamRect.top + seamRect.height / 2 - (rootRect.top + rootRect.height / 2);
+      const maxScale = Math.min((rootRect.width * 0.88) / seamRect.width, (rootRect.height * 0.88) / seamRect.height);
+      const zoomScale = Math.min(1.22, maxScale);
+
+      tl.fromTo(chrome, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0);
+      tl.fromTo(kicker, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" }, 0.16);
+      tl.fromTo(kickerRule, { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power3.out" }, 0.34);
+      tl.fromTo(displayLabel, { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.42, ease: "power3.out" }, 0.52);
+      tl.to(displayPath, { strokeDashoffset: 0, duration: 1.35, ease: "power2.out" }, 0.72);
+      tl.fromTo(gpuLabel, { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.42, ease: "power3.out" }, 1.38);
+      tl.to(gpuPath, { strokeDashoffset: 0, duration: 1.35, ease: "power2.out" }, 1.55);
+      tl.fromTo(seam, { opacity: 0, scale: 0.55 }, { opacity: 1, scale: 1, duration: 0.45, ease: "power3.out" }, 2.38);
+      tl.fromTo(seamLabel, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.36, ease: "power3.out" }, 2.58);
+
+      tl.to(zoomOuter, { scale: zoomScale, duration: 1.45, ease: "power3.inOut" }, 2.9);
+      tl.to(zoomInner, { x: -seamOffsetX, y: -seamOffsetY, duration: 1.45, ease: "power3.inOut" }, 2.9);
+      tl.to([displayLabel, gpuLabel, seamLabel], { scale: 0.72, opacity: 0, duration: 0.42, ease: "power2.in" }, 4.55);
+
+      const card = root.querySelector(".f06-presentation-mismatch-diagnostic-card");
+      const titleWords = [
+        { target: root.querySelector(".f06-presentation-mismatch-title-word:nth-child(1)"), chars: 12 },
+        { target: root.querySelector(".f06-presentation-mismatch-title-word:nth-child(2)"), chars: 8 }
+      ];
+      let wordCursor = 5.96;
+      const titleTimeline = titleWords.map((item) => {
+        const duration = 0.22 + item.chars * 0.027;
+        const start = wordCursor;
+        wordCursor += duration + 0.11;
+        return { ...item, start, duration };
+      });
+      tl.fromTo(card, { opacity: 0, scale: 0.72 }, { opacity: 1, scale: 1, duration: 0.68, ease: "power3.out" }, 5.76);
+      titleTimeline.forEach((item) => {
+        tl.fromTo(item.target, { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: item.duration, ease: "power3.out" }, item.start);
+      });
+      tl.fromTo(root.querySelector(".f06-presentation-mismatch-diagnostic-eyebrow"), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 6.82);
+      tl.fromTo(root.querySelector(".f06-presentation-mismatch-card-line"), { scaleX: 0 }, { scaleX: 1, duration: 0.42, ease: "power3.out" }, 7.04);
+      tl.fromTo(root.querySelectorAll(".f06-presentation-mismatch-card-summary, .f06-presentation-mismatch-card-system"), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out", stagger: 0.1 }, 7.2);
+    })();
+  </script>
+</template>

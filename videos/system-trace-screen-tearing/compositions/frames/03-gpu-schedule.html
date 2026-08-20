@@ -1,0 +1,391 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-weight: 300 900;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+    }
+
+    .f03-gpu-schedule-ground {
+      background: #0D0D0F;
+    }
+
+    .f03-gpu-schedule-grid {
+      opacity: 0.52;
+      overflow: hidden;
+    }
+
+    .f03-gpu-schedule-grid svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .f03-gpu-schedule-grid line {
+      stroke: #282726;
+      stroke-width: 1;
+    }
+
+    .f03-gpu-schedule-chrome {
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 5.4cqh;
+      bottom: auto;
+      height: 5.2cqh;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      font-family: "IBM Plex Mono";
+      font-size: 1.15cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #F0F0F0;
+    }
+
+    .f03-gpu-schedule-chrome-left,
+    .f03-gpu-schedule-chrome-right {
+      position: absolute;
+      top: 1.55cqh;
+    }
+
+    .f03-gpu-schedule-chrome-left { left: 0; }
+    .f03-gpu-schedule-chrome-right { right: 0; color: #FF6B1A; }
+
+    .f03-gpu-schedule-heading {
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 15.4cqh;
+      bottom: auto;
+      height: 24cqh;
+    }
+
+    .f03-gpu-schedule-kicker {
+      margin: 0 0 2.1cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.15cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #FF6B1A;
+    }
+
+    .f03-gpu-schedule-rule {
+      width: 4.8cqw;
+      height: 2px;
+      margin-bottom: 2.1cqh;
+      background: #FF6B1A;
+    }
+
+    .f03-gpu-schedule-title {
+      margin: 0;
+      max-width: 82cqw;
+      font-size: 9.4cqw;
+      font-weight: 900;
+      line-height: 0.88;
+      letter-spacing: -0.05em;
+      text-transform: lowercase;
+    }
+
+    .f03-gpu-schedule-title-word {
+      display: inline-block;
+      margin-right: 1.65cqw;
+    }
+
+    .f03-gpu-schedule-title-word:last-child {
+      margin-right: 0;
+      color: #FF6B1A;
+    }
+
+    .f03-gpu-schedule-rail-shell {
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 43.2cqh;
+      bottom: auto;
+      height: 36cqh;
+      border-top: 1px solid #282726;
+    }
+
+    .f03-gpu-schedule-rail-note {
+      position: absolute;
+      top: 2.6cqh;
+      left: 0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.05cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #504B48;
+    }
+
+    .f03-gpu-schedule-rail {
+      position: absolute;
+      top: 21.7cqh;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #504B48;
+      transform-origin: left center;
+    }
+
+    .f03-gpu-schedule-tick {
+      position: absolute;
+      top: 20.1cqh;
+      height: 3.2cqh;
+      width: 1px;
+      background: #282726;
+    }
+
+    .f03-gpu-schedule-tick-a { left: 10%; }
+    .f03-gpu-schedule-tick-b { left: 39%; }
+    .f03-gpu-schedule-tick-c { left: 78%; }
+
+    .f03-gpu-schedule-gap {
+      position: absolute;
+      top: 25.2cqh;
+      height: 1px;
+      background: #FF6B1A;
+      transform-origin: left center;
+    }
+
+    .f03-gpu-schedule-gap-a { left: 13%; width: 23%; }
+    .f03-gpu-schedule-gap-b { left: 42%; width: 32%; }
+
+    .f03-gpu-schedule-gap-label {
+      position: absolute;
+      top: 27.1cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 0.98cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #504B48;
+    }
+
+    .f03-gpu-schedule-gap-label-a { left: 16%; }
+    .f03-gpu-schedule-gap-label-b { left: 54%; }
+
+    .f03-gpu-schedule-card {
+      position: absolute;
+      top: 10.2cqh;
+      width: 16.5cqw;
+      height: 9.2cqh;
+      border-top: 1px solid #F0F0F0;
+      background: #1A1918;
+    }
+
+    .f03-gpu-schedule-card-a { left: 2.2%; }
+    .f03-gpu-schedule-card-b { left: 31.2%; }
+    .f03-gpu-schedule-card-c { left: 70.2%; }
+
+    .f03-gpu-schedule-card-label {
+      position: absolute;
+      top: 1.55cqh;
+      left: 1.2cqw;
+      font-family: "IBM Plex Mono";
+      font-size: 1.05cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #F0F0F0;
+    }
+
+    .f03-gpu-schedule-card-fill {
+      position: absolute;
+      left: 0;
+      right: auto;
+      bottom: 1.55cqh;
+      width: 100%;
+      height: 0.95cqh;
+      background: #FF6B1A;
+      transform-origin: left center;
+    }
+
+    .f03-gpu-schedule-complexity {
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 75.6cqh;
+      bottom: auto;
+      height: 5.8cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.25cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #504B48;
+    }
+
+    .f03-gpu-schedule-complexity-prefix { color: #504B48; }
+
+    .f03-gpu-schedule-word {
+      display: inline-block;
+      margin-left: 0.75cqw;
+      color: #504B48;
+      text-shadow: 0 0 0 rgba(255, 107, 26, 0);
+      transform-origin: 50% 50%;
+    }
+
+    .f03-gpu-schedule-footer {
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 80.5cqh;
+      bottom: auto;
+      height: 1px;
+      border-top: 1px solid #282726;
+    }
+  </style>
+
+  <div id="root" data-composition-id="03-gpu-schedule" data-width="1080" data-height="1920" data-duration="9.4">
+    <div class="clip f03-gpu-schedule-ground" data-start="0" data-duration="9.4" data-track-index="0"></div>
+
+    <div class="clip f03-gpu-schedule-grid" data-start="0" data-duration="9.4" data-track-index="1" aria-hidden="true">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+        <line x1="0" y1="14" x2="100" y2="14"></line>
+        <line x1="0" y1="42" x2="100" y2="42"></line>
+        <line x1="0" y1="70" x2="100" y2="70"></line>
+        <line x1="11" y1="0" x2="11" y2="83"></line>
+        <line x1="50" y1="0" x2="50" y2="83"></line>
+        <line x1="89" y1="0" x2="89" y2="83"></line>
+      </svg>
+    </div>
+
+    <div class="clip f03-gpu-schedule-chrome" data-start="0" data-duration="9.4" data-track-index="2">
+      <span class="f03-gpu-schedule-chrome-left">SYSTEM TRACE</span>
+      <span class="f03-gpu-schedule-chrome-right">GPU / DELIVERY</span>
+    </div>
+
+    <div class="clip f03-gpu-schedule-heading" data-start="0" data-duration="9.4" data-track-index="3">
+      <div class="f03-gpu-schedule-kicker">TIMING FIELD</div>
+      <div class="f03-gpu-schedule-rule" aria-hidden="true"></div>
+      <h1 class="f03-gpu-schedule-title" aria-label="gpu delivery">
+        <span class="f03-gpu-schedule-title-word">gpu</span><span class="f03-gpu-schedule-title-word">delivery</span>
+      </h1>
+    </div>
+
+    <div class="clip f03-gpu-schedule-rail-shell" data-start="0" data-duration="9.4" data-track-index="4">
+      <div class="f03-gpu-schedule-rail-note">COMPLETED FRAMES</div>
+      <div class="f03-gpu-schedule-rail" aria-hidden="true"></div>
+      <div class="f03-gpu-schedule-tick f03-gpu-schedule-tick-a" aria-hidden="true"></div>
+      <div class="f03-gpu-schedule-tick f03-gpu-schedule-tick-b" aria-hidden="true"></div>
+      <div class="f03-gpu-schedule-tick f03-gpu-schedule-tick-c" aria-hidden="true"></div>
+      <div class="f03-gpu-schedule-gap f03-gpu-schedule-gap-a" aria-hidden="true"></div>
+      <div class="f03-gpu-schedule-gap f03-gpu-schedule-gap-b" aria-hidden="true"></div>
+      <div class="f03-gpu-schedule-gap-label f03-gpu-schedule-gap-label-a">SHORT GAP</div>
+      <div class="f03-gpu-schedule-gap-label f03-gpu-schedule-gap-label-b">WIDER GAP</div>
+      <div class="f03-gpu-schedule-card f03-gpu-schedule-card-a">
+        <span class="f03-gpu-schedule-card-label">FRAME A</span>
+        <span class="f03-gpu-schedule-card-fill" aria-hidden="true"></span>
+      </div>
+      <div class="f03-gpu-schedule-card f03-gpu-schedule-card-b">
+        <span class="f03-gpu-schedule-card-label">FRAME B</span>
+        <span class="f03-gpu-schedule-card-fill" aria-hidden="true"></span>
+      </div>
+      <div class="f03-gpu-schedule-card f03-gpu-schedule-card-c">
+        <span class="f03-gpu-schedule-card-label">FRAME C</span>
+        <span class="f03-gpu-schedule-card-fill" aria-hidden="true"></span>
+      </div>
+    </div>
+
+    <div class="clip f03-gpu-schedule-complexity" data-start="0" data-duration="9.4" data-track-index="5">
+      <span class="f03-gpu-schedule-complexity-prefix">RENDER LOAD /</span>
+      <span class="f03-gpu-schedule-word" data-word="complex">COMPLEX</span>
+      <span class="f03-gpu-schedule-word" data-word="scene">SCENE</span>
+    </div>
+
+    <div class="clip f03-gpu-schedule-footer" data-start="0" data-duration="9.4" data-track-index="6" aria-hidden="true"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const id = "f03-gpu-schedule";
+      const root = document.getElementById("root");
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["03-gpu-schedule"] = tl;
+
+      const wordItems = [
+        { target: root.querySelector(".f03-gpu-schedule-title-word:nth-child(1)"), chars: 3 },
+        { target: root.querySelector(".f03-gpu-schedule-title-word:nth-child(2)"), chars: 8 }
+      ];
+      let wordCursor = 0;
+      const wordTimeline = wordItems.map((item) => {
+        const duration = 0.28 + item.chars * 0.035;
+        const start = wordCursor;
+        wordCursor += duration + 0.08;
+        return { ...item, start, duration };
+      });
+
+      wordTimeline.forEach((item) => {
+        tl.fromTo(item.target, { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: item.duration, ease: "power3.out" }, item.start);
+      });
+      tl.fromTo(root.querySelector(".f03-gpu-schedule-kicker"), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" }, 0.12);
+      tl.fromTo(root.querySelector(".f03-gpu-schedule-rule"), { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power3.out" }, 0.3);
+      tl.fromTo(root.querySelector(".f03-gpu-schedule-rail"), { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "power3.out" }, 1.0);
+      tl.fromTo(root.querySelectorAll(".f03-gpu-schedule-tick"), { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out", stagger: 0.14 }, 1.4);
+      tl.fromTo(root.querySelector(".f03-gpu-schedule-rail-note"), { opacity: 0, y: 9 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 1.68);
+
+      const arrivals = [
+        { card: ".f03-gpu-schedule-card-a", gap: ".f03-gpu-schedule-gap-a", label: ".f03-gpu-schedule-gap-label-a", start: 2.7 },
+        { card: ".f03-gpu-schedule-card-b", gap: ".f03-gpu-schedule-gap-a", label: ".f03-gpu-schedule-gap-label-a", start: 3.8 },
+        { card: ".f03-gpu-schedule-card-c", gap: ".f03-gpu-schedule-gap-b", label: ".f03-gpu-schedule-gap-label-b", start: 5.25 }
+      ];
+      arrivals.forEach((arrival, index) => {
+        const card = root.querySelector(arrival.card);
+        const fill = card.querySelector(".f03-gpu-schedule-card-fill");
+        tl.fromTo(card, { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.58, ease: "power3.out" }, arrival.start);
+        tl.fromTo(fill, { scaleX: 0 }, { scaleX: 1, duration: 0.62, ease: "power3.out" }, arrival.start + 0.16);
+        if (index === 0 || index === 2) {
+          tl.fromTo(root.querySelector(arrival.gap), { scaleX: 0 }, { scaleX: 1, duration: 0.62, ease: "power3.out" }, arrival.start + 0.32);
+          tl.fromTo(root.querySelector(arrival.label), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.38, ease: "power3.out" }, arrival.start + 0.55);
+        }
+      });
+
+      const timings = {
+        complex: { start: 0.14, end: 0.65 },
+        scene: { start: 0.78, end: 1.74 }
+      };
+      const words = root.querySelectorAll(".f03-gpu-schedule-word");
+      const driver = { t: 0 };
+      const attack = 0.16;
+      const release = 0.36;
+      const rest = 0.16;
+      const envelope = (time, start, end) => {
+        if (time < start) return 0;
+        if (time < end) return Math.min((time - start) / attack, 1);
+        const releaseEnd = end + release;
+        if (time < releaseEnd) return 1 - ((time - end) / release) * (1 - rest);
+        return rest;
+      };
+      tl.fromTo(root.querySelector(".f03-gpu-schedule-complexity"), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 6.14);
+      tl.to(driver, {
+        t: 2.2,
+        duration: 2.2,
+        ease: "none",
+        onUpdate: () => {
+          words.forEach((word) => {
+            const timing = timings[word.dataset.word];
+            const strength = envelope(driver.t, timing.start, timing.end);
+            word.style.color = strength > 0.52 ? "#F0F0F0" : "#504B48";
+            word.style.textShadow = `0 0 ${30 * strength}px rgba(255, 107, 26, ${0.76 * strength})`;
+            word.style.transform = `scale(${1 + 0.16 * strength})`;
+          });
+        }
+      }, 6.2);
+    })();
+  </script>
+</template>

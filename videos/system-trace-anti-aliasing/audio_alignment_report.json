@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_display_audio_alignment_v1",
+  "story_id": "system-trace-anti-aliasing",
+  "verdict": "GREEN",
+  "source": "local_whisper_word_alignment",
+  "frame_count": 6,
+  "frames": [
+    {
+      "frame": 1,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "A perfectly straight diagonal can look like a staircase in a game because the screen still draws a square pixel grid.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 21,
+      "first_word_start": 0,
+      "last_word_end": 7.28
+    },
+    {
+      "frame": 2,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "Without anti-aliasing, each edge pixel becomes fully covered or fully empty, creating a hard sequence of visible steps.",
+      "reconciliation": "script_high_coverage_retimed",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 7.96
+    },
+    {
+      "frame": 3,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "MSAA checks several sub-pixel coverage positions, letting an edge pixel represent a blend instead of a binary answer.",
+      "reconciliation": "script_high_coverage_retimed",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 8
+    },
+    {
+      "frame": 4,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:small.en",
+      "transcript": "FXAA searches the finished image for jagged patterns and smooths them quickly, though fine detail can become softer.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 7.32
+    },
+    {
+      "frame": 5,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "Temporal methods borrow evidence from earlier frames, improving stability but risking ghosting when history no longer matches motion.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 8.58
+    },
+    {
+      "frame": 6,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "So anti-aliasing is not one filter. Every method trades cleaner edges against cost, softness or artefacts across time.",
+      "reconciliation": "script_high_coverage_retimed",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 8.68
+    }
+  ],
+  "blockers": [],
+  "generated_at": "2026-08-20T07:42:02.399Z"
+}

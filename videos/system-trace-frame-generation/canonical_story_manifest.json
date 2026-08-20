@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-frame-generation",
+  "project_id": "system-trace-frame-generation",
+  "narration_script": "Frame generation can make motion look much smoother, but the new image between two frames was not fully rendered by the game. The system examines consecutive frames plus motion evidence such as optical flow, motion vectors, depth and camera data. It predicts where visible pixels belong between those moments, then synthesises an intermediate image for the display. The displayed frame rate rises, while game simulation and input sampling still follow the underlying rendered frames. Interpolation also needs careful pacing and can distort rapid motion, scene changes or interface elements when its evidence is weak. Frame generation is best understood as visual interpolation: smoother presentation built on top of a healthy base frame rate.",
+  "final_container": {
+    "path": "renders/system-trace-frame-generation.mp4",
+    "sha256": "c3068b2398334b600225a3ba0b76d83e692ae632eb58036764ab8eee5a635c0a",
+    "bytes": 7696168
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "31efc95cb7305194d9f3c4c3f9bf835b51f942a3ce9af4d247925a5fb23c06c7",
+    "bytes": 2161
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-28T17:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

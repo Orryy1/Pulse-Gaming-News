@@ -1,0 +1,61 @@
+<template>
+  <style>
+    @font-face { font-family:"Space Grotesk"; src:url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2"); font-style:normal; font-weight:400 900; }
+    @font-face { font-family:"IBM Plex Mono"; src:url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2"); font-style:normal; font-weight:500; }
+    #root { position:relative; width:100%; height:100%; overflow:hidden; }
+    .frame-05-temporal-history-ground { position:absolute; inset:0; overflow:hidden; background:#0D0D0F; container-type:size; }
+    .frame-05-temporal-history-grid { position:absolute; inset:0; width:100%; height:100%; opacity:.54; }
+    .frame-05-temporal-history-scene { position:absolute; inset:0; overflow:hidden; }
+    .frame-05-temporal-history-kicker,.frame-05-temporal-history-meta,.frame-05-temporal-history-stage-label,.frame-05-temporal-history-ruler-label,.frame-05-temporal-history-status-eyebrow { font-family:"IBM Plex Mono"; font-size:1.6cqw; font-weight:500; letter-spacing:.14em; line-height:1; text-transform:uppercase; }
+    .frame-05-temporal-history-kicker { position:absolute; top:7cqh; left:7.2cqw; color:#FF6B1A; }
+    .frame-05-temporal-history-meta { position:absolute; top:7cqh; right:7.2cqw; color:#504B48; }
+    .frame-05-temporal-history-title { position:absolute; top:13.2cqh; left:7.2cqw; margin:0; color:#F0F0F0; font-family:"Space Grotesk"; font-size:7.2cqw; font-weight:900; letter-spacing:-.07em; line-height:.86; text-transform:lowercase; }
+    .frame-05-temporal-history-title span { color:#FF6B1A; }
+    .frame-05-temporal-history-rule { position:absolute; top:24.4cqh; left:7.2cqw; width:36px; height:2px; background:#FF6B1A; }
+    .frame-05-temporal-history-stage { position:absolute; top:29.4cqh; left:7.2cqw; width:85.6cqw; height:39.2cqh; overflow:hidden; border-top:1px solid #282726; border-bottom:1px solid #282726; }
+    .frame-05-temporal-history-stage-label { position:absolute; top:2cqh; left:0; color:#504B48; }
+    .frame-05-temporal-history-current { position:absolute; top:8.6cqh; right:6.2cqw; width:19cqw; height:23cqh; overflow:hidden; border-left:2px solid #F0F0F0; background:#1A1918; }
+    .frame-05-temporal-history-current::before { content:""; position:absolute; top:0; left:8.8cqw; width:2px; height:100%; background:#FF6B1A; }
+    .frame-05-temporal-history-current-edge { position:absolute; top:2cqh; left:1.7cqw; color:#F0F0F0; font-family:"Space Grotesk"; font-size:3.8cqw; font-weight:900; letter-spacing:-.06em; line-height:.85; text-transform:lowercase; }
+    .frame-05-temporal-history-current-tag { position:absolute; bottom:2cqh; left:1.7cqw; color:#504B48; font-family:"IBM Plex Mono"; font-size:1.4cqw; font-weight:500; letter-spacing:.14em; text-transform:uppercase; }
+    .frame-05-temporal-history-arrow { position:absolute; top:10.4cqh; left:1cqw; width:61cqw; height:21cqh; overflow:visible; }
+    .frame-05-temporal-history-arrow path { fill:none; stroke:#F0F0F0; stroke-width:4; stroke-linecap:square; }
+    .frame-05-temporal-history-arrow .frame-05-temporal-history-arrow-head { stroke:#FF6B1A; }
+    .frame-05-temporal-history-sample { position:absolute; top:19.2cqh; left:10cqw; width:7cqw; height:7cqw; border:2px solid #F0F0F0; background:#0D0D0F; transform-origin:50% 50%; }
+    .frame-05-temporal-history-sample::after { content:""; position:absolute; top:2cqh; left:2cqw; width:2.1cqw; height:2.1cqw; background:#FF6B1A; }
+    .frame-05-temporal-history-sample-label { position:absolute; top:8.3cqw; left:50%; width:18cqw; margin-left:-9cqw; color:#504B48; font-family:"IBM Plex Mono"; font-size:1.4cqw; font-weight:500; letter-spacing:.14em; text-align:center; text-transform:uppercase; }
+    .frame-05-temporal-history-stable { position:absolute; top:19.2cqh; left:64.2cqw; width:7cqw; height:7cqw; border:2px solid #FF6B1A; background:#0D0D0F; opacity:0; transform-origin:50% 50%; }
+    .frame-05-temporal-history-stable::after { content:""; position:absolute; top:2cqh; left:2cqw; width:2.1cqw; height:2.1cqw; background:#F0F0F0; }
+    .frame-05-temporal-history-stable-label { position:absolute; top:8.3cqw; left:50%; width:16cqw; margin-left:-8cqw; color:#FF6B1A; font-family:"IBM Plex Mono"; font-size:1.4cqw; font-weight:500; letter-spacing:.14em; text-align:center; text-transform:uppercase; }
+    .frame-05-temporal-history-ghost { position:absolute; top:25.2cqh; left:17cqw; width:5.2cqw; height:5.2cqw; border:1px solid #FF6B1A; background:#0D0D0F; transform-origin:50% 50%; }
+    .frame-05-temporal-history-ghost--one { opacity:.36; } .frame-05-temporal-history-ghost--two { opacity:.2; } .frame-05-temporal-history-ghost--three { opacity:.1; }
+    .frame-05-temporal-history-ruler { position:absolute; top:71.7cqh; left:7.2cqw; width:85.6cqw; border-top:1px solid #282726; padding-top:1.6cqh; }
+    .frame-05-temporal-history-ruler-top { display:flex; justify-content:space-between; }
+    .frame-05-temporal-history-ruler-label { color:#504B48; }
+    .frame-05-temporal-history-ruler-value { color:#F0F0F0; font-family:"Space Grotesk"; font-size:3.4cqw; font-weight:900; letter-spacing:-.05em; line-height:.85; text-transform:lowercase; }
+    .frame-05-temporal-history-ruler-track { position:relative; height:1px; margin-top:2.2cqh; background:#282726; }
+    .frame-05-temporal-history-ruler-mark { position:absolute; top:-.7cqh; width:1px; height:1.5cqh; background:#504B48; }
+    .frame-05-temporal-history-ruler-mark--past { left:0; } .frame-05-temporal-history-ruler-mark--now { left:74%; background:#FF6B1A; }
+    .frame-05-temporal-history-status { position:absolute; left:7.2cqw; width:85.6cqw; }
+    .frame-05-temporal-history-status--stable { top:77cqh; } .frame-05-temporal-history-status--ghost { top:80.2cqh; }
+    .frame-05-temporal-history-status-eyebrow { display:inline-block; width:16cqw; color:#504B48; }
+    .frame-05-temporal-history-status-title { display:inline-block; color:#F0F0F0; font-family:"Space Grotesk"; font-size:4.8cqw; font-weight:900; letter-spacing:-.06em; line-height:.86; text-transform:lowercase; }
+    .frame-05-temporal-history-status-title span { color:#FF6B1A; }
+  </style>
+  <div id="root" data-composition-id="05-temporal-history" data-width="1080" data-height="1920" data-duration="9.7">
+    <div class="clip frame-05-temporal-history-ground" data-start="0" data-duration="9.7" data-track-index="0"><svg class="frame-05-temporal-history-grid" viewBox="0 0 1080 1920" aria-hidden="true"><path d="M80 0V1594M280 0V1594M480 0V1594M680 0V1594M880 0V1594M0 220H1080M0 620H1080M0 1020H1080M0 1420H1080" fill="none" stroke="#282726" stroke-width="2" /></svg></div>
+    <div class="clip frame-05-temporal-history-scene" data-start="0" data-duration="9.7" data-track-index="1">
+      <div class="frame-05-temporal-history-kicker">TEMPORAL / 05</div><div class="frame-05-temporal-history-meta">HISTORY BUFFER</div><h1 class="frame-05-temporal-history-title">borrowed<br><span>history</span></h1><div class="frame-05-temporal-history-rule"></div>
+      <section class="frame-05-temporal-history-stage" aria-label="invented temporal-history re-projection diagram"><div class="frame-05-temporal-history-stage-label">EARLIER SAMPLE → CURRENT EDGE</div><div class="frame-05-temporal-history-current"><span class="frame-05-temporal-history-current-edge">now</span><span class="frame-05-temporal-history-current-tag">CURRENT EDGE</span></div><svg class="frame-05-temporal-history-arrow" viewBox="0 0 700 360" aria-hidden="true"><path id="frame-05-temporal-history-path" d="M30 285C180 275 265 155 420 180S565 242 650 176" /><path class="frame-05-temporal-history-arrow-head" d="M620 150L650 176L615 198" /></svg><div class="frame-05-temporal-history-sample" id="frame-05-temporal-history-sample"><span class="frame-05-temporal-history-sample-label" data-layout-allow-overflow>PREVIOUS</span></div><div class="frame-05-temporal-history-stable" id="frame-05-temporal-history-stable"><span class="frame-05-temporal-history-stable-label" data-layout-allow-overflow>ALIGNED</span></div><div class="frame-05-temporal-history-ghost frame-05-temporal-history-ghost--one" data-i="1"></div><div class="frame-05-temporal-history-ghost frame-05-temporal-history-ghost--two" data-i="2"></div><div class="frame-05-temporal-history-ghost frame-05-temporal-history-ghost--three" data-i="3"></div></section>
+      <section class="frame-05-temporal-history-ruler" aria-label="invented history time ruler"><div class="frame-05-temporal-history-ruler-top"><span class="frame-05-temporal-history-ruler-label">TIME RULER</span><span class="frame-05-temporal-history-ruler-value">PAST → NOW</span></div><div class="frame-05-temporal-history-ruler-track"><span class="frame-05-temporal-history-ruler-mark frame-05-temporal-history-ruler-mark--past"></span><span class="frame-05-temporal-history-ruler-mark frame-05-temporal-history-ruler-mark--now"></span></div></section>
+      <div class="frame-05-temporal-history-status frame-05-temporal-history-status--stable"><span class="frame-05-temporal-history-status-eyebrow">MATCH</span><span class="frame-05-temporal-history-status-title" id="frame-05-temporal-history-stable-title">stable <span>history</span></span></div><div class="frame-05-temporal-history-status frame-05-temporal-history-status--ghost"><span class="frame-05-temporal-history-status-eyebrow">MISMATCH</span><span class="frame-05-temporal-history-status-title" id="frame-05-temporal-history-ghost-title">ghosting <span>risk</span></span></div>
+    </div>
+  </div>
+  <script>
+    (() => { const tl=gsap.timeline({ paused:true }); const path=document.getElementById("frame-05-temporal-history-path"),len=path.getTotalLength(); path.style.strokeDasharray=`${len}`; path.style.strokeDashoffset=`${len}`;
+      tl.fromTo(".frame-05-temporal-history-kicker",{opacity:0,y:18},{opacity:1,y:0,duration:.28,ease:"power2.out"},.04); tl.fromTo(".frame-05-temporal-history-meta",{opacity:0},{opacity:1,duration:.24,ease:"power1.out"},.14); tl.fromTo(".frame-05-temporal-history-title",{opacity:0,y:22},{opacity:1,y:0,duration:.44,ease:"power3.out"},.1); tl.fromTo(".frame-05-temporal-history-rule",{scaleX:0},{scaleX:1,duration:.3,ease:"power2.out"},.46); tl.fromTo(".frame-05-temporal-history-stage",{opacity:0,y:18},{opacity:1,y:0,duration:.42,ease:"power3.out"},.38); tl.to(path,{strokeDashoffset:0,duration:1.02,ease:"power2.out"},.7); tl.fromTo("#frame-05-temporal-history-sample",{x:-42,opacity:0,scale:.72},{x:0,opacity:1,scale:1,duration:.52,ease:"power3.out"},.86); tl.to("#frame-05-temporal-history-sample",{x:585,y:-18,duration:1.06,ease:"power3.out"},1.66);
+      tl.to("#frame-05-temporal-history-sample",{scale:.72,opacity:0,duration:.38,ease:"power2.in"},3.18); tl.fromTo("#frame-05-temporal-history-stable",{scale:.72,opacity:0},{scale:1,opacity:1,duration:.58,ease:"back.out(1.4)"},3.4); tl.fromTo(".frame-05-temporal-history-ruler",{opacity:0,y:14},{opacity:1,y:0,duration:.34,ease:"power2.out"},3.84);
+      const ghosts=[...document.querySelectorAll(".frame-05-temporal-history-ghost")]; ghosts.forEach((g,i)=>tl.fromTo(g,{x:-20-i*24,opacity:.42/(i+1),scale:.92},{x:502,y:-22,opacity:0,duration:.52,ease:"power4.out"},4.62+i*.05));
+      const content=[{title:"stable history",body:"match",hold:.34},{title:"ghosting risk",body:"mismatch",hold:.8}]; let at=0; const timeline=content.map(entry=>{const duration=.48+entry.body.length*.045+entry.hold;const item={...entry,start:at,end:at+duration};at=item.end;return item;}); const titleByKey={"stable history":document.getElementById("frame-05-temporal-history-stable-title"),"ghosting risk":document.getElementById("frame-05-temporal-history-ghost-title")}; timeline.forEach(item=>{const el=titleByKey[item.title];tl.fromTo(el,{opacity:0,x:-18},{opacity:1,x:0,duration:.34,ease:"power3.out"},6.2+item.start);}); window.__timelines=window.__timelines||{}; window.__timelines["05-temporal-history"]=tl; })();
+  </script>
+</template>

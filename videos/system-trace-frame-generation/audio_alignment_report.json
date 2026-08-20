@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_display_audio_alignment_v1",
+  "story_id": "system-trace-frame-generation",
+  "verdict": "GREEN",
+  "source": "local_whisper_word_alignment",
+  "frame_count": 6,
+  "frames": [
+    {
+      "frame": 1,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "Frame generation can make motion look much smoother, but the new image between two frames was not fully rendered by the game.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 22,
+      "first_word_start": 0,
+      "last_word_end": 7.72
+    },
+    {
+      "frame": 2,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "The system examines consecutive frames plus motion evidence such as optical flow, motion vectors, depth and camera data.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 8.48
+    },
+    {
+      "frame": 3,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "It predicts where visible pixels belong between those moments, then synthesises an intermediate image for the display.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 17,
+      "first_word_start": 0,
+      "last_word_end": 7.62
+    },
+    {
+      "frame": 4,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "The displayed frame rate rises, while game simulation and input sampling still follow the underlying rendered frames. James.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 17,
+      "first_word_start": 0,
+      "last_word_end": 7.5
+    },
+    {
+      "frame": 5,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "Interpolation also needs careful pacing and can distort rapid motion, scene changes or interface elements when its evidence is weak. week.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 20,
+      "first_word_start": 0,
+      "last_word_end": 9.36
+    },
+    {
+      "frame": 6,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "Frame generation is best understood as visual interpolation, smoother presentation built on top of a healthy base frame rate.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 19,
+      "first_word_start": 0,
+      "last_word_end": 8.88
+    }
+  ],
+  "blockers": [],
+  "generated_at": "2026-08-20T07:42:02.399Z"
+}

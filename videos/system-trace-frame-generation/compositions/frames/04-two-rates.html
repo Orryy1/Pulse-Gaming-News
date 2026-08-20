@@ -1,0 +1,585 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 100 900;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    [data-node="04-two-rates-ground"] {
+      position: absolute;
+      inset: 0;
+      background: #0d0d0f;
+    }
+
+    [data-node="04-two-rates-stage"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    [data-node="04-two-rates-chrome"] {
+      position: absolute;
+      top: 80px;
+      left: 60px;
+      right: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 18px;
+      border-top: 1px solid #282726;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="04-two-rates-ruler"] {
+      position: absolute;
+      top: 180px;
+      left: 60px;
+      width: 960px;
+      height: 980px;
+      pointer-events: none;
+    }
+
+    [data-node="04-two-rates-ruler"] line {
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [data-node="04-two-rates-display"],
+    [data-node="04-two-rates-simulation"] {
+      position: absolute;
+      inset: 0;
+    }
+
+    [data-node="04-two-rates-rail-label"] {
+      position: absolute;
+      left: 60px;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-rail="display"] [data-node="04-two-rates-rail-label"] {
+      top: 200px;
+      color: #ff6b1a;
+    }
+
+    [data-rail="simulation"] [data-node="04-two-rates-rail-label"] {
+      top: 680px;
+    }
+
+    [data-node="04-two-rates-rail-line"] {
+      position: absolute;
+      left: 60px;
+      width: 960px;
+      height: 1px;
+      background: #282726;
+    }
+
+    [data-rail="display"] [data-node="04-two-rates-rail-line"] {
+      top: 244px;
+      background: #ff6b1a;
+    }
+
+    [data-rail="simulation"] [data-node="04-two-rates-rail-line"] {
+      top: 724px;
+    }
+
+    [data-node="04-two-rates-display-card"],
+    [data-node="04-two-rates-simulation-card"] {
+      position: absolute;
+      width: 260px;
+      height: 240px;
+      box-sizing: border-box;
+      overflow: hidden;
+      border-top: 1px solid #282726;
+      background: #1a1918;
+    }
+
+    [data-node="04-two-rates-display-card"] {
+      top: 305px;
+      opacity: 0.34;
+    }
+
+    [data-node="04-two-rates-simulation-card"] {
+      top: 785px;
+      opacity: 0;
+    }
+
+    [data-card="display-a"],
+    [data-card="simulation-a"] {
+      left: 60px;
+    }
+
+    [data-card="display-b"],
+    [data-card="simulation-b"] {
+      left: 760px;
+    }
+
+    [data-node="04-two-rates-card-meta"] {
+      position: absolute;
+      top: 22px;
+      left: 22px;
+      right: 22px;
+      display: flex;
+      justify-content: space-between;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="04-two-rates-card-label"] {
+      position: absolute;
+      left: 22px;
+      bottom: 24px;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+      font-size: 62px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+      text-transform: lowercase;
+    }
+
+    [data-node="04-two-rates-card-step"] {
+      color: #ff6b1a;
+    }
+
+    [data-node="04-two-rates-input-track"] {
+      position: absolute;
+      top: 1088px;
+      left: 60px;
+      width: 960px;
+      height: 62px;
+      border-top: 1px solid #282726;
+    }
+
+    [data-node="04-two-rates-input-label"] {
+      position: absolute;
+      top: 20px;
+      left: 0;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="04-two-rates-input-pulse"] {
+      position: absolute;
+      top: -5px;
+      width: 10px;
+      height: 10px;
+      background: #ff6b1a;
+      opacity: 0;
+    }
+
+    [data-pulse="a"] {
+      left: 125px;
+    }
+
+    [data-pulse="b"] {
+      left: 825px;
+    }
+
+    [data-node="04-two-rates-morph-card"] {
+      position: absolute;
+      top: 350px;
+      left: 440px;
+      width: 200px;
+      height: 150px;
+      overflow: hidden;
+      border: 1px solid #282726;
+      border-radius: 0;
+      background: #1a1918;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    [data-node="04-two-rates-morph-old"],
+    [data-node="04-two-rates-morph-new"] {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    [data-node="04-two-rates-morph-old"] {
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 17px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    [data-node="04-two-rates-morph-new"] {
+      box-sizing: border-box;
+      padding: 20px;
+      opacity: 0;
+      color: #0d0d0f;
+    }
+
+    [data-node="04-two-rates-mid-label"] {
+      display: block;
+      font-family: "Space Grotesk";
+      font-size: 33px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.9;
+      text-transform: lowercase;
+    }
+
+    [data-node="04-two-rates-mid-word"] {
+      display: block;
+      margin-top: 8px;
+      font-family: "Space Grotesk";
+      font-size: 48px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+      text-transform: lowercase;
+    }
+
+    [data-node="04-two-rates-mid-meta"] {
+      display: block;
+      margin-top: 16px;
+      color: rgba(17, 17, 17, 0.55);
+      font-family: "IBM Plex Mono";
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="04-two-rates-mid-tick"] {
+      position: absolute;
+      top: 244px;
+      left: 535px;
+      width: 10px;
+      height: 24px;
+      background: #ff6b1a;
+      opacity: 0;
+    }
+
+    [data-node="04-two-rates-statement"] {
+      position: absolute;
+      top: 1230px;
+      left: 60px;
+      width: 960px;
+    }
+
+    [data-node="04-two-rates-statement-kicker"] {
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="04-two-rates-statement-line"] {
+      display: block;
+      min-width: 960px;
+      min-height: 94px;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+      font-size: 78px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.9;
+      text-transform: lowercase;
+      white-space: nowrap;
+    }
+
+    [data-line="display"] {
+      margin-top: 34px;
+      color: #ff6b1a;
+    }
+
+    [data-line="simulation"] {
+      margin-top: 16px;
+    }
+
+    [data-node="04-two-rates-statement-rule"] {
+      width: 36px;
+      height: 2px;
+      margin-top: 34px;
+      background: #ff6b1a;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="04-two-rates"
+    data-start="0"
+    data-duration="8.8"
+    data-width="1080"
+    data-height="1920"
+  >
+    <div
+      class="clip"
+      data-node="04-two-rates-ground"
+      data-start="0"
+      data-duration="8.8"
+      data-track-index="0"
+    ></div>
+
+    <div
+      class="clip"
+      data-node="04-two-rates-stage"
+      data-start="0"
+      data-duration="8.8"
+      data-track-index="1"
+    >
+      <div data-node="04-two-rates-chrome">
+        <span>display / simulation</span>
+        <span>rate comparison / 04</span>
+      </div>
+
+      <svg data-node="04-two-rates-ruler" viewBox="0 0 960 980" aria-hidden="true">
+        <line x1="130" y1="0" x2="130" y2="980"></line>
+        <line x1="480" y1="0" x2="480" y2="980"></line>
+        <line x1="830" y1="0" x2="830" y2="980"></line>
+      </svg>
+
+      <section data-node="04-two-rates-display" data-rail="display" aria-label="display rate rail">
+        <div data-node="04-two-rates-rail-label">display rate</div>
+        <div data-node="04-two-rates-rail-line"></div>
+
+        <article data-node="04-two-rates-display-card" data-card="display-a">
+          <div data-node="04-two-rates-card-meta"><span>rendered</span><span>01</span></div>
+          <div data-node="04-two-rates-card-label">frame <span data-node="04-two-rates-card-step">a</span></div>
+        </article>
+        <article data-node="04-two-rates-display-card" data-card="display-b">
+          <div data-node="04-two-rates-card-meta"><span>rendered</span><span>02</span></div>
+          <div data-node="04-two-rates-card-label">frame <span data-node="04-two-rates-card-step">b</span></div>
+        </article>
+
+        <div data-node="04-two-rates-morph-card">
+          <div data-node="04-two-rates-morph-old">gap</div>
+          <div data-node="04-two-rates-morph-new">
+            <div>
+              <span data-node="04-two-rates-mid-label">synthesised</span>
+              <span data-node="04-two-rates-mid-word">mid</span>
+              <span data-node="04-two-rates-mid-meta">display tick</span>
+            </div>
+          </div>
+        </div>
+        <div data-node="04-two-rates-mid-tick"></div>
+      </section>
+
+      <section data-node="04-two-rates-simulation" data-rail="simulation" aria-label="simulation and input rate rail">
+        <div data-node="04-two-rates-rail-label">simulation rate</div>
+        <div data-node="04-two-rates-rail-line"></div>
+
+        <article data-node="04-two-rates-simulation-card" data-card="simulation-a">
+          <div data-node="04-two-rates-card-meta"><span>engine step</span><span>01</span></div>
+          <div data-node="04-two-rates-card-label">step <span data-node="04-two-rates-card-step">a</span></div>
+        </article>
+        <article data-node="04-two-rates-simulation-card" data-card="simulation-b">
+          <div data-node="04-two-rates-card-meta"><span>engine step</span><span>02</span></div>
+          <div data-node="04-two-rates-card-label">step <span data-node="04-two-rates-card-step">b</span></div>
+        </article>
+
+        <div data-node="04-two-rates-input-track">
+          <div data-node="04-two-rates-input-label">input pulse / engine step only</div>
+          <div data-node="04-two-rates-input-pulse" data-pulse="a"></div>
+          <div data-node="04-two-rates-input-pulse" data-pulse="b"></div>
+        </div>
+      </section>
+
+      <div data-node="04-two-rates-statement">
+        <div data-node="04-two-rates-statement-kicker">two rates remain</div>
+        <span data-node="04-two-rates-statement-line" data-line="display"></span>
+        <span data-node="04-two-rates-statement-line" data-line="simulation"></span>
+        <div data-node="04-two-rates-statement-rule"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const timeline = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["04-two-rates"] = timeline;
+
+      const simulationCards = Array.from(document.querySelectorAll('[data-node="04-two-rates-simulation-card"]'));
+      const inputPulses = Array.from(document.querySelectorAll('[data-node="04-two-rates-input-pulse"]'));
+      const displayCards = Array.from(document.querySelectorAll('[data-node="04-two-rates-display-card"]'));
+      const morphCard = document.querySelector('[data-node="04-two-rates-morph-card"]');
+      const morphOld = document.querySelector('[data-node="04-two-rates-morph-old"]');
+      const morphNew = document.querySelector('[data-node="04-two-rates-morph-new"]');
+      const midTick = document.querySelector('[data-node="04-two-rates-mid-tick"]');
+      const statement = document.querySelector('[data-node="04-two-rates-statement"]');
+      const displayStatement = document.querySelector('[data-line="display"]');
+      const simulationStatement = document.querySelector('[data-line="simulation"]');
+
+      const simulationContent = [
+        { key: "a", body: "ENGINE STEP", card: simulationCards[0], pulse: inputPulses[0], hold: 0.25 },
+        { key: "b", body: "ENGINE STEP", card: simulationCards[1], pulse: inputPulses[1], hold: 0.25 }
+      ];
+      const simulationBaseDuration = 0.54;
+      const simulationSecondsPerCharacter = 0.018;
+      let simulationCumulative = 0;
+      const simulationSequence = simulationContent.map((entry) => {
+        const duration = simulationBaseDuration + entry.body.length * simulationSecondsPerCharacter + entry.hold;
+        const start = simulationCumulative;
+        simulationCumulative += duration;
+        return { ...entry, start, end: simulationCumulative };
+      });
+
+      const simulationAt = (time) => {
+        for (let index = simulationSequence.length - 1; index >= 0; index -= 1) {
+          if (time >= simulationSequence[index].start) return simulationSequence[index];
+        }
+        return simulationSequence[0];
+      };
+
+      simulationSequence.forEach((entry) => {
+        timeline.fromTo(
+          entry.card,
+          { opacity: 0, y: 52 },
+          { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" },
+          0.18 + entry.start
+        );
+        timeline.fromTo(
+          entry.pulse,
+          { opacity: 0, y: 14 },
+          { opacity: 1, y: 0, duration: 0.26, ease: "power3.out" },
+          0.18 + entry.start
+        );
+      });
+
+      let lastSimulationKey = "";
+      const simulationDriver = { t: 0 };
+      timeline.to(
+        simulationDriver,
+        {
+          t: simulationCumulative,
+          duration: simulationCumulative,
+          ease: "none",
+          onUpdate: () => {
+            const entry = simulationAt(simulationDriver.t);
+            if (entry.key === lastSimulationKey) return;
+            simulationCards.forEach((card) => card.removeAttribute("data-active"));
+            entry.card.setAttribute("data-active", "true");
+            lastSimulationKey = entry.key;
+          }
+        },
+        0.18
+      );
+
+      displayCards.forEach((card) => {
+        timeline.to(card, { opacity: 1, duration: 0.42, ease: "power2.out" }, 2.8);
+      });
+      timeline.fromTo(
+        morphCard,
+        { opacity: 0, scale: 0.55 },
+        { opacity: 1, scale: 0.55, duration: 0.32, ease: "power2.out" },
+        2.8
+      );
+      timeline.to(
+        morphCard,
+        {
+          scale: 1.6,
+          borderRadius: 0,
+          backgroundColor: "#ff6b1a",
+          duration: 1.0,
+          ease: "power2.inOut"
+        },
+        3.45
+      );
+      timeline.to(morphOld, { opacity: 0, duration: 0.4, ease: "power1.in" }, 3.45);
+      timeline.to(morphNew, { opacity: 1, duration: 0.4, ease: "power1.out" }, 4.05);
+      timeline.fromTo(
+        midTick,
+        { opacity: 0, scaleY: 0, transformOrigin: "center top" },
+        { opacity: 1, scaleY: 1, duration: 0.36, ease: "power3.out" },
+        4.28
+      );
+
+      const statementStates = [
+        { t: 0.00, key: "--", display: "", simulation: "" },
+        { t: 0.12, key: "d-", display: "DISPLAY", simulation: "" },
+        { t: 0.38, key: "dr-", display: "DISPLAY RATE", simulation: "" },
+        { t: 0.66, key: "drr-", display: "DISPLAY RATE RISES", simulation: "" },
+        { t: 0.94, key: "drrs", display: "DISPLAY RATE RISES", simulation: "SIMULATION" },
+        { t: 1.18, key: "drrsr", display: "DISPLAY RATE RISES", simulation: "SIMULATION RATE" },
+        { t: 1.42, key: "drrsrh", display: "DISPLAY RATE RISES", simulation: "SIMULATION RATE HOLDS" }
+      ];
+
+      const statementAt = (time) => {
+        for (let index = statementStates.length - 1; index >= 0; index -= 1) {
+          if (time >= statementStates[index].t) return statementStates[index];
+        }
+        return statementStates[0];
+      };
+
+      let lastStatementKey = "";
+      const applyStatement = (state) => {
+        if (state.key === lastStatementKey) return;
+        displayStatement.textContent = state.display;
+        simulationStatement.textContent = state.simulation;
+        lastStatementKey = state.key;
+      };
+
+      applyStatement(statementStates[0]);
+      timeline.fromTo(
+        statement,
+        { opacity: 0, y: 32 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+        5.9
+      );
+      const statementDriver = { t: 0 };
+      timeline.to(
+        statementDriver,
+        {
+          t: 1.6,
+          duration: 1.6,
+          ease: "none",
+          onUpdate: () => applyStatement(statementAt(statementDriver.t))
+        },
+        5.9
+      );
+    })();
+  </script>
+</template>

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_buffer_v1",
+  "campaign_id": "system-trace-display-pipeline-20260820",
+  "channel": {
+    "id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "title": "Pulse Gaming"
+  },
+  "platform": "youtube_shorts",
+  "timezone": "UTC",
+  "cadence": "one_per_day",
+  "initial_privacy_status": "private",
+  "notify_subscribers_on_upload": false,
+  "synthetic_media_disclosure": true,
+  "episodes": [
+    {
+      "story_id": "system-trace-screen-tearing",
+      "project_dir": "videos/system-trace-screen-tearing",
+      "publish_at_utc": "2026-08-22T17:00:00Z",
+      "title": "Why Your Game Screen Splits in Two",
+      "description": "That horizontal split is two rendered frames sharing one display refresh. This short animation shows how a fixed-refresh screen scans an image, how the GPU can replace that image mid-scan and why V-Sync and VRR solve the timing mismatch in different ways.\n\nSources:\nhttps://developer.apple.com/documentation/quartzcore/cametallayer/displaysyncenabled\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays\nhttps://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #ScreenTearing #SystemTrace",
+      "tags": ["screen tearing", "V-Sync", "VRR", "display refresh", "PC gaming", "gaming graphics", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-vsync-latency",
+      "project_dir": "videos/system-trace-vsync-latency",
+      "publish_at_utc": "2026-08-23T17:00:00Z",
+      "title": "Why V-Sync Can Make Controls Feel Slower",
+      "description": "V-Sync removes tearing by waiting for a display refresh boundary, but a narrowly missed deadline or deep frame queue can make fresh input wait. This short animation explains why the delay is not one fixed number and how refresh rate changes the size of each timing window.\n\nSources:\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d12/swap-chains\nhttps://developer.nvidia.com/blog/advanced-api-performance-swap-chains/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VSync #SystemTrace",
+      "tags": ["V-Sync", "input latency", "display refresh", "frame queue", "PC gaming", "gaming performance", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-variable-refresh-rate",
+      "project_dir": "videos/system-trace-variable-refresh-rate",
+      "publish_at_utc": "2026-08-24T17:00:00Z",
+      "title": "How VRR Makes a Monitor Wait for the GPU",
+      "description": "Variable refresh rate does not make the GPU faster. It lets a compatible display begin a refresh when a frame is ready. This short animation explains the VRR operating window, why low and high frame rates still matter and which parts of the display path must support it.\n\nSources:\nhttps://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VRR #SystemTrace",
+      "tags": ["variable refresh rate", "VRR", "FreeSync", "G-SYNC", "display refresh", "PC gaming", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-hdr-tone-mapping",
+      "project_dir": "videos/system-trace-hdr-tone-mapping",
+      "publish_at_utc": "2026-08-25T17:00:00Z",
+      "title": "Why HDR Games Still Need Tone Mapping",
+      "description": "An HDR scene can contain more luminance than one real display can reproduce. This short animation shows how tone mapping fits highlights, mid-tones and dark detail into the screen's measured brightness range instead of simply clipping everything above its limit.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct2d/hdr-tone-map-effect\nhttps://learn.microsoft.com/en-us/gaming/gdk/docs/reference/system/xdisplay/structs/xdisplayhdrmodeinfo\nhttps://vesa.org/about-displayhdr/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#HDRGaming #ToneMapping #SystemTrace",
+      "tags": ["HDR gaming", "tone mapping", "display brightness", "gaming graphics", "HDR", "PC gaming", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-anti-aliasing",
+      "project_dir": "videos/system-trace-anti-aliasing",
+      "publish_at_utc": "2026-08-26T17:00:00Z",
+      "title": "How Anti-Aliasing Removes Stair-Step Edges",
+      "description": "A diagonal edge has to fit a square pixel grid, which creates visible steps. This short animation compares sub-pixel coverage, screen-space smoothing and temporal history, then explains why MSAA, FXAA and temporal methods trade cost against softness or artefacts.\n\nSources:\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-rasterizer-stage-rules\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/cinematic-rendering-image-quality-settings-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#AntiAliasing #PCGaming #SystemTrace",
+      "tags": ["anti-aliasing", "MSAA", "FXAA", "TAA", "gaming graphics", "PC gaming", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-motion-blur",
+      "project_dir": "videos/system-trace-motion-blur",
+      "publish_at_utc": "2026-08-27T17:00:00Z",
+      "title": "Why Motion Blur Can Make 30 FPS Look Smoother",
+      "description": "Motion blur cannot create extra frames, yet it can soften the visible jump between two positions. This short animation follows a moving object through a velocity-based blur and shows why the effect does not reduce input latency, repair stutter or handle every scene perfectly.\n\nSources:\nhttps://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-27-motion-blur-post-processing-effect\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/setting-up-motion-blur\nhttps://dev.epicgames.com/documentation/en-us/unreal-engine/introduction-to-performance-profiling-and-configuration-in-unreal-engine\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#MotionBlur #PCGaming #SystemTrace",
+      "tags": ["motion blur", "30 FPS", "frame rate", "gaming graphics", "visual smoothness", "PC gaming", "System Trace", "gaming Shorts"]
+    },
+    {
+      "story_id": "system-trace-frame-generation",
+      "project_dir": "videos/system-trace-frame-generation",
+      "publish_at_utc": "2026-08-28T17:00:00Z",
+      "title": "How Frame Generation Creates In-Between Frames",
+      "description": "Frame generation analyses consecutive rendered frames and motion evidence, then synthesises an intermediate image. This short animation separates displayed smoothness from game simulation, input sampling, frame pacing and the artefacts that can appear when the source evidence is weak.\n\nSources:\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/super-resolution-interpolation/\nhttps://gpuopen.com/amd-fsr-framegeneration/\nhttps://developer.nvidia.com/rtx/dlss\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#FrameGeneration #PCGaming #SystemTrace",
+      "tags": ["frame generation", "DLSS", "FSR", "interpolation", "gaming graphics", "PC gaming", "System Trace", "gaming Shorts"]
+    }
+  ]
+}

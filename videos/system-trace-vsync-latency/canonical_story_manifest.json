@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-vsync-latency",
+  "project_id": "system-trace-vsync-latency",
+  "narration_script": "V-Sync can remove the visible tear, yet the same setting may make a fast game feel slightly less immediate. With synchronisation enabled, a completed frame is presented on the display's refresh boundary instead of arriving whenever it finishes. Miss that boundary by a fraction and the previous image may remain visible until another refresh opportunity arrives. At sixty hertz one refresh lasts about sixteen point seven milliseconds. At one hundred and twenty, it is roughly eight point three. A deep frame queue can add more waiting because fresh input sits behind work the CPU prepared earlier. V-Sync is therefore a trade-off, not a fixed lag number: tear-free presentation in exchange for timing that needs careful pacing.",
+  "final_container": {
+    "path": "renders/system-trace-vsync-latency.mp4",
+    "sha256": "dd892aef05ee5820f5d5ace039417dcf8476ac4be17336c9b71a1f8ac108b8a2",
+    "bytes": 8558705
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "d1e810956926c1fa962b0646e3636b188717b7dee8da85144e8a84af4268b0dc",
+    "bytes": 2249
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-23T17:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

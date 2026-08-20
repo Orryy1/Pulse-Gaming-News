@@ -7,6 +7,10 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const manifest = require("../../videos/system-trace-youtube-buffer.json");
+const displayManifest = require("../../videos/system-trace-display-pipeline-youtube-buffer.json");
+const {
+  CONTRACT: DISPLAY_PIPELINE_CONTRACT,
+} = require("../../tools/system-trace-display-pipeline-youtube-final-audit");
 const {
   EXPECTED_MANIFEST_SHA256,
   auditSystemTraceYouTubeBuffer,
@@ -324,7 +328,7 @@ test("accepts only a cryptographically linked Studio RED receipt and GREEN recon
   const data = studioAuditFixture();
   const report = await auditSystemTraceYouTubeBuffer(data.input);
 
-  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.verdict, "GREEN", JSON.stringify(report.blockers));
   assert.ok(report.episodes.every((entry) => entry.receipt_evidence_kind === "DEFERRED_RECONCILIATION"));
   assert.ok(report.episodes.every((entry) => entry.checks.caption_manual_track_unique === true));
   assert.ok(report.episodes.every((entry) => entry.checks.caption_content_binding_exact === true));
@@ -385,4 +389,48 @@ test("rejects a missing exact manual en-GB serving caption track", async () => {
     ),
   );
   assert.equal(report.episodes[0].checks.caption_manual_track_unique, false);
+});
+
+test("audits a second sealed campaign only through its exact immutable contract", async () => {
+  const privateReceipts = {};
+  const scheduleReceipts = {};
+  const videos = new Map();
+  const captions = new Map();
+  for (const [index, episode] of displayManifest.episodes.entries()) {
+    privateReceipts[episode.story_id] = privateReceipt(episode, index);
+    scheduleReceipts[episode.story_id] = scheduleReceipt(episode, index);
+    videos.set(`video-${index + 1}`, remoteVideo(episode, index));
+    captions.set(`video-${index + 1}`, remoteCaption(index));
+  }
+  const client = {
+    videos: { list: async (request) => ({ data: { items: [videos.get(request.id[0])] } }) },
+    captions: { list: async (request) => ({ data: { items: [captions.get(request.videoId)] } }) },
+  };
+  const displayManifestBytes = fs.readFileSync(
+    path.join(__dirname, "..", "..", "videos", "system-trace-display-pipeline-youtube-buffer.json"),
+  );
+
+  const report = await auditSystemTraceYouTubeBuffer({
+    client,
+    contract: DISPLAY_PIPELINE_CONTRACT,
+    manifest: displayManifest,
+    manifestSha256: sha256(displayManifestBytes),
+    privateReceipts,
+    scheduleReceipts,
+    generatedAt: "2026-08-20T08:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "GREEN", JSON.stringify(report.blockers));
+  assert.equal(report.manifest_sha256, DISPLAY_PIPELINE_CONTRACT.manifestSha256);
+  assert.equal(report.episode_count, 7);
+  await assert.rejects(
+    () => auditSystemTraceYouTubeBuffer({
+      client,
+      manifest: displayManifest,
+      manifestSha256: sha256(displayManifestBytes),
+      privateReceipts,
+      scheduleReceipts,
+    }),
+    /system_trace_youtube_final_audit_input_blocked/,
+  );
 });

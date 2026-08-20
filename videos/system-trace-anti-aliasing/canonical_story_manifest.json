@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_canonical_story_manifest_v1",
+  "story_id": "system-trace-anti-aliasing",
+  "project_id": "system-trace-anti-aliasing",
+  "narration_script": "A perfectly straight diagonal can look like a staircase in a game because the screen still draws a square pixel grid. Without anti-aliasing, each edge pixel becomes fully covered or fully empty, creating a hard sequence of visible steps. MSAA checks several sub-pixel coverage positions, letting an edge pixel represent a blend instead of a binary answer. FXAA searches the finished image for jagged patterns and smooths them quickly, though fine detail can become softer. Temporal methods borrow evidence from earlier frames, improving stability but risking ghosting when history no longer matches motion. So anti-aliasing is not one filter. Every method trades cleaner edges against cost, softness or artefacts across time.",
+  "final_container": {
+    "path": "renders/system-trace-anti-aliasing.mp4",
+    "sha256": "c174e3ca7c20847b0350671538f141f02edcbcc7aa96f8446109d81bd7cff164",
+    "bytes": 8208193
+  },
+  "captions": {
+    "path": "captions.srt",
+    "sha256": "572d1abbaa79d6439b21d863589cbd0314f71e93c20aba6a44bc5026a27b9cf7",
+    "bytes": 2144
+  },
+  "destination": {
+    "platform": "youtube_shorts",
+    "channel_id": "UCvgNDjtTezrpxL8oUe6mYwA",
+    "publish_at_utc": "2026-08-26T17:00:00.000Z"
+  },
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "publish_authorised": true
+}

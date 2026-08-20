@@ -1,0 +1,94 @@
+<template>
+  <style>
+    @font-face { font-family: "Space Grotesk"; src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2"); font-weight: 300 900; }
+    @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2"); font-weight: 500; }
+    #root { position: relative; width: 100%; height: 100%; overflow: hidden; container-type: size; color: #F0F0F0; font-family: "Space Grotesk"; }
+    .clip { position: absolute; inset: 0; }
+    .f06-the-trade-off-ground { background: #0D0D0F; }
+    .f06-the-trade-off-grid { opacity: 0.5; }
+    .f06-the-trade-off-grid svg { width: 100%; height: 100%; display: block; }
+    .f06-the-trade-off-grid line { stroke: #282726; stroke-width: 1; }
+    .f06-the-trade-off-chrome { left: 5.5cqw; right: 5.5cqw; top: 5.4cqh; bottom: auto; height: 5.2cqh; border-top: 1px solid #282726; border-bottom: 1px solid #282726; font-family: "IBM Plex Mono"; font-size: 1.15cqw; font-weight: 500; letter-spacing: 0.14em; }
+    .f06-the-trade-off-chrome span { position: absolute; top: 1.55cqh; }
+    .f06-the-trade-off-chrome-left { left: 0; }
+    .f06-the-trade-off-chrome-right { right: 0; color: #FF6B1A; }
+    .f06-the-trade-off-heading { left: 5.5cqw; right: 5.5cqw; top: 14.9cqh; bottom: auto; height: 9cqh; }
+    .f06-the-trade-off-kicker { margin: 0 0 1.8cqh; font-family: "IBM Plex Mono"; font-size: 1.12cqw; font-weight: 500; letter-spacing: 0.14em; color: #FF6B1A; }
+    .f06-the-trade-off-rule { width: 5.4cqw; height: 2px; background: #FF6B1A; }
+    .f06-the-trade-off-stage { left: 5.5cqw; right: 5.5cqw; top: 27.4cqh; bottom: auto; height: 29.5cqh; }
+    .f06-the-trade-off-beam { position: absolute; left: 3cqw; right: 3cqw; top: 16.5cqh; height: 2px; background: #F0F0F0; transform-origin: 50% 50%; }
+    .f06-the-trade-off-pivot { position: absolute; left: 50%; top: 17cqh; width: 0; height: 0; border-left: 4.4cqw solid transparent; border-right: 4.4cqw solid transparent; border-bottom: 7.2cqh solid #FF6B1A; transform-origin: 50% 100%; }
+    .f06-the-trade-off-side { position: absolute; top: 2.0cqh; width: 34cqw; min-height: 11.5cqh; }
+    .f06-the-trade-off-side-left { left: 0; text-align: left; }
+    .f06-the-trade-off-side-right { right: 0; text-align: right; }
+    .f06-the-trade-off-side-label { display: flex; flex-direction: column; gap: 0.35cqh; font-size: 6.4cqw; font-weight: 900; line-height: 0.86; letter-spacing: -0.05em; text-transform: lowercase; }
+    .f06-the-trade-off-side-left .f06-the-trade-off-side-label { align-items: flex-start; }
+    .f06-the-trade-off-side-right .f06-the-trade-off-side-label { align-items: flex-end; }
+    .f06-the-trade-off-side-label span { display: inline-block; }
+    .f06-the-trade-off-side-label-accent { color: #FF6B1A; }
+    .f06-the-trade-off-side-note { margin-top: 1.8cqh; font-family: "IBM Plex Mono"; font-size: 1.02cqw; font-weight: 500; letter-spacing: 0.14em; color: #504B48; }
+    .f06-the-trade-off-queue { left: 5.5cqw; right: 5.5cqw; top: 58.7cqh; bottom: auto; height: 12.4cqh; border-top: 1px solid #282726; }
+    .f06-the-trade-off-queue-kicker { position: absolute; top: 1.4cqh; left: 0; font-family: "IBM Plex Mono"; font-size: 1.02cqw; font-weight: 500; letter-spacing: 0.14em; color: #504B48; }
+    .f06-the-trade-off-bars { position: absolute; right: 0; top: 1.5cqh; height: 6.8cqh; display: flex; align-items: flex-end; gap: 1.1cqw; }
+    .f06-the-trade-off-bar { width: 2.35cqw; background: #504B48; transform-origin: bottom center; }
+    .f06-the-trade-off-bar-a { height: 2.1cqh; }.f06-the-trade-off-bar-b { height: 3.8cqh; }.f06-the-trade-off-bar-c { height: 5.2cqh; }.f06-the-trade-off-bar-d { height: 6.7cqh; background: #FF6B1A; }
+    .f06-the-trade-off-track { position: absolute; left: 0; right: 0; top: 9.6cqh; height: 1.05cqh; background: #282726; overflow: hidden; }
+    .f06-the-trade-off-fill { width: 100%; height: 100%; background: #FF6B1A; transform-origin: left center; }
+    .f06-the-trade-off-swap-wrap { left: 5.5cqw; right: 5.5cqw; top: 73.5cqh; bottom: auto; height: 6.6cqh; }
+    .f06-the-trade-off-swap-card { position: absolute; inset: 0; transform-origin: 50% 50%; }
+    .f06-the-trade-off-swap-outgoing { z-index: 1; font-family: "IBM Plex Mono"; font-size: 1.12cqw; font-weight: 500; letter-spacing: 0.14em; color: #504B48; text-align: center; padding-top: 1.55cqh; }
+    .f06-the-trade-off-swap-incoming { z-index: 2; border-top: 2px solid #FF6B1A; background: #1A1918; text-align: center; }
+    .f06-the-trade-off-summary { margin-top: 1.1cqh; font-size: 4.55cqw; font-weight: 900; line-height: 0.9; letter-spacing: -0.05em; text-transform: lowercase; }
+    .f06-the-trade-off-summary span { color: #FF6B1A; }
+    .f06-the-trade-off-system { position: absolute; right: 1.4cqw; bottom: 0.8cqh; font-family: "IBM Plex Mono"; font-size: 0.88cqw; font-weight: 500; letter-spacing: 0.14em; color: #FF6B1A; }
+  </style>
+  <div id="root" data-composition-id="06-the-trade-off" data-width="1080" data-height="1920">
+    <div class="clip f06-the-trade-off-ground" data-start="0" data-duration="9.5" data-track-index="0"></div>
+    <div class="clip f06-the-trade-off-grid" data-start="0" data-duration="9.5" data-track-index="1" aria-hidden="true"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="0" y1="13" x2="100" y2="13"></line><line x1="0" y1="27" x2="100" y2="27"></line><line x1="0" y1="57" x2="100" y2="57"></line><line x1="0" y1="80" x2="100" y2="80"></line><line x1="11" y1="0" x2="11" y2="83"></line><line x1="89" y1="0" x2="89" y2="83"></line></svg></div>
+    <div class="clip f06-the-trade-off-chrome" data-start="0" data-duration="9.5" data-track-index="2"><span class="f06-the-trade-off-chrome-left">SYSTEM TRACE</span><span class="f06-the-trade-off-chrome-right">DISPLAY / TRADE-OFF</span></div>
+    <div class="clip f06-the-trade-off-heading" data-start="0" data-duration="9.5" data-track-index="3"><div class="f06-the-trade-off-kicker">PRESENTATION BALANCE</div><div class="f06-the-trade-off-rule"></div></div>
+    <div class="clip f06-the-trade-off-stage" data-start="0" data-duration="9.5" data-track-index="4">
+      <div class="f06-the-trade-off-side f06-the-trade-off-side-left"><div class="f06-the-trade-off-side-label"><span class="f06-the-trade-off-tear-word">tear</span> <span class="f06-the-trade-off-tear-word f06-the-trade-off-side-label-accent">free</span></div><div class="f06-the-trade-off-side-note">PRESENTATION</div></div>
+      <div class="f06-the-trade-off-side f06-the-trade-off-side-right"><div class="f06-the-trade-off-side-label"><span class="f06-the-trade-off-pacing-word">pacing</span> <span class="f06-the-trade-off-pacing-word f06-the-trade-off-side-label-accent">decides</span></div><div class="f06-the-trade-off-side-note">FRAME DELIVERY</div></div>
+      <div class="f06-the-trade-off-beam" aria-hidden="true"></div><div class="f06-the-trade-off-pivot" aria-hidden="true"></div>
+    </div>
+    <div class="clip f06-the-trade-off-queue" data-start="0" data-duration="9.5" data-track-index="5"><div class="f06-the-trade-off-queue-kicker">QUEUE / PACING</div><div class="f06-the-trade-off-bars"><span class="f06-the-trade-off-bar f06-the-trade-off-bar-a"></span><span class="f06-the-trade-off-bar f06-the-trade-off-bar-b"></span><span class="f06-the-trade-off-bar f06-the-trade-off-bar-c"></span><span class="f06-the-trade-off-bar f06-the-trade-off-bar-d"></span></div><div class="f06-the-trade-off-track"><div class="f06-the-trade-off-fill"></div></div></div>
+    <div class="clip f06-the-trade-off-swap-wrap" data-start="0" data-duration="9.5" data-track-index="6"><div class="f06-the-trade-off-swap-card f06-the-trade-off-swap-outgoing">TIMING / NOT ONE FIXED NUMBER</div><div class="f06-the-trade-off-swap-card f06-the-trade-off-swap-incoming"><div class="f06-the-trade-off-summary">tear-free is a <span>trade-off</span></div><div class="f06-the-trade-off-system">SYSTEM TRACE // 09</div></div></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const id = "06-the-trade-off";
+      const root = document.getElementById("root");
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines[id] = tl;
+      const chrome = root.querySelector(".f06-the-trade-off-chrome");
+      const kicker = root.querySelector(".f06-the-trade-off-kicker");
+      const rule = root.querySelector(".f06-the-trade-off-rule");
+      const tearWords = root.querySelectorAll(".f06-the-trade-off-tear-word");
+      const pacingWords = root.querySelectorAll(".f06-the-trade-off-pacing-word");
+      const content = [{ targets: tearWords, chars: 8, start: 0.62 }, { targets: pacingWords, chars: 13, start: 3.18 }];
+      const timeline = content.map((entry) => ({ ...entry, duration: 0.34 + entry.chars * 0.032 }));
+      tl.fromTo(chrome, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0);
+      tl.fromTo(kicker, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.12);
+      tl.fromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.46, ease: "power3.out" }, 0.28);
+      timeline.forEach((entry) => tl.fromTo(entry.targets, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: entry.duration, ease: "power3.out", stagger: 0.1 }, entry.start));
+      const beam = root.querySelector(".f06-the-trade-off-beam");
+      const pivot = root.querySelector(".f06-the-trade-off-pivot");
+      tl.fromTo([beam, pivot], { opacity: 0, scale: 0.72 }, { opacity: 1, scale: 1, duration: 0.65, ease: "power3.out" }, 1.34);
+      const queue = root.querySelector(".f06-the-trade-off-queue");
+      const queueBars = root.querySelectorAll(".f06-the-trade-off-bar");
+      const queueFill = root.querySelector(".f06-the-trade-off-fill");
+      tl.fromTo(queue, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 3.48);
+      tl.fromTo(queueBars, { scaleY: 1 }, { scaleY: 0.46, duration: 0.88, ease: "power3.out", stagger: 0.08 }, 4.34);
+      tl.fromTo(queueFill, { scaleX: 0.9 }, { scaleX: 0.44, duration: 0.9, ease: "power2.out" }, 4.34);
+      const outgoing = root.querySelector(".f06-the-trade-off-swap-outgoing");
+      const incoming = root.querySelector(".f06-the-trade-off-swap-incoming");
+      tl.fromTo(outgoing, { opacity: 0, scale: 0.72 }, { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" }, 5.5);
+      tl.to(outgoing, { scale: 0.72, opacity: 0, duration: 0.42, ease: "power2.in" }, 6.46);
+      tl.fromTo(incoming, { scale: 0.72, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.62, ease: "power3.out" }, 6.9);
+      tl.fromTo(root.querySelector(".f06-the-trade-off-system"), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 7.46);
+    })();
+  </script>
+</template>

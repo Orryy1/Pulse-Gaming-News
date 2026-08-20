@@ -1,0 +1,51 @@
+<template>
+  <style>
+    @font-face { font-family:"Space Grotesk"; src:url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2"); font-style:normal; font-weight:400 900; }
+    @font-face { font-family:"IBM Plex Mono"; src:url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2"); font-style:normal; font-weight:500; }
+    #root { position:relative; width:100%; height:100%; overflow:hidden; }
+    .frame-01-softer-gap-ground { position:absolute; inset:0; overflow:hidden; background:#0D0D0F; container-type:size; }
+    .frame-01-softer-gap-grid { position:absolute; inset:0; width:100%; height:100%; opacity:.54; }
+    .frame-01-softer-gap-scene { position:absolute; inset:0; overflow:hidden; }
+    .frame-01-softer-gap-kicker,.frame-01-softer-gap-meta,.frame-01-softer-gap-stage-label,.frame-01-softer-gap-ruler-label,.frame-01-softer-gap-status-label { font-family:"IBM Plex Mono"; font-size:1.6cqw; font-weight:500; letter-spacing:.14em; line-height:1; text-transform:uppercase; }
+    .frame-01-softer-gap-kicker { position:absolute; top:7cqh; left:7.2cqw; color:#FF6B1A; }
+    .frame-01-softer-gap-meta { position:absolute; top:7cqh; right:7.2cqw; color:#504B48; }
+    .frame-01-softer-gap-title { position:absolute; top:13.2cqh; left:7.2cqw; margin:0; color:#F0F0F0; font-family:"Space Grotesk"; font-size:7.3cqw; font-weight:900; letter-spacing:-.07em; line-height:.86; text-transform:lowercase; }
+    .frame-01-softer-gap-title span { color:#FF6B1A; }
+    .frame-01-softer-gap-rule { position:absolute; top:24.4cqh; left:7.2cqw; width:36px; height:2px; background:#FF6B1A; }
+    .frame-01-softer-gap-stage { position:absolute; top:30.5cqh; left:7.2cqw; width:85.6cqw; height:34.2cqh; overflow:hidden; border-top:1px solid #282726; border-bottom:1px solid #282726; }
+    .frame-01-softer-gap-stage-label { position:absolute; top:2.2cqh; left:0; color:#504B48; }
+    .frame-01-softer-gap-runway { position:absolute; top:16.5cqh; left:0; width:100%; height:1px; background:#282726; }
+    .frame-01-softer-gap-trail { position:absolute; top:15.8cqh; left:22.6cqw; width:40.4cqw; height:1.45cqh; background:#FF6B1A; opacity:.46; transform-origin:left center; }
+    .frame-01-softer-gap-sample { position:absolute; top:50%; left:50%; z-index:2; width:8cqw; height:8cqw; margin-left:-4cqw; margin-top:-4cqw; background:#FF6B1A; transform-origin:50% 50%; }
+    .frame-01-softer-gap-sample-label { position:absolute; top:9.6cqw; left:50%; width:16cqw; margin-left:-8cqw; color:#504B48; font-family:"IBM Plex Mono"; font-size:1.5cqw; font-weight:500; letter-spacing:.14em; text-align:center; text-transform:uppercase; }
+    .frame-01-softer-gap-sample--one { --target-x:-218; --target-y:0; } .frame-01-softer-gap-sample--two { --target-x:218; --target-y:0; }
+    .frame-01-softer-gap-streak { position:absolute; top:14.2cqh; left:22.6cqw; z-index:1; width:1.8cqw; height:4.5cqh; background:#F0F0F0; filter:url(#frame-01-softer-gap-filter); }
+    .frame-01-softer-gap-ruler { position:absolute; top:69.5cqh; left:7.2cqw; width:85.6cqw; border-top:1px solid #282726; padding-top:1.6cqh; }
+    .frame-01-softer-gap-ruler-top { display:flex; justify-content:space-between; }
+    .frame-01-softer-gap-ruler-label { color:#504B48; }
+    .frame-01-softer-gap-ruler-value { color:#F0F0F0; font-family:"Space Grotesk"; font-size:3.4cqw; font-weight:900; letter-spacing:-.05em; line-height:.85; text-transform:lowercase; }
+    .frame-01-softer-gap-ruler-track { position:relative; height:1px; margin-top:2.2cqh; background:#282726; }
+    .frame-01-softer-gap-ruler-mark { position:absolute; top:-.7cqh; width:1px; height:1.5cqh; background:#504B48; }
+    .frame-01-softer-gap-ruler-mark--a { left:22.6cqw; background:#FF6B1A; } .frame-01-softer-gap-ruler-mark--b { left:63cqw; background:#FF6B1A; }
+    .frame-01-softer-gap-status { position:absolute; top:77.2cqh; left:7.2cqw; width:85.6cqw; border-top:1px solid #282726; padding-top:1.5cqh; }
+    .frame-01-softer-gap-status-label { color:#504B48; }
+    .frame-01-softer-gap-status-text { display:inline-block; min-width:60cqw; margin-top:1.1cqh; color:#F0F0F0; font-family:"Space Grotesk"; font-size:5.8cqw; font-weight:900; letter-spacing:-.07em; line-height:.86; text-transform:lowercase; }
+    .frame-01-softer-gap-status-text span { color:#FF6B1A; }
+    .frame-01-softer-gap-cursor { display:inline-block; width:1.5cqw; color:#FF6B1A; font-family:"IBM Plex Mono"; font-size:4cqw; }
+  </style>
+  <div id="root" data-composition-id="01-softer-gap" data-width="1080" data-height="1920" data-duration="8.8">
+    <div class="clip frame-01-softer-gap-ground" data-start="0" data-duration="8.8" data-track-index="0"><svg class="frame-01-softer-gap-grid" viewBox="0 0 1080 1920" aria-hidden="true"><path d="M80 0V1594M280 0V1594M480 0V1594M680 0V1594M880 0V1594M0 220H1080M0 620H1080M0 1020H1080M0 1420H1080" fill="none" stroke="#282726" stroke-width="2" /></svg></div>
+    <div class="clip frame-01-softer-gap-scene" data-start="0" data-duration="8.8" data-track-index="1">
+      <div class="frame-01-softer-gap-kicker">MOTION BLUR / 01</div><div class="frame-01-softer-gap-meta">SAMPLE GAP</div><h1 class="frame-01-softer-gap-title">a softer<br><span>gap</span></h1><div class="frame-01-softer-gap-rule"></div>
+      <section class="frame-01-softer-gap-stage" aria-label="invented sampled-position timing diagram"><div class="frame-01-softer-gap-stage-label">TWO SAMPLES / ONE PATH</div><div class="frame-01-softer-gap-runway"></div><div class="frame-01-softer-gap-trail" id="frame-01-softer-gap-trail"></div><svg width="0" height="0" aria-hidden="true" style="position:absolute"><filter id="frame-01-softer-gap-filter" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur id="frame-01-softer-gap-blur" in="SourceGraphic" stdDeviation="18 0" /></filter></svg><div class="frame-01-softer-gap-sample frame-01-softer-gap-sample--one" data-target-x="-218" data-target-y="0"><span class="frame-01-softer-gap-sample-label">SAMPLE A</span></div><div class="frame-01-softer-gap-sample frame-01-softer-gap-sample--two" data-target-x="218" data-target-y="0"><span class="frame-01-softer-gap-sample-label">SAMPLE B</span></div><div class="frame-01-softer-gap-streak" id="frame-01-softer-gap-streak"></div></section>
+      <section class="frame-01-softer-gap-ruler" aria-label="invented fixed timing ruler"><div class="frame-01-softer-gap-ruler-top"><span class="frame-01-softer-gap-ruler-label">TIMING RULER</span><span class="frame-01-softer-gap-ruler-value">A → B</span></div><div class="frame-01-softer-gap-ruler-track"><span class="frame-01-softer-gap-ruler-mark frame-01-softer-gap-ruler-mark--a"></span><span class="frame-01-softer-gap-ruler-mark frame-01-softer-gap-ruler-mark--b"></span></div></section>
+      <section class="frame-01-softer-gap-status" aria-label="motion-blur outcome"><div class="frame-01-softer-gap-status-label">RESULT</div><span class="frame-01-softer-gap-status-text" id="frame-01-softer-gap-status-text"></span><span class="frame-01-softer-gap-cursor" id="frame-01-softer-gap-cursor">_</span></section>
+    </div>
+  </div>
+  <script>
+    (() => { const tl=gsap.timeline({ paused:true }); const samples=[...document.querySelectorAll(".frame-01-softer-gap-sample")]; const blur=document.getElementById("frame-01-softer-gap-blur"),blurProxy={v:18},writeBlur=()=>blur.setAttribute("stdDeviation",`${blurProxy.v} 0`); writeBlur();
+      tl.fromTo(".frame-01-softer-gap-kicker",{opacity:0,y:18},{opacity:1,y:0,duration:.28,ease:"power2.out"},.04); tl.fromTo(".frame-01-softer-gap-meta",{opacity:0},{opacity:1,duration:.24,ease:"power1.out"},.14); tl.fromTo(".frame-01-softer-gap-title",{opacity:0,y:22},{opacity:1,y:0,duration:.44,ease:"power3.out"},.1); tl.fromTo(".frame-01-softer-gap-rule",{scaleX:0},{scaleX:1,duration:.3,ease:"power2.out"},.46); tl.fromTo(".frame-01-softer-gap-stage",{opacity:0,y:18},{opacity:1,y:0,duration:.42,ease:"power3.out"},.38); samples.forEach((el,i)=>tl.fromTo(el,{xPercent:-50,yPercent:-50,x:0,y:0,scale:.6,opacity:0},{x:Number(el.dataset.targetX),y:Number(el.dataset.targetY),scale:1,opacity:1,duration:1.15,ease:"power3.out"},.86+i*.08));
+      tl.fromTo("#frame-01-softer-gap-streak",{x:0,opacity:0},{x:436,opacity:1,duration:.58,ease:"power4.out"},2.94); tl.to(blurProxy,{v:0,duration:.58,ease:"power4.out",onUpdate:writeBlur},2.94); tl.fromTo("#frame-01-softer-gap-trail",{scaleX:0},{scaleX:1,duration:.58,ease:"power4.out"},2.94); tl.fromTo(".frame-01-softer-gap-ruler",{opacity:0,y:14},{opacity:1,y:0,duration:.34,ease:"power2.out"},3.56);
+      const states=[{t:0,text:"VISUAL CONTINUITY"},{t:.86,text:"SAME"},{t:1.34,text:"SAME FRAME COUNT"}]; function textAt(t){for(let i=states.length-1;i>=0;i--){if(t>=states[i].t)return states[i].text;}return "";} const text=document.getElementById("frame-01-softer-gap-status-text"),cursor=document.getElementById("frame-01-softer-gap-cursor"),driver={t:0}; tl.fromTo(".frame-01-softer-gap-status",{opacity:0,y:18},{opacity:1,y:0,duration:.36,ease:"power3.out"},5.92); tl.to(driver,{t:2.5,duration:2.5,ease:"none",onUpdate:()=>{text.textContent=textAt(driver.t);}},5.94); const blink={p:0}; tl.to(blink,{p:Math.PI*10,duration:2.5,ease:"none",onUpdate:()=>{cursor.style.opacity=Math.sin(blink.p)>0?"1":"0";}},5.94); window.__timelines=window.__timelines||{}; window.__timelines["01-softer-gap"]=tl; })();
+  </script>
+</template>

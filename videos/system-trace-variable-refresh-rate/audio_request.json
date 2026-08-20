@@ -1,0 +1,34 @@
+{
+  "provider": "auto",
+  "speed": 1,
+  "lines": [
+    {
+      "id": "01",
+      "text": "Variable refresh rate does not make the GPU faster. It changes when a compatible monitor begins its next refresh."
+    },
+    {
+      "id": "02",
+      "text": "A fixed display keeps ticking at one rate, even while game frames finish early, late or somewhere between."
+    },
+    {
+      "id": "03",
+      "text": "With VRR, the monitor can refresh when the next frame is ready, reducing repeated frames, stutter and tearing inside its range."
+    },
+    {
+      "id": "04",
+      "text": "That range has limits. A display might vary between sixty-four and one hundred and twenty hertz, not from zero to infinity."
+    },
+    {
+      "id": "05",
+      "text": "Fall below the lower bound and frames may be repeated. Exceed the top and familiar fixed-refresh constraints return."
+    },
+    {
+      "id": "06",
+      "text": "VRR is therefore timing flexibility, not free performance. The GPU, display, connection and presentation path must all support it."
+    }
+  ],
+  "bgm": {
+    "mode": "none"
+  },
+  "voice": "bm_george"
+}

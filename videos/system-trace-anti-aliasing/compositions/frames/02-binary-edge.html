@@ -1,0 +1,437 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 100 900;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    [data-node="02-binary-edge-ground"] {
+      position: absolute;
+      inset: 0;
+      background: #0d0d0f;
+    }
+
+    [data-node="02-binary-edge-stage"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    [data-node="02-binary-edge-chrome"] {
+      position: absolute;
+      top: 80px;
+      left: 60px;
+      right: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 18px;
+      border-top: 1px solid #282726;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="02-binary-edge-diagram"] {
+      position: absolute;
+      top: 190px;
+      left: 60px;
+      width: 960px;
+      height: 960px;
+      overflow: hidden;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+    }
+
+    [data-node="02-binary-edge-grid"] {
+      position: absolute;
+      inset: 0;
+      width: 960px;
+      height: 960px;
+    }
+
+    [data-node="02-binary-edge-grid"] path {
+      fill: none;
+      stroke: #282726;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [data-node="02-binary-edge-cell"] {
+      position: absolute;
+      width: 240px;
+      height: 240px;
+      box-sizing: border-box;
+      overflow: hidden;
+      border: 1px solid #504b48;
+      background: #0d0d0f;
+    }
+
+    [data-cell-index="0"] {
+      left: 0;
+      top: 720px;
+    }
+
+    [data-cell-index="1"] {
+      left: 240px;
+      top: 480px;
+    }
+
+    [data-cell-index="2"] {
+      left: 480px;
+      top: 240px;
+    }
+
+    [data-cell-index="3"] {
+      left: 720px;
+      top: 0;
+    }
+
+    [data-node="02-binary-edge-cell-fill"] {
+      position: absolute;
+      inset: 0;
+      background: #ff6b1a;
+      opacity: 0;
+    }
+
+    [data-node="02-binary-edge-cell-index"] {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+    }
+
+    [data-node="02-binary-edge-cell-label"] {
+      position: absolute;
+      left: 20px;
+      bottom: 20px;
+      min-width: 190px;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+      font-size: 42px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.9;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    [data-node="02-binary-edge-guide"],
+    [data-node="02-binary-edge-stair"] {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      width: 960px;
+      height: 960px;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    [data-node="02-binary-edge-guide"] path {
+      fill: none;
+      stroke: #ff6b1a;
+      stroke-width: 6;
+      stroke-linecap: butt;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [data-node="02-binary-edge-stair"] {
+      z-index: 5;
+    }
+
+    [data-node="02-binary-edge-stair"] path {
+      fill: none;
+      stroke: #f0f0f0;
+      stroke-width: 3;
+      stroke-linecap: butt;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    [data-node="02-binary-edge-title"] {
+      position: absolute;
+      top: 1235px;
+      left: 60px;
+      width: 960px;
+    }
+
+    [data-node="02-binary-edge-title-line"] {
+      display: flex;
+      align-items: baseline;
+      gap: 28px;
+      width: 100%;
+    }
+
+    [data-node="02-binary-edge-word"] {
+      display: inline-block;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+      font-size: 128px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+      text-transform: lowercase;
+      white-space: nowrap;
+      will-change: transform, opacity;
+    }
+
+    [data-word="edge"] {
+      color: #ff6b1a;
+    }
+
+    [data-node="02-binary-edge-title-rule"] {
+      width: 36px;
+      height: 2px;
+      margin-top: 46px;
+      background: #ff6b1a;
+    }
+
+    [data-node="02-binary-edge-title-meta"] {
+      margin-top: 20px;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="02-binary-edge"
+    data-start="0"
+    data-duration="9.2"
+    data-width="1080"
+    data-height="1920"
+  >
+    <div
+      class="clip"
+      data-node="02-binary-edge-ground"
+      data-start="0"
+      data-duration="9.2"
+      data-track-index="0"
+    ></div>
+
+    <div
+      class="clip"
+      data-node="02-binary-edge-stage"
+      data-start="0"
+      data-duration="9.2"
+      data-track-index="1"
+    >
+      <div data-node="02-binary-edge-chrome">
+        <span>coverage / binary</span>
+        <span>edge test / 02</span>
+      </div>
+
+      <div data-node="02-binary-edge-diagram">
+        <svg data-node="02-binary-edge-grid" viewBox="0 0 960 960" aria-hidden="true">
+          <path d="M 240 0 V 960 M 480 0 V 960 M 720 0 V 960 M 0 240 H 960 M 0 480 H 960 M 0 720 H 960"></path>
+        </svg>
+
+        <div data-node="02-binary-edge-cell" data-cell-index="0">
+          <div data-node="02-binary-edge-cell-fill"></div>
+          <div data-node="02-binary-edge-cell-index">00</div>
+          <div data-node="02-binary-edge-cell-label"></div>
+        </div>
+        <div data-node="02-binary-edge-cell" data-cell-index="1">
+          <div data-node="02-binary-edge-cell-fill"></div>
+          <div data-node="02-binary-edge-cell-index">01</div>
+          <div data-node="02-binary-edge-cell-label"></div>
+        </div>
+        <div data-node="02-binary-edge-cell" data-cell-index="2">
+          <div data-node="02-binary-edge-cell-fill"></div>
+          <div data-node="02-binary-edge-cell-index">10</div>
+          <div data-node="02-binary-edge-cell-label"></div>
+        </div>
+        <div data-node="02-binary-edge-cell" data-cell-index="3">
+          <div data-node="02-binary-edge-cell-fill"></div>
+          <div data-node="02-binary-edge-cell-index">11</div>
+          <div data-node="02-binary-edge-cell-label"></div>
+        </div>
+
+        <svg data-node="02-binary-edge-guide" viewBox="0 0 960 960" aria-hidden="true">
+          <path id="02-binary-edge-guide-1" d="M 0 960 L 120 840"></path>
+          <path id="02-binary-edge-guide-2" d="M 120 840 L 360 600"></path>
+          <path id="02-binary-edge-guide-3" d="M 360 600 L 600 360"></path>
+          <path id="02-binary-edge-guide-4" d="M 600 360 L 840 120 L 960 0"></path>
+        </svg>
+
+        <svg data-node="02-binary-edge-stair" viewBox="0 0 960 960" aria-hidden="true">
+          <path id="02-binary-edge-stair-1" d="M 0 960 L 0 720 L 240 720"></path>
+          <path id="02-binary-edge-stair-2" d="M 240 720 L 240 480 L 480 480"></path>
+          <path id="02-binary-edge-stair-3" d="M 480 480 L 480 240 L 720 240"></path>
+          <path id="02-binary-edge-stair-4" d="M 720 240 L 720 0 L 960 0"></path>
+        </svg>
+      </div>
+
+      <div data-node="02-binary-edge-title">
+        <div data-node="02-binary-edge-title-line">
+          <span data-node="02-binary-edge-word" data-word="binary">binary</span>
+          <span data-node="02-binary-edge-word" data-word="edge">edge</span>
+        </div>
+        <div data-node="02-binary-edge-title-rule"></div>
+        <div data-node="02-binary-edge-title-meta">full / empty</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const timeline = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["02-binary-edge"] = timeline;
+
+      const chrome = document.querySelector('[data-node="02-binary-edge-chrome"]');
+      const cells = Array.from(document.querySelectorAll('[data-node="02-binary-edge-cell"]'));
+      const guidePaths = Array.from(document.querySelectorAll('[data-node="02-binary-edge-guide"] path'));
+      const stairPaths = Array.from(document.querySelectorAll('[data-node="02-binary-edge-stair"] path'));
+
+      [...guidePaths, ...stairPaths].forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      timeline.fromTo(
+        chrome,
+        { opacity: 0, y: 16 },
+        { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" },
+        0
+      );
+
+      const guideStarts = [0.18, 0.64, 1.10, 1.56];
+      guidePaths.forEach((path, index) => {
+        timeline.to(
+          path,
+          { strokeDashoffset: 0, duration: 0.62, ease: "power2.out" },
+          guideStarts[index]
+        );
+      });
+
+      const binaryStates = [
+        { t: 0.00, key: "----", values: ["", "", "", ""] },
+        { t: 0.35, key: "F---", values: ["FULL", "", "", ""] },
+        { t: 0.92, key: "FE--", values: ["FULL", "EMPTY", "", ""] },
+        { t: 1.55, key: "FEF-", values: ["FULL", "EMPTY", "FULL", ""] },
+        { t: 2.25, key: "FEFE", values: ["FULL", "EMPTY", "FULL", "EMPTY"] }
+      ];
+
+      const stateAt = (time) => {
+        for (let index = binaryStates.length - 1; index >= 0; index -= 1) {
+          if (time >= binaryStates[index].t) return binaryStates[index];
+        }
+        return binaryStates[0];
+      };
+
+      let lastStateKey = "";
+      const applyBinaryState = (state) => {
+        if (state.key === lastStateKey) return;
+        cells.forEach((cell, index) => {
+          const value = state.values[index];
+          const isFull = value === "FULL";
+          const fill = cell.querySelector('[data-node="02-binary-edge-cell-fill"]');
+          const label = cell.querySelector('[data-node="02-binary-edge-cell-label"]');
+          const sample = cell.querySelector('[data-node="02-binary-edge-cell-index"]');
+
+          label.textContent = value;
+          fill.style.opacity = isFull ? "1" : "0";
+          label.style.color = isFull ? "#0d0d0f" : "#f0f0f0";
+          sample.style.color = isFull ? "rgba(17,17,17,0.55)" : "#504b48";
+          cell.style.borderColor = value ? "#ff6b1a" : "#504b48";
+        });
+        lastStateKey = state.key;
+      };
+
+      applyBinaryState(binaryStates[0]);
+      const binaryDriver = { t: 0 };
+      timeline.to(
+        binaryDriver,
+        {
+          t: 3.1,
+          duration: 3.1,
+          ease: "none",
+          onUpdate: () => applyBinaryState(stateAt(binaryDriver.t))
+        },
+        2.7
+      );
+
+      const stairStarts = [3.18, 3.77, 4.42, 5.10];
+      stairPaths.forEach((path, index) => {
+        timeline.to(
+          path,
+          { strokeDashoffset: 0, duration: index === 3 ? 0.42 : 0.54, ease: "power2.out" },
+          stairStarts[index]
+        );
+      });
+
+      const titleWords = [
+        { node: document.querySelector('[data-word="binary"]'), text: "binary" },
+        { node: document.querySelector('[data-word="edge"]'), text: "edge" }
+      ];
+      const baseDuration = 0.32;
+      const secondsPerCharacter = 0.028;
+      let cumulative = 0;
+      const titleSequence = titleWords.map((entry) => {
+        const duration = baseDuration + entry.text.length * secondsPerCharacter;
+        const start = cumulative;
+        cumulative += duration * 0.72;
+        return { ...entry, start, duration };
+      });
+
+      titleSequence.forEach((entry) => {
+        timeline.fromTo(
+          entry.node,
+          { opacity: 0, x: 54 },
+          { opacity: 1, x: 0, duration: entry.duration, ease: "power3.out" },
+          5.8 + entry.start
+        );
+      });
+
+      timeline.fromTo(
+        '[data-node="02-binary-edge-title-rule"]',
+        { opacity: 0, scaleX: 0, transformOrigin: "left center" },
+        { opacity: 1, scaleX: 1, duration: 0.36, ease: "power3.out" },
+        6.66
+      );
+      timeline.fromTo(
+        '[data-node="02-binary-edge-title-meta"]',
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" },
+        6.82
+      );
+    })();
+  </script>
+</template>

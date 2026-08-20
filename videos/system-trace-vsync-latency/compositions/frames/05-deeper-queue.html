@@ -1,0 +1,368 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      container-type: size;
+      overflow: hidden;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+    }
+    .frame-05-deeper-queue-ground {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0D0D0F;
+    }
+    .frame-05-deeper-queue-grid {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.55;
+    }
+    .frame-05-deeper-queue-scene {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+    .frame-05-deeper-queue-world {
+      position: absolute;
+      inset: 0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+    .frame-05-deeper-queue-kicker,
+    .frame-05-deeper-queue-meta,
+    .frame-05-deeper-queue-rail-label,
+    .frame-05-deeper-queue-card-label,
+    .frame-05-deeper-queue-meter-label,
+    .frame-05-deeper-queue-age-label,
+    .frame-05-deeper-queue-note {
+      font-family: "IBM Plex Mono";
+      font-size: 1.65cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .frame-05-deeper-queue-kicker {
+      position: absolute;
+      top: 7cqh;
+      left: 7.4cqw;
+      color: #FF6B1A;
+    }
+    .frame-05-deeper-queue-meta {
+      position: absolute;
+      top: 7cqh;
+      right: 7.4cqw;
+      color: #504B48;
+    }
+    .frame-05-deeper-queue-heading {
+      position: absolute;
+      top: 12.4cqh;
+      left: 7.2cqw;
+      margin: 0;
+      color: #F0F0F0;
+      font-size: 7.4cqw;
+      font-weight: 900;
+      letter-spacing: -0.075em;
+      line-height: 0.86;
+      text-transform: lowercase;
+    }
+    .frame-05-deeper-queue-heading span { color: #FF6B1A; }
+    .frame-05-deeper-queue-rail {
+      position: absolute;
+      top: 23.4cqh;
+      left: 7.2cqw;
+      width: 85.6cqw;
+      height: 45.8cqh;
+      overflow: hidden;
+      background: #1A1918;
+    }
+    .frame-05-deeper-queue-rail-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    .frame-05-deeper-queue-rail-svg path {
+      fill: none;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+    #frame-05-deeper-queue-rail-main { stroke: #F0F0F0; stroke-width: 4; }
+    #frame-05-deeper-queue-rail-one,
+    #frame-05-deeper-queue-rail-two,
+    #frame-05-deeper-queue-rail-three { stroke: #504B48; stroke-width: 2; }
+    .frame-05-deeper-queue-rail-label {
+      position: absolute;
+      left: 4.2cqw;
+      color: #504B48;
+    }
+    .frame-05-deeper-queue-rail-label--gpu { top: 5.2cqh; }
+    .frame-05-deeper-queue-rail-label--cpu { top: 39.6cqh; z-index: 4; color: #0D0D0F; }
+    .frame-05-deeper-queue-burst-wrap {
+      position: absolute;
+      top: 24.2cqh;
+      left: 0;
+      width: 100%;
+      height: 44cqh;
+    }
+    .frame-05-deeper-queue-card {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 52cqw;
+      height: 8.1cqh;
+      overflow: hidden;
+      background: #0D0D0F;
+      border: 2px solid #F0F0F0;
+      will-change: transform;
+    }
+    .frame-05-deeper-queue-card::before {
+      position: absolute;
+      top: 2.3cqh;
+      left: 3cqw;
+      width: 21cqw;
+      height: 1cqh;
+      background: #F0F0F0;
+      content: "";
+    }
+    .frame-05-deeper-queue-card::after {
+      position: absolute;
+      top: 4.6cqh;
+      left: 3cqw;
+      width: 34cqw;
+      height: 1cqh;
+      background: #504B48;
+      content: "";
+    }
+    .frame-05-deeper-queue-card-label {
+      position: absolute;
+      right: 3cqw;
+      bottom: 1.2cqh;
+      color: #504B48;
+    }
+    .frame-05-deeper-queue-card--three { border-color: #504B48; }
+    .frame-05-deeper-queue-card--three::before { background: #504B48; }
+    .frame-05-deeper-queue-fresh {
+      position: absolute;
+      top: 55.8cqh;
+      left: 10.6cqw;
+      width: 45cqw;
+      height: 8cqh;
+      overflow: hidden;
+      background: #FF6B1A;
+      color: #0D0D0F;
+    }
+    .frame-05-deeper-queue-fresh-word {
+      position: absolute;
+      top: 2.6cqh;
+      left: 3cqw;
+      font-size: 4.8cqw;
+      font-weight: 900;
+      letter-spacing: -0.07em;
+      line-height: 0.86;
+      text-transform: lowercase;
+    }
+    .frame-05-deeper-queue-fresh-mark {
+      position: absolute;
+      right: 2.4cqw;
+      bottom: 1.3cqh;
+      color: rgba(17, 17, 17, 0.55);
+      font-family: "IBM Plex Mono";
+      font-size: 1.4cqw;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .frame-05-deeper-queue-age {
+      position: absolute;
+      top: 70.9cqh;
+      left: 8.2cqw;
+      width: 31cqw;
+      color: #F0F0F0;
+    }
+    .frame-05-deeper-queue-age-label {
+      display: block;
+      margin-bottom: 1.6cqh;
+      line-height: 1.2;
+      color: #504B48;
+    }
+    .frame-05-deeper-queue-age-value {
+      display: inline-block;
+      width: 14cqw;
+      font-size: 7cqw;
+      font-variant-numeric: tabular-nums;
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      line-height: 0.86;
+      transform-origin: center center;
+    }
+    .frame-05-deeper-queue-age-suffix {
+      color: #FF6B1A;
+      font-size: 3cqw;
+      font-weight: 900;
+      letter-spacing: -0.05em;
+      text-transform: lowercase;
+    }
+    .frame-05-deeper-queue-meter {
+      position: absolute;
+      top: 70.9cqh;
+      right: 8cqw;
+      width: 42cqw;
+    }
+    .frame-05-deeper-queue-meter-label {
+      display: block;
+      margin-bottom: 1.2cqh;
+      color: #504B48;
+    }
+    .frame-05-deeper-queue-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 1.2cqw;
+      height: 8cqh;
+      border-bottom: 2px solid #282726;
+    }
+    .frame-05-deeper-queue-bar {
+      width: 7.2cqw;
+      background: #504B48;
+      transform-origin: bottom center;
+    }
+    .frame-05-deeper-queue-bar--one { height: 3.2cqh; }
+    .frame-05-deeper-queue-bar--two { height: 5.4cqh; }
+    .frame-05-deeper-queue-bar--three { height: 7.2cqh; background: #FF6B1A; }
+    .frame-05-deeper-queue-progress-track {
+      width: 100%;
+      height: 1.1cqh;
+      margin-top: 1.4cqh;
+      overflow: hidden;
+      background: #282726;
+    }
+    .frame-05-deeper-queue-progress-fill {
+      width: 100%;
+      height: 100%;
+      background: #FF6B1A;
+      transform-origin: left center;
+    }
+    .frame-05-deeper-queue-note {
+      position: absolute;
+      top: 80.7cqh;
+      left: 7.4cqw;
+      width: 85.2cqw;
+      border-top: 2px solid #282726;
+      color: #504B48;
+      padding-top: 0.9cqh;
+      text-align: center;
+    }
+  </style>
+
+  <div id="root" data-composition-id="05-deeper-queue" data-width="1080" data-height="1920" data-duration="9.5">
+    <div class="clip frame-05-deeper-queue-ground" data-start="0" data-duration="9.5" data-track-index="0">
+      <svg class="frame-05-deeper-queue-grid" viewBox="0 0 1080 1920" aria-hidden="true">
+        <path d="M80 0V1594M280 0V1594M480 0V1594M680 0V1594M880 0V1594M0 220H1080M0 620H1080M0 1020H1080M0 1420H1080" fill="none" stroke="#282726" stroke-width="2" />
+      </svg>
+    </div>
+
+    <div class="clip frame-05-deeper-queue-scene" data-start="0" data-duration="9.5" data-track-index="1">
+      <div class="frame-05-deeper-queue-world" id="frame-05-deeper-queue-world">
+        <div class="frame-05-deeper-queue-kicker">SYNC / 05</div>
+        <div class="frame-05-deeper-queue-meta">CPU → GPU</div>
+        <h1 class="frame-05-deeper-queue-heading">older <span>work</span></h1>
+
+        <section class="frame-05-deeper-queue-rail" aria-label="invented CPU to GPU queue diagram">
+          <svg class="frame-05-deeper-queue-rail-svg" viewBox="0 0 924 879" aria-hidden="true">
+            <path id="frame-05-deeper-queue-rail-main" d="M154 760V110H388" />
+            <path id="frame-05-deeper-queue-rail-one" d="M154 272H458" />
+            <path id="frame-05-deeper-queue-rail-two" d="M154 442H458" />
+            <path id="frame-05-deeper-queue-rail-three" d="M154 612H458" />
+          </svg>
+          <div class="frame-05-deeper-queue-rail-label frame-05-deeper-queue-rail-label--gpu">GPU</div>
+          <div class="frame-05-deeper-queue-rail-label frame-05-deeper-queue-rail-label--cpu">CPU</div>
+        </section>
+
+        <div class="frame-05-deeper-queue-burst-wrap" aria-label="three queued frame cards">
+          <div class="frame-05-deeper-queue-card" data-target-x="108" data-target-y="-210"><span class="frame-05-deeper-queue-card-label">OLDER / 1</span></div>
+          <div class="frame-05-deeper-queue-card" data-target-x="144" data-target-y="-24"><span class="frame-05-deeper-queue-card-label">OLDER / 2</span></div>
+          <div class="frame-05-deeper-queue-card frame-05-deeper-queue-card--three" data-target-x="180" data-target-y="162"><span class="frame-05-deeper-queue-card-label">OLDER / 3</span></div>
+        </div>
+
+        <div class="frame-05-deeper-queue-fresh" id="frame-05-deeper-queue-fresh"><span class="frame-05-deeper-queue-fresh-word">fresh input</span><span class="frame-05-deeper-queue-fresh-mark">NEW</span></div>
+        <div class="frame-05-deeper-queue-age" id="frame-05-deeper-queue-age"><span class="frame-05-deeper-queue-age-label">AGE</span><span class="frame-05-deeper-queue-age-value" id="frame-05-deeper-queue-age-value">0</span><span class="frame-05-deeper-queue-age-suffix"> / 3</span></div>
+        <div class="frame-05-deeper-queue-meter" id="frame-05-deeper-queue-meter"><span class="frame-05-deeper-queue-meter-label">QUEUE DEPTH / 3</span><div class="frame-05-deeper-queue-bars"><span class="frame-05-deeper-queue-bar frame-05-deeper-queue-bar--one"></span><span class="frame-05-deeper-queue-bar frame-05-deeper-queue-bar--two"></span><span class="frame-05-deeper-queue-bar frame-05-deeper-queue-bar--three"></span></div><div class="frame-05-deeper-queue-progress-track"><div class="frame-05-deeper-queue-progress-fill"></div></div></div>
+        <div class="frame-05-deeper-queue-note" id="frame-05-deeper-queue-note">FRESH INPUT / BEHIND OLDER WORK</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const tl = gsap.timeline({ paused: true });
+      const railPaths = [
+        document.getElementById("frame-05-deeper-queue-rail-main"),
+        document.getElementById("frame-05-deeper-queue-rail-one"),
+        document.getElementById("frame-05-deeper-queue-rail-two"),
+        document.getElementById("frame-05-deeper-queue-rail-three"),
+      ];
+      railPaths.forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+      const world = document.getElementById("frame-05-deeper-queue-world");
+      const cam = { scale: 1, x: 0, y: 0 };
+      function applyCamera() {
+        world.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.scale})`;
+      }
+      applyCamera();
+
+      tl.fromTo(".frame-05-deeper-queue-kicker", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.32, ease: "power2.out" }, 0.04);
+      tl.fromTo(".frame-05-deeper-queue-meta", { opacity: 0 }, { opacity: 1, duration: 0.28, ease: "power1.out" }, 0.16);
+      tl.fromTo(".frame-05-deeper-queue-heading", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.48, ease: "power3.out" }, 0.12);
+      tl.to(railPaths[0], { strokeDashoffset: 0, duration: 1.14, ease: "power2.out" }, 0.22);
+      tl.to(railPaths[1], { strokeDashoffset: 0, duration: 0.54, ease: "power2.out" }, 1.0);
+      tl.to(railPaths[2], { strokeDashoffset: 0, duration: 0.54, ease: "power2.out" }, 1.38);
+      tl.to(railPaths[3], { strokeDashoffset: 0, duration: 0.54, ease: "power2.out" }, 1.76);
+      tl.fromTo(".frame-05-deeper-queue-rail-label", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power1.out", stagger: 0.14 }, 1.2);
+
+      const cards = Array.from(document.querySelectorAll(".frame-05-deeper-queue-card"));
+      cards.forEach((element, index) => {
+        tl.fromTo(element,
+          { xPercent: -50, yPercent: -50, x: 0, y: 0, scale: 0.6, opacity: 0 },
+          { x: Number(element.dataset.targetX), y: Number(element.dataset.targetY), scale: 1, opacity: 1, duration: 1.3, ease: "power3.out" },
+          1.08 + index * 0.07,
+        );
+      });
+
+      tl.fromTo("#frame-05-deeper-queue-fresh", { opacity: 0, x: -74 }, { opacity: 1, x: 0, duration: 0.64, ease: "power3.out" }, 2.88);
+      tl.to(cam, { scale: 1.06, x: 14, y: -42, duration: 1.78, ease: "power3.inOut", onUpdate: applyCamera }, 3.08);
+      const counter = document.getElementById("frame-05-deeper-queue-age-value");
+      const ageState = { value: 0 };
+      tl.fromTo("#frame-05-deeper-queue-age", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.36, ease: "power2.out" }, 3.26);
+      tl.to(ageState, { value: 3, duration: 1.48, ease: "power3.out", onUpdate: () => { counter.textContent = Math.round(ageState.value).toLocaleString(); } }, 3.38);
+      tl.fromTo(counter, { scale: 0.54 }, { scale: 1, duration: 1.48, ease: "power3.out" }, 3.38);
+
+      tl.fromTo("#frame-05-deeper-queue-meter", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.36, ease: "power2.out" }, 5.92);
+      tl.fromTo(".frame-05-deeper-queue-bar", { scaleY: 0 }, { scaleY: 1, duration: 0.72, ease: "power3.out", stagger: 0.08 }, 6.08);
+      tl.fromTo(".frame-05-deeper-queue-progress-fill", { scaleX: 0 }, { scaleX: 1, duration: 0.96, ease: "power2.out" }, 6.08);
+      tl.fromTo("#frame-05-deeper-queue-note", { opacity: 0 }, { opacity: 1, duration: 0.34, ease: "power1.out" }, 7.56);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["05-deeper-queue"] = tl;
+    })();
+  </script>
+</template>

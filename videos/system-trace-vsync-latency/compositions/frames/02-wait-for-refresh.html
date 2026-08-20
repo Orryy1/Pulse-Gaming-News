@@ -1,0 +1,438 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-weight: 300 900;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      container-type: size;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+    }
+
+    .f02-wait-for-refresh-ground { background: #0D0D0F; }
+
+    .f02-wait-for-refresh-grid { opacity: 0.52; }
+
+    .f02-wait-for-refresh-grid svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .f02-wait-for-refresh-grid line {
+      stroke: #282726;
+      stroke-width: 1;
+    }
+
+    .f02-wait-for-refresh-world {
+      transform-origin: 50% 50%;
+      overflow: hidden;
+    }
+
+    .f02-wait-for-refresh-chrome {
+      position: absolute;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 5.4cqh;
+      height: 5.2cqh;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+      font-family: "IBM Plex Mono";
+      font-size: 1.15cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+    }
+
+    .f02-wait-for-refresh-chrome-left,
+    .f02-wait-for-refresh-chrome-right {
+      position: absolute;
+      top: 1.55cqh;
+    }
+
+    .f02-wait-for-refresh-chrome-left { left: 0; }
+    .f02-wait-for-refresh-chrome-right { right: 0; color: #FF6B1A; }
+
+    .f02-wait-for-refresh-heading {
+      position: absolute;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 15.1cqh;
+      height: 12.2cqh;
+    }
+
+    .f02-wait-for-refresh-kicker {
+      margin: 0 0 1.9cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.12cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #FF6B1A;
+    }
+
+    .f02-wait-for-refresh-heading-rule {
+      width: 5.2cqw;
+      height: 2px;
+      background: #FF6B1A;
+    }
+
+    .f02-wait-for-refresh-rail-stage {
+      position: absolute;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 31.0cqh;
+      height: 35.6cqh;
+    }
+
+    .f02-wait-for-refresh-rail-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 18.0cqh;
+      height: 1px;
+      background: #504B48;
+      transform-origin: left center;
+    }
+
+    .f02-wait-for-refresh-time-ruler {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 22.2cqh;
+      height: 4.5cqh;
+      border-top: 1px solid #282726;
+    }
+
+    .f02-wait-for-refresh-ruler-tick {
+      position: absolute;
+      top: 0;
+      width: 1px;
+      height: 1.5cqh;
+      background: #282726;
+    }
+
+    .f02-wait-for-refresh-ruler-tick-a { left: 8%; }
+    .f02-wait-for-refresh-ruler-tick-b { left: 33%; }
+    .f02-wait-for-refresh-ruler-tick-c { left: 58%; }
+    .f02-wait-for-refresh-ruler-tick-d { left: 83%; }
+
+    .f02-wait-for-refresh-ruler-label {
+      position: absolute;
+      top: 2.1cqh;
+      left: 0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.0cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #504B48;
+    }
+
+    .f02-wait-for-refresh-burst-wrap {
+      position: absolute;
+      inset: 0;
+    }
+
+    .f02-wait-for-refresh-burst-item {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+    }
+
+    .f02-wait-for-refresh-marker {
+      width: 15.5cqw;
+      height: 8.2cqh;
+      border-top: 2px solid #F0F0F0;
+      background: #1A1918;
+    }
+
+    .f02-wait-for-refresh-marker-square {
+      position: absolute;
+      left: 1.4cqw;
+      top: 2.2cqh;
+      width: 2.6cqw;
+      height: 2.6cqw;
+      background: #FF6B1A;
+    }
+
+    .f02-wait-for-refresh-marker-label {
+      position: absolute;
+      left: 5.0cqw;
+      top: 2.2cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.05cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #F0F0F0;
+      white-space: nowrap;
+    }
+
+    .f02-wait-for-refresh-gate-closed {
+      width: 0.7cqw;
+      height: 15.8cqh;
+      background: #FF6B1A;
+    }
+
+    .f02-wait-for-refresh-gate-closed-label {
+      position: absolute;
+      left: -2.0cqw;
+      top: 17.3cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 0.92cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #504B48;
+      white-space: nowrap;
+    }
+
+    .f02-wait-for-refresh-ready-tag {
+      font-family: "Space Grotesk";
+      font-size: 6.6cqw;
+      font-weight: 900;
+      line-height: 0.88;
+      letter-spacing: -0.05em;
+      text-transform: lowercase;
+      color: #F0F0F0;
+      white-space: nowrap;
+    }
+
+    .f02-wait-for-refresh-ready-tag span { color: #FF6B1A; }
+
+    .f02-wait-for-refresh-next-gate-svg {
+      position: absolute;
+      left: 0;
+      top: 8.5cqh;
+      width: 100%;
+      height: 18.5cqh;
+      overflow: visible;
+    }
+
+    .f02-wait-for-refresh-next-gate-path {
+      fill: none;
+      stroke: #FF6B1A;
+      stroke-width: 6;
+      stroke-linecap: square;
+    }
+
+    .f02-wait-for-refresh-next-gate-label {
+      position: absolute;
+      left: 75.2%;
+      top: 2.0cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.0cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #FF6B1A;
+    }
+
+    .f02-wait-for-refresh-display-card {
+      position: absolute;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 70.0cqh;
+      height: 9.4cqh;
+      border-top: 1px solid #282726;
+    }
+
+    .f02-wait-for-refresh-display-kicker {
+      position: absolute;
+      top: 1.4cqh;
+      left: 0;
+      font-family: "IBM Plex Mono";
+      font-size: 1.0cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #504B48;
+    }
+
+    .f02-wait-for-refresh-display-state {
+      position: absolute;
+      top: 3.8cqh;
+      left: 0;
+      min-width: 44cqw;
+      font-family: "Space Grotesk";
+      font-size: 4.3cqw;
+      font-weight: 900;
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+      text-transform: lowercase;
+      color: #F0F0F0;
+      white-space: nowrap;
+    }
+
+    .f02-wait-for-refresh-display-state::first-letter { color: #FF6B1A; }
+
+    .f02-wait-for-refresh-display-status {
+      position: absolute;
+      right: 0;
+      top: 4.2cqh;
+      font-family: "IBM Plex Mono";
+      font-size: 1.0cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #FF6B1A;
+    }
+
+    .f02-wait-for-refresh-footer {
+      position: absolute;
+      left: 5.5cqw;
+      right: 5.5cqw;
+      top: 80.5cqh;
+      height: 1px;
+      border-top: 1px solid #282726;
+    }
+  </style>
+
+  <div id="root" data-composition-id="02-wait-for-refresh" data-width="1080" data-height="1920" data-duration="9.5">
+    <div class="clip f02-wait-for-refresh-ground" data-start="0" data-duration="9.5" data-track-index="0"></div>
+    <div class="clip f02-wait-for-refresh-grid" data-start="0" data-duration="9.5" data-track-index="1" aria-hidden="true">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+        <line x1="0" y1="13" x2="100" y2="13"></line>
+        <line x1="0" y1="31" x2="100" y2="31"></line>
+        <line x1="0" y1="56" x2="100" y2="56"></line>
+        <line x1="0" y1="80" x2="100" y2="80"></line>
+        <line x1="11" y1="0" x2="11" y2="83"></line>
+        <line x1="89" y1="0" x2="89" y2="83"></line>
+      </svg>
+    </div>
+
+    <div class="clip f02-wait-for-refresh-world" data-start="0" data-duration="9.5" data-track-index="2">
+      <div class="f02-wait-for-refresh-chrome">
+        <span class="f02-wait-for-refresh-chrome-left">SYSTEM TRACE</span>
+        <span class="f02-wait-for-refresh-chrome-right">DISPLAY / PRESENT</span>
+      </div>
+      <div class="f02-wait-for-refresh-heading">
+        <div class="f02-wait-for-refresh-kicker">SYNC PATH</div>
+        <div class="f02-wait-for-refresh-heading-rule" aria-hidden="true"></div>
+      </div>
+
+      <div class="f02-wait-for-refresh-rail-stage">
+        <div class="f02-wait-for-refresh-rail-line" aria-hidden="true"></div>
+        <div class="f02-wait-for-refresh-time-ruler" aria-hidden="true">
+          <span class="f02-wait-for-refresh-ruler-tick f02-wait-for-refresh-ruler-tick-a"></span>
+          <span class="f02-wait-for-refresh-ruler-tick f02-wait-for-refresh-ruler-tick-b"></span>
+          <span class="f02-wait-for-refresh-ruler-tick f02-wait-for-refresh-ruler-tick-c"></span>
+          <span class="f02-wait-for-refresh-ruler-tick f02-wait-for-refresh-ruler-tick-d"></span>
+          <span class="f02-wait-for-refresh-ruler-label">DISPLAY CLOCK</span>
+        </div>
+
+        <div class="f02-wait-for-refresh-burst-wrap">
+          <div class="f02-wait-for-refresh-burst-item f02-wait-for-refresh-ready-tag" data-target-x="-208" data-target-y="-150">frame <span>ready</span></div>
+          <div class="f02-wait-for-refresh-burst-item f02-wait-for-refresh-gate-closed" data-target-x="-154" data-target-y="-2">
+            <span class="f02-wait-for-refresh-gate-closed-label">CLOSED</span>
+          </div>
+          <div class="f02-wait-for-refresh-burst-item f02-wait-for-refresh-marker" data-target-x="38" data-target-y="-2">
+            <span class="f02-wait-for-refresh-marker-square" aria-hidden="true"></span>
+            <span class="f02-wait-for-refresh-marker-label">FRAME READY</span>
+          </div>
+        </div>
+
+        <svg class="f02-wait-for-refresh-next-gate-svg" viewBox="0 0 1000 360" preserveAspectRatio="none" aria-hidden="true">
+          <path class="f02-wait-for-refresh-next-gate-path" d="M 770 36 L 770 322"></path>
+        </svg>
+        <div class="f02-wait-for-refresh-next-gate-label">NEXT REFRESH</div>
+      </div>
+
+      <div class="f02-wait-for-refresh-display-card">
+        <div class="f02-wait-for-refresh-display-kicker">DISPLAY OUTPUT</div>
+        <div class="f02-wait-for-refresh-display-state">frame held</div>
+        <div class="f02-wait-for-refresh-display-status">WAIT</div>
+      </div>
+      <div class="f02-wait-for-refresh-footer" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const id = "02-wait-for-refresh";
+      const root = document.getElementById("root");
+      const world = root.querySelector(".f02-wait-for-refresh-world");
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines[id] = tl;
+
+      const chrome = root.querySelector(".f02-wait-for-refresh-chrome");
+      const kicker = root.querySelector(".f02-wait-for-refresh-kicker");
+      const headingRule = root.querySelector(".f02-wait-for-refresh-heading-rule");
+      const rail = root.querySelector(".f02-wait-for-refresh-rail-line");
+      const burstItems = root.querySelectorAll(".f02-wait-for-refresh-burst-item");
+      const marker = root.querySelector(".f02-wait-for-refresh-marker");
+      const targetMarkerX = Number(marker.dataset.targetX);
+      const nextGatePath = root.querySelector(".f02-wait-for-refresh-next-gate-path");
+      const nextGateLength = nextGatePath.getTotalLength();
+      nextGatePath.style.strokeDasharray = `${nextGateLength}`;
+      nextGatePath.style.strokeDashoffset = `${nextGateLength}`;
+
+      tl.fromTo(chrome, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0);
+      tl.fromTo(kicker, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.14);
+      tl.fromTo(headingRule, { scaleX: 0 }, { scaleX: 1, duration: 0.45, ease: "power3.out" }, 0.3);
+      tl.fromTo(rail, { scaleX: 0 }, { scaleX: 1, duration: 0.72, ease: "power3.out" }, 0.38);
+      burstItems.forEach((item, index) => {
+        tl.fromTo(
+          item,
+          { xPercent: -50, yPercent: -50, x: 0, y: 0, scale: 0.6, opacity: 0 },
+          { x: Number(item.dataset.targetX), y: Number(item.dataset.targetY), scale: 1, opacity: 1, duration: 1.2, ease: "power3.out" },
+          0.82 + index * 0.07
+        );
+      });
+      tl.fromTo(root.querySelector(".f02-wait-for-refresh-time-ruler"), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 2.22);
+
+      tl.to(nextGatePath, { strokeDashoffset: 0, duration: 0.82, ease: "power2.out" }, 3.24);
+      tl.fromTo(root.querySelector(".f02-wait-for-refresh-next-gate-label"), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.38, ease: "power3.out" }, 3.8);
+
+      const cam = { scale: 1, x: 0, y: 0 };
+      const applyCamera = () => {
+        world.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.scale})`;
+      };
+      applyCamera();
+      tl.to(marker, { x: targetMarkerX + 235, duration: 1.0, ease: "power3.out" }, 6.16);
+      tl.to(cam, { scale: 1.045, x: -22, y: -18, duration: 1.0, ease: "power3.out", onUpdate: applyCamera }, 6.16);
+
+      const stateEl = root.querySelector(".f02-wait-for-refresh-display-state");
+      const statusEl = root.querySelector(".f02-wait-for-refresh-display-status");
+      const sequence = [
+        { t: 0, text: "frame held", status: "WAIT" },
+        { t: 1.18, text: "frame presented", status: "PRESENT" }
+      ];
+      const stateAt = (time) => {
+        for (let index = sequence.length - 1; index >= 0; index -= 1) {
+          if (time >= sequence[index].t) return sequence[index];
+        }
+        return sequence[0];
+      };
+      const driver = { t: 0 };
+      let lastText = "";
+      tl.to(driver, {
+        t: 3,
+        duration: 3,
+        ease: "none",
+        onUpdate: () => {
+          const state = stateAt(driver.t);
+          if (state.text !== lastText) {
+            stateEl.textContent = state.text;
+            statusEl.textContent = state.status;
+            lastText = state.text;
+          }
+        }
+      }, 6.0);
+      tl.fromTo(root.querySelector(".f02-wait-for-refresh-display-card"), { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 6.38);
+    })();
+  </script>
+</template>

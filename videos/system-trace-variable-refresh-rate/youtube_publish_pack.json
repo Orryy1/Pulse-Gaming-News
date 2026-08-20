@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_publish_pack_v1",
+  "story_id": "system-trace-variable-refresh-rate",
+  "project_id": "system-trace-variable-refresh-rate",
+  "platform": "youtube_shorts",
+  "review_scope": "PRIVATE_FIRST_SCHEDULED_PUBLICATION",
+  "title": "How VRR Makes a Monitor Wait for the GPU",
+  "description": "Variable refresh rate does not make the GPU faster. It lets a compatible display begin a refresh when a frame is ready. This short animation explains the VRR operating window, why low and high frame rates still matter and which parts of the display path must support it.\n\nSources:\nhttps://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VRR #SystemTrace",
+  "tags": [
+    "variable refresh rate",
+    "VRR",
+    "FreeSync",
+    "G-SYNC",
+    "display refresh",
+    "PC gaming",
+    "System Trace",
+    "gaming Shorts"
+  ],
+  "captions": {
+    "file": "captions.srt",
+    "sha256": "b41443c5fcf0fbc3ab1ef50782a75bbb3c1f2ae9b06372614f6276eb929ed2bd",
+    "clean_manual_captions_required": true
+  },
+  "synthetic_media_required": true,
+  "altered_synthetic_disclosure_required": true,
+  "altered_synthetic_disclosure_setting": "YES",
+  "public_publish_authorised": true,
+  "unlisted_publish_authorised": false,
+  "scheduler_authorised": true,
+  "database_mutation_authorised": false,
+  "playlist_mutation_authorised": false,
+  "thumbnail_upload_authorised": false,
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "rights_placement_blocker_count": 0,
+  "rights_clearance_claimed": false,
+  "scheduled_publish_at_utc": "2026-08-24T17:00:00.000Z",
+  "youtube_upload_request": {
+    "schema_version": 1,
+    "closed": true,
+    "authority_scope": "EXACT_PRIVATE_FIRST_SCHEDULE_REQUEST_SHAPE_ONLY",
+    "publish_authority": "EXTERNALLY_EVALUATED",
+    "video_file": "renders/system-trace-variable-refresh-rate.mp4",
+    "video_sha256": "a318e4ed561586bc4ea12879f4d785dc6024f5700c04ea30c0b45d261698bff1",
+    "notifySubscribers": false,
+    "snippet": {
+      "title": "How VRR Makes a Monitor Wait for the GPU",
+      "description": "Variable refresh rate does not make the GPU faster. It lets a compatible display begin a refresh when a frame is ready. This short animation explains the VRR operating window, why low and high frame rates still matter and which parts of the display path must support it.\n\nSources:\nhttps://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VRR #SystemTrace",
+      "tags": [
+        "variable refresh rate",
+        "VRR",
+        "FreeSync",
+        "G-SYNC",
+        "display refresh",
+        "PC gaming",
+        "System Trace",
+        "gaming Shorts"
+      ],
+      "categoryId": "20",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "status": {
+      "privacyStatus": "private",
+      "selfDeclaredMadeForKids": false,
+      "containsSyntheticMedia": true,
+      "license": "youtube",
+      "embeddable": true,
+      "publicStatsViewable": true
+    },
+    "paidProductPlacementDetails": {
+      "hasPaidProductPlacement": false
+    },
+    "captions": {
+      "file": "captions.srt",
+      "sha256": "b41443c5fcf0fbc3ab1ef50782a75bbb3c1f2ae9b06372614f6276eb929ed2bd",
+      "language": "en-GB",
+      "name": "English (United Kingdom)",
+      "isDraft": false
+    },
+    "cover_selection": {
+      "selection_mode": "in_video_frame",
+      "frame_time_seconds": 1.5,
+      "custom_thumbnail_upload_allowed": false,
+      "application_status": "NOT_APPLIED"
+    }
+  }
+}

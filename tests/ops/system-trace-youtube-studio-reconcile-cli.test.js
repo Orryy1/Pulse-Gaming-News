@@ -13,11 +13,18 @@ const {
 } = require("../../tools/system-trace-youtube-studio-reconcile");
 
 async function sha256(file) {
-  return crypto.createHash("sha256").update(await fs.readFile(file)).digest("hex");
+  return crypto
+    .createHash("sha256")
+    .update(await fs.readFile(file))
+    .digest("hex");
 }
 
-async function fixture() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-studio-reconcile-"));
+async function fixture({
+  manifestFile = "system-trace-youtube-buffer.json",
+} = {}) {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-studio-reconcile-"),
+  );
   const repoRoot = path.join(root, "repo");
   const evidenceRoot = path.join(root, "evidence");
   const storyId = "system-trace-frame-pacing";
@@ -39,7 +46,7 @@ async function fixture() {
     channel: { id: "UCvgNDjtTezrpxL8oUe6mYwA", title: "Pulse Gaming" },
     episodes: [episode],
   };
-  const manifestPath = path.join(repoRoot, "videos", "system-trace-youtube-buffer.json");
+  const manifestPath = path.join(repoRoot, "videos", manifestFile);
   await fs.writeJson(manifestPath, manifest);
   const videoSha256 = await sha256(videoPath);
   await fs.writeJson(path.join(packageDir, "youtube_publish_pack.json"), {
@@ -91,7 +98,10 @@ async function fixture() {
     verdict: "GREEN",
     publish_allowed: true,
     video_sha256: videoSha256,
-    control_tower: { verdict: "GREEN", scope: "EXACT_PRIVATE_FIRST_UPLOAD_ONLY" },
+    control_tower: {
+      verdict: "GREEN",
+      scope: "EXACT_PRIVATE_FIRST_UPLOAD_ONLY",
+    },
     dispatch: {
       action_id: `${storyId}:youtube:private`,
       mode: "PRIVATE_FIRST",
@@ -175,22 +185,50 @@ function deferredRedReceipt(data, overrides = {}) {
   };
 }
 
+function authPreflightRedReceipt(data, overrides = {}) {
+  return {
+    schema_version: 1,
+    receipt_type: "governed_youtube_private_dispatch",
+    generated_at: "2026-08-20T09:58:34.466Z",
+    story_id: data.episode.story_id,
+    platform: "youtube",
+    verdict: "RED",
+    status: "STUDIO_RECONCILIATION_ATTEMPT_BLOCKED",
+    retry_allowed: false,
+    studio_ingest: true,
+    platform_object: { video_id: "studioAbc1", privacy_status: "private" },
+    requests: { video: { media_sha256: data.videoSha256 } },
+    authority: { action_id: `${data.episode.story_id}:youtube:private` },
+    blockers: ["youtube_auth_must_be_current_before_studio_reconcile"],
+    ...overrides,
+  };
+}
+
 test("fixed CLI reserves the authority receipt and verifies a Studio ingest", async () => {
   const data = await fixture();
   const client = {
     videos: {
-      list: async () => ({ data: { items: [remote(data)] } }),
+      list: async () => {
+        const reserved = await fs.readJson(data.receiptPath);
+        assert.equal(reserved.status, "STUDIO_RECONCILIATION_ATTEMPT_RESERVED");
+        return { data: { items: [remote(data)] } };
+      },
       update: async () => assert.fail("no update expected"),
     },
   };
   const result = await main(
-    ["--confirm-story-id", data.episode.story_id, "--video-id", "studioAbc1", "--apply-reconcile"],
+    [
+      "--confirm-story-id",
+      data.episode.story_id,
+      "--video-id",
+      "studioAbc1",
+      "--apply-reconcile",
+    ],
     {
       repoRoot: data.repoRoot,
       evidenceRoot: data.evidenceRoot,
       authenticatedYoutubeClientFactory: async () => {
-        const reserved = await fs.readJson(data.receiptPath);
-        assert.equal(reserved.status, "STUDIO_RECONCILIATION_ATTEMPT_RESERVED");
+        assert.equal(await fs.pathExists(data.receiptPath), false);
         return client;
       },
       log: () => {},
@@ -202,19 +240,53 @@ test("fixed CLI reserves the authority receipt and verifies a Studio ingest", as
   assert.equal(result.receipt.requests.video.media_sha256, data.videoSha256);
 });
 
+test("new auth failure occurs before reservation and leaves no receipt", async () => {
+  const data = await fixture();
+  await assert.rejects(
+    main(
+      [
+        "--confirm-story-id",
+        data.episode.story_id,
+        "--video-id",
+        "studioAbc1",
+        "--apply-reconcile",
+      ],
+      {
+        repoRoot: data.repoRoot,
+        evidenceRoot: data.evidenceRoot,
+        authenticatedYoutubeClientFactory: async () => {
+          throw new Error(
+            "youtube_auth_must_be_current_before_studio_reconcile",
+          );
+        },
+        log: () => {},
+      },
+    ),
+    /youtube_auth_must_be_current_before_studio_reconcile/,
+  );
+  assert.equal(await fs.pathExists(data.receiptPath), false);
+});
+
 test("fixed CLI permits only the narrow language repair", async () => {
   const data = await fixture();
   const reads = [remote(data, { removeDefaultLanguage: true }), remote(data)];
   const updates = [];
   await main(
-    ["--confirm-story-id", data.episode.story_id, "--video-id", "studioAbc1", "--apply-reconcile"],
+    [
+      "--confirm-story-id",
+      data.episode.story_id,
+      "--video-id",
+      "studioAbc1",
+      "--apply-reconcile",
+    ],
     {
       repoRoot: data.repoRoot,
       evidenceRoot: data.evidenceRoot,
       authenticatedYoutubeClientFactory: async () => ({
         videos: {
           list: async () => ({ data: { items: [reads.shift()] } }),
-          update: async (request, options) => updates.push({ request, options }),
+          update: async (request, options) =>
+            updates.push({ request, options }),
         },
       }),
       log: () => {},
@@ -242,14 +314,22 @@ test("an existing GREEN receipt is idempotent only after exact remote readback",
   });
   let updates = 0;
   const result = await main(
-    ["--confirm-story-id", data.episode.story_id, "--video-id", "studioAbc1", "--apply-reconcile"],
+    [
+      "--confirm-story-id",
+      data.episode.story_id,
+      "--video-id",
+      "studioAbc1",
+      "--apply-reconcile",
+    ],
     {
       repoRoot: data.repoRoot,
       evidenceRoot: data.evidenceRoot,
       authenticatedYoutubeClientFactory: async () => ({
         videos: {
           list: async () => ({ data: { items: [remote(data)] } }),
-          update: async () => { updates += 1; },
+          update: async () => {
+            updates += 1;
+          },
         },
       }),
       log: () => {},
@@ -259,19 +339,70 @@ test("an existing GREEN receipt is idempotent only after exact remote readback",
   assert.equal(updates, 0);
 });
 
+test("accepts only the fixed display-pipeline campaign selector", () => {
+  assert.equal(
+    parseArgs(["--campaign", "display-pipeline"]).campaign,
+    "display-pipeline",
+  );
+  assert.throws(
+    () => parseArgs(["--campaign", "caller-controlled"]),
+    /campaign_not_supported/,
+  );
+});
+
+test("display-pipeline mode reads the fixed campaign manifest and evidence root", async () => {
+  const data = await fixture({
+    manifestFile: "system-trace-display-pipeline-youtube-buffer.json",
+  });
+  const result = await main(
+    [
+      "--campaign",
+      "display-pipeline",
+      "--confirm-story-id",
+      data.episode.story_id,
+      "--video-id",
+      "studioAbc1",
+      "--apply-reconcile",
+    ],
+    {
+      repoRoot: data.repoRoot,
+      evidenceRoot: data.evidenceRoot,
+      authenticatedYoutubeClientFactory: async () => ({
+        videos: {
+          list: async () => ({ data: { items: [remote(data)] } }),
+          update: async () => assert.fail("no update expected"),
+        },
+      }),
+      log: () => {},
+    },
+  );
+  assert.equal(result.receipt.status, "PRIVATE_VERIFIED");
+});
+
 test("rejects expanded CLI authority and invalid replay before authentication", async () => {
-  assert.throws(() => parseArgs(["--receipt-out", "elsewhere.json"]), /unknown_argument/);
+  assert.throws(
+    () => parseArgs(["--receipt-out", "elsewhere.json"]),
+    /unknown_argument/,
+  );
   const data = await fixture();
   await fs.ensureDir(path.dirname(data.receiptPath));
   await fs.writeJson(data.receiptPath, { verdict: "RED", status: "failed" });
   let authCalls = 0;
   await assert.rejects(
     main(
-      ["--confirm-story-id", data.episode.story_id, "--video-id", "studioAbc1", "--apply-reconcile"],
+      [
+        "--confirm-story-id",
+        data.episode.story_id,
+        "--video-id",
+        "studioAbc1",
+        "--apply-reconcile",
+      ],
       {
         repoRoot: data.repoRoot,
         evidenceRoot: data.evidenceRoot,
-        authenticatedYoutubeClientFactory: async () => { authCalls += 1; },
+        authenticatedYoutubeClientFactory: async () => {
+          authCalls += 1;
+        },
       },
     ),
     /deferred_source_receipt_blocked/,
@@ -292,7 +423,13 @@ test("deferred RED becomes a separate exclusive GREEN proof after exact readback
   const redBefore = await fs.readFile(data.receiptPath);
   let updates = 0;
   const result = await main(
-    ["--confirm-story-id", data.episode.story_id, "--video-id", "studioAbc1", "--apply-reconcile"],
+    [
+      "--confirm-story-id",
+      data.episode.story_id,
+      "--video-id",
+      "studioAbc1",
+      "--apply-reconcile",
+    ],
     {
       repoRoot: data.repoRoot,
       evidenceRoot: data.evidenceRoot,
@@ -301,7 +438,9 @@ test("deferred RED becomes a separate exclusive GREEN proof after exact readback
         return {
           videos: {
             list: async () => ({ data: { items: [remote(data)] } }),
-            update: async () => { updates += 1; },
+            update: async () => {
+              updates += 1;
+            },
           },
         };
       },
@@ -315,6 +454,57 @@ test("deferred RED becomes a separate exclusive GREEN proof after exact readback
   assert.deepEqual(await fs.readFile(data.receiptPath), redBefore);
   const proof = await fs.readJson(reconciliationPath);
   assert.equal(proof.source_receipt.sha256, await sha256(data.receiptPath));
+});
+
+test("an exact historical auth-preflight RED seals a source-linked read-only GREEN proof", async () => {
+  const data = await fixture();
+  const reconciliationPath = path.join(
+    data.evidenceRoot,
+    "receipts",
+    "private",
+    `${data.episode.story_id}-private-upload-reconciliation.json`,
+  );
+  await fs.ensureDir(path.dirname(data.receiptPath));
+  await fs.writeJson(data.receiptPath, authPreflightRedReceipt(data), {
+    spaces: 2,
+  });
+  const redBefore = await fs.readFile(data.receiptPath);
+  let updates = 0;
+  const result = await main(
+    [
+      "--confirm-story-id",
+      data.episode.story_id,
+      "--video-id",
+      "studioAbc1",
+      "--apply-reconcile",
+    ],
+    {
+      repoRoot: data.repoRoot,
+      evidenceRoot: data.evidenceRoot,
+      authenticatedYoutubeClientFactory: async () => ({
+        videos: {
+          list: async () => ({ data: { items: [remote(data)] } }),
+          update: async () => {
+            updates += 1;
+          },
+        },
+      }),
+      log: () => {},
+    },
+  );
+  assert.equal(
+    result.receipt.verification_outcome,
+    "DEFERRED_AUTH_PREFLIGHT_READBACK_VERIFIED",
+  );
+  assert.equal(result.receipt.remote_mutation_count, 0);
+  assert.equal(updates, 0);
+  assert.deepEqual(await fs.readFile(data.receiptPath), redBefore);
+  const proof = await fs.readJson(reconciliationPath);
+  assert.equal(proof.source_receipt.sha256, await sha256(data.receiptPath));
+  assert.equal(
+    proof.source_receipt.blocker,
+    "youtube_auth_must_be_current_before_studio_reconcile",
+  );
 });
 
 test("deferred proof replay is read-only and tamper-evident", async () => {
@@ -340,8 +530,10 @@ test("deferred proof replay is read-only and tamper-evident", async () => {
     log: () => {},
   };
   const argv = [
-    "--confirm-story-id", data.episode.story_id,
-    "--video-id", "studioAbc1",
+    "--confirm-story-id",
+    data.episode.story_id,
+    "--video-id",
+    "studioAbc1",
     "--apply-reconcile",
   ];
   await main(argv, deps);
@@ -355,7 +547,12 @@ test("deferred proof replay is read-only and tamper-evident", async () => {
   await fs.writeJson(reconciliationPath, tampered);
   let authCalls = 0;
   await assert.rejects(
-    main(argv, { ...deps, authenticatedYoutubeClientFactory: async () => { authCalls += 1; } }),
+    main(argv, {
+      ...deps,
+      authenticatedYoutubeClientFactory: async () => {
+        authCalls += 1;
+      },
+    }),
     /deferred_green_proof_blocked/,
   );
   assert.equal(authCalls, 0);
@@ -373,13 +570,21 @@ test("ambiguous deferred readback creates no reconciliation sibling", async () =
   await fs.writeJson(data.receiptPath, deferredRedReceipt(data));
   await assert.rejects(
     main(
-      ["--confirm-story-id", data.episode.story_id, "--video-id", "studioAbc1", "--apply-reconcile"],
+      [
+        "--confirm-story-id",
+        data.episode.story_id,
+        "--video-id",
+        "studioAbc1",
+        "--apply-reconcile",
+      ],
       {
         repoRoot: data.repoRoot,
         evidenceRoot: data.evidenceRoot,
         authenticatedYoutubeClientFactory: async () => ({
           videos: {
-            list: async () => { throw new Error("socket closed"); },
+            list: async () => {
+              throw new Error("socket closed");
+            },
           },
         }),
       },

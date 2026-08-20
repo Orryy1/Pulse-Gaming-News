@@ -1,0 +1,424 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+    }
+    .frame-04-split-point-ground {
+      position: absolute;
+      inset: 0;
+      background: #0D0D0F;
+      overflow: hidden;
+    }
+    .frame-04-split-point-grid {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.52;
+    }
+    .frame-04-split-point-scene {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+    .frame-04-split-point-world {
+      position: absolute;
+      inset: 0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+    .frame-04-split-point-kicker,
+    .frame-04-split-point-meta,
+    .frame-04-split-point-region-label,
+    .frame-04-split-point-shell-mark {
+      font-family: "IBM Plex Mono";
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .frame-04-split-point-kicker {
+      position: absolute;
+      top: 130px;
+      left: 80px;
+      color: #FF6B1A;
+    }
+    .frame-04-split-point-meta {
+      position: absolute;
+      top: 130px;
+      right: 80px;
+      color: #504B48;
+    }
+    .frame-04-split-point-title {
+      position: absolute;
+      top: 205px;
+      left: 78px;
+      margin: 0;
+      color: #F0F0F0;
+      font-size: 78px;
+      font-weight: 900;
+      letter-spacing: -0.075em;
+      line-height: 0.9;
+      text-transform: lowercase;
+    }
+    .frame-04-split-point-title-word {
+      display: inline-block;
+      margin-right: 0.18em;
+    }
+    .frame-04-split-point-title-word:last-child {
+      color: #FF6B1A;
+      margin-right: 0;
+    }
+    .frame-04-split-point-shell {
+      position: absolute;
+      top: 390px;
+      left: 78px;
+      width: 924px;
+      height: 1000px;
+    }
+    .frame-04-split-point-shell-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    .frame-04-split-point-shell-svg path {
+      fill: none;
+      stroke: #F0F0F0;
+      stroke-width: 3;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+    .frame-04-split-point-shell-svg .frame-04-split-point-shell-detail {
+      stroke: #282726;
+      stroke-width: 2;
+    }
+    .frame-04-split-point-shell-mark {
+      position: absolute;
+      top: 44px;
+      left: 40px;
+      color: #504B48;
+    }
+    .frame-04-split-point-frame-a {
+      position: absolute;
+      top: 126px;
+      right: 42px;
+      left: 42px;
+      height: 408px;
+      overflow: hidden;
+      background: #1A1918;
+    }
+    .frame-04-split-point-frame-a::before,
+    .frame-04-split-point-frame-a::after,
+    .frame-04-split-point-frame-b::before,
+    .frame-04-split-point-frame-b::after {
+      position: absolute;
+      right: 0;
+      left: 0;
+      height: 2px;
+      background: #282726;
+      content: "";
+    }
+    .frame-04-split-point-frame-a::before { top: 33%; }
+    .frame-04-split-point-frame-a::after { top: 69%; }
+    .frame-04-split-point-frame-a-block {
+      position: absolute;
+      top: 84px;
+      left: 72px;
+      width: 292px;
+      height: 184px;
+      border: 2px solid #504B48;
+    }
+    .frame-04-split-point-frame-a-bar {
+      position: absolute;
+      top: 122px;
+      left: 418px;
+      width: 310px;
+      height: 18px;
+      background: #F0F0F0;
+    }
+    .frame-04-split-point-frame-a-bar::after {
+      position: absolute;
+      top: 46px;
+      left: 0;
+      width: 218px;
+      height: 18px;
+      background: #504B48;
+      content: "";
+    }
+    .frame-04-split-point-frame-b {
+      position: absolute;
+      top: 534px;
+      right: 42px;
+      left: 42px;
+      height: 408px;
+      overflow: hidden;
+      background: #FF6B1A;
+      opacity: 0;
+    }
+    .frame-04-split-point-frame-b::before { top: 27%; background: rgba(17, 17, 17, 0.40); }
+    .frame-04-split-point-frame-b::after { top: 73%; background: rgba(17, 17, 17, 0.40); }
+    .frame-04-split-point-frame-b-block {
+      position: absolute;
+      top: 74px;
+      right: 80px;
+      width: 280px;
+      height: 180px;
+      border: 2px solid rgba(17, 17, 17, 0.55);
+    }
+    .frame-04-split-point-frame-b-bar {
+      position: absolute;
+      top: 125px;
+      left: 74px;
+      width: 314px;
+      height: 18px;
+      background: #0D0D0F;
+    }
+    .frame-04-split-point-frame-b-bar::after {
+      position: absolute;
+      top: 46px;
+      left: 0;
+      width: 204px;
+      height: 18px;
+      background: rgba(17, 17, 17, 0.55);
+      content: "";
+    }
+    .frame-04-split-point-scan-line {
+      position: absolute;
+      top: 126px;
+      right: 42px;
+      left: 42px;
+      z-index: 4;
+      height: 8px;
+      background: #FF6B1A;
+      transform-origin: left center;
+    }
+    .frame-04-split-point-scan-line::before {
+      position: absolute;
+      top: -21px;
+      left: 0;
+      width: 18px;
+      height: 50px;
+      background: #FF6B1A;
+      content: "";
+    }
+    .frame-04-split-point-buffer {
+      position: absolute;
+      top: 550px;
+      left: 50%;
+      z-index: 5;
+      display: flex;
+      gap: 16px;
+      width: 764px;
+      margin-left: -382px;
+      color: #504B48;
+      font-size: 42px;
+      font-weight: 900;
+      letter-spacing: -0.07em;
+      line-height: 0.9;
+      text-transform: lowercase;
+    }
+    .frame-04-split-point-buffer-word {
+      display: inline-block;
+      transform-origin: 50% 50%;
+    }
+    .frame-04-split-point-buffer-word:last-child { color: #FF6B1A; }
+    .frame-04-split-point-region-label {
+      position: absolute;
+      z-index: 6;
+      color: #F0F0F0;
+      opacity: 0;
+    }
+    .frame-04-split-point-region-label--upper { top: 716px; left: 124px; }
+    .frame-04-split-point-region-label--lower { top: 1130px; left: 124px; color: #0D0D0F; }
+    .frame-04-split-point-region-rule {
+      display: inline-block;
+      width: 42px;
+      height: 2px;
+      margin: 0 14px 5px 0;
+      background: currentColor;
+      vertical-align: middle;
+    }
+    .frame-04-split-point-seam-note {
+      position: absolute;
+      top: 1460px;
+      left: 78px;
+      width: 924px;
+      border-top: 2px solid #282726;
+      color: #504B48;
+      font-family: "IBM Plex Mono";
+      font-size: 17px;
+      font-weight: 500;
+      letter-spacing: 0.13em;
+      line-height: 1;
+      padding-top: 22px;
+      text-transform: uppercase;
+    }
+  </style>
+
+  <div id="root" data-composition-id="04-split-point" data-width="1080" data-height="1920" data-duration="9.5">
+    <div class="clip frame-04-split-point-ground" data-start="0" data-duration="9.5" data-track-index="0">
+      <svg class="frame-04-split-point-grid" viewBox="0 0 1080 1920" aria-hidden="true">
+        <path d="M80 0V1594M280 0V1594M480 0V1594M680 0V1594M880 0V1594M0 190H1080M0 590H1080M0 990H1080M0 1390H1080" fill="none" stroke="#282726" stroke-width="2" />
+      </svg>
+    </div>
+
+    <div class="clip frame-04-split-point-scene" data-start="0" data-duration="9.5" data-track-index="1">
+      <div class="frame-04-split-point-world" id="frame-04-split-point-world">
+        <div class="frame-04-split-point-kicker">DISPLAY / 04</div>
+        <div class="frame-04-split-point-meta">SCAN ORDER</div>
+        <h1 class="frame-04-split-point-title" aria-label="frame a"><span class="frame-04-split-point-title-word">frame</span><span class="frame-04-split-point-title-word">a</span></h1>
+
+        <section class="frame-04-split-point-shell" aria-label="invented display-buffer diagram">
+          <svg class="frame-04-split-point-shell-svg" viewBox="0 0 924 1000" aria-hidden="true">
+            <path id="frame-04-split-point-shell-path" d="M2 2H922V998H2Z" />
+            <path id="frame-04-split-point-divider-path" class="frame-04-split-point-shell-detail" d="M2 536H922" />
+          </svg>
+          <div class="frame-04-split-point-shell-mark">DISPLAY BUFFER</div>
+          <div class="frame-04-split-point-frame-a">
+            <div class="frame-04-split-point-frame-a-block"></div>
+            <div class="frame-04-split-point-frame-a-bar"></div>
+          </div>
+          <div class="frame-04-split-point-frame-b" id="frame-04-split-point-frame-b">
+            <div class="frame-04-split-point-frame-b-block"></div>
+            <div class="frame-04-split-point-frame-b-bar"></div>
+          </div>
+          <div class="frame-04-split-point-scan-line" id="frame-04-split-point-scan-line"></div>
+        </section>
+
+        <div class="frame-04-split-point-buffer" id="frame-04-split-point-buffer" aria-label="buffer change">
+          <span class="frame-04-split-point-buffer-word" data-word="buffer">buffer</span>
+          <span class="frame-04-split-point-buffer-word" data-word="change">change</span>
+        </div>
+
+        <div class="frame-04-split-point-region-label frame-04-split-point-region-label--upper" id="frame-04-split-point-upper"><span class="frame-04-split-point-region-rule"></span>UPPER / FRAME A</div>
+        <div class="frame-04-split-point-region-label frame-04-split-point-region-label--lower" id="frame-04-split-point-lower"><span class="frame-04-split-point-region-rule"></span>LOWER / FRAME B</div>
+        <div class="frame-04-split-point-seam-note" id="frame-04-split-point-note">single display / two frame states</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const tl = gsap.timeline({ paused: true });
+      const shellPaths = [
+        document.getElementById("frame-04-split-point-shell-path"),
+        document.getElementById("frame-04-split-point-divider-path"),
+      ];
+      shellPaths.forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      const world = document.getElementById("frame-04-split-point-world");
+      const cam = { scale: 1, x: 0, y: 0 };
+      function applyCamera() {
+        world.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.scale})`;
+      }
+      applyCamera();
+
+      const upperWords = Array.from(document.querySelectorAll(".frame-04-split-point-title-word"));
+      const frameAItems = [
+        { element: upperWords[0], body: "frame", hold: 0.28 },
+        { element: upperWords[1], body: "a", hold: 0.56 },
+      ];
+      let frameACursor = 0.36;
+      const frameATimeline = frameAItems.map((item) => {
+        const duration = 0.42 + item.body.length * 0.045 + item.hold;
+        const entry = { ...item, start: frameACursor, end: frameACursor + duration };
+        frameACursor = entry.end;
+        return entry;
+      });
+
+      const labelItems = [
+        { element: document.getElementById("frame-04-split-point-upper"), body: "upper", hold: 0.34 },
+        { element: document.getElementById("frame-04-split-point-lower"), body: "lower", hold: 0.62 },
+      ];
+      let labelCursor = 6.44;
+      const labelTimeline = labelItems.map((item) => {
+        const duration = 0.46 + item.body.length * 0.045 + item.hold;
+        const entry = { ...item, start: labelCursor, end: labelCursor + duration };
+        labelCursor = entry.end;
+        return entry;
+      });
+
+      tl.fromTo(".frame-04-split-point-kicker", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" }, 0.04);
+      tl.fromTo(".frame-04-split-point-meta", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power1.out" }, 0.16);
+      tl.to(shellPaths[0], { strokeDashoffset: 0, duration: 1.2, ease: "power2.out" }, 0.12);
+      tl.to(shellPaths[1], { strokeDashoffset: 0, duration: 0.72, ease: "power2.out" }, 0.98);
+      frameATimeline.forEach((item) => {
+        tl.fromTo(item.element, { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" }, item.start);
+      });
+      tl.fromTo(".frame-04-split-point-frame-a", { opacity: 0 }, { opacity: 1, duration: 0.52, ease: "power1.out" }, 0.5);
+      tl.fromTo(".frame-04-split-point-scan-line", { opacity: 0, y: 0, scaleX: 0.2 }, { opacity: 1, scaleX: 1, duration: 0.38, ease: "power2.out" }, 2.86);
+      tl.to(".frame-04-split-point-scan-line", { y: 408, duration: 2.42, ease: "power3.inOut" }, 2.96);
+
+      const buffer = document.getElementById("frame-04-split-point-buffer");
+      const asrWords = Array.from(buffer.querySelectorAll(".frame-04-split-point-buffer-word"));
+      const timings = { buffer: { start: 0.22, end: 0.80 }, change: { start: 0.98, end: 1.78 } };
+      const glowDriver = { t: 0 };
+      function envelope(time, start, end) {
+        const attack = 0.16;
+        const release = 0.34;
+        const rest = 0.12;
+        if (time < start) return 0;
+        if (time < end) return Math.min((time - start) / attack, 1);
+        if (time < end + release) return 1 - ((time - end) / release) * (1 - rest);
+        return rest;
+      }
+      tl.fromTo(buffer, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.32, ease: "power2.out" }, 3.02);
+      tl.to(glowDriver, {
+        t: 3.4,
+        duration: 3.4,
+        ease: "none",
+        onUpdate: () => {
+          asrWords.forEach((word) => {
+            const timing = timings[word.dataset.word];
+            const env = envelope(glowDriver.t, timing.start, timing.end);
+            word.style.textShadow = `0 0 ${36 * env}px rgba(255,107,26,${0.85 * env})`;
+            word.style.transform = `scale(${1 + 0.18 * env})`;
+            word.style.color = word.dataset.word === "change" ? "#FF6B1A" : `rgba(240,240,240,${0.28 + 0.72 * env})`;
+          });
+        },
+      }, 2.8);
+
+      tl.to(cam, {
+        scale: 1.07,
+        y: 64,
+        duration: 1.65,
+        ease: "power3.inOut",
+        onUpdate: applyCamera,
+      }, 3.22);
+      tl.set("#frame-04-split-point-frame-b", { opacity: 1 }, 5.34);
+      tl.fromTo("#frame-04-split-point-frame-b", { scaleX: 0.82, transformOrigin: "left center" }, { scaleX: 1, duration: 0.36, ease: "power2.out" }, 5.34);
+
+      labelTimeline.forEach((item) => {
+        tl.fromTo(item.element, { opacity: 0, x: -28 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" }, item.start);
+      });
+      tl.fromTo("#frame-04-split-point-note", { opacity: 0 }, { opacity: 1, duration: 0.42, ease: "power1.out" }, 7.62);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["04-split-point"] = tl;
+    })();
+  </script>
+</template>

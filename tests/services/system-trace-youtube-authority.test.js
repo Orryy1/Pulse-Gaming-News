@@ -117,3 +117,39 @@ test("fails closed when any series rights gate is not GREEN", () => {
     /system_trace_youtube_authority_blocked/,
   );
 });
+
+test("supports a separately sealed seven-day schedule only when every expected slot matches", () => {
+  const input = fixture();
+  const expectedPublishAtUtc = input.manifest.episodes.map((episode, index) => {
+    const value = new Date(Date.UTC(2026, 7, 22 + index, 17)).toISOString();
+    episode.publish_at_utc = value;
+    return value;
+  });
+
+  const result = buildSystemTraceYouTubeAuthorities({
+    ...input,
+    expectedPublishAtUtc,
+    manifestSha256: "a".repeat(64),
+    rightsLedgerSha256: "b".repeat(64),
+    receiptRoot: path.resolve("D:/pulse-evidence/system-trace-display-test/receipts"),
+    generatedAt: "2026-08-20T07:00:00.000Z",
+  });
+
+  assert.deepEqual(
+    result.authorities.map((authority) => authority.release.publish_at_utc),
+    expectedPublishAtUtc,
+  );
+
+  input.manifest.episodes[3].publish_at_utc = "2026-08-25T17:01:00.000Z";
+  assert.throws(
+    () => buildSystemTraceYouTubeAuthorities({
+      ...input,
+      expectedPublishAtUtc,
+      manifestSha256: "a".repeat(64),
+      rightsLedgerSha256: "b".repeat(64),
+      receiptRoot: path.resolve("D:/pulse-evidence/system-trace-display-test/receipts"),
+      generatedAt: "2026-08-20T07:00:00.000Z",
+    }),
+    /system_trace_youtube_authority_blocked/,
+  );
+});

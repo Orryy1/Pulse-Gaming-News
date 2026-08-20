@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-20T09:05:00.000Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-vsync-latency",
+  "source": {
+    "package_dir": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-vsync-latency",
+    "publish_pack_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-vsync-latency\\youtube_publish_pack.json",
+    "publish_pack_sha256": "3a40309f01b199696ba5631eed0f6d1909060a9113975f0e4904bc81fb342f7e",
+    "canonical_manifest_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-vsync-latency\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "a7523ad76d335871d89b2a4a7ae684c76141f2283da7fc0f23680efa266bd82b",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-vsync-latency",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "Why V-Sync Can Make Controls Feel Slower",
+          "description": "V-Sync removes tearing by waiting for a display refresh boundary, but a narrowly missed deadline or deep frame queue can make fresh input wait. This short animation explains why the delay is not one fixed number and how refresh rate changes the size of each timing window.\n\nSources:\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d12/swap-chains\nhttps://developer.nvidia.com/blog/advanced-api-performance-swap-chains/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VSync #SystemTrace",
+          "tags": [
+            "V-Sync",
+            "input latency",
+            "display refresh",
+            "frame queue",
+            "PC gaming",
+            "gaming performance",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-vsync-latency\\renders\\system-trace-vsync-latency.mp4",
+      "media_sha256": "dd892aef05ee5820f5d5ace039417dcf8476ac4be17336c9b71a1f8ac108b8a2"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-vsync-latency\\captions.srt",
+      "media_sha256": "d1e810956926c1fa962b0646e3636b188717b7dee8da85144e8a84af4268b0dc"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-vsync-latency\\renders\\system-trace-vsync-latency.mp4",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-vsync-latency\\renders\\system-trace-vsync-latency.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 8558705,
+      "sha256": "dd892aef05ee5820f5d5ace039417dcf8476ac4be17336c9b71a1f8ac108b8a2",
+      "probe": {
+        "duration_seconds": 53,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-vsync-latency\\captions.srt",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-vsync-latency\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2249,
+      "sha256": "d1e810956926c1fa962b0646e3636b188717b7dee8da85144e8a84af4268b0dc",
+      "qa": {
+        "parsed": true,
+        "cue_count": 45,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 53,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-20T09:05:00.000Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-vsync-latency",
+    "request_plan_fingerprint_sha256": "6826b9d3a797331572efa8f1dd0cfd48a6bf27a79736b68459b4ea07ad0367b7",
+    "video_insert_fingerprint_sha256": "3d5ec8ad722ad0e9ba46427bf4dce3f236d02fac5052f22c068882c104814b98",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "20380052c426d9178efff598500ea461607eb62f4d64fb2403180062646e0204",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "Why V-Sync Can Make Controls Feel Slower",
+            "description": "V-Sync removes tearing by waiting for a display refresh boundary, but a narrowly missed deadline or deep frame queue can make fresh input wait. This short animation explains why the delay is not one fixed number and how refresh rate changes the size of each timing window.\n\nSources:\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d12/swap-chains\nhttps://developer.nvidia.com/blog/advanced-api-performance-swap-chains/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VSync #SystemTrace",
+            "tags": [
+              "V-Sync",
+              "input latency",
+              "display refresh",
+              "frame queue",
+              "PC gaming",
+              "gaming performance",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-vsync-latency\\renders\\system-trace-vsync-latency.mp4",
+        "media_sha256": "dd892aef05ee5820f5d5ace039417dcf8476ac4be17336c9b71a1f8ac108b8a2"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-vsync-latency\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

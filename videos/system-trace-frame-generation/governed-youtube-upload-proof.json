@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-20T09:33:29.5065153Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-frame-generation",
+  "source": {
+    "package_dir": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-frame-generation",
+    "publish_pack_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-frame-generation\\youtube_publish_pack.json",
+    "publish_pack_sha256": "f6d180195cea7a04b468b8e9ef9c8de92c1563b6b50ba3c8290afe7e379d1e3b",
+    "canonical_manifest_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-frame-generation\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "17a561bbd6e248ce48c21120c7538781dde40a7a86663bbefbb41600caff0b8e",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-frame-generation",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "How Frame Generation Creates In-Between Frames",
+          "description": "Frame generation analyses consecutive rendered frames and motion evidence, then synthesises an intermediate image. This short animation separates displayed smoothness from game simulation, input sampling, frame pacing and the artefacts that can appear when the source evidence is weak.\n\nSources:\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/super-resolution-interpolation/\nhttps://gpuopen.com/amd-fsr-framegeneration/\nhttps://developer.nvidia.com/rtx/dlss\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#FrameGeneration #PCGaming #SystemTrace",
+          "tags": [
+            "frame generation",
+            "DLSS",
+            "FSR",
+            "interpolation",
+            "gaming graphics",
+            "PC gaming",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-frame-generation\\renders\\system-trace-frame-generation.mp4",
+      "media_sha256": "c3068b2398334b600225a3ba0b76d83e692ae632eb58036764ab8eee5a635c0a"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-frame-generation\\captions.srt",
+      "media_sha256": "31efc95cb7305194d9f3c4c3f9bf835b51f942a3ce9af4d247925a5fb23c06c7"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-frame-generation\\renders\\system-trace-frame-generation.mp4",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-frame-generation\\renders\\system-trace-frame-generation.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 7696168,
+      "sha256": "c3068b2398334b600225a3ba0b76d83e692ae632eb58036764ab8eee5a635c0a",
+      "probe": {
+        "duration_seconds": 53.8,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-frame-generation\\captions.srt",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-frame-generation\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2161,
+      "sha256": "31efc95cb7305194d9f3c4c3f9bf835b51f942a3ce9af4d247925a5fb23c06c7",
+      "qa": {
+        "parsed": true,
+        "cue_count": 42,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 53.8,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-20T09:33:29.5065153Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-frame-generation",
+    "request_plan_fingerprint_sha256": "03e8502d84b9dad08b0fb860754deafb13a09f6391e98bf0698f2456013c1438",
+    "video_insert_fingerprint_sha256": "d03ad98b6c782cb943c35a7ab2dd7653adb28d7cfd56d18a83444f2cef74f2d8",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "8354d1500bcac2814f3e4df00bcdb6dad2ed637d0f23adca90fdb0eb32b2dbbb",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "How Frame Generation Creates In-Between Frames",
+            "description": "Frame generation analyses consecutive rendered frames and motion evidence, then synthesises an intermediate image. This short animation separates displayed smoothness from game simulation, input sampling, frame pacing and the artefacts that can appear when the source evidence is weak.\n\nSources:\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/super-resolution-interpolation/\nhttps://gpuopen.com/amd-fsr-framegeneration/\nhttps://developer.nvidia.com/rtx/dlss\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#FrameGeneration #PCGaming #SystemTrace",
+            "tags": [
+              "frame generation",
+              "DLSS",
+              "FSR",
+              "interpolation",
+              "gaming graphics",
+              "PC gaming",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-frame-generation\\renders\\system-trace-frame-generation.mp4",
+        "media_sha256": "c3068b2398334b600225a3ba0b76d83e692ae632eb58036764ab8eee5a635c0a"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-frame-generation\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

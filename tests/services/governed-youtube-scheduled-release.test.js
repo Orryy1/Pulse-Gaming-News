@@ -25,6 +25,7 @@ const INTENT = Object.freeze({
   video_bytes: 85058949,
   contains_synthetic_media: true,
 });
+const TEST_NOW = new Date("2026-08-14T12:00:00.000Z");
 
 function remoteVideo({ privacyStatus = "private", publishAt } = {}) {
   const status = {
@@ -87,6 +88,7 @@ test("schedules one exact private processed upload with a status-only no-retry u
     client: testHarness.client,
     intent: INTENT,
     authority,
+    now: TEST_NOW,
     generatedAt: "2026-08-14T16:00:00.000Z",
   });
 
@@ -117,6 +119,30 @@ test("schedules one exact private processed upload with a status-only no-retry u
   assert.equal(update.options.retry, false);
 });
 
+test("strict future guard rejects the exact clock boundary before any YouTube call", async () => {
+  const testHarness = harness();
+  const authority = {
+    verdict: "GREEN",
+    action_id: `${INTENT.story_id}:youtube:schedule:${INTENT.publish_at_utc}`,
+    binding_sha256: buildGovernedYouTubeScheduleBinding(INTENT),
+  };
+
+  await assert.rejects(
+    executeGovernedYouTubeScheduledRelease({
+      client: testHarness.client,
+      intent: INTENT,
+      authority,
+      now: new Date(INTENT.publish_at_utc),
+    }),
+    (error) => {
+      assert.equal(error.message, "governed_youtube_schedule_input_blocked");
+      assert.deepEqual(error.blockers, ["publish_at_must_be_future"]);
+      return true;
+    },
+  );
+  assert.deepEqual(testHarness.operations, []);
+});
+
 test("reconciles a lost update response without issuing a second update", async () => {
   const testHarness = harness({ updateError: new Error("socket_closed") });
   const receipt = await executeGovernedYouTubeScheduledRelease({
@@ -127,6 +153,7 @@ test("reconciles a lost update response without issuing a second update", async 
       action_id: `${INTENT.story_id}:youtube:schedule:${INTENT.publish_at_utc}`,
       binding_sha256: buildGovernedYouTubeScheduleBinding(INTENT),
     },
+    now: TEST_NOW,
   });
   assert.equal(receipt.verdict, "GREEN");
   assert.equal(receipt.status, "SCHEDULE_RECONCILED_AFTER_AMBIGUOUS_RESPONSE");
@@ -159,6 +186,7 @@ test("normalises YouTube publishAt and polls bounded readbacks without a second 
       action_id: `${INTENT.story_id}:youtube:schedule:${INTENT.publish_at_utc}`,
       binding_sha256: buildGovernedYouTubeScheduleBinding(INTENT),
     },
+    now: TEST_NOW,
     readbackAttempts: 3,
     pollIntervalMs: 1,
     wait: async () => { waits += 1; },
@@ -188,6 +216,7 @@ test("blocks metadata drift and a non-private preflight before mutation", async 
           action_id: `${INTENT.story_id}:youtube:schedule:${INTENT.publish_at_utc}`,
           binding_sha256: buildGovernedYouTubeScheduleBinding(INTENT),
         },
+        now: TEST_NOW,
       }),
       /governed_youtube_schedule_preflight_blocked/,
     );
@@ -212,6 +241,7 @@ test("ambiguous non-matching readback is permanently no-retry", async () => {
         action_id: `${INTENT.story_id}:youtube:schedule:${INTENT.publish_at_utc}`,
         binding_sha256: buildGovernedYouTubeScheduleBinding(INTENT),
       },
+      now: TEST_NOW,
       readbackAttempts: 1,
     }),
     (error) => {
@@ -434,6 +464,7 @@ test("deferred schedule reconciliation turns exact RED into separate read-only G
     client,
     intent: INTENT,
     authority,
+    now: TEST_NOW,
     sourceReceipt: redScheduleReceipt(),
     sourceReceiptSha256: "d".repeat(64),
   });
@@ -457,6 +488,7 @@ test("deferred schedule reconciliation rejects tampered source and non-exact rea
       client,
       intent: INTENT,
       authority,
+      now: TEST_NOW,
       sourceReceipt: redScheduleReceipt(INTENT, { blockers: ["other"] }),
       sourceReceiptSha256: "d".repeat(64),
     }),
@@ -467,6 +499,7 @@ test("deferred schedule reconciliation rejects tampered source and non-exact rea
       client,
       intent: INTENT,
       authority,
+      now: TEST_NOW,
       sourceReceipt: redScheduleReceipt(),
       sourceReceiptSha256: "d".repeat(64),
     }),

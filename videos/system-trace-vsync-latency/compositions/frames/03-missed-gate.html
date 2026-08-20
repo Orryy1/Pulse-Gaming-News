@@ -1,0 +1,396 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      container-type: size;
+      overflow: hidden;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+    }
+    .frame-03-missed-gate-ground {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0D0D0F;
+    }
+    .frame-03-missed-gate-grid {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.55;
+    }
+    .frame-03-missed-gate-scene {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+    .frame-03-missed-gate-kicker,
+    .frame-03-missed-gate-meta,
+    .frame-03-missed-gate-gate-label,
+    .frame-03-missed-gate-card-label,
+    .frame-03-missed-gate-status-label,
+    .frame-03-missed-gate-note {
+      font-family: "IBM Plex Mono";
+      font-size: 1.65cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .frame-03-missed-gate-kicker {
+      position: absolute;
+      top: 7cqh;
+      left: 7.4cqw;
+      color: #FF6B1A;
+    }
+    .frame-03-missed-gate-meta {
+      position: absolute;
+      top: 7cqh;
+      right: 7.4cqw;
+      color: #504B48;
+    }
+    .frame-03-missed-gate-heading {
+      position: absolute;
+      top: 13cqh;
+      left: 8cqw;
+      width: 84cqw;
+      margin: 0;
+      color: #504B48;
+      font-size: 7.4cqw;
+      font-weight: 900;
+      letter-spacing: -0.075em;
+      line-height: 0.86;
+      text-align: center;
+      text-transform: lowercase;
+    }
+    .frame-03-missed-gate-heading-word {
+      display: inline-block;
+      transform-origin: 50% 50%;
+    }
+    .frame-03-missed-gate-track {
+      position: absolute;
+      top: 29.5cqh;
+      left: 7.2cqw;
+      width: 85.6cqw;
+      height: 32cqh;
+      overflow: hidden;
+      background: #1A1918;
+    }
+    .frame-03-missed-gate-track-topline {
+      position: absolute;
+      top: 3.7cqh;
+      right: 0;
+      left: 0;
+      height: 2px;
+      background: #282726;
+    }
+    .frame-03-missed-gate-gates {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    .frame-03-missed-gate-gates path {
+      fill: none;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+    #frame-03-missed-gate-gate-one { stroke: #F0F0F0; stroke-width: 4; }
+    #frame-03-missed-gate-gate-two { stroke: #FF6B1A; stroke-width: 6; }
+    #frame-03-missed-gate-track-line { stroke: #504B48; stroke-width: 2; }
+    .frame-03-missed-gate-gate-label {
+      position: absolute;
+      top: 6.1cqh;
+      color: #504B48;
+    }
+    .frame-03-missed-gate-gate-label--one { left: 23.6cqw; }
+    .frame-03-missed-gate-gate-label--two { left: 62.9cqw; color: #FF6B1A; }
+    .frame-03-missed-gate-empty {
+      position: absolute;
+      top: 14.4cqh;
+      left: 6cqw;
+      width: 28.8cqw;
+      color: #504B48;
+      font-family: "IBM Plex Mono";
+      font-size: 1.5cqw;
+      letter-spacing: 0.14em;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .frame-03-missed-gate-empty::before,
+    .frame-03-missed-gate-empty::after {
+      position: absolute;
+      top: 0.55cqh;
+      width: 6cqw;
+      height: 2px;
+      background: #504B48;
+      content: "";
+    }
+    .frame-03-missed-gate-empty::before { left: 0; }
+    .frame-03-missed-gate-empty::after { right: 0; }
+    .frame-03-missed-gate-burst-wrap {
+      position: absolute;
+      top: 41.8cqh;
+      left: 0;
+      width: 100%;
+      height: 20cqh;
+    }
+    .frame-03-missed-gate-burst-item {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      color: #F0F0F0;
+      font-weight: 900;
+      letter-spacing: -0.07em;
+      line-height: 0.86;
+      text-transform: lowercase;
+      will-change: transform;
+    }
+    .frame-03-missed-gate-burst-item--marker {
+      width: 4.2cqw;
+      height: 4.2cqw;
+      background: #FF6B1A;
+    }
+    .frame-03-missed-gate-burst-item--frame { font-size: 5.5cqw; }
+    .frame-03-missed-gate-burst-item--ready { color: #FF6B1A; font-size: 5.5cqw; }
+    .frame-03-missed-gate-card {
+      position: absolute;
+      top: 66.2cqh;
+      left: 18cqw;
+      width: 64cqw;
+      height: 11.2cqh;
+      overflow: hidden;
+    }
+    .frame-03-missed-gate-card--old {
+      background: #F0F0F0;
+      color: #0D0D0F;
+    }
+    .frame-03-missed-gate-card--new {
+      background: #FF6B1A;
+      color: #0D0D0F;
+      opacity: 0;
+    }
+    .frame-03-missed-gate-card-label {
+      position: absolute;
+      top: 2.2cqh;
+      left: 2.4cqw;
+      color: rgba(17, 17, 17, 0.55);
+    }
+    .frame-03-missed-gate-card-fill {
+      position: absolute;
+      top: 5.4cqh;
+      left: 2.4cqw;
+      width: 31cqw;
+      height: 1cqh;
+      background: #0D0D0F;
+    }
+    .frame-03-missed-gate-card-fill::after {
+      position: absolute;
+      top: 2.2cqh;
+      left: 0;
+      width: 43cqw;
+      height: 1cqh;
+      background: rgba(17, 17, 17, 0.55);
+      content: "";
+    }
+    .frame-03-missed-gate-status {
+      position: absolute;
+      top: 79.4cqh;
+      left: 18cqw;
+      display: inline-flex;
+      align-items: baseline;
+      min-width: 64cqw;
+      color: #F0F0F0;
+      white-space: nowrap;
+    }
+    .frame-03-missed-gate-status-label {
+      color: #504B48;
+      margin-right: 1.4cqw;
+    }
+    .frame-03-missed-gate-status-text {
+      display: inline-block;
+      min-width: 28cqw;
+      color: #F0F0F0;
+      font-size: 3.4cqw;
+      font-weight: 900;
+      letter-spacing: -0.06em;
+      line-height: 0.86;
+      text-transform: lowercase;
+    }
+    .frame-03-missed-gate-cursor {
+      display: inline-block;
+      width: 2.2cqw;
+      color: #FF6B1A;
+      font-family: "IBM Plex Mono";
+      font-size: 3.5cqw;
+      vertical-align: 0.02em;
+    }
+    .frame-03-missed-gate-note {
+      position: absolute;
+      top: 80.9cqh;
+      left: 7.4cqw;
+      width: 85.2cqw;
+      border-top: 2px solid #282726;
+      color: #504B48;
+      padding-top: 0.9cqh;
+      text-align: center;
+    }
+  </style>
+
+  <div id="root" data-composition-id="03-missed-gate" data-width="1080" data-height="1920" data-duration="9">
+    <div class="clip frame-03-missed-gate-ground" data-start="0" data-duration="9" data-track-index="0">
+      <svg class="frame-03-missed-gate-grid" viewBox="0 0 1080 1920" aria-hidden="true">
+        <path d="M80 0V1594M280 0V1594M480 0V1594M680 0V1594M880 0V1594M0 220H1080M0 620H1080M0 1020H1080M0 1420H1080" fill="none" stroke="#282726" stroke-width="2" />
+      </svg>
+    </div>
+
+    <div class="clip frame-03-missed-gate-scene" data-start="0" data-duration="9" data-track-index="1">
+      <div class="frame-03-missed-gate-kicker">SYNC / 03</div>
+      <div class="frame-03-missed-gate-meta">REFRESH GATE</div>
+      <h1 class="frame-03-missed-gate-heading" id="frame-03-missed-gate-heading"><span class="frame-03-missed-gate-heading-word" data-word="missed">missed</span> <span class="frame-03-missed-gate-heading-word" data-word="the">the</span> <span class="frame-03-missed-gate-heading-word" data-word="gate">gate</span></h1>
+
+      <section class="frame-03-missed-gate-track" aria-label="invented late-frame and refresh-gate diagram">
+        <div class="frame-03-missed-gate-track-topline"></div>
+        <svg class="frame-03-missed-gate-gates" viewBox="0 0 924 614" aria-hidden="true">
+          <path id="frame-03-missed-gate-track-line" d="M0 294H924" />
+          <path id="frame-03-missed-gate-gate-one" d="M262 32V558" />
+          <path id="frame-03-missed-gate-gate-two" d="M660 32V558" />
+        </svg>
+        <div class="frame-03-missed-gate-gate-label frame-03-missed-gate-gate-label--one">GATE / 1</div>
+        <div class="frame-03-missed-gate-gate-label frame-03-missed-gate-gate-label--two">GATE / 2</div>
+        <div class="frame-03-missed-gate-empty">EMPTY</div>
+      </section>
+
+      <div class="frame-03-missed-gate-burst-wrap" id="frame-03-missed-gate-burst-wrap" aria-label="frame ready marker">
+        <div class="frame-03-missed-gate-burst-item frame-03-missed-gate-burst-item--marker" data-target-x="130" data-target-y="-80"></div>
+        <div class="frame-03-missed-gate-burst-item frame-03-missed-gate-burst-item--frame" data-target-x="170" data-target-y="-66">frame</div>
+        <div class="frame-03-missed-gate-burst-item frame-03-missed-gate-burst-item--ready" data-target-x="170" data-target-y="8">ready</div>
+      </div>
+
+      <div class="frame-03-missed-gate-card frame-03-missed-gate-card--old" id="frame-03-missed-gate-old-card">
+        <span class="frame-03-missed-gate-card-label">OLD IMAGE</span>
+        <span class="frame-03-missed-gate-card-fill"></span>
+      </div>
+      <div class="frame-03-missed-gate-card frame-03-missed-gate-card--new" id="frame-03-missed-gate-new-card">
+        <span class="frame-03-missed-gate-card-label">NEW IMAGE</span>
+        <span class="frame-03-missed-gate-card-fill"></span>
+      </div>
+
+      <div class="frame-03-missed-gate-status" id="frame-03-missed-gate-status"><span class="frame-03-missed-gate-status-label">DISPLAY</span><span class="frame-03-missed-gate-status-text" id="frame-03-missed-gate-status-text"></span><span class="frame-03-missed-gate-cursor" id="frame-03-missed-gate-cursor">|</span></div>
+      <div class="frame-03-missed-gate-note" id="frame-03-missed-gate-note">NEXT GATE / NEW IMAGE</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const tl = gsap.timeline({ paused: true });
+      const gatePaths = [
+        document.getElementById("frame-03-missed-gate-track-line"),
+        document.getElementById("frame-03-missed-gate-gate-one"),
+        document.getElementById("frame-03-missed-gate-gate-two"),
+      ];
+      gatePaths.forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+
+      tl.fromTo(".frame-03-missed-gate-kicker", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.32, ease: "power2.out" }, 0.04);
+      tl.fromTo(".frame-03-missed-gate-meta", { opacity: 0 }, { opacity: 1, duration: 0.28, ease: "power1.out" }, 0.16);
+      tl.to(gatePaths[0], { strokeDashoffset: 0, duration: 0.7, ease: "power2.out" }, 0.18);
+      tl.to(gatePaths[1], { strokeDashoffset: 0, duration: 0.78, ease: "power2.out" }, 0.5);
+      tl.to(gatePaths[2], { strokeDashoffset: 0, duration: 0.78, ease: "power2.out" }, 1.08);
+      tl.fromTo(".frame-03-missed-gate-gate-label", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.32, ease: "power2.out", stagger: 0.16 }, 1.42);
+      tl.fromTo(".frame-03-missed-gate-empty", { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power1.out" }, 1.72);
+      tl.fromTo("#frame-03-missed-gate-old-card", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.46, ease: "power2.out" }, 1.92);
+
+      const burstItems = Array.from(document.querySelectorAll(".frame-03-missed-gate-burst-item"));
+      burstItems.forEach((element, index) => {
+        tl.fromTo(element,
+          { xPercent: -50, yPercent: -50, x: 0, y: 0, scale: 0.6, opacity: 0 },
+          { x: Number(element.dataset.targetX), y: Number(element.dataset.targetY), scale: 1, opacity: 1, duration: 1.34, ease: "power3.out" },
+          2.82 + index * 0.06,
+        );
+      });
+
+      const heading = document.getElementById("frame-03-missed-gate-heading");
+      const glowWords = Array.from(heading.querySelectorAll(".frame-03-missed-gate-heading-word"));
+      const timings = { missed: { start: 0.26, end: 0.88 }, the: { start: 1.04, end: 1.30 }, gate: { start: 1.46, end: 2.24 } };
+      const glowDriver = { t: 0 };
+      function envelope(time, start, end) {
+        const attack = 0.16;
+        const release = 0.34;
+        const rest = 0.13;
+        if (time < start) return 0;
+        if (time < end) return Math.min((time - start) / attack, 1);
+        if (time < end + release) return 1 - ((time - end) / release) * (1 - rest);
+        return rest;
+      }
+      tl.fromTo(heading, { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.36, ease: "power2.out" }, 3.0);
+      tl.to(glowDriver, {
+        t: 2.8,
+        duration: 2.8,
+        ease: "none",
+        onUpdate: () => {
+          glowWords.forEach((word) => {
+            const timing = timings[word.dataset.word];
+            const env = envelope(glowDriver.t, timing.start, timing.end);
+            word.style.textShadow = `0 0 ${34 * env}px rgba(255,107,26,${0.82 * env})`;
+            word.style.transform = `scale(${1 + 0.18 * env})`;
+            word.style.color = word.dataset.word === "gate" ? "#FF6B1A" : `rgba(240,240,240,${0.26 + 0.74 * env})`;
+          });
+        },
+      }, 2.7);
+
+      const statusText = document.getElementById("frame-03-missed-gate-status-text");
+      const cursor = document.getElementById("frame-03-missed-gate-cursor");
+      const sequence = [
+        { t: 0, text: "old image" },
+        { t: 1.1, text: "new image" },
+      ];
+      function textAt(time) {
+        for (let i = sequence.length - 1; i >= 0; i--) {
+          if (time >= sequence[i].t) return sequence[i].text;
+        }
+        return "";
+      }
+      const textDriver = { t: 0 };
+      tl.fromTo("#frame-03-missed-gate-status", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" }, 5.56);
+      tl.to(textDriver, {
+        t: 3,
+        duration: 3,
+        ease: "none",
+        onUpdate: () => { statusText.textContent = textAt(textDriver.t); },
+      }, 5.5);
+      const blink = { p: 0 };
+      tl.to(blink, {
+        p: Math.PI * 12,
+        duration: 3,
+        ease: "none",
+        onUpdate: () => { cursor.style.opacity = Math.sin(blink.p) > 0 ? "1" : "0"; },
+      }, 5.5);
+      tl.set("#frame-03-missed-gate-old-card", { opacity: 0 }, 6.6);
+      tl.set("#frame-03-missed-gate-new-card", { opacity: 1 }, 6.6);
+      tl.fromTo("#frame-03-missed-gate-note", { opacity: 0 }, { opacity: 1, duration: 0.34, ease: "power1.out" }, 7.28);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["03-missed-gate"] = tl;
+    })();
+  </script>
+</template>

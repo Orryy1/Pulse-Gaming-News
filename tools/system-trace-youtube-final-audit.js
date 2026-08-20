@@ -56,14 +56,17 @@ function pathInside(root, candidate) {
 function fixedPaths(input = DEFAULT_PATHS) {
   const repoRoot = path.resolve(input.repoRoot || REPO_ROOT);
   const evidenceRoot = path.resolve(input.evidenceRoot || EVIDENCE_ROOT);
+  const manifestFile = clean(input.manifestFile) || "system-trace-youtube-buffer.json";
+  const jsonFile = clean(input.jsonFile) || "final-youtube-buffer-audit.json";
+  const markdownFile = clean(input.markdownFile) || "final-youtube-buffer-audit.md";
   return Object.freeze({
     repoRoot,
     evidenceRoot,
-    manifestPath: path.join(repoRoot, "videos", "system-trace-youtube-buffer.json"),
+    manifestPath: path.join(repoRoot, "videos", manifestFile),
     privateRoot: path.join(evidenceRoot, "receipts", "private"),
     scheduleRoot: path.join(evidenceRoot, "receipts", "schedule"),
-    jsonOut: path.join(evidenceRoot, "final-youtube-buffer-audit.json"),
-    markdownOut: path.join(evidenceRoot, "final-youtube-buffer-audit.md"),
+    jsonOut: path.join(evidenceRoot, jsonFile),
+    markdownOut: path.join(evidenceRoot, markdownFile),
     tokenPath: path.resolve(input.tokenPath || DEFAULT_PATHS.tokenPath),
   });
 }
@@ -265,6 +268,8 @@ async function main(
     paths = DEFAULT_PATHS,
     authenticatedReadOnlyYoutubeClientFactory =
       currentAuthenticatedReadOnlyYoutubeClientFactory,
+    contract,
+    expectedManifestSha256 = contract?.manifestSha256 || EXPECTED_MANIFEST_SHA256,
     generatedAt,
     log = console.log,
   } = {},
@@ -280,7 +285,7 @@ async function main(
     "manifest",
   );
   const manifestSha256 = sha256(manifestInput.bytes);
-  if (manifestSha256 !== EXPECTED_MANIFEST_SHA256) {
+  if (manifestSha256 !== expectedManifestSha256) {
     throw new Error("exact_system_trace_manifest_sha256_required");
   }
   const receipts = await loadReceipts(manifestInput.document, resolvedPaths);
@@ -290,6 +295,7 @@ async function main(
   });
   const report = await auditSystemTraceYouTubeBuffer({
     client,
+    contract,
     manifest: manifestInput.document,
     manifestSha256,
     privateReceipts: receipts.privateReceipts,

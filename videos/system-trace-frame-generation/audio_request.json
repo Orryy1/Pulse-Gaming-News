@@ -1,0 +1,34 @@
+{
+  "provider": "auto",
+  "speed": 1,
+  "lines": [
+    {
+      "id": "01",
+      "text": "Frame generation can make motion look much smoother, but the new image between two frames was not fully rendered by the game."
+    },
+    {
+      "id": "02",
+      "text": "The system examines consecutive frames plus motion evidence such as optical flow, motion vectors, depth and camera data."
+    },
+    {
+      "id": "03",
+      "text": "It predicts where visible pixels belong between those moments, then synthesises an intermediate image for the display."
+    },
+    {
+      "id": "04",
+      "text": "The displayed frame rate rises, while game simulation and input sampling still follow the underlying rendered frames."
+    },
+    {
+      "id": "05",
+      "text": "Interpolation also needs careful pacing and can distort rapid motion, scene changes or interface elements when its evidence is weak."
+    },
+    {
+      "id": "06",
+      "text": "Frame generation is best understood as visual interpolation: smoother presentation built on top of a healthy base frame rate."
+    }
+  ],
+  "bgm": {
+    "mode": "none"
+  },
+  "voice": "bm_george"
+}

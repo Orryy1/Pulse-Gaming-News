@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_youtube_publish_pack_v1",
+  "story_id": "system-trace-vsync-latency",
+  "project_id": "system-trace-vsync-latency",
+  "platform": "youtube_shorts",
+  "review_scope": "PRIVATE_FIRST_SCHEDULED_PUBLICATION",
+  "title": "Why V-Sync Can Make Controls Feel Slower",
+  "description": "V-Sync removes tearing by waiting for a display refresh boundary, but a narrowly missed deadline or deep frame queue can make fresh input wait. This short animation explains why the delay is not one fixed number and how refresh rate changes the size of each timing window.\n\nSources:\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d12/swap-chains\nhttps://developer.nvidia.com/blog/advanced-api-performance-swap-chains/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VSync #SystemTrace",
+  "tags": [
+    "V-Sync",
+    "input latency",
+    "display refresh",
+    "frame queue",
+    "PC gaming",
+    "gaming performance",
+    "System Trace",
+    "gaming Shorts"
+  ],
+  "captions": {
+    "file": "captions.srt",
+    "sha256": "d1e810956926c1fa962b0646e3636b188717b7dee8da85144e8a84af4268b0dc",
+    "clean_manual_captions_required": true
+  },
+  "synthetic_media_required": true,
+  "altered_synthetic_disclosure_required": true,
+  "altered_synthetic_disclosure_setting": "YES",
+  "public_publish_authorised": true,
+  "unlisted_publish_authorised": false,
+  "scheduler_authorised": true,
+  "database_mutation_authorised": false,
+  "playlist_mutation_authorised": false,
+  "thumbnail_upload_authorised": false,
+  "rights_status": "ORIGINAL_VISUALS_AND_GOVERNED_AUDIO",
+  "rights_placement_verdict": "GREEN",
+  "rights_placement_blocker_count": 0,
+  "rights_clearance_claimed": false,
+  "scheduled_publish_at_utc": "2026-08-23T17:00:00.000Z",
+  "youtube_upload_request": {
+    "schema_version": 1,
+    "closed": true,
+    "authority_scope": "EXACT_PRIVATE_FIRST_SCHEDULE_REQUEST_SHAPE_ONLY",
+    "publish_authority": "EXTERNALLY_EVALUATED",
+    "video_file": "renders/system-trace-vsync-latency.mp4",
+    "video_sha256": "dd892aef05ee5820f5d5ace039417dcf8476ac4be17336c9b71a1f8ac108b8a2",
+    "notifySubscribers": false,
+    "snippet": {
+      "title": "Why V-Sync Can Make Controls Feel Slower",
+      "description": "V-Sync removes tearing by waiting for a display refresh boundary, but a narrowly missed deadline or deep frame queue can make fresh input wait. This short animation explains why the delay is not one fixed number and how refresh rate changes the size of each timing window.\n\nSources:\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/\nhttps://learn.microsoft.com/en-us/windows/win32/direct3d12/swap-chains\nhttps://developer.nvidia.com/blog/advanced-api-performance-swap-chains/\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VSync #SystemTrace",
+      "tags": [
+        "V-Sync",
+        "input latency",
+        "display refresh",
+        "frame queue",
+        "PC gaming",
+        "gaming performance",
+        "System Trace",
+        "gaming Shorts"
+      ],
+      "categoryId": "20",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "status": {
+      "privacyStatus": "private",
+      "selfDeclaredMadeForKids": false,
+      "containsSyntheticMedia": true,
+      "license": "youtube",
+      "embeddable": true,
+      "publicStatsViewable": true
+    },
+    "paidProductPlacementDetails": {
+      "hasPaidProductPlacement": false
+    },
+    "captions": {
+      "file": "captions.srt",
+      "sha256": "d1e810956926c1fa962b0646e3636b188717b7dee8da85144e8a84af4268b0dc",
+      "language": "en-GB",
+      "name": "English (United Kingdom)",
+      "isDraft": false
+    },
+    "cover_selection": {
+      "selection_mode": "in_video_frame",
+      "frame_time_seconds": 1.5,
+      "custom_thumbnail_upload_allowed": false,
+      "application_status": "NOT_APPLIED"
+    }
+  }
+}

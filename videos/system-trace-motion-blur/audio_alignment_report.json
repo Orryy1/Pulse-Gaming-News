@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "schema": "pulse_system_trace_display_audio_alignment_v1",
+  "story_id": "system-trace-motion-blur",
+  "verdict": "GREEN",
+  "source": "local_whisper_word_alignment",
+  "frame_count": 6,
+  "frames": [
+    {
+      "frame": 1,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "Motion blur cannot create extra frames, yet it can make the movement between existing frames feel less harsh.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 7.04
+    },
+    {
+      "frame": 2,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "A real camera gathers light while its shutter is open, so a fast object leaves a streak across that exposure.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 20,
+      "first_word_start": 0,
+      "last_word_end": 6.68
+    },
+    {
+      "frame": 3,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "Games often estimate the same path with per-pixel velocity, then sample and blend colour along the direction of travel.",
+      "reconciliation": "script_high_coverage_retimed",
+      "word_count": 19,
+      "first_word_start": 0,
+      "last_word_end": 7.9
+    },
+    {
+      "frame": 4,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "That spread hides some of the step between two positions, which can make thirty frames per second look more continuous. us.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 20,
+      "first_word_start": 0,
+      "last_word_end": 7.02
+    },
+    {
+      "frame": 5,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "It does not update controls sooner, repair a stutter or perfectly handle every reflection, shadow and crossing object.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 18,
+      "first_word_start": 0,
+      "last_word_end": 7.58
+    },
+    {
+      "frame": 6,
+      "source": "local_whisper_word_alignment",
+      "backend": "faster-whisper",
+      "model": "faster-whisper:base.en",
+      "transcript": "Motion blur is therefore visual glue, not more performance. It can soften the gap, while the game still updates at the same rate.",
+      "reconciliation": "coverage_ok_without_retiming",
+      "word_count": 23,
+      "first_word_start": 0,
+      "last_word_end": 7.78
+    }
+  ],
+  "blockers": [],
+  "generated_at": "2026-08-20T07:42:02.399Z"
+}

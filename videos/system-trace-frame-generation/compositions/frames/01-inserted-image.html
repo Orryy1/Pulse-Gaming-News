@@ -1,0 +1,513 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 100 900;
+    }
+
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      container-type: size;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+    }
+
+    [data-node="01-inserted-image-ground"] {
+      position: absolute;
+      inset: 0;
+      background: #0d0d0f;
+    }
+
+    [data-node="01-inserted-image-stage"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    [data-node="01-inserted-image-chrome"] {
+      position: absolute;
+      top: 80px;
+      left: 60px;
+      right: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 18px;
+      border-top: 1px solid #282726;
+      color: #ff6b1a;
+      font-family: "IBM Plex Mono";
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="01-inserted-image-engine-rail"],
+    [data-node="01-inserted-image-display-rail"] {
+      position: absolute;
+      inset: 0;
+    }
+
+    [data-node="01-inserted-image-rail-label"] {
+      position: absolute;
+      left: 60px;
+      color: #7d7977;
+      font-family: "IBM Plex Mono";
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-rail="engine"] [data-node="01-inserted-image-rail-label"] {
+      top: 200px;
+    }
+
+    [data-rail="display"] [data-node="01-inserted-image-rail-label"] {
+      top: 648px;
+      color: #ff6b1a;
+    }
+
+    [data-node="01-inserted-image-rail-line"] {
+      position: absolute;
+      left: 60px;
+      width: 960px;
+      height: 1px;
+      background: #282726;
+    }
+
+    [data-rail="engine"] [data-node="01-inserted-image-rail-line"] {
+      top: 244px;
+    }
+
+    [data-rail="display"] [data-node="01-inserted-image-rail-line"] {
+      top: 692px;
+      background: #ff6b1a;
+    }
+
+    [data-node="01-inserted-image-engine-card"] {
+      position: absolute;
+      top: 280px;
+      width: 380px;
+      height: 286px;
+      box-sizing: border-box;
+      overflow: hidden;
+      border-top: 1px solid #282726;
+      background: #1a1918;
+      opacity: 0;
+    }
+
+    [data-card="rendered-a"] {
+      left: 60px;
+    }
+
+    [data-card="rendered-b"] {
+      left: 640px;
+    }
+
+    [data-node="01-inserted-image-card-meta"] {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      right: 24px;
+      display: flex;
+      justify-content: space-between;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="01-inserted-image-card-label"] {
+      position: absolute;
+      left: 24px;
+      bottom: 28px;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+      font-size: 58px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+      text-transform: lowercase;
+    }
+
+    [data-node="01-inserted-image-card-letter"] {
+      color: #ff6b1a;
+    }
+
+    [data-node="01-inserted-image-gap"] {
+      position: absolute;
+      top: 280px;
+      left: 440px;
+      width: 200px;
+      height: 286px;
+      box-sizing: border-box;
+      border-top: 1px solid #282726;
+      border-bottom: 1px solid #282726;
+    }
+
+    [data-node="01-inserted-image-gap"]::before,
+    [data-node="01-inserted-image-gap"]::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      width: 1px;
+      height: 82px;
+      background: #504b48;
+    }
+
+    [data-node="01-inserted-image-gap"]::before {
+      top: 0;
+    }
+
+    [data-node="01-inserted-image-gap"]::after {
+      bottom: 0;
+    }
+
+    [data-node="01-inserted-image-gap-label"] {
+      position: absolute;
+      top: 133px;
+      left: 0;
+      width: 100%;
+      color: #7d7977;
+      font-family: "IBM Plex Mono";
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    [data-node="01-inserted-image-morph-card"] {
+      position: absolute;
+      top: 710px;
+      left: 410px;
+      width: 260px;
+      height: 180px;
+      overflow: hidden;
+      border: 1px solid #282726;
+      border-radius: 0;
+      background: #1a1918;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    [data-node="01-inserted-image-morph-old"],
+    [data-node="01-inserted-image-morph-new"] {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    [data-node="01-inserted-image-morph-old"] {
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 20px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    [data-node="01-inserted-image-morph-new"] {
+      box-sizing: border-box;
+      padding: 24px;
+      opacity: 0;
+      color: #0d0d0f;
+      text-align: left;
+    }
+
+    [data-node="01-inserted-image-synthetic-lock"] {
+      width: 100%;
+    }
+
+    [data-node="01-inserted-image-synthetic-label"] {
+      display: block;
+      font-family: "Space Grotesk";
+      font-size: 39px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.9;
+      text-transform: lowercase;
+    }
+
+    [data-node="01-inserted-image-synthetic-mid"] {
+      display: block;
+      margin-top: 8px;
+      font-family: "Space Grotesk";
+      font-size: 54px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+      text-transform: lowercase;
+    }
+
+    [data-node="01-inserted-image-synthetic-meta"] {
+      display: block;
+      margin-top: 18px;
+      color: rgba(17, 17, 17, 0.55);
+      font-family: "IBM Plex Mono";
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    [data-node="01-inserted-image-title"] {
+      position: absolute;
+      top: 1080px;
+      left: 60px;
+      width: 960px;
+    }
+
+    [data-node="01-inserted-image-title-word"] {
+      display: block;
+      color: #f0f0f0;
+      font-family: "Space Grotesk";
+      font-size: 148px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.88;
+      text-transform: lowercase;
+      white-space: nowrap;
+      will-change: transform, opacity;
+    }
+
+    [data-node="01-inserted-image-title-line"] {
+      display: flex;
+      align-items: baseline;
+      gap: 28px;
+      width: 100%;
+    }
+
+    [data-node="01-inserted-image-title-line"] [data-node="01-inserted-image-title-word"] {
+      display: inline-block;
+      font-size: 132px;
+    }
+
+    [data-word="display"] {
+      color: #ff6b1a;
+    }
+
+    [data-node="01-inserted-image-title-rule"] {
+      width: 36px;
+      height: 2px;
+      margin-top: 46px;
+      background: #ff6b1a;
+    }
+
+    [data-node="01-inserted-image-title-meta"] {
+      margin-top: 20px;
+      color: #504b48;
+      font-family: "IBM Plex Mono";
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="01-inserted-image"
+    data-start="0"
+    data-duration="9.0"
+    data-width="1080"
+    data-height="1920"
+  >
+    <div
+      class="clip"
+      data-node="01-inserted-image-ground"
+      data-start="0"
+      data-duration="9.0"
+      data-track-index="0"
+    ></div>
+
+    <div
+      class="clip"
+      data-node="01-inserted-image-stage"
+      data-start="0"
+      data-duration="9.0"
+      data-track-index="1"
+    >
+      <div data-node="01-inserted-image-chrome">
+        <span>engine / display</span>
+        <span>frame generation / 01</span>
+      </div>
+
+      <div data-node="01-inserted-image-engine-rail" data-rail="engine">
+        <div data-node="01-inserted-image-rail-label">engine rail</div>
+        <div data-node="01-inserted-image-rail-line"></div>
+
+        <article data-node="01-inserted-image-engine-card" data-card="rendered-a">
+          <div data-node="01-inserted-image-card-meta"><span>engine</span><span>01</span></div>
+          <div data-node="01-inserted-image-card-label">rendered <span data-node="01-inserted-image-card-letter">a</span></div>
+        </article>
+
+        <div data-node="01-inserted-image-gap">
+          <div data-node="01-inserted-image-gap-label">visible gap</div>
+        </div>
+
+        <article data-node="01-inserted-image-engine-card" data-card="rendered-b">
+          <div data-node="01-inserted-image-card-meta"><span>engine</span><span>02</span></div>
+          <div data-node="01-inserted-image-card-label">rendered <span data-node="01-inserted-image-card-letter">b</span></div>
+        </article>
+      </div>
+
+      <div data-node="01-inserted-image-display-rail" data-rail="display">
+        <div data-node="01-inserted-image-rail-label">display rail</div>
+        <div data-node="01-inserted-image-rail-line"></div>
+        <div data-node="01-inserted-image-morph-card">
+          <div data-node="01-inserted-image-morph-old">gap</div>
+          <div data-node="01-inserted-image-morph-new">
+            <div data-node="01-inserted-image-synthetic-lock">
+              <span data-node="01-inserted-image-synthetic-label">synthesised</span>
+              <span data-node="01-inserted-image-synthetic-mid">mid</span>
+              <span data-node="01-inserted-image-synthetic-meta">display / inserted</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-node="01-inserted-image-title">
+        <span data-node="01-inserted-image-title-word" data-word="inserted" data-layout-allow-overlap>inserted</span>
+        <div data-node="01-inserted-image-title-line">
+          <span data-node="01-inserted-image-title-word" data-word="for">for</span>
+          <span data-node="01-inserted-image-title-word" data-word="display">display</span>
+        </div>
+        <div data-node="01-inserted-image-title-rule"></div>
+        <div data-node="01-inserted-image-title-meta">rendered / synthesised / rendered</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const timeline = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["01-inserted-image"] = timeline;
+
+      const engineRail = document.querySelector('[data-node="01-inserted-image-engine-rail"]');
+      const displayRail = document.querySelector('[data-node="01-inserted-image-display-rail"]');
+      const engineCards = Array.from(document.querySelectorAll('[data-node="01-inserted-image-engine-card"]'));
+      const morphCard = document.querySelector('[data-node="01-inserted-image-morph-card"]');
+      const morphOld = document.querySelector('[data-node="01-inserted-image-morph-old"]');
+      const morphNew = document.querySelector('[data-node="01-inserted-image-morph-new"]');
+
+      const waterfall = [
+        { card: engineCards[0], start: 0.18, offset: 80, duration: 0.20 },
+        { card: engineCards[1], start: 0.36, offset: 52, duration: 0.15 }
+      ];
+
+      waterfall.forEach((entry) => {
+        timeline.set(entry.card, { opacity: 1, y: entry.offset }, entry.start);
+        timeline.to(
+          entry.card,
+          { y: 0, duration: entry.duration, ease: "power4.out" },
+          entry.start
+        );
+      });
+
+      timeline.fromTo(
+        displayRail.querySelector('[data-node="01-inserted-image-rail-label"]'),
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" },
+        3.0
+      );
+      timeline.fromTo(
+        displayRail.querySelector('[data-node="01-inserted-image-rail-line"]'),
+        { opacity: 0, scaleX: 0, transformOrigin: "center center" },
+        { opacity: 1, scaleX: 1, duration: 0.46, ease: "power2.out" },
+        3.0
+      );
+      timeline.fromTo(
+        morphCard,
+        { opacity: 0, scale: 0.55 },
+        { opacity: 1, scale: 0.55, duration: 0.35, ease: "power2.out" },
+        3.0
+      );
+
+      timeline.to(
+        morphCard,
+        {
+          scale: 1.46,
+          borderRadius: 0,
+          backgroundColor: "#ff6b1a",
+          duration: 1.0,
+          ease: "power2.inOut"
+        },
+        3.6
+      );
+      timeline.to(
+        morphOld,
+        { opacity: 0, duration: 0.4, ease: "power1.in" },
+        3.6
+      );
+      timeline.to(
+        morphNew,
+        { opacity: 1, duration: 0.4, ease: "power1.out" },
+        4.2
+      );
+
+      const titleContent = [
+        { node: document.querySelector('[data-word="inserted"]'), text: "inserted" },
+        { node: document.querySelector('[data-word="for"]'), text: "for" },
+        { node: document.querySelector('[data-word="display"]'), text: "display" }
+      ];
+      const baseDuration = 0.28;
+      const secondsPerCharacter = 0.025;
+      let cumulative = 0;
+      const titleSequence = titleContent.map((entry) => {
+        const duration = baseDuration + entry.text.length * secondsPerCharacter;
+        const start = cumulative;
+        cumulative += duration * 0.72;
+        return { ...entry, start, duration };
+      });
+
+      titleSequence.forEach((entry) => {
+        timeline.fromTo(
+          entry.node,
+          { opacity: 0, x: 54 },
+          { opacity: 1, x: 0, duration: entry.duration, ease: "power3.out" },
+          6.2 + entry.start
+        );
+      });
+
+      timeline.to(engineRail, { y: -12, duration: 0.65, ease: "power3.out" }, 6.2);
+      timeline.to(displayRail, { y: -8, duration: 0.65, ease: "power3.out" }, 6.24);
+      timeline.fromTo(
+        '[data-node="01-inserted-image-title-rule"]',
+        { opacity: 0, scaleX: 0, transformOrigin: "left center" },
+        { opacity: 1, scaleX: 1, duration: 0.36, ease: "power3.out" },
+        7.18
+      );
+      timeline.fromTo(
+        '[data-node="01-inserted-image-title-meta"]',
+        { opacity: 0, y: 16 },
+        { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" },
+        7.30
+      );
+    })();
+  </script>
+</template>

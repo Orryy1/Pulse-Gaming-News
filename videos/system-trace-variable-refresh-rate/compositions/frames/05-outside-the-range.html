@@ -1,0 +1,343 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/Space_Grotesk_Variable.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      src: url("assets/fonts/IBM_Plex_Mono_500.woff2") format("woff2");
+      font-weight: 500;
+    }
+
+    #root {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      container-type: size;
+      overflow: hidden;
+      color: #F0F0F0;
+      font-family: "Space Grotesk";
+    }
+    .frame-05-outside-the-range-ground {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0D0D0F;
+    }
+    .frame-05-outside-the-range-grid {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.55;
+    }
+    .frame-05-outside-the-range-scene {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      perspective: 1600px;
+    }
+    .frame-05-outside-the-range-kicker,
+    .frame-05-outside-the-range-meta,
+    .frame-05-outside-the-range-card-label,
+    .frame-05-outside-the-range-state-label,
+    .frame-05-outside-the-range-window-label,
+    .frame-05-outside-the-range-note {
+      font-family: "IBM Plex Mono";
+      font-size: 1.65cqw;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .frame-05-outside-the-range-kicker {
+      position: absolute;
+      top: 7cqh;
+      left: 7.4cqw;
+      color: #FF6B1A;
+    }
+    .frame-05-outside-the-range-meta {
+      position: absolute;
+      top: 7cqh;
+      right: 7.4cqw;
+      color: #504B48;
+    }
+    .frame-05-outside-the-range-heading {
+      position: absolute;
+      top: 13cqh;
+      left: 7.2cqw;
+      margin: 0;
+      color: #F0F0F0;
+      font-size: 7.3cqw;
+      font-weight: 900;
+      letter-spacing: -0.075em;
+      line-height: 0.86;
+      text-transform: lowercase;
+    }
+    .frame-05-outside-the-range-heading span { color: #FF6B1A; }
+    .frame-05-outside-the-range-range-window {
+      position: absolute;
+      top: 22cqh;
+      left: 44.3cqw;
+      width: 18cqw;
+      height: 52.1cqh;
+      border-right: 2px solid #282726;
+      border-left: 2px solid #282726;
+      color: #504B48;
+      pointer-events: none;
+    }
+    .frame-05-outside-the-range-window-label {
+      position: absolute;
+      top: 1cqh;
+      left: 50%;
+      width: 33cqw;
+      margin-left: -16.5cqw;
+      color: #504B48;
+      text-align: center;
+    }
+    .frame-05-outside-the-range-compare-stage {
+      position: absolute;
+      top: 26cqh;
+      left: 7.2cqw;
+      width: 85.6cqw;
+      height: 49cqh;
+      transform-style: preserve-3d;
+    }
+    .frame-05-outside-the-range-card {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 21.6cqh;
+      overflow: hidden;
+      background: #1A1918;
+      border-top: 2px solid #F0F0F0;
+      transform-style: preserve-3d;
+      will-change: transform;
+    }
+    .frame-05-outside-the-range-card--below { top: 0; }
+    .frame-05-outside-the-range-card--above { top: 25.3cqh; border-color: #FF6B1A; }
+    .frame-05-outside-the-range-card-label {
+      position: absolute;
+      top: 2.5cqh;
+      left: 3.5cqw;
+      color: #FF6B1A;
+    }
+    .frame-05-outside-the-range-card-title {
+      position: absolute;
+      top: 5.3cqh;
+      left: 3.2cqw;
+      display: flex;
+      gap: 1.15cqw;
+      color: #F0F0F0;
+      font-size: 5.7cqw;
+      font-weight: 900;
+      letter-spacing: -0.075em;
+      line-height: 0.86;
+      text-transform: lowercase;
+    }
+    .frame-05-outside-the-range-title-word { display: inline-block; }
+    .frame-05-outside-the-range-card-title--above { color: #F0F0F0; }
+    .frame-05-outside-the-range-card-title--above .frame-05-outside-the-range-title-word:last-child { color: #FF6B1A; }
+    .frame-05-outside-the-range-prior-card {
+      position: absolute;
+      top: 11.8cqh;
+      right: 4cqw;
+      left: 4cqw;
+      height: 6.4cqh;
+      border: 2px solid #F0F0F0;
+      color: #F0F0F0;
+    }
+    .frame-05-outside-the-range-prior-card::before,
+    .frame-05-outside-the-range-prior-card::after {
+      position: absolute;
+      left: 3cqw;
+      height: 1cqh;
+      content: "";
+    }
+    .frame-05-outside-the-range-prior-card::before { top: 2cqh; width: 32cqw; background: #F0F0F0; }
+    .frame-05-outside-the-range-prior-card::after { top: 4.1cqh; width: 49cqw; background: #504B48; }
+    .frame-05-outside-the-range-state {
+      position: absolute;
+      top: 15.4cqh;
+      left: 49cqw;
+      display: inline-flex;
+      align-items: baseline;
+      min-width: 30cqw;
+      color: #F0F0F0;
+      white-space: nowrap;
+    }
+    .frame-05-outside-the-range-state-label { margin-right: 1cqw; color: #504B48; }
+    .frame-05-outside-the-range-state-text {
+      display: inline-block;
+      min-width: 17cqw;
+      color: #F0F0F0;
+      font-size: 2.8cqw;
+      font-weight: 900;
+      letter-spacing: -0.06em;
+      line-height: 0.86;
+      text-transform: lowercase;
+    }
+    .frame-05-outside-the-range-cursor {
+      display: inline-block;
+      width: 1.8cqw;
+      color: #FF6B1A;
+      font-family: "IBM Plex Mono";
+      font-size: 3cqw;
+    }
+    .frame-05-outside-the-range-gates {
+      position: absolute;
+      top: 11.4cqh;
+      left: 4cqw;
+      width: 77.6cqw;
+      height: 7.3cqh;
+      overflow: visible;
+    }
+    .frame-05-outside-the-range-gates path {
+      fill: none;
+      stroke: #F0F0F0;
+      stroke-width: 4;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+    .frame-05-outside-the-range-gates .frame-05-outside-the-range-gate-accent { stroke: #FF6B1A; stroke-width: 6; }
+    .frame-05-outside-the-range-fixed-rule {
+      position: absolute;
+      top: 18.8cqh;
+      right: 4cqw;
+      left: 4cqw;
+      height: 1cqh;
+      background: #504B48;
+    }
+    .frame-05-outside-the-range-note {
+      position: absolute;
+      top: 80.7cqh;
+      left: 7.4cqw;
+      width: 85.2cqw;
+      border-top: 2px solid #282726;
+      color: #504B48;
+      padding-top: 0.9cqh;
+      text-align: center;
+    }
+  </style>
+
+  <div id="root" data-composition-id="05-outside-the-range" data-width="1080" data-height="1920" data-duration="9.3">
+    <div class="clip frame-05-outside-the-range-ground" data-start="0" data-duration="9.3" data-track-index="0">
+      <svg class="frame-05-outside-the-range-grid" viewBox="0 0 1080 1920" aria-hidden="true">
+        <path d="M80 0V1594M280 0V1594M480 0V1594M680 0V1594M880 0V1594M0 220H1080M0 620H1080M0 1020H1080M0 1420H1080" fill="none" stroke="#282726" stroke-width="2" />
+      </svg>
+    </div>
+
+    <div class="clip frame-05-outside-the-range-scene" data-start="0" data-duration="9.3" data-track-index="1">
+      <div class="frame-05-outside-the-range-kicker">VRR / 05</div>
+      <div class="frame-05-outside-the-range-meta">RANGE LIMITS</div>
+      <h1 class="frame-05-outside-the-range-heading">outside <span>range</span></h1>
+      <div class="frame-05-outside-the-range-range-window" id="frame-05-outside-the-range-window"><span class="frame-05-outside-the-range-window-label" data-word="window">64–120 HZ</span></div>
+
+      <section class="frame-05-outside-the-range-compare-stage" aria-label="invented outside variable-refresh range comparison">
+        <article class="frame-05-outside-the-range-card frame-05-outside-the-range-card--below" id="frame-05-outside-the-range-below-card">
+          <span class="frame-05-outside-the-range-card-label">BELOW RANGE</span>
+          <div class="frame-05-outside-the-range-card-title"><span class="frame-05-outside-the-range-title-word">prior</span><span class="frame-05-outside-the-range-title-word">frame</span></div>
+          <div class="frame-05-outside-the-range-prior-card"></div>
+          <div class="frame-05-outside-the-range-state"><span class="frame-05-outside-the-range-state-label">DISPLAY</span><span class="frame-05-outside-the-range-state-text" id="frame-05-outside-the-range-state-text"></span><span class="frame-05-outside-the-range-cursor" id="frame-05-outside-the-range-cursor">|</span></div>
+        </article>
+        <article class="frame-05-outside-the-range-card frame-05-outside-the-range-card--above" id="frame-05-outside-the-range-above-card">
+          <span class="frame-05-outside-the-range-card-label">ABOVE RANGE</span>
+          <div class="frame-05-outside-the-range-card-title frame-05-outside-the-range-card-title--above"><span class="frame-05-outside-the-range-title-word">fixed</span><span class="frame-05-outside-the-range-title-word">rules</span></div>
+          <svg class="frame-05-outside-the-range-gates" viewBox="0 0 838 140" aria-hidden="true"><path id="frame-05-outside-the-range-gate-one" d="M92 12V128" /><path id="frame-05-outside-the-range-gate-two" class="frame-05-outside-the-range-gate-accent" d="M418 12V128" /><path id="frame-05-outside-the-range-gate-three" d="M746 12V128" /></svg>
+          <div class="frame-05-outside-the-range-fixed-rule"></div>
+        </article>
+      </section>
+      <div class="frame-05-outside-the-range-note" id="frame-05-outside-the-range-note">PRIOR FRAME / FIXED GATES</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo(".frame-05-outside-the-range-kicker", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.32, ease: "power2.out" }, 0.04);
+      tl.fromTo(".frame-05-outside-the-range-meta", { opacity: 0 }, { opacity: 1, duration: 0.28, ease: "power1.out" }, 0.16);
+      tl.fromTo(".frame-05-outside-the-range-heading", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.44, ease: "power3.out" }, 0.12);
+      const belowWords = Array.from(document.querySelectorAll("#frame-05-outside-the-range-below-card .frame-05-outside-the-range-title-word"));
+      const belowItems = [
+        { element: belowWords[0], body: "prior", hold: 0.26 },
+        { element: belowWords[1], body: "frame", hold: 0.54 },
+      ];
+      let belowCursor = 0.58;
+      const belowTimeline = belowItems.map((item) => {
+        const duration = 0.42 + item.body.length * 0.045 + item.hold;
+        const entry = { ...item, start: belowCursor, end: belowCursor + duration };
+        belowCursor = entry.end;
+        return entry;
+      });
+      tl.fromTo("#frame-05-outside-the-range-below-card", { opacity: 0, x: -36, rotateY: 14 }, { opacity: 1, x: 0, rotateY: 10, duration: 0.84, ease: "power3.out" }, 0.28);
+      belowTimeline.forEach((item) => {
+        tl.fromTo(item.element, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.38, ease: "power3.out" }, item.start);
+      });
+      tl.fromTo(".frame-05-outside-the-range-prior-card", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.38, ease: "power2.out" }, 1.46);
+      const stateText = document.getElementById("frame-05-outside-the-range-state-text");
+      const cursor = document.getElementById("frame-05-outside-the-range-cursor");
+      const sequence = [
+        { t: 0, text: "prior" },
+        { t: 0.76, text: "prior again" },
+      ];
+      function textAt(time) {
+        for (let i = sequence.length - 1; i >= 0; i--) {
+          if (time >= sequence[i].t) return sequence[i].text;
+        }
+        return "";
+      }
+      const textDriver = { t: 0 };
+      tl.fromTo(".frame-05-outside-the-range-state", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 1.62);
+      tl.to(textDriver, { t: 2.2, duration: 2.2, ease: "none", onUpdate: () => { stateText.textContent = textAt(textDriver.t); } }, 0.62);
+      const blink = { p: 0 };
+      tl.to(blink, { p: Math.PI * 8, duration: 2.2, ease: "none", onUpdate: () => { cursor.style.opacity = Math.sin(blink.p) > 0 ? "1" : "0"; } }, 0.62);
+
+      tl.fromTo("#frame-05-outside-the-range-above-card", { opacity: 0, x: 88, rotateY: -22 }, { opacity: 1, x: 0, rotateY: -10, duration: 0.96, ease: "power3.out" }, 2.96);
+      tl.fromTo("#frame-05-outside-the-range-above-card .frame-05-outside-the-range-card-title", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 3.38);
+      const gatePaths = [
+        document.getElementById("frame-05-outside-the-range-gate-one"),
+        document.getElementById("frame-05-outside-the-range-gate-two"),
+        document.getElementById("frame-05-outside-the-range-gate-three"),
+      ];
+      gatePaths.forEach((path) => {
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+      });
+      tl.to(gatePaths[0], { strokeDashoffset: 0, duration: 0.6, ease: "power2.out" }, 3.52);
+      tl.to(gatePaths[1], { strokeDashoffset: 0, duration: 0.6, ease: "power2.out" }, 3.96);
+      tl.to(gatePaths[2], { strokeDashoffset: 0, duration: 0.6, ease: "power2.out" }, 4.40);
+      tl.fromTo(".frame-05-outside-the-range-fixed-rule", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.5, ease: "power2.out" }, 4.76);
+
+      const windowWord = document.querySelector(".frame-05-outside-the-range-window-label");
+      const glowDriver = { t: 0 };
+      function envelope(time, start, end) {
+        const attack = 0.18;
+        const release = 0.38;
+        const rest = 0.16;
+        if (time < start) return 0;
+        if (time < end) return Math.min((time - start) / attack, 1);
+        if (time < end + release) return 1 - ((time - end) / release) * (1 - rest);
+        return rest;
+      }
+      tl.to(glowDriver, {
+        t: 2.8,
+        duration: 2.8,
+        ease: "none",
+        onUpdate: () => {
+          const env = envelope(glowDriver.t, 0.38, 1.62);
+          windowWord.style.textShadow = `0 0 ${36 * env}px rgba(255,107,26,${0.84 * env})`;
+          windowWord.style.transform = `scale(${1 + 0.18 * env})`;
+          windowWord.style.color = `rgba(240,240,240,${0.28 + 0.72 * env})`;
+        },
+      }, 5.9);
+      tl.fromTo("#frame-05-outside-the-range-note", { opacity: 0 }, { opacity: 1, duration: 0.34, ease: "power1.out" }, 7.46);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["05-outside-the-range"] = tl;
+    })();
+  </script>
+</template>

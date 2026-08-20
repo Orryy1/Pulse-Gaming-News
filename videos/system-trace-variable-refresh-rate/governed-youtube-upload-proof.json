@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "mode": "GOVERNED_YOUTUBE_LOCAL_MOCK_DRY_RUN",
+  "generated_at": "2026-08-20T09:36:46.6721748Z",
+  "verdict": "NOT_EVALUATED",
+  "request_shape_verdict": "PASS",
+  "publish_allowed": false,
+  "publish_authority": "NOT_EVALUATED",
+  "story_id": "system-trace-variable-refresh-rate",
+  "source": {
+    "package_dir": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-variable-refresh-rate",
+    "publish_pack_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-variable-refresh-rate\\youtube_publish_pack.json",
+    "publish_pack_sha256": "e9c673ca3850b8c4096d35dbb5b28b2535d97a3d8b44f6dae5c1300adcac9238",
+    "canonical_manifest_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-variable-refresh-rate\\canonical_story_manifest.json",
+    "canonical_manifest_sha256": "95e0b53a2e3f6b835a4ac3b350aae7e61a3226070e24f9e78aa2f2805c8ce4fd",
+    "authority": "youtube_publish_pack.youtube_upload_request"
+  },
+  "blockers": [],
+  "request_plan": {
+    "schema_version": 1,
+    "story_id": "system-trace-variable-refresh-rate",
+    "platform": "youtube",
+    "mode": "LOCAL_MOCK_DRY_RUN",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "source_of_truth": "closed_governed_package",
+    "video_insert": {
+      "operation": "youtube.videos.insert",
+      "part": [
+        "snippet",
+        "status",
+        "paidProductPlacementDetails"
+      ],
+      "params": {
+        "notifySubscribers": false
+      },
+      "requestBody": {
+        "snippet": {
+          "title": "How VRR Makes a Monitor Wait for the GPU",
+          "description": "Variable refresh rate does not make the GPU faster. It lets a compatible display begin a refresh when a frame is ready. This short animation explains the VRR operating window, why low and high frame rates still matter and which parts of the display path must support it.\n\nSources:\nhttps://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VRR #SystemTrace",
+          "tags": [
+            "variable refresh rate",
+            "VRR",
+            "FreeSync",
+            "G-SYNC",
+            "display refresh",
+            "PC gaming",
+            "System Trace",
+            "gaming Shorts"
+          ],
+          "categoryId": "20",
+          "defaultLanguage": "en-GB",
+          "defaultAudioLanguage": "en-GB"
+        },
+        "status": {
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": false,
+          "containsSyntheticMedia": true,
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true
+        },
+        "paidProductPlacementDetails": {
+          "hasPaidProductPlacement": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-variable-refresh-rate\\renders\\system-trace-variable-refresh-rate.mp4",
+      "media_sha256": "a318e4ed561586bc4ea12879f4d785dc6024f5700c04ea30c0b45d261698bff1"
+    },
+    "caption_insert": {
+      "operation": "youtube.captions.insert",
+      "depends_on": "youtube.videos.insert",
+      "video_id_source": "video_insert.response.data.id",
+      "part": [
+        "snippet"
+      ],
+      "requestBody": {
+        "snippet": {
+          "videoId": "__VIDEO_ID_FROM_VIDEO_INSERT__",
+          "language": "en-GB",
+          "name": "English (United Kingdom)",
+          "isDraft": false
+        }
+      },
+      "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-variable-refresh-rate\\captions.srt",
+      "media_sha256": "b41443c5fcf0fbc3ab1ef50782a75bbb3c1f2ae9b06372614f6276eb929ed2bd"
+    },
+    "safety": {
+      "live_youtube_call_allowed": false,
+      "legacy_build_metadata_used": false,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    }
+  },
+  "asset_evidence": {
+    "video": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-variable-refresh-rate\\renders\\system-trace-variable-refresh-rate.mp4",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-variable-refresh-rate\\renders\\system-trace-variable-refresh-rate.mp4",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 7731593,
+      "sha256": "a318e4ed561586bc4ea12879f4d785dc6024f5700c04ea30c0b45d261698bff1",
+      "probe": {
+        "duration_seconds": 53.7,
+        "width": 1080,
+        "height": 1920,
+        "video_stream_present": true,
+        "audio_stream_present": true
+      }
+    },
+    "captions": {
+      "path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-variable-refresh-rate\\captions.srt",
+      "real_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-variable-refresh-rate\\captions.srt",
+      "exists": true,
+      "file": true,
+      "symbolic_link": false,
+      "bytes": 2275,
+      "sha256": "b41443c5fcf0fbc3ab1ef50782a75bbb3c1f2ae9b06372614f6276eb929ed2bd",
+      "qa": {
+        "parsed": true,
+        "cue_count": 46,
+        "first_cue_start_seconds": 0,
+        "last_cue_end_seconds": 53.7,
+        "transcript_matches_canonical": true
+      }
+    },
+    "thumbnail": null
+  },
+  "mock_dry_run": {
+    "schema_version": 1,
+    "mode": "LOCAL_MOCK_DRY_RUN_EVIDENCE",
+    "generated_at": "2026-08-20T09:36:46.6721748Z",
+    "verdict": "REQUEST_SHAPE_PASS",
+    "request_shape_verdict": "PASS",
+    "can_publish": false,
+    "publish_authority": "NOT_EVALUATED",
+    "story_id": "system-trace-variable-refresh-rate",
+    "request_plan_fingerprint_sha256": "7b7d4b80fb23f5b8ddf94d5f3ea5b9e0b0c17e319e31dd652ca9da9b4002b92c",
+    "video_insert_fingerprint_sha256": "37cf9341c30d744f8c33f4c8293a9852c604b95eb102af3d43ff9998cadc83b6",
+    "thumbnail_set_fingerprint_sha256": null,
+    "caption_insert_fingerprint_sha256": "0d5053e6695c2095b80d4a04fea37ee62fec5798aa908d6f9f0c2abfe9f6a062",
+    "mock_video_id": "LOCAL_MOCK_VIDEO_ID",
+    "mock_caption_id": "LOCAL_MOCK_CAPTION_ID",
+    "requests": {
+      "video_insert": {
+        "operation": "youtube.videos.insert",
+        "part": [
+          "snippet",
+          "status",
+          "paidProductPlacementDetails"
+        ],
+        "params": {
+          "notifySubscribers": false
+        },
+        "requestBody": {
+          "snippet": {
+            "title": "How VRR Makes a Monitor Wait for the GPU",
+            "description": "Variable refresh rate does not make the GPU faster. It lets a compatible display begin a refresh when a frame is ready. This short animation explains the VRR operating window, why low and high frame rates still matter and which parts of the display path must support it.\n\nSources:\nhttps://vesa.org/featured-articles/vesa-adds-adaptive-sync-to-popular-displayport-video-standard/\nhttps://gpuopen.com/manuals/fidelityfx_sdk/techniques/frame-interpolation-swap-chain/\nhttps://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/variable-refresh-rate-displays\n\nVisuals: original Pulse Gaming diagrams.\nNarration: locally generated British synthetic voice.\nMusic: original Pulse Gaming synthesis.\nSynthetic media disclosure: Yes.\n\n#PCGaming #VRR #SystemTrace",
+            "tags": [
+              "variable refresh rate",
+              "VRR",
+              "FreeSync",
+              "G-SYNC",
+              "display refresh",
+              "PC gaming",
+              "System Trace",
+              "gaming Shorts"
+            ],
+            "categoryId": "20",
+            "defaultLanguage": "en-GB",
+            "defaultAudioLanguage": "en-GB"
+          },
+          "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": false,
+            "containsSyntheticMedia": true,
+            "license": "youtube",
+            "embeddable": true,
+            "publicStatsViewable": true
+          },
+          "paidProductPlacementDetails": {
+            "hasPaidProductPlacement": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-variable-refresh-rate\\renders\\system-trace-variable-refresh-rate.mp4",
+        "media_sha256": "a318e4ed561586bc4ea12879f4d785dc6024f5700c04ea30c0b45d261698bff1"
+      },
+      "caption_insert": {
+        "operation": "youtube.captions.insert",
+        "part": [
+          "snippet"
+        ],
+        "requestBody": {
+          "snippet": {
+            "videoId": "LOCAL_MOCK_VIDEO_ID",
+            "language": "en-GB",
+            "name": "English (United Kingdom)",
+            "isDraft": false
+          }
+        },
+        "media_path": "D:\\pulse-worktrees\\system-trace-display-20260820\\videos\\system-trace-variable-refresh-rate\\captions.srt"
+      }
+    },
+    "summary": {
+      "planned_request_count": 2,
+      "mock_request_count": 2,
+      "network_attempt_count": 0,
+      "oauth_or_token_mutation_count": 0,
+      "database_mutation_count": 0,
+      "public_post_count": 0
+    },
+    "safety": {
+      "no_live_youtube_call": true,
+      "no_network_upload": true,
+      "no_oauth_or_token_mutation": true,
+      "no_database_mutation": true,
+      "no_public_post": true,
+      "legacy_build_metadata_used": false,
+      "adapter_mode": "LOCAL_MOCK"
+    }
+  },
+  "safety": {
+    "no_network_upload": true,
+    "no_live_youtube_call": true,
+    "no_oauth_or_token_mutation": true,
+    "no_database_mutation": true,
+    "no_public_post": true,
+    "legacy_build_metadata_used": false,
+    "adapter_mode": "LOCAL_MOCK"
+  }
+}

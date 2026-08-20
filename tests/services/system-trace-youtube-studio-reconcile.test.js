@@ -123,6 +123,25 @@ function deferredRedReceipt(intent = expected(), overrides = {}) {
   };
 }
 
+function authPreflightRedReceipt(intent = expected(), overrides = {}) {
+  return {
+    schema_version: 1,
+    receipt_type: "governed_youtube_private_dispatch",
+    generated_at: "2026-08-20T09:58:34.466Z",
+    story_id: intent.story_id,
+    platform: "youtube",
+    verdict: "RED",
+    status: "STUDIO_RECONCILIATION_ATTEMPT_BLOCKED",
+    retry_allowed: false,
+    studio_ingest: true,
+    authority: { action_id: intent.authority_action_id },
+    platform_object: { video_id: intent.video_id, privacy_status: "private" },
+    requests: { video: { media_sha256: intent.video_sha256 } },
+    blockers: ["youtube_auth_must_be_current_before_studio_reconcile"],
+    ...overrides,
+  };
+}
+
 test("accepts an exact Studio-created private upload without mutation", async () => {
   const intent = expected();
   const client = fakeClient([remote(intent)]);
@@ -153,7 +172,10 @@ test("repairs only a missing defaultLanguage with one preserving snippet update"
   const before = remote(intent, { snippet: { defaultLanguage: undefined } });
   delete before.snippet.defaultLanguage;
   const client = fakeClient([before, remote(intent)]);
-  const receipt = await executeSystemTraceYouTubeStudioReconcile({ client, intent });
+  const receipt = await executeSystemTraceYouTubeStudioReconcile({
+    client,
+    intent,
+  });
 
   assert.equal(receipt.status, "PRIVATE_VERIFIED");
   assert.equal(receipt.verification_outcome, "LANGUAGE_REPAIRED_AND_VERIFIED");
@@ -181,13 +203,19 @@ test("repairs only a missing defaultLanguage with one preserving snippet update"
 test("rejects any mismatch other than missing defaultLanguage without mutation", async () => {
   const intent = expected();
   const client = fakeClient([
-    remote(intent, { status: { privacyStatus: "public" }, snippet: { defaultLanguage: undefined } }),
+    remote(intent, {
+      status: { privacyStatus: "public" },
+      snippet: { defaultLanguage: undefined },
+    }),
   ]);
 
   await assert.rejects(
     executeSystemTraceYouTubeStudioReconcile({ client, intent }),
     (error) => {
-      assert.equal(error.message, "system_trace_youtube_studio_reconcile_blocked");
+      assert.equal(
+        error.message,
+        "system_trace_youtube_studio_reconcile_blocked",
+      );
       assert.ok(error.blockers.includes("privacy_status_mismatch"));
       assert.ok(error.blockers.includes("default_language_missing"));
       return true;
@@ -218,7 +246,10 @@ test("does not retry an ambiguous update and accepts only exact readback", async
     throw new Error("socket closed");
   };
 
-  const receipt = await executeSystemTraceYouTubeStudioReconcile({ client, intent });
+  const receipt = await executeSystemTraceYouTubeStudioReconcile({
+    client,
+    intent,
+  });
   assert.equal(receipt.status, "PRIVATE_VERIFIED");
   assert.equal(
     receipt.verification_outcome,
@@ -242,7 +273,10 @@ test("an ambiguous update with a non-exact readback is terminal", async () => {
   await assert.rejects(
     executeSystemTraceYouTubeStudioReconcile({ client, intent }),
     (error) => {
-      assert.equal(error.message, "system_trace_youtube_studio_reconcile_outcome_unknown");
+      assert.equal(
+        error.message,
+        "system_trace_youtube_studio_reconcile_outcome_unknown",
+      );
       assert.equal(error.receipt.retry_allowed, false);
       assert.equal(error.receipt.snippet_update_count, 1);
       return true;
@@ -270,6 +304,83 @@ test("turns the exact self-produced deferred RED receipt into a GREEN read-only 
   assert.equal(proof.source_receipt.sha256, "b".repeat(64));
   assert.equal(client.state.updateCalls.length, 0);
   assert.equal(client.state.listCalls.length, 1);
+});
+
+test("turns an exact pre-network auth RED receipt into a read-only GREEN proof", async () => {
+  const intent = expected();
+  const client = fakeClient([remote(intent)]);
+  const proof = await executeDeferredSystemTraceYouTubeStudioReconciliation({
+    client,
+    intent,
+    sourceReceipt: authPreflightRedReceipt(intent),
+    sourceReceiptSha256: "d".repeat(64),
+    generatedAt: "2026-08-20T10:05:00.000Z",
+  });
+
+  assert.equal(proof.verdict, "GREEN");
+  assert.equal(proof.status, "PRIVATE_VERIFIED");
+  assert.equal(
+    proof.verification_outcome,
+    "DEFERRED_AUTH_PREFLIGHT_READBACK_VERIFIED",
+  );
+  assert.equal(proof.remote_mutation_count, 0);
+  assert.deepEqual(proof.source_receipt, {
+    sha256: "d".repeat(64),
+    verdict: "RED",
+    status: "STUDIO_RECONCILIATION_ATTEMPT_BLOCKED",
+    blocker: "youtube_auth_must_be_current_before_studio_reconcile",
+  });
+  assert.equal(client.state.updateCalls.length, 0);
+  assert.equal(client.state.listCalls.length, 1);
+});
+
+test("auth-preflight recovery performs at most one language repair and polls read-only", async () => {
+  const intent = expected();
+  const missing = remote(intent);
+  delete missing.snippet.defaultLanguage;
+  const client = fakeClient([missing, missing, remote(intent)]);
+  let sleeps = 0;
+  const proof = await executeDeferredSystemTraceYouTubeStudioReconciliation({
+    client,
+    intent,
+    sourceReceipt: authPreflightRedReceipt(intent),
+    sourceReceiptSha256: "f".repeat(64),
+    pollReadback: true,
+    sleep: async () => {
+      sleeps += 1;
+    },
+  });
+
+  assert.equal(
+    proof.verification_outcome,
+    "DEFERRED_AUTH_PREFLIGHT_LANGUAGE_REPAIR_VERIFIED",
+  );
+  assert.equal(proof.remote_mutation_count, 1);
+  assert.deepEqual(proof.recovery, {
+    snippet_update_count: 1,
+    update_response_ambiguous: false,
+  });
+  assert.equal(client.state.updateCalls.length, 1);
+  assert.equal(client.state.listCalls.length, 3);
+  assert.equal(sleeps, 1);
+});
+
+test("rejects any forged preflight blocker or mutation-shaped auth receipt", async () => {
+  const intent = expected();
+  for (const sourceReceipt of [
+    authPreflightRedReceipt(intent, { blockers: ["socket closed"] }),
+    authPreflightRedReceipt(intent, { snippet_update_count: 1 }),
+  ]) {
+    await assert.rejects(
+      executeDeferredSystemTraceYouTubeStudioReconciliation({
+        client: fakeClient([remote(intent)]),
+        intent,
+        sourceReceipt,
+        sourceReceiptSha256: "e".repeat(64),
+      }),
+      /source_receipt_blocked/,
+    );
+  }
 });
 
 test("deferred RED reconciliation is read-only and fails on ambiguity or tampering", async () => {

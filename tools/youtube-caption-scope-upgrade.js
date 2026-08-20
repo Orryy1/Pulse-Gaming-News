@@ -10,8 +10,12 @@ const { google } = require("googleapis");
 
 const MAIN_ROOT = path.resolve("C:/Users/MORR/gaming-studio/pulse-gaming");
 const TOKEN_PATH = path.join(MAIN_ROOT, "tokens", "youtube_token.json");
-const EVIDENCE_ROOT = path.resolve("D:/pulse-evidence/system-trace-youtube-buffer-20260814");
-const RECEIPT_PATH = path.join(EVIDENCE_ROOT, "oauth-scope-upgrade-receipt.json");
+const LEGACY_EVIDENCE_ROOT = path.resolve(
+  "D:/pulse-evidence/system-trace-youtube-buffer-20260814",
+);
+const DISPLAY_PIPELINE_EVIDENCE_ROOT = path.resolve(
+  "D:/pulse-evidence/system-trace-display-pipeline-oauth-20260820",
+);
 const REDIRECT_URI = "http://localhost";
 const CALLBACK_TIMEOUT_MS = 30 * 60 * 1000;
 const REQUIRED_SCOPES = Object.freeze([
@@ -21,50 +25,103 @@ const REQUIRED_SCOPES = Object.freeze([
   "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]);
 
-const { writeTokenJsonAtomic } = require(path.join(
-  MAIN_ROOT,
-  "lib",
-  "platforms",
-  "durable-token-store",
-));
+const { writeTokenJsonAtomic } = require(
+  path.join(MAIN_ROOT, "lib", "platforms", "durable-token-store"),
+);
 
 function hasRequiredScopes(scopes) {
-  const set = new Set(Array.isArray(scopes) ? scopes : String(scopes || "").split(/\s+/));
+  const set = new Set(
+    Array.isArray(scopes) ? scopes : String(scopes || "").split(/\s+/),
+  );
   return REQUIRED_SCOPES.every((scope) => set.has(scope));
 }
 
 async function writeStatus(value) {
-  await fs.writeFile(value.status_path, `${JSON.stringify(value.payload, null, 2)}\n`, "utf8");
+  await fs.writeFile(
+    value.status_path,
+    `${JSON.stringify(value.payload, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 function resolveAttemptPaths(argv = []) {
   if (argv.length === 0) {
     return {
       attempt: 1,
-      urlPath: path.join(EVIDENCE_ROOT, "oauth-authorisation-url.txt"),
-      statusPath: path.join(EVIDENCE_ROOT, "oauth-scope-upgrade-status.json"),
+      evidenceRoot: LEGACY_EVIDENCE_ROOT,
+      urlPath: path.join(LEGACY_EVIDENCE_ROOT, "oauth-authorisation-url.txt"),
+      statusPath: path.join(
+        LEGACY_EVIDENCE_ROOT,
+        "oauth-scope-upgrade-status.json",
+      ),
+      receiptPath: path.join(
+        LEGACY_EVIDENCE_ROOT,
+        "oauth-scope-upgrade-receipt.json",
+      ),
     };
   }
   if (argv.length === 2 && argv[0] === "--attempt" && argv[1] === "2") {
     return {
       attempt: 2,
-      urlPath: path.join(EVIDENCE_ROOT, "oauth-authorisation-url-attempt-2.txt"),
-      statusPath: path.join(EVIDENCE_ROOT, "oauth-scope-upgrade-status-attempt-2.json"),
+      evidenceRoot: LEGACY_EVIDENCE_ROOT,
+      urlPath: path.join(
+        LEGACY_EVIDENCE_ROOT,
+        "oauth-authorisation-url-attempt-2.txt",
+      ),
+      statusPath: path.join(
+        LEGACY_EVIDENCE_ROOT,
+        "oauth-scope-upgrade-status-attempt-2.json",
+      ),
+      receiptPath: path.join(
+        LEGACY_EVIDENCE_ROOT,
+        "oauth-scope-upgrade-receipt.json",
+      ),
     };
   }
-  throw new Error("usage: youtube-caption-scope-upgrade.js [--attempt 2]");
+  if (
+    argv.length === 2 &&
+    argv[0] === "--campaign" &&
+    argv[1] === "display-pipeline"
+  ) {
+    return {
+      attempt: "display-pipeline",
+      evidenceRoot: DISPLAY_PIPELINE_EVIDENCE_ROOT,
+      urlPath: path.join(
+        DISPLAY_PIPELINE_EVIDENCE_ROOT,
+        "oauth-authorisation-url.txt",
+      ),
+      statusPath: path.join(
+        DISPLAY_PIPELINE_EVIDENCE_ROOT,
+        "oauth-scope-upgrade-status.json",
+      ),
+      receiptPath: path.join(
+        DISPLAY_PIPELINE_EVIDENCE_ROOT,
+        "oauth-scope-upgrade-receipt.json",
+      ),
+    };
+  }
+  throw new Error(
+    "usage: youtube-caption-scope-upgrade.js [--attempt 2 | --campaign display-pipeline]",
+  );
 }
 
 async function main(argv = process.argv.slice(2)) {
   const attemptPaths = resolveAttemptPaths(argv);
   dotenv.config({ path: path.join(MAIN_ROOT, ".env"), override: false });
-  if (await fs.pathExists(TOKEN_PATH)) throw new Error("youtube_token_file_must_be_absent_before_scope_upgrade");
-  if (await fs.pathExists(attemptPaths.urlPath) || await fs.pathExists(attemptPaths.statusPath) || await fs.pathExists(RECEIPT_PATH)) {
+  if (await fs.pathExists(TOKEN_PATH))
+    throw new Error("youtube_token_file_must_be_absent_before_scope_upgrade");
+  if (
+    (await fs.pathExists(attemptPaths.urlPath)) ||
+    (await fs.pathExists(attemptPaths.statusPath)) ||
+    (await fs.pathExists(attemptPaths.receiptPath))
+  ) {
     throw new Error("youtube_scope_upgrade_single_use_outputs_already_exist");
   }
+  await fs.ensureDir(attemptPaths.evidenceRoot);
   const clientId = String(process.env.YOUTUBE_CLIENT_ID || "").trim();
   const clientSecret = String(process.env.YOUTUBE_CLIENT_SECRET || "").trim();
-  if (!clientId || !clientSecret) throw new Error("youtube_oauth_client_configuration_missing");
+  if (!clientId || !clientSecret)
+    throw new Error("youtube_oauth_client_configuration_missing");
 
   const state = crypto.randomBytes(32).toString("hex");
   const oauth = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
@@ -75,7 +132,10 @@ async function main(argv = process.argv.slice(2)) {
     scope: [...REQUIRED_SCOPES],
     state,
   });
-  await fs.writeFile(attemptPaths.urlPath, `${url}\n`, { encoding: "utf8", flag: "wx" });
+  await fs.writeFile(attemptPaths.urlPath, `${url}\n`, {
+    encoding: "utf8",
+    flag: "wx",
+  });
   await writeStatus({
     status_path: attemptPaths.statusPath,
     payload: {
@@ -107,16 +167,26 @@ async function main(argv = process.argv.slice(2)) {
         const returnedState = incoming.searchParams.get("state");
         const oauthError = incoming.searchParams.get("error");
         if (oauthError || !code || returnedState !== state) {
-          response.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
-          response.end("Pulse Gaming authorisation was not completed. You can close this tab.");
-          throw new Error(oauthError ? `google_oauth_${oauthError}` : "google_oauth_callback_invalid");
+          response.writeHead(400, {
+            "Content-Type": "text/plain; charset=utf-8",
+          });
+          response.end(
+            "Pulse Gaming authorisation was not completed. You can close this tab.",
+          );
+          throw new Error(
+            oauthError
+              ? `google_oauth_${oauthError}`
+              : "google_oauth_callback_invalid",
+          );
         }
         const { tokens } = await oauth.getToken(code);
-        if (!tokens?.refresh_token) throw new Error("new_scoped_refresh_token_missing");
+        if (!tokens?.refresh_token)
+          throw new Error("new_scoped_refresh_token_missing");
         oauth.setCredentials(tokens);
         const access = await oauth.getAccessToken();
         const tokenInfo = await oauth.getTokenInfo(access.token);
-        if (!hasRequiredScopes(tokenInfo.scopes)) throw new Error("required_youtube_caption_scope_not_granted");
+        if (!hasRequiredScopes(tokenInfo.scopes))
+          throw new Error("required_youtube_caption_scope_not_granted");
         await writeTokenJsonAtomic(TOKEN_PATH, tokens);
         const tokenStat = await fs.lstat(TOKEN_PATH);
         const receipt = {
@@ -133,7 +203,14 @@ async function main(argv = process.argv.slice(2)) {
           token_file_mutation_count: 1,
           secret_material_recorded_in_receipt: false,
         };
-        await fs.writeFile(RECEIPT_PATH, `${JSON.stringify(receipt, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+        await fs.writeFile(
+          attemptPaths.receiptPath,
+          `${JSON.stringify(receipt, null, 2)}\n`,
+          {
+            encoding: "utf8",
+            flag: "wx",
+          },
+        );
         await writeStatus({
           status_path: attemptPaths.statusPath,
           payload: {
@@ -143,11 +220,15 @@ async function main(argv = process.argv.slice(2)) {
             generated_at: receipt.generated_at,
             required_scopes_verified: true,
             token_file_mutation_count: 1,
-            receipt_path: RECEIPT_PATH,
+            receipt_path: attemptPaths.receiptPath,
           },
         });
-        response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-        response.end("Pulse Gaming authorisation is complete. You can close this tab.");
+        response.writeHead(200, {
+          "Content-Type": "text/plain; charset=utf-8",
+        });
+        response.end(
+          "Pulse Gaming authorisation is complete. You can close this tab.",
+        );
         finish(resolve);
       } catch (error) {
         await writeStatus({
@@ -190,4 +271,10 @@ if (require.main === module) {
   });
 }
 
-module.exports = { CALLBACK_TIMEOUT_MS, REQUIRED_SCOPES, hasRequiredScopes, main, resolveAttemptPaths };
+module.exports = {
+  CALLBACK_TIMEOUT_MS,
+  REQUIRED_SCOPES,
+  hasRequiredScopes,
+  main,
+  resolveAttemptPaths,
+};

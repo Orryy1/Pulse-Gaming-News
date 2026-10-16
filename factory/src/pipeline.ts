@@ -11,7 +11,8 @@ import type { Llm } from "./editorial/llm.ts";
 import type { StoryCluster } from "./discovery/cluster.ts";
 import type { ArticleText } from "./discovery/article.ts";
 import type { Narration } from "./voice/elevenlabs.ts";
-import type { VisualAsset } from "./assets/steam.ts";
+import type { VisualAsset, SteamApp, SteamFacts } from "./assets/steam.ts";
+import { factsText } from "./assets/steam.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
 import type { VisionQa } from "./editorial/schema.ts";
@@ -46,7 +47,10 @@ export interface Services {
   discover(): Promise<StoryCluster[]>;
   fetchArticle(url: string): Promise<ArticleText | undefined>;
   synthesise(text: string, outPath: string): Promise<Narration>;
-  fetchArt(term: string, episodeDir: string): Promise<VisualAsset[]>;
+  findGame(term: string): Promise<SteamApp | undefined>;
+  gameFacts(app: SteamApp): Promise<SteamFacts>;
+  fetchArt(app: SteamApp, episodeDir: string): Promise<VisualAsset[]>;
+  fetchClips(app: SteamApp, episodeDir: string, count: number): Promise<VisualAsset[]>;
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
@@ -101,7 +105,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     return undefined;
   }
   const id = shortId();
-  const created = await createEpisode(db, id, picked);
+  const created = await createEpisode(db, id, { ...picked, gameHint: choice.game_title || undefined });
   await markSeen(db, picked.hash, picked.headline, created ? "selected" : "duplicate", choice.reason);
   if (!created) return undefined;
   await logEvent(db, id, "selected", { headline: picked.headline, reason: choice.reason, story_type: choice.story_type, score: picked.score });
@@ -117,14 +121,26 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const articles = (await Promise.all(items.map((i) => s.fetchArticle(i.url)))).filter((a): a is ArticleText => Boolean(a));
   const mustLabelRumour = !cluster.corroborated;
 
+  // Live Steam numbers give the take something the headline doesn't have.
+  let steam: EpisodeAssets["steam"];
+  if (cluster.gameHint) {
+    try {
+      const app = await s.findGame(cluster.gameHint);
+      if (app) steam = { appId: app.appId, name: app.name, facts: await s.gameFacts(app) };
+    } catch (err) {
+      log("warn", "steam lookup failed", { game: cluster.gameHint, error: errorMessage(err) });
+    }
+  }
+  const storeData = steam ? factsText(steam.facts) : undefined;
+
   let script: Script | undefined;
   let feedback: string[] = [];
   let check;
   // Draft, check house rules, fact-check; one rewrite with the problems fed back.
   for (let attempt = 0; attempt < 2; attempt++) {
-    script = await writeScript(s.llm, cluster, articles, { mustLabelRumour, feedback });
+    script = await writeScript(s.llm, cluster, articles, { mustLabelRumour, feedback, storeData });
     const problems = validateScript(script);
-    check = await factCheck(s.llm, script, cluster, articles);
+    check = await factCheck(s.llm, script, cluster, articles, storeData);
     const blockers = check.issues.filter((i) => i.severity === "blocker").map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
     if (check.verdict === "pass" && check.rumour_labelling_ok && blockers.length === 0 && problems.length === 0) break;
     feedback = [...blockers, ...problems, ...(check.rumour_labelling_ok ? [] : ["Rumour labelling is inadequate."])];
@@ -145,7 +161,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     await transition(s.db, ep.id, "selected", "rejected", { script_json: script, factcheck_json: check, last_error: "rumour story; rumours are disabled" });
     return;
   }
-  await transition(s.db, ep.id, "selected", "scripted", { script_json: script, factcheck_json: check });
+  await transition(s.db, ep.id, "selected", "scripted", { script_json: script, factcheck_json: check, assets_json: steam ? { steam } : null });
 }
 
 async function stepVoice(s: Services, ep: Episode): Promise<void> {
@@ -153,14 +169,18 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
   const narration = await s.synthesise(narrationOf(ep.script_json!), path.join(dir, "voice.mp3"));
   if (narration.durationSeconds > 58) throw new FatalError(`narration is ${narration.durationSeconds.toFixed(1)}s, over the Shorts limit`);
-  const assets: EpisodeAssets = { audio: "voice.mp3", words: narration.words, durationSeconds: narration.durationSeconds };
+  const assets: EpisodeAssets = { ...(ep.assets_json ?? {}), audio: "voice.mp3", words: narration.words, durationSeconds: narration.durationSeconds };
   await transition(s.db, ep.id, "scripted", "voiced", { assets_json: assets });
 }
 
-async function gatherImages(s: Services, ep: Episode, dir: string): Promise<NonNullable<EpisodeAssets["images"]>> {
+async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<EpisodeAssets, "images" | "clips">> {
   const script = ep.script_json!;
-  const term = script.steam_search_term || script.game_title;
-  const art = term ? await s.fetchArt(term, dir).catch(() => [] as VisualAsset[]) : [];
+  const term = script.steam_search_term || script.game_title || ep.story_json.gameHint || "";
+  const app = term ? await s.findGame(term).catch(() => undefined) : undefined;
+  const art = app ? await s.fetchArt(app, dir).catch(() => [] as VisualAsset[]) : [];
+  // Official trailer B-roll: short muted clips, at most MAX_TRAILER_CLIPS.
+  const clipAssets = app && s.cfg.footage && s.cfg.maxClips > 0 ? await s.fetchClips(app, dir, s.cfg.maxClips).catch(() => [] as VisualAsset[]) : [];
+  const clips = clipAssets.map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4 }));
   const images = art.filter((a) => a.kind !== "logo");
   // First-party newsroom images (PlayStation Blog, Xbox Wire) are press
   // material meant for coverage. Outlet images are never used.
@@ -182,7 +202,7 @@ async function gatherImages(s: Services, ep: Episode, dir: string): Promise<NonN
   }
   // Lead with the most cinematic art; screenshots fill the middle.
   const rank: Record<string, number> = { hero: 0, article: 1, capsule: 2, screenshot: 3, header: 4 };
-  return out.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9));
+  return { images: out.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)), clips };
 }
 
 export function segmentInputs(script: Script): SegmentInput[] {
@@ -194,6 +214,14 @@ export function segmentInputs(script: Script): SegmentInput[] {
   ];
 }
 
+/** One live number for the end of the take, if Steam has a good one. */
+export function steamStat(f?: SteamFacts): { value: string; label: string } | null {
+  if (!f) return null;
+  if (f.currentPlayers && f.currentPlayers >= 1000) return { value: f.currentPlayers.toLocaleString("en-GB"), label: "playing on Steam right now" };
+  if (f.positivePercent !== undefined && (f.totalReviews ?? 0) >= 500) return { value: `${f.positivePercent}%`, label: `positive Steam reviews (${f.reviewSummary})` };
+  return null;
+}
+
 function variantOf(id: string): number {
   return [...id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % 4;
 }
@@ -203,7 +231,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const script = ep.script_json!;
   const assets = { ...(ep.assets_json ?? {}) };
   if (!assets.images) {
-    assets.images = await gatherImages(s, ep, dir);
+    Object.assign(assets, await gatherMedia(s, ep, dir));
     await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
   }
   const duration = (assets.durationSeconds ?? 30) + 0.6;
@@ -232,7 +260,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       variant,
       audioFile: assets.audio ?? null,
       musicFile,
-      imageFiles: assets.images.map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect })),
+      imageFiles: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect })),
+      clipFiles: (assets.clips ?? []).map((c) => ({ file: c.file, durationSeconds: c.durationSeconds })),
+      steamStat: steamStat(assets.steam?.facts),
     },
   });
   await s.normalise(raw, final);

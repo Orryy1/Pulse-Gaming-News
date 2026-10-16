@@ -27,6 +27,7 @@ const MIME: Record<string, string> = {
   ".png": "image/png",
   ".webp": "image/webp",
   ".mp3": "audio/mpeg",
+  ".mp4": "video/mp4",
   ".wav": "audio/wav",
 };
 
@@ -53,9 +54,10 @@ async function serveDir(root: string): Promise<{ url: string; close: () => Promi
 
 export interface RenderInput {
   episodeDir: string;
-  props: Omit<ShortProps, "audioSrc" | "images" | "logoSrc" | "musicSrc"> & {
+  props: Omit<ShortProps, "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc"> & {
     audioFile: string | null;
     imageFiles: Array<{ file: string; kind: string; aspect: number }>;
+    clipFiles: Array<{ file: string; durationSeconds: number }>;
     musicFile: string | null;
   };
   outFile: string;
@@ -69,11 +71,12 @@ export async function renderShort(input: RenderInput): Promise<void> {
   const serveUrl = await getBundle();
   const files = await serveDir(input.episodeDir);
   try {
-    const { audioFile, imageFiles, musicFile, ...rest } = input.props;
+    const { audioFile, imageFiles, clipFiles, musicFile, ...rest } = input.props;
     const props: ShortProps = {
       ...rest,
       audioSrc: audioFile ? `${files.url}/${audioFile}` : null,
       images: imageFiles.map((i) => ({ src: `${files.url}/${i.file}`, kind: i.kind, aspect: i.aspect })),
+      clips: clipFiles.map((c) => ({ src: `${files.url}/${c.file}`, durationSeconds: c.durationSeconds })),
       // Brand files ship in the bundle's public dir; Short resolves bare
       // names with staticFile().
       logoSrc: "logo.png",

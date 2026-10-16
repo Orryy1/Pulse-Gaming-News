@@ -10,7 +10,7 @@ import { fetchFeeds } from "./discovery/rss.ts";
 import { clusterItems } from "./discovery/cluster.ts";
 import { fetchArticle } from "./discovery/article.ts";
 import { narrate } from "./voice/index.ts";
-import { fetchSteamArt } from "./assets/steam.ts";
+import { fetchSteamArt, fetchSteamClips, findSteamApp, steamFacts } from "./assets/steam.ts";
 import { renderShort } from "./render/render.ts";
 import { extractFrames, imageAspect, normaliseLoudness, technicalQa } from "./qa/media.ts";
 import { visionQa } from "./qa/vision.ts";
@@ -38,7 +38,10 @@ export function createServices(db: Db, cfg: Config): Services {
     discover: async () => clusterItems(await fetchFeeds(FEEDS), new Date(), cfg.maxStoryAgeHours),
     fetchArticle,
     synthesise: (text, out) => narrate(cfg, text, out),
-    fetchArt: (term, dir) => fetchSteamArt(term, dir),
+    findGame: findSteamApp,
+    gameFacts: steamFacts,
+    fetchArt: (app, dir) => fetchSteamArt(app, dir),
+    fetchClips: (app, dir, n) => fetchSteamClips(app, dir, n),
     downloadImage: async (url, dest) => {
       const res = await fetchWithTimeout(url, {}, 30_000);
       if (!res.ok || !(res.headers.get("content-type") ?? "").startsWith("image/")) return false;

@@ -204,6 +204,20 @@ async function main(): Promise<void> {
 
   setTimeout(() => void runTick(services, state), 15_000);
   setInterval(() => void runTick(services, state), cfg.tickMinutes * 60_000);
+  // Daily at 04:00 UTC, when nothing is mid-production, exit cleanly so the
+  // Windows runner can pull updates and restart.
+  let lastRestartDay = new Date().toISOString().slice(0, 10);
+  setInterval(async () => {
+    const now = new Date();
+    const day = now.toISOString().slice(0, 10);
+    if (now.getUTCHours() !== 4 || day === lastRestartDay || running) return;
+    const [busy] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','approved','uploading')`);
+    if (Number(busy?.n ?? 0) > 0) return;
+    lastRestartDay = day;
+    log("info", "daily restart for updates");
+    await db.close();
+    process.exit(0);
+  }, 5 * 60_000);
   let lastDmsDay = "";
   setInterval(() => {
     const now = new Date();

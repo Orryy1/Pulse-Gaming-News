@@ -70,6 +70,8 @@ export interface Config {
   publishWindowStartUtc: number;
   publishWindowEndUtc: number;
   visionQa: boolean;
+  footage: boolean;
+  maxClips: number;
   musicBed: boolean;
   dryRun: boolean;
   maxAttempts: number;
@@ -130,6 +132,8 @@ export function loadConfig(): Config {
     publishWindowStartUtc: int("PUBLISH_WINDOW_START_UTC", 7),
     publishWindowEndUtc: int("PUBLISH_WINDOW_END_UTC", 22),
     visionQa: bool("VISION_QA", true),
+    footage: bool("TRAILER_FOOTAGE", true),
+    maxClips: int("MAX_TRAILER_CLIPS", 4),
     musicBed: bool("MUSIC_BED", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),

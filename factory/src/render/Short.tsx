@@ -4,8 +4,8 @@ import type { ShortProps } from "./props.ts";
 import { STORY_THEME, BRAND } from "./props.ts";
 import { pageCaptions, shotTimes } from "./timeline.ts";
 import type { Word } from "../voice/elevenlabs.ts";
-import { ArtTrack, MotionField, Scrim } from "./components/Background.tsx";
-import { Captions, CutFlash, FactCard, HookHeadline, TopBar } from "./components/Overlays.tsx";
+import { ArtTrack, Finish, MotionField, Scrim, mediaOrder } from "./components/Background.tsx";
+import { Captions, CutFlash, FactCard, HookHeadline, LiveStat, TopBar } from "./components/Overlays.tsx";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
 const resolveSrc = (src: string | null) => (src && !/^(https?:|data:|blob:)/.test(src) ? staticFile(src) : src);
@@ -32,14 +32,31 @@ export const Short: React.FC<ShortProps> = (props) => {
   const segmentStarts = props.segments.map((s) => Math.round(s.start * fps));
   const hook = props.segments.find((s) => s.kind === "hook");
   const hookEnd = Math.round((hook?.end ?? 3) * fps);
-  const musicVolume = (f: number) =>
-    interpolate(f, [0, 12, durationInFrames - 20, durationInFrames], [0, 0.11, 0.11, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const media = useMemo(() => mediaOrder(props.images, props.clips ?? [], cuts.length), [props.images, props.clips, cuts.length]);
+  // Music ducks under the voice and lifts in the gaps between phrases.
+  const speaking = useMemo(() => {
+    const on = new Uint8Array(durationInFrames + 1);
+    for (const w of words) {
+      const a = Math.max(0, Math.floor((w.start - 0.08) * fps));
+      const b = Math.min(durationInFrames, Math.ceil((w.end + 0.12) * fps));
+      for (let f = a; f <= b; f++) on[f] = 1;
+    }
+    return on;
+  }, [words, fps, durationInFrames]);
+  const musicVolume = (f: number) => {
+    const fade = interpolate(f, [0, 12, durationInFrames - 20, durationInFrames], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    let talk = 0; // average over ~0.3s so the duck breathes instead of chopping
+    for (let k = -4; k <= 4; k++) talk += speaking[Math.min(durationInFrames, Math.max(0, f + k))] ?? 0;
+    return fade * interpolate(talk / 9, [0, 1], [0.2, 0.085]);
+  };
+  const take = props.segments.find((s) => s.kind === "take");
 
   return (
     <AbsoluteFill style={{ backgroundColor: BRAND.ink }}>
       <MotionField accent={accent} variant={props.variant} />
-      <ArtTrack images={props.images} cuts={cuts} totalFrames={durationInFrames} />
+      <ArtTrack media={media} cuts={cuts} totalFrames={durationInFrames} />
       <Scrim />
+      <Finish />
 
       <Sequence durationInFrames={hookEnd} layout="none">
         <HookHeadline headline={props.headline} accent={accent} gameTitle={props.gameTitle} />
@@ -61,6 +78,11 @@ export const Short: React.FC<ShortProps> = (props) => {
         attribution={props.attribution}
         logoSrc={resolveSrc(props.logoSrc)}
       />
+      {props.steamStat && take ? (
+        <Sequence from={Math.round(take.start * fps) + 18} durationInFrames={Math.max(1, Math.round((take.end - take.start) * fps) - 18)} layout="none">
+          <LiveStat value={props.steamStat.value} label={props.steamStat.label} accent={accent} />
+        </Sequence>
+      ) : null}
       <Captions pages={pages} accent={accent} />
       <CutFlash cutFrames={segmentStarts} accent={accent} />
 

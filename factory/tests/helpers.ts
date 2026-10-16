@@ -65,6 +65,8 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     publishWindowStartUtc: 0,
     publishWindowEndUtc: 24,
     visionQa: true,
+    footage: true,
+    maxClips: 4,
     musicBed: true,
     dryRun: false,
     maxAttempts: 3,

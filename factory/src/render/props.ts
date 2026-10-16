@@ -21,6 +21,8 @@ export type ShortProps = {
   segments: Segment[];
   words: Word[];
   images: ShortImage[];
+  clips: Array<{ src: string; durationSeconds: number }>;
+  steamStat: { value: string; label: string } | null;
   logoSrc: string | null;
   audioSrc: string | null;
   musicSrc: string | null;
@@ -64,6 +66,8 @@ export const SAMPLE_PROPS: ShortProps = {
   ],
   words: [],
   images: [],
+  clips: [],
+  steamStat: { value: "48,213", label: "playing on Steam right now" },
   logoSrc: "logo.png",
   audioSrc: null,
   musicSrc: "music_2.mp3",

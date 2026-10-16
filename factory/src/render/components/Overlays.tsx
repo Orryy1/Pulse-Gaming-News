@@ -295,3 +295,36 @@ export const CutFlash: React.FC<{ cutFrames: number[]; accent: string }> = ({ cu
   const o = interpolate(d, [0, 5], [0.38, 0]);
   return <AbsoluteFill style={{ background: `linear-gradient(180deg, ${accent} 0%, rgba(255,255,255,0.9) 100%)`, opacity: o, mixBlendMode: "screen" }} />;
 };
+
+/** "Live from Steam" data badge: a real number the headline didn't have. */
+export const LiveStat: React.FC<{ value: string; label: string; accent: string }> = ({ value, label, accent }) => {
+  const frame = useCurrentFrame();
+  const enter = useEnter(0, 15);
+  const pulse = 0.55 + 0.45 * Math.abs(Math.sin(frame / 9));
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: SAFE.left,
+        top: SAFE.top + 830,
+        display: "flex",
+        alignItems: "center",
+        gap: 22,
+        padding: "18px 26px",
+        background: "rgba(11,11,14,0.82)",
+        border: `2px solid ${accent}`,
+        borderRadius: 14,
+        transform: `translateY(${interpolate(enter, [0, 1], [40, 0])}px)`,
+        opacity: enter,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 16, height: 16, borderRadius: 8, background: "#22C55E", opacity: pulse, boxShadow: "0 0 18px #22C55E" }} />
+        <div style={{ fontFamily: BODY, fontWeight: 900, fontSize: 24, color: "#22C55E", letterSpacing: 3 }}>LIVE · STEAM</div>
+      </div>
+      <div style={{ fontFamily: DISPLAY, fontSize: 64, color: BRAND.text, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontFamily: BODY, fontWeight: 800, fontSize: 26, color: BRAND.muted, maxWidth: 300, lineHeight: 1.15, textTransform: "uppercase" }}>{label}</div>
+    </div>
+  );
+};

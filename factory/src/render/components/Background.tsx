@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing, Sequence } from "remotion";
+import { AbsoluteFill, Img, OffthreadVideo, interpolate, useCurrentFrame, useVideoConfig, Easing, Sequence, staticFile } from "remotion";
 import type { ShortImage } from "../props.ts";
 
 /** Animated brand backdrop used when there is no art, and under art as a base. */
@@ -92,21 +92,73 @@ const Shot: React.FC<{ image: ShortImage; durationFrames: number; index: number 
   );
 };
 
-export const ArtTrack: React.FC<{ images: ShortImage[]; cuts: number[]; totalFrames: number }> = ({ images, cuts, totalFrames }) => {
+export type Media = { type: "image"; image: ShortImage } | { type: "clip"; src: string; durationSeconds: number };
+
+/**
+ * Shot order: the strongest still under the hook headline, then trailer clips
+ * alternating with stills so motion never stops and nothing repeats early.
+ */
+export function mediaOrder(images: ShortImage[], clips: Array<{ src: string; durationSeconds: number }>, shots: number): Media[] {
+  const stills: Media[] = images.map((image) => ({ type: "image", image }));
+  const moving: Media[] = clips.map((c) => ({ type: "clip", src: c.src, durationSeconds: c.durationSeconds }));
+  const out: Media[] = [];
+  if (stills[0]) out.push(stills.shift()!);
+  while (out.length < shots && (stills.length || moving.length)) {
+    if (moving.length) out.push(moving.shift()!);
+    if (out.length < shots && stills.length) out.push(stills.shift()!);
+  }
+  // Recycle (stills first) if the story runs longer than the material.
+  const pool = [...images.map((image) => ({ type: "image", image }) as Media), ...clips.map((c) => ({ type: "clip", ...c }) as Media)];
+  for (let k = 0; out.length < shots && pool.length; k++) out.push(pool[k % pool.length]!);
+  return out;
+}
+
+/** Trailer clip, full-bleed, with a slow push; slowed down if the shot outlasts it. */
+const ClipShot: React.FC<{ src: string; clipSeconds: number; durationFrames: number; index: number }> = ({ src, clipSeconds, durationFrames, index }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  if (images.length === 0) return null;
+  const p = Math.min(1, frame / Math.max(1, durationFrames));
+  const scale = interpolate(p, [0, 1], index % 2 ? [1.12, 1.04] : [1.04, 1.12]);
+  const rate = Math.max(0.6, Math.min(1, clipSeconds / Math.max(0.1, durationFrames / fps)));
+  return (
+    <AbsoluteFill style={{ overflow: "hidden" }}>
+      <OffthreadVideo src={src} muted playbackRate={rate} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }} />
+    </AbsoluteFill>
+  );
+};
+
+export const ArtTrack: React.FC<{ media: Media[]; cuts: number[]; totalFrames: number }> = ({ media, cuts, totalFrames }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  if (media.length === 0) return null;
   const cutFrames = cuts.map((c) => Math.round(c * fps));
   let i = 0;
   while (i + 1 < cutFrames.length && frame >= cutFrames[i + 1]!) i++;
   const start = cutFrames[i] ?? 0;
   const end = cutFrames[i + 1] ?? totalFrames;
-  const image = images[i % images.length]!;
+  const m = media[i % media.length]!;
   return (
     <AbsoluteFill key={i}>
       <FrameOffset offset={start}>
-        <Shot image={image} durationFrames={end - start} index={i} />
+        {m.type === "clip" ? (
+          <ClipShot src={m.src} clipSeconds={m.durationSeconds} durationFrames={end - start} index={i} />
+        ) : (
+          <Shot image={m.image} durationFrames={end - start} index={i} />
+        )}
       </FrameOffset>
+    </AbsoluteFill>
+  );
+};
+
+/** Film grain and a soft vignette: the finish that separates a "made" Short from a template. */
+export const Finish: React.FC = () => {
+  const frame = useCurrentFrame();
+  const x = (frame * 37) % 256;
+  const y = (frame * 91) % 256;
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      <AbsoluteFill style={{ background: "radial-gradient(ellipse 85% 70% at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%)" }} />
+      <AbsoluteFill style={{ backgroundImage: `url(${staticFile("grain.png")})`, backgroundPosition: `${x}px ${y}px`, opacity: 0.07, mixBlendMode: "overlay" }} />
     </AbsoluteFill>
   );
 };

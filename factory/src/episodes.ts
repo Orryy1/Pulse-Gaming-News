@@ -48,6 +48,8 @@ export interface EpisodeAssets {
   video?: string;
   poster?: string;
   musicFile?: string | null;
+  clips?: Array<{ file: string; sourceUrl: string; provenance: string; durationSeconds: number }>;
+  steam?: { appId: number; name: string; facts: import("./assets/steam.ts").SteamFacts };
 }
 
 export async function getEpisode(db: Db, id: string): Promise<Episode | undefined> {
@@ -70,6 +72,7 @@ export async function dueEpisodes(db: Db): Promise<Episode[]> {
 }
 
 export async function createEpisode(db: Db, id: string, cluster: StoryCluster): Promise<boolean> {
+  // cluster may carry gameHint from the editor's selection.
   const rows = await db.query(
     `INSERT INTO episodes (id, story_hash, status, story_json) VALUES ($1, $2, 'selected', $3)
      ON CONFLICT (story_hash) DO NOTHING RETURNING id`,

@@ -83,6 +83,12 @@ function sourcesBlock(articles: ArticleText[], cluster: StoryCluster): string {
     .join("\n");
 }
 
+/** Live Steam store numbers: a verified source the Pulse take can draw on. */
+function storeBlock(data?: string): string {
+  if (!data) return "";
+  return `\n<source outlet="Steam store (live data)" kind="official">\n${data}\n</source>\nThe Steam numbers above are live and verified. Use one where it sharpens the Pulse take or makes a strong stat beat (current players, review score, price); attribute it to Steam and give it as a figure from today.`;
+}
+
 export async function selectStory(llm: Llm, candidates: StoryCluster[], recentHeadlines: string[]): Promise<Selection> {
   const list = candidates
     .map(
@@ -102,7 +108,7 @@ export async function writeScript(
   llm: Llm,
   cluster: StoryCluster,
   articles: ArticleText[],
-  opts: { mustLabelRumour: boolean; feedback?: string[] },
+  opts: { mustLabelRumour: boolean; feedback?: string[]; storeData?: string },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
     ? "\nThis story is NOT confirmed by an official source or two independent outlets. Set is_rumour true and attribute every claim to whoever reported it."
@@ -112,16 +118,16 @@ export async function writeScript(
     : "";
   return llm.structured({
     system: scriptPrompt(),
-    content: `Sources:\n${sourcesBlock(articles, cluster)}${rules}${feedback}`,
+    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${feedback}`,
     schema: ScriptSchema,
     effort: "medium",
   });
 }
 
-export async function factCheck(llm: Llm, script: Script, cluster: StoryCluster, articles: ArticleText[]): Promise<FactCheck> {
+export async function factCheck(llm: Llm, script: Script, cluster: StoryCluster, articles: ArticleText[], storeData?: string): Promise<FactCheck> {
   return llm.structured({
     system: factCheckPrompt(),
-    content: `Sources:\n${sourcesBlock(articles, cluster)}\n\nScript (spoken):\n${narrationOf(script)}\n\nOn-screen text:\n- ${script.headline}\n${script.beats
+    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(storeData)}\n\nScript (spoken):\n${narrationOf(script)}\n\nOn-screen text:\n- ${script.headline}\n${script.beats
       .map((b) => `- ${b.visual.primary} ${b.visual.secondary}`.trim())
       .join("\n")}\n- ${script.pulse_take.on_screen}\n\nYouTube title: ${script.youtube.title}\nYouTube description: ${script.youtube.description}\nScript labels this as rumour: ${script.is_rumour}`,
     schema: FactCheckSchema,

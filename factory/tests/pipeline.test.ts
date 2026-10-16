@@ -83,7 +83,10 @@ async function setup(cfgOverrides: Partial<Config> = {}, fakeOverrides: Partial<
       const words = text.split(/\s+/).map((w, i) => ({ text: w, start: i * 0.33, end: i * 0.33 + 0.3 }));
       return { audioPath: out, words, durationSeconds: words.length * 0.33 + 0.2 };
     },
+    findGame: async () => undefined,
+    gameFacts: async () => ({ name: "", storeUrl: "", fetchedAt: "" }),
     fetchArt: async () => [],
+    fetchClips: async () => [],
     downloadImage: async () => false,
     imageAspect: async () => 16 / 9,
     render: async (input) => {

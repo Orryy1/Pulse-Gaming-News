@@ -16,6 +16,8 @@ export interface StoryCluster {
   rumourSignals: boolean;
   newestAt: string;
   score: number;
+  /** Game the editor identified at selection time, used for Steam lookups. */
+  gameHint?: string;
 }
 
 const STOPWORDS = new Set(

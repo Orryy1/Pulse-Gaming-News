@@ -143,7 +143,9 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
             }${e.last_error ? `<br><small>${esc(e.last_error.slice(0, 200))}</small>` : ""}</td></tr>`,
         )
         .join("");
-      return send(200, page("Pulse Factory", `<h1>Episodes</h1><p>Last tick: ${state.lastTick ?? "never"}</p><table>${tr}</table>`));
+      return send(200, page("Pulse Factory", `<h1>Episodes</h1><p>Last run: ${state.lastTick ?? "starting up (first run begins about 15 seconds after start, then every few minutes)"}</p>${
+          state.lastError ? `<p style="color:#ff6b6b">Last run failed: ${esc(state.lastError)}</p>` : ""
+        }${rows.length ? `<table>${tr}</table>` : "<p>No episodes yet. The first one appears once a story is picked; a Short takes about 5-10 minutes to make.</p>"}`));
     }
 
     if (url.pathname === "/tick" && req.method === "POST") {

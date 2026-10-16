@@ -24,12 +24,12 @@ function Update-Factory($log) {
     git merge --ff-only --quiet $upstream.Trim() 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { Log $log "update skipped: local changes prevent a fast-forward"; return }
     Set-Location $factory
-    if (git diff --name-only $before HEAD -- factory/package-lock.json) { npm ci --no-audit --no-fund *>> $log }
-    npx tsc --noEmit -p . *>> $log
+    if (git diff --name-only $before HEAD -- factory/package-lock.json) { & cmd /c "npm ci --no-audit --no-fund >> `"$log`" 2>&1" }
+    & cmd /c "npx tsc --noEmit -p . >> `"$log`" 2>&1"
     if ($LASTEXITCODE -ne 0) {
       Log $log "update failed typecheck; rolling back to $before"
       Set-Location $repo; git reset --hard --quiet $before; Set-Location $factory
-      npm ci --no-audit --no-fund *>> $log
+      & cmd /c "npm ci --no-audit --no-fund >> `"$log`" 2>&1"
       return
     }
     Log $log "updated $before -> $((git rev-parse HEAD).Trim())"
@@ -40,7 +40,9 @@ while ($true) {
   $log = Join-Path $logs ("factory-" + (Get-Date -Format "yyyy-MM-dd") + ".log")
   Update-Factory $log
   Log $log "starting factory"
-  & node --import tsx src/server.ts *>> $log
+  # cmd does the redirect so node's UTF-8 output lands in the log as plain text
+  # (PowerShell's *>> writes UTF-16 and wraps stderr lines in NativeCommandError records).
+  & cmd /c "node --import tsx src/server.ts >> `"$log`" 2>&1"
   Log $log "factory exited with $LASTEXITCODE; restarting in 30s"
   Start-Sleep -Seconds 30
 }

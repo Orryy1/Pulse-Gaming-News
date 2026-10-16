@@ -49,7 +49,7 @@ Videos are uploaded with YouTube's "altered or synthetic content" disclosure swi
 | `manual` | Waits for Approve. |
 | `auto` | Publishes as soon as QA passes. |
 
-The Approve and Reject links point at `PUBLIC_URL`. On `http://localhost:8080` they only work on this PC. To tap them from your phone, set `PUBLIC_URL` to the Cloudflare tunnel Codex used (`pulse.orryy.com`, pointed at port 8080).
+The Approve and Reject links point at `PUBLIC_URL`. On `http://localhost:8080` they only work on this PC. To tap them from your phone, set `PUBLIC_URL` to the Cloudflare tunnel Codex used (`pulse.orryy.com`, pointed at port 8080). `windows\install-tunnel.ps1` registers a hidden "Pulse Tunnel" start-up task that keeps that tunnel running.
 
 ## Operating it
 

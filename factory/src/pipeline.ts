@@ -247,6 +247,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
     concurrency: s.cfg.remotionConcurrency,
+    gl: s.cfg.remotionGl,
     browserExecutable: s.cfg.browserExecutable,
     props: {
       headline: script.headline,

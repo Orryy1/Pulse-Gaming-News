@@ -63,6 +63,7 @@ export interface RenderInput {
   outFile: string;
   posterFile: string;
   concurrency: number;
+  gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
   browserExecutable?: string;
   onProgress?: (p: number) => void;
 }
@@ -97,7 +98,7 @@ export async function renderShort(input: RenderInput): Promise<void> {
       inputProps: props,
       concurrency: input.concurrency,
       browserExecutable,
-      chromiumOptions: { gl: "swangle" },
+      chromiumOptions: { gl: input.gl ?? "swangle" },
       onProgress: ({ progress }) => input.onProgress?.(progress),
     });
     const posterFrame = Math.min(composition.durationInFrames - 1, Math.round(0.9 * composition.fps));
@@ -110,7 +111,7 @@ export async function renderShort(input: RenderInput): Promise<void> {
       imageFormat: "jpeg",
       jpegQuality: 88,
       browserExecutable,
-      chromiumOptions: { gl: "swangle" },
+      chromiumOptions: { gl: input.gl ?? "swangle" },
     });
   } finally {
     await files.close();

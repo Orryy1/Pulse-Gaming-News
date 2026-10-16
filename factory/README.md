@@ -59,6 +59,10 @@ The Approve and Reject links point at `PUBLIC_URL`. On `http://localhost:8080` t
 - **CLI** (while the factory is stopped): `npm run cli -- episodes | discover | retry <id>`
 - **Alerts:** Discord gets failures, `invalid_grant` (reconnect YouTube at `/oauth/start?key=<ADMIN_TOKEN>`), and a warning if nothing has published in 26 hours.
 
+## Render speed
+
+`REMOTION_GL=angle` renders through the GPU (Chromium ANGLE on D3D11). On the RTX 4090 a 17.5 s sample rendered in 14 s against 71 s with the software `swangle` backend, with pixel-identical output (PSNR 51 dB). `REMOTION_CONCURRENCY=8` suits the 8-core 7800X3D. The installer writes both; set `REMOTION_GL=swangle` on a machine without a usable GPU.
+
 ## Costs
 
 The only running cost is Claude (selection, script, fact-check and vision QA): a few dollars a month at one Short a day. Voice, rendering, database and hosting all run on the PC. ElevenLabs is used only if the local voice is unavailable.

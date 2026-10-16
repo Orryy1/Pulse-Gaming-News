@@ -110,6 +110,7 @@ $defaults = [ordered]@{
   APPROVAL_MODE = "timeout"; APPROVAL_TIMEOUT_MINUTES = "60"; DAILY_TARGET = "1"
   PUBLIC_URL = "http://localhost:8080"; PORT = "8080"; DATA_DIR = (Join-Path $factory "data")
   MUSIC_BED = "true"; VISION_QA = "true"; INCLUDE_RUMOURS = "false"
+  REMOTION_GL = "angle"; REMOTION_CONCURRENCY = "8"   # GPU render: ~5x faster than swangle on the RTX 4090
 }
 foreach ($k in $defaults.Keys) { if (-not $values[$k]) { $values[$k] = $defaults[$k] } }
 

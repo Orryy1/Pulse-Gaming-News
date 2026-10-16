@@ -71,6 +71,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     dryRun: false,
     maxAttempts: 3,
     remotionConcurrency: 1,
+    remotionGl: "swangle",
     browserExecutable: "",
     ...overrides,
   };

@@ -29,6 +29,10 @@ function bool(name: string, fallback: boolean): boolean {
 
 export type ApprovalMode = "manual" | "timeout" | "auto";
 export type PrivacyStatus = "public" | "unlisted" | "private";
+// Chromium GL backend for Remotion. "angle" uses the GPU (5x faster on the
+// production PC, pixel-identical output); "swangle" is the software fallback.
+export type RemotionGl = "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
+const REMOTION_GLS: RemotionGl[] = ["swangle", "angle", "egl", "swiftshader", "vulkan", "angle-egl"];
 
 export interface Config {
   port: number;
@@ -76,6 +80,7 @@ export interface Config {
   dryRun: boolean;
   maxAttempts: number;
   remotionConcurrency: number;
+  remotionGl: RemotionGl;
   browserExecutable: string;
 }
 
@@ -91,6 +96,8 @@ export function loadConfig(): Config {
   if (!["public", "unlisted", "private"].includes(youtubePrivacy)) {
     throw new Error(`YOUTUBE_PRIVACY must be public, unlisted or private, got "${youtubePrivacy}"`);
   }
+  const remotionGl = str("REMOTION_GL", "swangle") as RemotionGl;
+  if (!REMOTION_GLS.includes(remotionGl)) throw new Error(`REMOTION_GL must be one of ${REMOTION_GLS.join(", ")}, got "${remotionGl}"`);
   const railwayDomain = str("RAILWAY_PUBLIC_DOMAIN");
   const cfg: Config = {
     port: int("PORT", 8080),
@@ -138,6 +145,7 @@ export function loadConfig(): Config {
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),
+    remotionGl,
     browserExecutable: str("REMOTION_BROWSER_EXECUTABLE"),
   };
   if (cfg.legacyTokenDir) adoptLegacyYouTubeTokens(cfg);

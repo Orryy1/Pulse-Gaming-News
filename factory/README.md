@@ -41,6 +41,8 @@ If the voice server isn't running, the factory starts it with `LOCAL_TTS_START` 
 
 Videos are uploaded with YouTube's "altered or synthetic content" disclosure switched on (`SYNTHETIC_MEDIA_DISCLOSURE=true`), because the narrator is a cloned voice. Codex did the same. YouTube says the label does not affect reach or monetisation.
 
+`VOICE_PROVIDER=elevenlabs-first` uses the real ElevenLabs voice while the month's remaining characters cover the script and the local clone after that, so credits already paid for are used but never exceeded. Keep usage-based billing switched off in the ElevenLabs account; the factory never asks ElevenLabs to extend the limit. If the balance cannot be read (bad key), ElevenLabs is skipped rather than risked.
+
 ## Approval
 
 | `APPROVAL_MODE` | Behaviour |

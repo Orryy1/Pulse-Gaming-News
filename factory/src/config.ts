@@ -29,6 +29,12 @@ function bool(name: string, fallback: boolean): boolean {
 
 export type ApprovalMode = "manual" | "timeout" | "auto";
 export type PrivacyStatus = "public" | "unlisted" | "private";
+// local: the Codex Liam clone only. elevenlabs: ElevenLabs only. auto: local first,
+// ElevenLabs if the local server is down and the plan has credits for the script.
+// elevenlabs-first: spend the credits already paid for on the real ElevenLabs voice
+// while the month's balance covers the script, never beyond it, then the local clone.
+export type VoiceProvider = "local" | "elevenlabs" | "auto" | "elevenlabs-first";
+export const VOICE_PROVIDERS: VoiceProvider[] = ["local", "elevenlabs", "auto", "elevenlabs-first"];
 // Chromium GL backend for Remotion. "angle" uses the GPU (5x faster on the
 // production PC, pixel-identical output); "swangle" is the software fallback.
 export type RemotionGl = "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
@@ -43,7 +49,7 @@ export interface Config {
   adminToken: string;
 
   anthropicModel: string;
-  voiceProvider: "local" | "elevenlabs" | "auto";
+  voiceProvider: VoiceProvider;
   localTtsUrl: string;
   localVoiceId: string;
   localSpeakingRate: number;
@@ -89,8 +95,8 @@ export function loadConfig(): Config {
   if (!["manual", "timeout", "auto"].includes(approvalMode)) {
     throw new Error(`APPROVAL_MODE must be manual, timeout or auto, got "${approvalMode}"`);
   }
-  if (!["local", "elevenlabs", "auto"].includes(str("VOICE_PROVIDER", "auto"))) {
-    throw new Error("VOICE_PROVIDER must be local, elevenlabs or auto");
+  if (!VOICE_PROVIDERS.includes(str("VOICE_PROVIDER", "auto") as VoiceProvider)) {
+    throw new Error(`VOICE_PROVIDER must be one of ${VOICE_PROVIDERS.join(", ")}`);
   }
   const youtubePrivacy = str("YOUTUBE_PRIVACY", "public") as PrivacyStatus;
   if (!["public", "unlisted", "private"].includes(youtubePrivacy)) {
@@ -108,7 +114,7 @@ export function loadConfig(): Config {
     adminToken: str("ADMIN_TOKEN"),
 
     anthropicModel: str("CLAUDE_MODEL", "claude-opus-5-5"),
-    voiceProvider: str("VOICE_PROVIDER", "auto") as Config["voiceProvider"],
+    voiceProvider: str("VOICE_PROVIDER", "auto") as VoiceProvider,
     localTtsUrl: str("LOCAL_TTS_URL", "http://127.0.0.1:8765").replace(/\/$/, ""),
     localVoiceId: str("LOCAL_TTS_VOICE_ID", "TX3LPaxmHKxFdv7VOQHJ"),
     localSpeakingRate: Number(str("LOCAL_TTS_SPEAKING_RATE", "1.0")),

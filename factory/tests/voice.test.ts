@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import type { AddressInfo } from "node:net";
 import { chunkText, synthesiseLocal } from "../src/voice/local.ts";
-import { narrate } from "../src/voice/index.ts";
+import { narrate, providerOrder } from "../src/voice/index.ts";
 import { probe } from "../src/qa/media.ts";
 import { FFMPEG } from "../src/lib/bin.ts";
 import { tmpDir, testConfig } from "./helpers.ts";
@@ -97,6 +97,24 @@ test("re-synthesises a stalled take and trims audio that runs past the script", 
     const real = (await probe(path.join(dir, "n.mp3"))).durationSeconds;
     assert.ok(real < 8 * 0.25 + 0.6, `padding past the last aligned word was cut (got ${real}s)`);
     assert.ok(Math.abs(real - n.durationSeconds) < 0.4, `stitched ${real}s vs reported ${n.durationSeconds}s`);
+  } finally {
+    srv.close();
+  }
+});
+
+test("provider order follows VOICE_PROVIDER and elevenlabs-first falls back to the local voice", async () => {
+  assert.deepEqual(providerOrder("local"), ["local"]);
+  assert.deepEqual(providerOrder("elevenlabs"), ["elevenlabs"]);
+  assert.deepEqual(providerOrder("auto"), ["local", "elevenlabs"]);
+  assert.deepEqual(providerOrder("elevenlabs-first"), ["elevenlabs", "local"]);
+  const dir = await tmpDir();
+  const srv = await fakeVoiceServer(dir);
+  try {
+    // No ElevenLabs key: the preferred narrator is skipped and the local clone speaks.
+    const cfg = testConfig(dir, { voiceProvider: "elevenlabs-first", elevenLabsApiKey: "", localTtsUrl: srv.url });
+    const n = await narrate(cfg, "Short test line.", path.join(dir, "p.mp3"));
+    assert.ok(n.durationSeconds > 0.5);
+    assert.equal(srv.requests.length, 1);
   } finally {
     srv.close();
   }

@@ -1,11 +1,12 @@
-// Picks the narrator: the local Codex voice first, ElevenLabs only as a
-// fallback when it is configured and has the credits for this script.
+// Picks the narrator according to VOICE_PROVIDER (see config.ts). ElevenLabs
+// is only ever used when the month's remaining characters cover the script,
+// so the plan is never pushed past what has already been paid for.
 // Every take then goes through the voice polish chain Codex used.
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
-import type { Config } from "../config.ts";
+import type { Config, VoiceProvider } from "../config.ts";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import { synthesise as synthesiseElevenLabs, type Narration } from "./elevenlabs.ts";
@@ -13,7 +14,17 @@ import { synthesiseLocal } from "./local.ts";
 
 const run = promisify(execFile);
 
-/** Characters left this month on the ElevenLabs plan, or undefined if unknown. */
+/** The order narrators are tried in for a VOICE_PROVIDER setting. */
+export function providerOrder(provider: VoiceProvider): Array<"local" | "elevenlabs"> {
+  switch (provider) {
+    case "elevenlabs": return ["elevenlabs"];
+    case "local": return ["local"];
+    case "elevenlabs-first": return ["elevenlabs", "local"];
+    default: return ["local", "elevenlabs"];
+  }
+}
+
+/** Characters left this month on the ElevenLabs plan, or undefined if unknown (bad key, API down). */
 export async function elevenLabsCreditsLeft(apiKey: string): Promise<number | undefined> {
   try {
     const res = await fetchWithTimeout("https://api.elevenlabs.io/v1/user/subscription", { headers: { "xi-api-key": apiKey } }, 15_000);
@@ -38,8 +49,7 @@ export async function polishVoice(file: string): Promise<void> {
 }
 
 export async function narrate(cfg: Config, text: string, outPath: string): Promise<Narration> {
-  const order: Array<"local" | "elevenlabs"> =
-    cfg.voiceProvider === "elevenlabs" ? ["elevenlabs"] : cfg.voiceProvider === "local" ? ["local"] : ["local", "elevenlabs"];
+  const order = providerOrder(cfg.voiceProvider);
   const errors: string[] = [];
   for (const provider of order) {
     try {
@@ -54,6 +64,9 @@ export async function narrate(cfg: Config, text: string, outPath: string): Promi
       } else {
         if (!cfg.elevenLabsApiKey) throw new Error("ElevenLabs is not configured");
         const left = await elevenLabsCreditsLeft(cfg.elevenLabsApiKey);
+        // Unknown balance (invalid key, API down) is a refusal when ElevenLabs is merely preferred:
+        // the point of elevenlabs-first is to use paid-for credits, not to risk a bill.
+        if (left === undefined && cfg.voiceProvider === "elevenlabs-first") throw new Error("ElevenLabs balance unknown (check the API key)");
         if (left !== undefined && left < text.length * 1.2) throw new Error(`ElevenLabs has ${left} characters left this month`);
         n = await synthesiseElevenLabs(text, outPath, { apiKey: cfg.elevenLabsApiKey, voiceId: cfg.elevenLabsVoiceId, modelId: cfg.elevenLabsModel });
       }

@@ -64,6 +64,28 @@ export const Short: React.FC<ShortProps> = (props) => {
       <Captions pages={pages} accent={accent} />
       <CutFlash cutFrames={segmentStarts} accent={accent} />
 
+      {/* Earned sound design (owned, synthesised in-house): an impact on the
+          open, a whoosh into each fact, a riser into the take, a tick on stats. */}
+      <Sequence from={0} durationInFrames={fps} layout="none">
+        <Audio src={staticFile("sfx/punch-deep.mp3")} volume={0.4} />
+      </Sequence>
+      {props.segments.map((s, i) => {
+        const at = segmentStarts[i]!;
+        if (s.kind === "beat")
+          return (
+            <Sequence key={`sfx${i}`} from={Math.max(0, at - 3)} durationInFrames={fps} layout="none">
+              <Audio src={staticFile(s.visual?.kind === "stat" ? "sfx/tick-blip.mp3" : "sfx/whoosh-short.mp3")} volume={0.28} />
+            </Sequence>
+          );
+        if (s.kind === "take")
+          return (
+            <Sequence key={`sfx${i}`} from={Math.max(0, at - Math.round(0.8 * fps))} durationInFrames={fps * 2} layout="none">
+              <Audio src={staticFile("sfx/riser-fast.mp3")} volume={0.22} />
+            </Sequence>
+          );
+        return null;
+      })}
+
       {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
       {props.musicSrc ? <Audio src={resolveSrc(props.musicSrc)!} volume={musicVolume} loop /> : null}
     </AbsoluteFill>

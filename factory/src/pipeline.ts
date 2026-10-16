@@ -327,7 +327,7 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
   await transition(s.db, ep.id, "approved", "uploading", { publish_at: publishAt ?? null });
 }
 
-export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"]) {
+export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], syntheticMedia = true) {
   const script = ep.script_json!;
   const credits = ep.story_json.items
     .slice(0, 4)
@@ -349,8 +349,9 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"]) {
     categoryId: "20",
     privacyStatus: privacy,
     publishAt: ep.publish_at ? new Date(ep.publish_at).toISOString() : undefined,
-    // Narration and motion graphics; no realistic synthetic people or events.
-    containsSyntheticMedia: false,
+    // The narrator is a cloned voice, so disclose it (as Codex did). The
+    // label does not affect reach or monetisation.
+    containsSyntheticMedia: syntheticMedia,
     defaultLanguage: "en-GB",
   };
 }
@@ -377,7 +378,7 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   let session = ep.upload_session_uri;
   if (!session) {
     const size = (await fs.stat(file)).size;
-    session = await yt.createSession(buildResource(videoMetadata(ep, s.cfg.youtubePrivacy), marker), size);
+    session = await yt.createSession(buildResource(videoMetadata(ep, s.cfg.youtubePrivacy, s.cfg.syntheticMedia), marker), size);
     await s.db.query(`UPDATE episodes SET upload_session_uri = $2 WHERE id = $1 AND status = 'uploading'`, [ep.id, session]);
   }
   try {

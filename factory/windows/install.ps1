@@ -41,6 +41,7 @@ if (Test-Path $envFile) {
 # Existing Codex installs: newest first. Keys found there are reused.
 $candidates = @(
   "D:\pulse-runtime\pulse-production",
+  "C:\Pulse\runtime\pulse-v1",
   "$env:USERPROFILE\gaming-studio\pulse-gaming",
   $repo
 ) + (Get-ChildItem "$env:USERPROFILE\.codex\worktrees\*\pulse-gaming" -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | ForEach-Object { $_.FullName })
@@ -87,9 +88,19 @@ if (-not $values["PULSE_TOKEN_DIR"]) {
 if ($values["PULSE_TOKEN_DIR"]) { Write-Host "YouTube login: reusing $($values['PULSE_TOKEN_DIR'])" }
 else { Write-Host "YouTube login not found; connect it later from the dashboard (/oauth/start)." -ForegroundColor Yellow }
 
-# Local voice server (the Codex "Liam" voice).
-if (-not $values["VOICE_PROVIDER"]) { $values["VOICE_PROVIDER"] = "local" }
+# Local voice server (the Codex VoxCPM "Liam" voice, tts_server\ on port 8765).
+# "auto" = local voice first, ElevenLabs only if the local one is down AND
+# the plan has enough credits left for the script.
+if (-not $values["VOICE_PROVIDER"]) { $values["VOICE_PROVIDER"] = "auto" }
 if (-not $values["LOCAL_TTS_URL"]) { $values["LOCAL_TTS_URL"] = if ($legacy["LOCAL_TTS_URL"]) { $legacy["LOCAL_TTS_URL"] } else { "http://127.0.0.1:8765" } }
+if (-not $values["LOCAL_TTS_START"]) {
+  foreach ($root in $candidates) {
+    $bat = Join-Path $root "tts_server\start.bat"
+    if ((Test-Path $bat) -and (Test-Path (Join-Path $root "tts_server\venv"))) { $values["LOCAL_TTS_START"] = $bat; break }
+  }
+}
+if ($values["LOCAL_TTS_START"]) { Write-Host "Liam voice server: $($values['LOCAL_TTS_START'])" }
+else { Write-Host "No installed Liam voice server found (tts_server\venv). Run tts_server\setup.bat in the Codex checkout, then re-run this installer." -ForegroundColor Yellow }
 
 # Sensible defaults for an unattended daily channel.
 $defaults = [ordered]@{

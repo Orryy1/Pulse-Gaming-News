@@ -39,6 +39,12 @@ export interface Config {
   adminToken: string;
 
   anthropicModel: string;
+  voiceProvider: "local" | "elevenlabs" | "auto";
+  localTtsUrl: string;
+  localVoiceId: string;
+  localSpeakingRate: number;
+  localTtsStart: string;
+  syntheticMedia: boolean;
   elevenLabsApiKey: string;
   elevenLabsVoiceId: string;
   elevenLabsModel: string;
@@ -76,6 +82,9 @@ export function loadConfig(): Config {
   if (!["manual", "timeout", "auto"].includes(approvalMode)) {
     throw new Error(`APPROVAL_MODE must be manual, timeout or auto, got "${approvalMode}"`);
   }
+  if (!["local", "elevenlabs", "auto"].includes(str("VOICE_PROVIDER", "auto"))) {
+    throw new Error("VOICE_PROVIDER must be local, elevenlabs or auto");
+  }
   const youtubePrivacy = str("YOUTUBE_PRIVACY", "public") as PrivacyStatus;
   if (!["public", "unlisted", "private"].includes(youtubePrivacy)) {
     throw new Error(`YOUTUBE_PRIVACY must be public, unlisted or private, got "${youtubePrivacy}"`);
@@ -90,6 +99,12 @@ export function loadConfig(): Config {
     adminToken: str("ADMIN_TOKEN"),
 
     anthropicModel: str("CLAUDE_MODEL", "claude-opus-5-5"),
+    voiceProvider: str("VOICE_PROVIDER", "auto") as Config["voiceProvider"],
+    localTtsUrl: str("LOCAL_TTS_URL", "http://127.0.0.1:8765").replace(/\/$/, ""),
+    localVoiceId: str("LOCAL_TTS_VOICE_ID", "TX3LPaxmHKxFdv7VOQHJ"),
+    localSpeakingRate: Number(str("LOCAL_TTS_SPEAKING_RATE", "1.0")),
+    localTtsStart: str("LOCAL_TTS_START"),
+    syntheticMedia: bool("SYNTHETIC_MEDIA_DISCLOSURE", true),
     elevenLabsApiKey: str("ELEVENLABS_API_KEY"),
     elevenLabsVoiceId: str("ELEVENLABS_VOICE_ID", "TX3LPaxmHKxFdv7VOQHJ"),
     elevenLabsModel: str("ELEVENLABS_MODEL", "eleven_multilingual_v2"),
@@ -157,7 +172,9 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     database: Boolean(c.databaseUrl),
     anthropicModel: c.anthropicModel,
     anthropicKey: Boolean(process.env.ANTHROPIC_API_KEY),
-    elevenLabs: Boolean(c.elevenLabsApiKey),
+    voiceProvider: c.voiceProvider,
+    localTtsUrl: c.localTtsUrl,
+    elevenLabsFallback: Boolean(c.elevenLabsApiKey),
     discord: Boolean(c.discordWebhookUrl),
     youtubeOAuthClient: Boolean(c.googleClientId && c.googleClientSecret),
     youtubePrivacy: c.youtubePrivacy,

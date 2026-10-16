@@ -9,7 +9,7 @@ import { FEEDS } from "./discovery/feeds.ts";
 import { fetchFeeds } from "./discovery/rss.ts";
 import { clusterItems } from "./discovery/cluster.ts";
 import { fetchArticle } from "./discovery/article.ts";
-import { synthesise } from "./voice/elevenlabs.ts";
+import { narrate } from "./voice/index.ts";
 import { fetchSteamArt } from "./assets/steam.ts";
 import { renderShort } from "./render/render.ts";
 import { extractFrames, imageAspect, normaliseLoudness, technicalQa } from "./qa/media.ts";
@@ -37,7 +37,7 @@ export function createServices(db: Db, cfg: Config): Services {
     llm,
     discover: async () => clusterItems(await fetchFeeds(FEEDS), new Date(), cfg.maxStoryAgeHours),
     fetchArticle,
-    synthesise: (text, out) => synthesise(text, out, { apiKey: cfg.elevenLabsApiKey, voiceId: cfg.elevenLabsVoiceId, modelId: cfg.elevenLabsModel }),
+    synthesise: (text, out) => narrate(cfg, text, out),
     fetchArt: (term, dir) => fetchSteamArt(term, dir),
     downloadImage: async (url, dest) => {
       const res = await fetchWithTimeout(url, {}, 30_000);

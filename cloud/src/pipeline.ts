@@ -1,0 +1,493 @@
+// The factory: one idempotent state machine advanced by a periodic tick.
+// Each step reads its inputs from Postgres/disk and writes its outputs before
+// the status moves, so any step can crash and be retried safely.
+
+import fs from "node:fs/promises";
+import path from "node:path";
+import type { Config } from "./config.ts";
+import type { Db } from "./db.ts";
+import { withLease } from "./db.ts";
+import type { Llm } from "./editorial/llm.ts";
+import type { StoryCluster } from "./discovery/cluster.ts";
+import type { ArticleText } from "./discovery/article.ts";
+import type { Narration } from "./voice/elevenlabs.ts";
+import type { VisualAsset } from "./assets/steam.ts";
+import type { RenderInput } from "./render/render.ts";
+import type { TechQa } from "./qa/media.ts";
+import type { VisionQa } from "./editorial/schema.ts";
+import type { YouTubeClient } from "./youtube/upload.ts";
+import type { DiscordMessage } from "./approval/discord.ts";
+import { COLOURS } from "./approval/discord.ts";
+import { selectStory, writeScript, factCheck, validateScript } from "./editorial/editorial.ts";
+import { narrationOf, type Script } from "./editorial/schema.ts";
+import { buildSegments, type SegmentInput } from "./render/timeline.ts";
+import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
+import { signToken } from "./lib/crypto.ts";
+import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
+import {
+  type Episode,
+  type EpisodeAssets,
+  countToday,
+  createEpisode,
+  dueEpisodes,
+  getEpisode,
+  logEvent,
+  markSeen,
+  recentHeadlines,
+  recordFailure,
+  seenHashes,
+  transition,
+} from "./episodes.ts";
+
+export interface Services {
+  db: Db;
+  cfg: Config;
+  llm: Llm;
+  discover(): Promise<StoryCluster[]>;
+  fetchArticle(url: string): Promise<ArticleText | undefined>;
+  synthesise(text: string, outPath: string): Promise<Narration>;
+  fetchArt(term: string, episodeDir: string): Promise<VisualAsset[]>;
+  downloadImage(url: string, dest: string): Promise<boolean>;
+  imageAspect(file: string): Promise<number>;
+  render(input: RenderInput): Promise<void>;
+  normalise(input: string, output: string): Promise<void>;
+  technicalQa(file: string, expectedSeconds: number): Promise<TechQa>;
+  extractFrames(file: string, outDir: string, times: number[]): Promise<string[]>;
+  visionQa(frames: string[], ctx: { headline: string; gameTitle: string }): Promise<VisionQa>;
+  youtube(): YouTubeClient;
+  notify(msg: DiscordMessage): Promise<void>;
+  now(): Date;
+}
+
+const IN_FLIGHT = ["selected", "scripted", "voiced", "rendered", "awaiting_approval", "approved", "uploading"];
+
+export function episodeDir(cfg: Config, id: string): string {
+  return path.join(cfg.dataDir, "episodes", id);
+}
+
+export function approvalLinks(cfg: Config, id: string) {
+  const ttl = 3 * 24 * 3600;
+  const t = (action: string) => signToken(`${action}:${id}`, cfg.appSecret, ttl);
+  return {
+    approve: `${cfg.publicUrl}/episodes/${id}/approve?t=${t("approve")}`,
+    reject: `${cfg.publicUrl}/episodes/${id}/reject?t=${t("reject")}`,
+    preview: `${cfg.publicUrl}/episodes/${id}/video.mp4?t=${t("preview")}`,
+  };
+}
+
+// ---------------------------------------------------------------- selection
+
+export async function maybeSelect(s: Services): Promise<string | undefined> {
+  const { db, cfg } = s;
+  const now = s.now();
+  if (now.getUTCHours() < cfg.selectFromHourUtc) return undefined;
+  if ((await countToday(db)) >= cfg.dailyTarget) return undefined;
+  const [busy] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM episodes WHERE status = ANY($1)`, [IN_FLIGHT]);
+  if (Number(busy?.n ?? 0) > 0) return undefined;
+  const [last] = await db.query<{ created_at: string }>(`SELECT created_at FROM episodes WHERE status NOT IN ('failed','rejected') ORDER BY created_at DESC LIMIT 1`);
+  if (last && now.getTime() - new Date(last.created_at).getTime() < cfg.minGapHours * 3600_000) return undefined;
+
+  const seen = await seenHashes(db);
+  const clusters = (await s.discover()).filter((c) => !seen.has(c.hash));
+  const candidates = clusters.filter((c) => c.corroborated || (cfg.includeRumours && c.rumourSignals)).filter((c) => c.score > 0).slice(0, 12);
+  if (candidates.length === 0) {
+    log("info", "no eligible stories this tick", { clusters: clusters.length });
+    return undefined;
+  }
+  const choice = await selectStory(s.llm, candidates, await recentHeadlines(db));
+  const picked = candidates[choice.candidate_index];
+  if (!picked) {
+    log("info", "editor passed on every candidate", { reason: choice.reason });
+    return undefined;
+  }
+  const id = shortId();
+  const created = await createEpisode(db, id, picked);
+  await markSeen(db, picked.hash, picked.headline, created ? "selected" : "duplicate", choice.reason);
+  if (!created) return undefined;
+  await logEvent(db, id, "selected", { headline: picked.headline, reason: choice.reason, story_type: choice.story_type, score: picked.score });
+  log("info", "story selected", { id, headline: picked.headline });
+  return id;
+}
+
+// --------------------------------------------------------------------- steps
+
+async function stepScript(s: Services, ep: Episode): Promise<void> {
+  const cluster = ep.story_json;
+  const items = [...cluster.items].sort((a, b) => (a.sourceKind === "official" ? -1 : 1) - (b.sourceKind === "official" ? -1 : 1)).slice(0, 4);
+  const articles = (await Promise.all(items.map((i) => s.fetchArticle(i.url)))).filter((a): a is ArticleText => Boolean(a));
+  const mustLabelRumour = !cluster.corroborated;
+
+  let script: Script | undefined;
+  let feedback: string[] = [];
+  let check;
+  // Draft, check house rules, fact-check; one rewrite with the problems fed back.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    script = await writeScript(s.llm, cluster, articles, { mustLabelRumour, feedback });
+    const problems = validateScript(script);
+    check = await factCheck(s.llm, script, cluster, articles);
+    const blockers = check.issues.filter((i) => i.severity === "blocker").map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
+    if (check.verdict === "pass" && check.rumour_labelling_ok && blockers.length === 0 && problems.length === 0) break;
+    feedback = [...blockers, ...problems, ...(check.rumour_labelling_ok ? [] : ["Rumour labelling is inadequate."])];
+    if (attempt === 1) {
+      // House-style misses alone are accepted with a warning; facts are not.
+      if (check.verdict === "fail" || blockers.length > 0 || !check.rumour_labelling_ok) {
+        await markSeen(s.db, cluster.hash, cluster.headline, "rejected", "failed fact-check");
+        await transition(s.db, ep.id, "selected", "rejected", { script_json: script, factcheck_json: check, last_error: feedback.join(" | ") });
+        await s.notify({ embeds: [{ title: `🛑 Dropped: ${cluster.headline}`, description: `Failed fact-check twice.\n${feedback.slice(0, 6).map((f) => `• ${f}`).join("\n")}`, color: COLOURS.warn }] });
+        return;
+      }
+      await logEvent(s.db, ep.id, "style_warnings", { problems });
+    }
+  }
+  if (!script || !check) throw new Error("script step produced nothing");
+  if ((script.is_rumour || mustLabelRumour) && !s.cfg.includeRumours) {
+    await markSeen(s.db, cluster.hash, cluster.headline, "rejected", "rumour while INCLUDE_RUMOURS=false");
+    await transition(s.db, ep.id, "selected", "rejected", { script_json: script, factcheck_json: check, last_error: "rumour story; rumours are disabled" });
+    return;
+  }
+  await transition(s.db, ep.id, "selected", "scripted", { script_json: script, factcheck_json: check });
+}
+
+async function stepVoice(s: Services, ep: Episode): Promise<void> {
+  const dir = episodeDir(s.cfg, ep.id);
+  await fs.mkdir(dir, { recursive: true });
+  const narration = await s.synthesise(narrationOf(ep.script_json!), path.join(dir, "voice.mp3"));
+  if (narration.durationSeconds > 58) throw new FatalError(`narration is ${narration.durationSeconds.toFixed(1)}s, over the Shorts limit`);
+  const assets: EpisodeAssets = { audio: "voice.mp3", words: narration.words, durationSeconds: narration.durationSeconds };
+  await transition(s.db, ep.id, "scripted", "voiced", { assets_json: assets });
+}
+
+async function gatherImages(s: Services, ep: Episode, dir: string): Promise<NonNullable<EpisodeAssets["images"]>> {
+  const script = ep.script_json!;
+  const term = script.steam_search_term || script.game_title;
+  const art = term ? await s.fetchArt(term, dir).catch(() => [] as VisualAsset[]) : [];
+  const images = art.filter((a) => a.kind !== "logo");
+  // First-party newsroom images (PlayStation Blog, Xbox Wire) are press
+  // material meant for coverage. Outlet images are never used.
+  if (images.length < 3) {
+    const official = ep.story_json.items.filter((i) => i.sourceKind === "official");
+    for (const [n, item] of official.entries()) {
+      const og = item.imageUrl ?? (await s.fetchArticle(item.url))?.ogImage;
+      if (!og) continue;
+      const file = path.join("assets", `official_${n}.jpg`);
+      await fs.mkdir(path.join(dir, "assets"), { recursive: true });
+      if (await s.downloadImage(og, path.join(dir, file))) {
+        images.push({ kind: "article", file, sourceUrl: og, provenance: `Official press image from ${item.source} (${item.url})` });
+      }
+    }
+  }
+  const out: NonNullable<EpisodeAssets["images"]> = [];
+  for (const a of images) {
+    out.push({ file: a.file, kind: a.kind, sourceUrl: a.sourceUrl, provenance: a.provenance, aspect: await s.imageAspect(path.join(dir, a.file)) });
+  }
+  // Lead with the most cinematic art; screenshots fill the middle.
+  const rank: Record<string, number> = { hero: 0, article: 1, capsule: 2, screenshot: 3, header: 4 };
+  return out.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9));
+}
+
+export function segmentInputs(script: Script): SegmentInput[] {
+  return [
+    { kind: "hook", text: script.hook },
+    ...script.beats.map((b) => ({ kind: "beat" as const, text: b.narration, visual: b.visual })),
+    { kind: "take", text: script.pulse_take.narration, label: script.pulse_take.label, visual: { kind: "title" as const, primary: script.pulse_take.on_screen, secondary: "" } },
+    { kind: "loop", text: script.loop_line },
+  ];
+}
+
+function variantOf(id: string): number {
+  return [...id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % 4;
+}
+
+async function stepRender(s: Services, ep: Episode): Promise<void> {
+  const dir = episodeDir(s.cfg, ep.id);
+  const script = ep.script_json!;
+  const assets = { ...(ep.assets_json ?? {}) };
+  if (!assets.images) {
+    assets.images = await gatherImages(s, ep, dir);
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+  }
+  const duration = (assets.durationSeconds ?? 30) + 0.6;
+  const words = assets.words ?? [];
+  const segments = buildSegments(segmentInputs(script), words, duration);
+  const variant = variantOf(ep.id);
+  const musicFile = s.cfg.musicBed ? `music_${variant + 1}.mp3` : null;
+
+  const raw = path.join(dir, "render_raw.mp4");
+  const final = path.join(dir, "short.mp4");
+  await s.render({
+    episodeDir: dir,
+    outFile: raw,
+    posterFile: path.join(dir, "poster.jpg"),
+    concurrency: s.cfg.remotionConcurrency,
+    browserExecutable: s.cfg.browserExecutable,
+    props: {
+      headline: script.headline,
+      storyType: script.is_rumour ? "rumour" : script.story_type,
+      gameTitle: script.game_title,
+      isRumour: script.is_rumour,
+      attribution: script.attribution,
+      segments,
+      words,
+      durationSeconds: duration,
+      variant,
+      audioFile: assets.audio ?? null,
+      musicFile,
+      imageFiles: assets.images.map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect })),
+    },
+  });
+  await s.normalise(raw, final);
+  await fs.rm(raw, { force: true });
+
+  const tech = await s.technicalQa(final, duration);
+  let vision: VisionQa | undefined;
+  if (tech.ok && s.cfg.visionQa) {
+    const times = [0.8, ...segments.slice(1).map((g) => g.start + 0.6), duration - 1].filter((t) => t < duration);
+    const frames = await s.extractFrames(final, path.join(dir, "qa"), times.slice(0, 8));
+    vision = await s.visionQa(frames, { headline: script.headline, gameTitle: script.game_title });
+  }
+  const qa = { technical: tech, vision: vision ?? null, checked_at: s.now().toISOString() };
+  const problems = [...tech.problems, ...(vision?.verdict === "fail" ? vision.problems : [])];
+  if (problems.length > 0) {
+    await s.db.query(`UPDATE episodes SET qa_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(qa)]);
+    throw new Error(`QA failed: ${problems.join(" | ")}`);
+  }
+  await transition(s.db, ep.id, "voiced", "rendered", {
+    assets_json: { ...assets, video: "short.mp4", poster: "poster.jpg", musicFile },
+    qa_json: qa,
+  });
+}
+
+async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
+  const script = ep.script_json!;
+  const links = approvalLinks(s.cfg, ep.id);
+  const mode = s.cfg.approvalMode === "timeout" && script.is_rumour ? "manual" : s.cfg.approvalMode;
+  const when =
+    mode === "auto"
+      ? "Auto mode: publishing now."
+      : mode === "timeout"
+        ? `Publishes automatically in ${s.cfg.approvalTimeoutMinutes} min unless rejected.`
+        : "Waiting for your approval.";
+  const dir = episodeDir(s.cfg, ep.id);
+  await s.notify({
+    embeds: [
+      {
+        title: `🎬 ${script.youtube.title}`,
+        url: links.preview,
+        description: [
+          `**Hook:** ${script.hook}`,
+          `**Pulse take:** ${script.pulse_take.narration}`,
+          `**Sources:** ${ep.story_json.sources.join(", ")}${ep.story_json.hasOfficial ? " (official)" : ""}`,
+          `**Fact-check:** ${ep.factcheck_json?.summary ?? "n/a"}`,
+          "",
+          `▶️ [Watch preview](${links.preview})  ·  ✅ [Approve](${links.approve})  ·  ❌ [Reject](${links.reject})`,
+          when,
+        ].join("\n"),
+        color: script.is_rumour ? COLOURS.alert : COLOURS.brand,
+        image: { url: "attachment://poster.jpg" },
+      },
+    ],
+    files: [path.join(dir, "poster.jpg")],
+  });
+  if (mode === "auto") {
+    await transition(s.db, ep.id, "rendered", "approved", { approval_mode: mode, approved_by: "auto", approval_requested_at: s.now() });
+  } else {
+    await transition(s.db, ep.id, "rendered", "awaiting_approval", { approval_mode: mode, approval_requested_at: s.now() });
+  }
+}
+
+async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
+  if (ep.approval_mode !== "timeout" || !ep.approval_requested_at) return;
+  const waited = s.now().getTime() - new Date(ep.approval_requested_at).getTime();
+  if (waited >= s.cfg.approvalTimeoutMinutes * 60_000) {
+    if (await transition(s.db, ep.id, "awaiting_approval", "approved", { approved_by: "timeout" })) {
+      await logEvent(s.db, ep.id, "approved", { by: "timeout" });
+    }
+  }
+}
+
+/** Publish now if inside the window, otherwise at the next window opening. */
+export function choosePublishAt(cfg: Config, now: Date): Date | undefined {
+  const earliest = new Date(now.getTime() + cfg.youtubeVetoMinutes * 60_000);
+  const h = earliest.getUTCHours();
+  let at: Date | undefined;
+  if (h < cfg.publishWindowStartUtc) {
+    at = new Date(Date.UTC(earliest.getUTCFullYear(), earliest.getUTCMonth(), earliest.getUTCDate(), cfg.publishWindowStartUtc));
+  } else if (h >= cfg.publishWindowEndUtc) {
+    at = new Date(Date.UTC(earliest.getUTCFullYear(), earliest.getUTCMonth(), earliest.getUTCDate() + 1, cfg.publishWindowStartUtc));
+  } else if (cfg.youtubeVetoMinutes > 0) {
+    at = earliest;
+  }
+  // YouTube needs scheduled times comfortably in the future; otherwise go now.
+  if (at && at.getTime() - now.getTime() < 15 * 60_000) return undefined;
+  return at;
+}
+
+async function stepApproved(s: Services, ep: Episode): Promise<void> {
+  const publishAt = choosePublishAt(s.cfg, s.now());
+  await transition(s.db, ep.id, "approved", "uploading", { publish_at: publishAt ?? null });
+}
+
+export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"]) {
+  const script = ep.script_json!;
+  const credits = ep.story_json.items
+    .slice(0, 4)
+    .map((i) => `• ${i.source}: ${i.url}`)
+    .join("\n");
+  const description = [
+    script.youtube.description.trim(),
+    script.is_rumour ? "\nThis story is unconfirmed. We will update if it is confirmed or denied." : "",
+    `\nSources:\n${credits}`,
+    "\nPulse Gaming News: fast gaming news, checked and explained.",
+    "#Shorts #GamingNews",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return {
+    title: script.youtube.title,
+    description,
+    tags: [...script.youtube.tags, "gaming news", script.game_title].filter(Boolean),
+    categoryId: "20",
+    privacyStatus: privacy,
+    publishAt: ep.publish_at ? new Date(ep.publish_at).toISOString() : undefined,
+    // Narration and motion graphics; no realistic synthetic people or events.
+    containsSyntheticMedia: false,
+    defaultLanguage: "en-GB",
+  };
+}
+
+async function stepUpload(s: Services, ep: Episode): Promise<void> {
+  if (s.cfg.dryRun) {
+    await transition(s.db, ep.id, "uploading", "published", { youtube_status: "dry_run" });
+    await s.notify({ content: `🧪 DRY_RUN: "${ep.script_json!.youtube.title}" would have been uploaded now.` });
+    return;
+  }
+  const yt = s.youtube();
+  const marker = markerTag(ep.id);
+  const file = path.join(episodeDir(s.cfg, ep.id), "short.mp4");
+
+  // Any previous attempt may have finished server-side without us hearing back.
+  if (ep.attempts > 0 || ep.upload_session_uri) {
+    const existing = await yt.findByMarker(marker);
+    if (existing) {
+      await transition(s.db, ep.id, "uploading", "uploaded", { youtube_video_id: existing });
+      await logEvent(s.db, ep.id, "upload_adopted", { videoId: existing });
+      return;
+    }
+  }
+  let session = ep.upload_session_uri;
+  if (!session) {
+    const size = (await fs.stat(file)).size;
+    session = await yt.createSession(buildResource(videoMetadata(ep, s.cfg.youtubePrivacy), marker), size);
+    await s.db.query(`UPDATE episodes SET upload_session_uri = $2 WHERE id = $1 AND status = 'uploading'`, [ep.id, session]);
+  }
+  try {
+    const videoId = await yt.uploadToSession(session, file);
+    await transition(s.db, ep.id, "uploading", "uploaded", { youtube_video_id: videoId });
+    await logEvent(s.db, ep.id, "uploaded", { videoId });
+  } catch (err) {
+    if (err instanceof SessionGone) {
+      await s.db.query(`UPDATE episodes SET upload_session_uri = NULL WHERE id = $1`, [ep.id]);
+    }
+    throw err;
+  }
+}
+
+async function stepConfirm(s: Services, ep: Episode): Promise<void> {
+  const st = await s.youtube().status(ep.youtube_video_id!);
+  if (!st) throw new Error("uploaded video not found yet");
+  if (st.uploadStatus === "rejected" || st.uploadStatus === "failed") {
+    await transition(s.db, ep.id, "uploaded", "failed", { youtube_status: st.uploadStatus, last_error: st.rejectionReason ?? st.failureReason ?? st.uploadStatus });
+    throw new FatalError(`YouTube ${st.uploadStatus} the video: ${st.rejectionReason ?? st.failureReason ?? "no reason given"}`);
+  }
+  if (st.uploadStatus !== "processed") {
+    await s.db.query(`UPDATE episodes SET youtube_status = $2, next_attempt_at = now() + interval '5 minutes' WHERE id = $1`, [ep.id, st.uploadStatus]);
+    return;
+  }
+  await transition(s.db, ep.id, "uploaded", "published", { youtube_status: st.privacyStatus });
+  const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
+  const when = ep.publish_at ? `scheduled for ${new Date(ep.publish_at).toUTCString()}` : "live now";
+  await s.notify({ embeds: [{ title: `✅ Published: ${ep.script_json!.youtube.title}`, url, description: `${url}\n${when}`, color: COLOURS.ok }] });
+}
+
+const STEPS: Partial<Record<Episode["status"], (s: Services, ep: Episode) => Promise<void>>> = {
+  selected: stepScript,
+  scripted: stepVoice,
+  voiced: stepRender,
+  rendered: stepRequestApproval,
+  awaiting_approval: stepAwaitApproval,
+  approved: stepApproved,
+  uploading: stepUpload,
+  uploaded: stepConfirm,
+};
+
+/** Runs one step; on failure records it and backs off, alerting once it gives up. */
+export async function advance(s: Services, ep: Episode): Promise<boolean> {
+  const step = STEPS[ep.status];
+  if (!step) return false;
+  try {
+    await step(s, ep);
+    const after = await getEpisode(s.db, ep.id);
+    return Boolean(after && after.status !== ep.status);
+  } catch (err) {
+    const msg = errorMessage(err);
+    const fatal = err instanceof FatalError;
+    const attempts = await recordFailure(s.db, ep.id, msg, Math.min(60, 5 * 2 ** ep.attempts));
+    log("error", "step failed", { id: ep.id, status: ep.status, attempts, fatal, error: msg });
+    if (fatal || attempts >= s.cfg.maxAttempts) {
+      const fresh = await getEpisode(s.db, ep.id);
+      if (fresh && !["failed", "published", "rejected"].includes(fresh.status)) {
+        await transition(s.db, ep.id, fresh.status, "failed", { last_error: msg });
+      }
+      const where = ep.status === "uploading" ? "\nThe upload may be incomplete; the next run will search the channel before re-uploading." : "";
+      await s.notify({
+        embeds: [{ title: `⚠️ Episode failed at "${ep.status}"`, description: `${ep.script_json?.headline ?? ep.story_json.headline}\n\n${msg.slice(0, 1500)}${where}`, color: COLOURS.alert }],
+      });
+    }
+    return false;
+  }
+}
+
+/** Deletes media for finished episodes after two weeks so the volume never fills. */
+export async function pruneMedia(s: Services, days = 14): Promise<number> {
+  const rows = await s.db.query<{ id: string }>(
+    `SELECT id FROM episodes WHERE status IN ('published','rejected','failed') AND updated_at < now() - make_interval(days => $1)`,
+    [days],
+  );
+  let n = 0;
+  for (const { id } of rows) {
+    const dir = episodeDir(s.cfg, id);
+    try {
+      await fs.access(dir);
+    } catch {
+      continue;
+    }
+    await fs.rm(dir, { recursive: true, force: true });
+    n++;
+  }
+  return n;
+}
+
+export async function tick(s: Services): Promise<{ ran: boolean; selected?: string }> {
+  const result = await withLease(s.db, "tick", 45 * 60, async () => {
+    let selected: string | undefined;
+    try {
+      selected = await maybeSelect(s);
+    } catch (err) {
+      log("error", "selection failed", { error: errorMessage(err) });
+      if (err instanceof FatalError) await s.notify({ content: `⚠️ Story selection failed: ${errorMessage(err)}` });
+    }
+    for (const ep of await dueEpisodes(s.db)) {
+      // Push one episode as far as it can go this tick (script → upload);
+      // it stops on its own at a wait (approval, processing) or a failure.
+      let current: Episode | undefined = ep;
+      for (let i = 0; i < 10 && current; i++) {
+        const moved = await advance(s, current);
+        if (!moved) break;
+        current = await getEpisode(s.db, ep.id);
+      }
+    }
+    await pruneMedia(s).catch((err) => log("warn", "prune failed", { error: errorMessage(err) }));
+    return { selected };
+  });
+  return result ? { ran: true, ...result } : { ran: false };
+}

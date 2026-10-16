@@ -1,0 +1,42 @@
+{
+  "name": "pulse-cloud-factory",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cloud-hosted Pulse Gaming Shorts factory: discover, script, fact-check, narrate, render, QA, approve and upload to YouTube.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "cli": "tsx src/cli.ts",
+    "migrate": "tsx src/cli.ts migrate",
+    "tick": "tsx src/cli.ts tick",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "studio": "remotion studio src/render/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@remotion/bundler": "4.0.536",
+    "@remotion/cli": "4.0.536",
+    "@remotion/fonts": "4.0.536",
+    "@remotion/renderer": "4.0.536",
+    "cheerio": "^1.2.0",
+    "fast-xml-parser": "^5.11.2",
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "remotion": "4.0.536",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}

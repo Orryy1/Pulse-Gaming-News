@@ -93,13 +93,16 @@ else { Write-Host "YouTube login not found; connect it later from the dashboard 
 # the plan has enough credits left for the script.
 if (-not $values["VOICE_PROVIDER"]) { $values["VOICE_PROVIDER"] = "auto" }
 if (-not $values["LOCAL_TTS_URL"]) { $values["LOCAL_TTS_URL"] = if ($legacy["LOCAL_TTS_URL"]) { $legacy["LOCAL_TTS_URL"] } else { "http://127.0.0.1:8765" } }
-if (-not $values["LOCAL_TTS_START"]) {
+if (-not $values["PULSE_TTS_DIR"]) {
   foreach ($root in $candidates) {
-    $bat = Join-Path $root "tts_server\start.bat"
-    if ((Test-Path $bat) -and (Test-Path (Join-Path $root "tts_server\venv"))) { $values["LOCAL_TTS_START"] = $bat; break }
+    $dir = Join-Path $root "tts_server"
+    if ((Test-Path (Join-Path $dir "start.bat")) -and (Test-Path (Join-Path $dir "venv"))) { $values["PULSE_TTS_DIR"] = $dir; break }
   }
 }
-if ($values["LOCAL_TTS_START"]) { Write-Host "Liam voice server: $($values['LOCAL_TTS_START'])" }
+# windows\start-liam.bat starts that tts_server on whatever port LOCAL_TTS_URL names,
+# so the factory keeps its own copy away from the old governed service on 8765.
+if ($values["PULSE_TTS_DIR"] -and -not $values["LOCAL_TTS_START"]) { $values["LOCAL_TTS_START"] = Join-Path $PSScriptRoot "start-liam.bat" }
+if ($values["LOCAL_TTS_START"]) { Write-Host "Liam voice server: $($values['LOCAL_TTS_START']) (tts_server at $($values['PULSE_TTS_DIR']))" }
 else { Write-Host "No installed Liam voice server found (tts_server\venv). Run tts_server\setup.bat in the Codex checkout, then re-run this installer." -ForegroundColor Yellow }
 
 # Sensible defaults for an unattended daily channel.

@@ -24,6 +24,7 @@ async function fakeVoiceServer(dir: string) {
   const requests: Array<{ voice: string; text: string; rate: number }> = [];
   const server = http.createServer(async (req, res) => {
     if (req.url === "/health") return res.writeHead(200).end("{}");
+    if (req.method !== "POST") return res.writeHead(405).end(); // FastAPI answers GET on a POST route with 405
     const voice = decodeURIComponent(req.url!.split("/")[3]!);
     let body = "";
     for await (const c of req) body += c;

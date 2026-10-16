@@ -37,7 +37,7 @@ Re-run `INSTALL.cmd` any time to update. Run `windows\uninstall.ps1` to stop and
 | `local` | Local voice only; never spends ElevenLabs credits. |
 | `elevenlabs` | ElevenLabs only. |
 
-If the voice server isn't running, the factory starts it with `LOCAL_TTS_START` (the Codex `tts_server\start.bat`) and waits for it to load, which takes 2–5 minutes cold. Long scripts are split into takes of at most 36 words, because VoxCPM is unstable on longer takes under Windows CUDA. The takes are stitched with exact word timings for the captions. Use `LOCAL_TTS_SPEAKING_RATE` to change the pace (1.0 by default; Codex's proven slower read was 0.85).
+If the voice server isn't running, the factory starts it with `LOCAL_TTS_START` (`windows\start-liam.bat`, which runs the Codex `tts_server\` from `PULSE_TTS_DIR` on the port in `LOCAL_TTS_URL`) and waits for it to load, which takes 2–5 minutes cold. On the production PC port 8765 belongs to the old governed VoxCPM service, which answers `/health` but not `/with-timestamps`, so `LOCAL_TTS_URL` is `http://127.0.0.1:8766`; the factory refuses a server that lacks the route instead of failing silently. Long scripts are split into takes of at most 36 words, because VoxCPM is unstable on longer takes under Windows CUDA. The takes are stitched with exact word timings for the captions. Use `LOCAL_TTS_SPEAKING_RATE` to change the pace (1.0 by default; Codex's proven slower read was 0.85).
 
 Videos are uploaded with YouTube's "altered or synthetic content" disclosure switched on (`SYNTHETIC_MEDIA_DISCLOSURE=true`), because the narrator is a cloned voice. Codex did the same. YouTube says the label does not affect reach or monetisation.
 

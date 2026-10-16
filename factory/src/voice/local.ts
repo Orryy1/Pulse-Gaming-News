@@ -20,7 +20,7 @@ export interface LocalVoiceOptions {
   baseUrl: string; // e.g. http://127.0.0.1:8765
   voiceId: string; // tts_server/voices.json key; Liam is TX3LPaxmHKxFdv7VOQHJ
   speakingRate: number;
-  startScript?: string; // tts_server\start.bat, launched if the server is down
+  startScript?: string; // windows\start-liam.bat (or tts_server\start.bat), launched with the port if the server is down
   maxWordsPerTake?: number;
 }
 
@@ -58,27 +58,56 @@ export function chunkText(text: string, maxWords = 36): string[] {
   return takes;
 }
 
-async function healthy(baseUrl: string): Promise<boolean> {
+/** "ready" once the server answers /health and (if it reports a phase) has loaded its engine. */
+async function healthy(baseUrl: string): Promise<"ready" | "warming" | "down"> {
   try {
     const res = await fetchWithTimeout(`${baseUrl}/health`, {}, 5_000);
-    return res.ok;
+    if (!res.ok) return "down";
+    const body = (await res.json().catch(() => ({}))) as { ready?: boolean };
+    return body.ready === false ? "warming" : "ready";
   } catch {
-    return false;
+    return "down";
+  }
+}
+
+/**
+ * Port 8765 on the production PC is also used by the old governed VoxCPM
+ * service, which answers /health but not /with-timestamps. Starting our own
+ * server on top of it would fail to bind, so refuse early with a clear message.
+ */
+async function assertSpeaksOurContract(opts: LocalVoiceOptions): Promise<void> {
+  try {
+    const res = await fetchWithTimeout(`${opts.baseUrl}/v1/text-to-speech/${encodeURIComponent(opts.voiceId)}/with-timestamps`, {}, 5_000);
+    if (res.status === 404) {
+      throw new FatalError(`a different server answers on ${opts.baseUrl} (no /with-timestamps route); set LOCAL_TTS_URL to a free port such as http://127.0.0.1:8766 so the factory can start its own tts_server there`);
+    }
+  } catch (e) {
+    if (e instanceof FatalError) throw e;
+    // Any other failure (405 is the normal answer to GET, timeouts, etc.) is not a contract mismatch.
   }
 }
 
 /** Makes sure the voice server is up, starting it with its own start.bat if needed. */
 export async function ensureLocalVoice(opts: LocalVoiceOptions, waitMs = 8 * 60_000): Promise<void> {
-  if (await healthy(opts.baseUrl)) return;
-  if (!opts.startScript) throw new Error(`local voice server is not running at ${opts.baseUrl}`);
-  log("info", "starting local voice server", { script: opts.startScript });
-  spawn("cmd.exe", ["/c", opts.startScript], { cwd: path.dirname(opts.startScript), detached: true, stdio: "ignore", windowsHide: true }).unref();
+  let state = await healthy(opts.baseUrl);
+  if (state !== "down") await assertSpeaksOurContract(opts);
+  if (state === "ready") return;
+  if (state === "down") {
+    if (!opts.startScript) throw new Error(`local voice server is not running at ${opts.baseUrl}`);
+    const port = new URL(opts.baseUrl).port || "8765";
+    log("info", "starting local voice server", { script: opts.startScript, port });
+    // The start script receives the port so one script can serve any LOCAL_TTS_URL.
+    spawn("cmd.exe", ["/c", opts.startScript, port], { cwd: path.dirname(opts.startScript), detached: true, stdio: "ignore", windowsHide: true }).unref();
+  } else {
+    log("info", "local voice server is still loading", { url: opts.baseUrl });
+  }
   const until = Date.now() + waitMs; // a cold VoxCPM load takes 2-5 minutes
   while (Date.now() < until) {
     await new Promise((r) => setTimeout(r, 10_000));
-    if (await healthy(opts.baseUrl)) return;
+    state = await healthy(opts.baseUrl);
+    if (state === "ready") return;
   }
-  throw new Error(`local voice server did not come up within ${Math.round(waitMs / 60_000)} minutes`);
+  throw new Error(`local voice server did not become ready within ${Math.round(waitMs / 60_000)} minutes`);
 }
 
 async function synthTake(text: string, opts: LocalVoiceOptions): Promise<{ audio: Buffer; alignment: Alignment }> {

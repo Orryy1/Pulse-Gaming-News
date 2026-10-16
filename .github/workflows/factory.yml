@@ -1,22 +1,22 @@
-name: Cloud factory
+name: Pulse factory
 
 on:
   pull_request:
     paths:
-      - "cloud/**"
-      - ".github/workflows/cloud-factory.yml"
+      - "factory/**"
+      - ".github/workflows/factory.yml"
   push:
     branches:
       - main
     paths:
-      - "cloud/**"
+      - "factory/**"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: cloud-factory-${{ github.ref }}
+  group: factory-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: cloud
+        working-directory: factory
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: 22.17.1
           cache: npm
-          cache-dependency-path: cloud/package-lock.json
+          cache-dependency-path: factory/package-lock.json
       - run: npm ci
       - run: npm run typecheck
       - run: npm test

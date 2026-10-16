@@ -42,6 +42,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     elevenLabsModel: "m",
     discordWebhookUrl: "",
     healthcheckPingUrl: "",
+    legacyTokenDir: "",
     googleClientId: "",
     googleClientSecret: "",
     youtubeRefreshToken: "",

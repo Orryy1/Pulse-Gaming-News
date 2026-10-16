@@ -1,7 +1,12 @@
 // Every runtime knob lives here and is read from the environment once.
 // Nothing secret is ever logged; see redactedConfig().
 
+import fs from "node:fs";
 import path from "node:path";
+
+// Local installs keep settings in factory/.env (never committed).
+const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
+if (fs.existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 function str(name: string, fallback = ""): string {
   const v = process.env[name];
@@ -41,6 +46,7 @@ export interface Config {
   discordWebhookUrl: string;
   healthcheckPingUrl: string;
 
+  legacyTokenDir: string;
   googleClientId: string;
   googleClientSecret: string;
   youtubeRefreshToken: string;
@@ -75,7 +81,7 @@ export function loadConfig(): Config {
     throw new Error(`YOUTUBE_PRIVACY must be public, unlisted or private, got "${youtubePrivacy}"`);
   }
   const railwayDomain = str("RAILWAY_PUBLIC_DOMAIN");
-  return {
+  const cfg: Config = {
     port: int("PORT", 8080),
     publicUrl: str("PUBLIC_URL", railwayDomain ? `https://${railwayDomain}` : "http://localhost:8080").replace(/\/$/, ""),
     dataDir: path.resolve(str("DATA_DIR", "./data")),
@@ -91,8 +97,9 @@ export function loadConfig(): Config {
     discordWebhookUrl: str("DISCORD_WEBHOOK_URL"),
     healthcheckPingUrl: str("HEALTHCHECK_PING_URL"),
 
-    googleClientId: str("GOOGLE_CLIENT_ID"),
-    googleClientSecret: str("GOOGLE_CLIENT_SECRET"),
+    legacyTokenDir: str("PULSE_TOKEN_DIR"),
+    googleClientId: str("GOOGLE_CLIENT_ID", str("YOUTUBE_CLIENT_ID")),
+    googleClientSecret: str("GOOGLE_CLIENT_SECRET", str("YOUTUBE_CLIENT_SECRET")),
     youtubeRefreshToken: str("YOUTUBE_REFRESH_TOKEN"),
     youtubePrivacy,
     youtubeVetoMinutes: int("YOUTUBE_VETO_MINUTES", 0),
@@ -114,6 +121,32 @@ export function loadConfig(): Config {
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),
     browserExecutable: str("REMOTION_BROWSER_EXECUTABLE"),
   };
+  if (cfg.legacyTokenDir) adoptLegacyYouTubeTokens(cfg);
+  return cfg;
+}
+
+/**
+ * Reuses the YouTube login the Codex pipeline already has on this PC
+ * (tokens/youtube_credentials.json + tokens/youtube_token.json) so the
+ * channel never needs re-connecting. Explicit env values win.
+ */
+export function adoptLegacyYouTubeTokens(cfg: Config): void {
+  const read = (f: string): any => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(cfg.legacyTokenDir, f), "utf8"));
+    } catch {
+      return undefined;
+    }
+  };
+  const creds = read("youtube_credentials.json");
+  const client = creds?.installed ?? creds?.web;
+  if (client && !cfg.googleClientId) {
+    cfg.googleClientId = client.client_id ?? "";
+    cfg.googleClientSecret = client.client_secret ?? "";
+  }
+  const token = read("youtube_token.json");
+  const refresh = token?.refresh_token ?? token?.credentials?.refresh_token ?? token?.tokens?.refresh_token;
+  if (refresh && !cfg.youtubeRefreshToken) cfg.youtubeRefreshToken = refresh;
 }
 
 /** Safe-to-log view: booleans for secrets, values for everything else. */

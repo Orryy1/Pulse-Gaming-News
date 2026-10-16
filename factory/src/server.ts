@@ -5,8 +5,9 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { loadConfig, redactedConfig, type Config } from "./config.ts";
-import { createPgDb, migrate, type Db } from "./db.ts";
+import { openDb, migrate, type Db } from "./db.ts";
 import { createServices, oauthConfig } from "./services.ts";
 import { tick, episodeDir, type Services } from "./pipeline.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
@@ -183,9 +184,8 @@ async function deadMansSwitch(db: Db, cfg: Config): Promise<void> {
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
-  if (!cfg.databaseUrl) throw new Error("DATABASE_URL is required");
   if (!cfg.appSecret) throw new Error("APP_SECRET is required");
-  const db = createPgDb(cfg.databaseUrl);
+  const db = await openDb(cfg.databaseUrl, cfg.dataDir);
   const applied = await migrate(db);
   log("info", "starting", { ...redactedConfig(cfg), migrationsApplied: applied });
   const services = createServices(db, cfg);
@@ -213,7 +213,7 @@ async function main(): Promise<void> {
   }, 5 * 60_000);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((err) => {
     log("error", "fatal", { error: errorMessage(err) });
     process.exit(1);

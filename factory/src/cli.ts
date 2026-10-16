@@ -6,7 +6,7 @@
 //   retry <id>         move a failed episode back to the step it failed at
 
 import { loadConfig, redactedConfig } from "./config.ts";
-import { createPgDb, migrate } from "./db.ts";
+import { openDb, migrate } from "./db.ts";
 import { createServices } from "./services.ts";
 import { tick } from "./pipeline.ts";
 import { listEpisodes, getEpisode } from "./episodes.ts";
@@ -26,8 +26,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!cfg.databaseUrl) throw new Error("DATABASE_URL is required");
-  const db = createPgDb(cfg.databaseUrl);
+  const db = await openDb(cfg.databaseUrl, cfg.dataDir);
   try {
     if (cmd === "migrate") {
       console.log("applied:", await migrate(db));

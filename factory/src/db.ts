@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { PGlite } from "@electric-sql/pglite";
 
 export interface Db {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
@@ -34,6 +35,65 @@ export function createPgDb(databaseUrl: string): Db {
     },
     close: () => pool.end(),
   };
+}
+
+/**
+ * Embedded Postgres (PGlite) persisted to a folder: the default on a PC, so
+ * there is no database server to install or pay for.
+ */
+export async function createEmbeddedDb(dir: string): Promise<Db> {
+  fs.mkdirSync(dir, { recursive: true });
+  const release = takeProcessLock(`${dir}.lock`);
+  const pgl = await PGlite.create(dir);
+  return {
+    async query<T>(sql: string, params: unknown[] = []) {
+      return (await pgl.query(sql, params)).rows as T[];
+    },
+    async exec(sql: string) {
+      try {
+        await pgl.exec(sql);
+      } catch (err) {
+        await pgl.exec("ROLLBACK").catch(() => undefined);
+        throw err;
+      }
+    },
+    close: async () => {
+      await pgl.close();
+      release();
+    },
+  };
+}
+
+/** The embedded database is single-process: refuse to open it twice. */
+function takeProcessLock(lockFile: string): () => void {
+  try {
+    const pid = Number(fs.readFileSync(lockFile, "utf8"));
+    if (pid && pid !== process.pid) {
+      try {
+        process.kill(pid, 0); // throws if the process is gone
+        throw new Error(`The factory database is in use by process ${pid}. Stop the factory first, or use the dashboard at /episodes.`);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
+      }
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  fs.writeFileSync(lockFile, String(process.pid));
+  const release = () => {
+    try {
+      if (fs.readFileSync(lockFile, "utf8") === String(process.pid)) fs.unlinkSync(lockFile);
+    } catch {
+      /* already gone */
+    }
+  };
+  process.once("exit", release);
+  return release;
+}
+
+/** DATABASE_URL if set (any Postgres), otherwise the embedded database under DATA_DIR. */
+export async function openDb(databaseUrl: string, dataDir: string): Promise<Db> {
+  return databaseUrl ? createPgDb(databaseUrl) : createEmbeddedDb(path.join(dataDir, "db"));
 }
 
 const here = path.dirname(fileURLToPath(import.meta.url));

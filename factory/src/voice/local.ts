@@ -133,6 +133,44 @@ async function synthTake(text: string, opts: LocalVoiceOptions): Promise<{ audio
 }
 
 const GAP_SECONDS = 0.18; // breath between takes
+const TAIL_SECONDS = 0.35; // audio kept after the last aligned character
+const MAX_INTERNAL_SILENCE = 2.0; // a cold VoxCPM engine sometimes stalls mid-take
+const MAX_OVERRUN = 2.5; // audio running on past the last aligned word is not the script
+
+/** Longest silence (seconds) inside the first `until` seconds of a file. */
+async function longestSilence(file: string, until: number): Promise<number> {
+  const { stderr } = await run(FFMPEG, ["-hide_banner", "-i", file, "-t", String(Math.max(until, 0.1)), "-af", "silencedetect=noise=-35dB:d=0.8", "-f", "null", "-"]);
+  let max = 0;
+  for (const m of String(stderr).matchAll(/silence_duration: ([\d.]+)/g)) max = Math.max(max, Number(m[1]));
+  return max;
+}
+
+/**
+ * Synthesises one take and keeps only the audio that the aligner matched to
+ * the text. VoxCPM occasionally stalls for seconds mid-take or keeps talking
+ * after the script ends (seen on the first take after a cold load); such a
+ * take is re-synthesised once, and whatever trails the last aligned word is
+ * cut so the stitched timeline stays tight.
+ */
+async function synthTakeChecked(take: string, index: number, dir: string, opts: LocalVoiceOptions): Promise<{ file: string; alignment: Alignment }> {
+  const file = path.join(dir, `take_${index}.mp3`);
+  const raw = path.join(dir, `take_${index}_raw.mp3`);
+  let last: { alignment: Alignment; cutAt: number } | undefined;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const { audio, alignment } = await synthTake(take, opts);
+    await fs.writeFile(raw, audio);
+    const alignedEnd = alignment.character_end_times_seconds.at(-1) ?? 0;
+    const rawDuration = (await probe(raw)).durationSeconds;
+    const overrun = rawDuration > 0 ? rawDuration - alignedEnd : 0;
+    const stall = await longestSilence(raw, alignedEnd);
+    last = { alignment, cutAt: rawDuration > 0 ? Math.min(rawDuration, alignedEnd + TAIL_SECONDS) : alignedEnd + TAIL_SECONDS };
+    if (stall <= MAX_INTERNAL_SILENCE && overrun <= MAX_OVERRUN) break;
+    log("warn", attempt === 1 ? "take looks broken, re-synthesising" : "take still looks off, keeping it", { take: index, stall: stall.toFixed(1), overrun: overrun.toFixed(1) });
+  }
+  await run(FFMPEG, ["-loglevel", "error", "-y", "-i", raw, "-t", last!.cutAt.toFixed(3), "-c", "copy", file]);
+  await fs.rm(raw, { force: true });
+  return { file, alignment: last!.alignment };
+}
 
 export async function synthesiseLocal(text: string, outPath: string, opts: LocalVoiceOptions): Promise<Narration> {
   await ensureLocalVoice(opts);
@@ -143,9 +181,7 @@ export async function synthesiseLocal(text: string, outPath: string, opts: Local
   const words: Word[] = [];
   let offset = 0;
   for (const [i, take] of takes.entries()) {
-    const { audio, alignment } = await synthTake(take, opts);
-    const file = path.join(dir, `take_${i}.mp3`);
-    await fs.writeFile(file, audio);
+    const { file, alignment } = await synthTakeChecked(take, i, dir, opts);
     files.push(file);
     const duration = (await probe(file)).durationSeconds || (alignment.character_end_times_seconds.at(-1) ?? 0);
     for (const w of wordsFromAlignment(alignment)) words.push({ text: w.text, start: w.start + offset, end: w.end + offset });

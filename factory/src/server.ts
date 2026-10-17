@@ -7,6 +7,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { loadConfig, redactedConfig, type Config } from "./config.ts";
+import { runDoctor, formatDoctor } from "./doctor.ts";
+import { storedRefreshToken } from "./youtube/oauth.ts";
 import { openDb, migrate, type Db } from "./db.ts";
 import { createServices, oauthConfig } from "./services.ts";
 import { tick, episodeDir, clearSelectionPause, type Services } from "./pipeline.ts";
@@ -192,7 +194,7 @@ async function main(): Promise<void> {
   const applied = await migrate(db);
   log("info", "starting", { ...redactedConfig(cfg), migrationsApplied: applied });
   const services = createServices(db, cfg);
-  const state: { lastTick?: string; lastError?: string } = {};
+  const state: { lastTick?: string; lastError?: string; doctor?: string } = {};
   const app = createApp(db, cfg, services, state);
   http
     .createServer((req, res) => {
@@ -204,6 +206,18 @@ async function main(): Promise<void> {
     // Localhost only: the Cloudflare tunnel connects locally, so nothing else on the network needs in.
     .listen(cfg.port, process.env.HOST || "127.0.0.1", () => log("info", "listening", { port: cfg.port }));
 
+  // Boot checks: everything that silently stops an unattended factory, posted to Discord once.
+  void (async () => {
+    try {
+      const checks = await runDoctor(cfg, await storedRefreshToken(db, oauthConfig(cfg)));
+      for (const k of checks) log(k.ok ? "info" : k.critical ? "error" : "warn", "doctor", { check: k.name, detail: k.detail });
+      const bad = checks.filter((k) => !k.ok);
+      state.doctor = formatDoctor(checks);
+      if (bad.length) await services.notify({ content: `🩺 Pulse Factory boot check:\n${formatDoctor(bad)}` });
+    } catch (err) {
+      log("warn", "doctor failed", { error: errorMessage(err) });
+    }
+  })();
   setTimeout(() => void runTick(services, state), 15_000);
   setInterval(() => void runTick(services, state), cfg.tickMinutes * 60_000);
   // Daily at 04:00 UTC, when nothing is mid-production, exit cleanly so the

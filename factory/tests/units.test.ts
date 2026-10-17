@@ -5,6 +5,7 @@ import { parseFeed } from "../src/discovery/rss.ts";
 import { buildSegments, pageCaptions, srtFromWords } from "../src/render/timeline.ts";
 import { capFootage, footageBudgetSeconds } from "../src/assets/footage.ts";
 import { videoMetadata } from "../src/pipeline.ts";
+import { missingScopes } from "../src/doctor.ts";
 import { wordsFromAlignment } from "../src/voice/elevenlabs.ts";
 import { validateScript } from "../src/editorial/editorial.ts";
 import { narrationOf } from "../src/editorial/schema.ts";
@@ -221,4 +222,11 @@ test("video descriptions credit the footage and disclose the synthetic voice", (
   assert.equal(m.containsSyntheticMedia, true);
   const noClips = videoMetadata({ ...ep, assets_json: {} }, "public");
   assert.doesNotMatch(noClips.description, /Footage:/);
+});
+
+test("doctor reports the YouTube scopes a login lacks", () => {
+  const upload = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube";
+  assert.deepEqual(missingScopes(upload).map((s) => s.split("/").at(-1)), ["youtube.force-ssl", "yt-analytics.readonly"]);
+  const full = "https://www.googleapis.com/auth/youtube.force-ssl https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/yt-analytics.readonly";
+  assert.deepEqual(missingScopes(full), []);
 });

@@ -57,6 +57,15 @@ export async function saveRefreshToken(db: Db, cfg: OAuthConfig, token: string):
   );
 }
 
+/** The refresh token the factory would use, or "" when YouTube is not connected. */
+export async function storedRefreshToken(db: Db, cfg: OAuthConfig): Promise<string> {
+  try {
+    return await loadRefreshToken(db, cfg);
+  } catch {
+    return "";
+  }
+}
+
 async function loadRefreshToken(db: Db, cfg: OAuthConfig): Promise<string> {
   const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = 'youtube_refresh_token'`);
   if (row) return decrypt(row.value, cfg.appSecret);

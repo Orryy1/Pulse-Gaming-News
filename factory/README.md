@@ -55,6 +55,8 @@ The Approve and Reject links point at `PUBLIC_URL`. On `http://localhost:8080` t
 
 ## Operating it
 
+`npm run doctor` (with the factory stopped) checks the Anthropic key, the YouTube login and its scopes, the local voice server, ElevenLabs balance, ffmpeg, free disk, the public URL and the Discord webhook. The server runs the same checks at boot and posts any failures to Discord once.
+
 - **Dashboard:** `http://localhost:8080/episodes?key=<ADMIN_TOKEN from .env>`
 - **Force a run:** `POST http://localhost:8080/tick?key=<ADMIN_TOKEN>`
 - **Logs:** `factory\data\logs\`

@@ -14,7 +14,8 @@
     "tick": "tsx src/cli.ts tick",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "studio": "remotion studio src/render/index.ts"
+    "studio": "remotion studio src/render/index.ts",
+    "doctor": "tsx src/cli.ts doctor"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

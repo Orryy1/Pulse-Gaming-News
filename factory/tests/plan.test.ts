@@ -305,3 +305,21 @@ test("the shelf never puts a Steam number under a card that already shows a numb
   const chip = buildPlan(input({ attribution: "Source: Steam / Insider Gaming / Nintendo Life / IGN" })).shelf[0]!;
   assert.equal(chip.data.label, "CONFIRMED · STEAM / INSIDER GAMING +2");
 });
+
+test("a clip shorter than its shot is still used: the shot ends with the clip and the rest becomes its own shot", () => {
+  const i = input({
+    clips: [
+      { durationSeconds: 4.8, motion: 0.9, role: "hook" },
+      { durationSeconds: 2.4, motion: 0.6, beatIndex: 2 },
+    ],
+  });
+  const plan = buildPlan(i);
+  const beats = i.segments.map((s, n) => ({ s, n })).filter((x) => x.s.kind === "beat");
+  const short = plan.shots.find((s) => s.media.type === "clip" && s.media.index === 1);
+  assert.ok(short, "the 2.4 s clip is used under beat 2");
+  assert.equal(short!.segment, beats[2]!.n);
+  assert.ok(short!.end - short!.start <= 2.4 * 30 + 6, "the shot ends where the clip ends");
+  for (const s of plan.shots) assert.ok(s.end - s.start >= 45 || s.start === 0, `shot at ${s.start} is ${s.end - s.start} frames`);
+  for (let k = 1; k < plan.shots.length; k++) assert.equal(plan.shots[k]!.start, plan.shots[k - 1]!.end, "shots stay contiguous");
+  assert.equal(plan.shots.at(-1)!.end, Math.ceil(i.durationSeconds * 30));
+});

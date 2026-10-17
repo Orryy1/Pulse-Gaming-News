@@ -24,6 +24,7 @@ import {
 const run = promisify(execFile);
 
 export const CLIP_SECONDS = 4.8;
+export const MIN_CLIP_SECONDS = 1.6; // a shot shorter than this cannot carry a line (the planner's shortest shot is 1.5 s)
 export const CANDIDATE_STEP = 1.5;
 const MAX_CANDIDATES_TO_MODEL = 24;
 const QUIET_KINDS = new Set([
@@ -63,6 +64,7 @@ export interface Candidate {
   luma: number; // 0-255 mean brightness
   motion: number; // 0-255 mean frame difference
   frame: string; // jpeg path
+  nextCut?: number; // seconds: the first shot change after `time`, if the trailer was scanned for cuts
 }
 
 export interface Assignment {
@@ -104,9 +106,9 @@ export function targetsFor(script: Script): FootageTarget[] {
 /** Parses ffmpeg's metadata=print output into per-frame brightness and motion. */
 export function parseSignalStats(
   text: string,
-): Array<{ time: number; luma: number; motion: number }> {
-  const out: Array<{ time: number; luma: number; motion: number }> = [];
-  let cur: { time: number; luma: number; motion: number } | undefined;
+): Array<{ time: number; luma: number; motion: number; scene?: number }> {
+  const out: Array<{ time: number; luma: number; motion: number; scene?: number }> = [];
+  let cur: { time: number; luma: number; motion: number; scene?: number } | undefined;
   for (const line of text.split(/\r?\n/)) {
     const f = line.match(/^frame:\d+\s+pts:\S+\s+pts_time:([\d.]+)/);
     if (f) {
@@ -118,6 +120,8 @@ export function parseSignalStats(
     if (y && cur) cur.luma = Number(y[1]);
     const d = line.match(/lavfi\.signalstats\.YDIF=([\d.]+)/);
     if (d && cur) cur.motion = Number(d[1]);
+    const sc = line.match(/lavfi\.scene_score=([\d.]+)/);
+    if (sc && cur) cur.scene = Number(sc[1]);
   }
   if (cur) out.push(cur);
   return out;
@@ -134,13 +138,79 @@ export function usableCandidates(
       ? Math.max(22, totalSeconds * 0.15)
       : Math.max(10, totalSeconds * 0.2);
   const tail = totalSeconds > 60 ? 12 : 8;
-  return all.filter(
+  const fits = all.filter(
     (c) =>
       c.time >= lead &&
       c.time + clipSeconds <= totalSeconds - tail &&
       c.luma >= 25 &&
       c.luma <= 230,
   );
+  // A clip that changes shot under the words it was chosen for no longer shows what they say:
+  // the clip will end where its shot ends, so a shot too short to carry a line is passed over.
+  const whole = fits.filter((c) => shotLength(c, clipSeconds) >= MIN_CLIP_SECONDS);
+  return whole.length >= 4 ? whole : fits;
+}
+
+/** How long a clip opening at this moment can run before the shot changes. */
+export function shotLength(c: Candidate, clipSeconds = CLIP_SECONDS): number {
+  if (c.nextCut === undefined) return clipSeconds;
+  return Math.min(clipSeconds, Math.max(0, c.nextCut - c.time - 0.2));
+}
+
+/**
+ * Shot changes (seconds) from a per-frame scan: ffmpeg's scene score catches
+ * hard cuts, and a frame-difference spike against the surrounding half second
+ * catches cuts inside fast motion where the score stays low. Detections closer
+ * than a quarter second are one transition, placed at its last frame.
+ */
+export function detectCuts(
+  rows: Array<{ time: number; motion: number; scene?: number }>,
+): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]!;
+    const lo = Math.max(0, i - 15);
+    const hi = Math.min(rows.length, i + 16);
+    const nb = rows
+      .slice(lo, hi)
+      .filter((_, k) => k !== i - lo)
+      .map((x) => x.motion)
+      .sort((a, b) => a - b);
+    const median = nb.length ? nb[Math.floor(nb.length / 2)]! : 0;
+    const spike = r.motion > 10 && r.motion > 2.2 * median;
+    const scene = (r.scene ?? 0) > 0.12;
+    if (!(scene || spike)) continue;
+    // Detections within a quarter second are one transition (a dissolve or a whip): the cut is its last frame.
+    if (out.length && r.time - out[out.length - 1]! <= 0.25) out[out.length - 1] = r.time;
+    else out.push(r.time);
+  }
+  return out;
+}
+
+/**
+ * Moves each candidate to the start of the shot its keyframe sits in (so the
+ * clip opens on the cut, not partway through), notes where the shot ends,
+ * and keeps one candidate per shot.
+ */
+export function withCuts(candidates: Candidate[], cuts: number[]): Candidate[] {
+  if (!cuts.length) return candidates;
+  const sorted = [...cuts].sort((a, b) => a - b);
+  const out: Candidate[] = [];
+  const seen = new Set<number>();
+  for (const c of candidates) {
+    let prev: number | undefined;
+    for (const t of sorted) {
+      if (t <= c.time + 0.05) prev = t;
+      else break;
+    }
+    const start = prev !== undefined && c.time - prev <= 6 ? prev : c.time;
+    const next = sorted.find((t) => t > start + 0.1);
+    const key = Math.round(start * 100);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(next === undefined ? { ...c, time: start } : { ...c, time: start, nextCut: next });
+  }
+  return out;
 }
 
 /** Motion rule: the hook takes the liveliest moment, calm lines the stillest, the rest the next liveliest, no moment twice. */
@@ -330,7 +400,20 @@ async function analyseTrailer(
   const rows = parseSignalStats(
     await fs.readFile(path.join(dir, statsName), "utf8"),
   );
-  return rows.map((r, i) => ({
+  // Shot changes from a per-frame scan at 320 px (scene score plus frame difference).
+  let cuts: number[] = [];
+  try {
+    const scenesName = `scenes_${movie}.txt`;
+    await run(
+      FFMPEG,
+      ["-loglevel", "error", "-y", "-i", path.basename(raw), "-vf", `scale=320:-2,select='gte(scene,0)',signalstats,metadata=print:file=${scenesName}`, "-an", "-f", "null", "-"],
+      { cwd: dir, maxBuffer: 32 * 1024 * 1024 },
+    );
+    cuts = detectCuts(parseSignalStats(await fs.readFile(path.join(dir, scenesName), "utf8")));
+  } catch (err) {
+    log("warn", "scene scan failed; clips may cross a cut", { error: errorMessage(err) });
+  }
+  const candidates = rows.map((r, i) => ({
     index: offset + i,
     movie,
     time: r.time,
@@ -338,6 +421,7 @@ async function analyseTrailer(
     motion: r.motion,
     frame: path.join(dir, `kf_${movie}_${String(i + 1).padStart(4, "0")}.jpg`),
   }));
+  return withCuts(candidates, cuts);
 }
 
 async function cutClip(
@@ -444,8 +528,10 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       const r = c && o.trailers[c.movie];
       if (!a || !c || !r) continue;
       const file = path.join("assets", `${prefix}_${out.length}.mp4`);
+      // The clip ends where its shot ends (rounded to a frame) so it never changes picture under the line.
+      const seconds = Math.round(Math.max(MIN_CLIP_SECONDS, shotLength(c, clipSeconds)) * 30) / 30;
       try {
-        await cutClip(r.file, c.time, clipSeconds, path.join(o.episodeDir, file));
+        await cutClip(r.file, c.time, seconds, path.join(o.episodeDir, file));
       } catch (err) {
         log("warn", "clip cut failed", { at: c.time, error: errorMessage(err) });
         continue;
@@ -455,7 +541,7 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         kind: "clip",
         file,
         sourceUrl: r.url,
-        durationSeconds: clipSeconds,
+        durationSeconds: seconds,
         beatIndex,
         role: t.key === "hook" ? "hook" : undefined,
         startSeconds: c.time,
@@ -463,7 +549,7 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         luma: c.luma,
         label: a.label,
         reason: `${how}: ${a.reason}`,
-        provenance: `${o.describe(r, clipSeconds, c.time)}; chosen for ${t.key} by ${how} (${a.label ?? a.reason})`,
+        provenance: `${o.describe(r, seconds, c.time)}; chosen for ${t.key} by ${how} (${a.label ?? a.reason})`,
       });
     }
     log("info", "beat-matched clips", { count: out.length, how, targets: o.targets.length, candidates: candidates.length });

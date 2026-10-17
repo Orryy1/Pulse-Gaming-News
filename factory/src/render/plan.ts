@@ -15,6 +15,7 @@ export const STING_FRAMES = 12; // frames 0-11: brand sting over the hero still
 export const MIN_SHOT = 45;
 export const MAX_SHOT = 130;
 export const TARGET_SHOT = 93; // about 3.1 s
+export const FREEZE_TOLERANCE = 6; // a clip may hold its last frame this long (0.2 s) at the end of a shot
 export const SNAP_FRAMES = 6; // cuts move up to this far to land on a word end
 export const TAIL_SECONDS = 1.0;
 export const MAX_SFX = 6;
@@ -287,12 +288,21 @@ export function planShots(
     stillUses[pick]!++;
     return { type: "image", index: pick };
   };
+  // A clip that is shorter than its shot (it ends where its trailer shot ends) is
+  // still used: the shot is cut at the clip's end and the remainder becomes a shot
+  // of its own, or is folded into the next shot of the same line when it is too
+  // short to stand alone. A clip never freezes on its last frame for more than
+  // FREEZE_TOLERANCE frames.
   const takeClip = (
-    len: number,
+    n: number,
+    c: { start: number; end: number; segment: number },
     forBeat: number | undefined | "hook",
     calm: boolean,
   ): PlanMedia | undefined => {
-    const fits = clipOrder.filter((i) => !clipUsed[i] && clipFrames[i]! >= len);
+    const len = c.end - c.start;
+    const fits = clipOrder.filter(
+      (i) => !clipUsed[i] && clipFrames[i]! >= Math.min(len, MIN_SHOT),
+    );
     if (!fits.length) return undefined;
     const tagged =
       forBeat === "hook"
@@ -306,6 +316,20 @@ export function planShots(
     );
     const pick = tagged ?? (calm ? free[free.length - 1] : free[0]);
     if (pick === undefined) return undefined;
+    const extra = len - clipFrames[pick]!;
+    if (extra > FREEZE_TOLERANCE) {
+      const clipEnd = c.start + clipFrames[pick]!;
+      const next = cuts[n + 1];
+      if (extra >= MIN_SHOT) {
+        cuts.splice(n + 1, 0, { start: clipEnd, end: c.end, segment: c.segment });
+        c.end = clipEnd;
+      } else if (next && next.segment === c.segment && next.end - clipEnd <= MAX_SHOT) {
+        c.end = clipEnd;
+        next.start = clipEnd;
+      } else {
+        return undefined;
+      }
+    }
     clipUsed[pick] = true;
     return { type: "clip", index: pick, trimFrom: 0 };
   };
@@ -314,7 +338,6 @@ export function planShots(
   const lastSeg = segments.length - 1;
   for (const [n, c] of cuts.entries()) {
     const seg = segments[c.segment]!;
-    const len = c.end - c.start;
     const kind = seg.visual?.kind ?? "none";
     const beatIndex =
       seg.kind === "beat"
@@ -333,24 +356,24 @@ export function planShots(
       if (isOpening) stillUses[heroIndex]!++;
     } else if (seg.kind === "hook") {
       media =
-        takeClip(len, "hook", false) ??
+        takeClip(n, c, "hook", false) ??
         takeStill((i) => !isFramedStill(images[i]!), last);
     } else if (seg.kind === "beat" && QUIET_KINDS.has(kind)) {
       // A moment chosen for this line beats a still; it sits in the framed panel under the card.
       media =
-        takeClip(len, beatIndex, true) ??
+        takeClip(n, c, beatIndex, true) ??
         takeStill((i) => true, last, beatIndex);
       framed = true;
     } else if (seg.kind === "beat" && STILL_KINDS.has(kind)) {
       media =
         takeStill((i) => !isFramedStill(images[i]!), last, beatIndex) ??
-        takeClip(len, beatIndex, true);
+        takeClip(n, c, beatIndex, true);
     } else if (seg.kind === "beat") {
       media =
-        takeClip(len, beatIndex, false) ??
+        takeClip(n, c, beatIndex, false) ??
         takeStill((i) => true, last, beatIndex);
     } else if (seg.kind === "take") {
-      media = takeClip(len, undefined, true) ?? takeStill((i) => true, last);
+      media = takeClip(n, c, undefined, true) ?? takeStill((i) => true, last);
     } else {
       media = takeStill((i) => true, last);
     }

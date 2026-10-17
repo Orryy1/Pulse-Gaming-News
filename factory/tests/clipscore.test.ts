@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import {
   parseSignalStats,
   usableCandidates,
+  detectCuts,
+  withCuts,
+  shotLength,
   rankByRule,
   rankByModel,
   targetsFor,
@@ -156,4 +159,35 @@ test("the model's picks are kept only when confident, known and free of text or 
     picks.map((p) => [p.key, p.candidate, p.label]),
     [[targets[1]!.key, 2, "dogfight over a moon"]],
   );
+});
+
+test("a clip opens on its shot's first frame, ends where the shot ends, and a shot too short for a line is passed over", () => {
+  const cand = (time: number, i: number): Candidate => ({ index: i, movie: 0, time, luma: 120, motion: 10, frame: "" });
+  const all = Array.from({ length: 12 }, (_, i) => cand(25 + i * 1.5, i));
+  // Per-frame rows: a hard cut at 27.6 s by scene score, a cut at 41 s by a motion spike inside fast action.
+  const rows = Array.from({ length: 30 * 60 }, (_, f) => {
+    const time = f / 30;
+    const spike = Math.abs(time - 41) < 0.02;
+    // The hard cut at 27.6 s is preceded by three dissolve frames: one transition, placed at its last frame.
+    const dissolve = time >= 27.5 && time <= 27.6;
+    return { time, motion: time > 39 && time < 43 ? (spike ? 60 : 25) : 3, scene: dissolve ? 0.5 : 0.02 };
+  });
+  const cuts = detectCuts(rows);
+  assert.deepEqual(cuts.map((c) => Number(c.toFixed(2))), [27.6, 41]);
+  const tagged = withCuts(all, cuts);
+  const times = tagged.map((c) => c.time);
+  assert.ok(times.includes(27.6), "the shot after the cut is offered from its first frame");
+  assert.ok(times.includes(41), "the shot after the spike too");
+  assert.equal(times.filter((x) => x === 27.6).length, 1, "one candidate per shot");
+  assert.equal(tagged.find((c) => c.time === 25)!.nextCut, 27.6);
+  assert.equal(tagged.find((c) => c.time === 41)!.nextCut, undefined);
+  const kept = usableCandidates(tagged, 120).map((c) => c.time);
+  assert.ok(!kept.includes(26.5), "26.5 s has only 1.1 s before the cut at 27.6");
+  assert.ok(kept.includes(25), "25 s has 2.6 s of shot: enough for a short clip");
+  assert.ok(kept.includes(27.6) && kept.includes(41));
+  assert.equal(Number(shotLength(tagged.find((c) => c.time === 25)!).toFixed(2)), 2.4);
+  assert.equal(shotLength(tagged.find((c) => c.time === 41)!), 4.8);
+  // With too few whole shots the filter stands down rather than starve the matcher.
+  const dense = withCuts(all, all.map((c) => c.time + 1));
+  assert.equal(usableCandidates(dense, 120).length, usableCandidates(all, 120).length);
 });

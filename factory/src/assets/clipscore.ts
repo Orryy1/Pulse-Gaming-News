@@ -308,21 +308,28 @@ async function analyseTrailer(
   dir: string,
   offset: number,
 ): Promise<Candidate[]> {
-  const stats = path.join(dir, `stats_${movie}.txt`);
-  const pattern = path.join(dir, `kf_${movie}_%04d.jpg`);
-  await run(FFMPEG, [
-    "-loglevel",
-    "error",
-    "-y",
-    "-i",
-    raw,
-    "-vf",
-    `fps=1/${CANDIDATE_STEP},scale=320:-2,signalstats,metadata=print:file='${stats.replace(/\\/g, "/").replace(/'/g, "\\'")}'`,
-    "-q:v",
-    "4",
-    pattern,
-  ]);
-  const rows = parseSignalStats(await fs.readFile(stats, "utf8"));
+  // Run from inside the work folder with bare file names: a Windows drive letter's colon
+  // would otherwise be read as a filter-option separator inside metadata=print:file=...
+  const statsName = `stats_${movie}.txt`;
+  await run(
+    FFMPEG,
+    [
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      path.basename(raw),
+      "-vf",
+      `fps=1/${CANDIDATE_STEP},scale=320:-2,signalstats,metadata=print:file=${statsName}`,
+      "-q:v",
+      "4",
+      `kf_${movie}_%04d.jpg`,
+    ],
+    { cwd: dir },
+  );
+  const rows = parseSignalStats(
+    await fs.readFile(path.join(dir, statsName), "utf8"),
+  );
   return rows.map((r, i) => ({
     index: offset + i,
     movie,

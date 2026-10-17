@@ -12,6 +12,7 @@ export interface Feed {
 export const FEEDS: Feed[] = [
   { name: "PlayStation Blog", url: "https://blog.playstation.com/feed/", kind: "official" },
   { name: "Xbox Wire", url: "https://news.xbox.com/en-us/feed/", kind: "official" },
+  { name: "Steam News", url: "https://store.steampowered.com/feeds/news/", kind: "official" },
   { name: "IGN", url: "https://feeds.feedburner.com/ign/games-all", kind: "outlet" },
   { name: "GameSpot", url: "https://www.gamespot.com/feeds/news/", kind: "outlet" },
   { name: "Eurogamer", url: "https://www.eurogamer.net/feed/news", kind: "outlet" },

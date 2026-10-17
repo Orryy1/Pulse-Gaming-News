@@ -97,7 +97,7 @@ function storeBlock(data?: string): string {
   return `\n<source outlet="Steam store (live data)" kind="official">\n${data}\n</source>\nThe Steam numbers above are live and verified. Use one where it sharpens the Pulse take or makes a strong stat beat (current players, review score, price); attribute it to Steam and give it as a figure from today.`;
 }
 
-export async function selectStory(llm: Llm, candidates: StoryCluster[], recentHeadlines: string[]): Promise<Selection> {
+export async function selectStory(llm: Llm, candidates: StoryCluster[], recentHeadlines: string[], performance = ""): Promise<Selection> {
   const list = candidates
     .map(
       (c, i) =>
@@ -106,7 +106,7 @@ export async function selectStory(llm: Llm, candidates: StoryCluster[], recentHe
     .join("\n");
   return llm.structured({
     system: selectionPrompt(),
-    content: `Already covered recently:\n${recentHeadlines.map((h) => `- ${h}`).join("\n") || "- (nothing yet)"}\n\nCandidates:\n${list}`,
+    content: `Already covered recently:\n${recentHeadlines.map((h) => `- ${h}`).join("\n") || "- (nothing yet)"}${performance ? `\n\n${performance}` : ""}\n\nCandidates:\n${list}`,
     schema: SelectionSchema,
     effort: "low",
   });

@@ -96,6 +96,10 @@ The Approve and Reject links point at `PUBLIC_URL`. On `http://localhost:8080` t
 
 Every episode writes `captions.srt` from the narration's word timings, and once YouTube reports the video as processed the factory uploads it as the en-GB caption track (`captions.insert`, 400 quota units). A caption failure is logged as an event and never holds up a video that is already live.
 
+## Analytics
+
+Every published Short's public views, likes and comments are read 1 h, 3 h, 24 h, 72 h, 7 d and 28 d after it goes live (`video_metrics`; one quota unit per fifty videos, a window missed by more than half its age is skipped rather than back-filled). Once four Shorts have a 24 h figure the editor is shown the best and worst five of the last 28 days, with story type, game, lane and narrator voice, as advice when it picks the next story. Every Monday at 09:00 the Discord digest gives the week's counts per lane, median views at 24 h, best and weakest Shorts, median views per voice over 28 days (the voice rotation test) and the quota used. Retention curves and engaged views need the analytics scope and arrive once the YouTube login is reconnected.
+
 ## Costs
 
 The only running cost is Claude (selection, script, fact-check and vision QA): a few dollars a month at one Short a day. Voice, rendering, database and hosting all run on the PC. ElevenLabs is used only if the local voice is unavailable.

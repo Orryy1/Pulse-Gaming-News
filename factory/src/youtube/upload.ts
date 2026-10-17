@@ -191,6 +191,23 @@ export class YouTubeClient {
     return id;
   }
 
+  /** Public view, like and comment counts for up to fifty videos (one quota unit). */
+  async stats(videoIds: string[]): Promise<Map<string, { views: number; likes: number; comments: number; privacyStatus: string }>> {
+    const out = new Map<string, { views: number; likes: number; comments: number; privacyStatus: string }>();
+    if (!videoIds.length) return out;
+    const res = await this.fetchFn(`${API}/videos?part=statistics,status&id=${videoIds.slice(0, 50).join(",")}`, { headers: await this.auth() });
+    if (!res.ok) throw await apiError(res, "videos.list");
+    for (const v of ((await res.json()) as any).items ?? []) {
+      out.set(String(v.id), {
+        views: Number(v.statistics?.viewCount ?? 0),
+        likes: Number(v.statistics?.likeCount ?? 0),
+        comments: Number(v.statistics?.commentCount ?? 0),
+        privacyStatus: String(v.status?.privacyStatus ?? ""),
+      });
+    }
+    return out;
+  }
+
   async status(videoId: string): Promise<{ uploadStatus: string; privacyStatus: string; failureReason?: string; rejectionReason?: string } | undefined> {
     const res = await this.fetchFn(`${API}/videos?part=status,processingDetails&id=${videoId}`, { headers: await this.auth() });
     if (!res.ok) throw await apiError(res, "videos.list");

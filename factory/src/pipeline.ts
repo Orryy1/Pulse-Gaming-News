@@ -31,6 +31,7 @@ import { buildSegments, srtFromWords, type SegmentInput } from "./render/timelin
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
+import { captureMetrics, performanceNotes } from "./analytics.ts";
 import { LANE_PRIORITY, QUOTA, QUOTA_RESERVE_FOR_UPLOAD, dueSlot, evergreenDue, franchiseKey, inWindow, isBreaking, lastPublishAt, nextWindowStart, quotaAdd, quotaResetAt, quotaUsed, type Sighting } from "./lanes.ts";
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
@@ -133,7 +134,7 @@ async function recentSightings(s: Services): Promise<Array<{ cluster: StoryClust
 
 async function createFromChoice(s: Services, candidates: StoryCluster[], lane: { lane: string; priority: number; slotAt?: Date }, why: string): Promise<string | undefined> {
   const { db } = s;
-  const choice = await selectStory(s.llm, candidates, await recentHeadlines(db));
+  const choice = await selectStory(s.llm, candidates, await recentHeadlines(db), await performanceNotes(db, s.now()).catch(() => ""));
   const picked = candidates[choice.candidate_index];
   if (!picked) {
     log("info", "editor passed on every candidate", { lane: lane.lane, reason: choice.reason });
@@ -919,6 +920,8 @@ export async function tick(s: Services): Promise<{ ran: boolean; selected?: stri
       }
     }
     await pruneMedia(s).catch((err) => log("warn", "prune failed", { error: errorMessage(err) }));
+    // Public numbers for every published Short at fixed ages (one unit per fifty videos).
+    if (!s.cfg.dryRun) await captureMetrics(s.db, s.youtube(), s.now()).catch((err) => log("warn", "metrics capture failed", { error: errorMessage(err) }));
     return { selected };
   });
   return result ? { ran: true, ...result } : { ran: false };

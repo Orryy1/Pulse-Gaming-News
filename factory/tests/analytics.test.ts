@@ -1,0 +1,64 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { testDb, testConfig, tmpDir } from "./helpers.ts";
+import { captureMetrics, labelsDue, performanceNotes, weeklyDigest, digestDue, markDigestSent, type VideoStats } from "../src/analytics.ts";
+import { quotaUsed } from "../src/lanes.ts";
+import { goodScript } from "./helpers.ts";
+
+const H = 3_600_000;
+
+test("a label is due once the Short is old enough, and a window missed by more than half its age is skipped", () => {
+  const live = new Date("2026-10-17T12:00:00Z");
+  assert.deepEqual(labelsDue(live, new Date(live.getTime() + 0.5 * H), new Set()), []);
+  assert.deepEqual(labelsDue(live, new Date(live.getTime() + 1.2 * H), new Set()), ["1h"]);
+  assert.deepEqual(labelsDue(live, new Date(live.getTime() + 25 * H), new Set()), ["24h"], "1h and 3h are long gone, never back-filled");
+  assert.deepEqual(labelsDue(live, new Date(live.getTime() + 25 * H), new Set(["24h"])), []);
+  assert.deepEqual(labelsDue(live, new Date(live.getTime() + 200 * H), new Set()), ["7d"]);
+});
+
+async function publishedEpisode(db: Awaited<ReturnType<typeof testDb>>, id: string, videoId: string, liveAt: Date, voice: string, title: string) {
+  const script = { ...goodScript(), youtube: { ...goodScript().youtube, title } };
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, script_json, youtube_video_id, publish_at, lane) VALUES ($1, $2, 'published', $3, $4, $5, $6, 'news')`,
+    [id, `hash_${id}`, JSON.stringify({ headline: title, items: [] }), JSON.stringify(script), videoId, liveAt],
+  );
+  await db.query(`INSERT INTO events (episode_id, kind, detail) VALUES ($1, 'voice', $2)`, [id, JSON.stringify({ provider: "elevenlabs", id: "v", name: voice })]);
+}
+
+test("captures due numbers in one call, meters a unit, never captures twice, and advises the editor once four Shorts have a 24 h figure", async () => {
+  const db = await testDb();
+  const now = new Date("2026-10-20T13:00:00Z");
+  const views: Record<string, number> = { a: 5000, b: 900, c: 2200, d: 300, e: 100 };
+  for (const [k, v] of Object.entries(views)) await publishedEpisode(db, `ep_${k}`, `vid_${k}`, new Date(now.getTime() - 24.5 * H), k < "c" ? "Liam" : "Sarah", `Short ${k} (${v})`);
+  let calls = 0;
+  const yt = { stats: async (ids: string[]) => { calls++; return new Map(ids.map((id) => [id, { views: views[id.slice(4)]!, likes: 1, comments: 0, privacyStatus: "public" } as VideoStats])); } };
+  assert.equal(await captureMetrics(db, yt, now), 5);
+  assert.equal(calls, 1, "five videos, one videos.list call");
+  assert.equal(await quotaUsed(db, now), 1);
+  assert.equal(await captureMetrics(db, yt, now), 0, "nothing due twice");
+  const rows = await db.query<{ label: string; views: number }>(`SELECT label, views FROM video_metrics ORDER BY views DESC`);
+  assert.deepEqual(rows.map((r) => r.label), ["24h", "24h", "24h", "24h", "24h"]);
+  const notes = await performanceNotes(db, now);
+  assert.match(notes, /Short a \(5000\)[^\n]*5,000 views/);
+  assert.match(notes, /Did worst:/);
+  assert.match(notes, /voice Liam/);
+  assert.match(notes, /Advice, not rules/);
+  const digest = await weeklyDigest(db, testConfig(await tmpDir()), now);
+  const text = String(digest.embeds![0]!.description);
+  assert.match(text, /news 5/);
+  assert.match(text, /Liam: 2,950 over 2/);
+  assert.match(text, /Sarah: 300 over 3/);
+  await db.close();
+});
+
+test("the digest is due on Monday from 09:00 London, once", async () => {
+  const db = await testDb();
+  const cfg = testConfig(await tmpDir());
+  assert.equal(await digestDue(db, cfg, new Date("2026-10-18T10:00:00Z")), undefined, "Sunday");
+  assert.equal(await digestDue(db, cfg, new Date("2026-10-19T07:30:00Z")), undefined, "Monday 08:30 London");
+  assert.equal(await digestDue(db, cfg, new Date("2026-10-19T08:30:00Z")), "2026-10-19", "Monday 09:30 London");
+  await markDigestSent(db, "2026-10-19");
+  assert.equal(await digestDue(db, cfg, new Date("2026-10-19T12:00:00Z")), undefined);
+  assert.equal(await digestDue(db, cfg, new Date("2026-10-26T09:00:00Z")), "2026-10-26", "next Monday");
+  await db.close();
+});

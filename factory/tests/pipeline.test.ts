@@ -96,6 +96,7 @@ function fakeYouTube(f: Fakes): YouTubeClient {
     privacyStatus: "public",
   });
   yt.listCaptions = async () => f.captions;
+  yt.stats = async (ids) => new Map(ids.map((id) => [id, { views: 1200, likes: 40, comments: 3, privacyStatus: "public" }]));
   yt.insertComment = async (_v, text) => {
     f.comments.push(text);
     return "c_1";

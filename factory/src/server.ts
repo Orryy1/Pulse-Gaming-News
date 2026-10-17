@@ -17,6 +17,7 @@ import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import { consentUrl, exchangeCode, saveRefreshToken, clearTokenCache } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
 import { alert } from "./approval/discord.ts";
+import { digestDue, markDigestSent, weeklyDigest } from "./analytics.ts";
 
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -71,7 +72,8 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
                 count(*) FILTER (WHERE status IN ('uploading') AND publish_at > now()) AS scheduled FROM episodes`,
       );
       const [sight] = await db.query<Record<string, string>>(`SELECT count(*) AS stories_seen_24h, max(last_seen) AS last_discovery FROM cluster_sightings WHERE last_seen > now() - interval '24 hours'`);
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, ...counts, ...sight, lastTick: state.lastTick, lastError: state.lastError }));
+      const [met] = await db.query<Record<string, string>>(`SELECT count(*) AS metrics_captured_7d FROM video_metrics WHERE captured_at > now() - interval '7 days'`);
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, ...counts, ...sight, ...met, lastTick: state.lastTick, lastError: state.lastError }));
       return;
     }
 
@@ -246,6 +248,16 @@ async function main(): Promise<void> {
     log("info", "daily restart for updates");
     await db.close();
     process.exit(0);
+  }, 5 * 60_000);
+  // Monday 09:00 local: the week in numbers, which voices are sticking, quota.
+  setInterval(() => {
+    void (async () => {
+      const key = await digestDue(db, cfg, new Date());
+      if (!key) return;
+      await markDigestSent(db, key);
+      await services.notify(await weeklyDigest(db, cfg, new Date()));
+      log("info", "weekly digest sent", { week: key });
+    })().catch((err) => log("error", "weekly digest failed", { error: errorMessage(err) }));
   }, 5 * 60_000);
   let lastDmsDay = "";
   setInterval(() => {

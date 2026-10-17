@@ -354,7 +354,7 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
   const images = art.filter((a) => a.kind !== "logo");
   // First-party newsroom images (PlayStation Blog, Xbox Wire) are press
   // material meant for coverage. Outlet images are never used.
-  if (images.length < 3) {
+  {
     const official = ep.story_json.items.filter((i) => i.sourceKind === "official");
     for (const [n, item] of official.entries()) {
       const og = item.imageUrl ?? (await s.fetchArticle(item.url))?.ogImage;

@@ -22,7 +22,7 @@ export const Calendar: React.FC<{ date: string; renderDate: string; label?: stri
   const month = m ? Number(m[2]) - 1 : undefined;
   const day = m?.[3] ? Number(m[3]) : undefined;
   const gridIn = interpolate(t, [0, 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const dayPop = spring({ frame: t - 14, fps, config: SPRING.POP });
+  const dayPop = spring({ frame: t - 6, fps, config: SPRING.POP });
   const chip = spring({ frame: t - 24, fps, config: SPRING.SNAP });
   const days = day !== undefined ? daysUntil(date, renderDate) : undefined;
   if (year === undefined || month === undefined) {

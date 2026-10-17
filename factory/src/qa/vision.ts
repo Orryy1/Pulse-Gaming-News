@@ -10,7 +10,8 @@ You see frames sampled across the video in order. Fail the video only for real p
 - broken or missing images, obvious rendering artefacts, mostly empty or black frames,
 - artwork clearly showing a different game from the one named in the headline,
 - anything advertiser-unfriendly (gore, nudity, offensive imagery).
-Stylistic preferences are not failures. Note them in "notes".`;
+Stylistic preferences are not failures. Note them in "notes".
+A Short with no game artwork (dark brand-plate backgrounds with the game's name) is a deliberate choice when no official art exists; never fail for that or for empty space below the captions.`;
 
 export async function visionQa(llm: Llm, frames: string[], context: { headline: string; gameTitle: string }): Promise<VisionQa> {
   const content: LlmContent = [];

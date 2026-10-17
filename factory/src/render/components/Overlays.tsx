@@ -510,6 +510,9 @@ export const FactCard: React.FC<{
       .map((s) => s.trim())
       .filter(Boolean)
       .slice(0, 4);
+    // The card must end above the shelf (y 900): row size by count and length.
+    const longest = Math.max(...items.map((s) => s.length), 1);
+    const rowSize = items.length >= 4 ? 56 : items.length === 3 ? (longest > 16 ? 60 : 72) : longest > 18 ? 72 : 88;
     return (
       <div
         style={{
@@ -533,7 +536,7 @@ export const FactCard: React.FC<{
                 display: "flex",
                 alignItems: "center",
                 gap: 22,
-                marginBottom: 20,
+                marginBottom: 12,
                 transform: `translateX(${interpolate(s, [0, 1], [60, 0])}px)`,
                 opacity: s,
               }}
@@ -549,7 +552,7 @@ export const FactCard: React.FC<{
               <div
                 style={{
                   fontFamily: DISPLAY,
-                  fontSize: 92,
+                  fontSize: rowSize,
                   color: COLOUR.paper,
                   textShadow: "0 8px 30px rgba(0,0,0,0.7)",
                 }}
@@ -564,7 +567,8 @@ export const FactCard: React.FC<{
             style={{
               fontFamily: BODY,
               fontWeight: 800,
-              fontSize: 38,
+              fontSize: 30,
+                marginTop: 4,
               color: accent,
               textTransform: "uppercase",
             }}
@@ -587,7 +591,7 @@ export const FactCard: React.FC<{
           WebkitBoxDecorationBreak: "clone",
           padding: "4px 18px",
           fontFamily: DISPLAY,
-          fontSize: 112,
+          fontSize: v.primary.length <= 14 ? 112 : v.primary.length <= 24 ? 92 : v.primary.length <= 36 ? 76 : 64,
           lineHeight: 1.22,
           color: COLOUR.ink,
         }}

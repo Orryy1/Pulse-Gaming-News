@@ -35,6 +35,7 @@ import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
 import { captureMetrics, performanceNotes } from "./analytics.ts";
+import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { dayKey, LANE_PRIORITY, QUOTA, QUOTA_RESERVE_FOR_UPLOAD, dueSlot, evergreenDue, franchiseKey, inWindow, isBreaking, lastPublishAt, nextWindowStart, quotaAdd, quotaResetAt, quotaUsed, type Sighting } from "./lanes.ts";
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
@@ -579,10 +580,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   await fs.rm(raw, { force: true });
   const tech = await s.technicalQa(final, duration, { minSeconds: 180, maxSeconds: 720, width: 1920, height: 1080 });
   let vision: VisionQa | undefined;
+  let times: number[] = [];
   if (tech.ok && s.cfg.visionQa) {
     const marks = segments.map((g) => g.start + 2).filter((t) => t > 1 && t < duration - 2);
     const step = Math.max(1, Math.ceil(marks.length / 6));
-    const times = [1.5, ...marks.filter((_, i) => i % step === 0), duration - 2].slice(0, 8);
+    times = [1.5, ...marks.filter((_, i) => i % step === 0), duration - 2].slice(0, 8);
     await fs.rm(path.join(dir, "qa"), { recursive: true, force: true });
     const frames = await s.extractFrames(final, path.join(dir, "qa"), times);
     vision = await s.visionQa(frames, { headline: script.headline, gameTitle: script.game_title, format: "long" });
@@ -592,6 +594,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const problems = [...tech.problems, ...visionProblems];
   if (problems.length > 0) {
     const { longPlan: _dropped, ...withoutPlan } = assets;
+    const dropped = dropOffending(withoutPlan, offendingMedia(visionProblems, times, plan));
+    if (dropped.clips || dropped.images) {
+      log("warn", "faulted media dropped for the retry", { episode: ep.id, ...dropped });
+      await logEvent(s.db, ep.id, "media_dropped", dropped);
+    }
     await s.db.query(`UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`, [ep.id, JSON.stringify(qa), JSON.stringify(withoutPlan)]);
     throw new Error(`QA failed: ${problems.join(" | ")}`);
   }
@@ -690,9 +697,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
 
   const tech = await s.technicalQa(final, duration, ep.lane === "evergreen" ? { minSeconds: 60, maxSeconds: 179 } : undefined);
   let vision: VisionQa | undefined;
+  let times: number[] = [];
   if (tech.ok && s.cfg.visionQa) {
     // Sampled after each card's counters have landed (24 frames) so a mid-count figure is never judged.
-    const times = [0.8, ...segments.slice(1).map((g) => g.start + 1.2), duration - 1].filter((t) => t < duration);
+    times = [0.8, ...segments.slice(1).map((g) => g.start + 1.2), duration - 1].filter((t) => t < duration).slice(0, 8);
     await fs.rm(path.join(dir, "qa"), { recursive: true, force: true });
     const frames = await s.extractFrames(final, path.join(dir, "qa"), times.slice(0, 8));
     vision = await s.visionQa(frames, { headline: script.headline, gameTitle: script.game_title });
@@ -703,6 +711,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (problems.length > 0) {
     // The retry re-plans from scratch (the planner or the components may have changed since) and judges fresh frames.
     const { plan: _dropped, ...withoutPlan } = assets;
+    // A moment the checker faulted for text, a logo or the wrong game is not tried again.
+    const dropped = dropOffending(withoutPlan, offendingMedia(visionProblems, times, plan));
+    if (dropped.clips || dropped.images) {
+      log("warn", "faulted media dropped for the retry", { episode: ep.id, ...dropped });
+      await logEvent(s.db, ep.id, "media_dropped", dropped);
+    }
     await s.db.query(`UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`, [ep.id, JSON.stringify(qa), JSON.stringify(withoutPlan)]);
     throw new Error(`QA failed: ${problems.join(" | ")}`);
   }

@@ -364,7 +364,13 @@ test("a ranking entry only ever shows its own art or moment, never the hero or a
   for (let k = 1; k < plan.shots.length; k++) assert.equal(plan.shots[k]!.start, plan.shots[k - 1]!.end, "shots stay contiguous after merging");
   assert.equal(plan.heroIndex, 0, "the topic's own 16:9 art is the hero, not an entry's");
   const takeSeg = segments.findIndex((s) => s.kind === "take");
-  assert.ok(plan.shots.filter((s) => s.segment === takeSeg).every((s) => s.media.type !== "plate"), "the take revisits art rather than sitting on the plate");
+  const winner = beatSegs.length - 1;
+  for (const shot of plan.shots.filter((s) => s.segment === takeSeg)) {
+    if (shot.media.type === "image") assert.equal(i.images[shot.media.index]!.beatIndex, winner, "the pick shows the winner's art");
+    if (shot.media.type === "clip") assert.equal(i.clips[shot.media.index]!.beatIndex, winner, "the pick shows the winner's moment");
+  }
+  assert.ok(plan.shots.filter((s) => s.segment === takeSeg).some((s) => s.media.type === "image"), "the winner's art appears in the pick");
+  for (const item of plan.shelf) assert.ok(!["stat", "live", "gamecard"].includes(item.device), `a ranking never shows a topic tile (${item.device})`);
 });
 
 test("the hero is never one ranking entry's art while the topic has its own", () => {

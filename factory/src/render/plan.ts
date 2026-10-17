@@ -366,6 +366,9 @@ export function planShots(
 
   const shots: Shot[] = [];
   const lastSeg = segments.length - 1;
+  // A ranking Short: ranks are spoken bottom-up, so the last beat is number one and the take ("our pick") shows it.
+  const ranking = segments.some((x) => x.kind === "beat" && x.visual?.kind === "rank");
+  const winnerBeat = ranking ? segments.filter((x) => x.kind === "beat").length - 1 : undefined;
   for (const [n, c] of cuts.entries()) {
     const seg = segments[c.segment]!;
     const kind = seg.visual?.kind ?? "none";
@@ -380,7 +383,16 @@ export function planShots(
 
     const firstTakeShot =
       seg.kind === "take" && (n === 0 || cuts[n - 1]!.segment !== c.segment);
-    if ((isOpening || isClosing || firstTakeShot) && heroIndex >= 0) {
+    // Which entry this shot belongs to, when it may only show that entry's own media.
+    const ownBeat = kind === "rank" ? beatIndex : ranking && seg.kind === "take" ? winnerBeat : undefined;
+    if (firstTakeShot && ranking && !isClosing) {
+      // The pick opens on the winner's art, never on the topic's or another entry's.
+      // Straight after the winner's own line its art may carry on under the pick card.
+      media =
+        takeStill((i) => true, undefined, winnerBeat, true) ??
+        takeClip(n, c, winnerBeat, true, true) ??
+        (heroIndex >= 0 ? { type: "image", index: heroIndex } : undefined);
+    } else if ((isOpening || isClosing || firstTakeShot) && heroIndex >= 0) {
       media = { type: "image", index: heroIndex };
       framed = isFramedStill(images[heroIndex]!);
       if (isOpening) stillUses[heroIndex]!++;
@@ -407,6 +419,10 @@ export function planShots(
       media =
         takeClip(n, c, beatIndex, false) ??
         takeStill((i) => true, last, beatIndex);
+    } else if (seg.kind === "take" && ranking) {
+      media =
+        takeClip(n, c, winnerBeat, true, true) ??
+        takeStill((i) => true, last, winnerBeat, true);
     } else if (seg.kind === "take") {
       media =
         takeClip(n, c, undefined, true) ??
@@ -423,13 +439,13 @@ export function planShots(
     ) {
       // Avoid the same asset twice in a row; fall back to another still, then the brand plate.
       const alt =
-        kind === "rank"
-          ? takeStill((i) => true, media, beatIndex, true)
+        ownBeat !== undefined
+          ? takeStill((i) => true, media, ownBeat, true)
           : takeStill((i) => true, media);
       const prevShot = shots.at(-1);
       const hold = alt ?? media;
       if (
-        kind === "rank" &&
+        ownBeat !== undefined &&
         hold &&
         prevShot &&
         prevShot.segment === c.segment &&
@@ -564,9 +580,11 @@ export function planShelf(
     const numeric =
       s.kind === "beat" && NUMERIC_KINDS.has(s.visual?.kind ?? "none");
     // A ranking entry names one game; the topic's own Steam tile would show another.
-    const rank = s.kind === "beat" && s.visual?.kind === "rank";
+    const rank =
+      (s.kind === "beat" && s.visual?.kind === "rank") ||
+      segments.some((x) => x.kind === "beat" && x.visual?.kind === "rank"); // a ranking: no single game owns the topic tiles
     if (s.kind === "hook") chain.push(["source", { label: sourceLabel }]);
-    if (s.kind === "take" && live) chain.push(["live", live]);
+    if (s.kind === "take" && live && !rank) chain.push(["live", live]);
     if (statTiles.length && !numeric && !rank)
       chain.push(["stat", statTiles[tileIdx % statTiles.length]]);
     if (hasCapsule && !rank) chain.push(["gamecard", { title: "" }]);

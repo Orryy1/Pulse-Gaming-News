@@ -177,7 +177,8 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
 
 async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<EpisodeAssets, "images" | "clips">> {
   const script = ep.script_json!;
-  const term = script.steam_search_term || script.game_title || ep.story_json.gameHint || "";
+  // Prefer the exact store name resolved at script time so art and clips come from the same app as the facts.
+  const term = ep.assets_json?.steam?.name || script.steam_search_term || script.game_title || ep.story_json.gameHint || "";
   const app = term ? await s.findGame(term).catch(() => undefined) : undefined;
   const art = app ? await s.fetchArt(app, dir).catch(() => [] as VisualAsset[]) : [];
   // Official trailer B-roll: short muted clips, at most MAX_TRAILER_CLIPS.

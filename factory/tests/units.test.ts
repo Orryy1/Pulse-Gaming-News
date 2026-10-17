@@ -181,3 +181,20 @@ test("Rockstar footage is held to about six seconds per Short", () => {
   assert.equal(capFootage(clips, 14).length, 4);
   assert.equal(capFootage(clips, 0).length, 0);
 });
+
+test("buildSegments recovers when the aligner splits a token in an earlier segment", () => {
+  const spoken = ["Hook", "line", "twenty", "twenty-", "seven.", "Beat", "one", "here.", "Our", "read", "now."];
+  const words = spoken.map((w, i) => ({ text: w, start: i, end: i + 0.8 }));
+  const segs = buildSegments(
+    [
+      { kind: "hook", text: "Hook line twenty twenty-seven." },
+      { kind: "beat", text: "Beat one here." },
+      { kind: "take", text: "Our read now." },
+    ],
+    words,
+    11,
+  );
+  assert.equal(segs[1]!.start, 5, "beat starts at the spoken 'Beat' despite the extra token");
+  assert.equal(segs[2]!.start, 8, "take starts at the spoken 'Our'");
+  assert.equal(segs[0]!.end, 5);
+});

@@ -44,16 +44,34 @@ async function checkAnthropic(): Promise<Check> {
       detail: "ANTHROPIC_API_KEY is missing or a placeholder",
     };
   try {
+    const workspace = process.env.ANTHROPIC_WORKSPACE_ID;
     const res = await fetchWithTimeout(
       "https://api.anthropic.com/v1/models?limit=1",
-      { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } },
+      {
+        headers: {
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          ...(workspace ? { "anthropic-workspace-id": workspace } : {}),
+        },
+      },
       15_000,
     );
+    const body = res.ok
+      ? undefined
+      : (
+          (await res.json().catch(() => ({}))) as {
+            error?: { message?: string };
+          }
+        ).error?.message;
+    const hint =
+      body && /workspace/i.test(body)
+        ? "organisation-level key: set ANTHROPIC_WORKSPACE_ID in .env (console.anthropic.com/settings/workspaces) or create the key inside a workspace"
+        : body;
     return {
       name: "anthropic_key",
       ok: res.ok,
       critical: true,
-      detail: res.ok ? "valid" : `HTTP ${res.status}`,
+      detail: res.ok ? "valid" : `HTTP ${res.status}: ${hint ?? ""}`.trim(),
     };
   } catch (e) {
     return {

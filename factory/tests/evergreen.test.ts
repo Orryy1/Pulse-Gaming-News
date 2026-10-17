@@ -11,7 +11,7 @@ import { buildPlan, type PlanInput } from "../src/render/plan.ts";
 import { narrationOf } from "../src/editorial/schema.ts";
 import { FRANCHISE_SEEDS } from "../src/discovery/evergreen.ts";
 
-function ranking(entries = 7): EvergreenScript {
+function ranking(entries = 8): EvergreenScript {
   const names = [
     "Resident Evil 6",
     "Resident Evil 5",
@@ -35,7 +35,7 @@ function ranking(entries = 7): EvergreenScript {
       steam_search_term: game_title,
       year: 2000 + i,
       platforms: "PC, PS5, Xbox",
-      one_line: `${game_title} sold millions, but its scares wore thin faster than the rest.`,
+      one_line: `${game_title} sold millions, yet its scares wore thin faster than most of the series.`,
       verdict_chip: i === entries - 1 ? "STILL TERRIFYING" : "PLAY IT ONCE",
       footage: { want: "gameplay", keywords: ["mansion corridor"] },
     })),
@@ -62,18 +62,18 @@ test("an evergreen script validates, reads bottom-up and adapts to the common sh
   const e = ranking();
   assert.deepEqual(validateEvergreen(e), []);
   const s = evergreenToScript(e);
-  assert.equal(s.beats.length, 7);
+  assert.equal(s.beats.length, 8);
   assert.equal(s.beats[0]!.visual.kind, "rank");
   assert.equal(
     s.beats[0]!.visual.value_a,
-    7,
+    8,
     "the first spoken entry is the lowest rank",
   );
   assert.equal(s.beats.at(-1)!.visual.value_a, 1);
-  assert.equal(s.beats.at(-1)!.visual.primary, "Resident Evil 4");
+  assert.equal(s.beats.at(-1)!.visual.primary, "Resident Evil Zero");
   assert.equal(s.beats.at(-1)!.visual.secondary, "STILL TERRIFYING");
   assert.deepEqual(s.beats[0]!.visual.items, ["2000", "PC, PS5, Xbox"]);
-  assert.equal(s.entries?.length, 7);
+  assert.equal(s.entries?.length, 8);
   assert.equal(
     narrationOf(s),
     narrationOfEvergreen(e),

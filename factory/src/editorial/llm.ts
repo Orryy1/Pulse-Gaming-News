@@ -19,7 +19,9 @@ export interface Llm {
 }
 
 export function createClaude(model: string): Llm {
-  const client = new Anthropic();
+  // An organisation-level key must name the workspace on every request; a workspace key does not.
+  const workspace = process.env.ANTHROPIC_WORKSPACE_ID;
+  const client = new Anthropic(workspace ? { defaultHeaders: { "anthropic-workspace-id": workspace } } : {});
   return {
     async structured({ system, content, schema, effort = "medium", maxTokens = 16000 }) {
       const response = await client.beta.messages.parse({

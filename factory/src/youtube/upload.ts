@@ -46,8 +46,9 @@ export function buildResource(meta: VideoMetadata, marker: string) {
       defaultAudioLanguage: meta.defaultLanguage,
     },
     status: {
-      privacyStatus: meta.publishAt ? "private" : meta.privacyStatus,
-      ...(meta.publishAt ? { publishAt: meta.publishAt } : {}),
+      // Scheduling makes a video public at publishAt, so only schedule public uploads.
+      privacyStatus: meta.publishAt && meta.privacyStatus === "public" ? "private" : meta.privacyStatus,
+      ...(meta.publishAt && meta.privacyStatus === "public" ? { publishAt: meta.publishAt } : {}),
       selfDeclaredMadeForKids: false,
       containsSyntheticMedia: meta.containsSyntheticMedia,
       embeddable: true,

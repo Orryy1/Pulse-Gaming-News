@@ -128,8 +128,10 @@ function countUp(primary: string, p: number): string {
   const raw = m[2]!.replace(/,/g, "");
   const target = Number(raw);
   if (!Number.isFinite(target) || raw.includes(".")) return primary;
+  if (/^(19|20)\d\d$/.test(raw)) return primary; // years don't count up
   const v = Math.round(target * p);
-  return `${m[1]}${v.toLocaleString("en-GB")}${m[3]}`;
+  // Keep the source's formatting: only add separators if it had them.
+  return `${m[1]}${m[2]!.includes(",") ? v.toLocaleString("en-GB") : String(v)}${m[3]}`;
 }
 
 /** Fact card for a beat or the take. Layout depends on the visual kind. */

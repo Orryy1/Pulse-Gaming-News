@@ -65,10 +65,15 @@ export async function createEmbeddedDb(dir: string): Promise<Db> {
 }
 
 /** The embedded database is single-process: refuse to open it twice. */
+const LOCK_STALE_MS = 2 * 60_000;
+
 function takeProcessLock(lockFile: string): () => void {
   try {
     const pid = Number(fs.readFileSync(lockFile, "utf8"));
-    if (pid && pid !== process.pid) {
+    // The holder touches the file every 30s; an old file is a crash leftover,
+    // even if Windows has since reused that PID for another process.
+    const fresh = Date.now() - fs.statSync(lockFile).mtimeMs < LOCK_STALE_MS;
+    if (pid && pid !== process.pid && fresh) {
       try {
         process.kill(pid, 0); // throws if the process is gone
         throw new Error(`The factory database is in use by process ${pid}. Stop the factory first, or use the dashboard at /episodes.`);
@@ -80,7 +85,17 @@ function takeProcessLock(lockFile: string): () => void {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
   fs.writeFileSync(lockFile, String(process.pid));
+  const heartbeat = setInterval(() => {
+    try {
+      const now = new Date();
+      fs.utimesSync(lockFile, now, now);
+    } catch {
+      /* lock removed */
+    }
+  }, 30_000);
+  heartbeat.unref();
   const release = () => {
+    clearInterval(heartbeat);
     try {
       if (fs.readFileSync(lockFile, "utf8") === String(process.pid)) fs.unlinkSync(lockFile);
     } catch {

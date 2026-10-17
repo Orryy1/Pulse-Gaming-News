@@ -60,7 +60,8 @@ export interface Services {
   extractFrames(file: string, outDir: string, times: number[]): Promise<string[]>;
   visionQa(frames: string[], ctx: { headline: string; gameTitle: string }): Promise<VisionQa>;
   youtube(): YouTubeClient;
-  notify(msg: DiscordMessage): Promise<void>;
+  /** true = delivered, false = failed, undefined/void = Discord not configured. */
+  notify(msg: DiscordMessage): Promise<boolean | undefined | void>;
   now(): Date;
 }
 
@@ -87,6 +88,11 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   const now = s.now();
   if (now.getUTCHours() < cfg.selectFromHourUtc) return undefined;
   if ((await countToday(db)) >= cfg.dailyTarget) return undefined;
+  const paused = await selectionPause(db, now);
+  if (paused) {
+    log("info", "story selection paused", { reason: paused });
+    return undefined;
+  }
   const [busy] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM episodes WHERE status = ANY($1)`, [IN_FLIGHT]);
   if (Number(busy?.n ?? 0) > 0) return undefined;
   const [last] = await db.query<{ created_at: string }>(`SELECT created_at FROM episodes WHERE status NOT IN ('failed','rejected') ORDER BY created_at DESC LIMIT 1`);
@@ -282,7 +288,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     vision = await s.visionQa(frames, { headline: script.headline, gameTitle: script.game_title });
   }
   const qa = { technical: tech, vision: vision ?? null, checked_at: s.now().toISOString() };
-  const problems = [...tech.problems, ...(vision?.verdict === "fail" ? vision.problems : [])];
+  const visionProblems = vision?.verdict === "fail" ? (vision.problems.length ? vision.problems : [`vision QA failed: ${vision.notes || "no reason given"}`]) : [];
+  const problems = [...tech.problems, ...visionProblems];
   if (problems.length > 0) {
     await s.db.query(`UPDATE episodes SET qa_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(qa)]);
     throw new Error(`QA failed: ${problems.join(" | ")}`);
@@ -296,7 +303,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
 async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const script = ep.script_json!;
   const links = approvalLinks(s.cfg, ep.id);
-  const mode = s.cfg.approvalMode === "timeout" && script.is_rumour ? "manual" : s.cfg.approvalMode;
+  // Rumours and anything not corroborated always wait for a human.
+  const risky = script.is_rumour || !ep.story_json.corroborated;
+  const mode = risky ? "manual" : s.cfg.approvalMode;
   const when =
     mode === "auto"
       ? "Auto mode: publishing now."
@@ -304,7 +313,7 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
         ? `Publishes automatically in ${s.cfg.approvalTimeoutMinutes} min unless rejected.`
         : "Waiting for your approval.";
   const dir = episodeDir(s.cfg, ep.id);
-  await s.notify({
+  const delivered = await s.notify({
     embeds: [
       {
         title: `🎬 ${script.youtube.title}`,
@@ -324,6 +333,8 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
     ],
     files: [path.join(dir, "poster.jpg")],
   });
+  // Never start a publish countdown nobody was told about.
+  if (delivered === false && mode === "timeout") throw new Error("approval notice could not be posted to Discord; retrying before any auto-publish");
   if (mode === "auto") {
     await transition(s.db, ep.id, "rendered", "approved", { approval_mode: mode, approved_by: "auto", approval_requested_at: s.now() });
   } else {
@@ -331,9 +342,20 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   }
 }
 
+const MANUAL_APPROVAL_EXPIRY_HOURS = 48; // the Discord links last 3 days
+
 async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
-  if (ep.approval_mode !== "timeout" || !ep.approval_requested_at) return;
+  if (!ep.approval_requested_at) return;
   const waited = s.now().getTime() - new Date(ep.approval_requested_at).getTime();
+  if (ep.approval_mode === "manual") {
+    // An unanswered episode must not block tomorrow's Short forever.
+    if (waited >= MANUAL_APPROVAL_EXPIRY_HOURS * 3600_000 && (await transition(s.db, ep.id, "awaiting_approval", "rejected", { last_error: "approval expired unanswered" }))) {
+      await logEvent(s.db, ep.id, "rejected", { by: "expiry" });
+      await s.notify({ content: `⌛ "${ep.script_json?.youtube.title ?? ep.story_json.headline}" expired after ${MANUAL_APPROVAL_EXPIRY_HOURS}h without approval; moving on to new stories.` });
+    }
+    return;
+  }
+  if (ep.approval_mode !== "timeout") return;
   if (waited >= s.cfg.approvalTimeoutMinutes * 60_000) {
     if (await transition(s.db, ep.id, "awaiting_approval", "approved", { approved_by: "timeout" })) {
       await logEvent(s.db, ep.id, "approved", { by: "timeout" });
@@ -485,17 +507,51 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
     const fatal = err instanceof FatalError;
     const attempts = await recordFailure(s.db, ep.id, msg, Math.min(60, 5 * 2 ** ep.attempts));
     log("error", "step failed", { id: ep.id, status: ep.status, attempts, fatal, error: msg });
+    if (fatal) {
+      // A fatal error (credentials, quota, policy) would hit every new episode
+      // too: stop picking stories until it is fixed rather than burn a story a tick.
+      await pauseSelection(s.db, s.now(), FATAL_PAUSE_HOURS, msg);
+    }
     if (fatal || attempts >= s.cfg.maxAttempts) {
       const fresh = await getEpisode(s.db, ep.id);
       if (fresh && !["failed", "published", "rejected"].includes(fresh.status)) {
         await transition(s.db, ep.id, fresh.status, "failed", { last_error: msg });
       }
-      const where = ep.status === "uploading" ? "\nThe upload may be incomplete; the next run will search the channel before re-uploading." : "";
+      const where =
+        (ep.status === "uploading" ? "\nThe upload may be incomplete; the next run will search the channel before re-uploading." : "") +
+        (fatal ? `\nNew stories are paused for ${FATAL_PAUSE_HOURS}h (or until YouTube is reconnected) so this can be fixed.` : "");
       await s.notify({
         embeds: [{ title: `⚠️ Episode failed at "${ep.status}"`, description: `${ep.script_json?.headline ?? ep.story_json.headline}\n\n${msg.slice(0, 1500)}${where}`, color: COLOURS.alert }],
       });
     }
     return false;
+  }
+}
+
+const FATAL_PAUSE_HOURS = 12;
+
+export async function pauseSelection(db: Db, now: Date, hours: number, reason: string): Promise<void> {
+  const value = JSON.stringify({ until: new Date(now.getTime() + hours * 3600_000).toISOString(), reason: reason.slice(0, 300) });
+  await db.query(
+    `INSERT INTO settings (key, value, updated_at) VALUES ('selection_pause', $1, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [value],
+  );
+}
+
+export async function clearSelectionPause(db: Db): Promise<void> {
+  await db.query(`DELETE FROM settings WHERE key = 'selection_pause'`);
+}
+
+/** The pause reason while selection is paused, otherwise undefined. */
+export async function selectionPause(db: Db, now: Date): Promise<string | undefined> {
+  const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = 'selection_pause'`);
+  if (!row) return undefined;
+  try {
+    const p = JSON.parse(row.value) as { until: string; reason: string };
+    return new Date(p.until).getTime() > now.getTime() ? p.reason : undefined;
+  } catch {
+    return undefined;
   }
 }
 

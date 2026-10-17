@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, redactedConfig, type Config } from "./config.ts";
 import { openDb, migrate, type Db } from "./db.ts";
 import { createServices, oauthConfig } from "./services.ts";
-import { tick, episodeDir, type Services } from "./pipeline.ts";
+import { tick, episodeDir, clearSelectionPause, type Services } from "./pipeline.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import { consentUrl, exchangeCode, saveRefreshToken, clearTokenCache } from "./youtube/oauth.ts";
@@ -125,6 +125,7 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
         const { refreshToken, scope } = await exchangeCode(oauthConfig(cfg), code);
         await saveRefreshToken(db, oauthConfig(cfg), refreshToken);
         clearTokenCache();
+        await clearSelectionPause(db); // the usual cause of a pause is a dead YouTube token
         await logEvent(db, null, "youtube_connected", { scope });
         return send(200, page("Connected", `<h1>YouTube connected.</h1><p>Scopes: ${esc(scope)}</p><p>You can close this tab.</p>`));
       } catch (err) {
@@ -200,7 +201,8 @@ async function main(): Promise<void> {
         if (!res.headersSent) res.writeHead(500).end("error");
       });
     })
-    .listen(cfg.port, () => log("info", "listening", { port: cfg.port }));
+    // Localhost only: the Cloudflare tunnel connects locally, so nothing else on the network needs in.
+    .listen(cfg.port, process.env.HOST || "127.0.0.1", () => log("info", "listening", { port: cfg.port }));
 
   setTimeout(() => void runTick(services, state), 15_000);
   setInterval(() => void runTick(services, state), cfg.tickMinutes * 60_000);

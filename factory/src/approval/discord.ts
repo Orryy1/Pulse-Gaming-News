@@ -11,10 +11,11 @@ export interface DiscordMessage {
   files?: string[];
 }
 
-export async function postDiscord(webhookUrl: string, msg: DiscordMessage): Promise<void> {
+/** true = delivered, false = delivery failed, undefined = Discord not configured. */
+export async function postDiscord(webhookUrl: string, msg: DiscordMessage): Promise<boolean | undefined> {
   if (!webhookUrl) {
     log("info", "discord (not configured)", { content: msg.content, title: msg.embeds?.[0]?.title });
-    return;
+    return undefined;
   }
   try {
     const payload = { username: "Pulse Factory", content: msg.content, embeds: msg.embeds, allowed_mentions: { parse: [] } };
@@ -29,9 +30,14 @@ export async function postDiscord(webhookUrl: string, msg: DiscordMessage): Prom
     } else {
       res = await fetchWithTimeout(webhookUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
     }
-    if (!res.ok) log("warn", "discord post failed", { status: res.status, body: (await res.text()).slice(0, 200) });
+    if (!res.ok) {
+      log("warn", "discord post failed", { status: res.status, body: (await res.text()).slice(0, 200) });
+      return false;
+    }
+    return true;
   } catch (err) {
     log("warn", "discord post failed", { error: errorMessage(err) });
+    return false;
   }
 }
 

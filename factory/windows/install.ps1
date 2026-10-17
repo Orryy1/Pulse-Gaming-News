@@ -25,8 +25,15 @@ node -v
 
 # ----------------------------------------------------------- dependencies
 Say "Installing dependencies (first run takes a few minutes)"
+# Stop a running factory first: its node/esbuild processes lock files in
+# node_modules, and npm ci would half-delete the folder and then fail.
+& (Join-Path $PSScriptRoot "uninstall.ps1") *> $null
+Get-Process esbuild -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$factory*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
 npm ci --no-audit --no-fund
+if ($LASTEXITCODE -ne 0) { throw "npm ci failed (exit $LASTEXITCODE). The factory is stopped until INSTALL.cmd completes; fix the error above and run it again." }
 npx remotion browser ensure
+if ($LASTEXITCODE -ne 0) { throw "Installing the render browser failed (exit $LASTEXITCODE). Run INSTALL.cmd again." }
 
 # ------------------------------------------------------------------- .env
 Say "Configuring"

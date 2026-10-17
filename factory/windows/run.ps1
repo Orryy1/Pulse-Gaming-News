@@ -24,11 +24,13 @@ function Update-Factory($log) {
     git merge --ff-only --quiet $upstream.Trim() 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { Log $log "update skipped: local changes prevent a fast-forward"; return }
     Set-Location $factory
-    if (git diff --name-only $before HEAD -- factory/package-lock.json) { & cmd /c "npm ci --no-audit --no-fund >> `"$log`" 2>&1" }
+    # Paths are repo-relative, so ask from the repo root.
+    if (git -C $repo diff --name-only $before HEAD -- factory/package-lock.json) { & cmd /c "npm ci --no-audit --no-fund >> `"$log`" 2>&1" }
     & cmd /c "npx tsc --noEmit -p . >> `"$log`" 2>&1"
     if ($LASTEXITCODE -ne 0) {
       Log $log "update failed typecheck; rolling back to $before"
-      Set-Location $repo; git reset --hard --quiet $before; Set-Location $factory
+      # --keep moves back without touching uncommitted local edits (it refuses rather than overwrite them).
+      Set-Location $repo; git reset --keep --quiet $before; Set-Location $factory
       & cmd /c "npm ci --no-audit --no-fund >> `"$log`" 2>&1"
       return
     }

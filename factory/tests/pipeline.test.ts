@@ -5,7 +5,8 @@ import path from "node:path";
 import type { z } from "zod";
 import type { Llm } from "../src/editorial/llm.ts";
 import { SelectionSchema, ScriptSchema, FactCheckSchema, VisionQaSchema, type FactCheck, type Script } from "../src/editorial/schema.ts";
-import { tick, type Services } from "../src/pipeline.ts";
+import { tick, selectionPause, clearSelectionPause, type Services } from "../src/pipeline.ts";
+import { FatalError } from "../src/lib/util.ts";
 import { getEpisode, listEpisodes } from "../src/episodes.ts";
 import { clusterItems } from "../src/discovery/cluster.ts";
 import { YouTubeClient, SessionGone, type FetchLike } from "../src/youtube/upload.ts";
@@ -262,5 +263,84 @@ test("rumour episodes always wait for a human, even in timeout mode", async () =
   setClock(new Date("2026-10-17T12:00:00Z"));
   await tick(s);
   assert.equal((await getEpisode(db, ep.id))!.status, "awaiting_approval");
+  assert.equal(f.uploads, 0);
+});
+
+/** A different, corroborated story so the next selection has something new to pick. */
+function freshStory(s: Services, now: Date) {
+  s.discover = async () =>
+    clusterItems(
+      [
+        item("Hollow Knight Silksong expansion dated for December", "Nintendo Life", "outlet", 20, now),
+        item("Silksong expansion dated for December by Team Cherry", "IGN", "outlet", 40, now),
+      ],
+      now,
+    );
+}
+
+test("a fatal upload error pauses story selection until it lapses or YouTube is reconnected", async () => {
+  const { db, f, s, setClock } = await setup({ dailyTarget: 3 });
+  s.youtube = () => {
+    const yt = fakeYouTube(f);
+    yt.createSession = async () => {
+      throw new FatalError("YouTube refresh token is invalid (invalid_grant)");
+    };
+    return yt;
+  };
+  await tick(s);
+  assert.equal((await only(db)).status, "failed");
+  assert.ok(f.notifications.some((n) => n.includes("Episode failed")));
+  assert.match((await selectionPause(db, new Date("2026-10-16T12:05:00Z"))) ?? "", /invalid_grant/);
+
+  const later = new Date("2026-10-16T13:00:00Z");
+  setClock(later);
+  freshStory(s, later);
+  await tick(s);
+  assert.equal((await listEpisodes(db)).length, 1, "no new story while paused");
+
+  await clearSelectionPause(db); // what a successful /oauth/callback does
+  await tick(s);
+  assert.equal((await listEpisodes(db)).length, 2, "selection resumes once reconnected");
+});
+
+test("uncorroborated stories always wait for a human, even in auto mode", async () => {
+  const { db, f, s } = await setup({ approvalMode: "auto", includeRumours: true }, { script: goodScript({ is_rumour: true, hook: "Starfield's second expansion has reportedly slipped to early 2027." }) });
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(ep.status, "awaiting_approval");
+  assert.equal(ep.approval_mode, "manual");
+  assert.equal(f.uploads, 0);
+});
+
+test("an unanswered manual approval expires after 48h and frees the daily slot", async () => {
+  const { db, s, setClock } = await setup({ approvalMode: "manual", dailyTarget: 1 });
+  await tick(s);
+  const first = await only(db);
+  assert.equal(first.status, "awaiting_approval");
+  const later = new Date("2026-10-18T12:30:00Z");
+  setClock(later);
+  freshStory(s, later);
+  await tick(s);
+  assert.equal((await getEpisode(db, first.id))!.status, "rejected");
+  await tick(s); // the next run (10 minutes later) picks a new story
+  assert.equal((await listEpisodes(db)).length, 2, "a new story was picked once the slot freed");
+});
+
+test("timeout mode never starts a countdown when the Discord notice failed", async () => {
+  const { db, s } = await setup({ approvalMode: "timeout" });
+  s.notify = async () => false;
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(ep.status, "rendered");
+  assert.match(ep.last_error ?? "", /Discord/);
+});
+
+test("a vision QA fail with no listed problems still blocks the upload", async () => {
+  const { db, f, s } = await setup({ maxAttempts: 1 });
+  s.visionQa = async () => ({ verdict: "fail", problems: [], notes: "headline clipped" });
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(ep.status, "failed");
+  assert.match(ep.last_error ?? "", /headline clipped/);
   assert.equal(f.uploads, 0);
 });

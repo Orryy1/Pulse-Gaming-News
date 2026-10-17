@@ -101,11 +101,13 @@ export async function discoverTick(s: Services): Promise<number> {
   for (const c of clusters) {
     await s.db.query(
       `INSERT INTO cluster_sightings (hash, headline, first_seen, last_seen, item_count, has_official, max_score, cluster_json)
-       VALUES ($1, $2, $3, $3, $4, $5, $6, $7)
+       VALUES ($1, $2, least($3::timestamptz, $8::timestamptz), $3, $4, $5, $6, $7)
        ON CONFLICT (hash) DO UPDATE SET last_seen = EXCLUDED.last_seen, item_count = EXCLUDED.item_count,
          has_official = cluster_sightings.has_official OR EXCLUDED.has_official,
          max_score = greatest(cluster_sightings.max_score, EXCLUDED.max_score), cluster_json = EXCLUDED.cluster_json, headline = EXCLUDED.headline`,
-      [c.hash, c.headline, now, c.items.length, c.hasOfficial, c.score, JSON.stringify(c)],
+      // first_seen never predates the poll but never postdates the newest article either, so a
+      // restart does not make every old story look minutes old.
+      [c.hash, c.headline, now, c.items.length, c.hasOfficial, c.score, JSON.stringify(c), new Date(c.newestAt)],
     );
   }
   await s.db.query(`DELETE FROM cluster_sightings WHERE last_seen < now() - interval '7 days'`);

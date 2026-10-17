@@ -110,14 +110,15 @@ export async function discoverTick(s: Services): Promise<number> {
       [c.hash, c.headline, now, c.items.length, c.hasOfficial, c.score, JSON.stringify(c), new Date(c.newestAt)],
     );
   }
-  await s.db.query(`DELETE FROM cluster_sightings WHERE last_seen < now() - interval '7 days'`);
+  // Age is measured on the pipeline's clock (s.now()), the same one that stamped last_seen.
+  await s.db.query(`DELETE FROM cluster_sightings WHERE last_seen < $1::timestamptz - interval '7 days'`, [now]);
   return clusters.length;
 }
 
 async function recentSightings(s: Services): Promise<Array<{ cluster: StoryCluster; sighting: Sighting }>> {
   const rows = await s.db.query<Sighting & { cluster_json: StoryCluster }>(
-    `SELECT hash, first_seen, last_seen, item_count, has_official, max_score, cluster_json FROM cluster_sightings WHERE last_seen > now() - ($1 || ' hours')::interval ORDER BY max_score DESC`,
-    [String(s.cfg.maxStoryAgeHours)],
+    `SELECT hash, first_seen, last_seen, item_count, has_official, max_score, cluster_json FROM cluster_sightings WHERE last_seen > $2::timestamptz - ($1 || ' hours')::interval ORDER BY max_score DESC`,
+    [String(s.cfg.maxStoryAgeHours), s.now()],
   );
   return rows.map((r) => ({ cluster: r.cluster_json, sighting: r }));
 }

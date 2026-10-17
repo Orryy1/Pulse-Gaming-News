@@ -203,6 +203,10 @@ async function main(): Promise<void> {
   if (!cfg.appSecret) throw new Error("APP_SECRET is required");
   const db = await openDb(cfg.databaseUrl, cfg.dataDir);
   const applied = await migrate(db);
+  // One process runs this factory: any lease on the table was left by a process that died mid-tick
+  // (a restart during a render) and would otherwise block every tick until it expired.
+  const stale = await db.query<{ name: string }>(`DELETE FROM leases RETURNING name`);
+  if (stale.length) log("warn", "stale leases cleared at boot", { names: stale.map((r) => r.name) });
   log("info", "starting", { ...redactedConfig(cfg), migrationsApplied: applied });
   const services = createServices(db, cfg);
   const state: { lastTick?: string; lastError?: string; doctor?: string } = {};

@@ -26,6 +26,11 @@ import {
   ruleThenContent,
 } from "../motion.ts";
 import { DISPLAY, BODY } from "./fonts.ts";
+import { Timeline } from "./data/Timeline.tsx";
+import { PriceTag } from "./data/PriceTag.tsx";
+import { Ring } from "./data/Ring.tsx";
+import { Calendar } from "./data/Calendar.tsx";
+import { BarCompare, parseBars } from "./data/BarCompare.tsx";
 
 export { SAFE } from "../layout.ts";
 export { DISPLAY, BODY } from "./fonts.ts";
@@ -271,7 +276,8 @@ export const FactCard: React.FC<{
   accent: string;
   takeLabel: string;
   durationInFrames: number;
-}> = ({ segment, accent, takeLabel, durationInFrames }) => {
+  renderDate: string;
+}> = ({ segment, accent, takeLabel, durationInFrames, renderDate }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const v = segment.visual;
@@ -413,6 +419,27 @@ export const FactCard: React.FC<{
             </div>
           ) : null}
         </div>
+      </div>
+    );
+  }
+
+  const dataCard =
+    v.kind === "timeline" && v.date_from && v.date_to ? (
+      <Timeline from={v.date_from} to={v.date_to} label={v.primary} accent={accent} />
+    ) : v.kind === "price" ? (
+      <PriceTag price={v.primary} was={v.was} region={v.region} label={label} accent={accent} />
+    ) : v.kind === "score" && typeof v.value_a === "number" ? (
+      <Ring value={v.value_a} label={label || v.primary} chips={v.items} suffix={/%$/.test(v.primary.trim()) ? "%" : ""} />
+    ) : v.kind === "countdown" && v.date_to ? (
+      <Calendar date={v.date_to} renderDate={renderDate} label={label} accent={accent} />
+    ) : v.kind === "compare" && v.items && parseBars(v.items).length >= 2 ? (
+      <BarCompare rows={parseBars(v.items)} label={v.primary} accent={accent} />
+    ) : null;
+  if (dataCard) {
+    return (
+      <div style={base}>
+        {ruleBar}
+        {dataCard}
       </div>
     );
   }

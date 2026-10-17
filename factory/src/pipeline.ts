@@ -395,6 +395,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       steam: steamLite,
       emphasis: emphasisWords(script),
       plan,
+      renderDate: s.now().toISOString().slice(0, 10),
     },
   });
   await s.normalise(raw, final);

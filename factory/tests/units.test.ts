@@ -6,6 +6,10 @@ import { buildSegments, pageCaptions, srtFromWords } from "../src/render/timelin
 import { capFootage, footageBudgetSeconds } from "../src/assets/footage.ts";
 import { videoMetadata } from "../src/pipeline.ts";
 import { missingScopes } from "../src/doctor.ts";
+import { parseBars } from "../src/render/components/data/BarCompare.tsx";
+import { dateLabel, monthsBetween } from "../src/render/components/data/Timeline.tsx";
+import { daysUntil } from "../src/render/components/data/Calendar.tsx";
+import { bandColour } from "../src/render/components/data/Ring.tsx";
 import { wordsFromAlignment } from "../src/voice/elevenlabs.ts";
 import { validateScript } from "../src/editorial/editorial.ts";
 import { narrationOf } from "../src/editorial/schema.ts";
@@ -229,4 +233,26 @@ test("doctor reports the YouTube scopes a login lacks", () => {
   assert.deepEqual(missingScopes(upload).map((s) => s.split("/").at(-1)), ["youtube.force-ssl", "yt-analytics.readonly"]);
   const full = "https://www.googleapis.com/auth/youtube.force-ssl https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/yt-analytics.readonly";
   assert.deepEqual(missingScopes(full), []);
+});
+
+test("data cards: the validator insists on the fields each card needs", () => {
+  const s = goodScript();
+  const beat = (visual: any) => ({ ...s, beats: [{ narration: s.beats[0]!.narration, visual }, ...s.beats.slice(1)] });
+  assert.ok(validateScript(beat({ kind: "timeline", primary: "Window", secondary: "", date_from: "2026-12", date_to: "2027-03" })).every((p) => !p.includes("Timeline")));
+  assert.ok(validateScript(beat({ kind: "timeline", primary: "Window", secondary: "", date_from: "December", date_to: "2027-03" })).some((p) => p.includes("Timeline card")));
+  assert.ok(validateScript(beat({ kind: "price", primary: "free", secondary: "" })).some((p) => p.includes("no price")));
+  assert.ok(validateScript(beat({ kind: "score", primary: "72", secondary: "", value_a: 172 })).some((p) => p.includes("Score card")));
+  assert.ok(validateScript(beat({ kind: "compare", primary: "Players", secondary: "", items: ["*A:10"] })).some((p) => p.includes("Compare card")));
+  assert.ok(validateScript(beat({ kind: "countdown", primary: "14 March", secondary: "", date_to: "2027-03-14" })).every((p) => !p.includes("Countdown")));
+});
+
+test("data card helpers parse what the writer gives them", () => {
+  assert.deepEqual(parseBars(["*Starfield:4,088", "Outer Worlds 2:1,950", "junk", "Avowed:1.4k"]).map((r) => [r.label, r.value, r.highlight]), [["Starfield", 4088, true], ["Outer Worlds 2", 1950, false], ["Avowed", 1400, false]]);
+  assert.equal(parseBars(["A:5", "B:9"])[0]!.highlight, true, "the first row is the subject when none is marked");
+  assert.equal(dateLabel("2027-03"), "MAR 2027");
+  assert.equal(dateLabel("2027-03-14"), "14 MAR 2027");
+  assert.equal(monthsBetween("2026-12", "2027-03"), 3);
+  assert.equal(daysUntil("2027-03-14", "2026-10-17"), 148);
+  assert.equal(bandColour(85), "#22C55E");
+  assert.equal(bandColour(55), "#FF3B3B");
 });

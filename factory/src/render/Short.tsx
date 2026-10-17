@@ -174,6 +174,7 @@ export const Short: React.FC<ShortProps> = (props) => {
               accent={accent}
               takeLabel={theme.takeLabel}
               durationInFrames={segmentEnds[i]! - segmentStarts[i]!}
+              renderDate={props.renderDate}
             />
           </Sequence>
         ) : null,

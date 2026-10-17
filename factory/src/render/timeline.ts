@@ -6,9 +6,15 @@ import type { Word } from "../voice/elevenlabs.ts";
 export type SegmentKind = "hook" | "beat" | "take" | "loop";
 
 export interface Visual {
-  kind: "title" | "stat" | "date" | "quote" | "list" | "none";
+  kind: "title" | "stat" | "date" | "quote" | "list" | "none" | "timeline" | "price" | "score" | "countdown" | "compare";
   primary: string;
   secondary: string;
+  date_from?: string;
+  date_to?: string;
+  was?: string;
+  region?: string;
+  value_a?: number;
+  items?: string[];
 }
 
 export interface Segment {

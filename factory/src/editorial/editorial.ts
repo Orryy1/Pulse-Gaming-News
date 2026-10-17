@@ -47,7 +47,14 @@ Write a 25-40 second vertical Short script (${WORDS_MIN}-${WORDS_MAX} spoken wor
 
 Structure:
 1. hook: state the news itself in the first sentence, with the game name. Never open with "So", "Today", "Hey", "Welcome", "In this", "Guys" or a question that withholds the news.
-2. beats: two to four short fact beats, each with one on-screen visual. Use "stat" for numbers and prices, "date" for dates, "quote" for a short official quote (under 12 words, from the sources), "list" for 2-3 short items separated by " | ", "title" for a key phrase.
+2. beats: two to four short fact beats, each with one on-screen visual card. Pick the card that fits the fact:
+   - "timeline" for a delay or date change: primary is a 2-5 word phrase, date_from is the old date and date_to the new date, both ISO (YYYY-MM or YYYY-MM-DD).
+   - "countdown" for a confirmed release date: primary is the date as spoken, date_to is the ISO date.
+   - "price" for a price: primary is the new price exactly as written (e.g. £69.99), was is the old price if the story gives one, region is the region or platform.
+   - "score" for a review score or rating out of 100: primary is the score as written, value_a the number 0-100, items up to 3 outlet names.
+   - "compare" for one number against others (sales, players, prices across platforms): items are 2-5 rows as "label:value" with the subject row marked "*label:value".
+   - "stat" for any other number, "date" for other dates, "quote" for a short official quote (under 12 words, from the sources), "list" for 2-3 short items separated by " | ", "title" for a key phrase.
+   Never pad a card with numbers the sources do not give.
 3. pulse_take: the Pulse angle. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion ("Our read:"). Opinions must be framed as opinion. Do not invent data.
 4. loop_line: one line that flows back into the hook so the loop feels seamless.
 
@@ -180,6 +187,12 @@ export function validateScript(s: Script): string[] {
   }
   for (const b of s.beats) {
     if (b.visual.kind !== "none" && wordCount(b.visual.primary) > 7) problems.push(`On-screen text "${b.visual.primary}" is too long to read in a second.`);
+    const iso = (d?: string) => !!d && /^\d{4}(-\d{2}(-\d{2})?)?$/.test(d.trim());
+    if (b.visual.kind === "timeline" && !(iso(b.visual.date_from) && iso(b.visual.date_to))) problems.push(`Timeline card "${b.visual.primary}" needs date_from and date_to as ISO dates.`);
+    if (b.visual.kind === "countdown" && !iso(b.visual.date_to)) problems.push(`Countdown card "${b.visual.primary}" needs date_to as an ISO date.`);
+    if (b.visual.kind === "price" && !/\d/.test(b.visual.primary)) problems.push(`Price card "${b.visual.primary}" has no price.`);
+    if (b.visual.kind === "score" && !(typeof b.visual.value_a === "number" && b.visual.value_a >= 0 && b.visual.value_a <= 100)) problems.push(`Score card "${b.visual.primary}" needs value_a between 0 and 100.`);
+    if (b.visual.kind === "compare" && (b.visual.items ?? []).filter((r) => /:\s*[^:]*\d/.test(r)).length < 2) problems.push(`Compare card "${b.visual.primary}" needs at least two label:value rows.`);
   }
   return problems;
 }

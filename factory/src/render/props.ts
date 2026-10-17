@@ -44,74 +44,37 @@ export type ShortProps = {
   musicSrc: string | null;
   durationSeconds: number;
   variant: number;
+  renderDate: string; // ISO date the Short is made on (passed in, never read from a clock in the composition)
 };
 
 export const SAMPLE_PROPS: ShortProps = {
-  headline: "Silksong DLC Lands This December",
-  storyType: "release_date",
-  gameTitle: "Hollow Knight: Silksong",
-  gameSubtitle: "TEAM CHERRY · 2025",
+  headline: "Starfield Expansion Slips To 2027",
+  storyType: "delay",
+  gameTitle: "Starfield",
+  gameSubtitle: "BETHESDA · 2023",
   isRumour: false,
-  attribution: "Source: Team Cherry / IGN",
+  attribution: "Source: Xbox Wire / IGN",
   footageCredit: "",
   segments: [
-    {
-      kind: "hook",
-      text: "Hollow Knight Silksong's first expansion lands on the eleventh of December.",
-      start: 0,
-      end: 3.6,
-    },
-    {
-      kind: "beat",
-      text: "It is free for everyone who owns the game.",
-      start: 3.6,
-      end: 6.4,
-      visual: { kind: "stat", primary: "FREE", secondary: "for all owners" },
-    },
-    {
-      kind: "beat",
-      text: "Team Cherry says it adds a new region and twelve bosses.",
-      start: 6.4,
-      end: 10,
-      visual: {
-        kind: "list",
-        primary: "New region | 12 bosses",
-        secondary: "",
-      },
-    },
-    {
-      kind: "take",
-      text: "Our read: after a seven-year wait for the base game, a four-month turnaround is a statement.",
-      start: 10,
-      end: 15.5,
-      label: "OUR READ",
-      visual: {
-        kind: "title",
-        primary: "A four-month turnaround",
-        secondary: "",
-      },
-    },
-    {
-      kind: "loop",
-      text: "And the date to remember is",
-      start: 15.5,
-      end: 17.5,
-    },
+    { kind: "hook", text: "Starfield's second expansion has slipped from this December to early twenty twenty seven.", start: 0, end: 4.2 },
+    { kind: "beat", text: "Bethesda now says the expansion lands in March, three months later than planned.", start: 4.2, end: 8.4, visual: { kind: "timeline", primary: "Expansion window", secondary: "", date_from: "2026-12", date_to: "2027-03" } },
+    { kind: "beat", text: "The price holds at twenty nine ninety nine, down from the thirty four ninety nine first listed.", start: 8.4, end: 12.6, visual: { kind: "price", primary: "£29.99", secondary: "expansion price", was: "£34.99", region: "UK" } },
+    { kind: "beat", text: "The base game still sits at a seventy two on Metacritic across the big outlets.", start: 12.6, end: 16.4, visual: { kind: "score", primary: "72", secondary: "Metacritic", value_a: 72, items: ["IGN", "GameSpot", "Eurogamer"] } },
+    { kind: "beat", text: "On Steam it is still pulling more players than Outer Worlds two and Avowed combined.", start: 16.4, end: 20.6, visual: { kind: "compare", primary: "Playing on Steam now", secondary: "", items: ["*Starfield:4,088", "Outer Worlds 2:1,950", "Avowed:1,420"] } },
+    { kind: "beat", text: "Bethesda has pencilled the new date for the fourteenth of March.", start: 20.6, end: 24.2, visual: { kind: "countdown", primary: "14 March 2027", secondary: "new date", date_to: "2027-03-14" } },
+    { kind: "take", text: "Our read: a three month slip on a project this size is not a red flag yet.", start: 24.2, end: 28.6, label: "OUR READ", visual: { kind: "title", primary: "Not a red flag yet", secondary: "" } },
+    { kind: "loop", text: "And the new date to remember is March twenty twenty seven.", start: 28.6, end: 31.5 },
   ],
   words: [],
   images: [],
   clips: [],
-  steam: {
-    currentPlayers: 48213,
-    positivePercent: 96,
-    totalReviews: 120000,
-    price: "£16.75",
-  },
-  emphasis: ["silksong", "december", "free"],
+  steam: { currentPlayers: 4088, positivePercent: 72, totalReviews: 180000, price: "£29.99" },
+  emphasis: ["starfield", "march", "2027"],
   plan: null,
   logoSrc: "logo.png",
   audioSrc: null,
   musicSrc: "music_2.mp3",
-  durationSeconds: 17.5,
+  durationSeconds: 31.5,
   variant: 0,
+  renderDate: "2026-10-17",
 };

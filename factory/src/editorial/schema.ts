@@ -13,7 +13,7 @@ export const STORY_TYPES = [
   "other",
 ] as const;
 
-export const VISUAL_KINDS = ["title", "stat", "date", "quote", "list", "none"] as const;
+export const VISUAL_KINDS = ["title", "stat", "date", "quote", "list", "none", "timeline", "price", "score", "countdown", "compare"] as const;
 
 export const SelectionSchema = z.object({
   candidate_index: z.number().describe("Index of the chosen candidate, or -1 if none is good enough"),
@@ -27,8 +27,14 @@ export const BeatSchema = z.object({
   narration: z.string().describe("One or two short spoken sentences"),
   visual: z.object({
     kind: z.enum(VISUAL_KINDS),
-    primary: z.string().describe("Big on-screen text: a number, date, short quote or 2-5 word phrase. Empty for kind none"),
+    primary: z.string().describe("Big on-screen text: a number, date, short quote or 2-5 word phrase. For price: the new price as written, e.g. £69.99. For score: the score as written. Empty for kind none"),
     secondary: z.string().describe("Small label under the primary text. May be empty"),
+    date_from: z.string().optional().describe("timeline only: the old date as ISO YYYY-MM or YYYY-MM-DD"),
+    date_to: z.string().optional().describe("timeline and countdown: the new or target date as ISO YYYY-MM or YYYY-MM-DD"),
+    was: z.string().optional().describe("price only: the previous price as written, if the story gives one"),
+    region: z.string().optional().describe("price only: region or platform the price applies to, e.g. UK or PS5"),
+    value_a: z.number().optional().describe("score only: the score 0-100"),
+    items: z.array(z.string()).max(5).optional().describe("compare: 2-5 rows as label:value, the subject row marked with a leading *; score: up to 3 outlet names"),
   }),
 });
 
@@ -60,6 +66,7 @@ export const ScriptSchema = z.object({
   ),
 });
 export type Script = z.infer<typeof ScriptSchema>;
+export type BeatVisual = z.infer<typeof BeatSchema>["visual"];
 
 export const FactCheckSchema = z.object({
   verdict: z.enum(["pass", "fail"]),

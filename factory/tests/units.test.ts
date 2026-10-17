@@ -291,6 +291,9 @@ test("SEO: titles are game-first, short and clean; tags, hashtags, lead and comm
   assert.ok(new Set(tags.map((x) => x.toLowerCase())).size === tags.length, "no duplicate tags");
   assert.deepEqual(hashtags(s), ["#Shorts", "#GamingNews", "#Starfield"]);
   assert.match(keywordLead(s), /^Starfield delayed: /);
+  const ranking = goodScript({ game_title: "Resident Evil", headline: "Six Resident Evil games ranked", evergreen_format: "ranking", pulse_take: { ...s.pulse_take, on_screen: "RE7 wins on dread" }, entries: Array.from({ length: 6 }, (_, i) => ({ rank: i + 1, game_title: `RE ${i}`, steam_search_term: "", year: 2000 + i, platforms: "PC" })) });
+  assert.match(keywordLead(ranking), /^6 Resident Evil games ranked worst to best: Six Resident Evil games ranked\./);
+  assert.match(pinnedComment(ranking), /^Our pick: RE7 wins on dread\. Which Resident Evil game would you move/);
   assert.match(pinnedComment(s), /^Our read: .*\? Sources are in the description\.$/);
 });
 

@@ -668,6 +668,32 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
   if (publishAt) await logEvent(s.db, ep.id, "scheduled", { publish_at: publishAt.toISOString(), lane: ep.lane });
 }
 
+/**
+ * The description's footage credit, built from each clip's provenance: Steam
+ * trailers grouped by game, publisher YouTube trailers listed with their link,
+ * the Xbox content rules line when Microsoft material is involved.
+ */
+export function footageCredits(script: Script, clips: Array<{ provenance: string }>, official: EpisodeAssets["officialTrailer"] | undefined, publisher: string | undefined, headline: string): string {
+  if (!clips.length && !official) return "";
+  const steamGames = new Set<string>();
+  const channels = new Map<string, string>(); // channel -> url
+  for (const c of clips) {
+    const steam = c.provenance.match(/^Official Steam trailer "[^"]*" for "([^"]+)"/);
+    if (steam) steamGames.add(steam[1]!);
+    const yt = c.provenance.match(/from the (.+?) YouTube channel, publisher: [^(]+\((https?:[^)]+)\)/);
+    if (yt) channels.set(yt[1]!, yt[2]!);
+  }
+  if (official) channels.set(official.channelTitle, official.url);
+  const lines: string[] = [];
+  // Clips whose provenance names no trailer (older episodes, test fixtures) still get the generic credit.
+  if (!steamGames.size && !channels.size && clips.length) lines.push(`Footage: ${script.game_title} official trailer${publisher ? ` (${publisher})` : ""}, via Steam. Store art: Steam.`);
+  if (steamGames.size === 1 && !script.entries?.length) lines.push(`Footage: ${[...steamGames][0]} official trailer${publisher ? ` (${publisher})` : ""}, via Steam, a few seconds. Store art: Steam.`);
+  else if (steamGames.size) lines.push(`Footage: official Steam trailers, a few seconds each: ${[...steamGames].join(", ")}. Store art: Steam.`);
+  for (const [channel, url] of channels) lines.push(`Footage and still: the official ${channel} YouTube channel (${url}).`);
+  if (/microsoft|xbox game studios|bethesda/i.test(`${publisher ?? ""} ${headline}`)) lines.push("Game footage used under Microsoft's Game Content Usage Rules: https://www.xbox.com/en-US/developers/rules");
+  return lines.length ? `\n${lines.join("\n")}` : "";
+}
+
 export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], syntheticMedia = true) {
   const script = ep.script_json!;
   const credits = ep.story_json.items
@@ -677,25 +703,16 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], sy
   const clips = ep.assets_json?.clips ?? [];
   const publisher = clips[0]?.provenance.match(/publisher[^:]*:\s*([^;)]+)/i)?.[1]?.trim() ?? ep.assets_json?.officialTrailer?.publisher;
   const official = ep.assets_json?.officialTrailer;
-  const footage = clips.length || official
-    ? [
-        official
-          ? `\nFootage and still: "${official.title}" from the official ${official.channelTitle} YouTube channel (${official.url}).`
-          : `\nFootage: ${script.game_title} official trailer${publisher ? ` (${publisher})` : ""}, via Steam. Store art: Steam.`,
-        /microsoft|xbox game studios|bethesda/i.test(`${publisher ?? ""} ${ep.story_json.headline}`) ? "Game footage used under Microsoft's Game Content Usage Rules: https://www.xbox.com/en-US/developers/rules" : "",
-      ]
-        .filter(Boolean)
-        .join("\n")
-    : "";
+  const footage = footageCredits(script, clips, official, publisher, ep.story_json.headline);
   const body = script.youtube.description.trim().replace(/#\w+/g, "").replace(/\s{2,}/g, " ").trim();
   const description = [
     keywordLead(script),
     "",
     body,
     script.is_rumour ? "\nThis story is unconfirmed. We will update if it is confirmed or denied." : "",
-    `\nSources:\n${credits}`,
+    credits ? `\nSources:\n${credits}` : "",
     footage,
-    "\nNarration: locally generated British synthetic voice. Visuals: official publisher material, credited.",
+    "\nNarration: AI-generated synthetic voice. Visuals: official publisher material, credited.",
     "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
     hashtags(script).join(" "),
   ]

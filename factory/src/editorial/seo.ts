@@ -237,6 +237,13 @@ export function hashtags(script: Script): string[] {
 
 /** The first two lines of a description: the keyword stack YouTube indexes, written as a sentence. */
 export function keywordLead(script: Script): string {
+  const n = script.entries?.length ?? 0;
+  if (n) {
+    // A ranking is searched as "every X game ranked"; say so first, then the premise.
+    const theme = script.game_title.trim() || "gaming";
+    const lead = n >= 8 ? `Every ${theme} game ranked` : `${n} ${theme} games ranked`;
+    return `${lead} worst to best: ${script.headline.replace(/\.$/, "")}. Best ${theme} games, ${theme} ranking, by Pulse Gaming News.`;
+  }
   const kws = storyKeywords(script).slice(0, 4);
   const type = (STORY_TERMS[script.story_type] ?? ["news"])[0]!;
   const subject = script.game_title || kws[0] || "gaming";
@@ -250,6 +257,7 @@ export function keywordLead(script: Script): string {
 export function pinnedComment(script: Script): string {
   const take = script.pulse_take.on_screen.replace(/\.$/, "");
   const game = script.game_title || "this";
+  if (script.entries?.length) return `Our pick: ${take}. Which ${game} game would you move up or down the list? Every pick is explained in the video.`;
   const q =
     script.story_type === "delay"
       ? `Does the new date change your plans for ${game}?`

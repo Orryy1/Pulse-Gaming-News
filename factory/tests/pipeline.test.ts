@@ -14,6 +14,7 @@ import {
 } from "../src/editorial/schema.ts";
 import {
   tick,
+  footageCredits,
   selectionPause,
   clearSelectionPause,
   type Services,
@@ -224,6 +225,20 @@ async function only(db: Db) {
   assert.equal(eps.length, 1);
   return eps[0]!;
 }
+
+test("footage credits name every trailer source and skip an empty sources block", () => {
+  const clips = [
+    { provenance: 'Official Steam trailer "Launch" for "Resident Evil 4" (app 1), 2.4s at 10.0s, muted; chosen for beat:0 by model (x)' },
+    { provenance: 'Official Steam trailer "Reveal" for "Resident Evil 7 Biohazard" (app 2), 2.4s at 10.0s, muted; chosen for beat:1 by model (x)' },
+    { provenance: 'Official trailer "RE Code Veronica" from the Capcom YouTube channel, publisher: Capcom (https://www.youtube.com/watch?v=abc), 2s at 5.0s, muted; chosen for beat:2 by model (x)' },
+  ];
+  const credit = footageCredits(goodScript({ entries: [{ rank: 1, game_title: "x", steam_search_term: "", year: 2020, platforms: "PC" }] }), clips, undefined, "Capcom", "ranking");
+  assert.match(credit, /official Steam trailers, a few seconds each: Resident Evil 4, Resident Evil 7 Biohazard/);
+  assert.match(credit, /official Capcom YouTube channel \(https:\/\/www\.youtube\.com\/watch\?v=abc\)/);
+  const single = footageCredits(goodScript(), [clips[0]!], undefined, "Capcom", "news");
+  assert.match(single, /^\nFootage: Resident Evil 4 official trailer \(Capcom\), via Steam/);
+  assert.equal(footageCredits(goodScript(), [], undefined, undefined, "x"), "");
+});
 
 test("one tick takes a corroborated story all the way to published", async () => {
   const { db, f, s, dir } = await setup();

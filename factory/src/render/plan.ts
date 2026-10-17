@@ -211,11 +211,17 @@ export function planCuts(
 
 /** The still that opens and closes the Short: a 16:9 shot if there is one, else the first image. */
 export function pickHero(images: PlanImage[]): number {
-  const wide = images.findIndex((i) => i.aspect >= 1.2 && i.aspect <= 2.1);
-  if (wide >= 0) return wide;
-  const tall = images.findIndex((i) => i.aspect < 0.9);
-  if (tall >= 0) return tall;
-  return images.length ? 0 : -1;
+  // The topic's own art first; art tagged for a ranking entry belongs to that entry.
+  const pools = [images.map((img, i) => ({ img, i })).filter((x) => x.img.beatIndex === undefined), images.map((img, i) => ({ img, i }))];
+  for (const pool of pools) {
+    if (!pool.length) continue;
+    const wide = pool.find((x) => x.img.aspect >= 1.2 && x.img.aspect <= 2.1);
+    if (wide) return wide.i;
+    const tall = pool.find((x) => x.img.aspect < 0.9);
+    if (tall) return tall.i;
+    return pool[0]!.i;
+  }
+  return -1;
 }
 
 const isFramedStill = (img: PlanImage) =>
@@ -304,6 +310,17 @@ export function planShots(
   // of its own, or is folded into the next shot of the same line when it is too
   // short to stand alone. A clip never freezes on its last frame for more than
   // FREEZE_TOLERANCE frames.
+  // The least-used still of any kind, tagged or not: for the take of a ranking Short once the topic's own art is spent.
+  const takeAnyStill = (exclude?: PlanMedia): PlanMedia | undefined => {
+    const pick = images
+      .map((_, i) => i)
+      .filter((i) => i !== heroIndex && !same(exclude, { type: "image", index: i }))
+      .sort((a, b) => stillUses[a]! - stillUses[b]! || a - b)[0];
+    if (pick === undefined) return undefined;
+    stillUses[pick]!++;
+    return { type: "image", index: pick };
+  };
+
   const takeClip = (
     n: number,
     c: { start: number; end: number; segment: number },
@@ -391,7 +408,10 @@ export function planShots(
         takeClip(n, c, beatIndex, false) ??
         takeStill((i) => true, last, beatIndex);
     } else if (seg.kind === "take") {
-      media = takeClip(n, c, undefined, true) ?? takeStill((i) => true, last);
+      media =
+        takeClip(n, c, undefined, true) ??
+        takeStill((i) => true, last) ??
+        takeAnyStill(last);
     } else {
       media = takeStill((i) => true, last);
     }
@@ -407,13 +427,13 @@ export function planShots(
           ? takeStill((i) => true, media, beatIndex, true)
           : takeStill((i) => true, media);
       const prevShot = shots.at(-1);
+      const hold = alt ?? media;
       if (
         kind === "rank" &&
-        media &&
-        (!alt || same(alt, media)) &&
+        hold &&
         prevShot &&
         prevShot.segment === c.segment &&
-        same(prevShot.media, media)
+        same(prevShot.media, hold)
       ) {
         // The entry has nothing else to show: its art holds the rest of the line as one longer shot.
         prevShot.end = c.end;

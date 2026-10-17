@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildPlan,
+  pickHero,
   planCuts,
   MIN_SHOT,
   MAX_SHOT,
@@ -361,4 +362,12 @@ test("a ranking entry only ever shows its own art or moment, never the hero or a
     if (a.segment === b.segment && segments[b.segment]!.kind === "beat") assert.ok(!(a.media.type === b.media.type && a.media.index === b.media.index), `shot ${k} repeats its neighbour inside an entry`);
   }
   for (let k = 1; k < plan.shots.length; k++) assert.equal(plan.shots[k]!.start, plan.shots[k - 1]!.end, "shots stay contiguous after merging");
+  assert.equal(plan.heroIndex, 0, "the topic's own 16:9 art is the hero, not an entry's");
+  const takeSeg = segments.findIndex((s) => s.kind === "take");
+  assert.ok(plan.shots.filter((s) => s.segment === takeSeg).every((s) => s.media.type !== "plate"), "the take revisits art rather than sitting on the plate");
+});
+
+test("the hero is never one ranking entry's art while the topic has its own", () => {
+  assert.equal(pickHero([{ kind: "hero", aspect: 1.778, beatIndex: 3 }, { kind: "hero", aspect: 3.1 }, { kind: "capsule", aspect: 0.667 }]), 2);
+  assert.equal(pickHero([{ kind: "hero", aspect: 1.778, beatIndex: 3 }, { kind: "capsule", aspect: 0.667, beatIndex: 1 }]), 0, "with only entry art the first 16:9 one will do");
 });

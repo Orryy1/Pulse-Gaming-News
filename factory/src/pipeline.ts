@@ -25,6 +25,7 @@ import { narrationOf, type Script } from "./editorial/schema.ts";
 import { buildSegments, srtFromWords, type SegmentInput } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
+import { scorePlan, rubricSummary } from "./qa/rubric.ts";
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
@@ -64,6 +65,8 @@ export interface Services {
   youtube(): YouTubeClient;
   /** true = delivered, false = failed, undefined/void = Discord not configured. */
   notify(msg: DiscordMessage): Promise<boolean | undefined | void>;
+  /** True when PUBLIC_URL answers (or is local), so approval links could have been used. */
+  publicReachable(): Promise<boolean>;
   now(): Date;
 }
 
@@ -267,7 +270,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   for (const clip of assets.clips ?? []) if (!clip.blurFile) clip.blurFile = await blurPlate(dir, clip.file).catch(() => undefined);
   const steamLite = assets.steam?.facts ? { currentPlayers: assets.steam.facts.currentPlayers, positivePercent: assets.steam.facts.positivePercent, totalReviews: assets.steam.facts.totalReviews, price: assets.steam.facts.price, releaseDate: assets.steam.facts.releaseDate, metacritic: assets.steam.facts.metacritic } : null;
   // Plan then render: the plan is persisted so a retry renders the identical Short.
-  const plan = assets.plan ?? buildPlan({
+  // A red rubric rebuilds the plan once with another variant, then fails the episode.
+  const planInput = {
     segments,
     words,
     durationSeconds: duration,
@@ -278,7 +282,19 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     attribution: script.attribution,
     variant,
     steam: steamLite,
-  });
+  };
+  const footageSeconds = (assets.clips ?? []).reduce((n, c) => n + c.durationSeconds, 0);
+  const rubricFor = (plan: ReturnType<typeof buildPlan>) =>
+    scorePlan({ plan, segments, words, footageSeconds, footageBudgetSeconds: 14, hookWords: script.hook.split(/\s+/).filter(Boolean).length });
+  let plan = assets.plan ?? buildPlan(planInput);
+  let rubric = rubricFor(plan);
+  if (rubric.grade === "red" && !assets.plan) {
+    log("warn", "plan rejected by rubric, rebuilding", { episode: ep.id, problems: rubricSummary(rubric) });
+    plan = buildPlan({ ...planInput, variant: (variant + 1) % 4 });
+    rubric = rubricFor(plan);
+    if (rubric.grade === "red") throw new FatalError(`render plan fails the rubric: ${rubricSummary(rubric)}`);
+  }
+  await logEvent(s.db, ep.id, "rubric", { grade: rubric.grade, summary: rubricSummary(rubric) || "all green" });
   assets.plan = plan;
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
   const publisher = String((assets.steam ? (await s.findGame(assets.steam.name).catch(() => undefined))?.details?.publishers?.[0] : "") ?? "");
@@ -326,7 +342,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     const frames = await s.extractFrames(final, path.join(dir, "qa"), times.slice(0, 8));
     vision = await s.visionQa(frames, { headline: script.headline, gameTitle: script.game_title });
   }
-  const qa = { technical: tech, vision: vision ?? null, checked_at: s.now().toISOString() };
+  const qa = { technical: tech, vision: vision ?? null, rubric, checked_at: s.now().toISOString() };
   const visionProblems = vision?.verdict === "fail" ? (vision.problems.length ? vision.problems : [`vision QA failed: ${vision.notes || "no reason given"}`]) : [];
   const problems = [...tech.problems, ...visionProblems];
   if (problems.length > 0) {
@@ -396,6 +412,12 @@ async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
   }
   if (ep.approval_mode !== "timeout") return;
   if (waited >= s.cfg.approvalTimeoutMinutes * 60_000) {
+    // The countdown only publishes if the owner could actually have tapped Reject: when the
+    // public URL (the tunnel) is down the Discord links are dead, so the episode is held.
+    if (!(await s.publicReachable())) {
+      log("warn", "approval timeout held: public URL unreachable", { episode: ep.id, url: s.cfg.publicUrl });
+      return;
+    }
     if (await transition(s.db, ep.id, "awaiting_approval", "approved", { approved_by: "timeout" })) {
       await logEvent(s.db, ep.id, "approved", { by: "timeout" });
     }

@@ -79,17 +79,17 @@ export async function technicalQa(file: string, expectedSeconds: number): Promis
   if (!p.hasAudio) problems.push("No audio stream.");
   if (p.durationSeconds < 12 || p.durationSeconds > 59) problems.push(`Duration ${p.durationSeconds.toFixed(1)}s is outside 12-59s.`);
   if (Math.abs(p.durationSeconds - expectedSeconds) > 1.5) problems.push(`Duration ${p.durationSeconds.toFixed(1)}s does not match narration ${expectedSeconds.toFixed(1)}s.`);
-  if (!Number.isFinite(lufs) || lufs < -26 || lufs > -9) problems.push(`Integrated loudness ${lufs} LUFS is outside -26 to -9.`);
+  if (!Number.isFinite(lufs) || lufs < -18.5 || lufs > -13.5) problems.push(`Integrated loudness ${lufs} LUFS is outside -18.5 to -13.5.`);
   if (black > 0.8) problems.push(`${black.toFixed(1)}s of black frames.`);
   return { ok: problems.length === 0, problems, probe: p, loudnessLufs: lufs, blackSeconds: black };
 }
 
-/** Brings the mix to the -14 LUFS platforms normalise to, without re-encoding video. */
+/** Masters at -16 LUFS (YouTube normalises to -14; -16 keeps the music bed from tripping recurrence checks), without re-encoding video. */
 export async function normaliseLoudness(input: string, output: string): Promise<void> {
   await run(FFMPEG, [
     "-loglevel", "error", "-y", "-i", input,
     "-c:v", "copy",
-    "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
+    "-af", "loudnorm=I=-16:TP=-1.5:LRA=9",
     "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
     "-movflags", "+faststart",
     output,

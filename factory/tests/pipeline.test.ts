@@ -24,6 +24,7 @@ interface Fakes {
   existingOnChannel?: string;
   notifications: string[];
   captionInserts: number;
+  publicReachable?: boolean;
   captions: Array<{ id: string; language: string; name: string }>;
 }
 
@@ -103,6 +104,7 @@ async function setup(cfgOverrides: Partial<Config> = {}, fakeOverrides: Partial<
       await fs.writeFile(input.posterFile, "jpg");
     },
     normalise: async (a, b) => fs.copyFile(a, b),
+    publicReachable: async () => f.publicReachable ?? true,
     technicalQa: async () => ({ ok: true, problems: [], probe: { width: 1080, height: 1920, durationSeconds: 30, hasAudio: true, videoCodec: "h264", fps: 30 }, loudnessLufs: -14, blackSeconds: 0 }),
     extractFrames: async () => [],
     visionQa: async () => ({ verdict: "pass", problems: [], notes: "" }),
@@ -343,4 +345,17 @@ test("a vision QA fail with no listed problems still blocks the upload", async (
   assert.equal(ep.status, "failed");
   assert.match(ep.last_error ?? "", /headline clipped/);
   assert.equal(f.uploads, 0);
+});
+
+test("timeout approval is held while the public URL is unreachable", async () => {
+  const { db, f, s, setClock } = await setup({ approvalMode: "timeout", approvalTimeoutMinutes: 60 }, { publicReachable: false });
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(ep.status, "awaiting_approval");
+  setClock(new Date("2026-10-16T14:00:00Z"));
+  await tick(s);
+  assert.equal((await only(db)).status, "awaiting_approval", "held: nobody could have tapped Reject");
+  f.publicReachable = true;
+  await tick(s);
+  assert.equal((await only(db)).status, "published");
 });

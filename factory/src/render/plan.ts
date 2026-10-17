@@ -435,9 +435,13 @@ export function planShelf(
     if (live) chain.push(["live", live]);
     chain.push(["source", { label: sourceLabel }]);
     chain.push(["rail", {}]);
-    const pick = chain.find(([d]) => d !== lastDevice) ?? chain[0]!;
+    let pick = chain.find(([d]) => d !== lastDevice) ?? chain[0]!;
+    // The rail is never worth an empty shelf: when nothing else is available the source chip simply stays.
+    if (pick[0] === "rail") pick = ["source", { label: sourceLabel }];
     if (pick[0] === "stat") tileIdx++;
-    items.push({ segment: i, device: pick[0], from, to, data: pick[1] ?? {} });
+    const prev = items.at(-1);
+    if (prev && prev.device === "source" && pick[0] === "source" && prev.to === from) prev.to = to;
+    else items.push({ segment: i, device: pick[0], from, to, data: pick[1] ?? {} });
     lastDevice = pick[0];
   }
   return items;

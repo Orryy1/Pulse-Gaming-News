@@ -90,7 +90,7 @@ test("maps narration segments onto word timings and pages captions", () => {
     ],
   );
   const pages = pageCaptions(words);
-  assert.ok(pages.every((p) => p.words.length <= 3));
+  assert.ok(pages.every((p) => p.words.length <= 5));
   assert.equal(pages[0]!.words.at(-1)!.text, "three.", "captions break on sentence ends");
 });
 
@@ -197,4 +197,11 @@ test("buildSegments recovers when the aligner splits a token in an earlier segme
   assert.equal(segs[1]!.start, 5, "beat starts at the spoken 'Beat' despite the extra token");
   assert.equal(segs[2]!.start, 8, "take starts at the spoken 'Our'");
   assert.equal(segs[0]!.end, 5);
+});
+
+test("caption pages never flicker: sub-0.33s pages merge forward", () => {
+  const words = ["A", "quick", "one.", "Then", "a", "longer", "phrase", "follows", "here."].map((t, i) => ({ text: t, start: i * 0.1, end: i * 0.1 + 0.08 }));
+  const pages = pageCaptions(words);
+  assert.ok(pages.every((p) => p.words.length <= 5));
+  for (const p of pages.slice(0, -1)) assert.ok(p.end - p.start >= 0.3 || p.words.length >= 4, `page "${p.words.map((w) => w.text).join(" ")}" is too short`);
 });

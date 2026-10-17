@@ -71,7 +71,7 @@ export interface CaptionPage {
 }
 
 /** Groups words into short caption pages, breaking on punctuation and pauses. */
-export function pageCaptions(words: Word[], maxWords = 3, maxChars = 18): CaptionPage[] {
+export function pageCaptions(words: Word[], maxWords = 4, maxChars = 30, minSeconds = 0.33): CaptionPage[] {
   const pages: CaptionPage[] = [];
   let cur: Word[] = [];
   const flush = () => {
@@ -89,6 +89,15 @@ export function pageCaptions(words: Word[], maxWords = 3, maxChars = 18): Captio
     if (/[.!?;:,]$/.test(w.text) || pause > 0.35) flush();
   }
   flush();
+  // A page shorter than minSeconds flickers; merge it forward into the next page when that fits.
+  for (let i = 0; i < pages.length - 1; ) {
+    const a = pages[i]!;
+    const b = pages[i + 1]!;
+    const chars = [...a.words, ...b.words].reduce((n, w) => n + w.text.length + 1, 0);
+    if (a.end - a.start < minSeconds && a.words.length + b.words.length <= maxWords + 1 && chars <= maxChars + 6) {
+      pages.splice(i, 2, { start: a.start, end: b.end, words: [...a.words, ...b.words] });
+    } else i++;
+  }
   // Hold each page until the next one starts so captions never blink off mid-sentence.
   for (let i = 0; i < pages.length - 1; i++) {
     const gap = pages[i + 1]!.start - pages[i]!.end;

@@ -57,6 +57,15 @@ export function createServices(db: Db, cfg: Config): Services {
     extractFrames,
     visionQa: (frames, ctx) => visionQa(llm, frames, ctx),
     youtube: () => new YouTubeClient(() => accessToken(db, oauthConfig(cfg))),
+    publicReachable: async () => {
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(cfg.publicUrl)) return true;
+      try {
+        const res = await fetchWithTimeout(`${cfg.publicUrl}/health`, {}, 8_000);
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
     notify: (msg) => postDiscord(cfg.discordWebhookUrl, msg),
     now: () => new Date(),
   };

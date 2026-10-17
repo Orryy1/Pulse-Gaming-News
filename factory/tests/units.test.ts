@@ -4,6 +4,7 @@ import { clusterItems, canonicalUrl } from "../src/discovery/cluster.ts";
 import { parseFeed } from "../src/discovery/rss.ts";
 import { buildSegments, pageCaptions, srtFromWords } from "../src/render/timeline.ts";
 import { capFootage, footageBudgetSeconds } from "../src/assets/footage.ts";
+import { videoMetadata } from "../src/pipeline.ts";
 import { wordsFromAlignment } from "../src/voice/elevenlabs.ts";
 import { validateScript } from "../src/editorial/editorial.ts";
 import { narrationOf } from "../src/editorial/schema.ts";
@@ -204,4 +205,20 @@ test("caption pages never flicker: sub-0.33s pages merge forward", () => {
   const pages = pageCaptions(words);
   assert.ok(pages.every((p) => p.words.length <= 5));
   for (const p of pages.slice(0, -1)) assert.ok(p.end - p.start >= 0.3 || p.words.length >= 4, `page "${p.words.map((w) => w.text).join(" ")}" is too short`);
+});
+
+test("video descriptions credit the footage and disclose the synthetic voice", () => {
+  const ep: any = {
+    script_json: goodScript(),
+    story_json: { headline: "Starfield expansion delayed", items: [{ source: "Xbox Wire", url: "https://news.xbox.com/x" }] },
+    assets_json: { clips: [{ file: "clips/0.mp4", sourceUrl: "", provenance: "Official Steam trailer for Starfield (app 1716740), publisher: Bethesda Softworks; offset 22s", durationSeconds: 3.4 }] },
+    publish_at: null,
+  };
+  const m = videoMetadata(ep, "unlisted");
+  assert.match(m.description, /Footage: .* official trailer \(Bethesda Softworks\)/);
+  assert.match(m.description, /Game Content Usage Rules: https:\/\/www\.xbox\.com\/en-US\/developers\/rules/);
+  assert.match(m.description, /synthetic voice/);
+  assert.equal(m.containsSyntheticMedia, true);
+  const noClips = videoMetadata({ ...ep, assets_json: {} }, "public");
+  assert.doesNotMatch(noClips.description, /Footage:/);
 });

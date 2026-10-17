@@ -44,19 +44,10 @@ export const TopBar: React.FC<{
   attribution: string;
   logoSrc: string | null;
 }> = ({ chip, accent, isRumour, attribution, logoSrc }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const rowIn = spring({ frame: frame - 2, fps, config: SPRING.SNAP });
-  const srcRule = interpolate(frame, [0, 8], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-    easing: ease.out,
-  });
-  const srcIn = interpolate(frame, [0, 10], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-    easing: ease.out,
-  });
+  // The brand bar is complete at frame 0: frame 0 is the thumbnail.
+  const rowIn = 1;
+  const srcRule = 1;
+  const srcIn = 1;
   const source = attribution.replace(/^source:\s*/i, "").toUpperCase();
   return (
     <AbsoluteFill>

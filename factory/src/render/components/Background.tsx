@@ -351,7 +351,7 @@ export const TurnFlash: React.FC<{ turns: number[]; accent: string }> = ({
   if (last === undefined) return null;
   const d = frame - last;
   if (d > 3) return null;
-  const o = interpolate(d, [0, 3], [0.22, 0]);
+  const o = interpolate(d, [0, 3], [0.18, 0]);
   return (
     <AbsoluteFill
       style={{

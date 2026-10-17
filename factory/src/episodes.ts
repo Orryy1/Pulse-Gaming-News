@@ -151,9 +151,10 @@ export async function recentHeadlines(db: Db, days = 5): Promise<string[]> {
 }
 
 /** Episodes started today (UTC) that have not failed or been rejected. */
+/** Episodes created today in the owner's day (Europe/London), excluding failed and rejected. */
 export async function countToday(db: Db): Promise<number> {
   const [row] = await db.query<{ n: string | number }>(
-    `SELECT count(*) AS n FROM episodes WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+    `SELECT count(*) AS n FROM episodes WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'Europe/London') AT TIME ZONE 'Europe/London'
        AND status NOT IN ('failed','rejected')`,
   );
   return Number(row?.n ?? 0);

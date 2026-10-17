@@ -452,10 +452,22 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], sy
     .slice(0, 4)
     .map((i) => `• ${i.source}: ${i.url}`)
     .join("\n");
+  const clips = ep.assets_json?.clips ?? [];
+  const publisher = clips[0]?.provenance.match(/publisher[^:]*:\s*([^;)]+)/i)?.[1]?.trim();
+  const footage = clips.length
+    ? [
+        `\nFootage: ${script.game_title} official trailer${publisher ? ` (${publisher})` : ""}, via Steam. Store art: Steam.`,
+        /microsoft|xbox game studios|bethesda/i.test(`${publisher ?? ""} ${ep.story_json.headline}`) ? "Game footage used under Microsoft's Game Content Usage Rules: https://www.xbox.com/en-US/developers/rules" : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "";
   const description = [
     script.youtube.description.trim(),
     script.is_rumour ? "\nThis story is unconfirmed. We will update if it is confirmed or denied." : "",
     `\nSources:\n${credits}`,
+    footage,
+    "\nNarration: locally generated British synthetic voice. Visuals: official publisher material, credited.",
     "\nPulse Gaming News: fast gaming news, checked and explained.",
     "#Shorts #GamingNews",
   ]

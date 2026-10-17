@@ -42,7 +42,7 @@ export async function polishVoice(file: string): Promise<void> {
   const tmp = `${file}.polished.mp3`;
   await run(FFMPEG, [
     "-loglevel", "error", "-y", "-i", file,
-    "-af", "highpass=f=70,acompressor=threshold=-30dB:ratio=5.5:attack=5:release=120:makeup=4,alimiter=limit=0.95,loudnorm=I=-17:TP=-2.5:LRA=5",
+    "-af", "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,highpass=f=70,acompressor=threshold=-30dB:ratio=5.5:attack=5:release=120:makeup=4,alimiter=limit=0.95,loudnorm=I=-17:TP=-2.5:LRA=5",
     "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", tmp,
   ]);
   await fs.rename(tmp, file);

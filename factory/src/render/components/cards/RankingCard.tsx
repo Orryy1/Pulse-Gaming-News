@@ -32,6 +32,7 @@ export const RankingCard: React.FC<{
   const card = spring({ frame: t - 4, fps, config: SPRING.ENTER });
   const chip = spring({ frame: t - 16, fps, config: SPRING.SNAP });
   const top = rank === 1;
+  const meta = [year, platforms].filter(Boolean).join(" · ");
   const wipe = interpolate(t, [0, 12], [0, 100], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -142,19 +143,22 @@ export const RankingCard: React.FC<{
         >
           {title.toUpperCase()}
         </div>
-        {year || platforms ? (
+        {meta ? (
           <div
             style={{
               marginTop: 10,
               fontFamily: BODY,
               fontWeight: 800,
-              fontSize: 28,
-              letterSpacing: 2,
+              fontSize: meta.length > 24 ? 22 : 28,
+              letterSpacing: meta.length > 24 ? 1 : 2,
               color: COLOUR.muted,
               textTransform: "uppercase",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
           >
-            {[year, platforms].filter(Boolean).join(" · ")}
+            {meta}
           </div>
         ) : null}
         <div

@@ -163,7 +163,10 @@ export function scorePlan(i: RubricInput): Rubric {
   const kinds = segments
     .filter((s) => s.visual && s.visual.kind !== "none")
     .map((s) => s.visual!.kind);
-  const sameKind = kinds.filter((k, n) => n > 0 && k === kinds[n - 1]).length;
+  // A ranking Short is a run of rank cards by design.
+  const sameKind = kinds.filter(
+    (k, n) => n > 0 && k === kinds[n - 1] && k !== "rank",
+  ).length;
   m.push({
     name: "adjacent_same_kind_cards",
     value: sameKind,

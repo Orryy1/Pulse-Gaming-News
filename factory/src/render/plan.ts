@@ -248,6 +248,7 @@ export function planShots(
     prefer: (i: number) => boolean,
     exclude?: PlanMedia,
     forBeat?: number,
+    ownOnly = false, // a ranking entry: its own art or nothing, never another game's
   ): PlanMedia | undefined => {
     // An entry's own art comes first for its line; art tagged for another entry is never borrowed.
     const own =
@@ -264,6 +265,16 @@ export function planShots(
       )[0]!;
       stillUses[pick]!++;
       return { type: "image", index: pick };
+    }
+    if (ownOnly) {
+      // Every piece of this entry's art is already used twice: reuse the least used rather than borrow.
+      const any = images
+        .map((_, i) => i)
+        .filter((i) => images[i]!.beatIndex === forBeat && !same(exclude, { type: "image", index: i }))
+        .sort((a, b) => stillUses[a]! - stillUses[b]! || a - b)[0];
+      if (any === undefined) return undefined;
+      stillUses[any]!++;
+      return { type: "image", index: any };
     }
     const order = images
       .map((_, i) => i)
@@ -298,6 +309,7 @@ export function planShots(
     c: { start: number; end: number; segment: number },
     forBeat: number | undefined | "hook",
     calm: boolean,
+    ownOnly = false,
   ): PlanMedia | undefined => {
     const len = c.end - c.start;
     const fits = clipOrder.filter(
@@ -314,7 +326,8 @@ export function planShots(
     const free = fits.filter(
       (i) => clips[i]!.beatIndex === undefined && clips[i]!.role === undefined,
     );
-    const pick = tagged ?? (calm ? free[free.length - 1] : free[0]);
+    const pick =
+      tagged ?? (ownOnly ? undefined : calm ? free[free.length - 1] : free[0]);
     if (pick === undefined) return undefined;
     const extra = len - clipFrames[pick]!;
     if (extra > FREEZE_TOLERANCE) {
@@ -358,6 +371,11 @@ export function planShots(
       media =
         takeClip(n, c, "hook", false) ??
         takeStill((i) => !isFramedStill(images[i]!), last);
+    } else if (seg.kind === "beat" && kind === "rank") {
+      // A ranking entry shows its own moment or its own art; with neither it sits on the plate.
+      media =
+        takeClip(n, c, beatIndex, false, true) ??
+        takeStill((i) => true, last, beatIndex, true);
     } else if (seg.kind === "beat" && QUIET_KINDS.has(kind)) {
       // A moment chosen for this line beats a still; it sits in the framed panel under the card.
       media =
@@ -384,7 +402,10 @@ export function planShots(
       (same(last, media) && !isClosing && !isOpening && !firstTakeShot)
     ) {
       // Avoid the same asset twice in a row; fall back to another still, then the brand plate.
-      const alt = takeStill((i) => true, media);
+      const alt =
+        kind === "rank"
+          ? takeStill((i) => true, media, beatIndex, true)
+          : takeStill((i) => true, media);
       media = alt ?? media ?? { type: "plate", index: 0 };
       framed =
         media.type === "image" ? isFramedStill(images[media.index]!) : false;
@@ -509,12 +530,14 @@ export function planShelf(
     // A card that already shows a figure never gets a second, possibly different, figure under it.
     const numeric =
       s.kind === "beat" && NUMERIC_KINDS.has(s.visual?.kind ?? "none");
+    // A ranking entry names one game; the topic's own Steam tile would show another.
+    const rank = s.kind === "beat" && s.visual?.kind === "rank";
     if (s.kind === "hook") chain.push(["source", { label: sourceLabel }]);
     if (s.kind === "take" && live) chain.push(["live", live]);
-    if (statTiles.length && !numeric)
+    if (statTiles.length && !numeric && !rank)
       chain.push(["stat", statTiles[tileIdx % statTiles.length]]);
-    if (hasCapsule) chain.push(["gamecard", { title: "" }]);
-    if (live && !numeric) chain.push(["live", live]);
+    if (hasCapsule && !rank) chain.push(["gamecard", { title: "" }]);
+    if (live && !numeric && !rank) chain.push(["live", live]);
     chain.push(["source", { label: sourceLabel }]);
     chain.push(["rail", {}]);
     let pick = chain.find(([d]) => d !== lastDevice) ?? chain[0]!;

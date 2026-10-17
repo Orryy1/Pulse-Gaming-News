@@ -323,3 +323,35 @@ test("a clip shorter than its shot is still used: the shot ends with the clip an
   for (let k = 1; k < plan.shots.length; k++) assert.equal(plan.shots[k]!.start, plan.shots[k - 1]!.end, "shots stay contiguous");
   assert.equal(plan.shots.at(-1)!.end, Math.ceil(i.durationSeconds * 30));
 });
+
+test("a ranking entry only ever shows its own art or moment, never the hero or another entry's", () => {
+  const base = input();
+  const segments = base.segments.map((s) => (s.kind === "beat" ? { ...s, visual: { kind: "rank" as const, primary: "Game", secondary: "Verdict", value_a: 1 } } : s));
+  const i = input({
+    segments,
+    images: [
+      { kind: "hero", aspect: 1.778 },
+      { kind: "screenshot", aspect: 1.778 },
+      { kind: "capsule", aspect: 0.667, beatIndex: 0 },
+      { kind: "capsule", aspect: 0.667, beatIndex: 2 },
+    ],
+    clips: [
+      { durationSeconds: 4.8, motion: 0.9, role: "hook" },
+      { durationSeconds: 2.4, motion: 0.6, beatIndex: 1 },
+    ],
+  });
+  const plan = buildPlan(i);
+  const beatSegs = segments.map((s, n) => ({ s, n })).filter((x) => x.s.kind === "beat");
+  for (const [b, { n }] of beatSegs.entries()) {
+    for (const shot of plan.shots.filter((s) => s.segment === n)) {
+      if (shot.media.type === "image") assert.equal(i.images[shot.media.index]!.beatIndex, b, `entry ${b} shows image ${shot.media.index}`);
+      if (shot.media.type === "clip") assert.equal(i.clips[shot.media.index]!.beatIndex, b, `entry ${b} shows clip ${shot.media.index}`);
+    }
+  }
+  const noArt = plan.shots.filter((s) => s.segment === beatSegs[1]!.n);
+  assert.ok(noArt.some((s) => s.media.type === "clip") || noArt.every((s) => s.media.type === "plate"), "entry 1 uses its clip, then the plate");
+  for (const item of plan.shelf) {
+    const seg = segments[item.segment]!;
+    if (seg.kind === "beat") assert.ok(!["stat", "live", "gamecard"].includes(item.device), `rank entry got a ${item.device} tile`);
+  }
+});

@@ -256,7 +256,7 @@ export const ClipRankingSchema = z.object({
       has_text_or_logo: z
         .boolean()
         .describe(
-          "Title cards, rating boards, logos, menus, captions or watermarks",
+          "Title cards, rating boards, logos, menus, captions, subtitles, dialogue text or watermarks",
         ),
       energy: z.enum(["high", "medium", "low"]),
     }),
@@ -279,7 +279,7 @@ export const ClipRankingSchema = z.object({
 
 const RANK_PROMPT = `You are the picture editor for a gaming news Short. You see numbered keyframes from the game's official trailer, each the start of a possible 4.8 second clip, and the lines of narration that need footage.
 For every line, pick the keyframe whose moment best shows what the line names: the character, place, vehicle, mechanic or action it talks about. A line about a new map wants the map; a line about a price or a date wants a calm, readable wide shot; the hook wants the most striking gameplay moment.
-Reject frames with title cards, rating boards, logos, menus, captions or watermarks. Never use the same keyframe, or one within 5 seconds of it in the same trailer, for two lines.
+Reject frames with title cards, rating boards, logos, menus, captions, subtitles, dialogue text, letterboxed black bars filling more than a third of the frame, or watermarks. Never use the same keyframe, or one within 5 seconds of it in the same trailer, for two lines.
 Confidence under 0.5 means no frame truly fits; say so rather than forcing a match.`;
 
 /** One vision call: the keyframes, then the lines, back as labelled candidates and per-line picks. */

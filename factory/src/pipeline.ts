@@ -349,19 +349,23 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
   const art = app ? await s.fetchArt(app, dir).catch(() => [] as VisualAsset[]) : [];
   // Official trailer B-roll: short muted clips, at most MAX_TRAILER_CLIPS.
   // Beat-matched trailer moments: the hook and each beat ask for what they name.
-  const clipAssets = app && s.cfg.footage && s.cfg.maxClips > 0 ? await s.fetchClips(app, dir, targetsFor(script), s.cfg.maxClips).catch((err) => { log("warn", "trailer clips failed", { episode: ep.id, error: errorMessage(err) }); return [] as VisualAsset[]; }) : [];
+  // A ranking Short's entries bring their own moments; the topic's page supplies only the hook moment.
+  const ranking = Boolean(script.entries?.length);
+  const topicTargets = ranking ? targetsFor(script).filter((t) => t.key === "hook") : targetsFor(script);
+  const clipAssets = app && s.cfg.footage && s.cfg.maxClips > 0 && topicTargets.length ? await s.fetchClips(app, dir, topicTargets, ranking ? 1 : s.cfg.maxClips).catch((err) => { log("warn", "trailer clips failed", { episode: ep.id, error: errorMessage(err) }); return [] as VisualAsset[]; }) : [];
   // Per-publisher footage budget (Rockstar: about 6 s per Short). Clips beyond it are dropped, in order.
   const narrationSeconds = ep.assets_json?.durationSeconds ?? 45;
   // Not on Steam (GTA VI, Nintendo titles): the publisher's own YouTube trailer stands in, under that publisher's cap.
   const official: OfficialMedia = !app && s.cfg.footage && script.game_title
-    ? await s.fetchOfficialMedia(script.game_title, dir, targetsFor(script), s.cfg.maxClips).catch((err) => { log("warn", "official trailer media failed", { episode: ep.id, error: errorMessage(err) }); return { clips: [], stills: [] } as OfficialMedia; })
+    ? await s.fetchOfficialMedia(script.game_title, dir, topicTargets, ranking ? 1 : s.cfg.maxClips).catch((err) => { log("warn", "official trailer media failed", { episode: ep.id, error: errorMessage(err) }); return { clips: [], stills: [] } as OfficialMedia; })
     : { clips: [], stills: [] };
   if (official.trailer) await logEvent(s.db, ep.id, "official_trailer", { videoId: official.trailer.videoId, publisher: official.trailer.publisher, title: official.trailer.title, clips: official.clips.length, still: official.stills.length > 0 });
   const steamBudget = app ? footageBudgetSeconds(app) : official.trailer?.clipSeconds ?? 0;
   const budget = Math.min(steamBudget, Math.max(10, narrationSeconds * 0.4));
   const clips = capFootage(app ? clipAssets : official.clips, budget).map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds }));
   if (clips.length < clipAssets.length) log("info", "footage capped", { episode: ep.id, budgetSeconds: budget, dropped: clipAssets.length - clips.length });
-  const images = [...art.filter((a) => a.kind !== "logo"), ...official.stills];
+  // In a ranking, the topic page's screenshots would land under the wrong entry: keep its hero and header only.
+  const images = [...art.filter((a) => a.kind !== "logo" && (!ranking || a.kind === "hero" || a.kind === "header")), ...official.stills];
   // First-party newsroom images (PlayStation Blog, Xbox Wire) are press
   // material meant for coverage. Outlet images are never used.
   {

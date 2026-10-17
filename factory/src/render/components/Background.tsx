@@ -86,6 +86,9 @@ export const BrandPlate: React.FC<{ accent: string; title: string }> = ({
 };
 
 const footageFilter = "contrast(1.03) saturate(1.05)";
+// Trailer clips are zoomed so the strip where burned-in subtitles and letterbox
+// bars live (the bottom tenth) never shows; the picture keeps its centre.
+const SUBTITLE_CROP = 1.24;
 
 /** Full-bleed cover crop with one ambient move. */
 const Still: React.FC<{
@@ -202,8 +205,9 @@ const Clip: React.FC<{
         width: "100%",
         height: "100%",
         objectFit: "cover",
+        objectPosition: "center 46%",
         filter: framed ? undefined : footageFilter,
-        transform: `scale(${punch})`,
+        transform: `scale(${punch * SUBTITLE_CROP})`,
       }}
     />
   );

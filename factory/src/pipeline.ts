@@ -348,7 +348,8 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
   // Beat-matched trailer moments: the hook and each beat ask for what they name.
   const clipAssets = app && s.cfg.footage && s.cfg.maxClips > 0 ? await s.fetchClips(app, dir, targetsFor(script), s.cfg.maxClips).catch((err) => { log("warn", "trailer clips failed", { episode: ep.id, error: errorMessage(err) }); return [] as VisualAsset[]; }) : [];
   // Per-publisher footage budget (Rockstar: about 6 s per Short). Clips beyond it are dropped, in order.
-  const budget = app ? footageBudgetSeconds(app) : 0;
+  const narrationSeconds = ep.assets_json?.durationSeconds ?? 45;
+  const budget = app ? Math.min(footageBudgetSeconds(app), Math.max(10, narrationSeconds * 0.4)) : 0;
   const clips = capFootage(clipAssets, budget).map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds }));
   if (clips.length < clipAssets.length) log("info", "footage capped", { episode: ep.id, budgetSeconds: budget, dropped: clipAssets.length - clips.length });
   const images = art.filter((a) => a.kind !== "logo");
@@ -463,7 +464,11 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     log("warn", "plan rejected by rubric, rebuilding", { episode: ep.id, problems: rubricSummary(rubric) });
     plan = buildPlan({ ...planInput, variant: (variant + 1) % 4 });
     rubric = rubricFor(plan);
-    if (rubric.grade === "red") throw new FatalError(`render plan fails the rubric: ${rubricSummary(rubric)}`);
+    if (rubric.grade === "red") {
+      // A slot is worth more than a perfect plan: render anyway and say so.
+      log("warn", "rubric still red after rebuild; rendering anyway", { episode: ep.id, problems: rubricSummary(rubric) });
+      await s.notify({ content: `⚠️ "${script.headline}" renders with a red rubric (${rubricSummary(rubric)}). Worth a look.` });
+    }
   }
   await logEvent(s.db, ep.id, "rubric", { grade: rubric.grade, summary: rubricSummary(rubric) || "all green" });
   assets.plan = plan;
@@ -801,11 +806,10 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
     const fatal = err instanceof FatalError;
     const attempts = await recordFailure(s.db, ep.id, msg, Math.min(60, 5 * 2 ** ep.attempts));
     log("error", "step failed", { id: ep.id, status: ep.status, attempts, fatal, error: msg });
-    if (fatal) {
-      // A fatal error (credentials, quota, policy) would hit every new episode
-      // too: stop picking stories until it is fixed rather than burn a story a tick.
-      await pauseSelection(s.db, s.now(), FATAL_PAUSE_HOURS, msg);
-    }
+    // Only a platform-wide fault (credentials, quota, policy) justifies pausing new stories;
+    // a fatal error inside one episode's own content must not take the whole day with it.
+    const platformFault = fatal && (["uploading", "uploaded"].includes(ep.status) || /invalid_grant|quota|credential|api key|x-api-key|forbidden|unauthori[sz]ed|refused/i.test(msg));
+    if (platformFault) await pauseSelection(s.db, s.now(), FATAL_PAUSE_HOURS, msg);
     if (fatal || attempts >= s.cfg.maxAttempts) {
       const fresh = await getEpisode(s.db, ep.id);
       if (fresh && !["failed", "published", "rejected"].includes(fresh.status)) {
@@ -813,7 +817,7 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
       }
       const where =
         (ep.status === "uploading" ? "\nThe upload may be incomplete; the next run will search the channel before re-uploading." : "") +
-        (fatal ? `\nNew stories are paused for ${FATAL_PAUSE_HOURS}h (or until YouTube is reconnected) so this can be fixed.` : "");
+        (platformFault ? `\nNew stories are paused for ${FATAL_PAUSE_HOURS}h (or until YouTube is reconnected) so this can be fixed.` : "");
       await s.notify({
         embeds: [{ title: `⚠️ Episode failed at "${ep.status}"`, description: `${ep.script_json?.headline ?? ep.story_json.headline}\n\n${msg.slice(0, 1500)}${where}`, color: COLOURS.alert }],
       });

@@ -274,3 +274,23 @@ test("beat-matched clips land under their own line, the hook clip opens, and not
   assert.ok(underBeat(2).includes(2), "beat 2 shows the clip chosen for it");
   assert.ok(!underBeat(1).includes(2) && !underBeat(1).includes(1), "beat 1 never borrows another line's moment");
 });
+
+test("a long take does not sit on the hero still shot after shot; the hero opens it and returns for the loop", () => {
+  const i = input();
+  // Stretch the take to ~14 s so it spans several shots.
+  const take = i.segments.find((s) => s.kind === "take")!;
+  const loop = i.segments.find((s) => s.kind === "loop")!;
+  const extra = 10;
+  take.end += extra;
+  loop.start += extra;
+  loop.end += extra;
+  i.words = i.words.map((w) => (w.start >= loop.start - extra ? { ...w, start: w.start + extra, end: w.end + extra } : w));
+  i.durationSeconds += extra;
+  const plan = buildPlan(i);
+  const takeIndex = i.segments.indexOf(take);
+  const takeShots = plan.shots.filter((s) => s.segment === takeIndex);
+  assert.ok(takeShots.length >= 3, `take has ${takeShots.length} shots`);
+  assert.deepEqual(takeShots[0]!.media, { type: "image", index: plan.heroIndex }, "the take opens on the hero");
+  assert.ok(takeShots.slice(1).some((s) => !(s.media.type === "image" && s.media.index === plan.heroIndex)), "later take shots use other media");
+  assert.deepEqual(plan.shots.at(-1)!.media, { type: "image", index: plan.heroIndex }, "the loop returns to the hero");
+});

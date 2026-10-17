@@ -114,6 +114,11 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       return send(200, page("Done", `<h1>${ok ? (kind === "approve" ? "Approved. Publishing now." : "Rejected.") : "Nothing changed (state moved on)."}</h1>`));
     }
 
+    if (url.pathname === "/unpause" && req.method === "POST") {
+      await clearSelectionPause(db);
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, unpaused: true }));
+      return;
+    }
     if (url.pathname === "/oauth/start") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Add ?key=ADMIN_TOKEN</h1>"));
       if (!cfg.googleClientId) return send(500, page("Missing client", "<h1>Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET first.</h1>"));

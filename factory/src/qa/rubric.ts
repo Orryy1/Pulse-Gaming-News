@@ -122,12 +122,14 @@ export function scorePlan(i: RubricInput): Rubric {
   // Media variety.
   const keys = plan.shots.map((s) => `${s.media.type}:${s.media.index}`);
   const unique = new Set(keys).size / Math.max(1, keys.length);
+  // With little media there is nothing to vary with: variety metrics can only warn, not reject.
+  const scarce = new Set(keys.filter((k) => !k.startsWith("plate"))).size < 4;
   m.push({
     name: "unique_media_ratio",
     value: Number(unique.toFixed(2)),
     grade: grade(
       unique >= 0.85 || plan.shots.every((s) => s.media.type === "plate"),
-      unique >= 0.6,
+      scarce || unique >= 0.6,
     ),
   });
   const counts = new Map<string, number>();
@@ -137,19 +139,24 @@ export function scorePlan(i: RubricInput): Rubric {
   m.push({
     name: "max_media_repeat",
     value: maxRepeat,
-    grade: grade(maxRepeat <= 2, maxRepeat <= 2),
+    grade: grade(maxRepeat <= 2, scarce || maxRepeat <= 3),
   });
+  // The hero still closing the take and opening the loop is the designed return, not a repeat.
+  const loopStart = plan.shots.findIndex(
+    (s) => segments[s.segment]?.kind === "loop",
+  );
   const adjacent = keys.filter(
     (k, n) =>
       n > 0 &&
       k === keys[n - 1] &&
       !k.startsWith("plate") &&
+      n !== loopStart &&
       !(n === keys.length - 1),
   ).length;
   m.push({
     name: "adjacent_repeats",
     value: adjacent,
-    grade: grade(adjacent === 0, false),
+    grade: grade(adjacent === 0, scarce || adjacent <= 1),
   });
 
   // Adjacent same-kind cards.

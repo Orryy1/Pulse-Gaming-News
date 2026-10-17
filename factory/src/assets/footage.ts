@@ -4,7 +4,7 @@
 
 import type { SteamApp } from "./steam.ts";
 
-export const DEFAULT_FOOTAGE_SECONDS = 14; // four 3.4 s clips
+export const DEFAULT_FOOTAGE_SECONDS = 20; // four 4.8 s clips
 export const ROCKSTAR_FOOTAGE_SECONDS = 6;
 
 function names(app: SteamApp): string[] {

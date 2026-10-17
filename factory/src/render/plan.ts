@@ -243,7 +243,8 @@ export function planShots(
     }
     const order = images
       .map((_, i) => i)
-      .filter((i) => images[i]!.beatIndex === undefined)
+      // The hero is reserved for the opening, the take and the loop unless it is the only still.
+      .filter((i) => images[i]!.beatIndex === undefined && (i !== heroIndex || images.length === 1))
       .sort((a, b) => stillUses[a]! - stillUses[b]! || a - b);
     const pick =
       order.find(
@@ -297,7 +298,8 @@ export function planShots(
     const isOpening = n === 0;
     const isClosing = seg.kind === "loop" || c.segment === lastSeg;
 
-    if ((isOpening || isClosing || seg.kind === "take") && heroIndex >= 0) {
+    const firstTakeShot = seg.kind === "take" && (n === 0 || cuts[n - 1]!.segment !== c.segment);
+    if ((isOpening || isClosing || firstTakeShot) && heroIndex >= 0) {
       media = { type: "image", index: heroIndex };
       framed = isFramedStill(images[heroIndex]!);
       if (isOpening) stillUses[heroIndex]!++;
@@ -315,12 +317,14 @@ export function planShots(
         takeClip(len, beatIndex, true);
     } else if (seg.kind === "beat") {
       media = takeClip(len, beatIndex, false) ?? takeStill((i) => true, last, beatIndex);
+    } else if (seg.kind === "take") {
+      media = takeClip(len, undefined, true) ?? takeStill((i) => true, last);
     } else {
       media = takeStill((i) => true, last);
     }
     if (media?.type === "image" && isFramedStill(images[media.index]!))
       framed = true;
-    if (!media || (same(last, media) && !isClosing && !isOpening)) {
+    if (!media || (same(last, media) && !isClosing && !isOpening && !firstTakeShot)) {
       // Avoid the same asset twice in a row; fall back to another still, then the brand plate.
       const alt = takeStill((i) => true, media);
       media = alt ?? media ?? { type: "plate", index: 0 };

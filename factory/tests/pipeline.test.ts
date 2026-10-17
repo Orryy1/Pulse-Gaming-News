@@ -4,12 +4,29 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { z } from "zod";
 import type { Llm } from "../src/editorial/llm.ts";
-import { SelectionSchema, ScriptSchema, FactCheckSchema, VisionQaSchema, type FactCheck, type Script } from "../src/editorial/schema.ts";
-import { tick, selectionPause, clearSelectionPause, type Services } from "../src/pipeline.ts";
+import {
+  SelectionSchema,
+  ScriptSchema,
+  FactCheckSchema,
+  VisionQaSchema,
+  type FactCheck,
+  type Script,
+} from "../src/editorial/schema.ts";
+import {
+  tick,
+  selectionPause,
+  clearSelectionPause,
+  type Services,
+} from "../src/pipeline.ts";
 import { FatalError } from "../src/lib/util.ts";
 import { getEpisode, listEpisodes } from "../src/episodes.ts";
+import { quotaAdd } from "../src/lanes.ts";
 import { clusterItems } from "../src/discovery/cluster.ts";
-import { YouTubeClient, SessionGone, type FetchLike } from "../src/youtube/upload.ts";
+import {
+  YouTubeClient,
+  SessionGone,
+  type FetchLike,
+} from "../src/youtube/upload.ts";
 import type { Config } from "../src/config.ts";
 import type { Db } from "../src/db.ts";
 import { testDb, tmpDir, testConfig, item, goodScript } from "./helpers.ts";
@@ -31,17 +48,33 @@ interface Fakes {
 function fakeLlm(f: Fakes): Llm {
   return {
     async structured<S extends z.ZodType>({ schema }: { schema: S }) {
-      if (schema === (SelectionSchema as unknown)) return { candidate_index: f.pick, reason: "big story", story_type: "delay", game_title: "Starfield" } as z.infer<S>;
+      if (schema === (SelectionSchema as unknown))
+        return {
+          candidate_index: f.pick,
+          reason: "big story",
+          story_type: "delay",
+          game_title: "Starfield",
+        } as z.infer<S>;
       if (schema === (ScriptSchema as unknown)) return f.script as z.infer<S>;
-      if (schema === (FactCheckSchema as unknown)) return (f.factChecks.shift() ?? { verdict: "pass", issues: [], rumour_labelling_ok: true, summary: "All claims supported." }) as z.infer<S>;
-      if (schema === (VisionQaSchema as unknown)) return { verdict: "pass", problems: [], notes: "" } as z.infer<S>;
+      if (schema === (FactCheckSchema as unknown))
+        return (f.factChecks.shift() ?? {
+          verdict: "pass",
+          issues: [],
+          rumour_labelling_ok: true,
+          summary: "All claims supported.",
+        }) as z.infer<S>;
+      if (schema === (VisionQaSchema as unknown))
+        return { verdict: "pass", problems: [], notes: "" } as z.infer<S>;
       throw new Error("unexpected schema");
     },
   } as Llm;
 }
 
 function fakeYouTube(f: Fakes): YouTubeClient {
-  const yt = new YouTubeClient(async () => "token", (async () => new Response("{}")) as FetchLike);
+  const yt = new YouTubeClient(
+    async () => "token",
+    (async () => new Response("{}")) as FetchLike,
+  );
   yt.findByMarker = async () => f.existingOnChannel;
   yt.createSession = async () => {
     f.sessions++;
@@ -57,7 +90,10 @@ function fakeYouTube(f: Fakes): YouTubeClient {
     f.uploads++;
     return "vid_123";
   };
-  yt.status = async () => ({ uploadStatus: "processed", privacyStatus: "public" });
+  yt.status = async () => ({
+    uploadStatus: "processed",
+    privacyStatus: "public",
+  });
   yt.listCaptions = async () => f.captions;
   yt.insertCaption = async () => {
     f.captionInserts++;
@@ -67,11 +103,25 @@ function fakeYouTube(f: Fakes): YouTubeClient {
   return yt;
 }
 
-async function setup(cfgOverrides: Partial<Config> = {}, fakeOverrides: Partial<Fakes> = {}) {
+async function setup(
+  cfgOverrides: Partial<Config> = {},
+  fakeOverrides: Partial<Fakes> = {},
+) {
   const db = await testDb();
   const dir = await tmpDir();
   const cfg = testConfig(dir, cfgOverrides);
-  const f: Fakes = { script: goodScript(), factChecks: [], pick: 0, uploads: 0, sessions: 0, failUploadOnce: false, notifications: [], captionInserts: 0, captions: [], ...fakeOverrides };
+  const f: Fakes = {
+    script: goodScript(),
+    factChecks: [],
+    pick: 0,
+    uploads: 0,
+    sessions: 0,
+    failUploadOnce: false,
+    notifications: [],
+    captionInserts: 0,
+    captions: [],
+    ...fakeOverrides,
+  };
   let clock = new Date("2026-10-16T12:00:00Z");
   const now = () => clock;
   const s: Services = {
@@ -81,17 +131,47 @@ async function setup(cfgOverrides: Partial<Config> = {}, fakeOverrides: Partial<
     discover: async () =>
       clusterItems(
         [
-          item("Starfield second expansion delayed to early 2027", "Xbox Wire", "official", 20, clock),
-          item("Bethesda delays Starfield second expansion to early 2027", "IGN", "outlet", 40, clock),
-          item("Unconfirmed: insider claims new Halo reveal next week", "Insider Gaming", "outlet", 15, clock),
+          item(
+            "Starfield second expansion delayed to early 2027",
+            "Xbox Wire",
+            "official",
+            20,
+            clock,
+          ),
+          item(
+            "Bethesda delays Starfield second expansion to early 2027",
+            "IGN",
+            "outlet",
+            40,
+            clock,
+          ),
+          item(
+            "Unconfirmed: insider claims new Halo reveal next week",
+            "Insider Gaming",
+            "outlet",
+            15,
+            clock,
+          ),
         ],
         clock,
       ),
-    fetchArticle: async (url) => ({ url, title: "t", text: "Bethesda has delayed the second Starfield expansion to early 2027. ".repeat(10) }),
+    fetchArticle: async (url) => ({
+      url,
+      title: "t",
+      text: "Bethesda has delayed the second Starfield expansion to early 2027. ".repeat(
+        10,
+      ),
+    }),
     synthesise: async (text, out) => {
       await fs.writeFile(out, "mp3");
-      const words = text.split(/\s+/).map((w, i) => ({ text: w, start: i * 0.33, end: i * 0.33 + 0.3 }));
-      return { audioPath: out, words, durationSeconds: words.length * 0.33 + 0.2 };
+      const words = text
+        .split(/\s+/)
+        .map((w, i) => ({ text: w, start: i * 0.33, end: i * 0.33 + 0.3 }));
+      return {
+        audioPath: out,
+        words,
+        durationSeconds: words.length * 0.33 + 0.2,
+      };
     },
     findGame: async () => undefined,
     gameFacts: async () => ({ name: "", storeUrl: "", fetchedAt: "" }),
@@ -105,7 +185,20 @@ async function setup(cfgOverrides: Partial<Config> = {}, fakeOverrides: Partial<
     },
     normalise: async (a, b) => fs.copyFile(a, b),
     publicReachable: async () => f.publicReachable ?? true,
-    technicalQa: async () => ({ ok: true, problems: [], probe: { width: 1080, height: 1920, durationSeconds: 30, hasAudio: true, videoCodec: "h264", fps: 30 }, loudnessLufs: -14, blackSeconds: 0 }),
+    technicalQa: async () => ({
+      ok: true,
+      problems: [],
+      probe: {
+        width: 1080,
+        height: 1920,
+        durationSeconds: 30,
+        hasAudio: true,
+        videoCodec: "h264",
+        fps: 30,
+      },
+      loudnessLufs: -14,
+      blackSeconds: 0,
+    }),
     extractFrames: async () => [],
     visionQa: async () => ({ verdict: "pass", problems: [], notes: "" }),
     youtube: () => fakeYouTube(f),
@@ -131,13 +224,29 @@ test("one tick takes a corroborated story all the way to published", async () =>
   assert.equal(ep.status, "published", ep.last_error ?? "");
   assert.equal(ep.youtube_video_id, "vid_123");
   assert.equal(f.uploads, 1);
-  assert.equal(f.captionInserts, 1, "the SRT was uploaded as a caption track once");
+  assert.equal(
+    f.captionInserts,
+    1,
+    "the SRT was uploaded as a caption track once",
+  );
   assert.equal(ep.assets_json?.srt, "captions.srt");
-  assert.match(await fs.readFile(path.join(dir, "episodes", ep.id, "captions.srt"), "utf8"), /^1\n\d\d:\d\d:\d\d,\d{3} --> /);
+  assert.match(
+    await fs.readFile(
+      path.join(dir, "episodes", ep.id, "captions.srt"),
+      "utf8",
+    ),
+    /^1\n\d\d:\d\d:\d\d,\d{3} --> /,
+  );
   assert.equal(ep.story_json.corroborated, true);
   assert.ok(await fs.stat(path.join(dir, "episodes", ep.id, "short.mp4")));
-  assert.ok(f.notifications.some((n) => n.startsWith("🎬")), "approval/preview notice sent");
-  assert.ok(f.notifications.some((n) => n.startsWith("✅")), "published notice sent");
+  assert.ok(
+    f.notifications.some((n) => n.startsWith("🎬")),
+    "approval/preview notice sent",
+  );
+  assert.ok(
+    f.notifications.some((n) => n.startsWith("✅")),
+    "published notice sent",
+  );
 
   // Daily target reached: a second tick does nothing new.
   await tick(s);
@@ -146,7 +255,10 @@ test("one tick takes a corroborated story all the way to published", async () =>
 });
 
 test("timeout approval waits, then publishes; rumours never auto-approve", async () => {
-  const { db, f, s, setClock } = await setup({ approvalMode: "timeout", approvalTimeoutMinutes: 60 });
+  const { db, f, s, setClock } = await setup({
+    approvalMode: "timeout",
+    approvalTimeoutMinutes: 60,
+  });
   await tick(s);
   let ep = await only(db);
   assert.equal(ep.status, "awaiting_approval");
@@ -162,7 +274,18 @@ test("timeout approval waits, then publishes; rumours never auto-approve", async
 });
 
 test("a story that fails fact-check twice is dropped, never voiced", async () => {
-  const fail: FactCheck = { verdict: "fail", issues: [{ quote: "early 2027", problem: "source says late 2027", severity: "blocker" }], rumour_labelling_ok: true, summary: "Wrong date." };
+  const fail: FactCheck = {
+    verdict: "fail",
+    issues: [
+      {
+        quote: "early 2027",
+        problem: "source says late 2027",
+        severity: "blocker",
+      },
+    ],
+    rumour_labelling_ok: true,
+    summary: "Wrong date.",
+  };
   const { db, s } = await setup({}, { factChecks: [fail, { ...fail }] });
   await tick(s);
   const eps = await listEpisodes(db);
@@ -174,7 +297,19 @@ test("a story that fails fact-check twice is dropped, never voiced", async () =>
 
 test("rumour-only stories are skipped while rumours are disabled", async () => {
   const { db, s } = await setup({}, { pick: 0 });
-  s.discover = async () => clusterItems([item("Insider claims a new Halo reveal is coming next week", "Insider Gaming", "outlet", 15, new Date("2026-10-16T12:00:00Z"))], new Date("2026-10-16T12:00:00Z"));
+  s.discover = async () =>
+    clusterItems(
+      [
+        item(
+          "Insider claims a new Halo reveal is coming next week",
+          "Insider Gaming",
+          "outlet",
+          15,
+          new Date("2026-10-16T12:00:00Z"),
+        ),
+      ],
+      new Date("2026-10-16T12:00:00Z"),
+    );
   await tick(s);
   assert.equal((await listEpisodes(db)).length, 0);
 });
@@ -223,7 +358,20 @@ test("an expired session is cleared and a fresh one is used next attempt", async
 
 test("QA failures retry, then fail loudly", async () => {
   const { db, f, s } = await setup({ maxAttempts: 2 });
-  s.technicalQa = async () => ({ ok: false, problems: ["No audio stream."], probe: { width: 1080, height: 1920, durationSeconds: 30, hasAudio: false, videoCodec: "h264", fps: 30 }, loudnessLufs: -14, blackSeconds: 0 });
+  s.technicalQa = async () => ({
+    ok: false,
+    problems: ["No audio stream."],
+    probe: {
+      width: 1080,
+      height: 1920,
+      durationSeconds: 30,
+      hasAudio: false,
+      videoCodec: "h264",
+      fps: 30,
+    },
+    loudnessLufs: -14,
+    blackSeconds: 0,
+  });
   await tick(s);
   await db.query(`UPDATE episodes SET next_attempt_at = NULL`);
   await tick(s);
@@ -257,7 +405,14 @@ test("rumour episodes always wait for a human, even in timeout mode", async () =
     is_rumour: true,
     hook: "Starfield's second expansion has reportedly slipped to early 2027.",
   });
-  const { db, f, s, setClock } = await setup({ approvalMode: "timeout", approvalTimeoutMinutes: 60, includeRumours: true }, { script: rumour });
+  const { db, f, s, setClock } = await setup(
+    {
+      approvalMode: "timeout",
+      approvalTimeoutMinutes: 60,
+      includeRumours: true,
+    },
+    { script: rumour },
+  );
   await tick(s);
   const ep = await only(db);
   assert.equal(ep.status, "awaiting_approval");
@@ -273,15 +428,31 @@ function freshStory(s: Services, now: Date) {
   s.discover = async () =>
     clusterItems(
       [
-        item("Hollow Knight Silksong expansion dated for December", "Nintendo Life", "outlet", 20, now),
-        item("Silksong expansion dated for December by Team Cherry", "IGN", "outlet", 40, now),
+        item(
+          "Hollow Knight Silksong expansion dated for December",
+          "Nintendo Life",
+          "outlet",
+          20,
+          now,
+        ),
+        item(
+          "Silksong expansion dated for December by Team Cherry",
+          "IGN",
+          "outlet",
+          40,
+          now,
+        ),
       ],
       now,
     );
 }
 
 test("a fatal upload error pauses story selection until it lapses or YouTube is reconnected", async () => {
-  const { db, f, s, setClock } = await setup({ dailyTarget: 3 });
+  // A second slot (14:30 London = 13:30Z, due from 12:15Z) so selection can resume at 13:00Z.
+  const { db, f, s, setClock } = await setup({
+    dailyTarget: 3,
+    newsSlots: ["13:00", "14:30"],
+  });
   s.youtube = () => {
     const yt = fakeYouTube(f);
     yt.createSession = async () => {
@@ -292,7 +463,10 @@ test("a fatal upload error pauses story selection until it lapses or YouTube is 
   await tick(s);
   assert.equal((await only(db)).status, "failed");
   assert.ok(f.notifications.some((n) => n.includes("Episode failed")));
-  assert.match((await selectionPause(db, new Date("2026-10-16T12:05:00Z"))) ?? "", /invalid_grant/);
+  assert.match(
+    (await selectionPause(db, new Date("2026-10-16T12:05:00Z"))) ?? "",
+    /invalid_grant/,
+  );
 
   const later = new Date("2026-10-16T13:00:00Z");
   setClock(later);
@@ -302,11 +476,23 @@ test("a fatal upload error pauses story selection until it lapses or YouTube is 
 
   await clearSelectionPause(db); // what a successful /oauth/callback does
   await tick(s);
-  assert.equal((await listEpisodes(db)).length, 2, "selection resumes once reconnected");
+  assert.equal(
+    (await listEpisodes(db)).length,
+    2,
+    "selection resumes once reconnected",
+  );
 });
 
 test("uncorroborated stories always wait for a human, even in auto mode", async () => {
-  const { db, f, s } = await setup({ approvalMode: "auto", includeRumours: true }, { script: goodScript({ is_rumour: true, hook: "Starfield's second expansion has reportedly slipped to early 2027." }) });
+  const { db, f, s } = await setup(
+    { approvalMode: "auto", includeRumours: true },
+    {
+      script: goodScript({
+        is_rumour: true,
+        hook: "Starfield's second expansion has reportedly slipped to early 2027.",
+      }),
+    },
+  );
   await tick(s);
   const ep = await only(db);
   assert.equal(ep.status, "awaiting_approval");
@@ -315,7 +501,10 @@ test("uncorroborated stories always wait for a human, even in auto mode", async 
 });
 
 test("an unanswered manual approval expires after 48h and frees the daily slot", async () => {
-  const { db, s, setClock } = await setup({ approvalMode: "manual", dailyTarget: 1 });
+  const { db, s, setClock } = await setup({
+    approvalMode: "manual",
+    dailyTarget: 1,
+  });
   await tick(s);
   const first = await only(db);
   assert.equal(first.status, "awaiting_approval");
@@ -325,7 +514,11 @@ test("an unanswered manual approval expires after 48h and frees the daily slot",
   await tick(s);
   assert.equal((await getEpisode(db, first.id))!.status, "rejected");
   await tick(s); // the next run (10 minutes later) picks a new story
-  assert.equal((await listEpisodes(db)).length, 2, "a new story was picked once the slot freed");
+  assert.equal(
+    (await listEpisodes(db)).length,
+    2,
+    "a new story was picked once the slot freed",
+  );
 });
 
 test("timeout mode never starts a countdown when the Discord notice failed", async () => {
@@ -339,7 +532,11 @@ test("timeout mode never starts a countdown when the Discord notice failed", asy
 
 test("a vision QA fail with no listed problems still blocks the upload", async () => {
   const { db, f, s } = await setup({ maxAttempts: 1 });
-  s.visionQa = async () => ({ verdict: "fail", problems: [], notes: "headline clipped" });
+  s.visionQa = async () => ({
+    verdict: "fail",
+    problems: [],
+    notes: "headline clipped",
+  });
   await tick(s);
   const ep = await only(db);
   assert.equal(ep.status, "failed");
@@ -348,14 +545,105 @@ test("a vision QA fail with no listed problems still blocks the upload", async (
 });
 
 test("timeout approval is held while the public URL is unreachable", async () => {
-  const { db, f, s, setClock } = await setup({ approvalMode: "timeout", approvalTimeoutMinutes: 60 }, { publicReachable: false });
+  const { db, f, s, setClock } = await setup(
+    { approvalMode: "timeout", approvalTimeoutMinutes: 60 },
+    { publicReachable: false },
+  );
   await tick(s);
   const ep = await only(db);
   assert.equal(ep.status, "awaiting_approval");
   setClock(new Date("2026-10-16T14:00:00Z"));
   await tick(s);
-  assert.equal((await only(db)).status, "awaiting_approval", "held: nobody could have tapped Reject");
+  assert.equal(
+    (await only(db)).status,
+    "awaiting_approval",
+    "held: nobody could have tapped Reject",
+  );
   f.publicReachable = true;
+  await tick(s);
+  assert.equal((await only(db)).status, "published");
+});
+
+function breakingStory(s: Services, now: Date) {
+  s.discover = async () =>
+    clusterItems(
+      [
+        item("Grand Theft Auto VI trailer 3 is out now", "Rockstar Newswire", "official", 2, now),
+        item("GTA 6 trailer 3 just dropped and it is enormous", "IGN", "outlet", 1, now),
+        item("Rockstar releases Grand Theft Auto VI trailer 3", "VGC", "outlet", 1, now),
+      ],
+      now,
+    );
+}
+
+test("the breaking lane fires on a huge fresh official story outside any news slot, with a short approval countdown", async () => {
+  // 09:00 London: no news slot is due, but a massive official story landed minutes ago.
+  const { db, f, s, setClock } = await setup({ dailyTarget: 4, newsSlots: ["19:30"], approvalMode: "timeout", approvalTimeoutMinutes: 60, breakingApprovalMinutes: 20, breakingScoreMin: 40 });
+  const at = new Date("2026-10-16T08:00:00Z");
+  setClock(at);
+  breakingStory(s, at);
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(ep.lane, "news_breaking");
+  assert.equal(ep.priority, 100);
+  assert.equal(ep.status, "awaiting_approval");
+  assert.ok(f.notifications.some((n) => n.startsWith("🚨")), "the owner is told a breaking Short is in production");
+  setClock(new Date("2026-10-16T08:25:00Z"));
+  await tick(s);
+  const done = await only(db);
+  assert.equal(done.status, "published", "published after the 20-minute countdown");
+  assert.equal(done.publish_at, null, "breaking publishes immediately inside its window");
+
+  // The same franchise cannot fire again within the cooldown, even with a new story hash.
+  setClock(new Date("2026-10-16T09:00:00Z"));
+  s.discover = async () => clusterItems([item("Grand Theft Auto VI trailer 3 breaks the internet", "Rockstar Newswire", "official", 2, new Date("2026-10-16T09:00:00Z")), item("GTA 6 trailer 3 record views", "IGN", "outlet", 1, new Date("2026-10-16T09:00:00Z"))], new Date("2026-10-16T09:00:00Z"));
+  await tick(s);
+  assert.equal((await listEpisodes(db)).length, 1, "franchise cooldown holds");
+});
+
+test("news Shorts are made for their slots and publish at the slot; a waiting episode never blocks the next one", async () => {
+  // Slots at 13:00 and 14:30 London (12:00Z and 13:30Z). Clock 12:00Z: the 13:00 slot is due.
+  const { db, s, setClock } = await setup({ dailyTarget: 4, newsSlots: ["13:00", "14:30"], approvalMode: "manual", breakingEnabled: false, youtubePrivacy: "unlisted" });
+  await tick(s);
+  const first = await only(db);
+  assert.equal(first.lane, "news");
+  assert.equal(new Date(first.slot_at!).toISOString(), "2026-10-16T12:00:00.000Z");
+  assert.equal(first.status, "awaiting_approval", "manual mode waits for the owner");
+
+  // 12:20Z: the 14:30 slot (due from 12:15Z) is selected although the first episode is still waiting.
+  const later = new Date("2026-10-16T12:20:00Z");
+  setClock(later);
+  freshStory(s, later);
+  await tick(s);
+  const eps = await listEpisodes(db);
+  assert.equal(eps.length, 2, "a waiting episode does not block production for the next slot");
+  const second = eps.find((e) => e.id !== first.id)!;
+  assert.equal(new Date(second.slot_at!).toISOString(), "2026-10-16T13:30:00.000Z");
+
+  // Approving the second one schedules it for its slot rather than publishing early.
+  await db.query(`UPDATE episodes SET status = 'approved', approved_by = 'owner' WHERE id = $1`, [second.id]);
+  await tick(s);
+  const scheduled = (await getEpisode(db, second.id))!;
+  assert.equal(scheduled.status, "uploading");
+  assert.equal(new Date(scheduled.publish_at!).toISOString(), "2026-10-16T13:30:00.000Z", "publishes at its slot");
+  assert.ok(scheduled.next_attempt_at && new Date(scheduled.next_attempt_at).toISOString() === "2026-10-16T13:30:00.000Z", "the unlisted upload itself waits for the slot");
+  // Nothing happens until the slot.
+  setClock(new Date("2026-10-16T13:00:00Z"));
+  await tick(s);
+  assert.equal((await getEpisode(db, second.id))!.status, "uploading");
+  setClock(new Date("2026-10-16T13:31:00Z"));
+  await tick(s);
+  assert.equal((await getEpisode(db, second.id))!.status, "published");
+});
+
+test("uploads are deferred to the next Pacific day when the YouTube quota is nearly spent", async () => {
+  const { db, s, setClock } = await setup({ dryRun: false, approvalMode: "auto", breakingEnabled: false });
+  await quotaAdd(db, new Date("2026-10-16T12:00:00Z"), 9000);
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(ep.status, "uploading", "the upload waits");
+  assert.equal(new Date(ep.next_attempt_at!).toISOString(), "2026-10-17T07:00:00.000Z", "retried at midnight Pacific");
+  setClock(new Date("2026-10-17T07:05:00Z"));
   await tick(s);
   assert.equal((await only(db)).status, "published");
 });

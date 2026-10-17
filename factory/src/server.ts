@@ -9,9 +9,9 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, redactedConfig, type Config } from "./config.ts";
 import { runDoctor, formatDoctor } from "./doctor.ts";
 import { storedRefreshToken } from "./youtube/oauth.ts";
-import { openDb, migrate, type Db } from "./db.ts";
+import { openDb, migrate, withLease, type Db } from "./db.ts";
 import { createServices, oauthConfig } from "./services.ts";
-import { tick, episodeDir, clearSelectionPause, type Services } from "./pipeline.ts";
+import { discoverTick, tick, episodeDir, clearSelectionPause, type Services } from "./pipeline.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import { consentUrl, exchangeCode, saveRefreshToken, clearTokenCache } from "./youtube/oauth.ts";
@@ -65,9 +65,13 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
     if (url.pathname === "/health") {
       const [counts] = await db.query<Record<string, string>>(
         `SELECT count(*) FILTER (WHERE status = 'published' AND updated_at > now() - interval '24 hours') AS published_24h,
-                count(*) FILTER (WHERE status NOT IN ('published','failed','rejected')) AS in_flight FROM episodes`,
+                count(*) FILTER (WHERE status = 'published' AND lane = 'news_breaking' AND updated_at > now() - interval '24 hours') AS breaking_24h,
+                count(*) FILTER (WHERE status NOT IN ('published','failed','rejected')) AS in_flight,
+                count(*) FILTER (WHERE status IN ('selected','scripted','voiced','rendered')) AS producing,
+                count(*) FILTER (WHERE status IN ('uploading') AND publish_at > now()) AS scheduled FROM episodes`,
       );
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, ...counts, lastTick: state.lastTick, lastError: state.lastError }));
+      const [sight] = await db.query<Record<string, string>>(`SELECT count(*) AS stories_seen_24h, max(last_seen) AS last_discovery FROM cluster_sightings WHERE last_seen > now() - interval '24 hours'`);
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, ...counts, ...sight, lastTick: state.lastTick, lastError: state.lastError }));
       return;
     }
 
@@ -218,6 +222,10 @@ async function main(): Promise<void> {
       log("warn", "doctor failed", { error: errorMessage(err) });
     }
   })();
+  // Discovery runs on its own short clock so a breaking story is seen within minutes.
+  const discover = () => withLease(db, "discover", 4 * 60, async () => { await discoverTick(services); }).catch((err) => log("warn", "discovery failed", { error: errorMessage(err) }));
+  setTimeout(() => void discover(), 5_000);
+  setInterval(() => void discover(), Math.max(1, cfg.discoverMinutes) * 60_000);
   setTimeout(() => void runTick(services, state), 15_000);
   setInterval(() => void runTick(services, state), cfg.tickMinutes * 60_000);
   // Daily at 04:00 UTC, when nothing is mid-production, exit cleanly so the

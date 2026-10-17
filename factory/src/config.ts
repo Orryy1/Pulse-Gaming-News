@@ -69,7 +69,22 @@ export interface Config {
   youtubePrivacy: PrivacyStatus;
   youtubeVetoMinutes: number;
 
-  dailyTarget: number;
+  dailyTarget: number; // Shorts per day across all lanes
+  timezone: string; // the owner's day and slot clock
+  newsSlots: string[]; // "HH:MM" local publish slots for the news lane
+  slotLeadMinutes: number; // start producing this long before a slot
+  slotGraceMinutes: number; // a slot missed by less than this is still filled
+  maxProducing: number; // episodes allowed mid-production at once (waiting ones never block)
+  minUploadGapMinutes: number;
+  discoverMinutes: number;
+  breakingEnabled: boolean;
+  breakingPerDay: number;
+  breakingScoreMin: number;
+  breakingMaxAgeMinutes: number;
+  breakingCooldownHours: number;
+  breakingApprovalMinutes: number;
+  breakingWindow: string; // local "HH:MM-HH:MM"
+  quotaUnitsPerDay: number;
   selectFromHourUtc: number;
   minGapHours: number;
   tickMinutes: number;
@@ -134,7 +149,22 @@ export function loadConfig(): Config {
     youtubePrivacy,
     youtubeVetoMinutes: int("YOUTUBE_VETO_MINUTES", 0),
 
-    dailyTarget: int("DAILY_TARGET", 1),
+    dailyTarget: int("SHORTS_PER_DAY", int("DAILY_TARGET", 3)),
+    timezone: str("TIMEZONE", "Europe/London"),
+    newsSlots: str("NEWS_SLOTS", "12:00,16:00,19:30").split(",").map((t) => t.trim()).filter((t) => /^\d\d:\d\d$/.test(t)).sort(),
+    slotLeadMinutes: int("SLOT_LEAD_MINUTES", 75),
+    slotGraceMinutes: int("SLOT_GRACE_MINUTES", 30),
+    maxProducing: int("MAX_PRODUCING", 2),
+    minUploadGapMinutes: int("MIN_UPLOAD_GAP_MINUTES", 60),
+    discoverMinutes: int("DISCOVER_MINUTES", 3),
+    breakingEnabled: bool("BREAKING_ENABLED", true),
+    breakingPerDay: int("BREAKING_PER_DAY", 2),
+    breakingScoreMin: int("BREAKING_SCORE_MIN", 75),
+    breakingMaxAgeMinutes: int("BREAKING_MAX_AGE_MINUTES", 90),
+    breakingCooldownHours: int("BREAKING_COOLDOWN_HOURS", 2),
+    breakingApprovalMinutes: int("BREAKING_APPROVAL_MINUTES", 20),
+    breakingWindow: str("BREAKING_WINDOW", "07:00-23:00"),
+    quotaUnitsPerDay: int("QUOTA_UNITS_PER_DAY", 10000),
     selectFromHourUtc: int("SELECT_FROM_HOUR_UTC", 9),
     minGapHours: int("MIN_GAP_HOURS", 4),
     tickMinutes: int("TICK_MINUTES", 10),
@@ -197,6 +227,8 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     youtubeOAuthClient: Boolean(c.googleClientId && c.googleClientSecret),
     youtubePrivacy: c.youtubePrivacy,
     dailyTarget: c.dailyTarget,
+    newsSlots: c.newsSlots.join(","),
+    breaking: c.breakingEnabled ? `${c.breakingPerDay}/day, score>=${c.breakingScoreMin}, <=${c.breakingMaxAgeMinutes}min old` : "off",
     approvalMode: c.approvalMode,
     approvalTimeoutMinutes: c.approvalTimeoutMinutes,
     includeRumours: c.includeRumours,

@@ -43,6 +43,15 @@ Videos are uploaded with YouTube's "altered or synthetic content" disclosure swi
 
 `VOICE_PROVIDER=elevenlabs-first` uses the real ElevenLabs voice while the month's remaining characters cover the script and the local clone after that, so credits already paid for are used but never exceeded. Keep usage-based billing switched off in the ElevenLabs account; the factory never asks ElevenLabs to extend the limit. If the balance cannot be read (bad key), ElevenLabs is skipped rather than risked.
 
+## Cadence
+
+Two lanes feed one producer.
+
+- **News** fills fixed daily slots (`NEWS_SLOTS`, default `12:00,16:00,19:30` in `TIMEZONE`, default Europe/London). An episode starts `SLOT_LEAD_MINUTES` (75) before its slot and publishes at the slot: public uploads are scheduled on YouTube, unlisted or private uploads wait until the slot. A slot missed by more than `SLOT_GRACE_MINUTES` (30) is skipped, never double-booked.
+- **Breaking** is reserved for massive stories: an official source, corroborated, not a rumour, first seen by the discovery poll no more than `BREAKING_MAX_AGE_MINUTES` (90) ago and scoring at least `BREAKING_SCORE_MIN` (75). It fires any time inside `BREAKING_WINDOW` (07:00-23:00 local), at most `BREAKING_PER_DAY` (2) times, with a per-franchise cooldown of `BREAKING_COOLDOWN_HOURS` (2), a `BREAKING_APPROVAL_MINUTES` (20) countdown instead of the normal one, and a Discord heads-up the moment it starts.
+
+Discovery runs every `DISCOVER_MINUTES` (3) on its own lease and remembers when each story cluster was first seen, so "breaking" means minutes old, not "has a new follow-up". `SHORTS_PER_DAY` (4) caps all lanes together; `MAX_PRODUCING` (2) episodes can be mid-production at once and episodes waiting on approval or YouTube never block the next one; every publish keeps `MIN_UPLOAD_GAP_MINUTES` (60) after the last. YouTube Data API units are metered per Pacific day in `quota_ledger`; an upload is deferred to the next reset when fewer than about 2,100 units remain, and `QUOTA_UNITS_PER_DAY` (10,000) is the project's default quota. `/health` reports per-lane counts, producing and scheduled episodes and the last discovery.
+
 ## Approval
 
 | `APPROVAL_MODE` | Behaviour |

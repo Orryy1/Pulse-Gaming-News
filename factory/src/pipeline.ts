@@ -26,6 +26,7 @@ import { buildSegments, srtFromWords, type SegmentInput } from "./render/timelin
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
+import { LANE_PRIORITY, QUOTA, QUOTA_RESERVE_FOR_UPLOAD, dueSlot, franchiseKey, inWindow, isBreaking, lastPublishAt, nextWindowStart, quotaAdd, quotaResetAt, quotaUsed, type Sighting } from "./lanes.ts";
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
@@ -42,6 +43,8 @@ import {
   recordFailure,
   seenHashes,
   transition,
+  countProducing,
+  takenSlots,
 } from "./episodes.ts";
 
 export interface Services {
@@ -88,41 +91,101 @@ export function approvalLinks(cfg: Config, id: string) {
 
 // ---------------------------------------------------------------- selection
 
+/**
+ * Discovery on its own clock: fetch the feeds, cluster, and remember when each
+ * story was first seen. Selection reads these sightings and never refetches.
+ */
+export async function discoverTick(s: Services): Promise<number> {
+  const clusters = await s.discover();
+  const now = s.now();
+  for (const c of clusters) {
+    await s.db.query(
+      `INSERT INTO cluster_sightings (hash, headline, first_seen, last_seen, item_count, has_official, max_score, cluster_json)
+       VALUES ($1, $2, $3, $3, $4, $5, $6, $7)
+       ON CONFLICT (hash) DO UPDATE SET last_seen = EXCLUDED.last_seen, item_count = EXCLUDED.item_count,
+         has_official = cluster_sightings.has_official OR EXCLUDED.has_official,
+         max_score = greatest(cluster_sightings.max_score, EXCLUDED.max_score), cluster_json = EXCLUDED.cluster_json, headline = EXCLUDED.headline`,
+      [c.hash, c.headline, now, c.items.length, c.hasOfficial, c.score, JSON.stringify(c)],
+    );
+  }
+  await s.db.query(`DELETE FROM cluster_sightings WHERE last_seen < now() - interval '7 days'`);
+  return clusters.length;
+}
+
+async function recentSightings(s: Services): Promise<Array<{ cluster: StoryCluster; sighting: Sighting }>> {
+  const rows = await s.db.query<Sighting & { cluster_json: StoryCluster }>(
+    `SELECT hash, first_seen, last_seen, item_count, has_official, max_score, cluster_json FROM cluster_sightings WHERE last_seen > now() - ($1 || ' hours')::interval ORDER BY max_score DESC`,
+    [String(s.cfg.maxStoryAgeHours)],
+  );
+  return rows.map((r) => ({ cluster: r.cluster_json, sighting: r }));
+}
+
+async function createFromChoice(s: Services, candidates: StoryCluster[], lane: { lane: string; priority: number; slotAt?: Date }, why: string): Promise<string | undefined> {
+  const { db } = s;
+  const choice = await selectStory(s.llm, candidates, await recentHeadlines(db));
+  const picked = candidates[choice.candidate_index];
+  if (!picked) {
+    log("info", "editor passed on every candidate", { lane: lane.lane, reason: choice.reason });
+    return undefined;
+  }
+  const id = shortId();
+  const created = await createEpisode(db, id, { ...picked, gameHint: choice.game_title || undefined }, lane);
+  await markSeen(db, picked.hash, picked.headline, created ? "selected" : "duplicate", choice.reason);
+  if (!created) return undefined;
+  await logEvent(db, id, "selected", { headline: picked.headline, reason: choice.reason, story_type: choice.story_type, score: picked.score, lane: lane.lane, slot_at: lane.slotAt?.toISOString() ?? null, why });
+  log("info", "story selected", { id, lane: lane.lane, headline: picked.headline, slot: lane.slotAt?.toISOString() });
+  return id;
+}
+
+/**
+ * Two lanes, one producer. The breaking lane fires on a massive official story
+ * seen for the first time minutes ago, any time inside its window, at most a
+ * few times a day with a per-franchise cooldown. The news lane fills fixed
+ * daily slots: an episode is started a lead time before its slot and
+ * publishes at the slot. Episodes waiting on approval or YouTube never block
+ * the next one; only MAX_PRODUCING episodes are mid-production at once.
+ */
 export async function maybeSelect(s: Services): Promise<string | undefined> {
   const { db, cfg } = s;
   const now = s.now();
-  if (now.getUTCHours() < cfg.selectFromHourUtc) return undefined;
-  if ((await countToday(db)) >= cfg.dailyTarget) return undefined;
   const paused = await selectionPause(db, now);
   if (paused) {
     log("info", "story selection paused", { reason: paused });
     return undefined;
   }
-  const [busy] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM episodes WHERE status = ANY($1)`, [IN_FLIGHT]);
-  if (Number(busy?.n ?? 0) > 0) return undefined;
-  const [last] = await db.query<{ created_at: string }>(`SELECT created_at FROM episodes WHERE status NOT IN ('failed','rejected') ORDER BY created_at DESC LIMIT 1`);
-  if (last && now.getTime() - new Date(last.created_at).getTime() < cfg.minGapHours * 3600_000) return undefined;
+  if ((await countProducing(db)) >= cfg.maxProducing) return undefined;
+  const total = await countToday(db, cfg.timezone);
+  if (total >= cfg.dailyTarget) return undefined;
 
   const seen = await seenHashes(db);
-  const clusters = (await s.discover()).filter((c) => !seen.has(c.hash));
-  const candidates = clusters.filter((c) => c.corroborated || (cfg.includeRumours && c.rumourSignals)).filter((c) => c.score > 0).slice(0, 12);
+  const sightings = (await recentSightings(s)).filter((x) => !seen.has(x.cluster.hash));
+  const eligible = sightings.filter((x) => x.cluster.corroborated || (cfg.includeRumours && x.cluster.rumourSignals)).filter((x) => x.cluster.score > 0);
+
+  // 1. Breaking lane.
+  if (cfg.breakingEnabled && (await countToday(db, cfg.timezone, "news_breaking")) < cfg.breakingPerDay) {
+    const rule = { scoreMin: cfg.breakingScoreMin, maxAgeMinutes: cfg.breakingMaxAgeMinutes, window: cfg.breakingWindow, timeZone: cfg.timezone };
+    const cooled = new Set((await db.query<{ franchise: string }>(`SELECT franchise FROM breaking_log WHERE fired_at > now() - ($1 || ' hours')::interval`, [String(cfg.breakingCooldownHours)])).map((r) => r.franchise));
+    const breaking = eligible.filter((x) => isBreaking(x.cluster, x.sighting, now, rule) && !cooled.has(franchiseKey(x.cluster))).map((x) => x.cluster).slice(0, 4);
+    if (breaking.length) {
+      const id = await createFromChoice(s, breaking, { lane: "news_breaking", priority: LANE_PRIORITY.news_breaking }, "breaking: official, fresh and scored above the bar");
+      if (id) {
+        const ep = await getEpisode(db, id);
+        await db.query(`INSERT INTO breaking_log (story_hash, franchise, episode_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, [ep!.story_hash, franchiseKey(ep!.story_json), id]);
+        await s.notify({ content: `🚨 Breaking lane: "${ep!.story_json.headline}" is being produced now.` });
+        return id;
+      }
+    }
+  }
+
+  // 2. News lane: the next slot whose lead time has begun.
+  const slot = dueSlot(now, { slots: cfg.newsSlots, leadMinutes: cfg.slotLeadMinutes, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone }, await takenSlots(db));
+  if (!slot) return undefined;
+  const candidates = eligible.map((x) => x.cluster).slice(0, 12);
   if (candidates.length === 0) {
-    log("info", "no eligible stories this tick", { clusters: clusters.length });
+    log("info", "no eligible stories for the slot", { slot: slot.toISOString(), sightings: sightings.length });
     return undefined;
   }
-  const choice = await selectStory(s.llm, candidates, await recentHeadlines(db));
-  const picked = candidates[choice.candidate_index];
-  if (!picked) {
-    log("info", "editor passed on every candidate", { reason: choice.reason });
-    return undefined;
-  }
-  const id = shortId();
-  const created = await createEpisode(db, id, { ...picked, gameHint: choice.game_title || undefined });
-  await markSeen(db, picked.hash, picked.headline, created ? "selected" : "duplicate", choice.reason);
-  if (!created) return undefined;
-  await logEvent(db, id, "selected", { headline: picked.headline, reason: choice.reason, story_type: choice.story_type, score: picked.score });
-  log("info", "story selected", { id, headline: picked.headline });
-  return id;
+  return createFromChoice(s, candidates, { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot }, `news slot ${slot.toISOString()}`);
 }
 
 // --------------------------------------------------------------------- steps
@@ -365,7 +428,7 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
     mode === "auto"
       ? "Auto mode: publishing now."
       : mode === "timeout"
-        ? `Publishes automatically in ${s.cfg.approvalTimeoutMinutes} min unless rejected.`
+        ? `Publishes automatically in ${ep.lane === "news_breaking" ? s.cfg.breakingApprovalMinutes : s.cfg.approvalTimeoutMinutes} min unless rejected.`
         : "Waiting for your approval.";
   const dir = episodeDir(s.cfg, ep.id);
   const delivered = await s.notify({
@@ -411,7 +474,8 @@ async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
     return;
   }
   if (ep.approval_mode !== "timeout") return;
-  if (waited >= s.cfg.approvalTimeoutMinutes * 60_000) {
+  const timeoutMinutes = ep.lane === "news_breaking" ? s.cfg.breakingApprovalMinutes : s.cfg.approvalTimeoutMinutes;
+  if (waited >= timeoutMinutes * 60_000) {
     // The countdown only publishes if the owner could actually have tapped Reject: when the
     // public URL (the tunnel) is down the Discord links are dead, so the episode is held.
     if (!(await s.publicReachable())) {
@@ -425,16 +489,30 @@ async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
 }
 
 /** Publish now if inside the window, otherwise at the next window opening. */
-export function choosePublishAt(cfg: Config, now: Date): Date | undefined {
-  const earliest = new Date(now.getTime() + cfg.youtubeVetoMinutes * 60_000);
-  const h = earliest.getUTCHours();
+/**
+ * When this episode goes live: breaking publishes now inside its window (else
+ * at the window's next opening); news publishes at its slot (now if the slot
+ * has passed); every lane keeps MIN_UPLOAD_GAP_MINUTES after the last publish.
+ * Returns undefined for "now".
+ */
+export function choosePublishAt(cfg: Config, now: Date, ep?: Pick<Episode, "lane" | "slot_at">, lastPublish?: Date): Date | undefined {
   let at: Date | undefined;
-  if (h < cfg.publishWindowStartUtc) {
-    at = new Date(Date.UTC(earliest.getUTCFullYear(), earliest.getUTCMonth(), earliest.getUTCDate(), cfg.publishWindowStartUtc));
-  } else if (h >= cfg.publishWindowEndUtc) {
-    at = new Date(Date.UTC(earliest.getUTCFullYear(), earliest.getUTCMonth(), earliest.getUTCDate() + 1, cfg.publishWindowStartUtc));
-  } else if (cfg.youtubeVetoMinutes > 0) {
-    at = earliest;
+  if (ep?.lane === "news_breaking") {
+    at = inWindow(now, cfg.breakingWindow, cfg.timezone) ? undefined : nextWindowStart(now, cfg.breakingWindow, cfg.timezone);
+  } else if (ep?.slot_at) {
+    const slot = new Date(ep.slot_at);
+    at = slot > now ? slot : undefined;
+  } else {
+    // Legacy window behaviour for episodes without a slot.
+    const earliest = new Date(now.getTime() + cfg.youtubeVetoMinutes * 60_000);
+    const h = earliest.getUTCHours();
+    if (h < cfg.publishWindowStartUtc) at = new Date(Date.UTC(earliest.getUTCFullYear(), earliest.getUTCMonth(), earliest.getUTCDate(), cfg.publishWindowStartUtc));
+    else if (h >= cfg.publishWindowEndUtc) at = new Date(Date.UTC(earliest.getUTCFullYear(), earliest.getUTCMonth(), earliest.getUTCDate() + 1, cfg.publishWindowStartUtc));
+    else if (cfg.youtubeVetoMinutes > 0) at = earliest;
+  }
+  if (lastPublish) {
+    const gapEnd = new Date(lastPublish.getTime() + cfg.minUploadGapMinutes * 60_000);
+    if (gapEnd > (at ?? now)) at = gapEnd;
   }
   // YouTube needs scheduled times comfortably in the future; otherwise go now.
   if (at && at.getTime() - now.getTime() < 15 * 60_000) return undefined;
@@ -442,8 +520,12 @@ export function choosePublishAt(cfg: Config, now: Date): Date | undefined {
 }
 
 async function stepApproved(s: Services, ep: Episode): Promise<void> {
-  const publishAt = choosePublishAt(s.cfg, s.now());
-  await transition(s.db, ep.id, "approved", "uploading", { publish_at: publishAt ?? null });
+  const publishAt = choosePublishAt(s.cfg, s.now(), ep, await lastPublishAt(s.db));
+  // Public uploads are scheduled on YouTube (private until publish_at). Anything else
+  // cannot be scheduled there, so the upload itself waits until the slot.
+  const holdUpload = publishAt && s.cfg.youtubePrivacy !== "public";
+  await transition(s.db, ep.id, "approved", "uploading", { publish_at: publishAt ?? null, ...(holdUpload ? { next_attempt_at: publishAt } : {}) });
+  if (publishAt) await logEvent(s.db, ep.id, "scheduled", { publish_at: publishAt.toISOString(), lane: ep.lane });
 }
 
 export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], syntheticMedia = true) {
@@ -493,6 +575,14 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
     await s.notify({ content: `🧪 DRY_RUN: "${ep.script_json!.youtube.title}" would have been uploaded now.` });
     return;
   }
+  const used = await quotaUsed(s.db, s.now());
+  if (used + QUOTA_RESERVE_FOR_UPLOAD > s.cfg.quotaUnitsPerDay) {
+    const resetAt = quotaResetAt(s.now());
+    log("warn", "YouTube quota nearly spent; upload deferred", { episode: ep.id, used, resetAt: resetAt.toISOString() });
+    await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [ep.id, resetAt]);
+    await logEvent(s.db, ep.id, "quota_deferred", { used, reset_at: resetAt.toISOString() });
+    return;
+  }
   const yt = s.youtube();
   const marker = markerTag(ep.id);
   const file = path.join(episodeDir(s.cfg, ep.id), "short.mp4");
@@ -502,6 +592,7 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
     const existing = await yt.findByMarker(marker);
     if (existing) {
       await transition(s.db, ep.id, "uploading", "uploaded", { youtube_video_id: existing });
+    await quotaAdd(s.db, s.now(), QUOTA.upload);
       await logEvent(s.db, ep.id, "upload_adopted", { videoId: existing });
       return;
     }
@@ -515,6 +606,7 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   try {
     const videoId = await yt.uploadToSession(session, file);
     await transition(s.db, ep.id, "uploading", "uploaded", { youtube_video_id: videoId });
+    await quotaAdd(s.db, s.now(), QUOTA.upload);
     await logEvent(s.db, ep.id, "uploaded", { videoId });
   } catch (err) {
     if (err instanceof SessionGone) {
@@ -531,6 +623,7 @@ async function addCaptions(s: Services, ep: Episode): Promise<void> {
     const yt = s.youtube();
     if ((await yt.listCaptions(ep.youtube_video_id!)).some((c) => c.language === "en-GB")) return;
     const id = await yt.insertCaption(ep.youtube_video_id!, file, "en-GB", "English");
+    await quotaAdd(s.db, s.now(), QUOTA.captions);
     await logEvent(s.db, ep.id, "captions_uploaded", { id });
   } catch (err) {
     log("warn", "caption upload failed", { episode: ep.id, error: errorMessage(err) });
@@ -540,6 +633,7 @@ async function addCaptions(s: Services, ep: Episode): Promise<void> {
 
 async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   const st = await s.youtube().status(ep.youtube_video_id!);
+  await quotaAdd(s.db, s.now(), QUOTA.poll);
   if (!st) throw new Error("uploaded video not found yet");
   if (st.uploadStatus === "rejected" || st.uploadStatus === "failed") {
     await transition(s.db, ep.id, "uploaded", "failed", { youtube_status: st.uploadStatus, last_error: st.rejectionReason ?? st.failureReason ?? st.uploadStatus });
@@ -652,19 +746,21 @@ export async function tick(s: Services): Promise<{ ran: boolean; selected?: stri
   const result = await withLease(s.db, "tick", 45 * 60, async () => {
     let selected: string | undefined;
     try {
+      await discoverTick(s);
       selected = await maybeSelect(s);
     } catch (err) {
       log("error", "selection failed", { error: errorMessage(err) });
       if (err instanceof FatalError) await s.notify({ content: `⚠️ Story selection failed: ${errorMessage(err)}` });
     }
-    for (const ep of await dueEpisodes(s.db)) {
+    for (const ep of await dueEpisodes(s.db, s.now())) {
       // Push one episode as far as it can go this tick (script → upload);
-      // it stops on its own at a wait (approval, processing) or a failure.
+      // it stops on its own at a wait (approval, processing, a slot, a quota reset) or a failure.
       let current: Episode | undefined = ep;
       for (let i = 0; i < 10 && current; i++) {
         const moved = await advance(s, current);
         if (!moved) break;
         current = await getEpisode(s.db, ep.id);
+        if (current?.next_attempt_at && new Date(current.next_attempt_at) > s.now()) break;
       }
     }
     await pruneMedia(s).catch((err) => log("warn", "prune failed", { error: errorMessage(err) }));

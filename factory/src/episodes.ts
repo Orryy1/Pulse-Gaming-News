@@ -33,6 +33,9 @@ export interface Episode {
   youtube_video_id: string | null;
   youtube_status: string | null;
   publish_at: string | null;
+  lane: string;
+  priority: number;
+  slot_at: string | null;
   attempts: number;
   last_error: string | null;
   next_attempt_at: string | null;
@@ -64,21 +67,23 @@ export async function listEpisodes(db: Db, limit = 20): Promise<Episode[]> {
 }
 
 /** Episodes that can be advanced right now, oldest first. */
-export async function dueEpisodes(db: Db): Promise<Episode[]> {
+export async function dueEpisodes(db: Db, now = new Date()): Promise<Episode[]> {
+  // The clock is passed in so holds (a slot, a quota reset) are judged by the factory's time, not the database's.
   return db.query<Episode>(
     `SELECT * FROM episodes
      WHERE status NOT IN ('published','rejected','failed')
-       AND (next_attempt_at IS NULL OR next_attempt_at <= now())
-     ORDER BY created_at ASC`,
+       AND (next_attempt_at IS NULL OR next_attempt_at <= $1)
+     ORDER BY priority DESC, created_at ASC`,
+    [now],
   );
 }
 
-export async function createEpisode(db: Db, id: string, cluster: StoryCluster): Promise<boolean> {
+export async function createEpisode(db: Db, id: string, cluster: StoryCluster, lane: { lane: string; priority: number; slotAt?: Date } = { lane: "news", priority: 50 }): Promise<boolean> {
   // cluster may carry gameHint from the editor's selection.
   const rows = await db.query(
-    `INSERT INTO episodes (id, story_hash, status, story_json) VALUES ($1, $2, 'selected', $3)
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane, priority, slot_at) VALUES ($1, $2, 'selected', $3, $4, $5, $6)
      ON CONFLICT (story_hash) DO NOTHING RETURNING id`,
-    [id, cluster.hash, JSON.stringify(cluster)],
+    [id, cluster.hash, JSON.stringify(cluster), lane.lane, lane.priority, lane.slotAt ?? null],
   );
   return rows.length === 1;
 }
@@ -152,10 +157,26 @@ export async function recentHeadlines(db: Db, days = 5): Promise<string[]> {
 
 /** Episodes started today (UTC) that have not failed or been rejected. */
 /** Episodes created today in the owner's day (Europe/London), excluding failed and rejected. */
-export async function countToday(db: Db): Promise<number> {
+export async function countToday(db: Db, timeZone = "Europe/London", lane?: string): Promise<number> {
+  // The owner's day: "today" rolls over at local midnight in winter and summer alike.
   const [row] = await db.query<{ n: string | number }>(
-    `SELECT count(*) AS n FROM episodes WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'Europe/London') AT TIME ZONE 'Europe/London'
-       AND status NOT IN ('failed','rejected')`,
+    `SELECT count(*) AS n FROM episodes
+      WHERE created_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1
+        AND status NOT IN ('failed','rejected')
+        AND ($2::text IS NULL OR lane = $2)`,
+    [timeZone, lane ?? null],
   );
   return Number(row?.n ?? 0);
+}
+
+/** Episodes mid-production (not waiting on approval, YouTube or a terminal state). */
+export async function countProducing(db: Db): Promise<number> {
+  const [row] = await db.query<{ n: string | number }>(`SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered')`);
+  return Number(row?.n ?? 0);
+}
+
+/** Slot instants already claimed by live episodes. */
+export async function takenSlots(db: Db): Promise<Date[]> {
+  const rows = await db.query<{ slot_at: string }>(`SELECT slot_at FROM episodes WHERE slot_at IS NOT NULL AND status NOT IN ('failed','rejected')`);
+  return rows.map((r) => new Date(r.slot_at));
 }

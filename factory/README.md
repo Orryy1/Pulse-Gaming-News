@@ -60,6 +60,10 @@ Footage follows the words, the way the Ocarina of Time remaster Short did by han
 
 Ranking Shorts in the Epix-Gaming style, 75-160 seconds, six to ten entries spoken from the bottom up with a stated criterion: "Ranking EVERY Resident Evil game", "The BEST open-world game for every year", "Skyrim: 15 years later", "Is The Witcher 3 still good in 2026". On `EVERGREEN_DAYS` (default tue,thu,sat) an episode starts two hours before `EVERGREEN_SLOT` (19:00 local). Topics come from Steam's current top sellers plus a rotating franchise list, avoiding anything covered in the last six months; the writer drafts entries, the factory fetches live Steam facts for each, and the script is rewritten against them. Every entry gets its own box art and one 4-second trailer moment tagged to its line, a rank badge and a verdict chip. `EVERGREEN_APPROVAL_MODE` defaults to manual.
 
+## Voice rotation
+
+`ELEVENLABS_VOICE_POOL` is a comma-separated list of `voiceId:Name` pairs. The n-th Short the channel makes uses the voice at `floor(n / VOICE_ROTATION)` (default 2) in the pool, wrapping round, so a few Shorts in a row share a voice and the analytics can say which one holds viewers. The voice used is stored in `assets_json.voice`, logged as a `voice` event and named on the Discord publish card. An empty pool always uses `ELEVENLABS_VOICE_ID`.
+
 ## Approval
 
 | `APPROVAL_MODE` | Behaviour |

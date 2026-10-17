@@ -48,7 +48,17 @@ export async function polishVoice(file: string): Promise<void> {
   await fs.rename(tmp, file);
 }
 
-export async function narrate(cfg: Config, text: string, outPath: string): Promise<Narration> {
+/** The ElevenLabs voice for the n-th Short (0-based): the pool rotates every `rotation` Shorts, the configured voice when the pool is empty. */
+export function pickVoice(cfg: Config, ordinal: number): { id: string; name: string } {
+  if (!cfg.voicePool.length) return { id: cfg.elevenLabsVoiceId, name: cfg.elevenLabsVoiceId };
+  return cfg.voicePool[Math.floor(Math.max(0, ordinal) / cfg.voiceRotation) % cfg.voicePool.length]!;
+}
+
+export interface NarrationWithVoice extends Narration {
+  voice: { provider: "local" | "elevenlabs"; id: string; name: string };
+}
+
+export async function narrate(cfg: Config, text: string, outPath: string, voice?: { id: string; name: string }): Promise<NarrationWithVoice> {
   const order = providerOrder(cfg.voiceProvider);
   const errors: string[] = [];
   for (const provider of order) {
@@ -68,11 +78,12 @@ export async function narrate(cfg: Config, text: string, outPath: string): Promi
         // the point of elevenlabs-first is to use paid-for credits, not to risk a bill.
         if (left === undefined && cfg.voiceProvider === "elevenlabs-first") throw new Error("ElevenLabs balance unknown (check the API key)");
         if (left !== undefined && left < text.length * 1.2) throw new Error(`ElevenLabs has ${left} characters left this month`);
-        n = await synthesiseElevenLabs(text, outPath, { apiKey: cfg.elevenLabsApiKey, voiceId: cfg.elevenLabsVoiceId, modelId: cfg.elevenLabsModel });
+        n = await synthesiseElevenLabs(text, outPath, { apiKey: cfg.elevenLabsApiKey, voiceId: voice?.id ?? cfg.elevenLabsVoiceId, modelId: cfg.elevenLabsModel });
       }
       await polishVoice(outPath);
-      log("info", "narration ready", { provider, seconds: n.durationSeconds.toFixed(1) });
-      return n;
+      const used = provider === "local" ? { provider, id: cfg.localVoiceId, name: "Liam (local clone)" } : { provider, id: voice?.id ?? cfg.elevenLabsVoiceId, name: voice?.name ?? cfg.elevenLabsVoiceId };
+      log("info", "narration ready", { provider, voice: used.name, seconds: n.durationSeconds.toFixed(1) });
+      return { ...n, voice: used };
     } catch (err) {
       errors.push(`${provider}: ${errorMessage(err)}`);
       log("warn", "narrator unavailable", { provider, error: errorMessage(err) });

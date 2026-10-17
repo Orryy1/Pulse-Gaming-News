@@ -58,6 +58,8 @@ export interface Config {
   elevenLabsApiKey: string;
   elevenLabsVoiceId: string;
   elevenLabsModel: string;
+  voicePool: Array<{ id: string; name: string }>; // ElevenLabs voices rotated across Shorts; empty = always elevenLabsVoiceId
+  voiceRotation: number; // Shorts per voice before moving to the next
 
   discordWebhookUrl: string;
   healthcheckPingUrl: string;
@@ -145,6 +147,16 @@ export function loadConfig(): Config {
     elevenLabsApiKey: str("ELEVENLABS_API_KEY"),
     elevenLabsVoiceId: str("ELEVENLABS_VOICE_ID", "TX3LPaxmHKxFdv7VOQHJ"),
     elevenLabsModel: str("ELEVENLABS_MODEL", "eleven_multilingual_v2"),
+    // "id:Name,id:Name,..."; names are for the Discord card and the analytics join.
+    voicePool: str("ELEVENLABS_VOICE_POOL")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .map((v) => {
+        const [id, ...name] = v.split(":");
+        return { id: id!.trim(), name: name.join(":").trim() || id!.trim() };
+      }),
+    voiceRotation: Math.max(1, int("VOICE_ROTATION", 2)),
 
     discordWebhookUrl: str("DISCORD_WEBHOOK_URL"),
     healthcheckPingUrl: str("HEALTHCHECK_PING_URL"),

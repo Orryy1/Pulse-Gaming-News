@@ -6,6 +6,7 @@ import { buildSegments, pageCaptions, srtFromWords } from "../src/render/timelin
 import { capFootage, footageBudgetSeconds } from "../src/assets/footage.ts";
 import { videoMetadata } from "../src/pipeline.ts";
 import { missingScopes } from "../src/doctor.ts";
+import { pickVoice } from "../src/voice/index.ts";
 import { buildTags, hashtags, keywordLead, pinnedComment, polishTitle, titleProblems } from "../src/editorial/seo.ts";
 import { parseBars, dateLabel, monthsBetween, daysUntil, bandColour } from "../src/render/components/cards/helpers.ts";
 import { wordsFromAlignment } from "../src/voice/elevenlabs.ts";
@@ -277,4 +278,10 @@ test("SEO: titles are game-first, short and clean; tags, hashtags, lead and comm
   assert.deepEqual(hashtags(s), ["#Shorts", "#GamingNews", "#Starfield"]);
   assert.match(keywordLead(s), /^Starfield delayed: /);
   assert.match(pinnedComment(s), /^Our read: .*\? Sources are in the description\.$/);
+});
+
+test("voice rotation: a few Shorts in a row share a voice, then the pool moves on and wraps", () => {
+  const cfg = testConfig("x", { voicePool: [{ id: "a", name: "A" }, { id: "b", name: "B" }, { id: "c", name: "C" }], voiceRotation: 2 });
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6].map((n) => pickVoice(cfg, n).id), ["a", "a", "b", "b", "c", "c", "a"]);
+  assert.equal(pickVoice(testConfig("x", { voicePool: [] }), 5).id, testConfig("x").elevenLabsVoiceId, "an empty pool keeps the configured voice");
 });

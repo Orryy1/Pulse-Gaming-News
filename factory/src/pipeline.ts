@@ -25,6 +25,7 @@ import { COLOURS } from "./approval/discord.ts";
 import { selectStory, writeScript, factCheck, validateScript } from "./editorial/editorial.ts";
 import { narrationOf, type Script } from "./editorial/schema.ts";
 import { buildTags, hashtags, keywordLead, pinnedComment, polishTitle } from "./editorial/seo.ts";
+import { pickVoice } from "./voice/index.ts";
 import { buildSegments, srtFromWords, type SegmentInput } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
@@ -57,7 +58,7 @@ export interface Services {
   discover(): Promise<StoryCluster[]>;
   discoverEvergreen(): Promise<EvergreenCandidate[]>;
   fetchArticle(url: string): Promise<ArticleText | undefined>;
-  synthesise(text: string, outPath: string): Promise<Narration>;
+  synthesise(text: string, outPath: string, voice?: { id: string; name: string }): Promise<Narration & { voice?: { provider: "local" | "elevenlabs"; id: string; name: string } }>;
   findGame(term: string): Promise<SteamApp | undefined>;
   gameFacts(app: SteamApp): Promise<SteamFacts>;
   fetchArt(app: SteamApp, episodeDir: string): Promise<VisualAsset[]>;
@@ -325,11 +326,15 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
 async function stepVoice(s: Services, ep: Episode): Promise<void> {
   const dir = episodeDir(s.cfg, ep.id);
   await fs.mkdir(dir, { recursive: true });
-  const narration = await s.synthesise(narrationOf(ep.script_json!), path.join(dir, "voice.mp3"));
+  // Voice rotation: the n-th Short the channel has made picks the n-th voice of the pool, so a few Shorts in a row share a voice and the analytics can say which one sticks.
+  const [ord] = await s.db.query<{ n: string | number }>(`SELECT count(*) AS n FROM episodes WHERE created_at < $1 AND status NOT IN ('failed','rejected')`, [ep.created_at]);
+  const voice = pickVoice(s.cfg, Number(ord?.n ?? 0));
+  const narration = await s.synthesise(narrationOf(ep.script_json!), path.join(dir, "voice.mp3"), voice);
+  await logEvent(s.db, ep.id, "voice", { provider: narration.voice?.provider ?? "unknown", id: narration.voice?.id, name: narration.voice?.name });
   const maxSeconds = ep.lane === "evergreen" ? s.cfg.evergreenMaxSeconds : 58;
   if (narration.durationSeconds > maxSeconds) throw new FatalError(`narration is ${narration.durationSeconds.toFixed(1)}s, over the ${maxSeconds}s cap for the ${ep.lane} lane`);
   await fs.writeFile(path.join(dir, "captions.srt"), srtFromWords(narration.words), "utf8");
-  const assets: EpisodeAssets = { ...(ep.assets_json ?? {}), audio: "voice.mp3", words: narration.words, durationSeconds: narration.durationSeconds, srt: "captions.srt" };
+  const assets: EpisodeAssets = { ...(ep.assets_json ?? {}), audio: "voice.mp3", words: narration.words, durationSeconds: narration.durationSeconds, srt: "captions.srt", voice: narration.voice };
   await transition(s.db, ep.id, "scripted", "voiced", { assets_json: assets });
 }
 
@@ -768,7 +773,8 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   await transition(s.db, ep.id, "uploaded", "published", { youtube_status: st.privacyStatus });
   const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
   const when = ep.publish_at ? `scheduled for ${new Date(ep.publish_at).toUTCString()}` : "live now";
-  await s.notify({ embeds: [{ title: `✅ Published: ${ep.script_json!.youtube.title}`, url, description: `${url}\n${when}`, color: COLOURS.ok }] });
+  const voiceLine = ep.assets_json?.voice ? `\nVoice: ${ep.assets_json.voice.name}` : "";
+  await s.notify({ embeds: [{ title: `✅ Published: ${ep.script_json!.youtube.title}`, url, description: `${url}\n${when}${voiceLine}`, color: COLOURS.ok }] });
 }
 
 const STEPS: Partial<Record<Episode["status"], (s: Services, ep: Episode) => Promise<void>>> = {

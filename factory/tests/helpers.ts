@@ -45,6 +45,8 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     syntheticMedia: true,
     elevenLabsApiKey: "x",
     elevenLabsVoiceId: "v",
+    voicePool: [],
+    voiceRotation: 2,
     elevenLabsModel: "m",
     discordWebhookUrl: "",
     healthcheckPingUrl: "",

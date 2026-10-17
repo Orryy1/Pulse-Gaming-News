@@ -41,7 +41,7 @@ export function createServices(db: Db, cfg: Config): Services {
     discover: async () => clusterItems(await fetchFeeds(FEEDS), new Date(), cfg.maxStoryAgeHours),
     discoverEvergreen: () => evergreenCandidates(dayKey(new Date(), cfg.timezone)),
     fetchArticle,
-    synthesise: (text, out) => narrate(cfg, text, out),
+    synthesise: (text, out, voice) => narrate(cfg, text, out, voice),
     findGame: findSteamApp,
     gameFacts: steamFacts,
     fetchArt: (app, dir) => fetchSteamArt(app, dir),

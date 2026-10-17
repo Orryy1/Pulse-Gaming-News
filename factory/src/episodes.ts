@@ -45,11 +45,12 @@ export interface EpisodeAssets {
   words?: Array<{ text: string; start: number; end: number }>;
   durationSeconds?: number;
   srt?: string; // captions.srt, uploaded as the video's en-GB caption track
-  images?: Array<{ file: string; kind: string; aspect: number; sourceUrl: string; provenance: string }>;
+  plan?: import("./render/plan.ts").RenderPlan; // the render plan, persisted so a retried render is identical
+  images?: Array<{ file: string; kind: string; aspect: number; sourceUrl: string; provenance: string; blurFile?: string }>;
   video?: string;
   poster?: string;
   musicFile?: string | null;
-  clips?: Array<{ file: string; sourceUrl: string; provenance: string; durationSeconds: number }>;
+  clips?: Array<{ file: string; sourceUrl: string; provenance: string; durationSeconds: number; blurFile?: string; beatIndex?: number; motion?: number }>;
   steam?: { appId: number; name: string; facts: import("./assets/steam.ts").SteamFacts };
 }
 

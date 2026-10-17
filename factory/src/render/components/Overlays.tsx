@@ -1,67 +1,108 @@
 import React from "react";
-import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig, Easing } from "remotion";
-import { loadFont } from "@remotion/fonts";
+import {
+  AbsoluteFill,
+  Img,
+  interpolate,
+  spring,
+  useCurrentFrame,
+  useVideoConfig,
+  Easing,
+} from "remotion";
 import type { CaptionPage, Segment } from "../timeline.ts";
-import { BRAND } from "../props.ts";
+import { BRAND, COLOUR, TYPE } from "../brand.ts";
+import {
+  BANDS,
+  CAPTION_CENTRE,
+  HERO_TOP,
+  SAFE,
+  CONTENT_WIDTH,
+  LOW_WIDTH,
+} from "../layout.ts";
+import {
+  FRAMES,
+  SPRING,
+  ease,
+  exitProgress,
+  ruleThenContent,
+} from "../motion.ts";
+import { DISPLAY, BODY } from "./fonts.ts";
 
-// Fonts ship in public/fonts (SIL OFL) so renders never depend on a font CDN.
-export const DISPLAY = "PulseDisplay";
-export const BODY = "PulseBody";
-loadFont({ family: DISPLAY, url: staticFile("fonts/anton-latin-400-normal.woff2"), weight: "400" });
-for (const w of ["600", "800", "900"]) {
-  loadFont({ family: BODY, url: staticFile(`fonts/inter-latin-${w}-normal.woff2`), weight: w });
-}
+export { SAFE } from "../layout.ts";
+export { DISPLAY, BODY } from "./fonts.ts";
 
-// YouTube Shorts covers roughly the bottom 22% and a right-hand strip with its
-// own UI. Everything we draw stays inside this box.
-export const SAFE = { top: 150, bottom: 1920 - 430, left: 64, right: 1080 - 150 };
-
-function useEnter(delayFrames = 0, damping = 14) {
+function useEnter(delayFrames = 0, config = SPRING.ENTER) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  return spring({ frame: frame - delayFrames, fps, config: { damping, stiffness: 160, mass: 0.7 } });
+  return spring({ frame: frame - delayFrames, fps, config });
 }
 
-export const TopBar: React.FC<{ progress: number; chip: string; accent: string; isRumour: boolean; attribution: string; logoSrc: string | null }> = ({
-  progress,
-  chip,
-  accent,
-  isRumour,
-  attribution,
-  logoSrc,
-}) => {
-  const enter = useEnter(2);
+/** Brand row (lockup and story chip) at y 150 and the source lower-third under it. */
+export const TopBar: React.FC<{
+  chip: string;
+  accent: string;
+  isRumour: boolean;
+  attribution: string;
+  logoSrc: string | null;
+}> = ({ chip, accent, isRumour, attribution, logoSrc }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const rowIn = spring({ frame: frame - 2, fps, config: SPRING.SNAP });
+  const srcRule = interpolate(frame, [0, 8], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: ease.out,
+  });
+  const srcIn = interpolate(frame, [0, 10], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: ease.out,
+  });
+  const source = attribution.replace(/^source:\s*/i, "").toUpperCase();
   return (
     <AbsoluteFill>
-      <div style={{ position: "absolute", top: 0, left: 0, height: 10, width: `${progress * 100}%`, background: accent }} />
       <div
         style={{
           position: "absolute",
-          top: SAFE.top - 60,
+          top: SAFE.top,
           left: SAFE.left,
-          right: SAFE.left,
+          right: 1080 - SAFE.right,
+          height: 72,
           display: "flex",
           alignItems: "center",
           gap: 18,
-          transform: `translateY(${interpolate(enter, [0, 1], [-40, 0])}px)`,
-          opacity: enter,
+          transform: `translateY(${interpolate(rowIn, [0, 1], [-18, 0])}px)`,
+          opacity: Math.min(1, rowIn + 0.6),
         }}
       >
-        {logoSrc ? <Img src={logoSrc} style={{ width: 72, height: 72, borderRadius: 18 }} /> : null}
-        <div style={{ fontFamily: DISPLAY, fontSize: 46, color: BRAND.text, letterSpacing: 2 }}>
-          PULSE<span style={{ color: BRAND.primary }}>.</span>
+        {logoSrc ? (
+          <Img
+            src={logoSrc}
+            style={{ width: 64, height: 64, borderRadius: 16 }}
+          />
+        ) : null}
+        <div
+          style={{
+            fontFamily: DISPLAY,
+            fontSize: TYPE.brand,
+            color: COLOUR.paper,
+            letterSpacing: 2,
+            lineHeight: 1,
+          }}
+        >
+          PULSE<span style={{ color: COLOUR.amber }}>.</span>
         </div>
         <div
           style={{
-            marginLeft: 6,
+            marginLeft: 4,
             padding: "8px 18px",
-            background: isRumour ? BRAND.alert : accent,
-            color: BRAND.ink,
+            background: isRumour ? COLOUR.alert : accent,
+            color: COLOUR.ink,
             fontFamily: BODY,
             fontWeight: 900,
-            fontSize: 30,
+            fontSize: TYPE.chip,
             letterSpacing: 2,
             borderRadius: 8,
+            lineHeight: 1.1,
           }}
         >
           {isRumour ? "RUMOUR · UNCONFIRMED" : chip}
@@ -70,45 +111,145 @@ export const TopBar: React.FC<{ progress: number; chip: string; accent: string; 
       <div
         style={{
           position: "absolute",
-          top: SAFE.top + 34,
+          top: SAFE.top + 86,
           left: SAFE.left,
+          width: 4,
+          height: 34,
+          background: accent,
+          transform: `scaleY(${srcRule})`,
+          transformOrigin: "top",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: SAFE.top + 88,
+          left: SAFE.left + 18,
           fontFamily: BODY,
-          fontWeight: 600,
+          fontWeight: 700,
           fontSize: 28,
-          color: "rgba(245,245,242,0.85)",
-          letterSpacing: 1,
-          opacity: enter,
+          color: "rgba(245,245,242,0.88)",
+          letterSpacing: 1.5,
+          opacity: srcIn,
           textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+          clipPath: `inset(0 ${100 - srcIn * 100}% 0 0)`,
         }}
       >
-        {attribution.toUpperCase()}
+        SOURCE: {source}
       </div>
     </AbsoluteFill>
   );
 };
 
-/** Opening headline: the news in big type inside the first second and a half. */
-export const HookHeadline: React.FC<{ headline: string; accent: string; gameTitle: string }> = ({ headline, accent, gameTitle }) => {
-  const words = headline.toUpperCase().split(/\s+/);
-  const gameWords = new Set(gameTitle.toUpperCase().split(/\s+/));
+/** Six-pixel rail in the wire band: one segment per hook, beat, take and loop, the active one in accent. */
+export const ProgressRail: React.FC<{
+  segments: Segment[];
+  accent: string;
+  totalFrames: number;
+}> = ({ segments, accent, totalFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const gap = 8;
+  const width = CONTENT_WIDTH;
+  const segW =
+    (width - gap * (segments.length - 1)) / Math.max(1, segments.length);
   return (
-    <AbsoluteFill style={{ justifyContent: "flex-start", alignItems: "flex-start", padding: `${SAFE.top + 420}px ${SAFE.left}px 0` }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0 22px", width: SAFE.right - SAFE.left }}>
+    <div
+      style={{
+        position: "absolute",
+        top: BANDS.wire[0] + 22,
+        left: SAFE.left,
+        width,
+        height: 6,
+        display: "flex",
+        gap,
+      }}
+    >
+      {segments.map((s, i) => {
+        const a = i === 0 ? 0 : Math.round(s.start * fps);
+        const b =
+          i === segments.length - 1
+            ? totalFrames
+            : Math.round(segments[i + 1]!.start * fps);
+        const fill = interpolate(frame, [a, b], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        });
+        return (
+          <div
+            key={i}
+            style={{
+              width: segW,
+              height: 6,
+              borderRadius: 3,
+              background: "rgba(245,245,242,0.22)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${fill * 100}%`,
+                height: "100%",
+                background: accent,
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/** Opening headline: fully rendered from frame 0 (it is the thumbnail), exits over the last eight frames. */
+export const HookHeadline: React.FC<{
+  headline: string;
+  accent: string;
+  gameTitle: string;
+  durationInFrames: number;
+}> = ({ headline, accent, gameTitle, durationInFrames }) => {
+  const words = headline.toUpperCase().split(/\s+/);
+  const gameWords = new Set(
+    gameTitle
+      .toUpperCase()
+      .split(/\s+/)
+      .map((w) => w.replace(/[^A-Z0-9]/g, "")),
+  );
+  const frame = useCurrentFrame();
+  const settle = interpolate(frame, [0, 12], [1.02, 1], {
+    extrapolateRight: "clamp",
+    easing: ease.out,
+  });
+  const out = exitProgress(frame, durationInFrames);
+  const size = words.length > 6 ? TYPE.headlineLong : TYPE.headline;
+  return (
+    <AbsoluteFill
+      style={{
+        justifyContent: "flex-start",
+        alignItems: "flex-start",
+        padding: `${HERO_TOP}px ${SAFE.left}px 0`,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "0 22px",
+          width: CONTENT_WIDTH,
+          transform: `scale(${settle}) translateY(${(1 - out) * 24}px)`,
+          transformOrigin: "left top",
+          opacity: out,
+        }}
+      >
         {words.map((w, i) => {
-          const s = spring({ frame: frame - i * 2, fps, config: { damping: 12, stiffness: 200, mass: 0.6 } });
-          const hot = gameWords.has(w.replace(/[^A-Z0-9:']/g, ""));
+          const hot = gameWords.has(w.replace(/[^A-Z0-9]/g, ""));
           return (
             <span
               key={i}
               style={{
                 fontFamily: DISPLAY,
-                fontSize: words.length > 6 ? 118 : 138,
+                fontSize: size,
                 lineHeight: 1.02,
-                color: hot ? accent : BRAND.text,
-                transform: `translateY(${interpolate(s, [0, 1], [80, 0])}px) scale(${interpolate(s, [0, 1], [1.25, 1])})`,
-                opacity: s,
+                color: hot ? accent : COLOUR.paper,
                 textShadow: "0 8px 40px rgba(0,0,0,0.65)",
                 display: "inline-block",
               }}
@@ -130,57 +271,156 @@ function countUp(primary: string, p: number): string {
   if (!Number.isFinite(target) || raw.includes(".")) return primary;
   if (/^(19|20)\d\d$/.test(raw)) return primary; // years don't count up
   const v = Math.round(target * p);
-  // Keep the source's formatting: only add separators if it had them.
   return `${m[1]}${m[2]!.includes(",") ? v.toLocaleString("en-GB") : String(v)}${m[3]}`;
 }
 
-/** Fact card for a beat or the take. Layout depends on the visual kind. */
-export const FactCard: React.FC<{ segment: Segment; accent: string }> = ({ segment, accent }) => {
+/** Fact card for a beat or the take: an accent rule draws, the content follows, and it exits before the next one. */
+export const FactCard: React.FC<{
+  segment: Segment;
+  accent: string;
+  takeLabel: string;
+  durationInFrames: number;
+}> = ({ segment, accent, takeLabel, durationInFrames }) => {
   const frame = useCurrentFrame();
-  const enter = useEnter(0, 13);
+  const { fps } = useVideoConfig();
   const v = segment.visual;
   if (!v || v.kind === "none" || !v.primary.trim()) return null;
-  const slide = interpolate(enter, [0, 1], [120, 0]);
+  const { rule, content } = ruleThenContent(frame, fps);
+  const out = exitProgress(frame, durationInFrames);
+  const label =
+    segment.kind === "take" ? segment.label || takeLabel : v.secondary;
   const base: React.CSSProperties = {
     position: "absolute",
     left: SAFE.left,
-    width: SAFE.right - SAFE.left,
-    top: SAFE.top + 470,
-    transform: `translateX(${slide}px)`,
-    opacity: enter,
+    width: CONTENT_WIDTH,
+    top: HERO_TOP,
+    opacity: Math.min(content, out),
+    transform: `translateX(${interpolate(content, [0, 1], [40, 0]) - (1 - out) * 24}px)`,
   };
-  const label = segment.kind === "take" ? segment.label || "WHY IT MATTERS" : v.secondary;
-  // Soft dark panel so cards stay legible over busy key art.
-  const panel: React.CSSProperties = {
-    background: "linear-gradient(90deg, rgba(5,5,7,0.82) 0%, rgba(5,5,7,0.55) 70%, rgba(5,5,7,0) 100%)",
-    padding: "26px 30px 26px 0",
-    marginLeft: -SAFE.left,
-    paddingLeft: SAFE.left,
-  };
+  const ruleBar = (
+    <div
+      style={{
+        position: "absolute",
+        left: 0,
+        top: -22,
+        width: `${rule * 100}%`,
+        height: 4,
+        background: accent,
+      }}
+    />
+  );
 
   if (segment.kind === "take") {
-    const wipe = interpolate(frame, [0, 10], [0, 100], { extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+    const wipe = interpolate(
+      frame,
+      [FRAMES.ruleLead, FRAMES.ruleLead + 10],
+      [0, 100],
+      { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease.out },
+    );
     return (
-      <div style={{ ...base, transform: "none", opacity: 1 }}>
-        <div style={{ display: "inline-block", padding: "10px 20px", background: BRAND.text, color: BRAND.ink, fontFamily: BODY, fontWeight: 900, fontSize: 34, letterSpacing: 3, opacity: enter }}>
+      <div
+        style={{
+          ...base,
+          transform: `translateX(${-(1 - out) * 24}px)`,
+          opacity: out,
+        }}
+      >
+        {ruleBar}
+        <div
+          style={{
+            display: "inline-block",
+            padding: "10px 20px",
+            background: COLOUR.paper,
+            color: COLOUR.ink,
+            fontFamily: BODY,
+            fontWeight: 900,
+            fontSize: 34,
+            letterSpacing: 3,
+            opacity: content,
+          }}
+        >
           {label.toUpperCase()}
         </div>
-        <div style={{ marginTop: 18, clipPath: `inset(0 ${100 - wipe}% 0 0)`, background: accent, padding: "26px 30px", boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
-          <div style={{ fontFamily: DISPLAY, fontSize: 96, lineHeight: 1.04, color: BRAND.ink }}>{v.primary.toUpperCase()}</div>
+        <div
+          style={{
+            marginTop: 18,
+            clipPath: `inset(0 ${100 - wipe}% 0 0)`,
+            background: accent,
+            padding: "26px 30px",
+            boxShadow: "0 30px 80px rgba(0,0,0,0.5)",
+          }}
+        >
+          <div
+            style={{
+              fontFamily: DISPLAY,
+              fontSize: 96,
+              lineHeight: 1.04,
+              color: COLOUR.ink,
+            }}
+          >
+            {v.primary.toUpperCase()}
+          </div>
         </div>
       </div>
     );
   }
 
+  const panel: React.CSSProperties = {
+    background:
+      "linear-gradient(90deg, rgba(5,5,7,0.82) 0%, rgba(5,5,7,0.55) 70%, rgba(5,5,7,0) 100%)",
+    padding: "26px 30px 26px 0",
+    marginLeft: -SAFE.left,
+    paddingLeft: SAFE.left,
+  };
+
   if (v.kind === "stat" || v.kind === "date") {
-    const p = interpolate(frame, [0, 20], [0, 1], { extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+    const p = interpolate(
+      frame,
+      [FRAMES.ruleLead, FRAMES.ruleLead + 24],
+      [0, 1],
+      { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease.out },
+    );
     return (
       <div style={base}>
-        <div style={{ ...panel, borderLeft: `14px solid ${accent}`, paddingLeft: SAFE.left + 30, marginLeft: -SAFE.left - 14 }}>
-          <div style={{ fontFamily: DISPLAY, fontSize: v.primary.length > 9 ? 150 : 210, lineHeight: 0.95, color: BRAND.text, textShadow: "0 10px 50px rgba(0,0,0,0.7)" }}>
-            {(v.kind === "stat" ? countUp(v.primary, p) : v.primary).toUpperCase()}
+        {ruleBar}
+        <div
+          style={{
+            ...panel,
+            borderLeft: `14px solid ${accent}`,
+            paddingLeft: SAFE.left + 30,
+            marginLeft: -SAFE.left - 14,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: DISPLAY,
+              fontSize: v.primary.length > 9 ? 150 : TYPE.displayXL,
+              lineHeight: 0.95,
+              color: COLOUR.paper,
+              textShadow: "0 10px 50px rgba(0,0,0,0.7)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {(v.kind === "stat"
+              ? countUp(v.primary, p)
+              : v.primary
+            ).toUpperCase()}
           </div>
-          {label ? <div style={{ marginTop: 14, fontFamily: BODY, fontWeight: 800, fontSize: 44, color: accent, textTransform: "uppercase", letterSpacing: 2 }}>{label}</div> : null}
+          {label ? (
+            <div
+              style={{
+                marginTop: 14,
+                fontFamily: BODY,
+                fontWeight: 800,
+                fontSize: 44,
+                color: accent,
+                textTransform: "uppercase",
+                letterSpacing: 2,
+              }}
+            >
+              {label}
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -189,21 +429,75 @@ export const FactCard: React.FC<{ segment: Segment; accent: string }> = ({ segme
   if (v.kind === "quote") {
     return (
       <div style={base}>
-        <div style={{ background: "rgba(11,11,14,0.78)", padding: "34px 38px", borderTop: `10px solid ${accent}`, backdropFilter: "blur(10px)" }}>
-          <div style={{ fontFamily: DISPLAY, fontSize: 150, lineHeight: 0.6, color: accent }}>“</div>
-          <div style={{ fontFamily: BODY, fontWeight: 800, fontSize: 60, lineHeight: 1.15, color: BRAND.text }}>{v.primary}</div>
-          {label ? <div style={{ marginTop: 18, fontFamily: BODY, fontWeight: 600, fontSize: 34, color: BRAND.muted }}>— {label}</div> : null}
+        {ruleBar}
+        <div
+          style={{
+            background: "rgba(11,11,14,0.82)",
+            padding: "34px 38px",
+            borderTop: `10px solid ${accent}`,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: DISPLAY,
+              fontSize: 150,
+              lineHeight: 0.6,
+              color: accent,
+            }}
+          >
+            “
+          </div>
+          <div
+            style={{
+              fontFamily: BODY,
+              fontWeight: 800,
+              fontSize: 60,
+              lineHeight: 1.15,
+              color: COLOUR.paper,
+            }}
+          >
+            {v.primary}
+          </div>
+          {label ? (
+            <div
+              style={{
+                marginTop: 18,
+                fontFamily: BODY,
+                fontWeight: 600,
+                fontSize: 34,
+                color: COLOUR.muted,
+              }}
+            >
+              — {label}
+            </div>
+          ) : null}
         </div>
       </div>
     );
   }
 
   if (v.kind === "list") {
-    const items = v.primary.split("|").map((s) => s.trim()).filter(Boolean).slice(0, 4);
+    const items = v.primary
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 4);
     return (
-      <div style={{ ...base, ...panel, transform: "none", opacity: 1 }}>
+      <div
+        style={{
+          ...base,
+          ...panel,
+          transform: `translateX(${-(1 - out) * 24}px)`,
+          opacity: out,
+        }}
+      >
+        {ruleBar}
         {items.map((it, i) => {
-          const s = spring({ frame: frame - i * 6, fps: 30, config: { damping: 13, stiffness: 170 } });
+          const s = spring({
+            frame: frame - FRAMES.ruleLead - i * 6,
+            fps,
+            config: SPRING.ENTER,
+          });
           return (
             <div
               key={i}
@@ -212,74 +506,153 @@ export const FactCard: React.FC<{ segment: Segment; accent: string }> = ({ segme
                 alignItems: "center",
                 gap: 22,
                 marginBottom: 20,
-                transform: `translateX(${interpolate(s, [0, 1], [140, 0])}px)`,
+                transform: `translateX(${interpolate(s, [0, 1], [60, 0])}px)`,
                 opacity: s,
               }}
             >
-              <div style={{ width: 22, height: 22, background: accent, transform: "rotate(45deg)" }} />
-              <div style={{ fontFamily: DISPLAY, fontSize: 92, color: BRAND.text, textShadow: "0 8px 30px rgba(0,0,0,0.7)" }}>{it.toUpperCase()}</div>
+              <div
+                style={{
+                  width: 22,
+                  height: 22,
+                  background: accent,
+                  transform: "rotate(45deg)",
+                }}
+              />
+              <div
+                style={{
+                  fontFamily: DISPLAY,
+                  fontSize: 92,
+                  color: COLOUR.paper,
+                  textShadow: "0 8px 30px rgba(0,0,0,0.7)",
+                }}
+              >
+                {it.toUpperCase()}
+              </div>
             </div>
           );
         })}
-        {label ? <div style={{ fontFamily: BODY, fontWeight: 800, fontSize: 38, color: accent, textTransform: "uppercase" }}>{label}</div> : null}
+        {label ? (
+          <div
+            style={{
+              fontFamily: BODY,
+              fontWeight: 800,
+              fontSize: 38,
+              color: accent,
+              textTransform: "uppercase",
+            }}
+          >
+            {label}
+          </div>
+        ) : null}
       </div>
     );
   }
 
-  // title
   return (
     <div style={base}>
-      <div style={{ display: "inline", background: accent, boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone", padding: "4px 18px", fontFamily: DISPLAY, fontSize: 112, lineHeight: 1.22, color: BRAND.ink }}>
+      {ruleBar}
+      <div
+        style={{
+          display: "inline",
+          background: accent,
+          boxDecorationBreak: "clone",
+          WebkitBoxDecorationBreak: "clone",
+          padding: "4px 18px",
+          fontFamily: DISPLAY,
+          fontSize: 112,
+          lineHeight: 1.22,
+          color: COLOUR.ink,
+        }}
+      >
         {v.primary.toUpperCase()}
       </div>
-      {label ? <div style={{ marginTop: 22, fontFamily: BODY, fontWeight: 800, fontSize: 40, color: BRAND.text, textTransform: "uppercase" }}>{label}</div> : null}
+      {label ? (
+        <div
+          style={{
+            marginTop: 22,
+            fontFamily: BODY,
+            fontWeight: 800,
+            fontSize: 40,
+            color: COLOUR.paper,
+            textTransform: "uppercase",
+          }}
+        >
+          {label}
+        </div>
+      ) : null}
     </div>
   );
 };
 
-/** Word-by-word captions with the spoken word highlighted. */
-export const Captions: React.FC<{ pages: CaptionPage[]; accent: string }> = ({ pages, accent }) => {
+const EMPHASIS = /^(£|\$|€)?\d[\d,.]*(%|k|m|bn)?$|^(19|20)\d\d$/i;
+
+/** Word-by-word captions centred on y 1320: the spoken word in accent, numbers and names stay lit. */
+export const Captions: React.FC<{
+  pages: CaptionPage[];
+  accent: string;
+  emphasis: Set<string>;
+  blankFromFrame: number;
+}> = ({ pages, accent, emphasis, blankFromFrame }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  if (frame >= blankFromFrame) return null;
   const t = frame / fps;
   const page = pages.find((p) => t >= p.start - 0.05 && t < p.end + 0.05);
   if (!page) return null;
   const pageFrame = frame - Math.round(page.start * fps);
-  const pop = spring({ frame: pageFrame, fps, config: { damping: 15, stiffness: 260, mass: 0.5 } });
+  const pop = spring({ frame: pageFrame, fps, config: SPRING.POP });
   return (
     <div
       style={{
         position: "absolute",
         left: SAFE.left,
-        width: SAFE.right - SAFE.left,
-        top: SAFE.bottom - 250,
+        width: LOW_WIDTH,
+        top: CAPTION_CENTRE - 100,
+        height: 200,
         display: "flex",
         flexWrap: "wrap",
+        alignContent: "center",
         justifyContent: "center",
-        gap: "0 26px",
-        transform: `scale(${interpolate(pop, [0, 1], [0.86, 1])})`,
+        gap: "0 24px",
+        transform: `scale(${interpolate(pop, [0, 1], [0.92, 1])})`,
       }}
     >
       {page.words.map((w, i) => {
         const active = t >= w.start - 0.03 && t < w.end + 0.08;
         const spoken = t >= w.start - 0.03;
+        const shown = w.text.replace(/[.,;:!?]+$/, "");
+        const lit =
+          spoken && (EMPHASIS.test(shown) || emphasis.has(shown.toLowerCase()));
+        const activeScale = active
+          ? interpolate(frame - Math.round(w.start * fps), [0, 4], [1, 1.06], {
+              extrapolateLeft: "clamp",
+              extrapolateRight: "clamp",
+              easing: ease.out,
+            })
+          : 1;
         return (
           <span
             key={i}
             style={{
               fontFamily: BODY,
               fontWeight: 900,
-              fontSize: 82,
-              lineHeight: 1.1,
-              color: active ? accent : spoken ? BRAND.text : "rgba(245,245,242,0.55)",
-              WebkitTextStroke: "3px rgba(0,0,0,0.85)",
+              fontSize: TYPE.caption,
+              lineHeight: 1.12,
+              color:
+                active || lit
+                  ? accent
+                  : spoken
+                    ? COLOUR.paper
+                    : "rgba(245,245,242,0.55)",
+              WebkitTextStroke: "4px rgba(0,0,0,0.9)",
               paintOrder: "stroke fill",
               textShadow: "0 6px 24px rgba(0,0,0,0.85)",
-              transform: active ? "translateY(-4px)" : "none",
+              transform: `translateY(${active ? -4 : 0}px) scale(${activeScale})`,
               display: "inline-block",
+              textTransform: "uppercase",
             }}
           >
-            {w.text.toUpperCase()}
+            {shown}
           </span>
         );
       })}
@@ -287,46 +660,4 @@ export const Captions: React.FC<{ pages: CaptionPage[]; accent: string }> = ({ p
   );
 };
 
-/** Quick light flash on cuts between segments: keeps the pace up without a stock transition. */
-export const CutFlash: React.FC<{ cutFrames: number[]; accent: string }> = ({ cutFrames, accent }) => {
-  const frame = useCurrentFrame();
-  const last = cutFrames.filter((c) => c > 0 && c <= frame).at(-1);
-  if (last === undefined) return null;
-  const d = frame - last;
-  if (d > 5) return null;
-  const o = interpolate(d, [0, 5], [0.38, 0]);
-  return <AbsoluteFill style={{ background: `linear-gradient(180deg, ${accent} 0%, rgba(255,255,255,0.9) 100%)`, opacity: o, mixBlendMode: "screen" }} />;
-};
-
-/** "Live from Steam" data badge: a real number the headline didn't have. */
-export const LiveStat: React.FC<{ value: string; label: string; accent: string }> = ({ value, label, accent }) => {
-  const frame = useCurrentFrame();
-  const enter = useEnter(0, 15);
-  const pulse = 0.55 + 0.45 * Math.abs(Math.sin(frame / 9));
-  return (
-    <div
-      style={{
-        position: "absolute",
-        left: SAFE.left,
-        top: SAFE.top + 830,
-        display: "flex",
-        alignItems: "center",
-        gap: 22,
-        padding: "18px 26px",
-        background: "rgba(11,11,14,0.82)",
-        border: `2px solid ${accent}`,
-        borderRadius: 14,
-        transform: `translateY(${interpolate(enter, [0, 1], [40, 0])}px)`,
-        opacity: enter,
-        boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 16, height: 16, borderRadius: 8, background: "#22C55E", opacity: pulse, boxShadow: "0 0 18px #22C55E" }} />
-        <div style={{ fontFamily: BODY, fontWeight: 900, fontSize: 24, color: "#22C55E", letterSpacing: 3 }}>LIVE · STEAM</div>
-      </div>
-      <div style={{ fontFamily: DISPLAY, fontSize: 64, color: BRAND.text, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontFamily: BODY, fontWeight: 800, fontSize: 26, color: BRAND.muted, maxWidth: 300, lineHeight: 1.15, textTransform: "uppercase" }}>{label}</div>
-    </div>
-  );
-};
+export { BRAND, Easing };

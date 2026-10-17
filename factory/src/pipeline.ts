@@ -23,6 +23,8 @@ import { COLOURS } from "./approval/discord.ts";
 import { selectStory, writeScript, factCheck, validateScript } from "./editorial/editorial.ts";
 import { narrationOf, type Script } from "./editorial/schema.ts";
 import { buildSegments, srtFromWords, type SegmentInput } from "./render/timeline.ts";
+import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
+import { blurPlate } from "./assets/plates.ts";
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
@@ -226,6 +228,15 @@ export function segmentInputs(script: Script): SegmentInput[] {
   ];
 }
 
+/** Words the captions keep lit after they are spoken: the game title and the on-screen card text. */
+export function emphasisWords(script: Script): string[] {
+  const out = new Set<string>();
+  const add = (t: string) => { for (const w of t.toLowerCase().split(/[^a-z0-9£$%']+/)) if (w.length > 2) out.add(w); };
+  add(script.game_title);
+  for (const b of script.beats) if (b.visual && b.visual.kind !== "none") add(b.visual.primary);
+  return [...out];
+}
+
 /** One live number for the end of the take, if Steam has a good one. */
 export function steamStat(f?: SteamFacts): { value: string; label: string } | null {
   if (!f) return null;
@@ -246,11 +257,34 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     Object.assign(assets, await gatherMedia(s, ep, dir));
     await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
   }
-  const duration = (assets.durationSeconds ?? 30) + 0.6;
+  const duration = (assets.durationSeconds ?? 30) + TAIL_SECONDS;
   const words = assets.words ?? [];
   const segments = buildSegments(segmentInputs(script), words, duration);
   const variant = variantOf(ep.id);
   const musicFile = s.cfg.musicBed ? `music_${variant + 1}.mp3` : null;
+  // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
+  for (const img of assets.images ?? []) if (!img.blurFile) img.blurFile = await blurPlate(dir, img.file).catch(() => undefined);
+  for (const clip of assets.clips ?? []) if (!clip.blurFile) clip.blurFile = await blurPlate(dir, clip.file).catch(() => undefined);
+  const steamLite = assets.steam?.facts ? { currentPlayers: assets.steam.facts.currentPlayers, positivePercent: assets.steam.facts.positivePercent, totalReviews: assets.steam.facts.totalReviews, price: assets.steam.facts.price, releaseDate: assets.steam.facts.releaseDate, metacritic: assets.steam.facts.metacritic } : null;
+  // Plan then render: the plan is persisted so a retry renders the identical Short.
+  const plan = assets.plan ?? buildPlan({
+    segments,
+    words,
+    durationSeconds: duration,
+    images: (assets.images ?? []).map((i) => ({ kind: i.kind, aspect: i.aspect })),
+    clips: (assets.clips ?? []).map((c) => ({ durationSeconds: c.durationSeconds, motion: c.motion, beatIndex: c.beatIndex })),
+    storyType: script.is_rumour ? "rumour" : script.story_type,
+    isRumour: script.is_rumour,
+    attribution: script.attribution,
+    variant,
+    steam: steamLite,
+  });
+  assets.plan = plan;
+  await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+  const publisher = String((assets.steam ? (await s.findGame(assets.steam.name).catch(() => undefined))?.details?.publishers?.[0] : "") ?? "");
+  const footageCredit = (assets.clips ?? []).length ? `Footage: ${publisher || script.game_title} · official trailer` : "";
+  const year = assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0];
+  const gameSubtitle = [publisher, year].filter(Boolean).join(" · ");
 
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
@@ -267,15 +301,19 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       gameTitle: script.game_title,
       isRumour: script.is_rumour,
       attribution: script.attribution,
+      gameSubtitle,
+      footageCredit,
       segments,
       words,
       durationSeconds: duration,
       variant,
       audioFile: assets.audio ?? null,
       musicFile,
-      imageFiles: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect })),
-      clipFiles: (assets.clips ?? []).map((c) => ({ file: c.file, durationSeconds: c.durationSeconds })),
-      steamStat: steamStat(assets.steam?.facts),
+      imageFiles: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect, blurFile: i.blurFile })),
+      clipFiles: (assets.clips ?? []).map((c) => ({ file: c.file, durationSeconds: c.durationSeconds, blurFile: c.blurFile, beatIndex: c.beatIndex, motion: c.motion })),
+      steam: steamLite,
+      emphasis: emphasisWords(script),
+      plan,
     },
   });
   await s.normalise(raw, final);

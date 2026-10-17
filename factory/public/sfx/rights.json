@@ -30,6 +30,12 @@
       "sha256": "f796b466b509166c2550f5ad73cdacefe8f3fd480e227c1109102a487357c288",
       "origin": "synthesised in-house by tools/build-sfx-library.js (ffmpeg sine/noise primitives)",
       "licence": "owned"
+    },
+    {
+      "file": "sting.mp3",
+      "sha256": "172215c18657ad1e77b3ded3e8fd6381393b439d980d43a710dca49b0d02ed2e",
+      "origin": "ffmpeg amix of punch-deep.mp3 and tick-blip.mp3 (both synthesised in-house), 0.45 s",
+      "licence": "owned"
     }
   ]
 }

@@ -1,181 +1,364 @@
 import React from "react";
-import { AbsoluteFill, Img, OffthreadVideo, interpolate, useCurrentFrame, useVideoConfig, Easing, Sequence, staticFile } from "remotion";
-import type { ShortImage } from "../props.ts";
+import {
+  AbsoluteFill,
+  Img,
+  OffthreadVideo,
+  Sequence,
+  interpolate,
+  useCurrentFrame,
+} from "remotion";
+import type { ShortImage, ShortClip } from "../props.ts";
+import type { RenderPlan } from "../plan.ts";
+import { shotAt } from "../plan.ts";
+import { COLOUR } from "../brand.ts";
+import { cutPunch, moveTransform, type MovePreset } from "../motion.ts";
+import { BANDS, CREDIT_TOP, SAFE, WIDTH } from "../layout.ts";
+import { BODY } from "./fonts.ts";
 
-/** Animated brand backdrop used when there is no art, and under art as a base. */
-export const MotionField: React.FC<{ accent: string; variant: number }> = ({ accent, variant }) => {
+/** Ink field with the game title and an amber rule: shown only when a shot has no media. */
+export const BrandPlate: React.FC<{ accent: string; title: string }> = ({
+  accent,
+  title,
+}) => {
   const frame = useCurrentFrame();
-  const t = frame / 30;
-  const blobs = [0, 1, 2].map((i) => {
-    const phase = i * 2.1 + variant;
-    return {
-      x: 50 + Math.sin(t * 0.35 + phase) * 32,
-      y: 30 + i * 22 + Math.cos(t * 0.28 + phase) * 12,
-      r: 520 + i * 140,
-      o: 0.32 - i * 0.07,
-    };
+  const rule = interpolate(frame, [0, 12], [0, 1], {
+    extrapolateRight: "clamp",
   });
-  const gridShift = (frame * 1.2) % 120;
+  const gridShift = (frame * 0.8) % 120;
   return (
-    <AbsoluteFill style={{ background: "radial-gradient(120% 80% at 50% 0%, #1a1a22 0%, #0b0b0e 60%, #050507 100%)", overflow: "hidden" }}>
-      {blobs.map((b, i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            left: `${b.x}%`,
-            top: `${b.y}%`,
-            width: b.r,
-            height: b.r,
-            marginLeft: -b.r / 2,
-            marginTop: -b.r / 2,
-            borderRadius: "50%",
-            background: `radial-gradient(circle, ${accent} 0%, transparent 70%)`,
-            opacity: b.o,
-            filter: "blur(40px)",
-          }}
-        />
-      ))}
+    <AbsoluteFill
+      style={{
+        background: `radial-gradient(120% 70% at 50% 0%, #16161c 0%, ${COLOUR.ink} 55%, #050507 100%)`,
+        overflow: "hidden",
+      }}
+    >
       <div
         style={{
           position: "absolute",
           inset: -240,
+          top: "48%",
           backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.045) 2px, transparent 2px), linear-gradient(90deg, rgba(255,255,255,0.045) 2px, transparent 2px)",
+            "linear-gradient(rgba(255,255,255,0.04) 2px, transparent 2px), linear-gradient(90deg, rgba(255,255,255,0.04) 2px, transparent 2px)",
           backgroundSize: "120px 120px",
           transform: `perspective(900px) rotateX(58deg) translateY(${gridShift}px)`,
           transformOrigin: "50% 100%",
-          top: "45%",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 0,
+          height: 6,
+          background: `linear-gradient(90deg, ${accent}, transparent)`,
+          opacity: 0.9,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: SAFE.left,
+          top: 1040,
+          width: 952 * rule,
+          height: 4,
+          background: accent,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: SAFE.left,
+          top: 1064,
+          fontFamily: BODY,
+          fontWeight: 800,
+          fontSize: 32,
+          letterSpacing: 2,
+          color: COLOUR.muted,
+          textTransform: "uppercase",
+          opacity: rule,
+        }}
+      >
+        {title}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const footageFilter = "contrast(1.03) saturate(1.05)";
+
+/** Full-bleed cover crop with one ambient move. */
+const Still: React.FC<{
+  image: ShortImage;
+  durationFrames: number;
+  move: MovePreset;
+}> = ({ image, durationFrames, move }) => {
+  const frame = useCurrentFrame();
+  const p = Math.min(1, frame / Math.max(1, durationFrames));
+  const m = moveTransform(move, p);
+  const punch = cutPunch(frame);
+  return (
+    <AbsoluteFill style={{ overflow: "hidden" }}>
+      <Img
+        src={image.src}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          filter: footageFilter,
+          transform: `scale(${m.scale * punch}) translate(${m.x}px, ${m.y}px)`,
         }}
       />
     </AbsoluteFill>
   );
 };
 
-/** One picture with a slow push. Wide images sit on a blurred copy of themselves. */
-const Shot: React.FC<{ image: ShortImage; durationFrames: number; index: number }> = ({ image, durationFrames, index }) => {
-  const frame = useCurrentFrame();
-  const p = Math.min(1, frame / Math.max(1, durationFrames));
-  const zoomIn = index % 2 === 0;
-  const scale = zoomIn ? interpolate(p, [0, 1], [1.06, 1.18]) : interpolate(p, [0, 1], [1.18, 1.06]);
-  const dx = interpolate(p, [0, 1], index % 3 === 0 ? [-24, 24] : [24, -24]);
-  const enter = interpolate(frame, [0, 6], [1.08, 1], { extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
-  const tall = image.aspect < 0.9;
-  if (tall) {
-    return (
-      <AbsoluteFill style={{ overflow: "hidden" }}>
-        <Img src={image.src} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale * enter}) translateX(${dx}px)` }} />
-      </AbsoluteFill>
-    );
-  }
-  return (
-    <AbsoluteFill style={{ overflow: "hidden" }}>
-      <Img
-        src={image.src}
-        style={{ width: "100%", height: "100%", objectFit: "cover", filter: "blur(36px) brightness(0.55) saturate(1.3)", transform: `scale(1.3)` }}
-      />
-      <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
-        <div
-          style={{
-            width: 1180,
-            height: 1180 / image.aspect,
-            transform: `scale(${scale * enter}) translateX(${dx}px)`,
-            boxShadow: "0 40px 120px rgba(0,0,0,0.6)",
-            overflow: "hidden",
-            marginTop: -260,
-          }}
-        >
-          <Img src={image.src} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-        </div>
-      </AbsoluteFill>
-    </AbsoluteFill>
+/** Pre-blurred plate behind framed footage; a dark field when none was generated. */
+const Plate: React.FC<{ blurSrc?: string | null }> = ({ blurSrc }) =>
+  blurSrc ? (
+    <Img
+      src={blurSrc}
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+      }}
+    />
+  ) : (
+    <AbsoluteFill
+      style={{
+        background: `radial-gradient(120% 70% at 50% 30%, #1a1a22 0%, ${COLOUR.ink} 70%)`,
+      }}
+    />
   );
-};
-
-export type Media = { type: "image"; image: ShortImage } | { type: "clip"; src: string; durationSeconds: number };
 
 /**
- * Shot order: the strongest still under the hook headline, then trailer clips
- * alternating with stills so motion never stops and nothing repeats early.
+ * Footage in a 1016x572 panel over its own blurred plate. Wide store art and
+ * calm shots under number cards read as a credited, framed picture instead
+ * of a cropped strip.
  */
-export function mediaOrder(images: ShortImage[], clips: Array<{ src: string; durationSeconds: number }>, shots: number): Media[] {
-  const stills: Media[] = images.map((image) => ({ type: "image", image }));
-  const moving: Media[] = clips.map((c) => ({ type: "clip", src: c.src, durationSeconds: c.durationSeconds }));
-  const out: Media[] = [];
-  if (stills[0]) out.push(stills.shift()!);
-  while (out.length < shots && (stills.length || moving.length)) {
-    if (moving.length) out.push(moving.shift()!);
-    if (out.length < shots && stills.length) out.push(stills.shift()!);
-  }
-  // Recycle (stills first) if the story runs longer than the material.
-  const pool = [...images.map((image) => ({ type: "image", image }) as Media), ...clips.map((c) => ({ type: "clip", ...c }) as Media)];
-  for (let k = 0; out.length < shots && pool.length; k++) out.push(pool[k % pool.length]!);
-  return out;
-}
-
-/** Trailer clip, full-bleed, with a slow push; slowed down if the shot outlasts it. */
-const ClipShot: React.FC<{ src: string; clipSeconds: number; durationFrames: number; index: number }> = ({ src, clipSeconds, durationFrames, index }) => {
+const FramedFootage: React.FC<{
+  children: React.ReactNode;
+  blurSrc?: string | null;
+  durationFrames: number;
+  move: MovePreset;
+}> = ({ children, blurSrc, durationFrames, move }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
   const p = Math.min(1, frame / Math.max(1, durationFrames));
-  const scale = interpolate(p, [0, 1], index % 2 ? [1.12, 1.04] : [1.04, 1.12]);
-  const rate = Math.max(0.6, Math.min(1, clipSeconds / Math.max(0.1, durationFrames / fps)));
+  const m = moveTransform(move === "settle" ? "settle" : "pushIn", p);
+  const rise = interpolate(frame, [0, 12], [24, 0], {
+    extrapolateRight: "clamp",
+  });
+  const pop = interpolate(frame, [0, 12], [0.96, 1], {
+    extrapolateRight: "clamp",
+  });
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
-      <OffthreadVideo src={src} muted playbackRate={rate} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }} />
+      <Plate blurSrc={blurSrc} />
+      <div
+        style={{
+          position: "absolute",
+          left: 32,
+          top: BANDS.hero[0],
+          width: WIDTH - 64,
+          height: 572,
+          borderRadius: 10,
+          overflow: "hidden",
+          boxShadow:
+            "0 40px 120px rgba(0,0,0,0.6), inset 0 0 0 2px rgba(255,255,255,0.14)",
+          transform: `translateY(${rise}px) scale(${pop})`,
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            transform: `scale(${m.scale - 0.04}) translate(${m.x}px, ${m.y}px)`,
+            filter: footageFilter,
+          }}
+        >
+          {children}
+        </div>
+      </div>
     </AbsoluteFill>
   );
 };
 
-export const ArtTrack: React.FC<{ media: Media[]; cuts: number[]; totalFrames: number }> = ({ media, cuts, totalFrames }) => {
+const Clip: React.FC<{
+  clip: ShortClip;
+  trimFrom: number;
+  framed: boolean;
+}> = ({ clip, trimFrom, framed }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  if (media.length === 0) return null;
-  const cutFrames = cuts.map((c) => Math.round(c * fps));
-  let i = 0;
-  while (i + 1 < cutFrames.length && frame >= cutFrames[i + 1]!) i++;
-  const start = cutFrames[i] ?? 0;
-  const end = cutFrames[i + 1] ?? totalFrames;
-  const m = media[i % media.length]!;
+  const punch = framed ? 1 : cutPunch(frame);
   return (
-    <AbsoluteFill key={i}>
-      <FrameOffset offset={start}>
-        {m.type === "clip" ? (
-          <ClipShot src={m.src} clipSeconds={m.durationSeconds} durationFrames={end - start} index={i} />
-        ) : (
-          <Shot image={m.image} durationFrames={end - start} index={i} />
-        )}
-      </FrameOffset>
+    <OffthreadVideo
+      src={clip.src}
+      muted
+      startFrom={trimFrom}
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        filter: framed ? undefined : footageFilter,
+        transform: `scale(${punch})`,
+      }}
+    />
+  );
+};
+
+/** "FOOTAGE: PUBLISHER · OFFICIAL TRAILER" tag in the soft margin during clip shots. */
+const FootageCredit: React.FC<{ credit: string; durationFrames: number }> = ({
+  credit,
+  durationFrames,
+}) => {
+  const frame = useCurrentFrame();
+  const o = interpolate(
+    frame,
+    [0, 8, durationFrames - 8, durationFrames],
+    [0, 1, 1, 0],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: SAFE.left,
+        top: CREDIT_TOP,
+        fontFamily: BODY,
+        fontWeight: 600,
+        fontSize: 26,
+        letterSpacing: 2,
+        color: "rgba(245,245,242,0.78)",
+        textShadow: "0 2px 10px rgba(0,0,0,0.9)",
+        opacity: o,
+        textTransform: "uppercase",
+      }}
+    >
+      {credit}
+    </div>
+  );
+};
+
+/** Executes plan.shots: the picture or clip under the current frame, framed or full-bleed. */
+export const ArtTrack: React.FC<{
+  plan: RenderPlan;
+  images: ShortImage[];
+  clips: ShortClip[];
+  accent: string;
+  gameTitle: string;
+  footageCredit: string;
+}> = ({ plan, images, clips, accent, gameTitle, footageCredit }) => {
+  const frame = useCurrentFrame();
+  const { shot, index } = shotAt(plan, frame);
+  const len = shot.end - shot.start;
+  const media = shot.media;
+  const image = media.type === "image" ? images[media.index] : undefined;
+  const clip = media.type === "clip" ? clips[media.index] : undefined;
+  let body: React.ReactNode;
+  if (clip) {
+    body = shot.framed ? (
+      <FramedFootage
+        blurSrc={clip.blurSrc}
+        durationFrames={len}
+        move={shot.move}
+      >
+        <Clip clip={clip} trimFrom={media.trimFrom ?? 0} framed />
+      </FramedFootage>
+    ) : (
+      <AbsoluteFill style={{ overflow: "hidden" }}>
+        <Clip clip={clip} trimFrom={media.trimFrom ?? 0} framed={false} />
+      </AbsoluteFill>
+    );
+  } else if (image) {
+    body = shot.framed ? (
+      <FramedFootage
+        blurSrc={image.blurSrc}
+        durationFrames={len}
+        move={shot.move}
+      >
+        <Img
+          src={image.src}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      </FramedFootage>
+    ) : (
+      <Still image={image} durationFrames={len} move={shot.move} />
+    );
+  } else {
+    body = <BrandPlate accent={accent} title={gameTitle} />;
+  }
+  return (
+    <AbsoluteFill key={index}>
+      <Sequence from={shot.start} layout="none">
+        {body}
+        {clip && footageCredit ? (
+          <FootageCredit credit={footageCredit} durationFrames={len} />
+        ) : null}
+      </Sequence>
     </AbsoluteFill>
   );
 };
 
-/** Film grain and a soft vignette: the finish that separates a "made" Short from a template. */
-export const Finish: React.FC = () => {
+/** Legibility bands: dark behind the brand rows and the captions, nearly clear through the hero and the shelf. */
+export const Scrim: React.FC<{ profile?: "footage" | "card" | "plate" }> = ({
+  profile = "footage",
+}) => {
+  const mid = profile === "card" ? 0.22 : profile === "plate" ? 0 : 0.08;
+  return (
+    <AbsoluteFill
+      style={{
+        background: `linear-gradient(180deg, rgba(5,5,7,0.80) 0%, rgba(5,5,7,0.10) 15.6%, rgba(5,5,7,${mid}) 18%, rgba(5,5,7,${mid}) 60%, rgba(5,5,7,0.10) 62%, rgba(5,5,7,0.70) 78%, rgba(5,5,7,0.75) 78.2%, rgba(5,5,7,0.92) 100%)`,
+      }}
+    />
+  );
+};
+
+/** Film grain and a soft vignette under the type. */
+export const Finish: React.FC<{ grainSrc: string }> = ({ grainSrc }) => {
   const frame = useCurrentFrame();
   const x = (frame * 37) % 256;
   const y = (frame * 91) % 256;
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
-      <AbsoluteFill style={{ background: "radial-gradient(ellipse 85% 70% at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%)" }} />
-      <AbsoluteFill style={{ backgroundImage: `url(${staticFile("grain.png")})`, backgroundPosition: `${x}px ${y}px`, opacity: 0.07, mixBlendMode: "overlay" }} />
+      <AbsoluteFill
+        style={{
+          background:
+            "radial-gradient(ellipse 85% 70% at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%)",
+        }}
+      />
+      <AbsoluteFill
+        style={{
+          backgroundImage: `url(${grainSrc})`,
+          backgroundPosition: `${x}px ${y}px`,
+          opacity: 0.06,
+          mixBlendMode: "overlay",
+        }}
+      />
     </AbsoluteFill>
   );
 };
 
-// Restarts the frame counter at the shot's cut so each push starts fresh.
-const FrameOffset: React.FC<{ offset: number; children: React.ReactNode }> = ({ offset, children }) => (
-  <Sequence from={offset} layout="none">
-    {children}
-  </Sequence>
-);
-
-/** Legibility gradients over the art. */
-export const Scrim: React.FC = () => (
-  <AbsoluteFill
-    style={{
-      background:
-        "linear-gradient(180deg, rgba(5,5,7,0.85) 0%, rgba(5,5,7,0.15) 22%, rgba(5,5,7,0.05) 45%, rgba(5,5,7,0.75) 68%, rgba(5,5,7,0.95) 100%)",
-    }}
-  />
-);
+/** Three-frame accent flash at the two turns of the story. */
+export const TurnFlash: React.FC<{ turns: number[]; accent: string }> = ({
+  turns,
+  accent,
+}) => {
+  const frame = useCurrentFrame();
+  const last = turns.filter((c) => c > 0 && c <= frame).at(-1);
+  if (last === undefined) return null;
+  const d = frame - last;
+  if (d > 3) return null;
+  const o = interpolate(d, [0, 3], [0.22, 0]);
+  return (
+    <AbsoluteFill
+      style={{
+        background: `linear-gradient(180deg, ${accent} 0%, rgba(255,255,255,0.9) 100%)`,
+        opacity: o,
+        mixBlendMode: "screen",
+      }}
+    />
+  );
+};

@@ -60,7 +60,7 @@ Structure:
 
 Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone.
 List every factual claim in "claims" with the URL of the provided source that supports it.
-The YouTube title front-loads the game name. The description credits the sources by name.`;
+The YouTube title is "[Game]: [the fact in 4-7 words]", under 60 characters, no exclamation marks, no clickbait words. The description credits the sources by name.`;
 }
 
 export function factCheckPrompt(): string {

@@ -22,6 +22,7 @@ import type { DiscordMessage } from "./approval/discord.ts";
 import { COLOURS } from "./approval/discord.ts";
 import { selectStory, writeScript, factCheck, validateScript } from "./editorial/editorial.ts";
 import { narrationOf, type Script } from "./editorial/schema.ts";
+import { buildTags, hashtags, keywordLead, pinnedComment, polishTitle } from "./editorial/seo.ts";
 import { buildSegments, srtFromWords, type SegmentInput } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
@@ -549,21 +550,24 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], sy
         .filter(Boolean)
         .join("\n")
     : "";
+  const body = script.youtube.description.trim().replace(/#\w+/g, "").replace(/\s{2,}/g, " ").trim();
   const description = [
-    script.youtube.description.trim(),
+    keywordLead(script),
+    "",
+    body,
     script.is_rumour ? "\nThis story is unconfirmed. We will update if it is confirmed or denied." : "",
     `\nSources:\n${credits}`,
     footage,
     "\nNarration: locally generated British synthetic voice. Visuals: official publisher material, credited.",
-    "\nPulse Gaming News: fast gaming news, checked and explained.",
-    "#Shorts #GamingNews",
+    "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
+    hashtags(script).join(" "),
   ]
-    .filter(Boolean)
+    .filter((line) => line !== "")
     .join("\n");
   return {
-    title: script.youtube.title,
+    title: polishTitle(script),
     description,
-    tags: [...script.youtube.tags, "gaming news", script.game_title].filter(Boolean),
+    tags: buildTags(script),
     categoryId: "20",
     privacyStatus: privacy,
     publishAt: ep.publish_at ? new Date(ep.publish_at).toISOString() : undefined,
@@ -621,6 +625,19 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   }
 }
 
+/** Posts the channel's own first comment (the owner pins it from the app; the API cannot pin). Never blocks a live video. */
+async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
+  try {
+    const text = pinnedComment(ep.script_json!);
+    const id = await s.youtube().insertComment(ep.youtube_video_id!, text);
+    await quotaAdd(s.db, s.now(), QUOTA.comment);
+    await logEvent(s.db, ep.id, "comment_posted", { id, text });
+  } catch (err) {
+    log("warn", "pinned comment failed", { episode: ep.id, error: errorMessage(err) });
+    await logEvent(s.db, ep.id, "comment_failed", { error: errorMessage(err) });
+  }
+}
+
 /** Uploads the SRT as the video's en-GB caption track. Captions are an enhancement: a failure is logged, never blocks a video that is already live. */
 async function addCaptions(s: Services, ep: Episode): Promise<void> {
   const file = path.join(episodeDir(s.cfg, ep.id), ep.assets_json!.srt!);
@@ -649,6 +666,7 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
     return;
   }
   if (ep.assets_json?.srt) await addCaptions(s, ep);
+  await addPinnedComment(s, ep);
   await transition(s.db, ep.id, "uploaded", "published", { youtube_status: st.privacyStatus });
   const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
   const when = ep.publish_at ? `scheduled for ${new Date(ep.publish_at).toUTCString()}` : "live now";

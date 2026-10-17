@@ -9,6 +9,8 @@ export const STORY_TYPES = [
   "trailer",
   "update",
   "rumour",
+  "review_scores",
+  "hardware",
   "industry",
   "other",
 ] as const;

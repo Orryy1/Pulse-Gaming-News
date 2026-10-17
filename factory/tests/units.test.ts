@@ -6,6 +6,7 @@ import { buildSegments, pageCaptions, srtFromWords } from "../src/render/timelin
 import { capFootage, footageBudgetSeconds } from "../src/assets/footage.ts";
 import { videoMetadata } from "../src/pipeline.ts";
 import { missingScopes } from "../src/doctor.ts";
+import { buildTags, hashtags, keywordLead, pinnedComment, polishTitle, titleProblems } from "../src/editorial/seo.ts";
 import { parseBars, dateLabel, monthsBetween, daysUntil, bandColour } from "../src/render/components/cards/helpers.ts";
 import { wordsFromAlignment } from "../src/voice/elevenlabs.ts";
 import { validateScript } from "../src/editorial/editorial.ts";
@@ -218,6 +219,10 @@ test("video descriptions credit the footage and disclose the synthetic voice", (
   };
   const m = videoMetadata(ep, "unlisted");
   assert.match(m.description, /Footage: .* official trailer \(Bethesda Softworks\)/);
+  assert.match(m.description.split("\n")[0]!, /^Starfield .*: /, "the first line is the keyword lead");
+  assert.match(m.description, /#Shorts #GamingNews #Starfield$/);
+  assert.ok(m.tags.includes("Starfield") && m.tags.includes("gaming news") && m.tags.join(",").length <= 500);
+  assert.ok(m.title.length <= 60 && m.title.startsWith("Starfield"));
   assert.match(m.description, /Game Content Usage Rules: https:\/\/www\.xbox\.com\/en-US\/developers\/rules/);
   assert.match(m.description, /synthetic voice/);
   assert.equal(m.containsSyntheticMedia, true);
@@ -252,4 +257,24 @@ test("data card helpers parse what the writer gives them", () => {
   assert.equal(daysUntil("2027-03-14", "2026-10-17"), 148);
   assert.equal(bandColour(85), "#22C55E");
   assert.equal(bandColour(55), "#FF3B3B");
+});
+
+test("SEO: titles are game-first, short and clean; tags, hashtags, lead and comment follow the story", () => {
+  const s = goodScript();
+  const t = polishTitle(s);
+  assert.deepEqual(titleProblems(t), []);
+  assert.ok(t.startsWith("Starfield"), t);
+  const shouty = polishTitle(goodScript({ youtube: { ...s.youtube, title: "You Won't Believe This SHOCKING Starfield Delay!!!" } }));
+  assert.deepEqual(titleProblems(shouty), []);
+  assert.ok(shouty.startsWith("Starfield:"), shouty);
+  const long = polishTitle(goodScript({ youtube: { ...s.youtube, title: "Starfield second expansion delayed to early 2027 as Bethesda blames polish and new systems" } }));
+  assert.ok(long.length <= 60, long);
+  assert.deepEqual(titleProblems("Starfield delayed??"), ["Title uses clickbait punctuation."]);
+  const tags = buildTags(s);
+  assert.equal(tags[0], "Starfield");
+  assert.ok(tags.includes("Bethesda") && tags.includes("Starfield delayed") && tags.includes("gaming news"));
+  assert.ok(new Set(tags.map((x) => x.toLowerCase())).size === tags.length, "no duplicate tags");
+  assert.deepEqual(hashtags(s), ["#Shorts", "#GamingNews", "#Starfield"]);
+  assert.match(keywordLead(s), /^Starfield delayed: /);
+  assert.match(pinnedComment(s), /^Our read: .*\? Sources are in the description\.$/);
 });

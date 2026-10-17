@@ -17,8 +17,9 @@ export const QUOTA = {
   captions: 450,
   poll: 1,
   marker: 3,
+  comment: 50,
 } as const;
-export const QUOTA_RESERVE_FOR_UPLOAD = QUOTA.upload + QUOTA.captions + 20;
+export const QUOTA_RESERVE_FOR_UPLOAD = QUOTA.upload + QUOTA.captions + QUOTA.comment + 20;
 
 // ------------------------------------------------------------------ time zones
 

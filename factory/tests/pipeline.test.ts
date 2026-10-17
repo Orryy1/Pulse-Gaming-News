@@ -43,6 +43,7 @@ interface Fakes {
   captionInserts: number;
   publicReachable?: boolean;
   captions: Array<{ id: string; language: string; name: string }>;
+  comments: string[];
 }
 
 function fakeLlm(f: Fakes): Llm {
@@ -95,6 +96,10 @@ function fakeYouTube(f: Fakes): YouTubeClient {
     privacyStatus: "public",
   });
   yt.listCaptions = async () => f.captions;
+  yt.insertComment = async (_v, text) => {
+    f.comments.push(text);
+    return "c_1";
+  };
   yt.insertCaption = async () => {
     f.captionInserts++;
     f.captions.push({ id: "cap_1", language: "en-GB", name: "English" });
@@ -120,6 +125,7 @@ async function setup(
     notifications: [],
     captionInserts: 0,
     captions: [],
+    comments: [],
     ...fakeOverrides,
   };
   let clock = new Date("2026-10-16T12:00:00Z");
@@ -230,6 +236,8 @@ test("one tick takes a corroborated story all the way to published", async () =>
     "the SRT was uploaded as a caption track once",
   );
   assert.equal(ep.assets_json?.srt, "captions.srt");
+  assert.equal(f.comments.length, 1, "the channel posts its first comment");
+  assert.match(f.comments[0]!, /^Our read: /);
   assert.match(
     await fs.readFile(
       path.join(dir, "episodes", ep.id, "captions.srt"),

@@ -150,6 +150,19 @@ export class YouTubeClient {
     return body.id;
   }
 
+  /** Posts a top-level comment as the channel (commentThreads.insert, 50 quota units). Returns the comment id. */
+  async insertComment(videoId: string, text: string): Promise<string> {
+    const res = await this.fetchFn(`${API}/commentThreads?part=snippet`, {
+      method: "POST",
+      headers: { ...(await this.auth()), "content-type": "application/json; charset=UTF-8" },
+      body: JSON.stringify({ snippet: { videoId, topLevelComment: { snippet: { textOriginal: text.slice(0, 1000) } } } }),
+    });
+    if (!res.ok) throw await apiError(res, "commentThreads.insert");
+    const id = ((await res.json()) as { id?: string }).id;
+    if (!id) throw new Error("commentThreads.insert returned no id");
+    return id;
+  }
+
   /** Caption tracks already on a video, so a retried confirm step never uploads twice. */
   async listCaptions(videoId: string): Promise<Array<{ id: string; language: string; name: string }>> {
     const res = await this.fetchFn(`${API}/captions?part=snippet&videoId=${videoId}`, { headers: await this.auth() });

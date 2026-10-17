@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { clusterItems, canonicalUrl } from "../src/discovery/cluster.ts";
 import { parseFeed } from "../src/discovery/rss.ts";
 import { buildSegments, pageCaptions, srtFromWords } from "../src/render/timeline.ts";
+import { capFootage, footageBudgetSeconds } from "../src/assets/footage.ts";
 import { wordsFromAlignment } from "../src/voice/elevenlabs.ts";
 import { validateScript } from "../src/editorial/editorial.ts";
 import { narrationOf } from "../src/editorial/schema.ts";
@@ -168,4 +169,15 @@ test("srtFromWords writes numbered, non-overlapping cues held at least 0.7s", ()
   for (let i = 1; i < times.length; i++) assert.ok(times[i - 1]![1]! <= times[i]![0]!, "cues do not overlap");
   for (const [a, b] of times) assert.ok(Number(b!.slice(-6).replace(",", ".")) - Number(a!.slice(-6).replace(",", ".")) >= 0.69 || a!.slice(0, 5) !== b!.slice(0, 5));
   assert.equal(srtFromWords([]), "");
+});
+
+test("Rockstar footage is held to about six seconds per Short", () => {
+  const rockstar = { appId: 1, name: "Grand Theft Auto VI", details: { publishers: ["Rockstar Games"], developers: ["Rockstar North"] } };
+  const other = { appId: 2, name: "Starfield", details: { publishers: ["Bethesda Softworks"] } };
+  assert.equal(footageBudgetSeconds(rockstar), 6);
+  assert.equal(footageBudgetSeconds(other), 14);
+  const clips = [1, 2, 3, 4].map((i) => ({ file: `c${i}.mp4`, durationSeconds: 3.4 }));
+  assert.equal(capFootage(clips, 6).length, 1);
+  assert.equal(capFootage(clips, 14).length, 4);
+  assert.equal(capFootage(clips, 0).length, 0);
 });

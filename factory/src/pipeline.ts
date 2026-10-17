@@ -13,6 +13,7 @@ import type { ArticleText } from "./discovery/article.ts";
 import type { Narration } from "./voice/elevenlabs.ts";
 import type { VisualAsset, SteamApp, SteamFacts } from "./assets/steam.ts";
 import { factsText } from "./assets/steam.ts";
+import { capFootage, footageBudgetSeconds } from "./assets/footage.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
 import type { VisionQa } from "./editorial/schema.ts";
@@ -181,7 +182,10 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
   const art = app ? await s.fetchArt(app, dir).catch(() => [] as VisualAsset[]) : [];
   // Official trailer B-roll: short muted clips, at most MAX_TRAILER_CLIPS.
   const clipAssets = app && s.cfg.footage && s.cfg.maxClips > 0 ? await s.fetchClips(app, dir, s.cfg.maxClips).catch(() => [] as VisualAsset[]) : [];
-  const clips = clipAssets.map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4 }));
+  // Per-publisher footage budget (Rockstar: about 6 s per Short). Clips beyond it are dropped, in order.
+  const budget = app ? footageBudgetSeconds(app) : 0;
+  const clips = capFootage(clipAssets, budget).map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4 }));
+  if (clips.length < clipAssets.length) log("info", "footage capped", { episode: ep.id, budgetSeconds: budget, dropped: clipAssets.length - clips.length });
   const images = art.filter((a) => a.kind !== "logo");
   // First-party newsroom images (PlayStation Blog, Xbox Wire) are press
   // material meant for coverage. Outlet images are never used.

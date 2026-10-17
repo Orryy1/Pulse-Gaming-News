@@ -379,9 +379,9 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
   if (script.entries?.length) {
     const sorted = [...script.entries].sort((a, b) => b.rank - a.rank);
     for (const [beatIndex, entry] of sorted.entries()) {
-      if (!entry.steam_search_term) continue;
       try {
-        const eapp = await s.findGame(entry.steam_search_term);
+        // An empty Steam term means the writer knows the game is not on Steam: straight to the publisher's trailer.
+        const eapp = entry.steam_search_term ? await s.findGame(entry.steam_search_term) : undefined;
         if (!eapp) {
           if (!s.cfg.footage) continue;
           const want = script.beats[beatIndex]?.footage;

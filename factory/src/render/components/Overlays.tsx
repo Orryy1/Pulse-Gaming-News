@@ -431,7 +431,8 @@ export const FactCard: React.FC<{
     );
   }
 
-  const capsule = beatIndex === undefined ? undefined : images.find((i) => i.beatIndex === beatIndex && i.kind === "capsule");
+  // The entry's box art; a game off Steam has only its trailer still, which the card crops to the box.
+  const capsule = beatIndex === undefined ? undefined : (images.find((i) => i.beatIndex === beatIndex && i.kind === "capsule") ?? images.find((i) => i.beatIndex === beatIndex));
   const dataCard =
     v.kind === "rank" && typeof v.value_a === "number" ? (
       <RankingCard rank={v.value_a} total={rankTotal} title={v.primary} verdict={v.secondary} year={v.items?.[0]} platforms={v.items?.[1]} capsuleSrc={capsule?.src ?? null} accent={accent} />

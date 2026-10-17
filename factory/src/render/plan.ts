@@ -406,6 +406,19 @@ export function planShots(
         kind === "rank"
           ? takeStill((i) => true, media, beatIndex, true)
           : takeStill((i) => true, media);
+      const prevShot = shots.at(-1);
+      if (
+        kind === "rank" &&
+        media &&
+        (!alt || same(alt, media)) &&
+        prevShot &&
+        prevShot.segment === c.segment &&
+        same(prevShot.media, media)
+      ) {
+        // The entry has nothing else to show: its art holds the rest of the line as one longer shot.
+        prevShot.end = c.end;
+        continue;
+      }
       media = alt ?? media ?? { type: "plate", index: 0 };
       framed =
         media.type === "image" ? isFramedStill(images[media.index]!) : false;

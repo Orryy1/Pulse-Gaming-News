@@ -354,4 +354,11 @@ test("a ranking entry only ever shows its own art or moment, never the hero or a
     const seg = segments[item.segment]!;
     if (seg.kind === "beat") assert.ok(!["stat", "live", "gamecard"].includes(item.device), `rank entry got a ${item.device} tile`);
   }
+  // An entry with one piece of art holds it as one longer shot rather than cutting to itself.
+  for (let k = 1; k < plan.shots.length; k++) {
+    const a = plan.shots[k - 1]!;
+    const b = plan.shots[k]!;
+    if (a.segment === b.segment && segments[b.segment]!.kind === "beat") assert.ok(!(a.media.type === b.media.type && a.media.index === b.media.index), `shot ${k} repeats its neighbour inside an entry`);
+  }
+  for (let k = 1; k < plan.shots.length; k++) assert.equal(plan.shots[k]!.start, plan.shots[k - 1]!.end, "shots stay contiguous after merging");
 });

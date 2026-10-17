@@ -95,6 +95,7 @@ export const RankingCard: React.FC<{
           OF {total}
         </div>
       </div>
+      {capsuleSrc ? (
       <div
         style={{
           flex: "none",
@@ -108,21 +109,12 @@ export const RankingCard: React.FC<{
           transform: `translateY(${(1 - card) * 20}px)`,
         }}
       >
-        {capsuleSrc ? (
-          <Img
-            src={capsuleSrc}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        ) : (
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              background: `linear-gradient(180deg, ${accent}33, transparent)`,
-            }}
-          />
-        )}
+        <Img
+          src={capsuleSrc}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
       </div>
+      ) : null}
       <div
         style={{
           minWidth: 0,

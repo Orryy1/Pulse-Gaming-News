@@ -279,6 +279,12 @@ test("SEO: titles are game-first, short and clean; tags, hashtags, lead and comm
   const long = polishTitle(goodScript({ youtube: { ...s.youtube, title: "Starfield second expansion delayed to early 2027 as Bethesda blames polish and new systems" } }));
   assert.ok(long.length <= 60, long);
   assert.deepEqual(titleProblems("Starfield delayed??"), ["Title uses clickbait punctuation."]);
+  // Rankings follow the search pattern and never say "Part One".
+  const six = polishTitle(goodScript({ game_title: "Resident Evil", headline: "Six Resident Evil games ranked", evergreen_format: "ranking", youtube: { ...s.youtube, title: "Ranking EVERY Resident Evil Game, Part One" }, entries: Array.from({ length: 6 }, (_, i) => ({ rank: i + 1, game_title: `RE ${i}`, steam_search_term: "", year: 2000 + i, platforms: "PC" })) }));
+  assert.equal(six, "6 Resident Evil Games Ranked Worst To Best");
+  const ten = polishTitle(goodScript({ game_title: "Resident Evil", headline: "x", evergreen_format: "ranking", youtube: { ...s.youtube, title: "x" }, entries: Array.from({ length: 10 }, (_, i) => ({ rank: i + 1, game_title: `RE ${i}`, steam_search_term: "", year: 2000 + i, platforms: "PC" })) }));
+  assert.equal(ten, "Every Resident Evil Game Ranked Worst To Best");
+  assert.deepEqual(titleProblems(ten), []);
   const tags = buildTags(s);
   assert.equal(tags[0], "Starfield");
   assert.ok(tags.includes("Bethesda") && tags.includes("Starfield delayed") && tags.includes("gaming news"));

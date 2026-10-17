@@ -122,7 +122,27 @@ export function storyKeywords(script: Script): string[] {
  * does that; otherwise a formula for the story type rebuilds it from the
  * headline.
  */
+/**
+ * A ranking's title follows the search pattern viewers type ("every X game
+ * ranked worst to best") and says how many entries it holds when it is not
+ * the whole series; other evergreen formats keep the writer's templated title.
+ */
+export function evergreenTitle(script: Script): string | undefined {
+  const n = script.entries?.length ?? 0;
+  if (!n) return undefined;
+  const theme = script.game_title.trim();
+  if (script.evergreen_format === "ranking" || !script.evergreen_format) {
+    const lead = n >= 8 ? `Every ${theme} Game Ranked` : `${n} ${theme} Games Ranked`;
+    const full = `${lead} Worst to Best`;
+    return titleCase(full.length <= TITLE_MAX ? full : lead);
+  }
+  const own = script.youtube.title.replace(BAD_TITLE_WORDS, "").replace(CLICKBAIT_PUNCT, "").replace(/\s{2,}/g, " ").trim();
+  return truncateWords(titleCase(own || script.headline), TITLE_MAX);
+}
+
 export function polishTitle(script: Script): string {
+  const evergreen = evergreenTitle(script);
+  if (evergreen) return evergreen;
   const game = script.game_title.trim();
   let title = script.youtube.title
     .trim()

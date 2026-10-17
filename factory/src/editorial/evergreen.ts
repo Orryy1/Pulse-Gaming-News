@@ -254,6 +254,7 @@ export function evergreenToScript(e: EvergreenScript): Script {
     is_rumour: false,
     attribution: "Source: Steam / Pulse",
     youtube: e.youtube,
+    evergreen_format: e.format,
     claims: e.claims.map((c) => ({ claim: c.claim, source_url: c.source })),
     entries: entries.map((x) => ({
       rank: x.rank,

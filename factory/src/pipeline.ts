@@ -116,8 +116,9 @@ export async function discoverTick(s: Services): Promise<number> {
 
 async function recentSightings(s: Services): Promise<Array<{ cluster: StoryCluster; sighting: Sighting }>> {
   const rows = await s.db.query<Sighting & { cluster_json: StoryCluster }>(
-    `SELECT hash, first_seen, last_seen, item_count, has_official, max_score, cluster_json FROM cluster_sightings WHERE last_seen > now() - ($1 || ' hours')::interval ORDER BY max_score DESC`,
-    [String(s.cfg.maxStoryAgeHours)],
+    // Judged by the factory's clock, like every other hold, so the scheduler is testable.
+    `SELECT hash, first_seen, last_seen, item_count, has_official, max_score, cluster_json FROM cluster_sightings WHERE last_seen > $2::timestamptz - ($1 || ' hours')::interval ORDER BY max_score DESC`,
+    [String(s.cfg.maxStoryAgeHours), s.now()],
   );
   return rows.map((r) => ({ cluster: r.cluster_json, sighting: r }));
 }
@@ -166,7 +167,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   // 1. Breaking lane.
   if (cfg.breakingEnabled && (await countToday(db, cfg.timezone, "news_breaking")) < cfg.breakingPerDay) {
     const rule = { scoreMin: cfg.breakingScoreMin, maxAgeMinutes: cfg.breakingMaxAgeMinutes, window: cfg.breakingWindow, timeZone: cfg.timezone };
-    const cooled = new Set((await db.query<{ franchise: string }>(`SELECT franchise FROM breaking_log WHERE fired_at > now() - ($1 || ' hours')::interval`, [String(cfg.breakingCooldownHours)])).map((r) => r.franchise));
+    const cooled = new Set((await db.query<{ franchise: string }>(`SELECT franchise FROM breaking_log WHERE fired_at > $2::timestamptz - ($1 || ' hours')::interval`, [String(cfg.breakingCooldownHours), now])).map((r) => r.franchise));
     const breaking = eligible.filter((x) => isBreaking(x.cluster, x.sighting, now, rule) && !cooled.has(franchiseKey(x.cluster))).map((x) => x.cluster).slice(0, 4);
     if (breaking.length) {
       const id = await createFromChoice(s, breaking, { lane: "news_breaking", priority: LANE_PRIORITY.news_breaking }, "breaking: official, fresh and scored above the bar");

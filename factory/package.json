@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "studio": "remotion studio src/render/index.ts",
-    "doctor": "tsx src/cli.ts doctor"
+    "doctor": "tsx src/cli.ts doctor",
+    "brand": "tsx src/brand-kit.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

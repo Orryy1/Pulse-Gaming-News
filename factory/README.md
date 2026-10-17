@@ -92,6 +92,10 @@ The only running cost is Claude (selection, script, fact-check and vision QA): a
 - Visuals are original motion graphics plus publisher-supplied store art and first-party press images, each stored with its source. No outlet photos, no footage and nothing leaked.
 - Uploads save the resumable session first and tag the video privately. After any ambiguous failure, the next attempt finds the existing upload instead of posting again.
 
+## Brand kit
+
+`npm run brand` renders the channel banner (2560x1440, content inside the 1546x423 safe area), the avatar (800x800) and a long-form thumbnail template (1280x720) into `brand/` from the same colour, type and motion tokens the Shorts use. `brand/BRAND.md` is the brand system; `brand/CHANNEL_KIT.md` is the copy to paste into YouTube Studio.
+
 ## Development
 
 ```

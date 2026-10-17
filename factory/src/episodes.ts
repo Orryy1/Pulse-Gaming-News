@@ -49,7 +49,7 @@ export interface EpisodeAssets {
   durationSeconds?: number;
   srt?: string; // captions.srt, uploaded as the video's en-GB caption track
   plan?: import("./render/plan.ts").RenderPlan; // the render plan, persisted so a retried render is identical
-  images?: Array<{ file: string; kind: string; aspect: number; sourceUrl: string; provenance: string; blurFile?: string }>;
+  images?: Array<{ file: string; kind: string; aspect: number; sourceUrl: string; provenance: string; blurFile?: string; beatIndex?: number }>;
   video?: string;
   poster?: string;
   musicFile?: string | null;

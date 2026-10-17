@@ -21,7 +21,7 @@ export interface VisualAsset {
   height?: number;
   durationSeconds?: number;
   // Beat-matched clips (src/assets/clipscore.ts)
-  beatIndex?: number;
+  beatIndex?: number; // clips: the line; images: the ranking entry
   role?: "hook";
   startSeconds?: number;
   motion?: number; // 0-1

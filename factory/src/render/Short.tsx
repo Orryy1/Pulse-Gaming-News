@@ -102,6 +102,8 @@ export const Short: React.FC<ShortProps> = (props) => {
       ? segmentStarts[loopIndex]!
       : durationInFrames - plan.tailFrames;
   const hasPlate = plan.shots.some((s) => s.media.type === "plate");
+  const rankTotal = props.segments.filter((s) => s.visual?.kind === "rank").length;
+  const beatIndexOf = props.segments.map((s, i) => (s.kind === "beat" ? props.segments.slice(0, i).filter((x) => x.kind === "beat").length : undefined));
 
   // Music ducks under the voice with a fast attack and a slower release, and is held (never faded out) through the tail.
   const speaking = useMemo(() => {
@@ -175,6 +177,9 @@ export const Short: React.FC<ShortProps> = (props) => {
               takeLabel={theme.takeLabel}
               durationInFrames={segmentEnds[i]! - segmentStarts[i]!}
               renderDate={props.renderDate}
+              images={props.images}
+              rankTotal={rankTotal}
+              beatIndex={beatIndexOf[i]}
             />
           </Sequence>
         ) : null,

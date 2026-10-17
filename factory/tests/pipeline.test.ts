@@ -161,6 +161,7 @@ async function setup(
         ],
         clock,
       ),
+    discoverEvergreen: async () => [],
     fetchArticle: async (url) => ({
       url,
       title: "t",

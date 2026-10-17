@@ -5,10 +5,11 @@
 import type { Db } from "./db.ts";
 import type { StoryCluster } from "./discovery/cluster.ts";
 
-export type Lane = "news" | "news_breaking";
+export type Lane = "news" | "news_breaking" | "evergreen";
 export const LANE_PRIORITY: Record<Lane, number> = {
   news_breaking: 100,
   news: 50,
+  evergreen: 30,
 };
 
 // YouTube Data API costs: videos.insert 1600, captions.list 50, captions.insert 400, videos.list 1, playlistItems.list 1.
@@ -143,6 +144,30 @@ export function dueSlot(
     return slot;
   }
   return undefined;
+}
+
+// -------------------------------------------------------------------- evergreen
+
+const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/** Local weekday name ("mon".."sun") of an instant. */
+export function weekday(now: Date, timeZone: string): string {
+  const d = new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short" }).format(now).toLowerCase().slice(0, 3);
+  return DAYS.includes(d) ? d : "mon";
+}
+
+/**
+ * The evergreen slot due right now, if any: today is an evergreen day, the
+ * slot's lead time has begun, it is not missed by more than the grace, and
+ * no evergreen episode already claims it.
+ */
+export function evergreenDue(now: Date, plan: { days: string[]; slot: string; leadMinutes: number; graceMinutes: number; timeZone: string }, taken: Date[]): Date | undefined {
+  if (!plan.days.includes(weekday(now, plan.timeZone))) return undefined;
+  const slot = localTime(dayKey(now, plan.timeZone), plan.slot, plan.timeZone);
+  if (taken.some((t) => t.getTime() === slot.getTime())) return undefined;
+  const ms = slot.getTime() - now.getTime();
+  if (ms > plan.leadMinutes * 60_000 || ms < -plan.graceMinutes * 60_000) return undefined;
+  return slot;
 }
 
 // --------------------------------------------------------------------- breaking

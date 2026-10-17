@@ -69,7 +69,7 @@ export interface TechQa {
   blackSeconds: number;
 }
 
-export async function technicalQa(file: string, expectedSeconds: number): Promise<TechQa> {
+export async function technicalQa(file: string, expectedSeconds: number, band: { minSeconds: number; maxSeconds: number } = { minSeconds: 12, maxSeconds: 59 }): Promise<TechQa> {
   const p = await probe(file);
   const lufs = await loudness(file);
   const black = await blackSeconds(file);
@@ -77,7 +77,7 @@ export async function technicalQa(file: string, expectedSeconds: number): Promis
   if (p.width !== 1080 || p.height !== 1920) problems.push(`Resolution is ${p.width}x${p.height}, expected 1080x1920.`);
   if (p.videoCodec !== "h264") problems.push(`Video codec is ${p.videoCodec}, expected h264.`);
   if (!p.hasAudio) problems.push("No audio stream.");
-  if (p.durationSeconds < 12 || p.durationSeconds > 59) problems.push(`Duration ${p.durationSeconds.toFixed(1)}s is outside 12-59s.`);
+  if (p.durationSeconds < band.minSeconds || p.durationSeconds > band.maxSeconds) problems.push(`Duration ${p.durationSeconds.toFixed(1)}s is outside ${band.minSeconds}-${band.maxSeconds}s.`);
   if (Math.abs(p.durationSeconds - expectedSeconds) > 1.5) problems.push(`Duration ${p.durationSeconds.toFixed(1)}s does not match narration ${expectedSeconds.toFixed(1)}s.`);
   if (!Number.isFinite(lufs) || lufs < -18.5 || lufs > -13.5) problems.push(`Integrated loudness ${lufs} LUFS is outside -18.5 to -13.5.`);
   if (black > 0.8) problems.push(`${black.toFixed(1)}s of black frames.`);

@@ -10,6 +10,8 @@ import { fetchFeeds } from "./discovery/rss.ts";
 import { clusterItems } from "./discovery/cluster.ts";
 import { fetchArticle } from "./discovery/article.ts";
 import { selectClips } from "./assets/clipscore.ts";
+import { evergreenCandidates } from "./discovery/evergreen.ts";
+import { dayKey } from "./lanes.ts";
 import { narrate } from "./voice/index.ts";
 import { fetchSteamArt, findSteamApp, steamFacts } from "./assets/steam.ts";
 import { renderShort } from "./render/render.ts";
@@ -37,6 +39,7 @@ export function createServices(db: Db, cfg: Config): Services {
     cfg,
     llm,
     discover: async () => clusterItems(await fetchFeeds(FEEDS), new Date(), cfg.maxStoryAgeHours),
+    discoverEvergreen: () => evergreenCandidates(dayKey(new Date(), cfg.timezone)),
     fetchArticle,
     synthesise: (text, out) => narrate(cfg, text, out),
     findGame: findSteamApp,

@@ -12,6 +12,7 @@ export interface ShortImage {
   aspect: number; // width / height
   blurSrc?: string | null; // pre-blurred plate for the framed panel
   luma?: number;
+  beatIndex?: number; // tagged for one entry of a ranking Short
 }
 
 export interface ShortClip {

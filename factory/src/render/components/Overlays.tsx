@@ -32,6 +32,8 @@ import { Ring } from "./cards/Ring.tsx";
 import { Calendar } from "./cards/Calendar.tsx";
 import { BarCompare } from "./cards/BarCompare.tsx";
 import { parseBars } from "./cards/helpers.ts";
+import { RankingCard } from "./cards/RankingCard.tsx";
+import type { ShortImage } from "../props.ts";
 
 export { SAFE } from "../layout.ts";
 export { DISPLAY, BODY } from "./fonts.ts";
@@ -278,7 +280,10 @@ export const FactCard: React.FC<{
   takeLabel: string;
   durationInFrames: number;
   renderDate: string;
-}> = ({ segment, accent, takeLabel, durationInFrames, renderDate }) => {
+  images?: ShortImage[];
+  rankTotal?: number;
+  beatIndex?: number;
+}> = ({ segment, accent, takeLabel, durationInFrames, renderDate, images = [], rankTotal = 0, beatIndex }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const v = segment.visual;
@@ -424,7 +429,11 @@ export const FactCard: React.FC<{
     );
   }
 
+  const capsule = beatIndex === undefined ? undefined : images.find((i) => i.beatIndex === beatIndex && i.kind === "capsule");
   const dataCard =
+    v.kind === "rank" && typeof v.value_a === "number" ? (
+      <RankingCard rank={v.value_a} total={rankTotal} title={v.primary} verdict={v.secondary} year={v.items?.[0]} platforms={v.items?.[1]} capsuleSrc={capsule?.src ?? null} accent={accent} />
+    ) :
     v.kind === "timeline" && v.date_from && v.date_to ? (
       <Timeline from={v.date_from} to={v.date_to} label={v.primary} accent={accent} />
     ) : v.kind === "price" ? (

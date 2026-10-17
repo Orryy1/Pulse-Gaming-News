@@ -85,6 +85,12 @@ export interface Config {
   breakingApprovalMinutes: number;
   breakingWindow: string; // local "HH:MM-HH:MM"
   quotaUnitsPerDay: number;
+  evergreenEnabled: boolean;
+  evergreenDays: string[]; // local weekdays, e.g. tue,thu,sat
+  evergreenSlot: string; // local "HH:MM"
+  evergreenApprovalMode: ApprovalMode;
+  evergreenApprovalMinutes: number;
+  evergreenMaxSeconds: number; // narration cap for the lane
   selectFromHourUtc: number;
   minGapHours: number;
   tickMinutes: number;
@@ -166,6 +172,12 @@ export function loadConfig(): Config {
     breakingApprovalMinutes: int("BREAKING_APPROVAL_MINUTES", 20),
     breakingWindow: str("BREAKING_WINDOW", "07:00-23:00"),
     quotaUnitsPerDay: int("QUOTA_UNITS_PER_DAY", 10000),
+    evergreenEnabled: bool("EVERGREEN_ENABLED", true),
+    evergreenDays: str("EVERGREEN_DAYS", "tue,thu,sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    evergreenSlot: str("EVERGREEN_SLOT", "19:00"),
+    evergreenApprovalMode: str("EVERGREEN_APPROVAL_MODE", "manual") as ApprovalMode,
+    evergreenApprovalMinutes: int("EVERGREEN_APPROVAL_MINUTES", 120),
+    evergreenMaxSeconds: int("EVERGREEN_MAX_SECONDS", 170),
     selectFromHourUtc: int("SELECT_FROM_HOUR_UTC", 9),
     minGapHours: int("MIN_GAP_HOURS", 4),
     tickMinutes: int("TICK_MINUTES", 10),

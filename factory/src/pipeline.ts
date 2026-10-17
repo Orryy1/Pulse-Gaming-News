@@ -15,6 +15,7 @@ import type { VisualAsset, SteamApp, SteamFacts } from "./assets/steam.ts";
 import { factsText } from "./assets/steam.ts";
 import { capFootage, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
+import { evergreenToScript, selectEvergreenTopic, validateEvergreen, writeEvergreen, type EvergreenCandidate } from "./editorial/evergreen.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
 import type { VisionQa } from "./editorial/schema.ts";
@@ -28,7 +29,7 @@ import { buildSegments, srtFromWords, type SegmentInput } from "./render/timelin
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
-import { LANE_PRIORITY, QUOTA, QUOTA_RESERVE_FOR_UPLOAD, dueSlot, franchiseKey, inWindow, isBreaking, lastPublishAt, nextWindowStart, quotaAdd, quotaResetAt, quotaUsed, type Sighting } from "./lanes.ts";
+import { LANE_PRIORITY, QUOTA, QUOTA_RESERVE_FOR_UPLOAD, dueSlot, evergreenDue, franchiseKey, inWindow, isBreaking, lastPublishAt, nextWindowStart, quotaAdd, quotaResetAt, quotaUsed, type Sighting } from "./lanes.ts";
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
@@ -54,6 +55,7 @@ export interface Services {
   cfg: Config;
   llm: Llm;
   discover(): Promise<StoryCluster[]>;
+  discoverEvergreen(): Promise<EvergreenCandidate[]>;
   fetchArticle(url: string): Promise<ArticleText | undefined>;
   synthesise(text: string, outPath: string): Promise<Narration>;
   findGame(term: string): Promise<SteamApp | undefined>;
@@ -64,7 +66,7 @@ export interface Services {
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
   normalise(input: string, output: string): Promise<void>;
-  technicalQa(file: string, expectedSeconds: number): Promise<TechQa>;
+  technicalQa(file: string, expectedSeconds: number, band?: { minSeconds: number; maxSeconds: number }): Promise<TechQa>;
   extractFrames(file: string, outDir: string, times: number[]): Promise<string[]>;
   visionQa(frames: string[], ctx: { headline: string; gameTitle: string }): Promise<VisionQa>;
   youtube(): YouTubeClient;
@@ -185,7 +187,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
 
   // 2. News lane: the next slot whose lead time has begun.
   const slot = dueSlot(now, { slots: cfg.newsSlots, leadMinutes: cfg.slotLeadMinutes, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone }, await takenSlots(db));
-  if (!slot) return undefined;
+  if (!slot) return maybeSelectEvergreen(s);
   const candidates = eligible.map((x) => x.cluster).slice(0, 12);
   if (candidates.length === 0) {
     log("info", "no eligible stories for the slot", { slot: slot.toISOString(), sightings: sightings.length });
@@ -194,9 +196,84 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   return createFromChoice(s, candidates, { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot }, `news slot ${slot.toISOString()}`);
 }
 
+/**
+ * Evergreen lane: on its days, a lead time before its slot, pick a ranking
+ * topic from what people are buying and the franchise seeds, avoiding topics
+ * covered in the last six months.
+ */
+export async function maybeSelectEvergreen(s: Services): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.evergreenEnabled) return undefined;
+  const now = s.now();
+  const due = evergreenDue(now, { days: cfg.evergreenDays, slot: cfg.evergreenSlot, leadMinutes: cfg.slotLeadMinutes + 45, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone }, await takenSlots(db));
+  if (!due) return undefined;
+  const covered = (await db.query<{ headline: string }>(`SELECT story_json->>'headline' AS headline FROM episodes WHERE lane = 'evergreen' AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`, [now])).map((r) => r.headline);
+  const candidates = await s.discoverEvergreen();
+  if (!candidates.length) return undefined;
+  const topic = await selectEvergreenTopic(s.llm, candidates, covered);
+  if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
+    log("info", "editor passed on every evergreen candidate", { reason: topic.reason });
+    return undefined;
+  }
+  const slug = topic.theme.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const cluster: StoryCluster = {
+    hash: `evergreen:${topic.format}:${slug}:${now.toISOString().slice(0, 7)}`,
+    headline: topic.title_idea,
+    items: [],
+    sources: ["Steam"],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint: topic.theme,
+  };
+  const id = shortId();
+  const created = await createEpisode(db, id, cluster, { lane: "evergreen", priority: LANE_PRIORITY.evergreen, slotAt: due });
+  if (!created) return undefined;
+  await db.query(`UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`, [id, JSON.stringify({ topic })]);
+  await logEvent(db, id, "selected", { headline: topic.title_idea, lane: "evergreen", format: topic.format, theme: topic.theme, criterion: topic.criterion, reason: topic.reason, slot_at: due.toISOString() });
+  log("info", "evergreen topic selected", { id, format: topic.format, theme: topic.theme });
+  return id;
+}
+
+/** Writes a ranking Short against live Steam facts for each entry, with one rewrite on problems. */
+async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
+  const topic = (ep.factcheck_json as { topic?: import("./editorial/evergreen.ts").EvergreenTopic } | null)?.topic;
+  if (!topic) throw new FatalError("evergreen episode has no topic");
+  let facts: Array<{ title: string; facts: SteamFacts }> = [];
+  let feedback: string[] = [];
+  let draft: import("./editorial/evergreen.ts").EvergreenScript | undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    draft = await writeEvergreen(s.llm, topic, facts, feedback);
+    const problems = validateEvergreen(draft);
+    // Fetch the facts for the entries the writer chose, then rewrite once against them.
+    if (attempt === 0) {
+      facts = [];
+      for (const entry of draft.entries) {
+        if (!entry.steam_search_term) continue;
+        try {
+          const app = await s.findGame(entry.steam_search_term);
+          if (app) facts.push({ title: entry.game_title, facts: await s.gameFacts(app) });
+        } catch (err) {
+          log("warn", "evergreen steam lookup failed", { game: entry.game_title, error: errorMessage(err) });
+        }
+      }
+      feedback = [...problems, ...(facts.length ? ["Check every year, score and price against the Steam facts now provided and correct any that differ."] : [])];
+      if (!feedback.length) break;
+      continue;
+    }
+    if (problems.length) await logEvent(s.db, ep.id, "style_warnings", { problems });
+  }
+  if (!draft) throw new Error("evergreen script produced nothing");
+  const script = evergreenToScript(draft);
+  await transition(s.db, ep.id, "selected", "scripted", { script_json: script, factcheck_json: { topic, facts: facts.map((f) => ({ title: f.title, facts: f.facts })) } });
+}
+
 // --------------------------------------------------------------------- steps
 
 async function stepScript(s: Services, ep: Episode): Promise<void> {
+  if (ep.lane === "evergreen") return stepScriptEvergreen(s, ep);
   const cluster = ep.story_json;
   const items = [...cluster.items].sort((a, b) => (a.sourceKind === "official" ? -1 : 1) - (b.sourceKind === "official" ? -1 : 1)).slice(0, 4);
   const articles = (await Promise.all(items.map((i) => s.fetchArticle(i.url)))).filter((a): a is ArticleText => Boolean(a));
@@ -249,7 +326,8 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   const dir = episodeDir(s.cfg, ep.id);
   await fs.mkdir(dir, { recursive: true });
   const narration = await s.synthesise(narrationOf(ep.script_json!), path.join(dir, "voice.mp3"));
-  if (narration.durationSeconds > 58) throw new FatalError(`narration is ${narration.durationSeconds.toFixed(1)}s, over the Shorts limit`);
+  const maxSeconds = ep.lane === "evergreen" ? s.cfg.evergreenMaxSeconds : 58;
+  if (narration.durationSeconds > maxSeconds) throw new FatalError(`narration is ${narration.durationSeconds.toFixed(1)}s, over the ${maxSeconds}s cap for the ${ep.lane} lane`);
   await fs.writeFile(path.join(dir, "captions.srt"), srtFromWords(narration.words), "utf8");
   const assets: EpisodeAssets = { ...(ep.assets_json ?? {}), audio: "voice.mp3", words: narration.words, durationSeconds: narration.durationSeconds, srt: "captions.srt" };
   await transition(s.db, ep.id, "scripted", "voiced", { assets_json: assets });
@@ -283,9 +361,27 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
       }
     }
   }
+  // Ranking Shorts: each entry brings its own box art and one trailer moment, tagged with its line.
+  if (script.entries?.length) {
+    const sorted = [...script.entries].sort((a, b) => b.rank - a.rank);
+    for (const [beatIndex, entry] of sorted.entries()) {
+      if (!entry.steam_search_term) continue;
+      try {
+        const eapp = await s.findGame(entry.steam_search_term);
+        if (!eapp) continue;
+        const art = (await s.fetchArt(eapp, path.join(dir, `entry_${beatIndex}`))).filter((a) => a.kind === "capsule" || a.kind === "hero");
+        for (const a of art) images.push({ ...a, file: path.join(`entry_${beatIndex}`, a.file), beatIndex });
+        const want = script.beats[beatIndex]?.footage;
+        const got = await s.fetchClips(eapp, path.join(dir, `entry_${beatIndex}`), [{ key: `beat:${beatIndex}`, text: entry.game_title, want: want?.want ?? "gameplay", energy: "medium", keywords: want?.keywords ?? [entry.game_title] }], 1);
+        for (const c of got) clips.push({ file: path.join(`entry_${beatIndex}`, c.file), sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: Math.min(c.durationSeconds ?? 4, 4), beatIndex, role: undefined, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds });
+      } catch (err) {
+        log("warn", "entry media failed", { game: entry.game_title, error: errorMessage(err) });
+      }
+    }
+  }
   const out: NonNullable<EpisodeAssets["images"]> = [];
   for (const a of images) {
-    out.push({ file: a.file, kind: a.kind, sourceUrl: a.sourceUrl, provenance: a.provenance, aspect: await s.imageAspect(path.join(dir, a.file)) });
+    out.push({ file: a.file, kind: a.kind, sourceUrl: a.sourceUrl, provenance: a.provenance, aspect: await s.imageAspect(path.join(dir, a.file)), beatIndex: a.beatIndex });
   }
   // Lead with the most cinematic art; screenshots fill the middle.
   const rank: Record<string, number> = { hero: 0, article: 1, capsule: 2, screenshot: 3, header: 4 };
@@ -345,7 +441,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     segments,
     words,
     durationSeconds: duration,
-    images: (assets.images ?? []).map((i) => ({ kind: i.kind, aspect: i.aspect })),
+    images: (assets.images ?? []).map((i) => ({ kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex })),
     clips: (assets.clips ?? []).map((c) => ({ durationSeconds: c.durationSeconds, motion: c.motion, luma: c.luma, beatIndex: c.beatIndex, role: c.role })),
     storyType: script.is_rumour ? "rumour" : script.story_type,
     isRumour: script.is_rumour,
@@ -395,7 +491,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       variant,
       audioFile: assets.audio ?? null,
       musicFile,
-      imageFiles: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect, blurFile: i.blurFile })),
+      imageFiles: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect, blurFile: i.blurFile, beatIndex: i.beatIndex })),
       clipFiles: (assets.clips ?? []).map((c) => ({ file: c.file, durationSeconds: c.durationSeconds, blurFile: c.blurFile, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma })),
       steam: steamLite,
       emphasis: emphasisWords(script),
@@ -406,7 +502,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
 
-  const tech = await s.technicalQa(final, duration);
+  const tech = await s.technicalQa(final, duration, ep.lane === "evergreen" ? { minSeconds: 60, maxSeconds: 179 } : undefined);
   let vision: VisionQa | undefined;
   if (tech.ok && s.cfg.visionQa) {
     const times = [0.8, ...segments.slice(1).map((g) => g.start + 0.6), duration - 1].filter((t) => t < duration);
@@ -431,7 +527,7 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const links = approvalLinks(s.cfg, ep.id);
   // Rumours and anything not corroborated always wait for a human.
   const risky = script.is_rumour || !ep.story_json.corroborated;
-  const mode = risky ? "manual" : s.cfg.approvalMode;
+  const mode = risky ? "manual" : ep.lane === "evergreen" ? s.cfg.evergreenApprovalMode : s.cfg.approvalMode;
   const when =
     mode === "auto"
       ? "Auto mode: publishing now."
@@ -482,7 +578,7 @@ async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
     return;
   }
   if (ep.approval_mode !== "timeout") return;
-  const timeoutMinutes = ep.lane === "news_breaking" ? s.cfg.breakingApprovalMinutes : s.cfg.approvalTimeoutMinutes;
+  const timeoutMinutes = ep.lane === "news_breaking" ? s.cfg.breakingApprovalMinutes : ep.lane === "evergreen" ? s.cfg.evergreenApprovalMinutes : s.cfg.approvalTimeoutMinutes;
   if (waited >= timeoutMinutes * 60_000) {
     // The countdown only publishes if the owner could actually have tapped Reject: when the
     // public URL (the tunnel) is down the Discord links are dead, so the episode is held.

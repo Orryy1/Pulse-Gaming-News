@@ -1,0 +1,266 @@
+// The evergreen lane: ranking Shorts in the Epix-Gaming style (75-160 s,
+// six to ten entries, a stated criterion, box art and a trailer moment per
+// entry), chosen from what people are playing and buying rather than from
+// the news. Written against live Steam facts per entry and fact-checked
+// against them, then adapted into the common Script shape so voice, render,
+// SEO and upload stay unchanged.
+
+import { z } from "zod";
+import type { Llm } from "./llm.ts";
+import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
+import type { SteamFacts } from "../assets/steam.ts";
+import { factsText } from "../assets/steam.ts";
+
+export const EVERGREEN_WORDS_MIN = 165;
+export const EVERGREEN_WORDS_MAX = 300;
+export const EVERGREEN_ENTRIES_MIN = 6;
+export const EVERGREEN_ENTRIES_MAX = 10;
+
+export const EVERGREEN_FORMATS = [
+  "ranking",
+  "best_per_year",
+  "versus",
+  "years_later",
+  "still_good",
+] as const;
+export type EvergreenFormat = (typeof EVERGREEN_FORMATS)[number];
+
+export const FORMAT_TITLES: Record<EvergreenFormat, string> = {
+  ranking: "Ranking EVERY [franchise] game",
+  best_per_year: "The BEST [genre or franchise] game for every year",
+  versus: "[A] vs [B]: which holds up in 2026",
+  years_later: "[Game]: N years later",
+  still_good: "Is [Game] still good in 2026",
+};
+
+export interface EvergreenCandidate {
+  name: string; // a franchise, a game or a theme
+  source: string; // "steam top sellers", "franchise seed", "channel"
+  note?: string;
+}
+
+export const EvergreenTopicSchema = z.object({
+  candidate_index: z
+    .number()
+    .describe(
+      "Index of the chosen candidate, or -1 if none makes a strong ranking Short",
+    ),
+  format: z.enum(EVERGREEN_FORMATS),
+  theme: z
+    .string()
+    .describe(
+      "The franchise, genre or pairing the Short ranks, e.g. 'Resident Evil' or 'open-world RPGs of the 2010s'",
+    ),
+  title_idea: z
+    .string()
+    .describe("Working title in the format's template, under 60 characters"),
+  criterion: z
+    .string()
+    .describe("The single stated criterion the ranking uses, one sentence"),
+  reason: z.string(),
+});
+export type EvergreenTopic = z.infer<typeof EvergreenTopicSchema>;
+
+export const EvergreenEntrySchema = z.object({
+  rank: z
+    .number()
+    .describe("1 is the best; ranks are spoken from the bottom up"),
+  game_title: z.string().describe("Exact official title"),
+  steam_search_term: z
+    .string()
+    .describe("Term to find it on Steam, or empty if it is not on Steam"),
+  year: z.number().describe("Original release year"),
+  platforms: z.string().describe("Short platform list, e.g. 'PC, PS5, Xbox'"),
+  one_line: z
+    .string()
+    .describe(
+      "The spoken line for this entry, under 18 words, factual with one opinion",
+    ),
+  verdict_chip: z
+    .string()
+    .describe("On-screen verdict, 1-4 words, e.g. 'PEAK CHAOS' or 'SKIP IT'"),
+  footage: FootageSchema,
+});
+
+export const EvergreenScriptSchema = z.object({
+  format: z.enum(EVERGREEN_FORMATS),
+  theme: z.string(),
+  title: z.string().describe("On-screen title, 3-8 words"),
+  hook: z
+    .string()
+    .describe("First spoken line: the premise and the criterion, 8-16 words"),
+  entries: z
+    .array(EvergreenEntrySchema)
+    .min(EVERGREEN_ENTRIES_MIN)
+    .max(EVERGREEN_ENTRIES_MAX)
+    .describe("Spoken from the lowest rank to number one"),
+  pulse_take: z.object({
+    label: z.string().describe("Card label, e.g. THE CRITERION or OUR PICK"),
+    narration: z
+      .string()
+      .describe("Why number one wins by the stated criterion, 1-2 sentences"),
+    on_screen: z.string().describe("3-8 word on-screen summary"),
+  }),
+  loop_line: z.string().describe("Final line that ties back to the hook"),
+  youtube: z.object({
+    title: z
+      .string()
+      .describe("Title in the format's template, under 60 characters"),
+    description: z.string().describe("2-4 sentences. No hashtags"),
+    tags: z.array(z.string()),
+  }),
+  claims: z.array(
+    z.object({
+      claim: z.string(),
+      source: z.string().describe("'steam facts' or 'public knowledge'"),
+    }),
+  ),
+});
+export type EvergreenScript = z.infer<typeof EvergreenScriptSchema>;
+
+const HOUSE = `You write for Pulse Gaming News, a fast, credible YouTube Shorts channel about video games.
+British English, no serial (Oxford) comma. Brisk, confident, lightly opinionated. Advertiser-friendly. No "like and subscribe", no "let me know in the comments". The channel speaks as "Pulse".
+Never invent release years, scores, prices or player counts: use the Steam facts provided or long-established public knowledge. Opinions are framed as opinion.`;
+
+export function topicPrompt(): string {
+  return `${HOUSE}
+
+You are planning an evergreen ranking Short, the kind that keeps earning views for months: "Ranking EVERY Resident Evil game", "The BEST open-world game for every year of the 2010s", "Skyrim: 15 years later", "Is The Witcher 3 still good in 2026".
+Pick the candidate that gives the strongest 75-160 second ranking for cold viewers: a franchise or theme with six to ten well-known entries, strong feelings, box art people recognise and a clear criterion to rank by.
+Avoid topics the channel covered in the last six months (listed). Return candidate_index -1 if nothing is strong enough.`;
+}
+
+export function evergreenScriptPrompt(): string {
+  return `${HOUSE}
+
+Write an evergreen ranking Short of ${EVERGREEN_WORDS_MIN}-${EVERGREEN_WORDS_MAX} spoken words in total (hook, entries, take, loop line), 75-160 seconds when read.
+Structure:
+1. hook: the premise and the criterion in one breath, 8-16 words, no question that withholds the point.
+2. entries: ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX}, spoken from the lowest rank to number one. Each one_line is under 18 words: one fact (year, what it did, how it was received) and one opinion by the criterion. verdict_chip is 1-4 words of punch. footage says what the trailer moment should show for that entry, with 1-4 keywords.
+3. pulse_take: why number one wins by the stated criterion.
+4. loop_line: flows back into the hook.
+The on-screen title is 3-8 words. The YouTube title follows the format template and front-loads the franchise. List every factual claim in "claims".`;
+}
+
+export async function selectEvergreenTopic(
+  llm: Llm,
+  candidates: EvergreenCandidate[],
+  covered: string[],
+): Promise<EvergreenTopic> {
+  return llm.structured({
+    system: topicPrompt(),
+    content: `Candidates:\n${candidates.map((c, i) => `${i}. ${c.name} (${c.source}${c.note ? `: ${c.note}` : ""})`).join("\n")}\n\nCovered in the last six months:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}\n\nFormats: ${EVERGREEN_FORMATS.map((f) => `${f} ("${FORMAT_TITLES[f]}")`).join("; ")}`,
+    schema: EvergreenTopicSchema,
+    effort: "low",
+  });
+}
+
+export async function writeEvergreen(
+  llm: Llm,
+  topic: EvergreenTopic,
+  facts: Array<{ title: string; facts: SteamFacts }>,
+  feedback: string[] = [],
+): Promise<EvergreenScript> {
+  const factBlock = facts.length
+    ? `\n\nSteam facts for entries (use these numbers, never others):\n${facts.map((f) => `- ${f.title}: ${factsText(f.facts)}`).join("\n")}`
+    : "";
+  const fb = feedback.length
+    ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${feedback.map((f) => `- ${f}`).join("\n")}`
+    : "";
+  return llm.structured({
+    system: evergreenScriptPrompt(),
+    content: `Format: ${topic.format} ("${FORMAT_TITLES[topic.format]}")\nTheme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}${factBlock}${fb}`,
+    schema: EvergreenScriptSchema,
+    effort: "medium",
+  });
+}
+
+const wordCount = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
+
+export function narrationOfEvergreen(e: EvergreenScript): string {
+  const entries = [...e.entries].sort((a, b) => b.rank - a.rank);
+  return [
+    e.hook,
+    ...entries.map((x) => x.one_line),
+    e.pulse_take.narration,
+    e.loop_line,
+  ].join(" ");
+}
+
+/** House rules for the lane: word band, entry count, ranks, line lengths. */
+export function validateEvergreen(e: EvergreenScript): string[] {
+  const p: string[] = [];
+  const words = wordCount(narrationOfEvergreen(e));
+  if (words < EVERGREEN_WORDS_MIN || words > EVERGREEN_WORDS_MAX)
+    p.push(
+      `Spoken word count is ${words}; it must be ${EVERGREEN_WORDS_MIN}-${EVERGREEN_WORDS_MAX}.`,
+    );
+  if (
+    e.entries.length < EVERGREEN_ENTRIES_MIN ||
+    e.entries.length > EVERGREEN_ENTRIES_MAX
+  )
+    p.push(
+      `There must be ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX} entries.`,
+    );
+  const ranks = e.entries.map((x) => x.rank).sort((a, b) => a - b);
+  if (ranks.some((r, i) => r !== i + 1))
+    p.push("Ranks must be 1..N with no gaps or repeats.");
+  for (const x of e.entries) {
+    if (wordCount(x.one_line) > 18)
+      p.push(`Entry "${x.game_title}" line is over 18 words.`);
+    if (wordCount(x.verdict_chip) > 4 || !x.verdict_chip.trim())
+      p.push(`Entry "${x.game_title}" verdict chip must be 1-4 words.`);
+    if (x.year < 1970 || x.year > 2030)
+      p.push(`Entry "${x.game_title}" has an implausible year.`);
+  }
+  if (wordCount(e.hook) > 18) p.push("The hook is longer than 18 words.");
+  if (
+    /let me know in the comments|like and subscribe/i.test(
+      narrationOfEvergreen(e),
+    )
+  )
+    p.push("Banned call to action.");
+  return p;
+}
+
+/**
+ * Adapts an evergreen script into the common Script shape: one "rank" beat
+ * per entry (lowest rank first), the take and loop as usual. Entries ride
+ * along so media can be gathered per entry.
+ */
+export function evergreenToScript(e: EvergreenScript): Script {
+  const entries = [...e.entries].sort((a, b) => b.rank - a.rank);
+  const beats = entries.map((x) => ({
+    narration: x.one_line,
+    footage: x.footage,
+    visual: {
+      kind: "rank",
+      primary: x.game_title,
+      secondary: x.verdict_chip,
+      value_a: x.rank,
+      items: [String(x.year), x.platforms],
+    } satisfies BeatVisual,
+  }));
+  return {
+    story_type: "other",
+    game_title: e.theme,
+    steam_search_term: "",
+    headline: e.title,
+    hook: e.hook,
+    hook_footage: { want: "gameplay", keywords: [e.theme] },
+    beats,
+    pulse_take: e.pulse_take,
+    loop_line: e.loop_line,
+    is_rumour: false,
+    attribution: "Source: Steam / Pulse",
+    youtube: e.youtube,
+    claims: e.claims.map((c) => ({ claim: c.claim, source_url: c.source })),
+    entries: entries.map((x) => ({
+      rank: x.rank,
+      game_title: x.game_title,
+      steam_search_term: x.steam_search_term,
+      year: x.year,
+      platforms: x.platforms,
+    })),
+  };
+}

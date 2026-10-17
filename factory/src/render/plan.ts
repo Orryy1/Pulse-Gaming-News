@@ -23,6 +23,7 @@ export interface PlanImage {
   kind: string;
   aspect: number; // width / height
   luma?: number; // 0-255 mean brightness if known
+  beatIndex?: number; // tagged for one entry of a ranking Short
 }
 
 export interface PlanClip {
@@ -232,12 +233,17 @@ export function planShots(
   const same = (a: PlanMedia | undefined, b: PlanMedia) =>
     !!a && a.type === b.type && a.index === b.index;
 
-  const takeStill = (
-    prefer: (i: number) => boolean,
-    exclude?: PlanMedia,
-  ): PlanMedia | undefined => {
+  const takeStill = (prefer: (i: number) => boolean, exclude?: PlanMedia, forBeat?: number): PlanMedia | undefined => {
+    // An entry's own art comes first for its line; art tagged for another entry is never borrowed.
+    const own = forBeat === undefined ? [] : images.map((_, i) => i).filter((i) => images[i]!.beatIndex === forBeat && stillUses[i]! < 2);
+    if (own.length) {
+      const pick = own.sort((a, b) => stillUses[a]! - stillUses[b]! || a - b)[0]!;
+      stillUses[pick]!++;
+      return { type: "image", index: pick };
+    }
     const order = images
       .map((_, i) => i)
+      .filter((i) => images[i]!.beatIndex === undefined)
       .sort((a, b) => stillUses[a]! - stillUses[b]! || a - b);
     const pick =
       order.find(
@@ -301,14 +307,14 @@ export function planShots(
         takeStill((i) => !isFramedStill(images[i]!), last);
     } else if (seg.kind === "beat" && QUIET_KINDS.has(kind)) {
       // A moment chosen for this line beats a still; it sits in the framed panel under the card.
-      media = takeClip(len, beatIndex, true) ?? takeStill((i) => true, last);
+      media = takeClip(len, beatIndex, true) ?? takeStill((i) => true, last, beatIndex);
       framed = true;
     } else if (seg.kind === "beat" && STILL_KINDS.has(kind)) {
       media =
-        takeStill((i) => !isFramedStill(images[i]!), last) ??
+        takeStill((i) => !isFramedStill(images[i]!), last, beatIndex) ??
         takeClip(len, beatIndex, true);
     } else if (seg.kind === "beat") {
-      media = takeClip(len, beatIndex, false) ?? takeStill((i) => true, last);
+      media = takeClip(len, beatIndex, false) ?? takeStill((i) => true, last, beatIndex);
     } else {
       media = takeStill((i) => true, last);
     }

@@ -15,7 +15,7 @@ export const STORY_TYPES = [
   "other",
 ] as const;
 
-export const VISUAL_KINDS = ["title", "stat", "date", "quote", "list", "none", "timeline", "price", "score", "countdown", "compare"] as const;
+export const VISUAL_KINDS = ["title", "stat", "date", "quote", "list", "none", "timeline", "price", "score", "countdown", "compare", "rank"] as const;
 
 export const SelectionSchema = z.object({
   candidate_index: z.number().describe("Index of the chosen candidate, or -1 if none is good enough"),
@@ -75,7 +75,10 @@ export const ScriptSchema = z.object({
     }),
   ),
 });
-export type Script = z.infer<typeof ScriptSchema>;
+export type Script = z.infer<typeof ScriptSchema> & {
+  /** Evergreen ranking Shorts carry their entries so media can be gathered per entry. */
+  entries?: Array<{ rank: number; game_title: string; steam_search_term: string; year: number; platforms: string }>;
+};
 export type BeatVisual = z.infer<typeof BeatSchema>["visual"];
 
 export const FactCheckSchema = z.object({

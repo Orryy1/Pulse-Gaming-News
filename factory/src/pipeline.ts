@@ -518,6 +518,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (tech.ok && s.cfg.visionQa) {
     // Sampled after each card's counters have landed (24 frames) so a mid-count figure is never judged.
     const times = [0.8, ...segments.slice(1).map((g) => g.start + 1.2), duration - 1].filter((t) => t < duration);
+    await fs.rm(path.join(dir, "qa"), { recursive: true, force: true });
     const frames = await s.extractFrames(final, path.join(dir, "qa"), times.slice(0, 8));
     vision = await s.visionQa(frames, { headline: script.headline, gameTitle: script.game_title });
   }
@@ -525,7 +526,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const visionProblems = vision?.verdict === "fail" ? (vision.problems.length ? vision.problems : [`vision QA failed: ${vision.notes || "no reason given"}`]) : [];
   const problems = [...tech.problems, ...visionProblems];
   if (problems.length > 0) {
-    await s.db.query(`UPDATE episodes SET qa_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(qa)]);
+    // The retry re-plans from scratch (the planner or the components may have changed since) and judges fresh frames.
+    const { plan: _dropped, ...withoutPlan } = assets;
+    await s.db.query(`UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`, [ep.id, JSON.stringify(qa), JSON.stringify(withoutPlan)]);
     throw new Error(`QA failed: ${problems.join(" | ")}`);
   }
   await transition(s.db, ep.id, "voiced", "rendered", {

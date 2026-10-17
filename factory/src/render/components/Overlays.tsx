@@ -451,7 +451,7 @@ export const FactCard: React.FC<{
     return (
       <div style={base}>
         {ruleBar}
-        {dataCard}
+        <div style={{ background: "rgba(11,11,14,0.86)", borderRadius: 16, padding: "26px 30px", boxShadow: "0 24px 70px rgba(0,0,0,0.55)", maxWidth: CONTENT_WIDTH, overflow: "hidden" }}>{dataCard}</div>
       </div>
     );
   }

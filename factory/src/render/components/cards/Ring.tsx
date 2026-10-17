@@ -38,8 +38,8 @@ export const Ring: React.FC<{ value: number; label?: string; chips?: string[]; s
           {suffix}
         </text>
       </svg>
-      <div style={{ minWidth: 0 }}>
-        {label ? <div style={{ fontFamily: BODY, fontWeight: 800, fontSize: 34, letterSpacing: 2, color: COLOUR.muted, textTransform: "uppercase", lineHeight: 1.1 }}>{label}</div> : null}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        {label ? <div style={{ fontFamily: BODY, fontWeight: 800, fontSize: 30, letterSpacing: 2, color: COLOUR.muted, textTransform: "uppercase", lineHeight: 1.1, maxWidth: 520, overflowWrap: "anywhere" }}>{label}</div> : null}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 18 }}>
           {chips.slice(0, 3).map((chip, i) => {
             const s = spring({ frame: t - 12 - i * 4, fps, config: SPRING.SNAP });

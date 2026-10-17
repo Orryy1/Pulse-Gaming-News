@@ -106,6 +106,8 @@ export interface Config {
   footage: boolean;
   maxClips: number;
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
+  officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
+  ytdlpPath: string;
   musicBed: boolean;
   dryRun: boolean;
   maxAttempts: number;
@@ -203,6 +205,8 @@ export function loadConfig(): Config {
     footage: bool("TRAILER_FOOTAGE", true),
     maxClips: int("MAX_TRAILER_CLIPS", 4),
     clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as "llm" | "rule",
+    officialTrailers: bool("OFFICIAL_TRAILERS", true),
+    ytdlpPath: str("YTDLP_PATH", "yt-dlp"),
     musicBed: bool("MUSIC_BED", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),

@@ -19,6 +19,8 @@ import { extractFrames, imageAspect, normaliseLoudness, technicalQa } from "./qa
 import { visionQa } from "./qa/vision.ts";
 import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken } from "./youtube/oauth.ts";
+import { officialMedia } from "./assets/officialTrailer.ts";
+import { QUOTA, QUOTA_RESERVE_FOR_UPLOAD, quotaAdd, quotaUsed } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
 import { fetchWithTimeout } from "./lib/util.ts";
 
@@ -46,6 +48,24 @@ export function createServices(db: Db, cfg: Config): Services {
     gameFacts: steamFacts,
     fetchArt: (app, dir) => fetchSteamArt(app, dir),
     fetchClips: (app, dir, targets, maxClips) => selectClips({ app, episodeDir: dir, targets, maxClips, llm: cfg.clipRanking === "llm" ? llm : undefined }),
+    fetchOfficialMedia: async (gameTitle, dir, targets, maxClips) => {
+      if (!cfg.officialTrailers) return { clips: [], stills: [] };
+      return officialMedia({
+        token: () => accessToken(db, oauthConfig(cfg)),
+        gameTitle,
+        episodeDir: dir,
+        targets,
+        maxClips,
+        llm: cfg.clipRanking === "llm" ? llm : undefined,
+        ytdlp: cfg.ytdlpPath,
+        quotaOk: async () => {
+          const now = new Date();
+          if ((await quotaUsed(db, now)) + QUOTA.search + QUOTA_RESERVE_FOR_UPLOAD > cfg.quotaUnitsPerDay) return false;
+          await quotaAdd(db, now, QUOTA.search);
+          return true;
+        },
+      });
+    },
     downloadImage: async (url, dest) => {
       const res = await fetchWithTimeout(url, {}, 30_000);
       if (!res.ok || !(res.headers.get("content-type") ?? "").startsWith("image/")) return false;

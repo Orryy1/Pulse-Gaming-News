@@ -184,6 +184,7 @@ async function setup(
     gameFacts: async () => ({ name: "", storeUrl: "", fetchedAt: "" }),
     fetchArt: async () => [],
     fetchClips: async () => [],
+    fetchOfficialMedia: async () => ({ clips: [], stills: [] }),
     downloadImage: async () => false,
     imageAspect: async () => 16 / 9,
     render: async (input) => {

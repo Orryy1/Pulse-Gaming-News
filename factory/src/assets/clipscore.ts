@@ -371,77 +371,53 @@ async function cutClip(
   ]);
 }
 
-export interface SelectClipsOptions {
-  app: SteamApp;
+/** A trailer already on disk, ready for keyframe matching. */
+export interface TrailerFile {
+  file: string;
+  name: string;
+  url: string;
+  total: number; // seconds
+}
+
+export interface MatchClipsOptions {
+  trailers: TrailerFile[];
   episodeDir: string;
   targets: FootageTarget[];
   maxClips: number;
   llm?: Llm; // omitted or failing: the motion rule decides
   clipSeconds?: number;
+  /** Provenance text for a chosen clip, e.g. where the trailer came from. */
+  describe: (trailer: TrailerFile, seconds: number, at: number) => string;
+  /** Written output name prefix inside assets/, so two sources never collide. */
+  prefix?: string;
 }
 
 /**
- * Beat-matched clips from the game's official Steam trailers, in target
- * order (hook first), each tagged with its beat. Trailers and keyframes are
- * removed afterwards; only the chosen clips stay in the episode folder.
+ * Beat-matched clips from trailers already on disk, in target order (hook
+ * first), each tagged with its beat. Keyframes are written next to the
+ * trailers and removed afterwards together with them.
  */
-export async function selectClips(
-  o: SelectClipsOptions,
-): Promise<VisualAsset[]> {
+export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
   const clipSeconds = o.clipSeconds ?? CLIP_SECONDS;
-  const movies = (
-    (o.app.details.movies ?? []) as Array<Record<string, any>>
-  ).filter((m) => m.hls_h264);
-  movies.sort(
-    (a, b) => Number(Boolean(b.highlight)) - Number(Boolean(a.highlight)),
-  );
-  if (!movies.length || !o.targets.length) return [];
-  const work = path.join(o.episodeDir, "trailers");
+  if (!o.trailers.length || !o.targets.length) return [];
+  const work = path.dirname(o.trailers[0]!.file);
   const assetsDir = path.join(o.episodeDir, "assets");
-  await fs.mkdir(work, { recursive: true });
   await fs.mkdir(assetsDir, { recursive: true });
-  const raws: Array<{
-    movie: number;
-    file: string;
-    name: string;
-    url: string;
-    total: number;
-  }> = [];
   const candidates: Candidate[] = [];
   try {
-    for (const [i, movie] of movies.slice(0, 2).entries()) {
+    for (const [i, t] of o.trailers.entries()) {
       try {
-        const masterRes = await fetchWithTimeout(movie.hls_h264, {}, 20_000);
-        if (!masterRes.ok) continue;
-        const variant = pickVariant(await masterRes.text());
-        if (!variant) continue;
-        const variantUrl = new URL(variant, movie.hls_h264).toString();
-        const raw = path.join(work, `trailer_${i}.mp4`);
-        const total = await fetchTrailer(variantUrl, raw);
-        raws.push({
-          movie: i,
-          file: raw,
-          name: String(movie.name ?? `trailer ${i + 1}`),
-          url: movie.hls_h264,
-          total,
-        });
-        const all = await analyseTrailer(raw, i, work, candidates.length);
-        candidates.push(...usableCandidates(all, total, clipSeconds));
+        const all = await analyseTrailer(t.file, i, work, candidates.length);
+        candidates.push(...usableCandidates(all, t.total, clipSeconds));
       } catch (err) {
-        log("warn", "trailer analysis failed", {
-          movie: movie.name,
-          error: errorMessage(err),
-        });
+        log("warn", "trailer analysis failed", { movie: t.name, error: errorMessage(err) });
       }
     }
     if (candidates.length < 2) return [];
     // Even spread when there are more keyframes than the model can look at.
     const pool =
       candidates.length > MAX_CANDIDATES_TO_MODEL
-        ? candidates.filter(
-            (_, i) =>
-              i % Math.ceil(candidates.length / MAX_CANDIDATES_TO_MODEL) === 0,
-          )
+        ? candidates.filter((_, i) => i % Math.ceil(candidates.length / MAX_CANDIDATES_TO_MODEL) === 0)
         : candidates;
     let assignments: Assignment[] = [];
     let how = "rule";
@@ -450,49 +426,31 @@ export async function selectClips(
         assignments = await rankByModel(o.llm, o.targets, pool);
         how = "model";
       } catch (err) {
-        log("warn", "clip ranking by model failed; using the motion rule", {
-          error: errorMessage(err),
-        });
+        log("warn", "clip ranking by model failed; using the motion rule", { error: errorMessage(err) });
       }
     }
     // Lines the model left without a match get the rule's pick from what is left.
-    const missing = o.targets.filter(
-      (t) => !assignments.some((a) => a.key === t.key),
-    );
+    const missing = o.targets.filter((t) => !assignments.some((a) => a.key === t.key));
     if (missing.length) {
       const taken = new Set(assignments.map((a) => a.candidate));
-      assignments.push(
-        ...rankByRule(
-          missing,
-          pool.filter((c) => !taken.has(c.index)),
-        ),
-      );
+      assignments.push(...rankByRule(missing, pool.filter((c) => !taken.has(c.index))));
     }
     const out: VisualAsset[] = [];
+    const prefix = o.prefix ?? "clip";
     for (const t of o.targets) {
       if (out.length >= o.maxClips) break;
       const a = assignments.find((x) => x.key === t.key);
       const c = a && candidates.find((x) => x.index === a.candidate);
-      const r = c && raws.find((x) => x.movie === c.movie);
+      const r = c && o.trailers[c.movie];
       if (!a || !c || !r) continue;
-      const file = path.join("assets", `clip_${out.length}.mp4`);
+      const file = path.join("assets", `${prefix}_${out.length}.mp4`);
       try {
-        await cutClip(
-          r.file,
-          c.time,
-          clipSeconds,
-          path.join(o.episodeDir, file),
-        );
+        await cutClip(r.file, c.time, clipSeconds, path.join(o.episodeDir, file));
       } catch (err) {
-        log("warn", "clip cut failed", {
-          at: c.time,
-          error: errorMessage(err),
-        });
+        log("warn", "clip cut failed", { at: c.time, error: errorMessage(err) });
         continue;
       }
-      const beatIndex = t.key.startsWith("beat:")
-        ? Number(t.key.slice(5))
-        : undefined;
+      const beatIndex = t.key.startsWith("beat:") ? Number(t.key.slice(5)) : undefined;
       out.push({
         kind: "clip",
         file,
@@ -505,17 +463,58 @@ export async function selectClips(
         luma: c.luma,
         label: a.label,
         reason: `${how}: ${a.reason}`,
-        provenance: `Official Steam trailer "${r.name}" for "${o.app.name}" (app ${o.app.appId}), ${clipSeconds}s at ${c.time.toFixed(1)}s, muted; chosen for ${t.key} by ${how} (${a.label ?? a.reason})`,
+        provenance: `${o.describe(r, clipSeconds, c.time)}; chosen for ${t.key} by ${how} (${a.label ?? a.reason})`,
       });
     }
-    log("info", "beat-matched clips", {
-      count: out.length,
-      how,
-      targets: o.targets.length,
-      candidates: candidates.length,
-    });
+    log("info", "beat-matched clips", { count: out.length, how, targets: o.targets.length, candidates: candidates.length });
     return out;
   } finally {
     await fs.rm(work, { recursive: true, force: true });
   }
+}
+
+export interface SelectClipsOptions {
+  app: SteamApp;
+  episodeDir: string;
+  targets: FootageTarget[];
+  maxClips: number;
+  llm?: Llm; // omitted or failing: the motion rule decides
+  clipSeconds?: number;
+}
+
+/**
+ * Beat-matched clips from the game's official Steam trailers. Trailers and
+ * keyframes are removed afterwards; only the chosen clips stay in the
+ * episode folder.
+ */
+export async function selectClips(o: SelectClipsOptions): Promise<VisualAsset[]> {
+  const movies = ((o.app.details.movies ?? []) as Array<Record<string, any>>).filter((m) => m.hls_h264);
+  movies.sort((a, b) => Number(Boolean(b.highlight)) - Number(Boolean(a.highlight)));
+  if (!movies.length || !o.targets.length) return [];
+  const work = path.join(o.episodeDir, "trailers");
+  await fs.mkdir(work, { recursive: true });
+  const trailers: TrailerFile[] = [];
+  for (const [i, movie] of movies.slice(0, 2).entries()) {
+    try {
+      const masterRes = await fetchWithTimeout(movie.hls_h264, {}, 20_000);
+      if (!masterRes.ok) continue;
+      const variant = pickVariant(await masterRes.text());
+      if (!variant) continue;
+      const variantUrl = new URL(variant, movie.hls_h264).toString();
+      const raw = path.join(work, `trailer_${i}.mp4`);
+      const total = await fetchTrailer(variantUrl, raw);
+      trailers.push({ file: raw, name: String(movie.name ?? `trailer ${i + 1}`), url: movie.hls_h264, total });
+    } catch (err) {
+      log("warn", "trailer download failed", { movie: movie.name, error: errorMessage(err) });
+    }
+  }
+  if (!trailers.length) {
+    await fs.rm(work, { recursive: true, force: true });
+    return [];
+  }
+  return matchClips({
+    ...o,
+    trailers,
+    describe: (t, seconds, at) => `Official Steam trailer "${t.name}" for "${o.app.name}" (app ${o.app.appId}), ${seconds}s at ${at.toFixed(1)}s, muted`,
+  });
 }

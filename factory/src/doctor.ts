@@ -248,6 +248,30 @@ async function checkFfmpeg(): Promise<Check> {
   }
 }
 
+/** yt-dlp fetches official trailers for games that are not on Steam; without it those Shorts fall back to stills. */
+async function checkYtDlp(cfg: Config): Promise<Check | undefined> {
+  if (!cfg.officialTrailers) return undefined;
+  try {
+    const { stdout } = await run(cfg.ytdlpPath, ["--version"]);
+    const version = stdout.trim();
+    const [y, m] = version.split(".").map(Number);
+    const ageMonths = (new Date().getUTCFullYear() - (y ?? 0)) * 12 + (new Date().getUTCMonth() + 1 - (m ?? 0));
+    return {
+      name: "yt-dlp",
+      ok: true,
+      critical: false,
+      detail: ageMonths > 3 ? `${version} is ${ageMonths} months old; the factory self-updates it when a download fails` : version,
+    };
+  } catch (e) {
+    return {
+      name: "yt-dlp",
+      ok: false,
+      critical: false,
+      detail: `${cfg.ytdlpPath}: ${(e as Error).message.split("\n")[0]}; official trailers for non-Steam games will be stills only (set YTDLP_PATH or OFFICIAL_TRAILERS=false)`,
+    };
+  }
+}
+
 async function checkDisk(cfg: Config): Promise<Check> {
   try {
     const st = await fs.statfs(cfg.dataDir);
@@ -321,6 +345,7 @@ export async function runDoctor(
     checkLocalVoice(cfg),
     checkElevenLabs(cfg),
     checkFfmpeg(),
+    checkYtDlp(cfg),
     checkDisk(cfg),
     checkPublicUrl(cfg),
     checkDiscord(cfg),

@@ -56,6 +56,7 @@ export interface EpisodeAssets {
   musicFile?: string | null;
   clips?: Array<{ file: string; sourceUrl: string; provenance: string; durationSeconds: number; blurFile?: string; beatIndex?: number; role?: "hook"; motion?: number; luma?: number; label?: string; reason?: string; startSeconds?: number }>;
   steam?: { appId: number; name: string; facts: import("./assets/steam.ts").SteamFacts };
+  officialTrailer?: { videoId: string; title: string; publisher: string; channelTitle: string; url: string; clipSeconds: number }; // the publisher's YouTube trailer, for games not on Steam
 }
 
 export async function getEpisode(db: Db, id: string): Promise<Episode | undefined> {

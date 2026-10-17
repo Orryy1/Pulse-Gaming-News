@@ -91,6 +91,8 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     footage: true,
     maxClips: 4,
     clipRanking: "rule",
+    officialTrailers: false,
+    ytdlpPath: "yt-dlp",
     musicBed: true,
     dryRun: false,
     maxAttempts: 3,

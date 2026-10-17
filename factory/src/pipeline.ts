@@ -15,6 +15,7 @@ import type { VisualAsset, SteamApp, SteamFacts } from "./assets/steam.ts";
 import { factsText } from "./assets/steam.ts";
 import { capFootage, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
+import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import { evergreenToScript, selectEvergreenTopic, validateEvergreen, writeEvergreen, type EvergreenCandidate } from "./editorial/evergreen.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
@@ -63,6 +64,7 @@ export interface Services {
   gameFacts(app: SteamApp): Promise<SteamFacts>;
   fetchArt(app: SteamApp, episodeDir: string): Promise<VisualAsset[]>;
   fetchClips(app: SteamApp, episodeDir: string, targets: FootageTarget[], maxClips: number): Promise<VisualAsset[]>;
+  fetchOfficialMedia(gameTitle: string, episodeDir: string, targets: FootageTarget[], maxClips: number): Promise<OfficialMedia>;
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
@@ -338,7 +340,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   await transition(s.db, ep.id, "scripted", "voiced", { assets_json: assets });
 }
 
-async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<EpisodeAssets, "images" | "clips">> {
+async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<EpisodeAssets, "images" | "clips" | "officialTrailer">> {
   const script = ep.script_json!;
   // Prefer the exact store name resolved at script time so art and clips come from the same app as the facts.
   const term = ep.assets_json?.steam?.name || script.steam_search_term || script.game_title || ep.story_json.gameHint || "";
@@ -349,10 +351,16 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
   const clipAssets = app && s.cfg.footage && s.cfg.maxClips > 0 ? await s.fetchClips(app, dir, targetsFor(script), s.cfg.maxClips).catch((err) => { log("warn", "trailer clips failed", { episode: ep.id, error: errorMessage(err) }); return [] as VisualAsset[]; }) : [];
   // Per-publisher footage budget (Rockstar: about 6 s per Short). Clips beyond it are dropped, in order.
   const narrationSeconds = ep.assets_json?.durationSeconds ?? 45;
-  const budget = app ? Math.min(footageBudgetSeconds(app), Math.max(10, narrationSeconds * 0.4)) : 0;
-  const clips = capFootage(clipAssets, budget).map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds }));
+  // Not on Steam (GTA VI, Nintendo titles): the publisher's own YouTube trailer stands in, under that publisher's cap.
+  const official: OfficialMedia = !app && s.cfg.footage && script.game_title
+    ? await s.fetchOfficialMedia(script.game_title, dir, targetsFor(script), s.cfg.maxClips).catch((err) => { log("warn", "official trailer media failed", { episode: ep.id, error: errorMessage(err) }); return { clips: [], stills: [] } as OfficialMedia; })
+    : { clips: [], stills: [] };
+  if (official.trailer) await logEvent(s.db, ep.id, "official_trailer", { videoId: official.trailer.videoId, publisher: official.trailer.publisher, title: official.trailer.title, clips: official.clips.length, still: official.stills.length > 0 });
+  const steamBudget = app ? footageBudgetSeconds(app) : official.trailer?.clipSeconds ?? 0;
+  const budget = Math.min(steamBudget, Math.max(10, narrationSeconds * 0.4));
+  const clips = capFootage(app ? clipAssets : official.clips, budget).map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds }));
   if (clips.length < clipAssets.length) log("info", "footage capped", { episode: ep.id, budgetSeconds: budget, dropped: clipAssets.length - clips.length });
-  const images = art.filter((a) => a.kind !== "logo");
+  const images = [...art.filter((a) => a.kind !== "logo"), ...official.stills];
   // First-party newsroom images (PlayStation Blog, Xbox Wire) are press
   // material meant for coverage. Outlet images are never used.
   {
@@ -374,7 +382,15 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
       if (!entry.steam_search_term) continue;
       try {
         const eapp = await s.findGame(entry.steam_search_term);
-        if (!eapp) continue;
+        if (!eapp) {
+          if (!s.cfg.footage) continue;
+          const want = script.beats[beatIndex]?.footage;
+          const edir = path.join(dir, `entry_${beatIndex}`);
+          const om = await s.fetchOfficialMedia(entry.game_title, edir, [{ key: `beat:${beatIndex}`, text: entry.game_title, want: want?.want ?? "gameplay", energy: "medium", keywords: want?.keywords ?? [entry.game_title] }], 1);
+          for (const a of om.stills) images.push({ ...a, file: path.join(`entry_${beatIndex}`, a.file), beatIndex });
+          for (const c of capFootage(om.clips, om.trailer?.clipSeconds ?? 0)) clips.push({ file: path.join(`entry_${beatIndex}`, c.file), sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: Math.min(c.durationSeconds ?? 4, 4), beatIndex, role: undefined, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds });
+          continue;
+        }
         const art = (await s.fetchArt(eapp, path.join(dir, `entry_${beatIndex}`))).filter((a) => a.kind === "capsule" || a.kind === "hero");
         for (const a of art) images.push({ ...a, file: path.join(`entry_${beatIndex}`, a.file), beatIndex });
         const want = script.beats[beatIndex]?.footage;
@@ -391,7 +407,7 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
   }
   // Lead with the most cinematic art; screenshots fill the middle.
   const rank: Record<string, number> = { hero: 0, article: 1, capsule: 2, screenshot: 3, header: 4 };
-  return { images: out.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)), clips };
+  return { images: out.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)), clips, officialTrailer: official.trailer };
 }
 
 export function segmentInputs(script: Script): SegmentInput[] {
@@ -474,7 +490,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   await logEvent(s.db, ep.id, "rubric", { grade: rubric.grade, summary: rubricSummary(rubric) || "all green" });
   assets.plan = plan;
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
-  const publisher = String((assets.steam ? (await s.findGame(assets.steam.name).catch(() => undefined))?.details?.publishers?.[0] : "") ?? "");
+  const publisher = String((assets.steam ? (await s.findGame(assets.steam.name).catch(() => undefined))?.details?.publishers?.[0] : assets.officialTrailer?.publisher) ?? "");
   const footageCredit = (assets.clips ?? []).length ? `Footage: ${publisher || script.game_title} · official trailer` : "";
   const year = assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0];
   const gameSubtitle = [publisher, year].filter(Boolean).join(" · ");
@@ -654,10 +670,13 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], sy
     .map((i) => `• ${i.source}: ${i.url}`)
     .join("\n");
   const clips = ep.assets_json?.clips ?? [];
-  const publisher = clips[0]?.provenance.match(/publisher[^:]*:\s*([^;)]+)/i)?.[1]?.trim();
-  const footage = clips.length
+  const publisher = clips[0]?.provenance.match(/publisher[^:]*:\s*([^;)]+)/i)?.[1]?.trim() ?? ep.assets_json?.officialTrailer?.publisher;
+  const official = ep.assets_json?.officialTrailer;
+  const footage = clips.length || official
     ? [
-        `\nFootage: ${script.game_title} official trailer${publisher ? ` (${publisher})` : ""}, via Steam. Store art: Steam.`,
+        official
+          ? `\nFootage and still: "${official.title}" from the official ${official.channelTitle} YouTube channel (${official.url}).`
+          : `\nFootage: ${script.game_title} official trailer${publisher ? ` (${publisher})` : ""}, via Steam. Store art: Steam.`,
         /microsoft|xbox game studios|bethesda/i.test(`${publisher ?? ""} ${ep.story_json.headline}`) ? "Game footage used under Microsoft's Game Content Usage Rules: https://www.xbox.com/en-US/developers/rules" : "",
       ]
         .filter(Boolean)

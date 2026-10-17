@@ -228,9 +228,10 @@ export function pickOfficial(
 export async function findOfficialTrailer(
   token: () => Promise<string>,
   gameTitle: string,
+  hint = "", // e.g. the release year, to steer a short or reused title ("Resident Evil" 2002)
 ): Promise<OfficialTrailer | undefined> {
   const auth = { headers: { authorization: `Bearer ${await token()}` } };
-  const q = encodeURIComponent(`${gameTitle} official trailer`);
+  const q = encodeURIComponent(`${gameTitle} ${hint} official trailer`.replace(/\s+/g, " ").trim());
   const res = await fetchWithTimeout(
     `${API}/search?part=snippet&type=video&maxResults=12&order=relevance&q=${q}`,
     auth,
@@ -360,6 +361,8 @@ export interface OfficialMediaOptions {
   ytdlp?: string;
   /** Returns false when the YouTube quota cannot spare the search (about 101 units). */
   quotaOk?: () => Promise<boolean>;
+  /** Extra words for the search only, such as the release year. */
+  hint?: string;
 }
 
 /**
@@ -374,7 +377,7 @@ export async function officialMedia(o: OfficialMediaOptions): Promise<OfficialMe
     log("info", "official trailer search skipped: quota reserved for uploads", { game: o.gameTitle });
     return none;
   }
-  const trailer = await findOfficialTrailer(o.token, o.gameTitle);
+  const trailer = await findOfficialTrailer(o.token, o.gameTitle, o.hint);
   if (!trailer) {
     log("info", "no official trailer found", { game: o.gameTitle });
     return none;

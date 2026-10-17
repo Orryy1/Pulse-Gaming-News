@@ -48,7 +48,7 @@ export function createServices(db: Db, cfg: Config): Services {
     gameFacts: steamFacts,
     fetchArt: (app, dir) => fetchSteamArt(app, dir),
     fetchClips: (app, dir, targets, maxClips) => selectClips({ app, episodeDir: dir, targets, maxClips, llm: cfg.clipRanking === "llm" ? llm : undefined }),
-    fetchOfficialMedia: async (gameTitle, dir, targets, maxClips) => {
+    fetchOfficialMedia: async (gameTitle, dir, targets, maxClips, hint) => {
       if (!cfg.officialTrailers) return { clips: [], stills: [] };
       return officialMedia({
         token: () => accessToken(db, oauthConfig(cfg)),
@@ -58,6 +58,7 @@ export function createServices(db: Db, cfg: Config): Services {
         maxClips,
         llm: cfg.clipRanking === "llm" ? llm : undefined,
         ytdlp: cfg.ytdlpPath,
+        hint,
         quotaOk: async () => {
           const now = new Date();
           if ((await quotaUsed(db, now)) + QUOTA.search + QUOTA_RESERVE_FOR_UPLOAD > cfg.quotaUnitsPerDay) return false;

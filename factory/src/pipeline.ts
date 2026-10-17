@@ -65,7 +65,7 @@ export interface Services {
   gameFacts(app: SteamApp): Promise<SteamFacts>;
   fetchArt(app: SteamApp, episodeDir: string): Promise<VisualAsset[]>;
   fetchClips(app: SteamApp, episodeDir: string, targets: FootageTarget[], maxClips: number): Promise<VisualAsset[]>;
-  fetchOfficialMedia(gameTitle: string, episodeDir: string, targets: FootageTarget[], maxClips: number): Promise<OfficialMedia>;
+  fetchOfficialMedia(gameTitle: string, episodeDir: string, targets: FootageTarget[], maxClips: number, hint?: string): Promise<OfficialMedia>;
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
@@ -391,7 +391,7 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
           if (!s.cfg.footage) continue;
           const want = script.beats[beatIndex]?.footage;
           const edir = path.join(dir, `entry_${beatIndex}`);
-          const om = await s.fetchOfficialMedia(entry.game_title, edir, [{ key: `beat:${beatIndex}`, text: entry.game_title, want: want?.want ?? "gameplay", energy: "medium", keywords: want?.keywords ?? [entry.game_title] }], 1);
+          const om = await s.fetchOfficialMedia(entry.game_title, edir, [{ key: `beat:${beatIndex}`, text: entry.game_title, want: want?.want ?? "gameplay", energy: "medium", keywords: want?.keywords ?? [entry.game_title] }], 1, entry.year ? String(entry.year) : "");
           for (const a of om.stills) images.push({ ...a, file: path.join(`entry_${beatIndex}`, a.file), beatIndex });
           for (const c of capFootage(om.clips, om.trailer?.clipSeconds ?? 0)) clips.push({ file: path.join(`entry_${beatIndex}`, c.file), sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: Math.min(c.durationSeconds ?? 4, 4), beatIndex, role: undefined, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds });
           continue;

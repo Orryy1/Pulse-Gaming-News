@@ -456,8 +456,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     steam: steamLite,
   };
   const footageSeconds = (assets.clips ?? []).reduce((n, c) => n + c.durationSeconds, 0);
+  const footageBudget = Math.max(20, footageSeconds); // clips were already trimmed to the publisher budget in gatherMedia
   const rubricFor = (plan: ReturnType<typeof buildPlan>) =>
-    scorePlan({ plan, segments, words, footageSeconds, footageBudgetSeconds: 14, hookWords: script.hook.split(/\s+/).filter(Boolean).length });
+    scorePlan({ plan, segments, words, footageSeconds, footageBudgetSeconds: footageBudget, hookWords: script.hook.split(/\s+/).filter(Boolean).length });
   let plan = assets.plan ?? buildPlan(planInput);
   let rubric = rubricFor(plan);
   if (rubric.grade === "red" && !assets.plan) {
@@ -515,7 +516,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const tech = await s.technicalQa(final, duration, ep.lane === "evergreen" ? { minSeconds: 60, maxSeconds: 179 } : undefined);
   let vision: VisionQa | undefined;
   if (tech.ok && s.cfg.visionQa) {
-    const times = [0.8, ...segments.slice(1).map((g) => g.start + 0.6), duration - 1].filter((t) => t < duration);
+    // Sampled after each card's counters have landed (24 frames) so a mid-count figure is never judged.
+    const times = [0.8, ...segments.slice(1).map((g) => g.start + 1.2), duration - 1].filter((t) => t < duration);
     const frames = await s.extractFrames(final, path.join(dir, "qa"), times.slice(0, 8));
     vision = await s.visionQa(frames, { headline: script.headline, gameTitle: script.game_title });
   }

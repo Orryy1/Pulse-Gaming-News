@@ -294,3 +294,14 @@ test("a long take does not sit on the hero still shot after shot; the hero opens
   assert.ok(takeShots.slice(1).some((s) => !(s.media.type === "image" && s.media.index === plan.heroIndex)), "later take shots use other media");
   assert.deepEqual(plan.shots.at(-1)!.media, { type: "image", index: plan.heroIndex }, "the loop returns to the hero");
 });
+
+test("the shelf never puts a Steam number under a card that already shows a number", () => {
+  const plan = buildPlan(input());
+  const numeric = new Set(["stat", "date", "timeline", "compare", "countdown", "price", "score"]);
+  for (const item of plan.shelf) {
+    const seg = input().segments[item.segment]!;
+    if (seg.kind === "beat" && numeric.has(seg.visual?.kind ?? "none")) assert.ok(item.device !== "stat" && item.device !== "live", `beat with a ${seg.visual?.kind} card got a ${item.device} tile`);
+  }
+  const chip = buildPlan(input({ attribution: "Source: Steam / Insider Gaming / Nintendo Life / IGN" })).shelf[0]!;
+  assert.equal(chip.data.label, "CONFIRMED · STEAM / INSIDER GAMING +2");
+});

@@ -112,6 +112,16 @@ const QUIET_KINDS = new Set([
   "score",
 ]);
 const STILL_KINDS = new Set(["list", "changelog", "quote", "spec", "title"]);
+// Cards that already show a figure: the shelf must not put a second, possibly different, figure under them.
+const NUMERIC_KINDS = new Set([
+  "stat",
+  "date",
+  "timeline",
+  "compare",
+  "countdown",
+  "price",
+  "score",
+]);
 
 const toFrame = (seconds: number) => Math.round(seconds * PLAN_FPS);
 
@@ -233,18 +243,35 @@ export function planShots(
   const same = (a: PlanMedia | undefined, b: PlanMedia) =>
     !!a && a.type === b.type && a.index === b.index;
 
-  const takeStill = (prefer: (i: number) => boolean, exclude?: PlanMedia, forBeat?: number): PlanMedia | undefined => {
+  const takeStill = (
+    prefer: (i: number) => boolean,
+    exclude?: PlanMedia,
+    forBeat?: number,
+  ): PlanMedia | undefined => {
     // An entry's own art comes first for its line; art tagged for another entry is never borrowed.
-    const own = forBeat === undefined ? [] : images.map((_, i) => i).filter((i) => images[i]!.beatIndex === forBeat && stillUses[i]! < 2);
+    const own =
+      forBeat === undefined
+        ? []
+        : images
+            .map((_, i) => i)
+            .filter(
+              (i) => images[i]!.beatIndex === forBeat && stillUses[i]! < 2,
+            );
     if (own.length) {
-      const pick = own.sort((a, b) => stillUses[a]! - stillUses[b]! || a - b)[0]!;
+      const pick = own.sort(
+        (a, b) => stillUses[a]! - stillUses[b]! || a - b,
+      )[0]!;
       stillUses[pick]!++;
       return { type: "image", index: pick };
     }
     const order = images
       .map((_, i) => i)
       // The hero is reserved for the opening, the take and the loop unless it is the only still.
-      .filter((i) => images[i]!.beatIndex === undefined && (i !== heroIndex || images.length === 1))
+      .filter(
+        (i) =>
+          images[i]!.beatIndex === undefined &&
+          (i !== heroIndex || images.length === 1),
+      )
       .sort((a, b) => stillUses[a]! - stillUses[b]! || a - b);
     const pick =
       order.find(
@@ -298,7 +325,8 @@ export function planShots(
     const isOpening = n === 0;
     const isClosing = seg.kind === "loop" || c.segment === lastSeg;
 
-    const firstTakeShot = seg.kind === "take" && (n === 0 || cuts[n - 1]!.segment !== c.segment);
+    const firstTakeShot =
+      seg.kind === "take" && (n === 0 || cuts[n - 1]!.segment !== c.segment);
     if ((isOpening || isClosing || firstTakeShot) && heroIndex >= 0) {
       media = { type: "image", index: heroIndex };
       framed = isFramedStill(images[heroIndex]!);
@@ -309,14 +337,18 @@ export function planShots(
         takeStill((i) => !isFramedStill(images[i]!), last);
     } else if (seg.kind === "beat" && QUIET_KINDS.has(kind)) {
       // A moment chosen for this line beats a still; it sits in the framed panel under the card.
-      media = takeClip(len, beatIndex, true) ?? takeStill((i) => true, last, beatIndex);
+      media =
+        takeClip(len, beatIndex, true) ??
+        takeStill((i) => true, last, beatIndex);
       framed = true;
     } else if (seg.kind === "beat" && STILL_KINDS.has(kind)) {
       media =
         takeStill((i) => !isFramedStill(images[i]!), last, beatIndex) ??
         takeClip(len, beatIndex, true);
     } else if (seg.kind === "beat") {
-      media = takeClip(len, beatIndex, false) ?? takeStill((i) => true, last, beatIndex);
+      media =
+        takeClip(len, beatIndex, false) ??
+        takeStill((i) => true, last, beatIndex);
     } else if (seg.kind === "take") {
       media = takeClip(len, undefined, true) ?? takeStill((i) => true, last);
     } else {
@@ -324,7 +356,10 @@ export function planShots(
     }
     if (media?.type === "image" && isFramedStill(images[media.index]!))
       framed = true;
-    if (!media || (same(last, media) && !isClosing && !isOpening && !firstTakeShot)) {
+    if (
+      !media ||
+      (same(last, media) && !isClosing && !isOpening && !firstTakeShot)
+    ) {
       // Avoid the same asset twice in a row; fall back to another still, then the brand plate.
       const alt = takeStill((i) => true, media);
       media = alt ?? media ?? { type: "plate", index: 0 };
@@ -415,10 +450,16 @@ export function planShelf(
   const steam = input.steam ?? undefined;
   const hasCapsule = input.images.some((i) => i.kind === "capsule");
   const source = (input.attribution || "").replace(/^source:\s*/i, "").trim();
+  // "A / B / C / D" reads as "A / B +2": the chip stays one line.
+  const names = source.split(/\s*\/\s*/).filter(Boolean);
+  const shortSource =
+    names.length > 2
+      ? `${names.slice(0, 2).join(" / ")} +${names.length - 2}`
+      : source;
   const sourceLabel = input.isRumour
     ? "RUMOUR · UNCONFIRMED"
-    : source
-      ? `CONFIRMED · ${source.toUpperCase()}`
+    : shortSource
+      ? `CONFIRMED · ${shortSource.toUpperCase()}`
       : "PULSE GAMING NEWS";
   const live =
     steam?.currentPlayers && steam.currentPlayers >= 1000
@@ -442,14 +483,15 @@ export function planShelf(
       i === segments.length - 1 ? totalFrames : toFrame(segments[i + 1]!.start);
     if (to - from < 12) continue;
     const chain: Array<[ShelfDevice, Record<string, string> | undefined]> = [];
+    // A card that already shows a figure never gets a second, possibly different, figure under it.
+    const numeric =
+      s.kind === "beat" && NUMERIC_KINDS.has(s.visual?.kind ?? "none");
     if (s.kind === "hook") chain.push(["source", { label: sourceLabel }]);
     if (s.kind === "take" && live) chain.push(["live", live]);
-    if (s.kind === "beat" && s.visual?.kind === "stat" && live)
-      chain.push(["live", live]);
-    if (statTiles.length)
+    if (statTiles.length && !numeric)
       chain.push(["stat", statTiles[tileIdx % statTiles.length]]);
     if (hasCapsule) chain.push(["gamecard", { title: "" }]);
-    if (live) chain.push(["live", live]);
+    if (live && !numeric) chain.push(["live", live]);
     chain.push(["source", { label: sourceLabel }]);
     chain.push(["rail", {}]);
     let pick = chain.find(([d]) => d !== lastDevice) ?? chain[0]!;

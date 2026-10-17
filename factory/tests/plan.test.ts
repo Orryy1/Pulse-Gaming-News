@@ -222,11 +222,26 @@ test("turns, sound cues and the shelf follow the structure", () => {
   assert.equal(plan.sfx[0]!.file, "sfx/sting.mp3");
   assert.equal(plan.sfx.at(-1)!.frame, plan.totalFrames - STING_FRAMES);
   assert.ok(plan.sfx.some((c) => c.file === "sfx/riser-fast.mp3"));
-  assert.equal(
-    plan.shelf.length,
-    i.segments.length,
-    "one shelf device per segment",
+  assert.ok(
+    plan.shelf.length <= i.segments.length,
+    "at most one shelf device per segment",
   );
+  assert.equal(plan.shelf[0]!.from, 0);
+  assert.equal(plan.shelf.at(-1)!.to, plan.totalFrames);
+  for (let k = 1; k < plan.shelf.length; k++)
+    assert.equal(
+      plan.shelf[k]!.from,
+      plan.shelf[k - 1]!.to,
+      "the shelf is never empty",
+    );
+  const bare = buildPlan(
+    input({ steam: null, images: [{ kind: "screenshot", aspect: 1.778 }] }),
+  );
+  assert.ok(
+    bare.shelf.every((x) => x.device === "source"),
+    "with no data the source chip stays rather than an empty shelf",
+  );
+  assert.equal(bare.shelf.length, 1, "consecutive source chips merge into one");
   assert.equal(plan.shelf[0]!.device, "source");
   assert.equal(plan.shelf[0]!.data.label, "CONFIRMED · BETHESDA / IGN");
   for (let k = 1; k < plan.shelf.length; k++)

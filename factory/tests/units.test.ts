@@ -267,6 +267,14 @@ test("SEO: titles are game-first, short and clean; tags, hashtags, lead and comm
   assert.ok(t.startsWith("Starfield"), t);
   const shouty = polishTitle(goodScript({ youtube: { ...s.youtube, title: "You Won't Believe This SHOCKING Starfield Delay!!!" } }));
   assert.deepEqual(titleProblems(shouty), []);
+  // A game whose name has a colon leads with its short name, never "A: B: fact", and never gets cut mid-sentence.
+  const cod = polishTitle(goodScript({ game_title: "Call of Duty: Modern Warfare 4", headline: "Modern Warfare 4 has the best CoD Steam rating in a decade", youtube: { ...s.youtube, title: "MW4 Hits Best CoD Steam Rating in a Decade" } }));
+  assert.ok(!/:.*:/.test(cod), cod);
+  assert.ok(cod.startsWith("Modern Warfare 4") || cod.startsWith("MW4"), cod);
+  assert.deepEqual(titleProblems(cod), []);
+  const codLong = polishTitle(goodScript({ game_title: "Call of Duty: Modern Warfare 4", headline: "Modern Warfare 4 has the best CoD Steam rating in a decade", youtube: { ...s.youtube, title: "MW4 Hits the Best Call of Duty Steam User Rating Seen in a Decade" } }));
+  assert.ok(codLong.length <= 60, codLong);
+  assert.ok(!/:.*:/.test(codLong), codLong);
   assert.ok(shouty.startsWith("Starfield:"), shouty);
   const long = polishTitle(goodScript({ youtube: { ...s.youtube, title: "Starfield second expansion delayed to early 2027 as Bethesda blames polish and new systems" } }));
   assert.ok(long.length <= 60, long);

@@ -129,23 +129,41 @@ export function polishTitle(script: Script): string {
     .replace(/\s+/g, " ")
     .replace(/#\w+/g, "")
     .trim();
-  const gameFirst =
-    !game ||
-    title
-      .toLowerCase()
-      .startsWith(game.toLowerCase().slice(0, Math.min(game.length, 12)));
+  // "Call of Duty: Modern Warfare 4" may lead as "Modern Warfare 4": no doubled colon, and room for the fact.
+  const shortGame = game.includes(":")
+    ? (game.split(":").pop() ?? game).trim() || game
+    : game;
+  const leads = (t: string) =>
+    [game, shortGame].some(
+      (g) =>
+        g &&
+        t
+          .toLowerCase()
+          .startsWith(g.toLowerCase().slice(0, Math.min(g.length, 12))),
+    );
+  const gameFirst = !game || leads(title);
   const clean = !BAD_TITLE_WORDS.test(title) && !CLICKBAIT_PUNCT.test(title);
   if (!title || !gameFirst || !clean || title.length > TITLE_MAX + 12) {
+    const esc = (g: string) => g.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const fact = script.headline
       .replace(
-        new RegExp(
-          `^${game.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}['’]?s?\\s*`,
-          "i",
-        ),
+        new RegExp(`^(?:${esc(game)}|${esc(shortGame)})['’]?s?\\s*`, "i"),
         "",
       )
       .trim();
-    title = game ? `${game}: ${fact}` : script.headline;
+    const led = `${shortGame}: ${fact}`;
+    // When even the short lead leaves no room, a fact that names the game stands on its own.
+    const namesGame =
+      shortGame
+        .toLowerCase()
+        .split(/\s+/)
+        .some((w) => w.length >= 4 && fact.toLowerCase().includes(w)) ||
+      /\b[A-Z]{2,}\d*\b/.test(fact);
+    title = !game
+      ? script.headline
+      : led.length <= TITLE_MAX || !namesGame
+        ? led
+        : fact;
   }
   title = title
     .replace(BAD_TITLE_WORDS, "")

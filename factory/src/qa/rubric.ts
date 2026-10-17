@@ -124,6 +124,7 @@ export function scorePlan(i: RubricInput): Rubric {
   const unique = new Set(keys).size / Math.max(1, keys.length);
   // With little media there is nothing to vary with: variety metrics can only warn, not reject.
   const scarce = new Set(keys.filter((k) => !k.startsWith("plate"))).size < 4;
+  const ranking = segments.some((s) => s.kind === "beat" && s.visual?.kind === "rank");
   m.push({
     name: "unique_media_ratio",
     value: Number(unique.toFixed(2)),
@@ -139,7 +140,8 @@ export function scorePlan(i: RubricInput): Rubric {
   m.push({
     name: "max_media_repeat",
     value: maxRepeat,
-    grade: grade(maxRepeat <= 2, scarce || maxRepeat <= 3),
+    // A ranking's winner is seen in its own line and again under the pick, by design.
+    grade: grade(maxRepeat <= 2, scarce || maxRepeat <= (ranking ? 4 : 3)),
   });
   // The hero still closing the take and opening the loop is the designed return, not a repeat.
   const loopStart = plan.shots.findIndex(

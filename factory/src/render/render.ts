@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 import type { ShortProps } from "./props.ts";
+import type { LongProps } from "./Long.tsx";
+import type { ThumbProps } from "./Brand.tsx";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(here, "index.ts");
@@ -66,6 +68,66 @@ export interface RenderInput {
   gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
   browserExecutable?: string;
   onProgress?: (p: number) => void;
+}
+
+export interface LongRenderInput {
+  episodeDir: string;
+  props: Omit<LongProps, "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc"> & {
+    audioFile: string | null;
+    imageFiles: Array<{ file: string; kind: string; aspect: number; beatIndex?: number }>;
+    clipFiles: Array<{ file: string; durationSeconds: number; beatIndex?: number; role?: "hook" }>;
+    musicFile: string | null;
+  };
+  outFile: string;
+  posterFile: string;
+  thumbFile: string;
+  thumb: Omit<ThumbProps, "imageSrc"> & { imageFile: string | null };
+  concurrency: number;
+  gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
+  browserExecutable?: string;
+  onProgress?: (p: number) => void;
+}
+
+/** Renders the 16:9 long-form video, a poster frame and a 1280x720 thumbnail. */
+export async function renderLong(input: LongRenderInput): Promise<void> {
+  const serveUrl = await getBundle();
+  const files = await serveDir(input.episodeDir);
+  try {
+    const { audioFile, imageFiles, clipFiles, musicFile, ...rest } = input.props;
+    const props: LongProps = {
+      ...rest,
+      audioSrc: audioFile ? `${files.url}/${audioFile}` : null,
+      images: imageFiles.map((i) => ({ src: `${files.url}/${i.file}`, kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex })),
+      clips: clipFiles.map((c) => ({ src: `${files.url}/${c.file}`, durationSeconds: c.durationSeconds, beatIndex: c.beatIndex, role: c.role })),
+      logoSrc: "logo.png",
+      musicSrc: musicFile,
+    };
+    const browserExecutable = input.browserExecutable || undefined;
+    const chromiumOptions = { gl: input.gl ?? "swangle" } as const;
+    const composition = await selectComposition({ serveUrl, id: "PulseLong", inputProps: props, browserExecutable });
+    await renderMedia({
+      composition,
+      serveUrl,
+      codec: "h264",
+      crf: 20,
+      pixelFormat: "yuv420p",
+      audioCodec: "aac",
+      audioBitrate: "192k",
+      outputLocation: input.outFile,
+      inputProps: props,
+      concurrency: input.concurrency,
+      browserExecutable,
+      chromiumOptions,
+      onProgress: ({ progress }) => input.onProgress?.(progress),
+    });
+    await renderStill({ composition, serveUrl, output: input.posterFile, inputProps: props, frame: Math.min(composition.durationInFrames - 1, Math.round(2 * composition.fps)), imageFormat: "jpeg", jpegQuality: 88, browserExecutable, chromiumOptions });
+    const { imageFile, ...thumb } = input.thumb;
+    const thumbProps: ThumbProps = { ...thumb, imageSrc: imageFile ? `${files.url}/${imageFile}` : null };
+    const still = await selectComposition({ serveUrl, id: "PulseThumb", inputProps: thumbProps, browserExecutable });
+    await renderStill({ composition: still, serveUrl, output: input.thumbFile, inputProps: thumbProps, imageFormat: "jpeg", jpegQuality: 90, browserExecutable, chromiumOptions });
+  } finally {
+    await files.close();
+  }
 }
 
 export async function renderShort(input: RenderInput): Promise<void> {

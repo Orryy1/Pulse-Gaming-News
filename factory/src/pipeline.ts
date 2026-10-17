@@ -17,6 +17,9 @@ import { capFootage, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import { evergreenToScript, selectEvergreenTopic, validateEvergreen, writeEvergreen, type EvergreenCandidate } from "./editorial/evergreen.ts";
+import { longformToScript, selectLongformTopic, validateLongform, writeLongform } from "./editorial/longform.ts";
+import { buildLongPlan, chapterLines, LONG_TAIL_SECONDS } from "./render/longplan.ts";
+import type { LongRenderInput } from "./render/render.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
 import type { VisionQa } from "./editorial/schema.ts";
@@ -32,7 +35,7 @@ import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
 import { captureMetrics, performanceNotes } from "./analytics.ts";
-import { LANE_PRIORITY, QUOTA, QUOTA_RESERVE_FOR_UPLOAD, dueSlot, evergreenDue, franchiseKey, inWindow, isBreaking, lastPublishAt, nextWindowStart, quotaAdd, quotaResetAt, quotaUsed, type Sighting } from "./lanes.ts";
+import { dayKey, LANE_PRIORITY, QUOTA, QUOTA_RESERVE_FOR_UPLOAD, dueSlot, evergreenDue, franchiseKey, inWindow, isBreaking, lastPublishAt, nextWindowStart, quotaAdd, quotaResetAt, quotaUsed, type Sighting } from "./lanes.ts";
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
@@ -69,10 +72,11 @@ export interface Services {
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
+  renderLong(input: LongRenderInput): Promise<void>;
   normalise(input: string, output: string): Promise<void>;
-  technicalQa(file: string, expectedSeconds: number, band?: { minSeconds: number; maxSeconds: number }): Promise<TechQa>;
+  technicalQa(file: string, expectedSeconds: number, band?: { minSeconds: number; maxSeconds: number; width?: number; height?: number }): Promise<TechQa>;
   extractFrames(file: string, outDir: string, times: number[]): Promise<string[]>;
-  visionQa(frames: string[], ctx: { headline: string; gameTitle: string }): Promise<VisionQa>;
+  visionQa(frames: string[], ctx: { headline: string; gameTitle: string; format?: "short" | "long" }): Promise<VisionQa>;
   youtube(): YouTubeClient;
   /** true = delivered, false = failed, undefined/void = Discord not configured. */
   notify(msg: DiscordMessage): Promise<boolean | undefined | void>;
@@ -191,7 +195,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
 
   // 2. News lane: the next slot whose lead time has begun.
   const slot = dueSlot(now, { slots: cfg.newsSlots, leadMinutes: cfg.slotLeadMinutes, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone }, await takenSlots(db));
-  if (!slot) return maybeSelectEvergreen(s);
+  if (!slot) return (await maybeSelectEvergreen(s)) ?? (await maybeSelectLongform(s));
   const candidates = eligible.map((x) => x.cluster).slice(0, 12);
   if (candidates.length === 0) {
     log("info", "no eligible stories for the slot", { slot: slot.toISOString(), sightings: sightings.length });
@@ -241,6 +245,74 @@ export async function maybeSelectEvergreen(s: Services): Promise<string | undefi
   return id;
 }
 
+/** The weekly long-form ranking video: same topic pool as the evergreen Shorts, its own slot and lane. */
+export async function maybeSelectLongform(s: Services): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.longformEnabled) return undefined;
+  const now = s.now();
+  const due = evergreenDue(now, { days: cfg.longformDays, slot: cfg.longformSlot, leadMinutes: cfg.slotLeadMinutes + 120, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone }, await takenSlots(db));
+  if (!due) return undefined;
+  const covered = (await db.query<{ headline: string }>(`SELECT story_json->>'headline' AS headline FROM episodes WHERE lane IN ('evergreen','longform') AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`, [now])).map((r) => r.headline);
+  const candidates = await s.discoverEvergreen();
+  if (!candidates.length) return undefined;
+  const topic = await selectLongformTopic(s.llm, candidates, covered);
+  if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
+    log("info", "no long-form topic today", { reason: topic.reason });
+    return undefined;
+  }
+  const cluster: StoryCluster = {
+    hash: `longform:${dayKey(now, cfg.timezone)}:${topic.theme.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    headline: topic.title_idea,
+    items: [],
+    sources: ["Steam"],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint: topic.theme,
+  };
+  const id = shortId();
+  const created = await createEpisode(db, id, cluster, { lane: "longform", priority: LANE_PRIORITY.longform, slotAt: due });
+  if (!created) return undefined;
+  await db.query(`UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`, [id, JSON.stringify({ topic })]);
+  await logEvent(db, id, "selected", { headline: topic.title_idea, lane: "longform", theme: topic.theme, criterion: topic.criterion, reason: topic.reason, slot_at: due.toISOString() });
+  log("info", "long-form topic selected", { id, theme: topic.theme });
+  return id;
+}
+
+/** Writes the long-form ranking against live Steam facts for each entry, with one rewrite on problems. */
+async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
+  const topic = (ep.factcheck_json as { topic?: import("./editorial/evergreen.ts").EvergreenTopic } | null)?.topic;
+  if (!topic) throw new FatalError("long-form episode has no topic");
+  let facts: Array<{ title: string; facts: SteamFacts }> = [];
+  let feedback: string[] = [];
+  let draft: import("./editorial/longform.ts").LongformScript | undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    draft = await writeLongform(s.llm, topic, facts, feedback);
+    const problems = validateLongform(draft);
+    if (attempt === 0) {
+      facts = [];
+      for (const entry of draft.entries) {
+        if (!entry.steam_search_term) continue;
+        try {
+          const app = await s.findGame(entry.steam_search_term);
+          if (app) facts.push({ title: entry.game_title, facts: await s.gameFacts(app) });
+        } catch (err) {
+          log("warn", "long-form steam lookup failed", { game: entry.game_title, error: errorMessage(err) });
+        }
+      }
+      feedback = [...problems, ...(facts.length ? ["Check every year, score and price against the Steam facts now provided and correct any that differ."] : [])];
+      if (!feedback.length) break;
+      continue;
+    }
+    if (problems.length) await logEvent(s.db, ep.id, "style_warnings", { problems });
+  }
+  if (!draft) throw new Error("long-form script produced nothing");
+  const script = longformToScript(draft);
+  await transition(s.db, ep.id, "selected", "scripted", { script_json: script, factcheck_json: { topic, facts: facts.map((f) => ({ title: f.title, facts: f.facts })) } });
+}
+
 /** Writes a ranking Short against live Steam facts for each entry, with one rewrite on problems. */
 async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   const topic = (ep.factcheck_json as { topic?: import("./editorial/evergreen.ts").EvergreenTopic } | null)?.topic;
@@ -278,6 +350,7 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
 
 async function stepScript(s: Services, ep: Episode): Promise<void> {
   if (ep.lane === "evergreen") return stepScriptEvergreen(s, ep);
+  if (ep.lane === "longform") return stepScriptLongform(s, ep);
   const cluster = ep.story_json;
   const items = [...cluster.items].sort((a, b) => (a.sourceKind === "official" ? -1 : 1) - (b.sourceKind === "official" ? -1 : 1)).slice(0, 4);
   const articles = (await Promise.all(items.map((i) => s.fetchArticle(i.url)))).filter((a): a is ArticleText => Boolean(a));
@@ -334,7 +407,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   const voice = pickVoice(s.cfg, Number(ord?.n ?? 0));
   const narration = await s.synthesise(narrationOf(ep.script_json!), path.join(dir, "voice.mp3"), voice);
   await logEvent(s.db, ep.id, "voice", { provider: narration.voice?.provider ?? "unknown", id: narration.voice?.id, name: narration.voice?.name });
-  const maxSeconds = ep.lane === "evergreen" ? s.cfg.evergreenMaxSeconds : 58;
+  const maxSeconds = ep.lane === "evergreen" ? s.cfg.evergreenMaxSeconds : ep.lane === "longform" ? s.cfg.longformMaxSeconds : 58;
   if (narration.durationSeconds > maxSeconds) throw new FatalError(`narration is ${narration.durationSeconds.toFixed(1)}s, over the ${maxSeconds}s cap for the ${ep.lane} lane`);
   await fs.writeFile(path.join(dir, "captions.srt"), srtFromWords(narration.words), "utf8");
   const assets: EpisodeAssets = { ...(ep.assets_json ?? {}), audio: "voice.mp3", words: narration.words, durationSeconds: narration.durationSeconds, srt: "captions.srt", voice: narration.voice };
@@ -399,8 +472,13 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
         const art = (await s.fetchArt(eapp, path.join(dir, `entry_${beatIndex}`))).filter((a) => a.kind === "capsule" || a.kind === "hero");
         for (const a of art) images.push({ ...a, file: path.join(`entry_${beatIndex}`, a.file), beatIndex });
         const want = script.beats[beatIndex]?.footage;
-        const got = await s.fetchClips(eapp, path.join(dir, `entry_${beatIndex}`), [{ key: `beat:${beatIndex}`, text: entry.game_title, want: want?.want ?? "gameplay", energy: "medium", keywords: want?.keywords ?? [entry.game_title] }], 1);
-        for (const c of got) clips.push({ file: path.join(`entry_${beatIndex}`, c.file), sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: Math.min(c.durationSeconds ?? 4, 4), beatIndex, role: undefined, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds });
+        const long = ep.lane === "longform";
+        const perEntry = long ? Math.max(1, s.cfg.longformClipsPerEntry) : 1;
+        const entryTargets: FootageTarget[] = [{ key: `beat:${beatIndex}`, text: entry.game_title, want: want?.want ?? "gameplay", energy: "medium", keywords: want?.keywords ?? [entry.game_title] }];
+        // A long entry runs 30-45 s: a second, different moment keeps it moving.
+        if (perEntry > 1) entryTargets.push({ key: `beat:${beatIndex}#2`, text: `${entry.game_title}, a different moment`, want: want?.want === "gameplay" ? "cinematic" : "gameplay", energy: "medium", keywords: [entry.game_title, "gameplay"] });
+        const got = await s.fetchClips(eapp, path.join(dir, `entry_${beatIndex}`), entryTargets, perEntry);
+        for (const c of got) clips.push({ file: path.join(`entry_${beatIndex}`, c.file), sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: Math.min(c.durationSeconds ?? 4, long ? 4.8 : 4), beatIndex, role: undefined, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds });
       } catch (err) {
         log("warn", "entry media failed", { game: entry.game_title, error: errorMessage(err) });
       }
@@ -445,7 +523,83 @@ function variantOf(id: string): number {
   return [...id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % 4;
 }
 
+/** The long-form 16:9 render: its own plan, composition, QA band and thumbnail. */
+async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
+  const dir = episodeDir(s.cfg, ep.id);
+  const script = ep.script_json!;
+  const assets = { ...(ep.assets_json ?? {}) };
+  if (!assets.images) {
+    Object.assign(assets, await gatherMedia(s, ep, dir));
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+  }
+  const duration = (assets.durationSeconds ?? 300) + LONG_TAIL_SECONDS;
+  const words = assets.words ?? [];
+  const segments = buildSegments(segmentInputs(script), words, duration);
+  const variant = variantOf(ep.id);
+  const musicFile = s.cfg.musicBed ? `music_${variant + 1}.mp3` : null;
+  const images = (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex }));
+  const clips = (assets.clips ?? []).map((c) => ({ file: c.file, durationSeconds: c.durationSeconds, beatIndex: c.beatIndex, role: c.role }));
+  const plan = assets.longPlan ?? buildLongPlan({ segments, words, durationSeconds: duration, images: images.map((i) => ({ kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex })), clips: clips.map((c) => ({ durationSeconds: c.durationSeconds, beatIndex: c.beatIndex, role: c.role })), variant });
+  assets.longPlan = plan;
+  await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+  const footageCredit = clips.length ? "FOOTAGE: OFFICIAL TRAILERS · STEAM" : "";
+  // The thumbnail: the winner's widest art, else the topic's.
+  const winnerBeat = (script.entries?.length ?? 0) - 1;
+  const thumbArt = images.find((i) => i.beatIndex === winnerBeat && i.kind === "hero") ?? images.find((i) => i.beatIndex === winnerBeat && i.aspect >= 1.2) ?? images.find((i) => i.beatIndex === undefined && i.aspect >= 1.2) ?? images[0];
+  const raw = path.join(dir, "render_raw.mp4");
+  const final = path.join(dir, "short.mp4");
+  await s.renderLong({
+    episodeDir: dir,
+    outFile: raw,
+    posterFile: path.join(dir, "poster.jpg"),
+    thumbFile: path.join(dir, "thumb.jpg"),
+    thumb: { headline: script.headline, kicker: "RANKED", game: script.game_title, accent: "#FF6B1A", imageFile: thumbArt?.file ?? null },
+    concurrency: s.cfg.remotionConcurrency,
+    gl: s.cfg.remotionGl,
+    browserExecutable: s.cfg.browserExecutable,
+    props: {
+      title: script.headline,
+      kicker: script.kicker ?? "",
+      criterion: script.criterion ?? "",
+      theme: script.game_title,
+      footageCredit,
+      segments,
+      words,
+      durationSeconds: duration,
+      variant,
+      audioFile: assets.audio ?? null,
+      musicFile,
+      imageFiles: images,
+      clipFiles: clips,
+      plan,
+      renderDate: s.now().toISOString().slice(0, 10),
+    },
+  });
+  await s.normalise(raw, final);
+  await fs.rm(raw, { force: true });
+  const tech = await s.technicalQa(final, duration, { minSeconds: 180, maxSeconds: 720, width: 1920, height: 1080 });
+  let vision: VisionQa | undefined;
+  if (tech.ok && s.cfg.visionQa) {
+    const marks = segments.map((g) => g.start + 2).filter((t) => t > 1 && t < duration - 2);
+    const step = Math.max(1, Math.ceil(marks.length / 6));
+    const times = [1.5, ...marks.filter((_, i) => i % step === 0), duration - 2].slice(0, 8);
+    await fs.rm(path.join(dir, "qa"), { recursive: true, force: true });
+    const frames = await s.extractFrames(final, path.join(dir, "qa"), times);
+    vision = await s.visionQa(frames, { headline: script.headline, gameTitle: script.game_title, format: "long" });
+  }
+  const qa = { technical: tech, vision: vision ?? null, rubric: null, checked_at: s.now().toISOString() };
+  const visionProblems = vision?.verdict === "fail" ? (vision.problems.length ? vision.problems : [`vision QA failed: ${vision.notes || "no reason given"}`]) : [];
+  const problems = [...tech.problems, ...visionProblems];
+  if (problems.length > 0) {
+    const { longPlan: _dropped, ...withoutPlan } = assets;
+    await s.db.query(`UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`, [ep.id, JSON.stringify(qa), JSON.stringify(withoutPlan)]);
+    throw new Error(`QA failed: ${problems.join(" | ")}`);
+  }
+  await transition(s.db, ep.id, "voiced", "rendered", { assets_json: { ...assets, video: "short.mp4", poster: "poster.jpg", thumb: "thumb.jpg", musicFile }, qa_json: qa });
+}
+
 async function stepRender(s: Services, ep: Episode): Promise<void> {
+  if (ep.lane === "longform") return stepRenderLong(s, ep);
   const dir = episodeDir(s.cfg, ep.id);
   const script = ep.script_json!;
   const assets = { ...(ep.assets_json ?? {}) };
@@ -563,7 +717,7 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const links = approvalLinks(s.cfg, ep.id);
   // Rumours and anything not corroborated always wait for a human.
   const risky = script.is_rumour || !ep.story_json.corroborated;
-  const mode = risky ? "manual" : ep.lane === "evergreen" ? s.cfg.evergreenApprovalMode : s.cfg.approvalMode;
+  const mode = risky ? "manual" : ep.lane === "evergreen" ? s.cfg.evergreenApprovalMode : ep.lane === "longform" ? s.cfg.longformApprovalMode : s.cfg.approvalMode;
   const when =
     mode === "auto"
       ? "Auto mode: publishing now."
@@ -614,7 +768,7 @@ async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
     return;
   }
   if (ep.approval_mode !== "timeout") return;
-  const timeoutMinutes = ep.lane === "news_breaking" ? s.cfg.breakingApprovalMinutes : ep.lane === "evergreen" ? s.cfg.evergreenApprovalMinutes : s.cfg.approvalTimeoutMinutes;
+  const timeoutMinutes = ep.lane === "news_breaking" ? s.cfg.breakingApprovalMinutes : ep.lane === "evergreen" ? s.cfg.evergreenApprovalMinutes : ep.lane === "longform" ? s.cfg.longformApprovalMinutes : s.cfg.approvalTimeoutMinutes;
   if (waited >= timeoutMinutes * 60_000) {
     // The countdown only publishes if the owner could actually have tapped Reject: when the
     // public URL (the tunnel) is down the Discord links are dead, so the episode is held.
@@ -673,6 +827,18 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
  * trailers grouped by game, publisher YouTube trailers listed with their link,
  * the Xbox content rules line when Microsoft material is involved.
  */
+/** Chapter lines for the long-form description: the intro at 0:00, each entry, the pick. */
+export function longChapters(ep: Episode): string[] {
+  const script = ep.script_json;
+  const words = ep.assets_json?.words ?? [];
+  if (!script || !words.length) return [];
+  const duration = (ep.assets_json?.durationSeconds ?? 0) + LONG_TAIL_SECONDS;
+  const segments = buildSegments(segmentInputs(script), words, duration);
+  return chapterLines(segments, (seg) =>
+    seg.kind === "hook" ? "Intro" : seg.kind === "beat" && seg.visual?.kind === "rank" ? `#${seg.visual.value_a} ${seg.visual.primary}` : seg.kind === "take" ? "Our pick" : undefined,
+  );
+}
+
 export function footageCredits(script: Script, clips: Array<{ provenance: string }>, official: EpisodeAssets["officialTrailer"] | undefined, publisher: string | undefined, headline: string): string {
   if (!clips.length && !official) return "";
   const steamGames = new Set<string>();
@@ -705,16 +871,19 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], sy
   const official = ep.assets_json?.officialTrailer;
   const footage = footageCredits(script, clips, official, publisher, ep.story_json.headline);
   const body = script.youtube.description.trim().replace(/#\w+/g, "").replace(/\s{2,}/g, " ").trim();
+  const long = script.runtime === "long";
+  const chapters = long ? longChapters(ep) : [];
   const description = [
     keywordLead(script),
     "",
     body,
     script.is_rumour ? "\nThis story is unconfirmed. We will update if it is confirmed or denied." : "",
+    chapters.length ? `\nChapters:\n${chapters.join("\n")}` : "",
     credits ? `\nSources:\n${credits}` : "",
     footage,
     "\nNarration: AI-generated synthetic voice. Visuals: official publisher material, credited.",
-    "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
-    hashtags(script).join(" "),
+    long ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day." : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
+    (long ? hashtags(script).filter((h) => h !== "#Shorts").concat("#Gaming") : hashtags(script)).join(" "),
   ]
     .filter((line) => line !== "")
     .join("\n");
@@ -807,6 +976,18 @@ async function addCaptions(s: Services, ep: Episode): Promise<void> {
   }
 }
 
+/** The long-form video's custom thumbnail; a refusal (unverified channel) is logged, never fatal. */
+async function setThumbnail(s: Services, ep: Episode): Promise<void> {
+  try {
+    await s.youtube().setThumbnail(ep.youtube_video_id!, path.join(episodeDir(s.cfg, ep.id), ep.assets_json!.thumb!));
+    await quotaAdd(s.db, s.now(), QUOTA.comment);
+    await logEvent(s.db, ep.id, "thumbnail", { ok: true });
+  } catch (err) {
+    log("warn", "thumbnail upload failed", { episode: ep.id, error: errorMessage(err) });
+    await logEvent(s.db, ep.id, "thumbnail", { ok: false, error: errorMessage(err).slice(0, 300) });
+  }
+}
+
 async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   const st = await s.youtube().status(ep.youtube_video_id!);
   await quotaAdd(s.db, s.now(), QUOTA.poll);
@@ -821,6 +1002,7 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   }
   if (ep.assets_json?.srt) await addCaptions(s, ep);
   await addPinnedComment(s, ep);
+  if (ep.assets_json?.thumb) await setThumbnail(s, ep);
   await transition(s.db, ep.id, "uploaded", "published", { youtube_status: st.privacyStatus });
   const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
   const when = ep.publish_at ? `scheduled for ${new Date(ep.publish_at).toUTCString()}` : "live now";

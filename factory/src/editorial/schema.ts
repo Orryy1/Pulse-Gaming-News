@@ -80,6 +80,12 @@ export type Script = z.infer<typeof ScriptSchema> & {
   entries?: Array<{ rank: number; game_title: string; steam_search_term: string; year: number; platforms: string }>;
   /** Which evergreen format produced the Short, for its title formula. */
   evergreen_format?: "ranking" | "best_per_year" | "versus" | "years_later" | "still_good";
+  /** "long" for the weekly 16:9 ranking video; absent or "short" otherwise. */
+  runtime?: "short" | "long";
+  /** Long-form: the one criterion the ranking uses, shown under the title. */
+  criterion?: string;
+  /** Long-form: the kicker line under the intro title. */
+  kicker?: string;
 };
 export type BeatVisual = z.infer<typeof BeatSchema>["visual"];
 

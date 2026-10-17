@@ -164,6 +164,17 @@ export class YouTubeClient {
   }
 
   /** Caption tracks already on a video, so a retried confirm step never uploads twice. */
+  /** Sets a custom thumbnail (JPEG under 2 MB); needs a phone-verified channel. */
+  async setThumbnail(videoId: string, file: string): Promise<void> {
+    const body = await fs.readFile(file);
+    const res = await this.fetchFn(`https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${videoId}&uploadType=media`, {
+      method: "POST",
+      headers: { ...(await this.auth()), "content-type": "image/jpeg", "content-length": String(body.length) },
+      body,
+    });
+    if (!res.ok) throw await apiError(res, "thumbnails.set");
+  }
+
   async listCaptions(videoId: string): Promise<Array<{ id: string; language: string; name: string }>> {
     const res = await this.fetchFn(`${API}/captions?part=snippet&videoId=${videoId}`, { headers: await this.auth() });
     if (!res.ok) throw await apiError(res, "captions.list");

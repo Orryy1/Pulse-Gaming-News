@@ -536,7 +536,7 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         log("warn", "clip cut failed", { at: c.time, error: errorMessage(err) });
         continue;
       }
-      const beatIndex = t.key.startsWith("beat:") ? Number(t.key.slice(5)) : undefined;
+      const beatIndex = t.key.startsWith("beat:") ? Number.parseInt(t.key.slice(5), 10) : undefined;
       out.push({
         kind: "clip",
         file,

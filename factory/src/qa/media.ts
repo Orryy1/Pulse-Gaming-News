@@ -69,12 +69,13 @@ export interface TechQa {
   blackSeconds: number;
 }
 
-export async function technicalQa(file: string, expectedSeconds: number, band: { minSeconds: number; maxSeconds: number } = { minSeconds: 12, maxSeconds: 59 }): Promise<TechQa> {
+export async function technicalQa(file: string, expectedSeconds: number, band: { minSeconds: number; maxSeconds: number; width?: number; height?: number } = { minSeconds: 12, maxSeconds: 59 }): Promise<TechQa> {
+  const want = { width: band.width ?? 1080, height: band.height ?? 1920 };
   const p = await probe(file);
   const lufs = await loudness(file);
   const black = await blackSeconds(file);
   const problems: string[] = [];
-  if (p.width !== 1080 || p.height !== 1920) problems.push(`Resolution is ${p.width}x${p.height}, expected 1080x1920.`);
+  if (p.width !== want.width || p.height !== want.height) problems.push(`Resolution is ${p.width}x${p.height}, expected ${want.width}x${want.height}.`);
   if (p.videoCodec !== "h264") problems.push(`Video codec is ${p.videoCodec}, expected h264.`);
   if (!p.hasAudio) problems.push("No audio stream.");
   if (p.durationSeconds < band.minSeconds || p.durationSeconds > band.maxSeconds) problems.push(`Duration ${p.durationSeconds.toFixed(1)}s is outside ${band.minSeconds}-${band.maxSeconds}s.`);

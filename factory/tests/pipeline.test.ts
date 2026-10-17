@@ -193,6 +193,11 @@ async function setup(
       await fs.writeFile(input.outFile, "mp4");
       await fs.writeFile(input.posterFile, "jpg");
     },
+    renderLong: async (input) => {
+      await fs.writeFile(input.outFile, "mp4");
+      await fs.writeFile(input.posterFile, "jpg");
+      await fs.writeFile(input.thumbFile, "jpg");
+    },
     normalise: async (a, b) => fs.copyFile(a, b),
     publicReachable: async () => f.publicReachable ?? true,
     technicalQa: async () => ({

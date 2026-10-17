@@ -93,6 +93,13 @@ export interface Config {
   evergreenApprovalMode: ApprovalMode;
   evergreenApprovalMinutes: number;
   evergreenMaxSeconds: number; // narration cap for the lane
+  longformEnabled: boolean; // weekly 16:9 ranking video
+  longformDays: string[];
+  longformSlot: string;
+  longformApprovalMode: ApprovalMode;
+  longformApprovalMinutes: number;
+  longformMaxSeconds: number;
+  longformClipsPerEntry: number;
   selectFromHourUtc: number;
   minGapHours: number;
   tickMinutes: number;
@@ -192,6 +199,13 @@ export function loadConfig(): Config {
     evergreenApprovalMode: str("EVERGREEN_APPROVAL_MODE", "manual") as ApprovalMode,
     evergreenApprovalMinutes: int("EVERGREEN_APPROVAL_MINUTES", 120),
     evergreenMaxSeconds: int("EVERGREEN_MAX_SECONDS", 170),
+    longformEnabled: bool("LONGFORM_ENABLED", true),
+    longformDays: str("LONGFORM_DAYS", "sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    longformSlot: str("LONGFORM_SLOT", "18:00"),
+    longformApprovalMode: str("LONGFORM_APPROVAL_MODE", "auto") as ApprovalMode,
+    longformApprovalMinutes: int("LONGFORM_APPROVAL_MINUTES", 180),
+    longformMaxSeconds: int("LONGFORM_MAX_SECONDS", 540),
+    longformClipsPerEntry: int("LONGFORM_CLIPS_PER_ENTRY", 2),
     selectFromHourUtc: int("SELECT_FROM_HOUR_UTC", 9),
     minGapHours: int("MIN_GAP_HOURS", 4),
     tickMinutes: int("TICK_MINUTES", 10),

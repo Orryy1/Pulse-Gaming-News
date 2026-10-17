@@ -132,7 +132,7 @@ async function synthTake(text: string, opts: LocalVoiceOptions): Promise<{ audio
   return { audio: Buffer.from(body.audio_base64, "base64"), alignment: body.alignment };
 }
 
-const GAP_SECONDS = 0.18; // breath between takes
+export const GAP_SECONDS = 0.18; // breath between takes
 const TAIL_SECONDS = 0.35; // audio kept after the last aligned character
 const MAX_INTERNAL_SILENCE = 2.0; // a cold VoxCPM engine sometimes stalls mid-take
 const MAX_OVERRUN = 2.5; // audio running on past the last aligned word is not the script
@@ -192,7 +192,7 @@ export async function synthesiseLocal(text: string, outPath: string, opts: Local
 }
 
 /** Concatenates takes with short silences, normalising format so the timings stay exact. */
-async function stitch(files: string[], outPath: string): Promise<void> {
+export async function stitch(files: string[], outPath: string): Promise<void> {
   const inputs = files.flatMap((f) => ["-i", f]);
   const parts = files.map((_, i) => `[${i}:a]aresample=44100,aformat=channel_layouts=mono[a${i}]`);
   const gaps = files.slice(1).map((_, i) => `aevalsrc=0:d=${GAP_SECONDS}:s=44100:c=mono[g${i}]`);

@@ -10,6 +10,7 @@ import type { Config, VoiceProvider } from "../config.ts";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import { synthesise as synthesiseElevenLabs, type Narration } from "./elevenlabs.ts";
+import { synthesiseElevenLabsLong, LONG_TEXT_CHARS } from "./elevenlabsLong.ts";
 import { synthesiseLocal } from "./local.ts";
 
 const run = promisify(execFile);
@@ -78,7 +79,9 @@ export async function narrate(cfg: Config, text: string, outPath: string, voice?
         // the point of elevenlabs-first is to use paid-for credits, not to risk a bill.
         if (left === undefined && cfg.voiceProvider === "elevenlabs-first") throw new Error("ElevenLabs balance unknown (check the API key)");
         if (left !== undefined && left < text.length * 1.2) throw new Error(`ElevenLabs has ${left} characters left this month`);
-        n = await synthesiseElevenLabs(text, outPath, { apiKey: cfg.elevenLabsApiKey, voiceId: voice?.id ?? cfg.elevenLabsVoiceId, modelId: cfg.elevenLabsModel });
+        const elOpts = { apiKey: cfg.elevenLabsApiKey, voiceId: voice?.id ?? cfg.elevenLabsVoiceId, modelId: cfg.elevenLabsModel };
+        // A long-form script is spoken in takes: the timestamps endpoint takes a few thousand characters at a time.
+        n = text.length > LONG_TEXT_CHARS ? await synthesiseElevenLabsLong(text, outPath, elOpts) : await synthesiseElevenLabs(text, outPath, elOpts);
       }
       await polishVoice(outPath);
       const used = provider === "local" ? { provider, id: cfg.localVoiceId, name: "Liam (local clone)" } : { provider, id: voice?.id ?? cfg.elevenLabsVoiceId, name: voice?.name ?? cfg.elevenLabsVoiceId };

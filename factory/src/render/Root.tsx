@@ -3,6 +3,8 @@ import { Composition, Still } from "remotion";
 import { Short } from "./Short.tsx";
 import { FPS, WIDTH, HEIGHT, SAMPLE_PROPS, type ShortProps } from "./props.ts";
 import { Avatar, Banner, Thumb, SAMPLE_THUMB } from "./Brand.tsx";
+import { Long, SAMPLE_LONG_PROPS, type LongProps } from "./Long.tsx";
+import { LONG_FPS, LONG_WIDTH, LONG_HEIGHT } from "./longplan.ts";
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -18,6 +20,21 @@ export const RemotionRoot: React.FC = () => (
         durationInFrames: Math.max(
           FPS * 5,
           Math.ceil(props.durationSeconds * FPS),
+        ),
+      })}
+    />
+    <Composition
+      id="PulseLong"
+      component={Long}
+      fps={LONG_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={Math.ceil(SAMPLE_LONG_PROPS.durationSeconds * LONG_FPS)}
+      defaultProps={SAMPLE_LONG_PROPS}
+      calculateMetadata={({ props }: { props: LongProps }) => ({
+        durationInFrames: Math.max(
+          LONG_FPS * 10,
+          Math.ceil(props.durationSeconds * LONG_FPS),
         ),
       })}
     />

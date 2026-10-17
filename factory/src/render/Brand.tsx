@@ -258,10 +258,13 @@ export const Thumb: React.FC<ThumbProps> = ({
         style={{
           marginTop: 22,
           fontFamily: DISPLAY,
-          fontSize: 120,
+          // Three words sit at 120; a ranking's longer line steps down so it never runs off the frame.
+          fontSize: headline.length > 30 ? 72 : headline.length > 18 ? 92 : 120,
           lineHeight: 0.98,
           color: COLOUR.paper,
           textShadow: "0 10px 50px rgba(0,0,0,0.8)",
+          maxHeight: 400,
+          overflow: "hidden",
         }}
       >
         {headline.toUpperCase()}

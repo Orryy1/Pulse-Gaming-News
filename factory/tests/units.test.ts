@@ -7,7 +7,7 @@ import { capFootage, footageBudgetSeconds } from "../src/assets/footage.ts";
 import { videoMetadata } from "../src/pipeline.ts";
 import { missingScopes } from "../src/doctor.ts";
 import { pickVoice } from "../src/voice/index.ts";
-import { buildTags, hashtags, keywordLead, pinnedComment, polishTitle, titleProblems } from "../src/editorial/seo.ts";
+import { buildTags, hashtags, keywordLead, pinnedComment, polishTitle, thumbTitle, titleProblems } from "../src/editorial/seo.ts";
 import { parseBars, dateLabel, monthsBetween, daysUntil, bandColour } from "../src/render/components/cards/helpers.ts";
 import { wordsFromAlignment } from "../src/voice/elevenlabs.ts";
 import { validateScript } from "../src/editorial/editorial.ts";
@@ -284,6 +284,8 @@ test("SEO: titles are game-first, short and clean; tags, hashtags, lead and comm
   assert.equal(six, "6 Resident Evil Games Ranked Worst To Best");
   const ten = polishTitle(goodScript({ game_title: "Resident Evil", headline: "x", evergreen_format: "ranking", youtube: { ...s.youtube, title: "x" }, entries: Array.from({ length: 10 }, (_, i) => ({ rank: i + 1, game_title: `RE ${i}`, steam_search_term: "", year: 2000 + i, platforms: "PC" })) }));
   assert.equal(ten, "Every Resident Evil Game Ranked Worst To Best");
+  assert.equal(thumbTitle(goodScript({ game_title: "Resident Evil", entries: Array.from({ length: 9 }, (_, i) => ({ rank: i + 1, game_title: "x", steam_search_term: "", year: 2000, platforms: "PC" })) })), "Every Resident Evil Game Ranked");
+  assert.equal(thumbTitle(goodScript({ game_title: "Resident Evil", entries: Array.from({ length: 6 }, (_, i) => ({ rank: i + 1, game_title: "x", steam_search_term: "", year: 2000, platforms: "PC" })) })), "6 Resident Evil Games Ranked");
   assert.deepEqual(titleProblems(ten), []);
   const tags = buildTags(s);
   assert.equal(tags[0], "Starfield");

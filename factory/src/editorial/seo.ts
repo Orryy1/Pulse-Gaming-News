@@ -140,6 +140,14 @@ export function evergreenTitle(script: Script): string | undefined {
   return truncateWords(titleCase(own || script.headline), TITLE_MAX);
 }
 
+/** The short line on a ranking's thumbnail: "Every X Game Ranked" or "N X Games Ranked". */
+export function thumbTitle(script: Script): string {
+  const n = script.entries?.length ?? 0;
+  const theme = script.game_title.trim() || "Games";
+  if (!n) return script.headline;
+  return n >= 8 ? `Every ${theme} Game Ranked` : `${n} ${theme} Games Ranked`;
+}
+
 export function polishTitle(script: Script): string {
   const evergreen = evergreenTitle(script);
   if (evergreen) return evergreen;

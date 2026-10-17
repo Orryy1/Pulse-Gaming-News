@@ -28,7 +28,7 @@ import type { DiscordMessage } from "./approval/discord.ts";
 import { COLOURS } from "./approval/discord.ts";
 import { selectStory, writeScript, factCheck, validateScript } from "./editorial/editorial.ts";
 import { narrationOf, type Script } from "./editorial/schema.ts";
-import { buildTags, hashtags, keywordLead, pinnedComment, polishTitle } from "./editorial/seo.ts";
+import { buildTags, hashtags, keywordLead, pinnedComment, polishTitle, thumbTitle } from "./editorial/seo.ts";
 import { pickVoice } from "./voice/index.ts";
 import { buildSegments, srtFromWords, type SegmentInput } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
@@ -554,7 +554,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
     thumbFile: path.join(dir, "thumb.jpg"),
-    thumb: { headline: script.headline, kicker: "RANKED", game: script.game_title, accent: "#FF6B1A", imageFile: thumbArt?.file ?? null },
+    thumb: { headline: thumbTitle(script), kicker: "RANKED", game: script.criterion ? `By ${script.criterion}`.slice(0, 48) : script.game_title, accent: "#FF6B1A", imageFile: thumbArt?.file ?? null },
     concurrency: s.cfg.remotionConcurrency,
     gl: s.cfg.remotionGl,
     browserExecutable: s.cfg.browserExecutable,

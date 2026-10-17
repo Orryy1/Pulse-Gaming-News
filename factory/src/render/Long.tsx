@@ -145,9 +145,10 @@ function synthWords(segments: Segment[]): Word[] {
 
 const Still: React.FC<{
   src: string;
+  aspect: number;
   durationFrames: number;
   move: MovePreset;
-}> = ({ src, durationFrames, move }) => {
+}> = ({ src, aspect, durationFrames, move }) => {
   const frame = useCurrentFrame();
   const m = moveTransform(
     move,
@@ -156,6 +157,39 @@ const Still: React.FC<{
   const fade = interpolate(frame, [0, 10], [0, 1], {
     extrapolateRight: "clamp",
   });
+  if (aspect < 0.9) {
+    // Box art is portrait: cover-cropping it shows a dark band of the cover, so it sits
+    // as a framed poster over its own blurred copy instead.
+    return (
+      <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+        <Img
+          src={src}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            filter: "blur(40px) brightness(0.45) saturate(1.2)",
+            transform: "scale(1.2)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            height: 760,
+            aspectRatio: String(aspect),
+            transform: `translate(-50%, -50%) scale(${m.scale - 0.02})`,
+            borderRadius: 14,
+            overflow: "hidden",
+            boxShadow: "0 50px 140px rgba(0,0,0,0.7), inset 0 0 0 2px rgba(255,255,255,0.14)",
+          }}
+        >
+          <Img src={src} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </div>
+      </AbsoluteFill>
+    );
+  }
   return (
     <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
       <Img
@@ -207,7 +241,7 @@ const Plate: React.FC<{ theme: string }> = ({ theme }) => (
       style={{
         fontFamily: DISPLAY,
         fontSize: 180,
-        color: "rgba(245,245,242,0.06)",
+        color: "rgba(245,245,242,0.12)",
         letterSpacing: 4,
         textTransform: "uppercase",
         textAlign: "center",
@@ -236,7 +270,7 @@ const Backdrop: React.FC<{
           {clip ? (
             <Clip src={clip.src} />
           ) : img ? (
-            <Still src={img.src} durationFrames={len} move={s.move} />
+            <Still src={img.src} aspect={img.aspect} durationFrames={len} move={s.move} />
           ) : (
             <Plate theme={theme} />
           )}

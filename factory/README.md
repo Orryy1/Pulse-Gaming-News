@@ -1,19 +1,22 @@
 # Pulse factory
 
-Makes one premium gaming-news Short a day on this PC and publishes it to YouTube. There are no cloud servers to pay for: it runs in the background, starts at log-on and restarts itself.
+Makes up to four premium gaming Shorts a day on this PC and publishes them to YouTube: three news slots (12:00, 16:00, 19:30 London), a reserved breaking lane for huge official stories, and a ranking Short on Tuesday, Thursday and Saturday evenings. There are no cloud servers to pay for: it runs in the background, starts at log-on, restarts itself and updates itself from the branch every night.
 
 ```
-RSS (official newsrooms + outlets)
+RSS (official newsrooms + outlets) + Steam top sellers, polled every 3 minutes
   → cluster + score + corroborate       (official source, or two independent outlets)
   → Claude picks the story, writes the script, then fact-checks it against the articles
-  → narration: the Codex "Liam" voice on this PC (tts_server, VoxCPM 2, port 8765)
-               ElevenLabs only as a fallback, and only if the month's credits cover it
-  → voice polish (highpass, compression, limiter; the Codex mix chain)
-  → official Steam store art / first-party press images, with provenance stored
-  → Remotion render 1080×1920: motion graphics, word-by-word captions, owned music bed and SFX
-  → loudness −14 LUFS → ffprobe QA → Claude vision QA on sampled frames
-  → Discord: poster + preview, auto-publishes after 60 min unless rejected
-  → YouTube resumable upload that never posts the same episode twice
+    (rankings: a topic is chosen from franchises and sellers, then 6-10 entries with Steam facts)
+  → narration: ElevenLabs first, rotating through an 18-voice pool every two Shorts,
+               the local Liam voice (VoxCPM, port 8766) when credits run out
+  → voice polish (highpass, compression, limiter), word timings, an SRT caption track
+  → official Steam store art and trailers; the publisher's own YouTube trailer for games not on Steam
+  → every narration line is matched to the trailer moment that shows it; clips open on a cut and end before the next
+  → a persisted render plan (shots, cuts on word ends, cards, shelf, SFX) scored by a rubric before any render
+  → Remotion render 1080×1920 on the GPU: story-type cards, framed footage, word-by-word captions, owned music and SFX
+  → loudness −16 LUFS → ffprobe QA → Claude vision QA on sampled frames (a failed check re-plans and re-renders)
+  → scheduled YouTube upload at the slot, captions and a pinned comment, a Discord card for every step
+  → views, likes and comments captured at fixed ages; the editor sees recent results; a Monday digest
 ```
 
 ## Install (once)

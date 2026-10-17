@@ -1,0 +1,35 @@
+{
+  "schema": "pulse-audio-rights-v1",
+  "sfx": [
+    {
+      "file": "punch-deep.mp3",
+      "sha256": "392980e8937f11dde757aa9a0354ed2d04a161df4587e5757115e18819bdc1e7",
+      "origin": "synthesised in-house by tools/build-sfx-library.js (ffmpeg sine/noise primitives)",
+      "licence": "owned"
+    },
+    {
+      "file": "riser-fast.mp3",
+      "sha256": "6d89fefda256cb46a4916d9d035b33f65d8cfc01bb451e8036c635a95af1b548",
+      "origin": "synthesised in-house by tools/build-sfx-library.js (ffmpeg sine/noise primitives)",
+      "licence": "owned"
+    },
+    {
+      "file": "swipe-tonal.mp3",
+      "sha256": "58416066663f4a5378a5b4eef5248680a5b794332a6768330c1acfa3fe8832ef",
+      "origin": "synthesised in-house by tools/build-sfx-library.js (ffmpeg sine/noise primitives)",
+      "licence": "owned"
+    },
+    {
+      "file": "tick-blip.mp3",
+      "sha256": "d80fe99ac5c6dc76707d4003e5dd0a88bfc3b1fdc5d739abf31f2580420aab49",
+      "origin": "synthesised in-house by tools/build-sfx-library.js (ffmpeg sine/noise primitives)",
+      "licence": "owned"
+    },
+    {
+      "file": "whoosh-short.mp3",
+      "sha256": "f796b466b509166c2550f5ad73cdacefe8f3fd480e227c1109102a487357c288",
+      "origin": "synthesised in-house by tools/build-sfx-library.js (ffmpeg sine/noise primitives)",
+      "licence": "owned"
+    }
+  ]
+}

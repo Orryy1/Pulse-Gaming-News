@@ -13,6 +13,7 @@ export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 const API = "https://www.googleapis.com/youtube/v3";
 const UPLOAD = "https://www.googleapis.com/upload/youtube/v3/videos";
+const CAPTIONS_UPLOAD = "https://www.googleapis.com/upload/youtube/v3/captions";
 
 export interface VideoMetadata {
   title: string;
@@ -146,6 +147,34 @@ export class YouTubeClient {
     const body = (await res.json()) as { id?: string };
     if (!body.id) throw new Error("upload finished but returned no video id");
     return body.id;
+  }
+
+  /** Caption tracks already on a video, so a retried confirm step never uploads twice. */
+  async listCaptions(videoId: string): Promise<Array<{ id: string; language: string; name: string }>> {
+    const res = await this.fetchFn(`${API}/captions?part=snippet&videoId=${videoId}`, { headers: await this.auth() });
+    if (!res.ok) throw await apiError(res, "captions.list");
+    return (((await res.json()) as any).items ?? []).map((c: any) => ({ id: c.id, language: c.snippet?.language ?? "", name: c.snippet?.name ?? "" }));
+  }
+
+  /** Uploads an SRT file as a published caption track (400 quota units). Returns the caption id. */
+  async insertCaption(videoId: string, file: string, language = "en-GB", name = "English"): Promise<string> {
+    const srt = await fs.readFile(file);
+    const boundary = "pulse_caption_boundary";
+    const meta = JSON.stringify({ snippet: { videoId, language, name, isDraft: false } });
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\ncontent-type: application/octet-stream\r\n\r\n`),
+      srt,
+      Buffer.from(`\r\n--${boundary}--`),
+    ]);
+    const res = await this.fetchFn(`${CAPTIONS_UPLOAD}?part=snippet&uploadType=multipart`, {
+      method: "POST",
+      headers: { ...(await this.auth()), "content-type": `multipart/related; boundary=${boundary}`, "content-length": String(body.length) },
+      body,
+    });
+    if (!res.ok) throw await apiError(res, "captions.insert");
+    const id = ((await res.json()) as { id?: string }).id;
+    if (!id) throw new Error("captions.insert returned no id");
+    return id;
   }
 
   async status(videoId: string): Promise<{ uploadStatus: string; privacyStatus: string; failureReason?: string; rejectionReason?: string } | undefined> {

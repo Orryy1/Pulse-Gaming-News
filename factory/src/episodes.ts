@@ -44,6 +44,7 @@ export interface EpisodeAssets {
   audio?: string;
   words?: Array<{ text: string; start: number; end: number }>;
   durationSeconds?: number;
+  srt?: string; // captions.srt, uploaded as the video's en-GB caption track
   images?: Array<{ file: string; kind: string; aspect: number; sourceUrl: string; provenance: string }>;
   video?: string;
   poster?: string;

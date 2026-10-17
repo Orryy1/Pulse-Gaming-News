@@ -21,7 +21,7 @@ import type { DiscordMessage } from "./approval/discord.ts";
 import { COLOURS } from "./approval/discord.ts";
 import { selectStory, writeScript, factCheck, validateScript } from "./editorial/editorial.ts";
 import { narrationOf, type Script } from "./editorial/schema.ts";
-import { buildSegments, type SegmentInput } from "./render/timeline.ts";
+import { buildSegments, srtFromWords, type SegmentInput } from "./render/timeline.ts";
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
@@ -169,7 +169,8 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
   const narration = await s.synthesise(narrationOf(ep.script_json!), path.join(dir, "voice.mp3"));
   if (narration.durationSeconds > 58) throw new FatalError(`narration is ${narration.durationSeconds.toFixed(1)}s, over the Shorts limit`);
-  const assets: EpisodeAssets = { ...(ep.assets_json ?? {}), audio: "voice.mp3", words: narration.words, durationSeconds: narration.durationSeconds };
+  await fs.writeFile(path.join(dir, "captions.srt"), srtFromWords(narration.words), "utf8");
+  const assets: EpisodeAssets = { ...(ep.assets_json ?? {}), audio: "voice.mp3", words: narration.words, durationSeconds: narration.durationSeconds, srt: "captions.srt" };
   await transition(s.db, ep.id, "scripted", "voiced", { assets_json: assets });
 }
 
@@ -424,6 +425,20 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   }
 }
 
+/** Uploads the SRT as the video's en-GB caption track. Captions are an enhancement: a failure is logged, never blocks a video that is already live. */
+async function addCaptions(s: Services, ep: Episode): Promise<void> {
+  const file = path.join(episodeDir(s.cfg, ep.id), ep.assets_json!.srt!);
+  try {
+    const yt = s.youtube();
+    if ((await yt.listCaptions(ep.youtube_video_id!)).some((c) => c.language === "en-GB")) return;
+    const id = await yt.insertCaption(ep.youtube_video_id!, file, "en-GB", "English");
+    await logEvent(s.db, ep.id, "captions_uploaded", { id });
+  } catch (err) {
+    log("warn", "caption upload failed", { episode: ep.id, error: errorMessage(err) });
+    await logEvent(s.db, ep.id, "captions_failed", { error: errorMessage(err) });
+  }
+}
+
 async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   const st = await s.youtube().status(ep.youtube_video_id!);
   if (!st) throw new Error("uploaded video not found yet");
@@ -435,6 +450,7 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
     await s.db.query(`UPDATE episodes SET youtube_status = $2, next_attempt_at = now() + interval '5 minutes' WHERE id = $1`, [ep.id, st.uploadStatus]);
     return;
   }
+  if (ep.assets_json?.srt) await addCaptions(s, ep);
   await transition(s.db, ep.id, "uploaded", "published", { youtube_status: st.privacyStatus });
   const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
   const when = ep.publish_at ? `scheduled for ${new Date(ep.publish_at).toUTCString()}` : "live now";

@@ -67,3 +67,21 @@ test("finds a previous upload by its marker tag", async () => {
   assert.equal(await yt.findByMarker("pulserefep1"), "b");
   assert.equal(await yt.findByMarker("pulserefep2"), undefined);
 });
+
+test("insertCaption posts the SRT as a multipart caption track and skips nothing on list", async () => {
+  const dir = await tmpDir();
+  const srtFile = path.join(dir, "captions.srt");
+  await fs.writeFile(srtFile, "1\n00:00:00,000 --> 00:00:01,000\nHello there.\n\n", "utf8");
+  const { fn, calls } = fakeFetch((c) => {
+    if (c.url.includes("/captions?part=snippet&videoId=")) return new Response(JSON.stringify({ items: [{ id: "old", snippet: { language: "fr", name: "French" } }] }), { status: 200 });
+    if (c.url.startsWith("https://www.googleapis.com/upload/youtube/v3/captions")) return new Response(JSON.stringify({ id: "cap_9" }), { status: 200 });
+    return new Response("{}", { status: 404 });
+  });
+  const yt = new YouTubeClient(async () => "tok", fn);
+  assert.deepEqual(await yt.listCaptions("vid"), [{ id: "old", language: "fr", name: "French" }]);
+  assert.equal(await yt.insertCaption("vid", srtFile), "cap_9");
+  const post = calls[1]!;
+  assert.equal(post.method, "POST");
+  assert.match(post.headers["content-type"]!, /^multipart\/related; boundary=/);
+  assert.ok(post.bodyLength > 100);
+});

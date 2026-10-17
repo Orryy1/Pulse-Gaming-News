@@ -65,6 +65,10 @@ The Approve and Reject links point at `PUBLIC_URL`. On `http://localhost:8080` t
 
 `REMOTION_GL=angle` renders through the GPU (Chromium ANGLE on D3D11). On the RTX 4090 a 17.5 s sample rendered in 14 s against 71 s with the software `swangle` backend, with pixel-identical output (PSNR 51 dB). `REMOTION_CONCURRENCY=8` suits the 8-core 7800X3D. The installer writes both; set `REMOTION_GL=swangle` on a machine without a usable GPU.
 
+## Captions
+
+Every episode writes `captions.srt` from the narration's word timings, and once YouTube reports the video as processed the factory uploads it as the en-GB caption track (`captions.insert`, 400 quota units). A caption failure is logged as an event and never holds up a video that is already live.
+
 ## Costs
 
 The only running cost is Claude (selection, script, fact-check and vision QA): a few dollars a month at one Short a day. Voice, rendering, database and hosting all run on the PC. ElevenLabs is used only if the local voice is unavailable.

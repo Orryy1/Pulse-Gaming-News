@@ -22,6 +22,8 @@ interface Fakes {
   failUploadOnce: boolean;
   existingOnChannel?: string;
   notifications: string[];
+  captionInserts: number;
+  captions: Array<{ id: string; language: string; name: string }>;
 }
 
 function fakeLlm(f: Fakes): Llm {
@@ -54,6 +56,12 @@ function fakeYouTube(f: Fakes): YouTubeClient {
     return "vid_123";
   };
   yt.status = async () => ({ uploadStatus: "processed", privacyStatus: "public" });
+  yt.listCaptions = async () => f.captions;
+  yt.insertCaption = async () => {
+    f.captionInserts++;
+    f.captions.push({ id: "cap_1", language: "en-GB", name: "English" });
+    return "cap_1";
+  };
   return yt;
 }
 
@@ -61,7 +69,7 @@ async function setup(cfgOverrides: Partial<Config> = {}, fakeOverrides: Partial<
   const db = await testDb();
   const dir = await tmpDir();
   const cfg = testConfig(dir, cfgOverrides);
-  const f: Fakes = { script: goodScript(), factChecks: [], pick: 0, uploads: 0, sessions: 0, failUploadOnce: false, notifications: [], ...fakeOverrides };
+  const f: Fakes = { script: goodScript(), factChecks: [], pick: 0, uploads: 0, sessions: 0, failUploadOnce: false, notifications: [], captionInserts: 0, captions: [], ...fakeOverrides };
   let clock = new Date("2026-10-16T12:00:00Z");
   const now = () => clock;
   const s: Services = {
@@ -120,6 +128,9 @@ test("one tick takes a corroborated story all the way to published", async () =>
   assert.equal(ep.status, "published", ep.last_error ?? "");
   assert.equal(ep.youtube_video_id, "vid_123");
   assert.equal(f.uploads, 1);
+  assert.equal(f.captionInserts, 1, "the SRT was uploaded as a caption track once");
+  assert.equal(ep.assets_json?.srt, "captions.srt");
+  assert.match(await fs.readFile(path.join(dir, "episodes", ep.id, "captions.srt"), "utf8"), /^1\n\d\d:\d\d:\d\d,\d{3} --> /);
   assert.equal(ep.story_json.corroborated, true);
   assert.ok(await fs.stat(path.join(dir, "episodes", ep.id, "short.mp4")));
   assert.ok(f.notifications.some((n) => n.startsWith("🎬")), "approval/preview notice sent");

@@ -83,6 +83,36 @@ export function pageCaptions(words: Word[], maxWords = 3, maxChars = 18): Captio
   return pages;
 }
 
+function srtTime(seconds: number): string {
+  const ms = Math.max(0, Math.round(seconds * 1000));
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  const sec = Math.floor((ms % 60_000) / 1000);
+  const pad = (n: number, w: number) => String(n).padStart(w, "0");
+  return `${pad(h, 2)}:${pad(m, 2)}:${pad(sec, 2)},${pad(ms % 1000, 3)}`;
+}
+
+/**
+ * SubRip captions from word timings for YouTube's own caption track: longer
+ * cues than the on-screen karaoke (up to 8 words / 40 chars), each held at
+ * least 0.7 s, tiny fragments merged into the previous cue, never overlapping.
+ */
+export function srtFromWords(words: Word[]): string {
+  const cues: Array<{ start: number; end: number; text: string }> = [];
+  for (const p of pageCaptions(words, 8, 40)) {
+    const text = p.words.map((w) => w.text).join(" ");
+    const last = cues.at(-1);
+    if (last && p.end - p.start < 0.7 && `${last.text} ${text}`.length <= 64) {
+      last.text += ` ${text}`;
+      last.end = Math.max(last.end, p.end);
+      continue;
+    }
+    cues.push({ start: p.start, end: Math.max(p.end, p.start + 0.7), text });
+  }
+  for (let i = 0; i < cues.length - 1; i++) if (cues[i]!.end > cues[i + 1]!.start) cues[i]!.end = cues[i + 1]!.start;
+  return cues.map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(c.end)}\n${c.text}\n`).join("\n") + (cues.length ? "\n" : "");
+}
+
 /** Background shots: change picture at every segment boundary and every ~3.2s within long segments. */
 export function shotTimes(segments: Segment[], maxShot = 3.2): number[] {
   const cuts: number[] = [];

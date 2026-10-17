@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { clusterItems, canonicalUrl } from "../src/discovery/cluster.ts";
 import { parseFeed } from "../src/discovery/rss.ts";
-import { buildSegments, pageCaptions } from "../src/render/timeline.ts";
+import { buildSegments, pageCaptions, srtFromWords } from "../src/render/timeline.ts";
 import { wordsFromAlignment } from "../src/voice/elevenlabs.ts";
 import { validateScript } from "../src/editorial/editorial.ts";
 import { narrationOf } from "../src/editorial/schema.ts";
@@ -155,4 +155,17 @@ test("publish window scheduling", () => {
   assert.equal(choosePublishAt(cfg, new Date("2026-10-16T03:00:00Z"))?.toISOString(), "2026-10-16T07:00:00.000Z");
   const veto = testConfig("/tmp", { youtubeVetoMinutes: 30 });
   assert.equal(choosePublishAt(veto, new Date("2026-10-16T12:00:00Z"))?.toISOString(), "2026-10-16T12:30:00.000Z");
+});
+
+test("srtFromWords writes numbered, non-overlapping cues held at least 0.7s", () => {
+  const text = "Starfield's first expansion has slipped to early 2027, three months later than planned. Here is why.";
+  const words = text.split(" ").map((w, i) => ({ text: w, start: i * 0.3, end: i * 0.3 + 0.25 }));
+  const srt = srtFromWords(words);
+  const cues = srt.trim().split("\n\n");
+  assert.ok(cues.length >= 2 && cues.length <= 6, `cue count ${cues.length}`);
+  assert.match(cues[0]!, /^1\n00:00:00,000 --> 00:00:0\d,\d{3}\nStarfield's/);
+  const times = cues.map((c) => c.split("\n")[1]!.split(" --> "));
+  for (let i = 1; i < times.length; i++) assert.ok(times[i - 1]![1]! <= times[i]![0]!, "cues do not overlap");
+  for (const [a, b] of times) assert.ok(Number(b!.slice(-6).replace(",", ".")) - Number(a!.slice(-6).replace(",", ".")) >= 0.69 || a!.slice(0, 5) !== b!.slice(0, 5));
+  assert.equal(srtFromWords([]), "");
 });

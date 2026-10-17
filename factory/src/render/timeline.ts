@@ -27,21 +27,35 @@ export interface SegmentInput {
   label?: string;
 }
 
-const countWords = (t: string) => t.split(/\s+/).filter(Boolean).length;
+const tokensOf = (t: string) => t.split(/\s+/).filter(Boolean);
+const countWords = (t: string) => tokensOf(t).length;
+const norm = (w: string) => w.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**
  * Narration was synthesised as the segments joined by spaces, so the n-th
- * spoken word belongs to whichever segment contains word n.
+ * spoken word belongs to whichever segment contains word n. If the aligner
+ * split or merged a token somewhere earlier (hyphens, numerals), the exact
+ * index drifts, so the segment's first word is looked for within a few
+ * positions of where it should be before falling back to the raw index.
  */
 export function buildSegments(inputs: SegmentInput[], words: Word[], totalSeconds: number): Segment[] {
   const out: Segment[] = [];
   let idx = 0;
   for (let i = 0; i < inputs.length; i++) {
     const seg = inputs[i]!;
-    const n = countWords(seg.text);
+    const toks = tokensOf(seg.text);
+    const n = toks.length;
     if (n === 0) continue;
-    const first = words[Math.min(idx, words.length - 1)];
-    idx += n;
+    let at = Math.min(idx, words.length - 1);
+    const want = norm(toks[0]!);
+    if (want && out.length > 0 && norm(words[at]?.text ?? "") !== want) {
+      for (const d of [1, -1, 2, -2, 3, -3]) {
+        const j = at + d;
+        if (j > 0 && j < words.length && norm(words[j]!.text) === want) { at = j; break; }
+      }
+    }
+    const first = words[at];
+    idx = at + n;
     const start = out.length === 0 ? 0 : (first?.start ?? out.at(-1)!.end);
     out.push({ ...seg, start, end: totalSeconds });
     const prev = out.at(-2);

@@ -117,55 +117,64 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       (a, b) => stillRank(images[a]!) - stillRank(images[b]!) || a - b,
     );
     let at = start;
-    let turn = 0; // alternates clip and still
+    let turn = seg.kind === "hook" ? 0 : 1; // the intro opens on a moment; an entry opens on its art so the card lands over a picture
     let stillCursor = 0;
     while (at < end) {
       const remaining = end - at;
-      // A sliver left by segment rounding joins the previous shot instead of flashing.
+      const nextStill = (): LongMedia | undefined => {
+        if (!order.length) return undefined;
+        let pick = order[stillCursor % order.length]!;
+        if (same(last, { type: "image", index: pick }) && order.length > 1) pick = order[(stillCursor + 1) % order.length]!;
+        stillCursor++;
+        stillUses[pick]!++;
+        return { type: "image", index: pick };
+      };
+      // A sliver left by segment rounding joins the previous still, or becomes a brief still of its own:
+      // a clip shot is never stretched past its clip, which would play as black.
       if (remaining < MIN_SHOT && shots.length) {
-        shots[shots.length - 1]!.end = end;
+        const prev = shots[shots.length - 1]!;
+        if (prev.media.type !== "clip" && prev.segment === i) prev.end = end;
+        else {
+          const media = nextStill() ?? { type: "plate" as const, index: 0 };
+          shots.push({ start: at, end, segment: i, media, move: "settle" });
+          last = media;
+        }
         at = end;
         break;
       }
       let media: LongMedia | undefined;
       let len = 0;
       const wantClip = turn % 2 === 0 || !order.length;
-      const clipIdx = wantClip
-        ? ownClips.find((k) => !clipUsed[k] || seg.kind === "take")
-        : undefined;
-      if (clipIdx !== undefined && remaining >= MIN_SHOT) {
-        media = { type: "clip", index: clipIdx };
-        clipUsed[clipIdx] = true;
-        if (seg.kind === "take") ownClips.splice(ownClips.indexOf(clipIdx), 1);
-        len = Math.min(clipFrames[clipIdx]!, remaining);
-      } else if (order.length) {
-        // Next still that is not the one just shown; least used wins ties.
-        let pick = order[stillCursor % order.length]!;
-        if (same(last, { type: "image", index: pick }) && order.length > 1)
-          pick = order[(stillCursor + 1) % order.length]!;
-        stillCursor++;
-        media = { type: "image", index: pick };
-        stillUses[pick]!++;
-        len = Math.min(
-          STILL_SHOT + ((shotIndex * 37 + variant * 11) % 60) - 30,
-          remaining,
-        );
-      } else {
-        media = { type: "plate", index: 0 };
-        len = Math.min(MAX_STILL_SHOT, remaining);
+      const clipIdx = wantClip ? ownClips.find((k) => !clipUsed[k] || seg.kind === "take") : undefined;
+      if (clipIdx !== undefined) {
+        // The clip plays only as long as it lasts; what it would leave behind must be a whole shot.
+        let clipLen = Math.min(clipFrames[clipIdx]!, remaining);
+        const left = remaining - clipLen;
+        if (left > 0 && left < MIN_SHOT) clipLen -= MIN_SHOT - left;
+        if (clipLen >= MIN_SHOT) {
+          media = { type: "clip", index: clipIdx };
+          clipUsed[clipIdx] = true;
+          if (seg.kind === "take") ownClips.splice(ownClips.indexOf(clipIdx), 1);
+          len = clipLen;
+        }
       }
-      // A short tail is folded into this shot rather than left as a flash.
-      if (remaining - len < MIN_SHOT) len = remaining;
-      if (len > MAX_STILL_SHOT && media.type !== "clip") len = MAX_STILL_SHOT;
+      if (!media) {
+        media = nextStill();
+        if (media) {
+          len = Math.min(STILL_SHOT + ((shotIndex * 37 + variant * 11) % 60) - 30, remaining, MAX_STILL_SHOT);
+        } else {
+          media = { type: "plate", index: 0 };
+          len = Math.min(MAX_STILL_SHOT, remaining);
+        }
+        // A short tail is folded into this still rather than left as a flash.
+        if (remaining - len < MIN_SHOT) len = remaining;
+      }
       shots.push({
         start: at,
         end: at + len,
         segment: i,
         media,
-        move:
-          shotIndex === 0
-            ? "pushIn"
-            : MOVES[(shotIndex * 7 + variant) % MOVES.length]!,
+        move: shotIndex === 0 ? "pushIn" : MOVES[(shotIndex * 7 + variant) % MOVES.length]!,
       });
       last = media;
       at += len;

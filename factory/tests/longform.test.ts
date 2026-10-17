@@ -128,8 +128,9 @@ test("the long plan keeps every entry on its own media, never flashes a shot und
   for (let k = 1; k < plan.shots.length; k++)
     assert.equal(plan.shots[k]!.start, plan.shots[k - 1]!.end, "contiguous");
   for (const s of plan.shots) {
+    const endsSegment = plan.shots.find((o) => o.start === s.end)?.segment !== s.segment;
     assert.ok(
-      s.end - s.start >= 60,
+      s.end - s.start >= 60 || (s.media.type !== "clip" && endsSegment),
       `shot at ${s.start} is ${s.end - s.start} frames`,
     );
     const entry = entryOf(segments, s.segment);
@@ -142,9 +143,8 @@ test("the long plan keeps every entry on its own media, never flashes a shot und
     if (s.media.type === "clip") {
       assert.equal(clips[s.media.index]!.beatIndex, entry);
       assert.ok(
-        s.end - s.start <=
-          Math.ceil(clips[s.media.index]!.durationSeconds * LONG_FPS) + 60,
-        "a clip shot never runs far past its clip",
+        s.end - s.start <= Math.floor(clips[s.media.index]!.durationSeconds * LONG_FPS),
+        "a clip shot never outlasts its clip (that would play black)",
       );
     }
   }

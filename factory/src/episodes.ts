@@ -53,7 +53,7 @@ export interface EpisodeAssets {
   video?: string;
   poster?: string;
   musicFile?: string | null;
-  clips?: Array<{ file: string; sourceUrl: string; provenance: string; durationSeconds: number; blurFile?: string; beatIndex?: number; motion?: number }>;
+  clips?: Array<{ file: string; sourceUrl: string; provenance: string; durationSeconds: number; blurFile?: string; beatIndex?: number; role?: "hook"; motion?: number; luma?: number; label?: string; reason?: string; startSeconds?: number }>;
   steam?: { appId: number; name: string; facts: import("./assets/steam.ts").SteamFacts };
 }
 

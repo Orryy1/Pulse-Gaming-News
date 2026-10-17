@@ -256,3 +256,21 @@ test("turns, sound cues and the shelf follow the structure", () => {
   const rumour = buildPlan(input({ isRumour: true }));
   assert.equal(rumour.shelf[0]!.data.label, "RUMOUR · UNCONFIRMED");
 });
+
+test("beat-matched clips land under their own line, the hook clip opens, and nothing borrows another line's moment", () => {
+  const i = input({
+    clips: [
+      { durationSeconds: 4.8, motion: 0.9, role: "hook" },
+      { durationSeconds: 4.8, motion: 0.2, beatIndex: 0 },
+      { durationSeconds: 4.8, motion: 0.6, beatIndex: 2 },
+    ],
+  });
+  const plan = buildPlan(i);
+  const beats = i.segments.map((s, n) => ({ s, n })).filter((x) => x.s.kind === "beat");
+  const underBeat = (b: number) => plan.shots.filter((s) => s.segment === beats[b]!.n && s.media.type === "clip").map((s) => s.media.index);
+  assert.deepEqual(plan.shots[1]!.media, { type: "clip", index: 0, trimFrom: 0 }, "the hook clip follows the sting");
+  assert.ok(underBeat(0).includes(1), "beat 0 shows the clip chosen for it (framed under its number card)");
+  assert.ok(plan.shots.filter((s) => s.segment === beats[0]!.n && s.media.type === "clip" && s.media.index === 1).every((s) => s.framed));
+  assert.ok(underBeat(2).includes(2), "beat 2 shows the clip chosen for it");
+  assert.ok(!underBeat(1).includes(2) && !underBeat(1).includes(1), "beat 1 never borrows another line's moment");
+});

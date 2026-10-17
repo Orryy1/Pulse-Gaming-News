@@ -20,6 +20,14 @@ export interface VisualAsset {
   width?: number;
   height?: number;
   durationSeconds?: number;
+  // Beat-matched clips (src/assets/clipscore.ts)
+  beatIndex?: number;
+  role?: "hook";
+  startSeconds?: number;
+  motion?: number; // 0-1
+  luma?: number; // 0-255
+  label?: string;
+  reason?: string;
 }
 
 interface StoreSearchItem {

@@ -30,6 +30,8 @@ export interface PlanClip {
   motion?: number; // 0-1 if scored
   luma?: number;
   beatIndex?: number; // tagged for a beat by the clip ranking step
+
+  role?: "hook"; // chosen for the opening line
 }
 
 export interface PlanSteam {
@@ -253,19 +255,23 @@ export function planShots(
   };
   const takeClip = (
     len: number,
-    forBeat: number | undefined,
+    forBeat: number | undefined | "hook",
     calm: boolean,
   ): PlanMedia | undefined => {
-    const candidates = clipOrder.filter(
-      (i) => !clipUsed[i] && clipFrames[i]! >= len,
-    );
-    if (!candidates.length) return undefined;
+    const fits = clipOrder.filter((i) => !clipUsed[i] && clipFrames[i]! >= len);
+    if (!fits.length) return undefined;
     const tagged =
-      forBeat === undefined
-        ? undefined
-        : candidates.find((i) => clips[i]!.beatIndex === forBeat);
-    const pick =
-      tagged ?? (calm ? candidates[candidates.length - 1]! : candidates[0]!);
+      forBeat === "hook"
+        ? fits.find((i) => clips[i]!.role === "hook")
+        : forBeat === undefined
+          ? undefined
+          : fits.find((i) => clips[i]!.beatIndex === forBeat);
+    // A moment chosen for another line is never borrowed; untagged clips are fair game.
+    const free = fits.filter(
+      (i) => clips[i]!.beatIndex === undefined && clips[i]!.role === undefined,
+    );
+    const pick = tagged ?? (calm ? free[free.length - 1] : free[0]);
+    if (pick === undefined) return undefined;
     clipUsed[pick] = true;
     return { type: "clip", index: pick, trimFrom: 0 };
   };
@@ -291,10 +297,11 @@ export function planShots(
       if (isOpening) stillUses[heroIndex]!++;
     } else if (seg.kind === "hook") {
       media =
-        takeClip(len, undefined, false) ??
+        takeClip(len, "hook", false) ??
         takeStill((i) => !isFramedStill(images[i]!), last);
     } else if (seg.kind === "beat" && QUIET_KINDS.has(kind)) {
-      media = takeStill((i) => true, last) ?? takeClip(len, beatIndex, true);
+      // A moment chosen for this line beats a still; it sits in the framed panel under the card.
+      media = takeClip(len, beatIndex, true) ?? takeStill((i) => true, last);
       framed = true;
     } else if (seg.kind === "beat" && STILL_KINDS.has(kind)) {
       media =
@@ -440,8 +447,21 @@ export function planShelf(
     if (pick[0] === "rail") pick = ["source", { label: sourceLabel }];
     if (pick[0] === "stat") tileIdx++;
     const prev = items.at(-1);
-    if (prev && prev.device === "source" && pick[0] === "source" && prev.to === from) prev.to = to;
-    else items.push({ segment: i, device: pick[0], from, to, data: pick[1] ?? {} });
+    if (
+      prev &&
+      prev.device === "source" &&
+      pick[0] === "source" &&
+      prev.to === from
+    )
+      prev.to = to;
+    else
+      items.push({
+        segment: i,
+        device: pick[0],
+        from,
+        to,
+        data: pick[1] ?? {},
+      });
     lastDevice = pick[0];
   }
   return items;

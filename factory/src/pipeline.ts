@@ -14,6 +14,7 @@ import type { Narration } from "./voice/elevenlabs.ts";
 import type { VisualAsset, SteamApp, SteamFacts } from "./assets/steam.ts";
 import { factsText } from "./assets/steam.ts";
 import { capFootage, footageBudgetSeconds } from "./assets/footage.ts";
+import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
 import type { VisionQa } from "./editorial/schema.ts";
@@ -58,7 +59,7 @@ export interface Services {
   findGame(term: string): Promise<SteamApp | undefined>;
   gameFacts(app: SteamApp): Promise<SteamFacts>;
   fetchArt(app: SteamApp, episodeDir: string): Promise<VisualAsset[]>;
-  fetchClips(app: SteamApp, episodeDir: string, count: number): Promise<VisualAsset[]>;
+  fetchClips(app: SteamApp, episodeDir: string, targets: FootageTarget[], maxClips: number): Promise<VisualAsset[]>;
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
@@ -261,10 +262,11 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
   const app = term ? await s.findGame(term).catch(() => undefined) : undefined;
   const art = app ? await s.fetchArt(app, dir).catch(() => [] as VisualAsset[]) : [];
   // Official trailer B-roll: short muted clips, at most MAX_TRAILER_CLIPS.
-  const clipAssets = app && s.cfg.footage && s.cfg.maxClips > 0 ? await s.fetchClips(app, dir, s.cfg.maxClips).catch(() => [] as VisualAsset[]) : [];
+  // Beat-matched trailer moments: the hook and each beat ask for what they name.
+  const clipAssets = app && s.cfg.footage && s.cfg.maxClips > 0 ? await s.fetchClips(app, dir, targetsFor(script), s.cfg.maxClips).catch((err) => { log("warn", "trailer clips failed", { episode: ep.id, error: errorMessage(err) }); return [] as VisualAsset[]; }) : [];
   // Per-publisher footage budget (Rockstar: about 6 s per Short). Clips beyond it are dropped, in order.
   const budget = app ? footageBudgetSeconds(app) : 0;
-  const clips = capFootage(clipAssets, budget).map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4 }));
+  const clips = capFootage(clipAssets, budget).map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds }));
   if (clips.length < clipAssets.length) log("info", "footage capped", { episode: ep.id, budgetSeconds: budget, dropped: clipAssets.length - clips.length });
   const images = art.filter((a) => a.kind !== "logo");
   // First-party newsroom images (PlayStation Blog, Xbox Wire) are press
@@ -344,7 +346,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     words,
     durationSeconds: duration,
     images: (assets.images ?? []).map((i) => ({ kind: i.kind, aspect: i.aspect })),
-    clips: (assets.clips ?? []).map((c) => ({ durationSeconds: c.durationSeconds, motion: c.motion, beatIndex: c.beatIndex })),
+    clips: (assets.clips ?? []).map((c) => ({ durationSeconds: c.durationSeconds, motion: c.motion, luma: c.luma, beatIndex: c.beatIndex, role: c.role })),
     storyType: script.is_rumour ? "rumour" : script.story_type,
     isRumour: script.is_rumour,
     attribution: script.attribution,
@@ -394,7 +396,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       audioFile: assets.audio ?? null,
       musicFile,
       imageFiles: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect, blurFile: i.blurFile })),
-      clipFiles: (assets.clips ?? []).map((c) => ({ file: c.file, durationSeconds: c.durationSeconds, blurFile: c.blurFile, beatIndex: c.beatIndex, motion: c.motion })),
+      clipFiles: (assets.clips ?? []).map((c) => ({ file: c.file, durationSeconds: c.durationSeconds, blurFile: c.blurFile, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma })),
       steam: steamLite,
       emphasis: emphasisWords(script),
       plan,

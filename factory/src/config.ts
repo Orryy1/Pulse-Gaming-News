@@ -97,6 +97,7 @@ export interface Config {
   visionQa: boolean;
   footage: boolean;
   maxClips: number;
+  clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   musicBed: boolean;
   dryRun: boolean;
   maxAttempts: number;
@@ -177,6 +178,7 @@ export function loadConfig(): Config {
     visionQa: bool("VISION_QA", true),
     footage: bool("TRAILER_FOOTAGE", true),
     maxClips: int("MAX_TRAILER_CLIPS", 4),
+    clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as "llm" | "rule",
     musicBed: bool("MUSIC_BED", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),

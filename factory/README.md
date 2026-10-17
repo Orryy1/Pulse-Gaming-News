@@ -52,6 +52,10 @@ Two lanes feed one producer.
 
 Discovery runs every `DISCOVER_MINUTES` (3) on its own lease and remembers when each story cluster was first seen, so "breaking" means minutes old, not "has a new follow-up". `SHORTS_PER_DAY` (4) caps all lanes together; `MAX_PRODUCING` (2) episodes can be mid-production at once and episodes waiting on approval or YouTube never block the next one; every publish keeps `MIN_UPLOAD_GAP_MINUTES` (60) after the last. YouTube Data API units are metered per Pacific day in `quota_ledger`; an upload is deferred to the next reset when fewer than about 2,100 units remain, and `QUOTA_UNITS_PER_DAY` (10,000) is the project's default quota. `/health` reports per-lane counts, producing and scheduled episodes and the last discovery.
 
+## Footage
+
+Footage follows the words, the way the Ocarina of Time remaster Short did by hand. Each official Steam trailer is downloaded once, a keyframe is read every 1.5 s with its brightness and motion, and every narration line that wants a picture (the hook and each beat; the writer states what each line should show and 1-4 keywords) is matched to the moment that shows it. With `CLIP_RANKING=llm` (default) the model does the matching from the keyframes and rejects title cards, rating boards, logos and menus; with `CLIP_RANKING=rule`, or when the model is unavailable, the liveliest moment opens the hook, the stillest sits under number cards and the rest take the next liveliest. Chosen moments are cut as 4.8 s muted clips tagged with their line (`beatIndex`, `role`), the planner lays each under its own line and never borrows another line's moment, and the publisher footage budget trims from the end.
+
 ## Approval
 
 | `APPROVAL_MODE` | Behaviour |

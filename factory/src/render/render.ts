@@ -57,7 +57,7 @@ export interface RenderInput {
   props: Omit<ShortProps, "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc"> & {
     audioFile: string | null;
     imageFiles: Array<{ file: string; kind: string; aspect: number; blurFile?: string }>;
-    clipFiles: Array<{ file: string; durationSeconds: number; blurFile?: string; beatIndex?: number; motion?: number }>;
+    clipFiles: Array<{ file: string; durationSeconds: number; blurFile?: string; beatIndex?: number; role?: "hook"; motion?: number; luma?: number }>;
     musicFile: string | null;
   };
   outFile: string;
@@ -77,7 +77,7 @@ export async function renderShort(input: RenderInput): Promise<void> {
       ...rest,
       audioSrc: audioFile ? `${files.url}/${audioFile}` : null,
       images: imageFiles.map((i) => ({ src: `${files.url}/${i.file}`, kind: i.kind, aspect: i.aspect, blurSrc: i.blurFile ? `${files.url}/${i.blurFile}` : null })),
-      clips: clipFiles.map((c) => ({ src: `${files.url}/${c.file}`, durationSeconds: c.durationSeconds, blurSrc: c.blurFile ? `${files.url}/${c.blurFile}` : null, beatIndex: c.beatIndex, motion: c.motion })),
+      clips: clipFiles.map((c) => ({ src: `${files.url}/${c.file}`, durationSeconds: c.durationSeconds, blurSrc: c.blurFile ? `${files.url}/${c.blurFile}` : null, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma })),
       // Brand files ship in the bundle's public dir; Short resolves bare
       // names with staticFile().
       logoSrc: "logo.png",

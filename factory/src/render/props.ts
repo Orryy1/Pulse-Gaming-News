@@ -21,6 +21,7 @@ export interface ShortClip {
   motion?: number;
   luma?: number;
   beatIndex?: number;
+  role?: "hook";
 }
 
 // A type alias (not an interface) so it satisfies Remotion's Record<string, unknown> props constraint.

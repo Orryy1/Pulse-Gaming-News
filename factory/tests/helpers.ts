@@ -82,6 +82,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     visionQa: true,
     footage: true,
     maxClips: 4,
+    clipRanking: "rule",
     musicBed: true,
     dryRun: false,
     maxAttempts: 3,

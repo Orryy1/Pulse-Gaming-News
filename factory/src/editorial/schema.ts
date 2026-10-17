@@ -25,8 +25,15 @@ export const SelectionSchema = z.object({
 });
 export type Selection = z.infer<typeof SelectionSchema>;
 
+export const FOOTAGE_WANTS = ["gameplay", "cinematic", "character", "world", "vehicle", "ui", "calm", "none"] as const;
+export const FootageSchema = z.object({
+  want: z.enum(FOOTAGE_WANTS).describe("What the picture should show while this line is spoken"),
+  keywords: z.array(z.string()).max(4).describe("The thing, place, character or action the line names, 1-4 short terms"),
+});
+
 export const BeatSchema = z.object({
   narration: z.string().describe("One or two short spoken sentences"),
+  footage: FootageSchema.optional(),
   visual: z.object({
     kind: z.enum(VISUAL_KINDS),
     primary: z.string().describe("Big on-screen text: a number, date, short quote or 2-5 word phrase. For price: the new price as written, e.g. £69.99. For score: the score as written. Empty for kind none"),
@@ -52,6 +59,7 @@ export const ScriptSchema = z.object({
     narration: z.string().describe("The Pulse angle: context, comparison or a clearly framed verdict"),
     on_screen: z.string().describe("3-8 word on-screen summary of the take"),
   }),
+  hook_footage: FootageSchema.optional().describe("What the opening footage should show"),
   loop_line: z.string().describe("Final spoken line that ties back to the hook so a rewatch feels seamless"),
   is_rumour: z.boolean(),
   attribution: z.string().describe("On-screen source credit, e.g. 'Source: Xbox Wire / IGN'"),

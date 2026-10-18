@@ -83,6 +83,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     radarDays: ["mon"],
     freeDays: ["thu"],
     recapDays: ["fri"],
+    achievementDays: ["wed"],
     weeklySlot: "20:00",
     longformDays: ["sun"],
     longformSlot: "18:00",

@@ -127,7 +127,7 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       if (!isAdmin() && !(url.pathname === "/connect" && fromThisPc)) return send(403, page("Forbidden", "<h1>Open http://localhost:8080/connect on the PC running the factory.</h1>"));
       if (!cfg.googleClientId) return send(500, page("Missing client", "<h1>Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET first.</h1>"));
       const nonce = crypto.randomBytes(12).toString("hex");
-      const state = `${nonce}.${signToken(`oauth:${nonce}`, cfg.appSecret, 900)}`;
+      const state = `${nonce}.${signToken(`oauth:${nonce}`, cfg.appSecret, 4 * 3600)}`;
       res.writeHead(302, { location: consentUrl(oauthConfig(cfg), state) }).end();
       return;
     }

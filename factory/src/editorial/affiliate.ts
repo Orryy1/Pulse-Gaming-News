@@ -56,8 +56,12 @@ export function productsFor(script: Script, free = false): AffiliateLink[] {
   if (!free) {
     if (script.entries?.length) {
       // Best first: number one leads the list.
-      for (const e of [...script.entries].sort((a, b) => a.rank - b.rank))
-        add(CLEAN(e.game_title), `${CLEAN(e.game_title)} game`);
+      const achievements = /achievements$/.test(script.evergreen_format ?? "");
+      for (const e of [...script.entries].sort((a, b) => a.rank - b.rank)) {
+        // An achievement list sells the games the achievements belong to.
+        const name = CLEAN(achievements ? e.steam_search_term || e.platforms : e.game_title);
+        if (name) add(name, `${name} game`);
+      }
     } else if (
       script.game_title &&
       !/^(new games|gaming news|this week)/i.test(script.game_title)

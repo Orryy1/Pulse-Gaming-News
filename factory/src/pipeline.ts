@@ -17,9 +17,25 @@ import { capFootage, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import type { RadarGame, FreeGame } from "./discovery/weekly.ts";
-import { evergreenToScript, selectEvergreenTopic, validateEvergreen, writeEvergreen, type EvergreenCandidate } from "./editorial/evergreen.ts";
-import { longformToScript, selectLongformTopic, validateLongform, writeLongform } from "./editorial/longform.ts";
-import { buildLongPlan, chapterLines, LONG_TAIL_SECONDS } from "./render/longplan.ts";
+import { rarest, type Achievement } from "./discovery/achievements.ts";
+import {
+  evergreenToScript,
+  selectEvergreenTopic,
+  validateEvergreen,
+  writeEvergreen,
+  type EvergreenCandidate,
+} from "./editorial/evergreen.ts";
+import {
+  longformToScript,
+  selectLongformTopic,
+  validateLongform,
+  writeLongform,
+} from "./editorial/longform.ts";
+import {
+  buildLongPlan,
+  chapterLines,
+  LONG_TAIL_SECONDS,
+} from "./render/longplan.ts";
 import type { LongRenderInput } from "./render/render.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
@@ -27,19 +43,55 @@ import type { VisionQa } from "./editorial/schema.ts";
 import type { YouTubeClient } from "./youtube/upload.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
 import { COLOURS } from "./approval/discord.ts";
-import { selectStory, writeScript, factCheck, validateScript } from "./editorial/editorial.ts";
+import {
+  selectStory,
+  writeScript,
+  factCheck,
+  validateScript,
+} from "./editorial/editorial.ts";
 import { narrationOf, type Script } from "./editorial/schema.ts";
-import { buildTags, hashtags, keywordLead, pinnedComment, polishTitle, thumbTitle } from "./editorial/seo.ts";
-import { affiliateBlock, affiliateCommentLine, type AffiliateTags } from "./editorial/affiliate.ts";
+import {
+  buildTags,
+  hashtags,
+  keywordLead,
+  pinnedComment,
+  polishTitle,
+  thumbTitle,
+} from "./editorial/seo.ts";
+import {
+  affiliateBlock,
+  affiliateCommentLine,
+  type AffiliateTags,
+} from "./editorial/affiliate.ts";
 import { pickVoice } from "./voice/index.ts";
 import { speakable } from "./voice/speakable.ts";
-import { buildSegments, srtFromWords, type SegmentInput } from "./render/timeline.ts";
+import {
+  buildSegments,
+  srtFromWords,
+  type SegmentInput,
+} from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
 import { captureMetrics, performanceNotes } from "./analytics.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
-import { dayKey, LANE_PRIORITY, QUOTA, QUOTA_RESERVE_FOR_UPLOAD, dueSlot, evergreenDue, franchiseKey, inWindow, isBreaking, lastPublishAt, nextWindowStart, quotaAdd, quotaResetAt, quotaUsed, type Sighting } from "./lanes.ts";
+import {
+  dayKey,
+  LANE_PRIORITY,
+  QUOTA,
+  QUOTA_RESERVE_FOR_UPLOAD,
+  dueSlot,
+  evergreenDue,
+  franchiseKey,
+  inWindow,
+  isBreaking,
+  lastPublishAt,
+  nextWindowStart,
+  quotaAdd,
+  quotaResetAt,
+  quotaUsed,
+  type Sighting,
+} from "./lanes.ts";
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
@@ -67,23 +119,65 @@ export interface Services {
   discover(): Promise<StoryCluster[]>;
   discoverEvergreen(): Promise<EvergreenCandidate[]>;
   fetchArticle(url: string): Promise<ArticleText | undefined>;
-  synthesise(text: string, outPath: string, voice?: { id: string; name: string }): Promise<Narration & { voice?: { provider: "local" | "elevenlabs"; id: string; name: string } }>;
+  synthesise(
+    text: string,
+    outPath: string,
+    voice?: { id: string; name: string },
+  ): Promise<
+    Narration & {
+      voice?: { provider: "local" | "elevenlabs"; id: string; name: string };
+    }
+  >;
   findGame(term: string): Promise<SteamApp | undefined>;
   gameFacts(app: SteamApp): Promise<SteamFacts>;
   fetchArt(app: SteamApp, episodeDir: string): Promise<VisualAsset[]>;
-  fetchClips(app: SteamApp, episodeDir: string, targets: FootageTarget[], maxClips: number): Promise<VisualAsset[]>;
-  fetchOfficialMedia(gameTitle: string, episodeDir: string, targets: FootageTarget[], maxClips: number, hint?: string, story?: { text: string; after: Date }): Promise<OfficialMedia>;
-  fetchStock(episodeDir: string, targets: FootageTarget[], gameWords: string[], maxClips: number): Promise<VisualAsset[]>;
+  fetchClips(
+    app: SteamApp,
+    episodeDir: string,
+    targets: FootageTarget[],
+    maxClips: number,
+  ): Promise<VisualAsset[]>;
+  fetchOfficialMedia(
+    gameTitle: string,
+    episodeDir: string,
+    targets: FootageTarget[],
+    maxClips: number,
+    hint?: string,
+    story?: { text: string; after: Date },
+  ): Promise<OfficialMedia>;
+  fetchStock(
+    episodeDir: string,
+    targets: FootageTarget[],
+    gameWords: string[],
+    maxClips: number,
+  ): Promise<VisualAsset[]>;
   releaseRadar(from: Date): Promise<RadarGame[]>;
   freeGames(now: Date): Promise<{ now: FreeGame[]; next: FreeGame[] }>;
+  achievements(appId: number): Promise<Achievement[]>;
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
   renderLong(input: LongRenderInput): Promise<void>;
   normalise(input: string, output: string): Promise<void>;
-  technicalQa(file: string, expectedSeconds: number, band?: { minSeconds: number; maxSeconds: number; width?: number; height?: number }): Promise<TechQa>;
-  extractFrames(file: string, outDir: string, times: number[]): Promise<string[]>;
-  visionQa(frames: string[], ctx: { headline: string; gameTitle: string; format?: "short" | "long" }): Promise<VisionQa>;
+  technicalQa(
+    file: string,
+    expectedSeconds: number,
+    band?: {
+      minSeconds: number;
+      maxSeconds: number;
+      width?: number;
+      height?: number;
+    },
+  ): Promise<TechQa>;
+  extractFrames(
+    file: string,
+    outDir: string,
+    times: number[],
+  ): Promise<string[]>;
+  visionQa(
+    frames: string[],
+    ctx: { headline: string; gameTitle: string; format?: "short" | "long" },
+  ): Promise<VisionQa>;
   youtube(): YouTubeClient;
   /** true = delivered, false = failed, undefined/void = Discord not configured. */
   notify(msg: DiscordMessage): Promise<boolean | undefined | void>;
@@ -92,7 +186,15 @@ export interface Services {
   now(): Date;
 }
 
-const IN_FLIGHT = ["selected", "scripted", "voiced", "rendered", "awaiting_approval", "approved", "uploading"];
+const IN_FLIGHT = [
+  "selected",
+  "scripted",
+  "voiced",
+  "rendered",
+  "awaiting_approval",
+  "approved",
+  "uploading",
+];
 
 export function episodeDir(cfg: Config, id: string): string {
   return path.join(cfg.dataDir, "episodes", id);
@@ -100,7 +202,8 @@ export function episodeDir(cfg: Config, id: string): string {
 
 export function approvalLinks(cfg: Config, id: string) {
   const ttl = 3 * 24 * 3600;
-  const t = (action: string) => signToken(`${action}:${id}`, cfg.appSecret, ttl);
+  const t = (action: string) =>
+    signToken(`${action}:${id}`, cfg.appSecret, ttl);
   return {
     approve: `${cfg.publicUrl}/episodes/${id}/approve?t=${t("approve")}`,
     reject: `${cfg.publicUrl}/episodes/${id}/reject?t=${t("reject")}`,
@@ -126,15 +229,29 @@ export async function discoverTick(s: Services): Promise<number> {
          max_score = greatest(cluster_sightings.max_score, EXCLUDED.max_score), cluster_json = EXCLUDED.cluster_json, headline = EXCLUDED.headline`,
       // first_seen never predates the poll but never postdates the newest article either, so a
       // restart does not make every old story look minutes old.
-      [c.hash, c.headline, now, c.items.length, c.hasOfficial, c.score, JSON.stringify(c), new Date(c.newestAt)],
+      [
+        c.hash,
+        c.headline,
+        now,
+        c.items.length,
+        c.hasOfficial,
+        c.score,
+        JSON.stringify(c),
+        new Date(c.newestAt),
+      ],
     );
   }
   // Age is measured on the pipeline's clock (s.now()), the same one that stamped last_seen.
-  await s.db.query(`DELETE FROM cluster_sightings WHERE last_seen < $1::timestamptz - interval '7 days'`, [now]);
+  await s.db.query(
+    `DELETE FROM cluster_sightings WHERE last_seen < $1::timestamptz - interval '7 days'`,
+    [now],
+  );
   return clusters.length;
 }
 
-async function recentSightings(s: Services): Promise<Array<{ cluster: StoryCluster; sighting: Sighting }>> {
+async function recentSightings(
+  s: Services,
+): Promise<Array<{ cluster: StoryCluster; sighting: Sighting }>> {
   const rows = await s.db.query<Sighting & { cluster_json: StoryCluster }>(
     // Judged by the factory's clock, like every other hold, so the scheduler is testable.
     `SELECT hash, first_seen, last_seen, item_count, has_official, max_score, cluster_json FROM cluster_sightings WHERE last_seen > $2::timestamptz - ($1 || ' hours')::interval ORDER BY max_score DESC`,
@@ -143,21 +260,62 @@ async function recentSightings(s: Services): Promise<Array<{ cluster: StoryClust
   return rows.map((r) => ({ cluster: r.cluster_json, sighting: r }));
 }
 
-async function createFromChoice(s: Services, candidates: StoryCluster[], lane: { lane: string; priority: number; slotAt?: Date }, why: string): Promise<string | undefined> {
+async function createFromChoice(
+  s: Services,
+  candidates: StoryCluster[],
+  lane: { lane: string; priority: number; slotAt?: Date },
+  why: string,
+): Promise<string | undefined> {
   const { db } = s;
   const pool = candidates;
-  const choice = await selectStory(s.llm, pool, await recentHeadlines(db), await performanceNotes(db, s.now()).catch(() => ""));
+  const choice = await selectStory(
+    s.llm,
+    pool,
+    await recentHeadlines(db),
+    await performanceNotes(db, s.now()).catch(() => ""),
+  );
   const picked = pool[choice.candidate_index];
   if (!picked) {
-    log("info", "editor passed on every candidate", { lane: lane.lane, reason: choice.reason });
+    log("info", "editor passed on every candidate", {
+      lane: lane.lane,
+      reason: choice.reason,
+    });
     return undefined;
   }
   const id = shortId();
-  const created = await createEpisode(db, id, { ...picked, gameHint: choice.game_title || undefined, visualNeed: choice.visual_dependency }, lane);
-  await markSeen(db, picked.hash, picked.headline, created ? "selected" : "duplicate", choice.reason);
+  const created = await createEpisode(
+    db,
+    id,
+    {
+      ...picked,
+      gameHint: choice.game_title || undefined,
+      visualNeed: choice.visual_dependency,
+    },
+    lane,
+  );
+  await markSeen(
+    db,
+    picked.hash,
+    picked.headline,
+    created ? "selected" : "duplicate",
+    choice.reason,
+  );
   if (!created) return undefined;
-  await logEvent(db, id, "selected", { headline: picked.headline, reason: choice.reason, story_type: choice.story_type, score: picked.score, lane: lane.lane, slot_at: lane.slotAt?.toISOString() ?? null, why });
-  log("info", "story selected", { id, lane: lane.lane, headline: picked.headline, slot: lane.slotAt?.toISOString() });
+  await logEvent(db, id, "selected", {
+    headline: picked.headline,
+    reason: choice.reason,
+    story_type: choice.story_type,
+    score: picked.score,
+    lane: lane.lane,
+    slot_at: lane.slotAt?.toISOString() ?? null,
+    why,
+  });
+  log("info", "story selected", {
+    id,
+    lane: lane.lane,
+    headline: picked.headline,
+    slot: lane.slotAt?.toISOString(),
+  });
   return id;
 }
 
@@ -182,34 +340,96 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   if (total >= cfg.dailyTarget) return undefined;
 
   const seen = await seenHashes(db);
-  const sightings = (await recentSightings(s)).filter((x) => !seen.has(x.cluster.hash));
-  const eligible = sightings.filter((x) => x.cluster.corroborated || (cfg.includeRumours && x.cluster.rumourSignals)).filter((x) => x.cluster.score > 0);
+  const sightings = (await recentSightings(s)).filter(
+    (x) => !seen.has(x.cluster.hash),
+  );
+  const eligible = sightings
+    .filter(
+      (x) =>
+        x.cluster.corroborated ||
+        (cfg.includeRumours && x.cluster.rumourSignals),
+    )
+    .filter((x) => x.cluster.score > 0);
 
   // 1. Breaking lane.
-  if (cfg.breakingEnabled && (await countToday(db, cfg.timezone, "news_breaking")) < cfg.breakingPerDay) {
-    const rule = { scoreMin: cfg.breakingScoreMin, maxAgeMinutes: cfg.breakingMaxAgeMinutes, window: cfg.breakingWindow, timeZone: cfg.timezone };
-    const cooled = new Set((await db.query<{ franchise: string }>(`SELECT franchise FROM breaking_log WHERE fired_at > $2::timestamptz - ($1 || ' hours')::interval`, [String(cfg.breakingCooldownHours), now])).map((r) => r.franchise));
-    const breaking = eligible.filter((x) => isBreaking(x.cluster, x.sighting, now, rule) && !cooled.has(franchiseKey(x.cluster))).map((x) => x.cluster).slice(0, 4);
+  if (
+    cfg.breakingEnabled &&
+    (await countToday(db, cfg.timezone, "news_breaking")) < cfg.breakingPerDay
+  ) {
+    const rule = {
+      scoreMin: cfg.breakingScoreMin,
+      maxAgeMinutes: cfg.breakingMaxAgeMinutes,
+      window: cfg.breakingWindow,
+      timeZone: cfg.timezone,
+    };
+    const cooled = new Set(
+      (
+        await db.query<{ franchise: string }>(
+          `SELECT franchise FROM breaking_log WHERE fired_at > $2::timestamptz - ($1 || ' hours')::interval`,
+          [String(cfg.breakingCooldownHours), now],
+        )
+      ).map((r) => r.franchise),
+    );
+    const breaking = eligible
+      .filter(
+        (x) =>
+          isBreaking(x.cluster, x.sighting, now, rule) &&
+          !cooled.has(franchiseKey(x.cluster)),
+      )
+      .map((x) => x.cluster)
+      .slice(0, 4);
     if (breaking.length) {
-      const id = await createFromChoice(s, breaking, { lane: "news_breaking", priority: LANE_PRIORITY.news_breaking }, "breaking: official, fresh and scored above the bar");
+      const id = await createFromChoice(
+        s,
+        breaking,
+        { lane: "news_breaking", priority: LANE_PRIORITY.news_breaking },
+        "breaking: official, fresh and scored above the bar",
+      );
       if (id) {
         const ep = await getEpisode(db, id);
-        await db.query(`INSERT INTO breaking_log (story_hash, franchise, episode_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, [ep!.story_hash, franchiseKey(ep!.story_json), id]);
-        await s.notify({ content: `🚨 Breaking lane: "${ep!.story_json.headline}" is being produced now.` });
+        await db.query(
+          `INSERT INTO breaking_log (story_hash, franchise, episode_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [ep!.story_hash, franchiseKey(ep!.story_json), id],
+        );
+        await s.notify({
+          content: `🚨 Breaking lane: "${ep!.story_json.headline}" is being produced now.`,
+        });
         return id;
       }
     }
   }
 
   // 2. News lane: the next slot whose lead time has begun.
-  const slot = dueSlot(now, { slots: cfg.newsSlots, leadMinutes: cfg.slotLeadMinutes, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone }, await takenSlots(db));
-  if (!slot) return (await maybeSelectEvergreen(s)) ?? (await maybeSelectWeekly(s)) ?? (await maybeSelectLongform(s));
+  const slot = dueSlot(
+    now,
+    {
+      slots: cfg.newsSlots,
+      leadMinutes: cfg.slotLeadMinutes,
+      graceMinutes: cfg.slotGraceMinutes,
+      timeZone: cfg.timezone,
+    },
+    await takenSlots(db),
+  );
+  if (!slot)
+    return (
+      (await maybeSelectEvergreen(s)) ??
+      (await maybeSelectWeekly(s)) ??
+      (await maybeSelectLongform(s))
+    );
   const candidates = eligible.map((x) => x.cluster).slice(0, 12);
   if (candidates.length === 0) {
-    log("info", "no eligible stories for the slot", { slot: slot.toISOString(), sightings: sightings.length });
+    log("info", "no eligible stories for the slot", {
+      slot: slot.toISOString(),
+      sightings: sightings.length,
+    });
     return undefined;
   }
-  return createFromChoice(s, candidates, { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot }, `news slot ${slot.toISOString()}`);
+  return createFromChoice(
+    s,
+    candidates,
+    { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot },
+    `news slot ${slot.toISOString()}`,
+  );
 }
 
 /**
@@ -217,21 +437,43 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
  * topic from what people are buying and the franchise seeds, avoiding topics
  * covered in the last six months.
  */
-export async function maybeSelectEvergreen(s: Services): Promise<string | undefined> {
+export async function maybeSelectEvergreen(
+  s: Services,
+): Promise<string | undefined> {
   const { db, cfg } = s;
   if (!cfg.evergreenEnabled) return undefined;
   const now = s.now();
-  const due = evergreenDue(now, { days: cfg.evergreenDays, slot: cfg.evergreenSlot, leadMinutes: cfg.slotLeadMinutes + 45, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone }, await takenSlots(db));
+  const due = evergreenDue(
+    now,
+    {
+      days: cfg.evergreenDays,
+      slot: cfg.evergreenSlot,
+      leadMinutes: cfg.slotLeadMinutes + 45,
+      graceMinutes: cfg.slotGraceMinutes,
+      timeZone: cfg.timezone,
+    },
+    await takenSlots(db),
+  );
   if (!due) return undefined;
-  const covered = (await db.query<{ headline: string }>(`SELECT story_json->>'headline' AS headline FROM episodes WHERE lane = 'evergreen' AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`, [now])).map((r) => r.headline);
+  const covered = (
+    await db.query<{ headline: string }>(
+      `SELECT story_json->>'headline' AS headline FROM episodes WHERE lane = 'evergreen' AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`,
+      [now],
+    )
+  ).map((r) => r.headline);
   const candidates = await s.discoverEvergreen();
   if (!candidates.length) return undefined;
   const topic = await selectEvergreenTopic(s.llm, candidates, covered);
   if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
-    log("info", "editor passed on every evergreen candidate", { reason: topic.reason });
+    log("info", "editor passed on every evergreen candidate", {
+      reason: topic.reason,
+    });
     return undefined;
   }
-  const slug = topic.theme.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const slug = topic.theme
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
   const cluster: StoryCluster = {
     hash: `evergreen:${topic.format}:${slug}:${now.toISOString().slice(0, 7)}`,
     headline: topic.title_idea,
@@ -245,19 +487,44 @@ export async function maybeSelectEvergreen(s: Services): Promise<string | undefi
     gameHint: topic.theme,
   };
   const id = shortId();
-  const created = await createEpisode(db, id, cluster, { lane: "evergreen", priority: LANE_PRIORITY.evergreen, slotAt: due });
+  const created = await createEpisode(db, id, cluster, {
+    lane: "evergreen",
+    priority: LANE_PRIORITY.evergreen,
+    slotAt: due,
+  });
   if (!created) return undefined;
-  await db.query(`UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`, [id, JSON.stringify({ topic })]);
-  await logEvent(db, id, "selected", { headline: topic.title_idea, lane: "evergreen", format: topic.format, theme: topic.theme, criterion: topic.criterion, reason: topic.reason, slot_at: due.toISOString() });
-  log("info", "evergreen topic selected", { id, format: topic.format, theme: topic.theme });
+  await db.query(
+    `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
+    [id, JSON.stringify({ topic })],
+  );
+  await logEvent(db, id, "selected", {
+    headline: topic.title_idea,
+    lane: "evergreen",
+    format: topic.format,
+    theme: topic.theme,
+    criterion: topic.criterion,
+    reason: topic.reason,
+    slot_at: due.toISOString(),
+  });
+  log("info", "evergreen topic selected", {
+    id,
+    format: topic.format,
+    theme: topic.theme,
+  });
   return id;
 }
 
 /** Once per day and kind: a weekly lane that found too little data does not retry every tick. */
 async function weeklyTried(db: Db, key: string): Promise<boolean> {
-  const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = $1`, [`weekly_tried:${key}`]);
+  const [row] = await db.query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = $1`,
+    [`weekly_tried:${key}`],
+  );
   if (row) return true;
-  await db.query(`INSERT INTO settings (key, value) VALUES ($1, 'yes') ON CONFLICT (key) DO NOTHING`, [`weekly_tried:${key}`]);
+  await db.query(
+    `INSERT INTO settings (key, value) VALUES ($1, 'yes') ON CONFLICT (key) DO NOTHING`,
+    [`weekly_tried:${key}`],
+  );
   return false;
 }
 
@@ -267,33 +534,102 @@ async function weeklyTried(db: Db, key: string): Promise<boolean> {
  * news-style Short from the store's own data) and the Weekly Recap (the
  * week's biggest corroborated stories from the factory's own sightings).
  */
-export async function maybeSelectWeekly(s: Services): Promise<string | undefined> {
+export async function maybeSelectWeekly(
+  s: Services,
+): Promise<string | undefined> {
   const { db, cfg } = s;
   if (!cfg.weeklyEnabled) return undefined;
   const now = s.now();
   const today = dayKey(now, cfg.timezone);
-  const plan = (days: string[]) => ({ days, slot: cfg.weeklySlot, leadMinutes: cfg.slotLeadMinutes + 30, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone });
+  const plan = (days: string[]) => ({
+    days,
+    slot: cfg.weeklySlot,
+    leadMinutes: cfg.slotLeadMinutes + 30,
+    graceMinutes: cfg.slotGraceMinutes,
+    timeZone: cfg.timezone,
+  });
   const taken = await takenSlots(db);
-  const make = async (kind: string, cluster: StoryCluster, due: Date, factcheck: Record<string, unknown> | null, lane: "evergreen" | "free") => {
+  const make = async (
+    kind: string,
+    cluster: StoryCluster,
+    due: Date,
+    factcheck: Record<string, unknown> | null,
+    lane: "evergreen" | "free",
+  ) => {
     const id = shortId();
-    if (!(await createEpisode(db, id, cluster, { lane, priority: LANE_PRIORITY[lane], slotAt: due }))) return undefined;
-    if (factcheck) await db.query(`UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`, [id, JSON.stringify(factcheck)]);
-    await logEvent(db, id, "selected", { headline: cluster.headline, lane, weekly: kind, slot_at: due.toISOString() });
-    log("info", "weekly lane selected", { id, kind, headline: cluster.headline });
+    if (
+      !(await createEpisode(db, id, cluster, {
+        lane,
+        priority: LANE_PRIORITY[lane],
+        slotAt: due,
+      }))
+    )
+      return undefined;
+    if (factcheck)
+      await db.query(
+        `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
+        [id, JSON.stringify(factcheck)],
+      );
+    await logEvent(db, id, "selected", {
+      headline: cluster.headline,
+      lane,
+      weekly: kind,
+      slot_at: due.toISOString(),
+    });
+    log("info", "weekly lane selected", {
+      id,
+      kind,
+      headline: cluster.headline,
+    });
     return id;
   };
-  const base = (hash: string, headline: string, gameHint: string): StoryCluster => ({ hash, headline, items: [], sources: ["Steam"], hasOfficial: true, corroborated: true, rumourSignals: false, newestAt: now.toISOString(), score: 0, gameHint });
+  const base = (
+    hash: string,
+    headline: string,
+    gameHint: string,
+  ): StoryCluster => ({
+    hash,
+    headline,
+    items: [],
+    sources: ["Steam"],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint,
+  });
 
   // Release Radar
   const radarDue = evergreenDue(now, plan(cfg.radarDays), taken);
   if (radarDue && !(await weeklyTried(db, `radar:${today}`))) {
     const games = await s.releaseRadar(now);
     if (games.length >= 4) {
-      const topic = { candidate_index: 0, format: "release_radar" as const, theme: "New games this week", title_idea: `${games.length} Big Games Out This Week`, criterion: "Release order, earliest first", reason: "weekly release radar" };
-      const brief = games.map((g) => `- ${g.name} | out ${g.date} | ${g.price ?? "price not listed"} | developer ${g.developer ?? "unknown"} | Steam app ${g.appId}`).join("\n");
-      return make("radar", base(`weekly:radar:${today}`, topic.title_idea, "New games"), radarDue, { topic, brief }, "evergreen");
+      const topic = {
+        candidate_index: 0,
+        format: "release_radar" as const,
+        theme: "New games this week",
+        title_idea: `${games.length} Big Games Out This Week`,
+        criterion: "Release order, earliest first",
+        reason: "weekly release radar",
+      };
+      const brief = games
+        .map(
+          (g) =>
+            `- ${g.name} | out ${g.date} | ${g.price ?? "price not listed"} | developer ${g.developer ?? "unknown"} | Steam app ${g.appId}`,
+        )
+        .join("\n");
+      return make(
+        "radar",
+        base(`weekly:radar:${today}`, topic.title_idea, "New games"),
+        radarDue,
+        { topic, brief },
+        "evergreen",
+      );
     }
-    log("info", "release radar skipped: too few dated releases this week", { found: games.length });
+    log("info", "release radar skipped: too few dated releases this week", {
+      found: games.length,
+    });
   }
 
   // Free This Week
@@ -301,8 +637,20 @@ export async function maybeSelectWeekly(s: Services): Promise<string | undefined
   if (freeDue && !(await weeklyTried(db, `free:${today}`))) {
     const free = await s.freeGames(now);
     if (free.now.length) {
-      const until = (iso?: string) => (iso ? new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso)) + " Eastern" : "next week");
-      const nextLine = free.next.length ? ` Next week's free ${free.next.length > 1 ? "games are" : "game is"} ${free.next.map((g) => g.title).join(" and ")}, from ${until(free.next[0]!.starts)}.` : "";
+      const until = (iso?: string) =>
+        iso
+          ? new Intl.DateTimeFormat("en-US", {
+              timeZone: "America/New_York",
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            }).format(new Date(iso)) + " Eastern"
+          : "next week";
+      const nextLine = free.next.length
+        ? ` Next week's free ${free.next.length > 1 ? "games are" : "game is"} ${free.next.map((g) => g.title).join(" and ")}, from ${until(free.next[0]!.starts)}.`
+        : "";
       const items = free.now.map((g) => ({
         title: `${g.title} is free to keep on the Epic Games Store`,
         url: g.url,
@@ -313,39 +661,206 @@ export async function maybeSelectWeekly(s: Services): Promise<string | undefined
         imageUrl: g.imageUrl,
       }));
       const headline = `Free To Keep This Week: ${free.now.map((g) => g.title).join(" And ")}`;
-      const cluster: StoryCluster = { ...base(`weekly:free:${today}:${free.now.map((g) => g.title).join("|").toLowerCase()}`, headline, free.now[0]!.title), items, sources: ["Epic Games Store"], visualNeed: "game_footage" };
+      const cluster: StoryCluster = {
+        ...base(
+          `weekly:free:${today}:${free.now
+            .map((g) => g.title)
+            .join("|")
+            .toLowerCase()}`,
+          headline,
+          free.now[0]!.title,
+        ),
+        items,
+        sources: ["Epic Games Store"],
+        visualNeed: "game_footage",
+      };
       return make("free", cluster, freeDue, null, "free");
     }
     log("info", "free this week skipped: nothing free on Epic right now");
   }
 
+  // Achievement Hunt: odd ISO weeks the rarest in one big game, even weeks the hardest across today's biggest games.
+  const achDue = evergreenDue(now, plan(cfg.achievementDays), taken);
+  if (achDue && !(await weeklyTried(db, `achievements:${today}`))) {
+    const week = Math.floor(
+      (Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) -
+        Date.UTC(now.getUTCFullYear(), 0, 1)) /
+        (7 * 86_400_000),
+    );
+    const across = week % 2 === 0;
+    const covered = (
+      await db.query<{ headline: string }>(
+        `SELECT story_json->>'headline' AS headline FROM episodes WHERE lane = 'evergreen' AND created_at > $1::timestamptz - interval '120 days'`,
+        [now],
+      )
+    ).map((r) => r.headline.toLowerCase());
+    // Established games first (the franchise seeds), then what is selling now.
+    const candidates = await s.discoverEvergreen();
+    const pool = [
+      ...candidates.filter((c) => c.source !== "steam top sellers"),
+      ...candidates.filter((c) => c.source === "steam top sellers"),
+    ]
+      .map((c) => c.name)
+      .filter(
+        (n) =>
+          !/steam deck|steam machine|controller|bundle|soundtrack/i.test(n),
+      );
+    const games: Array<{
+      game: string;
+      appId: number;
+      year?: number;
+      list: Achievement[];
+    }> = [];
+    for (const name of pool.slice(0, 24)) {
+      const app = await s.findGame(name).catch(() => undefined);
+      if (!app) continue;
+      const list = rarest(await s.achievements(app.appId), 6);
+      if (list.length < (across ? 1 : 5)) continue;
+      const year =
+        Number(
+          String(app.details?.release_date?.date ?? "").match(
+            /\b(19|20)\d\d\b/,
+          )?.[0],
+        ) || undefined;
+      // A game out for under a year has "rare" achievements only because few have finished it yet.
+      if (!year || year > now.getUTCFullYear() - 1) continue;
+      if (!across && (list.at(-1)?.percent ?? 0) < 0.5) continue;
+      games.push({ game: app.name, appId: app.appId, year, list });
+      if (!across && !covered.some((h) => h.includes(app.name.toLowerCase())))
+        break;
+      if (across && games.length >= 8) break;
+    }
+    const single = !across
+      ? games.find(
+          (g) =>
+            g.list.length >= 5 &&
+            !covered.some((h) => h.includes(g.game.toLowerCase())),
+        )
+      : undefined;
+    const rows = across
+      ? games
+          .map((g) => ({ ...g.list[0]!, game: g.game, year: g.year }))
+          .filter((r) => r.percent <= 10)
+          .sort((a, b) => a.percent - b.percent)
+          .slice(0, 6)
+      : (single?.list ?? []).map((a) => ({
+          ...a,
+          game: single!.game,
+          year: single!.year,
+        }));
+    if (rows.length >= 4) {
+      const format = across
+        ? ("hardest_achievements" as const)
+        : ("rarest_achievements" as const);
+      const theme = across ? "Achievements" : single!.game;
+      const topic = {
+        candidate_index: 0,
+        format,
+        theme,
+        title_idea: across
+          ? "The Hardest Achievements in Gaming Right Now"
+          : `The Rarest Achievements in ${single!.game}`,
+        criterion: "Share of players who unlocked it (Steam global stats)",
+        reason: "weekly achievement hunt",
+      };
+      const brief = rows
+        .map(
+          (r) =>
+            `- ${r.name} | ${r.game}${r.year ? ` (${r.year})` : ""} | ${r.percent}% of players | ${r.description || "description hidden"}`,
+        )
+        .join("\n");
+      const achievements = rows.map((r) => ({
+        name: r.name,
+        game: r.game,
+        percent: r.percent,
+        icon: r.icon,
+        year: r.year,
+      }));
+      return make(
+        "achievements",
+        base(`weekly:achievements:${today}`, topic.title_idea, theme),
+        achDue,
+        { topic, brief, achievements },
+        "evergreen",
+      );
+    }
+    log("info", "achievement hunt skipped: not enough achievement data", {
+      games: games.length,
+    });
+  }
+
   // Weekly Recap
   const recapDue = evergreenDue(now, plan(cfg.recapDays), taken);
   if (recapDue && !(await weeklyTried(db, `recap:${today}`))) {
-    const rows = await db.query<{ headline: string; max_score: number; item_count: number; has_official: boolean; cluster_json: StoryCluster; first_seen: string }>(
+    const rows = await db.query<{
+      headline: string;
+      max_score: number;
+      item_count: number;
+      has_official: boolean;
+      cluster_json: StoryCluster;
+      first_seen: string;
+    }>(
       `SELECT headline, max_score, item_count, has_official, cluster_json, first_seen FROM cluster_sightings
        WHERE first_seen > $1 AND (has_official OR item_count >= 2) ORDER BY max_score DESC LIMIT 12`,
       [new Date(now.getTime() - 7 * 86_400_000)],
     );
     const stories = rows.filter((r) => !r.cluster_json?.rumourSignals);
     if (stories.length >= 5) {
-      const topic = { candidate_index: 0, format: "weekly_recap" as const, theme: "This week in gaming", title_idea: "The 5 Biggest Gaming Stories This Week", criterion: "How much each story changes things for players", reason: "weekly recap" };
-      const brief = stories.slice(0, 10).map((r) => `- ${r.headline} | reported by ${(r.cluster_json?.sources ?? []).slice(0, 3).join(", ") || "outlets"}${r.has_official ? " (official)" : ""} | first seen ${new Date(r.first_seen).toISOString().slice(0, 10)} | ${(r.cluster_json?.items?.[0]?.summary ?? "").slice(0, 220)}`).join("\n");
-      return make("recap", base(`weekly:recap:${today}`, topic.title_idea, "Gaming news"), recapDue, { topic, brief }, "evergreen");
+      const topic = {
+        candidate_index: 0,
+        format: "weekly_recap" as const,
+        theme: "This week in gaming",
+        title_idea: "The 5 Biggest Gaming Stories This Week",
+        criterion: "How much each story changes things for players",
+        reason: "weekly recap",
+      };
+      const brief = stories
+        .slice(0, 10)
+        .map(
+          (r) =>
+            `- ${r.headline} | reported by ${(r.cluster_json?.sources ?? []).slice(0, 3).join(", ") || "outlets"}${r.has_official ? " (official)" : ""} | first seen ${new Date(r.first_seen).toISOString().slice(0, 10)} | ${(r.cluster_json?.items?.[0]?.summary ?? "").slice(0, 220)}`,
+        )
+        .join("\n");
+      return make(
+        "recap",
+        base(`weekly:recap:${today}`, topic.title_idea, "Gaming news"),
+        recapDue,
+        { topic, brief },
+        "evergreen",
+      );
     }
-    log("info", "weekly recap skipped: too few corroborated stories", { found: stories.length });
+    log("info", "weekly recap skipped: too few corroborated stories", {
+      found: stories.length,
+    });
   }
   return undefined;
 }
 
 /** The weekly long-form ranking video: same topic pool as the evergreen Shorts, its own slot and lane. */
-export async function maybeSelectLongform(s: Services): Promise<string | undefined> {
+export async function maybeSelectLongform(
+  s: Services,
+): Promise<string | undefined> {
   const { db, cfg } = s;
   if (!cfg.longformEnabled) return undefined;
   const now = s.now();
-  const due = evergreenDue(now, { days: cfg.longformDays, slot: cfg.longformSlot, leadMinutes: cfg.slotLeadMinutes + 120, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone }, await takenSlots(db));
+  const due = evergreenDue(
+    now,
+    {
+      days: cfg.longformDays,
+      slot: cfg.longformSlot,
+      leadMinutes: cfg.slotLeadMinutes + 120,
+      graceMinutes: cfg.slotGraceMinutes,
+      timeZone: cfg.timezone,
+    },
+    await takenSlots(db),
+  );
   if (!due) return undefined;
-  const covered = (await db.query<{ headline: string }>(`SELECT story_json->>'headline' AS headline FROM episodes WHERE lane IN ('evergreen','longform') AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`, [now])).map((r) => r.headline);
+  const covered = (
+    await db.query<{ headline: string }>(
+      `SELECT story_json->>'headline' AS headline FROM episodes WHERE lane IN ('evergreen','longform') AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`,
+      [now],
+    )
+  ).map((r) => r.headline);
   const candidates = await s.discoverEvergreen();
   if (!candidates.length) return undefined;
   const topic = await selectLongformTopic(s.llm, candidates, covered);
@@ -366,17 +881,35 @@ export async function maybeSelectLongform(s: Services): Promise<string | undefin
     gameHint: topic.theme,
   };
   const id = shortId();
-  const created = await createEpisode(db, id, cluster, { lane: "longform", priority: LANE_PRIORITY.longform, slotAt: due });
+  const created = await createEpisode(db, id, cluster, {
+    lane: "longform",
+    priority: LANE_PRIORITY.longform,
+    slotAt: due,
+  });
   if (!created) return undefined;
-  await db.query(`UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`, [id, JSON.stringify({ topic })]);
-  await logEvent(db, id, "selected", { headline: topic.title_idea, lane: "longform", theme: topic.theme, criterion: topic.criterion, reason: topic.reason, slot_at: due.toISOString() });
+  await db.query(
+    `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
+    [id, JSON.stringify({ topic })],
+  );
+  await logEvent(db, id, "selected", {
+    headline: topic.title_idea,
+    lane: "longform",
+    theme: topic.theme,
+    criterion: topic.criterion,
+    reason: topic.reason,
+    slot_at: due.toISOString(),
+  });
   log("info", "long-form topic selected", { id, theme: topic.theme });
   return id;
 }
 
 /** Writes the long-form ranking against live Steam facts for each entry, with one rewrite on problems. */
 async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
-  const topic = (ep.factcheck_json as { topic?: import("./editorial/evergreen.ts").EvergreenTopic } | null)?.topic;
+  const topic = (
+    ep.factcheck_json as {
+      topic?: import("./editorial/evergreen.ts").EvergreenTopic;
+    } | null
+  )?.topic;
   if (!topic) throw new FatalError("long-form episode has no topic");
   let facts: Array<{ title: string; facts: SteamFacts }> = [];
   let feedback: string[] = [];
@@ -390,25 +923,118 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
         if (!entry.steam_search_term) continue;
         try {
           const app = await s.findGame(entry.steam_search_term);
-          if (app) facts.push({ title: entry.game_title, facts: await s.gameFacts(app) });
+          if (app)
+            facts.push({
+              title: entry.game_title,
+              facts: await s.gameFacts(app),
+            });
         } catch (err) {
-          log("warn", "long-form steam lookup failed", { game: entry.game_title, error: errorMessage(err) });
+          log("warn", "long-form steam lookup failed", {
+            game: entry.game_title,
+            error: errorMessage(err),
+          });
         }
       }
-      feedback = [...problems, ...(facts.length ? ["Check every year, score and price against the Steam facts now provided and correct any that differ."] : [])];
+      feedback = [
+        ...problems,
+        ...(facts.length
+          ? [
+              "Check every year, score and price against the Steam facts now provided and correct any that differ.",
+            ]
+          : []),
+      ];
       if (!feedback.length) break;
       continue;
     }
-    if (problems.length) await logEvent(s.db, ep.id, "style_warnings", { problems });
+    if (problems.length)
+      await logEvent(s.db, ep.id, "style_warnings", { problems });
   }
   if (!draft) throw new Error("long-form script produced nothing");
   const script = longformToScript(draft);
-  await transition(s.db, ep.id, "selected", "scripted", { script_json: script, factcheck_json: { topic, facts: facts.map((f) => ({ title: f.title, facts: f.facts })) } });
+  await transition(s.db, ep.id, "selected", "scripted", {
+    script_json: script,
+    factcheck_json: {
+      topic,
+      facts: facts.map((f) => ({ title: f.title, facts: f.facts })),
+    },
+  });
+}
+
+/**
+ * Achievement entries come from Steam's numbers, not the writer's memory: an
+ * entry that names no achievement in the data is dropped, the rest take the
+ * data's exact name, percentage and icon, and ranks follow rarity (1 = rarest).
+ */
+export function groundAchievements<
+  T extends {
+    entries: Array<{
+      rank: number;
+      game_title: string;
+      steam_search_term: string;
+      platforms: string;
+      year: number;
+      percent?: number;
+      icon?: string;
+    }>;
+  },
+>(
+  draft: T,
+  data: Array<{
+    name: string;
+    game: string;
+    percent: number;
+    icon?: string;
+    year?: number;
+  }>,
+): T {
+  const norm = (t: string) =>
+    t
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const kept = draft.entries
+    .map((e) => {
+      const d =
+        data.find((x) => norm(x.name) === norm(e.game_title)) ??
+        data.find(
+          (x) =>
+            norm(e.game_title).includes(norm(x.name)) ||
+            norm(x.name).includes(norm(e.game_title)),
+        );
+      return d
+        ? {
+            ...e,
+            game_title: d.name,
+            steam_search_term: d.game,
+            platforms: d.game,
+            year: d.year ?? e.year,
+            percent: d.percent,
+            icon: d.icon,
+          }
+        : undefined;
+    })
+    .filter((e): e is NonNullable<typeof e> => Boolean(e));
+  const unique = kept.filter(
+    (e, i) =>
+      kept.findIndex(
+        (x) =>
+          x.game_title === e.game_title &&
+          x.steam_search_term === e.steam_search_term,
+      ) === i,
+  );
+  unique
+    .sort((a, b) => (a.percent ?? 100) - (b.percent ?? 100))
+    .forEach((e, i) => (e.rank = i + 1));
+  return { ...draft, entries: unique };
 }
 
 /** Writes a ranking Short against live Steam facts for each entry, with one rewrite on problems. */
 async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
-  const topic = (ep.factcheck_json as { topic?: import("./editorial/evergreen.ts").EvergreenTopic } | null)?.topic;
+  const topic = (
+    ep.factcheck_json as {
+      topic?: import("./editorial/evergreen.ts").EvergreenTopic;
+    } | null
+  )?.topic;
   // Weekly formats carry the week's data for the writer.
   const brief = (ep.factcheck_json as { brief?: string } | null)?.brief ?? "";
   if (!topic) throw new FatalError("evergreen episode has no topic");
@@ -425,20 +1051,53 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
         if (!entry.steam_search_term) continue;
         try {
           const app = await s.findGame(entry.steam_search_term);
-          if (app) facts.push({ title: entry.game_title, facts: await s.gameFacts(app) });
+          if (app)
+            facts.push({
+              title: entry.game_title,
+              facts: await s.gameFacts(app),
+            });
         } catch (err) {
-          log("warn", "evergreen steam lookup failed", { game: entry.game_title, error: errorMessage(err) });
+          log("warn", "evergreen steam lookup failed", {
+            game: entry.game_title,
+            error: errorMessage(err),
+          });
         }
       }
-      feedback = [...problems, ...(facts.length ? ["Check every year, score and price against the Steam facts now provided and correct any that differ."] : [])];
+      feedback = [
+        ...problems,
+        ...(facts.length
+          ? [
+              "Check every year, score and price against the Steam facts now provided and correct any that differ.",
+            ]
+          : []),
+      ];
       if (!feedback.length) break;
       continue;
     }
-    if (problems.length) await logEvent(s.db, ep.id, "style_warnings", { problems });
+    if (problems.length)
+      await logEvent(s.db, ep.id, "style_warnings", { problems });
   }
   if (!draft) throw new Error("evergreen script produced nothing");
+  const data = (
+    ep.factcheck_json as {
+      achievements?: Array<{
+        name: string;
+        game: string;
+        percent: number;
+        icon?: string;
+        year?: number;
+      }>;
+    } | null
+  )?.achievements;
+  if (data?.length) draft = groundAchievements(draft, data);
   const script = evergreenToScript(draft);
-  await transition(s.db, ep.id, "selected", "scripted", { script_json: script, factcheck_json: { topic, facts: facts.map((f) => ({ title: f.title, facts: f.facts })) } });
+  await transition(s.db, ep.id, "selected", "scripted", {
+    script_json: script,
+    factcheck_json: {
+      topic,
+      facts: facts.map((f) => ({ title: f.title, facts: f.facts })),
+    },
+  });
 }
 
 // --------------------------------------------------------------------- steps
@@ -447,8 +1106,16 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   if (ep.lane === "evergreen") return stepScriptEvergreen(s, ep);
   if (ep.lane === "longform") return stepScriptLongform(s, ep);
   const cluster = ep.story_json;
-  const items = [...cluster.items].sort((a, b) => (a.sourceKind === "official" ? -1 : 1) - (b.sourceKind === "official" ? -1 : 1)).slice(0, 4);
-  const articles = (await Promise.all(items.map((i) => s.fetchArticle(i.url)))).filter((a): a is ArticleText => Boolean(a));
+  const items = [...cluster.items]
+    .sort(
+      (a, b) =>
+        (a.sourceKind === "official" ? -1 : 1) -
+        (b.sourceKind === "official" ? -1 : 1),
+    )
+    .slice(0, 4);
+  const articles = (
+    await Promise.all(items.map((i) => s.fetchArticle(i.url)))
+  ).filter((a): a is ArticleText => Boolean(a));
   const mustLabelRumour = !cluster.corroborated;
 
   // Live Steam numbers give the take something the headline doesn't have.
@@ -456,9 +1123,17 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   if (cluster.gameHint) {
     try {
       const app = await s.findGame(cluster.gameHint);
-      if (app) steam = { appId: app.appId, name: app.name, facts: await s.gameFacts(app) };
+      if (app)
+        steam = {
+          appId: app.appId,
+          name: app.name,
+          facts: await s.gameFacts(app),
+        };
     } catch (err) {
-      log("warn", "steam lookup failed", { game: cluster.gameHint, error: errorMessage(err) });
+      log("warn", "steam lookup failed", {
+        game: cluster.gameHint,
+        error: errorMessage(err),
+      });
     }
   }
   const storeData = steam ? factsText(steam.facts) : undefined;
@@ -468,18 +1143,59 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   let check;
   // Draft, check house rules, fact-check; one rewrite with the problems fed back.
   for (let attempt = 0; attempt < 2; attempt++) {
-    script = await writeScript(s.llm, cluster, articles, { mustLabelRumour, feedback, storeData });
+    script = await writeScript(s.llm, cluster, articles, {
+      mustLabelRumour,
+      feedback,
+      storeData,
+    });
     const problems = validateScript(script);
     check = await factCheck(s.llm, script, cluster, articles, storeData);
-    const blockers = check.issues.filter((i) => i.severity === "blocker").map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
-    if (check.verdict === "pass" && check.rumour_labelling_ok && blockers.length === 0 && problems.length === 0) break;
-    feedback = [...blockers, ...problems, ...(check.rumour_labelling_ok ? [] : ["Rumour labelling is inadequate."])];
+    const blockers = check.issues
+      .filter((i) => i.severity === "blocker")
+      .map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
+    if (
+      check.verdict === "pass" &&
+      check.rumour_labelling_ok &&
+      blockers.length === 0 &&
+      problems.length === 0
+    )
+      break;
+    feedback = [
+      ...blockers,
+      ...problems,
+      ...(check.rumour_labelling_ok ? [] : ["Rumour labelling is inadequate."]),
+    ];
     if (attempt === 1) {
       // House-style misses alone are accepted with a warning; facts are not.
-      if (check.verdict === "fail" || blockers.length > 0 || !check.rumour_labelling_ok) {
-        await markSeen(s.db, cluster.hash, cluster.headline, "rejected", "failed fact-check");
-        await transition(s.db, ep.id, "selected", "rejected", { script_json: script, factcheck_json: check, last_error: feedback.join(" | ") });
-        await s.notify({ embeds: [{ title: `🛑 Dropped: ${cluster.headline}`, description: `Failed fact-check twice.\n${feedback.slice(0, 6).map((f) => `• ${f}`).join("\n")}`, color: COLOURS.warn }] });
+      if (
+        check.verdict === "fail" ||
+        blockers.length > 0 ||
+        !check.rumour_labelling_ok
+      ) {
+        await markSeen(
+          s.db,
+          cluster.hash,
+          cluster.headline,
+          "rejected",
+          "failed fact-check",
+        );
+        await transition(s.db, ep.id, "selected", "rejected", {
+          script_json: script,
+          factcheck_json: check,
+          last_error: feedback.join(" | "),
+        });
+        await s.notify({
+          embeds: [
+            {
+              title: `🛑 Dropped: ${cluster.headline}`,
+              description: `Failed fact-check twice.\n${feedback
+                .slice(0, 6)
+                .map((f) => `• ${f}`)
+                .join("\n")}`,
+              color: COLOURS.warn,
+            },
+          ],
+        });
         return;
       }
       await logEvent(s.db, ep.id, "style_warnings", { problems });
@@ -487,80 +1203,251 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   }
   if (!script || !check) throw new Error("script step produced nothing");
   if ((script.is_rumour || mustLabelRumour) && !s.cfg.includeRumours) {
-    await markSeen(s.db, cluster.hash, cluster.headline, "rejected", "rumour while INCLUDE_RUMOURS=false");
-    await transition(s.db, ep.id, "selected", "rejected", { script_json: script, factcheck_json: check, last_error: "rumour story; rumours are disabled" });
+    await markSeen(
+      s.db,
+      cluster.hash,
+      cluster.headline,
+      "rejected",
+      "rumour while INCLUDE_RUMOURS=false",
+    );
+    await transition(s.db, ep.id, "selected", "rejected", {
+      script_json: script,
+      factcheck_json: check,
+      last_error: "rumour story; rumours are disabled",
+    });
     return;
   }
-  await transition(s.db, ep.id, "selected", "scripted", { script_json: script, factcheck_json: check, assets_json: steam ? { steam } : null });
+  await transition(s.db, ep.id, "selected", "scripted", {
+    script_json: script,
+    factcheck_json: check,
+    assets_json: steam ? { steam } : null,
+  });
 }
 
 async function stepVoice(s: Services, ep: Episode): Promise<void> {
   const dir = episodeDir(s.cfg, ep.id);
   await fs.mkdir(dir, { recursive: true });
   // Voice rotation: the n-th Short the channel has made picks the n-th voice of the pool, so a few Shorts in a row share a voice and the analytics can say which one sticks.
-  const [ord] = await s.db.query<{ n: string | number }>(`SELECT count(*) AS n FROM episodes WHERE created_at < $1 AND status NOT IN ('failed','rejected')`, [ep.created_at]);
+  const [ord] = await s.db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM episodes WHERE created_at < $1 AND status NOT IN ('failed','rejected')`,
+    [ep.created_at],
+  );
   const voice = pickVoice(s.cfg, Number(ord?.n ?? 0));
-  const narration = await s.synthesise(narrationOf(ep.script_json!), path.join(dir, "voice.mp3"), voice);
-  await logEvent(s.db, ep.id, "voice", { provider: narration.voice?.provider ?? "unknown", id: narration.voice?.id, name: narration.voice?.name });
-  const maxSeconds = ep.lane === "evergreen" ? s.cfg.evergreenMaxSeconds : ep.lane === "longform" ? s.cfg.longformMaxSeconds : 58;
-  if (narration.durationSeconds > maxSeconds) throw new FatalError(`narration is ${narration.durationSeconds.toFixed(1)}s, over the ${maxSeconds}s cap for the ${ep.lane} lane`);
-  await fs.writeFile(path.join(dir, "captions.srt"), srtFromWords(narration.words), "utf8");
-  const assets: EpisodeAssets = { ...(ep.assets_json ?? {}), audio: "voice.mp3", words: narration.words, durationSeconds: narration.durationSeconds, srt: "captions.srt", voice: narration.voice };
+  const narration = await s.synthesise(
+    narrationOf(ep.script_json!),
+    path.join(dir, "voice.mp3"),
+    voice,
+  );
+  await logEvent(s.db, ep.id, "voice", {
+    provider: narration.voice?.provider ?? "unknown",
+    id: narration.voice?.id,
+    name: narration.voice?.name,
+  });
+  const maxSeconds =
+    ep.lane === "evergreen"
+      ? s.cfg.evergreenMaxSeconds
+      : ep.lane === "longform"
+        ? s.cfg.longformMaxSeconds
+        : 58;
+  if (narration.durationSeconds > maxSeconds)
+    throw new FatalError(
+      `narration is ${narration.durationSeconds.toFixed(1)}s, over the ${maxSeconds}s cap for the ${ep.lane} lane`,
+    );
+  await fs.writeFile(
+    path.join(dir, "captions.srt"),
+    srtFromWords(narration.words),
+    "utf8",
+  );
+  const assets: EpisodeAssets = {
+    ...(ep.assets_json ?? {}),
+    audio: "voice.mp3",
+    words: narration.words,
+    durationSeconds: narration.durationSeconds,
+    srt: "captions.srt",
+    voice: narration.voice,
+  };
   await transition(s.db, ep.id, "scripted", "voiced", { assets_json: assets });
 }
 
-async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<EpisodeAssets, "images" | "clips" | "officialTrailer">> {
+async function gatherMedia(
+  s: Services,
+  ep: Episode,
+  dir: string,
+): Promise<Pick<EpisodeAssets, "images" | "clips" | "officialTrailer">> {
   const script = ep.script_json!;
   // Prefer the exact store name resolved at script time so art and clips come from the same app as the facts.
-  const term = ep.assets_json?.steam?.name || script.steam_search_term || script.game_title || ep.story_json.gameHint || "";
+  const term =
+    ep.assets_json?.steam?.name ||
+    script.steam_search_term ||
+    script.game_title ||
+    ep.story_json.gameHint ||
+    "";
   const app = term ? await s.findGame(term).catch(() => undefined) : undefined;
-  const art = app ? await s.fetchArt(app, dir).catch(() => [] as VisualAsset[]) : [];
+  const art = app
+    ? await s.fetchArt(app, dir).catch(() => [] as VisualAsset[])
+    : [];
   // Official trailer B-roll: short muted clips, at most MAX_TRAILER_CLIPS.
   // Beat-matched trailer moments: the hook and each beat ask for what they name.
   // A ranking Short's entries bring their own moments; the topic's page supplies only the hook moment.
   const ranking = Boolean(script.entries?.length);
-  const topicTargets = ranking ? targetsFor(script).filter((t) => t.key === "hook") : targetsFor(script);
-  const clipAssets = app && s.cfg.footage && s.cfg.maxClips > 0 && topicTargets.length ? await s.fetchClips(app, dir, topicTargets, ranking ? 1 : s.cfg.maxClips).catch((err) => { log("warn", "trailer clips failed", { episode: ep.id, error: errorMessage(err) }); return [] as VisualAsset[]; }) : [];
+  const topicTargets = ranking
+    ? targetsFor(script).filter((t) => t.key === "hook")
+    : targetsFor(script);
+  const clipAssets =
+    app && s.cfg.footage && s.cfg.maxClips > 0 && topicTargets.length
+      ? await s
+          .fetchClips(app, dir, topicTargets, ranking ? 1 : s.cfg.maxClips)
+          .catch((err) => {
+            log("warn", "trailer clips failed", {
+              episode: ep.id,
+              error: errorMessage(err),
+            });
+            return [] as VisualAsset[];
+          })
+      : [];
   // Per-publisher footage budget (Rockstar: about 6 s per Short). Clips beyond it are dropped, in order.
   const narrationSeconds = ep.assets_json?.durationSeconds ?? 45;
   // Not on Steam (GTA VI, Nintendo titles): the publisher's own YouTube trailer stands in, under that publisher's cap.
   // A picture story: the publisher's own video of it comes first, whether or not the game is on Steam.
   const pictureStory = ep.story_json.visualNeed === "real_world_images";
-  const storyAfter = new Date(new Date(ep.story_json.newestAt ?? s.now().toISOString()).getTime() - 7 * 86_400_000);
-  const official: OfficialMedia = (pictureStory || !app) && s.cfg.footage && script.game_title
-    ? await s.fetchOfficialMedia(script.game_title, dir, topicTargets, ranking ? 1 : s.cfg.maxClips, "", pictureStory ? { text: `${ep.story_json.headline} ${script.headline}`, after: storyAfter } : undefined).catch((err) => { log("warn", "official trailer media failed", { episode: ep.id, error: errorMessage(err) }); return { clips: [], stills: [] } as OfficialMedia; })
-    : { clips: [], stills: [] };
-  if (official.trailer) await logEvent(s.db, ep.id, "official_trailer", { videoId: official.trailer.videoId, publisher: official.trailer.publisher, title: official.trailer.title, clips: official.clips.length, still: official.stills.length > 0 });
-  const steamBudget = app ? footageBudgetSeconds(app) : official.trailer?.clipSeconds ?? 0;
+  const storyAfter = new Date(
+    new Date(ep.story_json.newestAt ?? s.now().toISOString()).getTime() -
+      7 * 86_400_000,
+  );
+  const official: OfficialMedia =
+    (pictureStory || !app) && s.cfg.footage && script.game_title
+      ? await s
+          .fetchOfficialMedia(
+            script.game_title,
+            dir,
+            topicTargets,
+            ranking ? 1 : s.cfg.maxClips,
+            "",
+            pictureStory
+              ? {
+                  text: `${ep.story_json.headline} ${script.headline}`,
+                  after: storyAfter,
+                }
+              : undefined,
+          )
+          .catch((err) => {
+            log("warn", "official trailer media failed", {
+              episode: ep.id,
+              error: errorMessage(err),
+            });
+            return { clips: [], stills: [] } as OfficialMedia;
+          })
+      : { clips: [], stills: [] };
+  if (official.trailer)
+    await logEvent(s.db, ep.id, "official_trailer", {
+      videoId: official.trailer.videoId,
+      publisher: official.trailer.publisher,
+      title: official.trailer.title,
+      clips: official.clips.length,
+      still: official.stills.length > 0,
+    });
+  const steamBudget = app
+    ? footageBudgetSeconds(app)
+    : (official.trailer?.clipSeconds ?? 0);
   const budget = Math.min(steamBudget, Math.max(10, narrationSeconds * 0.4));
-  const clips: NonNullable<EpisodeAssets["clips"]> = capFootage(official.storyVideo || !app ? official.clips : clipAssets, budget).map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds, stock: c.stock }));
+  const clips: NonNullable<EpisodeAssets["clips"]> = capFootage(
+    official.storyVideo || !app ? official.clips : clipAssets,
+    budget,
+  ).map((c) => ({
+    file: c.file,
+    sourceUrl: c.sourceUrl,
+    provenance: c.provenance,
+    durationSeconds: c.durationSeconds ?? 3.4,
+    beatIndex: c.beatIndex,
+    role: c.role,
+    motion: c.motion,
+    luma: c.luma,
+    label: c.label,
+    reason: c.reason,
+    startSeconds: c.startSeconds,
+    stock: c.stock,
+  }));
   // Licensed stock for the real-world lines of a picture story that has no publisher video of it.
   if (pictureStory && !official.storyVideo) {
     // Every fact line can carry an illustrative shot: quiet lines show it in the framed panel under their card.
-    const realLines = targetsFor(script).filter((t) => t.key.startsWith("beat:"));
-    const stock = await s.fetchStock(dir, realLines, script.game_title.split(/\s+/), Math.min(3, realLines.length)).catch((err) => {
-      log("warn", "stock footage failed", { episode: ep.id, error: errorMessage(err) });
-      return [] as VisualAsset[];
-    });
-    for (const c of stock) clips.push({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 4, beatIndex: c.beatIndex, role: undefined, motion: 0.5, luma: undefined, label: c.label, reason: c.reason, startSeconds: 0, stock: true });
+    const realLines = targetsFor(script).filter((t) =>
+      t.key.startsWith("beat:"),
+    );
+    const stock = await s
+      .fetchStock(
+        dir,
+        realLines,
+        script.game_title.split(/\s+/),
+        Math.min(3, realLines.length),
+      )
+      .catch((err) => {
+        log("warn", "stock footage failed", {
+          episode: ep.id,
+          error: errorMessage(err),
+        });
+        return [] as VisualAsset[];
+      });
+    for (const c of stock)
+      clips.push({
+        file: c.file,
+        sourceUrl: c.sourceUrl,
+        provenance: c.provenance,
+        durationSeconds: c.durationSeconds ?? 4,
+        beatIndex: c.beatIndex,
+        role: undefined,
+        motion: 0.5,
+        luma: undefined,
+        label: c.label,
+        reason: c.reason,
+        startSeconds: 0,
+        stock: true,
+      });
   }
-  if (clips.length < clipAssets.length) log("info", "footage capped", { episode: ep.id, budgetSeconds: budget, dropped: clipAssets.length - clips.length });
+  if (clips.length < clipAssets.length)
+    log("info", "footage capped", {
+      episode: ep.id,
+      budgetSeconds: budget,
+      dropped: clipAssets.length - clips.length,
+    });
   // In a ranking, the topic page's screenshots would land under the wrong entry: keep its hero and header only.
-  const images = [...art.filter((a) => a.kind !== "logo" && (!ranking || a.kind === "hero" || a.kind === "header")), ...official.stills];
+  const images = [
+    ...art.filter(
+      (a) =>
+        a.kind !== "logo" &&
+        (!ranking || a.kind === "hero" || a.kind === "header"),
+    ),
+    ...official.stills,
+  ];
   // First-party newsroom images (PlayStation Blog, Xbox Wire) are press
   // material meant for coverage. Outlet images are never used.
   {
-    const official = ep.story_json.items.filter((i) => i.sourceKind === "official");
+    const official = ep.story_json.items.filter(
+      (i) => i.sourceKind === "official",
+    );
     let k = 0;
     for (const item of official) {
       // A newsroom post's whole gallery (Rockstar Newswire), else its one share image.
-      const article = item.imageUrl && !/rockstargames\.com/.test(item.url) ? undefined : await s.fetchArticle(item.url);
-      const urls = [...new Set([item.imageUrl, ...(article?.images ?? []), article?.ogImage].filter((u): u is string => Boolean(u)))].slice(0, 6);
+      const article =
+        item.imageUrl && !/rockstargames\.com/.test(item.url)
+          ? undefined
+          : await s.fetchArticle(item.url);
+      const urls = [
+        ...new Set(
+          [item.imageUrl, ...(article?.images ?? []), article?.ogImage].filter(
+            (u): u is string => Boolean(u),
+          ),
+        ),
+      ].slice(0, 6);
       for (const og of urls) {
         const file = path.join("assets", `official_${k}.jpg`);
         await fs.mkdir(path.join(dir, "assets"), { recursive: true });
         if (await s.downloadImage(og, path.join(dir, file))) {
-          images.push({ kind: "article", file, sourceUrl: og, provenance: `Official press image from ${item.source} (${item.url})` });
+          images.push({
+            kind: "article",
+            file,
+            sourceUrl: og,
+            provenance: `Official press image from ${item.source} (${item.url})`,
+          });
           k++;
         }
       }
@@ -570,48 +1457,180 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
   if (script.entries?.length) {
     const sorted = [...script.entries].sort((a, b) => b.rank - a.rank);
     for (const [beatIndex, entry] of sorted.entries()) {
+      // An achievement's own icon is its card's box art (Steam community assets, official).
+      if (entry.icon) {
+        const file = path.join(
+          `entry_${beatIndex}`,
+          "assets",
+          "achievement_icon.jpg",
+        );
+        await fs.mkdir(path.join(dir, `entry_${beatIndex}`, "assets"), {
+          recursive: true,
+        });
+        if (
+          await s
+            .downloadImage(entry.icon, path.join(dir, file))
+            .catch(() => false)
+        )
+          images.push({
+            kind: "capsule",
+            file,
+            sourceUrl: entry.icon,
+            provenance: `Steam achievement icon for "${entry.game_title}" (${entry.platforms})`,
+            beatIndex,
+          });
+      }
       try {
         // An empty Steam term means the writer knows the game is not on Steam: straight to the publisher's trailer.
-        const eapp = entry.steam_search_term ? await s.findGame(entry.steam_search_term) : undefined;
+        const eapp = entry.steam_search_term
+          ? await s.findGame(entry.steam_search_term)
+          : undefined;
         if (!eapp) {
           if (!s.cfg.footage) continue;
           const want = script.beats[beatIndex]?.footage;
           const edir = path.join(dir, `entry_${beatIndex}`);
-          const om = await s.fetchOfficialMedia(entry.game_title, edir, [{ key: `beat:${beatIndex}`, text: entry.game_title, want: want?.want ?? "gameplay", energy: "medium", keywords: want?.keywords ?? [entry.game_title] }], 1, entry.year ? String(entry.year) : "");
-          for (const a of om.stills) images.push({ ...a, file: path.join(`entry_${beatIndex}`, a.file), beatIndex });
-          for (const c of capFootage(om.clips, om.trailer?.clipSeconds ?? 0)) clips.push({ file: path.join(`entry_${beatIndex}`, c.file), sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: Math.min(c.durationSeconds ?? 4, 4), beatIndex, role: undefined, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds });
+          const om = await s.fetchOfficialMedia(
+            entry.game_title,
+            edir,
+            [
+              {
+                key: `beat:${beatIndex}`,
+                text: entry.game_title,
+                want: want?.want ?? "gameplay",
+                energy: "medium",
+                keywords: want?.keywords ?? [entry.game_title],
+              },
+            ],
+            1,
+            entry.year ? String(entry.year) : "",
+          );
+          for (const a of om.stills)
+            images.push({
+              ...a,
+              file: path.join(`entry_${beatIndex}`, a.file),
+              beatIndex,
+            });
+          for (const c of capFootage(om.clips, om.trailer?.clipSeconds ?? 0))
+            clips.push({
+              file: path.join(`entry_${beatIndex}`, c.file),
+              sourceUrl: c.sourceUrl,
+              provenance: c.provenance,
+              durationSeconds: Math.min(c.durationSeconds ?? 4, 4),
+              beatIndex,
+              role: undefined,
+              motion: c.motion,
+              luma: c.luma,
+              label: c.label,
+              reason: c.reason,
+              startSeconds: c.startSeconds,
+            });
           continue;
         }
-        const art = (await s.fetchArt(eapp, path.join(dir, `entry_${beatIndex}`))).filter((a) => a.kind === "capsule" || a.kind === "hero");
-        for (const a of art) images.push({ ...a, file: path.join(`entry_${beatIndex}`, a.file), beatIndex });
+        const art = (
+          await s.fetchArt(eapp, path.join(dir, `entry_${beatIndex}`))
+        ).filter(
+          (a) => (a.kind === "capsule" && !entry.icon) || a.kind === "hero",
+        );
+        for (const a of art)
+          images.push({
+            ...a,
+            file: path.join(`entry_${beatIndex}`, a.file),
+            beatIndex,
+          });
         const want = script.beats[beatIndex]?.footage;
         const long = ep.lane === "longform";
         const perEntry = long ? Math.max(1, s.cfg.longformClipsPerEntry) : 1;
-        const entryTargets: FootageTarget[] = [{ key: `beat:${beatIndex}`, text: entry.game_title, want: want?.want ?? "gameplay", energy: "medium", keywords: want?.keywords ?? [entry.game_title] }];
+        const entryTargets: FootageTarget[] = [
+          {
+            key: `beat:${beatIndex}`,
+            text: entry.game_title,
+            want: want?.want ?? "gameplay",
+            energy: "medium",
+            keywords: want?.keywords ?? [entry.game_title],
+          },
+        ];
         // A long entry runs 30-45 s: a second, different moment keeps it moving.
-        if (perEntry > 1) entryTargets.push({ key: `beat:${beatIndex}#2`, text: `${entry.game_title}, a different moment`, want: want?.want === "gameplay" ? "cinematic" : "gameplay", energy: "medium", keywords: [entry.game_title, "gameplay"] });
-        const got = await s.fetchClips(eapp, path.join(dir, `entry_${beatIndex}`), entryTargets, perEntry);
-        for (const c of got) clips.push({ file: path.join(`entry_${beatIndex}`, c.file), sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: Math.min(c.durationSeconds ?? 4, long ? 4.8 : 4), beatIndex, role: undefined, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds });
+        if (perEntry > 1)
+          entryTargets.push({
+            key: `beat:${beatIndex}#2`,
+            text: `${entry.game_title}, a different moment`,
+            want: want?.want === "gameplay" ? "cinematic" : "gameplay",
+            energy: "medium",
+            keywords: [entry.game_title, "gameplay"],
+          });
+        const got = await s.fetchClips(
+          eapp,
+          path.join(dir, `entry_${beatIndex}`),
+          entryTargets,
+          perEntry,
+        );
+        for (const c of got)
+          clips.push({
+            file: path.join(`entry_${beatIndex}`, c.file),
+            sourceUrl: c.sourceUrl,
+            provenance: c.provenance,
+            durationSeconds: Math.min(c.durationSeconds ?? 4, long ? 4.8 : 4),
+            beatIndex,
+            role: undefined,
+            motion: c.motion,
+            luma: c.luma,
+            label: c.label,
+            reason: c.reason,
+            startSeconds: c.startSeconds,
+          });
       } catch (err) {
-        log("warn", "entry media failed", { game: entry.game_title, error: errorMessage(err) });
+        log("warn", "entry media failed", {
+          game: entry.game_title,
+          error: errorMessage(err),
+        });
       }
     }
   }
   const out: NonNullable<EpisodeAssets["images"]> = [];
   for (const a of images) {
-    out.push({ file: a.file, kind: a.kind, sourceUrl: a.sourceUrl, provenance: a.provenance, aspect: await s.imageAspect(path.join(dir, a.file)), beatIndex: a.beatIndex });
+    out.push({
+      file: a.file,
+      kind: a.kind,
+      sourceUrl: a.sourceUrl,
+      provenance: a.provenance,
+      aspect: await s.imageAspect(path.join(dir, a.file)),
+      beatIndex: a.beatIndex,
+    });
   }
   // Lead with the most cinematic art; screenshots fill the middle.
-  const rank: Record<string, number> = { hero: 0, article: 1, capsule: 2, screenshot: 3, header: 4 };
-  return { images: out.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)), clips, officialTrailer: official.trailer };
+  const rank: Record<string, number> = {
+    hero: 0,
+    article: 1,
+    capsule: 2,
+    screenshot: 3,
+    header: 4,
+  };
+  return {
+    images: out.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)),
+    clips,
+    officialTrailer: official.trailer,
+  };
 }
 
 export function segmentInputs(script: Script): SegmentInput[] {
   return [
     // The same speakable text the voice was given, so segment timings line up word for word.
     { kind: "hook", text: speakable(script.hook) },
-    ...script.beats.map((b) => ({ kind: "beat" as const, text: speakable(b.narration), visual: b.visual })),
-    { kind: "take", text: speakable(script.pulse_take.narration), label: script.pulse_take.label, visual: { kind: "title" as const, primary: script.pulse_take.on_screen, secondary: "" } },
+    ...script.beats.map((b) => ({
+      kind: "beat" as const,
+      text: speakable(b.narration),
+      visual: b.visual,
+    })),
+    {
+      kind: "take",
+      text: speakable(script.pulse_take.narration),
+      label: script.pulse_take.label,
+      visual: {
+        kind: "title" as const,
+        primary: script.pulse_take.on_screen,
+        secondary: "",
+      },
+    },
     { kind: "loop", text: speakable(script.loop_line) },
   ];
 }
@@ -619,17 +1638,31 @@ export function segmentInputs(script: Script): SegmentInput[] {
 /** Words the captions keep lit after they are spoken: the game title and the on-screen card text. */
 export function emphasisWords(script: Script): string[] {
   const out = new Set<string>();
-  const add = (t: string) => { for (const w of t.toLowerCase().split(/[^a-z0-9£$%']+/)) if (w.length > 2) out.add(w); };
+  const add = (t: string) => {
+    for (const w of t.toLowerCase().split(/[^a-z0-9£$%']+/))
+      if (w.length > 2) out.add(w);
+  };
   add(script.game_title);
-  for (const b of script.beats) if (b.visual && b.visual.kind !== "none") add(b.visual.primary);
+  for (const b of script.beats)
+    if (b.visual && b.visual.kind !== "none") add(b.visual.primary);
   return [...out];
 }
 
 /** One live number for the end of the take, if Steam has a good one. */
-export function steamStat(f?: SteamFacts): { value: string; label: string } | null {
+export function steamStat(
+  f?: SteamFacts,
+): { value: string; label: string } | null {
   if (!f) return null;
-  if (f.currentPlayers && f.currentPlayers >= 1000) return { value: f.currentPlayers.toLocaleString("en-US"), label: "playing on Steam right now" };
-  if (f.positivePercent !== undefined && (f.totalReviews ?? 0) >= 500) return { value: `${f.positivePercent}%`, label: `positive Steam reviews (${f.reviewSummary})` };
+  if (f.currentPlayers && f.currentPlayers >= 1000)
+    return {
+      value: f.currentPlayers.toLocaleString("en-US"),
+      label: "playing on Steam right now",
+    };
+  if (f.positivePercent !== undefined && (f.totalReviews ?? 0) >= 500)
+    return {
+      value: `${f.positivePercent}%`,
+      label: `positive Steam reviews (${f.reviewSummary})`,
+    };
   return null;
 }
 
@@ -644,18 +1677,53 @@ export const MEDIA_FLOOR = 2;
  * A Short with nothing real to show (only the brand plate) is not published:
  * the story is dropped, its slot freed for the next story, and Discord told.
  */
-async function belowMediaFloor(s: Services, ep: Episode, assets: EpisodeAssets): Promise<boolean> {
+async function belowMediaFloor(
+  s: Services,
+  ep: Episode,
+  assets: EpisodeAssets,
+): Promise<boolean> {
   const count = (assets.images?.length ?? 0) + (assets.clips?.length ?? 0);
   // A picture story needs pictures of the story: the publisher's video of it, or illustrative stock for its lines.
   const pictureStory = ep.story_json.visualNeed === "real_world_images";
-  const storyPictures = (assets.clips ?? []).filter((c) => c.stock).length + (assets.officialTrailer && pictureStory && (assets.clips ?? []).some((c) => !c.stock && /YouTube channel/.test(c.provenance)) ? 2 : 0);
-  if (count >= MEDIA_FLOOR && (!pictureStory || storyPictures >= 2)) return false;
+  const storyPictures =
+    (assets.clips ?? []).filter((c) => c.stock).length +
+    (assets.officialTrailer &&
+    pictureStory &&
+    (assets.clips ?? []).some(
+      (c) => !c.stock && /YouTube channel/.test(c.provenance),
+    )
+      ? 2
+      : 0);
+  if (count >= MEDIA_FLOOR && (!pictureStory || storyPictures >= 2))
+    return false;
   const headline = ep.story_json.headline;
-  await markSeen(s.db, ep.story_hash, headline, "rejected", `only ${count} pictures to show`);
-  await transition(s.db, ep.id, "voiced", "rejected", { last_error: pictureStory ? `picture story with nothing safe to show: no publisher video of it and ${storyPictures} stock clips` : `nothing worth showing: ${count} official images or clips (need ${MEDIA_FLOOR})` });
+  await markSeen(
+    s.db,
+    ep.story_hash,
+    headline,
+    "rejected",
+    `only ${count} pictures to show`,
+  );
+  await transition(s.db, ep.id, "voiced", "rejected", {
+    last_error: pictureStory
+      ? `picture story with nothing safe to show: no publisher video of it and ${storyPictures} stock clips`
+      : `nothing worth showing: ${count} official images or clips (need ${MEDIA_FLOOR})`,
+  });
   await logEvent(s.db, ep.id, "media_floor", { count, floor: MEDIA_FLOOR });
-  log("warn", "story dropped: not enough pictures", { episode: ep.id, headline, count });
-  await s.notify({ embeds: [{ title: `🛑 Dropped: ${headline}`, description: `Only ${count} official image or clip to show, so it would have run on a blank background. The slot goes to the next story.`, color: COLOURS.warn }] });
+  log("warn", "story dropped: not enough pictures", {
+    episode: ep.id,
+    headline,
+    count,
+  });
+  await s.notify({
+    embeds: [
+      {
+        title: `🛑 Dropped: ${headline}`,
+        description: `Only ${count} official image or clip to show, so it would have run on a blank background. The slot goes to the next story.`,
+        color: COLOURS.warn,
+      },
+    ],
+  });
   return true;
 }
 
@@ -666,22 +1734,61 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const assets = { ...(ep.assets_json ?? {}) };
   if (!assets.images) {
     Object.assign(assets, await gatherMedia(s, ep, dir));
-    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(assets),
+    ]);
   }
   const duration = (assets.durationSeconds ?? 300) + LONG_TAIL_SECONDS;
   const words = assets.words ?? [];
   const segments = buildSegments(segmentInputs(script), words, duration);
   const variant = variantOf(ep.id);
   const musicFile = s.cfg.musicBed ? `music_${variant + 1}.mp3` : null;
-  const images = (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex }));
-  const clips = (assets.clips ?? []).map((c) => ({ file: c.file, durationSeconds: c.durationSeconds, beatIndex: c.beatIndex, role: c.role }));
-  const plan = assets.longPlan ?? buildLongPlan({ segments, words, durationSeconds: duration, images: images.map((i) => ({ kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex })), clips: clips.map((c) => ({ durationSeconds: c.durationSeconds, beatIndex: c.beatIndex, role: c.role })), variant });
+  const images = (assets.images ?? []).map((i) => ({
+    file: i.file,
+    kind: i.kind,
+    aspect: i.aspect,
+    beatIndex: i.beatIndex,
+  }));
+  const clips = (assets.clips ?? []).map((c) => ({
+    file: c.file,
+    durationSeconds: c.durationSeconds,
+    beatIndex: c.beatIndex,
+    role: c.role,
+  }));
+  const plan =
+    assets.longPlan ??
+    buildLongPlan({
+      segments,
+      words,
+      durationSeconds: duration,
+      images: images.map((i) => ({
+        kind: i.kind,
+        aspect: i.aspect,
+        beatIndex: i.beatIndex,
+      })),
+      clips: clips.map((c) => ({
+        durationSeconds: c.durationSeconds,
+        beatIndex: c.beatIndex,
+        role: c.role,
+      })),
+      variant,
+    });
   assets.longPlan = plan;
-  await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
-  const footageCredit = clips.length ? "FOOTAGE: OFFICIAL TRAILERS · STEAM" : "";
+  await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+    ep.id,
+    JSON.stringify(assets),
+  ]);
+  const footageCredit = clips.length
+    ? "FOOTAGE: OFFICIAL TRAILERS · STEAM"
+    : "";
   // The thumbnail: the winner's widest art, else the topic's.
   const winnerBeat = (script.entries?.length ?? 0) - 1;
-  const thumbArt = images.find((i) => i.beatIndex === winnerBeat && i.kind === "hero") ?? images.find((i) => i.beatIndex === winnerBeat && i.aspect >= 1.2) ?? images.find((i) => i.beatIndex === undefined && i.aspect >= 1.2) ?? images[0];
+  const thumbArt =
+    images.find((i) => i.beatIndex === winnerBeat && i.kind === "hero") ??
+    images.find((i) => i.beatIndex === winnerBeat && i.aspect >= 1.2) ??
+    images.find((i) => i.beatIndex === undefined && i.aspect >= 1.2) ??
+    images[0];
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   await s.renderLong({
@@ -689,7 +1796,15 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
     thumbFile: path.join(dir, "thumb.jpg"),
-    thumb: { headline: thumbTitle(script), kicker: "RANKED", game: script.criterion ? `By ${script.criterion}`.slice(0, 48) : script.game_title, accent: "#FF6B1A", imageFile: thumbArt?.file ?? null },
+    thumb: {
+      headline: thumbTitle(script),
+      kicker: "RANKED",
+      game: script.criterion
+        ? `By ${script.criterion}`.slice(0, 48)
+        : script.game_title,
+      accent: "#FF6B1A",
+      imageFile: thumbArt?.file ?? null,
+    },
     concurrency: s.cfg.remotionConcurrency,
     gl: s.cfg.remotionGl,
     browserExecutable: s.cfg.browserExecutable,
@@ -713,31 +1828,74 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   });
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
-  const tech = await s.technicalQa(final, duration, { minSeconds: 180, maxSeconds: 720, width: 1920, height: 1080 });
+  const tech = await s.technicalQa(final, duration, {
+    minSeconds: 180,
+    maxSeconds: 720,
+    width: 1920,
+    height: 1080,
+  });
   let vision: VisionQa | undefined;
   let times: number[] = [];
   if (tech.ok && s.cfg.visionQa) {
-    const marks = segments.map((g) => g.start + 2).filter((t) => t > 1 && t < duration - 2);
+    const marks = segments
+      .map((g) => g.start + 2)
+      .filter((t) => t > 1 && t < duration - 2);
     const step = Math.max(1, Math.ceil(marks.length / 6));
-    times = [1.5, ...marks.filter((_, i) => i % step === 0), duration - 2].slice(0, 8);
+    times = [
+      1.5,
+      ...marks.filter((_, i) => i % step === 0),
+      duration - 2,
+    ].slice(0, 8);
     await fs.rm(path.join(dir, "qa"), { recursive: true, force: true });
     const frames = await s.extractFrames(final, path.join(dir, "qa"), times);
-    vision = await s.visionQa(frames, { headline: script.headline, gameTitle: script.game_title, format: "long" });
+    vision = await s.visionQa(frames, {
+      headline: script.headline,
+      gameTitle: script.game_title,
+      format: "long",
+    });
   }
-  const qa = { technical: tech, vision: vision ?? null, rubric: null, checked_at: s.now().toISOString() };
-  const visionProblems = vision?.verdict === "fail" ? (vision.problems.length ? vision.problems : [`vision QA failed: ${vision.notes || "no reason given"}`]) : [];
+  const qa = {
+    technical: tech,
+    vision: vision ?? null,
+    rubric: null,
+    checked_at: s.now().toISOString(),
+  };
+  const visionProblems =
+    vision?.verdict === "fail"
+      ? vision.problems.length
+        ? vision.problems
+        : [`vision QA failed: ${vision.notes || "no reason given"}`]
+      : [];
   const problems = [...tech.problems, ...visionProblems];
   if (problems.length > 0) {
     const { longPlan: _dropped, ...withoutPlan } = assets;
-    const dropped = dropOffending(withoutPlan, offendingMedia(visionProblems, times, plan));
+    const dropped = dropOffending(
+      withoutPlan,
+      offendingMedia(visionProblems, times, plan),
+    );
     if (dropped.clips || dropped.images) {
-      log("warn", "faulted media dropped for the retry", { episode: ep.id, ...dropped });
+      log("warn", "faulted media dropped for the retry", {
+        episode: ep.id,
+        ...dropped,
+      });
       await logEvent(s.db, ep.id, "media_dropped", dropped);
     }
-    await s.db.query(`UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`, [ep.id, JSON.stringify(qa), JSON.stringify(withoutPlan)]);
+    await s.db.query(
+      `UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`,
+      [ep.id, JSON.stringify(qa), JSON.stringify(withoutPlan)],
+    );
     throw new Error(`QA failed: ${problems.join(" | ")}`);
   }
-  await transition(s.db, ep.id, "voiced", "rendered", { assets_json: { ...assets, video: "short.mp4", poster: "poster.jpg", thumb: "thumb.jpg", musicFile }, qa_json: qa });
+  await transition(s.db, ep.id, "voiced", "rendered", {
+    assets_json: {
+      ...assets,
+      video: "short.mp4",
+      poster: "poster.jpg",
+      thumb: "thumb.jpg",
+      musicFile,
+    },
+    qa_json: qa,
+  });
 }
 
 async function stepRender(s: Services, ep: Episode): Promise<void> {
@@ -747,7 +1905,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const assets = { ...(ep.assets_json ?? {}) };
   if (!assets.images) {
     Object.assign(assets, await gatherMedia(s, ep, dir));
-    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(assets),
+    ]);
   }
   if (await belowMediaFloor(s, ep, assets)) return;
   const duration = (assets.durationSeconds ?? 30) + TAIL_SECONDS;
@@ -756,44 +1917,99 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const variant = variantOf(ep.id);
   const musicFile = s.cfg.musicBed ? `music_${variant + 1}.mp3` : null;
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
-  for (const img of assets.images ?? []) if (!img.blurFile) img.blurFile = await blurPlate(dir, img.file).catch(() => undefined);
-  for (const clip of assets.clips ?? []) if (!clip.blurFile) clip.blurFile = await blurPlate(dir, clip.file).catch(() => undefined);
-  const steamLite = assets.steam?.facts ? { currentPlayers: assets.steam.facts.currentPlayers, positivePercent: assets.steam.facts.positivePercent, totalReviews: assets.steam.facts.totalReviews, price: assets.steam.facts.price, prices: assets.steam.facts.prices, releaseDate: assets.steam.facts.releaseDate, metacritic: assets.steam.facts.metacritic } : null;
+  for (const img of assets.images ?? [])
+    if (!img.blurFile)
+      img.blurFile = await blurPlate(dir, img.file).catch(() => undefined);
+  for (const clip of assets.clips ?? [])
+    if (!clip.blurFile)
+      clip.blurFile = await blurPlate(dir, clip.file).catch(() => undefined);
+  const steamLite = assets.steam?.facts
+    ? {
+        currentPlayers: assets.steam.facts.currentPlayers,
+        positivePercent: assets.steam.facts.positivePercent,
+        totalReviews: assets.steam.facts.totalReviews,
+        price: assets.steam.facts.price,
+        prices: assets.steam.facts.prices,
+        releaseDate: assets.steam.facts.releaseDate,
+        metacritic: assets.steam.facts.metacritic,
+      }
+    : null;
   // Plan then render: the plan is persisted so a retry renders the identical Short.
   // A red rubric rebuilds the plan once with another variant, then fails the episode.
   const planInput = {
     segments,
     words,
     durationSeconds: duration,
-    images: (assets.images ?? []).map((i) => ({ kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex })),
-    clips: (assets.clips ?? []).map((c) => ({ durationSeconds: c.durationSeconds, motion: c.motion, luma: c.luma, beatIndex: c.beatIndex, role: c.role })),
+    images: (assets.images ?? []).map((i) => ({
+      kind: i.kind,
+      aspect: i.aspect,
+      beatIndex: i.beatIndex,
+    })),
+    clips: (assets.clips ?? []).map((c) => ({
+      durationSeconds: c.durationSeconds,
+      motion: c.motion,
+      luma: c.luma,
+      beatIndex: c.beatIndex,
+      role: c.role,
+    })),
     storyType: script.is_rumour ? "rumour" : script.story_type,
     isRumour: script.is_rumour,
     attribution: script.attribution,
     variant,
     steam: steamLite,
   };
-  const footageSeconds = (assets.clips ?? []).reduce((n, c) => n + c.durationSeconds, 0);
+  const footageSeconds = (assets.clips ?? []).reduce(
+    (n, c) => n + c.durationSeconds,
+    0,
+  );
   const footageBudget = Math.max(20, footageSeconds); // clips were already trimmed to the publisher budget in gatherMedia
   const rubricFor = (plan: ReturnType<typeof buildPlan>) =>
-    scorePlan({ plan, segments, words, footageSeconds, footageBudgetSeconds: footageBudget, hookWords: script.hook.split(/\s+/).filter(Boolean).length });
+    scorePlan({
+      plan,
+      segments,
+      words,
+      footageSeconds,
+      footageBudgetSeconds: footageBudget,
+      hookWords: script.hook.split(/\s+/).filter(Boolean).length,
+    });
   let plan = assets.plan ?? buildPlan(planInput);
   let rubric = rubricFor(plan);
   if (rubric.grade === "red" && !assets.plan) {
-    log("warn", "plan rejected by rubric, rebuilding", { episode: ep.id, problems: rubricSummary(rubric) });
+    log("warn", "plan rejected by rubric, rebuilding", {
+      episode: ep.id,
+      problems: rubricSummary(rubric),
+    });
     plan = buildPlan({ ...planInput, variant: (variant + 1) % 4 });
     rubric = rubricFor(plan);
     if (rubric.grade === "red") {
       // A slot is worth more than a perfect plan: render anyway and say so.
-      log("warn", "rubric still red after rebuild; rendering anyway", { episode: ep.id, problems: rubricSummary(rubric) });
-      await s.notify({ content: `⚠️ "${script.headline}" renders with a red rubric (${rubricSummary(rubric)}). Worth a look.` });
+      log("warn", "rubric still red after rebuild; rendering anyway", {
+        episode: ep.id,
+        problems: rubricSummary(rubric),
+      });
+      await s.notify({
+        content: `⚠️ "${script.headline}" renders with a red rubric (${rubricSummary(rubric)}). Worth a look.`,
+      });
     }
   }
-  await logEvent(s.db, ep.id, "rubric", { grade: rubric.grade, summary: rubricSummary(rubric) || "all green" });
+  await logEvent(s.db, ep.id, "rubric", {
+    grade: rubric.grade,
+    summary: rubricSummary(rubric) || "all green",
+  });
   assets.plan = plan;
-  await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
-  const publisher = String((assets.steam ? (await s.findGame(assets.steam.name).catch(() => undefined))?.details?.publishers?.[0] : assets.officialTrailer?.publisher) ?? "");
-  const footageCredit = (assets.clips ?? []).length ? `Footage: ${publisher || script.game_title} · official trailer` : "";
+  await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+    ep.id,
+    JSON.stringify(assets),
+  ]);
+  const publisher = String(
+    (assets.steam
+      ? (await s.findGame(assets.steam.name).catch(() => undefined))?.details
+          ?.publishers?.[0]
+      : assets.officialTrailer?.publisher) ?? "",
+  );
+  const footageCredit = (assets.clips ?? []).length
+    ? `Footage: ${publisher || script.game_title} · official trailer`
+    : "";
   const year = assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0];
   const gameSubtitle = [publisher, year].filter(Boolean).join(" · ");
 
@@ -820,8 +2036,23 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       variant,
       audioFile: assets.audio ?? null,
       musicFile,
-      imageFiles: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect, blurFile: i.blurFile, beatIndex: i.beatIndex })),
-      clipFiles: (assets.clips ?? []).map((c) => ({ file: c.file, durationSeconds: c.durationSeconds, blurFile: c.blurFile, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, stock: c.stock })),
+      imageFiles: (assets.images ?? []).map((i) => ({
+        file: i.file,
+        kind: i.kind,
+        aspect: i.aspect,
+        blurFile: i.blurFile,
+        beatIndex: i.beatIndex,
+      })),
+      clipFiles: (assets.clips ?? []).map((c) => ({
+        file: c.file,
+        durationSeconds: c.durationSeconds,
+        blurFile: c.blurFile,
+        beatIndex: c.beatIndex,
+        role: c.role,
+        motion: c.motion,
+        luma: c.luma,
+        stock: c.stock,
+      })),
       steam: steamLite,
       emphasis: emphasisWords(script),
       plan,
@@ -831,33 +2062,70 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
 
-  const tech = await s.technicalQa(final, duration, ep.lane === "evergreen" ? { minSeconds: 60, maxSeconds: 179 } : undefined);
+  const tech = await s.technicalQa(
+    final,
+    duration,
+    ep.lane === "evergreen" ? { minSeconds: 60, maxSeconds: 179 } : undefined,
+  );
   let vision: VisionQa | undefined;
   let times: number[] = [];
   if (tech.ok && s.cfg.visionQa) {
     // Sampled after each card's counters have landed (24 frames) so a mid-count figure is never judged.
-    times = [0.8, ...segments.slice(1).map((g) => g.start + 1.2), duration - 1].filter((t) => t < duration).slice(0, 8);
+    times = [0.8, ...segments.slice(1).map((g) => g.start + 1.2), duration - 1]
+      .filter((t) => t < duration)
+      .slice(0, 8);
     await fs.rm(path.join(dir, "qa"), { recursive: true, force: true });
-    const frames = await s.extractFrames(final, path.join(dir, "qa"), times.slice(0, 8));
-    vision = await s.visionQa(frames, { headline: script.headline, gameTitle: script.game_title });
+    const frames = await s.extractFrames(
+      final,
+      path.join(dir, "qa"),
+      times.slice(0, 8),
+    );
+    vision = await s.visionQa(frames, {
+      headline: script.headline,
+      gameTitle: script.game_title,
+    });
   }
-  const qa = { technical: tech, vision: vision ?? null, rubric, checked_at: s.now().toISOString() };
-  const visionProblems = vision?.verdict === "fail" ? (vision.problems.length ? vision.problems : [`vision QA failed: ${vision.notes || "no reason given"}`]) : [];
+  const qa = {
+    technical: tech,
+    vision: vision ?? null,
+    rubric,
+    checked_at: s.now().toISOString(),
+  };
+  const visionProblems =
+    vision?.verdict === "fail"
+      ? vision.problems.length
+        ? vision.problems
+        : [`vision QA failed: ${vision.notes || "no reason given"}`]
+      : [];
   const problems = [...tech.problems, ...visionProblems];
   if (problems.length > 0) {
     // The retry re-plans from scratch (the planner or the components may have changed since) and judges fresh frames.
     const { plan: _dropped, ...withoutPlan } = assets;
     // A moment the checker faulted for text, a logo or the wrong game is not tried again.
-    const dropped = dropOffending(withoutPlan, offendingMedia(visionProblems, times, plan));
+    const dropped = dropOffending(
+      withoutPlan,
+      offendingMedia(visionProblems, times, plan),
+    );
     if (dropped.clips || dropped.images) {
-      log("warn", "faulted media dropped for the retry", { episode: ep.id, ...dropped });
+      log("warn", "faulted media dropped for the retry", {
+        episode: ep.id,
+        ...dropped,
+      });
       await logEvent(s.db, ep.id, "media_dropped", dropped);
     }
-    await s.db.query(`UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`, [ep.id, JSON.stringify(qa), JSON.stringify(withoutPlan)]);
+    await s.db.query(
+      `UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`,
+      [ep.id, JSON.stringify(qa), JSON.stringify(withoutPlan)],
+    );
     throw new Error(`QA failed: ${problems.join(" | ")}`);
   }
   await transition(s.db, ep.id, "voiced", "rendered", {
-    assets_json: { ...assets, video: "short.mp4", poster: "poster.jpg", musicFile },
+    assets_json: {
+      ...assets,
+      video: "short.mp4",
+      poster: "poster.jpg",
+      musicFile,
+    },
     qa_json: qa,
   });
 }
@@ -867,7 +2135,13 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const links = approvalLinks(s.cfg, ep.id);
   // Rumours and anything not corroborated always wait for a human.
   const risky = script.is_rumour || !ep.story_json.corroborated;
-  const mode = risky ? "manual" : ep.lane === "evergreen" ? s.cfg.evergreenApprovalMode : ep.lane === "longform" ? s.cfg.longformApprovalMode : s.cfg.approvalMode;
+  const mode = risky
+    ? "manual"
+    : ep.lane === "evergreen"
+      ? s.cfg.evergreenApprovalMode
+      : ep.lane === "longform"
+        ? s.cfg.longformApprovalMode
+        : s.cfg.approvalMode;
   const when =
     mode === "auto"
       ? "Auto mode: publishing now."
@@ -896,11 +2170,21 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
     files: [path.join(dir, "poster.jpg")],
   });
   // Never start a publish countdown nobody was told about.
-  if (delivered === false && mode === "timeout") throw new Error("approval notice could not be posted to Discord; retrying before any auto-publish");
+  if (delivered === false && mode === "timeout")
+    throw new Error(
+      "approval notice could not be posted to Discord; retrying before any auto-publish",
+    );
   if (mode === "auto") {
-    await transition(s.db, ep.id, "rendered", "approved", { approval_mode: mode, approved_by: "auto", approval_requested_at: s.now() });
+    await transition(s.db, ep.id, "rendered", "approved", {
+      approval_mode: mode,
+      approved_by: "auto",
+      approval_requested_at: s.now(),
+    });
   } else {
-    await transition(s.db, ep.id, "rendered", "awaiting_approval", { approval_mode: mode, approval_requested_at: s.now() });
+    await transition(s.db, ep.id, "rendered", "awaiting_approval", {
+      approval_mode: mode,
+      approval_requested_at: s.now(),
+    });
   }
 }
 
@@ -908,25 +2192,47 @@ const MANUAL_APPROVAL_EXPIRY_HOURS = 48; // the Discord links last 3 days
 
 async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
   if (!ep.approval_requested_at) return;
-  const waited = s.now().getTime() - new Date(ep.approval_requested_at).getTime();
+  const waited =
+    s.now().getTime() - new Date(ep.approval_requested_at).getTime();
   if (ep.approval_mode === "manual") {
     // An unanswered episode must not block tomorrow's Short forever.
-    if (waited >= MANUAL_APPROVAL_EXPIRY_HOURS * 3600_000 && (await transition(s.db, ep.id, "awaiting_approval", "rejected", { last_error: "approval expired unanswered" }))) {
+    if (
+      waited >= MANUAL_APPROVAL_EXPIRY_HOURS * 3600_000 &&
+      (await transition(s.db, ep.id, "awaiting_approval", "rejected", {
+        last_error: "approval expired unanswered",
+      }))
+    ) {
       await logEvent(s.db, ep.id, "rejected", { by: "expiry" });
-      await s.notify({ content: `⌛ "${ep.script_json?.youtube.title ?? ep.story_json.headline}" expired after ${MANUAL_APPROVAL_EXPIRY_HOURS}h without approval; moving on to new stories.` });
+      await s.notify({
+        content: `⌛ "${ep.script_json?.youtube.title ?? ep.story_json.headline}" expired after ${MANUAL_APPROVAL_EXPIRY_HOURS}h without approval; moving on to new stories.`,
+      });
     }
     return;
   }
   if (ep.approval_mode !== "timeout") return;
-  const timeoutMinutes = ep.lane === "news_breaking" ? s.cfg.breakingApprovalMinutes : ep.lane === "evergreen" ? s.cfg.evergreenApprovalMinutes : ep.lane === "longform" ? s.cfg.longformApprovalMinutes : s.cfg.approvalTimeoutMinutes;
+  const timeoutMinutes =
+    ep.lane === "news_breaking"
+      ? s.cfg.breakingApprovalMinutes
+      : ep.lane === "evergreen"
+        ? s.cfg.evergreenApprovalMinutes
+        : ep.lane === "longform"
+          ? s.cfg.longformApprovalMinutes
+          : s.cfg.approvalTimeoutMinutes;
   if (waited >= timeoutMinutes * 60_000) {
     // The countdown only publishes if the owner could actually have tapped Reject: when the
     // public URL (the tunnel) is down the Discord links are dead, so the episode is held.
     if (!(await s.publicReachable())) {
-      log("warn", "approval timeout held: public URL unreachable", { episode: ep.id, url: s.cfg.publicUrl });
+      log("warn", "approval timeout held: public URL unreachable", {
+        episode: ep.id,
+        url: s.cfg.publicUrl,
+      });
       return;
     }
-    if (await transition(s.db, ep.id, "awaiting_approval", "approved", { approved_by: "timeout" })) {
+    if (
+      await transition(s.db, ep.id, "awaiting_approval", "approved", {
+        approved_by: "timeout",
+      })
+    ) {
       await logEvent(s.db, ep.id, "approved", { by: "timeout" });
     }
   }
@@ -939,10 +2245,17 @@ async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
  * has passed); every lane keeps MIN_UPLOAD_GAP_MINUTES after the last publish.
  * Returns undefined for "now".
  */
-export function choosePublishAt(cfg: Config, now: Date, ep?: Pick<Episode, "lane" | "slot_at">, lastPublish?: Date): Date | undefined {
+export function choosePublishAt(
+  cfg: Config,
+  now: Date,
+  ep?: Pick<Episode, "lane" | "slot_at">,
+  lastPublish?: Date,
+): Date | undefined {
   let at: Date | undefined;
   if (ep?.lane === "news_breaking") {
-    at = inWindow(now, cfg.breakingWindow, cfg.timezone) ? undefined : nextWindowStart(now, cfg.breakingWindow, cfg.timezone);
+    at = inWindow(now, cfg.breakingWindow, cfg.timezone)
+      ? undefined
+      : nextWindowStart(now, cfg.breakingWindow, cfg.timezone);
   } else if (ep?.slot_at) {
     const slot = new Date(ep.slot_at);
     at = slot > now ? slot : undefined;
@@ -950,12 +2263,30 @@ export function choosePublishAt(cfg: Config, now: Date, ep?: Pick<Episode, "lane
     // Legacy window behaviour for episodes without a slot.
     const earliest = new Date(now.getTime() + cfg.youtubeVetoMinutes * 60_000);
     const h = earliest.getUTCHours();
-    if (h < cfg.publishWindowStartUtc) at = new Date(Date.UTC(earliest.getUTCFullYear(), earliest.getUTCMonth(), earliest.getUTCDate(), cfg.publishWindowStartUtc));
-    else if (h >= cfg.publishWindowEndUtc) at = new Date(Date.UTC(earliest.getUTCFullYear(), earliest.getUTCMonth(), earliest.getUTCDate() + 1, cfg.publishWindowStartUtc));
+    if (h < cfg.publishWindowStartUtc)
+      at = new Date(
+        Date.UTC(
+          earliest.getUTCFullYear(),
+          earliest.getUTCMonth(),
+          earliest.getUTCDate(),
+          cfg.publishWindowStartUtc,
+        ),
+      );
+    else if (h >= cfg.publishWindowEndUtc)
+      at = new Date(
+        Date.UTC(
+          earliest.getUTCFullYear(),
+          earliest.getUTCMonth(),
+          earliest.getUTCDate() + 1,
+          cfg.publishWindowStartUtc,
+        ),
+      );
     else if (cfg.youtubeVetoMinutes > 0) at = earliest;
   }
   if (lastPublish) {
-    const gapEnd = new Date(lastPublish.getTime() + cfg.minUploadGapMinutes * 60_000);
+    const gapEnd = new Date(
+      lastPublish.getTime() + cfg.minUploadGapMinutes * 60_000,
+    );
     if (gapEnd > (at ?? now)) at = gapEnd;
   }
   // YouTube needs scheduled times comfortably in the future; otherwise go now.
@@ -964,12 +2295,24 @@ export function choosePublishAt(cfg: Config, now: Date, ep?: Pick<Episode, "lane
 }
 
 async function stepApproved(s: Services, ep: Episode): Promise<void> {
-  const publishAt = choosePublishAt(s.cfg, s.now(), ep, await lastPublishAt(s.db));
+  const publishAt = choosePublishAt(
+    s.cfg,
+    s.now(),
+    ep,
+    await lastPublishAt(s.db),
+  );
   // Public uploads are scheduled on YouTube (private until publish_at). Anything else
   // cannot be scheduled there, so the upload itself waits until the slot.
   const holdUpload = publishAt && s.cfg.youtubePrivacy !== "public";
-  await transition(s.db, ep.id, "approved", "uploading", { publish_at: publishAt ?? null, ...(holdUpload ? { next_attempt_at: publishAt } : {}) });
-  if (publishAt) await logEvent(s.db, ep.id, "scheduled", { publish_at: publishAt.toISOString(), lane: ep.lane });
+  await transition(s.db, ep.id, "approved", "uploading", {
+    publish_at: publishAt ?? null,
+    ...(holdUpload ? { next_attempt_at: publishAt } : {}),
+  });
+  if (publishAt)
+    await logEvent(s.db, ep.id, "scheduled", {
+      publish_at: publishAt.toISOString(),
+      lane: ep.lane,
+    });
 }
 
 /**
@@ -985,46 +2328,108 @@ export function longChapters(ep: Episode): string[] {
   const duration = (ep.assets_json?.durationSeconds ?? 0) + LONG_TAIL_SECONDS;
   const segments = buildSegments(segmentInputs(script), words, duration);
   return chapterLines(segments, (seg) =>
-    seg.kind === "hook" ? "Intro" : seg.kind === "beat" && seg.visual?.kind === "rank" ? `#${seg.visual.value_a} ${seg.visual.primary}` : seg.kind === "take" ? "Our pick" : undefined,
+    seg.kind === "hook"
+      ? "Intro"
+      : seg.kind === "beat" && seg.visual?.kind === "rank"
+        ? `#${seg.visual.value_a} ${seg.visual.primary}`
+        : seg.kind === "take"
+          ? "Our pick"
+          : undefined,
   );
 }
 
-export function footageCredits(script: Script, clips: Array<{ provenance: string }>, official: EpisodeAssets["officialTrailer"] | undefined, publisher: string | undefined, headline: string): string {
+export function footageCredits(
+  script: Script,
+  clips: Array<{ provenance: string }>,
+  official: EpisodeAssets["officialTrailer"] | undefined,
+  publisher: string | undefined,
+  headline: string,
+): string {
   if (!clips.length && !official) return "";
   const steamGames = new Set<string>();
   const channels = new Map<string, string>(); // channel -> url
   for (const c of clips) {
-    const steam = c.provenance.match(/^Official Steam trailer "[^"]*" for "([^"]+)"/);
+    const steam = c.provenance.match(
+      /^Official Steam trailer "[^"]*" for "([^"]+)"/,
+    );
     if (steam) steamGames.add(steam[1]!);
-    const yt = c.provenance.match(/from the (.+?) YouTube channel, publisher: [^(]+\((https?:[^)]+)\)/);
-    const social = c.provenance.match(/^Official post "[^"]*" by (.+? on TikTok), publisher: [^(]+\((https?:[^)]+)\)/);
+    const yt = c.provenance.match(
+      /from the (.+?) YouTube channel, publisher: [^(]+\((https?:[^)]+)\)/,
+    );
+    const social = c.provenance.match(
+      /^Official post "[^"]*" by (.+? on TikTok), publisher: [^(]+\((https?:[^)]+)\)/,
+    );
     if (social) channels.set(social[1]!, social[2]!);
     if (yt) channels.set(yt[1]!, yt[2]!);
   }
   if (official) channels.set(official.channelTitle, official.url);
   const lines: string[] = [];
   // Clips whose provenance names no trailer (older episodes, test fixtures) still get the generic credit.
-  if (!steamGames.size && !channels.size && clips.length) lines.push(`Footage: ${script.game_title} official trailer${publisher ? ` (${publisher})` : ""}, via Steam. Store art: Steam.`);
-  if (steamGames.size === 1 && !script.entries?.length) lines.push(`Footage: ${[...steamGames][0]} official trailer${publisher ? ` (${publisher})` : ""}, via Steam, a few seconds. Store art: Steam.`);
-  else if (steamGames.size) lines.push(`Footage: official Steam trailers, a few seconds each: ${[...steamGames].join(", ")}. Store art: Steam.`);
-  for (const [channel, url] of channels) lines.push(/on TikTok$/.test(channel) ? `Footage: official post by ${channel} (${url}).` : `Footage and still: the official ${channel} YouTube channel (${url}).`);
-  const stock = clips.filter((c) => /^Illustrative stock footage from Pexels/.test(c.provenance)).map((c) => c.provenance.match(/\((https?:[^)]+)\)/)?.[1]).filter(Boolean);
-  if (stock.length) lines.push(`Illustrative stock footage (not the real event): Pexels, ${stock.join(", ")}.`);
-  if (/microsoft|xbox game studios|bethesda/i.test(`${publisher ?? ""} ${headline}`)) lines.push("Game footage used under Microsoft's Game Content Usage Rules: https://www.xbox.com/en-US/developers/rules");
+  if (!steamGames.size && !channels.size && clips.length)
+    lines.push(
+      `Footage: ${script.game_title} official trailer${publisher ? ` (${publisher})` : ""}, via Steam. Store art: Steam.`,
+    );
+  if (steamGames.size === 1 && !script.entries?.length)
+    lines.push(
+      `Footage: ${[...steamGames][0]} official trailer${publisher ? ` (${publisher})` : ""}, via Steam, a few seconds. Store art: Steam.`,
+    );
+  else if (steamGames.size)
+    lines.push(
+      `Footage: official Steam trailers, a few seconds each: ${[...steamGames].join(", ")}. Store art: Steam.`,
+    );
+  for (const [channel, url] of channels)
+    lines.push(
+      /on TikTok$/.test(channel)
+        ? `Footage: official post by ${channel} (${url}).`
+        : `Footage and still: the official ${channel} YouTube channel (${url}).`,
+    );
+  const stock = clips
+    .filter((c) => /^Illustrative stock footage from Pexels/.test(c.provenance))
+    .map((c) => c.provenance.match(/\((https?:[^)]+)\)/)?.[1])
+    .filter(Boolean);
+  if (stock.length)
+    lines.push(
+      `Illustrative stock footage (not the real event): Pexels, ${stock.join(", ")}.`,
+    );
+  if (
+    /microsoft|xbox game studios|bethesda/i.test(
+      `${publisher ?? ""} ${headline}`,
+    )
+  )
+    lines.push(
+      "Game footage used under Microsoft's Game Content Usage Rules: https://www.xbox.com/en-US/developers/rules",
+    );
   return lines.length ? `\n${lines.join("\n")}` : "";
 }
 
-export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], syntheticMedia = true, affiliate?: AffiliateTags) {
+export function videoMetadata(
+  ep: Episode,
+  privacy: Config["youtubePrivacy"],
+  syntheticMedia = true,
+  affiliate?: AffiliateTags,
+) {
   const script = ep.script_json!;
   const credits = ep.story_json.items
     .slice(0, 4)
     .map((i) => `• ${i.source}: ${i.url}`)
     .join("\n");
   const clips = ep.assets_json?.clips ?? [];
-  const publisher = clips[0]?.provenance.match(/publisher[^:]*:\s*([^;)]+)/i)?.[1]?.trim() ?? ep.assets_json?.officialTrailer?.publisher;
+  const publisher =
+    clips[0]?.provenance.match(/publisher[^:]*:\s*([^;)]+)/i)?.[1]?.trim() ??
+    ep.assets_json?.officialTrailer?.publisher;
   const official = ep.assets_json?.officialTrailer;
-  const footage = footageCredits(script, clips, official, publisher, ep.story_json.headline);
-  const body = script.youtube.description.trim().replace(/#\w+/g, "").replace(/\s{2,}/g, " ").trim();
+  const footage = footageCredits(
+    script,
+    clips,
+    official,
+    publisher,
+    ep.story_json.headline,
+  );
+  const body = script.youtube.description
+    .trim()
+    .replace(/#\w+/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
   const long = script.runtime === "long";
   const chapters = long ? longChapters(ep) : [];
   // Shop links for every game and piece of hardware the video names, right under the summary.
@@ -1034,13 +2439,22 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], sy
     "",
     body,
     shop,
-    script.is_rumour ? "\nThis story is unconfirmed. We will update if it is confirmed or denied." : "",
+    script.is_rumour
+      ? "\nThis story is unconfirmed. We will update if it is confirmed or denied."
+      : "",
     chapters.length ? `\nChapters:\n${chapters.join("\n")}` : "",
     credits ? `\nSources:\n${credits}` : "",
     footage,
     "\nNarration: AI-generated synthetic voice. Visuals: official publisher material, credited.",
-    long ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day." : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
-    (long ? hashtags(script).filter((h) => h !== "#Shorts").concat("#Gaming") : hashtags(script)).join(" "),
+    long
+      ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day."
+      : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
+    (long
+      ? hashtags(script)
+          .filter((h) => h !== "#Shorts")
+          .concat("#Gaming")
+      : hashtags(script)
+    ).join(" "),
   ]
     .filter((line) => line !== "")
     .join("\n")
@@ -1051,7 +2465,9 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], sy
     tags: buildTags(script),
     categoryId: "20",
     privacyStatus: privacy,
-    publishAt: ep.publish_at ? new Date(ep.publish_at).toISOString() : undefined,
+    publishAt: ep.publish_at
+      ? new Date(ep.publish_at).toISOString()
+      : undefined,
     // The narrator is a cloned voice, so disclose it (as Codex did). The
     // label does not affect reach or monetisation.
     containsSyntheticMedia: syntheticMedia,
@@ -1061,16 +2477,30 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], sy
 
 async function stepUpload(s: Services, ep: Episode): Promise<void> {
   if (s.cfg.dryRun) {
-    await transition(s.db, ep.id, "uploading", "published", { youtube_status: "dry_run" });
-    await s.notify({ content: `🧪 DRY_RUN: "${ep.script_json!.youtube.title}" would have been uploaded now.` });
+    await transition(s.db, ep.id, "uploading", "published", {
+      youtube_status: "dry_run",
+    });
+    await s.notify({
+      content: `🧪 DRY_RUN: "${ep.script_json!.youtube.title}" would have been uploaded now.`,
+    });
     return;
   }
   const used = await quotaUsed(s.db, s.now());
   if (used + QUOTA_RESERVE_FOR_UPLOAD > s.cfg.quotaUnitsPerDay) {
     const resetAt = quotaResetAt(s.now());
-    log("warn", "YouTube quota nearly spent; upload deferred", { episode: ep.id, used, resetAt: resetAt.toISOString() });
-    await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [ep.id, resetAt]);
-    await logEvent(s.db, ep.id, "quota_deferred", { used, reset_at: resetAt.toISOString() });
+    log("warn", "YouTube quota nearly spent; upload deferred", {
+      episode: ep.id,
+      used,
+      resetAt: resetAt.toISOString(),
+    });
+    await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [
+      ep.id,
+      resetAt,
+    ]);
+    await logEvent(s.db, ep.id, "quota_deferred", {
+      used,
+      reset_at: resetAt.toISOString(),
+    });
     return;
   }
   const yt = s.youtube();
@@ -1081,8 +2511,10 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   if (ep.attempts > 0 || ep.upload_session_uri) {
     const existing = await yt.findByMarker(marker);
     if (existing) {
-      await transition(s.db, ep.id, "uploading", "uploaded", { youtube_video_id: existing });
-    await quotaAdd(s.db, s.now(), QUOTA.upload);
+      await transition(s.db, ep.id, "uploading", "uploaded", {
+        youtube_video_id: existing,
+      });
+      await quotaAdd(s.db, s.now(), QUOTA.upload);
       await logEvent(s.db, ep.id, "upload_adopted", { videoId: existing });
       return;
     }
@@ -1090,17 +2522,34 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   let session = ep.upload_session_uri;
   if (!session) {
     const size = (await fs.stat(file)).size;
-    session = await yt.createSession(buildResource(videoMetadata(ep, s.cfg.youtubePrivacy, s.cfg.syntheticMedia, { uk: s.cfg.amazonUkTag, us: s.cfg.amazonUsTag || undefined }), marker), size);
-    await s.db.query(`UPDATE episodes SET upload_session_uri = $2 WHERE id = $1 AND status = 'uploading'`, [ep.id, session]);
+    session = await yt.createSession(
+      buildResource(
+        videoMetadata(ep, s.cfg.youtubePrivacy, s.cfg.syntheticMedia, {
+          uk: s.cfg.amazonUkTag,
+          us: s.cfg.amazonUsTag || undefined,
+        }),
+        marker,
+      ),
+      size,
+    );
+    await s.db.query(
+      `UPDATE episodes SET upload_session_uri = $2 WHERE id = $1 AND status = 'uploading'`,
+      [ep.id, session],
+    );
   }
   try {
     const videoId = await yt.uploadToSession(session, file);
-    await transition(s.db, ep.id, "uploading", "uploaded", { youtube_video_id: videoId });
+    await transition(s.db, ep.id, "uploading", "uploaded", {
+      youtube_video_id: videoId,
+    });
     await quotaAdd(s.db, s.now(), QUOTA.upload);
     await logEvent(s.db, ep.id, "uploaded", { videoId });
   } catch (err) {
     if (err instanceof SessionGone) {
-      await s.db.query(`UPDATE episodes SET upload_session_uri = NULL WHERE id = $1`, [ep.id]);
+      await s.db.query(
+        `UPDATE episodes SET upload_session_uri = NULL WHERE id = $1`,
+        [ep.id],
+      );
     }
     throw err;
   }
@@ -1110,12 +2559,22 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
 async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
   try {
     // Comment links are clickable on long videos (not on Shorts): the long video's pin carries its top pick.
-    const text = pinnedComment(ep.script_json!) + (ep.script_json!.runtime === "long" ? affiliateCommentLine(ep.script_json!, { uk: s.cfg.amazonUkTag, us: s.cfg.amazonUsTag || undefined }) : "");
+    const text =
+      pinnedComment(ep.script_json!) +
+      (ep.script_json!.runtime === "long"
+        ? affiliateCommentLine(ep.script_json!, {
+            uk: s.cfg.amazonUkTag,
+            us: s.cfg.amazonUsTag || undefined,
+          })
+        : "");
     const id = await s.youtube().insertComment(ep.youtube_video_id!, text);
     await quotaAdd(s.db, s.now(), QUOTA.comment);
     await logEvent(s.db, ep.id, "comment_posted", { id, text });
   } catch (err) {
-    log("warn", "pinned comment failed", { episode: ep.id, error: errorMessage(err) });
+    log("warn", "pinned comment failed", {
+      episode: ep.id,
+      error: errorMessage(err),
+    });
     await logEvent(s.db, ep.id, "comment_failed", { error: errorMessage(err) });
   }
 }
@@ -1125,25 +2584,51 @@ async function addCaptions(s: Services, ep: Episode): Promise<void> {
   const file = path.join(episodeDir(s.cfg, ep.id), ep.assets_json!.srt!);
   try {
     const yt = s.youtube();
-    if ((await yt.listCaptions(ep.youtube_video_id!)).some((c) => c.language === "en" || c.language === "en-GB")) return;
-    const id = await yt.insertCaption(ep.youtube_video_id!, file, "en", "English");
+    if (
+      (await yt.listCaptions(ep.youtube_video_id!)).some(
+        (c) => c.language === "en" || c.language === "en-GB",
+      )
+    )
+      return;
+    const id = await yt.insertCaption(
+      ep.youtube_video_id!,
+      file,
+      "en",
+      "English",
+    );
     await quotaAdd(s.db, s.now(), QUOTA.captions);
     await logEvent(s.db, ep.id, "captions_uploaded", { id });
   } catch (err) {
-    log("warn", "caption upload failed", { episode: ep.id, error: errorMessage(err) });
-    await logEvent(s.db, ep.id, "captions_failed", { error: errorMessage(err) });
+    log("warn", "caption upload failed", {
+      episode: ep.id,
+      error: errorMessage(err),
+    });
+    await logEvent(s.db, ep.id, "captions_failed", {
+      error: errorMessage(err),
+    });
   }
 }
 
 /** The long-form video's custom thumbnail; a refusal (unverified channel) is logged, never fatal. */
 async function setThumbnail(s: Services, ep: Episode): Promise<void> {
   try {
-    await s.youtube().setThumbnail(ep.youtube_video_id!, path.join(episodeDir(s.cfg, ep.id), ep.assets_json!.thumb!));
+    await s
+      .youtube()
+      .setThumbnail(
+        ep.youtube_video_id!,
+        path.join(episodeDir(s.cfg, ep.id), ep.assets_json!.thumb!),
+      );
     await quotaAdd(s.db, s.now(), QUOTA.comment);
     await logEvent(s.db, ep.id, "thumbnail", { ok: true });
   } catch (err) {
-    log("warn", "thumbnail upload failed", { episode: ep.id, error: errorMessage(err) });
-    await logEvent(s.db, ep.id, "thumbnail", { ok: false, error: errorMessage(err).slice(0, 300) });
+    log("warn", "thumbnail upload failed", {
+      episode: ep.id,
+      error: errorMessage(err),
+    });
+    await logEvent(s.db, ep.id, "thumbnail", {
+      ok: false,
+      error: errorMessage(err).slice(0, 300),
+    });
   }
 }
 
@@ -1152,24 +2637,49 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   await quotaAdd(s.db, s.now(), QUOTA.poll);
   if (!st) throw new Error("uploaded video not found yet");
   if (st.uploadStatus === "rejected" || st.uploadStatus === "failed") {
-    await transition(s.db, ep.id, "uploaded", "failed", { youtube_status: st.uploadStatus, last_error: st.rejectionReason ?? st.failureReason ?? st.uploadStatus });
-    throw new FatalError(`YouTube ${st.uploadStatus} the video: ${st.rejectionReason ?? st.failureReason ?? "no reason given"}`);
+    await transition(s.db, ep.id, "uploaded", "failed", {
+      youtube_status: st.uploadStatus,
+      last_error: st.rejectionReason ?? st.failureReason ?? st.uploadStatus,
+    });
+    throw new FatalError(
+      `YouTube ${st.uploadStatus} the video: ${st.rejectionReason ?? st.failureReason ?? "no reason given"}`,
+    );
   }
   if (st.uploadStatus !== "processed") {
-    await s.db.query(`UPDATE episodes SET youtube_status = $2, next_attempt_at = now() + interval '5 minutes' WHERE id = $1`, [ep.id, st.uploadStatus]);
+    await s.db.query(
+      `UPDATE episodes SET youtube_status = $2, next_attempt_at = now() + interval '5 minutes' WHERE id = $1`,
+      [ep.id, st.uploadStatus],
+    );
     return;
   }
   if (ep.assets_json?.srt) await addCaptions(s, ep);
   await addPinnedComment(s, ep);
   if (ep.assets_json?.thumb) await setThumbnail(s, ep);
-  await transition(s.db, ep.id, "uploaded", "published", { youtube_status: st.privacyStatus });
+  await transition(s.db, ep.id, "uploaded", "published", {
+    youtube_status: st.privacyStatus,
+  });
   const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
-  const when = ep.publish_at ? `scheduled for ${new Date(ep.publish_at).toUTCString()}` : "live now";
-  const voiceLine = ep.assets_json?.voice ? `\nVoice: ${ep.assets_json.voice.name}` : "";
-  await s.notify({ embeds: [{ title: `✅ Published: ${ep.script_json!.youtube.title}`, url, description: `${url}\n${when}${voiceLine}`, color: COLOURS.ok }] });
+  const when = ep.publish_at
+    ? `scheduled for ${new Date(ep.publish_at).toUTCString()}`
+    : "live now";
+  const voiceLine = ep.assets_json?.voice
+    ? `\nVoice: ${ep.assets_json.voice.name}`
+    : "";
+  await s.notify({
+    embeds: [
+      {
+        title: `✅ Published: ${ep.script_json!.youtube.title}`,
+        url,
+        description: `${url}\n${when}${voiceLine}`,
+        color: COLOURS.ok,
+      },
+    ],
+  });
 }
 
-const STEPS: Partial<Record<Episode["status"], (s: Services, ep: Episode) => Promise<void>>> = {
+const STEPS: Partial<
+  Record<Episode["status"], (s: Services, ep: Episode) => Promise<void>>
+> = {
   selected: stepScript,
   scripted: stepVoice,
   voiced: stepRender,
@@ -1191,22 +2701,54 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
   } catch (err) {
     const msg = errorMessage(err);
     const fatal = err instanceof FatalError;
-    const attempts = await recordFailure(s.db, ep.id, msg, Math.min(60, 5 * 2 ** ep.attempts));
-    log("error", "step failed", { id: ep.id, status: ep.status, attempts, fatal, error: msg });
+    const attempts = await recordFailure(
+      s.db,
+      ep.id,
+      msg,
+      Math.min(60, 5 * 2 ** ep.attempts),
+    );
+    log("error", "step failed", {
+      id: ep.id,
+      status: ep.status,
+      attempts,
+      fatal,
+      error: msg,
+    });
     // Only a platform-wide fault (credentials, quota, policy) justifies pausing new stories;
     // a fatal error inside one episode's own content must not take the whole day with it.
-    const platformFault = fatal && (["uploading", "uploaded"].includes(ep.status) || /invalid_grant|quota|credential|api key|x-api-key|forbidden|unauthori[sz]ed|refused/i.test(msg));
-    if (platformFault) await pauseSelection(s.db, s.now(), FATAL_PAUSE_HOURS, msg);
+    const platformFault =
+      fatal &&
+      (["uploading", "uploaded"].includes(ep.status) ||
+        /invalid_grant|quota|credential|api key|x-api-key|forbidden|unauthori[sz]ed|refused/i.test(
+          msg,
+        ));
+    if (platformFault)
+      await pauseSelection(s.db, s.now(), FATAL_PAUSE_HOURS, msg);
     if (fatal || attempts >= s.cfg.maxAttempts) {
       const fresh = await getEpisode(s.db, ep.id);
-      if (fresh && !["failed", "published", "rejected"].includes(fresh.status)) {
-        await transition(s.db, ep.id, fresh.status, "failed", { last_error: msg });
+      if (
+        fresh &&
+        !["failed", "published", "rejected"].includes(fresh.status)
+      ) {
+        await transition(s.db, ep.id, fresh.status, "failed", {
+          last_error: msg,
+        });
       }
       const where =
-        (ep.status === "uploading" ? "\nThe upload may be incomplete; the next run will search the channel before re-uploading." : "") +
-        (platformFault ? `\nNew stories are paused for ${FATAL_PAUSE_HOURS}h (or until YouTube is reconnected) so this can be fixed.` : "");
+        (ep.status === "uploading"
+          ? "\nThe upload may be incomplete; the next run will search the channel before re-uploading."
+          : "") +
+        (platformFault
+          ? `\nNew stories are paused for ${FATAL_PAUSE_HOURS}h (or until YouTube is reconnected) so this can be fixed.`
+          : "");
       await s.notify({
-        embeds: [{ title: `⚠️ Episode failed at "${ep.status}"`, description: `${ep.script_json?.headline ?? ep.story_json.headline}\n\n${msg.slice(0, 1500)}${where}`, color: COLOURS.alert }],
+        embeds: [
+          {
+            title: `⚠️ Episode failed at "${ep.status}"`,
+            description: `${ep.script_json?.headline ?? ep.story_json.headline}\n\n${msg.slice(0, 1500)}${where}`,
+            color: COLOURS.alert,
+          },
+        ],
       });
     }
     return false;
@@ -1215,8 +2757,16 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
 
 const FATAL_PAUSE_HOURS = 12;
 
-export async function pauseSelection(db: Db, now: Date, hours: number, reason: string): Promise<void> {
-  const value = JSON.stringify({ until: new Date(now.getTime() + hours * 3600_000).toISOString(), reason: reason.slice(0, 300) });
+export async function pauseSelection(
+  db: Db,
+  now: Date,
+  hours: number,
+  reason: string,
+): Promise<void> {
+  const value = JSON.stringify({
+    until: new Date(now.getTime() + hours * 3600_000).toISOString(),
+    reason: reason.slice(0, 300),
+  });
   await db.query(
     `INSERT INTO settings (key, value, updated_at) VALUES ('selection_pause', $1, now())
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
@@ -1229,8 +2779,13 @@ export async function clearSelectionPause(db: Db): Promise<void> {
 }
 
 /** The pause reason while selection is paused, otherwise undefined. */
-export async function selectionPause(db: Db, now: Date): Promise<string | undefined> {
-  const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = 'selection_pause'`);
+export async function selectionPause(
+  db: Db,
+  now: Date,
+): Promise<string | undefined> {
+  const [row] = await db.query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = 'selection_pause'`,
+  );
   if (!row) return undefined;
   try {
     const p = JSON.parse(row.value) as { until: string; reason: string };
@@ -1260,7 +2815,9 @@ export async function pruneMedia(s: Services, days = 14): Promise<number> {
   return n;
 }
 
-export async function tick(s: Services): Promise<{ ran: boolean; selected?: string }> {
+export async function tick(
+  s: Services,
+): Promise<{ ran: boolean; selected?: string }> {
   const result = await withLease(s.db, "tick", 45 * 60, async () => {
     let selected: string | undefined;
     try {
@@ -1268,7 +2825,10 @@ export async function tick(s: Services): Promise<{ ran: boolean; selected?: stri
       selected = await maybeSelect(s);
     } catch (err) {
       log("error", "selection failed", { error: errorMessage(err) });
-      if (err instanceof FatalError) await s.notify({ content: `⚠️ Story selection failed: ${errorMessage(err)}` });
+      if (err instanceof FatalError)
+        await s.notify({
+          content: `⚠️ Story selection failed: ${errorMessage(err)}`,
+        });
     }
     for (const ep of await dueEpisodes(s.db, s.now())) {
       // Push one episode as far as it can go this tick (script → upload);
@@ -1278,12 +2838,21 @@ export async function tick(s: Services): Promise<{ ran: boolean; selected?: stri
         const moved = await advance(s, current);
         if (!moved) break;
         current = await getEpisode(s.db, ep.id);
-        if (current?.next_attempt_at && new Date(current.next_attempt_at) > s.now()) break;
+        if (
+          current?.next_attempt_at &&
+          new Date(current.next_attempt_at) > s.now()
+        )
+          break;
       }
     }
-    await pruneMedia(s).catch((err) => log("warn", "prune failed", { error: errorMessage(err) }));
+    await pruneMedia(s).catch((err) =>
+      log("warn", "prune failed", { error: errorMessage(err) }),
+    );
     // Public numbers for every published Short at fixed ages (one unit per fifty videos).
-    if (!s.cfg.dryRun) await captureMetrics(s.db, s.youtube(), s.now()).catch((err) => log("warn", "metrics capture failed", { error: errorMessage(err) }));
+    if (!s.cfg.dryRun)
+      await captureMetrics(s.db, s.youtube(), s.now()).catch((err) =>
+        log("warn", "metrics capture failed", { error: errorMessage(err) }),
+      );
     return { selected };
   });
   return result ? { ran: true, ...result } : { ran: false };

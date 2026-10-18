@@ -24,14 +24,21 @@ export const EVERGREEN_FORMATS = [
   "still_good",
   "release_radar",
   "weekly_recap",
+  "rarest_achievements",
+  "hardest_achievements",
 ] as const;
 
 /** Weekly formats built from data the factory hands the writer; they run shorter lists. */
-export const WEEKLY_FORMATS = new Set<string>(["release_radar", "weekly_recap"]);
+export const WEEKLY_FORMATS = new Set<string>(["release_radar", "weekly_recap", "rarest_achievements", "hardest_achievements"]);
+export const ACHIEVEMENT_FORMATS = new Set<string>(["rarest_achievements", "hardest_achievements"]);
 export const entriesMin = (format: string) => (WEEKLY_FORMATS.has(format) ? 4 : EVERGREEN_ENTRIES_MIN);
 
 /** What the writer is told for each data-driven format. */
 export const FORMAT_RULES: Record<string, string> = {
+  rarest_achievements:
+    "Rarest Achievements rules: the entries are exactly the achievements in the data, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest (lowest percentage), spoken from the most common of them up to the rarest. steam_search_term is the game's name, platforms is the game's name, year is the game's release year. one_line says what the achievement asks and why so few players have it, under 18 words, and may quote its percentage exactly as in the data; never invent a percentage. verdict_chip is 1-4 words such as \"PURE PAIN\" or \"SKILL CHECK\". Do not spoil story twists from hidden achievements beyond what the description says. Hook names the game and the stakes, e.g. \"Fewer than one in fifty players have these Elden Ring achievements.\" The take says which one is the real test and why.",
+  hardest_achievements:
+    "Hardest Achievements rules: the entries are exactly the achievements in the data, one per game, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest, spoken from the least rare up to the rarest. steam_search_term is that achievement's game, platforms is that game's name, year is that game's release year. one_line says what it asks and why so few players have it, under 18 words; quote percentages exactly as in the data, never invent one. verdict_chip is 1-4 words. Hook: \"These are the hardest achievements in today's biggest games, and almost nobody has them.\" style. The take names the one that is truly the hardest and why.",
   release_radar:
     "Release Radar rules: the entries are the games in the data and nothing else, spoken in release order, earliest first, so the earliest release has the highest rank number and the last release is rank 1. Set each entry's date to its release date exactly as in the data (YYYY-MM-DD) and steam_search_term to its name. platforms is \"PC (Steam)\" unless the data says more. one_line says what the game is and one reason to care, under 18 words; never invent a price or a platform. verdict_chip is a 1-4 word hook such as \"SOULSLIKE WITH GUNS\". The take names the one to watch. Hook: the week and how many games, e.g. \"Five big games land this week, and one could eat your weekend.\"",
   weekly_recap:
@@ -47,6 +54,8 @@ export const FORMAT_TITLES: Record<EvergreenFormat, string> = {
   still_good: "Is [Game] still good in 2026",
   release_radar: "N Big Games Out This Week",
   weekly_recap: "The 5 Biggest Gaming Stories This Week",
+  rarest_achievements: "The Rarest Achievements in [Game]",
+  hardest_achievements: "The Hardest Achievements in Gaming Right Now",
 };
 
 export interface EvergreenCandidate {
@@ -96,6 +105,8 @@ export const EvergreenEntrySchema = z.object({
     .string()
     .describe("On-screen verdict, 1-4 words, e.g. 'PEAK CHAOS' or 'SKIP IT'"),
   footage: FootageSchema,
+  percent: z.number().optional().describe("achievement formats only: the unlock percentage exactly as in the data"),
+  icon: z.string().optional().describe("leave empty; filled in by the factory"),
   date: z.string().optional().describe("release_radar only: the release date as YYYY-MM-DD, exactly as in the data"),
 });
 
@@ -166,7 +177,7 @@ export async function selectEvergreenTopic(
 ): Promise<EvergreenTopic> {
   return llm.structured({
     system: topicPrompt(),
-    content: `Candidates:\n${candidates.map((c, i) => `${i}. ${c.name} (${c.source}${c.note ? `: ${c.note}` : ""})`).join("\n")}\n\nCovered in the last six months:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}\n\nFormats: ${EVERGREEN_FORMATS.map((f) => `${f} ("${FORMAT_TITLES[f]}")`).join("; ")}`,
+    content: `Candidates:\n${candidates.map((c, i) => `${i}. ${c.name} (${c.source}${c.note ? `: ${c.note}` : ""})`).join("\n")}\n\nCovered in the last six months:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}\n\nFormats: ${EVERGREEN_FORMATS.filter((f) => !WEEKLY_FORMATS.has(f)).map((f) => `${f} ("${FORMAT_TITLES[f]}")`).join("; ")}`,
     schema: EvergreenTopicSchema,
     effort: "low",
   });
@@ -261,7 +272,7 @@ export function evergreenToScript(e: EvergreenScript): Script {
       primary: x.game_title,
       secondary: x.verdict_chip,
       value_a: x.rank,
-      items: [String(x.year), x.platforms],
+      items: ACHIEVEMENT_FORMATS.has(e.format) && typeof x.percent === "number" ? [`${x.percent}% of players`, x.platforms] : [String(x.year), x.platforms],
       ...(x.date ? { date_to: x.date } : {}),
     } satisfies BeatVisual,
   }));
@@ -286,6 +297,7 @@ export function evergreenToScript(e: EvergreenScript): Script {
       steam_search_term: x.steam_search_term,
       year: x.year,
       platforms: x.platforms,
+      ...(x.icon ? { icon: x.icon } : {}),
     })),
   };
 }

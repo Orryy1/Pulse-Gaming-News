@@ -38,3 +38,15 @@ test("a price card shows the other currencies only when they are the same produc
   assert.deepEqual(otherCurrencies("$19.99", undefined, steam), [], "a DLC price never borrows the base game's");
   assert.deepEqual(otherCurrencies("$29.99", ["£24.99", "PS5"], steam), ["£24.99"], "the writer's own figures from the sources win");
 });
+
+import { speakTitles } from "../src/voice/speakable.ts";
+
+test("game titles are spoken the way players say them", () => {
+  assert.equal(speakTitles("Call of Duty: Modern Warfare III landed in 2023."), "Call of Duty: Modern Warfare 3 landed in 2023.");
+  assert.equal(speakTitles("Call of Duty: WWII went back to Normandy."), "Call of Duty: World War Two went back to Normandy.");
+  assert.equal(speakTitles("Grand Theft Auto V and GTA IV"), "Grand Theft Auto 5 and GTA 4");
+  assert.equal(speakTitles("Final Fantasy XIV, Final Fantasy X and Mega Man X"), "Final Fantasy 14, Final Fantasy 10 and Mega Man X");
+  assert.equal(speakTitles("I think it is VERY good, and DLC is out."), "I think it is VERY good, and DLC is out.");
+  assert.equal(speakTitles("Civilization VI and Halo V"), "Civilization 6 and Halo 5");
+  assert.equal(speakTitles("XCOM 2 and MIX"), "XCOM 2 and MIX");
+});

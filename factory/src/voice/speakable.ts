@@ -72,10 +72,7 @@ export function numberWords(n: number): string {
       rest %= size;
     }
   }
-  if (rest)
-    parts.push(
-      under1000(rest),
-    );
+  if (rest) parts.push(under1000(rest));
   return parts.join(" ");
 }
 
@@ -128,8 +125,45 @@ function moneyWords(
 }
 
 /** Writes prices out in words: "$69.99" "£59.99" "€79.99" "69,99€" "$1.5bn" "$70". */
-export function speakable(text: string): string {
+const ROMAN_VALUE: Record<string, number> = { I: 1, V: 5, X: 10 };
+
+/** "XIV" as 14, or undefined when it is not a well-formed numeral from 2 to 39. */
+export function romanValue(t: string): number | undefined {
+  if (!/^(X{0,3})(IX|IV|V?I{0,3})$/.test(t) || t.length < 1) return undefined;
+  let n = 0;
+  for (let i = 0; i < t.length; i++) {
+    const v = ROMAN_VALUE[t[i]!]!;
+    const next = ROMAN_VALUE[t[i + 1] ?? ""] ?? 0;
+    n += v < next ? -v : v;
+  }
+  return n >= 2 && n <= 39 ? n : undefined;
+}
+
+/**
+ * Game titles the way people say them: "Modern Warfare III" is "Modern Warfare
+ * 3", "Call of Duty: WWII" is "World War Two", "Final Fantasy XIV" is "14". A
+ * lone V or X stays a letter ("Mega Man X") unless the series numbers it
+ * (Grand Theft Auto V, The Elder Scrolls V, Final Fantasy X).
+ */
+export function speakTitles(text: string): string {
   return text
+    .replace(/\bWWII\b/g, "World War Two")
+    .replace(/\bWWI\b/g, "World War One")
+    .replace(
+      /\b(Grand Theft Auto|GTA|Elder Scrolls|Final Fantasy|Civilization|Rocky|Halo|Gears of War) (V|X)\b/g,
+      (_m, series: string, n: string) => `${series} ${romanValue(n)}`,
+    )
+    .replace(
+      /(?<![A-Za-z'’-])([IVX]{2,6})(?![A-Za-z'’-])/g,
+      (m: string, t: string) => {
+        const n = romanValue(t);
+        return n === undefined ? m : String(n);
+      },
+    );
+}
+
+export function speakable(text: string): string {
+  return speakTitles(text)
     .replace(
       /([$£€¥])\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?:\s?(billion|million|bn|mn|[kmb])\b)?/gi,
       (

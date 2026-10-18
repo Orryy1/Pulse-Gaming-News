@@ -132,11 +132,48 @@ export function evergreenTitle(script: Script): string | undefined {
   if (!n) return undefined;
   const theme = script.game_title.trim();
   if (script.evergreen_format === "ranking" || !script.evergreen_format) {
-    const lead = n >= 8 ? `Every ${theme} Game Ranked` : `${n} ${theme} Games Ranked`;
+    // The writer's own "Ranked" headline keeps its qualifier ("Call of Duty Campaigns Ranked Worst to Best").
+    const head = script.headline
+      .replace(BAD_TITLE_WORDS, "")
+      .replace(CLICKBAIT_PUNCT, "")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      // Digits outperform words in titles: "Six Resident Evil Games" is "6 Resident Evil Games".
+      .replace(
+        /^(two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/i,
+        (w) =>
+          String(
+            [
+              "two",
+              "three",
+              "four",
+              "five",
+              "six",
+              "seven",
+              "eight",
+              "nine",
+              "ten",
+              "eleven",
+              "twelve",
+            ].indexOf(w.toLowerCase()) + 2,
+          ),
+      );
+    if (/\branked\b/i.test(head) && head.length <= TITLE_MAX) {
+      const full = /worst to best|best to worst/i.test(head)
+        ? head
+        : `${head} Worst to Best`;
+      return titleCase(full.length <= TITLE_MAX ? full : head);
+    }
+    const lead =
+      n >= 8 ? `Every ${theme} Game Ranked` : `${n} ${theme} Games Ranked`;
     const full = `${lead} Worst to Best`;
     return titleCase(full.length <= TITLE_MAX ? full : lead);
   }
-  const own = script.youtube.title.replace(BAD_TITLE_WORDS, "").replace(CLICKBAIT_PUNCT, "").replace(/\s{2,}/g, " ").trim();
+  const own = script.youtube.title
+    .replace(BAD_TITLE_WORDS, "")
+    .replace(CLICKBAIT_PUNCT, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
   return truncateWords(titleCase(own || script.headline), TITLE_MAX);
 }
 
@@ -145,6 +182,8 @@ export function thumbTitle(script: Script): string {
   const n = script.entries?.length ?? 0;
   const theme = script.game_title.trim() || "Games";
   if (!n || script.evergreen_format === "documentary") return script.headline;
+  if (/\branked\b/i.test(script.headline) && script.headline.length <= 48)
+    return script.headline;
   return n >= 8 ? `Every ${theme} Game Ranked` : `${n} ${theme} Games Ranked`;
 }
 
@@ -246,16 +285,23 @@ export function hashtags(script: Script): string[] {
 /** The first two lines of a description: the keyword stack YouTube indexes, written as a sentence. */
 export function keywordLead(script: Script): string {
   const n = script.entries?.length ?? 0;
-  if (script.evergreen_format === "documentary") return `The complete history of ${script.game_title}, game by game: ${script.headline.replace(/\.$/, "")}. ${script.game_title} documentary, history of ${script.game_title}, ${script.game_title} explained, by Pulse Gaming News.`;
-  if (script.evergreen_format === "release_radar") return `New games out this week: ${script.headline.replace(/\.$/, "")}. New game releases, games coming out this week, upcoming games, by Pulse Gaming News.`;
-  if (script.evergreen_format === "rarest_achievements") return `The rarest achievements in ${script.game_title}: ${script.headline.replace(/\.$/, "")}. ${script.game_title} achievements, hardest achievements, achievement hunting, by Pulse Gaming News.`;
-  if (script.evergreen_format === "hardest_achievements") return `The hardest achievements in gaming right now: ${script.headline.replace(/\.$/, "")}. Hardest achievements, rarest achievements, achievement hunting, by Pulse Gaming News.`;
-  if (script.evergreen_format === "steam_climbers") return `The biggest climbers on Steam this week: ${script.headline.replace(/\.$/, "")}. Steam charts, most played games on Steam, trending games, by Pulse Gaming News.`;
-  if (script.evergreen_format === "weekly_recap") return `This week in gaming: ${script.headline.replace(/\.$/, "")}. Gaming news recap, biggest gaming news this week, by Pulse Gaming News.`;
+  if (script.evergreen_format === "documentary")
+    return `The complete history of ${script.game_title}, game by game: ${script.headline.replace(/\.$/, "")}. ${script.game_title} documentary, history of ${script.game_title}, ${script.game_title} explained, by Pulse Gaming News.`;
+  if (script.evergreen_format === "release_radar")
+    return `New games out this week: ${script.headline.replace(/\.$/, "")}. New game releases, games coming out this week, upcoming games, by Pulse Gaming News.`;
+  if (script.evergreen_format === "rarest_achievements")
+    return `The rarest achievements in ${script.game_title}: ${script.headline.replace(/\.$/, "")}. ${script.game_title} achievements, hardest achievements, achievement hunting, by Pulse Gaming News.`;
+  if (script.evergreen_format === "hardest_achievements")
+    return `The hardest achievements in gaming right now: ${script.headline.replace(/\.$/, "")}. Hardest achievements, rarest achievements, achievement hunting, by Pulse Gaming News.`;
+  if (script.evergreen_format === "steam_climbers")
+    return `The biggest climbers on Steam this week: ${script.headline.replace(/\.$/, "")}. Steam charts, most played games on Steam, trending games, by Pulse Gaming News.`;
+  if (script.evergreen_format === "weekly_recap")
+    return `This week in gaming: ${script.headline.replace(/\.$/, "")}. Gaming news recap, biggest gaming news this week, by Pulse Gaming News.`;
   if (n) {
     // A ranking is searched as "every X game ranked"; say so first, then the premise.
     const theme = script.game_title.trim() || "gaming";
-    const lead = n >= 8 ? `Every ${theme} game ranked` : `${n} ${theme} games ranked`;
+    const lead =
+      n >= 8 ? `Every ${theme} game ranked` : `${n} ${theme} games ranked`;
     return `${lead} worst to best: ${script.headline.replace(/\.$/, "")}. Best ${theme} games, ${theme} ranking, by Pulse Gaming News.`;
   }
   const kws = storyKeywords(script).slice(0, 4);
@@ -271,12 +317,18 @@ export function keywordLead(script: Script): string {
 export function pinnedComment(script: Script): string {
   const take = script.pulse_take.on_screen.replace(/\.$/, "");
   const game = script.game_title || "this";
-  if (script.evergreen_format === "documentary") return `Which ${game} game was the one for you, and which chapter of the story surprised you most? Sources for every chapter are in the description.`;
-  if (script.evergreen_format === "release_radar") return `Our pick: ${take}. Which one are you picking up this week?`;
-  if (script.evergreen_format && /achievements$/.test(script.evergreen_format)) return `Our pick for the real test: ${take}. Which of these have you unlocked? Be honest.`;
-  if (script.evergreen_format === "steam_climbers") return `Our pick: ${take}. Which of these are you playing right now?`;
-  if (script.evergreen_format === "weekly_recap") return `Our read: ${take}. Which story was the biggest one for you this week?`;
-  if (script.entries?.length) return `Our pick: ${take}. Which ${game} game would you move up or down the list? Every pick is explained in the video.`;
+  if (script.evergreen_format === "documentary")
+    return `Which ${game} game was the one for you, and which chapter of the story surprised you most? Sources for every chapter are in the description.`;
+  if (script.evergreen_format === "release_radar")
+    return `Our pick: ${take}. Which one are you picking up this week?`;
+  if (script.evergreen_format && /achievements$/.test(script.evergreen_format))
+    return `Our pick for the real test: ${take}. Which of these have you unlocked? Be honest.`;
+  if (script.evergreen_format === "steam_climbers")
+    return `Our pick: ${take}. Which of these are you playing right now?`;
+  if (script.evergreen_format === "weekly_recap")
+    return `Our read: ${take}. Which story was the biggest one for you this week?`;
+  if (script.entries?.length)
+    return `Our pick: ${take}. Which ${game} game would you move up or down the list? Every pick is explained in the video.`;
   const q =
     script.story_type === "delay"
       ? `Does the new date change your plans for ${game}?`

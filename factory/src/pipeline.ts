@@ -459,13 +459,18 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
   // material meant for coverage. Outlet images are never used.
   {
     const official = ep.story_json.items.filter((i) => i.sourceKind === "official");
-    for (const [n, item] of official.entries()) {
-      const og = item.imageUrl ?? (await s.fetchArticle(item.url))?.ogImage;
-      if (!og) continue;
-      const file = path.join("assets", `official_${n}.jpg`);
-      await fs.mkdir(path.join(dir, "assets"), { recursive: true });
-      if (await s.downloadImage(og, path.join(dir, file))) {
-        images.push({ kind: "article", file, sourceUrl: og, provenance: `Official press image from ${item.source} (${item.url})` });
+    let k = 0;
+    for (const item of official) {
+      // A newsroom post's whole gallery (Rockstar Newswire), else its one share image.
+      const article = item.imageUrl && !/rockstargames\.com/.test(item.url) ? undefined : await s.fetchArticle(item.url);
+      const urls = [...new Set([item.imageUrl, ...(article?.images ?? []), article?.ogImage].filter((u): u is string => Boolean(u)))].slice(0, 6);
+      for (const og of urls) {
+        const file = path.join("assets", `official_${k}.jpg`);
+        await fs.mkdir(path.join(dir, "assets"), { recursive: true });
+        if (await s.downloadImage(og, path.join(dir, file))) {
+          images.push({ kind: "article", file, sourceUrl: og, provenance: `Official press image from ${item.source} (${item.url})` });
+          k++;
+        }
       }
     }
   }

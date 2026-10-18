@@ -10,6 +10,7 @@ import type { Config } from "./config.ts";
 import { FFMPEG } from "./lib/bin.ts";
 import { fetchWithTimeout } from "./lib/util.ts";
 import { SCOPES } from "./youtube/oauth.ts";
+import { fetchRockstarNewswire } from "./discovery/newsrooms.ts";
 
 const run = promisify(execFile);
 
@@ -272,6 +273,14 @@ async function checkYtDlp(cfg: Config): Promise<Check | undefined> {
   }
 }
 
+/** Rockstar's Newswire data endpoint: a rotated hash silently stops Rockstar news and press images. */
+async function checkRockstar(): Promise<Check> {
+  const items = await fetchRockstarNewswire(process.env.ROCKSTAR_NEWSWIRE_LIST_HASH || undefined, 0);
+  return items.length
+    ? { name: "rockstar_newswire", ok: true, critical: false, detail: `${items.length} posts, latest "${items[0]!.title.slice(0, 60)}"` }
+    : { name: "rockstar_newswire", ok: false, critical: false, detail: "no posts: the data endpoint hash may have rotated (set ROCKSTAR_NEWSWIRE_LIST_HASH from the site's NewswireList request)" };
+}
+
 async function checkDisk(cfg: Config): Promise<Check> {
   try {
     const st = await fs.statfs(cfg.dataDir);
@@ -346,6 +355,7 @@ export async function runDoctor(
     checkElevenLabs(cfg),
     checkFfmpeg(),
     checkYtDlp(cfg),
+    checkRockstar(),
     checkDisk(cfg),
     checkPublicUrl(cfg),
     checkDiscord(cfg),

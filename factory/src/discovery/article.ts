@@ -3,12 +3,15 @@
 
 import * as cheerio from "cheerio";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
+import { fetchRockstarArticle } from "./newsrooms.ts";
 
 export interface ArticleText {
   url: string;
   title: string;
   text: string;
   ogImage?: string;
+  /** Official newsroom posts: every press image in the post. */
+  images?: string[];
 }
 
 export function extractArticle(html: string, url: string): ArticleText {
@@ -31,6 +34,8 @@ export function extractArticle(html: string, url: string): ArticleText {
 }
 
 export async function fetchArticle(url: string): Promise<ArticleText | undefined> {
+  // Rockstar's Newswire is a JavaScript app: its posts come from the site's own data endpoint.
+  if (/rockstargames\.com\/newswire\/article\//.test(url)) return fetchRockstarArticle(url, process.env.ROCKSTAR_NEWSWIRE_POST_HASH || undefined);
   try {
     const res = await fetchWithTimeout(url, { headers: { accept: "text/html" } }, 15_000);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

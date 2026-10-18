@@ -21,6 +21,7 @@ import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken } from "./youtube/oauth.ts";
 import { officialMedia } from "./assets/officialTrailer.ts";
 import { stockClips } from "./assets/stock.ts";
+import { fetchRockstarNewswire } from "./discovery/newsrooms.ts";
 import { QUOTA, QUOTA_RESERVE_FOR_UPLOAD, quotaAdd, quotaUsed } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
 import { fetchWithTimeout } from "./lib/util.ts";
@@ -41,7 +42,10 @@ export function createServices(db: Db, cfg: Config): Services {
     db,
     cfg,
     llm,
-    discover: async () => clusterItems(await fetchFeeds(FEEDS), new Date(), cfg.maxStoryAgeHours),
+    discover: async () => {
+      const [rss, rockstar] = await Promise.all([fetchFeeds(FEEDS), fetchRockstarNewswire(process.env.ROCKSTAR_NEWSWIRE_LIST_HASH || undefined)]);
+      return clusterItems([...rss, ...rockstar], new Date(), cfg.maxStoryAgeHours);
+    },
     discoverEvergreen: () => evergreenCandidates(dayKey(new Date(), cfg.timezone)),
     fetchArticle,
     synthesise: (text, out, voice) => narrate(cfg, text, out, voice),

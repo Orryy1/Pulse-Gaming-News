@@ -109,6 +109,8 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     tiktokClientKey: "",
     tiktokClientSecret: "",
     tiktokTokenPath: "",
+    twitchClientId: "",
+    twitchClientSecret: "",
     xKeys: { consumerKey: "", consumerSecret: "", token: "", tokenSecret: "" },
     selectFromHourUtc: 0,
     minGapHours: 0,

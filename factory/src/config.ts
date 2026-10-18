@@ -124,6 +124,8 @@ export interface Config {
   tiktokClientKey: string;
   tiktokClientSecret: string;
   tiktokTokenPath: string;
+  twitchClientId: string; // IGDB pictures for games Steam cannot supply
+  twitchClientSecret: string;
   xKeys: { consumerKey: string; consumerSecret: string; token: string; tokenSecret: string };
   selectFromHourUtc: number;
   minGapHours: number;
@@ -271,6 +273,8 @@ export function loadConfig(): Config {
     tiktokClientKey: str("TIKTOK_CLIENT_KEY"),
     tiktokClientSecret: str("TIKTOK_CLIENT_SECRET"),
     tiktokTokenPath: str("TIKTOK_TOKEN_PATH"),
+    twitchClientId: str("TWITCH_CLIENT_ID"),
+    twitchClientSecret: str("TWITCH_CLIENT_SECRET"),
     xKeys: {
       consumerKey: str("TWITTER_API_KEY"),
       consumerSecret: str("TWITTER_API_SECRET"),

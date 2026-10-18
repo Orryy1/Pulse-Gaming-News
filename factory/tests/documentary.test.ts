@@ -314,3 +314,18 @@ test("a chapter's stills alternate the game's pictures with archive photos", () 
   const kinds = plan.shots.filter((x) => x.segment >= 1 && x.media.type === "image").slice(0, 6).map((x) => images[x.media.index]!.kind);
   assert.deepEqual(kinds, ["screenshot", "photo", "screenshot", "photo", "screenshot", "photo"]);
 });
+
+import { pickIgdb, parseIgdb } from "../src/assets/igdb.ts";
+
+test("IGDB: the exact game, never a sequel that ranks higher in search", () => {
+  const games = parseIgdb([
+    { id: 1, name: "Grand Theft Auto V", first_release_date: 1379376000, screenshots: [{ image_id: "a" }], artworks: [] },
+    { id: 2, name: "Grand Theft Auto", first_release_date: 875664000, screenshots: [{ image_id: "b" }], artworks: [], cover: { image_id: "c" } },
+    { id: 3, name: "Grand Theft Auto 2", first_release_date: 940000000, screenshots: [], artworks: [] },
+    { id: 4, name: "Grand Theft Auto 2", first_release_date: 970000000, screenshots: [{ image_id: "d" }], artworks: [] },
+  ]);
+  assert.equal(pickIgdb(games, "Grand Theft Auto", 1997)?.id, 2);
+  assert.equal(pickIgdb(games, "Grand Theft Auto 2", 1999)?.id, 3);
+  assert.equal(pickIgdb(games, "Grand Theft Auto IV"), undefined);
+  assert.equal(games[1]!.cover, "c");
+});

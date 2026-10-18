@@ -152,6 +152,8 @@ export interface Services {
   fetchArt(app: SteamApp, episodeDir: string, maxScreens?: number): Promise<VisualAsset[]>;
   /** Freely licensed archive photos (Wikimedia Commons) for a search. */
   searchPhotos(query: string): Promise<import("./assets/commons.ts").CommonsImage[]>;
+  /** Official screenshots, key art and cover from IGDB for a game by exact title (empty without Twitch keys). */
+  igdbArt(title: string, year: number | undefined, episodeDir: string, max: number): Promise<VisualAsset[]>;
   downloadPhoto(img: import("./assets/commons.ts").CommonsImage, dest: string): Promise<boolean>;
   fetchClips(
     app: SteamApp,
@@ -1687,8 +1689,14 @@ async function gatherMedia(
       budgetSeconds: budget,
       dropped: clipAssets.length - clips.length,
     });
+  // Off Steam (GTA VI, Nintendo, console exclusives): IGDB's official stills for the story's game.
+  const igdb =
+    !app && !ranking && script.game_title
+      ? await s.igdbArt(script.game_title, undefined, dir, 8).catch(() => [] as VisualAsset[])
+      : [];
   // In a ranking, the topic page's screenshots would land under the wrong entry: keep its hero and header only.
   const images = [
+    ...igdb,
     ...art.filter(
       (a) =>
         a.kind !== "logo" &&
@@ -1793,6 +1801,9 @@ async function gatherMedia(
               file: path.join(`entry_${beatIndex}`, a.file),
               beatIndex,
             });
+          // Off Steam, IGDB supplies the box art and stills the card and shots need.
+          for (const a of await s.igdbArt(entry.game_title, entry.year, edir, 3).catch(() => [] as VisualAsset[]))
+            images.push({ ...a, file: path.join(`entry_${beatIndex}`, a.file), beatIndex });
           for (const c of capFootage(om.clips, om.trailer?.clipSeconds ?? 0))
             clips.push({
               file: path.join(`entry_${beatIndex}`, c.file),
@@ -2027,6 +2038,15 @@ async function gatherChapterMedia(
     }
   } catch (err) {
     log("warn", "documentary chapter media failed", { game: entry.game_title, error: errorMessage(err) });
+  }
+  // IGDB: official screenshots and key art for games Steam cannot supply, or a thin Steam gallery.
+  try {
+    const have = images.filter((i) => i.beatIndex === beatIndex && i.kind !== "capsule").length;
+    if (have < 8)
+      for (const a of await s.igdbArt(entry.game_title, entry.year, edir, 12 - have))
+        if (a.kind !== "capsule" || !images.some((i) => i.beatIndex === beatIndex && i.kind === "capsule")) images.push({ ...a, file: rel(a.file), beatIndex });
+  } catch (err) {
+    log("warn", "documentary IGDB art failed", { game: entry.game_title, error: errorMessage(err) });
   }
   // Archive photos: the real places and people, freely licensed and credited on screen.
   try {

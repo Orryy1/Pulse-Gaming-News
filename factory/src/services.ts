@@ -27,6 +27,7 @@ import { fetchAchievements } from "./discovery/achievements.ts";
 import { researchGame } from "./discovery/wikipedia.ts";
 import { steamClimbers } from "./discovery/charts.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
+import { findIgdbGame, fetchIgdbArt } from "./assets/igdb.ts";
 import { QUOTA, QUOTA_RESERVE_FOR_UPLOAD, quotaAdd, quotaUsed } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
 import { fetchWithTimeout } from "./lib/util.ts";
@@ -58,6 +59,10 @@ export function createServices(db: Db, cfg: Config): Services {
     gameFacts: steamFacts,
     fetchArt: (app, dir, maxScreens) => fetchSteamArt(app, dir, maxScreens),
     searchPhotos: (q) => searchCommons(q),
+    igdbArt: async (title, year, dir, max) => {
+      const game = await findIgdbGame({ clientId: cfg.twitchClientId, secret: cfg.twitchClientSecret }, title, year).catch(() => undefined);
+      return game ? fetchIgdbArt(game, dir, max) : [];
+    },
     downloadPhoto: (img, dest) => downloadCommons(img, dest),
     fetchClips: (app, dir, targets, maxClips) => selectClips({ app, episodeDir: dir, targets, maxClips, llm: cfg.clipRanking === "llm" ? llm : undefined }),
     releaseRadar: (from) => releaseRadar(from),

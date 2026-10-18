@@ -23,7 +23,7 @@ export const LONG_ENTRY_WORDS_MIN = 45;
 export const LONG_ENTRY_WORDS_MAX = 100;
 
 const HOUSE = `You write for Pulse Gaming News, a fast, credible YouTube channel about video games.
-British English, no serial (Oxford) comma. Brisk, confident, lightly opinionated, warm. Advertiser-friendly. No "like and subscribe", no "let me know in the comments", no "without further ado". The channel speaks as "Pulse".
+American English spelling for a US-first audience, AP style (no serial comma). Brisk, confident, lightly opinionated, warm. Advertiser-friendly. No "like and subscribe", no "let me know in the comments", no "without further ado". The channel speaks as "Pulse".
 Never invent release years, scores, prices or player counts: use the Steam facts provided or long-established public knowledge. Opinions are framed as opinion.`;
 
 export const LongformEntrySchema = z.object({

@@ -182,7 +182,7 @@ export class YouTubeClient {
   }
 
   /** Uploads an SRT file as a published caption track (400 quota units). Returns the caption id. */
-  async insertCaption(videoId: string, file: string, language = "en-GB", name = "English"): Promise<string> {
+  async insertCaption(videoId: string, file: string, language = "en", name = "English"): Promise<string> {
     const srt = await fs.readFile(file);
     const boundary = "pulse_caption_boundary";
     const meta = JSON.stringify({ snippet: { videoId, language, name, isDraft: false } });

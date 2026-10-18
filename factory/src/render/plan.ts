@@ -535,7 +535,7 @@ export function planSfx(segments: Segment[], totalFrames: number): SfxCue[] {
   return cues.slice(0, MAX_SFX).sort((a, b) => a.frame - b.frame);
 }
 
-const fmt = (n: number) => n.toLocaleString("en-GB");
+const fmt = (n: number) => n.toLocaleString("en-US");
 
 /**
  * Exactly one evidence device per segment, never the same device twice in a
@@ -558,7 +558,7 @@ export function planShelf(
       ? `${names.slice(0, 2).join(" / ")} +${names.length - 2}`
       : source;
   const sourceLabel = input.isRumour
-    ? "RUMOUR · UNCONFIRMED"
+    ? "RUMOR · UNCONFIRMED"
     : shortSource
       ? `CONFIRMED · ${shortSource.toUpperCase()}`
       : "PULSE GAMING NEWS";

@@ -52,7 +52,7 @@ const Frame: React.FC<{
   );
 };
 
-/** "CONFIRMED · XBOX WIRE" / "RUMOUR · UNCONFIRMED" pill. */
+/** "CONFIRMED · XBOX WIRE" / "RUMOR · UNCONFIRMED" pill. */
 const SourceChip: React.FC<{
   label: string;
   accent: string;
@@ -98,7 +98,7 @@ function countTo(value: string, p: number): string {
   const target = Number(m[2]!.replace(/,/g, ""));
   if (!Number.isFinite(target)) return value;
   const v = Math.round(target * p);
-  return `${m[1]}${m[2]!.includes(",") ? v.toLocaleString("en-GB") : String(v)}${m[3]}`;
+  return `${m[1]}${m[2]!.includes(",") ? v.toLocaleString("en-US") : String(v)}${m[3]}`;
 }
 
 /** One data tile: value in Anton, label in Inter, counting up from the cue. */

@@ -104,10 +104,10 @@ test("house-rule validation", () => {
   const words = narrationOf(goodScript()).split(/\s+/).length;
   assert.ok(words >= 70 && words <= 115, `fixture has ${words} words`);
 
-  const bad = validateScript(goodScript({ hook: "So, Starfield is delayed again, let me know in the comments what you think about the color." }));
+  const bad = validateScript(goodScript({ hook: "So, Starfield is delayed again, let me know in the comments what you think about the colour." }));
   assert.ok(bad.some((p) => p.includes("must not open")));
   assert.ok(bad.some((p) => p.includes("Banned phrase")));
-  assert.ok(bad.some((p) => p.includes("colour")));
+  assert.ok(bad.some((p) => p.includes("color")));
 
   const rumour = validateScript(goodScript({ is_rumour: true }));
   assert.ok(rumour.some((p) => p.includes("attribute")));
@@ -253,7 +253,7 @@ test("data card helpers parse what the writer gives them", () => {
   assert.deepEqual(parseBars(["*Starfield:4,088", "Outer Worlds 2:1,950", "junk", "Avowed:1.4k"]).map((r) => [r.label, r.value, r.highlight]), [["Starfield", 4088, true], ["Outer Worlds 2", 1950, false], ["Avowed", 1400, false]]);
   assert.equal(parseBars(["A:5", "B:9"])[0]!.highlight, true, "the first row is the subject when none is marked");
   assert.equal(dateLabel("2027-03"), "MAR 2027");
-  assert.equal(dateLabel("2027-03-14"), "14 MAR 2027");
+  assert.equal(dateLabel("2027-03-14"), "MAR 14, 2027");
   assert.equal(monthsBetween("2026-12", "2027-03"), 3);
   assert.equal(daysUntil("2027-03-14", "2026-10-17"), 148);
   assert.equal(bandColour(85), "#22C55E");

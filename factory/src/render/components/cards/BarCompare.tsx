@@ -24,7 +24,7 @@ export const BarCompare: React.FC<{ rows: BarRow[]; label?: string; accent: stri
           if (!Number.isFinite(n)) return num;
           const v = n * p;
           const fixed = num.includes(".") ? v.toFixed(num.split(".")[1]!.length) : String(Math.round(v));
-          return num.includes(",") ? Number(fixed).toLocaleString("en-GB") : fixed;
+          return num.includes(",") ? Number(fixed).toLocaleString("en-US") : fixed;
         });
         return (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 18, height: 72, opacity: Math.min(1, p * 2) }}>

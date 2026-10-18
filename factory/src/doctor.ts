@@ -218,7 +218,7 @@ async function checkElevenLabs(cfg: Config): Promise<Check | undefined> {
       name: "elevenlabs",
       ok: true,
       critical: false,
-      detail: `${s.tier ?? "plan"}: ${left.toLocaleString("en-GB")} characters left this month`,
+      detail: `${s.tier ?? "plan"}: ${left.toLocaleString("en-US")} characters left this month`,
     };
   } catch (e) {
     return {

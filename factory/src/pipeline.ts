@@ -627,7 +627,7 @@ export function emphasisWords(script: Script): string[] {
 /** One live number for the end of the take, if Steam has a good one. */
 export function steamStat(f?: SteamFacts): { value: string; label: string } | null {
   if (!f) return null;
-  if (f.currentPlayers && f.currentPlayers >= 1000) return { value: f.currentPlayers.toLocaleString("en-GB"), label: "playing on Steam right now" };
+  if (f.currentPlayers && f.currentPlayers >= 1000) return { value: f.currentPlayers.toLocaleString("en-US"), label: "playing on Steam right now" };
   if (f.positivePercent !== undefined && (f.totalReviews ?? 0) >= 500) return { value: `${f.positivePercent}%`, label: `positive Steam reviews (${f.reviewSummary})` };
   return null;
 }
@@ -1112,7 +1112,7 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
   }
 }
 
-/** Uploads the SRT as the video's en-GB caption track. Captions are an enhancement: a failure is logged, never blocks a video that is already live. */
+/** Uploads the SRT as the video's English caption track. Captions are an enhancement: a failure is logged, never blocks a video that is already live. */
 async function addCaptions(s: Services, ep: Episode): Promise<void> {
   const file = path.join(episodeDir(s.cfg, ep.id), ep.assets_json!.srt!);
   try {

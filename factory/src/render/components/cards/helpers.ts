@@ -5,14 +5,14 @@ import { COLOUR } from "../../brand.ts";
 
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** "2027-03" or "2027-03-14" or "2027" -> "MAR 2027" / "14 MAR 2027" / "2027"; anything else is shown as typed. */
+/** "2027-03" or "2027-03-14" or "2027" -> "MAR 2027" / "MAR 14, 2027" / "2027" (US order); anything else is shown as typed. */
 export function dateLabel(iso: string): string {
   const m = iso.trim().match(/^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?/);
   if (!m) return iso.toUpperCase();
   const [, y, mo, d] = m;
   if (!mo) return y!;
   const month = MONTHS_SHORT[Number(mo) - 1] ?? mo;
-  return `${d ? `${Number(d)} ` : ""}${month} ${y}`.toUpperCase();
+  return (d ? `${month} ${Number(d)}, ${y}` : `${month} ${y}`).toUpperCase();
 }
 
 /** Months between two ISO dates (year-month precision), signed. */

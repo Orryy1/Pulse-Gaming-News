@@ -142,8 +142,8 @@ export function factsText(f: SteamFacts): string {
     f.price && `Current Steam price: ${[f.prices?.usd && `${f.prices.usd} (US)`, f.prices?.gbp && `${f.prices.gbp} (UK)`, f.prices?.eur && `${f.prices.eur} (EU)`].filter(Boolean).join(", ") || f.price}`,
     f.releaseDate && `Release date: ${f.releaseDate}${f.comingSoon ? " (upcoming)" : ""}`,
     f.metacritic && `Metacritic: ${f.metacritic}`,
-    f.reviewSummary && `Steam user reviews: ${f.reviewSummary}, ${f.positivePercent}% positive of ${f.totalReviews?.toLocaleString("en-GB")}`,
-    f.currentPlayers && `Players on Steam right now: ${f.currentPlayers.toLocaleString("en-GB")}`,
+    f.reviewSummary && `Steam user reviews: ${f.reviewSummary}, ${f.positivePercent}% positive of ${f.totalReviews?.toLocaleString("en-US")}`,
+    f.currentPlayers && `Players on Steam right now: ${f.currentPlayers.toLocaleString("en-US")}`,
     `Data fetched: ${f.fetchedAt}`,
   ];
   return lines.filter(Boolean).join("\n");

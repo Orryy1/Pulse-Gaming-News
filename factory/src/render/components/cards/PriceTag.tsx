@@ -11,7 +11,7 @@ function countTo(value: string, p: number): string {
   const target = Number(m[2]!.replace(/,/g, ""));
   if (!Number.isFinite(target)) return value;
   const v = Math.round(target * p);
-  return `${m[1]}${m[2]!.includes(",") ? v.toLocaleString("en-GB") : String(v)}${m[3] ?? ""}${m[4]}`;
+  return `${m[1]}${m[2]!.includes(",") ? v.toLocaleString("en-US") : String(v)}${m[3] ?? ""}${m[4]}`;
 }
 
 /** Price card: the old price is struck through, the new one lands big, the region label snaps in. */

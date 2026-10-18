@@ -66,7 +66,7 @@ export const STORY_THEME: Record<
     takeLabel: "TRAILER TRUTH",
   },
   update: { chip: "UPDATE", accent: COLOUR.sky, takeLabel: "PATCH PULSE" },
-  rumour: { chip: "RUMOUR", accent: COLOUR.alert, takeLabel: "WHAT WE KNOW" },
+  rumour: { chip: "RUMOR", accent: COLOUR.alert, takeLabel: "WHAT WE KNOW" },
   review_scores: {
     chip: "REVIEWS ARE IN",
     accent: COLOUR.amber,

@@ -48,12 +48,12 @@ function under1000(n: number): string {
       r < 20
         ? ONES[r]!
         : `${TENS[Math.floor(r / 10)]}${r % 10 ? `-${ONES[r % 10]}` : ""}`;
-    parts.push(h ? `and ${words}` : words);
+    parts.push(words);
   }
   return parts.join(" ");
 }
 
-/** Whole numbers in words, British style ("one hundred and five"), up to the trillions. */
+/** Whole numbers in words, American style ("one hundred five"), up to the trillions. */
 export function numberWords(n: number): string {
   if (!Number.isFinite(n) || n < 0) return String(n);
   n = Math.floor(n);
@@ -74,7 +74,7 @@ export function numberWords(n: number): string {
   }
   if (rest)
     parts.push(
-      rest < 100 && parts.length ? `and ${under1000(rest)}` : under1000(rest),
+      under1000(rest),
     );
   return parts.join(" ");
 }

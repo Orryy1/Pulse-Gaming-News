@@ -168,7 +168,7 @@ const describe = (r: PerfRow): string => {
   ]
     .filter(Boolean)
     .join(", ");
-  return `"${title}" (${bits}): ${Number(r.views).toLocaleString("en-GB")} views`;
+  return `"${title}" (${bits}): ${Number(r.views).toLocaleString("en-US")} views`;
 };
 
 /**
@@ -190,7 +190,7 @@ export async function performanceNotes(db: Db, now: Date): Promise<string> {
     .reverse()
     .map((r) => `- ${describe(r)}`);
   return [
-    `Recent results (views 24 h after publish, last 28 days, median ${med.toLocaleString("en-GB")}). Advice, not rules: a strong story on an under-performing pattern still wins.`,
+    `Recent results (views 24 h after publish, last 28 days, median ${med.toLocaleString("en-US")}). Advice, not rules: a strong story on an under-performing pattern still wins.`,
     "Did best:",
     ...top,
     "Did worst:",
@@ -228,7 +228,7 @@ export async function weeklyDigest(
   const lines = [
     `**Published this week:** ${lanes.length ? lanes.map((l) => `${l.lane} ${l.n}`).join(" · ") : "nothing"}${Number(fails[0]?.n ?? 0) ? ` · failed ${fails[0]!.n}` : ""}`,
     weekRows.length
-      ? `**Median views at 24 h:** ${median(weekRows.map((r) => Number(r.views))).toLocaleString("en-GB")} (${weekRows.length} Shorts)`
+      ? `**Median views at 24 h:** ${median(weekRows.map((r) => Number(r.views))).toLocaleString("en-US")} (${weekRows.length} Shorts)`
       : "**Views at 24 h:** none captured yet",
     ...(weekRows.length
       ? ["**Best:**", ...weekRows.slice(0, 3).map((r) => `• ${describe(r)}`)]
@@ -246,11 +246,11 @@ export async function weeklyDigest(
       ? [
           "**Voices (median 24 h views, last 28 days):**",
           ...voices.map(
-            (v) => `• ${v.name}: ${v.med.toLocaleString("en-GB")} over ${v.n}`,
+            (v) => `• ${v.name}: ${v.med.toLocaleString("en-US")} over ${v.n}`,
           ),
         ]
       : []),
-    `**YouTube quota used today:** ${(await quotaUsed(db, now)).toLocaleString("en-GB")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-GB")}`,
+    `**YouTube quota used today:** ${(await quotaUsed(db, now)).toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")}`,
     "Reminders: check Studio for Content ID claims on anything over 60 s; the retention curve arrives once analytics is reconnected.",
   ];
   return {

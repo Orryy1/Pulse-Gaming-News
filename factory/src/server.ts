@@ -20,7 +20,7 @@ import { alert } from "./approval/discord.ts";
 import { digestDue, markDigestSent, weeklyDigest } from "./analytics.ts";
 
 function page(title: string, body: string): string {
-  return `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title><style>
 body{margin:0;font:16px/1.5 system-ui,sans-serif;background:#0b0b0e;color:#f5f5f2;padding:24px 16px}
 main{max-width:640px;margin:0 auto}h1{font-size:22px}a{color:#ff6b1a}

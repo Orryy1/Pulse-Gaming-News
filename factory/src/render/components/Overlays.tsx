@@ -105,7 +105,7 @@ export const TopBar: React.FC<{
             lineHeight: 1.1,
           }}
         >
-          {isRumour ? "RUMOUR · UNCONFIRMED" : chip}
+          {isRumour ? "RUMOR · UNCONFIRMED" : chip}
         </div>
       </div>
       <div
@@ -271,7 +271,7 @@ function countUp(primary: string, p: number): string {
   if (!Number.isFinite(target) || raw.includes(".")) return primary;
   if (/^(19|20)\d\d$/.test(raw)) return primary; // years don't count up
   const v = Math.round(target * p);
-  return `${m[1]}${m[2]!.includes(",") ? v.toLocaleString("en-GB") : String(v)}${m[3]}`;
+  return `${m[1]}${m[2]!.includes(",") ? v.toLocaleString("en-US") : String(v)}${m[3]}`;
 }
 
 /** Fact card for a beat or the take: an accent rule draws, the content follows, and it exits before the next one. */

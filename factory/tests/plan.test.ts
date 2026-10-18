@@ -255,7 +255,7 @@ test("turns, sound cues and the shelf follow the structure", () => {
     plan.shelf.some((s) => s.device === "live" && s.data.value === "4,088"),
   );
   const rumour = buildPlan(input({ isRumour: true }));
-  assert.equal(rumour.shelf[0]!.data.label, "RUMOUR · UNCONFIRMED");
+  assert.equal(rumour.shelf[0]!.data.label, "RUMOR · UNCONFIRMED");
 });
 
 test("beat-matched clips land under their own line, the hook clip opens, and nothing borrows another line's moment", () => {

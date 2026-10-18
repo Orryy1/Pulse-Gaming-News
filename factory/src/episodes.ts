@@ -47,7 +47,7 @@ export interface EpisodeAssets {
   audio?: string;
   words?: Array<{ text: string; start: number; end: number }>;
   durationSeconds?: number;
-  srt?: string; // captions.srt, uploaded as the video's en-GB caption track
+  srt?: string; // captions.srt, uploaded as the video's English caption track
   voice?: { provider: "local" | "elevenlabs"; id: string; name: string }; // who narrated, for the Discord card and analytics
   plan?: import("./render/plan.ts").RenderPlan; // the render plan, persisted so a retried render is identical
   images?: Array<{ file: string; kind: string; aspect: number; sourceUrl: string; provenance: string; blurFile?: string; beatIndex?: number }>;

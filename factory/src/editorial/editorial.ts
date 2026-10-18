@@ -22,10 +22,10 @@ export const WORDS_MAX = 115;
 const HOUSE_STYLE = `You write for Pulse Gaming News, a fast, credible YouTube Shorts channel about video game news.
 
 House style (non-negotiable):
-- British English spelling and vocabulary. Never use the serial (Oxford) comma.
+- American English spelling and vocabulary for a US-first audience (color, favorite, center, realize, defense, rumor). AP news style: no serial (Oxford) comma.
 - Brisk, confident, lightly opinionated. Short declarative sentences. No filler, no hype-bro slang.
 - Advertiser-friendly: no profanity, no graphic violence, no shock language, no fake stakes.
-- Never present a rumour, leak or report as fact. Rumours use "reportedly", "according to" or "rumoured" and name who is reporting it.
+- Never present a rumour, leak or report as fact. Rumors use "reportedly", "according to" or "rumored" and name who is reporting it.
 - Never invent facts, numbers, dates, prices or quotes. Every factual claim must come from the provided sources, or be long-established public knowledge (for example a game's original release year).
 - Never say "let me know in the comments", "like and subscribe" or similar calls to action.
 - No personal details about the channel's operator. The channel speaks as "Pulse".`;
@@ -158,19 +158,21 @@ const BANNED_PHRASES = [
   /\byou won'?t believe\b/i,
   /\bshocking\b/i,
 ];
-const AMERICANISMS: Array<[RegExp, string]> = [
-  [/\bcolor(s|ed|ful)?\b/i, "colour"],
-  [/\bfavorite(s)?\b/i, "favourite"],
-  [/\bcenter(s|ed)?\b/i, "centre"],
-  [/\brealiz(e|ed|es|ing)\b/i, "realise"],
-  [/\borganiz(e|ed|ation)\b/i, "organise"],
-  [/\bapologiz(e|ed)\b/i, "apologise"],
-  [/\bdefense\b/i, "defence"],
-  [/\bfavor\b/i, "favour"],
-  [/\bhonor(s|ed)?\b/i, "honour"],
-  [/\banalyz(e|ed|ing)\b/i, "analyse"],
-  [/\brumor(s|ed)?\b/i, "rumour"],
-  [/\bmonetiz(e|ed|ation)\b/i, "monetise"],
+const BRITICISMS: Array<[RegExp, string]> = [
+  [/\bcolour(s|ed|ful)?\b/i, "color"],
+  [/\bfavourite(s)?\b/i, "favorite"],
+  [/\bcentre(s|d)?\b/i, "center"],
+  [/\brealis(e|ed|es|ing)\b/i, "realize"],
+  [/\borganis(e|ed|ation)\b/i, "organize"],
+  [/\bapologis(e|ed)\b/i, "apologize"],
+  [/\bdefence\b/i, "defense"],
+  [/\bfavour\b/i, "favor"],
+  [/\bhonour(s|ed)?\b/i, "honor"],
+  [/\banalys(e|ed|ing)\b/i, "analyze"],
+  [/\brumour(s|ed)?\b/i, "rumor"],
+  [/\bmonetis(e|ed|ation)\b/i, "monetize"],
+  [/\bcatalogue\b/i, "catalog"],
+  [/\bprogramme(s)?\b/i, "program"],
 ];
 
 /** Deterministic house-rule checks. Returns human-readable problems; empty means valid. */
@@ -184,12 +186,12 @@ export function validateScript(s: Script): string[] {
   if (s.beats.length < 2 || s.beats.length > 4) problems.push("There must be two to four beats.");
   const allText = [spoken, s.headline, s.youtube.title, s.youtube.description, s.pulse_take.on_screen, ...s.beats.map((b) => `${b.visual.primary} ${b.visual.secondary}`)].join("\n");
   for (const re of BANNED_PHRASES) if (re.test(allText)) problems.push(`Banned phrase matched: ${re.source}.`);
-  for (const [re, fix] of AMERICANISMS) if (re.test(allText)) problems.push(`Use British spelling ("${fix}"), found "${allText.match(re)?.[0]}".`);
+  for (const [re, fix] of BRITICISMS) if (re.test(allText)) problems.push(`Use American spelling ("${fix}"), found "${allText.match(re)?.[0]}".`);
   if (/\b\w+, [\w ]+, and\b/.test(allText)) problems.push("Remove the serial (Oxford) comma before \"and\".");
   if (s.youtube.title.length > 100) problems.push("The YouTube title is over 100 characters.");
   if (wordCount(s.headline) > 9) problems.push("The on-screen headline is longer than 8 words.");
   if (!s.pulse_take.narration.trim()) problems.push("The Pulse take is empty.");
-  if (s.is_rumour && !/\b(reportedly|rumoured|according to|allegedly|claims?|reports?|suggests?)\b/i.test(spoken)) {
+  if (s.is_rumour && !/\b(reportedly|rumoured|according to|allegedly|claims?|reports?|suggests?|rumored)\b/i.test(spoken)) {
     problems.push("A rumour script must attribute its claims (reportedly / according to ...).");
   }
   for (const b of s.beats) {

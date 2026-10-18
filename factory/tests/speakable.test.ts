@@ -12,10 +12,10 @@ test("prices are spoken in the currency on screen", () => {
   assert.equal(speakable("a $70 game"), "a seventy dollars game");
   assert.equal(speakable("$1 deal"), "one dollar deal");
   assert.equal(speakable("a $1.5bn deal"), "a one point five billion dollars deal");
-  assert.equal(speakable("$1,299.00"), "one thousand two hundred and ninety-nine dollars");
+  assert.equal(speakable("$1,299.00"), "one thousand two hundred ninety-nine dollars");
   assert.equal(speakable("No prices, 2027 and 86%."), "No prices, 2027 and 86%.");
-  assert.equal(numberWords(105), "one hundred and five");
-  assert.equal(numberWords(3_000_042), "three million and forty-two");
+  assert.equal(numberWords(105), "one hundred five");
+  assert.equal(numberWords(3_000_042), "three million forty-two");
 });
 
 test("Steam prices format as symbol and two decimals whatever the store's own formatting", () => {

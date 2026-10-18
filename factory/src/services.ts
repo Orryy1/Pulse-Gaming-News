@@ -28,6 +28,7 @@ import { researchGame } from "./discovery/wikipedia.ts";
 import { steamClimbers } from "./discovery/charts.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { findIgdbGame, fetchIgdbArt } from "./assets/igdb.ts";
+import { gameplayClips } from "./assets/gameplay.ts";
 import { QUOTA, QUOTA_RESERVE_FOR_UPLOAD, quotaAdd, quotaUsed } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
 import { fetchWithTimeout } from "./lib/util.ts";
@@ -59,6 +60,26 @@ export function createServices(db: Db, cfg: Config): Services {
     gameFacts: steamFacts,
     fetchArt: (app, dir, maxScreens) => fetchSteamArt(app, dir, maxScreens),
     searchPhotos: (q) => searchCommons(q),
+        gameplayClips: async (game, franchise, year, dir, targets, maxClips) => {
+      if (!cfg.officialTrailers || !cfg.footage) return [];
+      return gameplayClips({
+        token: () => accessToken(db, oauthConfig(cfg)),
+        llm: cfg.clipRanking === "llm" ? llm : undefined,
+        ytdlp: cfg.ytdlpPath,
+        game,
+        franchise,
+        year,
+        episodeDir: dir,
+        targets,
+        maxClips,
+        quotaOk: async () => {
+          const now = new Date();
+          if ((await quotaUsed(db, now)) + QUOTA.search + QUOTA_RESERVE_FOR_UPLOAD > cfg.quotaUnitsPerDay) return false;
+          await quotaAdd(db, now, QUOTA.search);
+          return true;
+        },
+      });
+    },
     igdbArt: async (title, year, dir, max) => {
       const game = await findIgdbGame({ clientId: cfg.twitchClientId, secret: cfg.twitchClientSecret }, title, year).catch(() => undefined);
       return game ? fetchIgdbArt(game, dir, max) : [];

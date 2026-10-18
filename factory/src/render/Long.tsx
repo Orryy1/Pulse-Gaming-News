@@ -40,6 +40,7 @@ export interface LongClipProp {
   beatIndex?: number;
   role?: "hook";
   moment?: number;
+  credit?: string; // licensed gameplay: creator and licence, shown on screen
 }
 
 export type LongProps = {
@@ -275,7 +276,28 @@ const Backdrop: React.FC<{
       return (
         <Sequence key={i} from={s.start} durationInFrames={len} layout="none">
           {clip ? (
-            <Clip src={clip.src} />
+            <>
+              <Clip src={clip.src} />
+              {clip.credit ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 40,
+                    bottom: 26,
+                    padding: "4px 10px",
+                    background: "rgba(11,11,14,0.55)",
+                    borderRadius: 6,
+                    fontFamily: BODY,
+                    fontWeight: 600,
+                    fontSize: 16,
+                    letterSpacing: 0.5,
+                    color: "rgba(245,245,242,0.8)",
+                  }}
+                >
+                  {clip.credit}
+                </div>
+              ) : null}
+            </>
           ) : img ? (
             <>
               <Still src={img.src} aspect={img.aspect} durationFrames={len} move={s.move} />

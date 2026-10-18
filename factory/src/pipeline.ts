@@ -167,12 +167,9 @@ export interface Services {
     query: string,
   ): Promise<import("./assets/commons.ts").CommonsImage[]>;
   /** Official screenshots, key art and cover from IGDB for a game by exact title (empty without Twitch keys). */
-  igdbArt(
-    title: string,
-    year: number | undefined,
-    episodeDir: string,
-    max: number,
-  ): Promise<VisualAsset[]>;
+    igdbArt(title: string, year: number | undefined, episodeDir: string, max: number): Promise<VisualAsset[]>;
+  /** Licensed gameplay (Creative Commons, then the publisher's own uploads) matched to the given lines. */
+  gameplayClips(game: string, franchise: string, year: number | undefined, episodeDir: string, targets: FootageTarget[], maxClips: number): Promise<Array<VisualAsset & { credit: string }>>;
   downloadPhoto(
     img: import("./assets/commons.ts").CommonsImage,
     dest: string,
@@ -1899,9 +1896,7 @@ async function gatherMedia(
           continue;
         }
         // An empty Steam term means the writer knows the game is not on Steam: straight to the publisher's trailer.
-        const eapp = entry.steam_search_term
-          ? await s.findGame(entry.steam_search_term)
-          : undefined;
+        const eapp = await steamAppForEntry(s, entry);
         if (!eapp) {
           if (!s.cfg.footage) continue;
           const want = script.beats[beatIndex]?.footage;
@@ -2142,9 +2137,7 @@ async function gatherLongEntryMedia(
     });
   const mine: Array<VisualAsset & { beatIndex?: number }> = [];
   try {
-    const eapp = entry.steam_search_term
-      ? await s.findGame(entry.steam_search_term).catch(() => undefined)
-      : undefined;
+    const eapp = await steamAppForEntry(s, entry).catch(() => undefined);
     if (eapp) {
       mine.push(
         ...(await s.fetchArt(eapp, edir, 12)).filter((a) => a.kind !== "logo"),
@@ -2180,6 +2173,26 @@ async function gatherLongEntryMedia(
         for (const c of capFootage(om.clips, om.trailer.clipSeconds ?? 0))
           pushClip(c);
     }
+        // Licensed gameplay for the sentences no trailer moment covers: real missions and moments, credited.
+    const covered = new Set(clips.filter((c) => c.beatIndex === beatIndex).map((c) => c.moment));
+    const missing = targets.filter((_, k) => !covered.has(k)).slice(0, 4);
+    if (missing.length)
+      for (const c of await s.gameplayClips(entry.game_title, script.game_title || entry.game_title, entry.year, edir, missing, missing.length).catch(() => [] as Array<VisualAsset & { credit: string }>))
+        clips.push({
+          file: rel(c.file),
+          sourceUrl: c.sourceUrl,
+          provenance: c.provenance,
+          durationSeconds: Math.min(c.durationSeconds ?? 4, 4.8),
+          beatIndex,
+          moment: c.moment,
+          role: undefined,
+          motion: c.motion,
+          luma: c.luma,
+          label: c.label,
+          reason: c.reason,
+          startSeconds: c.startSeconds,
+          credit: c.credit,
+        });
     // IGDB tops up a thin gallery (and supplies everything for games off Steam).
     const have = mine.filter((a) => a.kind !== "capsule").length;
     if (have < 10)
@@ -2337,6 +2350,37 @@ async function gatherChapterMedia(
       error: errorMessage(err),
     });
   }
+    // Licensed gameplay: a few real moments per chapter, matched to its paragraphs, credited.
+  try {
+    const paragraphs = chapterFootage(script, beatIndex).slice(0, 4);
+    const have = clips.filter((c) => c.beatIndex === beatIndex).length;
+    if (paragraphs.length && have < 6) {
+      const targets: FootageTarget[] = paragraphs.map((f, k) => ({
+        key: `beat:${beatIndex}#g${k}`,
+        text: `${entry.game_title}: ${f.keywords.join(", ")}`,
+        want: f.want,
+        energy: "medium",
+        keywords: [entry.game_title, ...f.keywords].slice(0, 4),
+      }));
+      for (const c of await s.gameplayClips(entry.game_title, franchise, entry.year, edir, targets, targets.length))
+        clips.push({
+          file: rel(c.file),
+          sourceUrl: c.sourceUrl,
+          provenance: c.provenance,
+          durationSeconds: Math.min(c.durationSeconds ?? 4, 4.8),
+          beatIndex,
+          role: undefined,
+          motion: c.motion,
+          luma: c.luma,
+          label: c.label,
+          reason: c.reason,
+          startSeconds: c.startSeconds,
+          credit: c.credit,
+        });
+    }
+  } catch (err) {
+    log("warn", "documentary gameplay failed", { game: entry.game_title, error: errorMessage(err) });
+  }
   // IGDB: official screenshots and key art for games Steam cannot supply, or a thin Steam gallery.
   try {
     const have = images.filter(
@@ -2405,6 +2449,27 @@ async function gatherChapterMedia(
       error: errorMessage(err),
     });
   }
+}
+
+/**
+ * The Steam page for a ranking entry, only when it is that release: Steam's
+ * search hands "Call of Duty 4: Modern Warfare" (2007) the 2019 reboot, and
+ * "Resident Evil 4" the remake. A page more than a year off the entry's year
+ * is refused, and the entry's pictures come from IGDB by exact title instead.
+ */
+export async function steamAppForEntry(
+  s: Pick<Services, "findGame">,
+  entry: { steam_search_term: string; year?: number; game_title: string },
+): Promise<SteamApp | undefined> {
+  if (!entry.steam_search_term) return undefined;
+  const app = await s.findGame(entry.steam_search_term);
+  if (!app || !entry.year) return app;
+  const appYear = Number(String(app.details?.release_date?.date ?? "").match(/\b(19|20)\d\d\b/)?.[0]) || undefined;
+  if (appYear && Math.abs(appYear - entry.year) > 1) {
+    log("info", "steam page refused: another release of the game", { entry: entry.game_title, year: entry.year, store: app.name, storeYear: appYear });
+    return undefined;
+  }
+  return app;
 }
 
 export function segmentInputs(script: Script): SegmentInput[] {
@@ -2553,12 +2618,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     .sort((a, b) => b.rank - a.rank)
     .map((e) => e.moments ?? []);
   const hasMoments = moments.some((m) => m.length);
-  const clips = (assets.clips ?? []).map((c) => ({
+    const clips = (assets.clips ?? []).map((c) => ({
     file: c.file,
     durationSeconds: c.durationSeconds,
     beatIndex: c.beatIndex,
     role: c.role,
     moment: c.moment,
+    credit: c.credit,
   }));
   const plan =
     assets.longPlan ??
@@ -3209,6 +3275,12 @@ export function footageCredits(
         ? `Footage: official post by ${channel} (${url}).`
         : `Footage and still: the official ${channel} YouTube channel (${url}).`,
     );
+    const cc = new Map<string, string>();
+  for (const c of clips) {
+    const m = c.provenance.match(/^Gameplay "[^"]*" by (.+?), Creative Commons Attribution licence \(CC BY\) \((https?:[^)]+)\)/);
+    if (m) cc.set(m[1]!, m[2]!);
+  }
+  for (const [channel, url] of cc) lines.push(`Gameplay: ${channel}, licensed CC BY (${url}).`);
   const stock = clips
     .filter((c) => /^Illustrative stock footage from Pexels/.test(c.provenance))
     .map((c) => c.provenance.match(/\((https?:[^)]+)\)/)?.[1])

@@ -253,8 +253,9 @@ export async function postTikTok(
   const data = await fs.readFile(p.file);
   const size = data.length;
   // One chunk up to 64 MB; above that, 10 MB chunks with the remainder folded into the last.
-  // Chunks of up to 64 MB; the final chunk takes the remainder and may run to 128 MB, so most Shorts go in one.
-  const chunk = Math.min(size, 64 * 1024 * 1024);
+  // One chunk up to 64 MB (a single chunk must be the whole file); above that, 32 MB chunks with the
+  // remainder folded into the last, which TikTok allows up to 128 MB.
+  const chunk = size <= 64 * 1024 * 1024 ? size : 32 * 1024 * 1024;
   const count = Math.max(1, Math.floor(size / chunk));
   const headers = {
     authorization: `Bearer ${p.accessToken}`,

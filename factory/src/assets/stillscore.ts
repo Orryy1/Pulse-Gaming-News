@@ -50,7 +50,7 @@ export const StillRankingSchema = z.object({
 });
 
 const PROMPT = `You are the picture editor for a video game video. You see numbered pictures of one game and the sentences the narrator says about it, each with a note of what should be on screen.
-For each sentence pick the picture that best shows the specific thing it names: the character, mission, place, weapon, vehicle or moment. Prefer a different picture for every sentence. Mark any picture with readable words (logos, title text, menus, HUD, captions, watermarks) as has_text. Confidence under 0.5 means no picture truly shows it; say so rather than forcing a match.`;
+For each sentence pick the picture that best shows the specific thing it names: the character, mission, place, weapon, vehicle or moment. Prefer a different picture for every sentence. Mark any picture with readable words (logos, title text, menus, HUD, captions, watermarks) as has_text. Also mark as has_text any picture showing gore or graphic violence (blood, wounds, bodies), so it is never used: the channel must stay advertiser-friendly. Confidence under 0.5 means no picture truly shows it; say so rather than forcing a match.`;
 
 async function thumb(src: string, dest: string): Promise<void> {
   await run(FFMPEG, [

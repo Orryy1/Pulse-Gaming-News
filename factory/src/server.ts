@@ -137,7 +137,18 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       const code = url.searchParams.get("code");
       if (!code) return send(400, page("No code", `<h1>Google returned: ${esc(url.searchParams.get("error") ?? "no code")}</h1>`));
       try {
-        const { refreshToken, scope } = await exchangeCode(oauthConfig(cfg), code);
+        // A one-off network drop must not waste the owner's clicks: the code stays valid for a few minutes.
+        let exchanged: Awaited<ReturnType<typeof exchangeCode>> | undefined;
+        for (let attempt = 1; !exchanged; attempt++) {
+          try {
+            exchanged = await exchangeCode(oauthConfig(cfg), code);
+          } catch (err) {
+            if (attempt >= 4 || !/fetch failed|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket/i.test(`${errorMessage(err)} ${(err as any)?.cause?.code ?? ""}`)) throw err;
+            log("warn", "oauth exchange retry", { attempt, error: errorMessage(err) });
+            await new Promise((r) => setTimeout(r, attempt * 2000));
+          }
+        }
+        const { refreshToken, scope } = exchanged;
         // Brand accounts on Google's chooser often carry old names: check the channel itself before saving.
         if (cfg.youtubeChannelId) {
           const ch = await channelOf(refreshToken, oauthConfig(cfg)).catch(() => undefined);
@@ -154,7 +165,8 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
           ? `<h1>Almost: one box was left unticked.</h1><p>Google did not grant ${esc(missing.join(", "))}. <a href="/connect">Try again</a> and tick every box on the Google screen.</p>`
           : `<h1>✅ YouTube connected.</h1><p>Captions, pinned comments, analytics and thumbnails are now on. You can close this tab.</p>`));
       } catch (err) {
-        return send(500, page("Failed", `<h1>Token exchange failed</h1><p>${esc(errorMessage(err))}</p>`));
+        log("error", "oauth callback failed", { error: errorMessage(err) });
+        return send(500, page("Failed", `<h1>Token exchange failed</h1><p>${esc(errorMessage(err))}</p><p><a href="/connect" style="font-size:22px">Try again</a></p>`));
       }
     }
 

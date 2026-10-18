@@ -200,7 +200,8 @@ async function setup(
     steamClimbers: async () => [],
     searchPhotos: async () => [],
         igdbArt: async () => [],
-    gameplayClips: async () => [],
+        gameplayClips: async () => [],
+    judgeFootage: async () => true,
     downloadPhoto: async () => false,
     fetchStock: async (_dir, targets) => (f.stock ?? 0) > 0 ? targets.slice(0, f.stock).map((t, i) => ({ kind: "clip" as const, file: `assets/stock_${i}.mp4`, sourceUrl: "https://www.pexels.com/video/1", durationSeconds: 4, beatIndex: Number.parseInt(t.key.slice(5), 10), stock: true, provenance: "Illustrative stock footage from Pexels (https://www.pexels.com/video/1) by x, free to use under the Pexels licence" })) : [],
     fetchOfficialMedia: async () => ({

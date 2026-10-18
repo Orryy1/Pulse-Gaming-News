@@ -139,12 +139,13 @@ export async function judgeGameplay(
   game: string,
   year: number | undefined,
   items: Array<{ title: string; description: string; channelTitle: string }>,
+  scope?: "campaign",
 ): Promise<number[]> {
   if (!items.length) return [];
   const r = await llm.structured({
     system:
       "You check YouTube search results for a video editor. Keep only videos that show gameplay of exactly the named game (that release, not another entry in the series, a remake or remaster under a different name, a sequel, a mod, a reaction, a compilation of several games or a news video).",
-    content: `Game: ${game}${year ? ` (${year})` : ""}\n\nVideos:\n${items.map((v, i) => `${i}. "${v.title}" by ${v.channelTitle}: ${v.description.slice(0, 200)}`).join("\n")}`,
+        content: `Game: ${game}${year ? ` (${year})` : ""}${scope === "campaign" ? "\nThe video is about the single-player campaign: keep only campaign or story footage; reject multiplayer, Zombies, Warzone, co-op and Spec Ops videos." : ""}\n\nVideos:\n${items.map((v, i) => `${i}. "${v.title}" by ${v.channelTitle}: ${v.description.slice(0, 200)}`).join("\n")}`,
     schema: GameplayJudgeSchema,
     effort: "low",
   });
@@ -156,23 +157,18 @@ export async function findGameplay(
   token: () => Promise<string>,
   game: string,
   franchise: string,
-  opts: {
-    max?: number;
-    quotaOk?: () => Promise<boolean>;
-    year?: number;
-    llm?: Llm;
-  } = {},
+    opts: { max?: number; quotaOk?: () => Promise<boolean>; year?: number; llm?: Llm; scope?: "campaign" } = {},
 ): Promise<GameplaySource[]> {
   const max = opts.max ?? 2;
   const out: GameplaySource[] = [];
-  const q = `${game}${opts.year ? ` ${opts.year}` : ""} gameplay`;
+    const q = `${game}${opts.year ? ` ${opts.year}` : ""} ${opts.scope === "campaign" ? "campaign mission" : ""} gameplay`.replace(/\s+/g, " ");
   const judged = async <
     T extends { title: string; description: string; channelTitle: string },
   >(
     items: T[],
   ): Promise<T[]> => {
     if (!opts.llm || !items.length) return items;
-    const keep = await judgeGameplay(opts.llm, game, opts.year, items).catch(
+    const keep = await judgeGameplay(opts.llm, game, opts.year, items, opts.scope).catch(
       () => items.map((_, k) => k),
     );
     return keep.map((k) => items[k]!);
@@ -284,10 +280,11 @@ export async function gameplayClips(o: {
   episodeDir: string;
   targets: FootageTarget[];
   maxClips: number;
-  quotaOk?: () => Promise<boolean>;
+    quotaOk?: () => Promise<boolean>;
+  scope?: "campaign";
 }): Promise<Array<VisualAsset & { credit: string }>> {
   if (!o.targets.length || o.maxClips <= 0) return [];
-  const sources = await findGameplay(o.token, o.game, o.franchise, { max: 2, quotaOk: o.quotaOk, year: o.year, llm: o.llm }).catch((err) => {
+  const sources = await findGameplay(o.token, o.game, o.franchise, { max: 2, quotaOk: o.quotaOk, year: o.year, llm: o.llm, scope: o.scope }).catch((err) => {
     log("warn", "gameplay search failed", {
       game: o.game,
       error: errorMessage(err),

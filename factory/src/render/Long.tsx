@@ -21,7 +21,7 @@ import { BODY, DISPLAY } from "./components/fonts.ts";
 import { moveTransform, SPRING, type MovePreset } from "./motion.ts";
 import { buildLongPlan, entryOf, momentWindows, type LongPlan } from "./longplan.ts";
 import { FlashPunch, GrainVignette, KineticCaption, MomentGraphicCard, PopInPicture, Sfx, type MomentProp } from "./components/LongMoments.tsx";
-import type { Segment } from "./timeline.ts";
+import { displayText, type Segment } from "./timeline.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 
 export interface LongImageProp {
@@ -1184,8 +1184,8 @@ export const Long: React.FC<LongProps> = (props) => {
             >
               <CalloutCard
                 kind={s.visual.kind}
-                primary={s.visual.primary}
-                secondary={s.visual.secondary}
+                primary={displayText(s.visual.primary)}
+                secondary={displayText(s.visual.secondary)}
                 durationFrames={len}
               />
             </Sequence>

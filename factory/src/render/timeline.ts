@@ -128,7 +128,7 @@ function srtTime(seconds: number): string {
  */
 export function srtFromWords(words: Word[]): string {
   const cues: Array<{ start: number; end: number; text: string }> = [];
-  for (const p of pageCaptions(words, 8, 40)) {
+    for (const p of pageCaptions(displayWords(words), 8, 40)) {
     const text = p.words.map((w) => w.text).join(" ");
     const last = cues.at(-1);
     if (last && p.end - p.start < 0.7 && `${last.text} ${text}`.length <= 64) {
@@ -151,4 +151,69 @@ export function shotTimes(segments: Segment[], maxShot = 3.2): number[] {
     for (let p = 0; p < parts; p++) cuts.push(s.start + (len * p) / parts);
   }
   return cuts;
+}
+
+const UNITS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 };
+const TEENS: Record<string, number> = { ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
+const TENS_W: Record<string, number> = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+
+/** "sixteen", "ninety-seven", "oh five" as 16, 97, 5; undefined for anything else. */
+function twoDigit(words: string[]): { value: number; used: number } | undefined {
+  const a = words[0]?.toLowerCase().replace(/[^a-z-]/g, "");
+  if (!a) return undefined;
+  if (a === "oh" && UNITS[words[1]?.toLowerCase().replace(/[^a-z]/g, "") ?? ""]) return { value: UNITS[words[1]!.toLowerCase().replace(/[^a-z]/g, "")]!, used: 2 };
+  if (TEENS[a] !== undefined) return { value: TEENS[a]!, used: 1 };
+  const [t, u] = a.split("-");
+  if (TENS_W[t!] !== undefined) return { value: TENS_W[t!]! + (u ? (UNITS[u] ?? 0) : 0), used: 1 };
+  return undefined;
+}
+
+/**
+ * What the screen shows for spoken words: "47 percent" is "47%", and years the
+ * voice says in words ("twenty sixteen", "two thousand seven") are digits again.
+ * Timings merge, so a caption still lights when its words are spoken.
+ */
+export function displayWords(words: Word[]): Word[] {
+  const out: Word[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    const bare = (k: number) => (words[k]?.text ?? "").toLowerCase().replace(/[^a-z-]/g, "");
+    const tail = (k: number) => (words[k]?.text ?? "").match(/[.,;:!?)"”’]+$/)?.[0] ?? "";
+    // 47 percent
+    if (/^\d[\d,.]*$/.test(w.text.replace(/[^\d,.]/g, "") || "x") && /^\d/.test(w.text) && /^percent[.,;:!?)"”’]*$/i.test(words[i + 1]?.text ?? "")) {
+      out.push({ text: `${w.text.replace(/[.,;:!?]+$/, "")}%${tail(i + 1)}`, start: w.start, end: words[i + 1]!.end });
+      i++;
+      continue;
+    }
+    // two thousand seven
+    if (bare(i) === "two" && bare(i + 1) === "thousand") {
+      const u = UNITS[bare(i + 2)];
+      if (u !== undefined) {
+        out.push({ text: `200${u}${tail(i + 2)}`, start: w.start, end: words[i + 2]!.end });
+        i += 2;
+        continue;
+      }
+    }
+    // nineteen ninety-seven, twenty sixteen, twenty oh five
+    const hi = bare(i) === "nineteen" ? 19 : bare(i) === "twenty" ? 20 : undefined;
+    if (hi !== undefined) {
+      const lo = twoDigit(words.slice(i + 1, i + 3).map((x) => x.text));
+      if (lo && lo.value >= 10 || (lo && words[i + 1]?.text.toLowerCase() === "oh")) {
+        const last = i + lo!.used;
+        const year = hi * 100 + lo!.value;
+        if (year >= 1950 && year <= 2099) {
+          out.push({ text: `${year}${tail(last)}`, start: w.start, end: words[last]!.end });
+          i = last;
+          continue;
+        }
+      }
+    }
+    out.push(w);
+  }
+  return out;
+}
+
+/** On-screen text: "47 percent" is "47%". */
+export function displayText(t: string): string {
+  return t.replace(/(\d[\d,.]*)\s?percent\b/gi, "$1%");
 }

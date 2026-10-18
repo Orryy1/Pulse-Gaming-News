@@ -162,8 +162,23 @@ export function speakTitles(text: string): string {
     );
 }
 
+/**
+ * Years the way people say them, so the voice never improvises: 2016 is
+ * "twenty sixteen", 2007 "two thousand seven", 1997 "nineteen ninety-seven".
+ * Only plain four-digit years from 1950 to 2099 (not prices, counts or ids).
+ */
+export function speakYears(text: string): string {
+  return text.replace(/(?<![\d$£€.,:/-])\b(19[5-9]\d|20\d\d)\b(?![\d%,.]\d|\s?(?:percent|%))/g, (_m, y: string) => {
+    const n = Number(y);
+    if (n >= 2000 && n <= 2009) return n === 2000 ? "two thousand" : `two thousand ${numberWords(n - 2000)}`;
+    const hi = Math.floor(n / 100);
+    const lo = n % 100;
+    return `${numberWords(hi)} ${lo < 10 ? `oh ${numberWords(lo)}` : numberWords(lo)}`;
+  });
+}
+
 export function speakable(text: string): string {
-  return speakTitles(text)
+  return speakYears(speakTitles(text))
     .replace(
       /([$£€¥])\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?:\s?(billion|million|bn|mn|[kmb])\b)?/gi,
       (

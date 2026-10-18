@@ -13,7 +13,7 @@ test("prices are spoken in the currency on screen", () => {
   assert.equal(speakable("$1 deal"), "one dollar deal");
   assert.equal(speakable("a $1.5bn deal"), "a one point five billion dollars deal");
   assert.equal(speakable("$1,299.00"), "one thousand two hundred ninety-nine dollars");
-  assert.equal(speakable("No prices, 2027 and 86%."), "No prices, 2027 and 86%.");
+  assert.equal(speakable("No prices, 2027 and 86%."), "No prices, twenty twenty-seven and 86%.");
   assert.equal(numberWords(105), "one hundred five");
   assert.equal(numberWords(3_000_042), "three million forty-two");
 });
@@ -49,4 +49,18 @@ test("game titles are spoken the way players say them", () => {
   assert.equal(speakTitles("I think it is VERY good, and DLC is out."), "I think it is VERY good, and DLC is out.");
   assert.equal(speakTitles("Civilization VI and Halo V"), "Civilization 6 and Halo 5");
   assert.equal(speakTitles("XCOM 2 and MIX"), "XCOM 2 and MIX");
+});
+
+import { speakYears } from "../src/voice/speakable.ts";
+import { displayWords, displayText } from "../src/render/timeline.ts";
+
+test("years are spoken as people say them and shown as digits; percent shows as %", () => {
+  assert.equal(speakYears("It launched in 2016, then 2007 and 1997."), "It launched in twenty sixteen, then two thousand seven and nineteen ninety-seven.");
+  assert.equal(speakYears("$2016 and 2016% and 12016"), "$2016 and 2016% and 12016");
+  const w = (text: string, start: number) => ({ text, start, end: start + 0.3 });
+  const shown = displayWords([w("In", 0), w("twenty", 0.4), w("sixteen,", 0.8), w("47", 1.2), w("percent", 1.5), w("liked", 1.9), w("two", 2.2), w("thousand", 2.5), w("seven.", 2.8)]);
+  assert.deepEqual(shown.map((x) => x.text), ["In", "2016,", "47%", "liked", "2007."]);
+  assert.equal(shown[1]!.start, 0.4);
+  assert.equal(shown[1]!.end, 1.1);
+  assert.equal(displayText("47 percent of players"), "47% of players");
 });

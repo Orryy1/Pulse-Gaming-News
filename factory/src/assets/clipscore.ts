@@ -573,6 +573,8 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
 }
 
 export interface SelectClipsOptions {
+  /** "campaign": the video is about single-player campaigns; multiplayer trailers are skipped. */
+  scope?: "campaign";
   app: SteamApp;
   episodeDir: string;
   targets: FootageTarget[];
@@ -586,9 +588,16 @@ export interface SelectClipsOptions {
  * keyframes are removed afterwards; only the chosen clips stay in the
  * episode folder.
  */
+/** Trailers that are not single-player footage, for a video about campaigns. */
+export const NOT_CAMPAIGN = /multiplayer|\bmp\b|zombies|warzone|\bseason\b|battle ?pass|\bbeta\b|ranked|\bdmz\b|operator|bundle|tracer pack|co-?op|spec ops|battle royale|launch event|esports|\bcdl\b/i;
+
 export async function selectClips(o: SelectClipsOptions): Promise<VisualAsset[]> {
-  const movies = ((o.app.details.movies ?? []) as Array<Record<string, any>>).filter((m) => m.hls_h264);
+  let movies = ((o.app.details.movies ?? []) as Array<Record<string, any>>).filter((m) => m.hls_h264);
   movies.sort((a, b) => Number(Boolean(b.highlight)) - Number(Boolean(a.highlight)));
+  if (o.scope === "campaign") {
+    const story = movies.filter((m) => !NOT_CAMPAIGN.test(String(m.name ?? "")));
+    if (story.length) movies = story.sort((a, b) => Number(/campaign|story/i.test(String(b.name))) - Number(/campaign|story/i.test(String(a.name))));
+  }
   if (!movies.length || !o.targets.length) return [];
   const work = path.join(o.episodeDir, "trailers");
   await fs.mkdir(work, { recursive: true });

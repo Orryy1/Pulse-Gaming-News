@@ -168,9 +168,29 @@ export interface Services {
     query: string,
   ): Promise<import("./assets/commons.ts").CommonsImage[]>;
   /** Official screenshots, key art and cover from IGDB for a game by exact title (empty without Twitch keys). */
-    igdbArt(title: string, year: number | undefined, episodeDir: string, max: number): Promise<VisualAsset[]>;
+  igdbArt(
+    title: string,
+    year: number | undefined,
+    episodeDir: string,
+    max: number,
+  ): Promise<VisualAsset[]>;
   /** Licensed gameplay (Creative Commons, then the publisher's own uploads) matched to the given lines. */
-  gameplayClips(game: string, franchise: string, year: number | undefined, episodeDir: string, targets: FootageTarget[], maxClips: number): Promise<Array<VisualAsset & { credit: string }>>;
+  gameplayClips(
+    game: string,
+    franchise: string,
+    year: number | undefined,
+    episodeDir: string,
+    targets: FootageTarget[],
+    maxClips: number,
+    scope?: "campaign",
+  ): Promise<Array<VisualAsset & { credit: string }>>;
+  /** True when a video title is footage of exactly this game (and, for a campaign video, of its campaign). */
+  judgeFootage(
+    game: string,
+    year: number | undefined,
+    title: string,
+    scope?: "campaign",
+  ): Promise<boolean>;
   downloadPhoto(
     img: import("./assets/commons.ts").CommonsImage,
     dest: string,
@@ -180,6 +200,7 @@ export interface Services {
     episodeDir: string,
     targets: FootageTarget[],
     maxClips: number,
+    scope?: "campaign",
   ): Promise<VisualAsset[]>;
   fetchOfficialMedia(
     gameTitle: string,
@@ -1619,14 +1640,22 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     name: narration.voice?.name,
   });
   // The voice sometimes stalls mid-sentence: cut those silences to a natural beat, with the word timings shifted to match.
-  const tight = await tightenPauses(path.join(dir, "voice.mp3"), narration.words, narration.durationSeconds).catch((err) => {
-    log("warn", "pause tightening failed; keeping the voice as recorded", { error: errorMessage(err) });
+  const tight = await tightenPauses(
+    path.join(dir, "voice.mp3"),
+    narration.words,
+    narration.durationSeconds,
+  ).catch((err) => {
+    log("warn", "pause tightening failed; keeping the voice as recorded", {
+      error: errorMessage(err),
+    });
     return undefined;
   });
   if (tight && tight.removedSeconds > 0) {
     narration.words = tight.words;
     narration.durationSeconds = tight.durationSeconds;
-    await logEvent(s.db, ep.id, "pauses_tightened", { seconds: Math.round(tight.removedSeconds * 10) / 10 });
+    await logEvent(s.db, ep.id, "pauses_tightened", {
+      seconds: Math.round(tight.removedSeconds * 10) / 10,
+    });
   }
   const maxSeconds =
     ep.lane === "evergreen"
@@ -2086,6 +2115,14 @@ export function photoCredit(i: {
     : "Wikimedia Commons";
 }
 
+/** A video about single-player campaigns keeps multiplayer footage out of every pick. */
+export function scopeOf(script: Script): "campaign" | undefined {
+  const t = `${script.criterion ?? ""} ${script.headline} ${script.kicker ?? ""} ${script.youtube?.title ?? ""}`;
+  return /\bcampaigns?\b|story mode|single[- ]player/i.test(t)
+    ? "campaign"
+    : undefined;
+}
+
 /** The footage asks of one documentary chapter's paragraphs, in order. */
 export function chapterFootage(
   script: Script,
@@ -2124,9 +2161,10 @@ async function gatherLongEntryMedia(
   const rel = (f: string) => path.join(`entry_${beatIndex}`, f);
   const moments = entry.moments ?? [];
   const sentences = sentencesOf(script.beats[beatIndex]?.narration ?? "");
+  const scope = scopeOf(script);
   const targets: FootageTarget[] = moments.slice(0, 6).map((m, k) => ({
     key: `beat:${beatIndex}#m${k}`,
-    text: `${sentences[k] ?? ""} (show: ${m.show})`,
+    text: `${sentences[k] ?? ""} (show: ${m.show})${scope === "campaign" ? " [single-player campaign footage only: no multiplayer, Zombies or Warzone, no multiplayer HUD]" : ""}`,
     want: script.beats[beatIndex]?.footage?.want ?? "gameplay",
     energy: "medium",
     keywords: [entry.game_title, ...m.keywords].slice(0, 4),
@@ -2155,7 +2193,13 @@ async function gatherLongEntryMedia(
       );
       if (s.cfg.footage && targets.length)
         for (const c of capFootage(
-          await s.fetchClips(eapp, edir, targets, targets.length),
+          await s.fetchClips(
+            eapp,
+            edir,
+            targets,
+            targets.length,
+            scopeOf(script),
+          ),
           Math.max(
             footageBudgetSeconds(eapp),
             Math.min(24, footageBudgetSeconds(eapp) * 1.2),
@@ -2179,16 +2223,39 @@ async function gatherLongEntryMedia(
           om.trailer.title,
           entry.game_title,
           script.game_title || entry.game_title,
-        )
+        ) &&
+        (await s.judgeFootage(
+          entry.game_title,
+          entry.year,
+          om.trailer.title,
+          scope,
+        ))
       )
         for (const c of capFootage(om.clips, om.trailer.clipSeconds ?? 0))
           pushClip(c);
+      else if (om.trailer)
+        log("info", "official trailer refused for this entry", {
+          game: entry.game_title,
+          trailer: om.trailer.title,
+        });
     }
-        // Licensed gameplay for the sentences no trailer moment covers: real missions and moments, credited.
-    const covered = new Set(clips.filter((c) => c.beatIndex === beatIndex).map((c) => c.moment));
+    // Licensed gameplay for the sentences no trailer moment covers: real missions and moments, credited.
+    const covered = new Set(
+      clips.filter((c) => c.beatIndex === beatIndex).map((c) => c.moment),
+    );
     const missing = targets.filter((_, k) => !covered.has(k)).slice(0, 4);
     if (missing.length)
-      for (const c of await s.gameplayClips(entry.game_title, script.game_title || entry.game_title, entry.year, edir, missing, missing.length).catch(() => [] as Array<VisualAsset & { credit: string }>))
+      for (const c of await s
+        .gameplayClips(
+          entry.game_title,
+          script.game_title || entry.game_title,
+          entry.year,
+          edir,
+          missing,
+          missing.length,
+          scope,
+        )
+        .catch(() => [] as Array<VisualAsset & { credit: string }>))
         clips.push({
           file: rel(c.file),
           sourceUrl: c.sourceUrl,
@@ -2318,7 +2385,13 @@ async function gatherChapterMedia(
           }));
         if (targets.length)
           for (const c of capFootage(
-            await s.fetchClips(eapp, edir, targets, targets.length),
+            await s.fetchClips(
+              eapp,
+              edir,
+              targets,
+              targets.length,
+              scopeOf(script),
+            ),
             footageBudgetSeconds(eapp),
             4.8,
           ))
@@ -2345,7 +2418,13 @@ async function gatherChapterMedia(
         .catch(() => ({ clips: [], stills: [] }) as OfficialMedia);
       if (
         om.trailer &&
-        trailerMatchesGame(om.trailer.title, entry.game_title, franchise)
+        trailerMatchesGame(om.trailer.title, entry.game_title, franchise) &&
+        (await s.judgeFootage(
+          entry.game_title,
+          entry.year,
+          om.trailer.title,
+          scopeOf(script),
+        ))
       )
         for (const c of capFootage(om.clips, om.trailer.clipSeconds ?? 0))
           pushClip(c);
@@ -2361,7 +2440,7 @@ async function gatherChapterMedia(
       error: errorMessage(err),
     });
   }
-    // Licensed gameplay: a few real moments per chapter, matched to its paragraphs, credited.
+  // Licensed gameplay: a few real moments per chapter, matched to its paragraphs, credited.
   try {
     const paragraphs = chapterFootage(script, beatIndex).slice(0, 4);
     const have = clips.filter((c) => c.beatIndex === beatIndex).length;
@@ -2373,7 +2452,14 @@ async function gatherChapterMedia(
         energy: "medium",
         keywords: [entry.game_title, ...f.keywords].slice(0, 4),
       }));
-      for (const c of await s.gameplayClips(entry.game_title, franchise, entry.year, edir, targets, targets.length))
+      for (const c of await s.gameplayClips(
+        entry.game_title,
+        franchise,
+        entry.year,
+        edir,
+        targets,
+        targets.length,
+      ))
         clips.push({
           file: rel(c.file),
           sourceUrl: c.sourceUrl,
@@ -2390,7 +2476,10 @@ async function gatherChapterMedia(
         });
     }
   } catch (err) {
-    log("warn", "documentary gameplay failed", { game: entry.game_title, error: errorMessage(err) });
+    log("warn", "documentary gameplay failed", {
+      game: entry.game_title,
+      error: errorMessage(err),
+    });
   }
   // IGDB: official screenshots and key art for games Steam cannot supply, or a thin Steam gallery.
   try {
@@ -2475,9 +2564,19 @@ export async function steamAppForEntry(
   if (!entry.steam_search_term) return undefined;
   const app = await s.findGame(entry.steam_search_term);
   if (!app || !entry.year) return app;
-  const appYear = Number(String(app.details?.release_date?.date ?? "").match(/\b(19|20)\d\d\b/)?.[0]) || undefined;
+  const appYear =
+    Number(
+      String(app.details?.release_date?.date ?? "").match(
+        /\b(19|20)\d\d\b/,
+      )?.[0],
+    ) || undefined;
   if (appYear && Math.abs(appYear - entry.year) > 1) {
-    log("info", "steam page refused: another release of the game", { entry: entry.game_title, year: entry.year, store: app.name, storeYear: appYear });
+    log("info", "steam page refused: another release of the game", {
+      entry: entry.game_title,
+      year: entry.year,
+      store: app.name,
+      storeYear: appYear,
+    });
     return undefined;
   }
   return app;
@@ -2629,7 +2728,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     .sort((a, b) => b.rank - a.rank)
     .map((e) => e.moments ?? []);
   const hasMoments = moments.some((m) => m.length);
-    const clips = (assets.clips ?? []).map((c) => ({
+  const clips = (assets.clips ?? []).map((c) => ({
     file: c.file,
     durationSeconds: c.durationSeconds,
     beatIndex: c.beatIndex,
@@ -3286,12 +3385,15 @@ export function footageCredits(
         ? `Footage: official post by ${channel} (${url}).`
         : `Footage and still: the official ${channel} YouTube channel (${url}).`,
     );
-    const cc = new Map<string, string>();
+  const cc = new Map<string, string>();
   for (const c of clips) {
-    const m = c.provenance.match(/^Gameplay "[^"]*" by (.+?), Creative Commons Attribution licence \(CC BY\) \((https?:[^)]+)\)/);
+    const m = c.provenance.match(
+      /^Gameplay "[^"]*" by (.+?), Creative Commons Attribution licence \(CC BY\) \((https?:[^)]+)\)/,
+    );
     if (m) cc.set(m[1]!, m[2]!);
   }
-  for (const [channel, url] of cc) lines.push(`Gameplay: ${channel}, licensed CC BY (${url}).`);
+  for (const [channel, url] of cc)
+    lines.push(`Gameplay: ${channel}, licensed CC BY (${url}).`);
   const stock = clips
     .filter((c) => /^Illustrative stock footage from Pexels/.test(c.provenance))
     .map((c) => c.provenance.match(/\((https?:[^)]+)\)/)?.[1])

@@ -10,7 +10,7 @@ import {
 } from "remotion";
 import type { ShortProps } from "./props.ts";
 import { COLOUR, themeFor } from "./brand.ts";
-import { pageCaptions } from "./timeline.ts";
+import { displayWords, pageCaptions } from "./timeline.ts";
 import { buildPlan, STING_FRAMES, type RenderPlan } from "./plan.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 import {
@@ -55,7 +55,7 @@ export const Short: React.FC<ShortProps> = (props) => {
   const theme = themeFor(props.storyType, props.isRumour);
   const accent = theme.accent;
   const words = props.words.length ? props.words : synthWords(props);
-  const pages = useMemo(() => pageCaptions(words), [words]);
+  const pages = useMemo(() => pageCaptions(displayWords(words)), [words]);
   const emphasis = useMemo(
     () => new Set(props.emphasis.map((w) => w.toLowerCase())),
     [props.emphasis],

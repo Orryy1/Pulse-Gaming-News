@@ -19,6 +19,7 @@ import {
 import { COLOUR } from "../brand.ts";
 import { BODY, DISPLAY } from "./fonts.ts";
 import { SPRING } from "../motion.ts";
+import { displayText } from "../timeline.ts";
 
 export interface MomentGraphic {
   kind: "none" | "stat" | "date" | "score" | "list" | "compare";
@@ -74,10 +75,8 @@ const numberIn = (t: string) =>
   Number((t.match(/[\d,.]+/)?.[0] ?? "").replace(/,/g, ""));
 
 /** The fact a sentence states, drawn as a graphic at the top right. */
-export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
-  g,
-  len,
-}) => {
+export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({ g: raw, len }) => {
+  const g = { ...raw, primary: displayText(raw.primary), secondary: displayText(raw.secondary), items: raw.items.map(displayText) };
   const { frame, fps, inP, out, visible } = useInOut(len);
   if (!visible || g.kind === "none") return null;
   const wrap: React.CSSProperties = {
@@ -398,10 +397,8 @@ export const PopInPicture: React.FC<{
 };
 
 /** A name or phrase worth landing, word by word, with an underline swipe. */
-export const KineticCaption: React.FC<{ text: string; len: number }> = ({
-  text,
-  len,
-}) => {
+export const KineticCaption: React.FC<{ text: string; len: number }> = ({ text: raw, len }) => {
+  const text = displayText(raw);
   const { frame, fps, out, visible } = useInOut(len, 75);
   if (!visible || !text.trim()) return null;
   const words = text.toUpperCase().split(/\s+/).slice(0, 4);

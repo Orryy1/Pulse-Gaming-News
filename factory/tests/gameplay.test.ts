@@ -85,3 +85,15 @@ test("durations and credits", () => {
     /Gameplay: UnseeableNinja, licensed CC BY \(https:\/\/www\.youtube\.com\/watch\?v=abc\)\./,
   );
 });
+
+import { scopeOf } from "../src/pipeline.ts";
+import { NOT_CAMPAIGN } from "../src/assets/clipscore.ts";
+
+test("a campaign ranking keeps multiplayer out of every pick", () => {
+  assert.equal(scopeOf(goodScript({ headline: "Call of Duty Campaigns Ranked", criterion: "strength of the single-player story" })), "campaign");
+  assert.equal(scopeOf(goodScript({ headline: "GTA 6 delayed" })), undefined);
+  assert.ok(NOT_CAMPAIGN.test("Multiplayer Reveal Trailer"));
+  assert.ok(NOT_CAMPAIGN.test("Season 1 Battle Pass"));
+  assert.ok(NOT_CAMPAIGN.test("Zombies Gameplay Trailer"));
+  assert.ok(!NOT_CAMPAIGN.test("Campaign Launch Trailer"));
+});

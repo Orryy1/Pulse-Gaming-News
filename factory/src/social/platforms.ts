@@ -333,6 +333,8 @@ export async function postTikTok(
         `tiktok publish failed: ${st.data?.fail_reason ?? "no reason given"}`,
       );
   }
+  // The bytes are in: an inbox draft arrives once TikTok finishes processing, however long that takes.
+  if (p.inbox) return `inbox:${publishId}`;
   throw new Error(`tiktok post ${publishId} still processing after the wait`);
 }
 

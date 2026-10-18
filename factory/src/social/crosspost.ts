@@ -18,6 +18,9 @@ export type Platform = "facebook" | "instagram" | "tiktok" | "x";
 export const PLATFORMS: Platform[] = ["x", "facebook", "instagram", "tiktok"];
 export const MAX_TRIES = 3;
 
+/** A platform asked us to come back later: no attempt is spent and nothing is logged against the Short. */
+export class Deferred extends Error {}
+
 export interface SocialPosters {
   facebook?: (
     file: string,
@@ -186,6 +189,10 @@ export async function crosspostTick(
       log("info", "crossposted", { platform, episode: ep.id, id });
       done.push({ platform, episode: ep.id, ok: true });
     } catch (err) {
+      if (err instanceof Deferred) {
+        log("info", "crosspost deferred", { platform, episode: ep.id, reason: err.message });
+        continue;
+      }
       const error = errorMessage(err);
       await logEvent(d.db, ep.id, "crosspost_failed", {
         platform,
@@ -209,6 +216,7 @@ export async function crosspostTick(
 }
 
 let tiktokUnaudited = false;
+let tiktokPausedUntil = 0;
 
 const TIKTOK_SINGLE_CHUNK = 60 * 1024 * 1024;
 
@@ -248,6 +256,7 @@ export async function buildPosters(cfg: Config): Promise<SocialPosters> {
     out.instagram = (file, caption, videoUrl) => p.postInstagramReel({ accountId: cfg.instagramAccountId, token: cfg.instagramToken, file, caption, videoUrl });
   if (cfg.crosspost.tiktok && cfg.tiktokClientKey && cfg.tiktokTokenPath && fs.existsSync(cfg.tiktokTokenPath))
     out.tiktok = async (file, caption) => {
+      if (Date.now() < tiktokPausedUntil) throw new Deferred("TikTok inbox is full of unposted drafts");
       const accessToken = await p.tiktokAccessToken(cfg.tiktokTokenPath, cfg.tiktokClientKey, cfg.tiktokClientSecret);
       file = await tiktokFile(file);
       if (!tiktokUnaudited) {
@@ -258,7 +267,16 @@ export async function buildPosters(cfg: Config): Promise<SocialPosters> {
           tiktokUnaudited = true; // until TikTok approves the app, every video goes to the inbox
         }
       }
-      return p.postTikTok({ accessToken, file, title: caption, inbox: true });
+      try {
+        return await p.postTikTok({ accessToken, file, title: caption, inbox: true });
+      } catch (err) {
+        // TikTok holds only a few unposted drafts: wait six hours for the owner to post them.
+        if (/spam_risk_too_many_pending_share/.test(errorMessage(err))) {
+          tiktokPausedUntil = Date.now() + 6 * 3_600_000;
+          throw new Deferred("TikTok inbox is full of unposted drafts; trying again in six hours");
+        }
+        throw err;
+      }
     };
   if (cfg.crosspost.x && cfg.xKeys.consumerKey && cfg.xKeys.token) out.x = (text) => p.postX(cfg.xKeys, text);
   return out;

@@ -118,6 +118,8 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       concurrency: input.concurrency,
       browserExecutable,
       chromiumOptions,
+      // A busy PC can take far longer than the 30 s default to decode a clip frame.
+      timeoutInMilliseconds: 180_000,
       onProgress: ({ progress }) => input.onProgress?.(progress),
     });
     await renderStill({ composition, serveUrl, output: input.posterFile, inputProps: props, frame: Math.min(composition.durationInFrames - 1, Math.round(2 * composition.fps)), imageFormat: "jpeg", jpegQuality: 88, browserExecutable, chromiumOptions });
@@ -161,6 +163,8 @@ export async function renderShort(input: RenderInput): Promise<void> {
       concurrency: input.concurrency,
       browserExecutable,
       chromiumOptions: { gl: input.gl ?? "swangle" },
+      // A busy PC can take far longer than the 30 s default to decode a clip frame.
+      timeoutInMilliseconds: 180_000,
       onProgress: ({ progress }) => input.onProgress?.(progress),
     });
     const posterFrame = Math.min(composition.durationInFrames - 1, Math.round(0.9 * composition.fps));

@@ -197,6 +197,7 @@ export function validateScript(s: Script): string[] {
   for (const b of s.beats) {
     if (b.visual.kind !== "none" && wordCount(b.visual.primary) > 7) problems.push(`On-screen text "${b.visual.primary}" is too long to read in a second.`);
     const iso = (d?: string) => !!d && /^\d{4}(-\d{2}(-\d{2})?)?$/.test(d.trim());
+    if (b.visual.kind === "chapter") problems.push(`The "chapter" card is for documentaries only; pick another card for "${b.visual.primary}".`);
     if (b.visual.kind === "timeline" && !(iso(b.visual.date_from) && iso(b.visual.date_to))) problems.push(`Timeline card "${b.visual.primary}" needs date_from and date_to as ISO dates.`);
     if (b.visual.kind === "countdown" && !iso(b.visual.date_to)) problems.push(`Countdown card "${b.visual.primary}" needs date_to as an ISO date.`);
     if (b.visual.kind === "price" && !/\d/.test(b.visual.primary)) problems.push(`Price card "${b.visual.primary}" has no price.`);

@@ -43,6 +43,7 @@ export type LongProps = {
   criterion: string;
   theme: string; // franchise or theme name
   footageCredit: string;
+  endLine?: string; // the line under the end card
   segments: Segment[];
   words: Word[];
   images: LongImageProp[];
@@ -439,7 +440,7 @@ const IntroTitle: React.FC<{
             textTransform: "uppercase",
           }}
         >
-          Criterion · {criterion}
+          {criterion ? `Criterion · ${criterion}` : ""}
         </div>
       </div>
     </AbsoluteFill>
@@ -455,6 +456,7 @@ const EntryCard: React.FC<{
   platforms?: string;
   capsuleSrc: string | null;
   durationFrames: number;
+  chapter?: string; // documentary: the game, shown in the meta line; the badge reads CHAPTER
 }> = ({
   rank,
   total,
@@ -464,6 +466,7 @@ const EntryCard: React.FC<{
   platforms,
   capsuleSrc,
   durationFrames,
+  chapter,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -475,8 +478,8 @@ const EntryCard: React.FC<{
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-  const top = rank === 1;
-  const meta = [year, platforms].filter(Boolean).join(" · ");
+  const top = rank === 1 && chapter === undefined;
+  const meta = [chapter, year, platforms].filter(Boolean).join(" · ");
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
       {/* The full lower third */}
@@ -537,7 +540,7 @@ const EntryCard: React.FC<{
               color: COLOUR.muted,
             }}
           >
-            OF {total}
+            {chapter !== undefined ? "CHAPTER" : `OF ${total}`}
           </div>
         </div>
         {capsuleSrc ? (
@@ -596,25 +599,27 @@ const EntryCard: React.FC<{
               {meta}
             </div>
           ) : null}
-          <div
-            style={{
-              display: "inline-block",
-              marginTop: 14,
-              padding: "8px 18px",
-              background: COLOUR.amber,
-              color: COLOUR.ink,
-              fontFamily: BODY,
-              fontWeight: 900,
-              fontSize: 28,
-              letterSpacing: 2.5,
-              borderRadius: 8,
-              transform: `scale(${chip})`,
-              transformOrigin: "left center",
-              textTransform: "uppercase",
-            }}
-          >
-            {verdict}
-          </div>
+          {verdict ? (
+            <div
+              style={{
+                display: "inline-block",
+                marginTop: 14,
+                padding: "8px 18px",
+                background: COLOUR.amber,
+                color: COLOUR.ink,
+                fontFamily: BODY,
+                fontWeight: 900,
+                fontSize: 28,
+                letterSpacing: 2.5,
+                borderRadius: 8,
+                transform: `scale(${chip})`,
+                transformOrigin: "left center",
+                textTransform: "uppercase",
+              }}
+            >
+              {verdict}
+            </div>
+          ) : null}
         </div>
       </div>
       {/* The compact tag that stays */}
@@ -642,7 +647,7 @@ const EntryCard: React.FC<{
             lineHeight: 1,
           }}
         >
-          #{rank}
+          {chapter !== undefined ? `CH ${rank}` : `#${rank}`}
         </div>
         <div
           style={{
@@ -664,13 +669,141 @@ const EntryCard: React.FC<{
   );
 };
 
+const CalloutCard: React.FC<{
+  kind: "quote" | "stat" | "date";
+  primary: string;
+  secondary: string;
+  durationFrames: number;
+}> = ({ kind, primary, secondary, durationFrames }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const showFor = Math.min(330, Math.max(60, durationFrames - 12));
+  const inProg = spring({ frame: frame - 12, fps, config: SPRING.ENTER });
+  const out = interpolate(frame, [showFor - 14, showFor], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  if (frame > showFor) return null;
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      <div
+        style={{
+          position: "absolute",
+          left: SAFE_X,
+          bottom: SAFE_BOTTOM + 96,
+          maxWidth: 1180,
+          padding: "26px 34px",
+          background: "rgba(11,11,14,0.8)",
+          borderLeft: `8px solid ${COLOUR.amber}`,
+          borderRadius: 14,
+          boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
+          opacity: inProg * out,
+          transform: `translateY(${(1 - inProg) * 30}px)`,
+        }}
+      >
+        {kind === "quote" ? (
+          <>
+            <div
+              style={{
+                fontFamily: BODY,
+                fontWeight: 700,
+                fontStyle: "italic",
+                fontSize: primary.length > 90 ? 38 : 46,
+                lineHeight: 1.25,
+                color: COLOUR.paper,
+              }}
+            >
+              {"\u201c"}
+              {primary.replace(/^["\u201c]|["\u201d]$/g, "")}
+              {"\u201d"}
+            </div>
+            {secondary ? (
+              <div
+                style={{
+                  marginTop: 14,
+                  fontFamily: BODY,
+                  fontWeight: 800,
+                  fontSize: 26,
+                  letterSpacing: 2,
+                  color: COLOUR.amber,
+                  textTransform: "uppercase",
+                }}
+              >
+                {secondary}
+              </div>
+            ) : null}
+          </>
+        ) : kind === "stat" ? (
+          <>
+            <div
+              style={{
+                fontFamily: DISPLAY,
+                fontSize: primary.length > 14 ? 92 : 124,
+                lineHeight: 1,
+                color: COLOUR.amber,
+                textTransform: "uppercase",
+              }}
+            >
+              {primary}
+            </div>
+            <div
+              style={{
+                marginTop: 10,
+                fontFamily: BODY,
+                fontWeight: 800,
+                fontSize: 32,
+                letterSpacing: 1.5,
+                color: COLOUR.paper,
+                textTransform: "uppercase",
+              }}
+            >
+              {secondary}
+            </div>
+          </>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+            <div
+              style={{
+                padding: "10px 20px",
+                background: COLOUR.amber,
+                color: COLOUR.ink,
+                borderRadius: 10,
+                fontFamily: DISPLAY,
+                fontSize: 60,
+                lineHeight: 1,
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {primary}
+            </div>
+            <div
+              style={{
+                fontFamily: BODY,
+                fontWeight: 800,
+                fontSize: 34,
+                color: COLOUR.paper,
+                textTransform: "uppercase",
+                letterSpacing: 1,
+              }}
+            >
+              {secondary}
+            </div>
+          </div>
+        )}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 const OutroCard: React.FC<{
   label: string;
   winner: string;
   onScreen: string;
   tailStart: number;
   durationFrames: number;
-}> = ({ label, winner, onScreen, tailStart, durationFrames }) => {
+  endLine?: string;
+}> = ({ label, winner, onScreen, tailStart, durationFrames, endLine }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const inProg = spring({ frame, fps, config: SPRING.ENTER });
@@ -769,7 +902,7 @@ const OutroCard: React.FC<{
             textTransform: "uppercase",
           }}
         >
-          A new ranking every week · Shorts every day
+          {endLine ?? "A new ranking every week · Shorts every day"}
         </div>
       </div>
       {durationFrames > 0 ? null : null}
@@ -831,6 +964,15 @@ export const Long: React.FC<LongProps> = (props) => {
     i === props.segments.length - 1 ? durationInFrames : starts[i + 1]!,
   );
   const total = props.segments.filter((s) => s.visual?.kind === "rank").length;
+  const documentary = props.segments.some((s) => s.visual?.kind === "chapter");
+  // A chapter's card runs until the next chapter (or the outro) begins, collapsing to a tag that stays.
+  const chapterEnd = (i: number) => {
+    for (let k = i + 1; k < props.segments.length; k++) {
+      const x = props.segments[k]!;
+      if (x.kind !== "beat" || x.visual?.kind === "chapter") return starts[k]!;
+    }
+    return durationInFrames;
+  };
   const lastWordEnd = words.length
     ? Math.round(words[words.length - 1]!.end * fps)
     : durationInFrames - plan.tailFrames;
@@ -872,7 +1014,7 @@ export const Long: React.FC<LongProps> = (props) => {
       <Scrim />
       <Brand
         logoSrc={resolveSrc(props.logoSrc)}
-        chip={total ? `TOP ${total}` : "RANKED"}
+        chip={documentary ? "DOCUMENTARY" : total ? `TOP ${total}` : "RANKED"}
         progress={Math.min(1, frame / Math.max(1, durationInFrames))}
       />
       <Credit text={props.footageCredit} />
@@ -922,6 +1064,59 @@ export const Long: React.FC<LongProps> = (props) => {
             </Sequence>
           );
         }
+        if (s.kind === "beat" && s.visual?.kind === "chapter") {
+          const b = entryOf(props.segments, i);
+          const capsule =
+            props.images.find(
+              (im) => im.beatIndex === b && im.kind === "capsule",
+            ) ??
+            props.images.find((im) => im.beatIndex === b && im.aspect < 0.9);
+          const span = Math.max(1, chapterEnd(i) - starts[i]!);
+          return (
+            <Sequence
+              key={i}
+              from={starts[i]!}
+              durationInFrames={span}
+              layout="none"
+            >
+              <EntryCard
+                rank={s.visual.value_a ?? (b ?? 0) + 1}
+                total={0}
+                title={s.visual.primary}
+                verdict=""
+                chapter={s.visual.secondary}
+                year={s.visual.items?.[0]}
+                platforms={s.visual.items?.[1]}
+                capsuleSrc={capsule?.src ?? null}
+                durationFrames={span}
+              />
+            </Sequence>
+          );
+        }
+        if (
+          s.kind === "beat" &&
+          documentary &&
+          (s.visual?.kind === "quote" ||
+            s.visual?.kind === "stat" ||
+            s.visual?.kind === "date") &&
+          s.visual.primary
+        ) {
+          return (
+            <Sequence
+              key={i}
+              from={starts[i]!}
+              durationInFrames={len}
+              layout="none"
+            >
+              <CalloutCard
+                kind={s.visual.kind}
+                primary={s.visual.primary}
+                secondary={s.visual.secondary}
+                durationFrames={len}
+              />
+            </Sequence>
+          );
+        }
         if (s.kind === "take") {
           const winner = props.segments
             .filter((x) => x.visual?.kind === "rank")
@@ -939,6 +1134,7 @@ export const Long: React.FC<LongProps> = (props) => {
                 onScreen={s.visual?.primary ?? ""}
                 tailStart={Math.max(0, lastWordEnd - starts[i]!)}
                 durationFrames={len}
+                endLine={props.endLine}
               />
             </Sequence>
           );

@@ -32,6 +32,23 @@ import {
   writeLongform,
 } from "./editorial/longform.ts";
 import {
+  selectDocTopic,
+  outlineDoc,
+  writeChapter,
+  checkChapter,
+  groundCallouts,
+  validateChapter,
+  writeBookends,
+  validateBookends,
+  docToScript,
+  docWordCount,
+  DOC_CHAPTERS_MIN,
+  DOC_WORDS_MIN,
+  DOC_WORDS_MAX,
+  type DocTopic,
+  type DocDraft,
+} from "./editorial/documentary.ts";
+import {
   buildLongPlan,
   chapterLines,
   LONG_TAIL_SECONDS,
@@ -154,6 +171,8 @@ export interface Services {
   releaseRadar(from: Date): Promise<RadarGame[]>;
   freeGames(now: Date): Promise<{ now: FreeGame[]; next: FreeGame[] }>;
   achievements(appId: number): Promise<Achievement[]>;
+  /** A Wikipedia article's useful sections, by title or else by search (documentary research). */
+  research(title: string, fallbackQuery: string, maxChars?: number): Promise<import("./discovery/wikipedia.ts").WikiArticle | undefined>;
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
@@ -412,6 +431,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   );
   if (!slot)
     return (
+      (await maybeSelectDocumentary(s)) ??
       (await maybeSelectEvergreen(s)) ??
       (await maybeSelectWeekly(s)) ??
       (await maybeSelectLongform(s))
@@ -838,6 +858,160 @@ export async function maybeSelectWeekly(
   return undefined;
 }
 
+/** Week of the month (1-5) for a date in the channel's time zone. */
+function weekOfMonth(now: Date, timeZone: string): number {
+  const day = Number(new Intl.DateTimeFormat("en-GB", { timeZone, day: "numeric" }).format(now));
+  return Math.ceil(day / 7);
+}
+
+/**
+ * The monthly documentary: a franchise history, game by game, in the long-form
+ * lane. Production starts hours before its slot because a 30-minute video takes
+ * a while to write, voice and render.
+ */
+export async function maybeSelectDocumentary(
+  s: Services,
+): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.docEnabled || !cfg.longformEnabled) return undefined;
+  const now = s.now();
+  if (!cfg.docWeeks.includes(weekOfMonth(now, cfg.timezone))) return undefined;
+  const due = evergreenDue(
+    now,
+    {
+      days: cfg.docDays,
+      slot: cfg.docSlot,
+      leadMinutes: cfg.docLeadMinutes,
+      graceMinutes: cfg.slotGraceMinutes,
+      timeZone: cfg.timezone,
+    },
+    await takenSlots(db),
+  );
+  if (!due) return undefined;
+  const covered = (
+    await db.query<{ franchise: string }>(
+      `SELECT factcheck_json->'topic'->>'franchise' AS franchise FROM episodes WHERE lane = 'longform' AND factcheck_json->>'doc' = 'true' AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '3 years'`,
+      [now],
+    )
+  )
+    .map((r) => r.franchise)
+    .filter(Boolean);
+  const inTheNews = (
+    await db.query<{ headline: string }>(
+      `SELECT story_json->>'headline' AS headline FROM episodes WHERE lane IN ('news','news_breaking') AND created_at > $1::timestamptz - interval '14 days' ORDER BY created_at DESC LIMIT 40`,
+      [now],
+    )
+  ).map((r) => r.headline);
+  const topic = await selectDocTopic(s.llm, covered, inTheNews);
+  if (!topic) {
+    log("info", "no documentary topic this month");
+    return undefined;
+  }
+  const cluster: StoryCluster = {
+    hash: `documentary:${dayKey(now, cfg.timezone)}:${topic.franchise.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    headline: topic.title_idea,
+    items: [],
+    sources: ["Wikipedia"],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint: topic.franchise,
+  };
+  const id = shortId();
+  const created = await createEpisode(db, id, cluster, {
+    lane: "longform",
+    priority: LANE_PRIORITY.longform,
+    slotAt: due,
+  });
+  if (!created) return undefined;
+  await db.query(
+    `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
+    [id, JSON.stringify({ doc: true, topic })],
+  );
+  await logEvent(db, id, "selected", {
+    headline: topic.title_idea,
+    lane: "longform",
+    documentary: true,
+    franchise: topic.franchise,
+    reason: topic.reason,
+    slot_at: due.toISOString(),
+  });
+  log("info", "documentary topic selected", { id, franchise: topic.franchise });
+  return id;
+}
+
+/**
+ * Writes the documentary: outline, then each chapter against its own Wikipedia
+ * article with a fact-check pass and up to two rewrites, then the intro and
+ * outro from what the chapters actually say.
+ */
+async function stepScriptDocumentary(s: Services, ep: Episode, topic: DocTopic): Promise<void> {
+  const franchise = await s.research(topic.franchise, `${topic.franchise} video game series`, 6000);
+  const outline = await outlineDoc(s.llm, topic, franchise?.text ?? "");
+  const chapters: DocDraft["chapters"] = [];
+  const warnings: string[] = [];
+  for (const [index, plan] of outline.chapters.entries()) {
+    const source = await s.research(plan.wiki_title, `${plan.game_title} ${plan.year} video game`, 9000);
+    if (!source) {
+      warnings.push(`No Wikipedia article for ${plan.game_title}; chapter dropped.`);
+      continue;
+    }
+    let feedback: string[] = [];
+    let chapter: import("./editorial/documentary.ts").DocChapter | undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      chapter = await writeChapter(s.llm, {
+        franchise: topic.franchise,
+        plan,
+        index,
+        outline,
+        source,
+        previousEnding: chapters.at(-1)?.chapter.paragraphs.at(-1)?.narration,
+        feedback,
+      });
+      const problems = validateChapter(chapter);
+      const unsupported = await checkChapter(s.llm, chapter, source).catch((err) => {
+        log("warn", "documentary fact check failed", { error: errorMessage(err) });
+        return [] as string[];
+      });
+      feedback = [
+        ...problems,
+        ...unsupported.map((u) => `Not supported by the source, remove or correct it: ${u}`),
+      ];
+      if (!feedback.length) break;
+      if (attempt === 2) warnings.push(...feedback.map((f) => `${plan.game_title}: ${f}`));
+    }
+    const grounded = groundCallouts(chapter!, source);
+    if (grounded.removed.length)
+      warnings.push(...grounded.removed.map((r) => `${plan.game_title}: on-screen ${r} not in the source, removed`));
+    chapters.push({ plan, chapter: grounded.chapter, source });
+    log("info", "documentary chapter written", { episode: ep.id, chapter: index + 1, game: plan.game_title });
+  }
+  if (chapters.length < DOC_CHAPTERS_MIN)
+    throw new FatalError(`documentary has only ${chapters.length} chapters with sources`);
+  let bookends = await writeBookends(s.llm, outline, chapters, franchise?.text ?? "");
+  if (validateBookends(bookends).length)
+    bookends = await writeBookends(s.llm, outline, chapters, franchise?.text ?? "");
+  const draft: DocDraft = { topic, outline, chapters, bookends };
+  const words = docWordCount(draft);
+  if (words < DOC_WORDS_MIN || words > DOC_WORDS_MAX)
+    warnings.push(`Documentary is ${words} words (aim ${DOC_WORDS_MIN}-${DOC_WORDS_MAX}).`);
+  if (warnings.length) await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
+  const script = docToScript(draft);
+  if (franchise && !script.sources?.includes(franchise.url)) script.sources = [franchise.url, ...(script.sources ?? [])];
+  await transition(s.db, ep.id, "selected", "scripted", {
+    script_json: script,
+    factcheck_json: {
+      doc: true,
+      topic,
+      words,
+      sources: script.sources,
+      warnings,
+    },
+  });
+}
+
 /** The weekly long-form ranking video: same topic pool as the evergreen Shorts, its own slot and lane. */
 export async function maybeSelectLongform(
   s: Services,
@@ -907,11 +1081,12 @@ export async function maybeSelectLongform(
 
 /** Writes the long-form ranking against live Steam facts for each entry, with one rewrite on problems. */
 async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
-  const topic = (
-    ep.factcheck_json as {
-      topic?: import("./editorial/evergreen.ts").EvergreenTopic;
-    } | null
-  )?.topic;
+  const fc = ep.factcheck_json as {
+    doc?: boolean;
+    topic?: import("./editorial/evergreen.ts").EvergreenTopic;
+  } | null;
+  if (fc?.doc && fc.topic) return stepScriptDocumentary(s, ep, fc.topic as unknown as DocTopic);
+  const topic = fc?.topic;
   if (!topic) throw new FatalError("long-form episode has no topic");
   let facts: Array<{ title: string; facts: SteamFacts }> = [];
   let feedback: string[] = [];
@@ -1249,7 +1424,9 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     ep.lane === "evergreen"
       ? s.cfg.evergreenMaxSeconds
       : ep.lane === "longform"
-        ? s.cfg.longformMaxSeconds
+        ? ep.script_json?.evergreen_format === "documentary"
+          ? s.cfg.docMaxSeconds
+          : s.cfg.longformMaxSeconds
         : 58;
   if (narration.durationSeconds > maxSeconds)
     throw new FatalError(
@@ -1528,10 +1705,14 @@ async function gatherMedia(
             });
           continue;
         }
+        const doc = script.evergreen_format === "documentary";
+        // A documentary chapter runs minutes, not seconds: it needs the game's whole gallery.
         const art = (
           await s.fetchArt(eapp, path.join(dir, `entry_${beatIndex}`))
-        ).filter(
-          (a) => (a.kind === "capsule" && !entry.icon) || a.kind === "hero",
+        ).filter((a) =>
+          doc
+            ? a.kind !== "logo"
+            : (a.kind === "capsule" && !entry.icon) || a.kind === "hero",
         );
         for (const a of art)
           images.push({
@@ -1539,9 +1720,15 @@ async function gatherMedia(
             file: path.join(`entry_${beatIndex}`, a.file),
             beatIndex,
           });
-        const want = script.beats[beatIndex]?.footage;
+        const want = doc
+          ? chapterFootage(script, beatIndex)[0]
+          : script.beats[beatIndex]?.footage;
         const long = ep.lane === "longform";
-        const perEntry = long ? Math.max(1, s.cfg.longformClipsPerEntry) : 1;
+        const perEntry = doc
+          ? Math.max(1, s.cfg.docClipsPerChapter)
+          : long
+            ? Math.max(1, s.cfg.longformClipsPerEntry)
+            : 1;
         const entryTargets: FootageTarget[] = [
           {
             key: `beat:${beatIndex}`,
@@ -1551,8 +1738,18 @@ async function gatherMedia(
             keywords: want?.keywords ?? [entry.game_title],
           },
         ];
+        // A documentary chapter asks for the moments its paragraphs name.
+        if (doc)
+          for (const [k, f] of chapterFootage(script, beatIndex).slice(1, perEntry).entries())
+            entryTargets.push({
+              key: `beat:${beatIndex}#${k + 2}`,
+              text: `${entry.game_title}: ${f.keywords.join(", ")}`,
+              want: f.want,
+              energy: "medium",
+              keywords: [entry.game_title, ...f.keywords].slice(0, 4),
+            });
         // A long entry runs 30-45 s: a second, different moment keeps it moving.
-        if (perEntry > 1)
+        else if (perEntry > 1)
           entryTargets.push({
             key: `beat:${beatIndex}#2`,
             text: `${entry.game_title}, a different moment`,
@@ -1560,12 +1757,14 @@ async function gatherMedia(
             energy: "medium",
             keywords: [entry.game_title, "gameplay"],
           });
-        const got = await s.fetchClips(
+        const fetched = await s.fetchClips(
           eapp,
           path.join(dir, `entry_${beatIndex}`),
           entryTargets,
           perEntry,
         );
+        // Footage stays subordinate: a documentary chapter gets the same publisher budget a Short does.
+        const got = doc ? capFootage(fetched, footageBudgetSeconds(eapp), 4.8) : fetched;
         for (const c of got)
           clips.push({
             file: path.join(`entry_${beatIndex}`, c.file),
@@ -1612,6 +1811,27 @@ async function gatherMedia(
     clips,
     officialTrailer: official.trailer,
   };
+}
+
+/** The footage asks of one documentary chapter's paragraphs, in order. */
+export function chapterFootage(
+  script: Script,
+  chapter: number,
+): Array<{ want: FootageTarget["want"]; keywords: string[] }> {
+  const out: Array<{ want: FootageTarget["want"]; keywords: string[] }> = [];
+  let c = -1;
+  for (const b of script.beats) {
+    if (b.visual?.kind === "chapter") c++;
+    if (c === chapter && b.footage && b.footage.want !== "none")
+      out.push({ want: b.footage.want, keywords: b.footage.keywords });
+  }
+  return out;
+}
+
+function titleCaseLabel(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (m) => m.toUpperCase());
 }
 
 export function segmentInputs(script: Script): SegmentInput[] {
@@ -1781,6 +2001,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     ep.id,
     JSON.stringify(assets),
   ]);
+  const doc = script.evergreen_format === "documentary";
   const footageCredit = clips.length
     ? "FOOTAGE: OFFICIAL TRAILERS · STEAM"
     : "";
@@ -1800,10 +2021,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     thumbFile: path.join(dir, "thumb.jpg"),
     thumb: {
       headline: thumbTitle(script),
-      kicker: "RANKED",
-      game: script.criterion
-        ? `By ${script.criterion}`.slice(0, 48)
-        : script.game_title,
+      kicker: doc ? "DOCUMENTARY" : "RANKED",
+      game: doc
+        ? (script.kicker ?? script.game_title).slice(0, 48)
+        : script.criterion
+          ? `By ${script.criterion}`.slice(0, 48)
+          : script.game_title,
       accent: "#FF6B1A",
       imageFile: thumbArt?.file ?? null,
     },
@@ -1816,6 +2039,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       criterion: script.criterion ?? "",
       theme: script.game_title,
       footageCredit,
+      endLine: doc
+        ? "A new documentary every month · Shorts every day"
+        : "A new ranking every week · Shorts every day",
       segments,
       words,
       durationSeconds: duration,
@@ -1832,7 +2058,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   await fs.rm(raw, { force: true });
   const tech = await s.technicalQa(final, duration, {
     minSeconds: 180,
-    maxSeconds: 720,
+    maxSeconds: doc ? s.cfg.docMaxSeconds + 60 : 720,
     width: 1920,
     height: 1080,
   });
@@ -2334,9 +2560,13 @@ export function longChapters(ep: Episode): string[] {
       ? "Intro"
       : seg.kind === "beat" && seg.visual?.kind === "rank"
         ? `#${seg.visual.value_a} ${seg.visual.primary}`
-        : seg.kind === "take"
-          ? "Our pick"
-          : undefined,
+        : seg.kind === "beat" && seg.visual?.kind === "chapter"
+          ? seg.visual.primary
+          : seg.kind === "take"
+            ? script.evergreen_format === "documentary"
+              ? titleCaseLabel(script.pulse_take.label)
+              : "Our pick"
+            : undefined,
   );
 }
 
@@ -2446,9 +2676,14 @@ export function videoMetadata(
       : "",
     chapters.length ? `\nChapters:\n${chapters.join("\n")}` : "",
     credits ? `\nSources:\n${credits}` : "",
+    script.sources?.length
+      ? `\nSources:\n${script.sources.map((u) => `• Wikipedia: ${u}`).join("\n")}`
+      : "",
     footage,
     "\nNarration: AI-generated synthetic voice. Visuals: official publisher material, credited.",
-    long
+    script.evergreen_format === "documentary"
+      ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
+      : long
       ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day."
       : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
     (long
@@ -2526,10 +2761,7 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
     const size = (await fs.stat(file)).size;
     session = await yt.createSession(
       buildResource(
-        videoMetadata(ep, s.cfg.youtubePrivacy, s.cfg.syntheticMedia, {
-          uk: s.cfg.amazonUkTag,
-          us: s.cfg.amazonUsTag || undefined,
-        }),
+        videoMetadata(ep, s.cfg.youtubePrivacy, s.cfg.syntheticMedia, affiliateTags(s.cfg, ep.id)),
         marker,
       ),
       size,
@@ -2557,6 +2789,17 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   }
 }
 
+/** Every Associates ID the channel has, plus the video's shop page when the public address works from outside. */
+export function affiliateTags(cfg: Config, episodeId: string): AffiliateTags {
+  const publicOk = cfg.publicUrl && !/^https?:\/\/(localhost|127\.0\.0\.1)/.test(cfg.publicUrl);
+  return {
+    uk: cfg.amazonUkTag,
+    us: cfg.amazonUsTag || undefined,
+    ...cfg.amazonMoreTags,
+    shopUrl: publicOk ? `${cfg.publicUrl.replace(/\/$/, "")}/shop/${episodeId}` : undefined,
+  };
+}
+
 /** Posts the channel's own first comment (the owner pins it from the app; the API cannot pin). Never blocks a live video. */
 async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
   try {
@@ -2564,10 +2807,7 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
     const text =
       pinnedComment(ep.script_json!) +
       (ep.script_json!.runtime === "long"
-        ? affiliateCommentLine(ep.script_json!, {
-            uk: s.cfg.amazonUkTag,
-            us: s.cfg.amazonUsTag || undefined,
-          })
+        ? affiliateCommentLine(ep.script_json!, affiliateTags(s.cfg, ep.id))
         : "");
     const id = await s.youtube().insertComment(ep.youtube_video_id!, text);
     await quotaAdd(s.db, s.now(), QUOTA.comment);
@@ -2820,7 +3060,8 @@ export async function pruneMedia(s: Services, days = 14): Promise<number> {
 export async function tick(
   s: Services,
 ): Promise<{ ran: boolean; selected?: string }> {
-  const result = await withLease(s.db, "tick", 45 * 60, async () => {
+  // A monthly documentary can hold the tick for over an hour (write, voice, render); a crashed holder is cleared at boot.
+  const result = await withLease(s.db, "tick", 180 * 60, async () => {
     let selected: string | undefined;
     try {
       await discoverTick(s);

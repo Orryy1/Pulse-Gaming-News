@@ -6,7 +6,7 @@ import type { Word } from "../voice/elevenlabs.ts";
 export type SegmentKind = "hook" | "beat" | "take" | "loop";
 
 export interface Visual {
-  kind: "title" | "stat" | "date" | "quote" | "list" | "none" | "timeline" | "price" | "score" | "countdown" | "compare" | "rank" | "platforms" | "versus" | "specs" | "milestones";
+  kind: "title" | "stat" | "date" | "quote" | "list" | "none" | "timeline" | "price" | "score" | "countdown" | "compare" | "rank" | "platforms" | "versus" | "specs" | "milestones" | "chapter";
   primary: string;
   secondary: string;
   date_from?: string;

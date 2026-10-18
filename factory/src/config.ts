@@ -106,6 +106,13 @@ export interface Config {
   longformApprovalMinutes: number;
   longformMaxSeconds: number;
   longformClipsPerEntry: number;
+  docEnabled: boolean; // monthly franchise documentary (long-form lane)
+  docDays: string[];
+  docSlot: string;
+  docWeeks: number[]; // weeks of the month it runs: 1 = the first such weekday
+  docLeadMinutes: number; // how long before the slot production starts
+  docMaxSeconds: number;
+  docClipsPerChapter: number;
   selectFromHourUtc: number;
   minGapHours: number;
   tickMinutes: number;
@@ -124,6 +131,7 @@ export interface Config {
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
   amazonUkTag: string; // Amazon Associates UK tracking ID
   amazonUsTag: string; // Amazon Associates US tracking ID, when there is one
+  amazonMoreTags: { ca?: string; de?: string; fr?: string; it?: string; es?: string; au?: string }; // other national stores
   youtubeChannelId: string; // the only channel the factory may connect to
   oauthRedirectUri: string; // where Google returns after consent; this PC's own address works for the desktop OAuth client
   musicBed: boolean;
@@ -223,6 +231,13 @@ export function loadConfig(): Config {
     longformApprovalMinutes: int("LONGFORM_APPROVAL_MINUTES", 180),
     longformMaxSeconds: int("LONGFORM_MAX_SECONDS", 540),
     longformClipsPerEntry: int("LONGFORM_CLIPS_PER_ENTRY", 2),
+    docEnabled: bool("DOC_ENABLED", true),
+    docDays: str("DOC_DAYS", "sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    docSlot: str("DOC_SLOT", "19:00"),
+    docWeeks: str("DOC_WEEKS", "1").split(",").map((w) => Number(w.trim())).filter((w) => w >= 1 && w <= 5),
+    docLeadMinutes: int("DOC_LEAD_MINUTES", 600),
+    docMaxSeconds: int("DOC_MAX_SECONDS", 3000),
+    docClipsPerChapter: int("DOC_CLIPS_PER_CHAPTER", 4),
     selectFromHourUtc: int("SELECT_FROM_HOUR_UTC", 9),
     minGapHours: int("MIN_GAP_HOURS", 4),
     tickMinutes: int("TICK_MINUTES", 10),
@@ -241,6 +256,14 @@ export function loadConfig(): Config {
     pexelsApiKey: str("PEXELS_API_KEY"),
     amazonUkTag: str("AMAZON_AFFILIATE_TAG"),
     amazonUsTag: str("AMAZON_US_TAG"),
+    amazonMoreTags: {
+      ca: str("AMAZON_CA_TAG") || undefined,
+      de: str("AMAZON_DE_TAG") || undefined,
+      fr: str("AMAZON_FR_TAG") || undefined,
+      it: str("AMAZON_IT_TAG") || undefined,
+      es: str("AMAZON_ES_TAG") || undefined,
+      au: str("AMAZON_AU_TAG") || undefined,
+    },
     oauthRedirectUri: str("OAUTH_REDIRECT_URI", "http://localhost:8080/oauth/callback"),
     youtubeChannelId: str("YOUTUBE_CHANNEL_ID", "UCvgNDjtTezrpxL8oUe6mYwA"),
     musicBed: bool("MUSIC_BED", true),

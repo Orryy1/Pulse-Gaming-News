@@ -16,7 +16,7 @@ export const STORY_TYPES = [
   "other",
 ] as const;
 
-export const VISUAL_KINDS = ["title", "stat", "date", "quote", "list", "none", "timeline", "price", "score", "countdown", "compare", "rank", "platforms", "versus", "specs", "milestones"] as const;
+export const VISUAL_KINDS = ["title", "stat", "date", "quote", "list", "none", "timeline", "price", "score", "countdown", "compare", "rank", "platforms", "versus", "specs", "milestones", "chapter"] as const;
 
 export const SelectionSchema = z.object({
   candidate_index: z.number().describe("Index of the chosen candidate, or -1 if none is good enough"),
@@ -85,13 +85,15 @@ export type Script = z.infer<typeof ScriptSchema> & {
   /** Evergreen ranking Shorts carry their entries so media can be gathered per entry. */
   entries?: Array<{ rank: number; game_title: string; steam_search_term: string; year: number; platforms: string; icon?: string }>;
   /** Which evergreen format produced the Short, for its title formula. */
-  evergreen_format?: "ranking" | "best_per_year" | "versus" | "years_later" | "still_good" | "release_radar" | "weekly_recap" | "rarest_achievements" | "hardest_achievements";
+  evergreen_format?: "ranking" | "best_per_year" | "versus" | "years_later" | "still_good" | "release_radar" | "weekly_recap" | "rarest_achievements" | "hardest_achievements" | "documentary";
   /** "long" for the weekly 16:9 ranking video; absent or "short" otherwise. */
   runtime?: "short" | "long";
   /** Long-form: the one criterion the ranking uses, shown under the title. */
   criterion?: string;
   /** Long-form: the kicker line under the intro title. */
   kicker?: string;
+  /** Documentary: the articles the script was written from, credited in the description. */
+  sources?: string[];
 };
 export type BeatVisual = z.infer<typeof BeatSchema>["visual"];
 

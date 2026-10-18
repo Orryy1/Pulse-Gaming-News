@@ -56,9 +56,19 @@ export interface LongPlan {
 const toFrame = (s: number) => Math.round(s * LONG_FPS);
 const MOVES: MovePreset[] = ["pushIn", "pullBack", "pushPan", "driftDown"];
 
-/** Which entry a segment belongs to: beats count up from zero; the take belongs to the winner (the last beat). */
+/**
+ * Which entry a segment belongs to: beats count up from zero; the take belongs
+ * to the winner (the last beat). In a documentary a chapter spans many beats:
+ * each "chapter" card starts the next entry, and the outro belongs to the last.
+ */
 export function entryOf(segments: Segment[], i: number): number | undefined {
   const seg = segments[i]!;
+  if (segments.some((s) => s.visual?.kind === "chapter")) {
+    const upTo = segments.slice(0, i + 1).filter((s) => s.kind === "beat" && s.visual?.kind === "chapter").length;
+    if (seg.kind === "beat") return upTo > 0 ? upTo - 1 : undefined;
+    if (seg.kind === "take") return upTo > 0 ? upTo - 1 : undefined;
+    return undefined;
+  }
   const beats = segments.filter((s) => s.kind === "beat").length;
   if (seg.kind === "beat")
     return segments.slice(0, i).filter((s) => s.kind === "beat").length;
@@ -79,6 +89,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   );
   const clipUsed = clips.map(() => false);
   const stillUses = images.map(() => 0);
+  // Where each entry's stills left off, so a chapter's paragraphs walk its gallery instead of restarting it.
+  const cursors = new Map<number | undefined, number>();
   let shotIndex = 0;
   let last: LongMedia | undefined;
   const same = (a: LongMedia | undefined, b: LongMedia) =>
@@ -118,7 +130,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     );
     let at = start;
     let turn = seg.kind === "hook" ? 0 : 1; // the intro opens on a moment; an entry opens on its art so the card lands over a picture
-    let stillCursor = 0;
+    let stillCursor = cursors.get(entry) ?? 0;
     while (at < end) {
       const remaining = end - at;
       const nextStill = (): LongMedia | undefined => {
@@ -181,6 +193,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       shotIndex++;
       turn++;
     }
+    cursors.set(entry, stillCursor);
   }
   return { version: 1, fps: LONG_FPS, totalFrames, tailFrames, shots };
 }

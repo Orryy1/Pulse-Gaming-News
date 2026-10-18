@@ -11,7 +11,8 @@ import { runDoctor, formatDoctor } from "./doctor.ts";
 import { storedRefreshToken } from "./youtube/oauth.ts";
 import { openDb, migrate, withLease, type Db } from "./db.ts";
 import { createServices, oauthConfig } from "./services.ts";
-import { discoverTick, tick, episodeDir, clearSelectionPause, type Services } from "./pipeline.ts";
+import { discoverTick, tick, episodeDir, clearSelectionPause, affiliateTags, type Services } from "./pipeline.ts";
+import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import { consentUrl, exchangeCode, saveRefreshToken, clearTokenCache, channelOf } from "./youtube/oauth.ts";
@@ -129,6 +130,18 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       const nonce = crypto.randomBytes(12).toString("hex");
       const state = `${nonce}.${signToken(`oauth:${nonce}`, cfg.appSecret, 4 * 3600)}`;
       res.writeHead(302, { location: consentUrl(oauthConfig(cfg), state) }).end();
+      return;
+    }
+    // A video's shop page: public, read-only, each product in the viewer's own Amazon store.
+    const shop = url.pathname.match(/^\/shop\/([\w-]{4,64})$/);
+    if (shop && req.method === "GET") {
+      const ep = await getEpisode(db, shop[1]!);
+      if (!ep?.script_json) return send(404, page("Not found", "<h1>No shop for that video.</h1>"));
+      const products = productsFor(ep.script_json, ep.lane === "free");
+      const country = String(req.headers["cf-ipcountry"] ?? "");
+      await logEvent(db, ep.id, "shop_view", { country }).catch(() => undefined);
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "private, max-age=300" });
+      res.end(page(`Shop: ${esc(ep.script_json.headline)}`, shopPageHtml({ title: ep.script_json.headline, products, tags: affiliateTags(cfg, ep.id), country })));
       return;
     }
     if (url.pathname === "/oauth/callback") {

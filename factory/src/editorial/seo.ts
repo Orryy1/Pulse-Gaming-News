@@ -144,7 +144,7 @@ export function evergreenTitle(script: Script): string | undefined {
 export function thumbTitle(script: Script): string {
   const n = script.entries?.length ?? 0;
   const theme = script.game_title.trim() || "Games";
-  if (!n) return script.headline;
+  if (!n || script.evergreen_format === "documentary") return script.headline;
   return n >= 8 ? `Every ${theme} Game Ranked` : `${n} ${theme} Games Ranked`;
 }
 
@@ -246,6 +246,7 @@ export function hashtags(script: Script): string[] {
 /** The first two lines of a description: the keyword stack YouTube indexes, written as a sentence. */
 export function keywordLead(script: Script): string {
   const n = script.entries?.length ?? 0;
+  if (script.evergreen_format === "documentary") return `The complete history of ${script.game_title}, game by game: ${script.headline.replace(/\.$/, "")}. ${script.game_title} documentary, history of ${script.game_title}, ${script.game_title} explained, by Pulse Gaming News.`;
   if (script.evergreen_format === "release_radar") return `New games out this week: ${script.headline.replace(/\.$/, "")}. New game releases, games coming out this week, upcoming games, by Pulse Gaming News.`;
   if (script.evergreen_format === "rarest_achievements") return `The rarest achievements in ${script.game_title}: ${script.headline.replace(/\.$/, "")}. ${script.game_title} achievements, hardest achievements, achievement hunting, by Pulse Gaming News.`;
   if (script.evergreen_format === "hardest_achievements") return `The hardest achievements in gaming right now: ${script.headline.replace(/\.$/, "")}. Hardest achievements, rarest achievements, achievement hunting, by Pulse Gaming News.`;
@@ -269,6 +270,7 @@ export function keywordLead(script: Script): string {
 export function pinnedComment(script: Script): string {
   const take = script.pulse_take.on_screen.replace(/\.$/, "");
   const game = script.game_title || "this";
+  if (script.evergreen_format === "documentary") return `Which ${game} game was the one for you, and which chapter of the story surprised you most? Sources for every chapter are in the description.`;
   if (script.evergreen_format === "release_radar") return `Our pick: ${take}. Which one are you picking up this week?`;
   if (script.evergreen_format && /achievements$/.test(script.evergreen_format)) return `Our pick for the real test: ${take}. Which of these have you unlocked? Be honest.`;
   if (script.evergreen_format === "weekly_recap") return `Our read: ${take}. Which story was the biggest one for you this week?`;

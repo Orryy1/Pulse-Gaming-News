@@ -30,15 +30,31 @@ export function profileDir(dataDir: string): string {
   return path.join(dataDir, "tiktok-browser");
 }
 
-const MARKER = ".signed-in";
+/**
+ * The signed-in session, saved as a file on this PC: Chrome does not carry
+ * its own saved cookies over to an automated launch, so the factory keeps
+ * the session itself (never committed; data/ is ignored).
+ */
+const stateFile = (dataDir: string) => path.join(dataDir, "tiktok-session.json");
 
-/** True once the owner has signed in on the dedicated profile. */
+/** True once the owner has signed in and the session was saved. */
 export function signedIn(dataDir: string): boolean {
-  return fs.existsSync(path.join(profileDir(dataDir), MARKER));
+  return fs.existsSync(stateFile(dataDir));
 }
 
 export function markSignedOut(dataDir: string): void {
-  fs.rmSync(path.join(profileDir(dataDir), MARKER), { force: true });
+  fs.rmSync(stateFile(dataDir), { force: true });
+}
+
+async function saveSession(ctx: import("playwright-core").BrowserContext, dataDir: string): Promise<void> {
+  const cookies = (await ctx.cookies()).filter((c) => /tiktok/.test(c.domain));
+  fs.writeFileSync(stateFile(dataDir), JSON.stringify({ savedAt: new Date().toISOString(), cookies }, null, 1));
+}
+
+async function loadSession(ctx: import("playwright-core").BrowserContext, dataDir: string): Promise<void> {
+  if (!fs.existsSync(stateFile(dataDir))) return;
+  const { cookies } = JSON.parse(fs.readFileSync(stateFile(dataDir), "utf8")) as { cookies: Parameters<typeof ctx.addCookies>[0] };
+  if (cookies?.length) await ctx.addCookies(cookies);
 }
 
 async function open(dataDir: string, visible: boolean) {
@@ -67,7 +83,8 @@ export async function tiktokLogin(dataDir: string): Promise<boolean> {
     for (let i = 0; i < 120; i++) {
       const cookies = await ctx.cookies("https://www.tiktok.com");
       if (cookies.some((c) => c.name === "sessionid" && c.value)) {
-        fs.writeFileSync(path.join(profileDir(dataDir), MARKER), new Date().toISOString());
+        await page.waitForTimeout(4000); // let the remaining session cookies land
+        await saveSession(ctx, dataDir);
         return true;
       }
       await page.waitForTimeout(5000);
@@ -103,6 +120,7 @@ export async function postTikTokBrowser(opts: {
     return p;
   };
   try {
+    await loadSession(ctx, opts.dataDir);
     const page = ctx.pages()[0] ?? (await ctx.newPage());
     const challenged = async () => {
       for (const sel of CHALLENGE)
@@ -205,7 +223,10 @@ export async function postTikTokBrowser(opts: {
           .first()
           .isVisible({ timeout: 500 })
           .catch(() => false));
-      if (done) return `browser:${Date.now()}`;
+      if (done) {
+        await saveSession(ctx, opts.dataDir).catch(() => undefined); // keep the refreshed session
+        return `browser:${Date.now()}`;
+      }
     }
     throw new Error(
       `TikTok did not confirm the post (screenshot ${await shot(page, "unconfirmed")})`,

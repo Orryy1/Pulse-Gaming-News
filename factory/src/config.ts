@@ -113,6 +113,17 @@ export interface Config {
   docLeadMinutes: number; // how long before the slot production starts
   docMaxSeconds: number;
   docClipsPerChapter: number;
+  crosspost: { facebook: boolean; instagram: boolean; tiktok: boolean; x: boolean }; // which platforms get every public Short
+  crosspostDelays: { facebook: number; instagram: number; tiktok: number; x: number }; // minutes after the YouTube publish
+  crosspostWindowHours: number; // how far back a Short is still worth posting
+  facebookPageId: string;
+  facebookPageToken: string;
+  instagramAccountId: string;
+  instagramToken: string;
+  tiktokClientKey: string;
+  tiktokClientSecret: string;
+  tiktokTokenPath: string;
+  xKeys: { consumerKey: string; consumerSecret: string; token: string; tokenSecret: string };
   selectFromHourUtc: number;
   minGapHours: number;
   tickMinutes: number;
@@ -238,6 +249,32 @@ export function loadConfig(): Config {
     docLeadMinutes: int("DOC_LEAD_MINUTES", 600),
     docMaxSeconds: int("DOC_MAX_SECONDS", 3000),
     docClipsPerChapter: int("DOC_CLIPS_PER_CHAPTER", 4),
+    crosspost: {
+      facebook: bool("CROSSPOST_FACEBOOK", true),
+      instagram: bool("CROSSPOST_INSTAGRAM", true),
+      tiktok: bool("CROSSPOST_TIKTOK", true),
+      x: bool("CROSSPOST_X", true),
+    },
+    crosspostDelays: {
+      x: int("CROSSPOST_X_DELAY", 5),
+      facebook: int("CROSSPOST_FACEBOOK_DELAY", 30),
+      instagram: int("CROSSPOST_INSTAGRAM_DELAY", 60),
+      tiktok: int("CROSSPOST_TIKTOK_DELAY", 90),
+    },
+    crosspostWindowHours: int("CROSSPOST_WINDOW_HOURS", 36),
+    facebookPageId: str("FACEBOOK_PAGE_ID"),
+    facebookPageToken: str("FACEBOOK_PAGE_TOKEN"),
+    instagramAccountId: str("INSTAGRAM_BUSINESS_ACCOUNT_ID"),
+    instagramToken: str("INSTAGRAM_ACCESS_TOKEN"),
+    tiktokClientKey: str("TIKTOK_CLIENT_KEY"),
+    tiktokClientSecret: str("TIKTOK_CLIENT_SECRET"),
+    tiktokTokenPath: str("TIKTOK_TOKEN_PATH"),
+    xKeys: {
+      consumerKey: str("TWITTER_API_KEY"),
+      consumerSecret: str("TWITTER_API_SECRET"),
+      token: str("TWITTER_ACCESS_TOKEN"),
+      tokenSecret: str("TWITTER_ACCESS_SECRET"),
+    },
     selectFromHourUtc: int("SELECT_FROM_HOUR_UTC", 9),
     minGapHours: int("MIN_GAP_HOURS", 4),
     tickMinutes: int("TICK_MINUTES", 10),

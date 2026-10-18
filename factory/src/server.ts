@@ -13,6 +13,7 @@ import { openDb, migrate, withLease, type Db } from "./db.ts";
 import { createServices, oauthConfig } from "./services.ts";
 import { discoverTick, tick, episodeDir, clearSelectionPause, affiliateTags, type Services } from "./pipeline.ts";
 import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
+import { buildPosters, crosspostTick, isPublicOnYouTube } from "./social/crosspost.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import { consentUrl, exchangeCode, saveRefreshToken, clearTokenCache, channelOf } from "./youtube/oauth.ts";
@@ -276,6 +277,25 @@ async function main(): Promise<void> {
   setInterval(() => void discover(), Math.max(1, cfg.discoverMinutes) * 60_000);
   setTimeout(() => void runTick(services, state), 15_000);
   setInterval(() => void runTick(services, state), cfg.tickMinutes * 60_000);
+  // Every public Short follows to Facebook, Instagram, TikTok and X on its own clock, never inside the production tick.
+  const posters = await buildPosters(cfg);
+  log("info", "crossposting", { platforms: Object.keys(posters) });
+  const crosspost = () =>
+    withLease(db, "crosspost", 30 * 60, () =>
+      crosspostTick({
+        db,
+        cfg,
+        posters,
+        now: () => new Date(),
+        isPublic: (id) => isPublicOnYouTube(id),
+        notify: (m) => services.notify(m),
+        episodeDir: (id) => episodeDir(cfg, id),
+      }),
+    ).catch((err) => log("warn", "crosspost pass failed", { error: errorMessage(err) }));
+  if (Object.keys(posters).length) {
+    setTimeout(() => void crosspost(), 60_000);
+    setInterval(() => void crosspost(), 5 * 60_000);
+  }
   // Daily at 04:00 UTC, when nothing is mid-production, exit cleanly so the
   // Windows runner can pull updates and restart.
   let lastRestartDay = new Date().toISOString().slice(0, 10);

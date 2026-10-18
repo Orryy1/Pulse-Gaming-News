@@ -725,8 +725,10 @@ export async function maybeSelectWeekly(
       // A game out for under a year has "rare" achievements only because few have finished it yet.
       if (!year || year > now.getUTCFullYear() - 1) continue;
       if (!across && (list.at(-1)?.percent ?? 0) < 0.5) continue;
-      games.push({ game: app.name, appId: app.appId, year, list });
-      if (!across && !covered.some((h) => h.includes(app.name.toLowerCase())))
+      // Steam names carry trademark marks ("Call of Duty®"), which look sloppy on a card.
+      const game = app.name.replace(/[®™©]/g, "").replace(/\s+/g, " ").trim();
+      games.push({ game, appId: app.appId, year, list });
+      if (!across && !covered.some((h) => h.includes(game.toLowerCase())))
         break;
       if (across && games.length >= 8) break;
     }

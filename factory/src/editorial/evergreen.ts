@@ -126,7 +126,7 @@ export const EvergreenScriptSchema = z.object({
     label: z.string().describe("Card label, e.g. THE CRITERION or OUR PICK"),
     narration: z
       .string()
-      .describe("Why number one wins by the stated criterion, 1-2 sentences"),
+      .describe("Why number one wins by the stated criterion, 1-2 sentences, at most 32 words"),
     on_screen: z.string().describe("3-8 word on-screen summary"),
   }),
   loop_line: z.string().describe("Final line that ties back to the hook"),
@@ -165,7 +165,7 @@ Write an evergreen ranking Short of ${EVERGREEN_WORDS_MIN}-${EVERGREEN_WORDS_MAX
 Structure:
 1. hook: the premise and the criterion in one breath, 8-16 words, no question that withholds the point.
 2. entries: ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX}, spoken from the lowest rank to number one. Each one_line is under 18 words: one fact (year, what it did, how it was received) and one opinion by the criterion. verdict_chip is 1-4 words of punch. footage says what the trailer moment should show for that entry, with 1-4 keywords.
-3. pulse_take: why number one wins by the stated criterion.
+3. pulse_take: why number one wins by the stated criterion, at most 32 words.
 4. loop_line: flows back into the hook.
 The on-screen title is 3-8 words. The YouTube title follows the format template and front-loads the franchise. List every factual claim in "claims".`;
 }
@@ -248,6 +248,9 @@ export function validateEvergreen(e: EvergreenScript): string[] {
       p.push(`Entry "${x.game_title}" has an implausible year.`);
   }
   if (wordCount(e.hook) > 18) p.push("The hook is longer than 18 words.");
+  // A long take holds one card on screen for 15+ seconds, the slowest part of the Short.
+  if (wordCount(e.pulse_take.narration) > 32)
+    p.push("The take is longer than 32 words; keep it to one or two short sentences.");
   if (
     /let me know in the comments|like and subscribe/i.test(
       narrationOfEvergreen(e),

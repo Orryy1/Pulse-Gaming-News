@@ -312,7 +312,8 @@ test("a chapter's stills alternate the game's pictures with archive photos", () 
   ];
   const plan = buildLongPlan({ segments: segs, words: w, durationSeconds: w.at(-1)!.end + 6, images, clips: [], variant: 0 });
   const kinds = plan.shots.filter((x) => x.segment >= 1 && x.media.type === "image").slice(0, 6).map((x) => images[x.media.index]!.kind);
-  assert.deepEqual(kinds, ["screenshot", "photo", "screenshot", "photo", "screenshot", "photo"]);
+  assert.equal(kinds.length, 6);
+  for (let k = 1; k < kinds.length; k++) assert.notEqual(kinds[k], kinds[k - 1], `two ${kinds[k]}s in a row: ${kinds.join(",")}`);
 });
 
 import { pickIgdb, parseIgdb } from "../src/assets/igdb.ts";

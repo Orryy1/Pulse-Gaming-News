@@ -33,6 +33,7 @@ import {
 } from "./editorial/longform.ts";
 import { trailerMatchesGame } from "./assets/commons.ts";
 import { rankStills } from "./assets/stillscore.ts";
+import { tightenPauses } from "./voice/pauses.ts";
 import { sentencesOf } from "./editorial/longform.ts";
 import {
   pickPhotos,
@@ -1617,6 +1618,16 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     id: narration.voice?.id,
     name: narration.voice?.name,
   });
+  // The voice sometimes stalls mid-sentence: cut those silences to a natural beat, with the word timings shifted to match.
+  const tight = await tightenPauses(path.join(dir, "voice.mp3"), narration.words, narration.durationSeconds).catch((err) => {
+    log("warn", "pause tightening failed; keeping the voice as recorded", { error: errorMessage(err) });
+    return undefined;
+  });
+  if (tight && tight.removedSeconds > 0) {
+    narration.words = tight.words;
+    narration.durationSeconds = tight.durationSeconds;
+    await logEvent(s.db, ep.id, "pauses_tightened", { seconds: Math.round(tight.removedSeconds * 10) / 10 });
+  }
   const maxSeconds =
     ep.lane === "evergreen"
       ? s.cfg.evergreenMaxSeconds

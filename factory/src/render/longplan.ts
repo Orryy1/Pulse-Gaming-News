@@ -236,11 +236,21 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           ? images[k]!.beatIndex === undefined
           : images[k]!.beatIndex === entry,
       );
+        // The intro of a ranking is a montage: the topic's own art plus one picture from every entry.
+    const montage =
+      seg.kind === "hook" && images.some((im) => im.beatIndex !== undefined)
+        ? [...new Set(images.map((im) => im.beatIndex).filter((b): b is number => b !== undefined))]
+            .map((b) => images.findIndex((im) => im.beatIndex === b && (im.kind === "screenshot" || im.kind === "photo")))
+            .filter((k) => k >= 0)
+        : [];
     const stills = ownStills.length
-      ? ownStills
-      : images
-          .map((_, k) => k)
-          .filter((k) => images[k]!.beatIndex === undefined);
+      ? [...ownStills, ...montage]
+      : [
+          ...images
+            .map((_, k) => k)
+            .filter((k) => images[k]!.beatIndex === undefined),
+          ...montage,
+        ];
     // Wide art first on a still shot: hero, screenshots, then the rest; capsules (portrait) come last.
     const sorted = [...stills].sort(
       (a, b) => stillRank(images[a]!) - stillRank(images[b]!) || a - b,
@@ -320,7 +330,14 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     }
     cursors.set(entry, stillCursor);
   }
-  return { version: 1, fps: LONG_FPS, totalFrames, tailFrames, shots };
+    // Never the same still twice in a row: the second would restart its move and visibly jump. Hold the first instead.
+  const merged: LongShot[] = [];
+  for (const sh of shots) {
+    const prev = merged[merged.length - 1];
+    if (prev && prev.media.type === "image" && sh.media.type === "image" && prev.media.index === sh.media.index && prev.end === sh.start) prev.end = sh.end;
+    else merged.push({ ...sh });
+  }
+  return { version: 1, fps: LONG_FPS, totalFrames, tailFrames, shots: merged };
 }
 
 function stillRank(img: LongImage): number {

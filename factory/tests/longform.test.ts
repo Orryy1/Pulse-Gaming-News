@@ -135,7 +135,8 @@ test("the long plan keeps every entry on its own media, never flashes a shot und
       `shot at ${s.start} is ${s.end - s.start} frames`,
     );
     const entry = entryOf(segments, s.segment);
-    if (s.media.type === "image")
+    // The intro is a montage: it may show any entry's picture.
+    if (s.media.type === "image" && segments[s.segment]!.kind !== "hook")
       assert.equal(
         images[s.media.index]!.beatIndex,
         entry,

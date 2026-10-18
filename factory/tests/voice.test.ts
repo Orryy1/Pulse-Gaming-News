@@ -119,3 +119,16 @@ test("provider order follows VOICE_PROVIDER and elevenlabs-first falls back to t
     srv.close();
   }
 });
+
+import { pauseCuts, shiftWords } from "../src/voice/pauses.ts";
+
+test("a mid-sentence stall is cut to a beat; sentence pauses are only shortened", () => {
+  const w = (text: string, start: number, end: number) => ({ text, start, end });
+  const words = [w("Pulse", 0, 0.4), w("is", 0.44, 0.55), w("ranking", 0.64, 0.97), w("eight", 1.09, 1.39), w("Call", 2.63, 2.89), w("campaigns,", 3.3, 4.04), w("story.", 8.74, 9.25), w("Multiplayer,", 10.16, 10.9)];
+  const cuts = pauseCuts(words);
+  assert.equal(cuts.length, 3); // after "eight" (1.24 s), after "campaigns," (4.7 s), after "story." (0.91 s)
+  const shifted = shiftWords(words, cuts);
+  assert.ok(Math.abs(shifted[4]!.start - shifted[3]!.end - 0.12) < 0.01);
+  assert.ok(Math.abs(shifted[7]!.start - shifted[6]!.end - 0.6) < 0.01);
+  assert.equal(shifted[0]!.start, 0);
+});

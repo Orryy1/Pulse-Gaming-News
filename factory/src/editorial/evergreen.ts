@@ -22,7 +22,21 @@ export const EVERGREEN_FORMATS = [
   "versus",
   "years_later",
   "still_good",
+  "release_radar",
+  "weekly_recap",
 ] as const;
+
+/** Weekly formats built from data the factory hands the writer; they run shorter lists. */
+export const WEEKLY_FORMATS = new Set<string>(["release_radar", "weekly_recap"]);
+export const entriesMin = (format: string) => (WEEKLY_FORMATS.has(format) ? 4 : EVERGREEN_ENTRIES_MIN);
+
+/** What the writer is told for each data-driven format. */
+export const FORMAT_RULES: Record<string, string> = {
+  release_radar:
+    "Release Radar rules: the entries are the games in the data and nothing else, spoken in release order, earliest first, so the earliest release has the highest rank number and the last release is rank 1. Set each entry's date to its release date exactly as in the data (YYYY-MM-DD) and steam_search_term to its name. platforms is \"PC (Steam)\" unless the data says more. one_line says what the game is and one reason to care, under 18 words; never invent a price or a platform. verdict_chip is a 1-4 word hook such as \"SOULSLIKE WITH GUNS\". The take names the one to watch. Hook: the week and how many games, e.g. \"Five big games land this week, and one could eat your weekend.\"",
+  weekly_recap:
+    "Weekly Recap rules: the entries are the five biggest stories in the data, spoken from fifth to the biggest. game_title is the game or company the story is about; steam_search_term finds that game on Steam or is empty; year is that game's release year, or this year for a company story; platforms lists the outlets that reported it, e.g. \"IGN, Xbox Wire\". one_line says what happened and why it matters, under 18 words. verdict_chip is 1-4 words such as \"DELAYED AGAIN\". Only stories in the data, never a rumour as fact. Hook: \"Five stories ran gaming this week. Here is what actually mattered.\" style.",
+};
 export type EvergreenFormat = (typeof EVERGREEN_FORMATS)[number];
 
 export const FORMAT_TITLES: Record<EvergreenFormat, string> = {
@@ -31,6 +45,8 @@ export const FORMAT_TITLES: Record<EvergreenFormat, string> = {
   versus: "[A] vs [B]: which holds up in 2026",
   years_later: "[Game]: N years later",
   still_good: "Is [Game] still good in 2026",
+  release_radar: "N Big Games Out This Week",
+  weekly_recap: "The 5 Biggest Gaming Stories This Week",
 };
 
 export interface EvergreenCandidate {
@@ -80,6 +96,7 @@ export const EvergreenEntrySchema = z.object({
     .string()
     .describe("On-screen verdict, 1-4 words, e.g. 'PEAK CHAOS' or 'SKIP IT'"),
   footage: FootageSchema,
+  date: z.string().optional().describe("release_radar only: the release date as YYYY-MM-DD, exactly as in the data"),
 });
 
 export const EvergreenScriptSchema = z.object({
@@ -91,7 +108,7 @@ export const EvergreenScriptSchema = z.object({
     .describe("First spoken line: the premise and the criterion, 8-16 words"),
   entries: z
     .array(EvergreenEntrySchema)
-    .min(EVERGREEN_ENTRIES_MIN)
+    .min(4)
     .max(EVERGREEN_ENTRIES_MAX)
     .describe("Spoken from the lowest rank to number one"),
   pulse_take: z.object({
@@ -160,7 +177,9 @@ export async function writeEvergreen(
   topic: EvergreenTopic,
   facts: Array<{ title: string; facts: SteamFacts }>,
   feedback: string[] = [],
+  brief = "",
 ): Promise<EvergreenScript> {
+  const dataBlock = brief ? `\n\nThis week's data (use these and nothing else):\n${brief}\n\n${FORMAT_RULES[topic.format] ?? ""}` : "";
   const factBlock = facts.length
     ? `\n\nSteam facts for entries (use these numbers, never others):\n${facts.map((f) => `- ${f.title}: ${factsText(f.facts)}`).join("\n")}`
     : "";
@@ -169,7 +188,7 @@ export async function writeEvergreen(
     : "";
   return llm.structured({
     system: evergreenScriptPrompt(),
-    content: `Format: ${topic.format} ("${FORMAT_TITLES[topic.format]}")\nTheme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}${factBlock}${fb}`,
+    content: `Format: ${topic.format} ("${FORMAT_TITLES[topic.format]}")\nTheme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}${dataBlock}${factBlock}${fb}`,
     schema: EvergreenScriptSchema,
     effort: "medium",
   });
@@ -191,17 +210,21 @@ export function narrationOfEvergreen(e: EvergreenScript): string {
 export function validateEvergreen(e: EvergreenScript): string[] {
   const p: string[] = [];
   const words = wordCount(narrationOfEvergreen(e));
-  if (words < EVERGREEN_WORDS_MIN || words > EVERGREEN_WORDS_MAX)
+  const wordsMin = WEEKLY_FORMATS.has(e.format) ? 110 : EVERGREEN_WORDS_MIN;
+  if (words < wordsMin || words > EVERGREEN_WORDS_MAX)
     p.push(
-      `Spoken word count is ${words}; it must be ${EVERGREEN_WORDS_MIN}-${EVERGREEN_WORDS_MAX}.`,
+      `Spoken word count is ${words}; it must be ${wordsMin}-${EVERGREEN_WORDS_MAX}.`,
     );
   if (
-    e.entries.length < EVERGREEN_ENTRIES_MIN ||
+    e.entries.length < entriesMin(e.format) ||
     e.entries.length > EVERGREEN_ENTRIES_MAX
   )
     p.push(
-      `There must be ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX} entries.`,
+      `There must be ${entriesMin(e.format)}-${EVERGREEN_ENTRIES_MAX} entries.`,
     );
+  if (e.format === "release_radar")
+    for (const x of e.entries)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(x.date ?? "")) p.push(`Entry "${x.game_title}" needs its release date as YYYY-MM-DD.`);
   const ranks = e.entries.map((x) => x.rank).sort((a, b) => a - b);
   if (ranks.some((r, i) => r !== i + 1))
     p.push("Ranks must be 1..N with no gaps or repeats.");
@@ -239,6 +262,7 @@ export function evergreenToScript(e: EvergreenScript): Script {
       secondary: x.verdict_chip,
       value_a: x.rank,
       items: [String(x.year), x.platforms],
+      ...(x.date ? { date_to: x.date } : {}),
     } satisfies BeatVisual,
   }));
   return {

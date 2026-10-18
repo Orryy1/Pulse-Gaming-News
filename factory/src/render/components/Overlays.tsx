@@ -437,7 +437,7 @@ export const FactCard: React.FC<{
   const capsule = beatIndex === undefined ? undefined : (images.find((i) => i.beatIndex === beatIndex && i.kind === "capsule") ?? images.find((i) => i.beatIndex === beatIndex));
   const dataCard =
     v.kind === "rank" && typeof v.value_a === "number" ? (
-      <RankingCard rank={v.value_a} total={rankTotal} title={v.primary} verdict={v.secondary} year={v.items?.[0]} platforms={v.items?.[1]} capsuleSrc={capsule?.src ?? null} accent={accent} />
+      <RankingCard rank={v.value_a} total={rankTotal} title={v.primary} verdict={v.secondary} year={v.date_to ? undefined : v.items?.[0]} platforms={v.items?.[1]} capsuleSrc={capsule?.src ?? null} accent={accent} date={v.date_to} />
     ) :
     v.kind === "timeline" && v.date_from && v.date_to ? (
       <Timeline from={v.date_from} to={v.date_to} label={v.primary} accent={accent} />

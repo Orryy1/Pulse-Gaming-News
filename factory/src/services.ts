@@ -22,6 +22,7 @@ import { accessToken } from "./youtube/oauth.ts";
 import { officialMedia } from "./assets/officialTrailer.ts";
 import { stockClips } from "./assets/stock.ts";
 import { fetchRockstarNewswire } from "./discovery/newsrooms.ts";
+import { releaseRadar, freeGames } from "./discovery/weekly.ts";
 import { QUOTA, QUOTA_RESERVE_FOR_UPLOAD, quotaAdd, quotaUsed } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
 import { fetchWithTimeout } from "./lib/util.ts";
@@ -53,6 +54,8 @@ export function createServices(db: Db, cfg: Config): Services {
     gameFacts: steamFacts,
     fetchArt: (app, dir) => fetchSteamArt(app, dir),
     fetchClips: (app, dir, targets, maxClips) => selectClips({ app, episodeDir: dir, targets, maxClips, llm: cfg.clipRanking === "llm" ? llm : undefined }),
+    releaseRadar: (from) => releaseRadar(from),
+    freeGames: (now) => freeGames(now),
     fetchStock: (dir, targets, gameWords, maxClips) => (cfg.pexelsApiKey ? stockClips(cfg.pexelsApiKey, dir, targets, gameWords, maxClips) : Promise.resolve([])),
     fetchOfficialMedia: async (gameTitle, dir, targets, maxClips, hint, story) => {
       if (!cfg.officialTrailers) return { clips: [], stills: [] };

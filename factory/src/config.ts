@@ -94,6 +94,11 @@ export interface Config {
   evergreenApprovalMinutes: number;
   evergreenMaxSeconds: number; // narration cap for the lane
   longformEnabled: boolean; // weekly 16:9 ranking video
+  weeklyEnabled: boolean; // Release Radar, Free This Week and the Weekly Recap
+  radarDays: string[];
+  freeDays: string[];
+  recapDays: string[];
+  weeklySlot: string;
   longformDays: string[];
   longformSlot: string;
   longformApprovalMode: ApprovalMode;
@@ -195,12 +200,17 @@ export function loadConfig(): Config {
     breakingWindow: str("BREAKING_WINDOW", "07:00-03:00"),
     quotaUnitsPerDay: int("QUOTA_UNITS_PER_DAY", 10000),
     evergreenEnabled: bool("EVERGREEN_ENABLED", true),
-    evergreenDays: str("EVERGREEN_DAYS", "tue,thu,sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    evergreenDays: str("EVERGREEN_DAYS", "tue,sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     evergreenSlot: str("EVERGREEN_SLOT", "20:00"),
     evergreenApprovalMode: str("EVERGREEN_APPROVAL_MODE", "manual") as ApprovalMode,
     evergreenApprovalMinutes: int("EVERGREEN_APPROVAL_MINUTES", 120),
     evergreenMaxSeconds: int("EVERGREEN_MAX_SECONDS", 170),
     longformEnabled: bool("LONGFORM_ENABLED", true),
+    weeklyEnabled: bool("WEEKLY_ENABLED", true),
+    radarDays: str("RADAR_DAYS", "mon").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    freeDays: str("FREE_DAYS", "thu").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    recapDays: str("RECAP_DAYS", "fri").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    weeklySlot: str("WEEKLY_SLOT", "20:00"),
     longformDays: str("LONGFORM_DAYS", "sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     longformSlot: str("LONGFORM_SLOT", "19:00"),
     longformApprovalMode: str("LONGFORM_APPROVAL_MODE", "auto") as ApprovalMode,

@@ -24,14 +24,19 @@ export const RankingCard: React.FC<{
   platforms?: string;
   capsuleSrc?: string | null;
   accent: string;
-}> = ({ rank, total, title, verdict, year, platforms, capsuleSrc, accent }) => {
+  /** Release Radar: the badge shows the release date instead of the rank. */
+  date?: string;
+}> = ({ rank, total, title, verdict, year, platforms, capsuleSrc, accent, date }) => {
+  const day = date?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const dayName = day ? new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])))).toUpperCase() : "";
+  const monthName = day ? ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][Number(day[2]) - 1] : "";
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame - FRAMES.ruleLead;
   const badge = spring({ frame: t, fps, config: SPRING.POP });
   const card = spring({ frame: t - 4, fps, config: SPRING.ENTER });
   const chip = spring({ frame: t - 16, fps, config: SPRING.SNAP });
-  const top = rank === 1;
+  const top = rank === 1 && !date;
   const meta = [year, platforms].filter(Boolean).join(" · ");
   const wipe = interpolate(t, [0, 12], [0, 100], {
     extrapolateLeft: "clamp",
@@ -74,12 +79,20 @@ export const RankingCard: React.FC<{
           style={{
             position: "relative",
             fontFamily: DISPLAY,
-            fontSize: rank >= 10 ? 76 : 96,
-            color: top ? COLOUR.ink : COLOUR.paper,
+            fontSize: day ? 80 : rank >= 10 ? 76 : 96,
+            color: top && !day ? COLOUR.ink : COLOUR.paper,
             lineHeight: 1,
+            textAlign: "center",
           }}
         >
-          {rank}
+          {day ? (
+            <>
+              <div style={{ fontFamily: BODY, fontWeight: 900, fontSize: 24, letterSpacing: 2, color: accent, marginBottom: 2 }}>{monthName}</div>
+              {Number(day[3])}
+            </>
+          ) : (
+            rank
+          )}
         </div>
         <div
           style={{
@@ -92,7 +105,7 @@ export const RankingCard: React.FC<{
             color: COLOUR.muted,
           }}
         >
-          OF {total}
+          {day ? dayName : `OF ${total}`}
         </div>
       </div>
       {capsuleSrc ? (

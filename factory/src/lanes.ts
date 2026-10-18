@@ -5,10 +5,11 @@
 import type { Db } from "./db.ts";
 import type { StoryCluster } from "./discovery/cluster.ts";
 
-export type Lane = "news" | "news_breaking" | "evergreen" | "longform";
+export type Lane = "news" | "news_breaking" | "evergreen" | "longform" | "free";
 export const LANE_PRIORITY: Record<Lane, number> = {
   news_breaking: 100,
   news: 50,
+  free: 40,
   evergreen: 30,
   longform: 20,
 };

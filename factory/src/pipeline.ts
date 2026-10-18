@@ -16,6 +16,7 @@ import { factsText } from "./assets/steam.ts";
 import { capFootage, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
+import type { RadarGame, FreeGame } from "./discovery/weekly.ts";
 import { evergreenToScript, selectEvergreenTopic, validateEvergreen, writeEvergreen, type EvergreenCandidate } from "./editorial/evergreen.ts";
 import { longformToScript, selectLongformTopic, validateLongform, writeLongform } from "./editorial/longform.ts";
 import { buildLongPlan, chapterLines, LONG_TAIL_SECONDS } from "./render/longplan.ts";
@@ -72,6 +73,8 @@ export interface Services {
   fetchClips(app: SteamApp, episodeDir: string, targets: FootageTarget[], maxClips: number): Promise<VisualAsset[]>;
   fetchOfficialMedia(gameTitle: string, episodeDir: string, targets: FootageTarget[], maxClips: number, hint?: string, story?: { text: string; after: Date }): Promise<OfficialMedia>;
   fetchStock(episodeDir: string, targets: FootageTarget[], gameWords: string[], maxClips: number): Promise<VisualAsset[]>;
+  releaseRadar(from: Date): Promise<RadarGame[]>;
+  freeGames(now: Date): Promise<{ now: FreeGame[]; next: FreeGame[] }>;
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
@@ -199,7 +202,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
 
   // 2. News lane: the next slot whose lead time has begun.
   const slot = dueSlot(now, { slots: cfg.newsSlots, leadMinutes: cfg.slotLeadMinutes, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone }, await takenSlots(db));
-  if (!slot) return (await maybeSelectEvergreen(s)) ?? (await maybeSelectLongform(s));
+  if (!slot) return (await maybeSelectEvergreen(s)) ?? (await maybeSelectWeekly(s)) ?? (await maybeSelectLongform(s));
   const candidates = eligible.map((x) => x.cluster).slice(0, 12);
   if (candidates.length === 0) {
     log("info", "no eligible stories for the slot", { slot: slot.toISOString(), sightings: sightings.length });
@@ -247,6 +250,91 @@ export async function maybeSelectEvergreen(s: Services): Promise<string | undefi
   await logEvent(db, id, "selected", { headline: topic.title_idea, lane: "evergreen", format: topic.format, theme: topic.theme, criterion: topic.criterion, reason: topic.reason, slot_at: due.toISOString() });
   log("info", "evergreen topic selected", { id, format: topic.format, theme: topic.theme });
   return id;
+}
+
+/** Once per day and kind: a weekly lane that found too little data does not retry every tick. */
+async function weeklyTried(db: Db, key: string): Promise<boolean> {
+  const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = $1`, [`weekly_tried:${key}`]);
+  if (row) return true;
+  await db.query(`INSERT INTO settings (key, value) VALUES ($1, 'yes') ON CONFLICT (key) DO NOTHING`, [`weekly_tried:${key}`]);
+  return false;
+}
+
+/**
+ * The weekly lanes, each on its own day at the weekly slot: Release Radar
+ * (Steam's popular releases this week), Free This Week (Epic's giveaway, a
+ * news-style Short from the store's own data) and the Weekly Recap (the
+ * week's biggest corroborated stories from the factory's own sightings).
+ */
+export async function maybeSelectWeekly(s: Services): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.weeklyEnabled) return undefined;
+  const now = s.now();
+  const today = dayKey(now, cfg.timezone);
+  const plan = (days: string[]) => ({ days, slot: cfg.weeklySlot, leadMinutes: cfg.slotLeadMinutes + 30, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone });
+  const taken = await takenSlots(db);
+  const make = async (kind: string, cluster: StoryCluster, due: Date, factcheck: Record<string, unknown> | null, lane: "evergreen" | "free") => {
+    const id = shortId();
+    if (!(await createEpisode(db, id, cluster, { lane, priority: LANE_PRIORITY[lane], slotAt: due }))) return undefined;
+    if (factcheck) await db.query(`UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`, [id, JSON.stringify(factcheck)]);
+    await logEvent(db, id, "selected", { headline: cluster.headline, lane, weekly: kind, slot_at: due.toISOString() });
+    log("info", "weekly lane selected", { id, kind, headline: cluster.headline });
+    return id;
+  };
+  const base = (hash: string, headline: string, gameHint: string): StoryCluster => ({ hash, headline, items: [], sources: ["Steam"], hasOfficial: true, corroborated: true, rumourSignals: false, newestAt: now.toISOString(), score: 0, gameHint });
+
+  // Release Radar
+  const radarDue = evergreenDue(now, plan(cfg.radarDays), taken);
+  if (radarDue && !(await weeklyTried(db, `radar:${today}`))) {
+    const games = await s.releaseRadar(now);
+    if (games.length >= 4) {
+      const topic = { candidate_index: 0, format: "release_radar" as const, theme: "New games this week", title_idea: `${games.length} Big Games Out This Week`, criterion: "Release order, earliest first", reason: "weekly release radar" };
+      const brief = games.map((g) => `- ${g.name} | out ${g.date} | ${g.price ?? "price not listed"} | developer ${g.developer ?? "unknown"} | Steam app ${g.appId}`).join("\n");
+      return make("radar", base(`weekly:radar:${today}`, topic.title_idea, "New games"), radarDue, { topic, brief }, "evergreen");
+    }
+    log("info", "release radar skipped: too few dated releases this week", { found: games.length });
+  }
+
+  // Free This Week
+  const freeDue = evergreenDue(now, plan(cfg.freeDays), taken);
+  if (freeDue && !(await weeklyTried(db, `free:${today}`))) {
+    const free = await s.freeGames(now);
+    if (free.now.length) {
+      const until = (iso?: string) => (iso ? new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso)) + " Eastern" : "next week");
+      const nextLine = free.next.length ? ` Next week's free ${free.next.length > 1 ? "games are" : "game is"} ${free.next.map((g) => g.title).join(" and ")}, from ${until(free.next[0]!.starts)}.` : "";
+      const items = free.now.map((g) => ({
+        title: `${g.title} is free to keep on the Epic Games Store`,
+        url: g.url,
+        summary: `${g.title} is free to keep on the Epic Games Store until ${until(g.until)}.${g.originalPrice ? ` It normally costs ${g.originalPrice}.` : ""}${g.seller ? ` Published by ${g.seller}.` : ""} ${g.description}${nextLine}`,
+        publishedAt: now.toISOString(),
+        source: "Epic Games Store",
+        sourceKind: "official" as const,
+        imageUrl: g.imageUrl,
+      }));
+      const headline = `Free To Keep This Week: ${free.now.map((g) => g.title).join(" And ")}`;
+      const cluster: StoryCluster = { ...base(`weekly:free:${today}:${free.now.map((g) => g.title).join("|").toLowerCase()}`, headline, free.now[0]!.title), items, sources: ["Epic Games Store"], visualNeed: "game_footage" };
+      return make("free", cluster, freeDue, null, "free");
+    }
+    log("info", "free this week skipped: nothing free on Epic right now");
+  }
+
+  // Weekly Recap
+  const recapDue = evergreenDue(now, plan(cfg.recapDays), taken);
+  if (recapDue && !(await weeklyTried(db, `recap:${today}`))) {
+    const rows = await db.query<{ headline: string; max_score: number; item_count: number; has_official: boolean; cluster_json: StoryCluster; first_seen: string }>(
+      `SELECT headline, max_score, item_count, has_official, cluster_json, first_seen FROM cluster_sightings
+       WHERE first_seen > $1 AND (has_official OR item_count >= 2) ORDER BY max_score DESC LIMIT 12`,
+      [new Date(now.getTime() - 7 * 86_400_000)],
+    );
+    const stories = rows.filter((r) => !r.cluster_json?.rumourSignals);
+    if (stories.length >= 5) {
+      const topic = { candidate_index: 0, format: "weekly_recap" as const, theme: "This week in gaming", title_idea: "The 5 Biggest Gaming Stories This Week", criterion: "How much each story changes things for players", reason: "weekly recap" };
+      const brief = stories.slice(0, 10).map((r) => `- ${r.headline} | reported by ${(r.cluster_json?.sources ?? []).slice(0, 3).join(", ") || "outlets"}${r.has_official ? " (official)" : ""} | first seen ${new Date(r.first_seen).toISOString().slice(0, 10)} | ${(r.cluster_json?.items?.[0]?.summary ?? "").slice(0, 220)}`).join("\n");
+      return make("recap", base(`weekly:recap:${today}`, topic.title_idea, "Gaming news"), recapDue, { topic, brief }, "evergreen");
+    }
+    log("info", "weekly recap skipped: too few corroborated stories", { found: stories.length });
+  }
+  return undefined;
 }
 
 /** The weekly long-form ranking video: same topic pool as the evergreen Shorts, its own slot and lane. */
@@ -320,12 +408,14 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
 /** Writes a ranking Short against live Steam facts for each entry, with one rewrite on problems. */
 async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   const topic = (ep.factcheck_json as { topic?: import("./editorial/evergreen.ts").EvergreenTopic } | null)?.topic;
+  // Weekly formats carry the week's data for the writer.
+  const brief = (ep.factcheck_json as { brief?: string } | null)?.brief ?? "";
   if (!topic) throw new FatalError("evergreen episode has no topic");
   let facts: Array<{ title: string; facts: SteamFacts }> = [];
   let feedback: string[] = [];
   let draft: import("./editorial/evergreen.ts").EvergreenScript | undefined;
   for (let attempt = 0; attempt < 2; attempt++) {
-    draft = await writeEvergreen(s.llm, topic, facts, feedback);
+    draft = await writeEvergreen(s.llm, topic, facts, feedback, brief);
     const problems = validateEvergreen(draft);
     // Fetch the facts for the entries the writer chose, then rewrite once against them.
     if (attempt === 0) {

@@ -14,6 +14,7 @@ import {
 } from "../src/editorial/schema.ts";
 import {
   tick,
+  maybeSelectWeekly,
   footageCredits,
   selectionPause,
   clearSelectionPause,
@@ -48,6 +49,8 @@ interface Fakes {
   visual?: "none" | "game_footage" | "real_world_images";
   media?: number;
   stock?: number;
+  radar?: Array<{ name: string; appId: number; date: string; price?: string; developer?: string }>;
+  free?: { now: Array<{ title: string; url: string; until?: string; originalPrice?: string; description: string; imageUrl?: string }>; next: Array<{ title: string; url: string; starts?: string; description: string }> };
 }
 
 function fakeLlm(f: Fakes): Llm {
@@ -190,6 +193,8 @@ async function setup(
     gameFacts: async () => ({ name: "", storeUrl: "", fetchedAt: "" }),
     fetchArt: async () => [],
     fetchClips: async () => [],
+    releaseRadar: async () => f.radar ?? [],
+    freeGames: async () => f.free ?? { now: [], next: [] },
     fetchStock: async (_dir, targets) => (f.stock ?? 0) > 0 ? targets.slice(0, f.stock).map((t, i) => ({ kind: "clip" as const, file: `assets/stock_${i}.mp4`, sourceUrl: "https://www.pexels.com/video/1", durationSeconds: 4, beatIndex: Number.parseInt(t.key.slice(5), 10), stock: true, provenance: "Illustrative stock footage from Pexels (https://www.pexels.com/video/1) by x, free to use under the Pexels licence" })) : [],
     fetchOfficialMedia: async () => ({
       clips: [],
@@ -282,6 +287,44 @@ test("a picture story goes out only with safe pictures of it, and a Short with n
     assert.match(ep!.last_error, /nothing worth showing/);
     assert.ok(f.notifications.some((n) => /Dropped/.test(n)), "Discord is told");
     assert.equal(f.uploads, 0, "nothing was uploaded");
+    await db.close();
+  }
+});
+
+test("Free This Week runs on its day from Epic's own data as an official story, and only once a day", async () => {
+  // Thursday 22 Oct 2026, 19:00 London: the 20:00 weekly slot is due.
+  const { db, s, setClock } = await setup(
+    { weeklyEnabled: true, newsSlots: [], breakingEnabled: false, evergreenEnabled: false, dailyTarget: 4 },
+    { free: { now: [{ title: "Bad Cheese", url: "https://store.epicgames.com/en-US/p/bad-cheese", until: "2026-10-29T15:00:00.000Z", originalPrice: "$19.99", description: "A cartoon horror game.", imageUrl: "https://cdn/x.jpg" }], next: [] } },
+  );
+  setClock(new Date("2026-10-22T18:00:00Z"));
+  const id = await maybeSelectWeekly(s);
+  assert.ok(id, "selected");
+  const [ep] = await db.query<{ lane: string; story_json: any; slot_at: string }>(`SELECT lane, story_json, slot_at FROM episodes`);
+  assert.equal(ep!.lane, "free");
+  assert.equal(ep!.story_json.items[0].sourceKind, "official");
+  assert.match(ep!.story_json.items[0].summary, /normally costs \$19\.99/);
+  assert.equal(new Date(ep!.slot_at).toISOString(), "2026-10-22T19:00:00.000Z");
+  assert.equal(await maybeSelectWeekly(s), undefined, "not twice in a day");
+  await db.close();
+});
+
+test("Release Radar hands the week's dated releases to the writer, and skips a thin week", async () => {
+  const games = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map((name, i) => ({ name, appId: 100 + i, date: `2026-10-${20 + i}`, price: "$29.99", developer: "Studio" }));
+  {
+    const { db, s, setClock } = await setup({ weeklyEnabled: true, newsSlots: [], breakingEnabled: false, evergreenEnabled: false }, { radar: games });
+    setClock(new Date("2026-10-19T18:00:00Z")); // Monday 19:00 London
+    assert.ok(await maybeSelectWeekly(s));
+    const [ep] = await db.query<{ lane: string; factcheck_json: any }>(`SELECT lane, factcheck_json FROM episodes`);
+    assert.equal(ep!.lane, "evergreen");
+    assert.equal(ep!.factcheck_json.topic.format, "release_radar");
+    assert.match(ep!.factcheck_json.brief, /Alpha \| out 2026-10-20/);
+    await db.close();
+  }
+  {
+    const { db, s, setClock } = await setup({ weeklyEnabled: true, newsSlots: [], breakingEnabled: false, evergreenEnabled: false }, { radar: games.slice(0, 2) });
+    setClock(new Date("2026-10-19T18:00:00Z"));
+    assert.equal(await maybeSelectWeekly(s), undefined);
     await db.close();
   }
 });

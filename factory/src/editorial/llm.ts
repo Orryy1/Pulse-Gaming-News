@@ -21,26 +21,44 @@ export interface Llm {
 export function createClaude(model: string): Llm {
   // An organisation-level key must name the workspace on every request; a workspace key does not.
   const workspace = process.env.ANTHROPIC_WORKSPACE_ID;
-  const client = new Anthropic(workspace ? { defaultHeaders: { "anthropic-workspace-id": workspace } } : {});
+  const client = new Anthropic(
+    workspace
+      ? { defaultHeaders: { "anthropic-workspace-id": workspace } }
+      : {},
+  );
   return {
-    async structured({ system, content, schema, effort = "medium", maxTokens = 16000 }) {
-      const response = await client.beta.messages.parse({
-        model,
-        max_tokens: maxTokens,
-        // Server-side refusal fallback: a safety decline on one model is
-        // retried on another inside the same call instead of stalling a run.
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
-        thinking: { type: "adaptive" },
-        output_config: { effort, format: betaZodOutputFormat(schema) },
-        system,
-        messages: [{ role: "user", content }],
-      });
+    async structured({
+      system,
+      content,
+      schema,
+      effort = "medium",
+      maxTokens = 16000,
+    }) {
+      const response = await client.beta.messages.parse(
+        {
+          model,
+          max_tokens: maxTokens,
+          // Server-side refusal fallback: a safety decline on one model is
+          // retried on another inside the same call instead of stalling a run.
+          betas: ["server-side-fallback-2026-07-01"],
+          fallbacks: "default",
+          thinking: { type: "adaptive" },
+          output_config: { effort, format: betaZodOutputFormat(schema) },
+          system,
+          messages: [{ role: "user", content }],
+        },
+        // A large output (a long video's full shot list) needs an explicit time limit, or the SDK insists on streaming.
+        maxTokens > 16000 ? { timeout: 20 * 60 * 1000 } : undefined,
+      );
       if (response.stop_reason === "refusal") {
-        throw new FatalError(`model refused: ${response.stop_details?.category ?? "unspecified"}`);
+        throw new FatalError(
+          `model refused: ${response.stop_details?.category ?? "unspecified"}`,
+        );
       }
-      if (response.stop_reason === "max_tokens") throw new Error("model output hit max_tokens");
-      if (response.parsed_output == null) throw new Error("model output did not match the schema");
+      if (response.stop_reason === "max_tokens")
+        throw new Error("model output hit max_tokens");
+      if (response.parsed_output == null)
+        throw new Error("model output did not match the schema");
       return response.parsed_output as z.infer<typeof schema>;
     },
   };

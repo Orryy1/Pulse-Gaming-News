@@ -362,3 +362,67 @@ export async function postX(
     );
   return body.data.id;
 }
+
+// ------------------------------------------------------------------ community posts
+
+/** A photo post on the Facebook page from a public image URL; returns the post id. */
+export async function postFacebookPhoto(pageId: string, token: string, imageUrl: string, message: string, fetchFn: FetchLike = fetch): Promise<string> {
+  const r = await json(
+    await fetchFn(`${GRAPH}/${pageId}/photos`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: imageUrl, message: message.slice(0, 5000), access_token: token }),
+    }),
+    "facebook photo",
+  );
+  return String(r.post_id ?? r.id);
+}
+
+/** A single-image Instagram post from a public image URL; returns the media id. */
+export async function postInstagramImage(accountId: string, token: string, imageUrl: string, caption: string, fetchFn: FetchLike = fetch, pollMs = 5_000): Promise<string> {
+  const c = await json(
+    await fetchFn(`${GRAPH}/${accountId}/media`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ image_url: imageUrl, caption: caption.slice(0, 2200), access_token: token }),
+    }),
+    "instagram image container",
+  );
+  for (let i = 0; i < 24; i++) {
+    const st = await json(await fetchFn(`${GRAPH}/${c.id}?fields=status_code&access_token=${encodeURIComponent(token)}`), "instagram image status");
+    if (st.status_code === "FINISHED") break;
+    if (st.status_code === "ERROR") throw new Error("instagram image processing failed");
+    await sleep(pollMs);
+  }
+  const pub = await json(
+    await fetchFn(`${GRAPH}/${accountId}/media_publish`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ creation_id: c.id, access_token: token }),
+    }),
+    "instagram image publish",
+  );
+  return String(pub.id);
+}
+
+/** The page's own comment under a Facebook post or an Instagram media. */
+export async function graphComment(objectId: string, token: string, text: string, instagram: boolean, fetchFn: FetchLike = fetch): Promise<string> {
+  const r = await json(
+    await fetchFn(`${GRAPH}/${objectId}/${instagram ? "comments" : "comments"}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(instagram ? { message: text, access_token: token } : { message: text, access_token: token }),
+    }),
+    instagram ? "instagram comment" : "facebook comment",
+  );
+  return String(r.id);
+}
+
+/** How many comments a post has drawn. */
+export async function graphCommentCount(objectId: string, token: string, instagram: boolean, fetchFn: FetchLike = fetch): Promise<number> {
+  const r = await json(
+    await fetchFn(`${GRAPH}/${objectId}?fields=${instagram ? "comments_count" : "comments.summary(true).limit(0)"}&access_token=${encodeURIComponent(token)}`),
+    "comment count",
+  );
+  return Number(instagram ? r.comments_count : r.comments?.summary?.total_count) || 0;
+}

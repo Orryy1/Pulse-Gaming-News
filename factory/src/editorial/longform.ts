@@ -180,6 +180,7 @@ export async function writeLongform(
     content: `Theme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}${factBlock}${fb}`,
     schema: LongformScriptSchema,
     effort: "medium",
+    maxTokens: 32000, // a shot list per sentence roughly doubles the script
   });
 }
 

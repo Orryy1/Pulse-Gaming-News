@@ -117,6 +117,8 @@ export interface Config {
   crosspost: { facebook: boolean; instagram: boolean; tiktok: boolean; x: boolean }; // which platforms get every public Short
   crosspostDelays: { facebook: number; instagram: number; tiktok: number; x: number }; // minutes after the YouTube publish
   crosspostWindowHours: number; // how far back a Short is still worth posting
+  engageEnabled: boolean; // a daily community post on Facebook and Instagram
+  engageSlot: string; // local time it goes out
   facebookPageId: string;
   facebookPageToken: string;
   instagramAccountId: string;
@@ -266,6 +268,8 @@ export function loadConfig(): Config {
       tiktok: int("CROSSPOST_TIKTOK_DELAY", 90),
     },
     crosspostWindowHours: int("CROSSPOST_WINDOW_HOURS", 36),
+    engageEnabled: bool("ENGAGE_ENABLED", true),
+    engageSlot: str("ENGAGE_SLOT", "15:00"),
     facebookPageId: str("FACEBOOK_PAGE_ID"),
     facebookPageToken: str("FACEBOOK_PAGE_TOKEN"),
     instagramAccountId: str("INSTAGRAM_BUSINESS_ACCOUNT_ID"),

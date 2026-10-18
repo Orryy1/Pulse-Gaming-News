@@ -14,6 +14,8 @@ import { createServices, oauthConfig } from "./services.ts";
 import { discoverTick, tick, episodeDir, clearSelectionPause, affiliateTags, approvalLinks, type Services } from "./pipeline.ts";
 import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
 import { buildPosters, crosspostTick, isPublicOnYouTube } from "./social/crosspost.ts";
+import { engageTick } from "./social/engage.ts";
+import { renderEngage } from "./render/render.ts";
 import { articlePage, articleSlug, idTailOf, indexPage, rssFeed, SITE_EPISODES_SQL, type SiteEpisode } from "./web/site.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
@@ -159,6 +161,15 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "private, max-age=300" });
       res.end(articlePage(ep, base, affiliateTags(cfg, ep.id), String(req.headers["cf-ipcountry"] ?? "")));
+      return;
+    }
+    // Community post images: public so Facebook and Instagram can fetch them.
+    const engageImg = url.pathname.match(/^\/engage\/(\d{4}-\d{2}-\d{2})\/(post_\d+\.jpg)$/);
+    if (engageImg && req.method === "GET") {
+      const file = path.join(cfg.dataDir, "engage", engageImg[1]!, engageImg[2]!);
+      if (!fs.existsSync(file)) return send(404, page("Not found", "<h1>Not found</h1>"));
+      res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "public, max-age=86400" });
+      fs.createReadStream(file).pipe(res);
       return;
     }
     // Every photo and clip in a video, with its author, licence and source.
@@ -340,6 +351,43 @@ async function main(): Promise<void> {
   if (Object.keys(posters).length) {
     setTimeout(() => void crosspost(), 60_000);
     setInterval(() => void crosspost(), 5 * 60_000);
+  }
+  // The daily community post on Facebook and Instagram, with tomorrow's answers and the comment counts.
+  if (cfg.engageEnabled && (cfg.facebookPageToken || cfg.instagramToken)) {
+    const p = await import("./social/platforms.ts");
+    const engage = () =>
+      withLease(db, "engage", 30 * 60, () =>
+        engageTick({
+          db,
+          cfg,
+          llm: services.llm,
+          now: () => new Date(),
+          headlines: async () =>
+            (await db.query<{ h: string }>(`SELECT story_json->>'headline' AS h FROM episodes WHERE lane IN ('news','news_breaking') AND created_at > now() - interval '7 days' ORDER BY created_at DESC LIMIT 25`)).map((r) => r.h),
+          candidates: async () => (await services.discoverEvergreen()).map((c) => c.name),
+          igdbArt: (title, dir) => services.igdbArt(title, undefined, dir, 4),
+          render: (dir, outFile, props) => renderEngage({ dir, outFile, props, browserExecutable: cfg.browserExecutable || undefined }),
+          facebook:
+            cfg.facebookPageId && cfg.facebookPageToken
+              ? {
+                  photo: (url, msg) => p.postFacebookPhoto(cfg.facebookPageId, cfg.facebookPageToken, url, msg),
+                  comment: (id, text) => p.graphComment(id, cfg.facebookPageToken, text, false),
+                  comments: (id) => p.graphCommentCount(id, cfg.facebookPageToken, false),
+                }
+              : undefined,
+          instagram:
+            cfg.instagramAccountId && cfg.instagramToken
+              ? {
+                  image: (url, caption) => p.postInstagramImage(cfg.instagramAccountId, cfg.instagramToken, url, caption),
+                  comment: (id, text) => p.graphComment(id, cfg.instagramToken, text, true),
+                  comments: (id) => p.graphCommentCount(id, cfg.instagramToken, true),
+                }
+              : undefined,
+          notify: (m) => services.notify(m),
+        }),
+      ).catch((err) => log("warn", "community post pass failed", { error: errorMessage(err) }));
+    setTimeout(() => void engage(), 90_000);
+    setInterval(() => void engage(), 10 * 60_000);
   }
   // Daily at 04:00 UTC, when nothing is mid-production, exit cleanly so the
   // Windows runner can pull updates and restart.

@@ -5,6 +5,7 @@ import { FPS, WIDTH, HEIGHT, SAMPLE_PROPS, type ShortProps } from "./props.ts";
 import { Avatar, Banner, Thumb, SAMPLE_THUMB } from "./Brand.tsx";
 import { Long, SAMPLE_LONG_PROPS, type LongProps } from "./Long.tsx";
 import { LONG_FPS, LONG_WIDTH, LONG_HEIGHT } from "./longplan.ts";
+import { Engage, SAMPLE_ENGAGE } from "./Engage.tsx";
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -48,5 +49,6 @@ export const RemotionRoot: React.FC = () => (
       height={720}
       defaultProps={SAMPLE_THUMB}
     />
+    <Still id="PulseEngage" component={Engage} width={1080} height={1350} defaultProps={SAMPLE_ENGAGE} />
   </>
 );

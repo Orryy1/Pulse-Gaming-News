@@ -12,6 +12,7 @@ import { renderMedia, renderStill, selectComposition } from "@remotion/renderer"
 import type { ShortProps } from "./props.ts";
 import type { LongProps } from "./Long.tsx";
 import type { ThumbProps } from "./Brand.tsx";
+import type { EngageProps } from "./Engage.tsx";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(here, "index.ts");
@@ -179,6 +180,20 @@ export async function renderShort(input: RenderInput): Promise<void> {
       browserExecutable,
       chromiumOptions: { gl: input.gl ?? "swangle" },
     });
+  } finally {
+    await files.close();
+  }
+}
+
+/** A community post graphic (1080x1350 jpeg) from pictures in `dir`, named relative to it. */
+export async function renderEngage(input: { dir: string; outFile: string; props: Omit<EngageProps, "images"> & { imageFiles: string[] }; browserExecutable?: string }): Promise<void> {
+  const serveUrl = await getBundle();
+  const files = await serveDir(input.dir);
+  try {
+    const { imageFiles, ...rest } = input.props;
+    const props: EngageProps = { ...rest, images: imageFiles.map((f) => `${files.url}/${f}`) };
+    const still = await selectComposition({ serveUrl, id: "PulseEngage", inputProps: props, browserExecutable: input.browserExecutable });
+    await renderStill({ composition: still, serveUrl, output: input.outFile, inputProps: props, imageFormat: "jpeg", jpegQuality: 92, browserExecutable: input.browserExecutable });
   } finally {
     await files.close();
   }

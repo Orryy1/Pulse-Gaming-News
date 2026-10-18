@@ -24,7 +24,7 @@ export interface SocialPosters {
     title: string,
     description: string,
   ) => Promise<string>;
-  instagram?: (file: string, caption: string) => Promise<string>;
+  instagram?: (file: string, caption: string, videoUrl?: string) => Promise<string>;
   tiktok?: (file: string, caption: string) => Promise<string>;
   x?: (text: string) => Promise<string>;
 }
@@ -133,6 +133,8 @@ export interface CrosspostDeps {
   isPublic: (videoId: string) => Promise<boolean>;
   notify: (m: { content: string }) => Promise<unknown>;
   episodeDir: (id: string) => string;
+  /** A signed public link to the episode's video, for platforms that fetch it themselves. */
+  videoUrl?: (id: string) => string;
 }
 
 /** One pass: at most one post per platform, oldest eligible Short first. */
@@ -173,11 +175,14 @@ export async function crosspostTick(
         platform === "facebook"
           ? await d.posters.facebook!(file, polishTitle(script), caption)
           : platform === "instagram"
-            ? await d.posters.instagram!(file, caption)
+            ? await d.posters.instagram!(file, caption, d.videoUrl?.(ep.id))
             : platform === "tiktok"
               ? await d.posters.tiktok!(file, caption)
               : await d.posters.x!(caption);
       await logEvent(d.db, ep.id, "crosspost", { platform, id });
+      // TikTok has not approved the app for public posting yet: the video waits in the owner's TikTok inbox.
+      if (id.startsWith("inbox:"))
+        await d.notify({ content: `📲 TikTok draft ready: "${polishTitle(script)}". Open TikTok, tap the notification in your inbox, paste this caption and post:\n${caption.slice(0, 1500)}` }).catch(() => undefined);
       log("info", "crossposted", { platform, episode: ep.id, id });
       done.push({ platform, episode: ep.id, ok: true });
     } catch (err) {
@@ -203,6 +208,8 @@ export async function crosspostTick(
   return done;
 }
 
+let tiktokUnaudited = false;
+
 /** The posters this PC has credentials for and the owner has switched on. */
 export async function buildPosters(cfg: Config): Promise<SocialPosters> {
   const p = await import("./platforms.ts");
@@ -210,10 +217,20 @@ export async function buildPosters(cfg: Config): Promise<SocialPosters> {
   if (cfg.crosspost.facebook && cfg.facebookPageId && cfg.facebookPageToken)
     out.facebook = (file, title, description) => p.postFacebookReel({ pageId: cfg.facebookPageId, token: cfg.facebookPageToken, file, title, description });
   if (cfg.crosspost.instagram && cfg.instagramAccountId && cfg.instagramToken)
-    out.instagram = (file, caption) => p.postInstagramReel({ accountId: cfg.instagramAccountId, token: cfg.instagramToken, file, caption });
+    out.instagram = (file, caption, videoUrl) => p.postInstagramReel({ accountId: cfg.instagramAccountId, token: cfg.instagramToken, file, caption, videoUrl });
   if (cfg.crosspost.tiktok && cfg.tiktokClientKey && cfg.tiktokTokenPath && fs.existsSync(cfg.tiktokTokenPath))
-    out.tiktok = async (file, caption) =>
-      p.postTikTok({ accessToken: await p.tiktokAccessToken(cfg.tiktokTokenPath, cfg.tiktokClientKey, cfg.tiktokClientSecret), file, title: caption });
+    out.tiktok = async (file, caption) => {
+      const accessToken = await p.tiktokAccessToken(cfg.tiktokTokenPath, cfg.tiktokClientKey, cfg.tiktokClientSecret);
+      if (!tiktokUnaudited) {
+        try {
+          return await p.postTikTok({ accessToken, file, title: caption });
+        } catch (err) {
+          if (!/unaudited_client/.test(errorMessage(err))) throw err;
+          tiktokUnaudited = true; // until TikTok approves the app, every video goes to the inbox
+        }
+      }
+      return p.postTikTok({ accessToken, file, title: caption, inbox: true });
+    };
   if (cfg.crosspost.x && cfg.xKeys.consumerKey && cfg.xKeys.token) out.x = (text) => p.postX(cfg.xKeys, text);
   return out;
 }

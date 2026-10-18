@@ -121,62 +121,38 @@ export interface InstagramReel {
   token: string;
   file: string;
   caption: string;
+  videoUrl?: string; // a signed public link to the same file, for the fallback
 }
 
-/** A resumable REELS container, the bytes to rupload, wait for FINISHED, then publish. */
-export async function postInstagramReel(
-  r: InstagramReel,
-  fetchFn: FetchLike = fetch,
-  pollMs = 10_000,
-): Promise<string> {
-  const container = await json(
-    await fetchFn(`${GRAPH}/${r.accountId}/media`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        media_type: "REELS",
-        upload_type: "resumable",
-        caption: r.caption.slice(0, 2200),
-        share_to_feed: true,
-        access_token: r.token,
+/**
+ * A REELS container from the file bytes (resumable upload); when Meta's upload
+ * service refuses the bytes, a second container from a signed link to the same
+ * file on this PC, which Instagram fetches itself. Then wait for FINISHED and publish.
+ */
+export async function postInstagramReel(r: InstagramReel, fetchFn: FetchLike = fetch, pollMs = 10_000): Promise<string> {
+  let id: string;
+  try {
+    id = await instagramFromBytes(r, fetchFn);
+  } catch (err) {
+    if (!r.videoUrl) throw err;
+    const container = await json(
+      await fetchFn(`${GRAPH}/${r.accountId}/media`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ media_type: "REELS", video_url: r.videoUrl, caption: r.caption.slice(0, 2200), share_to_feed: true, access_token: r.token }),
       }),
-    }),
-    "instagram container",
-  );
-  const id: string = container.id;
-  const uploadUrl: string =
-    container.uri || `https://rupload.facebook.com/ig-api-upload/v21.0/${id}`;
-  const data = await fs.readFile(r.file);
-  await json(
-    await fetchFn(uploadUrl, {
-      method: "POST",
-      headers: {
-        authorization: `OAuth ${r.token}`,
-        offset: "0",
-        file_size: String(data.length),
-        "content-type": "video/mp4",
-      },
-      body: data,
-    }),
-    "instagram upload",
-  );
+      "instagram container (link)",
+    );
+    id = container.id;
+  }
   let status = "IN_PROGRESS";
   for (let i = 0; i < 40 && status !== "FINISHED"; i++) {
     await sleep(pollMs);
-    const st = await json(
-      await fetchFn(
-        `${GRAPH}/${id}?fields=status_code,status&access_token=${encodeURIComponent(r.token)}`,
-      ),
-      "instagram status",
-    );
+    const st = await json(await fetchFn(`${GRAPH}/${id}?fields=status_code,status&access_token=${encodeURIComponent(r.token)}`), "instagram status");
     status = st.status_code ?? "IN_PROGRESS";
-    if (status === "ERROR" || status === "EXPIRED")
-      throw new Error(`instagram processing failed: ${st.status ?? status}`);
+    if (status === "ERROR" || status === "EXPIRED") throw new Error(`instagram processing failed: ${st.status ?? status}`);
   }
-  if (status !== "FINISHED")
-    throw new Error(
-      `instagram container ${id} still processing after the wait`,
-    );
+  if (status !== "FINISHED") throw new Error(`instagram container ${id} still processing after the wait`);
   const pub = await json(
     await fetchFn(`${GRAPH}/${r.accountId}/media_publish`, {
       method: "POST",
@@ -186,6 +162,29 @@ export async function postInstagramReel(
     "instagram publish",
   );
   return pub.id;
+}
+
+async function instagramFromBytes(r: InstagramReel, fetchFn: FetchLike): Promise<string> {
+  const container = await json(
+    await fetchFn(`${GRAPH}/${r.accountId}/media`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ media_type: "REELS", upload_type: "resumable", caption: r.caption.slice(0, 2200), share_to_feed: true, access_token: r.token }),
+    }),
+    "instagram container",
+  );
+  const id: string = container.id;
+  const uploadUrl: string = container.uri || `https://rupload.facebook.com/ig-api-upload/v21.0/${id}`;
+  const data = await fs.readFile(r.file);
+  await json(
+    await fetchFn(uploadUrl, {
+      method: "POST",
+      headers: { authorization: `OAuth ${r.token}`, offset: "0", file_size: String(data.length), "content-type": "application/octet-stream" },
+      body: data,
+    }),
+    "instagram upload",
+  );
+  return id;
 }
 
 // ------------------------------------------------------------------ TikTok
@@ -242,6 +241,7 @@ export interface TikTokPost {
   accessToken: string;
   file: string;
   title: string; // the caption, hashtags included, up to 2200 characters
+  inbox?: boolean; // send to the creator's TikTok inbox as a draft instead of posting
 }
 
 /** Direct post from a file: init, upload the bytes in one or more chunks, then wait for PUBLISH_COMPLETE. */
@@ -259,8 +259,11 @@ export async function postTikTok(
     authorization: `Bearer ${p.accessToken}`,
     "content-type": "application/json; charset=UTF-8",
   };
+  const source_info = { source: "FILE_UPLOAD", video_size: size, chunk_size: chunk, total_chunk_count: count };
   const init = await json(
-    await fetchFn("https://open.tiktokapis.com/v2/post/publish/video/init/", {
+    p.inbox
+      ? await fetchFn("https://open.tiktokapis.com/v2/post/publish/inbox/video/init/", { method: "POST", headers, body: JSON.stringify({ source_info }) })
+      : await fetchFn("https://open.tiktokapis.com/v2/post/publish/video/init/", {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -273,12 +276,7 @@ export async function postTikTok(
           video_cover_timestamp_ms: 1500,
           is_aigc: true,
         },
-        source_info: {
-          source: "FILE_UPLOAD",
-          video_size: size,
-          chunk_size: chunk,
-          total_chunk_count: count,
-        },
+        source_info,
       }),
     }),
     "tiktok init",
@@ -320,8 +318,8 @@ export async function postTikTok(
       "tiktok status",
     );
     const status = st.data?.status;
-    if (status === "PUBLISH_COMPLETE")
-      return String(st.data?.publicaly_available_post_id?.[0] ?? publishId);
+    if (status === "PUBLISH_COMPLETE") return String(st.data?.publicaly_available_post_id?.[0] ?? publishId);
+    if (status === "SEND_TO_USER_INBOX") return `inbox:${publishId}`;
     if (status === "FAILED")
       throw new Error(
         `tiktok publish failed: ${st.data?.fail_reason ?? "no reason given"}`,

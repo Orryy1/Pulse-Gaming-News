@@ -11,7 +11,7 @@ import { runDoctor, formatDoctor } from "./doctor.ts";
 import { storedRefreshToken } from "./youtube/oauth.ts";
 import { openDb, migrate, withLease, type Db } from "./db.ts";
 import { createServices, oauthConfig } from "./services.ts";
-import { discoverTick, tick, episodeDir, clearSelectionPause, affiliateTags, type Services } from "./pipeline.ts";
+import { discoverTick, tick, episodeDir, clearSelectionPause, affiliateTags, approvalLinks, type Services } from "./pipeline.ts";
 import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
 import { buildPosters, crosspostTick, isPublicOnYouTube } from "./social/crosspost.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
@@ -290,6 +290,7 @@ async function main(): Promise<void> {
         isPublic: (id) => isPublicOnYouTube(id),
         notify: (m) => services.notify(m),
         episodeDir: (id) => episodeDir(cfg, id),
+        videoUrl: (id) => approvalLinks(cfg, id).preview,
       }),
     ).catch((err) => log("warn", "crosspost pass failed", { error: errorMessage(err) }));
   if (Object.keys(posters).length) {

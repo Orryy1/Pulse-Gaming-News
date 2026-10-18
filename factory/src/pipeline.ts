@@ -69,7 +69,8 @@ export interface Services {
   gameFacts(app: SteamApp): Promise<SteamFacts>;
   fetchArt(app: SteamApp, episodeDir: string): Promise<VisualAsset[]>;
   fetchClips(app: SteamApp, episodeDir: string, targets: FootageTarget[], maxClips: number): Promise<VisualAsset[]>;
-  fetchOfficialMedia(gameTitle: string, episodeDir: string, targets: FootageTarget[], maxClips: number, hint?: string): Promise<OfficialMedia>;
+  fetchOfficialMedia(gameTitle: string, episodeDir: string, targets: FootageTarget[], maxClips: number, hint?: string, story?: { text: string; after: Date }): Promise<OfficialMedia>;
+  fetchStock(episodeDir: string, targets: FootageTarget[], gameWords: string[], maxClips: number): Promise<VisualAsset[]>;
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
@@ -139,14 +140,15 @@ async function recentSightings(s: Services): Promise<Array<{ cluster: StoryClust
 
 async function createFromChoice(s: Services, candidates: StoryCluster[], lane: { lane: string; priority: number; slotAt?: Date }, why: string): Promise<string | undefined> {
   const { db } = s;
-  const choice = await selectStory(s.llm, candidates, await recentHeadlines(db), await performanceNotes(db, s.now()).catch(() => ""));
-  const picked = candidates[choice.candidate_index];
+  const pool = candidates;
+  const choice = await selectStory(s.llm, pool, await recentHeadlines(db), await performanceNotes(db, s.now()).catch(() => ""));
+  const picked = pool[choice.candidate_index];
   if (!picked) {
     log("info", "editor passed on every candidate", { lane: lane.lane, reason: choice.reason });
     return undefined;
   }
   const id = shortId();
-  const created = await createEpisode(db, id, { ...picked, gameHint: choice.game_title || undefined }, lane);
+  const created = await createEpisode(db, id, { ...picked, gameHint: choice.game_title || undefined, visualNeed: choice.visual_dependency }, lane);
   await markSeen(db, picked.hash, picked.headline, created ? "selected" : "duplicate", choice.reason);
   if (!created) return undefined;
   await logEvent(db, id, "selected", { headline: picked.headline, reason: choice.reason, story_type: choice.story_type, score: picked.score, lane: lane.lane, slot_at: lane.slotAt?.toISOString() ?? null, why });
@@ -430,13 +432,26 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
   // Per-publisher footage budget (Rockstar: about 6 s per Short). Clips beyond it are dropped, in order.
   const narrationSeconds = ep.assets_json?.durationSeconds ?? 45;
   // Not on Steam (GTA VI, Nintendo titles): the publisher's own YouTube trailer stands in, under that publisher's cap.
-  const official: OfficialMedia = !app && s.cfg.footage && script.game_title
-    ? await s.fetchOfficialMedia(script.game_title, dir, topicTargets, ranking ? 1 : s.cfg.maxClips).catch((err) => { log("warn", "official trailer media failed", { episode: ep.id, error: errorMessage(err) }); return { clips: [], stills: [] } as OfficialMedia; })
+  // A picture story: the publisher's own video of it comes first, whether or not the game is on Steam.
+  const pictureStory = ep.story_json.visualNeed === "real_world_images";
+  const storyAfter = new Date(new Date(ep.story_json.newestAt ?? s.now().toISOString()).getTime() - 7 * 86_400_000);
+  const official: OfficialMedia = (pictureStory || !app) && s.cfg.footage && script.game_title
+    ? await s.fetchOfficialMedia(script.game_title, dir, topicTargets, ranking ? 1 : s.cfg.maxClips, "", pictureStory ? { text: `${ep.story_json.headline} ${script.headline}`, after: storyAfter } : undefined).catch((err) => { log("warn", "official trailer media failed", { episode: ep.id, error: errorMessage(err) }); return { clips: [], stills: [] } as OfficialMedia; })
     : { clips: [], stills: [] };
   if (official.trailer) await logEvent(s.db, ep.id, "official_trailer", { videoId: official.trailer.videoId, publisher: official.trailer.publisher, title: official.trailer.title, clips: official.clips.length, still: official.stills.length > 0 });
   const steamBudget = app ? footageBudgetSeconds(app) : official.trailer?.clipSeconds ?? 0;
   const budget = Math.min(steamBudget, Math.max(10, narrationSeconds * 0.4));
-  const clips = capFootage(app ? clipAssets : official.clips, budget).map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds }));
+  const clips: NonNullable<EpisodeAssets["clips"]> = capFootage(official.storyVideo || !app ? official.clips : clipAssets, budget).map((c) => ({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 3.4, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, label: c.label, reason: c.reason, startSeconds: c.startSeconds, stock: c.stock }));
+  // Licensed stock for the real-world lines of a picture story that has no publisher video of it.
+  if (pictureStory && !official.storyVideo) {
+    // Every fact line can carry an illustrative shot: quiet lines show it in the framed panel under their card.
+    const realLines = targetsFor(script).filter((t) => t.key.startsWith("beat:"));
+    const stock = await s.fetchStock(dir, realLines, script.game_title.split(/\s+/), Math.min(3, realLines.length)).catch((err) => {
+      log("warn", "stock footage failed", { episode: ep.id, error: errorMessage(err) });
+      return [] as VisualAsset[];
+    });
+    for (const c of stock) clips.push({ file: c.file, sourceUrl: c.sourceUrl, provenance: c.provenance, durationSeconds: c.durationSeconds ?? 4, beatIndex: c.beatIndex, role: undefined, motion: 0.5, luma: undefined, label: c.label, reason: c.reason, startSeconds: 0, stock: true });
+  }
   if (clips.length < clipAssets.length) log("info", "footage capped", { episode: ep.id, budgetSeconds: budget, dropped: clipAssets.length - clips.length });
   // In a ranking, the topic page's screenshots would land under the wrong entry: keep its hero and header only.
   const images = [...art.filter((a) => a.kind !== "logo" && (!ranking || a.kind === "hero" || a.kind === "header")), ...official.stills];
@@ -522,6 +537,28 @@ export function steamStat(f?: SteamFacts): { value: string; label: string } | nu
 
 function variantOf(id: string): number {
   return [...id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % 4;
+}
+
+/** Pictures a Short needs before it is worth making: two distinct real images or clips. */
+export const MEDIA_FLOOR = 2;
+
+/**
+ * A Short with nothing real to show (only the brand plate) is not published:
+ * the story is dropped, its slot freed for the next story, and Discord told.
+ */
+async function belowMediaFloor(s: Services, ep: Episode, assets: EpisodeAssets): Promise<boolean> {
+  const count = (assets.images?.length ?? 0) + (assets.clips?.length ?? 0);
+  // A picture story needs pictures of the story: the publisher's video of it, or illustrative stock for its lines.
+  const pictureStory = ep.story_json.visualNeed === "real_world_images";
+  const storyPictures = (assets.clips ?? []).filter((c) => c.stock).length + (assets.officialTrailer && pictureStory && (assets.clips ?? []).some((c) => !c.stock && /YouTube channel/.test(c.provenance)) ? 2 : 0);
+  if (count >= MEDIA_FLOOR && (!pictureStory || storyPictures >= 2)) return false;
+  const headline = ep.story_json.headline;
+  await markSeen(s.db, ep.story_hash, headline, "rejected", `only ${count} pictures to show`);
+  await transition(s.db, ep.id, "voiced", "rejected", { last_error: pictureStory ? `picture story with nothing safe to show: no publisher video of it and ${storyPictures} stock clips` : `nothing worth showing: ${count} official images or clips (need ${MEDIA_FLOOR})` });
+  await logEvent(s.db, ep.id, "media_floor", { count, floor: MEDIA_FLOOR });
+  log("warn", "story dropped: not enough pictures", { episode: ep.id, headline, count });
+  await s.notify({ embeds: [{ title: `🛑 Dropped: ${headline}`, description: `Only ${count} official image or clip to show, so it would have run on a blank background. The slot goes to the next story.`, color: COLOURS.warn }] });
+  return true;
 }
 
 /** The long-form 16:9 render: its own plan, composition, QA band and thumbnail. */
@@ -614,6 +651,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     Object.assign(assets, await gatherMedia(s, ep, dir));
     await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
   }
+  if (await belowMediaFloor(s, ep, assets)) return;
   const duration = (assets.durationSeconds ?? 30) + TAIL_SECONDS;
   const words = assets.words ?? [];
   const segments = buildSegments(segmentInputs(script), words, duration);
@@ -685,7 +723,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       audioFile: assets.audio ?? null,
       musicFile,
       imageFiles: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, aspect: i.aspect, blurFile: i.blurFile, beatIndex: i.beatIndex })),
-      clipFiles: (assets.clips ?? []).map((c) => ({ file: c.file, durationSeconds: c.durationSeconds, blurFile: c.blurFile, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma })),
+      clipFiles: (assets.clips ?? []).map((c) => ({ file: c.file, durationSeconds: c.durationSeconds, blurFile: c.blurFile, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, stock: c.stock })),
       steam: steamLite,
       emphasis: emphasisWords(script),
       plan,
@@ -870,6 +908,8 @@ export function footageCredits(script: Script, clips: Array<{ provenance: string
   if (steamGames.size === 1 && !script.entries?.length) lines.push(`Footage: ${[...steamGames][0]} official trailer${publisher ? ` (${publisher})` : ""}, via Steam, a few seconds. Store art: Steam.`);
   else if (steamGames.size) lines.push(`Footage: official Steam trailers, a few seconds each: ${[...steamGames].join(", ")}. Store art: Steam.`);
   for (const [channel, url] of channels) lines.push(`Footage and still: the official ${channel} YouTube channel (${url}).`);
+  const stock = clips.filter((c) => /^Illustrative stock footage from Pexels/.test(c.provenance)).map((c) => c.provenance.match(/\((https?:[^)]+)\)/)?.[1]).filter(Boolean);
+  if (stock.length) lines.push(`Illustrative stock footage (not the real event): Pexels, ${stock.join(", ")}.`);
   if (/microsoft|xbox game studios|bethesda/i.test(`${publisher ?? ""} ${headline}`)) lines.push("Game footage used under Microsoft's Game Content Usage Rules: https://www.xbox.com/en-US/developers/rules");
   return lines.length ? `\n${lines.join("\n")}` : "";
 }

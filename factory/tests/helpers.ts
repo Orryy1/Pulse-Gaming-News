@@ -100,6 +100,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     clipRanking: "rule",
     officialTrailers: false,
     ytdlpPath: "yt-dlp",
+    pexelsApiKey: "",
     musicBed: true,
     dryRun: false,
     maxAttempts: 3,

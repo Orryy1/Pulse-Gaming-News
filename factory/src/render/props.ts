@@ -23,6 +23,7 @@ export interface ShortClip {
   luma?: number;
   beatIndex?: number;
   role?: "hook";
+  stock?: boolean; // licensed stock: shown with an ILLUSTRATIVE tag
 }
 
 // A type alias (not an interface) so it satisfies Remotion's Record<string, unknown> props constraint.

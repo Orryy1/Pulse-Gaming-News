@@ -22,6 +22,11 @@ export const SelectionSchema = z.object({
   reason: z.string(),
   story_type: z.enum(STORY_TYPES),
   game_title: z.string().describe("Exact official game title, or empty string if the story is not about one game"),
+  visual_dependency: z
+    .enum(["none", "game_footage", "real_world_images"])
+    .describe(
+      "What a viewer must SEE for the story to land. none: the fact stands on its own (a date, a price, a delay, a number). game_footage: official trailers or store art of the game cover it. real_world_images: the point is real-world photos or video, leaked images, screenshots only outlets or fans have, merchandise, stunts, cosplay, fan creations or a new trailer's own shots",
+    ),
 });
 export type Selection = z.infer<typeof SelectionSchema>;
 

@@ -35,7 +35,8 @@ export function selectionPrompt(): string {
 You are the editor choosing today's story. Pick the single candidate that will make the best Short for cold viewers:
 - Big franchises, release dates, delays, price changes, reveals, sales milestones and major studio news beat niche patch notes.
 - Prefer stories with a concrete fact a viewer can repeat to a friend.
-- Avoid deals posts, reviews, guides, listicles, podcasts, tragedies and anything that needs footage to make sense.
+- Avoid deals posts, reviews, guides, listicles, podcasts and tragedies.
+- The Short can only show official trailers, official store art and official press images. Never pick a story whose point is something to look at that we cannot show: real-world photos (marketing stunts, billboards, cars, merchandise, events), leaked or fan images, cosplay, mods, or the shots of a brand-new trailer. A viewer would hear about it over pictures of something else. Mark such a story real_world_images.
 - Avoid anything that repeats a story the channel already covered (listed below).
 Return candidate_index -1 if nothing is worth a Short today.`;
 }

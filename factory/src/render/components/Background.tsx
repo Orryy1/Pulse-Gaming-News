@@ -301,7 +301,9 @@ export const ArtTrack: React.FC<{
     <AbsoluteFill key={index}>
       <Sequence from={shot.start} layout="none">
         {body}
-        {clip && footageCredit ? (
+        {clip?.stock ? (
+          <FootageCredit credit="ILLUSTRATIVE · STOCK FOOTAGE" durationFrames={len} />
+        ) : clip && footageCredit ? (
           <FootageCredit credit={footageCredit} durationFrames={len} />
         ) : null}
       </Sequence>

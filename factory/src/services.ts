@@ -20,6 +20,7 @@ import { visionQa } from "./qa/vision.ts";
 import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken } from "./youtube/oauth.ts";
 import { officialMedia } from "./assets/officialTrailer.ts";
+import { stockClips } from "./assets/stock.ts";
 import { QUOTA, QUOTA_RESERVE_FOR_UPLOAD, quotaAdd, quotaUsed } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
 import { fetchWithTimeout } from "./lib/util.ts";
@@ -48,7 +49,8 @@ export function createServices(db: Db, cfg: Config): Services {
     gameFacts: steamFacts,
     fetchArt: (app, dir) => fetchSteamArt(app, dir),
     fetchClips: (app, dir, targets, maxClips) => selectClips({ app, episodeDir: dir, targets, maxClips, llm: cfg.clipRanking === "llm" ? llm : undefined }),
-    fetchOfficialMedia: async (gameTitle, dir, targets, maxClips, hint) => {
+    fetchStock: (dir, targets, gameWords, maxClips) => (cfg.pexelsApiKey ? stockClips(cfg.pexelsApiKey, dir, targets, gameWords, maxClips) : Promise.resolve([])),
+    fetchOfficialMedia: async (gameTitle, dir, targets, maxClips, hint, story) => {
       if (!cfg.officialTrailers) return { clips: [], stills: [] };
       return officialMedia({
         token: () => accessToken(db, oauthConfig(cfg)),
@@ -59,6 +61,7 @@ export function createServices(db: Db, cfg: Config): Services {
         llm: cfg.clipRanking === "llm" ? llm : undefined,
         ytdlp: cfg.ytdlpPath,
         hint,
+        story,
         quotaOk: async () => {
           const now = new Date();
           if ((await quotaUsed(db, now)) + QUOTA.search + QUOTA_RESERVE_FOR_UPLOAD > cfg.quotaUnitsPerDay) return false;

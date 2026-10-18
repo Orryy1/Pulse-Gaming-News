@@ -54,7 +54,7 @@ export interface EpisodeAssets {
   video?: string;
   poster?: string;
   musicFile?: string | null;
-  clips?: Array<{ file: string; sourceUrl: string; provenance: string; durationSeconds: number; blurFile?: string; beatIndex?: number; role?: "hook"; motion?: number; luma?: number; label?: string; reason?: string; startSeconds?: number }>;
+  clips?: Array<{ file: string; sourceUrl: string; provenance: string; durationSeconds: number; blurFile?: string; beatIndex?: number; role?: "hook"; stock?: boolean; motion?: number; luma?: number; label?: string; reason?: string; startSeconds?: number }>;
   steam?: { appId: number; name: string; facts: import("./assets/steam.ts").SteamFacts };
   longPlan?: import("./render/longplan.ts").LongPlan; // the long-form render plan
   thumb?: string; // thumb.jpg for the long-form video

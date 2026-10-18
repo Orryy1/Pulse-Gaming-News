@@ -225,20 +225,15 @@ export function pickOfficial(
 }
 
 /** Finds the game's official trailer on YouTube (search 100 units + channels 1 unit). */
-export async function findOfficialTrailer(
-  token: () => Promise<string>,
-  gameTitle: string,
-  hint = "", // e.g. the release year, to steer a short or reused title ("Resident Evil" 2002)
-): Promise<OfficialTrailer | undefined> {
+type SearchItem = { videoId: string; title: string; channelId: string; channelTitle: string; publishedAt: string };
+
+/** One YouTube search (100 units) plus the channels' audience sizes (1 unit). */
+async function searchVideos(token: () => Promise<string>, query: string, extra = ""): Promise<{ items: SearchItem[]; subscribers: Map<string, number> }> {
   const auth = { headers: { authorization: `Bearer ${await token()}` } };
-  const q = encodeURIComponent(`${gameTitle} ${hint} official trailer`.replace(/\s+/g, " ").trim());
-  const res = await fetchWithTimeout(
-    `${API}/search?part=snippet&type=video&maxResults=12&order=relevance&q=${q}`,
-    auth,
-    20_000,
-  );
+  const q = encodeURIComponent(query.replace(/\s+/g, " ").trim());
+  const res = await fetchWithTimeout(`${API}/search?part=snippet&type=video&maxResults=15&order=relevance&q=${q}${extra}`, auth, 20_000);
   if (!res.ok) throw new Error(`youtube search HTTP ${res.status}`);
-  const items = (((await res.json()) as any).items ?? [])
+  const items: SearchItem[] = (((await res.json()) as any).items ?? [])
     .map((i: any) => ({
       videoId: i.id?.videoId as string,
       title: String(i.snippet?.title ?? ""),
@@ -246,22 +241,73 @@ export async function findOfficialTrailer(
       channelTitle: String(i.snippet?.channelTitle ?? ""),
       publishedAt: String(i.snippet?.publishedAt ?? ""),
     }))
-    .filter((i: { videoId: string }) => i.videoId);
-  const channelIds = [
-    ...new Set(items.map((i: { channelId: string }) => i.channelId)),
-  ].filter(Boolean);
+    .filter((i: SearchItem) => i.videoId);
+  const channelIds = [...new Set(items.map((i) => i.channelId))].filter(Boolean);
   const subscribers = new Map<string, number>();
   if (channelIds.length) {
-    const ch = await fetchWithTimeout(
-      `${API}/channels?part=statistics&id=${channelIds.join(",")}`,
-      auth,
-      20_000,
-    );
-    if (ch.ok)
-      for (const c of ((await ch.json()) as any).items ?? [])
-        subscribers.set(c.id, Number(c.statistics?.subscriberCount ?? 0));
+    const ch = await fetchWithTimeout(`${API}/channels?part=statistics&id=${channelIds.join(",")}`, auth, 20_000);
+    if (ch.ok) for (const c of ((await ch.json()) as any).items ?? []) subscribers.set(c.id, Number(c.statistics?.subscriberCount ?? 0));
   }
+  return { items, subscribers };
+}
+
+/** Finds the game's official trailer on YouTube (search 100 units + channels 1 unit). */
+export async function findOfficialTrailer(
+  token: () => Promise<string>,
+  gameTitle: string,
+  hint = "", // e.g. the release year, to steer a short or reused title ("Resident Evil" 2002)
+): Promise<OfficialTrailer | undefined> {
+  const { items, subscribers } = await searchVideos(token, `${gameTitle} ${hint} official trailer`);
   return pickOfficial(items, gameTitle, subscribers);
+}
+
+const STORY_STOP = new Set("the a an and of to in on for with as at by from is are was were be has have its it this that new now just after over into game games trailer official video".split(" "));
+
+/** Words that carry a story: no stopwords, no game title words. */
+export function storyWords(text: string, gameTitle: string): string[] {
+  const game = new Set(gameTitle.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+  return [...new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STORY_STOP.has(w) && !game.has(w)))];
+}
+
+/**
+ * The publisher's own video of the story itself (a stunt, an event, a
+ * reveal), uploaded on or after `after`: same channel rules as trailers, and
+ * the title must share at least one story word.
+ */
+export function pickStoryVideo(items: SearchItem[], gameTitle: string, story: string, after: Date, subscribers: Map<string, number>): OfficialTrailer | undefined {
+  const owner = franchisePublisher(gameTitle);
+  const ownerRule = owner ? PUBLISHER_CHANNELS.find((r) => r.name === owner) : undefined;
+  const words = storyWords(story, gameTitle);
+  const scored = items
+    .map((it) => {
+      const rule = PUBLISHER_CHANNELS.find((r) => r.match.test(it.channelTitle.trim()));
+      if (!rule || (subscribers.get(it.channelId) ?? 0) < rule.minSubscribers) return undefined;
+      if (!it.publishedAt || new Date(it.publishedAt) < after) return undefined;
+      const t = it.title.toLowerCase();
+      if (EXCLUDE.test(t)) return undefined;
+      const hits = words.filter((w) => t.includes(w)).length;
+      if (!hits) return undefined;
+      return { it, rule, score: hits + (owner && rule.name === owner ? 2 : 0) };
+    })
+    .filter((x): x is NonNullable<typeof x> => Boolean(x))
+    .sort((a, b) => b.score - a.score || b.it.publishedAt.localeCompare(a.it.publishedAt));
+  const best = scored[0];
+  if (!best) return undefined;
+  return {
+    videoId: best.it.videoId,
+    title: best.it.title,
+    channelId: best.it.channelId,
+    channelTitle: best.it.channelTitle,
+    publisher: owner ?? best.rule.name,
+    clipSeconds: Math.min(best.rule.clipSeconds, ownerRule?.clipSeconds ?? best.rule.clipSeconds),
+    publishedAt: best.it.publishedAt,
+  };
+}
+
+export async function findStoryVideo(token: () => Promise<string>, gameTitle: string, story: string, after: Date): Promise<OfficialTrailer | undefined> {
+  const words = storyWords(story, gameTitle).slice(0, 5);
+  const { items, subscribers } = await searchVideos(token, `${gameTitle} ${words.join(" ")}`, `&publishedAfter=${encodeURIComponent(after.toISOString())}`);
+  return pickStoryVideo(items, gameTitle, story, after, subscribers);
 }
 
 /** Downloads the trailer as a 1080p video-only mp4 with yt-dlp; returns its duration in seconds. */
@@ -346,6 +392,8 @@ export async function downloadThumbnail(
 }
 
 export interface OfficialMedia {
+  /** true when the footage is the publisher's own video of the story, not a trailer */
+  storyVideo?: boolean;
   trailer?: { videoId: string; title: string; publisher: string; channelTitle: string; url: string; clipSeconds: number };
   clips: VisualAsset[];
   stills: VisualAsset[];
@@ -363,6 +411,8 @@ export interface OfficialMediaOptions {
   quotaOk?: () => Promise<boolean>;
   /** Extra words for the search only, such as the release year. */
   hint?: string;
+  /** A picture story: look first for the publisher's own video of it, uploaded since this date. */
+  story?: { text: string; after: Date };
 }
 
 /**
@@ -377,13 +427,18 @@ export async function officialMedia(o: OfficialMediaOptions): Promise<OfficialMe
     log("info", "official trailer search skipped: quota reserved for uploads", { game: o.gameTitle });
     return none;
   }
-  const trailer = await findOfficialTrailer(o.token, o.gameTitle, o.hint);
+  const storyVideo = o.story ? await findStoryVideo(o.token, o.gameTitle, o.story.text, o.story.after).catch((err) => {
+    log("warn", "story video search failed", { game: o.gameTitle, error: errorMessage(err) });
+    return undefined;
+  }) : undefined;
+  if (o.story) log("info", storyVideo ? "publisher story video found" : "no publisher story video", { game: o.gameTitle, title: storyVideo?.title });
+  const trailer = storyVideo ?? (await findOfficialTrailer(o.token, o.gameTitle, o.hint));
   if (!trailer) {
     log("info", "no official trailer found", { game: o.gameTitle });
     return none;
   }
   const url = `https://www.youtube.com/watch?v=${trailer.videoId}`;
-  const out: OfficialMedia = { trailer: { videoId: trailer.videoId, title: trailer.title, publisher: trailer.publisher, channelTitle: trailer.channelTitle, url, clipSeconds: trailer.clipSeconds }, clips: [], stills: [] };
+  const out: OfficialMedia = { storyVideo: Boolean(storyVideo), trailer: { videoId: trailer.videoId, title: trailer.title, publisher: trailer.publisher, channelTitle: trailer.channelTitle, url, clipSeconds: trailer.clipSeconds }, clips: [], stills: [] };
   const stillFile = path.join("assets", "official_trailer.jpg");
   if (await downloadThumbnail(trailer.videoId, path.join(o.episodeDir, stillFile))) {
     out.stills.push({ kind: "hero", file: stillFile, sourceUrl: url, provenance: `Official trailer thumbnail "${trailer.title}" from the ${trailer.channelTitle} YouTube channel (${url})` });

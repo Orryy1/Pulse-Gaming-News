@@ -11,7 +11,8 @@ You see frames sampled across the video in order. Fail the video only for real p
 - artwork clearly showing a different game from the one named in the headline,
 - anything advertiser-unfriendly (gore, nudity, offensive imagery).
 Stylistic preferences are not failures. Note them in "notes".
-A Short with no game artwork (dark brand-plate backgrounds with the game's name) is a deliberate choice when no official art exists; never fail for that or for empty space below the captions.`;
+A Short with no game artwork (dark brand-plate backgrounds with the game's name) is a deliberate choice when no official art exists; never fail for that or for empty space below the captions.
+Real-world footage carrying a small ILLUSTRATIVE tag is deliberate licensed stock for a real-world story; never fail it for not showing the game.`;
 
 export const LONG_VISION_PROMPT = `You are the final visual quality checker for a 16:9 long-form ranking video (five to seven minutes) from a gaming channel.
 You see frames sampled across the video in order. Fail the video only for real problems a viewer would notice:

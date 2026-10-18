@@ -18,6 +18,8 @@ export interface StoryCluster {
   score: number;
   /** Game the editor identified at selection time, used for Steam lookups. */
   gameHint?: string;
+  /** What the story needs to be seen, from the editor: real_world_images sends it to the picture desk. */
+  visualNeed?: "none" | "game_footage" | "real_world_images";
 }
 
 const STOPWORDS = new Set(

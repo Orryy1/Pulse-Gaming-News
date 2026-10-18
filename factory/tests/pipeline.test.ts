@@ -45,6 +45,9 @@ interface Fakes {
   publicReachable?: boolean;
   captions: Array<{ id: string; language: string; name: string }>;
   comments: string[];
+  visual?: "none" | "game_footage" | "real_world_images";
+  media?: number;
+  stock?: number;
 }
 
 function fakeLlm(f: Fakes): Llm {
@@ -56,6 +59,7 @@ function fakeLlm(f: Fakes): Llm {
           reason: "big story",
           story_type: "delay",
           game_title: "Starfield",
+          visual_dependency: f.visual ?? "none",
         } as z.infer<S>;
       if (schema === (ScriptSchema as unknown)) return f.script as z.infer<S>;
       if (schema === (FactCheckSchema as unknown))
@@ -186,7 +190,11 @@ async function setup(
     gameFacts: async () => ({ name: "", storeUrl: "", fetchedAt: "" }),
     fetchArt: async () => [],
     fetchClips: async () => [],
-    fetchOfficialMedia: async () => ({ clips: [], stills: [] }),
+    fetchStock: async (_dir, targets) => (f.stock ?? 0) > 0 ? targets.slice(0, f.stock).map((t, i) => ({ kind: "clip" as const, file: `assets/stock_${i}.mp4`, sourceUrl: "https://www.pexels.com/video/1", durationSeconds: 4, beatIndex: Number.parseInt(t.key.slice(5), 10), stock: true, provenance: "Illustrative stock footage from Pexels (https://www.pexels.com/video/1) by x, free to use under the Pexels licence" })) : [],
+    fetchOfficialMedia: async () => ({
+      clips: [],
+      stills: Array.from({ length: f.media ?? 2 }, (_, i) => ({ kind: "hero" as const, file: `assets/official_${i}.jpg`, sourceUrl: "https://www.youtube.com/watch?v=x", provenance: "test still" })),
+    }),
     downloadImage: async () => false,
     imageAspect: async () => 16 / 9,
     render: async (input) => {
@@ -243,6 +251,39 @@ test("footage credits name every trailer source and skip an empty sources block"
   const single = footageCredits(goodScript(), [clips[0]!], undefined, "Capcom", "news");
   assert.match(single, /^\nFootage: Resident Evil 4 official trailer \(Capcom\), via Steam/);
   assert.equal(footageCredits(goodScript(), [], undefined, undefined, "x"), "");
+});
+
+test("a picture story goes out only with safe pictures of it, and a Short with nothing to show is dropped and frees its slot", async () => {
+  {
+    // A picture story with nothing safe to show is dropped before upload.
+    const { s, f, db } = await setup({}, { visual: "real_world_images" });
+    await tick(s);
+    const [ep] = await db.query<{ status: string; last_error: string }>(`SELECT status, last_error FROM episodes`);
+    assert.equal(ep?.status, "rejected");
+    assert.match(ep!.last_error, /picture story with nothing safe to show/);
+    assert.equal(f.uploads, 0);
+    await db.close();
+  }
+  {
+    // With illustrative stock for its real-world lines it goes out, credited.
+    const { s, f, db } = await setup({}, { visual: "real_world_images", stock: 2 });
+    await tick(s);
+    const [ep] = await db.query<{ status: string; assets_json: any }>(`SELECT status, assets_json FROM episodes`);
+    assert.equal(ep?.status, "published");
+    assert.equal(ep!.assets_json.clips.filter((c: any) => c.stock).length, 2);
+    assert.equal(f.uploads, 1);
+    await db.close();
+  }
+  {
+    const { s, f, db } = await setup({}, { media: 0 });
+    await tick(s);
+    const [ep] = await db.query<{ status: string; last_error: string }>(`SELECT status, last_error FROM episodes`);
+    assert.equal(ep?.status, "rejected");
+    assert.match(ep!.last_error, /nothing worth showing/);
+    assert.ok(f.notifications.some((n) => /Dropped/.test(n)), "Discord is told");
+    assert.equal(f.uploads, 0, "nothing was uploaded");
+    await db.close();
+  }
 });
 
 test("one tick takes a corroborated story all the way to published", async () => {

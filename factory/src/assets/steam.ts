@@ -23,6 +23,7 @@ export interface VisualAsset {
   // Beat-matched clips (src/assets/clipscore.ts)
   beatIndex?: number; // clips: the line; images: the ranking entry
   role?: "hook";
+  stock?: boolean; // licensed stock footage, shown with an ILLUSTRATIVE tag
   startSeconds?: number;
   motion?: number; // 0-1
   luma?: number; // 0-255

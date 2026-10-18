@@ -115,6 +115,7 @@ export interface Config {
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
   ytdlpPath: string;
+  pexelsApiKey: string; // licensed stock for the real-world part of picture stories
   musicBed: boolean;
   dryRun: boolean;
   maxAttempts: number;
@@ -221,6 +222,7 @@ export function loadConfig(): Config {
     clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as "llm" | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
     ytdlpPath: str("YTDLP_PATH", "yt-dlp"),
+    pexelsApiKey: str("PEXELS_API_KEY"),
     musicBed: bool("MUSIC_BED", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),

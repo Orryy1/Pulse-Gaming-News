@@ -26,6 +26,7 @@ import { releaseRadar, freeGames } from "./discovery/weekly.ts";
 import { fetchAchievements } from "./discovery/achievements.ts";
 import { researchGame } from "./discovery/wikipedia.ts";
 import { steamClimbers } from "./discovery/charts.ts";
+import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { QUOTA, QUOTA_RESERVE_FOR_UPLOAD, quotaAdd, quotaUsed } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
 import { fetchWithTimeout } from "./lib/util.ts";
@@ -55,7 +56,9 @@ export function createServices(db: Db, cfg: Config): Services {
     synthesise: (text, out, voice) => narrate(cfg, text, out, voice),
     findGame: findSteamApp,
     gameFacts: steamFacts,
-    fetchArt: (app, dir) => fetchSteamArt(app, dir),
+    fetchArt: (app, dir, maxScreens) => fetchSteamArt(app, dir, maxScreens),
+    searchPhotos: (q) => searchCommons(q),
+    downloadPhoto: (img, dest) => downloadCommons(img, dest),
     fetchClips: (app, dir, targets, maxClips) => selectClips({ app, episodeDir: dir, targets, maxClips, llm: cfg.clipRanking === "llm" ? llm : undefined }),
     releaseRadar: (from) => releaseRadar(from),
     freeGames: (now) => freeGames(now),

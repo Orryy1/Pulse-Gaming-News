@@ -13,7 +13,7 @@ import { FFMPEG } from "../lib/bin.ts";
 const run = promisify(execFile);
 
 export interface VisualAsset {
-  kind: "hero" | "header" | "capsule" | "screenshot" | "logo" | "article" | "clip";
+  kind: "hero" | "header" | "capsule" | "screenshot" | "logo" | "article" | "clip" | "photo"; // photo: a freely licensed archive photo (Wikimedia Commons)
   file: string; // path relative to the episode directory
   sourceUrl: string;
   provenance: string;

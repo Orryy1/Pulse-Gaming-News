@@ -125,9 +125,17 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           .map((_, k) => k)
           .filter((k) => images[k]!.beatIndex === undefined);
     // Wide art first on a still shot: hero, screenshots, then the rest; capsules (portrait) come last.
-    const order = [...stills].sort(
+    const sorted = [...stills].sort(
       (a, b) => stillRank(images[a]!) - stillRank(images[b]!) || a - b,
     );
+    // A documentary chapter alternates the game's pictures with archive photos of the real story.
+    const photos = sorted.filter((k) => images[k]!.kind === "photo");
+    const others = sorted.filter((k) => images[k]!.kind !== "photo");
+    const order: number[] = [];
+    for (let k = 0; k < Math.max(photos.length, others.length); k++) {
+      if (others[k] !== undefined) order.push(others[k]!);
+      if (photos[k] !== undefined) order.push(photos[k]!);
+    }
     let at = start;
     let turn = seg.kind === "hook" ? 0 : 1; // the intro opens on a moment; an entry opens on its art so the card lands over a picture
     let stillCursor = cursors.get(entry) ?? 0;

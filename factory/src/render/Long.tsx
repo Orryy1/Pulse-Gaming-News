@@ -28,6 +28,7 @@ export interface LongImageProp {
   kind: string;
   aspect: number;
   beatIndex?: number;
+  credit?: string; // archive photos: author / licence / source, shown on screen
 }
 
 export interface LongClipProp {
@@ -271,7 +272,28 @@ const Backdrop: React.FC<{
           {clip ? (
             <Clip src={clip.src} />
           ) : img ? (
-            <Still src={img.src} aspect={img.aspect} durationFrames={len} move={s.move} />
+            <>
+              <Still src={img.src} aspect={img.aspect} durationFrames={len} move={s.move} />
+              {img.credit ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 40,
+                    bottom: 26,
+                    padding: "4px 10px",
+                    background: "rgba(11,11,14,0.55)",
+                    borderRadius: 6,
+                    fontFamily: BODY,
+                    fontWeight: 600,
+                    fontSize: 16,
+                    letterSpacing: 0.5,
+                    color: "rgba(245,245,242,0.8)",
+                  }}
+                >
+                  PHOTO: {img.credit}
+                </div>
+              ) : null}
+            </>
           ) : (
             <Plate theme={theme} />
           )}

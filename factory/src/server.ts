@@ -161,6 +161,18 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       res.end(articlePage(ep, base, affiliateTags(cfg, ep.id), String(req.headers["cf-ipcountry"] ?? "")));
       return;
     }
+    // Every photo and clip in a video, with its author, licence and source.
+    const credits = url.pathname.match(/^\/credits\/([\w-]{4,64})$/);
+    if (credits && req.method === "GET") {
+      const ep = await getEpisode(db, credits[1]!);
+      if (!ep?.assets_json) return send(404, page("Not found", "<h1>No credits for that video.</h1>"));
+      const rows = [...(ep.assets_json.images ?? []), ...(ep.assets_json.clips ?? [])]
+        .map((m) => m.provenance)
+        .filter((p, i, a): p is string => Boolean(p) && a.indexOf(p) === i)
+        .map((p) => `<li>${esc(p).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" rel="nofollow noopener">$1</a>')}</li>`)
+        .join("");
+      return send(200, page(`Credits: ${esc(ep.script_json?.headline ?? ep.id)}`, `<h1>Credits: ${esc(ep.script_json?.headline ?? ep.id)}</h1><ul>${rows}</ul><p><a href="/news">Pulse Gaming News</a></p>`));
+    }
     // A video's shop page: public, read-only, each product in the viewer's own Amazon store.
     const shop = url.pathname.match(/^\/shop\/([\w-]{4,64})$/);
     if (shop && req.method === "GET") {

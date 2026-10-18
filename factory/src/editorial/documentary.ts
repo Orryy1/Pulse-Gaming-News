@@ -142,9 +142,11 @@ export const DocChapterPlanSchema = z.object({
   platforms: z
     .string()
     .describe("Original platforms, short, e.g. 'PS2, PC, Xbox'"),
-  focus: z
-    .string()
-    .describe("What this chapter covers and its turning point, 1-2 sentences"),
+  focus: z.string().describe("What this chapter covers and its turning point, 1-2 sentences"),
+  photo_searches: z
+    .array(z.string())
+    .max(4)
+    .describe("1-4 searches for real photos a free archive like Wikimedia Commons would hold for this chapter: the studio building, the city, the people, the launch, the real place a game was based on, e.g. 'Rockstar North Edinburgh', 'Ocean Drive Miami Beach'. Never a search for game screenshots or box art"),
 });
 
 export const DocOutlineSchema = z.object({
@@ -526,6 +528,7 @@ export function docToScript(d: DocDraft): Script {
       steam_search_term: plan.steam_search_term,
       year: plan.year,
       platforms: plan.platforms,
+      photos: plan.photo_searches ?? [],
     })),
     evergreen_format: "documentary",
     runtime: "long",
@@ -533,4 +536,27 @@ export function docToScript(d: DocDraft): Script {
     kicker: d.bookends.intro.on_screen || d.outline.kicker,
     sources,
   } as Script;
+}
+
+export const PhotoPickSchema = z.object({
+  keep: z
+    .array(z.number().int())
+    .describe("Indices of the photos that clearly show something this chapter is about (its studio, people, places, launch or the real place the game recreates), best first, at most 5. Empty if none fit"),
+});
+
+/** A quick editor pass over archive search results: only photos that belong in this chapter survive. */
+export async function pickPhotos(
+  llm: Llm,
+  chapter: { franchise: string; game: string; title: string; opening: string },
+  candidates: Array<{ title: string; description: string }>,
+): Promise<number[]> {
+  if (!candidates.length) return [];
+  const r = await llm.structured({
+    system:
+      "You pick archive photos for a video game documentary chapter. Keep a photo only when it clearly shows something the chapter is about: the studio, its people, the city or real place the game is set in or based on, a launch event, the hardware of the era. Reject anything about an unrelated person, place or thing that merely shares a word.",
+    content: `Documentary: ${chapter.franchise}\nChapter: ${chapter.title} (${chapter.game})\nOpening: ${chapter.opening.slice(0, 600)}\n\nPhotos:\n${candidates.map((c, i) => `${i}. ${c.title.replace(/^File:/, "")}: ${c.description.slice(0, 160)}`).join("\n")}`,
+    schema: PhotoPickSchema,
+    effort: "low",
+  });
+  return [...new Set(r.keep)].filter((i) => i >= 0 && i < candidates.length).slice(0, 5);
 }

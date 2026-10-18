@@ -74,7 +74,7 @@ export interface LongRenderInput {
   episodeDir: string;
   props: Omit<LongProps, "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc"> & {
     audioFile: string | null;
-    imageFiles: Array<{ file: string; kind: string; aspect: number; beatIndex?: number }>;
+    imageFiles: Array<{ file: string; kind: string; aspect: number; beatIndex?: number; credit?: string }>;
     clipFiles: Array<{ file: string; durationSeconds: number; beatIndex?: number; role?: "hook" }>;
     musicFile: string | null;
   };
@@ -97,7 +97,7 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
     const props: LongProps = {
       ...rest,
       audioSrc: audioFile ? `${files.url}/${audioFile}` : null,
-      images: imageFiles.map((i) => ({ src: `${files.url}/${i.file}`, kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex })),
+      images: imageFiles.map((i) => ({ src: `${files.url}/${i.file}`, kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex, credit: i.credit })),
       clips: clipFiles.map((c) => ({ src: `${files.url}/${c.file}`, durationSeconds: c.durationSeconds, beatIndex: c.beatIndex, role: c.role })),
       logoSrc: "logo.png",
       musicSrc: musicFile,

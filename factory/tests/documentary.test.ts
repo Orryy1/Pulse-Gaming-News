@@ -60,6 +60,7 @@ function draft(n = 5): DocDraft {
       year: 1997 + ci * 3,
       platforms: "PC, PS2",
       focus: "the leap",
+      photo_searches: [] as string[],
     };
     return {
       plan,
@@ -262,4 +263,54 @@ test("Wikipedia extracts are cut to the sections a history needs", () => {
   assert.ok(picked.indexOf("## Reception") < picked.indexOf("## Gameplay"));
   assert.ok(!picked.includes("Ref list"));
   assert.ok(pickSections(extract, 400).length <= 520);
+});
+
+import { trailerMatchesGame, parseCommons } from "../src/assets/commons.ts";
+import { photoCredit } from "../src/pipeline.ts";
+
+test("a trailer or store page must name this game, not a sibling", () => {
+  assert.equal(trailerMatchesGame("Grand Theft Auto V: The Official Trailer", "Grand Theft Auto 2", "Grand Theft Auto"), false);
+  assert.equal(trailerMatchesGame("Grand Theft Auto II Trailer", "Grand Theft Auto 2", "Grand Theft Auto"), true);
+  assert.equal(trailerMatchesGame("Grand Theft Auto: Vice City - Anniversary Trailer", "Grand Theft Auto: Vice City", "Grand Theft Auto"), true);
+  assert.equal(trailerMatchesGame("Grand Theft Auto III – The Definitive Edition", "Grand Theft Auto III", "Grand Theft Auto"), true);
+  assert.equal(trailerMatchesGame("Grand Theft Auto IV: The Complete Edition", "Grand Theft Auto III", "Grand Theft Auto"), false);
+  // The first game shares the series name, so nothing can safely be told apart.
+  assert.equal(trailerMatchesGame("Grand Theft Auto Trailer", "Grand Theft Auto", "Grand Theft Auto"), false);
+});
+
+test("Commons: only free licences, landscape, large, and never logos or screenshots", () => {
+  const page = (title: string, license: string, width = 3000, height = 2000) => ({
+    title,
+    imageinfo: [{ width, height, thumburl: "https://x/1920.jpg", descriptionurl: `https://commons.wikimedia.org/wiki/${title}`, extmetadata: { LicenseShortName: { value: license }, Artist: { value: "<a href='x'>Steve Hammond</a>" }, ImageDescription: { value: "The <b>team</b>" } } }],
+  });
+  const got = parseCommons({
+    query: {
+      pages: {
+        1: page("File:DMA Design original team in 2011.jpg", "CC BY-SA 2.0"),
+        2: page("File:GTA logo.jpg", "CC BY 2.0"),
+        3: page("File:Some game screenshot.jpg", "CC BY 2.0"),
+        4: page("File:Studio.jpg", "Fair use"),
+        5: page("File:Tall.jpg", "CC0", 1000, 2000),
+        6: page("File:Old building.jpg", "Public domain"),
+      },
+    },
+  });
+  assert.deepEqual(got.map((g) => g.title), ["File:DMA Design original team in 2011.jpg", "File:Old building.jpg"]);
+  assert.equal(got[0]!.artist, "Steve Hammond");
+  assert.equal(got[0]!.description, "The team");
+  assert.equal(photoCredit({ kind: "photo", provenance: `Wikimedia Commons photo by Steve Hammond, CC BY-SA 2.0: https://commons.wikimedia.org/wiki/x` }), "Steve Hammond / CC BY-SA 2.0 / Wikimedia Commons");
+  assert.equal(photoCredit({ kind: "screenshot", provenance: "Steam" }), undefined);
+});
+
+test("a chapter's stills alternate the game's pictures with archive photos", () => {
+  const s = docToScript(draft(1));
+  const w = timed(s);
+  const segs = buildSegments(segmentInputs(s), w, w.at(-1)!.end + 6);
+  const images = [
+    ...Array.from({ length: 4 }, () => ({ kind: "screenshot", aspect: 1.78, beatIndex: 0 })),
+    ...Array.from({ length: 4 }, () => ({ kind: "photo", aspect: 1.5, beatIndex: 0 })),
+  ];
+  const plan = buildLongPlan({ segments: segs, words: w, durationSeconds: w.at(-1)!.end + 6, images, clips: [], variant: 0 });
+  const kinds = plan.shots.filter((x) => x.segment >= 1 && x.media.type === "image").slice(0, 6).map((x) => images[x.media.index]!.kind);
+  assert.deepEqual(kinds, ["screenshot", "photo", "screenshot", "photo", "screenshot", "photo"]);
 });

@@ -31,7 +31,9 @@ import {
   validateLongform,
   writeLongform,
 } from "./editorial/longform.ts";
+import { trailerMatchesGame } from "./assets/commons.ts";
 import {
+  pickPhotos,
   selectDocTopic,
   outlineDoc,
   writeChapter,
@@ -147,7 +149,10 @@ export interface Services {
   >;
   findGame(term: string): Promise<SteamApp | undefined>;
   gameFacts(app: SteamApp): Promise<SteamFacts>;
-  fetchArt(app: SteamApp, episodeDir: string): Promise<VisualAsset[]>;
+  fetchArt(app: SteamApp, episodeDir: string, maxScreens?: number): Promise<VisualAsset[]>;
+  /** Freely licensed archive photos (Wikimedia Commons) for a search. */
+  searchPhotos(query: string): Promise<import("./assets/commons.ts").CommonsImage[]>;
+  downloadPhoto(img: import("./assets/commons.ts").CommonsImage, dest: string): Promise<boolean>;
   fetchClips(
     app: SteamApp,
     episodeDir: string,
@@ -1754,6 +1759,11 @@ async function gatherMedia(
           });
       }
       try {
+        // A documentary chapter runs minutes: its own gallery, matched footage and archive photos.
+        if (script.evergreen_format === "documentary") {
+          await gatherChapterMedia(s, script, entry, beatIndex, dir, images, clips);
+          continue;
+        }
         // An empty Steam term means the writer knows the game is not on Steam: straight to the publisher's trailer.
         const eapp = entry.steam_search_term
           ? await s.findGame(entry.steam_search_term)
@@ -1799,7 +1809,7 @@ async function gatherMedia(
             });
           continue;
         }
-        const doc = script.evergreen_format === "documentary";
+        const doc = (script.evergreen_format as string) === "documentary"; // documentaries take gatherChapterMedia above
         // A documentary chapter runs minutes, not seconds: it needs the game's whole gallery.
         const art = (
           await s.fetchArt(eapp, path.join(dir, `entry_${beatIndex}`))
@@ -1907,6 +1917,13 @@ async function gatherMedia(
   };
 }
 
+/** "Steve Hammond / CC BY-SA 2.0 / Wikimedia Commons" for an archive photo, else nothing. */
+export function photoCredit(i: { kind: string; provenance?: string }): string | undefined {
+  if (i.kind !== "photo") return undefined;
+  const m = (i.provenance ?? "").match(/^Wikimedia Commons photo by (.+?), ([^,:]+): /);
+  return m ? `${m[1]!.slice(0, 40)} / ${m[2]} / Wikimedia Commons` : "Wikimedia Commons";
+}
+
 /** The footage asks of one documentary chapter's paragraphs, in order. */
 export function chapterFootage(
   script: Script,
@@ -1926,6 +1943,120 @@ function titleCaseLabel(label: string): string {
   return label
     .toLowerCase()
     .replace(/\b[a-z]/g, (m) => m.toUpperCase());
+}
+
+/**
+ * One documentary chapter's media. Steam first (the writer's term, then the
+ * game's re-release names), only when the store page is this game and not a
+ * sibling; its whole screenshot gallery and footage matched to the chapter's
+ * paragraphs, within the publisher's budget. Off Steam, the publisher's trailer
+ * only when its title names this game, and never its thumbnail. Then archive
+ * photos of the real studio, people and places, picked by an editor pass.
+ */
+async function gatherChapterMedia(
+  s: Services,
+  script: Script,
+  entry: NonNullable<Script["entries"]>[number],
+  beatIndex: number,
+  dir: string,
+  images: Array<VisualAsset & { beatIndex?: number }>,
+  clips: NonNullable<EpisodeAssets["clips"]>,
+): Promise<void> {
+  const franchise = script.game_title;
+  const edir = path.join(dir, `entry_${beatIndex}`);
+  const rel = (f: string) => path.join(`entry_${beatIndex}`, f);
+  const terms = [
+    ...new Set(
+      [entry.steam_search_term, `${entry.game_title} Definitive Edition`, `${entry.game_title} Remastered`, entry.game_title].filter(Boolean),
+    ),
+  ];
+  let eapp: SteamApp | undefined;
+  for (const t of terms) {
+    const a = await s.findGame(t).catch(() => undefined);
+    if (a && trailerMatchesGame(a.name, entry.game_title, franchise)) {
+      eapp = a;
+      break;
+    }
+  }
+  const pushClip = (c: VisualAsset) =>
+    clips.push({
+      file: rel(c.file),
+      sourceUrl: c.sourceUrl,
+      provenance: c.provenance,
+      durationSeconds: Math.min(c.durationSeconds ?? 4, 4.8),
+      beatIndex,
+      role: undefined,
+      motion: c.motion,
+      luma: c.luma,
+      label: c.label,
+      reason: c.reason,
+      startSeconds: c.startSeconds,
+    });
+  try {
+    if (eapp) {
+      for (const a of (await s.fetchArt(eapp, edir, 12)).filter((a) => a.kind !== "logo"))
+        images.push({ ...a, file: rel(a.file), beatIndex });
+      if (s.cfg.footage) {
+        const targets: FootageTarget[] = chapterFootage(script, beatIndex)
+          .slice(0, Math.max(1, s.cfg.docClipsPerChapter))
+          .map((f, k) => ({
+            key: `beat:${beatIndex}#${k + 1}`,
+            text: `${entry.game_title}: ${f.keywords.join(", ")}`,
+            want: f.want,
+            energy: "medium" as const,
+            keywords: [entry.game_title, ...f.keywords].slice(0, 4),
+          }));
+        if (targets.length)
+          for (const c of capFootage(await s.fetchClips(eapp, edir, targets, targets.length), footageBudgetSeconds(eapp), 4.8)) pushClip(c);
+      }
+    } else if (s.cfg.footage) {
+      const want = chapterFootage(script, beatIndex)[0];
+      const om = await s
+        .fetchOfficialMedia(
+          entry.game_title,
+          edir,
+          [{ key: `beat:${beatIndex}`, text: entry.game_title, want: want?.want ?? "gameplay", energy: "medium", keywords: want?.keywords ?? [entry.game_title] }],
+          1,
+          entry.year ? String(entry.year) : "",
+        )
+        .catch(() => ({ clips: [], stills: [] }) as OfficialMedia);
+      if (om.trailer && trailerMatchesGame(om.trailer.title, entry.game_title, franchise))
+        for (const c of capFootage(om.clips, om.trailer.clipSeconds ?? 0)) pushClip(c);
+      else if (om.trailer)
+        log("info", "documentary trailer rejected: it names another game", { game: entry.game_title, trailer: om.trailer.title });
+    }
+  } catch (err) {
+    log("warn", "documentary chapter media failed", { game: entry.game_title, error: errorMessage(err) });
+  }
+  // Archive photos: the real places and people, freely licensed and credited on screen.
+  try {
+    const queries = (entry.photos?.length ? entry.photos : [`${entry.game_title} video game`]).slice(0, 4);
+    const seen = new Set<string>();
+    const candidates = (await Promise.all(queries.map((q) => s.searchPhotos(q).catch(() => []))))
+      .flat()
+      .filter((c) => !seen.has(c.title) && seen.add(c.title))
+      .slice(0, 30);
+    const opening = script.beats.filter((b) => b.visual?.kind === "chapter")[beatIndex]?.narration ?? "";
+    const keep = await pickPhotos(
+      s.llm,
+      { franchise, game: entry.game_title, title: script.beats.filter((b) => b.visual?.kind === "chapter")[beatIndex]?.visual.primary ?? entry.game_title, opening },
+      candidates,
+    );
+    for (const [k, i] of keep.entries()) {
+      const img = candidates[i]!;
+      const file = rel(path.join("assets", `photo_${k}.jpg`));
+      if (await s.downloadPhoto(img, path.join(dir, file)))
+        images.push({
+          kind: "photo",
+          file,
+          sourceUrl: img.pageUrl,
+          provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+          beatIndex,
+        } as VisualAsset & { beatIndex?: number });
+    }
+  } catch (err) {
+    log("warn", "documentary photos failed", { game: entry.game_title, error: errorMessage(err) });
+  }
 }
 
 export function segmentInputs(script: Script): SegmentInput[] {
@@ -2065,6 +2196,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     kind: i.kind,
     aspect: i.aspect,
     beatIndex: i.beatIndex,
+    credit: photoCredit(i),
   }));
   const clips = (assets.clips ?? []).map((c) => ({
     file: c.file,
@@ -2772,6 +2904,9 @@ export function videoMetadata(
     credits ? `\nSources:\n${credits}` : "",
     script.sources?.length
       ? `\nSources:\n${script.sources.map((u) => `• Wikipedia: ${u}`).join("\n")}`
+      : "",
+    (ep.assets_json?.images ?? []).some((i) => i.kind === "photo") && affiliate?.shopUrl
+      ? `\nPhotos: Wikimedia Commons, credited on screen. Full photo and footage credits: ${affiliate.shopUrl.replace(/\/shop\//, "/credits/")}`
       : "",
     footage,
     "\nNarration: AI-generated synthetic voice. Visuals: official publisher material, credited.",

@@ -14,7 +14,7 @@ import { createServices, oauthConfig } from "./services.ts";
 import { discoverTick, tick, episodeDir, clearSelectionPause, type Services } from "./pipeline.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
-import { consentUrl, exchangeCode, saveRefreshToken, clearTokenCache } from "./youtube/oauth.ts";
+import { consentUrl, exchangeCode, saveRefreshToken, clearTokenCache, channelOf } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
 import { alert } from "./approval/discord.ts";
 import { digestDue, markDigestSent, weeklyDigest } from "./analytics.ts";
@@ -138,6 +138,12 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       if (!code) return send(400, page("No code", `<h1>Google returned: ${esc(url.searchParams.get("error") ?? "no code")}</h1>`));
       try {
         const { refreshToken, scope } = await exchangeCode(oauthConfig(cfg), code);
+        // Brand accounts on Google's chooser often carry old names: check the channel itself before saving.
+        if (cfg.youtubeChannelId) {
+          const ch = await channelOf(refreshToken, oauthConfig(cfg)).catch(() => undefined);
+          if (ch && ch.id !== cfg.youtubeChannelId)
+            return send(200, page("Wrong channel", `<h1>That was the wrong account.</h1><p>You picked <b>${esc(ch.title)}</b>, which is not Pulse Gaming News. Nothing was changed.</p><p><a href="/connect" style="font-size:22px">Try again and pick a different account</a></p>`));
+        }
         await saveRefreshToken(db, oauthConfig(cfg), refreshToken);
         clearTokenCache();
         await clearSelectionPause(db); // the usual cause of a pause is a dead YouTube token

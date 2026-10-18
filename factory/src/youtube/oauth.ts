@@ -32,6 +32,20 @@ export function consentUrl(cfg: OAuthConfig, state: string): string {
   return u.toString();
 }
 
+/** The channel a fresh login belongs to, so a wrong brand account is caught before it is saved. */
+export async function channelOf(refreshToken: string, cfg: OAuthConfig): Promise<{ id: string; title: string } | undefined> {
+  const t = await fetchWithTimeout("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
+  });
+  const tok = (await t.json()) as { access_token?: string };
+  if (!tok.access_token) return undefined;
+  const r = await fetchWithTimeout("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", { headers: { authorization: `Bearer ${tok.access_token}` } });
+  const c = ((await r.json()) as { items?: Array<{ id: string; snippet?: { title?: string } }> }).items?.[0];
+  return c ? { id: c.id, title: c.snippet?.title ?? c.id } : undefined;
+}
+
 export async function exchangeCode(cfg: OAuthConfig, code: string): Promise<{ refreshToken: string; scope: string }> {
   const res = await fetchWithTimeout("https://oauth2.googleapis.com/token", {
     method: "POST",

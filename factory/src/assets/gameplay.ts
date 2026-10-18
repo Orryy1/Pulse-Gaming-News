@@ -244,7 +244,7 @@ async function downloadSlice(
   ytdlp: string,
 ): Promise<number> {
   const from = Math.min(60, Math.floor(src.durationSeconds * 0.1));
-  const to = Math.min(src.durationSeconds - 15, from + 420);
+  const to = Math.min(src.durationSeconds - 15, from + 300);
   await fs.mkdir(path.dirname(dest), { recursive: true });
   await run(
     ytdlp,
@@ -255,12 +255,11 @@ async function downloadSlice(
       "bv*[height<=720][ext=mp4][vcodec^=avc1]/bv*[height<=720][ext=mp4]/b[height<=720][ext=mp4]",
       "--download-sections",
       `*${from}-${to}`,
-      "--force-keyframes-at-cuts",
       "-o",
       dest,
       src.url,
     ],
-    { timeout: 300_000, maxBuffer: 8 * 1024 * 1024 },
+    { timeout: 240_000, maxBuffer: 8 * 1024 * 1024 },
   );
   return to - from;
 }

@@ -568,7 +568,7 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
     log("info", "beat-matched clips", { count: out.length, how, targets: o.targets.length, candidates: candidates.length });
     return out;
   } finally {
-    await fs.rm(work, { recursive: true, force: true });
+    await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -608,7 +608,7 @@ export async function selectClips(o: SelectClipsOptions): Promise<VisualAsset[]>
     }
   }
   if (!trailers.length) {
-    await fs.rm(work, { recursive: true, force: true });
+    await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
     return [];
   }
   return matchClips({

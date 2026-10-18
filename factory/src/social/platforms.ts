@@ -253,7 +253,8 @@ export async function postTikTok(
   const data = await fs.readFile(p.file);
   const size = data.length;
   // One chunk up to 64 MB; above that, 10 MB chunks with the remainder folded into the last.
-  const chunk = size <= 64 * 1024 * 1024 ? size : 10 * 1024 * 1024;
+  // Chunks of up to 64 MB; the final chunk takes the remainder and may run to 128 MB, so most Shorts go in one.
+  const chunk = Math.min(size, 64 * 1024 * 1024);
   const count = Math.max(1, Math.floor(size / chunk));
   const headers = {
     authorization: `Bearer ${p.accessToken}`,
@@ -290,18 +291,24 @@ export async function postTikTok(
   for (let i = 0; i < count; i++) {
     const from = i * chunk;
     const to = i === count - 1 ? size : from + chunk;
-    const res = await fetchFn(uploadUrl, {
-      method: "PUT",
-      headers: {
-        "content-type": "video/mp4",
-        "content-length": String(to - from),
-        "content-range": `bytes ${from}-${to - 1}/${size}`,
-      },
-      body: data.subarray(from, to),
-    });
-    if (![200, 201, 206].includes(res.status))
+    // TikTok's upload hosts throw the odd 5xx: try a chunk up to three times.
+    let res: Response | undefined;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      res = await fetchFn(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "content-type": "video/mp4",
+          "content-length": String(to - from),
+          "content-range": `bytes ${from}-${to - 1}/${size}`,
+        },
+        body: data.subarray(from, to),
+      });
+      if (res.status < 500) break;
+      await sleep(attempt * 5000);
+    }
+    if (![200, 201, 206].includes(res!.status))
       throw new Error(
-        `tiktok upload chunk ${i + 1}/${count} failed (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`,
+        `tiktok upload chunk ${i + 1}/${count} failed (HTTP ${res!.status}): ${(await res!.text()).slice(0, 200)}`,
       );
   }
   for (let i = 0; i < 40; i++) {

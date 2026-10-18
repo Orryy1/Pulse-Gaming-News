@@ -20,7 +20,7 @@ import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY } from "./components/fonts.ts";
 import { moveTransform, SPRING, type MovePreset } from "./motion.ts";
 import { buildLongPlan, entryOf, momentWindows, type LongPlan } from "./longplan.ts";
-import { FlashPunch, GrainVignette, KineticCaption, MomentGraphicCard, PopInPicture, type MomentProp } from "./components/LongMoments.tsx";
+import { FlashPunch, GrainVignette, KineticCaption, MomentGraphicCard, PopInPicture, Sfx, type MomentProp } from "./components/LongMoments.tsx";
 import type { Segment } from "./timeline.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 
@@ -1187,13 +1187,20 @@ export const Long: React.FC<LongProps> = (props) => {
         return (
           <Sequence key={`m${k}`} from={from} durationInFrames={len} layout="none">
             {m.graphic.kind !== "none" ? (
-              <MomentGraphicCard g={m.graphic} len={len} />
+              <>
+                <MomentGraphicCard g={m.graphic} len={len} />
+                <Sfx name={m.graphic.kind === "stat" || m.graphic.kind === "score" ? "tick-blip" : "swipe-tonal"} volume={0.22} />
+              </>
             ) : m.emphasis && w.moment > 0 ? (
-              <KineticCaption text={m.emphasis} len={len} />
+              <>
+                <KineticCaption text={m.emphasis} len={len} />
+                <Sfx name="tick-blip" volume={0.2} />
+              </>
             ) : null}
             {showPop ? (
               <Sequence from={Math.min(30, Math.max(0, len - 90))} layout="none">
                 <PopInPicture src={pic!.src} caption={pic!.label ?? ""} len={len - 30} side={w.moment % 2 ? "right" : "left"} />
+                <Sfx name="whoosh-short" volume={0.24} />
               </Sequence>
             ) : null}
           </Sequence>
@@ -1204,6 +1211,7 @@ export const Long: React.FC<LongProps> = (props) => {
         s.kind === "beat" && (s.visual?.kind === "rank" || s.visual?.kind === "chapter") && i > 0 ? (
           <Sequence key={`f${i}`} from={starts[i]!} durationInFrames={12} layout="none">
             <FlashPunch />
+            <Sfx name="punch-deep" volume={0.3} />
           </Sequence>
         ) : null,
       )}

@@ -3264,15 +3264,19 @@ export async function confirmPublished(s: Services): Promise<void> {
     if (st?.privacyStatus === "public") {
       await logEvent(s.db, ep.id, "public_confirmed", {});
     } else if (st?.privacyStatus === "private") {
-      await s.youtube().makePublic(ep.youtube_video_id);
-      await logEvent(s.db, ep.id, "made_public", { was: st.privacyStatus });
-      log("warn", "scheduled video was still private; made public", {
+      // Never publish it ourselves: the owner may have made it private on purpose, and YouTube cannot say who did.
+      await logEvent(s.db, ep.id, "made_public", {
+        skipped: true,
+        was: st.privacyStatus,
+      });
+      log("warn", "scheduled video is still private after its slot", {
         episode: ep.id,
         video: ep.youtube_video_id,
       });
       await s.notify({
-        content: `🔓 YouTube left "${ep.title ?? ep.id}" private after its scheduled time, so the factory published it: https://youtube.com/watch?v=${ep.youtube_video_id}`,
+        content: `🔒 "${ep.title ?? ep.id}" is still private after its scheduled time. If you made it private, ignore this. If not, set it to public in YouTube Studio: https://studio.youtube.com/video/${ep.youtube_video_id}/edit`,
       });
+      continue;
     } else continue;
     // The first comment waits until the video is public.
     const [posted] = await s.db.query<{ n: string }>(

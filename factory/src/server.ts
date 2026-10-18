@@ -14,6 +14,7 @@ import { createServices, oauthConfig } from "./services.ts";
 import { discoverTick, tick, episodeDir, clearSelectionPause, affiliateTags, approvalLinks, type Services } from "./pipeline.ts";
 import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
 import { buildPosters, crosspostTick, isPublicOnYouTube } from "./social/crosspost.ts";
+import { articlePage, articleSlug, idTailOf, indexPage, rssFeed, SITE_EPISODES_SQL, type SiteEpisode } from "./web/site.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import { consentUrl, exchangeCode, saveRefreshToken, clearTokenCache, channelOf } from "./youtube/oauth.ts";
@@ -133,6 +134,33 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       res.writeHead(302, { location: consentUrl(oauthConfig(cfg), state) }).end();
       return;
     }
+    // The public website: an article per published video, an index and the RSS feed the newsletter sends from.
+    if (req.method === "GET" && (url.pathname === "/news" || url.pathname === "/news/" || url.pathname === "/rss.xml" || url.pathname.startsWith("/news/"))) {
+      const base = cfg.publicUrl.replace(/\/$/, "");
+      const eps = await db.query<SiteEpisode>(SITE_EPISODES_SQL, [60]);
+      if (url.pathname === "/rss.xml") {
+        res.writeHead(200, { "content-type": "application/rss+xml; charset=utf-8", "cache-control": "public, max-age=600" });
+        res.end(rssFeed(eps.slice(0, 30), base));
+        return;
+      }
+      if (url.pathname === "/news" || url.pathname === "/news/") {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" });
+        res.end(indexPage(eps, base));
+        return;
+      }
+      const slug = decodeURIComponent(url.pathname.slice("/news/".length));
+      const tail = idTailOf(slug);
+      const ep = tail.length >= 6 ? eps.find((e) => e.id.endsWith(`_${tail}`)) ?? (await db.query<SiteEpisode>(SITE_EPISODES_SQL.replace("LIMIT $1", "LIMIT 500"), [])).find((e) => e.id.endsWith(`_${tail}`)) : undefined;
+      if (!ep) return send(404, page("Not found", `<h1>That story is not here.</h1><p><a href="/news">All stories</a></p>`));
+      const canonical = articleSlug(ep);
+      if (slug !== canonical) {
+        res.writeHead(301, { location: `/news/${canonical}` }).end();
+        return;
+      }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "private, max-age=300" });
+      res.end(articlePage(ep, base, affiliateTags(cfg, ep.id), String(req.headers["cf-ipcountry"] ?? "")));
+      return;
+    }
     // A video's shop page: public, read-only, each product in the viewer's own Amazon store.
     const shop = url.pathname.match(/^\/shop\/([\w-]{4,64})$/);
     if (shop && req.method === "GET") {
@@ -185,7 +213,11 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
     }
 
     if (url.pathname === "/" || url.pathname === "/episodes") {
-      if (!isAdmin()) return send(200, page("Pulse Factory", "<h1>Pulse Factory</h1><p>Running.</p>"));
+      // Visitors land on the news site; the factory's own status needs the admin key.
+      if (!isAdmin()) {
+        res.writeHead(302, { location: "/news" }).end();
+        return;
+      }
       const rows = await listEpisodes(db, 30);
       const tr = rows
         .map(

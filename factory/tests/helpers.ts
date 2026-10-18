@@ -106,6 +106,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     officialTrailers: false,
     ytdlpPath: "yt-dlp",
     pexelsApiKey: "",
+    oauthRedirectUri: "http://localhost:8080/oauth/callback",
     musicBed: true,
     dryRun: false,
     maxAttempts: 3,

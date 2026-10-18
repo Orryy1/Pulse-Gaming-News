@@ -31,7 +31,7 @@ export function oauthConfig(cfg: Config) {
   return {
     clientId: cfg.googleClientId,
     clientSecret: cfg.googleClientSecret,
-    redirectUri: `${cfg.publicUrl}/oauth/callback`,
+    redirectUri: cfg.oauthRedirectUri || `${cfg.publicUrl}/oauth/callback`,
     appSecret: cfg.appSecret,
     envRefreshToken: cfg.youtubeRefreshToken,
   };

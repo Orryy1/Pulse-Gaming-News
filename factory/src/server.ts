@@ -121,8 +121,10 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, unpaused: true }));
       return;
     }
-    if (url.pathname === "/oauth/start") {
-      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Add ?key=ADMIN_TOKEN</h1>"));
+    // One click on this PC: no key needed when the request comes from the PC itself, not through the tunnel.
+    const fromThisPc = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host ?? "") && !req.headers["cf-connecting-ip"] && !req.headers["cf-ray"];
+    if (url.pathname === "/connect" || url.pathname === "/oauth/start") {
+      if (!isAdmin() && !(url.pathname === "/connect" && fromThisPc)) return send(403, page("Forbidden", "<h1>Open http://localhost:8080/connect on the PC running the factory.</h1>"));
       if (!cfg.googleClientId) return send(500, page("Missing client", "<h1>Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET first.</h1>"));
       const nonce = crypto.randomBytes(12).toString("hex");
       const state = `${nonce}.${signToken(`oauth:${nonce}`, cfg.appSecret, 900)}`;
@@ -140,7 +142,11 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
         clearTokenCache();
         await clearSelectionPause(db); // the usual cause of a pause is a dead YouTube token
         await logEvent(db, null, "youtube_connected", { scope });
-        return send(200, page("Connected", `<h1>YouTube connected.</h1><p>Scopes: ${esc(scope)}</p><p>You can close this tab.</p>`));
+        const missing = ["youtube.force-ssl", "yt-analytics.readonly"].filter((x) => !scope.includes(x));
+        await services.notify({ content: missing.length ? `⚠️ YouTube reconnected but Google left out: ${missing.join(", ")}. Run the connect again and tick every box.` : "✅ YouTube fully connected: captions, pinned comments, analytics and thumbnails are on." });
+        return send(200, page("Connected", missing.length
+          ? `<h1>Almost: one box was left unticked.</h1><p>Google did not grant ${esc(missing.join(", "))}. <a href="/connect">Try again</a> and tick every box on the Google screen.</p>`
+          : `<h1>✅ YouTube connected.</h1><p>Captions, pinned comments, analytics and thumbnails are now on. You can close this tab.</p>`));
       } catch (err) {
         return send(500, page("Failed", `<h1>Token exchange failed</h1><p>${esc(errorMessage(err))}</p>`));
       }

@@ -139,7 +139,7 @@ async function checkYouTube(
         ok: missing.length === 0,
         critical: false,
         detail: missing.length
-          ? `missing ${missing.map((m) => m.replace("https://www.googleapis.com/auth/", "")).join(", ")}: captions and analytics need a reconnect at /oauth/start?key=ADMIN_TOKEN`
+          ? `missing ${missing.map((m) => m.replace("https://www.googleapis.com/auth/", "")).join(", ")}: captions and analytics need a reconnect: open http://localhost:8080/connect on this PC`
           : "captions and analytics scopes granted",
       },
     ];

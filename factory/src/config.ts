@@ -121,6 +121,7 @@ export interface Config {
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
   ytdlpPath: string;
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
+  oauthRedirectUri: string; // where Google returns after consent; this PC's own address works for the desktop OAuth client
   musicBed: boolean;
   dryRun: boolean;
   maxAttempts: number;
@@ -233,6 +234,7 @@ export function loadConfig(): Config {
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
     ytdlpPath: str("YTDLP_PATH", "yt-dlp"),
     pexelsApiKey: str("PEXELS_API_KEY"),
+    oauthRedirectUri: str("OAUTH_REDIRECT_URI", "http://localhost:8080/oauth/callback"),
     musicBed: bool("MUSIC_BED", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),

@@ -997,6 +997,8 @@ export function footageCredits(script: Script, clips: Array<{ provenance: string
     const steam = c.provenance.match(/^Official Steam trailer "[^"]*" for "([^"]+)"/);
     if (steam) steamGames.add(steam[1]!);
     const yt = c.provenance.match(/from the (.+?) YouTube channel, publisher: [^(]+\((https?:[^)]+)\)/);
+    const social = c.provenance.match(/^Official post "[^"]*" by (.+? on TikTok), publisher: [^(]+\((https?:[^)]+)\)/);
+    if (social) channels.set(social[1]!, social[2]!);
     if (yt) channels.set(yt[1]!, yt[2]!);
   }
   if (official) channels.set(official.channelTitle, official.url);
@@ -1005,7 +1007,7 @@ export function footageCredits(script: Script, clips: Array<{ provenance: string
   if (!steamGames.size && !channels.size && clips.length) lines.push(`Footage: ${script.game_title} official trailer${publisher ? ` (${publisher})` : ""}, via Steam. Store art: Steam.`);
   if (steamGames.size === 1 && !script.entries?.length) lines.push(`Footage: ${[...steamGames][0]} official trailer${publisher ? ` (${publisher})` : ""}, via Steam, a few seconds. Store art: Steam.`);
   else if (steamGames.size) lines.push(`Footage: official Steam trailers, a few seconds each: ${[...steamGames].join(", ")}. Store art: Steam.`);
-  for (const [channel, url] of channels) lines.push(`Footage and still: the official ${channel} YouTube channel (${url}).`);
+  for (const [channel, url] of channels) lines.push(/on TikTok$/.test(channel) ? `Footage: official post by ${channel} (${url}).` : `Footage and still: the official ${channel} YouTube channel (${url}).`);
   const stock = clips.filter((c) => /^Illustrative stock footage from Pexels/.test(c.provenance)).map((c) => c.provenance.match(/\((https?:[^)]+)\)/)?.[1]).filter(Boolean);
   if (stock.length) lines.push(`Illustrative stock footage (not the real event): Pexels, ${stock.join(", ")}.`);
   if (/microsoft|xbox game studios|bethesda/i.test(`${publisher ?? ""} ${headline}`)) lines.push("Game footage used under Microsoft's Game Content Usage Rules: https://www.xbox.com/en-US/developers/rules");

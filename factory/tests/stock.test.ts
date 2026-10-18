@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { pickFile, stockQuery } from "../src/assets/stock.ts";
-import { pickStoryVideo, storyWords } from "../src/assets/officialTrailer.ts";
+import { pickStoryVideo, storyWords, parseSocialListing, pickSocialPost } from "../src/assets/officialTrailer.ts";
 
 test("stock: the smallest file that is still 1080p, and a query without game words", () => {
   const v = { id: 1, url: "u", duration: 12, video_files: [
@@ -25,4 +25,15 @@ test("story video: only a publisher channel, only since the story, and the title
   assert.equal(pickStoryVideo([item({ channelId: "fan", channelTitle: "GTA Fan Hub" })], "Grand Theft Auto VI", story, after, subs), undefined, "not a publisher");
   assert.equal(pickStoryVideo([item({ title: "Grand Theft Auto VI Trailer 3" })], "Grand Theft Auto VI", story, after, subs), undefined, "not about the story");
   assert.equal(pickStoryVideo([item({})], "Grand Theft Auto VI", story, after, subs)?.clipSeconds, 6, "Rockstar's cap holds");
+});
+
+test("official social posts: parsed from yt-dlp's listing, matched to the story, never older than it", () => {
+  const listing = "7696925363795938573 | 20261015 | Watch the Grand Theft Auto VI Launch Trailer, featuring Vice City\n7701000000000000000 | 20261016 | Vice City came to Miami: GTA VI cars on real streets #GTAVI\nnot a line";
+  const posts = parseSocialListing(listing, "rockstargames");
+  assert.equal(posts.length, 2);
+  assert.equal(posts[1]!.url, "https://www.tiktok.com/@rockstargames/video/7701000000000000000");
+  assert.equal(posts[1]!.date, "2026-10-16");
+  const story = "GTA 6 cars appear in real life as part of a Miami marketing push";
+  assert.equal(pickSocialPost(posts, "Grand Theft Auto VI", story, new Date("2026-10-10T00:00:00Z"))?.date, "2026-10-16");
+  assert.equal(pickSocialPost(posts, "Grand Theft Auto VI", story, new Date("2026-10-17T00:00:00Z")), undefined, "nothing since the story");
 });

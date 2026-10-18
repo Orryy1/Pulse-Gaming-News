@@ -304,6 +304,77 @@ export function pickStoryVideo(items: SearchItem[], gameTitle: string, story: st
   };
 }
 
+/** Official TikTok accounts that publish openly, by publisher; platform holders also post third-party marketing. */
+export const SOCIAL_HANDLES: Record<string, string[]> = {
+  "Rockstar Games": ["rockstargames"],
+  PlayStation: ["playstation"],
+  Xbox: ["xbox"],
+  Bethesda: ["bethesda", "xbox"],
+  Activision: ["xbox"],
+  Ubisoft: ["ubisoft"],
+  "Epic Games": ["epicgames", "fortnite"],
+  "2K": ["2k"],
+  "CD Projekt Red": ["cdprojektred"],
+  "Bandai Namco": ["bandainamcous"],
+};
+const PLATFORM_HANDLES = ["playstation", "xbox"];
+
+/** "id | YYYYMMDD | description" lines from yt-dlp's flat listing. */
+export function parseSocialListing(text: string, handle: string): Array<{ url: string; date: string; title: string; handle: string }> {
+  const out: Array<{ url: string; date: string; title: string; handle: string }> = [];
+  for (const line of text.split(/\r?\n/)) {
+    const [id, date, ...rest] = line.split(" | ");
+    if (!id || !/^\d{8,}$/.test(id.trim()) || !date || !/^\d{8}$/.test(date.trim())) continue;
+    out.push({ url: `https://www.tiktok.com/@${handle}/video/${id.trim()}`, date: `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`, title: rest.join(" | ").trim(), handle });
+  }
+  return out;
+}
+
+/** Best official social post about the story: posted since `after`, naming the game or sharing two story words. */
+export function pickSocialPost(posts: Array<{ url: string; date: string; title: string; handle: string }>, gameTitle: string, story: string, after: Date): { url: string; date: string; title: string; handle: string } | undefined {
+  const words = storyWords(story, gameTitle);
+  const game = gameTitle.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+  const since = after.toISOString().slice(0, 10);
+  return posts
+    .filter((p) => p.date >= since)
+    .map((p) => {
+      const t = p.title.toLowerCase();
+      const storyHits = words.filter((w) => t.includes(w)).length;
+      const gameHits = game.filter((w) => t.includes(w)).length / Math.max(1, game.length);
+      return { p, score: storyHits * 2 + gameHits * 3, ok: storyHits >= 2 || (gameHits >= 0.5 && storyHits >= 1) };
+    })
+    .filter((x) => x.ok)
+    .sort((a, b) => b.score - a.score || b.p.date.localeCompare(a.p.date))[0]?.p;
+}
+
+/** The publisher's (or platform holder's) own TikTok post about the story, via yt-dlp's public listing. */
+export async function findSocialStoryVideo(gameTitle: string, story: string, after: Date, ytdlp = "yt-dlp"): Promise<OfficialTrailer | undefined> {
+  const owner = franchisePublisher(gameTitle);
+  const handles = [...new Set([...(owner ? SOCIAL_HANDLES[owner] ?? [] : []), ...PLATFORM_HANDLES])];
+  const posts: Array<{ url: string; date: string; title: string; handle: string }> = [];
+  for (const h of handles) {
+    try {
+      const { stdout } = await run(ytdlp, ["--no-warnings", "--flat-playlist", "--playlist-end", "15", "--print", "%(id)s | %(upload_date)s | %(title)s", `https://www.tiktok.com/@${h}`], { timeout: 90_000, maxBuffer: 4 * 1024 * 1024 });
+      posts.push(...parseSocialListing(String(stdout), h));
+    } catch (err) {
+      log("warn", "social listing failed", { handle: h, error: errorMessage(err).split("\n")[0] });
+    }
+  }
+  const best = pickSocialPost(posts, gameTitle, story, after);
+  if (!best) return undefined;
+  const rule = owner ? PUBLISHER_CHANNELS.find((r) => r.name === owner) : undefined;
+  const hostRule = PUBLISHER_CHANNELS.find((r) => r.name.toLowerCase().replace(/ games$/, "") === best.handle.replace(/games$/, "")) ?? rule;
+  return {
+    videoId: best.url,
+    title: best.title.slice(0, 120),
+    channelId: `tiktok:${best.handle}`,
+    channelTitle: `@${best.handle} on TikTok`,
+    publisher: owner ?? hostRule?.name ?? best.handle,
+    clipSeconds: Math.min(rule?.clipSeconds ?? 14, hostRule?.clipSeconds ?? 14),
+    publishedAt: `${best.date}T00:00:00Z`,
+  };
+}
+
 export async function findStoryVideo(token: () => Promise<string>, gameTitle: string, story: string, after: Date): Promise<OfficialTrailer | undefined> {
   const words = storyWords(story, gameTitle).slice(0, 5);
   const { items, subscribers } = await searchVideos(token, `${gameTitle} ${words.join(" ")}`, `&publishedAfter=${encodeURIComponent(after.toISOString())}`);
@@ -336,7 +407,7 @@ export async function downloadTrailer(
       "--no-warnings",
       "--print",
       "duration",
-      `https://www.youtube.com/watch?v=${videoId}`,
+      /^https?:/.test(videoId) ? videoId : `https://www.youtube.com/watch?v=${videoId}`,
     ],
     { timeout: 60_000 },
   ).catch(() => ({ stdout: "0" }));
@@ -345,6 +416,7 @@ export async function downloadTrailer(
 }
 
 async function downloadOnce(videoId: string, dest: string, ytdlp: string): Promise<void> {
+  const target = /^https?:/.test(videoId) ? videoId : `https://www.youtube.com/watch?v=${videoId}`;
   await run(
     ytdlp,
     [
@@ -356,7 +428,7 @@ async function downloadOnce(videoId: string, dest: string, ytdlp: string): Promi
       "mp4",
       "-o",
       dest,
-      `https://www.youtube.com/watch?v=${videoId}`,
+      target,
     ],
     { timeout: 180_000, maxBuffer: 8 * 1024 * 1024 },
   );
@@ -431,16 +503,17 @@ export async function officialMedia(o: OfficialMediaOptions): Promise<OfficialMe
     log("warn", "story video search failed", { game: o.gameTitle, error: errorMessage(err) });
     return undefined;
   }) : undefined;
-  if (o.story) log("info", storyVideo ? "publisher story video found" : "no publisher story video", { game: o.gameTitle, title: storyVideo?.title });
-  const trailer = storyVideo ?? (await findOfficialTrailer(o.token, o.gameTitle, o.hint));
+  const socialVideo = o.story && !storyVideo ? await findSocialStoryVideo(o.gameTitle, o.story.text, o.story.after, o.ytdlp).catch(() => undefined) : undefined;
+  if (o.story) log("info", storyVideo || socialVideo ? "publisher story video found" : "no publisher story video", { game: o.gameTitle, title: (storyVideo ?? socialVideo)?.title, where: storyVideo ? "youtube" : socialVideo ? socialVideo.channelTitle : "none" });
+  const trailer = storyVideo ?? socialVideo ?? (await findOfficialTrailer(o.token, o.gameTitle, o.hint));
   if (!trailer) {
     log("info", "no official trailer found", { game: o.gameTitle });
     return none;
   }
-  const url = `https://www.youtube.com/watch?v=${trailer.videoId}`;
-  const out: OfficialMedia = { storyVideo: Boolean(storyVideo), trailer: { videoId: trailer.videoId, title: trailer.title, publisher: trailer.publisher, channelTitle: trailer.channelTitle, url, clipSeconds: trailer.clipSeconds }, clips: [], stills: [] };
+  const url = /^https?:/.test(trailer.videoId) ? trailer.videoId : `https://www.youtube.com/watch?v=${trailer.videoId}`;
+  const out: OfficialMedia = { storyVideo: Boolean(storyVideo || socialVideo), trailer: { videoId: trailer.videoId, title: trailer.title, publisher: trailer.publisher, channelTitle: trailer.channelTitle, url, clipSeconds: trailer.clipSeconds }, clips: [], stills: [] };
   const stillFile = path.join("assets", "official_trailer.jpg");
-  if (await downloadThumbnail(trailer.videoId, path.join(o.episodeDir, stillFile))) {
+  if (!socialVideo && (await downloadThumbnail(trailer.videoId, path.join(o.episodeDir, stillFile)))) {
     out.stills.push({ kind: "hero", file: stillFile, sourceUrl: url, provenance: `Official trailer thumbnail "${trailer.title}" from the ${trailer.channelTitle} YouTube channel (${url})` });
   }
   if (trailer.clipSeconds <= 0 || o.maxClips <= 0 || !o.targets.length) return out;
@@ -455,7 +528,7 @@ export async function officialMedia(o: OfficialMediaOptions): Promise<OfficialMe
       maxClips: o.maxClips,
       llm: o.llm,
       prefix: "official",
-      describe: (t, seconds, at) => `Official trailer "${t.name}" from the ${trailer.channelTitle} YouTube channel, publisher: ${trailer.publisher} (${url}), ${seconds}s at ${at.toFixed(1)}s, muted`,
+      describe: (t, seconds, at) => socialVideo ? `Official post "${t.name.slice(0, 80)}" by ${trailer.channelTitle}, publisher: ${trailer.publisher} (${url}), ${seconds}s at ${at.toFixed(1)}s, muted` : `Official trailer "${t.name}" from the ${trailer.channelTitle} YouTube channel, publisher: ${trailer.publisher} (${url}), ${seconds}s at ${at.toFixed(1)}s, muted`,
     });
   } catch (err) {
     log("warn", "official trailer footage failed", { game: o.gameTitle, videoId: trailer.videoId, error: errorMessage(err) });

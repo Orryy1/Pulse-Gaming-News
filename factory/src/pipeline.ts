@@ -2239,11 +2239,9 @@ async function gatherLongEntryMedia(
           trailer: om.trailer.title,
         });
     }
-    // Licensed gameplay for the sentences no trailer moment covers: real missions and moments, credited.
-    const covered = new Set(
-      clips.filter((c) => c.beatIndex === beatIndex).map((c) => c.moment),
-    );
-    const missing = targets.filter((_, k) => !covered.has(k)).slice(0, 4);
+        // Licensed gameplay for every sentence (real missions and moments, credited), on top of any trailer moment:
+    // a sentence then plays as footage, not a still.
+    const missing = targets.slice(0, 6);
     if (missing.length)
       for (const c of await s
         .gameplayClips(

@@ -325,9 +325,11 @@ export async function gameplayClips(o: {
     })),
     episodeDir: o.episodeDir,
     targets: o.targets,
-    maxClips: o.maxClips,
+        maxClips: o.maxClips,
     llm: o.llm,
     prefix: "gameplay",
+    // Gameplay has long unbroken shots: up to six seconds a moment.
+    clipSeconds: 6,
     describe: (t, seconds, at) => {
       const src = files.find((f) => f.url === t.url)!.src;
       return src.kind === "cc"

@@ -224,3 +224,11 @@ test("a long entry with a shot list opens each sentence on its own matched pictu
   assert.deepEqual(at(w[2]!.start + 0.05).media, { type: "image", index: 2 });
   assert.ok(plan.shots.every((x) => x.end - x.start >= 1 && x.end > x.start));
 });
+
+import { titleLines } from "../src/render/longplan.ts";
+
+test("a long game name breaks after its colon", () => {
+  assert.deepEqual(titleLines("Call of Duty 4: Modern Warfare"), ["Call of Duty 4:", "Modern Warfare"]);
+  assert.deepEqual(titleLines("Halo: Reach"), ["Halo: Reach"]);
+  assert.deepEqual(titleLines("Call of Duty 2"), ["Call of Duty 2"]);
+});

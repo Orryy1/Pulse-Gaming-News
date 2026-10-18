@@ -206,16 +206,20 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         const from = j === 0 ? start : Math.max(start, toFrame(w.start));
         const to = j === mine.length - 1 ? end : Math.min(end, toFrame(mine[j + 1]!.start));
         if (to <= from) continue;
-        const clip = entryClips.find((k) => clips[k]!.moment === w.moment && !clipUsed[k]);
+                // Every clip picked for this sentence (a trailer moment and a gameplay moment), then its still.
+        const mineClips = entryClips.filter((k) => clips[k]!.moment === w.moment && !clipUsed[k]);
         const still = entryImages.find((k) => images[k]!.moment === w.moment);
-        const spare = entryClips.find((k) => clips[k]!.moment === undefined && !clipUsed[k]);
         const queue: LongMedia[] = [];
-        // The entry opens on its art so the rank card lands over a picture; later sentences open on their moment.
+        // The entry opens on its art so the rank card lands over a picture; later sentences open on footage.
         if (j === 0 && still !== undefined) queue.push({ type: "image", index: still });
-        if (clip !== undefined) queue.push({ type: "clip", index: clip });
-        else if (spare !== undefined) queue.push({ type: "clip", index: spare });
+        for (const k of mineClips) queue.push({ type: "clip", index: k });
         if (j !== 0 && still !== undefined) queue.push({ type: "image", index: still });
-        fill(i, from, to, queue, leastUsed);
+        // When the sentence's own media runs out, any unused footage of the entry comes before another still.
+        const footageFirst = (): LongMedia => {
+          const spare = entryClips.find((k) => !clipUsed[k] && !queue.some((q) => q.type === "clip" && q.index === k));
+          return spare !== undefined ? { type: "clip", index: spare } : leastUsed();
+        };
+        fill(i, from, to, queue, footageFirst);
       }
       continue;
     }
@@ -387,4 +391,14 @@ export function chapterLines(
     out.push(`${m}:${s} ${label}`);
   }
   return out;
+}
+
+/**
+ * A long game name breaks after its colon, so the series and the subtitle each
+ * keep their words together: "CALL OF DUTY 4:" over "MODERN WARFARE".
+ */
+export function titleLines(text: string): string[] {
+  const i = text.indexOf(": ");
+  if (i <= 0 || text.length <= 20) return [text];
+  return [text.slice(0, i + 1), text.slice(i + 2)];
 }

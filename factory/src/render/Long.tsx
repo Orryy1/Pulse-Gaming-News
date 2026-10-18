@@ -19,7 +19,7 @@ import {
 import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY } from "./components/fonts.ts";
 import { moveTransform, SPRING, type MovePreset } from "./motion.ts";
-import { buildLongPlan, entryOf, momentWindows, type LongPlan } from "./longplan.ts";
+import { buildLongPlan, entryOf, momentWindows, titleLines, type LongPlan } from "./longplan.ts";
 import { FlashPunch, GrainVignette, KineticCaption, MomentGraphicCard, PopInPicture, Sfx, type MomentProp } from "./components/LongMoments.tsx";
 import { displayText, type Segment } from "./timeline.ts";
 import type { Word } from "../voice/elevenlabs.ts";
@@ -272,6 +272,16 @@ const FadeIn: React.FC<{ frames: number; children: React.ReactNode }> = ({ frame
   const o = frames > 0 ? interpolate(frame, [0, frames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1;
   return <AbsoluteFill style={{ opacity: o }}>{children}</AbsoluteFill>;
 };
+
+const TitleLines: React.FC<{ text: string }> = ({ text }) => (
+  <>
+    {titleLines(text).map((l, k) => (
+      <div key={k} style={{ whiteSpace: "nowrap" }}>
+        {l}
+      </div>
+    ))}
+  </>
+);
 
 const Backdrop: React.FC<{
   plan: LongPlan;
@@ -645,7 +655,7 @@ const EntryCard: React.FC<{
               textShadow: "0 8px 40px rgba(0,0,0,0.7)",
             }}
           >
-            {title}
+            <TitleLines text={title} />
           </div>
           {meta ? (
             <div
@@ -917,7 +927,7 @@ const OutroCard: React.FC<{
             textShadow: "0 10px 50px rgba(0,0,0,0.7)",
           }}
         >
-          {winner}
+          <TitleLines text={winner} />
         </div>
         <div
           style={{

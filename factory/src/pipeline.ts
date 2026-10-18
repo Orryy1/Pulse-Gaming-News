@@ -92,7 +92,13 @@ import {
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
-import { captureMetrics, captureRetention, hookLessons, performanceNotes, retentionNotes } from "./analytics.ts";
+import {
+  captureMetrics,
+  captureRetention,
+  hookLessons,
+  performanceNotes,
+  retentionNotes,
+} from "./analytics.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import {
   dayKey,
@@ -149,12 +155,26 @@ export interface Services {
   >;
   findGame(term: string): Promise<SteamApp | undefined>;
   gameFacts(app: SteamApp): Promise<SteamFacts>;
-  fetchArt(app: SteamApp, episodeDir: string, maxScreens?: number): Promise<VisualAsset[]>;
+  fetchArt(
+    app: SteamApp,
+    episodeDir: string,
+    maxScreens?: number,
+  ): Promise<VisualAsset[]>;
   /** Freely licensed archive photos (Wikimedia Commons) for a search. */
-  searchPhotos(query: string): Promise<import("./assets/commons.ts").CommonsImage[]>;
+  searchPhotos(
+    query: string,
+  ): Promise<import("./assets/commons.ts").CommonsImage[]>;
   /** Official screenshots, key art and cover from IGDB for a game by exact title (empty without Twitch keys). */
-  igdbArt(title: string, year: number | undefined, episodeDir: string, max: number): Promise<VisualAsset[]>;
-  downloadPhoto(img: import("./assets/commons.ts").CommonsImage, dest: string): Promise<boolean>;
+  igdbArt(
+    title: string,
+    year: number | undefined,
+    episodeDir: string,
+    max: number,
+  ): Promise<VisualAsset[]>;
+  downloadPhoto(
+    img: import("./assets/commons.ts").CommonsImage,
+    dest: string,
+  ): Promise<boolean>;
   fetchClips(
     app: SteamApp,
     episodeDir: string,
@@ -181,7 +201,11 @@ export interface Services {
   /** This week's biggest climbers on Steam's most-played chart, with their official news. */
   steamClimbers(now: Date): Promise<import("./discovery/charts.ts").Climber[]>;
   /** A Wikipedia article's useful sections, by title or else by search (documentary research). */
-  research(title: string, fallbackQuery: string, maxChars?: number): Promise<import("./discovery/wikipedia.ts").WikiArticle | undefined>;
+  research(
+    title: string,
+    fallbackQuery: string,
+    maxChars?: number,
+  ): Promise<import("./discovery/wikipedia.ts").WikiArticle | undefined>;
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
@@ -300,7 +324,12 @@ async function createFromChoice(
     s.llm,
     pool,
     await recentHeadlines(db),
-    [await performanceNotes(db, s.now()).catch(() => ""), await retentionNotes(db, s.now()).catch(() => "")].filter(Boolean).join("\n\n"),
+    [
+      await performanceNotes(db, s.now()).catch(() => ""),
+      await retentionNotes(db, s.now()).catch(() => ""),
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
   );
   const picked = pool[choice.candidate_index];
   if (!picked) {
@@ -648,7 +677,14 @@ export async function maybeSelectWeekly(
             `- ${g.name} | ${g.lastRank === undefined ? `new to the top 100 at #${g.rank}` : `#${g.rank} this week, #${g.lastRank} last week (up ${g.climb})`} | peak ${g.peak} players | released ${g.year ?? "unknown"} | Steam news: ${g.news.length ? g.news.join(" || ") : "none in the last two weeks"}`,
         )
         .join("\n");
-      const climbers = games.map((g) => ({ name: g.name, rank: g.rank, lastRank: g.lastRank, climb: g.climb, peak: g.peak, year: g.year }));
+      const climbers = games.map((g) => ({
+        name: g.name,
+        rank: g.rank,
+        lastRank: g.lastRank,
+        climb: g.climb,
+        peak: g.peak,
+        year: g.year,
+      }));
       return make(
         "climbers",
         base(`weekly:climbers:${today}`, topic.title_idea, "Steam charts"),
@@ -657,7 +693,9 @@ export async function maybeSelectWeekly(
         "evergreen",
       );
     }
-    log("info", "steam climbers skipped: too few games climbed", { found: games.length });
+    log("info", "steam climbers skipped: too few games climbed", {
+      found: games.length,
+    });
   }
 
   // Release Radar
@@ -900,7 +938,9 @@ export async function maybeSelectWeekly(
 
 /** Week of the month (1-5) for a date in the channel's time zone. */
 function weekOfMonth(now: Date, timeZone: string): number {
-  const day = Number(new Intl.DateTimeFormat("en-GB", { timeZone, day: "numeric" }).format(now));
+  const day = Number(
+    new Intl.DateTimeFormat("en-GB", { timeZone, day: "numeric" }).format(now),
+  );
   return Math.ceil(day / 7);
 }
 
@@ -987,15 +1027,29 @@ export async function maybeSelectDocumentary(
  * article with a fact-check pass and up to two rewrites, then the intro and
  * outro from what the chapters actually say.
  */
-async function stepScriptDocumentary(s: Services, ep: Episode, topic: DocTopic): Promise<void> {
-  const franchise = await s.research(topic.franchise, `${topic.franchise} video game series`, 6000);
+async function stepScriptDocumentary(
+  s: Services,
+  ep: Episode,
+  topic: DocTopic,
+): Promise<void> {
+  const franchise = await s.research(
+    topic.franchise,
+    `${topic.franchise} video game series`,
+    6000,
+  );
   const outline = await outlineDoc(s.llm, topic, franchise?.text ?? "");
   const chapters: DocDraft["chapters"] = [];
   const warnings: string[] = [];
   for (const [index, plan] of outline.chapters.entries()) {
-    const source = await s.research(plan.wiki_title, `${plan.game_title} ${plan.year} video game`, 9000);
+    const source = await s.research(
+      plan.wiki_title,
+      `${plan.game_title} ${plan.year} video game`,
+      9000,
+    );
     if (!source) {
-      warnings.push(`No Wikipedia article for ${plan.game_title}; chapter dropped.`);
+      warnings.push(
+        `No Wikipedia article for ${plan.game_title}; chapter dropped.`,
+      );
       continue;
     }
     let feedback: string[] = [];
@@ -1011,35 +1065,67 @@ async function stepScriptDocumentary(s: Services, ep: Episode, topic: DocTopic):
         feedback,
       });
       const problems = validateChapter(chapter);
-      const unsupported = await checkChapter(s.llm, chapter, source).catch((err) => {
-        log("warn", "documentary fact check failed", { error: errorMessage(err) });
-        return [] as string[];
-      });
+      const unsupported = await checkChapter(s.llm, chapter, source).catch(
+        (err) => {
+          log("warn", "documentary fact check failed", {
+            error: errorMessage(err),
+          });
+          return [] as string[];
+        },
+      );
       feedback = [
         ...problems,
-        ...unsupported.map((u) => `Not supported by the source, remove or correct it: ${u}`),
+        ...unsupported.map(
+          (u) => `Not supported by the source, remove or correct it: ${u}`,
+        ),
       ];
       if (!feedback.length) break;
-      if (attempt === 2) warnings.push(...feedback.map((f) => `${plan.game_title}: ${f}`));
+      if (attempt === 2)
+        warnings.push(...feedback.map((f) => `${plan.game_title}: ${f}`));
     }
     const grounded = groundCallouts(chapter!, source);
     if (grounded.removed.length)
-      warnings.push(...grounded.removed.map((r) => `${plan.game_title}: on-screen ${r} not in the source, removed`));
+      warnings.push(
+        ...grounded.removed.map(
+          (r) =>
+            `${plan.game_title}: on-screen ${r} not in the source, removed`,
+        ),
+      );
     chapters.push({ plan, chapter: grounded.chapter, source });
-    log("info", "documentary chapter written", { episode: ep.id, chapter: index + 1, game: plan.game_title });
+    log("info", "documentary chapter written", {
+      episode: ep.id,
+      chapter: index + 1,
+      game: plan.game_title,
+    });
   }
   if (chapters.length < DOC_CHAPTERS_MIN)
-    throw new FatalError(`documentary has only ${chapters.length} chapters with sources`);
-  let bookends = await writeBookends(s.llm, outline, chapters, franchise?.text ?? "");
+    throw new FatalError(
+      `documentary has only ${chapters.length} chapters with sources`,
+    );
+  let bookends = await writeBookends(
+    s.llm,
+    outline,
+    chapters,
+    franchise?.text ?? "",
+  );
   if (validateBookends(bookends).length)
-    bookends = await writeBookends(s.llm, outline, chapters, franchise?.text ?? "");
+    bookends = await writeBookends(
+      s.llm,
+      outline,
+      chapters,
+      franchise?.text ?? "",
+    );
   const draft: DocDraft = { topic, outline, chapters, bookends };
   const words = docWordCount(draft);
   if (words < DOC_WORDS_MIN || words > DOC_WORDS_MAX)
-    warnings.push(`Documentary is ${words} words (aim ${DOC_WORDS_MIN}-${DOC_WORDS_MAX}).`);
-  if (warnings.length) await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
+    warnings.push(
+      `Documentary is ${words} words (aim ${DOC_WORDS_MIN}-${DOC_WORDS_MAX}).`,
+    );
+  if (warnings.length)
+    await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
   const script = docToScript(draft);
-  if (franchise && !script.sources?.includes(franchise.url)) script.sources = [franchise.url, ...(script.sources ?? [])];
+  if (franchise && !script.sources?.includes(franchise.url))
+    script.sources = [franchise.url, ...(script.sources ?? [])];
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
@@ -1125,7 +1211,8 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     doc?: boolean;
     topic?: import("./editorial/evergreen.ts").EvergreenTopic;
   } | null;
-  if (fc?.doc && fc.topic) return stepScriptDocumentary(s, ep, fc.topic as unknown as DocTopic);
+  if (fc?.doc && fc.topic)
+    return stepScriptDocumentary(s, ep, fc.topic as unknown as DocTopic);
   const topic = fc?.topic;
   if (!topic) throw new FatalError("long-form episode has no topic");
   let facts: Array<{ title: string; facts: SteamFacts }> = [];
@@ -1218,7 +1305,11 @@ export function groundClimbers<
     .map((e) => {
       const d =
         data.find((x) => norm(x.name) === norm(e.game_title)) ??
-        data.find((x) => norm(e.game_title).includes(norm(x.name)) || norm(x.name).includes(norm(e.game_title)));
+        data.find(
+          (x) =>
+            norm(e.game_title).includes(norm(x.name)) ||
+            norm(x.name).includes(norm(e.game_title)),
+        );
       if (!d) return undefined;
       const name = d.name.replace(/[\u00ae\u2122\u00a9]/g, "").trim();
       return {
@@ -1226,13 +1317,18 @@ export function groundClimbers<
         game_title: name,
         steam_search_term: name,
         year: d.year ?? e.year,
-        platforms: d.lastRank === undefined ? `NEW AT #${d.rank}` : `UP ${d.climb} TO #${d.rank}`,
+        platforms:
+          d.lastRank === undefined
+            ? `NEW AT #${d.rank}`
+            : `UP ${d.climb} TO #${d.rank}`,
         peak: d.peak,
         climb: d.climb,
       };
     })
     .filter((e): e is NonNullable<typeof e> => Boolean(e))
-    .filter((e, i, a) => a.findIndex((x) => x.game_title === e.game_title) === i)
+    .filter(
+      (e, i, a) => a.findIndex((x) => x.game_title === e.game_title) === i,
+    )
     .sort((a, b) => b.climb - a.climb);
   return {
     ...draft,
@@ -1365,7 +1461,8 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
     } | null
   )?.achievements;
   if (data?.length) draft = groundAchievements(draft, data);
-  const climbers = (ep.factcheck_json as { climbers?: ClimberData[] } | null)?.climbers;
+  const climbers = (ep.factcheck_json as { climbers?: ClimberData[] } | null)
+    ?.climbers;
   if (climbers?.length) draft = groundClimbers(draft, climbers);
   const script = evergreenToScript(draft);
   await transition(s.db, ep.id, "selected", "scripted", {
@@ -1692,7 +1789,9 @@ async function gatherMedia(
   // Off Steam (GTA VI, Nintendo, console exclusives): IGDB's official stills for the story's game.
   const igdb =
     !app && !ranking && script.game_title
-      ? await s.igdbArt(script.game_title, undefined, dir, 8).catch(() => [] as VisualAsset[])
+      ? await s
+          .igdbArt(script.game_title, undefined, dir, 8)
+          .catch(() => [] as VisualAsset[])
       : [];
   // In a ranking, the topic page's screenshots would land under the wrong entry: keep its hero and header only.
   const images = [
@@ -1769,7 +1868,15 @@ async function gatherMedia(
       try {
         // A documentary chapter runs minutes: its own gallery, matched footage and archive photos.
         if (script.evergreen_format === "documentary") {
-          await gatherChapterMedia(s, script, entry, beatIndex, dir, images, clips);
+          await gatherChapterMedia(
+            s,
+            script,
+            entry,
+            beatIndex,
+            dir,
+            images,
+            clips,
+          );
           continue;
         }
         // An empty Steam term means the writer knows the game is not on Steam: straight to the publisher's trailer.
@@ -1802,8 +1909,14 @@ async function gatherMedia(
               beatIndex,
             });
           // Off Steam, IGDB supplies the box art and stills the card and shots need.
-          for (const a of await s.igdbArt(entry.game_title, entry.year, edir, 3).catch(() => [] as VisualAsset[]))
-            images.push({ ...a, file: path.join(`entry_${beatIndex}`, a.file), beatIndex });
+          for (const a of await s
+            .igdbArt(entry.game_title, entry.year, edir, 3)
+            .catch(() => [] as VisualAsset[]))
+            images.push({
+              ...a,
+              file: path.join(`entry_${beatIndex}`, a.file),
+              beatIndex,
+            });
           for (const c of capFootage(om.clips, om.trailer?.clipSeconds ?? 0))
             clips.push({
               file: path.join(`entry_${beatIndex}`, c.file),
@@ -1855,7 +1968,9 @@ async function gatherMedia(
         ];
         // A documentary chapter asks for the moments its paragraphs name.
         if (doc)
-          for (const [k, f] of chapterFootage(script, beatIndex).slice(1, perEntry).entries())
+          for (const [k, f] of chapterFootage(script, beatIndex)
+            .slice(1, perEntry)
+            .entries())
             entryTargets.push({
               key: `beat:${beatIndex}#${k + 2}`,
               text: `${entry.game_title}: ${f.keywords.join(", ")}`,
@@ -1879,7 +1994,9 @@ async function gatherMedia(
           perEntry,
         );
         // Footage stays subordinate: a documentary chapter gets the same publisher budget a Short does.
-        const got = doc ? capFootage(fetched, footageBudgetSeconds(eapp), 4.8) : fetched;
+        const got = doc
+          ? capFootage(fetched, footageBudgetSeconds(eapp), 4.8)
+          : fetched;
         for (const c of got)
           clips.push({
             file: path.join(`entry_${beatIndex}`, c.file),
@@ -1929,10 +2046,17 @@ async function gatherMedia(
 }
 
 /** "Steve Hammond / CC BY-SA 2.0 / Wikimedia Commons" for an archive photo, else nothing. */
-export function photoCredit(i: { kind: string; provenance?: string }): string | undefined {
+export function photoCredit(i: {
+  kind: string;
+  provenance?: string;
+}): string | undefined {
   if (i.kind !== "photo") return undefined;
-  const m = (i.provenance ?? "").match(/^Wikimedia Commons photo by (.+?), ([^,:]+): /);
-  return m ? `${m[1]!.slice(0, 40)} / ${m[2]} / Wikimedia Commons` : "Wikimedia Commons";
+  const m = (i.provenance ?? "").match(
+    /^Wikimedia Commons photo by (.+?), ([^,:]+): /,
+  );
+  return m
+    ? `${m[1]!.slice(0, 40)} / ${m[2]} / Wikimedia Commons`
+    : "Wikimedia Commons";
 }
 
 /** The footage asks of one documentary chapter's paragraphs, in order. */
@@ -1951,9 +2075,7 @@ export function chapterFootage(
 }
 
 function titleCaseLabel(label: string): string {
-  return label
-    .toLowerCase()
-    .replace(/\b[a-z]/g, (m) => m.toUpperCase());
+  return label.toLowerCase().replace(/\b[a-z]/g, (m) => m.toUpperCase());
 }
 
 /**
@@ -1978,7 +2100,12 @@ async function gatherChapterMedia(
   const rel = (f: string) => path.join(`entry_${beatIndex}`, f);
   const terms = [
     ...new Set(
-      [entry.steam_search_term, `${entry.game_title} Definitive Edition`, `${entry.game_title} Remastered`, entry.game_title].filter(Boolean),
+      [
+        entry.steam_search_term,
+        `${entry.game_title} Definitive Edition`,
+        `${entry.game_title} Remastered`,
+        entry.game_title,
+      ].filter(Boolean),
     ),
   ];
   let eapp: SteamApp | undefined;
@@ -2005,7 +2132,9 @@ async function gatherChapterMedia(
     });
   try {
     if (eapp) {
-      for (const a of (await s.fetchArt(eapp, edir, 12)).filter((a) => a.kind !== "logo"))
+      for (const a of (await s.fetchArt(eapp, edir, 12)).filter(
+        (a) => a.kind !== "logo",
+      ))
         images.push({ ...a, file: rel(a.file), beatIndex });
       if (s.cfg.footage) {
         const targets: FootageTarget[] = chapterFootage(script, beatIndex)
@@ -2018,7 +2147,12 @@ async function gatherChapterMedia(
             keywords: [entry.game_title, ...f.keywords].slice(0, 4),
           }));
         if (targets.length)
-          for (const c of capFootage(await s.fetchClips(eapp, edir, targets, targets.length), footageBudgetSeconds(eapp), 4.8)) pushClip(c);
+          for (const c of capFootage(
+            await s.fetchClips(eapp, edir, targets, targets.length),
+            footageBudgetSeconds(eapp),
+            4.8,
+          ))
+            pushClip(c);
       }
     } else if (s.cfg.footage) {
       const want = chapterFootage(script, beatIndex)[0];
@@ -2026,40 +2160,85 @@ async function gatherChapterMedia(
         .fetchOfficialMedia(
           entry.game_title,
           edir,
-          [{ key: `beat:${beatIndex}`, text: entry.game_title, want: want?.want ?? "gameplay", energy: "medium", keywords: want?.keywords ?? [entry.game_title] }],
+          [
+            {
+              key: `beat:${beatIndex}`,
+              text: entry.game_title,
+              want: want?.want ?? "gameplay",
+              energy: "medium",
+              keywords: want?.keywords ?? [entry.game_title],
+            },
+          ],
           1,
           entry.year ? String(entry.year) : "",
         )
         .catch(() => ({ clips: [], stills: [] }) as OfficialMedia);
-      if (om.trailer && trailerMatchesGame(om.trailer.title, entry.game_title, franchise))
-        for (const c of capFootage(om.clips, om.trailer.clipSeconds ?? 0)) pushClip(c);
+      if (
+        om.trailer &&
+        trailerMatchesGame(om.trailer.title, entry.game_title, franchise)
+      )
+        for (const c of capFootage(om.clips, om.trailer.clipSeconds ?? 0))
+          pushClip(c);
       else if (om.trailer)
-        log("info", "documentary trailer rejected: it names another game", { game: entry.game_title, trailer: om.trailer.title });
+        log("info", "documentary trailer rejected: it names another game", {
+          game: entry.game_title,
+          trailer: om.trailer.title,
+        });
     }
   } catch (err) {
-    log("warn", "documentary chapter media failed", { game: entry.game_title, error: errorMessage(err) });
+    log("warn", "documentary chapter media failed", {
+      game: entry.game_title,
+      error: errorMessage(err),
+    });
   }
   // IGDB: official screenshots and key art for games Steam cannot supply, or a thin Steam gallery.
   try {
-    const have = images.filter((i) => i.beatIndex === beatIndex && i.kind !== "capsule").length;
+    const have = images.filter(
+      (i) => i.beatIndex === beatIndex && i.kind !== "capsule",
+    ).length;
     if (have < 8)
-      for (const a of await s.igdbArt(entry.game_title, entry.year, edir, 12 - have))
-        if (a.kind !== "capsule" || !images.some((i) => i.beatIndex === beatIndex && i.kind === "capsule")) images.push({ ...a, file: rel(a.file), beatIndex });
+      for (const a of await s.igdbArt(
+        entry.game_title,
+        entry.year,
+        edir,
+        12 - have,
+      ))
+        if (
+          a.kind !== "capsule" ||
+          !images.some((i) => i.beatIndex === beatIndex && i.kind === "capsule")
+        )
+          images.push({ ...a, file: rel(a.file), beatIndex });
   } catch (err) {
-    log("warn", "documentary IGDB art failed", { game: entry.game_title, error: errorMessage(err) });
+    log("warn", "documentary IGDB art failed", {
+      game: entry.game_title,
+      error: errorMessage(err),
+    });
   }
   // Archive photos: the real places and people, freely licensed and credited on screen.
   try {
-    const queries = (entry.photos?.length ? entry.photos : [`${entry.game_title} video game`]).slice(0, 4);
+    const queries = (
+      entry.photos?.length ? entry.photos : [`${entry.game_title} video game`]
+    ).slice(0, 4);
     const seen = new Set<string>();
-    const candidates = (await Promise.all(queries.map((q) => s.searchPhotos(q).catch(() => []))))
+    const candidates = (
+      await Promise.all(queries.map((q) => s.searchPhotos(q).catch(() => [])))
+    )
       .flat()
       .filter((c) => !seen.has(c.title) && seen.add(c.title))
       .slice(0, 30);
-    const opening = script.beats.filter((b) => b.visual?.kind === "chapter")[beatIndex]?.narration ?? "";
+    const opening =
+      script.beats.filter((b) => b.visual?.kind === "chapter")[beatIndex]
+        ?.narration ?? "";
     const keep = await pickPhotos(
       s.llm,
-      { franchise, game: entry.game_title, title: script.beats.filter((b) => b.visual?.kind === "chapter")[beatIndex]?.visual.primary ?? entry.game_title, opening },
+      {
+        franchise,
+        game: entry.game_title,
+        title:
+          script.beats.filter((b) => b.visual?.kind === "chapter")[beatIndex]
+            ?.visual.primary ?? entry.game_title,
+        opening,
+      },
       candidates,
     );
     for (const [k, i] of keep.entries()) {
@@ -2075,7 +2254,10 @@ async function gatherChapterMedia(
         } as VisualAsset & { beatIndex?: number });
     }
   } catch (err) {
-    log("warn", "documentary photos failed", { game: entry.game_title, error: errorMessage(err) });
+    log("warn", "documentary photos failed", {
+      game: entry.game_title,
+      error: errorMessage(err),
+    });
   }
 }
 
@@ -2925,7 +3107,8 @@ export function videoMetadata(
     script.sources?.length
       ? `\nSources:\n${script.sources.map((u) => `• Wikipedia: ${u}`).join("\n")}`
       : "",
-    (ep.assets_json?.images ?? []).some((i) => i.kind === "photo") && affiliate?.shopUrl
+    (ep.assets_json?.images ?? []).some((i) => i.kind === "photo") &&
+    affiliate?.shopUrl
       ? `\nPhotos: Wikimedia Commons, credited on screen. Full photo and footage credits: ${affiliate.shopUrl.replace(/\/shop\//, "/credits/")}`
       : "",
     footage,
@@ -2933,8 +3116,8 @@ export function videoMetadata(
     script.evergreen_format === "documentary"
       ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
       : long
-      ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day."
-      : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
+        ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day."
+        : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
     (long
       ? hashtags(script)
           .filter((h) => h !== "#Shorts")
@@ -3010,7 +3193,12 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
     const size = (await fs.stat(file)).size;
     session = await yt.createSession(
       buildResource(
-        videoMetadata(ep, s.cfg.youtubePrivacy, s.cfg.syntheticMedia, affiliateTags(s.cfg, ep.id)),
+        videoMetadata(
+          ep,
+          s.cfg.youtubePrivacy,
+          s.cfg.syntheticMedia,
+          affiliateTags(s.cfg, ep.id),
+        ),
         marker,
       ),
       size,
@@ -3040,13 +3228,61 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
 
 /** Every Associates ID the channel has, plus the video's shop page when the public address works from outside. */
 export function affiliateTags(cfg: Config, episodeId: string): AffiliateTags {
-  const publicOk = cfg.publicUrl && !/^https?:\/\/(localhost|127\.0\.0\.1)/.test(cfg.publicUrl);
+  const publicOk =
+    cfg.publicUrl &&
+    !/^https?:\/\/(localhost|127\.0\.0\.1)/.test(cfg.publicUrl);
   return {
     uk: cfg.amazonUkTag,
     us: cfg.amazonUsTag || undefined,
     ...cfg.amazonMoreTags,
-    shopUrl: publicOk ? `${cfg.publicUrl.replace(/\/$/, "")}/shop/${episodeId}` : undefined,
+    shopUrl: publicOk
+      ? `${cfg.publicUrl.replace(/\/$/, "")}/shop/${episodeId}`
+      : undefined,
   };
+}
+
+/**
+ * Ten minutes after a scheduled publish time, checks the video really went
+ * public. Public: the first comment goes up now (YouTube refuses comments on
+ * private videos). Still private: the owner is told once and never overridden,
+ * since they may have made it private themselves.
+ */
+export async function confirmPublished(s: Services): Promise<void> {
+  const due = await s.db.query<{
+    id: string;
+    youtube_video_id: string;
+    title: string | null;
+  }>(
+    `SELECT e.id, e.youtube_video_id, e.script_json->'youtube'->>'title' AS title FROM episodes e
+      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.publish_at IS NOT NULL
+        AND e.publish_at < $1::timestamptz - interval '10 minutes' AND e.publish_at > $1::timestamptz - interval '2 hours'
+        AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('public_confirmed','made_public'))`,
+    [s.now()],
+  );
+  for (const ep of due) {
+    const st = await s.youtube().status(ep.youtube_video_id);
+    if (st?.privacyStatus === "public") {
+      await logEvent(s.db, ep.id, "public_confirmed", {});
+    } else if (st?.privacyStatus === "private") {
+      await s.youtube().makePublic(ep.youtube_video_id);
+      await logEvent(s.db, ep.id, "made_public", { was: st.privacyStatus });
+      log("warn", "scheduled video was still private; made public", {
+        episode: ep.id,
+        video: ep.youtube_video_id,
+      });
+      await s.notify({
+        content: `🔓 YouTube left "${ep.title ?? ep.id}" private after its scheduled time, so the factory published it: https://youtube.com/watch?v=${ep.youtube_video_id}`,
+      });
+    } else continue;
+    // The first comment waits until the video is public.
+    const [posted] = await s.db.query<{ n: string }>(
+      `SELECT count(*) AS n FROM events WHERE episode_id = $1 AND kind = 'comment_posted'`,
+      [ep.id],
+    );
+    const full =
+      Number(posted?.n ?? 0) === 0 ? await getEpisode(s.db, ep.id) : undefined;
+    if (full) await addPinnedComment(s, full);
+  }
 }
 
 /** Posts the channel's own first comment (the owner pins it from the app; the API cannot pin). Never blocks a live video. */
@@ -3144,7 +3380,9 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
     return;
   }
   if (ep.assets_json?.srt) await addCaptions(s, ep);
-  await addPinnedComment(s, ep);
+  // YouTube refuses comments on a video that is still private: a scheduled one is commented once it is public.
+  if (!ep.publish_at || new Date(ep.publish_at) <= s.now())
+    await addPinnedComment(s, ep);
   if (ep.assets_json?.thumb) await setThumbnail(s, ep);
   await transition(s.db, ep.id, "uploaded", "published", {
     youtube_status: st.privacyStatus,
@@ -3344,6 +3582,11 @@ export async function tick(
     if (!s.cfg.dryRun)
       await captureMetrics(s.db, s.youtube(), s.now()).catch((err) =>
         log("warn", "metrics capture failed", { error: errorMessage(err) }),
+      );
+    // After each scheduled slot: confirm the video went public and post its first comment, or tell the owner it did not.
+    if (!s.cfg.dryRun && s.cfg.youtubePrivacy === "public")
+      await confirmPublished(s).catch((err) =>
+        log("warn", "publish check failed", { error: errorMessage(err) }),
       );
     // How much of each Short people watched, once Analytics has the numbers (needs the analytics scope).
     if (!s.cfg.dryRun)

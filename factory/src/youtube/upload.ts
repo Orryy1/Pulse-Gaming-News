@@ -260,4 +260,28 @@ export class YouTubeClient {
       rejectionReason: v.status?.rejectionReason,
     };
   }
+
+  /** Makes a video public now, keeping its other status fields as they are. */
+  async makePublic(videoId: string): Promise<void> {
+    const res = await this.fetchFn(`${API}/videos?part=status&id=${videoId}`, { headers: await this.auth() });
+    if (!res.ok) throw await apiError(res, "videos.list");
+    const st = ((await res.json()) as any).items?.[0]?.status;
+    if (!st) throw new Error(`video ${videoId} not found`);
+    const put = await this.fetchFn(`${API}/videos?part=status`, {
+      method: "PUT",
+      headers: { ...(await this.auth()), "content-type": "application/json" },
+      body: JSON.stringify({
+        id: videoId,
+        status: {
+          privacyStatus: "public",
+          embeddable: st.embeddable,
+          license: st.license,
+          publicStatsViewable: st.publicStatsViewable,
+          selfDeclaredMadeForKids: st.madeForKids ?? false,
+          containsSyntheticMedia: st.containsSyntheticMedia,
+        },
+      }),
+    });
+    if (!put.ok) throw await apiError(put, "videos.update");
+  }
 }

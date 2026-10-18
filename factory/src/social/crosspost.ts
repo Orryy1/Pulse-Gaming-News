@@ -210,6 +210,34 @@ export async function crosspostTick(
 
 let tiktokUnaudited = false;
 
+const TIKTOK_SINGLE_CHUNK = 60 * 1024 * 1024;
+
+/**
+ * TikTok takes a file of up to 64 MB in one piece and fights multi-chunk uploads,
+ * so a bigger Short gets a TikTok copy re-encoded to fit (same picture, lower bitrate).
+ */
+export async function tiktokFile(file: string): Promise<string> {
+  const { size } = await fs.promises.stat(file);
+  if (size <= TIKTOK_SINGLE_CHUNK) return file;
+  const out = path.join(path.dirname(file), "tiktok.mp4");
+  if (fs.existsSync(out) && (await fs.promises.stat(out)).size <= TIKTOK_SINGLE_CHUNK) return out;
+  const { FFMPEG } = await import("../lib/bin.ts");
+  const { probe } = await import("../qa/media.ts");
+  const seconds = Math.max(10, (await probe(file)).durationSeconds || 60);
+  // 55 MB budget, 128 kbps of it for audio.
+  const videoKbps = Math.max(1500, Math.floor((55 * 8 * 1024) / seconds - 128));
+  const { execFile } = await import("node:child_process");
+  await new Promise<void>((resolve, reject) =>
+    execFile(
+      FFMPEG,
+      ["-y", "-v", "error", "-i", file, "-c:v", "libx264", "-preset", "medium", "-b:v", `${videoKbps}k`, "-maxrate", `${Math.floor(videoKbps * 1.3)}k`, "-bufsize", `${videoKbps * 2}k`, "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out],
+      { maxBuffer: 10 * 1024 * 1024 },
+      (err) => (err ? reject(err) : resolve()),
+    ),
+  );
+  return out;
+}
+
 /** The posters this PC has credentials for and the owner has switched on. */
 export async function buildPosters(cfg: Config): Promise<SocialPosters> {
   const p = await import("./platforms.ts");
@@ -221,6 +249,7 @@ export async function buildPosters(cfg: Config): Promise<SocialPosters> {
   if (cfg.crosspost.tiktok && cfg.tiktokClientKey && cfg.tiktokTokenPath && fs.existsSync(cfg.tiktokTokenPath))
     out.tiktok = async (file, caption) => {
       const accessToken = await p.tiktokAccessToken(cfg.tiktokTokenPath, cfg.tiktokClientKey, cfg.tiktokClientSecret);
+      file = await tiktokFile(file);
       if (!tiktokUnaudited) {
         try {
           return await p.postTikTok({ accessToken, file, title: caption });

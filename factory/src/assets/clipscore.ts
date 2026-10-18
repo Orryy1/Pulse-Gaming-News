@@ -287,6 +287,7 @@ export async function rankByModel(
   llm: Llm,
   targets: FootageTarget[],
   candidates: Candidate[],
+  textFrames?: Set<number>,
 ): Promise<Assignment[]> {
   const shown = candidates.slice(0, MAX_CANDIDATES_TO_MODEL);
   const content: LlmContent = [];
@@ -314,9 +315,10 @@ export async function rankByModel(
     schema: ClipRankingSchema,
     effort: "low",
   });
-  const bad = new Set(
+    const bad = new Set(
     r.candidates.filter((c) => c.has_text_or_logo).map((c) => c.index),
   );
+  for (const b of bad) textFrames?.add(b);
   const labels = new Map(r.candidates.map((c) => [c.index, c.label]));
   const known = new Set(shown.map((c) => c.index));
   const used = new Set<number>();
@@ -503,11 +505,13 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       candidates.length > MAX_CANDIDATES_TO_MODEL
         ? candidates.filter((_, i) => i % Math.ceil(candidates.length / MAX_CANDIDATES_TO_MODEL) === 0)
         : candidates;
-    let assignments: Assignment[] = [];
+        let assignments: Assignment[] = [];
     let how = "rule";
+    // Keyframes the editor saw text in, so a clip can stop before one.
+    const textFrames = new Set<number>();
     if (o.llm) {
       try {
-        assignments = await rankByModel(o.llm, o.targets, pool);
+                assignments = await rankByModel(o.llm, o.targets, pool, textFrames);
         how = "model";
       } catch (err) {
         log("warn", "clip ranking by model failed; using the motion rule", { error: errorMessage(err) });
@@ -528,8 +532,15 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       const r = c && o.trailers[c.movie];
       if (!a || !c || !r) continue;
       const file = path.join("assets", `${prefix}_${out.length}.mp4`);
-      // The clip ends where its shot ends (rounded to a frame) so it never changes picture under the line.
-      const seconds = Math.round(Math.max(MIN_CLIP_SECONDS, shotLength(c, clipSeconds)) * 30) / 30;
+            // The clip ends where its shot ends (rounded to a frame) so it never changes picture under the line,
+      // and before any later keyframe in it that carries text (a title card appearing mid-shot).
+      let span = shotLength(c, clipSeconds);
+      const textAt = candidates
+        .filter((x) => x.movie === c.movie && x.time > c.time && x.time < c.time + span && textFrames.has(x.index))
+        .map((x) => x.time - c.time);
+      if (textAt.length) span = Math.min(span, Math.min(...textAt) - 0.2);
+      if (span < MIN_CLIP_SECONDS) continue;
+      const seconds = Math.round(Math.max(MIN_CLIP_SECONDS, span) * 30) / 30;
       try {
         await cutClip(r.file, c.time, seconds, path.join(o.episodeDir, file));
       } catch (err) {

@@ -192,7 +192,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     // A ranking entry with a shot list: each sentence opens on what it names.
     const mine = seg.kind === "beat" ? windows.filter((w) => w.entry === entry) : [];
     if (mine.length && entry !== undefined) {
-      const entryImages = images.map((_, k) => k).filter((k) => images[k]!.beatIndex === entry && images[k]!.kind !== "capsule");
+            const allEntry = images.map((_, k) => k).filter((k) => images[k]!.beatIndex === entry && images[k]!.kind !== "capsule");
+      const noHero = allEntry.filter((k) => images[k]!.kind !== "hero");
+      const entryImages = noHero.length >= 4 ? noHero : allEntry;
       const entryClips = clips.map((_, k) => k).filter((k) => clips[k]!.beatIndex === entry);
       const leastUsed = (): LongMedia => {
         const pool = entryImages.length ? entryImages : images.map((_, k) => k).filter((k) => images[k]!.beatIndex === undefined);

@@ -156,13 +156,14 @@ const Still: React.FC<{
   aspect: number;
   durationFrames: number;
   move: MovePreset;
-}> = ({ src, aspect, durationFrames, move }) => {
+  fromBlack?: boolean;
+}> = ({ src, aspect, durationFrames, move, fromBlack = false }) => {
   const frame = useCurrentFrame();
   const m = moveTransform(
     move,
     Math.min(1, frame / Math.max(1, durationFrames)),
   );
-  const fade = interpolate(frame, [0, 10], [0, 1], {
+  const fade = interpolate(frame, [0, 10], [fromBlack ? 0 : 1, 1], {
     extrapolateRight: "clamp",
   });
   if (aspect < 0.9) {
@@ -262,6 +263,16 @@ const Plate: React.FC<{ theme: string }> = ({ theme }) => (
   </AbsoluteFill>
 );
 
+/** Frames a still overlaps the shot before it, so cuts dissolve instead of dipping to black. */
+const XFADE = 9;
+
+/** Fades its contents in over the first frames of its sequence; what is behind shows through. */
+const FadeIn: React.FC<{ frames: number; children: React.ReactNode }> = ({ frames, children }) => {
+  const frame = useCurrentFrame();
+  const o = frames > 0 ? interpolate(frame, [0, frames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1;
+  return <AbsoluteFill style={{ opacity: o }}>{children}</AbsoluteFill>;
+};
+
 const Backdrop: React.FC<{
   plan: LongPlan;
   images: LongImageProp[];
@@ -274,7 +285,12 @@ const Backdrop: React.FC<{
       const img = s.media.type === "image" ? images[s.media.index] : undefined;
       const clip = s.media.type === "clip" ? clips[s.media.index] : undefined;
       return (
-        <Sequence key={i} from={s.start} durationInFrames={len} layout="none">
+                <Sequence
+          key={i}
+          from={img && i > 0 ? s.start - Math.min(XFADE, s.start) : s.start}
+          durationInFrames={img && i > 0 ? len + Math.min(XFADE, s.start) : len}
+          layout="none"
+        >
           {clip ? (
             <>
               <Clip src={clip.src} />
@@ -300,7 +316,9 @@ const Backdrop: React.FC<{
             </>
           ) : img ? (
             <>
-              <Still src={img.src} aspect={img.aspect} durationFrames={len} move={s.move} />
+                          <FadeIn frames={i > 0 ? Math.min(XFADE, s.start) : 0}>
+              <Still src={img.src} aspect={img.aspect} durationFrames={len + (i > 0 ? Math.min(XFADE, s.start) : 0)} move={s.move} fromBlack={i === 0} />
+            </FadeIn>
               {img.credit ? (
                 <div
                   style={{

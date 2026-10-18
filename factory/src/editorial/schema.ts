@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { speakable } from "../voice/speakable.ts";
 
 export const STORY_TYPES = [
   "release_date",
@@ -117,7 +118,7 @@ export type VisionQa = z.infer<typeof VisionQaSchema>;
 
 export function narrationOf(s: Pick<Script, "hook" | "beats" | "pulse_take" | "loop_line">): string {
   return [s.hook, ...s.beats.map((b) => b.narration), s.pulse_take.narration, s.loop_line]
-    .map((t) => t.trim())
+    .map((t) => speakable(t.trim()))
     .filter(Boolean)
     .join(" ");
 }

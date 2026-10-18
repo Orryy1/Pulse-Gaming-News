@@ -15,7 +15,7 @@ function countTo(value: string, p: number): string {
 }
 
 /** Price card: the old price is struck through, the new one lands big, the region label snaps in. */
-export const PriceTag: React.FC<{ price: string; was?: string; region?: string; label?: string; accent: string }> = ({ price, was, region, label, accent }) => {
+export const PriceTag: React.FC<{ price: string; was?: string; region?: string; label?: string; accent: string; others?: string[] }> = ({ price, was, region, label, accent, others = [] }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame - FRAMES.ruleLead;
@@ -35,6 +35,15 @@ export const PriceTag: React.FC<{ price: string; was?: string; region?: string; 
       <div style={{ marginTop: was ? 6 : 14, fontFamily: DISPLAY, fontSize: 196, lineHeight: 0.95, color: COLOUR.paper, textShadow: "0 10px 50px rgba(0,0,0,0.7)", fontVariantNumeric: "tabular-nums", opacity: bigIn, transform: `translateY(${(1 - bigIn) * 24}px)` }}>
         {countTo(price, count)}
       </div>
+      {others.length ? (
+        <div style={{ display: "flex", gap: 14, marginTop: 14, opacity: regionIn }}>
+          {others.map((o) => (
+            <div key={o} style={{ padding: "6px 16px", border: "3px solid rgba(245,245,242,0.5)", borderRadius: 10, fontFamily: DISPLAY, fontSize: 54, color: COLOUR.paper, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>
+              {o}
+            </div>
+          ))}
+        </div>
+      ) : null}
       {region ? (
         <div style={{ display: "inline-block", marginTop: 18, padding: "8px 18px", background: accent, color: COLOUR.ink, fontFamily: BODY, fontWeight: 900, fontSize: 30, letterSpacing: 2, borderRadius: 8, transform: `scale(${regionIn})`, transformOrigin: "left center", textTransform: "uppercase" }}>
           {region}

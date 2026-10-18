@@ -1,6 +1,6 @@
 # Pulse factory
 
-Makes up to four premium gaming Shorts a day on this PC and publishes them to YouTube: three news slots (12:00, 16:00, 19:30 London), a reserved breaking lane for huge official stories, and a ranking Short on Tuesday, Thursday and Saturday evenings. There are no cloud servers to pay for: it runs in the background, starts at log-on, restarts itself and updates itself from the branch every night.
+Makes up to four premium gaming Shorts a day on this PC and publishes them to YouTube: three news slots timed for the US first (13:00, 17:00, 22:00 London, which is 8am, noon and 5pm Eastern), a reserved breaking lane for huge official stories, a ranking Short on Tuesday, Thursday and Saturday evenings and a long-form ranking on Sunday. Prices lead in US dollars with pounds and euros alongside, and are written out in words for the voice so narration and screen always agree. There are no cloud servers to pay for: it runs in the background, starts at log-on, restarts itself and updates itself from the branch every night.
 
 ```
 RSS (official newsrooms + outlets) + Steam top sellers, polled every 3 minutes

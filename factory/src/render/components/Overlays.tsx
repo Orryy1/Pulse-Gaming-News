@@ -31,7 +31,7 @@ import { PriceTag } from "./cards/PriceTag.tsx";
 import { Ring } from "./cards/Ring.tsx";
 import { Calendar } from "./cards/Calendar.tsx";
 import { BarCompare } from "./cards/BarCompare.tsx";
-import { parseBars } from "./cards/helpers.ts";
+import { parseBars, otherCurrencies } from "./cards/helpers.ts";
 import { RankingCard } from "./cards/RankingCard.tsx";
 import type { ShortImage } from "../props.ts";
 
@@ -283,7 +283,8 @@ export const FactCard: React.FC<{
   images?: ShortImage[];
   rankTotal?: number;
   beatIndex?: number;
-}> = ({ segment, accent, takeLabel, durationInFrames, renderDate, images = [], rankTotal = 0, beatIndex }) => {
+  steamPrices?: { usd?: string; gbp?: string; eur?: string };
+}> = ({ segment, accent, takeLabel, durationInFrames, renderDate, images = [], rankTotal = 0, beatIndex, steamPrices }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const v = segment.visual;
@@ -440,7 +441,7 @@ export const FactCard: React.FC<{
     v.kind === "timeline" && v.date_from && v.date_to ? (
       <Timeline from={v.date_from} to={v.date_to} label={v.primary} accent={accent} />
     ) : v.kind === "price" ? (
-      <PriceTag price={v.primary} was={v.was} region={v.region} label={label} accent={accent} />
+      <PriceTag price={v.primary} was={v.was} region={v.region} label={label} accent={accent} others={otherCurrencies(v.primary, v.items, steamPrices)} />
     ) : v.kind === "score" && typeof v.value_a === "number" ? (
       <Ring value={v.value_a} label={label || v.primary} chips={v.items} suffix={/%$/.test(v.primary.trim()) ? "%" : ""} />
     ) : v.kind === "countdown" && v.date_to ? (

@@ -64,3 +64,18 @@ export function parseBars(items: string[]): BarRow[] {
   if (rows.length && !rows.some((r) => r.highlight)) rows[0]!.highlight = true;
   return rows.slice(0, 5);
 }
+
+/**
+ * The same price in the other currencies: the writer's own figures from the
+ * sources first, else Steam's regional prices, but only when the card's price
+ * is one of Steam's (so a DLC price never borrows the base game's).
+ */
+export function otherCurrencies(primary: string, items: string[] | undefined, steam?: { usd?: string; gbp?: string; eur?: string }): string[] {
+  const p = primary.trim();
+  const money = (x: string) => /^[$£€]\s?\d/.test(x.trim());
+  const own = (items ?? []).map((x) => x.trim()).filter((x) => money(x) && x !== p);
+  if (own.length) return own.slice(0, 2);
+  const all = [steam?.usd, steam?.gbp, steam?.eur].filter((x): x is string => Boolean(x));
+  if (!all.includes(p)) return [];
+  return all.filter((x) => x !== p).slice(0, 2);
+}

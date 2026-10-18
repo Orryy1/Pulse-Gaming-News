@@ -30,6 +30,7 @@ import { selectStory, writeScript, factCheck, validateScript } from "./editorial
 import { narrationOf, type Script } from "./editorial/schema.ts";
 import { buildTags, hashtags, keywordLead, pinnedComment, polishTitle, thumbTitle } from "./editorial/seo.ts";
 import { pickVoice } from "./voice/index.ts";
+import { speakable } from "./voice/speakable.ts";
 import { buildSegments, srtFromWords, type SegmentInput } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
@@ -516,10 +517,11 @@ async function gatherMedia(s: Services, ep: Episode, dir: string): Promise<Pick<
 
 export function segmentInputs(script: Script): SegmentInput[] {
   return [
-    { kind: "hook", text: script.hook },
-    ...script.beats.map((b) => ({ kind: "beat" as const, text: b.narration, visual: b.visual })),
-    { kind: "take", text: script.pulse_take.narration, label: script.pulse_take.label, visual: { kind: "title" as const, primary: script.pulse_take.on_screen, secondary: "" } },
-    { kind: "loop", text: script.loop_line },
+    // The same speakable text the voice was given, so segment timings line up word for word.
+    { kind: "hook", text: speakable(script.hook) },
+    ...script.beats.map((b) => ({ kind: "beat" as const, text: speakable(b.narration), visual: b.visual })),
+    { kind: "take", text: speakable(script.pulse_take.narration), label: script.pulse_take.label, visual: { kind: "title" as const, primary: script.pulse_take.on_screen, secondary: "" } },
+    { kind: "loop", text: speakable(script.loop_line) },
   ];
 }
 
@@ -665,7 +667,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
   for (const img of assets.images ?? []) if (!img.blurFile) img.blurFile = await blurPlate(dir, img.file).catch(() => undefined);
   for (const clip of assets.clips ?? []) if (!clip.blurFile) clip.blurFile = await blurPlate(dir, clip.file).catch(() => undefined);
-  const steamLite = assets.steam?.facts ? { currentPlayers: assets.steam.facts.currentPlayers, positivePercent: assets.steam.facts.positivePercent, totalReviews: assets.steam.facts.totalReviews, price: assets.steam.facts.price, releaseDate: assets.steam.facts.releaseDate, metacritic: assets.steam.facts.metacritic } : null;
+  const steamLite = assets.steam?.facts ? { currentPlayers: assets.steam.facts.currentPlayers, positivePercent: assets.steam.facts.positivePercent, totalReviews: assets.steam.facts.totalReviews, price: assets.steam.facts.price, prices: assets.steam.facts.prices, releaseDate: assets.steam.facts.releaseDate, metacritic: assets.steam.facts.metacritic } : null;
   // Plan then render: the plan is persisted so a retry renders the identical Short.
   // A red rubric rebuilds the plan once with another variant, then fails the episode.
   const planInput = {
@@ -956,7 +958,7 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], sy
     // The narrator is a cloned voice, so disclose it (as Codex did). The
     // label does not affect reach or monetisation.
     containsSyntheticMedia: syntheticMedia,
-    defaultLanguage: "en-GB",
+    defaultLanguage: "en",
   };
 }
 
@@ -1025,8 +1027,8 @@ async function addCaptions(s: Services, ep: Episode): Promise<void> {
   const file = path.join(episodeDir(s.cfg, ep.id), ep.assets_json!.srt!);
   try {
     const yt = s.youtube();
-    if ((await yt.listCaptions(ep.youtube_video_id!)).some((c) => c.language === "en-GB")) return;
-    const id = await yt.insertCaption(ep.youtube_video_id!, file, "en-GB", "English");
+    if ((await yt.listCaptions(ep.youtube_video_id!)).some((c) => c.language === "en" || c.language === "en-GB")) return;
+    const id = await yt.insertCaption(ep.youtube_video_id!, file, "en", "English");
     await quotaAdd(s.db, s.now(), QUOTA.captions);
     await logEvent(s.db, ep.id, "captions_uploaded", { id });
   } catch (err) {

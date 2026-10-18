@@ -46,7 +46,8 @@ export interface SteamApp {
 export interface SteamFacts {
   name: string;
   storeUrl: string;
-  price?: string;
+  price?: string; // US price, the channel's lead currency
+  prices?: { usd?: string; gbp?: string; eur?: string };
   releaseDate?: string;
   comingSoon?: boolean;
   metacritic?: number;
@@ -79,11 +80,11 @@ export function bestMatch(term: string, items: StoreSearchItem[]): StoreSearchIt
 
 export async function findSteamApp(term: string): Promise<SteamApp | undefined> {
   if (!term.trim()) return undefined;
-  const search = await fetchWithTimeout(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(term)}&cc=gb&l=english`);
+  const search = await fetchWithTimeout(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(term)}&cc=us&l=english`);
   if (!search.ok) return undefined;
   const found = bestMatch(term, ((await search.json()) as { items?: StoreSearchItem[] }).items ?? []);
   if (!found) return undefined;
-  const res = await fetchWithTimeout(`https://store.steampowered.com/api/appdetails?appids=${found.id}&cc=gb&l=english`);
+  const res = await fetchWithTimeout(`https://store.steampowered.com/api/appdetails?appids=${found.id}&cc=us&l=english`);
   const details = res.ok ? (((await res.json()) as Record<string, any>)[String(found.id)]?.data ?? {}) : {};
   return { appId: found.id, name: details.name ?? found.name, details };
 }
@@ -97,18 +98,33 @@ async function json(url: string): Promise<any> {
   }
 }
 
+const SYMBOL: Record<string, string> = { USD: "$", GBP: "£", EUR: "€" };
+
+/** "$69.99" / "£59.99" / "€69.99" from Steam's price_overview (amounts in cents), whatever its own formatting. */
+export function formatPrice(p: { currency?: string; final?: number } | undefined): string | undefined {
+  if (!p || typeof p.final !== "number" || !p.currency || !SYMBOL[p.currency]) return undefined;
+  return `${SYMBOL[p.currency]}${(p.final / 100).toFixed(2)}`;
+}
+
 /** Live numbers a viewer can't get from the headline: the raw material for a data card. */
 export async function steamFacts(app: SteamApp): Promise<SteamFacts> {
   const d = app.details;
-  const [reviews, players] = await Promise.all([
+  const [reviews, players, gb, de] = await Promise.all([
     json(`https://store.steampowered.com/appreviews/${app.appId}?json=1&language=all&purchase_type=all&num_per_page=0`),
     json(`https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=${app.appId}`),
+    json(`https://store.steampowered.com/api/appdetails?appids=${app.appId}&cc=gb&filters=price_overview`),
+    json(`https://store.steampowered.com/api/appdetails?appids=${app.appId}&cc=de&filters=price_overview`),
   ]);
+  const regional = (r: any) => r?.[String(app.appId)]?.data?.price_overview;
+  const prices = d.is_free
+    ? undefined
+    : { usd: formatPrice(d.price_overview), gbp: formatPrice(regional(gb)), eur: formatPrice(regional(de)) };
   const q = reviews?.query_summary;
   return {
     name: app.name,
     storeUrl: `https://store.steampowered.com/app/${app.appId}/`,
-    price: d.is_free ? "Free" : d.price_overview?.final_formatted || undefined,
+    price: d.is_free ? "Free" : formatPrice(d.price_overview) || d.price_overview?.final_formatted || undefined,
+    prices: prices && (prices.usd || prices.gbp || prices.eur) ? prices : undefined,
     releaseDate: d.release_date?.date || undefined,
     comingSoon: d.release_date?.coming_soon,
     metacritic: d.metacritic?.score,
@@ -123,7 +139,7 @@ export async function steamFacts(app: SteamApp): Promise<SteamFacts> {
 export function factsText(f: SteamFacts): string {
   const lines = [
     `Game: ${f.name}`,
-    f.price && `Current UK price: ${f.price}`,
+    f.price && `Current Steam price: ${[f.prices?.usd && `${f.prices.usd} (US)`, f.prices?.gbp && `${f.prices.gbp} (UK)`, f.prices?.eur && `${f.prices.eur} (EU)`].filter(Boolean).join(", ") || f.price}`,
     f.releaseDate && `Release date: ${f.releaseDate}${f.comingSoon ? " (upcoming)" : ""}`,
     f.metacritic && `Metacritic: ${f.metacritic}`,
     f.reviewSummary && `Steam user reviews: ${f.reviewSummary}, ${f.positivePercent}% positive of ${f.totalReviews?.toLocaleString("en-GB")}`,

@@ -180,6 +180,7 @@ export const Short: React.FC<ShortProps> = (props) => {
               images={props.images}
               rankTotal={rankTotal}
               beatIndex={beatIndexOf[i]}
+              steamPrices={props.steam?.prices}
             />
           </Sequence>
         ) : null,

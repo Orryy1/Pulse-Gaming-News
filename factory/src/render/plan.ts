@@ -41,6 +41,7 @@ export interface PlanSteam {
   positivePercent?: number;
   totalReviews?: number;
   price?: string;
+  prices?: { usd?: string; gbp?: string; eur?: string };
   releaseDate?: string;
   metacritic?: number;
 }
@@ -565,7 +566,10 @@ export function planShelf(
       label: "POSITIVE STEAM REVIEWS",
     });
   if (steam?.price)
-    statTiles.push({ value: steam.price, label: "STEAM PRICE" });
+    statTiles.push({
+      value: steam.prices?.usd ?? steam.price,
+      label: ["STEAM", steam.prices?.gbp, steam.prices?.eur].filter(Boolean).join(" · "),
+    });
   if (steam?.metacritic)
     statTiles.push({ value: String(steam.metacritic), label: "METACRITIC" });
   let lastDevice: ShelfDevice | undefined;

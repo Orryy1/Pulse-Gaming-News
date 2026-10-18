@@ -92,9 +92,11 @@ export function addDays(dayKeyStr: string, n: number): string {
 export function inWindow(now: Date, window: string, timeZone: string): boolean {
   const [a, b] = window.split("-") as [string, string];
   const day = dayKey(now, timeZone);
-  return (
-    now >= localTime(day, a, timeZone) && now < localTime(day, b, timeZone)
-  );
+  const start = localTime(day, a, timeZone);
+  const end = localTime(day, b, timeZone);
+  // "07:00-03:00" runs past midnight: open from 07:00 today, or until 03:00 this morning.
+  if (b <= a) return now >= start || now < end;
+  return now >= start && now < end;
 }
 
 /** Next instant the window opens (today if still ahead, else tomorrow). */

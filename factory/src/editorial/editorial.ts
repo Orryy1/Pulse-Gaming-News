@@ -122,7 +122,7 @@ export async function writeScript(
   llm: Llm,
   cluster: StoryCluster,
   articles: ArticleText[],
-  opts: { mustLabelRumour: boolean; feedback?: string[]; storeData?: string },
+  opts: { mustLabelRumour: boolean; feedback?: string[]; storeData?: string; lessons?: string },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
     ? "\nThis story is NOT confirmed by an official source or two independent outlets. Set is_rumour true and attribute every claim to whoever reported it."
@@ -132,7 +132,7 @@ export async function writeScript(
     : "";
   return llm.structured({
     system: scriptPrompt(),
-    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${feedback}`,
+    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${opts.lessons ? `\n\n${opts.lessons}` : ""}${feedback}`,
     schema: ScriptSchema,
     effort: "medium",
   });

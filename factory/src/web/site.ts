@@ -56,9 +56,14 @@ export function articleParagraphs(s: Script): string[] {
   const paras: string[] = [s.hook.trim()];
   for (let i = 0; i < beats.length; i += 2)
     paras.push(beats.slice(i, i + 2).join(" "));
-  if (s.pulse_take.narration.trim())
+  const take = s.pulse_take.narration.trim();
+  const label = s.pulse_take.label.trim().toLowerCase();
+  // "Our read: ..." already names itself; only an unlabelled take gets the card's label in front.
+  if (take)
     paras.push(
-      `${s.pulse_take.label ? `${s.pulse_take.label.replace(/^\w/, (c) => c.toUpperCase())}: ` : ""}${s.pulse_take.narration.trim()}`,
+      !label || take.toLowerCase().startsWith(label)
+        ? take
+        : `${label.replace(/^\w/, (c) => c.toUpperCase())}: ${take}`,
     );
   return paras.filter(Boolean);
 }
@@ -117,7 +122,12 @@ export function articlePage(
         products,
         tags,
         country,
-      }).replace(/<h1>[^<]*<\/h1><p>[^<]*<\/p>/, "")
+      })
+        .replace(/<h1>[^<]*<\/h1><p>[^<]*<\/p>/, "")
+        .replace(
+          /<p style="font-size:13px[^"]*">As an Amazon Associate[^<]*<\/p>/,
+          "",
+        )
     : "";
   const body = `<p class="meta">${new Date(ep.live_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" })}${s.is_rumour ? " · Unconfirmed report" : ""}</p>
 <h1>${esc(title)}</h1>

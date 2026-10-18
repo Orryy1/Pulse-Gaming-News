@@ -62,3 +62,33 @@ test("the digest is due on Monday from 09:00 London, once", async () => {
   assert.equal(await digestDue(db, cfg, new Date("2026-10-26T09:00:00Z")), "2026-10-26", "next Monday");
   await db.close();
 });
+
+import { captureRetention, retentionNotes, hookLessons } from "../src/analytics.ts";
+
+test("retention: captured once a Short is four days old, then taught to the editor and the writer", async () => {
+  const db = await testDb();
+  const now = new Date();
+  const hooks = ["Strong hook one.", "Strong hook two.", "Middling hook.", "Weak hook four.", "Weakest hook."];
+  for (const [i, hook] of hooks.entries())
+    await db.query(
+      `INSERT INTO episodes (id, story_hash, story_json, status, lane, script_json, youtube_video_id, publish_at, updated_at)
+       VALUES ($1, $1, '{"headline":"x","items":[]}', 'published', 'news', $2, $3, now() - interval '5 days', now())`,
+      [`ep_r${i}`, JSON.stringify(goodScript({ hook, youtube: { ...goodScript().youtube, title: `Title ${i}` } })), `vid${i}`],
+    );
+  const asked: string[][] = [];
+  const yt = {
+    retention: async (ids: string[]) => {
+      asked.push(ids);
+      return new Map(ids.map((id, k) => [id, { views: 100, avgViewSeconds: 30, avgViewPercent: 90 - k * 15, subscribersGained: 5 - k }]));
+    },
+  };
+  assert.equal(await captureRetention(db, yt, now), 5);
+  assert.equal(await captureRetention(db, yt, now), 0); // once only
+  assert.equal(asked.length, 1);
+  const notes = await retentionNotes(db, now);
+  assert.match(notes, /Held best:\n- "Title 0": 90% watched on average, \+5 subscribers/);
+  const lessons = await hookLessons(db, now);
+  assert.match(lessons, /90%: "Strong hook one\."/);
+  assert.match(lessons, /lost them:[\s\S]*30%: "Weakest hook\."/);
+  await db.close();
+});

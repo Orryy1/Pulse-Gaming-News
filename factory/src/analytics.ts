@@ -292,3 +292,97 @@ export async function markDigestSent(db: Db, key: string): Promise<void> {
     [key],
   );
 }
+
+export interface RetentionSource {
+  retention(
+    videoIds: string[],
+    start: string,
+    end: string,
+  ): Promise<Map<string, { views: number; avgViewSeconds: number; avgViewPercent: number; subscribersGained: number }>>;
+}
+
+/**
+ * Once a Short is four days old (Analytics lags about two), record how much of
+ * it people watched and the subscribers it brought: one "retention" row each.
+ */
+export async function captureRetention(db: Db, yt: RetentionSource, now: Date): Promise<number> {
+  const eps = await db.query<{ id: string; youtube_video_id: string; live_at: string }>(
+    `SELECT e.id, e.youtube_video_id, coalesce(e.publish_at, e.updated_at) AS live_at FROM episodes e
+      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL
+        AND coalesce(e.publish_at, e.updated_at) < $1::timestamptz - interval '4 days'
+        AND coalesce(e.publish_at, e.updated_at) > $1::timestamptz - interval '30 days'
+        AND NOT EXISTS (SELECT 1 FROM video_metrics m WHERE m.episode_id = e.id AND m.label = 'retention')
+      LIMIT 100`,
+    [now],
+  );
+  if (!eps.length) return 0;
+  const start = new Date(Math.min(...eps.map((e) => new Date(e.live_at).getTime()))).toISOString().slice(0, 10);
+  const end = now.toISOString().slice(0, 10);
+  const got = await yt.retention(eps.map((e) => e.youtube_video_id), start, end);
+  let n = 0;
+  for (const e of eps) {
+    const r = got.get(e.youtube_video_id);
+    if (!r) continue;
+    await db.query(
+      `INSERT INTO video_metrics (episode_id, label, captured_at, views, likes, comments, raw) VALUES ($1, 'retention', $2, $3, 0, 0, $4)
+       ON CONFLICT (episode_id, label) DO NOTHING`,
+      [e.id, now, r.views, JSON.stringify(r)],
+    );
+    n++;
+  }
+  log("info", "retention captured", { videos: n });
+  return n;
+}
+
+interface RetentionRow {
+  id: string;
+  script_json: Episode["script_json"];
+  raw: { avgViewPercent: number; subscribersGained: number; views: number } | string;
+}
+
+async function retentionRows(db: Db, now: Date): Promise<Array<{ title: string; hook: string; pct: number; subs: number; views: number }>> {
+  const rows = await db.query<RetentionRow>(
+    `SELECT e.id, e.script_json, m.raw FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
+      WHERE m.label = 'retention' AND m.captured_at > $1::timestamptz - interval '45 days'`,
+    [now],
+  );
+  return rows
+    .map((r) => {
+      const raw = typeof r.raw === "string" ? JSON.parse(r.raw) : r.raw;
+      return {
+        title: r.script_json?.youtube?.title ?? r.id,
+        hook: r.script_json?.hook ?? "",
+        pct: Number(raw?.avgViewPercent ?? 0),
+        subs: Number(raw?.subscribersGained ?? 0),
+        views: Number(raw?.views ?? 0),
+      };
+    })
+    .filter((r) => r.views >= 20)
+    .sort((a, b) => b.pct - a.pct);
+}
+
+/** For the editor: which Shorts people watched to the end and which they swiped away from. */
+export async function retentionNotes(db: Db, now: Date): Promise<string> {
+  const rows = await retentionRows(db, now);
+  if (rows.length < 4) return "";
+  const line = (r: (typeof rows)[number]) => `- "${r.title}": ${Math.round(r.pct)}% watched on average, ${r.subs >= 0 ? "+" : ""}${r.subs} subscribers`;
+  return [
+    "How much of each Short people watched (YouTube Analytics, last 45 days). Stories like the best held ones keep viewers; advice, not rules:",
+    "Held best:",
+    ...rows.slice(0, 4).map(line),
+    "Held worst:",
+    ...rows.slice(-3).reverse().map(line),
+  ].join("\n");
+}
+
+/** For the writer: the opening lines that held viewers best, as patterns to learn from (never to copy). */
+export async function hookLessons(db: Db, now: Date): Promise<string> {
+  const rows = (await retentionRows(db, now)).filter((r) => r.hook);
+  if (rows.length < 4) return "";
+  return [
+    "Openings that held our viewers best (average % watched). Learn the pattern, never reuse the words:",
+    ...rows.slice(0, 3).map((r) => `- ${Math.round(r.pct)}%: "${r.hook}"`),
+    "Openings that lost them:",
+    ...rows.slice(-2).map((r) => `- ${Math.round(r.pct)}%: "${r.hook}"`),
+  ].join("\n");
+}

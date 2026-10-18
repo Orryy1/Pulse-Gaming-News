@@ -219,6 +219,35 @@ export class YouTubeClient {
     return out;
   }
 
+  /**
+   * Watch behaviour from YouTube Analytics (needs yt-analytics.readonly): how
+   * much of each video people watched and the subscribers it brought, from
+   * `start` to `end` (YYYY-MM-DD). Analytics lags by about two days.
+   */
+  async retention(
+    videoIds: string[],
+    start: string,
+    end: string,
+  ): Promise<Map<string, { views: number; avgViewSeconds: number; avgViewPercent: number; subscribersGained: number }>> {
+    const out = new Map<string, { views: number; avgViewSeconds: number; avgViewPercent: number; subscribersGained: number }>();
+    if (!videoIds.length) return out;
+    const q = new URLSearchParams({
+      ids: "channel==MINE",
+      startDate: start,
+      endDate: end,
+      metrics: "views,averageViewDuration,averageViewPercentage,subscribersGained",
+      dimensions: "video",
+      filters: `video==${videoIds.slice(0, 200).join(",")}`,
+      maxResults: "200",
+    });
+    const res = await this.fetchFn(`https://youtubeanalytics.googleapis.com/v2/reports?${q}`, { headers: await this.auth() });
+    if (!res.ok) throw await apiError(res, "analytics.reports");
+    for (const r of (((await res.json()) as any).rows ?? []) as Array<[string, number, number, number, number]>) {
+      out.set(String(r[0]), { views: Number(r[1]), avgViewSeconds: Number(r[2]), avgViewPercent: Number(r[3]), subscribersGained: Number(r[4]) });
+    }
+    return out;
+  }
+
   async status(videoId: string): Promise<{ uploadStatus: string; privacyStatus: string; failureReason?: string; rejectionReason?: string } | undefined> {
     const res = await this.fetchFn(`${API}/videos?part=status,processingDetails&id=${videoId}`, { headers: await this.auth() });
     if (!res.ok) throw await apiError(res, "videos.list");

@@ -90,7 +90,7 @@ import {
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { blurPlate } from "./assets/plates.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
-import { captureMetrics, performanceNotes } from "./analytics.ts";
+import { captureMetrics, captureRetention, hookLessons, performanceNotes, retentionNotes } from "./analytics.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import {
   dayKey,
@@ -293,7 +293,7 @@ async function createFromChoice(
     s.llm,
     pool,
     await recentHeadlines(db),
-    await performanceNotes(db, s.now()).catch(() => ""),
+    [await performanceNotes(db, s.now()).catch(() => ""), await retentionNotes(db, s.now()).catch(() => "")].filter(Boolean).join("\n\n"),
   );
   const picked = pool[choice.candidate_index];
   if (!picked) {
@@ -1414,6 +1414,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // Draft, check house rules, fact-check; one rewrite with the problems fed back.
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
+      lessons: await hookLessons(s.db, s.now()).catch(() => ""),
       mustLabelRumour,
       feedback,
       storeData,
@@ -3188,6 +3189,11 @@ export async function tick(
     if (!s.cfg.dryRun)
       await captureMetrics(s.db, s.youtube(), s.now()).catch((err) =>
         log("warn", "metrics capture failed", { error: errorMessage(err) }),
+      );
+    // How much of each Short people watched, once Analytics has the numbers (needs the analytics scope).
+    if (!s.cfg.dryRun)
+      await captureRetention(s.db, s.youtube(), s.now()).catch((err) =>
+        log("warn", "retention capture failed", { error: errorMessage(err) }),
       );
     return { selected };
   });

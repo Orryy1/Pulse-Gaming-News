@@ -537,12 +537,14 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         continue;
       }
       const beatIndex = t.key.startsWith("beat:") ? Number.parseInt(t.key.slice(5), 10) : undefined;
+      const moment = t.key.match(/#m(\d+)$/)?.[1];
       out.push({
         kind: "clip",
         file,
         sourceUrl: r.url,
         durationSeconds: seconds,
         beatIndex,
+        moment: moment === undefined ? undefined : Number(moment),
         role: t.key === "hook" ? "hook" : undefined,
         startSeconds: c.time,
         motion: Math.min(1, c.motion / 40),

@@ -32,6 +32,8 @@ import {
   writeLongform,
 } from "./editorial/longform.ts";
 import { trailerMatchesGame } from "./assets/commons.ts";
+import { rankStills } from "./assets/stillscore.ts";
+import { sentencesOf } from "./editorial/longform.ts";
 import {
   pickPhotos,
   selectDocTopic,
@@ -1866,6 +1868,23 @@ async function gatherMedia(
           });
       }
       try {
+        // A long-form entry with a shot list: a picture for every sentence.
+        if (
+          ep.lane === "longform" &&
+          entry.moments?.length &&
+          script.evergreen_format !== "documentary"
+        ) {
+          await gatherLongEntryMedia(
+            s,
+            script,
+            entry,
+            beatIndex,
+            dir,
+            images,
+            clips,
+          );
+          continue;
+        }
         // A documentary chapter runs minutes: its own gallery, matched footage and archive photos.
         if (script.evergreen_format === "documentary") {
           await gatherChapterMedia(
@@ -2028,6 +2047,8 @@ async function gatherMedia(
       provenance: a.provenance,
       aspect: await s.imageAspect(path.join(dir, a.file)),
       beatIndex: a.beatIndex,
+      moment: a.moment,
+      label: a.label,
     });
   }
   // Lead with the most cinematic art; screenshots fill the middle.
@@ -2076,6 +2097,131 @@ export function chapterFootage(
 
 function titleCaseLabel(label: string): string {
   return label.toLowerCase().replace(/\b[a-z]/g, (m) => m.toUpperCase());
+}
+
+/**
+ * One long-form ranking entry's media, sentence by sentence: the store
+ * gallery (topped up from IGDB), a trailer moment matched to each sentence's
+ * shot note, then a vision pass that gives each sentence the still showing
+ * what it names and drops any picture with text in it.
+ */
+async function gatherLongEntryMedia(
+  s: Services,
+  script: Script,
+  entry: NonNullable<Script["entries"]>[number],
+  beatIndex: number,
+  dir: string,
+  images: Array<VisualAsset & { beatIndex?: number }>,
+  clips: NonNullable<EpisodeAssets["clips"]>,
+): Promise<void> {
+  const edir = path.join(dir, `entry_${beatIndex}`);
+  const rel = (f: string) => path.join(`entry_${beatIndex}`, f);
+  const moments = entry.moments ?? [];
+  const sentences = sentencesOf(script.beats[beatIndex]?.narration ?? "");
+  const targets: FootageTarget[] = moments.slice(0, 6).map((m, k) => ({
+    key: `beat:${beatIndex}#m${k}`,
+    text: `${sentences[k] ?? ""} (show: ${m.show})`,
+    want: script.beats[beatIndex]?.footage?.want ?? "gameplay",
+    energy: "medium",
+    keywords: [entry.game_title, ...m.keywords].slice(0, 4),
+  }));
+  const pushClip = (c: VisualAsset) =>
+    clips.push({
+      file: rel(c.file),
+      sourceUrl: c.sourceUrl,
+      provenance: c.provenance,
+      durationSeconds: Math.min(c.durationSeconds ?? 4, 4.8),
+      beatIndex,
+      moment: c.moment,
+      role: undefined,
+      motion: c.motion,
+      luma: c.luma,
+      label: c.label,
+      reason: c.reason,
+      startSeconds: c.startSeconds,
+    });
+  const mine: Array<VisualAsset & { beatIndex?: number }> = [];
+  try {
+    const eapp = entry.steam_search_term
+      ? await s.findGame(entry.steam_search_term).catch(() => undefined)
+      : undefined;
+    if (eapp) {
+      mine.push(
+        ...(await s.fetchArt(eapp, edir, 12)).filter((a) => a.kind !== "logo"),
+      );
+      if (s.cfg.footage && targets.length)
+        for (const c of capFootage(
+          await s.fetchClips(eapp, edir, targets, targets.length),
+          Math.max(
+            footageBudgetSeconds(eapp),
+            Math.min(24, footageBudgetSeconds(eapp) * 1.2),
+          ),
+          4.8,
+        ))
+          pushClip(c);
+    } else if (s.cfg.footage && targets.length) {
+      const om = await s
+        .fetchOfficialMedia(
+          entry.game_title,
+          edir,
+          targets,
+          targets.length,
+          entry.year ? String(entry.year) : "",
+        )
+        .catch(() => ({ clips: [], stills: [] }) as OfficialMedia);
+      if (
+        om.trailer &&
+        trailerMatchesGame(
+          om.trailer.title,
+          entry.game_title,
+          script.game_title || entry.game_title,
+        )
+      )
+        for (const c of capFootage(om.clips, om.trailer.clipSeconds ?? 0))
+          pushClip(c);
+    }
+    // IGDB tops up a thin gallery (and supplies everything for games off Steam).
+    const have = mine.filter((a) => a.kind !== "capsule").length;
+    if (have < 10)
+      for (const a of await s
+        .igdbArt(entry.game_title, entry.year, edir, 12 - have)
+        .catch(() => [] as VisualAsset[]))
+        if (a.kind !== "capsule" || !mine.some((m) => m.kind === "capsule"))
+          mine.push(a);
+  } catch (err) {
+    log("warn", "long entry media failed", {
+      game: entry.game_title,
+      error: errorMessage(err),
+    });
+  }
+  // The picture editor: a still per sentence, and no picture with text behind the graphics.
+  const stills = mine.filter((a) => a.kind !== "capsule");
+  try {
+    const ranked = await rankStills(
+      s.llm,
+      moments.map((m, k) => ({
+        key: `m${k}`,
+        show: m.show,
+        sentence: sentences[k] ?? "",
+      })),
+      stills.map((a) => ({ file: path.join(edir, a.file) })),
+      path.join(edir, "stillscore"),
+    );
+    for (const [i, a] of stills.entries()) {
+      a.label = ranked.labels.get(i);
+      if (ranked.withText.has(i)) (a as { drop?: boolean }).drop = true;
+    }
+    for (const p of ranked.picks)
+      stills[p.image]!.moment = Number(p.key.slice(1));
+  } catch (err) {
+    log("warn", "still ranking failed; stills keep entry order", {
+      game: entry.game_title,
+      error: errorMessage(err),
+    });
+  }
+  for (const a of mine)
+    if (!(a as { drop?: boolean }).drop)
+      images.push({ ...a, file: rel(a.file), beatIndex });
 }
 
 /**
@@ -2399,12 +2545,20 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     aspect: i.aspect,
     beatIndex: i.beatIndex,
     credit: photoCredit(i),
+    moment: i.moment,
+    label: i.label,
   }));
+  // The shot list per entry, in on-screen order (lowest rank first), for sentence-level pictures and graphics.
+  const moments = [...(script.entries ?? [])]
+    .sort((a, b) => b.rank - a.rank)
+    .map((e) => e.moments ?? []);
+  const hasMoments = moments.some((m) => m.length);
   const clips = (assets.clips ?? []).map((c) => ({
     file: c.file,
     durationSeconds: c.durationSeconds,
     beatIndex: c.beatIndex,
     role: c.role,
+    moment: c.moment,
   }));
   const plan =
     assets.longPlan ??
@@ -2416,13 +2570,16 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         kind: i.kind,
         aspect: i.aspect,
         beatIndex: i.beatIndex,
+        moment: i.moment,
       })),
       clips: clips.map((c) => ({
         durationSeconds: c.durationSeconds,
         beatIndex: c.beatIndex,
         role: c.role,
+        moment: c.moment,
       })),
       variant,
+      momentCounts: hasMoments ? moments.map((m) => m.length) : undefined,
     });
   assets.longPlan = plan;
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
@@ -2470,6 +2627,15 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       endLine: doc
         ? "A new documentary every month · Shorts every day"
         : "A new ranking every week · Shorts every day",
+      moments: hasMoments
+        ? moments.map((ms) =>
+            ms.map((m) => ({
+              show: m.show,
+              graphic: m.graphic,
+              emphasis: m.emphasis,
+            })),
+          )
+        : undefined,
       segments,
       words,
       durationSeconds: duration,

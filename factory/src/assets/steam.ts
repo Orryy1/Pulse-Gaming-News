@@ -29,6 +29,7 @@ export interface VisualAsset {
   luma?: number; // 0-255
   label?: string;
   reason?: string;
+  moment?: number; // long-form: the sentence of the entry this picture was picked for
 }
 
 interface StoreSearchItem {

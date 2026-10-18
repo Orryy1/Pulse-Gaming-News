@@ -39,6 +39,7 @@ function longScript(entries = 10): LongformScript {
       narration: sentence(70, `Entry${i}`),
       verdict_chip: "Pure dread",
       footage: { want: "gameplay", keywords: ["zombie"] },
+      moments: [{ show: "a zombie in the mansion hall", keywords: ["zombie"], graphic: { kind: "none" as const, primary: "", secondary: "", items: [] as string[] }, emphasis: "" }],
     })),
     outro: {
       narration: sentence(60, "Finally"),
@@ -173,4 +174,52 @@ test("the long plan keeps every entry on its own media, never flashes a shot und
   assert.equal(chapters.length, 12);
   assert.match(chapters[1]!, /^\d+:\d\d #10 Resident Evil 10$/);
   assert.match(chapters.at(-1)!, /Our pick$/);
+});
+
+
+import { sentencesOf } from "../src/editorial/longform.ts";
+
+test("moments: one per sentence, and a graphic's figures must be said in the narration", () => {
+  assert.deepEqual(sentencesOf("It sold 25 million copies. Then came Raccoon City! Was it worth it? Yes."), ["It sold 25 million copies.", "Then came Raccoon City!", "Was it worth it?", "Yes."]);
+  const s = longScript();
+  const e = s.entries[0]!;
+  e.narration = "It sold 25 million copies. The mansion still terrifies.";
+  e.moments = [
+    { show: "sales chart", keywords: [], graphic: { kind: "stat", primary: "25 million", secondary: "copies sold", items: [] }, emphasis: "" },
+    { show: "the mansion hall", keywords: [], graphic: { kind: "none", primary: "", secondary: "", items: [] }, emphasis: "the mansion" },
+  ];
+  assert.ok(!validateLongform(s).some((p) => /moments|figure/.test(p)));
+  e.moments[0]!.graphic.primary = "40 million";
+  assert.ok(validateLongform(s).some((p) => /figure the narration does not say/.test(p)));
+  e.moments = e.moments.slice(0, 1);
+  assert.ok(validateLongform(s).some((p) => /2 sentences but 1 moments/.test(p)));
+});
+
+import { momentWindows } from "../src/render/longplan.ts";
+
+test("a long entry with a shot list opens each sentence on its own matched picture", () => {
+  const s = longScript(8);
+  s.entries.forEach((e) => {
+    e.narration = "First thing happens here today. Second thing follows right after. Third thing closes it out.";
+    e.moments = [0, 1, 2].map((k) => ({ show: `shot ${k}`, keywords: [], graphic: { kind: "none" as const, primary: "", secondary: "", items: [] as string[] }, emphasis: "" }));
+  });
+  const script = longformToScript(s);
+  const inputs = segmentInputs(script);
+  const all = inputs.flatMap((x) => x.text.split(/\s+/).filter(Boolean));
+  const words = all.map((text, i) => ({ text, start: i * 0.4, end: i * 0.4 + 0.35 }));
+  const segments = buildSegments(inputs, words, words.at(-1)!.end + 6);
+  const counts = Array.from({ length: 8 }, () => 3);
+  const windows = momentWindows(segments, words, counts);
+  assert.equal(windows.length, 24);
+  assert.ok(windows.every((w) => w.end > w.start));
+  // Entry 2 has a still picked for each sentence and a clip for sentence 1.
+  const images = [0, 1, 2].map((m) => ({ kind: "screenshot", aspect: 1.78, beatIndex: 2, moment: m })).concat([{ kind: "screenshot", aspect: 1.78, beatIndex: 2, moment: undefined as unknown as number }]);
+  const clips = [{ durationSeconds: 3, beatIndex: 2, moment: 1 }];
+  const plan = buildLongPlan({ segments, words, durationSeconds: words.at(-1)!.end + 6, images, clips, variant: 0, momentCounts: counts });
+  const at = (sec: number) => plan.shots.find((x) => x.start <= Math.round(sec * LONG_FPS) && x.end > Math.round(sec * LONG_FPS))!;
+  const w = windows.filter((x) => x.entry === 2);
+  assert.deepEqual(at(w[0]!.start + 0.05).media, { type: "image", index: 0 });
+  assert.deepEqual(at(w[1]!.start + 0.05).media, { type: "clip", index: 0 });
+  assert.deepEqual(at(w[2]!.start + 0.05).media, { type: "image", index: 2 });
+  assert.ok(plan.shots.every((x) => x.end - x.start >= 1 && x.end > x.start));
 });

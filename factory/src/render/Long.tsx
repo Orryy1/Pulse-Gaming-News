@@ -19,7 +19,8 @@ import {
 import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY } from "./components/fonts.ts";
 import { moveTransform, SPRING, type MovePreset } from "./motion.ts";
-import { buildLongPlan, entryOf, type LongPlan } from "./longplan.ts";
+import { buildLongPlan, entryOf, momentWindows, type LongPlan } from "./longplan.ts";
+import { FlashPunch, GrainVignette, KineticCaption, MomentGraphicCard, PopInPicture, type MomentProp } from "./components/LongMoments.tsx";
 import type { Segment } from "./timeline.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 
@@ -29,6 +30,8 @@ export interface LongImageProp {
   aspect: number;
   beatIndex?: number;
   credit?: string; // archive photos: author / licence / source, shown on screen
+  moment?: number;
+  label?: string;
 }
 
 export interface LongClipProp {
@@ -36,6 +39,7 @@ export interface LongClipProp {
   durationSeconds: number;
   beatIndex?: number;
   role?: "hook";
+  moment?: number;
 }
 
 export type LongProps = {
@@ -45,6 +49,7 @@ export type LongProps = {
   theme: string; // franchise or theme name
   footageCredit: string;
   endLine?: string; // the line under the end card
+  moments?: MomentProp[][]; // per ranking entry, one per sentence: graphics, kinetic captions, pop-ins
   segments: Segment[];
   words: Word[];
   images: LongImageProp[];
@@ -974,10 +979,16 @@ export const Long: React.FC<LongProps> = (props) => {
           durationSeconds: c.durationSeconds,
           beatIndex: c.beatIndex,
           role: c.role,
+          moment: c.moment,
         })),
         variant: props.variant,
+        momentCounts: props.moments?.map((m) => m.length),
       }),
     [props, words],
+  );
+  const windows = useMemo(
+    () => (props.moments?.length ? momentWindows(props.segments, words, props.moments.map((m) => m.length)) : []),
+    [props.moments, props.segments, words],
   );
   const starts = props.segments.map((s, i) =>
     i === 0 ? 0 : Math.round(s.start * fps),
@@ -1034,6 +1045,7 @@ export const Long: React.FC<LongProps> = (props) => {
         theme={props.theme}
       />
       <Scrim />
+      <GrainVignette />
       <Brand
         logoSrc={resolveSrc(props.logoSrc)}
         chip={documentary ? "DOCUMENTARY" : total ? `TOP ${total}` : "RANKED"}
@@ -1163,6 +1175,38 @@ export const Long: React.FC<LongProps> = (props) => {
         }
         return null;
       })}
+      {/* Sentence by sentence: the stated fact as a graphic, else a kinetic caption; a pop-in picture over footage. */}
+      {windows.map((w, k) => {
+        const m = props.moments?.[w.entry]?.[w.moment];
+        if (!m) return null;
+        const from = Math.round(w.start * fps);
+        const len = Math.max(1, Math.round((w.end - w.start) * fps));
+        const shot = plan.shots.find((x) => from >= x.start && from < x.end);
+        const pic = props.images.find((im) => im.beatIndex === w.entry && im.moment === w.moment);
+        const showPop = m.graphic.kind === "none" && shot?.media.type === "clip" && pic && w.moment > 0;
+        return (
+          <Sequence key={`m${k}`} from={from} durationInFrames={len} layout="none">
+            {m.graphic.kind !== "none" ? (
+              <MomentGraphicCard g={m.graphic} len={len} />
+            ) : m.emphasis && w.moment > 0 ? (
+              <KineticCaption text={m.emphasis} len={len} />
+            ) : null}
+            {showPop ? (
+              <Sequence from={Math.min(30, Math.max(0, len - 90))} layout="none">
+                <PopInPicture src={pic!.src} caption={pic!.label ?? ""} len={len - 30} side={w.moment % 2 ? "right" : "left"} />
+              </Sequence>
+            ) : null}
+          </Sequence>
+        );
+      })}
+      {/* A white punch as each entry lands. */}
+      {props.segments.map((s, i) =>
+        s.kind === "beat" && (s.visual?.kind === "rank" || s.visual?.kind === "chapter") && i > 0 ? (
+          <Sequence key={`f${i}`} from={starts[i]!} durationInFrames={12} layout="none">
+            <FlashPunch />
+          </Sequence>
+        ) : null,
+      )}
       {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
       {props.musicSrc ? (
         <Audio src={resolveSrc(props.musicSrc)!} volume={musicVolume} loop />

@@ -18,12 +18,61 @@ export interface LongImage {
   kind: string;
   aspect: number;
   beatIndex?: number;
+  moment?: number; // the sentence of the entry it was picked for
 }
 
 export interface LongClip {
   durationSeconds: number;
   beatIndex?: number;
   role?: "hook";
+  moment?: number;
+}
+
+/** One sentence of a ranking entry on the timeline (seconds). */
+export interface MomentWindow {
+  entry: number;
+  moment: number;
+  start: number;
+  end: number;
+}
+
+/** Sentences as the script splits them (kept here so the renderer needs no editorial code). */
+export function splitSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9"“'‘])/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Where each sentence of each ranking entry starts and ends, from the voice's
+ * word timings: sentence k begins at the word that follows the previous
+ * sentences' words. counts[e] is the number of moments entry e has.
+ */
+export function momentWindows(
+  segments: Segment[],
+  words: Array<{ start: number; end: number }>,
+  counts: number[],
+): MomentWindow[] {
+  const out: MomentWindow[] = [];
+  for (const [i, seg] of segments.entries()) {
+    if (seg.kind !== "beat") continue;
+    const e = entryOf(segments, i);
+    const n = e === undefined ? 0 : (counts[e] ?? 0);
+    if (!n || e === undefined) continue;
+    const segEnd = i === segments.length - 1 ? seg.end : segments[i + 1]!.start;
+    const ws = words.filter((w) => w.start >= seg.start - 0.05 && w.start < segEnd);
+    const lens = splitSentences(seg.text).map((x) => x.split(/\s+/).filter(Boolean).length);
+    const k = Math.min(n, lens.length || 1);
+    const starts: number[] = [];
+    let idx = 0;
+    for (let j = 0; j < k; j++) {
+      starts.push(j === 0 ? seg.start : (ws[idx]?.start ?? seg.start));
+      idx += lens[j] ?? 0;
+    }
+    for (let j = 0; j < k; j++) out.push({ entry: e, moment: j, start: starts[j]!, end: j === k - 1 ? segEnd : starts[j + 1]! });
+  }
+  return out;
 }
 
 export interface LongPlanInput {
@@ -33,6 +82,8 @@ export interface LongPlanInput {
   images: LongImage[];
   clips: LongClip[];
   variant: number;
+  /** Moments per ranking entry: when given, each sentence gets its own matched picture. */
+  momentCounts?: number[];
 }
 
 export type LongMedia = { type: "image" | "clip" | "plate"; index: number };
@@ -96,12 +147,76 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   const same = (a: LongMedia | undefined, b: LongMedia) =>
     !!a && a.type === b.type && a.index === b.index;
 
+  const windows = input.momentCounts?.length ? momentWindows(segments, input.words, input.momentCounts) : [];
+  /** Fills [from, to) with a queue of media, never stretching a clip and never leaving a sliver. */
+  const fill = (seg: number, from: number, to: number, queue: LongMedia[], fallback: () => LongMedia) => {
+    let at = from;
+    while (at < to) {
+      const remaining = to - at;
+      if (remaining < MIN_SHOT && shots.length && shots[shots.length - 1]!.segment === seg && shots[shots.length - 1]!.media.type !== "clip") {
+        shots[shots.length - 1]!.end = to;
+        break;
+      }
+      let media = queue.shift() ?? fallback();
+      if (same(last, media) && queue.length) {
+        queue.push(media);
+        media = queue.shift()!;
+      }
+      let len: number;
+      if (media.type === "clip") {
+        len = Math.min(clipFrames[media.index]!, remaining);
+        const left = remaining - len;
+        if (left > 0 && left < MIN_SHOT) len -= MIN_SHOT - left;
+        if (len < MIN_SHOT) {
+          media = fallback();
+          len = Math.min(MAX_STILL_SHOT, remaining);
+        } else clipUsed[media.index] = true;
+      } else {
+        len = Math.min(STILL_SHOT + ((shotIndex * 37 + variant * 11) % 60) - 30, remaining, MAX_STILL_SHOT);
+        if (remaining - len < MIN_SHOT) len = remaining;
+      }
+      if (media.type === "image") stillUses[media.index]!++;
+      shots.push({ start: at, end: at + len, segment: seg, media, move: shotIndex === 0 ? "pushIn" : MOVES[(shotIndex * 7 + variant) % MOVES.length]! });
+      last = media;
+      at += len;
+      shotIndex++;
+    }
+  };
+
   for (const [i, seg] of segments.entries()) {
     const start = i === 0 ? 0 : toFrame(seg.start);
     const end =
       i === segments.length - 1 ? totalFrames : toFrame(segments[i + 1]!.start);
     if (end - start <= 0) continue;
     const entry = entryOf(segments, i);
+    // A ranking entry with a shot list: each sentence opens on what it names.
+    const mine = seg.kind === "beat" ? windows.filter((w) => w.entry === entry) : [];
+    if (mine.length && entry !== undefined) {
+      const entryImages = images.map((_, k) => k).filter((k) => images[k]!.beatIndex === entry && images[k]!.kind !== "capsule");
+      const entryClips = clips.map((_, k) => k).filter((k) => clips[k]!.beatIndex === entry);
+      const leastUsed = (): LongMedia => {
+        const pool = entryImages.length ? entryImages : images.map((_, k) => k).filter((k) => images[k]!.beatIndex === undefined);
+        if (!pool.length) return { type: "plate", index: 0 };
+        const pick = [...pool].sort((a, b) => stillUses[a]! - stillUses[b]! || a - b).find((k) => !same(last, { type: "image", index: k })) ?? pool[0]!;
+        return { type: "image", index: pick };
+      };
+      for (const [j, w] of mine.entries()) {
+        const from = j === 0 ? start : Math.max(start, toFrame(w.start));
+        const to = j === mine.length - 1 ? end : Math.min(end, toFrame(mine[j + 1]!.start));
+        if (to <= from) continue;
+        const clip = entryClips.find((k) => clips[k]!.moment === w.moment && !clipUsed[k]);
+        const still = entryImages.find((k) => images[k]!.moment === w.moment);
+        const spare = entryClips.find((k) => clips[k]!.moment === undefined && !clipUsed[k]);
+        const queue: LongMedia[] = [];
+        // The entry opens on its art so the rank card lands over a picture; later sentences open on their moment.
+        if (j === 0 && still !== undefined) queue.push({ type: "image", index: still });
+        if (clip !== undefined) queue.push({ type: "clip", index: clip });
+        else if (spare !== undefined) queue.push({ type: "clip", index: spare });
+        if (j !== 0 && still !== undefined) queue.push({ type: "image", index: still });
+        fill(i, from, to, queue, leastUsed);
+      }
+      continue;
+    }
     // The pool: the entry's own media, or the topic's untagged media for the intro; the outro may reuse the winner's.
     const ownClips = clips
       .map((c, k) => k)

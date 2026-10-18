@@ -26,6 +26,37 @@ const HOUSE = `You write for Pulse Gaming News, a fast, credible YouTube channel
 American English spelling for a US-first audience, AP style (no serial comma). Brisk, confident, lightly opinionated, warm. Advertiser-friendly. No "like and subscribe", no "let me know in the comments", no "without further ado". The channel speaks as "Pulse".
 Never invent release years, scores, prices or player counts: use the Steam facts provided or long-established public knowledge. Opinions are framed as opinion.`;
 
+export const GRAPHIC_KINDS = ["none", "stat", "date", "score", "list", "compare"] as const;
+
+/** One sentence's picture and graphic: the editor's shot list, line by line. */
+export const MomentSchema = z.object({
+  show: z
+    .string()
+    .describe("What the picture should show while this sentence is spoken: the specific mission, character, place, weapon, vehicle, mechanic or moment it names, 3-12 words"),
+  keywords: z.array(z.string()).max(4).describe("1-4 short search terms for that picture"),
+  graphic: z.object({
+    kind: z.enum(GRAPHIC_KINDS),
+    primary: z
+      .string()
+      .describe("stat: the figure as the narration says it, e.g. '1 billion dollars'; date: e.g. 'November 2009'; score: e.g. '94'; list: a 2-4 word heading; compare: a 2-4 word heading; none: empty"),
+    secondary: z.string().describe("stat/date/score: what it is, 2-6 words; empty otherwise"),
+    items: z
+      .array(z.string())
+      .max(5)
+      .describe("list: 2-5 short items named in the narration; compare: exactly two 'label:value' rows taken from the narration; empty otherwise"),
+  }),
+  emphasis: z.string().describe("0-4 words from this sentence to flash on screen as a kinetic caption (a name or phrase worth landing), or empty"),
+});
+export type Moment = z.infer<typeof MomentSchema>;
+
+/** Sentences as the narration is split for moments and on-screen timing. */
+export function sentencesOf(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9"“'‘])/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
 export const LongformEntrySchema = z.object({
   rank: z
     .number()
@@ -45,6 +76,9 @@ export const LongformEntrySchema = z.object({
     ),
   verdict_chip: z.string().describe("1-4 words of punch, shown on the card"),
   footage: FootageSchema,
+  moments: z
+    .array(MomentSchema)
+    .describe("Exactly one per sentence of narration, in order: what the picture shows while that sentence is spoken"),
 });
 
 export const LongformScriptSchema = z.object({
@@ -104,7 +138,8 @@ Structure:
 1. intro.narration: 35-80 words. State the premise and the single criterion straight away, then one line on why the order will annoy somebody. No throat-clearing.
 2. entries: ${LONG_ENTRIES_MIN}-${LONG_ENTRIES_MAX}, spoken from the lowest rank to number one. Each narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} words, three to five sentences: what the game is and when it landed, one specific detail a fan would nod at (a mechanic, a level, a moment, a reception fact), and why it sits here by the criterion. Vary the sentence openings; never start two entries the same way. verdict_chip is 1-4 words. footage names the trailer moment to show, with 1-4 keywords.
 3. outro.narration: 35-90 words. Why number one wins by the criterion, then the ranking's hardest call, honestly.
-Keep every number to the Steam facts provided or long-established knowledge. List every factual claim in "claims".`;
+Keep every number to the Steam facts provided or long-established knowledge. List every factual claim in "claims".
+4. moments: for every entry, exactly one per sentence of its narration, in order. This is the picture editor's shot list. "show" names the precise thing on screen while that sentence is spoken (the mission, the character, the map, the weapon, the twist), never a generic "gameplay". About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that entry's narration. "emphasis" lands a name or phrase from the sentence on screen in about a third of the moments; leave it empty when the moment has a graphic.`;
 }
 
 export function longformTopicPrompt(): string {
@@ -175,6 +210,15 @@ export function validateLongform(e: LongformScript): string[] {
   if (ranks.some((r, i) => r !== i + 1))
     p.push("Ranks must be 1..N with no gaps or repeats.");
   for (const x of e.entries) {
+    const sentences = sentencesOf(x.narration);
+    if (x.moments.length !== sentences.length)
+      p.push(`Entry "${x.game_title}" has ${sentences.length} sentences but ${x.moments.length} moments; give exactly one moment per sentence.`);
+    for (const m of x.moments) {
+      const figures = `${m.graphic.primary} ${m.graphic.items.join(" ")}`.match(/\d[\d,.]*/g) ?? [];
+      const said = x.narration.replace(/,/g, "");
+      if (m.graphic.kind !== "none" && figures.some((f) => !said.includes(f.replace(/,/g, ""))))
+        p.push(`Entry "${x.game_title}": the graphic "${m.graphic.primary}" shows a figure the narration does not say.`);
+    }
     const n = wordCount(x.narration);
     if (n < LONG_ENTRY_WORDS_MIN || n > LONG_ENTRY_WORDS_MAX)
       p.push(
@@ -239,6 +283,7 @@ export function longformToScript(e: LongformScript): Script {
     youtube: e.youtube,
     claims: e.claims.map((c) => ({ claim: c.claim, source_url: c.source })),
     entries: entries.map((x) => ({
+      moments: x.moments,
       rank: x.rank,
       game_title: x.game_title,
       steam_search_term: x.steam_search_term,

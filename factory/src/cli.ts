@@ -5,6 +5,7 @@
 //   episodes           list recent episodes
 //   retry <id>         move a failed episode back to the step it failed at
 //   doctor             check the key, YouTube login and scopes, voice server, ffmpeg, disk, tunnel, webhook
+//   tiktok-login       sign in to TikTok once in the factory's own Chrome profile
 
 import { loadConfig, redactedConfig } from "./config.ts";
 import { openDb, migrate } from "./db.ts";
@@ -27,6 +28,15 @@ async function main(): Promise<void> {
     for (const c of clusters.slice(0, 25)) {
       console.log(`${String(c.score).padStart(4)} ${c.corroborated ? "✓" : " "} ${c.hasOfficial ? "OFF" : "   "} ${c.headline}  [${c.sources.join(", ")}]`);
     }
+    return;
+  }
+
+  if (cmd === "tiktok-login") {
+    // One-time: sign in to TikTok in the factory's own Chrome profile (a QR code from the TikTok app works).
+    const { tiktokLogin } = await import("./social/tiktokBrowser.ts");
+    console.log("A Chrome window is opening on TikTok's sign-in page. Sign in to the Pulse Gaming TikTok account; this window closes by itself.");
+    const ok = await tiktokLogin(cfg.dataDir);
+    console.log(ok ? "Signed in. Every Short now posts to TikTok publicly by itself." : "Not signed in within ten minutes. Run this again when ready.");
     return;
   }
 

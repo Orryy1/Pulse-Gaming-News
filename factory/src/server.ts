@@ -322,7 +322,7 @@ async function main(): Promise<void> {
   setTimeout(() => void runTick(services, state), 15_000);
   setInterval(() => void runTick(services, state), cfg.tickMinutes * 60_000);
   // Every public Short follows to Facebook, Instagram, TikTok and X on its own clock, never inside the production tick.
-  const posters = await buildPosters(cfg);
+  const posters = await buildPosters(cfg, (content) => services.notify({ content }));
   log("info", "crossposting", { platforms: Object.keys(posters) });
   const crosspost = () =>
     withLease(db, "crosspost", 30 * 60, () =>

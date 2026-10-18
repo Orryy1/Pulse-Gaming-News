@@ -13,6 +13,7 @@ import type { Script } from "../editorial/schema.ts";
 import { polishTitle } from "../editorial/seo.ts";
 import { logEvent } from "../episodes.ts";
 import { errorMessage, log } from "../lib/util.ts";
+import { markSignedOut, postTikTokBrowser, signedIn, TikTokChallenge, TikTokSignedOut } from "./tiktokBrowser.ts";
 
 export type Platform = "facebook" | "instagram" | "tiktok" | "x";
 export const PLATFORMS: Platform[] = ["x", "facebook", "instagram", "tiktok"];
@@ -217,6 +218,11 @@ export async function crosspostTick(
 
 let tiktokUnaudited = false;
 let tiktokPausedUntil = 0;
+let tiktokPauseReason = "";
+const pauseTikTok = (hours: number, reason: string) => {
+  tiktokPausedUntil = Date.now() + hours * 3_600_000;
+  tiktokPauseReason = reason;
+};
 
 const TIKTOK_SINGLE_CHUNK = 60 * 1024 * 1024;
 
@@ -247,7 +253,7 @@ export async function tiktokFile(file: string): Promise<string> {
 }
 
 /** The posters this PC has credentials for and the owner has switched on. */
-export async function buildPosters(cfg: Config): Promise<SocialPosters> {
+export async function buildPosters(cfg: Config, notifyOwner?: (text: string) => Promise<unknown>): Promise<SocialPosters> {
   const p = await import("./platforms.ts");
   const out: SocialPosters = {};
   if (cfg.crosspost.facebook && cfg.facebookPageId && cfg.facebookPageToken)
@@ -256,7 +262,28 @@ export async function buildPosters(cfg: Config): Promise<SocialPosters> {
     out.instagram = (file, caption, videoUrl) => p.postInstagramReel({ accountId: cfg.instagramAccountId, token: cfg.instagramToken, file, caption, videoUrl });
   if (cfg.crosspost.tiktok && cfg.tiktokClientKey && cfg.tiktokTokenPath && fs.existsSync(cfg.tiktokTokenPath))
     out.tiktok = async (file, caption) => {
-      if (Date.now() < tiktokPausedUntil) throw new Deferred("TikTok inbox is full of unposted drafts");
+      if (Date.now() < tiktokPausedUntil) throw new Deferred(tiktokPauseReason);
+      // Public posting through the owner's own signed-in Chrome profile, when there is one.
+      if (signedIn(cfg.dataDir)) {
+        try {
+          return await postTikTokBrowser({
+            dataDir: cfg.dataDir,
+            file: await tiktokFile(file),
+            caption: `${caption}\n\nNarrated with an AI voice.`,
+            shotsDir: path.join(cfg.dataDir, "logs", "tiktok"),
+          });
+        } catch (err) {
+          if (err instanceof TikTokChallenge) {
+            pauseTikTok(24, "TikTok asked for a verification check; TikTok posting is paused for a day");
+            await notifyOwner?.(`⚠️ TikTok showed a verification check, so TikTok posting is paused for 24 hours. Open TikTok on your phone once to clear it. Screenshot: ${err.screenshot ?? "none"}`);
+            throw new Deferred(tiktokPauseReason);
+          }
+          if (err instanceof TikTokSignedOut) {
+            markSignedOut(cfg.dataDir);
+            await notifyOwner?.("⚠️ TikTok signed the Pulse profile out. Double-click Connect TikTok (Pulse) on the desktop to sign in again. Until then Shorts go to your TikTok inbox as drafts.");
+          } else throw err;
+        }
+      }
       const accessToken = await p.tiktokAccessToken(cfg.tiktokTokenPath, cfg.tiktokClientKey, cfg.tiktokClientSecret);
       file = await tiktokFile(file);
       if (!tiktokUnaudited) {
@@ -272,8 +299,8 @@ export async function buildPosters(cfg: Config): Promise<SocialPosters> {
       } catch (err) {
         // TikTok holds only a few unposted drafts: wait six hours for the owner to post them.
         if (/spam_risk_too_many_pending_share/.test(errorMessage(err))) {
-          tiktokPausedUntil = Date.now() + 6 * 3_600_000;
-          throw new Deferred("TikTok inbox is full of unposted drafts; trying again in six hours");
+          pauseTikTok(6, "TikTok inbox is full of unposted drafts; trying again in six hours");
+          throw new Deferred(tiktokPauseReason);
         }
         throw err;
       }

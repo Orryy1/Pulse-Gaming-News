@@ -7,7 +7,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { COLOUR } from "../../brand.ts";
-import { CONTENT_WIDTH } from "../../layout.ts";
+import { CARD_WIDTH } from "../../layout.ts";
 import { SPRING, ease, FRAMES } from "../../motion.ts";
 import { BODY, DISPLAY } from "../fonts.ts";
 
@@ -42,7 +42,7 @@ export const RankingCard: React.FC<{
     <div
       style={{
         position: "relative",
-        width: CONTENT_WIDTH,
+        width: CARD_WIDTH,
         display: "flex",
         alignItems: "center",
         gap: 28,

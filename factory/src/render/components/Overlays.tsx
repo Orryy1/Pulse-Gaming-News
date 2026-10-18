@@ -28,10 +28,11 @@ import {
 import { DISPLAY, BODY } from "./fonts.ts";
 import { Timeline } from "./cards/Timeline.tsx";
 import { PriceTag } from "./cards/PriceTag.tsx";
+import { Platforms, Versus, Specs, Milestones } from "./cards/InfoCards.tsx";
 import { Ring } from "./cards/Ring.tsx";
 import { Calendar } from "./cards/Calendar.tsx";
 import { BarCompare } from "./cards/BarCompare.tsx";
-import { parseBars, otherCurrencies } from "./cards/helpers.ts";
+import { parseBars, otherCurrencies, parsePairs, parseMilestones } from "./cards/helpers.ts";
 import { RankingCard } from "./cards/RankingCard.tsx";
 import type { ShortImage } from "../props.ts";
 
@@ -448,6 +449,14 @@ export const FactCard: React.FC<{
       <Calendar date={v.date_to} renderDate={renderDate} label={label} accent={accent} />
     ) : v.kind === "compare" && v.items && parseBars(v.items).length >= 2 ? (
       <BarCompare rows={parseBars(v.items)} label={v.primary} accent={accent} />
+    ) : v.kind === "platforms" && v.items?.some((x) => x.trim()) ? (
+      <Platforms platforms={v.items.map((x) => x.trim()).filter(Boolean).slice(0, 6)} label={v.primary} note={v.secondary} accent={accent} />
+    ) : v.kind === "versus" && parsePairs(v.items ?? []).length >= 2 ? (
+      <Versus a={parsePairs(v.items ?? [])[0]!} b={parsePairs(v.items ?? [])[1]!} label={v.primary} accent={accent} />
+    ) : v.kind === "specs" && parsePairs(v.items ?? []).length >= 2 ? (
+      <Specs rows={parsePairs(v.items ?? [])} label={v.primary} accent={accent} />
+    ) : v.kind === "milestones" && parseMilestones(v.items ?? []).length >= 2 ? (
+      <Milestones points={parseMilestones(v.items ?? [])} label={v.primary} accent={accent} />
     ) : null;
   if (dataCard) {
     return (

@@ -1,7 +1,7 @@
 import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOUR } from "../../brand.ts";
-import { CONTENT_WIDTH } from "../../layout.ts";
+import { CARD_WIDTH } from "../../layout.ts";
 import { SPRING, ease, FRAMES } from "../../motion.ts";
 import { BODY, DISPLAY } from "../fonts.ts";
 
@@ -24,7 +24,7 @@ export const PriceTag: React.FC<{ price: string; was?: string; region?: string; 
   const count = interpolate(t, [4, 28], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease.out });
   const regionIn = spring({ frame: t - 26, fps, config: SPRING.SNAP });
   return (
-    <div style={{ position: "relative", width: CONTENT_WIDTH, minHeight: 300 }}>
+    <div style={{ position: "relative", width: CARD_WIDTH, minHeight: 300 }}>
       {label ? <div style={{ fontFamily: BODY, fontWeight: 800, fontSize: 32, letterSpacing: 2, color: COLOUR.muted, textTransform: "uppercase" }}>{label}</div> : null}
       {was ? (
         <div style={{ position: "relative", display: "inline-block", marginTop: 14, fontFamily: DISPLAY, fontSize: 96, color: "rgba(245,245,242,0.6)", lineHeight: 1 }}>

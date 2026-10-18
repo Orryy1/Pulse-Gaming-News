@@ -1,7 +1,7 @@
 import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOUR } from "../../brand.ts";
-import { CONTENT_WIDTH } from "../../layout.ts";
+import { CARD_WIDTH } from "../../layout.ts";
 import { SPRING, FRAMES } from "../../motion.ts";
 import { BODY, DISPLAY } from "../fonts.ts";
 import { daysUntil } from "./helpers.ts";
@@ -34,7 +34,7 @@ export const Calendar: React.FC<{ date: string; renderDate: string; label?: stri
   const cells: Array<number | null> = [...Array(offset).fill(null), ...Array.from({ length: count }, (_, i) => i + 1)];
   const cell = 56;
   return (
-    <div style={{ position: "relative", width: CONTENT_WIDTH, display: "flex", alignItems: "flex-start", gap: 36 }}>
+    <div style={{ position: "relative", width: CARD_WIDTH, display: "flex", alignItems: "flex-start", gap: 36 }}>
       <div style={{ width: cell * 7 + 24, padding: 12, background: "rgba(11,11,14,0.82)", borderRadius: 14, opacity: gridIn }}>
         <div style={{ fontFamily: DISPLAY, fontSize: 34, color: COLOUR.paper, letterSpacing: 1, marginBottom: 6 }}>
           {MONTHS[month]!.toUpperCase()} {year}

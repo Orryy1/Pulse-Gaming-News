@@ -37,3 +37,6 @@ export const HERO_TOP = 400;
 export const SHELF_TOP = BANDS.shelf[0] + 24;
 export const CAPTION_CENTRE = 1320;
 export const CREDIT_TOP = 1560;
+
+/** Width inside the ink panel behind data cards (30 px padding each side). */
+export const CARD_WIDTH = CONTENT_WIDTH - 60;

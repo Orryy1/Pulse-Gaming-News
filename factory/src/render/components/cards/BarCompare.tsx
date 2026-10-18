@@ -1,7 +1,7 @@
 import React from "react";
 import { interpolate, useCurrentFrame } from "remotion";
 import { COLOUR } from "../../brand.ts";
-import { CONTENT_WIDTH } from "../../layout.ts";
+import { CARD_WIDTH } from "../../layout.ts";
 import { ease, FRAMES } from "../../motion.ts";
 import { BODY, DISPLAY } from "../fonts.ts";
 import type { BarRow } from "./helpers.ts";
@@ -12,9 +12,9 @@ export const BarCompare: React.FC<{ rows: BarRow[]; label?: string; accent: stri
   const t = frame - FRAMES.ruleLead;
   const max = Math.max(...rows.map((r) => r.value), 1);
   const labelW = 300;
-  const barMax = CONTENT_WIDTH - labelW - 180;
+  const barMax = CARD_WIDTH - labelW - 180;
   return (
-    <div style={{ width: CONTENT_WIDTH }}>
+    <div style={{ width: CARD_WIDTH }}>
       {label ? <div style={{ fontFamily: BODY, fontWeight: 800, fontSize: 32, letterSpacing: 2, color: COLOUR.muted, textTransform: "uppercase", marginBottom: 14 }}>{label}</div> : null}
       {rows.map((r, i) => {
         const p = interpolate(t - i * 3, [0, 18], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease.out });

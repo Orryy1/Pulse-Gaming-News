@@ -104,6 +104,10 @@ export interface RenderPlan {
 }
 
 const QUIET_KINDS = new Set([
+  "versus",
+  "specs",
+  "milestones",
+  "platforms",
   "stat",
   "date",
   "timeline",
@@ -116,6 +120,9 @@ const QUIET_KINDS = new Set([
 const STILL_KINDS = new Set(["list", "changelog", "quote", "spec", "title"]);
 // Cards that already show a figure: the shelf must not put a second, possibly different, figure under them.
 const NUMERIC_KINDS = new Set([
+  "versus",
+  "specs",
+  "milestones",
   "stat",
   "date",
   "timeline",

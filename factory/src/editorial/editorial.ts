@@ -2,6 +2,7 @@
 // this file enforces the rules that must never depend on model compliance.
 
 import type { Llm } from "./llm.ts";
+import { parsePairs, parseMilestones } from "../render/components/cards/helpers.ts";
 import type { StoryCluster } from "../discovery/cluster.ts";
 import type { ArticleText } from "../discovery/article.ts";
 import {
@@ -54,6 +55,10 @@ Structure:
    - "price" for a price: primary is the US dollar price exactly as written (e.g. $69.99) when the sources or Steam facts give one, else the price as given; was is the old price in the same currency if the story gives one; region is the platform or "US"; items lists the same price in the other currencies (£ and €) only when the sources or Steam facts state them. Speak the US price in the narration.
    - "score" for a review score or rating out of 100: primary is the score as written, value_a the number 0-100, items up to 3 outlet names.
    - "compare" for one number against others (sales, players, prices across platforms): items are 2-5 rows as "label:value" with the subject row marked "*label:value".
+   - "platforms" when the platforms are the news (a port, a new console, a "not on Switch" story): primary is a 2-5 word phrase, items are 1-6 platform names as written (PS5, Xbox Series X|S, PC, Switch 2), secondary may carry a short note such as "Day one on Game Pass".
+   - "versus" for one thing against another (new against old hardware, two games, two prices): primary is a 2-5 word phrase, items are exactly two rows as "label:value", the subject marked with a leading *.
+   - "specs" for a sheet of facts (hardware specs, what an edition includes): primary is a 2-5 word phrase, items are 2-6 rows as "label:value" with short values.
+   - "milestones" for a history of three to five dates (announced, delayed, trailer, launch): primary is a 2-5 word phrase, items are rows as "YYYY-MM:label" or "YYYY-MM-DD:label", oldest first, labels of 1-3 words.
    - "stat" for any other number, "date" for other dates, "quote" for a short official quote (under 12 words, from the sources), "list" for 2-3 short items separated by " | ", "title" for a key phrase.
    Never pad a card with numbers the sources do not give.
    Every beat also carries "footage": what the trailer picture should show while that line is spoken, with 1-4 keywords naming the thing, place, character or action in the line. The picture editor matches real trailer moments to these, so be concrete ("Hyrule Field", "the new ship interior", "a car chase"), and use "calm" for lines whose card needs a quiet background (numbers, dates, prices). "hook_footage" does the same for the opening line and should want the most striking gameplay moment.
@@ -195,6 +200,10 @@ export function validateScript(s: Script): string[] {
     if (b.visual.kind === "price" && !/\d/.test(b.visual.primary)) problems.push(`Price card "${b.visual.primary}" has no price.`);
     if (b.visual.kind === "score" && !(typeof b.visual.value_a === "number" && b.visual.value_a >= 0 && b.visual.value_a <= 100)) problems.push(`Score card "${b.visual.primary}" needs value_a between 0 and 100.`);
     if (b.visual.kind === "compare" && (b.visual.items ?? []).filter((r) => /:\s*[^:]*\d/.test(r)).length < 2) problems.push(`Compare card "${b.visual.primary}" needs at least two label:value rows.`);
+    if (b.visual.kind === "platforms" && !(b.visual.items ?? []).some((x) => x.trim())) problems.push(`Platforms card "${b.visual.primary}" needs at least one platform in items.`);
+    if (b.visual.kind === "versus" && parsePairs(b.visual.items ?? []).length !== 2) problems.push(`Versus card "${b.visual.primary}" needs exactly two label:value rows.`);
+    if (b.visual.kind === "specs" && parsePairs(b.visual.items ?? []).length < 2) problems.push(`Specs card "${b.visual.primary}" needs at least two label:value rows.`);
+    if (b.visual.kind === "milestones" && parseMilestones(b.visual.items ?? []).length < 3) problems.push(`Milestones card "${b.visual.primary}" needs three to five rows as YYYY-MM:label.`);
   }
   return problems;
 }

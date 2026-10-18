@@ -16,7 +16,7 @@ export const STORY_TYPES = [
   "other",
 ] as const;
 
-export const VISUAL_KINDS = ["title", "stat", "date", "quote", "list", "none", "timeline", "price", "score", "countdown", "compare", "rank"] as const;
+export const VISUAL_KINDS = ["title", "stat", "date", "quote", "list", "none", "timeline", "price", "score", "countdown", "compare", "rank", "platforms", "versus", "specs", "milestones"] as const;
 
 export const SelectionSchema = z.object({
   candidate_index: z.number().describe("Index of the chosen candidate, or -1 if none is good enough"),
@@ -49,7 +49,7 @@ export const BeatSchema = z.object({
     was: z.string().optional().describe("price only: the previous price as written, if the story gives one"),
     region: z.string().optional().describe("price only: region or platform the price applies to, e.g. UK or PS5"),
     value_a: z.number().optional().describe("score only: the score 0-100"),
-    items: z.array(z.string()).max(5).optional().describe("compare: 2-5 rows as label:value, the subject row marked with a leading *; score: up to 3 outlet names"),
+    items: z.array(z.string()).max(6).optional().describe("compare: 2-5 rows as label:value, the subject row marked with a leading *; score: up to 3 outlet names; price: the same price in other currencies; platforms: 1-6 platform names; versus: exactly 2 rows as label:value, the subject marked with *; specs: 2-6 rows as label:value; milestones: 3-5 rows as ISO date:label, e.g. 2023-12:Trailer 1"),
   }),
 });
 

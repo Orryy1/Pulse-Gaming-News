@@ -1,7 +1,7 @@
 import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOUR } from "../../brand.ts";
-import { CONTENT_WIDTH } from "../../layout.ts";
+import { CARD_WIDTH } from "../../layout.ts";
 import { SPRING, ease, FRAMES } from "../../motion.ts";
 import { BODY, DISPLAY } from "../fonts.ts";
 import { dateLabel, monthsBetween } from "./helpers.ts";
@@ -21,7 +21,7 @@ export const Timeline: React.FC<{ from: string; to: string; delta?: string; labe
   const pill = spring({ frame: t - 54, fps, config: SPRING.SNAP });
   const months = monthsBetween(from, to);
   const deltaText = delta || (months !== undefined && months !== 0 ? `${months > 0 ? "+" : ""}${months} MONTH${Math.abs(months) === 1 ? "" : "S"}` : "");
-  const W = CONTENT_WIDTH;
+  const W = CARD_WIDTH;
   const x0 = 24;
   const x1 = W - 24;
   return (

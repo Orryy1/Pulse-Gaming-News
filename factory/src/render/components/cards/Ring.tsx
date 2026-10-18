@@ -1,7 +1,7 @@
 import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOUR } from "../../brand.ts";
-import { CONTENT_WIDTH } from "../../layout.ts";
+import { CARD_WIDTH } from "../../layout.ts";
 import { SPRING, FRAMES } from "../../motion.ts";
 import { BODY, DISPLAY } from "../fonts.ts";
 import { bandColour } from "./helpers.ts";
@@ -18,7 +18,7 @@ export const Ring: React.FC<{ value: number; label?: string; chips?: string[]; s
   const c = 2 * Math.PI * r;
   const shown = Math.round(value * p);
   return (
-    <div style={{ position: "relative", width: CONTENT_WIDTH, height: 360, display: "flex", alignItems: "center", gap: 40 }}>
+    <div style={{ position: "relative", width: CARD_WIDTH, height: 360, display: "flex", alignItems: "center", gap: 40 }}>
       <svg width={r * 2 + stroke} height={r * 2 + stroke} viewBox={`0 0 ${r * 2 + stroke} ${r * 2 + stroke}`} style={{ flex: "none" }}>
         <circle cx={r + stroke / 2} cy={r + stroke / 2} r={r} fill="none" stroke="rgba(245,245,242,0.12)" strokeWidth={stroke} />
         <circle

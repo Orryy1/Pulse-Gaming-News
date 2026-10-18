@@ -250,6 +250,7 @@ export function keywordLead(script: Script): string {
   if (script.evergreen_format === "release_radar") return `New games out this week: ${script.headline.replace(/\.$/, "")}. New game releases, games coming out this week, upcoming games, by Pulse Gaming News.`;
   if (script.evergreen_format === "rarest_achievements") return `The rarest achievements in ${script.game_title}: ${script.headline.replace(/\.$/, "")}. ${script.game_title} achievements, hardest achievements, achievement hunting, by Pulse Gaming News.`;
   if (script.evergreen_format === "hardest_achievements") return `The hardest achievements in gaming right now: ${script.headline.replace(/\.$/, "")}. Hardest achievements, rarest achievements, achievement hunting, by Pulse Gaming News.`;
+  if (script.evergreen_format === "steam_climbers") return `The biggest climbers on Steam this week: ${script.headline.replace(/\.$/, "")}. Steam charts, most played games on Steam, trending games, by Pulse Gaming News.`;
   if (script.evergreen_format === "weekly_recap") return `This week in gaming: ${script.headline.replace(/\.$/, "")}. Gaming news recap, biggest gaming news this week, by Pulse Gaming News.`;
   if (n) {
     // A ranking is searched as "every X game ranked"; say so first, then the premise.
@@ -273,6 +274,7 @@ export function pinnedComment(script: Script): string {
   if (script.evergreen_format === "documentary") return `Which ${game} game was the one for you, and which chapter of the story surprised you most? Sources for every chapter are in the description.`;
   if (script.evergreen_format === "release_radar") return `Our pick: ${take}. Which one are you picking up this week?`;
   if (script.evergreen_format && /achievements$/.test(script.evergreen_format)) return `Our pick for the real test: ${take}. Which of these have you unlocked? Be honest.`;
+  if (script.evergreen_format === "steam_climbers") return `Our pick: ${take}. Which of these are you playing right now?`;
   if (script.evergreen_format === "weekly_recap") return `Our read: ${take}. Which story was the biggest one for you this week?`;
   if (script.entries?.length) return `Our pick: ${take}. Which ${game} game would you move up or down the list? Every pick is explained in the video.`;
   const q =

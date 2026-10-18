@@ -99,6 +99,7 @@ export interface Config {
   freeDays: string[];
   recapDays: string[];
   achievementDays: string[];
+  climbersDays: string[]; // the weekly Steam climbers Short
   weeklySlot: string;
   longformDays: string[];
   longformSlot: string;
@@ -234,6 +235,7 @@ export function loadConfig(): Config {
     radarDays: str("RADAR_DAYS", "mon").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     freeDays: str("FREE_DAYS", "thu").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     recapDays: str("RECAP_DAYS", "fri").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    climbersDays: str("CLIMBERS_DAYS", "sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     achievementDays: str("ACHIEVEMENT_DAYS", "wed").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     weeklySlot: str("WEEKLY_SLOT", "20:00"),
     longformDays: str("LONGFORM_DAYS", "sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),

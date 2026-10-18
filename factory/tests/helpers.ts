@@ -101,6 +101,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     crosspost: { facebook: false, instagram: false, tiktok: false, x: false },
     crosspostDelays: { x: 5, facebook: 30, instagram: 60, tiktok: 90 },
     crosspostWindowHours: 36,
+    climbersDays: ["sun"],
     facebookPageId: "",
     facebookPageToken: "",
     instagramAccountId: "",

@@ -25,6 +25,7 @@ import { fetchRockstarNewswire } from "./discovery/newsrooms.ts";
 import { releaseRadar, freeGames } from "./discovery/weekly.ts";
 import { fetchAchievements } from "./discovery/achievements.ts";
 import { researchGame } from "./discovery/wikipedia.ts";
+import { steamClimbers } from "./discovery/charts.ts";
 import { QUOTA, QUOTA_RESERVE_FOR_UPLOAD, quotaAdd, quotaUsed } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
 import { fetchWithTimeout } from "./lib/util.ts";
@@ -59,6 +60,7 @@ export function createServices(db: Db, cfg: Config): Services {
     releaseRadar: (from) => releaseRadar(from),
     freeGames: (now) => freeGames(now),
     achievements: (appId) => fetchAchievements(appId),
+    steamClimbers: (now) => steamClimbers(now),
     research: (title, fallbackQuery, maxChars) => researchGame(title, fallbackQuery, maxChars),
     fetchStock: (dir, targets, gameWords, maxClips) => (cfg.pexelsApiKey ? stockClips(cfg.pexelsApiKey, dir, targets, gameWords, maxClips) : Promise.resolve([])),
     fetchOfficialMedia: async (gameTitle, dir, targets, maxClips, hint, story) => {

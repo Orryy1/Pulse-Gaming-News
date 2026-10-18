@@ -171,6 +171,8 @@ export interface Services {
   releaseRadar(from: Date): Promise<RadarGame[]>;
   freeGames(now: Date): Promise<{ now: FreeGame[]; next: FreeGame[] }>;
   achievements(appId: number): Promise<Achievement[]>;
+  /** This week's biggest climbers on Steam's most-played chart, with their official news. */
+  steamClimbers(now: Date): Promise<import("./discovery/charts.ts").Climber[]>;
   /** A Wikipedia article's useful sections, by title or else by search (documentary research). */
   research(title: string, fallbackQuery: string, maxChars?: number): Promise<import("./discovery/wikipedia.ts").WikiArticle | undefined>;
   downloadImage(url: string, dest: string): Promise<boolean>;
@@ -619,6 +621,37 @@ export async function maybeSelectWeekly(
     score: 0,
     gameHint,
   });
+
+  // Steam's biggest climbers: real chart movement, each with the publisher's own news for the why.
+  const climbDue = evergreenDue(now, plan(cfg.climbersDays), taken);
+  if (climbDue && !(await weeklyTried(db, `climbers:${today}`))) {
+    const games = await s.steamClimbers(now);
+    if (games.length >= 4) {
+      const topic = {
+        candidate_index: 0,
+        format: "steam_climbers" as const,
+        theme: "Steam charts",
+        title_idea: "The Games That Exploded on Steam This Week",
+        criterion: "Places climbed on Steam's most-played chart this week",
+        reason: "weekly Steam climbers",
+      };
+      const brief = games
+        .map(
+          (g) =>
+            `- ${g.name} | ${g.lastRank === undefined ? `new to the top 100 at #${g.rank}` : `#${g.rank} this week, #${g.lastRank} last week (up ${g.climb})`} | peak ${g.peak} players | released ${g.year ?? "unknown"} | Steam news: ${g.news.length ? g.news.join(" || ") : "none in the last two weeks"}`,
+        )
+        .join("\n");
+      const climbers = games.map((g) => ({ name: g.name, rank: g.rank, lastRank: g.lastRank, climb: g.climb, peak: g.peak, year: g.year }));
+      return make(
+        "climbers",
+        base(`weekly:climbers:${today}`, topic.title_idea, "Steam charts"),
+        climbDue,
+        { topic, brief, climbers },
+        "evergreen",
+      );
+    }
+    log("info", "steam climbers skipped: too few games climbed", { found: games.length });
+  }
 
   // Release Radar
   const radarDue = evergreenDue(now, plan(cfg.radarDays), taken);
@@ -1142,6 +1175,64 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
  * entry that names no achievement in the data is dropped, the rest take the
  * data's exact name, percentage and icon, and ranks follow rarity (1 = rarest).
  */
+export interface ClimberData {
+  name: string;
+  rank: number;
+  lastRank?: number;
+  climb: number;
+  peak: number;
+  year?: number;
+}
+
+/**
+ * Climber entries take the chart's numbers, never the writer's: name, year,
+ * the climb label and the peak come from Steam, ranks follow places climbed
+ * (1 = biggest), and an entry that names no game in the data is dropped.
+ */
+export function groundClimbers<
+  T extends {
+    entries: Array<{
+      rank: number;
+      game_title: string;
+      steam_search_term: string;
+      platforms: string;
+      year: number;
+      peak?: number;
+    }>;
+  },
+>(draft: T, data: ClimberData[]): T {
+  const norm = (t: string) =>
+    t
+      .toLowerCase()
+      .replace(/[\u00ae\u2122\u00a9]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const kept = draft.entries
+    .map((e) => {
+      const d =
+        data.find((x) => norm(x.name) === norm(e.game_title)) ??
+        data.find((x) => norm(e.game_title).includes(norm(x.name)) || norm(x.name).includes(norm(e.game_title)));
+      if (!d) return undefined;
+      const name = d.name.replace(/[\u00ae\u2122\u00a9]/g, "").trim();
+      return {
+        ...e,
+        game_title: name,
+        steam_search_term: name,
+        year: d.year ?? e.year,
+        platforms: d.lastRank === undefined ? `NEW AT #${d.rank}` : `UP ${d.climb} TO #${d.rank}`,
+        peak: d.peak,
+        climb: d.climb,
+      };
+    })
+    .filter((e): e is NonNullable<typeof e> => Boolean(e))
+    .filter((e, i, a) => a.findIndex((x) => x.game_title === e.game_title) === i)
+    .sort((a, b) => b.climb - a.climb);
+  return {
+    ...draft,
+    entries: kept.map(({ climb: _c, ...e }, i) => ({ ...e, rank: i + 1 })),
+  };
+}
+
 export function groundAchievements<
   T extends {
     entries: Array<{
@@ -1267,6 +1358,8 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
     } | null
   )?.achievements;
   if (data?.length) draft = groundAchievements(draft, data);
+  const climbers = (ep.factcheck_json as { climbers?: ClimberData[] } | null)?.climbers;
+  if (climbers?.length) draft = groundClimbers(draft, climbers);
   const script = evergreenToScript(draft);
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,

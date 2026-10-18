@@ -85,7 +85,7 @@ export type Script = z.infer<typeof ScriptSchema> & {
   /** Evergreen ranking Shorts carry their entries so media can be gathered per entry. */
   entries?: Array<{ rank: number; game_title: string; steam_search_term: string; year: number; platforms: string; icon?: string }>;
   /** Which evergreen format produced the Short, for its title formula. */
-  evergreen_format?: "ranking" | "best_per_year" | "versus" | "years_later" | "still_good" | "release_radar" | "weekly_recap" | "rarest_achievements" | "hardest_achievements" | "documentary";
+  evergreen_format?: "ranking" | "best_per_year" | "versus" | "years_later" | "still_good" | "release_radar" | "weekly_recap" | "rarest_achievements" | "hardest_achievements" | "documentary" | "steam_climbers";
   /** "long" for the weekly 16:9 ranking video; absent or "short" otherwise. */
   runtime?: "short" | "long";
   /** Long-form: the one criterion the ranking uses, shown under the title. */

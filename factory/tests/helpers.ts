@@ -106,6 +106,8 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     officialTrailers: false,
     ytdlpPath: "yt-dlp",
     pexelsApiKey: "",
+    amazonUkTag: "",
+    amazonUsTag: "",
     oauthRedirectUri: "http://localhost:8080/oauth/callback",
     youtubeChannelId: "",
     musicBed: true,

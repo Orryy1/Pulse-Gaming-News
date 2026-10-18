@@ -74,8 +74,13 @@ export function productsFor(script: Script, free = false): AffiliateLink[] {
     ),
     script.pulse_take.narration,
   ].join(" ");
-  for (const [re, label, query] of HARDWARE)
-    if (re.test(text)) add(label, query);
+  // Most specific first, and a match is removed from the text so "PS5 Pro" does not also list "PS5".
+  let rest = text;
+  for (const [re, label, query] of HARDWARE) {
+    if (!re.test(rest)) continue;
+    add(label, query);
+    rest = rest.replace(new RegExp(re.source, "gi"), " ");
+  }
   return out.slice(0, 10);
 }
 

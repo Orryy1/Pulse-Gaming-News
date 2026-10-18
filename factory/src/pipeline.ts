@@ -30,6 +30,7 @@ import { COLOURS } from "./approval/discord.ts";
 import { selectStory, writeScript, factCheck, validateScript } from "./editorial/editorial.ts";
 import { narrationOf, type Script } from "./editorial/schema.ts";
 import { buildTags, hashtags, keywordLead, pinnedComment, polishTitle, thumbTitle } from "./editorial/seo.ts";
+import { affiliateBlock, affiliateCommentLine, type AffiliateTags } from "./editorial/affiliate.ts";
 import { pickVoice } from "./voice/index.ts";
 import { speakable } from "./voice/speakable.ts";
 import { buildSegments, srtFromWords, type SegmentInput } from "./render/timeline.ts";
@@ -1011,7 +1012,7 @@ export function footageCredits(script: Script, clips: Array<{ provenance: string
   return lines.length ? `\n${lines.join("\n")}` : "";
 }
 
-export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], syntheticMedia = true) {
+export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], syntheticMedia = true, affiliate?: AffiliateTags) {
   const script = ep.script_json!;
   const credits = ep.story_json.items
     .slice(0, 4)
@@ -1024,10 +1025,13 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], sy
   const body = script.youtube.description.trim().replace(/#\w+/g, "").replace(/\s{2,}/g, " ").trim();
   const long = script.runtime === "long";
   const chapters = long ? longChapters(ep) : [];
+  // Shop links for every game and piece of hardware the video names, right under the summary.
+  const shop = affiliateBlock(script, affiliate, { free: ep.lane === "free" });
   const description = [
     keywordLead(script),
     "",
     body,
+    shop,
     script.is_rumour ? "\nThis story is unconfirmed. We will update if it is confirmed or denied." : "",
     chapters.length ? `\nChapters:\n${chapters.join("\n")}` : "",
     credits ? `\nSources:\n${credits}` : "",
@@ -1037,7 +1041,8 @@ export function videoMetadata(ep: Episode, privacy: Config["youtubePrivacy"], sy
     (long ? hashtags(script).filter((h) => h !== "#Shorts").concat("#Gaming") : hashtags(script)).join(" "),
   ]
     .filter((line) => line !== "")
-    .join("\n");
+    .join("\n")
+    .slice(0, 4950);
   return {
     title: polishTitle(script),
     description,
@@ -1083,7 +1088,7 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   let session = ep.upload_session_uri;
   if (!session) {
     const size = (await fs.stat(file)).size;
-    session = await yt.createSession(buildResource(videoMetadata(ep, s.cfg.youtubePrivacy, s.cfg.syntheticMedia), marker), size);
+    session = await yt.createSession(buildResource(videoMetadata(ep, s.cfg.youtubePrivacy, s.cfg.syntheticMedia, { uk: s.cfg.amazonUkTag, us: s.cfg.amazonUsTag || undefined }), marker), size);
     await s.db.query(`UPDATE episodes SET upload_session_uri = $2 WHERE id = $1 AND status = 'uploading'`, [ep.id, session]);
   }
   try {
@@ -1102,7 +1107,8 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
 /** Posts the channel's own first comment (the owner pins it from the app; the API cannot pin). Never blocks a live video. */
 async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
   try {
-    const text = pinnedComment(ep.script_json!);
+    // Comment links are clickable on long videos (not on Shorts): the long video's pin carries its top pick.
+    const text = pinnedComment(ep.script_json!) + (ep.script_json!.runtime === "long" ? affiliateCommentLine(ep.script_json!, { uk: s.cfg.amazonUkTag, us: s.cfg.amazonUsTag || undefined }) : "");
     const id = await s.youtube().insertComment(ep.youtube_video_id!, text);
     await quotaAdd(s.db, s.now(), QUOTA.comment);
     await logEvent(s.db, ep.id, "comment_posted", { id, text });

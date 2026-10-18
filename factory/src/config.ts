@@ -121,6 +121,8 @@ export interface Config {
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
   ytdlpPath: string;
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
+  amazonUkTag: string; // Amazon Associates UK tracking ID
+  amazonUsTag: string; // Amazon Associates US tracking ID, when there is one
   youtubeChannelId: string; // the only channel the factory may connect to
   oauthRedirectUri: string; // where Google returns after consent; this PC's own address works for the desktop OAuth client
   musicBed: boolean;
@@ -235,6 +237,8 @@ export function loadConfig(): Config {
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
     ytdlpPath: str("YTDLP_PATH", "yt-dlp"),
     pexelsApiKey: str("PEXELS_API_KEY"),
+    amazonUkTag: str("AMAZON_AFFILIATE_TAG"),
+    amazonUsTag: str("AMAZON_US_TAG"),
     oauthRedirectUri: str("OAUTH_REDIRECT_URI", "http://localhost:8080/oauth/callback"),
     youtubeChannelId: str("YOUTUBE_CHANNEL_ID", "UCvgNDjtTezrpxL8oUe6mYwA"),
     musicBed: bool("MUSIC_BED", true),

@@ -17,7 +17,7 @@ import {
 
 export const LONG_WORDS_MIN = 650;
 export const LONG_WORDS_MAX = 1150;
-export const LONG_ENTRIES_MIN = 8;
+export const LONG_ENTRIES_MIN = 6; // some themes (mainline campaigns) honestly have six or seven
 export const LONG_ENTRIES_MAX = 12;
 export const LONG_ENTRY_WORDS_MIN = 45;
 export const LONG_ENTRY_WORDS_MAX = 100;

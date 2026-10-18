@@ -28,7 +28,7 @@ House style (non-negotiable):
 - Never present a rumour, leak or report as fact. Rumors use "reportedly", "according to" or "rumored" and name who is reporting it.
 - Never invent facts, numbers, dates, prices or quotes. Every factual claim must come from the provided sources, or be long-established public knowledge (for example a game's original release year).
 - Never say "let me know in the comments", "like and subscribe" or similar calls to action.
-- No personal details about the channel's operator. The channel speaks as "Pulse".`;
+- No personal details about the channel's operator. The channel speaks as "we" ("we're ranking", "our pick", "we think"), never about itself in the third person ("Pulse is ranking"); the name Pulse is on screen and needs no saying.`;
 
 export function selectionPrompt(): string {
   return `${HOUSE_STYLE}

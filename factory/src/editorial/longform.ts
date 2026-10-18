@@ -23,7 +23,7 @@ export const LONG_ENTRY_WORDS_MIN = 45;
 export const LONG_ENTRY_WORDS_MAX = 100;
 
 const HOUSE = `You write for Pulse Gaming News, a fast, credible YouTube channel about video games.
-American English spelling for a US-first audience, AP style (no serial comma). Brisk, confident, lightly opinionated, warm. Advertiser-friendly. No "like and subscribe", no "let me know in the comments", no "without further ado". The channel speaks as "Pulse".
+American English spelling for a US-first audience, AP style (no serial comma). Brisk, confident, lightly opinionated, warm. Advertiser-friendly. No "like and subscribe", no "let me know in the comments", no "without further ado". The channel speaks as "we" ("we're ranking", "our pick", "we think"), never about itself in the third person ("Pulse is ranking"); the name Pulse is on screen and needs no saying.
 Never invent release years, scores, prices or player counts: use the Steam facts provided or long-established public knowledge. Opinions are framed as opinion.`;
 
 export const GRAPHIC_KINDS = ["none", "stat", "date", "score", "list", "compare"] as const;

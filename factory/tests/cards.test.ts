@@ -37,3 +37,15 @@ test("the validator checks the new cards' data", () => {
   assert.match(problems({ kind: "platforms", primary: "Out on", secondary: "", items: [] }), /Platforms card/);
   assert.doesNotMatch(problems({ kind: "specs", primary: "Inside the box", secondary: "", items: ["CPU:8-core", "GPU:RDNA 5"] }), /Specs card/);
 });
+
+import { fitHeadline, headlineLines, sourceLine } from "../src/render/layout.ts";
+
+test("headlines shrink to stay inside the hero band; the source line keeps to three outlets", () => {
+  const words = "SAMSON DEVELOPER LIQUID SWORDS GOES BANKRUPT".split(" ");
+  const size = fitHeadline(words, [132, 112, 96, 84, 72]);
+  assert.ok(size < 132, `size ${size}`);
+  assert.ok(headlineLines(words, size) * size * 1.02 <= 490);
+  assert.equal(fitHeadline("GTA 6 DELAYED".split(" "), [132, 112]), 132);
+  assert.equal(sourceLine("Source: IGN, Eurogamer, VGC, Steam, Polygon"), "IGN, EUROGAMER, VGC +2");
+  assert.equal(sourceLine("Source: Steam / Pulse"), "STEAM, PULSE");
+});

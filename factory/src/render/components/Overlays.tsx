@@ -17,6 +17,8 @@ import {
   SAFE,
   CONTENT_WIDTH,
   LOW_WIDTH,
+  fitHeadline,
+  sourceLine,
 } from "../layout.ts";
 import {
   FRAMES,
@@ -57,7 +59,7 @@ export const TopBar: React.FC<{
   const rowIn = 1;
   const srcRule = 1;
   const srcIn = 1;
-  const source = attribution.replace(/^source:\s*/i, "").toUpperCase();
+  const source = sourceLine(attribution);
   return (
     <AbsoluteFill>
       <div
@@ -127,9 +129,13 @@ export const TopBar: React.FC<{
           left: SAFE.left + 18,
           fontFamily: BODY,
           fontWeight: 700,
-          fontSize: 28,
+          fontSize: source.length > 30 ? 24 : 28,
           color: "rgba(245,245,242,0.88)",
           letterSpacing: 1.5,
+          maxWidth: CONTENT_WIDTH - 18,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
           opacity: srcIn,
           textShadow: "0 2px 12px rgba(0,0,0,0.8)",
           clipPath: `inset(0 ${100 - srcIn * 100}% 0 0)`,
@@ -220,7 +226,8 @@ export const HookHeadline: React.FC<{
     easing: ease.out,
   });
   const out = exitProgress(frame, durationInFrames);
-  const size = words.length > 6 ? TYPE.headlineLong : TYPE.headline;
+  // The largest size whose lines stay inside the hero band, so a long word never pushes into the shelf.
+  const size = fitHeadline(words, [TYPE.headline, TYPE.headlineLong, 96, 84, 72]);
   return (
     <AbsoluteFill
       style={{

@@ -40,3 +40,32 @@ export const CREDIT_TOP = 1560;
 
 /** Width inside the ink panel behind data cards (30 px padding each side). */
 export const CARD_WIDTH = CONTENT_WIDTH - 60;
+
+/** Anton capitals average about 0.52 em wide; 0.56 keeps a margin for W and M. */
+const ANTON_EM = 0.56;
+
+/** Lines a headline wraps to at a font size, laid out word by word as the flex row does. */
+export function headlineLines(words: string[], size: number, width = CONTENT_WIDTH, gap = 22): number {
+  let lines = 1;
+  let used = 0;
+  for (const w of words) {
+    const wpx = w.length * size * ANTON_EM;
+    if (used > 0 && used + gap + wpx > width) {
+      lines++;
+      used = wpx;
+    } else used += (used > 0 ? gap : 0) + wpx;
+  }
+  return lines;
+}
+
+/** The largest headline size whose wrapped lines stay inside the hero band (y 400 to 890). */
+export function fitHeadline(words: string[], sizes: number[] = [132, 112, 96, 84, 72], height = 490): number {
+  for (const s of sizes) if (headlineLines(words, s) * s * 1.02 <= height && words.every((w) => w.length * s * ANTON_EM <= CONTENT_WIDTH)) return s;
+  return sizes[sizes.length - 1]!;
+}
+
+/** The source line: at most three outlets, then "+N", so it never runs off the frame. */
+export function sourceLine(attribution: string): string {
+  const list = attribution.replace(/^sources?:\s*/i, "").toUpperCase().split(/\s*[,/]\s*/).filter(Boolean);
+  return list.length > 3 ? `${list.slice(0, 3).join(", ")} +${list.length - 3}` : list.join(", ");
+}

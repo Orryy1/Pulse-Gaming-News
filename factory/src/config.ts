@@ -245,7 +245,7 @@ export function loadConfig(): Config {
     evergreenSlot: str("EVERGREEN_SLOT", "20:00"),
     evergreenApprovalMode: str("EVERGREEN_APPROVAL_MODE", "manual") as ApprovalMode,
     evergreenApprovalMinutes: int("EVERGREEN_APPROVAL_MINUTES", 120),
-    evergreenMaxSeconds: int("EVERGREEN_MAX_SECONDS", 170),
+    evergreenMaxSeconds: int("EVERGREEN_MAX_SECONDS", 95),
         longformEnabled: bool("LONGFORM_ENABLED", true),
     cutdownsEnabled: bool("CUTDOWNS_ENABLED", false), // on once a sandbox run has been checked
     cutdownSlot: str("CUTDOWN_SLOT", "15:30"),

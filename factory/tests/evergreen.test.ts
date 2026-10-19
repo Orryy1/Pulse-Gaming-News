@@ -35,7 +35,7 @@ function ranking(entries = 8): EvergreenScript {
       steam_search_term: game_title,
       year: 2000 + i,
       platforms: "PC, PS5, Xbox",
-      one_line: `${game_title} sold millions, yet its scares wore thin faster than most of the series.`,
+      one_line: `${game_title} sold millions, yet its scares wore thin faster than the rest.`,
       verdict_chip: i === entries - 1 ? "STILL TERRIFYING" : "PLAY IT ONCE",
       footage: { want: "gameplay", keywords: ["mansion corridor"] },
     })),
@@ -90,7 +90,7 @@ test("the lane's house rules catch bad rankings", () => {
   assert.ok(validateEvergreen(gap).some((p) => p.includes("Ranks must be")));
   const long = ranking();
   long.entries[1]!.one_line = "word ".repeat(25).trim();
-  assert.ok(validateEvergreen(long).some((p) => p.includes("over 18 words")));
+  assert.ok(validateEvergreen(long).some((p) => p.includes("over 15 words")));
   const chip = ranking();
   chip.entries[2]!.verdict_chip = "far too many words for a chip";
   assert.ok(validateEvergreen(chip).some((p) => p.includes("verdict chip")));

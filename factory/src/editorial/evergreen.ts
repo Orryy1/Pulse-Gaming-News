@@ -11,10 +11,11 @@ import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
 import type { SteamFacts } from "../assets/steam.ts";
 import { factsText } from "../assets/steam.ts";
 
-export const EVERGREEN_WORDS_MIN = 165;
-export const EVERGREEN_WORDS_MAX = 300;
-export const EVERGREEN_ENTRIES_MIN = 6;
-export const EVERGREEN_ENTRIES_MAX = 10;
+// Our own numbers (168 Shorts): the share who stay to watch falls as Shorts get longer, and 44-53 s held best.
+export const EVERGREEN_WORDS_MIN = 130;
+export const EVERGREEN_WORDS_MAX = 200;
+export const EVERGREEN_ENTRIES_MIN = 5;
+export const EVERGREEN_ENTRIES_MAX = 8;
 
 export const EVERGREEN_FORMATS = [
   "ranking",
@@ -38,17 +39,17 @@ export const entriesMin = (format: string) => (WEEKLY_FORMATS.has(format) ? 4 : 
 /** What the writer is told for each data-driven format. */
 export const FORMAT_RULES: Record<string, string> = {
   rarest_achievements:
-    "Rarest Achievements rules: the entries are exactly the achievements in the data, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest (lowest percentage), spoken from the most common of them up to the rarest. steam_search_term is the game's name, platforms is the game's name, year is the game's release year. one_line says what the achievement asks and why so few players have it, under 18 words, and may quote its percentage exactly as in the data; never invent a percentage. verdict_chip is 1-4 words such as \"PURE PAIN\" or \"SKILL CHECK\". Do not spoil story twists from hidden achievements beyond what the description says. Hook names the game and the stakes, e.g. \"Fewer than one in fifty players have these Elden Ring achievements.\" The take says which one is the real test and why.",
+    "Rarest Achievements rules: the entries are exactly the achievements in the data, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest (lowest percentage), spoken from the most common of them up to the rarest. steam_search_term is the game's name, platforms is the game's name, year is the game's release year. one_line says what the achievement asks and why so few players have it, under 15 words, and may quote its percentage exactly as in the data; never invent a percentage. verdict_chip is 1-4 words such as \"PURE PAIN\" or \"SKILL CHECK\". Do not spoil story twists from hidden achievements beyond what the description says. Hook names the game and the stakes, e.g. \"Fewer than one in fifty players have these Elden Ring achievements.\" The take says which one is the real test and why.",
   hardest_achievements:
-    "Hardest Achievements rules: the entries are exactly the achievements in the data, one per game, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest, spoken from the least rare up to the rarest. steam_search_term is that achievement's game, platforms is that game's name, year is that game's release year. one_line says what it asks and why so few players have it, under 18 words; quote percentages exactly as in the data, never invent one. verdict_chip is 1-4 words. Hook: \"These are the hardest achievements in today's biggest games, and almost nobody has them.\" style. The take names the one that is truly the hardest and why.",
+    "Hardest Achievements rules: the entries are exactly the achievements in the data, one per game, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest, spoken from the least rare up to the rarest. steam_search_term is that achievement's game, platforms is that game's name, year is that game's release year. one_line says what it asks and why so few players have it, under 15 words; quote percentages exactly as in the data, never invent one. verdict_chip is 1-4 words. Hook: \"These are the hardest achievements in today's biggest games, and almost nobody has them.\" style. The take names the one that is truly the hardest and why.",
   release_radar:
-    "Release Radar rules: the entries are the games in the data and nothing else, spoken in release order, earliest first, so the earliest release has the highest rank number and the last release is rank 1. Set each entry's date to its release date exactly as in the data (YYYY-MM-DD) and steam_search_term to its name. platforms is \"PC (Steam)\" unless the data says more. one_line says what the game is and one reason to care, under 18 words; never invent a price or a platform. verdict_chip is a 1-4 word hook such as \"SOULSLIKE WITH GUNS\". The take names the one to watch. Hook: the week and how many games, e.g. \"Five big games land this week, and one could eat your weekend.\"",
+    "Release Radar rules: the entries are the games in the data and nothing else, spoken in release order, earliest first, so the earliest release has the highest rank number and the last release is rank 1. Set each entry's date to its release date exactly as in the data (YYYY-MM-DD) and steam_search_term to its name. platforms is \"PC (Steam)\" unless the data says more. one_line says what the game is and one reason to care, under 15 words; never invent a price or a platform. verdict_chip is a 1-4 word hook such as \"SOULSLIKE WITH GUNS\". The take names the one to watch. Hook: the week and how many games, e.g. \"Five big games land this week, and one could eat your weekend.\"",
   steam_climbers:
-    "Steam Climbers rules: the entries are exactly the games in the data, ranked by places climbed: rank 1 climbed the most, spoken from the smallest climb up to the biggest. game_title and steam_search_term are the game's name exactly as in the data; year is its release year from the data; platforms is \"PC (Steam)\". one_line says what the game is and why it climbed, under 18 words, using only the Steam news given for it (an update, an event, a sale, a launch); if its news gives no reason, say what it is and that players are flooding back, and never invent a reason. Peak player numbers may be quoted exactly as in the data. verdict_chip is 1-4 words such as \"HUGE UPDATE\" or \"FREE WEEKEND\". Hook: \"These games just exploded on Steam.\" style, naming the week. The take names the climb that matters most and why.",
+    "Steam Climbers rules: the entries are exactly the games in the data, ranked by places climbed: rank 1 climbed the most, spoken from the smallest climb up to the biggest. game_title and steam_search_term are the game's name exactly as in the data; year is its release year from the data; platforms is \"PC (Steam)\". one_line says what the game is and why it climbed, under 15 words, using only the Steam news given for it (an update, an event, a sale, a launch); if its news gives no reason, say what it is and that players are flooding back, and never invent a reason. Peak player numbers may be quoted exactly as in the data. verdict_chip is 1-4 words such as \"HUGE UPDATE\" or \"FREE WEEKEND\". Hook: \"These games just exploded on Steam.\" style, naming the week. The take names the climb that matters most and why.",
   steam_deals:
-    "Steam Deals rules: the entries are exactly the games in the data, ranked by our deal pick: rank 1 is the best deal in the data, spoken from the least to the best. game_title and steam_search_term are the game's name exactly as in the data; year is its release year from the data; platforms is \"PC (Steam)\". one_line says what the game is and its US sale price exactly as in the data, e.g. \"A stylish stealth classic, down to $2.49.\", under 18 words; say prices in US dollars only, never invent a price, a discount or an end date, and never say a sale ends soon. verdict_chip is 1-4 words such as \"ALL-TIME GREAT\" or \"CULT CLASSIC\". Hook: \"These great Steam games cost less than a sandwich right now.\" style. The hook never claims an order (not \"ranked by the biggest cut\"); it sells the prices. The take names the one to grab first and why. youtube.title leads with the best deal and its US price, e.g. \"Hogwarts Legacy Is $5.99 Right Now, Plus 4 More Steam Deals\". Prices change: never promise a price will last.",
+    "Steam Deals rules: the entries are exactly the games in the data, ranked by our deal pick: rank 1 is the best deal in the data, spoken from the least to the best. game_title and steam_search_term are the game's name exactly as in the data; year is its release year from the data; platforms is \"PC (Steam)\". one_line says what the game is and its US sale price exactly as in the data, e.g. \"A stylish stealth classic, down to $2.49.\", under 15 words; say prices in US dollars only, never invent a price, a discount or an end date, and never say a sale ends soon. verdict_chip is 1-4 words such as \"ALL-TIME GREAT\" or \"CULT CLASSIC\". Hook: \"These great Steam games cost less than a sandwich right now.\" style. The hook never claims an order (not \"ranked by the biggest cut\"); it sells the prices. The take names the one to grab first and why. youtube.title leads with the best deal and its US price, e.g. \"Hogwarts Legacy Is $5.99 Right Now, Plus 4 More Steam Deals\". Prices change: never promise a price will last.",
   weekly_recap:
-    "Weekly Recap rules: the entries are the five biggest stories in the data, spoken from fifth to the biggest. game_title is the game or company the story is about; steam_search_term finds that game on Steam or is empty; year is that game's release year, or this year for a company story; platforms lists the outlets that reported it, e.g. \"IGN, Xbox Wire\". one_line says what happened and why it matters, under 18 words. verdict_chip is 1-4 words such as \"DELAYED AGAIN\". Only stories in the data, never a rumour as fact. Hook: \"Five stories ran gaming this week. Here is what actually mattered.\" style.",
+    "Weekly Recap rules: the entries are the five biggest stories in the data, spoken from fifth to the biggest. game_title is the game or company the story is about; steam_search_term finds that game on Steam or is empty; year is that game's release year, or this year for a company story; platforms lists the outlets that reported it, e.g. \"IGN, Xbox Wire\". one_line says what happened and why it matters, under 15 words. verdict_chip is 1-4 words such as \"DELAYED AGAIN\". Only stories in the data, never a rumour as fact. Hook: \"Five stories ran gaming this week. Here is what actually mattered.\" style.",
 };
 export type EvergreenFormat = (typeof EVERGREEN_FORMATS)[number];
 
@@ -107,7 +108,7 @@ export const EvergreenEntrySchema = z.object({
   one_line: z
     .string()
     .describe(
-      "The spoken line for this entry, under 18 words, factual with one opinion",
+      "The spoken line for this entry, under 15 words, factual with one opinion",
     ),
   verdict_chip: z
     .string()
@@ -172,10 +173,10 @@ Avoid topics the channel covered in the last six months (listed). Return candida
 export function evergreenScriptPrompt(): string {
   return `${HOUSE}
 
-Write an evergreen ranking Short of ${EVERGREEN_WORDS_MIN}-${EVERGREEN_WORDS_MAX} spoken words in total (hook, entries, take, loop line), 75-160 seconds when read.
+Write an evergreen ranking Short of ${EVERGREEN_WORDS_MIN}-${EVERGREEN_WORDS_MAX} spoken words in total (hook, entries, take, loop line), 55-85 seconds when read. Shorter Shorts keep more viewers: every word must earn its place.
 Structure:
 1. hook: the premise and the criterion in one breath, 8-16 words, no question that withholds the point.
-2. entries: ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX}, spoken from the lowest rank to number one. Each one_line is under 18 words: one fact (year, what it did, how it was received) and one opinion by the criterion. verdict_chip is 1-4 words of punch. footage says what the trailer moment should show for that entry, with 1-4 keywords.
+2. entries: ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX}, spoken from the lowest rank to number one. Each one_line is under 15 words: one fact (year, what it did, how it was received) and one opinion by the criterion. verdict_chip is 1-4 words of punch. footage says what the trailer moment should show for that entry, with 1-4 keywords.
 3. pulse_take: why number one wins by the stated criterion, at most 32 words.
 4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that echoes the hook's subject or words, so a rewatch feels connected: a short callback or a question to the viewer. Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
 The on-screen title is 3-8 words. The YouTube title follows the format template and front-loads the franchise. List every factual claim in "claims".`;
@@ -251,8 +252,8 @@ export function validateEvergreen(e: EvergreenScript): string[] {
   if (ranks.some((r, i) => r !== i + 1))
     p.push("Ranks must be 1..N with no gaps or repeats.");
   for (const x of e.entries) {
-    if (wordCount(x.one_line) > 18)
-      p.push(`Entry "${x.game_title}" line is over 18 words.`);
+    if (wordCount(x.one_line) > 15)
+      p.push(`Entry "${x.game_title}" line is over 15 words.`);
     if (wordCount(x.verdict_chip) > 4 || !x.verdict_chip.trim())
       p.push(`Entry "${x.game_title}" verdict chip must be 1-4 words.`);
     if (x.year < 1970 || x.year > 2030)

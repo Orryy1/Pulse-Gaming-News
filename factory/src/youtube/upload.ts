@@ -394,6 +394,7 @@ export class YouTubeClient {
         avgViewSeconds: number;
         avgViewPercent: number;
         subscribersGained: number;
+        engagedViews: number;
       }
     >
   > {
@@ -404,6 +405,7 @@ export class YouTubeClient {
         avgViewSeconds: number;
         avgViewPercent: number;
         subscribersGained: number;
+        engagedViews: number;
       }
     >();
     if (!videoIds.length) return out;
@@ -412,7 +414,7 @@ export class YouTubeClient {
       startDate: start,
       endDate: end,
       metrics:
-        "views,averageViewDuration,averageViewPercentage,subscribersGained",
+        "views,averageViewDuration,averageViewPercentage,subscribersGained,engagedViews",
       dimensions: "video",
       filters: `video==${videoIds.slice(0, 200).join(",")}`,
       maxResults: "200",
@@ -423,13 +425,14 @@ export class YouTubeClient {
     );
     if (!res.ok) throw await apiError(res, "analytics.reports");
     for (const r of (((await res.json()) as any).rows ?? []) as Array<
-      [string, number, number, number, number]
+      [string, number, number, number, number, number]
     >) {
       out.set(String(r[0]), {
         views: Number(r[1]),
         avgViewSeconds: Number(r[2]),
         avgViewPercent: Number(r[3]),
         subscribersGained: Number(r[4]),
+        engagedViews: Number(r[5] ?? 0),
       });
     }
     return out;

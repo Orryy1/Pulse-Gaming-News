@@ -2497,7 +2497,11 @@ async function gatherLongEntryMedia(
     want: script.beats[beatIndex]?.footage?.want ?? "gameplay",
     energy: "medium",
     // A named person leads the keywords so their own footage is searched for (and a portrait can be cut from it).
-    keywords: [entry.game_title, ...(m.person ? [m.person] : []), ...m.keywords.filter((k) => k !== m.person)].slice(0, 4),
+    keywords: [
+      entry.game_title,
+      ...(m.person ? [m.person] : []),
+      ...m.keywords.filter((k) => k !== m.person),
+    ].slice(0, 4),
   }));
   const pushClip = (c: VisualAsset) =>
     clips.push({
@@ -2633,12 +2637,12 @@ async function gatherLongEntryMedia(
     }
     for (const p of ranked.picks)
       stills[p.image]!.moment = Number(p.key.slice(1));
-    // A story video keeps only the screenshots the editor matched to a sentence: an unmatched
-    // one is as likely a multiplayer map as the campaign (key art stays for the rank card).
-    if (scope === "campaign" && ranked.picks.length)
+    // A story video uses no store screenshots: for shooters they are mostly multiplayer maps, and
+    // no picture editor can tell a map from a campaign level by eye (a Vanguard map passed as a
+    // campaign shot). Footage carries the story; key art stays for the rank card.
+    if (scope === "campaign")
       for (const a of stills)
-        if (a.kind === "screenshot" && a.moment === undefined)
-          (a as { drop?: boolean }).drop = true;
+        if (a.kind === "screenshot") (a as { drop?: boolean }).drop = true;
   } catch (err) {
     log("warn", "still ranking failed; stills keep entry order", {
       game: entry.game_title,

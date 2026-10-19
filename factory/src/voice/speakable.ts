@@ -139,6 +139,37 @@ export function romanValue(t: string): number | undefined {
   return n >= 2 && n <= 39 ? n : undefined;
 }
 
+/** Franchises often written with a one-word name before the colon ("Halo: Reach"). */
+const ONE_WORD_SERIES =
+  /^(Halo|Doom|Destiny|Diablo|Fallout|Borderlands|Battlefield|Bioshock|Starcraft|Warcraft|Overwatch|Titanfall|Wolfenstein|Prey|Dishonored|Hitman|Persona|Tekken|Bayonetta|Crysis|Metroid|Kirby|Pikmin|Splatoon|Sonic|Spyro|Crash|Quake|Fable|Forza|Gears|Mafia|Watch Dogs|Xenoblade)$/i;
+
+/**
+ * People say "Call of Duty Ghosts", not "Call of Duty… Ghosts": the colon in a
+ * game title gets no pause. A colon counts as part of a title when the words
+ * before it are a run of capitalised words (small joiners like "of" and "the"
+ * allowed) at least two long, or a known one-word series, and a capital
+ * follows. "Here's the thing: Ghosts" and "Our pick: Halo" keep their pause.
+ */
+export function smoothTitleColons(text: string): string {
+  return text.replace(
+    /((?:\b[A-Z0-9][\w'’.&-]*)(?:\s+(?:of|the|and|&|[A-Z0-9][\w'’.&-]*))*):\s+(?=[A-Z0-9])/g,
+    (m: string, left: string) => {
+      const words = left.split(/\s+/);
+      // Keep only the capitalised run that ends at the colon.
+      const run: string[] = [];
+      for (let k = words.length - 1; k >= 0; k--) {
+        const w = words[k]!;
+        if (/^[A-Z0-9]/.test(w) || /^(of|the|and|&)$/.test(w)) run.unshift(w);
+        else break;
+      }
+      const capitals = run.filter((w) => /^[A-Z0-9]/.test(w)).length;
+      return capitals >= 2 || ONE_WORD_SERIES.test(run.join(" "))
+        ? `${left} `
+        : m;
+    },
+  );
+}
+
 /**
  * Game titles the way people say them: "Modern Warfare III" is "Modern Warfare
  * 3", "Call of Duty: WWII" is "World War Two", "Final Fantasy XIV" is "14". A
@@ -146,7 +177,7 @@ export function romanValue(t: string): number | undefined {
  * (Grand Theft Auto V, The Elder Scrolls V, Final Fantasy X).
  */
 export function speakTitles(text: string): string {
-  return text
+  return smoothTitleColons(text)
     .replace(/\bWWII\b/g, "World War Two")
     .replace(/\bWWI\b/g, "World War One")
     .replace(
@@ -168,13 +199,19 @@ export function speakTitles(text: string): string {
  * Only plain four-digit years from 1950 to 2099 (not prices, counts or ids).
  */
 export function speakYears(text: string): string {
-  return text.replace(/(?<![\d$£€.,:/-])\b(19[5-9]\d|20\d\d)\b(?![\d%,.]\d|\s?(?:percent|%))/g, (_m, y: string) => {
-    const n = Number(y);
-    if (n >= 2000 && n <= 2009) return n === 2000 ? "two thousand" : `two thousand ${numberWords(n - 2000)}`;
-    const hi = Math.floor(n / 100);
-    const lo = n % 100;
-    return `${numberWords(hi)} ${lo < 10 ? `oh ${numberWords(lo)}` : numberWords(lo)}`;
-  });
+  return text.replace(
+    /(?<![\d$£€.,:/-])\b(19[5-9]\d|20\d\d)\b(?![\d%,.]\d|\s?(?:percent|%))/g,
+    (_m, y: string) => {
+      const n = Number(y);
+      if (n >= 2000 && n <= 2009)
+        return n === 2000
+          ? "two thousand"
+          : `two thousand ${numberWords(n - 2000)}`;
+      const hi = Math.floor(n / 100);
+      const lo = n % 100;
+      return `${numberWords(hi)} ${lo < 10 ? `oh ${numberWords(lo)}` : numberWords(lo)}`;
+    },
+  );
 }
 
 export function speakable(text: string): string {

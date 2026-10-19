@@ -169,6 +169,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     to: number,
     queue: LongMedia[],
     fallback: () => LongMedia,
+    stillFallback?: () => LongMedia,
   ) => {
     let at = from;
     while (at < to) {
@@ -193,8 +194,22 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         const left = remaining - len;
         if (left > 0 && left < MIN_SHOT) len -= MIN_SHOT - left;
         if (len < MIN_SHOT) {
-          media = fallback();
-          len = Math.min(MAX_STILL_SHOT, remaining);
+          // Too short for the gap: take the fallback, but a clip it hands back is still a clip.
+          // Stretching it as if it were a still froze it on its last frame and left it free to play again.
+          let alt = fallback();
+          if (alt.type === "clip") {
+            const l = Math.min(clipFrames[alt.index]!, remaining);
+            const rest = remaining - l;
+            if (l >= MIN_SHOT && (rest === 0 || rest >= MIN_SHOT)) {
+              media = alt;
+              len = l;
+              clipUsed[alt.index] = true;
+            } else alt = stillFallback?.() ?? { type: "plate", index: 0 };
+          }
+          if (alt.type !== "clip") {
+            media = alt;
+            len = Math.min(MAX_STILL_SHOT, remaining);
+          }
         } else clipUsed[media.index] = true;
       } else {
         len = Math.min(
@@ -293,7 +308,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             ? { type: "clip", index: spare }
             : leastUsed();
         };
-        fill(i, from, to, queue, footageFirst);
+        fill(i, from, to, queue, footageFirst, leastUsed);
       }
       continue;
     }
@@ -503,24 +518,71 @@ export function chapterLines(
  */
 export function titleLines(text: string): string[] {
   const i = text.indexOf(": ");
-  if (i <= 0 || text.length <= 20) return [text];
-  return [text.slice(0, i + 1), text.slice(i + 2)];
+  if (i > 0 && text.length > 20)
+    return [text.slice(0, i + 1), text.slice(i + 2)];
+  // "Call of Duty Campaigns Ranked": the franchise on top, what is ranked underneath.
+  const ranked = text.match(/^(\S+(?:\s+\S+)+?)\s+(\S+\s+Ranked\b.*)$/i);
+  if (ranked && text.length > 20) return [ranked[1]!, ranked[2]!];
+  return [text];
 }
 
 /** A graphic worth showing: never the entry's own rank (the rank card already says it). */
-export function usefulGraphic<G extends { kind: string; primary: string; secondary: string }>(g: G): boolean {
+export function usefulGraphic<
+  G extends { kind: string; primary: string; secondary: string },
+>(g: G): boolean {
   if (g.kind === "none") return false;
   const text = `${g.primary} ${g.secondary}`;
-  if (/\b(rank(ing)?|position|place[sd]?|spot|on the list|where it lands|entry number)\b/i.test(text)) return false;
-  if (/^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|#?\d{1,2})$/i.test(g.primary.trim())) return g.kind === "score" && /\d/.test(g.primary);
+  if (
+    /\b(rank(ing)?|position|place[sd]?|spot|on the list|where it lands|entry number)\b/i.test(
+      text,
+    )
+  )
+    return false;
+  if (
+    /^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|#?\d{1,2})$/i.test(
+      g.primary.trim(),
+    )
+  )
+    return g.kind === "score" && /\d/.test(g.primary);
   return true;
 }
 
-const LOOSE_END = new Set(["a", "an", "the", "at", "of", "to", "in", "on", "for", "with", "and", "or", "but", "by", "from", "as", "its", "his", "her", "their", "is", "was", "that"]);
+const LOOSE_END = new Set([
+  "a",
+  "an",
+  "the",
+  "at",
+  "of",
+  "to",
+  "in",
+  "on",
+  "for",
+  "with",
+  "and",
+  "or",
+  "but",
+  "by",
+  "from",
+  "as",
+  "its",
+  "his",
+  "her",
+  "their",
+  "is",
+  "was",
+  "that",
+]);
 
 /** A pop-up phrase that reads as a phrase: not a fragment ending on "at" or "the". */
 export function usefulEmphasis(text: string): boolean {
-  const words = text.trim().replace(/[.,;:!?]+$/, "").split(/\s+/).filter(Boolean);
+  const words = text
+    .trim()
+    .replace(/[.,;:!?]+$/, "")
+    .split(/\s+/)
+    .filter(Boolean);
   if (!words.length || words.join(" ").length < 3) return false;
-  return !LOOSE_END.has(words[words.length - 1]!.toLowerCase()) && !LOOSE_END.has(words[0]!.toLowerCase());
+  return (
+    !LOOSE_END.has(words[words.length - 1]!.toLowerCase()) &&
+    !LOOSE_END.has(words[0]!.toLowerCase())
+  );
 }

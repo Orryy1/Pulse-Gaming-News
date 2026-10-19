@@ -1671,17 +1671,28 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
 
 /** The week's published news Shorts, most watched first (their best captured view count), rumours left out. */
 export async function recapStoryIds(db: Db, now: Date): Promise<string[]> {
-  const rows = await db.query<{ id: string; views: number | null }>(
-    `SELECT e.id, (SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id) AS views
+  const rows = await db.query<{ id: string; views: number | null; game: string | null }>(
+    `SELECT e.id, (SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id) AS views,
+            e.script_json->>'game_title' AS game
        FROM episodes e
       WHERE e.lane IN ('news','news_breaking') AND e.status = 'published' AND e.youtube_video_id IS NOT NULL
         AND coalesce(e.publish_at, e.updated_at) > $1::timestamptz - interval '7 days'
         AND coalesce((e.script_json->>'is_rumour')::boolean, false) = false
       ORDER BY 2 DESC NULLS LAST, coalesce(e.publish_at, e.updated_at) DESC
-      LIMIT $2`,
-    [now, RECAP_STORIES_MAX],
+      LIMIT 40`,
+    [now],
   );
-  return rows.map((r) => r.id);
+  // One story per game, its most-watched: two chapters on the same game read as a repeat.
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of rows) {
+    const key = (r.game ?? r.id).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r.id);
+    if (out.length >= RECAP_STORIES_MAX) break;
+  }
+  return out;
 }
 
 /**

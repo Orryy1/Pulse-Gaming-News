@@ -29,6 +29,8 @@ test("deal entries take Steam's prices and drop games not in the data", () => {
     platforms: "PC",
     year: 2000,
     verdict_chip: "GREAT",
+    price: undefined as string | undefined,
+    was: undefined as string | undefined,
   });
   const grounded = groundDeals(
     {

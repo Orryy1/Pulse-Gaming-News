@@ -2599,7 +2599,7 @@ async function gatherMedia(
         }
         const doc = (script.evergreen_format as string) === "documentary"; // documentaries take gatherChapterMedia above
         // A documentary chapter runs minutes, not seconds: it needs the game's whole gallery.
-        // A Short's entry keeps its hero, its box art and two screenshots: when the trailer yields no
+        // A Short's entry keeps its hero, its box art and three screenshots: when the trailer yields no
         // usable moment (pixel art reads as text, dark games fail the luma floor) the line still cuts.
         let screens = 0;
         const art = (
@@ -2609,7 +2609,9 @@ async function gatherMedia(
             ? a.kind !== "logo"
             : (a.kind === "capsule" && !entry.icon) ||
               a.kind === "hero" ||
-              (a.kind === "screenshot" && screens++ < 2),
+              // A new release often has no hero art yet: its store header is the last-resort still.
+              a.kind === "header" ||
+              (a.kind === "screenshot" && screens++ < 3),
         );
         for (const a of art)
           images.push({

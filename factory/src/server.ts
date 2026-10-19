@@ -18,6 +18,7 @@ import {
   clearSelectionPause,
   affiliateTags,
   approvalLinks,
+  quotaHeadroom,
   type Services,
 } from "./pipeline.ts";
 import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
@@ -738,7 +739,7 @@ async function main(): Promise<void> {
         db,
         youtube: services.youtube,
         llm: services.llm,
-        quotaUnitsPerDay: cfg.quotaUnitsPerDay,
+        headroom: () => quotaHeadroom(db, cfg, new Date()),
         now: () => new Date(),
       }).catch((err) =>
         log("warn", "comment reply pass failed", { error: errorMessage(err) }),

@@ -66,3 +66,13 @@ test("slots still to come today are counted in the channel's time zone", () => {
     1,
   );
 });
+
+test("uploads still due today count the deals slot on deals days and the long video on its day", async () => {
+  const { uploadsLeftToday } = await import("../src/pipeline.ts");
+  const { testConfig } = await import("./helpers.ts");
+  const cfg = { ...testConfig("."), timezone: "Europe/London", newsSlots: ["13:00", "17:00", "22:00"], weeklySlot: "20:00", dealsSlot: "16:30", dealsDays: ["mon", "tue", "wed", "thu", "fri", "sat"], longformEnabled: true, longformDays: ["sun"], longformSlot: "19:00" };
+  // Monday 20 Oct 2026, 15:00 London: 16:30 deals, 17:00, 20:00, 22:00 still to come.
+  assert.equal(uploadsLeftToday(cfg as any, new Date("2026-10-20T14:00:00Z")), 4);
+  // Sunday 25 Oct (clocks back, so London is UTC): no deals, but the 19:00 long video.
+  assert.equal(uploadsLeftToday(cfg as any, new Date("2026-10-25T15:00:00Z")), 4);
+});

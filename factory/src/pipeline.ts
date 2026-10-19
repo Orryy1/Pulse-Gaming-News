@@ -132,6 +132,7 @@ import {
   SHOWCASE,
   showcaseLive,
   slotsLeftToday,
+  weekday,
   storyText,
   lastPublishAt,
   nextWindowStart,
@@ -358,6 +359,20 @@ async function recentSightings(
   return rows.map((r) => ({ cluster: r.cluster_json, sighting: r }));
 }
 
+/** Uploads still due today: the news slots, the evening feature, and the deals and long-video slots on their days. */
+export function uploadsLeftToday(cfg: Config, now: Date): number {
+  const day = weekday(now, cfg.timezone);
+  const slots = [...cfg.newsSlots, cfg.weeklySlot];
+  if (cfg.dealsDays.includes(day)) slots.push(cfg.dealsSlot);
+  if (cfg.longformEnabled && cfg.longformDays.includes(day)) slots.push(cfg.longformSlot);
+  return slotsLeftToday(now, slots, cfg.timezone);
+}
+
+/** Units free for optional work (comment replies, sprints) once every upload still due today is covered. */
+export async function quotaHeadroom(db: Db, cfg: Config, now: Date): Promise<number> {
+  return cfg.quotaUnitsPerDay - (await quotaUsed(db, now)) - QUOTA_RESERVE_FOR_UPLOAD * uploadsLeftToday(cfg, now);
+}
+
 /** For ranking topic pickers: YouTube's trending gaming videos and what viewers asked us to rank. */
 async function topicDemand(s: Services): Promise<string> {
   return trendingBlock(await s.trending().catch(() => []), 25);
@@ -470,11 +485,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   // covers every upload already scheduled for today.
   const showcase = showcaseLive(eligible, now);
   const sprint =
-    !!showcase &&
-    (await quotaUsed(db, now)) +
-      QUOTA_RESERVE_FOR_UPLOAD *
-        (1 + slotsLeftToday(now, [...cfg.newsSlots, cfg.weeklySlot, cfg.dealsSlot], cfg.timezone)) <=
-      cfg.quotaUnitsPerDay;
+    !!showcase && (await quotaHeadroom(db, cfg, now)) >= QUOTA_RESERVE_FOR_UPLOAD;
   if (
     cfg.breakingEnabled &&
     (await countToday(db, cfg.timezone, "news_breaking")) <

@@ -8,9 +8,7 @@ import type { Episode } from "../episodes.ts";
 import type { Llm } from "../editorial/llm.ts";
 import {
   QUOTA,
-  QUOTA_RESERVE_FOR_UPLOAD,
   quotaAdd,
-  quotaUsed,
 } from "../lanes.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import type { YouTubeClient } from "./upload.ts";
@@ -88,7 +86,8 @@ export interface ReplyDeps {
   db: Db;
   youtube: () => YouTubeClient;
   llm: Llm;
-  quotaUnitsPerDay: number;
+  /** Units free once every upload still due today is covered. */
+  headroom: () => Promise<number>;
   now: () => Date;
 }
 
@@ -180,14 +179,8 @@ async function replyOnVideo(d: ReplyDeps, ep: Episode): Promise<number> {
       [decision, reason] = ["skip", "reply had a link"];
     if (decision === "reply" && room <= 0)
       [decision, reason] = ["skip", "reply cap reached"];
-    if (
-      decision === "reply" &&
-      (await quotaUsed(d.db, d.now())) +
-        QUOTA.comment +
-        QUOTA_RESERVE_FOR_UPLOAD >
-        d.quotaUnitsPerDay
-    )
-      [decision, reason] = ["skip", "quota kept for uploads"];
+    if (decision === "reply" && (await d.headroom()) < QUOTA.comment)
+      [decision, reason] = ["skip", "quota kept for today's uploads"];
     let replyId: string | null = null;
     if (decision === "reply") {
       try {

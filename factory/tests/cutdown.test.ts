@@ -20,9 +20,14 @@ const words = (from: number, to: number) => {
 
 test("an entry's window runs to the next segment and keeps the winner's verdict", () => {
   const segments = [seg("hook", 0, 10), seg("beat", 10, 40), seg("beat", 40, 70), seg("take", 70, 85), seg("loop", 85, 86)];
-  assert.deepEqual(cutdownWindow(segments, 0, words(0, 90)), { start: 9.9, end: 40 });
+  // It ends just after the entry's last word (39.9 s), not on the next entry's first frame.
+  const first = cutdownWindow(segments, 0, words(0, 90))!;
+  assert.equal(first.start, 9.9);
+  assert.ok(first.end > 39.9 && first.end <= 40.05, `end ${first.end}`);
   // The winner's window takes the outro when it fits in a Short.
-  assert.deepEqual(cutdownWindow(segments, 1, words(0, 90)), { start: 39.9, end: 85 });
+  const winner = cutdownWindow(segments, 1, words(0, 90))!;
+  assert.equal(winner.start, 39.9);
+  assert.ok(winner.end > 84.9 && winner.end <= 85.25, `end ${winner.end}`);
   assert.equal(cutdownWindow(segments, 5, words(0, 90)), undefined);
 });
 

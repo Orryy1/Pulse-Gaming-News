@@ -2496,7 +2496,8 @@ async function gatherLongEntryMedia(
     text: `${sentences[k] ?? ""} (show: ${m.show})${scope === "campaign" ? " [single-player campaign footage only: no multiplayer, Zombies or Warzone, no multiplayer HUD]" : ""}`,
     want: script.beats[beatIndex]?.footage?.want ?? "gameplay",
     energy: "medium",
-    keywords: [entry.game_title, ...m.keywords].slice(0, 4),
+    // A named person leads the keywords so their own footage is searched for (and a portrait can be cut from it).
+    keywords: [entry.game_title, ...(m.person ? [m.person] : []), ...m.keywords.filter((k) => k !== m.person)].slice(0, 4),
   }));
   const pushClip = (c: VisualAsset) =>
     clips.push({

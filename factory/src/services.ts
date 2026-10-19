@@ -14,7 +14,7 @@ import { evergreenCandidates } from "./discovery/evergreen.ts";
 import { dayKey } from "./lanes.ts";
 import { narrate } from "./voice/index.ts";
 import { fetchSteamArt, findSteamApp, steamFacts } from "./assets/steam.ts";
-import { renderShort, renderLong } from "./render/render.ts";
+import { renderShort, renderLong, renderCutdown } from "./render/render.ts";
 import { extractFrames, imageAspect, normaliseLoudness, technicalQa } from "./qa/media.ts";
 import { visionQa } from "./qa/vision.ts";
 import { YouTubeClient } from "./youtube/upload.ts";
@@ -127,8 +127,9 @@ export function createServices(db: Db, cfg: Config): Services {
       return true;
     },
     imageAspect,
-    render: renderShort,
+        render: renderShort,
     renderLong,
+    renderCutdown,
     normalise: normaliseLoudness,
     technicalQa,
     extractFrames,

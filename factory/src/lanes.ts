@@ -5,13 +5,14 @@
 import type { Db } from "./db.ts";
 import type { StoryCluster } from "./discovery/cluster.ts";
 
-export type Lane = "news" | "news_breaking" | "evergreen" | "longform" | "free";
+export type Lane = "news" | "news_breaking" | "evergreen" | "longform" | "free" | "cutdown";
 export const LANE_PRIORITY: Record<Lane, number> = {
   news_breaking: 100,
   news: 50,
   free: 40,
   evergreen: 30,
-  longform: 20,
+    longform: 20,
+  cutdown: 25,
 };
 
 // YouTube Data API costs: videos.insert 1600, captions.list 50, captions.insert 400, videos.list 1, playlistItems.list 1.

@@ -44,6 +44,8 @@ export interface Episode {
 }
 
 export interface EpisodeAssets {
+  /** A Short cut from a long ranking: the section's seconds in the long video and the files cut from it. */
+  cutdown?: { start: number; end: number; video: string; background: string };
   audio?: string;
   words?: Array<{ text: string; start: number; end: number }>;
   durationSeconds?: number;

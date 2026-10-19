@@ -19,7 +19,9 @@ export interface StoryCluster {
   /** Game the editor identified at selection time, used for Steam lookups. */
   gameHint?: string;
   /** What the story needs to be seen, from the editor: real_world_images sends it to the picture desk. */
-  visualNeed?: "none" | "game_footage" | "real_world_images";
+    visualNeed?: "none" | "game_footage" | "real_world_images";
+  /** A Short cut from a long ranking: the long video's episode and the entry's rank. */
+  cutdown?: { parent: string; rank: number };
 }
 
 const STOPWORDS = new Set(

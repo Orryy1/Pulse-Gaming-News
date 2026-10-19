@@ -96,7 +96,10 @@ export interface Config {
   evergreenApprovalMode: ApprovalMode;
   evergreenApprovalMinutes: number;
   evergreenMaxSeconds: number; // narration cap for the lane
-  longformEnabled: boolean; // weekly 16:9 ranking video
+    longformEnabled: boolean; // weekly 16:9 ranking video
+  cutdownsEnabled: boolean; // Shorts cut from each long ranking
+  cutdownSlot: string; // local publish time for them, one a day
+  cutdownsPerLong: number;
   weeklyEnabled: boolean; // Release Radar, Free This Week and the Weekly Recap
   radarDays: string[];
   freeDays: string[];
@@ -240,7 +243,10 @@ export function loadConfig(): Config {
     evergreenApprovalMode: str("EVERGREEN_APPROVAL_MODE", "manual") as ApprovalMode,
     evergreenApprovalMinutes: int("EVERGREEN_APPROVAL_MINUTES", 120),
     evergreenMaxSeconds: int("EVERGREEN_MAX_SECONDS", 170),
-    longformEnabled: bool("LONGFORM_ENABLED", true),
+        longformEnabled: bool("LONGFORM_ENABLED", true),
+    cutdownsEnabled: bool("CUTDOWNS_ENABLED", false), // on once a sandbox run has been checked
+    cutdownSlot: str("CUTDOWN_SLOT", "15:30"),
+    cutdownsPerLong: int("CUTDOWNS_PER_LONG", 3),
     weeklyEnabled: bool("WEEKLY_ENABLED", true),
     radarDays: str("RADAR_DAYS", "mon").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     freeDays: str("FREE_DAYS", "thu").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),

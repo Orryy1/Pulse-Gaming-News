@@ -92,8 +92,10 @@ export type Script = z.infer<typeof ScriptSchema> & {
   criterion?: string;
   /** Long-form: the kicker line under the intro title. */
   kicker?: string;
-  /** Documentary: the articles the script was written from, credited in the description. */
+    /** Documentary: the articles the script was written from, credited in the description. */
   sources?: string[];
+  /** A Short cut from a long ranking: the full video, this entry's rank and the comment question. */
+  cutdown?: { parent_video: string; rank: number; total: number; question: string; theme?: string };
 };
 export type BeatVisual = z.infer<typeof BeatSchema>["visual"];
 

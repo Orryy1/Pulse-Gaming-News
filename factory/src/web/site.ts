@@ -862,7 +862,7 @@ export function parseChannelFeed(xml: string): ChannelVideo[] {
 /** The SQL for what the site shows: public videos only, newest first. */
 export const SITE_EPISODES_SQL = `SELECT e.id, e.lane, e.youtube_video_id, e.script_json, e.story_json, COALESCE(e.publish_at, e.updated_at) AS live_at
   FROM episodes e
- WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL
+ WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'cutdown'
    AND COALESCE(e.publish_at, e.updated_at) <= now()
    AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('crosspost_skip','made_private') AND COALESCE(v.detail->>'reason','') IN ('not public on YouTube',''))
  ORDER BY COALESCE(e.publish_at, e.updated_at) DESC

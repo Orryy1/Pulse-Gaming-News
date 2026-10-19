@@ -4,6 +4,8 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type { Config } from "./config.ts";
 import type { Db } from "./db.ts";
 import { withLease } from "./db.ts";
@@ -59,6 +61,16 @@ import {
   LONG_TAIL_SECONDS,
 } from "./render/longplan.ts";
 import type { LongRenderInput } from "./render/render.ts";
+import type { renderCutdown } from "./render/render.ts";
+import {
+  CUTDOWN_TAIL_SECONDS,
+  cutdownRanks,
+  cutdownScript,
+  cutdownWindow,
+  wordsIn,
+  writeCutdownCopy,
+} from "./editorial/cutdown.ts";
+import { FFMPEG } from "./lib/bin.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
 import type { VisionQa } from "./editorial/schema.ts";
@@ -230,7 +242,8 @@ export interface Services {
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
-  renderLong(input: LongRenderInput): Promise<void>;
+    renderLong(input: LongRenderInput): Promise<void>;
+  renderCutdown?: typeof renderCutdown;
   normalise(input: string, output: string): Promise<void>;
   technicalQa(
     file: string,
@@ -413,7 +426,12 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     log("info", "story selection paused", { reason: paused });
     return undefined;
   }
-  if ((await countProducing(db)) >= cfg.maxProducing) return undefined;
+    if ((await countProducing(db)) >= cfg.maxProducing) return undefined;
+  const cut = await maybeSelectCutdown(s).catch((err) => {
+    log("warn", "cutdown selection failed", { error: errorMessage(err) });
+    return undefined;
+  });
+  if (cut) return cut;
   const total = await countToday(db, cfg.timezone);
   if (total >= cfg.dailyTarget) return undefined;
 
@@ -1226,6 +1244,166 @@ export async function maybeSelectLongform(
   return id;
 }
 
+// ------------------------------------------------------------------ cutdowns
+
+/**
+ * One Short a day cut from a recent long ranking (published at least a day
+ * ago, still public): the last place first, then number two, then number one.
+ */
+export async function maybeSelectCutdown(s: Services): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.cutdownsEnabled || cfg.cutdownsPerLong <= 0) return undefined;
+  const now = s.now();
+  const due = evergreenDue(
+    now,
+    {
+      days: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      slot: cfg.cutdownSlot,
+      leadMinutes: cfg.slotLeadMinutes,
+      graceMinutes: cfg.slotGraceMinutes,
+      timeZone: cfg.timezone,
+    },
+    await takenSlots(db),
+  );
+  if (!due) return undefined;
+  const parents = await db.query<Episode>(
+    `SELECT e.* FROM episodes e
+      WHERE e.lane = 'longform' AND e.status = 'published' AND e.youtube_video_id IS NOT NULL
+        AND COALESCE(e.script_json->>'evergreen_format', '') <> 'documentary'
+        AND COALESCE(e.publish_at, e.updated_at) < $1::timestamptz - interval '20 hours'
+        AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - interval '21 days'
+        AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('made_private','crosspost_skip') AND COALESCE(v.detail->>'reason','') IN ('not public on YouTube',''))
+      ORDER BY COALESCE(e.publish_at, e.updated_at) DESC`,
+    [now],
+  );
+  for (const parent of parents) {
+    const entries = parent.script_json?.entries ?? [];
+    if (!entries.length) continue;
+    if (!(await fs.stat(path.join(episodeDir(cfg, parent.id), "short.mp4")).catch(() => undefined))) continue;
+    const done = new Set(
+      (
+        await db.query<{ rank: string }>(
+          `SELECT story_json->'cutdown'->>'rank' AS rank FROM episodes WHERE lane = 'cutdown' AND story_json->'cutdown'->>'parent' = $1`,
+          [parent.id],
+        )
+      ).map((r) => Number(r.rank)),
+    );
+    const rank = cutdownRanks(entries.map((e) => e.rank), cfg.cutdownsPerLong).find((r) => !done.has(r));
+    if (rank === undefined) continue;
+    const entry = entries.find((e) => e.rank === rank)!;
+    const cluster: StoryCluster = {
+      hash: `cutdown:${parent.id}:${rank}`,
+      headline: `${entry.game_title}: number ${rank} of ${entries.length}`,
+      items: [],
+      sources: ["Pulse Gaming"],
+      hasOfficial: true,
+      corroborated: true,
+      rumourSignals: false,
+      newestAt: now.toISOString(),
+      score: 0,
+      gameHint: entry.game_title,
+      cutdown: { parent: parent.id, rank },
+    };
+    const id = shortId();
+    if (!(await createEpisode(db, id, cluster, { lane: "cutdown", priority: LANE_PRIORITY.cutdown, slotAt: due }))) continue;
+    await logEvent(db, id, "selected", { lane: "cutdown", parent: parent.id, rank, slot_at: due.toISOString() });
+    log("info", "cutdown selected", { id, parent: parent.id, rank });
+    return id;
+  }
+  return undefined;
+}
+
+/** Cuts the entry's section from the long video (with a blurred fill for the background) and writes its packaging. */
+async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
+  const ref = ep.story_json.cutdown;
+  if (!ref) throw new FatalError("cutdown episode has no parent");
+  const parent = await getEpisode(s.db, ref.parent);
+  const pScript = parent?.script_json;
+  if (!parent?.youtube_video_id || !pScript?.entries?.length) throw new FatalError("the long video for this cutdown is gone");
+  const beatIndex = pScript.entries.findIndex((e) => e.rank === ref.rank);
+  if (beatIndex < 0) throw new FatalError(`the long video has no number ${ref.rank}`);
+  const pAssets = parent.assets_json ?? {};
+  const words = pAssets.words ?? [];
+  const duration = (pAssets.durationSeconds ?? 300) + LONG_TAIL_SECONDS;
+  const segments = buildSegments(segmentInputs(pScript), words, duration);
+  const win = cutdownWindow(segments, beatIndex, words);
+  if (!win) throw new FatalError("the entry does not fit in a Short");
+  const source = path.join(episodeDir(s.cfg, parent.id), "short.mp4");
+  const dir = episodeDir(s.cfg, ep.id);
+  await fs.mkdir(dir, { recursive: true });
+  const len = win.end - win.start;
+  const total = len + CUTDOWN_TAIL_SECONDS;
+  const run = promisify(execFile);
+  // The picture runs on under the end card; the narration fades out where the entry ends.
+  await run(FFMPEG, ["-v", "error", "-y", "-ss", win.start.toFixed(3), "-i", source, "-t", total.toFixed(3), "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-af", `afade=t=out:st=${Math.max(0, len - 0.35).toFixed(3)}:d=0.35,volume=enable='gte(t,${len.toFixed(3)})':volume=0`, "-c:a", "aac", "-b:a", "192k", path.join(dir, "cut.mp4")], { maxBuffer: 16 * 1024 * 1024 });
+  await run(FFMPEG, ["-v", "error", "-y", "-ss", win.start.toFixed(3), "-i", source, "-t", total.toFixed(3), "-an", "-vf", "scale=-2:1920,crop=1080:1920,boxblur=28:3,eq=brightness=-0.10:saturation=1.15,fps=30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "30", "-pix_fmt", "yuv420p", path.join(dir, "bg.mp4")], { maxBuffer: 16 * 1024 * 1024 });
+  const narration = pScript.beats[beatIndex]?.narration ?? "";
+  const copy = await writeCutdownCopy(s.llm, pScript, pScript.entries[beatIndex]!, narration, pScript.entries.length);
+  const script = cutdownScript(pScript, beatIndex, copy, parent.youtube_video_id);
+  script.cutdown!.theme = pScript.game_title;
+  // The footage credits travel with the clips seen in this section.
+  const plan = pAssets.longPlan;
+  const fps = plan?.fps ?? 30;
+  const seen = new Set(
+    (plan?.shots ?? [])
+      .filter((sh) => sh.media.type === "clip" && sh.end / fps > win.start && sh.start / fps < win.end)
+      .map((sh) => sh.media.index),
+  );
+  const clips = (pAssets.clips ?? []).filter((_, i) => seen.has(i)).map((c) => ({ ...c, file: "" }));
+  await transition(s.db, ep.id, "selected", "scripted", {
+    script_json: script,
+    assets_json: {
+      words: wordsIn(words, win),
+      durationSeconds: total,
+      clips,
+      officialTrailer: pAssets.officialTrailer,
+      cutdown: { start: win.start, end: win.end, video: "cut.mp4", background: "bg.mp4" },
+    },
+  });
+  await logEvent(s.db, ep.id, "cutdown_cut", { parent: parent.id, rank: ref.rank, start: win.start, end: win.end, title: copy.youtube_title });
+}
+
+async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
+  if (!s.renderCutdown) throw new Error("this build cannot render cutdowns");
+  const dir = episodeDir(s.cfg, ep.id);
+  const script = ep.script_json!;
+  const assets = ep.assets_json ?? {};
+  const raw = path.join(dir, "render_raw.mp4");
+  const final = path.join(dir, "short.mp4");
+  const duration = assets.durationSeconds ?? 30;
+  await s.renderCutdown({
+    episodeDir: dir,
+    props: {
+      videoFile: assets.cutdown?.video ?? "cut.mp4",
+      backgroundFile: assets.cutdown?.background ?? null,
+      words: assets.words ?? [],
+      durationSeconds: duration,
+      title: script.headline.toUpperCase(),
+      kicker: `#${script.cutdown?.rank ?? ""} OF ${script.cutdown?.total ?? ""}`,
+      cta: "FULL RANKING ON THE CHANNEL",
+      accent: "#FF6B1A",
+      emphasis: emphasisWords(script),
+    },
+    outFile: raw,
+    posterFile: path.join(dir, "poster.jpg"),
+    concurrency: s.cfg.remotionConcurrency,
+    gl: s.cfg.remotionGl,
+    browserExecutable: s.cfg.browserExecutable,
+  });
+  await s.normalise(raw, final);
+  await fs.rm(raw, { force: true });
+  const tech = await s.technicalQa(final, duration, { minSeconds: 8, maxSeconds: 59.5 });
+  const qa = { technical: tech, vision: null, checked_at: s.now().toISOString() };
+  if (!tech.ok) {
+    await s.db.query(`UPDATE episodes SET qa_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(qa)]);
+    throw new Error(`QA failed: ${tech.problems.join(" | ")}`);
+  }
+  await transition(s.db, ep.id, "voiced", "rendered", {
+    assets_json: { ...assets, video: "short.mp4", poster: "poster.jpg" },
+    qa_json: qa,
+  });
+}
+
 /** Writes the long-form ranking against live Steam facts for each entry, with one rewrite on problems. */
 async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   const fc = ep.factcheck_json as {
@@ -1485,6 +1663,7 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
 // --------------------------------------------------------------------- steps
 
 async function stepScript(s: Services, ep: Episode): Promise<void> {
+  if (ep.lane === "cutdown") return stepScriptCutdown(s, ep);
   if (ep.lane === "evergreen") return stepScriptEvergreen(s, ep);
   if (ep.lane === "longform") return stepScriptLongform(s, ep);
   const cluster = ep.story_json;
@@ -1608,6 +1787,11 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
 }
 
 async function stepVoice(s: Services, ep: Episode): Promise<void> {
+  // A cutdown speaks with the long video's own narration, cut with its section.
+  if (ep.lane === "cutdown") {
+    await transition(s.db, ep.id, "scripted", "voiced");
+    return;
+  }
   const dir = episodeDir(s.cfg, ep.id);
   await fs.mkdir(dir, { recursive: true });
   // Voice rotation: the n-th Short the channel has made picks the n-th voice of the pool, so a few Shorts in a row share a voice and the analytics can say which one sticks.
@@ -2883,6 +3067,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
 
 async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (ep.lane === "longform") return stepRenderLong(s, ep);
+  if (ep.lane === "cutdown") return stepRenderCutdown(s, ep);
   const dir = episodeDir(s.cfg, ep.id);
   const script = ep.script_json!;
   const assets = { ...(ep.assets_json ?? {}) };

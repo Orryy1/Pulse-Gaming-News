@@ -11,19 +11,31 @@ import { FatalError } from "../lib/util.ts";
 /** One line per Claude call in data/usage/<day>.jsonl: what it was for and the tokens it used, so the bill can be explained. */
 function meter(model: string, system: string, usage: any): void {
   try {
-    const dir = path.join(path.resolve(process.env.DATA_DIR || "./data"), "usage");
+    const dir = path.join(
+      path.resolve(process.env.DATA_DIR || "./data"),
+      "usage",
+    );
     fs.mkdirSync(dir, { recursive: true });
     const line = {
       t: new Date().toISOString(),
       model,
-      job: system.replace(/\s+/g, " ").slice(0, 70),
+      // The house style opens many prompts; the job is named in the paragraph after it.
+      job: (system.includes("\n\n")
+        ? system.slice(system.indexOf("\n\n") + 2)
+        : system
+      )
+        .replace(/\s+/g, " ")
+        .slice(0, 70),
       in: usage?.input_tokens ?? 0,
       out: usage?.output_tokens ?? 0,
       cacheRead: usage?.cache_read_input_tokens ?? 0,
       cacheWrite: usage?.cache_creation_input_tokens ?? 0,
     };
-    fs.appendFileSync(path.join(dir, `${line.t.slice(0, 10)}.jsonl`), `${JSON.stringify(line)}
-`);
+    fs.appendFileSync(
+      path.join(dir, `${line.t.slice(0, 10)}.jsonl`),
+      `${JSON.stringify(line)}
+`,
+    );
   } catch {
     // The meter must never break a run.
   }
@@ -45,7 +57,9 @@ export interface Llm {
 
 export type Tier = "top" | "mid" | "low";
 
-export function createClaude(models: string | Partial<Record<Tier, string>>): Llm {
+export function createClaude(
+  models: string | Partial<Record<Tier, string>>,
+): Llm {
   const pick = (tier: Tier = "top") => {
     if (typeof models === "string") return models;
     return models[tier] || models.top || "claude-opus-5-5";

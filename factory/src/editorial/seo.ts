@@ -285,6 +285,10 @@ export function hashtags(script: Script): string[] {
 /** The first two lines of a description: the keyword stack YouTube indexes, written as a sentence. */
 export function keywordLead(script: Script): string {
   const n = script.entries?.length ?? 0;
+  if (script.cutdown) {
+    const theme = script.cutdown.theme || script.game_title;
+    return `${script.game_title} is number ${script.cutdown.rank} of ${script.cutdown.total} in our ${theme} ranking. ${theme} ranked, best ${theme} games, by Pulse Gaming News.`;
+  }
   if (script.evergreen_format === "documentary")
     return `The complete history of ${script.game_title}, game by game: ${script.headline.replace(/\.$/, "")}. ${script.game_title} documentary, history of ${script.game_title}, ${script.game_title} explained, by Pulse Gaming News.`;
   if (script.evergreen_format === "release_radar")
@@ -315,6 +319,8 @@ export function keywordLead(script: Script): string {
 
 /** A warm pinned comment that asks one direct question tied to the Pulse take. */
 export function pinnedComment(script: Script): string {
+  if (script.cutdown)
+    return `${script.cutdown.question.trim()} The full ranking, every pick explained: https://youtu.be/${script.cutdown.parent_video}`;
   const take = script.pulse_take.on_screen.replace(/\.$/, "");
   const game = script.game_title || "this";
   if (script.evergreen_format === "documentary")

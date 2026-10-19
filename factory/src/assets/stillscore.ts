@@ -73,6 +73,7 @@ export async function rankStills(
   targets: StillTarget[],
   images: Array<{ file: string }>,
   workDir: string,
+  scope?: "campaign",
 ): Promise<{
   picks: StillPick[];
   labels: Map<number, string>;
@@ -111,7 +112,10 @@ export async function rankStills(
   });
   const r = await llm.structured({
     tier: "mid",
-    system: PROMPT,
+    system:
+      scope === "campaign"
+        ? `${PROMPT}\nThis video is about the single-player story campaign. Also mark as has_text, so it is never used, any picture that shows multiplayer (an arena map, operators or skins, scoreboards, killstreaks, a lobby) or Zombies, or that you cannot place in the story campaign.`
+        : PROMPT,
     content,
     schema: StillRankingSchema,
     effort: "low",

@@ -71,6 +71,8 @@ import {
   writeCutdownCopy,
 } from "./editorial/cutdown.ts";
 import { FFMPEG } from "./lib/bin.ts";
+import { cutPortrait } from "./assets/localvision.ts";
+import { normTitle } from "./assets/igdb.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
 import type { VisionQa } from "./editorial/schema.ts";
@@ -242,7 +244,7 @@ export interface Services {
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
-    renderLong(input: LongRenderInput): Promise<void>;
+  renderLong(input: LongRenderInput): Promise<void>;
   renderCutdown?: typeof renderCutdown;
   normalise(input: string, output: string): Promise<void>;
   technicalQa(
@@ -426,7 +428,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     log("info", "story selection paused", { reason: paused });
     return undefined;
   }
-    if ((await countProducing(db)) >= cfg.maxProducing) return undefined;
+  if ((await countProducing(db)) >= cfg.maxProducing) return undefined;
   const cut = await maybeSelectCutdown(s).catch((err) => {
     log("warn", "cutdown selection failed", { error: errorMessage(err) });
     return undefined;
@@ -1250,7 +1252,9 @@ export async function maybeSelectLongform(
  * One Short a day cut from a recent long ranking (published at least a day
  * ago, still public): the last place first, then number two, then number one.
  */
-export async function maybeSelectCutdown(s: Services): Promise<string | undefined> {
+export async function maybeSelectCutdown(
+  s: Services,
+): Promise<string | undefined> {
   const { db, cfg } = s;
   if (!cfg.cutdownsEnabled || cfg.cutdownsPerLong <= 0) return undefined;
   const now = s.now();
@@ -1279,7 +1283,12 @@ export async function maybeSelectCutdown(s: Services): Promise<string | undefine
   for (const parent of parents) {
     const entries = parent.script_json?.entries ?? [];
     if (!entries.length) continue;
-    if (!(await fs.stat(path.join(episodeDir(cfg, parent.id), "short.mp4")).catch(() => undefined))) continue;
+    if (
+      !(await fs
+        .stat(path.join(episodeDir(cfg, parent.id), "short.mp4"))
+        .catch(() => undefined))
+    )
+      continue;
     const done = new Set(
       (
         await db.query<{ rank: string }>(
@@ -1288,7 +1297,10 @@ export async function maybeSelectCutdown(s: Services): Promise<string | undefine
         )
       ).map((r) => Number(r.rank)),
     );
-    const rank = cutdownRanks(entries.map((e) => e.rank), cfg.cutdownsPerLong).find((r) => !done.has(r));
+    const rank = cutdownRanks(
+      entries.map((e) => e.rank),
+      cfg.cutdownsPerLong,
+    ).find((r) => !done.has(r));
     if (rank === undefined) continue;
     const entry = entries.find((e) => e.rank === rank)!;
     const cluster: StoryCluster = {
@@ -1305,8 +1317,20 @@ export async function maybeSelectCutdown(s: Services): Promise<string | undefine
       cutdown: { parent: parent.id, rank },
     };
     const id = shortId();
-    if (!(await createEpisode(db, id, cluster, { lane: "cutdown", priority: LANE_PRIORITY.cutdown, slotAt: due }))) continue;
-    await logEvent(db, id, "selected", { lane: "cutdown", parent: parent.id, rank, slot_at: due.toISOString() });
+    if (
+      !(await createEpisode(db, id, cluster, {
+        lane: "cutdown",
+        priority: LANE_PRIORITY.cutdown,
+        slotAt: due,
+      }))
+    )
+      continue;
+    await logEvent(db, id, "selected", {
+      lane: "cutdown",
+      parent: parent.id,
+      rank,
+      slot_at: due.toISOString(),
+    });
     log("info", "cutdown selected", { id, parent: parent.id, rank });
     return id;
   }
@@ -1319,9 +1343,11 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
   if (!ref) throw new FatalError("cutdown episode has no parent");
   const parent = await getEpisode(s.db, ref.parent);
   const pScript = parent?.script_json;
-  if (!parent?.youtube_video_id || !pScript?.entries?.length) throw new FatalError("the long video for this cutdown is gone");
+  if (!parent?.youtube_video_id || !pScript?.entries?.length)
+    throw new FatalError("the long video for this cutdown is gone");
   const beatIndex = pScript.entries.findIndex((e) => e.rank === ref.rank);
-  if (beatIndex < 0) throw new FatalError(`the long video has no number ${ref.rank}`);
+  if (beatIndex < 0)
+    throw new FatalError(`the long video has no number ${ref.rank}`);
   const pAssets = parent.assets_json ?? {};
   const words = pAssets.words ?? [];
   const duration = (pAssets.durationSeconds ?? 300) + LONG_TAIL_SECONDS;
@@ -1339,21 +1365,108 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
   const hold = (CUTDOWN_TAIL_SECONDS + 0.1).toFixed(2);
   const vLen = Math.min(len, win.videoEnd - win.start);
   const vHold = (total - vLen + 0.1).toFixed(2);
-  await run(FFMPEG, ["-v", "error", "-y", "-ss", win.start.toFixed(3), "-t", vLen.toFixed(3), "-i", source, "-ss", win.start.toFixed(3), "-t", len.toFixed(3), "-i", source, "-map", "0:v:0", "-map", "1:a:0", "-vf", `tpad=stop_mode=clone:stop_duration=${vHold}`, "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-af", `afade=t=out:st=${Math.max(0, len - 0.12).toFixed(3)}:d=0.12,apad=pad_dur=${hold}`, "-c:a", "aac", "-b:a", "192k", "-t", total.toFixed(3), path.join(dir, "cut.mp4")], { maxBuffer: 16 * 1024 * 1024 });
-  await run(FFMPEG, ["-v", "error", "-y", "-ss", win.start.toFixed(3), "-t", vLen.toFixed(3), "-i", source, "-an", "-vf", `scale=-2:1920,crop=1080:1920,boxblur=28:3,eq=brightness=-0.10:saturation=1.15,fps=30,tpad=stop_mode=clone:stop_duration=${vHold}`, "-c:v", "libx264", "-preset", "veryfast", "-crf", "30", "-pix_fmt", "yuv420p", path.join(dir, "bg.mp4")], { maxBuffer: 16 * 1024 * 1024 });
+  await run(
+    FFMPEG,
+    [
+      "-v",
+      "error",
+      "-y",
+      "-ss",
+      win.start.toFixed(3),
+      "-t",
+      vLen.toFixed(3),
+      "-i",
+      source,
+      "-ss",
+      win.start.toFixed(3),
+      "-t",
+      len.toFixed(3),
+      "-i",
+      source,
+      "-map",
+      "0:v:0",
+      "-map",
+      "1:a:0",
+      "-vf",
+      `tpad=stop_mode=clone:stop_duration=${vHold}`,
+      "-c:v",
+      "libx264",
+      "-preset",
+      "fast",
+      "-crf",
+      "18",
+      "-pix_fmt",
+      "yuv420p",
+      "-af",
+      `afade=t=out:st=${Math.max(0, len - 0.12).toFixed(3)}:d=0.12,apad=pad_dur=${hold}`,
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      "-t",
+      total.toFixed(3),
+      path.join(dir, "cut.mp4"),
+    ],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
+  await run(
+    FFMPEG,
+    [
+      "-v",
+      "error",
+      "-y",
+      "-ss",
+      win.start.toFixed(3),
+      "-t",
+      vLen.toFixed(3),
+      "-i",
+      source,
+      "-an",
+      "-vf",
+      `scale=-2:1920,crop=1080:1920,boxblur=28:3,eq=brightness=-0.10:saturation=1.15,fps=30,tpad=stop_mode=clone:stop_duration=${vHold}`,
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "30",
+      "-pix_fmt",
+      "yuv420p",
+      path.join(dir, "bg.mp4"),
+    ],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
   const narration = pScript.beats[beatIndex]?.narration ?? "";
-  const copy = await writeCutdownCopy(s.llm, pScript, pScript.entries[beatIndex]!, narration, pScript.entries.length);
-  const script = cutdownScript(pScript, beatIndex, copy, parent.youtube_video_id);
+  const copy = await writeCutdownCopy(
+    s.llm,
+    pScript,
+    pScript.entries[beatIndex]!,
+    narration,
+    pScript.entries.length,
+  );
+  const script = cutdownScript(
+    pScript,
+    beatIndex,
+    copy,
+    parent.youtube_video_id,
+  );
   script.cutdown!.theme = pScript.game_title;
   // The footage credits travel with the clips seen in this section.
   const plan = pAssets.longPlan;
   const fps = plan?.fps ?? 30;
   const seen = new Set(
     (plan?.shots ?? [])
-      .filter((sh) => sh.media.type === "clip" && sh.end / fps > win.start && sh.start / fps < win.end)
+      .filter(
+        (sh) =>
+          sh.media.type === "clip" &&
+          sh.end / fps > win.start &&
+          sh.start / fps < win.end,
+      )
       .map((sh) => sh.media.index),
   );
-  const clips = (pAssets.clips ?? []).filter((_, i) => seen.has(i)).map((c) => ({ ...c, file: "" }));
+  const clips = (pAssets.clips ?? [])
+    .filter((_, i) => seen.has(i))
+    .map((c) => ({ ...c, file: "" }));
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     assets_json: {
@@ -1361,10 +1474,21 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
       durationSeconds: total,
       clips,
       officialTrailer: pAssets.officialTrailer,
-      cutdown: { start: win.start, end: win.end, video: "cut.mp4", background: "bg.mp4" },
+      cutdown: {
+        start: win.start,
+        end: win.end,
+        video: "cut.mp4",
+        background: "bg.mp4",
+      },
     },
   });
-  await logEvent(s.db, ep.id, "cutdown_cut", { parent: parent.id, rank: ref.rank, start: win.start, end: win.end, title: copy.youtube_title });
+  await logEvent(s.db, ep.id, "cutdown_cut", {
+    parent: parent.id,
+    rank: ref.rank,
+    start: win.start,
+    end: win.end,
+    title: copy.youtube_title,
+  });
 }
 
 async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
@@ -1396,10 +1520,20 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
   });
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
-  const tech = await s.technicalQa(final, duration, { minSeconds: 8, maxSeconds: 59.5 });
-  const qa = { technical: tech, vision: null, checked_at: s.now().toISOString() };
+  const tech = await s.technicalQa(final, duration, {
+    minSeconds: 8,
+    maxSeconds: 59.5,
+  });
+  const qa = {
+    technical: tech,
+    vision: null,
+    checked_at: s.now().toISOString(),
+  };
   if (!tech.ok) {
-    await s.db.query(`UPDATE episodes SET qa_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(qa)]);
+    await s.db.query(`UPDATE episodes SET qa_json = $2 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(qa),
+    ]);
     throw new Error(`QA failed: ${tech.problems.join(" | ")}`);
   }
   await transition(s.db, ep.id, "voiced", "rendered", {
@@ -1418,19 +1552,28 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     return stepScriptDocumentary(s, ep, fc.topic as unknown as DocTopic);
   const topic = fc?.topic;
   if (!topic) throw new FatalError("long-form episode has no topic");
-    let facts: Array<{ title: string; facts: SteamFacts }> = [];
+  let facts: Array<{ title: string; facts: SteamFacts }> = [];
   let feedback: string[] = [];
   let draft: import("./editorial/longform.ts").LongformScript | undefined;
   // The plan names the games; their Steam facts are looked up once and every entry is written with them.
-  const lookup = async (entries: Array<{ game_title: string; steam_search_term: string }>) => {
+  const lookup = async (
+    entries: Array<{ game_title: string; steam_search_term: string }>,
+  ) => {
     if (facts.length) return facts;
     for (const entry of entries) {
       if (!entry.steam_search_term) continue;
       try {
         const app = await s.findGame(entry.steam_search_term);
-        if (app) facts.push({ title: entry.game_title, facts: await s.gameFacts(app) });
+        if (app)
+          facts.push({
+            title: entry.game_title,
+            facts: await s.gameFacts(app),
+          });
       } catch (err) {
-        log("warn", "long-form steam lookup failed", { game: entry.game_title, error: errorMessage(err) });
+        log("warn", "long-form steam lookup failed", {
+          game: entry.game_title,
+          error: errorMessage(err),
+        });
       }
     }
     return facts;
@@ -1440,7 +1583,8 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     const problems = validateLongform(draft);
     if (!problems.length) break;
     // One rewrite with the problems named; a second draft that still misses is logged, not thrown away.
-    if (attempt === 1) await logEvent(s.db, ep.id, "style_warnings", { problems });
+    if (attempt === 1)
+      await logEvent(s.db, ep.id, "style_warnings", { problems });
     feedback = problems;
   }
   if (!draft) throw new Error("long-form script produced nothing");
@@ -2293,8 +2437,12 @@ export function photoCredit(i: {
 /** A video about single-player campaigns keeps multiplayer footage out of every pick. */
 /** A story ranking warns about spoilers in its first spoken lines. */
 export function withSpoilerWarning(script: Script): Script {
-  if (scopeOf(script) !== "campaign" || /spoiler/i.test(script.hook)) return script;
-  return { ...script, hook: `${script.hook.trim()} Fair warning: story spoilers ahead.` };
+  if (scopeOf(script) !== "campaign" || /spoiler/i.test(script.hook))
+    return script;
+  return {
+    ...script,
+    hook: `${script.hook.trim()} Fair warning: story spoilers ahead.`,
+  };
 }
 
 export function scopeOf(script: Script): "campaign" | undefined {
@@ -2420,7 +2568,7 @@ async function gatherLongEntryMedia(
           trailer: om.trailer.title,
         });
     }
-        // Licensed gameplay for every sentence (real missions and moments, credited), on top of any trailer moment:
+    // Licensed gameplay for every sentence (real missions and moments, credited), on top of any trailer moment:
     // a sentence then plays as footage, not a still.
     const missing = targets.slice(0, 6);
     if (missing.length)
@@ -2476,6 +2624,7 @@ async function gatherLongEntryMedia(
       })),
       stills.map((a) => ({ file: path.join(edir, a.file) })),
       path.join(edir, "stillscore"),
+      scope,
     );
     for (const [i, a] of stills.entries()) {
       a.label = ranked.labels.get(i);
@@ -2483,6 +2632,12 @@ async function gatherLongEntryMedia(
     }
     for (const p of ranked.picks)
       stills[p.image]!.moment = Number(p.key.slice(1));
+    // A story video keeps only the screenshots the editor matched to a sentence: an unmatched
+    // one is as likely a multiplayer map as the campaign (key art stays for the rank card).
+    if (scope === "campaign" && ranked.picks.length)
+      for (const a of stills)
+        if (a.kind === "screenshot" && a.moment === undefined)
+          (a as { drop?: boolean }).drop = true;
   } catch (err) {
     log("warn", "still ranking failed; stills keep entry order", {
       game: entry.game_title,
@@ -2492,6 +2647,39 @@ async function gatherLongEntryMedia(
   for (const a of mine)
     if (!(a as { drop?: boolean }).drop)
       images.push({ ...a, file: rel(a.file), beatIndex });
+  // A face for every sentence that names a person, cut from the footage chosen for that sentence.
+  for (const [k, m] of moments.entries()) {
+    const person = (m as { person?: string }).person?.trim();
+    if (!person) continue;
+    // Only footage from a video whose title names this person: a face from anywhere else could be anyone, and a wrong name is misinformation.
+    const named = (t: string) => normTitle(t).includes(normTitle(person));
+    const clip = clips.find(
+      (c) => c.beatIndex === beatIndex && c.moment === k && named(c.provenance),
+    );
+    if (!clip) continue;
+    const file = path.join("assets", `portrait_m${k}.jpg`);
+    const ok = await cutPortrait(
+      path.join(dir, clip.file),
+      path.join(edir, file),
+    ).catch(() => false);
+    if (!ok) continue;
+    images.push({
+      kind: "portrait",
+      file: rel(file),
+      sourceUrl: clip.sourceUrl,
+      provenance: `Portrait of ${person} cut from: ${clip.provenance}`,
+      beatIndex,
+      moment: k,
+      label: person.toUpperCase(),
+      width: 960,
+      height: 540,
+    });
+    log("info", "character portrait", {
+      game: entry.game_title,
+      person,
+      moment: k,
+    });
+  }
 }
 
 /**

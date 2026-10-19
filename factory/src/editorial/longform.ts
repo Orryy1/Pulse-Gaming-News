@@ -68,6 +68,12 @@ export const MomentSchema = z.object({
     .describe(
       "0-4 words from this sentence to flash on screen as a kinetic caption (a name or phrase worth landing), or empty",
     ),
+  person: z
+    .string()
+    .optional()
+    .describe(
+      "The character or real person this sentence is mainly about, by full name (e.g. 'Polina Petrova'), or empty",
+    ),
 });
 export type Moment = z.infer<typeof MomentSchema>;
 
@@ -251,7 +257,8 @@ export function momentsSchema(count: number) {
 const MOMENTS_PROMPT = `You are the picture editor for a long-form gaming ranking video. You get one entry's narration as numbered sentences and return exactly one moment per sentence, in the same order.
 "show" names the precise in-game thing on screen while that sentence is spoken: the mission, the character, the place, the weapon, the vehicle, the set piece, the twist. It is always a moment from the game itself, never a title card, logo, menu, store page, launcher, box art, review score screen or anything made of text, and never a generic "gameplay".
 keywords: 1-4 short search terms for that moment (a mission name, a character, a place).
-About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that sentence. Never make a graphic of the entry's rank or place on the list: the rank card already shows it. "emphasis" lands a complete name or phrase from the sentence on screen ("Captain Price", "No Russian") in about a third of the moments, never a fragment like "series at"; leave it empty when the moment has a graphic.`;
+About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that sentence. Never make a graphic of the entry's rank or place on the list: the rank card already shows it. "emphasis" lands a complete name or phrase from the sentence on screen ("Captain Price", "No Russian") in about a third of the moments, never a fragment like "series at"; leave it empty when the moment has a graphic.
+"person": when a sentence is mainly about one character or real person, give their full name ("Polina Petrova", "Viktor Reznov") so a portrait can remind viewers who they are, and leave the graphic as none for that moment; otherwise leave it empty.`;
 
 /** One moment per sentence; a list that comes back short is padded from the sentences themselves so no sentence goes without a picture. */
 export async function writeMoments(
@@ -282,6 +289,7 @@ export async function writeMoments(
     keywords: [game],
     graphic: { kind: "none", primary: "", secondary: "", items: [] },
     emphasis: "",
+    person: "",
   });
   return Array.from({ length: n }, (_, i) => got[i] ?? pad(i));
 }

@@ -1281,15 +1281,26 @@ export const Long: React.FC<LongProps> = (props) => {
         // A rank graphic repeats the rank card and a fragment ("SERIES AT") reads as a glitch: both are left out.
         const m = {
           ...raw,
-          graphic: usefulGraphic(raw.graphic) ? raw.graphic : { ...raw.graphic, kind: "none" as const },
-          emphasis: raw.emphasis && usefulEmphasis(raw.emphasis) ? raw.emphasis : "",
+          graphic: usefulGraphic(raw.graphic)
+            ? raw.graphic
+            : { ...raw.graphic, kind: "none" as const },
+          emphasis:
+            raw.emphasis && usefulEmphasis(raw.emphasis) ? raw.emphasis : "",
         };
         const from = Math.round(w.start * fps);
         const len = Math.max(1, Math.round((w.end - w.start) * fps));
         const shot = plan.shots.find((x) => from >= x.start && from < x.end);
-        const pic = props.images.find(
-          (im) => im.beatIndex === w.entry && im.moment === w.moment,
-        );
+        // A character's portrait first (a reminder of who they are), else the still matched to the sentence.
+        const pic =
+          props.images.find(
+            (im) =>
+              im.beatIndex === w.entry &&
+              im.moment === w.moment &&
+              im.kind === "portrait",
+          ) ??
+          props.images.find(
+            (im) => im.beatIndex === w.entry && im.moment === w.moment,
+          );
         const showPop =
           m.graphic.kind === "none" &&
           shot?.media.type === "clip" &&

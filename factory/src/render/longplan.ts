@@ -250,7 +250,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         .map((_, k) => k)
         .filter(
           (k) =>
-            images[k]!.beatIndex === entry && images[k]!.kind !== "capsule",
+            images[k]!.beatIndex === entry && images[k]!.kind !== "capsule" && images[k]!.kind !== "portrait",
         );
       const noHero = allEntry.filter((k) => images[k]!.kind !== "hero");
       const entryImages = noHero.length >= 4 ? noHero : allEntry;

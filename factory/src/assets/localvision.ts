@@ -161,3 +161,208 @@ export async function screenFrames(
   );
   return out;
 }
+
+const FACE_SCHEMA = {
+  type: "object",
+  properties: {
+    found: { type: "boolean" },
+    box: { type: "array", items: { type: "number" } },
+  },
+  required: ["found", "box"],
+};
+
+/** The largest clearly visible face in a frame, as fractions of the frame (x1, y1, x2, y2). */
+async function faceBox(
+  file: string,
+): Promise<[number, number, number, number] | undefined> {
+  const image = (await fs.readFile(file)).toString("base64");
+  const res = await fetchWithTimeout(
+    `${LOCAL_VISION_URL}/api/chat`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: LOCAL_VISION_MODEL,
+        stream: false,
+        think: false,
+        format: FACE_SCHEMA,
+        keep_alive: "15m",
+        options: { temperature: 0, num_predict: 80 },
+        messages: [
+          {
+            role: "user",
+            content:
+              "Find the largest clearly visible human face in this video game frame (not a helmet seen from behind, not a tiny distant figure). Return found and box as [x1, y1, x2, y2] in 0-1000 coordinates relative to the image width and height.",
+            images: [image],
+          },
+        ],
+      }),
+    },
+    60_000,
+  );
+  if (!res.ok) return undefined;
+  const body = (await res.json()) as {
+    message?: { content?: string; thinking?: string };
+  };
+  const r = JSON.parse(
+    body.message?.content?.trim() || body.message?.thinking?.trim() || "{}",
+  ) as { found?: boolean; box?: number[] };
+  const b = r.box;
+  if (!r.found || !b || b.length !== 4) return undefined;
+  const [x1, y1, x2, y2] = b.map((v) => Math.min(1, Math.max(0, v / 1000))) as [
+    number,
+    number,
+    number,
+    number,
+  ];
+  // Too small to read as a face on a phone, or not a box at all.
+  if (x2 - x1 < 0.05 || y2 - y1 < 0.09) return undefined;
+  return [x1, y1, x2, y2];
+}
+
+/**
+ * A 16:9 portrait of the person in a clip: three frames, the one with the
+ * biggest face, cropped so the face fills about half the height. False when
+ * no frame shows a usable face (or the local model is not running).
+ */
+export async function cutPortrait(
+  clipFile: string,
+  outFile: string,
+): Promise<boolean> {
+  if (
+    process.env.LOCAL_VISION === "off" ||
+    process.env.NODE_TEST_CONTEXT ||
+    Date.now() < downUntil
+  )
+    return false;
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { FFMPEG, FFPROBE } = await import("../lib/bin.ts");
+  const path = await import("node:path");
+  const run = promisify(execFile);
+  const { stdout } = await run(FFPROBE, [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration:stream=width,height",
+    "-select_streams",
+    "v:0",
+    "-of",
+    "json",
+    clipFile,
+  ]);
+  const info = JSON.parse(stdout) as {
+    format?: { duration?: string };
+    streams?: Array<{ width: number; height: number }>;
+  };
+  const dur = Number(info.format?.duration ?? 4);
+  const W = info.streams?.[0]?.width ?? 1280;
+  const H = info.streams?.[0]?.height ?? 720;
+  await fs.mkdir(path.dirname(outFile), { recursive: true });
+  let best:
+    | { at: number; box: [number, number, number, number]; area: number }
+    | undefined;
+  for (const f of [0.2, 0.5, 0.8]) {
+    const frame = `${outFile}.f${Math.round(f * 10)}.jpg`;
+    try {
+      await run(FFMPEG, [
+        "-v",
+        "error",
+        "-y",
+        "-ss",
+        (dur * f).toFixed(2),
+        "-i",
+        clipFile,
+        "-frames:v",
+        "1",
+        "-q:v",
+        "3",
+        frame,
+      ]);
+      const box = await faceBox(frame);
+      if (box) {
+        const area = (box[2] - box[0]) * (box[3] - box[1]);
+        if (!best || area > best.area) best = { at: dur * f, box, area };
+      }
+    } catch {
+      // one frame failing never stops the others
+    } finally {
+      await fs.rm(frame, { force: true }).catch(() => undefined);
+    }
+  }
+  if (!best) return false;
+  const [x1, y1, x2, y2] = best.box;
+  const faceH = (y2 - y1) * H;
+  const cropH = Math.min(H, Math.max(faceH * 2, H * 0.35));
+  const cropW = Math.min(W, (cropH * 16) / 9);
+  const cx = ((x1 + x2) / 2) * W;
+  const cy = ((y1 + y2) / 2) * H + faceH * 0.1; // a little headroom above the face
+  const left = Math.round(Math.min(W - cropW, Math.max(0, cx - cropW / 2)));
+  const top = Math.round(Math.min(H - cropH, Math.max(0, cy - cropH / 2)));
+  await run(FFMPEG, [
+    "-v",
+    "error",
+    "-y",
+    "-ss",
+    best.at.toFixed(2),
+    "-i",
+    clipFile,
+    "-frames:v",
+    "1",
+    "-vf",
+    `crop=${Math.round(cropW)}:${Math.round(cropH)}:${left}:${top},scale=960:540`,
+    "-q:v",
+    "3",
+    outFile,
+  ]);
+  // The finder is eager: the crop itself must read as one clear face, or there is no portrait.
+  if (!(await clearFace(outFile).catch(() => false))) {
+    await fs.rm(outFile, { force: true }).catch(() => undefined);
+    return false;
+  }
+  return true;
+}
+
+/** A second look at the finished crop: one person's face, in focus, filling much of the picture. */
+async function clearFace(file: string): Promise<boolean> {
+  const image = (await fs.readFile(file)).toString("base64");
+  const res = await fetchWithTimeout(
+    `${LOCAL_VISION_URL}/api/chat`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: LOCAL_VISION_MODEL,
+        stream: false,
+        think: false,
+        format: {
+          type: "object",
+          properties: { clear_face: { type: "boolean" } },
+          required: ["clear_face"],
+        },
+        keep_alive: "15m",
+        options: { temperature: 0, num_predict: 20 },
+        messages: [
+          {
+            role: "user",
+            content:
+              "Answer clear_face: true only if this picture is a portrait of one person whose face (eyes, nose and mouth) is clearly visible, in focus, well lit and fills a large part of the picture. False for helmets seen from behind, silhouettes, blur, explosions, scenery, weapons or tiny figures.",
+            images: [image],
+          },
+        ],
+      }),
+    },
+    60_000,
+  );
+  if (!res.ok) return false;
+  const body = (await res.json()) as {
+    message?: { content?: string; thinking?: string };
+  };
+  return (
+    (
+      JSON.parse(
+        body.message?.content?.trim() || body.message?.thinking?.trim() || "{}",
+      ) as { clear_face?: boolean }
+    ).clear_face === true
+  );
+}

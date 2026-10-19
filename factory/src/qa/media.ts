@@ -55,24 +55,29 @@ export async function blackSeconds(file: string): Promise<number> {
  * or two of black at a cut reads as flicker on screen but is far too short for
  * blackdetect's 0.4 s minimum or a sampled still to catch.
  */
-export function flashRuns(frames: Array<{ time: number; luma: number }>, durationSeconds: number, threshold = 15): Array<{ start: number; end: number; frames: number }> {
+export function flashRuns(frames: Array<{ time: number; luma: number }>, durationSeconds: number, threshold = 12): Array<{ start: number; end: number; frames: number }> {
+  // A render flash is the canvas showing through: near-black, short, and much darker than the
+  // frames either side. A dim scene (no jump) and a trailer's own one-frame flicker between two
+  // dark-ish frames are content, not glitches.
   const runs: Array<{ start: number; end: number; frames: number }> = [];
-  let cur: { start: number; end: number; frames: number } | undefined;
-  for (const f of frames) {
+  let i = 0;
+  while (i < frames.length) {
+    const f = frames[i]!;
     const dark = f.luma < threshold && f.time > 0.5 && f.time < durationSeconds - 1.5;
-    if (dark) {
-      if (cur) {
-        cur.end = f.time;
-        cur.frames++;
-      } else cur = { start: f.time, end: f.time, frames: 1 };
-    } else if (cur) {
-      runs.push(cur);
-      cur = undefined;
+    if (!dark) {
+      i++;
+      continue;
     }
+    let j = i;
+    while (j + 1 < frames.length && frames[j + 1]!.luma < threshold) j++;
+    const before = frames[i - 1]?.luma ?? 0;
+    const after = frames[j + 1]?.luma ?? 0;
+    const darkest = Math.max(...frames.slice(i, j + 1).map((x) => x.luma));
+    const count = j - i + 1;
+    if (count <= 20 && Math.min(before, after) >= darkest + 25) runs.push({ start: f.time, end: frames[j]!.time, frames: count });
+    i = j + 1;
   }
-  if (cur) runs.push(cur);
-  // A long dark stretch is a scene (or blackdetect's business), not a flash.
-  return runs.filter((r) => r.frames <= 20);
+  return runs;
 }
 
 export async function blackFlashes(file: string, durationSeconds: number): Promise<Array<{ start: number; end: number; frames: number }>> {

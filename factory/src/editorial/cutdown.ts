@@ -61,6 +61,10 @@ export function cutdownWindow(
     if (!last) return undefined;
     end = last.end + 0.35;
   }
+  // End just after the last word, well before the next entry's card and art fade in.
+  const spoken = words.filter((w) => w.start >= start && w.end <= end + 0.05);
+  const lastWord = spoken[spoken.length - 1];
+  if (lastWord) end = Math.min(end, lastWord.end + 0.3);
   return { start, end };
 }
 

@@ -25,6 +25,8 @@ import {
   momentWindows,
   titleLines,
   type LongPlan,
+  usefulEmphasis,
+  usefulGraphic,
 } from "./longplan.ts";
 import {
   FlashPunch,
@@ -235,11 +237,9 @@ const Still: React.FC<{
 
 const Clip: React.FC<{ src: string }> = ({ src }) => {
   const frame = useCurrentFrame();
-  const fade = interpolate(frame, [0, 8], [0, 1], {
-    extrapolateRight: "clamp",
-  });
+  // A hard cut: fading in from transparent showed the black canvas under it for a few frames.
   return (
-    <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+    <AbsoluteFill style={{ overflow: "hidden" }}>
       <OffthreadVideo
         src={src}
         muted
@@ -1255,8 +1255,14 @@ export const Long: React.FC<LongProps> = (props) => {
       })}
       {/* Sentence by sentence: the stated fact as a graphic, else a kinetic caption; a pop-in picture over footage. */}
       {windows.map((w, k) => {
-        const m = props.moments?.[w.entry]?.[w.moment];
-        if (!m) return null;
+        const raw = props.moments?.[w.entry]?.[w.moment];
+        if (!raw) return null;
+        // A rank graphic repeats the rank card and a fragment ("SERIES AT") reads as a glitch: both are left out.
+        const m = {
+          ...raw,
+          graphic: usefulGraphic(raw.graphic) ? raw.graphic : { ...raw.graphic, kind: "none" as const },
+          emphasis: raw.emphasis && usefulEmphasis(raw.emphasis) ? raw.emphasis : "",
+        };
         const from = Math.round(w.start * fps);
         const len = Math.max(1, Math.round((w.end - w.start) * fps));
         const shot = plan.shots.find((x) => from >= x.start && from < x.end);

@@ -506,3 +506,21 @@ export function titleLines(text: string): string[] {
   if (i <= 0 || text.length <= 20) return [text];
   return [text.slice(0, i + 1), text.slice(i + 2)];
 }
+
+/** A graphic worth showing: never the entry's own rank (the rank card already says it). */
+export function usefulGraphic<G extends { kind: string; primary: string; secondary: string }>(g: G): boolean {
+  if (g.kind === "none") return false;
+  const text = `${g.primary} ${g.secondary}`;
+  if (/\b(rank(ing)?|position|place[sd]?|spot|on the list|where it lands|entry number)\b/i.test(text)) return false;
+  if (/^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|#?\d{1,2})$/i.test(g.primary.trim())) return g.kind === "score" && /\d/.test(g.primary);
+  return true;
+}
+
+const LOOSE_END = new Set(["a", "an", "the", "at", "of", "to", "in", "on", "for", "with", "and", "or", "but", "by", "from", "as", "its", "his", "her", "their", "is", "was", "that"]);
+
+/** A pop-up phrase that reads as a phrase: not a fragment ending on "at" or "the". */
+export function usefulEmphasis(text: string): boolean {
+  const words = text.trim().replace(/[.,;:!?]+$/, "").split(/\s+/).filter(Boolean);
+  if (!words.length || words.join(" ").length < 3) return false;
+  return !LOOSE_END.has(words[words.length - 1]!.toLowerCase()) && !LOOSE_END.has(words[0]!.toLowerCase());
+}

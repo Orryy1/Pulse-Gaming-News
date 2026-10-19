@@ -26,26 +26,48 @@ const HOUSE = `You write for Pulse Gaming News, a fast, credible YouTube channel
 American English spelling for a US-first audience, AP style (no serial comma). Brisk, confident, lightly opinionated, warm. Advertiser-friendly. No "like and subscribe", no "let me know in the comments", no "without further ado". The channel speaks as "we" ("we're ranking", "our pick", "we think"), never about itself in the third person ("Pulse is ranking"); the name Pulse is on screen and needs no saying.
 Never invent release years, scores, prices or player counts: use the Steam facts provided or long-established public knowledge. Opinions are framed as opinion.`;
 
-export const GRAPHIC_KINDS = ["none", "stat", "date", "score", "list", "compare"] as const;
+export const GRAPHIC_KINDS = [
+  "none",
+  "stat",
+  "date",
+  "score",
+  "list",
+  "compare",
+] as const;
 
 /** One sentence's picture and graphic: the editor's shot list, line by line. */
 export const MomentSchema = z.object({
   show: z
     .string()
-    .describe("What the picture should show while this sentence is spoken: the specific mission, character, place, weapon, vehicle, mechanic or moment it names, 3-12 words"),
-  keywords: z.array(z.string()).max(4).describe("1-4 short search terms for that picture"),
+    .describe(
+      "What the picture should show while this sentence is spoken: the specific mission, character, place, weapon, vehicle, mechanic or moment it names, 3-12 words",
+    ),
+  keywords: z
+    .array(z.string())
+    .max(4)
+    .describe("1-4 short search terms for that picture"),
   graphic: z.object({
     kind: z.enum(GRAPHIC_KINDS),
     primary: z
       .string()
-      .describe("stat: the figure as the narration says it, e.g. '1 billion dollars'; date: e.g. 'November 2009'; score: e.g. '94'; list: a 2-4 word heading; compare: a 2-4 word heading; none: empty"),
-    secondary: z.string().describe("stat/date/score: what it is, 2-6 words; empty otherwise"),
+      .describe(
+        "stat: the figure as the narration says it, e.g. '1 billion dollars'; date: e.g. 'November 2009'; score: e.g. '94'; list: a 2-4 word heading; compare: a 2-4 word heading; none: empty",
+      ),
+    secondary: z
+      .string()
+      .describe("stat/date/score: what it is, 2-6 words; empty otherwise"),
     items: z
       .array(z.string())
       .max(5)
-      .describe("list: 2-5 short items named in the narration; compare: exactly two 'label:value' rows taken from the narration; empty otherwise"),
+      .describe(
+        "list: 2-5 short items named in the narration; compare: exactly two 'label:value' rows taken from the narration; empty otherwise",
+      ),
   }),
-  emphasis: z.string().describe("0-4 words from this sentence to flash on screen as a kinetic caption (a name or phrase worth landing), or empty"),
+  emphasis: z
+    .string()
+    .describe(
+      "0-4 words from this sentence to flash on screen as a kinetic caption (a name or phrase worth landing), or empty",
+    ),
 });
 export type Moment = z.infer<typeof MomentSchema>;
 
@@ -78,7 +100,9 @@ export const LongformEntrySchema = z.object({
   footage: FootageSchema,
   moments: z
     .array(MomentSchema)
-    .describe("Exactly one per sentence of narration, in order: what the picture shows while that sentence is spoken"),
+    .describe(
+      "Exactly one per sentence of narration, in order: what the picture shows while that sentence is spoken",
+    ),
 });
 
 export const LongformScriptSchema = z.object({
@@ -164,11 +188,25 @@ export async function selectLongformTopic(
 }
 
 /** The ranking itself, before any entry is written: the order, the framing and the packaging. */
-export const LongformPlanSchema = LongformScriptSchema.omit({ entries: true, claims: true }).extend({
+export const LongformPlanSchema = LongformScriptSchema.omit({
+  entries: true,
+  claims: true,
+}).extend({
   entries: z
     .array(
-      LongformEntrySchema.pick({ rank: true, game_title: true, steam_search_term: true, year: true, platforms: true, verdict_chip: true }).extend({
-        angle: z.string().describe("The one specific detail a fan would nod at and why it sits at this rank, 1-2 sentences of notes (not narration)"),
+      LongformEntrySchema.pick({
+        rank: true,
+        game_title: true,
+        steam_search_term: true,
+        year: true,
+        platforms: true,
+        verdict_chip: true,
+      }).extend({
+        angle: z
+          .string()
+          .describe(
+            "The one specific detail a fan would nod at and why it sits at this rank, 1-2 sentences of notes (not narration)",
+          ),
       }),
     )
     .min(LONG_ENTRIES_MIN)
@@ -178,7 +216,11 @@ export const LongformPlanSchema = LongformScriptSchema.omit({ entries: true, cla
 export type LongformPlan = z.infer<typeof LongformPlanSchema>;
 
 /** One entry's spoken paragraph with its shot list. */
-export const LongformEntryBodySchema = LongformEntrySchema.pick({ year: true, narration: true, footage: true }).extend({
+export const LongformEntryBodySchema = LongformEntrySchema.pick({
+  year: true,
+  narration: true,
+  footage: true,
+}).extend({
   claims: LongformScriptSchema.shape.claims,
 });
 
@@ -198,17 +240,25 @@ List every factual claim in this entry in "claims".`;
 /** The shot list for one entry: as many moments as the narration has sentences, numbered to match. */
 export function momentsSchema(count: number) {
   return z.object({
-    moments: z.array(MomentSchema).min(count).max(count).describe(`Exactly ${count}: moment 1 for sentence 1, and so on`),
+    moments: z
+      .array(MomentSchema)
+      .min(count)
+      .max(count)
+      .describe(`Exactly ${count}: moment 1 for sentence 1, and so on`),
   });
 }
 
 const MOMENTS_PROMPT = `You are the picture editor for a long-form gaming ranking video. You get one entry's narration as numbered sentences and return exactly one moment per sentence, in the same order.
 "show" names the precise in-game thing on screen while that sentence is spoken: the mission, the character, the place, the weapon, the vehicle, the set piece, the twist. It is always a moment from the game itself, never a title card, logo, menu, store page, launcher, box art, review score screen or anything made of text, and never a generic "gameplay".
 keywords: 1-4 short search terms for that moment (a mission name, a character, a place).
-About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that sentence. "emphasis" lands a name or phrase from the sentence on screen in about a third of the moments; leave it empty when the moment has a graphic.`;
+About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that sentence. Never make a graphic of the entry's rank or place on the list: the rank card already shows it. "emphasis" lands a complete name or phrase from the sentence on screen ("Captain Price", "No Russian") in about a third of the moments, never a fragment like "series at"; leave it empty when the moment has a graphic.`;
 
 /** One moment per sentence; a list that comes back short is padded from the sentences themselves so no sentence goes without a picture. */
-export async function writeMoments(llm: Llm, game: string, narration: string): Promise<Moment[]> {
+export async function writeMoments(
+  llm: Llm,
+  game: string,
+  narration: string,
+): Promise<Moment[]> {
   const sentences = sentencesOf(narration);
   const n = Math.max(1, sentences.length);
   let got: Moment[] = [];
@@ -245,9 +295,11 @@ export async function writeMoments(llm: Llm, game: string, narration: string): P
 export async function writeLongform(
   llm: Llm,
   topic: EvergreenTopic,
-    factsFor:
+  factsFor:
     | Array<{ title: string; facts: SteamFacts }>
-    | ((entries: LongformPlan["entries"]) => Promise<Array<{ title: string; facts: SteamFacts }>>),
+    | ((
+        entries: LongformPlan["entries"],
+      ) => Promise<Array<{ title: string; facts: SteamFacts }>>),
   feedback: string[] = [],
 ): Promise<LongformScript> {
   // Steam facts given up front, or looked up once the plan names the games.
@@ -266,29 +318,52 @@ export async function writeLongform(
     effort: "medium",
     maxTokens: 12000,
   });
-    if (!Array.isArray(factsFor)) facts = await factsFor(plan.entries);
+  if (!Array.isArray(factsFor)) facts = await factsFor(plan.entries);
   const order = [...plan.entries].sort((a, b) => b.rank - a.rank);
-  const outline = order.map((e) => `#${e.rank} ${e.game_title} (${e.year}): ${e.angle}`).join("\n");
+  const outline = order
+    .map((e) => `#${e.rank} ${e.game_title} (${e.year}): ${e.angle}`)
+    .join("\n");
   const written: LongformScript["entries"] = [];
   const claims: LongformScript["claims"] = [];
   for (const e of order) {
-    const own = facts.filter((f) => f.title === e.game_title).map((f) => `Steam facts for this game (use these numbers, never others):\n${factsText(f.facts)}`);
-    const before = written.map((w) => `#${w.rank}: "${w.narration.split(/(?<=[.!?])\s/)[0]}"`).join("\n");
+    const own = facts
+      .filter((f) => f.title === e.game_title)
+      .map(
+        (f) =>
+          `Steam facts for this game (use these numbers, never others):\n${factsText(f.facts)}`,
+      );
+    const before = written
+      .map((w) => `#${w.rank}: "${w.narration.split(/(?<=[.!?])\s/)[0]}"`)
+      .join("\n");
     const body = await llm.structured({
       system: entryPrompt(),
-      content: `${brief}\nTitle: ${plan.title}\n\nThe full ranking, spoken from the bottom up:\n${outline}\n\nWrite entry #${e.rank} of ${order.length}: ${e.game_title} (${e.year}, ${e.platforms}). Verdict chip: ${e.verdict_chip}. Notes: ${e.angle}${own.length ? `
+      content: `${brief}\nTitle: ${plan.title}\n\nThe full ranking, spoken from the bottom up:\n${outline}\n\nWrite entry #${e.rank} of ${order.length}: ${e.game_title} (${e.year}, ${e.platforms}). Verdict chip: ${e.verdict_chip}. Notes: ${e.angle}${
+        own.length
+          ? `
 
-${own.join("\n")}` : ""}${before ? `
+${own.join("\n")}`
+          : ""
+      }${
+        before
+          ? `
 
 How the earlier entries opened (do not repeat these openings):
-${before}` : ""}${fb}`,
+${before}`
+          : ""
+      }${fb}`,
       schema: LongformEntryBodySchema,
       effort: "medium",
       maxTokens: 8000,
     });
     const { angle: _notes, ...head } = e;
-                const moments = await writeMoments(llm, e.game_title, body.narration);
-    written.push({ ...head, year: body.year || head.year, narration: body.narration, footage: body.footage, moments });
+    const moments = await writeMoments(llm, e.game_title, body.narration);
+    written.push({
+      ...head,
+      year: body.year || head.year,
+      narration: body.narration,
+      footage: body.footage,
+      moments,
+    });
     claims.push(...body.claims);
   }
   return { ...plan, entries: written, claims };
@@ -323,12 +398,22 @@ export function validateLongform(e: LongformScript): string[] {
   for (const x of e.entries) {
     const sentences = sentencesOf(x.narration);
     if (x.moments.length !== sentences.length)
-      p.push(`Entry "${x.game_title}" has ${sentences.length} sentences but ${x.moments.length} moments; give exactly one moment per sentence.`);
+      p.push(
+        `Entry "${x.game_title}" has ${sentences.length} sentences but ${x.moments.length} moments; give exactly one moment per sentence.`,
+      );
     for (const m of x.moments) {
-      const figures = `${m.graphic.primary} ${m.graphic.items.join(" ")}`.match(/\d[\d,.]*/g) ?? [];
+      const figures =
+        `${m.graphic.primary} ${m.graphic.items.join(" ")}`.match(
+          /\d[\d,.]*/g,
+        ) ?? [];
       const said = x.narration.replace(/,/g, "");
-      if (m.graphic.kind !== "none" && figures.some((f) => !said.includes(f.replace(/,/g, ""))))
-        p.push(`Entry "${x.game_title}": the graphic "${m.graphic.primary}" shows a figure the narration does not say.`);
+      if (
+        m.graphic.kind !== "none" &&
+        figures.some((f) => !said.includes(f.replace(/,/g, "")))
+      )
+        p.push(
+          `Entry "${x.game_title}": the graphic "${m.graphic.primary}" shows a figure the narration does not say.`,
+        );
     }
     const n = wordCount(x.narration);
     if (n < LONG_ENTRY_WORDS_MIN || n > LONG_ENTRY_WORDS_MAX)

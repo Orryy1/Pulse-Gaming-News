@@ -1635,6 +1635,15 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
  * entry that names no achievement in the data is dropped, the rest take the
  * data's exact name, percentage and icon, and ranks follow rarity (1 = rarest).
  */
+/** The criterion line under a ranking's thumbnail headline: "By campaign strength", never "By ranked by...". */
+export function thumbCriterion(criterion: string): string {
+  const core = criterion.trim().replace(/[.]$/, "").replace(/^(ranked\s+|judged\s+|sorted\s+)?(by|on)\s+/i, "");
+  const line = `By ${core.charAt(0).toLowerCase()}${core.slice(1)}`;
+  if (line.length <= 48) return line;
+  const cut = line.slice(0, 48);
+  return cut.slice(0, cut.lastIndexOf(" ")).replace(/[,;:\s]+$/, "");
+}
+
 /** A euro price as Steam formats it ("5,99€") written for an English screen ("€5.99"). */
 export function euro(v: string): string {
   const m = v.replace(/\s/g, "").match(/^([\d.,]+)€$/);
@@ -3279,7 +3288,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       game: doc
         ? (script.kicker ?? script.game_title).slice(0, 48)
         : script.criterion
-          ? `By ${script.criterion}`.slice(0, 48)
+          ? thumbCriterion(script.criterion)
           : script.game_title,
       accent: "#FF6B1A",
       imageFile: thumbArt?.file ?? null,

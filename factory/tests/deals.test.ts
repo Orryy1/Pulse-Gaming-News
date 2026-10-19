@@ -105,3 +105,10 @@ test("the deal card shows the price and the cut", () => {
   ]);
   assert.equal(s.evergreen_format, "steam_deals");
 });
+
+test("the thumbnail criterion line never doubles its 'by'", async () => {
+  const { thumbCriterion } = await import("../src/pipeline.ts");
+  assert.equal(thumbCriterion("Ranked by single-player campaign strength"), "By single-player campaign strength");
+  assert.equal(thumbCriterion("Survival horror tension."), "By survival horror tension");
+  assert.equal(thumbCriterion("By how well the story, the missions and the set pieces still land today"), "By how well the story, the missions and the set");
+});

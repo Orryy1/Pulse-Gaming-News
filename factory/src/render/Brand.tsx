@@ -5,6 +5,7 @@ import React from "react";
 import { AbsoluteFill, Img, staticFile } from "remotion";
 import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY } from "./components/fonts.ts";
+import { titleLines } from "./longplan.ts";
 
 const Grid: React.FC<{ opacity?: number; cell?: number }> = ({
   opacity = 0.05,
@@ -226,7 +227,10 @@ const Big: React.FC<{ text: string; size: number; width: number }> = ({ text, si
       textTransform: "uppercase",
     }}
   >
-    {text}
+    {/* "Call of Duty" on top, "Campaigns Ranked" underneath, as on the video's own title card. */}
+    {titleLines(text).map((l, i) => (
+      <div key={i}>{l}</div>
+    ))}
   </div>
 );
 

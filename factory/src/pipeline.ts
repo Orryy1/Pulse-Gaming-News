@@ -2308,6 +2308,8 @@ async function gatherMedia(
   s: Services,
   ep: Episode,
   dir: string,
+  /** The second pass after a red media rubric: more screenshots and clips so the plan can vary. */
+  rich = false,
 ): Promise<Pick<EpisodeAssets, "images" | "clips" | "officialTrailer">> {
   const script = ep.script_json!;
   // Prefer the exact store name resolved at script time so art and clips come from the same app as the facts.
@@ -2319,7 +2321,7 @@ async function gatherMedia(
     "";
   const app = term ? await s.findGame(term).catch(() => undefined) : undefined;
   const art = app
-    ? await s.fetchArt(app, dir).catch(() => [] as VisualAsset[])
+    ? await s.fetchArt(app, dir, rich ? 8 : 4).catch(() => [] as VisualAsset[])
     : [];
   // Official trailer B-roll: short muted clips, at most MAX_TRAILER_CLIPS.
   // Beat-matched trailer moments: the hook and each beat ask for what they name.
@@ -2331,7 +2333,7 @@ async function gatherMedia(
   const clipAssets =
     app && s.cfg.footage && s.cfg.maxClips > 0 && topicTargets.length
       ? await s
-          .fetchClips(app, dir, topicTargets, ranking ? 1 : s.cfg.maxClips)
+          .fetchClips(app, dir, topicTargets, ranking ? 1 : s.cfg.maxClips + (rich ? 2 : 0))
           .catch((err) => {
             log("warn", "trailer clips failed", {
               episode: ep.id,
@@ -2622,7 +2624,7 @@ async function gatherMedia(
               a.kind === "hero" ||
               // A new release often has no hero art yet: its store header is the last-resort still.
               a.kind === "header" ||
-              (a.kind === "screenshot" && screens++ < 3),
+              (a.kind === "screenshot" && screens++ < (rich ? 6 : 3)),
         );
         for (const a of art)
           images.push({
@@ -3750,6 +3752,27 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     });
     plan = buildPlan({ ...planInput, variant: (variant + 1) % 4 });
     rubric = rubricFor(plan);
+    const mediaRed = rubric.metrics.some((m) => m.grade === "red" && /^(unique_media_ratio|max_media_repeat|adjacent_repeats)$/.test(m.name));
+    if (rubric.grade === "red" && mediaRed && !assets.rich) {
+      // Too little media to vary with: fetch more (screenshots, another clip) and plan again.
+      log("info", "red media rubric: gathering more media", { episode: ep.id });
+      Object.assign(assets, await gatherMedia(s, ep, dir, true), { rich: true });
+      for (const img of assets.images ?? [])
+        if (!img.blurFile) img.blurFile = await blurPlate(dir, img.file).catch(() => undefined);
+      for (const clip of assets.clips ?? [])
+        if (!clip.blurFile) clip.blurFile = await blurPlate(dir, clip.file).catch(() => undefined);
+      const richInput = {
+        ...planInput,
+        images: (assets.images ?? []).map((i) => ({ kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex })),
+        clips: (assets.clips ?? []).map((c) => ({ durationSeconds: c.durationSeconds, motion: c.motion, luma: c.luma, beatIndex: c.beatIndex, role: c.role })),
+      };
+      const tries = [0, 1, 2, 3].map((k) => buildPlan({ ...richInput, variant: (variant + k) % 4 }));
+      const order = { green: 0, amber: 1, red: 2 } as const;
+      const best = tries.map((p) => ({ p, r: rubricFor(p) })).sort((a, b) => order[a.r.grade] - order[b.r.grade])[0]!;
+      plan = best.p;
+      rubric = best.r;
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+    }
     if (rubric.grade === "red") {
       // A slot is worth more than a perfect plan: render anyway and say so.
       log("warn", "rubric still red after rebuild; rendering anyway", {

@@ -44,6 +44,8 @@ export interface Episode {
 }
 
 export interface EpisodeAssets {
+  /** Media was gathered a second time, richer, after a red media rubric. */
+  rich?: boolean;
   /** A Short cut from a long ranking: the section's seconds in the long video and the files cut from it. */
   cutdown?: { start: number; end: number; video: string; background: string };
   audio?: string;

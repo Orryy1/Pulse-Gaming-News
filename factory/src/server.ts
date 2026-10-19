@@ -21,6 +21,7 @@ import {
   quotaHeadroom,
   type Services,
 } from "./pipeline.ts";
+import { QUOTA, quotaAdd } from "./lanes.ts";
 import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
 import {
   buildPosters,
@@ -655,7 +656,15 @@ async function main(): Promise<void> {
         cfg,
         posters,
         now: () => new Date(),
-        isPublic: (id) => isPublicOnYouTube(id),
+        isPublic: async (id) => {
+          try {
+            return await isPublicOnYouTube(id);
+          } catch {
+            const st = await services.youtube().status(id);
+            await quotaAdd(db, new Date(), QUOTA.poll);
+            return st?.privacyStatus === "public" || st?.privacyStatus === "unlisted";
+          }
+        },
         notify: (m) => services.notify(m),
         episodeDir: (id) => episodeDir(cfg, id),
         videoUrl: (id) => approvalLinks(cfg, id).preview,

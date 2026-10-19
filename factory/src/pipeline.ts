@@ -4245,7 +4245,9 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
     );
     return;
   }
-  if (ep.assets_json?.srt) await addCaptions(s, ep);
+  // Captions go up on long videos only: YouTube captions a Short itself, and the 450 units each
+  // upload cost pay for a fifth daily video (the deals Short) instead.
+  if (ep.assets_json?.srt && ep.script_json?.runtime === "long") await addCaptions(s, ep);
   // YouTube refuses comments on a video that is still private: a scheduled one is commented once it is public.
   if (!ep.publish_at || new Date(ep.publish_at) <= s.now())
     await addPinnedComment(s, ep);

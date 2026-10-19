@@ -24,7 +24,8 @@ export const QUOTA = {
   comment: 50,
   search: 101, // search.list plus channels.list for an official trailer
 } as const;
-export const QUOTA_RESERVE_FOR_UPLOAD = QUOTA.upload + QUOTA.captions + QUOTA.comment + 20;
+// Kept back for a Short's upload and its pinned comment (captions ride only on long videos).
+export const QUOTA_RESERVE_FOR_UPLOAD = QUOTA.upload + QUOTA.comment + 20;
 
 // ------------------------------------------------------------------ time zones
 

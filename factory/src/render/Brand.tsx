@@ -215,7 +215,7 @@ const Shade: React.FC<{ to: string }> = ({ to }) => (
   <div style={{ position: "absolute", inset: 0, background: to }} />
 );
 
-const Big: React.FC<{ text: string; size: number; width: number }> = ({ text, size, width }) => (
+const Big: React.FC<{ text: string; size: number; width: number; split?: boolean }> = ({ text, size, width, split = true }) => (
   <div
     style={{
       fontFamily: DISPLAY,
@@ -228,7 +228,7 @@ const Big: React.FC<{ text: string; size: number; width: number }> = ({ text, si
     }}
   >
     {/* "Call of Duty" on top, "Campaigns Ranked" underneath, as on the video's own title card. */}
-    {titleLines(text).map((l, i) => (
+    {(split ? titleLines(text) : [text]).map((l, i) => (
       <div key={i}>{l}</div>
     ))}
   </div>
@@ -290,7 +290,7 @@ const VersusThumb: React.FC<ThumbProps> = ({ headline, imageSrc, image2Src, acce
       </div>
     ))}
     <div style={{ position: "absolute", left: 0, right: 0, bottom: 52, display: "flex", justifyContent: "center", textAlign: "center" }}>
-      <Big text={headline} size={headline.length > 28 ? 84 : 104} width={1180} />
+      <Big text={headline} size={headline.length > 28 ? 84 : 104} width={1180} split={false} />
     </div>
     <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 10, background: accent }} />
   </Field>
@@ -373,6 +373,8 @@ const SplitThumb: React.FC<ThumbProps> = ({
           letterSpacing: 3,
           color: COLOUR.muted,
           textTransform: "uppercase",
+          // Kept inside the dark panel: the art starts at x=520.
+          maxWidth: 420,
         }}
       >
         {game}

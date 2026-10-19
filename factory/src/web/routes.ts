@@ -240,7 +240,7 @@ export async function handleSite(
   if (icon) {
     const n = icon[1]!;
     const file = await derived(
-      path.join(PUBLIC_ROOT, "public", "logo.png"),
+      path.join(PUBLIC_ROOT, "public", "avatar.png"),
       path.join(cfg.dataDir, "site", `icon-${n}.png`),
       `scale=${n}:${n}`,
     );

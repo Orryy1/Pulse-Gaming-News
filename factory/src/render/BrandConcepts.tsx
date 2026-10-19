@@ -477,3 +477,35 @@ export const ConceptBanner: React.FC<ConceptProps> = ({ concept }) => {
     </AbsoluteFill>
   );
 };
+
+/**
+ * The Broadcast cover at any size (Facebook cover 1640x624, X header
+ * 1500x500): the lockup, the schedule and the topic ticker, kept inside the
+ * centre where every platform's crop and profile picture leave it alone.
+ */
+export const BroadcastCover: React.FC<{ width: number; height: number; contentWidth: number; offsetX?: number }> = ({ width, height, contentWidth, offsetX = 0 }) => {
+  const k = contentWidth / 1546; // the YouTube safe box is the reference layout
+  return (
+    <AbsoluteFill style={{ background: `radial-gradient(80% 70% at 50% 45%, #1b1b22 0%, ${INK} 75%)`, overflow: "hidden" }}>
+      <div style={{ position: "absolute", left: (width - contentWidth) / 2 + offsetX, top: height * 0.16, width: contentWidth, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 * k }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 * k }}>
+            <div style={{ background: "#FF3B3B", color: PAPER, fontFamily: BODY, fontWeight: 900, fontSize: 30 * k, letterSpacing: 4 * k, padding: `${8 * k}px ${16 * k}px`, borderRadius: 6 * k }}>● DAILY</div>
+            <div style={{ fontFamily: BODY, fontWeight: 800, fontSize: 30 * k, letterSpacing: 4 * k, color: COLOUR.muted }}>{SCHEDULE} · {SCHEDULE_UK}</div>
+          </div>
+          <div style={{ display: "flex" }}>
+            <div style={{ background: PAPER, color: INK, fontFamily: DISPLAY, fontSize: 150 * k, lineHeight: 1, padding: `${8 * k}px ${30 * k}px ${4 * k}px` }}>PULSE</div>
+            <div style={{ background: AMBER, color: INK, fontFamily: DISPLAY, fontSize: 150 * k, lineHeight: 1, padding: `${8 * k}px ${30 * k}px ${4 * k}px` }}>GAMING</div>
+          </div>
+          <div style={{ fontFamily: BODY, fontWeight: 900, fontSize: 40 * k, color: PAPER }}>Checked against the sources. Rankings every Sunday.</div>
+        </div>
+        <Mark size={290 * k} />
+      </div>
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: height * 0.1, height: 74 * k, background: AMBER, display: "flex", alignItems: "center", overflow: "hidden", whiteSpace: "nowrap" }}>
+        <div style={{ fontFamily: DISPLAY, fontSize: 52 * k, color: INK, letterSpacing: 2 * k, paddingLeft: 40 * k }}>
+          {"GTA 6 ◆ CALL OF DUTY ◆ NINTENDO ◆ PLAYSTATION ◆ XBOX ◆ STEAM ◆ RELEASE DATES ◆ PRICES ◆ LEAKS ◆ RANKINGS ◆ PULSEGMG.COM ◆ GTA 6 ◆ CALL OF DUTY ◆ NINTENDO"}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};

@@ -17,9 +17,10 @@ import { buildPosters, crosspostTick, isPublicOnYouTube } from "./social/crosspo
 import { engageTick } from "./social/engage.ts";
 import { renderEngage } from "./render/render.ts";
 import { handleSite, startGameWarmer } from "./web/routes.ts";
+import { setChannelBanner } from "./youtube/branding.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
-import { consentUrl, exchangeCode, saveRefreshToken, clearTokenCache, channelOf } from "./youtube/oauth.ts";
+import { consentUrl, exchangeCode, saveRefreshToken, clearTokenCache, channelOf, accessToken } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
 import { alert } from "./approval/discord.ts";
 import { digestDue, markDigestSent, weeklyDigest } from "./analytics.ts";
@@ -124,6 +125,20 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       return send(200, page("Done", `<h1>${ok ? (kind === "approve" ? "Approved. Publishing now." : "Rejected.") : "Nothing changed (state moved on)."}</h1>`));
     }
 
+    // Admin: set the YouTube channel banner from brand/final (the redesign).
+    if (url.pathname === "/admin/youtube-banner" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      try {
+        const file = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "brand", "final", "youtube-banner-2560x1440.png");
+        const token = await accessToken(db, oauthConfig(cfg));
+        const done = await setChannelBanner(token, file);
+        await logEvent(db, null, "youtube_banner", done);
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, ...done }));
+      } catch (err) {
+        res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error: errorMessage(err) }));
+      }
+      return;
+    }
     if (url.pathname === "/unpause" && req.method === "POST") {
       await clearSelectionPause(db);
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, unpaused: true }));

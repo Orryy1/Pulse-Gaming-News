@@ -7,7 +7,7 @@ import { Long, SAMPLE_LONG_PROPS, type LongProps } from "./Long.tsx";
 import { LONG_FPS, LONG_WIDTH, LONG_HEIGHT } from "./longplan.ts";
 import { Engage, SAMPLE_ENGAGE } from "./Engage.tsx";
 import { Cutdown, SAMPLE_CUTDOWN, type CutdownProps } from "./Cutdown.tsx";
-import { ConceptAvatar, ConceptBanner } from "./BrandConcepts.tsx";
+import { ConceptAvatar, ConceptBanner, BroadcastCover } from "./BrandConcepts.tsx";
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -64,6 +64,8 @@ export const RemotionRoot: React.FC = () => (
       defaultProps={SAMPLE_THUMB}
     />
     {/* Redesign directions for the owner to choose from (src/render/BrandConcepts.tsx). */}
+    <Still id="FacebookCover" component={BroadcastCover} width={1640} height={624} defaultProps={{ width: 1640, height: 624, contentWidth: 1180 }} />
+    <Still id="XHeader" component={BroadcastCover} width={1500} height={500} defaultProps={{ width: 1500, height: 500, contentWidth: 1000, offsetX: 140 }} />
     <Still id="ConceptAvatar" component={ConceptAvatar} width={800} height={800} defaultProps={{ concept: "signal" as const }} />
     <Still id="ConceptBanner" component={ConceptBanner} width={2560} height={1440} defaultProps={{ concept: "signal" as const }} />
     <Still id="PulseEngage" component={Engage} width={1080} height={1350} defaultProps={SAMPLE_ENGAGE} />

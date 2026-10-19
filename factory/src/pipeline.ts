@@ -98,6 +98,7 @@ import {
 import { narrationOf, tidyLoopLine, type Script } from "./editorial/schema.ts";
 import type { Deal } from "./discovery/deals.ts";
 import { trendingBlock } from "./discovery/demand.ts";
+import { readRequests, requestsBlock } from "./social/requests.ts";
 import {
   buildTags,
   hashtags,
@@ -385,7 +386,12 @@ export async function quotaHeadroom(db: Db, cfg: Config, now: Date): Promise<num
 
 /** For ranking topic pickers: YouTube's trending gaming videos and what viewers asked us to rank. */
 async function topicDemand(s: Services): Promise<string> {
-  return trendingBlock(await s.trending().catch(() => []), 25);
+  return [
+    trendingBlock(await s.trending().catch(() => []), 25),
+    requestsBlock(await readRequests(s.db).catch(() => undefined)),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 async function createFromChoice(

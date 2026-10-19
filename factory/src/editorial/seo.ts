@@ -341,6 +341,8 @@ export function pinnedComment(script: Script): string {
     return `Our pick: ${take}. Prices are Steam's at the time we checked and can change. Which one are you grabbing?`;
   if (script.evergreen_format === "weekly_recap")
     return `Our read: ${take}. Which story was the biggest one for you this week?`;
+  if (script.entries?.length && script.runtime === "long")
+    return `Our pick: ${take}. Would you move any of them up or down? And which series should we rank next? The most-asked ones go to the top of our list.`;
   if (script.entries?.length)
     return `Our pick: ${take}. Which ${game} game would you move up or down the list? Every pick is explained in the video.`;
   const q =

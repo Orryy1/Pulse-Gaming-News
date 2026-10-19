@@ -35,6 +35,7 @@ import {
   startSiteIndexNow,
 } from "./web/routes.ts";
 import { replyToComments } from "./youtube/replies.ts";
+import { collectRequests } from "./social/requests.ts";
 import { setChannelBanner } from "./youtube/branding.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
@@ -746,6 +747,15 @@ async function main(): Promise<void> {
       );
     setTimeout(() => void replies(), 120_000);
     setInterval(() => void replies(), 5 * 60_000);
+  }
+  // What viewers ask us to rank next, read from the long videos' comments once a day.
+  if (!cfg.dryRun) {
+    const requests = () =>
+      collectRequests({ db, youtube: services.youtube, llm: services.llm, now: new Date() }).catch((err) =>
+        log("warn", "audience requests failed", { error: errorMessage(err) }),
+      );
+    setTimeout(() => void requests(), 5 * 60_000);
+    setInterval(() => void requests(), 3 * 3600_000);
   }
   // Daily at 04:00 UTC, when nothing is mid-production, exit cleanly so the
   // Windows runner can pull updates and restart.

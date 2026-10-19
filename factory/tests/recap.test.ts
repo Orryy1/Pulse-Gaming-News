@@ -96,3 +96,20 @@ test("the recap becomes a documentary-shaped script whose chapters point back at
   assert.match(keywordLead(s), /^This week in gaming news/);
   assert.match(pinnedComment(s), /biggest one for you this week/);
 });
+
+test("viewer requests reach the topic pickers only once someone has asked", async () => {
+  const { requestsBlock } = await import("../src/social/requests.ts");
+  assert.equal(requestsBlock(undefined), "");
+  assert.equal(requestsBlock({ at: "x", requests: [] }), "");
+  assert.equal(
+    requestsBlock({ at: "x", requests: [{ name: "Halo", count: 4 }, { name: "Metal Gear Solid", count: 2 }] }),
+    "Viewers asked us to rank next (comments on our long videos, last 30 days): Halo (4), Metal Gear Solid (2).",
+  );
+});
+
+test("only the long ranking's pinned comment asks what to rank next", async () => {
+  const { goodScript } = await import("./helpers.ts");
+  const entries = [{ rank: 1, game_title: "Halo 3", steam_search_term: "", year: 2007, platforms: "Xbox 360" }];
+  assert.match(pinnedComment(goodScript({ entries, runtime: "long" } as any)), /which series should we rank next/);
+  assert.doesNotMatch(pinnedComment(goodScript({ entries } as any)), /rank next/);
+});

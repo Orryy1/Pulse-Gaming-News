@@ -14,6 +14,7 @@ import type { AffiliateTags } from "../editorial/affiliate.ts";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import { cachedCard, gameCard, type GameCard } from "./gamedata.ts";
+import { indexNowKey, startIndexNow } from "./indexnow.ts";
 import {
   articlePage,
   articleSlug,
@@ -84,7 +85,7 @@ async function channelVideos(cfg: Config): Promise<ChannelVideo[]> {
 }
 
 const SITE_PATH =
-  /^\/($|news(\/|$)|games(\/|$)|videos$|about$|privacy$|disclosure$|rss\.xml$|sitemap\.xml$|news-sitemap\.xml$|robots\.txt$|img\/|assets\/(fonts|icon-))/;
+  /^\/($|news(\/|$)|games(\/|$)|videos$|about$|privacy$|disclosure$|rss\.xml$|sitemap\.xml$|news-sitemap\.xml$|robots\.txt$|[a-f0-9]{32}\.txt$|img\/|assets\/(fonts|icon-))/;
 
 /** A cut-down copy made once and kept: the story's thumbnail or art as a 960x540 JPEG, or the logo at an icon size. */
 async function derived(
@@ -248,6 +249,12 @@ export async function handleSite(
     sendFile(res, file, "image/png", 604800);
     return true;
   }
+  if (p === `/${indexNowKey(cfg)}.txt`) {
+    res
+      .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
+      .end(indexNowKey(cfg));
+    return true;
+  }
   if (p === "/robots.txt") {
     res
       .writeHead(200, {
@@ -359,6 +366,27 @@ export async function handleSite(
   const page = staticPage(p.slice(1), base);
   if (page) return (html(200, page, "public, max-age=3600"), true);
   return (notFound(), true);
+}
+
+/** Announces every sitemap page to IndexNow (Bing and friends) as it appears. */
+export function startSiteIndexNow(ctx: SiteContext): void {
+  const base = siteBase(ctx.cfg);
+  startIndexNow(
+    ctx.cfg,
+    async () => {
+      const eps = await episodes(ctx.db);
+      const { hubs, cards } = await hubsWithCards(ctx, eps);
+      const xml = sitemapXml(
+        eps,
+        hubs.map((hub) => ({ hub, card: cards[hub.slug] })),
+        base,
+      );
+      return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) =>
+        m[1]!.replace(/&amp;/g, "&"),
+      );
+    },
+    base,
+  );
 }
 
 /** Fetches every hub's store facts in the background so pages never wait on Steam. */

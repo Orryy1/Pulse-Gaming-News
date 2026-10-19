@@ -16,7 +16,7 @@ import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
 import { buildPosters, crosspostTick, isPublicOnYouTube } from "./social/crosspost.ts";
 import { engageTick } from "./social/engage.ts";
 import { renderEngage } from "./render/render.ts";
-import { handleSite, startGameWarmer } from "./web/routes.ts";
+import { handleSite, startGameWarmer, startSiteIndexNow } from "./web/routes.ts";
 import { setChannelBanner } from "./youtube/branding.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
@@ -296,6 +296,7 @@ async function main(): Promise<void> {
   const state: { lastTick?: string; lastError?: string; doctor?: string } = {};
   const app = createApp(db, cfg, services, state);
   startGameWarmer({ db, cfg, tags: (id) => affiliateTags(cfg, id) });
+  startSiteIndexNow({ db, cfg, tags: (id) => affiliateTags(cfg, id) });
   http
     .createServer((req, res) => {
       app(req, res).catch((err) => {

@@ -3585,7 +3585,7 @@ export function affiliateTags(cfg: Config, episodeId: string): AffiliateTags {
     us: cfg.amazonUsTag || undefined,
     ...cfg.amazonMoreTags,
     shopUrl: publicOk
-      ? `${cfg.publicUrl.replace(/\/$/, "")}/shop/${episodeId}`
+      ? `${(cfg.siteUrl || cfg.publicUrl).replace(/\/$/, "")}/shop/${episodeId}`
       : undefined,
   };
 }

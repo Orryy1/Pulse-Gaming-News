@@ -16,7 +16,7 @@ import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
 import { buildPosters, crosspostTick, isPublicOnYouTube } from "./social/crosspost.ts";
 import { engageTick } from "./social/engage.ts";
 import { renderEngage } from "./render/render.ts";
-import { articlePage, articleSlug, idTailOf, indexPage, rssFeed, SITE_EPISODES_SQL, type SiteEpisode } from "./web/site.ts";
+import { handleSite, startGameWarmer } from "./web/routes.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import { consentUrl, exchangeCode, saveRefreshToken, clearTokenCache, channelOf } from "./youtube/oauth.ts";
@@ -82,6 +82,9 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       return;
     }
 
+    // The public website (home, news, game hubs, videos, sitemaps).
+    if (await handleSite(req, res, url, { db, cfg, tags: (id) => affiliateTags(cfg, id) })) return;
+
     const ep = url.pathname.match(/^\/episodes\/([\w-]+)\/(approve|reject|video\.mp4)$/);
     if (ep) {
       const [, id, action] = ep as unknown as [string, string, string];
@@ -134,33 +137,6 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       const nonce = crypto.randomBytes(12).toString("hex");
       const state = `${nonce}.${signToken(`oauth:${nonce}`, cfg.appSecret, 4 * 3600)}`;
       res.writeHead(302, { location: consentUrl(oauthConfig(cfg), state) }).end();
-      return;
-    }
-    // The public website: an article per published video, an index and the RSS feed the newsletter sends from.
-    if (req.method === "GET" && (url.pathname === "/news" || url.pathname === "/news/" || url.pathname === "/rss.xml" || url.pathname.startsWith("/news/"))) {
-      const base = cfg.publicUrl.replace(/\/$/, "");
-      const eps = await db.query<SiteEpisode>(SITE_EPISODES_SQL, [60]);
-      if (url.pathname === "/rss.xml") {
-        res.writeHead(200, { "content-type": "application/rss+xml; charset=utf-8", "cache-control": "public, max-age=600" });
-        res.end(rssFeed(eps.slice(0, 30), base));
-        return;
-      }
-      if (url.pathname === "/news" || url.pathname === "/news/") {
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" });
-        res.end(indexPage(eps, base));
-        return;
-      }
-      const slug = decodeURIComponent(url.pathname.slice("/news/".length));
-      const tail = idTailOf(slug);
-      const ep = tail.length >= 6 ? eps.find((e) => e.id.endsWith(`_${tail}`)) ?? (await db.query<SiteEpisode>(SITE_EPISODES_SQL.replace("LIMIT $1", "LIMIT 500"), [])).find((e) => e.id.endsWith(`_${tail}`)) : undefined;
-      if (!ep) return send(404, page("Not found", `<h1>That story is not here.</h1><p><a href="/news">All stories</a></p>`));
-      const canonical = articleSlug(ep);
-      if (slug !== canonical) {
-        res.writeHead(301, { location: `/news/${canonical}` }).end();
-        return;
-      }
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "private, max-age=300" });
-      res.end(articlePage(ep, base, affiliateTags(cfg, ep.id), String(req.headers["cf-ipcountry"] ?? "")));
       return;
     }
     // Community post images: public so Facebook and Instagram can fetch them.
@@ -235,10 +211,10 @@ export function createApp(db: Db, cfg: Config, services: Services, state: { last
       }
     }
 
-    if (url.pathname === "/" || url.pathname === "/episodes") {
-      // Visitors land on the news site; the factory's own status needs the admin key.
+    if (url.pathname === "/episodes") {
+      // The factory's own status needs the admin key; visitors go to the website.
       if (!isAdmin()) {
-        res.writeHead(302, { location: "/news" }).end();
+        res.writeHead(302, { location: "/" }).end();
         return;
       }
       const rows = await listEpisodes(db, 30);
@@ -304,6 +280,7 @@ async function main(): Promise<void> {
   const services = createServices(db, cfg);
   const state: { lastTick?: string; lastError?: string; doctor?: string } = {};
   const app = createApp(db, cfg, services, state);
+  startGameWarmer({ db, cfg, tags: (id) => affiliateTags(cfg, id) });
   http
     .createServer((req, res) => {
       app(req, res).catch((err) => {

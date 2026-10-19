@@ -19,8 +19,22 @@ import {
 import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY } from "./components/fonts.ts";
 import { moveTransform, SPRING, type MovePreset } from "./motion.ts";
-import { buildLongPlan, entryOf, momentWindows, titleLines, type LongPlan } from "./longplan.ts";
-import { FlashPunch, GrainVignette, KineticCaption, MomentGraphicCard, PopInPicture, Sfx, type MomentProp } from "./components/LongMoments.tsx";
+import {
+  buildLongPlan,
+  entryOf,
+  momentWindows,
+  titleLines,
+  type LongPlan,
+} from "./longplan.ts";
+import {
+  FlashPunch,
+  GrainVignette,
+  KineticCaption,
+  MomentGraphicCard,
+  PopInPicture,
+  Sfx,
+  type MomentProp,
+} from "./components/LongMoments.tsx";
 import { displayText, type Segment } from "./timeline.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 
@@ -191,10 +205,14 @@ const Still: React.FC<{
             transform: `translate(-50%, -50%) scale(${m.scale - 0.02})`,
             borderRadius: 14,
             overflow: "hidden",
-            boxShadow: "0 50px 140px rgba(0,0,0,0.7), inset 0 0 0 2px rgba(255,255,255,0.14)",
+            boxShadow:
+              "0 50px 140px rgba(0,0,0,0.7), inset 0 0 0 2px rgba(255,255,255,0.14)",
           }}
         >
-          <Img src={src} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <Img
+            src={src}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
         </div>
       </AbsoluteFill>
     );
@@ -267,9 +285,18 @@ const Plate: React.FC<{ theme: string }> = ({ theme }) => (
 const XFADE = 9;
 
 /** Fades its contents in over the first frames of its sequence; what is behind shows through. */
-const FadeIn: React.FC<{ frames: number; children: React.ReactNode }> = ({ frames, children }) => {
+const FadeIn: React.FC<{ frames: number; children: React.ReactNode }> = ({
+  frames,
+  children,
+}) => {
   const frame = useCurrentFrame();
-  const o = frames > 0 ? interpolate(frame, [0, frames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1;
+  const o =
+    frames > 0
+      ? interpolate(frame, [0, frames], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })
+      : 1;
   return <AbsoluteFill style={{ opacity: o }}>{children}</AbsoluteFill>;
 };
 
@@ -295,7 +322,7 @@ const Backdrop: React.FC<{
       const img = s.media.type === "image" ? images[s.media.index] : undefined;
       const clip = s.media.type === "clip" ? clips[s.media.index] : undefined;
       return (
-                <Sequence
+        <Sequence
           key={i}
           from={img && i > 0 ? s.start - Math.min(XFADE, s.start) : s.start}
           durationInFrames={img && i > 0 ? len + Math.min(XFADE, s.start) : len}
@@ -304,31 +331,18 @@ const Backdrop: React.FC<{
           {clip ? (
             <>
               <Clip src={clip.src} />
-              {clip.credit ? (
-                <div
-                  style={{
-                    position: "absolute",
-                    right: 40,
-                    bottom: 26,
-                    padding: "4px 10px",
-                    background: "rgba(11,11,14,0.55)",
-                    borderRadius: 6,
-                    fontFamily: BODY,
-                    fontWeight: 600,
-                    fontSize: 16,
-                    letterSpacing: 0.5,
-                    color: "rgba(245,245,242,0.8)",
-                  }}
-                >
-                  {clip.credit}
-                </div>
-              ) : null}
             </>
           ) : img ? (
             <>
-                          <FadeIn frames={i > 0 ? Math.min(XFADE, s.start) : 0}>
-              <Still src={img.src} aspect={img.aspect} durationFrames={len + (i > 0 ? Math.min(XFADE, s.start) : 0)} move={s.move} fromBlack={i === 0} />
-            </FadeIn>
+              <FadeIn frames={i > 0 ? Math.min(XFADE, s.start) : 0}>
+                <Still
+                  src={img.src}
+                  aspect={img.aspect}
+                  durationFrames={len + (i > 0 ? Math.min(XFADE, s.start) : 0)}
+                  move={s.move}
+                  fromBlack={i === 0}
+                />
+              </FadeIn>
               {img.credit ? (
                 <div
                   style={{
@@ -1037,7 +1051,14 @@ export const Long: React.FC<LongProps> = (props) => {
     [props, words],
   );
   const windows = useMemo(
-    () => (props.moments?.length ? momentWindows(props.segments, words, props.moments.map((m) => m.length)) : []),
+    () =>
+      props.moments?.length
+        ? momentWindows(
+            props.segments,
+            words,
+            props.moments.map((m) => m.length),
+          )
+        : [],
     [props.moments, props.segments, words],
   );
   const starts = props.segments.map((s, i) =>
@@ -1085,6 +1106,13 @@ export const Long: React.FC<LongProps> = (props) => {
       talk += speaking[Math.min(durationInFrames, Math.max(0, f + k))] ?? 0;
     return fadeIn * fadeOut * interpolate(talk / 5, [0, 1], [0.22, 0.07]);
   };
+  // The corner names the source of what is on screen: a licensed gameplay clip its creator, else the trailers.
+  const creditAt = (f: number) => {
+    const shot = plan.shots.find((s) => f >= s.start && f < s.end);
+    const clip =
+      shot?.media.type === "clip" ? props.clips[shot.media.index] : undefined;
+    return clip?.credit ? clip.credit : props.footageCredit;
+  };
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
@@ -1101,7 +1129,7 @@ export const Long: React.FC<LongProps> = (props) => {
         chip={documentary ? "DOCUMENTARY" : total ? `TOP ${total}` : "RANKED"}
         progress={Math.min(1, frame / Math.max(1, durationInFrames))}
       />
-      <Credit text={props.footageCredit} />
+      <Credit text={creditAt(frame)} />
       {props.segments.map((s, i) => {
         const len = Math.max(1, ends[i]! - starts[i]!);
         if (s.kind === "hook") {
@@ -1232,14 +1260,32 @@ export const Long: React.FC<LongProps> = (props) => {
         const from = Math.round(w.start * fps);
         const len = Math.max(1, Math.round((w.end - w.start) * fps));
         const shot = plan.shots.find((x) => from >= x.start && from < x.end);
-        const pic = props.images.find((im) => im.beatIndex === w.entry && im.moment === w.moment);
-        const showPop = m.graphic.kind === "none" && shot?.media.type === "clip" && pic && w.moment > 0;
+        const pic = props.images.find(
+          (im) => im.beatIndex === w.entry && im.moment === w.moment,
+        );
+        const showPop =
+          m.graphic.kind === "none" &&
+          shot?.media.type === "clip" &&
+          pic &&
+          w.moment > 0;
         return (
-          <Sequence key={`m${k}`} from={from} durationInFrames={len} layout="none">
+          <Sequence
+            key={`m${k}`}
+            from={from}
+            durationInFrames={len}
+            layout="none"
+          >
             {m.graphic.kind !== "none" ? (
               <>
                 <MomentGraphicCard g={m.graphic} len={len} />
-                <Sfx name={m.graphic.kind === "stat" || m.graphic.kind === "score" ? "tick-blip" : "swipe-tonal"} volume={0.22} />
+                <Sfx
+                  name={
+                    m.graphic.kind === "stat" || m.graphic.kind === "score"
+                      ? "tick-blip"
+                      : "swipe-tonal"
+                  }
+                  volume={0.22}
+                />
               </>
             ) : m.emphasis && w.moment > 0 ? (
               <>
@@ -1248,8 +1294,16 @@ export const Long: React.FC<LongProps> = (props) => {
               </>
             ) : null}
             {showPop ? (
-              <Sequence from={Math.min(30, Math.max(0, len - 90))} layout="none">
-                <PopInPicture src={pic!.src} caption={pic!.label ?? ""} len={len - 30} side={w.moment % 2 ? "right" : "left"} />
+              <Sequence
+                from={Math.min(30, Math.max(0, len - 90))}
+                layout="none"
+              >
+                <PopInPicture
+                  src={pic!.src}
+                  caption={pic!.label ?? ""}
+                  len={len - 30}
+                  side={w.moment % 2 ? "right" : "left"}
+                />
                 <Sfx name="whoosh-short" volume={0.24} />
               </Sequence>
             ) : null}
@@ -1258,8 +1312,15 @@ export const Long: React.FC<LongProps> = (props) => {
       })}
       {/* A white punch as each entry lands. */}
       {props.segments.map((s, i) =>
-        s.kind === "beat" && (s.visual?.kind === "rank" || s.visual?.kind === "chapter") && i > 0 ? (
-          <Sequence key={`f${i}`} from={starts[i]!} durationInFrames={12} layout="none">
+        s.kind === "beat" &&
+        (s.visual?.kind === "rank" || s.visual?.kind === "chapter") &&
+        i > 0 ? (
+          <Sequence
+            key={`f${i}`}
+            from={starts[i]!}
+            durationInFrames={12}
+            layout="none"
+          >
             <FlashPunch />
             <Sfx name="punch-deep" volume={0.3} />
           </Sequence>

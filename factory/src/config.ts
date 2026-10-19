@@ -43,6 +43,7 @@ const REMOTION_GLS: RemotionGl[] = ["swangle", "angle", "egl", "swiftshader", "v
 export interface Config {
   port: number;
   publicUrl: string;
+  siteUrl: string; // the website's own domain once it is live (SITE_URL); empty: the public URL
   dataDir: string;
   databaseUrl: string;
   appSecret: string;
@@ -176,6 +177,7 @@ export function loadConfig(): Config {
   const cfg: Config = {
     port: int("PORT", 8080),
     publicUrl: str("PUBLIC_URL", railwayDomain ? `https://${railwayDomain}` : "http://localhost:8080").replace(/\/$/, ""),
+    siteUrl: str("SITE_URL").replace(/\/$/, ""),
     dataDir: path.resolve(str("DATA_DIR", "./data")),
     databaseUrl: str("DATABASE_URL"),
     appSecret: str("APP_SECRET"),

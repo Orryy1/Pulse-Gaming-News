@@ -103,6 +103,24 @@ export function targetsFor(script: Script): FootageTarget[] {
   return out;
 }
 
+/** Below this mean brightness a frame reads as black on a phone or TV. */
+export const DARK_LUMA = 24;
+
+/** The darkest of a clip's frames, sampled four times a second; undefined when ffmpeg cannot say. */
+export async function darkestLuma(file: string): Promise<number | undefined> {
+  try {
+    const { stderr, stdout } = await run(
+      FFMPEG,
+      ["-hide_banner", "-i", file, "-vf", "fps=4,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-", "-f", "null", "-"],
+      { maxBuffer: 16 * 1024 * 1024 },
+    );
+    const frames = parseSignalStats(`${stdout}\n${stderr}`);
+    return frames.length ? Math.min(...frames.map((f) => f.luma)) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Parses ffmpeg's metadata=print output into per-frame brightness and motion. */
 export function parseSignalStats(
   text: string,
@@ -142,7 +160,7 @@ export function usableCandidates(
     (c) =>
       c.time >= lead &&
       c.time + clipSeconds <= totalSeconds - tail &&
-      c.luma >= 25 &&
+            c.luma >= 38 &&
       c.luma <= 230,
   );
   // A clip that changes shot under the words it was chosen for no longer shows what they say:
@@ -279,7 +297,7 @@ export const ClipRankingSchema = z.object({
 
 const RANK_PROMPT = `You are the picture editor for a gaming news Short. You see numbered keyframes from the game's official trailer, each the start of a possible 4.8 second clip, and the lines of narration that need footage.
 For every line, pick the keyframe whose moment best shows what the line names: the character, place, vehicle, mechanic or action it talks about. A line about a new map wants the map; a line about a price or a date wants a calm, readable wide shot; the hook wants the most striking gameplay moment.
-Reject any frame with readable words or letters anywhere in it: title cards, trailer taglines, objective or reward text, HUD and menus, rating boards, logos, captions, subtitles, dialogue text or watermarks. Also reject letterboxed black bars filling more than a third of the frame. Reject gore and graphic violence too: blood sprays, wounds, bodies, executions; the channel must stay advertiser-friendly, so pick action without the injury. Be strict: an overlay will be printed on top of the chosen moment, and any text behind it is a failure. Never use the same keyframe, or one within 5 seconds of it in the same trailer, for two lines.
+Reject any frame with readable words or letters anywhere in it: title cards, trailer taglines, objective or reward text, HUD and menus, rating boards, logos, captions, subtitles, dialogue text or watermarks. Also reject letterboxed black bars filling more than a third of the frame. Reject anything from a recording rather than the game itself: a streamer's webcam or facecam, picture-in-picture boxes, chat, alerts or recording overlays. Reject frames that are mostly dark or black, blurred, smeared or an unreadable close-up of a texture: a viewer must see at a glance what is happening. Reject gore and graphic violence too: blood sprays, wounds, bodies, executions; the channel must stay advertiser-friendly, so pick action without the injury. Be strict: an overlay will be printed on top of the chosen moment, and any text behind it is a failure. Never use the same keyframe, or one within 5 seconds of it in the same trailer, for two lines.
 Confidence under 0.5 means no frame truly fits; say so rather than forcing a match.`;
 
 /** One vision call: the keyframes, then the lines, back as labelled candidates and per-line picks. */
@@ -541,10 +559,17 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       if (textAt.length) span = Math.min(span, Math.min(...textAt) - 0.2);
       if (span < MIN_CLIP_SECONDS) continue;
       const seconds = Math.round(Math.max(MIN_CLIP_SECONDS, span) * 30) / 30;
-      try {
+            try {
         await cutClip(r.file, c.time, seconds, path.join(o.episodeDir, file));
       } catch (err) {
         log("warn", "clip cut failed", { at: c.time, error: errorMessage(err) });
+        continue;
+      }
+      // A shot that fades to black or sinks into darkness inside the clip reads as a broken video.
+      const darkest = await darkestLuma(path.join(o.episodeDir, file));
+      if (darkest !== undefined && darkest < DARK_LUMA) {
+        log("info", "clip dropped: goes dark", { at: c.time, darkest: Math.round(darkest) });
+        await fs.rm(path.join(o.episodeDir, file), { force: true }).catch(() => undefined);
         continue;
       }
       const beatIndex = t.key.startsWith("beat:") ? Number.parseInt(t.key.slice(5), 10) : undefined;

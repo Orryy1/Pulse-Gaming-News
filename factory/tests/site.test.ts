@@ -40,3 +40,45 @@ test("the RSS feed is well formed, newest first, one guid per episode", () => {
   assert.match(xml, /Fish &amp; chips &lt;b&gt;/);
   assert.ok(xml.indexOf("aaaa1111") < xml.indexOf("bbbb2222"));
 });
+
+import { gameSlug, gamesOf, homePage, gamePage, sitemapXml, newsSitemapXml, robotsTxt, parseChannelFeed, staticPage, hubIndexable } from "../src/web/site.ts";
+
+test("one game hub however a script spells the game", () => {
+  assert.equal(gameSlug("GTA VI"), "grand-theft-auto-6");
+  assert.equal(gameSlug("Grand Theft Auto 6"), "grand-theft-auto-6");
+  assert.equal(gameSlug("Call of Duty®: Modern Warfare® III"), "call-of-duty-modern-warfare-3");
+  const a = ep("ep_20261018_aaaa1111", { game_title: "GTA VI" });
+  const b = ep("ep_20261017_bbbb2222", { game_title: "Grand Theft Auto 6" });
+  const c = ep("ep_20261016_cccc3333", { game_title: "New games this week" });
+  const hubs = gamesOf([a, b, c]);
+  assert.equal(hubs.length, 1);
+  assert.equal(hubs[0]!.episodes.length, 2);
+  assert.ok(hubIndexable(hubs[0]!));
+});
+
+test("home, hub and legal pages render with the brand, facts and disclosure", () => {
+  const a = ep("ep_20261018_aaaa1111", { game_title: "Hades II" });
+  const home = homePage([a], "https://pulsegmg.com", gamesOf([a]));
+  assert.match(home, /<link rel="canonical" href="https:\/\/pulsegmg\.com\/">/);
+  assert.match(home, /href="\/games\/hades-2"/);
+  const hub = gamesOf([a])[0]!;
+  const html = gamePage(hub, { term: "Hades II", appId: 1145350, name: "Hades II", prices: { usd: "$29.99", gbp: "£24.99" }, releaseDate: "25 Sep, 2025", checkedAt: "2026-10-19T00:00:00Z", fetchedAt: "2026-10-19T00:00:00Z" }, "https://pulsegmg.com", { uk: "orryy0d-21", us: "orryy-20" }, "US");
+  assert.match(html, /\$29\.99 · £24\.99/);
+  assert.match(html, /amazon\.com\/s\?k=Hades/);
+  assert.match(html, /"@type":"VideoGame"/);
+  assert.doesNotMatch(html, /noindex/);
+  assert.match(gamePage(hub, undefined, "https://pulsegmg.com", { uk: "x" }), /noindex/);
+  assert.match(staticPage("disclosure", "https://pulsegmg.com")!, /Amazon Services LLC Associates Program/);
+  assert.equal(staticPage("nope", "https://pulsegmg.com"), undefined);
+});
+
+test("sitemaps, robots and the channel feed", () => {
+  const a = ep("ep_20261018_aaaa1111");
+  const xml = sitemapXml([a], [], "https://pulsegmg.com");
+  assert.match(xml, /<loc>https:\/\/pulsegmg\.com\/news\/[a-z0-9-]+-aaaa1111<\/loc>/);
+  assert.match(newsSitemapXml([a], "https://pulsegmg.com", Date.parse("2026-10-18T20:00:00Z")), /<news:publication_date>/);
+  assert.doesNotMatch(newsSitemapXml([a], "https://pulsegmg.com", Date.parse("2026-10-25T20:00:00Z")), /<url>/);
+  assert.match(robotsTxt("https://pulsegmg.com"), /Sitemap: https:\/\/pulsegmg\.com\/sitemap\.xml/);
+  const feed = parseChannelFeed(`<feed><entry><yt:videoId>abc123</yt:videoId><title>Fish &amp; chips</title><link rel="alternate" href="https://www.youtube.com/shorts/abc123"/><published>2026-10-18T12:00:00+00:00</published></entry></feed>`);
+  assert.deepEqual(feed, [{ id: "abc123", title: "Fish & chips", published: "2026-10-18T12:00:00+00:00", short: true }]);
+});

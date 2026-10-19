@@ -32,6 +32,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
   return {
     port: 0,
     publicUrl: "https://factory.example",
+    siteUrl: "",
     dataDir,
     databaseUrl: "",
     appSecret: "test-secret-0123456789",

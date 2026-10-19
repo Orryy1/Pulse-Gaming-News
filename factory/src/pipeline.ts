@@ -376,13 +376,22 @@ export function uploadsLeftToday(cfg: Config, now: Date): number {
   const day = weekday(now, cfg.timezone);
   const slots = [...cfg.newsSlots, cfg.weeklySlot];
   if (cfg.dealsDays.includes(day)) slots.push(cfg.dealsSlot);
-  if (cfg.longformEnabled && cfg.longformDays.includes(day)) slots.push(cfg.longformSlot);
+  if (cfg.longformEnabled && cfg.longformDays.includes(day))
+    slots.push(cfg.longformSlot);
   return slotsLeftToday(now, slots, cfg.timezone);
 }
 
 /** Units free for optional work (comment replies, sprints) once every upload still due today is covered. */
-export async function quotaHeadroom(db: Db, cfg: Config, now: Date): Promise<number> {
-  return cfg.quotaUnitsPerDay - (await quotaUsed(db, now)) - QUOTA_RESERVE_FOR_UPLOAD * uploadsLeftToday(cfg, now);
+export async function quotaHeadroom(
+  db: Db,
+  cfg: Config,
+  now: Date,
+): Promise<number> {
+  return (
+    cfg.quotaUnitsPerDay -
+    (await quotaUsed(db, now)) -
+    QUOTA_RESERVE_FOR_UPLOAD * uploadsLeftToday(cfg, now)
+  );
 }
 
 /** For ranking topic pickers: YouTube's trending gaming videos and what viewers asked us to rank. */
@@ -502,7 +511,8 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   // covers every upload already scheduled for today.
   const showcase = showcaseLive(eligible, now);
   const sprint =
-    !!showcase && (await quotaHeadroom(db, cfg, now)) >= QUOTA_RESERVE_FOR_UPLOAD;
+    !!showcase &&
+    (await quotaHeadroom(db, cfg, now)) >= QUOTA_RESERVE_FOR_UPLOAD;
   if (
     cfg.breakingEnabled &&
     (await countToday(db, cfg.timezone, "news_breaking")) <
@@ -528,7 +538,10 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
           (isBreaking(x.cluster, x.sighting, now, rule) ||
             (sprint &&
               SHOWCASE.test(storyText(x.cluster)) &&
-              isBreaking(x.cluster, x.sighting, now, { ...rule, scoreMin: cfg.sprintScoreMin }))) &&
+              isBreaking(x.cluster, x.sighting, now, {
+                ...rule,
+                scoreMin: cfg.sprintScoreMin,
+              }))) &&
           !cooled.has(franchiseKey(x.cluster)),
       )
       .map((x) => x.cluster)
@@ -619,7 +632,12 @@ export async function maybeSelectEvergreen(
   ).map((r) => r.headline);
   const candidates = await s.discoverEvergreen();
   if (!candidates.length) return undefined;
-  const topic = await selectEvergreenTopic(s.llm, candidates, covered, await topicDemand(s));
+  const topic = await selectEvergreenTopic(
+    s.llm,
+    candidates,
+    covered,
+    await topicDemand(s),
+  );
   if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
     log("info", "editor passed on every evergreen candidate", {
       reason: topic.reason,
@@ -1033,12 +1051,20 @@ export async function maybeSelectWeekly(
   // Weekly Recap as a long video: the week's most-watched Shorts, one chapter each. Production
   // starts five hours before the slot; with too few stories it falls back to the Short below.
   if (cfg.recapLong && cfg.longformEnabled) {
-    const longDue = evergreenDue(now, { ...plan(cfg.recapDays), leadMinutes: 300 }, taken);
+    const longDue = evergreenDue(
+      now,
+      { ...plan(cfg.recapDays), leadMinutes: 300 },
+      taken,
+    );
     if (longDue && !(await weeklyTried(db, `recaplong:${today}`))) {
       const stories = await recapStoryIds(db, now);
       if (stories.length >= RECAP_STORIES_MIN) {
         const id = shortId();
-        const cluster = base(`weekly:recaplong:${today}`, "This Week in Gaming", "Gaming news");
+        const cluster = base(
+          `weekly:recaplong:${today}`,
+          "This Week in Gaming",
+          "Gaming news",
+        );
         if (
           await createEpisode(db, id, cluster, {
             lane: "longform",
@@ -1046,15 +1072,27 @@ export async function maybeSelectWeekly(
             slotAt: longDue,
           })
         ) {
-          await db.query(`UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`, [
+          await db.query(
+            `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
+            [id, JSON.stringify({ recap: true, stories })],
+          );
+          await logEvent(db, id, "selected", {
+            headline: cluster.headline,
+            lane: "longform",
+            recap: true,
+            stories,
+            slot_at: longDue.toISOString(),
+          });
+          log("info", "weekly recap video selected", {
             id,
-            JSON.stringify({ recap: true, stories }),
-          ]);
-          await logEvent(db, id, "selected", { headline: cluster.headline, lane: "longform", recap: true, stories, slot_at: longDue.toISOString() });
-          log("info", "weekly recap video selected", { id, stories: stories.length });
+            stories: stories.length,
+          });
           return id;
         }
-      } else log("info", "weekly recap video skipped: too few stories", { found: stories.length });
+      } else
+        log("info", "weekly recap video skipped: too few stories", {
+          found: stories.length,
+        });
     }
   }
 
@@ -1334,7 +1372,12 @@ export async function maybeSelectLongform(
   ).map((r) => r.headline);
   const candidates = await s.discoverEvergreen();
   if (!candidates.length) return undefined;
-  const topic = await selectLongformTopic(s.llm, candidates, covered, await topicDemand(s));
+  const topic = await selectLongformTopic(
+    s.llm,
+    candidates,
+    covered,
+    await topicDemand(s),
+  );
   if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
     log("info", "no long-form topic today", { reason: topic.reason });
     return undefined;
@@ -1672,7 +1715,11 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
 
 /** The week's published news Shorts, most watched first (their best captured view count), rumours left out. */
 export async function recapStoryIds(db: Db, now: Date): Promise<string[]> {
-  const rows = await db.query<{ id: string; views: number | null; game: string | null }>(
+  const rows = await db.query<{
+    id: string;
+    views: number | null;
+    game: string | null;
+  }>(
     `SELECT e.id, (SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id) AS views,
             e.script_json->>'game_title' AS game
        FROM episodes e
@@ -1687,7 +1734,10 @@ export async function recapStoryIds(db: Db, now: Date): Promise<string[]> {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const r of rows) {
-    const key = (r.game ?? r.id).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const key = (r.game ?? r.id)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(r.id);
@@ -1701,7 +1751,11 @@ export async function recapStoryIds(db: Db, now: Date): Promise<string[]> {
  * narration and the articles it came from) with a fact-check pass and up to two rewrites, then the
  * intro and outro.
  */
-async function stepScriptRecap(s: Services, ep: Episode, ids: string[]): Promise<void> {
+async function stepScriptRecap(
+  s: Services,
+  ep: Episode,
+  ids: string[],
+): Promise<void> {
   const stories: RecapStory[] = [];
   for (const id of ids) {
     const short = await getEpisode(s.db, id);
@@ -1710,7 +1764,8 @@ async function stepScriptRecap(s: Services, ep: Episode, ids: string[]): Promise
     const articles: string[] = [];
     for (const item of (short.story_json?.items ?? []).slice(0, 3)) {
       const a = await s.fetchArticle(item.url).catch(() => undefined);
-      if (a?.text) articles.push(`[${item.source}] ${a.title}\n${a.text.slice(0, 3500)}`);
+      if (a?.text)
+        articles.push(`[${item.source}] ${a.title}\n${a.text.slice(0, 3500)}`);
     }
     const urls = (short.story_json?.items ?? []).slice(0, 3).map((i) => i.url);
     stories.push({
@@ -1722,13 +1777,25 @@ async function stepScriptRecap(s: Services, ep: Episode, ids: string[]): Promise
       source: {
         title: short.story_json.sources.slice(0, 3).join(" / ") || "outlets",
         url: urls[0] ?? "",
-        text: [`[Pulse Short, fact-checked against these sources] ${narrationOf(script)}`, ...articles].join("\n\n"),
+        text: [
+          `[Pulse Short, fact-checked against these sources] ${narrationOf(script)}`,
+          ...articles,
+        ].join("\n\n"),
       },
     });
   }
-  if (stories.length < RECAP_STORIES_MIN) throw new FatalError(`weekly recap has only ${stories.length} stories with sources`);
-  const packaging = await packageRecap(s.llm, stories, dayKey(s.now(), s.cfg.timezone));
-  const titles = stories.map((st, i) => packaging.chapter_titles[i] ?? st.headline);
+  if (stories.length < RECAP_STORIES_MIN)
+    throw new FatalError(
+      `weekly recap has only ${stories.length} stories with sources`,
+    );
+  const packaging = await packageRecap(
+    s.llm,
+    stories,
+    dayKey(s.now(), s.cfg.timezone),
+  );
+  const titles = stories.map(
+    (st, i) => packaging.chapter_titles[i] ?? st.headline,
+  );
   const chapters: import("./editorial/documentary.ts").DocChapter[] = [];
   const warnings: string[] = [];
   for (const [index, story] of stories.entries()) {
@@ -1743,23 +1810,60 @@ async function stepScriptRecap(s: Services, ep: Episode, ids: string[]): Promise
         previousEnding: chapters.at(-1)?.paragraphs.at(-1)?.narration,
         feedback,
       });
-      const unsupported = await checkChapter(s.llm, chapter, story.source).catch(() => [] as string[]);
-      feedback = [...validateRecapChapter(chapter), ...unsupported.map((u) => `Not supported by the sources, remove or correct it: ${u}`)];
+      const unsupported = await checkChapter(
+        s.llm,
+        chapter,
+        story.source,
+      ).catch(() => [] as string[]);
+      feedback = [
+        ...validateRecapChapter(chapter),
+        ...unsupported.map(
+          (u) => `Not supported by the sources, remove or correct it: ${u}`,
+        ),
+      ];
       if (!feedback.length) break;
-      if (attempt === 2) warnings.push(...feedback.map((f) => `${story.game}: ${f}`));
+      if (attempt === 2)
+        warnings.push(...feedback.map((f) => `${story.game}: ${f}`));
     }
     const grounded = groundCallouts(chapter!, story.source);
-    if (grounded.removed.length) warnings.push(...grounded.removed.map((r) => `${story.game}: on-screen ${r} not in the sources, removed`));
+    if (grounded.removed.length)
+      warnings.push(
+        ...grounded.removed.map(
+          (r) => `${story.game}: on-screen ${r} not in the sources, removed`,
+        ),
+      );
     chapters.push(grounded.chapter);
-    log("info", "recap story written", { episode: ep.id, story: index + 1, game: story.game });
+    log("info", "recap story written", {
+      episode: ep.id,
+      story: index + 1,
+      game: story.game,
+    });
   }
-  const bookends = await writeRecapBookends(s.llm, packaging, chapters.map((chapter, i) => ({ title: titles[i]!, chapter })));
-  const script = recapToScript(packaging, stories, chapters, bookends, Number(dayKey(s.now(), s.cfg.timezone).slice(0, 4)));
-  script.sources = [...new Set(stories.flatMap((st) => st.source.url ? [st.source.url] : []))];
-  if (warnings.length) await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
+  const bookends = await writeRecapBookends(
+    s.llm,
+    packaging,
+    chapters.map((chapter, i) => ({ title: titles[i]!, chapter })),
+  );
+  const script = recapToScript(
+    packaging,
+    stories,
+    chapters,
+    bookends,
+    Number(dayKey(s.now(), s.cfg.timezone).slice(0, 4)),
+  );
+  script.sources = [
+    ...new Set(stories.flatMap((st) => (st.source.url ? [st.source.url] : []))),
+  ];
+  if (warnings.length)
+    await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
-    factcheck_json: { recap: true, stories: ids, warnings, sources: script.sources },
+    factcheck_json: {
+      recap: true,
+      stories: ids,
+      warnings,
+      sources: script.sources,
+    },
   });
 }
 
@@ -1771,7 +1875,8 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     stories?: string[];
     topic?: import("./editorial/evergreen.ts").EvergreenTopic;
   } | null;
-  if (fc?.recap && fc.stories?.length) return stepScriptRecap(s, ep, fc.stories);
+  if (fc?.recap && fc.stories?.length)
+    return stepScriptRecap(s, ep, fc.stories);
   if (fc?.doc && fc.topic)
     return stepScriptDocumentary(s, ep, fc.topic as unknown as DocTopic);
   const topic = fc?.topic;
@@ -2334,7 +2439,12 @@ async function gatherMedia(
   const clipAssets =
     app && s.cfg.footage && s.cfg.maxClips > 0 && topicTargets.length
       ? await s
-          .fetchClips(app, dir, topicTargets, ranking ? 1 : s.cfg.maxClips + (rich ? 2 : 0))
+          .fetchClips(
+            app,
+            dir,
+            topicTargets,
+            ranking ? 1 : s.cfg.maxClips + (rich ? 2 : 0),
+          )
           .catch((err) => {
             log("warn", "trailer clips failed", {
               episode: ep.id,
@@ -2545,7 +2655,18 @@ async function gatherMedia(
           continue;
         }
         // A recap chapter reuses its Short's media, already picked and passed by QA.
-        if (entry.from_episode && (await copyShortMedia(s, entry.from_episode, beatIndex, dir, images, clips))) continue;
+        if (
+          entry.from_episode &&
+          (await copyShortMedia(
+            s,
+            entry.from_episode,
+            beatIndex,
+            dir,
+            images,
+            clips,
+          ))
+        )
+          continue;
         // A documentary chapter runs minutes: its own gallery, matched footage and archive photos.
         if (script.evergreen_format === "documentary") {
           await gatherChapterMedia(
@@ -2704,10 +2825,18 @@ async function gatherMedia(
       }
     }
   }
+  // A story about a person shows the person: a freely licensed photo from Wikimedia Commons,
+  // credited on screen, on the first line that names them (else wherever a still is needed).
+  if (script.person?.trim())
+    await personPhoto(s, ep, dir, script.person.trim(), images);
   // Screenshots get the same local screen as clip frames: a webcam or gore is never used, and
   // one with menu or HUD text across it ("SET V'S APPEARANCE") is used only after the clean ones.
   const shots = images.filter((a) => a.kind === "screenshot");
-  const flags = shots.length ? await screenFrames(shots.map((a) => path.join(dir, a.file))).catch(() => []) : [];
+  const flags = shots.length
+    ? await screenFrames(shots.map((a) => path.join(dir, a.file))).catch(
+        () => [],
+      )
+    : [];
   const unusable = new Set<string>();
   const wordy = new Set<string>();
   for (const [k, f] of flags.entries()) {
@@ -2715,7 +2844,12 @@ async function gatherMedia(
     if (f.webcam || f.gore) unusable.add(shots[k]!.file);
     else if (f.text) wordy.add(shots[k]!.file);
   }
-  if (unusable.size || wordy.size) log("info", "screenshots screened", { episode: ep.id, dropped: unusable.size, wordy: wordy.size });
+  if (unusable.size || wordy.size)
+    log("info", "screenshots screened", {
+      episode: ep.id,
+      dropped: unusable.size,
+      wordy: wordy.size,
+    });
   const out: NonNullable<EpisodeAssets["images"]> = [];
   for (const a of images) {
     if (unusable.has(a.file)) continue;
@@ -2734,10 +2868,11 @@ async function gatherMedia(
   // Lead with the most cinematic art; screenshots fill the middle.
   const rank: Record<string, number> = {
     hero: 0,
-    article: 1,
-    capsule: 2,
-    screenshot: 3,
-    header: 4,
+    photo: 1,
+    article: 2,
+    capsule: 3,
+    screenshot: 4,
+    header: 5,
   };
   return {
     images: out.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)),
@@ -2810,7 +2945,12 @@ async function copyShortMedia(
     if (img.kind === "logo") continue;
     const file = await copy(img.file);
     if (!file) continue;
-    images.push({ ...img, file, beatIndex, moment: undefined } as VisualAsset & { beatIndex?: number });
+    images.push({
+      ...img,
+      file,
+      beatIndex,
+      moment: undefined,
+    } as VisualAsset & { beatIndex?: number });
     n++;
   }
   for (const c of a.clips ?? []) {
@@ -2820,6 +2960,64 @@ async function copyShortMedia(
     n++;
   }
   return n >= 3;
+}
+
+/** Up to two licensed photos of a named person for a Short, chosen by a cheap model from a Commons search. */
+async function personPhoto(
+  s: Services,
+  ep: Episode,
+  dir: string,
+  person: string,
+  images: Array<VisualAsset & { beatIndex?: number }>,
+): Promise<void> {
+  const script = ep.script_json!;
+  try {
+    const candidates = (await s.searchPhotos(person).catch(() => []))
+      .filter((c) => c.width >= 800)
+      .slice(0, 20);
+    if (!candidates.length) return;
+    const keep = (
+      await pickPhotos(
+        s.llm,
+        {
+          franchise: person,
+          game: script.game_title,
+          title: script.headline,
+          opening: `A news story about ${person}: ${script.hook}`,
+        },
+        candidates,
+      )
+    ).slice(0, 2);
+    const surname = person.split(/\s+/).pop()!.toLowerCase();
+    const line = script.beats.findIndex((b) =>
+      b.narration.toLowerCase().includes(surname),
+    );
+    await fs.mkdir(path.join(dir, "assets"), { recursive: true });
+    for (const [k, i] of keep.entries()) {
+      const img = candidates[i]!;
+      const file = path.join("assets", `person_${k}.jpg`);
+      if (!(await s.downloadPhoto(img, path.join(dir, file)))) continue;
+      images.push({
+        kind: "photo",
+        file,
+        sourceUrl: img.pageUrl,
+        provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+        label: person,
+        ...(line >= 0 && k === 0 ? { beatIndex: line } : {}),
+      } as VisualAsset & { beatIndex?: number });
+    }
+    log("info", "person photo added", {
+      episode: ep.id,
+      person,
+      photos: keep.length,
+    });
+  } catch (err) {
+    log("warn", "person photo failed", {
+      episode: ep.id,
+      person,
+      error: errorMessage(err),
+    });
+  }
 }
 
 /** The footage asks of one documentary chapter's paragraphs, in order. */
@@ -3768,26 +3966,54 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     });
     plan = buildPlan({ ...planInput, variant: (variant + 1) % 4 });
     rubric = rubricFor(plan);
-    const mediaRed = rubric.metrics.some((m) => m.grade === "red" && /^(unique_media_ratio|max_media_repeat|adjacent_repeats)$/.test(m.name));
+    const mediaRed = rubric.metrics.some(
+      (m) =>
+        m.grade === "red" &&
+        /^(unique_media_ratio|max_media_repeat|adjacent_repeats)$/.test(m.name),
+    );
     if (rubric.grade === "red" && mediaRed && !assets.rich) {
       // Too little media to vary with: fetch more (screenshots, another clip) and plan again.
       log("info", "red media rubric: gathering more media", { episode: ep.id });
-      Object.assign(assets, await gatherMedia(s, ep, dir, true), { rich: true });
+      Object.assign(assets, await gatherMedia(s, ep, dir, true), {
+        rich: true,
+      });
       for (const img of assets.images ?? [])
-        if (!img.blurFile) img.blurFile = await blurPlate(dir, img.file).catch(() => undefined);
+        if (!img.blurFile)
+          img.blurFile = await blurPlate(dir, img.file).catch(() => undefined);
       for (const clip of assets.clips ?? [])
-        if (!clip.blurFile) clip.blurFile = await blurPlate(dir, clip.file).catch(() => undefined);
+        if (!clip.blurFile)
+          clip.blurFile = await blurPlate(dir, clip.file).catch(
+            () => undefined,
+          );
       const richInput = {
         ...planInput,
-        images: (assets.images ?? []).map((i) => ({ kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex, wordy: i.wordy })),
-        clips: (assets.clips ?? []).map((c) => ({ durationSeconds: c.durationSeconds, motion: c.motion, luma: c.luma, beatIndex: c.beatIndex, role: c.role })),
+        images: (assets.images ?? []).map((i) => ({
+          kind: i.kind,
+          aspect: i.aspect,
+          beatIndex: i.beatIndex,
+          wordy: i.wordy,
+        })),
+        clips: (assets.clips ?? []).map((c) => ({
+          durationSeconds: c.durationSeconds,
+          motion: c.motion,
+          luma: c.luma,
+          beatIndex: c.beatIndex,
+          role: c.role,
+        })),
       };
-      const tries = [0, 1, 2, 3].map((k) => buildPlan({ ...richInput, variant: (variant + k) % 4 }));
+      const tries = [0, 1, 2, 3].map((k) =>
+        buildPlan({ ...richInput, variant: (variant + k) % 4 }),
+      );
       const order = { green: 0, amber: 1, red: 2 } as const;
-      const best = tries.map((p) => ({ p, r: rubricFor(p) })).sort((a, b) => order[a.r.grade] - order[b.r.grade])[0]!;
+      const best = tries
+        .map((p) => ({ p, r: rubricFor(p) }))
+        .sort((a, b) => order[a.r.grade] - order[b.r.grade])[0]!;
       plan = best.p;
       rubric = best.r;
-      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+        ep.id,
+        JSON.stringify(assets),
+      ]);
     }
     if (rubric.grade === "red") {
       // A slot is worth more than a perfect plan: render anyway and say so.
@@ -3815,9 +4041,18 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           ?.publishers?.[0]
       : assets.officialTrailer?.publisher) ?? "",
   );
-  const footageCredit = (assets.clips ?? []).length
-    ? `Footage: ${publisher || script.game_title} · official trailer`
-    : "";
+  // A person's licensed photo is credited on screen, as its licence asks.
+  const photoLine = [
+    ...new Set((assets.images ?? []).map(photoCredit).filter(Boolean)),
+  ].join(" · ");
+  const footageCredit = [
+    (assets.clips ?? []).length
+      ? `Footage: ${publisher || script.game_title} · official trailer`
+      : "",
+    photoLine ? `Photo: ${photoLine}` : "",
+  ]
+    .filter(Boolean)
+    .join("   ");
   const year = assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0];
   const gameSubtitle = [publisher, year].filter(Boolean).join(" · ");
 
@@ -4277,10 +4512,10 @@ export function videoMetadata(
     script.recap
       ? "\nPulse Gaming News: gaming news, checked and explained. The week's biggest stories every Friday, a new ranking every week, Shorts every day."
       : script.evergreen_format === "documentary"
-      ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
-      : long
-        ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day."
-        : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
+        ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
+        : long
+          ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day."
+          : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
     (long
       ? hashtags(script)
           .filter((h) => h !== "#Shorts")

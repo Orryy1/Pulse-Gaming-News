@@ -66,6 +66,7 @@ export const ScriptSchema = z.object({
     on_screen: z.string().describe("3-8 word on-screen summary of the take"),
   }),
   hook_footage: FootageSchema.optional().describe("What the opening footage should show"),
+  person: z.string().optional().describe("The real, well-known person this story is about when one person is the story (a director, executive, actor, streamer), as commonly written, e.g. 'Hideo Kojima'; empty when the story is about a game, a company or a product"),
   loop_line: z.string().describe("Final spoken line that ties back to the hook so a rewatch feels seamless"),
   is_rumour: z.boolean(),
   attribution: z.string().describe("On-screen source credit, e.g. 'Source: Xbox Wire / IGN'"),

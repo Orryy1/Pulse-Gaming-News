@@ -183,10 +183,12 @@ export async function selectLongformTopic(
   llm: Llm,
   candidates: EvergreenCandidate[],
   covered: string[],
+  /** What viewers are watching on YouTube now and what they asked us to rank. */
+  demand = "",
 ): Promise<EvergreenTopic> {
   const topic = await llm.structured({
     system: longformTopicPrompt(),
-    content: `Candidates:\n${candidates.map((c, i) => `${i}. ${c.name} (${c.source}${c.note ? `: ${c.note}` : ""})`).join("\n")}\n\nCovered in the last six months:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}\n\nFormat: ranking ("${FORMAT_TITLES.ranking}")`,
+    content: `Candidates:\n${candidates.map((c, i) => `${i}. ${c.name} (${c.source}${c.note ? `: ${c.note}` : ""})`).join("\n")}\n\nCovered in the last six months:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}${demand ? `\n\n${demand}\n\nWhen two candidates are equally strong, prefer the franchise that is trending above or that viewers asked for.` : ""}\n\nFormat: ranking ("${FORMAT_TITLES.ranking}")`,
     schema: EvergreenTopicSchema,
     effort: "low",
   });

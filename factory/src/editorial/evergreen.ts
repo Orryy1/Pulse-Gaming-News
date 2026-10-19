@@ -186,10 +186,12 @@ export async function selectEvergreenTopic(
   llm: Llm,
   candidates: EvergreenCandidate[],
   covered: string[],
+  /** What viewers are watching on YouTube now and what they asked us to rank. */
+  demand = "",
 ): Promise<EvergreenTopic> {
   return llm.structured({
     system: topicPrompt(),
-    content: `Candidates:\n${candidates.map((c, i) => `${i}. ${c.name} (${c.source}${c.note ? `: ${c.note}` : ""})`).join("\n")}\n\nCovered in the last six months:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}\n\nFormats: ${EVERGREEN_FORMATS.filter((f) => !WEEKLY_FORMATS.has(f)).map((f) => `${f} ("${FORMAT_TITLES[f]}")`).join("; ")}`,
+    content: `Candidates:\n${candidates.map((c, i) => `${i}. ${c.name} (${c.source}${c.note ? `: ${c.note}` : ""})`).join("\n")}\n\nCovered in the last six months:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}${demand ? `\n\n${demand}\n\nWhen two candidates are equally strong, prefer the franchise that is trending above or that viewers asked for.` : ""}\n\nFormats: ${EVERGREEN_FORMATS.filter((f) => !WEEKLY_FORMATS.has(f)).map((f) => `${f} ("${FORMAT_TITLES[f]}")`).join("; ")}`,
     schema: EvergreenTopicSchema,
     effort: "low",
   });

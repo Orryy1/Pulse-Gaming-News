@@ -354,6 +354,11 @@ async function recentSightings(
   return rows.map((r) => ({ cluster: r.cluster_json, sighting: r }));
 }
 
+/** For ranking topic pickers: YouTube's trending gaming videos and what viewers asked us to rank. */
+async function topicDemand(s: Services): Promise<string> {
+  return trendingBlock(await s.trending().catch(() => []), 25);
+}
+
 async function createFromChoice(
   s: Services,
   candidates: StoryCluster[],
@@ -569,7 +574,7 @@ export async function maybeSelectEvergreen(
   ).map((r) => r.headline);
   const candidates = await s.discoverEvergreen();
   if (!candidates.length) return undefined;
-  const topic = await selectEvergreenTopic(s.llm, candidates, covered);
+  const topic = await selectEvergreenTopic(s.llm, candidates, covered, await topicDemand(s));
   if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
     log("info", "editor passed on every evergreen candidate", {
       reason: topic.reason,
@@ -1256,7 +1261,7 @@ export async function maybeSelectLongform(
   ).map((r) => r.headline);
   const candidates = await s.discoverEvergreen();
   if (!candidates.length) return undefined;
-  const topic = await selectLongformTopic(s.llm, candidates, covered);
+  const topic = await selectLongformTopic(s.llm, candidates, covered, await topicDemand(s));
   if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
     log("info", "no long-form topic today", { reason: topic.reason });
     return undefined;

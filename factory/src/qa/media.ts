@@ -50,6 +50,46 @@ export async function blackSeconds(file: string): Promise<number> {
   return [...stderr.matchAll(/black_duration:([\d.]+)/g)].reduce((s, m) => s + Number(m[1]), 0);
 }
 
+/**
+ * Brief dips to black between the first half-second and the end card: a frame
+ * or two of black at a cut reads as flicker on screen but is far too short for
+ * blackdetect's 0.4 s minimum or a sampled still to catch.
+ */
+export function flashRuns(frames: Array<{ time: number; luma: number }>, durationSeconds: number, threshold = 15): Array<{ start: number; end: number; frames: number }> {
+  const runs: Array<{ start: number; end: number; frames: number }> = [];
+  let cur: { start: number; end: number; frames: number } | undefined;
+  for (const f of frames) {
+    const dark = f.luma < threshold && f.time > 0.5 && f.time < durationSeconds - 1.5;
+    if (dark) {
+      if (cur) {
+        cur.end = f.time;
+        cur.frames++;
+      } else cur = { start: f.time, end: f.time, frames: 1 };
+    } else if (cur) {
+      runs.push(cur);
+      cur = undefined;
+    }
+  }
+  if (cur) runs.push(cur);
+  // A long dark stretch is a scene (or blackdetect's business), not a flash.
+  return runs.filter((r) => r.frames <= 20);
+}
+
+export async function blackFlashes(file: string, durationSeconds: number): Promise<Array<{ start: number; end: number; frames: number }>> {
+  const { stdout } = await run(FFMPEG, ["-hide_banner", "-nostats", "-i", file, "-an", "-vf", "scale=320:-2,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-", "-f", "null", "-"], {
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  const frames: Array<{ time: number; luma: number }> = [];
+  let time = 0;
+  for (const line of stdout.split(/\r?\n/)) {
+    const t = line.match(/pts_time:([\d.]+)/);
+    if (t) time = Number(t[1]);
+    const y = line.match(/YAVG=([\d.]+)/);
+    if (y) frames.push({ time, luma: Number(y[1]) });
+  }
+  return flashRuns(frames, durationSeconds);
+}
+
 export async function extractFrames(file: string, outDir: string, times: number[]): Promise<string[]> {
   await fs.mkdir(outDir, { recursive: true });
   const out: string[] = [];
@@ -62,6 +102,7 @@ export async function extractFrames(file: string, outDir: string, times: number[
 }
 
 export interface TechQa {
+  blackFlashes?: number;
   ok: boolean;
   problems: string[];
   probe: ProbeResult;
@@ -82,7 +123,12 @@ export async function technicalQa(file: string, expectedSeconds: number, band: {
   if (Math.abs(p.durationSeconds - expectedSeconds) > 1.5) problems.push(`Duration ${p.durationSeconds.toFixed(1)}s does not match narration ${expectedSeconds.toFixed(1)}s.`);
   if (!Number.isFinite(lufs) || lufs < -18.5 || lufs > -13.5) problems.push(`Integrated loudness ${lufs} LUFS is outside -18.5 to -13.5.`);
   if (black > 0.8) problems.push(`${black.toFixed(1)}s of black frames.`);
-  return { ok: problems.length === 0, problems, probe: p, loudnessLufs: lufs, blackSeconds: black };
+  const flashes = await blackFlashes(file, p.durationSeconds).catch(() => []);
+  if (flashes.length) {
+    const at = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+    problems.push(`${flashes.length} black flash${flashes.length === 1 ? "" : "es"} at cuts (${flashes.slice(0, 5).map((f) => `${at(f.start)}, ${f.frames} frame${f.frames === 1 ? "" : "s"}`).join("; ")}).`);
+  }
+  return { ok: problems.length === 0, problems, probe: p, loudnessLufs: lufs, blackSeconds: black, blackFlashes: flashes.length };
 }
 
 /** Masters at -16 LUFS (YouTube normalises to -14; -16 keeps the music bed from tripping recurrence checks), without re-encoding video. */

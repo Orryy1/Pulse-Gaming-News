@@ -12,3 +12,11 @@ test("rank graphics and fragment captions are left out", () => {
   assert.equal(usefulEmphasis("Captain Price"), true);
   assert.equal(usefulEmphasis("the Numbers"), false);
 });
+
+import { flashRuns } from "../src/qa/media.ts";
+
+test("brief dips to black at cuts are caught, dark scenes and the fade-in are not", () => {
+  const f = (time: number, luma: number) => ({ time, luma });
+  const frames = [f(0.1, 5), f(1, 80), f(1.033, 6), f(1.066, 7), f(1.1, 80), f(5, 10), f(5.5, 80), ...Array.from({ length: 40 }, (_, i) => f(6 + i / 30, 8)), f(9, 80)];
+  assert.deepEqual(flashRuns(frames, 20), [{ start: 1.033, end: 1.066, frames: 2 }, { start: 5, end: 5, frames: 1 }]);
+});

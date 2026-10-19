@@ -416,3 +416,17 @@ test("with openOnClip the Short opens on the hook's moving clip; without one it 
   const c = buildPlan({ ...withClip, openOnClip: false });
   assert.deepEqual(c.shots[0]!.media, { type: "image", index: c.heroIndex }, "switched off: the hero still opens");
 });
+
+test("prices the voice says in words are shown as prices again", async () => {
+  const { displayWords } = await import("../src/render/timeline.ts");
+  const show = (t: string) => displayWords(t.split(" ").map((text, i) => ({ text, start: i, end: i + 1 }))).map((w) => w.text).join(" ");
+  assert.equal(show("hits October 21 at forty-nine dollars ninety-nine. The title"), "hits October 21 at $49.99. The title");
+  assert.equal(show("down to two dollars forty-nine, a steal"), "down to $2.49, a steal");
+  assert.equal(show("a one point five billion dollars deal"), "a $1.5 billion deal");
+  assert.equal(show("it costs one thousand two hundred ninety-nine dollars ninety-nine today"), "it costs $1,299.99 today");
+  assert.equal(show("only seventy dollars for twenty games"), "only $70 for twenty games");
+  assert.equal(show("fifty-nine pounds ninety-nine in the UK"), "£59.99 in the UK");
+  assert.equal(show("twenty million copies in twenty sixteen"), "twenty million copies in 2016", "plain numbers and years are untouched");
+  const merged = displayWords("at forty-nine dollars ninety-nine now".split(" ").map((text, i) => ({ text, start: i, end: i + 1 })));
+  assert.deepEqual(merged[1], { text: "$49.99", start: 1, end: 4 }, "the caption lights for the whole spoken price");
+});

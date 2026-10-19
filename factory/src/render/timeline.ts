@@ -157,6 +157,71 @@ const UNITS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five:
 const TEENS: Record<string, number> = { ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
 const TENS_W: Record<string, number> = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
 
+const SMALL: Record<string, number> = { zero: 0, ...UNITS, ...TEENS };
+const SCALES: Record<string, number> = { thousand: 1_000, million: 1_000_000, billion: 1_000_000_000 };
+const CURRENCY: Record<string, string> = { dollar: "$", dollars: "$", pound: "£", pounds: "£", euro: "€", euros: "€" };
+
+/** A whole number spoken in words from words[i] ("one thousand two hundred ninety-nine"), or undefined. */
+function spokenNumber(words: Word[], i: number): { value: number; used: number } | undefined {
+  let total = 0;
+  let current = 0;
+  let used = 0;
+  let any = false;
+  for (let k = i; k < words.length; k++) {
+    const raw = words[k]!.text;
+    const w = raw.toLowerCase().replace(/[^a-z-]/g, "");
+    const [t, u] = w.split("-");
+    if (SMALL[w] !== undefined) current += SMALL[w]!;
+    else if (TENS_W[t!] !== undefined && (!u || UNITS[u] !== undefined)) current += TENS_W[t!]! + (u ? UNITS[u]! : 0);
+    else if (w === "hundred" && any) current *= 100;
+    else if (SCALES[w] !== undefined && any && SCALES[w]! < 1_000_000) {
+      total += current * SCALES[w]!;
+      current = 0;
+    } else break;
+    any = true;
+    used++;
+    if (/[.,;:!?)"”’]$/.test(raw)) break; // a number never runs across punctuation
+  }
+  return any ? { value: total + current, used } : undefined;
+}
+
+/**
+ * A price the voice says in words ("forty-nine dollars ninety-nine", "one point five billion
+ * dollars") as the screen should show it ("$49.99", "$1.5 billion"), with the words it used.
+ */
+export function spokenMoney(words: Word[], i: number): { text: string; used: number } | undefined {
+  const n = spokenNumber(words, i);
+  if (!n) return undefined;
+  let k = i + n.used;
+  let decimal = "";
+  const bare = (j: number) => (words[j]?.text ?? "").toLowerCase().replace(/[^a-z-]/g, "");
+  if (bare(k) === "point" && !/[.,;:!?]$/.test(words[k - 1]!.text)) {
+    let d = "";
+    let j = k + 1;
+    while (j < words.length && SMALL[bare(j)] !== undefined && SMALL[bare(j)]! < 10) d += String(SMALL[bare(j++)]);
+    if (d) {
+      decimal = `.${d}`;
+      k = j;
+    }
+  }
+  let scale = "";
+  if (SCALES[bare(k)] !== undefined && SCALES[bare(k)]! >= 1_000_000) scale = ` ${bare(k++)}`;
+  const symbol = CURRENCY[bare(k)];
+  if (!symbol || /[.,;:!?]$/.test(words[k - 1]!.text)) return undefined;
+  const currencyWord = words[k]!.text;
+  k++;
+  let cents = "";
+  if (!scale && !decimal && !/[.,;:!?)"”’]$/.test(currencyWord)) {
+    const c = twoDigit(words.slice(k, k + 2).map((x) => x.text));
+    if (c && c.value > 0 && c.value < 100) {
+      cents = `.${String(c.value).padStart(2, "0")}`;
+      k += c.used;
+    }
+  }
+  const tail = (words[k - 1]!.text.match(/[.,;:!?)"”’]+$/) ?? [""])[0];
+  return { text: `${symbol}${n.value.toLocaleString("en-US")}${decimal}${cents}${scale}${tail}`, used: k - i };
+}
+
 /** "sixteen", "ninety-seven", "oh five" as 16, 97, 5; undefined for anything else. */
 function twoDigit(words: string[]): { value: number; used: number } | undefined {
   const a = words[0]?.toLowerCase().replace(/[^a-z-]/g, "");
@@ -169,8 +234,9 @@ function twoDigit(words: string[]): { value: number; used: number } | undefined 
 }
 
 /**
- * What the screen shows for spoken words: "47 percent" is "47%", and years the
- * voice says in words ("twenty sixteen", "two thousand seven") are digits again.
+ * What the screen shows for spoken words: "47 percent" is "47%", prices the voice says in words
+ * ("forty-nine dollars ninety-nine") are "$49.99" again, and years the voice says in words
+ * ("twenty sixteen", "two thousand seven") are digits again.
  * Timings merge, so a caption still lights when its words are spoken.
  */
 export function displayWords(words: Word[]): Word[] {
@@ -183,6 +249,13 @@ export function displayWords(words: Word[]): Word[] {
     if (/^\d[\d,.]*$/.test(w.text.replace(/[^\d,.]/g, "") || "x") && /^\d/.test(w.text) && /^percent[.,;:!?)"”’]*$/i.test(words[i + 1]?.text ?? "")) {
       out.push({ text: `${w.text.replace(/[.,;:!?]+$/, "")}%${tail(i + 1)}`, start: w.start, end: words[i + 1]!.end });
       i++;
+      continue;
+    }
+    // forty-nine dollars ninety-nine
+    const money = spokenMoney(words, i);
+    if (money) {
+      out.push({ text: money.text, start: w.start, end: words[i + money.used - 1]!.end });
+      i += money.used - 1;
       continue;
     }
     // two thousand seven

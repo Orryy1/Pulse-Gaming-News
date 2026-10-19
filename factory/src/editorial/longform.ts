@@ -163,25 +163,94 @@ export async function selectLongformTopic(
   return { ...topic, format: "ranking" };
 }
 
+/** The ranking itself, before any entry is written: the order, the framing and the packaging. */
+export const LongformPlanSchema = LongformScriptSchema.omit({ entries: true, claims: true }).extend({
+  entries: z
+    .array(
+      LongformEntrySchema.pick({ rank: true, game_title: true, steam_search_term: true, year: true, platforms: true, verdict_chip: true }).extend({
+        angle: z.string().describe("The one specific detail a fan would nod at and why it sits at this rank, 1-2 sentences of notes (not narration)"),
+      }),
+    )
+    .min(LONG_ENTRIES_MIN)
+    .max(LONG_ENTRIES_MAX)
+    .describe("Spoken from the lowest rank to number one"),
+});
+export type LongformPlan = z.infer<typeof LongformPlanSchema>;
+
+/** One entry's spoken paragraph with its shot list. */
+export const LongformEntryBodySchema = LongformEntrySchema.pick({ year: true, narration: true, footage: true, moments: true }).extend({
+  claims: LongformScriptSchema.shape.claims,
+});
+
+function planPrompt(): string {
+  return `${longformPrompt()}
+
+This step plans the video only: the order, the intro, the outro and the packaging. For each entry give its rank, title, year, platforms, verdict_chip and an "angle": brief notes on the detail and the reason it sits there. The entry paragraphs and shot lists are written in a later step from your plan.`;
+}
+
+function entryPrompt(): string {
+  return `${HOUSE}
+
+You are writing one entry of a long-form ranking video, from the plan you are given. The narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words, three to five sentences: what the game is and when it landed, the specific detail from the plan, and why it sits at this rank by the criterion. It starts by naming the rank and the game in a fresh way: never open the way an earlier entry opened (they are listed). footage names the trailer moment to show, with 1-4 keywords.
+moments: exactly one per sentence of the narration, in order. This is the picture editor's shot list. "show" names the precise thing on screen while that sentence is spoken (the mission, the character, the map, the weapon, the twist), never a generic "gameplay". About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in the narration. "emphasis" lands a name or phrase from the sentence on screen in about a third of the moments; leave it empty when the moment has a graphic.
+List every factual claim in this entry in "claims".`;
+}
+
+/**
+ * Writes the ranking in steps: the plan, then each entry in turn (each sees the
+ * ones before it, so openings never repeat). One long answer holding every
+ * entry and its shot list sometimes stopped after the first entry; small
+ * answers cannot run out halfway.
+ */
 export async function writeLongform(
   llm: Llm,
   topic: EvergreenTopic,
-  facts: Array<{ title: string; facts: SteamFacts }>,
+    factsFor:
+    | Array<{ title: string; facts: SteamFacts }>
+    | ((entries: LongformPlan["entries"]) => Promise<Array<{ title: string; facts: SteamFacts }>>),
   feedback: string[] = [],
 ): Promise<LongformScript> {
+  // Steam facts given up front, or looked up once the plan names the games.
+  let facts = Array.isArray(factsFor) ? factsFor : [];
   const factBlock = facts.length
     ? `\n\nSteam facts for entries (use these numbers, never others):\n${facts.map((f) => `- ${f.title}: ${factsText(f.facts)}`).join("\n")}`
     : "";
   const fb = feedback.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
-  return llm.structured({
-    system: longformPrompt(),
-    content: `Theme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}${factBlock}${fb}`,
-    schema: LongformScriptSchema,
+  const brief = `Theme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}`;
+  const plan = await llm.structured({
+    system: planPrompt(),
+    content: `${brief}${factBlock}${fb}`,
+    schema: LongformPlanSchema,
     effort: "medium",
-    maxTokens: 32000, // a shot list per sentence roughly doubles the script
+    maxTokens: 12000,
   });
+    if (!Array.isArray(factsFor)) facts = await factsFor(plan.entries);
+  const order = [...plan.entries].sort((a, b) => b.rank - a.rank);
+  const outline = order.map((e) => `#${e.rank} ${e.game_title} (${e.year}): ${e.angle}`).join("\n");
+  const written: LongformScript["entries"] = [];
+  const claims: LongformScript["claims"] = [];
+  for (const e of order) {
+    const own = facts.filter((f) => f.title === e.game_title).map((f) => `Steam facts for this game (use these numbers, never others):\n${factsText(f.facts)}`);
+    const before = written.map((w) => `#${w.rank}: "${w.narration.split(/(?<=[.!?])\s/)[0]}"`).join("\n");
+    const body = await llm.structured({
+      system: entryPrompt(),
+      content: `${brief}\nTitle: ${plan.title}\n\nThe full ranking, spoken from the bottom up:\n${outline}\n\nWrite entry #${e.rank} of ${order.length}: ${e.game_title} (${e.year}, ${e.platforms}). Verdict chip: ${e.verdict_chip}. Notes: ${e.angle}${own.length ? `
+
+${own.join("\n")}` : ""}${before ? `
+
+How the earlier entries opened (do not repeat these openings):
+${before}` : ""}${fb}`,
+      schema: LongformEntryBodySchema,
+      effort: "medium",
+      maxTokens: 8000,
+    });
+    const { angle: _notes, ...head } = e;
+        written.push({ ...head, year: body.year || head.year, narration: body.narration, footage: body.footage, moments: body.moments });
+    claims.push(...body.claims);
+  }
+  return { ...plan, entries: written, claims };
 }
 
 const wordCount = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;

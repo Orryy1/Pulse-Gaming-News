@@ -13,6 +13,7 @@ import type { ShortProps } from "./props.ts";
 import type { LongProps } from "./Long.tsx";
 import type { ThumbProps } from "./Brand.tsx";
 import type { EngageProps } from "./Engage.tsx";
+import type { CutdownProps } from "./Cutdown.tsx";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(here, "index.ts");
@@ -194,6 +195,52 @@ export async function renderEngage(input: { dir: string; outFile: string; props:
     const props: EngageProps = { ...rest, images: imageFiles.map((f) => `${files.url}/${f}`) };
     const still = await selectComposition({ serveUrl, id: "PulseEngage", inputProps: props, browserExecutable: input.browserExecutable });
     await renderStill({ composition: still, serveUrl, output: input.outFile, inputProps: props, imageFormat: "jpeg", jpegQuality: 92, browserExecutable: input.browserExecutable });
+  } finally {
+    await files.close();
+  }
+}
+
+/** Renders a Short cut from a long ranking: the entry's section reframed for a phone, plus a poster frame. */
+export async function renderCutdown(input: {
+  episodeDir: string;
+  props: Omit<CutdownProps, "videoSrc" | "backgroundSrc" | "logoSrc"> & { videoFile: string; backgroundFile: string | null };
+  outFile: string;
+  posterFile: string;
+  concurrency: number;
+  gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
+  browserExecutable?: string;
+  onProgress?: (p: number) => void;
+}): Promise<void> {
+  const serveUrl = await getBundle();
+  const files = await serveDir(input.episodeDir);
+  try {
+    const { videoFile, backgroundFile, ...rest } = input.props;
+    const props: CutdownProps = {
+      ...rest,
+      videoSrc: `${files.url}/${videoFile}`,
+      backgroundSrc: backgroundFile ? `${files.url}/${backgroundFile}` : null,
+      logoSrc: "logo.png",
+    };
+    const browserExecutable = input.browserExecutable || undefined;
+    const chromiumOptions = { gl: input.gl ?? "swangle" } as const;
+    const composition = await selectComposition({ serveUrl, id: "PulseCutdown", inputProps: props, browserExecutable });
+    await renderMedia({
+      composition,
+      serveUrl,
+      codec: "h264",
+      crf: 20,
+      pixelFormat: "yuv420p",
+      audioCodec: "aac",
+      audioBitrate: "192k",
+      outputLocation: input.outFile,
+      inputProps: props,
+      concurrency: input.concurrency,
+      browserExecutable,
+      chromiumOptions,
+      timeoutInMilliseconds: 180_000,
+      onProgress: ({ progress }) => input.onProgress?.(progress),
+    });
+    await renderStill({ composition, serveUrl, output: input.posterFile, inputProps: props, frame: Math.min(composition.durationInFrames - 1, Math.round(1.5 * composition.fps)), imageFormat: "jpeg", jpegQuality: 88, browserExecutable, chromiumOptions });
   } finally {
     await files.close();
   }

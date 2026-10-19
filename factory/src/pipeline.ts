@@ -1236,43 +1236,30 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     return stepScriptDocumentary(s, ep, fc.topic as unknown as DocTopic);
   const topic = fc?.topic;
   if (!topic) throw new FatalError("long-form episode has no topic");
-  let facts: Array<{ title: string; facts: SteamFacts }> = [];
+    let facts: Array<{ title: string; facts: SteamFacts }> = [];
   let feedback: string[] = [];
   let draft: import("./editorial/longform.ts").LongformScript | undefined;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    draft = await writeLongform(s.llm, topic, facts, feedback);
-    const problems = validateLongform(draft);
-    if (attempt === 0) {
-      facts = [];
-      for (const entry of draft.entries) {
-        if (!entry.steam_search_term) continue;
-        try {
-          const app = await s.findGame(entry.steam_search_term);
-          if (app)
-            facts.push({
-              title: entry.game_title,
-              facts: await s.gameFacts(app),
-            });
-        } catch (err) {
-          log("warn", "long-form steam lookup failed", {
-            game: entry.game_title,
-            error: errorMessage(err),
-          });
-        }
+  // The plan names the games; their Steam facts are looked up once and every entry is written with them.
+  const lookup = async (entries: Array<{ game_title: string; steam_search_term: string }>) => {
+    if (facts.length) return facts;
+    for (const entry of entries) {
+      if (!entry.steam_search_term) continue;
+      try {
+        const app = await s.findGame(entry.steam_search_term);
+        if (app) facts.push({ title: entry.game_title, facts: await s.gameFacts(app) });
+      } catch (err) {
+        log("warn", "long-form steam lookup failed", { game: entry.game_title, error: errorMessage(err) });
       }
-      feedback = [
-        ...problems,
-        ...(facts.length
-          ? [
-              "Check every year, score and price against the Steam facts now provided and correct any that differ.",
-            ]
-          : []),
-      ];
-      if (!feedback.length) break;
-      continue;
     }
-    if (problems.length)
-      await logEvent(s.db, ep.id, "style_warnings", { problems });
+    return facts;
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    draft = await writeLongform(s.llm, topic, lookup, feedback);
+    const problems = validateLongform(draft);
+    if (!problems.length) break;
+    // One rewrite with the problems named; a second draft that still misses is logged, not thrown away.
+    if (attempt === 1) await logEvent(s.db, ep.id, "style_warnings", { problems });
+    feedback = problems;
   }
   if (!draft) throw new Error("long-form script produced nothing");
   const script = longformToScript(draft);

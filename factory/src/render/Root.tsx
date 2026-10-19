@@ -6,6 +6,7 @@ import { Avatar, Banner, Thumb, SAMPLE_THUMB } from "./Brand.tsx";
 import { Long, SAMPLE_LONG_PROPS, type LongProps } from "./Long.tsx";
 import { LONG_FPS, LONG_WIDTH, LONG_HEIGHT } from "./longplan.ts";
 import { Engage, SAMPLE_ENGAGE } from "./Engage.tsx";
+import { Cutdown, SAMPLE_CUTDOWN, type CutdownProps } from "./Cutdown.tsx";
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -37,6 +38,18 @@ export const RemotionRoot: React.FC = () => (
           LONG_FPS * 10,
           Math.ceil(props.durationSeconds * LONG_FPS),
         ),
+      })}
+    />
+    <Composition
+      id="PulseCutdown"
+      component={Cutdown}
+      fps={FPS}
+      width={WIDTH}
+      height={HEIGHT}
+      durationInFrames={Math.ceil(SAMPLE_CUTDOWN.durationSeconds * FPS)}
+      defaultProps={SAMPLE_CUTDOWN}
+      calculateMetadata={({ props }: { props: CutdownProps }) => ({
+        durationInFrames: Math.max(FPS * 5, Math.ceil(props.durationSeconds * FPS)),
       })}
     />
     {/* Channel brand stills: rendered by `npm run brand` into factory/brand/. */}

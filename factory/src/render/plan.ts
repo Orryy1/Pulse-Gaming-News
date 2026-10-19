@@ -236,7 +236,9 @@ export function pickHero(images: PlanImage[]): number {
 }
 
 /** Store box art, the store header and the logo have the game's name printed large: it fights the captions behind them. */
-export const hasPrintedLogo = (img: PlanImage) => /^(capsule|header|logo)$/.test(img.kind) || !!img.wordy;
+export const hasPrintedLogo = (img: PlanImage) => /^(capsule|header|logo)$/.test(img.kind);
+/** Art order within an entry: clean first, then a screenshot the local screen called wordy (it over-flags in-world lettering), then printed box art. */
+const artPenalty = (img: PlanImage) => (hasPrintedLogo(img) ? 2 : img.wordy ? 1 : 0);
 
 const isFramedStill = (img: PlanImage) =>
   img.aspect > 2.1 || (img.aspect >= 0.9 && img.aspect < 1.2);
@@ -281,7 +283,7 @@ export function planShots(
             );
     if (own.length) {
       // Clean art (hero, screenshots, footage stills) before art with the logo printed on it.
-      const logo = (i: number) => (hasPrintedLogo(images[i]!) ? 1 : 0);
+      const logo = (i: number) => artPenalty(images[i]!);
       const pick = own.sort(
         (a, b) => logo(a) - logo(b) || stillUses[a]! - stillUses[b]! || a - b,
       )[0]!;
@@ -293,7 +295,7 @@ export function planShots(
       const any = images
         .map((_, i) => i)
         .filter((i) => images[i]!.beatIndex === forBeat && !same(exclude, { type: "image", index: i }))
-        .sort((a, b) => Number(hasPrintedLogo(images[a]!)) - Number(hasPrintedLogo(images[b]!)) || stillUses[a]! - stillUses[b]! || a - b)[0];
+        .sort((a, b) => artPenalty(images[a]!) - artPenalty(images[b]!) || stillUses[a]! - stillUses[b]! || a - b)[0];
       if (any === undefined) return undefined;
       stillUses[any]!++;
       return { type: "image", index: any };
@@ -331,7 +333,7 @@ export function planShots(
     const pick = images
       .map((_, i) => i)
       .filter((i) => i !== heroIndex && !same(exclude, { type: "image", index: i }))
-      .sort((a, b) => Number(hasPrintedLogo(images[a]!)) - Number(hasPrintedLogo(images[b]!)) || stillUses[a]! - stillUses[b]! || a - b)[0];
+      .sort((a, b) => artPenalty(images[a]!) - artPenalty(images[b]!) || stillUses[a]! - stillUses[b]! || a - b)[0];
     if (pick === undefined) return undefined;
     stillUses[pick]!++;
     return { type: "image", index: pick };

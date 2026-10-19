@@ -92,3 +92,13 @@ test("retention: captured once a Short is four days old, then taught to the edit
   assert.match(lessons, /lost them:[\s\S]*30%: "Weakest hook\."/);
   await db.close();
 });
+
+test("the opening comparison speaks only once both kinds have three Shorts", async () => {
+  const { openingLine } = await import("../src/analytics.ts");
+  const rows = [
+    { stay: 50, opening: "clip" }, { stay: 40, opening: "clip" }, { stay: 45, opening: "clip" },
+    { stay: 30, opening: "image" }, { stay: 36, opening: "image" },
+  ];
+  assert.deepEqual(openingLine(rows), []);
+  assert.match(openingLine([...rows, { stay: 33, opening: "image" }])[0]!, /moving footage kept 45% \(3 Shorts\); on a still picture 33% \(3 Shorts\)/);
+});

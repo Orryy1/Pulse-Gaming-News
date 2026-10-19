@@ -50,7 +50,7 @@ Write a 25-40 second vertical Short script (${WORDS_MIN}-${WORDS_MAX} spoken wor
 
 Structure:
 1. hook: state the news itself in the first sentence, with the game name. Never open with "So", "Today", "Hey", "Welcome", "In this", "Guys" or a question that withholds the news.
-2. beats: two to four short fact beats, each with one on-screen visual card. Pick the card that fits the fact:
+2. beats: two to four short fact beats, each with one on-screen visual card. The first beat must be the single most surprising concrete detail in the story (a number, a date, a price, a named feature), never background, history or "here is what we know": half our viewers leave between seconds five and twelve, so the best fact goes there. Context and history come later or in the take. Pick the card that fits the fact:
    - "timeline" for a delay or date change: primary is a 2-5 word phrase, date_from is the old date and date_to the new date, both ISO (YYYY-MM or YYYY-MM-DD).
    - "countdown" for a confirmed release date: primary is the date as spoken, date_to is the ISO date.
    - "price" for a price: primary is the US dollar price exactly as written (e.g. $69.99) when the sources or Steam facts give one, else the price as given; was is the old price in the same currency if the story gives one; region is the platform or "US"; items lists the same price in the other currencies (£ and €) only when the sources or Steam facts state them. Speak the US price in the narration.

@@ -401,3 +401,18 @@ test("a ranking entry opens on its clean art; box art with the printed logo only
   const firstLogo = kinds.findIndex((k) => k === "capsule" || k === "header");
   if (firstLogo >= 0) assert.ok(kinds.slice(0, firstLogo).length >= 2, "clean art is used up before logo art");
 });
+
+test("with openOnClip the Short opens on the hook's moving clip; without one it falls back to the hero still", () => {
+  const withClip = input({
+    images: [{ kind: "hero", aspect: 1.778 }, { kind: "screenshot", aspect: 1.778 }],
+    clips: [{ durationSeconds: 4.8, motion: 0.9, role: "hook" }, { durationSeconds: 4.8, motion: 0.5 }],
+    openOnClip: true,
+  });
+  const a = buildPlan(withClip);
+  assert.equal(a.shots[0]!.media.type, "clip", "opens on motion");
+  assert.equal(withClip.clips[a.shots[0]!.media.index]!.role, "hook");
+  const b = buildPlan({ ...withClip, clips: [] });
+  assert.deepEqual(b.shots[0]!.media, { type: "image", index: b.heroIndex }, "no clip: the hero still opens");
+  const c = buildPlan({ ...withClip, openOnClip: false });
+  assert.deepEqual(c.shots[0]!.media, { type: "image", index: c.heroIndex }, "switched off: the hero still opens");
+});

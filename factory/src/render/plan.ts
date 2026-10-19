@@ -57,6 +57,8 @@ export interface PlanInput {
   attribution: string;
   variant: number;
   steam?: PlanSteam | null;
+  /** Open on the hook's moving clip instead of the hero still (most viewers decide at the first frame). */
+  openOnClip?: boolean;
 }
 
 export type PlanMedia = {
@@ -405,6 +407,12 @@ export function planShots(
         takeStill((i) => true, undefined, winnerBeat, true) ??
         takeClip(n, c, winnerBeat, true, true) ??
         (heroIndex >= 0 ? { type: "image", index: heroIndex } : undefined);
+    } else if (
+      isOpening &&
+      input.openOnClip &&
+      (media = takeClip(n, c, "hook", false))
+    ) {
+      // Motion from the first frame: the hero still waits for the take and the loop.
     } else if ((isOpening || isClosing || firstTakeShot) && heroIndex >= 0) {
       media = { type: "image", index: heroIndex };
       framed = isFramedStill(images[heroIndex]!);

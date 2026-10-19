@@ -3466,6 +3466,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     attribution: script.attribution,
     variant,
     steam: steamLite,
+    openOnClip: s.cfg.openOnMotion,
   };
   const footageSeconds = (assets.clips ?? []).reduce(
     (n, c) => n + c.durationSeconds,

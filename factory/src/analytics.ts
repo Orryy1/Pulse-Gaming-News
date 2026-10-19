@@ -298,15 +298,34 @@ export interface RetentionSource {
     videoIds: string[],
     start: string,
     end: string,
-  ): Promise<Map<string, { views: number; avgViewSeconds: number; avgViewPercent: number; subscribersGained: number; engagedViews?: number }>>;
+  ): Promise<
+    Map<
+      string,
+      {
+        views: number;
+        avgViewSeconds: number;
+        avgViewPercent: number;
+        subscribersGained: number;
+        engagedViews?: number;
+      }
+    >
+  >;
 }
 
 /**
  * Once a Short is four days old (Analytics lags about two), record how much of
  * it people watched and the subscribers it brought: one "retention" row each.
  */
-export async function captureRetention(db: Db, yt: RetentionSource, now: Date): Promise<number> {
-  const eps = await db.query<{ id: string; youtube_video_id: string; live_at: string }>(
+export async function captureRetention(
+  db: Db,
+  yt: RetentionSource,
+  now: Date,
+): Promise<number> {
+  const eps = await db.query<{
+    id: string;
+    youtube_video_id: string;
+    live_at: string;
+  }>(
     `SELECT e.id, e.youtube_video_id, coalesce(e.publish_at, e.updated_at) AS live_at FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL
         AND coalesce(e.publish_at, e.updated_at) < $1::timestamptz - interval '4 days'
@@ -316,9 +335,17 @@ export async function captureRetention(db: Db, yt: RetentionSource, now: Date): 
     [now],
   );
   if (!eps.length) return 0;
-  const start = new Date(Math.min(...eps.map((e) => new Date(e.live_at).getTime()))).toISOString().slice(0, 10);
+  const start = new Date(
+    Math.min(...eps.map((e) => new Date(e.live_at).getTime())),
+  )
+    .toISOString()
+    .slice(0, 10);
   const end = now.toISOString().slice(0, 10);
-  const got = await yt.retention(eps.map((e) => e.youtube_video_id), start, end);
+  const got = await yt.retention(
+    eps.map((e) => e.youtube_video_id),
+    start,
+    end,
+  );
   let n = 0;
   for (const e of eps) {
     const r = got.get(e.youtube_video_id);
@@ -337,12 +364,34 @@ export async function captureRetention(db: Db, yt: RetentionSource, now: Date): 
 interface RetentionRow {
   id: string;
   script_json: Episode["script_json"];
-  raw: { avgViewPercent: number; subscribersGained: number; views: number; engagedViews?: number } | string;
+  raw:
+    | {
+        avgViewPercent: number;
+        subscribersGained: number;
+        views: number;
+        engagedViews?: number;
+      }
+    | string;
+  opening?: string | null;
 }
 
-async function retentionRows(db: Db, now: Date): Promise<Array<{ title: string; hook: string; pct: number; subs: number; views: number; stay?: number }>> {
+async function retentionRows(
+  db: Db,
+  now: Date,
+): Promise<
+  Array<{
+    title: string;
+    hook: string;
+    pct: number;
+    subs: number;
+    views: number;
+    stay?: number;
+    opening?: string;
+  }>
+> {
   const rows = await db.query<RetentionRow>(
-    `SELECT e.id, e.script_json, m.raw FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
+    `SELECT e.id, e.script_json, m.raw, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening
+       FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
       WHERE m.label = 'retention' AND m.captured_at > $1::timestamptz - interval '45 days'`,
     [now],
   );
@@ -356,11 +405,29 @@ async function retentionRows(db: Db, now: Date): Promise<Array<{ title: string; 
         subs: Number(raw?.subscribersGained ?? 0),
         views: Number(raw?.views ?? 0),
         // Share of viewers who stayed to watch rather than swiping away: on our channel it tracks reach, % watched does not.
-        stay: raw?.engagedViews && Number(raw?.views) > 0 ? (100 * Number(raw.engagedViews)) / Number(raw.views) : undefined,
+        stay:
+          raw?.engagedViews && Number(raw?.views) > 0
+            ? (100 * Number(raw.engagedViews)) / Number(raw.views)
+            : undefined,
+        opening: r.opening ?? undefined,
       };
     })
     .filter((r) => r.views >= 20)
     .sort((a, b) => (b.stay ?? b.pct) - (a.stay ?? a.pct));
+}
+
+/** Whether opening on moving footage keeps more viewers than opening on a still, once each has three Shorts. */
+export function openingLine(rows: Array<{ stay?: number; opening?: string }>): string[] {
+  const avg = (kind: string) => {
+    const xs = rows.filter((r) => r.opening === kind && r.stay !== undefined).map((r) => r.stay!);
+    return xs.length >= 3 ? { n: xs.length, v: xs.reduce((a, b) => a + b, 0) / xs.length } : undefined;
+  };
+  const clip = avg("clip");
+  const still = avg("image");
+  if (!clip || !still) return [];
+  return [
+    `Openings: Shorts that opened on moving footage kept ${Math.round(clip.v)}% (${clip.n} Shorts); on a still picture ${Math.round(still.v)}% (${still.n} Shorts).`,
+  ];
 }
 
 /** For the editor: which Shorts people watched to the end and which they swiped away from. */
@@ -375,6 +442,7 @@ export async function retentionNotes(db: Db, now: Date): Promise<string> {
     ...rows.slice(0, 4).map(line),
     "Held worst:",
     ...rows.slice(-3).reverse().map(line),
+    ...openingLine(rows),
   ].join("\n");
 }
 
@@ -384,8 +452,12 @@ export async function hookLessons(db: Db, now: Date): Promise<string> {
   if (rows.length < 4) return "";
   return [
     "Openings that held our viewers best (share who stayed to watch instead of swiping away). Learn the pattern, never reuse the words:",
-    ...rows.slice(0, 3).map((r) => `- ${Math.round(r.stay ?? r.pct)}%: "${r.hook}"`),
+    ...rows
+      .slice(0, 3)
+      .map((r) => `- ${Math.round(r.stay ?? r.pct)}%: "${r.hook}"`),
     "Openings that lost them:",
-    ...rows.slice(-2).map((r) => `- ${Math.round(r.stay ?? r.pct)}%: "${r.hook}"`),
+    ...rows
+      .slice(-2)
+      .map((r) => `- ${Math.round(r.stay ?? r.pct)}%: "${r.hook}"`),
   ].join("\n");
 }

@@ -3155,7 +3155,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const thumbVariants = [
     {
       file: path.join(dir, "thumb_b.jpg"),
-      thumb: { headline: thumbTitle(script), kicker: doc ? "DOCUMENTARY" : "RANKED", game: "", accent: "#FF6B1A", imageFile: thumbArt?.file ?? null, layout: "full" as const },
+      thumb: {
+        headline: thumbTitle(script),
+        kicker: doc ? "DOCUMENTARY" : "RANKED",
+        game: "",
+        accent: "#FF6B1A",
+        imageFile: thumbArt?.file ?? null,
+        layout: "full" as const,
+      },
     },
     ...(lastArt && thumbArt
       ? [
@@ -3169,7 +3176,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
               imageFile: lastArt.file,
               image2File: thumbArt.file,
               layout: "versus" as const,
-              labels: [`#${script.entries![0]!.rank}`, "#1"] as [string, string],
+              labels: [`#${script.entries![0]!.rank}`, "#1"] as [
+                string,
+                string,
+              ],
             },
           },
         ]
@@ -4160,7 +4170,11 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
       {
         title: `✅ Published: ${ep.script_json!.youtube.title}`,
         url,
-        description: `${url}\n${when}${voiceLine}`,
+        description: `${url}\n${when}${voiceLine}${
+          ep.assets_json?.thumbVariants?.length
+            ? `\nThumbnail test ready: ${ep.assets_json.thumbVariants.join(", ")} sit beside thumb.jpg for Studio's Test & compare.`
+            : ""
+        }`,
         color: COLOURS.ok,
       },
     ],

@@ -17,6 +17,7 @@ import { buildPosters, crosspostTick, isPublicOnYouTube } from "./social/crosspo
 import { engageTick } from "./social/engage.ts";
 import { renderEngage } from "./render/render.ts";
 import { handleSite, startGameWarmer, startSiteIndexNow } from "./web/routes.ts";
+import { replyToComments } from "./youtube/replies.ts";
 import { setChannelBanner } from "./youtube/branding.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
@@ -381,6 +382,15 @@ async function main(): Promise<void> {
       ).catch((err) => log("warn", "community post pass failed", { error: errorMessage(err) }));
     setTimeout(() => void engage(), 90_000);
     setInterval(() => void engage(), 10 * 60_000);
+  }
+  // A new video's fresh comments: the good ones get a reply while the video is young.
+  if (cfg.commentReplies && !cfg.dryRun) {
+    const replies = () =>
+      replyToComments({ db, youtube: services.youtube, llm: services.llm, quotaUnitsPerDay: cfg.quotaUnitsPerDay, now: () => new Date() }).catch((err) =>
+        log("warn", "comment reply pass failed", { error: errorMessage(err) }),
+      );
+    setTimeout(() => void replies(), 120_000);
+    setInterval(() => void replies(), 5 * 60_000);
   }
   // Daily at 04:00 UTC, when nothing is mid-production, exit cleanly so the
   // Windows runner can pull updates and restart.

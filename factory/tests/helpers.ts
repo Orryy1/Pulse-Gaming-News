@@ -43,6 +43,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     cutdownsEnabled: false,
     cutdownSlot: "15:30",
     cutdownsPerLong: 3,
+    commentReplies: false,
     voiceProvider: "local",
     localTtsUrl: "http://127.0.0.1:1",
     localVoiceId: "TX3LPaxmHKxFdv7VOQHJ",

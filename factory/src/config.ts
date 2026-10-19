@@ -100,6 +100,7 @@ export interface Config {
   cutdownsEnabled: boolean; // Shorts cut from each long ranking
   cutdownSlot: string; // local publish time for them, one a day
   cutdownsPerLong: number;
+  commentReplies: boolean; // answer good comments in a video's first hours
   weeklyEnabled: boolean; // Release Radar, Free This Week and the Weekly Recap
   radarDays: string[];
   freeDays: string[];
@@ -247,6 +248,7 @@ export function loadConfig(): Config {
     cutdownsEnabled: bool("CUTDOWNS_ENABLED", false), // on once a sandbox run has been checked
     cutdownSlot: str("CUTDOWN_SLOT", "15:30"),
     cutdownsPerLong: int("CUTDOWNS_PER_LONG", 3),
+    commentReplies: bool("COMMENT_REPLIES", true),
     weeklyEnabled: bool("WEEKLY_ENABLED", true),
     radarDays: str("RADAR_DAYS", "mon").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     freeDays: str("FREE_DAYS", "thu").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),

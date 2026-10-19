@@ -61,8 +61,12 @@ export function momentWindows(
     const n = e === undefined ? 0 : (counts[e] ?? 0);
     if (!n || e === undefined) continue;
     const segEnd = i === segments.length - 1 ? seg.end : segments[i + 1]!.start;
-    const ws = words.filter((w) => w.start >= seg.start - 0.05 && w.start < segEnd);
-    const lens = splitSentences(seg.text).map((x) => x.split(/\s+/).filter(Boolean).length);
+    const ws = words.filter(
+      (w) => w.start >= seg.start - 0.05 && w.start < segEnd,
+    );
+    const lens = splitSentences(seg.text).map(
+      (x) => x.split(/\s+/).filter(Boolean).length,
+    );
     const k = Math.min(n, lens.length || 1);
     const starts: number[] = [];
     let idx = 0;
@@ -70,7 +74,13 @@ export function momentWindows(
       starts.push(j === 0 ? seg.start : (ws[idx]?.start ?? seg.start));
       idx += lens[j] ?? 0;
     }
-    for (let j = 0; j < k; j++) out.push({ entry: e, moment: j, start: starts[j]!, end: j === k - 1 ? segEnd : starts[j + 1]! });
+    for (let j = 0; j < k; j++)
+      out.push({
+        entry: e,
+        moment: j,
+        start: starts[j]!,
+        end: j === k - 1 ? segEnd : starts[j + 1]!,
+      });
   }
   return out;
 }
@@ -115,7 +125,9 @@ const MOVES: MovePreset[] = ["pushIn", "pullBack", "pushPan", "driftDown"];
 export function entryOf(segments: Segment[], i: number): number | undefined {
   const seg = segments[i]!;
   if (segments.some((s) => s.visual?.kind === "chapter")) {
-    const upTo = segments.slice(0, i + 1).filter((s) => s.kind === "beat" && s.visual?.kind === "chapter").length;
+    const upTo = segments
+      .slice(0, i + 1)
+      .filter((s) => s.kind === "beat" && s.visual?.kind === "chapter").length;
     if (seg.kind === "beat") return upTo > 0 ? upTo - 1 : undefined;
     if (seg.kind === "take") return upTo > 0 ? upTo - 1 : undefined;
     return undefined;
@@ -147,13 +159,26 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   const same = (a: LongMedia | undefined, b: LongMedia) =>
     !!a && a.type === b.type && a.index === b.index;
 
-  const windows = input.momentCounts?.length ? momentWindows(segments, input.words, input.momentCounts) : [];
+  const windows = input.momentCounts?.length
+    ? momentWindows(segments, input.words, input.momentCounts)
+    : [];
   /** Fills [from, to) with a queue of media, never stretching a clip and never leaving a sliver. */
-  const fill = (seg: number, from: number, to: number, queue: LongMedia[], fallback: () => LongMedia) => {
+  const fill = (
+    seg: number,
+    from: number,
+    to: number,
+    queue: LongMedia[],
+    fallback: () => LongMedia,
+  ) => {
     let at = from;
     while (at < to) {
       const remaining = to - at;
-      if (remaining < MIN_SHOT && shots.length && shots[shots.length - 1]!.segment === seg && shots[shots.length - 1]!.media.type !== "clip") {
+      if (
+        remaining < MIN_SHOT &&
+        shots.length &&
+        shots[shots.length - 1]!.segment === seg &&
+        shots[shots.length - 1]!.media.type !== "clip"
+      ) {
         shots[shots.length - 1]!.end = to;
         break;
       }
@@ -172,11 +197,24 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           len = Math.min(MAX_STILL_SHOT, remaining);
         } else clipUsed[media.index] = true;
       } else {
-        len = Math.min(STILL_SHOT + ((shotIndex * 37 + variant * 11) % 60) - 30, remaining, MAX_STILL_SHOT);
+        len = Math.min(
+          STILL_SHOT + ((shotIndex * 37 + variant * 11) % 60) - 30,
+          remaining,
+          MAX_STILL_SHOT,
+        );
         if (remaining - len < MIN_SHOT) len = remaining;
       }
       if (media.type === "image") stillUses[media.index]!++;
-      shots.push({ start: at, end: at + len, segment: seg, media, move: shotIndex === 0 ? "pushIn" : MOVES[(shotIndex * 7 + variant) % MOVES.length]! });
+      shots.push({
+        start: at,
+        end: at + len,
+        segment: seg,
+        media,
+        move:
+          shotIndex === 0
+            ? "pushIn"
+            : MOVES[(shotIndex * 7 + variant) % MOVES.length]!,
+      });
       last = media;
       at += len;
       shotIndex++;
@@ -190,34 +228,70 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     if (end - start <= 0) continue;
     const entry = entryOf(segments, i);
     // A ranking entry with a shot list: each sentence opens on what it names.
-    const mine = seg.kind === "beat" ? windows.filter((w) => w.entry === entry) : [];
+    const mine =
+      seg.kind === "beat" ? windows.filter((w) => w.entry === entry) : [];
     if (mine.length && entry !== undefined) {
-            const allEntry = images.map((_, k) => k).filter((k) => images[k]!.beatIndex === entry && images[k]!.kind !== "capsule");
+      const allEntry = images
+        .map((_, k) => k)
+        .filter(
+          (k) =>
+            images[k]!.beatIndex === entry && images[k]!.kind !== "capsule",
+        );
       const noHero = allEntry.filter((k) => images[k]!.kind !== "hero");
       const entryImages = noHero.length >= 4 ? noHero : allEntry;
-      const entryClips = clips.map((_, k) => k).filter((k) => clips[k]!.beatIndex === entry);
+      const entryClips = clips
+        .map((_, k) => k)
+        .filter((k) => clips[k]!.beatIndex === entry);
       const leastUsed = (): LongMedia => {
-        const pool = entryImages.length ? entryImages : images.map((_, k) => k).filter((k) => images[k]!.beatIndex === undefined);
+        const pool = entryImages.length
+          ? entryImages
+          : images
+              .map((_, k) => k)
+              .filter((k) => images[k]!.beatIndex === undefined);
         if (!pool.length) return { type: "plate", index: 0 };
-        const pick = [...pool].sort((a, b) => stillUses[a]! - stillUses[b]! || a - b).find((k) => !same(last, { type: "image", index: k })) ?? pool[0]!;
+        const pick =
+          [...pool]
+            .sort((a, b) => stillUses[a]! - stillUses[b]! || a - b)
+            .find((k) => !same(last, { type: "image", index: k })) ?? pool[0]!;
         return { type: "image", index: pick };
       };
       for (const [j, w] of mine.entries()) {
         const from = j === 0 ? start : Math.max(start, toFrame(w.start));
-        const to = j === mine.length - 1 ? end : Math.min(end, toFrame(mine[j + 1]!.start));
+        const to =
+          j === mine.length - 1
+            ? end
+            : Math.min(end, toFrame(mine[j + 1]!.start));
         if (to <= from) continue;
-                // Every clip picked for this sentence (a trailer moment and a gameplay moment), then its still.
-        const mineClips = entryClips.filter((k) => clips[k]!.moment === w.moment && !clipUsed[k]);
+        // Every clip picked for this sentence (a trailer moment and a gameplay moment), then its still.
+        const mineClips = entryClips.filter(
+          (k) => clips[k]!.moment === w.moment && !clipUsed[k],
+        );
         const still = entryImages.find((k) => images[k]!.moment === w.moment);
         const queue: LongMedia[] = [];
         // The entry opens on its art so the rank card lands over a picture; later sentences open on footage.
-        if (j === 0 && still !== undefined) queue.push({ type: "image", index: still });
+        // With no picture of its own for the first sentence it borrows the entry's art: a dark clip under the rank card reads as an empty frame.
+        if (j === 0) {
+          const opener =
+            still ??
+            (entryImages.length
+              ? (leastUsed() as { type: "image"; index: number }).index
+              : undefined);
+          if (opener !== undefined)
+            queue.push({ type: "image", index: opener });
+        }
         for (const k of mineClips) queue.push({ type: "clip", index: k });
-        if (j !== 0 && still !== undefined) queue.push({ type: "image", index: still });
+        if (j !== 0 && still !== undefined)
+          queue.push({ type: "image", index: still });
         // When the sentence's own media runs out, any unused footage of the entry comes before another still.
         const footageFirst = (): LongMedia => {
-          const spare = entryClips.find((k) => !clipUsed[k] && !queue.some((q) => q.type === "clip" && q.index === k));
-          return spare !== undefined ? { type: "clip", index: spare } : leastUsed();
+          const spare = entryClips.find(
+            (k) =>
+              !clipUsed[k] &&
+              !queue.some((q) => q.type === "clip" && q.index === k),
+          );
+          return spare !== undefined
+            ? { type: "clip", index: spare }
+            : leastUsed();
         };
         fill(i, from, to, queue, footageFirst);
       }
@@ -240,11 +314,23 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           ? images[k]!.beatIndex === undefined
           : images[k]!.beatIndex === entry,
       );
-        // The intro of a ranking is a montage: the topic's own art plus one picture from every entry.
+    // The intro of a ranking is a montage: the topic's own art plus one picture from every entry.
     const montage =
       seg.kind === "hook" && images.some((im) => im.beatIndex !== undefined)
-        ? [...new Set(images.map((im) => im.beatIndex).filter((b): b is number => b !== undefined))]
-            .map((b) => images.findIndex((im) => im.beatIndex === b && (im.kind === "screenshot" || im.kind === "photo")))
+        ? [
+            ...new Set(
+              images
+                .map((im) => im.beatIndex)
+                .filter((b): b is number => b !== undefined),
+            ),
+          ]
+            .map((b) =>
+              images.findIndex(
+                (im) =>
+                  im.beatIndex === b &&
+                  (im.kind === "screenshot" || im.kind === "photo"),
+              ),
+            )
             .filter((k) => k >= 0)
         : [];
     const stills = ownStills.length
@@ -275,7 +361,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       const nextStill = (): LongMedia | undefined => {
         if (!order.length) return undefined;
         let pick = order[stillCursor % order.length]!;
-        if (same(last, { type: "image", index: pick }) && order.length > 1) pick = order[(stillCursor + 1) % order.length]!;
+        if (same(last, { type: "image", index: pick }) && order.length > 1)
+          pick = order[(stillCursor + 1) % order.length]!;
         stillCursor++;
         stillUses[pick]!++;
         return { type: "image", index: pick };
@@ -296,7 +383,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       let media: LongMedia | undefined;
       let len = 0;
       const wantClip = turn % 2 === 0 || !order.length;
-      const clipIdx = wantClip ? ownClips.find((k) => !clipUsed[k] || seg.kind === "take") : undefined;
+      const clipIdx = wantClip
+        ? ownClips.find((k) => !clipUsed[k] || seg.kind === "take")
+        : undefined;
       if (clipIdx !== undefined) {
         // The clip plays only as long as it lasts; what it would leave behind must be a whole shot.
         let clipLen = Math.min(clipFrames[clipIdx]!, remaining);
@@ -305,14 +394,19 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         if (clipLen >= MIN_SHOT) {
           media = { type: "clip", index: clipIdx };
           clipUsed[clipIdx] = true;
-          if (seg.kind === "take") ownClips.splice(ownClips.indexOf(clipIdx), 1);
+          if (seg.kind === "take")
+            ownClips.splice(ownClips.indexOf(clipIdx), 1);
           len = clipLen;
         }
       }
       if (!media) {
         media = nextStill();
         if (media) {
-          len = Math.min(STILL_SHOT + ((shotIndex * 37 + variant * 11) % 60) - 30, remaining, MAX_STILL_SHOT);
+          len = Math.min(
+            STILL_SHOT + ((shotIndex * 37 + variant * 11) % 60) - 30,
+            remaining,
+            MAX_STILL_SHOT,
+          );
         } else {
           media = { type: "plate", index: 0 };
           len = Math.min(MAX_STILL_SHOT, remaining);
@@ -325,7 +419,10 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         end: at + len,
         segment: i,
         media,
-        move: shotIndex === 0 ? "pushIn" : MOVES[(shotIndex * 7 + variant) % MOVES.length]!,
+        move:
+          shotIndex === 0
+            ? "pushIn"
+            : MOVES[(shotIndex * 7 + variant) % MOVES.length]!,
       });
       last = media;
       at += len;
@@ -334,11 +431,18 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     }
     cursors.set(entry, stillCursor);
   }
-    // Never the same still twice in a row: the second would restart its move and visibly jump. Hold the first instead.
+  // Never the same still twice in a row: the second would restart its move and visibly jump. Hold the first instead.
   const merged: LongShot[] = [];
   for (const sh of shots) {
     const prev = merged[merged.length - 1];
-    if (prev && prev.media.type === "image" && sh.media.type === "image" && prev.media.index === sh.media.index && prev.end === sh.start) prev.end = sh.end;
+    if (
+      prev &&
+      prev.media.type === "image" &&
+      sh.media.type === "image" &&
+      prev.media.index === sh.media.index &&
+      prev.end === sh.start
+    )
+      prev.end = sh.end;
     else merged.push({ ...sh });
   }
   return { version: 1, fps: LONG_FPS, totalFrames, tailFrames, shots: merged };

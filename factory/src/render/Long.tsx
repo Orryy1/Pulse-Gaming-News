@@ -63,6 +63,7 @@ export type LongProps = {
   title: string; // on-screen title
   kicker: string; // line under the title in the intro
   spoilers?: boolean; // a story ranking: the intro says so on screen
+  recap?: boolean; // the weekly news recap: the chip reads THIS WEEK
   criterion: string;
   theme: string; // franchise or theme name
   footageCredit: string;
@@ -1146,7 +1147,7 @@ export const Long: React.FC<LongProps> = (props) => {
       <GrainVignette />
       <Brand
         logoSrc={resolveSrc(props.logoSrc)}
-        chip={documentary ? "DOCUMENTARY" : total ? `TOP ${total}` : "RANKED"}
+        chip={props.recap ? "THIS WEEK" : documentary ? "DOCUMENTARY" : total ? `TOP ${total}` : "RANKED"}
         progress={Math.min(1, frame / Math.max(1, durationInFrames))}
       />
       <Credit text={creditAt(frame)} />

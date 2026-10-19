@@ -289,6 +289,8 @@ export function keywordLead(script: Script): string {
     const theme = script.cutdown.theme || script.game_title;
     return `${script.game_title} is number ${script.cutdown.rank} of ${script.cutdown.total} in our ${theme} ranking. ${theme} ranked, best ${theme} games, by Pulse Gaming News.`;
   }
+  if (script.recap)
+    return `This week in gaming news: ${script.headline.replace(/\.$/, "")}. Gaming news this week, video game news recap, biggest gaming stories, by Pulse Gaming News.`;
   if (script.evergreen_format === "documentary")
     return `The complete history of ${script.game_title}, game by game: ${script.headline.replace(/\.$/, "")}. ${script.game_title} documentary, history of ${script.game_title}, ${script.game_title} explained, by Pulse Gaming News.`;
   if (script.evergreen_format === "release_radar")
@@ -325,6 +327,8 @@ export function pinnedComment(script: Script): string {
     return `${script.cutdown.question.trim()} The full ranking, every pick explained: https://youtu.be/${script.cutdown.parent_video}`;
   const take = script.pulse_take.on_screen.replace(/\.$/, "");
   const game = script.game_title || "this";
+  if (script.recap)
+    return `Our read: ${take}. Which story was the biggest one for you this week? Every source is in the description.`;
   if (script.evergreen_format === "documentary")
     return `Which ${game} game was the one for you, and which chapter of the story surprised you most? Sources for every chapter are in the description.`;
   if (script.evergreen_format === "release_radar")

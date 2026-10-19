@@ -56,6 +56,16 @@ import {
   type DocDraft,
 } from "./editorial/documentary.ts";
 import {
+  packageRecap,
+  recapToScript,
+  validateRecapChapter,
+  writeRecapBookends,
+  writeRecapChapter,
+  RECAP_STORIES_MAX,
+  RECAP_STORIES_MIN,
+  type RecapStory,
+} from "./editorial/recap.ts";
+import {
   buildLongPlan,
   chapterLines,
   LONG_TAIL_SECONDS,
@@ -1013,6 +1023,34 @@ export async function maybeSelectWeekly(
     });
   }
 
+  // Weekly Recap as a long video: the week's most-watched Shorts, one chapter each. Production
+  // starts five hours before the slot; with too few stories it falls back to the Short below.
+  if (cfg.recapLong && cfg.longformEnabled) {
+    const longDue = evergreenDue(now, { ...plan(cfg.recapDays), leadMinutes: 300 }, taken);
+    if (longDue && !(await weeklyTried(db, `recaplong:${today}`))) {
+      const stories = await recapStoryIds(db, now);
+      if (stories.length >= RECAP_STORIES_MIN) {
+        const id = shortId();
+        const cluster = base(`weekly:recaplong:${today}`, "This Week in Gaming", "Gaming news");
+        if (
+          await createEpisode(db, id, cluster, {
+            lane: "longform",
+            priority: LANE_PRIORITY.longform,
+            slotAt: longDue,
+          })
+        ) {
+          await db.query(`UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`, [
+            id,
+            JSON.stringify({ recap: true, stories }),
+          ]);
+          await logEvent(db, id, "selected", { headline: cluster.headline, lane: "longform", recap: true, stories, slot_at: longDue.toISOString() });
+          log("info", "weekly recap video selected", { id, stories: stories.length });
+          return id;
+        }
+      } else log("info", "weekly recap video skipped: too few stories", { found: stories.length });
+    }
+  }
+
   // Weekly Recap
   const recapDue = evergreenDue(now, plan(cfg.recapDays), taken);
   if (recapDue && !(await weeklyTried(db, `recap:${today}`))) {
@@ -1625,12 +1663,97 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
   });
 }
 
+/** The week's published news Shorts, most watched first (their best captured view count), rumours left out. */
+export async function recapStoryIds(db: Db, now: Date): Promise<string[]> {
+  const rows = await db.query<{ id: string; views: number | null }>(
+    `SELECT e.id, (SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id) AS views
+       FROM episodes e
+      WHERE e.lane IN ('news','news_breaking') AND e.status = 'published' AND e.youtube_video_id IS NOT NULL
+        AND coalesce(e.publish_at, e.updated_at) > $1::timestamptz - interval '7 days'
+        AND coalesce((e.script_json->>'is_rumour')::boolean, false) = false
+      ORDER BY 2 DESC NULLS LAST, coalesce(e.publish_at, e.updated_at) DESC
+      LIMIT $2`,
+    [now, RECAP_STORIES_MAX],
+  );
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Writes the weekly recap: packaging, then each story against its own sources (the Short's checked
+ * narration and the articles it came from) with a fact-check pass and up to two rewrites, then the
+ * intro and outro.
+ */
+async function stepScriptRecap(s: Services, ep: Episode, ids: string[]): Promise<void> {
+  const stories: RecapStory[] = [];
+  for (const id of ids) {
+    const short = await getEpisode(s.db, id);
+    const script = short?.script_json;
+    if (!short || !script) continue;
+    const articles: string[] = [];
+    for (const item of (short.story_json?.items ?? []).slice(0, 3)) {
+      const a = await s.fetchArticle(item.url).catch(() => undefined);
+      if (a?.text) articles.push(`[${item.source}] ${a.title}\n${a.text.slice(0, 3500)}`);
+    }
+    const urls = (short.story_json?.items ?? []).slice(0, 3).map((i) => i.url);
+    stories.push({
+      episodeId: id,
+      headline: script.youtube?.title ?? script.headline,
+      game: script.game_title || short.story_json.headline,
+      steamTerm: script.steam_search_term ?? "",
+      views: 0,
+      source: {
+        title: short.story_json.sources.slice(0, 3).join(" / ") || "outlets",
+        url: urls[0] ?? "",
+        text: [`[Pulse Short, fact-checked against these sources] ${narrationOf(script)}`, ...articles].join("\n\n"),
+      },
+    });
+  }
+  if (stories.length < RECAP_STORIES_MIN) throw new FatalError(`weekly recap has only ${stories.length} stories with sources`);
+  const packaging = await packageRecap(s.llm, stories, dayKey(s.now(), s.cfg.timezone));
+  const titles = stories.map((st, i) => packaging.chapter_titles[i] ?? st.headline);
+  const chapters: import("./editorial/documentary.ts").DocChapter[] = [];
+  const warnings: string[] = [];
+  for (const [index, story] of stories.entries()) {
+    let feedback: string[] = [];
+    let chapter: import("./editorial/documentary.ts").DocChapter | undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      chapter = await writeRecapChapter(s.llm, {
+        story,
+        title: titles[index]!,
+        index,
+        titles,
+        previousEnding: chapters.at(-1)?.paragraphs.at(-1)?.narration,
+        feedback,
+      });
+      const unsupported = await checkChapter(s.llm, chapter, story.source).catch(() => [] as string[]);
+      feedback = [...validateRecapChapter(chapter), ...unsupported.map((u) => `Not supported by the sources, remove or correct it: ${u}`)];
+      if (!feedback.length) break;
+      if (attempt === 2) warnings.push(...feedback.map((f) => `${story.game}: ${f}`));
+    }
+    const grounded = groundCallouts(chapter!, story.source);
+    if (grounded.removed.length) warnings.push(...grounded.removed.map((r) => `${story.game}: on-screen ${r} not in the sources, removed`));
+    chapters.push(grounded.chapter);
+    log("info", "recap story written", { episode: ep.id, story: index + 1, game: story.game });
+  }
+  const bookends = await writeRecapBookends(s.llm, packaging, chapters.map((chapter, i) => ({ title: titles[i]!, chapter })));
+  const script = recapToScript(packaging, stories, chapters, bookends, Number(dayKey(s.now(), s.cfg.timezone).slice(0, 4)));
+  script.sources = [...new Set(stories.flatMap((st) => st.source.url ? [st.source.url] : []))];
+  if (warnings.length) await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
+  await transition(s.db, ep.id, "selected", "scripted", {
+    script_json: script,
+    factcheck_json: { recap: true, stories: ids, warnings, sources: script.sources },
+  });
+}
+
 /** Writes the long-form ranking against live Steam facts for each entry, with one rewrite on problems. */
 async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   const fc = ep.factcheck_json as {
     doc?: boolean;
+    recap?: boolean;
+    stories?: string[];
     topic?: import("./editorial/evergreen.ts").EvergreenTopic;
   } | null;
+  if (fc?.recap && fc.stories?.length) return stepScriptRecap(s, ep, fc.stories);
   if (fc?.doc && fc.topic)
     return stepScriptDocumentary(s, ep, fc.topic as unknown as DocTopic);
   const topic = fc?.topic;
@@ -2401,6 +2524,8 @@ async function gatherMedia(
           );
           continue;
         }
+        // A recap chapter reuses its Short's media, already picked and passed by QA.
+        if (entry.from_episode && (await copyShortMedia(s, entry.from_episode, beatIndex, dir, images, clips))) continue;
         // A documentary chapter runs minutes: its own gallery, matched footage and archive photos.
         if (script.evergreen_format === "documentary") {
           await gatherChapterMedia(
@@ -2615,6 +2740,50 @@ export function scopeOf(script: Script): "campaign" | undefined {
   return /\bcampaigns?\b|story mode|single[- ]player/i.test(t)
     ? "campaign"
     : undefined;
+}
+
+/**
+ * Copies a published Short's images and clips into a recap chapter (entry_<beat>/short_*), tagged for
+ * that chapter. False when the Short's media is gone (pruned after 14 days), so the chapter gathers its own.
+ */
+async function copyShortMedia(
+  s: Services,
+  episodeId: string,
+  beatIndex: number,
+  dir: string,
+  images: Array<VisualAsset & { beatIndex?: number }>,
+  clips: NonNullable<EpisodeAssets["clips"]>,
+): Promise<boolean> {
+  const short = await getEpisode(s.db, episodeId);
+  const a = short?.assets_json;
+  if (!a) return false;
+  const from = episodeDir(s.cfg, episodeId);
+  const sub = `entry_${beatIndex}`;
+  await fs.mkdir(path.join(dir, sub), { recursive: true });
+  const copy = async (file: string): Promise<string | undefined> => {
+    const dest = path.join(sub, `short_${file.replace(/[\\/]/g, "_")}`);
+    try {
+      await fs.copyFile(path.join(from, file), path.join(dir, dest));
+      return dest;
+    } catch {
+      return undefined;
+    }
+  };
+  let n = 0;
+  for (const img of a.images ?? []) {
+    if (img.kind === "logo") continue;
+    const file = await copy(img.file);
+    if (!file) continue;
+    images.push({ ...img, file, beatIndex, moment: undefined } as VisualAsset & { beatIndex?: number });
+    n++;
+  }
+  for (const c of a.clips ?? []) {
+    const file = await copy(c.file);
+    if (!file) continue;
+    clips.push({ ...c, file, beatIndex, role: undefined, moment: undefined });
+    n++;
+  }
+  return n >= 3;
 }
 
 /** The footage asks of one documentary chapter's paragraphs, in order. */
@@ -3359,7 +3528,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     thumbFile: path.join(dir, "thumb.jpg"),
     thumb: {
       headline: thumbTitle(script),
-      kicker: doc ? "DOCUMENTARY" : "RANKED",
+      kicker: script.recap ? "THIS WEEK" : doc ? "DOCUMENTARY" : "RANKED",
       game: doc
         ? (script.kicker ?? script.game_title).slice(0, 48)
         : script.criterion
@@ -3377,6 +3546,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       kicker: script.kicker ?? "",
       criterion: script.criterion ?? "",
       spoilers: scopeOf(script) === "campaign",
+      recap: !!script.recap,
       theme: script.game_title,
       footageCredit,
       endLine: doc
@@ -4046,7 +4216,9 @@ export function videoMetadata(
       : "",
     footage,
     "\nNarration: AI-generated synthetic voice. Visuals: official publisher material, credited.",
-    script.evergreen_format === "documentary"
+    script.recap
+      ? "\nPulse Gaming News: gaming news, checked and explained. The week's biggest stories every Friday, a new ranking every week, Shorts every day."
+      : script.evergreen_format === "documentary"
       ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
       : long
         ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day."

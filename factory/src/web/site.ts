@@ -308,7 +308,9 @@ function card(ep: SiteEpisode, kicker?: string): string {
   const tag =
     kicker ??
     (s.runtime === "long"
-      ? s.evergreen_format === "documentary"
+      ? s.recap
+        ? "This week"
+        : s.evergreen_format === "documentary"
         ? "Documentary"
         : "Ranked"
       : s.is_rumour

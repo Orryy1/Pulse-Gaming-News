@@ -47,6 +47,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     openOnMotion: false,
     sprintExtra: 3,
     sprintScoreMin: 60,
+    recapLong: false,
     voiceProvider: "local",
     localTtsUrl: "http://127.0.0.1:1",
     localVoiceId: "TX3LPaxmHKxFdv7VOQHJ",

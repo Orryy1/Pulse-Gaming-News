@@ -1,0 +1,98 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  recapToScript,
+  validateRecapChapter,
+  type RecapStory,
+} from "../src/editorial/recap.ts";
+import { keywordLead, pinnedComment } from "../src/editorial/seo.ts";
+
+const para = (words: number, callout = false) => ({
+  narration: Array.from({ length: words }, (_, i) => `word${i}`).join(" "),
+  callout: callout
+    ? {
+        kind: "stat" as const,
+        primary: "9 million",
+        secondary: "views in a day",
+      }
+    : { kind: "none" as const, primary: "", secondary: "" },
+  footage: { want: "gameplay" as const, keywords: ["x"] },
+});
+const chapter = () => ({
+  paragraphs: [para(80, true), para(80), para(80)],
+  claims: [{ claim: "A thing happened", section: "IGN" }],
+});
+const story = (i: number): RecapStory => ({
+  episodeId: `ep_${i}`,
+  headline: `Story ${i}`,
+  game: `Game ${i}`,
+  steamTerm: `Game ${i}`,
+  views: 1000 - i,
+  source: {
+    title: "IGN / Gematsu",
+    url: `https://example.com/${i}`,
+    text: "sources",
+  },
+});
+
+test("a recap chapter keeps to its word band and callout limit", () => {
+  assert.deepEqual(validateRecapChapter(chapter()), []);
+  assert.match(
+    validateRecapChapter({
+      ...chapter(),
+      paragraphs: [para(40), para(40), para(40)],
+    }).join(" "),
+    /120 words/,
+  );
+  assert.match(
+    validateRecapChapter({
+      ...chapter(),
+      paragraphs: [para(80, true), para(80, true), para(80, true)],
+    }).join(" "),
+    /Too many callouts/,
+  );
+});
+
+test("the recap becomes a documentary-shaped script whose chapters point back at their Shorts", () => {
+  const stories = [1, 2, 3, 4, 5].map(story);
+  const s = recapToScript(
+    {
+      title: "This Week in Gaming",
+      kicker: "GTA 6 breaks the internet",
+      chapter_titles: stories.map((x) => `${x.game} news`),
+      youtube: {
+        title: "GTA 6 Trailer and More: Gaming News This Week",
+        description: "d",
+        tags: [],
+      },
+    },
+    stories,
+    stories.map(chapter),
+    {
+      intro: { narration: "intro", on_screen: "kicker" },
+      outro: { label: "OUR READ", narration: "outro", on_screen: "line" },
+    },
+    2026,
+  );
+  assert.equal(s.recap, true);
+  assert.equal(s.runtime, "long");
+  assert.equal(s.evergreen_format, "documentary");
+  assert.deepEqual(
+    s.entries!.map((e) => e.from_episode),
+    ["ep_1", "ep_2", "ep_3", "ep_4", "ep_5"],
+  );
+  assert.deepEqual(
+    s.entries!.map((e) => e.rank),
+    [5, 4, 3, 2, 1],
+    "media is gathered per entry: chapter i is entry i",
+  );
+  const cards = s.beats.filter((b) => b.visual.kind === "chapter");
+  assert.equal(cards.length, 5);
+  assert.deepEqual(
+    cards[0]!.visual.items,
+    [],
+    "a news chapter card carries no year or platform line",
+  );
+  assert.match(keywordLead(s), /^This week in gaming news/);
+  assert.match(pinnedComment(s), /biggest one for you this week/);
+});

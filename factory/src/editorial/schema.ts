@@ -83,7 +83,7 @@ export const ScriptSchema = z.object({
 });
 export type Script = z.infer<typeof ScriptSchema> & {
   /** Evergreen ranking Shorts carry their entries so media can be gathered per entry. */
-  entries?: Array<{ rank: number; game_title: string; steam_search_term: string; year: number; platforms: string; icon?: string; photos?: string[]; moments?: import("./longform.ts").Moment[] }>;
+  entries?: Array<{ rank: number; game_title: string; steam_search_term: string; year: number; platforms: string; icon?: string; photos?: string[]; moments?: import("./longform.ts").Moment[]; /** A recap chapter: the Short whose checked media it reuses. */ from_episode?: string }>;
   /** Which evergreen format produced the Short, for its title formula. */
   evergreen_format?: "ranking" | "best_per_year" | "versus" | "years_later" | "still_good" | "release_radar" | "weekly_recap" | "rarest_achievements" | "hardest_achievements" | "documentary" | "steam_climbers" | "steam_deals";
   /** "long" for the weekly 16:9 ranking video; absent or "short" otherwise. */
@@ -94,6 +94,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   kicker?: string;
     /** Documentary: the articles the script was written from, credited in the description. */
   sources?: string[];
+  /** The weekly news recap (a long video built on the documentary shape). */
+  recap?: boolean;
   /** A Short cut from a long ranking: the full video, this entry's rank and the comment question. */
   cutdown?: { parent_video: string; rank: number; total: number; question: string; theme?: string };
 };

@@ -108,6 +108,7 @@ export interface Config {
   radarDays: string[];
   freeDays: string[];
   recapDays: string[];
+  recapLong: boolean; // Friday's recap is a 6-10 minute long video instead of a Short
   achievementDays: string[];
   climbersDays: string[]; // the weekly Steam climbers Short
   dealsDays: string[]; // the Steam deals Short
@@ -260,6 +261,7 @@ export function loadConfig(): Config {
     weeklyEnabled: bool("WEEKLY_ENABLED", true),
     radarDays: str("RADAR_DAYS", "mon").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     freeDays: str("FREE_DAYS", "thu").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    recapLong: bool("RECAP_LONG", false), // on once a sandbox run has been checked
     recapDays: str("RECAP_DAYS", "fri").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     climbersDays: str("CLIMBERS_DAYS", "sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     dealsDays: str("DEALS_DAYS", "").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),

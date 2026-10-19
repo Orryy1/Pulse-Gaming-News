@@ -60,6 +60,7 @@ export interface EpisodeAssets {
   steam?: { appId: number; name: string; facts: import("./assets/steam.ts").SteamFacts };
   longPlan?: import("./render/longplan.ts").LongPlan; // the long-form render plan
   thumb?: string; // thumb.jpg for the long-form video
+  thumbVariants?: string[]; // thumb_b.jpg, thumb_c.jpg: extra designs for YouTube's Test & compare
   officialTrailer?: { videoId: string; title: string; publisher: string; channelTitle: string; url: string; clipSeconds: number }; // the publisher's YouTube trailer, for games not on Steam
 }
 

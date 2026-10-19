@@ -83,12 +83,16 @@ export interface LongRenderInput {
   outFile: string;
   posterFile: string;
   thumbFile: string;
-  thumb: Omit<ThumbProps, "imageSrc"> & { imageFile: string | null };
+  thumb: ThumbInput;
+  /** Extra designs for YouTube's Test & compare, each rendered beside the main thumbnail. */
+  thumbVariants?: Array<{ file: string; thumb: ThumbInput }>;
   concurrency: number;
   gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
   browserExecutable?: string;
   onProgress?: (p: number) => void;
 }
+
+type ThumbInput = Omit<ThumbProps, "imageSrc" | "image2Src"> & { imageFile: string | null; image2File?: string | null };
 
 /** Renders the 16:9 long-form video, a poster frame and a 1280x720 thumbnail. */
 export async function renderLong(input: LongRenderInput): Promise<void> {
@@ -125,10 +129,16 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       onProgress: ({ progress }) => input.onProgress?.(progress),
     });
     await renderStill({ composition, serveUrl, output: input.posterFile, inputProps: props, frame: Math.min(composition.durationInFrames - 1, Math.round(2 * composition.fps)), imageFormat: "jpeg", jpegQuality: 88, browserExecutable, chromiumOptions });
-    const { imageFile, ...thumb } = input.thumb;
-    const thumbProps: ThumbProps = { ...thumb, imageSrc: imageFile ? `${files.url}/${imageFile}` : null };
-    const still = await selectComposition({ serveUrl, id: "PulseThumb", inputProps: thumbProps, browserExecutable });
-    await renderStill({ composition: still, serveUrl, output: input.thumbFile, inputProps: thumbProps, imageFormat: "jpeg", jpegQuality: 90, browserExecutable, chromiumOptions });
+    for (const t of [{ file: input.thumbFile, thumb: input.thumb }, ...(input.thumbVariants ?? [])]) {
+      const { imageFile, image2File, ...thumb } = t.thumb;
+      const thumbProps: ThumbProps = {
+        ...thumb,
+        imageSrc: imageFile ? `${files.url}/${imageFile}` : null,
+        image2Src: image2File ? `${files.url}/${image2File}` : null,
+      };
+      const still = await selectComposition({ serveUrl, id: "PulseThumb", inputProps: thumbProps, browserExecutable });
+      await renderStill({ composition: still, serveUrl, output: t.file, inputProps: thumbProps, imageFormat: "jpeg", jpegQuality: 90, browserExecutable, chromiumOptions });
+    }
   } finally {
     await files.close();
   }

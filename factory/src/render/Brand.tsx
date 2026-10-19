@@ -199,10 +199,101 @@ export type ThumbProps = {
   game: string;
   imageSrc: string | null; // key art; the field shows when null
   accent: string;
+  // A/B designs for YouTube's Test & compare: "split" (the default), "full" bleed art with a
+  // short line, or "versus": last place against the winner.
+  layout?: "split" | "full" | "versus";
+  image2Src?: string | null; // versus: the winner's art (imageSrc is last place)
+  labels?: [string, string]; // versus: the two corner tags
 };
 
-/** Long-form thumbnail, 1280x720: art on the right, three-word headline on the left, kicker chip, lockup. */
-export const Thumb: React.FC<ThumbProps> = ({
+/** Long-form thumbnail, 1280x720, in one of three designs. */
+export const Thumb: React.FC<ThumbProps> = (p) =>
+  p.layout === "full" ? <FullThumb {...p} /> : p.layout === "versus" ? <VersusThumb {...p} /> : <SplitThumb {...p} />;
+
+const Shade: React.FC<{ to: string }> = ({ to }) => (
+  <div style={{ position: "absolute", inset: 0, background: to }} />
+);
+
+const Big: React.FC<{ text: string; size: number; width: number }> = ({ text, size, width }) => (
+  <div
+    style={{
+      fontFamily: DISPLAY,
+      fontSize: size,
+      lineHeight: 0.95,
+      color: COLOUR.paper,
+      textShadow: "0 8px 40px rgba(0,0,0,0.9), 0 2px 0 rgba(0,0,0,0.6)",
+      width,
+      textTransform: "uppercase",
+    }}
+  >
+    {text}
+  </div>
+);
+
+/** Full-bleed art, a dark lower band and the headline large across it. */
+const FullThumb: React.FC<ThumbProps> = ({ headline, kicker, imageSrc, accent }) => (
+  <Field glow={accent}>
+    {imageSrc ? <Img src={imageSrc} style={{ position: "absolute", inset: 0, width: 1280, height: 720, objectFit: "cover" }} /> : null}
+    <Shade to="linear-gradient(180deg, rgba(10,10,14,0.15) 0%, rgba(10,10,14,0.1) 38%, rgba(10,10,14,0.92) 78%, #0a0a0e 100%)" />
+    <div style={{ position: "absolute", right: 48, top: 44 }}>
+      <Lockup size={38} />
+    </div>
+    <div style={{ position: "absolute", left: 56, bottom: 60 }}>
+      {kicker && !headline.toUpperCase().includes(kicker.toUpperCase()) ? (
+        <div style={{ display: "inline-block", padding: "6px 16px", background: accent, color: COLOUR.ink, fontFamily: BODY, fontWeight: 900, fontSize: 26, letterSpacing: 3, borderRadius: 8, marginBottom: 14 }}>
+          {kicker.toUpperCase()}
+        </div>
+      ) : null}
+      <Big text={headline} size={headline.length > 26 ? 96 : headline.length > 16 ? 118 : 140} width={1160} />
+    </div>
+    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 10, background: accent }} />
+  </Field>
+);
+
+/** Last place against the winner, split down a slanted seam. */
+const VersusThumb: React.FC<ThumbProps> = ({ headline, imageSrc, image2Src, accent, labels = ["WORST", "BEST"] }) => (
+  <Field glow={accent}>
+    {imageSrc ? (
+      <Img src={imageSrc} style={{ position: "absolute", left: 0, top: 0, width: 760, height: 720, objectFit: "cover", filter: "grayscale(0.85) brightness(0.55)" }} />
+    ) : null}
+    {image2Src ? (
+      <Img
+        src={image2Src}
+        style={{ position: "absolute", left: 520, top: 0, width: 760, height: 720, objectFit: "cover", clipPath: "polygon(30% 0, 100% 0, 100% 100%, 0 100%)" }}
+      />
+    ) : null}
+    <div style={{ position: "absolute", left: 590, top: -20, width: 14, height: 780, background: accent, transform: "rotate(11.5deg)", transformOrigin: "50% 50%", boxShadow: `0 0 40px ${accent}` }} />
+    <Shade to="linear-gradient(180deg, transparent 55%, rgba(10,10,14,0.9) 100%)" />
+    {[labels[0], labels[1]].map((l, i) => (
+      <div
+        key={l}
+        style={{
+          position: "absolute",
+          top: 40,
+          [i ? "right" : "left"]: 44,
+          padding: "8px 20px",
+          background: i ? accent : "rgba(10,10,14,0.85)",
+          color: i ? COLOUR.ink : COLOUR.paper,
+          border: i ? "none" : `3px solid ${COLOUR.muted}`,
+          fontFamily: BODY,
+          fontWeight: 900,
+          fontSize: 34,
+          letterSpacing: 3,
+          borderRadius: 8,
+        }}
+      >
+        {l}
+      </div>
+    ))}
+    <div style={{ position: "absolute", left: 0, right: 0, bottom: 52, display: "flex", justifyContent: "center", textAlign: "center" }}>
+      <Big text={headline} size={headline.length > 28 ? 84 : 104} width={1180} />
+    </div>
+    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 10, background: accent }} />
+  </Field>
+);
+
+/** Art on the right, three-word headline on the left, kicker chip, lockup. */
+const SplitThumb: React.FC<ThumbProps> = ({
   headline,
   kicker,
   game,

@@ -3146,6 +3146,35 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     images.find((i) => i.beatIndex === winnerBeat && i.aspect >= 1.2) ??
     images.find((i) => i.beatIndex === undefined && i.aspect >= 1.2) ??
     images[0];
+  // Two more designs for YouTube's Test & compare, on the same key art so the test measures the
+  // design: full-bleed art and, for a ranking, last place against the winner.
+  const wide = (b: number) =>
+    images.find((i) => i.beatIndex === b && i.kind === "hero") ??
+    images.find((i) => i.beatIndex === b && i.aspect >= 1.2);
+  const lastArt = !doc && winnerBeat > 0 ? wide(0) : undefined;
+  const thumbVariants = [
+    {
+      file: path.join(dir, "thumb_b.jpg"),
+      thumb: { headline: thumbTitle(script), kicker: doc ? "DOCUMENTARY" : "RANKED", game: "", accent: "#FF6B1A", imageFile: thumbArt?.file ?? null, layout: "full" as const },
+    },
+    ...(lastArt && thumbArt
+      ? [
+          {
+            file: path.join(dir, "thumb_c.jpg"),
+            thumb: {
+              headline: thumbTitle(script),
+              kicker: "",
+              game: "",
+              accent: "#FF6B1A",
+              imageFile: lastArt.file,
+              image2File: thumbArt.file,
+              layout: "versus" as const,
+              labels: [`#${script.entries![0]!.rank}`, "#1"] as [string, string],
+            },
+          },
+        ]
+      : []),
+  ];
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   await s.renderLong({
@@ -3164,6 +3193,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       accent: "#FF6B1A",
       imageFile: thumbArt?.file ?? null,
     },
+    thumbVariants,
     concurrency: s.cfg.remotionConcurrency,
     gl: s.cfg.remotionGl,
     browserExecutable: s.cfg.browserExecutable,
@@ -3264,6 +3294,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       video: "short.mp4",
       poster: "poster.jpg",
       thumb: "thumb.jpg",
+      thumbVariants: thumbVariants.map((v) => path.basename(v.file)),
       musicFile,
     },
     qa_json: qa,

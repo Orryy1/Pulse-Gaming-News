@@ -232,6 +232,9 @@ export function pickHero(images: PlanImage[]): number {
   return -1;
 }
 
+/** Store box art, the store header and the logo have the game's name printed large: it fights the captions behind them. */
+export const hasPrintedLogo = (img: PlanImage) => /^(capsule|header|logo)$/.test(img.kind);
+
 const isFramedStill = (img: PlanImage) =>
   img.aspect > 2.1 || (img.aspect >= 0.9 && img.aspect < 1.2);
 
@@ -274,8 +277,10 @@ export function planShots(
               (i) => images[i]!.beatIndex === forBeat && stillUses[i]! < 2,
             );
     if (own.length) {
+      // Clean art (hero, screenshots, footage stills) before art with the logo printed on it.
+      const logo = (i: number) => (hasPrintedLogo(images[i]!) ? 1 : 0);
       const pick = own.sort(
-        (a, b) => stillUses[a]! - stillUses[b]! || a - b,
+        (a, b) => logo(a) - logo(b) || stillUses[a]! - stillUses[b]! || a - b,
       )[0]!;
       stillUses[pick]!++;
       return { type: "image", index: pick };
@@ -285,7 +290,7 @@ export function planShots(
       const any = images
         .map((_, i) => i)
         .filter((i) => images[i]!.beatIndex === forBeat && !same(exclude, { type: "image", index: i }))
-        .sort((a, b) => stillUses[a]! - stillUses[b]! || a - b)[0];
+        .sort((a, b) => Number(hasPrintedLogo(images[a]!)) - Number(hasPrintedLogo(images[b]!)) || stillUses[a]! - stillUses[b]! || a - b)[0];
       if (any === undefined) return undefined;
       stillUses[any]!++;
       return { type: "image", index: any };
@@ -323,7 +328,7 @@ export function planShots(
     const pick = images
       .map((_, i) => i)
       .filter((i) => i !== heroIndex && !same(exclude, { type: "image", index: i }))
-      .sort((a, b) => stillUses[a]! - stillUses[b]! || a - b)[0];
+      .sort((a, b) => Number(hasPrintedLogo(images[a]!)) - Number(hasPrintedLogo(images[b]!)) || stillUses[a]! - stillUses[b]! || a - b)[0];
     if (pick === undefined) return undefined;
     stillUses[pick]!++;
     return { type: "image", index: pick };

@@ -377,3 +377,27 @@ test("the hero is never one ranking entry's art while the topic has its own", ()
   assert.equal(pickHero([{ kind: "hero", aspect: 1.778, beatIndex: 3 }, { kind: "hero", aspect: 3.1 }, { kind: "capsule", aspect: 0.667 }]), 2);
   assert.equal(pickHero([{ kind: "hero", aspect: 1.778, beatIndex: 3 }, { kind: "capsule", aspect: 0.667, beatIndex: 1 }]), 0, "with only entry art the first 16:9 one will do");
 });
+
+test("a ranking entry opens on its clean art; box art with the printed logo only comes after", () => {
+  const base = input();
+  const segments = base.segments.map((s) => (s.kind === "beat" ? { ...s, visual: { kind: "rank" as const, primary: "Game", secondary: "Verdict", value_a: 1 } } : s));
+  const i = input({
+    segments,
+    images: [
+      { kind: "hero", aspect: 1.778 },
+      { kind: "capsule", aspect: 0.667, beatIndex: 0 },
+      { kind: "header", aspect: 2.14, beatIndex: 0 },
+      { kind: "hero", aspect: 3.1, beatIndex: 0 },
+      { kind: "screenshot", aspect: 1.778, beatIndex: 0 },
+    ],
+    clips: [],
+  });
+  const plan = buildPlan(i);
+  const firstBeat = segments.findIndex((s) => s.kind === "beat");
+  const shots = plan.shots.filter((s) => s.segment === firstBeat && s.media.type === "image");
+  assert.ok(shots.length > 0);
+  const kinds = shots.map((s) => i.images[(s.media as { index: number }).index]!.kind);
+  assert.ok(!["capsule", "header"].includes(kinds[0]!), `entry opened on ${kinds[0]}`);
+  const firstLogo = kinds.findIndex((k) => k === "capsule" || k === "header");
+  if (firstLogo >= 0) assert.ok(kinds.slice(0, firstLogo).length >= 2, "clean art is used up before logo art");
+});

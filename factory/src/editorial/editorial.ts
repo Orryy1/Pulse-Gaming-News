@@ -185,6 +185,7 @@ export function validateScript(s: Script): string[] {
   if (words < WORDS_MIN || words > WORDS_MAX) problems.push(`Spoken word count is ${words}; it must be ${WORDS_MIN}-${WORDS_MAX}.`);
   if (BANNED_OPENERS.test(s.hook.trim())) problems.push(`The hook must not open with "${s.hook.trim().split(/\s+/)[0]}".`);
   if (wordCount(s.hook) > 18) problems.push("The hook is longer than 18 words.");
+  if (wordCount(s.loop_line) > 22) problems.push("The loop line is longer than 22 words; one short closing sentence.");
   if (loopLineUnfinished(s.loop_line)) problems.push(`The loop line "${s.loop_line.trim()}" is unfinished; end it as one complete sentence.`);
   if (s.beats.length < 2 || s.beats.length > 4) problems.push("There must be two to four beats.");
   const allText = [spoken, s.headline, s.youtube.title, s.youtube.description, s.pulse_take.on_screen, ...s.beats.map((b) => `${b.visual.primary} ${b.visual.secondary}`)].join("\n");

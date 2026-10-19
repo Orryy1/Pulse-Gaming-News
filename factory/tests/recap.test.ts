@@ -123,3 +123,11 @@ test("the recap's outro belongs to the story it is about, not the last chapter",
   assert.equal(entryOf(segments, 2, 0), 0, "beats are unaffected");
   assert.equal(entryOf(segments, 4, 0), 2);
 });
+
+test("a recap is never scoped to a single-player campaign because one story mentions one", async () => {
+  const { scopeOf } = await import("../src/pipeline.ts");
+  const { goodScript } = await import("./helpers.ts");
+  const base = goodScript({ headline: "This Week in Gaming", youtube: { title: "MW4 Campaign Reviews and More: Gaming News This Week", description: "d", tags: [] } } as any);
+  assert.equal(scopeOf(base), "campaign");
+  assert.equal(scopeOf({ ...base, recap: true } as any), undefined);
+});

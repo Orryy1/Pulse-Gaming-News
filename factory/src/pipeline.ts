@@ -2907,6 +2907,8 @@ export function withSpoilerWarning(script: Script): Script {
 }
 
 export function scopeOf(script: Script): "campaign" | undefined {
+  // A week's recap covers many games: one story's "campaign" must not scope the whole video.
+  if (script.recap) return undefined;
   const t = `${script.criterion ?? ""} ${script.headline} ${script.kicker ?? ""} ${script.youtube?.title ?? ""}`;
   return /\bcampaigns?\b|story mode|single[- ]player/i.test(t)
     ? "campaign"

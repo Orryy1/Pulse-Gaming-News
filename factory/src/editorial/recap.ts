@@ -1,4 +1,4 @@
-// The weekly news recap: a 6-10 minute long video of the week's biggest stories, one chapter each,
+// The weekly news recap: an 8-11 minute long video of the week's biggest stories, one chapter each,
 // written from the same articles the Shorts were written from. It replaces Friday's Weekly Recap
 // Short: same week, room to explain, and the watch hours a channel needs for the Partner Program.
 // It reuses the documentary's shape (chapters of paragraphs with callouts) so it renders, voices
@@ -19,11 +19,11 @@ import {
 import type { WikiArticle } from "../discovery/wikipedia.ts";
 
 export const RECAP_STORIES_MIN = 5;
-export const RECAP_STORIES_MAX = 8;
-export const RECAP_CHAPTER_WORDS_MIN = 200;
-export const RECAP_CHAPTER_WORDS_MAX = 420;
+export const RECAP_STORIES_MAX = 6;
+export const RECAP_CHAPTER_WORDS_MIN = 150;
+export const RECAP_CHAPTER_WORDS_MAX = 300;
 export const RECAP_PARAGRAPHS_MIN = 3;
-export const RECAP_PARAGRAPHS_MAX = 5;
+export const RECAP_PARAGRAPHS_MAX = 4;
 
 const HOUSE = `You write for Pulse Gaming News, a credible, entertaining YouTube channel about video games.
 American English spelling for a US-first audience, AP style (no serial comma). Brisk, warm, clear; a well-informed friend catching the viewer up on the week, never breathless. Prices in US dollars first.
@@ -86,7 +86,7 @@ Package this week's gaming news recap video: its title, a chapter title for each
 export function recapChapterPrompt(): string {
   return `${HOUSE}
 
-Write one story of this week's gaming news recap, ${RECAP_CHAPTER_WORDS_MIN}-${RECAP_CHAPTER_WORDS_MAX} spoken words in ${RECAP_PARAGRAPHS_MIN}-${RECAP_PARAGRAPHS_MAX} paragraphs of 50-110 words.
+Write one story of this week's gaming news recap, ${RECAP_CHAPTER_WORDS_MIN}-${RECAP_CHAPTER_WORDS_MAX} spoken words in ${RECAP_PARAGRAPHS_MIN}-${RECAP_PARAGRAPHS_MAX} paragraphs of 40-90 words.
 Open on the news itself, with the game's name, in the first sentence. Then the details a fan would want (dates, prices, platforms, what was shown); then the context the sources give (the last game, earlier delays, how it compares); then what it means for players. End on a short line that hands over to the next story without naming it.
 Every fact, number, date, name and quote must come from the SOURCES text provided. If the sources do not say it, do not say it. A rumor stays a rumor: say who reported it.
 Callouts put a real fact on screen: at most half the paragraphs carry one, and a quote must be copied word for word from the sources. Most paragraphs use "none".

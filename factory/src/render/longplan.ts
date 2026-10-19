@@ -94,6 +94,8 @@ export interface LongPlanInput {
   variant: number;
   /** Moments per ranking entry: when given, each sentence gets its own matched picture. */
   momentCounts?: number[];
+  /** The entry whose media plays behind the outro (the weekly recap's "our read" story). */
+  takeEntry?: number;
 }
 
 export type LongMedia = { type: "image" | "clip" | "plate"; index: number };
@@ -122,14 +124,19 @@ const MOVES: MovePreset[] = ["pushIn", "pullBack", "pushPan", "driftDown"];
  * to the winner (the last beat). In a documentary a chapter spans many beats:
  * each "chapter" card starts the next entry, and the outro belongs to the last.
  */
-export function entryOf(segments: Segment[], i: number): number | undefined {
+export function entryOf(
+  segments: Segment[],
+  i: number,
+  /** The weekly recap: the outro is about one story, so its footage plays behind it. */
+  takeEntry?: number,
+): number | undefined {
   const seg = segments[i]!;
   if (segments.some((s) => s.visual?.kind === "chapter")) {
     const upTo = segments
       .slice(0, i + 1)
       .filter((s) => s.kind === "beat" && s.visual?.kind === "chapter").length;
     if (seg.kind === "beat") return upTo > 0 ? upTo - 1 : undefined;
-    if (seg.kind === "take") return upTo > 0 ? upTo - 1 : undefined;
+    if (seg.kind === "take") return takeEntry ?? (upTo > 0 ? upTo - 1 : undefined);
     return undefined;
   }
   const beats = segments.filter((s) => s.kind === "beat").length;
@@ -241,7 +248,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     const end =
       i === segments.length - 1 ? totalFrames : toFrame(segments[i + 1]!.start);
     if (end - start <= 0) continue;
-    const entry = entryOf(segments, i);
+    const entry = entryOf(segments, i, input.takeEntry);
     // A ranking entry with a shot list: each sentence opens on what it names.
     const mine =
       seg.kind === "beat" ? windows.filter((w) => w.entry === entry) : [];

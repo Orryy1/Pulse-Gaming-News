@@ -406,6 +406,11 @@ export const DocBookendsSchema = z.object({
         "90-180 spoken words: what the whole run adds up to and where the franchise stands now",
       ),
     on_screen: z.string().describe("3-8 word summary line"),
+    about_index: z
+      .number()
+      .int()
+      .optional()
+      .describe("Weekly recap only: the 0-based index, in the given order, of the story the outro is mostly about, so that story's footage plays behind it"),
   }),
 });
 export type DocBookends = z.infer<typeof DocBookendsSchema>;

@@ -3697,6 +3697,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       })),
       variant,
       momentCounts: hasMoments ? moments.map((m) => m.length) : undefined,
+      takeEntry: script.take_entry,
     });
   assets.longPlan = plan;
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
@@ -3781,11 +3782,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       criterion: script.criterion ?? "",
       spoilers: scopeOf(script) === "campaign",
       recap: !!script.recap,
-      theme: script.game_title,
+      theme: script.recap ? script.headline : script.game_title,
       footageCredit,
-      endLine: doc
-        ? "A new documentary every month · Shorts every day"
-        : "A new ranking every week · Shorts every day",
+      endLine: script.recap
+        ? "The week's biggest stories every Friday · Shorts every day"
+        : doc
+          ? "A new documentary every month · Shorts every day"
+          : "A new ranking every week · Shorts every day",
       moments: hasMoments
         ? moments.map((ms) =>
             ms.map((m) => ({

@@ -113,3 +113,13 @@ test("only the long ranking's pinned comment asks what to rank next", async () =
   assert.match(pinnedComment(goodScript({ entries, runtime: "long" } as any)), /which series should we rank next/);
   assert.doesNotMatch(pinnedComment(goodScript({ entries } as any)), /rank next/);
 });
+
+test("the recap's outro belongs to the story it is about, not the last chapter", async () => {
+  const { entryOf } = await import("../src/render/longplan.ts");
+  const seg = (kind: string, visual?: any) => ({ kind, visual, text: "", start: 0, end: 1 }) as any;
+  const segments = [seg("hook"), seg("beat", { kind: "chapter", primary: "A" }), seg("beat", { kind: "none" }), seg("beat", { kind: "chapter", primary: "B" }), seg("beat", { kind: "chapter", primary: "C" }), seg("take")];
+  assert.equal(entryOf(segments, 5), 2, "a documentary's outro belongs to the last chapter");
+  assert.equal(entryOf(segments, 5, 0), 0, "a recap's outro belongs to the story named");
+  assert.equal(entryOf(segments, 2, 0), 0, "beats are unaffected");
+  assert.equal(entryOf(segments, 4, 0), 2);
+});

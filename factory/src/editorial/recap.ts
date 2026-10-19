@@ -163,7 +163,7 @@ export async function writeRecapBookends(
   return llm.structured({
     system: `${HOUSE}
 
-Write the intro and outro of this week's finished gaming news recap. The intro opens on the week's single biggest fact (no "In this video", no "Welcome"), then says in one sentence what else is coming up. The outro picks the story that matters most and says what to watch for next; it may close with one question to the viewer. Use only facts from the story notes. The outro label is 2-4 words, e.g. "OUR READ".`,
+Write the intro and outro of this week's finished gaming news recap. The intro opens on the week's single biggest fact (no "In this video", no "Welcome"), then says in one sentence what else is coming up. The outro picks the story that matters most and says what to watch for next; it may close with one question to the viewer. Set about_index to that story's number (0-based, in the given order): its footage plays behind the outro. Use only facts from the story notes. The outro label is 2-4 words, e.g. "OUR READ".`,
     content: `Recap: ${packaging.title}\n\nStories and their facts:\n${digest}`,
     schema: DocBookendsSchema,
     effort: "medium",
@@ -232,5 +232,9 @@ export function recapToScript(
       platforms: "",
     })),
     recap: true,
+    take_entry:
+      typeof bookends.outro.about_index === "number" && bookends.outro.about_index >= 0 && bookends.outro.about_index < stories.length
+        ? bookends.outro.about_index
+        : 0,
   } as Script;
 }

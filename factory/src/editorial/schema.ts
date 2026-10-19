@@ -97,6 +97,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   sources?: string[];
   /** The weekly news recap (a long video built on the documentary shape). */
   recap?: boolean;
+  /** Long video: the entry whose media plays behind the outro, when it is not the last. */
+  take_entry?: number;
   /** A Short cut from a long ranking: the full video, this entry's rank and the comment question. */
   cutdown?: { parent_video: string; rank: number; total: number; question: string; theme?: string };
 };

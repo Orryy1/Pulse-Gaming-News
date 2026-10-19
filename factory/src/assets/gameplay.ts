@@ -147,7 +147,7 @@ export async function judgeGameplay(
     tier: "low",
     system:
       "You check YouTube search results for a video editor. Keep only videos that show gameplay of exactly the named game (that release, not another entry in the series, a remake or remaster under a different name, a sequel, a mod, a reaction, a compilation of several games or a news video).",
-        content: `Game: ${game}${year ? ` (${year})` : ""}${scope === "campaign" ? "\nThe video is about the single-player campaign: keep only campaign or story footage; reject multiplayer, Zombies, Warzone, co-op and Spec Ops videos." : ""}\n\nVideos:\n${items.map((v, i) => `${i}. "${v.title}" by ${v.channelTitle}: ${v.description.slice(0, 200)}`).join("\n")}`,
+    content: `Game: ${game}${year ? ` (${year})` : ""}${scope === "campaign" ? "\nThe video is about the single-player campaign: keep only campaign or story footage; reject multiplayer, Zombies, Warzone, co-op and Spec Ops videos." : ""}\n\nVideos:\n${items.map((v, i) => `${i}. "${v.title}" by ${v.channelTitle}: ${v.description.slice(0, 200)}`).join("\n")}`,
     schema: GameplayJudgeSchema,
     effort: "low",
   });
@@ -159,20 +159,34 @@ export async function findGameplay(
   token: () => Promise<string>,
   game: string,
   franchise: string,
-    opts: { max?: number; quotaOk?: () => Promise<boolean>; year?: number; llm?: Llm; scope?: "campaign" } = {},
+  opts: {
+    max?: number;
+    quotaOk?: () => Promise<boolean>;
+    year?: number;
+    llm?: Llm;
+    scope?: "campaign";
+  } = {},
 ): Promise<GameplaySource[]> {
   const max = opts.max ?? 2;
   const out: GameplaySource[] = [];
-    const q = `${game}${opts.year ? ` ${opts.year}` : ""} ${opts.scope === "campaign" ? "campaign mission" : ""} gameplay`.replace(/\s+/g, " ");
+  const q =
+    `${game}${opts.year ? ` ${opts.year}` : ""} ${opts.scope === "campaign" ? "campaign mission" : ""} gameplay`.replace(
+      /\s+/g,
+      " ",
+    );
   const judged = async <
     T extends { title: string; description: string; channelTitle: string },
   >(
     items: T[],
   ): Promise<T[]> => {
     if (!opts.llm || !items.length) return items;
-    const keep = await judgeGameplay(opts.llm, game, opts.year, items, opts.scope).catch(
-      () => items.map((_, k) => k),
-    );
+    const keep = await judgeGameplay(
+      opts.llm,
+      game,
+      opts.year,
+      items,
+      opts.scope,
+    ).catch(() => items.map((_, k) => k));
     return keep.map((k) => items[k]!);
   };
   if (!opts.quotaOk || (await opts.quotaOk())) {
@@ -278,30 +292,56 @@ export function gameplayCredit(
  * game's own name, with the lines that ask for each. Names the shot list
  * calls a mission or level come first.
  */
+const GENERIC_WORDS =
+  /^(campaign|campaigns|mission|missions|level|levels|game|games|story|series|studio|trilogy|remaster|remastered|edition|version|reboot|sequel|original|new|\d{4}|[ivx]+|\d+)$/i;
+const STUDIOS =
+  /\b(infinity ward|treyarch|sledgehammer( games)?|raven software|activision|blizzard|ubisoft|electronic arts|bethesda|rockstar( games)?|naughty dog|bungie|343 industries|respawn|bioware|cd projekt|square enix|capcom|nintendo|sony|microsoft|xbox game studios|playstation studios|epic games|valve|beenox|high moon)\b/i;
+
 export function namedThings(
   targets: FootageTarget[],
   game: string,
   franchise: string,
 ): Array<{ name: string; keys: string[] }> {
   const gameWords = new Set(normTitle(`${game} ${franchise}`).split(" "));
-  const found = new Map<string, { name: string; keys: string[]; mission: boolean }>();
+  const found = new Map<
+    string,
+    { name: string; keys: string[]; mission: boolean }
+  >();
   for (const t of targets) {
     for (const raw of t.keywords) {
-      const name = raw.trim().replace(/^["'“‘]|["'”’]$/g, "");
+      // The game's own name in front ("World at War Makin Atoll") is dropped: the search adds it anyway.
+      const all = raw.trim().replace(/^["'“‘]|["'”’]$/g, "").split(/\s+/);
+      while (all.length > 2 && gameWords.has(normTitle(all[0]!))) all.shift();
+      const name = all.join(" ");
       const words = name.split(/\s+/);
       if (words.length < 2 || words.length > 5) continue;
       const caps = words.filter((w) => /^[A-Z0-9]/.test(w)).length;
       if (caps < Math.ceil(words.length * 0.6)) continue;
-      if (words.every((w) => gameWords.has(normTitle(w)))) continue;
+      // Nothing left once the game's own words and generic words are taken out ("Modern Warfare 2019", "Cold War campaign").
+      const distinct = words.filter(
+        (w) => !gameWords.has(normTitle(w)) && !GENERIC_WORDS.test(w),
+      );
+      if (!distinct.length) continue;
+      // Studios and publishers are not footage.
+      if (STUDIOS.test(name)) continue;
       const key = normTitle(name);
       const hit = found.get(key) ?? { name, keys: [], mission: false };
       if (!hit.keys.includes(t.key)) hit.keys.push(t.key);
-      if (new RegExp(`(mission|level|chapter|act)[^.]{0,30}${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.]{0,20}(mission|level|chapter)`, "i").test(t.text)) hit.mission = true;
+      if (
+        new RegExp(
+          `(mission|level|chapter|act)[^.]{0,30}${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.]{0,20}(mission|level|chapter)`,
+          "i",
+        ).test(t.text)
+      )
+        hit.mission = true;
       found.set(key, hit);
     }
   }
   return [...found.values()]
-    .sort((x, y) => Number(y.mission) - Number(x.mission) || y.keys.length - x.keys.length)
+    .sort(
+      (x, y) =>
+        Number(y.mission) - Number(x.mission) || y.keys.length - x.keys.length,
+    )
     .map(({ name, keys }) => ({ name, keys }));
 }
 
@@ -311,21 +351,54 @@ export async function findMissionGameplay(
   game: string,
   franchise: string,
   mission: string,
-  opts: { quotaOk?: () => Promise<boolean>; year?: number; llm?: Llm; scope?: "campaign" } = {},
+  opts: {
+    quotaOk?: () => Promise<boolean>;
+    year?: number;
+    llm?: Llm;
+    scope?: "campaign";
+  } = {},
 ): Promise<GameplaySource | undefined> {
   if (opts.quotaOk && !(await opts.quotaOk())) return undefined;
   const want = normTitle(mission);
-  const items = (await search(token, `${game} ${mission}`, "&videoLicense=creativeCommon")).filter((i) => {
+  const items = (
+    await search(token, `${game} ${mission}`, "&videoLicense=creativeCommon")
+  ).filter((i) => {
     const t = normTitle(i.title);
-    return t.includes(want) && !NOT_GAMEPLAY.test(i.title) && (trailerMatchesGame(i.title, game, franchise) || gameplayTitleFits(`${i.title} gameplay`, game, franchise));
+    return (
+      t.includes(want) &&
+      !NOT_GAMEPLAY.test(i.title) &&
+      (trailerMatchesGame(i.title, game, franchise) ||
+        gameplayTitleFits(`${i.title} gameplay`, game, franchise))
+    );
   });
-  const kept = opts.llm && items.length ? (await judgeGameplay(opts.llm, game, opts.year, items, opts.scope).catch(() => items.map((_, k) => k))).map((k) => items[k]!) : items;
-  const meta = await details(token, kept.map((i) => i.videoId));
+  const kept =
+    opts.llm && items.length
+      ? (
+          await judgeGameplay(
+            opts.llm,
+            game,
+            opts.year,
+            items,
+            opts.scope,
+          ).catch(() => items.map((_, k) => k))
+        ).map((k) => items[k]!)
+      : items;
+  const meta = await details(
+    token,
+    kept.map((i) => i.videoId),
+  );
   for (const i of kept) {
     const m = meta.get(i.videoId);
     // The licence is read from the video, not trusted from the search filter.
     if (!m || m.license !== "creativeCommon" || m.seconds < 45) continue;
-    return { videoId: i.videoId, title: i.title, channelTitle: i.channelTitle, url: `https://www.youtube.com/watch?v=${i.videoId}`, kind: "cc", durationSeconds: m.seconds };
+    return {
+      videoId: i.videoId,
+      title: i.title,
+      channelTitle: i.channelTitle,
+      url: `https://www.youtube.com/watch?v=${i.videoId}`,
+      kind: "cc",
+      durationSeconds: m.seconds,
+    };
   }
   return undefined;
 }
@@ -354,19 +427,33 @@ async function clipsFrom(
 ): Promise<Array<VisualAsset & { credit: string }>> {
   if (!sources.length || !targets.length || maxClips <= 0) return [];
   const work = path.join(o.episodeDir, prefix);
-  const files: Array<{ file: string; name: string; url: string; total: number; src: GameplaySource }> = [];
+  const files: Array<{
+    file: string;
+    name: string;
+    url: string;
+    total: number;
+    src: GameplaySource;
+  }> = [];
   for (const [i, src] of sources.entries()) {
     const file = path.join(work, `${prefix}_${i}.mp4`);
     try {
       const total = await downloadSlice(src, file, o.ytdlp);
       files.push({ file, name: src.title, url: src.url, total, src });
     } catch (err) {
-      log("warn", "gameplay download failed", { videoId: src.videoId, error: errorMessage(err).split("\n").pop() });
+      log("warn", "gameplay download failed", {
+        videoId: src.videoId,
+        error: errorMessage(err).split("\n").pop(),
+      });
     }
   }
   if (!files.length) return [];
   const clips = await matchClips({
-    trailers: files.map((f) => ({ file: f.file, name: f.name, url: f.url, total: f.total })),
+    trailers: files.map((f) => ({
+      file: f.file,
+      name: f.name,
+      url: f.url,
+      total: f.total,
+    })),
     episodeDir: o.episodeDir,
     targets,
     maxClips,
@@ -381,12 +468,16 @@ async function clipsFrom(
         : `Official gameplay "${t.name.slice(0, 80)}" from the ${src.channelTitle} YouTube channel, publisher: ${src.channelTitle} (${t.url}), ${seconds}s at ${at.toFixed(1)}s of the downloaded section, muted`;
     },
   }).catch((err) => {
-    log("warn", "gameplay matching failed", { game: o.game, error: errorMessage(err) });
+    log("warn", "gameplay matching failed", {
+      game: o.game,
+      error: errorMessage(err),
+    });
     return [] as VisualAsset[];
   });
   await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
   return clips.map((c) => {
-    const src = files.find((f) => c.provenance.includes(f.url))?.src ?? files[0]!.src;
+    const src =
+      files.find((f) => c.provenance.includes(f.url))?.src ?? files[0]!.src;
     return { ...c, credit: gameplayCredit(src) };
   });
 }
@@ -397,35 +488,71 @@ async function clipsFrom(
  * the line about "All Ghillied Up" shows All Ghillied Up; the game's general
  * gameplay covers the rest.
  */
-export async function gameplayClips(o: GameplayClipOpts): Promise<Array<VisualAsset & { credit: string }>> {
+export async function gameplayClips(
+  o: GameplayClipOpts,
+): Promise<Array<VisualAsset & { credit: string }>> {
   if (!o.targets.length || o.maxClips <= 0) return [];
   const out: Array<VisualAsset & { credit: string }> = [];
-  for (const [k, n] of namedThings(o.targets, o.game, o.franchise).slice(0, 2).entries()) {
+  for (const [k, n] of namedThings(o.targets, o.game, o.franchise)
+    .slice(0, 3)
+    .entries()) {
     if (out.length >= o.maxClips) break;
-    const src = await findMissionGameplay(o.token, o.game, o.franchise, n.name, { quotaOk: o.quotaOk, year: o.year, llm: o.llm, scope: o.scope }).catch(() => undefined);
+    const src = await findMissionGameplay(
+      o.token,
+      o.game,
+      o.franchise,
+      n.name,
+      { quotaOk: o.quotaOk, year: o.year, llm: o.llm, scope: o.scope },
+    ).catch(() => undefined);
     if (!src) {
-      log("info", "no licensed footage of a named mission", { game: o.game, mission: n.name });
+      log("info", "no licensed footage of a named mission", {
+        game: o.game,
+        mission: n.name,
+      });
       continue;
     }
     const targets = o.targets.filter((t) => n.keys.includes(t.key));
-    const got = await clipsFrom(o, [src], targets, Math.min(targets.length, o.maxClips - out.length), `gameplay_m${k}`);
-    log("info", "named mission footage", { game: o.game, mission: n.name, clips: got.length });
+    const got = await clipsFrom(
+      o,
+      [src],
+      targets,
+      Math.min(targets.length, o.maxClips - out.length),
+      `gameplay_m${k}`,
+    );
+    log("info", "named mission footage", {
+      game: o.game,
+      mission: n.name,
+      clips: got.length,
+    });
     out.push(...got);
   }
-  const covered = new Set(out.map((c) => c.moment).filter((m): m is number => m !== undefined));
+  const covered = new Set(
+    out.map((c) => c.moment).filter((m): m is number => m !== undefined),
+  );
   const rest = o.targets.filter((t) => {
     const m = t.key.match(/#m(\d+)$/)?.[1];
     return m === undefined || !covered.has(Number(m));
   });
   if (out.length >= o.maxClips || !rest.length) return out;
-  const sources = await findGameplay(o.token, o.game, o.franchise, { max: 2, quotaOk: o.quotaOk, year: o.year, llm: o.llm, scope: o.scope }).catch((err) => {
-    log("warn", "gameplay search failed", { game: o.game, error: errorMessage(err) });
+  const sources = await findGameplay(o.token, o.game, o.franchise, {
+    max: 2,
+    quotaOk: o.quotaOk,
+    year: o.year,
+    llm: o.llm,
+    scope: o.scope,
+  }).catch((err) => {
+    log("warn", "gameplay search failed", {
+      game: o.game,
+      error: errorMessage(err),
+    });
     return [] as GameplaySource[];
   });
   if (!sources.length) {
     log("info", "no licensed gameplay found", { game: o.game });
     return out;
   }
-  out.push(...(await clipsFrom(o, sources, rest, o.maxClips - out.length, "gameplay")));
+  out.push(
+    ...(await clipsFrom(o, sources, rest, o.maxClips - out.length, "gameplay")),
+  );
   return out;
 }

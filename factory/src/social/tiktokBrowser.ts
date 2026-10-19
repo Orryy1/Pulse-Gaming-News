@@ -105,6 +105,22 @@ const CHALLENGE = [
   "text=/suspicious activity/i",
 ];
 
+/**
+ * TikTok's "Turn on automatic content checks?" prompt opens over the form after an upload and
+ * swallows every click beneath it. It is closed, never accepted: that is an account setting.
+ */
+async function dismissPrompts(page: import("playwright-core").Page): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    const prompt = page.locator("text=/automatic content checks/i").first();
+    if (!(await prompt.isVisible({ timeout: 700 }).catch(() => false))) return;
+    const dialog = page.locator('[role="dialog"]:has-text("automatic content checks")').first();
+    const close = dialog.locator('button[aria-label*="lose" i], [data-e2e*="close" i], button:not(:has-text("Turn on")):not(:has-text("Confirm"))').first();
+    if (await close.isVisible({ timeout: 500 }).catch(() => false)) await close.click({ timeout: 3000 }).catch(() => undefined);
+    else await page.keyboard.press("Escape").catch(() => undefined);
+    await page.waitForTimeout(800);
+  }
+}
+
 /** Posts one video with its caption. Returns an id for the ledger, or throws (TikTokChallenge, TikTokSignedOut, Error). */
 export async function postTikTokBrowser(opts: {
   dataDir: string;
@@ -171,8 +187,19 @@ export async function postTikTokBrowser(opts: {
       await page.waitForTimeout(5000);
     }
 
-    // The caption replaces the file name TikTok pre-fills.
-    await editor.click();
+    // The caption replaces the file name TikTok pre-fills. After the upload the page has scrolled
+    // the editor above the window, so it is brought back first; a focus() is the fallback.
+    await dismissPrompts(page);
+    await editor.scrollIntoViewIfNeeded({ timeout: 10_000 }).catch(() => undefined);
+    await page.waitForTimeout(500);
+    try {
+      await editor.click({ timeout: 10_000 });
+    } catch {
+      await editor.evaluate((e) => {
+        (e as HTMLElement).scrollIntoView({ block: "center" });
+        (e as HTMLElement).focus();
+      });
+    }
     await page.keyboard.press("Control+A");
     await page.keyboard.press("Backspace");
     await page.keyboard.insertText(opts.caption.slice(0, 2000));
@@ -196,6 +223,7 @@ export async function postTikTokBrowser(opts: {
         await turnOn.click().catch(() => undefined);
     }
 
+    await dismissPrompts(page);
     if (await post.isDisabled().catch(() => true))
       throw new Error(
         `TikTok's Post button stayed disabled (screenshot ${await shot(page, "disabled")})`,

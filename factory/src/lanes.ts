@@ -259,6 +259,41 @@ export function franchiseKey(cluster: StoryCluster): string {
   return words.slice(0, 2).join(" ") || base.toLowerCase().slice(0, 20);
 }
 
+// ---------------------------------------------------------------- showcase sprint
+
+/** The big live showcases: while one is running, a small channel can be picked up by being first. */
+export const SHOWCASE =
+  /\b(nintendo direct|state of play|xbox (games )?showcase|xbox developer direct|summer game fest|the game awards|gamescom opening night|playstation showcase|ubisoft forward|tokyo game show)\b/i;
+
+/** The showcase running now, when at least two fresh stories (first seen in the last three hours) come from it. */
+export function showcaseLive(
+  sightings: Array<{ cluster: StoryCluster; sighting?: { first_seen: string } }>,
+  now: Date,
+): string | undefined {
+  const fresh = sightings.filter((x) => {
+    const seen = new Date(x.sighting?.first_seen ?? x.cluster.newestAt).getTime();
+    return now.getTime() - seen <= 3 * 3600_000 && SHOWCASE.test(storyText(x.cluster));
+  });
+  if (fresh.length < 2) return undefined;
+  const counts = new Map<string, number>();
+  for (const x of fresh) {
+    const name = storyText(x.cluster).match(SHOWCASE)![0].toLowerCase();
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]![0];
+}
+
+/** A story's headline and first summaries: where a showcase is named. */
+export function storyText(c: StoryCluster): string {
+  return [c.headline, ...c.items.slice(0, 3).map((i) => `${i.title ?? ""} ${i.summary ?? ""}`)].join(" ");
+}
+
+/** Scheduled publish times still to come today (local "HH:MM" slots), so a sprint never spends their quota. */
+export function slotsLeftToday(now: Date, slots: string[], timeZone: string): number {
+  const today = dayKey(now, timeZone);
+  return slots.filter((s) => localTime(today, s, timeZone).getTime() > now.getTime()).length;
+}
+
 // ------------------------------------------------------------------------ quota
 
 const PACIFIC = "America/Los_Angeles";

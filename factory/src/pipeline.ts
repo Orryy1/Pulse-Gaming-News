@@ -129,6 +129,10 @@ import {
   franchiseKey,
   inWindow,
   isBreaking,
+  SHOWCASE,
+  showcaseLive,
+  slotsLeftToday,
+  storyText,
   lastPublishAt,
   nextWindowStart,
   quotaAdd,
@@ -461,10 +465,20 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     )
     .filter((x) => x.cluster.score > 0);
 
-  // 1. Breaking lane.
+  // 1. Breaking lane. During a live showcase (a Direct, a State of Play) it sprints: a few more
+  // Shorts that day and a lower bar for the showcase's own stories, but only while the quota still
+  // covers every upload already scheduled for today.
+  const showcase = showcaseLive(eligible, now);
+  const sprint =
+    !!showcase &&
+    (await quotaUsed(db, now)) +
+      QUOTA_RESERVE_FOR_UPLOAD *
+        (1 + slotsLeftToday(now, [...cfg.newsSlots, cfg.weeklySlot, cfg.dealsSlot], cfg.timezone)) <=
+      cfg.quotaUnitsPerDay;
   if (
     cfg.breakingEnabled &&
-    (await countToday(db, cfg.timezone, "news_breaking")) < cfg.breakingPerDay
+    (await countToday(db, cfg.timezone, "news_breaking")) <
+      cfg.breakingPerDay + (sprint ? cfg.sprintExtra : 0)
   ) {
     const rule = {
       scoreMin: cfg.breakingScoreMin,
@@ -483,7 +497,10 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     const breaking = eligible
       .filter(
         (x) =>
-          isBreaking(x.cluster, x.sighting, now, rule) &&
+          (isBreaking(x.cluster, x.sighting, now, rule) ||
+            (sprint &&
+              SHOWCASE.test(storyText(x.cluster)) &&
+              isBreaking(x.cluster, x.sighting, now, { ...rule, scoreMin: cfg.sprintScoreMin }))) &&
           !cooled.has(franchiseKey(x.cluster)),
       )
       .map((x) => x.cluster)
@@ -502,7 +519,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
           [ep!.story_hash, franchiseKey(ep!.story_json), id],
         );
         await s.notify({
-          content: `🚨 Breaking lane: "${ep!.story_json.headline}" is being produced now.`,
+          content: `🚨 Breaking lane${sprint ? ` (${showcase} sprint)` : ""}: "${ep!.story_json.headline}" is being produced now.`,
         });
         return id;
       }

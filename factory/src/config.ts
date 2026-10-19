@@ -89,6 +89,8 @@ export interface Config {
   breakingCooldownHours: number;
   breakingApprovalMinutes: number;
   breakingWindow: string; // local "HH:MM-HH:MM"
+  sprintExtra: number; // extra breaking Shorts allowed on a showcase day
+  sprintScoreMin: number; // the breaking score bar for a showcase story
   quotaUnitsPerDay: number;
   evergreenEnabled: boolean;
   evergreenDays: string[]; // local weekdays, e.g. tue,thu,sat
@@ -238,6 +240,8 @@ export function loadConfig(): Config {
     breakingScoreMin: int("BREAKING_SCORE_MIN", 75),
     breakingMaxAgeMinutes: int("BREAKING_MAX_AGE_MINUTES", 90),
     breakingCooldownHours: int("BREAKING_COOLDOWN_HOURS", 2),
+    sprintExtra: int("SPRINT_EXTRA", 3),
+    sprintScoreMin: int("SPRINT_SCORE_MIN", 60),
     breakingApprovalMinutes: int("BREAKING_APPROVAL_MINUTES", 20),
     breakingWindow: str("BREAKING_WINDOW", "07:00-03:00"),
     quotaUnitsPerDay: int("QUOTA_UNITS_PER_DAY", 10000),

@@ -1337,8 +1337,10 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
   // The picture runs on under the end card; the narration fades out where the entry ends.
   // The section ends on its own last frame, held under the end card: running on would show the next entry (and give it away).
   const hold = (CUTDOWN_TAIL_SECONDS + 0.1).toFixed(2);
-  await run(FFMPEG, ["-v", "error", "-y", "-ss", win.start.toFixed(3), "-t", len.toFixed(3), "-i", source, "-vf", `tpad=stop_mode=clone:stop_duration=${hold}`, "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-af", `afade=t=out:st=${Math.max(0, len - 0.12).toFixed(3)}:d=0.12,apad=pad_dur=${hold}`, "-c:a", "aac", "-b:a", "192k", "-t", total.toFixed(3), path.join(dir, "cut.mp4")], { maxBuffer: 16 * 1024 * 1024 });
-  await run(FFMPEG, ["-v", "error", "-y", "-ss", win.start.toFixed(3), "-t", len.toFixed(3), "-i", source, "-an", "-vf", `scale=-2:1920,crop=1080:1920,boxblur=28:3,eq=brightness=-0.10:saturation=1.15,fps=30,tpad=stop_mode=clone:stop_duration=${hold}`, "-c:v", "libx264", "-preset", "veryfast", "-crf", "30", "-pix_fmt", "yuv420p", path.join(dir, "bg.mp4")], { maxBuffer: 16 * 1024 * 1024 });
+  const vLen = Math.min(len, win.videoEnd - win.start);
+  const vHold = (total - vLen + 0.1).toFixed(2);
+  await run(FFMPEG, ["-v", "error", "-y", "-ss", win.start.toFixed(3), "-t", vLen.toFixed(3), "-i", source, "-ss", win.start.toFixed(3), "-t", len.toFixed(3), "-i", source, "-map", "0:v:0", "-map", "1:a:0", "-vf", `tpad=stop_mode=clone:stop_duration=${vHold}`, "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-af", `afade=t=out:st=${Math.max(0, len - 0.12).toFixed(3)}:d=0.12,apad=pad_dur=${hold}`, "-c:a", "aac", "-b:a", "192k", "-t", total.toFixed(3), path.join(dir, "cut.mp4")], { maxBuffer: 16 * 1024 * 1024 });
+  await run(FFMPEG, ["-v", "error", "-y", "-ss", win.start.toFixed(3), "-t", vLen.toFixed(3), "-i", source, "-an", "-vf", `scale=-2:1920,crop=1080:1920,boxblur=28:3,eq=brightness=-0.10:saturation=1.15,fps=30,tpad=stop_mode=clone:stop_duration=${vHold}`, "-c:v", "libx264", "-preset", "veryfast", "-crf", "30", "-pix_fmt", "yuv420p", path.join(dir, "bg.mp4")], { maxBuffer: 16 * 1024 * 1024 });
   const narration = pScript.beats[beatIndex]?.narration ?? "";
   const copy = await writeCutdownCopy(s.llm, pScript, pScript.entries[beatIndex]!, narration, pScript.entries.length);
   const script = cutdownScript(pScript, beatIndex, copy, parent.youtube_video_id);

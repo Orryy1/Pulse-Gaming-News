@@ -34,7 +34,7 @@ export function cutdownWindow(
   beatIndex: number,
   words: Word[],
   maxSeconds = CUTDOWN_MAX_SECONDS - CUTDOWN_TAIL_SECONDS,
-): { start: number; end: number } | undefined {
+): { start: number; end: number; videoEnd: number } | undefined {
   const beats = segments
     .map((s, i) => ({ s, i }))
     .filter((x) => x.s.kind === "beat");
@@ -74,7 +74,9 @@ export function cutdownWindow(
         next && end >= next.start - 0.01 ? next.start - 0.45 : Infinity,
       ),
     );
-  return { start, end };
+  // The picture stops before the next entry's art starts fading in (0.3 s ahead of its segment); the last words play over that held frame.
+  const videoEnd = next && end > next.start - 0.35 ? Math.max(start + 1, next.start - 0.35) : end;
+  return { start, end, videoEnd };
 }
 
 /** The words spoken inside the window, timed from the start of the Short. */

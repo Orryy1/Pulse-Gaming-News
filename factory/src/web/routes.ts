@@ -38,7 +38,11 @@ import {
 } from "./site.ts";
 
 const run = promisify(execFile);
-const PUBLIC_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const PUBLIC_ROOT = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
 
 export interface SiteContext {
   db: Db;
@@ -194,7 +198,8 @@ export async function handleSite(
     cfg.siteUrl &&
     host &&
     host !== siteHost &&
-    host === new URL(cfg.publicUrl).host.toLowerCase()
+    (host === new URL(cfg.publicUrl).host.toLowerCase() ||
+      host === `www.${siteHost}`)
   ) {
     res
       .writeHead(301, { location: `${base}${url.pathname}${url.search}` })
@@ -226,12 +231,7 @@ export async function handleSite(
   // Brand assets.
   const font = p.match(/^\/assets\/fonts\/([\w.-]+\.woff2)$/);
   if (font) {
-    const file = path.join(
-      PUBLIC_ROOT,
-      "public",
-      "fonts",
-      font[1]!,
-    );
+    const file = path.join(PUBLIC_ROOT, "public", "fonts", font[1]!);
     if (!fs.existsSync(file)) return (notFound(), true);
     sendFile(res, file, "font/woff2", 31536000);
     return true;

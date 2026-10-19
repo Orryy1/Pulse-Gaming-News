@@ -18,6 +18,8 @@ import { markSignedOut, postTikTokBrowser, signedIn, TikTokChallenge, TikTokSign
 export type Platform = "facebook" | "instagram" | "tiktok" | "x";
 export const PLATFORMS: Platform[] = ["x", "facebook", "instagram", "tiktok"];
 export const MAX_TRIES = 3;
+/** Failures before this process started do not count: a restart usually carries a fix, and a Short still inside its window deserves a fresh try. */
+const BOOT = new Date();
 
 /** A platform asked us to come back later: no attempt is spent and nothing is logged against the Short. */
 export class Deferred extends Error {}
@@ -108,10 +110,10 @@ export async function nextForPlatform(
         AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
         AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - make_interval(hours => $3)
         AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('crosspost','crosspost_skip') AND v.detail->>'platform' = $4)
-        AND (SELECT count(*) FROM events v WHERE v.episode_id = e.id AND v.kind = 'crosspost_failed' AND v.detail->>'platform' = $4) < $5
+        AND (SELECT count(*) FROM events v WHERE v.episode_id = e.id AND v.kind = 'crosspost_failed' AND v.detail->>'platform' = $4 AND v.created_at >= $6) < $5
       ORDER BY COALESCE(e.publish_at, e.updated_at) ASC
       LIMIT 1`,
-    [now, delayMinutes, windowHours, platform, MAX_TRIES],
+    [now, delayMinutes, windowHours, platform, MAX_TRIES, BOOT],
   );
   return rows[0];
 }
@@ -202,8 +204,8 @@ export async function crosspostTick(
       log("warn", "crosspost failed", { platform, episode: ep.id, error });
       done.push({ platform, episode: ep.id, ok: false });
       const [n] = await d.db.query<{ n: string }>(
-        `SELECT count(*) AS n FROM events WHERE episode_id = $1 AND kind = 'crosspost_failed' AND detail->>'platform' = $2`,
-        [ep.id, platform],
+        `SELECT count(*) AS n FROM events WHERE episode_id = $1 AND kind = 'crosspost_failed' AND detail->>'platform' = $2 AND created_at >= $3`,
+        [ep.id, platform, BOOT],
       );
       if (Number(n?.n ?? 0) >= MAX_TRIES)
         await d

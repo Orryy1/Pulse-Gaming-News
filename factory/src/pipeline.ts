@@ -2477,7 +2477,7 @@ function titleCaseLabel(label: string): string {
  * shot note, then a vision pass that gives each sentence the still showing
  * what it names and drops any picture with text in it.
  */
-async function gatherLongEntryMedia(
+export async function gatherLongEntryMedia(
   s: Services,
   script: Script,
   entry: NonNullable<Script["entries"]>[number],

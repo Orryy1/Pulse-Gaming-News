@@ -1444,7 +1444,7 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     feedback = problems;
   }
   if (!draft) throw new Error("long-form script produced nothing");
-  const script = longformToScript(draft);
+  const script = withSpoilerWarning(longformToScript(draft));
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
@@ -2291,6 +2291,12 @@ export function photoCredit(i: {
 }
 
 /** A video about single-player campaigns keeps multiplayer footage out of every pick. */
+/** A story ranking warns about spoilers in its first spoken lines. */
+export function withSpoilerWarning(script: Script): Script {
+  if (scopeOf(script) !== "campaign" || /spoiler/i.test(script.hook)) return script;
+  return { ...script, hook: `${script.hook.trim()} Fair warning: story spoilers ahead.` };
+}
+
 export function scopeOf(script: Script): "campaign" | undefined {
   const t = `${script.criterion ?? ""} ${script.headline} ${script.kicker ?? ""} ${script.youtube?.title ?? ""}`;
   return /\bcampaigns?\b|story mode|single[- ]player/i.test(t)
@@ -2971,6 +2977,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       title: script.headline,
       kicker: script.kicker ?? "",
       criterion: script.criterion ?? "",
+      spoilers: scopeOf(script) === "campaign",
       theme: script.game_title,
       footageCredit,
       endLine: doc

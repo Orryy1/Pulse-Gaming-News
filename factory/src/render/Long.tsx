@@ -62,6 +62,7 @@ export interface LongClipProp {
 export type LongProps = {
   title: string; // on-screen title
   kicker: string; // line under the title in the intro
+  spoilers?: boolean; // a story ranking: the intro says so on screen
   criterion: string;
   theme: string; // franchise or theme name
   footageCredit: string;
@@ -465,7 +466,8 @@ const IntroTitle: React.FC<{
   kicker: string;
   criterion: string;
   durationFrames: number;
-}> = ({ title, kicker, criterion, durationFrames }) => {
+  spoilers?: boolean;
+}> = ({ title, kicker, criterion, durationFrames, spoilers }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const inProg = spring({ frame, fps, config: SPRING.ENTER });
@@ -488,6 +490,24 @@ const IntroTitle: React.FC<{
           opacity: inProg,
         }}
       >
+        {spoilers ? (
+          <div
+            style={{
+              display: "inline-block",
+              marginBottom: 22,
+              padding: "8px 16px",
+              background: "#FF3B3B",
+              color: COLOUR.paper,
+              fontFamily: BODY,
+              fontWeight: 900,
+              fontSize: 30,
+              letterSpacing: 3,
+              borderRadius: 8,
+            }}
+          >
+            SPOILERS AHEAD
+          </div>
+        ) : null}
         <div
           style={{
             width: 120,
@@ -506,7 +526,7 @@ const IntroTitle: React.FC<{
             textShadow: "0 10px 50px rgba(0,0,0,0.7)",
           }}
         >
-          {title}
+          <TitleLines text={title} />
         </div>
         <div
           style={{
@@ -1142,6 +1162,7 @@ export const Long: React.FC<LongProps> = (props) => {
             >
               <IntroTitle
                 title={props.title}
+                spoilers={props.spoilers}
                 kicker={props.kicker}
                 criterion={props.criterion}
                 durationFrames={len}

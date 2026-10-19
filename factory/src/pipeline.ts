@@ -1670,8 +1670,10 @@ export function groundDeals<
         steam_search_term: name,
         year: d.year ?? e.year,
         platforms: "PC (Steam)",
+        // The cut is the chip; the card line carries the price in three currencies and the old price.
+        verdict_chip: `${d.usd.pct}% OFF`,
         price: [d.usd.final, d.gbp, d.eur ? euro(d.eur) : undefined].filter(Boolean).join(" · "),
-        was: `WAS ${d.usd.initial} · ${d.usd.pct}% OFF`,
+        was: `WAS ${d.usd.initial}`,
       };
     })
     .filter((e): e is NonNullable<typeof e> => !!e);

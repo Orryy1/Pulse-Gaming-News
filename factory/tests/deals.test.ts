@@ -69,9 +69,9 @@ test("deal entries take Steam's prices and drop games not in the data", () => {
         "Hogwarts Legacy",
         2023,
         "$5.99 · £4.99 · €5.99",
-        "WAS $59.99 · 90% OFF",
+        "WAS $59.99",
       ],
-      [2, "Dishonored", 2012, "$2.49", "WAS $9.99 · 75% OFF"],
+      [2, "Dishonored", 2012, "$2.49", "WAS $9.99"],
     ],
   );
 });

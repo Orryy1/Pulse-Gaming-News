@@ -158,9 +158,10 @@ export const RankingCard: React.FC<{
               letterSpacing: meta.length > 24 ? 1 : 2,
               color: COLOUR.muted,
               textTransform: "uppercase",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
+              // A long line (prices in three currencies) wraps to a second line rather than losing its end.
+              ...(meta.length > 30
+                ? { display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, overflow: "hidden", lineHeight: 1.25 }
+                : { whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }),
             }}
           >
             {meta}

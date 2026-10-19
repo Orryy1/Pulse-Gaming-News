@@ -97,6 +97,12 @@ export async function steamDeals(exclude: string[], n = 5): Promise<Deal[]> {
       const us = await steamPrice(c.appId, "us");
       // Steam is the truth: no US discount there (ended, or a different edition) means no pick.
       if (!us || us.pct < 50 || us.final <= 0) continue;
+      // Advertiser-safe picks only: Steam's own flags for sexual content (1, 3, 4) and frequent gore (2).
+      const flags: number[] =
+        (await getJson(`https://store.steampowered.com/api/appdetails?appids=${c.appId}&cc=us&filters=content_descriptors`).catch(() => undefined))?.[
+          String(c.appId)
+        ]?.data?.content_descriptors?.ids ?? [];
+      if (flags.some((f) => [1, 2, 3, 4].includes(Number(f)))) continue;
       const gb = await steamPrice(c.appId, "gb");
       const de = await steamPrice(c.appId, "de");
       out.push({

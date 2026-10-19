@@ -1670,9 +1670,9 @@ export function groundDeals<
         steam_search_term: name,
         year: d.year ?? e.year,
         platforms: "PC (Steam)",
-        // The cut is the chip; the card line carries the price in three currencies and the old price.
-        verdict_chip: `${d.usd.pct}% OFF`,
-        price: [d.usd.final, d.gbp, d.eur ? euro(d.eur) : undefined].filter(Boolean).join(" · "),
+        // The dollar price and the cut are the big chip; the card line carries pounds, euros and the old price.
+        verdict_chip: `${d.usd.final} · ${d.usd.pct}% OFF`,
+        price: [d.gbp, d.eur ? euro(d.eur) : undefined].filter(Boolean).join(" · ") || "PC (STEAM)",
         was: `WAS ${d.usd.initial}`,
       };
     })

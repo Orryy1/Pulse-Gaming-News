@@ -120,8 +120,24 @@ export const VisionQaSchema = z.object({
 });
 export type VisionQa = z.infer<typeof VisionQaSchema>;
 
+const DANGLING = /[,;:\s]+(because|and|so|but|which|that|or|as|while|when|since|until|cause|cos|plus|then)\s*(\.\.\.|…)?\s*$/i;
+
+/** A last line left hanging ("And that spark starts now, because"). */
+export function loopLineUnfinished(line: string): boolean {
+  const t = line.trim();
+  return DANGLING.test(t) || /(\.\.\.|…)$/.test(t) || (t.length > 0 && !/[.!?]["”')]?$/.test(t));
+}
+
+/** The safety net when a rewrite still leaves it hanging: the dangling word goes and the sentence ends. */
+export function tidyLoopLine(line: string): string {
+  let t = line.trim().replace(/(\.\.\.|…)$/, "").trim();
+  while (DANGLING.test(t)) t = t.replace(DANGLING, "").trim();
+  if (t && !/[.!?]["”')]?$/.test(t)) t = `${t.replace(/[,;:]+$/, "")}.`;
+  return t;
+}
+
 export function narrationOf(s: Pick<Script, "hook" | "beats" | "pulse_take" | "loop_line">): string {
-  return [s.hook, ...s.beats.map((b) => b.narration), s.pulse_take.narration, s.loop_line]
+  return [s.hook, ...s.beats.map((b) => b.narration), s.pulse_take.narration, tidyLoopLine(s.loop_line)]
     .map((t) => speakable(t.trim()))
     .filter(Boolean)
     .join(" ");

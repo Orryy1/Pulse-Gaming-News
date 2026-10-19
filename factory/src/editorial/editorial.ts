@@ -10,6 +10,7 @@ import {
   ScriptSchema,
   FactCheckSchema,
   narrationOf,
+  loopLineUnfinished,
   wordCount,
   type Script,
   type Selection,
@@ -63,7 +64,7 @@ Structure:
    Never pad a card with numbers the sources do not give.
    Every beat also carries "footage": what the trailer picture should show while that line is spoken, with 1-4 keywords naming the thing, place, character or action in the line. The picture editor matches real trailer moments to these, so be concrete ("Hyrule Field", "the new ship interior", "a car chase"), and use "calm" for lines whose card needs a quiet background (numbers, dates, prices). "hook_footage" does the same for the opening line and should want the most striking gameplay moment.
 3. pulse_take: the Pulse angle. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion ("Our read:"). Opinions must be framed as opinion. Do not invent data.
-4. loop_line: one line that flows back into the hook so the loop feels seamless.
+4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that echoes the hook's subject or words, so a rewatch feels connected: a short callback or a question to the viewer. Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
 
 Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone.
 List every factual claim in "claims" with the URL of the provided source that supports it.
@@ -184,6 +185,7 @@ export function validateScript(s: Script): string[] {
   if (words < WORDS_MIN || words > WORDS_MAX) problems.push(`Spoken word count is ${words}; it must be ${WORDS_MIN}-${WORDS_MAX}.`);
   if (BANNED_OPENERS.test(s.hook.trim())) problems.push(`The hook must not open with "${s.hook.trim().split(/\s+/)[0]}".`);
   if (wordCount(s.hook) > 18) problems.push("The hook is longer than 18 words.");
+  if (loopLineUnfinished(s.loop_line)) problems.push(`The loop line "${s.loop_line.trim()}" is unfinished; end it as one complete sentence.`);
   if (s.beats.length < 2 || s.beats.length > 4) problems.push("There must be two to four beats.");
   const allText = [spoken, s.headline, s.youtube.title, s.youtube.description, s.pulse_take.on_screen, ...s.beats.map((b) => `${b.visual.primary} ${b.visual.secondary}`)].join("\n");
   for (const re of BANNED_PHRASES) if (re.test(allText)) problems.push(`Banned phrase matched: ${re.source}.`);

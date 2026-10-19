@@ -171,7 +171,7 @@ Structure:
 1. hook: the premise and the criterion in one breath, 8-16 words, no question that withholds the point.
 2. entries: ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX}, spoken from the lowest rank to number one. Each one_line is under 18 words: one fact (year, what it did, how it was received) and one opinion by the criterion. verdict_chip is 1-4 words of punch. footage says what the trailer moment should show for that entry, with 1-4 keywords.
 3. pulse_take: why number one wins by the stated criterion, at most 32 words.
-4. loop_line: flows back into the hook.
+4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that echoes the hook's subject or words, so a rewatch feels connected: a short callback or a question to the viewer. Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
 The on-screen title is 3-8 words. The YouTube title follows the format template and front-loads the franchise. List every factual claim in "claims".`;
 }
 

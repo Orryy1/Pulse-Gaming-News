@@ -85,7 +85,7 @@ import {
   factCheck,
   validateScript,
 } from "./editorial/editorial.ts";
-import { narrationOf, type Script } from "./editorial/schema.ts";
+import { narrationOf, tidyLoopLine, type Script } from "./editorial/schema.ts";
 import {
   buildTags,
   hashtags,
@@ -2969,7 +2969,8 @@ export function segmentInputs(script: Script): SegmentInput[] {
         secondary: "",
       },
     },
-    { kind: "loop", text: speakable(script.loop_line) },
+    // The same tidied last line the voice was given, so timings line up.
+    { kind: "loop", text: speakable(tidyLoopLine(script.loop_line)) },
   ];
 }
 

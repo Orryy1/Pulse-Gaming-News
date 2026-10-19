@@ -75,3 +75,13 @@ test("a colon inside a game title gets no pause; a colon in a sentence keeps it"
   assert.equal(smoothTitleColons("Verdict: Rushed and thin."), "Verdict: Rushed and thin.");
   assert.deepEqual(titleLines("Call of Duty Campaigns Ranked"), ["Call of Duty", "Campaigns Ranked"]);
 });
+
+import { loopLineUnfinished, tidyLoopLine } from "../src/editorial/schema.ts";
+
+test("a last line never hangs on 'because'", () => {
+  assert.equal(loopLineUnfinished("And that spark starts now, because"), true);
+  assert.equal(loopLineUnfinished("So which match are you booking first?"), false);
+  assert.equal(tidyLoopLine("And that spark starts now, because"), "And that spark starts now.");
+  assert.equal(tidyLoopLine("The wait is over…"), "The wait is over.");
+  assert.equal(tidyLoopLine("Which one are you playing first?"), "Which one are you playing first?");
+});

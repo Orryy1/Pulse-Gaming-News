@@ -184,7 +184,7 @@ export function goodScript(overrides: Partial<Script> = {}): Script {
       narration: "Our read: Bethesda has delayed big content before and it usually lands in better shape, so this is not a red flag yet.",
       on_screen: "Not a red flag yet",
     },
-    loop_line: "So mark early 2027, because Starfield's second expansion is",
+    loop_line: "So mark early 2027 for Starfield's second expansion.",
     is_rumour: false,
     attribution: "Source: Xbox Wire / IGN",
     youtube: { title: "Starfield Expansion Delayed To Early 2027", description: "Bethesda has moved the expansion. Sources: Xbox Wire and IGN.", tags: ["starfield", "bethesda"] },

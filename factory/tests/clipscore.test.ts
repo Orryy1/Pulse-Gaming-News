@@ -195,7 +195,7 @@ test("a clip opens on its shot's first frame, ends where the shot ends, and a sh
 import { rejectReason, screenFrames } from "../src/assets/localvision.ts";
 
 test("the local frame screen names the worst problem and stays off in tests", async () => {
-  const none = { text: false, webcam: false, gore: false, letterbox: false, dark: false, blurry: false };
+  const none = { hud: false, text: false, webcam: false, gore: false, letterbox: false, dark: false, blurry: false };
   assert.equal(rejectReason(none), undefined);
   assert.equal(rejectReason({ ...none, text: true, webcam: true }), "webcam or overlay");
   assert.equal(rejectReason({ ...none, dark: true }), "too dark");

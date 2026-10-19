@@ -113,7 +113,16 @@ export async function darkestLuma(file: string): Promise<number | undefined> {
   try {
     const { stderr, stdout } = await run(
       FFMPEG,
-      ["-hide_banner", "-i", file, "-vf", "fps=4,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-", "-f", "null", "-"],
+      [
+        "-hide_banner",
+        "-i",
+        file,
+        "-vf",
+        "fps=4,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-",
+        "-f",
+        "null",
+        "-",
+      ],
       { maxBuffer: 16 * 1024 * 1024 },
     );
     const frames = parseSignalStats(`${stdout}\n${stderr}`);
@@ -127,8 +136,15 @@ export async function darkestLuma(file: string): Promise<number | undefined> {
 export function parseSignalStats(
   text: string,
 ): Array<{ time: number; luma: number; motion: number; scene?: number }> {
-  const out: Array<{ time: number; luma: number; motion: number; scene?: number }> = [];
-  let cur: { time: number; luma: number; motion: number; scene?: number } | undefined;
+  const out: Array<{
+    time: number;
+    luma: number;
+    motion: number;
+    scene?: number;
+  }> = [];
+  let cur:
+    | { time: number; luma: number; motion: number; scene?: number }
+    | undefined;
   for (const line of text.split(/\r?\n/)) {
     const f = line.match(/^frame:\d+\s+pts:\S+\s+pts_time:([\d.]+)/);
     if (f) {
@@ -162,12 +178,14 @@ export function usableCandidates(
     (c) =>
       c.time >= lead &&
       c.time + clipSeconds <= totalSeconds - tail &&
-            c.luma >= 38 &&
+      c.luma >= 38 &&
       c.luma <= 230,
   );
   // A clip that changes shot under the words it was chosen for no longer shows what they say:
   // the clip will end where its shot ends, so a shot too short to carry a line is passed over.
-  const whole = fits.filter((c) => shotLength(c, clipSeconds) >= MIN_CLIP_SECONDS);
+  const whole = fits.filter(
+    (c) => shotLength(c, clipSeconds) >= MIN_CLIP_SECONDS,
+  );
   return whole.length >= 4 ? whole : fits;
 }
 
@@ -201,7 +219,8 @@ export function detectCuts(
     const scene = (r.scene ?? 0) > 0.12;
     if (!(scene || spike)) continue;
     // Detections within a quarter second are one transition (a dissolve or a whip): the cut is its last frame.
-    if (out.length && r.time - out[out.length - 1]! <= 0.25) out[out.length - 1] = r.time;
+    if (out.length && r.time - out[out.length - 1]! <= 0.25)
+      out[out.length - 1] = r.time;
     else out.push(r.time);
   }
   return out;
@@ -228,7 +247,11 @@ export function withCuts(candidates: Candidate[], cuts: number[]): Candidate[] {
     const key = Math.round(start * 100);
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push(next === undefined ? { ...c, time: start } : { ...c, time: start, nextCut: next });
+    out.push(
+      next === undefined
+        ? { ...c, time: start }
+        : { ...c, time: start, nextCut: next },
+    );
   }
   return out;
 }
@@ -336,7 +359,7 @@ export async function rankByModel(
     schema: ClipRankingSchema,
     effort: "low",
   });
-    const bad = new Set(
+  const bad = new Set(
     r.candidates.filter((c) => c.has_text_or_logo).map((c) => c.index),
   );
   for (const b of bad) textFrames?.add(b);
@@ -429,12 +452,28 @@ async function analyseTrailer(
     const scenesName = `scenes_${movie}.txt`;
     await run(
       FFMPEG,
-      ["-loglevel", "error", "-y", "-i", path.basename(raw), "-vf", `scale=320:-2,select='gte(scene,0)',signalstats,metadata=print:file=${scenesName}`, "-an", "-f", "null", "-"],
+      [
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        path.basename(raw),
+        "-vf",
+        `scale=320:-2,select='gte(scene,0)',signalstats,metadata=print:file=${scenesName}`,
+        "-an",
+        "-f",
+        "null",
+        "-",
+      ],
       { cwd: dir, maxBuffer: 32 * 1024 * 1024 },
     );
-    cuts = detectCuts(parseSignalStats(await fs.readFile(path.join(dir, scenesName), "utf8")));
+    cuts = detectCuts(
+      parseSignalStats(await fs.readFile(path.join(dir, scenesName), "utf8")),
+    );
   } catch (err) {
-    log("warn", "scene scan failed; clips may cross a cut", { error: errorMessage(err) });
+    log("warn", "scene scan failed; clips may cross a cut", {
+      error: errorMessage(err),
+    });
   }
   const candidates = rows.map((r, i) => ({
     index: offset + i,
@@ -517,7 +556,10 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         const all = await analyseTrailer(t.file, i, work, candidates.length);
         candidates.push(...usableCandidates(all, t.total, clipSeconds));
       } catch (err) {
-        log("warn", "trailer analysis failed", { movie: t.name, error: errorMessage(err) });
+        log("warn", "trailer analysis failed", {
+          movie: t.name,
+          error: errorMessage(err),
+        });
       }
     }
     if (candidates.length < 2) return [];
@@ -525,21 +567,54 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
     const textFrames = new Set<number>();
     // A first look on this PC's GPU throws out what is plainly unusable (words on screen, a
     // streamer's webcam, gore, black frames) so Claude only judges clean frames, and fewer of them.
-    const spread = (xs: Candidate[], n: number) => (xs.length > n ? xs.filter((_, i) => i % Math.ceil(xs.length / n) === 0) : xs);
+    const spread = (xs: Candidate[], n: number) =>
+      xs.length > n
+        ? xs.filter((_, i) => i % Math.ceil(xs.length / n) === 0)
+        : xs;
     const screened = spread(candidates, LOCAL_SCREEN_MAX);
     const flags = await screenFrames(screened.map((c) => c.frame));
     let base = candidates;
     if (flags.some(Boolean)) {
-      const bad = new Set<number>();
+      // Unusable whatever happens: a webcam, gore, a black frame. Text only blocks a frame while there are clean ones.
+      const never = new Set<number>();
+      const wordy = new Set<number>();
+      const webcamByMovie = new Map<number, { cam: number; all: number }>();
       screened.forEach((c, i) => {
         const f = flags[i];
         if (!f) return;
-        if (f.text) textFrames.add(c.index);
-        if (f.text || f.webcam || f.gore || f.dark) bad.add(c.index);
+        // The local model's "text" is a hint, not a verdict: it errs both ways, so Claude still judges words.
+        if (f.text) wordy.add(c.index);
+        if (f.webcam || f.gore || f.dark) never.add(c.index);
+        const m = webcamByMovie.get(c.movie) ?? { cam: 0, all: 0 };
+        m.all++;
+        if (f.webcam) m.cam++;
+        webcamByMovie.set(c.movie, m);
       });
-      const clean = screened.filter((c) => !bad.has(c.index));
-      log("info", "local frame screen", { frames: screened.length, clean: clean.length, text: textFrames.size, webcam: flags.filter((f) => f?.webcam).length });
-      if (clean.length >= 2) base = clean;
+      // A source with a webcam in a good share of its frames is a streamer's recording: none of it is used.
+      const streamed = new Set(
+        [...webcamByMovie]
+          .filter(([, m]) => m.cam >= Math.max(2, m.all * 0.3))
+          .map(([movie]) => movie),
+      );
+      const allowed = screened.filter(
+        (c) => !never.has(c.index) && !streamed.has(c.movie),
+      );
+      const clean = allowed.filter((c) => !wordy.has(c.index));
+      log("info", "local frame screen", {
+        frames: screened.length,
+        clean: clean.length,
+        allowed: allowed.length,
+        text: wordy.size,
+        webcam: flags.filter((f) => f?.webcam).length,
+        streamedSources: streamed.size,
+      });
+      if (allowed.length < 2) return [];
+      // Frames without words go first; the rest fill the pool when there are too few.
+      const rest = allowed.filter((c) => wordy.has(c.index));
+      base =
+        clean.length >= MAX_CANDIDATES_TO_MODEL
+          ? clean
+          : [...clean, ...spread(rest, MAX_CANDIDATES_TO_MODEL - clean.length)].sort((a, b) => a.index - b.index);
     }
     // Even spread when there are more keyframes than the model can look at.
     const pool = spread(base, MAX_CANDIDATES_TO_MODEL);
@@ -547,17 +622,26 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
     let how = "rule";
     if (o.llm) {
       try {
-                assignments = await rankByModel(o.llm, o.targets, pool, textFrames);
+        assignments = await rankByModel(o.llm, o.targets, pool, textFrames);
         how = "model";
       } catch (err) {
-        log("warn", "clip ranking by model failed; using the motion rule", { error: errorMessage(err) });
+        log("warn", "clip ranking by model failed; using the motion rule", {
+          error: errorMessage(err),
+        });
       }
     }
     // Lines the model left without a match get the rule's pick from what is left.
-    const missing = o.targets.filter((t) => !assignments.some((a) => a.key === t.key));
+    const missing = o.targets.filter(
+      (t) => !assignments.some((a) => a.key === t.key),
+    );
     if (missing.length) {
       const taken = new Set(assignments.map((a) => a.candidate));
-      assignments.push(...rankByRule(missing, pool.filter((c) => !taken.has(c.index))));
+      assignments.push(
+        ...rankByRule(
+          missing,
+          pool.filter((c) => !taken.has(c.index)),
+        ),
+      );
     }
     const out: VisualAsset[] = [];
     const prefix = o.prefix ?? "clip";
@@ -568,29 +652,45 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       const r = c && o.trailers[c.movie];
       if (!a || !c || !r) continue;
       const file = path.join("assets", `${prefix}_${out.length}.mp4`);
-            // The clip ends where its shot ends (rounded to a frame) so it never changes picture under the line,
+      // The clip ends where its shot ends (rounded to a frame) so it never changes picture under the line,
       // and before any later keyframe in it that carries text (a title card appearing mid-shot).
       let span = shotLength(c, clipSeconds);
       const textAt = candidates
-        .filter((x) => x.movie === c.movie && x.time > c.time && x.time < c.time + span && textFrames.has(x.index))
+        .filter(
+          (x) =>
+            x.movie === c.movie &&
+            x.time > c.time &&
+            x.time < c.time + span &&
+            textFrames.has(x.index),
+        )
         .map((x) => x.time - c.time);
       if (textAt.length) span = Math.min(span, Math.min(...textAt) - 0.2);
       if (span < MIN_CLIP_SECONDS) continue;
       const seconds = Math.round(Math.max(MIN_CLIP_SECONDS, span) * 30) / 30;
-            try {
+      try {
         await cutClip(r.file, c.time, seconds, path.join(o.episodeDir, file));
       } catch (err) {
-        log("warn", "clip cut failed", { at: c.time, error: errorMessage(err) });
+        log("warn", "clip cut failed", {
+          at: c.time,
+          error: errorMessage(err),
+        });
         continue;
       }
       // A shot that fades to black or sinks into darkness inside the clip reads as a broken video.
       const darkest = await darkestLuma(path.join(o.episodeDir, file));
       if (darkest !== undefined && darkest < DARK_LUMA) {
-        log("info", "clip dropped: goes dark", { at: c.time, darkest: Math.round(darkest) });
-        await fs.rm(path.join(o.episodeDir, file), { force: true }).catch(() => undefined);
+        log("info", "clip dropped: goes dark", {
+          at: c.time,
+          darkest: Math.round(darkest),
+        });
+        await fs
+          .rm(path.join(o.episodeDir, file), { force: true })
+          .catch(() => undefined);
         continue;
       }
-      const beatIndex = t.key.startsWith("beat:") ? Number.parseInt(t.key.slice(5), 10) : undefined;
+      const beatIndex = t.key.startsWith("beat:")
+        ? Number.parseInt(t.key.slice(5), 10)
+        : undefined;
       const moment = t.key.match(/#m(\d+)$/)?.[1];
       out.push({
         kind: "clip",
@@ -608,7 +708,12 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         provenance: `${o.describe(r, seconds, c.time)}; chosen for ${t.key} by ${how} (${a.label ?? a.reason})`,
       });
     }
-    log("info", "beat-matched clips", { count: out.length, how, targets: o.targets.length, candidates: candidates.length });
+    log("info", "beat-matched clips", {
+      count: out.length,
+      how,
+      targets: o.targets.length,
+      candidates: candidates.length,
+    });
     return out;
   } finally {
     await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
@@ -632,14 +737,28 @@ export interface SelectClipsOptions {
  * episode folder.
  */
 /** Trailers that are not single-player footage, for a video about campaigns. */
-export const NOT_CAMPAIGN = /multiplayer|\bmp\b|zombies|warzone|\bseason\b|battle ?pass|\bbeta\b|ranked|\bdmz\b|operator|bundle|tracer pack|co-?op|spec ops|battle royale|launch event|esports|\bcdl\b/i;
+export const NOT_CAMPAIGN =
+  /multiplayer|\bmp\b|zombies|warzone|\bseason\b|battle ?pass|\bbeta\b|ranked|\bdmz\b|operator|bundle|tracer pack|co-?op|spec ops|battle royale|launch event|esports|\bcdl\b/i;
 
-export async function selectClips(o: SelectClipsOptions): Promise<VisualAsset[]> {
-  let movies = ((o.app.details.movies ?? []) as Array<Record<string, any>>).filter((m) => m.hls_h264);
-  movies.sort((a, b) => Number(Boolean(b.highlight)) - Number(Boolean(a.highlight)));
+export async function selectClips(
+  o: SelectClipsOptions,
+): Promise<VisualAsset[]> {
+  let movies = (
+    (o.app.details.movies ?? []) as Array<Record<string, any>>
+  ).filter((m) => m.hls_h264);
+  movies.sort(
+    (a, b) => Number(Boolean(b.highlight)) - Number(Boolean(a.highlight)),
+  );
   if (o.scope === "campaign") {
-    const story = movies.filter((m) => !NOT_CAMPAIGN.test(String(m.name ?? "")));
-    if (story.length) movies = story.sort((a, b) => Number(/campaign|story/i.test(String(b.name))) - Number(/campaign|story/i.test(String(a.name))));
+    const story = movies.filter(
+      (m) => !NOT_CAMPAIGN.test(String(m.name ?? "")),
+    );
+    if (story.length)
+      movies = story.sort(
+        (a, b) =>
+          Number(/campaign|story/i.test(String(b.name))) -
+          Number(/campaign|story/i.test(String(a.name))),
+      );
   }
   if (!movies.length || !o.targets.length) return [];
   const work = path.join(o.episodeDir, "trailers");
@@ -654,9 +773,17 @@ export async function selectClips(o: SelectClipsOptions): Promise<VisualAsset[]>
       const variantUrl = new URL(variant, movie.hls_h264).toString();
       const raw = path.join(work, `trailer_${i}.mp4`);
       const total = await fetchTrailer(variantUrl, raw);
-      trailers.push({ file: raw, name: String(movie.name ?? `trailer ${i + 1}`), url: movie.hls_h264, total });
+      trailers.push({
+        file: raw,
+        name: String(movie.name ?? `trailer ${i + 1}`),
+        url: movie.hls_h264,
+        total,
+      });
     } catch (err) {
-      log("warn", "trailer download failed", { movie: movie.name, error: errorMessage(err) });
+      log("warn", "trailer download failed", {
+        movie: movie.name,
+        error: errorMessage(err),
+      });
     }
   }
   if (!trailers.length) {
@@ -666,6 +793,7 @@ export async function selectClips(o: SelectClipsOptions): Promise<VisualAsset[]>
   return matchClips({
     ...o,
     trailers,
-    describe: (t, seconds, at) => `Official Steam trailer "${t.name}" for "${o.app.name}" (app ${o.app.appId}), ${seconds}s at ${at.toFixed(1)}s, muted`,
+    describe: (t, seconds, at) =>
+      `Official Steam trailer "${t.name}" for "${o.app.name}" (app ${o.app.appId}), ${seconds}s at ${at.toFixed(1)}s, muted`,
   });
 }

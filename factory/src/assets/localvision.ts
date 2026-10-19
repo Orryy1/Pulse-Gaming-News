@@ -8,6 +8,7 @@ import fs from "node:fs/promises";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 
 export interface FrameFlags {
+  hud: boolean; // only the game's own small HUD: fine on screen
   text: boolean;
   webcam: boolean;
   gore: boolean;
@@ -24,6 +25,7 @@ export const LOCAL_VISION_MODEL =
 
 const PROMPT = `You screen one frame of video game footage for a news video. Answer each question about this frame with true or false.
 text: any readable words, letters or numbers anywhere: titles, logos, subtitles, captions, HUD numbers, menus, objective text, watermarks, channel names.
+hud_only: true only when every piece of writing in the frame is the game's own small heads-up display in a corner or edge (an ammo counter, a minimap or compass, a health bar); false when there is any title, logo, subtitle, caption, menu, objective text or large word, and false when there is no writing at all.
 webcam: a real person's webcam or facecam, a picture-in-picture box, stream chat, alerts or any recording or streaming overlay on top of the game.
 gore: blood sprays, wounds, dead bodies, executions.
 letterbox: black bars covering more than a third of the frame.
@@ -34,13 +36,22 @@ const SCHEMA = {
   type: "object",
   properties: {
     text: { type: "boolean" },
+    hud_only: { type: "boolean" },
     webcam: { type: "boolean" },
     gore: { type: "boolean" },
     letterbox: { type: "boolean" },
     dark: { type: "boolean" },
     blurry: { type: "boolean" },
   },
-  required: ["text", "webcam", "gore", "letterbox", "dark", "blurry"],
+  required: [
+    "text",
+    "hud_only",
+    "webcam",
+    "gore",
+    "letterbox",
+    "dark",
+    "blurry",
+  ],
 };
 
 /** Whether a frame is unusable as footage, and why. Text alone is reported separately: it also marks where a clip must stop. */
@@ -84,12 +95,25 @@ async function checkOne(file: string): Promise<FrameFlags | undefined> {
     throw new Error(
       `ollama ${res.status}: ${(await res.text()).slice(0, 200)}`,
     );
-  const body = (await res.json()) as { message?: { content?: string; thinking?: string } };
+  const body = (await res.json()) as {
+    message?: { content?: string; thinking?: string };
+  };
   // Some vision models put their whole answer in the thinking field even with thinking off.
-  const parsed = JSON.parse(body.message?.content?.trim() || body.message?.thinking?.trim() || "{}");
-  return Object.fromEntries(
-    Object.keys(SCHEMA.properties).map((k) => [k, parsed[k] === true]),
-  ) as unknown as FrameFlags;
+  const parsed = JSON.parse(
+    body.message?.content?.trim() || body.message?.thinking?.trim() || "{}",
+  );
+  const yes = (k: string) => parsed[k] === true;
+  // Writing that is only the game's own small HUD does not count as text on screen.
+  const hud = yes("text") && yes("hud_only");
+  return {
+    hud,
+    text: yes("text") && !hud,
+    webcam: yes("webcam"),
+    gore: yes("gore"),
+    letterbox: yes("letterbox"),
+    dark: yes("dark"),
+    blurry: yes("blurry"),
+  };
 }
 
 /**

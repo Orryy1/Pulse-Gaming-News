@@ -178,7 +178,7 @@ export const LongformPlanSchema = LongformScriptSchema.omit({ entries: true, cla
 export type LongformPlan = z.infer<typeof LongformPlanSchema>;
 
 /** One entry's spoken paragraph with its shot list. */
-export const LongformEntryBodySchema = LongformEntrySchema.pick({ year: true, narration: true, footage: true, moments: true }).extend({
+export const LongformEntryBodySchema = LongformEntrySchema.pick({ year: true, narration: true, footage: true }).extend({
   claims: LongformScriptSchema.shape.claims,
 });
 
@@ -191,9 +191,49 @@ This step plans the video only: the order, the intro, the outro and the packagin
 function entryPrompt(): string {
   return `${HOUSE}
 
-You are writing one entry of a long-form ranking video, from the plan you are given. The narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words, three to five sentences: what the game is and when it landed, the specific detail from the plan, and why it sits at this rank by the criterion. It starts by naming the rank and the game in a fresh way: never open the way an earlier entry opened (they are listed). footage names the trailer moment to show, with 1-4 keywords.
-moments: exactly one per sentence of the narration, in order. This is the picture editor's shot list. "show" names the precise thing on screen while that sentence is spoken (the mission, the character, the map, the weapon, the twist), never a generic "gameplay". About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in the narration. "emphasis" lands a name or phrase from the sentence on screen in about a third of the moments; leave it empty when the moment has a graphic.
+You are writing one entry of a long-form ranking video, from the plan you are given. The narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words (count them), three to five sentences: what the game is and when it landed, the specific detail from the plan, and why it sits at this rank by the criterion. It starts by naming the rank and the game in a fresh way: never open the way an earlier entry opened (they are listed). footage names an in-game moment to show, with 1-4 keywords.
 List every factual claim in this entry in "claims".`;
+}
+
+/** The shot list for one entry: as many moments as the narration has sentences, numbered to match. */
+export function momentsSchema(count: number) {
+  return z.object({
+    moments: z.array(MomentSchema).min(count).max(count).describe(`Exactly ${count}: moment 1 for sentence 1, and so on`),
+  });
+}
+
+const MOMENTS_PROMPT = `You are the picture editor for a long-form gaming ranking video. You get one entry's narration as numbered sentences and return exactly one moment per sentence, in the same order.
+"show" names the precise in-game thing on screen while that sentence is spoken: the mission, the character, the place, the weapon, the vehicle, the set piece, the twist. It is always a moment from the game itself, never a title card, logo, menu, store page, launcher, box art, review score screen or anything made of text, and never a generic "gameplay".
+keywords: 1-4 short search terms for that moment (a mission name, a character, a place).
+About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that sentence. "emphasis" lands a name or phrase from the sentence on screen in about a third of the moments; leave it empty when the moment has a graphic.`;
+
+/** One moment per sentence; a list that comes back short is padded from the sentences themselves so no sentence goes without a picture. */
+export async function writeMoments(llm: Llm, game: string, narration: string): Promise<Moment[]> {
+  const sentences = sentencesOf(narration);
+  const n = Math.max(1, sentences.length);
+  let got: Moment[] = [];
+  for (let attempt = 0; attempt < 2 && got.length !== n; attempt++) {
+    try {
+      const r = await llm.structured({
+        tier: "mid",
+        system: MOMENTS_PROMPT,
+        content: `Game: ${game}\n\n${sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nReturn exactly ${n} moments.`,
+        schema: momentsSchema(n),
+        effort: "low",
+        maxTokens: 6000,
+      });
+      got = r.moments;
+    } catch {
+      // A list of the wrong length fails the schema; the second try or the padding covers it.
+    }
+  }
+  const pad = (i: number): Moment => ({
+    show: `${game}: ${sentences[i] ?? game}`.slice(0, 120),
+    keywords: [game],
+    graphic: { kind: "none", primary: "", secondary: "", items: [] },
+    emphasis: "",
+  });
+  return Array.from({ length: n }, (_, i) => got[i] ?? pad(i));
 }
 
 /**
@@ -247,7 +287,8 @@ ${before}` : ""}${fb}`,
       maxTokens: 8000,
     });
     const { angle: _notes, ...head } = e;
-        written.push({ ...head, year: body.year || head.year, narration: body.narration, footage: body.footage, moments: body.moments });
+                const moments = await writeMoments(llm, e.game_title, body.narration);
+    written.push({ ...head, year: body.year || head.year, narration: body.narration, footage: body.footage, moments });
     claims.push(...body.claims);
   }
   return { ...plan, entries: written, claims };

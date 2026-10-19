@@ -27,10 +27,11 @@ export const EVERGREEN_FORMATS = [
   "rarest_achievements",
   "hardest_achievements",
   "steam_climbers",
+  "steam_deals",
 ] as const;
 
 /** Weekly formats built from data the factory hands the writer; they run shorter lists. */
-export const WEEKLY_FORMATS = new Set<string>(["release_radar", "weekly_recap", "rarest_achievements", "hardest_achievements", "steam_climbers"]);
+export const WEEKLY_FORMATS = new Set<string>(["release_radar", "weekly_recap", "rarest_achievements", "hardest_achievements", "steam_climbers", "steam_deals"]);
 export const ACHIEVEMENT_FORMATS = new Set<string>(["rarest_achievements", "hardest_achievements"]);
 export const entriesMin = (format: string) => (WEEKLY_FORMATS.has(format) ? 4 : EVERGREEN_ENTRIES_MIN);
 
@@ -44,6 +45,8 @@ export const FORMAT_RULES: Record<string, string> = {
     "Release Radar rules: the entries are the games in the data and nothing else, spoken in release order, earliest first, so the earliest release has the highest rank number and the last release is rank 1. Set each entry's date to its release date exactly as in the data (YYYY-MM-DD) and steam_search_term to its name. platforms is \"PC (Steam)\" unless the data says more. one_line says what the game is and one reason to care, under 18 words; never invent a price or a platform. verdict_chip is a 1-4 word hook such as \"SOULSLIKE WITH GUNS\". The take names the one to watch. Hook: the week and how many games, e.g. \"Five big games land this week, and one could eat your weekend.\"",
   steam_climbers:
     "Steam Climbers rules: the entries are exactly the games in the data, ranked by places climbed: rank 1 climbed the most, spoken from the smallest climb up to the biggest. game_title and steam_search_term are the game's name exactly as in the data; year is its release year from the data; platforms is \"PC (Steam)\". one_line says what the game is and why it climbed, under 18 words, using only the Steam news given for it (an update, an event, a sale, a launch); if its news gives no reason, say what it is and that players are flooding back, and never invent a reason. Peak player numbers may be quoted exactly as in the data. verdict_chip is 1-4 words such as \"HUGE UPDATE\" or \"FREE WEEKEND\". Hook: \"These games just exploded on Steam.\" style, naming the week. The take names the climb that matters most and why.",
+  steam_deals:
+    "Steam Deals rules: the entries are exactly the games in the data, ranked by our deal pick: rank 1 is the best deal in the data, spoken from the least to the best. game_title and steam_search_term are the game's name exactly as in the data; year is its release year from the data; platforms is \"PC (Steam)\". one_line says what the game is and its US sale price exactly as in the data, e.g. \"A stylish stealth classic, down to $2.49.\", under 18 words; say prices in US dollars only, never invent a price, a discount or an end date, and never say a sale ends soon. verdict_chip is 1-4 words such as \"ALL-TIME GREAT\" or \"CULT CLASSIC\". Hook: \"These great Steam games cost less than a sandwich right now.\" style. The take names the one to grab first and why. Prices change: never promise a price will last.",
   weekly_recap:
     "Weekly Recap rules: the entries are the five biggest stories in the data, spoken from fifth to the biggest. game_title is the game or company the story is about; steam_search_term finds that game on Steam or is empty; year is that game's release year, or this year for a company story; platforms lists the outlets that reported it, e.g. \"IGN, Xbox Wire\". one_line says what happened and why it matters, under 18 words. verdict_chip is 1-4 words such as \"DELAYED AGAIN\". Only stories in the data, never a rumour as fact. Hook: \"Five stories ran gaming this week. Here is what actually mattered.\" style.",
 };
@@ -60,6 +63,7 @@ export const FORMAT_TITLES: Record<EvergreenFormat, string> = {
   rarest_achievements: "The Rarest Achievements in [Game]",
   hardest_achievements: "The Hardest Achievements in Gaming Right Now",
   steam_climbers: "The Games That Exploded on Steam This Week",
+  steam_deals: "N Great Steam Games on Sale Right Now",
 };
 
 export interface EvergreenCandidate {
@@ -113,6 +117,8 @@ export const EvergreenEntrySchema = z.object({
   icon: z.string().optional().describe("leave empty; filled in by the factory"),
   date: z.string().optional().describe("release_radar only: the release date as YYYY-MM-DD, exactly as in the data"),
   peak: z.number().optional().describe("steam_climbers only: peak players this week, exactly as in the data"),
+  price: z.string().optional().describe("leave empty; filled in by the factory"),
+  was: z.string().optional().describe("leave empty; filled in by the factory"),
 });
 
 export const EvergreenScriptSchema = z.object({
@@ -285,6 +291,8 @@ export function evergreenToScript(e: EvergreenScript): Script {
           ? [`${x.percent}% of players`, x.platforms]
           : e.format === "steam_climbers" && typeof x.peak === "number"
             ? [x.platforms, `${x.peak.toLocaleString("en-US")} peak players`]
+            : e.format === "steam_deals" && x.price
+              ? [x.price, x.was ?? x.platforms]
             : [String(x.year), x.platforms],
       ...(x.date ? { date_to: x.date } : {}),
     } satisfies BeatVisual,

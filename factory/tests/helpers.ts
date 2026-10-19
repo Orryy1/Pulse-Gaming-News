@@ -111,6 +111,8 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     engageEnabled: false,
     engageSlot: "15:00",
     climbersDays: ["sun"],
+    dealsDays: [],
+    dealsSlot: "16:30",
     facebookPageId: "",
     facebookPageToken: "",
     instagramAccountId: "",

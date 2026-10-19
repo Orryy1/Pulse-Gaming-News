@@ -120,6 +120,11 @@ export async function replyToComments(d: ReplyDeps): Promise<number> {
     try {
       sent += await replyOnVideo(d, ep);
     } catch (err) {
+      // Comments switched off on a video: stop asking about it for the rest of its window.
+      if (/commentsDisabled/.test(errorMessage(err))) {
+        lastPoll.set(ep.id, Number.MAX_SAFE_INTEGER / 2);
+        continue;
+      }
       log("warn", "comment replies failed", {
         episode: ep.id,
         error: errorMessage(err),

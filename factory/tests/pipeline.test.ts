@@ -198,6 +198,7 @@ async function setup(
     achievements: async () => [],
     research: async () => undefined,
     steamClimbers: async () => [],
+    steamDeals: async () => [],
     searchPhotos: async () => [],
         igdbArt: async () => [],
         gameplayClips: async () => [],

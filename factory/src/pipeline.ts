@@ -86,6 +86,7 @@ import {
   validateScript,
 } from "./editorial/editorial.ts";
 import { narrationOf, tidyLoopLine, type Script } from "./editorial/schema.ts";
+import type { Deal } from "./discovery/deals.ts";
 import {
   buildTags,
   hashtags,
@@ -235,6 +236,8 @@ export interface Services {
   achievements(appId: number): Promise<Achievement[]>;
   /** This week's biggest climbers on Steam's most-played chart, with their official news. */
   steamClimbers(now: Date): Promise<import("./discovery/charts.ts").Climber[]>;
+  /** Today's best Steam deals, skipping games featured recently. */
+  steamDeals(exclude: string[]): Promise<import("./discovery/deals.ts").Deal[]>;
   /** A Wikipedia article's useful sections, by title or else by search (documentary research). */
   research(
     title: string,
@@ -930,6 +933,35 @@ export async function maybeSelectWeekly(
     });
   }
 
+  // Steam deals: their own daily slot, only when at least four strong deals are new to the channel.
+  const dealsDue = evergreenDue(now, { ...plan(cfg.dealsDays), slot: cfg.dealsSlot }, taken);
+  if (dealsDue && !(await weeklyTried(db, `deals:${today}`))) {
+    const recent = await db.query<{ script_json: Script }>(
+      `SELECT script_json FROM episodes WHERE lane = 'evergreen' AND script_json->>'evergreen_format' = 'steam_deals' AND created_at > $1`,
+      [new Date(now.getTime() - 14 * 86_400_000)],
+    );
+    const exclude = recent.flatMap((r) => r.script_json?.entries?.map((e) => e.game_title) ?? []);
+    const deals = await s.steamDeals(exclude);
+    if (deals.length >= 4) {
+      const topic = {
+        candidate_index: 0,
+        format: "steam_deals" as const,
+        theme: "Steam deals",
+        title_idea: `${deals.length} Great Steam Games on Sale Right Now`,
+        criterion: "The biggest cut on the best-reviewed games",
+        reason: "daily Steam deals",
+      };
+      const brief = deals
+        .map(
+          (d) =>
+            `- ${d.name} | ${d.usd.final}, down from ${d.usd.initial} (${d.usd.pct}% off) | ${d.rating}% positive from ${d.reviews.toLocaleString("en-US")} Steam reviews | released ${d.year ?? "unknown"}`,
+        )
+        .join("\n");
+      return make("deals", base(`daily:deals:${today}`, topic.title_idea, "Steam deals"), dealsDue, { topic, brief, deals }, "evergreen");
+    }
+    log("info", "steam deals skipped: too few fresh deals", { found: deals.length });
+  }
+
   // Weekly Recap
   const recapDue = evergreenDue(now, plan(cfg.recapDays), taken);
   if (recapDue && !(await weeklyTried(db, `recap:${today}`))) {
@@ -1603,6 +1635,51 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
  * entry that names no achievement in the data is dropped, the rest take the
  * data's exact name, percentage and icon, and ranks follow rarity (1 = rarest).
  */
+/** A euro price as Steam formats it ("5,99€") written for an English screen ("€5.99"). */
+export function euro(v: string): string {
+  const m = v.replace(/\s/g, "").match(/^([\d.,]+)€$/);
+  return m ? `€${m[1]!.replace(/\.(?=\d{3})/g, "").replace(",", ".")}` : v;
+}
+
+/**
+ * Deal entries take Steam's prices, never the writer's: name and year from the data, the screen
+ * shows the dollar price with pounds and euros beside it and the original price, and an entry that
+ * names no game in the data is dropped.
+ */
+export function groundDeals<
+  T extends {
+    entries: Array<{ rank: number; game_title: string; steam_search_term: string; platforms: string; year: number; verdict_chip: string; price?: string; was?: string }>;
+  },
+>(draft: T, data: Deal[]): T {
+  const norm = (t: string) =>
+    t
+      .toLowerCase()
+      .replace(/[\u00ae\u2122\u00a9]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const kept = draft.entries
+    .map((e) => {
+      const d =
+        data.find((x) => norm(x.name) === norm(e.game_title)) ??
+        data.find((x) => norm(e.game_title).includes(norm(x.name)) || norm(x.name).includes(norm(e.game_title)));
+      if (!d) return undefined;
+      const name = d.name.replace(/[\u00ae\u2122\u00a9]/g, "").trim();
+      return {
+        ...e,
+        game_title: name,
+        steam_search_term: name,
+        year: d.year ?? e.year,
+        platforms: "PC (Steam)",
+        price: [d.usd.final, d.gbp, d.eur ? euro(d.eur) : undefined].filter(Boolean).join(" · "),
+        was: `WAS ${d.usd.initial} · ${d.usd.pct}% OFF`,
+      };
+    })
+    .filter((e): e is NonNullable<typeof e> => !!e);
+  // The writer's order stands (rank 1 = its best pick); ranks are closed up after any drop.
+  kept.sort((a, b) => a.rank - b.rank).forEach((e, i) => (e.rank = i + 1));
+  return { ...draft, entries: kept };
+}
+
 export interface ClimberData {
   name: string;
   rank: number;
@@ -1798,6 +1875,8 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   const climbers = (ep.factcheck_json as { climbers?: ClimberData[] } | null)
     ?.climbers;
   if (climbers?.length) draft = groundClimbers(draft, climbers);
+  const deals = (ep.factcheck_json as { deals?: Deal[] } | null)?.deals;
+  if (deals?.length) draft = groundDeals(draft, deals);
   const script = evergreenToScript(draft);
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,

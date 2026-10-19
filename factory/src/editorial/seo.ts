@@ -299,6 +299,8 @@ export function keywordLead(script: Script): string {
     return `The hardest achievements in gaming right now: ${script.headline.replace(/\.$/, "")}. Hardest achievements, rarest achievements, achievement hunting, by Pulse Gaming News.`;
   if (script.evergreen_format === "steam_climbers")
     return `The biggest climbers on Steam this week: ${script.headline.replace(/\.$/, "")}. Steam charts, most played games on Steam, trending games, by Pulse Gaming News.`;
+  if (script.evergreen_format === "steam_deals")
+    return `The best Steam deals right now: ${script.headline.replace(/\.$/, "")}. Steam sale, cheap PC games, best game deals today, by Pulse Gaming News.`;
   if (script.evergreen_format === "weekly_recap")
     return `This week in gaming: ${script.headline.replace(/\.$/, "")}. Gaming news recap, biggest gaming news this week, by Pulse Gaming News.`;
   if (n) {
@@ -331,6 +333,8 @@ export function pinnedComment(script: Script): string {
     return `Our pick for the real test: ${take}. Which of these have you unlocked? Be honest.`;
   if (script.evergreen_format === "steam_climbers")
     return `Our pick: ${take}. Which of these are you playing right now?`;
+  if (script.evergreen_format === "steam_deals")
+    return `Our pick: ${take}. Prices are Steam's at the time we checked and can change. Which one are you grabbing?`;
   if (script.evergreen_format === "weekly_recap")
     return `Our read: ${take}. Which story was the biggest one for you this week?`;
   if (script.entries?.length)

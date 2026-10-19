@@ -26,6 +26,7 @@ import { releaseRadar, freeGames } from "./discovery/weekly.ts";
 import { fetchAchievements } from "./discovery/achievements.ts";
 import { researchGame } from "./discovery/wikipedia.ts";
 import { steamClimbers } from "./discovery/charts.ts";
+import { steamDeals } from "./discovery/deals.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { findIgdbGame, fetchIgdbArt } from "./assets/igdb.ts";
 import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
@@ -96,6 +97,7 @@ export function createServices(db: Db, cfg: Config): Services {
     freeGames: (now) => freeGames(now),
     achievements: (appId) => fetchAchievements(appId),
     steamClimbers: (now) => steamClimbers(now),
+    steamDeals: (exclude) => steamDeals(exclude),
     research: (title, fallbackQuery, maxChars) => researchGame(title, fallbackQuery, maxChars),
     fetchStock: (dir, targets, gameWords, maxClips) => (cfg.pexelsApiKey ? stockClips(cfg.pexelsApiKey, dir, targets, gameWords, maxClips) : Promise.resolve([])),
     fetchOfficialMedia: async (gameTitle, dir, targets, maxClips, hint, story) => {

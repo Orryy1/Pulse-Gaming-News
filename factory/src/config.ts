@@ -107,6 +107,8 @@ export interface Config {
   recapDays: string[];
   achievementDays: string[];
   climbersDays: string[]; // the weekly Steam climbers Short
+  dealsDays: string[]; // the Steam deals Short
+  dealsSlot: string; // its own local slot, so it never takes a weekly format's
   weeklySlot: string;
   longformDays: string[];
   longformSlot: string;
@@ -254,6 +256,8 @@ export function loadConfig(): Config {
     freeDays: str("FREE_DAYS", "thu").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     recapDays: str("RECAP_DAYS", "fri").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     climbersDays: str("CLIMBERS_DAYS", "sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    dealsDays: str("DEALS_DAYS", "").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    dealsSlot: str("DEALS_SLOT", "16:30"),
     achievementDays: str("ACHIEVEMENT_DAYS", "wed").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     weeklySlot: str("WEEKLY_SLOT", "20:00"),
     longformDays: str("LONGFORM_DAYS", "sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),

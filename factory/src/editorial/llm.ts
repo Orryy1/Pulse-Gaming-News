@@ -38,10 +38,18 @@ export interface Llm {
     schema: S;
     effort?: "low" | "medium" | "high";
     maxTokens?: number;
+    /** top: writing and final checks (Opus); mid: picking footage and posts (Sonnet); low: simple filtering (Haiku). */
+    tier?: Tier;
   }): Promise<z.infer<S>>;
 }
 
-export function createClaude(model: string): Llm {
+export type Tier = "top" | "mid" | "low";
+
+export function createClaude(models: string | Partial<Record<Tier, string>>): Llm {
+  const pick = (tier: Tier = "top") => {
+    if (typeof models === "string") return models;
+    return models[tier] || models.top || "claude-opus-5-5";
+  };
   // An organisation-level key must name the workspace on every request; a workspace key does not.
   const workspace = process.env.ANTHROPIC_WORKSPACE_ID;
   const client = new Anthropic(
@@ -56,7 +64,9 @@ export function createClaude(model: string): Llm {
       schema,
       effort = "medium",
       maxTokens = 16000,
+      tier,
     }) {
+      const model = pick(tier);
       const response = await client.beta.messages.parse(
         {
           model,

@@ -552,6 +552,7 @@ export async function pickPhotos(
 ): Promise<number[]> {
   if (!candidates.length) return [];
   const r = await llm.structured({
+    tier: "low",
     system:
       "You pick archive photos for a video game documentary chapter. Keep a photo only when it clearly shows something the chapter is about: the studio, its people, the city or real place the game is set in or based on, a launch event, the hardware of the era. Reject anything about an unrelated person, place or thing that merely shares a word.",
     content: `Documentary: ${chapter.franchise}\nChapter: ${chapter.title} (${chapter.game})\nOpening: ${chapter.opening.slice(0, 600)}\n\nPhotos:\n${candidates.map((c, i) => `${i}. ${c.title.replace(/^File:/, "")}: ${c.description.slice(0, 160)}`).join("\n")}`,

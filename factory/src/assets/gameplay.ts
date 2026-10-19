@@ -143,6 +143,7 @@ export async function judgeGameplay(
 ): Promise<number[]> {
   if (!items.length) return [];
   const r = await llm.structured({
+    tier: "low",
     system:
       "You check YouTube search results for a video editor. Keep only videos that show gameplay of exactly the named game (that release, not another entry in the series, a remake or remaster under a different name, a sequel, a mod, a reaction, a compilation of several games or a news video).",
         content: `Game: ${game}${year ? ` (${year})` : ""}${scope === "campaign" ? "\nThe video is about the single-player campaign: keep only campaign or story footage; reject multiplayer, Zombies, Warzone, co-op and Spec Ops videos." : ""}\n\nVideos:\n${items.map((v, i) => `${i}. "${v.title}" by ${v.channelTitle}: ${v.description.slice(0, 200)}`).join("\n")}`,

@@ -110,6 +110,7 @@ export async function rankStills(
     text: `Sentences:\n${targets.map((t) => `- ${t.key}: "${t.sentence}" (show: ${t.show})`).join("\n")}`,
   });
   const r = await llm.structured({
+    tier: "mid",
     system: PROMPT,
     content,
     schema: StillRankingSchema,

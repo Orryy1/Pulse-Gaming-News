@@ -44,7 +44,7 @@ export function oauthConfig(cfg: Config) {
 }
 
 export function createServices(db: Db, cfg: Config): Services {
-  const llm = createClaude(cfg.anthropicModel);
+  const llm = createClaude({ top: cfg.anthropicModel, mid: cfg.claudeModelMid, low: cfg.claudeModelLow });
   return {
     db,
     cfg,

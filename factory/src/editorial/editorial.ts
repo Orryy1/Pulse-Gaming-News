@@ -111,6 +111,7 @@ export async function selectStory(llm: Llm, candidates: StoryCluster[], recentHe
     )
     .join("\n");
   return llm.structured({
+    tier: "mid",
     system: selectionPrompt(),
     content: `Already covered recently:\n${recentHeadlines.map((h) => `- ${h}`).join("\n") || "- (nothing yet)"}${performance ? `\n\n${performance}` : ""}\n\nCandidates:\n${list}`,
     schema: SelectionSchema,

@@ -13,6 +13,7 @@ import { z } from "zod";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import type { Llm, LlmContent } from "../editorial/llm.ts";
+import { screenFrames } from "./localvision.ts";
 import type { Script } from "../editorial/schema.ts";
 import {
   parseMediaPlaylist,
@@ -26,7 +27,8 @@ const run = promisify(execFile);
 export const CLIP_SECONDS = 4.8;
 export const MIN_CLIP_SECONDS = 1.6; // a shot shorter than this cannot carry a line (the planner's shortest shot is 1.5 s)
 export const CANDIDATE_STEP = 1.5;
-const MAX_CANDIDATES_TO_MODEL = 24;
+const MAX_CANDIDATES_TO_MODEL = 16; // clean frames only, after the local screen
+const LOCAL_SCREEN_MAX = 120;
 const QUIET_KINDS = new Set([
   "stat",
   "date",
@@ -328,6 +330,7 @@ export async function rankByModel(
     text: `Lines needing footage:\n${targets.map((t) => `- ${t.key}: "${t.text}" (wants ${t.want}${t.keywords.length ? `: ${t.keywords.join(", ")}` : ""}, energy ${t.energy})`).join("\n")}`,
   });
   const r = await llm.structured({
+    tier: "mid",
     system: RANK_PROMPT,
     content,
     schema: ClipRankingSchema,
@@ -518,15 +521,30 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       }
     }
     if (candidates.length < 2) return [];
-    // Even spread when there are more keyframes than the model can look at.
-    const pool =
-      candidates.length > MAX_CANDIDATES_TO_MODEL
-        ? candidates.filter((_, i) => i % Math.ceil(candidates.length / MAX_CANDIDATES_TO_MODEL) === 0)
-        : candidates;
-        let assignments: Assignment[] = [];
-    let how = "rule";
-    // Keyframes the editor saw text in, so a clip can stop before one.
+    // Keyframes with text in them, so a clip can stop before one.
     const textFrames = new Set<number>();
+    // A first look on this PC's GPU throws out what is plainly unusable (words on screen, a
+    // streamer's webcam, gore, black frames) so Claude only judges clean frames, and fewer of them.
+    const spread = (xs: Candidate[], n: number) => (xs.length > n ? xs.filter((_, i) => i % Math.ceil(xs.length / n) === 0) : xs);
+    const screened = spread(candidates, LOCAL_SCREEN_MAX);
+    const flags = await screenFrames(screened.map((c) => c.frame));
+    let base = candidates;
+    if (flags.some(Boolean)) {
+      const bad = new Set<number>();
+      screened.forEach((c, i) => {
+        const f = flags[i];
+        if (!f) return;
+        if (f.text) textFrames.add(c.index);
+        if (f.text || f.webcam || f.gore || f.dark) bad.add(c.index);
+      });
+      const clean = screened.filter((c) => !bad.has(c.index));
+      log("info", "local frame screen", { frames: screened.length, clean: clean.length, text: textFrames.size, webcam: flags.filter((f) => f?.webcam).length });
+      if (clean.length >= 2) base = clean;
+    }
+    // Even spread when there are more keyframes than the model can look at.
+    const pool = spread(base, MAX_CANDIDATES_TO_MODEL);
+    let assignments: Assignment[] = [];
+    let how = "rule";
     if (o.llm) {
       try {
                 assignments = await rankByModel(o.llm, o.targets, pool, textFrames);

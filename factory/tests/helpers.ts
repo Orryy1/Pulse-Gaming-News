@@ -38,6 +38,8 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     appSecret: "test-secret-0123456789",
     adminToken: "admin",
     anthropicModel: "test",
+    claudeModelMid: "test",
+    claudeModelLow: "test",
     voiceProvider: "local",
     localTtsUrl: "http://127.0.0.1:1",
     localVoiceId: "TX3LPaxmHKxFdv7VOQHJ",

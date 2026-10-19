@@ -50,6 +50,8 @@ export interface Config {
   adminToken: string;
 
   anthropicModel: string;
+  claudeModelMid: string; // picking footage, posts, story selection
+  claudeModelLow: string; // simple filtering
   voiceProvider: VoiceProvider;
   localTtsUrl: string;
   localVoiceId: string;
@@ -184,6 +186,8 @@ export function loadConfig(): Config {
     adminToken: str("ADMIN_TOKEN"),
 
     anthropicModel: str("CLAUDE_MODEL", "claude-opus-5-5"),
+    claudeModelMid: str("CLAUDE_MODEL_MID", "claude-sonnet-5-5"),
+    claudeModelLow: str("CLAUDE_MODEL_LOW", "claude-haiku-5-5"),
     voiceProvider: str("VOICE_PROVIDER", "auto") as VoiceProvider,
     localTtsUrl: str("LOCAL_TTS_URL", "http://127.0.0.1:8765").replace(/\/$/, ""),
     localVoiceId: str("LOCAL_TTS_VOICE_ID", "TX3LPaxmHKxFdv7VOQHJ"),

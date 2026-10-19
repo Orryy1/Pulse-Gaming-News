@@ -73,6 +73,7 @@ export async function chooseEngageTopic(
     .sort((a, b) => (b.comments ?? 0) - (a.comments ?? 0))
     .slice(0, 5);
   return llm.structured({
+    tier: "mid",
     system: engagePrompt(),
     content: `Today's format: ${ctx.format}
 In the news this week:\n${

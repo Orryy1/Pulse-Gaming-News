@@ -4,7 +4,30 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { z } from "zod";
+import fs from "node:fs";
+import path from "node:path";
 import { FatalError } from "../lib/util.ts";
+
+/** One line per Claude call in data/usage/<day>.jsonl: what it was for and the tokens it used, so the bill can be explained. */
+function meter(model: string, system: string, usage: any): void {
+  try {
+    const dir = path.join(path.resolve(process.env.DATA_DIR || "./data"), "usage");
+    fs.mkdirSync(dir, { recursive: true });
+    const line = {
+      t: new Date().toISOString(),
+      model,
+      job: system.replace(/\s+/g, " ").slice(0, 70),
+      in: usage?.input_tokens ?? 0,
+      out: usage?.output_tokens ?? 0,
+      cacheRead: usage?.cache_read_input_tokens ?? 0,
+      cacheWrite: usage?.cache_creation_input_tokens ?? 0,
+    };
+    fs.appendFileSync(path.join(dir, `${line.t.slice(0, 10)}.jsonl`), `${JSON.stringify(line)}
+`);
+  } catch {
+    // The meter must never break a run.
+  }
+}
 
 export type LlmContent = Anthropic.Beta.BetaContentBlockParam[];
 
@@ -50,6 +73,7 @@ export function createClaude(model: string): Llm {
         // A large output (a long video's full shot list) needs an explicit time limit, or the SDK insists on streaming.
         maxTokens > 16000 ? { timeout: 20 * 60 * 1000 } : undefined,
       );
+      meter(model, system, response.usage);
       if (response.stop_reason === "refusal") {
         throw new FatalError(
           `model refused: ${response.stop_details?.category ?? "unspecified"}`,

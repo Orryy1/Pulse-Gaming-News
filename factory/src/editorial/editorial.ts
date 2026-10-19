@@ -37,6 +37,7 @@ export function selectionPrompt(): string {
 You are the editor choosing today's story. Pick the single candidate that will make the best Short for cold viewers:
 - Big franchises, release dates, delays, price changes, reveals, sales milestones and major studio news beat niche patch notes.
 - Prefer stories with a concrete fact a viewer can repeat to a friend.
+- Demand matters most: a Short reaches viewers who are already interested in its game. When a candidate is about a game in YouTube's trending list below (match by game or franchise, not exact words), prefer it over an equally strong story nobody is watching, and say so in your reason. Never pick a weak story just because its game is trending.
 - Avoid deals posts, reviews, guides, listicles, podcasts and tragedies.
 - The Short can only show official trailers, official store art and official press images. Never pick a story whose point is something to look at that we cannot show: real-world photos (marketing stunts, billboards, cars, merchandise, events), leaked or fan images, cosplay, mods, or the shots of a brand-new trailer. A viewer would hear about it over pictures of something else. Mark such a story real_world_images.
 - Avoid anything that repeats a story the channel already covered (listed below).

@@ -87,6 +87,7 @@ import {
 } from "./editorial/editorial.ts";
 import { narrationOf, tidyLoopLine, type Script } from "./editorial/schema.ts";
 import type { Deal } from "./discovery/deals.ts";
+import { trendingBlock } from "./discovery/demand.ts";
 import {
   buildTags,
   hashtags,
@@ -238,6 +239,8 @@ export interface Services {
   steamClimbers(now: Date): Promise<import("./discovery/charts.ts").Climber[]>;
   /** Today's best Steam deals, skipping games featured recently. */
   steamDeals(exclude: string[]): Promise<import("./discovery/deals.ts").Deal[]>;
+  /** YouTube's most-popular US charts (Gaming and everything), cached hourly, for the editor. */
+  trending(): Promise<import("./discovery/demand.ts").TrendingVideo[]>;
   /** A Wikipedia article's useful sections, by title or else by search (documentary research). */
   research(
     title: string,
@@ -366,6 +369,7 @@ async function createFromChoice(
     [
       await performanceNotes(db, s.now()).catch(() => ""),
       await retentionNotes(db, s.now()).catch(() => ""),
+      trendingBlock(await s.trending().catch(() => [])),
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -934,13 +938,19 @@ export async function maybeSelectWeekly(
   }
 
   // Steam deals: their own daily slot, only when at least four strong deals are new to the channel.
-  const dealsDue = evergreenDue(now, { ...plan(cfg.dealsDays), slot: cfg.dealsSlot }, taken);
+  const dealsDue = evergreenDue(
+    now,
+    { ...plan(cfg.dealsDays), slot: cfg.dealsSlot },
+    taken,
+  );
   if (dealsDue && !(await weeklyTried(db, `deals:${today}`))) {
     const recent = await db.query<{ script_json: Script }>(
       `SELECT script_json FROM episodes WHERE lane = 'evergreen' AND script_json->>'evergreen_format' = 'steam_deals' AND created_at > $1`,
       [new Date(now.getTime() - 14 * 86_400_000)],
     );
-    const exclude = recent.flatMap((r) => r.script_json?.entries?.map((e) => e.game_title) ?? []);
+    const exclude = recent.flatMap(
+      (r) => r.script_json?.entries?.map((e) => e.game_title) ?? [],
+    );
     const deals = await s.steamDeals(exclude);
     if (deals.length >= 4) {
       const topic = {
@@ -957,9 +967,17 @@ export async function maybeSelectWeekly(
             `- ${d.name} | ${d.usd.final}, down from ${d.usd.initial} (${d.usd.pct}% off) | ${d.rating}% positive from ${d.reviews.toLocaleString("en-US")} Steam reviews | released ${d.year ?? "unknown"}`,
         )
         .join("\n");
-      return make("deals", base(`daily:deals:${today}`, topic.title_idea, "Steam deals"), dealsDue, { topic, brief, deals }, "evergreen");
+      return make(
+        "deals",
+        base(`daily:deals:${today}`, topic.title_idea, "Steam deals"),
+        dealsDue,
+        { topic, brief, deals },
+        "evergreen",
+      );
     }
-    log("info", "steam deals skipped: too few fresh deals", { found: deals.length });
+    log("info", "steam deals skipped: too few fresh deals", {
+      found: deals.length,
+    });
   }
 
   // Weekly Recap
@@ -1637,7 +1655,10 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
  */
 /** The criterion line under a ranking's thumbnail headline: "By campaign strength", never "By ranked by...". */
 export function thumbCriterion(criterion: string): string {
-  const core = criterion.trim().replace(/[.]$/, "").replace(/^(ranked\s+|judged\s+|sorted\s+)?(by|on)\s+/i, "");
+  const core = criterion
+    .trim()
+    .replace(/[.]$/, "")
+    .replace(/^(ranked\s+|judged\s+|sorted\s+)?(by|on)\s+/i, "");
   const line = `By ${core.charAt(0).toLowerCase()}${core.slice(1)}`;
   if (line.length <= 48) return line;
   const cut = line.slice(0, 48);
@@ -1657,7 +1678,16 @@ export function euro(v: string): string {
  */
 export function groundDeals<
   T extends {
-    entries: Array<{ rank: number; game_title: string; steam_search_term: string; platforms: string; year: number; verdict_chip: string; price?: string; was?: string }>;
+    entries: Array<{
+      rank: number;
+      game_title: string;
+      steam_search_term: string;
+      platforms: string;
+      year: number;
+      verdict_chip: string;
+      price?: string;
+      was?: string;
+    }>;
   },
 >(draft: T, data: Deal[]): T {
   const norm = (t: string) =>
@@ -1670,7 +1700,11 @@ export function groundDeals<
     .map((e) => {
       const d =
         data.find((x) => norm(x.name) === norm(e.game_title)) ??
-        data.find((x) => norm(e.game_title).includes(norm(x.name)) || norm(x.name).includes(norm(e.game_title)));
+        data.find(
+          (x) =>
+            norm(e.game_title).includes(norm(x.name)) ||
+            norm(x.name).includes(norm(e.game_title)),
+        );
       if (!d) return undefined;
       const name = d.name.replace(/[\u00ae\u2122\u00a9]/g, "").trim();
       return {
@@ -1681,7 +1715,10 @@ export function groundDeals<
         platforms: "PC (Steam)",
         // The dollar price and the cut are the big chip; the card line carries pounds, euros and the old price.
         verdict_chip: `${d.usd.final} · ${d.usd.pct}% OFF`,
-        price: [d.gbp, d.eur ? euro(d.eur) : undefined].filter(Boolean).join(" · ") || "PC (STEAM)",
+        price:
+          [d.gbp, d.eur ? euro(d.eur) : undefined]
+            .filter(Boolean)
+            .join(" · ") || "PC (STEAM)",
         was: `WAS ${d.usd.initial}`,
       };
     })
@@ -4248,7 +4285,8 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   }
   // Captions go up on long videos only: YouTube captions a Short itself, and the 450 units each
   // upload cost pay for a fifth daily video (the deals Short) instead.
-  if (ep.assets_json?.srt && ep.script_json?.runtime === "long") await addCaptions(s, ep);
+  if (ep.assets_json?.srt && ep.script_json?.runtime === "long")
+    await addCaptions(s, ep);
   // YouTube refuses comments on a video that is still private: a scheduled one is commented once it is public.
   if (!ep.publish_at || new Date(ep.publish_at) <= s.now())
     await addPinnedComment(s, ep);

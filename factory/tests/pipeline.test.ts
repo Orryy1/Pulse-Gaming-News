@@ -199,6 +199,7 @@ async function setup(
     research: async () => undefined,
     steamClimbers: async () => [],
     steamDeals: async () => [],
+    trending: async () => [],
     searchPhotos: async () => [],
         igdbArt: async () => [],
         gameplayClips: async () => [],

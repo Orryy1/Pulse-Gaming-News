@@ -97,3 +97,15 @@ test("a campaign ranking keeps multiplayer out of every pick", () => {
   assert.ok(NOT_CAMPAIGN.test("Zombies Gameplay Trailer"));
   assert.ok(!NOT_CAMPAIGN.test("Campaign Launch Trailer"));
 });
+
+import { namedThings } from "../src/assets/gameplay.ts";
+
+test("named missions are found in the shot list, missions first, the game's own name never", () => {
+  const t = (key: string, text: string, keywords: string[]) => ({ key, text, want: "gameplay" as const, energy: "medium" as const, keywords });
+  const named = namedThings([
+    t("beat:9#m2", "Price leads the squad (show: Captain Price briefing)", ["Captain Price", "briefing"]),
+    t("beat:9#m1", "The crawl through Pripyat (show: All Ghillied Up mission in ghillie suits)", ["All Ghillied Up", "ghillie suit", "Modern Warfare"]),
+  ], "Call of Duty 4: Modern Warfare", "Call of Duty");
+  assert.deepEqual(named.map((n) => n.name), ["All Ghillied Up", "Captain Price"]);
+  assert.deepEqual(named[0]!.keys, ["beat:9#m1"]);
+});

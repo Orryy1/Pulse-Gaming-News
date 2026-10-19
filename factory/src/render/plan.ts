@@ -25,6 +25,7 @@ export interface PlanImage {
   aspect: number; // width / height
   luma?: number; // 0-255 mean brightness if known
   beatIndex?: number; // tagged for one entry of a ranking Short
+  wordy?: boolean; // the local screen saw menu or HUD text on it: used after clean art
 }
 
 export interface PlanClip {
@@ -235,7 +236,7 @@ export function pickHero(images: PlanImage[]): number {
 }
 
 /** Store box art, the store header and the logo have the game's name printed large: it fights the captions behind them. */
-export const hasPrintedLogo = (img: PlanImage) => /^(capsule|header|logo)$/.test(img.kind);
+export const hasPrintedLogo = (img: PlanImage) => /^(capsule|header|logo)$/.test(img.kind) || !!img.wordy;
 
 const isFramedStill = (img: PlanImage) =>
   img.aspect > 2.1 || (img.aspect >= 0.9 && img.aspect < 1.2);

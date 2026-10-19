@@ -98,6 +98,7 @@ import {
 import { narrationOf, tidyLoopLine, type Script } from "./editorial/schema.ts";
 import type { Deal } from "./discovery/deals.ts";
 import { trendingBlock } from "./discovery/demand.ts";
+import { screenFrames } from "./assets/localvision.ts";
 import { readRequests, requestsBlock } from "./social/requests.ts";
 import {
   buildTags,
@@ -2703,8 +2704,21 @@ async function gatherMedia(
       }
     }
   }
+  // Screenshots get the same local screen as clip frames: a webcam or gore is never used, and
+  // one with menu or HUD text across it ("SET V'S APPEARANCE") is used only after the clean ones.
+  const shots = images.filter((a) => a.kind === "screenshot");
+  const flags = shots.length ? await screenFrames(shots.map((a) => path.join(dir, a.file))).catch(() => []) : [];
+  const unusable = new Set<string>();
+  const wordy = new Set<string>();
+  for (const [k, f] of flags.entries()) {
+    if (!f) continue;
+    if (f.webcam || f.gore) unusable.add(shots[k]!.file);
+    else if (f.text) wordy.add(shots[k]!.file);
+  }
+  if (unusable.size || wordy.size) log("info", "screenshots screened", { episode: ep.id, dropped: unusable.size, wordy: wordy.size });
   const out: NonNullable<EpisodeAssets["images"]> = [];
   for (const a of images) {
+    if (unusable.has(a.file)) continue;
     out.push({
       file: a.file,
       kind: a.kind,
@@ -2714,6 +2728,7 @@ async function gatherMedia(
       beatIndex: a.beatIndex,
       moment: a.moment,
       label: a.label,
+      ...(wordy.has(a.file) ? { wordy: true } : {}),
     });
   }
   // Lead with the most cinematic art; screenshots fill the middle.
@@ -3714,6 +3729,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       kind: i.kind,
       aspect: i.aspect,
       beatIndex: i.beatIndex,
+      wordy: i.wordy,
     })),
     clips: (assets.clips ?? []).map((c) => ({
       durationSeconds: c.durationSeconds,
@@ -3763,7 +3779,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         if (!clip.blurFile) clip.blurFile = await blurPlate(dir, clip.file).catch(() => undefined);
       const richInput = {
         ...planInput,
-        images: (assets.images ?? []).map((i) => ({ kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex })),
+        images: (assets.images ?? []).map((i) => ({ kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex, wordy: i.wordy })),
         clips: (assets.clips ?? []).map((c) => ({ durationSeconds: c.durationSeconds, motion: c.motion, luma: c.luma, beatIndex: c.beatIndex, role: c.role })),
       };
       const tries = [0, 1, 2, 3].map((k) => buildPlan({ ...richInput, variant: (variant + k) % 4 }));

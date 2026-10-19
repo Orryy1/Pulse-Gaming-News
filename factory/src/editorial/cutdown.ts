@@ -64,7 +64,16 @@ export function cutdownWindow(
   // End just after the last word, well before the next entry's card and art fade in.
   const spoken = words.filter((w) => w.start >= start && w.end <= end + 0.05);
   const lastWord = spoken[spoken.length - 1];
-  if (lastWord) end = Math.min(end, lastWord.end + 0.3);
+  // The next entry's art starts crossfading in 0.3 s before its segment, so the cut stops ahead of that, but never inside the last word.
+  if (lastWord)
+    end = Math.max(
+      lastWord.end + 0.12,
+      Math.min(
+        end,
+        lastWord.end + 0.3,
+        next && end >= next.start - 0.01 ? next.start - 0.45 : Infinity,
+      ),
+    );
   return { start, end };
 }
 

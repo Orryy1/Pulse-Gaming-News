@@ -48,6 +48,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     sprintExtra: 3,
     sprintScoreMin: 60,
     recapLong: false,
+    footageLibrary: "",
     voiceProvider: "local",
     localTtsUrl: "http://127.0.0.1:1",
     localVoiceId: "TX3LPaxmHKxFdv7VOQHJ",

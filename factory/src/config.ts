@@ -157,6 +157,7 @@ export interface Config {
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
   ytdlpPath: string;
+  footageLibrary: string; // the owner's own recordings (NVIDIA: Videos\\<Game>\\...); empty = off
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
   amazonUkTag: string; // Amazon Associates UK tracking ID
   amazonUsTag: string; // Amazon Associates US tracking ID, when there is one
@@ -326,6 +327,7 @@ export function loadConfig(): Config {
     clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as "llm" | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
     ytdlpPath: str("YTDLP_PATH", "yt-dlp"),
+    footageLibrary: str("FOOTAGE_LIBRARY", path.join(process.env.USERPROFILE ?? "", "Videos")),
     pexelsApiKey: str("PEXELS_API_KEY"),
     amazonUkTag: str("AMAZON_AFFILIATE_TAG"),
     amazonUsTag: str("AMAZON_US_TAG"),

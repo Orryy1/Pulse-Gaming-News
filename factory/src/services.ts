@@ -27,6 +27,7 @@ import { fetchAchievements } from "./discovery/achievements.ts";
 import { researchGame } from "./discovery/wikipedia.ts";
 import { steamClimbers } from "./discovery/charts.ts";
 import { steamDeals } from "./discovery/deals.ts";
+import { libraryClips } from "./assets/library.ts";
 import { trendingVideos } from "./discovery/demand.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { findIgdbGame, fetchIgdbArt } from "./assets/igdb.ts";
@@ -99,6 +100,10 @@ export function createServices(db: Db, cfg: Config): Services {
     achievements: (appId) => fetchAchievements(appId),
     steamClimbers: (now) => steamClimbers(now),
     steamDeals: (exclude) => steamDeals(exclude),
+    ownClips: (game, franchise, dir, targets, maxClips) =>
+      cfg.footage && cfg.footageLibrary
+        ? libraryClips({ root: cfg.footageLibrary, game, franchise, episodeDir: dir, targets, maxClips, llm: cfg.clipRanking === "llm" ? llm : undefined })
+        : Promise.resolve([]),
     trending: () => trendingVideos(() => accessToken(db, oauthConfig(cfg)), (units) => quotaAdd(db, new Date(), units)),
     research: (title, fallbackQuery, maxChars) => researchGame(title, fallbackQuery, maxChars),
     fetchStock: (dir, targets, gameWords, maxClips) => (cfg.pexelsApiKey ? stockClips(cfg.pexelsApiKey, dir, targets, gameWords, maxClips) : Promise.resolve([])),

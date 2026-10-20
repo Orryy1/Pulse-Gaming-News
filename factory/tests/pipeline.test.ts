@@ -200,6 +200,7 @@ async function setup(
     steamClimbers: async () => [],
     steamDeals: async () => [],
     trending: async () => [],
+    ownClips: async () => [],
     searchPhotos: async () => [],
         igdbArt: async () => [],
         gameplayClips: async () => [],

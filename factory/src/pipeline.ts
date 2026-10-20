@@ -217,6 +217,14 @@ export interface Services {
     maxClips: number,
     scope?: "campaign",
   ): Promise<Array<VisualAsset & { credit: string }>>;
+  /** Moments from the owner's own recordings of this game (none when there are none). */
+  ownClips(
+    game: string,
+    franchise: string,
+    episodeDir: string,
+    targets: FootageTarget[],
+    maxClips: number,
+  ): Promise<VisualAsset[]>;
   /** True when a video title is footage of exactly this game (and, for a campaign video, of its campaign). */
   judgeFootage(
     game: string,
@@ -3143,6 +3151,25 @@ export async function gatherLongEntryMedia(
           trailer: om.trailer.title,
         });
     }
+    // The owner's own recordings come first: the best footage there is.
+    for (const c of await s
+      .ownClips(entry.game_title, script.game_title || entry.game_title, edir, targets.slice(0, 8), 8)
+      .catch(() => [] as VisualAsset[]))
+      clips.push({
+        file: rel(c.file),
+        sourceUrl: c.sourceUrl,
+        provenance: c.provenance,
+        durationSeconds: Math.min(c.durationSeconds ?? 4, 8),
+        beatIndex,
+        moment: c.moment,
+        role: undefined,
+        motion: c.motion,
+        luma: c.luma,
+        label: c.label,
+        reason: c.reason,
+        startSeconds: c.startSeconds,
+        audio: c.audio,
+      });
     // Licensed gameplay for every sentence (real missions and moments, credited), on top of any trailer moment:
     // a sentence then plays as footage, not a still.
     const missing = targets.slice(0, 6);

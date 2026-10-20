@@ -71,10 +71,12 @@ test("community posts: once a day after the slot, the answer a day later, the co
     /^fb https:\/\/pulse\.orryy\.com\/engage\/2026-10-19\/post_\d+\.jpg$/,
   );
   // A day on: the answer goes up once, and the comment count is read once.
-  await db.query(
-    `UPDATE events SET created_at = now() - interval '25 hours' WHERE kind = 'engage_post'`,
-  );
+  // Backdated from the test's own clock, not the real one (the real clock made this fail after 14:00 on 20 Oct 2026).
   clock = new Date("2026-10-20T13:00:00Z");
+  await db.query(
+    `UPDATE events SET created_at = $1::timestamptz - interval '25 hours' WHERE kind = 'engage_post'`,
+    [clock],
+  );
   await engageTick(deps);
   await engageTick(deps);
   assert.deepEqual(comments, [

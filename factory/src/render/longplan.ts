@@ -154,9 +154,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   );
   const tailFrames = toFrame(LONG_TAIL_SECONDS);
   const shots: LongShot[] = [];
-  const clipFrames = clips.map((c) =>
-    Math.max(MIN_SHOT, Math.floor(c.durationSeconds * LONG_FPS)),
-  );
+  // A clip's real length: one shorter than a shot is skipped by the fill, never stretched past its last frame.
+  const clipFrames = clips.map((c) => Math.floor(c.durationSeconds * LONG_FPS));
   const clipUsed = clips.map(() => false);
   const stillUses = images.map(() => 0);
   // Where each entry's stills left off, so a chapter's paragraphs walk its gallery instead of restarting it.
@@ -404,7 +403,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       }
       let media: LongMedia | undefined;
       let len = 0;
-      const wantClip = turn % 2 === 0 || !order.length;
+      // Footage first: a still only when this entry's clips have run out (it once alternated, leaving half the video on stills).
+      const wantClip = true;
       const clipIdx = wantClip
         ? ownClips.find((k) => !clipUsed[k] || seg.kind === "take")
         : undefined;

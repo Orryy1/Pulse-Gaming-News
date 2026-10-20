@@ -511,6 +511,8 @@ async function cutClip(
     "2",
     "-ar",
     "48000",
+    // Sound and picture end together: a sound track longer than the picture made the renderer ask for frames past the end.
+    "-shortest",
     "-vf",
     "scale=-2:1080,fps=30",
     "-c:v",
@@ -523,6 +525,16 @@ async function cutClip(
     "yuv420p",
     dest,
   ]);
+}
+
+/** The picture stream's length in seconds, or undefined when ffmpeg cannot say. */
+export async function videoSeconds(file: string): Promise<number | undefined> {
+  const { stderr } = await run(FFMPEG, ["-hide_banner", "-i", file, "-map", "0:v:0", "-c", "copy", "-f", "null", "-"], { maxBuffer: 8 * 1024 * 1024 }).catch(
+    (e: { stderr?: string }) => ({ stderr: String(e.stderr ?? "") }),
+  );
+  const times = [...String(stderr).matchAll(/time=(\d+):(\d+):([\d.]+)/g)];
+  const last = times.at(-1);
+  return last ? Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]) : undefined;
 }
 
 /** A trailer already on disk, ready for keyframe matching. */
@@ -700,11 +712,14 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         ? Number.parseInt(t.key.slice(5), 10)
         : undefined;
       const moment = t.key.match(/#m(\d+)$/)?.[1];
+      // The file's own picture length, not the planned one: the source can end early, and a shot
+      // planned past the last real frame stops the renderer ("no frame found").
+      const real = await videoSeconds(path.join(o.episodeDir, file));
       out.push({
         kind: "clip",
         file,
         sourceUrl: r.url,
-        durationSeconds: seconds,
+        durationSeconds: real !== undefined ? Math.min(seconds, Math.max(0, real - 0.05)) : seconds,
         beatIndex,
         moment: moment === undefined ? undefined : Number(moment),
         role: t.key === "hook" ? "hook" : undefined,

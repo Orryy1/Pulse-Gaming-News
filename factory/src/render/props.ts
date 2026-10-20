@@ -24,6 +24,7 @@ export interface ShortClip {
   beatIndex?: number;
   role?: "hook";
   stock?: boolean; // licensed stock: shown with an ILLUSTRATIVE tag
+  audio?: boolean; // gameplay with its game sound kept: played low under the narrator
 }
 
 // A type alias (not an interface) so it satisfies Remotion's Record<string, unknown> props constraint.

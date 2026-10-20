@@ -502,7 +502,15 @@ async function cutClip(
     raw,
     "-t",
     seconds.toFixed(2),
-    "-an",
+    // Sound is kept when the source has it (gameplay); trailers are fetched picture-only.
+    "-c:a",
+    "aac",
+    "-b:a",
+    "160k",
+    "-ac",
+    "2",
+    "-ar",
+    "48000",
     "-vf",
     "scale=-2:1080,fps=30",
     "-c:v",
@@ -764,7 +772,8 @@ export async function selectClips(
   const work = path.join(o.episodeDir, "trailers");
   await fs.mkdir(work, { recursive: true });
   const trailers: TrailerFile[] = [];
-  for (const [i, movie] of movies.slice(0, 2).entries()) {
+  // A long video's entry asks for many moments: up to four trailers to find them in; a Short takes two.
+  for (const [i, movie] of movies.slice(0, o.maxClips > 4 ? 4 : 2).entries()) {
     try {
       const masterRes = await fetchWithTimeout(movie.hls_h264, {}, 20_000);
       if (!masterRes.ok) continue;

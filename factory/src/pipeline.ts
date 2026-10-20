@@ -3106,7 +3106,7 @@ export async function gatherLongEntryMedia(
           ),
           Math.max(
             footageBudgetSeconds(eapp),
-            Math.min(24, footageBudgetSeconds(eapp) * 1.2),
+            Math.min(45, footageBudgetSeconds(eapp) * 2.25),
           ),
           4.8,
         ))
@@ -3162,7 +3162,7 @@ export async function gatherLongEntryMedia(
           file: rel(c.file),
           sourceUrl: c.sourceUrl,
           provenance: c.provenance,
-          durationSeconds: Math.min(c.durationSeconds ?? 4, 4.8),
+          durationSeconds: Math.min(c.durationSeconds ?? 4, 8),
           beatIndex,
           moment: c.moment,
           role: undefined,
@@ -3172,6 +3172,7 @@ export async function gatherLongEntryMedia(
           reason: c.reason,
           startSeconds: c.startSeconds,
           credit: c.credit,
+          audio: c.audio,
         });
     // IGDB tops up a thin gallery (and supplies everything for games off Steam).
     const have = mine.filter((a) => a.kind !== "capsule").length;
@@ -3406,7 +3407,7 @@ async function gatherChapterMedia(
           file: rel(c.file),
           sourceUrl: c.sourceUrl,
           provenance: c.provenance,
-          durationSeconds: Math.min(c.durationSeconds ?? 4, 4.8),
+          durationSeconds: Math.min(c.durationSeconds ?? 4, 8),
           beatIndex,
           role: undefined,
           motion: c.motion,
@@ -3415,6 +3416,7 @@ async function gatherChapterMedia(
           reason: c.reason,
           startSeconds: c.startSeconds,
           credit: c.credit,
+          audio: c.audio,
         });
     }
   } catch (err) {
@@ -3678,6 +3680,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     role: c.role,
     moment: c.moment,
     credit: c.credit,
+    audio: c.audio,
   }));
   const plan =
     assets.longPlan ??

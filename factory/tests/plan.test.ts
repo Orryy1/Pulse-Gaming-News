@@ -430,3 +430,11 @@ test("prices the voice says in words are shown as prices again", async () => {
   const merged = displayWords("at forty-nine dollars ninety-nine now".split(" ").map((text, i) => ({ text, start: i, end: i + 1 })));
   assert.deepEqual(merged[1], { text: "$49.99", start: 1, end: 4 }, "the caption lights for the whole spoken price");
 });
+
+test("game sound sits under the narrator and fades at each cut", async () => {
+  const { gameSoundVolume, GAME_SOUND_VOLUME } = await import("../src/render/longplan.ts");
+  assert.equal(gameSoundVolume(0, 120), 0, "silent on the cut");
+  assert.equal(gameSoundVolume(60, 120), GAME_SOUND_VOLUME, "full (low) level mid-shot");
+  assert.equal(gameSoundVolume(120, 120), 0, "silent at the next cut");
+  assert.ok(GAME_SOUND_VOLUME <= 0.2, "never competes with the voice");
+});

@@ -24,6 +24,7 @@ export interface VisualAsset {
   beatIndex?: number; // clips: the line; images: the ranking entry
   role?: "hook";
   stock?: boolean; // licensed stock footage, shown with an ILLUSTRATIVE tag
+  audio?: boolean; // gameplay that keeps its game sound (no talk over it), mixed low under the narrator
   startSeconds?: number;
   motion?: number; // 0-1
   luma?: number; // 0-255

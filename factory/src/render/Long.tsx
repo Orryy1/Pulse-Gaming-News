@@ -24,6 +24,7 @@ import {
   entryOf,
   momentWindows,
   titleLines,
+  gameSoundVolume,
   type LongPlan,
   usefulEmphasis,
   usefulGraphic,
@@ -57,6 +58,7 @@ export interface LongClipProp {
   role?: "hook";
   moment?: number;
   credit?: string; // licensed gameplay: creator and licence, shown on screen
+  audio?: boolean; // gameplay with its game sound kept: played low under the narrator
 }
 
 export type LongProps = {
@@ -237,14 +239,15 @@ const Still: React.FC<{
   );
 };
 
-const Clip: React.FC<{ src: string }> = ({ src }) => {
+const Clip: React.FC<{ src: string; audio?: boolean; frames?: number }> = ({ src, audio, frames }) => {
   const frame = useCurrentFrame();
   // A hard cut: fading in from transparent showed the black canvas under it for a few frames.
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <OffthreadVideo
         src={src}
-        muted
+        muted={!audio}
+        volume={audio && frames ? (f) => gameSoundVolume(f, frames) : undefined}
         style={{
           width: "100%",
           height: "100%",
@@ -332,7 +335,7 @@ const Backdrop: React.FC<{
         >
           {clip ? (
             <>
-              <Clip src={clip.src} />
+              <Clip src={clip.src} audio={clip.audio} frames={len} />
             </>
           ) : img ? (
             <>

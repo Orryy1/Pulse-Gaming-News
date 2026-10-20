@@ -593,3 +593,10 @@ export function usefulEmphasis(text: string): boolean {
     !LOOSE_END.has(words[0]!.toLowerCase())
   );
 }
+
+/** Game sound sits well under the narrator and fades in and out at each cut so a cut never pops. */
+export const GAME_SOUND_VOLUME = 0.16;
+export function gameSoundVolume(frame: number, frames: number, fade = 8): number {
+  const edge = Math.min(1, frame / fade, (frames - frame) / fade);
+  return GAME_SOUND_VOLUME * Math.max(0, edge);
+}

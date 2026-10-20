@@ -77,7 +77,7 @@ export interface LongRenderInput {
   props: Omit<LongProps, "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc"> & {
     audioFile: string | null;
     imageFiles: Array<{ file: string; kind: string; aspect: number; beatIndex?: number; credit?: string; moment?: number; label?: string }>;
-    clipFiles: Array<{ file: string; durationSeconds: number; beatIndex?: number; role?: "hook"; moment?: number; credit?: string }>;
+    clipFiles: Array<{ file: string; durationSeconds: number; beatIndex?: number; role?: "hook"; moment?: number; credit?: string; audio?: boolean }>;
     musicFile: string | null;
   };
   outFile: string;
@@ -104,7 +104,7 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       ...rest,
       audioSrc: audioFile ? `${files.url}/${audioFile}` : null,
       images: imageFiles.map((i) => ({ src: `${files.url}/${i.file}`, kind: i.kind, aspect: i.aspect, beatIndex: i.beatIndex, credit: i.credit, moment: i.moment, label: i.label })),
-      clips: clipFiles.map((c) => ({ src: `${files.url}/${c.file}`, durationSeconds: c.durationSeconds, beatIndex: c.beatIndex, role: c.role, moment: c.moment, credit: c.credit })),
+      clips: clipFiles.map((c) => ({ src: `${files.url}/${c.file}`, durationSeconds: c.durationSeconds, beatIndex: c.beatIndex, role: c.role, moment: c.moment, credit: c.credit, audio: c.audio })),
       logoSrc: "logo.png",
       musicSrc: musicFile,
     };

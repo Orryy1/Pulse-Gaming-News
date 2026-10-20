@@ -17,6 +17,7 @@ import { z } from "zod";
 import type { Llm } from "../editorial/llm.ts";
 import type { VisualAsset } from "./steam.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
+import { keepGameSound } from "./talk.ts";
 import { PUBLISHER_CHANNELS } from "./officialTrailer.ts";
 import { trailerMatchesGame, distinguishing } from "./commons.ts";
 import { normTitle } from "./igdb.ts";
@@ -66,7 +67,51 @@ export function isoSeconds(d: string): number {
     : 0;
 }
 
+/** YouTube's own search page through yt-dlp: no API quota. Creative Commons uses the page's own licence filter. */
+async function pageSearch(
+  q: string,
+  creativeCommons: boolean,
+): Promise<Array<{ videoId: string; title: string; description: string; channelId: string; channelTitle: string }> | undefined> {
+  const ytdlp = process.env.YTDLP_PATH || "yt-dlp";
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}${creativeCommons ? "&sp=EgIwAQ%253D%253D" : ""}`;
+  try {
+    const { stdout } = await run(
+      ytdlp,
+      ["--no-warnings", "--flat-playlist", "--playlist-end", "15", "--print", "%(id)s\t%(channel_id)s\t%(channel)s\t%(title)s", url],
+      { timeout: 60_000, maxBuffer: 4 * 1024 * 1024 },
+    );
+    const rows = String(stdout)
+      .split(/\r?\n/)
+      .map((l) => l.split("\t"))
+      .filter((r) => r.length >= 4 && /^[\w-]{11}$/.test(r[0]!))
+      .map(([videoId, channelId, channelTitle, ...title]) => ({
+        videoId: videoId!,
+        channelId: channelId === "NA" ? "" : channelId!,
+        channelTitle: channelTitle === "NA" ? "" : channelTitle!,
+        title: title.join("\t"),
+        description: "",
+      }));
+    return rows.length ? rows : undefined;
+  } catch (err) {
+    log("warn", "page search failed; using the API", { q, error: errorMessage(err).split("\n").pop() });
+    return undefined;
+  }
+}
+
+/** Free search first; the Data API (about 100 quota units a call) only when the page search fails. */
 async function search(
+  token: () => Promise<string>,
+  q: string,
+  extra: string,
+  quotaOk?: () => Promise<boolean>,
+): Promise<Array<{ videoId: string; title: string; description: string; channelId: string; channelTitle: string }>> {
+  const free = await pageSearch(q, /videoLicense=creativeCommon/.test(extra));
+  if (free) return free;
+  if (quotaOk && !(await quotaOk())) return [];
+  return apiSearch(token, q, extra);
+}
+
+async function apiSearch(
   token: () => Promise<string>,
   q: string,
   extra: string,
@@ -189,13 +234,14 @@ export async function findGameplay(
     ).catch(() => items.map((_, k) => k));
     return keep.map((k) => items[k]!);
   };
-  if (!opts.quotaOk || (await opts.quotaOk())) {
+  {
     const items = await judged(
       (
         await search(
           token,
           q,
           "&videoLicense=creativeCommon&videoDuration=medium",
+          opts.quotaOk,
         )
       ).filter((i) => gameplayTitleFits(i.title, game, franchise)),
     );
@@ -218,9 +264,9 @@ export async function findGameplay(
       if (out.length >= max) return out;
     }
   }
-  if (!opts.quotaOk || (await opts.quotaOk())) {
+  {
     const items = await judged(
-      (await search(token, `${game} official gameplay`, "")).filter(
+      (await search(token, `${game} official gameplay`, "", opts.quotaOk)).filter(
         // Publishers that cap or forbid footage (Rockstar, Nintendo) are left out here.
         (i) =>
           PUBLISHER_CHANNELS.some(
@@ -264,7 +310,9 @@ async function downloadSlice(
       "--no-playlist",
       "--no-warnings",
       "-f",
-      "bv*[height<=720][ext=mp4][vcodec^=avc1]/bv*[height<=720][ext=mp4]/b[height<=720][ext=mp4]",
+      "bv*[height<=720][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba/b[height<=720][ext=mp4]",
+      "--merge-output-format",
+      "mp4",
       "--download-sections",
       `*${from}-${to}`,
       "-o",
@@ -358,10 +406,9 @@ export async function findMissionGameplay(
     scope?: "campaign";
   } = {},
 ): Promise<GameplaySource | undefined> {
-  if (opts.quotaOk && !(await opts.quotaOk())) return undefined;
   const want = normTitle(mission);
   const items = (
-    await search(token, `${game} ${mission}`, "&videoLicense=creativeCommon")
+    await search(token, `${game} ${mission}`, "&videoLicense=creativeCommon", opts.quotaOk)
   ).filter((i) => {
     const t = normTitle(i.title);
     return (
@@ -459,8 +506,8 @@ async function clipsFrom(
     maxClips,
     llm: o.llm,
     prefix,
-    // Gameplay has long unbroken shots: up to six seconds a moment.
-    clipSeconds: 6,
+    // Gameplay has long unbroken shots: up to eight seconds a moment.
+    clipSeconds: 8,
     describe: (t, seconds, at) => {
       const src = files.find((f) => f.url === t.url)!.src;
       return src.kind === "cc"
@@ -475,11 +522,22 @@ async function clipsFrom(
     return [] as VisualAsset[];
   });
   await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
-  return clips.map((c) => {
+  const out: Array<VisualAsset & { credit: string }> = [];
+  for (const c of clips) {
     const src =
       files.find((f) => c.provenance.includes(f.url))?.src ?? files[0]!.src;
-    return { ...c, credit: gameplayCredit(src) };
-  });
+    // Game sound stays when nobody talks over it (commentary or cutscene dialogue would fight the narrator).
+    const audio = await keepGameSound(path.join(o.episodeDir, c.file)).catch(() => false);
+    out.push({
+      ...c,
+      audio,
+      provenance: audio ? c.provenance.replace(/, muted$/, ", with game sound") : c.provenance,
+      credit: gameplayCredit(src),
+    });
+  }
+  const sound = out.filter((c) => c.audio).length;
+  if (out.length) log("info", "gameplay sound", { game: o.game, clips: out.length, withSound: sound });
+  return out;
 }
 
 /**

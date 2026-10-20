@@ -125,7 +125,10 @@ export function createApp(
         .end(html);
     const isAdmin = () =>
       Boolean(cfg.adminToken) &&
-      safeEqual(url.searchParams.get("key") ?? "", cfg.adminToken);
+      safeEqual(
+        String(req.headers["x-admin-key"] ?? url.searchParams.get("key") ?? ""),
+        cfg.adminToken,
+      );
 
     if (url.pathname === "/health") {
       const [counts] = await db.query<Record<string, string>>(
@@ -292,6 +295,7 @@ export function createApp(
       return;
     }
     if (url.pathname === "/unpause" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       await clearSelectionPause(db);
       res
         .writeHead(200, { "content-type": "application/json" })

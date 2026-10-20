@@ -66,7 +66,9 @@ export function parseCommons(json: any): CommonsImage[] {
       ),
     });
   }
-  return out;
+  // Public domain and plain CC BY first; share-alike (which asks the video to carry the same licence) last.
+  const tier = (l: string) => (/share-?alike|-sa\b|\bsa [\d.]/i.test(l) ? 2 : /^cc[ -]by/i.test(l) ? 1 : 0);
+  return out.sort((a, b) => tier(a.license) - tier(b.license));
 }
 
 export async function searchCommons(

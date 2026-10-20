@@ -100,6 +100,19 @@ async function pageSearch(
   }
 }
 
+/** A "no HUD" search first, then the plain one, merged: clean recordings lead the list. */
+async function cleanFirst(
+  token: () => Promise<string>,
+  q: string,
+  extra: string,
+  quotaOk?: () => Promise<boolean>,
+): Promise<Awaited<ReturnType<typeof search>>> {
+  const clean = await search(token, `${q} no hud`, extra, quotaOk).catch(() => []);
+  const plain = await search(token, q, extra, quotaOk).catch(() => []);
+  const seen = new Set<string>();
+  return [...clean, ...plain].filter((i) => !seen.has(i.videoId) && seen.add(i.videoId));
+}
+
 /** Free search first; the Data API (about 100 quota units a call) only when the page search fails. */
 async function search(
   token: () => Promise<string>,
@@ -239,12 +252,7 @@ export async function findGameplay(
   {
     const items = await judged(
       (
-        await search(
-          token,
-          q,
-          "&videoLicense=creativeCommon&videoDuration=medium",
-          opts.quotaOk,
-        )
+        await cleanFirst(token, q, "&videoLicense=creativeCommon&videoDuration=medium", opts.quotaOk)
       ).filter((i) => gameplayTitleFits(i.title, game, franchise)),
     );
     const meta = await details(
@@ -329,15 +337,25 @@ async function downloadSlice(
 /** One full-size frame from the middle of a clip, through the local screen: a facecam or overlay, gore, or burned-in subtitles. */
 async function frameProblem(file: string): Promise<"facecam" | "gore" | "subtitles" | undefined> {
   const frame = file.replace(/\.mp4$/, ".check.jpg");
+  const band = file.replace(/\.mp4$/, ".band.jpg");
   try {
     await run(FFMPEG, ["-v", "error", "-y", "-ss", "0.8", "-i", file, "-frames:v", "1", "-vf", "scale=960:-2", frame]);
     const [flags] = await screenFrames([frame]);
-    // "text" is words beyond the game's own small HUD: subtitles, captions, menus. Our badges sit on top and would clash.
-    return flags?.webcam ? "facecam" : flags?.gore ? "gore" : flags?.text && !flags.hud ? "subtitles" : undefined;
+    if (flags?.webcam) return "facecam";
+    if (flags?.gore) return "gore";
+    // Subtitles sit centred along the bottom; HUD (ammo, minimap) sits in the corners. Only writing
+    // in that centre-bottom band counts: the whole-frame text flag also fires on objective markers.
+    if (flags?.text) {
+      await run(FFMPEG, ["-v", "error", "-y", "-i", frame, "-vf", "crop=iw*0.6:ih*0.22:iw*0.2:ih*0.76", band]);
+      const [b] = await screenFrames([band]);
+      if (b?.text && !b.hud) return "subtitles";
+    }
+    return undefined;
   } catch {
     return undefined;
   } finally {
     await fs.rm(frame, { force: true }).catch(() => undefined);
+    await fs.rm(band, { force: true }).catch(() => undefined);
   }
 }
 
@@ -425,7 +443,7 @@ export async function findMissionGameplay(
 ): Promise<GameplaySource | undefined> {
   const want = normTitle(mission);
   const items = (
-    await search(token, `${game} ${mission}`, "&videoLicense=creativeCommon", opts.quotaOk)
+    await cleanFirst(token, `${game} ${mission}`, "&videoLicense=creativeCommon", opts.quotaOk)
   ).filter((i) => {
     const t = normTitle(i.title);
     return (
@@ -623,7 +641,7 @@ export async function gameplayClips(
   });
   if (out.length >= o.maxClips || !rest.length) return out;
   const sources = await findGameplay(o.token, o.game, o.franchise, {
-    max: 2,
+    max: 4,
     quotaOk: o.quotaOk,
     year: o.year,
     llm: o.llm,

@@ -304,3 +304,20 @@ test("voice rotation: a few Shorts in a row share a voice, then the pool moves o
   assert.deepEqual([0, 1, 2, 3, 4, 5, 6].map((n) => pickVoice(cfg, n).id), ["a", "a", "b", "b", "c", "c", "a"]);
   assert.equal(pickVoice(testConfig("x", { voicePool: [] }), 5).id, testConfig("x").elevenLabsVoiceId, "an empty pool keeps the configured voice");
 });
+
+test("breaths between words are found from the audio, and words are left alone", async () => {
+  const { breathGaps } = await import("../src/voice/breaths.ts");
+  // 10 ms windows: speech at -12 dB for 0-1 s, a breath at -40 dB from 0.95 s (inside the word's
+  // timestamped end) to 1.3 s, speech again from 1.3 s.
+  const db = Array.from({ length: 200 }, (_, i) => (i < 95 || i >= 130 ? -12 : -40));
+  const words = [
+    { text: "today.", start: 0.5, end: 1.0 },
+    { text: "Skyward", start: 1.32, end: 1.9 },
+  ];
+  const gaps = breathGaps(words, db);
+  assert.equal(gaps.length, 1);
+  const [a, b] = gaps[0]!;
+  assert.ok(a >= 0.95 && a <= 0.97, `starts where the breath starts, got ${a}`);
+  assert.ok(b <= 1.3, `stops before the next word, got ${b}`);
+  assert.deepEqual(breathGaps([{ text: "a", start: 0.5, end: 1 }, { text: "b", start: 1.05, end: 1.5 }], db.map(() => -12)), [], "no quiet, no dip");
+});

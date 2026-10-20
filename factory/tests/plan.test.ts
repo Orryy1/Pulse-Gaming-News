@@ -427,6 +427,11 @@ test("prices the voice says in words are shown as prices again", async () => {
   assert.equal(show("only seventy dollars for twenty games"), "only $70 for twenty games");
   assert.equal(show("fifty-nine pounds ninety-nine in the UK"), "£59.99 in the UK");
   assert.equal(show("twenty million copies in twenty sixteen"), "twenty million copies in 2016", "plain numbers and years are untouched");
+  assert.equal(show("Majora's Mask, two thousand. Its clock"), "Majora's Mask, 2000. Its clock");
+  assert.equal(show("released in two thousand on the N64"), "released in 2000 on the N64");
+  assert.equal(show("two thousand players joined"), "two thousand players joined", "a count stays in words");
+  assert.equal(show("two thousand five hundred players"), "two thousand five hundred players", "not the year 2005");
+  assert.equal(show("in two thousand seven, the Wii"), "in 2007, the Wii");
   const merged = displayWords("at forty-nine dollars ninety-nine now".split(" ").map((text, i) => ({ text, start: i, end: i + 1 })));
   assert.deepEqual(merged[1], { text: "$49.99", start: 1, end: 4 }, "the caption lights for the whole spoken price");
 });

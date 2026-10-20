@@ -6,7 +6,24 @@ import type { Word } from "../voice/elevenlabs.ts";
 export type SegmentKind = "hook" | "beat" | "take" | "loop";
 
 export interface Visual {
-  kind: "title" | "stat" | "date" | "quote" | "list" | "none" | "timeline" | "price" | "score" | "countdown" | "compare" | "rank" | "platforms" | "versus" | "specs" | "milestones" | "chapter";
+  kind:
+    | "title"
+    | "stat"
+    | "date"
+    | "quote"
+    | "list"
+    | "none"
+    | "timeline"
+    | "price"
+    | "score"
+    | "countdown"
+    | "compare"
+    | "rank"
+    | "platforms"
+    | "versus"
+    | "specs"
+    | "milestones"
+    | "chapter";
   primary: string;
   secondary: string;
   date_from?: string;
@@ -44,7 +61,11 @@ const norm = (w: string) => w.toLowerCase().replace(/[^a-z0-9]/g, "");
  * index drifts, so the segment's first word is looked for within a few
  * positions of where it should be before falling back to the raw index.
  */
-export function buildSegments(inputs: SegmentInput[], words: Word[], totalSeconds: number): Segment[] {
+export function buildSegments(
+  inputs: SegmentInput[],
+  words: Word[],
+  totalSeconds: number,
+): Segment[] {
   const out: Segment[] = [];
   let idx = 0;
   for (let i = 0; i < inputs.length; i++) {
@@ -57,7 +78,10 @@ export function buildSegments(inputs: SegmentInput[], words: Word[], totalSecond
     if (want && out.length > 0 && norm(words[at]?.text ?? "") !== want) {
       for (const d of [1, -1, 2, -2, 3, -3]) {
         const j = at + d;
-        if (j > 0 && j < words.length && norm(words[j]!.text) === want) { at = j; break; }
+        if (j > 0 && j < words.length && norm(words[j]!.text) === want) {
+          at = j;
+          break;
+        }
       }
     }
     const first = words[at];
@@ -77,7 +101,12 @@ export interface CaptionPage {
 }
 
 /** Groups words into short caption pages, breaking on punctuation and pauses. */
-export function pageCaptions(words: Word[], maxWords = 4, maxChars = 30, minSeconds = 0.33): CaptionPage[] {
+export function pageCaptions(
+  words: Word[],
+  maxWords = 4,
+  maxChars = 30,
+  minSeconds = 0.33,
+): CaptionPage[] {
   const pages: CaptionPage[] = [];
   let cur: Word[] = [];
   const flush = () => {
@@ -87,7 +116,8 @@ export function pageCaptions(words: Word[], maxWords = 4, maxChars = 30, minSeco
   };
   for (let i = 0; i < words.length; i++) {
     const w = words[i]!;
-    const chars = cur.reduce((s, x) => s + x.text.length + 1, 0) + w.text.length;
+    const chars =
+      cur.reduce((s, x) => s + x.text.length + 1, 0) + w.text.length;
     if (cur.length >= maxWords || (cur.length > 0 && chars > maxChars)) flush();
     cur.push(w);
     const next = words[i + 1];
@@ -99,9 +129,20 @@ export function pageCaptions(words: Word[], maxWords = 4, maxChars = 30, minSeco
   for (let i = 0; i < pages.length - 1; ) {
     const a = pages[i]!;
     const b = pages[i + 1]!;
-    const chars = [...a.words, ...b.words].reduce((n, w) => n + w.text.length + 1, 0);
-    if (a.end - a.start < minSeconds && a.words.length + b.words.length <= maxWords + 1 && chars <= maxChars + 6) {
-      pages.splice(i, 2, { start: a.start, end: b.end, words: [...a.words, ...b.words] });
+    const chars = [...a.words, ...b.words].reduce(
+      (n, w) => n + w.text.length + 1,
+      0,
+    );
+    if (
+      a.end - a.start < minSeconds &&
+      a.words.length + b.words.length <= maxWords + 1 &&
+      chars <= maxChars + 6
+    ) {
+      pages.splice(i, 2, {
+        start: a.start,
+        end: b.end,
+        words: [...a.words, ...b.words],
+      });
     } else i++;
   }
   // Hold each page until the next one starts so captions never blink off mid-sentence.
@@ -128,7 +169,7 @@ function srtTime(seconds: number): string {
  */
 export function srtFromWords(words: Word[]): string {
   const cues: Array<{ start: number; end: number; text: string }> = [];
-    for (const p of pageCaptions(displayWords(words), 8, 40)) {
+  for (const p of pageCaptions(displayWords(words), 8, 40)) {
     const text = p.words.map((w) => w.text).join(" ");
     const last = cues.at(-1);
     if (last && p.end - p.start < 0.7 && `${last.text} ${text}`.length <= 64) {
@@ -138,8 +179,16 @@ export function srtFromWords(words: Word[]): string {
     }
     cues.push({ start: p.start, end: Math.max(p.end, p.start + 0.7), text });
   }
-  for (let i = 0; i < cues.length - 1; i++) if (cues[i]!.end > cues[i + 1]!.start) cues[i]!.end = cues[i + 1]!.start;
-  return cues.map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(c.end)}\n${c.text}\n`).join("\n") + (cues.length ? "\n" : "");
+  for (let i = 0; i < cues.length - 1; i++)
+    if (cues[i]!.end > cues[i + 1]!.start) cues[i]!.end = cues[i + 1]!.start;
+  return (
+    cues
+      .map(
+        (c, i) =>
+          `${i + 1}\n${srtTime(c.start)} --> ${srtTime(c.end)}\n${c.text}\n`,
+      )
+      .join("\n") + (cues.length ? "\n" : "")
+  );
 }
 
 /** Background shots: change picture at every segment boundary and every ~3.2s within long segments. */
@@ -153,16 +202,60 @@ export function shotTimes(segments: Segment[], maxShot = 3.2): number[] {
   return cuts;
 }
 
-const UNITS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 };
-const TEENS: Record<string, number> = { ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
-const TENS_W: Record<string, number> = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+const UNITS: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+};
+const TEENS: Record<string, number> = {
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+};
+const TENS_W: Record<string, number> = {
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  fifty: 50,
+  sixty: 60,
+  seventy: 70,
+  eighty: 80,
+  ninety: 90,
+};
 
 const SMALL: Record<string, number> = { zero: 0, ...UNITS, ...TEENS };
-const SCALES: Record<string, number> = { thousand: 1_000, million: 1_000_000, billion: 1_000_000_000 };
-const CURRENCY: Record<string, string> = { dollar: "$", dollars: "$", pound: "£", pounds: "£", euro: "€", euros: "€" };
+const SCALES: Record<string, number> = {
+  thousand: 1_000,
+  million: 1_000_000,
+  billion: 1_000_000_000,
+};
+const CURRENCY: Record<string, string> = {
+  dollar: "$",
+  dollars: "$",
+  pound: "£",
+  pounds: "£",
+  euro: "€",
+  euros: "€",
+};
 
 /** A whole number spoken in words from words[i] ("one thousand two hundred ninety-nine"), or undefined. */
-function spokenNumber(words: Word[], i: number): { value: number; used: number } | undefined {
+function spokenNumber(
+  words: Word[],
+  i: number,
+): { value: number; used: number } | undefined {
   let total = 0;
   let current = 0;
   let used = 0;
@@ -172,7 +265,8 @@ function spokenNumber(words: Word[], i: number): { value: number; used: number }
     const w = raw.toLowerCase().replace(/[^a-z-]/g, "");
     const [t, u] = w.split("-");
     if (SMALL[w] !== undefined) current += SMALL[w]!;
-    else if (TENS_W[t!] !== undefined && (!u || UNITS[u] !== undefined)) current += TENS_W[t!]! + (u ? UNITS[u]! : 0);
+    else if (TENS_W[t!] !== undefined && (!u || UNITS[u] !== undefined))
+      current += TENS_W[t!]! + (u ? UNITS[u]! : 0);
     else if (w === "hundred" && any) current *= 100;
     else if (SCALES[w] !== undefined && any && SCALES[w]! < 1_000_000) {
       total += current * SCALES[w]!;
@@ -189,23 +283,33 @@ function spokenNumber(words: Word[], i: number): { value: number; used: number }
  * A price the voice says in words ("forty-nine dollars ninety-nine", "one point five billion
  * dollars") as the screen should show it ("$49.99", "$1.5 billion"), with the words it used.
  */
-export function spokenMoney(words: Word[], i: number): { text: string; used: number } | undefined {
+export function spokenMoney(
+  words: Word[],
+  i: number,
+): { text: string; used: number } | undefined {
   const n = spokenNumber(words, i);
   if (!n) return undefined;
   let k = i + n.used;
   let decimal = "";
-  const bare = (j: number) => (words[j]?.text ?? "").toLowerCase().replace(/[^a-z-]/g, "");
+  const bare = (j: number) =>
+    (words[j]?.text ?? "").toLowerCase().replace(/[^a-z-]/g, "");
   if (bare(k) === "point" && !/[.,;:!?]$/.test(words[k - 1]!.text)) {
     let d = "";
     let j = k + 1;
-    while (j < words.length && SMALL[bare(j)] !== undefined && SMALL[bare(j)]! < 10) d += String(SMALL[bare(j++)]);
+    while (
+      j < words.length &&
+      SMALL[bare(j)] !== undefined &&
+      SMALL[bare(j)]! < 10
+    )
+      d += String(SMALL[bare(j++)]);
     if (d) {
       decimal = `.${d}`;
       k = j;
     }
   }
   let scale = "";
-  if (SCALES[bare(k)] !== undefined && SCALES[bare(k)]! >= 1_000_000) scale = ` ${bare(k++)}`;
+  if (SCALES[bare(k)] !== undefined && SCALES[bare(k)]! >= 1_000_000)
+    scale = ` ${bare(k++)}`;
   const symbol = CURRENCY[bare(k)];
   if (!symbol || /[.,;:!?]$/.test(words[k - 1]!.text)) return undefined;
   const currencyWord = words[k]!.text;
@@ -219,17 +323,27 @@ export function spokenMoney(words: Word[], i: number): { text: string; used: num
     }
   }
   const tail = (words[k - 1]!.text.match(/[.,;:!?)"”’]+$/) ?? [""])[0];
-  return { text: `${symbol}${n.value.toLocaleString("en-US")}${decimal}${cents}${scale}${tail}`, used: k - i };
+  return {
+    text: `${symbol}${n.value.toLocaleString("en-US")}${decimal}${cents}${scale}${tail}`,
+    used: k - i,
+  };
 }
 
 /** "sixteen", "ninety-seven", "oh five" as 16, 97, 5; undefined for anything else. */
-function twoDigit(words: string[]): { value: number; used: number } | undefined {
+function twoDigit(
+  words: string[],
+): { value: number; used: number } | undefined {
   const a = words[0]?.toLowerCase().replace(/[^a-z-]/g, "");
   if (!a) return undefined;
-  if (a === "oh" && UNITS[words[1]?.toLowerCase().replace(/[^a-z]/g, "") ?? ""]) return { value: UNITS[words[1]!.toLowerCase().replace(/[^a-z]/g, "")]!, used: 2 };
+  if (a === "oh" && UNITS[words[1]?.toLowerCase().replace(/[^a-z]/g, "") ?? ""])
+    return {
+      value: UNITS[words[1]!.toLowerCase().replace(/[^a-z]/g, "")]!,
+      used: 2,
+    };
   if (TEENS[a] !== undefined) return { value: TEENS[a]!, used: 1 };
   const [t, u] = a.split("-");
-  if (TENS_W[t!] !== undefined) return { value: TENS_W[t!]! + (u ? (UNITS[u] ?? 0) : 0), used: 1 };
+  if (TENS_W[t!] !== undefined)
+    return { value: TENS_W[t!]! + (u ? (UNITS[u] ?? 0) : 0), used: 1 };
   return undefined;
 }
 
@@ -243,39 +357,100 @@ export function displayWords(words: Word[]): Word[] {
   const out: Word[] = [];
   for (let i = 0; i < words.length; i++) {
     const w = words[i]!;
-    const bare = (k: number) => (words[k]?.text ?? "").toLowerCase().replace(/[^a-z-]/g, "");
-    const tail = (k: number) => (words[k]?.text ?? "").match(/[.,;:!?)"”’]+$/)?.[0] ?? "";
+    const bare = (k: number) =>
+      (words[k]?.text ?? "").toLowerCase().replace(/[^a-z-]/g, "");
+    const tail = (k: number) =>
+      (words[k]?.text ?? "").match(/[.,;:!?)"”’]+$/)?.[0] ?? "";
     // 47 percent
-    if (/^\d[\d,.]*$/.test(w.text.replace(/[^\d,.]/g, "") || "x") && /^\d/.test(w.text) && /^percent[.,;:!?)"”’]*$/i.test(words[i + 1]?.text ?? "")) {
-      out.push({ text: `${w.text.replace(/[.,;:!?]+$/, "")}%${tail(i + 1)}`, start: w.start, end: words[i + 1]!.end });
+    if (
+      /^\d[\d,.]*$/.test(w.text.replace(/[^\d,.]/g, "") || "x") &&
+      /^\d/.test(w.text) &&
+      /^percent[.,;:!?)"”’]*$/i.test(words[i + 1]?.text ?? "")
+    ) {
+      out.push({
+        text: `${w.text.replace(/[.,;:!?]+$/, "")}%${tail(i + 1)}`,
+        start: w.start,
+        end: words[i + 1]!.end,
+      });
       i++;
       continue;
     }
     // forty-nine dollars ninety-nine
     const money = spokenMoney(words, i);
     if (money) {
-      out.push({ text: money.text, start: w.start, end: words[i + money.used - 1]!.end });
+      out.push({
+        text: money.text,
+        start: w.start,
+        end: words[i + money.used - 1]!.end,
+      });
       i += money.used - 1;
       continue;
     }
     // two thousand seven
     if (bare(i) === "two" && bare(i + 1) === "thousand") {
-      const u = UNITS[bare(i + 2)];
+      const u =
+        tail(i + 1) || ["hundred", "thousand"].includes(bare(i + 3))
+          ? undefined
+          : UNITS[bare(i + 2)];
       if (u !== undefined) {
-        out.push({ text: `200${u}${tail(i + 2)}`, start: w.start, end: words[i + 2]!.end });
+        out.push({
+          text: `200${u}${tail(i + 2)}`,
+          start: w.start,
+          end: words[i + 2]!.end,
+        });
         i += 2;
+        continue;
+      }
+      // the year 2000: "Majora's Mask, two thousand." or "in two thousand" (a count, "two thousand players", stays in words)
+      const next = bare(i + 2);
+      const year = [
+        "in",
+        "since",
+        "from",
+        "until",
+        "by",
+        "of",
+        "year",
+        "early",
+        "late",
+        "around",
+      ].includes(bare(i - 1));
+      if (
+        tail(i + 1) ||
+        (year &&
+          !(
+            next in UNITS ||
+            next in TEENS ||
+            next in TENS_W ||
+            next === "hundred"
+          ))
+      ) {
+        out.push({
+          text: `2000${tail(i + 1)}`,
+          start: w.start,
+          end: words[i + 1]!.end,
+        });
+        i += 1;
         continue;
       }
     }
     // nineteen ninety-seven, twenty sixteen, twenty oh five
-    const hi = bare(i) === "nineteen" ? 19 : bare(i) === "twenty" ? 20 : undefined;
+    const hi =
+      bare(i) === "nineteen" ? 19 : bare(i) === "twenty" ? 20 : undefined;
     if (hi !== undefined) {
       const lo = twoDigit(words.slice(i + 1, i + 3).map((x) => x.text));
-      if (lo && lo.value >= 10 || (lo && words[i + 1]?.text.toLowerCase() === "oh")) {
+      if (
+        (lo && lo.value >= 10) ||
+        (lo && words[i + 1]?.text.toLowerCase() === "oh")
+      ) {
         const last = i + lo!.used;
         const year = hi * 100 + lo!.value;
         if (year >= 1950 && year <= 2099) {
-          out.push({ text: `${year}${tail(last)}`, start: w.start, end: words[last]!.end });
+          out.push({
+            text: `${year}${tail(last)}`,
+            start: w.start,
+            end: words[last]!.end,
+          });
           i = last;
           continue;
         }

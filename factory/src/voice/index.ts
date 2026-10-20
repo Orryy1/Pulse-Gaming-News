@@ -12,6 +12,7 @@ import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import { synthesise as synthesiseElevenLabs, type Narration } from "./elevenlabs.ts";
 import { synthesiseElevenLabsLong, LONG_TEXT_CHARS } from "./elevenlabsLong.ts";
 import { synthesiseLocal } from "./local.ts";
+import { quietBreaths } from "./breaths.ts";
 
 const run = promisify(execFile);
 
@@ -83,6 +84,8 @@ export async function narrate(cfg: Config, text: string, outPath: string, voice?
         // A long-form script is spoken in takes: the timestamps endpoint takes a few thousand characters at a time.
         n = text.length > LONG_TEXT_CHARS ? await synthesiseElevenLabsLong(text, outPath, elOpts) : await synthesiseElevenLabs(text, outPath, elOpts);
       }
+      // ElevenLabs voices breathe audibly between lines; its timestamps say where, so those gaps go quiet.
+      if (provider === "elevenlabs") await quietBreaths(outPath, n.words);
       await polishVoice(outPath);
       const used = provider === "local" ? { provider, id: cfg.localVoiceId, name: "Liam (local clone)" } : { provider, id: voice?.id ?? cfg.elevenLabsVoiceId, name: voice?.name ?? cfg.elevenLabsVoiceId };
       log("info", "narration ready", { provider, voice: used.name, seconds: n.durationSeconds.toFixed(1) });

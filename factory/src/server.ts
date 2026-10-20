@@ -279,7 +279,7 @@ export function createApp(
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const jobFile = path.join(cfg.dataDir, "admin", "job.json");
       if (!fs.existsSync(jobFile)) return send(404, page("No job", "<h1>No job</h1>"));
-      const job = JSON.parse(fs.readFileSync(jobFile, "utf8")) as { videoId: string; srt?: string; comment?: string; privacy?: "private" | "unlisted"; quota?: boolean };
+      const job = JSON.parse(fs.readFileSync(jobFile, "utf8")) as { videoId: string; srt?: string; comment?: string; privacy?: "private" | "unlisted"; spent?: number };
       const out: Record<string, unknown> = { videoId: job.videoId };
       const yt = services.youtube();
       try {
@@ -300,6 +300,11 @@ export function createApp(
           await yt.setPrivacy(job.videoId, job.privacy);
           await quotaAdd(db, new Date(), QUOTA.comment);
           out.privacy = (await yt.status(job.videoId))?.privacyStatus;
+        }
+        // Units spent outside the factory today (a manual upload), so its own uploads keep their headroom.
+        if (typeof job.spent === "number" && job.spent > 0 && job.spent <= 5000) {
+          await quotaAdd(db, new Date(), Math.round(job.spent));
+          out.spent = Math.round(job.spent);
         }
         out.quotaUsedToday = await quotaUsed(db, new Date());
         fs.rmSync(jobFile, { force: true });

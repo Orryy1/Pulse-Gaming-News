@@ -295,8 +295,9 @@ test("Commons: only free licences, landscape, large, and never logos or screensh
       },
     },
   });
-  assert.deepEqual(got.map((g) => g.title), ["File:DMA Design original team in 2011.jpg", "File:Old building.jpg"]);
-  assert.equal(got[0]!.artist, "Steve Hammond");
+  // Public domain before share-alike, whatever order the search returned them in.
+  assert.deepEqual(got.map((g) => g.title), ["File:Old building.jpg", "File:DMA Design original team in 2011.jpg"]);
+  assert.equal(got[1]!.artist, "Steve Hammond");
   assert.equal(got[0]!.description, "The team");
   assert.equal(photoCredit({ kind: "photo", provenance: `Wikimedia Commons photo by Steve Hammond, CC BY-SA 2.0: https://commons.wikimedia.org/wiki/x` }), "Steve Hammond / CC BY-SA 2.0 / Wikimedia Commons");
   assert.equal(photoCredit({ kind: "screenshot", provenance: "Steam" }), undefined);

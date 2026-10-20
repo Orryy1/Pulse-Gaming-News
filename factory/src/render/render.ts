@@ -5,11 +5,13 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import os from "node:os";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 import type { ShortProps } from "./props.ts";
+import { unloadLocalVision } from "../assets/localvision.ts";
 import type { LongProps } from "./Long.tsx";
 import type { ThumbProps } from "./Brand.tsx";
 import type { EngageProps } from "./Engage.tsx";
@@ -34,6 +36,18 @@ const MIME: Record<string, string> = {
   ".mp4": "video/mp4",
   ".wav": "audio/wav",
 };
+
+/**
+ * Memory for a render. The local vision model stays loaded for 15 minutes after a frame check and
+ * holds gigabytes; with it resident Remotion sized its frame cache from the little memory left and
+ * evicted frames before they were used ("No frame found at position"). The model is unloaded first
+ * and the cache gets a floor.
+ */
+async function renderMemory(): Promise<{ offthreadVideoCacheSizeInBytes: number }> {
+  await unloadLocalVision();
+  const GB = 1024 ** 3;
+  return { offthreadVideoCacheSizeInBytes: Math.round(Math.min(6 * GB, Math.max(2 * GB, os.freemem() * 0.5))) };
+}
 
 /** Read-only loopback file server rooted at one directory. */
 async function serveDir(root: string): Promise<{ url: string; close: () => Promise<void> }> {
@@ -112,6 +126,7 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
     const chromiumOptions = { gl: input.gl ?? "swangle" } as const;
     const composition = await selectComposition({ serveUrl, id: "PulseLong", inputProps: props, browserExecutable });
     await renderMedia({
+      ...(await renderMemory()),
       composition,
       serveUrl,
       codec: "h264",
@@ -163,6 +178,7 @@ export async function renderShort(input: RenderInput): Promise<void> {
     const browserExecutable = input.browserExecutable || undefined;
     const composition = await selectComposition({ serveUrl, id: "PulseShort", inputProps: props, browserExecutable });
     await renderMedia({
+      ...(await renderMemory()),
       composition,
       serveUrl,
       codec: "h264",
@@ -235,6 +251,7 @@ export async function renderCutdown(input: {
     const chromiumOptions = { gl: input.gl ?? "swangle" } as const;
     const composition = await selectComposition({ serveUrl, id: "PulseCutdown", inputProps: props, browserExecutable });
     await renderMedia({
+      ...(await renderMemory()),
       composition,
       serveUrl,
       codec: "h264",

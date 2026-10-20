@@ -72,6 +72,18 @@ export const rejectReason = (f: FrameFlags): string | undefined =>
 
 let downUntil = 0;
 
+// One frame and a short answer fit easily: the default 32k context held gigabytes the renderer needs.
+const NUM_CTX = 8192;
+
+/** Unloads the vision model (it would otherwise stay resident for 15 minutes), freeing memory for a render. */
+export async function unloadLocalVision(): Promise<void> {
+  await fetchWithTimeout(
+    `${LOCAL_VISION_URL}/api/generate`,
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: LOCAL_VISION_MODEL, keep_alive: 0 }) },
+    15_000,
+  ).catch(() => undefined);
+}
+
 async function checkOne(file: string): Promise<FrameFlags | undefined> {
   const image = (await fs.readFile(file)).toString("base64");
   const res = await fetchWithTimeout(
@@ -85,7 +97,7 @@ async function checkOne(file: string): Promise<FrameFlags | undefined> {
         think: false,
         format: SCHEMA,
         keep_alive: "15m",
-        options: { temperature: 0, num_predict: 120 },
+        options: { temperature: 0, num_predict: 120, num_ctx: NUM_CTX },
         messages: [{ role: "user", content: PROMPT, images: [image] }],
       }),
     },
@@ -187,7 +199,7 @@ async function faceBox(
         think: false,
         format: FACE_SCHEMA,
         keep_alive: "15m",
-        options: { temperature: 0, num_predict: 80 },
+        options: { temperature: 0, num_predict: 80, num_ctx: NUM_CTX },
         messages: [
           {
             role: "user",
@@ -341,7 +353,7 @@ async function clearFace(file: string): Promise<boolean> {
           required: ["clear_face"],
         },
         keep_alive: "15m",
-        options: { temperature: 0, num_predict: 20 },
+        options: { temperature: 0, num_predict: 20, num_ctx: NUM_CTX },
         messages: [
           {
             role: "user",

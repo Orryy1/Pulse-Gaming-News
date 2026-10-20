@@ -21,7 +21,7 @@ import {
   quotaHeadroom,
   type Services,
 } from "./pipeline.ts";
-import { QUOTA, quotaAdd } from "./lanes.ts";
+import { QUOTA, quotaAdd, quotaUsed } from "./lanes.ts";
 import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
 import {
   buildPosters,
@@ -279,7 +279,7 @@ export function createApp(
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const jobFile = path.join(cfg.dataDir, "admin", "job.json");
       if (!fs.existsSync(jobFile)) return send(404, page("No job", "<h1>No job</h1>"));
-      const job = JSON.parse(fs.readFileSync(jobFile, "utf8")) as { videoId: string; srt?: string; comment?: string };
+      const job = JSON.parse(fs.readFileSync(jobFile, "utf8")) as { videoId: string; srt?: string; comment?: string; privacy?: "private" | "unlisted"; quota?: boolean };
       const out: Record<string, unknown> = { videoId: job.videoId };
       const yt = services.youtube();
       try {
@@ -295,6 +295,13 @@ export function createApp(
           out.comment = await yt.insertComment(job.videoId, job.comment.slice(0, 1000));
           await quotaAdd(db, new Date(), QUOTA.comment);
         }
+        // Hiding a video (never making one public: that stays the owner's call).
+        if (job.privacy === "private" || job.privacy === "unlisted") {
+          await yt.setPrivacy(job.videoId, job.privacy);
+          await quotaAdd(db, new Date(), QUOTA.comment);
+          out.privacy = (await yt.status(job.videoId))?.privacyStatus;
+        }
+        out.quotaUsedToday = await quotaUsed(db, new Date());
         fs.rmSync(jobFile, { force: true });
         await logEvent(db, null, "admin_job", out);
         res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, ...out }));

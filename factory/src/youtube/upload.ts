@@ -466,6 +466,11 @@ export class YouTubeClient {
 
   /** Makes a video public now, keeping its other status fields as they are. */
   async makePublic(videoId: string): Promise<void> {
+    await this.setPrivacy(videoId, "public");
+  }
+
+  /** Sets a video's privacy (private hides it from everyone and can be undone), keeping its other status fields. */
+  async setPrivacy(videoId: string, privacy: "public" | "unlisted" | "private"): Promise<void> {
     const res = await this.fetchFn(`${API}/videos?part=status&id=${videoId}`, {
       headers: await this.auth(),
     });
@@ -478,7 +483,7 @@ export class YouTubeClient {
       body: JSON.stringify({
         id: videoId,
         status: {
-          privacyStatus: "public",
+          privacyStatus: privacy,
           embeddable: st.embeddable,
           license: st.license,
           publicStatsViewable: st.publicStatsViewable,

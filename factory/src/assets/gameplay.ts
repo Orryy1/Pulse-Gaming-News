@@ -326,15 +326,16 @@ async function downloadSlice(
   return to - from;
 }
 
-/** One full-size frame from the middle of a clip, through the local screen: a facecam, overlay or gore. */
-async function facecamOrGore(file: string): Promise<boolean> {
+/** One full-size frame from the middle of a clip, through the local screen: a facecam or overlay, gore, or burned-in subtitles. */
+async function frameProblem(file: string): Promise<"facecam" | "gore" | "subtitles" | undefined> {
   const frame = file.replace(/\.mp4$/, ".check.jpg");
   try {
     await run(FFMPEG, ["-v", "error", "-y", "-ss", "0.8", "-i", file, "-frames:v", "1", "-vf", "scale=960:-2", frame]);
     const [flags] = await screenFrames([frame]);
-    return Boolean(flags?.webcam || flags?.gore);
+    // "text" is words beyond the game's own small HUD: subtitles, captions, menus. Our badges sit on top and would clash.
+    return flags?.webcam ? "facecam" : flags?.gore ? "gore" : flags?.text && !flags.hud ? "subtitles" : undefined;
   } catch {
-    return false;
+    return undefined;
   } finally {
     await fs.rm(frame, { force: true }).catch(() => undefined);
   }
@@ -547,10 +548,12 @@ async function clipsFrom(
     // A full-size look at the finished clip: a small facecam is a few pixels in the matcher's
     // 320 px keyframes. A facecam or gore drops the clip and every other clip from that channel.
     const file = path.join(o.episodeDir, c.file);
-    if (streamed.has(src.url) || (await facecamOrGore(file))) {
-      streamed.add(src.url);
+    const verdict = streamed.has(src.url) ? "facecam" : await frameProblem(file);
+    if (verdict) {
+      // A facecam or gore condemns the channel; burned-in subtitles only this clip.
+      if (verdict !== "subtitles") streamed.add(src.url);
       await fs.rm(file, { force: true }).catch(() => undefined);
-      log("info", "gameplay clip dropped: facecam or overlay", { game: o.game, source: src.channelTitle });
+      log("info", "gameplay clip dropped", { game: o.game, source: src.channelTitle, reason: verdict });
       continue;
     }
     // Game sound stays when nobody talks over it (commentary or cutscene dialogue would fight the narrator).

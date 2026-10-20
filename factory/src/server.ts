@@ -272,6 +272,37 @@ export function createApp(
       }
       return;
     }
+    // Admin: one-off YouTube work on a video the factory did not make itself (a sandbox upload), using
+    // the factory's own fully-scoped login. The request carries no paths or text: the job is a file
+    // written on this PC (data/admin/job.json: { videoId, srt?, comment? }), so nothing outside can steer it.
+    if (url.pathname === "/admin/run-job" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const jobFile = path.join(cfg.dataDir, "admin", "job.json");
+      if (!fs.existsSync(jobFile)) return send(404, page("No job", "<h1>No job</h1>"));
+      const job = JSON.parse(fs.readFileSync(jobFile, "utf8")) as { videoId: string; srt?: string; comment?: string };
+      const out: Record<string, unknown> = { videoId: job.videoId };
+      const yt = services.youtube();
+      try {
+        if (!/^[\w-]{11}$/.test(job.videoId)) throw new Error("bad video id");
+        if (job.srt) {
+          const srt = path.resolve(cfg.dataDir, job.srt);
+          if (!srt.startsWith(path.resolve(cfg.dataDir)) || !srt.endsWith(".srt")) throw new Error("srt must be an .srt inside the data folder");
+          const have = await yt.listCaptions(job.videoId);
+          out.captions = have.length ? `already has ${have.length}` : await yt.insertCaption(job.videoId, srt, "en", "English");
+          if (!have.length) await quotaAdd(db, new Date(), QUOTA.captions);
+        }
+        if (job.comment) {
+          out.comment = await yt.insertComment(job.videoId, job.comment.slice(0, 1000));
+          await quotaAdd(db, new Date(), QUOTA.comment);
+        }
+        fs.rmSync(jobFile, { force: true });
+        await logEvent(db, null, "admin_job", out);
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, ...out }));
+      } catch (err) {
+        res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error: errorMessage(err) }));
+      }
+      return;
+    }
     // Admin: published videos with their scripts, QA scores and captured numbers, for performance reviews.
     if (url.pathname === "/admin/export" && req.method === "GET") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));

@@ -132,6 +132,8 @@ import {
 } from "./analytics.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import {
+  addDays,
+  localTime,
   dayKey,
   LANE_PRIORITY,
   QUOTA,
@@ -379,14 +381,74 @@ async function recentSightings(
   return rows.map((r) => ({ cluster: r.cluster_json, sighting: r }));
 }
 
-/** Uploads still due today: the news slots, the evening feature, and the deals and long-video slots on their days. */
+/**
+ * Uploads still due before YouTube's quota resets (midnight Pacific): the news slots, the evening
+ * feature, and the deals and long-video slots on their days. Slots after the reset spend the next
+ * day's quota, so they are not counted against this one.
+ */
 export function uploadsLeftToday(cfg: Config, now: Date): number {
-  const day = weekday(now, cfg.timezone);
-  const slots = [...cfg.newsSlots, cfg.weeklySlot];
-  if (cfg.dealsDays.includes(day)) slots.push(cfg.dealsSlot);
-  if (cfg.longformEnabled && cfg.longformDays.includes(day))
-    slots.push(cfg.longformSlot);
-  return slotsLeftToday(now, slots, cfg.timezone);
+  const reset = quotaResetAt(now).getTime();
+  const today = dayKey(now, cfg.timezone);
+  let n = 0;
+  for (const d of [today, addDays(today, 1)]) {
+    const day = weekday(localTime(d, "12:00", cfg.timezone), cfg.timezone);
+    const slots = [...cfg.newsSlots, cfg.weeklySlot];
+    if (cfg.dealsDays.includes(day)) slots.push(cfg.dealsSlot);
+    if (cfg.longformEnabled && cfg.longformDays.includes(day))
+      slots.push(cfg.longformSlot);
+    for (const slot of slots) {
+      const t = localTime(d, slot, cfg.timezone).getTime();
+      if (t > now.getTime() && t < reset) n++;
+    }
+  }
+  return n;
+}
+
+/** Episodes that will still upload: in production, awaiting approval or waiting to upload. */
+async function uploadsInFlight(db: Db): Promise<number> {
+  const [row] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered','awaiting_approval','approved','uploading')`,
+  );
+  return Number(row?.n ?? 0);
+}
+
+/** Units this quota day can still spend on an extra upload once every due and in-flight upload is covered. */
+export function spareUnits(cfg: Config, used: number, dueUploads: number, inFlight: number): number {
+  return cfg.quotaUnitsPerDay - used - QUOTA_RESERVE_FOR_UPLOAD * (dueUploads + inFlight);
+}
+
+// The spare-quota lane runs in the last hours before the reset, and starts nothing in the final hour
+// (production takes up to about forty minutes and the upload must land before the reset).
+const SPARE_WINDOW_MINUTES = 180;
+const SPARE_LAST_START_MINUTES = 60;
+
+/**
+ * Spare quota. Whatever YouTube quota is unspent at the reset is lost, so in the last hours of the
+ * quota day (about 05:00 to 07:00 in London) the factory makes an extra evergreen Short with what is
+ * left and uploads it scheduled for a good publish time later that day. The upload spends today's
+ * quota; the publish lands at a US-friendly hour. One a tick, while the spare covers another upload.
+ */
+export async function maybeSelectSpare(s: Services): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.spareUploads || !cfg.evergreenEnabled) return undefined;
+  const now = s.now();
+  const minutesLeft = (quotaResetAt(now).getTime() - now.getTime()) / 60_000;
+  if (minutesLeft > SPARE_WINDOW_MINUTES || minutesLeft < SPARE_LAST_START_MINUTES) return undefined;
+  const spare = spareUnits(cfg, await quotaUsed(db, now), uploadsLeftToday(cfg, now), await uploadsInFlight(db));
+  if (spare < QUOTA_RESERVE_FOR_UPLOAD) return undefined;
+  // At most one editor call every 20 minutes: a topic the editor passes on is not retried every tick.
+  if (await weeklyTried(db, `spare:${Math.floor(now.getTime() / 1_200_000)}`)) return undefined;
+  const taken = new Set((await takenSlots(db)).map((t) => t.getTime()));
+  const today = dayKey(now, cfg.timezone);
+  const slotAt = [today, addDays(today, 1)]
+    .flatMap((d) => cfg.spareSlots.map((x) => localTime(d, x, cfg.timezone)))
+    // In the order given (best US hour first), today before tomorrow.
+    .find((t) => t.getTime() > now.getTime() + 3 * 3_600_000 && !taken.has(t.getTime()));
+  if (!slotAt) return undefined;
+  const id = await createEvergreen(s, slotAt, true);
+  if (id)
+    log("info", "spare quota Short selected", { id, spare, slot: slotAt.toISOString() });
+  return id;
 }
 
 /** Units free for optional work (comment replies, sprints) once every upload still due today is covered. */
@@ -499,8 +561,9 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     return undefined;
   });
   if (cut) return cut;
-  const total = await countToday(db, cfg.timezone);
-  if (total >= cfg.dailyTarget) return undefined;
+  // Spare-quota Shorts are extra: they never take one of the day's planned Shorts.
+  const total = (await countToday(db, cfg.timezone)) - (await countSpareToday(db, cfg.timezone));
+  if (total >= cfg.dailyTarget) return (await maybeSelectSpare(s)) ?? undefined;
 
   const seen = await seenHashes(db);
   const sightings = (await recentSightings(s)).filter(
@@ -591,7 +654,8 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
       (await maybeSelectDocumentary(s)) ??
       (await maybeSelectEvergreen(s)) ??
       (await maybeSelectWeekly(s)) ??
-      (await maybeSelectLongform(s))
+      (await maybeSelectLongform(s)) ??
+      (await maybeSelectSpare(s))
     );
   const candidates = eligible.map((x) => x.cluster).slice(0, 12);
   if (candidates.length === 0) {
@@ -632,6 +696,17 @@ export async function maybeSelectEvergreen(
     await takenSlots(db),
   );
   if (!due) return undefined;
+  return createEvergreen(s, due);
+}
+
+/** Picks an evergreen ranking topic and creates its episode for `due`; `spare` marks a spare-quota Short. */
+async function createEvergreen(
+  s: Services,
+  due: Date,
+  spare = false,
+): Promise<string | undefined> {
+  const { db } = s;
+  const now = s.now();
   const covered = (
     await db.query<{ headline: string }>(
       `SELECT story_json->>'headline' AS headline FROM episodes WHERE lane = 'evergreen' AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`,
@@ -677,11 +752,12 @@ export async function maybeSelectEvergreen(
   if (!created) return undefined;
   await db.query(
     `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
-    [id, JSON.stringify({ topic })],
+    [id, JSON.stringify(spare ? { topic, spare: true } : { topic })],
   );
   await logEvent(db, id, "selected", {
     headline: topic.title_idea,
     lane: "evergreen",
+    spare,
     format: topic.format,
     theme: topic.theme,
     criterion: topic.criterion,
@@ -694,6 +770,17 @@ export async function maybeSelectEvergreen(
     theme: topic.theme,
   });
   return id;
+}
+
+/** Spare-quota Shorts created today (owner's day), which sit outside the daily target. */
+async function countSpareToday(db: Db, timeZone: string): Promise<number> {
+  const [row] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM episodes
+      WHERE created_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1
+        AND status NOT IN ('failed','rejected') AND factcheck_json->>'spare' = 'true'`,
+    [timeZone],
+  );
+  return Number(row?.n ?? 0);
 }
 
 /** Once per day and kind: a weekly lane that found too little data does not retry every tick. */

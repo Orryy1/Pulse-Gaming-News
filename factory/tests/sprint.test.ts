@@ -76,3 +76,18 @@ test("uploads still due today count the deals slot on deals days and the long vi
   // Sunday 25 Oct (clocks back, so London is UTC): no deals, but the 19:00 long video.
   assert.equal(uploadsLeftToday(cfg as any, new Date("2026-10-25T15:00:00Z")), 4);
 });
+
+test("slots after YouTube's quota reset are not reserved against tonight's quota", async () => {
+  const { uploadsLeftToday, spareUnits } = await import("../src/pipeline.ts");
+  const { testConfig } = await import("./helpers.ts");
+  const cfg = { ...testConfig("."), timezone: "Europe/London", newsSlots: ["13:00", "17:00", "22:00"], weeklySlot: "20:00", dealsSlot: "16:30", dealsDays: ["mon", "tue", "wed", "thu", "fri", "sat"], longformEnabled: false, longformDays: [], longformSlot: "19:00", quotaUnitsPerDay: 10000 };
+  // Wednesday 21 Oct 2026, 05:30 London: the quota resets at 08:00 London, every slot today comes after it.
+  assert.equal(uploadsLeftToday(cfg as any, new Date("2026-10-21T04:30:00Z")), 0);
+  // Tuesday 20 Oct, 21:30 London: only the 22:00 news slot is left before the reset.
+  assert.equal(uploadsLeftToday(cfg as any, new Date("2026-10-20T20:30:00Z")), 1);
+  // 6,616 used, nothing due, nothing in flight: room for one more upload, not two.
+  const spare = spareUnits(cfg as any, 6616, 0, 0);
+  assert.equal(spare, 3384);
+  assert.ok(spare >= 1720 && spare - 1720 < 1720);
+  assert.ok(spareUnits(cfg as any, 6616, 0, 1) < 1720, "an episode still in production keeps its upload's units");
+});

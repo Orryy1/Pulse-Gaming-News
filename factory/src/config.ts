@@ -95,6 +95,8 @@ export interface Config {
   evergreenEnabled: boolean;
   evergreenDays: string[]; // local weekdays, e.g. tue,thu,sat
   evergreenSlot: string; // local "HH:MM"
+  spareUploads: boolean; // spend the quota left before YouTube's daily reset on extra scheduled Shorts
+  spareSlots: string[]; // local "HH:MM" publish times for those Shorts, the first free one is used
   evergreenApprovalMode: ApprovalMode;
   evergreenApprovalMinutes: number;
   evergreenMaxSeconds: number; // narration cap for the lane
@@ -250,6 +252,8 @@ export function loadConfig(): Config {
     evergreenEnabled: bool("EVERGREEN_ENABLED", true),
     evergreenDays: str("EVERGREEN_DAYS", "tue,sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     evergreenSlot: str("EVERGREEN_SLOT", "20:00"),
+    spareUploads: bool("SPARE_UPLOADS", true),
+    spareSlots: str("SPARE_SLOTS", "19:00,15:00,11:00").split(",").map((x) => x.trim()).filter(Boolean),
     evergreenApprovalMode: str("EVERGREEN_APPROVAL_MODE", "manual") as ApprovalMode,
     evergreenApprovalMinutes: int("EVERGREEN_APPROVAL_MINUTES", 120),
     evergreenMaxSeconds: int("EVERGREEN_MAX_SECONDS", 95),

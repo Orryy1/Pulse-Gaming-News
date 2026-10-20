@@ -87,6 +87,8 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     evergreenEnabled: false,
     evergreenDays: ["tue", "thu", "sat"],
     evergreenSlot: "19:00",
+    spareUploads: false,
+    spareSlots: ["19:00", "15:00", "11:00"],
     evergreenApprovalMode: "manual",
     evergreenApprovalMinutes: 120,
     evergreenMaxSeconds: 170,

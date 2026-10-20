@@ -3172,7 +3172,8 @@ export async function gatherLongEntryMedia(
       });
     // Licensed gameplay for every sentence (real missions and moments, credited), on top of any trailer moment:
     // a sentence then plays as footage, not a still.
-    const missing = targets.slice(0, 6);
+    // Two different moments per sentence: footage for the whole line, not one clip and then a still.
+    const missing = targets.slice(0, 6).flatMap((t) => [t, { ...t, key: t.key.replace(/#m(\d+)$/, "#alt#m$1"), text: `${t.text}, a different moment` }]);
     if (missing.length)
       for (const c of await s
         .gameplayClips(

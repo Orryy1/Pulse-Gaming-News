@@ -11,7 +11,8 @@ export const LONG_WIDTH = 1920;
 export const LONG_HEIGHT = 1080;
 export const LONG_TAIL_SECONDS = 6; // end card after the last word
 const STILL_SHOT = 180; // 6 s on a still
-const MIN_SHOT = 60; // never a shot under 2 s
+const MIN_SHOT = 60; // never a still under 2 s
+const MIN_CLIP_SHOT = 39; // footage may cut faster: 1.3 s
 const MAX_STILL_SHOT = 240; // 8 s at most on one still
 
 export interface LongImage {
@@ -198,15 +199,15 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       if (media.type === "clip") {
         len = Math.min(clipFrames[media.index]!, remaining);
         const left = remaining - len;
-        if (left > 0 && left < MIN_SHOT) len -= MIN_SHOT - left;
-        if (len < MIN_SHOT) {
+        if (left > 0 && left < MIN_CLIP_SHOT) len -= MIN_CLIP_SHOT - left;
+        if (len < MIN_CLIP_SHOT) {
           // Too short for the gap: take the fallback, but a clip it hands back is still a clip.
           // Stretching it as if it were a still froze it on its last frame and left it free to play again.
           let alt = fallback();
           if (alt.type === "clip") {
             const l = Math.min(clipFrames[alt.index]!, remaining);
             const rest = remaining - l;
-            if (l >= MIN_SHOT && (rest === 0 || rest >= MIN_SHOT)) {
+            if (l >= MIN_CLIP_SHOT && (rest === 0 || rest >= MIN_CLIP_SHOT)) {
               media = alt;
               len = l;
               clipUsed[alt.index] = true;
@@ -412,8 +413,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         // The clip plays only as long as it lasts; what it would leave behind must be a whole shot.
         let clipLen = Math.min(clipFrames[clipIdx]!, remaining);
         const left = remaining - clipLen;
-        if (left > 0 && left < MIN_SHOT) clipLen -= MIN_SHOT - left;
-        if (clipLen >= MIN_SHOT) {
+        if (left > 0 && left < MIN_CLIP_SHOT) clipLen -= MIN_CLIP_SHOT - left;
+        if (clipLen >= MIN_CLIP_SHOT) {
           media = { type: "clip", index: clipIdx };
           clipUsed[clipIdx] = true;
           if (seg.kind === "take")

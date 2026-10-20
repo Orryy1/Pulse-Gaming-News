@@ -133,6 +133,7 @@ export async function libraryClips(o: LibraryClipOpts): Promise<VisualAsset[]> {
         llm: o.llm,
         prefix,
         clipSeconds: 8,
+        continuous: true,
         describe: (t, seconds, at) =>
           `Pulse's own gameplay capture of ${o.game} (${t.name}), ${seconds}s at ${at.toFixed(1)}s, muted`,
       }).catch((err) => {

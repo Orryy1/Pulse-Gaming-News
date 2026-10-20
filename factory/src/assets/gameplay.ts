@@ -524,6 +524,7 @@ async function clipsFrom(
     prefix,
     // Gameplay has long unbroken shots: up to eight seconds a moment.
     clipSeconds: 8,
+    continuous: true,
     describe: (t, seconds, at) => {
       const src = files.find((f) => f.url === t.url)!.src;
       return src.kind === "cc"

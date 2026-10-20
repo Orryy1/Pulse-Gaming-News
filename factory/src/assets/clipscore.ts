@@ -552,6 +552,8 @@ export interface MatchClipsOptions {
   maxClips: number;
   llm?: Llm; // omitted or failing: the motion rule decides
   clipSeconds?: number;
+  /** Gameplay recordings are one continuous take: detected "cuts" there are HUD or muzzle flashes, so clips run their full length. */
+  continuous?: boolean;
   /** Provenance text for a chosen clip, e.g. where the trailer came from. */
   describe: (trailer: TrailerFile, seconds: number, at: number) => string;
   /** Written output name prefix inside assets/, so two sources never collide. */
@@ -574,7 +576,9 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
     for (const [i, t] of o.trailers.entries()) {
       try {
         const all = await analyseTrailer(t.file, i, work, candidates.length);
-        candidates.push(...usableCandidates(all, t.total, clipSeconds));
+        candidates.push(
+          ...usableCandidates(o.continuous ? all.map((x) => ({ ...x, nextCut: undefined })) : all, t.total, clipSeconds),
+        );
       } catch (err) {
         log("warn", "trailer analysis failed", {
           movie: t.name,
@@ -674,7 +678,7 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       const file = path.join("assets", `${prefix}_${out.length}.mp4`);
       // The clip ends where its shot ends (rounded to a frame) so it never changes picture under the line,
       // and before any later keyframe in it that carries text (a title card appearing mid-shot).
-      let span = shotLength(c, clipSeconds);
+      let span = o.continuous ? clipSeconds : shotLength(c, clipSeconds);
       const textAt = candidates
         .filter(
           (x) =>

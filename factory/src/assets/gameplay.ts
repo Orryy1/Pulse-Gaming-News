@@ -18,6 +18,8 @@ import type { Llm } from "../editorial/llm.ts";
 import type { VisualAsset } from "./steam.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
 import { keepGameSound } from "./talk.ts";
+import { screenFrames } from "./localvision.ts";
+import { FFMPEG } from "../lib/bin.ts";
 import { PUBLISHER_CHANNELS } from "./officialTrailer.ts";
 import { trailerMatchesGame, distinguishing } from "./commons.ts";
 import { normTitle } from "./igdb.ts";
@@ -324,6 +326,20 @@ async function downloadSlice(
   return to - from;
 }
 
+/** One full-size frame from the middle of a clip, through the local screen: a facecam, overlay or gore. */
+async function facecamOrGore(file: string): Promise<boolean> {
+  const frame = file.replace(/\.mp4$/, ".check.jpg");
+  try {
+    await run(FFMPEG, ["-v", "error", "-y", "-ss", "0.8", "-i", file, "-frames:v", "1", "-vf", "scale=960:-2", frame]);
+    const [flags] = await screenFrames([frame]);
+    return Boolean(flags?.webcam || flags?.gore);
+  } catch {
+    return false;
+  } finally {
+    await fs.rm(frame, { force: true }).catch(() => undefined);
+  }
+}
+
 /** The credit a gameplay clip carries on screen. */
 export function gameplayCredit(
   src: Pick<GameplaySource, "channelTitle" | "kind">,
@@ -523,9 +539,19 @@ async function clipsFrom(
   });
   await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
   const out: Array<VisualAsset & { credit: string }> = [];
+  const streamed = new Set<string>();
   for (const c of clips) {
     const src =
       files.find((f) => c.provenance.includes(f.url))?.src ?? files[0]!.src;
+    // A full-size look at the finished clip: a small facecam is a few pixels in the matcher's
+    // 320 px keyframes. A facecam or gore drops the clip and every other clip from that channel.
+    const file = path.join(o.episodeDir, c.file);
+    if (streamed.has(src.url) || (await facecamOrGore(file))) {
+      streamed.add(src.url);
+      await fs.rm(file, { force: true }).catch(() => undefined);
+      log("info", "gameplay clip dropped: facecam or overlay", { game: o.game, source: src.channelTitle });
+      continue;
+    }
     // Game sound stays when nobody talks over it (commentary or cutscene dialogue would fight the narrator).
     const audio = await keepGameSound(path.join(o.episodeDir, c.file)).catch(() => false);
     out.push({

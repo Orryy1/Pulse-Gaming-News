@@ -88,8 +88,18 @@ const EVERGREEN_TAGS = [
   "pulse gaming news",
 ];
 
-function titleCase(s: string): string {
-  return s.replace(/\b([a-z])/g, (m) => m.toUpperCase());
+const SMALL_WORDS = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "the", "to", "vs", "via"]);
+
+/** Title case with the small words left small ("Call of Duty Ranked Worst to Best"), except first and after a colon or dash. */
+export function titleCase(s: string): string {
+  return s
+    .split(" ")
+    .map((w, i, all) => {
+      const after = i > 0 && /[:|\u2013-]$/.test(all[i - 1]!);
+      if (i > 0 && !after && SMALL_WORDS.has(w.toLowerCase())) return w.toLowerCase();
+      return w.replace(/^([a-z])/, (m) => m.toUpperCase());
+    })
+    .join(" ");
 }
 
 function truncateWords(s: string, max: number): string {
@@ -271,7 +281,8 @@ export function buildTags(script: Script): string[] {
   for (const t of STORY_TERMS[script.story_type] ?? [])
     add(script.game_title ? `${script.game_title} ${t}` : t);
   for (const t of script.youtube.tags) add(t);
-  for (const t of EVERGREEN_TAGS) add(t);
+  // A long video is not a Short: the Shorts tags would mislabel it.
+  for (const t of EVERGREEN_TAGS) if (script.runtime !== "long" || !/shorts/.test(t)) add(t);
   while (out.join(",").length > 480 && out.length > 1) out.pop();
   return out;
 }

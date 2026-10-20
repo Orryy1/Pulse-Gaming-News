@@ -281,9 +281,9 @@ test("SEO: titles are game-first, short and clean; tags, hashtags, lead and comm
   assert.deepEqual(titleProblems("Starfield delayed??"), ["Title uses clickbait punctuation."]);
   // Rankings follow the search pattern and never say "Part One".
   const six = polishTitle(goodScript({ game_title: "Resident Evil", headline: "Six Resident Evil games ranked", evergreen_format: "ranking", youtube: { ...s.youtube, title: "Ranking EVERY Resident Evil Game, Part One" }, entries: Array.from({ length: 6 }, (_, i) => ({ rank: i + 1, game_title: `RE ${i}`, steam_search_term: "", year: 2000 + i, platforms: "PC" })) }));
-  assert.equal(six, "6 Resident Evil Games Ranked Worst To Best");
+  assert.equal(six, "6 Resident Evil Games Ranked Worst to Best");
   const ten = polishTitle(goodScript({ game_title: "Resident Evil", headline: "x", evergreen_format: "ranking", youtube: { ...s.youtube, title: "x" }, entries: Array.from({ length: 10 }, (_, i) => ({ rank: i + 1, game_title: `RE ${i}`, steam_search_term: "", year: 2000 + i, platforms: "PC" })) }));
-  assert.equal(ten, "Every Resident Evil Game Ranked Worst To Best");
+  assert.equal(ten, "Every Resident Evil Game Ranked Worst to Best");
   assert.equal(thumbTitle(goodScript({ game_title: "Resident Evil", entries: Array.from({ length: 9 }, (_, i) => ({ rank: i + 1, game_title: "x", steam_search_term: "", year: 2000, platforms: "PC" })) })), "Every Resident Evil Game Ranked");
   assert.equal(thumbTitle(goodScript({ game_title: "Resident Evil", entries: Array.from({ length: 6 }, (_, i) => ({ rank: i + 1, game_title: "x", steam_search_term: "", year: 2000, platforms: "PC" })) })), "6 Resident Evil Games Ranked");
   assert.deepEqual(titleProblems(ten), []);

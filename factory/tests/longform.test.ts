@@ -78,7 +78,7 @@ test("the long script adapts to the common shape: intro hook, one rank beat per 
   assert.equal(script.pulse_take.label, "OUR PICK");
   assert.equal(
     evergreenTitle(script),
-    "Every Resident Evil Game Ranked Worst To Best",
+    "Every Resident Evil Game Ranked Worst to Best",
   );
 });
 

@@ -1595,6 +1595,7 @@ export async function maybeSelectLongform(
   const { db, cfg } = s;
   if (!cfg.longformEnabled) return undefined;
   const now = s.now();
+  if (cfg.longformSkip.includes(dayKey(now, cfg.timezone))) return undefined;
   const due = evergreenDue(
     now,
     {

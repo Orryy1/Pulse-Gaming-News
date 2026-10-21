@@ -128,6 +128,7 @@ export interface Config {
   weeklySlot: string;
   longformDays: string[];
   longformSlot: string;
+  longformSkip: string[]; // ISO dates (London) with no factory-made long video, e.g. one uploaded by hand
   longformApprovalMode: ApprovalMode;
   longformApprovalMinutes: number;
   longformMaxSeconds: number;
@@ -296,6 +297,7 @@ export function loadConfig(): Config {
     weeklySlot: str("WEEKLY_SLOT", "20:00"),
     longformDays: str("LONGFORM_DAYS", "sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     longformSlot: str("LONGFORM_SLOT", "19:00"),
+    longformSkip: str("LONGFORM_SKIP", "").split(",").map((d) => d.trim()).filter(Boolean),
     longformApprovalMode: str("LONGFORM_APPROVAL_MODE", "auto") as ApprovalMode,
     longformApprovalMinutes: int("LONGFORM_APPROVAL_MINUTES", 180),
     longformMaxSeconds: int("LONGFORM_MAX_SECONDS", 1560), // 3,200 words at a natural pace, with room

@@ -111,6 +111,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     weeklySlot: "20:00",
     longformDays: ["sun"],
     longformSlot: "18:00",
+    longformSkip: [],
     longformApprovalMode: "auto",
     longformApprovalMinutes: 180,
     longformMaxSeconds: 540,

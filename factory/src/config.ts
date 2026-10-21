@@ -284,7 +284,7 @@ export function loadConfig(): Config {
     longformSlot: str("LONGFORM_SLOT", "19:00"),
     longformApprovalMode: str("LONGFORM_APPROVAL_MODE", "auto") as ApprovalMode,
     longformApprovalMinutes: int("LONGFORM_APPROVAL_MINUTES", 180),
-    longformMaxSeconds: int("LONGFORM_MAX_SECONDS", 540),
+    longformMaxSeconds: int("LONGFORM_MAX_SECONDS", 1560), // 3,200 words at a natural pace, with room
     longformClipsPerEntry: int("LONGFORM_CLIPS_PER_ENTRY", 2),
     docEnabled: bool("DOC_ENABLED", true),
     docDays: str("DOC_DAYS", "sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),

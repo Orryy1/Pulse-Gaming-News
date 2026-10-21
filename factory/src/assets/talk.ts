@@ -5,7 +5,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { FFMPEG } from "../lib/bin.ts";
-import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
+import { errorMessage, log } from "../lib/util.ts";
 
 const run = promisify(execFile);
 const ASR_URL = process.env.ASR_URL || "http://127.0.0.1:8877";
@@ -51,25 +51,29 @@ export async function wordsPerSecond(
     const wav = stdout as unknown as Buffer;
     const seconds = Math.max(0.5, (wav.length - 44) / 32_000);
     for (let attempt = 0; attempt < 4; attempt++) {
-      const res = await fetchWithTimeout(
-        `${ASR_URL}/transcribe`,
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/octet-stream",
-            "x-pulse-asr-device": "cuda",
-            "x-pulse-asr-model": "medium.en",
-            "x-pulse-audio-duration-seconds": seconds.toFixed(2),
-          },
-          body: new Uint8Array(wav),
+      // One deadline for the whole exchange, reading the answer included: a recogniser wedged on the
+      // GPU once sent its headers and then nothing, which held a build for over an hour.
+      const deadline = AbortSignal.timeout(90_000);
+      const res = await fetch(`${ASR_URL}/transcribe`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-pulse-asr-device": "cuda",
+          "x-pulse-asr-model": "medium.en",
+          "x-pulse-audio-duration-seconds": seconds.toFixed(2),
         },
-        60_000,
-      );
+        body: new Uint8Array(wav),
+        signal: deadline,
+      });
       if (res.status === 409) {
+        await res.body?.cancel();
         await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); // the recogniser takes one job at a time
         continue;
       }
-      const body = (await res.json().catch(() => ({}))) as {
+      const body = (await res.json().catch((err: unknown) => {
+        if (deadline.aborted) throw err;
+        return {};
+      })) as {
         words?: unknown[];
         detail?: string;
       };

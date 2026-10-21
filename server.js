@@ -20,6 +20,7 @@ const cron = require("node-cron");
 const { extractBearerToken, tokenMatches } = require("./lib/auth-token");
 const { getPublicUrl } = require("./lib/deployment-mode");
 const { resolveRuntimeBuildInfo } = require("./lib/runtime-build-info");
+const privacyNotice = require("./lib/privacy-notice");
 const {
   resolveOperatingContract,
 } = require("./lib/stabilisation/operating-contract");
@@ -234,24 +235,11 @@ app.get("/terms", (req, res) => {
 });
 
 app.get("/privacy", (req, res) => {
-  res.send(`<!DOCTYPE html><html><head><title>Privacy Policy - Pulse Gaming News</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
-<h1>Privacy Policy</h1><p>Last updated: 27 July 2026</p>
-<p>Pulse Gaming News respects your privacy.</p>
-<h2>Data Collection</h2><p>We do not intentionally collect personal data from viewers through this site. Our application accesses public news sources and publisher-owned platform accounts to prepare and publish gaming news.</p>
-<h2>Third-Party Services</h2><p>When an operator enables an integration, we use the YouTube Data API, TikTok Content Posting API or Instagram Graph API only for our connected publishing accounts. We do not use those APIs to read or store viewer profiles.</p>
-<h2>Cookies</h2><p>Our dashboard may use essential cookies for session management. No tracking or advertising cookies are used.</p>
-<h2>Contact</h2><p>For privacy enquiries, reach us via our YouTube channel.</p>
-</body></html>`);
+  res.send(privacyNotice.privacyPage());
 });
 
 app.get("/data-deletion", (req, res) => {
-  res.send(`<!DOCTYPE html><html><head><title>Data Deletion Instructions - Pulse Gaming News</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
-<h1>Data Deletion Instructions</h1><p>Last updated: 27 July 2026</p>
-<p>Pulse Gaming News does not intentionally collect or store personal data from viewers through this site.</p>
-<h2>Platform Data</h2><p>If you interact with Pulse Gaming News on YouTube, TikTok, Instagram, Facebook or X, those platforms control their account, comment, analytics and engagement data. Use the privacy or account settings on the relevant platform to manage or delete it.</p>
-<h2>Operator Authorisation</h2><p>Pulse Gaming News stores operator authorisation records needed for its connected publishing accounts. These records are not public viewer data.</p>
-<h2>Deletion Request</h2><p>For a deletion request, contact Pulse Gaming News through the official YouTube channel and identify the platform account or authorisation you want reviewed. We will delete any matching records we control.</p>
-</body></html>`);
+  res.send(privacyNotice.dataDeletionPage());
 });
 
 // --- TikTok OAuth callback ---

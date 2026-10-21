@@ -13,6 +13,7 @@ if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
 const db = require("./lib/db");
 const axios = require("axios");
 const brand = require("./brand");
+const { redditCommentHandle } = require("./lib/reddit-attribution");
 const { getChannel } = require("./channels");
 const { applyProduceSelection } = require("./lib/produce-selection");
 const {
@@ -1445,7 +1446,7 @@ function buildVideoCommand(
       // Username + score header with fade + slide
       const upvotes = score > 0 ? `  ${score} pts` : "";
       chain.push(
-        `drawtext=text='  u/${author}${upvotes}  ':${fontOpt}:fontcolor=${brand.PRIMARY_FFM}:fontsize=26:` +
+        `drawtext=text='  ${redditCommentHandle(author)}${upvotes}  ':${fontOpt}:fontcolor=${brand.PRIMARY_FFM}:fontsize=26:` +
           `box=1:boxcolor=0x0D0D0F@0.70:boxborderw=10:` +
           `alpha='${alphaExpr}':x='${slideX}':y=${yBase}:enable='${enableExpr}'`,
       );
@@ -2201,7 +2202,7 @@ async function assemble() {
 
             const upvotes = score > 0 ? `  ${score} pts` : "";
             fbChain.push(
-              `drawtext=text='  u/${author}${upvotes}  ':${fontOpt}:fontcolor=${brand.PRIMARY_FFM}:fontsize=26:` +
+              `drawtext=text='  ${redditCommentHandle(author)}${upvotes}  ':${fontOpt}:fontcolor=${brand.PRIMARY_FFM}:fontsize=26:` +
                 `box=1:boxcolor=0x0D0D0F@0.70:boxborderw=10:` +
                 `alpha='${alphaExpr}':x='${slideX}':y=${yBase}:enable='${enableExpr}'`,
             );

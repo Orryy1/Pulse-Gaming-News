@@ -1,5 +1,6 @@
 // Production wiring for the pipeline's service seam.
 
+import { logEvent } from "./episodes.ts";
 import fs from "node:fs/promises";
 import type { Config } from "./config.ts";
 import type { Db } from "./db.ts";
@@ -153,7 +154,14 @@ export function createServices(db: Db, cfg: Config): Services {
         return false;
       }
     },
-    notify: (msg) => postDiscord(cfg.discordWebhookUrl, msg),
+    // Background news waits for the evening summary; only what the owner should see now is sent.
+    notify: async (msg) => {
+      if (msg.level === "info") {
+        await logEvent(db, null, "note", { text: (msg.content ?? String(msg.embeds?.[0]?.title ?? "")).slice(0, 300) });
+        return true;
+      }
+      return postDiscord(cfg.discordWebhookUrl, msg);
+    },
     now: () => new Date(),
   };
 }

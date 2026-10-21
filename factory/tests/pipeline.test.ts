@@ -506,7 +506,7 @@ test("QA failures retry, then fail loudly", async () => {
   const ep = (await listEpisodes(db)).find((e) => e.status === "failed")!;
   assert.ok(ep);
   assert.match(ep.last_error ?? "", /No audio stream/);
-  assert.ok(f.notifications.some((n) => n.includes("Episode failed")));
+  assert.ok(f.notifications.some((n) => n.includes("Gave up on")));
   assert.equal(f.uploads, 0);
 });
 
@@ -590,7 +590,7 @@ test("a fatal upload error pauses story selection until it lapses or YouTube is 
   };
   await tick(s);
   assert.equal((await only(db)).status, "failed");
-  assert.ok(f.notifications.some((n) => n.includes("Episode failed")));
+  assert.ok(f.notifications.some((n) => n.includes("Needs you")));
   assert.match(
     (await selectionPause(db, new Date("2026-10-16T12:05:00Z"))) ?? "",
     /invalid_grant/,
@@ -715,7 +715,7 @@ test("the breaking lane fires on a huge fresh official story outside any news sl
   assert.equal(ep.lane, "news_breaking");
   assert.equal(ep.priority, 100);
   assert.equal(ep.status, "awaiting_approval");
-  assert.ok(f.notifications.some((n) => n.startsWith("🚨")), "the owner is told a breaking Short is in production");
+  assert.ok(f.notifications.some((n) => n.startsWith("Breaking story picked")), "the owner is told a breaking Short is in production");
   setClock(new Date("2026-10-16T08:25:00Z"));
   await tick(s);
   const done = await only(db);

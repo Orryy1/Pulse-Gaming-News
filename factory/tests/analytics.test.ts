@@ -102,3 +102,23 @@ test("the opening comparison speaks only once both kinds have three Shorts", asy
   assert.deepEqual(openingLine(rows), []);
   assert.match(openingLine([...rows, { stay: 33, opening: "image" }])[0]!, /moving footage kept 45% \(3 Shorts\); on a still picture 33% \(3 Shorts\)/);
 });
+
+test("the evening summary lists what went live, TikTok drafts waiting and the background news, once a day", async () => {
+  const { dailySummary, summaryDue } = await import("../src/analytics.ts");
+  const db = await testDb();
+  const cfg = { ...testConfig(tmpDir()), timezone: "Europe/London" };
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, story_json, status, lane, script_json, youtube_video_id, updated_at)
+     VALUES ('ep_s1', 'h1', '{"headline":"x","items":[]}', 'published', 'news', $1, 'vidA', now())`,
+    [JSON.stringify(goodScript({ youtube: { ...goodScript().youtube, title: "GTA 6 Slips Again" } }))],
+  );
+  await db.query(`INSERT INTO events (episode_id, kind, detail) VALUES (NULL, 'note', '{"text":"Gave up on a story at voiced"}'), ('ep_s1', 'crosspost', '{"platform":"tiktok","id":"inbox:v1"}')`);
+  const msg = (await dailySummary(db, cfg as any, new Date())).content ?? "";
+  assert.match(msg, /1 video live:\n• GTA 6 Slips Again https:\/\/youtube\.com\/shorts\/vidA/);
+  assert.match(msg, /TikTok drafts sent: 1/);
+  assert.match(msg, /Gave up on a story/);
+  const evening = new Date();
+  evening.setUTCHours(21, 45, 0, 0);
+  assert.ok(await summaryDue(db, cfg as any, evening));
+  assert.equal(await summaryDue(db, cfg as any, evening), undefined, "only once a day");
+});

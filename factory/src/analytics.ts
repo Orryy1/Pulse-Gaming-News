@@ -461,3 +461,46 @@ export async function hookLessons(db: Db, now: Date): Promise<string> {
       .map((r) => `- ${Math.round(r.stay ?? r.pct)}%: "${r.hook}"`),
   ].join("\n");
 }
+
+/** The evening summary: what went live today, what is waiting on the owner, and the background news in one message. */
+export async function dailySummary(db: Db, cfg: Config, now: Date): Promise<DiscordMessage> {
+  const since = `date_trunc('day', $1::timestamptz AT TIME ZONE '${cfg.timezone}') AT TIME ZONE '${cfg.timezone}'`;
+  const live = await db.query<{ title: string; vid: string; runtime: string | null }>(
+    `SELECT script_json->'youtube'->>'title' AS title, youtube_video_id AS vid, script_json->>'runtime' AS runtime
+       FROM episodes WHERE status = 'published' AND youtube_video_id IS NOT NULL AND updated_at >= ${since} ORDER BY updated_at`,
+    [now],
+  );
+  const [drafts] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM events WHERE kind = 'crosspost' AND detail->>'platform' = 'tiktok' AND detail->>'id' LIKE 'inbox:%' AND created_at >= ${since}`,
+    [now],
+  );
+  const notes = await db.query<{ text: string }>(
+    `SELECT detail->>'text' AS text FROM events WHERE kind = 'note' AND created_at >= ${since} ORDER BY id DESC LIMIT 5`,
+    [now],
+  );
+  const used = await quotaUsed(db, now);
+  const lines = [
+    "📊 **Today on Pulse**",
+    live.length
+      ? `✅ ${live.length} video${live.length === 1 ? "" : "s"} live:\n${live.map((v) => `• ${v.title} ${v.runtime === "long" ? `https://youtu.be/${v.vid}` : `https://youtube.com/shorts/${v.vid}`}`).join("\n")}`
+      : "✅ No new videos today.",
+    Number(drafts?.n ?? 0) ? `📲 TikTok drafts sent: ${drafts!.n}. Post any still in your TikTok inbox.` : "",
+    notes.length ? `📝 Behind the scenes (handled, nothing for you to do):\n${notes.map((n) => `• ${n.text}`).join("\n")}` : "",
+    `YouTube allowance used: ${used.toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")}`,
+  ].filter(Boolean);
+  return { content: lines.join("\n\n").slice(0, 1990) };
+}
+
+/** True once a day after 21:30 local, until the summary is marked sent for that day. */
+export async function summaryDue(db: Db, cfg: Config, now: Date): Promise<string | undefined> {
+  const hm = new Intl.DateTimeFormat("en-GB", { timeZone: cfg.timezone, hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
+  if (hm < "21:30") return undefined;
+  const day = dayKey(now, cfg.timezone);
+  const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = 'summary_sent'`);
+  if (row?.value === day) return undefined;
+  await db.query(
+    `INSERT INTO settings (key, value) VALUES ('summary_sent', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [day],
+  );
+  return day;
+}

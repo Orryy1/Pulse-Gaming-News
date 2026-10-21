@@ -50,7 +50,7 @@ import {
 } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
 import { alert } from "./approval/discord.ts";
-import { digestDue, markDigestSent, weeklyDigest } from "./analytics.ts";
+import { dailySummary, digestDue, markDigestSent, summaryDue, weeklyDigest } from "./analytics.ts";
 
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -828,6 +828,14 @@ async function main(): Promise<void> {
     log("info", "daily restart for updates");
     await db.close();
     process.exit(0);
+  }, 5 * 60_000);
+  // 21:30 local: the day in one message (what went live, TikTok drafts waiting, background news).
+  setInterval(() => {
+    void (async () => {
+      if (!(await summaryDue(db, cfg, new Date()))) return;
+      await services.notify(await dailySummary(db, cfg, new Date()));
+      log("info", "daily summary sent");
+    })().catch((err) => log("error", "daily summary failed", { error: errorMessage(err) }));
   }, 5 * 60_000);
   // Monday 09:00 local: the week in numbers, which voices are sticking, quota.
   setInterval(() => {

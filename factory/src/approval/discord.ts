@@ -11,6 +11,8 @@ export interface DiscordMessage {
   files?: string[];
   /** Something the owner must act on: pings @everyone so the phone actually buzzes (servers default to mentions only). */
   ping?: boolean;
+  /** Background news (a story dropped, a retry, a quality note): kept for the evening summary, not sent on its own. */
+  level?: "info";
 }
 
 /** true = delivered, false = delivery failed, undefined = Discord not configured. */

@@ -719,7 +719,8 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
           [ep!.story_hash, franchiseKey(ep!.story_json), id],
         );
         await s.notify({
-          content: `🚨 Breaking lane${sprint ? ` (${showcase} sprint)` : ""}: "${ep!.story_json.headline}" is being produced now.`,
+          level: "info",
+          content: `Breaking story picked${sprint ? ` (${showcase ?? `${cfg.focusTopic} launch wave`})` : ""}: "${ep!.story_json.headline}"`,
         });
         return id;
       }
@@ -2544,6 +2545,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           last_error: feedback.join(" | "),
         });
         await s.notify({
+          level: "info",
           embeds: [
             {
               title: `🛑 Dropped: ${cluster.headline}`,
@@ -3895,6 +3897,7 @@ async function belowMediaFloor(
     count,
   });
   await s.notify({
+    level: "info",
     embeds: [
       {
         title: `🛑 Dropped: ${headline}`,
@@ -4294,7 +4297,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         problems: rubricSummary(rubric),
       });
       await s.notify({
-        content: `⚠️ "${script.headline}" renders with a red rubric (${rubricSummary(rubric)}). Worth a look.`,
+        level: "info",
+        content: `Quality note: "${script.headline}" renders with a red rubric (${rubricSummary(rubric)}). Worth a look.`,
       });
     }
   }
@@ -4519,6 +4523,7 @@ async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
     ) {
       await logEvent(s.db, ep.id, "rejected", { by: "expiry" });
       await s.notify({
+        level: "info",
         content: `⌛ "${ep.script_json?.youtube.title ?? ep.story_json.headline}" expired after ${MANUAL_APPROVAL_EXPIRY_HOURS}h without approval; moving on to new stories.`,
       });
     }
@@ -4944,7 +4949,8 @@ export async function confirmPublished(s: Services): Promise<void> {
         video: ep.youtube_video_id,
       });
       await s.notify({
-        content: `🔒 "${ep.title ?? ep.id}" is still private after its scheduled time. If you made it private, ignore this. If not, set it to public in YouTube Studio: https://studio.youtube.com/video/${ep.youtube_video_id}/edit`,
+        ping: true,
+        content: `⚠️ Needs you? "${ep.title ?? ep.id}" is still private after its scheduled time. If you made it private, ignore this. If not, set it to public in YouTube Studio: https://studio.youtube.com/video/${ep.youtube_video_id}/edit`,
       });
       continue;
     } else continue;
@@ -5066,26 +5072,17 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
     youtube_status: st.privacyStatus,
   });
   const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
-  const when = ep.publish_at
-    ? `scheduled for ${new Date(ep.publish_at).toUTCString()}`
-    : "live now";
-  const voiceLine = ep.assets_json?.voice
-    ? `\nVoice: ${ep.assets_json.voice.name}`
-    : "";
+  const longVideo = ep.script_json?.runtime === "long";
   await s.notify({
-    embeds: [
-      {
-        title: `✅ Published: ${ep.script_json!.youtube.title}`,
-        url,
-        description: `${url}\n${when}${voiceLine}${
-          ep.assets_json?.thumbVariants?.length
-            ? `\nThumbnail test ready: ${ep.assets_json.thumbVariants.join(", ")} sit beside thumb.jpg for Studio's Test & compare.`
-            : ""
-        }`,
-        color: COLOURS.ok,
-      },
-    ],
+    content: `✅ ${ep.publish_at && new Date(ep.publish_at) > s.now() ? `Uploaded, goes live ${ukTime(new Date(ep.publish_at), s.now())}` : "Live now"}${longVideo ? " (long video)" : ""}: ${ep.script_json!.youtube.title}\n${longVideo ? `https://youtu.be/${ep.youtube_video_id}` : url}`,
   });
+}
+
+/** "19:00 UK" (or "Thu 19:00 UK" when it is not today). */
+function ukTime(d: Date, now = new Date()): string {
+  const fmt = (o: Intl.DateTimeFormatOptions, x: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", ...o }).format(x);
+  const sameDay = fmt({ dateStyle: "short" }, d) === fmt({ dateStyle: "short" }, now);
+  return `${sameDay ? "" : `${fmt({ weekday: "short" }, d)} `}${fmt({ hour: "2-digit", minute: "2-digit", hour12: false }, d)} UK`;
 }
 
 const STEPS: Partial<
@@ -5152,15 +5149,16 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
         (platformFault
           ? `\nNew stories are paused for ${FATAL_PAUSE_HOURS}h (or until YouTube is reconnected) so this can be fixed.`
           : "");
-      await s.notify({
-        embeds: [
-          {
-            title: `⚠️ Episode failed at "${ep.status}"`,
-            description: `${ep.script_json?.headline ?? ep.story_json.headline}\n\n${msg.slice(0, 1500)}${where}`,
-            color: COLOURS.alert,
-          },
-        ],
-      });
+      if (platformFault)
+        await s.notify({
+          ping: true,
+          content: `⚠️ Needs you: YouTube refused an upload (${msg.slice(0, 300)}). New stories are paused for ${FATAL_PAUSE_HOURS}h. Reconnect YouTube from the dashboard if it says the login expired.${where}`,
+        });
+      else
+        await s.notify({
+          level: "info",
+          content: `Gave up on "${ep.script_json?.headline ?? ep.story_json.headline}" at ${ep.status}: ${msg.slice(0, 200)}`,
+        });
     }
     return false;
   }
@@ -5239,7 +5237,8 @@ export async function tick(
       log("error", "selection failed", { error: errorMessage(err) });
       if (err instanceof FatalError)
         await s.notify({
-          content: `⚠️ Story selection failed: ${errorMessage(err)}`,
+          level: "info",
+          content: `Story selection failed once: ${errorMessage(err)}`,
         });
     }
     for (const ep of await dueEpisodes(s.db, s.now())) {

@@ -140,7 +140,7 @@ export interface CrosspostDeps {
   posters: SocialPosters;
   now: () => Date;
   isPublic: (videoId: string) => Promise<boolean>;
-  notify: (m: { content: string; ping?: boolean }) => Promise<unknown>;
+  notify: (m: { content: string; level?: "info"; ping?: boolean }) => Promise<unknown>;
   episodeDir: (id: string) => string;
   /** A signed public link to the episode's video, for platforms that fetch it themselves. */
   videoUrl?: (id: string) => string;
@@ -193,7 +193,7 @@ export async function crosspostTick(
       // TikTok's draft upload has no caption field (no tool can prefill one), so the caption comes to the
       // owner's phone on its own: long-press, Copy Text, paste in TikTok, post.
       if (id.startsWith("inbox:")) {
-        await d.notify({ content: `📲 TikTok draft ready: "${polishTitle(script)}". Open TikTok's inbox notification, paste the next message as the caption, turn on "AI-generated content" and post.`, ping: true }).catch(() => undefined);
+        await d.notify({ ping: true, content: `📲 Your turn, TikTok: "${polishTitle(script)}"\n1. Open TikTok, tap the draft in your inbox\n2. Copy the next message, paste it as the caption\n3. Turn on "AI-generated content", then Post` }).catch(() => undefined);
         await d.notify({ content: caption.slice(0, 2000) }).catch(() => undefined);
       }
       log("info", "crossposted", { platform, episode: ep.id, id });

@@ -136,7 +136,7 @@ export interface EngageDeps {
     comment: (mediaId: string, text: string) => Promise<string>;
     comments: (mediaId: string) => Promise<number>;
   };
-  notify: (m: { content: string }) => Promise<unknown>;
+  notify: (m: { content: string; level?: "info"; ping?: boolean }) => Promise<unknown>;
 }
 
 interface PostRow {
@@ -299,7 +299,8 @@ export async function engageTick(d: EngageDeps): Promise<void> {
   });
   if (!detail.facebook && !detail.instagram)
     await d.notify({
-      content: `⚠️ Today's community post did not go out on Facebook or Instagram (${topic.question}).`,
+      level: "info",
+      content: `Today's community post did not go out on Facebook or Instagram (${topic.question}).`,
     });
 }
 

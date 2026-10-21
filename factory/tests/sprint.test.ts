@@ -91,3 +91,12 @@ test("slots after YouTube's quota reset are not reserved against tonight's quota
   assert.ok(spare >= 1720 && spare - 1720 < 1720);
   assert.ok(spareUnits(cfg as any, 6616, 0, 1) < 1720, "an episode still in production keeps its upload's units");
 });
+
+test("the channel focus reaches the editors until its end date, then stops", async () => {
+  const { focusBlock } = await import("../src/pipeline.ts");
+  const { testConfig } = await import("./helpers.ts");
+  const cfg = { ...testConfig("."), focusTopic: "Grand Theft Auto", focusUntil: "2026-11-26", focusNote: "GTA 6 launches November 19." };
+  assert.match(focusBlock(cfg as any, new Date("2026-10-21T12:00:00Z")), /Grand Theft Auto.*November 19.*Never pick a weak story/s);
+  assert.equal(focusBlock(cfg as any, new Date("2026-11-27T12:00:00Z")), "");
+  assert.equal(focusBlock({ ...cfg, focusTopic: "" } as any, new Date("2026-10-21T12:00:00Z")), "");
+});

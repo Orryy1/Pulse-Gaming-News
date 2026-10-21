@@ -464,9 +464,21 @@ export async function quotaHeadroom(
   );
 }
 
+/**
+ * A franchise the channel leans into for a while (GTA in the four weeks before GTA 6): told to every
+ * editor that picks a story or a topic, as a tie-breaker and a source of angles, never a reason to run
+ * a weak story or repeat one.
+ */
+export function focusBlock(cfg: Config, now: Date): string {
+  if (!cfg.focusTopic) return "";
+  if (cfg.focusUntil && now.getTime() > new Date(`${cfg.focusUntil}T23:59:59Z`).getTime()) return "";
+  return `Channel focus${cfg.focusUntil ? ` until ${cfg.focusUntil}` : ""}: ${cfg.focusTopic}.${cfg.focusNote ? ` ${cfg.focusNote}` : ""} When a ${cfg.focusTopic} story or topic is as strong as the alternatives, pick it, and prefer fresh angles (history, hidden details, why things happened, what fans argue about) over repeating news already covered. Never pick a weak story or invent one because of the focus.`;
+}
+
 /** For ranking topic pickers: YouTube's trending gaming videos and what viewers asked us to rank. */
 async function topicDemand(s: Services): Promise<string> {
   return [
+    focusBlock(s.cfg, s.now()),
     trendingBlock(await s.trending().catch(() => []), 25),
     requestsBlock(await readRequests(s.db).catch(() => undefined)),
   ]
@@ -487,6 +499,7 @@ async function createFromChoice(
     pool,
     await recentHeadlines(db),
     [
+      focusBlock(s.cfg, s.now()),
       await performanceNotes(db, s.now()).catch(() => ""),
       await retentionNotes(db, s.now()).catch(() => ""),
       trendingBlock(await s.trending().catch(() => [])),

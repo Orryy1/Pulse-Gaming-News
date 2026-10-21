@@ -95,6 +95,9 @@ export interface Config {
   evergreenEnabled: boolean;
   evergreenDays: string[]; // local weekdays, e.g. tue,thu,sat
   evergreenSlot: string; // local "HH:MM"
+  focusTopic: string; // a franchise the editors favour for a while (e.g. a huge launch), empty = none
+  focusUntil: string; // ISO date the focus ends
+  focusNote: string; // one line on why, for the editors
   spareUploads: boolean; // spend the quota left before YouTube's daily reset on extra scheduled Shorts
   spareSlots: string[]; // local "HH:MM" publish times for those Shorts, the first free one is used
   evergreenApprovalMode: ApprovalMode;
@@ -253,6 +256,9 @@ export function loadConfig(): Config {
     evergreenEnabled: bool("EVERGREEN_ENABLED", true),
     evergreenDays: str("EVERGREEN_DAYS", "tue,sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     evergreenSlot: str("EVERGREEN_SLOT", "20:00"),
+    focusTopic: str("FOCUS_TOPIC", ""),
+    focusUntil: str("FOCUS_UNTIL", ""),
+    focusNote: str("FOCUS_NOTE", ""),
     spareUploads: bool("SPARE_UPLOADS", true),
     spareSlots: str("SPARE_SLOTS", "19:00,15:00,11:00").split(",").map((x) => x.trim()).filter(Boolean),
     evergreenApprovalMode: str("EVERGREEN_APPROVAL_MODE", "manual") as ApprovalMode,

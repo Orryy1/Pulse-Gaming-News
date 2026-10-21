@@ -720,3 +720,15 @@ test("long-video moment sounds are spaced out and keep clear of each entry's swe
   );
   assert.notEqual(out.get(2), out.get(5), "whoosh variants rotate");
 });
+
+test("a corner credit's fades always form a strictly increasing range, however short the shot", async () => {
+  const { creditFade } = await import("../src/render/motion.ts");
+  for (let d = 0; d <= 40; d++) {
+    const f = creditFade(d);
+    if (f < 1) continue;
+    const range = [0, f, d - f, d];
+    for (let k = 1; k < range.length; k++) assert.ok(range[k]! > range[k - 1]!, `shot of ${d} frames: ${range}`);
+  }
+  assert.equal(creditFade(12), 5, "the 12-frame shot that crashed renders now fades over 5 frames");
+  assert.equal(creditFade(60), 8);
+});

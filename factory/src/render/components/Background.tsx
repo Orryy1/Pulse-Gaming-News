@@ -11,7 +11,7 @@ import type { ShortImage, ShortClip } from "../props.ts";
 import type { RenderPlan } from "../plan.ts";
 import { shotAt } from "../plan.ts";
 import { COLOUR } from "../brand.ts";
-import { cutPunch, moveTransform, type MovePreset } from "../motion.ts";
+import { creditFade, cutPunch, moveTransform, type MovePreset } from "../motion.ts";
 import { BANDS, CREDIT_TOP, SAFE, WIDTH } from "../layout.ts";
 import { BODY } from "./fonts.ts";
 
@@ -219,12 +219,19 @@ const FootageCredit: React.FC<{ credit: string; durationFrames: number }> = ({
   durationFrames,
 }) => {
   const frame = useCurrentFrame();
-  const o = interpolate(
-    frame,
-    [0, 8, durationFrames - 8, durationFrames],
-    [0, 1, 1, 0],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
+  // Fades in and out over 8 frames, shorter on a short shot: overlapping fades gave Remotion a
+  // non-increasing range ([0, 8, 4, 12]) and failed the whole render. The range must be strictly
+  // increasing, so each fade is under half the shot; a shot under 3 frames shows no credit.
+  const fade = creditFade(durationFrames);
+  const o =
+    fade < 1
+      ? 0
+      : interpolate(
+          frame,
+          [0, fade, durationFrames - fade, durationFrames],
+          [0, 1, 1, 0],
+          { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+        );
   return (
     <div
       style={{
@@ -302,7 +309,10 @@ export const ArtTrack: React.FC<{
       <Sequence from={shot.start} layout="none">
         {body}
         {clip?.stock ? (
-          <FootageCredit credit="ILLUSTRATIVE · STOCK FOOTAGE" durationFrames={len} />
+          <FootageCredit
+            credit="ILLUSTRATIVE · STOCK FOOTAGE"
+            durationFrames={len}
+          />
         ) : clip && footageCredit ? (
           <FootageCredit credit={footageCredit} durationFrames={len} />
         ) : null}

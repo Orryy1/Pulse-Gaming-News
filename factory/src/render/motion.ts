@@ -105,3 +105,9 @@ export function cutPunch(frame: number): number {
     easing: ease.out,
   });
 }
+
+/**
+ * Frames each fade of a corner credit takes on a shot `durationFrames` long: 8, or under half a short
+ * shot so the fade range stays strictly increasing (Remotion throws otherwise); 0 means show nothing.
+ */
+export const creditFade = (durationFrames: number) => Math.max(0, Math.min(8, Math.floor((durationFrames - 1) / 2)));

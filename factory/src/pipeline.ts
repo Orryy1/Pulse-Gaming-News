@@ -397,6 +397,7 @@ export function uploadsLeftToday(cfg: Config, now: Date): number {
     if (cfg.dealsDays.includes(day)) slots.push(cfg.dealsSlot);
     if (cfg.longformEnabled && cfg.longformDays.includes(day))
       slots.push(cfg.longformSlot);
+    if (cfg.whyEnabled && cfg.whyDays.includes(day)) slots.push(cfg.whySlot);
     for (const slot of slots) {
       const t = localTime(d, slot, cfg.timezone).getTime();
       if (t > now.getTime() && t < reset) n++;

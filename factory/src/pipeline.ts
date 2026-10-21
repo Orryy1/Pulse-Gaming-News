@@ -2,6 +2,7 @@
 // Each step reads its inputs from Postgres/disk and writes its outputs before
 // the status moves, so any step can crash and be retried safely.
 
+import { pollBlock, readPoll } from "./social/poll.ts";
 import { selectWhyTopic } from "./editorial/why.ts";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -554,6 +555,7 @@ async function topicDemand(s: Services): Promise<string> {
     focusBlock(s.cfg, s.now()),
     trendingBlock(await s.trending().catch(() => []), 25),
     requestsBlock(await readRequests(s.db).catch(() => undefined)),
+    pollBlock(await readPoll(s.db).catch(() => undefined), s.now()),
   ]
     .filter(Boolean)
     .join("\n\n");

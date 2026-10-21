@@ -1,6 +1,7 @@
 // The whole service: an HTTP server for approvals, previews, OAuth and health,
 // plus the in-process scheduler that ticks the pipeline.
 
+import { pollPlan, recordPollResult } from "./social/poll.ts";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -269,6 +270,33 @@ export function createApp(
         res
           .writeHead(500, { "content-type": "application/json" })
           .end(JSON.stringify({ ok: false, error: errorMessage(err) }));
+      }
+      return;
+    }
+    // Admin: this week's poll options, and recording the last poll's result (from data/admin/poll_result.json).
+    if (url.pathname === "/admin/poll-plan" && req.method === "GET") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const plan = await pollPlan(db, cfg, await services.discoverEvergreen().catch(() => []), new Date());
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(plan));
+      return;
+    }
+    if (url.pathname === "/admin/poll-result" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const file = path.join(cfg.dataDir, "admin", "poll_result.json");
+      if (!fs.existsSync(file)) return send(404, page("No result", "<h1>No result</h1>"));
+      try {
+        const raw = JSON.parse(fs.readFileSync(file, "utf8")) as { options?: Array<{ name?: unknown; percent?: unknown }> };
+        const options = (raw.options ?? [])
+          .map((o) => ({ name: String(o.name ?? "").slice(0, 40), percent: Math.max(0, Math.min(100, Number(o.percent) || 0)) }))
+          .filter((o) => o.name)
+          .slice(0, 5);
+        if (!options.length) throw new Error("no options in poll_result.json");
+        await recordPollResult(db, { at: new Date().toISOString(), options });
+        fs.rmSync(file, { force: true });
+        await logEvent(db, null, "poll_result", { options });
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, options }));
+      } catch (err) {
+        res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error: errorMessage(err) }));
       }
       return;
     }

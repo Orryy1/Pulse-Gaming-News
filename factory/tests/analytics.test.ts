@@ -122,3 +122,16 @@ test("the evening summary lists what went live, TikTok drafts waiting and the ba
   assert.ok(await summaryDue(db, cfg as any, evening));
   assert.equal(await summaryDue(db, cfg as any, evening), undefined, "only once a day");
 });
+
+test("the weekly poll offers four fresh series (requests and focus first) and its winner steers the ranking", async () => {
+  const { pollPlan, recordPollResult, readPoll, pollBlock } = await import("../src/social/poll.ts");
+  const db = await testDb();
+  const cfg = { ...testConfig(await tmpDir()), focusTopic: "Grand Theft Auto" };
+  await db.query(`INSERT INTO settings (key, value) VALUES ('audience_requests', $1)`, [JSON.stringify({ at: new Date().toISOString(), requests: [{ name: "Metal Gear Solid", count: 3 }] })]);
+  await db.query(`INSERT INTO episodes (id, story_hash, status, story_json, lane, script_json) VALUES ('ep_l', 'l', 'published', '{"headline":"Call of Duty","items":[]}', 'longform', '{"game_title":"Call of Duty"}')`);
+  const plan = await pollPlan(db, cfg as any, [{ name: "Call of Duty", source: "franchise seed" }, { name: "Resident Evil", source: "franchise seed" }, { name: "Halo", source: "franchise seed" }, { name: "Zelda", source: "franchise seed" }], new Date());
+  assert.deepEqual(plan.options, ["Metal Gear Solid", "Grand Theft Auto", "Resident Evil", "Halo"], "never a series ranked lately");
+  await recordPollResult(db, { at: new Date().toISOString(), options: [{ name: "Halo", percent: 54 }, { name: "Resident Evil", percent: 46 }] });
+  assert.match(pollBlock(await readPoll(db), new Date()), /Halo 54%, Resident Evil 46%/);
+  assert.equal(pollBlock(await readPoll(db), new Date(Date.now() + 15 * 86_400_000)), "", "a stale poll stops steering");
+});

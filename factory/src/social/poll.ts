@@ -33,13 +33,21 @@ export async function pollPlan(
       (c) => c.includes(name.toLowerCase()) || name.toLowerCase().includes(c),
     );
   const options: string[] = [];
+  const skip = (process.env.POLL_EXCLUDE ?? "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+  // A series name that fits a poll option whole ("Resident Evil"), never a theme ("co-op games to play with friends").
   const add = (name: string) => {
-    const n = name.trim().replace(/\s+/g, " ").slice(0, 30);
+    const n = name.trim().replace(/\s+/g, " ");
     if (
-      n &&
-      fresh(n) &&
-      !options.some((o) => o.toLowerCase() === n.toLowerCase())
+      !n ||
+      n.length > 30 ||
+      !/^[A-Z0-9]/.test(n) ||
+      skip.some((x) => n.toLowerCase().includes(x))
     )
+      return;
+    if (fresh(n) && !options.some((o) => o.toLowerCase() === n.toLowerCase()))
       options.push(n);
   };
   for (const r of (await readRequests(db))?.requests ?? [])

@@ -3,7 +3,7 @@
 // each entry that collapses to a tag, an intro title, the pick as the outro
 // and a quiet end card. No burned captions: the SRT track carries them.
 
-import { gateLongSounds, LEVEL, SFX, type LongSoundCandidate } from "./soundscape.ts";
+import { gateLongSounds, inKey, leadFrames, LEVEL, SFX, type LongSoundCandidate } from "./soundscape.ts";
 import React, { useMemo } from "react";
 import {
   AbsoluteFill,
@@ -1382,25 +1382,25 @@ export const Long: React.FC<LongProps> = (props) => {
           </Sequence>
         ) : null,
       )}
-      {/* Each new entry: a swell that lands on a warm low hit as the rank card arrives. */}
+      {/* Each new entry: a swell whose peak meets a warm low hit as the rank card arrives, both in the music's key. */}
       {props.segments.map((s, i) =>
         s.kind === "beat" && (s.visual?.kind === "rank" || s.visual?.kind === "chapter") && i > 0 ? (
           <React.Fragment key={`snd${i}`}>
-            <Sequence from={Math.max(0, starts[i]! - 40)} durationInFrames={60} layout="none">
-              <Sfx name={SFX.swell} volume={LEVEL.swellLong} />
+            <Sequence from={Math.max(0, starts[i]! - leadFrames(SFX.swell, fps))} durationInFrames={60} layout="none">
+              <Sfx name={inKey(SFX.swell, props.musicSrc)} volume={LEVEL.swellLong} />
             </Sequence>
-            <Sequence from={starts[i]!} durationInFrames={75} layout="none">
-              <Sfx name={SFX.land[i % SFX.land.length]!} volume={LEVEL.landLong} />
+            <Sequence from={Math.max(0, starts[i]! - leadFrames(SFX.land[0], fps))} durationInFrames={75} layout="none">
+              <Sfx name={inKey(SFX.land[i % SFX.land.length]!, props.musicSrc)} volume={LEVEL.landLong} />
             </Sequence>
           </React.Fragment>
         ) : null,
       )}
       {/* The brand sting opens the video and closes it, ringing out before the last frame. */}
       <Sequence from={0} durationInFrames={75} layout="none">
-        <Sfx name={SFX.sting} volume={LEVEL.sting * 0.8} />
+        <Sfx name={inKey(SFX.sting, props.musicSrc)} volume={LEVEL.sting * 0.8} />
       </Sequence>
       <Sequence from={Math.max(0, durationInFrames - 75)} durationInFrames={75} layout="none">
-        <Sfx name={SFX.sting} volume={LEVEL.sting * 0.7} />
+        <Sfx name={inKey(SFX.sting, props.musicSrc)} volume={LEVEL.sting * 0.7} />
       </Sequence>
       {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
       {props.musicSrc ? (

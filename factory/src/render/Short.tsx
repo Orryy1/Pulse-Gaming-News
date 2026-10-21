@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { UNDER_VOICE } from "./soundscape.ts";
+import { inKey, UNDER_VOICE } from "./soundscape.ts";
 import {
   AbsoluteFill,
   Audio,
@@ -225,7 +225,7 @@ export const Short: React.FC<ShortProps> = (props) => {
           layout="none"
         >
           <Audio
-            src={staticFile(cue.file)}
+            src={staticFile(inKey(cue.file, props.musicSrc))}
             volume={(f) => cue.volume * (speaking[Math.min(durationInFrames, cue.frame + f)] ? UNDER_VOICE : 1)}
           />
         </Sequence>

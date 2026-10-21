@@ -6,7 +6,7 @@
 // are tested without Chromium, and the rubric can reject a plan before a
 // render is spent. No Remotion imports, no randomness, no clock.
 
-import { LEVEL, SFX, sfxFile } from "./soundscape.ts";
+import { leadFrames, LEVEL, SFX, sfxFile } from "./soundscape.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 import type { Segment } from "./timeline.ts";
 import { movePreset, type MovePreset } from "./motion.ts";
@@ -224,7 +224,12 @@ export function planCuts(
 /** The still that opens and closes the Short: a 16:9 shot if there is one, else the first image. */
 export function pickHero(images: PlanImage[]): number {
   // The topic's own art first; art tagged for a ranking entry belongs to that entry.
-  const pools = [images.map((img, i) => ({ img, i })).filter((x) => x.img.beatIndex === undefined), images.map((img, i) => ({ img, i }))];
+  const pools = [
+    images
+      .map((img, i) => ({ img, i }))
+      .filter((x) => x.img.beatIndex === undefined),
+    images.map((img, i) => ({ img, i })),
+  ];
   for (const pool of pools) {
     if (!pool.length) continue;
     const wide = pool.find((x) => x.img.aspect >= 1.2 && x.img.aspect <= 2.1);
@@ -237,9 +242,11 @@ export function pickHero(images: PlanImage[]): number {
 }
 
 /** Store box art, the store header and the logo have the game's name printed large: it fights the captions behind them. */
-export const hasPrintedLogo = (img: PlanImage) => /^(capsule|header|logo)$/.test(img.kind);
+export const hasPrintedLogo = (img: PlanImage) =>
+  /^(capsule|header|logo)$/.test(img.kind);
 /** Art order within an entry: clean first, then a screenshot the local screen called wordy (it over-flags in-world lettering), then printed box art. */
-const artPenalty = (img: PlanImage) => (hasPrintedLogo(img) ? 2 : img.wordy ? 1 : 0);
+const artPenalty = (img: PlanImage) =>
+  hasPrintedLogo(img) ? 2 : img.wordy ? 1 : 0;
 
 const isFramedStill = (img: PlanImage) =>
   img.aspect > 2.1 || (img.aspect >= 0.9 && img.aspect < 1.2);
@@ -295,8 +302,17 @@ export function planShots(
       // Every piece of this entry's art is already used twice: reuse the least used rather than borrow.
       const any = images
         .map((_, i) => i)
-        .filter((i) => images[i]!.beatIndex === forBeat && !same(exclude, { type: "image", index: i }))
-        .sort((a, b) => artPenalty(images[a]!) - artPenalty(images[b]!) || stillUses[a]! - stillUses[b]! || a - b)[0];
+        .filter(
+          (i) =>
+            images[i]!.beatIndex === forBeat &&
+            !same(exclude, { type: "image", index: i }),
+        )
+        .sort(
+          (a, b) =>
+            artPenalty(images[a]!) - artPenalty(images[b]!) ||
+            stillUses[a]! - stillUses[b]! ||
+            a - b,
+        )[0];
       if (any === undefined) return undefined;
       stillUses[any]!++;
       return { type: "image", index: any };
@@ -333,8 +349,15 @@ export function planShots(
   const takeAnyStill = (exclude?: PlanMedia): PlanMedia | undefined => {
     const pick = images
       .map((_, i) => i)
-      .filter((i) => i !== heroIndex && !same(exclude, { type: "image", index: i }))
-      .sort((a, b) => artPenalty(images[a]!) - artPenalty(images[b]!) || stillUses[a]! - stillUses[b]! || a - b)[0];
+      .filter(
+        (i) => i !== heroIndex && !same(exclude, { type: "image", index: i }),
+      )
+      .sort(
+        (a, b) =>
+          artPenalty(images[a]!) - artPenalty(images[b]!) ||
+          stillUses[a]! - stillUses[b]! ||
+          a - b,
+      )[0];
     if (pick === undefined) return undefined;
     stillUses[pick]!++;
     return { type: "image", index: pick };
@@ -370,9 +393,17 @@ export function planShots(
       const clipEnd = c.start + clipFrames[pick]!;
       const next = cuts[n + 1];
       if (extra >= MIN_SHOT) {
-        cuts.splice(n + 1, 0, { start: clipEnd, end: c.end, segment: c.segment });
+        cuts.splice(n + 1, 0, {
+          start: clipEnd,
+          end: c.end,
+          segment: c.segment,
+        });
         c.end = clipEnd;
-      } else if (next && next.segment === c.segment && next.end - clipEnd <= MAX_SHOT) {
+      } else if (
+        next &&
+        next.segment === c.segment &&
+        next.end - clipEnd <= MAX_SHOT
+      ) {
         c.end = clipEnd;
         next.start = clipEnd;
       } else {
@@ -386,8 +417,12 @@ export function planShots(
   const shots: Shot[] = [];
   const lastSeg = segments.length - 1;
   // A ranking Short: ranks are spoken bottom-up, so the last beat is number one and the take ("our pick") shows it.
-  const ranking = segments.some((x) => x.kind === "beat" && x.visual?.kind === "rank");
-  const winnerBeat = ranking ? segments.filter((x) => x.kind === "beat").length - 1 : undefined;
+  const ranking = segments.some(
+    (x) => x.kind === "beat" && x.visual?.kind === "rank",
+  );
+  const winnerBeat = ranking
+    ? segments.filter((x) => x.kind === "beat").length - 1
+    : undefined;
   for (const [n, c] of cuts.entries()) {
     const seg = segments[c.segment]!;
     const kind = seg.visual?.kind ?? "none";
@@ -403,7 +438,12 @@ export function planShots(
     const firstTakeShot =
       seg.kind === "take" && (n === 0 || cuts[n - 1]!.segment !== c.segment);
     // Which entry this shot belongs to, when it may only show that entry's own media.
-    const ownBeat = kind === "rank" ? beatIndex : ranking && seg.kind === "take" ? winnerBeat : undefined;
+    const ownBeat =
+      kind === "rank"
+        ? beatIndex
+        : ranking && seg.kind === "take"
+          ? winnerBeat
+          : undefined;
     if (firstTakeShot && ranking && !isClosing) {
       // The pick opens on the winner's art, never on the topic's or another entry's.
       // Straight after the winner's own line its art may carry on under the pick card.
@@ -515,30 +555,61 @@ export function planShots(
 
 /**
  * Sound cues from the structure (src/render/soundscape.ts): a soft sting to open and close, a whoosh on
- * at most two card changes, a glint on the first big number, a swell into the verdict. Never two sounds
- * within 2.5 s, and the closing sting starts early enough to ring out before the end.
+ * at most two card changes, a tick on the first big number, a swell into the verdict. Each starts early
+ * by its own peak time, so the loudest moment lands on the cut, the number or the verdict. Never two
+ * sounds within 2.5 s, and the closing sting starts early enough to ring out before the end.
  */
 export function planSfx(segments: Segment[], totalFrames: number): SfxCue[] {
-  const cues: SfxCue[] = [{ file: sfxFile(SFX.sting), frame: 0, volume: LEVEL.sting }];
+  const cues: SfxCue[] = [
+    { file: sfxFile(SFX.sting), frame: 0, volume: LEVEL.sting },
+  ];
   const gap = 75;
-  const fits = (frame: number) => cues.every((c) => Math.abs(c.frame - frame) >= gap);
+  const fits = (frame: number) =>
+    cues.every((c) => Math.abs(c.frame - frame) >= gap);
+  const on = (name: string, event: number) =>
+    Math.max(0, event - leadFrames(name, PLAN_FPS));
   let whooshes = 0;
   let glint = false;
   for (const [i, s] of segments.entries()) {
     const at = i === 0 ? 0 : toFrame(s.start);
-    if (s.kind === "beat" && s.visual && s.visual.kind !== "none" && whooshes < 2 && fits(at - 3)) {
-      cues.push({ file: sfxFile(SFX.air[whooshes % SFX.air.length]!), frame: Math.max(0, at - 3), volume: LEVEL.air });
+    const air = SFX.air[whooshes % SFX.air.length]!;
+    if (
+      s.kind === "beat" &&
+      s.visual &&
+      s.visual.kind !== "none" &&
+      whooshes < 2 &&
+      fits(on(air, at))
+    ) {
+      cues.push({ file: sfxFile(air), frame: on(air, at), volume: LEVEL.air });
       whooshes++;
     }
-    if (s.kind === "beat" && s.visual?.kind === "stat" && !glint && fits(at + 18)) {
-      cues.push({ file: sfxFile(SFX.glint[0]), frame: at + 18, volume: LEVEL.glint });
+    if (
+      s.kind === "beat" &&
+      s.visual?.kind === "stat" &&
+      !glint &&
+      fits(on(SFX.glint[0], at + 18))
+    ) {
+      cues.push({
+        file: sfxFile(SFX.glint[0]),
+        frame: on(SFX.glint[0], at + 18),
+        volume: LEVEL.glint,
+      });
       glint = true;
     }
-    if (s.kind === "take" && fits(Math.max(0, at - 36)))
-      cues.push({ file: sfxFile(SFX.swell), frame: Math.max(0, at - 36), volume: LEVEL.swell });
+    if (s.kind === "take" && fits(on(SFX.swell, at)))
+      cues.push({
+        file: sfxFile(SFX.swell),
+        frame: on(SFX.swell, at),
+        volume: LEVEL.swell,
+      });
   }
   const close = Math.max(0, totalFrames - 60);
-  if (fits(close)) cues.push({ file: sfxFile(SFX.sting), frame: close, volume: LEVEL.sting * 0.9 });
+  if (fits(close))
+    cues.push({
+      file: sfxFile(SFX.sting),
+      frame: close,
+      volume: LEVEL.sting * 0.9,
+    });
   return cues.slice(0, MAX_SFX).sort((a, b) => a.frame - b.frame);
 }
 
@@ -582,7 +653,9 @@ export function planShelf(
   if (steam?.price)
     statTiles.push({
       value: steam.prices?.usd ?? steam.price,
-      label: ["STEAM", steam.prices?.gbp, steam.prices?.eur].filter(Boolean).join(" · "),
+      label: ["STEAM", steam.prices?.gbp, steam.prices?.eur]
+        .filter(Boolean)
+        .join(" · "),
     });
   if (steam?.metacritic)
     statTiles.push({ value: String(steam.metacritic), label: "METACRITIC" });

@@ -1,0 +1,570 @@
+{
+ "voice_ref_db": -17.21,
+ "file_loudness_db": -20.0,
+ "roles": {
+  "air": {
+   "level": 0.1547,
+   "offset_db": -19,
+   "considered": 120,
+   "chosen": [
+    {
+     "name": "air-1",
+     "source": "ElevenLabs",
+     "origin": "generated: air_p0_t1.mp3",
+     "penalty": 0.0,
+     "flags": [],
+     "features": {
+      "seconds": 0.655,
+      "centroid": 920.725,
+      "presence": 0.022,
+      "air": 0.002,
+      "low": 0.108,
+      "phone": 0.834,
+      "peak_s": 0.12,
+      "decay_ms": 275.0,
+      "tonal": 0.351,
+      "f0": null,
+      "jump_db": 5.583,
+      "flatness": 0.053,
+      "clarity": 0.0
+     },
+     "key_fit": {
+      "D": 1.0,
+      "E": 1.0
+     },
+     "files": {
+      "air-1.mp3": {
+       "peak_s": 0.12,
+       "shift_semitones": 0,
+       "rise_in_speech_db": 0.38,
+       "jolt_db": 12.38,
+       "rise_in_gap_db": 2.92,
+       "sha256": "fc17d3d3f72600fc82fadd9fff7e8c06cf4d20463ddc4d9400906ed6e98a4ca9"
+      }
+     }
+    },
+    {
+     "name": "air-2",
+     "source": "ElevenLabs",
+     "origin": "generated: air_p0_t2.mp3",
+     "penalty": 0.0,
+     "flags": [],
+     "features": {
+      "seconds": 0.8,
+      "centroid": 521.327,
+      "presence": 0.007,
+      "air": 0.0,
+      "low": 0.244,
+      "phone": 0.644,
+      "peak_s": 0.105,
+      "decay_ms": 250.0,
+      "tonal": 0.373,
+      "f0": null,
+      "jump_db": 5.661,
+      "flatness": 0.08,
+      "clarity": 0.0
+     },
+     "key_fit": {
+      "D": 1.0,
+      "E": 1.0
+     },
+     "files": {
+      "air-2.mp3": {
+       "peak_s": 0.105,
+       "shift_semitones": 0,
+       "rise_in_speech_db": 0.34,
+       "jolt_db": 11.13,
+       "rise_in_gap_db": 2.84,
+       "sha256": "3bf541212ae17d503834dde9aaa8852dac91fe4858050d74cbb0466032982598"
+      }
+     }
+    },
+    {
+     "name": "air-3",
+     "source": "ElevenLabs",
+     "origin": "generated: air_1.mp3",
+     "penalty": 0.0,
+     "flags": [],
+     "features": {
+      "seconds": 0.439,
+      "centroid": 596.909,
+      "presence": 0.011,
+      "air": 0.0,
+      "low": 0.069,
+      "phone": 0.889,
+      "peak_s": 0.005,
+      "decay_ms": 245.0,
+      "tonal": 0.365,
+      "f0": null,
+      "jump_db": 4.462,
+      "flatness": 0.001,
+      "clarity": 0.0
+     },
+     "key_fit": {
+      "D": 1.0,
+      "E": 1.0
+     },
+     "files": {
+      "air-3.mp3": {
+       "peak_s": 0.005,
+       "shift_semitones": 0,
+       "rise_in_speech_db": 0.18,
+       "jolt_db": 7.9,
+       "rise_in_gap_db": 2.03,
+       "sha256": "6a4465b9486fb69500516c7eba9fb52eb96998cf3fdb7316c08767cebb62206c"
+      }
+     }
+    }
+   ],
+   "runners_up": [
+    {
+     "origin": "generated: air_1.mp3",
+     "penalty": 0.0,
+     "flags": []
+    },
+    {
+     "origin": "generated: air_3.mp3",
+     "penalty": 0.59,
+     "flags": [
+      "harsh top 0.3",
+      "key clash 0.1",
+      "rings 0.2"
+     ]
+    },
+    {
+     "origin": "generated: air_p0_t0.mp3",
+     "penalty": 2.96,
+     "flags": [
+      "harsh top 2.1",
+      "bright 0.8"
+     ]
+    },
+    {
+     "origin": "Multimedia Internet CD-Rom Flash Whoosh 27",
+     "penalty": 3.23,
+     "flags": [
+      "pitched 2.9",
+      "key clash 0.2",
+      "rings 0.2"
+     ]
+    },
+    {
+     "origin": "Multimedia Internet CD-Rom Flash Whoosh Electronic 12",
+     "penalty": 4.77,
+     "flags": [
+      "decay 0.6",
+      "pitched 1.4",
+      "rings 2.8"
+     ]
+    },
+    {
+     "origin": "Multimedia Internet CD-Rom Flash Whoosh 15",
+     "penalty": 5.47,
+     "flags": [
+      "decay 0.1",
+      "pitched 2.6",
+      "rings 2.8"
+     ]
+    }
+   ]
+  },
+  "tick": {
+   "level": 0.1378,
+   "offset_db": -20,
+   "considered": 136,
+   "chosen": [
+    {
+     "name": "tick",
+     "source": "ElevenLabs",
+     "origin": "generated: tick_p3_t3.mp3",
+     "penalty": 0.0,
+     "flags": [],
+     "features": {
+      "seconds": 0.477,
+      "centroid": 541.511,
+      "presence": 0.0,
+      "air": 0.0,
+      "low": 0.021,
+      "phone": 0.917,
+      "peak_s": 0.0,
+      "decay_ms": 90.0,
+      "tonal": 0.008,
+      "f0": null,
+      "jump_db": 1.72,
+      "flatness": 0.172,
+      "clarity": 0.0
+     },
+     "key_fit": {
+      "D": 1.0,
+      "E": 1.0
+     },
+     "files": {
+      "tick.mp3": {
+       "peak_s": 0.0,
+       "shift_semitones": 0,
+       "rise_in_speech_db": 0.05,
+       "jolt_db": 5.99,
+       "rise_in_gap_db": 1.63,
+       "sha256": "e4783f575d3892d07c710375e97d30a186aeeb0b9e383a1b0ea35d0c415b3f81"
+      }
+     }
+    }
+   ],
+   "runners_up": [
+    {
+     "origin": "Science Fiction Sci-Fi Electronic Computer Terminal Button 02",
+     "penalty": 0.84,
+     "flags": [
+      "decay 0.1",
+      "key clash 0.8"
+     ]
+    },
+    {
+     "origin": "generated: tick_p0_t2.mp3",
+     "penalty": 1.25,
+     "flags": [
+      "key clash 1.2"
+     ]
+    },
+    {
+     "origin": "generated: tick_p1_t3.mp3",
+     "penalty": 1.64,
+     "flags": [
+      "key clash 1.6"
+     ]
+    },
+    {
+     "origin": "generated: tick_p0_t3.mp3",
+     "penalty": 2.21,
+     "flags": [
+      "jolt 2.2"
+     ]
+    },
+    {
+     "origin": "Science Fiction Sci-Fi Electronic Computer Terminal Button 01",
+     "penalty": 2.65,
+     "flags": [
+      "high pitch 1.5",
+      "key clash 1.1"
+     ]
+    },
+    {
+     "origin": "generated: tick_p3_t0.mp3",
+     "penalty": 7.4,
+     "flags": [
+      "jolt 7.4"
+     ]
+    }
+   ]
+  },
+  "sting": {
+   "level": 0.4359,
+   "offset_db": -10,
+   "considered": 17,
+   "chosen": [
+    {
+     "name": "sting",
+     "source": "ElevenLabs",
+     "origin": "generated: sting_p0_t3.mp3",
+     "penalty": 0.45,
+     "flags": [
+      "key clash 0.4"
+     ],
+     "features": {
+      "seconds": 1.76,
+      "centroid": 641.68,
+      "presence": 0.001,
+      "air": 0.0,
+      "low": 0.004,
+      "phone": 0.991,
+      "peak_s": 0.215,
+      "decay_ms": 680.0,
+      "tonal": 0.978,
+      "f0": 329.545,
+      "jump_db": 3.469,
+      "flatness": 0.078,
+      "clarity": 0.563
+     },
+     "key_fit": {
+      "D": 0.87,
+      "E": 0.87
+     },
+     "files": {
+      "sting-D.mp3": {
+       "peak_s": 0.19,
+       "shift_semitones": 2,
+       "rise_in_speech_db": 2.04,
+       "jolt_db": 19.33,
+       "rise_in_gap_db": 10.1,
+       "sha256": "0f8dfe46b6808ece79aaf6008d553df698a35aa0b5f861ce2958780823a141e2"
+      },
+      "sting-E.mp3": {
+       "peak_s": 0.165,
+       "shift_semitones": 4,
+       "rise_in_speech_db": 1.91,
+       "jolt_db": 16.83,
+       "rise_in_gap_db": 3.06,
+       "sha256": "3146f6a6d279af500fec3c3124add384ab05935968614ad79cd4c2501a32056f"
+      }
+     }
+    }
+   ],
+   "runners_up": [
+    {
+     "origin": "generated: sting_1.mp3",
+     "penalty": 1.28,
+     "flags": [
+      "key clash 1.3"
+     ]
+    },
+    {
+     "origin": "generated: sting_0.mp3",
+     "penalty": 1.41,
+     "flags": [
+      "key clash 1.4"
+     ]
+    },
+    {
+     "origin": "generated: sting_p0_t1.mp3",
+     "penalty": 1.83,
+     "flags": [
+      "key clash 1.8"
+     ]
+    },
+    {
+     "origin": "generated: sting_p0_t2.mp3",
+     "penalty": 1.84,
+     "flags": [
+      "high pitch 0.8",
+      "key clash 1.0"
+     ]
+    },
+    {
+     "origin": "generated: sting_p0_t0.mp3",
+     "penalty": 1.88,
+     "flags": [
+      "key clash 1.9"
+     ]
+    },
+    {
+     "origin": "generated: sting_p1_t0.mp3",
+     "penalty": 1.98,
+     "flags": [
+      "high pitch 1.3",
+      "key clash 0.7"
+     ]
+    }
+   ]
+  },
+  "swell": {
+   "level": 0.2185,
+   "offset_db": -16,
+   "considered": 35,
+   "chosen": [
+    {
+     "name": "swell",
+     "source": "ElevenLabs",
+     "origin": "generated: swell_p0_t3.mp3",
+     "penalty": 0.0,
+     "flags": [],
+     "features": {
+      "seconds": 1.159,
+      "centroid": 439.371,
+      "presence": 0.0,
+      "air": 0.0,
+      "low": 0.065,
+      "phone": 0.874,
+      "peak_s": 0.87,
+      "decay_ms": 200.0,
+      "tonal": 0.615,
+      "f0": 177.688,
+      "jump_db": 4.253,
+      "flatness": 0.0,
+      "clarity": 0.0
+     },
+     "key_fit": {
+      "D": 0.61,
+      "E": 0.62
+     },
+     "files": {
+      "swell-D.mp3": {
+       "peak_s": 0.87,
+       "shift_semitones": 0,
+       "rise_in_speech_db": 1.96,
+       "jolt_db": 14.15,
+       "rise_in_gap_db": 3.91,
+       "sha256": "678ad7c01fda19ebc90ce5e9f263105fe1606a4c373b249ac1659ed2c7e8c32c"
+      },
+      "swell-E.mp3": {
+       "peak_s": 0.925,
+       "shift_semitones": -1,
+       "rise_in_speech_db": 2.02,
+       "jolt_db": 16.99,
+       "rise_in_gap_db": 1.06,
+       "sha256": "7a3593f9ac99b3969590ae76a91191f7083dc48533447f023653e309ff110209"
+      }
+     }
+    }
+   ],
+   "runners_up": [
+    {
+     "origin": "generated: swell_1.mp3",
+     "penalty": 0.26,
+     "flags": [
+      "harsh top 0.3"
+     ]
+    },
+    {
+     "origin": "generated: swell_p0_t2.mp3",
+     "penalty": 1.09,
+     "flags": [
+      "too dark 0.4",
+      "key clash 0.7"
+     ]
+    },
+    {
+     "origin": "generated: swell_2.mp3",
+     "penalty": 2.58,
+     "flags": [
+      "too dark 0.5",
+      "lost on phones 1.3",
+      "key clash 0.8"
+     ]
+    },
+    {
+     "origin": "generated: swell_p0_t0.mp3",
+     "penalty": 8.43,
+     "flags": [
+      "bright 0.5",
+      "high pitch 8.0"
+     ]
+    },
+    {
+     "origin": "Production Element Title Transition Bell Swell 09",
+     "penalty": 18.86,
+     "flags": [
+      "timing 3.7",
+      "decay 14.9",
+      "key clash 0.2"
+     ]
+    },
+    {
+     "origin": "Science Fiction Sci-Fi Electronic Energy Swell 150",
+     "penalty": 24.29,
+     "flags": [
+      "harsh top 19.7",
+      "bright 3.3",
+      "lost on phones 1.2"
+     ]
+    }
+   ]
+  },
+  "land": {
+   "level": 0.1947,
+   "offset_db": -17,
+   "considered": 90,
+   "chosen": [
+    {
+     "name": "land",
+     "source": "Adobe Audition Production Elements",
+     "origin": "Production Element Title Transition Hit Impact Short 17",
+     "penalty": 0.3,
+     "flags": [
+      "key clash 0.3"
+     ],
+     "features": {
+      "seconds": 1.691,
+      "centroid": 348.269,
+      "presence": 0.0,
+      "air": 0.0,
+      "low": 0.12,
+      "phone": 0.768,
+      "peak_s": 0.155,
+      "decay_ms": 820.0,
+      "tonal": 0.774,
+      "f0": 205.838,
+      "jump_db": 4.868,
+      "flatness": 0.03,
+      "clarity": 0.065
+     },
+     "key_fit": {
+      "D": 0.62,
+      "E": 0.62
+     },
+     "files": {
+      "land-D.mp3": {
+       "peak_s": 0.165,
+       "shift_semitones": -1,
+       "rise_in_speech_db": 0.7,
+       "jolt_db": 13.74,
+       "rise_in_gap_db": 4.33,
+       "sha256": "b763851459ba0c97b6cb8203907d436a3a846920fbe3d9be83433d51654d4e30"
+      },
+      "land-E.mp3": {
+       "peak_s": 0.145,
+       "shift_semitones": 1,
+       "rise_in_speech_db": 0.7,
+       "jolt_db": 10.67,
+       "rise_in_gap_db": 0.88,
+       "sha256": "b3f1d89556046bc0ef0872414eb52ca58bef464c62057801d4072d35b1a1f091"
+      }
+     }
+    }
+   ],
+   "runners_up": [
+    {
+     "origin": "Production Element Title Transition Hit Impact Short 07",
+     "penalty": 5.99,
+     "flags": [
+      "bright 0.1",
+      "high pitch 4.2",
+      "key clash 1.7"
+     ]
+    },
+    {
+     "origin": "Production Element Title Transition Hit Impact Electronic 04",
+     "penalty": 6.27,
+     "flags": [
+      "decay 6.0",
+      "key clash 0.3"
+     ]
+    },
+    {
+     "origin": "Production Element Title Transition Hit Impact Metal 08",
+     "penalty": 7.34,
+     "flags": [
+      "bright 1.4",
+      "decay 2.5",
+      "high pitch 2.4",
+      "key clash 1.0"
+     ]
+    },
+    {
+     "origin": "Production Element Title Transition Thump 03",
+     "penalty": 7.7,
+     "flags": [
+      "harsh top 1.1",
+      "timing 6.2",
+      "key clash 0.4"
+     ]
+    },
+    {
+     "origin": "generated: land_p1_t2.mp3",
+     "penalty": 9.29,
+     "flags": [
+      "lost on phones 9.1",
+      "key clash 0.2"
+     ]
+    },
+    {
+     "origin": "generated: land_p0_t3.mp3",
+     "penalty": 9.3,
+     "flags": [
+      "lost on phones 9.1",
+      "key clash 0.2"
+     ]
+    }
+   ]
+  }
+ }
+}

@@ -1,34 +1,75 @@
-// The channel's soundscape: one family of sounds (public/sfx/v2: ElevenLabs takes and Adobe Production
-// Elements, finished alike by src/tools/build-sfx.ts) and the rules for using them. Sounds mark structure
-// (the open, each new entry, the verdict, the close) and the odd number; they never chase every cut.
-// Levels sit well under the narrator, and nothing plays within a breath of another sound.
+// The channel's soundscape: one family of sounds (public/sfx/v3) and the rules for using them. Sounds mark
+// structure (the open, each new entry, the verdict, the close) and the odd number; they never chase every
+// cut. Levels sit well under the narrator, and nothing plays within a breath of another sound.
+//
+// The set was chosen by measurement (src/tools/sfxlab/lab.py, report in src/tools/sfxlab/v3_report.json) from 400+
+// ElevenLabs takes and library sounds: warm (no harsh 2-6 kHz presence), audible on phone speakers, no
+// ringing high tones, no jolts. Every file is matched for perceived loudness, so a level here means the
+// same thing for every sound. Pitched sounds come tuned to each music bed's key.
 
 export const SFX = {
-  air: ["v2/air-1", "v2/air-2", "v2/air-3"],
-  swell: "v2/swell-1",
-  land: ["v2/land-1", "v2/land-2"],
-  glint: ["v2/glint-1", "v2/glint-2"],
-  sting: "v2/sting",
+  air: ["v3/air-1", "v3/air-2", "v3/air-3"],
+  swell: "v3/swell",
+  land: ["v3/land"],
+  glint: ["v3/tick"],
+  sting: "v3/sting",
 } as const;
 
-/** Mix levels (the narrator plays at 1). Felt, never startling. */
+/**
+ * Mix levels (the narrator plays at 1), set from the narrator's measured loudness: the sting 10 dB under
+ * it, the swell 16, the landing 17, whooshes 19 and the number tick 20, the quietest (a loud tonal glint
+ * was the most jarring sound of the old set).
+ */
 export const LEVEL = {
-  sting: 0.26,
-  air: 0.16,
-  swell: 0.14,
-  land: 0.2,
-  glint: 0.12,
-  /** Long videos run quieter: fifteen minutes of sound must not tire the ear. */
-  airLong: 0.11,
-  glintLong: 0.1,
-  swellLong: 0.12,
-  landLong: 0.17,
+  sting: 0.436,
+  air: 0.155,
+  swell: 0.218,
+  land: 0.195,
+  glint: 0.138,
+  /** Long videos run 2 dB quieter: fifteen minutes of sound must not tire the ear. */
+  airLong: 0.124,
+  glintLong: 0.11,
+  swellLong: 0.175,
+  landLong: 0.156,
 } as const;
 
 /** Under the narrator a sound dips by a quarter, so a word is never masked. */
 export const UNDER_VOICE = 0.75;
 
 export const sfxFile = (name: string) => `sfx/${name}.mp3`;
+
+/** The key of each music bed (measured by src/tools/sfxlab/key.py). */
+const MUSIC_KEY: Record<string, "D" | "E"> = {
+  "music_1.mp3": "D",
+  "music_2.mp3": "D",
+  "music_3.mp3": "E",
+  "music_4.mp3": "E",
+};
+const TUNED = new Set<string>([SFX.sting, SFX.swell, ...SFX.land]);
+
+/** The version of a sound tuned to the music playing under it ("v3/sting" or "sfx/v3/sting.mp3" alike). */
+export function inKey(
+  name: string,
+  musicSrc: string | null | undefined,
+): string {
+  const bare = name.replace(/^sfx\//, "").replace(/\.mp3$/, "");
+  if (!TUNED.has(bare)) return name;
+  const key = MUSIC_KEY[(musicSrc ?? "").split(/[\\/]/).pop() ?? ""] ?? "E";
+  return name.replace(bare, `${bare}-${key}`);
+}
+
+/** Seconds from a sound's start to its loudest moment: cues start this early so the peak lands on the event. */
+const PEAK: Record<string, number> = {
+  "v3/air-1": 0.12,
+  "v3/air-2": 0.105,
+  "v3/air-3": 0.005,
+  "v3/tick": 0,
+  "v3/sting": 0.18,
+  "v3/swell": 0.9,
+  "v3/land": 0.155,
+};
+export const leadFrames = (name: string, fps: number) =>
+  Math.round((PEAK[name] ?? 0) * fps);
 
 export interface LongSoundCandidate {
   key: number; // the moment window's index

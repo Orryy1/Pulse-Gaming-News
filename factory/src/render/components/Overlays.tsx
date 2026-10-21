@@ -690,9 +690,11 @@ export const Captions: React.FC<{
               fontWeight: 900,
               fontSize: TYPE.caption,
               lineHeight: 1.12,
-              color:
-                active || lit
-                  ? accent
+              // The spoken word in the story's accent; numbers and names that have been said stay gold.
+              color: active
+                ? accent
+                : lit
+                  ? COLOUR.gold
                   : spoken
                     ? COLOUR.paper
                     : "rgba(245,245,242,0.55)",

@@ -103,8 +103,9 @@ export interface CaptionPage {
 /** Groups words into short caption pages, breaking on punctuation and pauses. */
 export function pageCaptions(
   words: Word[],
-  maxWords = 4,
-  maxChars = 30,
+  // One to three words at a time: the caption style of the gaming Shorts that travel (7 of 10 studied).
+  maxWords = 3,
+  maxChars = 22,
   minSeconds = 0.33,
 ): CaptionPage[] {
   const pages: CaptionPage[] = [];

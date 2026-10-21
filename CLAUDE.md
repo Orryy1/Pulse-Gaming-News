@@ -193,6 +193,7 @@ All stored in `.env`, never committed:
 - `YOUTUBE_API_KEY` (stats fetching + B-roll trailer search fallback)
 - `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` (optional - enables IGDB B-roll fallback for console exclusives; free signup at dev.twitch.tv)
 - `BROLL_YOUTUBE_FALLBACK` (true/false, default false) - opts into YouTube trailer download via yt-dlp when Steam + IGDB both miss; higher copyright-strike risk than Steam/IGDB
+- `REDDIT_USERNAMES_ON_VIDEO` (true/false, default false) - draws a quoted Reddit comment's u/username on videos; off by default because usernames are personal data. Update the privacy notice (lib/privacy-notice.js and factory/src/web/privacy.ts) before switching it on
 - `FACEBOOK_PAGE_ID`, `FACEBOOK_PAGE_TOKEN`
 - `TWITTER_API_KEY`, `TWITTER_API_SECRET`, `TWITTER_ACCESS_TOKEN`, `TWITTER_ACCESS_SECRET`
 - `STACKED_VOICE_ID` (ElevenLabs voice for STACKED channel)

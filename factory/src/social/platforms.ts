@@ -130,21 +130,34 @@ export interface InstagramReel {
  * file on this PC, which Instagram fetches itself. Then wait for FINISHED and publish.
  */
 export async function postInstagramReel(r: InstagramReel, fetchFn: FetchLike = fetch, pollMs = 10_000): Promise<string> {
+  const fromLink = async () =>
+    (
+      await json(
+        await fetchFn(`${GRAPH}/${r.accountId}/media`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ media_type: "REELS", video_url: r.videoUrl, caption: r.caption.slice(0, 2200), share_to_feed: true, access_token: r.token }),
+        }),
+        "instagram container (link)",
+      )
+    ).id as string;
   let id: string;
   try {
     id = await instagramFromBytes(r, fetchFn);
   } catch (err) {
     if (!r.videoUrl) throw err;
-    const container = await json(
-      await fetchFn(`${GRAPH}/${r.accountId}/media`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ media_type: "REELS", video_url: r.videoUrl, caption: r.caption.slice(0, 2200), share_to_feed: true, access_token: r.token }),
-      }),
-      "instagram container (link)",
-    );
-    id = container.id;
+    id = await fromLink();
   }
+  try {
+    return await instagramFinish(r, id, fetchFn, pollMs);
+  } catch (err) {
+    // Processing refused the uploaded bytes (error 2207076 and kin): Instagram gets one more go fetching the file itself.
+    if (!r.videoUrl || !/processing failed/.test(String(err))) throw err;
+    return instagramFinish(r, await fromLink(), fetchFn, pollMs);
+  }
+}
+
+async function instagramFinish(r: InstagramReel, id: string, fetchFn: FetchLike, pollMs: number): Promise<string> {
   let status = "IN_PROGRESS";
   for (let i = 0; i < 40 && status !== "FINISHED"; i++) {
     await sleep(pollMs);

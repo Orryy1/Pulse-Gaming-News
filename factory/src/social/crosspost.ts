@@ -47,7 +47,21 @@ const PLATFORM_TAGS: Record<Platform, { topic: number; tail: string[] }> = {
 };
 
 /** A closing question for the caption: the script's own loop line when it asks one. */
-const questionOf = (script: Script) => (/\?\s*$/.test(script.loop_line ?? "") ? script.loop_line.trim() : "");
+/**
+ * A closing question for the caption: the script's own loop line when it asks one. The loop line echoes
+ * the hook for the rewatch, so when it repeats the hook's words the caption keeps only its question
+ * ("..., so will you keep buying physical?" becomes "So will you keep buying physical?").
+ */
+export function questionOf(script: Script): string {
+  const loop = (script.loop_line ?? "").trim();
+  if (!/\?$/.test(loop)) return "";
+  const words = (t: string) => new Set(t.toLowerCase().match(/[a-z0-9']{4,}/g) ?? []);
+  const hook = words(script.hook ?? "");
+  const shared = [...words(loop)].filter((w) => hook.has(w)).length;
+  if (shared < 3) return loop;
+  const tail = loop.split(/,\s+|\s+(?:and|so)\s+(?=(?:will|would|do|does|are|is|can|could|should|did|have|has|what|which|who|how|why))/i).at(-1)!.trim();
+  return tail === loop || tail.split(/\s+/).length < 3 ? "" : tail[0]!.toUpperCase() + tail.slice(1);
+}
 
 /** The words that go with the video on each platform. */
 export function socialCaption(
@@ -224,7 +238,8 @@ export async function crosspostTick(
       if (Number(n?.n ?? 0) >= MAX_TRIES)
         await d
           .notify({
-            content: `⚠️ Could not post "${polishTitle(ep.script_json)}" to ${platform} after ${MAX_TRIES} tries: ${error.slice(0, 300)}`,
+            level: "info",
+            content: `Could not post "${polishTitle(ep.script_json)}" to ${platform} after ${MAX_TRIES} tries: ${error.slice(0, 200)}`,
           })
           .catch(() => undefined);
     }
@@ -246,6 +261,27 @@ const TIKTOK_SINGLE_CHUNK = 60 * 1024 * 1024;
  * TikTok takes a file of up to 64 MB in one piece and fights multi-chunk uploads,
  * so a bigger Short gets a TikTok copy re-encoded to fit (same picture, lower bitrate).
  */
+/**
+ * The Instagram copy of a Short, encoded to Meta's Reels spec: standard (not full) colour range, closed
+ * keyframe groups every 2 s, no MP4 edit list, AAC 48 kHz stereo, index at the front. Instagram's
+ * processing refused some renders as they were (error 2207076).
+ */
+export async function instagramFile(file: string): Promise<string> {
+  const out = path.join(path.dirname(file), "instagram.mp4");
+  if (fs.existsSync(out) && (await fs.promises.stat(out)).mtimeMs >= (await fs.promises.stat(file)).mtimeMs) return out;
+  const { FFMPEG } = await import("../lib/bin.ts");
+  const { execFile } = await import("node:child_process");
+  await new Promise<void>((resolve, reject) =>
+    execFile(
+      FFMPEG,
+      ["-y", "-v", "error", "-i", file, "-vf", "scale=in_range=auto:out_range=tv,format=yuv420p", "-color_range", "tv", "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-maxrate", "9M", "-bufsize", "18M", "-profile:v", "high", "-level", "4.1", "-r", "30", "-g", "60", "-keyint_min", "60", "-sc_threshold", "0", "-flags", "+cgop", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-use_editlist", "0", "-movflags", "+faststart", out],
+      { maxBuffer: 10 * 1024 * 1024 },
+      (err) => (err ? reject(err) : resolve()),
+    ),
+  );
+  return out;
+}
+
 export async function tiktokFile(file: string): Promise<string> {
   const { size } = await fs.promises.stat(file);
   if (size <= TIKTOK_SINGLE_CHUNK) return file;
@@ -275,7 +311,7 @@ export async function buildPosters(cfg: Config, notifyOwner?: (text: string) => 
   if (cfg.crosspost.facebook && cfg.facebookPageId && cfg.facebookPageToken)
     out.facebook = (file, title, description) => p.postFacebookReel({ pageId: cfg.facebookPageId, token: cfg.facebookPageToken, file, title, description });
   if (cfg.crosspost.instagram && cfg.instagramAccountId && cfg.instagramToken)
-    out.instagram = (file, caption, videoUrl) => p.postInstagramReel({ accountId: cfg.instagramAccountId, token: cfg.instagramToken, file, caption, videoUrl });
+    out.instagram = async (file, caption, videoUrl) => p.postInstagramReel({ accountId: cfg.instagramAccountId, token: cfg.instagramToken, file: await instagramFile(file), caption, videoUrl });
   if (cfg.crosspost.tiktok && cfg.tiktokClientKey && cfg.tiktokTokenPath && fs.existsSync(cfg.tiktokTokenPath))
     out.tiktok = async (file, caption) => {
       if (Date.now() < tiktokPausedUntil) throw new Deferred(tiktokPauseReason);

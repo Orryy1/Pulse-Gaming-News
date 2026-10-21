@@ -137,7 +137,8 @@ export function entryOf(
       .slice(0, i + 1)
       .filter((s) => s.kind === "beat" && s.visual?.kind === "chapter").length;
     if (seg.kind === "beat") return upTo > 0 ? upTo - 1 : undefined;
-    if (seg.kind === "take") return takeEntry ?? (upTo > 0 ? upTo - 1 : undefined);
+    if (seg.kind === "take")
+      return takeEntry ?? (upTo > 0 ? upTo - 1 : undefined);
     return undefined;
   }
   const beats = segments.filter((s) => s.kind === "beat").length;
@@ -257,20 +258,28 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         .map((_, k) => k)
         .filter(
           (k) =>
-            images[k]!.beatIndex === entry && images[k]!.kind !== "capsule" && images[k]!.kind !== "portrait",
+            images[k]!.beatIndex === entry &&
+            images[k]!.kind !== "capsule" &&
+            images[k]!.kind !== "portrait",
         );
       const noHero = allEntry.filter((k) => images[k]!.kind !== "hero");
       const entryImages = noHero.length >= 4 ? noHero : allEntry;
       const entryClips = clips
         .map((_, k) => k)
         .filter((k) => clips[k]!.beatIndex === entry);
+      let reuse = 0;
       const leastUsed = (): LongMedia => {
-        const pool = entryImages.length
-          ? entryImages
-          : images
-              .map((_, k) => k)
-              .filter((k) => images[k]!.beatIndex === undefined);
-        if (!pool.length) return { type: "plate", index: 0 };
+        // An entry with no picture of its own never borrows the topic's art: for "Grand Theft Auto" that was
+        // GTA V's key art under GTA Advance. It replays its own footage, or shows the branded plate.
+        if (!entryImages.length) {
+          if (entryClips.length)
+            return {
+              type: "clip",
+              index: entryClips[reuse++ % entryClips.length]!,
+            };
+          return { type: "plate", index: 0 };
+        }
+        const pool = entryImages;
         const pick =
           [...pool]
             .sort((a, b) => stillUses[a]! - stillUses[b]! || a - b)
@@ -597,7 +606,11 @@ export function usefulEmphasis(text: string): boolean {
 
 /** Game sound sits well under the narrator and fades in and out at each cut so a cut never pops. */
 export const GAME_SOUND_VOLUME = 0.16;
-export function gameSoundVolume(frame: number, frames: number, fade = 8): number {
+export function gameSoundVolume(
+  frame: number,
+  frames: number,
+  fade = 8,
+): number {
   const edge = Math.min(1, frame / fade, (frames - frame) / fade);
   return GAME_SOUND_VOLUME * Math.max(0, edge);
 }

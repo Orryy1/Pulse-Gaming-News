@@ -43,8 +43,14 @@ test("captions: X fits in 280 with the link, Facebook links to YouTube, rumours 
     socialCaption("facebook", s, "abc123"),
     /Full story and sources: https:\/\/youtube\.com\/shorts\/abc123/,
   );
-  assert.match(socialCaption("instagram", s, "abc123"), /#GrandTheftAutoVI/);
-  assert.match(socialCaption("instagram", s, "abc123"), /AI voice/);
+  const ig = socialCaption("instagram", s, "abc123");
+  assert.match(ig, /#GTA6 #GTA/);
+  assert.match(ig, /AI voice/);
+  assert.ok((ig.match(/#\w+/g) ?? []).length <= 5, "Instagram allows five hashtags");
+  assert.doesNotMatch(x, /#\w+/, "no topic hashtags on X");
+  const tt = socialCaption("tiktok", s, "abc123");
+  assert.ok(tt.startsWith("Rockstar just confirmed the date."), "TikTok opens on the spoken fact");
+  assert.ok((tt.match(/#\w+/g) ?? []).length <= 5);
   assert.match(
     socialCaption("tiktok", { ...s, is_rumour: true }, "abc123"),
     /Unconfirmed report/,

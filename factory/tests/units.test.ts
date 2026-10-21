@@ -221,7 +221,7 @@ test("video descriptions credit the footage and disclose the synthetic voice", (
   const m = videoMetadata(ep, "unlisted");
   assert.match(m.description, /Footage: .* official trailer \(Bethesda Softworks\)/);
   assert.match(m.description.split("\n")[0]!, /^Starfield .*: /, "the first line is the keyword lead");
-  assert.match(m.description, /#Shorts #GamingNews #Starfield$/);
+  assert.match(m.description, /#Starfield #GamingNews$/);
   assert.ok(m.tags.includes("Starfield") && m.tags.includes("gaming news") && m.tags.join(",").length <= 500);
   assert.ok(m.title.length <= 60 && m.title.startsWith("Starfield"));
   assert.match(m.description, /Game Content Usage Rules: https:\/\/www\.xbox\.com\/en-US\/developers\/rules/);
@@ -291,7 +291,9 @@ test("SEO: titles are game-first, short and clean; tags, hashtags, lead and comm
   assert.equal(tags[0], "Starfield");
   assert.ok(tags.includes("Bethesda") && tags.includes("Starfield delayed") && tags.includes("gaming news"));
   assert.ok(new Set(tags.map((x) => x.toLowerCase())).size === tags.length, "no duplicate tags");
-  assert.deepEqual(hashtags(s), ["#Shorts", "#GamingNews", "#Starfield"]);
+  assert.deepEqual(hashtags(s), ["#Starfield", "#GamingNews"]);
+  assert.deepEqual(hashtags({ ...s, game_title: "Grand Theft Auto VI" }), ["#GTA6", "#GTA", "#GamingNews"], "the short forms fans search");
+  assert.deepEqual(hashtags({ ...s, hashtags: ["#gaming", "Rockstar Games", "#GTA6"] }), ["#RockstarGames", "#GTA6", "#GamingNews"], "the writer's own tags, generic ones dropped");
   assert.match(keywordLead(s), /^Starfield delayed: /);
   const ranking = goodScript({ game_title: "Resident Evil", headline: "Six Resident Evil games ranked", evergreen_format: "ranking", pulse_take: { ...s.pulse_take, on_screen: "RE7 wins on dread" }, entries: Array.from({ length: 6 }, (_, i) => ({ rank: i + 1, game_title: `RE ${i}`, steam_search_term: "", year: 2000 + i, platforms: "PC" })) });
   assert.match(keywordLead(ranking), /^6 Resident Evil games ranked worst to best: Six Resident Evil games ranked\./);
@@ -336,4 +338,10 @@ test("the stock 'Our read' opener is varied, and a spoiler line never repeats 'F
   assert.equal((hook.match(/fair warning/gi) ?? []).length, 1, hook);
   assert.match(hook, /spoilers/);
   assert.match(withSpoilerWarning({ ...base, hook: "We rank ten campaigns." }).hook, /Fair warning: story spoilers ahead.$/);
+});
+
+test("a headline-style title that names its game early is kept as written", () => {
+  const s = goodScript({ game_title: "Grand Theft Auto VI", headline: "GTA 6 Slips To November 19" });
+  assert.equal(polishTitle({ ...s, youtube: { ...s.youtube, title: "GTA 6 Slips Again, and This Time It's November" } }), "GTA 6 Slips Again, and This Time It's November");
+  assert.equal(polishTitle({ ...goodScript(), youtube: { ...goodScript().youtube, title: "Bethesda Pushes the Starfield Expansion to 2027" } }), "Bethesda Pushes the Starfield Expansion to 2027");
 });

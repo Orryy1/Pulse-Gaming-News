@@ -71,6 +71,10 @@ export const ScriptSchema = z.object({
   loop_line: z.string().describe("Final spoken line that ties back to the hook so a rewatch feels seamless"),
   is_rumour: z.boolean(),
   attribution: z.string().describe("On-screen source credit, e.g. 'Source: Xbox Wire / IGN'"),
+  hashtags: z
+    .array(z.string())
+    .optional()
+    .describe("3-5 hashtags fans of this story actually search, most specific first: the game's common short name (#GTA6), its series (#GTA), the company or platform (#RockstarGames). No generic tags (#gaming, #gamer, #fyp, #viral, #shorts), no spaces"),
   youtube: z.object({
     title: z.string().describe("Front-load the game name, factual, under 90 characters"),
     description: z.string().describe("2-4 sentences plus source credits. No hashtags in the body"),

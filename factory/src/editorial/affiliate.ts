@@ -141,27 +141,22 @@ export function affiliateBlock(
   opts: { free?: boolean } = {},
 ): string {
   if (!tags?.uk && !tags?.us) return "";
+  // Links in a Short's description are not clickable (YouTube, since August 2023): only clutter there.
+  if (script.runtime !== "long") return "";
   const products = productsFor(script, opts.free);
   if (!products.length) return "";
-  const lines = products.map((p) => {
-    const links = [
-      tags.us ? `US ${amazonUrl(p.query, tags.us, "us")}` : "",
-      tags.uk
-        ? `${tags.us ? "UK " : ""}${amazonUrl(p.query, tags.uk, "uk")}`
-        : "",
-    ].filter(Boolean);
-    return `🛒 ${p.label}: ${links.join(" | ")}`;
-  });
-  // Every other national store sits behind one link, so the description stays readable.
-  const others = taggedStores(tags).filter((k) => k !== "us" && k !== "uk");
-  const world =
-    tags.shopUrl && others.length
-      ? `🌍 ${others.map((k) => STORES[k].name).join(", ")}: ${tags.shopUrl}`
-      : "";
+  // Up to three direct links (US first: with Amazon OneLink switched on they route UK and EU shoppers to
+  // their own store), then one link to the video's shop page, which lists every product with a button for
+  // each country's store. No per-country pairs, so the block stays short.
+  const home: Store = tags.us ? "us" : "uk";
+  const lines = products.slice(0, 3).map((p) => `🛒 ${p.label} on Amazon: ${amazonUrl(p.query, tags[home]!, home)}`);
+  const shop = tags.shopUrl
+    ? `🌍 ${products.length > 3 ? `All ${products.length} games and gear` : "Every link"}, with your own country's Amazon store: ${tags.shopUrl}`
+    : "";
   return [
-    "\nGet the games and gear in this video:",
+    "\nAffiliate links (we may earn from purchases):",
     ...lines,
-    world,
+    shop,
     "As an Amazon Associate I earn from qualifying purchases.",
   ]
     .filter(Boolean)

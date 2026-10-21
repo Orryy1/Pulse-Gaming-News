@@ -66,6 +66,7 @@ person: when the story is about one real person (a cameo, a hire, a departure, a
 
 Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone.
 List every factual claim in "claims" with the URL of the provided source that supports it.
+"hashtags": 3-5 tags fans of this story actually search, most specific first (#GTA6, #GTA, #RockstarGames); never generic ones like #gaming or #fyp.
 The YouTube title reads like a sharp headline a friend would text you, not a press release: the game or company named early, a strong verb, and the point (the consequence, the surprise or the stakes), under 60 characters, sentence-style with no "Game: fact" colon template, no exclamation marks, no all-caps words, no clickbait the video does not deliver. Good: "Nintendo Just Made Switch 2 Games Cost $80", "GTA 6 Slips Again, and This Time It's Fall". Bad: "GTA 6: Release Date Delayed". A rumor's title says it is a rumor or report. The description opens with one conversational sentence on why it matters, then credits the sources by name.`;
 }
 

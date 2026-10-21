@@ -90,7 +90,25 @@ const EVERGREEN_TAGS = [
   "pulse gaming news",
 ];
 
-const SMALL_WORDS = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "the", "to", "vs", "via"]);
+const SMALL_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "as",
+  "at",
+  "but",
+  "by",
+  "for",
+  "in",
+  "nor",
+  "of",
+  "on",
+  "or",
+  "the",
+  "to",
+  "vs",
+  "via",
+]);
 
 /** Title case with the small words left small ("Call of Duty Ranked Worst to Best"), except first and after a colon or dash. */
 export function titleCase(s: string): string {
@@ -98,7 +116,8 @@ export function titleCase(s: string): string {
     .split(" ")
     .map((w, i, all) => {
       const after = i > 0 && /[:|\u2013-]$/.test(all[i - 1]!);
-      if (i > 0 && !after && SMALL_WORDS.has(w.toLowerCase())) return w.toLowerCase();
+      if (i > 0 && !after && SMALL_WORDS.has(w.toLowerCase()))
+        return w.toLowerCase();
       return w.replace(/^([a-z])/, (m) => m.toUpperCase());
     })
     .join(" ");
@@ -220,7 +239,24 @@ export function polishTitle(script: Script): string {
           .toLowerCase()
           .startsWith(g.toLowerCase().slice(0, Math.min(g.length, 12))),
     );
-  const gameFirst = !game || leads(title);
+  // A headline names its game early but need not open with it ("Nintendo Just Made Switch 2 Games Cost $80",
+  // "GTA 6 Slips Again"): the name, a distinctive word of it or its initials (GTA, COD) in the first 45 characters.
+  const early = title.slice(0, 45).toLowerCase();
+  const words = game
+    .replace(/[^A-Za-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const initials = words.filter((w) => /^[A-Za-z]/.test(w) && !/^[IVX]+$/.test(w)).map((w) => w[0]).join("").toLowerCase();
+  const mentionsEarly =
+    leads(title) ||
+    words.some(
+      (w) =>
+        w.length >= 4 &&
+        !/^(game|games|edition|remastered|the)$/i.test(w) &&
+        early.includes(w.toLowerCase()),
+    ) ||
+    (initials.length >= 3 && new RegExp(`\\b${initials}\\b`).test(early));
+  const gameFirst = !game || mentionsEarly;
   const clean = !BAD_TITLE_WORDS.test(title) && !CLICKBAIT_PUNCT.test(title);
   if (!title || !gameFirst || !clean || title.length > TITLE_MAX + 12) {
     const esc = (g: string) => g.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -284,15 +320,58 @@ export function buildTags(script: Script): string[] {
     add(script.game_title ? `${script.game_title} ${t}` : t);
   for (const t of script.youtube.tags) add(t);
   // A long video is not a Short: the Shorts tags would mislabel it.
-  for (const t of EVERGREEN_TAGS) if (script.runtime !== "long" || !/shorts/.test(t)) add(t);
+  for (const t of EVERGREEN_TAGS)
+    if (script.runtime !== "long" || !/shorts/.test(t)) add(t);
   while (out.join(",").length > 480 && out.length > 1) out.pop();
   return out;
 }
 
-/** Three hashtags: the channel's two plus the game's. */
-export function hashtags(script: Script): string[] {
+// The short forms fans search, most specific first: "Grand Theft Auto VI" is searched as #GTA6, not #GrandTheftAutoVI.
+const SHORT_TAGS: Array<[RegExp, string[]]> = [
+  [/grand theft auto (vi|6)\b/i, ["#GTA6", "#GTA"]],
+  [/grand theft auto/i, ["#GTA"]],
+  [/call of duty/i, ["#CallOfDuty", "#COD"]],
+  [/legend of zelda|\bzelda\b/i, ["#Zelda"]],
+  [/red dead/i, ["#RedDeadRedemption"]],
+  [/pok[eé]mon/i, ["#Pokemon"]],
+  [/super mario|\bmario\b/i, ["#Mario"]],
+  [/elder scrolls/i, ["#ElderScrolls"]],
+  [/final fantasy/i, ["#FinalFantasy"]],
+  [/resident evil/i, ["#ResidentEvil"]],
+  [/assassin'?s creed/i, ["#AssassinsCreed"]],
+  [/battlefield/i, ["#Battlefield"]],
+  [/elden ring/i, ["#EldenRing"]],
+  [/switch 2/i, ["#NintendoSwitch2"]],
+  [/playstation|\bps5\b/i, ["#PS5"]],
+  [/xbox/i, ["#Xbox"]],
+];
+const GENERIC =
+  /^#(gaming|gamer|gamers|gamertok|gamingnews|videogames|fyp|foryou|foryoupage|viral|reels|shorts|trending|news)$/i;
+
+/** The story's own hashtags, most specific first (the writer's, else derived from the game), at most n. */
+export function topicTags(script: Script, n = 3): string[] {
+  const out: string[] = [];
+  const add = (t: string) => {
+    const tag = `#${t.replace(/^#/, "").replace(/[^A-Za-z0-9]/g, "")}`;
+    if (
+      tag.length > 2 &&
+      tag.length <= 31 &&
+      !GENERIC.test(tag) &&
+      !out.some((x) => x.toLowerCase() === tag.toLowerCase())
+    )
+      out.push(tag);
+  };
+  for (const t of script.hashtags ?? []) add(t);
+  const subject = `${script.game_title} ${script.headline}`;
+  for (const [re, tags] of SHORT_TAGS) if (re.test(subject)) tags.forEach(add);
   const game = script.game_title.replace(/[^A-Za-z0-9]/g, "");
-  return ["#Shorts", "#GamingNews", ...(game ? [`#${game.slice(0, 30)}`] : [])];
+  if (game && !/^(gamingnews|thisweek|newgames)/i.test(game)) add(game);
+  return out.slice(0, n);
+}
+
+/** YouTube shows the first three description hashtags above the title: the story's two most specific and the channel's. */
+export function hashtags(script: Script): string[] {
+  return [...topicTags(script, 2), "#GamingNews"];
 }
 
 /** The first two lines of a description: the keyword stack YouTube indexes, written as a sentence. */
@@ -338,7 +417,9 @@ export function keywordLead(script: Script): string {
 export function pinnedComment(script: Script): string {
   if (script.cutdown)
     return `${script.cutdown.question.trim()} The full ranking, every pick explained: https://youtu.be/${script.cutdown.parent_video}`;
-  const take = script.pulse_take.on_screen.replace(/^\s*our read\s*[:,-]?\s*/i, "").replace(/\.$/, "");
+  const take = script.pulse_take.on_screen
+    .replace(/^\s*our read\s*[:,-]?\s*/i, "")
+    .replace(/\.$/, "");
   const game = script.game_title || "this";
   const lead = writtenOpinionLead(script.headline);
   if (script.recap)
@@ -363,15 +444,15 @@ export function pinnedComment(script: Script): string {
     script.story_type === "explainer"
       ? `Do you buy that answer, or is there a better one?`
       : script.story_type === "delay"
-      ? `Does the new date change your plans for ${game}?`
-      : script.story_type === "price"
-        ? `Is that price fair for ${game}?`
-        : script.story_type === "release_date"
-          ? `Are you picking up ${game} at launch?`
-          : script.story_type === "review_scores"
-            ? `Do the scores match what you expected from ${game}?`
-            : script.story_type === "rumour"
-              ? `Do you buy this one, or wait for the official word?`
-              : `What do you make of it?`;
+        ? `Does the new date change your plans for ${game}?`
+        : script.story_type === "price"
+          ? `Is that price fair for ${game}?`
+          : script.story_type === "release_date"
+            ? `Are you picking up ${game} at launch?`
+            : script.story_type === "review_scores"
+              ? `Do the scores match what you expected from ${game}?`
+              : script.story_type === "rumour"
+                ? `Do you buy this one, or wait for the official word?`
+                : `What do you make of it?`;
   return `${q} ${lead} ${take}. Sources are in the description.`;
 }

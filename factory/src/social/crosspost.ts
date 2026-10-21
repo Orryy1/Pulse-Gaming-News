@@ -5,6 +5,7 @@
 // events table is the ledger: "crosspost" (done), "crosspost_failed" (up to
 // three tries) and "crosspost_skip" (not public on YouTube, file gone).
 
+import { topicTags } from "../editorial/seo.ts";
 import fs from "node:fs";
 import path from "node:path";
 import type { Db } from "../db.ts";
@@ -35,17 +36,17 @@ export interface SocialPosters {
   x?: (text: string) => Promise<string>;
 }
 
-const PLATFORM_TAGS: Record<Platform, string[]> = {
-  facebook: ["#GamingNews", "#Gaming"],
-  instagram: ["#gamingnews", "#gaming", "#gamer", "#videogames", "#reels"],
-  tiktok: ["#gamingnews", "#gaming", "#gamer", "#gamertok"],
-  x: ["#GamingNews"],
+// Hashtags per platform: the story's own tags first, then at most the niche tag. Instagram allows five;
+// TikTok's top gaming accounts use four or five (franchise, series, company, niche); Facebook two; X none.
+const PLATFORM_TAGS: Record<Platform, { topic: number; tail: string[] }> = {
+  facebook: { topic: 1, tail: ["#GamingNews"] },
+  instagram: { topic: 3, tail: ["#gamingnews", "#gaming"] },
+  tiktok: { topic: 3, tail: ["#gamingnews", "#gaming"] },
+  x: { topic: 0, tail: [] },
 };
 
-const gameTag = (script: Script) => {
-  const t = script.game_title.replace(/[^A-Za-z0-9]/g, "").slice(0, 30);
-  return t ? `#${t}` : "";
-};
+/** A closing question for the caption: the script's own loop line when it asks one. */
+const questionOf = (script: Script) => (/\?\s*$/.test(script.loop_line ?? "") ? script.loop_line.trim() : "");
 
 /** The words that go with the video on each platform. */
 export function socialCaption(
@@ -55,14 +56,16 @@ export function socialCaption(
 ): string {
   const title = polishTitle(script);
   const url = `https://youtube.com/shorts/${youtubeId}`;
-  const tags = [gameTag(script), ...PLATFORM_TAGS[platform]].filter(Boolean);
+  const spec = PLATFORM_TAGS[platform];
+  const tags = [...topicTags(script, spec.topic), ...spec.tail];
+  const question = questionOf(script);
   const rumour = script.is_rumour
     ? "Unconfirmed report: we will update when it is confirmed or denied."
     : "";
   if (platform === "x") {
-    // 280 characters, a link counts as 23.
-    const tail = `\n\n${url} ${tags.slice(0, 2).join(" ")}`;
-    const room = 280 - 23 - tags.slice(0, 2).join(" ").length - 4;
+    // 280 characters, a link counts as 23. The top gaming accounts on X use no topic hashtags.
+    const tail = `\n\n${url}`;
+    const room = 280 - 23 - 4;
     const body = script.is_rumour ? `${title} (unconfirmed)` : title;
     const hook =
       script.hook && body.length + script.hook.length + 2 <= room
@@ -70,16 +73,16 @@ export function socialCaption(
         : "";
     return `${body.slice(0, room)}${hook}${tail}`;
   }
+  // The search phrase first (TikTok and Instagram read captions for search; Instagram posts reach
+  // Google), then the fact, then a real question; no emoji.
   const lines = [
-    title,
-    "",
-    script.hook,
+    platform === "tiktok" ? `${script.hook}${question ? ` ${question}` : ""}` : title,
+    platform === "tiktok" ? "" : "",
+    platform === "tiktok" ? "" : `${script.hook}${question ? ` ${question}` : ""}`,
     rumour,
     platform === "facebook" ? `\nFull story and sources: ${url}` : "",
-    platform === "instagram"
-      ? "\nFollow @pulse.gmg for gaming news every day."
-      : "",
-    platform === "tiktok" ? "" : "\nNarrated with an AI voice.",
+    platform === "instagram" ? "\nFull story and sources: link in bio." : "",
+    "\nNarrated with an AI voice.",
     "",
     tags.join(" "),
   ].filter((l, i, a) => l !== "" || (i > 0 && a[i - 1] !== ""));
@@ -187,8 +190,12 @@ export async function crosspostTick(
               : await d.posters.x!(caption);
       await logEvent(d.db, ep.id, "crosspost", { platform, id });
       // TikTok has not approved the app for public posting yet: the video waits in the owner's TikTok inbox.
-      if (id.startsWith("inbox:"))
-        await d.notify({ content: `📲 TikTok draft ready: "${polishTitle(script)}". Open TikTok, tap the notification in your inbox, paste this caption and post:\n${caption.slice(0, 1500)}` }).catch(() => undefined);
+      // TikTok's draft upload has no caption field (no tool can prefill one), so the caption comes to the
+      // owner's phone on its own: long-press, Copy Text, paste in TikTok, post.
+      if (id.startsWith("inbox:")) {
+        await d.notify({ content: `📲 TikTok draft ready: "${polishTitle(script)}". Open TikTok's inbox notification, paste the next message as the caption, turn on "AI-generated content" and post.` }).catch(() => undefined);
+        await d.notify({ content: caption.slice(0, 2000) }).catch(() => undefined);
+      }
       log("info", "crossposted", { platform, episode: ep.id, id });
       done.push({ platform, episode: ep.id, ok: true });
     } catch (err) {

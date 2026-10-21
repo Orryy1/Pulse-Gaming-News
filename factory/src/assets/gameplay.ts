@@ -206,7 +206,7 @@ export async function judgeGameplay(
   const r = await llm.structured({
     tier: "low",
     system:
-      "You check YouTube search results for a video editor. Keep only videos that show gameplay of exactly the named game (that release, not another entry in the series, a remake or remaster under a different name, a sequel, a mod, a reaction, a compilation of several games or a news video).",
+      "You check YouTube search results for a video editor. Keep only videos that show gameplay of exactly the named game (that release, not another entry in the series, a remake or remaster with rebuilt visuals under a different name, a sequel, a mod, a reaction, a compilation of several games or a news video). An official re-release of the same game that keeps its look counts as that game: an anniversary edition, a port or an HD re-release (\"Grand Theft Auto III: 10 Year Anniversary Edition\" shows Grand Theft Auto III).",
     content: `Game: ${game}${year ? ` (${year})` : ""}${scope === "campaign" ? "\nThe video is about the single-player campaign: keep only campaign or story footage; reject multiplayer, Zombies, Warzone, co-op and Spec Ops videos." : ""}\n\nVideos:\n${items.map((v, i) => `${i}. "${v.title}" by ${v.channelTitle}: ${v.description.slice(0, 200)}`).join("\n")}`,
     schema: GameplayJudgeSchema,
     effort: "low",
@@ -332,6 +332,19 @@ async function downloadSlice(
     { timeout: 240_000, maxBuffer: 8 * 1024 * 1024 },
   );
   return to - from;
+}
+
+/** Crops the bottom quarter (where subtitles and older games' mission text sit) off a clip, in place. */
+async function cropBottom(file: string): Promise<boolean> {
+  const tmp = file.replace(/\.mp4$/, ".crop.mp4");
+  try {
+    await run(FFMPEG, ["-v", "error", "-y", "-i", file, "-vf", "crop=iw:trunc(ih*0.74/2)*2:0:0", "-c:v", "libx264", "-crf", "17", "-preset", "fast", "-pix_fmt", "yuv420p", "-c:a", "copy", tmp]);
+    await fs.rename(tmp, file);
+    return true;
+  } catch {
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
+    return false;
+  }
 }
 
 /** One full-size frame from the middle of a clip, through the local screen: a facecam or overlay, gore, or burned-in subtitles. */
@@ -566,7 +579,13 @@ async function clipsFrom(
     // A full-size look at the finished clip: a small facecam is a few pixels in the matcher's
     // 320 px keyframes. A facecam or gore drops the clip and every other clip from that channel.
     const file = path.join(o.episodeDir, c.file);
-    const verdict = streamed.has(src.url) ? "facecam" : await frameProblem(file);
+    let verdict = streamed.has(src.url) ? "facecam" : await frameProblem(file);
+    // Text along the bottom (subtitles, or the mission and pager text of older games) is cropped away
+    // instead of losing the clip: the picture above it is still good footage.
+    if (verdict === "subtitles" && (await cropBottom(file))) {
+      log("info", "gameplay clip cropped above its bottom text", { game: o.game, source: src.channelTitle });
+      verdict = undefined;
+    }
     if (verdict) {
       // A facecam or gore condemns the channel; burned-in subtitles only this clip.
       if (verdict !== "subtitles") streamed.add(src.url);

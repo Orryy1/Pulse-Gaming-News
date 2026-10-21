@@ -106,7 +106,7 @@ test("the opening comparison speaks only once both kinds have three Shorts", asy
 test("the evening summary lists what went live, TikTok drafts waiting and the background news, once a day", async () => {
   const { dailySummary, summaryDue } = await import("../src/analytics.ts");
   const db = await testDb();
-  const cfg = { ...testConfig(tmpDir()), timezone: "Europe/London" };
+  const cfg = { ...testConfig(await tmpDir()), timezone: "Europe/London" };
   await db.query(
     `INSERT INTO episodes (id, story_hash, story_json, status, lane, script_json, youtube_video_id, updated_at)
      VALUES ('ep_s1', 'h1', '{"headline":"x","items":[]}', 'published', 'news', $1, 'vidA', now())`,

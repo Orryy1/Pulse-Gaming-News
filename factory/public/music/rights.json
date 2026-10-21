@@ -1,0 +1,37 @@
+{
+  "schema": "pulse-audio-rights-v1",
+  "beds": [
+    {
+      "file": "music/bed_1.wav",
+      "key": "E",
+      "sha256": "18821970baca63cd070242724b6db49e085ca8a8fdd422f4b0a879f68ba98c46",
+      "origin": "ElevenLabs Music, generated 2026-10-21 (el_glow)",
+      "licence": "ElevenLabs paid-plan commercial use; retire the bed on any Content ID claim",
+      "finishing": "beat-aligned seamless loop, pitch +0 semitones (rubberband, tempo kept), -12.7 LUFS (src/tools/sfxlab/pickbeds.py)"
+    },
+    {
+      "file": "music/bed_2.wav",
+      "key": "D",
+      "sha256": "89794efddad4fca2d470a69e1d7415acb5bed9537ebd89a722730195663523e8",
+      "origin": "ElevenLabs Music, generated 2026-10-21 (el_warm)",
+      "licence": "ElevenLabs paid-plan commercial use; retire the bed on any Content ID claim",
+      "finishing": "beat-aligned seamless loop, pitch +2 semitones (rubberband, tempo kept), -12.7 LUFS (src/tools/sfxlab/pickbeds.py)"
+    },
+    {
+      "file": "music/bed_3.wav",
+      "key": "D",
+      "sha256": "68007744934fa3968ea11e4a79bea28b89edca790be8004cd6853daf91c59c69",
+      "origin": "ElevenLabs Music, generated 2026-10-21 (el_synth2)",
+      "licence": "ElevenLabs paid-plan commercial use; retire the bed on any Content ID claim",
+      "finishing": "beat-aligned seamless loop, pitch +2 semitones (rubberband, tempo kept), -12.7 LUFS (src/tools/sfxlab/pickbeds.py)"
+    },
+    {
+      "file": "music/bed_4.wav",
+      "key": "E",
+      "sha256": "439cba0ad7ae5e802b91f9c3d50c50fae711b42eb8b78de209388d2c6f3632a0",
+      "origin": "ElevenLabs Music, generated 2026-10-21 (el_warm2)",
+      "licence": "ElevenLabs paid-plan commercial use; retire the bed on any Content ID claim",
+      "finishing": "beat-aligned seamless loop, pitch -1 semitones (rubberband, tempo kept), -12.7 LUFS (src/tools/sfxlab/pickbeds.py)"
+    }
+  ]
+}

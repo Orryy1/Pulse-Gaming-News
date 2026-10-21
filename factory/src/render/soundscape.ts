@@ -38,8 +38,22 @@ export const UNDER_VOICE = 0.75;
 
 export const sfxFile = (name: string) => `sfx/${name}.mp3`;
 
-/** The key of each music bed (measured by src/tools/sfxlab/key.py). */
+/**
+ * The music beds (public/music, chosen by src/tools/sfxlab/pickbeds.py from Suno and ElevenLabs Music
+ * candidates): seamless beat-cut loops of about two minutes, loudness-matched, almost nothing in the
+ * speech band, no lead melody, no breakdowns, each in D or E major so the tuned sounds fit.
+ */
+export const BEDS = [
+  { file: "music/bed_1.wav", key: "E" },
+  { file: "music/bed_2.wav", key: "D" },
+  { file: "music/bed_3.wav", key: "D" },
+  { file: "music/bed_4.wav", key: "E" },
+] as const;
+export const bedFor = (variant: number) => BEDS[((variant % BEDS.length) + BEDS.length) % BEDS.length]!.file;
+
+/** The key of each bed by file name, the retired Suno beds included (older renders name them). */
 const MUSIC_KEY: Record<string, "D" | "E"> = {
+  ...Object.fromEntries(BEDS.map((b) => [b.file.split("/").pop()!, b.key])),
   "music_1.mp3": "D",
   "music_2.mp3": "D",
   "music_3.mp3": "E",

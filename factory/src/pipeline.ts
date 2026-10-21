@@ -123,6 +123,7 @@ import {
   type SegmentInput,
 } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
+import { bedFor } from "./render/soundscape.ts";
 import { blurPlate } from "./assets/plates.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
 import {
@@ -3928,7 +3929,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const words = assets.words ?? [];
   const segments = buildSegments(segmentInputs(script), words, duration);
   const variant = variantOf(ep.id);
-  const musicFile = s.cfg.musicBed ? `music_${variant + 1}.mp3` : null;
+  const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
   const images = (assets.images ?? []).map((i) => ({
     file: i.file,
     kind: i.kind,
@@ -4176,7 +4177,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const words = assets.words ?? [];
   const segments = buildSegments(segmentInputs(script), words, duration);
   const variant = variantOf(ep.id);
-  const musicFile = s.cfg.musicBed ? `music_${variant + 1}.mp3` : null;
+  const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
   for (const img of assets.images ?? [])
     if (!img.blurFile)

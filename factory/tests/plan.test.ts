@@ -743,3 +743,20 @@ test("the spoken caption word never grows across the gap to the next word", asyn
   }
   assert.equal(captionGrow(2, font), 1.06, "short words keep the full pop");
 });
+
+test("the closing line does not repeat the hero still cut after cut; only the last shot returns to it", () => {
+  const base = input({ images: Array.from({ length: 8 }, (_, k) => ({ kind: k === 0 ? "hero" : "screenshot", aspect: 1.778 })) as PlanInput["images"] });
+  // A long closing line so it needs several cuts.
+  const segs = base.segments.map((s) => ({ ...s }));
+  const loop = segs.at(-1)!;
+  loop.end = loop.start + 9;
+  const plan = buildPlan({ ...base, segments: segs, durationSeconds: loop.end });
+  const closing = plan.shots.filter((s) => segs[s.segment]?.kind === "loop");
+  const last = plan.shots.at(-1)!;
+  assert.ok(closing.length >= 2, `the closing line has ${closing.length} shots`);
+  for (let k = 1; k < plan.shots.length; k++) {
+    const a = plan.shots[k - 1]!.media, b = plan.shots[k]!.media;
+    if (a.type === "image" && b.type === "image") assert.notEqual(a.index, b.index, `shots ${k - 1} and ${k} show the same still`);
+  }
+  assert.equal(last.media.type, "image", "the Short ends on a still");
+});

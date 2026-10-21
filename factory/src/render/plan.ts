@@ -415,7 +415,6 @@ export function planShots(
   };
 
   const shots: Shot[] = [];
-  const lastSeg = segments.length - 1;
   // A ranking Short: ranks are spoken bottom-up, so the last beat is number one and the take ("our pick") shows it.
   const ranking = segments.some(
     (x) => x.kind === "beat" && x.visual?.kind === "rank",
@@ -433,7 +432,9 @@ export function planShots(
     let media: PlanMedia | undefined;
     let framed = false;
     const isOpening = n === 0;
-    const isClosing = seg.kind === "loop" || c.segment === lastSeg;
+    // Only the very last shot returns to the hero (it meets the opening frame when the Short loops); the
+    // loop line's earlier cuts get their own media, or one hero still filled the last 8 s three times over.
+    const isClosing = n === cuts.length - 1;
 
     const firstTakeShot =
       seg.kind === "take" && (n === 0 || cuts[n - 1]!.segment !== c.segment);
@@ -488,7 +489,7 @@ export function planShots(
       media =
         takeClip(n, c, winnerBeat, true, true) ??
         takeStill((i) => true, last, winnerBeat, true);
-    } else if (seg.kind === "take") {
+    } else if (seg.kind === "take" || seg.kind === "loop") {
       media =
         takeClip(n, c, undefined, true) ??
         takeStill((i) => true, last) ??

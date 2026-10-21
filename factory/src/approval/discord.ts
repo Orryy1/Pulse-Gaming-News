@@ -9,6 +9,8 @@ export interface DiscordMessage {
   content?: string;
   embeds?: Array<Record<string, unknown>>;
   files?: string[];
+  /** Something the owner must act on: pings @everyone so the phone actually buzzes (servers default to mentions only). */
+  ping?: boolean;
 }
 
 /** true = delivered, false = delivery failed, undefined = Discord not configured. */
@@ -18,7 +20,12 @@ export async function postDiscord(webhookUrl: string, msg: DiscordMessage): Prom
     return undefined;
   }
   try {
-    const payload = { username: "Pulse Factory", content: msg.content, embeds: msg.embeds, allowed_mentions: { parse: [] } };
+    const payload = {
+      username: "Pulse Factory",
+      content: msg.ping ? `@everyone ${msg.content ?? ""}`.trim() : msg.content,
+      embeds: msg.embeds,
+      allowed_mentions: { parse: msg.ping ? ["everyone"] : [] },
+    };
     let res: Response;
     if (msg.files?.length) {
       const form = new FormData();

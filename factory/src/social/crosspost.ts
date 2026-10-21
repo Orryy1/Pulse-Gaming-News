@@ -193,7 +193,7 @@ export async function crosspostTick(
       // TikTok's draft upload has no caption field (no tool can prefill one), so the caption comes to the
       // owner's phone on its own: long-press, Copy Text, paste in TikTok, post.
       if (id.startsWith("inbox:")) {
-        await d.notify({ content: `📲 TikTok draft ready: "${polishTitle(script)}". Open TikTok's inbox notification, paste the next message as the caption, turn on "AI-generated content" and post.` }).catch(() => undefined);
+        await d.notify({ content: `📲 TikTok draft ready: "${polishTitle(script)}". Open TikTok's inbox notification, paste the next message as the caption, turn on "AI-generated content" and post.`, ping: true }).catch(() => undefined);
         await d.notify({ content: caption.slice(0, 2000) }).catch(() => undefined);
       }
       log("info", "crossposted", { platform, episode: ep.id, id });

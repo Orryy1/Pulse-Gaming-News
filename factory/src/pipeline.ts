@@ -3254,7 +3254,7 @@ export async function gatherLongEntryMedia(
     }
     // The owner's own recordings come first: the best footage there is.
     for (const c of await s
-      .ownClips(entry.game_title, script.game_title || entry.game_title, edir, targets.slice(0, 8), 8)
+      .ownClips(entry.game_title, script.game_title || entry.game_title, edir, targets.slice(0, 12), 12)
       .catch(() => [] as VisualAsset[]))
       clips.push({
         file: rel(c.file),
@@ -3274,7 +3274,7 @@ export async function gatherLongEntryMedia(
     // Licensed gameplay for every sentence (real missions and moments, credited), on top of any trailer moment:
     // a sentence then plays as footage, not a still.
     // Two different moments per sentence: footage for the whole line, not one clip and then a still.
-    const missing = targets.slice(0, 6).flatMap((t) => [t, { ...t, key: t.key.replace(/#m(\d+)$/, "#alt#m$1"), text: `${t.text}, a different moment` }]);
+    const missing = targets.slice(0, 10).flatMap((t) => [t, { ...t, key: t.key.replace(/#m(\d+)$/, "#alt#m$1"), text: `${t.text}, a different moment` }]);
     if (missing.length)
       for (const c of await s
         .gameplayClips(

@@ -1,5 +1,5 @@
 // The long-form lane: a weekly 16:9 "top ten" video in the gameranx and IGN
-// mould, five to seven minutes, built from the same ranking machinery as the
+// mould, fifteen to twenty minutes, built from the same ranking machinery as the
 // evergreen Short but with a paragraph per entry, an intro, an outro and
 // chapters. Topics come from the evergreen candidate pool.
 
@@ -16,12 +16,16 @@ import {
   FORMAT_TITLES,
 } from "./evergreen.ts";
 
-export const LONG_WORDS_MIN = 650;
-export const LONG_WORDS_MAX = 1150;
+// The rankings that win a topic like ours run 13 to 67 minutes (Call of Duty campaigns ranked: 12:45 to
+// 67:16, 373k to 1.55M views); our 5.5-minute version drew 2 views. Fifteen to twenty minutes now.
+export const LONG_WORDS_MIN = 1800;
+export const LONG_WORDS_MAX = 3200;
 export const LONG_ENTRIES_MIN = 6; // some themes (mainline campaigns) honestly have six or seven
-export const LONG_ENTRIES_MAX = 12;
-export const LONG_ENTRY_WORDS_MIN = 45;
-export const LONG_ENTRY_WORDS_MAX = 100;
+export const LONG_ENTRIES_MAX = 15;
+export const LONG_ENTRY_WORDS_MIN = 130;
+export const LONG_ENTRY_WORDS_MAX = 240;
+export const LONG_INTRO_WORDS: [number, number] = [60, 140];
+export const LONG_OUTRO_WORDS: [number, number] = [60, 150];
 
 const HOUSE = `You write for Pulse Gaming News, a YouTube channel about video games.
 
@@ -123,7 +127,7 @@ export const LongformScriptSchema = z.object({
     narration: z
       .string()
       .describe(
-        "35-80 spoken words: the premise, the criterion, and one reason the ranking will annoy somebody",
+        "60-140 spoken words: a cold-open fact, the premise and the criterion, and one promised surprise in the order",
       ),
     on_screen: z.string().describe("3-8 word kicker under the title"),
   }),
@@ -136,7 +140,7 @@ export const LongformScriptSchema = z.object({
     narration: z
       .string()
       .describe(
-        "35-90 spoken words: why number one wins by the criterion, then one honest line about the ranking's hardest call",
+        "60-150 spoken words: why number one wins by the criterion, the top three in a line, and one honest line about the ranking's hardest call",
       ),
     on_screen: z.string().describe("3-8 word summary of the pick"),
   }),
@@ -165,11 +169,11 @@ export type LongformScript = z.infer<typeof LongformScriptSchema>;
 export function longformPrompt(): string {
   return `${HOUSE}
 
-Write a long-form ranking video of ${LONG_WORDS_MIN}-${LONG_WORDS_MAX} spoken words in total, five to seven minutes when read at a natural pace.
+Write a long-form ranking video of ${LONG_WORDS_MIN}-${LONG_WORDS_MAX} spoken words in total, fifteen to twenty minutes when read at a natural pace.
 Structure:
-1. intro.narration: 35-80 words. State the premise and the single criterion straight away, then one line on why the order will annoy somebody. No throat-clearing.
-2. entries: ${LONG_ENTRIES_MIN}-${LONG_ENTRIES_MAX}, spoken from the lowest rank to number one. Each narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} words, three to five sentences: what the game is and when it landed, one specific detail a fan would nod at (a mechanic, a level, a moment, a reception fact), and why it sits here by the criterion. Vary the sentence openings; never start two entries the same way. verdict_chip is 1-4 words. footage names the trailer moment to show, with 1-4 keywords.
-3. outro.narration: 35-90 words. Why number one wins by the criterion, then the ranking's hardest call, honestly.
+1. intro.narration: 60-140 words. Open on a concrete fact or scene, state the premise and the single criterion, then promise one surprise in the order. No throat-clearing, no greeting.
+2. entries: ${LONG_ENTRIES_MIN}-${LONG_ENTRIES_MAX}, spoken from the lowest rank to number one. Each narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} words, six to ten sentences: what the game is and when it landed, the story around it (how it was made or received, from the facts given or long-established knowledge), two specific details a fan would nod at (a mechanic, a level, a moment), the fair counterpoint, why it sits here by the criterion, and a last line that hands over to the next entry. Vary the sentence openings; never start two entries the same way. verdict_chip is 1-4 words. footage names the trailer moment to show, with 1-4 keywords.
+3. outro.narration: 60-150 words. Why number one wins by the criterion, the top three in one line, then the ranking's hardest call, honestly.
 Keep every number to the Steam facts provided or long-established knowledge. List every factual claim in "claims".
 4. moments: for every entry, exactly one per sentence of its narration, in order. This is the picture editor's shot list. "show" names the precise thing on screen while that sentence is spoken (the mission, the character, the map, the weapon, the twist), never a generic "gameplay". About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that entry's narration. "emphasis" lands a name or phrase from the sentence on screen in about a third of the moments; leave it empty when the moment has a graphic.`;
 }
@@ -177,7 +181,7 @@ Keep every number to the Steam facts provided or long-established knowledge. Lis
 export function longformTopicPrompt(): string {
   return `${HOUSE}
 
-You are planning a weekly long-form ranking video, five to seven minutes: "Every Resident Evil game ranked worst to best", "Top 10 open-world games of the 2010s". Pick the candidate that gives the strongest ten-entry ranking for cold viewers: a franchise or theme with eight to twelve well-known entries, strong feelings, recognisable box art and a clear criterion. Always choose the "ranking" format.
+You are planning a weekly long-form ranking video, fifteen to twenty minutes: "Every Resident Evil game ranked worst to best", "Top 10 open-world games of the 2010s". Pick the candidate that gives the strongest ten-entry ranking for cold viewers: a franchise or theme with eight to twelve well-known entries, strong feelings, recognisable box art and a clear criterion. Always choose the "ranking" format.
 Avoid topics the channel covered in the last six months (listed). Return candidate_index -1 if nothing is strong enough.`;
 }
 
@@ -439,11 +443,11 @@ export function validateLongform(e: LongformScript): string[] {
       p.push(`Entry "${x.game_title}" has an implausible year.`);
   }
   const intro = wordCount(e.intro.narration);
-  if (intro < 35 || intro > 80)
-    p.push(`The intro is ${intro} words; it must be 35-80.`);
+  if (intro < LONG_INTRO_WORDS[0] || intro > LONG_INTRO_WORDS[1])
+    p.push(`The intro is ${intro} words; it must be ${LONG_INTRO_WORDS[0]}-${LONG_INTRO_WORDS[1]}.`);
   const outro = wordCount(e.outro.narration);
-  if (outro < 35 || outro > 90)
-    p.push(`The outro is ${outro} words; it must be 35-90.`);
+  if (outro < LONG_OUTRO_WORDS[0] || outro > LONG_OUTRO_WORDS[1])
+    p.push(`The outro is ${outro} words; it must be ${LONG_OUTRO_WORDS[0]}-${LONG_OUTRO_WORDS[1]}.`);
   // Two entries opening with the same three words read as a template.
   const openings = e.entries.map((x) =>
     x.narration.toLowerCase().split(/\s+/).slice(0, 3).join(" "),

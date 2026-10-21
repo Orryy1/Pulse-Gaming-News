@@ -5,6 +5,8 @@ import {
   longformToScript,
   narrationOfLongform,
   LONG_ENTRIES_MIN,
+  LONG_WORDS_MIN,
+  LONG_WORDS_MAX,
   type LongformScript,
 } from "../src/editorial/longform.ts";
 import {
@@ -27,7 +29,7 @@ function longScript(entries = 10): LongformScript {
     title: "Every Resident Evil Game Ranked",
     criterion: "how much dread it delivers today",
     intro: {
-      narration: sentence(50, "Tonight"),
+      narration: sentence(100, "Tonight"),
       on_screen: "Worst to best, by dread",
     },
     entries: Array.from({ length: entries }, (_, i) => ({
@@ -36,13 +38,13 @@ function longScript(entries = 10): LongformScript {
       steam_search_term: `Resident Evil ${i + 1}`,
       year: 1996 + i,
       platforms: "PC, PS5",
-      narration: sentence(70, `Entry${i}`),
+      narration: sentence(180, `Entry${i}`),
       verdict_chip: "Pure dread",
       footage: { want: "gameplay", keywords: ["zombie"] },
       moments: [{ show: "a zombie in the mansion hall", keywords: ["zombie"], graphic: { kind: "none" as const, primary: "", secondary: "", items: [] as string[] }, emphasis: "" }],
     })),
     outro: {
-      narration: sentence(60, "Finally"),
+      narration: sentence(100, "Finally"),
       on_screen: "RE7 wins on dread",
     },
     youtube: {
@@ -65,7 +67,7 @@ test("a long-form script validates on word bands, ranks and varied openings", ()
     validateLongform(same).some((p) => /open with the same words/.test(p)),
   );
   const words = narrationOfLongform(ok).split(/\s+/).length;
-  assert.ok(words >= 650 && words <= 1150, String(words));
+  assert.ok(words >= LONG_WORDS_MIN && words <= LONG_WORDS_MAX, String(words));
 });
 
 test("the long script adapts to the common shape: intro hook, one rank beat per entry bottom-up, the pick as the take, no loop", () => {

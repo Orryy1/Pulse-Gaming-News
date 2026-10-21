@@ -296,7 +296,7 @@ test("SEO: titles are game-first, short and clean; tags, hashtags, lead and comm
   const ranking = goodScript({ game_title: "Resident Evil", headline: "Six Resident Evil games ranked", evergreen_format: "ranking", pulse_take: { ...s.pulse_take, on_screen: "RE7 wins on dread" }, entries: Array.from({ length: 6 }, (_, i) => ({ rank: i + 1, game_title: `RE ${i}`, steam_search_term: "", year: 2000 + i, platforms: "PC" })) });
   assert.match(keywordLead(ranking), /^6 Resident Evil games ranked worst to best: Six Resident Evil games ranked\./);
   assert.match(pinnedComment(ranking), /^Our pick: RE7 wins on dread\. Which Resident Evil game would you move/);
-  assert.match(pinnedComment(s), /^Our read: .*\? Sources are in the description\.$/);
+  assert.match(pinnedComment(s), /^.*\? (Our take|Where we land|The short version|Bottom line|Our verdict): .* Sources are in the description\.$/);
 });
 
 test("voice rotation: a few Shorts in a row share a voice, then the pool moves on and wraps", () => {
@@ -320,4 +320,20 @@ test("breaths between words are found from the audio, and words are left alone",
   assert.ok(a >= 0.95 && a <= 0.97, `starts where the breath starts, got ${a}`);
   assert.ok(b <= 1.3, `stops before the next word, got ${b}`);
   assert.deepEqual(breathGaps([{ text: "a", start: 0.5, end: 1 }, { text: "b", start: 1.05, end: 1.5 }], db.map(() => -12)), [], "no quiet, no dip");
+});
+
+test("the stock 'Our read' opener is varied, and a spoiler line never repeats 'Fair warning'", async () => {
+  const { varySpokenOpinion } = await import("../src/editorial/phrasing.ts");
+  const { withSpoilerWarning } = await import("../src/pipeline.ts");
+  const said = varySpokenOpinion("Our read: Bethesda has delayed big content before.", "story-1");
+  assert.doesNotMatch(said, /our read/i);
+  assert.match(said, /Bethesda has delayed big content before\.$/, "a proper noun keeps its capital");
+  assert.equal(varySpokenOpinion("Prices rarely fall this fast.", "x"), "Prices rarely fall this fast.", "untouched without the stock opener");
+  const seeds = new Set(["a", "b", "c", "d", "e", "f", "g", "h"].map((s) => varySpokenOpinion("Our read: this is fine.", s).split(" ")[0]));
+  assert.ok(seeds.size >= 3, "different stories get different frames");
+  const base = { hook: "We rank ten campaigns. Fair warning, a beloved reboot lands low.", headline: "Call of Duty Campaigns Ranked", criterion: "single-player campaign strength", game_title: "Call of Duty", entries: [{ game_title: "Call of Duty 4" }] } as any;
+  const hook = withSpoilerWarning(base).hook;
+  assert.equal((hook.match(/fair warning/gi) ?? []).length, 1, hook);
+  assert.match(hook, /spoilers/);
+  assert.match(withSpoilerWarning({ ...base, hook: "We rank ten campaigns." }).hook, /Fair warning: story spoilers ahead.$/);
 });

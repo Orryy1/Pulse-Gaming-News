@@ -48,7 +48,7 @@ export const STORY_THEME: Record<
     accent: COLOUR.amber,
     takeLabel: "WHY IT MATTERS",
   },
-  delay: { chip: "DELAYED", accent: COLOUR.alert, takeLabel: "OUR READ" },
+  delay: { chip: "DELAYED", accent: COLOUR.alert, takeLabel: "WHAT IT MEANS" },
   price: { chip: "PRICE", accent: COLOUR.gold, takeLabel: "THE MATHS" },
   sales: {
     chip: "BY THE NUMBERS",
@@ -77,8 +77,8 @@ export const STORY_THEME: Record<
     accent: COLOUR.amber,
     takeLabel: "PLATFORM PULSE",
   },
-  industry: { chip: "INDUSTRY", accent: COLOUR.violet, takeLabel: "OUR READ" },
-  other: { chip: "NEWS", accent: COLOUR.amber, takeLabel: "OUR READ" },
+  industry: { chip: "INDUSTRY", accent: COLOUR.violet, takeLabel: "THE BIG PICTURE" },
+  other: { chip: "NEWS", accent: COLOUR.amber, takeLabel: "THE TAKEAWAY" },
 };
 
 export function themeFor(

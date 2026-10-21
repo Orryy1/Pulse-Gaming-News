@@ -356,7 +356,8 @@ test("one tick takes a corroborated story all the way to published", async () =>
   );
   assert.equal(ep.assets_json?.srt, "captions.srt");
   assert.equal(f.comments.length, 1, "the channel posts its first comment");
-  assert.match(f.comments[0]!, /^Our read: /);
+  assert.match(f.comments[0]!, /\? (Our take|Where we land|The short version|Bottom line|Our verdict): /);
+  assert.doesNotMatch(f.comments[0]!, /our read/i);
   assert.match(
     await fs.readFile(
       path.join(dir, "episodes", ep.id, "captions.srt"),

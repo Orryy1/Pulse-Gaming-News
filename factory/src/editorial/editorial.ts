@@ -1,6 +1,7 @@
 // Story selection, scripting and fact-checking. The model does the judgement;
 // this file enforces the rules that must never depend on model compliance.
 
+import { varyOpinion } from "./phrasing.ts";
 import type { Llm } from "./llm.ts";
 import { parsePairs, parseMilestones } from "../render/components/cards/helpers.ts";
 import type { StoryCluster } from "../discovery/cluster.ts";
@@ -65,7 +66,7 @@ Structure:
    Never pad a card with numbers the sources do not give.
    Every beat also carries "footage": what the trailer picture should show while that line is spoken, with 1-4 keywords naming the thing, place, character or action in the line. The picture editor matches real trailer moments to these, so be concrete ("Hyrule Field", "the new ship interior", "a car chase"), and use "calm" for lines whose card needs a quiet background (numbers, dates, prices). "hook_footage" does the same for the opening line and should want the most striking gameplay moment.
 person: when the story is about one real person (a cameo, a hire, a departure, a statement), their name as commonly written, so the Short can show a licensed photo of them; otherwise empty.
-3. pulse_take: the Pulse angle. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion ("Our read:"). Opinions must be framed as opinion. Do not invent data.
+3. pulse_take: the Pulse angle. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Opinions must be framed as opinion. Do not invent data.
 4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that echoes the hook's subject or words, so a rewatch feels connected: a short callback or a question to the viewer. Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
 
 Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone.
@@ -134,12 +135,13 @@ export async function writeScript(
   const feedback = opts.feedback?.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
-  return llm.structured({
+  const script = await llm.structured({
     system: scriptPrompt(),
     content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${opts.lessons ? `\n\n${opts.lessons}` : ""}${feedback}`,
     schema: ScriptSchema,
     effort: "medium",
   });
+  return varyOpinion(script, cluster.hash);
 }
 
 export async function factCheck(llm: Llm, script: Script, cluster: StoryCluster, articles: ArticleText[], storeData?: string): Promise<FactCheck> {

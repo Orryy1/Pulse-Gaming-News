@@ -2997,7 +2997,8 @@ export function withSpoilerWarning(script: Script): Script {
     return script;
   return {
     ...script,
-    hook: `${script.hook.trim()} Fair warning: story spoilers ahead.`,
+    // The script may already say "Fair warning" about the ranking itself: never twice in one intro.
+    hook: `${script.hook.trim()} ${/fair warning/i.test(script.hook) ? "And expect story spoilers." : "Fair warning: story spoilers ahead."}`,
   };
 }
 

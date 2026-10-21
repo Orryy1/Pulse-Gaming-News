@@ -61,7 +61,7 @@ export const ScriptSchema = z.object({
   hook: z.string().describe("First spoken line: the news itself, 6-16 words"),
   beats: z.array(BeatSchema).describe("2-4 fact beats"),
   pulse_take: z.object({
-    label: z.string().describe("Short card label such as WHY IT MATTERS, THE CONTEXT or OUR READ"),
+    label: z.string().describe("Short card label such as WHY IT MATTERS, THE CONTEXT or THE TAKEAWAY"),
     narration: z.string().describe("The Pulse angle: context, comparison or a clearly framed verdict"),
     on_screen: z.string().describe("3-8 word on-screen summary of the take"),
   }),

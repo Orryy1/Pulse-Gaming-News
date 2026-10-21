@@ -2,6 +2,7 @@
 // table, hashtags and a pinned comment, applied on top of what the writer
 // produced. Everything here is pure and tested; nothing calls a model.
 
+import { writtenOpinionLead } from "./phrasing.ts";
 import type { Script } from "./schema.ts";
 
 export const TITLE_MAX = 60; // phones truncate around here; YouTube allows 100
@@ -336,10 +337,11 @@ export function keywordLead(script: Script): string {
 export function pinnedComment(script: Script): string {
   if (script.cutdown)
     return `${script.cutdown.question.trim()} The full ranking, every pick explained: https://youtu.be/${script.cutdown.parent_video}`;
-  const take = script.pulse_take.on_screen.replace(/\.$/, "");
+  const take = script.pulse_take.on_screen.replace(/^\s*our read\s*[:,-]?\s*/i, "").replace(/\.$/, "");
   const game = script.game_title || "this";
+  const lead = writtenOpinionLead(script.headline);
   if (script.recap)
-    return `Our read: ${take}. Which story was the biggest one for you this week? Every source is in the description.`;
+    return `Which story was the biggest one for you this week? ${lead} ${take}. Every source is in the description.`;
   if (script.evergreen_format === "documentary")
     return `Which ${game} game was the one for you, and which chapter of the story surprised you most? Sources for every chapter are in the description.`;
   if (script.evergreen_format === "release_radar")
@@ -351,7 +353,7 @@ export function pinnedComment(script: Script): string {
   if (script.evergreen_format === "steam_deals")
     return `Our pick: ${take}. Prices are Steam's at the time we checked and can change. Which one are you grabbing?`;
   if (script.evergreen_format === "weekly_recap")
-    return `Our read: ${take}. Which story was the biggest one for you this week?`;
+    return `Which story was the biggest one for you this week? ${lead} ${take}.`;
   if (script.entries?.length && script.runtime === "long")
     return `Our pick: ${take}. Would you move any of them up or down? And which series should we rank next? The most-asked ones go to the top of our list.`;
   if (script.entries?.length)
@@ -368,5 +370,5 @@ export function pinnedComment(script: Script): string {
             : script.story_type === "rumour"
               ? `Do you buy this one, or wait for the official word?`
               : `What do you make of it?`;
-  return `Our read: ${take}. ${q} Sources are in the description.`;
+  return `${q} ${lead} ${take}. Sources are in the description.`;
 }

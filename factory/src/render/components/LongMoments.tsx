@@ -497,8 +497,8 @@ export const GrainVignette: React.FC = () => {
   );
 };
 
-/** Licensed sound effects (public/sfx/rights.json, synthesised in-house), quiet under the narration. */
+/** The channel's sound effects (public/sfx/v2, licences in its rights.json), quiet under the narration. */
 export const Sfx: React.FC<{
-  name: "whoosh-short" | "swipe-tonal" | "tick-blip" | "punch-deep" | "riser-fast" | "sting";
+  name: string; // a file under public/sfx without .mp3, e.g. "v2/air-1" (src/render/soundscape.ts)
   volume?: number;
 }> = ({ name, volume = 0.28 }) => <Audio src={staticFile(`sfx/${name}.mp3`)} volume={volume} />;

@@ -3,6 +3,7 @@
 // each entry that collapses to a tag, an intro title, the pick as the outro
 // and a quiet end card. No burned captions: the SRT track carries them.
 
+import { gateLongSounds, LEVEL, SFX, type LongSoundCandidate } from "./soundscape.ts";
 import React, { useMemo } from "react";
 import {
   AbsoluteFill,
@@ -1130,6 +1131,28 @@ export const Long: React.FC<LongProps> = (props) => {
       talk += speaking[Math.min(durationInFrames, Math.max(0, f + k))] ?? 0;
     return fadeIn * fadeOut * interpolate(talk / 5, [0, 1], [0.22, 0.07]);
   };
+  // Moment sounds, gated (src/render/soundscape.ts): glints on numbers and whooshes on pop-in pictures,
+  // spaced out and kept clear of each entry's own swell and landing.
+  const entryFrames = props.segments
+    .map((s, i) => (s.kind === "beat" && (s.visual?.kind === "rank" || s.visual?.kind === "chapter") && i > 0 ? starts[i]! : -1))
+    .filter((f) => f >= 0);
+  const momentSounds = gateLongSounds(
+    windows.flatMap((w, k): LongSoundCandidate[] => {
+      const raw = props.moments?.[w.entry]?.[w.moment];
+      if (!raw) return [];
+      const from = Math.round(w.start * fps);
+      const len = Math.max(1, Math.round((w.end - w.start) * fps));
+      const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
+      if (graphic === "stat" || graphic === "score") return [{ key: k, frame: from, kind: "glint" as const }];
+      const shot = plan.shots.find((x) => from >= x.start && from < x.end);
+      const pic = props.images.some((im) => im.beatIndex === w.entry && im.moment === w.moment);
+      if (graphic === "none" && shot?.media.type === "clip" && pic && w.moment > 0)
+        return [{ key: k, frame: from + Math.min(30, Math.max(0, len - 90)), kind: "pop" as const }];
+      return [];
+    }),
+    entryFrames,
+    fps,
+  );
   // The corner names the source of what is on screen: a licensed gameplay clip its creator, else the trailers.
   const creditAt = (f: number) => {
     const shot = plan.shots.find((s) => f >= s.start && f < s.end);
@@ -1320,19 +1343,11 @@ export const Long: React.FC<LongProps> = (props) => {
             {m.graphic.kind !== "none" ? (
               <>
                 <MomentGraphicCard g={m.graphic} len={len} />
-                <Sfx
-                  name={
-                    m.graphic.kind === "stat" || m.graphic.kind === "score"
-                      ? "tick-blip"
-                      : "swipe-tonal"
-                  }
-                  volume={0.22}
-                />
+                {momentSounds.get(k) ? <Sfx name={momentSounds.get(k)!} volume={LEVEL.glintLong} /> : null}
               </>
             ) : m.emphasis && w.moment > 0 ? (
               <>
                 <KineticCaption text={m.emphasis} len={len} />
-                <Sfx name="tick-blip" volume={0.2} />
               </>
             ) : null}
             {showPop ? (
@@ -1346,7 +1361,7 @@ export const Long: React.FC<LongProps> = (props) => {
                   len={len - 30}
                   side={w.moment % 2 ? "right" : "left"}
                 />
-                <Sfx name="whoosh-short" volume={0.24} />
+                {momentSounds.get(k) ? <Sfx name={momentSounds.get(k)!} volume={LEVEL.airLong} /> : null}
               </Sequence>
             ) : null}
           </Sequence>
@@ -1364,10 +1379,29 @@ export const Long: React.FC<LongProps> = (props) => {
             layout="none"
           >
             <FlashPunch />
-            <Sfx name="punch-deep" volume={0.3} />
           </Sequence>
         ) : null,
       )}
+      {/* Each new entry: a swell that lands on a warm low hit as the rank card arrives. */}
+      {props.segments.map((s, i) =>
+        s.kind === "beat" && (s.visual?.kind === "rank" || s.visual?.kind === "chapter") && i > 0 ? (
+          <React.Fragment key={`snd${i}`}>
+            <Sequence from={Math.max(0, starts[i]! - 40)} durationInFrames={60} layout="none">
+              <Sfx name={SFX.swell} volume={LEVEL.swellLong} />
+            </Sequence>
+            <Sequence from={starts[i]!} durationInFrames={75} layout="none">
+              <Sfx name={SFX.land[i % SFX.land.length]!} volume={LEVEL.landLong} />
+            </Sequence>
+          </React.Fragment>
+        ) : null,
+      )}
+      {/* The brand sting opens the video and closes it, ringing out before the last frame. */}
+      <Sequence from={0} durationInFrames={75} layout="none">
+        <Sfx name={SFX.sting} volume={LEVEL.sting * 0.8} />
+      </Sequence>
+      <Sequence from={Math.max(0, durationInFrames - 75)} durationInFrames={75} layout="none">
+        <Sfx name={SFX.sting} volume={LEVEL.sting * 0.7} />
+      </Sequence>
       {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
       {props.musicSrc ? (
         <Audio src={resolveSrc(props.musicSrc)!} volume={musicVolume} loop />

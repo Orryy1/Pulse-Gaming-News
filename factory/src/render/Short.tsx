@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { UNDER_VOICE } from "./soundscape.ts";
 import {
   AbsoluteFill,
   Audio,
@@ -215,15 +216,18 @@ export const Short: React.FC<ShortProps> = (props) => {
       />
       <TurnFlash turns={plan.turns} accent={accent} />
 
-      {/* Owned sound design from the plan: two brand stings, at most four content cues. */}
+      {/* The soundscape (src/render/soundscape.ts): each sound plays out in full, a quarter lower under the voice. */}
       {plan.sfx.map((cue, i) => (
         <Sequence
           key={`sfx${i}`}
           from={cue.frame}
-          durationInFrames={Math.max(STING_FRAMES, fps)}
+          durationInFrames={Math.max(1, Math.min(3 * fps, durationInFrames - cue.frame))}
           layout="none"
         >
-          <Audio src={staticFile(cue.file)} volume={cue.volume} />
+          <Audio
+            src={staticFile(cue.file)}
+            volume={(f) => cue.volume * (speaking[Math.min(durationInFrames, cue.frame + f)] ? UNDER_VOICE : 1)}
+          />
         </Sequence>
       ))}
 

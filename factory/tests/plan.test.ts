@@ -220,9 +220,10 @@ test("turns, sound cues and the shelf follow the structure", () => {
     Math.round(take.start * 30),
   ]);
   assert.ok(plan.sfx.length <= MAX_SFX);
-  assert.equal(plan.sfx[0]!.file, "sfx/sting.mp3");
-  assert.equal(plan.sfx.at(-1)!.frame, plan.totalFrames - STING_FRAMES);
-  assert.ok(plan.sfx.some((c) => c.file === "sfx/riser-fast.mp3"));
+  assert.equal(plan.sfx[0]!.file, "sfx/v2/sting.mp3");
+  assert.equal(plan.sfx.at(-1)!.frame, plan.totalFrames - 60, "the closing sting rings out before the end");
+  assert.ok(plan.sfx.some((c) => c.file === "sfx/v2/swell-1.mp3"), "a swell into the verdict");
+  for (let k = 1; k < plan.sfx.length; k++) assert.ok(plan.sfx[k]!.frame - plan.sfx[k - 1]!.frame >= 75, "never two sounds within 2.5 s");
   assert.ok(
     plan.shelf.length <= i.segments.length,
     "at most one shelf device per segment",
@@ -442,4 +443,20 @@ test("game sound sits under the narrator and fades at each cut", async () => {
   assert.equal(gameSoundVolume(60, 120), GAME_SOUND_VOLUME, "full (low) level mid-shot");
   assert.equal(gameSoundVolume(120, 120), 0, "silent at the next cut");
   assert.ok(GAME_SOUND_VOLUME <= 0.2, "never competes with the voice");
+});
+
+test("long-video moment sounds are spaced out and keep clear of each entry's swell and landing", async () => {
+  const { gateLongSounds } = await import("../src/render/soundscape.ts");
+  const fps = 30;
+  const cands = [
+    { key: 0, frame: 100, kind: "glint" as const },
+    { key: 1, frame: 160, kind: "glint" as const }, // 2 s after the last: too soon
+    { key: 2, frame: 400, kind: "pop" as const },
+    { key: 3, frame: 610, kind: "glint" as const }, // inside the entry change at 600
+    { key: 4, frame: 900, kind: "glint" as const },
+    { key: 5, frame: 1100, kind: "pop" as const }, // 23 s after the last pop, 6.7 s after any sound: fine
+  ];
+  const out = gateLongSounds(cands, [600], fps);
+  assert.deepEqual([...out.keys()].sort((a, b) => a - b), [0, 2, 4, 5]);
+  assert.notEqual(out.get(0), out.get(4), "variants rotate");
 });

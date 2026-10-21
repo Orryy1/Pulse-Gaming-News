@@ -6,6 +6,7 @@
 // are tested without Chromium, and the rubric can reject a plan before a
 // render is spent. No Remotion imports, no randomness, no clock.
 
+import { LEVEL, SFX, sfxFile } from "./soundscape.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 import type { Segment } from "./timeline.ts";
 import { movePreset, type MovePreset } from "./motion.ts";
@@ -512,42 +513,32 @@ export function planShots(
   return shots;
 }
 
-/** Sound cues from the structure: two brand stings, at most four content cues. */
+/**
+ * Sound cues from the structure (src/render/soundscape.ts): a soft sting to open and close, a whoosh on
+ * at most two card changes, a glint on the first big number, a swell into the verdict. Never two sounds
+ * within 2.5 s, and the closing sting starts early enough to ring out before the end.
+ */
 export function planSfx(segments: Segment[], totalFrames: number): SfxCue[] {
-  const cues: SfxCue[] = [{ file: "sfx/sting.mp3", frame: 0, volume: 0.4 }];
+  const cues: SfxCue[] = [{ file: sfxFile(SFX.sting), frame: 0, volume: LEVEL.sting }];
+  const gap = 75;
+  const fits = (frame: number) => cues.every((c) => Math.abs(c.frame - frame) >= gap);
   let whooshes = 0;
-  let tick = false;
+  let glint = false;
   for (const [i, s] of segments.entries()) {
     const at = i === 0 ? 0 : toFrame(s.start);
-    if (
-      s.kind === "beat" &&
-      s.visual &&
-      s.visual.kind !== "none" &&
-      whooshes < 2
-    ) {
-      cues.push({
-        file: "sfx/whoosh-short.mp3",
-        frame: Math.max(0, at - 3),
-        volume: 0.28,
-      });
+    if (s.kind === "beat" && s.visual && s.visual.kind !== "none" && whooshes < 2 && fits(at - 3)) {
+      cues.push({ file: sfxFile(SFX.air[whooshes % SFX.air.length]!), frame: Math.max(0, at - 3), volume: LEVEL.air });
       whooshes++;
     }
-    if (s.kind === "beat" && s.visual?.kind === "stat" && !tick) {
-      cues.push({ file: "sfx/tick-blip.mp3", frame: at + 24, volume: 0.3 });
-      tick = true;
+    if (s.kind === "beat" && s.visual?.kind === "stat" && !glint && fits(at + 18)) {
+      cues.push({ file: sfxFile(SFX.glint[0]), frame: at + 18, volume: LEVEL.glint });
+      glint = true;
     }
-    if (s.kind === "take")
-      cues.push({
-        file: "sfx/riser-fast.mp3",
-        frame: Math.max(0, at - 24),
-        volume: 0.22,
-      });
+    if (s.kind === "take" && fits(Math.max(0, at - 36)))
+      cues.push({ file: sfxFile(SFX.swell), frame: Math.max(0, at - 36), volume: LEVEL.swell });
   }
-  cues.push({
-    file: "sfx/sting.mp3",
-    frame: Math.max(0, totalFrames - STING_FRAMES),
-    volume: 0.4,
-  });
+  const close = Math.max(0, totalFrames - 60);
+  if (fits(close)) cues.push({ file: sfxFile(SFX.sting), frame: close, volume: LEVEL.sting * 0.9 });
   return cues.slice(0, MAX_SFX).sort((a, b) => a.frame - b.frame);
 }
 

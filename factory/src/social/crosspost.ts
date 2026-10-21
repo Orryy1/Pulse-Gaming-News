@@ -59,7 +59,7 @@ export function questionOf(script: Script): string {
   const hook = words(script.hook ?? "");
   const shared = [...words(loop)].filter((w) => hook.has(w)).length;
   if (shared < 3) return loop;
-  const tail = loop.split(/,\s+|\s+(?:and|so)\s+(?=(?:will|would|do|does|are|is|can|could|should|did|have|has|what|which|who|how|why))/i).at(-1)!.trim();
+  const tail = loop.split(/,\s+|\s+(?:and|so)\s+(?=(?:will|would|do|does|are|is|can|could|should|did|have|has|what|which|who|how|why)\b)/i).at(-1)!.trim();
   return tail === loop || tail.split(/\s+/).length < 3 ? "" : tail[0]!.toUpperCase() + tail.slice(1);
 }
 

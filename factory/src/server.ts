@@ -170,6 +170,27 @@ export function createApp(
     )
       return;
 
+    // Mac mini setup: the one-line installer (no secrets in it: the PC's public key only), and the Mac's
+    // "ready" call, which records its username and home-network address so the PC can reach it.
+    if (url.pathname === "/mac-setup.sh" && req.method === "GET") {
+      const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mac", "setup.sh");
+      const key = path.join(cfg.dataDir, "admin", "pulse_mac.pub");
+      if (!fs.existsSync(script) || !fs.existsSync(key)) return send(404, page("Not found", "<h1>Not found</h1>"));
+      const body = fs.readFileSync(script, "utf8").replace("__PUBKEY__", fs.readFileSync(key, "utf8").trim());
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8" }).end(body);
+      return;
+    }
+    if (url.pathname === "/mac-hello" && req.method === "GET") {
+      const user = url.searchParams.get("user") ?? "";
+      const ip = url.searchParams.get("ip") ?? "";
+      if (!/^[a-z_][a-z0-9_.-]{0,31}$/i.test(user) || !/^(192\.168|10)\.\d{1,3}\.\d{1,3}(\.\d{1,3})?$/.test(ip))
+        return send(400, page("Bad request", "<h1>Bad request</h1>"));
+      fs.mkdirSync(path.join(cfg.dataDir, "admin"), { recursive: true });
+      fs.writeFileSync(path.join(cfg.dataDir, "admin", "mac.json"), JSON.stringify({ user, ip, at: new Date().toISOString() }));
+      await services.notify({ content: `🖥️ The Mac mini reported in (user ${user}, ${ip}). Claude can take the setup from here.` });
+      res.writeHead(200, { "content-type": "text/plain" }).end("ok");
+      return;
+    }
     // One-tap TikTok: the draft's caption with Copy and Open TikTok buttons (a signed link from Discord).
     const tt = url.pathname.match(/^\/tiktok\/([\w-]+)$/);
     if (tt && req.method === "GET") {

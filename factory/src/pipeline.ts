@@ -4083,7 +4083,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   await fs.rm(raw, { force: true });
   const tech = await s.technicalQa(final, duration, {
     minSeconds: 180,
-    maxSeconds: doc ? s.cfg.docMaxSeconds + 60 : 720,
+    maxSeconds: (doc ? s.cfg.docMaxSeconds : s.cfg.longformMaxSeconds) + 60,
     width: 1920,
     height: 1080,
   });

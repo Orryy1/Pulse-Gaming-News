@@ -261,7 +261,11 @@ export function createApp(
           "youtube-banner-2560x1440.png",
         );
         const token = await accessToken(db, oauthConfig(cfg));
-        const done = await setChannelBanner(token, file);
+        // An optional new channel description sits in data/admin/channel_description.txt (written on this PC).
+        const descFile = path.join(cfg.dataDir, "admin", "channel_description.txt");
+        const description = fs.existsSync(descFile) ? fs.readFileSync(descFile, "utf8").trim() : undefined;
+        const done = await setChannelBanner(token, file, description);
+        if (description) fs.rmSync(descFile, { force: true });
         await logEvent(db, null, "youtube_banner", done);
         res
           .writeHead(200, { "content-type": "application/json" })

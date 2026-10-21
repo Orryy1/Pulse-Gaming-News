@@ -9,6 +9,7 @@ const API = "https://www.googleapis.com/youtube/v3";
 export async function setChannelBanner(
   token: string,
   file: string,
+  description?: string,
 ): Promise<{ channelId: string; bannerUrl: string }> {
   const auth = { authorization: `Bearer ${token}` };
   const image = await fs.readFile(file);
@@ -51,6 +52,9 @@ export async function setChannelBanner(
       ...(channel.brandingSettings?.image ?? {}),
       bannerExternalUrl: upBody.url,
     },
+    ...(description
+      ? { channel: { ...(channel.brandingSettings?.channel ?? {}), description: description.slice(0, 1000) } }
+      : {}),
   };
   const upd = await fetchWithTimeout(`${API}/channels?part=brandingSettings`, {
     method: "PUT",

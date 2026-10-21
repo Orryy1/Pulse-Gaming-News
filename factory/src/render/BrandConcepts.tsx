@@ -359,7 +359,7 @@ export const ConceptBanner: React.FC<ConceptProps> = ({ concept }) => {
               letterSpacing: 1,
             }}
           >
-            Checked against the sources. Rankings every Sunday.
+            Checked against the sources. Rankings every Saturday.
           </div>
         </Box>
         {/* The ticker runs the full width under the safe box. */}
@@ -497,7 +497,7 @@ export const BroadcastCover: React.FC<{ width: number; height: number; contentWi
             <div style={{ background: PAPER, color: INK, fontFamily: DISPLAY, fontSize: 150 * k, lineHeight: 1, padding: `${8 * k}px ${30 * k}px ${4 * k}px` }}>PULSE</div>
             <div style={{ background: AMBER, color: INK, fontFamily: DISPLAY, fontSize: 150 * k, lineHeight: 1, padding: `${8 * k}px ${30 * k}px ${4 * k}px` }}>GAMING</div>
           </div>
-          <div style={{ fontFamily: BODY, fontWeight: 900, fontSize: 40 * k, color: PAPER }}>Checked against the sources. Rankings every Sunday.</div>
+          <div style={{ fontFamily: BODY, fontWeight: 900, fontSize: 40 * k, color: PAPER }}>Checked against the sources. Rankings every Saturday.</div>
         </div>
         <Mark size={290 * k} />
       </div>

@@ -19,7 +19,7 @@ import type { VisualAsset } from "./steam.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
 import { keepGameSound } from "./talk.ts";
 import { screenFrames } from "./localvision.ts";
-import { FFMPEG } from "../lib/bin.ts";
+import { FFMPEG, YTDLP_TEXT } from "../lib/bin.ts";
 import { PUBLISHER_CHANNELS } from "./officialTrailer.ts";
 import { trailerMatchesGame, distinguishing } from "./commons.ts";
 import { normTitle } from "./igdb.ts";
@@ -73,14 +73,32 @@ export function isoSeconds(d: string): number {
 async function pageSearch(
   q: string,
   creativeCommons: boolean,
-): Promise<Array<{ videoId: string; title: string; description: string; channelId: string; channelTitle: string }> | undefined> {
+): Promise<
+  | Array<{
+      videoId: string;
+      title: string;
+      description: string;
+      channelId: string;
+      channelTitle: string;
+    }>
+  | undefined
+> {
   const ytdlp = process.env.YTDLP_PATH || "yt-dlp";
   const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}${creativeCommons ? "&sp=EgIwAQ%253D%253D" : ""}`;
   try {
     const { stdout } = await run(
       ytdlp,
-      ["--no-warnings", "--flat-playlist", "--playlist-end", "15", "--print", "%(id)s\t%(channel_id)s\t%(channel)s\t%(title)s", url],
-      { timeout: 60_000, maxBuffer: 4 * 1024 * 1024 },
+      [
+        ...YTDLP_TEXT.args,
+        "--no-warnings",
+        "--flat-playlist",
+        "--playlist-end",
+        "15",
+        "--print",
+        "%(id)s\t%(channel_id)s\t%(channel)s\t%(title)s",
+        url,
+      ],
+      { timeout: 60_000, maxBuffer: 4 * 1024 * 1024, env: YTDLP_TEXT.env },
     );
     const rows = String(stdout)
       .split(/\r?\n/)
@@ -95,7 +113,10 @@ async function pageSearch(
       }));
     return rows.length ? rows : undefined;
   } catch (err) {
-    log("warn", "page search failed; using the API", { q, error: errorMessage(err).split("\n").pop() });
+    log("warn", "page search failed; using the API", {
+      q,
+      error: errorMessage(err).split("\n").pop(),
+    });
     return undefined;
   }
 }
@@ -107,10 +128,14 @@ async function cleanFirst(
   extra: string,
   quotaOk?: () => Promise<boolean>,
 ): Promise<Awaited<ReturnType<typeof search>>> {
-  const clean = await search(token, `${q} no hud`, extra, quotaOk).catch(() => []);
+  const clean = await search(token, `${q} no hud`, extra, quotaOk).catch(
+    () => [],
+  );
   const plain = await search(token, q, extra, quotaOk).catch(() => []);
   const seen = new Set<string>();
-  return [...clean, ...plain].filter((i) => !seen.has(i.videoId) && seen.add(i.videoId));
+  return [...clean, ...plain].filter(
+    (i) => !seen.has(i.videoId) && seen.add(i.videoId),
+  );
 }
 
 /** Free search first; the Data API (about 100 quota units a call) only when the page search fails. */
@@ -119,7 +144,15 @@ async function search(
   q: string,
   extra: string,
   quotaOk?: () => Promise<boolean>,
-): Promise<Array<{ videoId: string; title: string; description: string; channelId: string; channelTitle: string }>> {
+): Promise<
+  Array<{
+    videoId: string;
+    title: string;
+    description: string;
+    channelId: string;
+    channelTitle: string;
+  }>
+> {
   const free = await pageSearch(q, /videoLicense=creativeCommon/.test(extra));
   if (free) return free;
   if (quotaOk && !(await quotaOk())) return [];
@@ -206,7 +239,7 @@ export async function judgeGameplay(
   const r = await llm.structured({
     tier: "low",
     system:
-      "You check YouTube search results for a video editor. Keep only videos that show gameplay of exactly the named game (that release, not another entry in the series, a remake or remaster with rebuilt visuals under a different name, a sequel, a mod, a reaction, a compilation of several games or a news video). An official re-release of the same game that keeps its look counts as that game: an anniversary edition, a port or an HD re-release (\"Grand Theft Auto III: 10 Year Anniversary Edition\" shows Grand Theft Auto III).",
+      'You check YouTube search results for a video editor. Keep only videos that show gameplay of exactly the named game (that release, not another entry in the series, a remake or remaster with rebuilt visuals under a different name, a sequel, a mod, a reaction, a compilation of several games or a news video). An official re-release of the same game that keeps its look counts as that game: an anniversary edition, a port or an HD re-release ("Grand Theft Auto III: 10 Year Anniversary Edition" shows Grand Theft Auto III).',
     content: `Game: ${game}${year ? ` (${year})` : ""}${scope === "campaign" ? "\nThe video is about the single-player campaign: keep only campaign or story footage; reject multiplayer, Zombies, Warzone, co-op and Spec Ops videos." : ""}\n\nVideos:\n${items.map((v, i) => `${i}. "${v.title}" by ${v.channelTitle}: ${v.description.slice(0, 200)}`).join("\n")}`,
     schema: GameplayJudgeSchema,
     effort: "low",
@@ -252,7 +285,12 @@ export async function findGameplay(
   {
     const items = await judged(
       (
-        await cleanFirst(token, q, "&videoLicense=creativeCommon&videoDuration=medium", opts.quotaOk)
+        await cleanFirst(
+          token,
+          q,
+          "&videoLicense=creativeCommon&videoDuration=medium",
+          opts.quotaOk,
+        )
       ).filter((i) => gameplayTitleFits(i.title, game, franchise)),
     );
     const meta = await details(
@@ -276,7 +314,9 @@ export async function findGameplay(
   }
   {
     const items = await judged(
-      (await search(token, `${game} official gameplay`, "", opts.quotaOk)).filter(
+      (
+        await search(token, `${game} official gameplay`, "", opts.quotaOk)
+      ).filter(
         // Publishers that cap or forbid footage (Rockstar, Nintendo) are left out here.
         (i) =>
           PUBLISHER_CHANNELS.some(
@@ -338,7 +378,26 @@ async function downloadSlice(
 async function cropBottom(file: string): Promise<boolean> {
   const tmp = file.replace(/\.mp4$/, ".crop.mp4");
   try {
-    await run(FFMPEG, ["-v", "error", "-y", "-i", file, "-vf", "crop=iw:trunc(ih*0.74/2)*2:0:0", "-c:v", "libx264", "-crf", "17", "-preset", "fast", "-pix_fmt", "yuv420p", "-c:a", "copy", tmp]);
+    await run(FFMPEG, [
+      "-v",
+      "error",
+      "-y",
+      "-i",
+      file,
+      "-vf",
+      "crop=iw:trunc(ih*0.74/2)*2:0:0",
+      "-c:v",
+      "libx264",
+      "-crf",
+      "17",
+      "-preset",
+      "fast",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "copy",
+      tmp,
+    ]);
     await fs.rename(tmp, file);
     return true;
   } catch {
@@ -348,18 +407,42 @@ async function cropBottom(file: string): Promise<boolean> {
 }
 
 /** One full-size frame from the middle of a clip, through the local screen: a facecam or overlay, gore, or burned-in subtitles. */
-async function frameProblem(file: string): Promise<"facecam" | "gore" | "subtitles" | undefined> {
+async function frameProblem(
+  file: string,
+): Promise<"facecam" | "gore" | "subtitles" | undefined> {
   const frame = file.replace(/\.mp4$/, ".check.jpg");
   const band = file.replace(/\.mp4$/, ".band.jpg");
   try {
-    await run(FFMPEG, ["-v", "error", "-y", "-ss", "0.8", "-i", file, "-frames:v", "1", "-vf", "scale=960:-2", frame]);
+    await run(FFMPEG, [
+      "-v",
+      "error",
+      "-y",
+      "-ss",
+      "0.8",
+      "-i",
+      file,
+      "-frames:v",
+      "1",
+      "-vf",
+      "scale=960:-2",
+      frame,
+    ]);
     const [flags] = await screenFrames([frame]);
     if (flags?.webcam) return "facecam";
     if (flags?.gore) return "gore";
     // Subtitles sit centred along the bottom; HUD (ammo, minimap) sits in the corners. Only writing
     // in that centre-bottom band counts: the whole-frame text flag also fires on objective markers.
     if (flags?.text) {
-      await run(FFMPEG, ["-v", "error", "-y", "-i", frame, "-vf", "crop=iw*0.6:ih*0.22:iw*0.2:ih*0.76", band]);
+      await run(FFMPEG, [
+        "-v",
+        "error",
+        "-y",
+        "-i",
+        frame,
+        "-vf",
+        "crop=iw*0.6:ih*0.22:iw*0.2:ih*0.76",
+        band,
+      ]);
       const [b] = await screenFrames([band]);
       if (b?.text && !b.hud) return "subtitles";
     }
@@ -406,7 +489,10 @@ export function namedThings(
   for (const t of targets) {
     for (const raw of t.keywords) {
       // The game's own name in front ("World at War Makin Atoll") is dropped: the search adds it anyway.
-      const all = raw.trim().replace(/^["'“‘]|["'”’]$/g, "").split(/\s+/);
+      const all = raw
+        .trim()
+        .replace(/^["'“‘]|["'”’]$/g, "")
+        .split(/\s+/);
       while (all.length > 2 && gameWords.has(normTitle(all[0]!))) all.shift();
       const name = all.join(" ");
       const words = name.split(/\s+/);
@@ -456,7 +542,12 @@ export async function findMissionGameplay(
 ): Promise<GameplaySource | undefined> {
   const want = normTitle(mission);
   const items = (
-    await cleanFirst(token, `${game} ${mission}`, "&videoLicense=creativeCommon", opts.quotaOk)
+    await cleanFirst(
+      token,
+      `${game} ${mission}`,
+      "&videoLicense=creativeCommon",
+      opts.quotaOk,
+    )
   ).filter((i) => {
     const t = normTitle(i.title);
     return (
@@ -583,27 +674,43 @@ async function clipsFrom(
     // Text along the bottom (subtitles, or the mission and pager text of older games) is cropped away
     // instead of losing the clip: the picture above it is still good footage.
     if (verdict === "subtitles" && (await cropBottom(file))) {
-      log("info", "gameplay clip cropped above its bottom text", { game: o.game, source: src.channelTitle });
+      log("info", "gameplay clip cropped above its bottom text", {
+        game: o.game,
+        source: src.channelTitle,
+      });
       verdict = undefined;
     }
     if (verdict) {
       // A facecam or gore condemns the channel; burned-in subtitles only this clip.
       if (verdict !== "subtitles") streamed.add(src.url);
       await fs.rm(file, { force: true }).catch(() => undefined);
-      log("info", "gameplay clip dropped", { game: o.game, source: src.channelTitle, reason: verdict });
+      log("info", "gameplay clip dropped", {
+        game: o.game,
+        source: src.channelTitle,
+        reason: verdict,
+      });
       continue;
     }
     // Game sound stays when nobody talks over it (commentary or cutscene dialogue would fight the narrator).
-    const audio = await keepGameSound(path.join(o.episodeDir, c.file)).catch(() => false);
+    const audio = await keepGameSound(path.join(o.episodeDir, c.file)).catch(
+      () => false,
+    );
     out.push({
       ...c,
       audio,
-      provenance: audio ? c.provenance.replace(/, muted$/, ", with game sound") : c.provenance,
+      provenance: audio
+        ? c.provenance.replace(/, muted$/, ", with game sound")
+        : c.provenance,
       credit: gameplayCredit(src),
     });
   }
   const sound = out.filter((c) => c.audio).length;
-  if (out.length) log("info", "gameplay sound", { game: o.game, clips: out.length, withSound: sound });
+  if (out.length)
+    log("info", "gameplay sound", {
+      game: o.game,
+      clips: out.length,
+      withSound: sound,
+    });
   return out;
 }
 

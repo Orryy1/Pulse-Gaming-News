@@ -9,6 +9,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
+import { YTDLP_TEXT } from "../lib/bin.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
 import type { VisualAsset } from "./steam.ts";
 import type { Llm } from "../editorial/llm.ts";
@@ -132,23 +133,79 @@ export const PUBLISHER_CHANNELS: PublisherRule[] = [
 
 /** Who owns the footage, by franchise: a PlayStation upload of a Rockstar trailer is still Rockstar footage. */
 export const FRANCHISE_PUBLISHERS: Array<{ match: RegExp; name: string }> = [
-  { match: /\b(grand theft auto|gta|red dead|max payne|bully|l\.?a\.? noire|midnight club)\b/i, name: "Rockstar Games" },
-  { match: /\b(mario|zelda|pok[eé]mon|metroid|kirby|splatoon|animal crossing|fire emblem|pikmin|donkey kong|xenoblade|smash bros|nintendo|luigi|yoshi)\b/i, name: "Nintendo" },
-  { match: /\b(call of duty|warzone|black ops|modern warfare)\b/i, name: "Activision" },
-  { match: /\b(assassin'?s creed|far cry|rainbow six|ghost recon|watch dogs|the division|anno|prince of persia|beyond good)\b/i, name: "Ubisoft" },
-  { match: /\b(battlefield|ea sports|fc 2\d|madden|apex legends|the sims|mass effect|dragon age|need for speed|skate)\b/i, name: "EA" },
-  { match: /\b(elder scrolls|fallout|starfield|doom|wolfenstein|dishonored|indiana jones)\b/i, name: "Bethesda" },
-  { match: /\b(halo|forza|gears of war|fable|flight simulator|sea of thieves|state of decay|avowed|hellblade)\b/i, name: "Xbox" },
-  { match: /\b(god of war|the last of us|uncharted|horizon|ghost of|spider-man|ratchet|gran turismo|marathon|helldivers|astro bot)\b/i, name: "PlayStation" },
-  { match: /\b(resident evil|monster hunter|street fighter|devil may cry|dragon'?s dogma|mega man|okami|pragmata)\b/i, name: "Capcom" },
-  { match: /\b(final fantasy|kingdom hearts|dragon quest|nier|tomb raider)\b/i, name: "Square Enix" },
-  { match: /\b(sonic|yakuza|like a dragon|persona|metaphor|total war|football manager)\b/i, name: "Sega" },
-  { match: /\b(elden ring|dark souls|armored core|sekiro|bloodborne|nightreign|duskbloods)\b/i, name: "FromSoftware" },
-  { match: /\b(tekken|dragon ball|naruto|ace combat|elden ring)\b/i, name: "Bandai Namco" },
+  {
+    match:
+      /\b(grand theft auto|gta|red dead|max payne|bully|l\.?a\.? noire|midnight club)\b/i,
+    name: "Rockstar Games",
+  },
+  {
+    match:
+      /\b(mario|zelda|pok[eé]mon|metroid|kirby|splatoon|animal crossing|fire emblem|pikmin|donkey kong|xenoblade|smash bros|nintendo|luigi|yoshi)\b/i,
+    name: "Nintendo",
+  },
+  {
+    match: /\b(call of duty|warzone|black ops|modern warfare)\b/i,
+    name: "Activision",
+  },
+  {
+    match:
+      /\b(assassin'?s creed|far cry|rainbow six|ghost recon|watch dogs|the division|anno|prince of persia|beyond good)\b/i,
+    name: "Ubisoft",
+  },
+  {
+    match:
+      /\b(battlefield|ea sports|fc 2\d|madden|apex legends|the sims|mass effect|dragon age|need for speed|skate)\b/i,
+    name: "EA",
+  },
+  {
+    match:
+      /\b(elder scrolls|fallout|starfield|doom|wolfenstein|dishonored|indiana jones)\b/i,
+    name: "Bethesda",
+  },
+  {
+    match:
+      /\b(halo|forza|gears of war|fable|flight simulator|sea of thieves|state of decay|avowed|hellblade)\b/i,
+    name: "Xbox",
+  },
+  {
+    match:
+      /\b(god of war|the last of us|uncharted|horizon|ghost of|spider-man|ratchet|gran turismo|marathon|helldivers|astro bot)\b/i,
+    name: "PlayStation",
+  },
+  {
+    match:
+      /\b(resident evil|monster hunter|street fighter|devil may cry|dragon'?s dogma|mega man|okami|pragmata)\b/i,
+    name: "Capcom",
+  },
+  {
+    match: /\b(final fantasy|kingdom hearts|dragon quest|nier|tomb raider)\b/i,
+    name: "Square Enix",
+  },
+  {
+    match:
+      /\b(sonic|yakuza|like a dragon|persona|metaphor|total war|football manager)\b/i,
+    name: "Sega",
+  },
+  {
+    match:
+      /\b(elden ring|dark souls|armored core|sekiro|bloodborne|nightreign|duskbloods)\b/i,
+    name: "FromSoftware",
+  },
+  {
+    match: /\b(tekken|dragon ball|naruto|ace combat|elden ring)\b/i,
+    name: "Bandai Namco",
+  },
   { match: /\b(fortnite|unreal)\b/i, name: "Epic Games" },
   { match: /\b(cyberpunk|witcher)\b/i, name: "CD Projekt Red" },
-  { match: /\b(hogwarts legacy|mortal kombat|batman|arkham|injustice|wonder woman)\b/i, name: "Warner Bros. Games" },
-  { match: /\b(borderlands|mafia|bioshock|nba 2k|wwe 2k|civilization|xcom)\b/i, name: "2K" },
+  {
+    match:
+      /\b(hogwarts legacy|mortal kombat|batman|arkham|injustice|wonder woman)\b/i,
+    name: "Warner Bros. Games",
+  },
+  {
+    match: /\b(borderlands|mafia|bioshock|nba 2k|wwe 2k|civilization|xcom)\b/i,
+    name: "2K",
+  },
 ];
 
 export function franchisePublisher(gameTitle: string): string | undefined {
@@ -182,7 +239,9 @@ export function pickOfficial(
 ): OfficialTrailer | undefined {
   const game = gameTitle.toLowerCase().replace(/[^a-z0-9 ]/g, "");
   const owner = franchisePublisher(gameTitle);
-  const ownerRule = owner ? PUBLISHER_CHANNELS.find((r) => r.name === owner) : undefined;
+  const ownerRule = owner
+    ? PUBLISHER_CHANNELS.find((r) => r.name === owner)
+    : undefined;
   const tokens = game.split(/\s+/).filter((t) => t.length > 2);
   const scored = items
     .map((it) => {
@@ -219,19 +278,36 @@ export function pickOfficial(
     channelTitle: best.it.channelTitle,
     publisher: owner ?? best.rule.name,
     // The stricter of the hosting channel's cap and the footage owner's cap.
-    clipSeconds: Math.min(best.rule.clipSeconds, ownerRule?.clipSeconds ?? best.rule.clipSeconds),
+    clipSeconds: Math.min(
+      best.rule.clipSeconds,
+      ownerRule?.clipSeconds ?? best.rule.clipSeconds,
+    ),
     publishedAt: best.it.publishedAt,
   };
 }
 
 /** Finds the game's official trailer on YouTube (search 100 units + channels 1 unit). */
-type SearchItem = { videoId: string; title: string; channelId: string; channelTitle: string; publishedAt: string };
+type SearchItem = {
+  videoId: string;
+  title: string;
+  channelId: string;
+  channelTitle: string;
+  publishedAt: string;
+};
 
 /** One YouTube search (100 units) plus the channels' audience sizes (1 unit). */
-async function searchVideos(token: () => Promise<string>, query: string, extra = ""): Promise<{ items: SearchItem[]; subscribers: Map<string, number> }> {
+async function searchVideos(
+  token: () => Promise<string>,
+  query: string,
+  extra = "",
+): Promise<{ items: SearchItem[]; subscribers: Map<string, number> }> {
   const auth = { headers: { authorization: `Bearer ${await token()}` } };
   const q = encodeURIComponent(query.replace(/\s+/g, " ").trim());
-  const res = await fetchWithTimeout(`${API}/search?part=snippet&type=video&maxResults=15&order=relevance&q=${q}${extra}`, auth, 20_000);
+  const res = await fetchWithTimeout(
+    `${API}/search?part=snippet&type=video&maxResults=15&order=relevance&q=${q}${extra}`,
+    auth,
+    20_000,
+  );
   if (!res.ok) throw new Error(`youtube search HTTP ${res.status}`);
   const items: SearchItem[] = (((await res.json()) as any).items ?? [])
     .map((i: any) => ({
@@ -242,11 +318,19 @@ async function searchVideos(token: () => Promise<string>, query: string, extra =
       publishedAt: String(i.snippet?.publishedAt ?? ""),
     }))
     .filter((i: SearchItem) => i.videoId);
-  const channelIds = [...new Set(items.map((i) => i.channelId))].filter(Boolean);
+  const channelIds = [...new Set(items.map((i) => i.channelId))].filter(
+    Boolean,
+  );
   const subscribers = new Map<string, number>();
   if (channelIds.length) {
-    const ch = await fetchWithTimeout(`${API}/channels?part=statistics&id=${channelIds.join(",")}`, auth, 20_000);
-    if (ch.ok) for (const c of ((await ch.json()) as any).items ?? []) subscribers.set(c.id, Number(c.statistics?.subscriberCount ?? 0));
+    const ch = await fetchWithTimeout(
+      `${API}/channels?part=statistics&id=${channelIds.join(",")}`,
+      auth,
+      20_000,
+    );
+    if (ch.ok)
+      for (const c of ((await ch.json()) as any).items ?? [])
+        subscribers.set(c.id, Number(c.statistics?.subscriberCount ?? 0));
   }
   return { items, subscribers };
 }
@@ -257,16 +341,35 @@ export async function findOfficialTrailer(
   gameTitle: string,
   hint = "", // e.g. the release year, to steer a short or reused title ("Resident Evil" 2002)
 ): Promise<OfficialTrailer | undefined> {
-  const { items, subscribers } = await searchVideos(token, `${gameTitle} ${hint} official trailer`);
+  const { items, subscribers } = await searchVideos(
+    token,
+    `${gameTitle} ${hint} official trailer`,
+  );
   return pickOfficial(items, gameTitle, subscribers);
 }
 
-const STORY_STOP = new Set("the a an and of to in on for with as at by from is are was were be has have its it this that new now just after over into game games trailer official video".split(" "));
+const STORY_STOP = new Set(
+  "the a an and of to in on for with as at by from is are was were be has have its it this that new now just after over into game games trailer official video".split(
+    " ",
+  ),
+);
 
 /** Words that carry a story: no stopwords, no game title words. */
 export function storyWords(text: string, gameTitle: string): string[] {
-  const game = new Set(gameTitle.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
-  return [...new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STORY_STOP.has(w) && !game.has(w)))];
+  const game = new Set(
+    gameTitle
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean),
+  );
+  return [
+    ...new Set(
+      text
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length > 2 && !STORY_STOP.has(w) && !game.has(w)),
+    ),
+  ];
 }
 
 /**
@@ -274,14 +377,25 @@ export function storyWords(text: string, gameTitle: string): string[] {
  * reveal), uploaded on or after `after`: same channel rules as trailers, and
  * the title must share at least one story word.
  */
-export function pickStoryVideo(items: SearchItem[], gameTitle: string, story: string, after: Date, subscribers: Map<string, number>): OfficialTrailer | undefined {
+export function pickStoryVideo(
+  items: SearchItem[],
+  gameTitle: string,
+  story: string,
+  after: Date,
+  subscribers: Map<string, number>,
+): OfficialTrailer | undefined {
   const owner = franchisePublisher(gameTitle);
-  const ownerRule = owner ? PUBLISHER_CHANNELS.find((r) => r.name === owner) : undefined;
+  const ownerRule = owner
+    ? PUBLISHER_CHANNELS.find((r) => r.name === owner)
+    : undefined;
   const words = storyWords(story, gameTitle);
   const scored = items
     .map((it) => {
-      const rule = PUBLISHER_CHANNELS.find((r) => r.match.test(it.channelTitle.trim()));
-      if (!rule || (subscribers.get(it.channelId) ?? 0) < rule.minSubscribers) return undefined;
+      const rule = PUBLISHER_CHANNELS.find((r) =>
+        r.match.test(it.channelTitle.trim()),
+      );
+      if (!rule || (subscribers.get(it.channelId) ?? 0) < rule.minSubscribers)
+        return undefined;
       if (!it.publishedAt || new Date(it.publishedAt) < after) return undefined;
       const t = it.title.toLowerCase();
       if (EXCLUDE.test(t)) return undefined;
@@ -290,7 +404,10 @@ export function pickStoryVideo(items: SearchItem[], gameTitle: string, story: st
       return { it, rule, score: hits + (owner && rule.name === owner ? 2 : 0) };
     })
     .filter((x): x is NonNullable<typeof x> => Boolean(x))
-    .sort((a, b) => b.score - a.score || b.it.publishedAt.localeCompare(a.it.publishedAt));
+    .sort(
+      (a, b) =>
+        b.score - a.score || b.it.publishedAt.localeCompare(a.it.publishedAt),
+    );
   const best = scored[0];
   if (!best) return undefined;
   return {
@@ -299,7 +416,10 @@ export function pickStoryVideo(items: SearchItem[], gameTitle: string, story: st
     channelId: best.it.channelId,
     channelTitle: best.it.channelTitle,
     publisher: owner ?? best.rule.name,
-    clipSeconds: Math.min(best.rule.clipSeconds, ownerRule?.clipSeconds ?? best.rule.clipSeconds),
+    clipSeconds: Math.min(
+      best.rule.clipSeconds,
+      ownerRule?.clipSeconds ?? best.rule.clipSeconds,
+    ),
     publishedAt: best.it.publishedAt,
   };
 }
@@ -320,50 +440,121 @@ export const SOCIAL_HANDLES: Record<string, string[]> = {
 const PLATFORM_HANDLES = ["playstation", "xbox"];
 
 /** "id | YYYYMMDD | description" lines from yt-dlp's flat listing. */
-export function parseSocialListing(text: string, handle: string): Array<{ url: string; date: string; title: string; handle: string }> {
-  const out: Array<{ url: string; date: string; title: string; handle: string }> = [];
+export function parseSocialListing(
+  text: string,
+  handle: string,
+): Array<{ url: string; date: string; title: string; handle: string }> {
+  const out: Array<{
+    url: string;
+    date: string;
+    title: string;
+    handle: string;
+  }> = [];
   for (const line of text.split(/\r?\n/)) {
     const [id, date, ...rest] = line.split(" | ");
-    if (!id || !/^\d{8,}$/.test(id.trim()) || !date || !/^\d{8}$/.test(date.trim())) continue;
-    out.push({ url: `https://www.tiktok.com/@${handle}/video/${id.trim()}`, date: `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`, title: rest.join(" | ").trim(), handle });
+    if (
+      !id ||
+      !/^\d{8,}$/.test(id.trim()) ||
+      !date ||
+      !/^\d{8}$/.test(date.trim())
+    )
+      continue;
+    out.push({
+      url: `https://www.tiktok.com/@${handle}/video/${id.trim()}`,
+      date: `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`,
+      title: rest.join(" | ").trim(),
+      handle,
+    });
   }
   return out;
 }
 
 /** Best official social post about the story: posted since `after`, naming the game or sharing two story words. */
-export function pickSocialPost(posts: Array<{ url: string; date: string; title: string; handle: string }>, gameTitle: string, story: string, after: Date): { url: string; date: string; title: string; handle: string } | undefined {
+export function pickSocialPost(
+  posts: Array<{ url: string; date: string; title: string; handle: string }>,
+  gameTitle: string,
+  story: string,
+  after: Date,
+): { url: string; date: string; title: string; handle: string } | undefined {
   const words = storyWords(story, gameTitle);
-  const game = gameTitle.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+  const game = gameTitle
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2);
   const since = after.toISOString().slice(0, 10);
   return posts
     .filter((p) => p.date >= since)
     .map((p) => {
       const t = p.title.toLowerCase();
       const storyHits = words.filter((w) => t.includes(w)).length;
-      const gameHits = game.filter((w) => t.includes(w)).length / Math.max(1, game.length);
-      return { p, score: storyHits * 2 + gameHits * 3, ok: storyHits >= 2 || (gameHits >= 0.5 && storyHits >= 1) };
+      const gameHits =
+        game.filter((w) => t.includes(w)).length / Math.max(1, game.length);
+      return {
+        p,
+        score: storyHits * 2 + gameHits * 3,
+        ok: storyHits >= 2 || (gameHits >= 0.5 && storyHits >= 1),
+      };
     })
     .filter((x) => x.ok)
-    .sort((a, b) => b.score - a.score || b.p.date.localeCompare(a.p.date))[0]?.p;
+    .sort((a, b) => b.score - a.score || b.p.date.localeCompare(a.p.date))[0]
+    ?.p;
 }
 
 /** The publisher's (or platform holder's) own TikTok post about the story, via yt-dlp's public listing. */
-export async function findSocialStoryVideo(gameTitle: string, story: string, after: Date, ytdlp = "yt-dlp"): Promise<OfficialTrailer | undefined> {
+export async function findSocialStoryVideo(
+  gameTitle: string,
+  story: string,
+  after: Date,
+  ytdlp = "yt-dlp",
+): Promise<OfficialTrailer | undefined> {
   const owner = franchisePublisher(gameTitle);
-  const handles = [...new Set([...(owner ? SOCIAL_HANDLES[owner] ?? [] : []), ...PLATFORM_HANDLES])];
-  const posts: Array<{ url: string; date: string; title: string; handle: string }> = [];
+  const handles = [
+    ...new Set([
+      ...(owner ? (SOCIAL_HANDLES[owner] ?? []) : []),
+      ...PLATFORM_HANDLES,
+    ]),
+  ];
+  const posts: Array<{
+    url: string;
+    date: string;
+    title: string;
+    handle: string;
+  }> = [];
   for (const h of handles) {
     try {
-      const { stdout } = await run(ytdlp, ["--no-warnings", "--flat-playlist", "--playlist-end", "15", "--print", "%(id)s | %(upload_date)s | %(title)s", `https://www.tiktok.com/@${h}`], { timeout: 90_000, maxBuffer: 4 * 1024 * 1024 });
+      const { stdout } = await run(
+        ytdlp,
+        [
+          ...YTDLP_TEXT.args,
+          "--no-warnings",
+          "--flat-playlist",
+          "--playlist-end",
+          "15",
+          "--print",
+          "%(id)s | %(upload_date)s | %(title)s",
+          `https://www.tiktok.com/@${h}`,
+        ],
+        { timeout: 90_000, maxBuffer: 4 * 1024 * 1024, env: YTDLP_TEXT.env },
+      );
       posts.push(...parseSocialListing(String(stdout), h));
     } catch (err) {
-      log("warn", "social listing failed", { handle: h, error: errorMessage(err).split("\n")[0] });
+      log("warn", "social listing failed", {
+        handle: h,
+        error: errorMessage(err).split("\n")[0],
+      });
     }
   }
   const best = pickSocialPost(posts, gameTitle, story, after);
   if (!best) return undefined;
-  const rule = owner ? PUBLISHER_CHANNELS.find((r) => r.name === owner) : undefined;
-  const hostRule = PUBLISHER_CHANNELS.find((r) => r.name.toLowerCase().replace(/ games$/, "") === best.handle.replace(/games$/, "")) ?? rule;
+  const rule = owner
+    ? PUBLISHER_CHANNELS.find((r) => r.name === owner)
+    : undefined;
+  const hostRule =
+    PUBLISHER_CHANNELS.find(
+      (r) =>
+        r.name.toLowerCase().replace(/ games$/, "") ===
+        best.handle.replace(/games$/, ""),
+    ) ?? rule;
   return {
     videoId: best.url,
     title: best.title.slice(0, 120),
@@ -375,9 +566,18 @@ export async function findSocialStoryVideo(gameTitle: string, story: string, aft
   };
 }
 
-export async function findStoryVideo(token: () => Promise<string>, gameTitle: string, story: string, after: Date): Promise<OfficialTrailer | undefined> {
+export async function findStoryVideo(
+  token: () => Promise<string>,
+  gameTitle: string,
+  story: string,
+  after: Date,
+): Promise<OfficialTrailer | undefined> {
   const words = storyWords(story, gameTitle).slice(0, 5);
-  const { items, subscribers } = await searchVideos(token, `${gameTitle} ${words.join(" ")}`, `&publishedAfter=${encodeURIComponent(after.toISOString())}`);
+  const { items, subscribers } = await searchVideos(
+    token,
+    `${gameTitle} ${words.join(" ")}`,
+    `&publishedAfter=${encodeURIComponent(after.toISOString())}`,
+  );
   return pickStoryVideo(items, gameTitle, story, after, subscribers);
 }
 
@@ -393,8 +593,16 @@ export async function downloadTrailer(
     await downloadOnce(videoId, dest, ytdlp);
   } catch (err) {
     // A 403 or a signature failure means YouTube moved and yt-dlp is behind: update once and try again.
-    if (retry && /403|signature|n function|unable to extract|precondition/i.test(errorMessage(err))) {
-      log("warn", "yt-dlp failed; self-updating and retrying once", { videoId, error: errorMessage(err).split("\n").pop() });
+    if (
+      retry &&
+      /403|signature|n function|unable to extract|precondition/i.test(
+        errorMessage(err),
+      )
+    ) {
+      log("warn", "yt-dlp failed; self-updating and retrying once", {
+        videoId,
+        error: errorMessage(err).split("\n").pop(),
+      });
       await run(ytdlp, ["-U"], { timeout: 120_000 }).catch(() => undefined);
       return downloadTrailer(videoId, dest, ytdlp, false);
     }
@@ -407,7 +615,9 @@ export async function downloadTrailer(
       "--no-warnings",
       "--print",
       "duration",
-      /^https?:/.test(videoId) ? videoId : `https://www.youtube.com/watch?v=${videoId}`,
+      /^https?:/.test(videoId)
+        ? videoId
+        : `https://www.youtube.com/watch?v=${videoId}`,
     ],
     { timeout: 60_000 },
   ).catch(() => ({ stdout: "0" }));
@@ -415,8 +625,14 @@ export async function downloadTrailer(
   return Number.isFinite(d) && d > 0 ? d : 0;
 }
 
-async function downloadOnce(videoId: string, dest: string, ytdlp: string): Promise<void> {
-  const target = /^https?:/.test(videoId) ? videoId : `https://www.youtube.com/watch?v=${videoId}`;
+async function downloadOnce(
+  videoId: string,
+  dest: string,
+  ytdlp: string,
+): Promise<void> {
+  const target = /^https?:/.test(videoId)
+    ? videoId
+    : `https://www.youtube.com/watch?v=${videoId}`;
   await run(
     ytdlp,
     [
@@ -466,7 +682,14 @@ export async function downloadThumbnail(
 export interface OfficialMedia {
   /** true when the footage is the publisher's own video of the story, not a trailer */
   storyVideo?: boolean;
-  trailer?: { videoId: string; title: string; publisher: string; channelTitle: string; url: string; clipSeconds: number };
+  trailer?: {
+    videoId: string;
+    title: string;
+    publisher: string;
+    channelTitle: string;
+    url: string;
+    clipSeconds: number;
+  };
   clips: VisualAsset[];
   stills: VisualAsset[];
 }
@@ -492,31 +715,97 @@ export interface OfficialMediaOptions {
  * trailer on YouTube, matched to the narration like a Steam trailer, under
  * that publisher's footage cap (Nintendo: stills only).
  */
-export async function officialMedia(o: OfficialMediaOptions): Promise<OfficialMedia> {
+export async function officialMedia(
+  o: OfficialMediaOptions,
+): Promise<OfficialMedia> {
   const none: OfficialMedia = { clips: [], stills: [] };
   if (!o.gameTitle.trim()) return none;
   if (o.quotaOk && !(await o.quotaOk())) {
-    log("info", "official trailer search skipped: quota reserved for uploads", { game: o.gameTitle });
+    log("info", "official trailer search skipped: quota reserved for uploads", {
+      game: o.gameTitle,
+    });
     return none;
   }
-  const storyVideo = o.story ? await findStoryVideo(o.token, o.gameTitle, o.story.text, o.story.after).catch((err) => {
-    log("warn", "story video search failed", { game: o.gameTitle, error: errorMessage(err) });
-    return undefined;
-  }) : undefined;
-  const socialVideo = o.story && !storyVideo ? await findSocialStoryVideo(o.gameTitle, o.story.text, o.story.after, o.ytdlp).catch(() => undefined) : undefined;
-  if (o.story) log("info", storyVideo || socialVideo ? "publisher story video found" : "no publisher story video", { game: o.gameTitle, title: (storyVideo ?? socialVideo)?.title, where: storyVideo ? "youtube" : socialVideo ? socialVideo.channelTitle : "none" });
-  const trailer = storyVideo ?? socialVideo ?? (await findOfficialTrailer(o.token, o.gameTitle, o.hint));
+  const storyVideo = o.story
+    ? await findStoryVideo(
+        o.token,
+        o.gameTitle,
+        o.story.text,
+        o.story.after,
+      ).catch((err) => {
+        log("warn", "story video search failed", {
+          game: o.gameTitle,
+          error: errorMessage(err),
+        });
+        return undefined;
+      })
+    : undefined;
+  const socialVideo =
+    o.story && !storyVideo
+      ? await findSocialStoryVideo(
+          o.gameTitle,
+          o.story.text,
+          o.story.after,
+          o.ytdlp,
+        ).catch(() => undefined)
+      : undefined;
+  if (o.story)
+    log(
+      "info",
+      storyVideo || socialVideo
+        ? "publisher story video found"
+        : "no publisher story video",
+      {
+        game: o.gameTitle,
+        title: (storyVideo ?? socialVideo)?.title,
+        where: storyVideo
+          ? "youtube"
+          : socialVideo
+            ? socialVideo.channelTitle
+            : "none",
+      },
+    );
+  const trailer =
+    storyVideo ??
+    socialVideo ??
+    (await findOfficialTrailer(o.token, o.gameTitle, o.hint));
   if (!trailer) {
     log("info", "no official trailer found", { game: o.gameTitle });
     return none;
   }
-  const url = /^https?:/.test(trailer.videoId) ? trailer.videoId : `https://www.youtube.com/watch?v=${trailer.videoId}`;
-  const out: OfficialMedia = { storyVideo: Boolean(storyVideo || socialVideo), trailer: { videoId: trailer.videoId, title: trailer.title, publisher: trailer.publisher, channelTitle: trailer.channelTitle, url, clipSeconds: trailer.clipSeconds }, clips: [], stills: [] };
+  const url = /^https?:/.test(trailer.videoId)
+    ? trailer.videoId
+    : `https://www.youtube.com/watch?v=${trailer.videoId}`;
+  const out: OfficialMedia = {
+    storyVideo: Boolean(storyVideo || socialVideo),
+    trailer: {
+      videoId: trailer.videoId,
+      title: trailer.title,
+      publisher: trailer.publisher,
+      channelTitle: trailer.channelTitle,
+      url,
+      clipSeconds: trailer.clipSeconds,
+    },
+    clips: [],
+    stills: [],
+  };
   const stillFile = path.join("assets", "official_trailer.jpg");
-  if (!socialVideo && (await downloadThumbnail(trailer.videoId, path.join(o.episodeDir, stillFile)))) {
-    out.stills.push({ kind: "hero", file: stillFile, sourceUrl: url, provenance: `Official trailer thumbnail "${trailer.title}" from the ${trailer.channelTitle} YouTube channel (${url})` });
+  if (
+    !socialVideo &&
+    (await downloadThumbnail(
+      trailer.videoId,
+      path.join(o.episodeDir, stillFile),
+    ))
+  ) {
+    out.stills.push({
+      kind: "hero",
+      file: stillFile,
+      sourceUrl: url,
+      provenance: `Official trailer thumbnail "${trailer.title}" from the ${trailer.channelTitle} YouTube channel (${url})`,
+    });
   }
-  if (trailer.clipSeconds <= 0 || o.maxClips <= 0 || !o.targets.length) return out;
+  if (trailer.clipSeconds <= 0 || o.maxClips <= 0 || !o.targets.length)
+    return out;
   const work = path.join(o.episodeDir, "trailers");
   const file = path.join(work, "official.mp4");
   try {
@@ -528,10 +817,17 @@ export async function officialMedia(o: OfficialMediaOptions): Promise<OfficialMe
       maxClips: o.maxClips,
       llm: o.llm,
       prefix: "official",
-      describe: (t, seconds, at) => socialVideo ? `Official post "${t.name.slice(0, 80)}" by ${trailer.channelTitle}, publisher: ${trailer.publisher} (${url}), ${seconds}s at ${at.toFixed(1)}s, muted` : `Official trailer "${t.name}" from the ${trailer.channelTitle} YouTube channel, publisher: ${trailer.publisher} (${url}), ${seconds}s at ${at.toFixed(1)}s, muted`,
+      describe: (t, seconds, at) =>
+        socialVideo
+          ? `Official post "${t.name.slice(0, 80)}" by ${trailer.channelTitle}, publisher: ${trailer.publisher} (${url}), ${seconds}s at ${at.toFixed(1)}s, muted`
+          : `Official trailer "${t.name}" from the ${trailer.channelTitle} YouTube channel, publisher: ${trailer.publisher} (${url}), ${seconds}s at ${at.toFixed(1)}s, muted`,
     });
   } catch (err) {
-    log("warn", "official trailer footage failed", { game: o.gameTitle, videoId: trailer.videoId, error: errorMessage(err) });
+    log("warn", "official trailer footage failed", {
+      game: o.gameTitle,
+      videoId: trailer.videoId,
+      error: errorMessage(err),
+    });
     await fs.rm(work, { recursive: true, force: true });
   }
   return out;

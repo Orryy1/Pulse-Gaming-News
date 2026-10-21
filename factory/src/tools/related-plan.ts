@@ -10,6 +10,7 @@
 process.loadEnvFile(".env");
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
+import { YTDLP_TEXT } from "../lib/bin.ts";
 
 interface Row {
   id: string;
@@ -42,6 +43,7 @@ const ytdlp = process.env.YTDLP_PATH || "yt-dlp";
 const longs = execFileSync(
   ytdlp,
   [
+    ...YTDLP_TEXT.args,
     "--no-warnings",
     "--flat-playlist",
     "--playlist-end",
@@ -50,7 +52,7 @@ const longs = execFileSync(
     "%(id)s\t%(duration)s\t%(title)s",
     "https://www.youtube.com/channel/UCvgNDjtTezrpxL8oUe6mYwA/videos",
   ],
-  { encoding: "utf8" },
+  { encoding: "utf8", env: YTDLP_TEXT.env },
 )
   .split("\n")
   .map((l) => l.split("\t"))

@@ -17,17 +17,17 @@ export const SFX = {
 
 /**
  * Mix levels (the narrator plays at 1), set from the narrator's measured loudness: the sting 10 dB under
- * it, the swell 16, the landing 17, whooshes 19 and the number tick 20, the quietest (a loud tonal glint
+ * it, the swell 16, the landing and whooshes 17 and the number tick 20, the quietest (a loud tonal glint
  * was the most jarring sound of the old set).
  */
 export const LEVEL = {
   sting: 0.436,
-  air: 0.155,
+  air: 0.195,
   swell: 0.218,
   land: 0.195,
   glint: 0.138,
   /** Long videos run 2 dB quieter: fifteen minutes of sound must not tire the ear. */
-  airLong: 0.124,
+  airLong: 0.156,
   glintLong: 0.11,
   swellLong: 0.175,
   landLong: 0.156,

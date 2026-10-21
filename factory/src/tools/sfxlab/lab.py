@@ -68,7 +68,7 @@ TAKES = 4
 # What each role must be. peak_s: when the loudness peak should land (the cue is placed so that
 # this lands on the cut); decay_ms: peak to -30 dB; lowpass: where the top end is rolled off.
 ROLES = {
-    "air": dict(dur=(0.4, 1.1), peak_s=(0.0, 0.35), decay=(120, 450), lowpass=9000, fade=0.45, keep=3, offset=-19, tonal_max=0.7, centroid=(450, 950), phone=0.6),
+    "air": dict(dur=(0.4, 1.1), peak_s=(0.0, 0.35), decay=(120, 450), lowpass=9000, fade=0.45, keep=3, offset=-17, tonal_max=0.7, centroid=(450, 950), phone=0.6),
     "tick": dict(dur=(0.1, 0.7), peak_s=(0.0, 0.08), decay=(50, 280), lowpass=8000, fade=0.6, keep=1, offset=-20, tonal_max=1.0, centroid=(300, 1000), phone=0.6),
     "sting": dict(dur=(0.8, 2.6), peak_s=(0.0, 0.5), decay=(250, 1300), lowpass=10000, fade=0.4, keep=1, offset=-10, tonal_max=1.0, centroid=(300, 1000), phone=0.6),
     "swell": dict(dur=(0.8, 2.2), peak_s=(0.5, 1.6), decay=(40, 400), lowpass=9000, fade=0.12, keep=1, offset=-16, tonal_max=1.0, centroid=(250, 900), phone=0.5),

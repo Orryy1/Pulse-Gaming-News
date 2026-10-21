@@ -474,7 +474,78 @@ export async function quotaHeadroom(
 export function focusBlock(cfg: Config, now: Date): string {
   if (!cfg.focusTopic) return "";
   if (cfg.focusUntil && now.getTime() > new Date(`${cfg.focusUntil}T23:59:59Z`).getTime()) return "";
-  return `Channel focus${cfg.focusUntil ? ` until ${cfg.focusUntil}` : ""}: ${cfg.focusTopic}.${cfg.focusNote ? ` ${cfg.focusNote}` : ""} When a ${cfg.focusTopic} story or topic is as strong as the alternatives, pick it, and prefer fresh angles (history, hidden details, why things happened, what fans argue about) over repeating news already covered. Never pick a weak story or invent one because of the focus.`;
+  const wave = launchWave(cfg, now)
+    ? ` LAUNCH WEEK: this is the launch wave for ${cfg.focusTopic}. Cover it from every angle (reviews, performance, hidden details, what fans are finding, how it compares, prices and editions) and prefer a strong ${cfg.focusTopic} story over anything of equal weight.`
+    : "";
+  return `Channel focus${cfg.focusUntil ? ` until ${cfg.focusUntil}` : ""}: ${cfg.focusTopic}.${cfg.focusNote ? ` ${cfg.focusNote}` : ""} When a ${cfg.focusTopic} story or topic is as strong as the alternatives, pick it, and prefer fresh angles (history, hidden details, why things happened, what fans argue about) over repeating news already covered. Never pick a weak story or invent one because of the focus.${wave}`;
+}
+
+/** True when a story or title is about the channel focus (FOCUS_MATCH). */
+export function focusMatch(cfg: Config, text: string): boolean {
+  if (!cfg.focusMatch) return false;
+  try {
+    return new RegExp(cfg.focusMatch, "i").test(text);
+  } catch {
+    return false;
+  }
+}
+
+/** True during a launch wave (LAUNCH_WAVE_FROM to LAUNCH_WAVE_TO, London dates): extra Shorts on the focus. */
+export function launchWave(cfg: Config, now: Date): boolean {
+  if (!cfg.waveFrom || !cfg.waveTo || !cfg.focusTopic) return false;
+  const day = dayKey(now, cfg.timezone);
+  return day >= cfg.waveFrom && day <= cfg.waveTo;
+}
+
+// Named series shelves. The channels that grew fastest file every video in a playlist named the way
+// people search, and point their end screens at them; a series also tells YouTube who the video is for.
+const SERIES = {
+  rankedLong: { title: "Every Game Ranked: Worst to Best", description: "Pulse Gaming's full rankings: every game in a series, ranked on one clear rule and explained. A new ranking every Saturday." },
+  weekly: { title: "The Pulse Weekly: This Week in Gaming", description: "The week's biggest gaming stories, checked and explained. Every Friday." },
+  docs: { title: "Gaming Documentaries", description: "The stories behind the games, checked and explained." },
+  why: { title: "The Why: Gaming's Biggest Questions", description: "One question fans argue about, answered from the record in under a minute. A new one every day." },
+  rankedShort: { title: "Ranked in 60 Seconds", description: "Game rankings in under a minute, one clear rule each." },
+  news: { title: "Gaming News Today", description: "Fast gaming news, checked and explained. New Shorts every day." },
+};
+
+/** The playlists a published video belongs to. */
+export function seriesFor(cfg: Config, ep: Episode, now: Date): Array<{ title: string; description: string }> {
+  const sc = ep.script_json;
+  if (!sc) return [];
+  const out: Array<{ title: string; description: string }> = [];
+  if (sc.recap) out.push(SERIES.weekly);
+  else if (sc.runtime === "long") out.push(sc.evergreen_format === "documentary" ? SERIES.docs : SERIES.rankedLong);
+  else if (ep.story_hash?.startsWith("why:")) out.push(SERIES.why);
+  else if (ep.lane === "cutdown" || (ep.lane === "evergreen" && sc.entries?.length)) out.push(SERIES.rankedShort);
+  else if (ep.lane === "news" || ep.lane === "news_breaking") out.push(SERIES.news);
+  const focusOn = cfg.focusPlaylist && (!cfg.focusUntil || dayKey(now, cfg.timezone) <= cfg.focusUntil);
+  if (focusOn && focusMatch(cfg, `${sc.game_title} ${sc.headline} ${sc.youtube?.title ?? ""}`))
+    out.push({ title: cfg.focusPlaylist, description: `${cfg.focusTopic} news, explainers and rankings from Pulse Gaming.${cfg.focusNote ? ` ${cfg.focusNote}` : ""}` });
+  return out;
+}
+
+/** Files a published video in its series playlists (50 units each, plus 50 the first time a playlist is made). */
+async function addToSeries(s: Services, ep: Episode): Promise<void> {
+  const yt = s.youtube() as Partial<{ findOrCreatePlaylist: (t: string, d: string) => Promise<{ id: string; created: boolean }>; addToPlaylist: (p: string, v: string) => Promise<void> }>;
+  if (!yt.findOrCreatePlaylist || !yt.addToPlaylist || !ep.youtube_video_id) return;
+  for (const series of seriesFor(s.cfg, ep, s.now())) {
+    try {
+      const key = `playlist:${series.title}`;
+      const [row] = await s.db.query<{ value: string }>(`SELECT value FROM settings WHERE key = $1`, [key]);
+      let id = row?.value;
+      if (!id) {
+        const made = await yt.findOrCreatePlaylist(series.title, series.description);
+        await quotaAdd(s.db, s.now(), made.created ? 51 : 1);
+        id = made.id;
+        await s.db.query(`INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [key, id]);
+      }
+      await yt.addToPlaylist(id, ep.youtube_video_id);
+      await quotaAdd(s.db, s.now(), QUOTA.comment);
+      await logEvent(s.db, ep.id, "playlist", { title: series.title });
+    } catch (err) {
+      log("warn", "playlist add failed", { episode: ep.id, playlist: series.title, error: errorMessage(err) });
+    }
+  }
 }
 
 /** For ranking topic pickers: YouTube's trending gaming videos and what viewers asked us to rank. */
@@ -578,7 +649,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   if (cut) return cut;
   // Spare-quota Shorts are extra: they never take one of the day's planned Shorts.
   const total = (await countToday(db, cfg.timezone)) - (await countSpareToday(db, cfg.timezone));
-  if (total >= cfg.dailyTarget) return (await maybeSelectSpare(s)) ?? undefined;
+  if (total >= cfg.dailyTarget + (launchWave(cfg, now) ? cfg.sprintExtra : 0)) return (await maybeSelectSpare(s)) ?? undefined;
 
   const seen = await seenHashes(db);
   const sightings = (await recentSightings(s)).filter(
@@ -596,8 +667,9 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   // Shorts that day and a lower bar for the showcase's own stories, but only while the quota still
   // covers every upload already scheduled for today.
   const showcase = showcaseLive(eligible, now);
+  const wave = launchWave(cfg, now);
   const sprint =
-    !!showcase &&
+    (!!showcase || wave) &&
     (await quotaHeadroom(db, cfg, now)) >= QUOTA_RESERVE_FOR_UPLOAD;
   if (
     cfg.breakingEnabled &&
@@ -623,7 +695,8 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
         (x) =>
           (isBreaking(x.cluster, x.sighting, now, rule) ||
             (sprint &&
-              SHOWCASE.test(storyText(x.cluster)) &&
+              (SHOWCASE.test(storyText(x.cluster)) ||
+                (wave && focusMatch(cfg, storyText(x.cluster)))) &&
               isBreaking(x.cluster, x.sighting, now, {
                 ...rule,
                 scoreMin: cfg.sprintScoreMin,
@@ -1526,7 +1599,8 @@ export async function maybeSelectLongform(
     {
       days: cfg.longformDays,
       slot: cfg.longformSlot,
-      leadMinutes: cfg.slotLeadMinutes + 120,
+      // Fifteen to twenty minutes of footage takes four hours or more to gather, voice and render.
+      leadMinutes: cfg.slotLeadMinutes + 420,
       graceMinutes: cfg.slotGraceMinutes,
       timeZone: cfg.timezone,
     },
@@ -4987,6 +5061,7 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   if (!ep.publish_at || new Date(ep.publish_at) <= s.now())
     await addPinnedComment(s, ep);
   if (ep.assets_json?.thumb) await setThumbnail(s, ep);
+  await addToSeries(s, ep);
   await transition(s.db, ep.id, "uploaded", "published", {
     youtube_status: st.privacyStatus,
   });

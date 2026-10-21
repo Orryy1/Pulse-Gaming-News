@@ -98,6 +98,10 @@ export interface Config {
   focusTopic: string; // a franchise the editors favour for a while (e.g. a huge launch), empty = none
   focusUntil: string; // ISO date the focus ends
   focusNote: string; // one line on why, for the editors
+  focusMatch: string; // regex (case-insensitive) a story about the focus matches, e.g. "grand theft auto|\\bgta\\b"
+  focusPlaylist: string; // a playlist every focus video joins while the focus runs, empty = none
+  waveFrom: string; // ISO date a launch wave starts: extra Shorts on the focus, like a showcase sprint
+  waveTo: string; // ISO date it ends (inclusive)
   whyEnabled: boolean; // the daily "Why" Short
   whyDays: string[];
   whySlot: string; // local "HH:MM"
@@ -262,6 +266,10 @@ export function loadConfig(): Config {
     focusTopic: str("FOCUS_TOPIC", ""),
     focusUntil: str("FOCUS_UNTIL", ""),
     focusNote: str("FOCUS_NOTE", ""),
+    focusMatch: str("FOCUS_MATCH", ""),
+    focusPlaylist: str("FOCUS_PLAYLIST", ""),
+    waveFrom: str("LAUNCH_WAVE_FROM", ""),
+    waveTo: str("LAUNCH_WAVE_TO", ""),
     whyEnabled: bool("WHY_ENABLED", true),
     whyDays: str("WHY_DAYS", "mon,tue,wed,thu,fri,sat,sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     whySlot: str("WHY_SLOT", "18:30"),

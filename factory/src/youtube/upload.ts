@@ -191,6 +191,33 @@ export class YouTubeClient {
     return body.id;
   }
 
+  /** The channel's playlist with this title, created public when missing. created says whether it cost an insert (50 units). */
+  async findOrCreatePlaylist(title: string, description: string): Promise<{ id: string; created: boolean }> {
+    const list = await this.fetchFn(`${API}/playlists?part=snippet&mine=true&maxResults=50`, { headers: await this.auth() });
+    if (!list.ok) throw await apiError(list, "playlists.list");
+    const found = (((await list.json()) as any).items ?? []).find((p: any) => p.snippet?.title === title);
+    if (found?.id) return { id: found.id, created: false };
+    const res = await this.fetchFn(`${API}/playlists?part=snippet,status`, {
+      method: "POST",
+      headers: { ...(await this.auth()), "content-type": "application/json; charset=UTF-8" },
+      body: JSON.stringify({ snippet: { title, description }, status: { privacyStatus: "public" } }),
+    });
+    if (!res.ok) throw await apiError(res, "playlists.insert");
+    const id = ((await res.json()) as { id?: string }).id;
+    if (!id) throw new Error("playlists.insert returned no id");
+    return { id, created: true };
+  }
+
+  /** Adds a video to a playlist (playlistItems.insert, 50 quota units). */
+  async addToPlaylist(playlistId: string, videoId: string): Promise<void> {
+    const res = await this.fetchFn(`${API}/playlistItems?part=snippet`, {
+      method: "POST",
+      headers: { ...(await this.auth()), "content-type": "application/json; charset=UTF-8" },
+      body: JSON.stringify({ snippet: { playlistId, resourceId: { kind: "youtube#video", videoId } } }),
+    });
+    if (!res.ok) throw await apiError(res, "playlistItems.insert");
+  }
+
   /** Posts a top-level comment as the channel (commentThreads.insert, 50 quota units). Returns the comment id. */
   async insertComment(videoId: string, text: string): Promise<string> {
     const res = await this.fetchFn(`${API}/commentThreads?part=snippet`, {

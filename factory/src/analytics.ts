@@ -8,6 +8,7 @@ import type { Config } from "./config.ts";
 import type { Episode } from "./episodes.ts";
 import { logEvent } from "./episodes.ts";
 import { QUOTA, dayKey, quotaAdd, quotaUsed, weekday } from "./lanes.ts";
+import { reviewFormats } from "./formats.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
 import { log } from "./lib/util.ts";
 
@@ -250,6 +251,7 @@ export async function weeklyDigest(
           ),
         ]
       : []),
+    ...((formats) => (formats.length ? ["**Formats (median views at 24 h vs news; under 40% after six videos pauses a format for four weeks):**", ...formats] : []))(await reviewFormats(db, now)),
     `**YouTube quota used today:** ${(await quotaUsed(db, now)).toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")}`,
     "Reminders: check Studio for Content ID claims on anything over 60 s; the retention curve arrives once analytics is reconnected.",
   ];

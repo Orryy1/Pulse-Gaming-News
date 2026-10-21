@@ -124,6 +124,7 @@ import {
 } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
 import { bedFor } from "./render/soundscape.ts";
+import { formatOpen } from "./formats.ts";
 import { blurPlate } from "./assets/plates.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
 import {
@@ -1021,7 +1022,7 @@ export async function maybeSelectWeekly(
   });
 
   // Steam's biggest climbers: real chart movement, each with the publisher's own news for the why.
-  const climbDue = evergreenDue(now, plan(cfg.climbersDays), taken);
+  const climbDue = (await formatOpen(db, "steam_climbers", now)) ? evergreenDue(now, plan(cfg.climbersDays), taken) : undefined;
   if (climbDue && !(await weeklyTried(db, `climbers:${today}`))) {
     const games = await s.steamClimbers(now);
     if (games.length >= 4) {
@@ -1061,7 +1062,7 @@ export async function maybeSelectWeekly(
   }
 
   // Release Radar
-  const radarDue = evergreenDue(now, plan(cfg.radarDays), taken);
+  const radarDue = (await formatOpen(db, "release_radar", now)) ? evergreenDue(now, plan(cfg.radarDays), taken) : undefined;
   if (radarDue && !(await weeklyTried(db, `radar:${today}`))) {
     const games = await s.releaseRadar(now);
     if (games.length >= 4) {
@@ -1093,7 +1094,7 @@ export async function maybeSelectWeekly(
   }
 
   // Free This Week
-  const freeDue = evergreenDue(now, plan(cfg.freeDays), taken);
+  const freeDue = (await formatOpen(db, "free", now)) ? evergreenDue(now, plan(cfg.freeDays), taken) : undefined;
   if (freeDue && !(await weeklyTried(db, `free:${today}`))) {
     const free = await s.freeGames(now);
     if (free.now.length) {
@@ -1140,7 +1141,7 @@ export async function maybeSelectWeekly(
   }
 
   // Achievement Hunt: odd ISO weeks the rarest in one big game, even weeks the hardest across today's biggest games.
-  const achDue = evergreenDue(now, plan(cfg.achievementDays), taken);
+  const achDue = (await formatOpen(db, "achievements", now)) ? evergreenDue(now, plan(cfg.achievementDays), taken) : undefined;
   if (achDue && !(await weeklyTried(db, `achievements:${today}`))) {
     const week = Math.floor(
       (Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) -
@@ -1252,11 +1253,10 @@ export async function maybeSelectWeekly(
   }
 
   // Steam deals: their own daily slot, only when at least four strong deals are new to the channel.
-  const dealsDue = evergreenDue(
-    now,
-    { ...plan(cfg.dealsDays), slot: cfg.dealsSlot },
-    taken,
-  );
+  // Each format's slot is open only while it earns it (src/formats.ts); deals always run in a Steam sale.
+  const dealsDue = (await formatOpen(db, "steam_deals", now))
+    ? evergreenDue(now, { ...plan(cfg.dealsDays), slot: cfg.dealsSlot }, taken)
+    : undefined;
   if (dealsDue && !(await weeklyTried(db, `deals:${today}`))) {
     const recent = await db.query<{ script_json: Script }>(
       `SELECT script_json FROM episodes WHERE lane = 'evergreen' AND script_json->>'evergreen_format' = 'steam_deals' AND created_at > $1`,
@@ -1343,7 +1343,7 @@ export async function maybeSelectWeekly(
   }
 
   // Weekly Recap
-  const recapDue = evergreenDue(now, plan(cfg.recapDays), taken);
+  const recapDue = (await formatOpen(db, "weekly_recap", now)) ? evergreenDue(now, plan(cfg.recapDays), taken) : undefined;
   if (recapDue && !(await weeklyTried(db, `recap:${today}`))) {
     const rows = await db.query<{
       headline: string;

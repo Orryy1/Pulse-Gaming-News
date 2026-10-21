@@ -3,6 +3,7 @@
 // Short: same week, room to explain, and the watch hours a channel needs for the Partner Program.
 // It reuses the documentary's shape (chapters of paragraphs with callouts) so it renders, voices
 // and passes QA through the documentary path.
+import { voiceFor } from "./voice.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import type { Script } from "./schema.ts";
@@ -25,10 +26,9 @@ export const RECAP_CHAPTER_WORDS_MAX = 300;
 export const RECAP_PARAGRAPHS_MIN = 3;
 export const RECAP_PARAGRAPHS_MAX = 4;
 
-const HOUSE = `You write for Pulse Gaming News, a credible, entertaining YouTube channel about video games.
-American English spelling for a US-first audience, AP style (no serial comma). Brisk, warm, clear; a well-informed friend catching the viewer up on the week, never breathless. Prices in US dollars first.
-Advertiser-friendly. No "like and subscribe", no "let me know in the comments", no "without further ado", no "buckle up". Never present a rumor as fact: say who reported it.
-The channel speaks as "we" when it gives an opinion, framed as opinion in natural words that vary (never the stock phrase "our read").`;
+const HOUSE = `You write for Pulse Gaming News, a YouTube channel about video games.
+
+${voiceFor("recap")}`;
 
 /** One of the week's Shorts as the recap sees it. */
 export interface RecapStory {

@@ -5,6 +5,7 @@
 // read back after a day and the best-performing posts steer the next choices.
 // The events table is the ledger (kind engage_post, engage_answer, engage_metrics).
 
+import { voiceFor } from "../editorial/voice.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
@@ -56,7 +57,9 @@ Write one post that makes people want to answer: a friendly argument, a memory, 
 - guess: one well-known game recognizable from a single screenshot; the answer is posted tomorrow
 - rate: a game in this week's news, "out of 10?"
 - question: an open question with a story behind it ("hardest boss you ever beat?") tied to one game
-Games must be real, well known and easy to find pictures of. Nothing about violence, politics or tragedy. No engagement bait ("like if", "share if", "tag a friend").`;
+Games must be real, well known and easy to find pictures of. Nothing about violence, politics or tragedy. No engagement bait ("like if", "share if", "tag a friend").
+
+${voiceFor("community")}`;
 }
 
 export async function chooseEngageTopic(

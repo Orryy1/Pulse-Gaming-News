@@ -3,6 +3,7 @@
 // question and pointing back to the full video. The worst pick goes first (it
 // draws the most argument), then number two, then number one.
 
+import { voiceFor } from "./voice.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import type { Script } from "./schema.ts";
@@ -126,7 +127,7 @@ export async function writeCutdownCopy(
 ): Promise<CutdownCopy> {
   return llm.structured({
     tier: "mid",
-    system: `You package a YouTube Short cut from Pulse Gaming's long ranking video. The Short is one entry's section: the rank, the footage and the narration. Write copy that makes a gamer stop scrolling and argue. American English, AP style (no serial comma). Advertiser-friendly: no violence words in titles. No clickbait that the video does not deliver; never "you won't believe". Speak as "we" if the channel speaks at all.`,
+    system: `You package a YouTube Short cut from Pulse Gaming's long ranking video. The Short is one entry's section: the rank, the footage and the narration. Write copy that makes a gamer stop scrolling and argue. American English, AP style (no serial comma). Advertiser-friendly: no violence words in titles. No clickbait that the video does not deliver; never "you won't believe". Speak as "we" if the channel speaks at all.\n\n${voiceFor("cutdown")}`,
     content: `Full video: "${parent.youtube.title}"\nCriterion: ${parent.criterion ?? ""}\nThis Short: number ${entry.rank} of ${total}: ${entry.game_title} (${entry.year})\nNarration: ${narration}`,
     schema: CutdownCopySchema,
     effort: "low",

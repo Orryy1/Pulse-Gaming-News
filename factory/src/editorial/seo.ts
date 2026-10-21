@@ -2,6 +2,7 @@
 // table, hashtags and a pinned comment, applied on top of what the writer
 // produced. Everything here is pure and tested; nothing calls a model.
 
+import { RUNNING_QUESTION } from "./voice.ts";
 import { writtenOpinionLead } from "./phrasing.ts";
 import type { Script } from "./schema.ts";
 
@@ -341,7 +342,7 @@ export function pinnedComment(script: Script): string {
   const game = script.game_title || "this";
   const lead = writtenOpinionLead(script.headline);
   if (script.recap)
-    return `Which story was the biggest one for you this week? ${lead} ${take}. Every source is in the description.`;
+    return `Which story was the biggest one for you this week? ${lead} ${take}. And the question we ask every week: ${RUNNING_QUESTION.toLowerCase()} Every source is in the description.`;
   if (script.evergreen_format === "documentary")
     return `Which ${game} game was the one for you, and which chapter of the story surprised you most? Sources for every chapter are in the description.`;
   if (script.evergreen_format === "release_radar")
@@ -355,7 +356,7 @@ export function pinnedComment(script: Script): string {
   if (script.evergreen_format === "weekly_recap")
     return `Which story was the biggest one for you this week? ${lead} ${take}.`;
   if (script.entries?.length && script.runtime === "long")
-    return `Our pick: ${take}. Would you move any of them up or down? And which series should we rank next? The most-asked ones go to the top of our list.`;
+    return `Our number one: ${take}. Too high, too low? Name yours below, and tell us which series we should rank next. The most-asked ones go to the top of our list.`;
   if (script.entries?.length)
     return `Our pick: ${take}. Which ${game} game would you move up or down the list? Every pick is explained in the video.`;
   const q =

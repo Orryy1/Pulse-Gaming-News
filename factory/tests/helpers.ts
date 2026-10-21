@@ -190,8 +190,8 @@ export function goodScript(overrides: Partial<Script> = {}): Script {
       },
     ],
     pulse_take: {
-      label: "OUR READ",
-      narration: "Our read: Bethesda has delayed big content before and it usually lands in better shape, so this is not a red flag yet.",
+      label: "WHAT IT MEANS",
+      narration: "For us, Bethesda has delayed big content before and it usually lands in better shape, so this is not a red flag yet.",
       on_screen: "Not a red flag yet",
     },
     loop_line: "So mark early 2027 for Starfield's second expansion.",

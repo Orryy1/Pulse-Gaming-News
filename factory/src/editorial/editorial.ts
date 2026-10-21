@@ -1,6 +1,7 @@
 // Story selection, scripting and fact-checking. The model does the judgement;
 // this file enforces the rules that must never depend on model compliance.
 
+import { voiceFor, voiceProblems } from "./voice.ts";
 import { varyOpinion } from "./phrasing.ts";
 import type { Llm } from "./llm.ts";
 import { parsePairs, parseMilestones } from "../render/components/cards/helpers.ts";
@@ -21,16 +22,9 @@ import {
 export const WORDS_MIN = 70;
 export const WORDS_MAX = 115;
 
-const HOUSE_STYLE = `You write for Pulse Gaming News, a fast, credible YouTube Shorts channel about video game news.
+const HOUSE_STYLE = `You write for Pulse Gaming News, a YouTube Shorts channel about video game news.
 
-House style (non-negotiable):
-- American English spelling and vocabulary for a US-first audience (color, favorite, center, realize, defense, rumor). AP news style: no serial (Oxford) comma.
-- Brisk, confident, lightly opinionated. Short declarative sentences. No filler, no hype-bro slang.
-- Advertiser-friendly: no profanity, no graphic violence, no shock language, no fake stakes.
-- Never present a rumour, leak or report as fact. Rumors use "reportedly", "according to" or "rumored" and name who is reporting it.
-- Never invent facts, numbers, dates, prices or quotes. Every factual claim must come from the provided sources, or be long-established public knowledge (for example a game's original release year).
-- Never say "let me know in the comments", "like and subscribe" or similar calls to action.
-- No personal details about the channel's operator. The channel speaks as "we" ("we're ranking", "our pick", "we think"), never about itself in the third person ("Pulse is ranking"); the name Pulse is on screen and needs no saying.`;
+${voiceFor("news")}`;
 
 export function selectionPrompt(): string {
   return `${HOUSE_STYLE}
@@ -51,7 +45,7 @@ export function scriptPrompt(): string {
 Write a 25-40 second vertical Short script (${WORDS_MIN}-${WORDS_MAX} spoken words in total across hook, beats, take and loop line).
 
 Structure:
-1. hook: state the news itself in the first sentence, with the game name. Never open with "So", "Today", "Hey", "Welcome", "In this", "Guys" or a question that withholds the news.
+1. hook: state the news itself in the first sentence, with the game name, in the Pulse voice (a fact, a number or a scene, and a hint of why it matters to you). Never open with "So", "Today", "Hey", "Welcome", "In this", "Guys" or a question that withholds the news.
 2. beats: two to four short fact beats, each with one on-screen visual card. The first beat must be the single most surprising concrete detail in the story (a number, a date, a price, a named feature), never background, history or "here is what we know": half our viewers leave between seconds five and twelve, so the best fact goes there. Context and history come later or in the take. Pick the card that fits the fact:
    - "timeline" for a delay or date change: primary is a 2-5 word phrase, date_from is the old date and date_to the new date, both ISO (YYYY-MM or YYYY-MM-DD).
    - "countdown" for a confirmed release date: primary is the date as spoken, date_to is the ISO date.
@@ -71,7 +65,7 @@ person: when the story is about one real person (a cameo, a hire, a departure, a
 
 Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone.
 List every factual claim in "claims" with the URL of the provided source that supports it.
-The YouTube title is "[Game]: [the fact in 4-7 words]", under 60 characters, no exclamation marks, no clickbait words. The description credits the sources by name.`;
+The YouTube title reads like a sharp headline a friend would text you, not a press release: the game or company named early, a strong verb, and the point (the consequence, the surprise or the stakes), under 60 characters, sentence-style with no "Game: fact" colon template, no exclamation marks, no all-caps words, no clickbait the video does not deliver. Good: "Nintendo Just Made Switch 2 Games Cost $80", "GTA 6 Slips Again, and This Time It's Fall". Bad: "GTA 6: Release Date Delayed". A rumor's title says it is a rumor or report. The description opens with one conversational sentence on why it matters, then credits the sources by name.`;
 }
 
 export function factCheckPrompt(): string {
@@ -194,6 +188,7 @@ export function validateScript(s: Script): string[] {
   if (s.beats.length < 2 || s.beats.length > 4) problems.push("There must be two to four beats.");
   const allText = [spoken, s.headline, s.youtube.title, s.youtube.description, s.pulse_take.on_screen, ...s.beats.map((b) => `${b.visual.primary} ${b.visual.secondary}`)].join("\n");
   for (const re of BANNED_PHRASES) if (re.test(allText)) problems.push(`Banned phrase matched: ${re.source}.`);
+  problems.push(...voiceProblems(spoken));
   for (const [re, fix] of BRITICISMS) if (re.test(allText)) problems.push(`Use American spelling ("${fix}"), found "${allText.match(re)?.[0]}".`);
   if (/\b\w+, [\w ]+, and\b/.test(allText)) problems.push("Remove the serial (Oxford) comma before \"and\".");
   if (s.youtube.title.length > 100) problems.push("The YouTube title is over 100 characters.");

@@ -5,6 +5,7 @@
 // against them, then adapted into the common Script shape so voice, render,
 // SEO and upload stay unchanged.
 
+import { voiceFor, voiceProblems } from "./voice.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
@@ -158,8 +159,9 @@ export const EvergreenScriptSchema = z.object({
 });
 export type EvergreenScript = z.infer<typeof EvergreenScriptSchema>;
 
-const HOUSE = `You write for Pulse Gaming News, a fast, credible YouTube Shorts channel about video games.
-American English spelling for a US-first audience, AP style (no serial comma). Brisk, confident, lightly opinionated. Advertiser-friendly. No "like and subscribe", no "let me know in the comments". The channel speaks as "we" ("we're ranking", "our pick", "we think"), never about itself in the third person ("Pulse is ranking"); the name Pulse is on screen and needs no saying.
+const HOUSE = `You write for Pulse Gaming News, a YouTube Shorts channel about video games.
+
+${voiceFor("ranking")}
 Never invent release years, scores, prices or player counts: use the Steam facts provided or long-established public knowledge. Opinions are framed as opinion.`;
 
 export function topicPrompt(): string {
@@ -235,6 +237,7 @@ export function narrationOfEvergreen(e: EvergreenScript): string {
 export function validateEvergreen(e: EvergreenScript): string[] {
   const p: string[] = [];
   const words = wordCount(narrationOfEvergreen(e));
+  p.push(...voiceProblems(narrationOfEvergreen(e)));
   const wordsMin = WEEKLY_FORMATS.has(e.format) ? 110 : EVERGREEN_WORDS_MIN;
   if (words < wordsMin || words > EVERGREEN_WORDS_MAX)
     p.push(

@@ -3,6 +3,7 @@
 // evergreen Short but with a paragraph per entry, an intro, an outro and
 // chapters. Topics come from the evergreen candidate pool.
 
+import { voiceFor, voiceProblems, withSignOff } from "./voice.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
@@ -22,8 +23,9 @@ export const LONG_ENTRIES_MAX = 12;
 export const LONG_ENTRY_WORDS_MIN = 45;
 export const LONG_ENTRY_WORDS_MAX = 100;
 
-const HOUSE = `You write for Pulse Gaming News, a fast, credible YouTube channel about video games.
-American English spelling for a US-first audience, AP style (no serial comma). Brisk, confident, lightly opinionated, warm. Advertiser-friendly. No "like and subscribe", no "let me know in the comments", no "without further ado". The channel speaks as "we" ("we're ranking", "our pick", "we think"), never about itself in the third person ("Pulse is ranking"); the name Pulse is on screen and needs no saying.
+const HOUSE = `You write for Pulse Gaming News, a YouTube channel about video games.
+
+${voiceFor("longform")}
 Never invent release years, scores, prices or player counts: use the Steam facts provided or long-established public knowledge. Opinions are framed as opinion.`;
 
 export const GRAPHIC_KINDS = [
@@ -393,6 +395,7 @@ export function narrationOfLongform(e: LongformScript): string {
 export function validateLongform(e: LongformScript): string[] {
   const p: string[] = [];
   const words = wordCount(narrationOfLongform(e));
+  p.push(...voiceProblems(narrationOfLongform(e)));
   if (words < LONG_WORDS_MIN || words > LONG_WORDS_MAX)
     p.push(
       `Spoken word count is ${words}; it must be ${LONG_WORDS_MIN}-${LONG_WORDS_MAX}.`,
@@ -480,7 +483,7 @@ export function longformToScript(e: LongformScript): Script {
     beats,
     pulse_take: {
       label: "OUR PICK",
-      narration: e.outro.narration,
+      narration: withSignOff(e.outro.narration),
       on_screen: e.outro.on_screen,
     },
     loop_line: "",

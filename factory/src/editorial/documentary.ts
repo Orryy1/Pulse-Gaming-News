@@ -5,6 +5,7 @@
 // against them by a second pass and rewritten when a claim is not supported.
 // On-screen quotes and numbers must appear in the source text verbatim.
 
+import { voiceFor, withSignOff } from "./voice.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
@@ -65,10 +66,10 @@ export const DOC_FRANCHISES = [
   "Command & Conquer",
 ] as const;
 
-const HOUSE = `You write documentaries for Pulse Gaming News, a credible, entertaining YouTube channel about video games.
-American English spelling for a US-first audience, AP style (no serial comma). The voice is a great documentary narrator: story-led, specific, warm, quietly funny, never breathless. Scenes before summaries: put the viewer in the studio, the year, the moment. Real names, real places, real numbers.
-Advertiser-friendly: describe violence, lawsuits and controversies factually and calmly, with no graphic detail. No "like and subscribe", no "let me know in the comments", no "without further ado", no "buckle up".
-The channel speaks as "we" only rarely, never about itself in the third person ("Pulse is"); mostly the story speaks for itself.`;
+const HOUSE = `You write documentaries for Pulse Gaming News, a YouTube channel about video games.
+
+${voiceFor("documentary")}
+Describe violence, lawsuits and controversies factually and calmly, with no graphic detail.`;
 
 // ---------------------------------------------------------------- topic
 
@@ -514,7 +515,7 @@ export function docToScript(d: DocDraft): Script {
     beats,
     pulse_take: {
       label: d.bookends.outro.label.toUpperCase(),
-      narration: d.bookends.outro.narration,
+      narration: withSignOff(d.bookends.outro.narration),
       on_screen: d.bookends.outro.on_screen,
     },
     loop_line: "",

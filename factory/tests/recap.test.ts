@@ -110,7 +110,7 @@ test("viewer requests reach the topic pickers only once someone has asked", asyn
 test("only the long ranking's pinned comment asks what to rank next", async () => {
   const { goodScript } = await import("./helpers.ts");
   const entries = [{ rank: 1, game_title: "Halo 3", steam_search_term: "", year: 2007, platforms: "Xbox 360" }];
-  assert.match(pinnedComment(goodScript({ entries, runtime: "long" } as any)), /which series should we rank next/);
+  assert.match(pinnedComment(goodScript({ entries, runtime: "long" } as any)), /which series we should rank next/);
   assert.doesNotMatch(pinnedComment(goodScript({ entries } as any)), /rank next/);
 });
 

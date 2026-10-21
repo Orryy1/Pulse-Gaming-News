@@ -732,3 +732,14 @@ test("a corner credit's fades always form a strictly increasing range, however s
   assert.equal(creditFade(12), 5, "the 12-frame shot that crashed renders now fades over 5 frames");
   assert.equal(creditFade(60), 8);
 });
+
+test("the spoken caption word never grows across the gap to the next word", async () => {
+  const { captionGrow } = await import("../src/render/motion.ts");
+  const font = 80;
+  for (const letters of [2, 5, 8, 12, 16]) {
+    const width = letters * font * 0.66;
+    const perSide = (width * (captionGrow(letters, font) - 1)) / 2;
+    assert.ok(perSide <= 9.5, `${letters} letters grow ${perSide.toFixed(1)} px a side`);
+  }
+  assert.equal(captionGrow(2, font), 1.06, "short words keep the full pop");
+});

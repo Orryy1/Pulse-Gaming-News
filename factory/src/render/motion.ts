@@ -111,3 +111,11 @@ export function cutPunch(frame: number): number {
  * shot so the fade range stays strictly increasing (Remotion throws otherwise); 0 means show nothing.
  */
 export const creditFade = (durationFrames: number) => Math.max(0, Math.min(8, Math.floor((durationFrames - 1) / 2)));
+
+/**
+ * How much the spoken caption word may grow (scale), at most 6%: it grows by transform, over the 24 px
+ * gap between words, so a long word ("MOUTHWASHING") at 6% covered the gap and read as one with the next.
+ * Growth is held to about 9 px a side, using a heavy uppercase face's width of about 0.66 em a letter.
+ */
+export const captionGrow = (letters: number, fontSize: number) =>
+  1 + Math.min(0.06, 18 / Math.max(1, letters * fontSize * 0.66));

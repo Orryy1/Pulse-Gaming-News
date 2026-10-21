@@ -21,6 +21,7 @@ import {
   sourceLine,
 } from "../layout.ts";
 import {
+  captionGrow,
   FRAMES,
   SPRING,
   ease,
@@ -676,7 +677,7 @@ export const Captions: React.FC<{
         const lit =
           spoken && (EMPHASIS.test(shown) || emphasis.has(shown.toLowerCase()));
         const activeScale = active
-          ? interpolate(frame - Math.round(w.start * fps), [0, 4], [1, 1.06], {
+          ? interpolate(frame - Math.round(w.start * fps), [0, 4], [1, captionGrow(shown.length, TYPE.caption)], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
               easing: ease.out,

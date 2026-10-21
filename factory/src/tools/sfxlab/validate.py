@@ -106,8 +106,9 @@ def report(video, x, kept):
         seg = x[p: p + len(t)]
         g = float(seg @ t / (t @ t))
         # Planned cues must have played at about their planned volume (0.75x under the voice).
-        # (noise-like sounds under speech give a loose estimate, hence the wide band).
-        missing = want is not None and not (0.5 * want <= g <= 1.7 * want)
+        # Only a shortfall counts: music and speech that resemble the sound (a tuned sting in the bed's
+        # key) inflate the estimate, so a high reading is not a fault.
+        missing = want is not None and g < 0.5 * want
         pad = int(0.6 * SR)
         a, b = max(0, p - pad), min(len(x), p + len(t) + pad)
         mix = x[a:b]

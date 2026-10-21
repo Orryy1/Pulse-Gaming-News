@@ -1395,12 +1395,13 @@ export const Long: React.FC<LongProps> = (props) => {
           </React.Fragment>
         ) : null,
       )}
-      {/* The brand sting opens the video and closes it, ringing out before the last frame. */}
+      {/* The brand sting opens the video and closes it, ringing out before the last frame. The closing one
+          plays after the narrator has finished, with nothing to mask it, so it sits 3 dB lower. */}
       <Sequence from={0} durationInFrames={75} layout="none">
         <Sfx name={inKey(SFX.sting, props.musicSrc)} volume={LEVEL.sting * 0.8} />
       </Sequence>
       <Sequence from={Math.max(0, durationInFrames - 75)} durationInFrames={75} layout="none">
-        <Sfx name={inKey(SFX.sting, props.musicSrc)} volume={LEVEL.sting * 0.7} />
+        <Sfx name={inKey(SFX.sting, props.musicSrc)} volume={LEVEL.sting * 0.5} />
       </Sequence>
       {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
       {props.musicSrc ? (

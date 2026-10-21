@@ -127,6 +127,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     tiktokClientKey: "",
     tiktokClientSecret: "",
     tiktokTokenPath: "",
+    tiktokBrowser: false,
     twitchClientId: "",
     twitchClientSecret: "",
     xKeys: { consumerKey: "", consumerSecret: "", token: "", tokenSecret: "" },

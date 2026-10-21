@@ -266,7 +266,7 @@ export async function buildPosters(cfg: Config, notifyOwner?: (text: string) => 
     out.tiktok = async (file, caption) => {
       if (Date.now() < tiktokPausedUntil) throw new Deferred(tiktokPauseReason);
       // Public posting through the owner's own signed-in Chrome profile, when there is one.
-      if (signedIn(cfg.dataDir)) {
+      if (cfg.tiktokBrowser && signedIn(cfg.dataDir)) {
         try {
           return await postTikTokBrowser({
             dataDir: cfg.dataDir,

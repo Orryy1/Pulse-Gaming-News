@@ -141,6 +141,7 @@ export interface Config {
   tiktokClientKey: string;
   tiktokClientSecret: string;
   tiktokTokenPath: string;
+  tiktokBrowser: boolean; // post publicly through the signed-in Chrome profile (off: drafts go to the owner's TikTok inbox)
   twitchClientId: string; // IGDB pictures for games Steam cannot supply
   twitchClientSecret: string;
   xKeys: { consumerKey: string; consumerSecret: string; token: string; tokenSecret: string };
@@ -308,6 +309,9 @@ export function loadConfig(): Config {
     tiktokClientKey: str("TIKTOK_CLIENT_KEY"),
     tiktokClientSecret: str("TIKTOK_CLIENT_SECRET"),
     tiktokTokenPath: str("TIKTOK_TOKEN_PATH"),
+    // Off by default: every Short posted through the automated browser from 19 Oct got 0 views (no For You
+    // distribution), while drafts the owner posts from the app reached 939 views a week.
+    tiktokBrowser: bool("TIKTOK_BROWSER", false),
     twitchClientId: str("TWITCH_CLIENT_ID"),
     twitchClientSecret: str("TWITCH_CLIENT_SECRET"),
     xKeys: {

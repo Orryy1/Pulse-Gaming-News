@@ -18,6 +18,7 @@ import {
 } from "../editorial/affiliate.ts";
 import { speakable } from "../voice/speakable.ts";
 import type { GameCard } from "./gamedata.ts";
+import { PRIVACY_NOTICE_HTML } from "./privacy.ts";
 
 export interface SiteEpisode {
   id: string;
@@ -719,13 +720,8 @@ const STATIC: Record<
   },
   privacy: {
     title: "Privacy policy",
-    description: `How the ${BRAND} website handles your data.`,
-    html: `<h1>Privacy policy</h1>
-<p>This website does not use cookies of its own, does not run advertising trackers and does not ask you for any personal information.</p>
-<h2>Videos</h2><p>Videos are embedded from YouTube in privacy-enhanced mode (youtube-nocookie.com): YouTube does not store information about you until you play a video. Once you do, YouTube's own privacy policy applies.</p>
-<h2>Shop links</h2><p>Links to Amazon carry our Associates tag so Amazon can credit us for qualifying purchases. Amazon may set cookies when you visit its store; its privacy notice applies there. We pick your nearest Amazon store from the country your connection comes from; we do not store it.</p>
-<h2>Hosting</h2><p>The site is served through Cloudflare, which processes standard technical data such as IP addresses to deliver pages and protect the site. We keep simple counts of shop page visits by country, without anything that identifies you.</p>
-<h2>Changes</h2><p>We will update this page if anything here changes.</p>`,
+    description: `What personal data ${BRAND} uses, why, who else handles it, how long we keep it and how to object or complain.`,
+    html: PRIVACY_NOTICE_HTML,
   },
   disclosure: {
     title: "Affiliate disclosure",

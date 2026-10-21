@@ -82,3 +82,29 @@ test("sitemaps, robots and the channel feed", () => {
   const feed = parseChannelFeed(`<feed><entry><yt:videoId>abc123</yt:videoId><title>Fish &amp; chips</title><link rel="alternate" href="https://www.youtube.com/shorts/abc123"/><published>2026-10-18T12:00:00+00:00</published></entry></feed>`);
   assert.deepEqual(feed, [{ id: "abc123", title: "Fish & chips", published: "2026-10-18T12:00:00+00:00", short: true }]);
 });
+
+test("the privacy notice says what the code does with personal data, never who runs it", () => {
+  const html = staticPage("privacy", "https://pulsegmg.com")!;
+  assert.match(html, /<link rel="canonical" href="https:\/\/pulsegmg\.com\/privacy">/);
+  // The old notice claimed no personal data was processed. The code reads comments, sends them to Claude and keeps records.
+  assert.doesNotMatch(html, /do(es)? not (collect|process|store) (any )?personal (data|information)/i);
+  for (const must of [
+    /a trading name of a UK sole trader/,
+    /youtube\.com\/@PulseGMG/,
+    /Anthropic/,
+    /legitimate interests/i,
+    /Reddit username/,
+    /Discord user ID/,
+    /Cloudflare/,
+    /How long we keep it/,
+    /object/,
+    /acknowledge your complaint within 30 days/,
+    /Data \(Use and Access\) Act 2025/,
+    /Information Commission/,
+    /https:\/\/ico\.org\.uk\/make-a-complaint\//,
+  ])
+    assert.match(html, must);
+  // Burner identity: the controller is the trading name; no personal email address or postal address on the page.
+  assert.doesNotMatch(html, /[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+  assert.doesNotMatch(html, /\b[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}\b/);
+});

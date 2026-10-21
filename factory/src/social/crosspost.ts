@@ -140,7 +140,7 @@ export interface CrosspostDeps {
   posters: SocialPosters;
   now: () => Date;
   isPublic: (videoId: string) => Promise<boolean>;
-  notify: (m: { content: string }) => Promise<unknown>;
+  notify: (m: { content: string; ping?: boolean }) => Promise<unknown>;
   episodeDir: (id: string) => string;
   /** A signed public link to the episode's video, for platforms that fetch it themselves. */
   videoUrl?: (id: string) => string;

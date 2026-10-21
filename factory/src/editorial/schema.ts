@@ -2,6 +2,7 @@ import { z } from "zod";
 import { speakable } from "../voice/speakable.ts";
 
 export const STORY_TYPES = [
+  "explainer",
   "release_date",
   "delay",
   "price",

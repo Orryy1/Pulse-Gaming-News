@@ -2,6 +2,7 @@
 // Each step reads its inputs from Postgres/disk and writes its outputs before
 // the status moves, so any step can crash and be retried safely.
 
+import { selectWhyTopic } from "./editorial/why.ts";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -668,6 +669,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
       (await maybeSelectEvergreen(s)) ??
       (await maybeSelectWeekly(s)) ??
       (await maybeSelectLongform(s)) ??
+      (await maybeSelectWhy(s)) ??
       (await maybeSelectSpare(s))
     );
   const candidates = eligible.map((x) => x.cluster).slice(0, 12);
@@ -782,6 +784,64 @@ async function createEvergreen(
     format: topic.format,
     theme: topic.theme,
   });
+  return id;
+}
+
+/**
+ * The "Why" lane: on its days, a lead time before its slot, the editor picks one question about a
+ * well-known game that its Wikipedia article can answer; the Short is then written and fact-checked
+ * like a news Short, from that article.
+ */
+export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.whyEnabled) return undefined;
+  const now = s.now();
+  const due = evergreenDue(
+    now,
+    { days: cfg.whyDays, slot: cfg.whySlot, leadMinutes: cfg.slotLeadMinutes + 30, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone },
+    await takenSlots(db),
+  );
+  if (!due) return undefined;
+  // One editor call per slot: a pass is not retried every tick.
+  if (await weeklyTried(db, `why:${due.toISOString()}`)) return undefined;
+  const covered = (
+    await db.query<{ headline: string }>(
+      `SELECT story_json->>'headline' AS headline FROM episodes WHERE story_hash LIKE 'why:%' AND created_at > $1::timestamptz - interval '120 days'`,
+      [now],
+    )
+  ).map((r) => r.headline);
+  const candidates = await s.discoverEvergreen();
+  if (!candidates.length) return undefined;
+  const topic = await selectWhyTopic(s.llm, candidates, covered, await topicDemand(s));
+  if (topic.candidate_index < 0) {
+    log("info", "editor passed on every why question", { reason: topic.reason });
+    return undefined;
+  }
+  const url = `https://en.wikipedia.org/wiki/${encodeURIComponent(topic.wikipedia_title.replace(/ /g, "_"))}`;
+  const article = await s.fetchArticle(url);
+  if (!article) {
+    log("info", "why question has no usable Wikipedia article", { title: topic.wikipedia_title });
+    return undefined;
+  }
+  const slug = topic.question.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
+  const cluster: StoryCluster = {
+    hash: `why:${slug}`,
+    headline: topic.title,
+    items: [{ title: article.title, url, summary: "", publishedAt: now.toISOString(), source: "Wikipedia", sourceKind: "outlet" }],
+    sources: ["Wikipedia"],
+    hasOfficial: false,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint: topic.game,
+    visualNeed: "game_footage",
+    why: { question: topic.question, angle: topic.angle },
+  };
+  const id = shortId();
+  if (!(await createEpisode(db, id, cluster, { lane: "news", priority: LANE_PRIORITY.news, slotAt: due }))) return undefined;
+  await logEvent(db, id, "selected", { headline: topic.title, lane: "why", question: topic.question, game: topic.game, reason: topic.reason, slot_at: due.toISOString() });
+  log("info", "why question selected", { id, question: topic.question, game: topic.game });
   return id;
 }
 

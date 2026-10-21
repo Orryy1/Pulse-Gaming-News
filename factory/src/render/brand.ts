@@ -43,6 +43,7 @@ export const STORY_THEME: Record<
   string,
   { chip: string; accent: string; takeLabel: string }
 > = {
+  explainer: { chip: "THE WHY", accent: COLOUR.amber, takeLabel: "OUR VERDICT" },
   release_date: {
     chip: "RELEASE DATE",
     accent: COLOUR.amber,

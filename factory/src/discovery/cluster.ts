@@ -22,6 +22,8 @@ export interface StoryCluster {
     visualNeed?: "none" | "game_footage" | "real_world_images";
   /** A Short cut from a long ranking: the long video's episode and the entry's rank. */
   cutdown?: { parent: string; rank: number };
+  /** A "Why" Short: the question it answers and the likely answer the writer tests against the sources. */
+  why?: { question: string; angle: string };
 }
 
 const STOPWORDS = new Set(

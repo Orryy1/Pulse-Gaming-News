@@ -1,6 +1,7 @@
 // Story selection, scripting and fact-checking. The model does the judgement;
 // this file enforces the rules that must never depend on model compliance.
 
+import { whyBrief } from "./why.ts";
 import { voiceFor, voiceProblems } from "./voice.ts";
 import { varyOpinion } from "./phrasing.ts";
 import type { Llm } from "./llm.ts";
@@ -129,13 +130,14 @@ export async function writeScript(
   const feedback = opts.feedback?.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
+  const why = cluster.why ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle)}` : "";
   const script = await llm.structured({
     system: scriptPrompt(),
-    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${opts.lessons ? `\n\n${opts.lessons}` : ""}${feedback}`,
+    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${feedback}`,
     schema: ScriptSchema,
     effort: "medium",
   });
-  return varyOpinion(script, cluster.hash);
+  return varyOpinion(cluster.why ? { ...script, story_type: "explainer" } : script, cluster.hash);
 }
 
 export async function factCheck(llm: Llm, script: Script, cluster: StoryCluster, articles: ArticleText[], storeData?: string): Promise<FactCheck> {

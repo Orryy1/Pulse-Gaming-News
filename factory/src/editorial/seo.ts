@@ -360,7 +360,9 @@ export function pinnedComment(script: Script): string {
   if (script.entries?.length)
     return `Our pick: ${take}. Which ${game} game would you move up or down the list? Every pick is explained in the video.`;
   const q =
-    script.story_type === "delay"
+    script.story_type === "explainer"
+      ? `Do you buy that answer, or is there a better one?`
+      : script.story_type === "delay"
       ? `Does the new date change your plans for ${game}?`
       : script.story_type === "price"
         ? `Is that price fair for ${game}?`

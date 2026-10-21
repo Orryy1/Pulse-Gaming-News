@@ -170,6 +170,32 @@ export function createApp(
     )
       return;
 
+    // One-tap TikTok: the draft's caption with Copy and Open TikTok buttons (a signed link from Discord).
+    const tt = url.pathname.match(/^\/tiktok\/([\w-]+)$/);
+    if (tt && req.method === "GET") {
+      const id = tt[1]!;
+      if (!verifyToken(`tiktok:${id}`, url.searchParams.get("t") ?? "", cfg.appSecret))
+        return send(403, page("Link expired", "<h1>This link has expired.</h1>"));
+      const [row] = await db.query<{ caption: string }>(
+        `SELECT detail->>'caption' AS caption FROM events WHERE episode_id = $1 AND kind = 'tiktok_caption' ORDER BY id DESC LIMIT 1`,
+        [id],
+      );
+      const episode = await getEpisode(db, id);
+      if (!row?.caption || !episode) return send(404, page("Not found", "<h1>No TikTok caption for this video.</h1>"));
+      const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+      return send(
+        200,
+        page(
+          "Post to TikTok",
+          `<h1>📲 ${esc(episode.script_json?.youtube?.title ?? "TikTok draft")}</h1>
+<ol><li>Tap <b>Copy caption</b></li><li>Tap <b>Open TikTok</b>, then the draft in your inbox</li><li>Paste the caption, turn on <b>AI-generated content</b>, Post</li></ol>
+<textarea id="c" readonly style="width:100%;height:9em;font:inherit;background:#16161b;color:#f5f5f2;border:1px solid #333;border-radius:10px;padding:10px">${esc(row.caption)}</textarea>
+<p><button class="ok" id="copy" style="font-size:20px;width:100%">Copy caption</button></p>
+<p><a href="https://www.tiktok.com/" style="display:block;text-align:center;background:#ff6b1a;color:#0b0b0e;font-weight:700;font-size:20px;padding:14px;border-radius:10px;text-decoration:none">Open TikTok</a></p>
+<script>document.getElementById("copy").onclick=async()=>{const t=document.getElementById("c");try{await navigator.clipboard.writeText(t.value)}catch{t.select();document.execCommand("copy")}document.getElementById("copy").textContent="Copied ✓"}</script>`,
+        ),
+      );
+    }
     const ep = url.pathname.match(
       /^\/episodes\/([\w-]+)\/(approve|reject|video\.mp4)$/,
     );

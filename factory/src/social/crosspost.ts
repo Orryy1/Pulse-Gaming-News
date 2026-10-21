@@ -5,6 +5,7 @@
 // events table is the ledger: "crosspost" (done), "crosspost_failed" (up to
 // three tries) and "crosspost_skip" (not public on YouTube, file gone).
 
+import { signToken } from "../lib/crypto.ts";
 import { topicTags } from "../editorial/seo.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -190,10 +191,16 @@ export async function crosspostTick(
               : await d.posters.x!(caption);
       await logEvent(d.db, ep.id, "crosspost", { platform, id });
       // TikTok has not approved the app for public posting yet: the video waits in the owner's TikTok inbox.
-      // TikTok's draft upload has no caption field (no tool can prefill one), so the caption comes to the
-      // owner's phone on its own: long-press, Copy Text, paste in TikTok, post.
+      // TikTok's draft upload has no caption field (no tool can prefill one). The owner gets one link: a page
+      // with the caption, a Copy button and an Open TikTok button. The caption also follows on its own.
       if (id.startsWith("inbox:")) {
-        await d.notify({ ping: true, content: `📲 Your turn, TikTok: "${polishTitle(script)}"\n1. Open TikTok, tap the draft in your inbox\n2. Copy the next message, paste it as the caption\n3. Turn on "AI-generated content", then Post` }).catch(() => undefined);
+        await logEvent(d.db, ep.id, "tiktok_caption", { caption });
+        const base = (d.cfg.publicUrl || "").replace(/\/$/, "");
+        const link = base ? `${base}/tiktok/${ep.id}?t=${signToken(`tiktok:${ep.id}`, d.cfg.appSecret, 3 * 86_400)}` : "";
+        await d.notify({
+          ping: true,
+          content: `📲 Your turn, TikTok: "${polishTitle(script)}"${link ? `\nTap: ${link}\n(Copy caption, Open TikTok, tap the draft, paste, post)` : "\nOpen TikTok, tap the draft, paste the next message as the caption, post."}`,
+        }).catch(() => undefined);
         await d.notify({ content: caption.slice(0, 2000) }).catch(() => undefined);
       }
       log("info", "crossposted", { platform, episode: ep.id, id });

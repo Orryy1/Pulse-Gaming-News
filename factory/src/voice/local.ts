@@ -183,12 +183,26 @@ export async function synthesiseLocal(text: string, outPath: string, opts: Local
   for (const [i, take] of takes.entries()) {
     const { file, alignment } = await synthTakeChecked(take, i, dir, opts);
     files.push(file);
-    const duration = (await probe(file)).durationSeconds || (alignment.character_end_times_seconds.at(-1) ?? 0);
+    const duration = (await decodedSeconds(file)) || (alignment.character_end_times_seconds.at(-1) ?? 0);
     for (const w of wordsFromAlignment(alignment)) words.push({ text: w.text, start: w.start + offset, end: w.end + offset });
     offset += duration + GAP_SECONDS;
   }
   await stitch(files, outPath);
   return { audioPath: outPath, words, durationSeconds: offset - GAP_SECONDS + 0.15 };
+}
+
+/**
+ * A take's length as the stitch will hear it: its decoded samples. An MP3's reported duration
+ * includes encoder padding, about 36 ms a take, so offsets built from it ran late by over a
+ * second across a 15-minute narration, and the pause trim then cut into words (GTA ranking,
+ * 23 Oct 2026).
+ */
+export async function decodedSeconds(file: string): Promise<number> {
+  const { stdout } = await run(FFMPEG, ["-v", "error", "-i", file, "-ac", "1", "-ar", "44100", "-f", "s16le", "-"], {
+    encoding: "buffer",
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  return (stdout as unknown as Buffer).length / 2 / 44100;
 }
 
 /** Concatenates takes with short silences, normalising format so the timings stay exact. */

@@ -438,6 +438,20 @@ export function displayWords(words: Word[]): Word[] {
       (words[k]?.text ?? "").toLowerCase().replace(/[^a-z-]/g, "");
     const tail = (k: number) =>
       (words[k]?.text ?? "").match(/[.,;:!?)"”’]+$/)?.[0] ?? "";
+    // Series X and S (speakTitles) is written Series X|S
+    if (
+      bare(i) === "series" &&
+      words[i + 1]?.text === "X" &&
+      bare(i + 2) === "and" &&
+      /^S[.,;:!?)"”’]*$/.test(words[i + 3]?.text ?? "")
+    ) {
+      out.push(
+        { ...w },
+        { text: `X|S${tail(i + 3)}`, start: words[i + 1]!.start, end: words[i + 3]!.end },
+      );
+      i += 3;
+      continue;
+    }
     // 47 percent
     if (
       /^\d[\d,.]*$/.test(w.text.replace(/[^\d,.]/g, "") || "x") &&

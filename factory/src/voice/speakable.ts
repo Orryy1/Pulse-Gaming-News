@@ -177,20 +177,24 @@ export function smoothTitleColons(text: string): string {
  * (Grand Theft Auto V, The Elder Scrolls V, Final Fantasy X).
  */
 export function speakTitles(text: string): string {
-  return smoothTitleColons(text)
-    .replace(/\bWWII\b/g, "World War Two")
-    .replace(/\bWWI\b/g, "World War One")
-    .replace(
-      /\b(Grand Theft Auto|GTA|Elder Scrolls|Final Fantasy|Civilization|Rocky|Halo|Gears of War) (V|X)\b/g,
-      (_m, series: string, n: string) => `${series} ${romanValue(n)}`,
-    )
-    .replace(
-      /(?<![A-Za-z'’-])([IVX]{2,6})(?![A-Za-z'’-])/g,
-      (m: string, t: string) => {
-        const n = romanValue(t);
-        return n === undefined ? m : String(n);
-      },
-    );
+  return (
+    smoothTitleColons(text)
+      // "Series X|S" came out as "Series XXS": the console is said "Series X and S" (captions show X|S).
+      .replace(/\bSeries X\s?[|/]\s?S\b/g, "Series X and S")
+      .replace(/\bWWII\b/g, "World War Two")
+      .replace(/\bWWI\b/g, "World War One")
+      .replace(
+        /\b(Grand Theft Auto|GTA|Elder Scrolls|Final Fantasy|Civilization|Rocky|Halo|Gears of War) (V|X)\b/g,
+        (_m, series: string, n: string) => `${series} ${romanValue(n)}`,
+      )
+      .replace(
+        /(?<![A-Za-z'’-])([IVX]{2,6})(?![A-Za-z'’-])/g,
+        (m: string, t: string) => {
+          const n = romanValue(t);
+          return n === undefined ? m : String(n);
+        },
+      )
+  );
 }
 
 /**

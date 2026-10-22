@@ -11,7 +11,7 @@ import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import { synthesise as synthesiseElevenLabs, type Narration } from "./elevenlabs.ts";
 import { synthesiseElevenLabsLong, LONG_TEXT_CHARS } from "./elevenlabsLong.ts";
-import { synthesiseLocal } from "./local.ts";
+import { decodedSeconds, synthesiseLocal } from "./local.ts";
 import { quietBreaths } from "./breaths.ts";
 
 const run = promisify(execFile);
@@ -39,15 +39,20 @@ export async function elevenLabsCreditsLeft(apiKey: string): Promise<number | un
   }
 }
 
-/** Highpass, gentle compression and a limiter: the narration chain from the Codex mix. */
-export async function polishVoice(file: string): Promise<void> {
+/**
+ * Highpass, gentle compression and a limiter: the narration chain from the Codex mix. Returns the
+ * seconds of leading silence it trimmed, which the word timings must lose too.
+ */
+export async function polishVoice(file: string): Promise<number> {
   const tmp = `${file}.polished.mp3`;
+  const before = await decodedSeconds(file);
   await run(FFMPEG, [
     "-loglevel", "error", "-y", "-i", file,
     "-af", "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,highpass=f=70,acompressor=threshold=-30dB:ratio=5.5:attack=5:release=120:makeup=4,alimiter=limit=0.95,loudnorm=I=-17:TP=-2.5:LRA=5",
     "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", tmp,
   ]);
   await fs.rename(tmp, file);
+  return Math.max(0, before - (await decodedSeconds(file)));
 }
 
 /** The ElevenLabs voice for the n-th Short (0-based): the pool rotates every `rotation` Shorts, the configured voice when the pool is empty. */
@@ -86,7 +91,13 @@ export async function narrate(cfg: Config, text: string, outPath: string, voice?
       }
       // ElevenLabs voices breathe audibly between lines; its timestamps say where, so those gaps go quiet.
       if (provider === "elevenlabs") await quietBreaths(outPath, n.words);
-      await polishVoice(outPath);
+      const trimmed = await polishVoice(outPath);
+      if (trimmed > 0.005)
+        n = {
+          ...n,
+          words: n.words.map((w) => ({ ...w, start: Math.max(0, w.start - trimmed), end: Math.max(0, w.end - trimmed) })),
+          durationSeconds: n.durationSeconds - trimmed,
+        };
       const used = provider === "local" ? { provider, id: cfg.localVoiceId, name: "Liam (local clone)" } : { provider, id: voice?.id ?? cfg.elevenLabsVoiceId, name: voice?.name ?? cfg.elevenLabsVoiceId };
       log("info", "narration ready", { provider, voice: used.name, seconds: n.durationSeconds.toFixed(1) });
       return { ...n, voice: used };

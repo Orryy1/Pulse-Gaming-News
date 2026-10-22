@@ -7,8 +7,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { synthesise as synthesiseElevenLabs, type Narration, type Word } from "./elevenlabs.ts";
-import { chunkText, stitch, GAP_SECONDS } from "./local.ts";
-import { probe } from "../qa/media.ts";
+import { chunkText, decodedSeconds, stitch, GAP_SECONDS } from "./local.ts";
 
 export const LONG_TAKE_WORDS = 110;
 /** Above this many characters the narration goes in takes. */
@@ -29,7 +28,7 @@ export async function synthesiseElevenLabsLong(
     const file = path.join(dir, `take_${String(i).padStart(3, "0")}.mp3`);
     const n = await synthesiseElevenLabs(take, file, opts);
     files.push(file);
-    const duration = (await probe(file)).durationSeconds || n.durationSeconds;
+    const duration = (await decodedSeconds(file)) || n.durationSeconds;
     for (const w of n.words)
       words.push({
         text: w.text,

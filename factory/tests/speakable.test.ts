@@ -114,3 +114,14 @@ test("counts and decimals are spoken in words and shown as figures again in the 
   assert.equal(roundTrip("It costs $49.99 today.").shown, "It costs $49.99 today.");
   assert.equal(roundTrip("It came out in 2007.").shown, "It came out in 2007.");
 });
+
+test("Series X|S is said as Series X and S and shown as X|S", () => {
+  assert.equal(speakTitles("on PS5 and Xbox Series X|S, three generations"), "on PS5 and Xbox Series X and S, three generations");
+  assert.equal(speakTitles("Xbox Series X/S"), "Xbox Series X and S");
+  assert.equal(speakTitles("Mega Man X and Series X"), "Mega Man X and Series X");
+  const w = (text: string, start: number) => ({ text, start, end: start + 0.2 });
+  const shown = displayWords([w("Xbox", 0), w("Series", 0.3), w("X", 0.6), w("and", 0.8), w("S,", 1), w("three", 1.3)]);
+  assert.deepEqual(shown.map((x) => x.text), ["Xbox", "Series", "X|S,", "three"]);
+  assert.equal(shown[2]!.start, 0.6);
+  assert.equal(shown[2]!.end, 1.2);
+});

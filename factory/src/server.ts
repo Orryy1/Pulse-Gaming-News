@@ -3,6 +3,7 @@
 
 import { pollPlan, recordPollResult } from "./social/poll.ts";
 import fs from "node:fs";
+import { spawn } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -51,7 +52,13 @@ import {
 } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
 import { alert } from "./approval/discord.ts";
-import { dailySummary, digestDue, markDigestSent, summaryDue, weeklyDigest } from "./analytics.ts";
+import {
+  dailySummary,
+  digestDue,
+  markDigestSent,
+  summaryDue,
+  weeklyDigest,
+} from "./analytics.ts";
 
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -145,18 +152,16 @@ export function createApp(
       const [met] = await db.query<Record<string, string>>(
         `SELECT count(*) AS metrics_captured_7d FROM video_metrics WHERE captured_at > now() - interval '7 days'`,
       );
-      res
-        .writeHead(200, { "content-type": "application/json" })
-        .end(
-          JSON.stringify({
-            ok: true,
-            ...counts,
-            ...sight,
-            ...met,
-            lastTick: state.lastTick,
-            lastError: state.lastError,
-          }),
-        );
+      res.writeHead(200, { "content-type": "application/json" }).end(
+        JSON.stringify({
+          ok: true,
+          ...counts,
+          ...sight,
+          ...met,
+          lastTick: state.lastTick,
+          lastError: state.lastError,
+        }),
+      );
       return;
     }
 
@@ -173,21 +178,74 @@ export function createApp(
     // Mac mini setup: the one-line installer (no secrets in it: the PC's public key only), and the Mac's
     // "ready" call, which records its username and home-network address so the PC can reach it.
     if (url.pathname === "/mac-setup.sh" && req.method === "GET") {
-      const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mac", "setup.sh");
+      const script = path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "mac",
+        "setup.sh",
+      );
       const key = path.join(cfg.dataDir, "admin", "pulse_mac.pub");
-      if (!fs.existsSync(script) || !fs.existsSync(key)) return send(404, page("Not found", "<h1>Not found</h1>"));
-      const body = fs.readFileSync(script, "utf8").replace("__PUBKEY__", fs.readFileSync(key, "utf8").trim());
-      res.writeHead(200, { "content-type": "text/plain; charset=utf-8" }).end(body);
+      if (!fs.existsSync(script) || !fs.existsSync(key))
+        return send(404, page("Not found", "<h1>Not found</h1>"));
+      const body = fs
+        .readFileSync(script, "utf8")
+        .replace("__PUBKEY__", fs.readFileSync(key, "utf8").trim());
+      res
+        .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
+        .end(body);
       return;
     }
     if (url.pathname === "/mac-hello" && req.method === "GET") {
       const user = url.searchParams.get("user") ?? "";
       const ip = url.searchParams.get("ip") ?? "";
-      if (!/^[a-z_][a-z0-9_.-]{0,31}$/i.test(user) || !/^(192\.168|10)\.\d{1,3}\.\d{1,3}(\.\d{1,3})?$/.test(ip))
+      if (
+        !/^[a-z_][a-z0-9_.-]{0,31}$/i.test(user) ||
+        !/^(192\.168|10)\.\d{1,3}\.\d{1,3}(\.\d{1,3})?$/.test(ip)
+      )
         return send(400, page("Bad request", "<h1>Bad request</h1>"));
       fs.mkdirSync(path.join(cfg.dataDir, "admin"), { recursive: true });
-      fs.writeFileSync(path.join(cfg.dataDir, "admin", "mac.json"), JSON.stringify({ user, ip, at: new Date().toISOString() }));
-      await services.notify({ content: `🖥️ The Mac mini reported in (user ${user}, ${ip}). Claude can take the setup from here.` });
+      const macFile = path.join(cfg.dataDir, "admin", "mac.json");
+      const seen = fs.existsSync(macFile);
+      fs.writeFileSync(
+        macFile,
+        JSON.stringify({ user, ip, at: new Date().toISOString() }),
+      );
+      await services.notify({
+        content: `🖥️ The Mac mini reported in (user ${user}, ${ip}). Setting it up now; nothing for you to do.`,
+      });
+      // The first report-in starts the safe half of the move by itself (tools, code, speech check,
+      // vision model; nothing secret, as this page is public). Settings, credentials, data and the
+      // switch-over stay with the deliberate "cutover" step (mac/migrate.sh).
+      const bash =
+        process.env.GIT_BASH || "C:\\Program Files\\Git\\bin\\bash.exe";
+      if (!seen && process.platform === "win32" && fs.existsSync(bash)) {
+        const out = fs.openSync(
+          path.join(cfg.dataDir, "logs", "mac-migrate.log"),
+          "a",
+        );
+        const child = spawn(
+          bash,
+          [
+            "-c",
+            `export PATH=/usr/bin:$PATH; mac/migrate.sh hello '${user}' '${ip}' && mac/migrate.sh prepare`,
+          ],
+          {
+            cwd: process.cwd(),
+            stdio: ["ignore", out, out],
+            env: { ...process.env, CHERE_INVOKING: "1" },
+          },
+        );
+        child.on(
+          "exit",
+          (code) =>
+            void services.notify({
+              content:
+                code === 0
+                  ? "✅ The Mac mini is prepared: tools, code, speech check and vision model are in and its checks pass. Next is the switch-over, which Claude runs."
+                  : `⚠️ Preparing the Mac mini stopped part-way (exit ${code}). Claude will look at data/logs/mac-migrate.log; nothing for you to do.`,
+            }),
+        );
+      }
       res.writeHead(200, { "content-type": "text/plain" }).end("ok");
       return;
     }
@@ -195,15 +253,39 @@ export function createApp(
     const tt = url.pathname.match(/^\/tiktok\/([\w-]+)$/);
     if (tt && req.method === "GET") {
       const id = tt[1]!;
-      if (!verifyToken(`tiktok:${id}`, url.searchParams.get("t") ?? "", cfg.appSecret))
-        return send(403, page("Link expired", "<h1>This link has expired.</h1>"));
+      if (
+        !verifyToken(
+          `tiktok:${id}`,
+          url.searchParams.get("t") ?? "",
+          cfg.appSecret,
+        )
+      )
+        return send(
+          403,
+          page("Link expired", "<h1>This link has expired.</h1>"),
+        );
       const [row] = await db.query<{ caption: string }>(
         `SELECT detail->>'caption' AS caption FROM events WHERE episode_id = $1 AND kind = 'tiktok_caption' ORDER BY id DESC LIMIT 1`,
         [id],
       );
       const episode = await getEpisode(db, id);
-      if (!row?.caption || !episode) return send(404, page("Not found", "<h1>No TikTok caption for this video.</h1>"));
-      const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+      if (!row?.caption || !episode)
+        return send(
+          404,
+          page("Not found", "<h1>No TikTok caption for this video.</h1>"),
+        );
+      const esc = (t: string) =>
+        t.replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c]!,
+        );
       return send(
         200,
         page(
@@ -309,8 +391,14 @@ export function createApp(
         );
         const token = await accessToken(db, oauthConfig(cfg));
         // An optional new channel description sits in data/admin/channel_description.txt (written on this PC).
-        const descFile = path.join(cfg.dataDir, "admin", "channel_description.txt");
-        const description = fs.existsSync(descFile) ? fs.readFileSync(descFile, "utf8").trim() : undefined;
+        const descFile = path.join(
+          cfg.dataDir,
+          "admin",
+          "channel_description.txt",
+        );
+        const description = fs.existsSync(descFile)
+          ? fs.readFileSync(descFile, "utf8").trim()
+          : undefined;
         const done = await setChannelBanner(token, file, description);
         if (description) fs.rmSync(descFile, { force: true });
         await logEvent(db, null, "youtube_banner", done);
@@ -327,27 +415,44 @@ export function createApp(
     // Admin: this week's poll options, and recording the last poll's result (from data/admin/poll_result.json).
     if (url.pathname === "/admin/poll-plan" && req.method === "GET") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
-      const plan = await pollPlan(db, cfg, await services.discoverEvergreen().catch(() => []), new Date());
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(plan));
+      const plan = await pollPlan(
+        db,
+        cfg,
+        await services.discoverEvergreen().catch(() => []),
+        new Date(),
+      );
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify(plan));
       return;
     }
     if (url.pathname === "/admin/poll-result" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const file = path.join(cfg.dataDir, "admin", "poll_result.json");
-      if (!fs.existsSync(file)) return send(404, page("No result", "<h1>No result</h1>"));
+      if (!fs.existsSync(file))
+        return send(404, page("No result", "<h1>No result</h1>"));
       try {
-        const raw = JSON.parse(fs.readFileSync(file, "utf8")) as { options?: Array<{ name?: unknown; percent?: unknown }> };
+        const raw = JSON.parse(fs.readFileSync(file, "utf8")) as {
+          options?: Array<{ name?: unknown; percent?: unknown }>;
+        };
         const options = (raw.options ?? [])
-          .map((o) => ({ name: String(o.name ?? "").slice(0, 40), percent: Math.max(0, Math.min(100, Number(o.percent) || 0)) }))
+          .map((o) => ({
+            name: String(o.name ?? "").slice(0, 40),
+            percent: Math.max(0, Math.min(100, Number(o.percent) || 0)),
+          }))
           .filter((o) => o.name)
           .slice(0, 5);
         if (!options.length) throw new Error("no options in poll_result.json");
         await recordPollResult(db, { at: new Date().toISOString(), options });
         fs.rmSync(file, { force: true });
         await logEvent(db, null, "poll_result", { options });
-        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, options }));
+        res
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ ok: true, options }));
       } catch (err) {
-        res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error: errorMessage(err) }));
+        res
+          .writeHead(400, { "content-type": "application/json" })
+          .end(JSON.stringify({ ok: false, error: errorMessage(err) }));
       }
       return;
     }
@@ -357,21 +462,37 @@ export function createApp(
     if (url.pathname === "/admin/run-job" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const jobFile = path.join(cfg.dataDir, "admin", "job.json");
-      if (!fs.existsSync(jobFile)) return send(404, page("No job", "<h1>No job</h1>"));
-      const job = JSON.parse(fs.readFileSync(jobFile, "utf8")) as { videoId: string; srt?: string; comment?: string; privacy?: "private" | "unlisted"; spent?: number };
+      if (!fs.existsSync(jobFile))
+        return send(404, page("No job", "<h1>No job</h1>"));
+      const job = JSON.parse(fs.readFileSync(jobFile, "utf8")) as {
+        videoId: string;
+        srt?: string;
+        comment?: string;
+        privacy?: "private" | "unlisted";
+        spent?: number;
+      };
       const out: Record<string, unknown> = { videoId: job.videoId };
       const yt = services.youtube();
       try {
         if (!/^[\w-]{11}$/.test(job.videoId)) throw new Error("bad video id");
         if (job.srt) {
           const srt = path.resolve(cfg.dataDir, job.srt);
-          if (!srt.startsWith(path.resolve(cfg.dataDir)) || !srt.endsWith(".srt")) throw new Error("srt must be an .srt inside the data folder");
+          if (
+            !srt.startsWith(path.resolve(cfg.dataDir)) ||
+            !srt.endsWith(".srt")
+          )
+            throw new Error("srt must be an .srt inside the data folder");
           const have = await yt.listCaptions(job.videoId);
-          out.captions = have.length ? `already has ${have.length}` : await yt.insertCaption(job.videoId, srt, "en", "English");
+          out.captions = have.length
+            ? `already has ${have.length}`
+            : await yt.insertCaption(job.videoId, srt, "en", "English");
           if (!have.length) await quotaAdd(db, new Date(), QUOTA.captions);
         }
         if (job.comment) {
-          out.comment = await yt.insertComment(job.videoId, job.comment.slice(0, 1000));
+          out.comment = await yt.insertComment(
+            job.videoId,
+            job.comment.slice(0, 1000),
+          );
           await quotaAdd(db, new Date(), QUOTA.comment);
         }
         // Hiding a video (never making one public: that stays the owner's call).
@@ -381,16 +502,24 @@ export function createApp(
           out.privacy = (await yt.status(job.videoId))?.privacyStatus;
         }
         // Units spent outside the factory today (a manual upload), so its own uploads keep their headroom.
-        if (typeof job.spent === "number" && job.spent > 0 && job.spent <= 5000) {
+        if (
+          typeof job.spent === "number" &&
+          job.spent > 0 &&
+          job.spent <= 5000
+        ) {
           await quotaAdd(db, new Date(), Math.round(job.spent));
           out.spent = Math.round(job.spent);
         }
         out.quotaUsedToday = await quotaUsed(db, new Date());
         fs.rmSync(jobFile, { force: true });
         await logEvent(db, null, "admin_job", out);
-        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, ...out }));
+        res
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ ok: true, ...out }));
       } catch (err) {
-        res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error: errorMessage(err) }));
+        res
+          .writeHead(500, { "content-type": "application/json" })
+          .end(JSON.stringify({ ok: false, error: errorMessage(err) }));
       }
       return;
     }
@@ -788,7 +917,9 @@ async function main(): Promise<void> {
           } catch {
             const st = await services.youtube().status(id);
             await quotaAdd(db, new Date(), QUOTA.poll);
-            return st?.privacyStatus === "public" || st?.privacyStatus === "unlisted";
+            return (
+              st?.privacyStatus === "public" || st?.privacyStatus === "unlisted"
+            );
           }
         },
         notify: (m) => services.notify(m),
@@ -886,7 +1017,12 @@ async function main(): Promise<void> {
   // What viewers ask us to rank next, read from the long videos' comments once a day.
   if (!cfg.dryRun) {
     const requests = () =>
-      collectRequests({ db, youtube: services.youtube, llm: services.llm, now: new Date() }).catch((err) =>
+      collectRequests({
+        db,
+        youtube: services.youtube,
+        llm: services.llm,
+        now: new Date(),
+      }).catch((err) =>
         log("warn", "audience requests failed", { error: errorMessage(err) }),
       );
     setTimeout(() => void requests(), 5 * 60_000);
@@ -914,7 +1050,9 @@ async function main(): Promise<void> {
       if (!(await summaryDue(db, cfg, new Date()))) return;
       await services.notify(await dailySummary(db, cfg, new Date()));
       log("info", "daily summary sent");
-    })().catch((err) => log("error", "daily summary failed", { error: errorMessage(err) }));
+    })().catch((err) =>
+      log("error", "daily summary failed", { error: errorMessage(err) }),
+    );
   }, 5 * 60_000);
   // Monday 09:00 local: the week in numbers, which voices are sticking, quota.
   setInterval(() => {

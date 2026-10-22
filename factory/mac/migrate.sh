@@ -1,11 +1,12 @@
 #!/bin/bash
 # Moves the Pulse factory from this PC to the Mac mini (run from the PC in Git Bash, factory folder).
 #   mac/migrate.sh hello <user> <ip>   once the Mac has run mac/setup.sh: an ssh alias "pulse-mac"
-#   mac/migrate.sh prepare             safe while the PC keeps publishing: code, tools, speech check,
-#                                      vision model, settings, tunnel files and a first copy of the data
-#   mac/migrate.sh cutover             stops the PC side, copies the database and episodes once more,
-#                                      starts the Mac side and checks the public site; if the Mac does
-#                                      not come up healthy the PC side is started again
+#   mac/migrate.sh prepare             safe while the PC keeps publishing, and nothing secret: tools,
+#                                      code, speech check, vision model and checks (runs by itself
+#                                      when the Mac reports in)
+#   mac/migrate.sh cutover             settings and tunnel credentials, then stops the PC side, copies
+#                                      the data, starts the Mac side and checks the public site; if the
+#                                      Mac does not come up healthy the PC side is started again
 # Secrets travel over ssh only and are never printed.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -31,6 +32,16 @@ prepare)
   on_mac 'chmod +x ~/PulseFactory/repo.git/hooks/post-receive'
   git -C .. remote get-url mac >/dev/null 2>&1 || git -C .. remote add mac pulse-mac:PulseFactory/repo.git
   git -C .. push mac "$BRANCH"
+  echo "== speech check (MLX Whisper) and the frame screen's vision model"
+  on_mac 'cd ~/PulseFactory && [ -x asr/bin/python ] || python3.12 -m venv asr; asr/bin/pip install -q --upgrade pip mlx-whisper'
+  on_mac 'bash ~/PulseFactory/factory/mac/launchd.sh && sleep 3 && curl -s http://127.0.0.1:8877/health'
+  on_mac 'brew services start ollama >/dev/null 2>&1; ollama pull qwen3-vl:8b >/dev/null && echo "vision model ready"'
+  echo "== checks on the Mac"
+  on_mac 'cd ~/PulseFactory/factory && npx tsc --noEmit -p . && node --import tsx --test tests/*.test.ts 2>&1 | grep -E "^ℹ (pass|fail)"'
+  echo "prepare done: run mac/migrate.sh cutover when ready"
+  ;;
+
+cutover)
   echo "== settings (.env, with the Mac's paths)"
   home=$(on_mac 'echo $HOME')
   tmp=$(mktemp)
@@ -44,25 +55,13 @@ prepare)
   on_mac 'mkdir -p ~/.cloudflared && chmod 700 ~/.cloudflared'
   scp -q "$HOME/.cloudflared/$id.json" "pulse-mac:.cloudflared/$id.json"
   sed -e "s#^credentials-file:.*#credentials-file: $home/.cloudflared/$id.json#" -e 's/\r$//' -e '1s/^\xEF\xBB\xBF//' "$cfg" | on_mac "cat > ~/PulseFactory/cloudflared-pulse.yml"
-  echo "== speech check (MLX Whisper) and the frame screen's vision model"
-  on_mac 'cd ~/PulseFactory && [ -x asr/bin/python ] || python3.12 -m venv asr; asr/bin/pip install -q --upgrade pip mlx-whisper'
-  on_mac 'bash ~/PulseFactory/factory/mac/launchd.sh && sleep 3 && curl -s http://127.0.0.1:8877/health'
-  on_mac 'brew services start ollama >/dev/null 2>&1; ollama pull qwen3-vl:8b >/dev/null && echo "vision model ready"'
-  echo "== first copy of the data (episodes, site, admin; the database moves at cutover)"
-  tar -C data -cf - episodes site engage admin $(cd data && ls -d tokens tiktok-session.json 2>/dev/null) | on_mac 'mkdir -p ~/PulseFactory/factory/data && tar -C ~/PulseFactory/factory/data -xf -'
-  echo "== checks on the Mac"
-  on_mac 'cd ~/PulseFactory/factory && npx tsc --noEmit -p . && node --import tsx --test tests/*.test.ts 2>&1 | grep -E "^ℹ (pass|fail)"'
-  echo "prepare done: run mac/migrate.sh cutover when ready"
-  ;;
-
-cutover)
   echo "== stopping the PC side"
   schtasks //change //tn "Pulse Factory" //disable >/dev/null; schtasks //end //tn "Pulse Factory" >/dev/null 2>&1 || true
   schtasks //change //tn "Pulse Tunnel" //disable >/dev/null; schtasks //end //tn "Pulse Tunnel" >/dev/null 2>&1 || true
   powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match 'src[\\\\/]server\.ts|cloudflared-pulse' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }"
   sleep 5
   echo "== final copy (database and episodes)"
-  tar -C data -cf - db episodes site engage admin | on_mac 'cd ~/PulseFactory/factory/data && rm -f db.lock && tar -xf -'
+  tar -C data -cf - db episodes site engage admin $(cd data && ls -d tokens tiktok-session.json 2>/dev/null) | on_mac 'mkdir -p ~/PulseFactory/factory/data && cd ~/PulseFactory/factory/data && rm -f db.lock && tar -xf -'
   echo "== starting the Mac side"
   on_mac 'bash ~/PulseFactory/factory/mac/launchd.sh factory'
   ok=no

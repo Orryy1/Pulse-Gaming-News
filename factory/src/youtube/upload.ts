@@ -28,6 +28,11 @@ export interface VideoMetadata {
 
 export class SessionGone extends Error {}
 
+/** Characters YouTube counts for a tag list: each tag, two quotes for one with a space, a comma between. */
+export const tagChars = (tags: string[]) =>
+  tags.reduce((n, t) => n + t.length + (/\s/.test(t) ? 2 : 0), 0) +
+  Math.max(0, tags.length - 1);
+
 export function markerTag(episodeId: string): string {
   return `pulseref${episodeId.replace(/[^a-z0-9]/gi, "").toLowerCase()}`;
 }
@@ -39,8 +44,9 @@ export function buildResource(meta: VideoMetadata, marker: string) {
       marker,
     ]),
   ];
-  // YouTube caps the combined tag length at 500 characters; keep the marker.
-  while (tags.join(",").length > 480 && tags.length > 1)
+  // YouTube caps the combined tag length at 500 characters, counting the quotes around a tag with a
+  // space (tagChars); keep the marker.
+  while (tagChars(tags) > 490 && tags.length > 1)
     tags.splice(tags.length - 2, 1);
   return {
     snippet: {
@@ -192,15 +198,29 @@ export class YouTubeClient {
   }
 
   /** The channel's playlist with this title, created public when missing. created says whether it cost an insert (50 units). */
-  async findOrCreatePlaylist(title: string, description: string): Promise<{ id: string; created: boolean }> {
-    const list = await this.fetchFn(`${API}/playlists?part=snippet&mine=true&maxResults=50`, { headers: await this.auth() });
+  async findOrCreatePlaylist(
+    title: string,
+    description: string,
+  ): Promise<{ id: string; created: boolean }> {
+    const list = await this.fetchFn(
+      `${API}/playlists?part=snippet&mine=true&maxResults=50`,
+      { headers: await this.auth() },
+    );
     if (!list.ok) throw await apiError(list, "playlists.list");
-    const found = (((await list.json()) as any).items ?? []).find((p: any) => p.snippet?.title === title);
+    const found = (((await list.json()) as any).items ?? []).find(
+      (p: any) => p.snippet?.title === title,
+    );
     if (found?.id) return { id: found.id, created: false };
     const res = await this.fetchFn(`${API}/playlists?part=snippet,status`, {
       method: "POST",
-      headers: { ...(await this.auth()), "content-type": "application/json; charset=UTF-8" },
-      body: JSON.stringify({ snippet: { title, description }, status: { privacyStatus: "public" } }),
+      headers: {
+        ...(await this.auth()),
+        "content-type": "application/json; charset=UTF-8",
+      },
+      body: JSON.stringify({
+        snippet: { title, description },
+        status: { privacyStatus: "public" },
+      }),
     });
     if (!res.ok) throw await apiError(res, "playlists.insert");
     const id = ((await res.json()) as { id?: string }).id;
@@ -212,8 +232,13 @@ export class YouTubeClient {
   async addToPlaylist(playlistId: string, videoId: string): Promise<void> {
     const res = await this.fetchFn(`${API}/playlistItems?part=snippet`, {
       method: "POST",
-      headers: { ...(await this.auth()), "content-type": "application/json; charset=UTF-8" },
-      body: JSON.stringify({ snippet: { playlistId, resourceId: { kind: "youtube#video", videoId } } }),
+      headers: {
+        ...(await this.auth()),
+        "content-type": "application/json; charset=UTF-8",
+      },
+      body: JSON.stringify({
+        snippet: { playlistId, resourceId: { kind: "youtube#video", videoId } },
+      }),
     });
     if (!res.ok) throw await apiError(res, "playlistItems.insert");
   }
@@ -240,9 +265,7 @@ export class YouTubeClient {
   }
 
   /** The newest published top-level comments on a video (commentThreads.list, one quota unit). */
-  async listComments(
-    videoId: string,
-  ): Promise<
+  async listComments(videoId: string): Promise<
     Array<{
       id: string;
       text: string;
@@ -465,9 +488,7 @@ export class YouTubeClient {
     return out;
   }
 
-  async status(
-    videoId: string,
-  ): Promise<
+  async status(videoId: string): Promise<
     | {
         uploadStatus: string;
         privacyStatus: string;
@@ -497,7 +518,10 @@ export class YouTubeClient {
   }
 
   /** Sets a video's privacy (private hides it from everyone and can be undone), keeping its other status fields. */
-  async setPrivacy(videoId: string, privacy: "public" | "unlisted" | "private"): Promise<void> {
+  async setPrivacy(
+    videoId: string,
+    privacy: "public" | "unlisted" | "private",
+  ): Promise<void> {
     const res = await this.fetchFn(`${API}/videos?part=status&id=${videoId}`, {
       headers: await this.auth(),
     });

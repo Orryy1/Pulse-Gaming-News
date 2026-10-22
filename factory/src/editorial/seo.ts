@@ -5,6 +5,7 @@
 import { RUNNING_QUESTION } from "./voice.ts";
 import { writtenOpinionLead } from "./phrasing.ts";
 import type { Script } from "./schema.ts";
+import { tagChars } from "../youtube/upload.ts";
 
 export const TITLE_MAX = 60; // phones truncate around here; YouTube allows 100
 const BAD_TITLE_WORDS =
@@ -332,10 +333,7 @@ export function buildTags(script: Script): string[] {
   return out;
 }
 
-/** Characters YouTube counts for a tag list: each tag, two quotes for one with a space, a comma between. */
-export const tagChars = (tags: string[]) =>
-  tags.reduce((n, t) => n + t.length + (/\s/.test(t) ? 2 : 0), 0) +
-  Math.max(0, tags.length - 1);
+export { tagChars };
 
 // The short forms fans search, most specific first: "Grand Theft Auto VI" is searched as #GTA6, not #GrandTheftAutoVI.
 const SHORT_TAGS: Array<[RegExp, string[]]> = [

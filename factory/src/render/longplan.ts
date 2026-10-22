@@ -5,6 +5,7 @@
 
 import type { Segment } from "./timeline.ts";
 import type { MovePreset } from "./motion.ts";
+import { speakable } from "../voice/speakable.ts";
 
 export const LONG_FPS = 30;
 export const LONG_WIDTH = 1920;
@@ -35,6 +36,105 @@ export interface MomentWindow {
   moment: number;
   start: number;
   end: number;
+  /** When the narrator says the thing the sentence is about (its figure, name or subject); `start` when unknown. */
+  at: number;
+}
+
+/** What a sentence lands on screen, as the editor's shot list describes it. */
+export interface MomentKeySource {
+  show?: string;
+  graphic?: {
+    kind: string;
+    primary: string;
+    secondary: string;
+    items?: string[];
+  };
+  emphasis?: string;
+  person?: string;
+}
+
+/**
+ * The phrases a sentence's on-screen moment refers to, most specific first: its graphic's figure
+ * (or list items, or compare labels), its kinetic caption, the person it is about, then the
+ * proper names in what the picture shows ("Tommy Vercetti", "Vice City").
+ */
+export function momentKeys(m: MomentKeySource): string[] {
+  const keys: string[] = [];
+  const g = m.graphic;
+  if (g && usefulGraphic(g)) {
+    if (g.kind === "list") keys.push(...(g.items ?? []));
+    else if (g.kind === "compare")
+      keys.push(...(g.items ?? []).map((x) => x.split(":")[0]!.trim()));
+    else keys.push(g.primary);
+  }
+  if (m.emphasis && usefulEmphasis(m.emphasis)) keys.push(m.emphasis);
+  if (m.person) keys.push(m.person);
+  for (const name of (m.show ?? "").match(
+    /\b[A-Z0-9][\w'’]*(?:\s+(?:of|the|[A-Z0-9][\w'’]*))*/g,
+  ) ?? [])
+    if (!/^(The|A|An|This|That|It|His|Her|Their)$/.test(name)) keys.push(name);
+  return keys.filter((k) => k.trim());
+}
+
+const ANCHOR_STOP = new Set([
+  "the",
+  "a",
+  "an",
+  "of",
+  "and",
+  "to",
+  "in",
+  "on",
+  "for",
+  "with",
+  "its",
+  "it",
+  "is",
+  "was",
+  "that",
+  "this",
+  "his",
+  "her",
+  "their",
+  "at",
+  "by",
+  "as",
+  "from",
+]);
+const anchorToken = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * The time a key is spoken within words[from, to): where its first two telling words come in a
+ * row, else where its longest one does. Keys are put through speakable() first, so "$59.99" finds
+ * "fifty-nine dollars ninety-nine" and "GTA V" finds "GTA 5".
+ */
+export function keyTime(
+  words: Array<{ text?: string; start: number }>,
+  from: number,
+  to: number,
+  key: string,
+): number | undefined {
+  const all = speakable(key).split(/\s+/).map(anchorToken).filter(Boolean);
+  const telling = all.filter((t) => !ANCHOR_STOP.has(t));
+  const toks = telling.length ? telling : all;
+  if (!toks.length) return undefined;
+  const at = (k: number) => anchorToken(words[k]?.text ?? "");
+  if (toks.length >= 2)
+    for (let k = from; k < to - 1; k++) {
+      if (at(k) !== toks[0]) continue;
+      // Allow one small word between them ("Grand Theft Auto": "grand", "theft").
+      if (
+        at(k + 1) === toks[1] ||
+        (ANCHOR_STOP.has(at(k + 1)) && at(k + 2) === toks[1])
+      )
+        return words[k]!.start;
+    }
+  const longest = [...toks].sort((a, b) => b.length - a.length)[0]!;
+  if (longest.length < 3 && toks.length > 1) return undefined;
+  for (let k = from; k < to; k++)
+    if (at(k) === longest || (toks.length === 1 && at(k) === toks[0]))
+      return words[k]!.start;
+  return undefined;
 }
 
 /** Sentences as the script splits them (kept here so the renderer needs no editorial code). */
@@ -52,8 +152,9 @@ export function splitSentences(text: string): string[] {
  */
 export function momentWindows(
   segments: Segment[],
-  words: Array<{ start: number; end: number }>,
+  words: Array<{ start: number; end: number; text?: string }>,
   counts: number[],
+  keys?: string[][][],
 ): MomentWindow[] {
   const out: MomentWindow[] = [];
   for (const [i, seg] of segments.entries()) {
@@ -75,13 +176,27 @@ export function momentWindows(
       starts.push(j === 0 ? seg.start : (ws[idx]?.start ?? seg.start));
       idx += lens[j] ?? 0;
     }
-    for (let j = 0; j < k; j++)
-      out.push({
-        entry: e,
-        moment: j,
-        start: starts[j]!,
-        end: j === k - 1 ? segEnd : starts[j + 1]!,
-      });
+    for (let j = 0; j < k; j++) {
+      const start = starts[j]!;
+      const end = j === k - 1 ? segEnd : starts[j + 1]!;
+      // The first sentence opens the entry on its rank card: it stays anchored to its start.
+      let at = start;
+      if (j > 0 && keys?.[e]?.[j]?.length) {
+        const lo = words.indexOf(
+          ws[lens.slice(0, j).reduce((a, b) => a + b, 0)] ?? words[0]!,
+        );
+        const hi = Math.max(lo, lo + (lens[j] ?? 0));
+        for (const key of keys[e]![j]!) {
+          const t = keyTime(words, Math.max(0, lo), hi, key);
+          if (t !== undefined) {
+            // Within the first half second it is the sentence's opening anyway.
+            at = t - start < 0.5 ? start : t;
+            break;
+          }
+        }
+      }
+      out.push({ entry: e, moment: j, start, end, at });
+    }
   }
   return out;
 }
@@ -95,6 +210,8 @@ export interface LongPlanInput {
   variant: number;
   /** Moments per ranking entry: when given, each sentence gets its own matched picture. */
   momentCounts?: number[];
+  /** Per entry, per sentence: what it lands on screen (momentKeys), so its picture arrives on that word. */
+  momentKeys?: string[][][];
   /** The entry whose media plays behind the outro (the weekly recap's "our read" story). */
   takeEntry?: number;
 }
@@ -168,7 +285,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     !!a && a.type === b.type && a.index === b.index;
 
   const windows = input.momentCounts?.length
-    ? momentWindows(segments, input.words, input.momentCounts)
+    ? momentWindows(segments, input.words, input.momentCounts, input.momentKeys)
     : [];
   /** Fills [from, to) with a queue of media, never stretching a clip and never leaving a sliver. */
   const fill = (
@@ -287,11 +404,12 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         return { type: "image", index: pick };
       };
       for (const [j, w] of mine.entries()) {
-        const from = j === 0 ? start : Math.max(start, toFrame(w.start));
+        // A sentence's picture arrives as the narrator names its subject, not when the sentence starts.
+        const from = j === 0 ? start : Math.max(start, toFrame(w.at));
         const to =
           j === mine.length - 1
             ? end
-            : Math.min(end, toFrame(mine[j + 1]!.start));
+            : Math.min(end, toFrame(mine[j + 1]!.at));
         if (to <= from) continue;
         // Every clip picked for this sentence (a trailer moment and a gameplay moment), then its still.
         const mineClips = entryClips.filter(

@@ -23,6 +23,7 @@ import { moveTransform, SPRING, type MovePreset } from "./motion.ts";
 import {
   buildLongPlan,
   entryOf,
+  momentKeys,
   momentWindows,
   titleLines,
   gameSoundVolume,
@@ -1072,6 +1073,7 @@ export const Long: React.FC<LongProps> = (props) => {
         })),
         variant: props.variant,
         momentCounts: props.moments?.map((m) => m.length),
+        momentKeys: props.moments?.map((e) => e.map(momentKeys)),
       }),
     [props, words],
   );
@@ -1082,6 +1084,7 @@ export const Long: React.FC<LongProps> = (props) => {
             props.segments,
             words,
             props.moments.map((m) => m.length),
+            props.moments.map((e) => e.map(momentKeys)),
           )
         : [],
     [props.moments, props.segments, words],
@@ -1131,6 +1134,16 @@ export const Long: React.FC<LongProps> = (props) => {
       talk += speaking[Math.min(durationInFrames, Math.max(0, f + k))] ?? 0;
     return fadeIn * fadeOut * interpolate(talk / 5, [0, 1], [0.22, 0.07]);
   };
+  // Each sentence's graphic, caption or picture lands a beat before the narrator names it and holds until
+  // the next sentence's lands (2.5 s at least, so it can be read), instead of riding the whole sentence.
+  const spanOf = (k: number): { from: number; len: number; anchored: boolean } => {
+    const w = windows[k]!;
+    const next = windows[k + 1];
+    const anchored = w.at > w.start;
+    const from = Math.max(Math.round(w.start * fps), Math.round((w.at - 0.15) * fps));
+    const until = next && next.entry === w.entry ? Math.round((next.at - 0.15) * fps) : Math.round(w.end * fps);
+    return { from, len: Math.max(1, Math.max(until, from + Math.round(2.5 * fps)) - from), anchored };
+  };
   // Moment sounds, gated (src/render/soundscape.ts): glints on numbers and whooshes on pop-in pictures,
   // spaced out and kept clear of each entry's own swell and landing.
   const entryFrames = props.segments
@@ -1140,14 +1153,13 @@ export const Long: React.FC<LongProps> = (props) => {
     windows.flatMap((w, k): LongSoundCandidate[] => {
       const raw = props.moments?.[w.entry]?.[w.moment];
       if (!raw) return [];
-      const from = Math.round(w.start * fps);
-      const len = Math.max(1, Math.round((w.end - w.start) * fps));
+      const { from, len, anchored } = spanOf(k);
       const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
       if (graphic === "stat" || graphic === "score") return [{ key: k, frame: from, kind: "glint" as const }];
       const shot = plan.shots.find((x) => from >= x.start && from < x.end);
       const pic = props.images.some((im) => im.beatIndex === w.entry && im.moment === w.moment);
       if (graphic === "none" && shot?.media.type === "clip" && pic && w.moment > 0)
-        return [{ key: k, frame: from + Math.min(30, Math.max(0, len - 90)), kind: "pop" as const }];
+        return [{ key: k, frame: from + (anchored ? 0 : Math.min(30, Math.max(0, len - 90))), kind: "pop" as const }];
       return [];
     }),
     entryFrames,
@@ -1314,8 +1326,7 @@ export const Long: React.FC<LongProps> = (props) => {
           emphasis:
             raw.emphasis && usefulEmphasis(raw.emphasis) ? raw.emphasis : "",
         };
-        const from = Math.round(w.start * fps);
-        const len = Math.max(1, Math.round((w.end - w.start) * fps));
+        const { from, len, anchored } = spanOf(k);
         const shot = plan.shots.find((x) => from >= x.start && from < x.end);
         // A character's portrait first (a reminder of who they are), else the still matched to the sentence.
         const pic =
@@ -1352,13 +1363,13 @@ export const Long: React.FC<LongProps> = (props) => {
             ) : null}
             {showPop ? (
               <Sequence
-                from={Math.min(30, Math.max(0, len - 90))}
+                from={anchored ? 0 : Math.min(30, Math.max(0, len - 90))}
                 layout="none"
               >
                 <PopInPicture
                   src={pic!.src}
                   caption={pic!.label ?? ""}
-                  len={len - 30}
+                  len={anchored ? len : len - 30}
                   side={w.moment % 2 ? "right" : "left"}
                 />
                 {momentSounds.get(k) ? <Sfx name={momentSounds.get(k)!} volume={LEVEL.airLong} /> : null}

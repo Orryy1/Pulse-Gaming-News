@@ -69,6 +69,7 @@ import {
 } from "./editorial/recap.ts";
 import {
   buildLongPlan,
+  momentKeys,
   chapterLines,
   LONG_TAIL_SECONDS,
 } from "./render/longplan.ts";
@@ -4145,6 +4146,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       })),
       variant,
       momentCounts: hasMoments ? moments.map((m) => m.length) : undefined,
+      momentKeys: hasMoments ? moments.map((e) => e.map(momentKeys)) : undefined,
       takeEntry: script.take_entry,
     });
   assets.longPlan = plan;

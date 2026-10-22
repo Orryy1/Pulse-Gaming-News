@@ -419,8 +419,17 @@ async function uploadsInFlight(db: Db): Promise<number> {
 }
 
 /** Units this quota day can still spend on an extra upload once every due and in-flight upload is covered. */
-export function spareUnits(cfg: Config, used: number, dueUploads: number, inFlight: number): number {
-  return cfg.quotaUnitsPerDay - used - QUOTA_RESERVE_FOR_UPLOAD * (dueUploads + inFlight);
+export function spareUnits(
+  cfg: Config,
+  used: number,
+  dueUploads: number,
+  inFlight: number,
+): number {
+  return (
+    cfg.quotaUnitsPerDay -
+    used -
+    QUOTA_RESERVE_FOR_UPLOAD * (dueUploads + inFlight)
+  );
 }
 
 // The spare-quota lane runs in the last hours before the reset, and starts nothing in the final hour
@@ -434,26 +443,45 @@ const SPARE_LAST_START_MINUTES = 60;
  * left and uploads it scheduled for a good publish time later that day. The upload spends today's
  * quota; the publish lands at a US-friendly hour. One a tick, while the spare covers another upload.
  */
-export async function maybeSelectSpare(s: Services): Promise<string | undefined> {
+export async function maybeSelectSpare(
+  s: Services,
+): Promise<string | undefined> {
   const { db, cfg } = s;
   if (!cfg.spareUploads || !cfg.evergreenEnabled) return undefined;
   const now = s.now();
   const minutesLeft = (quotaResetAt(now).getTime() - now.getTime()) / 60_000;
-  if (minutesLeft > SPARE_WINDOW_MINUTES || minutesLeft < SPARE_LAST_START_MINUTES) return undefined;
-  const spare = spareUnits(cfg, await quotaUsed(db, now), uploadsLeftToday(cfg, now), await uploadsInFlight(db));
+  if (
+    minutesLeft > SPARE_WINDOW_MINUTES ||
+    minutesLeft < SPARE_LAST_START_MINUTES
+  )
+    return undefined;
+  const spare = spareUnits(
+    cfg,
+    await quotaUsed(db, now),
+    uploadsLeftToday(cfg, now),
+    await uploadsInFlight(db),
+  );
   if (spare < QUOTA_RESERVE_FOR_UPLOAD) return undefined;
   // At most one editor call every 20 minutes: a topic the editor passes on is not retried every tick.
-  if (await weeklyTried(db, `spare:${Math.floor(now.getTime() / 1_200_000)}`)) return undefined;
+  if (await weeklyTried(db, `spare:${Math.floor(now.getTime() / 1_200_000)}`))
+    return undefined;
   const taken = new Set((await takenSlots(db)).map((t) => t.getTime()));
   const today = dayKey(now, cfg.timezone);
   const slotAt = [today, addDays(today, 1)]
     .flatMap((d) => cfg.spareSlots.map((x) => localTime(d, x, cfg.timezone)))
     // In the order given (best US hour first), today before tomorrow.
-    .find((t) => t.getTime() > now.getTime() + 3 * 3_600_000 && !taken.has(t.getTime()));
+    .find(
+      (t) =>
+        t.getTime() > now.getTime() + 3 * 3_600_000 && !taken.has(t.getTime()),
+    );
   if (!slotAt) return undefined;
   const id = await createEvergreen(s, slotAt, true);
   if (id)
-    log("info", "spare quota Short selected", { id, spare, slot: slotAt.toISOString() });
+    log("info", "spare quota Short selected", {
+      id,
+      spare,
+      slot: slotAt.toISOString(),
+    });
   return id;
 }
 
@@ -477,7 +505,11 @@ export async function quotaHeadroom(
  */
 export function focusBlock(cfg: Config, now: Date): string {
   if (!cfg.focusTopic) return "";
-  if (cfg.focusUntil && now.getTime() > new Date(`${cfg.focusUntil}T23:59:59Z`).getTime()) return "";
+  if (
+    cfg.focusUntil &&
+    now.getTime() > new Date(`${cfg.focusUntil}T23:59:59Z`).getTime()
+  )
+    return "";
   const wave = launchWave(cfg, now)
     ? ` LAUNCH WEEK: this is the launch wave for ${cfg.focusTopic}. Cover it from every angle (reviews, performance, hidden details, what fans are finding, how it compares, prices and editions) and prefer a strong ${cfg.focusTopic} story over anything of equal weight.`
     : "";
@@ -504,50 +536,115 @@ export function launchWave(cfg: Config, now: Date): boolean {
 // Named series shelves. The channels that grew fastest file every video in a playlist named the way
 // people search, and point their end screens at them; a series also tells YouTube who the video is for.
 const SERIES = {
-  rankedLong: { title: "Every Game Ranked: Worst to Best", description: "Pulse Gaming's full rankings: every game in a series, ranked on one clear rule and explained. A new ranking every Saturday." },
-  weekly: { title: "The Pulse Weekly: This Week in Gaming", description: "The week's biggest gaming stories, checked and explained. Every Friday." },
-  docs: { title: "Gaming Documentaries", description: "The stories behind the games, checked and explained." },
-  why: { title: "The Why: Gaming's Biggest Questions", description: "One question fans argue about, answered from the record in under a minute. A new one every day." },
-  rankedShort: { title: "Ranked in 60 Seconds", description: "Game rankings in under a minute, one clear rule each." },
-  news: { title: "Gaming News Today", description: "Fast gaming news, checked and explained. New Shorts every day." },
+  rankedLong: {
+    title: "Every Game Ranked: Worst to Best",
+    description:
+      "Pulse Gaming's full rankings: every game in a series, ranked on one clear rule and explained. A new ranking every Saturday.",
+  },
+  weekly: {
+    title: "The Pulse Weekly: This Week in Gaming",
+    description:
+      "The week's biggest gaming stories, checked and explained. Every Friday.",
+  },
+  docs: {
+    title: "Gaming Documentaries",
+    description: "The stories behind the games, checked and explained.",
+  },
+  why: {
+    title: "The Why: Gaming's Biggest Questions",
+    description:
+      "One question fans argue about, answered from the record in under a minute. A new one every day.",
+  },
+  rankedShort: {
+    title: "Ranked in 60 Seconds",
+    description: "Game rankings in under a minute, one clear rule each.",
+  },
+  news: {
+    title: "Gaming News Today",
+    description:
+      "Fast gaming news, checked and explained. New Shorts every day.",
+  },
 };
 
 /** The playlists a published video belongs to. */
-export function seriesFor(cfg: Config, ep: Episode, now: Date): Array<{ title: string; description: string }> {
+export function seriesFor(
+  cfg: Config,
+  ep: Episode,
+  now: Date,
+): Array<{ title: string; description: string }> {
   const sc = ep.script_json;
   if (!sc) return [];
   const out: Array<{ title: string; description: string }> = [];
   if (sc.recap) out.push(SERIES.weekly);
-  else if (sc.runtime === "long") out.push(sc.evergreen_format === "documentary" ? SERIES.docs : SERIES.rankedLong);
+  else if (sc.runtime === "long")
+    out.push(
+      sc.evergreen_format === "documentary" ? SERIES.docs : SERIES.rankedLong,
+    );
   else if (ep.story_hash?.startsWith("why:")) out.push(SERIES.why);
-  else if (ep.lane === "cutdown" || (ep.lane === "evergreen" && sc.entries?.length)) out.push(SERIES.rankedShort);
-  else if (ep.lane === "news" || ep.lane === "news_breaking") out.push(SERIES.news);
-  const focusOn = cfg.focusPlaylist && (!cfg.focusUntil || dayKey(now, cfg.timezone) <= cfg.focusUntil);
-  if (focusOn && focusMatch(cfg, `${sc.game_title} ${sc.headline} ${sc.youtube?.title ?? ""}`))
-    out.push({ title: cfg.focusPlaylist, description: `${cfg.focusTopic} news, explainers and rankings from Pulse Gaming.${cfg.focusNote ? ` ${cfg.focusNote}` : ""}` });
+  else if (
+    ep.lane === "cutdown" ||
+    (ep.lane === "evergreen" && sc.entries?.length)
+  )
+    out.push(SERIES.rankedShort);
+  else if (ep.lane === "news" || ep.lane === "news_breaking")
+    out.push(SERIES.news);
+  const focusOn =
+    cfg.focusPlaylist &&
+    (!cfg.focusUntil || dayKey(now, cfg.timezone) <= cfg.focusUntil);
+  if (
+    focusOn &&
+    focusMatch(
+      cfg,
+      `${sc.game_title} ${sc.headline} ${sc.youtube?.title ?? ""}`,
+    )
+  )
+    out.push({
+      title: cfg.focusPlaylist,
+      description: `${cfg.focusTopic} news, explainers and rankings from Pulse Gaming.${cfg.focusNote ? ` ${cfg.focusNote}` : ""}`,
+    });
   return out;
 }
 
 /** Files a published video in its series playlists (50 units each, plus 50 the first time a playlist is made). */
 async function addToSeries(s: Services, ep: Episode): Promise<void> {
-  const yt = s.youtube() as Partial<{ findOrCreatePlaylist: (t: string, d: string) => Promise<{ id: string; created: boolean }>; addToPlaylist: (p: string, v: string) => Promise<void> }>;
-  if (!yt.findOrCreatePlaylist || !yt.addToPlaylist || !ep.youtube_video_id) return;
+  const yt = s.youtube() as Partial<{
+    findOrCreatePlaylist: (
+      t: string,
+      d: string,
+    ) => Promise<{ id: string; created: boolean }>;
+    addToPlaylist: (p: string, v: string) => Promise<void>;
+  }>;
+  if (!yt.findOrCreatePlaylist || !yt.addToPlaylist || !ep.youtube_video_id)
+    return;
   for (const series of seriesFor(s.cfg, ep, s.now())) {
     try {
       const key = `playlist:${series.title}`;
-      const [row] = await s.db.query<{ value: string }>(`SELECT value FROM settings WHERE key = $1`, [key]);
+      const [row] = await s.db.query<{ value: string }>(
+        `SELECT value FROM settings WHERE key = $1`,
+        [key],
+      );
       let id = row?.value;
       if (!id) {
-        const made = await yt.findOrCreatePlaylist(series.title, series.description);
+        const made = await yt.findOrCreatePlaylist(
+          series.title,
+          series.description,
+        );
         await quotaAdd(s.db, s.now(), made.created ? 51 : 1);
         id = made.id;
-        await s.db.query(`INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [key, id]);
+        await s.db.query(
+          `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+          [key, id],
+        );
       }
       await yt.addToPlaylist(id, ep.youtube_video_id);
       await quotaAdd(s.db, s.now(), QUOTA.comment);
       await logEvent(s.db, ep.id, "playlist", { title: series.title });
     } catch (err) {
-      log("warn", "playlist add failed", { episode: ep.id, playlist: series.title, error: errorMessage(err) });
+      log("warn", "playlist add failed", {
+        episode: ep.id,
+        playlist: series.title,
+        error: errorMessage(err),
+      });
     }
   }
 }
@@ -653,8 +750,11 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   });
   if (cut) return cut;
   // Spare-quota Shorts are extra: they never take one of the day's planned Shorts.
-  const total = (await countToday(db, cfg.timezone)) - (await countSpareToday(db, cfg.timezone));
-  if (total >= cfg.dailyTarget + (launchWave(cfg, now) ? cfg.sprintExtra : 0)) return (await maybeSelectSpare(s)) ?? undefined;
+  const total =
+    (await countToday(db, cfg.timezone)) -
+    (await countSpareToday(db, cfg.timezone));
+  if (total >= cfg.dailyTarget + (launchWave(cfg, now) ? cfg.sprintExtra : 0))
+    return (await maybeSelectSpare(s)) ?? undefined;
 
   const seen = await seenHashes(db);
   const sightings = (await recentSightings(s)).filter(
@@ -878,7 +978,13 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   const now = s.now();
   const due = evergreenDue(
     now,
-    { days: cfg.whyDays, slot: cfg.whySlot, leadMinutes: cfg.slotLeadMinutes + 30, graceMinutes: cfg.slotGraceMinutes, timeZone: cfg.timezone },
+    {
+      days: cfg.whyDays,
+      slot: cfg.whySlot,
+      leadMinutes: cfg.slotLeadMinutes + 30,
+      graceMinutes: cfg.slotGraceMinutes,
+      timeZone: cfg.timezone,
+    },
     await takenSlots(db),
   );
   if (!due) return undefined;
@@ -892,22 +998,44 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   ).map((r) => r.headline);
   const candidates = await s.discoverEvergreen();
   if (!candidates.length) return undefined;
-  const topic = await selectWhyTopic(s.llm, candidates, covered, await topicDemand(s));
+  const topic = await selectWhyTopic(
+    s.llm,
+    candidates,
+    covered,
+    await topicDemand(s),
+  );
   if (topic.candidate_index < 0) {
-    log("info", "editor passed on every why question", { reason: topic.reason });
+    log("info", "editor passed on every why question", {
+      reason: topic.reason,
+    });
     return undefined;
   }
   const url = `https://en.wikipedia.org/wiki/${encodeURIComponent(topic.wikipedia_title.replace(/ /g, "_"))}`;
   const article = await s.fetchArticle(url);
   if (!article) {
-    log("info", "why question has no usable Wikipedia article", { title: topic.wikipedia_title });
+    log("info", "why question has no usable Wikipedia article", {
+      title: topic.wikipedia_title,
+    });
     return undefined;
   }
-  const slug = topic.question.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
+  const slug = topic.question
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
   const cluster: StoryCluster = {
     hash: `why:${slug}`,
     headline: topic.title,
-    items: [{ title: article.title, url, summary: "", publishedAt: now.toISOString(), source: "Wikipedia", sourceKind: "outlet" }],
+    items: [
+      {
+        title: article.title,
+        url,
+        summary: "",
+        publishedAt: now.toISOString(),
+        source: "Wikipedia",
+        sourceKind: "outlet",
+      },
+    ],
     sources: ["Wikipedia"],
     hasOfficial: false,
     corroborated: true,
@@ -919,9 +1047,27 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     why: { question: topic.question, angle: topic.angle },
   };
   const id = shortId();
-  if (!(await createEpisode(db, id, cluster, { lane: "news", priority: LANE_PRIORITY.news, slotAt: due }))) return undefined;
-  await logEvent(db, id, "selected", { headline: topic.title, lane: "why", question: topic.question, game: topic.game, reason: topic.reason, slot_at: due.toISOString() });
-  log("info", "why question selected", { id, question: topic.question, game: topic.game });
+  if (
+    !(await createEpisode(db, id, cluster, {
+      lane: "news",
+      priority: LANE_PRIORITY.news,
+      slotAt: due,
+    }))
+  )
+    return undefined;
+  await logEvent(db, id, "selected", {
+    headline: topic.title,
+    lane: "why",
+    question: topic.question,
+    game: topic.game,
+    reason: topic.reason,
+    slot_at: due.toISOString(),
+  });
+  log("info", "why question selected", {
+    id,
+    question: topic.question,
+    game: topic.game,
+  });
   return id;
 }
 
@@ -1023,7 +1169,9 @@ export async function maybeSelectWeekly(
   });
 
   // Steam's biggest climbers: real chart movement, each with the publisher's own news for the why.
-  const climbDue = (await formatOpen(db, "steam_climbers", now)) ? evergreenDue(now, plan(cfg.climbersDays), taken) : undefined;
+  const climbDue = (await formatOpen(db, "steam_climbers", now))
+    ? evergreenDue(now, plan(cfg.climbersDays), taken)
+    : undefined;
   if (climbDue && !(await weeklyTried(db, `climbers:${today}`))) {
     const games = await s.steamClimbers(now);
     if (games.length >= 4) {
@@ -1063,7 +1211,9 @@ export async function maybeSelectWeekly(
   }
 
   // Release Radar
-  const radarDue = (await formatOpen(db, "release_radar", now)) ? evergreenDue(now, plan(cfg.radarDays), taken) : undefined;
+  const radarDue = (await formatOpen(db, "release_radar", now))
+    ? evergreenDue(now, plan(cfg.radarDays), taken)
+    : undefined;
   if (radarDue && !(await weeklyTried(db, `radar:${today}`))) {
     const games = await s.releaseRadar(now);
     if (games.length >= 4) {
@@ -1095,7 +1245,9 @@ export async function maybeSelectWeekly(
   }
 
   // Free This Week
-  const freeDue = (await formatOpen(db, "free", now)) ? evergreenDue(now, plan(cfg.freeDays), taken) : undefined;
+  const freeDue = (await formatOpen(db, "free", now))
+    ? evergreenDue(now, plan(cfg.freeDays), taken)
+    : undefined;
   if (freeDue && !(await weeklyTried(db, `free:${today}`))) {
     const free = await s.freeGames(now);
     if (free.now.length) {
@@ -1142,7 +1294,9 @@ export async function maybeSelectWeekly(
   }
 
   // Achievement Hunt: odd ISO weeks the rarest in one big game, even weeks the hardest across today's biggest games.
-  const achDue = (await formatOpen(db, "achievements", now)) ? evergreenDue(now, plan(cfg.achievementDays), taken) : undefined;
+  const achDue = (await formatOpen(db, "achievements", now))
+    ? evergreenDue(now, plan(cfg.achievementDays), taken)
+    : undefined;
   if (achDue && !(await weeklyTried(db, `achievements:${today}`))) {
     const week = Math.floor(
       (Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) -
@@ -1344,7 +1498,9 @@ export async function maybeSelectWeekly(
   }
 
   // Weekly Recap
-  const recapDue = (await formatOpen(db, "weekly_recap", now)) ? evergreenDue(now, plan(cfg.recapDays), taken) : undefined;
+  const recapDue = (await formatOpen(db, "weekly_recap", now))
+    ? evergreenDue(now, plan(cfg.recapDays), taken)
+    : undefined;
   if (recapDue && !(await weeklyTried(db, `recap:${today}`))) {
     const rows = await db.query<{
       headline: string;
@@ -3396,7 +3552,13 @@ export async function gatherLongEntryMedia(
     }
     // The owner's own recordings come first: the best footage there is.
     for (const c of await s
-      .ownClips(entry.game_title, script.game_title || entry.game_title, edir, targets.slice(0, 12), 12)
+      .ownClips(
+        entry.game_title,
+        script.game_title || entry.game_title,
+        edir,
+        targets.slice(0, 12),
+        12,
+      )
       .catch(() => [] as VisualAsset[]))
       clips.push({
         file: rel(c.file),
@@ -3416,7 +3578,16 @@ export async function gatherLongEntryMedia(
     // Licensed gameplay for every sentence (real missions and moments, credited), on top of any trailer moment:
     // a sentence then plays as footage, not a still.
     // Two different moments per sentence: footage for the whole line, not one clip and then a still.
-    const missing = targets.slice(0, 10).flatMap((t) => [t, { ...t, key: t.key.replace(/#m(\d+)$/, "#alt#m$1"), text: `${t.text}, a different moment` }]);
+    const missing = targets
+      .slice(0, 10)
+      .flatMap((t) => [
+        t,
+        {
+          ...t,
+          key: t.key.replace(/#m(\d+)$/, "#alt#m$1"),
+          text: `${t.text}, a different moment`,
+        },
+      ]);
     if (missing.length)
       for (const c of await s
         .gameplayClips(
@@ -4473,12 +4644,15 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
         ? `Publishes automatically in ${ep.lane === "news_breaking" ? s.cfg.breakingApprovalMinutes : s.cfg.approvalTimeoutMinutes} min unless rejected.`
         : "Waiting for your approval.";
   const dir = episodeDir(s.cfg, ep.id);
-  const delivered = await s.notify({
-    embeds: [
-      {
-        title: `🎬 ${script.youtube.title}`,
-        url: links.preview,
-        description: [
+  // Auto mode needs nothing from the owner: a short "going out" note with a Watch link, no buttons.
+  const description =
+    mode === "auto"
+      ? [
+          `**Hook:** ${script.hook}`,
+          `Fact-checked against ${ep.story_json.sources.length} source${ep.story_json.sources.length === 1 ? "" : "s"}. Going out automatically, nothing for you to do.`,
+          `▶️ [Watch](${links.preview})`,
+        ]
+      : [
           `**Hook:** ${script.hook}`,
           `**Pulse take:** ${script.pulse_take.narration}`,
           `**Sources:** ${ep.story_json.sources.join(", ")}${ep.story_json.hasOfficial ? " (official)" : ""}`,
@@ -4486,7 +4660,13 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
           "",
           `▶️ [Watch preview](${links.preview})  ·  ✅ [Approve](${links.approve})  ·  ❌ [Reject](${links.reject})`,
           when,
-        ].join("\n"),
+        ];
+  const delivered = await s.notify({
+    embeds: [
+      {
+        title: `🎬 ${script.youtube.title}`,
+        url: links.preview,
+        description: description.join("\n"),
         color: script.is_rumour ? COLOURS.alert : COLOURS.brand,
         image: { url: "attachment://poster.jpg" },
       },
@@ -5085,8 +5265,13 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
 
 /** "19:00 UK" (or "Thu 19:00 UK" when it is not today). */
 function ukTime(d: Date, now = new Date()): string {
-  const fmt = (o: Intl.DateTimeFormatOptions, x: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", ...o }).format(x);
-  const sameDay = fmt({ dateStyle: "short" }, d) === fmt({ dateStyle: "short" }, now);
+  const fmt = (o: Intl.DateTimeFormatOptions, x: Date) =>
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London",
+      ...o,
+    }).format(x);
+  const sameDay =
+    fmt({ dateStyle: "short" }, d) === fmt({ dateStyle: "short" }, now);
   return `${sameDay ? "" : `${fmt({ weekday: "short" }, d)} `}${fmt({ hour: "2-digit", minute: "2-digit", hour12: false }, d)} UK`;
 }
 

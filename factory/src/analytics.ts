@@ -9,6 +9,7 @@ import type { Episode } from "./episodes.ts";
 import { logEvent } from "./episodes.ts";
 import { QUOTA, dayKey, quotaAdd, quotaUsed, weekday } from "./lanes.ts";
 import { reviewFormats } from "./formats.ts";
+import { claudeSpend } from "./editorial/llm.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
 import { log } from "./lib/util.ts";
 
@@ -489,6 +490,9 @@ export async function dailySummary(db: Db, cfg: Config, now: Date): Promise<Disc
     Number(drafts?.n ?? 0) ? `📲 TikTok drafts sent: ${drafts!.n}. Post any still in your TikTok inbox.` : "",
     notes.length ? `📝 Behind the scenes (handled, nothing for you to do):\n${notes.map((n) => `• ${n.text}`).join("\n")}` : "",
     `YouTube allowance used: ${used.toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")}`,
+    ((c) => `Claude spend today: $${(c.live + c.tests).toFixed(2)}${c.tests >= 0.01 ? ` (tests $${c.tests.toFixed(2)})` : ""}`)(
+      claudeSpend(cfg.dataDir, now.toISOString().slice(0, 10)),
+    ),
   ].filter(Boolean);
   return { content: lines.join("\n\n").slice(0, 1990) };
 }

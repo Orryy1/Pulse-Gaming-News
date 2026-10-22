@@ -41,6 +41,53 @@ function meter(model: string, system: string, usage: any): void {
   }
 }
 
+/** $ per million tokens: input, output, cache read, cache write (1-hour cache writes cost twice the input). */
+const PRICES: Record<string, [number, number, number, number]> = {
+  "claude-opus-5-5": [4, 20, 0.2, 8],
+  "claude-sonnet-5-5": [2, 10, 0.2, 4],
+  "claude-haiku-5-5": [0.1, 0.5, 0.01, 0.2],
+};
+
+/**
+ * What Claude cost on one UTC day from the usage logs: the live factory (dataDir/usage) and every sandbox
+ * (dataDir/smoke/<name>/usage, each run keeps its own log), so the evening summary shows the real bill.
+ */
+export function claudeSpend(
+  dataDir: string,
+  day: string,
+): { live: number; tests: number } {
+  const cost = (file: string) => {
+    let total = 0;
+    try {
+      for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+        if (!line.trim()) continue;
+        const r = JSON.parse(line) as {
+          model: string;
+          in: number;
+          out: number;
+          cacheRead: number;
+          cacheWrite: number;
+        };
+        const [i, o, cr, cw] = PRICES[r.model] ?? PRICES["claude-opus-5-5"]!;
+        total +=
+          (r.in * i + r.out * o + r.cacheRead * cr + r.cacheWrite * cw) / 1e6;
+      }
+    } catch {
+      // no log for that day
+    }
+    return total;
+  };
+  const live = cost(path.join(dataDir, "usage", `${day}.jsonl`));
+  let tests = 0;
+  try {
+    for (const name of fs.readdirSync(path.join(dataDir, "smoke")))
+      tests += cost(path.join(dataDir, "smoke", name, "usage", `${day}.jsonl`));
+  } catch {
+    // no sandboxes
+  }
+  return { live, tests };
+}
+
 export type LlmContent = Anthropic.Beta.BetaContentBlockParam[];
 
 export interface Llm {

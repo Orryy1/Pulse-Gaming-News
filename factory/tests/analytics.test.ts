@@ -135,3 +135,22 @@ test("the weekly poll offers four fresh series (requests and focus first) and it
   assert.match(pollBlock(await readPoll(db), new Date()), /Halo 54%, Resident Evil 46%/);
   assert.equal(pollBlock(await readPoll(db), new Date(Date.now() + 15 * 86_400_000)), "", "a stale poll stops steering");
 });
+
+test("the evening summary's Claude spend adds the live log and every sandbox log for the day", async () => {
+  const { claudeSpend } = await import("../src/editorial/llm.ts");
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const dir = await tmpDir();
+  const day = "2026-10-22";
+  const write = (rel: string, rows: object[]) => {
+    fs.mkdirSync(path.join(dir, rel), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel, `${day}.jsonl`), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+  };
+  // Opus: 1M in ($4) + 0.1M out ($2) live; Sonnet: 1M cached read ($0.20) in a sandbox.
+  write("usage", [{ model: "claude-opus-5-5", in: 1_000_000, out: 100_000, cacheRead: 0, cacheWrite: 0 }]);
+  write(path.join("smoke", "gta", "usage"), [{ model: "claude-sonnet-5-5", in: 0, out: 0, cacheRead: 1_000_000, cacheWrite: 0 }]);
+  const c = claudeSpend(dir, day);
+  assert.equal(c.live.toFixed(2), "6.00");
+  assert.equal(c.tests.toFixed(2), "0.20");
+  assert.deepEqual(claudeSpend(dir, "2026-01-01"), { live: 0, tests: 0 });
+});

@@ -678,8 +678,8 @@ test("prices the voice says in words are shown as prices again", async () => {
   );
   assert.equal(
     show("two thousand five hundred players"),
-    "two thousand five hundred players",
-    "not the year 2005",
+    "2,500 players",
+    "a count, not the year 2005",
   );
   assert.equal(show("in two thousand seven, the Wii"), "in 2007, the Wii");
   const merged = displayWords(

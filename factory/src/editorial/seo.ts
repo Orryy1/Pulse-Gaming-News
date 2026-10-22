@@ -246,7 +246,11 @@ export function polishTitle(script: Script): string {
     .replace(/[^A-Za-z0-9 ]/g, " ")
     .split(/\s+/)
     .filter(Boolean);
-  const initials = words.filter((w) => /^[A-Za-z]/.test(w) && !/^[IVX]+$/.test(w)).map((w) => w[0]).join("").toLowerCase();
+  const initials = words
+    .filter((w) => /^[A-Za-z]/.test(w) && !/^[IVX]+$/.test(w))
+    .map((w) => w[0])
+    .join("")
+    .toLowerCase();
   const mentionsEarly =
     leads(title) ||
     words.some(
@@ -311,7 +315,7 @@ export function titleProblems(title: string): string[] {
 export function buildTags(script: Script): string[] {
   const out: string[] = [];
   const add = (t: string) => {
-    const v = t.trim().replace(/[<>]/g, "").slice(0, 60);
+    const v = t.trim().replace(/[<>,]/g, "").slice(0, 60);
     if (v && !out.some((x) => x.toLowerCase() === v.toLowerCase())) out.push(v);
   };
   if (script.game_title) add(script.game_title);
@@ -322,9 +326,16 @@ export function buildTags(script: Script): string[] {
   // A long video is not a Short: the Shorts tags would mislabel it.
   for (const t of EVERGREEN_TAGS)
     if (script.runtime !== "long" || !/shorts/.test(t)) add(t);
-  while (out.join(",").length > 480 && out.length > 1) out.pop();
+  // YouTube's 500-character limit counts the quotes it wraps around a tag with a space, so a long list of
+  // multi-word tags passed a plain length check and the upload was refused ("invalid video keywords").
+  while (tagChars(out) > 490 && out.length > 1) out.pop();
   return out;
 }
+
+/** Characters YouTube counts for a tag list: each tag, two quotes for one with a space, a comma between. */
+export const tagChars = (tags: string[]) =>
+  tags.reduce((n, t) => n + t.length + (/\s/.test(t) ? 2 : 0), 0) +
+  Math.max(0, tags.length - 1);
 
 // The short forms fans search, most specific first: "Grand Theft Auto VI" is searched as #GTA6, not #GrandTheftAutoVI.
 const SHORT_TAGS: Array<[RegExp, string[]]> = [

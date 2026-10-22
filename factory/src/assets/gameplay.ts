@@ -19,7 +19,7 @@ import type { VisualAsset } from "./steam.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
 import { keepGameSound } from "./talk.ts";
 import { screenFrames } from "./localvision.ts";
-import { FFMPEG, YTDLP_TEXT } from "../lib/bin.ts";
+import { FFMPEG, FFPROBE, YTDLP_TEXT } from "../lib/bin.ts";
 import { PUBLISHER_CHANNELS } from "./officialTrailer.ts";
 import { trailerMatchesGame, distinguishing } from "./commons.ts";
 import { normTitle } from "./igdb.ts";
@@ -374,8 +374,11 @@ async function downloadSlice(
   return to - from;
 }
 
-/** Crops the bottom quarter (where subtitles and older games' mission text sit) off a clip, in place. */
-async function cropBottom(file: string): Promise<boolean> {
+/**
+ * Crops the edge where on-screen text sits off a clip, in place: the bottom quarter (subtitles, older
+ * games' mission and pager text) or the top quarter (tutorial prompts, objective lines).
+ */
+export async function cropEdge(file: string, edge: "top" | "bottom"): Promise<boolean> {
   const tmp = file.replace(/\.mp4$/, ".crop.mp4");
   try {
     await run(FFMPEG, [
@@ -385,7 +388,7 @@ async function cropBottom(file: string): Promise<boolean> {
       "-i",
       file,
       "-vf",
-      "crop=iw:trunc(ih*0.74/2)*2:0:0",
+      edge === "bottom" ? "crop=iw:trunc(ih*0.74/2)*2:0:0" : "crop=iw:trunc(ih*0.74/2)*2:0:trunc(ih*0.26/2)*2",
       "-c:v",
       "libx264",
       "-crf",
@@ -406,52 +409,50 @@ async function cropBottom(file: string): Promise<boolean> {
   }
 }
 
-/** One full-size frame from the middle of a clip, through the local screen: a facecam or overlay, gore, or burned-in subtitles. */
-async function frameProblem(
-  file: string,
-): Promise<"facecam" | "gore" | "subtitles" | undefined> {
-  const frame = file.replace(/\.mp4$/, ".check.jpg");
-  const band = file.replace(/\.mp4$/, ".band.jpg");
+export type FrameVerdict = "facecam" | "gore" | "text-top" | "text-bottom" | "text-both" | undefined;
+
+/** Where text was seen across a clip's sampled frames, as a verdict: both edges loses the clip. */
+export function textVerdict(top: boolean, bottom: boolean): FrameVerdict {
+  return top && bottom ? "text-both" : top ? "text-top" : bottom ? "text-bottom" : undefined;
+}
+
+/**
+ * Three full-size frames from a clip (early, middle, late), through the local screen in one batch: a
+ * facecam or overlay, gore, or writing along the top or bottom centre (subtitles, tutorial prompts,
+ * objective lines). One frame at 0.8 s missed a cutscene's subtitles later in a clip and a tutorial
+ * line along the top (GTA ranking, 21 Oct 2026). HUD in the corners does not count.
+ */
+async function frameProblem(file: string): Promise<FrameVerdict> {
+  const frames = [0, 1, 2].map((k) => file.replace(/\.mp4$/, `.check${k}.jpg`));
+  const bands: string[] = [];
   try {
-    await run(FFMPEG, [
-      "-v",
-      "error",
-      "-y",
-      "-ss",
-      "0.8",
-      "-i",
-      file,
-      "-frames:v",
-      "1",
-      "-vf",
-      "scale=960:-2",
-      frame,
-    ]);
-    const [flags] = await screenFrames([frame]);
-    if (flags?.webcam) return "facecam";
-    if (flags?.gore) return "gore";
-    // Subtitles sit centred along the bottom; HUD (ammo, minimap) sits in the corners. Only writing
-    // in that centre-bottom band counts: the whole-frame text flag also fires on objective markers.
-    if (flags?.text) {
-      await run(FFMPEG, [
-        "-v",
-        "error",
-        "-y",
-        "-i",
-        frame,
-        "-vf",
-        "crop=iw*0.6:ih*0.22:iw*0.2:ih*0.76",
-        band,
-      ]);
-      const [b] = await screenFrames([band]);
-      if (b?.text && !b.hud) return "subtitles";
-    }
-    return undefined;
+    const { stdout } = await run(FFPROBE, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]);
+    const seconds = Number(String(stdout).trim()) || 3;
+    const at = [Math.min(0.8, seconds * 0.2), seconds * 0.5, Math.max(0, seconds - 0.8)];
+    for (const [k, t] of at.entries())
+      await run(FFMPEG, ["-v", "error", "-y", "-ss", t.toFixed(2), "-i", file, "-frames:v", "1", "-vf", "scale=960:-2", frames[k]!]);
+    const flags = await screenFrames(frames);
+    if (flags.some((f) => f?.webcam)) return "facecam";
+    if (flags.some((f) => f?.gore)) return "gore";
+    // Only writing in the centre of the top or bottom band counts: the whole-frame text flag also
+    // fires on objective markers and HUD.
+    const texty = frames.filter((_, k) => flags[k]?.text);
+    if (!texty.length) return undefined;
+    const pairs: Array<["top" | "bottom", string]> = [];
+    for (const [k, f] of texty.entries())
+      for (const edge of ["top", "bottom"] as const) {
+        const b = file.replace(/\.mp4$/, `.band${k}${edge[0]}.jpg`);
+        await run(FFMPEG, ["-v", "error", "-y", "-i", f, "-vf", edge === "bottom" ? "crop=iw*0.6:ih*0.22:iw*0.2:ih*0.76" : "crop=iw*0.6:ih*0.22:iw*0.2:0", b]);
+        bands.push(b);
+        pairs.push([edge, b]);
+      }
+    const seen = await screenFrames(pairs.map(([, b]) => b));
+    const has = (edge: "top" | "bottom") => pairs.some(([e], k) => e === edge && seen[k]?.text && !seen[k]?.hud);
+    return textVerdict(has("top"), has("bottom"));
   } catch {
     return undefined;
   } finally {
-    await fs.rm(frame, { force: true }).catch(() => undefined);
-    await fs.rm(band, { force: true }).catch(() => undefined);
+    for (const f of [...frames, ...bands]) await fs.rm(f, { force: true }).catch(() => undefined);
   }
 }
 
@@ -670,19 +671,20 @@ async function clipsFrom(
     // A full-size look at the finished clip: a small facecam is a few pixels in the matcher's
     // 320 px keyframes. A facecam or gore drops the clip and every other clip from that channel.
     const file = path.join(o.episodeDir, c.file);
-    let verdict = streamed.has(src.url) ? "facecam" : await frameProblem(file);
-    // Text along the bottom (subtitles, or the mission and pager text of older games) is cropped away
-    // instead of losing the clip: the picture above it is still good footage.
-    if (verdict === "subtitles" && (await cropBottom(file))) {
-      log("info", "gameplay clip cropped above its bottom text", {
+    let verdict: FrameVerdict = streamed.has(src.url) ? "facecam" : await frameProblem(file);
+    // Text along one edge (subtitles, mission text, a tutorial prompt) is cropped away instead of
+    // losing the clip: the rest of the picture is still good footage. Text at both edges loses it.
+    const edge = verdict === "text-top" ? "top" : verdict === "text-bottom" ? "bottom" : undefined;
+    if (edge && (await cropEdge(file, edge))) {
+      log("info", `gameplay clip cropped clear of its ${edge} text`, {
         game: o.game,
         source: src.channelTitle,
       });
       verdict = undefined;
     }
     if (verdict) {
-      // A facecam or gore condemns the channel; burned-in subtitles only this clip.
-      if (verdict !== "subtitles") streamed.add(src.url);
+      // A facecam or gore condemns the channel; burned-in text only this clip.
+      if (verdict === "facecam" || verdict === "gore") streamed.add(src.url);
       await fs.rm(file, { force: true }).catch(() => undefined);
       log("info", "gameplay clip dropped", {
         game: o.game,

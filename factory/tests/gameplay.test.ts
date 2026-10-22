@@ -109,3 +109,24 @@ test("named missions are found in the shot list, missions first, the game's own 
   assert.deepEqual(named.map((n) => n.name), ["All Ghillied Up", "Captain Price"]);
   assert.deepEqual(named[0]!.keys, ["beat:9#m1"]);
 });
+
+test("text at one edge of a clip is cropped away, text at both loses the clip", async () => {
+  const { textVerdict, cropEdge } = await import("../src/assets/gameplay.ts");
+  assert.equal(textVerdict(true, false), "text-top");
+  assert.equal(textVerdict(false, true), "text-bottom");
+  assert.equal(textVerdict(true, true), "text-both");
+  assert.equal(textVerdict(false, false), undefined);
+  // A real crop on a generated clip: white band on top, the rest dark; the top crop removes the band.
+  const { execFileSync } = await import("node:child_process");
+  const { FFMPEG, FFPROBE } = await import("../src/lib/bin.ts");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const file = path.join(os.tmpdir(), `pulse_crop_${process.pid}.mp4`);
+  execFileSync(FFMPEG, ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=640x360:d=1", "-vf", "drawbox=x=0:y=0:w=iw:h=60:color=white:t=fill", "-pix_fmt", "yuv420p", file]);
+  assert.ok(await cropEdge(file, "top"));
+  const size = execFileSync(FFPROBE, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", file], { encoding: "utf8" }).trim();
+  assert.equal(size, "640,266");
+  const luma = execFileSync(FFMPEG, ["-v", "info", "-i", file, "-vf", "crop=iw:20:0:0,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-", "-frames:v", "1", "-f", "null", "-"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const yavg = Number(luma.match(/YAVG=([\d.]+)/)?.[1] ?? 255);
+  assert.ok(yavg < 40, `the top of the cropped clip is dark (YAVG ${yavg}), the white band is gone`);
+});

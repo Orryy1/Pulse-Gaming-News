@@ -214,7 +214,38 @@ export function speakYears(text: string): string {
   );
 }
 
+const digitWords = (d: string) =>
+  d
+    .split("")
+    .map((c) => ONES[Number(c)])
+    .join(" ");
+
+/**
+ * Counts and decimals in words, which the voice otherwise misreads: "32,619" is "thirty-two thousand six
+ * hundred nineteen", "4.5" is "four point five", "47.5%" is "forty-seven point five percent". Only numbers
+ * with a separator or a decimal point: a bare number is usually a name ("Xbox 360", "RTX 4090"), and
+ * prices and years are already words by now. Captions turn these back into figures (timeline.ts
+ * displayWords).
+ */
+export function speakNumbers(text: string): string {
+  return text
+    .replace(
+      /(?<![\w$£€¥.,#:/-])(\d{1,3}(?:,\d{3})+|\d+)\.(\d+)(\s?%)?(?![\w/]|[.,]\d)/g,
+      (_m, whole: string, frac: string, pct: string | undefined) =>
+        `${numberWords(Number(whole.replace(/,/g, "")))} point ${digitWords(frac)}${pct ? " percent" : ""}`,
+    )
+    .replace(
+      /(?<![\w$£€¥.,#:/-])(\d{1,3}(?:,\d{3})+)(\s?%)?(?![\w/]|[.,]\d)/g,
+      (_m, whole: string, pct: string | undefined) =>
+        `${numberWords(Number(whole.replace(/,/g, "")))}${pct ? " percent" : ""}`,
+    );
+}
+
 export function speakable(text: string): string {
+  return speakNumbers(speakYearsAndMoney(text));
+}
+
+function speakYearsAndMoney(text: string): string {
   return speakYears(speakTitles(text))
     .replace(
       /([$£€¥])\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?:\s?(billion|million|bn|mn|[kmb])\b)?/gi,

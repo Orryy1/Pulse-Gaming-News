@@ -281,6 +281,74 @@ function spokenNumber(
 }
 
 /**
+ * A count or decimal the voice says in words (speakNumbers in src/voice/speakable.ts) as the screen should
+ * show it: "thirty-two thousand six hundred nineteen" is "32,619", "four point five" is "4.5", "forty-seven
+ * point five percent" is "47.5%", "one point two million" is "1.2 million". Only a phrase that is plainly a
+ * number (hundred, thousand or more in it, a decimal point, or "percent" after it) turns back, so "one of
+ * the best" stays words.
+ */
+export function spokenCount(
+  words: Word[],
+  i: number,
+): { text: string; used: number } | undefined {
+  const bare = (k: number) =>
+    (words[k]?.text ?? "").toLowerCase().replace(/[^a-z-]/g, "");
+  const stops = (k: number) => /[.,;:!?)"”’]$/.test(words[k]?.text ?? "");
+  let total = 0;
+  let current = 0;
+  let used = 0;
+  let scaled = false;
+  for (let k = i; k < words.length; k++) {
+    const w = bare(k);
+    const [t, u] = w.split("-");
+    if (SMALL[w] !== undefined) current += SMALL[w]!;
+    else if (TENS_W[t!] !== undefined && (!u || UNITS[u] !== undefined))
+      current += TENS_W[t!]! + (u ? UNITS[u]! : 0);
+    else if (w === "hundred" && used) {
+      current *= 100;
+      scaled = true;
+    } else if (SCALES[w] !== undefined && used) {
+      total += current * SCALES[w]!;
+      current = 0;
+      scaled = true;
+    } else break;
+    used++;
+    if (stops(k)) break;
+  }
+  if (!used) return undefined;
+  let k = i + used;
+  let frac = "";
+  if (!stops(k - 1) && bare(k) === "point") {
+    let j = k + 1;
+    let d = "";
+    while (j < words.length && (SMALL[bare(j)] ?? 10) < 10) {
+      d += String(SMALL[bare(j)]);
+      j++;
+      if (stops(j - 1)) break;
+    }
+    if (d) {
+      frac = d;
+      k = j;
+    }
+  }
+  let scale = "";
+  if (
+    frac &&
+    !stops(k - 1) &&
+    (bare(k) === "million" || bare(k) === "billion")
+  ) {
+    scale = bare(k);
+    k++;
+  }
+  const percent = !stops(k - 1) && bare(k) === "percent";
+  if (percent) k++;
+  if (!scaled && !frac && !percent) return undefined;
+  const tail = (words[k - 1]?.text ?? "").match(/[.,;:!?)"”’]+$/)?.[0] ?? "";
+  const shown = `${(total + current).toLocaleString("en-US")}${frac ? `.${frac}` : ""}${scale ? ` ${scale}` : ""}${percent ? "%" : ""}`;
+  return { text: shown + tail, used: k - i };
+}
+
+/**
  * A price the voice says in words ("forty-nine dollars ninety-nine", "one point five billion
  * dollars") as the screen should show it ("$49.99", "$1.5 billion"), with the words it used.
  */
@@ -456,6 +524,17 @@ export function displayWords(words: Word[]): Word[] {
           continue;
         }
       }
+    }
+    // thirty-two thousand six hundred nineteen, four point five, forty-seven point five percent
+    const count = spokenCount(words, i);
+    if (count) {
+      out.push({
+        text: count.text,
+        start: w.start,
+        end: words[i + count.used - 1]!.end,
+      });
+      i += count.used - 1;
+      continue;
     }
     out.push(w);
   }

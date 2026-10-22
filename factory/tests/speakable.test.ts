@@ -85,3 +85,32 @@ test("a last line never hangs on 'because'", () => {
   assert.equal(tidyLoopLine("The wait is over…"), "The wait is over.");
   assert.equal(tidyLoopLine("Which one are you playing first?"), "Which one are you playing first?");
 });
+
+test("counts and decimals are spoken in words and shown as figures again in the captions", async () => {
+  const { speakable } = await import("../src/voice/speakable.ts");
+  const { displayWords } = await import("../src/render/timeline.ts");
+  const roundTrip = (text: string) => {
+    const spoken = speakable(text);
+    const words = spoken.split(/\s+/).map((t, k) => ({ text: t, start: k, end: k + 0.5 }));
+    return { spoken, shown: displayWords(words).map((w) => w.text).join(" ") };
+  };
+  const cases: Array<[string, string, string]> = [
+    ["32,619 Steam users are playing.", "thirty-two thousand six hundred nineteen Steam users are playing.", "32,619 Steam users are playing."],
+    ["It holds 4.5 out of 5.", "It holds four point five out of 5.", "It holds 4.5 out of 5."],
+    ["47.5% of players finished it.", "forty-seven point five percent of players finished it.", "47.5% of players finished it."],
+    ["It sold 1.2 million copies.", "It sold one point two million copies.", "It sold 1.2 million copies."],
+    ["Over 1,000,000 downloads.", "Over one million downloads.", "Over 1,000,000 downloads."],
+    ["2,000 players joined.", "two thousand players joined.", "2,000 players joined."],
+    ["376,411 reviews at 90 percent.", "three hundred seventy-six thousand four hundred eleven reviews at 90 percent.", "376,411 reviews at 90%."],
+  ];
+  for (const [text, spoken, shown] of cases) {
+    const r = roundTrip(text);
+    assert.equal(r.spoken, spoken, `voice: ${text}`);
+    assert.equal(r.shown, shown, `captions: ${text}`);
+  }
+  // Names, small numbers, prices and years keep their own handling.
+  assert.equal(speakable("Xbox 360 and the RTX 4090"), "Xbox 360 and the RTX 4090");
+  assert.equal(roundTrip("One of the best, and one hundred percent worth it.").shown, "One of the best, and 100% worth it.");
+  assert.equal(roundTrip("It costs $49.99 today.").shown, "It costs $49.99 today.");
+  assert.equal(roundTrip("It came out in 2007.").shown, "It came out in 2007.");
+});

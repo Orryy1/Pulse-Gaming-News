@@ -91,7 +91,16 @@ export function createClaude(
           fallbacks: "default",
           thinking: { type: "adaptive" },
           output_config: { effort, format: betaZodOutputFormat(schema) },
-          system,
+          // Each job's instructions are fixed text, sent again on every call: cached for an hour, a repeat
+          // (the picture editor's bursts, the next Short's writer) reads them at a twentieth of the price.
+          // Replaying 19-22 Oct usage: 13% off the bill (the five-minute cache: 6%).
+          system: [
+            {
+              type: "text",
+              text: system,
+              cache_control: { type: "ephemeral", ttl: "1h" },
+            },
+          ],
           messages: [{ role: "user", content }],
         },
         // A large output (a long video's full shot list) needs an explicit time limit, or the SDK insists on streaming.

@@ -44,7 +44,10 @@ while ($true) {
   Log $log "starting factory"
   # cmd does the redirect so node's UTF-8 output lands in the log as plain text
   # (PowerShell's *>> writes UTF-16 and wraps stderr lines in NativeCommandError records).
-  & cmd /c "node --import tsx src/server.ts >> `"$log`" 2>&1"
+  # Above-normal priority: the factory publishes the channel, and on a PC shared with After Effects it
+  # could not even start (22 Oct 2026, 96% CPU). Windows does not pass this class to child processes,
+  # so renders themselves still run at normal priority.
+  & cmd /c "start `"pulse-factory`" /b /wait /abovenormal node --import tsx src/server.ts >> `"$log`" 2>&1"
   Log $log "factory exited with $LASTEXITCODE; restarting in 30s"
   Start-Sleep -Seconds 30
 }

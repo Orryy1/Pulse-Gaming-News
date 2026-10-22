@@ -312,8 +312,8 @@ function card(ep: SiteEpisode, kicker?: string): string {
       ? s.recap
         ? "This week"
         : s.evergreen_format === "documentary"
-        ? "Documentary"
-        : "Ranked"
+          ? "Documentary"
+          : "Ranked"
       : s.is_rumour
         ? "Report"
         : "");
@@ -819,6 +819,7 @@ ${recent
 export function robotsTxt(base: string): string {
   return `User-agent: *
 Allow: /
+Allow: /episodes/*/video.mp4
 Disallow: /episodes
 Disallow: /connect
 Disallow: /oauth

@@ -129,14 +129,24 @@ export interface InstagramReel {
  * service refuses the bytes, a second container from a signed link to the same
  * file on this PC, which Instagram fetches itself. Then wait for FINISHED and publish.
  */
-export async function postInstagramReel(r: InstagramReel, fetchFn: FetchLike = fetch, pollMs = 10_000): Promise<string> {
+export async function postInstagramReel(
+  r: InstagramReel,
+  fetchFn: FetchLike = fetch,
+  pollMs = 10_000,
+): Promise<string> {
   const fromLink = async () =>
     (
       await json(
         await fetchFn(`${GRAPH}/${r.accountId}/media`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ media_type: "REELS", video_url: r.videoUrl, caption: r.caption.slice(0, 2200), share_to_feed: true, access_token: r.token }),
+          body: JSON.stringify({
+            media_type: "REELS",
+            video_url: r.videoUrl,
+            caption: r.caption.slice(0, 2200),
+            share_to_feed: true,
+            access_token: r.token,
+          }),
         }),
         "instagram container (link)",
       )
@@ -151,21 +161,37 @@ export async function postInstagramReel(r: InstagramReel, fetchFn: FetchLike = f
   try {
     return await instagramFinish(r, id, fetchFn, pollMs);
   } catch (err) {
-    // Processing refused the uploaded bytes (error 2207076 and kin): Instagram gets one more go fetching the file itself.
-    if (!r.videoUrl || !/processing failed/.test(String(err))) throw err;
+    // Processing refused the uploaded bytes (error 2207076 and kin) or never got going: Instagram gets one
+    // more go fetching the file itself.
+    if (!r.videoUrl || !/processing failed|still processing/.test(String(err)))
+      throw err;
     return instagramFinish(r, await fromLink(), fetchFn, pollMs);
   }
 }
 
-async function instagramFinish(r: InstagramReel, id: string, fetchFn: FetchLike, pollMs: number): Promise<string> {
+async function instagramFinish(
+  r: InstagramReel,
+  id: string,
+  fetchFn: FetchLike,
+  pollMs: number,
+): Promise<string> {
   let status = "IN_PROGRESS";
   for (let i = 0; i < 40 && status !== "FINISHED"; i++) {
     await sleep(pollMs);
-    const st = await json(await fetchFn(`${GRAPH}/${id}?fields=status_code,status&access_token=${encodeURIComponent(r.token)}`), "instagram status");
+    const st = await json(
+      await fetchFn(
+        `${GRAPH}/${id}?fields=status_code,status&access_token=${encodeURIComponent(r.token)}`,
+      ),
+      "instagram status",
+    );
     status = st.status_code ?? "IN_PROGRESS";
-    if (status === "ERROR" || status === "EXPIRED") throw new Error(`instagram processing failed: ${st.status ?? status}`);
+    if (status === "ERROR" || status === "EXPIRED")
+      throw new Error(`instagram processing failed: ${st.status ?? status}`);
   }
-  if (status !== "FINISHED") throw new Error(`instagram container ${id} still processing after the wait`);
+  if (status !== "FINISHED")
+    throw new Error(
+      `instagram container ${id} still processing after the wait`,
+    );
   const pub = await json(
     await fetchFn(`${GRAPH}/${r.accountId}/media_publish`, {
       method: "POST",
@@ -177,26 +203,43 @@ async function instagramFinish(r: InstagramReel, id: string, fetchFn: FetchLike,
   return pub.id;
 }
 
-async function instagramFromBytes(r: InstagramReel, fetchFn: FetchLike): Promise<string> {
+async function instagramFromBytes(
+  r: InstagramReel,
+  fetchFn: FetchLike,
+): Promise<string> {
   const container = await json(
     await fetchFn(`${GRAPH}/${r.accountId}/media`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ media_type: "REELS", upload_type: "resumable", caption: r.caption.slice(0, 2200), share_to_feed: true, access_token: r.token }),
+      body: JSON.stringify({
+        media_type: "REELS",
+        upload_type: "resumable",
+        caption: r.caption.slice(0, 2200),
+        share_to_feed: true,
+        access_token: r.token,
+      }),
     }),
     "instagram container",
   );
   const id: string = container.id;
-  const uploadUrl: string = container.uri || `https://rupload.facebook.com/ig-api-upload/v21.0/${id}`;
+  const uploadUrl: string =
+    container.uri || `https://rupload.facebook.com/ig-api-upload/v21.0/${id}`;
   const data = await fs.readFile(r.file);
-  await json(
-    await fetchFn(uploadUrl, {
-      method: "POST",
-      headers: { authorization: `OAuth ${r.token}`, offset: "0", file_size: String(data.length), "content-type": "application/octet-stream" },
-      body: data,
-    }),
-    "instagram upload",
-  );
+  const up = await fetchFn(uploadUrl, {
+    method: "POST",
+    headers: {
+      authorization: `OAuth ${r.token}`,
+      offset: "0",
+      file_size: String(data.length),
+      "content-type": "application/octet-stream",
+    },
+    body: data,
+  });
+  // The upload host answers 400 "ProcessingFailedError" even when the bytes arrived and the container
+  // goes on to finish (tested 22 Oct 2026), so its status decides, not this reply; the caller falls
+  // back to a link upload if the container errors or never progresses.
+  if (!up.ok && !/ProcessingFailedError/.test(await up.text()))
+    throw new Error(`instagram upload: HTTP ${up.status}`);
   return id;
 }
 
@@ -274,26 +317,37 @@ export async function postTikTok(
     authorization: `Bearer ${p.accessToken}`,
     "content-type": "application/json; charset=UTF-8",
   };
-  const source_info = { source: "FILE_UPLOAD", video_size: size, chunk_size: chunk, total_chunk_count: count };
+  const source_info = {
+    source: "FILE_UPLOAD",
+    video_size: size,
+    chunk_size: chunk,
+    total_chunk_count: count,
+  };
   const init = await json(
     p.inbox
-      ? await fetchFn("https://open.tiktokapis.com/v2/post/publish/inbox/video/init/", { method: "POST", headers, body: JSON.stringify({ source_info }) })
-      : await fetchFn("https://open.tiktokapis.com/v2/post/publish/video/init/", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        post_info: {
-          title: p.title.slice(0, 2200),
-          privacy_level: "PUBLIC_TO_EVERYONE",
-          disable_comment: false,
-          disable_duet: false,
-          disable_stitch: false,
-          video_cover_timestamp_ms: 1500,
-          is_aigc: true,
-        },
-        source_info,
-      }),
-    }),
+      ? await fetchFn(
+          "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/",
+          { method: "POST", headers, body: JSON.stringify({ source_info }) },
+        )
+      : await fetchFn(
+          "https://open.tiktokapis.com/v2/post/publish/video/init/",
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              post_info: {
+                title: p.title.slice(0, 2200),
+                privacy_level: "PUBLIC_TO_EVERYONE",
+                disable_comment: false,
+                disable_duet: false,
+                disable_stitch: false,
+                video_cover_timestamp_ms: 1500,
+                is_aigc: true,
+              },
+              source_info,
+            }),
+          },
+        ),
     "tiktok init",
   );
   const publishId: string = init.data?.publish_id;
@@ -339,7 +393,8 @@ export async function postTikTok(
       "tiktok status",
     );
     const status = st.data?.status;
-    if (status === "PUBLISH_COMPLETE") return String(st.data?.publicaly_available_post_id?.[0] ?? publishId);
+    if (status === "PUBLISH_COMPLETE")
+      return String(st.data?.publicaly_available_post_id?.[0] ?? publishId);
     if (status === "SEND_TO_USER_INBOX") return `inbox:${publishId}`;
     if (status === "FAILED")
       throw new Error(
@@ -379,12 +434,22 @@ export async function postX(
 // ------------------------------------------------------------------ community posts
 
 /** A photo post on the Facebook page from a public image URL; returns the post id. */
-export async function postFacebookPhoto(pageId: string, token: string, imageUrl: string, message: string, fetchFn: FetchLike = fetch): Promise<string> {
+export async function postFacebookPhoto(
+  pageId: string,
+  token: string,
+  imageUrl: string,
+  message: string,
+  fetchFn: FetchLike = fetch,
+): Promise<string> {
   const r = await json(
     await fetchFn(`${GRAPH}/${pageId}/photos`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: imageUrl, message: message.slice(0, 5000), access_token: token }),
+      body: JSON.stringify({
+        url: imageUrl,
+        message: message.slice(0, 5000),
+        access_token: token,
+      }),
     }),
     "facebook photo",
   );
@@ -392,19 +457,36 @@ export async function postFacebookPhoto(pageId: string, token: string, imageUrl:
 }
 
 /** A single-image Instagram post from a public image URL; returns the media id. */
-export async function postInstagramImage(accountId: string, token: string, imageUrl: string, caption: string, fetchFn: FetchLike = fetch, pollMs = 5_000): Promise<string> {
+export async function postInstagramImage(
+  accountId: string,
+  token: string,
+  imageUrl: string,
+  caption: string,
+  fetchFn: FetchLike = fetch,
+  pollMs = 5_000,
+): Promise<string> {
   const c = await json(
     await fetchFn(`${GRAPH}/${accountId}/media`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ image_url: imageUrl, caption: caption.slice(0, 2200), access_token: token }),
+      body: JSON.stringify({
+        image_url: imageUrl,
+        caption: caption.slice(0, 2200),
+        access_token: token,
+      }),
     }),
     "instagram image container",
   );
   for (let i = 0; i < 24; i++) {
-    const st = await json(await fetchFn(`${GRAPH}/${c.id}?fields=status_code&access_token=${encodeURIComponent(token)}`), "instagram image status");
+    const st = await json(
+      await fetchFn(
+        `${GRAPH}/${c.id}?fields=status_code&access_token=${encodeURIComponent(token)}`,
+      ),
+      "instagram image status",
+    );
     if (st.status_code === "FINISHED") break;
-    if (st.status_code === "ERROR") throw new Error("instagram image processing failed");
+    if (st.status_code === "ERROR")
+      throw new Error("instagram image processing failed");
     await sleep(pollMs);
   }
   const pub = await json(
@@ -419,23 +501,45 @@ export async function postInstagramImage(accountId: string, token: string, image
 }
 
 /** The page's own comment under a Facebook post or an Instagram media. */
-export async function graphComment(objectId: string, token: string, text: string, instagram: boolean, fetchFn: FetchLike = fetch): Promise<string> {
+export async function graphComment(
+  objectId: string,
+  token: string,
+  text: string,
+  instagram: boolean,
+  fetchFn: FetchLike = fetch,
+): Promise<string> {
   const r = await json(
-    await fetchFn(`${GRAPH}/${objectId}/${instagram ? "comments" : "comments"}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(instagram ? { message: text, access_token: token } : { message: text, access_token: token }),
-    }),
+    await fetchFn(
+      `${GRAPH}/${objectId}/${instagram ? "comments" : "comments"}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(
+          instagram
+            ? { message: text, access_token: token }
+            : { message: text, access_token: token },
+        ),
+      },
+    ),
     instagram ? "instagram comment" : "facebook comment",
   );
   return String(r.id);
 }
 
 /** How many comments a post has drawn. */
-export async function graphCommentCount(objectId: string, token: string, instagram: boolean, fetchFn: FetchLike = fetch): Promise<number> {
+export async function graphCommentCount(
+  objectId: string,
+  token: string,
+  instagram: boolean,
+  fetchFn: FetchLike = fetch,
+): Promise<number> {
   const r = await json(
-    await fetchFn(`${GRAPH}/${objectId}?fields=${instagram ? "comments_count" : "comments.summary(true).limit(0)"}&access_token=${encodeURIComponent(token)}`),
+    await fetchFn(
+      `${GRAPH}/${objectId}?fields=${instagram ? "comments_count" : "comments.summary(true).limit(0)"}&access_token=${encodeURIComponent(token)}`,
+    ),
     "comment count",
   );
-  return Number(instagram ? r.comments_count : r.comments?.summary?.total_count) || 0;
+  return (
+    Number(instagram ? r.comments_count : r.comments?.summary?.total_count) || 0
+  );
 }

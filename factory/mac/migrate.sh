@@ -58,10 +58,11 @@ cutover)
   echo "== stopping the PC side"
   schtasks //change //tn "Pulse Factory" //disable >/dev/null; schtasks //end //tn "Pulse Factory" >/dev/null 2>&1 || true
   schtasks //change //tn "Pulse Tunnel" //disable >/dev/null; schtasks //end //tn "Pulse Tunnel" >/dev/null 2>&1 || true
-  powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match 'src[\\\\/]server\.ts|cloudflared-pulse' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }"
+  schtasks //change //tn "Pulse Discord" //disable >/dev/null 2>&1; schtasks //end //tn "Pulse Discord" >/dev/null 2>&1 || true
+  powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match 'src[\\\\/]server\.ts|src[\\\\/]discord[\\\\/]bot\.ts|discord-bot\.ps1|cloudflared-pulse' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }"
   sleep 5
   echo "== final copy (database and episodes)"
-  tar -C data -cf - db episodes site engage admin $(cd data && ls -d tokens tiktok-session.json 2>/dev/null) | on_mac 'mkdir -p ~/PulseFactory/factory/data && cd ~/PulseFactory/factory/data && rm -f db.lock && tar -xf -'
+  tar -C data -cf - db episodes site engage admin discord $(cd data && ls -d tokens tiktok-session.json 2>/dev/null) | on_mac 'mkdir -p ~/PulseFactory/factory/data && cd ~/PulseFactory/factory/data && rm -f db.lock && tar -xf -'
   echo "== starting the Mac side"
   on_mac 'bash ~/PulseFactory/factory/mac/launchd.sh factory'
   ok=no
@@ -73,9 +74,10 @@ cutover)
     echo "CUTOVER DONE: the Mac is running the factory and serving pulsegmg.com"
   else
     echo "Mac did not come up healthy within 10 minutes: starting the PC side again"
-    on_mac 'launchctl bootout gui/$(id -u)/com.pulse.factory 2>/dev/null; launchctl bootout gui/$(id -u)/com.pulse.tunnel 2>/dev/null' || true
+    on_mac 'launchctl bootout gui/$(id -u)/com.pulse.factory 2>/dev/null; launchctl bootout gui/$(id -u)/com.pulse.tunnel 2>/dev/null; launchctl bootout gui/$(id -u)/com.pulse.discord 2>/dev/null' || true
     schtasks //change //tn "Pulse Tunnel" //enable >/dev/null; schtasks //run //tn "Pulse Tunnel" >/dev/null
     schtasks //change //tn "Pulse Factory" //enable >/dev/null; schtasks //run //tn "Pulse Factory" >/dev/null
+    schtasks //change //tn "Pulse Discord" //enable >/dev/null 2>&1; schtasks //run //tn "Pulse Discord" >/dev/null 2>&1 || true
     exit 1
   fi
   ;;

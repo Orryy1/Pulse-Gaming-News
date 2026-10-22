@@ -449,8 +449,9 @@ test("prl.buildCommentSwoop: emits card bg + stripe + handle + body", () => {
   });
   // Card bg + amber stripe + handle line + at least 1 body line
   assert.ok(out.length >= 4);
-  // u/handle in the header
-  assert.ok(out.some((l) => l.includes("u/GamerXX")));
+  // Reddit usernames stay off screen by default (REDDIT_USERNAMES_ON_VIDEO); the header credits Reddit instead.
+  assert.ok(out.some((l) => l.includes("Reddit comment")));
+  assert.ok(!out.some((l) => l.includes("GamerXX")));
   // Score visible
   assert.ok(out.some((l) => l.includes("↑547")));
 });

@@ -82,6 +82,25 @@ export async function judgeComments(
   });
 }
 
+/** How long a record of a judged comment (its text, our decision and reply) is kept. The privacy notice says 90 days. */
+export const COMMENT_RECORD_RETENTION_DAYS = 90;
+
+/**
+ * Deletes records of judged comments older than the retention period. Every reply window is at most a day,
+ * so a record this old is never needed to stop a second reply. Returns how many were deleted.
+ */
+export async function pruneCommentRecords(
+  db: Db,
+  now: Date,
+  days = COMMENT_RECORD_RETENTION_DAYS,
+): Promise<number> {
+  const rows = await db.query<{ comment_id: string }>(
+    `DELETE FROM comment_replies WHERE created_at < $1::timestamptz - make_interval(days => $2) RETURNING comment_id`,
+    [now, days],
+  );
+  return rows.length;
+}
+
 const lastPoll = new Map<string, number>();
 let ownChannel: string | undefined;
 

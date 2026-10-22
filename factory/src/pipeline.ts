@@ -162,6 +162,7 @@ import {
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
+import { pruneCommentRecords } from "./youtube/replies.ts";
 import {
   type Episode,
   type EpisodeAssets,
@@ -5262,6 +5263,10 @@ export async function tick(
     }
     await pruneMedia(s).catch((err) =>
       log("warn", "prune failed", { error: errorMessage(err) }),
+    );
+    // Records of comments we judged are kept 90 days (the privacy notice says so), then deleted.
+    await pruneCommentRecords(s.db, s.now()).catch((err) =>
+      log("warn", "comment record prune failed", { error: errorMessage(err) }),
     );
     // Public numbers for every published Short at fixed ages (one unit per fifty videos).
     if (!s.cfg.dryRun)

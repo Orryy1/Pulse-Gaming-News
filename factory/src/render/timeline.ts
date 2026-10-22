@@ -344,7 +344,15 @@ export function spokenCount(
   if (percent) k++;
   if (!scaled && !frac && !percent) return undefined;
   const tail = (words[k - 1]?.text ?? "").match(/[.,;:!?)"”’]+$/)?.[0] ?? "";
-  const shown = `${(total + current).toLocaleString("en-US")}${frac ? `.${frac}` : ""}${scale ? ` ${scale}` : ""}${percent ? "%" : ""}`;
+  const value = total + current;
+  // Round millions and billions read better as "20 million" than "20,000,000".
+  const whole =
+    !frac && value >= 1e9 && value % 1e9 === 0
+      ? `${value / 1e9} billion`
+      : !frac && value >= 1e6 && value % 1e6 === 0
+        ? `${value / 1e6} million`
+        : value.toLocaleString("en-US");
+  const shown = `${whole}${frac ? `.${frac}` : ""}${scale ? ` ${scale}` : ""}${percent ? "%" : ""}`;
   return { text: shown + tail, used: k - i };
 }
 

@@ -655,8 +655,13 @@ test("prices the voice says in words are shown as prices again", async () => {
   );
   assert.equal(
     show("twenty million copies in twenty sixteen"),
-    "twenty million copies in 2016",
-    "plain numbers and years are untouched",
+    "20 million copies in 2016",
+    "round millions read as figures, years as years",
+  );
+  assert.equal(
+    show("only twenty games"),
+    "only twenty games",
+    "small numbers in words stay words",
   );
   assert.equal(
     show("Majora's Mask, two thousand. Its clock"),
@@ -668,8 +673,8 @@ test("prices the voice says in words are shown as prices again", async () => {
   );
   assert.equal(
     show("two thousand players joined"),
-    "two thousand players joined",
-    "a count stays in words",
+    "2,000 players joined",
+    "a count reads as a figure, not a year",
   );
   assert.equal(
     show("two thousand five hundred players"),
@@ -727,9 +732,14 @@ test("a corner credit's fades always form a strictly increasing range, however s
     const f = creditFade(d);
     if (f < 1) continue;
     const range = [0, f, d - f, d];
-    for (let k = 1; k < range.length; k++) assert.ok(range[k]! > range[k - 1]!, `shot of ${d} frames: ${range}`);
+    for (let k = 1; k < range.length; k++)
+      assert.ok(range[k]! > range[k - 1]!, `shot of ${d} frames: ${range}`);
   }
-  assert.equal(creditFade(12), 5, "the 12-frame shot that crashed renders now fades over 5 frames");
+  assert.equal(
+    creditFade(12),
+    5,
+    "the 12-frame shot that crashed renders now fades over 5 frames",
+  );
   assert.equal(creditFade(60), 8);
 });
 
@@ -739,24 +749,45 @@ test("the spoken caption word never grows across the gap to the next word", asyn
   for (const letters of [2, 5, 8, 12, 16]) {
     const width = letters * font * 0.66;
     const perSide = (width * (captionGrow(letters, font) - 1)) / 2;
-    assert.ok(perSide <= 9.5, `${letters} letters grow ${perSide.toFixed(1)} px a side`);
+    assert.ok(
+      perSide <= 9.5,
+      `${letters} letters grow ${perSide.toFixed(1)} px a side`,
+    );
   }
   assert.equal(captionGrow(2, font), 1.06, "short words keep the full pop");
 });
 
 test("the closing line does not repeat the hero still cut after cut; only the last shot returns to it", () => {
-  const base = input({ images: Array.from({ length: 8 }, (_, k) => ({ kind: k === 0 ? "hero" : "screenshot", aspect: 1.778 })) as PlanInput["images"] });
+  const base = input({
+    images: Array.from({ length: 8 }, (_, k) => ({
+      kind: k === 0 ? "hero" : "screenshot",
+      aspect: 1.778,
+    })) as PlanInput["images"],
+  });
   // A long closing line so it needs several cuts.
   const segs = base.segments.map((s) => ({ ...s }));
   const loop = segs.at(-1)!;
   loop.end = loop.start + 9;
-  const plan = buildPlan({ ...base, segments: segs, durationSeconds: loop.end });
+  const plan = buildPlan({
+    ...base,
+    segments: segs,
+    durationSeconds: loop.end,
+  });
   const closing = plan.shots.filter((s) => segs[s.segment]?.kind === "loop");
   const last = plan.shots.at(-1)!;
-  assert.ok(closing.length >= 2, `the closing line has ${closing.length} shots`);
+  assert.ok(
+    closing.length >= 2,
+    `the closing line has ${closing.length} shots`,
+  );
   for (let k = 1; k < plan.shots.length; k++) {
-    const a = plan.shots[k - 1]!.media, b = plan.shots[k]!.media;
-    if (a.type === "image" && b.type === "image") assert.notEqual(a.index, b.index, `shots ${k - 1} and ${k} show the same still`);
+    const a = plan.shots[k - 1]!.media,
+      b = plan.shots[k]!.media;
+    if (a.type === "image" && b.type === "image")
+      assert.notEqual(
+        a.index,
+        b.index,
+        `shots ${k - 1} and ${k} show the same still`,
+      );
   }
   assert.equal(last.media.type, "image", "the Short ends on a still");
 });

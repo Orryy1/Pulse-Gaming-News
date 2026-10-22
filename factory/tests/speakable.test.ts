@@ -99,7 +99,7 @@ test("counts and decimals are spoken in words and shown as figures again in the 
     ["It holds 4.5 out of 5.", "It holds four point five out of 5.", "It holds 4.5 out of 5."],
     ["47.5% of players finished it.", "forty-seven point five percent of players finished it.", "47.5% of players finished it."],
     ["It sold 1.2 million copies.", "It sold one point two million copies.", "It sold 1.2 million copies."],
-    ["Over 1,000,000 downloads.", "Over one million downloads.", "Over 1,000,000 downloads."],
+    ["Over 1,000,000 downloads.", "Over one million downloads.", "Over 1 million downloads."],
     ["2,000 players joined.", "two thousand players joined.", "2,000 players joined."],
     ["376,411 reviews at 90 percent.", "three hundred seventy-six thousand four hundred eleven reviews at 90 percent.", "376,411 reviews at 90%."],
   ];

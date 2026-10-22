@@ -15,7 +15,7 @@ export const PRIVACY_NOTICE_HTML = `<h1>Privacy policy</h1>
 
 <h2>Who we are</h2>
 <p>Pulse Gaming (also published as Pulse Gaming News) is a trading name of a UK sole trader, who is the controller of the personal data described here.</p>
-<p>To contact us about privacy, including any of the requests below, reach us through our YouTube channel, <a href="https://www.youtube.com/@PulseGMG" rel="noopener">youtube.com/@PulseGMG</a>. You do not need to explain your request in public: a comment saying you have a privacy request is enough to start, and we will only ask for what we need to find your data.</p>
+<p>To contact us about privacy, including any of the requests below, email <a href="mailto:hello@pulsegmg.com">hello@pulsegmg.com</a>. We will only ask for what we need to find your data. You can also reach us through our YouTube channel, <a href="https://www.youtube.com/@PulseGMG" rel="noopener">youtube.com/@PulseGMG</a>, but email keeps your request private.</p>
 
 <h2>The short version</h2>
 <ul>

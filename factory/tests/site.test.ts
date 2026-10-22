@@ -104,7 +104,8 @@ test("the privacy notice says what the code does with personal data, never who r
     /https:\/\/ico\.org\.uk\/make-a-complaint\//,
   ])
     assert.match(html, must);
-  // Burner identity: the controller is the trading name; no personal email address or postal address on the page.
-  assert.doesNotMatch(html, /[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+  // Burner identity: the controller is the trading name; the only email is the Pulse mailbox, and no postal address.
+  assert.match(html, /mailto:hello@pulsegmg\.com/);
+  assert.doesNotMatch(html.replaceAll("hello@pulsegmg.com", ""), /[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
   assert.doesNotMatch(html, /\b[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}\b/);
 });

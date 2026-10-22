@@ -95,3 +95,7 @@ youtube.js
 # --- Claude Code / editor local state ---
 .claude/settings.local.json
 .claude/launch.json
+
+# Discord bot runtime data: holds Discord user IDs (personal data). Created by the bot on first use.
+discord/data/xp.json
+discord/data/daily.json

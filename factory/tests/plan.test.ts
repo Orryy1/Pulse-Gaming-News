@@ -791,3 +791,21 @@ test("the closing line does not repeat the hero still cut after cut; only the la
   }
   assert.equal(last.media.type, "image", "the Short ends on a still");
 });
+
+test("a render waits for memory while another program holds it, then goes anyway after the limit", async () => {
+  const { waitForHeadroom } = await import("../src/render/render.ts");
+  const GB = 1024 ** 3;
+  let t = 0;
+  const sleep = async (ms: number) => {
+    t += ms;
+  };
+  // Room frees up after 90 s: it waits that long and no longer.
+  const waited = await waitForHeadroom(() => (t < 90_000 ? 3 * GB : 10 * GB), sleep, () => t);
+  assert.equal(waited, 90_000);
+  // Never frees up: it stops waiting at 20 minutes.
+  t = 0;
+  assert.equal(await waitForHeadroom(() => 2 * GB, sleep, () => t), 20 * 60_000);
+  // Plenty of room: no wait at all.
+  t = 0;
+  assert.equal(await waitForHeadroom(() => 12 * GB, sleep, () => t), 0);
+});

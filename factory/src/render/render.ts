@@ -16,6 +16,7 @@ import {
 } from "@remotion/renderer";
 import type { ShortProps } from "./props.ts";
 import { unloadLocalVision } from "../assets/localvision.ts";
+import { log } from "../lib/util.ts";
 import type { LongProps } from "./Long.tsx";
 import type { ThumbProps } from "./Brand.tsx";
 import type { EngageProps } from "./Engage.tsx";
@@ -51,10 +52,41 @@ const MIME: Record<string, string> = {
  * evicted frames before they were used ("No frame found at position"). The model is unloaded first
  * and the cache gets a floor.
  */
+/**
+ * A good neighbour on a shared machine: while another program holds most of the memory (After Effects
+ * held 9 GB on 22 Oct 2026 and long renders kept failing), a render waits for room, checking every 30 s,
+ * then starts anyway after RENDER_WAIT_MINUTES (default 20) so no slot is missed. The bar is
+ * RENDER_MIN_FREE_GB (default 6).
+ */
+export async function waitForHeadroom(
+  freemem: () => number = os.freemem,
+  sleep: (ms: number) => Promise<void> = (ms) =>
+    new Promise((r) => setTimeout(r, ms)),
+  now: () => number = Date.now,
+): Promise<number> {
+  const GB = 1024 ** 3;
+  const need = Number(process.env.RENDER_MIN_FREE_GB || 6) * GB;
+  const until = now() + Number(process.env.RENDER_WAIT_MINUTES || 20) * 60_000;
+  const started = now();
+  let told = false;
+  while (freemem() < need && now() < until) {
+    if (!told) {
+      log("info", "render waiting for memory", {
+        freeGB: Math.round((freemem() / GB) * 10) / 10,
+        needGB: need / GB,
+      });
+      told = true;
+    }
+    await sleep(30_000);
+  }
+  return now() - started;
+}
+
 async function renderMemory(): Promise<{
   offthreadVideoCacheSizeInBytes: number;
 }> {
   await unloadLocalVision();
+  await waitForHeadroom();
   const GB = 1024 ** 3;
   // The old 6 GB ceiling sat below Remotion's own default (half the free memory) and a long video
   // drawing on ~100 clips and their blurred plates evicted frames mid-render ("No frame found at

@@ -1,0 +1,29 @@
+#!/bin/bash
+# Deploy hook for the Mac's bare repo (~/PulseFactory/repo.git): a push from the PC checks the new code
+# out into ~/PulseFactory/factory-src, typechecks it, and only then switches the factory over and
+# restarts it, so a broken push never stops the channel.
+export PATH="/opt/homebrew/bin:$PATH"
+SRC="$HOME/PulseFactory/factory-src"
+LIVE="$HOME/PulseFactory/factory"
+while read -r _old new ref; do
+  [ "$ref" = "refs/heads/claude/epic-pasteur-7s143q" ] || continue
+  mkdir -p "$SRC"
+  git --work-tree="$SRC" --git-dir="$HOME/PulseFactory/repo.git" checkout -f "$new"
+  cd "$SRC/factory" || exit 1
+  deps_changed=no
+  cmp -s package-lock.json "$LIVE/package-lock.json" 2>/dev/null || deps_changed=yes
+  if [ "$deps_changed" = yes ]; then
+    rm -f node_modules
+    npm ci --no-audit --no-fund >/dev/null 2>&1 || { echo "deploy refused: npm ci failed"; exit 1; }
+  elif [ ! -e node_modules ]; then
+    ln -s "$LIVE/node_modules" node_modules
+  fi
+  if ! npx tsc --noEmit -p . >/tmp/pulse-tsc.log 2>&1; then
+    echo "deploy refused: the new code does not typecheck (see /tmp/pulse-tsc.log)"
+    exit 1
+  fi
+  # Code only: data/, .env and node_modules in the live folder stay as they are.
+  rsync -a --delete --exclude data --exclude .env --exclude node_modules "$SRC/factory/" "$LIVE/"
+  if [ "$deps_changed" = yes ]; then (cd "$LIVE" && npm ci --no-audit --no-fund >/dev/null 2>&1); fi
+  launchctl kickstart -k "gui/$(id -u)/com.pulse.factory" 2>/dev/null && echo "deployed $new and restarted the factory"
+done

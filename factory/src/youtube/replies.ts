@@ -236,8 +236,17 @@ async function replyOnVideo(
       ],
     );
   }
-  if (sent)
-    log("info", "comment replies sent", { episode: ep.id, replies: sent });
+  // Every judgement is logged, replies or not, so a quiet channel can be told from a broken one.
+  log("info", "comments judged", {
+    episode: ep.id,
+    judged: fresh.length,
+    replied: sent,
+    skipped: fresh
+      .map((c) => byId.get(c.id))
+      .filter((x) => x && !(x.action === "reply" && x.reply.trim()))
+      .map((x) => x!.reason)
+      .slice(0, 5),
+  });
   return sent;
 }
 
@@ -257,6 +266,7 @@ export async function replyToChannelComments(d: ReplyDeps): Promise<number> {
   ownChannel ??= await yt.myChannelId();
   const all = await yt.listChannelComments(ownChannel);
   await quotaAdd(d.db, d.now(), QUOTA.poll);
+  log("info", "channel comments checked", { comments: all.length });
   const byVideo = new Map<string, typeof all>();
   for (const c of all)
     if (c.videoId && c.authorChannelId !== ownChannel)

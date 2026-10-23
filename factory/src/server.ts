@@ -31,7 +31,7 @@ import {
   isPublicOnYouTube,
 } from "./social/crosspost.ts";
 import { engageTick } from "./social/engage.ts";
-import { renderEngage } from "./render/render.ts";
+import { renderEngage, sweepRenderTemp } from "./render/render.ts";
 import {
   handleSite,
   startGameWarmer,
@@ -946,6 +946,13 @@ async function main(): Promise<void> {
     setTimeout(() => void crosspost(), 60_000);
     setInterval(() => void crosspost(), 5 * 60_000);
   }
+  // The renderer leaves a bundle and an assets folder in the system temp folder for every start and render.
+  const sweep = () =>
+    sweepRenderTemp()
+      .then((gb) => gb >= 0.05 && log("info", "render leftovers cleared", { gb: Math.round(gb * 10) / 10 }))
+      .catch((err) => log("warn", "render temp sweep failed", { error: errorMessage(err) }));
+  setTimeout(() => void sweep(), 3 * 60_000);
+  setInterval(() => void sweep(), 60 * 60_000);
   // The daily community post on Facebook and Instagram, with tomorrow's answers and the comment counts.
   if (cfg.engageEnabled && (cfg.facebookPageToken || cfg.instagramToken)) {
     const p = await import("./social/platforms.ts");

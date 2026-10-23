@@ -3,6 +3,7 @@
 // plus a poster frame.
 
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import os from "node:os";
@@ -27,13 +28,52 @@ const ENTRY = path.join(here, "index.ts");
 const PUBLIC_DIR = path.join(here, "..", "..", "public");
 
 let bundlePromise: Promise<string> | undefined;
+let bundleDir: string | undefined;
 function getBundle(): Promise<string> {
+  // A bundle swept away from the temp folder is rebuilt rather than rendered from a missing folder.
+  if (bundleDir && !fs.existsSync(bundleDir))
+    bundlePromise = bundleDir = undefined;
   bundlePromise ??= bundle({
     entryPoint: ENTRY,
     publicDir: PUBLIC_DIR,
     onProgress: () => undefined,
-  });
+  }).then((dir) => (bundleDir = dir));
   return bundlePromise;
+}
+
+/**
+ * Deletes the renderer's leftovers in the system temp folder (a webpack bundle per process start, an
+ * assets folder per render) older than `hours`, never this process's own bundle. Nothing removed them:
+ * 192 folders, 7.7 GB by 23 Oct 2026. Returns the gigabytes freed.
+ */
+export async function sweepRenderTemp(hours = 6): Promise<number> {
+  const tmp = os.tmpdir();
+  const cutoff = Date.now() - hours * 3_600_000;
+  const keep = bundleDir ? path.resolve(bundleDir) : undefined;
+  let freed = 0;
+  for (const name of await fsp.readdir(tmp).catch(() => [] as string[])) {
+    if (!/^(remotion-|react-motion-render)/.test(name)) continue;
+    const dir = path.join(tmp, name);
+    if (keep && (keep === dir || keep.startsWith(dir + path.sep))) continue;
+    const st = await fsp.stat(dir).catch(() => undefined);
+    if (!st?.isDirectory() || st.mtimeMs > cutoff) continue;
+    freed += await dirBytes(dir);
+    await fsp.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+  return freed / 1024 ** 3;
+}
+
+async function dirBytes(dir: string): Promise<number> {
+  let n = 0;
+  for (const e of await fsp
+    .readdir(dir, { withFileTypes: true })
+    .catch(() => [])) {
+    const p = path.join(dir, e.name);
+    n += e.isDirectory()
+      ? await dirBytes(p)
+      : ((await fsp.stat(p).catch(() => undefined))?.size ?? 0);
+  }
+  return n;
 }
 
 const MIME: Record<string, string> = {

@@ -904,8 +904,21 @@ async function main(): Promise<void> {
     services.notify({ content, ping: true }),
   );
   log("info", "crossposting", { platforms: Object.keys(posters) });
-  const crosspost = () =>
-    withLease(db, "crosspost", 30 * 60, () =>
+  // One pass at a time: Instagram's processing retries once ran a pass past its 30-minute lease and the
+  // next pass posted the same Short to TikTok again (23 Oct 2026). The flag holds for as long as a pass
+  // runs; the longer lease covers anything outside this process.
+  let crossposting = false;
+  const crosspost = async () => {
+    if (crossposting) return;
+    crossposting = true;
+    try {
+      await crosspostPass();
+    } finally {
+      crossposting = false;
+    }
+  };
+  const crosspostPass = () =>
+    withLease(db, "crosspost", 120 * 60, () =>
       crosspostTick({
         db,
         cfg,

@@ -164,6 +164,8 @@ export function planCuts(
   segments: Segment[],
   words: Word[],
   totalFrames: number,
+  /** Opening on moving footage: it runs straight through the sting, no cut after 0.4 s. */
+  openOnMotion = false,
 ): Array<{ start: number; end: number; segment: number }> {
   const ends = wordEnds(words);
   const out: Array<{ start: number; end: number; segment: number }> = [];
@@ -176,7 +178,9 @@ export function planCuts(
     const len = seg.end - seg.start;
     if (len <= 0) continue;
     let cuts: number[] = [seg.start];
-    if (i === 0 && len >= STING_FRAMES + MIN_SHOT)
+    // A still opening cuts to motion as the sting ends; a moving opening carries on, since two pictures
+    // in the first half second read as a flicker (TikTok: 23% of viewers gone by 0:01, 22 Oct 2026).
+    if (i === 0 && len >= STING_FRAMES + MIN_SHOT && !openOnMotion)
       cuts.push(seg.start + STING_FRAMES);
     const bodyStart = cuts.at(-1)!;
     const bodyLen = seg.end - bodyStart;
@@ -714,7 +718,12 @@ export function buildPlan(input: PlanInput): RenderPlan {
     Math.ceil(input.durationSeconds * PLAN_FPS),
   );
   const heroIndex = pickHero(input.images);
-  const cuts = planCuts(input.segments, input.words, totalFrames);
+  const cuts = planCuts(
+    input.segments,
+    input.words,
+    totalFrames,
+    !!input.openOnClip && input.clips.some((c) => c.role === "hook"),
+  );
   const shots = planShots(input, cuts, heroIndex);
   const hook = input.segments.find((s) => s.kind === "hook");
   const take = input.segments.find((s) => s.kind === "take");

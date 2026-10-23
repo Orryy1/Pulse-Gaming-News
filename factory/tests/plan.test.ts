@@ -809,3 +809,12 @@ test("a render waits for memory while another program holds it, then goes anyway
   t = 0;
   assert.equal(await waitForHeadroom(() => 12 * GB, sleep, () => t), 0);
 });
+
+test("a moving opening runs straight through the sting; a still one cuts to motion at 0.4 s", async () => {
+  const { planCuts, STING_FRAMES } = await import("../src/render/plan.ts");
+  const segments = [{ kind: "hook", text: "x", start: 0, end: 3 }, { kind: "beat", text: "y", start: 3, end: 10 }] as never;
+  const still = planCuts(segments, [], 300);
+  const moving = planCuts(segments, [], 300, true);
+  assert.equal(still[0]!.end, STING_FRAMES);
+  assert.ok(moving[0]!.end > STING_FRAMES + 30, `first shot ends at frame ${moving[0]!.end}`);
+});

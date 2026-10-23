@@ -130,3 +130,23 @@ test("text at one edge of a clip is cropped away, text at both loses the clip", 
   const yavg = Number(luma.match(/YAVG=([\d.]+)/)?.[1] ?? 255);
   assert.ok(yavg < 40, `the top of the cropped clip is dark (YAVG ${yavg}), the white band is gone`);
 });
+
+test("edits inside a gameplay clip: isolated spikes and hard cuts, not fast motion", async () => {
+  const { clipJumps, longestRun } = await import("../src/assets/gameplay.ts");
+  const rows = (scenes: Record<number, number>, base = 0.02) =>
+    Array.from({ length: 240 }, (_, i) => ({ time: i / 30, scene: scenes[i] ?? base }));
+  // The GTA 9:59 jump: a 0.15 spike in a calm drive.
+  assert.deepEqual(clipJumps(rows({ 113: 0.15 })).map((t) => t.toFixed(2)), ["3.77"]);
+  // A turn or an explosion: a run of moderate scores is motion, not an edit.
+  const run: Record<number, number> = {};
+  for (let i = 120; i < 140; i++) run[i] = 0.14;
+  assert.deepEqual(clipJumps(rows(run, 0.08)), []);
+  // A hard cut always counts, however busy the footage around it.
+  assert.equal(clipJumps(rows({ 81: 0.42 }, 0.12)).length, 1);
+  // The first and last frames are the clip's own edges.
+  assert.deepEqual(clipJumps(rows({ 1: 0.5, 239: 0.5 })), []);
+  // The longest unbroken stretch, a frame clear of each edit.
+  const [from, len] = longestRun([3.77], 8);
+  assert.ok(Math.abs(from - (3.77 + 1 / 30)) < 1e-6 && Math.abs(len - (8 - 3.77 - 1 / 30)) < 1e-6);
+  assert.deepEqual(longestRun([], 8), [0, 8]);
+});

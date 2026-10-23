@@ -16,7 +16,7 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import type { Llm } from "../editorial/llm.ts";
 import type { VisualAsset } from "./steam.ts";
-import { matchClips, type FootageTarget } from "./clipscore.ts";
+import { matchClips, parseSignalStats, MIN_CLIP_SECONDS, type FootageTarget } from "./clipscore.ts";
 import { keepGameSound } from "./talk.ts";
 import { screenFrames } from "./localvision.ts";
 import { FFMPEG, FFPROBE, YTDLP_TEXT } from "../lib/bin.ts";
@@ -422,7 +422,7 @@ export function textVerdict(top: boolean, bottom: boolean): FrameVerdict {
  * objective lines). One frame at 0.8 s missed a cutscene's subtitles later in a clip and a tutorial
  * line along the top (GTA ranking, 21 Oct 2026). HUD in the corners does not count.
  */
-async function frameProblem(file: string): Promise<FrameVerdict> {
+export async function frameProblem(file: string): Promise<FrameVerdict> {
   const frames = [0, 1, 2].map((k) => file.replace(/\.mp4$/, `.check${k}.jpg`));
   const bands: string[] = [];
   try {
@@ -454,6 +454,65 @@ async function frameProblem(file: string): Promise<FrameVerdict> {
   } finally {
     for (const f of [...frames, ...bands]) await fs.rm(f, { force: true }).catch(() => undefined);
   }
+}
+
+/**
+ * Edits inside a gameplay clip (seconds). Recordings were treated as one continuous take, but
+ * many uploads are edited: a jump inside the same street read as a glitch (GTA ranking at 9:59,
+ * 23 Oct 2026). A jump is a scene score of 0.3 or more, or one at least three times the typical
+ * score around it; a run of moderate scores is fast motion (a turn, an explosion), not an edit.
+ */
+export function clipJumps(rows: Array<{ time: number; scene?: number }>): number[] {
+  const end = rows.at(-1)?.time ?? 0;
+  const out: number[] = [];
+  for (const [i, r] of rows.entries()) {
+    const sc = r.scene ?? 0;
+    if (sc < 0.12 || r.time <= 0.1 || r.time >= end - 0.1) continue;
+    const near = rows
+      .filter((x, k) => k !== i && Math.abs(x.time - r.time) <= 0.5)
+      .map((x) => x.scene ?? 0)
+      .sort((a, b) => a - b);
+    const typical = near.length ? near[Math.floor(near.length / 2)]! : 0;
+    if (sc >= 0.3 || sc >= 3 * typical) {
+      if (out.length && r.time - out[out.length - 1]! <= 0.25) out[out.length - 1] = r.time;
+      else out.push(r.time);
+    }
+  }
+  return out;
+}
+
+/** The longest stretch of a clip with no jump in it, as [start, length] in seconds. */
+export function longestRun(jumps: number[], seconds: number): [number, number] {
+  const edges = [0, ...jumps, seconds];
+  let best: [number, number] = [0, 0];
+  for (let k = 0; k + 1 < edges.length; k++) {
+    // A frame either side of the edit stays out: the cut frame belongs to neither shot.
+    const a = k === 0 ? 0 : edges[k]! + 1 / 30;
+    const b = k + 1 === edges.length - 1 ? seconds : edges[k + 1]! - 1 / 30;
+    if (b - a > best[1]) best = [a, b - a];
+  }
+  return best;
+}
+
+/**
+ * Trims a gameplay clip, in place, to its longest stretch without an edit. Returns its new length,
+ * the old one when it had no jump, or undefined when no stretch is long enough to use.
+ */
+export async function trimToJumpFree(file: string): Promise<number | undefined> {
+  const dir = path.dirname(file);
+  const stats = `${path.basename(file)}.scenes.txt`;
+  await run(FFMPEG, ["-v", "error", "-y", "-i", path.basename(file), "-vf", `scale=320:-2,select='gte(scene,0)',signalstats,metadata=print:file=${stats}`, "-an", "-f", "null", "-"], { cwd: dir, maxBuffer: 32 * 1024 * 1024 });
+  const rows = parseSignalStats(await fs.readFile(path.join(dir, stats), "utf8"));
+  await fs.rm(path.join(dir, stats), { force: true });
+  const seconds = (rows.at(-1)?.time ?? 0) + 1 / 30;
+  const jumps = clipJumps(rows);
+  if (!jumps.length) return seconds;
+  const [from, len] = longestRun(jumps, seconds);
+  if (len < MIN_CLIP_SECONDS) return undefined;
+  const tmp = file.replace(/\.mp4$/, ".trim.mp4");
+  await run(FFMPEG, ["-v", "error", "-y", "-ss", from.toFixed(3), "-i", file, "-t", len.toFixed(3), "-c:v", "libx264", "-crf", "17", "-preset", "fast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", tmp]);
+  await fs.rename(tmp, file);
+  return Math.round(len * 30) / 30;
 }
 
 /** The credit a gameplay clip carries on screen. */
@@ -692,6 +751,17 @@ async function clipsFrom(
         reason: verdict,
       });
       continue;
+    }
+    // An edit inside the recording would read as a glitch: the clip keeps its longest unbroken stretch.
+    const length = await trimToJumpFree(file).catch(() => c.durationSeconds);
+    if (length === undefined) {
+      await fs.rm(file, { force: true }).catch(() => undefined);
+      log("info", "gameplay clip dropped", { game: o.game, source: src.channelTitle, reason: "edits" });
+      continue;
+    }
+    if (length < (c.durationSeconds ?? length) - 0.05) {
+      log("info", "gameplay clip trimmed clear of an edit", { game: o.game, source: src.channelTitle, seconds: length });
+      c.durationSeconds = length;
     }
     // Game sound stays when nobody talks over it (commentary or cutscene dialogue would fight the narrator).
     const audio = await keepGameSound(path.join(o.episodeDir, c.file)).catch(

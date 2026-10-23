@@ -16,7 +16,12 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import type { Llm } from "../editorial/llm.ts";
 import type { VisualAsset } from "./steam.ts";
-import { matchClips, parseSignalStats, MIN_CLIP_SECONDS, type FootageTarget } from "./clipscore.ts";
+import {
+  matchClips,
+  parseSignalStats,
+  MIN_CLIP_SECONDS,
+  type FootageTarget,
+} from "./clipscore.ts";
 import { keepGameSound } from "./talk.ts";
 import { screenFrames } from "./localvision.ts";
 import { FFMPEG, FFPROBE, YTDLP_TEXT } from "../lib/bin.ts";
@@ -378,7 +383,10 @@ async function downloadSlice(
  * Crops the edge where on-screen text sits off a clip, in place: the bottom quarter (subtitles, older
  * games' mission and pager text) or the top quarter (tutorial prompts, objective lines).
  */
-export async function cropEdge(file: string, edge: "top" | "bottom"): Promise<boolean> {
+export async function cropEdge(
+  file: string,
+  edge: "top" | "bottom",
+): Promise<boolean> {
   const tmp = file.replace(/\.mp4$/, ".crop.mp4");
   try {
     await run(FFMPEG, [
@@ -388,7 +396,9 @@ export async function cropEdge(file: string, edge: "top" | "bottom"): Promise<bo
       "-i",
       file,
       "-vf",
-      edge === "bottom" ? "crop=iw:trunc(ih*0.74/2)*2:0:0" : "crop=iw:trunc(ih*0.74/2)*2:0:trunc(ih*0.26/2)*2",
+      edge === "bottom"
+        ? "crop=iw:trunc(ih*0.74/2)*2:0:0"
+        : "crop=iw:trunc(ih*0.74/2)*2:0:trunc(ih*0.26/2)*2",
       "-c:v",
       "libx264",
       "-crf",
@@ -409,11 +419,23 @@ export async function cropEdge(file: string, edge: "top" | "bottom"): Promise<bo
   }
 }
 
-export type FrameVerdict = "facecam" | "gore" | "text-top" | "text-bottom" | "text-both" | undefined;
+export type FrameVerdict =
+  | "facecam"
+  | "gore"
+  | "text-top"
+  | "text-bottom"
+  | "text-both"
+  | undefined;
 
 /** Where text was seen across a clip's sampled frames, as a verdict: both edges loses the clip. */
 export function textVerdict(top: boolean, bottom: boolean): FrameVerdict {
-  return top && bottom ? "text-both" : top ? "text-top" : bottom ? "text-bottom" : undefined;
+  return top && bottom
+    ? "text-both"
+    : top
+      ? "text-top"
+      : bottom
+        ? "text-bottom"
+        : undefined;
 }
 
 /**
@@ -426,11 +448,36 @@ export async function frameProblem(file: string): Promise<FrameVerdict> {
   const frames = [0, 1, 2].map((k) => file.replace(/\.mp4$/, `.check${k}.jpg`));
   const bands: string[] = [];
   try {
-    const { stdout } = await run(FFPROBE, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]);
+    const { stdout } = await run(FFPROBE, [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "csv=p=0",
+      file,
+    ]);
     const seconds = Number(String(stdout).trim()) || 3;
-    const at = [Math.min(0.8, seconds * 0.2), seconds * 0.5, Math.max(0, seconds - 0.8)];
+    const at = [
+      Math.min(0.8, seconds * 0.2),
+      seconds * 0.5,
+      Math.max(0, seconds - 0.8),
+    ];
     for (const [k, t] of at.entries())
-      await run(FFMPEG, ["-v", "error", "-y", "-ss", t.toFixed(2), "-i", file, "-frames:v", "1", "-vf", "scale=960:-2", frames[k]!]);
+      await run(FFMPEG, [
+        "-v",
+        "error",
+        "-y",
+        "-ss",
+        t.toFixed(2),
+        "-i",
+        file,
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale=960:-2",
+        frames[k]!,
+      ]);
     const flags = await screenFrames(frames);
     if (flags.some((f) => f?.webcam)) return "facecam";
     if (flags.some((f) => f?.gore)) return "gore";
@@ -442,17 +489,35 @@ export async function frameProblem(file: string): Promise<FrameVerdict> {
     for (const [k, f] of texty.entries())
       for (const edge of ["top", "bottom"] as const) {
         const b = file.replace(/\.mp4$/, `.band${k}${edge[0]}.jpg`);
-        await run(FFMPEG, ["-v", "error", "-y", "-i", f, "-vf", edge === "bottom" ? "crop=iw*0.6:ih*0.22:iw*0.2:ih*0.76" : "crop=iw*0.6:ih*0.22:iw*0.2:0", b]);
+        await run(FFMPEG, [
+          "-v",
+          "error",
+          "-y",
+          "-i",
+          f,
+          "-vf",
+          edge === "bottom"
+            ? "crop=iw*0.5:ih*0.22:iw*0.25:ih*0.76"
+            : "crop=iw*0.5:ih*0.22:iw*0.25:0",
+          b,
+        ]);
         bands.push(b);
         pairs.push([edge, b]);
       }
     const seen = await screenFrames(pairs.map(([, b]) => b));
-    const has = (edge: "top" | "bottom") => pairs.some(([e], k) => e === edge && seen[k]?.text && !seen[k]?.hud);
+    // Subtitles and prompts persist; a misread (HUD numbers, a passing sign) flickers. One frame of
+    // "text" at each edge dropped 46 of 98 GTA clips (23 Oct 2026); it now takes two of the three
+    // sampled frames (or the only one, for a clip with a single texty frame sampled).
+    const need = Math.min(2, texty.length);
+    const has = (edge: "top" | "bottom") =>
+      pairs.filter(([e], k) => e === edge && seen[k]?.text && !seen[k]?.hud)
+        .length >= need;
     return textVerdict(has("top"), has("bottom"));
   } catch {
     return undefined;
   } finally {
-    for (const f of [...frames, ...bands]) await fs.rm(f, { force: true }).catch(() => undefined);
+    for (const f of [...frames, ...bands])
+      await fs.rm(f, { force: true }).catch(() => undefined);
   }
 }
 
@@ -462,7 +527,9 @@ export async function frameProblem(file: string): Promise<FrameVerdict> {
  * 23 Oct 2026). A jump is a scene score of 0.3 or more, or one at least three times the typical
  * score around it; a run of moderate scores is fast motion (a turn, an explosion), not an edit.
  */
-export function clipJumps(rows: Array<{ time: number; scene?: number }>): number[] {
+export function clipJumps(
+  rows: Array<{ time: number; scene?: number }>,
+): number[] {
   const end = rows.at(-1)?.time ?? 0;
   const out: number[] = [];
   for (const [i, r] of rows.entries()) {
@@ -474,7 +541,8 @@ export function clipJumps(rows: Array<{ time: number; scene?: number }>): number
       .sort((a, b) => a - b);
     const typical = near.length ? near[Math.floor(near.length / 2)]! : 0;
     if (sc >= 0.3 || sc >= 3 * typical) {
-      if (out.length && r.time - out[out.length - 1]! <= 0.25) out[out.length - 1] = r.time;
+      if (out.length && r.time - out[out.length - 1]! <= 0.25)
+        out[out.length - 1] = r.time;
       else out.push(r.time);
     }
   }
@@ -498,11 +566,31 @@ export function longestRun(jumps: number[], seconds: number): [number, number] {
  * Trims a gameplay clip, in place, to its longest stretch without an edit. Returns its new length,
  * the old one when it had no jump, or undefined when no stretch is long enough to use.
  */
-export async function trimToJumpFree(file: string): Promise<number | undefined> {
+export async function trimToJumpFree(
+  file: string,
+): Promise<number | undefined> {
   const dir = path.dirname(file);
   const stats = `${path.basename(file)}.scenes.txt`;
-  await run(FFMPEG, ["-v", "error", "-y", "-i", path.basename(file), "-vf", `scale=320:-2,select='gte(scene,0)',signalstats,metadata=print:file=${stats}`, "-an", "-f", "null", "-"], { cwd: dir, maxBuffer: 32 * 1024 * 1024 });
-  const rows = parseSignalStats(await fs.readFile(path.join(dir, stats), "utf8"));
+  await run(
+    FFMPEG,
+    [
+      "-v",
+      "error",
+      "-y",
+      "-i",
+      path.basename(file),
+      "-vf",
+      `scale=320:-2,select='gte(scene,0)',signalstats,metadata=print:file=${stats}`,
+      "-an",
+      "-f",
+      "null",
+      "-",
+    ],
+    { cwd: dir, maxBuffer: 32 * 1024 * 1024 },
+  );
+  const rows = parseSignalStats(
+    await fs.readFile(path.join(dir, stats), "utf8"),
+  );
   await fs.rm(path.join(dir, stats), { force: true });
   const seconds = (rows.at(-1)?.time ?? 0) + 1 / 30;
   const jumps = clipJumps(rows);
@@ -510,7 +598,30 @@ export async function trimToJumpFree(file: string): Promise<number | undefined> 
   const [from, len] = longestRun(jumps, seconds);
   if (len < MIN_CLIP_SECONDS) return undefined;
   const tmp = file.replace(/\.mp4$/, ".trim.mp4");
-  await run(FFMPEG, ["-v", "error", "-y", "-ss", from.toFixed(3), "-i", file, "-t", len.toFixed(3), "-c:v", "libx264", "-crf", "17", "-preset", "fast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", tmp]);
+  await run(FFMPEG, [
+    "-v",
+    "error",
+    "-y",
+    "-ss",
+    from.toFixed(3),
+    "-i",
+    file,
+    "-t",
+    len.toFixed(3),
+    "-c:v",
+    "libx264",
+    "-crf",
+    "17",
+    "-preset",
+    "fast",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "160k",
+    tmp,
+  ]);
   await fs.rename(tmp, file);
   return Math.round(len * 30) / 30;
 }
@@ -730,10 +841,17 @@ async function clipsFrom(
     // A full-size look at the finished clip: a small facecam is a few pixels in the matcher's
     // 320 px keyframes. A facecam or gore drops the clip and every other clip from that channel.
     const file = path.join(o.episodeDir, c.file);
-    let verdict: FrameVerdict = streamed.has(src.url) ? "facecam" : await frameProblem(file);
+    let verdict: FrameVerdict = streamed.has(src.url)
+      ? "facecam"
+      : await frameProblem(file);
     // Text along one edge (subtitles, mission text, a tutorial prompt) is cropped away instead of
     // losing the clip: the rest of the picture is still good footage. Text at both edges loses it.
-    const edge = verdict === "text-top" ? "top" : verdict === "text-bottom" ? "bottom" : undefined;
+    const edge =
+      verdict === "text-top"
+        ? "top"
+        : verdict === "text-bottom"
+          ? "bottom"
+          : undefined;
     if (edge && (await cropEdge(file, edge))) {
       log("info", `gameplay clip cropped clear of its ${edge} text`, {
         game: o.game,
@@ -756,11 +874,19 @@ async function clipsFrom(
     const length = await trimToJumpFree(file).catch(() => c.durationSeconds);
     if (length === undefined) {
       await fs.rm(file, { force: true }).catch(() => undefined);
-      log("info", "gameplay clip dropped", { game: o.game, source: src.channelTitle, reason: "edits" });
+      log("info", "gameplay clip dropped", {
+        game: o.game,
+        source: src.channelTitle,
+        reason: "edits",
+      });
       continue;
     }
     if (length < (c.durationSeconds ?? length) - 0.05) {
-      log("info", "gameplay clip trimmed clear of an edit", { game: o.game, source: src.channelTitle, seconds: length });
+      log("info", "gameplay clip trimmed clear of an edit", {
+        game: o.game,
+        source: src.channelTitle,
+        seconds: length,
+      });
       c.durationSeconds = length;
     }
     // Game sound stays when nobody talks over it (commentary or cutscene dialogue would fight the narrator).

@@ -153,6 +153,8 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     publishWindowEndUtc: 24,
     visionQa: true,
     whisperPython: "",
+    tiktokDaily: 0,
+    tiktokFromHour: 16,
     footage: true,
     maxClips: 4,
     clipRanking: "rule",

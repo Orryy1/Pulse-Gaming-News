@@ -136,6 +136,42 @@ export async function nextForPlatform(
   return rows[0];
 }
 
+/**
+ * TikTok gets only the day's strongest Shorts: posting is a manual step for the owner until a paid,
+ * TikTok-approved service is worth it, so from TIKTOK_FROM_HOUR (local) it sends at most TIKTOK_DAILY a
+ * day, choosing the eligible Short with the most YouTube views per hour since it went live.
+ */
+export async function nextForTikTok(
+  db: Db,
+  cfg: Pick<Config, "tiktokDaily" | "tiktokFromHour" | "timezone" | "crosspostDelays" | "crosspostWindowHours">,
+  now: Date,
+): Promise<CrosspostCandidate | undefined> {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-GB", { timeZone: cfg.timezone, hour: "2-digit", hour12: false }).format(now),
+  );
+  if (hour < cfg.tiktokFromHour) return undefined;
+  const [sent] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM events WHERE kind = 'crosspost' AND detail->>'platform' = 'tiktok' AND created_at > $1::timestamptz - interval '24 hours'`,
+    [now],
+  );
+  if (Number(sent?.n ?? 0) >= cfg.tiktokDaily) return undefined;
+  const rows = await db.query<CrosspostCandidate>(
+    `SELECT e.id, e.youtube_video_id, e.script_json FROM episodes e
+      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'longform'
+        AND COALESCE(e.script_json->>'runtime', 'short') = 'short'
+        AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
+        AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - make_interval(hours => $3)
+        AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('crosspost','crosspost_skip') AND v.detail->>'platform' = 'tiktok')
+        AND (SELECT count(*) FROM events v WHERE v.episode_id = e.id AND v.kind = 'crosspost_failed' AND v.detail->>'platform' = 'tiktok' AND v.created_at >= $5) < $4
+      ORDER BY COALESCE((SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id), 0)
+               / GREATEST(1, EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(e.publish_at, e.updated_at))) / 3600) DESC,
+               COALESCE(e.publish_at, e.updated_at) DESC
+      LIMIT 1`,
+    [now, cfg.crosspostDelays.tiktok, cfg.crosspostWindowHours, MAX_TRIES, BOOT],
+  );
+  return rows[0];
+}
+
 /** True when anyone can watch it: YouTube's public oEmbed answers for public and unlisted videos only. */
 export async function isPublicOnYouTube(
   videoId: string,
@@ -169,13 +205,16 @@ export async function crosspostTick(
   for (const platform of PLATFORMS) {
     const post = d.posters[platform];
     if (!post) continue;
-    const ep = await nextForPlatform(
-      d.db,
-      platform,
-      d.cfg.crosspostDelays[platform],
-      d.cfg.crosspostWindowHours,
-      d.now(),
-    );
+    const ep =
+      platform === "tiktok" && d.cfg.tiktokDaily > 0
+        ? await nextForTikTok(d.db, d.cfg, d.now())
+        : await nextForPlatform(
+            d.db,
+            platform,
+            d.cfg.crosspostDelays[platform],
+            d.cfg.crosspostWindowHours,
+            d.now(),
+          );
     if (!ep) continue;
     const file = path.join(d.episodeDir(ep.id), "short.mp4");
     try {

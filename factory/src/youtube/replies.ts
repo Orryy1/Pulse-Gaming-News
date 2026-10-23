@@ -179,6 +179,8 @@ async function replyOnVideo(
     )
     .slice(0, 20);
   if (!fresh.length) return 0;
+  // No quota for a reply yet: leave the comments fresh rather than judge them again every pass.
+  if ((await d.headroom()) < QUOTA.comment) return 0;
   const [{ n: videoCount } = { n: 0 }] = await d.db.query<{ n: number }>(
     `SELECT count(*)::int AS n FROM comment_replies WHERE episode_id = $1 AND decision = 'reply'`,
     [ep.id],

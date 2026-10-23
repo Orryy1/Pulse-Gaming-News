@@ -134,6 +134,8 @@ import {
   captureMetrics,
   captureRetention,
   hookLessons,
+  longLessons,
+  captureCurves,
   performanceNotes,
   retentionNotes,
 } from "./analytics.ts";
@@ -2342,8 +2344,10 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     }
     return facts;
   };
+  // What earlier long videos taught us about holding viewers, entry by entry (empty until there is a curve).
+  const lessons = await longLessons(s.db, s.now()).catch(() => "");
   for (let attempt = 0; attempt < 2; attempt++) {
-    draft = await writeLongform(s.llm, topic, lookup, feedback);
+    draft = await writeLongform(s.llm, topic, lookup, feedback, lessons);
     const problems = validateLongform(draft);
     if (!problems.length) break;
     // One rewrite with the problems named; a second draft that still misses is logged, not thrown away.
@@ -4427,6 +4431,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       thumb: "thumb.jpg",
       thumbVariants: thumbVariants.map((v) => path.basename(v.file)),
       musicFile,
+      // When each entry begins (seconds), so its retention can be read off the curve later.
+      entryStarts: segments
+        .filter((g, i) => g.kind === "beat" && (g.visual?.kind === "rank" || g.visual?.kind === "chapter") && i > 0)
+        .map((g) => Math.round(g.start * 10) / 10),
     },
     qa_json: qa,
   });
@@ -5568,6 +5576,11 @@ export async function tick(
     if (!s.cfg.dryRun)
       await captureRetention(s.db, s.youtube(), s.now()).catch((err) =>
         log("warn", "retention capture failed", { error: errorMessage(err) }),
+      );
+    // Long videos: the whole retention curve a week after going live, for the long-form writer's lessons.
+    if (!s.cfg.dryRun)
+      await captureCurves(s.db, s.youtube(), s.now()).catch((err) =>
+        log("warn", "retention curve capture failed", { error: errorMessage(err) }),
       );
     return { selected };
   });

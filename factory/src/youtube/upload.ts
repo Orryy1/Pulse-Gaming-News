@@ -488,6 +488,40 @@ export class YouTubeClient {
     return out;
   }
 
+  /**
+   * A video's audience retention curve (YouTube Analytics, one request per video): at each 1% of its length,
+   * the share of viewers still watching and how that compares with similar videos (1 = typical).
+   */
+  async retentionCurve(
+    videoId: string,
+    start: string,
+    end: string,
+  ): Promise<Array<{ at: number; watch: number; relative: number }>> {
+    const q = new URLSearchParams({
+      ids: "channel==MINE",
+      startDate: start,
+      endDate: end,
+      metrics: "audienceWatchRatio,relativeRetentionPerformance",
+      dimensions: "elapsedVideoTimeRatio",
+      filters: `video==${videoId}`,
+    });
+    const res = await this.fetchFn(
+      `https://youtubeanalytics.googleapis.com/v2/reports?${q}`,
+      { headers: await this.auth() },
+    );
+    if (!res.ok)
+      throw await apiError(res, "analytics.reports (retention curve)");
+    return (
+      (((await res.json()) as any).rows ?? []) as Array<
+        [number, number, number]
+      >
+    ).map((r) => ({
+      at: Number(r[0]),
+      watch: Number(r[1]),
+      relative: Number(r[2]),
+    }));
+  }
+
   async status(videoId: string): Promise<
     | {
         uploadStatus: string;

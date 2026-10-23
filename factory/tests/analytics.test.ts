@@ -154,3 +154,43 @@ test("the evening summary's Claude spend adds the live log and every sandbox log
   assert.equal(c.tests.toFixed(2), "0.20");
   assert.deepEqual(claudeSpend(dir, "2026-01-01"), { live: 0, tests: 0 });
 });
+
+test("long videos: entry holds from a retention curve, and lessons for the writer", async () => {
+  const { watchAt, entryHolds, longLessons, captureCurves } = await import("../src/analytics.ts");
+  // 100 points; viewers fall from 100% to 40% across the video, fastest in the middle entry.
+  const curve = Array.from({ length: 101 }, (_, i) => {
+    const at = i / 100;
+    const watch = at < 0.1 ? 1 - at * 2 : at < 0.5 ? 0.8 - (at - 0.1) * 0.25 : at < 0.7 ? 0.7 - (at - 0.5) * 1.2 : 0.46 - (at - 0.7) * 0.2;
+    return { at, watch, relative: 0.5 };
+  });
+  const duration = 600;
+  assert.equal(watchAt(curve, 0, duration), 1);
+  assert.ok(Math.abs(watchAt(curve, 60, duration) - 0.8) < 0.011);
+  const holds = entryHolds(curve, [60, 300, 420], duration);
+  assert.equal(holds.length, 3);
+  // The middle entry (300-420 s) loses viewers fastest.
+  assert.ok(holds[1]!.lossPerMinute > holds[0]!.lossPerMinute && holds[1]!.lossPerMinute > holds[2]!.lossPerMinute);
+
+  const db = await testDb();
+  const now = new Date("2026-11-20T12:00:00Z");
+  const script = {
+    game_title: "GTA",
+    entries: [
+      { rank: 3, game_title: "Game C", narration: "Opens slowly on a date. Then more." },
+      { rank: 2, game_title: "Game B", narration: "Opens on a list of numbers. Then more." },
+      { rank: 1, game_title: "Game A", narration: "Opens on a scene in a car. Then more." },
+    ],
+  };
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane, script_json, assets_json, youtube_video_id, publish_at) VALUES ('ep_long', 'long', 'published', '{"headline":"GTA","items":[]}', 'longform', $1, $2, 'vid1', $3)`,
+    [JSON.stringify(script), JSON.stringify({ durationSeconds: 594, entryStarts: [60, 300, 420] }), new Date(now.getTime() - 10 * 86_400_000)],
+  );
+  assert.equal(await longLessons(db, now), "");
+  const got = await captureCurves(db, { retention: async () => new Map(), retentionCurve: async () => curve }, now);
+  assert.equal(got, 1);
+  const lessons = await longLessons(db, now);
+  assert.match(lessons, /Still watching when the first entry begins: 80%/);
+  assert.match(lessons, /Entries that lost them fastest:\n- Game B .*"Opens on a list of numbers\."/);
+  // Captured once.
+  assert.equal(await captureCurves(db, { retention: async () => new Map(), retentionCurve: async () => curve }, now), 0);
+});

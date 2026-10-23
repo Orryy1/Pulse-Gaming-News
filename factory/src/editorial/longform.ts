@@ -160,7 +160,9 @@ export const LongformScriptSchema = z.object({
   claims: z.array(
     z.object({
       claim: z.string(),
-      source: z.string().describe("'steam facts', 'wikipedia' or 'public knowledge'"),
+      source: z
+        .string()
+        .describe("'steam facts', 'wikipedia' or 'public knowledge'"),
     }),
   ),
 });
@@ -317,6 +319,8 @@ export async function writeLongform(
         entries: LongformPlan["entries"],
       ) => Promise<Array<{ title: string; facts: SteamFacts }>>),
   feedback: string[] = [],
+  /** How our earlier long videos held viewers, entry by entry (analytics.ts longLessons). */
+  lessons = "",
 ): Promise<LongformScript> {
   // Steam facts given up front, or looked up once the plan names the games.
   let facts = Array.isArray(factsFor) ? factsFor : [];
@@ -326,7 +330,7 @@ export async function writeLongform(
   const fb = feedback.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
-  const brief = `Theme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}`;
+  const brief = `Theme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}${lessons ? `\n\n${lessons}` : ""}`;
   const plan = await llm.structured({
     system: planPrompt(),
     content: `${brief}${factBlock}${fb}`,
@@ -444,10 +448,14 @@ export function validateLongform(e: LongformScript): string[] {
   }
   const intro = wordCount(e.intro.narration);
   if (intro < LONG_INTRO_WORDS[0] || intro > LONG_INTRO_WORDS[1])
-    p.push(`The intro is ${intro} words; it must be ${LONG_INTRO_WORDS[0]}-${LONG_INTRO_WORDS[1]}.`);
+    p.push(
+      `The intro is ${intro} words; it must be ${LONG_INTRO_WORDS[0]}-${LONG_INTRO_WORDS[1]}.`,
+    );
   const outro = wordCount(e.outro.narration);
   if (outro < LONG_OUTRO_WORDS[0] || outro > LONG_OUTRO_WORDS[1])
-    p.push(`The outro is ${outro} words; it must be ${LONG_OUTRO_WORDS[0]}-${LONG_OUTRO_WORDS[1]}.`);
+    p.push(
+      `The outro is ${outro} words; it must be ${LONG_OUTRO_WORDS[0]}-${LONG_OUTRO_WORDS[1]}.`,
+    );
   // Two entries opening with the same three words read as a template.
   const openings = e.entries.map((x) =>
     x.narration.toLowerCase().split(/\s+/).slice(0, 3).join(" "),

@@ -252,7 +252,13 @@ export async function weeklyDigest(
           ),
         ]
       : []),
-    ...((formats) => (formats.length ? ["**Formats (median views at 24 h vs news; under 40% after six videos pauses a format for four weeks):**", ...formats] : []))(await reviewFormats(db, now)),
+    ...((formats) =>
+      formats.length
+        ? [
+            "**Formats (median views at 24 h vs news; under 40% after six videos pauses a format for four weeks):**",
+            ...formats,
+          ]
+        : [])(await reviewFormats(db, now)),
     `**YouTube quota used today:** ${(await quotaUsed(db, now)).toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")}`,
     "Reminders: check Studio for Content ID claims on anything over 60 s; the retention curve arrives once analytics is reconnected.",
   ];
@@ -313,6 +319,12 @@ export interface RetentionSource {
       }
     >
   >;
+  /** A long video's retention curve (optional: only the live YouTube client has it). */
+  retentionCurve?(
+    videoId: string,
+    start: string,
+    end: string,
+  ): Promise<Array<{ at: number; watch: number; relative: number }>>;
 }
 
 /**
@@ -420,10 +432,16 @@ async function retentionRows(
 }
 
 /** Whether opening on moving footage keeps more viewers than opening on a still, once each has three Shorts. */
-export function openingLine(rows: Array<{ stay?: number; opening?: string }>): string[] {
+export function openingLine(
+  rows: Array<{ stay?: number; opening?: string }>,
+): string[] {
   const avg = (kind: string) => {
-    const xs = rows.filter((r) => r.opening === kind && r.stay !== undefined).map((r) => r.stay!);
-    return xs.length >= 3 ? { n: xs.length, v: xs.reduce((a, b) => a + b, 0) / xs.length } : undefined;
+    const xs = rows
+      .filter((r) => r.opening === kind && r.stay !== undefined)
+      .map((r) => r.stay!);
+    return xs.length >= 3
+      ? { n: xs.length, v: xs.reduce((a, b) => a + b, 0) / xs.length }
+      : undefined;
   };
   const clip = avg("clip");
   const still = avg("image");
@@ -466,9 +484,17 @@ export async function hookLessons(db: Db, now: Date): Promise<string> {
 }
 
 /** The evening summary: what went live today, what is waiting on the owner, and the background news in one message. */
-export async function dailySummary(db: Db, cfg: Config, now: Date): Promise<DiscordMessage> {
+export async function dailySummary(
+  db: Db,
+  cfg: Config,
+  now: Date,
+): Promise<DiscordMessage> {
   const since = `date_trunc('day', $1::timestamptz AT TIME ZONE '${cfg.timezone}') AT TIME ZONE '${cfg.timezone}'`;
-  const live = await db.query<{ title: string; vid: string; runtime: string | null }>(
+  const live = await db.query<{
+    title: string;
+    vid: string;
+    runtime: string | null;
+  }>(
     `SELECT script_json->'youtube'->>'title' AS title, youtube_video_id AS vid, script_json->>'runtime' AS runtime
        FROM episodes WHERE status = 'published' AND youtube_video_id IS NOT NULL AND updated_at >= ${since} ORDER BY updated_at`,
     [now],
@@ -487,10 +513,15 @@ export async function dailySummary(db: Db, cfg: Config, now: Date): Promise<Disc
     live.length
       ? `✅ ${live.length} video${live.length === 1 ? "" : "s"} live:\n${live.map((v) => `• ${v.title} ${v.runtime === "long" ? `https://youtu.be/${v.vid}` : `https://youtube.com/shorts/${v.vid}`}`).join("\n")}`
       : "✅ No new videos today.",
-    Number(drafts?.n ?? 0) ? `📲 TikTok drafts sent: ${drafts!.n}. Post any still in your TikTok inbox.` : "",
-    notes.length ? `📝 Behind the scenes (handled, nothing for you to do):\n${notes.map((n) => `• ${n.text}`).join("\n")}` : "",
+    Number(drafts?.n ?? 0)
+      ? `📲 TikTok drafts sent: ${drafts!.n}. Post any still in your TikTok inbox.`
+      : "",
+    notes.length
+      ? `📝 Behind the scenes (handled, nothing for you to do):\n${notes.map((n) => `• ${n.text}`).join("\n")}`
+      : "",
     `YouTube allowance used: ${used.toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")}`,
-    ((c) => `Claude spend today: $${(c.live + c.tests).toFixed(2)}${c.tests >= 0.01 ? ` (tests $${c.tests.toFixed(2)})` : ""}`)(
+    ((c) =>
+      `Claude spend today: $${(c.live + c.tests).toFixed(2)}${c.tests >= 0.01 ? ` (tests $${c.tests.toFixed(2)})` : ""}`)(
       claudeSpend(cfg.dataDir, now.toISOString().slice(0, 10)),
     ),
   ].filter(Boolean);
@@ -498,15 +529,156 @@ export async function dailySummary(db: Db, cfg: Config, now: Date): Promise<Disc
 }
 
 /** True once a day after 21:30 local, until the summary is marked sent for that day. */
-export async function summaryDue(db: Db, cfg: Config, now: Date): Promise<string | undefined> {
-  const hm = new Intl.DateTimeFormat("en-GB", { timeZone: cfg.timezone, hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
+export async function summaryDue(
+  db: Db,
+  cfg: Config,
+  now: Date,
+): Promise<string | undefined> {
+  const hm = new Intl.DateTimeFormat("en-GB", {
+    timeZone: cfg.timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(now);
   if (hm < "21:30") return undefined;
   const day = dayKey(now, cfg.timezone);
-  const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = 'summary_sent'`);
+  const [row] = await db.query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = 'summary_sent'`,
+  );
   if (row?.value === day) return undefined;
   await db.query(
     `INSERT INTO settings (key, value) VALUES ('summary_sent', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
     [day],
   );
   return day;
+}
+
+type Curve = Array<{ at: number; watch: number; relative: number }>;
+
+/**
+ * Long videos only: the full retention curve a week after going live (one Analytics request each), so the
+ * long-form writer can learn which entries held viewers. Stored as a "curve" row.
+ */
+export async function captureCurves(
+  db: Db,
+  yt: RetentionSource,
+  now: Date,
+): Promise<number> {
+  if (!yt.retentionCurve) return 0;
+  const eps = await db.query<{
+    id: string;
+    youtube_video_id: string;
+    live_at: string;
+  }>(
+    `SELECT e.id, e.youtube_video_id, coalesce(e.publish_at, e.updated_at) AS live_at FROM episodes e
+      WHERE e.status = 'published' AND e.lane = 'longform' AND e.youtube_video_id IS NOT NULL
+        AND coalesce(e.publish_at, e.updated_at) < $1::timestamptz - interval '7 days'
+        AND coalesce(e.publish_at, e.updated_at) > $1::timestamptz - interval '60 days'
+        AND NOT EXISTS (SELECT 1 FROM video_metrics m WHERE m.episode_id = e.id AND m.label = 'curve')
+      LIMIT 5`,
+    [now],
+  );
+  let n = 0;
+  for (const e of eps) {
+    const curve = await yt.retentionCurve(
+      e.youtube_video_id,
+      new Date(e.live_at).toISOString().slice(0, 10),
+      now.toISOString().slice(0, 10),
+    );
+    if (curve.length < 20) continue; // too few views for a curve yet
+    await db.query(
+      `INSERT INTO video_metrics (episode_id, label, captured_at, views, likes, comments, raw) VALUES ($1, 'curve', $2, 0, 0, 0, $3)
+       ON CONFLICT (episode_id, label) DO NOTHING`,
+      [e.id, now, JSON.stringify(curve)],
+    );
+    n++;
+  }
+  if (n) log("info", "long-video retention curves captured", { videos: n });
+  return n;
+}
+
+/** The share of viewers still watching at a point (seconds) of a video, from its curve. */
+export function watchAt(
+  curve: Curve,
+  seconds: number,
+  duration: number,
+): number {
+  if (!curve.length || duration <= 0) return 0;
+  const r = Math.min(1, Math.max(0, seconds / duration));
+  let best = curve[0]!;
+  for (const p of curve)
+    if (Math.abs(p.at - r) < Math.abs(best.at - r)) best = p;
+  return best.watch;
+}
+
+/**
+ * How each entry of a long video held its viewers: the share watching as it starts, and how many it lost
+ * per minute (as a share of those watching when it began, so late entries are judged fairly).
+ */
+export function entryHolds(
+  curve: Curve,
+  starts: number[],
+  duration: number,
+): Array<{ entry: number; startWatch: number; lossPerMinute: number }> {
+  return starts.map((s, k) => {
+    const end = starts[k + 1] ?? duration - 6;
+    const a = watchAt(curve, s, duration);
+    const b = watchAt(curve, end, duration);
+    const minutes = Math.max(0.25, (end - s) / 60);
+    return {
+      entry: k,
+      startWatch: a,
+      lossPerMinute: a > 0 ? (a - b) / a / minutes : 0,
+    };
+  });
+}
+
+/** For the long-form writer: how our long videos held viewers, entry by entry. Empty until a curve exists. */
+export async function longLessons(db: Db, now: Date): Promise<string> {
+  const rows = await db.query<{
+    id: string;
+    script_json: any;
+    assets_json: any;
+    raw: unknown;
+  }>(
+    `SELECT e.id, e.script_json, e.assets_json, m.raw FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
+      WHERE m.label = 'curve' AND m.captured_at > $1::timestamptz - interval '120 days'`,
+    [now],
+  );
+  const intros: number[] = [];
+  const entries: Array<{ game: string; opening: string; loss: number }> = [];
+  for (const r of rows) {
+    const curve = (
+      typeof r.raw === "string" ? JSON.parse(r.raw) : r.raw
+    ) as Curve;
+    const starts = r.assets_json?.entryStarts as number[] | undefined;
+    const duration = Number(r.assets_json?.durationSeconds ?? 0) + 6;
+    if (!starts?.length || !duration) continue;
+    intros.push(watchAt(curve, starts[0]!, duration));
+    const ranked = [...(r.script_json?.entries ?? [])].sort(
+      (a: any, b: any) => b.rank - a.rank,
+    );
+    for (const h of entryHolds(curve, starts, duration)) {
+      const e = ranked[h.entry];
+      if (!e) continue;
+      entries.push({
+        game: e.game_title,
+        opening: String(e.narration ?? "").split(/(?<=[.!?])\s/)[0] ?? "",
+        loss: h.lossPerMinute,
+      });
+    }
+  }
+  if (!entries.length) return "";
+  entries.sort((a, b) => a.loss - b.loss);
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const line = (e: (typeof entries)[number]) =>
+    `- ${e.game} (lost ${pct(e.loss)} of its viewers a minute): "${e.opening}"`;
+  return [
+    `How our long videos held viewers (YouTube retention, ${rows.length} video${rows.length === 1 ? "" : "s"}). Learn the patterns, never reuse the words:`,
+    `- Still watching when the first entry begins: ${pct(intros.reduce((a, b) => a + b, 0) / intros.length)} on average.`,
+    "Entries that held viewers best:",
+    ...entries.slice(0, 3).map(line),
+    "Entries that lost them fastest:",
+    ...entries.slice(-3).reverse().map(line),
+  ].join("\n");
 }

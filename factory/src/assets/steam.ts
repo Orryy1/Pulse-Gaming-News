@@ -58,6 +58,9 @@ export interface SteamFacts {
   totalReviews?: number;
   currentPlayers?: number;
   fetchedAt: string;
+  /** A short background from the game's Wikipedia article (development, release, sales, reception, legacy). */
+  background?: string;
+  backgroundUrl?: string;
 }
 
 export function bestMatch(term: string, items: StoreSearchItem[]): StoreSearchItem | undefined {
@@ -147,6 +150,7 @@ export function factsText(f: SteamFacts): string {
     f.reviewSummary && `Steam user reviews: ${f.reviewSummary}, ${f.positivePercent}% positive of ${f.totalReviews?.toLocaleString("en-US")}`,
     f.currentPlayers && `Players on Steam right now: ${f.currentPlayers.toLocaleString("en-US")}`,
     `Data fetched: ${f.fetchedAt}`,
+    f.background && `Background (Wikipedia, ${f.backgroundUrl ?? "en.wikipedia.org"}): ${f.background.replace(/\s+/g, " ").trim()}`,
   ];
   return lines.filter(Boolean).join("\n");
 }

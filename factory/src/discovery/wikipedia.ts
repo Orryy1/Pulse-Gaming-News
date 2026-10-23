@@ -74,7 +74,8 @@ export function pickSections(extract: string, maxChars = 9000): string {
     parts.push(`## ${title}\n${t}`);
     used += t.length + title.length + 4;
   };
-  if (lead) add("Overview", lead.text.slice(0, 2500));
+  // The overview gets at most 30% of a short brief, so development, sales and reception still fit.
+  if (lead) add("Overview", lead.text.slice(0, Math.min(2500, Math.round(maxChars * 0.3))));
   for (const { s } of scored) add(s.title, s.text);
   return parts.join("\n\n");
 }

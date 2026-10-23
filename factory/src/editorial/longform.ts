@@ -30,7 +30,7 @@ export const LONG_OUTRO_WORDS: [number, number] = [60, 150];
 const HOUSE = `You write for Pulse Gaming News, a YouTube channel about video games.
 
 ${voiceFor("longform")}
-Never invent release years, scores, prices or player counts: use the Steam facts provided or long-established public knowledge. Opinions are framed as opinion.`;
+Never invent release years, scores, prices or player counts: use the facts provided (Steam figures and the Wikipedia background) or long-established public knowledge. Opinions are framed as opinion.`;
 
 export const GRAPHIC_KINDS = [
   "none",
@@ -160,7 +160,7 @@ export const LongformScriptSchema = z.object({
   claims: z.array(
     z.object({
       claim: z.string(),
-      source: z.string().describe("'steam facts' or 'public knowledge'"),
+      source: z.string().describe("'steam facts', 'wikipedia' or 'public knowledge'"),
     }),
   ),
 });
@@ -321,7 +321,7 @@ export async function writeLongform(
   // Steam facts given up front, or looked up once the plan names the games.
   let facts = Array.isArray(factsFor) ? factsFor : [];
   const factBlock = facts.length
-    ? `\n\nSteam facts for entries (use these numbers, never others):\n${facts.map((f) => `- ${f.title}: ${factsText(f.facts)}`).join("\n")}`
+    ? `\n\nFacts for entries: Steam figures and a Wikipedia background (use these numbers, never others):\n${facts.map((f) => `- ${f.title}: ${factsText(f.facts)}`).join("\n")}`
     : "";
   const fb = feedback.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${feedback.map((f) => `- ${f}`).join("\n")}`
@@ -346,7 +346,7 @@ export async function writeLongform(
       .filter((f) => f.title === e.game_title)
       .map(
         (f) =>
-          `Steam facts for this game (use these numbers, never others):\n${factsText(f.facts)}`,
+          `Facts for this game: Steam figures and a Wikipedia background (use these numbers, never others):\n${factsText(f.facts)}`,
       );
     const before = written
       .map((w) => `#${w.rank}: "${w.narration.split(/(?<=[.!?])\s/)[0]}"`)

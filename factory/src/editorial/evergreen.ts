@@ -153,7 +153,7 @@ export const EvergreenScriptSchema = z.object({
   claims: z.array(
     z.object({
       claim: z.string(),
-      source: z.string().describe("'steam facts' or 'public knowledge'"),
+      source: z.string().describe("'steam facts', 'wikipedia' or 'public knowledge'"),
     }),
   ),
 });
@@ -162,7 +162,7 @@ export type EvergreenScript = z.infer<typeof EvergreenScriptSchema>;
 const HOUSE = `You write for Pulse Gaming News, a YouTube Shorts channel about video games.
 
 ${voiceFor("ranking")}
-Never invent release years, scores, prices or player counts: use the Steam facts provided or long-established public knowledge. Opinions are framed as opinion.`;
+Never invent release years, scores, prices or player counts: use the facts provided (Steam figures and the Wikipedia background) or long-established public knowledge. Opinions are framed as opinion.`;
 
 export function topicPrompt(): string {
   return `${HOUSE}
@@ -208,7 +208,7 @@ export async function writeEvergreen(
 ): Promise<EvergreenScript> {
   const dataBlock = brief ? `\n\nThis week's data (use these and nothing else):\n${brief}\n\n${FORMAT_RULES[topic.format] ?? ""}` : "";
   const factBlock = facts.length
-    ? `\n\nSteam facts for entries (use these numbers, never others):\n${facts.map((f) => `- ${f.title}: ${factsText(f.facts)}`).join("\n")}`
+    ? `\n\nFacts for entries: Steam figures and a Wikipedia background (use these numbers, never others):\n${facts.map((f) => `- ${f.title}: ${factsText(f.facts)}`).join("\n")}`
     : "";
   const fb = feedback.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${feedback.map((f) => `- ${f}`).join("\n")}`

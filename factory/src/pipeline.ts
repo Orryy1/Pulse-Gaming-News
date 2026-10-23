@@ -2280,6 +2280,26 @@ async function stepScriptRecap(
   });
 }
 
+/**
+ * A game's fact sheet with a short Wikipedia background (development, release, sales, reception, legacy),
+ * so a ranking has more to say than store numbers; games off Steam get a sheet of their own this way.
+ */
+async function withBackground(
+  s: Services,
+  title: string,
+  facts: SteamFacts | undefined,
+  maxChars = 2200,
+): Promise<SteamFacts | undefined> {
+  const wiki = await s
+    .research(title, `${title} video game`, maxChars)
+    .catch(() => undefined);
+  if (!facts && !wiki) return undefined;
+  return {
+    ...(facts ?? { name: title, storeUrl: "", fetchedAt: s.now().toISOString() }),
+    ...(wiki ? { background: wiki.text, backgroundUrl: wiki.url } : {}),
+  };
+}
+
 /** Writes the long-form ranking against live Steam facts for each entry, with one rewrite on problems. */
 async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   const fc = ep.factcheck_json as {
@@ -2303,14 +2323,16 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   ) => {
     if (facts.length) return facts;
     for (const entry of entries) {
-      if (!entry.steam_search_term) continue;
       try {
-        const app = await s.findGame(entry.steam_search_term);
-        if (app)
-          facts.push({
-            title: entry.game_title,
-            facts: await s.gameFacts(app),
-          });
+        const app = entry.steam_search_term
+          ? await s.findGame(entry.steam_search_term)
+          : undefined;
+        const f = await withBackground(
+          s,
+          entry.game_title,
+          app ? await s.gameFacts(app) : undefined,
+        );
+        if (f) facts.push({ title: entry.game_title, facts: f });
       } catch (err) {
         log("warn", "long-form steam lookup failed", {
           game: entry.game_title,
@@ -2570,14 +2592,17 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
     if (attempt === 0) {
       facts = [];
       for (const entry of draft.entries) {
-        if (!entry.steam_search_term) continue;
         try {
-          const app = await s.findGame(entry.steam_search_term);
-          if (app)
-            facts.push({
-              title: entry.game_title,
-              facts: await s.gameFacts(app),
-            });
+          const app = entry.steam_search_term
+            ? await s.findGame(entry.steam_search_term)
+            : undefined;
+          const f = await withBackground(
+            s,
+            entry.game_title,
+            app ? await s.gameFacts(app) : undefined,
+            1200,
+          );
+          if (f) facts.push({ title: entry.game_title, facts: f });
         } catch (err) {
           log("warn", "evergreen steam lookup failed", {
             game: entry.game_title,

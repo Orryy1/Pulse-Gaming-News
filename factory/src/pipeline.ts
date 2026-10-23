@@ -3579,16 +3579,14 @@ export async function gatherLongEntryMedia(
     // Licensed gameplay for every sentence (real missions and moments, credited), on top of any trailer moment:
     // a sentence then plays as footage, not a still.
     // Two different moments per sentence: footage for the whole line, not one clip and then a still.
-    const missing = targets
-      .slice(0, 10)
-      .flatMap((t) => [
-        t,
-        {
-          ...t,
-          key: t.key.replace(/#m(\d+)$/, "#alt#m$1"),
-          text: `${t.text}, a different moment`,
-        },
-      ]);
+    const missing = targets.slice(0, 10).flatMap((t) => [
+      t,
+      {
+        ...t,
+        key: t.key.replace(/#m(\d+)$/, "#alt#m$1"),
+        text: `${t.text}, a different moment`,
+      },
+    ]);
     if (missing.length)
       for (const c of await s
         .gameplayClips(
@@ -3651,6 +3649,14 @@ export async function gatherLongEntryMedia(
     }
     for (const p of ranked.picks)
       stills[p.image]!.moment = Number(p.key.slice(1));
+    // A handheld game shows its interface in every screenshot: dropping them all left GTA Advance on the
+    // blank plate for 70 s (GTA ranking, 23 Oct 2026). Below three clean stills, the first few stay.
+    const clean = stills.filter((a) => !(a as { drop?: boolean }).drop).length;
+    if (clean < 3)
+      for (const a of stills
+        .filter((x) => (x as { drop?: boolean }).drop)
+        .slice(0, 4 - clean))
+        delete (a as { drop?: boolean }).drop;
     // A story video uses no store screenshots: for shooters they are mostly multiplayer maps, and
     // no picture editor can tell a map from a campaign level by eye (a Vanguard map passed as a
     // campaign shot). Footage carries the story; key art stays for the rank card.
@@ -4146,7 +4152,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       })),
       variant,
       momentCounts: hasMoments ? moments.map((m) => m.length) : undefined,
-      momentKeys: hasMoments ? moments.map((e) => e.map(momentKeys)) : undefined,
+      momentKeys: hasMoments
+        ? moments.map((e) => e.map(momentKeys))
+        : undefined,
       takeEntry: script.take_entry,
     });
   assets.longPlan = plan;

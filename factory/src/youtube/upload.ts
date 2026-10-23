@@ -265,6 +265,43 @@ export class YouTubeClient {
   }
 
   /** The newest published top-level comments on a video (commentThreads.list, one quota unit). */
+  /** The newest comment threads across every video on a channel (one request, one quota unit). */
+  async listChannelComments(channelId: string): Promise<
+    Array<{
+      id: string;
+      videoId: string;
+      text: string;
+      authorChannelId: string;
+      likes: number;
+      replies: number;
+      publishedAt: string;
+    }>
+  > {
+    const q = new URLSearchParams({
+      part: "snippet",
+      allThreadsRelatedToChannelId: channelId,
+      order: "time",
+      maxResults: "50",
+      textFormat: "plainText",
+    });
+    const res = await this.fetchFn(`${API}/commentThreads?${q}`, {
+      headers: await this.auth(),
+    });
+    if (!res.ok) throw await apiError(res, "commentThreads.list (channel)");
+    return (((await res.json()) as any).items ?? []).map((t: any) => {
+      const c = t.snippet?.topLevelComment?.snippet ?? {};
+      return {
+        id: String(t.snippet?.topLevelComment?.id ?? t.id),
+        videoId: String(t.snippet?.videoId ?? c.videoId ?? ""),
+        text: String(c.textOriginal ?? c.textDisplay ?? ""),
+        authorChannelId: String(c.authorChannelId?.value ?? ""),
+        likes: Number(c.likeCount ?? 0),
+        replies: Number(t.snippet?.totalReplyCount ?? 0),
+        publishedAt: String(c.publishedAt ?? ""),
+      };
+    });
+  }
+
   async listComments(videoId: string): Promise<
     Array<{
       id: string;

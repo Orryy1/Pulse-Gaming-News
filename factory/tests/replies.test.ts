@@ -53,3 +53,39 @@ test("the tick runs the comment record prune and the notice states the same limi
   assert.match(src, /await pruneCommentRecords\(s\.db, s\.now\(\)\)/);
   assert.match(PRIVACY_NOTICE_HTML, /deleted after 90 days/);
 });
+
+test("channel-wide pass: a late comment on any factory video gets judged and answered once", async () => {
+  const { replyToChannelComments } = await import("../src/youtube/replies.ts");
+  const db = await testDb();
+  const now = new Date("2026-10-23T20:00:00Z");
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane, script_json, youtube_video_id, publish_at)
+     VALUES ('ep_sa', 'sa', 'published', '{"headline":"SA","items":[]}', 'news', $1, 'vidSA', $2)`,
+    [JSON.stringify({ youtube: { title: "Why Rockstar Never Made a San Andreas Sequel" }, hook: "h", beats: [] }), new Date(now.getTime() - 20 * 3600_000)],
+  );
+  const replied: Array<[string, string]> = [];
+  const youtube = () =>
+    ({
+      myChannelId: async () => "UCown",
+      listChannelComments: async () => [
+        { id: "c1", videoId: "vidSA", text: "Should be a new city every expansion", authorChannelId: "UCviewer", likes: 0, replies: 0, publishedAt: now.toISOString() },
+        { id: "c2", videoId: "vidSA", text: "our own comment", authorChannelId: "UCown", likes: 0, replies: 0, publishedAt: now.toISOString() },
+        { id: "c3", videoId: "vidOld", text: "on a video the factory did not make", authorChannelId: "UCviewer", likes: 0, replies: 0, publishedAt: now.toISOString() },
+      ],
+      replyToComment: async (id: string, text: string) => {
+        replied.push([id, text]);
+        return `r_${id}`;
+      },
+    }) as never;
+  const llm = {
+    structured: async () => ({ decisions: [{ id: "c1", action: "reply", reason: "good idea", reply: "Fair shout, a new city per expansion would be huge. Which one first?" }] }),
+  } as never;
+  const deps = { db, youtube, llm, headroom: async () => 10_000, now: () => now };
+  assert.equal(await replyToChannelComments(deps), 1);
+  assert.deepEqual(replied.map(([id]) => id), ["c1"]);
+  // Inside fifteen minutes it does not ask again; later, a judged comment is never answered twice.
+  assert.equal(await replyToChannelComments(deps), 0);
+  const later = { ...deps, now: () => new Date(now.getTime() + 20 * 60_000) };
+  assert.equal(await replyToChannelComments(later), 0);
+  assert.equal(replied.length, 1);
+});

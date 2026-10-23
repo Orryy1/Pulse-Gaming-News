@@ -37,7 +37,7 @@ import {
   startGameWarmer,
   startSiteIndexNow,
 } from "./web/routes.ts";
-import { replyToComments } from "./youtube/replies.ts";
+import { replyToChannelComments, replyToComments } from "./youtube/replies.ts";
 import { collectRequests } from "./social/requests.ts";
 import { setChannelBanner } from "./youtube/branding.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
@@ -1025,16 +1025,20 @@ async function main(): Promise<void> {
   }
   // A new video's fresh comments: the good ones get a reply while the video is young.
   if (cfg.commentReplies && !cfg.dryRun) {
+    const deps = {
+      db,
+      youtube: services.youtube,
+      llm: services.llm,
+      headroom: () => quotaHeadroom(db, cfg, new Date()),
+      now: () => new Date(),
+    };
+    // New videos are watched closely; every other comment on the channel is picked up within 15 minutes.
     const replies = () =>
-      replyToComments({
-        db,
-        youtube: services.youtube,
-        llm: services.llm,
-        headroom: () => quotaHeadroom(db, cfg, new Date()),
-        now: () => new Date(),
-      }).catch((err) =>
-        log("warn", "comment reply pass failed", { error: errorMessage(err) }),
-      );
+      replyToComments(deps)
+        .then(() => replyToChannelComments(deps))
+        .catch((err) =>
+          log("warn", "comment reply pass failed", { error: errorMessage(err) }),
+        );
     setTimeout(() => void replies(), 120_000);
     setInterval(() => void replies(), 5 * 60_000);
   }

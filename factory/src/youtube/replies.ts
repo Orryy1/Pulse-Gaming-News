@@ -39,7 +39,7 @@ const SYSTEM = `You answer YouTube comments for Pulse Gaming News, a credible, f
 
 You see a video's script facts and its newest comments. Decide, for each comment, whether the channel replies.
 
-Reply only when the reply adds something: a question the script's facts answer, a strong opinion worth a specific, good-natured nod (name the detail they mentioned), or a correction you can settle from the facts given. Skip everything else: spam, links, self-promotion, insults, hostility, baiting, politics, anything sexual, personal questions about whoever runs the channel, piracy, comments not in English, one-word or emoji-only comments, "first", and anything you would have to guess about.
+Reply only when the reply adds something: a question the script's facts answer, a strong opinion worth a specific, good-natured nod (name the detail they mentioned), or a correction you can settle from the facts given. Skip everything else: spam, links, self-promotion, insults, hostility, baiting, politics, anything sexual, personal questions about whoever runs the channel, piracy, comments not in English, emoji-only comments, "first", and anything you would have to guess about. A short answer to the question the video itself asked ("Yes", "Keep it", "GTA 4") is a viewer taking part: give it a warm, specific one-line reply; other one-word comments are skipped.
 
 Rules for a reply:
 - One or two sentences, under 220 characters, American English, warm and plain.
@@ -155,11 +155,15 @@ export async function replyToComments(d: ReplyDeps): Promise<number> {
   return sent;
 }
 
-async function replyOnVideo(d: ReplyDeps, ep: Episode): Promise<number> {
+async function replyOnVideo(
+  d: ReplyDeps,
+  ep: Episode,
+  given?: Awaited<ReturnType<YouTubeClient["listComments"]>>,
+): Promise<number> {
   const yt = d.youtube();
   ownChannel ??= await yt.myChannelId();
-  const comments = await yt.listComments(ep.youtube_video_id!);
-  await quotaAdd(d.db, d.now(), QUOTA.poll);
+  const comments = given ?? (await yt.listComments(ep.youtube_video_id!));
+  if (!given) await quotaAdd(d.db, d.now(), QUOTA.poll);
   const seen = new Set(
     (
       await d.db.query<{ comment_id: string }>(
@@ -236,3 +240,41 @@ async function replyOnVideo(d: ReplyDeps, ep: Episode): Promise<number> {
     log("info", "comment replies sent", { episode: ep.id, replies: sent });
   return sent;
 }
+
+let lastChannelPoll = 0;
+
+/**
+ * Every comment on the channel, whenever it arrives: one request lists the newest threads across all
+ * videos (one quota unit), every fifteen minutes. The first-hours pass above only watched each video
+ * while it was new, so a comment hours later went unanswered (23 Oct 2026). Videos the factory did not
+ * make have no script facts to answer from and are left alone.
+ */
+export async function replyToChannelComments(d: ReplyDeps): Promise<number> {
+  const now = d.now().getTime();
+  if (now - lastChannelPoll < CHANNEL_POLL_MINUTES * 60_000) return 0;
+  lastChannelPoll = now;
+  const yt = d.youtube();
+  ownChannel ??= await yt.myChannelId();
+  const all = await yt.listChannelComments(ownChannel);
+  await quotaAdd(d.db, d.now(), QUOTA.poll);
+  const byVideo = new Map<string, typeof all>();
+  for (const c of all)
+    if (c.videoId && c.authorChannelId !== ownChannel)
+      (byVideo.get(c.videoId) ?? byVideo.set(c.videoId, []).get(c.videoId)!).push(c);
+  let sent = 0;
+  for (const [videoId, comments] of byVideo) {
+    const [ep] = await d.db.query<Episode>(
+      `SELECT * FROM episodes WHERE youtube_video_id = $1 AND script_json IS NOT NULL LIMIT 1`,
+      [videoId],
+    );
+    if (!ep) continue;
+    try {
+      sent += await replyOnVideo(d, ep, comments);
+    } catch (err) {
+      log("warn", "comment replies failed", { episode: ep.id, error: errorMessage(err) });
+    }
+  }
+  return sent;
+}
+
+export const CHANNEL_POLL_MINUTES = 15;

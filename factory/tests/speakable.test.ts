@@ -95,13 +95,14 @@ test("counts and decimals are spoken in words and shown as figures again in the 
     return { spoken, shown: displayWords(words).map((w) => w.text).join(" ") };
   };
   const cases: Array<[string, string, string]> = [
-    ["32,619 Steam users are playing.", "thirty-two thousand six hundred nineteen Steam users are playing.", "32,619 Steam users are playing."],
+    ["32,619 Steam users are playing.", "almost thirty-three thousand Steam users are playing.", "almost 33,000 Steam users are playing."],
+    ["More than 32,619 Steam users are playing.", "More than thirty-two thousand six hundred nineteen Steam users are playing.", "More than 32,619 Steam users are playing."],
     ["It holds 4.5 out of 5.", "It holds four point five out of 5.", "It holds 4.5 out of 5."],
     ["47.5% of players finished it.", "forty-seven point five percent of players finished it.", "47.5% of players finished it."],
     ["It sold 1.2 million copies.", "It sold one point two million copies.", "It sold 1.2 million copies."],
     ["Over 1,000,000 downloads.", "Over one million downloads.", "Over 1 million downloads."],
     ["2,000 players joined.", "two thousand players joined.", "2,000 players joined."],
-    ["376,411 reviews at 90 percent.", "three hundred seventy-six thousand four hundred eleven reviews at 90 percent.", "376,411 reviews at 90%."],
+    ["376,411 reviews at 90 percent.", "almost three hundred eighty thousand reviews at 90 percent.", "almost 380,000 reviews at 90%."],
   ];
   for (const [text, spoken, shown] of cases) {
     const r = roundTrip(text);
@@ -124,4 +125,15 @@ test("Series X|S is said as Series X and S and shown as X|S", () => {
   assert.deepEqual(shown.map((x) => x.text), ["Xbox", "Series", "X|S,", "three"]);
   assert.equal(shown[2]!.start, 0.6);
   assert.equal(shown[2]!.end, 1.2);
+});
+
+test("big counts are rounded the way people say them", async () => {
+  const { roundCounts } = await import("../src/voice/speakable.ts");
+  assert.equal(roundCounts("from 346,258 reviews"), "from almost 350,000 reviews");
+  assert.equal(roundCounts("a peak of 233,409 players"), "a peak of over 230,000 players");
+  assert.equal(roundCounts("9,799 players and 8,049 reviews"), "almost 10,000 players and over 8,000 reviews");
+  assert.equal(roundCounts("sold 1,250,000 copies"), "sold almost 1.3 million copies");
+  assert.equal(roundCounts("2,000 players"), "2,000 players");
+  assert.equal(roundCounts("more than 346,258 reviews"), "more than 346,258 reviews");
+  assert.equal(roundCounts("costs $1,299 and 1,250.50 points"), "costs $1,299 and 1,250.50 points");
 });

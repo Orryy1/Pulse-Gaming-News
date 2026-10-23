@@ -6,7 +6,7 @@ const say = (text: string, from = 0, step = 0.4) =>
   text.split(" ").map((t, i) => ({ text: t, start: from + i * step, end: from + i * step + 0.3 }));
 
 test("a key is found where the narrator says it, spoken forms included", () => {
-  const w = say("It launched at fifty-nine dollars ninety-nine and sold sixteen thousand nine hundred eighty-one copies");
+  const w = say("It launched at fifty-nine dollars ninety-nine and sold almost seventeen thousand copies");
   assert.equal(keyTime(w, 0, w.length, "$59.99"), w[3]!.start);
   assert.equal(keyTime(w, 0, w.length, "16,981 copies"), w[8]!.start);
   const g = say("Two years later Rockstar went from one city to an entire state with Grand Theft Auto 5");

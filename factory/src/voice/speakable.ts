@@ -245,8 +245,42 @@ export function speakNumbers(text: string): string {
     );
 }
 
+/** A count as people say it: "almost 350,000" for 346,258, "over 230,000" for 233,409, "over 8,000" for 8,049. */
+export function roundCount(n: number): string {
+  const fmt = (r: number) =>
+    r >= 1_000_000
+      ? `${Number((r / 1_000_000).toFixed(2))} million`
+      : r.toLocaleString("en-US");
+  const at = (sig: number) => {
+    const step = 10 ** (Math.floor(Math.log10(n)) - sig + 1);
+    return Math.round(n / step) * step;
+  };
+  // One significant figure when it is within 3% ("almost 10,000" for 9,799), else two.
+  const one = at(1);
+  const r = Math.abs(n - one) / n <= 0.03 ? one : at(2);
+  return r === n ? fmt(n) : `${n < r ? "almost" : "over"} ${fmt(r)}`;
+}
+
+const QUALIFIED =
+  /\b(about|around|almost|nearly|over|than|roughly|under|some|approximately|to|of exactly|exactly)\s*$/i;
+
+/**
+ * Exact counts rounded for the ear ("from 346,258 reviews" is "from almost 350,000 reviews"): only
+ * comma-grouped whole numbers, never money, percentages or decimals, and a number that already has a
+ * qualifier ("more than 346,258") is left as written.
+ */
+export function roundCounts(text: string): string {
+  return text.replace(
+    /(?<![\w$£€¥.,#:/-])(\d{1,3}(?:,\d{3})+)(?![\d%]|[.,]\d|\s?(?:percent|%|€))/g,
+    (m: string, num: string, offset: number, all: string) =>
+      QUALIFIED.test(all.slice(Math.max(0, offset - 20), offset))
+        ? m
+        : roundCount(Number(num.replace(/,/g, ""))),
+  );
+}
+
 export function speakable(text: string): string {
-  return speakNumbers(speakYearsAndMoney(text));
+  return speakNumbers(speakYearsAndMoney(roundCounts(text)));
 }
 
 function speakYearsAndMoney(text: string): string {

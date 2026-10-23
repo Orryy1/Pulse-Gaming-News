@@ -213,7 +213,7 @@ export async function crosspostTick(
         const link = base ? `${base}/tiktok/${ep.id}?t=${signToken(`tiktok:${ep.id}`, d.cfg.appSecret, 3 * 86_400)}` : "";
         await d.notify({
           ping: true,
-          content: `📲 Your turn, TikTok: "${polishTitle(script)}"${link ? `\nTap: ${link}\n(Copy caption, Open TikTok, tap the draft, paste, post)` : "\nOpen TikTok, tap the draft, paste the next message as the caption, post."}`,
+          content: `📲 Your turn, TikTok: "${polishTitle(script)}"${link ? `\nTap: ${link}\n(one button copies the caption and opens TikTok: tap the draft, paste, post)` : "\nOpen TikTok, tap the draft, paste the next message as the caption, post."}`,
         }).catch(() => undefined);
         await d.notify({ content: caption.slice(0, 2000) }).catch(() => undefined);
       }

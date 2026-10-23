@@ -291,11 +291,15 @@ export function createApp(
         page(
           "Post to TikTok",
           `<h1>📲 ${esc(episode.script_json?.youtube?.title ?? "TikTok draft")}</h1>
-<ol><li>Tap <b>Copy caption</b></li><li>Tap <b>Open TikTok</b>, then the draft in your inbox</li><li>Paste the caption, turn on <b>AI-generated content</b>, Post</li></ol>
+<ol><li>Tap <b>Copy caption &amp; open TikTok</b></li><li>Tap the draft in your TikTok inbox</li><li>Paste the caption, turn on <b>AI-generated content</b>, Post</li></ol>
+<p><button class="ok" id="go" style="font-size:20px;width:100%;padding:18px">Copy caption &amp; open TikTok</button></p>
 <textarea id="c" readonly style="width:100%;height:9em;font:inherit;background:#16161b;color:#f5f5f2;border:1px solid #333;border-radius:10px;padding:10px">${esc(row.caption)}</textarea>
-<p><button class="ok" id="copy" style="font-size:20px;width:100%">Copy caption</button></p>
-<p><a href="https://www.tiktok.com/" style="display:block;text-align:center;background:#ff6b1a;color:#0b0b0e;font-weight:700;font-size:20px;padding:14px;border-radius:10px;text-decoration:none">Open TikTok</a></p>
-<script>document.getElementById("copy").onclick=async()=>{const t=document.getElementById("c");try{await navigator.clipboard.writeText(t.value)}catch{t.select();document.execCommand("copy")}document.getElementById("copy").textContent="Copied ✓"}</script>`,
+<p style="text-align:center"><a href="#" id="copy" style="color:#ff6b1a">Copy only</a></p>
+<script>
+const copy=async()=>{const t=document.getElementById("c");try{await navigator.clipboard.writeText(t.value)}catch{t.select();document.execCommand("copy")}};
+document.getElementById("go").onclick=async()=>{await copy();document.getElementById("go").textContent="Copied ✓ Opening TikTok…";location.href="https://www.tiktok.com/"};
+document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy();e.target.textContent="Copied ✓"};
+</script>`,
         ),
       );
     }

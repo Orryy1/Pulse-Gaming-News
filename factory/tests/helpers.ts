@@ -152,6 +152,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     publishWindowStartUtc: 0,
     publishWindowEndUtc: 24,
     visionQa: true,
+    whisperPython: "",
     footage: true,
     maxClips: 4,
     clipRanking: "rule",

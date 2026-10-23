@@ -732,3 +732,34 @@ export function gameSoundVolume(
   const edge = Math.min(1, frame / fade, (frames - frame) / fade);
   return GAME_SOUND_VOLUME * Math.max(0, edge);
 }
+
+/**
+ * Entries a plan leaves thin: on the branded plate for more than 15 s, or showing one clip or still more
+ * than three times. GTA Advance sat on the plate for 70 s and Liberty City Stories looped its clips
+ * (GTA ranking, 23 Oct 2026); the render step tops such entries up before rendering.
+ */
+export function planGaps(
+  plan: LongPlan,
+  segments: Segment[],
+  takeEntry?: number,
+): Array<{ entry: number; plateSeconds: number; maxRepeat: number }> {
+  const by = new Map<number, { plate: number; uses: Map<string, number> }>();
+  for (const s of plan.shots) {
+    if (segments[s.segment]?.kind !== "beat") continue;
+    const e = entryOf(segments, s.segment, takeEntry);
+    if (e === undefined) continue;
+    const g = by.get(e) ?? by.set(e, { plate: 0, uses: new Map() }).get(e)!;
+    if (s.media.type === "plate") g.plate += s.end - s.start;
+    else {
+      const k = `${s.media.type}${s.media.index}`;
+      g.uses.set(k, (g.uses.get(k) ?? 0) + 1);
+    }
+  }
+  return [...by]
+    .map(([entry, g]) => ({
+      entry,
+      plateSeconds: Math.round(g.plate / plan.fps),
+      maxRepeat: Math.max(0, ...g.uses.values()),
+    }))
+    .filter((x) => x.plateSeconds > 15 || x.maxRepeat > 3);
+}

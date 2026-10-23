@@ -283,6 +283,11 @@ export function speakable(text: string): string {
   return speakNumbers(speakYearsAndMoney(roundCounts(text)));
 }
 
+/** Figures in words exactly as written, without rounding: for comparing a transcript with a script. */
+export function speakExact(text: string): string {
+  return speakNumbers(speakYearsAndMoney(text));
+}
+
 function speakYearsAndMoney(text: string): string {
   return speakYears(speakTitles(text))
     .replace(

@@ -18,6 +18,7 @@ import { fetchSteamArt, findSteamApp, steamFacts } from "./assets/steam.ts";
 import { renderShort, renderLong, renderCutdown } from "./render/render.ts";
 import { extractFrames, imageAspect, normaliseLoudness, technicalQa } from "./qa/media.ts";
 import { visionQa } from "./qa/vision.ts";
+import { checkNarration, transcribeWords } from "./qa/narration.ts";
 import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken } from "./youtube/oauth.ts";
 import { officialMedia } from "./assets/officialTrailer.ts";
@@ -144,6 +145,8 @@ export function createServices(db: Db, cfg: Config): Services {
     technicalQa,
     extractFrames,
     visionQa: (frames, ctx) => visionQa(llm, frames, ctx),
+    checkNarration: async (file, words) =>
+      cfg.whisperPython ? checkNarration(words, await transcribeWords(file, cfg.whisperPython)) : undefined,
     youtube: () => new YouTubeClient(() => accessToken(db, oauthConfig(cfg))),
     publicReachable: async () => {
       if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(cfg.publicUrl)) return true;

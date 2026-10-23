@@ -70,6 +70,7 @@ import {
 import {
   buildLongPlan,
   momentKeys,
+  planGaps,
   chapterLines,
   LONG_TAIL_SECONDS,
 } from "./render/longplan.ts";
@@ -89,6 +90,7 @@ import { normTitle } from "./assets/igdb.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
 import type { VisionQa } from "./editorial/schema.ts";
+import { narrationSummary, type NarrationCheck } from "./qa/narration.ts";
 import type { YouTubeClient } from "./youtube/upload.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
 import { COLOURS } from "./approval/discord.ts";
@@ -305,6 +307,11 @@ export interface Services {
     frames: string[],
     ctx: { headline: string; gameTitle: string; format?: "short" | "long" },
   ): Promise<VisionQa>;
+  /** What the voice actually says against its script (undefined when no Whisper is set up). */
+  checkNarration?(
+    file: string,
+    words: Array<{ text: string; start: number; end: number }>,
+  ): Promise<NarrationCheck | undefined>;
   youtube(): YouTubeClient;
   /** true = delivered, false = failed, undefined/void = Discord not configured. */
   notify(msg: DiscordMessage): Promise<boolean | undefined | void>;
@@ -2789,6 +2796,35 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       seconds: Math.round(tight.removedSeconds * 10) / 10,
     });
   }
+  // The narration check: what the voice says against its script, before anything is rendered on it.
+  // A fault re-voices once; a second one is reported and the episode goes on (a misheard line should
+  // not cost a week's long video). Caught the GTA ranking's "Sayus" and drifting timings (23 Oct 2026).
+  const check = await s
+    .checkNarration?.(path.join(dir, "voice.mp3"), narration.words)
+    .catch((err) => {
+      log("warn", "narration check unavailable", { error: errorMessage(err) });
+      return undefined;
+    });
+  if (check) {
+    await logEvent(s.db, ep.id, "narration_check", {
+      ok: check.ok,
+      drift: check.drift,
+      matched: Math.round(check.matched * 1000) / 1000,
+      issues: check.issues.slice(0, 10),
+    });
+    if (!check.ok) {
+      const [prior] = await s.db.query<{ n: string | number }>(
+        `SELECT count(*) AS n FROM events WHERE episode_id = $1 AND kind = 'narration_check' AND detail->>'ok' = 'false'`,
+        [ep.id],
+      );
+      if (Number(prior?.n ?? 0) <= 1)
+        throw new Error(`narration check failed, voicing again: ${narrationSummary(check)}`);
+      log("warn", "narration check failed twice; going on", { episode: ep.id, problems: narrationSummary(check) });
+      await s.notify({
+        content: `🎙️ The narration for "${ep.script_json?.headline ?? ep.id}" still has a fault after a second take, so it goes ahead: ${narrationSummary(check)}`,
+      });
+    } else log("info", "narration check passed", { episode: ep.id, drift: check.drift });
+  }
   const maxSeconds =
     ep.lane === "evergreen"
       ? s.cfg.evergreenMaxSeconds
@@ -4132,8 +4168,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     credit: c.credit,
     audio: c.audio,
   }));
-  const plan =
-    assets.longPlan ??
+  const makePlan = () =>
     buildLongPlan({
       segments,
       words,
@@ -4157,6 +4192,37 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         : undefined,
       takeEntry: script.take_entry,
     });
+  let plan = assets.longPlan ?? makePlan();
+  if (!assets.longPlan) {
+    // An entry left on the plate or looping its few clips gets official screenshots from IGDB, then a new plan.
+    const ranked = [...(script.entries ?? [])].sort((a, b) => b.rank - a.rank);
+    const gaps = planGaps(plan, segments, script.take_entry);
+    let added = 0;
+    for (const g of gaps) {
+      const entry = ranked[g.entry];
+      if (!entry) continue;
+      const more = await s
+        .igdbArt(entry.game_title, entry.year, path.join(dir, `entry_${g.entry}`, "more"), 8)
+        .catch(() => [] as VisualAsset[]);
+      for (const a of more.filter((x) => x.kind !== "capsule")) {
+        const file = path.join(`entry_${g.entry}`, "more", a.file);
+        if ((assets.images ?? []).some((i) => i.file === file)) continue;
+        const aspect = await s.imageAspect(path.join(dir, file)).catch(() => 16 / 9);
+        const img = { ...a, file, aspect, beatIndex: g.entry };
+        (assets.images ??= []).push(img);
+        images.push({ file, kind: a.kind, aspect, beatIndex: g.entry, credit: photoCredit(img), moment: undefined, label: undefined });
+        added++;
+      }
+    }
+    if (added) plan = makePlan();
+    const left = planGaps(plan, segments, script.take_entry);
+    if (gaps.length)
+      log(left.length ? "warn" : "info", "thin entries topped up", { episode: ep.id, before: gaps, added, after: left });
+    if (left.length)
+      await s.notify({
+        content: `🖼️ "${script.headline}" is short of pictures for ${left.map((g) => ranked[g.entry]?.game_title ?? `entry ${g.entry}`).join(", ")} (${left.map((g) => (g.plateSeconds > 15 ? `${g.plateSeconds}s on the plain background` : `a shot shown ${g.maxRepeat} times`)).join("; ")}). It renders anyway.`,
+      });
+  }
   assets.longPlan = plan;
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
     ep.id,

@@ -42,3 +42,26 @@ test("each sentence's moment is anchored on its key word; the first stays on the
   assert.ok(ws[1]!.at > ws[1]!.start + 1);
   assert.equal(ws[2]!.at, ws[2]!.start);
 });
+
+test("plan gaps: an entry on the plate or looping one shot is flagged", async () => {
+  const { planGaps } = await import("../src/render/longplan.ts");
+  const seg = (kind: string, start: number) => ({ kind, text: "x", start, end: start + 60 }) as never;
+  const segments = [seg("hook", 0), seg("beat", 10), seg("beat", 70), seg("beat", 130)];
+  const shot = (segment: number, start: number, end: number, type: string, index = 0) => ({ segment, start: start * 30, end: end * 30, media: { type, index }, move: "pushIn" }) as never;
+  const plan = {
+    version: 1,
+    fps: 30,
+    totalFrames: 190 * 30,
+    tailFrames: 180,
+    shots: [
+      shot(0, 0, 10, "image", 9),
+      shot(1, 10, 30, "plate"), shot(1, 30, 70, "image", 1),
+      ...[0, 1, 2, 3].map((k) => shot(2, 70 + k * 10, 80 + k * 10, "clip", 5)), shot(2, 110, 130, "image", 2),
+      shot(3, 130, 150, "clip", 6), shot(3, 150, 170, "clip", 6), shot(3, 170, 190, "image", 3),
+    ],
+  } as never;
+  assert.deepEqual(planGaps(plan, segments), [
+    { entry: 0, plateSeconds: 20, maxRepeat: 1 },
+    { entry: 1, plateSeconds: 0, maxRepeat: 4 },
+  ]);
+});

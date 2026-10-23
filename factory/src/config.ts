@@ -166,6 +166,8 @@ export interface Config {
   publishWindowStartUtc: number;
   publishWindowEndUtc: number;
   visionQa: boolean;
+  /** Python with faster-whisper (PC) or MLX Whisper (Mac) for the narration check; empty switches it off. */
+  whisperPython: string;
   footage: boolean;
   maxClips: number;
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
@@ -352,6 +354,7 @@ export function loadConfig(): Config {
     publishWindowStartUtc: int("PUBLISH_WINDOW_START_UTC", 7),
     publishWindowEndUtc: int("PUBLISH_WINDOW_END_UTC", 22),
     visionQa: bool("VISION_QA", true),
+    whisperPython: str("WHISPER_PYTHON", defaultWhisperPython()),
     footage: bool("TRAILER_FOOTAGE", true),
     maxClips: int("MAX_TRAILER_CLIPS", 4),
     clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as "llm" | "rule",
@@ -429,4 +432,13 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     visionQa: c.visionQa,
     dryRun: c.dryRun,
   };
+}
+
+/** The Python that has Whisper on this machine: the PC's speech runtime or the Mac's MLX one. */
+function defaultWhisperPython(): string {
+  const candidates = [
+    "D:/pulse-tools/pulse-python-runtime/Scripts/python.exe",
+    `${process.env.HOME ?? ""}/PulseFactory/asr/bin/python`,
+  ];
+  return candidates.find((p) => p && fs.existsSync(p)) ?? "";
 }

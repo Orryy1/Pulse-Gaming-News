@@ -37,7 +37,7 @@ import {
   startGameWarmer,
   startSiteIndexNow,
 } from "./web/routes.ts";
-import { replyToChannelComments, replyToComments } from "./youtube/replies.ts";
+import { releaseTransientSkips, replyToChannelComments, replyToComments } from "./youtube/replies.ts";
 import { collectRequests } from "./social/requests.ts";
 import { setChannelBanner } from "./youtube/branding.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
@@ -302,6 +302,15 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
 </script>`,
         ),
       );
+    }
+    // Comment decisions (admin key): what the reply pass judged, said or skipped, newest first.
+    if (url.pathname === "/admin/comments" && req.method === "GET") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const rows = await db.query(
+        `SELECT created_at, video_id, comment, decision, reason, reply_text FROM comment_replies ORDER BY created_at DESC LIMIT 50`,
+      );
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(rows));
+      return;
     }
     const ep = url.pathname.match(
       /^\/episodes\/([\w-]+)\/(approve|reject|video\.mp4)$/,
@@ -1039,6 +1048,9 @@ async function main(): Promise<void> {
         .catch((err) =>
           log("warn", "comment reply pass failed", { error: errorMessage(err) }),
         );
+    void releaseTransientSkips(db)
+      .then((n) => n && log("info", "held-back comments released for another look", { comments: n }))
+      .catch(() => undefined);
     setTimeout(() => void replies(), 120_000);
     setInterval(() => void replies(), 5 * 60_000);
   }

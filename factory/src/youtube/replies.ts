@@ -221,6 +221,9 @@ async function replyOnVideo(
         ];
       }
     }
+    // A reply held back for quota, a cap or a failed send is not a judgement: the comment stays fresh and
+    // is judged again on a later pass, instead of being marked done for good (23 Oct 2026).
+    if (decision === "skip" && TRANSIENT.test(reason)) continue;
     await d.db.query(
       `INSERT INTO comment_replies (comment_id, episode_id, video_id, comment, decision, reason, reply_text, reply_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (comment_id) DO NOTHING`,
@@ -251,6 +254,17 @@ async function replyOnVideo(
 }
 
 let lastChannelPoll = 0;
+
+/** Skips that are about our limits, not the comment: retried later. */
+export const TRANSIENT = /^(quota kept|reply cap reached|reply failed)/;
+
+/** Clears records of transient skips from before this rule, so those comments are judged again. */
+export async function releaseTransientSkips(db: Db): Promise<number> {
+  const rows = await db.query<{ comment_id: string }>(
+    `DELETE FROM comment_replies WHERE decision = 'skip' AND (reason LIKE 'quota kept%' OR reason LIKE 'reply cap reached%' OR reason LIKE 'reply failed%') RETURNING comment_id`,
+  );
+  return rows.length;
+}
 
 /**
  * Every comment on the channel, whenever it arrives: one request lists the newest threads across all

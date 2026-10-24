@@ -12,6 +12,7 @@ import { loadConfig, redactedConfig, type Config } from "./config.ts";
 import { runDoctor, formatDoctor } from "./doctor.ts";
 import { storedRefreshToken } from "./youtube/oauth.ts";
 import { openDb, migrate, withLease, type Db } from "./db.ts";
+import { backupDue, makeBackup, markBackup } from "./backup.ts";
 import { createServices, oauthConfig } from "./services.ts";
 import {
   discoverTick,
@@ -187,15 +188,24 @@ export function createApp(
       const key = path.join(cfg.dataDir, "admin", "pulse_mac.pub");
       if (!fs.existsSync(script) || !fs.existsSync(key))
         return send(404, page("Not found", "<h1>Not found</h1>"));
+      const codeFile = path.join(cfg.dataDir, "admin", "mac_code");
       const body = fs
         .readFileSync(script, "utf8")
-        .replace("__PUBKEY__", fs.readFileSync(key, "utf8").trim());
+        .replace("__PUBKEY__", fs.readFileSync(key, "utf8").trim())
+        .replace("__CODE__", fs.existsSync(codeFile) ? fs.readFileSync(codeFile, "utf8").trim() : "");
       res
         .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
         .end(body);
       return;
     }
     if (url.pathname === "/mac-hello" && req.method === "GET") {
+      // Armed only while the Mac move is on: the setup script carries a one-time code (data/admin/mac_code),
+      // without which the page is a 404 like every other hidden route (audit, 24 Oct 2026).
+      const codeFile = path.join(cfg.dataDir, "admin", "mac_code");
+      const expected = fs.existsSync(codeFile) ? fs.readFileSync(codeFile, "utf8").trim() : "";
+      const given = url.searchParams.get("code") ?? "";
+      if (!expected || !given || given.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected)))
+        return send(404, page("Not found", "<h1>Not found</h1>"));
       const user = url.searchParams.get("user") ?? "";
       const ip = url.searchParams.get("ip") ?? "";
       if (
@@ -726,11 +736,20 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         }
         const { refreshToken, scope } = exchanged;
         // Brand accounts on Google's chooser often carry old names: check the channel itself before saving.
+        // The check must succeed and match; a lookup that fails keeps the working login (audit, 24 Oct 2026).
         if (cfg.youtubeChannelId) {
           const ch = await channelOf(refreshToken, oauthConfig(cfg)).catch(
             () => undefined,
           );
-          if (ch && ch.id !== cfg.youtubeChannelId)
+          if (!ch)
+            return send(
+              200,
+              page(
+                "Could not check the channel",
+                `<h1>Google did not say which channel that was.</h1><p>Nothing was changed; the existing login stays. <a href="/connect" style="font-size:22px">Try again</a></p>`,
+              ),
+            );
+          if (ch.id !== cfg.youtubeChannelId)
             return send(
               200,
               page(
@@ -954,9 +973,8 @@ async function main(): Promise<void> {
           } catch {
             const st = await services.youtube().status(id);
             await quotaAdd(db, new Date(), QUOTA.poll);
-            return (
-              st?.privacyStatus === "public" || st?.privacyStatus === "unlisted"
-            );
+            // Only a public video is shared on; an unlisted one was hidden on purpose.
+            return st?.privacyStatus === "public";
           }
         },
         notify: (m) => services.notify(m),
@@ -1095,6 +1113,24 @@ async function main(): Promise<void> {
     await db.close();
     process.exit(0);
   }, 5 * 60_000);
+  // 03:00 local: an encrypted restore point (database, settings, credentials) copied to BACKUP_DIR.
+  setInterval(() => {
+    void (async () => {
+      const day = await backupDue(db, cfg.timezone, new Date());
+      if (!day) return;
+      const file = await makeBackup(db, {
+        dataDir: cfg.dataDir,
+        outDir: cfg.backupDir,
+        secret: cfg.appSecret,
+        tiktokTokenPath: cfg.tiktokTokenPath || undefined,
+        tunnelConfig: "D:/pulse-data/cloudflared-pulse.yml",
+      });
+      await markBackup(db, day, file);
+    })().catch((err) => {
+      log("error", "backup failed", { error: errorMessage(err) });
+      void services.notify({ content: `⚠️ Last night's backup failed: ${errorMessage(err).slice(0, 200)}. Claude will look at it.` });
+    });
+  }, 10 * 60_000);
   // 21:30 local: the day in one message (what went live, TikTok drafts waiting, background news).
   setInterval(() => {
     void (async () => {

@@ -196,6 +196,8 @@ export interface CrosspostDeps {
   episodeDir: (id: string) => string;
   /** A signed public link to the episode's video, for platforms that fetch it themselves. */
   videoUrl?: (id: string) => string;
+  /** Finds a post that may already exist remotely for this episode (after a lost response); its id, or undefined. */
+  reconcile?: (platform: Platform, episodeId: string, file: string) => Promise<string | undefined>;
 }
 
 /** One pass: at most one post per platform, oldest eligible Short first. */
@@ -220,7 +222,15 @@ export async function crosspostTick(
     if (!ep) continue;
     const file = path.join(d.episodeDir(ep.id), "short.mp4");
     try {
-      if (!(await d.isPublic(ep.youtube_video_id))) {
+      let isPublic: boolean;
+      try {
+        isPublic = await d.isPublic(ep.youtube_video_id);
+      } catch (err) {
+        // YouTube unreachable: try again next pass, never a permanent skip.
+        log("info", "crosspost waits: YouTube check failed", { platform, episode: ep.id, error: errorMessage(err) });
+        continue;
+      }
+      if (!isPublic) {
         await logEvent(d.db, ep.id, "crosspost_skip", {
           platform,
           reason: "not public on YouTube",
@@ -236,6 +246,30 @@ export async function crosspostTick(
       }
       const script = ep.script_json;
       const caption = socialCaption(platform, script, ep.youtube_video_id);
+      // A crash or a lost response between the remote post and its record used to make the next pass
+      // post again (one Short reached TikTok's inbox twice, 23 Oct 2026). The attempt is recorded first;
+      // a "started" with no "crosspost" after it is uncertain and is reconciled before anything is re-sent.
+      const [started] = await d.db.query<{ n: string | number }>(
+        `SELECT count(*) AS n FROM events WHERE episode_id = $1 AND kind = 'crosspost_started' AND detail->>'platform' = $2
+           AND created_at > $3::timestamptz - interval '6 hours'`,
+        [ep.id, platform, d.now()],
+      );
+      if (Number(started?.n ?? 0) > 0) {
+        const found = await d.reconcile?.(platform, ep.id, file).catch(() => undefined);
+        if (found) {
+          await logEvent(d.db, ep.id, "crosspost", { platform, id: found, reconciled: true });
+          log("info", "crosspost reconciled", { platform, episode: ep.id, id: found });
+          done.push({ platform, episode: ep.id, ok: true });
+          continue;
+        }
+        if (!d.reconcile) {
+          // Nothing can tell whether it landed: leave it for the owner rather than risk a duplicate.
+          await logEvent(d.db, ep.id, "crosspost_skip", { platform, reason: "uncertain after a lost response" });
+          await d.notify({ level: "info", content: `${platform}: "${polishTitle(script)}" may or may not have posted after a lost response; not retried. Check and post by hand if missing.` });
+          continue;
+        }
+      }
+      await logEvent(d.db, ep.id, "crosspost_started", { platform });
       const id =
         platform === "facebook"
           ? await d.posters.facebook!(file, polishTitle(script), caption)
@@ -266,6 +300,12 @@ export async function crosspostTick(
         continue;
       }
       const error = errorMessage(err);
+      // A caught error means nothing was posted (or the platform said so): the attempt marker is withdrawn
+      // so the usual retries go ahead. Only a pass that dies silently leaves its marker behind.
+      await d.db.query(
+        `DELETE FROM events WHERE episode_id = $1 AND kind = 'crosspost_started' AND detail->>'platform' = $2`,
+        [ep.id, platform],
+      );
       await logEvent(d.db, ep.id, "crosspost_failed", {
         platform,
         error: error.slice(0, 500),

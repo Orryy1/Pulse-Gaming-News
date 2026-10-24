@@ -12,6 +12,8 @@ export interface Db {
   /** Runs a multi-statement script on a single connection. */
   exec(sql: string): Promise<void>;
   close(): Promise<void>;
+  /** A consistent gzip archive of the embedded database's data folder, taken while it runs (undefined on Postgres). */
+  snapshot?(): Promise<Buffer>;
 }
 
 export function createPgDb(databaseUrl: string): Db {
@@ -57,6 +59,7 @@ export async function createEmbeddedDb(dir: string): Promise<Db> {
         throw err;
       }
     },
+    snapshot: async () => Buffer.from(await (await pgl.dumpDataDir("gzip")).arrayBuffer()),
     close: async () => {
       await pgl.close();
       release();

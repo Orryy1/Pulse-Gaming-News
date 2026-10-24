@@ -176,6 +176,8 @@ export interface Config {
   visionQa: boolean;
   /** Python with faster-whisper (PC) or MLX Whisper (Mac) for the narration check; empty switches it off. */
   whisperPython: string;
+  /** Where nightly encrypted restore points go: a folder synced off the PC (the owner's Google Drive). */
+  backupDir: string;
   footage: boolean;
   maxClips: number;
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
@@ -368,6 +370,7 @@ export function loadConfig(): Config {
     publishWindowEndUtc: int("PUBLISH_WINDOW_END_UTC", 22),
     visionQa: bool("VISION_QA", true),
     whisperPython: str("WHISPER_PYTHON", defaultWhisperPython()),
+    backupDir: str("BACKUP_DIR", "G:/My Drive/Pulse backups"),
     footage: bool("TRAILER_FOOTAGE", true),
     maxClips: int("MAX_TRAILER_CLIPS", 4),
     clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as "llm" | "rule",

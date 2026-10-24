@@ -35,7 +35,7 @@ touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
 grep -q "pulse-pc-to-mac" ~/.ssh/authorized_keys || echo "__PUBKEY__" >> ~/.ssh/authorized_keys
 
 IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "")
-if curl -fsS "https://pulse.orryy.com/mac-hello?user=$(whoami)&ip=${IP}" >/dev/null 2>&1; then
+if curl -fsS "https://pulse.orryy.com/mac-hello?user=$(whoami)&ip=${IP}&code=__CODE__" >/dev/null 2>&1; then
   echo ""
   echo "All done. Claude has been told your Mac is ready."
 else

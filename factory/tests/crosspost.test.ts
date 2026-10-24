@@ -138,3 +138,57 @@ test("crossposting: staggered per platform, once each, skips private videos, giv
   assert.equal(Number(skips!.n), 4);
   await db.close();
 });
+
+test("a lost response never posts twice: the uncertain post is left for the owner, a plain failure retries", async () => {
+  const db = await testDb();
+  const dir = await tmpDir();
+  const cfg = testConfig(dir);
+  await fs.mkdir(path.join(dir, "ep_c"), { recursive: true });
+  await fs.writeFile(path.join(dir, "ep_c", "short.mp4"), "x");
+  await publishedShort(db, "ep_c", 180);
+  const notes: string[] = [];
+  let posts = 0;
+  let crash = true;
+  const deps = {
+    db,
+    cfg,
+    now: () => new Date(),
+    isPublic: async () => true,
+    notify: async (m: { content?: string }) => (notes.push(m.content ?? ""), true),
+    episodeDir: (id: string) => path.join(dir, id),
+    posters: {
+      tiktok: async () => {
+        posts++;
+        if (crash) {
+          crash = false;
+          // The platform accepted the post, then the process died before recording it.
+          throw Object.assign(new Error("process killed"), { silent: true });
+        }
+        return "t1";
+      },
+    },
+  };
+  // Simulate the silent death: the started marker is written, the poster "succeeds" remotely, nothing is recorded.
+  const { logEvent } = await import("../src/episodes.ts");
+  await logEvent(db, "ep_c", "crosspost_started", { platform: "tiktok" });
+  posts = 1;
+  crash = false;
+  await crosspostTick(deps);
+  assert.equal(posts, 1, "not posted again after a lost response");
+  assert.ok(notes.some((n) => /may or may not have posted/.test(n)), "the owner is told");
+  const [skips] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM events WHERE kind = 'crosspost_skip' AND episode_id = 'ep_c'`);
+  assert.equal(Number(skips!.n), 1);
+  // A plain failure (the platform threw) is retried as before.
+  await fs.mkdir(path.join(dir, "ep_d"), { recursive: true });
+  await fs.writeFile(path.join(dir, "ep_d", "short.mp4"), "x");
+  await publishedShort(db, "ep_d", 180);
+  let fail = true;
+  let dPosts = 0;
+  const deps2 = { ...deps, posters: { tiktok: async () => { dPosts++; if (fail) { fail = false; throw new Error("tiktok down"); } return "t2"; } } };
+  await crosspostTick(deps2);
+  await crosspostTick(deps2);
+  assert.equal(dPosts, 2, "retried after a plain failure");
+  const [done] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM events WHERE kind = 'crosspost' AND episode_id = 'ep_d'`);
+  assert.equal(Number(done!.n), 1);
+  await db.close();
+});

@@ -3,6 +3,10 @@
 # reviewed code for this branch (fast-forward only), reinstalls dependencies
 # if they changed, and only switches over if the new code typechecks.
 $ErrorActionPreference = "Continue"
+# One launcher at a time: a second one (left behind by a restart) kept trying to start the factory every
+# 30 s beside the running one and filled the log with "database is in use" (24 Oct 2026).
+$others = Get-CimInstance Win32_Process | Where-Object { $_.Name -eq "powershell.exe" -and $_.ProcessId -ne $PID -and $_.CommandLine -match "windows\\run\.ps1" }
+if ($others) { exit 0 }
 $factory = Split-Path -Parent $PSScriptRoot
 $repo = Split-Path -Parent $factory
 Set-Location $factory

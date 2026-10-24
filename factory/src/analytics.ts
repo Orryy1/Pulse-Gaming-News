@@ -7,7 +7,7 @@ import type { Db } from "./db.ts";
 import type { Config } from "./config.ts";
 import type { Episode } from "./episodes.ts";
 import { logEvent } from "./episodes.ts";
-import { QUOTA, dayKey, quotaAdd, quotaUsed, weekday } from "./lanes.ts";
+import { QUOTA, dayKey, quotaAdd, quotaCalls, quotaUsed, weekday } from "./lanes.ts";
 import { reviewFormats } from "./formats.ts";
 import { claudeSpend } from "./editorial/llm.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
@@ -259,7 +259,7 @@ export async function weeklyDigest(
             ...formats,
           ]
         : [])(await reviewFormats(db, now)),
-    `**YouTube quota used today:** ${(await quotaUsed(db, now)).toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")}`,
+    `**YouTube quota used today:** ${(await quotaUsed(db, now)).toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")} units; uploads ${await quotaCalls(db, now, "upload")} of ${cfg.uploadCallsPerDay}`,
     "Reminders: check Studio for Content ID claims on anything over 60 s; the retention curve arrives once analytics is reconnected.",
   ];
   return {
@@ -519,7 +519,7 @@ export async function dailySummary(
     notes.length
       ? `📝 Behind the scenes (handled, nothing for you to do):\n${notes.map((n) => `• ${n.text}`).join("\n")}`
       : "",
-    `YouTube allowance used: ${used.toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")}`,
+    `YouTube allowance used: ${used.toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")} units; uploads ${await quotaCalls(db, now, "upload")} of ${cfg.uploadCallsPerDay}`,
     ((c) =>
       `Claude spend today: $${(c.live + c.tests).toFixed(2)}${c.tests >= 0.01 ? ` (tests $${c.tests.toFixed(2)})` : ""}`)(
       claudeSpend(cfg.dataDir, now.toISOString().slice(0, 10)),

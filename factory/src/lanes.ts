@@ -15,17 +15,40 @@ export const LANE_PRIORITY: Record<Lane, number> = {
   cutdown: 25,
 };
 
-// YouTube Data API costs: videos.insert 1600, captions.list 50, captions.insert 400, videos.list 1, playlistItems.list 1.
+// YouTube Data API quota (determine_quota_cost, 15 Oct 2026): videos.insert and search.list each have
+// their own bucket of calls a day (100 by default); everything else shares 10,000 units: captions.insert
+// 400 (+ list 50), thumbnails.set 50, comments 50, videos.list and playlistItems.list 1. The factory used
+// to charge 1,650 units per upload against the shared pool, which held finished Shorts back for a day.
 export const QUOTA = {
-  upload: 1650,
+  upload: 0, // shared units per upload: the upload itself draws on its own bucket
   captions: 450,
   poll: 1,
   marker: 3,
   comment: 50,
-  search: 101, // search.list plus channels.list for an official trailer
+  search: 1, // channels.list beside an official-trailer search (the search.list call has its own bucket)
 } as const;
-// Kept back for a Short's upload and its pinned comment (captions ride only on long videos).
-export const QUOTA_RESERVE_FOR_UPLOAD = QUOTA.upload + QUOTA.comment + 20;
+// Shared units kept back for each Short still to go out today: its pinned comment and checks.
+export const QUOTA_RESERVE_FOR_UPLOAD = QUOTA.comment + 20;
+
+/** The per-method buckets, counted in calls a Pacific day. */
+export type QuotaBucket = "upload" | "search";
+
+/** Counts one call against a per-method bucket. */
+export async function quotaCall(db: Db, now: Date, bucket: QuotaBucket): Promise<void> {
+  await db.query(
+    `INSERT INTO quota_ledger (day, units) VALUES ($1, 1)
+     ON CONFLICT (day) DO UPDATE SET units = quota_ledger.units + 1, updated_at = now()`,
+    [`${dayKey(now, PACIFIC)}:${bucket}`],
+  );
+}
+
+/** Calls made against a per-method bucket this Pacific day. */
+export async function quotaCalls(db: Db, now: Date, bucket: QuotaBucket): Promise<number> {
+  const [row] = await db.query<{ units: number | string }>(`SELECT units FROM quota_ledger WHERE day = $1`, [
+    `${dayKey(now, PACIFIC)}:${bucket}`,
+  ]);
+  return Number(row?.units ?? 0);
+}
 
 // ------------------------------------------------------------------ time zones
 

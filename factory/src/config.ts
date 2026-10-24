@@ -92,6 +92,10 @@ export interface Config {
   sprintExtra: number; // extra breaking Shorts allowed on a showcase day
   sprintScoreMin: number; // the breaking score bar for a showcase story
   quotaUnitsPerDay: number;
+  /** videos.insert calls a day (its own bucket; check the project's Cloud Console for the real limit). */
+  uploadCallsPerDay: number;
+  /** search.list calls a day (its own bucket). */
+  searchCallsPerDay: number;
   evergreenEnabled: boolean;
   evergreenDays: string[]; // local weekdays, e.g. tue,thu,sat
   evergreenSlot: string; // local "HH:MM"
@@ -267,6 +271,8 @@ export function loadConfig(): Config {
     breakingApprovalMinutes: int("BREAKING_APPROVAL_MINUTES", 20),
     breakingWindow: str("BREAKING_WINDOW", "07:00-03:00"),
     quotaUnitsPerDay: int("QUOTA_UNITS_PER_DAY", 10000),
+    uploadCallsPerDay: int("UPLOAD_CALLS_PER_DAY", 100),
+    searchCallsPerDay: int("SEARCH_CALLS_PER_DAY", 100),
     evergreenEnabled: bool("EVERGREEN_ENABLED", true),
     evergreenDays: str("EVERGREEN_DAYS", "tue,sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     evergreenSlot: str("EVERGREEN_SLOT", "20:00"),
@@ -280,7 +286,8 @@ export function loadConfig(): Config {
     whyEnabled: bool("WHY_ENABLED", true),
     whyDays: str("WHY_DAYS", "mon,tue,wed,thu,fri,sat,sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     whySlot: str("WHY_SLOT", "18:30"),
-    spareUploads: bool("SPARE_UPLOADS", true),
+    // Off: with uploads on their own bucket of 100 a day there is no use-it-or-lose-it quota to spend.
+    spareUploads: bool("SPARE_UPLOADS", false),
     spareSlots: str("SPARE_SLOTS", "19:00,15:00,11:00").split(",").map((x) => x.trim()).filter(Boolean),
     evergreenApprovalMode: str("EVERGREEN_APPROVAL_MODE", "manual") as ApprovalMode,
     evergreenApprovalMinutes: int("EVERGREEN_APPROVAL_MINUTES", 120),

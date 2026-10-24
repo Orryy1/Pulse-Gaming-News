@@ -84,6 +84,8 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     breakingApprovalMinutes: 20,
     breakingWindow: "07:00-23:00",
     quotaUnitsPerDay: 10000,
+    uploadCallsPerDay: 100,
+    searchCallsPerDay: 100,
     evergreenEnabled: false,
     evergreenDays: ["tue", "thu", "sat"],
     evergreenSlot: "19:00",

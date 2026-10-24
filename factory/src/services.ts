@@ -34,7 +34,7 @@ import { trendingVideos } from "./discovery/demand.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { findIgdbGame, fetchIgdbArt } from "./assets/igdb.ts";
 import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
-import { QUOTA, QUOTA_RESERVE_FOR_UPLOAD, quotaAdd, quotaUsed } from "./lanes.ts";
+import { QUOTA, QUOTA_RESERVE_FOR_UPLOAD, quotaAdd, quotaCall, quotaCalls, quotaUsed } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
 import { fetchWithTimeout } from "./lib/util.ts";
 
@@ -80,7 +80,9 @@ export function createServices(db: Db, cfg: Config): Services {
         scope,
         quotaOk: async () => {
           const now = new Date();
+          if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay) return false;
           if ((await quotaUsed(db, now)) + QUOTA.search + QUOTA_RESERVE_FOR_UPLOAD > cfg.quotaUnitsPerDay) return false;
+          await quotaCall(db, now, "search");
           await quotaAdd(db, now, QUOTA.search);
           return true;
         },
@@ -123,7 +125,9 @@ export function createServices(db: Db, cfg: Config): Services {
         story,
         quotaOk: async () => {
           const now = new Date();
+          if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay) return false;
           if ((await quotaUsed(db, now)) + QUOTA.search + QUOTA_RESERVE_FOR_UPLOAD > cfg.quotaUnitsPerDay) return false;
+          await quotaCall(db, now, "search");
           await quotaAdd(db, now, QUOTA.search);
           return true;
         },

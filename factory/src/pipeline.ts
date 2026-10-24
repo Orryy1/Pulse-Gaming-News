@@ -147,6 +147,8 @@ import {
   LANE_PRIORITY,
   QUOTA,
   QUOTA_RESERVE_FOR_UPLOAD,
+  quotaCall,
+  quotaCalls,
   dueSlot,
   evergreenDue,
   franchiseKey,
@@ -5133,8 +5135,8 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
     ]);
     return;
   }
-  const used = await quotaUsed(s.db, s.now());
-  if (used + QUOTA_RESERVE_FOR_UPLOAD > s.cfg.quotaUnitsPerDay) {
+  const used = await quotaCalls(s.db, s.now(), "upload");
+  if (used >= s.cfg.uploadCallsPerDay) {
     const resetAt = quotaResetAt(s.now());
     log("warn", "YouTube quota nearly spent; upload deferred", {
       episode: ep.id,
@@ -5159,10 +5161,10 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   if (ep.attempts > 0 || ep.upload_session_uri) {
     const existing = await yt.findByMarker(marker);
     if (existing) {
+      // Adopting it makes no new upload call, so nothing is charged.
       await transition(s.db, ep.id, "uploading", "uploaded", {
         youtube_video_id: existing,
       });
-      await quotaAdd(s.db, s.now(), QUOTA.upload);
       await logEvent(s.db, ep.id, "upload_adopted", { videoId: existing });
       return;
     }
@@ -5217,6 +5219,8 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
       ),
       size,
     );
+    // Opening the session is the videos.insert call: it counts even if the bytes never arrive.
+    await quotaCall(s.db, s.now(), "upload");
     await s.db.query(
       `UPDATE episodes SET upload_session_uri = $2 WHERE id = $1 AND status = 'uploading'`,
       [ep.id, session],
@@ -5227,7 +5231,6 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
     await transition(s.db, ep.id, "uploading", "uploaded", {
       youtube_video_id: videoId,
     });
-    await quotaAdd(s.db, s.now(), QUOTA.upload);
     await logEvent(s.db, ep.id, "uploaded", { videoId });
   } catch (err) {
     if (err instanceof SessionGone) {

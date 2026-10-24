@@ -457,6 +457,8 @@ test("a lost upload response is adopted from the channel instead of uploading tw
   assert.equal(ep.youtube_video_id, "vid_from_lost_response");
   assert.equal(f.uploads, 0, "never re-uploaded");
   assert.equal(f.sessions, 1);
+  const { quotaCalls } = await import("../src/lanes.ts");
+  assert.equal(await quotaCalls(db, s.now(), "upload"), 1, "the adopted upload is counted once");
 });
 
 test("an expired session is cleared and a fresh one is used next attempt", async () => {
@@ -764,9 +766,20 @@ test("news Shorts are made for their slots and publish at the slot; a waiting ep
   assert.equal((await getEpisode(db, second.id))!.status, "published");
 });
 
-test("uploads are deferred to the next Pacific day when the YouTube quota is nearly spent", async () => {
-  const { db, s, setClock } = await setup({ dryRun: false, approvalMode: "auto", breakingEnabled: false });
+test("uploads draw on their own daily bucket: a busy shared pool no longer holds a Short back", async () => {
+  const { db, s, f } = await setup({ dryRun: false, approvalMode: "auto", breakingEnabled: false });
   await quotaAdd(db, new Date("2026-10-16T12:00:00Z"), 9000);
+  await tick(s);
+  assert.equal((await only(db)).status, "published");
+  assert.equal(f.uploads, 1);
+  const { quotaCalls } = await import("../src/lanes.ts");
+  assert.equal(await quotaCalls(db, new Date("2026-10-16T12:00:00Z"), "upload"), 1, "one upload call counted");
+});
+
+test("uploads are deferred to the next Pacific day when the day's upload calls are spent", async () => {
+  const { db, s, setClock } = await setup({ dryRun: false, approvalMode: "auto", breakingEnabled: false, uploadCallsPerDay: 3 });
+  const { quotaCall } = await import("../src/lanes.ts");
+  for (let k = 0; k < 3; k++) await quotaCall(db, new Date("2026-10-16T12:00:00Z"), "upload");
   await tick(s);
   const ep = await only(db);
   assert.equal(ep.status, "uploading", "the upload waits");

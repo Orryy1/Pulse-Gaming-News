@@ -118,14 +118,9 @@ test("slots after YouTube's quota reset are not reserved against tonight's quota
     uploadsLeftToday(cfg as any, new Date("2026-10-20T20:30:00Z")),
     1,
   );
-  // 6,616 used, nothing due, nothing in flight: room for one more upload, not two.
-  const spare = spareUnits(cfg as any, 6616, 0, 0);
-  assert.equal(spare, 3384);
-  assert.ok(spare >= 1720 && spare - 1720 < 1720);
-  assert.ok(
-    spareUnits(cfg as any, 6616, 0, 1) < 1720,
-    "an episode still in production keeps its upload's units",
-  );
+  // Shared units now only keep back each Short's pinned comment and checks (70): uploads have their own bucket.
+  assert.equal(spareUnits(cfg as any, 6616, 0, 0), 3384);
+  assert.equal(spareUnits(cfg as any, 6616, 2, 1), 3384 - 3 * 70);
 });
 
 test("the channel focus reaches the editors until its end date, then stops", async () => {

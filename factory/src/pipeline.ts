@@ -158,6 +158,8 @@ import {
   weekday,
   storyText,
   lastPublishAt,
+  publishHeld,
+  staleAfterHours,
   nextWindowStart,
   quotaAdd,
   quotaResetAt,
@@ -5123,6 +5125,14 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
     });
     return;
   }
+  // The owner's publishing hold: wait, and look again in a quarter of an hour.
+  if (await publishHeld(s.db)) {
+    await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [
+      ep.id,
+      new Date(s.now().getTime() + 15 * 60_000),
+    ]);
+    return;
+  }
   const used = await quotaUsed(s.db, s.now());
   if (used + QUOTA_RESERVE_FOR_UPLOAD > s.cfg.quotaUnitsPerDay) {
     const resetAt = quotaResetAt(s.now());
@@ -5155,6 +5165,41 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
       await quotaAdd(s.db, s.now(), QUOTA.upload);
       await logEvent(s.db, ep.id, "upload_adopted", { videoId: existing });
       return;
+    }
+  }
+  // A delayed Short: news or deals past their moment go back to the owner; anything else whose planned
+  // time has passed gets a fresh slot spaced from the last publish. A scheduled time in the past makes
+  // YouTube publish at once, so a backlog would otherwise all go live together.
+  if (ep.publish_at) {
+    const now = s.now();
+    const planned = new Date(ep.publish_at);
+    const staleHours = staleAfterHours(ep.lane, ep.script_json?.evergreen_format);
+    if (staleHours !== undefined && now.getTime() - planned.getTime() > staleHours * 3600_000) {
+      await transition(s.db, ep.id, "uploading", "awaiting_approval", {
+        approval_mode: "manual",
+        approval_requested_at: now,
+        publish_at: null,
+        upload_session_uri: null,
+      });
+      const links = approvalLinks(s.cfg, ep.id);
+      await logEvent(s.db, ep.id, "stale_review", { planned: planned.toISOString() });
+      await s.notify({
+        content: `⏳ "${ep.script_json!.youtube.title}" was due at ${ukTime(planned, now)} but was held up, so it may be out of date now. It stays unpublished unless you approve it.
+▶️ [Watch](${links.preview}) · ✅ [Approve](${links.approve}) · ❌ [Reject](${links.reject})`,
+      });
+      return;
+    }
+    if (planned.getTime() - now.getTime() < 15 * 60_000) {
+      const [other] = await s.db.query<{ t: string | null }>(
+        `SELECT max(publish_at) AS t FROM episodes WHERE id <> $1 AND status IN ('uploading','uploaded','published') AND publish_at IS NOT NULL AND youtube_status IS DISTINCT FROM 'dry_run'`,
+        [ep.id],
+      );
+      let at = new Date(now.getTime() + 20 * 60_000);
+      const gapEnd = other?.t ? new Date(new Date(other.t).getTime() + s.cfg.minUploadGapMinutes * 60_000) : undefined;
+      if (gapEnd && gapEnd > at) at = gapEnd;
+      await s.db.query(`UPDATE episodes SET publish_at = $2, upload_session_uri = NULL WHERE id = $1`, [ep.id, at]);
+      await logEvent(s.db, ep.id, "rescheduled", { from: planned.toISOString(), to: at.toISOString() });
+      ep = { ...ep, publish_at: at.toISOString(), upload_session_uri: null } as Episode;
     }
   }
   let session = ep.upload_session_uri;
@@ -5261,6 +5306,7 @@ export async function confirmPublished(s: Services): Promise<void> {
 
 /** Posts the channel's own first comment (the owner pins it from the app; the API cannot pin). Never blocks a live video. */
 async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
+  if (await publishHeld(s.db)) return; // the owner's publishing hold
   try {
     // Comment links are clickable on long videos (not on Shorts): the long video's pin carries its top pick.
     const text =

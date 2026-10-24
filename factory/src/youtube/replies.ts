@@ -9,6 +9,7 @@ import type { Episode } from "../episodes.ts";
 import type { Llm } from "../editorial/llm.ts";
 import {
   QUOTA,
+  publishHeld,
   quotaAdd,
 } from "../lanes.ts";
 import { errorMessage, log } from "../lib/util.ts";
@@ -115,6 +116,7 @@ export interface ReplyDeps {
 
 /** One pass over every video still inside its reply window. Returns how many replies went. */
 export async function replyToComments(d: ReplyDeps): Promise<number> {
+  if (await publishHeld(d.db)) return 0; // the owner's publishing hold
   const now = d.now();
   const eps = await d.db.query<Episode & { live_at: string }>(
     `SELECT *, coalesce(publish_at, updated_at) AS live_at FROM episodes
@@ -275,6 +277,7 @@ export async function releaseTransientSkips(db: Db): Promise<number> {
  * make have no script facts to answer from and are left alone.
  */
 export async function replyToChannelComments(d: ReplyDeps): Promise<number> {
+  if (await publishHeld(d.db)) return 0; // the owner's publishing hold
   const now = d.now().getTime();
   if (now - lastChannelPoll < CHANNEL_POLL_MINUTES * 60_000) return 0;
   lastChannelPoll = now;

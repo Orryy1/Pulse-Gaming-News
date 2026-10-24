@@ -23,7 +23,7 @@ import {
   quotaHeadroom,
   type Services,
 } from "./pipeline.ts";
-import { QUOTA, quotaAdd, quotaUsed } from "./lanes.ts";
+import { QUOTA, publishHeld, quotaAdd, quotaUsed, setPublishHold } from "./lanes.ts";
 import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
 import {
   buildPosters,
@@ -302,6 +302,17 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
 </script>`,
         ),
       );
+    }
+    // The publishing hold (admin key): ?set=on stops every upload, cross-post, reply and post until ?set=off.
+    if (url.pathname === "/admin/hold" && req.method === "GET") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const set = url.searchParams.get("set");
+      if (set === "on" || set === "off") {
+        await setPublishHold(db, set === "on");
+        log("warn", "publishing hold changed", { hold: set });
+      }
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ hold: (await publishHeld(db)) ? "on" : "off" }));
+      return;
     }
     // Comment decisions (admin key): what the reply pass judged, said or skipped, newest first.
     if (url.pathname === "/admin/comments" && req.method === "GET") {

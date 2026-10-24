@@ -775,3 +775,51 @@ test("uploads are deferred to the next Pacific day when the YouTube quota is nea
   await tick(s);
   assert.equal((await only(db)).status, "published");
 });
+
+async function delayedEpisode(db: Db, cfg: Config, id: string, lane: string, plannedAt: Date) {
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane, script_json, publish_at)
+     VALUES ($1, $1, 'uploading', $2, $3, $4, $5)`,
+    [id, JSON.stringify({ headline: id, items: [], sources: ["IGN"], corroborated: true }), lane, JSON.stringify(goodScript()), plannedAt],
+  );
+  const dir = path.join(cfg.dataDir, "episodes", id);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, "short.mp4"), "mp4");
+}
+
+test("the publishing hold stops uploads and survives a restart and a quota reset", async () => {
+  const { setPublishHold } = await import("../src/lanes.ts");
+  const { db, s, f, cfg, setClock } = await setup({ dryRun: false, breakingEnabled: false });
+  await setPublishHold(db, true);
+  await delayedEpisode(db, cfg, "ep_held", "evergreen", new Date("2026-10-16T18:00:00Z"));
+  await tick(s);
+  assert.equal(f.uploads, 0);
+  // A "restart" is a fresh pass over the same database; the next Pacific day resets the quota.
+  setClock(new Date("2026-10-17T08:00:00Z"));
+  await tick(s);
+  await tick(s);
+  assert.equal(f.uploads, 0, "still held");
+  assert.equal((await getEpisode(db, "ep_held"))!.status, "uploading");
+  await setPublishHold(db, false);
+  setClock(new Date("2026-10-17T09:00:00Z"));
+  await tick(s);
+  assert.equal(f.uploads, 1, "released once the hold is off");
+});
+
+test("delayed Shorts get fresh, spaced slots instead of past times; stale news goes back to the owner", async () => {
+  const { db, s, f, cfg } = await setup({ dryRun: false, breakingEnabled: false, minUploadGapMinutes: 60 });
+  const now = new Date("2026-10-16T12:00:00Z");
+  for (const k of [1, 2, 3]) await delayedEpisode(db, cfg, `ep_late_${k}`, "evergreen", new Date(now.getTime() - k * 3600_000));
+  await delayedEpisode(db, cfg, "ep_old_news", "news", new Date(now.getTime() - 20 * 3600_000));
+  await tick(s);
+  const slots = (
+    await db.query<{ id: string; publish_at: string }>(`SELECT id, publish_at FROM episodes WHERE id LIKE 'ep_late_%' ORDER BY publish_at`)
+  ).map((r) => new Date(r.publish_at).getTime());
+  assert.equal(new Set(slots).size, 3, "three distinct slots");
+  for (const t of slots) assert.ok(t >= now.getTime() + 15 * 60_000, "every slot is in the future");
+  for (let k = 1; k < slots.length; k++)
+    assert.ok(slots[k]! - slots[k - 1]! >= cfg.minUploadGapMinutes * 60_000, "spaced by the upload gap");
+  const news = (await getEpisode(db, "ep_old_news"))!;
+  assert.equal(news.status, "awaiting_approval");
+  assert.ok(f.notifications.some((n) => /may be out of date/.test(n)));
+});

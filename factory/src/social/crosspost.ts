@@ -1,3 +1,4 @@
+import { publishHeld } from "../lanes.ts";
 // Every Short that goes public on YouTube follows it to Facebook Reels,
 // Instagram Reels, TikTok and X, staggered after the YouTube publish so each
 // platform gets a fresh post at a good hour. Runs on its own clock and lease,
@@ -202,6 +203,7 @@ export async function crosspostTick(
   d: CrosspostDeps,
 ): Promise<Array<{ platform: Platform; episode: string; ok: boolean }>> {
   const done: Array<{ platform: Platform; episode: string; ok: boolean }> = [];
+  if (await publishHeld(d.db)) return done; // the owner's publishing hold
   for (const platform of PLATFORMS) {
     const post = d.posters[platform];
     if (!post) continue;

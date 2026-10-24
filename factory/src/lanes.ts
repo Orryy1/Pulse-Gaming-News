@@ -330,3 +330,35 @@ export async function lastPublishAt(db: Db): Promise<Date | undefined> {
   );
   return row?.t ? new Date(row.t) : undefined;
 }
+
+// ------------------------------------------------------------------ publishing hold
+
+/**
+ * The owner's publishing hold: while it is on, nothing goes out anywhere (uploads, cross-posts, comment
+ * replies, pinned comments, community posts). Checked right before each outward action, and kept in the
+ * database so it survives a restart and a quota reset.
+ */
+export async function publishHeld(db: Db): Promise<boolean> {
+  const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = 'publish_hold'`);
+  return row?.value === "on";
+}
+
+export async function setPublishHold(db: Db, on: boolean): Promise<void> {
+  await db.query(
+    `INSERT INTO settings (key, value) VALUES ('publish_hold', $1)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [on ? "on" : "off"],
+  );
+}
+
+/**
+ * How late (hours past its planned time) a Short may still go out on its own. News and deals go stale;
+ * a later one comes back to the owner instead. Undefined: it never goes stale (rankings, explainers).
+ */
+export function staleAfterHours(lane: string, evergreenFormat?: string): number | undefined {
+  if (lane === "news_breaking") return 8;
+  if (lane === "news") return 18;
+  if (lane === "free") return 48;
+  if (lane === "evergreen" && evergreenFormat === "steam_deals") return 20;
+  return undefined;
+}

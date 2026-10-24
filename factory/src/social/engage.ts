@@ -1,3 +1,4 @@
+import { publishHeld } from "../lanes.ts";
 // One community post a day on Facebook and Instagram: "which was better", "guess
 // the game", "rate it" or an open question, built around games people are
 // talking about. The post image is rendered from official IGDB screenshots;
@@ -163,6 +164,7 @@ async function posts(db: Db, days = 30): Promise<PostRow[]> {
 /** The day's post, the next day's answers and the metrics: safe to call every few minutes. */
 export async function engageTick(d: EngageDeps): Promise<void> {
   if (!d.facebook && !d.instagram) return;
+  if (await publishHeld(d.db)) return; // the owner's publishing hold
   const now = d.now();
   const recent = await posts(d.db);
   // Yesterday's "guess" posts get their answer.

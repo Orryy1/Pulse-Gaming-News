@@ -113,6 +113,8 @@ module.exports = {
 
   // YouTube category
   youtubeCategory: "28", // Science & Technology
+  // YouTube "altered or synthetic content" declaration (AI narration).
+  containsSyntheticMedia: true,
   hashtags: ["#Shorts", "#TechNews", "#AI", "#Technology", "#TheSignal"],
 
   // Music prompts,varied pool for library generation

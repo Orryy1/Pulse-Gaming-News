@@ -387,7 +387,7 @@ export function loadConfig(): Config {
     whisperPython: str("WHISPER_PYTHON", defaultWhisperPython()),
     backupDir: str("BACKUP_DIR", "G:/My Drive/Pulse backups"),
     footage: bool("TRAILER_FOOTAGE", true),
-    maxClips: int("MAX_TRAILER_CLIPS", 4),
+    maxClips: int("MAX_TRAILER_CLIPS", 8), // enough for the hook, four beats, the take and the loop
     clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as "llm" | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
     ytdlpPath: str("YTDLP_PATH", "yt-dlp"),

@@ -185,14 +185,14 @@ test("srtFromWords writes numbered, non-overlapping cues held at least 0.7s", ()
   assert.equal(srtFromWords([]), "");
 });
 
-test("Rockstar footage is held to about six seconds per Short", () => {
+test("Rockstar footage is held to about ten seconds per Short; others may run on footage for most of it", () => {
   const rockstar = { appId: 1, name: "Grand Theft Auto VI", details: { publishers: ["Rockstar Games"], developers: ["Rockstar North"] } };
   const other = { appId: 2, name: "Starfield", details: { publishers: ["Bethesda Softworks"] } };
-  assert.equal(footageBudgetSeconds(rockstar), 6);
-  assert.equal(footageBudgetSeconds(other), 20);
-  const clips = [1, 2, 3, 4].map((i) => ({ file: `c${i}.mp4`, durationSeconds: 3.4 }));
-  assert.equal(capFootage(clips, 6).length, 1);
-  assert.equal(capFootage(clips, 20).length, 4);
+  assert.equal(footageBudgetSeconds(rockstar), 10);
+  assert.equal(footageBudgetSeconds(other), 34);
+  const clips = [1, 2, 3, 4, 5, 6, 7, 8].map((i) => ({ file: `c${i}.mp4`, durationSeconds: 4.8 }));
+  assert.equal(capFootage(clips, 10).length, 2);
+  assert.equal(capFootage(clips, 34).length, 7);
   assert.equal(capFootage(clips, 0).length, 0);
 });
 

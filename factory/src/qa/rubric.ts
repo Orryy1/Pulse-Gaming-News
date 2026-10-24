@@ -191,11 +191,12 @@ export function scorePlan(i: RubricInput): Rubric {
     value: Number(i.footageSeconds.toFixed(1)),
     grade: grade(i.footageSeconds <= i.footageBudgetSeconds, false),
   });
+  // Mostly moving footage reads as a creator's Short; too little (no trailer) or wall-to-wall is noted, never fatal.
   const share = seconds ? i.footageSeconds / seconds : 0;
   m.push({
     name: "footage_share",
     value: Number(share.toFixed(2)),
-    grade: grade(share <= 0.35, share <= 0.45),
+    grade: grade(share >= 0.4 && share <= 0.85, true),
   });
 
   // Sound cues.

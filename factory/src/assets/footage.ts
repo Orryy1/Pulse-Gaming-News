@@ -1,11 +1,13 @@
 // How much official trailer footage one Short may carry, by publisher.
-// Footage stays short and subordinate to the reporting; Rockstar material
-// (GTA VI) is held to about five to six seconds per Short.
+// The reporting (narration, cards, captions) runs over every second, so the footage is commentary's
+// backdrop, not a re-upload; from 24 Oct 2026 it may carry most of a Short (the owner's call: the
+// channel should look like a human creator's, whose Shorts run mostly on moving footage). Rockstar
+// material (GTA VI) stays on a shorter leash, about ten seconds a Short, since Take-Two enforces hardest.
 
 import type { SteamApp } from "./steam.ts";
 
-export const DEFAULT_FOOTAGE_SECONDS = 20; // four 4.8 s clips
-export const ROCKSTAR_FOOTAGE_SECONDS = 6;
+export const DEFAULT_FOOTAGE_SECONDS = 34; // seven 4.8 s clips: the hook, each beat, the take and the loop
+export const ROCKSTAR_FOOTAGE_SECONDS = 10;
 
 function names(app: SteamApp): string[] {
   const d = app.details ?? {};

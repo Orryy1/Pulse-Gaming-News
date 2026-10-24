@@ -51,7 +51,7 @@ export type FootageWant =
 
 /** One line of narration that wants a picture. */
 export interface FootageTarget {
-  key: string; // "hook" | "beat:0" | "beat:1" ...
+  key: string; // "hook" | "beat:0" | "beat:1" ... | "take" | "loop" (the last two are untagged: the planner uses them where it likes)
   text: string;
   want: FootageWant;
   energy: "high" | "medium" | "low";
@@ -102,6 +102,24 @@ export function targetsFor(script: Script): FootageTarget[] {
       keywords: b.footage?.keywords ?? [],
     });
   });
+  // The verdict and the closing line get moments of their own, so the Short stays on moving footage
+  // to the end instead of falling back to the hero still (24 Oct 2026: footage ran under a third of a Short).
+  if (script.pulse_take?.narration?.trim())
+    out.push({
+      key: "take",
+      text: script.pulse_take.narration,
+      want: "gameplay",
+      energy: "medium",
+      keywords: script.hook_footage?.keywords?.slice(0, 2) ?? [],
+    });
+  if (script.loop_line?.trim())
+    out.push({
+      key: "loop",
+      text: script.loop_line,
+      want: "cinematic",
+      energy: "medium",
+      keywords: [],
+    });
   return out;
 }
 
@@ -308,7 +326,7 @@ export const ClipRankingSchema = z.object({
     z.object({
       key: z
         .string()
-        .describe("The target key exactly as given, e.g. hook or beat:1"),
+        .describe("The target key exactly as given, e.g. hook, beat:1, take or loop"),
       candidate_index: z.number(),
       confidence: z
         .number()

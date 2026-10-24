@@ -1,0 +1,380 @@
+// A first look at candidate frames on this PC's own GPU (a local vision model
+// through Ollama), so only clean frames reach Claude. Each frame is checked
+// for the things that disqualify footage outright: words on screen, a
+// streamer's webcam or recording overlay, gore, letterboxing, darkness, blur.
+// When Ollama is not running every frame passes through unchanged.
+
+import fs from "node:fs/promises";
+import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
+
+export interface FrameFlags {
+  hud: boolean; // only the game's own small HUD: fine on screen
+  text: boolean;
+  webcam: boolean;
+  gore: boolean;
+  letterbox: boolean;
+  dark: boolean;
+  blurry: boolean;
+}
+
+export const LOCAL_VISION_URL = (
+  process.env.LOCAL_VISION_URL || "http://127.0.0.1:11434"
+).replace(/\/$/, "");
+export const LOCAL_VISION_MODEL =
+  process.env.LOCAL_VISION_MODEL || "qwen3-vl:8b";
+
+const PROMPT = `You screen one frame of video game footage for a news video. Answer each question about this frame with true or false.
+text: any readable words, letters or numbers anywhere: titles, logos, subtitles, captions, HUD numbers, menus, objective text, watermarks, channel names.
+hud_only: true only when every piece of writing in the frame is the game's own small heads-up display in a corner or edge (an ammo counter, a minimap or compass, a health bar); false when there is any title, logo, subtitle, caption, menu, objective text or large word, and false when there is no writing at all.
+webcam: a real person's webcam or facecam, a picture-in-picture box, stream chat, alerts or any recording or streaming overlay on top of the game.
+gore: blood sprays, wounds, dead bodies, executions.
+letterbox: black bars covering more than a third of the frame.
+dark: the frame is mostly black or so dark that a viewer cannot tell what is happening.
+blurry: the frame is heavily blurred, smeared or an unreadable close-up of a texture.`;
+
+const SCHEMA = {
+  type: "object",
+  properties: {
+    text: { type: "boolean" },
+    hud_only: { type: "boolean" },
+    webcam: { type: "boolean" },
+    gore: { type: "boolean" },
+    letterbox: { type: "boolean" },
+    dark: { type: "boolean" },
+    blurry: { type: "boolean" },
+  },
+  required: [
+    "text",
+    "hud_only",
+    "webcam",
+    "gore",
+    "letterbox",
+    "dark",
+    "blurry",
+  ],
+};
+
+/** Whether a frame is unusable as footage, and why. Text alone is reported separately: it also marks where a clip must stop. */
+export const rejectReason = (f: FrameFlags): string | undefined =>
+  f.webcam
+    ? "webcam or overlay"
+    : f.gore
+      ? "gore"
+      : f.letterbox
+        ? "letterboxed"
+        : f.dark
+          ? "too dark"
+          : f.blurry
+            ? "blurred"
+            : f.text
+              ? "text on screen"
+              : undefined;
+
+let downUntil = 0;
+
+// One frame and a short answer fit easily: the default 32k context held gigabytes the renderer needs.
+const NUM_CTX = 8192;
+
+/** Unloads the vision model (it would otherwise stay resident for 15 minutes), freeing memory for a render. */
+export async function unloadLocalVision(): Promise<void> {
+  await fetchWithTimeout(
+    `${LOCAL_VISION_URL}/api/generate`,
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: LOCAL_VISION_MODEL, keep_alive: 0 }) },
+    15_000,
+  ).catch(() => undefined);
+}
+
+async function checkOne(file: string): Promise<FrameFlags | undefined> {
+  const image = (await fs.readFile(file)).toString("base64");
+  const res = await fetchWithTimeout(
+    `${LOCAL_VISION_URL}/api/chat`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: LOCAL_VISION_MODEL,
+        stream: false,
+        think: false,
+        format: SCHEMA,
+        keep_alive: "15m",
+        options: { temperature: 0, num_predict: 120, num_ctx: NUM_CTX },
+        messages: [{ role: "user", content: PROMPT, images: [image] }],
+      }),
+    },
+    90_000,
+  );
+  if (!res.ok)
+    throw new Error(
+      `ollama ${res.status}: ${(await res.text()).slice(0, 200)}`,
+    );
+  const body = (await res.json()) as {
+    message?: { content?: string; thinking?: string };
+  };
+  // Some vision models put their whole answer in the thinking field even with thinking off.
+  const parsed = JSON.parse(
+    body.message?.content?.trim() || body.message?.thinking?.trim() || "{}",
+  );
+  const yes = (k: string) => parsed[k] === true;
+  // Writing that is only the game's own small HUD does not count as text on screen.
+  const hud = yes("text") && yes("hud_only");
+  return {
+    hud,
+    text: yes("text") && !hud,
+    webcam: yes("webcam"),
+    gore: yes("gore"),
+    letterbox: yes("letterbox"),
+    dark: yes("dark"),
+    blurry: yes("blurry"),
+  };
+}
+
+/**
+ * Flags for each frame, in order; undefined for a frame the model could not
+ * judge (or for all of them when the local model is not running), which
+ * callers treat as "let Claude decide".
+ */
+export async function screenFrames(
+  files: string[],
+  concurrency = 2,
+): Promise<Array<FrameFlags | undefined>> {
+  const out: Array<FrameFlags | undefined> = new Array(files.length).fill(
+    undefined,
+  );
+  if (
+    !files.length ||
+    Date.now() < downUntil ||
+    process.env.LOCAL_VISION === "off" ||
+    Boolean(process.env.NODE_TEST_CONTEXT) // tests never reach the GPU
+  )
+    return out;
+  let next = 0;
+  let failures = 0;
+  const worker = async () => {
+    while (next < files.length && failures < 3) {
+      const i = next++;
+      try {
+        out[i] = await checkOne(files[i]!);
+      } catch (err) {
+        failures++;
+        if (failures === 3) {
+          // Not running or broken: stop trying for a while and let Claude see everything.
+          downUntil = Date.now() + 10 * 60_000;
+          log(
+            "warn",
+            "local vision unavailable; frames go straight to Claude",
+            { error: errorMessage(err) },
+          );
+        }
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, files.length) }, worker),
+  );
+  return out;
+}
+
+const FACE_SCHEMA = {
+  type: "object",
+  properties: {
+    found: { type: "boolean" },
+    box: { type: "array", items: { type: "number" } },
+  },
+  required: ["found", "box"],
+};
+
+/** The largest clearly visible face in a frame, as fractions of the frame (x1, y1, x2, y2). */
+async function faceBox(
+  file: string,
+): Promise<[number, number, number, number] | undefined> {
+  const image = (await fs.readFile(file)).toString("base64");
+  const res = await fetchWithTimeout(
+    `${LOCAL_VISION_URL}/api/chat`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: LOCAL_VISION_MODEL,
+        stream: false,
+        think: false,
+        format: FACE_SCHEMA,
+        keep_alive: "15m",
+        options: { temperature: 0, num_predict: 80, num_ctx: NUM_CTX },
+        messages: [
+          {
+            role: "user",
+            content:
+              "Find the largest clearly visible human face in this video game frame (not a helmet seen from behind, not a tiny distant figure). Return found and box as [x1, y1, x2, y2] in 0-1000 coordinates relative to the image width and height.",
+            images: [image],
+          },
+        ],
+      }),
+    },
+    60_000,
+  );
+  if (!res.ok) return undefined;
+  const body = (await res.json()) as {
+    message?: { content?: string; thinking?: string };
+  };
+  const r = JSON.parse(
+    body.message?.content?.trim() || body.message?.thinking?.trim() || "{}",
+  ) as { found?: boolean; box?: number[] };
+  const b = r.box;
+  if (!r.found || !b || b.length !== 4) return undefined;
+  const [x1, y1, x2, y2] = b.map((v) => Math.min(1, Math.max(0, v / 1000))) as [
+    number,
+    number,
+    number,
+    number,
+  ];
+  // Too small to read as a face on a phone, or not a box at all.
+  if (x2 - x1 < 0.05 || y2 - y1 < 0.09) return undefined;
+  return [x1, y1, x2, y2];
+}
+
+/**
+ * A 16:9 portrait of the person in a clip: three frames, the one with the
+ * biggest face, cropped so the face fills about half the height. False when
+ * no frame shows a usable face (or the local model is not running).
+ */
+export async function cutPortrait(
+  clipFile: string,
+  outFile: string,
+): Promise<boolean> {
+  if (
+    process.env.LOCAL_VISION === "off" ||
+    process.env.NODE_TEST_CONTEXT ||
+    Date.now() < downUntil
+  )
+    return false;
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { FFMPEG, FFPROBE } = await import("../lib/bin.ts");
+  const path = await import("node:path");
+  const run = promisify(execFile);
+  const { stdout } = await run(FFPROBE, [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration:stream=width,height",
+    "-select_streams",
+    "v:0",
+    "-of",
+    "json",
+    clipFile,
+  ]);
+  const info = JSON.parse(stdout) as {
+    format?: { duration?: string };
+    streams?: Array<{ width: number; height: number }>;
+  };
+  const dur = Number(info.format?.duration ?? 4);
+  const W = info.streams?.[0]?.width ?? 1280;
+  const H = info.streams?.[0]?.height ?? 720;
+  await fs.mkdir(path.dirname(outFile), { recursive: true });
+  let best:
+    | { at: number; box: [number, number, number, number]; area: number }
+    | undefined;
+  for (const f of [0.2, 0.5, 0.8]) {
+    const frame = `${outFile}.f${Math.round(f * 10)}.jpg`;
+    try {
+      await run(FFMPEG, [
+        "-v",
+        "error",
+        "-y",
+        "-ss",
+        (dur * f).toFixed(2),
+        "-i",
+        clipFile,
+        "-frames:v",
+        "1",
+        "-q:v",
+        "3",
+        frame,
+      ]);
+      const box = await faceBox(frame);
+      if (box) {
+        const area = (box[2] - box[0]) * (box[3] - box[1]);
+        if (!best || area > best.area) best = { at: dur * f, box, area };
+      }
+    } catch {
+      // one frame failing never stops the others
+    } finally {
+      await fs.rm(frame, { force: true }).catch(() => undefined);
+    }
+  }
+  if (!best) return false;
+  const [x1, y1, x2, y2] = best.box;
+  const faceH = (y2 - y1) * H;
+  const cropH = Math.min(H, Math.max(faceH * 2, H * 0.35));
+  const cropW = Math.min(W, (cropH * 16) / 9);
+  const cx = ((x1 + x2) / 2) * W;
+  const cy = ((y1 + y2) / 2) * H + faceH * 0.1; // a little headroom above the face
+  const left = Math.round(Math.min(W - cropW, Math.max(0, cx - cropW / 2)));
+  const top = Math.round(Math.min(H - cropH, Math.max(0, cy - cropH / 2)));
+  await run(FFMPEG, [
+    "-v",
+    "error",
+    "-y",
+    "-ss",
+    best.at.toFixed(2),
+    "-i",
+    clipFile,
+    "-frames:v",
+    "1",
+    "-vf",
+    `crop=${Math.round(cropW)}:${Math.round(cropH)}:${left}:${top},scale=960:540`,
+    "-q:v",
+    "3",
+    outFile,
+  ]);
+  // The finder is eager: the crop itself must read as one clear face, or there is no portrait.
+  if (!(await clearFace(outFile).catch(() => false))) {
+    await fs.rm(outFile, { force: true }).catch(() => undefined);
+    return false;
+  }
+  return true;
+}
+
+/** A second look at the finished crop: one person's face, in focus, filling much of the picture. */
+async function clearFace(file: string): Promise<boolean> {
+  const image = (await fs.readFile(file)).toString("base64");
+  const res = await fetchWithTimeout(
+    `${LOCAL_VISION_URL}/api/chat`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: LOCAL_VISION_MODEL,
+        stream: false,
+        think: false,
+        format: {
+          type: "object",
+          properties: { clear_face: { type: "boolean" } },
+          required: ["clear_face"],
+        },
+        keep_alive: "15m",
+        options: { temperature: 0, num_predict: 20, num_ctx: NUM_CTX },
+        messages: [
+          {
+            role: "user",
+            content:
+              "Answer clear_face: true only if this picture is a portrait of one person whose face (eyes, nose and mouth) is clearly visible, in focus, well lit and fills a large part of the picture. False for helmets seen from behind, silhouettes, blur, explosions, scenery, weapons or tiny figures.",
+            images: [image],
+          },
+        ],
+      }),
+    },
+    60_000,
+  );
+  if (!res.ok) return false;
+  const body = (await res.json()) as {
+    message?: { content?: string; thinking?: string };
+  };
+  return (
+    (
+      JSON.parse(
+        body.message?.content?.trim() || body.message?.thinking?.trim() || "{}",
+      ) as { clear_face?: boolean }
+    ).clear_face === true
+  );
+}

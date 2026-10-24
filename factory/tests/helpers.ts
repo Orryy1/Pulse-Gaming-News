@@ -1,0 +1,228 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { PGlite } from "@electric-sql/pglite";
+import type { Db } from "../src/db.ts";
+import { migrate } from "../src/db.ts";
+import type { Config } from "../src/config.ts";
+import type { FeedItem } from "../src/discovery/rss.ts";
+import type { Script } from "../src/editorial/schema.ts";
+
+export async function testDb(): Promise<Db> {
+  const pg = new PGlite();
+  const db: Db = {
+    async query<T>(sql: string, params: unknown[] = []) {
+      const r = await pg.query(sql, params);
+      return r.rows as T[];
+    },
+    async exec(sql: string) {
+      await pg.exec(sql);
+    },
+    close: () => pg.close(),
+  };
+  await migrate(db);
+  return db;
+}
+
+export async function tmpDir(): Promise<string> {
+  return fs.mkdtemp(path.join(os.tmpdir(), "pulse-test-"));
+}
+
+export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Config {
+  return {
+    port: 0,
+    publicUrl: "https://factory.example",
+    siteUrl: "",
+    dataDir,
+    databaseUrl: "",
+    appSecret: "test-secret-0123456789",
+    adminToken: "admin",
+    anthropicModel: "test",
+    claudeModelMid: "test",
+        claudeModelLow: "test",
+    cutdownsEnabled: false,
+    cutdownSlot: "15:30",
+    gameplayEnabled: false,
+    gameplayRoot: "",
+    gameplayExperiments: "",
+    gameplaySlots: ["21:00", "23:30"],
+    gameplayReviewsPerDay: 30,
+    gameplayMinScore: 7,
+    cutdownsPerLong: 3,
+    commentReplies: false,
+    openOnMotion: false,
+    sprintExtra: 3,
+    sprintScoreMin: 60,
+    recapLong: false,
+    footageLibrary: "",
+    voiceProvider: "local",
+    localTtsUrl: "http://127.0.0.1:1",
+    localVoiceId: "TX3LPaxmHKxFdv7VOQHJ",
+    localSpeakingRate: 1,
+    localTtsStart: "",
+    syntheticMedia: true,
+    elevenLabsApiKey: "x",
+    elevenLabsVoiceId: "v",
+    voicePool: [],
+    voiceRotation: 2,
+    elevenLabsModel: "m",
+    discordWebhookUrl: "",
+    healthcheckPingUrl: "",
+    legacyTokenDir: "",
+    googleClientId: "",
+    googleClientSecret: "",
+    youtubeRefreshToken: "",
+    youtubePrivacy: "public",
+    youtubeVetoMinutes: 0,
+    dailyTarget: 1,
+    timezone: "Europe/London",
+    newsSlots: ["13:00"], // 12:00Z in British Summer Time: due at the fixtures' noon clock
+    slotLeadMinutes: 75,
+    slotGraceMinutes: 30,
+    maxProducing: 2,
+    minUploadGapMinutes: 0,
+    discoverMinutes: 3,
+    breakingEnabled: true,
+    breakingPerDay: 2,
+    breakingScoreMin: 75,
+    breakingMaxAgeMinutes: 90,
+    breakingCooldownHours: 2,
+    breakingApprovalMinutes: 20,
+    breakingWindow: "07:00-23:00",
+    quotaUnitsPerDay: 10000,
+    uploadCallsPerDay: 100,
+    searchCallsPerDay: 100,
+    evergreenEnabled: false,
+    evergreenDays: ["tue", "thu", "sat"],
+    evergreenSlot: "19:00",
+    focusTopic: "",
+    focusUntil: "",
+    focusNote: "",
+    focusMatch: "",
+    focusPlaylist: "",
+    waveFrom: "",
+    waveTo: "",
+    whyEnabled: false,
+    whyDays: [],
+    whySlot: "18:30",
+    spareUploads: false,
+    spareSlots: ["19:00", "15:00", "11:00"],
+    evergreenApprovalMode: "manual",
+    evergreenApprovalMinutes: 120,
+    evergreenMaxSeconds: 170,
+    longformEnabled: false,
+    weeklyEnabled: false,
+    radarDays: ["mon"],
+    freeDays: ["thu"],
+    recapDays: ["fri"],
+    achievementDays: ["wed"],
+    weeklySlot: "20:00",
+    longformDays: ["sun"],
+    longformSlot: "18:00",
+    longformSkip: [],
+    longformApprovalMode: "auto",
+    longformApprovalMinutes: 180,
+    longformMaxSeconds: 540,
+    longformClipsPerEntry: 2,
+    docEnabled: false,
+    docDays: ["sat"],
+    docSlot: "19:00",
+    docWeeks: [1],
+    docLeadMinutes: 600,
+    docMaxSeconds: 3000,
+    docClipsPerChapter: 4,
+    crosspost: { facebook: false, instagram: false, tiktok: false, x: false },
+    crosspostDelays: { x: 5, facebook: 30, instagram: 60, tiktok: 90 },
+    crosspostWindowHours: 36,
+    engageEnabled: false,
+    engageSlot: "15:00",
+    climbersDays: ["sun"],
+    dealsDays: [],
+    dealsSlot: "16:30",
+    facebookPageId: "",
+    facebookPageToken: "",
+    instagramAccountId: "",
+    instagramToken: "",
+    tiktokClientKey: "",
+    tiktokClientSecret: "",
+    tiktokTokenPath: "",
+    tiktokBrowser: false,
+    twitchClientId: "",
+    twitchClientSecret: "",
+    xKeys: { consumerKey: "", consumerSecret: "", token: "", tokenSecret: "" },
+    selectFromHourUtc: 0,
+    minGapHours: 0,
+    tickMinutes: 10,
+    maxStoryAgeHours: 24,
+    includeRumours: false,
+    approvalMode: "auto",
+    approvalTimeoutMinutes: 60,
+    publishWindowStartUtc: 0,
+    publishWindowEndUtc: 24,
+    visionQa: true,
+    whisperPython: "",
+    backupDir: "",
+    tiktokDaily: 0,
+    tiktokFromHour: 16,
+    footage: true,
+    maxClips: 4,
+    clipRanking: "rule",
+    officialTrailers: false,
+    ytdlpPath: "yt-dlp",
+    pexelsApiKey: "",
+    amazonUkTag: "",
+    amazonUsTag: "",
+    amazonMoreTags: {},
+    oauthRedirectUri: "http://localhost:8080/oauth/callback",
+    youtubeChannelId: "",
+    musicBed: true,
+    dryRun: false,
+    maxAttempts: 3,
+    remotionConcurrency: 1,
+    remotionGl: "swangle",
+    browserExecutable: "",
+    ...overrides,
+  };
+}
+
+export function item(title: string, source: string, kind: FeedItem["sourceKind"] = "outlet", minutesAgo = 30, now = new Date()): FeedItem {
+  return {
+    title,
+    url: `https://${source.toLowerCase().replace(/\W+/g, "")}.example/${encodeURIComponent(title.toLowerCase().replace(/\W+/g, "-"))}`,
+    summary: `${title}. More detail here.`,
+    publishedAt: new Date(now.getTime() - minutesAgo * 60_000).toISOString(),
+    source,
+    sourceKind: kind,
+  };
+}
+
+export function goodScript(overrides: Partial<Script> = {}): Script {
+  return {
+    story_type: "delay",
+    game_title: "Starfield",
+    steam_search_term: "Starfield",
+    headline: "Starfield Expansion Delayed To 2027",
+    hook: "Starfield's second expansion has been delayed to early 2027.",
+    beats: [
+      {
+        narration: "Bethesda confirmed the move on Xbox Wire this morning and says the extra time will go on polish and performance across every platform.",
+        visual: { kind: "date", primary: "Early 2027", secondary: "new window" },
+      },
+      {
+        narration: "The expansion was previously due this December, so that is a slip of at least three months if you were waiting on it.",
+        visual: { kind: "stat", primary: "3+ months", secondary: "later than planned" },
+      },
+    ],
+    pulse_take: {
+      label: "WHAT IT MEANS",
+      narration: "For us, Bethesda has delayed big content before and it usually lands in better shape, so this is not a red flag yet.",
+      on_screen: "Not a red flag yet",
+    },
+    loop_line: "So if you're waiting, mark early 2027 for Starfield's second expansion.",
+    is_rumour: false,
+    attribution: "Source: Xbox Wire / IGN",
+    youtube: { title: "Starfield Expansion Delayed To Early 2027", description: "Bethesda has moved the expansion. Sources: Xbox Wire and IGN.", tags: ["starfield", "bethesda"] },
+    claims: [{ claim: "Delayed to early 2027", source_url: "https://xboxwire.example/x" }],
+    ...overrides,
+  };
+}

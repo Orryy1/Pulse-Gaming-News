@@ -1,0 +1,75 @@
+{
+  "schema": "pulse-audio-rights-v1",
+  "sfx": [
+    {
+      "file": "v3/air-1.mp3",
+      "sha256": "fc17d3d3f72600fc82fadd9fff7e8c06cf4d20463ddc4d9400906ed6e98a4ca9",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21 (air_p0_t1.mp3)",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, loudness-matched (-20.0 dB K-weighted 200 ms max), varispeed +0 semitones (src/tools/sfxlab/lab.py)"
+    },
+    {
+      "file": "v3/air-2.mp3",
+      "sha256": "3bf541212ae17d503834dde9aaa8852dac91fe4858050d74cbb0466032982598",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21 (air_p0_t2.mp3)",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, loudness-matched (-20.0 dB K-weighted 200 ms max), varispeed +0 semitones (src/tools/sfxlab/lab.py)"
+    },
+    {
+      "file": "v3/air-3.mp3",
+      "sha256": "6a4465b9486fb69500516c7eba9fb52eb96998cf3fdb7316c08767cebb62206c",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21 (air_1.mp3)",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, loudness-matched (-20.0 dB K-weighted 200 ms max), varispeed +0 semitones (src/tools/sfxlab/lab.py)"
+    },
+    {
+      "file": "v3/tick.mp3",
+      "sha256": "e4783f575d3892d07c710375e97d30a186aeeb0b9e383a1b0ea35d0c415b3f81",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21 (tick_p3_t3.mp3)",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, loudness-matched (-20.0 dB K-weighted 200 ms max), varispeed +0 semitones (src/tools/sfxlab/lab.py)"
+    },
+    {
+      "file": "v3/sting-D.mp3",
+      "sha256": "0f8dfe46b6808ece79aaf6008d553df698a35aa0b5f861ce2958780823a141e2",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21 (sting_p0_t3.mp3)",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, loudness-matched (-20.0 dB K-weighted 200 ms max), varispeed +2 semitones (src/tools/sfxlab/lab.py)"
+    },
+    {
+      "file": "v3/sting-E.mp3",
+      "sha256": "3146f6a6d279af500fec3c3124add384ab05935968614ad79cd4c2501a32056f",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21 (sting_p0_t3.mp3)",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, loudness-matched (-20.0 dB K-weighted 200 ms max), varispeed +4 semitones (src/tools/sfxlab/lab.py)"
+    },
+    {
+      "file": "v3/swell-D.mp3",
+      "sha256": "678ad7c01fda19ebc90ce5e9f263105fe1606a4c373b249ac1659ed2c7e8c32c",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21 (swell_p0_t3.mp3)",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, loudness-matched (-20.0 dB K-weighted 200 ms max), varispeed +0 semitones (src/tools/sfxlab/lab.py)"
+    },
+    {
+      "file": "v3/swell-E.mp3",
+      "sha256": "7a3593f9ac99b3969590ae76a91191f7083dc48533447f023653e309ff110209",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21 (swell_p0_t3.mp3)",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, loudness-matched (-20.0 dB K-weighted 200 ms max), varispeed -1 semitones (src/tools/sfxlab/lab.py)"
+    },
+    {
+      "file": "v3/land-D.mp3",
+      "sha256": "b763851459ba0c97b6cb8203907d436a3a846920fbe3d9be83433d51654d4e30",
+      "origin": "Adobe Audition Production Elements: Production Element Title Transition Hit Impact Short 17",
+      "licence": "Adobe Audition content terms: use in productions allowed, no stand-alone redistribution",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, loudness-matched (-20.0 dB K-weighted 200 ms max), varispeed -1 semitones (src/tools/sfxlab/lab.py)"
+    },
+    {
+      "file": "v3/land-E.mp3",
+      "sha256": "b3f1d89556046bc0ef0872414eb52ca58bef464c62057801d4072d35b1a1f091",
+      "origin": "Adobe Audition Production Elements: Production Element Title Transition Hit Impact Short 17",
+      "licence": "Adobe Audition content terms: use in productions allowed, no stand-alone redistribution",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, loudness-matched (-20.0 dB K-weighted 200 ms max), varispeed +1 semitones (src/tools/sfxlab/lab.py)"
+    }
+  ]
+}

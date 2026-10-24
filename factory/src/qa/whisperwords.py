@@ -4,13 +4,20 @@ Uses faster-whisper on CUDA (the PC) or MLX Whisper (the Mac), whichever this Py
 Usage: python whisperwords.py <audio> <out.json>   ->  {"duration": s, "words": [{"text", "start", "end"}]}
 """
 import json
+import os
 import sys
+
+# CTranslate2 on Windows can abort while freeing the CUDA model (0xC0000409), which used to kill the
+# script before it wrote anything. The model is kept alive here and the process leaves without
+# running destructors once the words are safely on disk.
+_MODEL = None
 
 
 def faster(src):
     from faster_whisper import WhisperModel
 
-    model = WhisperModel("medium.en", device="cuda", compute_type="float16")
+    global _MODEL
+    _MODEL = model = WhisperModel("medium.en", device="cuda", compute_type="float16")
     segments, info = model.transcribe(src, word_timestamps=True, beam_size=5, condition_on_previous_text=False)
     words = [
         {"text": w.word.strip(), "start": round(w.start, 2), "end": round(w.end, 2)}
@@ -40,8 +47,10 @@ def main():
         duration, words = mlx(src)
     with open(dest, "w", encoding="utf-8") as f:
         json.dump({"duration": duration, "words": words}, f)
-    print("words", len(words))
+    print("words", len(words), flush=True)
 
 
 if __name__ == "__main__":
     main()
+    sys.stdout.flush()
+    os._exit(0)

@@ -305,6 +305,8 @@ async function setup() {
       { text: "Okay,", start: 7, end: 7.4 },
       { text: "five", start: 7.5, end: 7.8 },
       { text: "stars.", start: 7.9, end: 8.3 },
+      { text: "here", start: 8.5, end: 8.8 },
+      { text: "goes.", start: 8.9, end: 9.3 },
       { text: "outside", start: 36, end: 36.5 },
     ],
     renderCutdown: async (input: {
@@ -400,6 +402,8 @@ test("a recording becomes an experiment Short: reviewed, trimmed, captioned, hel
       ["Okay,", 1],
       ["five", 1.5],
       ["stars.", 1.9],
+      ["here", 2.5],
+      ["goes.", 2.9],
     ],
     "captions from what was said inside the window, from zero",
   );
@@ -524,3 +528,11 @@ function cfg(s: Services): string {
     ? s.cfg.dataDir
     : path.join(s.cfg.dataDir, "episodes");
 }
+
+test("captions only for real speech, never for Whisper's looping phrase over gunfire", async () => {
+  const { captionable } = await import("../src/gameplay.ts");
+  const w = (t: string) => t.split(" ").map((text, i) => ({ text, start: i, end: i + 0.5 }));
+  assert.ok(!captionable(w("death of death of death of death")));
+  assert.ok(!captionable(w("okay go")));
+  assert.ok(captionable(w("Okay, five stars, let's see if the boats follow me out")));
+});

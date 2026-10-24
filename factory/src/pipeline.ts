@@ -173,6 +173,7 @@ import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import {
+  captionable,
   gameplayScript,
   gameplayWindow,
   newClips,
@@ -2123,6 +2124,8 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
       cta: g ? g.result_line.toUpperCase() : "FULL RANKING ON THE CHANNEL",
       accent: "#FF6B1A",
       emphasis: g ? [] : emphasisWords(script),
+      // Gameplay is the point: a band a quarter taller than the full 16:9 (cropped a little at the sides), still clear of the Shorts buttons.
+      ...(g ? { videoHeight: 760 } : {}),
     },
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
@@ -2347,7 +2350,8 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       .readFile(path.join(clipDir, "words.json"), "utf8")
       .catch(() => "[]"),
   ) as Array<{ text: string; start: number; end: number }>;
-  const words = ref.review.captions_ok ? wordsInWindow(heard, win) : [];
+const inWindow = wordsInWindow(heard, win);
+  const words = ref.review.captions_ok && captionable(inWindow) ? inWindow : [];
   const script = gameplayScript(
     ref.review,
     ref.id,

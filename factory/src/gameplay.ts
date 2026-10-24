@@ -348,6 +348,15 @@ export function wordsInWindow(
     .map((w) => ({ ...w, start: w.start - win.start, end: w.end - win.start }));
 }
 
+/**
+ * Whisper invents a looping phrase over gunfire and engines ("death of death of death"). Captions only
+ * go on when the window holds real speech: a few words, most of them different.
+ */
+export function captionable(words: Word[]): boolean {
+  const said = words.map((w) => w.text.toLowerCase().replace(/[^a-z0-9']/g, "")).filter(Boolean);
+  return said.length >= 4 && new Set(said).size / said.length >= 0.6;
+}
+
 /** What Leonida Intel reads back: published/<id>.json. Written once the video is public. */
 export async function writeManifest(
   root: string,

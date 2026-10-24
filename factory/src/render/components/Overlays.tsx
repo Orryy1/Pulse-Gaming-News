@@ -645,7 +645,9 @@ export const Captions: React.FC<{
   accent: string;
   emphasis: Set<string>;
   blankFromFrame: number;
-}> = ({ pages, accent, emphasis, blankFromFrame }) => {
+  /** Where the caption line sits, when a layout moves it (a gameplay Short's taller picture). */
+  centre?: number;
+}> = ({ pages, accent, emphasis, blankFromFrame, centre = CAPTION_CENTRE }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   if (frame >= blankFromFrame) return null;
@@ -660,7 +662,7 @@ export const Captions: React.FC<{
         position: "absolute",
         left: SAFE.left,
         width: LOW_WIDTH,
-        top: CAPTION_CENTRE - 100,
+        top: centre - 100,
         height: 200,
         display: "flex",
         flexWrap: "wrap",

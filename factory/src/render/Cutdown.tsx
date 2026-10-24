@@ -32,6 +32,8 @@ export type CutdownProps = {
   accent: string;
   emphasis: string[];
   logoSrc: string;
+  /** A taller picture band (cropped at the sides), for gameplay where the footage is the point; 608 shows the full 16:9. */
+  videoHeight?: number;
 };
 
 export const CUTDOWN_VIDEO_TOP = 560;
@@ -71,6 +73,8 @@ export const Cutdown: React.FC<CutdownProps> = (props) => {
     fps,
     config: { damping: 14, mass: 0.6 },
   });
+  const videoHeight = props.videoHeight ?? CUTDOWN_VIDEO_HEIGHT;
+  const below = CUTDOWN_VIDEO_TOP + videoHeight;
   const titleSize =
     props.title.length > 30 ? 74 : props.title.length > 20 ? 86 : 100;
   return (
@@ -165,7 +169,7 @@ export const Cutdown: React.FC<CutdownProps> = (props) => {
           left: 0,
           top: CUTDOWN_VIDEO_TOP,
           width: 1080,
-          height: CUTDOWN_VIDEO_HEIGHT,
+          height: videoHeight,
           boxShadow: "0 30px 80px rgba(0,0,0,0.7)",
           borderTop: `4px solid ${props.accent}`,
           borderBottom: `4px solid ${props.accent}`,
@@ -184,6 +188,7 @@ export const Cutdown: React.FC<CutdownProps> = (props) => {
         accent={props.accent}
         emphasis={emphasis}
         blankFromFrame={ctaFrom}
+        centre={props.videoHeight ? below + 90 : undefined}
       />
       {frame >= ctaFrom ? (
         <div
@@ -191,7 +196,7 @@ export const Cutdown: React.FC<CutdownProps> = (props) => {
             position: "absolute",
             left: SAFE.left,
             width: CONTENT_WIDTH,
-            top: 1230,
+            top: props.videoHeight ? below + 40 : 1230,
             display: "flex",
             justifyContent: "center",
             transform: `scale(${interpolate(cta, [0, 1], [0.8, 1])})`,

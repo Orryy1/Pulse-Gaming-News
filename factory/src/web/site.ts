@@ -29,6 +29,9 @@ export interface SiteEpisode {
     items?: Array<{ source: string; url: string; title?: string }>;
   };
   live_at: string; // when it went public on YouTube
+  created_at?: string;
+  /** A deals Short: Steam's prices as checked when it was made (store ids, regions, sale end). */
+  deals?: import("../discovery/deals.ts").Deal[] | null;
 }
 
 export const BRAND = "Pulse Gaming";
@@ -245,8 +248,8 @@ h2 small{font:800 13px Inter,sans-serif;color:var(--muted);letter-spacing:0;text
 .facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin:18px 0}
 .fact{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}.fact small{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.8px}.fact b{font-size:20px;font-weight:900}
 .gamehead{display:grid;grid-template-columns:minmax(0,460px) 1fr;gap:26px;align-items:start}.gamehead img{border-radius:14px;width:100%}
-ol.rank{padding-left:0;list-style:none;counter-reset:r}ol.rank li{counter-increment:r;display:flex;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
-ol.rank li:before{content:counter(r);font:400 26px Anton,sans-serif;color:var(--amber);min-width:34px;text-align:center}
+ol.rank{padding-left:0;list-style:none}ol.rank li{display:flex;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+ol.rank .n{font:400 26px Anton,sans-serif;color:var(--amber);min-width:34px;text-align:center}
 .cta{margin-top:50px;padding:26px;border-radius:18px;background:linear-gradient(120deg,#ff6b1a,#ff9a4d);color:var(--ink)}.cta h2{margin:0 0 8px;color:var(--ink)}.cta p{margin:0 0 14px;font-weight:800}.cta .btn{background:var(--ink);color:var(--paper)}
 footer{border-top:1px solid var(--line);color:var(--muted);font-size:13px}footer .in{max-width:1180px;margin:0 auto;padding:26px 16px 40px}footer a{color:#d4d4d8;margin-right:16px;text-decoration:none}
 section.shop section{padding:14px 0;border-bottom:1px solid var(--line)}section.shop h2{font:900 18px Inter,sans-serif;text-transform:none;margin:0 0 10px}.more{font-size:14px;color:var(--muted)}.more a{color:#d4d4d8}
@@ -434,7 +437,8 @@ export function articlePage(
               : e.game_title,
           );
           const name = esc(e.game_title);
-          return `<li><span><b>${h ? `<a href="/games/${h.slug}">${name}</a>` : name}</b><br><span class="meta">${[
+          // The entry's own rank: the list counts down, so a CSS counter would number it the wrong way.
+          return `<li><span class="n">${e.rank}</span><span><b>${h ? `<a href="/games/${h.slug}">${name}</a>` : name}</b><br><span class="meta">${[
             e.year,
             e.platforms,
           ]
@@ -446,6 +450,7 @@ export function articlePage(
           "",
         )}</ol><p class="meta">Counted down from number ${s.entries.length} to number one.</p>`
     : "";
+  const deals = s.evergreen_format === "steam_deals" && ep.deals?.length ? dealList(s, ep) : "";
   const related = (more.related ?? [])
     .filter((r) => r.id !== ep.id)
     .slice(0, 3);
@@ -456,7 +461,7 @@ ${articleParagraphs(s)
   .map((p) => `<p>${esc(p)}</p>`)
   .join("\n")}
 ${s.is_rumour ? "<p><i>This report is unconfirmed. We will update it when it is confirmed or denied.</i></p>" : ""}
-${ranking}
+${deals || ranking}
 ${hubs.length ? `<h2>Games in this story</h2><div class="chips">${hubs.map((h) => `<a class="chip" href="/games/${h.slug}">${esc(h.name)}: price, release date and news</a>`).join("")}</div>` : ""}
 ${sources.length ? `<h2>Sources</h2><ul>${sources.map((x) => `<li><a href="${esc(x.url)}" rel="nofollow noopener">${esc(x.name)}</a></li>`).join("")}</ul>` : ""}
 ${shop ? `<h2>Get the games and gear</h2><section class="shop">${shop}</section><p class="meta">As an Amazon Associate we earn from qualifying purchases.</p>` : ""}
@@ -675,12 +680,53 @@ export interface ChannelVideo {
   short: boolean;
 }
 
+const dealKey = (t: string) =>
+  t
+    .toLowerCase()
+    .replace(/[®™©]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+/** A deals article's list: each game linked to its Steam page, prices in three regions, when they were checked and when the sale ends. */
+export function dealList(s: Script, ep: SiteEpisode): string {
+  const deals = ep.deals ?? [];
+  const rows = [...(s.entries ?? [])]
+    .sort((a, b) => b.rank - a.rank)
+    .map((e) => {
+      const d = deals.find((x) => dealKey(x.name) === dealKey(e.game_title)) ?? deals.find((x) => dealKey(x.name).includes(dealKey(e.game_title)) || dealKey(e.game_title).includes(dealKey(x.name)));
+      if (!d) return "";
+      const prices = [`${d.usd.final} in the US (was ${d.usd.initial}, ${d.usd.pct}% off)`, d.gbp ? `${d.gbp} in the UK` : "", d.eur ? `${d.eur} in Germany` : ""].filter(Boolean);
+      const ends = d.endsAt ? `Sale ends ${day(d.endsAt)}` : "";
+      return `<li><span class="n">${e.rank}</span><span><b><a href="https://store.steampowered.com/app/${d.appId}/" rel="noopener">${esc(e.game_title)}</a></b><br><span class="meta">${[...prices, `${d.rating}% positive from ${d.reviews.toLocaleString("en-US")} Steam reviews`, ends].filter(Boolean).map(esc).join(" · ")}</span></span></li>`;
+    })
+    .join("");
+  if (!rows) return "";
+  const checked = deals.find((d) => d.checkedAt)?.checkedAt ?? ep.created_at;
+  return `<h2>The deals</h2><ol class="rank">${rows}</ol><p class="meta">Prices from the Steam store${checked ? `, checked ${esc(day(checked))}` : ""}. Sales end and prices change, so check the store page before you buy.</p>`;
+}
+
 export function videosPage(
-  videos: ChannelVideo[],
+  feed: ChannelVideo[],
   eps: SiteEpisode[],
   base: string,
 ): string {
   const article = new Map(eps.map((e) => [e.youtube_video_id, e]));
+  // YouTube's feed holds only the latest 15 and sometimes fails: the factory's own record of what went
+  // public fills in the rest, so the page is never empty while the channel has videos.
+  const seen = new Set(feed.map((v) => v.id));
+  const videos = [
+    ...feed,
+    ...eps
+      .filter((e) => !seen.has(e.youtube_video_id))
+      .map((e) => ({
+        id: e.youtube_video_id,
+        title: polishTitle(e.script_json),
+        published: new Date(e.live_at).toISOString(),
+        short: e.script_json.runtime !== "long",
+      })),
+  ]
+    .sort((a, b) => b.published.localeCompare(a.published))
+    .slice(0, 60);
   const tile = (v: ChannelVideo) => {
     const ep = article.get(v.id);
     const href = ep
@@ -698,7 +744,7 @@ export function videosPage(
     body: `<h1>Videos</h1><p class="meta">New every day on <a href="${YT}" rel="noopener">YouTube</a>.</p>
 ${longs.length ? `<h2>Rankings and documentaries</h2><div class="grid">${longs.map(tile).join("")}</div>` : ""}
 ${shorts.length ? `<h2>News Shorts</h2><div class="grid">${shorts.map(tile).join("")}</div>` : ""}
-${videos.length ? "" : "<p>Videos are loading. Try again in a minute.</p>"}${ctaBlock}`,
+${videos.length ? "" : `<p>No videos yet. Watch for the first ones on <a href="${YT}" rel="noopener">YouTube</a>.</p>`}${ctaBlock}`,
   });
 }
 
@@ -859,7 +905,7 @@ export function parseChannelFeed(xml: string): ChannelVideo[] {
 }
 
 /** The SQL for what the site shows: public videos only, newest first. */
-export const SITE_EPISODES_SQL = `SELECT e.id, e.lane, e.youtube_video_id, e.script_json, e.story_json, COALESCE(e.publish_at, e.updated_at) AS live_at
+export const SITE_EPISODES_SQL = `SELECT e.id, e.lane, e.youtube_video_id, e.script_json, e.story_json, COALESCE(e.publish_at, e.updated_at) AS live_at, e.created_at, e.factcheck_json->'deals' AS deals
   FROM episodes e
  WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'cutdown'
    AND COALESCE(e.publish_at, e.updated_at) <= now()

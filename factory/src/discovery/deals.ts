@@ -12,6 +12,10 @@ export interface Deal {
   eur?: string;
   rating: number; // Steam review percentage
   reviews: number;
+  /** When the prices were read from Steam. */
+  checkedAt?: string;
+  /** When Steam says the US discount ends, if it says. */
+  endsAt?: string;
 }
 
 const UA = { "user-agent": "PulseGamingNews/1.0 (+https://pulsegmg.com)" };
@@ -43,6 +47,19 @@ async function steamPrice(
     pct: Number(p.discount_percent),
     formatted: String(p.final_formatted ?? ""),
   };
+}
+
+/** When Steam's current US discount on the game ends (its store API, no key needed), if it gives one. */
+async function steamSaleEnd(appId: number): Promise<string | undefined> {
+  const q = encodeURIComponent(
+    JSON.stringify({ ids: [{ appid: appId }], context: { language: "english", country_code: "US" }, data_request: { include_all_purchase_options: true } }),
+  );
+  const item = (await getJson(`https://api.steampowered.com/IStoreBrowseService/GetItems/v1?input_json=${q}`).catch(() => undefined))?.response
+    ?.store_items?.[0];
+  const ends = (item?.best_purchase_option?.active_discounts ?? [])
+    .map((d: { discount_end_date?: number }) => Number(d.discount_end_date))
+    .filter((t: number) => t > 0);
+  return ends.length ? new Date(Math.min(...ends) * 1000).toISOString() : undefined;
 }
 
 /** Score for a deal: a big cut on a game people love, with enough reviews to trust the score. */
@@ -105,6 +122,7 @@ export async function steamDeals(exclude: string[], n = 5): Promise<Deal[]> {
       if (flags.some((f) => [1, 2, 3, 4].includes(Number(f)))) continue;
       const gb = await steamPrice(c.appId, "gb");
       const de = await steamPrice(c.appId, "de");
+      const endsAt = await steamSaleEnd(c.appId);
       out.push({
         appId: c.appId,
         name: c.name,
@@ -118,6 +136,8 @@ export async function steamDeals(exclude: string[], n = 5): Promise<Deal[]> {
         eur: de?.formatted || undefined,
         rating: c.rating,
         reviews: c.reviews,
+        checkedAt: new Date().toISOString(),
+        ...(endsAt ? { endsAt } : {}),
       });
       if (out.length >= n) break;
     }

@@ -130,24 +130,39 @@ export function joinFigures(words: TimedWord[]): TimedWord[] {
 }
 
 /** Is a stretch where script and transcript differ only a matter of writing it down? */
+/**
+ * Words whose swap changes what a sentence claims: figures (both sides are already in words, so a
+ * different figure is a different word), negations and status words, and platforms. A swap of one of
+ * these is never forgiven as a mishearing: "fifteen dollars" heard as "fifty dollars", or "confirmed"
+ * as "cancelled", passed the first version of this check (audit, 24 Oct 2026).
+ */
+const PROTECTED = new Set([
+  ...NUMBERISH,
+  ..."not no never none nothing nobody neither nor without cancel cancels cancelled canceled confirm confirms confirmed unconfirmed deny denies denied delay delays delayed official unofficial rumor rumors rumored rumour rumours rumoured leak leaked free paid only first last before after more less up down higher lower".split(
+    " ",
+  ),
+  ..."isnt wasnt arent werent wont doesnt dont didnt cant couldnt shouldnt wouldnt hasnt havent hadnt".split(
+    " ",
+  ),
+  ..."xbox playstation ps4 ps5 switch nintendo pc steam mac ios android".split(
+    " ",
+  ),
+]);
+PROTECTED.delete("a");
+PROTECTED.delete("and");
+
 function benign(meant: string[], heard: string[]): boolean {
-  // One word heard as another ("Lee" as "Li", "seed" as "seat") is Whisper mishearing, not a voice fault:
-  // a garbled voice loses or mangles more than one word ("San Andreas" as "Sayus").
-  if (meant.length === 1 && heard.length === 1) return true;
   const a = meant.join(""),
     b = heard.join("");
-  if (a === b || similar(a, b)) return true; // compounds and spellings: "rockstar"/"rock star", "cel"/"cell"
+  if (a === b) return true; // compounds: "rockstar"/"rock star"
   const content = (xs: string[]) => xs.filter((x) => !FILLER.has(x));
   if (!content(meant).length && !content(heard).length) return true; // "and", "the"
-  // Figures written differently on both sides ("ten thousand" against "10,000" read back) are fine;
-  // a figure that is simply missing is not.
-  if (
-    meant.length &&
-    heard.length &&
-    [...meant, ...heard].every((x) => NUMBERISH.has(x) || FILLER.has(x))
-  )
-    return true;
-  return false;
+  // Nothing that changes the claim may differ.
+  if ([...meant, ...heard].some((x) => PROTECTED.has(x))) return false;
+  if (similar(a, b)) return true; // spellings: "cel"/"cell", "huangli"/"huang lee"
+  // One ordinary word heard as another ("Lee" as "Li", "seed" as "seat") is Whisper mishearing, not a
+  // voice fault: a garbled voice loses or mangles more than one word ("San Andreas" as "Sayus").
+  return meant.length === 1 && heard.length === 1;
 }
 
 /** Compares the script's words (with their timings) with what Whisper heard. Pure. */

@@ -89,3 +89,14 @@ test("tokens and split figures", () => {
     ["8,049", "reviews"],
   );
 });
+
+test("a changed figure, status word or platform is never forgiven as a mishearing (audit, 24 Oct 2026)", () => {
+  const bad = (meant: string, heard: string) => assert.equal(checkNarration(say(meant), say(heard)).ok, false, `${meant} > ${heard}`);
+  bad("It costs fifteen dollars on Steam today", "It costs fifty dollars on Steam today");
+  bad("The sequel is confirmed for next year", "The sequel is cancelled for next year");
+  bad("It launches on PlayStation first", "It launches on Xbox first");
+  bad("GTA 6 arrives in November", "GTA 5 arrives in November");
+  bad("The studio is not making a sequel", "The studio is now making a sequel");
+  // Ordinary mishearings still pass.
+  assert.equal(checkNarration(say("he plants a seed in the garden"), say("he plants a seat in the garden")).ok, true);
+});

@@ -32,6 +32,32 @@ import {
 import type { Config } from "../src/config.ts";
 import type { Db } from "../src/db.ts";
 import { testDb, tmpDir, testConfig, item, goodScript } from "./helpers.ts";
+import { EvergreenScriptSchema, type EvergreenScript } from "../src/editorial/evergreen.ts";
+
+/** A small, valid ranking draft for the fake writer. */
+function rankingDraft(): EvergreenScript {
+  const names = ["Halo 5", "Halo 4", "Halo Reach", "Halo 2", "Halo 3"];
+  return {
+    format: "ranking",
+    theme: "Halo",
+    title: "Ranking Every Halo",
+    hook: "Every mainline Halo ranked by one thing only, how good the campaign still is today.",
+    entries: names.map((game_title, i) => ({
+      rank: names.length - i,
+      game_title,
+      steam_search_term: game_title,
+      year: 2001 + i * 3,
+      platforms: "Xbox, PC",
+      one_line: `${game_title} had the budget, yet its campaign ran out of ideas faster than the rest.`,
+      verdict_chip: i === names.length - 1 ? "STILL THE ONE" : "PLAY IT ONCE",
+      footage: { want: "gameplay", keywords: ["warthog run"] },
+    })),
+    pulse_take: { label: "THE CRITERION", narration: "Number one still has the best campaign pacing in the series, and nothing else here comes close.", on_screen: "Still the best campaign" },
+    loop_line: "And that is every Halo ranked by how good the campaign still is.",
+    youtube: { title: "Ranking EVERY Halo game", description: "Every mainline Halo ranked by campaign.", tags: ["Halo"] },
+    claims: [{ claim: "Halo 3 released in 2007", source: "public knowledge" }],
+  };
+}
 
 interface Fakes {
   script: Script;
@@ -74,6 +100,7 @@ function fakeLlm(f: Fakes): Llm {
         }) as z.infer<S>;
       if (schema === (VisionQaSchema as unknown))
         return { verdict: "pass", problems: [], notes: "" } as z.infer<S>;
+      if (schema === (EvergreenScriptSchema as unknown)) return rankingDraft() as z.infer<S>;
       throw new Error("unexpected schema");
     },
   } as Llm;
@@ -835,4 +862,29 @@ test("delayed Shorts get fresh, spaced slots instead of past times; stale news g
   const news = (await getEpisode(db, "ep_old_news"))!;
   assert.equal(news.status, "awaiting_approval");
   assert.ok(f.notifications.some((n) => /may be out of date/.test(n)));
+});
+
+test("the fact-checker sees every card figure, and rankings get a final adjudication that can stop a wrong figure", async () => {
+  const { cardText } = await import("../src/editorial/editorial.ts");
+  assert.equal(
+    cardText({ kind: "price", primary: "$59.99", secondary: "on Steam", was: "$69.99", region: "US", items: ["£49.99", "€59.99"] } as never),
+    "[price] $59.99 on Steam (was $69.99, region US, rows: £49.99; €59.99)",
+  );
+  assert.equal(cardText({ kind: "timeline", primary: "Delayed", secondary: "", date_from: "2026-03", date_to: "2026-11" } as never), "[timeline] Delayed (from 2026-03, to 2026-11)");
+  // A ranking whose fact-check keeps failing is stopped, never published.
+  const { db, s, f } = await setup({ dryRun: false, evergreenEnabled: true, approvalMode: "auto", breakingEnabled: false });
+  f.factChecks = [
+    { verdict: "fail", issues: [{ quote: "released in 2019", problem: "the facts say 2020", severity: "blocker" }], rumour_labelling_ok: true, summary: "wrong year" },
+    { verdict: "fail", issues: [{ quote: "released in 2019", problem: "the facts say 2020", severity: "blocker" }], rumour_labelling_ok: true, summary: "still wrong" },
+  ];
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane, factcheck_json, slot_at)
+     VALUES ('ep_rank', 'rank', 'selected', $1, 'evergreen', $2, $3)`,
+    [JSON.stringify({ headline: "Ranked", items: [], sources: ["Steam"], hasOfficial: true, corroborated: true }), JSON.stringify({ topic: { theme: "Halo", format: "ranking", reason: "r", criterion: "c", title_idea: "Halo Ranked", candidate_index: 0 } }), new Date("2026-10-16T18:00:00Z")],
+  );
+  await tick(s);
+  const ep = (await getEpisode(db, "ep_rank"))!;
+  assert.notEqual(ep.status, "published");
+  assert.match(String(ep.last_error ?? ""), /fact-check still failing/);
+  assert.equal(f.uploads, 0);
 });

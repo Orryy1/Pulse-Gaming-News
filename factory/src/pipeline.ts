@@ -98,6 +98,7 @@ import {
   selectStory,
   writeScript,
   factCheck,
+  factCheckRanking,
   validateScript,
 } from "./editorial/editorial.ts";
 import { narrationOf, tidyLoopLine, type Script } from "./editorial/schema.ts";
@@ -2307,6 +2308,38 @@ async function withBackground(
 }
 
 /** Writes the long-form ranking against live Steam facts for each entry, with one rewrite on problems. */
+/**
+ * The final factual adjudication of a ranking or long video: a blocker goes back to the writer once as
+ * feedback (returned); a blocker that survives the rewrite fails the episode so nothing wrong goes out.
+ */
+async function adjudicateRanking(
+  s: Services,
+  ep: Episode,
+  script: Script,
+  facts: Array<{ title: string; facts: SteamFacts }>,
+  attempt: number,
+): Promise<string[]> {
+  const check = await factCheckRanking(
+    s.llm,
+    script,
+    facts.map((f) => ({ title: f.title, facts: factsText(f.facts) })),
+  );
+  const blockers = check.issues
+    .filter((i) => i.severity === "blocker")
+    .map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
+  await logEvent(s.db, ep.id, "factcheck", {
+    attempt,
+    verdict: check.verdict,
+    blockers,
+    summary: check.summary,
+  });
+  if (check.verdict !== "fail" && !blockers.length) return [];
+  if (attempt === 0) return blockers.length ? blockers : [`Fact-check failed: ${check.summary}`];
+  throw new FatalError(
+    `fact-check still failing after a rewrite: ${(blockers[0] ?? check.summary).slice(0, 300)}`,
+  );
+}
+
 async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   const fc = ep.factcheck_json as {
     doc?: boolean;
@@ -2353,11 +2386,12 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   for (let attempt = 0; attempt < 2; attempt++) {
     draft = await writeLongform(s.llm, topic, lookup, feedback, lessons);
     const problems = validateLongform(draft);
-    if (!problems.length) break;
-    // One rewrite with the problems named; a second draft that still misses is logged, not thrown away.
-    if (attempt === 1)
+    const factual = await adjudicateRanking(s, ep, longformToScript(draft), facts, attempt);
+    if (!problems.length && !factual.length) break;
+    // One rewrite with the problems named; style misses that survive are logged, facts are not (adjudicateRanking throws).
+    if (attempt === 1 && problems.length)
       await logEvent(s.db, ep.id, "style_warnings", { problems });
-    feedback = problems;
+    feedback = [...factual, ...problems];
   }
   if (!draft) throw new Error("long-form script produced nothing");
   const script = withSpoilerWarning(longformToScript(draft));
@@ -2633,6 +2667,12 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "style_warnings", { problems });
   }
   if (!draft) throw new Error("evergreen script produced nothing");
+  // The final adjudication against the facts the writer was given: one rewrite on a blocker, then fail.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const factual = await adjudicateRanking(s, ep, evergreenToScript(draft), facts, attempt);
+    if (!factual.length) break;
+    draft = await writeEvergreen(s.llm, topic, facts, factual, brief);
+  }
   const data = (
     ep.factcheck_json as {
       achievements?: Array<{

@@ -5,7 +5,10 @@ import { whyBrief } from "./why.ts";
 import { voiceFor, voiceProblems } from "./voice.ts";
 import { varyOpinion } from "./phrasing.ts";
 import type { Llm } from "./llm.ts";
-import { parsePairs, parseMilestones } from "../render/components/cards/helpers.ts";
+import {
+  parsePairs,
+  parseMilestones,
+} from "../render/components/cards/helpers.ts";
 import type { StoryCluster } from "../discovery/cluster.ts";
 import type { ArticleText } from "../discovery/article.ts";
 import {
@@ -88,7 +91,8 @@ function sourcesBlock(articles: ArticleText[], cluster: StoryCluster): string {
   return cluster.items
     .map((item, i) => {
       const art = byUrl.get(item.url);
-      const body = art?.text || item.summary || "(no body text available; headline only)";
+      const body =
+        art?.text || item.summary || "(no body text available; headline only)";
       return `<source index="${i}" outlet="${item.source}" kind="${item.sourceKind}" url="${item.url}" published="${item.publishedAt}">
 <headline>${item.title}</headline>
 <body>${body}</body>
@@ -103,7 +107,12 @@ function storeBlock(data?: string): string {
   return `\n<source outlet="Steam store (live data)" kind="official">\n${data}\n</source>\nThe Steam numbers above are live and verified. Use one where it sharpens the Pulse take or makes a strong stat beat (current players, review score, price); attribute it to Steam and give it as a figure from today.`;
 }
 
-export async function selectStory(llm: Llm, candidates: StoryCluster[], recentHeadlines: string[], performance = ""): Promise<Selection> {
+export async function selectStory(
+  llm: Llm,
+  candidates: StoryCluster[],
+  recentHeadlines: string[],
+  performance = "",
+): Promise<Selection> {
   const list = candidates
     .map(
       (c, i) =>
@@ -123,7 +132,12 @@ export async function writeScript(
   llm: Llm,
   cluster: StoryCluster,
   articles: ArticleText[],
-  opts: { mustLabelRumour: boolean; feedback?: string[]; storeData?: string; lessons?: string },
+  opts: {
+    mustLabelRumour: boolean;
+    feedback?: string[];
+    storeData?: string;
+    lessons?: string;
+  },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
     ? "\nThis story is NOT confirmed by an official source or two independent outlets. Set is_rumour true and attribute every claim to whoever reported it."
@@ -131,28 +145,86 @@ export async function writeScript(
   const feedback = opts.feedback?.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
-  const why = cluster.why ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle)}` : "";
+  const why = cluster.why
+    ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle)}`
+    : "";
   const script = await llm.structured({
     system: scriptPrompt(),
     content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${feedback}`,
     schema: ScriptSchema,
     effort: "medium",
   });
-  return varyOpinion(cluster.why ? { ...script, story_type: "explainer" } : script, cluster.hash);
+  return varyOpinion(
+    cluster.why ? { ...script, story_type: "explainer" } : script,
+    cluster.hash,
+  );
 }
 
-export async function factCheck(llm: Llm, script: Script, cluster: StoryCluster, articles: ArticleText[], storeData?: string): Promise<FactCheck> {
+/** Everything a card will print: its text plus the dates, prices, scores and rows the graphic draws from. */
+export function cardText(v: Script["beats"][number]["visual"]): string {
+  const extra = [
+    v.date_from && `from ${v.date_from}`,
+    v.date_to && `to ${v.date_to}`,
+    v.was && `was ${v.was}`,
+    v.region && `region ${v.region}`,
+    v.value_a !== undefined && `score ${v.value_a}`,
+    v.items?.length && `rows: ${v.items.join("; ")}`,
+  ].filter(Boolean);
+  return `[${v.kind}] ${[v.primary, v.secondary].filter(Boolean).join(" ")}${extra.length ? ` (${extra.join(", ")})` : ""}`.trim();
+}
+
+/**
+ * The final factual adjudication for a ranking or a long video, which the news lane already had: the
+ * spoken script, every card figure, the title and the description against the facts the writer was
+ * given (Steam figures and Wikipedia background per game). Only those facts and long-established
+ * knowledge count; a figure the facts do not support is a blocker.
+ */
+export async function factCheckRanking(
+  llm: Llm,
+  script: Script,
+  facts: Array<{ title: string; facts: string }>,
+): Promise<FactCheck> {
+  const cards = [
+    script.headline,
+    ...script.beats.map((b) => cardText(b.visual)),
+    script.pulse_take.on_screen,
+    ...(script.entries ?? []).flatMap((e) =>
+      (e.moments ?? [])
+        .filter((m) => m.graphic.kind !== "none")
+        .map((m) =>
+          `${e.game_title}: [${m.graphic.kind}] ${m.graphic.primary} ${m.graphic.secondary} ${m.graphic.items?.join("; ") ?? ""}`.trim(),
+        ),
+    ),
+  ];
   return llm.structured({
-    system: factCheckPrompt(),
-    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(storeData)}\n\nScript (spoken):\n${narrationOf(script)}\n\nOn-screen text:\n- ${script.headline}\n${script.beats
-      .map((b) => `- ${b.visual.primary} ${b.visual.secondary}`.trim())
-      .join("\n")}\n- ${script.pulse_take.on_screen}\n\nYouTube title: ${script.youtube.title}\nYouTube description: ${script.youtube.description}\nScript labels this as rumour: ${script.is_rumour}`,
+    system: `${factCheckPrompt()}\nThis is a ranking or explainer, not a news story: the "sources" are the facts the writer was given for each game. Release years, platforms, prices, scores, review counts, player counts, sales and dates must match those facts or be long-established public knowledge; a figure that appears in neither is a blocker. Opinions and the ranking order itself are not facts.`,
+    content: `Facts given to the writer:\n${facts.map((f) => `<game title="${f.title}">\n${f.facts}\n</game>`).join("\n")}\n\nScript (spoken):\n${narrationOf(script)}\n\nOn-screen text and card figures (every one must be supported):\n${cards.map((c) => `- ${c}`).join("\n")}\n\nYouTube title: ${script.youtube.title}\nYouTube description: ${script.youtube.description}`,
     schema: FactCheckSchema,
     effort: "medium",
   });
 }
 
-const BANNED_OPENERS = /^(so|today|hey|welcome|in this|guys|what's up|hello)\b/i;
+export async function factCheck(
+  llm: Llm,
+  script: Script,
+  cluster: StoryCluster,
+  articles: ArticleText[],
+  storeData?: string,
+): Promise<FactCheck> {
+  return llm.structured({
+    system: factCheckPrompt(),
+    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(storeData)}\n\nScript (spoken):\n${narrationOf(script)}\n\nOn-screen text and card figures (every one must be supported):\n- ${script.headline}\n${script.beats
+      .map((b) => `- ${cardText(b.visual)}`)
+      .join(
+        "\n",
+      )}\n- ${script.pulse_take.on_screen}\n\nYouTube title: ${script.youtube.title}\nYouTube description: ${script.youtube.description}\nScript labels this as rumour: ${script.is_rumour}`,
+    schema: FactCheckSchema,
+    effort: "medium",
+  });
+}
+
+const BANNED_OPENERS =
+  /^(so|today|hey|welcome|in this|guys|what's up|hello)\b/i;
 const BANNED_PHRASES = [
   /let me know in the comments/i,
   /like and subscribe/i,
@@ -183,36 +255,129 @@ export function validateScript(s: Script): string[] {
   const problems: string[] = [];
   const spoken = narrationOf(s);
   const words = wordCount(spoken);
-  if (words < WORDS_MIN || words > WORDS_MAX) problems.push(`Spoken word count is ${words}; it must be ${WORDS_MIN}-${WORDS_MAX}.`);
-  if (BANNED_OPENERS.test(s.hook.trim())) problems.push(`The hook must not open with "${s.hook.trim().split(/\s+/)[0]}".`);
-  if (wordCount(s.hook) > 18) problems.push("The hook is longer than 18 words.");
-  if (wordCount(s.loop_line) > 22) problems.push("The loop line is longer than 22 words; one short closing sentence.");
-  if (loopLineUnfinished(s.loop_line)) problems.push(`The loop line "${s.loop_line.trim()}" is unfinished; end it as one complete sentence.`);
-  if (s.beats.length < 2 || s.beats.length > 4) problems.push("There must be two to four beats.");
-  const allText = [spoken, s.headline, s.youtube.title, s.youtube.description, s.pulse_take.on_screen, ...s.beats.map((b) => `${b.visual.primary} ${b.visual.secondary}`)].join("\n");
-  for (const re of BANNED_PHRASES) if (re.test(allText)) problems.push(`Banned phrase matched: ${re.source}.`);
+  if (words < WORDS_MIN || words > WORDS_MAX)
+    problems.push(
+      `Spoken word count is ${words}; it must be ${WORDS_MIN}-${WORDS_MAX}.`,
+    );
+  if (BANNED_OPENERS.test(s.hook.trim()))
+    problems.push(
+      `The hook must not open with "${s.hook.trim().split(/\s+/)[0]}".`,
+    );
+  if (wordCount(s.hook) > 18)
+    problems.push("The hook is longer than 18 words.");
+  if (wordCount(s.loop_line) > 22)
+    problems.push(
+      "The loop line is longer than 22 words; one short closing sentence.",
+    );
+  if (loopLineUnfinished(s.loop_line))
+    problems.push(
+      `The loop line "${s.loop_line.trim()}" is unfinished; end it as one complete sentence.`,
+    );
+  if (s.beats.length < 2 || s.beats.length > 4)
+    problems.push("There must be two to four beats.");
+  const allText = [
+    spoken,
+    s.headline,
+    s.youtube.title,
+    s.youtube.description,
+    s.pulse_take.on_screen,
+    ...s.beats.map((b) => `${b.visual.primary} ${b.visual.secondary}`),
+  ].join("\n");
+  for (const re of BANNED_PHRASES)
+    if (re.test(allText)) problems.push(`Banned phrase matched: ${re.source}.`);
   problems.push(...voiceProblems(spoken));
-  for (const [re, fix] of BRITICISMS) if (re.test(allText)) problems.push(`Use American spelling ("${fix}"), found "${allText.match(re)?.[0]}".`);
-  if (/\b\w+, [\w ]+, and\b/.test(allText)) problems.push("Remove the serial (Oxford) comma before \"and\".");
-  if (s.youtube.title.length > 100) problems.push("The YouTube title is over 100 characters.");
-  if (wordCount(s.headline) > 9) problems.push("The on-screen headline is longer than 8 words.");
+  for (const [re, fix] of BRITICISMS)
+    if (re.test(allText))
+      problems.push(
+        `Use American spelling ("${fix}"), found "${allText.match(re)?.[0]}".`,
+      );
+  if (/\b\w+, [\w ]+, and\b/.test(allText))
+    problems.push('Remove the serial (Oxford) comma before "and".');
+  if (s.youtube.title.length > 100)
+    problems.push("The YouTube title is over 100 characters.");
+  if (wordCount(s.headline) > 9)
+    problems.push("The on-screen headline is longer than 8 words.");
   if (!s.pulse_take.narration.trim()) problems.push("The Pulse take is empty.");
-  if (s.is_rumour && !/\b(reportedly|rumoured|according to|allegedly|claims?|reports?|suggests?|rumored)\b/i.test(spoken)) {
-    problems.push("A rumour script must attribute its claims (reportedly / according to ...).");
+  if (
+    s.is_rumour &&
+    !/\b(reportedly|rumoured|according to|allegedly|claims?|reports?|suggests?|rumored)\b/i.test(
+      spoken,
+    )
+  ) {
+    problems.push(
+      "A rumour script must attribute its claims (reportedly / according to ...).",
+    );
   }
   for (const b of s.beats) {
-    if (b.visual.kind !== "none" && wordCount(b.visual.primary) > 7) problems.push(`On-screen text "${b.visual.primary}" is too long to read in a second.`);
-    const iso = (d?: string) => !!d && /^\d{4}(-\d{2}(-\d{2})?)?$/.test(d.trim());
-    if (b.visual.kind === "chapter") problems.push(`The "chapter" card is for documentaries only; pick another card for "${b.visual.primary}".`);
-    if (b.visual.kind === "timeline" && !(iso(b.visual.date_from) && iso(b.visual.date_to))) problems.push(`Timeline card "${b.visual.primary}" needs date_from and date_to as ISO dates.`);
-    if (b.visual.kind === "countdown" && !iso(b.visual.date_to)) problems.push(`Countdown card "${b.visual.primary}" needs date_to as an ISO date.`);
-    if (b.visual.kind === "price" && !/\d/.test(b.visual.primary)) problems.push(`Price card "${b.visual.primary}" has no price.`);
-    if (b.visual.kind === "score" && !(typeof b.visual.value_a === "number" && b.visual.value_a >= 0 && b.visual.value_a <= 100)) problems.push(`Score card "${b.visual.primary}" needs value_a between 0 and 100.`);
-    if (b.visual.kind === "compare" && (b.visual.items ?? []).filter((r) => /:\s*[^:]*\d/.test(r)).length < 2) problems.push(`Compare card "${b.visual.primary}" needs at least two label:value rows.`);
-    if (b.visual.kind === "platforms" && !(b.visual.items ?? []).some((x) => x.trim())) problems.push(`Platforms card "${b.visual.primary}" needs at least one platform in items.`);
-    if (b.visual.kind === "versus" && parsePairs(b.visual.items ?? []).length !== 2) problems.push(`Versus card "${b.visual.primary}" needs exactly two label:value rows.`);
-    if (b.visual.kind === "specs" && parsePairs(b.visual.items ?? []).length < 2) problems.push(`Specs card "${b.visual.primary}" needs at least two label:value rows.`);
-    if (b.visual.kind === "milestones" && parseMilestones(b.visual.items ?? []).length < 3) problems.push(`Milestones card "${b.visual.primary}" needs three to five rows as YYYY-MM:label.`);
+    if (b.visual.kind !== "none" && wordCount(b.visual.primary) > 7)
+      problems.push(
+        `On-screen text "${b.visual.primary}" is too long to read in a second.`,
+      );
+    const iso = (d?: string) =>
+      !!d && /^\d{4}(-\d{2}(-\d{2})?)?$/.test(d.trim());
+    if (b.visual.kind === "chapter")
+      problems.push(
+        `The "chapter" card is for documentaries only; pick another card for "${b.visual.primary}".`,
+      );
+    if (
+      b.visual.kind === "timeline" &&
+      !(iso(b.visual.date_from) && iso(b.visual.date_to))
+    )
+      problems.push(
+        `Timeline card "${b.visual.primary}" needs date_from and date_to as ISO dates.`,
+      );
+    if (b.visual.kind === "countdown" && !iso(b.visual.date_to))
+      problems.push(
+        `Countdown card "${b.visual.primary}" needs date_to as an ISO date.`,
+      );
+    if (b.visual.kind === "price" && !/\d/.test(b.visual.primary))
+      problems.push(`Price card "${b.visual.primary}" has no price.`);
+    if (
+      b.visual.kind === "score" &&
+      !(
+        typeof b.visual.value_a === "number" &&
+        b.visual.value_a >= 0 &&
+        b.visual.value_a <= 100
+      )
+    )
+      problems.push(
+        `Score card "${b.visual.primary}" needs value_a between 0 and 100.`,
+      );
+    if (
+      b.visual.kind === "compare" &&
+      (b.visual.items ?? []).filter((r) => /:\s*[^:]*\d/.test(r)).length < 2
+    )
+      problems.push(
+        `Compare card "${b.visual.primary}" needs at least two label:value rows.`,
+      );
+    if (
+      b.visual.kind === "platforms" &&
+      !(b.visual.items ?? []).some((x) => x.trim())
+    )
+      problems.push(
+        `Platforms card "${b.visual.primary}" needs at least one platform in items.`,
+      );
+    if (
+      b.visual.kind === "versus" &&
+      parsePairs(b.visual.items ?? []).length !== 2
+    )
+      problems.push(
+        `Versus card "${b.visual.primary}" needs exactly two label:value rows.`,
+      );
+    if (
+      b.visual.kind === "specs" &&
+      parsePairs(b.visual.items ?? []).length < 2
+    )
+      problems.push(
+        `Specs card "${b.visual.primary}" needs at least two label:value rows.`,
+      );
+    if (
+      b.visual.kind === "milestones" &&
+      parseMilestones(b.visual.items ?? []).length < 3
+    )
+      problems.push(
+        `Milestones card "${b.visual.primary}" needs three to five rows as YYYY-MM:label.`,
+      );
   }
   return problems;
 }

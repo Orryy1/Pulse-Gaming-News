@@ -233,6 +233,60 @@ export const GameplayJudgeSchema = z.object({
  * Titles alone cannot tell Black Ops from Black Ops 6, or Call of Duty 4 (2007)
  * from Modern Warfare 4 (2026): a reader checks each title and description.
  */
+const ROMAN_N: Record<string, string> = { ii: "2", iii: "3", iv: "4", v: "5", vi: "6", vii: "7", viii: "8", ix: "9", x: "10", xi: "11", xii: "12", xiii: "13", xiv: "14", xv: "15", xvi: "16" };
+const SEQUEL_RE = /(?<![a-z0-9])(?:(\d{1,2})|(ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi))(?![a-z0-9])/g;
+
+/**
+ * The entry number a title gives a series: the first number or Roman numeral after the series name,
+ * as digits ("GTA VI" and "GTA 6" both give "6"; "GTA 6 Trailer 2" gives "6"; "Hades" gives undefined).
+ * `series` is the name without its number; an empty series takes the title's first number.
+ */
+export function entryNumber(title: string, series = ""): string | undefined {
+  const t = title.toLowerCase();
+  const at = series ? t.indexOf(series.toLowerCase().replace(/[®™©:]/g, "").trim()) : 0;
+  if (at < 0) return undefined;
+  const tail = t.slice(at + series.length);
+  const m = SEQUEL_RE.exec(tail);
+  SEQUEL_RE.lastIndex = 0;
+  if (!m) return undefined;
+  // The number must come straight after the series name (a word or two of edition text at most), and
+  // not after a word that numbers something else: "part 2", "trailer 2", "mission 4".
+  const gap = tail.slice(0, m.index).replace(/[^a-z]/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (gap.length > 2 || /^(part|episode|ep|trailer|chapter|mission|level|day|act|season|vol|volume)$/.test(gap[gap.length - 1] ?? "")) return undefined;
+  const n = m[1] ?? ROMAN_N[m[2]!];
+  return n && Number(n) <= 16 ? String(Number(n)) : undefined;
+}
+
+/** The series name of a game: its title with the entry number and anything after it removed. */
+export function seriesName(game: string): string {
+  const g = game.replace(/[®™©]/g, "");
+  const m = new RegExp(SEQUEL_RE.source, "i").exec(g.toLowerCase());
+  return (m ? g.slice(0, m.index) : g).replace(/[:\-–—\s]+$/, "").trim();
+}
+
+/** Short series names as fans write them, so "GTA 6" matches "Grand Theft Auto VI". */
+const SHORT: Record<string, string> = { "grand theft auto": "gta", "call of duty": "cod", "final fantasy": "ff", "resident evil": "re", "the legend of zelda": "zelda", "assassin's creed": "ac" };
+
+/**
+ * A title that names a different entry in the series than the one wanted. "GTA VI" requested and a
+ * "GTA V" trailer supplied passed the model's judgement once (audit, 24 Oct 2026); this is the hard rule,
+ * applied before and after the model's opinion.
+ */
+export function wrongEntry(game: string, title: string): boolean {
+  const series = seriesName(game);
+  const want = entryNumber(game, series);
+  // The series as the title may write it: the full name, its last part ("Modern Warfare" for
+  // "Call of Duty: Modern Warfare"), or the fans' short form; the longest one present decides.
+  const parts = series.split(/\s*[:\-–—]\s*/).filter(Boolean);
+  const names = [series, ...parts.slice(1), parts[0], SHORT[series.toLowerCase()], SHORT[(parts[0] ?? "").toLowerCase()]]
+    .filter((x): x is string => !!x && x.length >= 3)
+    .sort((a, b) => b.length - a.length);
+  const found = names.find((n) => title.toLowerCase().includes(n.toLowerCase()));
+  if (!found) return false; // the title does not name the series at all: the model decides
+  const have = entryNumber(title, found);
+  return (want ?? "1") !== (have ?? "1");
+}
+
 export async function judgeGameplay(
   llm: Llm,
   game: string,
@@ -241,6 +295,9 @@ export async function judgeGameplay(
   scope?: "campaign",
 ): Promise<number[]> {
   if (!items.length) return [];
+  // The hard rule first: nothing naming a different entry reaches the model, and nothing it keeps may either.
+  const allowed = new Set(items.map((v, i) => i).filter((i) => !wrongEntry(game, items[i]!.title)));
+  if (!allowed.size) return [];
   const r = await llm.structured({
     tier: "low",
     system:
@@ -249,7 +306,7 @@ export async function judgeGameplay(
     schema: GameplayJudgeSchema,
     effort: "low",
   });
-  return [...new Set(r.keep)].filter((i) => i >= 0 && i < items.length);
+  return [...new Set(r.keep)].filter((i) => i >= 0 && i < items.length && allowed.has(i));
 }
 
 /** Up to `max` gameplay videos of the game: Creative Commons first, then the publisher's own uploads. */

@@ -150,3 +150,38 @@ test("edits inside a gameplay clip: isolated spikes and hard cuts, not fast moti
   assert.ok(Math.abs(from - (3.77 + 1 / 30)) < 1e-6 && Math.abs(len - (8 - 3.77 - 1 / 30)) < 1e-6);
   assert.deepEqual(longestRun([], 8), [0, 8]);
 });
+
+test("a trailer or clip naming a different entry in the series is never accepted (audit, 24 Oct 2026)", async () => {
+  const { wrongEntry, entryNumber, seriesName, judgeGameplay } = await import("../src/assets/gameplay.ts");
+  assert.equal(seriesName("Grand Theft Auto VI"), "Grand Theft Auto");
+  assert.equal(seriesName("Call of Duty: Modern Warfare II"), "Call of Duty: Modern Warfare");
+  assert.equal(entryNumber("GTA 6 Trailer 2", "GTA"), "6");
+  assert.equal(entryNumber("Hades gameplay part 2", "Hades"), undefined);
+  const wrong = [
+    ["Grand Theft Auto VI", "Grand Theft Auto V Official Trailer"],
+    ["Grand Theft Auto VI", "GTA 5 gameplay 4K"],
+    ["Call of Duty: Modern Warfare II", "Modern Warfare III campaign"],
+    ["Hades II", "Hades gameplay"],
+    ["Hades", "Hades II gameplay"],
+    ["Grand Theft Auto: Vice City", "GTA 5 gameplay"],
+  ];
+  for (const [g, t] of wrong) assert.equal(wrongEntry(g!, t!), true, `${g} <= ${t}`);
+  const fine = [
+    ["Grand Theft Auto VI", "GTA 6 Trailer 2"],
+    ["Grand Theft Auto VI", "GTA VI gameplay 2026 4K"],
+    ["Call of Duty: Modern Warfare II", "COD MW2 campaign mission 4"],
+    ["Resident Evil 4", "Resident Evil 4 Remake gameplay"],
+    ["Hades", "Hades gameplay part 2"],
+    ["Halo Infinite", "Halo Infinite campaign 1080p"],
+    ["Grand Theft Auto III", "Grand Theft Auto III: 10 Year Anniversary Edition"],
+    ["Grand Theft Auto: Vice City", "GTA Vice City gameplay"],
+  ];
+  for (const [g, t] of fine) assert.equal(wrongEntry(g!, t!), false, `${g} <= ${t}`);
+  // The model's opinion cannot override the rule in either direction.
+  const llm = { structured: async () => ({ keep: [0, 1] }) } as never;
+  const kept = await judgeGameplay(llm, "Grand Theft Auto VI", 2026, [
+    { title: "Grand Theft Auto V Official Trailer", description: "", channelTitle: "Rockstar" },
+    { title: "GTA VI Trailer 2", description: "", channelTitle: "Rockstar" },
+  ]);
+  assert.deepEqual(kept, [1]);
+});

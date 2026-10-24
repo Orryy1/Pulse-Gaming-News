@@ -560,7 +560,20 @@ export function displayWords(words: Word[]): Word[] {
     }
     out.push(w);
   }
-  return out;
+  // "134 gigabytes" (speakUnits in speakable.ts) is shown as "134GB".
+  const UNIT_BACK: Record<string, string> = { terabyte: "TB", terabytes: "TB", gigabyte: "GB", gigabytes: "GB", megabyte: "MB", megabytes: "MB", kilobyte: "KB", kilobytes: "KB", gigahertz: "GHz", megahertz: "MHz", hertz: "Hz" };
+  const merged: Word[] = [];
+  for (let k = 0; k < out.length; k++) {
+    const w = out[k]!;
+    const next = out[k + 1];
+    const m = next?.text.match(/^([a-z]+)([.,;:!?)"”’]*)$/i);
+    const unit = m ? UNIT_BACK[m[1]!.toLowerCase()] : undefined;
+    if (unit && /^\d[\d,]*(?:\.\d+)?$/.test(w.text)) {
+      merged.push({ text: `${w.text}${unit}${m![2]}`, start: w.start, end: next!.end });
+      k++;
+    } else merged.push(w);
+  }
+  return merged;
 }
 
 /** On-screen text: "47 percent" is "47%". */

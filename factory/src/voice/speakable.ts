@@ -279,13 +279,35 @@ export function roundCounts(text: string): string {
   );
 }
 
+/** Units the voice spells out (it said "134 gee bye" for 134GB, 24 Oct 2026); captions turn them back. */
+export const UNIT_WORDS: Record<string, [string, string]> = {
+  TB: ["terabyte", "terabytes"],
+  GB: ["gigabyte", "gigabytes"],
+  MB: ["megabyte", "megabytes"],
+  KB: ["kilobyte", "kilobytes"],
+  GHz: ["gigahertz", "gigahertz"],
+  MHz: ["megahertz", "megahertz"],
+  Hz: ["hertz", "hertz"],
+};
+
+/** "134GB" and "134 GB" as "134 gigabytes", "1GB" as "1 gigabyte". */
+export function speakUnits(text: string): string {
+  return text.replace(
+    /(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s?(TB|GB|MB|KB|GHz|MHz|Hz)\b/g,
+    (_m, n: string, unit: string) => {
+      const [one, many] = UNIT_WORDS[unit]!;
+      return `${n} ${Number(n.replace(/,/g, "")) === 1 ? one : many}`;
+    },
+  );
+}
+
 export function speakable(text: string): string {
-  return speakNumbers(speakYearsAndMoney(roundCounts(text)));
+  return speakNumbers(speakYearsAndMoney(roundCounts(speakUnits(text))));
 }
 
 /** Figures in words exactly as written, without rounding: for comparing a transcript with a script. */
 export function speakExact(text: string): string {
-  return speakNumbers(speakYearsAndMoney(text));
+  return speakNumbers(speakYearsAndMoney(speakUnits(text)));
 }
 
 function speakYearsAndMoney(text: string): string {

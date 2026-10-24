@@ -137,3 +137,14 @@ test("big counts are rounded the way people say them", async () => {
   assert.equal(roundCounts("more than 346,258 reviews"), "more than 346,258 reviews");
   assert.equal(roundCounts("costs $1,299 and 1,250.50 points"), "costs $1,299 and 1,250.50 points");
 });
+
+test("storage and frequency units are said in full and captioned as symbols", async () => {
+  const { speakUnits } = await import("../src/voice/speakable.ts");
+  assert.equal(speakUnits("Phantom Blade Zero needs 134GB of space"), "Phantom Blade Zero needs 134 gigabytes of space");
+  assert.equal(speakUnits("a 1 TB drive, 16 GB of RAM and a 1.5GB patch at 120Hz"), "a 1 terabyte drive, 16 gigabytes of RAM and a 1.5 gigabytes patch at 120 hertz");
+  assert.equal(speakUnits("the GB in GBA and 4K"), "the GB in GBA and 4K");
+  assert.equal(speakable("It needs 134GB."), "It needs 134 gigabytes.");
+  const w = (text: string, start: number) => ({ text, start, end: start + 0.2 });
+  assert.deepEqual(displayWords([w("needs", 0), w("134", 0.3), w("gigabytes.", 0.6)]).map((x) => x.text), ["needs", "134GB."]);
+  assert.deepEqual(displayWords([w("one", 0), w("point", 0.3), w("five", 0.6), w("gigabytes", 0.9)]).map((x) => x.text), ["1.5GB"]);
+});

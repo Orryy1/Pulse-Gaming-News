@@ -106,6 +106,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   take_entry?: number;
   /** A Short cut from a long ranking: the full video, this entry's rank and the comment question. */
   cutdown?: { parent_video: string; rank: number; total: number; question: string; theme?: string };
+  /** A gameplay Short from the owner's own recordings: the test, its answer and the Leonida Intel page it belongs to. */
+  gameplay?: { inbox_id: string; question: string; result: string; result_line: string; experiment_number: number; experiment_slug: string | null; radio: boolean };
 };
 export type BeatVisual = z.infer<typeof BeatSchema>["visual"];
 

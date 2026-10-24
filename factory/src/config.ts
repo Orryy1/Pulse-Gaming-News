@@ -2,6 +2,7 @@
 // Nothing secret is ever logged; see redactedConfig().
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 // Local installs keep settings in factory/.env (never committed).
@@ -118,6 +119,13 @@ export interface Config {
   cutdownsEnabled: boolean; // Shorts cut from each long ranking
   cutdownSlot: string; // local publish time for them, one a day
   cutdownsPerLong: number;
+  /** The owner's own recordings, cut into an inbox by the Windows tasks in C:\Claude	inotv-vods. */
+  gameplayEnabled: boolean;
+  gameplayRoot: string; // holds inbox/ (written by the finder) and published/ (read by Leonida Intel)
+  gameplayExperiments: string; // the numbered test list the reviewer matches clips against
+  gameplaySlots: string[]; // local publish times, at most one gameplay Short each
+  gameplayReviewsPerDay: number; // clips heard and looked at a day (each costs a vision call)
+  gameplayMinScore: number; // the reviewer's 1-10 score a clip needs to reach the owner
   commentReplies: boolean; // answer good comments in a video's first hours
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
   weeklyEnabled: boolean; // Release Radar, Free This Week and the Weekly Recap
@@ -298,6 +306,13 @@ export function loadConfig(): Config {
     cutdownsEnabled: bool("CUTDOWNS_ENABLED", false), // on once a sandbox run has been checked
     cutdownSlot: str("CUTDOWN_SLOT", "15:30"),
     cutdownsPerLong: int("CUTDOWNS_PER_LONG", 3),
+    gameplayEnabled: bool("GAMEPLAY_ENABLED", true),
+    gameplayRoot: str("GAMEPLAY_ROOT", path.join(os.homedir(), "Videos", "Pulse Gameplay")),
+    gameplayExperiments: str("GAMEPLAY_EXPERIMENTS", path.join(os.homedir(), "gaming-studio", "pulse-gaming", "docs", "GTA6_EXPERIMENT_SHORTS.md")),
+    // US evening (16:00 and 18:30 Eastern), clear of the news, deals, evergreen and long-form slots.
+    gameplaySlots: str("GAMEPLAY_SLOTS", "21:00,23:30").split(",").map((t) => t.trim()).filter((t) => /^\d\d:\d\d$/.test(t)).sort(),
+    gameplayReviewsPerDay: int("GAMEPLAY_REVIEWS_PER_DAY", 30),
+    gameplayMinScore: int("GAMEPLAY_MIN_SCORE", 7),
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),
     weeklyEnabled: bool("WEEKLY_ENABLED", true),

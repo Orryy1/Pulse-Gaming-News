@@ -149,6 +149,8 @@ export function createServices(db: Db, cfg: Config): Services {
     technicalQa,
     extractFrames,
     visionQa: (frames, ctx) => visionQa(llm, frames, ctx),
+    hearClip: async (file) =>
+      cfg.whisperPython ? (await transcribeWords(file, cfg.whisperPython)).map((w) => ({ text: w.text, start: w.start, end: w.end ?? w.start + 0.3 })) : [],
     checkNarration: async (file, words) =>
       cfg.whisperPython ? checkNarration(words, await transcribeWords(file, cfg.whisperPython)) : undefined,
     youtube: () => new YouTubeClient(() => accessToken(db, oauthConfig(cfg))),

@@ -172,6 +172,19 @@ import {
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
+import {
+  gameplayScript,
+  gameplayWindow,
+  newClips,
+  parseExperiments,
+  readMeta,
+  reviewClip,
+  wordsInWindow,
+  worthPosting,
+  writeManifest,
+  writeMeta,
+  type GameplayStatus,
+} from "./gameplay.ts";
 import { pruneCommentRecords } from "./youtube/replies.ts";
 import {
   type Episode,
@@ -314,6 +327,8 @@ export interface Services {
     frames: string[],
     ctx: { headline: string; gameTitle: string; format?: "short" | "long" },
   ): Promise<VisionQa>;
+  /** What Whisper hears in a gameplay clip, word by word (empty when no Whisper is set up). */
+  hearClip?(file: string): Promise<Array<{ text: string; start: number; end: number }>>;
   /** What the voice actually says against its script (undefined when no Whisper is set up). */
   checkNarration?(
     file: string,
@@ -2090,6 +2105,8 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   const duration = assets.durationSeconds ?? 30;
+  // A gameplay Short asks its question from the first frame and answers it on the end card.
+  const g = script.gameplay;
   await s.renderCutdown({
     episodeDir: dir,
     props: {
@@ -2098,10 +2115,14 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
       words: assets.words ?? [],
       durationSeconds: duration,
       title: script.headline.toUpperCase(),
-      kicker: `#${script.cutdown?.rank ?? ""} OF ${script.cutdown?.total ?? ""}`,
-      cta: "FULL RANKING ON THE CHANNEL",
+      kicker: g
+        ? g.experiment_number
+          ? `TEST #${g.experiment_number}`
+          : "WE TESTED IT"
+        : `#${script.cutdown?.rank ?? ""} OF ${script.cutdown?.total ?? ""}`,
+      cta: g ? g.result_line.toUpperCase() : "FULL RANKING ON THE CHANNEL",
       accent: "#FF6B1A",
-      emphasis: emphasisWords(script),
+      emphasis: g ? [] : emphasisWords(script),
     },
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
@@ -2131,6 +2152,313 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
     assets_json: { ...assets, video: "short.mp4", poster: "poster.jpg" },
     qa_json: qa,
   });
+  if (ep.lane === "gameplay") await gameplayStatus(s.cfg, ep, "rendered");
+}
+
+// ------------------------------------------------------------------ gameplay lane
+
+async function gameplayExperiments(cfg: Config) {
+  const md = await fs.readFile(cfg.gameplayExperiments, "utf8").catch(() => "");
+  return parseExperiments(md);
+}
+
+/**
+ * Hears and looks at new inbox clips (a few a tick, a daily cap on vision calls) and makes an episode
+ * from each one worth posting. One gameplay Short is in production at a time, so a long stream's dozen
+ * clips never crowd the news renders; the rest wait in the inbox as "new".
+ */
+export async function ingestGameplay(
+  s: Services,
+  perTick = 3,
+): Promise<string[]> {
+  const { db, cfg } = s;
+  if (!cfg.gameplayEnabled || !cfg.gameplayRoot) return [];
+  const [busy] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM episodes WHERE lane = 'gameplay' AND status IN ('selected','scripted','voiced','rendered')`,
+  );
+  if (Number(busy?.n ?? 0) > 0) return [];
+  const [reviewed] = await db.query<{ n: string | number }>(
+    // The database's own clock, as the rows are stamped with it.
+    `SELECT count(*) AS n FROM events WHERE kind = 'gameplay_reviewed' AND created_at > now() - interval '24 hours'`,
+  );
+  let left = Math.min(
+    perTick,
+    cfg.gameplayReviewsPerDay - Number(reviewed?.n ?? 0),
+  );
+  if (left <= 0) return [];
+  const experiments = await gameplayExperiments(cfg);
+  const made: string[] = [];
+  for (const { dir, meta } of await newClips(cfg.gameplayRoot)) {
+    if (left-- <= 0) break;
+    await writeMeta(dir, { status: "reviewing" });
+    try {
+      const clip = path.join(dir, meta.clip.file || "clip.mp4");
+      const words = (await s.hearClip?.(clip).catch(() => [])) ?? [];
+      await fs.writeFile(path.join(dir, "words.json"), JSON.stringify(words));
+      const review = await reviewClip(
+        s.llm,
+        dir,
+        meta,
+        words.map((w) => w.text).join(" "),
+        experiments,
+      );
+      await logEvent(db, null, "gameplay_reviewed", {
+        id: meta.id,
+        keep: review.keep,
+        score: review.score,
+        reason: review.reason,
+      });
+      const keep = worthPosting(review, cfg.gameplayMinScore);
+      let episode: string | undefined;
+      if (keep) {
+        const cluster: StoryCluster = {
+          hash: `gameplay:${meta.id}`,
+          headline: review.question,
+          items: [],
+          sources: ["Pulse Gaming"],
+          hasOfficial: true,
+          corroborated: true,
+          rumourSignals: false,
+          newestAt: s.now().toISOString(),
+          score: review.score,
+          gameHint: review.game_title,
+          gameplay: { id: meta.id, dir, review },
+        };
+        episode = shortId();
+        if (
+          await createEpisode(db, episode, cluster, {
+            lane: "gameplay",
+            priority: LANE_PRIORITY.gameplay,
+          })
+        ) {
+          await logEvent(db, episode, "selected", {
+            lane: "gameplay",
+            clip: meta.id,
+            score: review.score,
+            question: review.question,
+          });
+          made.push(episode);
+        } else episode = undefined;
+      }
+      await writeMeta(dir, {
+        status: keep && episode ? "picked" : "rejected",
+        review: {
+          at: s.now().toISOString(),
+          keep: Boolean(keep && episode),
+          reason: review.reason,
+          episode,
+          radio: review.radio_audible,
+        },
+      });
+      log("info", "gameplay clip reviewed", {
+        id: meta.id,
+        keep,
+        score: review.score,
+      });
+      // One in production at a time: the next clip waits for this one to reach the owner.
+      if (episode) break;
+    } catch (err) {
+      // A failed look is tried again later, never thrown away.
+      await writeMeta(dir, { status: "new" });
+      log("warn", "gameplay review failed", {
+        id: meta.id,
+        error: errorMessage(err),
+      });
+      break;
+    }
+  }
+  return made;
+}
+
+/** Trims the clip to the reviewer's window, with a blurred 9:16 fill behind it; the game's own sound is kept. */
+async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
+  const ref = ep.story_json.gameplay;
+  if (!ref) throw new FatalError("gameplay episode has no clip");
+  const clipDir = gameplayDir(s.cfg, ref.id);
+  const meta = await readMeta(clipDir);
+  if (!meta) throw new FatalError("the gameplay clip is gone from the inbox");
+  const source = path.join(clipDir, meta.clip.file || "clip.mp4");
+  const win = gameplayWindow(ref.review, meta.clip.seconds);
+  const len = win.end - win.start;
+  const dir = episodeDir(s.cfg, ep.id);
+  await fs.mkdir(dir, { recursive: true });
+  const run = promisify(execFile);
+  await run(
+    FFMPEG,
+    [
+      "-v",
+      "error",
+      "-y",
+      "-ss",
+      win.start.toFixed(3),
+      "-t",
+      len.toFixed(3),
+      "-i",
+      source,
+      "-vf",
+      "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "fast",
+      "-crf",
+      "18",
+      "-pix_fmt",
+      "yuv420p",
+      "-af",
+      `afade=t=in:d=0.08,afade=t=out:st=${Math.max(0, len - 0.25).toFixed(3)}:d=0.25`,
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      path.join(dir, "cut.mp4"),
+    ],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
+  await run(
+    FFMPEG,
+    [
+      "-v",
+      "error",
+      "-y",
+      "-ss",
+      win.start.toFixed(3),
+      "-t",
+      len.toFixed(3),
+      "-i",
+      source,
+      "-an",
+      "-vf",
+      "scale=-2:1920,crop=1080:1920,boxblur=28:3,eq=brightness=-0.10:saturation=1.15,fps=30",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "30",
+      "-pix_fmt",
+      "yuv420p",
+      path.join(dir, "bg.mp4"),
+    ],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
+  const heard = JSON.parse(
+    await fs
+      .readFile(path.join(clipDir, "words.json"), "utf8")
+      .catch(() => "[]"),
+  ) as Array<{ text: string; start: number; end: number }>;
+  const words = ref.review.captions_ok ? wordsInWindow(heard, win) : [];
+  const script = gameplayScript(
+    ref.review,
+    ref.id,
+    await gameplayExperiments(s.cfg),
+  );
+  await transition(s.db, ep.id, "selected", "scripted", {
+    script_json: script,
+    assets_json: {
+      words,
+      durationSeconds: len,
+      clips: [],
+      cutdown: {
+        start: win.start,
+        end: win.end,
+        video: "cut.mp4",
+        background: "bg.mp4",
+      },
+    },
+  });
+  await logEvent(s.db, ep.id, "gameplay_cut", {
+    clip: ref.id,
+    start: win.start,
+    end: win.end,
+    title: script.youtube.title,
+  });
+}
+
+/** Keeps the inbox clip's status in step with its episode, for the finder's owner and Leonida Intel. */
+async function gameplayStatus(
+  cfg: Config,
+  ep: Episode,
+  status: GameplayStatus,
+): Promise<void> {
+  const id = ep.story_json.gameplay?.id;
+  if (id) await writeMeta(gameplayDir(cfg, id), { status }).catch(() => undefined);
+}
+
+/** A clip's inbox folder, found by id under GAMEPLAY_ROOT (so it survives the move to the Mac). */
+function gameplayDir(cfg: Config, id: string): string {
+  return path.join(cfg.gameplayRoot, "inbox", id);
+}
+
+/** Once a gameplay Short is public: published/<id>.json for Leonida Intel's article. */
+async function gameplayLive(s: Services, ep: Episode): Promise<void> {
+  const g = ep.script_json?.gameplay;
+  if (ep.lane !== "gameplay" || !g || !ep.youtube_video_id) return;
+  // A scheduled video is not watchable yet: the go-live check writes it after its slot.
+  if (ep.publish_at && new Date(ep.publish_at) > s.now()) return;
+  const wrote = await writeManifest(s.cfg.gameplayRoot, {
+    id: g.inbox_id,
+    youtube_id: ep.youtube_video_id,
+    title: polishTitle(ep.script_json!),
+    question: g.question,
+    result: g.result,
+    experiment_slug: g.experiment_slug,
+    published_at: (ep.publish_at
+      ? new Date(ep.publish_at)
+      : s.now()
+    ).toISOString(),
+  }).catch((err) => {
+    log("warn", "gameplay manifest failed", {
+      episode: ep.id,
+      error: errorMessage(err),
+    });
+    return false;
+  });
+  await gameplayStatus(s.cfg, ep, "published");
+  if (wrote)
+    await logEvent(s.db, ep.id, "gameplay_manifest", { clip: g.inbox_id });
+}
+
+/** Rejected, expired or failed gameplay episodes mark their clip "skipped" so nobody wonders about it. */
+export async function syncGameplaySkips(s: Services): Promise<void> {
+  if (!s.cfg.gameplayEnabled) return;
+  const rows = await s.db.query<Episode>(
+    `SELECT * FROM episodes WHERE lane = 'gameplay' AND status IN ('rejected','failed') AND updated_at > now() - interval '3 days'`,
+  );
+  for (const ep of rows) {
+    const id = ep.story_json.gameplay?.id;
+    if (!id) continue;
+    const dir = gameplayDir(s.cfg, id);
+    const meta = await readMeta(dir);
+    if (meta && meta.status !== "skipped" && meta.status !== "published")
+      await writeMeta(dir, { status: "skipped" });
+  }
+}
+
+/**
+ * The gameplay slot for an approved Short: the first of GAMEPLAY_SLOTS, today or on the next days, that is
+ * at least 20 minutes away, holds no other gameplay Short and is a full upload gap from every other
+ * scheduled video. Gameplay is extra, so it moves out of the planned lanes' way, never the reverse.
+ */
+export function nextGameplaySlot(
+  cfg: Config,
+  now: Date,
+  scheduled: Date[],
+  gameplayTaken: Date[],
+): Date | undefined {
+  const gap = cfg.minUploadGapMinutes * 60_000;
+  const today = dayKey(now, cfg.timezone);
+  for (let d = 0; d < 14; d++) {
+    for (const hhmm of cfg.gameplaySlots) {
+      const at = localTime(addDays(today, d), hhmm, cfg.timezone);
+      if (at.getTime() - now.getTime() < 20 * 60_000) continue;
+      if (gameplayTaken.some((t) => t.getTime() === at.getTime())) continue;
+      if (scheduled.some((t) => Math.abs(t.getTime() - at.getTime()) < gap))
+        continue;
+      return at;
+    }
+  }
+  return undefined;
 }
 
 /** The week's published news Shorts, most watched first (their best captured view count), rumours left out. */
@@ -2704,6 +3032,7 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
 
 async function stepScript(s: Services, ep: Episode): Promise<void> {
   if (ep.lane === "cutdown") return stepScriptCutdown(s, ep);
+  if (ep.lane === "gameplay") return stepScriptGameplay(s, ep);
   if (ep.lane === "evergreen") return stepScriptEvergreen(s, ep);
   if (ep.lane === "longform") return stepScriptLongform(s, ep);
   const cluster = ep.story_json;
@@ -2828,8 +3157,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
 }
 
 async function stepVoice(s: Services, ep: Episode): Promise<void> {
-  // A cutdown speaks with the long video's own narration, cut with its section.
-  if (ep.lane === "cutdown") {
+  // A cutdown speaks with the long video's own narration, cut with its section; a gameplay Short keeps the game's sound.
+  if (ep.lane === "cutdown" || ep.lane === "gameplay") {
     await transition(s.db, ep.id, "scripted", "voiced");
     return;
   }
@@ -4486,7 +4815,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
 
 async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (ep.lane === "longform") return stepRenderLong(s, ep);
-  if (ep.lane === "cutdown") return stepRenderCutdown(s, ep);
+  if (ep.lane === "cutdown" || ep.lane === "gameplay") return stepRenderCutdown(s, ep);
   const dir = episodeDir(s.cfg, ep.id);
   const script = ep.script_json!;
   const assets = { ...(ep.assets_json ?? {}) };
@@ -4783,7 +5112,8 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const links = approvalLinks(s.cfg, ep.id);
   // Rumours and anything not corroborated always wait for a human.
   const risky = script.is_rumour || !ep.story_json.corroborated;
-  const mode = risky
+  // The owner taps every gameplay Short: their own recordings never publish on a timer.
+  const mode = risky || ep.lane === "gameplay"
     ? "manual"
     : ep.lane === "evergreen"
       ? s.cfg.evergreenApprovalMode
@@ -4798,8 +5128,21 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
         : "Waiting for your approval.";
   const dir = episodeDir(s.cfg, ep.id);
   // Auto mode needs nothing from the owner: a short "going out" note with a Watch link, no buttons.
-  const description =
-    mode === "auto"
+  const g = script.gameplay;
+  const description = g
+    ? [
+        `**Question:** ${g.question}`,
+        `**Result:** ${g.result}`,
+        `**Game:** ${script.game_title}${g.experiment_number ? `  ·  test #${g.experiment_number} on the list` : "  ·  a fresh test"}`,
+        `**Why it was picked:** ${ep.story_json.gameplay?.review.reason ?? "n/a"} (score ${ep.story_json.gameplay?.review.score ?? "?"}/10)`,
+        g.radio
+          ? "⚠️ **Radio or licensed music may be audible.** That can trigger a Content ID claim; reject if you would rather not risk it."
+          : "No licensed music heard.",
+        "",
+        `▶️ [Watch preview](${links.preview})  ·  ✅ [Approve](${links.approve})  ·  ❌ [Reject](${links.reject})`,
+        when,
+      ]
+    : mode === "auto"
       ? [
           `**Hook:** ${script.hook}`,
           `Fact-checked against ${ep.story_json.sources.length} source${ep.story_json.sources.length === 1 ? "" : "s"}. Going out automatically, nothing for you to do.`,
@@ -4842,6 +5185,7 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
       approval_mode: mode,
       approval_requested_at: s.now(),
     });
+    if (ep.lane === "gameplay") await gameplayStatus(s.cfg, ep, "awaiting_approval");
   }
 }
 
@@ -4953,6 +5297,25 @@ export function choosePublishAt(
 }
 
 async function stepApproved(s: Services, ep: Episode): Promise<void> {
+  // A gameplay Short takes the first free gameplay slot, clear of everything already scheduled.
+  if (ep.lane === "gameplay" && !ep.slot_at) {
+    const rows = await s.db.query<{ at: string; lane: string }>(
+      `SELECT COALESCE(publish_at, slot_at) AS at, lane FROM episodes
+        WHERE COALESCE(publish_at, slot_at) IS NOT NULL AND COALESCE(publish_at, slot_at) > $1::timestamptz - interval '1 hour'
+          AND status NOT IN ('failed','rejected') AND id <> $2`,
+      [s.now(), ep.id],
+    );
+    const slot = nextGameplaySlot(
+      s.cfg,
+      s.now(),
+      rows.filter((r) => r.lane !== "gameplay").map((r) => new Date(r.at)),
+      rows.filter((r) => r.lane === "gameplay").map((r) => new Date(r.at)),
+    );
+    if (slot) {
+      await s.db.query(`UPDATE episodes SET slot_at = $2 WHERE id = $1`, [ep.id, slot]);
+      ep = { ...ep, slot_at: slot.toISOString() };
+    }
+  }
   const publishAt = choosePublishAt(
     s.cfg,
     s.now(),
@@ -5123,8 +5486,12 @@ export function videoMetadata(
       ? `\nPhotos: Wikimedia Commons, credited on screen. Full photo and footage credits: ${affiliate.shopUrl.replace(/\/shop\//, "/credits/")}`
       : "",
     footage,
-    "\nNarration: AI-generated synthetic voice. Visuals: official publisher material, credited.",
-    script.recap
+    script.gameplay
+      ? `\nGameplay recorded by Pulse Gaming on Xbox Series X from our own copy of ${script.game_title}. No AI voice: the sound is the game's own.`
+      : "\nNarration: AI-generated synthetic voice. Visuals: official publisher material, credited.",
+    script.gameplay
+      ? "\nPulse Gaming: we test what games let you do, one question at a time. Tell us what to test next in the comments."
+      : script.recap
       ? "\nPulse Gaming News: gaming news, checked and explained. The week's biggest stories every Friday, a new ranking every week, Shorts every day."
       : script.evergreen_format === "documentary"
         ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
@@ -5252,7 +5619,7 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
         videoMetadata(
           ep,
           s.cfg.youtubePrivacy,
-          s.cfg.syntheticMedia,
+          ep.lane === "gameplay" ? false : s.cfg.syntheticMedia,
           affiliateTags(s.cfg, ep.id),
         ),
         marker,
@@ -5320,6 +5687,8 @@ export async function confirmPublished(s: Services): Promise<void> {
     const st = await s.youtube().status(ep.youtube_video_id);
     if (st?.privacyStatus === "public") {
       await logEvent(s.db, ep.id, "public_confirmed", {});
+      const live = await getEpisode(s.db, ep.id);
+      if (live) await gameplayLive(s, live);
     } else if (st?.privacyStatus === "private") {
       // Never publish it ourselves: the owner may have made it private on purpose, and YouTube cannot say who did.
       await logEvent(s.db, ep.id, "made_public", {
@@ -5454,6 +5823,7 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   await transition(s.db, ep.id, "uploaded", "published", {
     youtube_status: st.privacyStatus,
   });
+  if (st.privacyStatus === "public") await gameplayLive(s, ep);
   const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
   const longVideo = ep.script_json?.runtime === "long";
   await s.notify({
@@ -5644,6 +6014,13 @@ export async function tick(
           break;
       }
     }
+    // The owner's recordings: new clips heard and looked at, picked ones started on (they ride the same tick next time).
+    await ingestGameplay(s).catch((err) =>
+      log("warn", "gameplay intake failed", { error: errorMessage(err) }),
+    );
+    await syncGameplaySkips(s).catch((err) =>
+      log("warn", "gameplay status sync failed", { error: errorMessage(err) }),
+    );
     await pruneMedia(s).catch((err) =>
       log("warn", "prune failed", { error: errorMessage(err) }),
     );

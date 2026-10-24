@@ -166,21 +166,22 @@ export async function recentHeadlines(db: Db, days = 5): Promise<string[]> {
 
 /** Episodes started today (UTC) that have not failed or been rejected. */
 /** Episodes created today in the owner's day (Europe/London), excluding failed and rejected. */
+/** Episodes made today (all lanes but the owner's gameplay Shorts, which are extra), or one lane's. */
 export async function countToday(db: Db, timeZone = "Europe/London", lane?: string): Promise<number> {
   // The owner's day: "today" rolls over at local midnight in winter and summer alike.
   const [row] = await db.query<{ n: string | number }>(
     `SELECT count(*) AS n FROM episodes
       WHERE created_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1
         AND status NOT IN ('failed','rejected')
-        AND ($2::text IS NULL OR lane = $2)`,
+        AND (($2::text IS NULL AND lane <> 'gameplay') OR lane = $2)`,
     [timeZone, lane ?? null],
   );
   return Number(row?.n ?? 0);
 }
 
-/** Episodes mid-production (not waiting on approval, YouTube or a terminal state). */
+/** Episodes mid-production (not waiting on approval, YouTube or a terminal state). Gameplay Shorts are extra and never hold the news back. */
 export async function countProducing(db: Db): Promise<number> {
-  const [row] = await db.query<{ n: string | number }>(`SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered')`);
+  const [row] = await db.query<{ n: string | number }>(`SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered') AND lane <> 'gameplay'`);
   return Number(row?.n ?? 0);
 }
 

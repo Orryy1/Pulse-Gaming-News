@@ -5,7 +5,7 @@
 import type { Db } from "./db.ts";
 import type { StoryCluster } from "./discovery/cluster.ts";
 
-export type Lane = "news" | "news_breaking" | "evergreen" | "longform" | "free" | "cutdown";
+export type Lane = "news" | "news_breaking" | "evergreen" | "longform" | "free" | "cutdown" | "gameplay";
 export const LANE_PRIORITY: Record<Lane, number> = {
   news_breaking: 100,
   news: 50,
@@ -13,6 +13,7 @@ export const LANE_PRIORITY: Record<Lane, number> = {
   evergreen: 30,
     longform: 20,
   cutdown: 25,
+  gameplay: 35,
 };
 
 // YouTube Data API quota (determine_quota_cost, 15 Oct 2026): videos.insert and search.list each have

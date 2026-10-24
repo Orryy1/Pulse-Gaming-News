@@ -424,6 +424,8 @@ export function keywordLead(script: Script): string {
 
 /** A warm pinned comment that asks one direct question tied to the Pulse take. */
 export function pinnedComment(script: Script): string {
+  if (script.gameplay)
+    return `${script.gameplay.question} ${script.gameplay.result} What should we test next? The best ideas get tested in a future Short.`;
   if (script.cutdown)
     return `${script.cutdown.question.trim()} The full ranking, every pick explained: https://youtu.be/${script.cutdown.parent_video}`;
   const take = script.pulse_take.on_screen

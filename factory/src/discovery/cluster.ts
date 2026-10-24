@@ -24,6 +24,8 @@ export interface StoryCluster {
   cutdown?: { parent: string; rank: number };
   /** A "Why" Short: the question it answers and the likely answer the writer tests against the sources. */
   why?: { question: string; angle: string };
+  /** A gameplay Short: the inbox clip's id and folder, and the reviewer's verdict. */
+  gameplay?: { id: string; dir: string; review: import("../gameplay.ts").GameplayReview };
 }
 
 const STOPWORDS = new Set(

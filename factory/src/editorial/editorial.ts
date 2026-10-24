@@ -49,7 +49,7 @@ export function scriptPrompt(): string {
 Write a 25-40 second vertical Short script (${WORDS_MIN}-${WORDS_MAX} spoken words in total across hook, beats, take and loop line).
 
 Structure:
-1. hook: state the news itself in the first sentence, with the game name, in the Pulse voice (a fact, a number or a scene, and a hint of why it matters to you). Never open with "So", "Today", "Hey", "Welcome", "In this", "Guys" or a question that withholds the news.
+1. hook: the news itself in one short sentence of 5-10 words with the game named, in the Pulse voice (a fact, a number or a scene). Short beats clever: "GTA 6's launch trailer is out. November 19 holds." The why-it-matters goes in the first beat, not the hook. Never open with "So", "Today", "Hey", "Welcome", "In this", "Guys" or a question that withholds the news.
 2. beats: two to four short fact beats, each with one on-screen visual card. The first beat must be the single most surprising concrete detail in the story (a number, a date, a price, a named feature), never background, history or "here is what we know": half our viewers leave between seconds five and twelve, so the best fact goes there. Context and history come later or in the take. Pick the card that fits the fact:
    - "timeline" for a delay or date change: primary is a 2-5 word phrase, date_from is the old date and date_to the new date, both ISO (YYYY-MM or YYYY-MM-DD).
    - "countdown" for a confirmed release date: primary is the date as spoken, date_to is the ISO date.
@@ -64,7 +64,8 @@ Structure:
    Never pad a card with numbers the sources do not give.
    Every beat also carries "footage": what the trailer picture should show while that line is spoken, with 1-4 keywords naming the thing, place, character or action in the line. The picture editor matches real trailer moments to these, so be concrete ("Hyrule Field", "the new ship interior", "a car chase"), and use "calm" for lines whose card needs a quiet background (numbers, dates, prices). "hook_footage" does the same for the opening line and should want the most striking gameplay moment.
 person: when the story is about one real person (a cameo, a hire, a departure, a statement), their name as commonly written, so the Short can show a licensed photo of them; otherwise empty.
-3. pulse_take: the Pulse angle. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Opinions must be framed as opinion. Do not invent data.
+3. pulse_take: the Pulse angle. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Vary its shape: a concession then a verdict, a comparison, a question answered, a consequence for the viewer, a what-happens-next. The opening words and the closing shape must differ from the recent Shorts listed below when a list is given. Opinions must be framed as opinion. Do not invent data.
+Talk to the viewer: at least two sentences in the script say "you" or "your" about what this means for them (their console, their money, their weekend).
 4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that echoes the hook's subject or words, so a rewatch feels connected: a short callback or a question to the viewer. Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
 
 Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone.
@@ -137,6 +138,8 @@ export async function writeScript(
     feedback?: string[];
     storeData?: string;
     lessons?: string;
+    /** The last few Shorts' take openers and loop lines, so no shape becomes a tic. */
+    recent?: RecentShapes;
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -148,9 +151,13 @@ export async function writeScript(
   const why = cluster.why
     ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle)}`
     : "";
+  const recent =
+    opts.recent && (opts.recent.takes.length || opts.recent.loops.length)
+      ? `\n\nRecent Shorts (do not open the take the same way or end on the same shape as any of these):\n${opts.recent.takes.map((t) => `- take opened: "${t}"`).join("\n")}\n${opts.recent.loops.map((l) => `- closed: "${l}"`).join("\n")}`
+      : "";
   const script = await llm.structured({
     system: scriptPrompt(),
-    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${feedback}`,
+    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${recent}${feedback}`,
     schema: ScriptSchema,
     effort: "medium",
   });
@@ -250,11 +257,58 @@ const BRITICISMS: Array<[RegExp, string]> = [
   [/\bprogramme(s)?\b/i, "program"],
 ];
 
+/** The shapes the last few Shorts used: how each take opened (its first words) and each loop line. */
+export interface RecentShapes {
+  takes: string[];
+  loops: string[];
+}
+
+/** The first few words of a line, lowercased, for comparing openers. */
+export function opener(text: string, words = 3): string {
+  return text
+    .trim()
+    .split(/\s+/)
+    .slice(0, words)
+    .join(" ")
+    .toLowerCase()
+    .replace(/[^a-z0-9' ]/g, "");
+}
+
+/** The last few words of a line, lowercased, for comparing closing shapes. */
+export function closer(text: string, words = 3): string {
+  return text
+    .trim()
+    .split(/\s+/)
+    .slice(-words)
+    .join(" ")
+    .toLowerCase()
+    .replace(/[^a-z0-9' ]/g, "");
+}
+
 /** Deterministic house-rule checks. Returns human-readable problems; empty means valid. */
-export function validateScript(s: Script): string[] {
+export function validateScript(s: Script, recent?: RecentShapes): string[] {
   const problems: string[] = [];
   const spoken = narrationOf(s);
   const words = wordCount(spoken);
+  // The viewer is in the room: a script that never says "you" reads as a bulletin.
+  const yous = (spoken.match(/\byou(r|'re|'ve|'ll|'d)?\b/gi) ?? []).length;
+  if (yous < 2)
+    problems.push(
+      `The script says "you" ${yous === 1 ? "once" : "never"}; at least two sentences should speak to the viewer about what this means for them.`,
+    );
+  // Shapes the last few Shorts used become tics: the take's opener and the loop's closing words must differ.
+  if (recent) {
+    const take = opener(s.pulse_take.narration, 2);
+    if (take && recent.takes.some((t) => opener(t, 2) === take))
+      problems.push(
+        `The take opens "${s.pulse_take.narration.trim().split(/\s+/).slice(0, 2).join(" ")}" like a recent Short; open it another way.`,
+      );
+    const loop = closer(s.loop_line, 3);
+    if (loop && recent.loops.some((l) => closer(l, 3) === loop))
+      problems.push(
+        `The loop line ends "${s.loop_line.trim().split(/\s+/).slice(-3).join(" ")}" like a recent Short; close on a different shape.`,
+      );
+  }
   if (words < WORDS_MIN || words > WORDS_MAX)
     problems.push(
       `Spoken word count is ${words}; it must be ${WORDS_MIN}-${WORDS_MAX}.`,
@@ -263,8 +317,10 @@ export function validateScript(s: Script): string[] {
     problems.push(
       `The hook must not open with "${s.hook.trim().split(/\s+/)[0]}".`,
     );
-  if (wordCount(s.hook) > 18)
-    problems.push("The hook is longer than 18 words.");
+  if (wordCount(s.hook) > 12)
+    problems.push(
+      `The hook is ${wordCount(s.hook)} words; say the news in 5-10 and move the why into the first beat.`,
+    );
   if (wordCount(s.loop_line) > 22)
     problems.push(
       "The loop line is longer than 22 words; one short closing sentence.",

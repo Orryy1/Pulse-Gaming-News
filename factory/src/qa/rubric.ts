@@ -6,7 +6,7 @@
 import type { RenderPlan } from "../render/plan.ts";
 import type { Segment } from "../render/timeline.ts";
 import type { Word } from "../voice/elevenlabs.ts";
-import { MIN_SHOT, MAX_SHOT, MAX_SFX, STING_FRAMES } from "../render/plan.ts";
+import { MIN_SHOT, MAX_SFX, STING_FRAMES, maxShotFor } from "../render/plan.ts";
 
 export interface RubricMetric {
   name: string;
@@ -52,7 +52,7 @@ export function scorePlan(i: RubricInput): Rubric {
   m.push({
     name: "hook_words",
     value: i.hookWords,
-    grade: grade(i.hookWords >= 8 && i.hookWords <= 14, i.hookWords <= 16),
+    grade: grade(i.hookWords >= 5 && i.hookWords <= 10, i.hookWords <= 12),
   });
 
   // Pace.
@@ -87,12 +87,22 @@ export function scorePlan(i: RubricInput): Rubric {
     (s, k) =>
       (s.end - s.start < MIN_SHOT &&
         !(k === 0 && s.end - s.start === STING_FRAMES)) ||
-      s.end - s.start > MAX_SHOT,
+      s.end - s.start > maxShotFor(segments[s.segment]?.kind ?? "beat"),
   );
   m.push({
     name: "shots_out_of_bounds",
     value: bad.length,
     grade: grade(bad.length === 0, bad.length <= 1),
+  });
+
+  // Rhythm: shot lengths that vary with the line (a held opening, quick facts, a held verdict), not a metronome.
+  const lengths = plan.shots.slice(1).map((s) => s.end - s.start);
+  const meanLen = lengths.length ? lengths.reduce((a, b) => a + b, 0) / lengths.length : 0;
+  const cv = meanLen ? Math.sqrt(lengths.reduce((a, l) => a + (l - meanLen) ** 2, 0) / lengths.length) / meanLen : 0;
+  m.push({
+    name: "shot_length_variety",
+    value: Number(cv.toFixed(2)),
+    grade: grade(cv >= 0.25, true),
   });
 
   // Beat awareness: cuts within 6 frames of a word end.

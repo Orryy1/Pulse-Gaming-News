@@ -6,6 +6,7 @@ import {
   planCuts,
   MIN_SHOT,
   MAX_SHOT,
+  maxShotFor,
   STING_FRAMES,
   MAX_SFX,
   type PlanInput,
@@ -115,9 +116,10 @@ test("cuts respect the sting, segment starts and the 45-130 frame bounds", () =>
       c.end - c.start >= MIN_SHOT,
       `shot ${c.start}-${c.end} is shorter than ${MIN_SHOT}`,
     );
+    const limit = maxShotFor(i.segments[c.segment]!.kind);
     assert.ok(
-      c.end - c.start <= MAX_SHOT,
-      `shot ${c.start}-${c.end} is longer than ${MAX_SHOT}`,
+      c.end - c.start <= limit,
+      `shot ${c.start}-${c.end} is longer than ${limit}`,
     );
   }
   for (let k = 1; k < cuts.length; k++)

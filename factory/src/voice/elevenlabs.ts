@@ -49,7 +49,19 @@ export interface VoiceOptions {
   apiKey: string;
   voiceId: string;
   modelId: string;
+  /** Delivery: lower stability and higher style give more rise and fall (measured on Liam, 24 Oct 2026). */
+  settings?: Partial<VoiceSettings>;
 }
+
+export interface VoiceSettings {
+  stability: number;
+  similarity_boost: number;
+  style: number;
+  use_speaker_boost: boolean;
+  speed: number;
+}
+
+export const DEFAULT_VOICE_SETTINGS: VoiceSettings = { stability: 0.4, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true, speed: 1.05 };
 
 export async function synthesise(text: string, outPath: string, opts: VoiceOptions): Promise<Narration> {
   if (!opts.apiKey) throw new FatalError("ELEVENLABS_API_KEY is not set");
@@ -63,7 +75,7 @@ export async function synthesise(text: string, outPath: string, opts: VoiceOptio
         text,
         model_id: opts.modelId,
         language_code: opts.modelId.includes("multilingual") ? undefined : "en",
-        voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true, speed: 1.05 },
+        voice_settings: { ...DEFAULT_VOICE_SETTINGS, ...(opts.settings ?? {}) },
       }),
     },
     120_000,

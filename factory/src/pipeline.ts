@@ -172,6 +172,7 @@ import {
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
+import type { RecentShapes } from "./editorial/editorial.ts";
 import {
   captionable,
   gameplayScript,
@@ -2465,6 +2466,21 @@ export function nextGameplaySlot(
   return undefined;
 }
 
+/** How the last eight Shorts opened their take and closed, so the writer and the validator keep the shapes varied. */
+export async function recentShapes(db: Db, exceptId: string): Promise<RecentShapes> {
+  const rows = await db.query<{ take: string | null; loop: string | null }>(
+    `SELECT script_json->'pulse_take'->>'narration' AS take, script_json->>'loop_line' AS loop
+       FROM episodes WHERE script_json IS NOT NULL AND id <> $1 AND status NOT IN ('failed','rejected')
+         AND COALESCE(script_json->>'runtime', 'short') = 'short'
+       ORDER BY created_at DESC LIMIT 8`,
+    [exceptId],
+  );
+  return {
+    takes: rows.map((r) => (r.take ?? "").trim().split(/\s+/).slice(0, 4).join(" ")).filter(Boolean),
+    loops: rows.map((r) => (r.loop ?? "").trim()).filter(Boolean),
+  };
+}
+
 /** The week's published news Shorts, most watched first (their best captured view count), rumours left out. */
 export async function recapStoryIds(db: Db, now: Date): Promise<string[]> {
   const rows = await db.query<{
@@ -3076,14 +3092,16 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   let feedback: string[] = [];
   let check;
   // Draft, check house rules, fact-check; one rewrite with the problems fed back.
+  const recent = await recentShapes(s.db, ep.id).catch(() => undefined);
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
       lessons: await hookLessons(s.db, s.now()).catch(() => ""),
       mustLabelRumour,
       feedback,
       storeData,
+      recent,
     });
-    const problems = validateScript(script);
+    const problems = validateScript(script, recent);
     check = await factCheck(s.llm, script, cluster, articles, storeData);
     const blockers = check.issues
       .filter((i) => i.severity === "blocker")

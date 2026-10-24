@@ -59,7 +59,7 @@ export const ScriptSchema = z.object({
   game_title: z.string(),
   steam_search_term: z.string().describe("Term to find the game on the Steam store, or empty string"),
   headline: z.string().describe("On-screen headline, 3-8 words, no clickbait"),
-  hook: z.string().describe("First spoken line: the news itself, 6-16 words"),
+  hook: z.string().describe("First spoken line: the news itself in 5-10 words, game named"),
   beats: z.array(BeatSchema).describe("2-4 fact beats"),
   pulse_take: z.object({
     label: z.string().describe("Short card label such as WHY IT MATTERS, THE CONTEXT or THE TAKEAWAY"),

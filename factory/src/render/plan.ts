@@ -15,7 +15,14 @@ export const PLAN_FPS = 30;
 export const STING_FRAMES = 12; // frames 0-11: brand sting over the hero still
 export const MIN_SHOT = 45;
 export const MAX_SHOT = 130;
+export const HOLD_SHOT = 150; // the opening and the verdict may hold a shot this long (5 s)
 export const TARGET_SHOT = 93; // about 3.1 s
+/**
+ * Shot length by what is being said: the hook holds on its moment, facts cut quicker, the take holds
+ * on its verdict. An even 3.1 s everywhere read as a metronome (24 Oct 2026 review).
+ */
+export const TARGET_BY_KIND: Record<string, number> = { hook: 120, beat: 78, take: 125, loop: 93 };
+export const maxShotFor = (kind: string): number => (kind === "hook" || kind === "take" ? HOLD_SHOT : MAX_SHOT);
 export const FREEZE_TOLERANCE = 6; // a clip may hold its last frame this long (0.2 s) at the end of a shot
 export const SNAP_FRAMES = 6; // cuts move up to this far to land on a word end
 export const TAIL_SECONDS = 1.0;
@@ -143,9 +150,17 @@ function wordEnds(words: Word[]): number[] {
   return words.map((w) => toFrame(w.end)).sort((a, b) => a - b);
 }
 
-function snap(frame: number, ends: number[], lo: number, hi: number): number {
-  let best = frame;
-  let bestD = SNAP_FRAMES + 1;
+/** Ends of words that close a clause (punctuation), where a cut reads as meant rather than placed. */
+function clauseEnds(words: Word[]): number[] {
+  return words
+    .filter((w) => /[,.;:!?]["”')]?$/.test(w.text))
+    .map((w) => toFrame(w.end))
+    .sort((a, b) => a - b);
+}
+
+function nearest(frame: number, ends: number[], lo: number, hi: number, within: number): number | undefined {
+  let best: number | undefined;
+  let bestD = within + 1;
   for (const e of ends) {
     const d = Math.abs(e - frame);
     if (d < bestD && e > lo && e < hi) {
@@ -154,6 +169,11 @@ function snap(frame: number, ends: number[], lo: number, hi: number): number {
     }
   }
   return best;
+}
+
+/** A clause end within twice the snap window beats a word end within it; failing both, the frame stands. */
+function snap(frame: number, ends: number[], lo: number, hi: number, clauses: number[] = []): number {
+  return nearest(frame, clauses, lo, hi, SNAP_FRAMES * 2) ?? nearest(frame, ends, lo, hi, SNAP_FRAMES) ?? frame;
 }
 
 /**
@@ -168,6 +188,7 @@ export function planCuts(
   openOnMotion = false,
 ): Array<{ start: number; end: number; segment: number }> {
   const ends = wordEnds(words);
+  const clauses = clauseEnds(words);
   const out: Array<{ start: number; end: number; segment: number }> = [];
   const segFrames = segments.map((s, i) => ({
     start: i === 0 ? 0 : toFrame(s.start),
@@ -184,11 +205,12 @@ export function planCuts(
       cuts.push(seg.start + STING_FRAMES);
     const bodyStart = cuts.at(-1)!;
     const bodyLen = seg.end - bodyStart;
-    const parts = Math.max(1, Math.round(bodyLen / TARGET_SHOT));
+    const kind = segments[i]!.kind;
+    const parts = Math.max(1, Math.round(bodyLen / (TARGET_BY_KIND[kind] ?? TARGET_SHOT)));
     for (let p = 1; p < parts; p++) {
       const raw = bodyStart + Math.round((bodyLen * p) / parts);
       cuts.push(
-        snap(raw, ends, bodyStart + MIN_SHOT - 1, seg.end - MIN_SHOT + 1),
+        snap(raw, ends, bodyStart + MIN_SHOT - 1, seg.end - MIN_SHOT + 1, clauses),
       );
     }
     cuts = [...new Set(cuts)].sort((a, b) => a - b);
@@ -206,16 +228,18 @@ export function planCuts(
       out.push({ start, end, segment: i });
     }
   }
-  // Split any shot longer than MAX_SHOT in half, snapping to a word end.
+  // Split any shot longer than its kind allows in half, snapping to a clause or word end.
   const split: typeof out = [];
   for (const s of out) {
     let cur = s;
-    while (cur.end - cur.start > MAX_SHOT) {
+    const limit = maxShotFor(segments[s.segment]!.kind);
+    while (cur.end - cur.start > limit) {
       const mid = snap(
         cur.start + Math.round((cur.end - cur.start) / 2),
         ends,
         cur.start + MIN_SHOT - 1,
         cur.end - MIN_SHOT + 1,
+        clauses,
       );
       split.push({ start: cur.start, end: mid, segment: cur.segment });
       cur = { start: mid, end: cur.end, segment: cur.segment };

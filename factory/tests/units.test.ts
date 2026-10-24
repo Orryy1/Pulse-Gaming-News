@@ -109,6 +109,15 @@ test("house-rule validation", () => {
   assert.ok(bad.some((p) => p.includes("Banned phrase")));
   assert.ok(bad.some((p) => p.includes("color")));
 
+  const long = validateScript(goodScript({ hook: "Starfield's second expansion has been delayed to early 2027, Bethesda confirmed on Xbox Wire this morning." }));
+  assert.ok(long.some((p) => /hook is 16 words/.test(p)), "a long hook is sent back");
+  const bulletin = validateScript(goodScript({ beats: goodScript().beats.map((b) => ({ ...b, narration: b.narration.replace(/if you were/, "for anyone") })), loop_line: "So mark early 2027 for Starfield's second expansion." }));
+  assert.ok(bulletin.some((p) => /says "you" never/.test(p)), "a script that never speaks to the viewer is sent back");
+  const recent = { takes: ["For us, Bethesda has", "In fairness, the"], loops: ["Day one, or wait?", "Mark early 2027 for Starfield's second expansion."] };
+  const tic = validateScript(goodScript(), recent);
+  assert.ok(tic.some((p) => /take opens "For us,"/.test(p)), "a repeated take opener is sent back");
+  assert.ok(tic.some((p) => /loop line ends "Starfield's second expansion."/.test(p)), "a repeated closing shape is sent back");
+  assert.deepEqual(validateScript(goodScript(), { takes: ["Honestly, this one"], loops: ["Keep it, or cancel it?"] }), []);
   const rumour = validateScript(goodScript({ is_rumour: true }));
   assert.ok(rumour.some((p) => p.includes("attribute")));
   const oxford = validateScript(goodScript({ youtube: { ...goodScript().youtube, description: "Out on Xbox, PS5, and PC." } }));

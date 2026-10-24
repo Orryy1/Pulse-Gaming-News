@@ -209,7 +209,7 @@ export function goodScript(overrides: Partial<Script> = {}): Script {
         visual: { kind: "date", primary: "Early 2027", secondary: "new window" },
       },
       {
-        narration: "The expansion was previously due this December, so that is a slip of at least three months for players waiting on it.",
+        narration: "The expansion was previously due this December, so that is a slip of at least three months if you were waiting on it.",
         visual: { kind: "stat", primary: "3+ months", secondary: "later than planned" },
       },
     ],
@@ -218,7 +218,7 @@ export function goodScript(overrides: Partial<Script> = {}): Script {
       narration: "For us, Bethesda has delayed big content before and it usually lands in better shape, so this is not a red flag yet.",
       on_screen: "Not a red flag yet",
     },
-    loop_line: "So mark early 2027 for Starfield's second expansion.",
+    loop_line: "So if you're waiting, mark early 2027 for Starfield's second expansion.",
     is_rumour: false,
     attribution: "Source: Xbox Wire / IGN",
     youtube: { title: "Starfield Expansion Delayed To Early 2027", description: "Bethesda has moved the expansion. Sources: Xbox Wire and IGN.", tags: ["starfield", "bethesda"] },

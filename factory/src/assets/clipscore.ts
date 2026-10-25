@@ -68,7 +68,11 @@ export interface Candidate {
   frame: string; // jpeg path
   nextCut?: number; // seconds: the first shot change after `time`, if the trailer was scanned for cuts
   nextCut2?: number; // seconds: the shot change after that one
+  laterCuts?: number[]; // seconds: the next few shot changes after nextCut2, for a run of fast cuts
 }
+
+/** At most this many of the trailer's own cuts inside one clip. */
+export const MAX_CUTS_INSIDE = 3;
 
 /** A trailer shot shorter than this may carry the trailer's own next cut inside the clip (one, never more). */
 export const SHORT_SHOT_SECONDS = 3.0;
@@ -225,7 +229,13 @@ export function shotLength(c: Candidate, clipSeconds = CLIP_SECONDS): number {
   // back to stills for the rest of each line (24 Oct 2026: 6 moments, 14 s of footage in 41 s). One of
   // the trailer's own cuts inside the clip reads as trailer footage does everywhere else.
   if (c.nextCut2 === undefined) return clipSeconds;
-  return Math.min(clipSeconds, Math.max(own, c.nextCut2 - c.time - 0.2));
+  // A run of fast cuts: keep going (at most three inside) until the clip is long enough to carry its line.
+  let len = Math.max(own, c.nextCut2 - c.time - 0.2);
+  for (const cut of (c.laterCuts ?? []).slice(0, MAX_CUTS_INSIDE - 1)) {
+    if (len >= SHORT_SHOT_SECONDS) break;
+    len = Math.max(len, cut - c.time - 0.2);
+  }
+  return Math.min(clipSeconds, len);
 }
 
 /**
@@ -278,13 +288,14 @@ export function withCuts(candidates: Candidate[], cuts: number[]): Candidate[] {
     const start = prev !== undefined && c.time - prev <= 6 ? prev : c.time;
     const next = sorted.find((t) => t > start + 0.1);
     const next2 = next === undefined ? undefined : sorted.find((t) => t > next + 0.1);
+    const later = next2 === undefined ? [] : sorted.filter((t) => t > next2 + 0.1).slice(0, MAX_CUTS_INSIDE);
     const key = Math.round(start * 100);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(
       next === undefined
         ? { ...c, time: start }
-        : { ...c, time: start, nextCut: next, ...(next2 === undefined ? {} : { nextCut2: next2 }) },
+        : { ...c, time: start, nextCut: next, ...(next2 === undefined ? {} : { nextCut2: next2 }), ...(later.length ? { laterCuts: later } : {}) },
     );
   }
   return out;

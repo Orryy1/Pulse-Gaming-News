@@ -434,6 +434,18 @@ export function planShots(
       ) {
         c.end = clipEnd;
         next.start = clipEnd;
+      } else if (
+        n > 0 &&
+        cuts[n - 1]!.segment === c.segment &&
+        shots.at(-1) &&
+        c.end - clipFrames[pick]! - cuts[n - 1]!.start <= maxShotFor(segments[c.segment]!.kind)
+      ) {
+        // The clip is a little short for the last shot of its line: the shot before it runs on a little, so
+        // the clip ends with the line (24-25 Oct 2026: unused clips left a still repeating four times).
+        const newStart = c.end - clipFrames[pick]!;
+        cuts[n - 1]!.end = newStart;
+        shots.at(-1)!.end = newStart;
+        c.start = newStart;
       } else {
         return undefined;
       }

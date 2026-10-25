@@ -10,6 +10,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import { CameraMotionBlur } from "@remotion/motion-blur";
 import { COLOUR } from "../brand.ts";
 export { stampColour } from "../brand.ts";
 import { BODY, DISPLAY } from "./fonts.ts";
@@ -43,54 +44,58 @@ export const Stamp: React.FC<{
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
+  // The slam (2.3x to 1 in about eight frames) is blurred from four sub-frame samples, as a camera would
+  // see it, so the card reads as a hit on a phone rather than a strobe.
   return (
-    <AbsoluteFill
-      style={{
-        alignItems: "center",
-        justifyContent: "flex-start",
-        paddingTop: top,
-      }}
-    >
-      <div
+    <CameraMotionBlur shutterAngle={180} samples={4}>
+      <AbsoluteFill
         style={{
-          transform: `rotate(-7deg) scale(${scale})`,
-          opacity: Math.min(1, hit * 1.4) * out,
-          border: `${Math.round(size / 13)}px solid ${stamp.colour}`,
-          outline: `${Math.round(size / 33)}px solid ${stamp.colour}`,
-          outlineOffset: Math.round(size / 16),
-          borderRadius: 14,
-          padding: `${Math.round(size * 0.1)}px ${Math.round(size * 0.32)}px ${Math.round(size * 0.14)}px`,
-          background: "rgba(11,11,14,0.86)",
-          textAlign: "center",
-          boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
+          alignItems: "center",
+          justifyContent: "flex-start",
+          paddingTop: top,
         }}
       >
         <div
           style={{
-            fontFamily: DISPLAY,
-            fontSize: size,
-            lineHeight: 1,
-            color: stamp.colour,
-            letterSpacing: 3,
+            transform: `rotate(-7deg) scale(${scale})`,
+            opacity: Math.min(1, hit * 1.4) * out,
+            border: `${Math.round(size / 13)}px solid ${stamp.colour}`,
+            outline: `${Math.round(size / 33)}px solid ${stamp.colour}`,
+            outlineOffset: Math.round(size / 16),
+            borderRadius: 14,
+            padding: `${Math.round(size * 0.1)}px ${Math.round(size * 0.32)}px ${Math.round(size * 0.14)}px`,
+            background: "rgba(11,11,14,0.86)",
+            textAlign: "center",
+            boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
           }}
         >
-          {stamp.text}
-        </div>
-        {stamp.sub ? (
           <div
             style={{
-              fontFamily: BODY,
-              fontWeight: 900,
-              fontSize: Math.round(size * 0.26),
-              letterSpacing: 6,
-              color: COLOUR.paper,
-              marginTop: 6,
+              fontFamily: DISPLAY,
+              fontSize: size,
+              lineHeight: 1,
+              color: stamp.colour,
+              letterSpacing: 3,
             }}
           >
-            {stamp.sub}
+            {stamp.text}
           </div>
-        ) : null}
-      </div>
-    </AbsoluteFill>
+          {stamp.sub ? (
+            <div
+              style={{
+                fontFamily: BODY,
+                fontWeight: 900,
+                fontSize: Math.round(size * 0.26),
+                letterSpacing: 6,
+                color: COLOUR.paper,
+                marginTop: 6,
+              }}
+            >
+              {stamp.sub}
+            </div>
+          ) : null}
+        </div>
+      </AbsoluteFill>
+    </CameraMotionBlur>
   );
 };

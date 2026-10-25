@@ -371,3 +371,22 @@ test("a stamp lands on its spoken word, in its tone's colour; one off the script
   const wrongFigure = validateScript(goodScript({ stamp: { word: "delayed", text: "TO 2028", sub: "", tone: "alert" } }));
   assert.ok(wrongFigure.some((p) => /figure "2028"/.test(p)));
 });
+
+test("a release countdown spins down to the true count and a text line rises through its mask", async () => {
+  const { countdownShown, COUNTDOWN_SPIN } = await import("../src/render/components/cards/helpers.ts");
+  const { riseProgress, FRAMES } = await import("../src/render/motion.ts");
+  assert.equal(countdownShown(54, -5), 63);
+  assert.equal(countdownShown(54, COUNTDOWN_SPIN), 54);
+  assert.equal(countdownShown(54, 100), 54);
+  let last = 64;
+  for (let t = 0; t <= COUNTDOWN_SPIN; t++) {
+    const n = countdownShown(54, t);
+    assert.ok(n <= last && n >= 54, `tick ${t} shows ${n}`);
+    last = n;
+  }
+  assert.equal(riseProgress(-3), 0);
+  assert.equal(riseProgress(0), 0);
+  assert.equal(riseProgress(FRAMES.rise), 1);
+  assert.ok(riseProgress(4) > 0.6, "ease-out: most of the rise happens early");
+  assert.ok(riseProgress(4) < riseProgress(8) && riseProgress(8) < 1);
+});

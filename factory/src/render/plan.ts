@@ -9,7 +9,7 @@
 import { leadFrames, LEVEL, SFX, sfxFile } from "./soundscape.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 import type { Segment } from "./timeline.ts";
-import { movePreset, type MovePreset } from "./motion.ts";
+import { FRAMES, movePreset, type MovePreset } from "./motion.ts";
 
 export const PLAN_FPS = 30;
 export const STING_FRAMES = 12; // frames 0-11: brand sting over the hero still
@@ -21,8 +21,15 @@ export const TARGET_SHOT = 93; // about 3.1 s
  * Shot length by what is being said: the hook holds on its moment, facts cut quicker, the take holds
  * on its verdict. An even 3.1 s everywhere read as a metronome (24 Oct 2026 review).
  */
-export const TARGET_BY_KIND: Record<string, number> = { hook: 120, beat: 78, desk: 90, take: 125, loop: 93 };
-export const maxShotFor = (kind: string): number => (kind === "hook" || kind === "take" ? HOLD_SHOT : MAX_SHOT);
+export const TARGET_BY_KIND: Record<string, number> = {
+  hook: 120,
+  beat: 78,
+  desk: 90,
+  take: 125,
+  loop: 93,
+};
+export const maxShotFor = (kind: string): number =>
+  kind === "hook" || kind === "take" ? HOLD_SHOT : MAX_SHOT;
 export const FREEZE_TOLERANCE = 6; // a clip may hold its last frame this long (0.2 s) at the end of a shot
 export const SNAP_FRAMES = 6; // cuts move up to this far to land on a word end
 export const TAIL_SECONDS = 1.0;
@@ -158,7 +165,13 @@ function clauseEnds(words: Word[]): number[] {
     .sort((a, b) => a - b);
 }
 
-function nearest(frame: number, ends: number[], lo: number, hi: number, within: number): number | undefined {
+function nearest(
+  frame: number,
+  ends: number[],
+  lo: number,
+  hi: number,
+  within: number,
+): number | undefined {
   let best: number | undefined;
   let bestD = within + 1;
   for (const e of ends) {
@@ -172,8 +185,18 @@ function nearest(frame: number, ends: number[], lo: number, hi: number, within: 
 }
 
 /** A clause end within twice the snap window beats a word end within it; failing both, the frame stands. */
-function snap(frame: number, ends: number[], lo: number, hi: number, clauses: number[] = []): number {
-  return nearest(frame, clauses, lo, hi, SNAP_FRAMES * 2) ?? nearest(frame, ends, lo, hi, SNAP_FRAMES) ?? frame;
+function snap(
+  frame: number,
+  ends: number[],
+  lo: number,
+  hi: number,
+  clauses: number[] = [],
+): number {
+  return (
+    nearest(frame, clauses, lo, hi, SNAP_FRAMES * 2) ??
+    nearest(frame, ends, lo, hi, SNAP_FRAMES) ??
+    frame
+  );
 }
 
 /**
@@ -206,11 +229,20 @@ export function planCuts(
     const bodyStart = cuts.at(-1)!;
     const bodyLen = seg.end - bodyStart;
     const kind = segments[i]!.kind;
-    const parts = Math.max(1, Math.round(bodyLen / (TARGET_BY_KIND[kind] ?? TARGET_SHOT)));
+    const parts = Math.max(
+      1,
+      Math.round(bodyLen / (TARGET_BY_KIND[kind] ?? TARGET_SHOT)),
+    );
     for (let p = 1; p < parts; p++) {
       const raw = bodyStart + Math.round((bodyLen * p) / parts);
       cuts.push(
-        snap(raw, ends, bodyStart + MIN_SHOT - 1, seg.end - MIN_SHOT + 1, clauses),
+        snap(
+          raw,
+          ends,
+          bodyStart + MIN_SHOT - 1,
+          seg.end - MIN_SHOT + 1,
+          clauses,
+        ),
       );
     }
     cuts = [...new Set(cuts)].sort((a, b) => a - b);
@@ -438,7 +470,8 @@ export function planShots(
         n > 0 &&
         cuts[n - 1]!.segment === c.segment &&
         shots.at(-1) &&
-        c.end - clipFrames[pick]! - cuts[n - 1]!.start <= maxShotFor(segments[c.segment]!.kind)
+        c.end - clipFrames[pick]! - cuts[n - 1]!.start <=
+          maxShotFor(segments[c.segment]!.kind)
       ) {
         // The clip is a little short for the last shot of its line: the shot before it runs on a little, so
         // the clip ends with the line (24-25 Oct 2026: unused clips left a still repeating four times).
@@ -630,15 +663,23 @@ export function planSfx(segments: Segment[], totalFrames: number): SfxCue[] {
       cues.push({ file: sfxFile(air), frame: on(air, at), volume: LEVEL.air });
       whooshes++;
     }
+    // The tick lands as the first big number settles: a stat's count-up, or a release countdown's
+    // chip (frames ruleLead + 24 after the card, then its spin of 18).
+    const settle =
+      s.visual?.kind === "stat"
+        ? at + 18
+        : s.visual?.kind === "countdown"
+          ? at + FRAMES.ruleLead + 24 + 18
+          : undefined;
     if (
       s.kind === "beat" &&
-      s.visual?.kind === "stat" &&
+      settle !== undefined &&
       !glint &&
-      fits(on(SFX.glint[0], at + 18))
+      fits(on(SFX.glint[0], settle))
     ) {
       cues.push({
         file: sfxFile(SFX.glint[0]),
-        frame: on(SFX.glint[0], at + 18),
+        frame: on(SFX.glint[0], settle),
         volume: LEVEL.glint,
       });
       glint = true;

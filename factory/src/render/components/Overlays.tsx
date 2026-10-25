@@ -35,8 +35,14 @@ import { Platforms, Versus, Specs, Milestones } from "./cards/InfoCards.tsx";
 import { Ring } from "./cards/Ring.tsx";
 import { Calendar } from "./cards/Calendar.tsx";
 import { BarCompare } from "./cards/BarCompare.tsx";
-import { parseBars, otherCurrencies, parsePairs, parseMilestones } from "./cards/helpers.ts";
+import {
+  parseBars,
+  otherCurrencies,
+  parsePairs,
+  parseMilestones,
+} from "./cards/helpers.ts";
 import { RankingCard } from "./cards/RankingCard.tsx";
+import { Rise } from "./Rise.tsx";
 import type { ShortImage } from "../props.ts";
 
 export { SAFE } from "../layout.ts";
@@ -228,7 +234,13 @@ export const HookHeadline: React.FC<{
   });
   const out = exitProgress(frame, durationInFrames);
   // The largest size whose lines stay inside the hero band, so a long word never pushes into the shelf.
-  const size = fitHeadline(words, [TYPE.headline, TYPE.headlineLong, 96, 84, 72]);
+  const size = fitHeadline(words, [
+    TYPE.headline,
+    TYPE.headlineLong,
+    96,
+    84,
+    72,
+  ]);
   return (
     <AbsoluteFill
       style={{
@@ -293,7 +305,17 @@ export const FactCard: React.FC<{
   rankTotal?: number;
   beatIndex?: number;
   steamPrices?: { usd?: string; gbp?: string; eur?: string };
-}> = ({ segment, accent, takeLabel, durationInFrames, renderDate, images = [], rankTotal = 0, beatIndex, steamPrices }) => {
+}> = ({
+  segment,
+  accent,
+  takeLabel,
+  durationInFrames,
+  renderDate,
+  images = [],
+  rankTotal = 0,
+  beatIndex,
+  steamPrices,
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const v = segment.visual;
@@ -339,21 +361,22 @@ export const FactCard: React.FC<{
         }}
       >
         {ruleBar}
-        <div
-          style={{
-            display: "inline-block",
-            padding: "10px 20px",
-            background: COLOUR.paper,
-            color: COLOUR.ink,
-            fontFamily: BODY,
-            fontWeight: 900,
-            fontSize: 34,
-            letterSpacing: 3,
-            opacity: content,
-          }}
-        >
-          {label.toUpperCase()}
-        </div>
+        <Rise style={{ display: "inline-block" }}>
+          <div
+            style={{
+              display: "inline-block",
+              padding: "10px 20px",
+              background: COLOUR.paper,
+              color: COLOUR.ink,
+              fontFamily: BODY,
+              fontWeight: 900,
+              fontSize: 34,
+              letterSpacing: 3,
+            }}
+          >
+            {label.toUpperCase()}
+          </div>
+        </Rise>
         <div
           style={{
             marginTop: 18,
@@ -404,37 +427,43 @@ export const FactCard: React.FC<{
             marginLeft: -SAFE.left - 14,
           }}
         >
-          <div
-            style={{
-              fontFamily: DISPLAY,
-              fontSize: v.primary.length > 9 ? 150 : TYPE.displayXL,
-              lineHeight: 0.95,
-              color: COLOUR.paper,
-              textShadow: "0 10px 50px rgba(0,0,0,0.7)",
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {(v.kind === "stat"
-              ? countUp(v.primary, p)
-              : v.primary
-            ).toUpperCase()}
-          </div>
-          {label ? (
+          {/* A number counts up in place (no rise); a date rises through its mask like a cut title. */}
+          <Rise delay={v.kind === "stat" ? -FRAMES.rise : FRAMES.ruleLead}>
             <div
               style={{
-                marginTop: 14,
-                fontFamily: BODY,
-                fontWeight: 800,
-                fontSize: label.length > 18 ? 32 : 44,
-                  textShadow: "0 2px 14px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9)",
-                  maxWidth: CONTENT_WIDTH - 60,
-                color: accent,
-                textTransform: "uppercase",
-                letterSpacing: 2,
+                fontFamily: DISPLAY,
+                fontSize: v.primary.length > 9 ? 150 : TYPE.displayXL,
+                lineHeight: 0.95,
+                color: COLOUR.paper,
+                textShadow: "0 10px 50px rgba(0,0,0,0.7)",
+                fontVariantNumeric: "tabular-nums",
               }}
             >
-              {label}
+              {(v.kind === "stat"
+                ? countUp(v.primary, p)
+                : v.primary
+              ).toUpperCase()}
             </div>
+          </Rise>
+          {label ? (
+            <Rise delay={FRAMES.ruleLead + 4}>
+              <div
+                style={{
+                  marginTop: 14,
+                  fontFamily: BODY,
+                  fontWeight: 800,
+                  fontSize: label.length > 18 ? 32 : 44,
+                  textShadow:
+                    "0 2px 14px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9)",
+                  maxWidth: CONTENT_WIDTH - 60,
+                  color: accent,
+                  textTransform: "uppercase",
+                  letterSpacing: 2,
+                }}
+              >
+                {label}
+              </div>
+            </Rise>
           ) : null}
         </div>
       </div>
@@ -442,35 +471,104 @@ export const FactCard: React.FC<{
   }
 
   // The entry's box art; a game off Steam has only its trailer still, which the card crops to the box.
-  const capsule = beatIndex === undefined ? undefined : (images.find((i) => i.beatIndex === beatIndex && i.kind === "capsule") ?? images.find((i) => i.beatIndex === beatIndex));
+  const capsule =
+    beatIndex === undefined
+      ? undefined
+      : (images.find(
+          (i) => i.beatIndex === beatIndex && i.kind === "capsule",
+        ) ?? images.find((i) => i.beatIndex === beatIndex));
   const dataCard =
     v.kind === "rank" && typeof v.value_a === "number" ? (
-      <RankingCard rank={v.value_a} total={rankTotal} title={v.primary} verdict={v.secondary} year={v.date_to ? undefined : v.items?.[0]} platforms={v.items?.[1]} capsuleSrc={capsule?.src ?? null} accent={accent} date={v.date_to} />
-    ) :
-    v.kind === "timeline" && v.date_from && v.date_to ? (
-      <Timeline from={v.date_from} to={v.date_to} label={v.primary} accent={accent} />
+      <RankingCard
+        rank={v.value_a}
+        total={rankTotal}
+        title={v.primary}
+        verdict={v.secondary}
+        year={v.date_to ? undefined : v.items?.[0]}
+        platforms={v.items?.[1]}
+        capsuleSrc={capsule?.src ?? null}
+        accent={accent}
+        date={v.date_to}
+      />
+    ) : v.kind === "timeline" && v.date_from && v.date_to ? (
+      <Timeline
+        from={v.date_from}
+        to={v.date_to}
+        label={v.primary}
+        accent={accent}
+      />
     ) : v.kind === "price" ? (
-      <PriceTag price={v.primary} was={v.was} region={v.region} label={label} accent={accent} others={otherCurrencies(v.primary, v.items, steamPrices)} />
+      <PriceTag
+        price={v.primary}
+        was={v.was}
+        region={v.region}
+        label={label}
+        accent={accent}
+        others={otherCurrencies(v.primary, v.items, steamPrices)}
+      />
     ) : v.kind === "score" && typeof v.value_a === "number" ? (
-      <Ring value={v.value_a} label={label || v.primary} chips={v.items} suffix={/%$/.test(v.primary.trim()) ? "%" : ""} />
+      <Ring
+        value={v.value_a}
+        label={label || v.primary}
+        chips={v.items}
+        suffix={/%$/.test(v.primary.trim()) ? "%" : ""}
+      />
     ) : v.kind === "countdown" && v.date_to ? (
-      <Calendar date={v.date_to} renderDate={renderDate} label={label} accent={accent} />
+      <Calendar
+        date={v.date_to}
+        renderDate={renderDate}
+        label={label}
+        accent={accent}
+      />
     ) : v.kind === "compare" && v.items && parseBars(v.items).length >= 2 ? (
       <BarCompare rows={parseBars(v.items)} label={v.primary} accent={accent} />
     ) : v.kind === "platforms" && v.items?.some((x) => x.trim()) ? (
-      <Platforms platforms={v.items.map((x) => x.trim()).filter(Boolean).slice(0, 6)} label={v.primary} note={v.secondary} accent={accent} />
+      <Platforms
+        platforms={v.items
+          .map((x) => x.trim())
+          .filter(Boolean)
+          .slice(0, 6)}
+        label={v.primary}
+        note={v.secondary}
+        accent={accent}
+      />
     ) : v.kind === "versus" && parsePairs(v.items ?? []).length >= 2 ? (
-      <Versus a={parsePairs(v.items ?? [])[0]!} b={parsePairs(v.items ?? [])[1]!} label={v.primary} accent={accent} />
+      <Versus
+        a={parsePairs(v.items ?? [])[0]!}
+        b={parsePairs(v.items ?? [])[1]!}
+        label={v.primary}
+        accent={accent}
+      />
     ) : v.kind === "specs" && parsePairs(v.items ?? []).length >= 2 ? (
-      <Specs rows={parsePairs(v.items ?? [])} label={v.primary} accent={accent} />
-    ) : v.kind === "milestones" && parseMilestones(v.items ?? []).length >= 2 ? (
-      <Milestones points={parseMilestones(v.items ?? [])} label={v.primary} accent={accent} />
+      <Specs
+        rows={parsePairs(v.items ?? [])}
+        label={v.primary}
+        accent={accent}
+      />
+    ) : v.kind === "milestones" &&
+      parseMilestones(v.items ?? []).length >= 2 ? (
+      <Milestones
+        points={parseMilestones(v.items ?? [])}
+        label={v.primary}
+        accent={accent}
+      />
     ) : null;
   if (dataCard) {
     return (
       <div style={base}>
         {ruleBar}
-        <div style={{ background: "rgba(11,11,14,0.86)", borderRadius: 16, padding: "26px 30px", boxShadow: "0 24px 70px rgba(0,0,0,0.55)", maxWidth: CONTENT_WIDTH, overflow: "hidden" }}>{dataCard}</div>
+        <div
+          style={{
+            background: "rgba(11,11,14,0.86)",
+            borderRadius: 16,
+            padding: "26px 30px",
+            boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
+            maxWidth: CONTENT_WIDTH,
+            overflow: "hidden",
+          }}
+        >
+          {dataCard}
+        </div>
       </div>
     );
   }
@@ -496,17 +594,19 @@ export const FactCard: React.FC<{
           >
             “
           </div>
-          <div
-            style={{
-              fontFamily: BODY,
-              fontWeight: 800,
-              fontSize: 60,
-              lineHeight: 1.15,
-              color: COLOUR.paper,
-            }}
-          >
-            {v.primary}
-          </div>
+          <Rise delay={FRAMES.ruleLead}>
+            <div
+              style={{
+                fontFamily: BODY,
+                fontWeight: 800,
+                fontSize: 60,
+                lineHeight: 1.15,
+                color: COLOUR.paper,
+              }}
+            >
+              {v.primary}
+            </div>
+          </Rise>
           {label ? (
             <div
               style={{
@@ -533,7 +633,16 @@ export const FactCard: React.FC<{
       .slice(0, 4);
     // The card must end above the shelf (y 900): row size by count and length.
     const longest = Math.max(...items.map((s) => s.length), 1);
-    const rowSize = items.length >= 4 ? 56 : items.length === 3 ? (longest > 16 ? 60 : 72) : longest > 18 ? 72 : 88;
+    const rowSize =
+      items.length >= 4
+        ? 56
+        : items.length === 3
+          ? longest > 16
+            ? 60
+            : 72
+          : longest > 18
+            ? 72
+            : 88;
     return (
       <div
         style={{
@@ -545,10 +654,11 @@ export const FactCard: React.FC<{
       >
         {ruleBar}
         {items.map((it, i) => {
+          // The bullet pops; the line rises through its mask, each row five frames after the last.
           const s = spring({
-            frame: frame - FRAMES.ruleLead - i * 6,
+            frame: frame - FRAMES.ruleLead - i * 5,
             fps,
-            config: SPRING.ENTER,
+            config: SPRING.POP,
           });
           return (
             <div
@@ -558,8 +668,6 @@ export const FactCard: React.FC<{
                 alignItems: "center",
                 gap: 22,
                 marginBottom: 12,
-                transform: `translateX(${interpolate(s, [0, 1], [60, 0])}px)`,
-                opacity: s,
               }}
             >
               <div
@@ -567,19 +675,21 @@ export const FactCard: React.FC<{
                   width: 22,
                   height: 22,
                   background: accent,
-                  transform: "rotate(45deg)",
+                  transform: `rotate(45deg) scale(${s})`,
                 }}
               />
-              <div
-                style={{
-                  fontFamily: DISPLAY,
-                  fontSize: rowSize,
-                  color: COLOUR.paper,
-                  textShadow: "0 8px 30px rgba(0,0,0,0.7)",
-                }}
-              >
-                {it.toUpperCase()}
-              </div>
+              <Rise delay={FRAMES.ruleLead + i * 5}>
+                <div
+                  style={{
+                    fontFamily: DISPLAY,
+                    fontSize: rowSize,
+                    color: COLOUR.paper,
+                    textShadow: "0 8px 30px rgba(0,0,0,0.7)",
+                  }}
+                >
+                  {it.toUpperCase()}
+                </div>
+              </Rise>
             </div>
           );
         })}
@@ -589,7 +699,7 @@ export const FactCard: React.FC<{
               fontFamily: BODY,
               fontWeight: 800,
               fontSize: 30,
-                marginTop: 4,
+              marginTop: 4,
               color: accent,
               textTransform: "uppercase",
             }}
@@ -612,7 +722,14 @@ export const FactCard: React.FC<{
           WebkitBoxDecorationBreak: "clone",
           padding: "4px 18px",
           fontFamily: DISPLAY,
-          fontSize: v.primary.length <= 14 ? 112 : v.primary.length <= 24 ? 92 : v.primary.length <= 36 ? 76 : 64,
+          fontSize:
+            v.primary.length <= 14
+              ? 112
+              : v.primary.length <= 24
+                ? 92
+                : v.primary.length <= 36
+                  ? 76
+                  : 64,
           lineHeight: 1.22,
           color: COLOUR.ink,
         }}
@@ -649,7 +766,14 @@ export const Captions: React.FC<{
   centre?: number;
   /** The desk partner's question: its seconds and her name, captioned in her own colour. */
   desk?: { start: number; end: number; name: string };
-}> = ({ pages, accent, emphasis, blankFromFrame, centre = CAPTION_CENTRE, desk }) => {
+}> = ({
+  pages,
+  accent,
+  emphasis,
+  blankFromFrame,
+  centre = CAPTION_CENTRE,
+  desk,
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   if (frame >= blankFromFrame) return null;
@@ -658,7 +782,8 @@ export const Captions: React.FC<{
   if (!page) return null;
   const pageFrame = frame - Math.round(page.start * fps);
   const pop = spring({ frame: pageFrame, fps, config: SPRING.POP });
-  const asking = !!desk && page.start >= desk.start - 0.05 && page.end <= desk.end + 0.3;
+  const asking =
+    !!desk && page.start >= desk.start - 0.05 && page.end <= desk.end + 0.3;
   const wordColour = asking ? COLOUR.gold : accent;
   return (
     <div
@@ -703,11 +828,16 @@ export const Captions: React.FC<{
         const lit =
           spoken && (EMPHASIS.test(shown) || emphasis.has(shown.toLowerCase()));
         const activeScale = active
-          ? interpolate(frame - Math.round(w.start * fps), [0, 4], [1, captionGrow(shown.length, TYPE.caption)], {
-              extrapolateLeft: "clamp",
-              extrapolateRight: "clamp",
-              easing: ease.out,
-            })
+          ? interpolate(
+              frame - Math.round(w.start * fps),
+              [0, 4],
+              [1, captionGrow(shown.length, TYPE.caption)],
+              {
+                extrapolateLeft: "clamp",
+                extrapolateRight: "clamp",
+                easing: ease.out,
+              },
+            )
           : 1;
         return (
           <span

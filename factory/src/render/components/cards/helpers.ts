@@ -3,7 +3,20 @@
 
 import { COLOUR } from "../../brand.ts";
 
-const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 /** "2027-03" or "2027-03-14" or "2027" -> "MAR 2027" / "MAR 14, 2027" / "2027" (US order); anything else is shown as typed. */
 export function dateLabel(iso: string): string {
@@ -20,17 +33,37 @@ export function monthsBetween(from: string, to: string): number | undefined {
   const a = from.match(/^(\d{4})(?:-(\d{2}))?/);
   const b = to.match(/^(\d{4})(?:-(\d{2}))?/);
   if (!a || !b) return undefined;
-  return (Number(b[1]) - Number(a[1])) * 12 + (Number(b[2] ?? "6") - Number(a[2] ?? "6"));
+  return (
+    (Number(b[1]) - Number(a[1])) * 12 +
+    (Number(b[2] ?? "6") - Number(a[2] ?? "6"))
+  );
 }
 
 /** Whole days from `renderDate` to `target` (both ISO), or undefined when either is not a full date. */
-export function daysUntil(target: string, renderDate: string): number | undefined {
+export function daysUntil(
+  target: string,
+  renderDate: string,
+): number | undefined {
   const a = target.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const b = renderDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!a || !b) return undefined;
   const t = Date.UTC(Number(a[1]), Number(a[2]) - 1, Number(a[3]));
   const r = Date.UTC(Number(b[1]), Number(b[2]) - 1, Number(b[3]));
   return Math.round((t - r) / 86_400_000);
+}
+
+/** Frames after the countdown chip lands before its number settles (it spins down from `days` + 9). */
+export const COUNTDOWN_SPIN = 18;
+
+/**
+ * The number a release countdown shows `t` frames after its chip lands: it ticks down from nine above the
+ * true figure and settles on it after COUNTDOWN_SPIN frames, so the count reads as live rather than printed.
+ */
+export function countdownShown(days: number, t: number): number {
+  if (t <= 0) return days + 9;
+  if (t >= COUNTDOWN_SPIN) return days;
+  const p = 1 - Math.pow(1 - t / COUNTDOWN_SPIN, 3);
+  return Math.round(days + 9 * (1 - p));
 }
 
 /** Review-score band colour: 80+ green, 60-79 amber, below 60 red. */
@@ -54,7 +87,13 @@ export function parseBars(items: string[]): BarRow[] {
     let label = raw.slice(0, i).trim();
     const display = raw.slice(i + 1).trim();
     // "1.4k", "12m", "2bn" and "3 million" scale the number; a bare currency or count does not.
-    const unit = /\d\s*(bn|b)\b/i.test(display) ? 1e9 : /\d\s*(m|million)\b/i.test(display) ? 1e6 : /\d\s*k\b/i.test(display) ? 1e3 : 1;
+    const unit = /\d\s*(bn|b)\b/i.test(display)
+      ? 1e9
+      : /\d\s*(m|million)\b/i.test(display)
+        ? 1e6
+        : /\d\s*k\b/i.test(display)
+          ? 1e3
+          : 1;
     const num = Number(display.replace(/[^\d.]/g, "")) * unit;
     if (!label || !Number.isFinite(num) || !/\d/.test(display)) continue;
     const highlight = label.startsWith("*");
@@ -70,12 +109,20 @@ export function parseBars(items: string[]): BarRow[] {
  * sources first, else Steam's regional prices, but only when the card's price
  * is one of Steam's (so a DLC price never borrows the base game's).
  */
-export function otherCurrencies(primary: string, items: string[] | undefined, steam?: { usd?: string; gbp?: string; eur?: string }): string[] {
+export function otherCurrencies(
+  primary: string,
+  items: string[] | undefined,
+  steam?: { usd?: string; gbp?: string; eur?: string },
+): string[] {
   const p = primary.trim();
   const money = (x: string) => /^[$£€]\s?\d/.test(x.trim());
-  const own = (items ?? []).map((x) => x.trim()).filter((x) => money(x) && x !== p);
+  const own = (items ?? [])
+    .map((x) => x.trim())
+    .filter((x) => money(x) && x !== p);
   if (own.length) return own.slice(0, 2);
-  const all = [steam?.usd, steam?.gbp, steam?.eur].filter((x): x is string => Boolean(x));
+  const all = [steam?.usd, steam?.gbp, steam?.eur].filter((x): x is string =>
+    Boolean(x),
+  );
   if (!all.includes(p)) return [];
   return all.filter((x) => x !== p).slice(0, 2);
 }
@@ -111,7 +158,9 @@ export interface Milestone {
 export function parseMilestones(items: string[]): Milestone[] {
   const out: Milestone[] = [];
   for (const raw of items) {
-    const m = raw.trim().match(/^(\d{4}(?:-\d{2})?(?:-\d{2})?)\s*[:|-]\s*(.+)$/);
+    const m = raw
+      .trim()
+      .match(/^(\d{4}(?:-\d{2})?(?:-\d{2})?)\s*[:|-]\s*(.+)$/);
     if (m) out.push({ date: m[1]!, label: m[2]!.trim() });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);

@@ -21,6 +21,7 @@ export const FRAMES = {
   cutPunch: 5,
   flash: 3,
   sting: 12,
+  rise: 13, // a text line rising through its clip mask (0.42 s)
 } as const;
 
 export const ease = {
@@ -97,6 +98,15 @@ export function exitProgress(
   );
 }
 
+/** 0..1 progress of a text line rising through its mask: ease-out-quint over FRAMES.rise frames. */
+export function riseProgress(frame: number): number {
+  return interpolate(frame, [0, FRAMES.rise], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.out(Easing.poly(5)),
+  });
+}
+
 /** Incoming shot lands slightly large and settles over five frames. */
 export function cutPunch(frame: number): number {
   return interpolate(frame, [0, FRAMES.cutPunch], [1.03, 1], {
@@ -110,7 +120,8 @@ export function cutPunch(frame: number): number {
  * Frames each fade of a corner credit takes on a shot `durationFrames` long: 8, or under half a short
  * shot so the fade range stays strictly increasing (Remotion throws otherwise); 0 means show nothing.
  */
-export const creditFade = (durationFrames: number) => Math.max(0, Math.min(8, Math.floor((durationFrames - 1) / 2)));
+export const creditFade = (durationFrames: number) =>
+  Math.max(0, Math.min(8, Math.floor((durationFrames - 1) / 2)));
 
 /**
  * How much the spoken caption word may grow (scale), at most 6%: it grows by transform, over the 24 px

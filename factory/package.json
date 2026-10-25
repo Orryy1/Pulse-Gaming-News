@@ -23,6 +23,7 @@
     "@remotion/bundler": "4.0.536",
     "@remotion/cli": "4.0.536",
     "@remotion/fonts": "4.0.536",
+    "@remotion/motion-blur": "4.0.536",
     "@remotion/renderer": "4.0.536",
     "cheerio": "^1.2.0",
     "discord.js": "^14.27.0",

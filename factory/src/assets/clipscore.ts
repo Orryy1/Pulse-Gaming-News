@@ -67,7 +67,11 @@ export interface Candidate {
   motion: number; // 0-255 mean frame difference
   frame: string; // jpeg path
   nextCut?: number; // seconds: the first shot change after `time`, if the trailer was scanned for cuts
+  nextCut2?: number; // seconds: the shot change after that one
 }
+
+/** A trailer shot shorter than this may carry the trailer's own next cut inside the clip (one, never more). */
+export const SHORT_SHOT_SECONDS = 3.0;
 
 export interface Assignment {
   key: string;
@@ -199,18 +203,29 @@ export function usableCandidates(
       c.luma >= 38 &&
       c.luma <= 230,
   );
-  // A clip that changes shot under the words it was chosen for no longer shows what they say:
-  // the clip will end where its shot ends, so a shot too short to carry a line is passed over.
+  // A clip that changes shot right under the words it was chosen for no longer shows what they say:
+  // its own first shot must be long enough to carry a line, whatever follows it.
   const whole = fits.filter(
-    (c) => shotLength(c, clipSeconds) >= MIN_CLIP_SECONDS,
+    (c) => ownShotSeconds(c, clipSeconds) >= MIN_CLIP_SECONDS,
   );
   return whole.length >= 4 ? whole : fits;
 }
 
-/** How long a clip opening at this moment can run before the shot changes. */
+/** How long the shot that opens at this moment runs before the trailer cuts. */
+export function ownShotSeconds(c: Candidate, clipSeconds = CLIP_SECONDS): number {
+  return c.nextCut === undefined ? clipSeconds : Math.min(clipSeconds, Math.max(0, c.nextCut - c.time - 0.2));
+}
+
+/** How long a clip opening at this moment runs: its own shot, or through one trailer cut when that shot is short. */
 export function shotLength(c: Candidate, clipSeconds = CLIP_SECONDS): number {
   if (c.nextCut === undefined) return clipSeconds;
-  return Math.min(clipSeconds, Math.max(0, c.nextCut - c.time - 0.2));
+  const own = Math.max(0, c.nextCut - c.time - 0.2);
+  if (own >= SHORT_SHOT_SECONDS) return Math.min(clipSeconds, own);
+  // Trailers cut every couple of seconds; a clip that stopped at each one ran about 2 s and a Short fell
+  // back to stills for the rest of each line (24 Oct 2026: 6 moments, 14 s of footage in 41 s). One of
+  // the trailer's own cuts inside the clip reads as trailer footage does everywhere else.
+  if (c.nextCut2 === undefined) return clipSeconds;
+  return Math.min(clipSeconds, Math.max(own, c.nextCut2 - c.time - 0.2));
 }
 
 /**
@@ -262,13 +277,14 @@ export function withCuts(candidates: Candidate[], cuts: number[]): Candidate[] {
     }
     const start = prev !== undefined && c.time - prev <= 6 ? prev : c.time;
     const next = sorted.find((t) => t > start + 0.1);
+    const next2 = next === undefined ? undefined : sorted.find((t) => t > next + 0.1);
     const key = Math.round(start * 100);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(
       next === undefined
         ? { ...c, time: start }
-        : { ...c, time: start, nextCut: next },
+        : { ...c, time: start, nextCut: next, ...(next2 === undefined ? {} : { nextCut2: next2 }) },
     );
   }
   return out;
@@ -694,8 +710,8 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       const r = c && o.trailers[c.movie];
       if (!a || !c || !r) continue;
       const file = path.join("assets", `${prefix}_${out.length}.mp4`);
-      // The clip ends where its shot ends (rounded to a frame) so it never changes picture under the line,
-      // and before any later keyframe in it that carries text (a title card appearing mid-shot).
+      // The clip ends where its shot ends (rounded to a frame), or one trailer cut later when the shot alone
+      // is short, and before any later keyframe in it that carries text (a title card appearing mid-shot).
       let span = o.continuous ? clipSeconds : shotLength(c, clipSeconds);
       const textAt = candidates
         .filter(

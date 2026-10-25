@@ -52,7 +52,8 @@ export function scorePlan(i: RubricInput): Rubric {
   m.push({
     name: "hook_words",
     value: i.hookWords,
-    grade: grade(i.hookWords >= 5 && i.hookWords <= 10, i.hookWords <= 12),
+    // A note, never a rejection: a rebuild cannot change the words, and a ranking's hook runs longer by nature.
+    grade: grade(i.hookWords >= 5 && i.hookWords <= 10, true),
   });
 
   // Pace.

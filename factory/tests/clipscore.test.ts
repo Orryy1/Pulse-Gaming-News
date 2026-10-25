@@ -185,7 +185,11 @@ test("a clip opens on its shot's first frame, ends where the shot ends, and a sh
   assert.ok(!kept.includes(26.5), "26.5 s has only 1.1 s before the cut at 27.6");
   assert.ok(kept.includes(25), "25 s has 2.6 s of shot: enough for a short clip");
   assert.ok(kept.includes(27.6) && kept.includes(41));
-  assert.equal(Number(shotLength(tagged.find((c) => c.time === 25)!).toFixed(2)), 2.4);
+  // 25 s has 2.4 s before the cut at 27.6: too short alone, so the clip may run through that cut (the next is at 41).
+  assert.equal(tagged.find((c) => c.time === 25)!.nextCut2, 41);
+  assert.equal(shotLength(tagged.find((c) => c.time === 25)!), 4.8);
+  assert.equal(Number(shotLength({ ...tagged.find((c) => c.time === 25)!, nextCut2: 28.4 }).toFixed(2)), 3.2, "one trailer cut inside, never two");
+  assert.equal(Number(shotLength({ ...tagged.find((c) => c.time === 25)!, nextCut: 28.6, nextCut2: 29 }).toFixed(2)), 3.4, "a shot of 3 s or more ends at its own cut");
   assert.equal(shotLength(tagged.find((c) => c.time === 41)!), 4.8);
   // With too few whole shots the filter stands down rather than starve the matcher.
   const dense = withCuts(all, all.map((c) => c.time + 1));

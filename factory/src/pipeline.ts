@@ -792,11 +792,18 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   const sightings = (await recentSightings(s)).filter(
     (x) => !seen.has(x.cluster.hash),
   );
+  // Rumours are capped a day: once today's is in, stories carrying rumour signals wait for tomorrow.
+  const rumoursToday = cfg.includeRumours
+    ? await countRumoursToday(db, cfg.timezone)
+    : 0;
   const eligible = sightings
     .filter(
       (x) =>
         x.cluster.corroborated ||
         (cfg.includeRumours && x.cluster.rumourSignals),
+    )
+    .filter(
+      (x) => !(x.cluster.rumourSignals && rumoursToday >= cfg.rumoursPerDay),
     )
     .filter((x) => x.cluster.score > 0);
 
@@ -2464,6 +2471,18 @@ export function nextGameplaySlot(
     }
   }
   return undefined;
+}
+
+/** Rumour Shorts made today: written as a rumour, or still unwritten from a story with rumour signals. */
+export async function countRumoursToday(db: Db, timeZone: string): Promise<number> {
+  const [row] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM episodes
+      WHERE created_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1
+        AND status NOT IN ('failed','rejected')
+        AND (script_json->>'is_rumour' = 'true' OR (script_json IS NULL AND story_json->>'rumourSignals' = 'true'))`,
+    [timeZone],
+  );
+  return Number(row?.n ?? 0);
 }
 
 /** How the last eight Shorts opened their take and closed, so the writer and the validator keep the shapes varied. */
@@ -5134,8 +5153,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
 async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const script = ep.script_json!;
   const links = approvalLinks(s.cfg, ep.id);
-  // Rumours and anything not corroborated always wait for a human.
-  const risky = script.is_rumour || !ep.story_json.corroborated;
+  // A single-source story always waits for a human. A rumour that two outlets (or an official source)
+  // carry is reported as a labelled report ("reportedly" throughout, the title says so) under the lane's
+  // usual mode: from 25 Oct 2026 the channel covers leaks and reports, clearly marked.
+  const risky = !ep.story_json.corroborated;
   // The owner taps every gameplay Short: their own recordings never publish on a timer.
   const mode = risky || ep.lane === "gameplay"
     ? "manual"

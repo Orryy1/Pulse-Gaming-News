@@ -177,6 +177,7 @@ export interface Config {
   tickMinutes: number;
   maxStoryAgeHours: number;
   includeRumours: boolean;
+  rumoursPerDay: number; // rumour Shorts a day at most, so the channel stays news first
   approvalMode: ApprovalMode;
   approvalTimeoutMinutes: number;
   publishWindowStartUtc: number;
@@ -379,6 +380,7 @@ export function loadConfig(): Config {
     tickMinutes: int("TICK_MINUTES", 10),
     maxStoryAgeHours: int("MAX_STORY_AGE_HOURS", 24),
     includeRumours: bool("INCLUDE_RUMOURS", false),
+    rumoursPerDay: int("RUMOURS_PER_DAY", 1),
     approvalMode,
     approvalTimeoutMinutes: int("APPROVAL_TIMEOUT_MINUTES", 60),
     publishWindowStartUtc: int("PUBLISH_WINDOW_START_UTC", 7),

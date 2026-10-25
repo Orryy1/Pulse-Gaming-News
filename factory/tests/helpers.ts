@@ -155,6 +155,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     tickMinutes: 10,
     maxStoryAgeHours: 24,
     includeRumours: false,
+    rumoursPerDay: 1,
     approvalMode: "auto",
     approvalTimeoutMinutes: 60,
     publishWindowStartUtc: 0,

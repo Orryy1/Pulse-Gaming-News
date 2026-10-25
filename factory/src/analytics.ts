@@ -378,6 +378,8 @@ export async function captureRetention(
 
 interface RetentionRow {
   id: string;
+  lane?: string;
+  metrics?: unknown;
   script_json: Episode["script_json"];
   raw:
     | {
@@ -402,10 +404,13 @@ async function retentionRows(
     views: number;
     stay?: number;
     opening?: string;
+    hookWords?: number;
+    footageShare?: number;
+    format?: string;
   }>
 > {
   const rows = await db.query<RetentionRow>(
-    `SELECT e.id, e.script_json, m.raw, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening
+    `SELECT e.id, e.lane, e.script_json, m.raw, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS metrics
        FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
       WHERE m.label = 'retention' AND m.captured_at > $1::timestamptz - interval '45 days'`,
     [now],
@@ -413,9 +418,17 @@ async function retentionRows(
   return rows
     .map((r) => {
       const raw = typeof r.raw === "string" ? JSON.parse(r.raw) : r.raw;
+      const metrics = (typeof r.metrics === "string" ? JSON.parse(r.metrics) : r.metrics) as Array<{ name: string; value: number | string }> | null;
+      const metric = (name: string) => {
+        const v = metrics?.find((m) => m.name === name)?.value;
+        return typeof v === "number" ? v : undefined;
+      };
       return {
         title: r.script_json?.youtube?.title ?? r.id,
         hook: r.script_json?.hook ?? "",
+        hookWords: r.script_json?.hook ? r.script_json.hook.split(/\s+/).filter(Boolean).length : undefined,
+        footageShare: metric("footage_share"),
+        format: r.script_json?.evergreen_format ?? (r.script_json?.runtime === "long" ? "long" : r.lane ?? "news"),
         pct: Number(raw?.avgViewPercent ?? 0),
         subs: Number(raw?.subscribersGained ?? 0),
         views: Number(raw?.views ?? 0),
@@ -451,6 +464,35 @@ export function openingLine(
   ];
 }
 
+/**
+ * What the numbers say about how we make Shorts, one comparison per line, only once each side has three
+ * Shorts: short against long hooks, footage-led against card-led, and each format against the rest.
+ * Advice for the editor and the writer, never a rule: the samples are small and the metric is a proxy.
+ */
+export function formatLessons(
+  rows: Array<{ stay?: number; pct: number; hookWords?: number; footageShare?: number; format?: string }>,
+): string[] {
+  const score = (r: (typeof rows)[number]) => r.stay ?? r.pct;
+  const avg = (xs: typeof rows) =>
+    xs.length >= 3 ? { n: xs.length, v: xs.reduce((a, r) => a + score(r), 0) / xs.length } : undefined;
+  const line = (what: string, a: { n: number; v: number }, aName: string, b: { n: number; v: number }, bName: string) =>
+    `${what}: ${aName} kept ${Math.round(a.v)}% (${a.n} Shorts), ${bName} ${Math.round(b.v)}% (${b.n} Shorts).`;
+  const out: string[] = [];
+  const shortHook = avg(rows.filter((r) => r.hookWords !== undefined && r.hookWords <= 10));
+  const longHook = avg(rows.filter((r) => r.hookWords !== undefined && r.hookWords > 10));
+  if (shortHook && longHook) out.push(line("Hooks", shortHook, "ten words or fewer", longHook, "longer"));
+  const footage = avg(rows.filter((r) => r.footageShare !== undefined && r.footageShare >= 0.4));
+  const cards = avg(rows.filter((r) => r.footageShare !== undefined && r.footageShare < 0.4));
+  if (footage && cards) out.push(line("Picture", footage, "mostly moving footage", cards, "mostly stills and cards"));
+  const formats = [...new Set(rows.map((r) => r.format).filter((f): f is string => !!f))];
+  for (const f of formats) {
+    const mine = avg(rows.filter((r) => r.format === f));
+    const rest = avg(rows.filter((r) => r.format !== f));
+    if (mine && rest && Math.abs(mine.v - rest.v) >= 5) out.push(line("Format", mine, f.replace(/_/g, " "), rest, "everything else"));
+  }
+  return out;
+}
+
 /** For the editor: which Shorts people watched to the end and which they swiped away from. */
 export async function retentionNotes(db: Db, now: Date): Promise<string> {
   const rows = await retentionRows(db, now);
@@ -464,6 +506,7 @@ export async function retentionNotes(db: Db, now: Date): Promise<string> {
     "Held worst:",
     ...rows.slice(-3).reverse().map(line),
     ...openingLine(rows),
+    ...formatLessons(rows),
   ].join("\n");
 }
 
@@ -480,6 +523,7 @@ export async function hookLessons(db: Db, now: Date): Promise<string> {
     ...rows
       .slice(-2)
       .map((r) => `- ${Math.round(r.stay ?? r.pct)}%: "${r.hook}"`),
+    ...formatLessons(rows),
   ].join("\n");
 }
 

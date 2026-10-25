@@ -557,27 +557,84 @@ test("a second concurrent tick is a no-op", async () => {
   assert.equal([a.ran, b.ran].filter(Boolean).length, 1);
 });
 
-test("rumour episodes always wait for a human, even in timeout mode", async () => {
+const SINGLE_SOURCE_RUMOUR = (clock: Date) =>
+  clusterItems(
+    [
+      item(
+        "Insider claims a new Halo reveal is coming next week",
+        "Insider Gaming",
+        "outlet",
+        15,
+        clock,
+      ),
+    ],
+    clock,
+  );
+
+test("a rumour two outlets carry goes out labelled under the lane's own mode; a single-source one waits for a human", async () => {
   const rumour = goodScript({
     is_rumour: true,
     hook: "Starfield's second expansion has reportedly slipped to early 2027.",
   });
-  const { db, f, s, setClock } = await setup(
-    {
-      approvalMode: "timeout",
-      approvalTimeoutMinutes: 60,
-      includeRumours: true,
-    },
+  {
+    // Xbox Wire and IGN both carry the report: timeout mode applies, and the Short is labelled.
+    const { db, f, s, setClock } = await setup(
+      { approvalMode: "timeout", approvalTimeoutMinutes: 60, includeRumours: true },
+      { script: rumour },
+    );
+    await tick(s);
+    const ep = await only(db);
+    assert.equal(ep.status, "awaiting_approval");
+    assert.equal(ep.approval_mode, "timeout");
+    setClock(new Date("2026-10-16T13:01:00Z"));
+    await tick(s);
+    assert.equal((await getEpisode(db, ep.id))!.status, "published");
+    assert.equal(f.uploads, 1);
+    await db.close();
+  }
+  {
+    // One outlet's claim: a human decides, whatever the mode.
+    const { db, f, s, setClock } = await setup(
+      { approvalMode: "timeout", approvalTimeoutMinutes: 60, includeRumours: true },
+      { script: rumour },
+    );
+    s.discover = async () => SINGLE_SOURCE_RUMOUR(new Date("2026-10-16T12:00:00Z"));
+    await tick(s);
+    const ep = await only(db);
+    assert.equal(ep.status, "awaiting_approval");
+    assert.equal(ep.approval_mode, "manual");
+    setClock(new Date("2026-10-17T12:00:00Z"));
+    await tick(s);
+    assert.equal((await getEpisode(db, ep.id))!.status, "awaiting_approval");
+    assert.equal(f.uploads, 0);
+    await db.close();
+  }
+});
+
+test("one rumour Short a day: a second story with rumour signals waits for tomorrow", async () => {
+  const rumour = goodScript({
+    is_rumour: true,
+    hook: "Starfield's second expansion has reportedly slipped to early 2027.",
+  });
+  const { db, s, setClock } = await setup(
+    { approvalMode: "auto", includeRumours: true, dailyTarget: 3, rumoursPerDay: 1 },
     { script: rumour },
   );
   await tick(s);
-  const ep = await only(db);
-  assert.equal(ep.status, "awaiting_approval");
-  assert.equal(ep.approval_mode, "manual");
-  setClock(new Date("2026-10-17T12:00:00Z"));
+  assert.equal((await listEpisodes(db)).length, 1, "today's rumour is in");
+  // A fresh report an hour later is left alone; a corroborated plain story is not.
+  setClock(new Date("2026-10-16T13:00:00Z"));
+  s.discover = async () =>
+    clusterItems(
+      [
+        item("Halo reveal reportedly set for next week, per two insiders", "VGC", "outlet", 20, new Date("2026-10-16T13:00:00Z")),
+        item("Report: Halo reveal next week", "Eurogamer", "outlet", 30, new Date("2026-10-16T13:00:00Z")),
+      ],
+      new Date("2026-10-16T13:00:00Z"),
+    );
   await tick(s);
-  assert.equal((await getEpisode(db, ep.id))!.status, "awaiting_approval");
-  assert.equal(f.uploads, 0);
+  assert.equal((await listEpisodes(db)).length, 1, "the second rumour waits");
+  await db.close();
 });
 
 /** A different, corroborated story so the next selection has something new to pick. */
@@ -650,6 +707,7 @@ test("uncorroborated stories always wait for a human, even in auto mode", async 
       }),
     },
   );
+  s.discover = async () => SINGLE_SOURCE_RUMOUR(new Date("2026-10-16T12:00:00Z"));
   await tick(s);
   const ep = await only(db);
   assert.equal(ep.status, "awaiting_approval");

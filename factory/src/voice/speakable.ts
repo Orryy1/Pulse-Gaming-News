@@ -116,7 +116,7 @@ function moneyWords(
       .replace(/\s+/g, " ")
       .trim();
   }
-  const unit = n === 1 && !minor ? one : many;
+  const unit = n === 1 ? one : many; // "one dollar nineteen", not "one dollars nineteen"
   const cents =
     minor && Number(minor) > 0
       ? ` ${numberWords(Number(minor.padEnd(2, "0")))}`
@@ -306,7 +306,36 @@ export function speakUnits(text: string): string {
 }
 
 export function speakable(text: string): string {
-  return speakNumbers(speakYearsAndMoney(roundCounts(speakUnits(text))));
+  return speakNumbers(speakYearsAndMoney(roundPrices(roundCounts(speakUnits(text)))));
+}
+
+/**
+ * Prices said the quick way (the owner's ask, 25 Oct 2026): "$29.99" is "thirty dollars", "$4.99" is
+ * "five dollars", "$24.50" is "twenty-four dollars" rounded to "twenty-five". Under $10 a price that
+ * does not end in .9x keeps its cents ("$1.19"), where rounding would change the deal. The screen still
+ * shows the exact price.
+ */
+export function roundPrices(text: string): string {
+  const round = (whole: string, cents: string): string | undefined => {
+    const w = Number(whole.replace(/,/g, ""));
+    const c = Number(cents);
+    if (c === 0) return String(w);
+    if (c >= 90) return String(w + 1);
+    if (w >= 10) return String(Math.round(w + c / 100));
+    return undefined;
+  };
+  return text
+    .replace(
+      /([$£€])(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})(?![\d.,]\d|\s?(?:bn|billion|million|m\b|k\b))/gi,
+      (m, sym: string, whole: string, cents: string) => {
+        const r = round(whole, cents);
+        return r === undefined ? m : `${sym}${Number(r).toLocaleString("en-US")}`;
+      },
+    )
+    .replace(/(?<![\d.,])(\d+),(\d{2})\s?€/g, (m, whole: string, cents: string) => {
+      const r = round(whole, cents);
+      return r === undefined ? m : `${r}€`;
+    });
 }
 
 /** Figures in words exactly as written, without rounding: for comparing a transcript with a script. */

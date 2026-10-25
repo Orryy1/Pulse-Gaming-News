@@ -6,9 +6,10 @@ import { inWindow } from "../src/lanes.ts";
 import { otherCurrencies } from "../src/render/components/cards/helpers.ts";
 
 test("prices are spoken in the currency on screen", () => {
-  assert.equal(speakable("It costs $69.99 on PS5."), "It costs sixty-nine dollars ninety-nine on PS5.");
-  assert.equal(speakable("Now £59.99 in the UK"), "Now fifty-nine pounds ninety-nine in the UK");
-  assert.equal(speakable("€79.99 or 69,99€"), "seventy-nine euros ninety-nine or sixty-nine euros ninety-nine");
+  // Said the quick way (owner, 25 Oct 2026): "$69.99" is "seventy dollars"; the screen keeps the exact price.
+  assert.equal(speakable("It costs $69.99 on PS5."), "It costs seventy dollars on PS5.");
+  assert.equal(speakable("Now £59.99 in the UK"), "Now sixty pounds in the UK");
+  assert.equal(speakable("€79.99 or 69,99€"), "eighty euros or seventy euros");
   assert.equal(speakable("a $70 game"), "a seventy dollars game");
   assert.equal(speakable("$1 deal"), "one dollar deal");
   assert.equal(speakable("a $1.5bn deal"), "a one point five billion dollars deal");
@@ -112,7 +113,9 @@ test("counts and decimals are spoken in words and shown as figures again in the 
   // Names, small numbers, prices and years keep their own handling.
   assert.equal(speakable("Xbox 360 and the RTX 4090"), "Xbox 360 and the RTX 4090");
   assert.equal(roundTrip("One of the best, and one hundred percent worth it.").shown, "One of the best, and 100% worth it.");
-  assert.equal(roundTrip("It costs $49.99 today.").shown, "It costs $49.99 today.");
+  // The captions show what is said: a price said the quick way is captioned the quick way.
+  assert.equal(roundTrip("It costs $49.99 today.").shown, "It costs $50 today.");
+  assert.equal(roundTrip("Down to $1.19 now.").shown, "Down to $1.19 now.");
   assert.equal(roundTrip("It came out in 2007.").shown, "It came out in 2007.");
 });
 
@@ -160,4 +163,13 @@ test("a Roman numeral before a possessive or a hyphen is still a number", () => 
   assert.equal(speakTitles("GTA VI’s map"), "GTA 6’s map");
   assert.equal(speakTitles("a GTA VI-sized launch"), "a GTA 6-sized launch");
   assert.equal(speakTitles("VIP passes"), "VIP passes");
+});
+
+test("prices are said the quick way; cheap ones that do not end in .9x keep their cents", async () => {
+  const { speakable } = await import("../src/voice/speakable.ts");
+  assert.equal(speakable("It costs $29.99."), "It costs thirty dollars.");
+  assert.equal(speakable("Down to $4.99 today."), "Down to five dollars today.");
+  assert.equal(speakable("Or $1.19 for the bundle."), "Or one dollar nineteen for the bundle.");
+  assert.equal(speakable("£59.99 and 69,99€."), "sixty pounds and seventy euros.");
+  assert.equal(speakable("$1.5 billion in sales"), "one point five billion dollars in sales");
 });

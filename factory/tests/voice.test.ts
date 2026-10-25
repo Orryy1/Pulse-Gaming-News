@@ -132,3 +132,10 @@ test("a mid-sentence stall is cut to a beat; sentence pauses are only shortened"
   assert.ok(Math.abs(shifted[7]!.start - shifted[6]!.end - 0.6) < 0.01);
   assert.equal(shifted[0]!.start, 0);
 });
+
+test("a bare Roman numeral standing in for a game is sent back; one after its series is fine", async () => {
+  const { voiceProblems } = await import("../src/editorial/voice.ts");
+  assert.ok(voiceProblems("The original drew the map, but III let you stand inside it.").some((p) => /"III" stands alone/.test(p)));
+  assert.ok(voiceProblems("V let you swap between three leads.").some((p) => /"V" stands alone/.test(p)));
+  assert.deepEqual(voiceProblems("GTA V let you swap. Grand Theft Auto IV is darker. Chapter II: the rise."), []);
+});

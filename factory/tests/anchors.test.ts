@@ -6,9 +6,10 @@ const say = (text: string, from = 0, step = 0.4) =>
   text.split(" ").map((t, i) => ({ text: t, start: from + i * step, end: from + i * step + 0.3 }));
 
 test("a key is found where the narrator says it, spoken forms included", () => {
-  const w = say("It launched at fifty-nine dollars ninety-nine and sold almost seventeen thousand copies");
+  // Prices are said the quick way ("$59.99" is "sixty dollars"), and a card's key finds the same words.
+  const w = say("It launched at sixty dollars and sold almost seventeen thousand copies");
   assert.equal(keyTime(w, 0, w.length, "$59.99"), w[3]!.start);
-  assert.equal(keyTime(w, 0, w.length, "16,981 copies"), w[8]!.start);
+  assert.equal(keyTime(w, 0, w.length, "16,981 copies"), w[7]!.start);
   const g = say("Two years later Rockstar went from one city to an entire state with Grand Theft Auto 5");
   assert.equal(keyTime(g, 0, g.length, "GTA V"), undefined);
   assert.equal(keyTime(g, 0, g.length, "Grand Theft Auto V"), g[13]!.start);

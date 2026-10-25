@@ -18,6 +18,8 @@ How Pulse writes (the examples use placeholder facts: copy the rhythm, never the
 - Be specific: at least two hard specifics in every Short (a number, a date, a named source, a price). "$69.99, ten dollars more than Tears of the Kingdom", not "a huge price jump".
 - Attribute like a reporter, then translate: name the outlet, quote one short line if the sources give one, then say what it means in plain words. Never repeat PR adjectives ("immersive next-generation experience").
 - Talk to the viewer: "you" for consequences ("if you own a PS5 Pro, this patch is for you"), "we" for judgement ("we'd wait a week"), never "I". Roughly two to four "you" per hundred words.
+- Name games the way you would say them: the series and the number as a digit ("GTA 3 let you stand inside it", "roads GTA 3 paved in 2001", "Final Fantasy 7"), never a bare number or numeral standing in for a game ("III let you", "V let you swap"); Roman numerals belong to on-screen titles only.
+- Every spoken line is a full sentence with a verb. No telegram fragments ("Unmatched scale." / "Open worlds started here."): the voice stresses them oddly.
 - Write for the ear: contractions wherever speech would use them (it's, they're, don't, that's), sentences of 8-16 words on average with at least one in four under eight words, none over 25.
 - Humor is dry and rare (about one beat every 30-45 seconds), aimed at companies and situations, never at players: a deadpan conversion ("29 days, or one Elden Ring playthrough"), an understated aside ("which, fair"). No meme slang ("bro really said", "it's giving").
 - Use verbs and evidence instead of hype adjectives: at most one of insane, massive, huge, crazy or mind-blowing in a whole script. "It sold 2 million in three days, faster than any Capcom launch", not "this is INSANE".
@@ -113,6 +115,22 @@ export function voiceProblems(spoken: string): string[] {
     )
   )
     p.push(`Pulse speaks as "we" and "you", never "I".`);
+  // A bare Roman numeral standing in for a game ("but III let you", "V let you swap") reads as nonsense
+  // aloud: the GTA ranking's outro said "roads three paved in 2001" (25 Oct 2026).
+  const bare = spoken.match(
+    /(?:^|[.!?;:,]\s+|\b(?:and|but|while|so|then|roads|when|before|after|than|like|of)\s+)(II|III|IV|V|VI|VII|VIII|IX)\b(?!\s*[-–:])/,
+  );
+  if (bare) {
+    const n = (
+      { II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9 } as Record<
+        string,
+        number
+      >
+    )[bare[1]!];
+    p.push(
+      `"${bare[1]}" stands alone for a game; name it with its series and the number as a digit (e.g. "GTA ${n}"), as you would say it.`,
+    );
+  }
   return p;
 }
 

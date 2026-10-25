@@ -178,6 +178,6 @@ test("a possessive digit is said as one word and a rank before a name is not str
   // The Modern Warfare Short (Os_yeSFpGh0, 25 Oct 2026) paused before "4's" and leaned on "Marine".
   assert.equal(speakable("Modern Warfare 4's first DLC stars a real Marine."), "Modern Warfare four's first DLC stars a real marine.");
   assert.equal(speakable("to help save fellow Marine Nick Eufrazio."), "to help save fellow marine Nick Eufrazio.");
-  assert.equal(speakable("The Marine Corps and the 1990's"), "The Marine Corps and the 1990's");
+  assert.equal(speakable("The Marine Corps and the 1990's"), "The Marine Corps and the nineteen ninety's");
   assert.equal(speakable("GTA 6's map and the PS5's fans"), "GTA six's map and the PS5's fans");
 });

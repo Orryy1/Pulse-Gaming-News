@@ -151,6 +151,11 @@ export interface Config {
   longformMaxSeconds: number;
   longformClipsPerEntry: number;
   docEnabled: boolean; // monthly franchise documentary (long-form lane)
+  /** ElevenLabs: the plan's monthly credits (Pro: 500,000); unused credits above two months' worth are lost at the reset. */
+  elevenLabsMonthlyCredits: number;
+  elevenLabsReserve: number; // credits never spent, a cushion against overage
+  surplusDocDays: string[]; // extra documentary days while credits would otherwise be lost
+  surplusDocChars: number; // what one documentary costs in credits, roughly
   docDays: string[];
   docSlot: string;
   docWeeks: number[]; // weeks of the month it runs: 1 = the first such weekday
@@ -347,6 +352,10 @@ export function loadConfig(): Config {
     longformMaxSeconds: int("LONGFORM_MAX_SECONDS", 1560), // 3,200 words at a natural pace, with room
     longformClipsPerEntry: int("LONGFORM_CLIPS_PER_ENTRY", 2),
     docEnabled: bool("DOC_ENABLED", true),
+    elevenLabsMonthlyCredits: int("ELEVENLABS_MONTHLY_CREDITS", 500_000),
+    elevenLabsReserve: int("ELEVENLABS_RESERVE", 10_000),
+    surplusDocDays: str("SURPLUS_DOC_DAYS", "tue,thu,sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    surplusDocChars: int("SURPLUS_DOC_CHARS", 35_000),
     docDays: str("DOC_DAYS", "sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     docSlot: str("DOC_SLOT", "19:00"),
     docWeeks: str("DOC_WEEKS", "1").split(",").map((w) => Number(w.trim())).filter((w) => w >= 1 && w <= 5),

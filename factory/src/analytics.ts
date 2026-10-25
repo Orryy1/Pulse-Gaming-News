@@ -559,6 +559,7 @@ export async function dailySummary(
   db: Db,
   cfg: Config,
   now: Date,
+  credits?: string,
 ): Promise<DiscordMessage> {
   const since = `date_trunc('day', $1::timestamptz AT TIME ZONE '${cfg.timezone}') AT TIME ZONE '${cfg.timezone}'`;
   const live = await db.query<{
@@ -591,6 +592,7 @@ export async function dailySummary(
       ? `📝 Behind the scenes (handled, nothing for you to do):\n${notes.map((n) => `• ${n.text}`).join("\n")}`
       : "",
     `YouTube allowance used: ${used.toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")} units; uploads ${await quotaCalls(db, now, "upload")} of ${cfg.uploadCallsPerDay}`,
+    credits ?? "",
     ((c) =>
       `Claude spend today: $${(c.live + c.tests).toFixed(2)}${c.tests >= 0.01 ? ` (tests $${c.tests.toFixed(2)})` : ""}`)(
       claudeSpend(cfg.dataDir, now.toISOString().slice(0, 10)),

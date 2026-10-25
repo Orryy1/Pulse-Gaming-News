@@ -332,6 +332,8 @@ export interface Services {
     frames: string[],
     ctx: { headline: string; gameTitle: string; format?: "short" | "long" },
   ): Promise<VisionQa>;
+  /** The ElevenLabs cycle: what is left and what would be lost at the reset (undefined when unknown). */
+  creditPlan?(): Promise<import("./voice/credits.ts").CreditPlan | undefined>;
   /** Joins voiced takes into one narration with the word timings shifted onto one timeline. */
   stitchTakes?(parts: Narration[], outPath: string): Promise<Narration>;
   /** What Whisper hears in a gameplay clip, word by word (empty when no Whisper is set up). */
@@ -1609,6 +1611,23 @@ export async function maybeSelectWeekly(
   return undefined;
 }
 
+/**
+ * A documentary paid for by credits that would otherwise be lost: the plan says at least one
+ * documentary's worth would go at the reset, there are days enough to make it, and no documentary is
+ * already in production.
+ */
+export async function surplusDocumentary(s: Services): Promise<boolean> {
+  const plan = await s.creditPlan?.().catch(() => undefined);
+  if (!plan || plan.wasteAtReset < s.cfg.surplusDocChars || plan.daysLeft < 1) return false;
+  const [busy] = await s.db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM episodes WHERE lane = 'longform' AND factcheck_json->>'doc' = 'true'
+       AND status IN ('selected','scripted','voiced','rendered','awaiting_approval','approved')`,
+  );
+  if (Number(busy?.n ?? 0) > 0) return false;
+  log("info", "surplus documentary: ElevenLabs credits would be lost at the reset", { waste: plan.wasteAtReset, daysLeft: plan.daysLeft });
+  return true;
+}
+
 /** Week of the month (1-5) for a date in the channel's time zone. */
 function weekOfMonth(now: Date, timeZone: string): number {
   const day = Number(
@@ -1628,11 +1647,14 @@ export async function maybeSelectDocumentary(
   const { db, cfg } = s;
   if (!cfg.docEnabled || !cfg.longformEnabled) return undefined;
   const now = s.now();
-  if (!cfg.docWeeks.includes(weekOfMonth(now, cfg.timezone))) return undefined;
+  // Its own week, or, while ElevenLabs credits would be lost at the reset, any surplus day (one at a time).
+  const regular = cfg.docWeeks.includes(weekOfMonth(now, cfg.timezone));
+  const surplus = regular ? false : await surplusDocumentary(s);
+  if (!regular && !surplus) return undefined;
   const due = evergreenDue(
     now,
     {
-      days: cfg.docDays,
+      days: regular ? cfg.docDays : cfg.surplusDocDays,
       slot: cfg.docSlot,
       leadMinutes: cfg.docLeadMinutes,
       graceMinutes: cfg.slotGraceMinutes,

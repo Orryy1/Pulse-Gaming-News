@@ -14,6 +14,7 @@ import { selectClips } from "./assets/clipscore.ts";
 import { evergreenCandidates } from "./discovery/evergreen.ts";
 import { dayKey } from "./lanes.ts";
 import { narrate } from "./voice/index.ts";
+import { creditPlan, elevenLabsSubscription, type CreditPlan } from "./voice/credits.ts";
 import { decodedSeconds, stitch, GAP_SECONDS } from "./voice/local.ts";
 import type { Narration } from "./voice/elevenlabs.ts";
 import { fetchSteamArt, findSteamApp, steamFacts } from "./assets/steam.ts";
@@ -49,6 +50,8 @@ export function oauthConfig(cfg: Config) {
     envRefreshToken: cfg.youtubeRefreshToken,
   };
 }
+
+let creditCache: { at: number; plan: CreditPlan | undefined } | undefined;
 
 export function createServices(db: Db, cfg: Config): Services {
   const llm = createClaude({ top: cfg.anthropicModel, mid: cfg.claudeModelMid, low: cfg.claudeModelLow });
@@ -162,6 +165,15 @@ export function createServices(db: Db, cfg: Config): Services {
       }
       await stitch(parts.map((p) => p.audioPath), outPath);
       return { audioPath: outPath, words, durationSeconds: offset - GAP_SECONDS + 0.15 };
+    },
+    creditPlan: async () => {
+      if (!cfg.elevenLabsApiKey) return undefined;
+      const now = Date.now();
+      if (creditCache && now - creditCache.at < 30 * 60_000) return creditCache.plan;
+      const sub = await elevenLabsSubscription(cfg.elevenLabsApiKey);
+      const plan = sub ? creditPlan(sub, cfg.elevenLabsMonthlyCredits, new Date(now)) : undefined;
+      creditCache = { at: now, plan };
+      return plan;
     },
     hearClip: async (file) =>
       cfg.whisperPython ? (await transcribeWords(file, cfg.whisperPython)).map((w) => ({ text: w.text, start: w.start, end: w.end ?? w.start + 0.3 })) : [],

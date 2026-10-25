@@ -84,7 +84,8 @@ export async function narrate(cfg: Config, text: string, outPath: string, voice?
         // Unknown balance (invalid key, API down) is a refusal when ElevenLabs is merely preferred:
         // the point of elevenlabs-first is to use paid-for credits, not to risk a bill.
         if (left === undefined && cfg.voiceProvider === "elevenlabs-first") throw new Error("ElevenLabs balance unknown (check the API key)");
-        if (left !== undefined && left < text.length * 1.2) throw new Error(`ElevenLabs has ${left} characters left this month`);
+        // Never into overage: the job plus a cushion must fit the balance, or the local voice takes it.
+        if (left !== undefined && left < text.length * 1.2 + cfg.elevenLabsReserve) throw new Error(`ElevenLabs has ${left} characters left this month`);
         const elOpts = { apiKey: cfg.elevenLabsApiKey, voiceId: voice?.id ?? cfg.elevenLabsVoiceId, modelId: cfg.elevenLabsModel };
         // A long-form script is spoken in takes: the timestamps endpoint takes a few thousand characters at a time.
         n = text.length > LONG_TEXT_CHARS ? await synthesiseElevenLabsLong(text, outPath, elOpts) : await synthesiseElevenLabs(text, outPath, elOpts);

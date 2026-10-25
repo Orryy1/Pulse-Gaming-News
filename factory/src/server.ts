@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
 import crypto from "node:crypto";
+import { creditLine } from "./voice/credits.ts";
 import { fileURLToPath } from "node:url";
 import { loadConfig, redactedConfig, type Config } from "./config.ts";
 import { runDoctor, formatDoctor } from "./doctor.ts";
@@ -1147,7 +1148,8 @@ async function main(): Promise<void> {
   setInterval(() => {
     void (async () => {
       if (!(await summaryDue(db, cfg, new Date()))) return;
-      await services.notify(await dailySummary(db, cfg, new Date()));
+      const plan = await services.creditPlan?.().catch(() => undefined);
+      await services.notify(await dailySummary(db, cfg, new Date(), plan ? creditLine(plan) : undefined));
       log("info", "daily summary sent");
     })().catch((err) =>
       log("error", "daily summary failed", { error: errorMessage(err) }),

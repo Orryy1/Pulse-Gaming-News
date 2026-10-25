@@ -43,6 +43,7 @@ export type ShortProps = {
   steam: PlanSteam | null;
   emphasis: string[]; // words the captions keep lit after they are spoken
   deskName?: string; // the desk partner's name, when a desk question is in the Short
+  stamps?: Array<{ at: number; text: string; sub?: string; colour: string }>; // word stamps, timed to their words
   plan: RenderPlan | null; // built in the pipeline; the composition builds one for previews
   logoSrc: string | null;
   audioSrc: string | null;

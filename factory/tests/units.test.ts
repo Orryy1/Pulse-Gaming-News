@@ -354,3 +354,20 @@ test("a headline-style title that names its game early is kept as written", () =
   assert.equal(polishTitle({ ...s, youtube: { ...s.youtube, title: "GTA 6 Slips Again, and This Time It's November" } }), "GTA 6 Slips Again, and This Time It's November");
   assert.equal(polishTitle({ ...goodScript(), youtube: { ...goodScript().youtube, title: "Bethesda Pushes the Starfield Expansion to 2027" } }), "Bethesda Pushes the Starfield Expansion to 2027");
 });
+
+test("a stamp lands on its spoken word, in its tone's colour; one off the script or off the narration's figures is sent back", async () => {
+  const { stampsFor } = await import("../src/pipeline.ts");
+  const words = "Grand Theft Auto 6's launch trailer is out, and Leonida opens November 19.".split(" ").map((t, i) => ({ text: t, start: i * 0.4, end: i * 0.4 + 0.3 }));
+  const [st] = stampsFor({ stamp: { word: "November", text: "nov 19", sub: "confirmed", tone: "confirm" } }, words);
+  assert.equal(st!.at, 11 * 0.4);
+  assert.equal(st!.text, "NOV 19");
+  assert.equal(st!.sub, "CONFIRMED");
+  assert.equal(st!.colour, "#22C55E");
+  assert.deepEqual(stampsFor({ stamp: { word: "December", text: "DEC 1", sub: "", tone: "neutral" } }, words), [], "no word, no stamp");
+  const ok = goodScript({ stamp: { word: "delayed", text: "DELAYED", sub: "TO 2027", tone: "alert" } });
+  assert.ok(!validateScript(ok).some((p) => /stamp/.test(p)));
+  const offScript = validateScript(goodScript({ stamp: { word: "cancelled", text: "CANCELLED", sub: "", tone: "alert" } }));
+  assert.ok(offScript.some((p) => /not in the narration/.test(p)));
+  const wrongFigure = validateScript(goodScript({ stamp: { word: "delayed", text: "TO 2028", sub: "", tone: "alert" } }));
+  assert.ok(wrongFigure.some((p) => /figure "2028"/.test(p)));
+});

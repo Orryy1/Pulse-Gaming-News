@@ -126,7 +126,8 @@ import {
   srtFromWords,
   type SegmentInput,
 } from "./render/timeline.ts";
-import { buildPlan, TAIL_SECONDS } from "./render/plan.ts";
+import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
+import { leadFrames, LEVEL, SFX, sfxFile } from "./render/soundscape.ts";
 import { bedFor } from "./render/soundscape.ts";
 import { formatOpen } from "./formats.ts";
 import { blurPlate } from "./assets/plates.ts";
@@ -174,6 +175,7 @@ import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
 import { calendarBlock, readCalendar, type CalendarLane } from "./calendar.ts";
+import { stampColour } from "./render/brand.ts";
 import {
   translateScript,
   twinFooter,
@@ -2731,6 +2733,21 @@ async function stepScriptTwin(s: Services, ep: Episode): Promise<void> {
     language: ref.language,
     title: script.youtube.title,
   });
+}
+
+/** The script's stamp, timed to the first spoken word that matches it (none when the word was not found). */
+export function stampsFor(
+  script: Pick<Script, "stamp">,
+  words: Array<{ text: string; start: number }>,
+): Array<{ at: number; text: string; sub?: string; colour: string }> {
+  const st = script.stamp;
+  if (!st?.word?.trim() || !st.text?.trim()) return [];
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9$]/g, "");
+  // The voice reads figures in words ("19" may come out "nineteenth"): match the spoken form's first token too.
+  const wants = [norm(st.word), norm(speakable(st.word).split(/\s+/)[0] ?? "")].filter(Boolean);
+  const hit = words.find((w) => wants.some((x) => norm(w.text) === x || norm(w.text).startsWith(x)));
+  if (!hit) return [];
+  return [{ at: hit.start, text: st.text.toUpperCase().slice(0, 14), sub: st.sub?.trim() ? st.sub.toUpperCase() : undefined, colour: stampColour(st.tone) }];
 }
 
 /** How the last eight Shorts opened their take and closed, so the writer and the validator keep the shapes varied. */
@@ -5425,6 +5442,13 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     grade: rubric.grade,
     summary: rubricSummary(rubric) || "all green",
   });
+  // The stamp lands with the channel's landing sound, peak on the word, when the mix has room for it.
+  for (const st of stampsFor(script, words)) {
+    const name = SFX.land[0];
+    const f = Math.max(0, Math.round(st.at * plan.fps) - leadFrames(name, plan.fps));
+    if (plan.sfx.length < MAX_SFX && plan.sfx.every((c) => Math.abs(c.frame - f) >= 60))
+      plan.sfx.push({ file: sfxFile(name), frame: f, volume: LEVEL.land });
+  }
   assets.plan = plan;
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
     ep.id,
@@ -5494,6 +5518,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       steam: steamLite,
       emphasis: emphasisWords(script),
       deskName: assets.desk?.voice.name,
+      stamps: stampsFor(script, words),
       plan,
       renderDate: s.now().toISOString().slice(0, 10),
     },

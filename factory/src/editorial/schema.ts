@@ -69,6 +69,15 @@ export const ScriptSchema = z.object({
   hook_footage: FootageSchema.optional().describe("What the opening footage should show"),
   person: z.string().optional().describe("The real, well-known person this story is about when one person is the story (a director, executive, actor, streamer), as commonly written, e.g. 'Hideo Kojima'; empty when the story is about a game, a company or a product"),
   loop_line: z.string().describe("Final spoken line that ties back to the hook so a rewatch feels seamless"),
+  stamp: z
+    .object({
+      word: z.string().describe("The single spoken word it lands on, exactly as written in the narration (e.g. 'November', 'delayed', '$49.99')"),
+      text: z.string().describe("1-3 words in capitals, 14 characters at most, e.g. 'NOV 19', 'DELAYED', 'FREE', '$49.99'"),
+      sub: z.string().describe("0-2 words under it, e.g. 'CONFIRMED', 'TO 2027', 'THIS WEEK', or empty"),
+      tone: z.enum(["confirm", "alert", "price", "neutral"]).describe("confirm: official news; alert: a delay, a cut, a rumor; price: money; neutral: anything else"),
+    })
+    .optional()
+    .describe("One rubber-stamp moment on the word that carries the news; omit when nothing deserves it"),
   desk_question: z
     .string()
     .optional()

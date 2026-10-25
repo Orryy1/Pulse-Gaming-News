@@ -89,3 +89,8 @@ export function themeFor(
   const t = STORY_THEME[isRumour ? "rumour" : storyType] ?? STORY_THEME.other!;
   return isRumour ? { ...t, accent: COLOUR.alert } : t;
 }
+
+/** A word stamp's colour by its tone: confirmed news green, bad news red, money gold, anything else amber. */
+export function stampColour(tone: string | undefined): string {
+  return tone === "confirm" ? COLOUR.up : tone === "alert" ? COLOUR.alert : tone === "price" ? COLOUR.gold : COLOUR.amber;
+}

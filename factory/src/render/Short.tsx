@@ -28,6 +28,7 @@ import {
   TopBar,
 } from "./components/Overlays.tsx";
 import { Shelf } from "./components/Shelf.tsx";
+import { Stamp, STAMP_FRAMES } from "./components/Stamp.tsx";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
 const resolveSrc = (src: string | null) =>
@@ -99,13 +100,35 @@ export const Short: React.FC<ShortProps> = (props) => {
     hookIndex >= 0 ? segmentEnds[hookIndex]! : Math.round(3 * fps);
   const loopIndex = props.segments.findIndex((s) => s.kind === "loop");
   const deskIndex = props.segments.findIndex((s) => s.kind === "desk");
+  // While a stamp is up the shelf fades almost out (6 frames each way), then comes back.
+  const shelfOpacity = (props.stamps ?? []).reduce((o, st) => {
+    const a = Math.round(st.at * fps);
+    const b = a + STAMP_FRAMES;
+    if (frame < a - 6 || frame > b + 6) return o;
+    const dim = interpolate(
+      frame,
+      [a - 6, a, b - 4, b + 6],
+      [1, 0.06, 0.06, 1],
+      {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      },
+    );
+    return Math.min(o, dim);
+  }, 1);
   const loopStart =
     loopIndex >= 0
       ? segmentStarts[loopIndex]!
       : durationInFrames - plan.tailFrames;
   const hasPlate = plan.shots.some((s) => s.media.type === "plate");
-  const rankTotal = props.segments.filter((s) => s.visual?.kind === "rank").length;
-  const beatIndexOf = props.segments.map((s, i) => (s.kind === "beat" ? props.segments.slice(0, i).filter((x) => x.kind === "beat").length : undefined));
+  const rankTotal = props.segments.filter(
+    (s) => s.visual?.kind === "rank",
+  ).length;
+  const beatIndexOf = props.segments.map((s, i) =>
+    s.kind === "beat"
+      ? props.segments.slice(0, i).filter((x) => x.kind === "beat").length
+      : undefined,
+  );
 
   // Music ducks under the voice with a fast attack and a slower release, and is held (never faded out) through the tail.
   const speaking = useMemo(() => {
@@ -188,14 +211,27 @@ export const Short: React.FC<ShortProps> = (props) => {
         ) : null,
       )}
 
-      <Shelf
-        plan={plan}
-        accent={accent}
-        isRumour={props.isRumour}
-        images={props.images}
-        gameTitle={props.gameTitle}
-        gameSubtitle={props.gameSubtitle}
-      />
+      {(props.stamps ?? []).map((st, i) => (
+        <Sequence
+          key={`stamp${i}`}
+          from={Math.round(st.at * fps)}
+          durationInFrames={STAMP_FRAMES}
+          layout="none"
+        >
+          <Stamp stamp={st} top={930} size={104} />
+        </Sequence>
+      ))}
+      {/* The shelf steps back while a stamp holds the band, so the two never overlap. */}
+      <AbsoluteFill style={{ opacity: shelfOpacity }}>
+        <Shelf
+          plan={plan}
+          accent={accent}
+          isRumour={props.isRumour}
+          images={props.images}
+          gameTitle={props.gameTitle}
+          gameSubtitle={props.gameSubtitle}
+        />
+      </AbsoluteFill>
 
       <TopBar
         chip={theme.chip}
@@ -216,7 +252,11 @@ export const Short: React.FC<ShortProps> = (props) => {
         blankFromFrame={durationInFrames - 6}
         desk={
           deskIndex >= 0
-            ? { start: segmentStarts[deskIndex]! / fps, end: segmentEnds[deskIndex]! / fps, name: props.deskName ?? "THE DESK" }
+            ? {
+                start: segmentStarts[deskIndex]! / fps,
+                end: segmentEnds[deskIndex]! / fps,
+                name: props.deskName ?? "THE DESK",
+              }
             : undefined
         }
       />
@@ -227,12 +267,20 @@ export const Short: React.FC<ShortProps> = (props) => {
         <Sequence
           key={`sfx${i}`}
           from={cue.frame}
-          durationInFrames={Math.max(1, Math.min(3 * fps, durationInFrames - cue.frame))}
+          durationInFrames={Math.max(
+            1,
+            Math.min(3 * fps, durationInFrames - cue.frame),
+          )}
           layout="none"
         >
           <Audio
             src={staticFile(inKey(cue.file, props.musicSrc))}
-            volume={(f) => cue.volume * (speaking[Math.min(durationInFrames, cue.frame + f)] ? UNDER_VOICE : 1)}
+            volume={(f) =>
+              cue.volume *
+              (speaking[Math.min(durationInFrames, cue.frame + f)]
+                ? UNDER_VOICE
+                : 1)
+            }
           />
         </Sequence>
       ))}

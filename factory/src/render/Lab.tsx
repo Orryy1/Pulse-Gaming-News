@@ -22,7 +22,7 @@ import { DISPLAY, BODY } from "./components/fonts.ts";
 import { Captions, HookHeadline, TopBar } from "./components/Overlays.tsx";
 import { Finish } from "./components/Background.tsx";
 import { displayWords, pageCaptions } from "./timeline.ts";
-import { SPRING } from "./motion.ts";
+import { Stamp } from "./components/Stamp.tsx";
 import type { Word } from "../voice/elevenlabs.ts";
 
 export interface LabStamp {
@@ -179,75 +179,6 @@ const Pip: React.FC<{
         />
       </svg>
     </div>
-  );
-};
-
-/** A rubber stamp that slams in on its word, shakes the frame a little, holds, then lifts away. */
-const Stamp: React.FC<{ stamp: LabStamp; hold: number }> = ({
-  stamp,
-  hold,
-}) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const hit = spring({
-    frame,
-    fps,
-    config: { damping: 11, stiffness: 300, mass: 0.6 },
-  });
-  const scale = interpolate(hit, [0, 1], [2.3, 1]);
-  const out = interpolate(frame, [hold - 8, hold], [1, 0], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  return (
-    <AbsoluteFill
-      style={{
-        alignItems: "center",
-        justifyContent: "flex-start",
-        paddingTop: 760,
-      }}
-    >
-      <div
-        style={{
-          transform: `rotate(-7deg) scale(${scale})`,
-          opacity: Math.min(1, hit * 1.4) * out,
-          border: `10px solid ${stamp.colour}`,
-          outline: `4px solid ${stamp.colour}`,
-          outlineOffset: 8,
-          borderRadius: 14,
-          padding: "14px 42px 18px",
-          background: "rgba(11,11,14,0.78)",
-          textAlign: "center",
-          boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
-        }}
-      >
-        <div
-          style={{
-            fontFamily: DISPLAY,
-            fontSize: 132,
-            lineHeight: 1,
-            color: stamp.colour,
-            letterSpacing: 3,
-          }}
-        >
-          {stamp.text}
-        </div>
-        {stamp.sub ? (
-          <div
-            style={{
-              fontFamily: BODY,
-              fontWeight: 900,
-              fontSize: 34,
-              letterSpacing: 6,
-              color: COLOUR.paper,
-              marginTop: 6,
-            }}
-          >
-            {stamp.sub}
-          </div>
-        ) : null}
-      </div>
-    </AbsoluteFill>
   );
 };
 

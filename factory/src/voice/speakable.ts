@@ -184,7 +184,9 @@ export function speakTitles(text: string): string {
       .replace(/\bWWII\b/g, "World War Two")
       .replace(/\bWWI\b/g, "World War One")
       .replace(
-        /\b(Grand Theft Auto|GTA|Elder Scrolls|Final Fantasy|Civilization|Rocky|Halo|Gears of War) (V|X)\b/g,
+        // A lone V or X is a numeral only after a series that numbers its games ("Metal Gear Solid V" came
+        // out as "Vai", 25 Oct 2026); "Mega Man X" and "Xbox Series X" keep their letters.
+        /\b(Grand Theft Auto|GTA|Elder Scrolls|Final Fantasy|Civilization|Rocky|Halo|Gears of War|Metal Gear Solid|Resident Evil|Dragon Quest|Kingdom Hearts|Street Fighter|Tekken|Far Cry|Fallout|Diablo|Persona|Battlefield|Dark Souls|Borderlands|Hitman) (V|X)\b/g,
         (_m, series: string, n: string) => `${series} ${romanValue(n)}`,
       )
       .replace(

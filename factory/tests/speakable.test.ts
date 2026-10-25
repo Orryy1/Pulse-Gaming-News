@@ -148,3 +148,9 @@ test("storage and frequency units are said in full and captioned as symbols", as
   assert.deepEqual(displayWords([w("needs", 0), w("134", 0.3), w("gigabytes.", 0.6)]).map((x) => x.text), ["needs", "134GB."]);
   assert.deepEqual(displayWords([w("one", 0), w("point", 0.3), w("five", 0.6), w("gigabytes", 0.9)]).map((x) => x.text), ["1.5GB"]);
 });
+
+test("a lone V or X is read as a numeral after a numbered series, and left alone elsewhere", () => {
+  assert.equal(speakTitles("Metal Gear Solid V was the last one."), "Metal Gear Solid 5 was the last one.");
+  assert.equal(speakTitles("Mega Man X is great"), "Mega Man X is great");
+  assert.equal(speakTitles("the Xbox Series X and the X button"), "the Xbox Series X and the X button");
+});

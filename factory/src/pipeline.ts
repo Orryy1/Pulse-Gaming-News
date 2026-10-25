@@ -1636,6 +1636,9 @@ export async function surplusDocumentary(s: Services): Promise<boolean> {
   const plan = await s.creditPlan?.().catch(() => undefined);
   if (!plan || plan.wasteAtReset < s.cfg.surplusDocChars || plan.daysLeft < 1)
     return false;
+  // Only on a surplus day: the check runs every tick and must not fill the log on the others.
+  if (!s.cfg.surplusDocDays.includes(weekday(s.now(), s.cfg.timezone)))
+    return false;
   const [busy] = await s.db.query<{ n: string | number }>(
     `SELECT count(*) AS n FROM episodes WHERE lane = 'longform' AND factcheck_json->>'doc' = 'true'
        AND status IN ('selected','scripted','voiced','rendered','awaiting_approval','approved')`,
@@ -3684,7 +3687,11 @@ async function gatherMedia(
       7 * 86_400_000,
   );
   const official: OfficialMedia =
-    (pictureStory || !app) && s.cfg.footage && script.game_title
+    // The publisher's own YouTube trailer: for games not on Steam, picture stories, and Steam pages with no
+    // usable trailer (Metal Gear Solid matched an old bundle whose one video would not download, 25 Oct 2026).
+    (pictureStory || !app || clipAssets.length < 2) &&
+    s.cfg.footage &&
+    script.game_title
       ? await s
           .fetchOfficialMedia(
             script.game_title,
@@ -3716,11 +3723,20 @@ async function gatherMedia(
       still: official.stills.length > 0,
     });
   const steamBudget = app
-    ? footageBudgetSeconds(app)
+    ? Math.max(
+        footageBudgetSeconds(app),
+        clipAssets.length < 2 ? (official.trailer?.clipSeconds ?? 0) : 0,
+      )
     : (official.trailer?.clipSeconds ?? 0);
-  const budget = Math.min(steamBudget, Math.max(10, narrationSeconds * 0.4));
+  // Up to 85% of the narration may run on footage (the owner raised the cap, 24 Oct 2026); this line held
+  // it at 40% after the publisher budget was raised, so Shorts stayed at about a third footage.
+  const budget = Math.min(steamBudget, Math.max(10, narrationSeconds * 0.85));
   const clips: NonNullable<EpisodeAssets["clips"]> = capFootage(
-    official.storyVideo || !app ? official.clips : clipAssets,
+    official.storyVideo || !app
+      ? official.clips
+      : clipAssets.length < 2
+        ? [...clipAssets, ...official.clips]
+        : clipAssets,
     budget,
   ).map((c) => ({
     file: c.file,

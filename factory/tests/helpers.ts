@@ -163,6 +163,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     elevenLabsReserve: 10_000,
     surplusDocDays: ["tue", "thu", "sat"],
     surplusDocChars: 35_000,
+    bankWindow: "23:45-03:00",
     deskVoiceId: "",
     deskVoiceName: "Alice",
     deskShare: 0,

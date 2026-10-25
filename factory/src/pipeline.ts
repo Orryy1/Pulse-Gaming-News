@@ -1636,9 +1636,6 @@ export async function surplusDocumentary(s: Services): Promise<boolean> {
   const plan = await s.creditPlan?.().catch(() => undefined);
   if (!plan || plan.wasteAtReset < s.cfg.surplusDocChars || plan.daysLeft < 1)
     return false;
-  // Only on a surplus day: the check runs every tick and must not fill the log on the others.
-  if (!s.cfg.surplusDocDays.includes(weekday(s.now(), s.cfg.timezone)))
-    return false;
   const [busy] = await s.db.query<{ n: string | number }>(
     `SELECT count(*) AS n FROM episodes WHERE lane = 'longform' AND factcheck_json->>'doc' = 'true'
        AND status IN ('selected','scripted','voiced','rendered','awaiting_approval','approved')`,
@@ -1650,6 +1647,26 @@ export async function surplusDocumentary(s: Services): Promise<boolean> {
     { waste: plan.wasteAtReset, daysLeft: plan.daysLeft },
   );
   return true;
+}
+
+/**
+ * Where a banked documentary goes: the first documentary evening (SURPLUS_DOC_DAYS at DOC_SLOT) at least
+ * 20 hours away (it takes hours to make), clear of the monthly documentary's own evening and an hour from
+ * any other scheduled video.
+ */
+export function nextBankSlot(cfg: Config, now: Date, taken: Date[]): Date | undefined {
+  const today = dayKey(now, cfg.timezone);
+  const earliest = now.getTime() + 20 * 3600_000;
+  for (let d = 0; d < 180; d++) {
+    const at = localTime(addDays(today, d), cfg.docSlot, cfg.timezone);
+    if (at.getTime() < earliest) continue;
+    const wd = weekday(at, cfg.timezone);
+    if (!cfg.surplusDocDays.includes(wd)) continue;
+    if (cfg.docDays.includes(wd) && cfg.docWeeks.includes(weekOfMonth(at, cfg.timezone))) continue;
+    if (taken.some((t) => Math.abs(t.getTime() - at.getTime()) < 3600_000)) continue;
+    return at;
+  }
+  return undefined;
 }
 
 /** Week of the month (1-5) for a date in the channel's time zone. */
@@ -1671,22 +1688,31 @@ export async function maybeSelectDocumentary(
   const { db, cfg } = s;
   if (!cfg.docEnabled || !cfg.longformEnabled) return undefined;
   const now = s.now();
-  // Its own week, or, while ElevenLabs credits would be lost at the reset, any surplus day (one at a time).
-  const regular = cfg.docWeeks.includes(weekOfMonth(now, cfg.timezone));
-  const surplus = regular ? false : await surplusDocumentary(s);
-  if (!regular && !surplus) return undefined;
-  const due = evergreenDue(
-    now,
-    {
-      days: regular ? cfg.docDays : cfg.surplusDocDays,
-      slot: cfg.docSlot,
-      leadMinutes: cfg.docLeadMinutes,
-      graceMinutes: cfg.slotGraceMinutes,
-      timeZone: cfg.timezone,
-    },
-    await takenSlots(db),
-  );
-  if (!due) return undefined;
+  // The monthly documentary on its own week and day; otherwise, while ElevenLabs credits would be lost at
+  // the reset, a banked one: made overnight now, while the credits are there, and scheduled for the next
+  // free documentary evening, weeks ahead if need be (the owner's idea, 25 Oct 2026).
+  let due = cfg.docWeeks.includes(weekOfMonth(now, cfg.timezone))
+    ? evergreenDue(
+        now,
+        {
+          days: cfg.docDays,
+          slot: cfg.docSlot,
+          leadMinutes: cfg.docLeadMinutes,
+          graceMinutes: cfg.slotGraceMinutes,
+          timeZone: cfg.timezone,
+        },
+        await takenSlots(db),
+      )
+    : undefined;
+  let banked = false;
+  if (!due) {
+    // Overnight only: a documentary holds the factory for hours, and the day's Shorts come first.
+    if (!inWindow(now, cfg.bankWindow, cfg.timezone)) return undefined;
+    if (!(await surplusDocumentary(s))) return undefined;
+    due = nextBankSlot(cfg, now, await takenSlots(db));
+    if (!due) return undefined;
+    banked = true;
+  }
   const covered = (
     await db.query<{ franchise: string }>(
       `SELECT factcheck_json->'topic'->>'franchise' AS franchise FROM episodes WHERE lane = 'longform' AND factcheck_json->>'doc' = 'true' AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '3 years'`,
@@ -1743,8 +1769,13 @@ export async function maybeSelectDocumentary(
     franchise: topic.franchise,
     reason: topic.reason,
     slot_at: due.toISOString(),
+    banked,
   });
-  log("info", "documentary topic selected", { id, franchise: topic.franchise });
+  log("info", banked ? "documentary banked: made now on credits that would be lost, scheduled ahead" : "documentary topic selected", {
+    id,
+    franchise: topic.franchise,
+    publishes: due.toISOString(),
+  });
   return id;
 }
 

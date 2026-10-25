@@ -20,3 +20,20 @@ test("a balance that will fall under two months' worth by the reset loses nothin
   assert.equal(p.surplusPerDay, 0);
   assert.match(creditLine(p), /without losing any/);
 });
+
+test("a banked documentary goes to the first free documentary evening at least 20 hours out, never the monthly one's", async () => {
+  const { nextBankSlot } = await import("../src/pipeline.ts");
+  const { testConfig } = await import("./helpers.ts");
+  const cfg = testConfig("x", { timezone: "Europe/London", docSlot: "19:00", surplusDocDays: ["tue", "thu", "sat"], docDays: ["sat"], docWeeks: [1] });
+  // Sunday 25 Oct, just before midnight: Tuesday 27 Oct at 19:00 is the first evening 20 hours out.
+  const now = new Date("2026-10-25T23:50:00Z");
+  assert.equal(nextBankSlot(cfg, now, [])!.toISOString(), "2026-10-27T19:00:00.000Z");
+  // Tuesday and Thursday taken: Saturday 31 Oct (week 5, not the monthly documentary's week).
+  const taken = [new Date("2026-10-27T19:00:00Z"), new Date("2026-10-29T19:00:00Z")];
+  assert.equal(nextBankSlot(cfg, now, taken)!.toISOString(), "2026-10-31T19:00:00.000Z");
+  // With that taken too, Saturday 7 Nov is the monthly documentary's own evening, so Tuesday 3 Nov.
+  assert.equal(
+    nextBankSlot(cfg, now, [...taken, new Date("2026-10-31T19:00:00Z")])!.toISOString(),
+    "2026-11-03T19:00:00.000Z",
+  );
+});

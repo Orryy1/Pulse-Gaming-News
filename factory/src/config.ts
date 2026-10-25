@@ -156,6 +156,7 @@ export interface Config {
   elevenLabsReserve: number; // credits never spent, a cushion against overage
   surplusDocDays: string[]; // extra documentary days while credits would otherwise be lost
   surplusDocChars: number; // what one documentary costs in credits, roughly
+  bankWindow: string; // local "HH:MM-HH:MM" when a banked documentary may start (it holds the factory for hours)
   docDays: string[];
   docSlot: string;
   docWeeks: number[]; // weeks of the month it runs: 1 = the first such weekday
@@ -356,6 +357,7 @@ export function loadConfig(): Config {
     elevenLabsReserve: int("ELEVENLABS_RESERVE", 10_000),
     surplusDocDays: str("SURPLUS_DOC_DAYS", "tue,thu,sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     surplusDocChars: int("SURPLUS_DOC_CHARS", 35_000),
+    bankWindow: str("BANK_WINDOW", "23:45-03:00"),
     docDays: str("DOC_DAYS", "sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
     docSlot: str("DOC_SLOT", "19:00"),
     docWeeks: str("DOC_WEEKS", "1").split(",").map((w) => Number(w.trim())).filter((w) => w >= 1 && w <= 5),

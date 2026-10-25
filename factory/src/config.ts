@@ -103,6 +103,7 @@ export interface Config {
   focusTopic: string; // a franchise the editors favour for a while (e.g. a huge launch), empty = none
   focusUntil: string; // ISO date the focus ends
   focusNote: string; // one line on why, for the editors
+  calendarFile: string; // dated angles the editors see as "planned for today" (src/calendar.ts); empty = none
   focusMatch: string; // regex (case-insensitive) a story about the focus matches, e.g. "grand theft auto|\\bgta\\b"
   focusPlaylist: string; // a playlist every focus video joins while the focus runs, empty = none
   waveFrom: string; // ISO date a launch wave starts: extra Shorts on the focus, like a showcase sprint
@@ -290,6 +291,7 @@ export function loadConfig(): Config {
     focusTopic: str("FOCUS_TOPIC", ""),
     focusUntil: str("FOCUS_UNTIL", ""),
     focusNote: str("FOCUS_NOTE", ""),
+    calendarFile: str("CALENDAR_FILE", "calendar.md"),
     focusMatch: str("FOCUS_MATCH", ""),
     focusPlaylist: str("FOCUS_PLAYLIST", ""),
     waveFrom: str("LAUNCH_WAVE_FROM", ""),

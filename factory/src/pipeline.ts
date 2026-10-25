@@ -173,6 +173,7 @@ import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
+import { calendarBlock, readCalendar, type CalendarLane } from "./calendar.ts";
 import {
   captionable,
   gameplayScript,
@@ -682,9 +683,18 @@ async function addToSeries(s: Services, ep: Episode): Promise<void> {
 }
 
 /** For ranking topic pickers: YouTube's trending gaming videos and what viewers asked us to rank. */
-async function topicDemand(s: Services): Promise<string> {
+/** The calendar's plan for a lane: today's entries, and the next days' for the news desk. */
+export function calendarFor(cfg: Config, now: Date, lane: CalendarLane, aheadDays = 0): string {
+  if (!cfg.calendarFile) return "";
+  const today = dayKey(now, cfg.timezone);
+  const ahead = Array.from({ length: aheadDays }, (_, i) => addDays(today, i + 1));
+  return calendarBlock(readCalendar(cfg.calendarFile), today, lane, ahead);
+}
+
+async function topicDemand(s: Services, lane: CalendarLane = "any"): Promise<string> {
   return [
     focusBlock(s.cfg, s.now()),
+    calendarFor(s.cfg, s.now(), lane),
     trendingBlock(await s.trending().catch(() => []), 25),
     requestsBlock(await readRequests(s.db).catch(() => undefined)),
     pollBlock(await readPoll(s.db).catch(() => undefined), s.now()),
@@ -707,6 +717,7 @@ async function createFromChoice(
     await recentHeadlines(db),
     [
       focusBlock(s.cfg, s.now()),
+      calendarFor(s.cfg, s.now(), "news", 3),
       await performanceNotes(db, s.now()).catch(() => ""),
       await retentionNotes(db, s.now()).catch(() => ""),
       trendingBlock(await s.trending().catch(() => [])),
@@ -953,7 +964,7 @@ async function createEvergreen(
     s.llm,
     candidates,
     covered,
-    await topicDemand(s),
+    await topicDemand(s, "evergreen"),
   );
   if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
     log("info", "editor passed on every evergreen candidate", {
@@ -1041,7 +1052,7 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     s.llm,
     candidates,
     covered,
-    await topicDemand(s),
+    await topicDemand(s, "why"),
   );
   if (topic.candidate_index < 0) {
     log("info", "editor passed on every why question", {
@@ -1820,7 +1831,7 @@ export async function maybeSelectLongform(
     s.llm,
     candidates,
     covered,
-    await topicDemand(s),
+    await topicDemand(s, "long"),
   );
   if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
     log("info", "no long-form topic today", { reason: topic.reason });

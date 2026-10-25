@@ -2908,12 +2908,12 @@ async function adjudicateRanking(
   script: Script,
   facts: Array<{ title: string; facts: SteamFacts }>,
   attempt: number,
+  extra: Array<{ title: string; facts: string }> = [],
 ): Promise<string[]> {
-  const check = await factCheckRanking(
-    s.llm,
-    script,
-    facts.map((f) => ({ title: f.title, facts: factsText(f.facts) })),
-  );
+  const check = await factCheckRanking(s.llm, script, [
+    ...facts.map((f) => ({ title: f.title, facts: factsText(f.facts) })),
+    ...extra,
+  ]);
   const blockers = check.issues
     .filter((i) => i.severity === "blocker")
     .map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
@@ -3264,18 +3264,7 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "style_warnings", { problems });
   }
   if (!draft) throw new Error("evergreen script produced nothing");
-  // The final adjudication against the facts the writer was given: one rewrite on a blocker, then fail.
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const factual = await adjudicateRanking(
-      s,
-      ep,
-      evergreenToScript(draft),
-      facts,
-      attempt,
-    );
-    if (!factual.length) break;
-    draft = await writeEvergreen(s.llm, topic, facts, factual, brief);
-  }
+  // The format's own data (Steam's chart, deals or achievement rates) replaces the writer's numbers.
   const data = (
     ep.factcheck_json as {
       achievements?: Array<{
@@ -3287,12 +3276,41 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
       }>;
     } | null
   )?.achievements;
-  if (data?.length) draft = groundAchievements(draft, data);
   const climbers = (ep.factcheck_json as { climbers?: ClimberData[] } | null)
     ?.climbers;
-  if (climbers?.length) draft = groundClimbers(draft, climbers);
   const deals = (ep.factcheck_json as { deals?: Deal[] } | null)?.deals;
-  if (deals?.length) draft = groundDeals(draft, deals);
+  const ground = (d: typeof draft) => {
+    let g = d!;
+    if (data?.length) g = groundAchievements(g, data);
+    if (climbers?.length) g = groundClimbers(g, climbers);
+    if (deals?.length) g = groundDeals(g, deals);
+    return g;
+  };
+  // The final adjudication, on the grounded script and against everything the writer was given: the Steam
+  // facts and the format's own data (the chart's climbs, the deal prices). Without the data, a climbers
+  // Short was dropped for chart moves that came from the chart itself (25 Oct 2026). One rewrite, then fail.
+  const dataFacts = brief.trim()
+    ? [
+        {
+          title:
+            "The data this Short was built from (the format's own source, e.g. Steam's chart or store)",
+          facts: brief,
+        },
+      ]
+    : [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const factual = await adjudicateRanking(
+      s,
+      ep,
+      evergreenToScript(ground(draft)),
+      facts,
+      attempt,
+      dataFacts,
+    );
+    if (!factual.length) break;
+    draft = await writeEvergreen(s.llm, topic, facts, factual, brief);
+  }
+  draft = ground(draft);
   const script = evergreenToScript(draft);
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,

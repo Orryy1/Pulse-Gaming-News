@@ -189,8 +189,10 @@ export function speakTitles(text: string): string {
         /\b(Grand Theft Auto|GTA|Elder Scrolls|Final Fantasy|Civilization|Rocky|Halo|Gears of War|Metal Gear Solid|Resident Evil|Dragon Quest|Kingdom Hearts|Street Fighter|Tekken|Far Cry|Fallout|Diablo|Persona|Battlefield|Dark Souls|Borderlands|Hitman) (V|X)\b/g,
         (_m, series: string, n: string) => `${series} ${romanValue(n)}`,
       )
+      // A possessive or a hyphen after the numeral still counts ("GTA VI's trailer" came out as "viy's",
+      // 25 Oct 2026); a letter after it does not ("VIP", "XIV-ish" stays a word only when it is one).
       .replace(
-        /(?<![A-Za-z'’-])([IVX]{2,6})(?![A-Za-z'’-])/g,
+        /(?<![A-Za-z'’-])([IVX]{2,6})(?=['’]s\b|-|(?![A-Za-z'’]))/g,
         (m: string, t: string) => {
           const n = romanValue(t);
           return n === undefined ? m : String(n);

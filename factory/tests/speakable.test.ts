@@ -154,3 +154,10 @@ test("a lone V or X is read as a numeral after a numbered series, and left alone
   assert.equal(speakTitles("Mega Man X is great"), "Mega Man X is great");
   assert.equal(speakTitles("the Xbox Series X and the X button"), "the Xbox Series X and the X button");
 });
+
+test("a Roman numeral before a possessive or a hyphen is still a number", () => {
+  assert.equal(speakTitles("Grand Theft Auto VI's launch trailer is out"), "Grand Theft Auto 6's launch trailer is out");
+  assert.equal(speakTitles("GTA VI’s map"), "GTA 6’s map");
+  assert.equal(speakTitles("a GTA VI-sized launch"), "a GTA 6-sized launch");
+  assert.equal(speakTitles("VIP passes"), "VIP passes");
+});

@@ -1656,7 +1656,11 @@ export async function surplusDocumentary(s: Services): Promise<boolean> {
  * 20 hours away (it takes hours to make), clear of the monthly documentary's own evening and an hour from
  * any other scheduled video.
  */
-export function nextBankSlot(cfg: Config, now: Date, taken: Date[]): Date | undefined {
+export function nextBankSlot(
+  cfg: Config,
+  now: Date,
+  taken: Date[],
+): Date | undefined {
   const today = dayKey(now, cfg.timezone);
   const earliest = now.getTime() + 20 * 3600_000;
   for (let d = 0; d < 180; d++) {
@@ -1664,8 +1668,13 @@ export function nextBankSlot(cfg: Config, now: Date, taken: Date[]): Date | unde
     if (at.getTime() < earliest) continue;
     const wd = weekday(at, cfg.timezone);
     if (!cfg.surplusDocDays.includes(wd)) continue;
-    if (cfg.docDays.includes(wd) && cfg.docWeeks.includes(weekOfMonth(at, cfg.timezone))) continue;
-    if (taken.some((t) => Math.abs(t.getTime() - at.getTime()) < 3600_000)) continue;
+    if (
+      cfg.docDays.includes(wd) &&
+      cfg.docWeeks.includes(weekOfMonth(at, cfg.timezone))
+    )
+      continue;
+    if (taken.some((t) => Math.abs(t.getTime() - at.getTime()) < 3600_000))
+      continue;
     return at;
   }
   return undefined;
@@ -1773,11 +1782,17 @@ export async function maybeSelectDocumentary(
     slot_at: due.toISOString(),
     banked,
   });
-  log("info", banked ? "documentary banked: made now on credits that would be lost, scheduled ahead" : "documentary topic selected", {
-    id,
-    franchise: topic.franchise,
-    publishes: due.toISOString(),
-  });
+  log(
+    "info",
+    banked
+      ? "documentary banked: made now on credits that would be lost, scheduled ahead"
+      : "documentary topic selected",
+    {
+      id,
+      franchise: topic.franchise,
+      publishes: due.toISOString(),
+    },
+  );
   return id;
 }
 
@@ -2744,10 +2759,22 @@ export function stampsFor(
   if (!st?.word?.trim() || !st.text?.trim()) return [];
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9$]/g, "");
   // The voice reads figures in words ("19" may come out "nineteenth"): match the spoken form's first token too.
-  const wants = [norm(st.word), norm(speakable(st.word).split(/\s+/)[0] ?? "")].filter(Boolean);
-  const hit = words.find((w) => wants.some((x) => norm(w.text) === x || norm(w.text).startsWith(x)));
+  const wants = [
+    norm(st.word),
+    norm(speakable(st.word).split(/\s+/)[0] ?? ""),
+  ].filter(Boolean);
+  const hit = words.find((w) =>
+    wants.some((x) => norm(w.text) === x || norm(w.text).startsWith(x)),
+  );
   if (!hit) return [];
-  return [{ at: hit.start, text: st.text.toUpperCase().slice(0, 14), sub: st.sub?.trim() ? st.sub.toUpperCase() : undefined, colour: stampColour(st.tone) }];
+  return [
+    {
+      at: hit.start,
+      text: st.text.toUpperCase().slice(0, 14),
+      sub: st.sub?.trim() ? st.sub.toUpperCase() : undefined,
+      colour: stampColour(st.tone),
+    },
+  ];
 }
 
 /** How the last eight Shorts opened their take and closed, so the writer and the validator keep the shapes varied. */
@@ -3525,11 +3552,17 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     `SELECT count(*) AS n FROM episodes WHERE created_at < $1 AND status NOT IN ('failed','rejected')`,
     [ep.created_at],
   );
-  const voice = pickVoice(s.cfg, Number(ord?.n ?? 0));
+  // The narrator test: half of news Shorts are narrated by the test voice (Alice), the rest by the usual one.
+  const voice = narratorFor(s.cfg, ep) ?? pickVoice(s.cfg, Number(ord?.n ?? 0));
   // A twin reads its figures in its own language (no English number-to-words pass) and only ElevenLabs
   // speaks it: the local clone speaks English.
   const twin = ep.lane === "twin";
-  const desk = deskFor(s.cfg, ep);
+  const desk0 = deskFor(s.cfg, ep);
+  // When the desk partner would be the narrator, the usual narrator asks the question instead.
+  const desk =
+    desk0 && desk0.voice.id === voice.id
+      ? { voice: { id: s.cfg.elevenLabsVoiceId, name: s.cfg.narratorName } }
+      : desk0;
   let narration: Awaited<ReturnType<Services["synthesise"]>>;
   if (desk && s.stitchTakes) {
     // The desk experiment: the narrator up to the facts, the desk partner's question in a second voice,
@@ -3669,6 +3702,23 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
  * is news, and the episode falls in the experiment's share (by a stable hash of its id, so a re-voice gets
  * the same answer). Returns the partner's voice.
  */
+/**
+ * The narrator test: on news, breaking and free Shorts, NARRATOR_TEST_SHARE of them (by a stable hash of
+ * the episode id, salted so it is independent of the desk test's split) are narrated by the test voice.
+ * Returns that voice, or undefined for the usual narrator.
+ */
+export function narratorFor(
+  cfg: Config,
+  ep: Pick<Episode, "id" | "lane">,
+): { id: string; name: string } | undefined {
+  if (!cfg.narratorTestVoiceId || cfg.narratorTestShare <= 0) return undefined;
+  if (!["news", "news_breaking", "free"].includes(ep.lane)) return undefined;
+  let h = 7;
+  for (const c of `narrator:${ep.id}`) h = (h * 131 + c.charCodeAt(0)) >>> 0;
+  if (h % 1000 >= cfg.narratorTestShare * 1000) return undefined;
+  return { id: cfg.narratorTestVoiceId, name: cfg.narratorTestVoiceName };
+}
+
 export function deskFor(
   cfg: Config,
   ep: Pick<Episode, "id" | "lane" | "script_json">,
@@ -5445,8 +5495,14 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // The stamp lands with the channel's landing sound, peak on the word, when the mix has room for it.
   for (const st of stampsFor(script, words)) {
     const name = SFX.land[0];
-    const f = Math.max(0, Math.round(st.at * plan.fps) - leadFrames(name, plan.fps));
-    if (plan.sfx.length < MAX_SFX && plan.sfx.every((c) => Math.abs(c.frame - f) >= 60))
+    const f = Math.max(
+      0,
+      Math.round(st.at * plan.fps) - leadFrames(name, plan.fps),
+    );
+    if (
+      plan.sfx.length < MAX_SFX &&
+      plan.sfx.every((c) => Math.abs(c.frame - f) >= 60)
+    )
       plan.sfx.push({ file: sfxFile(name), frame: f, volume: LEVEL.land });
   }
   assets.plan = plan;

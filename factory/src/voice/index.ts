@@ -57,7 +57,7 @@ export async function polishVoice(file: string): Promise<number> {
 
 /** The ElevenLabs voice for the n-th Short (0-based): the pool rotates every `rotation` Shorts, the configured voice when the pool is empty. */
 export function pickVoice(cfg: Config, ordinal: number): { id: string; name: string } {
-  if (!cfg.voicePool.length) return { id: cfg.elevenLabsVoiceId, name: cfg.elevenLabsVoiceId };
+  if (!cfg.voicePool.length) return { id: cfg.elevenLabsVoiceId, name: cfg.narratorName || cfg.elevenLabsVoiceId };
   return cfg.voicePool[Math.floor(Math.max(0, ordinal) / cfg.voiceRotation) % cfg.voicePool.length]!;
 }
 

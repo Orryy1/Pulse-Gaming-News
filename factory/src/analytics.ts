@@ -402,6 +402,7 @@ interface RetentionRow {
   lane?: string;
   metrics?: unknown;
   desk?: boolean;
+  narrator?: string | null;
   script_json: Episode["script_json"];
   raw:
     | {
@@ -430,10 +431,11 @@ async function retentionRows(
     footageShare?: number;
     format?: string;
     desk?: boolean;
+    narrator?: string;
   }>
 > {
   const rows = await db.query<RetentionRow>(
-    `SELECT e.id, e.lane, e.script_json, m.raw, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS metrics, (e.assets_json->'desk') IS NOT NULL AS desk
+    `SELECT e.id, e.lane, e.script_json, m.raw, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS metrics, (e.assets_json->'desk') IS NOT NULL AS desk, e.assets_json->'voice'->>'name' AS narrator
        FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
       WHERE m.label = 'retention' AND m.captured_at > $1::timestamptz - interval '45 days' AND e.lane <> 'twin'`,
     [now],
@@ -452,6 +454,8 @@ async function retentionRows(
         hookWords: r.script_json?.hook ? r.script_json.hook.split(/\s+/).filter(Boolean).length : undefined,
         footageShare: metric("footage_share"),
         desk: Boolean(r.desk),
+        // The old rotation stored the voice id as its name; Liam's id reads as Liam.
+        narrator: r.narrator === "TX3LPaxmHKxFdv7VOQHJ" ? "Liam" : (r.narrator ?? undefined),
         format: r.script_json?.evergreen_format ?? (r.script_json?.runtime === "long" ? "long" : r.lane ?? "news"),
         pct: Number(raw?.avgViewPercent ?? 0),
         subs: Number(raw?.subscribersGained ?? 0),
@@ -494,7 +498,7 @@ export function openingLine(
  * Advice for the editor and the writer, never a rule: the samples are small and the metric is a proxy.
  */
 export function formatLessons(
-  rows: Array<{ stay?: number; pct: number; hookWords?: number; footageShare?: number; format?: string; desk?: boolean }>,
+  rows: Array<{ stay?: number; pct: number; hookWords?: number; footageShare?: number; format?: string; desk?: boolean; narrator?: string }>,
 ): string[] {
   const score = (r: (typeof rows)[number]) => r.stay ?? r.pct;
   const avg = (xs: typeof rows) =>
@@ -508,6 +512,15 @@ export function formatLessons(
   const footage = avg(rows.filter((r) => r.footageShare !== undefined && r.footageShare >= 0.4));
   const cards = avg(rows.filter((r) => r.footageShare !== undefined && r.footageShare < 0.4));
   if (footage && cards) out.push(line("Picture", footage, "mostly moving footage", cards, "mostly stills and cards"));
+  // The narrator test: the two narrators with the most Shorts, each against the other.
+  const counts = new Map<string, number>();
+  for (const r of rows) if (r.narrator) counts.set(r.narrator, (counts.get(r.narrator) ?? 0) + 1);
+  const [n1, n2] = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
+  if (n1 && n2) {
+    const a = avg(rows.filter((r) => r.narrator === n1));
+    const b = avg(rows.filter((r) => r.narrator === n2));
+    if (a && b) out.push(line("Narrator", a, n1, b, n2));
+  }
   const withDesk = avg(rows.filter((r) => r.desk === true));
   const noDesk = avg(rows.filter((r) => r.desk === false));
   if (withDesk && noDesk) out.push(line("Desk question before the take", withDesk, "with it", noDesk, "without"));

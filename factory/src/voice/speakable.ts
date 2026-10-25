@@ -181,6 +181,10 @@ export function speakTitles(text: string): string {
     smoothTitleColons(text)
       // "Series X|S" came out as "Series XXS": the console is said "Series X and S" (captions show X|S).
       .replace(/\bSeries X\s?[|/]\s?S\b/g, "Series X and S")
+      // Names the voice stresses wrongly when written as titles: in lower case the last word tails off the
+      // name as people say it ("Phantom Blade ZERO" measured flat against "Blade"; "zero" falls four
+      // semitones, 25 Oct 2026). Captions are capitals, so the screen is unchanged.
+      .replace(/\bPhantom Blade Zero\b/g, "Phantom Blade zero")
       .replace(/\bWWII\b/g, "World War Two")
       .replace(/\bWWI\b/g, "World War One")
       .replace(
@@ -306,7 +310,9 @@ export function speakUnits(text: string): string {
 }
 
 export function speakable(text: string): string {
-  return speakNumbers(speakYearsAndMoney(roundPrices(roundCounts(speakUnits(text)))));
+  return speakNumbers(
+    speakYearsAndMoney(roundPrices(roundCounts(speakUnits(text)))),
+  );
 }
 
 /**
@@ -329,13 +335,18 @@ export function roundPrices(text: string): string {
       /([$£€])(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})(?![\d.,]\d|\s?(?:bn|billion|million|m\b|k\b))/gi,
       (m, sym: string, whole: string, cents: string) => {
         const r = round(whole, cents);
-        return r === undefined ? m : `${sym}${Number(r).toLocaleString("en-US")}`;
+        return r === undefined
+          ? m
+          : `${sym}${Number(r).toLocaleString("en-US")}`;
       },
     )
-    .replace(/(?<![\d.,])(\d+),(\d{2})\s?€/g, (m, whole: string, cents: string) => {
-      const r = round(whole, cents);
-      return r === undefined ? m : `${r}€`;
-    });
+    .replace(
+      /(?<![\d.,])(\d+),(\d{2})\s?€/g,
+      (m, whole: string, cents: string) => {
+        const r = round(whole, cents);
+        return r === undefined ? m : `${r}€`;
+      },
+    );
 }
 
 /** Figures in words exactly as written, without rounding: for comparing a transcript with a script. */

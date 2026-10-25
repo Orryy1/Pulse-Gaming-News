@@ -108,6 +108,11 @@ export interface Config {
   deskVoiceId: string; // ElevenLabs voice of the desk partner; empty = off
   deskVoiceName: string;
   deskShare: number; // 0-1: the share of eligible Shorts that get the desk question
+  /** The narrator test: a share of news Shorts narrated by another ElevenLabs voice. */
+  narratorTestVoiceId: string; // empty = off
+  narratorTestVoiceName: string;
+  narratorTestShare: number;
+  narratorName: string; // the usual narrator's name, for the Discord card and the lessons
   focusMatch: string; // regex (case-insensitive) a story about the focus matches, e.g. "grand theft auto|\\bgta\\b"
   focusPlaylist: string; // a playlist every focus video joins while the focus runs, empty = none
   waveFrom: string; // ISO date a launch wave starts: extra Shorts on the focus, like a showcase sprint
@@ -309,6 +314,10 @@ export function loadConfig(): Config {
     deskVoiceId: str("DESK_VOICE_ID", ""),
     deskVoiceName: str("DESK_VOICE_NAME", "Alice"),
     deskShare: Math.max(0, Math.min(1, Number(str("DESK_SHARE", "0.5")))),
+    narratorTestVoiceId: str("NARRATOR_TEST_VOICE_ID", ""),
+    narratorTestVoiceName: str("NARRATOR_TEST_VOICE_NAME", "Alice"),
+    narratorTestShare: Math.max(0, Math.min(1, Number(str("NARRATOR_TEST_SHARE", "0.5")))),
+    narratorName: str("NARRATOR_NAME", "Liam"),
     focusMatch: str("FOCUS_MATCH", ""),
     focusPlaylist: str("FOCUS_PLAYLIST", ""),
     waveFrom: str("LAUNCH_WAVE_FROM", ""),

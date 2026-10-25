@@ -1060,7 +1060,7 @@ test("the desk experiment: a second voice asks the viewer's question before the 
   await tick(s);
   const ep = await only(db);
   assert.equal(ep.status, "published");
-  assert.deepEqual(f.voices, ["v", "Alice", "v"], "narrator, the desk partner's question, narrator");
+  assert.deepEqual(f.voices, ["Liam", "Alice", "Liam"], "narrator, the desk partner's question, narrator");
   const a = ep.assets_json!;
   assert.equal(a.desk?.voice.name, "Alice");
   assert.equal(a.desk?.question, "So is early 2027 a sign of trouble?");
@@ -1087,3 +1087,24 @@ test("outside the experiment's share, or with the desk off, a Short is voiced in
 function episodeDirOf(s: Services, id: string): string {
   return path.join(s.cfg.dataDir, "episodes", id);
 }
+
+test("the narrator test: the test voice narrates its share of news Shorts, and Liam asks the desk question when Alice narrates", async () => {
+  const { narratorFor } = await import("../src/pipeline.ts");
+  const cfg = testConfig("x", { narratorTestVoiceId: "voice_alice", narratorTestVoiceName: "Alice", narratorTestShare: 0.5 });
+  const ids = Array.from({ length: 200 }, (_, i) => `ep_2026_${i.toString(16).padStart(6, "0")}`);
+  const alice = ids.filter((id) => narratorFor(cfg, { id, lane: "news" })).length;
+  assert.ok(alice > 70 && alice < 130, `about half: ${alice}`);
+  assert.equal(narratorFor(cfg, { id: ids[0]!, lane: "evergreen" }), undefined, "rankings keep the usual narrator");
+  assert.equal(narratorFor(testConfig("x"), { id: ids[0]!, lane: "news" }), undefined, "off by default");
+  // In a Short Alice narrates with the desk on, the question is asked by the usual narrator, never by herself.
+  const aliceId = ids.find((id) => narratorFor(cfg, { id, lane: "news" }))!;
+  const { db, f, s } = await setup({ narratorTestVoiceId: "voice_alice", narratorTestVoiceName: "Alice", narratorTestShare: 0.5, deskVoiceId: "voice_alice", deskVoiceName: "Alice", deskShare: 1, elevenLabsVoiceId: "voice_liam", narratorName: "Liam" });
+  const { shortId } = await import("../src/lib/util.ts");
+  void shortId;
+  await db.query(`INSERT INTO episodes (id, story_hash, story_json, status, lane, script_json) VALUES ($1, $1, '{"headline":"x","items":[],"sources":[],"corroborated":true}', 'scripted', 'news', $2)`, [aliceId, JSON.stringify(goodScript())]);
+  const ep = (await getEpisode(db, aliceId))!;
+  const { advance } = await import("../src/pipeline.ts");
+  await advance(s, ep);
+  assert.deepEqual(f.voices, ["Alice", "Liam", "Alice"]);
+  await db.close();
+});

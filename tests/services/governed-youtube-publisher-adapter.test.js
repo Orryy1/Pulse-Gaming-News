@@ -10,7 +10,10 @@ const {
   assertRemoteDisarmAuthority,
   confirmExactGovernedYoutubeScheduledRelease,
   createAuthenticatedYoutubeClient,
+  disarmExactGovernedYoutubeScheduledRelease,
+  normaliseExactYoutubeStagedBinding,
   prestageExactGovernedYoutubeRelease,
+  readExactScheduledYoutubeTicket,
   verifyExactGovernedYoutubePrivatePrestage,
 } = require("../../lib/services/governed-youtube-publisher-adapter");
 const {
@@ -211,6 +214,7 @@ function exactBinding(overrides = {}) {
 
 function scheduledEvent(overrides = {}) {
   const evidence = {
+    channel_id: CHANNEL_ID,
     schedule_verified: true,
     control_tower_verdict: "GREEN",
     control_tower_checked_at: PRESTAGE_AT.toISOString(),
@@ -261,6 +265,8 @@ function leaseRunner(calls) {
     calls.lease += 1;
     calls.operation = input.operation;
     calls.leaseChannel = input.channelId;
+    calls.leaseInputs ||= [];
+    calls.leaseInputs.push(input);
     return input.task({
       assertHealthy() {
         calls.leaseAssertions += 1;
@@ -501,6 +507,136 @@ function baseFixture({
   };
   return { calls, governance, repos };
 }
+
+test("all YouTube post-admission adapters thread trusted runtime, claimed job and canonical admission authority", async () => {
+  const runtimeAuthority = Object.freeze({
+    runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+    child_pid: process.pid,
+    child_started_at: "2026-08-02T10:00:00.000Z",
+    authority_fingerprint: "a".repeat(64),
+  });
+  const claimedJobAuthority = Object.freeze({
+    schema_version: "pulse-claimed-job-authority-v1",
+    job_id: 73,
+    claimed_job_authority_sha256: "9".repeat(64),
+  });
+  const repos = { db: { authority: true }, runtimeLeases: { exact: true } };
+  const operations = [
+    [prestageExactGovernedYoutubeRelease, "prestage_governed_youtube_release", {}],
+    [
+      verifyExactGovernedYoutubePrivatePrestage,
+      "verify_governed_youtube_private_prestage",
+      {},
+    ],
+    [
+      disarmExactGovernedYoutubeScheduledRelease,
+      "disarm_governed_youtube_scheduled_release",
+      { reason: "terminal disarm continuation" },
+    ],
+    [armExactGovernedYoutubeScheduledRelease, "arm_governed_youtube_scheduled_release", {}],
+    [
+      confirmExactGovernedYoutubeScheduledRelease,
+      "confirm_governed_youtube_scheduled_release",
+      {},
+    ],
+  ];
+  for (const [adapter, operation, extra] of operations) {
+    let leaseInput = null;
+    await adapter({
+      exactStagedBinding: exactBinding(),
+      channelId: CHANNEL_ID,
+      repos,
+      runtimeAuthority,
+      claimedJobAuthority,
+      admissionContext: { channel_id: "stacked", story_id: "forged" },
+      runWithPublisherLease(input) {
+        leaseInput = input;
+        return { captured: true };
+      },
+      ...extra,
+    });
+    assert.equal(leaseInput.operation, operation);
+    assert.equal(leaseInput.db, repos.db);
+    assert.equal(leaseInput.runtimeAuthority, runtimeAuthority);
+    assert.equal(leaseInput.claimedJobAuthority, claimedJobAuthority);
+    assert.deepEqual(leaseInput.admissionContext, {
+      schema_version: "pulse-admitted-publication-operation-v2",
+      channel_id: CHANNEL_ID,
+      story_id: STORY_ID,
+      platform: "youtube",
+      scheduled_event_id: 42,
+      scheduled_for: SCHEDULED_FOR,
+      dispatch_idempotency_key: DISPATCH_KEY,
+      request_fingerprint: REQUEST_FINGERPRINT,
+      runway_lock_sha256: RUNWAY_LOCK_SHA256,
+    });
+  }
+});
+
+test("staged binding rejects unsafe event ids in camelCase and snake_case", () => {
+  for (const invalid of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "junk"]) {
+    assert.throws(
+      () =>
+        normaliseExactYoutubeStagedBinding({
+          ...exactBinding(),
+          scheduled_event_id: invalid,
+        }),
+      /youtube_exact_staged_binding_invalid/,
+    );
+    const camel = {
+      storyId: STORY_ID,
+      channelId: CHANNEL_ID,
+      platform: "youtube",
+      scheduledEventId: invalid,
+      scheduledFor: SCHEDULED_FOR,
+      dispatchIdempotencyKey: DISPATCH_KEY,
+      requestFingerprint: REQUEST_FINGERPRINT,
+      runwayLockSha256: RUNWAY_LOCK_SHA256,
+      mediaSha256: MEDIA_SHA256,
+      scriptSha256: SCRIPT_SHA256,
+    };
+    assert.throws(
+      () => normaliseExactYoutubeStagedBinding(camel),
+      /youtube_exact_staged_binding_invalid/,
+    );
+  }
+});
+
+test("exact SCHEDULED ticket rejects channel substitution while comparing the runway hash", () => {
+  const binding = normaliseExactYoutubeStagedBinding(exactBinding());
+  const channelSubstitution = scheduledEvent({
+    evidence: { channel_id: "stacked" },
+  });
+  assert.throws(
+    () =>
+      readExactScheduledYoutubeTicket({
+        governance: {
+          getLatestLifecycleEvent() {
+            return channelSubstitution;
+          },
+        },
+        binding,
+        validatePublicationEvidence: () => ({}),
+      }),
+    /youtube_exact_scheduled_ticket_channel_mismatch/,
+  );
+  const runwaySubstitution = scheduledEvent({
+    evidence: { runway_lock_sha256: "8".repeat(64) },
+  });
+  assert.throws(
+    () =>
+      readExactScheduledYoutubeTicket({
+        governance: {
+          getLatestLifecycleEvent() {
+            return runwaySubstitution;
+          },
+        },
+        binding,
+        validatePublicationEvidence: () => ({}),
+      }),
+    /youtube_exact_scheduled_ticket_runway_lock_mismatch/,
+  );
+});
 
 function assertHealthyLiveControl(calls) {
   return ({ phase }) => {
@@ -1246,6 +1382,7 @@ test("T-60 adapter exposes the raw emergency disarmer as the exact anchored-obje
     lifecycleState: "PLATFORM_OBJECT_CREATED",
   });
   const candidates = [];
+  let injectedContainmentCalls = 0;
 
   const result = await verifyExactGovernedYoutubePrivatePrestage({
     exactStagedBinding: exactBinding(),
@@ -1262,6 +1399,22 @@ test("T-60 adapter exposes the raw emergency disarmer as the exact anchored-obje
     },
     validatePublicationEvidence(evidence) {
       return evidence.publication_evidence;
+    },
+    async containUnexpectedObject(candidate) {
+      injectedContainmentCalls += 1;
+      return {
+        confirmed: true,
+        emergencyContainment: true,
+        compensationRequired: true,
+        compensationAttempted: true,
+        compensationConfirmed: true,
+        externalId: candidate.externalId,
+        verifiedAt: "2026-07-28T18:00:01.000Z",
+        evidence: {
+          schedule_disarm_confirmed: true,
+          checked_at: "2026-07-28T18:00:01.000Z",
+        },
+      };
     },
     async createAuthenticatedYoutubeClient() {
       fixture.calls.auth += 1;
@@ -1321,6 +1474,8 @@ test("T-60 adapter exposes the raw emergency disarmer as the exact anchored-obje
   assert.equal(result.confirmed, true);
   assert.equal(result.emergencyContainment, true);
   assert.equal(result.compensationConfirmed, true);
+  assert.equal(fixture.calls.lease, 1);
+  assert.equal(injectedContainmentCalls, 0);
   assert.equal(fixture.calls.auth, 1);
   assert.equal(candidates.length, 1);
   assert.equal(

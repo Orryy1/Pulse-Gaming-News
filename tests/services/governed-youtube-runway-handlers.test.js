@@ -30,6 +30,8 @@ const HASH = Object.freeze({
   admission: "7".repeat(64),
   revision: "8".repeat(64),
 });
+const RUNTIME_AUTHORITY = Object.freeze({ runtime: "trusted" });
+const CLAIMED_JOB_AUTHORITY = Object.freeze({ claim: "trusted" });
 
 function controlledExperimentObservation(
   storyId = "primary-ready",
@@ -1586,7 +1588,7 @@ test("governed admission and dispatch enforce the persisted runway HOLD before l
   assert.equal(admission.status, "held");
   assert.ok(
     admission.blockers.includes(
-      "runway_lock_artifact_required",
+      "publication_admission_authority_required",
     ),
   );
   assert.equal(admission.lifecycle_mutation_attempted, false);
@@ -2461,6 +2463,7 @@ test("T-70 anchors one exact private unscheduled object without creating release
   assert.equal(t90.verdict, "GREEN");
 
   let state = null;
+  let prestageInput = null;
   const result =
     await handlers.prestage_governed_youtube_release(
       {
@@ -2535,7 +2538,10 @@ test("T-70 anchors one exact private unscheduled object without creating release
             live_publish_enabled: true,
           };
         },
-        async prestageExactGovernedYoutubeRelease() {
+        runtimeAuthority: RUNTIME_AUTHORITY,
+        claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
+        async prestageExactGovernedYoutubeRelease(input) {
+          prestageInput = input;
           state = {
             lifecycle_state:
               "PLATFORM_OBJECT_CREATED",
@@ -2563,6 +2569,8 @@ test("T-70 anchors one exact private unscheduled object without creating release
     JSON.stringify(result),
   );
   assert.equal(result.verdict, "GREEN");
+  assert.equal(prestageInput.runtimeAuthority, RUNTIME_AUTHORITY);
+  assert.equal(prestageInput.claimedJobAuthority, CLAIMED_JOB_AUTHORITY);
   assert.equal(
     result.private_unscheduled_object_created,
     true,
@@ -2608,6 +2616,178 @@ test("T-70 anchors one exact private unscheduled object without creating release
     checkpoint.external_id,
     "youtube-primary-object",
   );
+});
+
+test("T-70 decisive pre-create recovery promotes the reserve only inside the publication-admission lease", async (t) => {
+  const runway = await materialiseSloMonitorRunway(t);
+  await fs.writeJson(
+    path.join(runway.windowDir, "reserve-admission.json"),
+    {
+      schema_version:
+        "pulse-governed-youtube-reserve-admission-packet-v1",
+      scheduled_for: runway.lock.scheduled_for,
+      runway_lock_sha256: runway.lock.lock_sha256,
+      story_id: runway.lock.reserve.story_id,
+      admission: { human_review_status: "approved" },
+    },
+  );
+  const db = new Database(":memory:");
+  t.after(() => db.close());
+  db.exec(`
+    CREATE TABLE platform_dispatch_ledger (
+      id INTEGER PRIMARY KEY,
+      story_id TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      verification_evidence_json TEXT
+    );
+    CREATE TABLE operator_audit_log (
+      id INTEGER PRIMARY KEY,
+      action TEXT,
+      target_type TEXT,
+      target_id TEXT,
+      decision TEXT,
+      evidence_json TEXT
+    );
+  `);
+  db.prepare(
+    `INSERT INTO platform_dispatch_ledger
+       (id, story_id, platform, event_type, idempotency_key,
+        verification_evidence_json)
+     VALUES (?, ?, 'youtube', 'DISPATCH_FAILED_BEFORE_CREATE', ?, ?)`,
+  ).run(
+    91,
+    runway.lock.primary.story_id,
+    "primary-pre-create-failure",
+    JSON.stringify({
+      platform_contacted: false,
+      create_attempt_started: false,
+      uncertain_external_creation: false,
+      external_id: null,
+    }),
+  );
+  runway.publicationState.lifecycle_state =
+    "DISPATCH_FAILED_BEFORE_CREATE";
+  runway.publicationState.external_id = null;
+  runway.publicationState.verification_status =
+    "failed_before_create";
+  runway.publicationState.last_event_id = 91;
+
+  const leases = { marker: "publication-admission-leases" };
+  const publicationAdmissionLease = {
+    acquired: true,
+    lease_name: "publication-admission:global",
+    expires_at: "2026-07-28T17:54:00.000Z",
+    current_lock_owner_sha256: "d".repeat(64),
+    claimed_job_authority_sha256: "e".repeat(64),
+  };
+  let promotionCalls = 0;
+  let admissionCalls = 0;
+  const result =
+    await handlers.prestage_governed_youtube_release(
+      {
+        id: 901,
+        attempt_count: 2,
+        kind: "prestage_governed_youtube_release",
+        channel_id: "pulse-gaming",
+        run_at: "2026-07-28 17:50:00",
+        payload: {
+          now: "2026-07-28T17:52:01.000Z",
+          story_id: runway.lock.primary.story_id,
+          platform: "youtube",
+          scheduled_for: runway.lock.scheduled_for,
+          scheduled_event_id: 801,
+          request_fingerprint: "a".repeat(64),
+          runway_root: runway.runwayRoot,
+          runway_lock_sha256: runway.lock.lock_sha256,
+          private_prestage_authority: true,
+          catch_up_allowed: false,
+          publish_authority: false,
+          external_posting: false,
+        },
+      },
+      {
+        ...runway.context,
+        env: {
+          PULSE_STATE_ROOT: runway.runwayRoot,
+          PULSE_OPERATING_MODE: "LIVE_GUARDED",
+          PULSE_YOUTUBE_OAUTH_CLIENT_SHA256: "7".repeat(64),
+          AUTO_PUBLISH: "true",
+          PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+          USE_JOB_QUEUE: "true",
+          USE_SQLITE: "true",
+          PULSE_PRIMARY_INSTANCE: "true",
+          PULSE_EMERGENCY_KILL_SWITCH: "false",
+          PULSE_KILL_SWITCH: "false",
+        },
+        repos: {
+          ...runway.context.repos,
+          db,
+          runtimeLeases: leases,
+        },
+        workerId: "critical-window-worker",
+        assertLeaseHealthy() {},
+        runtimeAuthority: RUNTIME_AUTHORITY,
+        claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
+        resolveRunwayFreshControl() {
+          return {
+            verdict: "GREEN",
+            checked_at: "2026-07-28T17:52:01.000Z",
+            kill_switch_healthy: true,
+            operating_contract_valid: true,
+            scheduler_owner_healthy: true,
+            live_publish_enabled: true,
+          };
+        },
+        async runWithPublicationAdmissionLease(input) {
+          assert.equal(input.db, db);
+          assert.equal(input.leases, leases);
+          assert.equal(
+            input.operation,
+            "promote_governed_youtube_reserve_release",
+          );
+          assert.equal(input.runtimeAuthority, RUNTIME_AUTHORITY);
+          assert.equal(
+            input.claimedJobAuthority,
+            CLAIMED_JOB_AUTHORITY,
+          );
+          return input.task({
+            assertHealthy() {},
+            publicationAdmissionLease,
+          });
+        },
+        async admitPublication(input) {
+          admissionCalls += 1;
+          assert.equal(
+            input.publicationAdmissionLease,
+            publicationAdmissionLease,
+          );
+          return { admitted: true };
+        },
+        async promoteGovernedYoutubeReserveRelease(input) {
+          promotionCalls += 1;
+          assert.equal(typeof input.admitPublication, "function");
+          await input.admitPublication({
+            storyId: runway.lock.reserve.story_id,
+          });
+          return {
+            promoted: true,
+            status: "reserve_admitted",
+            promotion_audit_id: 92,
+            cancelled_primary_jobs: [],
+            reserve_release_jobs: [],
+          };
+        },
+      },
+    );
+
+  assert.equal(result.status, "reserve_promoted", JSON.stringify(result));
+  assert.equal(result.verdict, "AMBER");
+  assert.equal(result.recovery_promotion_only, true);
+  assert.equal(result.reserve_promoted, true);
+  assert.equal(promotionCalls, 1);
+  assert.equal(admissionCalls, 1);
 });
 
 test("T-60 verifies one exact private processed unscheduled object without disarm, promotion or commitment", async (t) => {
@@ -2718,6 +2898,7 @@ test("T-60 verifies one exact private processed unscheduled object without disar
     },
   };
   let disarmCalls = 0;
+  let verifyInput = null;
   let promotionCalls = 0;
   const env = {
     PULSE_STATE_ROOT: outDir,
@@ -2751,6 +2932,8 @@ test("T-60 verifies one exact private processed unscheduled object without disar
         env,
         workerId: "critical-window-worker",
         assertLeaseHealthy() {},
+        runtimeAuthority: RUNTIME_AUTHORITY,
+        claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
         irreversibleBoundaryNow: () =>
           new Date("2026-07-28T18:00:00.000Z"),
         repos: {
@@ -2770,7 +2953,8 @@ test("T-60 verifies one exact private processed unscheduled object without disar
             live_publish_enabled: true,
           };
         },
-        async verifyExactGovernedYoutubePrivatePrestage() {
+        async verifyExactGovernedYoutubePrivatePrestage(input) {
+          verifyInput = input;
           state = {
             lifecycle_state: "PLATFORM_OBJECT_CREATED",
             external_id: "youtube-primary-object",
@@ -2813,6 +2997,8 @@ test("T-60 verifies one exact private processed unscheduled object without disar
     JSON.stringify(result),
   );
   assert.equal(result.verdict, "GREEN");
+  assert.equal(verifyInput.runtimeAuthority, RUNTIME_AUTHORITY);
+  assert.equal(verifyInput.claimedJobAuthority, CLAIMED_JOB_AUTHORITY);
   assert.equal(result.private_unscheduled_verified, true);
   assert.equal(result.upload_processed, true);
   assert.equal(result.publish_at_absent, true);
@@ -3141,6 +3327,7 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
   };
   let readCalls = 0;
   let confirmCalls = 0;
+  let confirmInput = null;
   const analyticsJobs = [];
   let clockNow = "2026-07-28T19:00:00.000Z";
   const job = {
@@ -3198,6 +3385,8 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
     env,
     workerId: "critical-window-worker",
     assertLeaseHealthy() {},
+    runtimeAuthority: RUNTIME_AUTHORITY,
+    claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
     irreversibleBoundaryNow: () =>
       new Date(clockNow),
     async verifyYoutubePublicObject(candidate, options) {
@@ -3242,6 +3431,7 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
       };
     },
     async confirmExactGovernedYoutubeScheduledRelease(input) {
+      confirmInput = input;
       confirmCalls += 1;
       const replayed = await input.verifyPublic({
         platform: "youtube",
@@ -3321,6 +3511,8 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
     "published",
     JSON.stringify(confirmed),
   );
+  assert.equal(confirmInput.runtimeAuthority, RUNTIME_AUTHORITY);
+  assert.equal(confirmInput.claimedJobAuthority, CLAIMED_JOB_AUTHORITY);
   assert.equal(confirmed.verdict, "GREEN");
   assert.equal(
     confirmed.release_commitment_asserted,
@@ -3504,6 +3696,16 @@ test("T-60 confirmed disarm promotes exactly one reserve chain and retries witho
   };
   let disarmCalls = 0;
   let promotionCalls = 0;
+  let admissionCalls = 0;
+  const admissionDb = { marker: "confirmed-disarm-db" };
+  const admissionLeases = { marker: "confirmed-disarm-leases" };
+  const publicationAdmissionLease = {
+    acquired: true,
+    lease_name: "publication-admission:global",
+    expires_at: "2026-07-28T18:01:00.000Z",
+    current_lock_owner_sha256: "b".repeat(64),
+    claimed_job_authority_sha256: "c".repeat(64),
+  };
 
   const result =
     await handlers.governed_youtube_runway_t60(
@@ -3528,6 +3730,11 @@ test("T-60 confirmed disarm promotes exactly one reserve chain and retries witho
       },
       {
         ...runway.context,
+        repos: {
+          ...runway.context.repos,
+          db: admissionDb,
+          runtimeLeases: admissionLeases,
+        },
         env: {
           PULSE_STATE_ROOT: runway.runwayRoot,
           PULSE_OPERATING_MODE: "LIVE_GUARDED",
@@ -3542,6 +3749,8 @@ test("T-60 confirmed disarm promotes exactly one reserve chain and retries witho
         },
         workerId: "critical-window-worker",
         assertLeaseHealthy() {},
+        runtimeAuthority: RUNTIME_AUTHORITY,
+        claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
         irreversibleBoundaryNow: () =>
           new Date("2026-07-28T18:00:00.000Z"),
         resolveRunwayFreshControl() {
@@ -3595,10 +3804,30 @@ test("T-60 confirmed disarm promotes exactly one reserve chain and retries witho
             primary_disarm: primaryDisarm,
           };
         },
-        async runWithPublisherLease(input) {
+        async runWithPublicationAdmissionLease(input) {
+          assert.equal(input.db, admissionDb);
+          assert.equal(input.leases, admissionLeases);
+          assert.equal(
+            input.operation,
+            "promote_confirmed_disarm_youtube_reserve_release",
+          );
+          assert.equal(input.runtimeAuthority, RUNTIME_AUTHORITY);
+          assert.equal(
+            input.claimedJobAuthority,
+            CLAIMED_JOB_AUTHORITY,
+          );
           return input.task({
             assertHealthy() {},
+            publicationAdmissionLease,
           });
+        },
+        async admitPublication(input) {
+          admissionCalls += 1;
+          assert.equal(
+            input.publicationAdmissionLease,
+            publicationAdmissionLease,
+          );
+          return { admitted: true };
         },
         async promoteGovernedYoutubeReserveRelease(input) {
           promotionCalls += 1;
@@ -3610,6 +3839,8 @@ test("T-60 confirmed disarm promotes exactly one reserve chain and retries witho
             input.promotion.authority_type,
             "CONFIRMED_DISARM_FAILOVER",
           );
+          assert.equal(typeof input.admitPublication, "function");
+          await input.admitPublication({ storyId: "reserve-ready" });
           return {
             promoted: true,
             status: "reserve_admitted",
@@ -3645,6 +3876,7 @@ test("T-60 confirmed disarm promotes exactly one reserve chain and retries witho
   assert.equal(result.reserve_promoted, true);
   assert.equal(disarmCalls, 1);
   assert.equal(promotionCalls, 1);
+  assert.equal(admissionCalls, 1);
   assert.equal(
     await fs.pathExists(
       path.join(runway.windowDir, "t60-readiness.json"),
@@ -3686,6 +3918,7 @@ test("T-60 immediately disarms an exact anchored object when verification discov
     },
   };
   let disarmCalls = 0;
+  let disarmInput = null;
   const env = {
     PULSE_STATE_ROOT: runway.runwayRoot,
     PULSE_OPERATING_MODE: "LIVE_GUARDED",
@@ -3722,6 +3955,8 @@ test("T-60 immediately disarms an exact anchored object when verification discov
         env,
         workerId: "critical-window-worker",
         assertLeaseHealthy() {},
+        runtimeAuthority: RUNTIME_AUTHORITY,
+        claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
         irreversibleBoundaryNow: () =>
           new Date("2026-07-28T18:00:00.000Z"),
         repos: {
@@ -3753,7 +3988,8 @@ test("T-60 immediately disarms an exact anchored object when verification discov
           error.remoteDisarmRequired = true;
           throw error;
         },
-        async disarmExactGovernedYoutubeScheduledRelease() {
+        async disarmExactGovernedYoutubeScheduledRelease(input) {
+          disarmInput = input;
           disarmCalls += 1;
           return {
             disarmed: true,
@@ -3771,6 +4007,8 @@ test("T-60 immediately disarms an exact anchored object when verification discov
   assert.equal(result.remote_disarm_attempted, true);
   assert.equal(result.remote_disarm_confirmed, true);
   assert.equal(disarmCalls, 1);
+  assert.equal(disarmInput.runtimeAuthority, RUNTIME_AUTHORITY);
+  assert.equal(disarmInput.claimedJobAuthority, CLAIMED_JOB_AUTHORITY);
 });
 
 test("T-60 trusts an exact emergency-containment proof and never launches a second normal disarm", async (t) => {
@@ -4016,6 +4254,8 @@ test("T-15 revalidates the official source and arms the exact private object onc
   let armCalls = 0;
   let experimentVerificationCalls = 0;
   let replayVerificationCalls = 0;
+  let armInput = null;
+  let replayInput = null;
   let disarmCalls = 0;
   const sourceRevisionSha256 = "b".repeat(64);
   const t15Job = {
@@ -4047,6 +4287,8 @@ test("T-15 revalidates the official source and arms the exact private object onc
         env,
         workerId: "critical-window-worker",
         assertLeaseHealthy() {},
+        runtimeAuthority: RUNTIME_AUTHORITY,
+        claimedJobAuthority: CLAIMED_JOB_AUTHORITY,
         repos: {
           ...runway.context.repos,
           publicationGovernance: governance,
@@ -4089,6 +4331,7 @@ test("T-15 revalidates the official source and arms the exact private object onc
         async armExactGovernedYoutubeScheduledRelease(
           input,
         ) {
+          armInput = input;
           armCalls += 1;
           assert.equal(
             input.exactStagedBinding.story_id,
@@ -4150,6 +4393,7 @@ test("T-15 revalidates the official source and arms the exact private object onc
         async verifyExactGovernedYoutubeScheduledReplay(
           input,
         ) {
+          replayInput = input;
           replayVerificationCalls += 1;
           assert.equal(
             input.externalId,
@@ -4315,6 +4559,20 @@ test("T-15 revalidates the official source and arms the exact private object onc
   assert.equal(armCalls, 1);
   assert.equal(experimentVerificationCalls, 2);
   assert.equal(replayVerificationCalls, 1);
+  assert.deepEqual(
+    [
+      armInput.runtimeAuthority,
+      armInput.claimedJobAuthority,
+      replayInput.runtimeAuthority,
+      replayInput.claimedJobAuthority,
+    ],
+    [
+      RUNTIME_AUTHORITY,
+      CLAIMED_JOB_AUTHORITY,
+      RUNTIME_AUTHORITY,
+      CLAIMED_JOB_AUTHORITY,
+    ],
+  );
   assert.equal(disarmCalls, 0);
 });
 

@@ -193,6 +193,7 @@ test("three lanes receive independent budgets and exact dispatch jobs with break
   assert.deepEqual(plan.worker_topology, {
     breaking_planning: { concurrency: 2 },
     critical_planning: { concurrency: 1 },
+    exact_window_planning: { concurrency: 1 },
     runway_monitor: { concurrency: 1 },
     window_deadline: { concurrency: 2 },
     editorial_evidence_capture: { concurrency: 2 },

@@ -9,6 +9,10 @@ const path = require("node:path");
 const test = require("node:test");
 const Database = require("better-sqlite3");
 const {
+  samePath,
+  validateCanonicalCutoverBackupEvidenceV1,
+} = require("../../lib/ops/cutover-backup-evidence");
+const {
   verifyBackupEvidence,
 } = require("../../lib/ops/stabilisation-cutover-reconcile");
 
@@ -25,6 +29,119 @@ function sha256(filePath) {
     .update(fs.readFileSync(filePath))
     .digest("hex");
 }
+
+test("path identity folds case and separators only for Windows semantics", () => {
+  assert.equal(
+    samePath("C:\\Pulse\\Path-Identity", "c:/pulse/path-identity", "win32"),
+    true,
+  );
+  assert.equal(
+    samePath("/tmp/Pulse-Path-Identity", "/tmp/pulse-path-identity", "linux"),
+    false,
+  );
+  assert.equal(
+    samePath("/tmp/pulse\\asset", "/tmp/pulse/asset", "linux"),
+    false,
+  );
+});
+
+test("canonical v1 structural validator binds identity, verification and provenance", (t) => {
+  const proofRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-canonical-evidence-"),
+  );
+  t.after(() => fs.rmSync(proofRoot, { recursive: true, force: true }));
+  const backupVerificationFile = path.join(
+    proofRoot,
+    "backup.verification.json",
+  );
+  const restoreRehearsalFile = path.join(proofRoot, "restore.rehearsal.json");
+  fs.writeFileSync(backupVerificationFile, "{}\n");
+  fs.writeFileSync(restoreRehearsalFile, "{}\n");
+  const passed = {
+    openedReadOnly: true,
+    quick_check: "ok",
+    integrity_check: "ok",
+    foreign_key_check: "ok",
+    foreign_key_violation_count: 0,
+  };
+  const evidence = {
+    schema_version: "pulse-cutover-backup-evidence-v1",
+    backup_id: "backup-1",
+    backup_path: path.join(proofRoot, "backup.db"),
+    backup_sha256: "a".repeat(64),
+    source_database_path: path.join(proofRoot, "source.db"),
+    source_database_sha256: "b".repeat(64),
+    verified_at: "2026-08-01T12:00:00.000Z",
+    verified_by: "operator-1",
+    restore_test_status: "PASS",
+    integrity_check: "ok",
+    foreign_key_check: "ok",
+    quick_check: "ok",
+    restore_path: path.join(proofRoot, "restore.db"),
+    restore_sha256: "a".repeat(64),
+    backup_restore_hashes_match: true,
+    production_database_mutated: false,
+    verification: {
+      source: { ...passed },
+      backup: { ...passed },
+      restore: { ...passed },
+    },
+    provenance: {
+      backup_verification_file: backupVerificationFile,
+      backup_verification_schema: "pulse-sqlite-backup-verification-v1",
+      backup_verified_at: "2026-08-01T11:55:00.000Z",
+      restore_rehearsal_file: restoreRehearsalFile,
+      restore_rehearsal_schema: "pulse-restore-rehearsal-v1",
+      restore_verified_at: "2026-08-01T11:58:00.000Z",
+    },
+  };
+  assert.deepEqual(validateCanonicalCutoverBackupEvidenceV1(evidence), {
+    valid: true,
+    blockers: [],
+  });
+  for (const mutate of [
+    (value) => {
+      delete value.backup_id;
+    },
+    (value) => {
+      delete value.verified_by;
+    },
+    (value) => {
+      value.verification.backup.quick_check = "failed";
+    },
+    (value) => {
+      value.provenance.restore_rehearsal_schema = "wrong";
+    },
+    (value) => {
+      value.provenance.backup_verified_at = "2026-08-01T11:59:00.000Z";
+      value.provenance.restore_verified_at = "2026-08-01T11:58:00.000Z";
+    },
+    (value) => {
+      value.provenance.restore_verified_at = "2026-08-01T12:01:00.000Z";
+    },
+    (value) => {
+      value.provenance.backup_verification_file = path.join(
+        proofRoot,
+        "absent.json",
+      );
+    },
+    (value) => {
+      value.provenance.backup_verification_file = `${proofRoot}${path.sep}.${path.sep}backup.verification.json`;
+    },
+  ]) {
+    const invalid = structuredClone(evidence);
+    mutate(invalid);
+    assert.equal(
+      validateCanonicalCutoverBackupEvidenceV1(invalid).valid,
+      false,
+    );
+  }
+  const hardLink = path.join(proofRoot, "backup.verification.hard-link.json");
+  fs.linkSync(backupVerificationFile, hardLink);
+  const linked = structuredClone(evidence);
+  linked.provenance.backup_verification_file = hardLink;
+  assert.equal(validateCanonicalCutoverBackupEvidenceV1(linked).valid, false);
+});
 
 function createFixture(t) {
   const directory = fs.mkdtempSync(
@@ -172,10 +289,7 @@ test("operator composes independently verified backup and restore proofs into re
     restore: sha256(fixture.restorePath),
   };
   const stdout = JSON.parse(runTool(argsFor(fixture, outDir)));
-  const evidencePath = path.join(
-    outDir,
-    "pulse_cutover_backup_evidence.json",
-  );
+  const evidencePath = path.join(outDir, "pulse_cutover_backup_evidence.json");
   const evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
 
   assert.equal(stdout.ok, true);
@@ -271,9 +385,7 @@ test("the composer rejects source changes committed only to a non-empty WAL", (t
       execution.stdout,
     );
     assert.equal(
-      fs.existsSync(
-        path.join(outDir, "pulse_cutover_backup_evidence.json"),
-      ),
+      fs.existsSync(path.join(outDir, "pulse_cutover_backup_evidence.json")),
       false,
     );
   } finally {
@@ -307,15 +419,11 @@ test("the composer rejects shared memory held by a reader even when the source W
     const summary = JSON.parse(execution.stdout);
     assert.equal(summary.verdict, "HOLD");
     assert.ok(
-      summary.blockers.includes(
-        "source_database_shared_memory_present",
-      ),
+      summary.blockers.includes("source_database_shared_memory_present"),
       execution.stdout,
     );
     assert.equal(
-      fs.existsSync(
-        path.join(outDir, "pulse_cutover_backup_evidence.json"),
-      ),
+      fs.existsSync(path.join(outDir, "pulse_cutover_backup_evidence.json")),
       false,
     );
   } finally {
@@ -336,9 +444,7 @@ test("tampered backup or restore bytes produce only HOLD attempt evidence", (t) 
   assert.ok(summary.blockers.includes("backup_sha256_mismatch"));
   assert.ok(summary.blockers.includes("backup_restore_hash_mismatch"));
   assert.equal(
-    fs.existsSync(
-      path.join(outDir, "pulse_cutover_backup_evidence.json"),
-    ),
+    fs.existsSync(path.join(outDir, "pulse_cutover_backup_evidence.json")),
     false,
   );
   const attempt = JSON.parse(
@@ -400,9 +506,7 @@ test("a recent sidecar cannot disguise a stale backup creation time", (t) => {
   const sidecar = JSON.parse(
     fs.readFileSync(fixture.backupVerificationPath, "utf8"),
   );
-  sidecar.createdAt = new Date(
-    TEST_NOW_MS - 48 * 60 * 60 * 1000,
-  ).toISOString();
+  sidecar.createdAt = new Date(TEST_NOW_MS - 48 * 60 * 60 * 1000).toISOString();
   fs.writeFileSync(
     fixture.backupVerificationPath,
     `${JSON.stringify(sidecar, null, 2)}\n`,
@@ -415,9 +519,7 @@ test("a recent sidecar cannot disguise a stale backup creation time", (t) => {
   const summary = JSON.parse(execution.stdout);
   assert.ok(summary.blockers.includes("backup_created_stale"));
   assert.equal(
-    fs.existsSync(
-      path.join(outDir, "pulse_cutover_backup_evidence.json"),
-    ),
+    fs.existsSync(path.join(outDir, "pulse_cutover_backup_evidence.json")),
     false,
   );
 });
@@ -443,9 +545,7 @@ test("the sidecar must protect the exact source database requested by the operat
   const summary = JSON.parse(execution.stdout);
   assert.ok(summary.blockers.includes("backup_source_database_mismatch"));
   assert.equal(
-    fs.existsSync(
-      path.join(outDir, "pulse_cutover_backup_evidence.json"),
-    ),
+    fs.existsSync(path.join(outDir, "pulse_cutover_backup_evidence.json")),
     false,
   );
 });
@@ -490,9 +590,7 @@ test("green proof claims cannot replace independent read-only SQLite checks", (t
     summary.blockers.includes("restore_database_integrity_checks_failed"),
   );
   assert.equal(
-    fs.existsSync(
-      path.join(outDir, "pulse_cutover_backup_evidence.json"),
-    ),
+    fs.existsSync(path.join(outDir, "pulse_cutover_backup_evidence.json")),
     false,
   );
 });
@@ -550,16 +648,11 @@ test("backdating generated-at cannot make old proof look recent", (t) => {
   );
 
   const execution = runToolAllowFailure(
-    argsFor(fixture, outDir, [
-      "--generated-at",
-      backdatedGeneratedAt,
-    ]),
+    argsFor(fixture, outDir, ["--generated-at", backdatedGeneratedAt]),
   );
 
   assert.equal(execution.status, 2);
   assert.ok(
-    JSON.parse(execution.stdout).blockers.includes(
-      "generated_at_not_current",
-    ),
+    JSON.parse(execution.stdout).blockers.includes("generated_at_not_current"),
   );
 });

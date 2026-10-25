@@ -42,6 +42,7 @@ function scheduledEvent() {
     platform: "youtube",
     to_state: "SCHEDULED",
     evidence_json: JSON.stringify({
+      channel_id: CHANNEL_ID,
       schedule_verified: true,
       control_tower_verdict: "GREEN",
       control_tower_checked_at:

@@ -59,6 +59,34 @@ async function replaceJson(filePath, value) {
   return sha256(bytes);
 }
 
+async function replaceWordTimestampsAndRebind(fixture, value) {
+  const timestampsSha256 = await replaceJson(
+    fixture.request.word_timestamps.path,
+    value,
+  );
+  fixture.request.word_timestamps.sha256 = timestampsSha256;
+
+  const inventory = JSON.parse(
+    await fs.readFile(fixture.request.final_media_inventory.path, "utf8"),
+  );
+  inventory.timestamps_sha256 = timestampsSha256;
+  const inventorySha256 = await replaceJson(
+    fixture.request.final_media_inventory.path,
+    inventory,
+  );
+  fixture.request.final_media_inventory.sha256 = inventorySha256;
+
+  const packageManifest = JSON.parse(
+    await fs.readFile(fixture.request.autonomous_package_manifest.path, "utf8"),
+  );
+  packageManifest.lineage.timestamps_sha256 = timestampsSha256;
+  packageManifest.lineage.media_inventory_sha256 = inventorySha256;
+  fixture.request.autonomous_package_manifest.sha256 = await replaceJson(
+    fixture.request.autonomous_package_manifest.path,
+    packageManifest,
+  );
+}
+
 function commercialScope() {
   return {
     destinations: ["YOUTUBE"],
@@ -399,8 +427,7 @@ test("materialises one deterministic, idempotent LOCAL_PROOF GREEN supplement wi
   assert.deepEqual(second, first);
 
   const written = JSON.parse(await fs.readFile(first.json_path, "utf8"));
-  const { supplement_sha256: supplementSha256, ...canonicalPayload } =
-    written;
+  const { supplement_sha256: supplementSha256, ...canonicalPayload } = written;
   assert.equal(supplementSha256, canonicalSha256(canonicalPayload));
   assert.equal(first.supplement_sha256, supplementSha256);
   assert.equal(
@@ -415,7 +442,42 @@ test("materialises one deterministic, idempotent LOCAL_PROOF GREEN supplement wi
   assert.match(markdown, /^# Autonomous GREEN supplement/m);
   assert.match(markdown, new RegExp(supplementSha256));
   assert.match(markdown, /LOCAL_PROOF/);
-  assert.match(markdown, /grants no publish, scheduling, database, OAuth, token or network authority/i);
+  assert.match(
+    markdown,
+    /grants no publish, scheduling, database, OAuth, token or network authority/i,
+  );
+});
+
+test("accepts the exact live provider timestamp rounding but rejects a material audio overrun", async (t) => {
+  const roundedFixture = await createGreenFixture(t);
+  const roundedTimestampsPath = roundedFixture.request.word_timestamps.path;
+  const roundedTimestamps = JSON.parse(
+    await fs.readFile(roundedTimestampsPath, "utf8"),
+  );
+  roundedTimestamps.words.at(-1).end_seconds = 19.691;
+  roundedTimestamps.audio_duration_seconds = 19.690522;
+  await replaceWordTimestampsAndRebind(roundedFixture, roundedTimestamps);
+
+  const rounded = await materialiseAutonomousGreenSupplement(
+    roundedFixture.request,
+  );
+  assert.equal(rounded.verdict, "GREEN");
+
+  const overrunFixture = await createGreenFixture(t);
+  const overrunTimestampsPath = overrunFixture.request.word_timestamps.path;
+  const overrunTimestamps = JSON.parse(
+    await fs.readFile(overrunTimestampsPath, "utf8"),
+  );
+  overrunTimestamps.words.at(-1).end_seconds = 19.691;
+  overrunTimestamps.audio_duration_seconds = 19.680999;
+  await replaceWordTimestampsAndRebind(overrunFixture, overrunTimestamps);
+
+  await assert.rejects(
+    materialiseAutonomousGreenSupplement(overrunFixture.request),
+    {
+      code: "autonomous_green_supplement_word_timing_invalid",
+    },
+  );
 });
 
 test("fails closed when prompt-control proof is reused as a lineage digest", async (t) => {
@@ -429,12 +491,9 @@ test("fails closed when prompt-control proof is reused as a lineage digest", asy
     packageValue,
   );
 
-  await assert.rejects(
-    materialiseAutonomousGreenSupplement(fixture.request),
-    {
-      code: "autonomous_green_supplement_lineage_digest_reuse",
-    },
-  );
+  await assert.rejects(materialiseAutonomousGreenSupplement(fixture.request), {
+    code: "autonomous_green_supplement_lineage_digest_reuse",
+  });
 });
 
 test("closed request and package schemas reject authority smuggling and non-LOCAL_PROOF modes", async (t) => {
@@ -459,12 +518,13 @@ test("closed request and package schemas reject authority smuggling and non-LOCA
   );
 
   const packageFixture = await createGreenFixture(t);
-  const packagePath =
-    packageFixture.request.autonomous_package_manifest.path;
+  const packagePath = packageFixture.request.autonomous_package_manifest.path;
   const packageValue = JSON.parse(await fs.readFile(packagePath, "utf8"));
   packageValue.controls.publish_authority = true;
-  packageFixture.request.autonomous_package_manifest.sha256 =
-    await replaceJson(packagePath, packageValue);
+  packageFixture.request.autonomous_package_manifest.sha256 = await replaceJson(
+    packagePath,
+    packageValue,
+  );
   await assert.rejects(
     materialiseAutonomousGreenSupplement(packageFixture.request),
     {
@@ -503,9 +563,7 @@ test("re-hashes real referenced files and rejects closed-schema or semantic drif
 
   const bindingFixture = await createGreenFixture(t);
   const timestampsPath = bindingFixture.request.word_timestamps.path;
-  const timestampsValue = JSON.parse(
-    await fs.readFile(timestampsPath, "utf8"),
-  );
+  const timestampsValue = JSON.parse(await fs.readFile(timestampsPath, "utf8"));
   timestampsValue.story_id = "different-story";
   bindingFixture.request.word_timestamps.sha256 = await replaceJson(
     timestampsPath,
@@ -514,8 +572,7 @@ test("re-hashes real referenced files and rejects closed-schema or semantic drif
   await assert.rejects(
     materialiseAutonomousGreenSupplement(bindingFixture.request),
     {
-      code:
-        "autonomous_green_supplement_word_timestamps_story_id_mismatch",
+      code: "autonomous_green_supplement_word_timestamps_story_id_mismatch",
     },
   );
 });
@@ -531,28 +588,20 @@ test("fails closed when distinct final-media items reuse one rights-evidence dig
     inventory,
   );
 
-  await assert.rejects(
-    materialiseAutonomousGreenSupplement(fixture.request),
-    {
-      code: "autonomous_green_supplement_rights_evidence_digest_reuse",
-    },
-  );
+  await assert.rejects(materialiseAutonomousGreenSupplement(fixture.request), {
+    code: "autonomous_green_supplement_rights_evidence_digest_reuse",
+  });
 });
 
 test("an existing output is accepted only when both deterministic artefacts are byte-exact", async (t) => {
   const fixture = await createGreenFixture(t);
-  const result = await materialiseAutonomousGreenSupplement(
-    fixture.request,
-  );
+  const result = await materialiseAutonomousGreenSupplement(fixture.request);
   await fs.appendFile(
     result.markdown_path,
     Buffer.from("conflicting operator edit\n", "utf8"),
   );
 
-  await assert.rejects(
-    materialiseAutonomousGreenSupplement(fixture.request),
-    {
-      code: "autonomous_green_supplement_output_conflict",
-    },
-  );
+  await assert.rejects(materialiseAutonomousGreenSupplement(fixture.request), {
+    code: "autonomous_green_supplement_output_conflict",
+  });
 });

@@ -502,6 +502,337 @@ test("exact replay keeps one reservation, one plan and exactly two jobs", async 
   assert.equal(values.jobs.listPending().length, 2);
 });
 
+test("same-window candidate revisions create immutable lineage only after prior production jobs are terminal", async (t) => {
+  const values = fixture(t);
+  const firstRequest = request(values);
+  const first = await planGovernedAutonomousWindowProduction(
+    firstRequest,
+    { jobs: values.jobs },
+  );
+  const originalReservation = fs.readFileSync(
+    values.reservationOutputPath,
+  );
+  const originalPlan = fs.readFileSync(
+    values.planOutputPath,
+  );
+  const revisedCandidates = firstRequest.candidates.map(
+    (entry) => structuredClone(entry),
+  );
+  for (const storyId of ["story-beta", "story-gamma"]) {
+    const revised = revisedCandidates.find(
+      (entry) => entry.story_id === storyId,
+    );
+    revised.candidate_revision_sha256 = sha256(
+      `${storyId}:measured-revision`,
+    );
+    revised.request_fingerprint = sha256(
+      `${storyId}:measured-request`,
+    );
+  }
+  const revisedRequest = request(values, {
+    candidates: revisedCandidates,
+  });
+
+  await rejectsCode(
+    planGovernedAutonomousWindowProduction(
+      revisedRequest,
+      { jobs: values.jobs },
+    ),
+    "autonomous_window_planner_prior_jobs_not_terminal",
+  );
+  assert.equal(
+    fs.existsSync(
+      path.join(
+        path.dirname(values.planOutputPath),
+        "revisions",
+      ),
+    ),
+    false,
+  );
+
+  values.db
+    .prepare("UPDATE jobs SET status = 'failed'")
+    .run();
+  const revised =
+    await planGovernedAutonomousWindowProduction(
+      revisedRequest,
+      { jobs: values.jobs },
+    );
+  const revisionSha =
+    revised.plan.candidate_set_revision
+      .candidate_set_revision_sha256;
+  assert.match(revisionSha, /^[a-f0-9]{64}$/);
+  assert.equal(
+    path.dirname(revised.path),
+    path.join(
+      path.dirname(values.planOutputPath),
+      "revisions",
+      revisionSha,
+    ),
+  );
+  assert.deepEqual(
+    fs.readFileSync(values.reservationOutputPath),
+    originalReservation,
+  );
+  assert.deepEqual(
+    fs.readFileSync(values.planOutputPath),
+    originalPlan,
+  );
+  assert.deepEqual(revised.plan.lineage.supersedes, {
+    candidate_set_revision_sha256:
+      first.plan.candidate_set_revision
+        .candidate_set_revision_sha256,
+    plan_file_sha256: first.file_sha256,
+    plan_path: path
+      .relative(values.workspaceRoot, first.path)
+      .split(path.sep)
+      .join("/"),
+    plan_sha256: first.plan.plan_sha256,
+  });
+  assert.equal(
+    revised.plan.lineage.lineage_sha256,
+    canonicalSha256({
+      schema_version:
+        "pulse-governed-autonomous-window-plan-lineage-v1",
+      supersedes: revised.plan.lineage.supersedes,
+    }),
+  );
+  assert.equal(
+    values.db
+      .prepare("SELECT COUNT(*) count FROM jobs")
+      .get().count,
+    4,
+  );
+
+  const replay =
+    await planGovernedAutonomousWindowProduction(
+      revisedRequest,
+      { jobs: values.jobs },
+    );
+  assert.equal(replay.status, "REPLAYED");
+  assert.equal(replay.path, revised.path);
+  assert.equal(replay.file_sha256, revised.file_sha256);
+  assert.deepEqual(
+    replay.plan.production_jobs.map((entry) => entry.job_id),
+    revised.plan.production_jobs.map(
+      (entry) => entry.job_id,
+    ),
+  );
+  assert.equal(
+    values.db
+      .prepare("SELECT COUNT(*) count FROM jobs")
+      .get().count,
+    4,
+  );
+});
+
+test("candidate-set identity ignores volatile scores but binds ordering and generic timing/evidence hashes", async (t) => {
+  const values = fixture(t);
+  const initialCandidates = request(values).candidates.map(
+    (entry) => {
+      const copy = structuredClone(entry);
+      copy.locked_intake_binding.locked_intake.visual_brief.narration_timing_evidence_sha256 =
+        sha256(`${entry.story_id}:timing:v1`);
+      return copy;
+    },
+  );
+  const first = await planGovernedAutonomousWindowProduction(
+    request(values, { candidates: initialCandidates }),
+    { jobs: values.jobs },
+  );
+  assert.deepEqual(
+    first.plan.candidate_set_revision.ordered_candidates.map(
+      (entry) => entry.timing_evidence_hashes,
+    ),
+    ["story-beta", "story-gamma", "story-alpha"].map(
+      (storyId) => [
+        {
+          field_path:
+            "locked_intake_binding.locked_intake.visual_brief.narration_timing_evidence_sha256",
+          sha256: sha256(`${storyId}:timing:v1`),
+        },
+      ],
+    ),
+  );
+
+  const scoreOnly = initialCandidates.map((entry) =>
+    structuredClone(entry),
+  );
+  scoreOnly.find(
+    (entry) => entry.story_id === "story-beta",
+  ).selection_score = 121;
+  scoreOnly.find(
+    (entry) => entry.story_id === "story-gamma",
+  ).selection_score = 119;
+  const replay = await planGovernedAutonomousWindowProduction(
+    request(values, { candidates: scoreOnly }),
+    { jobs: values.jobs },
+  );
+  assert.equal(replay.path, first.path);
+  assert.equal(replay.status, "REPLAYED");
+
+  values.db
+    .prepare("UPDATE jobs SET status = 'failed'")
+    .run();
+  const changed = scoreOnly.map((entry) =>
+    structuredClone(entry),
+  );
+  const changedPrimary = changed.find(
+    (entry) => entry.story_id === "story-beta",
+  );
+  changedPrimary.source_evidence_sha256 = sha256(
+    "story-beta:source-evidence:corrected",
+  );
+  changedPrimary.locked_intake_binding.locked_intake.visual_brief.narration_timing_evidence_sha256 =
+    sha256("story-beta:timing:v2");
+  const second = await planGovernedAutonomousWindowProduction(
+    request(values, { candidates: changed }),
+    { jobs: values.jobs },
+  );
+  assert.notEqual(
+    second.plan.candidate_set_revision
+      .candidate_set_revision_sha256,
+    first.plan.candidate_set_revision
+      .candidate_set_revision_sha256,
+  );
+  assert.notEqual(second.path, first.path);
+});
+
+test("a pre-lineage root plan becomes an immutable predecessor for a measured revision", async (t) => {
+  const values = fixture(t);
+  const originalRequest = request(values);
+  const original =
+    await planGovernedAutonomousWindowProduction(
+      originalRequest,
+      { jobs: values.jobs },
+    );
+  const legacyPlan = structuredClone(original.plan);
+  legacyPlan.schema_version =
+    "pulse-governed-autonomous-window-production-plan-v1";
+  delete legacyPlan.candidate_set_revision;
+  delete legacyPlan.lineage;
+  delete legacyPlan.plan_sha256;
+  legacyPlan.plan_sha256 = canonicalSha256(legacyPlan);
+  const legacyBytes = Buffer.from(
+    `${JSON.stringify(legacyPlan, null, 2)}\n`,
+  );
+  fs.writeFileSync(values.planOutputPath, legacyBytes);
+  const originalReservation = fs.readFileSync(
+    values.reservationOutputPath,
+  );
+  values.db
+    .prepare("UPDATE jobs SET status = 'failed'")
+    .run();
+
+  const candidates = originalRequest.candidates.map(
+    (entry) => ({
+      ...structuredClone(entry),
+      candidate_revision_sha256: sha256(
+        `${entry.story_id}:measured-revision`,
+      ),
+      request_fingerprint: sha256(
+        `${entry.story_id}:measured-request`,
+      ),
+    }),
+  );
+  const revised =
+    await planGovernedAutonomousWindowProduction(
+      request(values, { candidates }),
+      { jobs: values.jobs },
+    );
+  assert.notEqual(revised.path, values.planOutputPath);
+  assert.deepEqual(
+    fs.readFileSync(values.planOutputPath),
+    legacyBytes,
+  );
+  assert.deepEqual(
+    fs.readFileSync(values.reservationOutputPath),
+    originalReservation,
+  );
+  assert.equal(
+    revised.plan.lineage.supersedes.plan_sha256,
+    legacyPlan.plan_sha256,
+  );
+  assert.equal(
+    revised.plan.lineage.supersedes.plan_file_sha256,
+    sha256(legacyBytes),
+  );
+});
+
+test("self-consistent lineage cannot substitute arbitrary terminal production jobs or branch ambiguously", async (t) => {
+  const values = fixture(t);
+  const originalRequest = request(values);
+  const original =
+    await planGovernedAutonomousWindowProduction(
+      originalRequest,
+      { jobs: values.jobs },
+    );
+  values.db
+    .prepare("UPDATE jobs SET status = 'failed'")
+    .run();
+  const forged = structuredClone(original.plan);
+  forged.production_jobs[0].idempotency_key =
+    "forged-terminal-job-binding";
+  delete forged.plan_sha256;
+  forged.plan_sha256 = canonicalSha256(forged);
+  fs.writeFileSync(
+    values.planOutputPath,
+    `${JSON.stringify(forged, null, 2)}\n`,
+  );
+  const candidates = originalRequest.candidates.map(
+    (entry) => ({
+      ...structuredClone(entry),
+      candidate_revision_sha256: sha256(
+        `${entry.story_id}:next-revision`,
+      ),
+      request_fingerprint: sha256(
+        `${entry.story_id}:next-request`,
+      ),
+    }),
+  );
+  await rejectsCode(
+    planGovernedAutonomousWindowProduction(
+      request(values, { candidates }),
+      { jobs: values.jobs },
+    ),
+    "autonomous_window_planner_prior_job_binding_mismatch",
+  );
+
+  const restored = structuredClone(original.plan);
+  const revisionDir = path.join(
+    path.dirname(values.planOutputPath),
+    "revisions",
+    "f".repeat(64),
+  );
+  fs.writeFileSync(
+    values.planOutputPath,
+    `${JSON.stringify(restored, null, 2)}\n`,
+  );
+  fs.mkdirSync(revisionDir, { recursive: true });
+  restored.candidate_set_revision
+    .candidate_set_revision_sha256 = "f".repeat(64);
+  fs.writeFileSync(
+    path.join(
+      revisionDir,
+      path.basename(values.planOutputPath),
+    ),
+    `${JSON.stringify(restored, null, 2)}\n`,
+  );
+  await rejectsCode(
+    planGovernedAutonomousWindowProduction(
+      request(values, { candidates }),
+      { jobs: values.jobs },
+    ),
+    "autonomous_window_planner_lineage_plan_hash_invalid",
+  );
+  assert.equal(
+    values.db
+      .prepare("SELECT COUNT(*) count FROM jobs")
+      .get().count,
+    2,
+  );
+});
+
 test("fails closed before reservation or queue mutation when two complete candidates are unavailable", async (t) => {
   const values = fixture(t);
   const oneCandidate = request(values, {

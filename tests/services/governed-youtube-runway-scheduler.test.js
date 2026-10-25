@@ -197,6 +197,18 @@ test("governed profile plans both autonomous windows after inventory reconciliat
         schedule.payload.external_posting === false,
     ),
   );
+  assert.ok(
+    autonomous
+      .filter(
+        (schedule) =>
+          schedule.kind ===
+          "plan_governed_autonomous_window_production",
+      )
+      .every(
+        (schedule) =>
+          schedule.payload.job_max_attempts === 8,
+      ),
+  );
 
   const contract = governedYoutubeRunwayScheduleContract(
     schedules,
@@ -243,6 +255,18 @@ test("runway schedule contract fails closed on a missing or drifted checkpoint",
         "governed_youtube_runway_t90_morning"
       ) {
         return { ...schedule, cron_expr: "31 7 * * *" };
+      }
+      if (
+        schedule.name ===
+        "plan_governed_autonomous_window_production_morning"
+      ) {
+        return {
+          ...schedule,
+          payload: {
+            ...schedule.payload,
+            job_max_attempts: 3,
+          },
+        };
       }
       if (
         schedule.name ===

@@ -1,26 +1,187 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { execFileSync } = require("node:child_process");
+const crypto = require("node:crypto");
+const { execFileSync, spawnSync } = require("node:child_process");
+const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { test } = require("node:test");
+const { after, test } = require("node:test");
+const { inspect } = require("node:util");
 
 const ROOT = path.resolve(__dirname, "..", "..");
-const TOOL = path.join(
-  ROOT,
-  "tools",
-  "windows-live-guarded-runtime.js",
-);
-const START_OPERATION_NONCE =
-  "11111111-1111-4111-8111-111111111111";
+const TOOL = path.join(ROOT, "tools", "windows-live-guarded-runtime.js");
+const START_OPERATION_NONCE = "11111111-1111-4111-8111-111111111111";
+const TEST_PROCESS_STARTED_AT = "2026-07-29T21:59:00.000Z";
+const TEST_REUSED_PROCESS_STARTED_AT = "2026-07-30T08:15:00.000Z";
+
+function processIdentityInspector(identities = {}) {
+  return ({ pid }) => {
+    const identity = identities[Number(pid)];
+    if (identity === "UNAVAILABLE") {
+      return {
+        available: false,
+        exists: null,
+        process_id: Number(pid),
+        process_started_at: null,
+      };
+    }
+    if (!identity) {
+      return {
+        available: true,
+        exists: false,
+        process_id: Number(pid),
+        process_started_at: null,
+      };
+    }
+    return {
+      available: true,
+      exists: true,
+      process_id: Number(pid),
+      process_started_at: identity,
+    };
+  };
+}
+
+function inMemoryTransitionLease({
+  preheldOwner = null,
+  preheldAuthorityContextSha256 = "0".repeat(64),
+  events = [],
+} = {}) {
+  let current = preheldOwner
+    ? {
+        owner_id: preheldOwner,
+        expires_at: "2099-01-01T00:00:00.000Z",
+        metadata: JSON.stringify({
+          transition_owner_schema_version:
+            "pulse-live-runtime-transition-owner-v2",
+          authority_context_sha256: preheldAuthorityContextSha256,
+          admission_state: "OPEN",
+          context: {},
+          participants: [
+            {
+              participant_id: "22222222-2222-4222-8222-222222222222",
+              role: "owner",
+              process_id: process.pid,
+              process_started_at: TEST_PROCESS_STARTED_AT,
+              process_start_source: "injected",
+            },
+          ],
+        }),
+      }
+    : null;
+  const leases = {
+    acquire({ ownerId, leaseMs, metadata = null, now = new Date() }) {
+      if (current && current.owner_id !== ownerId) {
+        return { acquired: false, lease: current };
+      }
+      current = {
+        owner_id: ownerId,
+        expires_at: new Date(
+          new Date(now).getTime() + Number(leaseMs),
+        ).toISOString(),
+        metadata:
+          metadata === null || metadata === undefined
+            ? null
+            : JSON.stringify(metadata),
+      };
+      events.push(["transition_acquire", ownerId]);
+      return { acquired: true, lease: current };
+    },
+    get() {
+      return current;
+    },
+    heartbeat({ ownerId, leaseMs, now = new Date() }) {
+      if (!current || current.owner_id !== ownerId) return false;
+      current = {
+        owner_id: ownerId,
+        expires_at: new Date(
+          new Date(now).getTime() + Number(leaseMs),
+        ).toISOString(),
+      };
+      events.push(["transition_renew", ownerId]);
+      return true;
+    },
+    compareAndSwapMetadata({
+      ownerId,
+      expectedMetadata,
+      metadata,
+      leaseMs,
+      now = new Date(),
+      allowExpired = false,
+    }) {
+      const expected =
+        expectedMetadata === null || expectedMetadata === undefined
+          ? null
+          : String(expectedMetadata);
+      const nowIso = new Date(now).toISOString();
+      if (
+        !current ||
+        current.owner_id !== ownerId ||
+        current.metadata !== expected ||
+        (allowExpired !== true && current.expires_at <= nowIso)
+      ) {
+        return false;
+      }
+      current = {
+        owner_id: ownerId,
+        expires_at: new Date(
+          new Date(now).getTime() + Number(leaseMs),
+        ).toISOString(),
+        metadata:
+          metadata === null || metadata === undefined
+            ? null
+            : JSON.stringify(metadata),
+      };
+      events.push(["transition_renew", ownerId]);
+      return true;
+    },
+    releaseExactMetadata({ ownerId, expectedMetadata }) {
+      const expected =
+        expectedMetadata === null || expectedMetadata === undefined
+          ? null
+          : String(expectedMetadata);
+      if (
+        !current ||
+        current.owner_id !== ownerId ||
+        current.metadata !== expected
+      ) {
+        return false;
+      }
+      events.push(["transition_release", ownerId]);
+      current = null;
+      return true;
+    },
+    release(_name, ownerId) {
+      if (!current || current.owner_id !== ownerId) return false;
+      events.push(["transition_release", ownerId]);
+      current = null;
+      return true;
+    },
+  };
+  return {
+    factory() {
+      return {
+        leases,
+        close() {
+          events.push(["transition_close", current?.owner_id || null]);
+        },
+      };
+    },
+    current() {
+      return current;
+    },
+  };
+}
 
 function inMemoryStartLock({
   operationNonce = START_OPERATION_NONCE,
   events = [],
 } = {}) {
+  const transition = inMemoryTransitionLease();
   return {
+    runtimeTransitionLeaseFactory: transition.factory,
     operationNonceFactory: () => operationNonce,
     startLockAcquirer(options) {
       events.push(["lock_acquire", options]);
@@ -56,6 +217,10 @@ function inMemoryStartLock({
         operation_nonce: operationNonce,
       };
     },
+    processIdentityInspector: processIdentityInspector({
+      4111: TEST_PROCESS_STARTED_AT,
+      4123: TEST_PROCESS_STARTED_AT,
+    }),
   };
 }
 
@@ -67,30 +232,1329 @@ const {
   buildLiveChildEnvironment,
   buildLiveLifecycleDecision,
   buildLiveRuntimeDoctorReport,
+  buildLiveTaskAuthorityBinding,
   createDefaultLiveLifecycleHandlers,
+  currentLiveTransitionAuthorityContext,
   buildLiveScheduledTaskXml,
+  buildLiveProcessCommandAuthority,
   prepareLiveSupervision,
   inspectLiveActivationReceipt,
+  inspectLiveDatabaseIdentity,
+  inspectLiveWindowsTask,
+  inspectWindowsProcessIdentity,
   inspectLiveStartOperationLock,
   inspectLiveTaskConflicts,
+  inspectLiveTaskBoundHandoff,
   inspectStoppedLiveRuntime,
+  inspectBoundedWindowsAuthority,
+  installLiveScheduledTask: installLiveScheduledTaskWithoutTestAuthority,
+  issueLiveActivationReceipt: issueLiveActivationReceiptWithoutTestAuthority,
   loadLiveGuardedRuntimeProfile,
   executeLiveLifecycleAction,
   validateLiveScheduledTaskXml,
   validateLiveGuardedRuntimeProfile,
   safeLiveHealthIdentity,
   releaseLiveStartOperationLock,
-  setLiveScheduledTaskEnabled,
-  startLiveScheduledTask,
-} = require(
-  "../../lib/stabilisation/windows-live-guarded-runtime",
-);
+  revokeLiveActivationReceipt: revokeLiveActivationReceiptWithoutTestAuthority,
+  setLiveScheduledTaskEnabled: setLiveScheduledTaskEnabledWithoutTestAuthority,
+  startLiveScheduledTask: startLiveScheduledTaskWithoutTestAuthority,
+  startLiveSupervisionGeneration: startLiveSupervisionGenerationWithoutTestAuthority,
+  superviseLiveChildSession,
+  uninstallLiveScheduledTask: uninstallLiveScheduledTaskWithoutTestAuthority,
+  waitForLiveHealth,
+  runLiveSupervisionLifecycle,
+} = require("../../lib/stabilisation/windows-live-guarded-runtime");
+const {
+  borrowLiveRuntimeTransitionLease,
+} = require("../../lib/stabilisation/live-runtime-transition-lease");
+const {
+  observeBoundedWindowsAuthority,
+} = require("../../lib/stabilisation/windows-task-authority");
+
+const BOUNDED_INSTANCE_GUID = "11111111-2222-4333-8444-555555555555";
+const BOUNDED_RUNTIME_ID = "ri-11111111-2222-4333-8444-555555555555";
+const BOUNDED_RELEASE_SHA = "d".repeat(40);
+const BOUNDED_PROFILE_SHA = "a".repeat(64);
+const BOUNDED_DATABASE_SHA = "b".repeat(64);
+const BOUNDED_SUPERVISOR_COMMAND_SHA = "c".repeat(64);
+const BOUNDED_CHILD_COMMAND_SHA = "e".repeat(64);
+const BOUNDED_DATABASE_SNAPSHOT_SHA = "9".repeat(64);
+const BOUNDED_WORKER_TOPOLOGY = [
+  {
+    pool_id: "critical_publication",
+    instances: 1,
+    kinds: ["publish"],
+  },
+];
+
+function canonicalAuthorityPath(value) {
+  return path.win32
+    .normalize(String(value || ""))
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "");
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(String(value)).digest("hex");
+}
+
+let isolatedTransitionAuthorityRoot = null;
+
+function transitionAuthorityDatabasePath(profile) {
+  const configuredPath = path.resolve(profile.database_path);
+  if (
+    canonicalAuthorityPath(profile.database_path) !== "D:/pulse-data/pulse.db"
+  ) {
+    return configuredPath;
+  }
+  if (!isolatedTransitionAuthorityRoot) {
+    isolatedTransitionAuthorityRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pulse-live-transition-authority-"),
+    );
+    fs.writeFileSync(
+      path.join(isolatedTransitionAuthorityRoot, "pulse.db"),
+      "isolated transition authority identity\n",
+    );
+  }
+  return path.join(isolatedTransitionAuthorityRoot, "pulse.db");
+}
+
+after(() => {
+  if (isolatedTransitionAuthorityRoot) {
+    fs.rmSync(isolatedTransitionAuthorityRoot, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+function independentlyMeasuredTransitionAuthorityContext({
+  profile,
+  repoRoot,
+  expectedCommit,
+}) {
+  const databaseRealPath = fs.realpathSync.native(
+    transitionAuthorityDatabasePath(profile),
+  );
+  const databaseStats = fs.statSync(databaseRealPath, { bigint: true });
+  const databaseIdentity = {
+    canonical_real_path: canonicalAuthorityPath(databaseRealPath),
+    device_id: databaseStats.dev.toString(10),
+    file_id: databaseStats.ino.toString(10),
+  };
+  const binding = {
+    checkout_real_path: canonicalAuthorityPath(
+      fs.realpathSync.native(path.resolve(repoRoot)),
+    ),
+    database_identity_sha256: sha256(JSON.stringify(databaseIdentity)),
+    node_path: canonicalAuthorityPath(
+      fs.realpathSync.native(process.execPath),
+    ),
+    profile_sha256: sha256(JSON.stringify(profile)),
+    release_sha: expectedCommit,
+    task_name: profile.task_name,
+  };
+  return sha256(JSON.stringify(binding));
+}
+
+function withTestTransitionAuthority(options = {}) {
+  if (options.transitionAuthorityContextProvider) return options;
+  return {
+    ...options,
+    transitionAuthorityContextProvider: ({ profile, repoRoot, expectedCommit }) =>
+      independentlyMeasuredTransitionAuthorityContext({
+        profile,
+        repoRoot,
+        expectedCommit,
+      }),
+  };
+}
+
+function issueLiveActivationReceipt(options) {
+  return issueLiveActivationReceiptWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function installLiveScheduledTask(options) {
+  return installLiveScheduledTaskWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function revokeLiveActivationReceipt(options) {
+  return revokeLiveActivationReceiptWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function setLiveScheduledTaskEnabled(options) {
+  return setLiveScheduledTaskEnabledWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function startLiveScheduledTask(options) {
+  return startLiveScheduledTaskWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function startLiveSupervisionGeneration(options) {
+  return startLiveSupervisionGenerationWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function uninstallLiveScheduledTask(options) {
+  return uninstallLiveScheduledTaskWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function boundedExpectedRuntime() {
+  return {
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    worker_topology: BOUNDED_WORKER_TOPOLOGY,
+  };
+}
+
+function boundedRunningWorkerSetSha256() {
+  return crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify([`server-${BOUNDED_RUNTIME_ID}-critical_publication-1`]),
+    )
+    .digest("hex");
+}
+
+function boundedMultiLaneHealth() {
+  return {
+    isolated_worker_pools: {
+      default_enabled: true,
+      active_runner_count: 1,
+      active_pool_count: 1,
+      compatibility_runner_count: 0,
+      pools: [
+        {
+          pool_id: "critical_publication",
+          active_instances: 1,
+          heartbeat_ms: 30000,
+          kinds: ["publish"],
+        },
+      ],
+      running_worker_set_sha256: boundedRunningWorkerSetSha256(),
+      active_claim_count: 0,
+      running_claim_set_sha256: crypto
+        .createHash("sha256")
+        .update("[]")
+        .digest("hex"),
+    },
+  };
+}
+
+function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
+  const expected = {
+    taskName: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    nodePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkoutRealPath: "D:/pulse/releases/pulse-v1",
+    releaseSha: BOUNDED_RELEASE_SHA,
+    profileSha256: BOUNDED_PROFILE_SHA,
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+    conflictingTaskNames: ["PulseGaming-Stabilisation-Runtime"],
+    runtimeInstanceId: BOUNDED_RUNTIME_ID,
+    taskInstanceGuid: BOUNDED_INSTANCE_GUID,
+    supervisorPid: 4100,
+    supervisorCreationTimeUtc: "2026-08-02T10:00:00.000Z",
+    supervisorExecutablePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    supervisorCommandSha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
+    childPid: 4200,
+    childCreationTimeUtc: "2026-08-02T10:00:01.000Z",
+    childExecutablePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    childCommandSha256: BOUNDED_CHILD_COMMAND_SHA,
+    workerTopology: BOUNDED_WORKER_TOPOLOGY,
+  };
+  const binding = {
+    task_name: expected.taskName,
+    node_path: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkout_real_path: "D:/pulse/releases/pulse-v1",
+    release_sha: expected.releaseSha,
+    profile_sha256: expected.profileSha256,
+    database_identity_sha256: expected.databaseIdentitySha256,
+  };
+  const authorityFingerprint = require("node:crypto")
+    .createHash("sha256")
+    .update(
+      '{"checkout_real_path":"D:/pulse/releases/pulse-v1","database_identity_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","node_path":"D:/pulse-tools/node-v22.17.1/node.exe","profile_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","release_sha":"dddddddddddddddddddddddddddddddddddddddd","task_name":"PulseGaming-LiveGuarded-YouTube-Runtime"}',
+    )
+    .digest("hex");
+  const activation = {
+    valid: true,
+    schema_version: "pulse-windows-live-guarded-activation-receipt-v2",
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    authority_binding: binding,
+    authority_fingerprint: authorityFingerprint,
+    blockers: [],
+  };
+  const owner = {
+    valid: true,
+    schema_version: "pulse-windows-live-guarded-owner-v2",
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    authority_binding: binding,
+    authority_fingerprint: authorityFingerprint,
+    task_name: expected.taskName,
+    task_instance_guid: ownerInstanceGuid || BOUNDED_INSTANCE_GUID,
+    engine_pid: 4100,
+    supervisor_pid: 4100,
+    supervisor_creation_time_utc: expected.supervisorCreationTimeUtc,
+    supervisor_executable_path: expected.supervisorExecutablePath,
+    supervisor_command_sha256: expected.supervisorCommandSha256,
+    child_pid: 4200,
+    child_creation_time_utc: expected.childCreationTimeUtc,
+    child_parent_pid: 4100,
+    child_executable_path: expected.childExecutablePath,
+    child_command_sha256: expected.childCommandSha256,
+    child_in_job: true,
+    listener_port: 3001,
+    listener_pid: 4200,
+    release_sha: expected.releaseSha,
+    profile_sha256: expected.profileSha256,
+    database_identity_sha256: expected.databaseIdentitySha256,
+    blockers: [],
+  };
+  const observation = {
+    ok: true,
+    task_name: expected.taskName,
+    task_instance: {
+      instance_guid: BOUNDED_INSTANCE_GUID,
+      engine_pid: 4100,
+      state: 4,
+    },
+    supervisor: {
+      ok: true,
+      pid: 4100,
+      creation_time_utc: expected.supervisorCreationTimeUtc,
+      parent_pid: 900,
+      executable_path: expected.supervisorExecutablePath,
+      command_sha256: expected.supervisorCommandSha256,
+      blockers: [],
+    },
+    child: {
+      ok: true,
+      pid: 4200,
+      creation_time_utc: expected.childCreationTimeUtc,
+      parent_pid: 4100,
+      executable_path: expected.childExecutablePath,
+      command_sha256: expected.childCommandSha256,
+      blockers: [],
+    },
+    job_membership: {
+      process_ids: [4100, 4200],
+      supervisor_present: true,
+      child_present: true,
+      blockers: [],
+    },
+    blockers: [],
+  };
+  return {
+    mode: "LIVE",
+    expected,
+    probes: {
+      taskDefinitionInspector: async () => ({
+        task_name: expected.taskName,
+        state: "managed_current",
+        blockers: [],
+      }),
+      conflictInspector: async () => ({
+        clear: true,
+        tasks: [
+          { task_name: "PulseGaming-Stabilisation-Runtime", state: "disabled" },
+        ],
+        blockers: [],
+      }),
+      activationReceiptInspector: async () => activation,
+      ownerReceiptInspector: async () => owner,
+      authorityObserver: async () => observation,
+      listenerInspector: async () => ({
+        available: true,
+        listeningPids: [4200],
+        blockers: [],
+      }),
+      healthRequester: async () => ({
+        status: "ok",
+        schedulerActive: true,
+        build: { commit_sha: expected.releaseSha },
+        deployment: { mode: "local", primary: true },
+        runtime: {
+          operating_mode: "LIVE_GUARDED",
+          auto_publish: true,
+          legacy_auto_publish_armed: true,
+          use_sqlite: true,
+          use_job_queue_explicit: "true",
+        },
+        multiLaneRuntime: boundedMultiLaneHealth(),
+        blockers: [],
+      }),
+      databaseAuthorityInspector: async () => ({
+        ok: true,
+        database_identity_sha256: expected.databaseIdentitySha256,
+        snapshot_sha256: BOUNDED_DATABASE_SNAPSHOT_SHA,
+        scheduler: { owner_sha256: "f".repeat(64) },
+        blockers: [],
+      }),
+    },
+  };
+}
+
+function activationAuthorityOptions() {
+  return {
+    runtimeInstanceId: BOUNDED_RUNTIME_ID,
+    nodePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkoutRealPath: "D:/pulse/releases/pulse-v1",
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+  };
+}
+
+function taskBoundActivation({
+  profile,
+  repoRoot,
+  expectedCommit,
+  receiptSha,
+}) {
+  const authorityBinding = buildLiveTaskAuthorityBinding({
+    taskName: profile.task_name,
+    nodePath: process.execPath,
+    checkoutRealPath: repoRoot,
+    releaseSha: expectedCommit,
+    profileSha256: require("node:crypto")
+      .createHash("sha256")
+      .update(JSON.stringify(profile))
+      .digest("hex"),
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+  });
+  return {
+    valid: true,
+    schema_version: "pulse-windows-live-guarded-activation-receipt-v2",
+    receipt_sha256: receiptSha,
+    task_definition_sha256: buildLiveProcessCommandAuthority({
+      profile,
+      repoRoot,
+      expectedCommit,
+      nodeExecutable: process.execPath,
+    }).supervisor_command_sha256,
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    authority_binding: authorityBinding,
+    authority_fingerprint: require("node:crypto")
+      .createHash("sha256")
+      .update(
+        JSON.stringify(
+          Object.fromEntries(
+            Object.entries(authorityBinding).sort(([left], [right]) =>
+              left.localeCompare(right),
+            ),
+          ),
+        ),
+      )
+      .digest("hex"),
+    blockers: [],
+  };
+}
+
+function taskBoundHandoffObservation(child, expected = {}) {
+  return {
+    ok: true,
+    task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    task_instance: {
+      instance_guid: BOUNDED_INSTANCE_GUID,
+      engine_pid: process.pid,
+      state: 4,
+    },
+    supervisor: {
+      ok: true,
+      pid: process.pid,
+      creation_time_utc: TEST_PROCESS_STARTED_AT,
+      executable_path:
+        expected.expectedSupervisorExecutablePath ||
+        process.execPath.replace(/\\/g, "/"),
+      command_sha256:
+        expected.expectedSupervisorCommandSha256 ||
+        BOUNDED_SUPERVISOR_COMMAND_SHA,
+      blockers: [],
+    },
+    child: {
+      ok: true,
+      pid: child.pid,
+      parent_pid: process.pid,
+      creation_time_utc: TEST_REUSED_PROCESS_STARTED_AT,
+      executable_path:
+        expected.expectedChildExecutablePath ||
+        process.execPath.replace(/\\/g, "/"),
+      command_sha256:
+        expected.expectedChildCommandSha256 || BOUNDED_CHILD_COMMAND_SHA,
+      blockers: [],
+    },
+    job_membership: {
+      process_ids: [process.pid, child.pid],
+      supervisor_present: true,
+      child_present: true,
+      blockers: [],
+    },
+    blockers: [],
+  };
+}
+
+test("builds one deterministic non-secret live task authority binding", () => {
+  const fixture = activeBoundedAuthorityFixture();
+  assert.deepEqual(buildLiveTaskAuthorityBinding(fixture.expected), {
+    task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    node_path: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkout_real_path: "D:/pulse/releases/pulse-v1",
+    release_sha: BOUNDED_RELEASE_SHA,
+    profile_sha256: BOUNDED_PROFILE_SHA,
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+  });
+});
+
+test("ACTIVE_BOUND requires one continuous task-to-lease identity", async () => {
+  const result = await inspectBoundedWindowsAuthority(
+    activeBoundedAuthorityFixture(),
+  );
+  assert.equal(result.verdict, "GREEN");
+  assert.equal(result.state, "ACTIVE_BOUND");
+  assert.match(result.authority_fingerprint, /^[a-f0-9]{64}$/);
+});
+
+test("ACTIVE_BOUND accepts the successful real Windows authority observation contract", async () => {
+  const fixture = activeBoundedAuthorityFixture();
+  fixture.probes.authorityObserver = ({ expected }) =>
+    observeBoundedWindowsAuthority({
+      expected,
+      probes: {
+        inspectExactWindowsTaskInstances: async () => ({
+          ok: true,
+          instances: [
+            {
+              instance_guid: expected.taskInstanceGuid,
+              engine_pid: expected.supervisorPid,
+              state: 4,
+            },
+          ],
+          blockers: [],
+        }),
+        inspectWindowsAuthorityProcess: async ({ pid }) =>
+          pid === expected.supervisorPid
+            ? {
+                ok: true,
+                pid,
+                creation_time_utc: expected.supervisorCreationTimeUtc,
+                parent_pid: 900,
+                executable_path: expected.supervisorExecutablePath,
+                command_sha256: expected.supervisorCommandSha256,
+                blockers: [],
+              }
+            : {
+                ok: true,
+                pid,
+                creation_time_utc: expected.childCreationTimeUtc,
+                parent_pid: expected.supervisorPid,
+                executable_path: expected.childExecutablePath,
+                command_sha256: expected.childCommandSha256,
+                blockers: [],
+              },
+        inspectCurrentWindowsJobMembership: async () => ({
+          ok: true,
+          probe_pid: 4300,
+          process_ids: [expected.supervisorPid, expected.childPid],
+          blockers: [],
+        }),
+      },
+    });
+
+  const result = await inspectBoundedWindowsAuthority(fixture);
+  assert.equal(result.verdict, "GREEN");
+  assert.equal(result.state, "ACTIVE_BOUND");
+  assert.deepEqual(result.blockers, []);
+});
+
+test("ACTIVE_BOUND supplies the exact runtime generation and worker topology to database authority", async () => {
+  const fixture = activeBoundedAuthorityFixture();
+  const observed = [];
+  fixture.probes.databaseAuthorityInspector = async (options) => {
+    observed.push(options);
+    return {
+      ok: true,
+      database_identity_sha256: BOUNDED_DATABASE_SHA,
+      snapshot_sha256: BOUNDED_DATABASE_SNAPSHOT_SHA,
+      blockers: [],
+    };
+  };
+
+  const result = await inspectBoundedWindowsAuthority(fixture);
+
+  assert.equal(result.state, "ACTIVE_BOUND");
+  assert.equal(observed.length, 2);
+  for (const observation of observed) {
+    assert.equal(observation.mode, "LIVE");
+    assert.equal(observation.expected.runtime_instance_id, BOUNDED_RUNTIME_ID);
+    assert.equal(observation.expected.child_pid, 4200);
+    assert.equal(
+      observation.expected.child_started_at,
+      "2026-08-02T10:00:01.000Z",
+    );
+    assert.deepEqual(
+      observation.expected.worker_topology,
+      BOUNDED_WORKER_TOPOLOGY,
+    );
+  }
+});
+
+test("ACTIVE_BOUND binds database claims to the digest derived from live runner health", async () => {
+  const fixture = activeBoundedAuthorityFixture();
+  const healthClaimSha256 = "7".repeat(64);
+  fixture.probes.healthRequester = async () => {
+    const health = {
+      status: "ok",
+      schedulerActive: true,
+      build: { commit_sha: BOUNDED_RELEASE_SHA },
+      deployment: { mode: "local", primary: true },
+      runtime: {
+        operating_mode: "LIVE_GUARDED",
+        auto_publish: true,
+        legacy_auto_publish_armed: true,
+        use_sqlite: true,
+        use_job_queue_explicit: "true",
+      },
+      multiLaneRuntime: boundedMultiLaneHealth(),
+      blockers: [],
+    };
+    health.multiLaneRuntime.isolated_worker_pools.active_claim_count = 1;
+    health.multiLaneRuntime.isolated_worker_pools.running_claim_set_sha256 =
+      healthClaimSha256;
+    return health;
+  };
+  fixture.probes.databaseAuthorityInspector = async ({ expected }) => ({
+    ok:
+      expected.runtime_claim_set_count === 1 &&
+      expected.runtime_claim_set_sha256 === healthClaimSha256,
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+    snapshot_sha256: BOUNDED_DATABASE_SNAPSHOT_SHA,
+    blockers:
+      expected.runtime_claim_set_sha256 === healthClaimSha256
+        ? []
+        : ["runtime_db_runtime_claim_set_mismatch"],
+  });
+
+  const green = await inspectBoundedWindowsAuthority(fixture);
+  assert.equal(green.state, "ACTIVE_BOUND");
+
+  fixture.probes.databaseAuthorityInspector = async ({ expected }) => ({
+    ok: expected.runtime_claim_set_sha256 === "8".repeat(64),
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+    snapshot_sha256: BOUNDED_DATABASE_SNAPSHOT_SHA,
+    blockers: ["runtime_db_runtime_claim_set_mismatch"],
+  });
+  const held = await inspectBoundedWindowsAuthority(fixture);
+  assert.equal(held.state, "HOLD");
+  assert.ok(held.blockers.includes("live_database_authority_mismatch"));
+});
+
+test("a mismatched task InstanceGuid is HOLD", async () => {
+  const result = await inspectBoundedWindowsAuthority(
+    activeBoundedAuthorityFixture({
+      ownerInstanceGuid: "99999999-2222-4333-8444-555555555555",
+    }),
+  );
+  assert.equal(result.state, "HOLD");
+  assert.deepEqual(result.blockers, ["live_task_instance_receipt_mismatch"]);
+});
+
+test("ACTIVE_BOUND independently checks every expected task and process identity", async () => {
+  for (const [field, value, blocker] of [
+    [
+      "taskInstanceGuid",
+      "99999999-2222-4333-8444-555555555555",
+      "live_task_instance_receipt_mismatch",
+    ],
+    ["supervisorPid", 4999, "live_task_process_identity_mismatch"],
+    [
+      "supervisorCreationTimeUtc",
+      "2026-08-02T10:00:09.000Z",
+      "live_task_process_identity_mismatch",
+    ],
+    [
+      "supervisorCommandSha256",
+      "1".repeat(64),
+      "live_task_process_identity_mismatch",
+    ],
+    ["childPid", 4998, "live_task_process_identity_mismatch"],
+    [
+      "childCreationTimeUtc",
+      "2026-08-02T10:00:19.000Z",
+      "live_task_process_identity_mismatch",
+    ],
+    [
+      "childCommandSha256",
+      "2".repeat(64),
+      "live_task_process_identity_mismatch",
+    ],
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    fixture.expected[field] = value;
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", field);
+    assert.ok(result.blockers.includes(blocker), field);
+  }
+});
+
+test("ACTIVE_BOUND rejects omitted or malformed expected live identity fields", async () => {
+  for (const [field, value] of [
+    ["taskInstanceGuid", undefined],
+    ["taskInstanceGuid", "not-a-guid"],
+    ["taskInstanceGuid", `{${BOUNDED_INSTANCE_GUID}`],
+    ["supervisorPid", undefined],
+    ["supervisorPid", 0],
+    ["supervisorPid", "4100"],
+    ["supervisorCreationTimeUtc", undefined],
+    ["supervisorCreationTimeUtc", "yesterday"],
+    ["supervisorExecutablePath", undefined],
+    ["supervisorExecutablePath", "node.exe"],
+    ["supervisorCommandSha256", undefined],
+    ["supervisorCommandSha256", "not-a-sha"],
+    ["childPid", undefined],
+    ["childPid", -1],
+    ["childPid", "4200"],
+    ["childCreationTimeUtc", undefined],
+    ["childCreationTimeUtc", "not-a-time"],
+    ["childExecutablePath", undefined],
+    ["childExecutablePath", "server.js"],
+    ["childCommandSha256", undefined],
+    ["childCommandSha256", "short"],
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    if (value === undefined) delete fixture.expected[field];
+    else fixture.expected[field] = value;
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", `${field}:${value}`);
+    assert.deepEqual(
+      result.blockers,
+      ["live_task_authority_expected_identity_invalid"],
+      `${field}:${value}`,
+    );
+  }
+});
+
+test("ACTIVE_BOUND rejects malformed owner-v2 and observed task/process structures", async () => {
+  const cases = [
+    ["owner", "task_instance_guid", undefined],
+    ["owner", "engine_pid", "4100"],
+    ["owner", "supervisor_creation_time_utc", "invalid"],
+    ["owner", "supervisor_executable_path", "node.exe"],
+    ["owner", "supervisor_command_sha256", "invalid"],
+    ["owner", "child_pid", 0],
+    ["owner", "child_creation_time_utc", "invalid"],
+    ["owner", "child_parent_pid", "4100"],
+    ["owner", "child_executable_path", "node.exe"],
+    ["owner", "child_command_sha256", "invalid"],
+    ["authority.task_instance", "engine_pid", "4100"],
+    ["authority.task_instance", "state", undefined],
+    ["authority.supervisor", "pid", "4100"],
+    ["authority.supervisor", "creation_time_utc", "invalid"],
+    ["authority.supervisor", "executable_path", "node.exe"],
+    ["authority.supervisor", "command_sha256", "invalid"],
+    ["authority.child", "pid", "4200"],
+    ["authority.child", "creation_time_utc", "invalid"],
+    ["authority.child", "parent_pid", "4100"],
+    ["authority.child", "executable_path", "node.exe"],
+    ["authority.child", "command_sha256", "invalid"],
+    ["authority.job_membership", "process_ids", ["4100", 4200]],
+    ["authority.job_membership", "process_ids", [4100, 4200, 9999]],
+  ];
+  for (const [target, field, value] of cases) {
+    const fixture = activeBoundedAuthorityFixture();
+    if (target === "owner") {
+      const original = fixture.probes.ownerReceiptInspector;
+      fixture.probes.ownerReceiptInspector = async () => {
+        const record = { ...(await original()) };
+        if (value === undefined) delete record[field];
+        else record[field] = value;
+        return record;
+      };
+    } else {
+      const section = target.split(".")[1];
+      const original = fixture.probes.authorityObserver;
+      fixture.probes.authorityObserver = async () => {
+        const record = await original();
+        return {
+          ...record,
+          [section]: { ...record[section], [field]: value },
+        };
+      };
+    }
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", `${target}.${field}`);
+    assert.ok(
+      result.blockers.includes("live_task_authority_evidence_malformed"),
+      `${target}.${field}:${inspect(result.blockers)}`,
+    );
+  }
+});
+
+test("ACTIVE_BOUND joins owner-v2 executable and command authority to the observation", async () => {
+  for (const [field, value] of [
+    ["supervisor_executable_path", "D:/other/node.exe"],
+    ["supervisor_command_sha256", "1".repeat(64)],
+    ["child_executable_path", "D:/other/node.exe"],
+    ["child_command_sha256", "2".repeat(64)],
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    const original = fixture.probes.ownerReceiptInspector;
+    fixture.probes.ownerReceiptInspector = async () => ({
+      ...(await original()),
+      [field]: value,
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", field);
+    assert.ok(result.blockers.includes("live_task_instance_receipt_mismatch"));
+  }
+
+  const taskName = activeBoundedAuthorityFixture();
+  const original = taskName.probes.authorityObserver;
+  taskName.probes.authorityObserver = async () => ({
+    ...(await original()),
+    task_name: "Different-Task",
+  });
+  assert.equal((await inspectBoundedWindowsAuthority(taskName)).state, "HOLD");
+});
+
+function stoppedBoundedAuthorityFixture() {
+  const expected = {
+    taskName: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    nodePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkoutRealPath: "D:/pulse/releases/pulse-v1",
+    releaseSha: BOUNDED_RELEASE_SHA,
+    profileSha256: BOUNDED_PROFILE_SHA,
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+    conflictingTaskNames: ["PulseGaming-Stabilisation-Runtime"],
+    supervisorExecutablePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    supervisorCommandSha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
+    childExecutablePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    childCommandSha256: BOUNDED_CHILD_COMMAND_SHA,
+  };
+  return {
+    mode: "QUIESCENT",
+    expected,
+    probes: {
+      taskDefinitionInspector: async () => ({
+        task_name: expected.taskName,
+        state: "managed_disabled",
+        blockers: [],
+      }),
+      taskInstancesInspector: async () => ({
+        ok: true,
+        instances: [],
+        blockers: [],
+      }),
+      conflictInspector: async () => ({
+        clear: true,
+        tasks: [
+          { task_name: "PulseGaming-Stabilisation-Runtime", state: "disabled" },
+        ],
+        blockers: [],
+      }),
+      activationReceiptInspector: async () => ({
+        present: false,
+        blockers: [],
+      }),
+      ownerReceiptInspector: async () => ({
+        state: "absent",
+        blockers: [],
+      }),
+      listenerInspector: async () => ({
+        available: true,
+        listeningPids: [],
+        blockers: [],
+      }),
+      databaseAuthorityInspector: async () => ({
+        ok: true,
+        database_identity_sha256: BOUNDED_DATABASE_SHA,
+        snapshot_sha256: BOUNDED_DATABASE_SNAPSHOT_SHA,
+        scheduler: { owner: "scheduler:raw-private-owner" },
+        blockers: [],
+      }),
+    },
+  };
+}
+
+test("STOPPED_BOUND requires two stable quiescent observations", async () => {
+  const result = await inspectBoundedWindowsAuthority(
+    stoppedBoundedAuthorityFixture(),
+  );
+  assert.equal(result.verdict, "GREEN");
+  assert.equal(result.state, "STOPPED_BOUND");
+  assert.match(result.authority_fingerprint, /^[a-f0-9]{64}$/);
+});
+
+test("STOPPED_BOUND rejects unarchived exact-stale owners and validates governed owner-v2 archives", async () => {
+  const unarchived = stoppedBoundedAuthorityFixture();
+  unarchived.probes.ownerReceiptInspector = async () => ({
+    state: "exact_stale",
+    blockers: [],
+  });
+  const unarchivedResult = await inspectBoundedWindowsAuthority(unarchived);
+  assert.equal(unarchivedResult.state, "HOLD");
+  assert.ok(
+    unarchivedResult.blockers.includes(
+      "quiescent_owner_receipt_not_governed_stale",
+    ),
+  );
+
+  const active = activeBoundedAuthorityFixture();
+  const ownerV2 = await active.probes.ownerReceiptInspector();
+  for (const mutation of [
+    { authority_fingerprint: "0".repeat(64) },
+    { supervisor_command_sha256: "invalid" },
+    { supervisor_command_sha256: "7".repeat(64) },
+    { child_executable_path: "node.exe" },
+    { child_executable_path: "D:/other/node.exe" },
+    { archive_receipt_sha256: "invalid" },
+    { archive_policy_applied: false },
+  ]) {
+    const fixture = stoppedBoundedAuthorityFixture();
+    fixture.probes.ownerReceiptInspector = async () => ({
+      ...ownerV2,
+      state: "governed_stale",
+      archived: true,
+      archive_policy_applied: true,
+      archive_receipt_sha256: "f".repeat(64),
+      blockers: [],
+      ...mutation,
+    });
+    assert.equal(
+      (await inspectBoundedWindowsAuthority(fixture)).state,
+      "HOLD",
+      inspect(mutation),
+    );
+  }
+
+  const governed = stoppedBoundedAuthorityFixture();
+  governed.probes.ownerReceiptInspector = async () => ({
+    ...ownerV2,
+    state: "governed_stale",
+    archived: true,
+    archive_policy_applied: true,
+    archive_receipt_sha256: "f".repeat(64),
+    blockers: [],
+  });
+  assert.equal(
+    (await inspectBoundedWindowsAuthority(governed)).state,
+    "STOPPED_BOUND",
+  );
+});
+
+test("changing bounded observations are HOLD", async () => {
+  const fixture = stoppedBoundedAuthorityFixture();
+  let reads = 0;
+  fixture.probes.taskDefinitionInspector = async () => ({
+    state: reads++ === 0 ? "managed_disabled" : "managed_current",
+    blockers: [],
+  });
+  const result = await inspectBoundedWindowsAuthority(fixture);
+  assert.equal(result.state, "HOLD");
+  assert.deepEqual(result.blockers, ["bounded_authority_observation_unstable"]);
+});
+
+test("ACTIVE_BOUND requires a stable canonical database snapshot digest", async () => {
+  for (const snapshotSha256 of [undefined, "not-a-sha"]) {
+    const fixture = activeBoundedAuthorityFixture();
+    fixture.probes.databaseAuthorityInspector = async () => ({
+      ok: true,
+      database_identity_sha256: BOUNDED_DATABASE_SHA,
+      snapshot_sha256: snapshotSha256,
+      blockers: [],
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", String(snapshotSha256));
+    assert.ok(
+      result.blockers.includes("live_database_authority_mismatch"),
+      String(snapshotSha256),
+    );
+  }
+
+  const changing = activeBoundedAuthorityFixture();
+  let reads = 0;
+  changing.probes.databaseAuthorityInspector = async () => ({
+    ok: true,
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+    snapshot_sha256: reads++ === 0 ? "1".repeat(64) : "2".repeat(64),
+    blockers: [],
+  });
+  const changed = await inspectBoundedWindowsAuthority(changing);
+  assert.equal(changed.state, "HOLD");
+  assert.deepEqual(changed.blockers, [
+    "bounded_authority_observation_unstable",
+  ]);
+});
+
+test("STOPPED_BOUND requires a stable canonical database snapshot digest", async () => {
+  for (const snapshotSha256 of [undefined, "not-a-sha"]) {
+    const fixture = stoppedBoundedAuthorityFixture();
+    fixture.probes.databaseAuthorityInspector = async () => ({
+      ok: true,
+      database_identity_sha256: BOUNDED_DATABASE_SHA,
+      snapshot_sha256: snapshotSha256,
+      blockers: [],
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", String(snapshotSha256));
+    assert.ok(
+      result.blockers.includes("quiescent_database_authority_mismatch"),
+      String(snapshotSha256),
+    );
+  }
+
+  const changing = stoppedBoundedAuthorityFixture();
+  let reads = 0;
+  changing.probes.databaseAuthorityInspector = async () => ({
+    ok: true,
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+    snapshot_sha256: reads++ === 0 ? "1".repeat(64) : "2".repeat(64),
+    blockers: [],
+  });
+  const changed = await inspectBoundedWindowsAuthority(changing);
+  assert.equal(changed.state, "HOLD");
+  assert.deepEqual(changed.blockers, [
+    "bounded_authority_observation_unstable",
+  ]);
+});
+
+test("ACTIVE_BOUND requires health to report the exact running worker set", async () => {
+  for (const isolatedWorkerPools of [
+    {
+      ...boundedMultiLaneHealth().isolated_worker_pools,
+      running_worker_set_sha256: "0".repeat(64),
+    },
+    {
+      ...boundedMultiLaneHealth().isolated_worker_pools,
+      active_runner_count: 0,
+    },
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    const original = fixture.probes.healthRequester;
+    fixture.probes.healthRequester = async () => ({
+      ...(await original()),
+      multiLaneRuntime: { isolated_worker_pools: isolatedWorkerPools },
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD");
+    assert.ok(result.blockers.includes("live_task_health_mismatch"));
+  }
+});
+
+test("bounded verdicts never expose raw command text or database lease owners", async () => {
+  const result = await inspectBoundedWindowsAuthority(
+    stoppedBoundedAuthorityFixture(),
+  );
+  const serialised = JSON.stringify(result);
+  assert.equal(serialised.includes("sk-live-secret"), false);
+  assert.equal(serialised.includes("scheduler:raw-private-owner"), false);
+});
+
+test("HOLD exposes a runtime instance ID only after strict validation", async () => {
+  for (const unsafeRuntimeInstanceId of [
+    "ri-sk-live-secret",
+    `ri-${"a".repeat(4096)}-sk-live-secret`,
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    fixture.expected.runtimeInstanceId = unsafeRuntimeInstanceId;
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD");
+    assert.equal(result.runtime_instance_id, null);
+    assert.equal(JSON.stringify(result).includes("sk-live-secret"), false);
+  }
+});
+
+test("bounded verdicts reject contradictory probe states without copying raw blockers", async () => {
+  const taskFixture = stoppedBoundedAuthorityFixture();
+  taskFixture.probes.taskDefinitionInspector = async () => ({
+    state: "managed_disabled",
+    blockers: ["raw task error with sk-live-private"],
+  });
+  const taskResult = await inspectBoundedWindowsAuthority(taskFixture);
+  assert.equal(taskResult.state, "HOLD");
+  assert.ok(
+    taskResult.blockers.includes("quiescent_task_definition_untrusted"),
+  );
+  assert.equal(JSON.stringify(taskResult).includes("sk-live-private"), false);
+
+  const databaseFixture = activeBoundedAuthorityFixture();
+  databaseFixture.probes.databaseAuthorityInspector = async () => ({
+    ok: false,
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+    blockers: ["lease owner scheduler:raw-private-owner"],
+  });
+  const databaseResult = await inspectBoundedWindowsAuthority(databaseFixture);
+  assert.equal(databaseResult.state, "HOLD");
+  assert.deepEqual(databaseResult.blockers, [
+    "live_database_authority_mismatch",
+  ]);
+  assert.equal(
+    JSON.stringify(databaseResult).includes("scheduler:raw-private-owner"),
+    false,
+  );
+});
+
+test("ACTIVE_BOUND requires blocker-free evidence from every live authority probe", async () => {
+  for (const probe of [
+    "taskDefinitionInspector",
+    "conflictInspector",
+    "activationReceiptInspector",
+    "ownerReceiptInspector",
+    "authorityObserver",
+    "listenerInspector",
+    "healthRequester",
+    "databaseAuthorityInspector",
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    const original = fixture.probes[probe];
+    fixture.probes[probe] = async (...args) => ({
+      ...(await original(...args)),
+      blockers: [`raw-${probe}-sk-live-secret`],
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", probe);
+    assert.equal(
+      JSON.stringify(result).includes("sk-live-secret"),
+      false,
+      probe,
+    );
+  }
+});
+
+test("bounded authority requires explicit blocker arrays and exact RUNNING task evidence", async () => {
+  for (const probe of [
+    "taskDefinitionInspector",
+    "conflictInspector",
+    "activationReceiptInspector",
+    "ownerReceiptInspector",
+    "authorityObserver",
+    "listenerInspector",
+    "healthRequester",
+    "databaseAuthorityInspector",
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    const original = fixture.probes[probe];
+    fixture.probes[probe] = async (...args) => {
+      const result = { ...(await original(...args)) };
+      delete result.blockers;
+      return result;
+    };
+    assert.equal(
+      (await inspectBoundedWindowsAuthority(fixture)).state,
+      "HOLD",
+      probe,
+    );
+  }
+
+  for (const mutation of [
+    { task_name: "Different-Task" },
+    { state: 3 },
+    { instance_guid: "99999999-2222-4333-8444-555555555555" },
+    { engine_pid: 4999 },
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    const original = fixture.probes.authorityObserver;
+    fixture.probes.authorityObserver = async () => {
+      const result = await original();
+      return Object.prototype.hasOwnProperty.call(mutation, "task_name")
+        ? { ...result, task_name: mutation.task_name }
+        : {
+            ...result,
+            task_instance: { ...result.task_instance, ...mutation },
+          };
+    };
+    assert.equal(
+      (await inspectBoundedWindowsAuthority(fixture)).state,
+      "HOLD",
+      inspect(mutation),
+    );
+  }
+});
+
+test("STOPPED_BOUND requires explicit blocker arrays from every quiescent result", async () => {
+  for (const probe of [
+    "taskDefinitionInspector",
+    "taskInstancesInspector",
+    "conflictInspector",
+    "activationReceiptInspector",
+    "ownerReceiptInspector",
+    "listenerInspector",
+    "databaseAuthorityInspector",
+  ]) {
+    const fixture = stoppedBoundedAuthorityFixture();
+    const original = fixture.probes[probe];
+    fixture.probes[probe] = async (...args) => {
+      const result = { ...(await original(...args)) };
+      delete result.blockers;
+      return result;
+    };
+    assert.equal(
+      (await inspectBoundedWindowsAuthority(fixture)).state,
+      "HOLD",
+      probe,
+    );
+  }
+});
+
+test("STOPPED_BOUND requires blocker-free evidence from every quiescent authority probe", async () => {
+  for (const probe of [
+    "taskDefinitionInspector",
+    "taskInstancesInspector",
+    "conflictInspector",
+    "activationReceiptInspector",
+    "ownerReceiptInspector",
+    "listenerInspector",
+    "databaseAuthorityInspector",
+  ]) {
+    const fixture = stoppedBoundedAuthorityFixture();
+    const original = fixture.probes[probe];
+    fixture.probes[probe] = async (...args) => ({
+      ...(await original(...args)),
+      blockers: [`raw-${probe}-sk-live-secret`],
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", probe);
+    assert.equal(
+      JSON.stringify(result).includes("sk-live-secret"),
+      false,
+      probe,
+    );
+  }
+});
+
+test("ACTIVE_BOUND requires complete clear evidence for bounded legacy-task conflicts", async () => {
+  for (const conflictResult of [
+    {
+      clear: false,
+      tasks: [
+        { task_name: "PulseGaming-Stabilisation-Runtime", state: "enabled" },
+      ],
+      blockers: ["conflicting_runtime_task_enabled"],
+    },
+    { clear: true, blockers: [] },
+    { clear: "yes", tasks: [], blockers: [] },
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    fixture.probes.conflictInspector = async () => conflictResult;
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", inspect(conflictResult));
+    assert.ok(
+      result.blockers.includes("live_conflicting_task_authority_untrusted"),
+    );
+  }
+});
+
+test("bounded verdicts reconcile the exact configured conflict-task roster", async () => {
+  for (const tasks of [
+    [],
+    [
+      { task_name: "PulseGaming-Stabilisation-Runtime", state: "disabled" },
+      { task_name: "PulseGaming-Stabilisation-Runtime", state: "disabled" },
+    ],
+    [{ task_name: "Unrelated-Backup-Task", state: "disabled" }],
+    [{ task_name: "PulseGaming-Stabilisation-Runtime", state: "enabled" }],
+    [
+      {
+        task_name: "PulseGaming-Stabilisation-Runtime",
+        state: "inspection_error",
+      },
+    ],
+    [{ task_name: "PulseGaming-Stabilisation-Runtime", state: "unknown" }],
+  ]) {
+    for (const fixture of [
+      activeBoundedAuthorityFixture(),
+      stoppedBoundedAuthorityFixture(),
+    ]) {
+      fixture.probes.conflictInspector = async () => ({
+        clear: true,
+        tasks,
+        blockers: [],
+      });
+      assert.equal(
+        (await inspectBoundedWindowsAuthority(fixture)).state,
+        "HOLD",
+        `${fixture.mode}:${inspect(tasks)}`,
+      );
+    }
+  }
+
+  for (const state of ["absent", "disabled"]) {
+    const fixture = activeBoundedAuthorityFixture();
+    fixture.probes.conflictInspector = async () => ({
+      clear: true,
+      tasks: [{ task_name: "PulseGaming-Stabilisation-Runtime", state }],
+      blockers: [],
+    });
+    assert.equal(
+      (await inspectBoundedWindowsAuthority(fixture)).state,
+      "ACTIVE_BOUND",
+      state,
+    );
+  }
+});
+
+test("the default Windows process identity probe returns only PID and creation time", () => {
+  assert.equal(typeof inspectWindowsProcessIdentity, "function");
+  const calls = [];
+  const identity = inspectWindowsProcessIdentity({
+    pid: 4123,
+    platform: "win32",
+    execFileSyncImpl(command, args, options) {
+      calls.push({ command, args, options });
+      return JSON.stringify({
+        probe: "process_identity",
+        attested: true,
+        process_id: 4123,
+        process_started_at: TEST_PROCESS_STARTED_AT,
+      });
+    },
+  });
+
+  assert.deepEqual(identity, {
+    available: true,
+    exists: true,
+    process_id: 4123,
+    process_started_at: TEST_PROCESS_STARTED_AT,
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command.toLowerCase(), "powershell.exe");
+  assert.equal(JSON.stringify(calls[0]).includes("4123"), true);
+  assert.equal(JSON.stringify(calls[0]).includes("command_line"), false);
+
+  assert.deepEqual(
+    inspectWindowsProcessIdentity({
+      pid: 4999,
+      platform: "win32",
+      execFileSyncImpl() {
+        return JSON.stringify({
+          probe: "process_identity",
+          attested: true,
+          process_id: 4999,
+          process_started_at: null,
+        });
+      },
+    }),
+    {
+      available: true,
+      exists: false,
+      process_id: 4999,
+      process_started_at: null,
+    },
+  );
+});
 const {
   loadSafeRuntimeProfile,
   validateSafeRuntimeProfile,
-} = require(
-  "../../lib/stabilisation/windows-local-runtime-supervisor",
-);
+} = require("../../lib/stabilisation/windows-local-runtime-supervisor");
 const {
   parseArgs: parseLiveRuntimeArgs,
 } = require("../../tools/windows-live-guarded-runtime");
@@ -232,15 +1696,9 @@ test("start doctor carries the stopped-runtime inspection into its mutation deci
   assert.equal(runtimeInspections, 1);
   assert.equal(startLockInspections, 1);
   assert.equal(admitted.checks.runtime.stopped, true);
-  assert.equal(
-    admitted.checks.start_operation_lock.state,
-    "absent",
-  );
+  assert.equal(admitted.checks.start_operation_lock.state, "absent");
   assert.equal(admitted.decision.mutation_authorised, true);
-  assert.equal(
-    admitted.decision.planned_effect,
-    "start_verified_runtime",
-  );
+  assert.equal(admitted.decision.planned_effect, "start_verified_runtime");
 
   const blocked = buildLiveRuntimeDoctorReport({
     action: "start",
@@ -263,14 +1721,10 @@ test("start doctor carries the stopped-runtime inspection into its mutation deci
   });
   assert.equal(blocked.decision.mutation_authorised, false);
   assert.ok(
-    blocked.decision.blockers.includes(
-      "live_supervisor_port_not_free",
-    ),
+    blocked.decision.blockers.includes("live_supervisor_port_not_free"),
   );
   assert.ok(
-    blocked.decision.blockers.includes(
-      "live_supervisor_owner_receipt_present",
-    ),
+    blocked.decision.blockers.includes("live_supervisor_owner_receipt_present"),
   );
   assert.equal(blocked.verdict, "HOLD");
 
@@ -294,14 +1748,9 @@ test("start doctor carries the stopped-runtime inspection into its mutation deci
   });
   assert.equal(locked.verdict, "HOLD");
   assert.equal(locked.decision.mutation_authorised, false);
-  assert.equal(
-    locked.checks.start_operation_lock.state,
-    "active",
-  );
+  assert.equal(locked.checks.start_operation_lock.state, "active");
   assert.ok(
-    locked.decision.blockers.includes(
-      "live_start_operation_lock_active",
-    ),
+    locked.decision.blockers.includes("live_start_operation_lock_active"),
   );
 
   const staleUnsafe = buildLiveRuntimeDoctorReport({
@@ -318,9 +1767,7 @@ test("start doctor carries the stopped-runtime inspection into its mutation deci
         clear: false,
         state: "stale_recovery_blocked",
         operation_nonce: START_OPERATION_NONCE,
-        blockers: [
-          "live_start_operation_stale_recovery_unsafe",
-        ],
+        blockers: ["live_start_operation_stale_recovery_unsafe"],
       }),
     },
   });
@@ -358,6 +1805,59 @@ test("conflicting task query failures are blockers rather than false absence", (
   ]);
 });
 
+test("configured conflict inspection distinguishes exact COM absence without enumerating tasks", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const calls = [];
+  const absent = inspectLiveTaskConflicts({
+    profile,
+    platform: "win32",
+    execFileSyncImpl(command, args, options) {
+      calls.push({ command, args, options });
+      return JSON.stringify({
+        Found: false,
+        Enabled: null,
+        HResult: -2147024894,
+      });
+    },
+  });
+  assert.deepEqual(absent, {
+    clear: true,
+    tasks: [
+      {
+        task_name: "PulseGaming-Stabilisation-Runtime",
+        state: "absent",
+      },
+    ],
+    blockers: [],
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command.toLowerCase(), "powershell.exe");
+  assert.equal(calls[0].args.join(" ").includes("GetTask("), true);
+  assert.equal(calls[0].args.join(" ").includes("GetTasks("), false);
+  assert.equal(
+    calls[0].args.join(" ").includes("PulseGaming-Stabilisation-Runtime"),
+    true,
+  );
+
+  const unavailable = inspectLiveTaskConflicts({
+    profile,
+    platform: "win32",
+    execFileSyncImpl() {
+      return JSON.stringify({
+        Found: false,
+        Enabled: null,
+        HResult: -2147024891,
+      });
+    },
+  });
+  assert.equal(unavailable.clear, false);
+  assert.equal(unavailable.tasks[0].state, "inspection_error");
+  assert.deepEqual(unavailable.blockers, [
+    "conflicting_runtime_task_inspection_failed:" +
+      "PulseGaming-Stabilisation-Runtime",
+  ]);
+});
+
 test("stopped-runtime inspection accepts only an exact dead stale owner that the supervisor can archive", () => {
   const profile = loadLiveGuardedRuntimeProfile();
   const expectedCommit = "d".repeat(40);
@@ -368,7 +1868,9 @@ test("stopped-runtime inspection accepts only an exact dead stale owner that the
   const exactOwner = {
     schema_version: "pulse-windows-live-guarded-owner-v1",
     supervisor_pid: 4100,
+    supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
     child_pid: 4200,
+    child_process_started_at: TEST_PROCESS_STARTED_AT,
     port: profile.port,
     repo_root: ROOT.replace(/\\/g, "/"),
     commit_sha: expectedCommit,
@@ -378,7 +1880,7 @@ test("stopped-runtime inspection accepts only an exact dead stale owner that the
     start_operation_nonce: START_OPERATION_NONCE,
     platform: "youtube",
   };
-  const inspect = (owner) =>
+  const inspect = (owner, identityInspector = processIdentityInspector({})) =>
     inspectStoppedLiveRuntime({
       profile,
       repoRoot: ROOT,
@@ -390,7 +1892,7 @@ test("stopped-runtime inspection accepts only an exact dead stale owner that the
       }),
       existsSync: () => true,
       readFileSync: () => JSON.stringify(owner),
-      processAliveInspector: () => false,
+      processIdentityInspector: identityInspector,
     });
 
   const exactStale = inspect(exactOwner);
@@ -405,16 +1907,126 @@ test("stopped-runtime inspection accepts only an exact dead stale owner that the
   assert.equal(mismatched.stopped, false);
   assert.equal(mismatched.owner_state, "mismatch");
   assert.ok(
-    mismatched.blockers.includes(
-      "live_supervisor_owner_receipt_mismatch",
+    mismatched.blockers.includes("live_supervisor_owner_receipt_mismatch"),
+  );
+
+  const active = inspect(
+    exactOwner,
+    processIdentityInspector({
+      4100: TEST_PROCESS_STARTED_AT,
+    }),
+  );
+  assert.equal(active.stopped, false);
+  assert.equal(active.owner_state, "active");
+  assert.ok(active.blockers.includes("live_supervisor_owner_process_alive"));
+
+  const reusedPid = inspect(
+    exactOwner,
+    processIdentityInspector({
+      4100: TEST_REUSED_PROCESS_STARTED_AT,
+      4200: TEST_REUSED_PROCESS_STARTED_AT,
+    }),
+  );
+  assert.equal(reusedPid.stopped, true);
+  assert.equal(reusedPid.owner_state, "exact_stale");
+
+  const unavailable = inspect(
+    exactOwner,
+    processIdentityInspector({ 4100: "UNAVAILABLE" }),
+  );
+  assert.equal(unavailable.stopped, false);
+  assert.equal(unavailable.owner_state, "identity_unavailable");
+  assert.ok(
+    unavailable.blockers.includes(
+      "live_supervisor_owner_process_identity_unavailable",
     ),
   );
 });
 
+test("stopped-runtime inspection validates owner-v2 task authority before declaring exact stale", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const activation = taskBoundActivation({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+    receiptSha: "c".repeat(64),
+  });
+  const binding = activation.authority_binding;
+  const exactOwnerV2 = {
+    schema_version: "pulse-windows-live-guarded-owner-v2",
+    runtime_instance_id: activation.runtime_instance_id,
+    task_name: profile.task_name,
+    task_instance_guid: BOUNDED_INSTANCE_GUID,
+    engine_pid: 4100,
+    supervisor_pid: 4100,
+    supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
+    supervisor_creation_time_utc: TEST_PROCESS_STARTED_AT,
+    supervisor_executable_path: binding.node_path,
+    supervisor_command_sha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
+    child_pid: 4200,
+    child_process_started_at: TEST_PROCESS_STARTED_AT,
+    child_creation_time_utc: TEST_PROCESS_STARTED_AT,
+    child_parent_pid: 4100,
+    child_executable_path: binding.node_path,
+    child_command_sha256: BOUNDED_CHILD_COMMAND_SHA,
+    child_in_job: true,
+    listener_port: profile.port,
+    listener_pid: 4200,
+    port: profile.port,
+    repo_root: ROOT.replace(/\\/g, "/"),
+    commit_sha: expectedCommit,
+    release_sha: expectedCommit,
+    profile_sha256: binding.profile_sha256,
+    database_identity_sha256: binding.database_identity_sha256,
+    authority_binding: binding,
+    authority_fingerprint: activation.authority_fingerprint,
+    activation_receipt_sha256: activation.receipt_sha256,
+    platform: "youtube",
+    blockers: [],
+  };
+  const inspectOwner = (owner) =>
+    inspectStoppedLiveRuntime({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      listenerInspector: () => ({ available: true, listeningPids: [] }),
+      existsSync: () => true,
+      readFileSync: () => JSON.stringify(owner),
+      processIdentityInspector: processIdentityInspector({}),
+      expectedSupervisorExecutablePath: binding.node_path,
+      expectedSupervisorCommandSha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
+      expectedChildExecutablePath: binding.node_path,
+      expectedChildCommandSha256: BOUNDED_CHILD_COMMAND_SHA,
+    });
+
+  assert.equal(inspectOwner(exactOwnerV2).owner_state, "exact_stale");
+  for (const mutation of [
+    { runtime_instance_id: undefined },
+    { task_instance_guid: "invalid" },
+    { supervisor_executable_path: "node.exe" },
+    { supervisor_executable_path: "D:/other/node.exe" },
+    { supervisor_command_sha256: "invalid" },
+    { supervisor_command_sha256: "f".repeat(64) },
+    { child_parent_pid: 4999 },
+    { child_executable_path: "D:/other/node.exe" },
+    { child_command_sha256: "invalid" },
+    { child_command_sha256: "f".repeat(64) },
+    { child_in_job: false },
+    { authority_fingerprint: "0".repeat(64) },
+  ]) {
+    const result = inspectOwner({ ...exactOwnerV2, ...mutation });
+    assert.equal(result.owner_state, "mismatch", inspect(mutation));
+    assert.ok(
+      result.blockers.includes("live_supervisor_owner_receipt_mismatch"),
+      inspect(mutation),
+    );
+  }
+});
+
 test("start operation lock is durable, cross-process exclusive and nonce-owned", () => {
-  const temp = fs.mkdtempSync(
-    path.join(os.tmpdir(), "pulse-live-start-lock-"),
-  );
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-live-start-lock-"));
   try {
     const profile = {
       ...loadLiveGuardedRuntimeProfile(),
@@ -425,50 +2037,51 @@ test("start operation lock is durable, cross-process exclusive and nonce-owned",
       expectedCommit: "d".repeat(40),
       activationReceiptSha256: "c".repeat(64),
       processId: 4100,
+      processIdentityInspector: processIdentityInspector({
+        4100: TEST_PROCESS_STARTED_AT,
+      }),
     };
     const first = acquireLiveStartOperationLock({
       ...common,
       operationNonce: "11111111-1111-4111-8111-111111111111",
       generatedAt: "2026-07-29T22:00:00.000Z",
     });
-    const persisted = JSON.parse(
-      fs.readFileSync(first.lock_path, "utf8"),
-    );
+    const persisted = JSON.parse(fs.readFileSync(first.lock_path, "utf8"));
     assert.equal(
       persisted.operation_nonce,
       "11111111-1111-4111-8111-111111111111",
     );
     assert.equal(persisted.process_id, 4100);
+    assert.equal(persisted.process_started_at, TEST_PROCESS_STARTED_AT);
     const inspected = inspectLiveStartOperationLock({
       profile,
       expectedCommit: common.expectedCommit,
-      activationReceiptSha256:
-        common.activationReceiptSha256,
+      activationReceiptSha256: common.activationReceiptSha256,
       runtime: {
         stopped: true,
         listening_pids: [],
         owner_state: "absent",
       },
-      processAliveInspector: () => true,
+      processIdentityInspector: processIdentityInspector({
+        4100: TEST_PROCESS_STARTED_AT,
+      }),
     });
     assert.equal(inspected.valid, true);
     assert.equal(inspected.clear, false);
     assert.equal(inspected.state, "active");
-    assert.equal(
-      inspected.operation_nonce,
-      first.operation_nonce,
-    );
+    assert.equal(inspected.operation_nonce, first.operation_nonce);
     const unsafeStale = inspectLiveStartOperationLock({
       profile,
       expectedCommit: common.expectedCommit,
-      activationReceiptSha256:
-        common.activationReceiptSha256,
+      activationReceiptSha256: common.activationReceiptSha256,
       runtime: {
         stopped: false,
         listening_pids: [4999],
         owner_state: "active",
       },
-      processAliveInspector: () => false,
+      processIdentityInspector: processIdentityInspector({
+        4100: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
     });
     assert.equal(unsafeStale.clear, false);
     assert.equal(unsafeStale.state, "stale_recovery_blocked");
@@ -477,52 +2090,72 @@ test("start operation lock is durable, cross-process exclusive and nonce-owned",
         "live_start_operation_stale_recovery_unsafe",
       ),
     );
-    const mismatched = inspectLiveStartOperationLock({
+    const identityUnavailable = inspectLiveStartOperationLock({
       profile,
-      expectedCommit: "e".repeat(40),
-      activationReceiptSha256:
-        common.activationReceiptSha256,
+      expectedCommit: common.expectedCommit,
+      activationReceiptSha256: common.activationReceiptSha256,
       runtime: {
         stopped: true,
         listening_pids: [],
         owner_state: "absent",
       },
-      processAliveInspector: () => false,
+      processIdentityInspector: processIdentityInspector({
+        4100: "UNAVAILABLE",
+      }),
+    });
+    assert.equal(identityUnavailable.valid, false);
+    assert.equal(identityUnavailable.clear, false);
+    assert.equal(identityUnavailable.state, "identity_unavailable");
+    assert.ok(
+      identityUnavailable.blockers.includes(
+        "live_start_operation_lock_process_identity_unavailable",
+      ),
+    );
+    const mismatched = inspectLiveStartOperationLock({
+      profile,
+      expectedCommit: "e".repeat(40),
+      activationReceiptSha256: common.activationReceiptSha256,
+      runtime: {
+        stopped: true,
+        listening_pids: [],
+        owner_state: "absent",
+      },
+      processIdentityInspector: processIdentityInspector({}),
     });
     assert.equal(mismatched.clear, false);
     assert.equal(mismatched.state, "mismatch");
     assert.ok(
-      mismatched.blockers.includes(
-        "live_start_operation_lock_commit_mismatch",
-      ),
+      mismatched.blockers.includes("live_start_operation_lock_commit_mismatch"),
     );
 
     assert.throws(
       () =>
         acquireLiveStartOperationLock({
           ...common,
-          operationNonce:
-            "22222222-2222-4222-8222-222222222222",
+          operationNonce: "22222222-2222-4222-8222-222222222222",
           staleRuntime: {
             stopped: true,
             listening_pids: [],
             owner_state: "absent",
           },
-          processAliveInspector: () => true,
+          processIdentityInspector: processIdentityInspector({
+            4100: TEST_PROCESS_STARTED_AT,
+          }),
         }),
       /live_start_operation_locked/,
     );
 
     const recovered = acquireLiveStartOperationLock({
       ...common,
-      operationNonce:
-        "22222222-2222-4222-8222-222222222222",
+      operationNonce: "22222222-2222-4222-8222-222222222222",
       staleRuntime: {
         stopped: true,
         listening_pids: [],
         owner_state: "absent",
       },
-      processAliveInspector: () => false,
+      processIdentityInspector: processIdentityInspector({
+        4100: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
       generatedAt: "2026-07-29T22:00:30.000Z",
     });
     assert.equal(
@@ -530,16 +2163,16 @@ test("start operation lock is durable, cross-process exclusive and nonce-owned",
       "22222222-2222-4222-8222-222222222222",
     );
     assert.equal(
-      fs.existsSync(recovered.recovered_lock_evidence_path),
-      true,
+      recovered.record.process_started_at,
+      TEST_REUSED_PROCESS_STARTED_AT,
     );
+    assert.equal(fs.existsSync(recovered.recovered_lock_evidence_path), true);
     assert.throws(
       () =>
         releaseLiveStartOperationLock({
           lock: {
             ...first,
-            operation_nonce:
-              "33333333-3333-4333-8333-333333333333",
+            operation_nonce: "33333333-3333-4333-8333-333333333333",
           },
         }),
       /live_start_operation_lock_ownership_lost/,
@@ -553,6 +2186,214 @@ test("start operation lock is durable, cross-process exclusive and nonce-owned",
     assert.equal(released.outcome, "start_operation_lock_released");
     assert.equal(fs.existsSync(first.lock_path), false);
     assert.equal(fs.existsSync(released.evidence_path), true);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("an interrupted start-lock write never publishes partial authority and is recovered deterministically", () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-start-lock-interrupted-"),
+  );
+  try {
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      state_root: temp,
+    };
+    const lockPath = path.join(temp, "start-operation.lock.json");
+    let interrupted = false;
+    const interruptedFileSystem = new Proxy(fs, {
+      get(target, property, receiver) {
+        if (property !== "writeFileSync") {
+          return Reflect.get(target, property, receiver);
+        }
+        return (destination, bytes, encoding) => {
+          if (!interrupted && Number.isInteger(destination)) {
+            interrupted = true;
+            fs.writeSync(destination, Buffer.from("{", "utf8"));
+            throw new Error("fixture_interrupted_before_lock_publication");
+          }
+          return fs.writeFileSync(destination, bytes, encoding);
+        };
+      },
+    });
+
+    assert.throws(
+      () =>
+        acquireLiveStartOperationLock({
+          profile,
+          expectedCommit: "d".repeat(40),
+          activationReceiptSha256: "c".repeat(64),
+          operationNonce: "11111111-1111-4111-8111-111111111111",
+          processId: 4100,
+          processIdentityInspector: processIdentityInspector({
+            4100: TEST_PROCESS_STARTED_AT,
+          }),
+          generatedAt: "2026-07-29T22:00:00.000Z",
+          fileSystemSync: interruptedFileSystem,
+        }),
+      /fixture_interrupted_before_lock_publication/,
+    );
+    assert.equal(fs.existsSync(lockPath), false);
+    assert.equal(
+      fs.readdirSync(temp).filter((name) => name.endsWith(".pending")).length,
+      1,
+    );
+
+    assert.throws(
+      () =>
+        acquireLiveStartOperationLock({
+          profile,
+          expectedCommit: "d".repeat(40),
+          activationReceiptSha256: "c".repeat(64),
+          operationNonce: "22222222-2222-4222-8222-222222222222",
+          processId: 4200,
+          processIdentityInspector: processIdentityInspector({
+            4100: TEST_PROCESS_STARTED_AT,
+            4200: TEST_REUSED_PROCESS_STARTED_AT,
+          }),
+          staleRuntime: {
+            stopped: true,
+            listening_pids: [],
+            owner_state: "absent",
+          },
+          generatedAt: "2026-07-29T22:00:30.000Z",
+        }),
+      /live_start_operation_locked/,
+    );
+    assert.equal(fs.existsSync(lockPath), false);
+
+    const recovered = acquireLiveStartOperationLock({
+      profile,
+      expectedCommit: "d".repeat(40),
+      activationReceiptSha256: "c".repeat(64),
+      operationNonce: "22222222-2222-4222-8222-222222222222",
+      processId: 4200,
+      processIdentityInspector: processIdentityInspector({
+        4100: TEST_REUSED_PROCESS_STARTED_AT,
+        4200: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
+      staleRuntime: {
+        stopped: true,
+        listening_pids: [],
+        owner_state: "absent",
+      },
+      generatedAt: "2026-07-29T22:00:30.000Z",
+    });
+
+    assert.equal(fs.existsSync(lockPath), true);
+    assert.equal(
+      fs.readdirSync(temp).some((name) => name.endsWith(".pending")),
+      false,
+    );
+    assert.equal(recovered.recovered_incomplete_evidence_paths.length, 1);
+    assert.equal(
+      fs.existsSync(recovered.recovered_incomplete_evidence_paths[0]),
+      true,
+    );
+    releaseLiveStartOperationLock({
+      lock: recovered,
+      generatedAt: "2026-07-29T22:01:00.000Z",
+    });
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("start-lock publication never replaces a competing final authority", () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-start-lock-no-clobber-"),
+  );
+  try {
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      state_root: temp,
+    };
+    const lockPath = path.join(temp, "start-operation.lock.json");
+    const competingBytes = '{"competing_authority":true}\n';
+    let injected = false;
+    const racingFileSystem = new Proxy(fs, {
+      get(target, property, receiver) {
+        if (property !== "linkSync") {
+          return Reflect.get(target, property, receiver);
+        }
+        return (source, destination) => {
+          if (!injected && destination === lockPath) {
+            injected = true;
+            fs.writeFileSync(destination, competingBytes, {
+              encoding: "utf8",
+              flag: "wx",
+            });
+          }
+          return fs.linkSync(source, destination);
+        };
+      },
+    });
+
+    assert.throws(
+      () =>
+        acquireLiveStartOperationLock({
+          profile,
+          expectedCommit: "d".repeat(40),
+          activationReceiptSha256: "c".repeat(64),
+          operationNonce: "11111111-1111-4111-8111-111111111111",
+          processId: 4100,
+          processIdentityInspector: processIdentityInspector({
+            4100: TEST_PROCESS_STARTED_AT,
+          }),
+          generatedAt: "2026-07-29T22:00:00.000Z",
+          fileSystemSync: racingFileSystem,
+        }),
+      /live_start_operation_locked/,
+    );
+    assert.equal(fs.readFileSync(lockPath, "utf8"), competingBytes);
+    assert.equal(
+      fs.readdirSync(temp).some((name) => name.endsWith(".pending")),
+      false,
+    );
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("a legacy truncated final start lock is quarantined only on an exact stopped runway", () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-start-lock-truncated-"),
+  );
+  try {
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      state_root: temp,
+    };
+    const lockPath = path.join(temp, "start-operation.lock.json");
+    fs.writeFileSync(lockPath, "{", "utf8");
+
+    const recovered = acquireLiveStartOperationLock({
+      profile,
+      expectedCommit: "d".repeat(40),
+      activationReceiptSha256: "c".repeat(64),
+      operationNonce: "22222222-2222-4222-8222-222222222222",
+      processId: 4200,
+      processIdentityInspector: processIdentityInspector({
+        4200: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
+      staleRuntime: {
+        stopped: true,
+        listening_pids: [],
+        owner_state: "absent",
+      },
+      generatedAt: "2026-07-29T22:00:30.000Z",
+    });
+
+    assert.equal(fs.existsSync(lockPath), true);
+    assert.equal(recovered.recovered_incomplete_evidence_paths.length, 1);
+    const quarantined = recovered.recovered_incomplete_evidence_paths[0];
+    assert.equal(fs.existsSync(quarantined), true);
+    assert.equal(fs.readFileSync(quarantined, "utf8"), "{");
+    releaseLiveStartOperationLock({
+      lock: recovered,
+      generatedAt: "2026-07-29T22:01:00.000Z",
+    });
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
@@ -579,25 +2420,26 @@ test("an exact dead stale owner is archived under the held start nonce before la
       activationReceiptSha256: activation.receipt_sha256,
       operationNonce: START_OPERATION_NONCE,
       processId: process.pid,
+      processIdentityInspector: processIdentityInspector({
+        [process.pid]: TEST_PROCESS_STARTED_AT,
+      }),
       generatedAt: "2026-07-29T22:00:00.000Z",
     });
-    const ownerPath = path.join(
-      profile.state_root,
-      "supervisor-owner.json",
-    );
+    const ownerPath = path.join(profile.state_root, "supervisor-owner.json");
     fs.writeFileSync(
       ownerPath,
       `${JSON.stringify(
         {
           schema_version: "pulse-windows-live-guarded-owner-v1",
           supervisor_pid: 991001,
+          supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
           child_pid: 991002,
+          child_process_started_at: TEST_PROCESS_STARTED_AT,
           port: profile.port,
           repo_root: ROOT.replace(/\\/g, "/"),
           commit_sha: expectedCommit,
           profile_sha256: lock.record.profile_sha256,
-          activation_receipt_sha256:
-            activation.receipt_sha256,
+          activation_receipt_sha256: activation.receipt_sha256,
           platform: "youtube",
         },
         null,
@@ -616,21 +2458,19 @@ test("an exact dead stale owner is archived under the held start nonce before la
         available: true,
         listeningPids: [],
       }),
-      processAliveInspector: () => false,
+      processIdentityInspector: processIdentityInspector({}),
       startLockInspector(options) {
         return inspectLiveStartOperationLock({
           ...options,
-          processAliveInspector: (pid) =>
-            Number(pid) === process.pid,
+          processIdentityInspector: processIdentityInspector({
+            [process.pid]: TEST_PROCESS_STARTED_AT,
+          }),
         });
       },
       generatedAt: "2026-07-29T22:00:30.000Z",
     });
 
-    assert.equal(
-      archived.outcome,
-      "exact_stale_owner_archived",
-    );
+    assert.equal(archived.outcome, "exact_stale_owner_archived");
     assert.equal(fs.existsSync(ownerPath), false);
     assert.equal(fs.existsSync(archived.archived_path), true);
     releaseLiveStartOperationLock({
@@ -639,6 +2479,121 @@ test("an exact dead stale owner is archived under the held start nonce before la
     });
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("scheduled-task start supplies reviewed argv authority before locking and archives only the exact dead owner-v2", async (t) => {
+  const expectedCommit = "d".repeat(40);
+  const run = async (mutateOwner = (owner) => owner) => {
+    const temp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pulse-live-start-prelock-owner-v2-"),
+    );
+    t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      state_root: temp,
+      activation_receipt_path: path.join(temp, "activation.json"),
+    };
+    const activation = taskBoundActivation({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      receiptSha: "c".repeat(64),
+    });
+    const commandAuthority = buildLiveProcessCommandAuthority({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      nodeExecutable: activation.authority_binding.node_path,
+    });
+    const owner = mutateOwner({
+      schema_version: "pulse-windows-live-guarded-owner-v2",
+      runtime_instance_id: activation.runtime_instance_id,
+      task_name: profile.task_name,
+      task_instance_guid: BOUNDED_INSTANCE_GUID,
+      engine_pid: 991001,
+      supervisor_pid: 991001,
+      supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
+      supervisor_creation_time_utc: TEST_PROCESS_STARTED_AT,
+      supervisor_executable_path: activation.authority_binding.node_path,
+      supervisor_command_sha256: commandAuthority.supervisor_command_sha256,
+      child_pid: 991002,
+      child_process_started_at: TEST_REUSED_PROCESS_STARTED_AT,
+      child_creation_time_utc: TEST_REUSED_PROCESS_STARTED_AT,
+      child_parent_pid: 991001,
+      child_executable_path: activation.authority_binding.node_path,
+      child_command_sha256: commandAuthority.child_command_sha256,
+      child_in_job: true,
+      listener_port: profile.port,
+      listener_pid: 991002,
+      port: profile.port,
+      repo_root: ROOT.replace(/\\/g, "/"),
+      commit_sha: expectedCommit,
+      release_sha: expectedCommit,
+      profile_sha256: activation.authority_binding.profile_sha256,
+      database_identity_sha256:
+        activation.authority_binding.database_identity_sha256,
+      authority_binding: activation.authority_binding,
+      authority_fingerprint: activation.authority_fingerprint,
+      activation_receipt_sha256: activation.receipt_sha256,
+      platform: "youtube",
+      blockers: [],
+    });
+    fs.writeFileSync(
+      path.join(temp, "supervisor-owner.json"),
+      `${JSON.stringify(owner, null, 2)}\n`,
+    );
+    let archiveCalls = 0;
+    const startLock = inMemoryStartLock();
+    const promise = startLiveScheduledTask({
+      ...startLock,
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      platform: "win32",
+      sourceDatabaseInspector: () => ({ ready: true }),
+      activationInspector: () => activation,
+      conflictInspector: () => ({ clear: true, blockers: [] }),
+      taskInspector: () => ({ state: "managed_current", blockers: [] }),
+      runtimeInspector: (options) => inspectStoppedLiveRuntime(options),
+      listenerInspector: () => ({
+        available: true,
+        listeningPids: [],
+        blockers: [],
+      }),
+      processIdentityInspector: processIdentityInspector({}),
+      staleOwnerArchiver() {
+        archiveCalls += 1;
+        throw new Error("test_exact_owner_archive_reached");
+      },
+    });
+    return { promise, archiveCalls: () => archiveCalls };
+  };
+
+  const exact = await run();
+  await assert.rejects(exact.promise, /test_exact_owner_archive_reached/);
+  assert.equal(exact.archiveCalls(), 1);
+
+  for (const mutateOwner of [
+    (owner) => ({
+      ...owner,
+      supervisor_executable_path: "D:/alternate/node.exe",
+    }),
+    (owner) => ({
+      ...owner,
+      supervisor_command_sha256: "f".repeat(64),
+    }),
+    (owner) => ({
+      ...owner,
+      child_executable_path: "D:/alternate/node.exe",
+    }),
+    (owner) => ({ ...owner, child_command_sha256: "f".repeat(64) }),
+  ]) {
+    const alternate = await run(mutateOwner);
+    await assert.rejects(alternate.promise, /live_runtime_not_stopped/);
+    assert.equal(alternate.archiveCalls(), 0);
   }
 });
 
@@ -652,34 +2607,22 @@ test("the separate reviewed LIVE_GUARDED profile is exact YouTube-only while the
     live.profile_id,
     "pulse-v1-governed-multi-lane-live-guarded-youtube",
   );
-  assert.equal(
-    live.environment.PULSE_SCHEDULER_PROFILE,
-    "governed_multi_lane",
-  );
+  assert.equal(live.environment.PULSE_SCHEDULER_PROFILE, "governed_multi_lane");
   assert.equal(live.environment.PULSE_OPERATING_MODE, "LIVE_GUARDED");
   assert.equal(live.environment.OPERATING_MODE, "LIVE_GUARDED");
   assert.equal(live.environment.AUTO_PUBLISH, "true");
-  assert.equal(
-    live.environment.PULSE_GUARDED_LIVE_DISPATCH_ENABLED,
-    "true",
-  );
+  assert.equal(live.environment.PULSE_GUARDED_LIVE_DISPATCH_ENABLED, "true");
   assert.equal(live.environment.PULSE_EMERGENCY_KILL_SWITCH, "false");
   assert.equal(live.environment.PULSE_KILL_SWITCH, "false");
   assert.equal(live.environment.YOUTUBE_AUTO_PUBLISH, "true");
   assert.equal(live.platform_policy.primary, "youtube");
   assert.equal(live.platform_policy.control_tower_required, true);
-  assert.equal(
-    live.platform_policy.fresh_control_required_per_release,
-    true,
-  );
+  assert.equal(live.platform_policy.fresh_control_required_per_release, true);
   assert.equal(
     live.platform_policy.oauth_client_sha256_bound_to_activation,
     true,
   );
-  assert.equal(
-    live.environment.PULSE_YOUTUBE_OAUTH_CLIENT_SHA256,
-    undefined,
-  );
+  assert.equal(live.environment.PULSE_YOUTUBE_OAUTH_CLIENT_SHA256, undefined);
 
   for (const key of [
     "TIKTOK_ENABLED",
@@ -723,6 +2666,8 @@ test("supervision preparation and health identity fail closed unless the receipt
     valid: true,
     receipt_sha256: "8".repeat(64),
     youtube_oauth_client_sha256: "7".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    authority_fingerprint: "6".repeat(64),
     blockers: [],
   };
   assert.throws(
@@ -757,14 +2702,10 @@ test("supervision preparation and health identity fail closed unless the receipt
   });
   assert.equal(prepared.runtime_environment.AUTO_PUBLISH, "true");
   assert.equal(
-    prepared.runtime_environment
-      .PULSE_LIVE_GUARDED_ACTIVATION_RECEIPT_SHA256,
+    prepared.runtime_environment.PULSE_LIVE_GUARDED_ACTIVATION_RECEIPT_SHA256,
     activation.receipt_sha256,
   );
-  assert.equal(
-    prepared.runtime_environment.YOUTUBE_REFRESH_TOKEN,
-    undefined,
-  );
+  assert.equal(prepared.runtime_environment.YOUTUBE_REFRESH_TOKEN, undefined);
 
   const liveHealth = {
     status: "ok",
@@ -778,9 +2719,14 @@ test("supervision preparation and health identity fail closed unless the receipt
       use_sqlite: true,
       use_job_queue_explicit: "true",
     },
+    multiLaneRuntime: boundedMultiLaneHealth(),
+  };
+  const expectedRuntime = {
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    worker_topology: BOUNDED_WORKER_TOPOLOGY,
   };
   assert.equal(
-    safeLiveHealthIdentity(liveHealth, expectedCommit),
+    safeLiveHealthIdentity(liveHealth, expectedCommit, expectedRuntime),
     true,
   );
   assert.equal(
@@ -793,6 +2739,7 @@ test("supervision preparation and health identity fail closed unless the receipt
         },
       },
       expectedCommit,
+      expectedRuntime,
     ),
     false,
   );
@@ -800,9 +2747,2141 @@ test("supervision preparation and health identity fail closed unless the receipt
     safeLiveHealthIdentity(
       { ...liveHealth, schedulerActive: false },
       expectedCommit,
+      expectedRuntime,
     ),
     false,
   );
+  assert.equal(
+    safeLiveHealthIdentity(
+      {
+        ...liveHealth,
+        multiLaneRuntime: {
+          isolated_worker_pools: {
+            ...liveHealth.multiLaneRuntime.isolated_worker_pools,
+            running_worker_set_sha256: "0".repeat(64),
+          },
+        },
+      },
+      expectedCommit,
+      expectedRuntime,
+    ),
+    false,
+  );
+  assert.equal(safeLiveHealthIdentity(liveHealth, expectedCommit), false);
+
+  for (const [name, mutate] of [
+    [
+      "default disabled",
+      (pools) => ({ ...pools, default_enabled: false }),
+    ],
+    [
+      "wrong active pool count",
+      (pools) => ({ ...pools, active_pool_count: 2 }),
+    ],
+    [
+      "attacker pool",
+      (pools) => ({
+        ...pools,
+        active_runner_count: 2,
+        active_pool_count: 2,
+        pools: [
+          ...pools.pools,
+          {
+            pool_id: "attacker_pool",
+            active_instances: 1,
+            heartbeat_ms: 30000,
+            kinds: ["publish"],
+          },
+        ],
+      }),
+    ],
+    [
+      "duplicate pool ID",
+      (pools) => ({ ...pools, pools: [...pools.pools, pools.pools[0]] }),
+    ],
+    [
+      "unbounded instances",
+      (pools) => ({
+        ...pools,
+        pools: [{ ...pools.pools[0], active_instances: 101 }],
+      }),
+    ],
+    [
+      "wrong kinds",
+      (pools) => ({
+        ...pools,
+        pools: [{ ...pools.pools[0], kinds: ["attacker_kind"] }],
+      }),
+    ],
+    [
+      "wrong heartbeat",
+      (pools) => ({
+        ...pools,
+        pools: [{ ...pools.pools[0], heartbeat_ms: 29999 }],
+      }),
+    ],
+  ]) {
+    const observed = liveHealth.multiLaneRuntime.isolated_worker_pools;
+    assert.equal(
+      safeLiveHealthIdentity(
+        {
+          ...liveHealth,
+          multiLaneRuntime: {
+            isolated_worker_pools: mutate(observed),
+          },
+        },
+        expectedCommit,
+        expectedRuntime,
+      ),
+      false,
+      name,
+    );
+  }
+});
+
+test("handoff command fingerprints use semantic argv independently of valid Windows quoting", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const nodePath = "D:/pulse-tools/node-v22.17.1/node.exe";
+  const repoRoot = "D:/pulse/releases/pulse-v1";
+  const expectedSupervisorArguments = [
+    "D:\\pulse\\releases\\pulse-v1\\tools\\windows-live-guarded-runtime.js",
+    "supervise",
+    "--noninteractive",
+    "--repo-root",
+    "D:\\pulse\\releases\\pulse-v1",
+    "--expected-commit",
+    expectedCommit,
+    "--activation-receipt",
+    "D:/pulse-data/runtime/pulse-live-guarded-youtube/activation-receipt.json",
+  ];
+  const expectedChildArguments = ["server.js"];
+  const independentlyAuthoredSupervisorCommandLine =
+    "D:\\pulse-tools\\node-v22.17.1\\node.exe " +
+    '"D:\\pulse\\releases\\pulse-v1\\tools\\windows-live-guarded-runtime.js" ' +
+    '"supervise" --noninteractive --repo-root ' +
+    "D:\\pulse\\releases\\pulse-v1 --expected-commit " +
+    `${expectedCommit} --activation-receipt ` +
+    '"D:/pulse-data/runtime/pulse-live-guarded-youtube/activation-receipt.json"';
+  const independentlyAuthoredChildCommandLine =
+    '"D:/pulse-tools/node-v22.17.1/node.exe" "server.js"';
+  const authority = buildLiveProcessCommandAuthority({
+    profile,
+    repoRoot,
+    expectedCommit,
+    nodeExecutable: nodePath,
+  });
+  const expectedSupervisorHash = require("node:crypto")
+    .createHash("sha256")
+    .update(JSON.stringify(expectedSupervisorArguments))
+    .digest("hex");
+  const expectedChildHash = require("node:crypto")
+    .createHash("sha256")
+    .update(JSON.stringify(expectedChildArguments))
+    .digest("hex");
+  assert.equal(authority.supervisor_command_sha256, expectedSupervisorHash);
+  assert.equal(authority.child_command_sha256, expectedChildHash);
+
+  const handoff = await inspectLiveTaskBoundHandoff({
+    profile,
+    supervisorPid: 4100,
+    childPid: 4200,
+    expectedSupervisorCreationTimeUtc: "2026-08-02T10:00:00.000Z",
+    expectedSupervisorExecutablePath: nodePath,
+    expectedSupervisorCommandSha256: expectedSupervisorHash,
+    expectedChildCreationTimeUtc: "2026-08-02T10:00:01.000Z",
+    expectedChildExecutablePath: nodePath,
+    expectedChildCommandSha256: expectedChildHash,
+    execFileSyncImpl(executable, arguments_) {
+      assert.equal(executable, "powershell.exe");
+      const script = arguments_.at(-1);
+      if (script.includes("GetInstances(0)")) {
+        return JSON.stringify({
+          InstanceGuid: BOUNDED_INSTANCE_GUID,
+          EnginePID: 4100,
+          State: 4,
+        });
+      }
+      if (script.includes("ProcessId = 4100")) {
+        return JSON.stringify({
+          ProcessId: 4100,
+          ParentProcessId: 900,
+          CreationDate: "2026-08-02T10:00:00.000Z",
+          ExecutablePath: nodePath,
+          CommandParsed: true,
+          CommandSha256: expectedSupervisorHash,
+          _test_only_command_line: independentlyAuthoredSupervisorCommandLine,
+        });
+      }
+      if (script.includes("ProcessId = 4200")) {
+        return JSON.stringify({
+          ProcessId: 4200,
+          ParentProcessId: 4100,
+          CreationDate: "2026-08-02T10:00:01.000Z",
+          ExecutablePath: nodePath,
+          CommandParsed: true,
+          CommandSha256: expectedChildHash,
+          _test_only_command_line: independentlyAuthoredChildCommandLine,
+        });
+      }
+      return JSON.stringify({
+        ProbePid: 4300,
+        ProcessIds: [4100, 4200, 4300],
+      });
+    },
+  });
+  assert.equal(handoff.ok, true);
+  assert.equal(handoff.supervisor.command_sha256, expectedSupervisorHash);
+  assert.equal(handoff.child.command_sha256, expectedChildHash);
+  assert.equal(
+    JSON.stringify(handoff).includes(
+      independentlyAuthoredSupervisorCommandLine,
+    ),
+    false,
+  );
+  assert.equal(
+    JSON.stringify(handoff).includes(independentlyAuthoredChildCommandLine),
+    false,
+  );
+});
+
+test("the real supervision-generation path borrows the exact parent transition lease through owner and lifecycle attestation", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-generation-transition-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "9".repeat(40);
+  const activationReceiptSha256 = "8".repeat(64);
+  const transitionEvents = [];
+  const authorityBoundaryEvents = [];
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(
+      temp,
+      "state",
+      "activation-receipt.json",
+    ),
+  };
+  fs.writeFileSync(profile.database_path, "bounded database identity\n");
+  const authorityContextSha256 = independentlyMeasuredTransitionAuthorityContext(
+    {
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+    },
+  );
+  const transition = inMemoryTransitionLease({
+    preheldOwner: `live-start:${START_OPERATION_NONCE}`,
+    preheldAuthorityContextSha256: authorityContextSha256,
+    events: transitionEvents,
+  });
+  const child = new EventEmitter();
+  child.pid = 7412;
+  const kills = [];
+  child.kill = (signal) => {
+    kills.push(signal);
+    queueMicrotask(() => child.emit("exit", 0, signal));
+    return true;
+  };
+  const liveHealth = {
+    status: "ok",
+    schedulerActive: true,
+    build: { commit_sha: expectedCommit },
+    deployment: { mode: "local", primary: true },
+    runtime: {
+      operating_mode: "LIVE_GUARDED",
+      auto_publish: true,
+      legacy_auto_publish_armed: true,
+      use_sqlite: true,
+      use_job_queue_explicit: "true",
+    },
+    multiLaneRuntime: boundedMultiLaneHealth(),
+  };
+  let lifecycleWrites = 0;
+  const boundedActivation = taskBoundActivation({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+    receiptSha: activationReceiptSha256,
+  });
+  let boundedListenerReads = 0;
+  const activationInspections = [];
+
+  const generation = await startLiveSupervisionGeneration({
+    repoRoot: ROOT,
+    expectedCommit,
+    workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+    profilePath: path.join(temp, "profile.json"),
+    platform: "win32",
+    runtimeTransitionLeaseFactory: transition.factory,
+    transitionAuthorityContextProvider() {
+      authorityBoundaryEvents.push("authority");
+      return authorityContextSha256;
+    },
+    transitionLeaseBorrower(options) {
+      assert.equal(options.authorityContextSha256, authorityContextSha256);
+      return borrowLiveRuntimeTransitionLease({
+        ...options,
+        participantIdentity: {
+          participant_id: "33333333-3333-4333-8333-333333333333",
+          process_id: process.pid,
+          process_started_at: TEST_PROCESS_STARTED_AT,
+          process_start_source: "injected",
+        },
+      });
+    },
+    profileLoader: () => profile,
+    doctorBuilder: () => ({
+      checks: {
+        activation: {
+          valid: true,
+          receipt_sha256: activationReceiptSha256,
+        },
+      },
+    }),
+    supervisionPreparer: () => ({
+      activation_receipt_sha256: activationReceiptSha256,
+      runtime_environment: {},
+    }),
+    activationInspector: (options) => {
+      activationInspections.push(options);
+      return boundedActivation;
+    },
+    taskAuthorityObserver: async (options) => {
+      assert.equal(
+        options.expectedSupervisorExecutablePath,
+        boundedActivation.authority_binding.node_path,
+      );
+      assert.equal(
+        options.expectedSupervisorCommandSha256,
+        boundedActivation.task_definition_sha256,
+      );
+      assert.equal(
+        options.expectedChildExecutablePath,
+        boundedActivation.authority_binding.node_path,
+      );
+      assert.match(options.expectedChildCommandSha256, /^[a-f0-9]{64}$/);
+      return taskBoundHandoffObservation(child, options);
+    },
+    startOperationInspector: () => ({
+      present: true,
+      valid: true,
+      operation_nonce: START_OPERATION_NONCE,
+      blockers: [],
+    }),
+    listenerInspector: () => ({
+      available: true,
+      listeningPids: boundedListenerReads++ === 0 ? [] : [child.pid],
+      blockers: [],
+    }),
+    processIdentityInspector: processIdentityInspector({
+      [process.pid]: TEST_PROCESS_STARTED_AT,
+      [child.pid]: TEST_REUSED_PROCESS_STARTED_AT,
+    }),
+    healthRequester: async () => liveHealth,
+    spawnImpl: () => child,
+    lifecycleReceiptWriter(options) {
+      lifecycleWrites += 1;
+      assert.equal(authorityBoundaryEvents.at(-1), "authority");
+      authorityBoundaryEvents.push("supervise-start-receipt");
+      assert.equal(options.action, "supervise-start");
+      assert.equal(
+        transition.current()?.owner_id,
+        `live-start:${START_OPERATION_NONCE}`,
+      );
+      return { receipt_path: path.join(temp, "start.json") };
+    },
+    ownerWriter(ownerPath, value) {
+      assert.equal(authorityBoundaryEvents.at(-1), "authority");
+      authorityBoundaryEvents.push("owner-receipt");
+      assert.equal(
+        lifecycleWrites,
+        1,
+        "the owner receipt must be the final handoff publication",
+      );
+      const transitionMetadata = JSON.parse(
+        transition.current()?.metadata || "null",
+      );
+      assert.equal(
+        transitionMetadata?.admission_state,
+        "SEALED",
+        "handoff must atomically close transition borrowing before publication",
+      );
+      assert.deepEqual(
+        transitionMetadata?.participants?.map(
+          (participant) => participant.role,
+        ),
+        ["owner", "handoff_supervisor", "handoff_child"],
+        "the transition borrower must become an exact child-bound seal before owner publication",
+      );
+      const handoffSupervisor = transitionMetadata.participants[1];
+      assert.equal(handoffSupervisor.process_id, process.pid);
+      assert.equal(
+        handoffSupervisor.process_started_at,
+        TEST_PROCESS_STARTED_AT,
+      );
+      const handoffChild = transitionMetadata.participants[2];
+      assert.equal(handoffChild.process_id, child.pid);
+      assert.equal(
+        handoffChild.process_started_at,
+        TEST_REUSED_PROCESS_STARTED_AT,
+      );
+      assert.throws(
+        () =>
+          borrowLiveRuntimeTransitionLease({
+            databasePath: profile.database_path,
+            expectedOwnerId: `live-start:${START_OPERATION_NONCE}`,
+            authorityContextSha256,
+            runtimeTransitionLeaseFactory: transition.factory,
+          }),
+        /live_runtime_transition_lease_unavailable/,
+        "a replacement supervisor must not borrow during owner publication",
+      );
+      fs.mkdirSync(path.dirname(ownerPath), { recursive: true });
+      fs.writeFileSync(ownerPath, `${JSON.stringify(value, null, 2)}\n`);
+    },
+  });
+
+  assert.equal(generation.child, child);
+  assert.deepEqual(kills, []);
+  assert.equal(lifecycleWrites, 1);
+  assert.ok(
+    authorityBoundaryEvents.lastIndexOf("authority") <
+      authorityBoundaryEvents.lastIndexOf("owner-receipt"),
+  );
+  assert.equal(
+    transition.current()?.owner_id,
+    `live-start:${START_OPERATION_NONCE}`,
+  );
+  assert.equal(
+    transitionEvents.some(([name]) => name === "transition_release"),
+    false,
+  );
+  assert.equal(
+    transitionEvents.some(([name]) => name === "transition_close"),
+    true,
+  );
+  const owner = JSON.parse(fs.readFileSync(generation.ownerPath, "utf8"));
+  assert.equal(owner.child_pid, child.pid);
+  assert.equal(owner.schema_version, "pulse-windows-live-guarded-owner-v2");
+  assert.equal(owner.runtime_instance_id, BOUNDED_RUNTIME_ID);
+  assert.equal(owner.task_instance_guid, BOUNDED_INSTANCE_GUID);
+  assert.equal(owner.engine_pid, process.pid);
+  assert.equal(owner.child_parent_pid, process.pid);
+  assert.equal(owner.child_in_job, true);
+  assert.equal(owner.listener_port, 3001);
+  assert.equal(owner.listener_pid, child.pid);
+  assert.equal(
+    owner.authority_fingerprint,
+    boundedActivation.authority_fingerprint,
+  );
+  assert.equal(owner.supervisor_process_started_at, TEST_PROCESS_STARTED_AT);
+  assert.equal(owner.child_process_started_at, TEST_REUSED_PROCESS_STARTED_AT);
+  assert.equal(owner.start_operation_nonce, START_OPERATION_NONCE);
+  assert.ok(activationInspections.length >= 3);
+  for (const options of activationInspections) {
+    assert.equal(
+      options.nodePath,
+      fs.realpathSync.native(process.execPath).replace(/\\/g, "/"),
+    );
+    assert.equal(
+      options.checkoutRealPath,
+      fs.realpathSync.native(ROOT).replace(/\\/g, "/"),
+    );
+    assert.equal(
+      options.databaseIdentitySha256,
+      inspectLiveDatabaseIdentity({ databasePath: profile.database_path })
+        .database_identity_sha256,
+    );
+  }
+});
+
+test("owner-v2 publication rejects incomplete or contradictory task, process, Job and listener evidence", async (t) => {
+  let childPid = 7800;
+  const run = async (
+    mutateObservation,
+    omitHandoffListenerBlockers = false,
+  ) => {
+    const temp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pulse-live-handoff-authority-"),
+    );
+    t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+    const expectedCommit = "9".repeat(40);
+    const receiptSha = "8".repeat(64);
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      database_path: path.join(temp, "pulse.db"),
+      state_root: path.join(temp, "state"),
+      activation_receipt_path: path.join(temp, "activation.json"),
+    };
+    fs.writeFileSync(profile.database_path, "identity\n");
+    const activation = taskBoundActivation({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      receiptSha,
+    });
+    const child = new EventEmitter();
+    child.pid = ++childPid;
+    child.kill = (signal) => {
+      queueMicrotask(() => child.emit("exit", 0, signal));
+      return true;
+    };
+    let listenerReads = 0;
+    let ownerWrites = 0;
+    await assert.rejects(
+      startLiveSupervisionGeneration({
+        repoRoot: ROOT,
+        expectedCommit,
+        workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+        platform: "win32",
+        profileLoader: () => profile,
+        doctorBuilder: () => ({
+          checks: { activation: { valid: true, receipt_sha256: receiptSha } },
+        }),
+        supervisionPreparer: () => ({
+          activation_receipt_sha256: receiptSha,
+          runtime_environment: {},
+        }),
+        activationInspector: () => activation,
+        startOperationInspector: () => ({
+          present: false,
+          valid: true,
+          operation_nonce: null,
+          blockers: [],
+        }),
+        transitionLeaseAcquirer: () => ({
+          renew: () => true,
+          sealForHandoff: () => true,
+          release: () => true,
+        }),
+        listenerInspector: () => ({
+          available: true,
+          listeningPids: listenerReads++ === 0 ? [] : [child.pid],
+          ...(listenerReads > 1 && omitHandoffListenerBlockers
+            ? {}
+            : { blockers: [] }),
+        }),
+        processIdentityInspector: processIdentityInspector({
+          [process.pid]: TEST_PROCESS_STARTED_AT,
+          [child.pid]: TEST_REUSED_PROCESS_STARTED_AT,
+        }),
+        healthRequester: async () => ({
+          status: "ok",
+          schedulerActive: true,
+          build: { commit_sha: expectedCommit },
+          deployment: { mode: "local", primary: true },
+          runtime: {
+            operating_mode: "LIVE_GUARDED",
+            auto_publish: true,
+            legacy_auto_publish_armed: true,
+            use_sqlite: true,
+            use_job_queue_explicit: "true",
+          },
+          multiLaneRuntime: boundedMultiLaneHealth(),
+        }),
+        spawnImpl: () => child,
+        taskAuthorityObserver: async (options) =>
+          mutateObservation(taskBoundHandoffObservation(child, options)),
+        lifecycleReceiptWriter: () => ({ receipt_path: "unused" }),
+        ownerWriter: () => {
+          ownerWrites += 1;
+        },
+      }),
+      /live_task_handoff_authority_mismatch/,
+    );
+    assert.equal(ownerWrites, 0);
+  };
+
+  for (const mutate of [
+    (value) => {
+      const result = { ...value };
+      delete result.blockers;
+      return result;
+    },
+    (value) => ({ ...value, task_name: "Different-Task" }),
+    (value) => ({
+      ...value,
+      task_instance: { ...value.task_instance, instance_guid: "invalid" },
+    }),
+    (value) => ({
+      ...value,
+      task_instance: { ...value.task_instance, state: 3 },
+    }),
+    (value) => ({
+      ...value,
+      supervisor: { ...value.supervisor, executable_path: "D:/wrong/node.exe" },
+    }),
+    (value) => ({
+      ...value,
+      supervisor: { ...value.supervisor, command_sha256: "0".repeat(64) },
+    }),
+    (value) => ({
+      ...value,
+      child: { ...value.child, executable_path: "D:/wrong/node.exe" },
+    }),
+    (value) => ({
+      ...value,
+      child: { ...value.child, command_sha256: "0".repeat(64) },
+    }),
+    (value) => ({
+      ...value,
+      supervisor: {
+        ...value.supervisor,
+        blockers: ["windows_authority_process_probe_failed"],
+      },
+    }),
+    (value) => ({
+      ...value,
+      job_membership: {
+        process_ids: [value.child.pid],
+        supervisor_present: false,
+        child_present: true,
+        blockers: [],
+      },
+    }),
+    (value) => ({
+      ...value,
+      job_membership: {
+        ...value.job_membership,
+        blockers: ["windows_job_membership_probe_failed"],
+      },
+    }),
+    (value) => ({
+      ...value,
+      job_membership: {
+        ...value.job_membership,
+        process_ids: [value.supervisor.pid, value.child.pid, 9999],
+      },
+    }),
+  ]) {
+    await run(mutate);
+  }
+  await run((value) => value, true);
+});
+
+test("supervisor boot cleanup refuses every malformed dead owner-v2 before archival", async (t) => {
+  let ownerPid = 994000;
+  const run = async (mutateOwner = (owner) => owner) => {
+    const temp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pulse-live-boot-stale-owner-v2-"),
+    );
+    t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+    const expectedCommit = "9".repeat(40);
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      database_path: path.join(temp, "pulse.db"),
+      state_root: path.join(temp, "state"),
+      activation_receipt_path: path.join(temp, "activation.json"),
+    };
+    fs.writeFileSync(profile.database_path, "identity\n");
+    const activation = taskBoundActivation({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      receiptSha: "8".repeat(64),
+    });
+    const commands = buildLiveProcessCommandAuthority({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      nodeExecutable: activation.authority_binding.node_path,
+    });
+    const supervisorPid = ++ownerPid;
+    const childPid = ++ownerPid;
+    const owner = mutateOwner({
+      schema_version: "pulse-windows-live-guarded-owner-v2",
+      runtime_instance_id: activation.runtime_instance_id,
+      task_name: profile.task_name,
+      task_instance_guid: BOUNDED_INSTANCE_GUID,
+      engine_pid: supervisorPid,
+      supervisor_pid: supervisorPid,
+      supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
+      supervisor_creation_time_utc: TEST_PROCESS_STARTED_AT,
+      supervisor_executable_path: activation.authority_binding.node_path,
+      supervisor_command_sha256: commands.supervisor_command_sha256,
+      child_pid: childPid,
+      child_process_started_at: TEST_REUSED_PROCESS_STARTED_AT,
+      child_creation_time_utc: TEST_REUSED_PROCESS_STARTED_AT,
+      child_parent_pid: supervisorPid,
+      child_executable_path: activation.authority_binding.node_path,
+      child_command_sha256: commands.child_command_sha256,
+      child_in_job: true,
+      listener_port: profile.port,
+      listener_pid: childPid,
+      port: profile.port,
+      repo_root: ROOT.replace(/\\/g, "/"),
+      commit_sha: expectedCommit,
+      release_sha: expectedCommit,
+      profile_sha256: activation.authority_binding.profile_sha256,
+      database_identity_sha256:
+        activation.authority_binding.database_identity_sha256,
+      authority_binding: activation.authority_binding,
+      authority_fingerprint: activation.authority_fingerprint,
+      activation_receipt_sha256: activation.receipt_sha256,
+      platform: "youtube",
+      blockers: [],
+    });
+    const ownerPath = path.join(profile.state_root, "supervisor-owner.json");
+    fs.mkdirSync(profile.state_root, { recursive: true });
+    fs.writeFileSync(ownerPath, `${JSON.stringify(owner, null, 2)}\n`);
+    let spawnCalls = 0;
+    const promise = startLiveSupervisionGeneration({
+      repoRoot: ROOT,
+      expectedCommit,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      platform: "win32",
+      profileLoader: () => profile,
+      doctorBuilder: () => ({
+        checks: {
+          activation: {
+            valid: true,
+            receipt_sha256: activation.receipt_sha256,
+          },
+        },
+      }),
+      supervisionPreparer: () => ({
+        activation_receipt_sha256: activation.receipt_sha256,
+        runtime_environment: {},
+      }),
+      activationInspector: () => activation,
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer: () => ({
+        renew: () => true,
+        release: () => true,
+      }),
+      listenerInspector: () => ({
+        available: true,
+        listeningPids: [],
+        blockers: [],
+      }),
+      processIdentityInspector: processIdentityInspector({
+        [process.pid]: TEST_PROCESS_STARTED_AT,
+      }),
+      spawnImpl: () => {
+        spawnCalls += 1;
+        throw new Error("test_spawn_reached_after_exact_stale_archive");
+      },
+    });
+    return { promise, ownerPath, spawnCalls: () => spawnCalls };
+  };
+
+  const exact = await run();
+  await assert.rejects(
+    exact.promise,
+    /test_spawn_reached_after_exact_stale_archive/,
+  );
+  assert.equal(exact.spawnCalls(), 1);
+  assert.equal(fs.existsSync(exact.ownerPath), false);
+
+  const malformedCases = [
+    ["runtime ID", (owner) => ({ ...owner, runtime_instance_id: "invalid" })],
+    ["task name", (owner) => ({ ...owner, task_name: "Different-Task" })],
+    ["task GUID", (owner) => ({ ...owner, task_instance_guid: "invalid" })],
+    ["EnginePID", (owner) => ({ ...owner, engine_pid: owner.engine_pid + 1 })],
+    [
+      "parentage",
+      (owner) => ({ ...owner, child_parent_pid: owner.supervisor_pid + 1 }),
+    ],
+    ["listener", (owner) => ({ ...owner, listener_pid: owner.child_pid + 1 })],
+    ["owner blockers", (owner) => ({ ...owner, blockers: ["stale"] })],
+    ["release", (owner) => ({ ...owner, release_sha: "7".repeat(40) })],
+    [
+      "database identity",
+      (owner) => ({ ...owner, database_identity_sha256: "7".repeat(64) }),
+    ],
+    [
+      "authority binding",
+      (owner) => ({
+        ...owner,
+        authority_binding: {
+          ...owner.authority_binding,
+          database_identity_sha256: "7".repeat(64),
+        },
+      }),
+    ],
+    [
+      "authority fingerprint",
+      (owner) => ({ ...owner, authority_fingerprint: "7".repeat(64) }),
+    ],
+  ];
+  for (const [label, mutateOwner] of malformedCases) {
+    const malformed = await run(mutateOwner);
+    await assert.rejects(
+      malformed.promise,
+      /live_supervisor_owner_receipt_mismatch/,
+      label,
+    );
+    assert.equal(malformed.spawnCalls(), 0, label);
+    assert.equal(fs.existsSync(malformed.ownerPath), true, label);
+  }
+});
+
+test("an owned generation keeps a sealed transition durable until the owner receipt is published", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-owned-handoff-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "a".repeat(40);
+  const activationReceiptSha256 = "b".repeat(64);
+  const transition = inMemoryTransitionLease();
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(
+      temp,
+      "state",
+      "activation-receipt.json",
+    ),
+  };
+  fs.writeFileSync(profile.database_path, "identity\n");
+  const child = new EventEmitter();
+  child.pid = 7462;
+  child.kill = (signal) => {
+    queueMicrotask(() => child.emit("exit", 0, signal));
+    return true;
+  };
+  let observedOwnerId = null;
+  const boundedActivation = taskBoundActivation({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+    receiptSha: activationReceiptSha256,
+  });
+  let boundedListenerReads = 0;
+
+  const generation = await startLiveSupervisionGeneration({
+    repoRoot: ROOT,
+    expectedCommit,
+    workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+    profilePath: path.join(temp, "profile.json"),
+    platform: "win32",
+    runtimeTransitionLeaseFactory: transition.factory,
+    profileLoader: () => profile,
+    doctorBuilder: () => ({
+      checks: {
+        activation: {
+          valid: true,
+          receipt_sha256: activationReceiptSha256,
+        },
+      },
+    }),
+    supervisionPreparer: () => ({
+      activation_receipt_sha256: activationReceiptSha256,
+      runtime_environment: {},
+    }),
+    activationInspector: () => boundedActivation,
+    taskAuthorityObserver: async (options) =>
+      taskBoundHandoffObservation(child, options),
+    startOperationInspector: () => ({
+      present: false,
+      valid: true,
+      operation_nonce: null,
+      blockers: [],
+    }),
+    listenerInspector: () => ({
+      available: true,
+      listeningPids: boundedListenerReads++ === 0 ? [] : [child.pid],
+      blockers: [],
+    }),
+    processIdentityInspector: processIdentityInspector({
+      [process.pid]: TEST_PROCESS_STARTED_AT,
+      [child.pid]: TEST_REUSED_PROCESS_STARTED_AT,
+    }),
+    healthRequester: async () => ({
+      status: "ok",
+      schedulerActive: true,
+      build: { commit_sha: expectedCommit },
+      deployment: { mode: "local", primary: true },
+      runtime: {
+        operating_mode: "LIVE_GUARDED",
+        auto_publish: true,
+        legacy_auto_publish_armed: true,
+        use_sqlite: true,
+        use_job_queue_explicit: "true",
+      },
+      multiLaneRuntime: boundedMultiLaneHealth(),
+    }),
+    spawnImpl: () => child,
+    lifecycleReceiptWriter: () => ({
+      receipt_path: path.join(temp, "start.json"),
+    }),
+    ownerWriter(ownerPath, value) {
+      const held = transition.current();
+      assert.ok(
+        held,
+        "the durable transition must still exist at owner publication",
+      );
+      observedOwnerId = held.owner_id;
+      const metadata = JSON.parse(held.metadata);
+      assert.equal(metadata.admission_state, "SEALED");
+      assert.deepEqual(
+        metadata.participants.map((participant) => participant.role),
+        ["owner", "handoff_child"],
+      );
+      assert.equal(metadata.participants[1].process_id, child.pid);
+      assert.equal(
+        metadata.participants[1].process_started_at,
+        TEST_REUSED_PROCESS_STARTED_AT,
+      );
+      assert.throws(
+        () =>
+          borrowLiveRuntimeTransitionLease({
+            databasePath: profile.database_path,
+            expectedOwnerId: held.owner_id,
+            authorityContextSha256:
+              independentlyMeasuredTransitionAuthorityContext({
+                profile,
+                repoRoot: ROOT,
+                expectedCommit,
+              }),
+            runtimeTransitionLeaseFactory: transition.factory,
+          }),
+        /live_runtime_transition_lease_unavailable/,
+      );
+      fs.mkdirSync(path.dirname(ownerPath), { recursive: true });
+      fs.writeFileSync(ownerPath, `${JSON.stringify(value, null, 2)}\n`);
+    },
+  });
+
+  assert.ok(observedOwnerId?.startsWith("live-supervise:"));
+  assert.equal(transition.current(), null);
+  assert.equal(fs.existsSync(generation.ownerPath), true);
+});
+
+test("an owned transition release failure terminates the child and removes its owner receipt before rejecting", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-generation-release-failure-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "7".repeat(40);
+  const activationReceiptSha256 = "6".repeat(64);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(
+      temp,
+      "state",
+      "activation-receipt.json",
+    ),
+  };
+  fs.writeFileSync(profile.database_path, "identity\n");
+  const child = new EventEmitter();
+  child.pid = 7512;
+  const kills = [];
+  child.kill = (signal) => {
+    kills.push(signal);
+    queueMicrotask(() => child.emit("exit", 0, signal));
+    return true;
+  };
+  const ownerPath = path.join(profile.state_root, "supervisor-owner.json");
+  const boundedActivation = taskBoundActivation({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+    receiptSha: activationReceiptSha256,
+  });
+  let boundedListenerReads = 0;
+
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      repoRoot: ROOT,
+      expectedCommit,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      profilePath: path.join(temp, "profile.json"),
+      platform: "win32",
+      profileLoader: () => profile,
+      doctorBuilder: () => ({
+        checks: {
+          activation: {
+            valid: true,
+            receipt_sha256: activationReceiptSha256,
+          },
+        },
+      }),
+      supervisionPreparer: () => ({
+        activation_receipt_sha256: activationReceiptSha256,
+        runtime_environment: {},
+      }),
+      activationInspector: () => boundedActivation,
+      taskAuthorityObserver: async (options) =>
+        taskBoundHandoffObservation(child, options),
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer: () => ({
+        renew() {
+          return true;
+        },
+        sealForHandoff() {
+          return true;
+        },
+        release() {
+          throw new Error("fixture_release_failed");
+        },
+      }),
+      listenerInspector: () => ({
+        available: true,
+        listeningPids: boundedListenerReads++ === 0 ? [] : [child.pid],
+        blockers: [],
+      }),
+      processIdentityInspector: processIdentityInspector({
+        [process.pid]: TEST_PROCESS_STARTED_AT,
+        [child.pid]: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
+      healthRequester: async () => ({
+        status: "ok",
+        schedulerActive: true,
+        build: { commit_sha: expectedCommit },
+        deployment: { mode: "local", primary: true },
+        runtime: {
+          operating_mode: "LIVE_GUARDED",
+          auto_publish: true,
+          legacy_auto_publish_armed: true,
+          use_sqlite: true,
+          use_job_queue_explicit: "true",
+        },
+        multiLaneRuntime: boundedMultiLaneHealth(),
+      }),
+      spawnImpl: () => child,
+      lifecycleReceiptWriter: () => ({
+        receipt_path: path.join(temp, "start.json"),
+      }),
+    }),
+    /live_runtime_transition_lease_release_failed/,
+  );
+
+  assert.deepEqual(kills, ["SIGTERM"]);
+  assert.equal(fs.existsSync(ownerPath), false);
+});
+
+test("a generation revalidates activation under the transition lease before spawning", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-generation-leased-authority-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "5".repeat(40);
+  const receiptSha = "4".repeat(64);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "identity\n");
+  let activationCalls = 0;
+  let spawnCalls = 0;
+
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      repoRoot: ROOT,
+      expectedCommit,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      platform: "win32",
+      profileLoader: () => profile,
+      doctorBuilder: () => ({
+        checks: {
+          activation: { valid: true, receipt_sha256: receiptSha },
+        },
+      }),
+      supervisionPreparer: () => ({
+        activation_receipt_sha256: receiptSha,
+        runtime_environment: {},
+      }),
+      activationInspector: () => {
+        activationCalls += 1;
+        return activationCalls === 1
+          ? {
+              valid: true,
+              receipt_sha256: receiptSha,
+              runtime_instance_id: BOUNDED_RUNTIME_ID,
+            }
+          : {
+              valid: false,
+              receipt_sha256: null,
+              blockers: ["activation_receipt_missing"],
+            };
+      },
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer: () => ({
+        renew: () => true,
+        release: () => true,
+      }),
+      spawnImpl() {
+        spawnCalls += 1;
+        throw new Error("must_not_spawn");
+      },
+    }),
+    /exact_live_activation_receipt_required/,
+  );
+
+  assert.equal(activationCalls, 2);
+  assert.equal(spawnCalls, 0);
+});
+
+test("activation revoked during health verification terminates the child before handoff", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-generation-post-health-authority-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "3".repeat(40);
+  const receiptSha = "2".repeat(64);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "identity\n");
+  const child = new EventEmitter();
+  child.pid = 7612;
+  const kills = [];
+  child.kill = (signal) => {
+    kills.push(signal);
+    queueMicrotask(() => child.emit("exit", 0, signal));
+    return true;
+  };
+  let activationCalls = 0;
+  let lifecycleWrites = 0;
+  const ownerPath = path.join(profile.state_root, "supervisor-owner.json");
+
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      repoRoot: ROOT,
+      expectedCommit,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      platform: "win32",
+      profileLoader: () => profile,
+      doctorBuilder: () => ({
+        checks: {
+          activation: { valid: true, receipt_sha256: receiptSha },
+        },
+      }),
+      supervisionPreparer: () => ({
+        activation_receipt_sha256: receiptSha,
+        runtime_environment: {},
+      }),
+      activationInspector: () => {
+        activationCalls += 1;
+        return activationCalls < 3
+          ? {
+              valid: true,
+              receipt_sha256: receiptSha,
+              runtime_instance_id: BOUNDED_RUNTIME_ID,
+            }
+          : {
+              valid: false,
+              receipt_sha256: null,
+              blockers: ["activation_receipt_missing"],
+            };
+      },
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer: () => ({
+        renew: () => true,
+        release: () => true,
+      }),
+      listenerInspector: () => ({
+        available: true,
+        listeningPids: [],
+      }),
+      processIdentityInspector: processIdentityInspector({
+        [process.pid]: TEST_PROCESS_STARTED_AT,
+        [child.pid]: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
+      spawnImpl: () => child,
+      healthRequester: async () => ({
+        status: "ok",
+        schedulerActive: true,
+        build: { commit_sha: expectedCommit },
+        deployment: { mode: "local", primary: true },
+        runtime: {
+          operating_mode: "LIVE_GUARDED",
+          auto_publish: true,
+          legacy_auto_publish_armed: true,
+          use_sqlite: true,
+          use_job_queue_explicit: "true",
+        },
+        multiLaneRuntime: boundedMultiLaneHealth(),
+      }),
+      lifecycleReceiptWriter() {
+        lifecycleWrites += 1;
+      },
+    }),
+    /exact_live_activation_receipt_required/,
+  );
+
+  assert.equal(activationCalls, 3);
+  assert.deepEqual(kills, ["SIGTERM"]);
+  assert.equal(lifecycleWrites, 0);
+  assert.equal(fs.existsSync(ownerPath), false);
+});
+
+test("the live child monitor rejects an attacker pool and confirms exit before restart", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-child-monitor-"),
+  );
+  let keepAlive;
+  try {
+    keepAlive = setInterval(() => {}, 1000);
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+    const child = new EventEmitter();
+    child.pid = 7084;
+    const events = [];
+    let activeChildren = 1;
+    let healthChecks = 0;
+    child.kill = (signal) => {
+      events.push(["kill", signal]);
+      setImmediate(() => {
+        activeChildren = 0;
+        child.emit("exit", null, signal);
+      });
+      return true;
+    };
+    const supervise =
+      typeof superviseLiveChildSession === "function"
+        ? superviseLiveChildSession
+        : async () => ({ outcome: "monitor_restart_not_implemented" });
+
+    const result = await supervise({
+      child,
+      ownerPath,
+      profile: {
+        port: 3001,
+        state_root: temp,
+      },
+      repoRoot: temp,
+      expectedCommit: "c".repeat(40),
+      expectedRuntime: boundedExpectedRuntime(),
+      activationReceiptPath: path.join(temp, "activation-receipt.json"),
+      activationInspector: () => ({
+        valid: true,
+        blockers: [],
+      }),
+      healthRequester: async () => {
+        healthChecks += 1;
+        return {
+          status: "ok",
+          schedulerActive: true,
+          build: { commit_sha: "c".repeat(40) },
+          deployment: { mode: "local", primary: true },
+          runtime: {
+            operating_mode: "LIVE_GUARDED",
+            auto_publish: true,
+            legacy_auto_publish_armed: true,
+            use_sqlite: true,
+            use_job_queue_explicit: "true",
+          },
+          multiLaneRuntime: {
+            isolated_worker_pools: {
+              ...boundedMultiLaneHealth().isolated_worker_pools,
+              pools: [
+                {
+                  pool_id: "attacker_pool",
+                  active_instances: 1,
+                  heartbeat_ms: 5_000,
+                  kinds: ["publish"],
+                },
+              ],
+            },
+          },
+        };
+      },
+      monitorIntervalMs: 2,
+      signalEmitter: new EventEmitter(),
+      writeExitReceiptImpl(details) {
+        events.push(["exit_receipt", details]);
+      },
+    });
+
+    assert.ok(healthChecks >= 3);
+    assert.deepEqual(events, [
+      ["kill", "SIGTERM"],
+      [
+        "exit_receipt",
+        {
+          child_pid: 7084,
+          exit_code: null,
+          signal: "SIGTERM",
+          reason: "live_runtime_health_lost",
+        },
+      ],
+    ]);
+    assert.deepEqual(result, {
+      outcome: "restart_required",
+      reason: "live_runtime_health_lost",
+      child_pid: 7084,
+      exit_code: null,
+      signal: "SIGTERM",
+    });
+    assert.equal(activeChildren, 0);
+    assert.equal(fs.existsSync(ownerPath), false);
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("the live child monitor never restarts after activation is revoked", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-child-revoked-"),
+  );
+  const secretSentinel = "SENTINEL_REVOCATION_BLOCKER_MUST_NOT_PERSIST_3b5c";
+  let keepAlive;
+  try {
+    keepAlive = setInterval(() => {}, 1000);
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+    const child = new EventEmitter();
+    child.pid = 7084;
+    let exitDetails = null;
+    child.kill = (signal) => {
+      setImmediate(() => child.emit("exit", null, signal));
+      return true;
+    };
+
+    await assert.rejects(
+      superviseLiveChildSession({
+        child,
+        ownerPath,
+        profile: {
+          port: 3001,
+          state_root: temp,
+        },
+        repoRoot: temp,
+        expectedCommit: "c".repeat(40),
+        expectedRuntime: boundedExpectedRuntime(),
+        activationReceiptPath: path.join(temp, "activation-receipt.json"),
+        activationInspector: () => ({
+          valid: false,
+          blockers: [secretSentinel],
+        }),
+        healthRequester: async () => {
+          throw new Error("health_must_not_run_after_revocation");
+        },
+        monitorIntervalMs: 2,
+        signalEmitter: new EventEmitter(),
+        writeExitReceiptImpl(details) {
+          exitDetails = details;
+        },
+      }),
+      (error) => {
+        const message = String(error?.message || error);
+        assert.match(message, /^activation_revoked:[a-f0-9]{64}$/);
+        assert.equal(message.includes(secretSentinel), false);
+        return true;
+      },
+    );
+
+    assert.equal(fs.existsSync(ownerPath), false);
+    assert.equal(exitDetails.child_pid, 7084);
+    assert.equal(exitDetails.exit_code, null);
+    assert.equal(exitDetails.signal, "SIGTERM");
+    assert.match(exitDetails.reason, /^activation_revoked:[a-f0-9]{64}$/);
+    assert.equal(JSON.stringify(exitDetails).includes(secretSentinel), false);
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("activation monitor exceptions are redacted from supervise-exit evidence and the final error", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-child-monitor-error-"),
+  );
+  const secretSentinel = "SENTINEL_MONITOR_ERROR_MUST_NOT_PERSIST_2a4b";
+  let keepAlive;
+  try {
+    keepAlive = setInterval(() => {}, 1000);
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+    const child = new EventEmitter();
+    child.pid = 7084;
+    let exitDetails = null;
+    child.kill = (signal) => {
+      setImmediate(() => child.emit("exit", null, signal));
+      return true;
+    };
+
+    await assert.rejects(
+      superviseLiveChildSession({
+        child,
+        ownerPath,
+        profile: {
+          port: 3001,
+          state_root: temp,
+        },
+        repoRoot: temp,
+        expectedCommit: "c".repeat(40),
+        expectedRuntime: boundedExpectedRuntime(),
+        activationReceiptPath: path.join(temp, "activation-receipt.json"),
+        activationInspector() {
+          throw new Error(`activation inspection failed ${secretSentinel}`);
+        },
+        healthRequester: async () => {
+          throw new Error("health_must_not_run_after_monitor_error");
+        },
+        monitorIntervalMs: 2,
+        signalEmitter: new EventEmitter(),
+        writeExitReceiptImpl(details) {
+          exitDetails = details;
+        },
+      }),
+      (error) => {
+        const message = String(error?.message || error);
+        assert.match(message, /^live_runtime_monitor_error:[a-f0-9]{64}$/);
+        assert.equal(message.includes(secretSentinel), false);
+        return true;
+      },
+    );
+
+    assert.equal(fs.existsSync(ownerPath), false);
+    assert.match(
+      exitDetails.reason,
+      /^live_runtime_monitor_error:[a-f0-9]{64}$/,
+    );
+    assert.equal(JSON.stringify(exitDetails).includes(secretSentinel), false);
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("a finishing child cannot delete a replacement supervisor-owner receipt", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-child-owner-replaced-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const ownerPath = path.join(temp, "supervisor-owner.json");
+  fs.writeFileSync(
+    ownerPath,
+    `${JSON.stringify({
+      child_pid: 7084,
+      child_process_started_at: TEST_PROCESS_STARTED_AT,
+    })}\n`,
+  );
+  const replacement = {
+    child_pid: 8084,
+    child_process_started_at: TEST_REUSED_PROCESS_STARTED_AT,
+  };
+  const child = new EventEmitter();
+  child.pid = 7084;
+  child.kill = (signal) => {
+    fs.writeFileSync(ownerPath, `${JSON.stringify(replacement)}\n`);
+    queueMicrotask(() => child.emit("exit", 0, signal));
+    return true;
+  };
+  const signalEmitter = new EventEmitter();
+  const supervision = superviseLiveChildSession({
+    child,
+    ownerPath,
+    profile: {
+      port: 3001,
+      state_root: temp,
+    },
+    repoRoot: temp,
+    expectedCommit: "c".repeat(40),
+    expectedRuntime: boundedExpectedRuntime(),
+    signalEmitter,
+    monitorIntervalMs: 60_000,
+    writeExitReceiptImpl() {
+      throw new Error("exit receipt must follow exact owner cleanup");
+    },
+  });
+
+  signalEmitter.emit("SIGTERM");
+  await assert.rejects(supervision, /live_supervisor_owner_cleanup_mismatch/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(ownerPath, "utf8")), replacement);
+});
+
+test("activation revocation terminates the iterative lifecycle without admitting another generation", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-revoked-lifecycle-"),
+  );
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    let startCalls = 0;
+    await assert.rejects(
+      runLiveSupervisionLifecycle({
+        signalEmitter: new EventEmitter(),
+        restartDelayMs: 0,
+        delayImpl: () => Promise.resolve(),
+        maxRestartGenerations: 3,
+        async startGenerationImpl() {
+          startCalls += 1;
+          fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+          const child = new EventEmitter();
+          child.pid = 7084;
+          child.kill = (signal) => {
+            setImmediate(() => child.emit("exit", null, signal));
+            return true;
+          };
+          return {
+            child,
+            ownerPath,
+            profile: { port: 3001, state_root: temp },
+            repoRoot: temp,
+            expectedCommit: "c".repeat(40),
+            expectedRuntime: boundedExpectedRuntime(),
+            activationInspector: () => ({
+              valid: false,
+              blockers: ["activation_receipt_commit_mismatch"],
+            }),
+            healthRequester: async () => {
+              throw new Error("health_must_not_run_after_revocation");
+            },
+            monitorIntervalMs: 2,
+            writeExitReceiptImpl() {},
+          };
+        },
+      }),
+      /activation_revoked:activation_receipt_commit_mismatch/,
+    );
+
+    assert.equal(startCalls, 1);
+    assert.equal(fs.existsSync(ownerPath), false);
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("explicit supervisor shutdown treats signal and nonzero child exits as terminal success", async (t) => {
+  for (const scenario of [
+    { name: "signal exit", code: null, signal: "SIGTERM" },
+    { name: "forced nonzero exit", code: 9, signal: null },
+    {
+      name: "forced signal exit",
+      code: null,
+      signal: "SIGKILL",
+      forceRequired: true,
+    },
+  ]) {
+    await t.test(scenario.name, async () => {
+      const temp = fs.mkdtempSync(
+        path.join(os.tmpdir(), "pulse-live-child-shutdown-"),
+      );
+      const keepAlive = setInterval(() => {}, 1000);
+      try {
+        const ownerPath = path.join(temp, "supervisor-owner.json");
+        fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+        const child = new EventEmitter();
+        child.pid = 7084;
+        child.kill = (requestedSignal) => {
+          if (scenario.forceRequired && requestedSignal === "SIGTERM") {
+            return true;
+          }
+          setImmediate(() =>
+            child.emit("exit", scenario.code, scenario.signal),
+          );
+          return true;
+        };
+        const signalEmitter = new EventEmitter();
+        let exitDetails = null;
+        const supervision = superviseLiveChildSession({
+          child,
+          ownerPath,
+          profile: {
+            port: 3001,
+            state_root: temp,
+          },
+          repoRoot: temp,
+          expectedCommit: "c".repeat(40),
+          expectedRuntime: boundedExpectedRuntime(),
+          activationInspector: () => ({
+            valid: true,
+            blockers: [],
+          }),
+          healthRequester: async () => {
+            throw new Error("health_must_not_run_during_shutdown");
+          },
+          monitorIntervalMs: 1000,
+          signalEmitter,
+          terminationGraceMs: 2,
+          writeExitReceiptImpl(details) {
+            exitDetails = details;
+          },
+        });
+
+        signalEmitter.emit("SIGTERM");
+        const result = await supervision;
+
+        assert.deepEqual(result, {
+          outcome: "stopped",
+          reason: "supervisor_shutdown",
+          child_pid: 7084,
+          exit_code: scenario.code,
+          signal: scenario.signal,
+        });
+        assert.equal(fs.existsSync(ownerPath), false);
+        assert.deepEqual(exitDetails, {
+          child_pid: 7084,
+          exit_code: scenario.code,
+          signal: scenario.signal,
+          reason: "supervisor_shutdown",
+        });
+      } finally {
+        clearInterval(keepAlive);
+        fs.rmSync(temp, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test("child errors and failed kills retain ownership until an exit is confirmed", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-child-kill-error-"),
+  );
+  try {
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+    const child = new EventEmitter();
+    child.pid = 7084;
+    let killCalls = 0;
+    child.kill = () => {
+      killCalls += 1;
+      throw new Error("kill_access_denied");
+    };
+    const supervision = superviseLiveChildSession({
+      child,
+      ownerPath,
+      profile: {
+        port: 3001,
+        state_root: temp,
+      },
+      repoRoot: temp,
+      expectedCommit: "c".repeat(40),
+      expectedRuntime: boundedExpectedRuntime(),
+      activationInspector: () => ({
+        valid: true,
+        blockers: [],
+      }),
+      healthRequester: async () => {
+        throw new Error("health_must_not_run_after_child_error");
+      },
+      monitorIntervalMs: 1000,
+      signalEmitter: new EventEmitter(),
+      writeExitReceiptImpl() {},
+      terminationGraceMs: 2,
+    });
+    const observed = supervision.then(
+      (value) => ({ status: "resolved", value }),
+      (error) => ({ status: "rejected", error }),
+    );
+
+    const secretSentinel = "SENTINEL_CHILD_CAUSE_MUST_NOT_ESCAPE";
+    child.emit("error", new Error(secretSentinel));
+    const premature = await Promise.race([
+      observed,
+      new Promise((resolve) =>
+        setTimeout(() => resolve({ status: "pending" }), 20),
+      ),
+    ]);
+
+    assert.deepEqual(premature, { status: "pending" });
+    assert.equal(fs.existsSync(ownerPath), true);
+    assert.ok(killCalls >= 2);
+
+    child.emit("exit", 1, null);
+    const final = await observed;
+    assert.equal(final.status, "rejected");
+    assert.match(
+      final.error.message,
+      /^live_runtime_child_error:[a-f0-9]{64}$/,
+    );
+    assert.equal(final.error.message.includes(secretSentinel), false);
+    assert.equal(
+      inspect(final.error, { depth: 5 }).includes(secretSentinel),
+      false,
+    );
+    assert.equal(fs.existsSync(ownerPath), false);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("shutdown during health-loss recovery cancels the restart generation", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-recovery-shutdown-"),
+  );
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const signalEmitter = new EventEmitter();
+    let startCalls = 0;
+    let releaseDelayStarted;
+    const delayStarted = new Promise((resolve) => {
+      releaseDelayStarted = resolve;
+    });
+    const lifecycle = runLiveSupervisionLifecycle({
+      signalEmitter,
+      restartDelayMs: 60_000,
+      maxRestartGenerations: 3,
+      delayImpl() {
+        releaseDelayStarted();
+        return new Promise(() => {});
+      },
+      async startGenerationImpl() {
+        startCalls += 1;
+        const ownerPath = path.join(temp, "supervisor-owner.json");
+        fs.writeFileSync(
+          ownerPath,
+          JSON.stringify({ child_pid: 7000 + startCalls }),
+        );
+        const child = new EventEmitter();
+        child.pid = 7000 + startCalls;
+        child.kill = (signal) => {
+          setImmediate(() => child.emit("exit", null, signal));
+          return true;
+        };
+        return {
+          child,
+          ownerPath,
+          profile: { port: 3001, state_root: temp },
+          repoRoot: temp,
+          expectedCommit: "c".repeat(40),
+          activationInspector: () => ({
+            valid: true,
+            blockers: [],
+          }),
+          healthRequester: async () => null,
+          monitorIntervalMs: 2,
+          writeExitReceiptImpl() {},
+        };
+      },
+    });
+
+    await delayStarted;
+    signalEmitter.emit("SIGTERM");
+    const result = await lifecycle;
+
+    assert.equal(startCalls, 1);
+    assert.deepEqual(result, {
+      outcome: "stopped",
+      reason: "supervisor_shutdown_during_recovery",
+      generation: 1,
+    });
+    assert.equal(
+      fs.existsSync(path.join(temp, "supervisor-owner.json")),
+      false,
+    );
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("shutdown while a replacement generation is starting overrides its later start failure", async () => {
+  const signalEmitter = new EventEmitter();
+  let startCalls = 0;
+  let rejectReplacementStart = null;
+  let replacementShutdownSignal = null;
+  let markReplacementStartReached;
+  const replacementStartReached = new Promise((resolve) => {
+    markReplacementStartReached = resolve;
+  });
+  const replacementPending = new Promise((resolve, reject) => {
+    rejectReplacementStart = reject;
+  });
+
+  const lifecycle = runLiveSupervisionLifecycle({
+    signalEmitter,
+    restartDelayMs: 0,
+    delayImpl: () => Promise.resolve(),
+    maxRestartGenerations: 3,
+    async startGenerationImpl({ generation, shutdownSignal }) {
+      startCalls += 1;
+      if (generation === 1) return { generation };
+      replacementShutdownSignal = shutdownSignal;
+      markReplacementStartReached();
+      return replacementPending;
+    },
+    async superviseGenerationImpl() {
+      return {
+        outcome: "restart_required",
+        reason: "live_runtime_health_lost",
+      };
+    },
+  });
+
+  await replacementStartReached;
+  signalEmitter.emit("SIGTERM");
+  rejectReplacementStart(new Error("replacement_start_failed"));
+  const result = await lifecycle;
+
+  assert.equal(startCalls, 2);
+  assert.equal(replacementShutdownSignal.aborted, true);
+  assert.deepEqual(result, {
+    outcome: "stopped",
+    reason: "supervisor_shutdown_during_start",
+    generation: 2,
+  });
+  assert.equal(signalEmitter.listenerCount("SIGTERM"), 0);
+  assert.equal(signalEmitter.listenerCount("SIGINT"), 0);
+});
+
+test("recovery backoff remains referenced while pending and clears promptly on shutdown", async () => {
+  const signalEmitter = new EventEmitter();
+  const timerHandle = {
+    unref_calls: 0,
+    unref() {
+      this.unref_calls += 1;
+    },
+  };
+  let timerCallback = null;
+  let timerDelay = null;
+  let clearCalls = 0;
+  let startCalls = 0;
+
+  const lifecycle = runLiveSupervisionLifecycle({
+    signalEmitter,
+    restartDelayMs: 50,
+    maxRestartGenerations: 3,
+    setTimeoutImpl(callback, milliseconds) {
+      timerCallback = callback;
+      timerDelay = milliseconds;
+      return timerHandle;
+    },
+    clearTimeoutImpl(handle) {
+      assert.equal(handle, timerHandle);
+      clearCalls += 1;
+    },
+    async startGenerationImpl() {
+      startCalls += 1;
+      return {};
+    },
+    async superviseGenerationImpl() {
+      return {
+        outcome: "restart_required",
+        reason: "live_runtime_health_lost",
+      };
+    },
+  });
+
+  for (let attempt = 0; attempt < 20 && !timerCallback; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  signalEmitter.emit("SIGTERM");
+  const result = await lifecycle;
+
+  assert.equal(timerDelay, 50);
+  assert.equal(timerHandle.unref_calls, 0);
+  assert.equal(clearCalls, 1);
+  assert.equal(startCalls, 1);
+  assert.deepEqual(result, {
+    outcome: "stopped",
+    reason: "supervisor_shutdown_during_recovery",
+    generation: 1,
+  });
+});
+
+test("live health polling remains referenced and cancels its pending poll timer", async () => {
+  const shutdownController = new AbortController();
+  const timerHandle = {
+    unref_calls: 0,
+    unref() {
+      this.unref_calls += 1;
+    },
+  };
+  let timerStarted;
+  const started = new Promise((resolve) => {
+    timerStarted = resolve;
+  });
+  let clearCalls = 0;
+  let healthCalls = 0;
+  const health = waitForLiveHealth({
+    port: 3001,
+    expectedCommit: "c".repeat(40),
+    healthRequester: async () => {
+      healthCalls += 1;
+      return null;
+    },
+    timeoutMs: 60_000,
+    intervalMs: 60_000,
+    shutdownSignal: shutdownController.signal,
+    setTimeoutImpl(callback, milliseconds) {
+      assert.equal(milliseconds, 60_000);
+      timerStarted();
+      return timerHandle;
+    },
+    clearTimeoutImpl(handle) {
+      assert.equal(handle, timerHandle);
+      clearCalls += 1;
+    },
+  });
+
+  await started;
+  shutdownController.abort("supervisor_shutdown");
+  assert.equal(await health, null);
+  assert.equal(healthCalls, 1);
+  assert.equal(timerHandle.unref_calls, 0);
+  assert.equal(clearCalls, 1);
+});
+
+test("live health polling rejects attacker pools before accepting the exact topology", async () => {
+  const expectedCommit = "c".repeat(40);
+  const exactHealth = {
+    status: "ok",
+    schedulerActive: true,
+    build: { commit_sha: expectedCommit },
+    deployment: { mode: "local", primary: true },
+    runtime: {
+      operating_mode: "LIVE_GUARDED",
+      auto_publish: true,
+      legacy_auto_publish_armed: true,
+      use_sqlite: true,
+      use_job_queue_explicit: "true",
+    },
+    multiLaneRuntime: boundedMultiLaneHealth(),
+  };
+  let calls = 0;
+  const result = await waitForLiveHealth({
+    port: 3001,
+    expectedCommit,
+    expectedRuntime: {
+      runtime_instance_id: BOUNDED_RUNTIME_ID,
+      worker_topology: BOUNDED_WORKER_TOPOLOGY,
+    },
+    healthRequester: async () => {
+      calls += 1;
+      if (calls > 1) return exactHealth;
+      const isolated = exactHealth.multiLaneRuntime.isolated_worker_pools;
+      return {
+        ...exactHealth,
+        multiLaneRuntime: {
+          isolated_worker_pools: {
+            ...isolated,
+            active_runner_count: 2,
+            active_pool_count: 2,
+            pools: [
+              ...isolated.pools,
+              {
+                pool_id: "attacker_pool",
+                active_instances: 1,
+                heartbeat_ms: 30000,
+                kinds: ["publish"],
+              },
+            ],
+          },
+        },
+      };
+    },
+    timeoutMs: 1000,
+    intervalMs: 1,
+    setTimeoutImpl(callback) {
+      queueMicrotask(callback);
+      return { unref() {} };
+    },
+    clearTimeoutImpl() {},
+  });
+
+  assert.equal(result, exactHealth);
+  assert.equal(calls, 2);
+});
+
+test("a real Node process stays alive through recovery backoff and starts the replacement generation", () => {
+  const modulePath = path.join(
+    ROOT,
+    "lib",
+    "stabilisation",
+    "windows-live-guarded-runtime.js",
+  );
+  const script = `
+    const { runLiveSupervisionLifecycle } = require(${JSON.stringify(modulePath)});
+    let starts = 0;
+    runLiveSupervisionLifecycle({
+      restartDelayMs: 75,
+      maxRestartGenerations: 1,
+      async startGenerationImpl() {
+        starts += 1;
+        return {};
+      },
+      async superviseGenerationImpl() {
+        if (starts === 1) {
+          return {
+            outcome: "restart_required",
+            reason: "live_runtime_health_lost",
+          };
+        }
+        return {
+          outcome: "stopped",
+          reason: "replacement_generation_observed",
+        };
+      },
+    }).then((result) => {
+      process.stdout.write(JSON.stringify({ starts, result }));
+    }).catch((error) => {
+      process.stderr.write(error.stack || String(error));
+      process.exitCode = 1;
+    });
+  `;
+  const startedAt = Date.now();
+  const subprocess = spawnSync(process.execPath, ["-e", script], {
+    cwd: ROOT,
+    encoding: "utf8",
+    timeout: 2_000,
+  });
+  const elapsedMs = Date.now() - startedAt;
+
+  assert.equal(subprocess.status, 0, subprocess.stderr);
+  assert.equal(subprocess.signal, null, subprocess.stderr);
+  assert.ok(
+    elapsedMs >= 50,
+    `expected referenced recovery wait, process exited in ${elapsedMs}ms`,
+  );
+  assert.deepEqual(JSON.parse(subprocess.stdout), {
+    starts: 2,
+    result: {
+      outcome: "stopped",
+      reason: "replacement_generation_observed",
+    },
+  });
+});
+
+test("the iterative lifecycle recreates one real owner receipt per generation and stays bounded", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-bounded-generations-"),
+  );
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    const ownerPids = [];
+    let startCalls = 0;
+    const maxRestartGenerations = 2;
+    const signalEmitter = new EventEmitter();
+
+    await assert.rejects(
+      runLiveSupervisionLifecycle({
+        signalEmitter,
+        restartDelayMs: 0,
+        delayImpl: () => Promise.resolve(),
+        maxRestartGenerations,
+        async startGenerationImpl({ generation }) {
+          assert.equal(signalEmitter.listenerCount("SIGTERM"), 1);
+          assert.equal(signalEmitter.listenerCount("SIGINT"), 1);
+          assert.equal(generation, startCalls + 1);
+          assert.equal(fs.existsSync(ownerPath), false);
+          startCalls += 1;
+          const child = new EventEmitter();
+          child.pid = 8000 + startCalls;
+          fs.writeFileSync(
+            ownerPath,
+            `${JSON.stringify({ child_pid: child.pid })}\n`,
+          );
+          ownerPids.push(
+            JSON.parse(fs.readFileSync(ownerPath, "utf8")).child_pid,
+          );
+          child.kill = (signal) => {
+            setImmediate(() => child.emit("exit", null, signal));
+            return true;
+          };
+          return {
+            child,
+            ownerPath,
+            profile: { port: 3001, state_root: temp },
+            repoRoot: temp,
+            expectedCommit: "c".repeat(40),
+            activationInspector: () => ({
+              valid: true,
+              blockers: [],
+            }),
+            healthRequester: async () => null,
+            monitorIntervalMs: 2,
+            writeExitReceiptImpl() {},
+          };
+        },
+      }),
+      /live_runtime_health_restart_budget_exhausted:3/,
+    );
+
+    assert.equal(startCalls, maxRestartGenerations + 1);
+    assert.deepEqual(ownerPids, [8001, 8002, 8003]);
+    assert.equal(fs.existsSync(ownerPath), false);
+    assert.equal(signalEmitter.listenerCount("SIGTERM"), 0);
+    assert.equal(signalEmitter.listenerCount("SIGINT"), 0);
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("a failed restart generation propagates without leaving or overlapping an owner receipt", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-restart-failure-"),
+  );
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    let startCalls = 0;
+    await assert.rejects(
+      runLiveSupervisionLifecycle({
+        signalEmitter: new EventEmitter(),
+        restartDelayMs: 0,
+        delayImpl: () => Promise.resolve(),
+        maxRestartGenerations: 3,
+        async startGenerationImpl() {
+          startCalls += 1;
+          assert.equal(fs.existsSync(ownerPath), false);
+          if (startCalls === 2) {
+            throw new Error("restart_gate_failed");
+          }
+          const child = new EventEmitter();
+          child.pid = 9001;
+          fs.writeFileSync(
+            ownerPath,
+            `${JSON.stringify({ child_pid: child.pid })}\n`,
+          );
+          child.kill = (signal) => {
+            setImmediate(() => child.emit("exit", null, signal));
+            return true;
+          };
+          return {
+            child,
+            ownerPath,
+            profile: { port: 3001, state_root: temp },
+            repoRoot: temp,
+            expectedCommit: "c".repeat(40),
+            activationInspector: () => ({
+              valid: true,
+              blockers: [],
+            }),
+            healthRequester: async () => null,
+            monitorIntervalMs: 2,
+            writeExitReceiptImpl() {},
+          };
+        },
+      }),
+      /restart_gate_failed/,
+    );
+
+    assert.equal(startCalls, 2);
+    assert.equal(fs.existsSync(ownerPath), false);
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
 });
 
 test("default lifecycle handlers install disabled and enable only the exact managed task without starting it immediately", async () => {
@@ -879,10 +4958,7 @@ test("default lifecycle handlers install disabled and enable only the exact mana
     report: { checks: {} },
   });
   assert.equal(issued.outcome, "activation_receipt_issued");
-  assert.equal(
-    calls[3][1].youtubeOAuthClientSha256,
-    "6".repeat(64),
-  );
+  assert.equal(calls[3][1].youtubeOAuthClientSha256, "6".repeat(64));
 });
 
 test("default lifecycle dispatch forwards only the doctor-bound activation into guarded start", async () => {
@@ -918,18 +4994,1080 @@ test("default lifecycle dispatch forwards only the doctor-bound activation into 
   assert.equal(calls[0].activation, activation);
 });
 
+test("every live transition caller supplies one exact independently measured authority context", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-transition-authority-context-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "transition authority identity\n");
+  const expectedCommit = "d".repeat(40);
+  const receiptSha256 = "c".repeat(64);
+  const expectedAuthorityContextSha256 =
+    independentlyMeasuredTransitionAuthorityContext({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+    });
+  const activation = {
+    valid: true,
+    receipt_sha256: receiptSha256,
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    blockers: [],
+  };
+  const captured = [];
+  const capture = (label) => (options) => {
+    captured.push({ label, options });
+    throw new Error(`transition_context_captured:${label}`);
+  };
+
+  assert.throws(
+    () =>
+      installLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        enabled: false,
+        platform: "win32",
+        transitionLeaseAcquirer: capture("install"),
+      }),
+    /transition_context_captured:install/,
+  );
+
+  assert.throws(
+    () =>
+      issueLiveActivationReceipt({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        operatorId: "pulse-autonomous-release",
+        reason: "governed cutover",
+        youtubeOAuthClientSha256: "6".repeat(64),
+        nodeExecutable: "Z:/untrusted/payload-node.exe",
+        checkoutRealPath: "Z:/untrusted/payload-checkout",
+        databaseIdentitySha256: "f".repeat(64),
+        transitionLeaseAcquirer: capture("issue-activation"),
+      }),
+    /transition_context_captured:issue-activation/,
+  );
+  for (const enabled of [true, false]) {
+    const label = enabled ? "enable" : "disable";
+    assert.throws(
+      () =>
+        setLiveScheduledTaskEnabled({
+          profile,
+          repoRoot: ROOT,
+          expectedCommit,
+          enabled,
+          startImmediately: false,
+          activation,
+          platform: "win32",
+          transitionLeaseAcquirer: capture(label),
+        }),
+      new RegExp(`transition_context_captured:${label}`),
+    );
+  }
+  await assert.rejects(
+    startLiveScheduledTask({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      platform: "win32",
+      transitionLeaseAcquirer: capture("start"),
+    }),
+    /transition_context_captured:start/,
+  );
+  assert.throws(
+    () =>
+      revokeLiveActivationReceipt({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        taskDisabledConfirmed: true,
+        transitionLeaseAcquirer: capture("revoke-activation"),
+      }),
+    /transition_context_captured:revoke-activation/,
+  );
+  assert.throws(
+    () =>
+      uninstallLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        platform: "win32",
+        transitionLeaseAcquirer: capture("uninstall"),
+      }),
+    /transition_context_captured:uninstall/,
+  );
+
+  const supervisionOptions = {
+    repoRoot: ROOT,
+    expectedCommit,
+    profilePath: path.join(temp, "profile.json"),
+    platform: "win32",
+    profileLoader: () => profile,
+    doctorBuilder: () => ({
+      checks: {
+        activation: { valid: true, receipt_sha256: receiptSha256 },
+      },
+    }),
+    supervisionPreparer: () => ({
+      activation_receipt_sha256: receiptSha256,
+      runtime_environment: {},
+    }),
+    activationInspector: () => activation,
+    workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+  };
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      ...supervisionOptions,
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer: capture("supervise-owner"),
+    }),
+    /transition_context_captured:supervise-owner/,
+  );
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      ...supervisionOptions,
+      startOperationInspector: () => ({
+        present: true,
+        valid: true,
+        operation_nonce: START_OPERATION_NONCE,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer() {
+        throw new Error("unexpected_transition_owner_path");
+      },
+      transitionLeaseBorrower: capture("supervise-borrow"),
+    }),
+    /transition_context_captured:supervise-borrow/,
+  );
+
+  assert.deepEqual(
+    captured.map(({ label }) => label),
+    [
+      "install",
+      "issue-activation",
+      "enable",
+      "disable",
+      "start",
+      "revoke-activation",
+      "uninstall",
+      "supervise-owner",
+      "supervise-borrow",
+    ],
+  );
+  for (const { options } of captured) {
+    assert.equal(
+      options.authorityContextSha256,
+      expectedAuthorityContextSha256,
+    );
+    assert.equal(options.databasePath, profile.database_path);
+    assert.equal(typeof options.authorityContextProvider, "function");
+    assert.equal(
+      options.authorityContextProvider(),
+      expectedAuthorityContextSha256,
+    );
+  }
+});
+
+test("enable and disable no-op receipts require a fresh lease assertion", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  for (const enabled of [true, false]) {
+    let receiptWrites = 0;
+    let authorityAssertions = 0;
+    assert.throws(
+      () =>
+        setLiveScheduledTaskEnabled({
+          profile,
+          repoRoot: ROOT,
+          expectedCommit: "d".repeat(40),
+          enabled,
+          activation: {
+            valid: true,
+            receipt_sha256: "c".repeat(64),
+          },
+          platform: "win32",
+          transitionLeaseAcquirer: () => ({
+            assertCurrentAuthority() {
+              authorityAssertions += 1;
+              throw new Error("live_runtime_transition_lease_lost");
+            },
+            renew() {
+              throw new Error("unexpected_mutating_renew");
+            },
+            release() {
+              return true;
+            },
+          }),
+          sourceDatabaseInspector: () => ({ ready: true }),
+          activationInspector: () => ({
+            valid: true,
+            receipt_sha256: "c".repeat(64),
+          }),
+          conflictInspector: () => ({ clear: true, blockers: [] }),
+          taskInspector: () => ({
+            state: enabled ? "managed_current" : "managed_disabled",
+          }),
+          lifecycleReceiptWriter() {
+            receiptWrites += 1;
+            return { outcome: "must_not_write" };
+          },
+        }),
+      /live_runtime_transition_lease_lost/,
+      enabled ? "enable" : "disable",
+    );
+    assert.equal(authorityAssertions, 1, enabled ? "enable" : "disable");
+    assert.equal(receiptWrites, 0, enabled ? "enable" : "disable");
+  }
+});
+
+test("install no-op evidence and uninstall task deletion require fresh transition authority", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-install-uninstall-authority-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  const lease = () => ({
+    assertCurrentAuthority() {
+      throw new Error("live_runtime_transition_lease_lost");
+    },
+    renew() {
+      throw new Error("live_runtime_transition_lease_lost");
+    },
+    release() {
+      return true;
+    },
+  });
+  let taskMutations = 0;
+
+  assert.throws(
+    () =>
+      installLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        enabled: false,
+        platform: "win32",
+        sourceDatabaseInspector: () => ({ ready: true }),
+        taskInspector: () => ({ state: "managed_disabled" }),
+        transitionLeaseAcquirer: lease,
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(fs.existsSync(path.join(profile.state_root, "evidence")), false);
+
+  assert.throws(
+    () =>
+      uninstallLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        platform: "win32",
+        taskInspector: () => ({ state: "managed_disabled" }),
+        transitionLeaseAcquirer: lease,
+        execFileSyncImpl() {
+          taskMutations += 1;
+        },
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(taskMutations, 0);
+});
+
+test("task enablement remeasures authority after source inspection and before schtasks mutation", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-enable-boundary-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  const expectedCommit = "d".repeat(40);
+  let taskMutations = 0;
+  const transition = inMemoryTransitionLease();
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+  };
+
+  assert.throws(
+    () =>
+      setLiveScheduledTaskEnabled({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        enabled: true,
+        activation,
+        platform: "win32",
+        runtimeTransitionLeaseFactory: transition.factory,
+        sourceDatabaseInspector() {
+          fs.renameSync(profile.database_path, `${profile.database_path}.old`);
+          fs.writeFileSync(profile.database_path, "replacement identity\n");
+          return { ready: true };
+        },
+        activationInspector: () => activation,
+        conflictInspector: () => ({ clear: true, blockers: [] }),
+        taskInspector: () => ({ state: "managed_disabled" }),
+        execFileSyncImpl() {
+          taskMutations += 1;
+        },
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(taskMutations, 0);
+});
+
+test("task enablement rehashes the exact profile after acquisition", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-enable-profile-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+  };
+  let taskMutations = 0;
+
+  assert.throws(
+    () =>
+      setLiveScheduledTaskEnabled({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        enabled: true,
+        activation,
+        platform: "win32",
+        runtimeTransitionLeaseFactory: inMemoryTransitionLease().factory,
+        sourceDatabaseInspector() {
+          profile.test_authority_profile_drift = true;
+          return { ready: true };
+        },
+        activationInspector: () => activation,
+        conflictInspector: () => ({ clear: true, blockers: [] }),
+        taskInspector: () => ({ state: "managed_disabled" }),
+        execFileSyncImpl() {
+          taskMutations += 1;
+        },
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(taskMutations, 0);
+});
+
+test("task enablement remeasures the physical profile file after acquisition", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-enable-physical-profile-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const repoRoot = path.join(temp, "checkout");
+  fs.mkdirSync(repoRoot);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  const profilePath = path.join(temp, "runtime-profile.json");
+  const profileBytes = `${JSON.stringify(profile, null, 2)}\n`;
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  fs.writeFileSync(profilePath, profileBytes);
+  const expectedCommit = "d".repeat(40);
+  const checkoutInspector = () => ({
+    ready: true,
+    commit_sha: expectedCommit,
+  });
+  let taskMutations = 0;
+
+  assert.throws(
+    () =>
+      setLiveScheduledTaskEnabledWithoutTestAuthority({
+        profile,
+        repoRoot,
+        expectedCommit,
+        enabled: true,
+        activation: { valid: true, receipt_sha256: "c".repeat(64) },
+        platform: "win32",
+        runtimeTransitionLeaseFactory: inMemoryTransitionLease().factory,
+        transitionAuthorityContextProvider: (options) =>
+          currentLiveTransitionAuthorityContext({
+            ...options,
+            profilePath,
+            checkoutInspector,
+          }),
+        sourceDatabaseInspector() {
+          fs.renameSync(profilePath, `${profilePath}.old`);
+          fs.writeFileSync(profilePath, profileBytes);
+          return { ready: true };
+        },
+        activationInspector: () => ({
+          valid: true,
+          receipt_sha256: "c".repeat(64),
+        }),
+        conflictInspector: () => ({ clear: true, blockers: [] }),
+        taskInspector: () => ({ state: "managed_disabled" }),
+        execFileSyncImpl() {
+          taskMutations += 1;
+        },
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(taskMutations, 0);
+});
+
+test("transition authority rejects a checkout reached through a junction", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-checkout-alias-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const realCheckout = path.join(temp, "real-checkout");
+  const checkoutAlias = path.join(temp, "checkout-alias");
+  fs.mkdirSync(realCheckout);
+  fs.symlinkSync(realCheckout, checkoutAlias, "junction");
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  const profilePath = path.join(temp, "runtime-profile.json");
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  fs.writeFileSync(profilePath, `${JSON.stringify(profile, null, 2)}\n`);
+  const expectedCommit = "d".repeat(40);
+
+  assert.throws(
+    () =>
+      currentLiveTransitionAuthorityContext({
+        profile,
+        profilePath,
+        repoRoot: checkoutAlias,
+        expectedCommit,
+        checkoutInspector: () => ({
+          ready: true,
+          commit_sha: expectedCommit,
+        }),
+      }),
+    /live_transition_checkout_identity_invalid/,
+  );
+});
+
+test("production transition authority rejects a supplied release SHA that is not measured at HEAD", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-release-sha-measurement-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  const profilePath = path.join(temp, "runtime-profile.json");
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  fs.writeFileSync(profilePath, `${JSON.stringify(profile, null, 2)}\n`);
+  let leaseAcquisitions = 0;
+
+  assert.throws(
+    () =>
+      issueLiveActivationReceiptWithoutTestAuthority({
+        profile,
+        profilePath,
+        repoRoot: ROOT,
+        expectedCommit: "0".repeat(40),
+        operatorId: "pulse-autonomous-release",
+        reason: "governed cutover",
+        youtubeOAuthClientSha256: "6".repeat(64),
+        transitionLeaseAcquirer() {
+          leaseAcquisitions += 1;
+          throw new Error("must_not_acquire");
+        },
+      }),
+    /live_transition_release_authority_invalid/,
+  );
+  assert.equal(leaseAcquisitions, 0);
+});
+
+test("activation receipt writing remeasures authority after receipt construction", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-activation-write-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  const expectedCommit = "d".repeat(40);
+  let currentAuthority = independentlyMeasuredTransitionAuthorityContext({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+  });
+  let receiptWrites = 0;
+  const transition = inMemoryTransitionLease();
+
+  assert.throws(
+    () =>
+      issueLiveActivationReceipt({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        operatorId: "pulse-autonomous-release",
+        reason: "governed cutover",
+        youtubeOAuthClientSha256: "6".repeat(64),
+        runtimeTransitionLeaseFactory: transition.factory,
+        transitionAuthorityContextProvider: () => currentAuthority,
+        sourceDatabaseInspector: () => ({ ready: true }),
+        receiptExists: () => false,
+        activationReceiptBuilder() {
+          currentAuthority = "e".repeat(64);
+          return { receipt_sha256: "f".repeat(64) };
+        },
+        receiptWriter() {
+          receiptWrites += 1;
+        },
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(receiptWrites, 0);
+});
+
+test("supervision remeasures authority after listener inspection and immediately before child spawn", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-supervise-spawn-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "d".repeat(40);
+  const receiptSha256 = "c".repeat(64);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  let currentAuthority = independentlyMeasuredTransitionAuthorityContext({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+  });
+  let spawnCalls = 0;
+  const transition = inMemoryTransitionLease();
+  const activation = {
+    valid: true,
+    receipt_sha256: receiptSha256,
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+  };
+
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      repoRoot: ROOT,
+      expectedCommit,
+      profilePath: path.join(temp, "profile.json"),
+      platform: "win32",
+      runtimeTransitionLeaseFactory: transition.factory,
+      transitionAuthorityContextProvider: () => currentAuthority,
+      profileLoader: () => profile,
+      doctorBuilder: () => ({
+        checks: {
+          activation: { valid: true, receipt_sha256: receiptSha256 },
+        },
+      }),
+      supervisionPreparer: () => ({
+        activation_receipt_sha256: receiptSha256,
+        runtime_environment: {},
+      }),
+      activationInspector: () => activation,
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      processIdentityInspector: processIdentityInspector({
+        [process.pid]: TEST_PROCESS_STARTED_AT,
+      }),
+      listenerInspector() {
+        currentAuthority = "e".repeat(64);
+        return { available: true, listeningPids: [], blockers: [] };
+      },
+      spawnImpl() {
+        spawnCalls += 1;
+        throw new Error("child_spawn_must_not_run");
+      },
+    }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(spawnCalls, 0);
+});
+
+test("supervision remeasures authority immediately before each durable log creation", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-supervise-log-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "d".repeat(40);
+  const receiptSha256 = "c".repeat(64);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  let currentAuthority = independentlyMeasuredTransitionAuthorityContext({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+  });
+  const transition = inMemoryTransitionLease();
+  const activation = {
+    valid: true,
+    receipt_sha256: receiptSha256,
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+  };
+  const logRoot = path.join(profile.state_root, "logs");
+  const originalMkdirSync = fs.mkdirSync;
+  fs.mkdirSync = function driftAfterLogDirectory(target, options) {
+    const result = originalMkdirSync.call(fs, target, options);
+    if (path.resolve(String(target)) === path.resolve(logRoot)) {
+      currentAuthority = "e".repeat(64);
+    }
+    return result;
+  };
+
+  try {
+    await assert.rejects(
+      startLiveSupervisionGeneration({
+        repoRoot: ROOT,
+        expectedCommit,
+        profilePath: path.join(temp, "profile.json"),
+        platform: "win32",
+        runtimeTransitionLeaseFactory: transition.factory,
+        transitionAuthorityContextProvider: () => currentAuthority,
+        profileLoader: () => profile,
+        doctorBuilder: () => ({
+          checks: {
+            activation: { valid: true, receipt_sha256: receiptSha256 },
+          },
+        }),
+        supervisionPreparer: () => ({
+          activation_receipt_sha256: receiptSha256,
+          runtime_environment: {},
+        }),
+        activationInspector: () => activation,
+        startOperationInspector: () => ({
+          present: false,
+          valid: true,
+          operation_nonce: null,
+          blockers: [],
+        }),
+        workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+        processIdentityInspector: processIdentityInspector({
+          [process.pid]: TEST_PROCESS_STARTED_AT,
+        }),
+        listenerInspector: () => ({
+          available: true,
+          listeningPids: [],
+          blockers: [],
+        }),
+        spawnImpl() {
+          throw new Error("child_spawn_must_not_run");
+        },
+      }),
+      /live_runtime_transition_lease_lost/,
+    );
+  } finally {
+    fs.mkdirSync = originalMkdirSync;
+  }
+  assert.equal(fs.existsSync(path.join(logRoot, "runtime.stdout.log")), false);
+  assert.equal(fs.existsSync(path.join(logRoot, "runtime.stderr.log")), false);
+});
+
+test("supervision borrow rejects independently measured authority drift before child mutation", async (t) => {
+  const driftCases = [
+    {
+      label: "database identity",
+      mutate({ profile }) {
+        fs.renameSync(profile.database_path, `${profile.database_path}.old`);
+        fs.writeFileSync(profile.database_path, "replacement identity\n");
+      },
+    },
+    {
+      label: "profile",
+      mutate(values) {
+        values.profile = {
+          ...values.profile,
+          test_authority_context_drift: true,
+        };
+      },
+    },
+    {
+      label: "checkout",
+      mutate(values) {
+        values.repoRoot = values.otherRepoRoot;
+      },
+    },
+    {
+      label: "release commit",
+      mutate(values) {
+        values.expectedCommit = "e".repeat(40);
+      },
+    },
+  ];
+
+  for (const driftCase of driftCases) {
+    await t.test(driftCase.label, async (t) => {
+      const temp = fs.mkdtempSync(
+        path.join(os.tmpdir(), "pulse-live-transition-context-drift-"),
+      );
+      t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+      const repoRoot = path.join(temp, "checkout-a");
+      const otherRepoRoot = path.join(temp, "checkout-b");
+      fs.mkdirSync(repoRoot);
+      fs.mkdirSync(otherRepoRoot);
+      const baseProfile = {
+        ...loadLiveGuardedRuntimeProfile(),
+        database_path: path.join(temp, "pulse.db"),
+        state_root: path.join(temp, "state"),
+        activation_receipt_path: path.join(
+          temp,
+          "state",
+          "activation.json",
+        ),
+      };
+      fs.writeFileSync(baseProfile.database_path, "original identity\n");
+      const baseCommit = "d".repeat(40);
+      const ownerAuthorityContextSha256 =
+        independentlyMeasuredTransitionAuthorityContext({
+          profile: baseProfile,
+          repoRoot,
+          expectedCommit: baseCommit,
+        });
+      const transition = inMemoryTransitionLease({
+        preheldOwner: `live-start:${START_OPERATION_NONCE}`,
+        preheldAuthorityContextSha256: ownerAuthorityContextSha256,
+      });
+      const values = {
+        profile: baseProfile,
+        repoRoot,
+        otherRepoRoot,
+        expectedCommit: baseCommit,
+      };
+      driftCase.mutate(values);
+      const receiptSha256 = "c".repeat(64);
+      const activation = {
+        valid: true,
+        receipt_sha256: receiptSha256,
+        runtime_instance_id: BOUNDED_RUNTIME_ID,
+        blockers: [],
+      };
+      let spawnCalls = 0;
+
+      await assert.rejects(
+        startLiveSupervisionGeneration({
+          repoRoot: values.repoRoot,
+          expectedCommit: values.expectedCommit,
+          profilePath: path.join(temp, "profile.json"),
+          platform: "win32",
+          runtimeTransitionLeaseFactory: transition.factory,
+          profileLoader: () => values.profile,
+          doctorBuilder: () => ({
+            checks: {
+              activation: { valid: true, receipt_sha256: receiptSha256 },
+            },
+          }),
+          supervisionPreparer: () => ({
+            activation_receipt_sha256: receiptSha256,
+            runtime_environment: {},
+          }),
+          activationInspector: () => activation,
+          startOperationInspector: () => ({
+            present: true,
+            valid: true,
+            operation_nonce: START_OPERATION_NONCE,
+            blockers: [],
+          }),
+          workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+          spawnImpl() {
+            spawnCalls += 1;
+            throw new Error("child_mutation_must_not_start");
+          },
+        }),
+        /live_runtime_transition_lease_unavailable/,
+      );
+      assert.equal(spawnCalls, 0);
+      assert.equal(
+        transition.current()?.owner_id,
+        `live-start:${START_OPERATION_NONCE}`,
+      );
+    });
+  }
+});
+
+test("an exact-plan transition lease blocks activation, enable and start before any live mutation", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const transition = inMemoryTransitionLease({
+    preheldOwner: "exact-plan-drain:other",
+  });
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    blockers: [],
+  };
+  let sourceInspections = 0;
+  let runtimeInspections = 0;
+  let taskMutations = 0;
+
+  assert.throws(
+    () =>
+      issueLiveActivationReceipt({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        operatorId: "pulse-autonomous-release",
+        reason: "governed cutover",
+        youtubeOAuthClientSha256: "6".repeat(64),
+        runtimeTransitionLeaseFactory: transition.factory,
+        sourceDatabaseInspector() {
+          sourceInspections += 1;
+        },
+      }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+  assert.throws(
+    () =>
+      setLiveScheduledTaskEnabled({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        enabled: true,
+        activation,
+        platform: "win32",
+        runtimeTransitionLeaseFactory: transition.factory,
+        sourceDatabaseInspector() {
+          sourceInspections += 1;
+        },
+        execFileSyncImpl() {
+          taskMutations += 1;
+        },
+      }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+  await assert.rejects(
+    startLiveScheduledTask({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit: "d".repeat(40),
+      activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      platform: "win32",
+      operationNonceFactory: () => START_OPERATION_NONCE,
+      runtimeTransitionLeaseFactory: transition.factory,
+      runtimeInspector() {
+        runtimeInspections += 1;
+        return { stopped: true, blockers: [] };
+      },
+      execFileSyncImpl() {
+        taskMutations += 1;
+      },
+    }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+
+  assert.equal(sourceInspections, 0);
+  assert.equal(runtimeInspections, 0);
+  assert.equal(taskMutations, 0);
+  assert.equal(transition.current()?.owner_id, "exact-plan-drain:other");
+});
+
+test("scheduled-task enablement rejects non-boolean values before acquiring authority or mutating schtasks", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  for (const value of ["false", "true", 0, 1, null, undefined]) {
+    let leaseAcquisitions = 0;
+    let taskMutations = 0;
+    assert.throws(
+      () =>
+        setLiveScheduledTaskEnabled({
+          profile,
+          repoRoot: ROOT,
+          expectedCommit: "d".repeat(40),
+          enabled: value,
+          platform: "win32",
+          transitionLeaseAcquirer() {
+            leaseAcquisitions += 1;
+            throw new Error("must_not_acquire");
+          },
+          taskInspector: () => ({ state: "managed_disabled" }),
+          execFileSyncImpl() {
+            taskMutations += 1;
+          },
+        }),
+      /live_task_enabled_boolean_required/,
+      String(value),
+    );
+    assert.equal(leaseAcquisitions, 0, String(value));
+    assert.equal(taskMutations, 0, String(value));
+  }
+});
+
+test("activation receipt issue and exact no-op both hold and release the transition lease", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-activation-transition-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const transition = inMemoryTransitionLease();
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(
+      temp,
+      "state",
+      "activation-receipt.json",
+    ),
+  };
+  fs.writeFileSync(profile.database_path, "identity\n");
+  const receipt = {
+    schema_version: "fixture-live-activation-v1",
+    receipt_sha256: "a".repeat(64),
+  };
+  let receiptPresent = false;
+  let builtAuthority = null;
+  const common = {
+    profile,
+    repoRoot: ROOT,
+    expectedCommit: "d".repeat(40),
+    operatorId: "pulse-autonomous-release",
+    reason: "governed cutover",
+    youtubeOAuthClientSha256: "6".repeat(64),
+    generatedAt: "2026-08-01T08:00:00.000Z",
+    runtimeInstanceIdFactory: () => BOUNDED_RUNTIME_ID,
+    nodeExecutable: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkoutRealPath: "D:/pulse/releases/pulse-v1",
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+    runtimeTransitionLeaseFactory: transition.factory,
+    activationReceiptBuilder: (options) => {
+      builtAuthority = {
+        runtimeInstanceId: options.runtimeInstanceId,
+        nodePath: options.nodePath,
+        checkoutRealPath: options.checkoutRealPath,
+        databaseIdentitySha256: options.databaseIdentitySha256,
+      };
+      return receipt;
+    },
+    activationReceiptInspector: () => ({
+      valid: true,
+      receipt_sha256: receipt.receipt_sha256,
+    }),
+    receiptExists: () => receiptPresent,
+    receiptWriter(filePath, value) {
+      assert.ok(transition.current());
+      assert.equal(filePath, path.resolve(profile.activation_receipt_path));
+      assert.equal(value, receipt);
+      receiptPresent = true;
+    },
+    sourceDatabaseInspector() {
+      assert.ok(transition.current());
+      return { checkout: { ready: true }, database: { ready: true } };
+    },
+  };
+
+  const issued = issueLiveActivationReceipt(common);
+  assert.equal(issued.outcome, "activation_receipt_issued");
+  assert.deepEqual(builtAuthority, {
+    runtimeInstanceId: BOUNDED_RUNTIME_ID,
+    nodePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkoutRealPath: "D:/pulse/releases/pulse-v1",
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+  });
+  assert.equal(transition.current(), null);
+  const replayed = issueLiveActivationReceipt(common);
+  assert.equal(replayed.outcome, "no_op_exact_activation_receipt_exists");
+  assert.equal(transition.current(), null);
+});
+
+test("activation revocation is excluded by an active exact-plan transition fence", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-revoke-transition-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const receiptPath = path.join(temp, "state", "activation-receipt.json");
+  fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
+  fs.writeFileSync(receiptPath, '{"valid":true}\n');
+  const transition = inMemoryTransitionLease({
+    preheldOwner: "exact-plan-drain:other",
+  });
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: receiptPath,
+  };
+  fs.writeFileSync(profile.database_path, "identity\n");
+
+  assert.throws(
+    () =>
+      revokeLiveActivationReceipt({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "e".repeat(40),
+        taskDisabledConfirmed: true,
+        runtimeTransitionLeaseFactory: transition.factory,
+      }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+  assert.equal(fs.existsSync(receiptPath), true);
+});
+
 test("enable revalidates source, receipt and competing-task state at the mutation boundary and never runs the task", () => {
   const calls = [];
+  const transition = inMemoryTransitionLease();
   const taskStates = [
+    { state: "managed_disabled", blockers: [] },
     { state: "managed_disabled", blockers: [] },
     { state: "managed_current", blockers: [] },
   ];
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const result = setLiveScheduledTaskEnabled({
+    runtimeTransitionLeaseFactory: transition.factory,
     profile: loadLiveGuardedRuntimeProfile(),
     repoRoot: ROOT,
     expectedCommit: "d".repeat(40),
@@ -958,12 +6096,14 @@ test("enable revalidates source, receipt and competing-task state at the mutatio
       return "";
     },
     lifecycleReceiptWriter(options) {
+      assert.ok(transition.current());
       calls.push(["receipt", options]);
       return { outcome: options.details.outcome };
     },
   });
 
   assert.equal(result.outcome, "enabled_for_next_boot");
+  assert.equal(transition.current(), null);
   const exec = calls.find(([name]) => name === "exec")[1];
   assert.equal(exec.command, "schtasks.exe");
   assert.deepEqual(exec.args, [
@@ -980,6 +6120,7 @@ test("enable revalidates source, receipt and competing-task state at the mutatio
       "activation",
       "conflicts",
       "task",
+      "task",
       "exec",
       "task",
       "receipt",
@@ -989,17 +6130,21 @@ test("enable revalidates source, receipt and competing-task state at the mutatio
 
 test("guarded start revalidates the exact runway, launches only the managed SYSTEM task and attests exact live ownership", async () => {
   const calls = [];
+  const transition = inMemoryTransitionLease();
   const profile = loadLiveGuardedRuntimeProfile();
   const expectedCommit = "d".repeat(40);
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const owner = {
-    schema_version: "pulse-windows-live-guarded-owner-v1",
+    schema_version: "pulse-windows-live-guarded-owner-v2",
     supervisor_pid: 4111,
+    supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
     child_pid: 4123,
+    child_process_started_at: TEST_PROCESS_STARTED_AT,
     port: profile.port,
     repo_root: ROOT.replace(/\\/g, "/"),
     commit_sha: expectedCommit,
@@ -1010,6 +6155,7 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
     platform: "youtube",
   };
   let listenerInspection = 0;
+  let healthInspection = 0;
   const liveHealth = {
     status: "ok",
     schedulerActive: true,
@@ -1022,14 +6168,17 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
       use_sqlite: true,
       use_job_queue_explicit: "true",
     },
+    multiLaneRuntime: boundedMultiLaneHealth(),
   };
 
   const result = await startLiveScheduledTask({
     ...inMemoryStartLock({ events: calls }),
+    runtimeTransitionLeaseFactory: transition.factory,
     profile,
     repoRoot: ROOT,
     expectedCommit,
     activation,
+    workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
     platform: "win32",
     sourceDatabaseInspector(options) {
       calls.push(["source_database", options]);
@@ -1053,8 +6202,7 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
       });
       return {
         stopped:
-          listeners.available === true &&
-          listeners.listeningPids.length === 0,
+          listeners.available === true && listeners.listeningPids.length === 0,
         blockers: [],
       };
     },
@@ -1067,6 +6215,29 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
     },
     healthRequester(options) {
       calls.push(["health", options]);
+      healthInspection += 1;
+      if (healthInspection === 1) {
+        const isolated = liveHealth.multiLaneRuntime.isolated_worker_pools;
+        return {
+          ...liveHealth,
+          multiLaneRuntime: {
+            isolated_worker_pools: {
+              ...isolated,
+              active_runner_count: 2,
+              active_pool_count: 2,
+              pools: [
+                ...isolated.pools,
+                {
+                  pool_id: "attacker_pool",
+                  active_instances: 1,
+                  heartbeat_ms: 30000,
+                  kinds: ["publish"],
+                },
+              ],
+            },
+          },
+        };
+      }
       return liveHealth;
     },
     ownerReader(options) {
@@ -1077,23 +6248,24 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
       calls.push(["exec", { command, args }]);
       return "";
     },
-    delayImpl() {
-      throw new Error("start verification should not need to wait");
-    },
+    delayImpl() {},
     lifecycleReceiptWriter(options) {
+      assert.equal(
+        transition.current()?.owner_id,
+        `live-start:${START_OPERATION_NONCE}`,
+      );
       calls.push(["receipt", options]);
       return { receipt_path: "D:/pulse/evidence/start.json" };
     },
   });
 
-  assert.deepEqual(
-    calls.find(([name]) => name === "exec")[1],
-    {
-      command: "schtasks.exe",
-      args: ["/Run", "/TN", profile.task_name],
-    },
-  );
+  assert.deepEqual(calls.find(([name]) => name === "exec")[1], {
+    command: "schtasks.exe",
+    args: ["/Run", "/TN", profile.task_name],
+  });
   assert.equal(result.receipt_path, "D:/pulse/evidence/start.json");
+  assert.equal(healthInspection, 3);
+  assert.equal(transition.current(), null);
   const receiptCall = calls.find(([name]) => name === "receipt")[1];
   assert.equal(receiptCall.action, "start");
   assert.equal(receiptCall.details.outcome, "started_verified");
@@ -1104,21 +6276,107 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
   assert.equal(receiptCall.details.supervisor_pid, owner.supervisor_pid);
   assert.equal(receiptCall.details.child_pid, owner.child_pid);
   assert.equal(receiptCall.details.listener_pid, owner.child_pid);
-  assert.equal(
-    receiptCall.details.operation_nonce,
-    START_OPERATION_NONCE,
-  );
-  for (const check of [
-    "source_database",
-    "activation",
-    "conflicts",
-    "task",
-  ]) {
+  assert.equal(receiptCall.details.operation_nonce, START_OPERATION_NONCE);
+  for (const check of ["source_database", "activation", "conflicts"]) {
     assert.equal(
       calls.filter(([name]) => name === check).length,
       2,
       `${check} must be revalidated after launch`,
     );
+  }
+  assert.equal(
+    calls.filter(([name]) => name === "task").length,
+    3,
+    "task must be revalidated at the Run boundary and after launch",
+  );
+});
+
+test("guarded start redacts finalizer failures from thrown errors", async (t) => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    blockers: [],
+  };
+  const scenarios = [
+    {
+      name: "start-operation lock release",
+      stage: "start_operation_lock_release_failed",
+      sentinel: "SENTINEL_START_LOCK_RELEASE_MUST_NOT_ESCAPE",
+      failLockRelease: true,
+    },
+    {
+      name: "transition lease release",
+      stage: "start_transition_lease_release_failed",
+      sentinel: "SENTINEL_TRANSITION_RELEASE_MUST_NOT_ESCAPE",
+      failTransitionRelease: true,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async () => {
+      let transitionReleaseCalls = 0;
+      let lockReleaseCalls = 0;
+      let thrown = null;
+
+      try {
+        await startLiveScheduledTask({
+          profile,
+          repoRoot: ROOT,
+          expectedCommit,
+          activation,
+          workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+          platform: "win32",
+          transitionLeaseAcquirer() {
+            return {
+              renew() {},
+              release() {
+                transitionReleaseCalls += 1;
+                if (scenario.failTransitionRelease) {
+                  throw new Error(scenario.sentinel);
+                }
+              },
+            };
+          },
+          runtimeInspector() {
+            return { stopped: true, blockers: [] };
+          },
+          startLockAcquirer() {
+            return { operation_nonce: START_OPERATION_NONCE };
+          },
+          startLockReleaser() {
+            lockReleaseCalls += 1;
+            if (scenario.failLockRelease) {
+              throw new Error(scenario.sentinel);
+            }
+          },
+          sourceDatabaseInspector() {
+            return { checkout: { ready: true }, database: { ready: true } };
+          },
+          activationInspector() {
+            return { valid: false, receipt_sha256: null, blockers: [] };
+          },
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      assert.ok(thrown);
+      assert.match(
+        thrown.message,
+        new RegExp(
+          `^live_task_start_finalization_failed:${scenario.stage}:[a-f0-9]{64}$`,
+        ),
+      );
+      assert.equal(
+        inspect(thrown, { depth: 5 }).includes(scenario.sentinel),
+        false,
+      );
+      assert.equal(lockReleaseCalls, 1);
+      assert.equal(transitionReleaseCalls, 1);
+    });
   }
 });
 
@@ -1128,6 +6386,7 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const driftedActivation = {
@@ -1136,9 +6395,11 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
     blockers: [],
   };
   const owner = {
-    schema_version: "pulse-windows-live-guarded-owner-v1",
+    schema_version: "pulse-windows-live-guarded-owner-v2",
     supervisor_pid: 4111,
+    supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
     child_pid: 4123,
+    child_process_started_at: TEST_PROCESS_STARTED_AT,
     port: profile.port,
     repo_root: ROOT.replace(/\\/g, "/"),
     commit_sha: expectedCommit,
@@ -1150,6 +6411,9 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
     platform: "youtube",
   };
   const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
@@ -1170,6 +6434,7 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
       repoRoot: ROOT,
       expectedCommit,
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {
@@ -1208,6 +6473,7 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
             use_sqlite: true,
             use_job_queue_explicit: "true",
           },
+          multiLaneRuntime: boundedMultiLaneHealth(),
         };
       },
       ownerReader() {
@@ -1239,24 +6505,26 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
   assert.equal(evidence[0].action, "start-failed");
   assert.equal(evidence[0].details.outcome, "start_failed");
   assert.equal(evidence[0].details.stopped_verified, true);
-  assert.equal(
-    evidence[0].details.operation_nonce,
-    START_OPERATION_NONCE,
-  );
+  assert.equal(evidence[0].details.operation_nonce, START_OPERATION_NONCE);
   assert.match(
     evidence[0].details.primary_error,
     /post_launch_activation_receipt_drift/,
   );
 });
 
-test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned up with durable evidence", async () => {
+test("an ambiguous schtasks Run error is redacted from durable evidence and the final error", async () => {
   const profile = loadLiveGuardedRuntimeProfile();
+  const secretSentinel = "SENTINEL_RUN_ERROR_MUST_NOT_PERSIST_7f9a";
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
@@ -1273,6 +6541,7 @@ test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned
       repoRoot: ROOT,
       expectedCommit: "d".repeat(40),
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       sourceDatabaseInspector() {
         return { checkout: { ready: true }, database: { ready: true } };
@@ -1306,7 +6575,9 @@ test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned
       execFileSyncImpl(command, args) {
         mutations.push({ command, args });
         if (args[0] === "/Run") {
-          const error = new Error("scheduled task request timed out");
+          const error = new Error(
+            `scheduled task request timed out ${secretSentinel}`,
+          );
           error.code = "ETIMEDOUT";
           throw error;
         }
@@ -1318,7 +6589,15 @@ test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned
         return { receipt_path: "D:/pulse/evidence/start-failed.json" };
       },
     }),
-    /scheduled task request timed out/,
+    (error) => {
+      const message = String(error?.message || error);
+      assert.match(
+        message,
+        /^live_task_start_failed:start_task_run_failed:[a-f0-9]{64}$/,
+      );
+      assert.equal(message.includes(secretSentinel), false);
+      return true;
+    },
   );
 
   assert.deepEqual(
@@ -1327,11 +6606,7 @@ test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned
   );
   assert.deepEqual(
     operationEvents.map(([event]) => event),
-    [
-      "lock_acquire",
-      "stale_owner_archive",
-      "lock_release",
-    ],
+    ["lock_acquire", "stale_owner_archive", "lock_release"],
   );
   assert.equal(taskStates.length, 0);
   assert.equal(evidence.length, 1);
@@ -1339,8 +6614,9 @@ test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned
   assert.equal(evidence[0].details.stopped_verified, true);
   assert.match(
     evidence[0].details.primary_error,
-    /scheduled task request timed out/,
+    /^start_task_run_failed:[a-f0-9]{64}$/,
   );
+  assert.equal(JSON.stringify(evidence).includes(secretSentinel), false);
 });
 
 test("runtime identity is re-read after authority revalidation before started_verified", async () => {
@@ -1349,12 +6625,15 @@ test("runtime identity is re-read after authority revalidation before started_ve
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const owner = {
-    schema_version: "pulse-windows-live-guarded-owner-v1",
+    schema_version: "pulse-windows-live-guarded-owner-v2",
     supervisor_pid: 4111,
+    supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
     child_pid: 4123,
+    child_process_started_at: TEST_PROCESS_STARTED_AT,
     port: profile.port,
     repo_root: ROOT.replace(/\\/g, "/"),
     commit_sha: expectedCommit,
@@ -1365,6 +6644,9 @@ test("runtime identity is re-read after authority revalidation before started_ve
     platform: "youtube",
   };
   const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
@@ -1384,6 +6666,7 @@ test("runtime identity is re-read after authority revalidation before started_ve
       repoRoot: ROOT,
       expectedCommit,
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {
@@ -1422,6 +6705,7 @@ test("runtime identity is re-read after authority revalidation before started_ve
                 use_sqlite: true,
                 use_job_queue_explicit: "true",
               },
+              multiLaneRuntime: boundedMultiLaneHealth(),
             }
           : null;
       },
@@ -1459,9 +6743,13 @@ test("guarded start ends and disables only the re-inspected managed task when ex
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
@@ -1479,6 +6767,7 @@ test("guarded start ends and disables only the re-inspected managed task when ex
       repoRoot: ROOT,
       expectedCommit,
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {
@@ -1523,6 +6812,7 @@ test("guarded start ends and disables only the re-inspected managed task when ex
             use_sqlite: true,
             use_job_queue_explicit: "true",
           },
+          multiLaneRuntime: boundedMultiLaneHealth(),
         };
       },
       ownerReader() {
@@ -1554,12 +6844,7 @@ test("guarded start ends and disables only the re-inspected managed task when ex
     },
     {
       command: "schtasks.exe",
-      args: [
-        "/Change",
-        "/TN",
-        profile.task_name,
-        "/DISABLE",
-      ],
+      args: ["/Change", "/TN", profile.task_name, "/DISABLE"],
     },
   ]);
   assert.equal(taskStates.length, 0);
@@ -1573,9 +6858,12 @@ test("guarded start ends and disables only the re-inspected managed task when ex
 test("cleanup command failures and an orphan listener are durably reported without claiming stopped", async () => {
   const profile = loadLiveGuardedRuntimeProfile();
   const expectedCommit = "d".repeat(40);
+  const endSecretSentinel = "SENTINEL_END_ERROR_MUST_NOT_PERSIST_6e8b";
+  const disableSecretSentinel = "SENTINEL_DISABLE_ERROR_MUST_NOT_PERSIST_5d7c";
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const owner = {
@@ -1583,6 +6871,9 @@ test("cleanup command failures and an orphan listener are durably reported witho
     child_pid: 4123,
   };
   const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
     { state: "managed_current", blockers: [] },
@@ -1598,6 +6889,7 @@ test("cleanup command failures and an orphan listener are durably reported witho
       repoRoot: ROOT,
       expectedCommit,
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       shutdownTimeoutMs: 0,
@@ -1630,8 +6922,11 @@ test("cleanup command failures and an orphan listener are durably reported witho
       },
       execFileSyncImpl(command, args) {
         mutations.push({ command, args });
-        if (args[0] === "/End" || args[0] === "/Change") {
-          throw new Error(`${args[0]} failed`);
+        if (args[0] === "/End") {
+          throw new Error(`${args[0]} failed ${endSecretSentinel}`);
+        }
+        if (args[0] === "/Change") {
+          throw new Error(`${args[0]} failed ${disableSecretSentinel}`);
         }
         return "";
       },
@@ -1641,7 +6936,13 @@ test("cleanup command failures and an orphan listener are durably reported witho
         return { receipt_path: "D:/pulse/evidence/start-failed.json" };
       },
     }),
-    /live_task_start_fail_closed_incomplete/,
+    (error) => {
+      const message = String(error?.message || error);
+      assert.match(message, /^live_task_start_fail_closed_incomplete:/);
+      assert.equal(message.includes(endSecretSentinel), false);
+      assert.equal(message.includes(disableSecretSentinel), false);
+      return true;
+    },
   );
 
   assert.deepEqual(
@@ -1654,32 +6955,33 @@ test("cleanup command failures and an orphan listener are durably reported witho
   assert.equal(failure.details.stopped_verified, false);
   assert.equal(failure.details.cleanup.end_succeeded, false);
   assert.equal(failure.details.cleanup.disable_succeeded, false);
-  assert.deepEqual(
-    failure.details.cleanup.orphan_listener_pids,
-    [owner.child_pid],
+  assert.deepEqual(failure.details.cleanup.orphan_listener_pids, [
+    owner.child_pid,
+  ]);
+  assert.ok(
+    failure.details.cleanup.blockers.some((blocker) =>
+      /^start_cleanup_end_failed:[a-f0-9]{64}$/.test(blocker),
+    ),
   );
   assert.ok(
     failure.details.cleanup.blockers.some((blocker) =>
-      blocker.startsWith("start_cleanup_end_failed:"),
+      /^start_cleanup_disable_failed:[a-f0-9]{64}$/.test(blocker),
     ),
   );
   assert.ok(
-    failure.details.cleanup.blockers.some((blocker) =>
-      blocker.startsWith("start_cleanup_disable_failed:"),
-    ),
+    failure.details.cleanup.blockers.includes("start_cleanup_orphan_listener"),
   );
-  assert.ok(
-    failure.details.cleanup.blockers.includes(
-      "start_cleanup_orphan_listener",
-    ),
-  );
+  assert.equal(JSON.stringify(failure).includes(endSecretSentinel), false);
+  assert.equal(JSON.stringify(failure).includes(disableSecretSentinel), false);
 });
 
 test("an unexpected cleanup inspection error still produces failure evidence", async () => {
   const profile = loadLiveGuardedRuntimeProfile();
+  const cleanupSecretSentinel = "SENTINEL_CLEANUP_ERROR_MUST_NOT_PERSIST_4c6d";
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const evidence = [];
@@ -1692,6 +6994,7 @@ test("an unexpected cleanup inspection error still produces failure evidence", a
       repoRoot: ROOT,
       expectedCommit: "d".repeat(40),
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {
@@ -1705,8 +7008,10 @@ test("an unexpected cleanup inspection error still produces failure evidence", a
       },
       taskInspector() {
         taskInspections += 1;
-        if (taskInspections > 1) {
-          throw new Error("task inspection unavailable");
+        if (taskInspections > 2) {
+          throw new Error(
+            `task inspection unavailable ${cleanupSecretSentinel}`,
+          );
         }
         return { state: "managed_current", blockers: [] };
       },
@@ -1731,7 +7036,12 @@ test("an unexpected cleanup inspection error still produces failure evidence", a
         return { receipt_path: "D:/pulse/evidence/start-failed.json" };
       },
     }),
-    /live_task_start_fail_closed_incomplete/,
+    (error) => {
+      const message = String(error?.message || error);
+      assert.match(message, /^live_task_start_fail_closed_incomplete:/);
+      assert.equal(message.includes(cleanupSecretSentinel), false);
+      return true;
+    },
   );
 
   assert.equal(evidence.length, 1);
@@ -1739,9 +7049,10 @@ test("an unexpected cleanup inspection error still produces failure evidence", a
   assert.equal(evidence[0].details.stopped_verified, false);
   assert.ok(
     evidence[0].details.cleanup.blockers.some((blocker) =>
-      blocker.startsWith("start_cleanup_unhandled_error:"),
+      /^start_cleanup_unhandled_error:[a-f0-9]{64}$/.test(blocker),
     ),
   );
+  assert.equal(JSON.stringify(evidence).includes(cleanupSecretSentinel), false);
 });
 
 test("a failed nonce cannot terminate or disable a different successful start owner", async () => {
@@ -1750,12 +7061,12 @@ test("a failed nonce cannot terminate or disable a different successful start ow
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const otherOwner = {
     child_pid: 5123,
-    start_operation_nonce:
-      "22222222-2222-4222-8222-222222222222",
+    start_operation_nonce: "22222222-2222-4222-8222-222222222222",
   };
   const mutations = [];
   const evidence = [];
@@ -1767,6 +7078,7 @@ test("a failed nonce cannot terminate or disable a different successful start ow
       repoRoot: ROOT,
       expectedCommit,
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {
@@ -1827,6 +7139,7 @@ test("guarded start rechecks stopped runtime ownership at the mutation boundary 
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const mutations = [];
@@ -1838,6 +7151,7 @@ test("guarded start rechecks stopped runtime ownership at the mutation boundary 
       repoRoot: ROOT,
       expectedCommit: "d".repeat(40),
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {
@@ -1990,8 +7304,7 @@ test("doctor proof reports READY only for exact clean source, migrated DB, activ
   assert.equal(report.profile.platform, "youtube");
   assert.equal(report.profile.secondary_automation_frozen, true);
   assert.equal(
-    report.checks.control_policy
-      .fresh_green_control_tower_required_per_release,
+    report.checks.control_policy.fresh_green_control_tower_required_per_release,
     true,
   );
   assert.equal(seen.length, 5);
@@ -1999,10 +7312,7 @@ test("doctor proof reports READY only for exact clean source, migrated DB, activ
     seen.find(([name]) => name === "database")[1].migrationsDir,
     /db[\\/]migrations$/,
   );
-  assert.doesNotMatch(
-    JSON.stringify(report),
-    /must-not-leak-this-value/i,
-  );
+  assert.doesNotMatch(JSON.stringify(report), /must-not-leak-this-value/i);
 
   const blocked = buildLiveRuntimeDoctorReport({
     expectedCommit,
@@ -2059,9 +7369,7 @@ test("activation preflight refuses to authorise issuance without an exact OAuth 
 
   const missing = buildLiveRuntimeDoctorReport(base);
   assert.ok(
-    missing.decision.blockers.includes(
-      "youtube_oauth_client_sha256_required",
-    ),
+    missing.decision.blockers.includes("youtube_oauth_client_sha256_required"),
   );
 
   const malformed = buildLiveRuntimeDoctorReport({
@@ -2069,9 +7377,7 @@ test("activation preflight refuses to authorise issuance without an exact OAuth 
     youtubeOAuthClientSha256: "not-a-sha256",
   });
   assert.ok(
-    malformed.decision.blockers.includes(
-      "youtube_oauth_client_sha256_invalid",
-    ),
+    malformed.decision.blockers.includes("youtube_oauth_client_sha256_invalid"),
   );
 
   const exact = buildLiveRuntimeDoctorReport({
@@ -2113,9 +7419,7 @@ test("install stays disabled and enable is separately gated by exact apply confi
   });
   assert.equal(wrongConfirmation.mutation_authorised, false);
   assert.ok(
-    wrongConfirmation.blockers.includes(
-      "live_lifecycle_confirmation_required",
-    ),
+    wrongConfirmation.blockers.includes("live_lifecycle_confirmation_required"),
   );
 
   const authorisedInstall = buildLiveLifecycleDecision({
@@ -2165,11 +7469,7 @@ test("install stays disabled and enable is separately gated by exact apply confi
     confirmation: LIVE_LIFECYCLE_CONFIRMATION,
   });
   assert.equal(unsafeRevoke.mutation_authorised, false);
-  assert.ok(
-    unsafeRevoke.blockers.includes(
-      "task_absent_or_disabled_required",
-    ),
-  );
+  assert.ok(unsafeRevoke.blockers.includes("task_absent_or_disabled_required"));
 
   const revoke = buildLiveLifecycleDecision({
     ...common,
@@ -2239,10 +7539,9 @@ test("the live task is a disabled-by-default SYSTEM AtStartup service-account ho
   });
 
   const unsafeVariants = [
-    xml.replace("<BootTrigger>", "<LogonTrigger>").replace(
-      "</BootTrigger>",
-      "</LogonTrigger>",
-    ),
+    xml
+      .replace("<BootTrigger>", "<LogonTrigger>")
+      .replace("</BootTrigger>", "</LogonTrigger>"),
     xml.replace("S-1-5-18", "S-1-5-21-1000"),
     xml.replace(
       "</UserId>",
@@ -2250,10 +7549,7 @@ test("the live task is a disabled-by-default SYSTEM AtStartup service-account ho
     ),
     xml.replace("HighestAvailable", "LeastPrivilege"),
     xml.replace("<Enabled>false</Enabled>", "<Enabled>true</Enabled>"),
-    xml.replace(
-      "</Arguments>",
-      " --unexpected-extra-action</Arguments>",
-    ),
+    xml.replace("</Arguments>", " --unexpected-extra-action</Arguments>"),
   ];
   for (const unsafeXml of unsafeVariants) {
     assert.equal(
@@ -2323,10 +7619,982 @@ test("the live task validator accepts Task Scheduler's normalised restart-policy
   }
 });
 
-test("AUTO_PUBLISH cannot enter a child environment without one exact activation receipt bound to commit, profile and migration set", () => {
-  const temp = fs.mkdtempSync(
-    path.join(os.tmpdir(), "pulse-live-receipt-"),
+test("the live task validator accepts and binds the in-memory Task Scheduler COM normalisation", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const repoRoot = "D:/pulse/releases/pulse-v1";
+  const nodeExecutable = "D:/pulse-tools/node-v22.17.1/node.exe";
+  const xml = fs.readFileSync(
+    path.join(
+      __dirname,
+      "../fixtures/windows-live-guarded-runtime-normalised.xml",
+    ),
+    "utf8",
   );
+
+  assert.deepEqual(
+    validateLiveScheduledTaskXml({
+      xml,
+      profile,
+      repoRoot,
+      expectedCommit,
+      nodeExecutable,
+      expectedEnabled: false,
+    }),
+    {
+      valid: true,
+      enabled: false,
+      blockers: [],
+    },
+  );
+
+  for (const [name, unsafeXml, blocker] of [
+    [
+      "start on demand",
+      xml.replace(
+        "<AllowStartOnDemand>true</AllowStartOnDemand>",
+        "<AllowStartOnDemand>false</AllowStartOnDemand>",
+      ),
+      "task_start_on_demand_policy_invalid",
+    ],
+    [
+      "run only if idle",
+      xml.replace(
+        "<RunOnlyIfIdle>false</RunOnlyIfIdle>",
+        "<RunOnlyIfIdle>true</RunOnlyIfIdle>",
+      ),
+      "task_idle_policy_invalid",
+    ],
+    [
+      "remote app session",
+      xml.replace(
+        "<DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession>",
+        "<DisallowStartOnRemoteAppSession>true</DisallowStartOnRemoteAppSession>",
+      ),
+      "task_remote_session_policy_invalid",
+    ],
+    [
+      "unified scheduler",
+      xml.replace(
+        "<UseUnifiedSchedulingEngine>false</UseUnifiedSchedulingEngine>",
+        "<UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>",
+      ),
+      "task_scheduler_engine_policy_invalid",
+    ],
+    [
+      "stop on idle end",
+      xml.replace(
+        "<StopOnIdleEnd>true</StopOnIdleEnd>",
+        "<StopOnIdleEnd>false</StopOnIdleEnd>",
+      ),
+      "task_idle_policy_invalid",
+    ],
+    [
+      "restart on idle",
+      xml.replace(
+        "<RestartOnIdle>false</RestartOnIdle>",
+        "<RestartOnIdle>true</RestartOnIdle>",
+      ),
+      "task_idle_policy_invalid",
+    ],
+  ]) {
+    const result = validateLiveScheduledTaskXml({
+      xml: unsafeXml,
+      profile,
+      repoRoot,
+      expectedCommit,
+      nodeExecutable,
+      expectedEnabled: false,
+    });
+    assert.equal(result.valid, false, name);
+    assert.ok(
+      result.blockers.includes(blocker),
+      `${name}: ${inspect(result.blockers)}`,
+    );
+  }
+});
+
+test("the live task validator binds the exact trigger, principal and Exec structure", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const repoRoot = "C:/Pulse/runtime/pulse-v1";
+  const nodeExecutable = "C:/Program Files/nodejs/node.exe";
+  const xml = buildLiveScheduledTaskXml({
+    profile,
+    repoRoot,
+    expectedCommit,
+    nodeExecutable,
+  });
+
+  const variants = [
+    {
+      name: "foreign command with expected identity planted in metadata",
+      xml: xml
+        .replace(
+          "<Description>",
+          `<Description>${nodeExecutable} `,
+        )
+        .replace(
+          `<Command>${nodeExecutable}</Command>`,
+          "<Command>C:/Foreign/runner.exe</Command>",
+        ),
+      blocker: "task_node_identity_invalid",
+    },
+    {
+      name: "foreign working directory",
+      xml: xml.replace(
+        /<WorkingDirectory>[\s\S]*?<\/WorkingDirectory>/,
+        "<WorkingDirectory>C:/Foreign/runtime</WorkingDirectory>",
+      ),
+      blocker: "task_working_directory_invalid",
+    },
+    {
+      name: "additional trigger",
+      xml: xml.replace(
+        "</Triggers>",
+        "<EventTrigger><Enabled>true</Enabled></EventTrigger></Triggers>",
+      ),
+      blocker: "task_trigger_set_invalid",
+    },
+    {
+      name: "mismatched action context",
+      xml: xml.replace(
+        '<Actions Context="PulseLiveGuarded">',
+        '<Actions Context="DifferentPrincipal">',
+      ),
+      blocker: "task_action_principal_binding_invalid",
+    },
+    {
+      name: "additional principal",
+      xml: xml.replace(
+        "</Principals>",
+        '<Principal id="Other"><UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel></Principal></Principals>',
+      ),
+      blocker: "task_principal_set_invalid",
+    },
+  ];
+
+  for (const variant of variants) {
+    const result = validateLiveScheduledTaskXml({
+      xml: variant.xml,
+      profile,
+      repoRoot,
+      expectedCommit,
+      nodeExecutable,
+      expectedEnabled: false,
+    });
+    assert.equal(result.valid, false, variant.name);
+    assert.ok(
+      result.blockers.includes(variant.blocker),
+      `${variant.name}: ${inspect(result.blockers)}`,
+    );
+  }
+});
+
+test("the live task validator accepts only the exact XML declaration and forbids active XML constructs", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const repoRoot = "C:/Pulse/runtime/pulse-v1";
+  const nodeExecutable = "C:/Program Files/nodejs/node.exe";
+  const xml = buildLiveScheduledTaskXml({
+    profile,
+    repoRoot,
+    expectedCommit,
+    nodeExecutable,
+  });
+  const declaration = '<?xml version="1.0" encoding="UTF-16"?>';
+  const variants = [
+    [
+      "stylesheet processing instruction in place of the declaration",
+      xml.replace(
+        declaration,
+        '<?xml-stylesheet type="text/xsl" href="foreign.xsl"?>',
+      ),
+    ],
+    ["arbitrary xml-prefixed processing instruction", xml.replace(declaration, "<?xmlfoo?>")],
+    [
+      "unsupported declaration version",
+      xml.replace(declaration, '<?xml version="1.1" encoding="UTF-16"?>'),
+    ],
+    ["missing declaration", xml.replace(`${declaration}\r\n`, "")],
+    ["declaration after leading whitespace", ` ${xml}`],
+    [
+      "processing instruction inside the document",
+      xml.replace("<RegistrationInfo>", "<?foreign instruction?><RegistrationInfo>"),
+    ],
+    [
+      "document type declaration",
+      xml.replace("<Task ", '<!DOCTYPE Task SYSTEM "foreign.dtd"><Task '),
+    ],
+    [
+      "CDATA construct",
+      xml.replace("<Description>", "<Description><![CDATA["),
+    ],
+    [
+      "duplicate attribute",
+      xml.replace('<Task version="1.4"', '<Task version="1.4" version="1.4"'),
+    ],
+    [
+      "broken nesting",
+      xml.replace("</RegistrationInfo>", "</Triggers>"),
+    ],
+  ];
+
+  for (const [name, unsafeXml] of variants) {
+    const result = validateLiveScheduledTaskXml({
+      xml: unsafeXml,
+      profile,
+      repoRoot,
+      expectedCommit,
+      nodeExecutable,
+      expectedEnabled: false,
+    });
+    assert.equal(result.valid, false, name);
+    assert.ok(
+      result.blockers.includes("task_xml_structure_invalid"),
+      `${name}: ${inspect(result.blockers)}`,
+    );
+  }
+});
+
+test("live task inspection distinguishes proven absence from query ambiguity", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const common = {
+    profile,
+    repoRoot: "C:/Pulse/runtime/pulse-v1",
+    expectedCommit: "d".repeat(40),
+    nodeExecutable: "C:/Program Files/nodejs/node.exe",
+    platform: "win32",
+  };
+
+  let absentCalls = 0;
+  const absent = inspectLiveWindowsTask({
+    ...common,
+    execFileSyncImpl(command, args) {
+      absentCalls += 1;
+      assert.equal(command, "powershell.exe");
+      const script = args.at(-1);
+      assert.match(script, /GetFolders\(0\)/);
+      assert.match(script, /candidateName -ieq/);
+      assert.match(script, /candidateName -ceq/);
+      assert.match(script, /candidatePath -ceq/);
+      return JSON.stringify({
+        RootFound: false,
+        Present: false,
+        ExactName: null,
+        MatchCount: 0,
+        ExactRootCount: 0,
+      });
+    },
+  });
+  assert.deepEqual(absent, {
+    state: "absent",
+    task_name: profile.task_name,
+    blockers: [],
+  });
+  assert.equal(absentCalls, 1);
+
+  const ambiguousPresence = inspectLiveWindowsTask({
+    ...common,
+    execFileSyncImpl() {
+      throw new Error("sensitive query timeout");
+    },
+  });
+  assert.deepEqual(ambiguousPresence, {
+    state: "unavailable",
+    task_name: profile.task_name,
+    blockers: ["windows_task_inspection_unavailable"],
+  });
+  assert.equal(JSON.stringify(ambiguousPresence).includes("sensitive"), false);
+
+  let presentCalls = 0;
+  const ambiguousXml = inspectLiveWindowsTask({
+    ...common,
+    execFileSyncImpl(command) {
+      presentCalls += 1;
+      if (command === "powershell.exe") {
+        return JSON.stringify({
+          RootFound: true,
+          Present: true,
+          ExactName: profile.task_name,
+          MatchCount: 1,
+          ExactRootCount: 1,
+        });
+      }
+      assert.equal(command, "schtasks.exe");
+      throw new Error("sensitive XML query failure");
+    },
+  });
+  assert.deepEqual(ambiguousXml, {
+    state: "unavailable",
+    task_name: profile.task_name,
+    blockers: ["windows_task_xml_inspection_unavailable"],
+  });
+  assert.equal(presentCalls, 2);
+  assert.equal(JSON.stringify(ambiguousXml).includes("sensitive"), false);
+});
+
+test("live task inspection rejects malformed or contradictory exact-presence transport", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const common = {
+    profile,
+    repoRoot: "C:/Pulse/runtime/pulse-v1",
+    expectedCommit: "d".repeat(40),
+    nodeExecutable: "C:/Program Files/nodejs/node.exe",
+    platform: "win32",
+  };
+  const variants = [
+    ["invalid JSON", "not-json"],
+    [
+      "extra field",
+      JSON.stringify({
+        RootFound: false,
+        Present: false,
+        ExactName: null,
+        MatchCount: 0,
+        ExactRootCount: 0,
+        Foreign: false,
+      }),
+    ],
+    [
+      "case-variant root collision",
+      JSON.stringify({
+        RootFound: true,
+        Present: false,
+        ExactName: null,
+        MatchCount: 1,
+        ExactRootCount: 0,
+      }),
+    ],
+    [
+      "child-folder collision",
+      JSON.stringify({
+        RootFound: false,
+        Present: false,
+        ExactName: null,
+        MatchCount: 1,
+        ExactRootCount: 0,
+      }),
+    ],
+    [
+      "multiple same-name tasks",
+      JSON.stringify({
+        RootFound: true,
+        Present: false,
+        ExactName: null,
+        MatchCount: 2,
+        ExactRootCount: 1,
+      }),
+    ],
+    [
+      "wrong exact name",
+      JSON.stringify({
+        RootFound: true,
+        Present: true,
+        ExactName: profile.task_name.toLowerCase(),
+        MatchCount: 1,
+        ExactRootCount: 1,
+      }),
+    ],
+    [
+      "wrong types",
+      JSON.stringify({
+        RootFound: "false",
+        Present: "false",
+        ExactName: null,
+        MatchCount: "0",
+        ExactRootCount: "0",
+      }),
+    ],
+  ];
+
+  for (const [name, output] of variants) {
+    const result = inspectLiveWindowsTask({
+      ...common,
+      execFileSyncImpl(command) {
+        assert.equal(command, "powershell.exe", name);
+        return output;
+      },
+    });
+    assert.deepEqual(
+      result,
+      {
+        state: "unavailable",
+        task_name: profile.task_name,
+        blockers: ["windows_task_inspection_unavailable"],
+      },
+      name,
+    );
+  }
+});
+
+test("live task installation never mutates through ambiguous presence and never force-replaces a raced task", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-task-presence-install-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+  };
+  fs.writeFileSync(profile.database_path, "task-presence-authority\n");
+  const expectedCommit = "d".repeat(40);
+  const lease = () => ({
+    assertCurrentAuthority() {},
+    renew() {
+      return true;
+    },
+    release() {
+      return true;
+    },
+  });
+
+  let ambiguousMutations = 0;
+  assert.throws(
+    () =>
+      installLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        enabled: false,
+        platform: "win32",
+        sourceDatabaseInspector: () => ({ ready: true }),
+        taskInspector: () => ({
+          state: "unavailable",
+          blockers: ["windows_task_inspection_unavailable"],
+        }),
+        transitionLeaseAcquirer: lease,
+        execFileSyncImpl() {
+          ambiguousMutations += 1;
+        },
+      }),
+    /refusing_to_replace_live_scheduled_task/,
+  );
+  assert.equal(ambiguousMutations, 0);
+
+  const taskStates = [
+    { state: "absent", blockers: [] },
+    {
+      state: "managed_disabled",
+      command_fingerprint: "a".repeat(64),
+      blockers: [],
+    },
+  ];
+  const mutations = [];
+  const result = installLiveScheduledTask({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+    enabled: false,
+    platform: "win32",
+    sourceDatabaseInspector: () => ({ ready: true }),
+    taskInspector: () => taskStates.shift(),
+    taskXmlBuilder: () => "<Task/>",
+    transitionLeaseAcquirer: lease,
+    execFileSyncImpl(command, args) {
+      mutations.push({ command, args });
+      return "";
+    },
+    lifecycleReceiptWriter: ({ details }) => ({ outcome: details.outcome }),
+  });
+  assert.equal(result.outcome, "installed_disabled");
+  assert.equal(taskStates.length, 0);
+  assert.equal(mutations.length, 1);
+  assert.equal(mutations[0].command, "schtasks.exe");
+  assert.deepEqual(mutations[0].args.slice(0, 4), [
+    "/Create",
+    "/TN",
+    profile.task_name,
+    "/XML",
+  ]);
+  assert.equal(mutations[0].args.includes("/F"), false);
+});
+
+test("enable and disable reject a causal task identity flip at the name-based mutation boundary", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+  };
+  const commandFingerprint = "a".repeat(64);
+
+  for (const enabled of [true, false]) {
+    const initialState = enabled ? "managed_disabled" : "managed_current";
+    const taskStates = [
+      {
+        state: initialState,
+        command_fingerprint: commandFingerprint,
+        blockers: [],
+      },
+      {
+        state: initialState,
+        command_fingerprint: "b".repeat(64),
+        blockers: [],
+      },
+    ];
+    const mutations = [];
+
+    assert.throws(
+      () =>
+        setLiveScheduledTaskEnabled({
+          profile,
+          repoRoot: ROOT,
+          expectedCommit: "d".repeat(40),
+          enabled,
+          activation,
+          platform: "win32",
+          sourceDatabaseInspector: () => ({ ready: true }),
+          activationInspector: () => activation,
+          conflictInspector: () => ({ clear: true, blockers: [] }),
+          taskInspector: () => taskStates.shift(),
+          transitionLeaseAcquirer: () => ({
+            assertCurrentAuthority() {},
+            renew() {
+              return true;
+            },
+            release() {
+              return true;
+            },
+          }),
+          execFileSyncImpl(command, args) {
+            mutations.push({ command, args });
+            return "";
+          },
+        }),
+      /live_task_enablement_mutation_boundary_identity_lost/,
+      enabled ? "enable" : "disable",
+    );
+    assert.equal(taskStates.length, 0, enabled ? "enable" : "disable");
+    assert.deepEqual(mutations, [], enabled ? "enable" : "disable");
+  }
+});
+
+test("guarded start rejects a causal task identity flip immediately before name-based Run", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    blockers: [],
+  };
+  const taskStates = [
+    {
+      state: "managed_current",
+      command_fingerprint: "a".repeat(64),
+      blockers: [],
+    },
+    {
+      state: "managed_current",
+      command_fingerprint: "b".repeat(64),
+      blockers: [],
+    },
+  ];
+  const mutations = [];
+
+  await assert.rejects(
+    startLiveScheduledTask({
+      ...inMemoryStartLock(),
+      profile,
+      repoRoot: ROOT,
+      expectedCommit: "d".repeat(40),
+      activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      platform: "win32",
+      timeoutMs: 0,
+      sourceDatabaseInspector: () => ({ ready: true }),
+      activationInspector: () => activation,
+      conflictInspector: () => ({ clear: true, blockers: [] }),
+      taskInspector: () => taskStates.shift(),
+      runtimeInspector: () => ({
+        stopped: true,
+        owner_state: "absent",
+        listening_pids: [],
+        blockers: [],
+      }),
+      listenerInspector: () => ({ available: true, listeningPids: [] }),
+      healthRequester: () => null,
+      ownerReader: () => null,
+      execFileSyncImpl(command, args) {
+        mutations.push({ command, args });
+        return "";
+      },
+      delayImpl() {},
+    }),
+    /live_task_start_mutation_boundary_identity_lost/,
+  );
+  assert.equal(taskStates.length, 0);
+  assert.deepEqual(mutations, []);
+});
+
+test("failed-start cleanup rejects causal task flips before name-based End and disable", async (t) => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    blockers: [],
+  };
+  const currentTask = () => ({
+    state: "managed_current",
+    command_fingerprint: "a".repeat(64),
+    blockers: [],
+  });
+  const flippedTask = () => ({
+    state: "managed_current",
+    command_fingerprint: "b".repeat(64),
+    blockers: [],
+  });
+  const scenarios = [
+    {
+      name: "End",
+      taskStates: [
+        currentTask(),
+        currentTask(),
+        currentTask(),
+        flippedTask(),
+      ],
+      allowedCommands: ["/Run"],
+    },
+    {
+      name: "disable",
+      taskStates: [
+        currentTask(),
+        currentTask(),
+        currentTask(),
+        currentTask(),
+        currentTask(),
+        flippedTask(),
+        flippedTask(),
+      ],
+      allowedCommands: ["/Run", "/End"],
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async () => {
+      const taskStates = [...scenario.taskStates];
+      const mutations = [];
+      const evidence = [];
+
+      await assert.rejects(
+        startLiveScheduledTask({
+          ...inMemoryStartLock(),
+          profile,
+          repoRoot: ROOT,
+          expectedCommit: "d".repeat(40),
+          activation,
+          workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+          platform: "win32",
+          timeoutMs: 0,
+          shutdownTimeoutMs: 0,
+          sourceDatabaseInspector: () => ({ ready: true }),
+          activationInspector: () => activation,
+          conflictInspector: () => ({ clear: true, blockers: [] }),
+          taskInspector: () => taskStates.shift(),
+          runtimeInspector: () => ({
+            stopped: true,
+            owner_state: "absent",
+            listening_pids: [],
+            blockers: [],
+          }),
+          listenerInspector: () => ({ available: true, listeningPids: [] }),
+          healthRequester: () => null,
+          ownerReader: () => null,
+          execFileSyncImpl(command, args) {
+            mutations.push({ command, args });
+            return "";
+          },
+          delayImpl() {},
+          lifecycleReceiptWriter(options) {
+            evidence.push(options);
+            return { receipt_path: "D:/pulse/evidence/start-failed.json" };
+          },
+        }),
+        /live_task_start_fail_closed_incomplete/,
+      );
+
+      assert.deepEqual(
+        mutations.map(({ args }) => args[0]),
+        scenario.allowedCommands,
+      );
+      assert.equal(evidence.length, 1);
+      assert.equal(evidence[0].action, "start-failed");
+      assert.equal(evidence[0].details.stopped_verified, false);
+    });
+  }
+});
+
+test("uninstall rejects a causal task identity flip immediately before name-based Delete", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-uninstall-boundary-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+  };
+  fs.writeFileSync(profile.database_path, "uninstall boundary authority\n");
+  const taskStates = [
+    {
+      state: "managed_disabled",
+      command_fingerprint: "a".repeat(64),
+      blockers: [],
+    },
+    {
+      state: "managed_disabled",
+      command_fingerprint: "b".repeat(64),
+      blockers: [],
+    },
+  ];
+  const mutations = [];
+
+  assert.throws(
+    () =>
+      uninstallLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        platform: "win32",
+        taskInspector: () => taskStates.shift(),
+        transitionLeaseAcquirer: () => ({
+          assertCurrentAuthority() {
+            return true;
+          },
+          renew() {
+            return true;
+          },
+          release() {
+            return true;
+          },
+        }),
+        execFileSyncImpl(command, args) {
+          mutations.push({ command, args });
+          return "";
+        },
+      }),
+    /live_task_uninstall_mutation_boundary_identity_lost/,
+  );
+  assert.equal(taskStates.length, 0);
+  assert.deepEqual(mutations, []);
+});
+
+test("uninstall writes no success evidence until authoritative exact absence is proven", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-uninstall-absence-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+  };
+  fs.writeFileSync(profile.database_path, "uninstall absence authority\n");
+  const taskStates = [
+    {
+      state: "managed_disabled",
+      command_fingerprint: "a".repeat(64),
+      blockers: [],
+    },
+    {
+      state: "managed_disabled",
+      command_fingerprint: "a".repeat(64),
+      blockers: [],
+    },
+    {
+      state: "unavailable",
+      blockers: ["windows_task_inspection_unavailable"],
+    },
+  ];
+  const mutations = [];
+  let receiptWrites = 0;
+
+  assert.throws(
+    () =>
+      uninstallLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        platform: "win32",
+        taskInspector: () => taskStates.shift(),
+        transitionLeaseAcquirer: () => ({
+          assertCurrentAuthority() {
+            return true;
+          },
+          renew() {
+            return true;
+          },
+          release() {
+            return true;
+          },
+        }),
+        execFileSyncImpl(command, args) {
+          mutations.push({ command, args });
+          return "";
+        },
+        lifecycleReceiptWriter() {
+          receiptWrites += 1;
+          return { outcome: "must_not_write" };
+        },
+      }),
+    /live_task_post_uninstall_absence_failed/,
+  );
+  assert.equal(taskStates.length, 0);
+  assert.deepEqual(
+    mutations.map(({ args }) => args[0]),
+    ["/Delete"],
+  );
+  assert.equal(receiptWrites, 0);
+});
+
+test("activation v2 binds the planned runtime authority without claiming future process identity", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-live-v2-receipt-"));
+  try {
+    const migrationsDir = path.join(temp, "migrations");
+    fs.mkdirSync(migrationsDir);
+    fs.writeFileSync(
+      path.join(migrationsDir, "001_fixture.sql"),
+      "SELECT 1;\n",
+    );
+    const profile = loadLiveGuardedRuntimeProfile();
+    const expectedCommit = BOUNDED_RELEASE_SHA;
+    const receipt = buildLiveActivationReceipt({
+      profile,
+      expectedCommit,
+      migrationsDir,
+      operatorId: "operator-42",
+      reason: "Reviewed exact YouTube runway activation",
+      youtubeOAuthClientSha256: "6".repeat(64),
+      generatedAt: "2026-08-02T09:00:00.000Z",
+      ...activationAuthorityOptions(),
+    });
+
+    assert.equal(
+      receipt.schema_version,
+      "pulse-windows-live-guarded-activation-receipt-v2",
+    );
+    assert.equal(receipt.runtime_instance_id, BOUNDED_RUNTIME_ID);
+    assert.equal(receipt.task_name, "PulseGaming-LiveGuarded-YouTube-Runtime");
+    assert.equal(
+      receipt.task_path,
+      "\\PulseGaming-LiveGuarded-YouTube-Runtime",
+    );
+    assert.match(receipt.task_definition_sha256, /^[a-f0-9]{64}$/);
+    assert.match(receipt.authority_fingerprint, /^[a-f0-9]{64}$/);
+    assert.equal(receipt.authority_binding.release_sha, expectedCommit);
+    assert.equal(
+      receipt.authority_binding.database_identity_sha256,
+      BOUNDED_DATABASE_SHA,
+    );
+    assert.equal("task_instance_guid" in receipt, false);
+    assert.equal("supervisor_pid" in receipt, false);
+    assert.equal("child_pid" in receipt, false);
+
+    const receiptPath = path.join(temp, "activation.json");
+    fs.writeFileSync(receiptPath, `${JSON.stringify(receipt)}\n`);
+    const exact = inspectLiveActivationReceipt({
+      profile,
+      expectedCommit,
+      migrationsDir,
+      receiptPath,
+      ...activationAuthorityOptions(),
+    });
+    assert.equal(exact.valid, true);
+    assert.equal(exact.runtime_instance_id, BOUNDED_RUNTIME_ID);
+    assert.equal(exact.authority_fingerprint, receipt.authority_fingerprint);
+
+    const selfTrusted = inspectLiveActivationReceipt({
+      profile,
+      expectedCommit,
+      migrationsDir,
+      receiptPath,
+    });
+    assert.equal(selfTrusted.valid, false);
+    assert.ok(
+      selfTrusted.blockers.includes(
+        "activation_receipt_independent_authority_required",
+      ),
+    );
+
+    const databaseDrift = inspectLiveActivationReceipt({
+      profile,
+      expectedCommit,
+      migrationsDir,
+      receiptPath,
+      ...activationAuthorityOptions(),
+      databaseIdentitySha256: "9".repeat(64),
+    });
+    assert.equal(databaseDrift.valid, false);
+    assert.ok(
+      databaseDrift.blockers.includes(
+        "activation_receipt_task_authority_invalid",
+      ),
+    );
+
+    const legacy = {
+      ...receipt,
+      schema_version: "pulse-windows-live-guarded-activation-receipt-v1",
+    };
+    legacy.receipt_sha256 = require("node:crypto")
+      .createHash("sha256")
+      .update("")
+      .digest("hex");
+    fs.writeFileSync(receiptPath, `${JSON.stringify(legacy)}\n`);
+    const rejectedLegacy = inspectLiveActivationReceipt({
+      profile,
+      expectedCommit,
+      migrationsDir,
+      receiptPath,
+      ...activationAuthorityOptions(),
+    });
+    assert.equal(rejectedLegacy.valid, false);
+    assert.ok(
+      rejectedLegacy.blockers.includes("activation_receipt_schema_invalid"),
+    );
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("live database identity survives content writes but rejects replacement and linked files", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-db-identity-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const databasePath = path.join(temp, "pulse.db");
+  fs.writeFileSync(databasePath, "first sqlite bytes\n");
+
+  const original = inspectLiveDatabaseIdentity({ databasePath });
+  assert.match(original.database_identity_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(original.canonical_real_path.endsWith("/pulse.db"), true);
+
+  fs.appendFileSync(databasePath, "wal checkpoint content change\n");
+  const afterWrite = inspectLiveDatabaseIdentity({ databasePath });
+  assert.equal(
+    afterWrite.database_identity_sha256,
+    original.database_identity_sha256,
+  );
+
+  const displaced = path.join(temp, "original.db");
+  fs.renameSync(databasePath, displaced);
+  fs.writeFileSync(databasePath, "replacement sqlite bytes\n");
+  const replacement = inspectLiveDatabaseIdentity({ databasePath });
+  assert.notEqual(
+    replacement.database_identity_sha256,
+    original.database_identity_sha256,
+  );
+
+  const linked = path.join(temp, "linked.db");
+  fs.linkSync(databasePath, linked);
+  assert.throws(
+    () => inspectLiveDatabaseIdentity({ databasePath }),
+    /live_database_identity_link_forbidden/,
+  );
+});
+
+test("AUTO_PUBLISH cannot enter a child environment without one exact activation receipt bound to commit, profile and migration set", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-live-receipt-"));
   try {
     const migrationsDir = path.join(temp, "migrations");
     fs.mkdirSync(migrationsDir);
@@ -2370,6 +8638,7 @@ test("AUTO_PUBLISH cannot enter a child environment without one exact activation
           operatorId: "operator-42",
           reason: "Reviewed exact YouTube runway activation",
           generatedAt: "2026-07-28T12:00:00.000Z",
+          ...activationAuthorityOptions(),
         }),
       /youtube_oauth_client_sha256_required/,
     );
@@ -2382,6 +8651,7 @@ test("AUTO_PUBLISH cannot enter a child environment without one exact activation
       reason: "Reviewed exact YouTube runway activation",
       generatedAt: "2026-07-28T12:00:00.000Z",
       youtubeOAuthClientSha256: expectedOAuthClientSha256,
+      ...activationAuthorityOptions(),
     });
     assert.deepEqual(receipt.youtube_account_binding, {
       env_key: "PULSE_YOUTUBE_OAUTH_CLIENT_SHA256",
@@ -2397,6 +8667,7 @@ test("AUTO_PUBLISH cannot enter a child environment without one exact activation
       expectedCommit,
       migrationsDir,
       receiptPath,
+      ...activationAuthorityOptions(),
     });
     assert.equal(activation.valid, true);
     assert.deepEqual(activation.blockers, []);
@@ -2418,17 +8689,11 @@ test("AUTO_PUBLISH cannot enter a child environment without one exact activation
       },
     });
     assert.equal(environment.AUTO_PUBLISH, "true");
-    assert.equal(
-      environment.PULSE_GUARDED_LIVE_DISPATCH_ENABLED,
-      "true",
-    );
+    assert.equal(environment.PULSE_GUARDED_LIVE_DISPATCH_ENABLED, "true");
     assert.equal(environment.PULSE_EMERGENCY_KILL_SWITCH, "false");
     assert.equal(environment.PULSE_KILL_SWITCH, "false");
     assert.equal(environment.PULSE_OPERATING_MODE, "LIVE_GUARDED");
-    assert.equal(
-      environment.PULSE_SCHEDULER_PROFILE,
-      "governed_multi_lane",
-    );
+    assert.equal(environment.PULSE_SCHEDULER_PROFILE, "governed_multi_lane");
     assert.equal(environment.YOUTUBE_AUTO_PUBLISH, "true");
     assert.equal(environment.TIKTOK_ENABLED, "false");
     assert.equal(environment.INSTAGRAM_AUTO_PUBLISH, "false");
@@ -2441,6 +8706,29 @@ test("AUTO_PUBLISH cannot enter a child environment without one exact activation
       environment.PULSE_LIVE_GUARDED_ACTIVATION_RECEIPT_SHA256,
       activation.receipt_sha256,
     );
+    assert.equal(
+      environment.PULSE_LIVE_RUNTIME_INSTANCE_ID,
+      activation.runtime_instance_id,
+    );
+    assert.equal(
+      environment.PULSE_LIVE_AUTHORITY_FINGERPRINT,
+      activation.authority_fingerprint,
+    );
+    for (const malformedActivation of [
+      { ...activation, runtime_instance_id: "ri-token-shaped-secret" },
+      { ...activation, authority_fingerprint: "not-a-sha256" },
+    ]) {
+      assert.throws(
+        () =>
+          buildLiveChildEnvironment({
+            profile,
+            expectedCommit,
+            activation: malformedActivation,
+            systemEnvironment: {},
+          }),
+        /live_activation_runtime_authority_invalid/,
+      );
+    }
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
@@ -2469,6 +8757,7 @@ test("activation authority has no silent calendar expiry but every commit, profi
       reason: "Reviewed exact YouTube runway activation",
       generatedAt: "2020-01-01T00:00:00.000Z",
       youtubeOAuthClientSha256: "6".repeat(64),
+      ...activationAuthorityOptions(),
     });
     assert.equal(original.expiry.expires_at, null);
 
@@ -2483,6 +8772,7 @@ test("activation authority has no silent calendar expiry but every commit, profi
         expectedCommit,
         migrationsDir,
         receiptPath,
+        ...activationAuthorityOptions(),
         ...overrides,
       });
     };
@@ -2522,14 +8812,12 @@ test("activation authority has no silent calendar expiry but every commit, profi
       ),
     );
     assert.ok(
-      controlDrift.blockers.includes(
-        "activation_receipt_fingerprint_mismatch",
-      ),
+      controlDrift.blockers.includes("activation_receipt_fingerprint_mismatch"),
     );
 
     const oauthClientDrift = structuredClone(original);
-    oauthClientDrift.youtube_account_binding
-      .expected_oauth_client_sha256 = "not-a-sha256";
+    oauthClientDrift.youtube_account_binding.expected_oauth_client_sha256 =
+      "not-a-sha256";
     const oauthBindingDrift = inspect(oauthClientDrift);
     assert.ok(
       oauthBindingDrift.blockers.includes(
@@ -2555,13 +8843,7 @@ test("the live CLI defaults to a machine-readable, non-mutating doctor and rejec
   ).trim();
   const output = execFileSync(
     process.execPath,
-    [
-      TOOL,
-      "--repo-root",
-      ROOT,
-      "--expected-commit",
-      commit,
-    ],
+    [TOOL, "--repo-root", ROOT, "--expected-commit", commit],
     {
       cwd: ROOT,
       encoding: "utf8",

@@ -94,6 +94,82 @@ test("scheduler lease metadata is truthful and does not claim a later profile", 
   f.db.close();
 });
 
+test("scheduler lease metadata is versioned and bound to one runtime generation", () => {
+  const f = fixture();
+  const lease = acquireSchedulerLease({
+    leases: f.runtimeLeases,
+    ownerId: "scheduler-runtime-generation-private-owner",
+    runtimeAuthority: {
+      runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+      child_pid: 4200,
+      child_started_at: "2026-08-02T10:00:00.000Z",
+      authority_fingerprint: "a".repeat(64),
+    },
+  });
+
+  assert.deepEqual(JSON.parse(lease.metadata), {
+    schema_version: "pulse-runtime-generation-lease-v1",
+    runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+    process_id: 4200,
+    process_started_at: "2026-08-02T10:00:00.000Z",
+    authority_fingerprint: "a".repeat(64),
+    purpose: "single_owner_scheduler_dispatch",
+  });
+
+  releaseSchedulerLease({
+    leases: f.runtimeLeases,
+    ownerId: "scheduler-runtime-generation-private-owner",
+  });
+  f.db.close();
+});
+
+test("live-guarded scheduler refuses to acquire an unbound lease", () => {
+  const f = fixture();
+
+  assert.throws(
+    () =>
+      acquireSchedulerLease({
+        leases: f.runtimeLeases,
+        ownerId: "unbound-live-scheduler-owner",
+        env: { PULSE_OPERATING_MODE: "LIVE_GUARDED" },
+      }),
+    /runtime_generation_authority_required/,
+  );
+  assert.equal(f.runtimeLeases.get("scheduler:primary"), null);
+  f.db.close();
+});
+
+test("scheduler startup carries the injected runtime generation into its durable lease", () => {
+  const f = fixture();
+  const runtimeAuthority = {
+    runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+    child_pid: 4200,
+    child_started_at: "2026-08-02T10:00:00.000Z",
+    authority_fingerprint: "a".repeat(64),
+  };
+  const handle = startScheduler({
+    repos: f.repos,
+    ownerId: "scheduler-runtime-generation-private-owner",
+    runtimeAuthority,
+    log() {},
+  });
+
+  assert.deepEqual(
+    JSON.parse(f.runtimeLeases.get("scheduler:primary").metadata),
+    {
+      schema_version: "pulse-runtime-generation-lease-v1",
+      runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+      process_id: 4200,
+      process_started_at: "2026-08-02T10:00:00.000Z",
+      authority_fingerprint: "a".repeat(64),
+      purpose: "single_owner_scheduler_dispatch",
+    },
+  );
+
+  handle.stop();
+  f.db.close();
+});
+
 test("lease loss changes the live scheduler handle to inactive", () => {
   const f = fixture();
   const handle = startScheduler({
@@ -238,6 +314,7 @@ test("autonomous planner and T-94 cron fires bind the exact UTC publish window w
       now: "2026-03-29T06:35:00.000Z",
       publishHour: 9,
       scheduledFor: "2026-03-29T09:00:00.000Z",
+      jobMaxAttempts: 8,
     },
     {
       kind: "prepare_governed_autonomous_pre_t90_window",
@@ -265,6 +342,12 @@ test("autonomous planner and T-94 cron fires bind the exact UTC publish window w
           catch_up_allowed: false,
           publish_authority: false,
           external_posting: false,
+          ...(scenario.jobMaxAttempts
+            ? {
+                job_max_attempts:
+                  scenario.jobMaxAttempts,
+              }
+            : {}),
           idempotencyTemplate: `${scenario.kind}:{date}:${String(
             scenario.publishHour,
           ).padStart(2, "0")}`,
@@ -309,6 +392,17 @@ test("autonomous planner and T-94 cron fires bind the exact UTC publish window w
       );
       assert.equal(
         f.enqueued[0].payload.external_posting,
+        false,
+      );
+      assert.equal(
+        f.enqueued[0].max_attempts,
+        scenario.jobMaxAttempts,
+      );
+      assert.equal(
+        Object.hasOwn(
+          f.enqueued[0].payload,
+          "job_max_attempts",
+        ),
         false,
       );
     } finally {

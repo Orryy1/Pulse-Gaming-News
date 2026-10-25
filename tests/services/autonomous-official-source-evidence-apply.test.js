@@ -693,17 +693,22 @@ async function createFixture(t, { hostileSourceDirective = "" } = {}) {
       primary_kill_switch_tripped: false,
     },
   );
-  const ownerProof = await writeJson(root, "controls/single-owner-proof.json", {
-    schema_version: "pulse-single-owner-proof-v1",
+  const ownerProof = await writeJson(
+    root,
+    "controls/publication-admission-owner-proof.json",
+    {
+    schema_version: "pulse-publication-admission-owner-proof-v1",
     story_id: STORY_ID,
     checked_at: "2026-07-29T09:59:45.000Z",
     valid_until: "2026-07-29T10:01:00.000Z",
-    owner_id: "publisher-owner-1",
+    scheduler_owner_sha256: "a".repeat(64),
+    publication_admission_owner_sha256: "b".repeat(64),
+    publication_admission_claimed_job_authority_sha256: "c".repeat(64),
     active_scheduler_owner_count: 1,
-    active_publisher_owner_count: 1,
+    active_publication_admission_owner_count: 1,
     scheduler_owner_healthy: true,
-    publisher_owner_healthy: true,
-    lease_expires_at: "2026-07-29T10:01:00.000Z",
+    publication_admission_owner_healthy: true,
+    publication_admission_lease_expires_at: "2026-07-29T10:01:00.000Z",
   });
 
   const ownedVisualAssets = [
@@ -731,7 +736,7 @@ async function createFixture(t, { hostileSourceDirective = "" } = {}) {
     publication_metadata: metadata,
     autonomous_green_supplement: autonomousGreenSupplement,
     kill_switch_proof: killSwitchProof,
-    single_owner_proof: ownerProof,
+    publication_admission_owner_proof: ownerProof,
   };
   const request = {
     schema_version: APPLY_REQUEST_SCHEMA_VERSION,
@@ -839,6 +844,53 @@ test("replays the exact still-current request idempotently without refetching or
   assert.equal(second.report.report_sha256, first.report.report_sha256);
   assert.deepEqual(secondBytes, firstBytes);
   assert.equal(fixture.calls.length, 3);
+});
+
+test("rejects legacy v3 apply requests and publisher-owner v1 proof artefacts before source reads", async (t) => {
+  const legacyRequestFixture = await createFixture(t);
+  await assert.rejects(
+    materialiseAutonomousOfficialSourceEvidence(
+      {
+        ...legacyRequestFixture.request,
+        schema_version:
+          "pulse-autonomous-official-source-evidence-apply-request-v3",
+      },
+      {
+        clock: () => new Date(NOW),
+        fetchCapture: legacyRequestFixture.fetchCapture,
+        workspaceRoot: legacyRequestFixture.root,
+      },
+    ),
+    (error) =>
+      error?.codes?.includes("request_schema_version_invalid") === true,
+  );
+  assert.deepEqual(legacyRequestFixture.calls, []);
+
+  const legacyProofFixture = await createFixture(t);
+  await rewriteJson(
+    legacyProofFixture.request.artifacts
+      .publication_admission_owner_proof,
+    (proof) => {
+      proof.schema_version = "pulse-publisher-owner-proof-v1";
+      proof.publisher_owner_sha256 = proof.publication_admission_owner_sha256;
+      delete proof.publication_admission_owner_sha256;
+    },
+  );
+  await assert.rejects(
+    materialiseAutonomousOfficialSourceEvidence(
+      legacyProofFixture.request,
+      {
+        clock: () => new Date(NOW),
+        fetchCapture: legacyProofFixture.fetchCapture,
+        workspaceRoot: legacyProofFixture.root,
+      },
+    ),
+    (error) =>
+      error?.codes?.includes(
+        "publication_admission_owner_proof_schema_closed",
+      ) === true,
+  );
+  assert.deepEqual(legacyProofFixture.calls, []);
 });
 
 test("fails closed when a supporting US price snapshot changes at the just-in-time read", async (t) => {

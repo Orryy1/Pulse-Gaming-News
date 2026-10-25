@@ -464,11 +464,75 @@ test("materialiser gives strict HyperFrames a self-contained project with hash-b
       path.join(projectRoot, "index.html"),
       "utf8",
     );
+    assert.match(
+      html,
+      /\.programme-backbone\s*\{\s*z-index:\s*0;\s*\}/,
+    );
+    assert.match(
+      html,
+      /\.programme-foreground\s*\{\s*z-index:\s*1;\s*\}/,
+    );
+    assert.doesNotMatch(html, /\bdata-layer=/);
     const mediaSources = [
       ...html.matchAll(
         /<(?:img|video)\b[^>]*\bsrc="([^"]+)"/g,
       ),
     ].map((match) => match[1]);
+    const mediaLayers = [
+      ...html.matchAll(
+        /<(?:img|video)\s+id="([^"]+)"\s+class="([^"]+)"[^>]*\bdata-start="([^"]+)"[^>]*\bdata-duration="([^"]+)"[^>]*\bdata-track-index="([^"]+)"/g,
+      ),
+    ].map((match) => ({
+      asset_id: match[1],
+      class_name: match[2],
+      start_seconds: Number(match[3]),
+      duration_seconds: Number(match[4]),
+      track_index: Number(match[5]),
+    }));
+    assert.deepEqual(mediaLayers, [
+      {
+        asset_id: "owned-motion-backbone",
+        class_name: "clip programme-backbone",
+        start_seconds: 0,
+        duration_seconds: 28,
+        track_index: 1,
+      },
+      {
+        asset_id: "owned-hook",
+        class_name: "clip programme-foreground",
+        start_seconds: 0,
+        duration_seconds: 3,
+        track_index: 2,
+      },
+      {
+        asset_id: "owned-change",
+        class_name: "clip programme-foreground",
+        start_seconds: 3,
+        duration_seconds: 5,
+        track_index: 3,
+      },
+      {
+        asset_id: "owned-timeline",
+        class_name: "clip programme-foreground",
+        start_seconds: 8,
+        duration_seconds: 5,
+        track_index: 4,
+      },
+      {
+        asset_id: "owned-proof",
+        class_name: "clip programme-foreground",
+        start_seconds: 13,
+        duration_seconds: 5,
+        track_index: 5,
+      },
+      {
+        asset_id: "owned-impact",
+        class_name: "clip programme-foreground",
+        start_seconds: 18,
+        duration_seconds: 10,
+        track_index: 6,
+      },
+    ]);
     assert.equal(mediaSources.length, buildScenes().length);
     assert.ok(
       mediaSources.every(

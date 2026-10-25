@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -31,6 +32,9 @@ const {
 const {
   validateStoryIntakeManifest,
 } = require("../../lib/services/governed-story-intake");
+const {
+  materializeGovernedAutonomousNarrationTimingEvidence,
+} = require("../../lib/services/governed-autonomous-narration-timing-evidence");
 const {
   canonicalHash,
 } = require("../../lib/services/url-canonical");
@@ -119,17 +123,45 @@ async function standardFixture(t) {
       allowedRoots: [inventory.outputRoot, root],
     });
   assert.equal(hydration.verdict, "READY");
+  const story = {
+    id: inventory.storyId,
+    title: inventory.registry.story.title,
+    url: inventory.newsUrl,
+    full_script: STANDARD_SCRIPT,
+    breaking_score: 140,
+  };
+  const canonicalStoryId =
+    `official_${canonicalHash(inventory.newsUrl)}`;
+  const timing =
+    await materializeGovernedAutonomousNarrationTimingEvidence({
+      schema_version:
+        "pulse-governed-autonomous-narration-timing-evidence-request-v1",
+      mode: "LOCAL_PROOF",
+      story_id: canonicalStoryId,
+      legacy_story_id: inventory.storyId,
+      script_sha256: crypto
+        .createHash("sha256")
+        .update(STANDARD_SCRIPT)
+        .digest("hex"),
+      provider: runtimePolicy().narration,
+      provider_result_sha256: "7".repeat(64),
+      audio_sha256: "9".repeat(64),
+      audio_duration_seconds: 19.691,
+      alignment_sha256: "8".repeat(64),
+      alignment_end_seconds: 19.691,
+      generated_at: "2026-07-29T05:58:00.000Z",
+      reviewed_at: "2026-07-29T05:59:00.000Z",
+      state_root: root,
+    });
   return {
     root,
     inventory,
     workspaceRoot,
     candidate: hydration.candidates[0],
-    story: {
-      id: inventory.storyId,
-      title: inventory.registry.story.title,
-      url: inventory.newsUrl,
-      full_script: STANDARD_SCRIPT,
-      breaking_score: 140,
+    story,
+    narrationTimingEvidence: {
+      path: timing.path,
+      file_sha256: timing.file_sha256,
     },
   };
 }
@@ -149,6 +181,8 @@ function compileInput(values, overrides = {}) {
     candidate: values.candidate,
     story: values.story,
     runtime_policy: runtimePolicy(),
+    narration_timing_evidence:
+      values.narrationTimingEvidence,
     ...overrides,
   };
 }
@@ -292,14 +326,53 @@ test("compiles a hydrated READY official source and exact DB story into the plan
   assert.equal(
     candidate.locked_intake_binding.locked_intake.contract
       .duration_band_id,
-    "what_changes_short_25_32",
+    "what_changes_breaking_flash_18_24",
+  );
+  assert.equal(
+    candidate.locked_intake_binding.locked_intake.contract
+      .target_duration_seconds,
+    20.041,
+  );
+  assert.deepEqual(
+    candidate.locked_intake_binding.locked_intake.contract
+      .target_duration_review,
+    {
+      status: "APPROVED",
+      target_duration_seconds: 20.041,
+      script_sha256: crypto
+        .createHash("sha256")
+        .update(STANDARD_SCRIPT)
+        .digest("hex"),
+      reviewed_by:
+        "SYSTEM_MEASUREMENT:pulse-governed-autonomous-narration-timing-evidence-v1",
+      reviewed_at: "2026-07-29T05:59:00.000Z",
+      narration_timing_evidence_path:
+        values.narrationTimingEvidence.path,
+      narration_timing_evidence_sha256:
+        values.narrationTimingEvidence.file_sha256,
+      narration_provider_result_sha256: "7".repeat(64),
+      narration_audio_sha256: "9".repeat(64),
+      narration_audio_duration_seconds: 19.691,
+      narration_alignment_end_seconds: 19.691,
+      narration_alignment_sha256: "8".repeat(64),
+      narration_tail_seconds: 0.35,
+    },
+  );
+  assert.equal(
+    candidate.creative_package.scenes
+      .filter((scene) => scene.role !== "owned_motion_backbone")
+      .at(-1).start_seconds +
+      candidate.creative_package.scenes
+        .filter((scene) => scene.role !== "owned_motion_backbone")
+        .at(-1).duration_seconds,
+    20.041,
   );
   assert.equal(
     Object.hasOwn(
       candidate.locked_intake_binding.locked_intake.contract,
       "target_duration_review",
     ),
-    false,
+    true,
   );
   assert.equal(candidate.creative_package.scenes.length, 6);
   assert.ok(
@@ -403,6 +476,129 @@ test("compiles a hydrated READY official source and exact DB story into the plan
       manifestPath: intake.paths.story_intake,
     }).storyId,
     canonicalStoryId,
+  );
+});
+
+test("compiles the known standby observation to the 18-second Breaking Flash floor", async (t) => {
+  const values = await standardFixture(t);
+  const timing =
+    await materializeGovernedAutonomousNarrationTimingEvidence({
+      schema_version:
+        "pulse-governed-autonomous-narration-timing-evidence-request-v1",
+      mode: "LOCAL_PROOF",
+      story_id: `official_${canonicalHash(values.inventory.newsUrl)}`,
+      legacy_story_id: values.inventory.storyId,
+      script_sha256: crypto
+        .createHash("sha256")
+        .update(STANDARD_SCRIPT)
+        .digest("hex"),
+      provider: runtimePolicy().narration,
+      provider_result_sha256: "6".repeat(64),
+      audio_sha256: "8".repeat(64),
+      audio_duration_seconds: 17.461,
+      alignment_sha256: "7".repeat(64),
+      alignment_end_seconds: 17.461,
+      generated_at: "2026-07-29T05:58:00.000Z",
+      reviewed_at: "2026-07-29T05:59:00.000Z",
+      state_root: path.join(values.root, "standby-state"),
+    });
+
+  const candidate =
+    await compileGovernedAutonomousBreakingCandidateContract(
+      compileInput(values, {
+        narration_timing_evidence: {
+          path: timing.path,
+          file_sha256: timing.file_sha256,
+        },
+      }),
+    );
+
+  assert.equal(
+    candidate.locked_intake_binding.locked_intake.contract
+      .target_duration_seconds,
+    18,
+  );
+  assert.equal(
+    candidate.locked_intake_binding.locked_intake.contract
+      .target_duration_review.narration_tail_seconds,
+    0.539,
+  );
+});
+
+test("preserves the provisional 25-32 second contract when narration timing evidence is not yet cached", async (t) => {
+  const values = await standardFixture(t);
+  const candidate =
+    await compileGovernedAutonomousBreakingCandidateContract(
+      compileInput(values, {
+        narration_timing_evidence: null,
+      }),
+    );
+
+  assert.equal(
+    candidate.locked_intake_binding.locked_intake.contract
+      .duration_band_id,
+    "what_changes_short_25_32",
+  );
+  assert.equal(
+    candidate.locked_intake_binding.locked_intake.contract
+      .target_duration_seconds,
+    31.28,
+  );
+  assert.equal(
+    Object.hasOwn(
+      candidate.locked_intake_binding.locked_intake.contract,
+      "target_duration_review",
+    ),
+    false,
+  );
+});
+
+test("rejects tampered or provider-mismatched narration timing evidence", async (t) => {
+  const values = await standardFixture(t);
+  await assert.rejects(
+    compileGovernedAutonomousBreakingCandidateContract(
+      compileInput(values, {
+        narration_timing_evidence: {
+          ...values.narrationTimingEvidence,
+          file_sha256: "f".repeat(64),
+        },
+      }),
+    ),
+    {
+      code: "autonomous_breaking_candidate_narration_timing_file_hash_mismatch",
+    },
+  );
+
+  const evidence = JSON.parse(
+    fs.readFileSync(
+      values.narrationTimingEvidence.path,
+      "utf8",
+    ),
+  );
+  evidence.provider.voice_id = "wrong-voice";
+  const mismatchedPath = path.join(
+    values.root,
+    "mismatched-timing.json",
+  );
+  fs.writeFileSync(
+    mismatchedPath,
+    `${JSON.stringify(evidence, null, 2)}\n`,
+  );
+  await assert.rejects(
+    compileGovernedAutonomousBreakingCandidateContract(
+      compileInput(values, {
+        narration_timing_evidence: {
+          path: mismatchedPath,
+          file_sha256: crypto
+            .createHash("sha256")
+            .update(fs.readFileSync(mismatchedPath))
+            .digest("hex"),
+        },
+      }),
+    ),
+    {
+      code: "autonomous_breaking_candidate_narration_timing_invalid",
+    },
   );
 });
 

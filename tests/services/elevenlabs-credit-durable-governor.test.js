@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -14,6 +15,13 @@ const {
 } = require("../../lib/services/elevenlabs-credit-governor");
 
 const execFileAsync = promisify(execFile);
+
+function sha256(value) {
+  return crypto
+    .createHash("sha256")
+    .update(value)
+    .digest("hex");
+}
 
 function fixture(t, overrides = {}) {
   const stateRoot = fs.mkdtempSync(
@@ -253,6 +261,133 @@ test("provider success is durably journalled with its recoverable result before 
   assert.equal(
     Object.values(ledger.entries)[0].output_sha256,
     "a".repeat(64),
+  );
+});
+
+test("a completed pre-change path-bound narration key migrates to the stable key and replays without a provider call", async (t) => {
+  const values = fixture(t);
+  const narration =
+    "Xbox just confirmed four classics are returning with achievement support.";
+  const storyId = "official_legacy-key";
+  const scriptSha256 = sha256(narration);
+  const identity = {
+    story_id: storyId,
+    script_sha256: scriptSha256,
+    voice_id: "pulse-approved",
+    model_id: "eleven_multilingual_v2",
+    speed: 1,
+  };
+  const oldAudioPath = path
+    .join(values.stateRoot, "old-candidate", "voice.mp3")
+    .replaceAll("\\", "/");
+  const keyPrefix =
+    "pulse-governed-autonomous-narration-v1:";
+  const legacyKey =
+    keyPrefix +
+    sha256(
+      JSON.stringify({
+        ...identity,
+        audio_path: oldAudioPath,
+      }),
+    );
+  const stableKey =
+    keyPrefix + sha256(JSON.stringify(identity));
+  const purpose =
+    "governed_autonomous_breaking_short_narration";
+  const firstGovernor = createElevenLabsCreditGovernor({
+    env: values.env,
+    request: values.request,
+  });
+  const legacyLease = await firstGovernor.preflight({
+    text: narration,
+    purpose,
+    idempotencyKey: legacyKey,
+  });
+  await legacyLease.markProviderCallStarted();
+  const providerResult = {
+    audio_base64: Buffer.from("legacy-provider-audio").toString(
+      "base64",
+    ),
+    alignment: { characters: Array.from(narration) },
+  };
+  await legacyLease.recordProviderSuccess(providerResult);
+  await legacyLease.complete({
+    outputSha256: sha256("legacy-provider-audio"),
+  });
+  const ledgerPath = path.join(
+    values.stateRoot,
+    "elevenlabs-credit-governor",
+    "ledger.json",
+  );
+  const legacyKeyHash = sha256(legacyKey);
+  const stableKeyHash = sha256(stableKey);
+  const before = JSON.parse(
+    fs.readFileSync(ledgerPath, "utf8"),
+  );
+  const exactLegacyEntry = structuredClone(
+    before.entries[legacyKeyHash],
+  );
+
+  const restartedGovernor = createElevenLabsCreditGovernor({
+    env: values.env,
+    request: values.request,
+  });
+  const replay = await restartedGovernor.preflight({
+    text: narration,
+    purpose,
+    idempotencyKey: stableKey,
+    legacyIdempotencyKeyHashes: [legacyKeyHash],
+  });
+
+  assert.equal(replay.replayAvailable, true);
+  assert.equal(replay.requiresProviderCall, false);
+  assert.deepEqual(
+    await replay.readRecordedProviderResult(),
+    providerResult,
+  );
+  const after = JSON.parse(fs.readFileSync(ledgerPath, "utf8"));
+  assert.deepEqual(
+    after.entries[legacyKeyHash],
+    exactLegacyEntry,
+  );
+  assert.deepEqual(
+    after.entries[stableKeyHash].provider_result,
+    exactLegacyEntry.provider_result,
+  );
+  assert.equal(
+    after.entries[stableKeyHash].migrated_from_key_hash,
+    legacyKeyHash,
+  );
+  assert.equal(after.entries[stableKeyHash].state, "completed");
+  assert.equal(after.entries[stableKeyHash].estimated_credits, 0);
+  assert.equal(
+    after.unobserved_committed_credits,
+    before.unobserved_committed_credits,
+  );
+
+  const orphanedAlias = structuredClone(after);
+  delete orphanedAlias.entries[legacyKeyHash];
+  fs.writeFileSync(
+    ledgerPath,
+    `${JSON.stringify(orphanedAlias, null, 2)}\n`,
+    "utf8",
+  );
+  const failClosedGovernor =
+    createElevenLabsCreditGovernor({
+      env: values.env,
+      request: values.request,
+    });
+  await assert.rejects(
+    () =>
+      failClosedGovernor.preflight({
+        text: narration,
+        purpose,
+        idempotencyKey: stableKey,
+        legacyIdempotencyKeyHashes: [legacyKeyHash],
+      }),
+    (error) =>
+      error instanceof ElevenLabsCreditGuardError &&
+      error.code === "elevenlabs_credit_ledger_invalid",
   );
 });
 

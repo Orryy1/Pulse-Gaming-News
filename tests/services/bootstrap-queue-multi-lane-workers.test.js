@@ -232,6 +232,55 @@ test("opt-in multi-lane bootstrap starts isolated kind-filtered runners and pres
   });
 });
 
+test("runtime-bound multi-lane workers use deterministic generation IDs", async () => {
+  await withQueueEnvironment(async () => {
+    const bootstrap = loadFreshBootstrap();
+    const created = [];
+    try {
+      const state = await bootstrap.start({
+        workerId: "legacy-worker-name-must-not-enter-generation-id",
+        runtimeAuthority: {
+          runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+          child_pid: process.pid,
+          child_started_at: "2026-08-02T10:00:00.000Z",
+          authority_fingerprint: "a".repeat(64),
+        },
+        autoSeed: false,
+        runScheduler: false,
+        multiLaneWorkers: true,
+        kinds: ["publish", "produce_evergreen_short"],
+        repos: {},
+        runnerFactory: fakeRunnerFactory(created),
+        log() {},
+      });
+
+      assert.deepEqual(
+        state.runners.map((runner) => runner.options.workerId),
+        [
+          "server-ri-11111111-2222-4333-8444-555555555555-critical_publication-1",
+          "server-ri-11111111-2222-4333-8444-555555555555-critical_publication-2",
+          "server-ri-11111111-2222-4333-8444-555555555555-evergreen_production-1",
+        ],
+      );
+      for (const laneRunner of state.runners) {
+        assert.deepEqual(laneRunner.options.runtimeAuthority, {
+          runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+          child_pid: process.pid,
+          child_started_at: "2026-08-02T10:00:00.000Z",
+          authority_fingerprint: "a".repeat(64),
+        });
+        assert.equal(Object.isFrozen(laneRunner.options.runtimeAuthority), true);
+      }
+      assert.equal(
+        state.workerId,
+        "server-ri-11111111-2222-4333-8444-555555555555",
+      );
+    } finally {
+      await bootstrap.stop();
+    }
+  });
+});
+
 test("bootstrap isolates serial runway monitors from long-running critical planning work", async () => {
   await withQueueEnvironment(async () => {
     const bootstrap = loadFreshBootstrap();
@@ -272,6 +321,51 @@ test("bootstrap isolates serial runway monitors from long-running critical plann
       assert.notEqual(
         runwayMonitor.options.poolId,
         planning.options.poolId,
+      );
+    } finally {
+      await bootstrap.stop();
+    }
+  });
+});
+
+test("bootstrap gives exact-window planning a dedicated runner separate from hunt", async () => {
+  await withQueueEnvironment(async () => {
+    const bootstrap = loadFreshBootstrap();
+    const created = [];
+    try {
+      const state = await bootstrap.start({
+        workerId: "exact-window-planning-isolation",
+        autoSeed: false,
+        runScheduler: false,
+        multiLaneWorkers: true,
+        kinds: [
+          "plan_governed_autonomous_window_production",
+          "hunt",
+        ],
+        repos: {},
+        runnerFactory: fakeRunnerFactory(created),
+        log() {},
+      });
+
+      assert.equal(state.runners.length, 2);
+      const exactWindow = state.runners.find(
+        (runner) =>
+          runner.options.poolId ===
+          "exact_window_planning",
+      );
+      const hunt = state.runners.find(
+        (runner) =>
+          runner.options.poolId === "critical_planning",
+      );
+
+      assert.equal(exactWindow.options.poolInstance, 1);
+      assert.deepEqual(exactWindow.options.kinds, [
+        "plan_governed_autonomous_window_production",
+      ]);
+      assert.deepEqual(hunt.options.kinds, ["hunt"]);
+      assert.notEqual(
+        exactWindow.options.workerId,
+        hunt.options.workerId,
       );
     } finally {
       await bootstrap.stop();

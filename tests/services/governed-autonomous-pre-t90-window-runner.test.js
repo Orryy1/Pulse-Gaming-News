@@ -182,6 +182,10 @@ function harness(workspaceRoot, overrides = {}) {
       db: {},
       runtimeLeases: {},
     },
+    runtimeAuthority: Object.freeze({ runtime_instance_id: "trusted-runtime" }),
+    claimedJobAuthority: Object.freeze({
+      claimed_job_authority_sha256: "b".repeat(64),
+    }),
     env: {},
     async loadCompletionReceipts(input) {
       calls.push(["load", input.scheduledFor]);
@@ -202,16 +206,22 @@ function harness(workspaceRoot, overrides = {}) {
       ]);
       return revalidated(input.entry);
     },
-    async runWithPublisherLease(input) {
+    async runWithPublicationAdmissionLease(input) {
       calls.push(["lease", input.operation]);
+      assert.equal(input.runtimeAuthority, dependencies.runtimeAuthority);
+      assert.equal(
+        input.claimedJobAuthority,
+        dependencies.claimedJobAuthority,
+      );
       return input.task({
         assertHealthy() {
           calls.push(["lease-healthy"]);
         },
-        lease: {
+        publicationAdmissionLease: {
           acquired: true,
-          lease_name: "publisher:global",
-          owner_id: "publisher:test",
+          lease_name: "publication-admission:global",
+          current_lock_owner_sha256: "a".repeat(64),
+          claimed_job_authority_sha256: "b".repeat(64),
           expires_at: "2026-07-30T07:35:00.000Z",
         },
       });
@@ -220,7 +230,7 @@ function harness(workspaceRoot, overrides = {}) {
       calls.push(["controls", input.storyId]);
       return {
         schema_version:
-          "pulse-autonomous-admission-control-proof-result-v1",
+          "pulse-autonomous-admission-control-proof-result-v2",
         verdict: "GREEN",
         generated_at: "2026-07-30T07:26:00.000Z",
         valid_until: "2026-07-30T07:27:00.000Z",
@@ -230,7 +240,7 @@ function harness(workspaceRoot, overrides = {}) {
           path: path.join(input.outputDir, "kill.json"),
           sha256: hash(`${input.storyId}:kill`),
         },
-        single_owner_proof: {
+        publication_admission_owner_proof: {
           path: path.join(input.outputDir, "owner.json"),
           sha256: hash(`${input.storyId}:owner`),
         },
@@ -249,9 +259,9 @@ function harness(workspaceRoot, overrides = {}) {
       });
       const report = {
         schema_version:
-          "pulse-autonomous-official-source-evidence-apply-report-v3",
+          "pulse-autonomous-official-source-evidence-apply-report-v4",
         materialiser_id:
-          "pulse-autonomous-official-source-evidence-apply-v3",
+          "pulse-autonomous-official-source-evidence-apply-v4",
         mode: "LOCAL_PROOF",
         generated_at: "2026-07-30T07:26:00.000Z",
         valid_until: "2026-07-30T07:28:00.000Z",

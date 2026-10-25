@@ -51,6 +51,7 @@
     "ops:story-intake": "node tools/governed-story-intake.js",
     "ops:controlled-experiment-provisioning": "node tools/controlled-experiment-provisioning.js",
     "ops:autonomous-official-source-evidence-apply": "node tools/autonomous-official-source-evidence-apply.js",
+    "ops:governed-exact-production-plan-drain": "node tools/governed-exact-production-plan-drain.js",
     "ops:governed-game-media-admission": "node tools/governed-game-media-admission.js",
     "ops:governed-story-intake-inventory-bridge": "node tools/governed-story-intake-inventory-bridge.js",
     "ops:governed-narration-materialize": "node tools/governed-narration-materialize.js",

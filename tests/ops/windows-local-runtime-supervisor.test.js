@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
+const http = require("node:http");
 const os = require("node:os");
 const { test } = require("node:test");
 const path = require("node:path");
@@ -27,10 +28,41 @@ const {
   loadSafeRuntimeProfile,
   profileFingerprint,
   recoverCrashedRuntimeOwnership,
+  requestLocalHealth,
   requiresRuntimeStartPreflight,
   validateScheduledTaskXml,
   validateSafeRuntimeProfile,
 } = require("../../lib/stabilisation/windows-local-runtime-supervisor");
+
+test("local health requests honour an AbortSignal and destroy the pending socket", async () => {
+  let markRequestSeen;
+  const requestSeen = new Promise((resolve) => {
+    markRequestSeen = resolve;
+  });
+  const server = http.createServer(() => {
+    markRequestSeen();
+  });
+  await new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  try {
+    const controller = new AbortController();
+    const health = requestLocalHealth({
+      port: server.address().port,
+      timeoutMs: 1_000,
+      signal: controller.signal,
+    });
+    await requestSeen;
+    const abortedAt = Date.now();
+    controller.abort("supervisor_shutdown");
+
+    assert.equal(await health, null);
+    assert.ok(Date.now() - abortedAt < 250);
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
 
 function createReadyFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-runtime-source-"));

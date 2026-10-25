@@ -1,6 +1,9 @@
-// The documentary lane: a monthly 16:9 franchise history, 25 to 40 minutes,
-// one chapter per game in release order ("The Complete History of Grand
-// Theft Auto"). Every fact comes from the game's Wikipedia article, fetched
+// The documentary lane: a 16:9 documentary, 20 to 40 minutes, in one of two shapes. A franchise
+// history, one chapter per game in release order ("The Complete History of Grand Theft Auto"); or a
+// single story, one event, decision, flop or downfall told in turning points ("How Xbox Spent $69 Billion
+// and Ended Up on PlayStation"): the shape that broke out for small channels in a study of 18 gaming
+// documentaries (25 Oct 2026; TheCollapseCo's 24-minute Xbox One story drew 100 times its subscriber
+// count in views). Every fact comes from the game's Wikipedia article, fetched
 // at write time: each chapter is written against its own sources, checked
 // against them by a second pass and rewritten when a claim is not supported.
 // On-screen quotes and numbers must appear in the source text verbatim.
@@ -66,6 +69,113 @@ export const DOC_FRANCHISES = [
   "Command & Conquer",
 ] as const;
 
+/**
+ * Single stories: one event, decision, flop or downfall, each well documented on Wikipedia (the overview
+ * article named here; the outline finds one article per chapter). Chosen from the 25 Oct 2026 study for
+ * topics that broke out for small channels and are not already the subject of a big documentary.
+ */
+export const DOC_STORIES = [
+  {
+    subject: "Grand Theft Auto VI",
+    wiki: "Grand Theft Auto VI",
+    angle:
+      "Why GTA 6 took thirteen years: GTA Online's money, Red Dead 2, Dan Houser leaving, the 2022 leak and the delays",
+  },
+  {
+    subject: "Xbox under Phil Spencer",
+    wiki: "Acquisition of Activision Blizzard by Microsoft",
+    angle:
+      "How Xbox spent $69 billion on Activision and ended up putting its games on PlayStation",
+  },
+  {
+    subject: "Halo after Bungie",
+    wiki: "343 Industries",
+    angle:
+      "Halo's lost decade: 343 Industries, Halo Infinite, Halo Studios and Halo on PS5",
+  },
+  {
+    subject: "Tango Gameworks",
+    wiki: "Tango Gameworks",
+    angle: "Hi-Fi Rush won awards, then its studio was closed, then rescued",
+  },
+  {
+    subject: "Embracer Group",
+    wiki: "Embracer Group",
+    angle:
+      "The company that bought everything: a buying spree, a collapsed deal, then the closures",
+  },
+  {
+    subject: "Skull and Bones",
+    wiki: "Skull and Bones (video game)",
+    angle: "Ubisoft's eleven-year voyage to a 'AAAA' pirate game",
+  },
+  {
+    subject: "Google Stadia",
+    wiki: "Google Stadia",
+    angle:
+      "The console Google could not keep: the promises, the shutdown, the refunds",
+  },
+  {
+    subject: "Duke Nukem Forever",
+    wiki: "Duke Nukem Forever",
+    angle: "Fifteen years of development hell and what finally shipped",
+  },
+  {
+    subject: "Anthem",
+    wiki: "Anthem (video game)",
+    angle:
+      "BioWare's bet on a live-service shooter and why Anthem Next never came",
+  },
+  {
+    subject: "Cyberpunk 2077",
+    wiki: "Cyberpunk 2077",
+    angle:
+      "The launch that was pulled from the PlayStation Store, and the long road back",
+  },
+  {
+    subject: "No Man's Sky",
+    wiki: "No Man's Sky",
+    angle: "From the most hated launch to one of gaming's great redemptions",
+  },
+  {
+    subject: "The Wii U",
+    wiki: "Wii U",
+    angle: "Nintendo's console nobody understood, and how it set up the Switch",
+  },
+  {
+    subject: "Kinect",
+    wiki: "Kinect",
+    angle: "Microsoft's record-breaking gadget that ended in the bin",
+  },
+  {
+    subject: "The Sega Dreamcast",
+    wiki: "Dreamcast",
+    angle: "Sega's last console: ahead of its time and out of money",
+  },
+  {
+    subject: "E.T. the Extra-Terrestrial",
+    wiki: "E.T. the Extra-Terrestrial (video game)",
+    angle:
+      "The game made in five weeks, the landfill legend and what was really buried",
+  },
+  {
+    subject: "Daikatana",
+    wiki: "Daikatana",
+    angle:
+      "'John Romero's about to make you his bitch': the ad, the delays and the fall of Ion Storm",
+  },
+  {
+    subject: "Rockstar's Agent",
+    wiki: "Agent (video game)",
+    angle: "Rockstar's spy game, announced on stage in 2009 and never released",
+  },
+  {
+    subject: "The PlayStation 3 launch",
+    wiki: "PlayStation 3",
+    angle: "$599, the Cell processor and how Sony nearly lost a generation",
+  },
+] as const;
+
 const HOUSE = `You write documentaries for Pulse Gaming News, a YouTube channel about video games.
 
 ${voiceFor("documentary")}
@@ -74,12 +184,17 @@ Describe violence, lawsuits and controversies factually and calmly, with no grap
 // ---------------------------------------------------------------- topic
 
 export const DocTopicSchema = z.object({
+  kind: z
+    .enum(["franchise", "story"])
+    .describe("A franchise history, or a single story from the story list"),
   franchise_index: z
     .number()
     .int()
-    .describe(
-      "Index into the franchise list, or -1 if none is strong enough right now",
-    ),
+    .describe("Index into the franchise list when kind is franchise, else -1"),
+  story_index: z
+    .number()
+    .int()
+    .describe("Index into the story list when kind is story, else -1"),
   title_idea: z
     .string()
     .describe("Working title, e.g. 'The Complete History of Grand Theft Auto'"),
@@ -92,27 +207,42 @@ export const DocTopicSchema = z.object({
     .string()
     .describe("Why this franchise now: timing, interest, depth of story"),
 });
-export type DocTopic = z.infer<typeof DocTopicSchema> & { franchise: string };
+/** franchise: the franchise, or the story's subject; wiki: the story's overview article. */
+export type DocTopic = z.infer<typeof DocTopicSchema> & {
+  franchise: string;
+  wiki?: string;
+};
 
 export async function selectDocTopic(
   llm: Llm,
   covered: string[],
   inTheNews: string[],
   franchises: readonly string[] = DOC_FRANCHISES,
+  stories: ReadonlyArray<{
+    subject: string;
+    wiki: string;
+    angle: string;
+  }> = DOC_STORIES,
+  demand = "",
 ): Promise<DocTopic | undefined> {
   const t = await llm.structured({
     system: `${HOUSE}
 
-You are choosing this month's long documentary: a franchise history told game by game, 25 to 40 minutes. Pick the franchise that will pull the most viewers right now: a new release, trailer or anniversary in the news beats a quiet franchise; a big, dramatic development story beats a thin one. It needs at least five major games. Never repeat a franchise already covered (listed).`,
-    content: `Franchises:\n${franchises.map((f, i) => `${i}. ${f}`).join("\n")}\n\nAlready covered:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}\n\nIn the news over the last two weeks:\n${
+You are choosing the next long documentary. Two shapes: a franchise history told game by game (25-40 minutes, needs at least five major games), or a single story told in turning points (20-30 minutes: one event, decision, flop or downfall). Single stories broke out for small channels far more often than franchise histories (a 24-minute story of one Xbox reveal drew 100 times its channel's subscribers), so prefer a single story unless a franchise is in the news right now (a new release, trailer or anniversary) and has a dramatic history. Pick what will pull the most viewers now. Never repeat anything already covered (listed).`,
+    content: `Franchises:\n${franchises.map((f, i) => `${i}. ${f}`).join("\n")}\n\nSingle stories:\n${stories.map((s, i) => `${i}. ${s.subject}: ${s.angle}`).join("\n")}\n\nAlready covered:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}\n\nIn the news over the last two weeks:\n${
       inTheNews
         .slice(0, 40)
         .map((h) => `- ${h}`)
         .join("\n") || "- nothing notable"
-    }`,
+    }${demand ? `\n\n${demand}` : ""}`,
     schema: DocTopicSchema,
     effort: "low",
   });
+  if (t.kind === "story") {
+    const story = stories[t.story_index];
+    if (!story) return undefined;
+    return { ...t, franchise: story.subject, wiki: story.wiki };
+  }
   const franchise = franchises[t.franchise_index];
   if (!franchise) return undefined;
   return { ...t, franchise };
@@ -143,14 +273,23 @@ export const DocChapterPlanSchema = z.object({
   platforms: z
     .string()
     .describe("Original platforms, short, e.g. 'PS2, PC, Xbox'"),
-  focus: z.string().describe("What this chapter covers and its turning point, 1-2 sentences"),
+  focus: z
+    .string()
+    .describe("What this chapter covers and its turning point, 1-2 sentences"),
   photo_searches: z
     .array(z.string())
     .max(4)
-    .describe("1-4 searches for real photos a free archive like Wikimedia Commons would hold for this chapter: the studio building, the city, the people, the launch, the real place a game was based on, e.g. 'Rockstar North Edinburgh', 'Ocean Drive Miami Beach'. Never a search for game screenshots or box art"),
+    .describe(
+      "1-4 searches for real photos a free archive like Wikimedia Commons would hold for this chapter: the studio building, the city, the people, the launch, the real place a game was based on, e.g. 'Rockstar North Edinburgh', 'Ocean Drive Miami Beach'. Never a search for game screenshots or box art",
+    ),
 });
 
 export const DocOutlineSchema = z.object({
+  question: z
+    .string()
+    .describe(
+      "The one question the documentary answers, as a viewer would ask it, e.g. 'How did Xbox lose a generation in one hour?' The outro answers it as a verdict",
+    ),
   title: z
     .string()
     .describe(
@@ -193,10 +332,15 @@ export async function outlineDoc(
   franchiseNotes: string,
 ): Promise<DocOutline> {
   return llm.structured({
-    system: `${HOUSE}
+    system:
+      topic.kind === "story"
+        ? `${HOUSE}
 
-Plan a franchise documentary told game by game in release order, ${DOC_CHAPTERS_MIN}-${DOC_CHAPTERS_MAX} chapters, one per major game. Choose the games whose development stories matter most; fold spin-offs into a neighboring chapter's story. Chapter titles must be searchable on their own.`,
-    content: `Franchise: ${topic.franchise}\nWorking title: ${topic.title_idea}\nAngle: ${topic.angle}\n\nFranchise overview (Wikipedia):\n${franchiseNotes || "(not available)"}`,
+Plan a single-story documentary told in turning points, in time order, ${DOC_CHAPTERS_MIN + 2}-${DOC_CHAPTERS_MAX} chapters. Each chapter is one beat of the story (a decision, a reveal, a launch, a reversal) and names, in "wiki_title", the English Wikipedia article that best documents it (a game, a console, a company or a person); "game_title" is that chapter's subject. Chapter titles name the turning point in 2-5 words ("The Reveal", "Sony Answers", "The Reversal"); the last may be a question. The title promises one story and its stakes, e.g. "How Xbox Spent $69 Billion and Ended Up on PlayStation"; never "Part 1". Write the question the documentary answers.`
+        : `${HOUSE}
+
+Plan a franchise documentary told game by game in release order, ${DOC_CHAPTERS_MIN}-${DOC_CHAPTERS_MAX} chapters, one per major game. Choose the games whose development stories matter most; fold spin-offs into a neighboring chapter's story. Chapter titles must be searchable on their own and name the game's turning point ("GTA III and the Leap to 3D"). Write the question the documentary answers.`,
+    content: `${topic.kind === "story" ? "Story" : "Franchise"}: ${topic.franchise}\nWorking title: ${topic.title_idea}\nAngle: ${topic.angle}\n\n${topic.kind === "story" ? "Overview" : "Franchise overview"} (Wikipedia):\n${franchiseNotes || "(not available)"}`,
     schema: DocOutlineSchema,
     effort: "medium",
   });
@@ -247,7 +391,12 @@ export function chapterPrompt(): string {
   return `${HOUSE}
 
 Write one chapter of a game-by-game franchise documentary, ${DOC_CHAPTER_WORDS_MIN}-${DOC_CHAPTER_WORDS_MAX} spoken words in ${DOC_PARAGRAPHS_MIN}-${DOC_PARAGRAPHS_MAX} paragraphs of ${DOC_PARAGRAPH_WORDS_MIN}-${DOC_PARAGRAPH_WORDS_MAX} words.
-The first paragraph opens on a scene or a moment that names the year, so the viewer knows where they are. Then the development story, the people and the decisions; then the launch and how it landed; end on what it changed and a line that leads into the next game.
+The first paragraph opens on a scene or a moment that names the year, so the viewer knows where they are. Then the people and the decisions; then what happened and how it landed; end on what it changed.
+Hold attention the way the best documentaries do:
+- The last sentence of the chapter looks forward: it names what is coming without saying how it ends ("It would not stay that way for long." / "That decision would cost them a generation."). Never "In the next chapter".
+- A hard number or a two-sided contrast at least every other paragraph ($399 against $499, 58 million against 117 million), always from the source.
+- Name the people who made the decisions, with their roles, and judge decisions, never people; criticism is attributed to whoever made it in the source.
+- One dry aside at most per chapter, aimed at a company or a situation, never at players.
 Every fact, number, date, name and quote must come from the SOURCE text provided. If the source does not say it, do not say it. Do not repeat what earlier chapters covered.
 Callouts put a real fact on screen: at most half the paragraphs carry one, and a quote must be copied word for word from the source. Most paragraphs use "none".
 footage names what the picture should show for that paragraph, with 1-4 keywords.
@@ -411,7 +560,9 @@ export const DocBookendsSchema = z.object({
       .number()
       .int()
       .optional()
-      .describe("Weekly recap only: the 0-based index, in the given order, of the story the outro is mostly about, so that story's footage plays behind it"),
+      .describe(
+        "Weekly recap only: the 0-based index, in the given order, of the story the outro is mostly about, so that story's footage plays behind it",
+      ),
   }),
 });
 export type DocBookends = z.infer<typeof DocBookendsSchema>;
@@ -434,8 +585,10 @@ export async function writeBookends(
   return llm.structured({
     system: `${HOUSE}
 
-Write the intro and outro of a finished franchise documentary. The intro is a cold open: start inside one vivid, true moment from the chapters below (no "In this video"), then say what the documentary covers. The outro ties the run together and says where the franchise stands now. Use only facts from the chapter notes and the overview.`,
-    content: `Documentary: ${outline.title}\n\nChapters and their facts:\n${digest}\n\nFranchise overview (Wikipedia):\n${franchiseNotes.slice(0, 5000)}`,
+Write the intro and outro of a finished documentary.
+The intro is a cold open, in this order: the first sentence names a date, a place and a named person or an exact figure, inside one true moment from the chapters below; by about word 60 the stakes, as a consequence ("it handed a generation to Sony"); by about word 120 the title line ("This is the story of..." or "This is how..."), then a turn back to the beginning ("But to understand how it got there, we have to go back to..."). Never "In this video", never a greeting.
+The outro closes in three moves: the verdict, answering the documentary's question in its first two sentences; where things stand today, with a date; and a last line that calls back to the opening moment or date. Use only facts from the chapter notes and the overview.`,
+    content: `Documentary: ${outline.title}\nThe question it answers: ${outline.question ?? outline.title}\n\nChapters and their facts:\n${digest}\n\nOverview (Wikipedia):\n${franchiseNotes.slice(0, 5000)}`,
     schema: DocBookendsSchema,
     effort: "medium",
   });
@@ -547,7 +700,9 @@ export function docToScript(d: DocDraft): Script {
 export const PhotoPickSchema = z.object({
   keep: z
     .array(z.number().int())
-    .describe("Indices of the photos that clearly show something this chapter is about (its studio, people, places, launch or the real place the game recreates), best first, at most 5. Empty if none fit"),
+    .describe(
+      "Indices of the photos that clearly show something this chapter is about (its studio, people, places, launch or the real place the game recreates), best first, at most 5. Empty if none fit",
+    ),
 });
 
 /** A quick editor pass over archive search results: only photos that belong in this chapter survive. */
@@ -565,5 +720,7 @@ export async function pickPhotos(
     schema: PhotoPickSchema,
     effort: "low",
   });
-  return [...new Set(r.keep)].filter((i) => i >= 0 && i < candidates.length).slice(0, 5);
+  return [...new Set(r.keep)]
+    .filter((i) => i >= 0 && i < candidates.length)
+    .slice(0, 5);
 }

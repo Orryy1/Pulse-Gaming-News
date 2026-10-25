@@ -192,6 +192,7 @@ export function recapToScript(
     photo_searches: [],
   }));
   const outline: DocOutline = {
+    question: packaging.title,
     title: packaging.title,
     kicker: packaging.kicker,
     franchise_wiki_title: "",
@@ -200,7 +201,9 @@ export function recapToScript(
   };
   const draft: DocDraft = {
     topic: {
+      kind: "franchise",
       franchise_index: 0,
+      story_index: -1,
       title_idea: packaging.title,
       angle: "",
       reason: "weekly recap",

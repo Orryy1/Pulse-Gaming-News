@@ -174,7 +174,11 @@ import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
 import { calendarBlock, readCalendar, type CalendarLane } from "./calendar.ts";
-import { translateScript, twinFooter, twinNarration } from "./editorial/twin.ts";
+import {
+  translateScript,
+  twinFooter,
+  twinNarration,
+} from "./editorial/twin.ts";
 import {
   captionable,
   gameplayScript,
@@ -337,7 +341,9 @@ export interface Services {
   /** Joins voiced takes into one narration with the word timings shifted onto one timeline. */
   stitchTakes?(parts: Narration[], outPath: string): Promise<Narration>;
   /** What Whisper hears in a gameplay clip, word by word (empty when no Whisper is set up). */
-  hearClip?(file: string): Promise<Array<{ text: string; start: number; end: number }>>;
+  hearClip?(
+    file: string,
+  ): Promise<Array<{ text: string; start: number; end: number }>>;
   /** What the voice actually says against its script (undefined when no Whisper is set up). */
   checkNarration?(
     file: string,
@@ -699,14 +705,24 @@ async function addToSeries(s: Services, ep: Episode): Promise<void> {
 
 /** For ranking topic pickers: YouTube's trending gaming videos and what viewers asked us to rank. */
 /** The calendar's plan for a lane: today's entries, and the next days' for the news desk. */
-export function calendarFor(cfg: Config, now: Date, lane: CalendarLane, aheadDays = 0): string {
+export function calendarFor(
+  cfg: Config,
+  now: Date,
+  lane: CalendarLane,
+  aheadDays = 0,
+): string {
   if (!cfg.calendarFile) return "";
   const today = dayKey(now, cfg.timezone);
-  const ahead = Array.from({ length: aheadDays }, (_, i) => addDays(today, i + 1));
+  const ahead = Array.from({ length: aheadDays }, (_, i) =>
+    addDays(today, i + 1),
+  );
   return calendarBlock(readCalendar(cfg.calendarFile), today, lane, ahead);
 }
 
-async function topicDemand(s: Services, lane: CalendarLane = "any"): Promise<string> {
+async function topicDemand(
+  s: Services,
+  lane: CalendarLane = "any",
+): Promise<string> {
   return [
     focusBlock(s.cfg, s.now()),
     calendarFor(s.cfg, s.now(), lane),
@@ -1618,13 +1634,18 @@ export async function maybeSelectWeekly(
  */
 export async function surplusDocumentary(s: Services): Promise<boolean> {
   const plan = await s.creditPlan?.().catch(() => undefined);
-  if (!plan || plan.wasteAtReset < s.cfg.surplusDocChars || plan.daysLeft < 1) return false;
+  if (!plan || plan.wasteAtReset < s.cfg.surplusDocChars || plan.daysLeft < 1)
+    return false;
   const [busy] = await s.db.query<{ n: string | number }>(
     `SELECT count(*) AS n FROM episodes WHERE lane = 'longform' AND factcheck_json->>'doc' = 'true'
        AND status IN ('selected','scripted','voiced','rendered','awaiting_approval','approved')`,
   );
   if (Number(busy?.n ?? 0) > 0) return false;
-  log("info", "surplus documentary: ElevenLabs credits would be lost at the reset", { waste: plan.wasteAtReset, daysLeft: plan.daysLeft });
+  log(
+    "info",
+    "surplus documentary: ElevenLabs credits would be lost at the reset",
+    { waste: plan.wasteAtReset, daysLeft: plan.daysLeft },
+  );
   return true;
 }
 
@@ -1677,7 +1698,14 @@ export async function maybeSelectDocumentary(
       [now],
     )
   ).map((r) => r.headline);
-  const topic = await selectDocTopic(s.llm, covered, inTheNews);
+  const topic = await selectDocTopic(
+    s.llm,
+    covered,
+    inTheNews,
+    undefined,
+    undefined,
+    await topicDemand(s, "doc"),
+  );
   if (!topic) {
     log("info", "no documentary topic this month");
     return undefined;
@@ -1727,9 +1755,12 @@ async function stepScriptDocumentary(
   ep: Episode,
   topic: DocTopic,
 ): Promise<void> {
+  // A single story starts from its overview article; a franchise from the series article.
   const franchise = await s.research(
-    topic.franchise,
-    `${topic.franchise} video game series`,
+    topic.wiki ?? topic.franchise,
+    topic.kind === "story"
+      ? topic.franchise
+      : `${topic.franchise} video game series`,
     6000,
   );
   const outline = await outlineDoc(s.llm, topic, franchise?.text ?? "");
@@ -2404,7 +2435,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       .readFile(path.join(clipDir, "words.json"), "utf8")
       .catch(() => "[]"),
   ) as Array<{ text: string; start: number; end: number }>;
-const inWindow = wordsInWindow(heard, win);
+  const inWindow = wordsInWindow(heard, win);
   const words = ref.review.captions_ok && captionable(inWindow) ? inWindow : [];
   const script = gameplayScript(
     ref.review,
@@ -2440,7 +2471,8 @@ async function gameplayStatus(
   status: GameplayStatus,
 ): Promise<void> {
   const id = ep.story_json.gameplay?.id;
-  if (id) await writeMeta(gameplayDir(cfg, id), { status }).catch(() => undefined);
+  if (id)
+    await writeMeta(gameplayDir(cfg, id), { status }).catch(() => undefined);
 }
 
 /** A clip's inbox folder, found by id under GAMEPLAY_ROOT (so it survives the move to the Mac). */
@@ -2520,7 +2552,10 @@ export function nextGameplaySlot(
 }
 
 /** Rumour Shorts made today: written as a rumour, or still unwritten from a story with rumour signals. */
-export async function countRumoursToday(db: Db, timeZone: string): Promise<number> {
+export async function countRumoursToday(
+  db: Db,
+  timeZone: string,
+): Promise<number> {
   const [row] = await db.query<{ n: string | number }>(
     `SELECT count(*) AS n FROM episodes
       WHERE created_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1
@@ -2544,7 +2579,9 @@ async function twinReady(s: Services): Promise<boolean> {
  * the same story and media, re-written in the twin language, uploaded to the twin channel a little after
  * the original. One in production at a time, behind every other lane.
  */
-export async function maybeSelectTwin(s: Services): Promise<string | undefined> {
+export async function maybeSelectTwin(
+  s: Services,
+): Promise<string | undefined> {
   const { db, cfg } = s;
   if (!(await twinReady(s))) return undefined;
   const lang = cfg.twinLanguage;
@@ -2567,17 +2604,35 @@ export async function maybeSelectTwin(s: Services): Promise<string | undefined> 
   );
   for (const parent of parents) {
     // The original's folder must still be there (pruned, whole, after two weeks).
-    if (!(await fs.stat(episodeDir(cfg, parent.id)).catch(() => undefined))) continue;
+    if (!(await fs.stat(episodeDir(cfg, parent.id)).catch(() => undefined)))
+      continue;
     const id = shortId();
     const live = new Date(parent.publish_at ?? parent.updated_at);
-    const slotAt = new Date(Math.max(now.getTime() + 20 * 60_000, live.getTime() + cfg.twinDelayMinutes * 60_000));
+    const slotAt = new Date(
+      Math.max(
+        now.getTime() + 20 * 60_000,
+        live.getTime() + cfg.twinDelayMinutes * 60_000,
+      ),
+    );
     const cluster: StoryCluster = {
       ...parent.story_json,
       hash: `twin:${lang}:${parent.id}`,
       twin: { parent: parent.id, language: lang, account: lang },
     };
-    if (!(await createEpisode(db, id, cluster, { lane: "twin", priority: LANE_PRIORITY.twin, slotAt }))) continue;
-    await logEvent(db, id, "selected", { lane: "twin", parent: parent.id, language: lang, slot_at: slotAt.toISOString() });
+    if (
+      !(await createEpisode(db, id, cluster, {
+        lane: "twin",
+        priority: LANE_PRIORITY.twin,
+        slotAt,
+      }))
+    )
+      continue;
+    await logEvent(db, id, "selected", {
+      lane: "twin",
+      parent: parent.id,
+      language: lang,
+      slot_at: slotAt.toISOString(),
+    });
     log("info", "twin selected", { id, parent: parent.id, language: lang });
     return id;
   }
@@ -2589,28 +2644,42 @@ async function stepScriptTwin(s: Services, ep: Episode): Promise<void> {
   const ref = ep.story_json.twin;
   if (!ref) throw new FatalError("twin episode has no original");
   const parent = await getEpisode(s.db, ref.parent);
-  if (!parent?.script_json || !parent.youtube_video_id) throw new FatalError("the original Short is gone");
-  const { script, problems } = await translateScript(s.llm, parent.script_json, ref.language, {
-    parent: parent.id,
-    parentVideo: parent.youtube_video_id,
-  });
+  if (!parent?.script_json || !parent.youtube_video_id)
+    throw new FatalError("the original Short is gone");
+  const { script, problems } = await translateScript(
+    s.llm,
+    parent.script_json,
+    ref.language,
+    {
+      parent: parent.id,
+      parentVideo: parent.youtube_video_id,
+    },
+  );
   if (problems.length) {
     // A translation that changes a figure is not a twin: drop it rather than say something the original did not.
-    await transition(s.db, ep.id, "selected", "rejected", { last_error: problems.join(" | ") });
+    await transition(s.db, ep.id, "selected", "rejected", {
+      last_error: problems.join(" | "),
+    });
     await logEvent(s.db, ep.id, "rejected", { by: "translation", problems });
-    log("warn", "twin dropped: translation changed a figure", { episode: ep.id, problems });
+    log("warn", "twin dropped: translation changed a figure", {
+      episode: ep.id,
+      problems,
+    });
     return;
   }
   // The original's media, file for file, so the render finds everything under this episode's folder.
   const from = episodeDir(s.cfg, parent.id);
   const dir = episodeDir(s.cfg, ep.id);
   const pa = parent.assets_json ?? {};
-  const files = [...(pa.images ?? []).flatMap((i) => [i.file, i.blurFile]), ...(pa.clips ?? []).flatMap((c) => [c.file, c.blurFile])].filter(
-    (f): f is string => Boolean(f),
-  );
+  const files = [
+    ...(pa.images ?? []).flatMap((i) => [i.file, i.blurFile]),
+    ...(pa.clips ?? []).flatMap((c) => [c.file, c.blurFile]),
+  ].filter((f): f is string => Boolean(f));
   for (const f of files) {
     await fs.mkdir(path.dirname(path.join(dir, f)), { recursive: true });
-    await fs.copyFile(path.join(from, f), path.join(dir, f)).catch(() => undefined);
+    await fs
+      .copyFile(path.join(from, f), path.join(dir, f))
+      .catch(() => undefined);
   }
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
@@ -2623,11 +2692,18 @@ async function stepScriptTwin(s: Services, ep: Episode): Promise<void> {
       rich: pa.rich,
     },
   });
-  await logEvent(s.db, ep.id, "twin_translated", { parent: parent.id, language: ref.language, title: script.youtube.title });
+  await logEvent(s.db, ep.id, "twin_translated", {
+    parent: parent.id,
+    language: ref.language,
+    title: script.youtube.title,
+  });
 }
 
 /** How the last eight Shorts opened their take and closed, so the writer and the validator keep the shapes varied. */
-export async function recentShapes(db: Db, exceptId: string): Promise<RecentShapes> {
+export async function recentShapes(
+  db: Db,
+  exceptId: string,
+): Promise<RecentShapes> {
   const rows = await db.query<{ take: string | null; loop: string | null }>(
     `SELECT script_json->'pulse_take'->>'narration' AS take, script_json->>'loop_line' AS loop
        FROM episodes WHERE script_json IS NOT NULL AND id <> $1 AND status NOT IN ('failed','rejected')
@@ -2636,7 +2712,9 @@ export async function recentShapes(db: Db, exceptId: string): Promise<RecentShap
     [exceptId],
   );
   return {
-    takes: rows.map((r) => (r.take ?? "").trim().split(/\s+/).slice(0, 4).join(" ")).filter(Boolean),
+    takes: rows
+      .map((r) => (r.take ?? "").trim().split(/\s+/).slice(0, 4).join(" "))
+      .filter(Boolean),
     loops: rows.map((r) => (r.loop ?? "").trim()).filter(Boolean),
   };
 }
@@ -2810,7 +2888,11 @@ async function withBackground(
     .catch(() => undefined);
   if (!facts && !wiki) return undefined;
   return {
-    ...(facts ?? { name: title, storeUrl: "", fetchedAt: s.now().toISOString() }),
+    ...(facts ?? {
+      name: title,
+      storeUrl: "",
+      fetchedAt: s.now().toISOString(),
+    }),
     ...(wiki ? { background: wiki.text, backgroundUrl: wiki.url } : {}),
   };
 }
@@ -2842,7 +2924,8 @@ async function adjudicateRanking(
     summary: check.summary,
   });
   if (check.verdict !== "fail" && !blockers.length) return [];
-  if (attempt === 0) return blockers.length ? blockers : [`Fact-check failed: ${check.summary}`];
+  if (attempt === 0)
+    return blockers.length ? blockers : [`Fact-check failed: ${check.summary}`];
   throw new FatalError(
     `fact-check still failing after a rewrite: ${(blockers[0] ?? check.summary).slice(0, 300)}`,
   );
@@ -2894,7 +2977,13 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   for (let attempt = 0; attempt < 2; attempt++) {
     draft = await writeLongform(s.llm, topic, lookup, feedback, lessons);
     const problems = validateLongform(draft);
-    const factual = await adjudicateRanking(s, ep, longformToScript(draft), facts, attempt);
+    const factual = await adjudicateRanking(
+      s,
+      ep,
+      longformToScript(draft),
+      facts,
+      attempt,
+    );
     if (!problems.length && !factual.length) break;
     // One rewrite with the problems named; style misses that survive are logged, facts are not (adjudicateRanking throws).
     if (attempt === 1 && problems.length)
@@ -3177,7 +3266,13 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   if (!draft) throw new Error("evergreen script produced nothing");
   // The final adjudication against the facts the writer was given: one rewrite on a blocker, then fail.
   for (let attempt = 0; attempt < 2; attempt++) {
-    const factual = await adjudicateRanking(s, ep, evergreenToScript(draft), facts, attempt);
+    const factual = await adjudicateRanking(
+      s,
+      ep,
+      evergreenToScript(draft),
+      facts,
+      attempt,
+    );
     if (!factual.length) break;
     draft = await writeEvergreen(s.llm, topic, facts, factual, brief);
   }
@@ -3298,7 +3393,11 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           factcheck_json: check,
           last_error: feedback.join(" | "),
         });
-        log("info", "story dropped: failed fact-check twice", { episode: ep.id, headline: cluster.headline, problems: feedback.slice(0, 4) });
+        log("info", "story dropped: failed fact-check twice", {
+          episode: ep.id,
+          headline: cluster.headline,
+          problems: feedback.slice(0, 4),
+        });
         await s.notify({
           level: "info",
           embeds: [
@@ -3319,7 +3418,10 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   }
   if (!script || !check) throw new Error("script step produced nothing");
   if ((script.is_rumour || mustLabelRumour) && !s.cfg.includeRumours) {
-    log("info", "story dropped: a rumour, and rumours are off", { episode: ep.id, headline: cluster.headline });
+    log("info", "story dropped: a rumour, and rumours are off", {
+      episode: ep.id,
+      headline: cluster.headline,
+    });
     await markSeen(
       s.db,
       cluster.hash,
@@ -3364,15 +3466,31 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     // The desk experiment: the narrator up to the facts, the desk partner's question in a second voice,
     // the narrator's take and close; three takes stitched onto one timeline.
     const sc = ep.script_json!;
-    const partA = speakable([sc.hook, ...sc.beats.map((b) => b.narration)].join(" "));
+    const partA = speakable(
+      [sc.hook, ...sc.beats.map((b) => b.narration)].join(" "),
+    );
     const partQ = speakable(sc.desk_question!);
-    const partB = speakable([sc.pulse_take.narration, tidyLoopLine(sc.loop_line)].join(" "));
-    const a = await s.synthesise(partA, path.join(dir, "voice_a.mp3"), voice, { provider: "elevenlabs" });
-    const q = await s.synthesise(partQ, path.join(dir, "voice_q.mp3"), desk.voice, { provider: "elevenlabs" });
-    const b = await s.synthesise(partB, path.join(dir, "voice_b.mp3"), voice, { provider: "elevenlabs" });
+    const partB = speakable(
+      [sc.pulse_take.narration, tidyLoopLine(sc.loop_line)].join(" "),
+    );
+    const a = await s.synthesise(partA, path.join(dir, "voice_a.mp3"), voice, {
+      provider: "elevenlabs",
+    });
+    const q = await s.synthesise(
+      partQ,
+      path.join(dir, "voice_q.mp3"),
+      desk.voice,
+      { provider: "elevenlabs" },
+    );
+    const b = await s.synthesise(partB, path.join(dir, "voice_b.mp3"), voice, {
+      provider: "elevenlabs",
+    });
     const joined = await s.stitchTakes([a, q, b], path.join(dir, "voice.mp3"));
     narration = { ...joined, voice: a.voice };
-    await logEvent(s.db, ep.id, "desk", { voice: desk.voice.name, question: sc.desk_question });
+    await logEvent(s.db, ep.id, "desk", {
+      voice: desk.voice.name,
+      question: sc.desk_question,
+    });
   } else {
     narration = await s.synthesise(
       twin ? twinNarration(ep.script_json!) : narrationOf(ep.script_json!),
@@ -3407,12 +3525,14 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   // The narration check: what the voice says against its script, before anything is rendered on it.
   // A fault re-voices once; a second one is reported and the episode goes on (a misheard line should
   // not cost a week's long video). Caught the GTA ranking's "Sayus" and drifting timings (23 Oct 2026).
-  const check = await (twin ? undefined : s
-    .checkNarration?.(path.join(dir, "voice.mp3"), narration.words))
-    ?.catch((err) => {
-      log("warn", "narration check unavailable", { error: errorMessage(err) });
-      return undefined;
-    });
+  const check = await (
+    twin
+      ? undefined
+      : s.checkNarration?.(path.join(dir, "voice.mp3"), narration.words)
+  )?.catch((err) => {
+    log("warn", "narration check unavailable", { error: errorMessage(err) });
+    return undefined;
+  });
   if (check) {
     await logEvent(s.db, ep.id, "narration_check", {
       ok: check.ok,
@@ -3426,12 +3546,21 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
         [ep.id],
       );
       if (Number(prior?.n ?? 0) <= 1)
-        throw new Error(`narration check failed, voicing again: ${narrationSummary(check)}`);
-      log("warn", "narration check failed twice; going on", { episode: ep.id, problems: narrationSummary(check) });
+        throw new Error(
+          `narration check failed, voicing again: ${narrationSummary(check)}`,
+        );
+      log("warn", "narration check failed twice; going on", {
+        episode: ep.id,
+        problems: narrationSummary(check),
+      });
       await s.notify({
         content: `🎙️ The narration for "${ep.script_json?.headline ?? ep.id}" still has a fault after a second take, so it goes ahead: ${narrationSummary(check)}`,
       });
-    } else log("info", "narration check passed", { episode: ep.id, drift: check.drift });
+    } else
+      log("info", "narration check passed", {
+        episode: ep.id,
+        drift: check.drift,
+      });
   }
   const maxSeconds =
     ep.lane === "evergreen"
@@ -3457,7 +3586,11 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     durationSeconds: narration.durationSeconds,
     srt: "captions.srt",
     voice: narration.voice,
-    ...(desk && s.stitchTakes ? { desk: { voice: desk.voice, question: ep.script_json!.desk_question! } } : {}),
+    ...(desk && s.stitchTakes
+      ? {
+          desk: { voice: desk.voice, question: ep.script_json!.desk_question! },
+        }
+      : {}),
   };
   await transition(s.db, ep.id, "scripted", "voiced", { assets_json: assets });
 }
@@ -3467,7 +3600,10 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
  * is news, and the episode falls in the experiment's share (by a stable hash of its id, so a re-voice gets
  * the same answer). Returns the partner's voice.
  */
-export function deskFor(cfg: Config, ep: Pick<Episode, "id" | "lane" | "script_json">): { voice: { id: string; name: string } } | undefined {
+export function deskFor(
+  cfg: Config,
+  ep: Pick<Episode, "id" | "lane" | "script_json">,
+): { voice: { id: string; name: string } } | undefined {
   if (!cfg.deskVoiceId || cfg.deskShare <= 0) return undefined;
   if (!ep.script_json?.desk_question?.trim()) return undefined;
   if (!["news", "news_breaking", "free"].includes(ep.lane)) return undefined;
@@ -4645,7 +4781,9 @@ export function segmentInputs(script: Script, desk = false): SegmentInput[] {
       visual: b.visual,
     })),
     // The desk partner's question sits between the facts and the take when the Short has one.
-    ...(desk && script.desk_question ? [{ kind: "desk" as const, text: speakable(script.desk_question) }] : []),
+    ...(desk && script.desk_question
+      ? [{ kind: "desk" as const, text: speakable(script.desk_question) }]
+      : []),
     {
       kind: "take",
       text: speakable(script.pulse_take.narration),
@@ -4768,7 +4906,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   const duration = (assets.durationSeconds ?? 300) + LONG_TAIL_SECONDS;
   const words = assets.words ?? [];
-  const segments = buildSegments(segmentInputs(script, Boolean(assets.desk)), words, duration);
+  const segments = buildSegments(
+    segmentInputs(script, Boolean(assets.desk)),
+    words,
+    duration,
+  );
   const variant = variantOf(ep.id);
   const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
   const images = (assets.images ?? []).map((i) => ({
@@ -4828,22 +4970,42 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       const entry = ranked[g.entry];
       if (!entry) continue;
       const more = await s
-        .igdbArt(entry.game_title, entry.year, path.join(dir, `entry_${g.entry}`, "more"), 8)
+        .igdbArt(
+          entry.game_title,
+          entry.year,
+          path.join(dir, `entry_${g.entry}`, "more"),
+          8,
+        )
         .catch(() => [] as VisualAsset[]);
       for (const a of more.filter((x) => x.kind !== "capsule")) {
         const file = path.join(`entry_${g.entry}`, "more", a.file);
         if ((assets.images ?? []).some((i) => i.file === file)) continue;
-        const aspect = await s.imageAspect(path.join(dir, file)).catch(() => 16 / 9);
+        const aspect = await s
+          .imageAspect(path.join(dir, file))
+          .catch(() => 16 / 9);
         const img = { ...a, file, aspect, beatIndex: g.entry };
         (assets.images ??= []).push(img);
-        images.push({ file, kind: a.kind, aspect, beatIndex: g.entry, credit: photoCredit(img), moment: undefined, label: undefined });
+        images.push({
+          file,
+          kind: a.kind,
+          aspect,
+          beatIndex: g.entry,
+          credit: photoCredit(img),
+          moment: undefined,
+          label: undefined,
+        });
         added++;
       }
     }
     if (added) plan = makePlan();
     const left = planGaps(plan, segments, script.take_entry);
     if (gaps.length)
-      log(left.length ? "warn" : "info", "thin entries topped up", { episode: ep.id, before: gaps, added, after: left });
+      log(left.length ? "warn" : "info", "thin entries topped up", {
+        episode: ep.id,
+        before: gaps,
+        added,
+        after: left,
+      });
     if (left.length)
       await s.notify({
         content: `🖼️ "${script.headline}" is short of pictures for ${left.map((g) => ranked[g.entry]?.game_title ?? `entry ${g.entry}`).join(", ")} (${left.map((g) => (g.plateSeconds > 15 ? `${g.plateSeconds}s on the plain background` : `a shot shown ${g.maxRepeat} times`)).join("; ")}). It renders anyway.`,
@@ -5030,7 +5192,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       musicFile,
       // When each entry begins (seconds), so its retention can be read off the curve later.
       entryStarts: segments
-        .filter((g, i) => g.kind === "beat" && (g.visual?.kind === "rank" || g.visual?.kind === "chapter") && i > 0)
+        .filter(
+          (g, i) =>
+            g.kind === "beat" &&
+            (g.visual?.kind === "rank" || g.visual?.kind === "chapter") &&
+            i > 0,
+        )
         .map((g) => Math.round(g.start * 10) / 10),
     },
     qa_json: qa,
@@ -5039,7 +5206,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
 
 async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (ep.lane === "longform") return stepRenderLong(s, ep);
-  if (ep.lane === "cutdown" || ep.lane === "gameplay") return stepRenderCutdown(s, ep);
+  if (ep.lane === "cutdown" || ep.lane === "gameplay")
+    return stepRenderCutdown(s, ep);
   const dir = episodeDir(s.cfg, ep.id);
   const script = ep.script_json!;
   const assets = { ...(ep.assets_json ?? {}) };
@@ -5053,7 +5221,11 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (await belowMediaFloor(s, ep, assets)) return;
   const duration = (assets.durationSeconds ?? 30) + TAIL_SECONDS;
   const words = assets.words ?? [];
-  const segments = buildSegments(segmentInputs(script, Boolean(assets.desk)), words, duration);
+  const segments = buildSegments(
+    segmentInputs(script, Boolean(assets.desk)),
+    words,
+    duration,
+  );
   const variant = variantOf(ep.id);
   const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
@@ -5341,15 +5513,16 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const risky = !ep.story_json.corroborated;
   // The owner taps every gameplay Short: their own recordings never publish on a timer.
   // A twin repeats a Short the owner already approved: it goes out on its own.
-  const mode = ep.lane === "twin"
-    ? "auto"
-    : risky || ep.lane === "gameplay"
-    ? "manual"
-    : ep.lane === "evergreen"
-      ? s.cfg.evergreenApprovalMode
-      : ep.lane === "longform"
-        ? s.cfg.longformApprovalMode
-        : s.cfg.approvalMode;
+  const mode =
+    ep.lane === "twin"
+      ? "auto"
+      : risky || ep.lane === "gameplay"
+        ? "manual"
+        : ep.lane === "evergreen"
+          ? s.cfg.evergreenApprovalMode
+          : ep.lane === "longform"
+            ? s.cfg.longformApprovalMode
+            : s.cfg.approvalMode;
   const when =
     mode === "auto"
       ? "Auto mode: publishing now."
@@ -5415,7 +5588,8 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
       approval_mode: mode,
       approval_requested_at: s.now(),
     });
-    if (ep.lane === "gameplay") await gameplayStatus(s.cfg, ep, "awaiting_approval");
+    if (ep.lane === "gameplay")
+      await gameplayStatus(s.cfg, ep, "awaiting_approval");
   }
 }
 
@@ -5542,7 +5716,10 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
       rows.filter((r) => r.lane === "gameplay").map((r) => new Date(r.at)),
     );
     if (slot) {
-      await s.db.query(`UPDATE episodes SET slot_at = $2 WHERE id = $1`, [ep.id, slot]);
+      await s.db.query(`UPDATE episodes SET slot_at = $2 WHERE id = $1`, [
+        ep.id,
+        slot,
+      ]);
       ep = { ...ep, slot_at: slot.toISOString() };
     }
   }
@@ -5577,7 +5754,11 @@ export function longChapters(ep: Episode): string[] {
   const words = ep.assets_json?.words ?? [];
   if (!script || !words.length) return [];
   const duration = (ep.assets_json?.durationSeconds ?? 0) + LONG_TAIL_SECONDS;
-  const segments = buildSegments(segmentInputs(script, Boolean(ep.assets_json?.desk)), words, duration);
+  const segments = buildSegments(
+    segmentInputs(script, Boolean(ep.assets_json?.desk)),
+    words,
+    duration,
+  );
   return chapterLines(segments, (seg) =>
     seg.kind === "hook"
       ? "Intro"
@@ -5680,11 +5861,18 @@ export function videoMetadata(
   if (script.twin) {
     // The twin's description in its language: the body, the original, the sources, the fixed lines.
     const parentUrl = `https://youtube.com/shorts/${script.twin.parent_video}`;
-    const hashtags = (script.hashtags ?? []).map((h) => (h.startsWith("#") ? h : `#${h}`)).slice(0, 5).join(" ");
+    const hashtags = (script.hashtags ?? [])
+      .map((h) => (h.startsWith("#") ? h : `#${h}`))
+      .slice(0, 5)
+      .join(" ");
     return {
       title: script.youtube.title.slice(0, 100),
       description: [
-        script.youtube.description.trim().replace(/#\w+/g, "").replace(/\s{2,}/g, " ").trim(),
+        script.youtube.description
+          .trim()
+          .replace(/#\w+/g, "")
+          .replace(/\s{2,}/g, " ")
+          .trim(),
         credits ? `\nFuentes:\n${credits}` : "",
         ...twinFooter(script.twin.language, parentUrl).map((l) => `\n${l}`),
         hashtags,
@@ -5695,7 +5883,9 @@ export function videoMetadata(
       tags: script.youtube.tags.slice(0, 15),
       categoryId: "20",
       privacyStatus: privacy,
-      publishAt: ep.publish_at ? new Date(ep.publish_at).toISOString() : undefined,
+      publishAt: ep.publish_at
+        ? new Date(ep.publish_at).toISOString()
+        : undefined,
       containsSyntheticMedia: syntheticMedia,
       defaultLanguage: script.twin.language,
     };
@@ -5745,12 +5935,12 @@ export function videoMetadata(
     script.gameplay
       ? "\nPulse Gaming: we test what games let you do, one question at a time. Tell us what to test next in the comments."
       : script.recap
-      ? "\nPulse Gaming News: gaming news, checked and explained. The week's biggest stories every Friday, a new ranking every week, Shorts every day."
-      : script.evergreen_format === "documentary"
-        ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
-        : long
-          ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day."
-          : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
+        ? "\nPulse Gaming News: gaming news, checked and explained. The week's biggest stories every Friday, a new ranking every week, Shorts every day."
+        : script.evergreen_format === "documentary"
+          ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
+          : long
+            ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day."
+            : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
     (long
       ? hashtags(script)
           .filter((h) => h !== "#Shorts")
@@ -5835,8 +6025,14 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   if (ep.publish_at) {
     const now = s.now();
     const planned = new Date(ep.publish_at);
-    const staleHours = staleAfterHours(ep.lane, ep.script_json?.evergreen_format);
-    if (staleHours !== undefined && now.getTime() - planned.getTime() > staleHours * 3600_000) {
+    const staleHours = staleAfterHours(
+      ep.lane,
+      ep.script_json?.evergreen_format,
+    );
+    if (
+      staleHours !== undefined &&
+      now.getTime() - planned.getTime() > staleHours * 3600_000
+    ) {
       await transition(s.db, ep.id, "uploading", "awaiting_approval", {
         approval_mode: "manual",
         approval_requested_at: now,
@@ -5844,7 +6040,9 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
         upload_session_uri: null,
       });
       const links = approvalLinks(s.cfg, ep.id);
-      await logEvent(s.db, ep.id, "stale_review", { planned: planned.toISOString() });
+      await logEvent(s.db, ep.id, "stale_review", {
+        planned: planned.toISOString(),
+      });
       await s.notify({
         content: `⏳ "${ep.script_json!.youtube.title}" was due at ${ukTime(planned, now)} but was held up, so it may be out of date now. It stays unpublished unless you approve it.
 ▶️ [Watch](${links.preview}) · ✅ [Approve](${links.approve}) · ❌ [Reject](${links.reject})`,
@@ -5857,11 +6055,25 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
         [ep.id],
       );
       let at = new Date(now.getTime() + 20 * 60_000);
-      const gapEnd = other?.t ? new Date(new Date(other.t).getTime() + s.cfg.minUploadGapMinutes * 60_000) : undefined;
+      const gapEnd = other?.t
+        ? new Date(
+            new Date(other.t).getTime() + s.cfg.minUploadGapMinutes * 60_000,
+          )
+        : undefined;
       if (gapEnd && gapEnd > at) at = gapEnd;
-      await s.db.query(`UPDATE episodes SET publish_at = $2, upload_session_uri = NULL WHERE id = $1`, [ep.id, at]);
-      await logEvent(s.db, ep.id, "rescheduled", { from: planned.toISOString(), to: at.toISOString() });
-      ep = { ...ep, publish_at: at.toISOString(), upload_session_uri: null } as Episode;
+      await s.db.query(
+        `UPDATE episodes SET publish_at = $2, upload_session_uri = NULL WHERE id = $1`,
+        [ep.id, at],
+      );
+      await logEvent(s.db, ep.id, "rescheduled", {
+        from: planned.toISOString(),
+        to: at.toISOString(),
+      });
+      ep = {
+        ...ep,
+        publish_at: at.toISOString(),
+        upload_session_uri: null,
+      } as Episode;
     }
   }
   let session = ep.upload_session_uri;
@@ -5946,7 +6158,9 @@ export async function confirmPublished(s: Services): Promise<void> {
     if (st?.privacyStatus === "public") {
       // The time we saw it public: the truthful release time for the site and the analytics, which the
       // planned slot only approximates (YouTube can run late, and a delayed video keeps its old slot).
-      await logEvent(s.db, ep.id, "public_confirmed", { at: s.now().toISOString() });
+      await logEvent(s.db, ep.id, "public_confirmed", {
+        at: s.now().toISOString(),
+      });
       const live = await getEpisode(s.db, ep.id);
       if (live) await gameplayLive(s, live);
     } else if (st?.privacyStatus === "private") {
@@ -5966,7 +6180,9 @@ export async function confirmPublished(s: Services): Promise<void> {
       continue;
     } else {
       // Not public yet (still processing, or YouTube running late): noted, and looked at again.
-      await logEvent(s.db, ep.id, "public_pending", { was: st?.privacyStatus ?? "unknown" });
+      await logEvent(s.db, ep.id, "public_pending", {
+        was: st?.privacyStatus ?? "unknown",
+      });
       continue;
     }
     // The first comment waits until the video is public.
@@ -5990,7 +6206,9 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
       (ep.script_json!.runtime === "long"
         ? affiliateCommentLine(ep.script_json!, affiliateTags(s.cfg, ep.id))
         : "");
-    const id = await s.youtube(accountOf(ep)).insertComment(ep.youtube_video_id!, text);
+    const id = await s
+      .youtube(accountOf(ep))
+      .insertComment(ep.youtube_video_id!, text);
     await quotaAdd(s.db, s.now(), QUOTA.comment);
     await logEvent(s.db, ep.id, "comment_posted", { id, text });
   } catch (err) {
@@ -6304,8 +6522,15 @@ export async function tick(
       );
     // The twin channel's numbers, with its own login.
     if (!s.cfg.dryRun && (await twinReady(s)))
-      await captureMetrics(s.db, s.youtube(s.cfg.twinLanguage), s.now(), s.cfg.twinLanguage).catch((err) =>
-        log("warn", "twin metrics capture failed", { error: errorMessage(err) }),
+      await captureMetrics(
+        s.db,
+        s.youtube(s.cfg.twinLanguage),
+        s.now(),
+        s.cfg.twinLanguage,
+      ).catch((err) =>
+        log("warn", "twin metrics capture failed", {
+          error: errorMessage(err),
+        }),
       );
     // After each scheduled slot: confirm the video went public and post its first comment, or tell the owner it did not.
     if (!s.cfg.dryRun && s.cfg.youtubePrivacy === "public")
@@ -6318,13 +6543,22 @@ export async function tick(
         log("warn", "retention capture failed", { error: errorMessage(err) }),
       );
     if (!s.cfg.dryRun && (await twinReady(s)))
-      await captureRetention(s.db, s.youtube(s.cfg.twinLanguage), s.now(), s.cfg.twinLanguage).catch((err) =>
-        log("warn", "twin retention capture failed", { error: errorMessage(err) }),
+      await captureRetention(
+        s.db,
+        s.youtube(s.cfg.twinLanguage),
+        s.now(),
+        s.cfg.twinLanguage,
+      ).catch((err) =>
+        log("warn", "twin retention capture failed", {
+          error: errorMessage(err),
+        }),
       );
     // Long videos: the whole retention curve a week after going live, for the long-form writer's lessons.
     if (!s.cfg.dryRun)
       await captureCurves(s.db, s.youtube(), s.now()).catch((err) =>
-        log("warn", "retention curve capture failed", { error: errorMessage(err) }),
+        log("warn", "retention curve capture failed", {
+          error: errorMessage(err),
+        }),
       );
     return { selected };
   });

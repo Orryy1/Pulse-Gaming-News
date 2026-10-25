@@ -70,13 +70,16 @@ function draft(n = 5): DocDraft {
   });
   return {
     topic: {
+      kind: "franchise",
       franchise_index: 0,
+      story_index: -1,
       franchise: "Grand Theft Auto",
       title_idea: "The Complete History of GTA",
       angle: "x",
       reason: "y",
     },
     outline: {
+      question: "How did a Dundee studio's top-down game become GTA?",
       title: "The Complete History of Grand Theft Auto",
       kicker: "From Dundee to Leonida",
       franchise_wiki_title: "Grand Theft Auto",
@@ -330,4 +333,24 @@ test("IGDB: the exact game, never a sequel that ranks higher in search", () => {
   assert.equal(pickIgdb(games, "Grand Theft Auto 2", 1999)?.id, 3);
   assert.equal(pickIgdb(games, "Grand Theft Auto IV"), undefined);
   assert.equal(games[1]!.cover, "c");
+});
+
+test("the documentary picker can choose a single story, which carries its overview article; prompts carry the breakout craft", async () => {
+  const { selectDocTopic, DOC_STORIES, chapterPrompt } = await import("../src/editorial/documentary.ts");
+  const seen: string[] = [];
+  const llm = {
+    structured: async (o: { system: string; content: string }) => {
+      seen.push(o.system, o.content);
+      return { kind: "story", franchise_index: -1, story_index: 1, title_idea: "How Xbox Spent $69 Billion", angle: "a", reason: "b" };
+    },
+  } as never;
+  const t = await selectDocTopic(llm, [], ["Xbox exclusives come to PS5"], undefined, undefined, "Planned for today: a story");
+  assert.equal(t?.kind, "story");
+  assert.equal(t?.franchise, DOC_STORIES[1].subject);
+  assert.equal(t?.wiki, DOC_STORIES[1].wiki);
+  assert.match(seen[0]!, /prefer a single story/);
+  assert.match(seen[1]!, /Single stories:/);
+  assert.match(seen[1]!, /Planned for today/);
+  assert.match(chapterPrompt(), /looks forward/);
+  assert.match(chapterPrompt(), /every other paragraph/);
 });

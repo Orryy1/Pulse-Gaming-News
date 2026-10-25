@@ -14,6 +14,13 @@ import type { DiscordMessage } from "./approval/discord.ts";
 import { log } from "./lib/util.ts";
 
 /** Ages at which a Short's numbers are read, and the window in which a late capture still counts. */
+/**
+ * When a video actually went public, as SQL: the time the go-live check saw it public, else the planned
+ * slot, else the last update. Snapshot ages and the site's dates count from this.
+ */
+export const LIVE_AT = (t: string) =>
+  `coalesce((SELECT (v.detail->>'at')::timestamptz FROM events v WHERE v.episode_id = ${t}.id AND v.kind = 'public_confirmed' AND v.detail ? 'at' LIMIT 1), ${t}.publish_at, ${t}.updated_at)`;
+
 export const CAPTURE_LABELS: ReadonlyArray<{ label: string; hours: number }> = [
   { label: "1h", hours: 1 },
   { label: "3h", hours: 3 },
@@ -58,8 +65,8 @@ export async function dueCaptures(db: Db, now: Date): Promise<Capture[]> {
     youtube_video_id: string;
     live_at: string;
   }>(
-    `SELECT id, youtube_video_id, coalesce(publish_at, updated_at) AS live_at FROM episodes
-     WHERE status = 'published' AND youtube_video_id IS NOT NULL AND coalesce(publish_at, updated_at) > $1`,
+    `SELECT id, youtube_video_id, ${LIVE_AT("episodes")} AS live_at FROM episodes
+     WHERE status = 'published' AND youtube_video_id IS NOT NULL AND ${LIVE_AT("episodes")} > $1`,
     [new Date(now.getTime() - 40 * 24 * 3_600_000)],
   );
   if (!eps.length) return [];
@@ -341,10 +348,10 @@ export async function captureRetention(
     youtube_video_id: string;
     live_at: string;
   }>(
-    `SELECT e.id, e.youtube_video_id, coalesce(e.publish_at, e.updated_at) AS live_at FROM episodes e
+    `SELECT e.id, e.youtube_video_id, ${LIVE_AT("e")} AS live_at FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL
-        AND coalesce(e.publish_at, e.updated_at) < $1::timestamptz - interval '4 days'
-        AND coalesce(e.publish_at, e.updated_at) > $1::timestamptz - interval '30 days'
+        AND ${LIVE_AT("e")} < $1::timestamptz - interval '4 days'
+        AND ${LIVE_AT("e")} > $1::timestamptz - interval '30 days'
         AND NOT EXISTS (SELECT 1 FROM video_metrics m WHERE m.episode_id = e.id AND m.label = 'retention')
       LIMIT 100`,
     [now],
@@ -614,10 +621,10 @@ export async function captureCurves(
     youtube_video_id: string;
     live_at: string;
   }>(
-    `SELECT e.id, e.youtube_video_id, coalesce(e.publish_at, e.updated_at) AS live_at FROM episodes e
+    `SELECT e.id, e.youtube_video_id, ${LIVE_AT("e")} AS live_at FROM episodes e
       WHERE e.status = 'published' AND e.lane = 'longform' AND e.youtube_video_id IS NOT NULL
-        AND coalesce(e.publish_at, e.updated_at) < $1::timestamptz - interval '7 days'
-        AND coalesce(e.publish_at, e.updated_at) > $1::timestamptz - interval '60 days'
+        AND ${LIVE_AT("e")} < $1::timestamptz - interval '7 days'
+        AND ${LIVE_AT("e")} > $1::timestamptz - interval '60 days'
         AND NOT EXISTS (SELECT 1 FROM video_metrics m WHERE m.episode_id = e.id AND m.label = 'curve')
       LIMIT 5`,
     [now],

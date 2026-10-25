@@ -70,6 +70,7 @@ interface Fakes {
   notifications: string[];
   captionInserts: number;
   publicReachable?: boolean;
+  privacy?: string;
   captions: Array<{ id: string; language: string; name: string }>;
   comments: string[];
   visual?: "none" | "game_footage" | "real_world_images";
@@ -128,7 +129,7 @@ function fakeYouTube(f: Fakes): YouTubeClient {
   };
   yt.status = async () => ({
     uploadStatus: "processed",
-    privacyStatus: "public",
+    privacyStatus: f.privacy ?? "public",
   });
   yt.listCaptions = async () => f.captions;
   yt.stats = async (ids) => new Map(ids.map((id) => [id, { views: 1200, likes: 40, comments: 3, privacyStatus: "public" }]));
@@ -945,4 +946,32 @@ test("the fact-checker sees every card figure, and rankings get a final adjudica
   assert.notEqual(ep.status, "published");
   assert.match(String(ep.last_error ?? ""), /fact-check still failing/);
   assert.equal(f.uploads, 0);
+});
+
+test("the go-live check keeps looking for days, hourly after the first two, and records when it saw the video public", async () => {
+  const { db, s, f, setClock } = await setup({ youtubePrivacy: "public" });
+  const { confirmPublished } = await import("../src/pipeline.ts");
+  const { logEvent } = await import("../src/episodes.ts");
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, story_json, status, lane, script_json, youtube_video_id, publish_at, updated_at)
+     VALUES ('ep_late', 'late', '{"headline":"x","items":[]}', 'published', 'news', $1, 'vid_late', '2026-10-16T07:00:00Z', now())`,
+    [JSON.stringify(goodScript())],
+  );
+  // Still processing five hours on, looked at ten minutes ago: left alone this tick.
+  f.privacy = "processing";
+  await logEvent(db, "ep_late", "public_pending", { was: "processing" });
+  // The fake clock reads 12:00 on 16 Oct; the check was ten minutes before that.
+  await db.query(`UPDATE events SET created_at = '2026-10-16T11:50:00Z' WHERE episode_id = 'ep_late'`);
+  await confirmPublished(s);
+  const pend = await db.query(`SELECT 1 FROM events WHERE episode_id = 'ep_late' AND kind = 'public_pending'`);
+  assert.equal(pend.length, 1, "not re-checked within the hour");
+  // An hour later it is checked again and found public: the time is recorded, and the first comment goes up.
+  await db.query(`UPDATE events SET created_at = '2026-10-16T15:50:00Z' WHERE episode_id = 'ep_late'`);
+  f.privacy = "public";
+  setClock(new Date("2026-10-16T17:00:00Z"));
+  await confirmPublished(s);
+  const [done] = await db.query<{ detail: { at?: string } }>(`SELECT detail FROM events WHERE episode_id = 'ep_late' AND kind = 'public_confirmed'`);
+  assert.equal(done?.detail?.at, "2026-10-16T17:00:00.000Z");
+  assert.equal(f.comments.length, 1, "the first comment waited for the video to be public");
+  await db.close();
 });

@@ -7,6 +7,7 @@
 
 import type { Script } from "../editorial/schema.ts";
 import { polishTitle } from "../editorial/seo.ts";
+import { LIVE_AT } from "../analytics.ts";
 import {
   amazonUrl,
   productsFor,
@@ -905,7 +906,7 @@ export function parseChannelFeed(xml: string): ChannelVideo[] {
 }
 
 /** The SQL for what the site shows: public videos only, newest first. */
-export const SITE_EPISODES_SQL = `SELECT e.id, e.lane, e.youtube_video_id, e.script_json, e.story_json, COALESCE(e.publish_at, e.updated_at) AS live_at, e.created_at, e.factcheck_json->'deals' AS deals
+export const SITE_EPISODES_SQL = `SELECT e.id, e.lane, e.youtube_video_id, e.script_json, e.story_json, ${LIVE_AT("e")} AS live_at, e.created_at, e.factcheck_json->'deals' AS deals
   FROM episodes e
  WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'cutdown'
    AND COALESCE(e.publish_at, e.updated_at) <= now()

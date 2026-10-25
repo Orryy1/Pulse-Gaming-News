@@ -5722,16 +5722,22 @@ export async function confirmPublished(s: Services): Promise<void> {
     youtube_video_id: string;
     title: string | null;
   }>(
+    // Every tick for the first two hours after the slot, then once an hour for three days: an outage or
+    // a slow YouTube no longer ends the check, so "published" is only ever confirmed, not assumed.
     `SELECT e.id, e.youtube_video_id, e.script_json->'youtube'->>'title' AS title FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.publish_at IS NOT NULL
-        AND e.publish_at < $1::timestamptz - interval '10 minutes' AND e.publish_at > $1::timestamptz - interval '2 hours'
-        AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('public_confirmed','made_public'))`,
+        AND e.publish_at < $1::timestamptz - interval '10 minutes' AND e.publish_at > $1::timestamptz - interval '72 hours'
+        AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('public_confirmed','made_public'))
+        AND NOT (e.publish_at < $1::timestamptz - interval '2 hours'
+                 AND EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind = 'public_pending' AND v.created_at > $1::timestamptz - interval '55 minutes'))`,
     [s.now()],
   );
   for (const ep of due) {
     const st = await s.youtube().status(ep.youtube_video_id);
     if (st?.privacyStatus === "public") {
-      await logEvent(s.db, ep.id, "public_confirmed", {});
+      // The time we saw it public: the truthful release time for the site and the analytics, which the
+      // planned slot only approximates (YouTube can run late, and a delayed video keeps its old slot).
+      await logEvent(s.db, ep.id, "public_confirmed", { at: s.now().toISOString() });
       const live = await getEpisode(s.db, ep.id);
       if (live) await gameplayLive(s, live);
     } else if (st?.privacyStatus === "private") {
@@ -5749,7 +5755,11 @@ export async function confirmPublished(s: Services): Promise<void> {
         content: `⚠️ Needs you? "${ep.title ?? ep.id}" is still private after its scheduled time. If you made it private, ignore this. If not, set it to public in YouTube Studio: https://studio.youtube.com/video/${ep.youtube_video_id}/edit`,
       });
       continue;
-    } else continue;
+    } else {
+      // Not public yet (still processing, or YouTube running late): noted, and looked at again.
+      await logEvent(s.db, ep.id, "public_pending", { was: st?.privacyStatus ?? "unknown" });
+      continue;
+    }
     // The first comment waits until the video is public.
     const [posted] = await s.db.query<{ n: string }>(
       `SELECT count(*) AS n FROM events WHERE episode_id = $1 AND kind = 'comment_posted'`,

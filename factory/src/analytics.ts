@@ -269,6 +269,15 @@ export async function weeklyDigest(
             ...formats,
           ]
         : [])(await reviewFormats(db, now)),
+    ...((lab) =>
+      lab.length
+        ? [
+            "**The lab (what held viewers, last 45 days; each line needs three Shorts a side):**",
+            ...lab.map((l) => `• ${l}`),
+          ]
+        : ["**The lab:** not enough Shorts a side yet to compare hooks, footage or the desk question."])(
+      await retentionRows(db, now).then((rows) => [...openingLine(rows), ...formatLessons(rows)]).catch(() => [] as string[]),
+    ),
     `**YouTube quota used today:** ${(await quotaUsed(db, now)).toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")} units; uploads ${await quotaCalls(db, now, "upload")} of ${cfg.uploadCallsPerDay}`,
     "Reminders: check Studio for Content ID claims on anything over 60 s; the retention curve arrives once analytics is reconnected.",
   ];

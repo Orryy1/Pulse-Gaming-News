@@ -447,7 +447,11 @@ export function displayWords(words: Word[]): Word[] {
     ) {
       out.push(
         { ...w },
-        { text: `X|S${tail(i + 3)}`, start: words[i + 1]!.start, end: words[i + 3]!.end },
+        {
+          text: `X|S${tail(i + 3)}`,
+          start: words[i + 1]!.start,
+          end: words[i + 3]!.end,
+        },
       );
       i += 3;
       continue;
@@ -558,10 +562,30 @@ export function displayWords(words: Word[]): Word[] {
       i += count.used - 1;
       continue;
     }
+    // An ordinal said in words ("the fourteenth of March", "twenty-first") is shown as people write it:
+    // "14th", "21st". "First", "second" and "third" are ordinary words too often ("the first time"), so
+    // they only turn when a month or "the ... of" marks a date.
+    const ord = spokenOrdinal(words, i, out[out.length - 1]?.text);
+    if (ord) {
+      out.push({ text: `${ord}${tail(i)}`, start: w.start, end: w.end });
+      continue;
+    }
     out.push(w);
   }
   // "134 gigabytes" (speakUnits in speakable.ts) is shown as "134GB".
-  const UNIT_BACK: Record<string, string> = { terabyte: "TB", terabytes: "TB", gigabyte: "GB", gigabytes: "GB", megabyte: "MB", megabytes: "MB", kilobyte: "KB", kilobytes: "KB", gigahertz: "GHz", megahertz: "MHz", hertz: "Hz" };
+  const UNIT_BACK: Record<string, string> = {
+    terabyte: "TB",
+    terabytes: "TB",
+    gigabyte: "GB",
+    gigabytes: "GB",
+    megabyte: "MB",
+    megabytes: "MB",
+    kilobyte: "KB",
+    kilobytes: "KB",
+    gigahertz: "GHz",
+    megahertz: "MHz",
+    hertz: "Hz",
+  };
   const merged: Word[] = [];
   for (let k = 0; k < out.length; k++) {
     const w = out[k]!;
@@ -569,11 +593,86 @@ export function displayWords(words: Word[]): Word[] {
     const m = next?.text.match(/^([a-z]+)([.,;:!?)"”’]*)$/i);
     const unit = m ? UNIT_BACK[m[1]!.toLowerCase()] : undefined;
     if (unit && /^\d[\d,]*(?:\.\d+)?$/.test(w.text)) {
-      merged.push({ text: `${w.text}${unit}${m![2]}`, start: w.start, end: next!.end });
+      merged.push({
+        text: `${w.text}${unit}${m![2]}`,
+        start: w.start,
+        end: next!.end,
+      });
       k++;
     } else merged.push(w);
   }
   return merged;
+}
+
+const ORDINALS: Record<string, number> = {
+  first: 1,
+  second: 2,
+  third: 3,
+  fourth: 4,
+  fifth: 5,
+  sixth: 6,
+  seventh: 7,
+  eighth: 8,
+  ninth: 9,
+  tenth: 10,
+  eleventh: 11,
+  twelfth: 12,
+  thirteenth: 13,
+  fourteenth: 14,
+  fifteenth: 15,
+  sixteenth: 16,
+  seventeenth: 17,
+  eighteenth: 18,
+  nineteenth: 19,
+  twentieth: 20,
+  thirtieth: 30,
+  fortieth: 40,
+  fiftieth: 50,
+};
+const MONTHS_RE =
+  /^(january|february|march|april|may|june|july|august|september|october|november|december)[.,;:!?)"”’]*$/i;
+
+/** "14th" for 14: the suffix people write. */
+export function ordinalSuffix(n: number): string {
+  const r = n % 100;
+  if (r >= 11 && r <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
+/**
+ * The ordinal words[i] says, as "14th", or undefined. Anything from "fourth" up turns on its own;
+ * "first", "second" and "third" only next to a month name or in "the ... of <month>".
+ */
+export function spokenOrdinal(
+  words: Word[],
+  i: number,
+  previous?: string,
+): string | undefined {
+  const raw = words[i]?.text ?? "";
+  const w = raw.toLowerCase().replace(/[^a-z-]/g, "");
+  const [t, u] = w.split("-");
+  let n: number | undefined;
+  if (ORDINALS[w] !== undefined) n = ORDINALS[w];
+  else if (
+    u &&
+    TENS_W[t!] !== undefined &&
+    ORDINALS[u] !== undefined &&
+    ORDINALS[u]! < 10
+  )
+    n = TENS_W[t!]! + ORDINALS[u]!;
+  if (n === undefined) return undefined;
+  if (n <= 3) {
+    const prev = (previous ?? "").toLowerCase().replace(/[^a-z]/g, "");
+    const next = words[i + 1]?.text ?? "";
+    const dated =
+      MONTHS_RE.test(previous ?? "") ||
+      MONTHS_RE.test(next) ||
+      (prev === "the" &&
+        /^of$/i.test(next) &&
+        MONTHS_RE.test(words[i + 2]?.text ?? ""));
+    if (!dated) return undefined;
+  }
+  return ordinalSuffix(n);
 }
 
 /** On-screen text: "47 percent" is "47%". */

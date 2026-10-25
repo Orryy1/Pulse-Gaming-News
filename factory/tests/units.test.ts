@@ -390,3 +390,19 @@ test("a release countdown spins down to the true count and a text line rises thr
   assert.ok(riseProgress(4) > 0.6, "ease-out: most of the rise happens early");
   assert.ok(riseProgress(4) < riseProgress(8) && riseProgress(8) < 1);
 });
+
+test("an ordinal said in words shows as 14th on screen; 'first' only turns when it is a date", async () => {
+  const { displayWords, ordinalSuffix } = await import("../src/render/timeline.ts");
+  const w = (texts: string[]) => texts.map((text, i) => ({ text, start: i, end: i + 1 }));
+  const show = (texts: string[]) => displayWords(w(texts)).map((x) => x.text).join(" ");
+  assert.equal(show(["the", "fourteenth", "of", "March."]), "the 14th of March.");
+  assert.equal(show(["March", "twenty-first,", "then"]), "March 21st, then");
+  assert.equal(show(["the", "first", "of", "October"]), "the 1st of October");
+  assert.equal(show(["the", "first", "time"]), "the first time");
+  assert.equal(show(["a", "second", "patch"]), "a second patch");
+  assert.equal(show(["the", "fourth", "game"]), "the 4th game");
+  assert.equal(ordinalSuffix(11), "11th");
+  assert.equal(ordinalSuffix(22), "22nd");
+  assert.equal(ordinalSuffix(23), "23rd");
+  assert.equal(ordinalSuffix(30), "30th");
+});

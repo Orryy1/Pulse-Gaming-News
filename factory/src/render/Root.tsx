@@ -7,10 +7,23 @@ import { Long, SAMPLE_LONG_PROPS, type LongProps } from "./Long.tsx";
 import { LONG_FPS, LONG_WIDTH, LONG_HEIGHT } from "./longplan.ts";
 import { Engage, SAMPLE_ENGAGE } from "./Engage.tsx";
 import { Cutdown, SAMPLE_CUTDOWN, type CutdownProps } from "./Cutdown.tsx";
+import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
 import { ConceptAvatar, ConceptBanner, BroadcastCover } from "./BrandConcepts.tsx";
 
 export const RemotionRoot: React.FC = () => (
   <>
+    <Composition
+      id="PulseLab"
+      component={Lab}
+      fps={FPS}
+      width={WIDTH}
+      height={HEIGHT}
+      durationInFrames={Math.ceil(SAMPLE_LAB.durationSeconds * FPS)}
+      defaultProps={SAMPLE_LAB}
+      calculateMetadata={({ props }: { props: LabProps }) => ({
+        durationInFrames: Math.ceil(props.durationSeconds * FPS),
+      })}
+    />
     <Composition
       id="PulseShort"
       component={Short}

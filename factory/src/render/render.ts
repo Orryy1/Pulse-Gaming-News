@@ -29,7 +29,7 @@ const PUBLIC_DIR = path.join(here, "..", "..", "public");
 
 let bundlePromise: Promise<string> | undefined;
 let bundleDir: string | undefined;
-function getBundle(): Promise<string> {
+export function getBundle(): Promise<string> {
   // A bundle swept away from the temp folder is rebuilt rather than rendered from a missing folder.
   if (bundleDir && !fs.existsSync(bundleDir))
     bundlePromise = bundleDir = undefined;
@@ -139,7 +139,7 @@ async function renderMemory(): Promise<{
 }
 
 /** Read-only loopback file server rooted at one directory. */
-async function serveDir(
+export async function serveDir(
   root: string,
 ): Promise<{ url: string; close: () => Promise<void> }> {
   const server = http.createServer((req, res) => {

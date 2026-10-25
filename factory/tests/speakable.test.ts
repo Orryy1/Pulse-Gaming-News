@@ -173,3 +173,11 @@ test("prices are said the quick way; cheap ones that do not end in .9x keep thei
   assert.equal(speakable("£59.99 and 69,99€."), "sixty pounds and seventy euros.");
   assert.equal(speakable("$1.5 billion in sales"), "one point five billion dollars in sales");
 });
+
+test("a possessive digit is said as one word and a rank before a name is not stressed as a title", () => {
+  // The Modern Warfare Short (Os_yeSFpGh0, 25 Oct 2026) paused before "4's" and leaned on "Marine".
+  assert.equal(speakable("Modern Warfare 4's first DLC stars a real Marine."), "Modern Warfare four's first DLC stars a real marine.");
+  assert.equal(speakable("to help save fellow Marine Nick Eufrazio."), "to help save fellow marine Nick Eufrazio.");
+  assert.equal(speakable("The Marine Corps and the 1990's"), "The Marine Corps and the 1990's");
+  assert.equal(speakable("GTA 6's map and the PS5's fans"), "GTA six's map and the PS5's fans");
+});

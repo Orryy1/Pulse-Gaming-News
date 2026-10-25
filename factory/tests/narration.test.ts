@@ -100,3 +100,30 @@ test("a changed figure, status word or platform is never forgiven as a mishearin
   // Ordinary mishearings still pass.
   assert.equal(checkNarration(say("he plants a seed in the garden"), say("he plants a seat in the garden")).ok, true);
 });
+
+test("a half-second gap where the script has no punctuation is reported as a mid-sentence pause", async () => {
+  const { midSentencePauses } = await import("../src/qa/narration.ts");
+  const meant = [
+    { text: "Modern", start: 0 },
+    { text: "Warfare", start: 0.45 },
+    { text: "4's", start: 0.9 },
+    { text: "first", start: 1.2 },
+    { text: "DLC.", start: 1.5 },
+    { text: "He's", start: 2.6 },
+    { text: "Kyle", start: 2.9 },
+  ];
+  const heard = [
+    { text: "Modern", start: 0, end: 0.42 },
+    { text: "Warfare,", start: 0.44, end: 0.88 },
+    { text: "4's", start: 1.4, end: 1.7 },
+    { text: "first", start: 1.72, end: 2.0 },
+    { text: "DLC.", start: 2.02, end: 2.6 },
+    { text: "He's", start: 3.2, end: 3.4 },
+    { text: "Kyle", start: 3.42, end: 3.6 },
+  ];
+  const pauses = midSentencePauses(meant, heard);
+  assert.equal(pauses.length, 1, "the pause after 'DLC.' is a sentence end and is fine");
+  assert.equal(pauses[0]!.before, "Warfare");
+  assert.equal(pauses[0]!.after, "4's");
+  assert.ok(pauses[0]!.seconds >= 0.5);
+});

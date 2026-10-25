@@ -34,6 +34,53 @@ export interface NarrationCheck {
   issues: NarrationIssue[];
   drift: number; // seconds the timings wander from the audio across the narration
   matched: number; // share of the script's words heard as written
+  /** Pauses of 0.45 s or more where the script has no punctuation: the voice phrasing a line oddly. */
+  pauses: NarrationPause[];
+}
+
+export interface NarrationPause {
+  at: number; // seconds into the narration
+  seconds: number;
+  before: string;
+  after: string;
+}
+
+/**
+ * Mid-sentence pauses: a gap of `minGap` seconds or more between two heard words where the script's own
+ * word at that point carries no punctuation. The Modern Warfare Short (25 Oct 2026) paused half a second
+ * between "Warfare" and "4's". Informational: the check still passes, the pauses are logged and learned from.
+ */
+export function midSentencePauses(
+  meant: TimedWord[],
+  heard: TimedWord[],
+  minGap = 0.45,
+): NarrationPause[] {
+  const out: NarrationPause[] = [];
+  for (let k = 1; k < heard.length; k++) {
+    const prev = heard[k - 1]!;
+    const gap = heard[k]!.start - (prev.end ?? prev.start);
+    if (gap < minGap) continue;
+    // The script word the previous heard word belongs to: the nearest by start time.
+    let best = -1;
+    for (let i = 0; i < meant.length; i++)
+      if (
+        best < 0 ||
+        Math.abs(meant[i]!.start - prev.start) <
+          Math.abs(meant[best]!.start - prev.start)
+      )
+        best = i;
+    if (best < 0) continue;
+    const before = meant[best]!.text;
+    const after = meant[best + 1]?.text ?? "";
+    if (!after || /[.,!?;:…—–)"”’]$/.test(before)) continue;
+    out.push({
+      at: Math.round(prev.start * 100) / 100,
+      seconds: Math.round(gap * 100) / 100,
+      before,
+      after,
+    });
+  }
+  return out;
 }
 
 /** Whisper's word timings for an audio file, through the given Python (faster-whisper or MLX Whisper). */
@@ -243,6 +290,7 @@ export function checkNarration(
     issues,
     drift: Math.round(drift * 100) / 100,
     matched: n ? L[0]![0]! / n : 1,
+    pauses: midSentencePauses(meant, heard),
   };
 }
 

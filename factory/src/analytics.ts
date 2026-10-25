@@ -7,11 +7,20 @@ import type { Db } from "./db.ts";
 import type { Config } from "./config.ts";
 import type { Episode } from "./episodes.ts";
 import { logEvent } from "./episodes.ts";
-import { QUOTA, dayKey, quotaAdd, quotaCalls, quotaUsed, weekday } from "./lanes.ts";
+import {
+  QUOTA,
+  dayKey,
+  quotaAdd,
+  quotaCalls,
+  quotaUsed,
+  weekday,
+} from "./lanes.ts";
 import { reviewFormats } from "./formats.ts";
 import { claudeSpend } from "./editorial/llm.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
 import { log } from "./lib/util.ts";
+import { buildSegments, type SegmentInput } from "./render/timeline.ts";
+import type { Script } from "./editorial/schema.ts";
 
 /** Ages at which a Short's numbers are read, and the window in which a late capture still counts. */
 /**
@@ -59,8 +68,11 @@ export function labelsDue(
   ).map((l) => l.label);
 }
 
-export async function dueCaptures(db: Db, now: Date,
-  account = ""): Promise<Capture[]> {
+export async function dueCaptures(
+  db: Db,
+  now: Date,
+  account = "",
+): Promise<Capture[]> {
   const eps = await db.query<{
     id: string;
     youtube_video_id: string;
@@ -275,8 +287,12 @@ export async function weeklyDigest(
             "**The lab (what held viewers, last 45 days; each line needs three Shorts a side):**",
             ...lab.map((l) => `• ${l}`),
           ]
-        : ["**The lab:** not enough Shorts a side yet to compare hooks, footage or the desk question."])(
-      await retentionRows(db, now).then((rows) => [...openingLine(rows), ...formatLessons(rows)]).catch(() => [] as string[]),
+        : [
+            "**The lab:** not enough Shorts a side yet to compare hooks, footage or the desk question.",
+          ])(
+      await retentionRows(db, now)
+        .then((rows) => [...openingLine(rows), ...formatLessons(rows)])
+        .catch(() => [] as string[]),
     ),
     `**YouTube quota used today:** ${(await quotaUsed(db, now)).toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")} units; uploads ${await quotaCalls(db, now, "upload")} of ${cfg.uploadCallsPerDay}`,
     "Reminders: check Studio for Content ID claims on anything over 60 s; the retention curve arrives once analytics is reconnected.",
@@ -443,7 +459,9 @@ async function retentionRows(
   return rows
     .map((r) => {
       const raw = typeof r.raw === "string" ? JSON.parse(r.raw) : r.raw;
-      const metrics = (typeof r.metrics === "string" ? JSON.parse(r.metrics) : r.metrics) as Array<{ name: string; value: number | string }> | null;
+      const metrics = (
+        typeof r.metrics === "string" ? JSON.parse(r.metrics) : r.metrics
+      ) as Array<{ name: string; value: number | string }> | null;
       const metric = (name: string) => {
         const v = metrics?.find((m) => m.name === name)?.value;
         return typeof v === "number" ? v : undefined;
@@ -451,12 +469,19 @@ async function retentionRows(
       return {
         title: r.script_json?.youtube?.title ?? r.id,
         hook: r.script_json?.hook ?? "",
-        hookWords: r.script_json?.hook ? r.script_json.hook.split(/\s+/).filter(Boolean).length : undefined,
+        hookWords: r.script_json?.hook
+          ? r.script_json.hook.split(/\s+/).filter(Boolean).length
+          : undefined,
         footageShare: metric("footage_share"),
         desk: Boolean(r.desk),
         // The old rotation stored the voice id as its name; Liam's id reads as Liam.
-        narrator: r.narrator === "TX3LPaxmHKxFdv7VOQHJ" ? "Liam" : (r.narrator ?? undefined),
-        format: r.script_json?.evergreen_format ?? (r.script_json?.runtime === "long" ? "long" : r.lane ?? "news"),
+        narrator:
+          r.narrator === "TX3LPaxmHKxFdv7VOQHJ"
+            ? "Liam"
+            : (r.narrator ?? undefined),
+        format:
+          r.script_json?.evergreen_format ??
+          (r.script_json?.runtime === "long" ? "long" : (r.lane ?? "news")),
         pct: Number(raw?.avgViewPercent ?? 0),
         subs: Number(raw?.subscribersGained ?? 0),
         views: Number(raw?.views ?? 0),
@@ -498,24 +523,63 @@ export function openingLine(
  * Advice for the editor and the writer, never a rule: the samples are small and the metric is a proxy.
  */
 export function formatLessons(
-  rows: Array<{ stay?: number; pct: number; hookWords?: number; footageShare?: number; format?: string; desk?: boolean; narrator?: string }>,
+  rows: Array<{
+    stay?: number;
+    pct: number;
+    hookWords?: number;
+    footageShare?: number;
+    format?: string;
+    desk?: boolean;
+    narrator?: string;
+  }>,
 ): string[] {
   const score = (r: (typeof rows)[number]) => r.stay ?? r.pct;
   const avg = (xs: typeof rows) =>
-    xs.length >= 3 ? { n: xs.length, v: xs.reduce((a, r) => a + score(r), 0) / xs.length } : undefined;
-  const line = (what: string, a: { n: number; v: number }, aName: string, b: { n: number; v: number }, bName: string) =>
+    xs.length >= 3
+      ? { n: xs.length, v: xs.reduce((a, r) => a + score(r), 0) / xs.length }
+      : undefined;
+  const line = (
+    what: string,
+    a: { n: number; v: number },
+    aName: string,
+    b: { n: number; v: number },
+    bName: string,
+  ) =>
     `${what}: ${aName} kept ${Math.round(a.v)}% (${a.n} Shorts), ${bName} ${Math.round(b.v)}% (${b.n} Shorts).`;
   const out: string[] = [];
-  const shortHook = avg(rows.filter((r) => r.hookWords !== undefined && r.hookWords <= 10));
-  const longHook = avg(rows.filter((r) => r.hookWords !== undefined && r.hookWords > 10));
-  if (shortHook && longHook) out.push(line("Hooks", shortHook, "ten words or fewer", longHook, "longer"));
-  const footage = avg(rows.filter((r) => r.footageShare !== undefined && r.footageShare >= 0.4));
-  const cards = avg(rows.filter((r) => r.footageShare !== undefined && r.footageShare < 0.4));
-  if (footage && cards) out.push(line("Picture", footage, "mostly moving footage", cards, "mostly stills and cards"));
+  const shortHook = avg(
+    rows.filter((r) => r.hookWords !== undefined && r.hookWords <= 10),
+  );
+  const longHook = avg(
+    rows.filter((r) => r.hookWords !== undefined && r.hookWords > 10),
+  );
+  if (shortHook && longHook)
+    out.push(
+      line("Hooks", shortHook, "ten words or fewer", longHook, "longer"),
+    );
+  const footage = avg(
+    rows.filter((r) => r.footageShare !== undefined && r.footageShare >= 0.4),
+  );
+  const cards = avg(
+    rows.filter((r) => r.footageShare !== undefined && r.footageShare < 0.4),
+  );
+  if (footage && cards)
+    out.push(
+      line(
+        "Picture",
+        footage,
+        "mostly moving footage",
+        cards,
+        "mostly stills and cards",
+      ),
+    );
   // The narrator test: the two narrators with the most Shorts, each against the other.
   const counts = new Map<string, number>();
-  for (const r of rows) if (r.narrator) counts.set(r.narrator, (counts.get(r.narrator) ?? 0) + 1);
-  const [n1, n2] = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
+  for (const r of rows)
+    if (r.narrator) counts.set(r.narrator, (counts.get(r.narrator) ?? 0) + 1);
+  const [n1, n2] = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([n]) => n);
   if (n1 && n2) {
     const a = avg(rows.filter((r) => r.narrator === n1));
     const b = avg(rows.filter((r) => r.narrator === n2));
@@ -523,12 +587,26 @@ export function formatLessons(
   }
   const withDesk = avg(rows.filter((r) => r.desk === true));
   const noDesk = avg(rows.filter((r) => r.desk === false));
-  if (withDesk && noDesk) out.push(line("Desk question before the take", withDesk, "with it", noDesk, "without"));
-  const formats = [...new Set(rows.map((r) => r.format).filter((f): f is string => !!f))];
+  if (withDesk && noDesk)
+    out.push(
+      line(
+        "Desk question before the take",
+        withDesk,
+        "with it",
+        noDesk,
+        "without",
+      ),
+    );
+  const formats = [
+    ...new Set(rows.map((r) => r.format).filter((f): f is string => !!f)),
+  ];
   for (const f of formats) {
     const mine = avg(rows.filter((r) => r.format === f));
     const rest = avg(rows.filter((r) => r.format !== f));
-    if (mine && rest && Math.abs(mine.v - rest.v) >= 5) out.push(line("Format", mine, f.replace(/_/g, " "), rest, "everything else"));
+    if (mine && rest && Math.abs(mine.v - rest.v) >= 5)
+      out.push(
+        line("Format", mine, f.replace(/_/g, " "), rest, "everything else"),
+      );
   }
   return out;
 }
@@ -551,9 +629,14 @@ export async function retentionNotes(db: Db, now: Date): Promise<string> {
 }
 
 /** For the writer: the opening lines that held viewers best, as patterns to learn from (never to copy). */
-export async function hookLessons(db: Db, now: Date): Promise<string> {
+export async function hookLessons(
+  db: Db,
+  now: Date,
+  segmentsOf?: (script: Script, desk: boolean) => SegmentInput[],
+): Promise<string> {
   const rows = (await retentionRows(db, now)).filter((r) => r.hook);
-  if (rows.length < 4) return "";
+  const drops = await dropLessons(db, now, segmentsOf).catch(() => "");
+  if (rows.length < 4) return drops;
   return [
     "Openings that held our viewers best (share who stayed to watch instead of swiping away). Learn the pattern, never reuse the words:",
     ...rows
@@ -564,7 +647,10 @@ export async function hookLessons(db: Db, now: Date): Promise<string> {
       .slice(-2)
       .map((r) => `- ${Math.round(r.stay ?? r.pct)}%: "${r.hook}"`),
     ...formatLessons(rows),
-  ].join("\n");
+    drops,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** The evening summary: what went live today, what is waiting on the owner, and the background news in one message. */
@@ -642,8 +728,9 @@ export async function summaryDue(
 type Curve = Array<{ at: number; watch: number; relative: number }>;
 
 /**
- * Long videos only: the full retention curve a week after going live (one Analytics request each), so the
- * long-form writer can learn which entries held viewers. Stored as a "curve" row.
+ * The full retention curve a week after going live (one Analytics request each): long videos for the
+ * long-form writer's entry lessons, Shorts for the news writer's "where viewers leave". Stored as a
+ * "curve" row. Five a tick, oldest first, so the backlog clears over a day or two.
  */
 export async function captureCurves(
   db: Db,
@@ -657,7 +744,7 @@ export async function captureCurves(
     live_at: string;
   }>(
     `SELECT e.id, e.youtube_video_id, ${LIVE_AT("e")} AS live_at FROM episodes e
-      WHERE e.status = 'published' AND e.lane = 'longform' AND e.youtube_video_id IS NOT NULL
+      WHERE e.status = 'published' AND e.lane <> 'twin' AND e.youtube_video_id IS NOT NULL
         AND ${LIVE_AT("e")} < $1::timestamptz - interval '7 days'
         AND ${LIVE_AT("e")} > $1::timestamptz - interval '60 days'
         AND NOT EXISTS (SELECT 1 FROM video_metrics m WHERE m.episode_id = e.id AND m.label = 'curve')
@@ -679,8 +766,130 @@ export async function captureCurves(
     );
     n++;
   }
-  if (n) log("info", "long-video retention curves captured", { videos: n });
+  if (n) log("info", "retention curves captured", { videos: n });
   return n;
+}
+
+/** The share of viewers watching at each segment's start who had left by its end, from a Short's curve. */
+export function segmentLosses(
+  curve: Curve,
+  segments: Array<{ start: number; end: number }>,
+  duration: number,
+): number[] {
+  return segments.map((g) => {
+    const a = watchAt(curve, g.start, duration);
+    const b = watchAt(curve, g.end, duration);
+    return a > 0 ? Math.max(0, (a - b) / a) : 0;
+  });
+}
+
+/** The part of a Short a segment belongs to, for the lessons: hook, first card, second card, later cards, desk, take, loop. */
+function partOf(kind: string, beat: number): string {
+  if (kind !== "beat") return kind;
+  return beat === 0 ? "first card" : beat === 1 ? "second card" : "later cards";
+}
+
+/**
+ * For the news writer: where viewers leave our Shorts (YouTube retention), part by part, and the exact
+ * lines that lost or held them. `segmentsOf` is the pipeline's segmentInputs (kept out of here to avoid
+ * an import cycle). Empty until a few Shorts have curves.
+ */
+export async function dropLessons(
+  db: Db,
+  now: Date,
+  segmentsOf?: (script: Script, desk: boolean) => SegmentInput[],
+): Promise<string> {
+  if (!segmentsOf) return "";
+  const rows = await db.query<{
+    id: string;
+    script_json: any;
+    assets_json: any;
+    raw: unknown;
+  }>(
+    `SELECT e.id, e.script_json, e.assets_json, m.raw FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
+      WHERE m.label = 'curve' AND e.lane NOT IN ('longform', 'twin') AND m.captured_at > $1::timestamptz - interval '90 days'`,
+    [now],
+  );
+  const byPart: Record<string, number[]> = {};
+  const moments: Array<{
+    loss: number;
+    perSecond: number;
+    text: string;
+    part: string;
+    headline: string;
+  }> = [];
+  const endWatch: number[] = [];
+  let shorts = 0;
+  for (const r of rows) {
+    const curve = (
+      typeof r.raw === "string" ? JSON.parse(r.raw) : r.raw
+    ) as Curve;
+    const script = r.script_json as Script | null;
+    const assets = r.assets_json ?? {};
+    const words = assets.words;
+    const duration = Number(assets.durationSeconds ?? 0);
+    if (
+      !script?.beats ||
+      !Array.isArray(words) ||
+      !words.length ||
+      !duration ||
+      curve.length < 20
+    )
+      continue;
+    let segments: ReturnType<typeof buildSegments>;
+    try {
+      segments = buildSegments(
+        segmentsOf(script, !!assets.desk),
+        words,
+        duration,
+      );
+    } catch {
+      continue;
+    }
+    const losses = segmentLosses(curve, segments, duration);
+    endWatch.push(watchAt(curve, Math.max(0, duration - 0.5), duration));
+    shorts++;
+    let beat = 0;
+    segments.forEach((g, k) => {
+      const part = partOf(g.kind, beat);
+      if (g.kind === "beat") beat++;
+      (byPart[part] ??= []).push(losses[k]!);
+      const secs = g.end - g.start;
+      if (secs >= 1.5)
+        moments.push({
+          loss: losses[k]!,
+          perSecond: losses[k]! / secs,
+          text: g.text.slice(0, 110),
+          part,
+          headline: script.headline,
+        });
+    });
+  }
+  if (shorts < 3 || !moments.length) return "";
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const order = [
+    "hook",
+    "first card",
+    "second card",
+    "later cards",
+    "desk",
+    "take",
+    "loop",
+  ];
+  const parts = order
+    .filter((p) => byPart[p]?.length)
+    .map((p) => `${p} ${pct(avg(byPart[p]!))}`);
+  moments.sort((a, b) => b.perSecond - a.perSecond);
+  const line = (m: (typeof moments)[number]) =>
+    `- lost ${pct(m.loss)} during the ${m.part} of "${m.headline}": "${m.text}"`;
+  return [
+    `Where viewers leave our Shorts (YouTube retention, ${shorts} Shorts; of those still watching as each part begins, the share gone by its end): ${parts.join(", ")}. Still watching at the end: ${pct(avg(endWatch))}.`,
+    "Lines that lost viewers fastest (learn what to avoid, never reuse the words):",
+    ...moments.slice(0, 3).map(line),
+    "Lines that held them:",
+    ...moments.slice(-3).reverse().map(line),
+  ].join("\n");
 }
 
 /** The share of viewers still watching at a point (seconds) of a video, from its curve. */

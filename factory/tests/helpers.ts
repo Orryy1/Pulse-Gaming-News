@@ -28,7 +28,10 @@ export async function tmpDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "pulse-test-"));
 }
 
-export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Config {
+export function testConfig(
+  dataDir: string,
+  overrides: Partial<Config> = {},
+): Config {
   return {
     port: 0,
     publicUrl: "https://factory.example",
@@ -39,7 +42,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     adminToken: "admin",
     anthropicModel: "test",
     claudeModelMid: "test",
-        claudeModelLow: "test",
+    claudeModelLow: "test",
     cutdownsEnabled: false,
     cutdownSlot: "15:30",
     gameplayEnabled: false,
@@ -177,6 +180,7 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
     publishWindowStartUtc: 0,
     publishWindowEndUtc: 24,
     visionQa: true,
+    localizeLanguages: [],
     whisperPython: "",
     backupDir: "",
     tiktokDaily: 0,
@@ -202,7 +206,13 @@ export function testConfig(dataDir: string, overrides: Partial<Config> = {}): Co
   };
 }
 
-export function item(title: string, source: string, kind: FeedItem["sourceKind"] = "outlet", minutesAgo = 30, now = new Date()): FeedItem {
+export function item(
+  title: string,
+  source: string,
+  kind: FeedItem["sourceKind"] = "outlet",
+  minutesAgo = 30,
+  now = new Date(),
+): FeedItem {
   return {
     title,
     url: `https://${source.toLowerCase().replace(/\W+/g, "")}.example/${encodeURIComponent(title.toLowerCase().replace(/\W+/g, "-"))}`,
@@ -222,25 +232,47 @@ export function goodScript(overrides: Partial<Script> = {}): Script {
     hook: "Starfield's second expansion has been delayed to early 2027.",
     beats: [
       {
-        narration: "Bethesda confirmed the move on Xbox Wire this morning and says the extra time will go on polish and performance across every platform.",
-        visual: { kind: "date", primary: "Early 2027", secondary: "new window" },
+        narration:
+          "Bethesda confirmed the move on Xbox Wire this morning and says the extra time will go on polish and performance across every platform.",
+        visual: {
+          kind: "date",
+          primary: "Early 2027",
+          secondary: "new window",
+        },
       },
       {
-        narration: "The expansion was previously due this December, so that is a slip of at least three months if you were waiting on it.",
-        visual: { kind: "stat", primary: "3+ months", secondary: "later than planned" },
+        narration:
+          "The expansion was previously due this December, so that is a slip of at least three months if you were waiting on it.",
+        visual: {
+          kind: "stat",
+          primary: "3+ months",
+          secondary: "later than planned",
+        },
       },
     ],
     pulse_take: {
       label: "WHAT IT MEANS",
-      narration: "For us, Bethesda has delayed big content before and it usually lands in better shape, so this is not a red flag yet.",
+      narration:
+        "For us, Bethesda has delayed big content before and it usually lands in better shape, so this is not a red flag yet.",
       on_screen: "Not a red flag yet",
     },
-    loop_line: "So if you're waiting, mark early 2027 for Starfield's second expansion.",
+    loop_line:
+      "So if you're waiting, mark early 2027 for Starfield's second expansion.",
     desk_question: "So is early 2027 a sign of trouble?",
     is_rumour: false,
     attribution: "Source: Xbox Wire / IGN",
-    youtube: { title: "Starfield Expansion Delayed To Early 2027", description: "Bethesda has moved the expansion. Sources: Xbox Wire and IGN.", tags: ["starfield", "bethesda"] },
-    claims: [{ claim: "Delayed to early 2027", source_url: "https://xboxwire.example/x" }],
+    youtube: {
+      title: "Starfield Expansion Delayed To Early 2027",
+      description:
+        "Bethesda has moved the expansion. Sources: Xbox Wire and IGN.",
+      tags: ["starfield", "bethesda"],
+    },
+    claims: [
+      {
+        claim: "Delayed to early 2027",
+        source_url: "https://xboxwire.example/x",
+      },
+    ],
     ...overrides,
   };
 }

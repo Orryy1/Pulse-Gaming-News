@@ -310,9 +310,29 @@ export function speakUnits(text: string): string {
 }
 
 export function speakable(text: string): string {
-  return speakNumbers(
-    speakYearsAndMoney(roundPrices(roundCounts(speakUnits(text)))),
+  return speakCadence(
+    speakNumbers(
+      speakYearsAndMoney(roundPrices(roundCounts(speakUnits(text)))),
+    ),
   );
+}
+
+/**
+ * Two things the voice phrased oddly on the Modern Warfare Short (Os_yeSFpGh0, 25 Oct 2026): a digit with
+ * an apostrophe ("Warfare 4's") got a half-second pause before it, so the number is spelled out and
+ * joined ("Warfare four's"); and a capitalised rank before a name ("fellow Marine Nick Eufrazio") was
+ * stressed like a title, so a rank that is not a proper name is said in lower case ("fellow marine").
+ */
+export function speakCadence(text: string): string {
+  return text
+    .replace(
+      /\b(\d{1,2})(['’])s\b/g,
+      (_m, n: string, q: string) => `${numberWords(Number(n))}${q}s`,
+    )
+    .replace(
+      /(?<=[a-z,]\s)(Marine|Marines|Soldier|Soldiers|Sailor|Sailors|Airman|Airmen|Veteran|Veterans)\b(?!\s+Corps)/g,
+      (m) => m.toLowerCase(),
+    );
 }
 
 /**

@@ -5,13 +5,21 @@
 import type { Db } from "./db.ts";
 import type { StoryCluster } from "./discovery/cluster.ts";
 
-export type Lane = "news" | "news_breaking" | "evergreen" | "longform" | "free" | "cutdown" | "gameplay" | "twin";
+export type Lane =
+  | "news"
+  | "news_breaking"
+  | "evergreen"
+  | "longform"
+  | "free"
+  | "cutdown"
+  | "gameplay"
+  | "twin";
 export const LANE_PRIORITY: Record<Lane, number> = {
   news_breaking: 100,
   news: 50,
   free: 40,
   evergreen: 30,
-    longform: 20,
+  longform: 20,
   cutdown: 25,
   gameplay: 35,
   twin: 15,
@@ -27,6 +35,7 @@ export const QUOTA = {
   poll: 1,
   marker: 3,
   comment: 50,
+  localize: 50, // videos.update with titles and descriptions in other languages
   search: 1, // channels.list beside an official-trailer search (the search.list call has its own bucket)
 } as const;
 // Shared units kept back for each Short still to go out today: its pinned comment and checks.
@@ -36,7 +45,11 @@ export const QUOTA_RESERVE_FOR_UPLOAD = QUOTA.comment + 20;
 export type QuotaBucket = "upload" | "search";
 
 /** Counts one call against a per-method bucket. */
-export async function quotaCall(db: Db, now: Date, bucket: QuotaBucket): Promise<void> {
+export async function quotaCall(
+  db: Db,
+  now: Date,
+  bucket: QuotaBucket,
+): Promise<void> {
   await db.query(
     `INSERT INTO quota_ledger (day, units) VALUES ($1, 1)
      ON CONFLICT (day) DO UPDATE SET units = quota_ledger.units + 1, updated_at = now()`,
@@ -45,10 +58,15 @@ export async function quotaCall(db: Db, now: Date, bucket: QuotaBucket): Promise
 }
 
 /** Calls made against a per-method bucket this Pacific day. */
-export async function quotaCalls(db: Db, now: Date, bucket: QuotaBucket): Promise<number> {
-  const [row] = await db.query<{ units: number | string }>(`SELECT units FROM quota_ledger WHERE day = $1`, [
-    `${dayKey(now, PACIFIC)}:${bucket}`,
-  ]);
+export async function quotaCalls(
+  db: Db,
+  now: Date,
+  bucket: QuotaBucket,
+): Promise<number> {
+  const [row] = await db.query<{ units: number | string }>(
+    `SELECT units FROM quota_ledger WHERE day = $1`,
+    [`${dayKey(now, PACIFIC)}:${bucket}`],
+  );
   return Number(row?.units ?? 0);
 }
 
@@ -184,7 +202,10 @@ const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 /** Local weekday name ("mon".."sun") of an instant. */
 export function weekday(now: Date, timeZone: string): string {
-  const d = new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short" }).format(now).toLowerCase().slice(0, 3);
+  const d = new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short" })
+    .format(now)
+    .toLowerCase()
+    .slice(0, 3);
   return DAYS.includes(d) ? d : "mon";
 }
 
@@ -193,12 +214,23 @@ export function weekday(now: Date, timeZone: string): string {
  * slot's lead time has begun, it is not missed by more than the grace, and
  * no evergreen episode already claims it.
  */
-export function evergreenDue(now: Date, plan: { days: string[]; slot: string; leadMinutes: number; graceMinutes: number; timeZone: string }, taken: Date[]): Date | undefined {
+export function evergreenDue(
+  now: Date,
+  plan: {
+    days: string[];
+    slot: string;
+    leadMinutes: number;
+    graceMinutes: number;
+    timeZone: string;
+  },
+  taken: Date[],
+): Date | undefined {
   if (!plan.days.includes(weekday(now, plan.timeZone))) return undefined;
   const slot = localTime(dayKey(now, plan.timeZone), plan.slot, plan.timeZone);
   if (taken.some((t) => t.getTime() === slot.getTime())) return undefined;
   const ms = slot.getTime() - now.getTime();
-  if (ms > plan.leadMinutes * 60_000 || ms < -plan.graceMinutes * 60_000) return undefined;
+  if (ms > plan.leadMinutes * 60_000 || ms < -plan.graceMinutes * 60_000)
+    return undefined;
   return slot;
 }
 
@@ -292,12 +324,20 @@ export const SHOWCASE =
 
 /** The showcase running now, when at least two fresh stories (first seen in the last three hours) come from it. */
 export function showcaseLive(
-  sightings: Array<{ cluster: StoryCluster; sighting?: { first_seen: string } }>,
+  sightings: Array<{
+    cluster: StoryCluster;
+    sighting?: { first_seen: string };
+  }>,
   now: Date,
 ): string | undefined {
   const fresh = sightings.filter((x) => {
-    const seen = new Date(x.sighting?.first_seen ?? x.cluster.newestAt).getTime();
-    return now.getTime() - seen <= 3 * 3600_000 && SHOWCASE.test(storyText(x.cluster));
+    const seen = new Date(
+      x.sighting?.first_seen ?? x.cluster.newestAt,
+    ).getTime();
+    return (
+      now.getTime() - seen <= 3 * 3600_000 &&
+      SHOWCASE.test(storyText(x.cluster))
+    );
   });
   if (fresh.length < 2) return undefined;
   const counts = new Map<string, number>();
@@ -310,13 +350,22 @@ export function showcaseLive(
 
 /** A story's headline and first summaries: where a showcase is named. */
 export function storyText(c: StoryCluster): string {
-  return [c.headline, ...c.items.slice(0, 3).map((i) => `${i.title ?? ""} ${i.summary ?? ""}`)].join(" ");
+  return [
+    c.headline,
+    ...c.items.slice(0, 3).map((i) => `${i.title ?? ""} ${i.summary ?? ""}`),
+  ].join(" ");
 }
 
 /** Scheduled publish times still to come today (local "HH:MM" slots), so a sprint never spends their quota. */
-export function slotsLeftToday(now: Date, slots: string[], timeZone: string): number {
+export function slotsLeftToday(
+  now: Date,
+  slots: string[],
+  timeZone: string,
+): number {
   const today = dayKey(now, timeZone);
-  return slots.filter((s) => localTime(today, s, timeZone).getTime() > now.getTime()).length;
+  return slots.filter(
+    (s) => localTime(today, s, timeZone).getTime() > now.getTime(),
+  ).length;
 }
 
 // ------------------------------------------------------------------------ quota
@@ -349,7 +398,10 @@ export function quotaResetAt(now: Date): Date {
 }
 
 /** Last publish instant across lanes: the later of a scheduled publish_at and a published row's update. */
-export async function lastPublishAt(db: Db, twin = false): Promise<Date | undefined> {
+export async function lastPublishAt(
+  db: Db,
+  twin = false,
+): Promise<Date | undefined> {
   // The twin channel has its own clock: its uploads neither wait for nor hold up the main channel's.
   const [row] = await db.query<{ t: string | null }>(
     `SELECT max(greatest(coalesce(publish_at, updated_at), updated_at)) AS t FROM episodes
@@ -367,7 +419,9 @@ export async function lastPublishAt(db: Db, twin = false): Promise<Date | undefi
  * database so it survives a restart and a quota reset.
  */
 export async function publishHeld(db: Db): Promise<boolean> {
-  const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = 'publish_hold'`);
+  const [row] = await db.query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = 'publish_hold'`,
+  );
   return row?.value === "on";
 }
 
@@ -383,7 +437,10 @@ export async function setPublishHold(db: Db, on: boolean): Promise<void> {
  * How late (hours past its planned time) a Short may still go out on its own. News and deals go stale;
  * a later one comes back to the owner instead. Undefined: it never goes stale (rankings, explainers).
  */
-export function staleAfterHours(lane: string, evergreenFormat?: string): number | undefined {
+export function staleAfterHours(
+  lane: string,
+  evergreenFormat?: string,
+): number | undefined {
   if (lane === "news_breaking") return 8;
   if (lane === "news") return 18;
   if (lane === "free") return 48;

@@ -18,7 +18,8 @@ function int(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
   const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n)) throw new Error(`${name} must be an integer, got "${raw}"`);
+  if (!Number.isFinite(n))
+    throw new Error(`${name} must be an integer, got "${raw}"`);
   return n;
 }
 
@@ -34,12 +35,34 @@ export type PrivacyStatus = "public" | "unlisted" | "private";
 // ElevenLabs if the local server is down and the plan has credits for the script.
 // elevenlabs-first: spend the credits already paid for on the real ElevenLabs voice
 // while the month's balance covers the script, never beyond it, then the local clone.
-export type VoiceProvider = "local" | "elevenlabs" | "auto" | "elevenlabs-first";
-export const VOICE_PROVIDERS: VoiceProvider[] = ["local", "elevenlabs", "auto", "elevenlabs-first"];
+export type VoiceProvider =
+  | "local"
+  | "elevenlabs"
+  | "auto"
+  | "elevenlabs-first";
+export const VOICE_PROVIDERS: VoiceProvider[] = [
+  "local",
+  "elevenlabs",
+  "auto",
+  "elevenlabs-first",
+];
 // Chromium GL backend for Remotion. "angle" uses the GPU (5x faster on the
 // production PC, pixel-identical output); "swangle" is the software fallback.
-export type RemotionGl = "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
-const REMOTION_GLS: RemotionGl[] = ["swangle", "angle", "egl", "swiftshader", "vulkan", "angle-egl"];
+export type RemotionGl =
+  | "swangle"
+  | "angle"
+  | "egl"
+  | "swiftshader"
+  | "vulkan"
+  | "angle-egl";
+const REMOTION_GLS: RemotionGl[] = [
+  "swangle",
+  "angle",
+  "egl",
+  "swiftshader",
+  "vulkan",
+  "angle-egl",
+];
 
 export interface Config {
   port: number;
@@ -125,7 +148,7 @@ export interface Config {
   evergreenApprovalMode: ApprovalMode;
   evergreenApprovalMinutes: number;
   evergreenMaxSeconds: number; // narration cap for the lane
-    longformEnabled: boolean; // weekly 16:9 ranking video
+  longformEnabled: boolean; // weekly 16:9 ranking video
   cutdownsEnabled: boolean; // Shorts cut from each long ranking
   cutdownSlot: string; // local publish time for them, one a day
   cutdownsPerLong: number;
@@ -168,8 +191,18 @@ export interface Config {
   docLeadMinutes: number; // how long before the slot production starts
   docMaxSeconds: number;
   docClipsPerChapter: number;
-  crosspost: { facebook: boolean; instagram: boolean; tiktok: boolean; x: boolean }; // which platforms get every public Short
-  crosspostDelays: { facebook: number; instagram: number; tiktok: number; x: number }; // minutes after the YouTube publish
+  crosspost: {
+    facebook: boolean;
+    instagram: boolean;
+    tiktok: boolean;
+    x: boolean;
+  }; // which platforms get every public Short
+  crosspostDelays: {
+    facebook: number;
+    instagram: number;
+    tiktok: number;
+    x: number;
+  }; // minutes after the YouTube publish
   crosspostWindowHours: number; // how far back a Short is still worth posting
   /** TikTok gets only the day's strongest Shorts (by YouTube views per hour), this many a day; 0 = every Short. */
   tiktokDaily: number;
@@ -187,7 +220,12 @@ export interface Config {
   tiktokBrowser: boolean; // post publicly through the signed-in Chrome profile (off: drafts go to the owner's TikTok inbox)
   twitchClientId: string; // IGDB pictures for games Steam cannot supply
   twitchClientSecret: string;
-  xKeys: { consumerKey: string; consumerSecret: string; token: string; tokenSecret: string };
+  xKeys: {
+    consumerKey: string;
+    consumerSecret: string;
+    token: string;
+    tokenSecret: string;
+  };
   selectFromHourUtc: number;
   minGapHours: number;
   tickMinutes: number;
@@ -199,6 +237,8 @@ export interface Config {
   publishWindowStartUtc: number;
   publishWindowEndUtc: number;
   visionQa: boolean;
+  /** Languages each video's title and description are also set in on YouTube (empty switches it off). */
+  localizeLanguages: string[];
   /** Python with faster-whisper (PC) or MLX Whisper (Mac) for the narration check; empty switches it off. */
   whisperPython: string;
   /** Where nightly encrypted restore points go: a folder synced off the PC (the owner's Google Drive). */
@@ -212,7 +252,14 @@ export interface Config {
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
   amazonUkTag: string; // Amazon Associates UK tracking ID
   amazonUsTag: string; // Amazon Associates US tracking ID, when there is one
-  amazonMoreTags: { ca?: string; de?: string; fr?: string; it?: string; es?: string; au?: string }; // other national stores
+  amazonMoreTags: {
+    ca?: string;
+    de?: string;
+    fr?: string;
+    it?: string;
+    es?: string;
+    au?: string;
+  }; // other national stores
   youtubeChannelId: string; // the only channel the factory may connect to
   /** The twin channel: every Short re-voiced in this language and uploaded to a second channel; "" = off. */
   twinLanguage: string;
@@ -230,21 +277,35 @@ export interface Config {
 export function loadConfig(): Config {
   const approvalMode = str("APPROVAL_MODE", "timeout") as ApprovalMode;
   if (!["manual", "timeout", "auto"].includes(approvalMode)) {
-    throw new Error(`APPROVAL_MODE must be manual, timeout or auto, got "${approvalMode}"`);
+    throw new Error(
+      `APPROVAL_MODE must be manual, timeout or auto, got "${approvalMode}"`,
+    );
   }
-  if (!VOICE_PROVIDERS.includes(str("VOICE_PROVIDER", "auto") as VoiceProvider)) {
-    throw new Error(`VOICE_PROVIDER must be one of ${VOICE_PROVIDERS.join(", ")}`);
+  if (
+    !VOICE_PROVIDERS.includes(str("VOICE_PROVIDER", "auto") as VoiceProvider)
+  ) {
+    throw new Error(
+      `VOICE_PROVIDER must be one of ${VOICE_PROVIDERS.join(", ")}`,
+    );
   }
   const youtubePrivacy = str("YOUTUBE_PRIVACY", "public") as PrivacyStatus;
   if (!["public", "unlisted", "private"].includes(youtubePrivacy)) {
-    throw new Error(`YOUTUBE_PRIVACY must be public, unlisted or private, got "${youtubePrivacy}"`);
+    throw new Error(
+      `YOUTUBE_PRIVACY must be public, unlisted or private, got "${youtubePrivacy}"`,
+    );
   }
   const remotionGl = str("REMOTION_GL", "swangle") as RemotionGl;
-  if (!REMOTION_GLS.includes(remotionGl)) throw new Error(`REMOTION_GL must be one of ${REMOTION_GLS.join(", ")}, got "${remotionGl}"`);
+  if (!REMOTION_GLS.includes(remotionGl))
+    throw new Error(
+      `REMOTION_GL must be one of ${REMOTION_GLS.join(", ")}, got "${remotionGl}"`,
+    );
   const railwayDomain = str("RAILWAY_PUBLIC_DOMAIN");
   const cfg: Config = {
     port: int("PORT", 8080),
-    publicUrl: str("PUBLIC_URL", railwayDomain ? `https://${railwayDomain}` : "http://localhost:8080").replace(/\/$/, ""),
+    publicUrl: str(
+      "PUBLIC_URL",
+      railwayDomain ? `https://${railwayDomain}` : "http://localhost:8080",
+    ).replace(/\/$/, ""),
     siteUrl: str("SITE_URL").replace(/\/$/, ""),
     dataDir: path.resolve(str("DATA_DIR", "./data")),
     databaseUrl: str("DATABASE_URL"),
@@ -255,7 +316,10 @@ export function loadConfig(): Config {
     claudeModelMid: str("CLAUDE_MODEL_MID", "claude-sonnet-5-5"),
     claudeModelLow: str("CLAUDE_MODEL_LOW", "claude-haiku-5-5"),
     voiceProvider: str("VOICE_PROVIDER", "auto") as VoiceProvider,
-    localTtsUrl: str("LOCAL_TTS_URL", "http://127.0.0.1:8765").replace(/\/$/, ""),
+    localTtsUrl: str("LOCAL_TTS_URL", "http://127.0.0.1:8765").replace(
+      /\/$/,
+      "",
+    ),
     localVoiceId: str("LOCAL_TTS_VOICE_ID", "TX3LPaxmHKxFdv7VOQHJ"),
     localSpeakingRate: Number(str("LOCAL_TTS_SPEAKING_RATE", "1.0")),
     localTtsStart: str("LOCAL_TTS_START"),
@@ -279,14 +343,21 @@ export function loadConfig(): Config {
 
     legacyTokenDir: str("PULSE_TOKEN_DIR"),
     googleClientId: str("GOOGLE_CLIENT_ID", str("YOUTUBE_CLIENT_ID")),
-    googleClientSecret: str("GOOGLE_CLIENT_SECRET", str("YOUTUBE_CLIENT_SECRET")),
+    googleClientSecret: str(
+      "GOOGLE_CLIENT_SECRET",
+      str("YOUTUBE_CLIENT_SECRET"),
+    ),
     youtubeRefreshToken: str("YOUTUBE_REFRESH_TOKEN"),
     youtubePrivacy,
     youtubeVetoMinutes: int("YOUTUBE_VETO_MINUTES", 0),
 
     dailyTarget: int("SHORTS_PER_DAY", int("DAILY_TARGET", 3)),
     timezone: str("TIMEZONE", "Europe/London"),
-    newsSlots: str("NEWS_SLOTS", "13:00,17:00,22:00").split(",").map((t) => t.trim()).filter((t) => /^\d\d:\d\d$/.test(t)).sort(),
+    newsSlots: str("NEWS_SLOTS", "13:00,17:00,22:00")
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => /^\d\d:\d\d$/.test(t))
+      .sort(),
     slotLeadMinutes: int("SLOT_LEAD_MINUTES", 75),
     slotGraceMinutes: int("SLOT_GRACE_MINUTES", 30),
     maxProducing: int("MAX_PRODUCING", 2),
@@ -305,7 +376,11 @@ export function loadConfig(): Config {
     uploadCallsPerDay: int("UPLOAD_CALLS_PER_DAY", 100),
     searchCallsPerDay: int("SEARCH_CALLS_PER_DAY", 100),
     evergreenEnabled: bool("EVERGREEN_ENABLED", true),
-    evergreenDays: str("EVERGREEN_DAYS", "tue,sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    evergreenDays: str("EVERGREEN_DAYS", "tue,sat")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
     evergreenSlot: str("EVERGREEN_SLOT", "20:00"),
     focusTopic: str("FOCUS_TOPIC", ""),
     focusUntil: str("FOCUS_UNTIL", ""),
@@ -316,47 +391,107 @@ export function loadConfig(): Config {
     deskShare: Math.max(0, Math.min(1, Number(str("DESK_SHARE", "0.5")))),
     narratorTestVoiceId: str("NARRATOR_TEST_VOICE_ID", ""),
     narratorTestVoiceName: str("NARRATOR_TEST_VOICE_NAME", "Alice"),
-    narratorTestShare: Math.max(0, Math.min(1, Number(str("NARRATOR_TEST_SHARE", "0.5")))),
+    narratorTestShare: Math.max(
+      0,
+      Math.min(1, Number(str("NARRATOR_TEST_SHARE", "0.5"))),
+    ),
     narratorName: str("NARRATOR_NAME", "Liam"),
     focusMatch: str("FOCUS_MATCH", ""),
     focusPlaylist: str("FOCUS_PLAYLIST", ""),
     waveFrom: str("LAUNCH_WAVE_FROM", ""),
     waveTo: str("LAUNCH_WAVE_TO", ""),
     whyEnabled: bool("WHY_ENABLED", true),
-    whyDays: str("WHY_DAYS", "mon,tue,wed,thu,fri,sat,sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    whyDays: str("WHY_DAYS", "mon,tue,wed,thu,fri,sat,sun")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
     whySlot: str("WHY_SLOT", "18:30"),
     // Off: with uploads on their own bucket of 100 a day there is no use-it-or-lose-it quota to spend.
     spareUploads: bool("SPARE_UPLOADS", false),
-    spareSlots: str("SPARE_SLOTS", "19:00,15:00,11:00").split(",").map((x) => x.trim()).filter(Boolean),
-    evergreenApprovalMode: str("EVERGREEN_APPROVAL_MODE", "manual") as ApprovalMode,
+    spareSlots: str("SPARE_SLOTS", "19:00,15:00,11:00")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+    evergreenApprovalMode: str(
+      "EVERGREEN_APPROVAL_MODE",
+      "manual",
+    ) as ApprovalMode,
     evergreenApprovalMinutes: int("EVERGREEN_APPROVAL_MINUTES", 120),
     evergreenMaxSeconds: int("EVERGREEN_MAX_SECONDS", 95),
-        longformEnabled: bool("LONGFORM_ENABLED", true),
+    longformEnabled: bool("LONGFORM_ENABLED", true),
     cutdownsEnabled: bool("CUTDOWNS_ENABLED", false), // on once a sandbox run has been checked
     cutdownSlot: str("CUTDOWN_SLOT", "15:30"),
     cutdownsPerLong: int("CUTDOWNS_PER_LONG", 3),
     gameplayEnabled: bool("GAMEPLAY_ENABLED", true),
-    gameplayRoot: str("GAMEPLAY_ROOT", path.join(os.homedir(), "Videos", "Pulse Gameplay")),
-    gameplayExperiments: str("GAMEPLAY_EXPERIMENTS", path.join(os.homedir(), "gaming-studio", "pulse-gaming", "docs", "GTA6_EXPERIMENT_SHORTS.md")),
+    gameplayRoot: str(
+      "GAMEPLAY_ROOT",
+      path.join(os.homedir(), "Videos", "Pulse Gameplay"),
+    ),
+    gameplayExperiments: str(
+      "GAMEPLAY_EXPERIMENTS",
+      path.join(
+        os.homedir(),
+        "gaming-studio",
+        "pulse-gaming",
+        "docs",
+        "GTA6_EXPERIMENT_SHORTS.md",
+      ),
+    ),
     // US evening (16:00 and 18:30 Eastern), clear of the news, deals, evergreen and long-form slots.
-    gameplaySlots: str("GAMEPLAY_SLOTS", "21:00,23:30").split(",").map((t) => t.trim()).filter((t) => /^\d\d:\d\d$/.test(t)).sort(),
+    gameplaySlots: str("GAMEPLAY_SLOTS", "21:00,23:30")
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => /^\d\d:\d\d$/.test(t))
+      .sort(),
     gameplayReviewsPerDay: int("GAMEPLAY_REVIEWS_PER_DAY", 30),
     gameplayMinScore: int("GAMEPLAY_MIN_SCORE", 7),
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),
     weeklyEnabled: bool("WEEKLY_ENABLED", true),
-    radarDays: str("RADAR_DAYS", "mon").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
-    freeDays: str("FREE_DAYS", "thu").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    radarDays: str("RADAR_DAYS", "mon")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
+    freeDays: str("FREE_DAYS", "thu")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
     recapLong: bool("RECAP_LONG", false), // on once a sandbox run has been checked
-    recapDays: str("RECAP_DAYS", "fri").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
-    climbersDays: str("CLIMBERS_DAYS", "sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
-    dealsDays: str("DEALS_DAYS", "").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    recapDays: str("RECAP_DAYS", "fri")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
+    climbersDays: str("CLIMBERS_DAYS", "sun")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
+    dealsDays: str("DEALS_DAYS", "")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
     dealsSlot: str("DEALS_SLOT", "16:30"),
-    achievementDays: str("ACHIEVEMENT_DAYS", "wed").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    achievementDays: str("ACHIEVEMENT_DAYS", "wed")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
     weeklySlot: str("WEEKLY_SLOT", "20:00"),
-    longformDays: str("LONGFORM_DAYS", "sun").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    longformDays: str("LONGFORM_DAYS", "sun")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
     longformSlot: str("LONGFORM_SLOT", "19:00"),
-    longformSkip: str("LONGFORM_SKIP", "").split(",").map((d) => d.trim()).filter(Boolean),
+    longformSkip: str("LONGFORM_SKIP", "")
+      .split(",")
+      .map((d) => d.trim())
+      .filter(Boolean),
     longformApprovalMode: str("LONGFORM_APPROVAL_MODE", "auto") as ApprovalMode,
     longformApprovalMinutes: int("LONGFORM_APPROVAL_MINUTES", 180),
     longformMaxSeconds: int("LONGFORM_MAX_SECONDS", 1560), // 3,200 words at a natural pace, with room
@@ -364,12 +499,23 @@ export function loadConfig(): Config {
     docEnabled: bool("DOC_ENABLED", true),
     elevenLabsMonthlyCredits: int("ELEVENLABS_MONTHLY_CREDITS", 500_000),
     elevenLabsReserve: int("ELEVENLABS_RESERVE", 10_000),
-    surplusDocDays: str("SURPLUS_DOC_DAYS", "tue,thu,sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    surplusDocDays: str("SURPLUS_DOC_DAYS", "tue,thu,sat")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
     surplusDocChars: int("SURPLUS_DOC_CHARS", 35_000),
     bankWindow: str("BANK_WINDOW", "23:45-03:00"),
-    docDays: str("DOC_DAYS", "sat").toLowerCase().split(",").map((d) => d.trim().slice(0, 3)).filter(Boolean),
+    docDays: str("DOC_DAYS", "sat")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
     docSlot: str("DOC_SLOT", "19:00"),
-    docWeeks: str("DOC_WEEKS", "1").split(",").map((w) => Number(w.trim())).filter((w) => w >= 1 && w <= 5),
+    docWeeks: str("DOC_WEEKS", "1")
+      .split(",")
+      .map((w) => Number(w.trim()))
+      .filter((w) => w >= 1 && w <= 5),
     docLeadMinutes: int("DOC_LEAD_MINUTES", 600),
     docMaxSeconds: int("DOC_MAX_SECONDS", 3000),
     docClipsPerChapter: int("DOC_CLIPS_PER_CHAPTER", 4),
@@ -419,14 +565,23 @@ export function loadConfig(): Config {
     publishWindowStartUtc: int("PUBLISH_WINDOW_START_UTC", 7),
     publishWindowEndUtc: int("PUBLISH_WINDOW_END_UTC", 22),
     visionQa: bool("VISION_QA", true),
+    localizeLanguages: str("LOCALIZE_LANGUAGES", "es,pt,de,fr,ja")
+      .split(",")
+      .map((l) => l.trim())
+      .filter(Boolean),
     whisperPython: str("WHISPER_PYTHON", defaultWhisperPython()),
     backupDir: str("BACKUP_DIR", "G:/My Drive/Pulse backups"),
     footage: bool("TRAILER_FOOTAGE", true),
     maxClips: int("MAX_TRAILER_CLIPS", 8), // enough for the hook, four beats, the take and the loop
-    clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as "llm" | "rule",
+    clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as
+      | "llm"
+      | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
     ytdlpPath: str("YTDLP_PATH", "yt-dlp"),
-    footageLibrary: str("FOOTAGE_LIBRARY", path.join(process.env.USERPROFILE ?? "", "Videos")),
+    footageLibrary: str(
+      "FOOTAGE_LIBRARY",
+      path.join(process.env.USERPROFILE ?? "", "Videos"),
+    ),
     pexelsApiKey: str("PEXELS_API_KEY"),
     amazonUkTag: str("AMAZON_AFFILIATE_TAG"),
     amazonUsTag: str("AMAZON_US_TAG"),
@@ -438,7 +593,10 @@ export function loadConfig(): Config {
       es: str("AMAZON_ES_TAG") || undefined,
       au: str("AMAZON_AU_TAG") || undefined,
     },
-    oauthRedirectUri: str("OAUTH_REDIRECT_URI", "http://localhost:8080/oauth/callback"),
+    oauthRedirectUri: str(
+      "OAUTH_REDIRECT_URI",
+      "http://localhost:8080/oauth/callback",
+    ),
     youtubeChannelId: str("YOUTUBE_CHANNEL_ID", "UCvgNDjtTezrpxL8oUe6mYwA"),
     twinLanguage: str("TWIN_LANGUAGE", "").toLowerCase().slice(0, 2),
     twinChannelId: str("TWIN_YOUTUBE_CHANNEL_ID", ""),
@@ -462,7 +620,9 @@ export function loadConfig(): Config {
 export function adoptLegacyYouTubeTokens(cfg: Config): void {
   const read = (f: string): any => {
     try {
-      return JSON.parse(fs.readFileSync(path.join(cfg.legacyTokenDir, f), "utf8"));
+      return JSON.parse(
+        fs.readFileSync(path.join(cfg.legacyTokenDir, f), "utf8"),
+      );
     } catch {
       return undefined;
     }
@@ -474,7 +634,10 @@ export function adoptLegacyYouTubeTokens(cfg: Config): void {
     cfg.googleClientSecret = client.client_secret ?? "";
   }
   const token = read("youtube_token.json");
-  const refresh = token?.refresh_token ?? token?.credentials?.refresh_token ?? token?.tokens?.refresh_token;
+  const refresh =
+    token?.refresh_token ??
+    token?.credentials?.refresh_token ??
+    token?.tokens?.refresh_token;
   if (refresh && !cfg.youtubeRefreshToken) cfg.youtubeRefreshToken = refresh;
 }
 
@@ -494,7 +657,9 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     youtubePrivacy: c.youtubePrivacy,
     dailyTarget: c.dailyTarget,
     newsSlots: c.newsSlots.join(","),
-    breaking: c.breakingEnabled ? `${c.breakingPerDay}/day, score>=${c.breakingScoreMin}, <=${c.breakingMaxAgeMinutes}min old` : "off",
+    breaking: c.breakingEnabled
+      ? `${c.breakingPerDay}/day, score>=${c.breakingScoreMin}, <=${c.breakingMaxAgeMinutes}min old`
+      : "off",
     approvalMode: c.approvalMode,
     approvalTimeoutMinutes: c.approvalTimeoutMinutes,
     includeRumours: c.includeRumours,

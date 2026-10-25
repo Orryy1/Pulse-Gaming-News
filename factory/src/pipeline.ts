@@ -102,6 +102,7 @@ import {
   validateScript,
 } from "./editorial/editorial.ts";
 import { narrationOf, tidyLoopLine, type Script } from "./editorial/schema.ts";
+import { translateMetadata } from "./editorial/localize.ts";
 import type { Deal } from "./discovery/deals.ts";
 import { trendingBlock } from "./discovery/demand.ts";
 import { screenFrames } from "./assets/localvision.ts";
@@ -3447,7 +3448,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const recent = await recentShapes(s.db, ep.id).catch(() => undefined);
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
-      lessons: await hookLessons(s.db, s.now()).catch(() => ""),
+      lessons: await hookLessons(s.db, s.now(), segmentInputs).catch(() => ""),
       mustLabelRumour,
       feedback,
       storeData,
@@ -3641,7 +3642,15 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       drift: check.drift,
       matched: Math.round(check.matched * 1000) / 1000,
       issues: check.issues.slice(0, 10),
+      pauses: check.pauses.slice(0, 10),
     });
+    if (check.pauses.length)
+      log("warn", "mid-sentence pauses in the narration", {
+        episode: ep.id,
+        pauses: check.pauses
+          .slice(0, 5)
+          .map((p) => `${p.seconds}s between "${p.before}" and "${p.after}"`),
+      });
     if (!check.ok) {
       const [prior] = await s.db.query<{ n: string | number }>(
         `SELECT count(*) AS n FROM events WHERE episode_id = $1 AND kind = 'narration_check' AND detail->>'ok' = 'false'`,
@@ -6250,6 +6259,7 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
       youtube_video_id: videoId,
     });
     await logEvent(s.db, ep.id, "uploaded", { videoId });
+    await localizeMetadata(s, ep, videoId, yt);
   } catch (err) {
     if (err instanceof SessionGone) {
       await s.db.query(
@@ -6258,6 +6268,44 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
       );
     }
     throw err;
+  }
+}
+
+/**
+ * The title and description in the channel's other languages (LOCALIZE_LANGUAGES): one small model call
+ * and one 50-unit videos.update, right after the upload. YouTube shows the matching pair to viewers whose
+ * interface is in that language and indexes the video for their searches. Never blocks the upload.
+ */
+async function localizeMetadata(
+  s: Services,
+  ep: Episode,
+  videoId: string,
+  yt: ReturnType<Services["youtube"]>,
+): Promise<void> {
+  const langs = s.cfg.localizeLanguages.filter((l) => l.toLowerCase() !== "en");
+  if (!langs.length || ep.lane === "twin") return;
+  try {
+    const meta = videoMetadata(
+      ep,
+      s.cfg.youtubePrivacy,
+      s.cfg.syntheticMedia,
+      affiliateTags(s.cfg, ep.id),
+    );
+    const loc = await translateMetadata(
+      s.llm,
+      { title: meta.title, description: meta.description },
+      langs,
+    );
+    const done = Object.keys(loc);
+    if (!done.length) return;
+    await yt.setLocalizations(videoId, loc);
+    await quotaAdd(s.db, s.now(), QUOTA.localize);
+    await logEvent(s.db, ep.id, "localized", { languages: done });
+  } catch (err) {
+    log("warn", "localisation skipped", {
+      episode: ep.id,
+      error: errorMessage(err),
+    });
   }
 }
 

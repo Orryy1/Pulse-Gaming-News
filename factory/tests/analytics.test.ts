@@ -194,3 +194,17 @@ test("long videos: entry holds from a retention curve, and lessons for the write
   // Captured once.
   assert.equal(await captureCurves(db, { retention: async () => new Map(), retentionCurve: async () => curve }, now), 0);
 });
+
+test("segment losses read the share of viewers lost during each part of a Short", async () => {
+  const { segmentLosses, dropLessons } = await import("../src/analytics.ts");
+  // A curve that holds through the hook, loses a third during the first card and holds after.
+  const curve = Array.from({ length: 101 }, (_, i) => ({ at: i / 100, watch: i < 20 ? 1 : i < 40 ? 1 - ((i - 20) / 20) * 0.33 : 0.67, relative: 1 }));
+  const segs = [{ start: 0, end: 6 }, { start: 6, end: 12 }, { start: 12, end: 30 }];
+  const l = segmentLosses(curve, segs, 30);
+  assert.ok(l[0]! < 0.02, "hook held");
+  assert.ok(l[1]! > 0.3 && l[1]! < 0.36, "first card lost a third");
+  assert.ok(l[2]! < 0.02, "the rest held");
+  const db = await testDb();
+  assert.equal(await dropLessons(db, new Date(), () => []), "", "nothing until Shorts have curves");
+  await db.close();
+});

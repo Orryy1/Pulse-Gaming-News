@@ -583,6 +583,22 @@ export class YouTubeClient {
     };
   }
 
+  /**
+   * Sets a video's title and description in other languages (videos.update with the localizations part,
+   * 50 units). YouTube shows the matching one to viewers whose interface is in that language.
+   */
+  async setLocalizations(
+    videoId: string,
+    localizations: Record<string, { title: string; description: string }>,
+  ): Promise<void> {
+    const put = await this.fetchFn(`${API}/videos?part=localizations`, {
+      method: "PUT",
+      headers: { ...(await this.auth()), "content-type": "application/json" },
+      body: JSON.stringify({ id: videoId, localizations }),
+    });
+    if (!put.ok) throw await apiError(put, "videos.update (localizations)");
+  }
+
   /** Makes a video public now, keeping its other status fields as they are. */
   async makePublic(videoId: string): Promise<void> {
     await this.setPrivacy(videoId, "public");

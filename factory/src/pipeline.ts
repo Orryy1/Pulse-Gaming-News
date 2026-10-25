@@ -3137,6 +3137,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           factcheck_json: check,
           last_error: feedback.join(" | "),
         });
+        log("info", "story dropped: failed fact-check twice", { episode: ep.id, headline: cluster.headline, problems: feedback.slice(0, 4) });
         await s.notify({
           level: "info",
           embeds: [
@@ -3157,6 +3158,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   }
   if (!script || !check) throw new Error("script step produced nothing");
   if ((script.is_rumour || mustLabelRumour) && !s.cfg.includeRumours) {
+    log("info", "story dropped: a rumour, and rumours are off", { episode: ep.id, headline: cluster.headline });
     await markSeen(
       s.db,
       cluster.hash,

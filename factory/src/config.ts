@@ -104,6 +104,10 @@ export interface Config {
   focusUntil: string; // ISO date the focus ends
   focusNote: string; // one line on why, for the editors
   calendarFile: string; // dated angles the editors see as "planned for today" (src/calendar.ts); empty = none
+  /** The desk experiment: a second presenter asks the viewer's question before the take, on a share of news Shorts. */
+  deskVoiceId: string; // ElevenLabs voice of the desk partner; empty = off
+  deskVoiceName: string;
+  deskShare: number; // 0-1: the share of eligible Shorts that get the desk question
   focusMatch: string; // regex (case-insensitive) a story about the focus matches, e.g. "grand theft auto|\\bgta\\b"
   focusPlaylist: string; // a playlist every focus video joins while the focus runs, empty = none
   waveFrom: string; // ISO date a launch wave starts: extra Shorts on the focus, like a showcase sprint
@@ -296,6 +300,9 @@ export function loadConfig(): Config {
     focusUntil: str("FOCUS_UNTIL", ""),
     focusNote: str("FOCUS_NOTE", ""),
     calendarFile: str("CALENDAR_FILE", "calendar.md"),
+    deskVoiceId: str("DESK_VOICE_ID", ""),
+    deskVoiceName: str("DESK_VOICE_NAME", "Alice"),
+    deskShare: Math.max(0, Math.min(1, Number(str("DESK_SHARE", "0.5")))),
     focusMatch: str("FOCUS_MATCH", ""),
     focusPlaylist: str("FOCUS_PLAYLIST", ""),
     waveFrom: str("LAUNCH_WAVE_FROM", ""),

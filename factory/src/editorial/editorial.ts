@@ -66,6 +66,7 @@ Structure:
 person: when the story is about one real person (a cameo, a hire, a departure, a statement), their name as commonly written, so the Short can show a licensed photo of them; otherwise empty.
 3. pulse_take: the Pulse angle. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Vary its shape: a concession then a verdict, a comparison, a question answered, a consequence for the viewer, a what-happens-next. The opening words and the closing shape must differ from the recent Shorts listed below when a list is given. Opinions must be framed as opinion. Do not invent data.
 Talk to the viewer: at least two sentences in the script say "you" or "your" about what this means for them (their console, their money, their weekend).
+3b. desk_question: before the take, the one question a viewer is thinking, as a second presenter at the desk would put it to the narrator in 5-12 words, ending with "?" ("So is it worth $70 on day one?", "Does the PS5 version get this too?"). The take then answers it. Always provide one.
 4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that echoes the hook's subject or words, so a rewatch feels connected: a short callback or a question to the viewer. Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
 
 Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone.
@@ -325,6 +326,8 @@ export function validateScript(s: Script, recent?: RecentShapes): string[] {
     problems.push(
       "The loop line is longer than 22 words; one short closing sentence.",
     );
+  if (s.desk_question && (wordCount(s.desk_question) > 14 || !/\?\s*$/.test(s.desk_question)))
+    problems.push("The desk question must be one question of at most 14 words, ending with '?'.");
   if (loopLineUnfinished(s.loop_line))
     problems.push(
       `The loop line "${s.loop_line.trim()}" is unfinished; end it as one complete sentence.`,

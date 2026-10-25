@@ -21,7 +21,7 @@ export const TARGET_SHOT = 93; // about 3.1 s
  * Shot length by what is being said: the hook holds on its moment, facts cut quicker, the take holds
  * on its verdict. An even 3.1 s everywhere read as a metronome (24 Oct 2026 review).
  */
-export const TARGET_BY_KIND: Record<string, number> = { hook: 120, beat: 78, take: 125, loop: 93 };
+export const TARGET_BY_KIND: Record<string, number> = { hook: 120, beat: 78, desk: 90, take: 125, loop: 93 };
 export const maxShotFor = (kind: string): number => (kind === "hook" || kind === "take" ? HOLD_SHOT : MAX_SHOT);
 export const FREEZE_TOLERANCE = 6; // a clip may hold its last frame this long (0.2 s) at the end of a shot
 export const SNAP_FRAMES = 6; // cuts move up to this far to land on a word end
@@ -530,6 +530,12 @@ export function planShots(
         takeClip(n, c, winnerBeat, true, true) ??
         takeStill((i) => true, last, winnerBeat, true);
     } else if (seg.kind === "take" || seg.kind === "loop") {
+      media =
+        takeClip(n, c, undefined, true) ??
+        takeStill((i) => true, last) ??
+        takeAnyStill(last);
+    } else if (seg.kind === "desk") {
+      // The desk partner's question: a calm moment, no card.
       media =
         takeClip(n, c, undefined, true) ??
         takeStill((i) => true, last) ??

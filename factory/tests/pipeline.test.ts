@@ -75,6 +75,7 @@ interface Fakes {
   captions: Array<{ id: string; language: string; name: string }>;
   comments: string[];
   resources: Array<{ snippet: { title: string; description: string; defaultLanguage?: string } }>;
+  voices: string[];
   visual?: "none" | "game_footage" | "real_world_images";
   media?: number;
   stock?: number;
@@ -186,6 +187,7 @@ async function setup(
     captions: [],
     comments: [],
     resources: [],
+    voices: [],
     ...fakeOverrides,
   };
   let clock = new Date("2026-10-16T12:00:00Z");
@@ -229,7 +231,18 @@ async function setup(
         10,
       ),
     }),
-    synthesise: async (text, out) => {
+    stitchTakes: async (parts, out) => {
+      await fs.writeFile(out, "mp3");
+      const words: Array<{ text: string; start: number; end: number }> = [];
+      let offset = 0;
+      for (const p of parts) {
+        for (const w of p.words) words.push({ text: w.text, start: w.start + offset, end: w.end + offset });
+        offset += p.durationSeconds + 0.18;
+      }
+      return { audioPath: out, words, durationSeconds: offset - 0.18 + 0.15 };
+    },
+    synthesise: async (text, out, voice) => {
+      f.voices.push(voice?.name ?? "default");
       await fs.writeFile(out, "mp3");
       const words = text
         .split(/\s+/)
@@ -1041,3 +1054,36 @@ test("the twin channel: a published Short gets a translated twin, voiced by Elev
   assert.equal((await listEpisodes(db)).filter((e) => e.lane === "twin").length, 1);
   await db.close();
 });
+
+test("the desk experiment: a second voice asks the viewer's question before the take, stitched into one narration and captioned by name", async () => {
+  const { db, f, s } = await setup({ deskVoiceId: "voice_alice", deskVoiceName: "Alice", deskShare: 1 });
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(ep.status, "published");
+  assert.deepEqual(f.voices, ["v", "Alice", "v"], "narrator, the desk partner's question, narrator");
+  const a = ep.assets_json!;
+  assert.equal(a.desk?.voice.name, "Alice");
+  assert.equal(a.desk?.question, "So is early 2027 a sign of trouble?");
+  const text = a.words!.map((w) => w.text).join(" ");
+  assert.match(text, /sign of trouble\? For us,/, "the question sits between the facts and the take");
+  for (let i = 1; i < a.words!.length; i++) assert.ok(a.words![i]!.start >= a.words![i - 1]!.start, "one timeline");
+  const { segmentInputs } = await import("../src/pipeline.ts");
+  const { buildSegments } = await import("../src/render/timeline.ts");
+  const segs = buildSegments(segmentInputs(ep.script_json!, true), a.words!, a.durationSeconds!);
+  assert.deepEqual(segs.map((x) => x.kind), ["hook", "beat", "beat", "desk", "take", "loop"]);
+  assert.match(await fs.readFile(path.join(episodeDirOf(s, ep.id), "captions.srt"), "utf8"), /sign of trouble/);
+  await db.close();
+});
+
+test("outside the experiment's share, or with the desk off, a Short is voiced in one take", async () => {
+  const { db, f, s } = await setup({ deskVoiceId: "voice_alice", deskShare: 0 });
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(f.voices.length, 1);
+  assert.equal(ep.assets_json!.desk, undefined);
+  await db.close();
+});
+
+function episodeDirOf(s: Services, id: string): string {
+  return path.join(s.cfg.dataDir, "episodes", id);
+}

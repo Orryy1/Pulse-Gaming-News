@@ -332,6 +332,8 @@ export interface Services {
     frames: string[],
     ctx: { headline: string; gameTitle: string; format?: "short" | "long" },
   ): Promise<VisionQa>;
+  /** Joins voiced takes into one narration with the word timings shifted onto one timeline. */
+  stitchTakes?(parts: Narration[], outPath: string): Promise<Narration>;
   /** What Whisper hears in a gameplay clip, word by word (empty when no Whisper is set up). */
   hearClip?(file: string): Promise<Array<{ text: string; start: number; end: number }>>;
   /** What the voice actually says against its script (undefined when no Whisper is set up). */
@@ -3334,12 +3336,29 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   // A twin reads its figures in its own language (no English number-to-words pass) and only ElevenLabs
   // speaks it: the local clone speaks English.
   const twin = ep.lane === "twin";
-  const narration = await s.synthesise(
-    twin ? twinNarration(ep.script_json!) : narrationOf(ep.script_json!),
-    path.join(dir, "voice.mp3"),
-    voice,
-    twin ? { provider: "elevenlabs" } : undefined,
-  );
+  const desk = deskFor(s.cfg, ep);
+  let narration: Awaited<ReturnType<Services["synthesise"]>>;
+  if (desk && s.stitchTakes) {
+    // The desk experiment: the narrator up to the facts, the desk partner's question in a second voice,
+    // the narrator's take and close; three takes stitched onto one timeline.
+    const sc = ep.script_json!;
+    const partA = speakable([sc.hook, ...sc.beats.map((b) => b.narration)].join(" "));
+    const partQ = speakable(sc.desk_question!);
+    const partB = speakable([sc.pulse_take.narration, tidyLoopLine(sc.loop_line)].join(" "));
+    const a = await s.synthesise(partA, path.join(dir, "voice_a.mp3"), voice, { provider: "elevenlabs" });
+    const q = await s.synthesise(partQ, path.join(dir, "voice_q.mp3"), desk.voice, { provider: "elevenlabs" });
+    const b = await s.synthesise(partB, path.join(dir, "voice_b.mp3"), voice, { provider: "elevenlabs" });
+    const joined = await s.stitchTakes([a, q, b], path.join(dir, "voice.mp3"));
+    narration = { ...joined, voice: a.voice };
+    await logEvent(s.db, ep.id, "desk", { voice: desk.voice.name, question: sc.desk_question });
+  } else {
+    narration = await s.synthesise(
+      twin ? twinNarration(ep.script_json!) : narrationOf(ep.script_json!),
+      path.join(dir, "voice.mp3"),
+      voice,
+      twin ? { provider: "elevenlabs" } : undefined,
+    );
+  }
   await logEvent(s.db, ep.id, "voice", {
     provider: narration.voice?.provider ?? "unknown",
     id: narration.voice?.id,
@@ -3416,8 +3435,24 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     durationSeconds: narration.durationSeconds,
     srt: "captions.srt",
     voice: narration.voice,
+    ...(desk && s.stitchTakes ? { desk: { voice: desk.voice, question: ep.script_json!.desk_question! } } : {}),
   };
   await transition(s.db, ep.id, "scripted", "voiced", { assets_json: assets });
+}
+
+/**
+ * Whether this Short gets the desk partner's question: the experiment is on, the writer gave one, the lane
+ * is news, and the episode falls in the experiment's share (by a stable hash of its id, so a re-voice gets
+ * the same answer). Returns the partner's voice.
+ */
+export function deskFor(cfg: Config, ep: Pick<Episode, "id" | "lane" | "script_json">): { voice: { id: string; name: string } } | undefined {
+  if (!cfg.deskVoiceId || cfg.deskShare <= 0) return undefined;
+  if (!ep.script_json?.desk_question?.trim()) return undefined;
+  if (!["news", "news_breaking", "free"].includes(ep.lane)) return undefined;
+  let h = 0;
+  for (const c of ep.id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  if (h % 1000 >= cfg.deskShare * 1000) return undefined;
+  return { voice: { id: cfg.deskVoiceId, name: cfg.deskVoiceName } };
 }
 
 async function gatherMedia(
@@ -4578,7 +4613,7 @@ export async function steamAppForEntry(
   return app;
 }
 
-export function segmentInputs(script: Script): SegmentInput[] {
+export function segmentInputs(script: Script, desk = false): SegmentInput[] {
   return [
     // The same speakable text the voice was given, so segment timings line up word for word.
     { kind: "hook", text: speakable(script.hook) },
@@ -4587,6 +4622,8 @@ export function segmentInputs(script: Script): SegmentInput[] {
       text: speakable(b.narration),
       visual: b.visual,
     })),
+    // The desk partner's question sits between the facts and the take when the Short has one.
+    ...(desk && script.desk_question ? [{ kind: "desk" as const, text: speakable(script.desk_question) }] : []),
     {
       kind: "take",
       text: speakable(script.pulse_take.narration),
@@ -4709,7 +4746,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   const duration = (assets.durationSeconds ?? 300) + LONG_TAIL_SECONDS;
   const words = assets.words ?? [];
-  const segments = buildSegments(segmentInputs(script), words, duration);
+  const segments = buildSegments(segmentInputs(script, Boolean(assets.desk)), words, duration);
   const variant = variantOf(ep.id);
   const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
   const images = (assets.images ?? []).map((i) => ({
@@ -4994,7 +5031,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (await belowMediaFloor(s, ep, assets)) return;
   const duration = (assets.durationSeconds ?? 30) + TAIL_SECONDS;
   const words = assets.words ?? [];
-  const segments = buildSegments(segmentInputs(script), words, duration);
+  const segments = buildSegments(segmentInputs(script, Boolean(assets.desk)), words, duration);
   const variant = variantOf(ep.id);
   const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
@@ -5197,6 +5234,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       })),
       steam: steamLite,
       emphasis: emphasisWords(script),
+      deskName: assets.desk?.voice.name,
       plan,
       renderDate: s.now().toISOString().slice(0, 10),
     },
@@ -5517,7 +5555,7 @@ export function longChapters(ep: Episode): string[] {
   const words = ep.assets_json?.words ?? [];
   if (!script || !words.length) return [];
   const duration = (ep.assets_json?.durationSeconds ?? 0) + LONG_TAIL_SECONDS;
-  const segments = buildSegments(segmentInputs(script), words, duration);
+  const segments = buildSegments(segmentInputs(script, Boolean(ep.assets_json?.desk)), words, duration);
   return chapterLines(segments, (seg) =>
     seg.kind === "hook"
       ? "Intro"

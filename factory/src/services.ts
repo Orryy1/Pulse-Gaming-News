@@ -14,6 +14,8 @@ import { selectClips } from "./assets/clipscore.ts";
 import { evergreenCandidates } from "./discovery/evergreen.ts";
 import { dayKey } from "./lanes.ts";
 import { narrate } from "./voice/index.ts";
+import { decodedSeconds, stitch, GAP_SECONDS } from "./voice/local.ts";
+import type { Narration } from "./voice/elevenlabs.ts";
 import { fetchSteamArt, findSteamApp, steamFacts } from "./assets/steam.ts";
 import { renderShort, renderLong, renderCutdown } from "./render/render.ts";
 import { extractFrames, imageAspect, normaliseLoudness, technicalQa } from "./qa/media.ts";
@@ -150,6 +152,17 @@ export function createServices(db: Db, cfg: Config): Services {
     technicalQa,
     extractFrames,
     visionQa: (frames, ctx) => visionQa(llm, frames, ctx),
+    stitchTakes: async (parts, outPath) => {
+      const words: Narration["words"] = [];
+      let offset = 0;
+      for (const p of parts) {
+        const seconds = await decodedSeconds(p.audioPath);
+        for (const w of p.words) words.push({ text: w.text, start: w.start + offset, end: w.end + offset });
+        offset += seconds + GAP_SECONDS;
+      }
+      await stitch(parts.map((p) => p.audioPath), outPath);
+      return { audioPath: outPath, words, durationSeconds: offset - GAP_SECONDS + 0.15 };
+    },
     hearClip: async (file) =>
       cfg.whisperPython ? (await transcribeWords(file, cfg.whisperPython)).map((w) => ({ text: w.text, start: w.start, end: w.end ?? w.start + 0.3 })) : [],
     checkNarration: async (file, words) =>

@@ -53,6 +53,8 @@ export interface EpisodeAssets {
   durationSeconds?: number;
   srt?: string; // captions.srt, uploaded as the video's English caption track
   voice?: { provider: "local" | "elevenlabs"; id: string; name: string }; // who narrated, for the Discord card and analytics
+  /** The desk experiment: a second presenter asked the viewer's question before the take. */
+  desk?: { voice: { id: string; name: string }; question: string };
   plan?: import("./render/plan.ts").RenderPlan; // the render plan, persisted so a retried render is identical
   images?: Array<{ file: string; kind: string; aspect: number; sourceUrl: string; provenance: string; blurFile?: string; beatIndex?: number; moment?: number; label?: string; wordy?: boolean }>; // wordy: the local screen saw menu or HUD text on it
   video?: string;

@@ -3,7 +3,7 @@
 
 import type { Word } from "../voice/elevenlabs.ts";
 
-export type SegmentKind = "hook" | "beat" | "take" | "loop";
+export type SegmentKind = "hook" | "beat" | "desk" | "take" | "loop";
 
 export interface Visual {
   kind:

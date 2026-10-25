@@ -647,7 +647,9 @@ export const Captions: React.FC<{
   blankFromFrame: number;
   /** Where the caption line sits, when a layout moves it (a gameplay Short's taller picture). */
   centre?: number;
-}> = ({ pages, accent, emphasis, blankFromFrame, centre = CAPTION_CENTRE }) => {
+  /** The desk partner's question: its seconds and her name, captioned in her own colour. */
+  desk?: { start: number; end: number; name: string };
+}> = ({ pages, accent, emphasis, blankFromFrame, centre = CAPTION_CENTRE, desk }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   if (frame >= blankFromFrame) return null;
@@ -656,6 +658,8 @@ export const Captions: React.FC<{
   if (!page) return null;
   const pageFrame = frame - Math.round(page.start * fps);
   const pop = spring({ frame: pageFrame, fps, config: SPRING.POP });
+  const asking = !!desk && page.start >= desk.start - 0.05 && page.end <= desk.end + 0.3;
+  const wordColour = asking ? COLOUR.gold : accent;
   return (
     <div
       style={{
@@ -672,6 +676,26 @@ export const Captions: React.FC<{
         transform: `scale(${interpolate(pop, [0, 1], [0.92, 1])})`,
       }}
     >
+      {asking ? (
+        <span
+          style={{
+            position: "absolute",
+            top: -46,
+            left: 0,
+            width: "100%",
+            textAlign: "center",
+            fontFamily: BODY,
+            fontWeight: 900,
+            fontSize: 26,
+            letterSpacing: 3,
+            color: COLOUR.gold,
+            textShadow: "0 4px 16px rgba(0,0,0,0.85)",
+            textTransform: "uppercase",
+          }}
+        >
+          {desk!.name} asks
+        </span>
+      ) : null}
       {page.words.map((w, i) => {
         const active = t >= w.start - 0.03 && t < w.end + 0.08;
         const spoken = t >= w.start - 0.03;
@@ -693,9 +717,9 @@ export const Captions: React.FC<{
               fontWeight: 900,
               fontSize: TYPE.caption,
               lineHeight: 1.12,
-              // The spoken word in the story's accent; numbers and names that have been said stay gold.
+              // The spoken word in the story's accent (the desk partner's in gold); numbers and names that have been said stay gold.
               color: active
-                ? accent
+                ? wordColour
                 : lit
                   ? COLOUR.gold
                   : spoken

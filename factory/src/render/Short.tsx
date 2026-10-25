@@ -98,6 +98,7 @@ export const Short: React.FC<ShortProps> = (props) => {
   const hookEnd =
     hookIndex >= 0 ? segmentEnds[hookIndex]! : Math.round(3 * fps);
   const loopIndex = props.segments.findIndex((s) => s.kind === "loop");
+  const deskIndex = props.segments.findIndex((s) => s.kind === "desk");
   const loopStart =
     loopIndex >= 0
       ? segmentStarts[loopIndex]!
@@ -213,6 +214,11 @@ export const Short: React.FC<ShortProps> = (props) => {
         accent={accent}
         emphasis={emphasis}
         blankFromFrame={durationInFrames - 6}
+        desk={
+          deskIndex >= 0
+            ? { start: segmentStarts[deskIndex]! / fps, end: segmentEnds[deskIndex]! / fps, name: props.deskName ?? "THE DESK" }
+            : undefined
+        }
       />
       <TurnFlash turns={plan.turns} accent={accent} />
 

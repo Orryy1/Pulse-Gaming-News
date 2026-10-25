@@ -69,6 +69,10 @@ export const ScriptSchema = z.object({
   hook_footage: FootageSchema.optional().describe("What the opening footage should show"),
   person: z.string().optional().describe("The real, well-known person this story is about when one person is the story (a director, executive, actor, streamer), as commonly written, e.g. 'Hideo Kojima'; empty when the story is about a game, a company or a product"),
   loop_line: z.string().describe("Final spoken line that ties back to the hook so a rewatch feels seamless"),
+  desk_question: z
+    .string()
+    .optional()
+    .describe("The one question a viewer would ask before the take, as a second presenter at the desk would say it to the narrator: 5-12 words, ends with '?', e.g. 'So is it worth $70 on day one?'"),
   is_rumour: z.boolean(),
   attribution: z.string().describe("On-screen source credit, e.g. 'Source: Xbox Wire / IGN'"),
   hashtags: z

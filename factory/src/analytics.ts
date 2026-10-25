@@ -392,6 +392,7 @@ interface RetentionRow {
   id: string;
   lane?: string;
   metrics?: unknown;
+  desk?: boolean;
   script_json: Episode["script_json"];
   raw:
     | {
@@ -419,10 +420,11 @@ async function retentionRows(
     hookWords?: number;
     footageShare?: number;
     format?: string;
+    desk?: boolean;
   }>
 > {
   const rows = await db.query<RetentionRow>(
-    `SELECT e.id, e.lane, e.script_json, m.raw, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS metrics
+    `SELECT e.id, e.lane, e.script_json, m.raw, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS metrics, (e.assets_json->'desk') IS NOT NULL AS desk
        FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
       WHERE m.label = 'retention' AND m.captured_at > $1::timestamptz - interval '45 days' AND e.lane <> 'twin'`,
     [now],
@@ -440,6 +442,7 @@ async function retentionRows(
         hook: r.script_json?.hook ?? "",
         hookWords: r.script_json?.hook ? r.script_json.hook.split(/\s+/).filter(Boolean).length : undefined,
         footageShare: metric("footage_share"),
+        desk: Boolean(r.desk),
         format: r.script_json?.evergreen_format ?? (r.script_json?.runtime === "long" ? "long" : r.lane ?? "news"),
         pct: Number(raw?.avgViewPercent ?? 0),
         subs: Number(raw?.subscribersGained ?? 0),
@@ -482,7 +485,7 @@ export function openingLine(
  * Advice for the editor and the writer, never a rule: the samples are small and the metric is a proxy.
  */
 export function formatLessons(
-  rows: Array<{ stay?: number; pct: number; hookWords?: number; footageShare?: number; format?: string }>,
+  rows: Array<{ stay?: number; pct: number; hookWords?: number; footageShare?: number; format?: string; desk?: boolean }>,
 ): string[] {
   const score = (r: (typeof rows)[number]) => r.stay ?? r.pct;
   const avg = (xs: typeof rows) =>
@@ -496,6 +499,9 @@ export function formatLessons(
   const footage = avg(rows.filter((r) => r.footageShare !== undefined && r.footageShare >= 0.4));
   const cards = avg(rows.filter((r) => r.footageShare !== undefined && r.footageShare < 0.4));
   if (footage && cards) out.push(line("Picture", footage, "mostly moving footage", cards, "mostly stills and cards"));
+  const withDesk = avg(rows.filter((r) => r.desk === true));
+  const noDesk = avg(rows.filter((r) => r.desk === false));
+  if (withDesk && noDesk) out.push(line("Desk question before the take", withDesk, "with it", noDesk, "without"));
   const formats = [...new Set(rows.map((r) => r.format).filter((f): f is string => !!f))];
   for (const f of formats) {
     const mine = avg(rows.filter((r) => r.format === f));

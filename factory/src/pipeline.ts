@@ -174,6 +174,7 @@ import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
 import { calendarBlock, readCalendar, type CalendarLane } from "./calendar.ts";
+import { translateScript, twinFooter, twinNarration } from "./editorial/twin.ts";
 import {
   captionable,
   gameplayScript,
@@ -217,6 +218,7 @@ export interface Services {
     text: string,
     outPath: string,
     voice?: { id: string; name: string },
+    opts?: { provider?: Config["voiceProvider"] },
   ): Promise<
     Narration & {
       voice?: { provider: "local" | "elevenlabs"; id: string; name: string };
@@ -337,7 +339,10 @@ export interface Services {
     file: string,
     words: Array<{ text: string; start: number; end: number }>,
   ): Promise<NarrationCheck | undefined>;
-  youtube(): YouTubeClient;
+  /** The YouTube client for the main channel, or for a named second account (the Spanish twin, "es"). */
+  youtube(account?: string): YouTubeClient;
+  /** Whether a login is stored for the account (undefined in tests: treated as connected). */
+  youtubeConnected?(account?: string): Promise<boolean>;
   /** true = delivered, false = failed, undefined/void = Discord not configured. */
   notify(msg: DiscordMessage): Promise<boolean | undefined | void>;
   /** True when PUBLIC_URL answers (or is local), so approval links could have been used. */
@@ -638,8 +643,14 @@ export function seriesFor(
   return out;
 }
 
+/** The YouTube login an episode belongs to: "" for the main channel, the twin's account for a twin. */
+export function accountOf(ep: Pick<Episode, "story_json">): string {
+  return ep.story_json.twin?.account ?? "";
+}
+
 /** Files a published video in its series playlists (50 units each, plus 50 the first time a playlist is made). */
 async function addToSeries(s: Services, ep: Episode): Promise<void> {
+  if (ep.lane === "twin") return; // the twin channel's playlists are not set up
   const yt = s.youtube() as Partial<{
     findOrCreatePlaylist: (
       t: string,
@@ -2496,6 +2507,101 @@ export async function countRumoursToday(db: Db, timeZone: string): Promise<numbe
   return Number(row?.n ?? 0);
 }
 
+// ------------------------------------------------------------------ the twin channel
+
+/** The twin channel is on and its login is stored. */
+async function twinReady(s: Services): Promise<boolean> {
+  if (!s.cfg.twinLanguage) return false;
+  return (await s.youtubeConnected?.(s.cfg.twinLanguage)) ?? true;
+}
+
+/**
+ * A twin for every Short that went public on the main channel in the last three days and has none yet:
+ * the same story and media, re-written in the twin language, uploaded to the twin channel a little after
+ * the original. One in production at a time, behind every other lane.
+ */
+export async function maybeSelectTwin(s: Services): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!(await twinReady(s))) return undefined;
+  const lang = cfg.twinLanguage;
+  const [busy] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM episodes WHERE lane = 'twin' AND status IN ('selected','scripted','voiced','rendered')`,
+  );
+  if (Number(busy?.n ?? 0) > 0) return undefined;
+  const now = s.now();
+  const parents = await db.query<Episode>(
+    `SELECT e.* FROM episodes e
+      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.script_json IS NOT NULL
+        AND e.lane IN ('news','news_breaking','evergreen','free')
+        AND COALESCE(e.script_json->>'runtime', 'short') = 'short'
+        AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - interval '15 minutes'
+        AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - interval '3 days'
+        AND NOT EXISTS (SELECT 1 FROM episodes t WHERE t.story_hash = 'twin:' || $2 || ':' || e.id)
+        AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('made_private','crosspost_skip') AND COALESCE(v.detail->>'reason','') IN ('not public on YouTube',''))
+      ORDER BY COALESCE(e.publish_at, e.updated_at) DESC LIMIT 5`,
+    [now, lang],
+  );
+  for (const parent of parents) {
+    // The original's folder must still be there (pruned, whole, after two weeks).
+    if (!(await fs.stat(episodeDir(cfg, parent.id)).catch(() => undefined))) continue;
+    const id = shortId();
+    const live = new Date(parent.publish_at ?? parent.updated_at);
+    const slotAt = new Date(Math.max(now.getTime() + 20 * 60_000, live.getTime() + cfg.twinDelayMinutes * 60_000));
+    const cluster: StoryCluster = {
+      ...parent.story_json,
+      hash: `twin:${lang}:${parent.id}`,
+      twin: { parent: parent.id, language: lang, account: lang },
+    };
+    if (!(await createEpisode(db, id, cluster, { lane: "twin", priority: LANE_PRIORITY.twin, slotAt }))) continue;
+    await logEvent(db, id, "selected", { lane: "twin", parent: parent.id, language: lang, slot_at: slotAt.toISOString() });
+    log("info", "twin selected", { id, parent: parent.id, language: lang });
+    return id;
+  }
+  return undefined;
+}
+
+/** Translates the original's script and copies its media, so the twin is voiced and rendered like any Short. */
+async function stepScriptTwin(s: Services, ep: Episode): Promise<void> {
+  const ref = ep.story_json.twin;
+  if (!ref) throw new FatalError("twin episode has no original");
+  const parent = await getEpisode(s.db, ref.parent);
+  if (!parent?.script_json || !parent.youtube_video_id) throw new FatalError("the original Short is gone");
+  const { script, problems } = await translateScript(s.llm, parent.script_json, ref.language, {
+    parent: parent.id,
+    parentVideo: parent.youtube_video_id,
+  });
+  if (problems.length) {
+    // A translation that changes a figure is not a twin: drop it rather than say something the original did not.
+    await transition(s.db, ep.id, "selected", "rejected", { last_error: problems.join(" | ") });
+    await logEvent(s.db, ep.id, "rejected", { by: "translation", problems });
+    log("warn", "twin dropped: translation changed a figure", { episode: ep.id, problems });
+    return;
+  }
+  // The original's media, file for file, so the render finds everything under this episode's folder.
+  const from = episodeDir(s.cfg, parent.id);
+  const dir = episodeDir(s.cfg, ep.id);
+  const pa = parent.assets_json ?? {};
+  const files = [...(pa.images ?? []).flatMap((i) => [i.file, i.blurFile]), ...(pa.clips ?? []).flatMap((c) => [c.file, c.blurFile])].filter(
+    (f): f is string => Boolean(f),
+  );
+  for (const f of files) {
+    await fs.mkdir(path.dirname(path.join(dir, f)), { recursive: true });
+    await fs.copyFile(path.join(from, f), path.join(dir, f)).catch(() => undefined);
+  }
+  await transition(s.db, ep.id, "selected", "scripted", {
+    script_json: script,
+    factcheck_json: parent.factcheck_json,
+    assets_json: {
+      images: pa.images,
+      clips: pa.clips,
+      steam: pa.steam,
+      officialTrailer: pa.officialTrailer,
+      rich: pa.rich,
+    },
+  });
+  await logEvent(s.db, ep.id, "twin_translated", { parent: parent.id, language: ref.language, title: script.youtube.title });
+}
+
 /** How the last eight Shorts opened their take and closed, so the writer and the validator keep the shapes varied. */
 export async function recentShapes(db: Db, exceptId: string): Promise<RecentShapes> {
   const rows = await db.query<{ take: string | null; loop: string | null }>(
@@ -3083,6 +3189,7 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
 async function stepScript(s: Services, ep: Episode): Promise<void> {
   if (ep.lane === "cutdown") return stepScriptCutdown(s, ep);
   if (ep.lane === "gameplay") return stepScriptGameplay(s, ep);
+  if (ep.lane === "twin") return stepScriptTwin(s, ep);
   if (ep.lane === "evergreen") return stepScriptEvergreen(s, ep);
   if (ep.lane === "longform") return stepScriptLongform(s, ep);
   const cluster = ep.story_json;
@@ -3224,10 +3331,14 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     [ep.created_at],
   );
   const voice = pickVoice(s.cfg, Number(ord?.n ?? 0));
+  // A twin reads its figures in its own language (no English number-to-words pass) and only ElevenLabs
+  // speaks it: the local clone speaks English.
+  const twin = ep.lane === "twin";
   const narration = await s.synthesise(
-    narrationOf(ep.script_json!),
+    twin ? twinNarration(ep.script_json!) : narrationOf(ep.script_json!),
     path.join(dir, "voice.mp3"),
     voice,
+    twin ? { provider: "elevenlabs" } : undefined,
   );
   await logEvent(s.db, ep.id, "voice", {
     provider: narration.voice?.provider ?? "unknown",
@@ -3255,9 +3366,9 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   // The narration check: what the voice says against its script, before anything is rendered on it.
   // A fault re-voices once; a second one is reported and the episode goes on (a misheard line should
   // not cost a week's long video). Caught the GTA ranking's "Sayus" and drifting timings (23 Oct 2026).
-  const check = await s
-    .checkNarration?.(path.join(dir, "voice.mp3"), narration.words)
-    .catch((err) => {
+  const check = await (twin ? undefined : s
+    .checkNarration?.(path.join(dir, "voice.mp3"), narration.words))
+    ?.catch((err) => {
       log("warn", "narration check unavailable", { error: errorMessage(err) });
       return undefined;
     });
@@ -5169,7 +5280,10 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   // usual mode: from 25 Oct 2026 the channel covers leaks and reports, clearly marked.
   const risky = !ep.story_json.corroborated;
   // The owner taps every gameplay Short: their own recordings never publish on a timer.
-  const mode = risky || ep.lane === "gameplay"
+  // A twin repeats a Short the owner already approved: it goes out on its own.
+  const mode = ep.lane === "twin"
+    ? "auto"
+    : risky || ep.lane === "gameplay"
     ? "manual"
     : ep.lane === "evergreen"
       ? s.cfg.evergreenApprovalMode
@@ -5376,7 +5490,7 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
     s.cfg,
     s.now(),
     ep,
-    await lastPublishAt(s.db),
+    await lastPublishAt(s.db, ep.lane === "twin"),
   );
   // Public uploads are scheduled on YouTube (private until publish_at). Anything else
   // cannot be scheduled there, so the upload itself waits until the slot.
@@ -5503,6 +5617,29 @@ export function videoMetadata(
     .slice(0, 4)
     .map((i) => `• ${i.source}: ${i.url}`)
     .join("\n");
+  if (script.twin) {
+    // The twin's description in its language: the body, the original, the sources, the fixed lines.
+    const parentUrl = `https://youtube.com/shorts/${script.twin.parent_video}`;
+    const hashtags = (script.hashtags ?? []).map((h) => (h.startsWith("#") ? h : `#${h}`)).slice(0, 5).join(" ");
+    return {
+      title: script.youtube.title.slice(0, 100),
+      description: [
+        script.youtube.description.trim().replace(/#\w+/g, "").replace(/\s{2,}/g, " ").trim(),
+        credits ? `\nFuentes:\n${credits}` : "",
+        ...twinFooter(script.twin.language, parentUrl).map((l) => `\n${l}`),
+        hashtags,
+      ]
+        .filter((line) => line !== "")
+        .join("\n")
+        .slice(0, 4950),
+      tags: script.youtube.tags.slice(0, 15),
+      categoryId: "20",
+      privacyStatus: privacy,
+      publishAt: ep.publish_at ? new Date(ep.publish_at).toISOString() : undefined,
+      containsSyntheticMedia: syntheticMedia,
+      defaultLanguage: script.twin.language,
+    };
+  }
   const clips = ep.assets_json?.clips ?? [];
   const publisher =
     clips[0]?.provenance.match(/publisher[^:]*:\s*([^;)]+)/i)?.[1]?.trim() ??
@@ -5616,7 +5753,7 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
     });
     return;
   }
-  const yt = s.youtube();
+  const yt = s.youtube(accountOf(ep));
   const marker = markerTag(ep.id);
   const file = path.join(episodeDir(s.cfg, ep.id), "short.mp4");
 
@@ -5732,10 +5869,11 @@ export async function confirmPublished(s: Services): Promise<void> {
     id: string;
     youtube_video_id: string;
     title: string | null;
+    account: string;
   }>(
     // Every tick for the first two hours after the slot, then once an hour for three days: an outage or
     // a slow YouTube no longer ends the check, so "published" is only ever confirmed, not assumed.
-    `SELECT e.id, e.youtube_video_id, e.script_json->'youtube'->>'title' AS title FROM episodes e
+    `SELECT e.id, e.youtube_video_id, e.script_json->'youtube'->>'title' AS title, COALESCE(e.story_json->'twin'->>'account', '') AS account FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.publish_at IS NOT NULL
         AND e.publish_at < $1::timestamptz - interval '10 minutes' AND e.publish_at > $1::timestamptz - interval '72 hours'
         AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('public_confirmed','made_public'))
@@ -5744,7 +5882,7 @@ export async function confirmPublished(s: Services): Promise<void> {
     [s.now()],
   );
   for (const ep of due) {
-    const st = await s.youtube().status(ep.youtube_video_id);
+    const st = await s.youtube(ep.account).status(ep.youtube_video_id);
     if (st?.privacyStatus === "public") {
       // The time we saw it public: the truthful release time for the site and the analytics, which the
       // planned slot only approximates (YouTube can run late, and a delayed video keeps its old slot).
@@ -5788,11 +5926,11 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
   try {
     // Comment links are clickable on long videos (not on Shorts): the long video's pin carries its top pick.
     const text =
-      pinnedComment(ep.script_json!) +
+      (ep.script_json!.twin?.pinned || pinnedComment(ep.script_json!)) +
       (ep.script_json!.runtime === "long"
         ? affiliateCommentLine(ep.script_json!, affiliateTags(s.cfg, ep.id))
         : "");
-    const id = await s.youtube().insertComment(ep.youtube_video_id!, text);
+    const id = await s.youtube(accountOf(ep)).insertComment(ep.youtube_video_id!, text);
     await quotaAdd(s.db, s.now(), QUOTA.comment);
     await logEvent(s.db, ep.id, "comment_posted", { id, text });
   } catch (err) {
@@ -5808,7 +5946,7 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
 async function addCaptions(s: Services, ep: Episode): Promise<void> {
   const file = path.join(episodeDir(s.cfg, ep.id), ep.assets_json!.srt!);
   try {
-    const yt = s.youtube();
+    const yt = s.youtube(accountOf(ep));
     if (
       (await yt.listCaptions(ep.youtube_video_id!)).some(
         (c) => c.language === "en" || c.language === "en-GB",
@@ -5858,7 +5996,7 @@ async function setThumbnail(s: Services, ep: Episode): Promise<void> {
 }
 
 async function stepConfirm(s: Services, ep: Episode): Promise<void> {
-  const st = await s.youtube().status(ep.youtube_video_id!);
+  const st = await s.youtube(accountOf(ep)).status(ep.youtube_video_id!);
   await quotaAdd(s.db, s.now(), QUOTA.poll);
   if (!st) throw new Error("uploaded video not found yet");
   if (st.uploadStatus === "rejected" || st.uploadStatus === "failed") {
@@ -5950,6 +6088,7 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
     // a fatal error inside one episode's own content must not take the whole day with it.
     const platformFault =
       fatal &&
+      ep.lane !== "twin" && // the twin channel's login or quota must never pause the main channel
       (["uploading", "uploaded"].includes(ep.status) ||
         /invalid_grant|quota|credential|api key|x-api-key|forbidden|unauthori[sz]ed|refused/i.test(
           msg,
@@ -6084,6 +6223,10 @@ export async function tick(
     await ingestGameplay(s).catch((err) =>
       log("warn", "gameplay intake failed", { error: errorMessage(err) }),
     );
+    // The twin channel: every Short that went public gets its translated twin.
+    await maybeSelectTwin(s).catch((err) =>
+      log("warn", "twin selection failed", { error: errorMessage(err) }),
+    );
     await syncGameplaySkips(s).catch((err) =>
       log("warn", "gameplay status sync failed", { error: errorMessage(err) }),
     );
@@ -6099,6 +6242,11 @@ export async function tick(
       await captureMetrics(s.db, s.youtube(), s.now()).catch((err) =>
         log("warn", "metrics capture failed", { error: errorMessage(err) }),
       );
+    // The twin channel's numbers, with its own login.
+    if (!s.cfg.dryRun && (await twinReady(s)))
+      await captureMetrics(s.db, s.youtube(s.cfg.twinLanguage), s.now(), s.cfg.twinLanguage).catch((err) =>
+        log("warn", "twin metrics capture failed", { error: errorMessage(err) }),
+      );
     // After each scheduled slot: confirm the video went public and post its first comment, or tell the owner it did not.
     if (!s.cfg.dryRun && s.cfg.youtubePrivacy === "public")
       await confirmPublished(s).catch((err) =>
@@ -6108,6 +6256,10 @@ export async function tick(
     if (!s.cfg.dryRun)
       await captureRetention(s.db, s.youtube(), s.now()).catch((err) =>
         log("warn", "retention capture failed", { error: errorMessage(err) }),
+      );
+    if (!s.cfg.dryRun && (await twinReady(s)))
+      await captureRetention(s.db, s.youtube(s.cfg.twinLanguage), s.now(), s.cfg.twinLanguage).catch((err) =>
+        log("warn", "twin retention capture failed", { error: errorMessage(err) }),
       );
     // Long videos: the whole retention curve a week after going live, for the long-form writer's lessons.
     if (!s.cfg.dryRun)

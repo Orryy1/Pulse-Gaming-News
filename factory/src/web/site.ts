@@ -451,7 +451,10 @@ export function articlePage(
           "",
         )}</ol><p class="meta">Counted down from number ${s.entries.length} to number one.</p>`
     : "";
-  const deals = s.evergreen_format === "steam_deals" && ep.deals?.length ? dealList(s, ep) : "";
+  const deals =
+    s.evergreen_format === "steam_deals" && ep.deals?.length
+      ? dealList(s, ep)
+      : "";
   const related = (more.related ?? [])
     .filter((r) => r.id !== ep.id)
     .slice(0, 3);
@@ -694,9 +697,19 @@ export function dealList(s: Script, ep: SiteEpisode): string {
   const rows = [...(s.entries ?? [])]
     .sort((a, b) => b.rank - a.rank)
     .map((e) => {
-      const d = deals.find((x) => dealKey(x.name) === dealKey(e.game_title)) ?? deals.find((x) => dealKey(x.name).includes(dealKey(e.game_title)) || dealKey(e.game_title).includes(dealKey(x.name)));
+      const d =
+        deals.find((x) => dealKey(x.name) === dealKey(e.game_title)) ??
+        deals.find(
+          (x) =>
+            dealKey(x.name).includes(dealKey(e.game_title)) ||
+            dealKey(e.game_title).includes(dealKey(x.name)),
+        );
       if (!d) return "";
-      const prices = [`${d.usd.final} in the US (was ${d.usd.initial}, ${d.usd.pct}% off)`, d.gbp ? `${d.gbp} in the UK` : "", d.eur ? `${d.eur} in Germany` : ""].filter(Boolean);
+      const prices = [
+        `${d.usd.final} in the US (was ${d.usd.initial}, ${d.usd.pct}% off)`,
+        d.gbp ? `${d.gbp} in the UK` : "",
+        d.eur ? `${d.eur} in Germany` : "",
+      ].filter(Boolean);
       const ends = d.endsAt ? `Sale ends ${day(d.endsAt)}` : "";
       return `<li><span class="n">${e.rank}</span><span><b><a href="https://store.steampowered.com/app/${d.appId}/" rel="noopener">${esc(e.game_title)}</a></b><br><span class="meta">${[...prices, `${d.rating}% positive from ${d.reviews.toLocaleString("en-US")} Steam reviews`, ends].filter(Boolean).map(esc).join(" · ")}</span></span></li>`;
     })
@@ -908,7 +921,7 @@ export function parseChannelFeed(xml: string): ChannelVideo[] {
 /** The SQL for what the site shows: public videos only, newest first. */
 export const SITE_EPISODES_SQL = `SELECT e.id, e.lane, e.youtube_video_id, e.script_json, e.story_json, ${LIVE_AT("e")} AS live_at, e.created_at, e.factcheck_json->'deals' AS deals
   FROM episodes e
- WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'cutdown'
+ WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane NOT IN ('cutdown','twin')
    AND COALESCE(e.publish_at, e.updated_at) <= now()
    AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('crosspost_skip','made_private') AND COALESCE(v.detail->>'reason','') IN ('not public on YouTube',''))
  ORDER BY COALESCE(e.publish_at, e.updated_at) DESC

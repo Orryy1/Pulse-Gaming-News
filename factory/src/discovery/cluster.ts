@@ -26,6 +26,8 @@ export interface StoryCluster {
   why?: { question: string; angle: string };
   /** A gameplay Short: the inbox clip's id and folder, and the reviewer's verdict. */
   gameplay?: { id: string; dir: string; review: import("../gameplay.ts").GameplayReview };
+  /** A twin of a published Short in another language: the original's episode, the language and the login it uploads with. */
+  twin?: { parent: string; language: string; account: string };
 }
 
 const STOPWORDS = new Set(

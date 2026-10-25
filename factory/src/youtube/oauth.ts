@@ -1,5 +1,6 @@
-// OAuth for a single owned channel. Consent happens once in a browser via the
-// service's own /oauth routes; the refresh token is stored encrypted in Postgres.
+// OAuth for the owned channels. Consent happens once in a browser via the service's own /oauth routes;
+// each refresh token is stored encrypted in the settings table: the main channel under
+// youtube_refresh_token, a second account (the Spanish twin channel, "es") under youtube_refresh_token:es.
 
 import type { Db } from "../db.ts";
 import { encrypt, decrypt } from "../lib/crypto.ts";
@@ -63,35 +64,45 @@ export async function exchangeCode(cfg: OAuthConfig, code: string): Promise<{ re
   return { refreshToken: body.refresh_token, scope: body.scope ?? "" };
 }
 
-export async function saveRefreshToken(db: Db, cfg: OAuthConfig, token: string): Promise<void> {
+/** The settings key a login is stored under: the main channel's, or a named second account's. */
+export function tokenKey(account = ""): string {
+  return account ? `youtube_refresh_token:${account}` : "youtube_refresh_token";
+}
+
+export async function saveRefreshToken(db: Db, cfg: OAuthConfig, token: string, account = ""): Promise<void> {
   await db.query(
-    `INSERT INTO settings (key, value, updated_at) VALUES ('youtube_refresh_token', $1, now())
+    `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, now())
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
-    [encrypt(token, cfg.appSecret)],
+    [tokenKey(account), encrypt(token, cfg.appSecret)],
   );
 }
 
-/** The refresh token the factory would use, or "" when YouTube is not connected. */
-export async function storedRefreshToken(db: Db, cfg: OAuthConfig): Promise<string> {
+/** The refresh token the factory would use, or "" when that account is not connected. */
+export async function storedRefreshToken(db: Db, cfg: OAuthConfig, account = ""): Promise<string> {
   try {
-    return await loadRefreshToken(db, cfg);
+    return await loadRefreshToken(db, cfg, account);
   } catch {
     return "";
   }
 }
 
-async function loadRefreshToken(db: Db, cfg: OAuthConfig): Promise<string> {
-  const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = 'youtube_refresh_token'`);
+async function loadRefreshToken(db: Db, cfg: OAuthConfig, account = ""): Promise<string> {
+  const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = $1`, [tokenKey(account)]);
   if (row) return decrypt(row.value, cfg.appSecret);
-  if (cfg.envRefreshToken) return cfg.envRefreshToken;
-  throw new FatalError("YouTube is not connected yet: open /oauth/start?key=ADMIN_TOKEN on the service");
+  if (!account && cfg.envRefreshToken) return cfg.envRefreshToken;
+  throw new FatalError(
+    account
+      ? `YouTube account "${account}" is not connected yet: open /connect?account=${account} on the PC running the factory`
+      : "YouTube is not connected yet: open /oauth/start?key=ADMIN_TOKEN on the service",
+  );
 }
 
-let cached: { token: string; expiresAt: number } | undefined;
+const cached = new Map<string, { token: string; expiresAt: number }>();
 
-export async function accessToken(db: Db, cfg: OAuthConfig): Promise<string> {
-  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
-  const refresh = await loadRefreshToken(db, cfg);
+export async function accessToken(db: Db, cfg: OAuthConfig, account = ""): Promise<string> {
+  const have = cached.get(account);
+  if (have && have.expiresAt > Date.now() + 60_000) return have.token;
+  const refresh = await loadRefreshToken(db, cfg, account);
   const res = await fetchWithTimeout("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -108,10 +119,10 @@ export async function accessToken(db: Db, cfg: OAuthConfig): Promise<string> {
     throw new FatalError("YouTube refresh token is invalid (invalid_grant): reconnect via /oauth/start");
   }
   if (!res.ok || !body.access_token) throw new Error(`token refresh failed: HTTP ${res.status} ${body.error ?? ""}`);
-  cached = { token: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000 };
-  return cached.token;
+  cached.set(account, { token: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000 });
+  return body.access_token;
 }
 
 export function clearTokenCache(): void {
-  cached = undefined;
+  cached.clear();
 }

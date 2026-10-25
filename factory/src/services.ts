@@ -20,7 +20,7 @@ import { extractFrames, imageAspect, normaliseLoudness, technicalQa } from "./qa
 import { visionQa } from "./qa/vision.ts";
 import { checkNarration, transcribeWords } from "./qa/narration.ts";
 import { YouTubeClient } from "./youtube/upload.ts";
-import { accessToken } from "./youtube/oauth.ts";
+import { accessToken, storedRefreshToken } from "./youtube/oauth.ts";
 import { officialMedia } from "./assets/officialTrailer.ts";
 import { stockClips } from "./assets/stock.ts";
 import { fetchRockstarNewswire } from "./discovery/newsrooms.ts";
@@ -60,7 +60,8 @@ export function createServices(db: Db, cfg: Config): Services {
     },
     discoverEvergreen: () => evergreenCandidates(dayKey(new Date(), cfg.timezone)),
     fetchArticle,
-    synthesise: (text, out, voice) => narrate(cfg, text, out, voice),
+    synthesise: (text, out, voice, opts) =>
+      narrate(opts?.provider ? { ...cfg, voiceProvider: opts.provider } : cfg, text, out, voice),
     findGame: findSteamApp,
     gameFacts: steamFacts,
     fetchArt: (app, dir, maxScreens) => fetchSteamArt(app, dir, maxScreens),
@@ -153,7 +154,8 @@ export function createServices(db: Db, cfg: Config): Services {
       cfg.whisperPython ? (await transcribeWords(file, cfg.whisperPython)).map((w) => ({ text: w.text, start: w.start, end: w.end ?? w.start + 0.3 })) : [],
     checkNarration: async (file, words) =>
       cfg.whisperPython ? checkNarration(words, await transcribeWords(file, cfg.whisperPython)) : undefined,
-    youtube: () => new YouTubeClient(() => accessToken(db, oauthConfig(cfg))),
+    youtube: (account = "") => new YouTubeClient(() => accessToken(db, oauthConfig(cfg), account)),
+    youtubeConnected: async (account = "") => Boolean(await storedRefreshToken(db, oauthConfig(cfg), account)),
     publicReachable: async () => {
       if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(cfg.publicUrl)) return true;
       try {

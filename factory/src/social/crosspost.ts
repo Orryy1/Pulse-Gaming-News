@@ -124,7 +124,7 @@ export async function nextForPlatform(
 ): Promise<CrosspostCandidate | undefined> {
   const rows = await db.query<CrosspostCandidate>(
     `SELECT e.id, e.youtube_video_id, e.script_json FROM episodes e
-      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'longform'
+      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane NOT IN ('longform','twin')
         AND COALESCE(e.script_json->>'runtime', 'short') = 'short'
         AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
         AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - make_interval(hours => $3)
@@ -158,7 +158,7 @@ export async function nextForTikTok(
   if (Number(sent?.n ?? 0) >= cfg.tiktokDaily) return undefined;
   const rows = await db.query<CrosspostCandidate>(
     `SELECT e.id, e.youtube_video_id, e.script_json FROM episodes e
-      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'longform'
+      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane NOT IN ('longform','twin')
         AND COALESCE(e.script_json->>'runtime', 'short') = 'short'
         AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
         AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - make_interval(hours => $3)

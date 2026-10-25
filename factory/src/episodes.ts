@@ -173,7 +173,7 @@ export async function countToday(db: Db, timeZone = "Europe/London", lane?: stri
     `SELECT count(*) AS n FROM episodes
       WHERE created_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1
         AND status NOT IN ('failed','rejected')
-        AND (($2::text IS NULL AND lane <> 'gameplay') OR lane = $2)`,
+        AND (($2::text IS NULL AND lane NOT IN ('gameplay','twin')) OR lane = $2)`,
     [timeZone, lane ?? null],
   );
   return Number(row?.n ?? 0);
@@ -181,7 +181,7 @@ export async function countToday(db: Db, timeZone = "Europe/London", lane?: stri
 
 /** Episodes mid-production (not waiting on approval, YouTube or a terminal state). Gameplay Shorts are extra and never hold the news back. */
 export async function countProducing(db: Db): Promise<number> {
-  const [row] = await db.query<{ n: string | number }>(`SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered') AND lane <> 'gameplay'`);
+  const [row] = await db.query<{ n: string | number }>(`SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered') AND lane NOT IN ('gameplay','twin')`);
   return Number(row?.n ?? 0);
 }
 

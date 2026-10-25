@@ -5,7 +5,7 @@
 import type { Db } from "./db.ts";
 import type { StoryCluster } from "./discovery/cluster.ts";
 
-export type Lane = "news" | "news_breaking" | "evergreen" | "longform" | "free" | "cutdown" | "gameplay";
+export type Lane = "news" | "news_breaking" | "evergreen" | "longform" | "free" | "cutdown" | "gameplay" | "twin";
 export const LANE_PRIORITY: Record<Lane, number> = {
   news_breaking: 100,
   news: 50,
@@ -14,6 +14,7 @@ export const LANE_PRIORITY: Record<Lane, number> = {
     longform: 20,
   cutdown: 25,
   gameplay: 35,
+  twin: 15,
 };
 
 // YouTube Data API quota (determine_quota_cost, 15 Oct 2026): videos.insert and search.list each have
@@ -348,9 +349,12 @@ export function quotaResetAt(now: Date): Date {
 }
 
 /** Last publish instant across lanes: the later of a scheduled publish_at and a published row's update. */
-export async function lastPublishAt(db: Db): Promise<Date | undefined> {
+export async function lastPublishAt(db: Db, twin = false): Promise<Date | undefined> {
+  // The twin channel has its own clock: its uploads neither wait for nor hold up the main channel's.
   const [row] = await db.query<{ t: string | null }>(
-    `SELECT max(greatest(coalesce(publish_at, updated_at), updated_at)) AS t FROM episodes WHERE status IN ('uploading','uploaded','published') AND youtube_status IS DISTINCT FROM 'dry_run'`,
+    `SELECT max(greatest(coalesce(publish_at, updated_at), updated_at)) AS t FROM episodes
+      WHERE status IN ('uploading','uploaded','published') AND youtube_status IS DISTINCT FROM 'dry_run'
+        AND ${twin ? "lane = 'twin'" : "lane <> 'twin'"}`,
   );
   return row?.t ? new Date(row.t) : undefined;
 }

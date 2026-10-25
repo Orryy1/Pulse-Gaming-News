@@ -21,7 +21,7 @@ import {
   type Services,
 } from "../src/pipeline.ts";
 import { FatalError } from "../src/lib/util.ts";
-import { getEpisode, listEpisodes } from "../src/episodes.ts";
+import { getEpisode, listEpisodes, countToday } from "../src/episodes.ts";
 import { quotaAdd } from "../src/lanes.ts";
 import { clusterItems } from "../src/discovery/cluster.ts";
 import {
@@ -33,6 +33,7 @@ import type { Config } from "../src/config.ts";
 import type { Db } from "../src/db.ts";
 import { testDb, tmpDir, testConfig, item, goodScript } from "./helpers.ts";
 import { EvergreenScriptSchema, type EvergreenScript } from "../src/editorial/evergreen.ts";
+import { TwinScriptSchema } from "../src/editorial/twin.ts";
 
 /** A small, valid ranking draft for the fake writer. */
 function rankingDraft(): EvergreenScript {
@@ -73,6 +74,7 @@ interface Fakes {
   privacy?: string;
   captions: Array<{ id: string; language: string; name: string }>;
   comments: string[];
+  resources: Array<{ snippet: { title: string; description: string; defaultLanguage?: string } }>;
   visual?: "none" | "game_footage" | "real_world_images";
   media?: number;
   stock?: number;
@@ -102,6 +104,24 @@ function fakeLlm(f: Fakes): Llm {
       if (schema === (VisionQaSchema as unknown))
         return { verdict: "pass", problems: [], notes: "" } as z.infer<S>;
       if (schema === (EvergreenScriptSchema as unknown)) return rankingDraft() as z.infer<S>;
+      if (schema === (TwinScriptSchema as unknown))
+        return {
+          headline: "Expansión de Starfield retrasada a 2027",
+          hook: "La segunda expansión de Starfield se retrasa a principios de 2027.",
+          beats: [
+            { narration: "Bethesda confirmó el cambio esta mañana en Xbox Wire y dice que el tiempo extra irá a pulido y rendimiento en todas las plataformas.", primary: "Principios de 2027", secondary: "nueva ventana" },
+            { narration: "La expansión estaba prevista para este diciembre, así que es un retraso de al menos tres meses si la estabas esperando.", primary: "3+ meses", secondary: "más tarde de lo previsto" },
+          ],
+          take_label: "QUÉ SIGNIFICA",
+          take_narration: "Para nosotros, Bethesda ya ha retrasado contenido grande antes y suele llegar en mejor estado, así que todavía no es una señal de alarma.",
+          take_on_screen: "Todavía no es una alarma",
+          loop_line: "Así que si la esperas, apunta principios de 2027 para la segunda expansión de Starfield.",
+          attribution: "Fuente: Xbox Wire / IGN",
+          youtube_title: "Starfield retrasa su expansión a principios de 2027",
+          youtube_description: "Bethesda ha movido la expansión. Fuentes: Xbox Wire e IGN.",
+          youtube_tags: ["starfield", "bethesda", "expansión"],
+          pinned_comment: "Nuestra lectura: todavía no es una alarma. ¿Esperas o pasas?",
+        } as z.infer<S>;
       throw new Error("unexpected schema");
     },
   } as Llm;
@@ -113,8 +133,9 @@ function fakeYouTube(f: Fakes): YouTubeClient {
     (async () => new Response("{}")) as FetchLike,
   );
   yt.findByMarker = async () => f.existingOnChannel;
-  yt.createSession = async () => {
+  yt.createSession = async (resource) => {
     f.sessions++;
+    f.resources.push(resource as { snippet: { title: string; description: string; defaultLanguage?: string } });
     return `https://upload.example/session/${f.sessions}`;
   };
   yt.uploadToSession = async () => {
@@ -125,7 +146,8 @@ function fakeYouTube(f: Fakes): YouTubeClient {
       throw new Error("socket hang up");
     }
     f.uploads++;
-    return "vid_123";
+    // Each upload is its own video (the table keeps video ids unique).
+    return f.uploads === 1 ? "vid_123" : `vid_123_${f.uploads}`;
   };
   yt.status = async () => ({
     uploadStatus: "processed",
@@ -163,6 +185,7 @@ async function setup(
     captionInserts: 0,
     captions: [],
     comments: [],
+    resources: [],
     ...fakeOverrides,
   };
   let clock = new Date("2026-10-16T12:00:00Z");
@@ -973,5 +996,48 @@ test("the go-live check keeps looking for days, hourly after the first two, and 
   const [done] = await db.query<{ detail: { at?: string } }>(`SELECT detail FROM events WHERE episode_id = 'ep_late' AND kind = 'public_confirmed'`);
   assert.equal(done?.detail?.at, "2026-10-16T17:00:00.000Z");
   assert.equal(f.comments.length, 1, "the first comment waited for the video to be public");
+  await db.close();
+});
+
+test("the twin channel: a published Short gets a translated twin, voiced by ElevenLabs, uploaded in its language to the second login", async () => {
+  const { db, f, s, setClock } = await setup({ youtubePrivacy: "public", twinLanguage: "es", twinChannelId: "UCtwin", twinDelayMinutes: 30 });
+  const accounts: string[] = [];
+  const baseYoutube = s.youtube;
+  s.youtube = (account = "") => {
+    accounts.push(account);
+    return baseYoutube();
+  };
+  const voiced: Array<{ text: string; provider?: string }> = [];
+  const baseSynth = s.synthesise;
+  s.synthesise = async (text, out, voice, opts) => {
+    voiced.push({ text, provider: opts?.provider });
+    return baseSynth(text, out, voice);
+  };
+  await tick(s);
+  const parent = await only(db);
+  assert.equal(parent.status, "published");
+  // Fifteen minutes after the original is live, its twin is made.
+  setClock(new Date("2026-10-16T12:30:00Z"));
+  await db.query(`UPDATE episodes SET publish_at = '2026-10-16T12:05:00Z' WHERE id = $1`, [parent.id]);
+  for (let i = 0; i < 4; i++) await tick(s);
+  const twin = (await listEpisodes(db)).find((e) => e.lane === "twin");
+  assert.ok(twin, "a twin episode exists");
+  assert.equal(twin!.story_json.twin?.parent, parent.id);
+  assert.equal(twin!.status, "published", twin!.last_error ?? "");
+  assert.equal(twin!.approval_mode, "auto", "no second tap for a Short the owner already approved");
+  assert.match(twin!.script_json!.hook, /^La segunda expansión/);
+  assert.equal(twin!.script_json!.twin?.parent_video, parent.youtube_video_id);
+  assert.ok(voiced.some((v) => v.provider === "elevenlabs" && /expansión/.test(v.text)), "the twin is voiced by ElevenLabs from the Spanish text as written");
+  assert.ok(voiced.every((v) => !/expansión/.test(v.text) || !/sesenta|veinte/.test(v.text)), "no English number words in the Spanish narration");
+  assert.ok(accounts.includes("es"), "the twin uploads with the second login");
+  assert.equal(f.uploads, 2);
+  const up = f.resources.at(-1)!;
+  assert.equal(up.snippet.defaultLanguage, "es");
+  assert.match(up.snippet.title, /Starfield retrasa/);
+  assert.match(up.snippet.description, /Versión en español/);
+  // The twin does not count as one of the day's Shorts, and nothing is twinned twice.
+  assert.equal(await countToday(db, "Europe/London"), 1);
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.lane === "twin").length, 1);
   await db.close();
 });

@@ -611,7 +611,9 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
             "<h1>Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET first.</h1>",
           ),
         );
-      const nonce = crypto.randomBytes(12).toString("hex");
+      // A second account (the twin channel) rides in the nonce, so the callback knows which login it is.
+      const account = (url.searchParams.get("account") ?? "").replace(/[^a-z]/g, "").slice(0, 2);
+      const nonce = `${crypto.randomBytes(12).toString("hex")}${account ? `-${account}` : ""}`;
       const state = `${nonce}.${signToken(`oauth:${nonce}`, cfg.appSecret, 4 * 3600)}`;
       res
         .writeHead(302, { location: consentUrl(oauthConfig(cfg), state) })
@@ -735,9 +737,14 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
           }
         }
         const { refreshToken, scope } = exchanged;
+        const account = nonce.includes("-") ? nonce.split("-")[1]! : "";
+        const expectedChannel = account ? (account === cfg.twinLanguage ? cfg.twinChannelId : "") : cfg.youtubeChannelId;
+        const connectAgain = account ? `/connect?account=${account}` : "/connect";
+        if (account && !expectedChannel)
+          return send(200, page("Unknown account", `<h1>No channel is set up for "${esc(account)}".</h1><p>Set TWIN_LANGUAGE and TWIN_YOUTUBE_CHANNEL_ID first. Nothing was changed.</p>`));
         // Brand accounts on Google's chooser often carry old names: check the channel itself before saving.
         // The check must succeed and match; a lookup that fails keeps the working login (audit, 24 Oct 2026).
-        if (cfg.youtubeChannelId) {
+        if (expectedChannel) {
           const ch = await channelOf(refreshToken, oauthConfig(cfg)).catch(
             () => undefined,
           );
@@ -746,20 +753,25 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
               200,
               page(
                 "Could not check the channel",
-                `<h1>Google did not say which channel that was.</h1><p>Nothing was changed; the existing login stays. <a href="/connect" style="font-size:22px">Try again</a></p>`,
+                `<h1>Google did not say which channel that was.</h1><p>Nothing was changed; the existing login stays. <a href="${connectAgain}" style="font-size:22px">Try again</a></p>`,
               ),
             );
-          if (ch.id !== cfg.youtubeChannelId)
+          if (ch.id !== expectedChannel)
             return send(
               200,
               page(
                 "Wrong channel",
-                `<h1>That was the wrong account.</h1><p>You picked <b>${esc(ch.title)}</b>, which is not Pulse Gaming News. Nothing was changed.</p><p><a href="/connect" style="font-size:22px">Try again and pick a different account</a></p>`,
+                `<h1>That was the wrong account.</h1><p>You picked <b>${esc(ch.title)}</b>, which is not ${account ? "the twin channel" : "Pulse Gaming News"}. Nothing was changed.</p><p><a href="${connectAgain}" style="font-size:22px">Try again and pick a different account</a></p>`,
               ),
             );
         }
-        await saveRefreshToken(db, oauthConfig(cfg), refreshToken);
+        await saveRefreshToken(db, oauthConfig(cfg), refreshToken, account);
         clearTokenCache();
+        if (account) {
+          await logEvent(db, null, "youtube_connected", { scope, account });
+          await services.notify({ content: `✅ The ${account.toUpperCase()} twin channel is connected: translated Shorts start with the next one that goes public.` });
+          return send(200, page("Connected", `<h1>✅ Twin channel connected.</h1><p>Translated Shorts will start with the next one that goes public. You can close this tab.</p>`));
+        }
         await clearSelectionPause(db); // the usual cause of a pause is a dead YouTube token
         await logEvent(db, null, "youtube_connected", { scope });
         const missing = ["youtube.force-ssl", "yt-analytics.readonly"].filter(

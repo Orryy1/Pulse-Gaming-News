@@ -199,6 +199,10 @@ export interface Config {
   amazonUsTag: string; // Amazon Associates US tracking ID, when there is one
   amazonMoreTags: { ca?: string; de?: string; fr?: string; it?: string; es?: string; au?: string }; // other national stores
   youtubeChannelId: string; // the only channel the factory may connect to
+  /** The twin channel: every Short re-voiced in this language and uploaded to a second channel; "" = off. */
+  twinLanguage: string;
+  twinChannelId: string; // the second channel's id, checked when it is connected (/connect?account=es)
+  twinDelayMinutes: number; // the twin follows the original by this long
   oauthRedirectUri: string; // where Google returns after consent; this PC's own address works for the desktop OAuth client
   musicBed: boolean;
   dryRun: boolean;
@@ -409,6 +413,9 @@ export function loadConfig(): Config {
     },
     oauthRedirectUri: str("OAUTH_REDIRECT_URI", "http://localhost:8080/oauth/callback"),
     youtubeChannelId: str("YOUTUBE_CHANNEL_ID", "UCvgNDjtTezrpxL8oUe6mYwA"),
+    twinLanguage: str("TWIN_LANGUAGE", "").toLowerCase().slice(0, 2),
+    twinChannelId: str("TWIN_YOUTUBE_CHANNEL_ID", ""),
+    twinDelayMinutes: int("TWIN_DELAY_MINUTES", 30),
     musicBed: bool("MUSIC_BED", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),

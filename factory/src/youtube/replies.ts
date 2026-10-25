@@ -7,11 +7,7 @@ import { z } from "zod";
 import type { Db } from "../db.ts";
 import type { Episode } from "../episodes.ts";
 import type { Llm } from "../editorial/llm.ts";
-import {
-  QUOTA,
-  publishHeld,
-  quotaAdd,
-} from "../lanes.ts";
+import { QUOTA, publishHeld, quotaAdd } from "../lanes.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import type { YouTubeClient } from "./upload.ts";
 
@@ -120,7 +116,7 @@ export async function replyToComments(d: ReplyDeps): Promise<number> {
   const now = d.now();
   const eps = await d.db.query<Episode & { live_at: string }>(
     `SELECT *, coalesce(publish_at, updated_at) AS live_at FROM episodes
-      WHERE status = 'published' AND youtube_video_id IS NOT NULL
+      WHERE status = 'published' AND youtube_video_id IS NOT NULL AND lane <> 'twin'
         AND coalesce(publish_at, updated_at) <= $1
         AND coalesce(publish_at, updated_at) > $1::timestamptz - make_interval(mins => $2)
       ORDER BY coalesce(publish_at, updated_at) DESC`,
@@ -289,7 +285,9 @@ export async function replyToChannelComments(d: ReplyDeps): Promise<number> {
   const byVideo = new Map<string, typeof all>();
   for (const c of all)
     if (c.videoId && c.authorChannelId !== ownChannel)
-      (byVideo.get(c.videoId) ?? byVideo.set(c.videoId, []).get(c.videoId)!).push(c);
+      (
+        byVideo.get(c.videoId) ?? byVideo.set(c.videoId, []).get(c.videoId)!
+      ).push(c);
   let sent = 0;
   for (const [videoId, comments] of byVideo) {
     const [ep] = await d.db.query<Episode>(
@@ -300,7 +298,10 @@ export async function replyToChannelComments(d: ReplyDeps): Promise<number> {
     try {
       sent += await replyOnVideo(d, ep, comments);
     } catch (err) {
-      log("warn", "comment replies failed", { episode: ep.id, error: errorMessage(err) });
+      log("warn", "comment replies failed", {
+        episode: ep.id,
+        error: errorMessage(err),
+      });
     }
   }
   return sent;

@@ -59,15 +59,17 @@ export function labelsDue(
   ).map((l) => l.label);
 }
 
-export async function dueCaptures(db: Db, now: Date): Promise<Capture[]> {
+export async function dueCaptures(db: Db, now: Date,
+  account = ""): Promise<Capture[]> {
   const eps = await db.query<{
     id: string;
     youtube_video_id: string;
     live_at: string;
   }>(
     `SELECT id, youtube_video_id, ${LIVE_AT("episodes")} AS live_at FROM episodes
-     WHERE status = 'published' AND youtube_video_id IS NOT NULL AND ${LIVE_AT("episodes")} > $1`,
-    [new Date(now.getTime() - 40 * 24 * 3_600_000)],
+     WHERE status = 'published' AND youtube_video_id IS NOT NULL AND ${LIVE_AT("episodes")} > $1
+       AND COALESCE(story_json->'twin'->>'account', '') = $2`,
+    [new Date(now.getTime() - 40 * 24 * 3_600_000), account],
   );
   if (!eps.length) return [];
   const have = new Map<string, Set<string>>();
@@ -95,8 +97,9 @@ export async function captureMetrics(
   db: Db,
   youtube: StatsSource,
   now: Date,
+  account = "",
 ): Promise<number> {
-  const due = await dueCaptures(db, now);
+  const due = await dueCaptures(db, now, account);
   if (!due.length) return 0;
   const ids = [...new Set(due.map((d) => d.videoId))];
   const stats = new Map<string, VideoStats>();
@@ -342,6 +345,7 @@ export async function captureRetention(
   db: Db,
   yt: RetentionSource,
   now: Date,
+  account = "",
 ): Promise<number> {
   const eps = await db.query<{
     id: string;
@@ -353,8 +357,9 @@ export async function captureRetention(
         AND ${LIVE_AT("e")} < $1::timestamptz - interval '4 days'
         AND ${LIVE_AT("e")} > $1::timestamptz - interval '30 days'
         AND NOT EXISTS (SELECT 1 FROM video_metrics m WHERE m.episode_id = e.id AND m.label = 'retention')
+        AND COALESCE(e.story_json->'twin'->>'account', '') = $2
       LIMIT 100`,
-    [now],
+    [now, account],
   );
   if (!eps.length) return 0;
   const start = new Date(
@@ -419,7 +424,7 @@ async function retentionRows(
   const rows = await db.query<RetentionRow>(
     `SELECT e.id, e.lane, e.script_json, m.raw, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS metrics
        FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
-      WHERE m.label = 'retention' AND m.captured_at > $1::timestamptz - interval '45 days'`,
+      WHERE m.label = 'retention' AND m.captured_at > $1::timestamptz - interval '45 days' AND e.lane <> 'twin'`,
     [now],
   );
   return rows

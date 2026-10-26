@@ -104,6 +104,7 @@ import {
 } from "./editorial/editorial.ts";
 import { narrationOf, tidyLoopLine, type Script } from "./editorial/schema.ts";
 import { translateMetadata } from "./editorial/localize.ts";
+import { hotBlock, readHotTopic, watchHits } from "./hits.ts";
 import type { Deal } from "./discovery/deals.ts";
 import { trendingBlock } from "./discovery/demand.ts";
 import { screenFrames } from "./assets/localvision.ts";
@@ -749,6 +750,7 @@ async function topicDemand(
 ): Promise<string> {
   return [
     focusBlock(s.cfg, s.now()),
+    hotBlock(await readHotTopic(s.db, s.now()).catch(() => undefined)),
     calendarFor(s.cfg, s.now(), lane),
     searchGapsBlock(s.cfg.searchGapsFile),
     trendingBlock(await s.trending().catch(() => []), 25),
@@ -773,6 +775,7 @@ async function createFromChoice(
     await recentHeadlines(db),
     [
       focusBlock(s.cfg, s.now()),
+      hotBlock(await readHotTopic(db, s.now()).catch(() => undefined)),
       calendarFor(s.cfg, s.now(), "news", 3),
       await performanceNotes(db, s.now()).catch(() => ""),
       await retentionNotes(db, s.now()).catch(() => ""),
@@ -6801,6 +6804,23 @@ export async function tick(
         log("warn", "twin retention capture failed", {
           error: errorMessage(err),
         }),
+      );
+    // A Short taking off: checked every 20 minutes in its first two days; the editors lean into its game.
+    if (
+      !s.cfg.dryRun &&
+      !(await weeklyTried(
+        s.db,
+        `hits:${Math.floor(s.now().getTime() / 1_200_000)}`,
+      ))
+    )
+      await watchHits({
+        db: s.db,
+        cfg: s.cfg,
+        now: s.now,
+        stats: (ids) => s.youtube().stats(ids),
+        notify: (m) => s.notify(m),
+      }).catch((err) =>
+        log("warn", "take-off check failed", { error: errorMessage(err) }),
       );
     // Older videos: titles and descriptions in the other languages, one every half hour from spare quota.
     if (!s.cfg.dryRun)

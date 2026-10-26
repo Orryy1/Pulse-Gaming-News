@@ -244,6 +244,12 @@ export interface Config {
   maxStoryAgeHours: number;
   includeRumours: boolean;
   rumoursPerDay: number; // rumour Shorts a day at most, so the channel stays news first
+  /** A Short taking off: this many times the usual views an hour in its first two days (src/hits.ts). */
+  hitMultiple: number;
+  /** ...and never fewer views an hour than this. */
+  hitMinPerHour: number;
+  /** How long the editors lean towards a hit's game. */
+  hitHours: number;
   approvalMode: ApprovalMode;
   approvalTimeoutMinutes: number;
   publishWindowStartUtc: number;
@@ -552,10 +558,16 @@ export function loadConfig(): Config {
       threads: int("CROSSPOST_THREADS_DELAY", 45),
       bluesky: int("CROSSPOST_BLUESKY_DELAY", 20),
     },
-    threadsLoginPath: str("THREADS_LOGIN_PATH", path.join(tokenDir, "threads.json")),
+    threadsLoginPath: str(
+      "THREADS_LOGIN_PATH",
+      path.join(tokenDir, "threads.json"),
+    ),
     threadsAppId: str("THREADS_APP_ID"),
     threadsAppSecret: str("THREADS_APP_SECRET"),
-    blueskyLoginPath: str("BLUESKY_LOGIN_PATH", path.join(tokenDir, "bluesky.json")),
+    blueskyLoginPath: str(
+      "BLUESKY_LOGIN_PATH",
+      path.join(tokenDir, "bluesky.json"),
+    ),
     crosspostWindowHours: int("CROSSPOST_WINDOW_HOURS", 36),
     tiktokDaily: int("TIKTOK_DAILY", 0),
     tiktokFromHour: int("TIKTOK_FROM_HOUR", 16),
@@ -585,6 +597,9 @@ export function loadConfig(): Config {
     maxStoryAgeHours: int("MAX_STORY_AGE_HOURS", 24),
     includeRumours: bool("INCLUDE_RUMOURS", false),
     rumoursPerDay: int("RUMOURS_PER_DAY", 1),
+    hitMultiple: Number(str("HIT_MULTIPLE", "6")) || 6,
+    hitMinPerHour: int("HIT_MIN_PER_HOUR", 40),
+    hitHours: int("HIT_HOURS", 72),
     approvalMode,
     approvalTimeoutMinutes: int("APPROVAL_TIMEOUT_MINUTES", 60),
     publishWindowStartUtc: int("PUBLISH_WINDOW_START_UTC", 7),

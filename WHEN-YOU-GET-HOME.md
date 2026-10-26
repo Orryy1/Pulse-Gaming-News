@@ -16,7 +16,7 @@ Why: Google wants to check it's you before it lets the factory change video sett
 5. If a box says **"Verify it's you"**, type your Google password and click **Next**. Do any phone check it asks for.
 6. You're done when the video's details page opens and nothing asks you again.
 7. Leave Brave open. It's fine behind other windows; just don't close it.
-8. Google's check only lasts a short while (on 26 Oct it ran out after three edits). So go **straight** to step 2 and run **Pulse: related videos and comment hearts** first, within a few minutes of verifying.
+8. Google's check only lasts a short while (on 26 Oct it had run out within 2 hours). So straight after verifying, type **verified** in your Claude chat. Claude then links all the Shorts within a few minutes, with no extra boxes to click.
 9. If Studio's page goes dim and nothing happens, Google wants the password again. Click anywhere on the dim page, type your Google password in the box, then run the task again.
 
 ---
@@ -28,7 +28,7 @@ Why: each task stops at its first permission box until you approve it once. Afte
 1. Open the **Claude** desktop app.
 2. In the left sidebar, click **Scheduled**.
 3. Click **Pulse: related videos and comment hearts**, then click **Run now**.
-4. A chat opens and it starts working. Whenever a box asks to allow something, click **Always allow**. If there's no "Always allow", click **Allow**.
+4. Click the task's chat in the left sidebar to open it. The task pauses at a box asking to allow something, and it waits there until you click. Click **Always allow** (or **Allow** if there's no "Always allow"). Keep that chat open for a minute in case a second box appears.
 5. Let it finish. That takes a few minutes, and it's fine to look away.
 6. Do the same (steps 3 to 5) for each of these:
    - **Pulse: YouTube Community posts**

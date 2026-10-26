@@ -621,6 +621,31 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         );
       return;
     }
+    // Every note the factory's own checks wrote about its videos (the feedback the Discord posts carry):
+    // the visual check's verdict, problems and notes, the quality rubric, narration faults, dropped media
+    // and failed steps. Read-only, for reviewing what keeps coming up.
+    if (url.pathname === "/admin/qa-notes" && req.method === "GET") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const days = Math.min(
+        90,
+        Math.max(1, Number(url.searchParams.get("days") ?? 21)),
+      );
+      const rows = await db.query(
+        `SELECT e.id, e.lane, e.status, e.youtube_video_id, e.created_at, e.script_json->'youtube'->>'title' AS title,
+                e.qa_json->'vision' AS vision, e.qa_json->'rubric' AS rubric, e.qa_json->'technical' AS technical, e.last_error,
+                (SELECT json_agg(json_build_object('kind', v.kind, 'at', v.created_at, 'detail', v.detail) ORDER BY v.id)
+                   FROM events v WHERE v.episode_id = e.id
+                    AND v.kind IN ('narration_check','media_dropped','style_warnings','factcheck','rubric','rejected','stale_review','crosspost_failed','media_floor','pauses_tightened','captions_failed','comment_failed','localize_failed','approved')) AS events
+           FROM episodes e
+          WHERE e.created_at > now() - make_interval(days => $1)
+          ORDER BY e.created_at DESC`,
+        [days],
+      );
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify(rows));
+      return;
+    }
     // The latest daily community post (question, caption, picture on disk), for the YouTube Community tab.
     if (url.pathname === "/admin/engage-latest" && req.method === "GET") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));

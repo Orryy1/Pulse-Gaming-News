@@ -42,3 +42,18 @@ Questions people type into YouTube where the answers are old, off-target or long
 - what happened to telltale games (why Short): What happened to Telltale: the 2018 closure, the revival and The Wolf Among Us Remastered, from statements on record.
 - the game awards 2026 nominees (news Short): The moment nominations land: Game of the Year nominees first, then the categories US viewers care about. Nothing before the official list.
 - what happens to gta online when gta 6 come out (why Short): What Rockstar has said about GTA Online after GTA 6, and what happened to Red Dead Online as the only precedent. Only official statements.
+
+## Viewer questions from the comment study (26 Oct 2026)
+
+- why do consoles get more expensive instead of cheaper (why Short): The most-liked viewer question in the comment study; price history of PS5, Xbox and Switch from official announcements, dollars first.
+- playstation dynamic pricing explained (why Short): What Sony's dynamic pricing is, who sees which price and what regulators say, from reporting of record; never present it as illegal unless a ruling says so.
+- why are digital games not cheaper than physical (why Short): Store prices for the same game on PS Store, Steam and disc, with dates.
+- gamestop trade in vs selling yourself (why Short): Real trade-in quotes against completed sale prices for the same games, sourced.
+- why are 3ds and wii u prices going up (why Short): Retro price trends with sourced figures, and why modding and libraries drive them.
+- why don't controllers have hall effect sticks (why Short): Stick drift, what Hall effect sticks are and which official pads use them.
+- should pokemon drop turn based battles (ranking Short): A named debate the comments already want; Legends against mainline, with sales figures.
+- can you still trust review scores (why Short): How review embargoes and scores work, from outlets' own policies.
+- witcher 3 free update vs paid re-releases (ranking Short): Free next-gen updates against paid remasters, with prices and dates.
+- why did game manuals disappear (why Short): When and why publishers dropped printed manuals, from statements on record.
+- what happened to bioshock 4 (why Short): The development history on record; the same format works for Medal of Honor and Command and Conquer.
+- will mother 3 ever come to the west (why Short): The Japan-only Switch Online release and what Nintendo has said.

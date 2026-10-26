@@ -739,7 +739,7 @@ export function searchGapsBlock(file: string): string {
   const lines = md
     .split(/\r?\n/)
     .filter((l) => l.startsWith("- "))
-    .slice(0, 40);
+    .slice(0, 60);
   if (!lines.length) return "";
   return `Questions people search for on YouTube where the answers are stale, off-target or 20-minute videos (almost no Shorts answer them). When a candidate can honestly answer one, prefer it and use the searcher's own words in the question and the title:\n${lines.join("\n")}`;
 }

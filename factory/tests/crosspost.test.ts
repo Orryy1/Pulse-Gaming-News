@@ -192,3 +192,21 @@ test("a lost response never posts twice: the uncertain post is left for the owne
   assert.equal(Number(done!.n), 1);
   await db.close();
 });
+
+test("Threads and Bluesky captions fit their limits and carry the link; Bluesky links get byte ranges", async () => {
+  const { socialCaption } = await import("../src/social/crosspost.ts");
+  const { linkFacets } = await import("../src/social/platforms.ts");
+  const { goodScript } = await import("./helpers.ts");
+  const script = goodScript();
+  const bsky = socialCaption("bluesky", script, "abc123");
+  assert.ok(bsky.length <= 300, `bluesky caption is ${bsky.length} characters`);
+  assert.match(bsky, /https:\/\/youtube\.com\/shorts\/abc123/);
+  assert.match(bsky, /#gaming/);
+  const threads = socialCaption("threads", script, "abc123");
+  assert.ok(threads.length <= 500);
+  assert.match(threads, /Full story and sources: https:\/\/youtube\.com\/shorts\/abc123/);
+  assert.match(threads, /Narrated with an AI voice\./);
+  const text = "Pokémon news · https://youtube.com/shorts/abc123 #gaming";
+  const [f] = linkFacets(text);
+  assert.equal(Buffer.from(text, "utf8").subarray(f!.index.byteStart, f!.index.byteEnd).toString("utf8"), "https://youtube.com/shorts/abc123");
+});

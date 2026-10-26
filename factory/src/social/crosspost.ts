@@ -16,10 +16,29 @@ import type { Script } from "../editorial/schema.ts";
 import { polishTitle } from "../editorial/seo.ts";
 import { logEvent } from "../episodes.ts";
 import { errorMessage, log } from "../lib/util.ts";
-import { markSignedOut, postTikTokBrowser, signedIn, TikTokChallenge, TikTokSignedOut } from "./tiktokBrowser.ts";
+import {
+  markSignedOut,
+  postTikTokBrowser,
+  signedIn,
+  TikTokChallenge,
+  TikTokSignedOut,
+} from "./tiktokBrowser.ts";
 
-export type Platform = "facebook" | "instagram" | "tiktok" | "x";
-export const PLATFORMS: Platform[] = ["x", "facebook", "instagram", "tiktok"];
+export type Platform =
+  | "facebook"
+  | "instagram"
+  | "tiktok"
+  | "x"
+  | "threads"
+  | "bluesky";
+export const PLATFORMS: Platform[] = [
+  "x",
+  "bluesky",
+  "facebook",
+  "threads",
+  "instagram",
+  "tiktok",
+];
 export const MAX_TRIES = 3;
 /** Failures before this process started do not count: a restart usually carries a fix, and a Short still inside its window deserves a fresh try. */
 const BOOT = new Date();
@@ -33,9 +52,23 @@ export interface SocialPosters {
     title: string,
     description: string,
   ) => Promise<string>;
-  instagram?: (file: string, caption: string, videoUrl?: string) => Promise<string>;
+  instagram?: (
+    file: string,
+    caption: string,
+    videoUrl?: string,
+  ) => Promise<string>;
   tiktok?: (file: string, caption: string) => Promise<string>;
   x?: (text: string) => Promise<string>;
+  threads?: (
+    file: string,
+    caption: string,
+    videoUrl?: string,
+  ) => Promise<string>;
+  bluesky?: (
+    file: string,
+    caption: string,
+    link: { url: string; title: string; description: string },
+  ) => Promise<string>;
 }
 
 // Hashtags per platform: the story's own tags first, then at most the niche tag. Instagram allows five;
@@ -45,6 +78,9 @@ const PLATFORM_TAGS: Record<Platform, { topic: number; tail: string[] }> = {
   instagram: { topic: 3, tail: ["#gamingnews", "#gaming"] },
   tiktok: { topic: 3, tail: ["#gamingnews", "#gaming"] },
   x: { topic: 0, tail: [] },
+  // Threads turns one tag into the post's topic; Bluesky's gaming feeds pick up a #gaming tag.
+  threads: { topic: 1, tail: [] },
+  bluesky: { topic: 0, tail: ["#gaming"] },
 };
 
 /** A closing question for the caption: the script's own loop line when it asks one. */
@@ -56,12 +92,20 @@ const PLATFORM_TAGS: Record<Platform, { topic: number; tail: string[] }> = {
 export function questionOf(script: Script): string {
   const loop = (script.loop_line ?? "").trim();
   if (!/\?$/.test(loop)) return "";
-  const words = (t: string) => new Set(t.toLowerCase().match(/[a-z0-9']{4,}/g) ?? []);
+  const words = (t: string) =>
+    new Set(t.toLowerCase().match(/[a-z0-9']{4,}/g) ?? []);
   const hook = words(script.hook ?? "");
   const shared = [...words(loop)].filter((w) => hook.has(w)).length;
   if (shared < 3) return loop;
-  const tail = loop.split(/,\s+|\s+(?:and|so)\s+(?=(?:will|would|do|does|are|is|can|could|should|did|have|has|what|which|who|how|why)\b)/i).at(-1)!.trim();
-  return tail === loop || tail.split(/\s+/).length < 3 ? "" : tail[0]!.toUpperCase() + tail.slice(1);
+  const tail = loop
+    .split(
+      /,\s+|\s+(?:and|so)\s+(?=(?:will|would|do|does|are|is|can|could|should|did|have|has|what|which|who|how|why)\b)/i,
+    )
+    .at(-1)!
+    .trim();
+  return tail === loop || tail.split(/\s+/).length < 3
+    ? ""
+    : tail[0]!.toUpperCase() + tail.slice(1);
 }
 
 /** The words that go with the video on each platform. */
@@ -78,6 +122,34 @@ export function socialCaption(
   const rumour = script.is_rumour
     ? "Unconfirmed report: we will update when it is confirmed or denied."
     : "";
+  if (platform === "bluesky") {
+    // 300 characters, links counted in full: the title, the hook when it fits, the link, one tag.
+    const tail = `\n\n${url}\n\n${tags.join(" ")}`.trimEnd();
+    const body = script.is_rumour ? `${title} (unconfirmed)` : title;
+    const room = 300 - tail.length - 2;
+    const hook =
+      script.hook && body.length + script.hook.length + 2 <= room
+        ? `\n\n${script.hook}`
+        : "";
+    return `${body.slice(0, room)}${hook}${tail}`;
+  }
+  if (platform === "threads") {
+    // 500 characters: the title, the hook and its question, the rumour line, the link, the AI note, one topic.
+    return [
+      script.is_rumour ? `${title} (unconfirmed)` : title,
+      "",
+      `${script.hook}${question ? ` ${question}` : ""}`,
+      rumour,
+      `\nFull story and sources: ${url}`,
+      "\nNarrated with an AI voice.",
+      tags.join(" "),
+    ]
+      .filter((l, i, a) => l !== "" || (i > 0 && a[i - 1] !== ""))
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+      .slice(0, 500);
+  }
   if (platform === "x") {
     // 280 characters, a link counts as 23. The top gaming accounts on X use no topic hashtags.
     const tail = `\n\n${url}`;
@@ -92,9 +164,13 @@ export function socialCaption(
   // The search phrase first (TikTok and Instagram read captions for search; Instagram posts reach
   // Google), then the fact, then a real question; no emoji.
   const lines = [
-    platform === "tiktok" ? `${script.hook}${question ? ` ${question}` : ""}` : title,
+    platform === "tiktok"
+      ? `${script.hook}${question ? ` ${question}` : ""}`
+      : title,
     platform === "tiktok" ? "" : "",
-    platform === "tiktok" ? "" : `${script.hook}${question ? ` ${question}` : ""}`,
+    platform === "tiktok"
+      ? ""
+      : `${script.hook}${question ? ` ${question}` : ""}`,
     rumour,
     platform === "facebook" ? `\nFull story and sources: ${url}` : "",
     platform === "instagram" ? "\nFull story and sources: link in bio." : "",
@@ -144,11 +220,22 @@ export async function nextForPlatform(
  */
 export async function nextForTikTok(
   db: Db,
-  cfg: Pick<Config, "tiktokDaily" | "tiktokFromHour" | "timezone" | "crosspostDelays" | "crosspostWindowHours">,
+  cfg: Pick<
+    Config,
+    | "tiktokDaily"
+    | "tiktokFromHour"
+    | "timezone"
+    | "crosspostDelays"
+    | "crosspostWindowHours"
+  >,
   now: Date,
 ): Promise<CrosspostCandidate | undefined> {
   const hour = Number(
-    new Intl.DateTimeFormat("en-GB", { timeZone: cfg.timezone, hour: "2-digit", hour12: false }).format(now),
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: cfg.timezone,
+      hour: "2-digit",
+      hour12: false,
+    }).format(now),
   );
   if (hour < cfg.tiktokFromHour) return undefined;
   const [sent] = await db.query<{ n: string | number }>(
@@ -168,7 +255,13 @@ export async function nextForTikTok(
                / GREATEST(1, EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(e.publish_at, e.updated_at))) / 3600) DESC,
                COALESCE(e.publish_at, e.updated_at) DESC
       LIMIT 1`,
-    [now, cfg.crosspostDelays.tiktok, cfg.crosspostWindowHours, MAX_TRIES, BOOT],
+    [
+      now,
+      cfg.crosspostDelays.tiktok,
+      cfg.crosspostWindowHours,
+      MAX_TRIES,
+      BOOT,
+    ],
   );
   return rows[0];
 }
@@ -192,12 +285,20 @@ export interface CrosspostDeps {
   posters: SocialPosters;
   now: () => Date;
   isPublic: (videoId: string) => Promise<boolean>;
-  notify: (m: { content: string; level?: "info"; ping?: boolean }) => Promise<unknown>;
+  notify: (m: {
+    content: string;
+    level?: "info";
+    ping?: boolean;
+  }) => Promise<unknown>;
   episodeDir: (id: string) => string;
   /** A signed public link to the episode's video, for platforms that fetch it themselves. */
   videoUrl?: (id: string) => string;
   /** Finds a post that may already exist remotely for this episode (after a lost response); its id, or undefined. */
-  reconcile?: (platform: Platform, episodeId: string, file: string) => Promise<string | undefined>;
+  reconcile?: (
+    platform: Platform,
+    episodeId: string,
+    file: string,
+  ) => Promise<string | undefined>;
 }
 
 /** One pass: at most one post per platform, oldest eligible Short first. */
@@ -227,7 +328,11 @@ export async function crosspostTick(
         isPublic = await d.isPublic(ep.youtube_video_id);
       } catch (err) {
         // YouTube unreachable: try again next pass, never a permanent skip.
-        log("info", "crosspost waits: YouTube check failed", { platform, episode: ep.id, error: errorMessage(err) });
+        log("info", "crosspost waits: YouTube check failed", {
+          platform,
+          episode: ep.id,
+          error: errorMessage(err),
+        });
         continue;
       }
       if (!isPublic) {
@@ -255,17 +360,33 @@ export async function crosspostTick(
         [ep.id, platform, d.now()],
       );
       if (Number(started?.n ?? 0) > 0) {
-        const found = await d.reconcile?.(platform, ep.id, file).catch(() => undefined);
+        const found = await d
+          .reconcile?.(platform, ep.id, file)
+          .catch(() => undefined);
         if (found) {
-          await logEvent(d.db, ep.id, "crosspost", { platform, id: found, reconciled: true });
-          log("info", "crosspost reconciled", { platform, episode: ep.id, id: found });
+          await logEvent(d.db, ep.id, "crosspost", {
+            platform,
+            id: found,
+            reconciled: true,
+          });
+          log("info", "crosspost reconciled", {
+            platform,
+            episode: ep.id,
+            id: found,
+          });
           done.push({ platform, episode: ep.id, ok: true });
           continue;
         }
         if (!d.reconcile) {
           // Nothing can tell whether it landed: leave it for the owner rather than risk a duplicate.
-          await logEvent(d.db, ep.id, "crosspost_skip", { platform, reason: "uncertain after a lost response" });
-          await d.notify({ level: "info", content: `${platform}: "${polishTitle(script)}" may or may not have posted after a lost response; not retried. Check and post by hand if missing.` });
+          await logEvent(d.db, ep.id, "crosspost_skip", {
+            platform,
+            reason: "uncertain after a lost response",
+          });
+          await d.notify({
+            level: "info",
+            content: `${platform}: "${polishTitle(script)}" may or may not have posted after a lost response; not retried. Check and post by hand if missing.`,
+          });
           continue;
         }
       }
@@ -277,7 +398,15 @@ export async function crosspostTick(
             ? await d.posters.instagram!(file, caption, d.videoUrl?.(ep.id))
             : platform === "tiktok"
               ? await d.posters.tiktok!(file, caption)
-              : await d.posters.x!(caption);
+              : platform === "threads"
+                ? await d.posters.threads!(file, caption, d.videoUrl?.(ep.id))
+                : platform === "bluesky"
+                  ? await d.posters.bluesky!(file, caption, {
+                      url: `https://youtube.com/shorts/${ep.youtube_video_id}`,
+                      title: polishTitle(script),
+                      description: script.hook ?? "",
+                    })
+                  : await d.posters.x!(caption);
       await logEvent(d.db, ep.id, "crosspost", { platform, id });
       // TikTok has not approved the app for public posting yet: the video waits in the owner's TikTok inbox.
       // TikTok's draft upload has no caption field (no tool can prefill one). The owner gets one link: a page
@@ -285,18 +414,28 @@ export async function crosspostTick(
       if (id.startsWith("inbox:")) {
         await logEvent(d.db, ep.id, "tiktok_caption", { caption });
         const base = (d.cfg.publicUrl || "").replace(/\/$/, "");
-        const link = base ? `${base}/tiktok/${ep.id}?t=${signToken(`tiktok:${ep.id}`, d.cfg.appSecret, 3 * 86_400)}` : "";
-        await d.notify({
-          ping: true,
-          content: `📲 Your turn, TikTok: "${polishTitle(script)}"${link ? `\nTap: ${link}\n(one button copies the caption and opens TikTok: tap the draft, paste, post)` : "\nOpen TikTok, tap the draft, paste the next message as the caption, post."}`,
-        }).catch(() => undefined);
-        await d.notify({ content: caption.slice(0, 2000) }).catch(() => undefined);
+        const link = base
+          ? `${base}/tiktok/${ep.id}?t=${signToken(`tiktok:${ep.id}`, d.cfg.appSecret, 3 * 86_400)}`
+          : "";
+        await d
+          .notify({
+            ping: true,
+            content: `📲 Your turn, TikTok: "${polishTitle(script)}"${link ? `\nTap: ${link}\n(one button copies the caption and opens TikTok: tap the draft, paste, post)` : "\nOpen TikTok, tap the draft, paste the next message as the caption, post."}`,
+          })
+          .catch(() => undefined);
+        await d
+          .notify({ content: caption.slice(0, 2000) })
+          .catch(() => undefined);
       }
       log("info", "crossposted", { platform, episode: ep.id, id });
       done.push({ platform, episode: ep.id, ok: true });
     } catch (err) {
       if (err instanceof Deferred) {
-        log("info", "crosspost deferred", { platform, episode: ep.id, reason: err.message });
+        log("info", "crosspost deferred", {
+          platform,
+          episode: ep.id,
+          reason: err.message,
+        });
         continue;
       }
       const error = errorMessage(err);
@@ -349,13 +488,65 @@ const TIKTOK_SINGLE_CHUNK = 60 * 1024 * 1024;
  */
 export async function instagramFile(file: string): Promise<string> {
   const out = path.join(path.dirname(file), "instagram.mp4");
-  if (fs.existsSync(out) && (await fs.promises.stat(out)).mtimeMs >= (await fs.promises.stat(file)).mtimeMs) return out;
+  if (
+    fs.existsSync(out) &&
+    (await fs.promises.stat(out)).mtimeMs >=
+      (await fs.promises.stat(file)).mtimeMs
+  )
+    return out;
   const { FFMPEG } = await import("../lib/bin.ts");
   const { execFile } = await import("node:child_process");
   await new Promise<void>((resolve, reject) =>
     execFile(
       FFMPEG,
-      ["-y", "-v", "error", "-i", file, "-vf", "scale=in_range=auto:out_range=tv,format=yuv420p", "-color_range", "tv", "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-maxrate", "9M", "-bufsize", "18M", "-profile:v", "high", "-level", "4.1", "-r", "30", "-g", "60", "-keyint_min", "60", "-sc_threshold", "0", "-flags", "+cgop", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-use_editlist", "0", "-movflags", "+faststart", out],
+      [
+        "-y",
+        "-v",
+        "error",
+        "-i",
+        file,
+        "-vf",
+        "scale=in_range=auto:out_range=tv,format=yuv420p",
+        "-color_range",
+        "tv",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "20",
+        "-maxrate",
+        "9M",
+        "-bufsize",
+        "18M",
+        "-profile:v",
+        "high",
+        "-level",
+        "4.1",
+        "-r",
+        "30",
+        "-g",
+        "60",
+        "-keyint_min",
+        "60",
+        "-sc_threshold",
+        "0",
+        "-flags",
+        "+cgop",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-use_editlist",
+        "0",
+        "-movflags",
+        "+faststart",
+        out,
+      ],
       { maxBuffer: 10 * 1024 * 1024 },
       (err) => (err ? reject(err) : resolve()),
     ),
@@ -367,7 +558,11 @@ export async function tiktokFile(file: string): Promise<string> {
   const { size } = await fs.promises.stat(file);
   if (size <= TIKTOK_SINGLE_CHUNK) return file;
   const out = path.join(path.dirname(file), "tiktok.mp4");
-  if (fs.existsSync(out) && (await fs.promises.stat(out)).size <= TIKTOK_SINGLE_CHUNK) return out;
+  if (
+    fs.existsSync(out) &&
+    (await fs.promises.stat(out)).size <= TIKTOK_SINGLE_CHUNK
+  )
+    return out;
   const { FFMPEG } = await import("../lib/bin.ts");
   const { probe } = await import("../qa/media.ts");
   const seconds = Math.max(10, (await probe(file)).durationSeconds || 60);
@@ -377,7 +572,30 @@ export async function tiktokFile(file: string): Promise<string> {
   await new Promise<void>((resolve, reject) =>
     execFile(
       FFMPEG,
-      ["-y", "-v", "error", "-i", file, "-c:v", "libx264", "-preset", "medium", "-b:v", `${videoKbps}k`, "-maxrate", `${Math.floor(videoKbps * 1.3)}k`, "-bufsize", `${videoKbps * 2}k`, "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out],
+      [
+        "-y",
+        "-v",
+        "error",
+        "-i",
+        file,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-b:v",
+        `${videoKbps}k`,
+        "-maxrate",
+        `${Math.floor(videoKbps * 1.3)}k`,
+        "-bufsize",
+        `${videoKbps * 2}k`,
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+        out,
+      ],
       { maxBuffer: 10 * 1024 * 1024 },
       (err) => (err ? reject(err) : resolve()),
     ),
@@ -386,14 +604,62 @@ export async function tiktokFile(file: string): Promise<string> {
 }
 
 /** The posters this PC has credentials for and the owner has switched on. */
-export async function buildPosters(cfg: Config, notifyOwner?: (text: string) => Promise<unknown>): Promise<SocialPosters> {
+export async function buildPosters(
+  cfg: Config,
+  notifyOwner?: (text: string) => Promise<unknown>,
+): Promise<SocialPosters> {
   const p = await import("./platforms.ts");
   const out: SocialPosters = {};
   if (cfg.crosspost.facebook && cfg.facebookPageId && cfg.facebookPageToken)
-    out.facebook = (file, title, description) => p.postFacebookReel({ pageId: cfg.facebookPageId, token: cfg.facebookPageToken, file, title, description });
+    out.facebook = (file, title, description) =>
+      p.postFacebookReel({
+        pageId: cfg.facebookPageId,
+        token: cfg.facebookPageToken,
+        file,
+        title,
+        description,
+      });
   if (cfg.crosspost.instagram && cfg.instagramAccountId && cfg.instagramToken)
-    out.instagram = async (file, caption, videoUrl) => p.postInstagramReel({ accountId: cfg.instagramAccountId, token: cfg.instagramToken, file: await instagramFile(file), caption, videoUrl });
-  if (cfg.crosspost.tiktok && cfg.tiktokClientKey && cfg.tiktokTokenPath && fs.existsSync(cfg.tiktokTokenPath))
+    out.instagram = async (file, caption, videoUrl) =>
+      p.postInstagramReel({
+        accountId: cfg.instagramAccountId,
+        token: cfg.instagramToken,
+        file: await instagramFile(file),
+        caption,
+        videoUrl,
+      });
+  if (
+    cfg.crosspost.threads &&
+    cfg.threadsLoginPath &&
+    fs.existsSync(cfg.threadsLoginPath)
+  )
+    out.threads = async (_file, caption, videoUrl) => {
+      // Threads fetches the video itself, from the same signed public link Instagram uses.
+      if (!videoUrl) throw new Error("no public link for the video");
+      return p.postThreadsVideo(
+        await p.threadsLogin(cfg.threadsLoginPath),
+        videoUrl,
+        caption,
+      );
+    };
+  if (
+    cfg.crosspost.bluesky &&
+    cfg.blueskyLoginPath &&
+    fs.existsSync(cfg.blueskyLoginPath)
+  )
+    out.bluesky = async (file, caption, link) =>
+      p.postBluesky(
+        JSON.parse(await fs.promises.readFile(cfg.blueskyLoginPath, "utf8")),
+        await instagramFile(file),
+        caption,
+        link,
+      );
+  if (
+    cfg.crosspost.tiktok &&
+    cfg.tiktokClientKey &&
+    cfg.tiktokTokenPath &&
+    fs.existsSync(cfg.tiktokTokenPath)
+  )
     out.tiktok = async (file, caption) => {
       if (Date.now() < tiktokPausedUntil) throw new Deferred(tiktokPauseReason);
       // Public posting through the owner's own signed-in Chrome profile, when there is one.
@@ -407,17 +673,28 @@ export async function buildPosters(cfg: Config, notifyOwner?: (text: string) => 
           });
         } catch (err) {
           if (err instanceof TikTokChallenge) {
-            pauseTikTok(24, "TikTok asked for a verification check; TikTok posting is paused for a day");
-            await notifyOwner?.(`⚠️ TikTok showed a verification check, so TikTok posting is paused for 24 hours. Open TikTok on your phone once to clear it. Screenshot: ${err.screenshot ?? "none"}`);
+            pauseTikTok(
+              24,
+              "TikTok asked for a verification check; TikTok posting is paused for a day",
+            );
+            await notifyOwner?.(
+              `⚠️ TikTok showed a verification check, so TikTok posting is paused for 24 hours. Open TikTok on your phone once to clear it. Screenshot: ${err.screenshot ?? "none"}`,
+            );
             throw new Deferred(tiktokPauseReason);
           }
           if (err instanceof TikTokSignedOut) {
             markSignedOut(cfg.dataDir);
-            await notifyOwner?.("⚠️ TikTok signed the Pulse profile out. Double-click Connect TikTok (Pulse) on the desktop to sign in again. Until then Shorts go to your TikTok inbox as drafts.");
+            await notifyOwner?.(
+              "⚠️ TikTok signed the Pulse profile out. Double-click Connect TikTok (Pulse) on the desktop to sign in again. Until then Shorts go to your TikTok inbox as drafts.",
+            );
           } else throw err;
         }
       }
-      const accessToken = await p.tiktokAccessToken(cfg.tiktokTokenPath, cfg.tiktokClientKey, cfg.tiktokClientSecret);
+      const accessToken = await p.tiktokAccessToken(
+        cfg.tiktokTokenPath,
+        cfg.tiktokClientKey,
+        cfg.tiktokClientSecret,
+      );
       file = await tiktokFile(file);
       if (!tiktokUnaudited) {
         try {
@@ -428,16 +705,25 @@ export async function buildPosters(cfg: Config, notifyOwner?: (text: string) => 
         }
       }
       try {
-        return await p.postTikTok({ accessToken, file, title: caption, inbox: true });
+        return await p.postTikTok({
+          accessToken,
+          file,
+          title: caption,
+          inbox: true,
+        });
       } catch (err) {
         // TikTok holds only a few unposted drafts: wait six hours for the owner to post them.
         if (/spam_risk_too_many_pending_share/.test(errorMessage(err))) {
-          pauseTikTok(6, "TikTok inbox is full of unposted drafts; trying again in six hours");
+          pauseTikTok(
+            6,
+            "TikTok inbox is full of unposted drafts; trying again in six hours",
+          );
           throw new Deferred(tiktokPauseReason);
         }
         throw err;
       }
     };
-  if (cfg.crosspost.x && cfg.xKeys.consumerKey && cfg.xKeys.token) out.x = (text) => p.postX(cfg.xKeys, text);
+  if (cfg.crosspost.x && cfg.xKeys.consumerKey && cfg.xKeys.token)
+    out.x = (text) => p.postX(cfg.xKeys, text);
   return out;
 }

@@ -6306,7 +6306,40 @@ async function localizeMetadata(
       episode: ep.id,
       error: errorMessage(err),
     });
+    await logEvent(s.db, ep.id, "localize_failed", {
+      error: errorMessage(err).slice(0, 300),
+    }).catch(() => undefined);
   }
+}
+
+/**
+ * Videos published before localisation existed get their titles and descriptions in the other
+ * languages too: one every half hour, newest first, only while the day's spare quota covers it
+ * comfortably. A video that failed is not tried again for a week.
+ */
+export async function localizeBackfill(s: Services): Promise<boolean> {
+  if (!s.cfg.localizeLanguages.some((l) => l.toLowerCase() !== "en"))
+    return false;
+  const now = s.now();
+  if ((await quotaHeadroom(s.db, s.cfg, now)) < 500) return false;
+  if (
+    await weeklyTried(s.db, `localize:${Math.floor(now.getTime() / 1_800_000)}`)
+  )
+    return false;
+  const [row] = await s.db.query<{ id: string }>(
+    `SELECT e.id FROM episodes e
+      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'twin'
+        AND coalesce(e.publish_at, e.updated_at) > $1::timestamptz - interval '120 days'
+        AND coalesce(e.publish_at, e.updated_at) < $1::timestamptz
+        AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind = 'localized')
+        AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind = 'localize_failed' AND v.created_at > $1::timestamptz - interval '7 days')
+      ORDER BY coalesce(e.publish_at, e.updated_at) DESC LIMIT 1`,
+    [now],
+  );
+  const ep = row ? await getEpisode(s.db, row.id) : undefined;
+  if (!ep?.youtube_video_id) return false;
+  await localizeMetadata(s, ep, ep.youtube_video_id, s.youtube(accountOf(ep)));
+  return true;
 }
 
 /** Every Associates ID the channel has, plus the video's shop page when the public address works from outside. */
@@ -6744,6 +6777,13 @@ export async function tick(
         s.cfg.twinLanguage,
       ).catch((err) =>
         log("warn", "twin retention capture failed", {
+          error: errorMessage(err),
+        }),
+      );
+    // Older videos: titles and descriptions in the other languages, one every half hour from spare quota.
+    if (!s.cfg.dryRun)
+      await localizeBackfill(s).catch((err) =>
+        log("warn", "localisation backfill failed", {
           error: errorMessage(err),
         }),
       );

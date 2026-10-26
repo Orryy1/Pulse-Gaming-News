@@ -25,7 +25,13 @@ import {
   quotaHeadroom,
   type Services,
 } from "./pipeline.ts";
-import { QUOTA, publishHeld, quotaAdd, quotaUsed, setPublishHold } from "./lanes.ts";
+import {
+  QUOTA,
+  publishHeld,
+  quotaAdd,
+  quotaUsed,
+  setPublishHold,
+} from "./lanes.ts";
 import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
 import {
   buildPosters,
@@ -39,7 +45,11 @@ import {
   startGameWarmer,
   startSiteIndexNow,
 } from "./web/routes.ts";
-import { releaseTransientSkips, replyToChannelComments, replyToComments } from "./youtube/replies.ts";
+import {
+  releaseTransientSkips,
+  replyToChannelComments,
+  replyToComments,
+} from "./youtube/replies.ts";
 import { collectRequests } from "./social/requests.ts";
 import { setChannelBanner } from "./youtube/branding.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
@@ -193,7 +203,12 @@ export function createApp(
       const body = fs
         .readFileSync(script, "utf8")
         .replace("__PUBKEY__", fs.readFileSync(key, "utf8").trim())
-        .replace("__CODE__", fs.existsSync(codeFile) ? fs.readFileSync(codeFile, "utf8").trim() : "");
+        .replace(
+          "__CODE__",
+          fs.existsSync(codeFile)
+            ? fs.readFileSync(codeFile, "utf8").trim()
+            : "",
+        );
       res
         .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
         .end(body);
@@ -203,9 +218,16 @@ export function createApp(
       // Armed only while the Mac move is on: the setup script carries a one-time code (data/admin/mac_code),
       // without which the page is a 404 like every other hidden route (audit, 24 Oct 2026).
       const codeFile = path.join(cfg.dataDir, "admin", "mac_code");
-      const expected = fs.existsSync(codeFile) ? fs.readFileSync(codeFile, "utf8").trim() : "";
+      const expected = fs.existsSync(codeFile)
+        ? fs.readFileSync(codeFile, "utf8").trim()
+        : "";
       const given = url.searchParams.get("code") ?? "";
-      if (!expected || !given || given.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected)))
+      if (
+        !expected ||
+        !given ||
+        given.length !== expected.length ||
+        !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected))
+      )
         return send(404, page("Not found", "<h1>Not found</h1>"));
       const user = url.searchParams.get("user") ?? "";
       const ip = url.searchParams.get("ip") ?? "";
@@ -322,7 +344,9 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         await setPublishHold(db, set === "on");
         log("warn", "publishing hold changed", { hold: set });
       }
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ hold: (await publishHeld(db)) ? "on" : "off" }));
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify({ hold: (await publishHeld(db)) ? "on" : "off" }));
       return;
     }
     // Comment decisions (admin key): what the reply pass judged, said or skipped, newest first.
@@ -331,7 +355,9 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       const rows = await db.query(
         `SELECT created_at, video_id, comment, decision, reason, reply_text FROM comment_replies ORDER BY created_at DESC LIMIT 50`,
       );
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(rows));
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify(rows));
       return;
     }
     const ep = url.pathname.match(
@@ -595,6 +621,181 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       ) &&
       !req.headers["cf-connecting-ip"] &&
       !req.headers["cf-ray"];
+    // Bluesky: a form on this PC only. The handle and app password go straight from the owner's browser
+    // to the login file (owner-only, outside the repo); they are never logged or shown again.
+    if (
+      (url.pathname === "/connect" &&
+        url.searchParams.get("account") === "bluesky") ||
+      url.pathname === "/connect/bluesky"
+    ) {
+      if (!fromThisPc)
+        return send(
+          403,
+          page(
+            "Forbidden",
+            "<h1>Open http://localhost:8080/connect?account=bluesky on the PC running the factory.</h1>",
+          ),
+        );
+      if (req.method === "POST") {
+        const raw = await new Promise<string>((resolve) => {
+          let b = "";
+          req.on("data", (c) => (b = (b + c).slice(0, 4000)));
+          req.on("end", () => resolve(b));
+        });
+        const form = new URLSearchParams(raw);
+        const identifier = (form.get("handle") ?? "").trim().replace(/^@/, "");
+        const appPassword = (form.get("password") ?? "").trim();
+        const { checkBluesky } = await import("./social/platforms.ts");
+        if (
+          !identifier ||
+          !appPassword ||
+          !(await checkBluesky({ identifier, appPassword }))
+        )
+          return send(
+            200,
+            page(
+              "Bluesky",
+              `<h1>Bluesky did not accept that handle and app password.</h1><p>Nothing was saved. <a href="/connect?account=bluesky" style="font-size:22px">Try again</a></p>`,
+            ),
+          );
+        fs.mkdirSync(path.dirname(cfg.blueskyLoginPath), { recursive: true });
+        fs.writeFileSync(
+          cfg.blueskyLoginPath,
+          JSON.stringify({ identifier, appPassword }),
+          { mode: 0o600 },
+        );
+        log("info", "bluesky connected", { handle: identifier });
+        return send(
+          200,
+          page(
+            "Bluesky connected",
+            `<h1>Bluesky is connected as @${esc(identifier)}.</h1><p>New Shorts will follow to Bluesky about 20 minutes after YouTube. You can close this tab.</p>`,
+          ),
+        );
+      }
+      return send(
+        200,
+        page(
+          "Connect Bluesky",
+          `<h1>Connect Bluesky</h1>
+<p>Use an <b>app password</b> (Bluesky: Settings, Privacy and security, App passwords, Add), never your account password.</p>
+<form method="post" action="/connect/bluesky" style="font-size:20px">
+<p><label>Handle<br><input name="handle" placeholder="pulsegmg.bsky.social" style="font-size:20px;width:22em" autocomplete="off"></label></p>
+<p><label>App password<br><input name="password" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" style="font-size:20px;width:22em" autocomplete="off"></label></p>
+<p><button type="submit" style="font-size:22px">Connect</button></p></form>`,
+        ),
+      );
+    }
+    // Threads: Meta's sign-in for the Threads profile, then a 60-day token the factory renews itself.
+    if (
+      url.pathname === "/connect" &&
+      url.searchParams.get("account") === "threads"
+    ) {
+      if (!fromThisPc && !isAdmin())
+        return send(
+          403,
+          page(
+            "Forbidden",
+            "<h1>Open http://localhost:8080/connect?account=threads on the PC running the factory.</h1>",
+          ),
+        );
+      if (!cfg.threadsAppId || !cfg.threadsAppSecret)
+        return send(
+          200,
+          page(
+            "Threads",
+            "<h1>Set THREADS_APP_ID and THREADS_APP_SECRET first.</h1>",
+          ),
+        );
+      const nonce = crypto.randomBytes(12).toString("hex");
+      const state = `${nonce}.${signToken(`threads:${nonce}`, cfg.appSecret, 3600)}`;
+      const redirect = `${(cfg.siteUrl || cfg.publicUrl).replace(/\/$/, "")}/oauth/threads`;
+      const q = new URLSearchParams({
+        client_id: cfg.threadsAppId,
+        redirect_uri: redirect,
+        scope: "threads_basic,threads_content_publish",
+        response_type: "code",
+        state,
+      });
+      res
+        .writeHead(302, {
+          location: `https://threads.net/oauth/authorize?${q}`,
+        })
+        .end();
+      return;
+    }
+    if (url.pathname === "/oauth/threads") {
+      const [nonce, ...rest] = (url.searchParams.get("state") ?? "").split(".");
+      if (
+        !nonce ||
+        !verifyToken(`threads:${nonce}`, rest.join("."), cfg.appSecret)
+      )
+        return send(
+          403,
+          page(
+            "Bad state",
+            "<h1>Sign-in check failed. Start again from /connect?account=threads.</h1>",
+          ),
+        );
+      const code = url.searchParams.get("code");
+      if (!code)
+        return send(
+          400,
+          page(
+            "No code",
+            `<h1>Threads returned: ${esc(url.searchParams.get("error_description") ?? url.searchParams.get("error") ?? "no code")}</h1>`,
+          ),
+        );
+      try {
+        const redirect = `${(cfg.siteUrl || cfg.publicUrl).replace(/\/$/, "")}/oauth/threads`;
+        const short = await fetch(
+          "https://graph.threads.net/oauth/access_token",
+          {
+            method: "POST",
+            body: new URLSearchParams({
+              client_id: cfg.threadsAppId,
+              client_secret: cfg.threadsAppSecret,
+              grant_type: "authorization_code",
+              redirect_uri: redirect,
+              code,
+            }),
+          },
+        ).then((r) => r.json() as Promise<any>);
+        if (!short?.access_token)
+          throw new Error(JSON.stringify(short?.error ?? short).slice(0, 300));
+        const long = await fetch(
+          `https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret=${encodeURIComponent(cfg.threadsAppSecret)}&access_token=${encodeURIComponent(short.access_token)}`,
+        ).then((r) => r.json() as Promise<any>);
+        if (!long?.access_token)
+          throw new Error(JSON.stringify(long?.error ?? long).slice(0, 300));
+        fs.mkdirSync(path.dirname(cfg.threadsLoginPath), { recursive: true });
+        fs.writeFileSync(
+          cfg.threadsLoginPath,
+          JSON.stringify({
+            userId: String(short.user_id),
+            token: long.access_token,
+            refreshedAt: new Date().toISOString(),
+          }),
+          { mode: 0o600 },
+        );
+        log("info", "threads connected", { user: String(short.user_id) });
+        return send(
+          200,
+          page(
+            "Threads connected",
+            "<h1>Threads is connected.</h1><p>New Shorts will follow to Threads about 45 minutes after YouTube. You can close this tab.</p>",
+          ),
+        );
+      } catch (err) {
+        return send(
+          200,
+          page(
+            "Threads",
+            `<h1>Threads sign-in did not finish.</h1><p>${esc(errorMessage(err))}</p><p>Nothing was saved.</p>`,
+          ),
+        );
+      }
+    }
     if (url.pathname === "/connect" || url.pathname === "/oauth/start") {
       if (!isAdmin() && !(url.pathname === "/connect" && fromThisPc))
         return send(
@@ -613,7 +814,9 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
           ),
         );
       // A second account (the twin channel) rides in the nonce, so the callback knows which login it is.
-      const account = (url.searchParams.get("account") ?? "").replace(/[^a-z]/g, "").slice(0, 2);
+      const account = (url.searchParams.get("account") ?? "")
+        .replace(/[^a-z]/g, "")
+        .slice(0, 2);
       const nonce = `${crypto.randomBytes(12).toString("hex")}${account ? `-${account}` : ""}`;
       const state = `${nonce}.${signToken(`oauth:${nonce}`, cfg.appSecret, 4 * 3600)}`;
       res
@@ -739,10 +942,22 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         }
         const { refreshToken, scope } = exchanged;
         const account = nonce.includes("-") ? nonce.split("-")[1]! : "";
-        const expectedChannel = account ? (account === cfg.twinLanguage ? cfg.twinChannelId : "") : cfg.youtubeChannelId;
-        const connectAgain = account ? `/connect?account=${account}` : "/connect";
+        const expectedChannel = account
+          ? account === cfg.twinLanguage
+            ? cfg.twinChannelId
+            : ""
+          : cfg.youtubeChannelId;
+        const connectAgain = account
+          ? `/connect?account=${account}`
+          : "/connect";
         if (account && !expectedChannel)
-          return send(200, page("Unknown account", `<h1>No channel is set up for "${esc(account)}".</h1><p>Set TWIN_LANGUAGE and TWIN_YOUTUBE_CHANNEL_ID first. Nothing was changed.</p>`));
+          return send(
+            200,
+            page(
+              "Unknown account",
+              `<h1>No channel is set up for "${esc(account)}".</h1><p>Set TWIN_LANGUAGE and TWIN_YOUTUBE_CHANNEL_ID first. Nothing was changed.</p>`,
+            ),
+          );
         // Brand accounts on Google's chooser often carry old names: check the channel itself before saving.
         // The check must succeed and match; a lookup that fails keeps the working login (audit, 24 Oct 2026).
         if (expectedChannel) {
@@ -770,8 +985,16 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         clearTokenCache();
         if (account) {
           await logEvent(db, null, "youtube_connected", { scope, account });
-          await services.notify({ content: `✅ The ${account.toUpperCase()} twin channel is connected: translated Shorts start with the next one that goes public.` });
-          return send(200, page("Connected", `<h1>✅ Twin channel connected.</h1><p>Translated Shorts will start with the next one that goes public. You can close this tab.</p>`));
+          await services.notify({
+            content: `✅ The ${account.toUpperCase()} twin channel is connected: translated Shorts start with the next one that goes public.`,
+          });
+          return send(
+            200,
+            page(
+              "Connected",
+              `<h1>✅ Twin channel connected.</h1><p>Translated Shorts will start with the next one that goes public. You can close this tab.</p>`,
+            ),
+          );
         }
         await clearSelectionPause(db); // the usual cause of a pause is a dead YouTube token
         await logEvent(db, null, "youtube_connected", { scope });
@@ -1004,8 +1227,16 @@ async function main(): Promise<void> {
   // The renderer leaves a bundle and an assets folder in the system temp folder for every start and render.
   const sweep = () =>
     sweepRenderTemp()
-      .then((gb) => gb >= 0.05 && log("info", "render leftovers cleared", { gb: Math.round(gb * 10) / 10 }))
-      .catch((err) => log("warn", "render temp sweep failed", { error: errorMessage(err) }));
+      .then(
+        (gb) =>
+          gb >= 0.05 &&
+          log("info", "render leftovers cleared", {
+            gb: Math.round(gb * 10) / 10,
+          }),
+      )
+      .catch((err) =>
+        log("warn", "render temp sweep failed", { error: errorMessage(err) }),
+      );
   setTimeout(() => void sweep(), 3 * 60_000);
   setInterval(() => void sweep(), 60 * 60_000);
   // The daily community post on Facebook and Instagram, with tomorrow's answers and the comment counts.
@@ -1088,10 +1319,18 @@ async function main(): Promise<void> {
       replyToComments(deps)
         .then(() => replyToChannelComments(deps))
         .catch((err) =>
-          log("warn", "comment reply pass failed", { error: errorMessage(err) }),
+          log("warn", "comment reply pass failed", {
+            error: errorMessage(err),
+          }),
         );
     void releaseTransientSkips(db)
-      .then((n) => n && log("info", "held-back comments released for another look", { comments: n }))
+      .then(
+        (n) =>
+          n &&
+          log("info", "held-back comments released for another look", {
+            comments: n,
+          }),
+      )
       .catch(() => undefined);
     setTimeout(() => void replies(), 120_000);
     setInterval(() => void replies(), 5 * 60_000);
@@ -1141,7 +1380,9 @@ async function main(): Promise<void> {
       await markBackup(db, day, file);
     })().catch((err) => {
       log("error", "backup failed", { error: errorMessage(err) });
-      void services.notify({ content: `⚠️ Last night's backup failed: ${errorMessage(err).slice(0, 200)}. Claude will look at it.` });
+      void services.notify({
+        content: `⚠️ Last night's backup failed: ${errorMessage(err).slice(0, 200)}. Claude will look at it.`,
+      });
     });
   }, 10 * 60_000);
   // 21:30 local: the day in one message (what went live, TikTok drafts waiting, background news).
@@ -1149,7 +1390,14 @@ async function main(): Promise<void> {
     void (async () => {
       if (!(await summaryDue(db, cfg, new Date()))) return;
       const plan = await services.creditPlan?.().catch(() => undefined);
-      await services.notify(await dailySummary(db, cfg, new Date(), plan ? creditLine(plan) : undefined));
+      await services.notify(
+        await dailySummary(
+          db,
+          cfg,
+          new Date(),
+          plan ? creditLine(plan) : undefined,
+        ),
+      );
       log("info", "daily summary sent");
     })().catch((err) =>
       log("error", "daily summary failed", { error: errorMessage(err) }),

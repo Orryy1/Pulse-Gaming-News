@@ -196,13 +196,23 @@ export interface Config {
     instagram: boolean;
     tiktok: boolean;
     x: boolean;
+    threads: boolean;
+    bluesky: boolean;
   }; // which platforms get every public Short
   crosspostDelays: {
     facebook: number;
     instagram: number;
     tiktok: number;
     x: number;
+    threads: number;
+    bluesky: number;
   }; // minutes after the YouTube publish
+  /** Threads login saved by /connect?account=threads ({ userId, token, refreshedAt }). */
+  threadsLoginPath: string;
+  threadsAppId: string;
+  threadsAppSecret: string;
+  /** Bluesky handle and app password saved by /connect?account=bluesky. */
+  blueskyLoginPath: string;
   crosspostWindowHours: number; // how far back a Short is still worth posting
   /** TikTok gets only the day's strongest Shorts (by YouTube views per hour), this many a day; 0 = every Short. */
   tiktokDaily: number;
@@ -300,6 +310,10 @@ export function loadConfig(): Config {
       `REMOTION_GL must be one of ${REMOTION_GLS.join(", ")}, got "${remotionGl}"`,
     );
   const railwayDomain = str("RAILWAY_PUBLIC_DOMAIN");
+  // Logins saved by the factory's own connect pages sit beside the TikTok token, outside the repo.
+  const tokenDir = str("TIKTOK_TOKEN_PATH")
+    ? path.dirname(str("TIKTOK_TOKEN_PATH"))
+    : path.resolve(str("DATA_DIR", "./data"), "tokens");
   const cfg: Config = {
     port: int("PORT", 8080),
     publicUrl: str(
@@ -524,13 +538,21 @@ export function loadConfig(): Config {
       instagram: bool("CROSSPOST_INSTAGRAM", true),
       tiktok: bool("CROSSPOST_TIKTOK", true),
       x: bool("CROSSPOST_X", true),
+      threads: bool("CROSSPOST_THREADS", true),
+      bluesky: bool("CROSSPOST_BLUESKY", true),
     },
     crosspostDelays: {
       x: int("CROSSPOST_X_DELAY", 5),
       facebook: int("CROSSPOST_FACEBOOK_DELAY", 30),
       instagram: int("CROSSPOST_INSTAGRAM_DELAY", 60),
       tiktok: int("CROSSPOST_TIKTOK_DELAY", 90),
+      threads: int("CROSSPOST_THREADS_DELAY", 45),
+      bluesky: int("CROSSPOST_BLUESKY_DELAY", 20),
     },
+    threadsLoginPath: str("THREADS_LOGIN_PATH", path.join(tokenDir, "threads.json")),
+    threadsAppId: str("THREADS_APP_ID"),
+    threadsAppSecret: str("THREADS_APP_SECRET"),
+    blueskyLoginPath: str("BLUESKY_LOGIN_PATH", path.join(tokenDir, "bluesky.json")),
     crosspostWindowHours: int("CROSSPOST_WINDOW_HOURS", 36),
     tiktokDaily: int("TIKTOK_DAILY", 0),
     tiktokFromHour: int("TIKTOK_FROM_HOUR", 16),

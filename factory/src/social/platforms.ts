@@ -543,3 +543,177 @@ export async function graphCommentCount(
     Number(instagram ? r.comments_count : r.comments?.summary?.total_count) || 0
   );
 }
+
+// ------------------------------------------------------------------ Threads
+
+const THREADS = "https://graph.threads.net/v1.0";
+
+export interface ThreadsLogin {
+  userId: string;
+  token: string;
+  /** ISO time the long-lived token was last issued or refreshed (it lasts 60 days). */
+  refreshedAt?: string;
+}
+
+/** The saved Threads login, refreshed when it is over 20 days old (a long-lived token lasts 60). */
+export async function threadsLogin(
+  file: string,
+  fetchFn: FetchLike = fetch,
+  now = new Date(),
+): Promise<ThreadsLogin> {
+  const saved = JSON.parse(await fs.readFile(file, "utf8")) as ThreadsLogin;
+  if (!saved.userId || !saved.token) throw new Error("Threads login file is incomplete");
+  const age = now.getTime() - new Date(saved.refreshedAt ?? 0).getTime();
+  if (age < 20 * 86_400_000) return saved;
+  const res = await fetchFn(
+    `https://graph.threads.net/refresh_access_token?grant_type=th_refresh_token&access_token=${encodeURIComponent(saved.token)}`,
+  );
+  const body = await json(res, "threads token refresh");
+  const next = { ...saved, token: body.access_token as string, refreshedAt: now.toISOString() };
+  await fs.writeFile(file, JSON.stringify(next), { mode: 0o600 });
+  return next;
+}
+
+/** A video post on Threads from a public video URL: container, wait until Meta has it, publish. */
+export async function postThreadsVideo(
+  login: ThreadsLogin,
+  videoUrl: string,
+  text: string,
+  fetchFn: FetchLike = fetch,
+  waitMs = 5000,
+): Promise<string> {
+  const q = (o: Record<string, string>) =>
+    new URLSearchParams({ ...o, access_token: login.token }).toString();
+  const made = await json(
+    await fetchFn(`${THREADS}/${login.userId}/threads?${q({ media_type: "VIDEO", video_url: videoUrl, text: text.slice(0, 500) })}`, { method: "POST" }),
+    "threads container",
+  );
+  const id = made.id as string;
+  for (let i = 0; i < 60; i++) {
+    const st = await json(
+      await fetchFn(`${THREADS}/${id}?${q({ fields: "status,error_message" })}`),
+      "threads container status",
+    );
+    if (st.status === "FINISHED") break;
+    if (st.status === "ERROR" || st.status === "EXPIRED")
+      throw new Error(`threads video refused: ${st.error_message ?? st.status}`);
+    if (i === 59) throw new Error("threads video still processing after 5 minutes");
+    await sleep(waitMs);
+  }
+  const pub = await json(
+    await fetchFn(`${THREADS}/${login.userId}/threads_publish?${q({ creation_id: id })}`, { method: "POST" }),
+    "threads publish",
+  );
+  return pub.id as string;
+}
+
+// ------------------------------------------------------------------ Bluesky
+
+export interface BlueskyLogin {
+  identifier: string; // the handle, e.g. pulsegmg.bsky.social
+  appPassword: string; // an app password from Bluesky's settings, never the account password
+}
+
+interface BlueskySession {
+  did: string;
+  accessJwt: string;
+  pds: string;
+}
+
+async function blueskySession(login: BlueskyLogin, fetchFn: FetchLike): Promise<BlueskySession> {
+  const body = await json(
+    await fetchFn("https://bsky.social/xrpc/com.atproto.server.createSession", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ identifier: login.identifier, password: login.appPassword }),
+    }),
+    "bluesky sign-in",
+  );
+  const pds =
+    (body.didDoc?.service ?? []).find((s: any) => s.id === "#atproto_pds")?.serviceEndpoint ??
+    "https://bsky.social";
+  return { did: body.did, accessJwt: body.accessJwt, pds: String(pds).replace(/\/$/, "") };
+}
+
+/** Byte ranges Bluesky needs to make each URL in the text a link (it counts UTF-8 bytes, not characters). */
+export function linkFacets(text: string): Array<{ index: { byteStart: number; byteEnd: number }; features: Array<{ $type: string; uri: string }> }> {
+  const out: ReturnType<typeof linkFacets> = [];
+  for (const m of text.matchAll(/https?:\/\/[^\s)]+/g)) {
+    const byteStart = Buffer.byteLength(text.slice(0, m.index!), "utf8");
+    out.push({
+      index: { byteStart, byteEnd: byteStart + Buffer.byteLength(m[0], "utf8") },
+      features: [{ $type: "app.bsky.richtext.facet#link", uri: m[0] }],
+    });
+  }
+  return out;
+}
+
+/**
+ * A Bluesky post with the Short as native video (Bluesky's video service: service token, upload, wait for
+ * the job, then the post). When video upload is refused (new accounts must verify their email first, and
+ * there is a daily video allowance) it posts a link card to the YouTube Short instead.
+ */
+export async function postBluesky(
+  login: BlueskyLogin,
+  file: string,
+  text: string,
+  link: { url: string; title: string; description: string },
+  fetchFn: FetchLike = fetch,
+  waitMs = 4000,
+): Promise<string> {
+  const s = await blueskySession(login, fetchFn);
+  const auth = { authorization: `Bearer ${s.accessJwt}` };
+  let embed: Record<string, unknown> | undefined;
+  try {
+    const pdsHost = new URL(s.pds).host;
+    const svc = await json(
+      await fetchFn(
+        `${s.pds}/xrpc/com.atproto.server.getServiceAuth?aud=${encodeURIComponent(`did:web:${pdsHost}`)}&lxm=com.atproto.repo.uploadBlob&exp=${Math.floor(Date.now() / 1000) + 1800}`,
+        { headers: auth },
+      ),
+      "bluesky service auth",
+    );
+    const bytes = await fs.readFile(file);
+    const up = await fetchFn(
+      `https://video.bsky.app/xrpc/app.bsky.video.uploadVideo?did=${encodeURIComponent(s.did)}&name=${encodeURIComponent(`pulse_${Date.now()}.mp4`)}`,
+      { method: "POST", headers: { authorization: `Bearer ${svc.token}`, "content-type": "video/mp4" }, body: bytes },
+    );
+    const upBody: any = await up.json().catch(() => ({}));
+    const jobId: string | undefined = upBody.jobId ?? upBody.jobStatus?.jobId;
+    if (!jobId) throw new Error(`bluesky video upload failed (HTTP ${up.status}): ${JSON.stringify(upBody).slice(0, 300)}`);
+    let blob: unknown;
+    for (let i = 0; i < 75 && !blob; i++) {
+      const st: any = await (await fetchFn(`https://video.bsky.app/xrpc/app.bsky.video.getJobStatus?jobId=${encodeURIComponent(jobId)}`)).json().catch(() => ({}));
+      const job = st.jobStatus ?? st;
+      if (job.blob) blob = job.blob;
+      else if (job.state === "JOB_STATE_FAILED") throw new Error(`bluesky video processing failed: ${job.error ?? job.message ?? "no reason"}`);
+      else await sleep(waitMs);
+    }
+    if (!blob) throw new Error("bluesky video still processing after 5 minutes");
+    embed = { $type: "app.bsky.embed.video", video: blob, aspectRatio: { width: 1080, height: 1920 }, alt: link.title };
+  } catch {
+    embed = {
+      $type: "app.bsky.embed.external",
+      external: { uri: link.url, title: link.title.slice(0, 300), description: link.description.slice(0, 1000) },
+    };
+  }
+  const body = text.slice(0, 300);
+  const rec = await json(
+    await fetchFn(`${s.pds}/xrpc/com.atproto.repo.createRecord`, {
+      method: "POST",
+      headers: { ...auth, "content-type": "application/json" },
+      body: JSON.stringify({
+        repo: s.did,
+        collection: "app.bsky.feed.post",
+        record: { $type: "app.bsky.feed.post", text: body, createdAt: new Date().toISOString(), langs: ["en"], facets: linkFacets(body), embed },
+      }),
+    }),
+    "bluesky post",
+  );
+  return String(rec.uri);
+}
+
+/** Checks a Bluesky handle and app password by signing in once; true when they work. */
+export async function checkBluesky(login: BlueskyLogin, fetchFn: FetchLike = fetch): Promise<boolean> {
+  return blueskySession(login, fetchFn).then(() => true, () => false);
+}

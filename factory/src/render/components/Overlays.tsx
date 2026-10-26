@@ -764,7 +764,7 @@ export const Captions: React.FC<{
   blankFromFrame: number;
   /** Where the caption line sits, when a layout moves it (a gameplay Short's taller picture). */
   centre?: number;
-  /** The desk partner's question: its seconds and her name, captioned in her own colour. */
+  /** The desk partner's question: its seconds, captioned in gold under a "Your question" tag (name kept for the record). */
   desk?: { start: number; end: number; name: string };
 }> = ({
   pages,
@@ -818,7 +818,8 @@ export const Captions: React.FC<{
             textTransform: "uppercase",
           }}
         >
-          {desk!.name} asks
+          {/* The viewer's own question, not a presenter's name nobody knows (owner, 26 Oct 2026). */}
+          Your question
         </span>
       ) : null}
       {page.words.map((w, i) => {

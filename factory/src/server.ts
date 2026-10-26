@@ -621,6 +621,21 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         );
       return;
     }
+    // The latest daily community post (question, caption, picture on disk), for the YouTube Community tab.
+    if (url.pathname === "/admin/engage-latest" && req.method === "GET") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const [row] = await db.query<{
+        id: number;
+        created_at: string;
+        detail: any;
+      }>(
+        `SELECT id, created_at, detail FROM events WHERE kind = 'engage_post' AND detail ? 'question' AND NOT detail ? 'skipped' ORDER BY id DESC LIMIT 1`,
+      );
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify(row ?? null));
+      return;
+    }
     if (url.pathname === "/admin/export" && req.method === "GET") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const days = Math.min(

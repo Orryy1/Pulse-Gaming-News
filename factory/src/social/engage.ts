@@ -137,7 +137,11 @@ export interface EngageDeps {
     comment: (mediaId: string, text: string) => Promise<string>;
     comments: (mediaId: string) => Promise<number>;
   };
-  notify: (m: { content: string; level?: "info"; ping?: boolean }) => Promise<unknown>;
+  notify: (m: {
+    content: string;
+    level?: "info";
+    ping?: boolean;
+  }) => Promise<unknown>;
 }
 
 interface PostRow {
@@ -151,6 +155,10 @@ interface PostRow {
     facebook?: string;
     instagram?: string;
     comments?: number;
+    /** Kept so the YouTube Community tab can carry the same post (scheduled browser task). */
+    question?: string;
+    caption?: string;
+    image?: string;
   };
 }
 
@@ -178,23 +186,19 @@ export async function engageTick(d: EngageDeps): Promise<void> {
     ) {
       const text = `The answer: ${p.detail.answer}. How many of you got it? 🎮`;
       if (p.detail.facebook && d.facebook)
-        await d.facebook
-          .comment(p.detail.facebook, text)
-          .catch((err) =>
-            log("warn", "engage answer failed", {
-              platform: "facebook",
-              error: errorMessage(err),
-            }),
-          );
+        await d.facebook.comment(p.detail.facebook, text).catch((err) =>
+          log("warn", "engage answer failed", {
+            platform: "facebook",
+            error: errorMessage(err),
+          }),
+        );
       if (p.detail.instagram && d.instagram)
-        await d.instagram
-          .comment(p.detail.instagram, text)
-          .catch((err) =>
-            log("warn", "engage answer failed", {
-              platform: "instagram",
-              error: errorMessage(err),
-            }),
-          );
+        await d.instagram.comment(p.detail.instagram, text).catch((err) =>
+          log("warn", "engage answer failed", {
+            platform: "instagram",
+            error: errorMessage(err),
+          }),
+        );
       await logEvent(d.db, null, "engage_answer", { post: p.id });
     }
     // A day on: how many people answered.
@@ -266,6 +270,9 @@ export async function engageTick(d: EngageDeps): Promise<void> {
     format: topic.format,
     games,
     answer: topic.answer || undefined,
+    question: topic.question,
+    caption: topic.caption,
+    image: path.join(dir, image),
   };
   if (d.facebook)
     detail.facebook = await d.facebook

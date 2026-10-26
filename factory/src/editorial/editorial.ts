@@ -24,7 +24,8 @@ import {
 } from "./schema.ts";
 
 export const WORDS_MIN = 70;
-export const WORDS_MAX = 115;
+// Our own Shorts of 38-44 s held 57% of viewers against 39% for those over a minute (26 Oct 2026).
+export const WORDS_MAX = 100;
 
 const HOUSE_STYLE = `You write for Pulse Gaming News, a YouTube Shorts channel about video game news.
 
@@ -37,6 +38,7 @@ You are the editor choosing today's story. Pick the single candidate that will m
 - Big franchises, release dates, delays, price changes, reveals, sales milestones and major studio news beat niche patch notes.
 - Prefer stories with a concrete fact a viewer can repeat to a friend.
 - Demand matters most: a Short reaches viewers who are already interested in its game. When a candidate is about a game in YouTube's trending list below (match by game or franchise, not exact words), prefer it over an equally strong story nobody is watching, and say so in your reason. Never pick a weak story just because its game is trending.
+- What breaks out in gaming news Shorts (a study of 1,345 Shorts across 87 channels, each channel's hits against its own ordinary Shorts): leaks and credible reports were four times as common among hits, and so were stories with a conflict in them (players against a company, a platform against a publisher, a lawsuit or a ban); PlayStation, GTA, Red Dead and FromSoftware over-indexed. Plain price changes, history pieces, "secret" teases, delays read as a date change, EA and Ubisoft business news and multi-story roundups under-indexed. Prefer a clearly labelled credible leak or a story with a fight in it over an equally strong routine announcement, and treat a price story as a conflict (who pays, who gains), never as a figure.
 - Avoid deals posts, reviews, guides, listicles, podcasts and tragedies.
 - The Short can only show official trailers, official store art and official press images. Never pick a story whose point is something to look at that we cannot show: real-world photos (marketing stunts, billboards, cars, merchandise, events), leaked or fan images, cosplay, mods, or the shots of a brand-new trailer. A viewer would hear about it over pictures of something else. Mark such a story real_world_images.
 - Avoid anything that repeats a story the channel already covered (listed below).
@@ -49,7 +51,11 @@ export function scriptPrompt(): string {
 Write a 25-40 second vertical Short script (${WORDS_MIN}-${WORDS_MAX} spoken words in total across hook, beats, take and loop line).
 
 Structure:
-1. hook: the news itself in one short sentence of 5-10 words with the game named, in the Pulse voice (a fact, a number or a scene). Short beats clever: "GTA 6's launch trailer is out. November 19 holds." The why-it-matters goes in the first beat, not the hook. Never open with "So", "Today", "Hey", "Welcome", "In this", "Guys" or a question that withholds the news.
+1. hook: 5-10 words with the game or company named in the first five words, in the Pulse voice. It opens a gap the Short closes, never a bare "X announced Y" (in a study of 1,345 gaming Shorts, plain announcement openers were twice as common among each channel's weakest Shorts as among its hits, and openers that posed a specific, answerable question or a surprising claim were more than twice as common among hits). Three shapes work; vary them:
+   - the news with its stake for the viewer: "GTA 6's launch trailer is out, and November 19 holds."
+   - an answerable question the take will answer, carrying the news: "Is Switch 2's $80 Zelda really the new normal?"
+   - the surprising fact first: "Silksong sold a million copies before lunch."
+   No superlatives or hype in the hook (biggest, greatest, craziest, insane, massive, ever): they were rarer in hits than in weak Shorts. Never open with "So", "Today", "Hey", "Welcome", "In this", "Guys", a greeting or the channel's name, and never a question the Short does not answer.
 2. beats: two to four short fact beats, each with one on-screen visual card. The first beat must be the single most surprising concrete detail in the story (a number, a date, a price, a named feature), never background, history or "here is what we know": half our viewers leave between seconds five and twelve, so the best fact goes there. Context and history come later or in the take. Pick the card that fits the fact:
    - "timeline" for a delay or date change: primary is a 2-5 word phrase, date_from is the old date and date_to the new date, both ISO (YYYY-MM or YYYY-MM-DD).
    - "countdown" for a confirmed release date: primary is the date as spoken, date_to is the ISO date.
@@ -62,9 +68,11 @@ Structure:
    - "milestones" for a history of three to five dates (announced, delayed, trailer, launch): primary is a 2-5 word phrase, items are rows as "YYYY-MM:label" or "YYYY-MM-DD:label", oldest first, labels of 1-3 words.
    - "stat" for any other number, "date" for other dates, "quote" for a short official quote (under 12 words, from the sources), "list" for 2-3 short items separated by " | ", "title" for a key phrase.
    Never pad a card with numbers the sources do not give.
+   Numbers move: a before and after, a this against that, a countdown ($69.99 to $79.99; 10 hours to 3), never a list of specs read out (13 maps, 30 weapons, 6 modes). One turn line by about the second beat pivots to the detail that changes the story, in words that differ from Short to Short ("Except there's a catch.", "That's not the strange part.", "And that's where you come in."); never the banned stock phrases.
+   Frame the story by what it does to the viewer (their money, their console, their pre-order, their weekend) or as players against a company, publisher against platform, studio against its own past: that framing carried the news Shorts that broke out, and a price is a conflict, never just a figure.
    Every beat also carries "footage": what the trailer picture should show while that line is spoken, with 1-4 keywords naming the thing, place, character or action in the line. The picture editor matches real trailer moments to these, so be concrete ("Hyrule Field", "the new ship interior", "a car chase"), and use "calm" for lines whose card needs a quiet background (numbers, dates, prices). "hook_footage" does the same for the opening line and should want the most striking gameplay moment.
 person: when the story is about one real person (a cameo, a hire, a departure, a statement), their name as commonly written, so the Short can show a licensed photo of them; otherwise empty.
-3. pulse_take: the Pulse angle. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Vary its shape: a concession then a verdict, a comparison, a question answered, a consequence for the viewer, a what-happens-next. The opening words and the closing shape must differ from the recent Shorts listed below when a list is given. Opinions must be framed as opinion. Do not invent data.
+3. pulse_take: the Pulse angle, and the payoff: when the hook asked a question, the take answers it, plainly, in its first sentence. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Vary its shape: a concession then a verdict, a comparison, a question answered, a consequence for the viewer, a what-happens-next. The opening words and the closing shape must differ from the recent Shorts listed below when a list is given. Opinions must be framed as opinion. Do not invent data.
 Talk to the viewer: at least two sentences in the script say "you" or "your" about what this means for them (their console, their money, their weekend).
 3a. stamp: the one word that carries the news gets a rubber stamp on screen as it is spoken: a date that was confirmed ("NOV 19" / "CONFIRMED"), a delay ("DELAYED" / "TO 2027"), a price ("$49.99"), "FREE", "LEAKED" (with "REPORTED" under it for a rumor). "word" is that word exactly as written in your narration; the stamp's figures must be the narration's own. Omit it when nothing deserves it.
 3b. desk_question: before the take, the one question a viewer is thinking, as a second presenter at the desk would put it to the narrator in 5-12 words, ending with "?" ("So is it worth $70 on day one?", "Does the PS5 version get this too?"). The take then answers it. Always provide one.
@@ -73,7 +81,7 @@ Talk to the viewer: at least two sentences in the script say "you" or "your" abo
 Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone.
 List every factual claim in "claims" with the URL of the provided source that supports it.
 "hashtags": 3-5 tags fans of this story actually search, most specific first (#GTA6, #GTA, #RockstarGames); never generic ones like #gaming or #fyp.
-The YouTube title reads like a sharp headline a friend would text you, not a press release: the game or company named early, a strong verb, and the point (the consequence, the surprise or the stakes), under 60 characters, sentence-style with no "Game: fact" colon template, no exclamation marks, no all-caps words, no clickbait the video does not deliver. Good: "Nintendo Just Made Switch 2 Games Cost $80", "GTA 6 Slips Again, and This Time It's Fall". Bad: "GTA 6: Release Date Delayed". A rumor's title says it is a rumor or report. The description opens with one conversational sentence on why it matters, then credits the sources by name.`;
+The YouTube title reads like a sharp headline a friend would text you, not a press release: the game or company named early, a strong verb, the point (the consequence, the surprise or the stakes) and, when the story has one, the number that carries it (a price, a date, a count: titles with a number were more common among hits), under 60 characters, sentence-style with no "Game: fact" colon template, no exclamation marks, no all-caps words, no clickbait the video does not deliver. Good: "Nintendo Just Made Switch 2 Games Cost $80", "GTA 6 Slips Again, and This Time It's Fall". Bad: "GTA 6: Release Date Delayed". A rumor's title says it is a rumor or report. The description opens with one conversational sentence on why it matters, then credits the sources by name.`;
 }
 
 export function factCheckPrompt(): string {
@@ -234,6 +242,9 @@ export async function factCheck(
 
 const BANNED_OPENERS =
   /^(so|today|hey|welcome|in this|guys|what's up|hello)\b/i;
+// Hype in the opening line: rarer in each channel's hits than in its weak Shorts (niche study, 26 Oct 2026).
+const HOOK_HYPE =
+  /\b(biggest|greatest|craziest|insane(?:ly)?|crazy|massive|huge|mind[- ]blowing|of all time)\b/i;
 const BANNED_PHRASES = [
   /let me know in the comments/i,
   /like and subscribe/i,
@@ -323,21 +334,36 @@ export function validateScript(s: Script, recent?: RecentShapes): string[] {
     problems.push(
       `The hook is ${wordCount(s.hook)} words; say the news in 5-10 and move the why into the first beat.`,
     );
+  const hype = s.hook.match(HOOK_HYPE);
+  if (hype)
+    problems.push(
+      `The hook leans on "${hype[0]}"; open the gap with the fact or a question instead of a superlative.`,
+    );
   if (wordCount(s.loop_line) > 22)
     problems.push(
       "The loop line is longer than 22 words; one short closing sentence.",
     );
   if (s.stamp) {
-    if (s.stamp.text.length > 14) problems.push(`The stamp "${s.stamp.text}" is longer than 14 characters.`);
+    if (s.stamp.text.length > 14)
+      problems.push(
+        `The stamp "${s.stamp.text}" is longer than 14 characters.`,
+      );
     const said = spoken.toLowerCase();
     if (!said.includes(s.stamp.word.toLowerCase().replace(/[.,!?]$/, "")))
-      problems.push(`The stamp's word "${s.stamp.word}" is not in the narration; use a word that is spoken.`);
+      problems.push(
+        `The stamp's word "${s.stamp.word}" is not in the narration; use a word that is spoken.`,
+      );
     for (const fig of s.stamp.text.match(/\d[\d,.]*/g) ?? [])
       if (!said.replace(/,/g, "").includes(fig.replace(/,/g, "")))
         problems.push(`The stamp's figure "${fig}" is not in the narration.`);
   }
-  if (s.desk_question && (wordCount(s.desk_question) > 14 || !/\?\s*$/.test(s.desk_question)))
-    problems.push("The desk question must be one question of at most 14 words, ending with '?'.");
+  if (
+    s.desk_question &&
+    (wordCount(s.desk_question) > 14 || !/\?\s*$/.test(s.desk_question))
+  )
+    problems.push(
+      "The desk question must be one question of at most 14 words, ending with '?'.",
+    );
   if (loopLineUnfinished(s.loop_line))
     problems.push(
       `The loop line "${s.loop_line.trim()}" is unfinished; end it as one complete sentence.`,

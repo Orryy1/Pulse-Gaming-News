@@ -406,3 +406,9 @@ test("an ordinal said in words shows as 14th on screen; 'first' only turns when 
   assert.equal(ordinalSuffix(23), "23rd");
   assert.equal(ordinalSuffix(30), "30th");
 });
+
+test("a hook that leans on hype is sent back; a plain fact or question is fine", () => {
+  assert.match(validateScript(goodScript({ hook: "The biggest GTA 6 leak yet just landed." })).join(" "), /leans on "biggest"/);
+  assert.match(validateScript(goodScript({ hook: "Starfield's insane new patch is out." })).join(" "), /leans on "insane"/);
+  assert.doesNotMatch(validateScript(goodScript({ hook: "Is Starfield's expansion really slipping to 2027?" })).join(" "), /leans on/);
+});

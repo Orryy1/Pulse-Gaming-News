@@ -314,8 +314,14 @@ export const DocOutlineSchema = z.object({
     title: z
       .string()
       .describe(
-        "Under 70 characters, front-loads the franchise and ends with '| Documentary' or similar, e.g. 'The Complete History of Grand Theft Auto | Documentary'",
+        "Under 70 characters: one named subject and its downfall, fight or hidden side, e.g. 'How Xbox Ended Up on PlayStation' or 'When Did Call of Duty Stop Being Call of Duty?'; never 'The Complete History of', years or counts",
       ),
+    thumb_text: z
+      .string()
+      .describe(
+        "1-4 words in capitals for the thumbnail that add the hook or the emotion and never repeat the title: 'THE $69B MISTAKE', 'NEVER RELEASED', 'IT WAS A TRAP'. In a study of 1,598 gaming thumbnails, short hook text beat restated titles, dates and 'Top 10' labels",
+      )
+      .optional(),
     description: z
       .string()
       .describe(

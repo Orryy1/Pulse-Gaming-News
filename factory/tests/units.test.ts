@@ -419,3 +419,11 @@ test("a stamp's figure may be said in words in the narration", () => {
   (s as any).stamp = { word: "three", text: "3 MONTHS", tone: "alert" };
   assert.doesNotMatch(validateScript(s).join(" "), /figure "3"/);
 });
+
+test("a long video's thumbnail carries the writer's short hook words, not the title restated", () => {
+  const s = goodScript({ evergreen_format: "documentary" } as any);
+  s.youtube = { ...s.youtube, thumb_text: "the $69b mistake" };
+  assert.equal(thumbTitle(s), "THE $69B MISTAKE");
+  s.youtube = { ...s.youtube, thumb_text: "this is far too many words for a thumbnail line" };
+  assert.notEqual(thumbTitle(s), "THIS IS FAR TOO MANY WORDS FOR A THUMBNAIL LINE");
+});

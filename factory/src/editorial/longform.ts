@@ -156,6 +156,12 @@ export const LongformScriptSchema = z.object({
         "3-5 sentences. No hashtags, no timestamps (chapters are added automatically)",
       ),
     tags: z.array(z.string()),
+    thumb_text: z
+      .string()
+      .describe(
+        "1-4 words in capitals for the thumbnail that add the hook and never repeat the title: 'NOT SAN ANDREAS?', 'ONE IS A MISTAKE', 'NUMBER 1 SURPRISED US'. In a study of 1,598 gaming thumbnails, short hook text beat restated titles, dates and 'Top 10' labels",
+      )
+      .optional(),
   }),
   claims: z.array(
     z.object({

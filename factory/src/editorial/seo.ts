@@ -211,6 +211,11 @@ export function evergreenTitle(script: Script): string | undefined {
 
 /** The short line on a ranking's thumbnail: "Every X Game Ranked" or "N X Games Ranked". */
 export function thumbTitle(script: Script): string {
+  // The writer's own hook words (1-4, never the title restated) win: the strongest long-video
+  // thumbnails in the niche study carried a short hook, the weakest a catalogue label.
+  const hook = script.youtube?.thumb_text?.trim().replace(/\s+/g, " ");
+  if (hook && hook.split(" ").length <= 5 && hook.length <= 32)
+    return hook.toUpperCase();
   const n = script.entries?.length ?? 0;
   const theme = script.game_title.trim() || "Games";
   if (!n || script.evergreen_format === "documentary") return script.headline;

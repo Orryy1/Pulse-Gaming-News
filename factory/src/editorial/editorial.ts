@@ -4,6 +4,7 @@
 import { whyBrief } from "./why.ts";
 import { voiceFor, voiceProblems } from "./voice.ts";
 import { varyOpinion } from "./phrasing.ts";
+import { numberWords } from "../voice/speakable.ts";
 import type { Llm } from "./llm.ts";
 import {
   parsePairs,
@@ -354,7 +355,14 @@ export function validateScript(s: Script, recent?: RecentShapes): string[] {
         `The stamp's word "${s.stamp.word}" is not in the narration; use a word that is spoken.`,
       );
     for (const fig of s.stamp.text.match(/\d[\d,.]*/g) ?? [])
-      if (!said.replace(/,/g, "").includes(fig.replace(/,/g, "")))
+      if (
+        !said.replace(/,/g, "").includes(fig.replace(/,/g, "")) &&
+        // "3 MONTHS" on the stamp for "three months" in the narration is the same figure.
+        !(
+          /^\d{1,3}$/.test(fig) &&
+          new RegExp(`\\b${numberWords(Number(fig))}\\b`).test(said)
+        )
+      )
         problems.push(`The stamp's figure "${fig}" is not in the narration.`);
   }
   if (

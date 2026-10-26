@@ -412,3 +412,10 @@ test("a hook that leans on hype is sent back; a plain fact or question is fine",
   assert.match(validateScript(goodScript({ hook: "Starfield's insane new patch is out." })).join(" "), /leans on "insane"/);
   assert.doesNotMatch(validateScript(goodScript({ hook: "Is Starfield's expansion really slipping to 2027?" })).join(" "), /leans on/);
 });
+
+test("a stamp's figure may be said in words in the narration", () => {
+  const s = goodScript();
+  s.beats[0]!.narration = "She lasted three months as chief operating officer.";
+  (s as any).stamp = { word: "three", text: "3 MONTHS", tone: "alert" };
+  assert.doesNotMatch(validateScript(s).join(" "), /figure "3"/);
+});

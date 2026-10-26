@@ -526,6 +526,113 @@ export class YouTubeClient {
   }
 
   /**
+   * Every video on the channel with its numbers for a window (YouTube Analytics, one request): views,
+   * engaged views (the Shorts "stayed to watch" count), watch time, subscribers, likes, comments, shares.
+   */
+  async channelReport(
+    start: string,
+    end: string,
+  ): Promise<Array<Record<string, number | string>>> {
+    const metrics =
+      "views,engagedViews,averageViewDuration,averageViewPercentage,subscribersGained,likes,comments,shares,estimatedMinutesWatched";
+    const q = new URLSearchParams({
+      ids: "channel==MINE",
+      startDate: start,
+      endDate: end,
+      metrics,
+      dimensions: "video",
+      sort: "-views",
+      maxResults: "200",
+    });
+    const res = await this.fetchFn(
+      `https://youtubeanalytics.googleapis.com/v2/reports?${q}`,
+      { headers: await this.auth() },
+    );
+    if (!res.ok) throw await apiError(res, "analytics.reports (channel)");
+    const names = ["video", ...metrics.split(",")];
+    return ((((await res.json()) as any).rows ?? []) as unknown[][]).map((r) =>
+      Object.fromEntries(r.map((v, i) => [names[i]!, v as number | string])),
+    );
+  }
+
+  /** Where a video's views came from (Shorts feed, search, suggested, browse, external...), one request. */
+  async trafficSources(
+    videoId: string,
+    start: string,
+    end: string,
+  ): Promise<Record<string, number>> {
+    const q = new URLSearchParams({
+      ids: "channel==MINE",
+      startDate: start,
+      endDate: end,
+      metrics: "views",
+      dimensions: "insightTrafficSourceType",
+      filters: `video==${videoId}`,
+    });
+    const res = await this.fetchFn(
+      `https://youtubeanalytics.googleapis.com/v2/reports?${q}`,
+      { headers: await this.auth() },
+    );
+    if (!res.ok) throw await apiError(res, "analytics.reports (traffic)");
+    return Object.fromEntries(
+      ((((await res.json()) as any).rows ?? []) as Array<[string, number]>).map(
+        ([k, v]) => [k, Number(v)],
+      ),
+    );
+  }
+
+  /** Every upload's title, publish time, length, tags and public counts (about 2 quota units per 50 videos). */
+  async allUploads(): Promise<Array<Record<string, unknown>>> {
+    const h = await this.auth();
+    const ch = await this.fetchFn(
+      `${API}/channels?part=contentDetails&mine=true`,
+      { headers: h },
+    );
+    if (!ch.ok) throw await apiError(ch, "channels.list");
+    const uploads = ((await ch.json()) as any).items?.[0]?.contentDetails
+      ?.relatedPlaylists?.uploads;
+    if (!uploads) return [];
+    const ids: string[] = [];
+    let page = "";
+    for (let i = 0; i < 20; i++) {
+      const pl = await this.fetchFn(
+        `${API}/playlistItems?part=contentDetails&maxResults=50&playlistId=${uploads}${page ? `&pageToken=${page}` : ""}`,
+        { headers: h },
+      );
+      if (!pl.ok) throw await apiError(pl, "playlistItems.list");
+      const body = (await pl.json()) as any;
+      ids.push(
+        ...(body.items ?? [])
+          .map((x: any) => x.contentDetails?.videoId)
+          .filter(Boolean),
+      );
+      page = body.nextPageToken ?? "";
+      if (!page) break;
+    }
+    const out: Array<Record<string, unknown>> = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      const v = await this.fetchFn(
+        `${API}/videos?part=snippet,contentDetails,statistics,status&id=${ids.slice(i, i + 50).join(",")}`,
+        { headers: h },
+      );
+      if (!v.ok) throw await apiError(v, "videos.list");
+      for (const it of ((await v.json()) as any).items ?? [])
+        out.push({
+          id: it.id,
+          title: it.snippet?.title,
+          publishedAt: it.snippet?.publishedAt,
+          duration: it.contentDetails?.duration,
+          tags: it.snippet?.tags ?? [],
+          privacy: it.status?.privacyStatus,
+          views: Number(it.statistics?.viewCount ?? 0),
+          likes: Number(it.statistics?.likeCount ?? 0),
+          comments: Number(it.statistics?.commentCount ?? 0),
+        });
+    }
+    return out;
+  }
+
+  /**
    * A video's audience retention curve (YouTube Analytics, one request per video): at each 1% of its length,
    * the share of viewers still watching and how that compares with similar videos (1 = typical).
    */

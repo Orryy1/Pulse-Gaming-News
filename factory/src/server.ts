@@ -585,6 +585,42 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       return;
     }
     // Admin: published videos with their scripts, QA scores and captured numbers, for performance reviews.
+    // The channel diagnosis: every upload with its YouTube numbers, where the views came from for the
+    // biggest 40, and what the factory knows about each (lane, script, voice, rubric). Read-only.
+    if (url.pathname === "/admin/channel-report" && req.method === "GET") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const days = Math.min(
+        365,
+        Math.max(7, Number(url.searchParams.get("days") ?? 120)),
+      );
+      const end = new Date().toISOString().slice(0, 10);
+      const start = new Date(Date.now() - days * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      const yt = services.youtube();
+      const [uploads, report] = await Promise.all([
+        yt.allUploads(),
+        yt.channelReport(start, end),
+      ]);
+      const traffic: Record<string, Record<string, number>> = {};
+      for (const r of report.slice(0, 40)) {
+        const id = String(r.video);
+        traffic[id] = await yt.trafficSources(id, start, end).catch(() => ({}));
+      }
+      const episodes = await db.query(
+        `SELECT e.id, e.lane, e.status, e.youtube_video_id, coalesce(e.publish_at, e.updated_at) AS live_at, e.script_json,
+                e.story_json->'corroborated' AS corroborated, e.assets_json->'durationSeconds' AS duration,
+                e.assets_json->'voice'->>'name' AS narrator, (e.assets_json->'desk') IS NOT NULL AS desk,
+                e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS rubric
+           FROM episodes e WHERE e.youtube_video_id IS NOT NULL`,
+      );
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(
+          JSON.stringify({ start, end, uploads, report, traffic, episodes }),
+        );
+      return;
+    }
     if (url.pathname === "/admin/export" && req.method === "GET") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const days = Math.min(

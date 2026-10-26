@@ -24,6 +24,7 @@ import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import type { RadarGame, FreeGame } from "./discovery/weekly.ts";
 import { rarest, type Achievement } from "./discovery/achievements.ts";
 import {
+  EVERGREEN_MIN_SECONDS,
   evergreenToScript,
   selectEvergreenTopic,
   validateEvergreen,
@@ -5619,7 +5620,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const tech = await s.technicalQa(
     final,
     duration,
-    ep.lane === "evergreen" ? { minSeconds: 60, maxSeconds: 179 } : undefined,
+    ep.lane === "evergreen" ? { minSeconds: EVERGREEN_MIN_SECONDS, maxSeconds: 179 } : undefined,
   );
   let vision: VisionQa | undefined;
   let times: number[] = [];

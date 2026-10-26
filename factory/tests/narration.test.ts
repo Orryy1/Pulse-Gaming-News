@@ -140,3 +140,12 @@ test("a word shuffled either side of a figure, or a figure-only gap, is not a na
   const real = [{ at: 25.4, meant: "Kan Gao's", heard: "Congos" }];
   assert.deepEqual(dropShuffles(real), real);
 });
+
+test("'a hundred' for 100 and '30fps' for '30 fps' are not narration faults (QA notes, 26 Oct 2026)", () => {
+  assert.ok(checkNarration(say("over 100 players"), say("over a hundred players")).ok);
+  assert.ok(checkNarration(say("runs at 30 fps"), say("runs at 30fps")).ok);
+  assert.deepEqual(tokens("4GB"), ["four", "gigabytes"]);
+  assert.deepEqual(tokens("21st"), ["twenty", "one"]);
+  // A changed figure is still a fault.
+  assert.equal(checkNarration(say("over 100 players"), say("over a thousand players")).ok, false);
+});

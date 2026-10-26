@@ -112,3 +112,16 @@ test("the thumbnail criterion line never doubles its 'by'", async () => {
   assert.equal(thumbCriterion("Survival horror tension."), "By survival horror tension");
   assert.equal(thumbCriterion("By how well the story, the missions and the set pieces still land today"), "By how well the story, the missions and the set");
 });
+
+test("deals: the game's name is Steam's, apostrophe and all (QA notes, 26 Oct 2026)", async () => {
+  const { steamName } = await import("../src/discovery/deals.ts");
+  assert.equal(steamName("Dragon's Dogma: Dark Arisen", "Dragons Dogma: Dark Arisen"), "Dragon's Dogma: Dark Arisen");
+  assert.equal(steamName(undefined, "Dragons Dogma: Dark Arisen"), "Dragons Dogma: Dark Arisen");
+});
+
+test("evergreen QA accepts a Short as short as the writer's word floor reads (QA notes, 24 and 26 Oct 2026)", async () => {
+  const { EVERGREEN_MIN_SECONDS } = await import("../src/editorial/evergreen.ts");
+  // 110 words, the weekly formats' floor, at a brisk 160 words a minute.
+  assert.ok(EVERGREEN_MIN_SECONDS <= (110 / 160) * 60);
+  assert.ok(55.7 >= EVERGREEN_MIN_SECONDS);
+});

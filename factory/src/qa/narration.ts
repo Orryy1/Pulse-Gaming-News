@@ -107,6 +107,7 @@ const NUMBERISH = new Set(
     " ",
   ),
 );
+const SCALES = new Set(["hundred", "thousand", "million", "billion"]);
 const FILLER = new Set("a an the and of to its it is was that this".split(" "));
 
 /** A word as comparable tokens: figures in words, hyphens split, lower case letters and digits only. */
@@ -127,9 +128,12 @@ export function tokens(word: string): string[] {
   if (ROMAN[roman] !== undefined)
     return numberWords(ROMAN[roman]!).split(/[\s-]+/);
   const out: string[] = [];
-  for (const piece of speakExact(word.replace(/%/g, " percent")).split(
-    /[\s\-–—]+/,
-  )) {
+  // A figure run into its unit ("30fps", "4GB") is the number then the unit, as the voice says it
+  // (it failed a good narration against "30 fps", QA notes 26 Oct 2026). Ordinals stay whole.
+  const split = word
+    .replace(/%/g, " percent")
+    .replace(/(\d)(?!(?:st|nd|rd|th)\b)([a-z]{2,})/gi, "$1 $2");
+  for (const piece of speakExact(split).split(/[\s\-–—]+/)) {
     let t = piece
       .toLowerCase()
       .replace(/[’']s$/, "s")
@@ -224,6 +228,12 @@ export function checkNarration(
   const B: Array<{ t: string; at: number; w: string }> = [];
   for (const w of joinFigures(heard))
     for (const t of tokens(w.text)) B.push({ t, at: w.start, w: w.text });
+  // "a hundred" is "one hundred": the voice said "100" as people do, and Whisper wrote "a" (it failed
+  // a good narration and paid for a second voicing, QA notes 26 Oct 2026). Only before a scale word.
+  for (const xs of [A, B])
+    xs.forEach((x, k) => {
+      if (x.t === "a" && SCALES.has(xs[k + 1]?.t ?? "")) x.t = "one";
+    });
   const n = A.length,
     m = B.length;
   const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));

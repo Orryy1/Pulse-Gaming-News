@@ -75,6 +75,14 @@ export function dealScore(d: {
  * Up to `n` well-reviewed Steam games at least half off, skipping any name in `exclude` (featured
  * recently). Each is confirmed on sale in the US by Steam itself.
  */
+/**
+ * The game's name as Steam writes it. CheapShark drops apostrophes ("Dragons Dogma: Dark Arisen"), which
+ * the vision check failed as a misspelt card beside a caption that had it right (QA notes, 26 Oct 2026).
+ */
+export function steamName(steam: unknown, fallback: string): string {
+  return typeof steam === "string" && steam.trim() ? steam.trim() : fallback;
+}
+
 export async function steamDeals(exclude: string[], n = 5): Promise<Deal[]> {
   const norm = (t: string) =>
     t
@@ -115,17 +123,17 @@ export async function steamDeals(exclude: string[], n = 5): Promise<Deal[]> {
       // Steam is the truth: no US discount there (ended, or a different edition) means no pick.
       if (!us || us.pct < 50 || us.final <= 0) continue;
       // Advertiser-safe picks only: Steam's own flags for sexual content (1, 3, 4) and frequent gore (2).
-      const flags: number[] =
-        (await getJson(`https://store.steampowered.com/api/appdetails?appids=${c.appId}&cc=us&filters=content_descriptors`).catch(() => undefined))?.[
-          String(c.appId)
-        ]?.data?.content_descriptors?.ids ?? [];
+      const details = (
+        await getJson(`https://store.steampowered.com/api/appdetails?appids=${c.appId}&cc=us&filters=basic,content_descriptors`).catch(() => undefined)
+      )?.[String(c.appId)]?.data;
+      const flags: number[] = details?.content_descriptors?.ids ?? [];
       if (flags.some((f) => [1, 2, 3, 4].includes(Number(f)))) continue;
       const gb = await steamPrice(c.appId, "gb");
       const de = await steamPrice(c.appId, "de");
       const endsAt = await steamSaleEnd(c.appId);
       out.push({
         appId: c.appId,
-        name: c.name,
+        name: steamName(details?.name, c.name),
         year: c.year,
         usd: {
           final: money(us.final, "$"),

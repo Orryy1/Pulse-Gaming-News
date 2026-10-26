@@ -16,6 +16,10 @@ import { factsText } from "../assets/steam.ts";
 export const EVERGREEN_WORDS_MIN = 130;
 // 26 Oct 2026 diagnosis: a 64 s ranking drew 112 views a day, an 81 s one 64; rankings bring 4.5x the subscribers per view of news.
 export const EVERGREEN_WORDS_MAX = 180;
+// The shortest evergreen Short QA accepts. It was 60 s, but 110-130 words (the weekly formats' floor and
+// the rankings') read in about 45-50 s, so two good Shorts at 55.7 s failed QA after three renders each
+// (QA notes, 24 and 26 Oct 2026).
+export const EVERGREEN_MIN_SECONDS = 40;
 export const EVERGREEN_ENTRIES_MIN = 5;
 export const EVERGREEN_ENTRIES_MAX = 8;
 

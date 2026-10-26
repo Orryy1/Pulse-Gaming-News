@@ -681,6 +681,43 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         .end(JSON.stringify(out));
       return;
     }
+    // Repair: YouTube has the whole file but its processing never started (stuck at "Processing will
+    // begin shortly" for a day). The broken entry is set private (reversible; it plays for nobody) and the
+    // same finished video is queued for a fresh upload, which the stub check will not adopt.
+    if (url.pathname === "/admin/reupload" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const ep = await getEpisode(db, url.searchParams.get("id") ?? "");
+      if (!ep?.youtube_video_id)
+        return send(404, page("Not found", "<h1>No uploaded episode</h1>"));
+      const yt = services.youtube();
+      const st = await yt.status(ep.youtube_video_id).catch(() => undefined);
+      if (
+        st &&
+        (st.processingStatus === "succeeded" || (st.partsProcessed ?? 0) > 0)
+      )
+        return send(
+          409,
+          page(
+            "Processing",
+            "<h1>That video is processing normally; nothing to repair.</h1>",
+          ),
+        );
+      await yt
+        .setPrivacy(ep.youtube_video_id, "private")
+        .catch(() => undefined);
+      await db.query(
+        `UPDATE episodes SET status = 'uploading', youtube_video_id = NULL, upload_session_uri = NULL, attempts = 1, next_attempt_at = NULL, publish_at = NULL WHERE id = $1`,
+        [ep.id],
+      );
+      await logEvent(db, ep.id, "reupload", {
+        stuck: ep.youtube_video_id,
+        status: st,
+      });
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify({ ok: true, stuck: ep.youtube_video_id }));
+      return;
+    }
     // The latest daily community post (question, caption, picture on disk), for the YouTube Community tab.
     if (url.pathname === "/admin/engage-latest" && req.method === "GET") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));

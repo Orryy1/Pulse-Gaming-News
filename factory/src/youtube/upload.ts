@@ -28,6 +28,9 @@ export interface VideoMetadata {
 
 export class SessionGone extends Error {}
 
+/** One piece of a resumable upload: a multiple of 256 KiB, as YouTube requires. */
+export const UPLOAD_CHUNK = 64 * 1024 * 1024;
+
 /** Video bytes being sent to YouTube right now, in this process. */
 let uploadsActive = 0;
 export const activeUploads = () => uploadsActive;
@@ -154,9 +157,12 @@ export class YouTubeClient {
   }
 
   /** Sends whatever the server is missing. Returns the new video id. */
-  async uploadToSession(sessionUri: string, file: string): Promise<string> {
-    const data = await fs.readFile(file);
-    const size = data.length;
+  async uploadToSession(
+    sessionUri: string,
+    file: string,
+    chunk = UPLOAD_CHUNK,
+  ): Promise<string> {
+    const size = (await fs.stat(file)).size;
     // Ask the server how much it already has.
     const statusRes = await this.fetchFn(sessionUri, {
       method: "PUT",
@@ -175,29 +181,44 @@ export class YouTubeClient {
     if (statusRes.status !== 308)
       throw await apiError(statusRes, "upload status");
     const range = statusRes.headers.get("range"); // e.g. "bytes=0-1048575"
-    const offset = range ? Number(range.split("-")[1]) + 1 : 0;
+    let offset = range ? Number(range.split("-")[1]) + 1 : 0;
 
+    // Sent in 64 MiB pieces read from disk one at a time: a 1.9 GB documentary sent in one body failed
+    // with "fetch failed" every time (26 Oct 2026). A Short under one piece goes in a single request as before.
     // Counted so a restart waits for the bytes to finish (/health uploads_active): three videos sat at
-    // "Processing will begin shortly" after restarts and a dropped connection cut their uploads (26 Oct 2026).
+    // "Processing will begin shortly" after restarts and a dropped connection cut their uploads.
+    const handle = await fs.open(file, "r");
     uploadsActive++;
-    const res = await this.fetchFn(sessionUri, {
-      method: "PUT",
-      headers: {
-        ...(await this.auth()),
-        "content-type": "video/mp4",
-        "content-length": String(size - offset),
-        ...(offset > 0
-          ? { "content-range": `bytes ${offset}-${size - 1}/${size}` }
-          : {}),
-      },
-      body: data.subarray(offset),
-    }).finally(() => {
+    try {
+      for (;;) {
+        const end = Math.min(offset + chunk, size) - 1;
+        const body = Buffer.alloc(end - offset + 1);
+        await handle.read(body, 0, body.length, offset);
+        const whole = offset === 0 && end === size - 1;
+        const res = await this.fetchFn(sessionUri, {
+          method: "PUT",
+          headers: {
+            ...(await this.auth()),
+            "content-type": "video/mp4",
+            "content-length": String(body.length),
+            ...(whole
+              ? {}
+              : { "content-range": `bytes ${offset}-${end}/${size}` }),
+          },
+          body,
+        });
+        if (res.status === 200 || res.status === 201) return this.idFrom(res);
+        if (res.status === 404 || res.status === 410)
+          throw new SessionGone(`upload session expired (HTTP ${res.status})`);
+        if (res.status !== 308) throw await apiError(res, "upload");
+        // The server says how far it has got; a 308 with no range means it kept nothing.
+        const got = res.headers.get("range");
+        offset = got ? Number(got.split("-")[1]) + 1 : 0;
+      }
+    } finally {
       uploadsActive--;
-    });
-    if (res.status === 200 || res.status === 201) return this.idFrom(res);
-    if (res.status === 404 || res.status === 410)
-      throw new SessionGone(`upload session expired (HTTP ${res.status})`);
-    throw await apiError(res, "upload");
+      await handle.close();
+    }
   }
 
   private async idFrom(res: Response): Promise<string> {

@@ -85,3 +85,27 @@ test("insertCaption posts the SRT as a multipart caption track and skips nothing
   assert.match(post.headers["content-type"]!, /^multipart\/related; boundary=/);
   assert.ok(post.bodyLength > 100);
 });
+
+test("a big video goes up in pieces, each picking up where YouTube says it got to", async () => {
+  const dir = await tmpDir();
+  const file = path.join(dir, "big.mp4");
+  await fs.writeFile(file, Buffer.from("0123456789abcdefghij")); // 20 bytes, sent 8 at a time
+  const got: number[] = [];
+  let received = 0;
+  const fetchFn = (async (_url: string, init: RequestInit) => {
+    const h = init.headers as Record<string, string>;
+    if (h["content-length"] === "0") return new Response(null, { status: 308 }); // nothing yet
+    const body = init.body as Buffer;
+    got.push(body.length);
+    const m = (h["content-range"] ?? "").match(/bytes (\d+)-(\d+)\/(\d+)/);
+    assert.ok(m, "each piece names its range");
+    assert.equal(Number(m![1]), received, "each piece starts where the last ended");
+    // The server keeps only the first 6 bytes of the second piece, to check the client follows its range.
+    received = got.length === 2 ? received + 6 : Number(m![2]) + 1;
+    if (received >= 20) return new Response(JSON.stringify({ id: "vid_big" }), { status: 200 });
+    return new Response(null, { status: 308, headers: { range: `bytes=0-${received - 1}` } });
+  }) as unknown as typeof fetch;
+  const yt = new YouTubeClient(async () => "t", fetchFn);
+  assert.equal(await yt.uploadToSession("https://upload.example/s", file, 8), "vid_big");
+  assert.deepEqual(got, [8, 8, 6]);
+});

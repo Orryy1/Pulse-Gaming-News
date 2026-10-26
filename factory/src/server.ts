@@ -847,19 +847,51 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
             "<h1>Open http://localhost:8080/connect?account=threads on the PC running the factory.</h1>",
           ),
         );
-      if (!cfg.threadsAppId || !cfg.threadsAppSecret)
+      // The Threads app's ID and secret come through a form on this PC (saved owner-only beside the other
+      // logins), so the owner never edits a settings file or pastes a secret into a chat.
+      if (req.method === "POST") {
+        const raw = await new Promise<string>((resolve) => {
+          let b = "";
+          req.on("data", (c) => (b = (b + c).slice(0, 4000)));
+          req.on("end", () => resolve(b));
+        });
+        const form = new URLSearchParams(raw);
+        const id = (form.get("app_id") ?? "").trim();
+        const secret = (form.get("app_secret") ?? "").trim();
+        if (!/^\d{6,30}$/.test(id) || secret.length < 16)
+          return send(
+            200,
+            page(
+              "Threads",
+              `<h1>That doesn't look like a Threads app ID and secret.</h1><p>Nothing was saved. <a href="/connect?account=threads" style="font-size:22px">Try again</a></p>`,
+            ),
+          );
+        fs.mkdirSync(path.dirname(threadsAppFile(cfg)), { recursive: true });
+        fs.writeFileSync(threadsAppFile(cfg), JSON.stringify({ id, secret }), {
+          mode: 0o600,
+        });
+        res.writeHead(302, { location: "/connect?account=threads" }).end();
+        return;
+      }
+      const app = threadsApp(cfg);
+      if (!app)
         return send(
           200,
           page(
-            "Threads",
-            "<h1>Set THREADS_APP_ID and THREADS_APP_SECRET first.</h1>",
+            "Connect Threads",
+            `<h1>Connect Threads, step 1 of 2</h1>
+<p>Paste the <b>Threads app ID</b> and <b>Threads app secret</b> from developers.facebook.com (your app, Use cases, Access the Threads API, Settings).</p>
+<form method="post" action="/connect?account=threads" style="font-size:20px">
+<p><label>Threads app ID<br><input name="app_id" style="font-size:20px;width:22em" autocomplete="off"></label></p>
+<p><label>Threads app secret<br><input name="app_secret" type="password" style="font-size:20px;width:22em" autocomplete="off"></label></p>
+<p><button type="submit" style="font-size:22px">Save and continue</button></p></form>`,
           ),
         );
       const nonce = crypto.randomBytes(12).toString("hex");
       const state = `${nonce}.${signToken(`threads:${nonce}`, cfg.appSecret, 3600)}`;
       const redirect = `${(cfg.siteUrl || cfg.publicUrl).replace(/\/$/, "")}/oauth/threads`;
       const q = new URLSearchParams({
-        client_id: cfg.threadsAppId,
+        client_id: app.id,
         redirect_uri: redirect,
         scope: "threads_basic,threads_content_publish",
         response_type: "code",
@@ -901,8 +933,8 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
           {
             method: "POST",
             body: new URLSearchParams({
-              client_id: cfg.threadsAppId,
-              client_secret: cfg.threadsAppSecret,
+              client_id: threadsApp(cfg)?.id ?? "",
+              client_secret: threadsApp(cfg)?.secret ?? "",
               grant_type: "authorization_code",
               redirect_uri: redirect,
               code,
@@ -912,7 +944,7 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         if (!short?.access_token)
           throw new Error(JSON.stringify(short?.error ?? short).slice(0, 300));
         const long = await fetch(
-          `https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret=${encodeURIComponent(cfg.threadsAppSecret)}&access_token=${encodeURIComponent(short.access_token)}`,
+          `https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret=${encodeURIComponent(threadsApp(cfg)?.secret ?? "")}&access_token=${encodeURIComponent(short.access_token)}`,
         ).then((r) => r.json() as Promise<any>);
         if (!long?.access_token)
           throw new Error(JSON.stringify(long?.error ?? long).slice(0, 300));
@@ -1584,4 +1616,20 @@ if (
     log("error", "fatal", { error: errorMessage(err) });
     process.exit(1);
   });
+}
+
+/** Where the Threads app's ID and secret are kept when entered through the connect page. */
+function threadsAppFile(cfg: Config): string {
+  return path.join(path.dirname(cfg.threadsLoginPath), "threads_app.json");
+}
+
+/** The Threads app's ID and secret: from .env when set, else from the connect page's file. */
+function threadsApp(cfg: Config): { id: string; secret: string } | undefined {
+  if (cfg.threadsAppId && cfg.threadsAppSecret) return { id: cfg.threadsAppId, secret: cfg.threadsAppSecret };
+  try {
+    const j = JSON.parse(fs.readFileSync(threadsAppFile(cfg), "utf8"));
+    return j.id && j.secret ? { id: String(j.id), secret: String(j.secret) } : undefined;
+  } catch {
+    return undefined;
+  }
 }

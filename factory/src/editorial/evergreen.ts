@@ -14,7 +14,8 @@ import { factsText } from "../assets/steam.ts";
 
 // Our own numbers (168 Shorts): the share who stay to watch falls as Shorts get longer, and 44-53 s held best.
 export const EVERGREEN_WORDS_MIN = 130;
-export const EVERGREEN_WORDS_MAX = 200;
+// 26 Oct 2026 diagnosis: a 64 s ranking drew 112 views a day, an 81 s one 64; rankings bring 4.5x the subscribers per view of news.
+export const EVERGREEN_WORDS_MAX = 180;
 export const EVERGREEN_ENTRIES_MIN = 5;
 export const EVERGREEN_ENTRIES_MAX = 8;
 
@@ -175,7 +176,7 @@ Avoid topics the channel covered in the last six months (listed). Return candida
 export function evergreenScriptPrompt(): string {
   return `${HOUSE}
 
-Write an evergreen ranking Short of ${EVERGREEN_WORDS_MIN}-${EVERGREEN_WORDS_MAX} spoken words in total (hook, entries, take, loop line), 55-85 seconds when read. Shorter Shorts keep more viewers: every word must earn its place.
+Write an evergreen ranking Short of ${EVERGREEN_WORDS_MIN}-${EVERGREEN_WORDS_MAX} spoken words in total (hook, entries, take, loop line), 55-75 seconds when read. Shorter Shorts keep more viewers: every word must earn its place.
 Structure:
 1. hook: the premise and the criterion in one breath, 8-16 words, no question that withholds the point.
 2. entries: ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX}, spoken from the lowest rank to number one. Each one_line is under 15 words: one fact (year, what it did, how it was received) and one opinion by the criterion. verdict_chip is 1-4 words of punch. footage says what the trailer moment should show for that entry, with 1-4 keywords.

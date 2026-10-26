@@ -57,3 +57,19 @@ test("each lane sees its own day's plan plus the ones for everyone, and the news
     "a quiet day says nothing",
   );
 });
+
+test("the search gaps file becomes a note for the topic pickers; a missing file is no note", async () => {
+  const { searchGapsBlock } = await import("../src/pipeline.ts");
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const f = path.join(os.tmpdir(), `gaps_${Date.now()}.md`);
+  await fs.writeFile(f, "# Search gaps\n\nIntro line.\n\n- steam machine price (why Short): Why it costs what it costs.\n- what happened to pokemon games (documentary): One story.\n");
+  const block = searchGapsBlock(f);
+  assert.match(block, /steam machine price/);
+  assert.match(block, /searcher's own words/);
+  assert.doesNotMatch(block, /Intro line/);
+  assert.equal(searchGapsBlock(""), "");
+  assert.equal(searchGapsBlock(path.join(os.tmpdir(), "missing_gaps.md")), "");
+  await fs.rm(f);
+});

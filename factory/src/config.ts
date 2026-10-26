@@ -126,6 +126,8 @@ export interface Config {
   focusTopic: string; // a franchise the editors favour for a while (e.g. a huge launch), empty = none
   focusUntil: string; // ISO date the focus ends
   focusNote: string; // one line on why, for the editors
+  /** Search questions with weak answers on YouTube (search_gaps.md), shown to the topic pickers; empty = none. */
+  searchGapsFile: string;
   calendarFile: string; // dated angles the editors see as "planned for today" (src/calendar.ts); empty = none
   /** The desk experiment: a second presenter asks the viewer's question before the take, on a share of news Shorts. */
   deskVoiceId: string; // ElevenLabs voice of the desk partner; empty = off
@@ -400,6 +402,7 @@ export function loadConfig(): Config {
     focusUntil: str("FOCUS_UNTIL", ""),
     focusNote: str("FOCUS_NOTE", ""),
     calendarFile: str("CALENDAR_FILE", "calendar.md"),
+    searchGapsFile: str("SEARCH_GAPS_FILE", "search_gaps.md"),
     deskVoiceId: str("DESK_VOICE_ID", ""),
     deskVoiceName: str("DESK_VOICE_NAME", "Alice"),
     deskShare: Math.max(0, Math.min(1, Number(str("DESK_SHARE", "0.5")))),

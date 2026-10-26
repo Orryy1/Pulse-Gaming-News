@@ -5,6 +5,7 @@
 import { pollBlock, readPoll } from "./social/poll.ts";
 import { selectWhyTopic } from "./editorial/why.ts";
 import fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -722,6 +723,26 @@ export function calendarFor(
   return calendarBlock(readCalendar(cfg.calendarFile), today, lane, ahead);
 }
 
+/**
+ * Questions people type into YouTube where the answers are old, off-target or long videos (search_gaps.md,
+ * from the 26 Oct 2026 demand study): almost none had a Short among the top 20 results.
+ */
+export function searchGapsBlock(file: string): string {
+  if (!file) return "";
+  let md = "";
+  try {
+    md = readFileSync(file, "utf8");
+  } catch {
+    return "";
+  }
+  const lines = md
+    .split(/\r?\n/)
+    .filter((l) => l.startsWith("- "))
+    .slice(0, 40);
+  if (!lines.length) return "";
+  return `Questions people search for on YouTube where the answers are stale, off-target or 20-minute videos (almost no Shorts answer them). When a candidate can honestly answer one, prefer it and use the searcher's own words in the question and the title:\n${lines.join("\n")}`;
+}
+
 async function topicDemand(
   s: Services,
   lane: CalendarLane = "any",
@@ -729,6 +750,7 @@ async function topicDemand(
   return [
     focusBlock(s.cfg, s.now()),
     calendarFor(s.cfg, s.now(), lane),
+    searchGapsBlock(s.cfg.searchGapsFile),
     trendingBlock(await s.trending().catch(() => []), 25),
     requestsBlock(await readRequests(s.db).catch(() => undefined)),
     pollBlock(await readPoll(s.db).catch(() => undefined), s.now()),

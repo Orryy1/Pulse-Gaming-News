@@ -166,6 +166,7 @@ export function testConfig(
     twinChannelId: "",
     twinDelayMinutes: 30,
     calendarFile: "",
+    searchGapsFile: "",
     elevenLabsMonthlyCredits: 500_000,
     elevenLabsReserve: 10_000,
     surplusDocDays: ["tue", "thu", "sat"],

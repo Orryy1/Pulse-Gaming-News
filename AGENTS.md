@@ -448,3 +448,41 @@ node server.js        — Dashboard + API + built-in autonomous scheduler
 - Never use advertiser-unfriendly language in titles/descriptions
 - Always validate script word count before accepting
 - Always check for missing audio/image before assembly
+
+## Shared PC: heavy work takes turns (PC orchestrator)
+
+Martin's PC runs many pipelines on one machine with 32 GB RAM and an RTX 4090:
+
+- Orryy After Effects renders (40–120 min)
+- Pulse Remotion renders
+- the explainer
+- ComfyUI/FLUX
+- Blender, Whisper, Demucs and VoxCPM
+
+Two heavy jobs at once slow both badly. A second render once made an Orryy render about 20x slower. The orchestrator in `C:\Claude\orchestrator` gives heavy jobs turns.
+
+- **Before any render, GPU/ML job or long encode**, run `C:\Claude\orchestrator\orch.cmd status` to see what's running, what's waiting and what's using the PC outside the orchestrator.
+- **Wrap your own test renders and experiments** so they wait their turn instead of competing:
+  `C:\Claude\orchestrator\orch.cmd run --class heavy --project <name> --job "<what>" --priority 20 -- <command>`
+  - **Classes:**
+    - `heavy`: whole PC; AE, Blender, Remotion
+    - `gpu`: ML or ComfyUI
+    - `cpu`: encodes
+    - `ram`
+  - **Clients:**
+    - Python: `orch.lease(...)`
+    - Node: `orch.mjs`
+- **Priorities:**
+
+  | Priority | Who                                         |
+  | -------- | ------------------------------------------- |
+  | 100      | live Orryy render or build                  |
+  | 90       | Orryy GPU steps                             |
+  | 60       | Pulse                                       |
+  | 40       | manual tools (ComfyUI apps, VoxCPM, Demucs) |
+  | 20       | tests and batch work                        |
+
+  Don't give tests a higher priority.
+
+- **Never kill After Effects, aerender or Blender by image name.** Kill only the PIDs you started.
+- **New heavy steps in a pipeline** should be wrapped the same way. See `C:\Claude\orchestrator\README.md`.

@@ -122,6 +122,49 @@ export async function waitForHeadroom(
   return now() - started;
 }
 
+/**
+ * Martin's PC runs Orryy's After Effects renders, the explainer and other projects too. A render here holds
+ * all 8 cores and 3-12 GB for 10-40 min, so it takes a turn from the PC orchestrator (C:\Claude\orchestrator)
+ * first: it waits behind Orryy's renders and any outside render, then holds the PC until it's done. After
+ * 60 min of waiting it renders anyway so no slot is missed; without the orchestrator it's a no-op.
+ */
+async function withPcTurn<T>(job: string, fn: () => Promise<T>): Promise<T> {
+  let release = () => {};
+  try {
+    const orch: any = await import(
+      process.env.ORCH_CLIENT || "file:///C:/Claude/orchestrator/orch.mjs"
+    );
+    release = await orch.lease("heavy", {
+      job,
+      project: "pulse",
+      priority: 60,
+      kind: `pulse:${job.split(" ")[0]}`,
+      ram: 6,
+      maxWait: 60,
+      onWait: (why: string) => log("info", "render waiting for the PC", { why }),
+    });
+  } catch (e) {
+    log("warn", "PC orchestrator unavailable or wait ran out; rendering anyway", {
+      error: String(e),
+    });
+  }
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
+/** renderMedia inside a PC turn; the frame cache is sized from the memory free once the turn starts. */
+async function renderWithTurn(
+  job: string,
+  options: Omit<Parameters<typeof renderMedia>[0], "offthreadVideoCacheSizeInBytes">,
+): Promise<void> {
+  await withPcTurn(job, async () => {
+    await renderMedia({ ...(await renderMemory()), ...options });
+  });
+}
+
 async function renderMemory(): Promise<{
   offthreadVideoCacheSizeInBytes: number;
 }> {
@@ -289,8 +332,7 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       inputProps: props,
       browserExecutable,
     });
-    await renderMedia({
-      ...(await renderMemory()),
+    await renderWithTurn(`long ${path.basename(input.outFile)}`, {
       composition,
       serveUrl,
       codec: "h264",
@@ -392,8 +434,7 @@ export async function renderShort(input: RenderInput): Promise<void> {
       inputProps: props,
       browserExecutable,
     });
-    await renderMedia({
-      ...(await renderMemory()),
+    await renderWithTurn(`short ${path.basename(input.outFile)}`, {
       composition,
       serveUrl,
       codec: "h264",
@@ -497,8 +538,7 @@ export async function renderCutdown(input: {
       inputProps: props,
       browserExecutable,
     });
-    await renderMedia({
-      ...(await renderMemory()),
+    await renderWithTurn(`cutdown ${path.basename(input.outFile)}`, {
       composition,
       serveUrl,
       codec: "h264",

@@ -545,6 +545,24 @@ test("the hero is never one ranking entry's art while the topic has its own", ()
   );
 });
 
+test("the opening still skips wide art with lettering when a clean one exists (QA notes, 26 Oct 2026)", () => {
+  assert.equal(
+    pickHero([
+      { kind: "article", aspect: 1.778, wordy: true },
+      { kind: "screenshot", aspect: 1.778 },
+    ]),
+    1,
+  );
+  assert.equal(
+    pickHero([
+      { kind: "article", aspect: 1.778, wordy: true },
+      { kind: "capsule", aspect: 0.667 },
+    ]),
+    0,
+    "lettered wide art still beats no wide art",
+  );
+});
+
 test("a ranking entry opens on its clean art; box art with the printed logo only comes after", () => {
   const base = input();
   const segments = base.segments.map((s) =>
@@ -802,21 +820,45 @@ test("a render waits for memory while another program holds it, then goes anyway
     t += ms;
   };
   // Room frees up after 90 s: it waits that long and no longer.
-  const waited = await waitForHeadroom(() => (t < 90_000 ? 3 * GB : 10 * GB), sleep, () => t);
+  const waited = await waitForHeadroom(
+    () => (t < 90_000 ? 3 * GB : 10 * GB),
+    sleep,
+    () => t,
+  );
   assert.equal(waited, 90_000);
   // Never frees up: it stops waiting at 20 minutes.
   t = 0;
-  assert.equal(await waitForHeadroom(() => 2 * GB, sleep, () => t), 20 * 60_000);
+  assert.equal(
+    await waitForHeadroom(
+      () => 2 * GB,
+      sleep,
+      () => t,
+    ),
+    20 * 60_000,
+  );
   // Plenty of room: no wait at all.
   t = 0;
-  assert.equal(await waitForHeadroom(() => 12 * GB, sleep, () => t), 0);
+  assert.equal(
+    await waitForHeadroom(
+      () => 12 * GB,
+      sleep,
+      () => t,
+    ),
+    0,
+  );
 });
 
 test("a moving opening runs straight through the sting; a still one cuts to motion at 0.4 s", async () => {
   const { planCuts, STING_FRAMES } = await import("../src/render/plan.ts");
-  const segments = [{ kind: "hook", text: "x", start: 0, end: 3 }, { kind: "beat", text: "y", start: 3, end: 10 }] as never;
+  const segments = [
+    { kind: "hook", text: "x", start: 0, end: 3 },
+    { kind: "beat", text: "y", start: 3, end: 10 },
+  ] as never;
   const still = planCuts(segments, [], 300);
   const moving = planCuts(segments, [], 300, true);
   assert.equal(still[0]!.end, STING_FRAMES);
-  assert.ok(moving[0]!.end > STING_FRAMES + 30, `first shot ends at frame ${moving[0]!.end}`);
+  assert.ok(
+    moving[0]!.end > STING_FRAMES + 30,
+    `first shot ends at frame ${moving[0]!.end}`,
+  );
 });

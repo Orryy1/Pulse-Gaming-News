@@ -292,7 +292,11 @@ export function pickHero(images: PlanImage[]): number {
   ];
   for (const pool of pools) {
     if (!pool.length) continue;
-    const wide = pool.find((x) => x.img.aspect >= 1.2 && x.img.aspect <= 2.1);
+    // A clean wide still before one with lettering on it: the headline sits over the opening frame.
+    const isWide = (x: (typeof pool)[number]) =>
+      x.img.aspect >= 1.2 && x.img.aspect <= 2.1;
+    const wide =
+      pool.find((x) => isWide(x) && !x.img.wordy) ?? pool.find(isWide);
     if (wide) return wide.i;
     const tall = pool.find((x) => x.img.aspect < 0.9);
     if (tall) return tall.i;

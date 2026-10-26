@@ -4201,7 +4201,12 @@ async function gatherMedia(
     await personPhoto(s, ep, dir, script.person.trim(), images);
   // Screenshots get the same local screen as clip frames: a webcam or gore is never used, and
   // one with menu or HUD text across it ("SET V'S APPEARANCE") is used only after the clean ones.
-  const shots = images.filter((a) => a.kind === "screenshot");
+  // Key art and article images are screened for text only: one with the game's logo printed
+  // across it should not open the Short under the headline (QA notes, 26 Oct 2026: the
+  // headline collided with the FINAL FANTASY VII REMAKE INTERGRADE logo on frame 1).
+  const shots = images.filter(
+    (a) => a.kind === "screenshot" || a.kind === "hero" || a.kind === "article",
+  );
   const flags = shots.length
     ? await screenFrames(shots.map((a) => path.join(dir, a.file))).catch(
         () => [],
@@ -4211,7 +4216,8 @@ async function gatherMedia(
   const wordy = new Set<string>();
   for (const [k, f] of flags.entries()) {
     if (!f) continue;
-    if (f.webcam || f.gore) unusable.add(shots[k]!.file);
+    if ((f.webcam || f.gore) && shots[k]!.kind === "screenshot")
+      unusable.add(shots[k]!.file);
     else if (f.text) wordy.add(shots[k]!.file);
   }
   if (unusable.size || wordy.size)
@@ -5620,7 +5626,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const tech = await s.technicalQa(
     final,
     duration,
-    ep.lane === "evergreen" ? { minSeconds: EVERGREEN_MIN_SECONDS, maxSeconds: 179 } : undefined,
+    ep.lane === "evergreen"
+      ? { minSeconds: EVERGREEN_MIN_SECONDS, maxSeconds: 179 }
+      : undefined,
   );
   let vision: VisionQa | undefined;
   let times: number[] = [];

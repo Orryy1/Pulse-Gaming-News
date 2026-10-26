@@ -13,7 +13,16 @@ import { FFMPEG } from "../lib/bin.ts";
 const run = promisify(execFile);
 
 export interface VisualAsset {
-  kind: "hero" | "header" | "capsule" | "screenshot" | "logo" | "article" | "clip" | "photo" | "portrait"; // portrait: a face cut from the episode's own footage // photo: a freely licensed archive photo (Wikimedia Commons)
+  kind:
+    | "hero"
+    | "header"
+    | "capsule"
+    | "screenshot"
+    | "logo"
+    | "article"
+    | "clip"
+    | "photo"
+    | "portrait"; // portrait: a face cut from the episode's own footage // photo: a freely licensed archive photo (Wikimedia Commons)
   file: string; // path relative to the episode directory
   sourceUrl: string;
   provenance: string;
@@ -63,18 +72,99 @@ export interface SteamFacts {
   backgroundUrl?: string;
 }
 
-export function bestMatch(term: string, items: StoreSearchItem[]): StoreSearchItem | undefined {
+const ROMAN: Record<string, number> = {
+  ii: 2,
+  iii: 3,
+  iv: 4,
+  v: 5,
+  vi: 6,
+  vii: 7,
+  viii: 8,
+  ix: 9,
+  x: 10,
+  xi: 11,
+  xii: 12,
+  xiii: 13,
+  xiv: 14,
+  xv: 15,
+  xvi: 16,
+  xvii: 17,
+  xviii: 18,
+  xix: 19,
+  xx: 20,
+};
+
+/** Ordered words with sequel numbers kept and Roman numerals as digits ("VII" and "7" match). */
+function nameWords(name: string): string[] {
+  return name
+    .toLowerCase()
+    .replace(/['’]s\b/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter((w) => w && w !== "the")
+    .map((w) => (ROMAN[w] ? String(ROMAN[w]) : w));
+}
+
+const NOT_THE_GAME = new Set([
+  "soundtrack",
+  "ost",
+  "demo",
+  "dlc",
+  "artbook",
+  "redkit",
+  "sdk",
+  "editor",
+  "server",
+  "pack",
+  "bundle",
+  "upgrade",
+  "wallpaper",
+  "tools",
+  "playtest",
+  "benchmark",
+]);
+
+const sequelNumbers = (words: string[]) =>
+  words
+    .filter((w) => /^\d{1,2}$/.test(w) && Number(w) >= 1 && Number(w) <= 20)
+    .sort()
+    .join(",");
+
+/**
+ * Whether a store title can be the game the story names. tokens() drops one-character words,
+ * so "Resident Evil" used to match "Resident Evil 4" perfectly (the 1996 original got the 2023
+ * remake's art), and "Fight Night" matched the pixel-art "Fight Back The Night". Sequel numbers
+ * must agree, and the story's words must appear together, in order, in the store title.
+ */
+export function sameGame(term: string, name: string): boolean {
+  const want = nameWords(term);
+  const have = nameWords(name);
+  if (want.length === 0 || sequelNumbers(want) !== sequelNumbers(have))
+    return false;
+  // Store listings that are not the game ("The Witcher 3" picked the REDkit mod tool).
+  if (have.some((w) => NOT_THE_GAME.has(w) && !want.includes(w))) return false;
+  for (let i = 0; i + want.length <= have.length; i++) {
+    if (want.every((w, j) => have[i + j] === w)) return true;
+  }
+  return false;
+}
+
+export function bestMatch(
+  term: string,
+  items: StoreSearchItem[],
+): StoreSearchItem | undefined {
   const want = tokens(term);
   if (want.size === 0) return undefined;
   let best: StoreSearchItem | undefined;
   let bestScore = 0;
   for (const it of items) {
-    if (it.type !== "app") continue;
+    if (it.type !== "app" || !sameGame(term, it.name)) continue;
     const have = tokens(it.name);
     let shared = 0;
     for (const t of want) if (have.has(t)) shared++;
     // Penalise extra words so "Hades" doesn't pick "Hades II Soundtrack".
-    const score = shared / want.size - Math.max(0, have.size - want.size) * 0.08;
+    const score =
+      shared / want.size - Math.max(0, have.size - want.size) * 0.08;
     if (score > bestScore) {
       bestScore = score;
       best = it;
@@ -83,14 +173,26 @@ export function bestMatch(term: string, items: StoreSearchItem[]): StoreSearchIt
   return bestScore >= 0.75 ? best : undefined;
 }
 
-export async function findSteamApp(term: string): Promise<SteamApp | undefined> {
+export async function findSteamApp(
+  term: string,
+): Promise<SteamApp | undefined> {
   if (!term.trim()) return undefined;
-  const search = await fetchWithTimeout(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(term)}&cc=us&l=english`);
+  const search = await fetchWithTimeout(
+    `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(term)}&cc=us&l=english`,
+  );
   if (!search.ok) return undefined;
-  const found = bestMatch(term, ((await search.json()) as { items?: StoreSearchItem[] }).items ?? []);
+  const found = bestMatch(
+    term,
+    ((await search.json()) as { items?: StoreSearchItem[] }).items ?? [],
+  );
   if (!found) return undefined;
-  const res = await fetchWithTimeout(`https://store.steampowered.com/api/appdetails?appids=${found.id}&cc=us&l=english`);
-  const details = res.ok ? (((await res.json()) as Record<string, any>)[String(found.id)]?.data ?? {}) : {};
+  const res = await fetchWithTimeout(
+    `https://store.steampowered.com/api/appdetails?appids=${found.id}&cc=us&l=english`,
+  );
+  const details = res.ok
+    ? (((await res.json()) as Record<string, any>)[String(found.id)]?.data ??
+      {})
+    : {};
   return { appId: found.id, name: details.name ?? found.name, details };
 }
 
@@ -106,8 +208,11 @@ async function json(url: string): Promise<any> {
 const SYMBOL: Record<string, string> = { USD: "$", GBP: "£", EUR: "€" };
 
 /** "$69.99" / "£59.99" / "€69.99" from Steam's price_overview (amounts in cents), whatever its own formatting. */
-export function formatPrice(p: { currency?: string; final?: number } | undefined): string | undefined {
-  if (!p || typeof p.final !== "number" || !p.currency || !SYMBOL[p.currency]) return undefined;
+export function formatPrice(
+  p: { currency?: string; final?: number } | undefined,
+): string | undefined {
+  if (!p || typeof p.final !== "number" || !p.currency || !SYMBOL[p.currency])
+    return undefined;
   return `${SYMBOL[p.currency]}${(p.final / 100).toFixed(2)}`;
 }
 
@@ -115,26 +220,45 @@ export function formatPrice(p: { currency?: string; final?: number } | undefined
 export async function steamFacts(app: SteamApp): Promise<SteamFacts> {
   const d = app.details;
   const [reviews, players, gb, de] = await Promise.all([
-    json(`https://store.steampowered.com/appreviews/${app.appId}?json=1&language=all&purchase_type=all&num_per_page=0`),
-    json(`https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=${app.appId}`),
-    json(`https://store.steampowered.com/api/appdetails?appids=${app.appId}&cc=gb&filters=price_overview`),
-    json(`https://store.steampowered.com/api/appdetails?appids=${app.appId}&cc=de&filters=price_overview`),
+    json(
+      `https://store.steampowered.com/appreviews/${app.appId}?json=1&language=all&purchase_type=all&num_per_page=0`,
+    ),
+    json(
+      `https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=${app.appId}`,
+    ),
+    json(
+      `https://store.steampowered.com/api/appdetails?appids=${app.appId}&cc=gb&filters=price_overview`,
+    ),
+    json(
+      `https://store.steampowered.com/api/appdetails?appids=${app.appId}&cc=de&filters=price_overview`,
+    ),
   ]);
   const regional = (r: any) => r?.[String(app.appId)]?.data?.price_overview;
   const prices = d.is_free
     ? undefined
-    : { usd: formatPrice(d.price_overview), gbp: formatPrice(regional(gb)), eur: formatPrice(regional(de)) };
+    : {
+        usd: formatPrice(d.price_overview),
+        gbp: formatPrice(regional(gb)),
+        eur: formatPrice(regional(de)),
+      };
   const q = reviews?.query_summary;
   return {
     name: app.name,
     storeUrl: `https://store.steampowered.com/app/${app.appId}/`,
-    price: d.is_free ? "Free" : formatPrice(d.price_overview) || d.price_overview?.final_formatted || undefined,
-    prices: prices && (prices.usd || prices.gbp || prices.eur) ? prices : undefined,
+    price: d.is_free
+      ? "Free"
+      : formatPrice(d.price_overview) ||
+        d.price_overview?.final_formatted ||
+        undefined,
+    prices:
+      prices && (prices.usd || prices.gbp || prices.eur) ? prices : undefined,
     releaseDate: d.release_date?.date || undefined,
     comingSoon: d.release_date?.coming_soon,
     metacritic: d.metacritic?.score,
     reviewSummary: q?.total_reviews ? q.review_score_desc : undefined,
-    positivePercent: q?.total_reviews ? Math.round((q.total_positive / q.total_reviews) * 100) : undefined,
+    positivePercent: q?.total_reviews
+      ? Math.round((q.total_positive / q.total_reviews) * 100)
+      : undefined,
     totalReviews: q?.total_reviews || undefined,
     currentPlayers: players?.response?.player_count || undefined,
     fetchedAt: new Date().toISOString(),
@@ -144,18 +268,28 @@ export async function steamFacts(app: SteamApp): Promise<SteamFacts> {
 export function factsText(f: SteamFacts): string {
   const lines = [
     `Game: ${f.name}`,
-    f.price && `Current Steam price: ${[f.prices?.usd && `${f.prices.usd} (US)`, f.prices?.gbp && `${f.prices.gbp} (UK)`, f.prices?.eur && `${f.prices.eur} (EU)`].filter(Boolean).join(", ") || f.price}`,
-    f.releaseDate && `Release date: ${f.releaseDate}${f.comingSoon ? " (upcoming)" : ""}`,
+    f.price &&
+      `Current Steam price: ${[f.prices?.usd && `${f.prices.usd} (US)`, f.prices?.gbp && `${f.prices.gbp} (UK)`, f.prices?.eur && `${f.prices.eur} (EU)`].filter(Boolean).join(", ") || f.price}`,
+    f.releaseDate &&
+      `Release date: ${f.releaseDate}${f.comingSoon ? " (upcoming)" : ""}`,
     f.metacritic && `Metacritic: ${f.metacritic}`,
-    f.reviewSummary && `Steam user reviews: ${f.reviewSummary}, ${f.positivePercent}% positive of ${f.totalReviews?.toLocaleString("en-US")}`,
-    f.currentPlayers && `Players on Steam right now: ${f.currentPlayers.toLocaleString("en-US")}`,
+    f.reviewSummary &&
+      `Steam user reviews: ${f.reviewSummary}, ${f.positivePercent}% positive of ${f.totalReviews?.toLocaleString("en-US")}`,
+    f.currentPlayers &&
+      `Players on Steam right now: ${f.currentPlayers.toLocaleString("en-US")}`,
     `Data fetched: ${f.fetchedAt}`,
-    f.background && `Background (Wikipedia, ${f.backgroundUrl ?? "en.wikipedia.org"}): ${f.background.replace(/\s+/g, " ").trim()}`,
+    f.background &&
+      `Background (Wikipedia, ${f.backgroundUrl ?? "en.wikipedia.org"}): ${f.background.replace(/\s+/g, " ").trim()}`,
   ];
   return lines.filter(Boolean).join("\n");
 }
 
-async function download(url: string, dest: string, minBytes = 8_000, kind = "image/"): Promise<boolean> {
+async function download(
+  url: string,
+  dest: string,
+  minBytes = 8_000,
+  kind = "image/",
+): Promise<boolean> {
   try {
     const res = await fetchWithTimeout(url, {}, 30_000);
     if (!res.ok) return false;
@@ -171,7 +305,11 @@ async function download(url: string, dest: string, minBytes = 8_000, kind = "ima
   }
 }
 
-export async function fetchSteamArt(app: SteamApp, episodeDir: string, maxScreens = 4): Promise<VisualAsset[]> {
+export async function fetchSteamArt(
+  app: SteamApp,
+  episodeDir: string,
+  maxScreens = 4,
+): Promise<VisualAsset[]> {
   const { appId, details, name } = app;
   const prov = `Steam store asset for "${name}" (app ${appId}), publisher-supplied marketing art`;
   const cdn = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${appId}`;
@@ -180,7 +318,9 @@ export async function fetchSteamArt(app: SteamApp, episodeDir: string, maxScreen
     { kind: "capsule", sourceUrl: `${cdn}/library_600x900_2x.jpg` },
     { kind: "header", sourceUrl: details.header_image ?? `${cdn}/header.jpg` },
     { kind: "logo", sourceUrl: `${cdn}/logo.png` },
-    ...((details.screenshots ?? []) as Array<{ path_full: string }>).slice(0, maxScreens).map((s) => ({ kind: "screenshot" as const, sourceUrl: s.path_full })),
+    ...((details.screenshots ?? []) as Array<{ path_full: string }>)
+      .slice(0, maxScreens)
+      .map((s) => ({ kind: "screenshot" as const, sourceUrl: s.path_full })),
   ];
   const dir = path.join(episodeDir, "assets");
   await fs.mkdir(dir, { recursive: true });
@@ -189,10 +329,13 @@ export async function fetchSteamArt(app: SteamApp, episodeDir: string, maxScreen
   for (const c of candidates) {
     const ext = c.sourceUrl.includes(".png") ? "png" : "jpg";
     const file = path.join("assets", `${c.kind}_${n++}.${ext}`);
-    if (await download(c.sourceUrl, path.join(episodeDir, file))) out.push({ ...c, file, provenance: prov });
+    if (await download(c.sourceUrl, path.join(episodeDir, file)))
+      out.push({ ...c, file, provenance: prov });
   }
   // The 460px header only looks acceptable when there is nothing better.
-  return out.some((a) => a.kind === "hero" || a.kind === "screenshot") ? out.filter((a) => a.kind !== "header") : out;
+  return out.some((a) => a.kind === "hero" || a.kind === "screenshot")
+    ? out.filter((a) => a.kind !== "header")
+    : out;
 }
 
 // ------------------------------------------------------------ trailer B-roll
@@ -202,7 +345,10 @@ export interface HlsSegment {
   duration: number;
 }
 
-export function parseMediaPlaylist(text: string): { init?: string; segments: HlsSegment[] } {
+export function parseMediaPlaylist(text: string): {
+  init?: string;
+  segments: HlsSegment[];
+} {
   const lines = text.split(/\r?\n/);
   let init: string | undefined;
   const segments: HlsSegment[] = [];
@@ -235,21 +381,37 @@ export function pickVariant(master: string): string | undefined {
 }
 
 /** Windows into a trailer that avoid rating cards up front and end slates. */
-export function clipWindows(totalSeconds: number, count: number, clipSeconds: number): number[] {
+export function clipWindows(
+  totalSeconds: number,
+  count: number,
+  clipSeconds: number,
+): number[] {
   const start = Math.min(8, totalSeconds * 0.15);
   const end = totalSeconds - Math.max(12, totalSeconds * 0.15);
   if (end - start < clipSeconds) return [];
-  return Array.from({ length: count }, (_, i) => start + ((end - start - clipSeconds) * (i + 1)) / (count + 1));
+  return Array.from(
+    { length: count },
+    (_, i) => start + ((end - start - clipSeconds) * (i + 1)) / (count + 1),
+  );
 }
 
-async function grabClip(variantUrl: string, at: number, seconds: number, dest: string): Promise<boolean> {
+async function grabClip(
+  variantUrl: string,
+  at: number,
+  seconds: number,
+  dest: string,
+): Promise<boolean> {
   const res = await fetchWithTimeout(variantUrl, {}, 20_000);
   if (!res.ok) return false;
   const { init, segments } = parseMediaPlaylist(await res.text());
   if (!init || segments.length === 0) return false;
   const base = new URL(variantUrl);
   const parts: Buffer[] = [];
-  const initRes = await fetchWithTimeout(new URL(init, base).toString(), {}, 20_000);
+  const initRes = await fetchWithTimeout(
+    new URL(init, base).toString(),
+    {},
+    20_000,
+  );
   if (!initRes.ok) return false;
   parts.push(Buffer.from(await initRes.arrayBuffer()));
   let t = 0;
@@ -259,7 +421,11 @@ async function grabClip(variantUrl: string, at: number, seconds: number, dest: s
     const segEnd = t + seg.duration;
     if (segEnd > at && t < at + seconds + 0.5) {
       if (got === 0) offset = at - t;
-      const r = await fetchWithTimeout(new URL(seg.uri, base).toString(), {}, 30_000);
+      const r = await fetchWithTimeout(
+        new URL(seg.uri, base).toString(),
+        {},
+        30_000,
+      );
       if (!r.ok) return false;
       parts.push(Buffer.from(await r.arrayBuffer()));
       got += seg.duration;
@@ -272,8 +438,27 @@ async function grabClip(variantUrl: string, at: number, seconds: number, dest: s
   await fs.writeFile(raw, Buffer.concat(parts));
   try {
     await run(FFMPEG, [
-      "-loglevel", "error", "-y", "-ss", offset.toFixed(2), "-i", raw, "-t", seconds.toFixed(2),
-      "-an", "-vf", "scale=-2:1080,fps=30", "-c:v", "libx264", "-crf", "17", "-preset", "fast", "-pix_fmt", "yuv420p", dest,
+      "-loglevel",
+      "error",
+      "-y",
+      "-ss",
+      offset.toFixed(2),
+      "-i",
+      raw,
+      "-t",
+      seconds.toFixed(2),
+      "-an",
+      "-vf",
+      "scale=-2:1080,fps=30",
+      "-c:v",
+      "libx264",
+      "-crf",
+      "17",
+      "-preset",
+      "fast",
+      "-pix_fmt",
+      "yuv420p",
+      dest,
     ]);
   } finally {
     await fs.rm(raw, { force: true });
@@ -285,9 +470,18 @@ async function grabClip(variantUrl: string, at: number, seconds: number, dest: s
  * Up to `count` short muted clips from the game's official Steam trailers.
  * Each clip is kept brief so footage stays subordinate to the reporting.
  */
-export async function fetchSteamClips(app: SteamApp, episodeDir: string, count = 4, clipSeconds = 3.4): Promise<VisualAsset[]> {
-  const movies = ((app.details.movies ?? []) as Array<Record<string, any>>).filter((m) => m.hls_h264);
-  movies.sort((a, b) => Number(Boolean(b.highlight)) - Number(Boolean(a.highlight)));
+export async function fetchSteamClips(
+  app: SteamApp,
+  episodeDir: string,
+  count = 4,
+  clipSeconds = 3.4,
+): Promise<VisualAsset[]> {
+  const movies = (
+    (app.details.movies ?? []) as Array<Record<string, any>>
+  ).filter((m) => m.hls_h264);
+  movies.sort(
+    (a, b) => Number(Boolean(b.highlight)) - Number(Boolean(a.highlight)),
+  );
   const dir = path.join(episodeDir, "assets");
   await fs.mkdir(dir, { recursive: true });
   const out: VisualAsset[] = [];
@@ -300,12 +494,22 @@ export async function fetchSteamClips(app: SteamApp, episodeDir: string, count =
       const variantUrl = new URL(variant, movie.hls_h264).toString();
       const plRes = await fetchWithTimeout(variantUrl, {}, 20_000);
       if (!plRes.ok) continue;
-      const total = parseMediaPlaylist(await plRes.text()).segments.reduce((s, x) => s + x.duration, 0);
+      const total = parseMediaPlaylist(await plRes.text()).segments.reduce(
+        (s, x) => s + x.duration,
+        0,
+      );
       const perMovie = Math.ceil(count / Math.min(2, movies.length));
       for (const at of clipWindows(total, perMovie, clipSeconds)) {
         if (out.length >= count) break;
         const file = path.join("assets", `clip_${out.length}.mp4`);
-        if (await grabClip(variantUrl, at, clipSeconds, path.join(episodeDir, file))) {
+        if (
+          await grabClip(
+            variantUrl,
+            at,
+            clipSeconds,
+            path.join(episodeDir, file),
+          )
+        ) {
           out.push({
             kind: "clip",
             file,
@@ -316,7 +520,10 @@ export async function fetchSteamClips(app: SteamApp, episodeDir: string, count =
         }
       }
     } catch (err) {
-      log("warn", "trailer clip failed", { movie: movie.name, error: errorMessage(err) });
+      log("warn", "trailer clip failed", {
+        movie: movie.name,
+        error: errorMessage(err),
+      });
     }
     if (out.length >= count) break;
   }

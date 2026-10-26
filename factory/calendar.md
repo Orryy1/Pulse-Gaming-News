@@ -28,6 +28,17 @@ invents a story to fit the plan. Dates and claims in an angle are checked agains
 2026-11-24 evergreen: GTA 6 one week on: the numbers (sales, players, scores) against GTA V's first week, from official figures only.
 2026-11-26 news: One week on. Watch for Take-Two's sales statement and the first big update roadmap.
 
+## GTA 6 launch: the hidden-details push (added 26 Oct, from the breakout playbook)
+
+The likeliest breakout is a Short about something hidden, cut or surprising in the map within days of launch, followed within the week by a long "everything explained" video. Footage: official Rockstar material and the owner's own GTA 6 gameplay from the gameplay lane (their Twitch streams), never other creators' footage.
+
+2026-11-19 any: Launch night: the first hidden detail players are sharing that Rockstar's own material or our gameplay can show. Name the source of the find, say "players have found", never claim we discovered it.
+2026-11-20 why: Why is [the most talked-about hidden detail] in GTA 6? The first "what is this" question players are asking, answered from what Rockstar has shown and said.
+2026-11-20 any: Second hidden detail Short, a different part of the map from yesterday's; keep the template "GTA 6's [thing] hides [detail]".
+2026-11-21 any: Third hidden detail Short in the same template, so the series reads as a set.
+2026-11-22 evergreen: GTA 6's biggest secrets so far, ranked: only details confirmed by Rockstar material or our gameplay, each one shown.
+2026-11-25 long: Everything hidden in GTA 6's map so far, explained: 15-25 minutes, one chapter per area, from official material and our own gameplay; title names GTA 6 and the promise, thumbnail text in 1-4 words.
+
 ## Forward calendar, 27 Oct 2026 to 31 Jan 2027 (demand research, 26 Oct)
 
 Each line ends with its source in brackets; check the date on the day.

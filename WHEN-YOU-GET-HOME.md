@@ -16,7 +16,7 @@ Why: Google wants to check it's you before it lets the factory change video sett
 5. If a box says **"Verify it's you"**, type your Google password and click **Next**. Do any phone check it asks for.
 6. You're done when the video's details page opens and nothing asks you again.
 7. Leave Brave open. It's fine behind other windows; just don't close it.
-8. On 26 Oct Google started blocking automated clicks in Studio's "related video" picker (it opens empty). Claude won't try to get around that. The task now skips linking when it happens and carries on with comment hearts. Linking by hand is optional (see section 9).
+8. After that the "related videos and comment hearts" task links new Shorts by itself twice a day. If Studio says "The related video is no longer available" on a Short, the task leaves it and tries again next run.
 
 ---
 
@@ -119,24 +119,3 @@ Claude never spends money for you.
 - **Every Monday:** Claude reads the week's quality notes, fixes what keeps going wrong, and reports.
 - **Whenever a Short takes off:** you get a Discord ping, and the factory makes more on that game for three days.
 
----
-
-## 9. Optional: link the best Shorts to a long video by hand (about 30 seconds each)
-
-Why: a "Related video" link under a Short sends its viewers to a long video. Google now blocks Claude from setting it, but it works fine when you do it. These are the ones most worth doing:
-
-| Open this Short in Studio                  | Pick this long video                          |
-| ------------------------------------------ | --------------------------------------------- |
-| studio.youtube.com/video/VLfCkcXnQ2o/edit  | Every Mainline GTA Game, Ranked Worst to Best |
-| studio.youtube.com/video/lP4a-dEGgoE/edit  | Every Mainline GTA Game, Ranked Worst to Best |
-| studio.youtube.com/video/\_iaczXRXw_Q/edit | Every Mainline GTA Game, Ranked Worst to Best |
-| studio.youtube.com/video/tSuaEe5rmjI/edit  | Every Mainline GTA Game, Ranked Worst to Best |
-| studio.youtube.com/video/Os_yeSFpGh0/edit  | Call of Duty Campaigns Ranked Worst to Best   |
-| studio.youtube.com/video/\_zy96Y-npM8/edit | Call of Duty Campaigns Ranked Worst to Best   |
-
-For each one:
-
-1. Open the address in Brave.
-2. Scroll down to **Related video** and click the box.
-3. Click the long video named in the table.
-4. Click **Save** (top right).

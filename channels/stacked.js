@@ -120,6 +120,8 @@ module.exports = {
 
   // YouTube category
   youtubeCategory: "27", // Education (higher CPM, attracts investor demographics)
+  // YouTube "altered or synthetic content" declaration (AI narration).
+  containsSyntheticMedia: true,
   hashtags: ["#Shorts", "#Finance", "#StockMarket", "#Investing", "#STACKED"],
 
   // Music prompts,varied pool for library generation

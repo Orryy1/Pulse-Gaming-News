@@ -104,6 +104,9 @@ module.exports = {
 
   // YouTube category
   youtubeCategory: "20", // Gaming
+  // YouTube "altered or synthetic content" declaration. The narration is an
+  // AI voice, so every upload declares it. Must be an explicit boolean.
+  containsSyntheticMedia: true,
   hashtags: ["#Shorts", "#GamingNews", "#GamingLeaks", "#PulseGaming"],
 
   // Social links (shown in every YouTube description)

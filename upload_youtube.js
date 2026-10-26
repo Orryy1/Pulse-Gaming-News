@@ -623,6 +623,12 @@ async function uploadShort(story) {
 
       console.log(`[youtube] Uploading: "${title}"`);
 
+      const {
+        getChannel,
+        youtubeSyntheticMediaDeclaration,
+      } = require("./channels");
+      const uploadChannel = getChannel();
+
       const response = await youtube.videos.insert({
         part: ["snippet", "status"],
         requestBody: {
@@ -630,14 +636,15 @@ async function uploadShort(story) {
             title,
             description,
             tags,
-            categoryId:
-              require("./channels").getChannel().youtubeCategory || "20",
+            categoryId: uploadChannel.youtubeCategory || "20",
             defaultLanguage: "en",
             defaultAudioLanguage: "en",
           },
           status: {
             privacyStatus: "public",
             selfDeclaredMadeForKids: false,
+            containsSyntheticMedia:
+              youtubeSyntheticMediaDeclaration(uploadChannel),
             embeddable: true,
           },
         },
@@ -880,7 +887,10 @@ async function uploadLongform(compilation) {
   const auth = await getAuthClient();
   const youtube = google.youtube({ version: "v3", auth });
   const brand = require("./brand");
-  const { getChannel } = require("./channels");
+  const {
+    getChannel,
+    youtubeSyntheticMediaDeclaration,
+  } = require("./channels");
   const channel = getChannel();
 
   const videoPath = compilation.output_path || compilation.outputPath;
@@ -955,6 +965,7 @@ async function uploadLongform(compilation) {
       status: {
         privacyStatus: "public",
         selfDeclaredMadeForKids: false,
+        containsSyntheticMedia: youtubeSyntheticMediaDeclaration(channel),
         embeddable: true,
       },
     },

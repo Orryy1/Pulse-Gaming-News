@@ -11,7 +11,12 @@ import type { ShortImage, ShortClip } from "../props.ts";
 import type { RenderPlan } from "../plan.ts";
 import { shotAt } from "../plan.ts";
 import { COLOUR } from "../brand.ts";
-import { creditFade, cutPunch, moveTransform, type MovePreset } from "../motion.ts";
+import {
+  creditFade,
+  cutPunch,
+  moveTransform,
+  type MovePreset,
+} from "../motion.ts";
 import { BANDS, CREDIT_TOP, SAFE, WIDTH } from "../layout.ts";
 import { BODY } from "./fonts.ts";
 
@@ -239,11 +244,12 @@ const FootageCredit: React.FC<{ credit: string; durationFrames: number }> = ({
         left: SAFE.left,
         top: CREDIT_TOP,
         fontFamily: BODY,
-        fontWeight: 600,
-        fontSize: 26,
+        // Bolder and on a darker plate: the visual check kept calling the credit "very low contrast".
+        fontWeight: 800,
+        fontSize: 27,
         letterSpacing: 2,
-        color: "rgba(245,245,242,0.9)",
-        background: "rgba(11,11,14,0.72)",
+        color: COLOUR.paper,
+        background: "rgba(11,11,14,0.88)",
         padding: "6px 12px",
         borderRadius: 6,
         textShadow: "0 2px 10px rgba(0,0,0,0.9)",

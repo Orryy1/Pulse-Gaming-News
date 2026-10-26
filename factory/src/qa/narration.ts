@@ -285,13 +285,71 @@ export function checkNarration(
   const drift = medians.length
     ? Math.max(...medians) - Math.min(...medians)
     : 0;
+  const real = dropShuffles(issues);
   return {
-    ok: !issues.length && drift <= maxDrift,
-    issues,
+    ok: !real.length && drift <= maxDrift,
+    issues: real,
     drift: Math.round(drift * 100) / 100,
     matched: n ? L[0]![0]! / n : 1,
     pauses: midSentencePauses(meant, heard),
   };
+}
+
+/**
+ * Alignment shuffles that are not faults: the same word missed in one place and heard a moment later
+ * ("million" either side of "$1 million"), and gaps made only of figure words, currency and digits
+ * ("$1" against "dollars"). They failed the check on four Shorts in a week (QA notes, 26 Oct 2026),
+ * each time paying for a second voicing of a narration that was fine.
+ */
+export function dropShuffles(issues: NarrationIssue[]): NarrationIssue[] {
+  const toks = (s: string) => tokens(s);
+  // Only scale and currency words: a changed figure ("four" against "five") is never forgiven.
+  const UNITS = new Set([
+    "million",
+    "billion",
+    "thousand",
+    "dollars",
+    "dollar",
+    "cents",
+    "pounds",
+    "euros",
+    "percent",
+  ]);
+  const unitOnly = (s: string) => toks(s).every((t) => UNITS.has(t));
+  const gone = new Set<number>();
+  issues.forEach((a, i) => {
+    if (gone.has(i)) return;
+    if (unitOnly(a.meant) && unitOnly(a.heard)) {
+      gone.add(i);
+      return;
+    }
+    // "$1" heard where the script said the amount in words and "dollars" went missing nearby.
+    if (
+      !a.meant &&
+      /^\$\d[\d.,]*$/.test(a.heard.trim()) &&
+      issues.some(
+        (b) =>
+          /dollars?/.test(b.meant) && !b.heard && Math.abs(b.at - a.at) <= 2,
+      )
+    ) {
+      gone.add(i);
+      return;
+    }
+    issues.forEach((b, j) => {
+      if (j === i || gone.has(j) || gone.has(i)) return;
+      const same =
+        a.meant &&
+        !a.heard &&
+        !b.meant &&
+        b.heard &&
+        toks(a.meant).join(" ") === toks(b.heard).join(" ");
+      if (same && Math.abs(a.at - b.at) <= 2) {
+        gone.add(i);
+        gone.add(j);
+      }
+    });
+  });
+  return issues.filter((_, i) => !gone.has(i));
 }
 
 /** One line for logs and Discord. */

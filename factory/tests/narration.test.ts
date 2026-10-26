@@ -127,3 +127,16 @@ test("a half-second gap where the script has no punctuation is reported as a mid
   assert.equal(pauses[0]!.after, "4's");
   assert.ok(pauses[0]!.seconds >= 0.5);
 });
+
+test("a word shuffled either side of a figure, or a figure-only gap, is not a narration fault", async () => {
+  const { dropShuffles } = await import("../src/qa/narration.ts");
+  const shuffles = [
+    { at: 8.1, meant: "million", heard: "" },
+    { at: 7.96, meant: "", heard: "million" },
+    { at: 13.4, meant: "", heard: "$1" },
+    { at: 14.3, meant: "dollars.", heard: "" },
+  ];
+  assert.deepEqual(dropShuffles(shuffles), []);
+  const real = [{ at: 25.4, meant: "Kan Gao's", heard: "Congos" }];
+  assert.deepEqual(dropShuffles(real), real);
+});

@@ -797,7 +797,8 @@ export const Captions: React.FC<{
         flexWrap: "wrap",
         alignContent: "center",
         justifyContent: "center",
-        gap: "0 24px",
+        // A long word beside a short one read as one ("MOUTHWASHINGIS", "CO-FOUNDERDAN") at 24 px.
+        gap: "0 36px",
         transform: `scale(${interpolate(pop, [0, 1], [0.92, 1])})`,
       }}
     >

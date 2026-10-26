@@ -81,8 +81,10 @@ const SourceChip: React.FC<{
       style={{
         fontFamily: BODY,
         fontWeight: 900,
-        fontSize: 30,
-        letterSpacing: 2.5,
+        // One line always: a long source list wrapped its "+1" onto a second line (QA notes, 25 Oct 2026).
+        fontSize: label.length > 40 ? 24 : label.length > 32 ? 27 : 30,
+        letterSpacing: label.length > 40 ? 1.5 : 2.5,
+        whiteSpace: "nowrap",
         color: COLOUR.paper,
         lineHeight: 1,
       }}

@@ -350,19 +350,31 @@ export function validateScript(s: Script, recent?: RecentShapes): string[] {
         `The stamp "${s.stamp.text}" is longer than 14 characters.`,
       );
     const said = spoken.toLowerCase();
-    if (!said.includes(s.stamp.word.toLowerCase().replace(/[.,!?]$/, "")))
+    // A figure said in figures or in words: "3 MONTHS" for "three months", "$40" for "forty billion
+    // dollars", "200,000" for "two hundred thousand". The stamp lands on the spoken form either way
+    // (stampsFor); the check only took 1-3 digit figures, and two good Shorts paid for a rewrite over
+    // "$40" and "200,000" (QA notes, 26 Oct 2026). A different figure still fails.
+    const figureSaid = (fig: string) => {
+      const digits = fig.replace(/,/g, "").replace(/\.$/, "");
+      if (said.replace(/,/g, "").includes(digits)) return true;
+      const n = Number(digits);
+      return (
+        /^\d+$/.test(digits) &&
+        n < 1e12 &&
+        new RegExp(`\\b${numberWords(n)}\\b`).test(said)
+      );
+    };
+    const word = s.stamp.word.toLowerCase().replace(/[.,!?]$/, "");
+    const wordFigures = word.match(/\d[\d,.]*/g) ?? [];
+    if (
+      !said.includes(word) &&
+      !(wordFigures.length > 0 && wordFigures.every(figureSaid))
+    )
       problems.push(
         `The stamp's word "${s.stamp.word}" is not in the narration; use a word that is spoken.`,
       );
     for (const fig of s.stamp.text.match(/\d[\d,.]*/g) ?? [])
-      if (
-        !said.replace(/,/g, "").includes(fig.replace(/,/g, "")) &&
-        // "3 MONTHS" on the stamp for "three months" in the narration is the same figure.
-        !(
-          /^\d{1,3}$/.test(fig) &&
-          new RegExp(`\\b${numberWords(Number(fig))}\\b`).test(said)
-        )
-      )
+      if (!figureSaid(fig))
         problems.push(`The stamp's figure "${fig}" is not in the narration.`);
   }
   if (

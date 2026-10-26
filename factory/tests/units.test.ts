@@ -427,3 +427,16 @@ test("a long video's thumbnail carries the writer's short hook words, not the ti
   s.youtube = { ...s.youtube, thumb_text: "this is far too many words for a thumbnail line" };
   assert.notEqual(thumbTitle(s), "THIS IS FAR TOO MANY WORDS FOR A THUMBNAIL LINE");
 });
+
+test("a stamp's word and figure may be a figure the narration says in words, at any size (QA notes, 26 Oct 2026)", () => {
+  const s = goodScript();
+  s.beats[0]!.narration = "Call of Duty just crossed forty billion dollars, and a petition passed two hundred thousand names.";
+  (s as any).stamp = { word: "$40", text: "$40 BILLION", tone: "alert" };
+  assert.doesNotMatch(validateScript(s).join(" "), /stamp's/);
+  (s as any).stamp = { word: "200,000", text: "200,000", tone: "alert" };
+  assert.doesNotMatch(validateScript(s).join(" "), /stamp's/);
+  // A figure the narration never says is still sent back.
+  (s as any).stamp = { word: "300,000", text: "300,000", tone: "alert" };
+  assert.match(validateScript(s).join(" "), /stamp's word "300,000"/);
+  assert.match(validateScript(s).join(" "), /stamp's figure "300,000"/);
+});

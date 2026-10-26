@@ -32,7 +32,10 @@ import {
 import type { Config } from "../src/config.ts";
 import type { Db } from "../src/db.ts";
 import { testDb, tmpDir, testConfig, item, goodScript } from "./helpers.ts";
-import { EvergreenScriptSchema, type EvergreenScript } from "../src/editorial/evergreen.ts";
+import {
+  EvergreenScriptSchema,
+  type EvergreenScript,
+} from "../src/editorial/evergreen.ts";
 import { TwinScriptSchema } from "../src/editorial/twin.ts";
 
 /** A small, valid ranking draft for the fake writer. */
@@ -53,9 +56,19 @@ function rankingDraft(): EvergreenScript {
       verdict_chip: i === names.length - 1 ? "STILL THE ONE" : "PLAY IT ONCE",
       footage: { want: "gameplay", keywords: ["warthog run"] },
     })),
-    pulse_take: { label: "THE CRITERION", narration: "Number one still has the best campaign pacing in the series, and nothing else here comes close.", on_screen: "Still the best campaign" },
-    loop_line: "And that is every Halo ranked by how good the campaign still is.",
-    youtube: { title: "Ranking EVERY Halo game", description: "Every mainline Halo ranked by campaign.", tags: ["Halo"] },
+    pulse_take: {
+      label: "THE CRITERION",
+      narration:
+        "Number one still has the best campaign pacing in the series, and nothing else here comes close.",
+      on_screen: "Still the best campaign",
+    },
+    loop_line:
+      "And that is every Halo ranked by how good the campaign still is.",
+    youtube: {
+      title: "Ranking EVERY Halo game",
+      description: "Every mainline Halo ranked by campaign.",
+      tags: ["Halo"],
+    },
     claims: [{ claim: "Halo 3 released in 2007", source: "public knowledge" }],
   };
 }
@@ -74,13 +87,36 @@ interface Fakes {
   privacy?: string;
   captions: Array<{ id: string; language: string; name: string }>;
   comments: string[];
-  resources: Array<{ snippet: { title: string; description: string; defaultLanguage?: string } }>;
+  resources: Array<{
+    snippet: { title: string; description: string; defaultLanguage?: string };
+  }>;
   voices: string[];
   visual?: "none" | "game_footage" | "real_world_images";
   media?: number;
   stock?: number;
-  radar?: Array<{ name: string; appId: number; date: string; price?: string; developer?: string }>;
-  free?: { now: Array<{ title: string; url: string; until?: string; originalPrice?: string; description: string; imageUrl?: string }>; next: Array<{ title: string; url: string; starts?: string; description: string }> };
+  radar?: Array<{
+    name: string;
+    appId: number;
+    date: string;
+    price?: string;
+    developer?: string;
+  }>;
+  free?: {
+    now: Array<{
+      title: string;
+      url: string;
+      until?: string;
+      originalPrice?: string;
+      description: string;
+      imageUrl?: string;
+    }>;
+    next: Array<{
+      title: string;
+      url: string;
+      starts?: string;
+      description: string;
+    }>;
+  };
 }
 
 function fakeLlm(f: Fakes): Llm {
@@ -104,24 +140,39 @@ function fakeLlm(f: Fakes): Llm {
         }) as z.infer<S>;
       if (schema === (VisionQaSchema as unknown))
         return { verdict: "pass", problems: [], notes: "" } as z.infer<S>;
-      if (schema === (EvergreenScriptSchema as unknown)) return rankingDraft() as z.infer<S>;
+      if (schema === (EvergreenScriptSchema as unknown))
+        return rankingDraft() as z.infer<S>;
       if (schema === (TwinScriptSchema as unknown))
         return {
           headline: "Expansión de Starfield retrasada a 2027",
           hook: "La segunda expansión de Starfield se retrasa a principios de 2027.",
           beats: [
-            { narration: "Bethesda confirmó el cambio esta mañana en Xbox Wire y dice que el tiempo extra irá a pulido y rendimiento en todas las plataformas.", primary: "Principios de 2027", secondary: "nueva ventana" },
-            { narration: "La expansión estaba prevista para este diciembre, así que es un retraso de al menos tres meses si la estabas esperando.", primary: "3+ meses", secondary: "más tarde de lo previsto" },
+            {
+              narration:
+                "Bethesda confirmó el cambio esta mañana en Xbox Wire y dice que el tiempo extra irá a pulido y rendimiento en todas las plataformas.",
+              primary: "Principios de 2027",
+              secondary: "nueva ventana",
+            },
+            {
+              narration:
+                "La expansión estaba prevista para este diciembre, así que es un retraso de al menos tres meses si la estabas esperando.",
+              primary: "3+ meses",
+              secondary: "más tarde de lo previsto",
+            },
           ],
           take_label: "QUÉ SIGNIFICA",
-          take_narration: "Para nosotros, Bethesda ya ha retrasado contenido grande antes y suele llegar en mejor estado, así que todavía no es una señal de alarma.",
+          take_narration:
+            "Para nosotros, Bethesda ya ha retrasado contenido grande antes y suele llegar en mejor estado, así que todavía no es una señal de alarma.",
           take_on_screen: "Todavía no es una alarma",
-          loop_line: "Así que si la esperas, apunta principios de 2027 para la segunda expansión de Starfield.",
+          loop_line:
+            "Así que si la esperas, apunta principios de 2027 para la segunda expansión de Starfield.",
           attribution: "Fuente: Xbox Wire / IGN",
           youtube_title: "Starfield retrasa su expansión a principios de 2027",
-          youtube_description: "Bethesda ha movido la expansión. Fuentes: Xbox Wire e IGN.",
+          youtube_description:
+            "Bethesda ha movido la expansión. Fuentes: Xbox Wire e IGN.",
           youtube_tags: ["starfield", "bethesda", "expansión"],
-          pinned_comment: "Nuestra lectura: todavía no es una alarma. ¿Esperas o pasas?",
+          pinned_comment:
+            "Nuestra lectura: todavía no es una alarma. ¿Esperas o pasas?",
         } as z.infer<S>;
       throw new Error("unexpected schema");
     },
@@ -136,7 +187,15 @@ function fakeYouTube(f: Fakes): YouTubeClient {
   yt.findByMarker = async () => f.existingOnChannel;
   yt.createSession = async (resource) => {
     f.sessions++;
-    f.resources.push(resource as { snippet: { title: string; description: string; defaultLanguage?: string } });
+    f.resources.push(
+      resource as {
+        snippet: {
+          title: string;
+          description: string;
+          defaultLanguage?: string;
+        };
+      },
+    );
     return `https://upload.example/session/${f.sessions}`;
   };
   yt.uploadToSession = async () => {
@@ -146,6 +205,10 @@ function fakeYouTube(f: Fakes): YouTubeClient {
       f.existingOnChannel = "vid_from_lost_response";
       throw new Error("socket hang up");
     }
+    // As a real resumable session does: once every byte has arrived, asking again returns the video
+    // without sending anything.
+    if (f.existingOnChannel === "vid_from_lost_response")
+      return "vid_from_lost_response";
     f.uploads++;
     // Each upload is its own video (the table keeps video ids unique).
     return f.uploads === 1 ? "vid_123" : `vid_123_${f.uploads}`;
@@ -155,7 +218,13 @@ function fakeYouTube(f: Fakes): YouTubeClient {
     privacyStatus: f.privacy ?? "public",
   });
   yt.listCaptions = async () => f.captions;
-  yt.stats = async (ids) => new Map(ids.map((id) => [id, { views: 1200, likes: 40, comments: 3, privacyStatus: "public" }]));
+  yt.stats = async (ids) =>
+    new Map(
+      ids.map((id) => [
+        id,
+        { views: 1200, likes: 40, comments: 3, privacyStatus: "public" },
+      ]),
+    );
   yt.insertComment = async (_v, text) => {
     f.comments.push(text);
     return "c_1";
@@ -236,7 +305,12 @@ async function setup(
       const words: Array<{ text: string; start: number; end: number }> = [];
       let offset = 0;
       for (const p of parts) {
-        for (const w of p.words) words.push({ text: w.text, start: w.start + offset, end: w.end + offset });
+        for (const w of p.words)
+          words.push({
+            text: w.text,
+            start: w.start + offset,
+            end: w.end + offset,
+          });
         offset += p.durationSeconds + 0.18;
       }
       return { audioPath: out, words, durationSeconds: offset - 0.18 + 0.15 };
@@ -266,14 +340,33 @@ async function setup(
     trending: async () => [],
     ownClips: async () => [],
     searchPhotos: async () => [],
-        igdbArt: async () => [],
-        gameplayClips: async () => [],
+    igdbArt: async () => [],
+    gameplayClips: async () => [],
     judgeFootage: async () => true,
     downloadPhoto: async () => false,
-    fetchStock: async (_dir, targets) => (f.stock ?? 0) > 0 ? targets.slice(0, f.stock).map((t, i) => ({ kind: "clip" as const, file: `assets/stock_${i}.mp4`, sourceUrl: "https://www.pexels.com/video/1", durationSeconds: 4, beatIndex: Number.parseInt(t.key.slice(5), 10), stock: true, provenance: "Illustrative stock footage from Pexels (https://www.pexels.com/video/1) by x, free to use under the Pexels licence" })) : [],
+    fetchStock: async (_dir, targets) =>
+      (f.stock ?? 0) > 0
+        ? targets
+            .slice(0, f.stock)
+            .map((t, i) => ({
+              kind: "clip" as const,
+              file: `assets/stock_${i}.mp4`,
+              sourceUrl: "https://www.pexels.com/video/1",
+              durationSeconds: 4,
+              beatIndex: Number.parseInt(t.key.slice(5), 10),
+              stock: true,
+              provenance:
+                "Illustrative stock footage from Pexels (https://www.pexels.com/video/1) by x, free to use under the Pexels licence",
+            }))
+        : [],
     fetchOfficialMedia: async () => ({
       clips: [],
-      stills: Array.from({ length: f.media ?? 2 }, (_, i) => ({ kind: "hero" as const, file: `assets/official_${i}.jpg`, sourceUrl: "https://www.youtube.com/watch?v=x", provenance: "test still" })),
+      stills: Array.from({ length: f.media ?? 2 }, (_, i) => ({
+        kind: "hero" as const,
+        file: `assets/official_${i}.jpg`,
+        sourceUrl: "https://www.youtube.com/watch?v=x",
+        provenance: "test still",
+      })),
     }),
     downloadImage: async () => false,
     imageAspect: async () => 16 / 9,
@@ -321,15 +414,55 @@ async function only(db: Db) {
 
 test("footage credits name every trailer source and skip an empty sources block", () => {
   const clips = [
-    { provenance: 'Official Steam trailer "Launch" for "Resident Evil 4" (app 1), 2.4s at 10.0s, muted; chosen for beat:0 by model (x)' },
-    { provenance: 'Official Steam trailer "Reveal" for "Resident Evil 7 Biohazard" (app 2), 2.4s at 10.0s, muted; chosen for beat:1 by model (x)' },
-    { provenance: 'Official trailer "RE Code Veronica" from the Capcom YouTube channel, publisher: Capcom (https://www.youtube.com/watch?v=abc), 2s at 5.0s, muted; chosen for beat:2 by model (x)' },
+    {
+      provenance:
+        'Official Steam trailer "Launch" for "Resident Evil 4" (app 1), 2.4s at 10.0s, muted; chosen for beat:0 by model (x)',
+    },
+    {
+      provenance:
+        'Official Steam trailer "Reveal" for "Resident Evil 7 Biohazard" (app 2), 2.4s at 10.0s, muted; chosen for beat:1 by model (x)',
+    },
+    {
+      provenance:
+        'Official trailer "RE Code Veronica" from the Capcom YouTube channel, publisher: Capcom (https://www.youtube.com/watch?v=abc), 2s at 5.0s, muted; chosen for beat:2 by model (x)',
+    },
   ];
-  const credit = footageCredits(goodScript({ entries: [{ rank: 1, game_title: "x", steam_search_term: "", year: 2020, platforms: "PC" }] }), clips, undefined, "Capcom", "ranking");
-  assert.match(credit, /official Steam trailers, a few seconds each: Resident Evil 4, Resident Evil 7 Biohazard/);
-  assert.match(credit, /official Capcom YouTube channel \(https:\/\/www\.youtube\.com\/watch\?v=abc\)/);
-  const single = footageCredits(goodScript(), [clips[0]!], undefined, "Capcom", "news");
-  assert.match(single, /^\nFootage: Resident Evil 4 official trailer \(Capcom\), via Steam/);
+  const credit = footageCredits(
+    goodScript({
+      entries: [
+        {
+          rank: 1,
+          game_title: "x",
+          steam_search_term: "",
+          year: 2020,
+          platforms: "PC",
+        },
+      ],
+    }),
+    clips,
+    undefined,
+    "Capcom",
+    "ranking",
+  );
+  assert.match(
+    credit,
+    /official Steam trailers, a few seconds each: Resident Evil 4, Resident Evil 7 Biohazard/,
+  );
+  assert.match(
+    credit,
+    /official Capcom YouTube channel \(https:\/\/www\.youtube\.com\/watch\?v=abc\)/,
+  );
+  const single = footageCredits(
+    goodScript(),
+    [clips[0]!],
+    undefined,
+    "Capcom",
+    "news",
+  );
+  assert.match(
+    single,
+    /^\nFootage: Resident Evil 4 official trailer \(Capcom\), via Steam/,
+  );
   assert.equal(footageCredits(goodScript(), [], undefined, undefined, "x"), "");
 });
 
@@ -338,7 +471,9 @@ test("a picture story goes out only with safe pictures of it, and a Short with n
     // A picture story with nothing safe to show is dropped before upload.
     const { s, f, db } = await setup({}, { visual: "real_world_images" });
     await tick(s);
-    const [ep] = await db.query<{ status: string; last_error: string }>(`SELECT status, last_error FROM episodes`);
+    const [ep] = await db.query<{ status: string; last_error: string }>(
+      `SELECT status, last_error FROM episodes`,
+    );
     assert.equal(ep?.status, "rejected");
     assert.match(ep!.last_error, /picture story with nothing safe to show/);
     assert.equal(f.uploads, 0);
@@ -346,9 +481,14 @@ test("a picture story goes out only with safe pictures of it, and a Short with n
   }
   {
     // With illustrative stock for its real-world lines it goes out, credited.
-    const { s, f, db } = await setup({}, { visual: "real_world_images", stock: 2 });
+    const { s, f, db } = await setup(
+      {},
+      { visual: "real_world_images", stock: 2 },
+    );
     await tick(s);
-    const [ep] = await db.query<{ status: string; assets_json: any }>(`SELECT status, assets_json FROM episodes`);
+    const [ep] = await db.query<{ status: string; assets_json: any }>(
+      `SELECT status, assets_json FROM episodes`,
+    );
     assert.equal(ep?.status, "published");
     assert.equal(ep!.assets_json.clips.filter((c: any) => c.stock).length, 2);
     assert.equal(f.uploads, 1);
@@ -357,10 +497,15 @@ test("a picture story goes out only with safe pictures of it, and a Short with n
   {
     const { s, f, db } = await setup({}, { media: 0 });
     await tick(s);
-    const [ep] = await db.query<{ status: string; last_error: string }>(`SELECT status, last_error FROM episodes`);
+    const [ep] = await db.query<{ status: string; last_error: string }>(
+      `SELECT status, last_error FROM episodes`,
+    );
     assert.equal(ep?.status, "rejected");
     assert.match(ep!.last_error, /nothing worth showing/);
-    assert.ok(f.notifications.some((n) => /Dropped/.test(n)), "Discord is told");
+    assert.ok(
+      f.notifications.some((n) => /Dropped/.test(n)),
+      "Discord is told",
+    );
     assert.equal(f.uploads, 0, "nothing was uploaded");
     await db.close();
   }
@@ -369,13 +514,37 @@ test("a picture story goes out only with safe pictures of it, and a Short with n
 test("Free This Week runs on its day from Epic's own data as an official story, and only once a day", async () => {
   // Thursday 22 Oct 2026, 19:00 London: the 20:00 weekly slot is due.
   const { db, s, setClock } = await setup(
-    { weeklyEnabled: true, newsSlots: [], breakingEnabled: false, evergreenEnabled: false, dailyTarget: 4 },
-    { free: { now: [{ title: "Bad Cheese", url: "https://store.epicgames.com/en-US/p/bad-cheese", until: "2026-10-29T15:00:00.000Z", originalPrice: "$19.99", description: "A cartoon horror game.", imageUrl: "https://cdn/x.jpg" }], next: [] } },
+    {
+      weeklyEnabled: true,
+      newsSlots: [],
+      breakingEnabled: false,
+      evergreenEnabled: false,
+      dailyTarget: 4,
+    },
+    {
+      free: {
+        now: [
+          {
+            title: "Bad Cheese",
+            url: "https://store.epicgames.com/en-US/p/bad-cheese",
+            until: "2026-10-29T15:00:00.000Z",
+            originalPrice: "$19.99",
+            description: "A cartoon horror game.",
+            imageUrl: "https://cdn/x.jpg",
+          },
+        ],
+        next: [],
+      },
+    },
   );
   setClock(new Date("2026-10-22T18:00:00Z"));
   const id = await maybeSelectWeekly(s);
   assert.ok(id, "selected");
-  const [ep] = await db.query<{ lane: string; story_json: any; slot_at: string }>(`SELECT lane, story_json, slot_at FROM episodes`);
+  const [ep] = await db.query<{
+    lane: string;
+    story_json: any;
+    slot_at: string;
+  }>(`SELECT lane, story_json, slot_at FROM episodes`);
   assert.equal(ep!.lane, "free");
   assert.equal(ep!.story_json.items[0].sourceKind, "official");
   assert.match(ep!.story_json.items[0].summary, /normally costs \$19\.99/);
@@ -385,19 +554,45 @@ test("Free This Week runs on its day from Epic's own data as an official story, 
 });
 
 test("Release Radar hands the week's dated releases to the writer, and skips a thin week", async () => {
-  const games = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map((name, i) => ({ name, appId: 100 + i, date: `2026-10-${20 + i}`, price: "$29.99", developer: "Studio" }));
+  const games = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map(
+    (name, i) => ({
+      name,
+      appId: 100 + i,
+      date: `2026-10-${20 + i}`,
+      price: "$29.99",
+      developer: "Studio",
+    }),
+  );
   {
-    const { db, s, setClock } = await setup({ weeklyEnabled: true, newsSlots: [], breakingEnabled: false, evergreenEnabled: false }, { radar: games });
+    const { db, s, setClock } = await setup(
+      {
+        weeklyEnabled: true,
+        newsSlots: [],
+        breakingEnabled: false,
+        evergreenEnabled: false,
+      },
+      { radar: games },
+    );
     setClock(new Date("2026-10-19T18:00:00Z")); // Monday 19:00 London
     assert.ok(await maybeSelectWeekly(s));
-    const [ep] = await db.query<{ lane: string; factcheck_json: any }>(`SELECT lane, factcheck_json FROM episodes`);
+    const [ep] = await db.query<{ lane: string; factcheck_json: any }>(
+      `SELECT lane, factcheck_json FROM episodes`,
+    );
     assert.equal(ep!.lane, "evergreen");
     assert.equal(ep!.factcheck_json.topic.format, "release_radar");
     assert.match(ep!.factcheck_json.brief, /Alpha \| out 2026-10-20/);
     await db.close();
   }
   {
-    const { db, s, setClock } = await setup({ weeklyEnabled: true, newsSlots: [], breakingEnabled: false, evergreenEnabled: false }, { radar: games.slice(0, 2) });
+    const { db, s, setClock } = await setup(
+      {
+        weeklyEnabled: true,
+        newsSlots: [],
+        breakingEnabled: false,
+        evergreenEnabled: false,
+      },
+      { radar: games.slice(0, 2) },
+    );
     setClock(new Date("2026-10-19T18:00:00Z"));
     assert.equal(await maybeSelectWeekly(s), undefined);
     await db.close();
@@ -420,7 +615,10 @@ test("one tick takes a corroborated story all the way to published", async () =>
   );
   assert.equal(ep.assets_json?.srt, "captions.srt");
   assert.equal(f.comments.length, 1, "the channel posts its first comment");
-  assert.match(f.comments[0]!, /\? (Our take|Where we land|The short version|Bottom line|Our verdict): /);
+  assert.match(
+    f.comments[0]!,
+    /\? (Our take|Where we land|The short version|Bottom line|Our verdict): /,
+  );
   assert.doesNotMatch(f.comments[0]!, /our read/i);
   assert.match(
     await fs.readFile(
@@ -522,7 +720,11 @@ test("a lost upload response is adopted from the channel instead of uploading tw
   assert.equal(f.uploads, 0, "never re-uploaded");
   assert.equal(f.sessions, 1);
   const { quotaCalls } = await import("../src/lanes.ts");
-  assert.equal(await quotaCalls(db, s.now(), "upload"), 1, "the adopted upload is counted once");
+  assert.equal(
+    await quotaCalls(db, s.now(), "upload"),
+    1,
+    "the adopted upload is counted once",
+  );
 });
 
 test("an expired session is cleared and a fresh one is used next attempt", async () => {
@@ -616,7 +818,11 @@ test("a rumour two outlets carry goes out labelled under the lane's own mode; a 
   {
     // Xbox Wire and IGN both carry the report: timeout mode applies, and the Short is labelled.
     const { db, f, s, setClock } = await setup(
-      { approvalMode: "timeout", approvalTimeoutMinutes: 60, includeRumours: true },
+      {
+        approvalMode: "timeout",
+        approvalTimeoutMinutes: 60,
+        includeRumours: true,
+      },
       { script: rumour },
     );
     await tick(s);
@@ -632,10 +838,15 @@ test("a rumour two outlets carry goes out labelled under the lane's own mode; a 
   {
     // One outlet's claim: a human decides, whatever the mode.
     const { db, f, s, setClock } = await setup(
-      { approvalMode: "timeout", approvalTimeoutMinutes: 60, includeRumours: true },
+      {
+        approvalMode: "timeout",
+        approvalTimeoutMinutes: 60,
+        includeRumours: true,
+      },
       { script: rumour },
     );
-    s.discover = async () => SINGLE_SOURCE_RUMOUR(new Date("2026-10-16T12:00:00Z"));
+    s.discover = async () =>
+      SINGLE_SOURCE_RUMOUR(new Date("2026-10-16T12:00:00Z"));
     await tick(s);
     const ep = await only(db);
     assert.equal(ep.status, "awaiting_approval");
@@ -654,7 +865,12 @@ test("one rumour Short a day: a second story with rumour signals waits for tomor
     hook: "Starfield's second expansion has reportedly slipped to early 2027.",
   });
   const { db, s, setClock } = await setup(
-    { approvalMode: "auto", includeRumours: true, dailyTarget: 3, rumoursPerDay: 1 },
+    {
+      approvalMode: "auto",
+      includeRumours: true,
+      dailyTarget: 3,
+      rumoursPerDay: 1,
+    },
     { script: rumour },
   );
   await tick(s);
@@ -664,8 +880,20 @@ test("one rumour Short a day: a second story with rumour signals waits for tomor
   s.discover = async () =>
     clusterItems(
       [
-        item("Halo reveal reportedly set for next week, per two insiders", "VGC", "outlet", 20, new Date("2026-10-16T13:00:00Z")),
-        item("Report: Halo reveal next week", "Eurogamer", "outlet", 30, new Date("2026-10-16T13:00:00Z")),
+        item(
+          "Halo reveal reportedly set for next week, per two insiders",
+          "VGC",
+          "outlet",
+          20,
+          new Date("2026-10-16T13:00:00Z"),
+        ),
+        item(
+          "Report: Halo reveal next week",
+          "Eurogamer",
+          "outlet",
+          30,
+          new Date("2026-10-16T13:00:00Z"),
+        ),
       ],
       new Date("2026-10-16T13:00:00Z"),
     );
@@ -744,7 +972,8 @@ test("uncorroborated stories always wait for a human, even in auto mode", async 
       }),
     },
   );
-  s.discover = async () => SINGLE_SOURCE_RUMOUR(new Date("2026-10-16T12:00:00Z"));
+  s.discover = async () =>
+    SINGLE_SOURCE_RUMOUR(new Date("2026-10-16T12:00:00Z"));
   await tick(s);
   const ep = await only(db);
   assert.equal(ep.status, "awaiting_approval");
@@ -820,9 +1049,27 @@ function breakingStory(s: Services, now: Date) {
   s.discover = async () =>
     clusterItems(
       [
-        item("Grand Theft Auto VI trailer 3 is out now", "Rockstar Newswire", "official", 2, now),
-        item("GTA 6 trailer 3 just dropped and it is enormous", "IGN", "outlet", 1, now),
-        item("Rockstar releases Grand Theft Auto VI trailer 3", "VGC", "outlet", 1, now),
+        item(
+          "Grand Theft Auto VI trailer 3 is out now",
+          "Rockstar Newswire",
+          "official",
+          2,
+          now,
+        ),
+        item(
+          "GTA 6 trailer 3 just dropped and it is enormous",
+          "IGN",
+          "outlet",
+          1,
+          now,
+        ),
+        item(
+          "Rockstar releases Grand Theft Auto VI trailer 3",
+          "VGC",
+          "outlet",
+          1,
+          now,
+        ),
       ],
       now,
     );
@@ -830,7 +1077,14 @@ function breakingStory(s: Services, now: Date) {
 
 test("the breaking lane fires on a huge fresh official story outside any news slot, with a short approval countdown", async () => {
   // 09:00 London: no news slot is due, but a massive official story landed minutes ago.
-  const { db, f, s, setClock } = await setup({ dailyTarget: 4, newsSlots: ["19:30"], approvalMode: "timeout", approvalTimeoutMinutes: 60, breakingApprovalMinutes: 20, breakingScoreMin: 40 });
+  const { db, f, s, setClock } = await setup({
+    dailyTarget: 4,
+    newsSlots: ["19:30"],
+    approvalMode: "timeout",
+    approvalTimeoutMinutes: 60,
+    breakingApprovalMinutes: 20,
+    breakingScoreMin: 40,
+  });
   const at = new Date("2026-10-16T08:00:00Z");
   setClock(at);
   breakingStory(s, at);
@@ -839,28 +1093,71 @@ test("the breaking lane fires on a huge fresh official story outside any news sl
   assert.equal(ep.lane, "news_breaking");
   assert.equal(ep.priority, 100);
   assert.equal(ep.status, "awaiting_approval");
-  assert.ok(f.notifications.some((n) => n.startsWith("Breaking story picked")), "the owner is told a breaking Short is in production");
+  assert.ok(
+    f.notifications.some((n) => n.startsWith("Breaking story picked")),
+    "the owner is told a breaking Short is in production",
+  );
   setClock(new Date("2026-10-16T08:25:00Z"));
   await tick(s);
   const done = await only(db);
-  assert.equal(done.status, "published", "published after the 20-minute countdown");
-  assert.equal(done.publish_at, null, "breaking publishes immediately inside its window");
+  assert.equal(
+    done.status,
+    "published",
+    "published after the 20-minute countdown",
+  );
+  assert.equal(
+    done.publish_at,
+    null,
+    "breaking publishes immediately inside its window",
+  );
 
   // The same franchise cannot fire again within the cooldown, even with a new story hash.
   setClock(new Date("2026-10-16T09:00:00Z"));
-  s.discover = async () => clusterItems([item("Grand Theft Auto VI trailer 3 breaks the internet", "Rockstar Newswire", "official", 2, new Date("2026-10-16T09:00:00Z")), item("GTA 6 trailer 3 record views", "IGN", "outlet", 1, new Date("2026-10-16T09:00:00Z"))], new Date("2026-10-16T09:00:00Z"));
+  s.discover = async () =>
+    clusterItems(
+      [
+        item(
+          "Grand Theft Auto VI trailer 3 breaks the internet",
+          "Rockstar Newswire",
+          "official",
+          2,
+          new Date("2026-10-16T09:00:00Z"),
+        ),
+        item(
+          "GTA 6 trailer 3 record views",
+          "IGN",
+          "outlet",
+          1,
+          new Date("2026-10-16T09:00:00Z"),
+        ),
+      ],
+      new Date("2026-10-16T09:00:00Z"),
+    );
   await tick(s);
   assert.equal((await listEpisodes(db)).length, 1, "franchise cooldown holds");
 });
 
 test("news Shorts are made for their slots and publish at the slot; a waiting episode never blocks the next one", async () => {
   // Slots at 13:00 and 14:30 London (12:00Z and 13:30Z). Clock 12:00Z: the 13:00 slot is due.
-  const { db, s, setClock } = await setup({ dailyTarget: 4, newsSlots: ["13:00", "14:30"], approvalMode: "manual", breakingEnabled: false, youtubePrivacy: "unlisted" });
+  const { db, s, setClock } = await setup({
+    dailyTarget: 4,
+    newsSlots: ["13:00", "14:30"],
+    approvalMode: "manual",
+    breakingEnabled: false,
+    youtubePrivacy: "unlisted",
+  });
   await tick(s);
   const first = await only(db);
   assert.equal(first.lane, "news");
-  assert.equal(new Date(first.slot_at!).toISOString(), "2026-10-16T12:00:00.000Z");
-  assert.equal(first.status, "awaiting_approval", "manual mode waits for the owner");
+  assert.equal(
+    new Date(first.slot_at!).toISOString(),
+    "2026-10-16T12:00:00.000Z",
+  );
+  assert.equal(
+    first.status,
+    "awaiting_approval",
+    "manual mode waits for the owner",
+  );
 
   // 12:20Z: the 14:30 slot (due from 12:15Z) is selected although the first episode is still waiting.
   const later = new Date("2026-10-16T12:20:00Z");
@@ -868,17 +1165,36 @@ test("news Shorts are made for their slots and publish at the slot; a waiting ep
   freshStory(s, later);
   await tick(s);
   const eps = await listEpisodes(db);
-  assert.equal(eps.length, 2, "a waiting episode does not block production for the next slot");
+  assert.equal(
+    eps.length,
+    2,
+    "a waiting episode does not block production for the next slot",
+  );
   const second = eps.find((e) => e.id !== first.id)!;
-  assert.equal(new Date(second.slot_at!).toISOString(), "2026-10-16T13:30:00.000Z");
+  assert.equal(
+    new Date(second.slot_at!).toISOString(),
+    "2026-10-16T13:30:00.000Z",
+  );
 
   // Approving the second one schedules it for its slot rather than publishing early.
-  await db.query(`UPDATE episodes SET status = 'approved', approved_by = 'owner' WHERE id = $1`, [second.id]);
+  await db.query(
+    `UPDATE episodes SET status = 'approved', approved_by = 'owner' WHERE id = $1`,
+    [second.id],
+  );
   await tick(s);
   const scheduled = (await getEpisode(db, second.id))!;
   assert.equal(scheduled.status, "uploading");
-  assert.equal(new Date(scheduled.publish_at!).toISOString(), "2026-10-16T13:30:00.000Z", "publishes at its slot");
-  assert.ok(scheduled.next_attempt_at && new Date(scheduled.next_attempt_at).toISOString() === "2026-10-16T13:30:00.000Z", "the unlisted upload itself waits for the slot");
+  assert.equal(
+    new Date(scheduled.publish_at!).toISOString(),
+    "2026-10-16T13:30:00.000Z",
+    "publishes at its slot",
+  );
+  assert.ok(
+    scheduled.next_attempt_at &&
+      new Date(scheduled.next_attempt_at).toISOString() ===
+        "2026-10-16T13:30:00.000Z",
+    "the unlisted upload itself waits for the slot",
+  );
   // Nothing happens until the slot.
   setClock(new Date("2026-10-16T13:00:00Z"));
   await tick(s);
@@ -889,33 +1205,68 @@ test("news Shorts are made for their slots and publish at the slot; a waiting ep
 });
 
 test("uploads draw on their own daily bucket: a busy shared pool no longer holds a Short back", async () => {
-  const { db, s, f } = await setup({ dryRun: false, approvalMode: "auto", breakingEnabled: false });
+  const { db, s, f } = await setup({
+    dryRun: false,
+    approvalMode: "auto",
+    breakingEnabled: false,
+  });
   await quotaAdd(db, new Date("2026-10-16T12:00:00Z"), 9000);
   await tick(s);
   assert.equal((await only(db)).status, "published");
   assert.equal(f.uploads, 1);
   const { quotaCalls } = await import("../src/lanes.ts");
-  assert.equal(await quotaCalls(db, new Date("2026-10-16T12:00:00Z"), "upload"), 1, "one upload call counted");
+  assert.equal(
+    await quotaCalls(db, new Date("2026-10-16T12:00:00Z"), "upload"),
+    1,
+    "one upload call counted",
+  );
 });
 
 test("uploads are deferred to the next Pacific day when the day's upload calls are spent", async () => {
-  const { db, s, setClock } = await setup({ dryRun: false, approvalMode: "auto", breakingEnabled: false, uploadCallsPerDay: 3 });
+  const { db, s, setClock } = await setup({
+    dryRun: false,
+    approvalMode: "auto",
+    breakingEnabled: false,
+    uploadCallsPerDay: 3,
+  });
   const { quotaCall } = await import("../src/lanes.ts");
-  for (let k = 0; k < 3; k++) await quotaCall(db, new Date("2026-10-16T12:00:00Z"), "upload");
+  for (let k = 0; k < 3; k++)
+    await quotaCall(db, new Date("2026-10-16T12:00:00Z"), "upload");
   await tick(s);
   const ep = await only(db);
   assert.equal(ep.status, "uploading", "the upload waits");
-  assert.equal(new Date(ep.next_attempt_at!).toISOString(), "2026-10-17T07:00:00.000Z", "retried at midnight Pacific");
+  assert.equal(
+    new Date(ep.next_attempt_at!).toISOString(),
+    "2026-10-17T07:00:00.000Z",
+    "retried at midnight Pacific",
+  );
   setClock(new Date("2026-10-17T07:05:00Z"));
   await tick(s);
   assert.equal((await only(db)).status, "published");
 });
 
-async function delayedEpisode(db: Db, cfg: Config, id: string, lane: string, plannedAt: Date) {
+async function delayedEpisode(
+  db: Db,
+  cfg: Config,
+  id: string,
+  lane: string,
+  plannedAt: Date,
+) {
   await db.query(
     `INSERT INTO episodes (id, story_hash, status, story_json, lane, script_json, publish_at)
      VALUES ($1, $1, 'uploading', $2, $3, $4, $5)`,
-    [id, JSON.stringify({ headline: id, items: [], sources: ["IGN"], corroborated: true }), lane, JSON.stringify(goodScript()), plannedAt],
+    [
+      id,
+      JSON.stringify({
+        headline: id,
+        items: [],
+        sources: ["IGN"],
+        corroborated: true,
+      }),
+      lane,
+      JSON.stringify(goodScript()),
+      plannedAt,
+    ],
   );
   const dir = path.join(cfg.dataDir, "episodes", id);
   await fs.mkdir(dir, { recursive: true });
@@ -924,9 +1275,18 @@ async function delayedEpisode(db: Db, cfg: Config, id: string, lane: string, pla
 
 test("the publishing hold stops uploads and survives a restart and a quota reset", async () => {
   const { setPublishHold } = await import("../src/lanes.ts");
-  const { db, s, f, cfg, setClock } = await setup({ dryRun: false, breakingEnabled: false });
+  const { db, s, f, cfg, setClock } = await setup({
+    dryRun: false,
+    breakingEnabled: false,
+  });
   await setPublishHold(db, true);
-  await delayedEpisode(db, cfg, "ep_held", "evergreen", new Date("2026-10-16T18:00:00Z"));
+  await delayedEpisode(
+    db,
+    cfg,
+    "ep_held",
+    "evergreen",
+    new Date("2026-10-16T18:00:00Z"),
+  );
   await tick(s);
   assert.equal(f.uploads, 0);
   // A "restart" is a fresh pass over the same database; the next Pacific day resets the quota.
@@ -942,18 +1302,41 @@ test("the publishing hold stops uploads and survives a restart and a quota reset
 });
 
 test("delayed Shorts get fresh, spaced slots instead of past times; stale news goes back to the owner", async () => {
-  const { db, s, f, cfg } = await setup({ dryRun: false, breakingEnabled: false, minUploadGapMinutes: 60 });
+  const { db, s, f, cfg } = await setup({
+    dryRun: false,
+    breakingEnabled: false,
+    minUploadGapMinutes: 60,
+  });
   const now = new Date("2026-10-16T12:00:00Z");
-  for (const k of [1, 2, 3]) await delayedEpisode(db, cfg, `ep_late_${k}`, "evergreen", new Date(now.getTime() - k * 3600_000));
-  await delayedEpisode(db, cfg, "ep_old_news", "news", new Date(now.getTime() - 20 * 3600_000));
+  for (const k of [1, 2, 3])
+    await delayedEpisode(
+      db,
+      cfg,
+      `ep_late_${k}`,
+      "evergreen",
+      new Date(now.getTime() - k * 3600_000),
+    );
+  await delayedEpisode(
+    db,
+    cfg,
+    "ep_old_news",
+    "news",
+    new Date(now.getTime() - 20 * 3600_000),
+  );
   await tick(s);
   const slots = (
-    await db.query<{ id: string; publish_at: string }>(`SELECT id, publish_at FROM episodes WHERE id LIKE 'ep_late_%' ORDER BY publish_at`)
+    await db.query<{ id: string; publish_at: string }>(
+      `SELECT id, publish_at FROM episodes WHERE id LIKE 'ep_late_%' ORDER BY publish_at`,
+    )
   ).map((r) => new Date(r.publish_at).getTime());
   assert.equal(new Set(slots).size, 3, "three distinct slots");
-  for (const t of slots) assert.ok(t >= now.getTime() + 15 * 60_000, "every slot is in the future");
+  for (const t of slots)
+    assert.ok(t >= now.getTime() + 15 * 60_000, "every slot is in the future");
   for (let k = 1; k < slots.length; k++)
-    assert.ok(slots[k]! - slots[k - 1]! >= cfg.minUploadGapMinutes * 60_000, "spaced by the upload gap");
+    assert.ok(
+      slots[k]! - slots[k - 1]! >= cfg.minUploadGapMinutes * 60_000,
+      "spaced by the upload gap",
+    );
   const news = (await getEpisode(db, "ep_old_news"))!;
   assert.equal(news.status, "awaiting_approval");
   assert.ok(f.notifications.some((n) => /may be out of date/.test(n)));
@@ -962,20 +1345,82 @@ test("delayed Shorts get fresh, spaced slots instead of past times; stale news g
 test("the fact-checker sees every card figure, and rankings get a final adjudication that can stop a wrong figure", async () => {
   const { cardText } = await import("../src/editorial/editorial.ts");
   assert.equal(
-    cardText({ kind: "price", primary: "$59.99", secondary: "on Steam", was: "$69.99", region: "US", items: ["£49.99", "€59.99"] } as never),
+    cardText({
+      kind: "price",
+      primary: "$59.99",
+      secondary: "on Steam",
+      was: "$69.99",
+      region: "US",
+      items: ["£49.99", "€59.99"],
+    } as never),
     "[price] $59.99 on Steam (was $69.99, region US, rows: £49.99; €59.99)",
   );
-  assert.equal(cardText({ kind: "timeline", primary: "Delayed", secondary: "", date_from: "2026-03", date_to: "2026-11" } as never), "[timeline] Delayed (from 2026-03, to 2026-11)");
+  assert.equal(
+    cardText({
+      kind: "timeline",
+      primary: "Delayed",
+      secondary: "",
+      date_from: "2026-03",
+      date_to: "2026-11",
+    } as never),
+    "[timeline] Delayed (from 2026-03, to 2026-11)",
+  );
   // A ranking whose fact-check keeps failing is stopped, never published.
-  const { db, s, f } = await setup({ dryRun: false, evergreenEnabled: true, approvalMode: "auto", breakingEnabled: false });
+  const { db, s, f } = await setup({
+    dryRun: false,
+    evergreenEnabled: true,
+    approvalMode: "auto",
+    breakingEnabled: false,
+  });
   f.factChecks = [
-    { verdict: "fail", issues: [{ quote: "released in 2019", problem: "the facts say 2020", severity: "blocker" }], rumour_labelling_ok: true, summary: "wrong year" },
-    { verdict: "fail", issues: [{ quote: "released in 2019", problem: "the facts say 2020", severity: "blocker" }], rumour_labelling_ok: true, summary: "still wrong" },
+    {
+      verdict: "fail",
+      issues: [
+        {
+          quote: "released in 2019",
+          problem: "the facts say 2020",
+          severity: "blocker",
+        },
+      ],
+      rumour_labelling_ok: true,
+      summary: "wrong year",
+    },
+    {
+      verdict: "fail",
+      issues: [
+        {
+          quote: "released in 2019",
+          problem: "the facts say 2020",
+          severity: "blocker",
+        },
+      ],
+      rumour_labelling_ok: true,
+      summary: "still wrong",
+    },
   ];
   await db.query(
     `INSERT INTO episodes (id, story_hash, status, story_json, lane, factcheck_json, slot_at)
      VALUES ('ep_rank', 'rank', 'selected', $1, 'evergreen', $2, $3)`,
-    [JSON.stringify({ headline: "Ranked", items: [], sources: ["Steam"], hasOfficial: true, corroborated: true }), JSON.stringify({ topic: { theme: "Halo", format: "ranking", reason: "r", criterion: "c", title_idea: "Halo Ranked", candidate_index: 0 } }), new Date("2026-10-16T18:00:00Z")],
+    [
+      JSON.stringify({
+        headline: "Ranked",
+        items: [],
+        sources: ["Steam"],
+        hasOfficial: true,
+        corroborated: true,
+      }),
+      JSON.stringify({
+        topic: {
+          theme: "Halo",
+          format: "ranking",
+          reason: "r",
+          criterion: "c",
+          title_idea: "Halo Ranked",
+          candidate_index: 0,
+        },
+      }),
+      new Date("2026-10-16T18:00:00Z"),
+    ],
   );
   await tick(s);
   const ep = (await getEpisode(db, "ep_rank"))!;
@@ -997,23 +1442,40 @@ test("the go-live check keeps looking for days, hourly after the first two, and 
   f.privacy = "processing";
   await logEvent(db, "ep_late", "public_pending", { was: "processing" });
   // The fake clock reads 12:00 on 16 Oct; the check was ten minutes before that.
-  await db.query(`UPDATE events SET created_at = '2026-10-16T11:50:00Z' WHERE episode_id = 'ep_late'`);
+  await db.query(
+    `UPDATE events SET created_at = '2026-10-16T11:50:00Z' WHERE episode_id = 'ep_late'`,
+  );
   await confirmPublished(s);
-  const pend = await db.query(`SELECT 1 FROM events WHERE episode_id = 'ep_late' AND kind = 'public_pending'`);
+  const pend = await db.query(
+    `SELECT 1 FROM events WHERE episode_id = 'ep_late' AND kind = 'public_pending'`,
+  );
   assert.equal(pend.length, 1, "not re-checked within the hour");
   // An hour later it is checked again and found public: the time is recorded, and the first comment goes up.
-  await db.query(`UPDATE events SET created_at = '2026-10-16T15:50:00Z' WHERE episode_id = 'ep_late'`);
+  await db.query(
+    `UPDATE events SET created_at = '2026-10-16T15:50:00Z' WHERE episode_id = 'ep_late'`,
+  );
   f.privacy = "public";
   setClock(new Date("2026-10-16T17:00:00Z"));
   await confirmPublished(s);
-  const [done] = await db.query<{ detail: { at?: string } }>(`SELECT detail FROM events WHERE episode_id = 'ep_late' AND kind = 'public_confirmed'`);
+  const [done] = await db.query<{ detail: { at?: string } }>(
+    `SELECT detail FROM events WHERE episode_id = 'ep_late' AND kind = 'public_confirmed'`,
+  );
   assert.equal(done?.detail?.at, "2026-10-16T17:00:00.000Z");
-  assert.equal(f.comments.length, 1, "the first comment waited for the video to be public");
+  assert.equal(
+    f.comments.length,
+    1,
+    "the first comment waited for the video to be public",
+  );
   await db.close();
 });
 
 test("the twin channel: a published Short gets a translated twin, voiced by ElevenLabs, uploaded in its language to the second login", async () => {
-  const { db, f, s, setClock } = await setup({ youtubePrivacy: "public", twinLanguage: "es", twinChannelId: "UCtwin", twinDelayMinutes: 30 });
+  const { db, f, s, setClock } = await setup({
+    youtubePrivacy: "public",
+    twinLanguage: "es",
+    twinChannelId: "UCtwin",
+    twinDelayMinutes: 30,
+  });
   const accounts: string[] = [];
   const baseYoutube = s.youtube;
   s.youtube = (account = "") => {
@@ -1031,17 +1493,32 @@ test("the twin channel: a published Short gets a translated twin, voiced by Elev
   assert.equal(parent.status, "published");
   // Fifteen minutes after the original is live, its twin is made.
   setClock(new Date("2026-10-16T12:30:00Z"));
-  await db.query(`UPDATE episodes SET publish_at = '2026-10-16T12:05:00Z' WHERE id = $1`, [parent.id]);
+  await db.query(
+    `UPDATE episodes SET publish_at = '2026-10-16T12:05:00Z' WHERE id = $1`,
+    [parent.id],
+  );
   for (let i = 0; i < 4; i++) await tick(s);
   const twin = (await listEpisodes(db)).find((e) => e.lane === "twin");
   assert.ok(twin, "a twin episode exists");
   assert.equal(twin!.story_json.twin?.parent, parent.id);
   assert.equal(twin!.status, "published", twin!.last_error ?? "");
-  assert.equal(twin!.approval_mode, "auto", "no second tap for a Short the owner already approved");
+  assert.equal(
+    twin!.approval_mode,
+    "auto",
+    "no second tap for a Short the owner already approved",
+  );
   assert.match(twin!.script_json!.hook, /^La segunda expansión/);
   assert.equal(twin!.script_json!.twin?.parent_video, parent.youtube_video_id);
-  assert.ok(voiced.some((v) => v.provider === "elevenlabs" && /expansión/.test(v.text)), "the twin is voiced by ElevenLabs from the Spanish text as written");
-  assert.ok(voiced.every((v) => !/expansión/.test(v.text) || !/sesenta|veinte/.test(v.text)), "no English number words in the Spanish narration");
+  assert.ok(
+    voiced.some((v) => v.provider === "elevenlabs" && /expansión/.test(v.text)),
+    "the twin is voiced by ElevenLabs from the Spanish text as written",
+  );
+  assert.ok(
+    voiced.every(
+      (v) => !/expansión/.test(v.text) || !/sesenta|veinte/.test(v.text),
+    ),
+    "no English number words in the Spanish narration",
+  );
   assert.ok(accounts.includes("es"), "the twin uploads with the second login");
   assert.equal(f.uploads, 2);
   const up = f.resources.at(-1)!;
@@ -1051,32 +1528,64 @@ test("the twin channel: a published Short gets a translated twin, voiced by Elev
   // The twin does not count as one of the day's Shorts, and nothing is twinned twice.
   assert.equal(await countToday(db, "Europe/London"), 1);
   await tick(s);
-  assert.equal((await listEpisodes(db)).filter((e) => e.lane === "twin").length, 1);
+  assert.equal(
+    (await listEpisodes(db)).filter((e) => e.lane === "twin").length,
+    1,
+  );
   await db.close();
 });
 
 test("the desk experiment: a second voice asks the viewer's question before the take, stitched into one narration and captioned by name", async () => {
-  const { db, f, s } = await setup({ deskVoiceId: "voice_alice", deskVoiceName: "Alice", deskShare: 1 });
+  const { db, f, s } = await setup({
+    deskVoiceId: "voice_alice",
+    deskVoiceName: "Alice",
+    deskShare: 1,
+  });
   await tick(s);
   const ep = await only(db);
   assert.equal(ep.status, "published");
-  assert.deepEqual(f.voices, ["Liam", "Alice", "Liam"], "narrator, the desk partner's question, narrator");
+  assert.deepEqual(
+    f.voices,
+    ["Liam", "Alice", "Liam"],
+    "narrator, the desk partner's question, narrator",
+  );
   const a = ep.assets_json!;
   assert.equal(a.desk?.voice.name, "Alice");
   assert.equal(a.desk?.question, "So is early 2027 a sign of trouble?");
   const text = a.words!.map((w) => w.text).join(" ");
-  assert.match(text, /sign of trouble\? For us,/, "the question sits between the facts and the take");
-  for (let i = 1; i < a.words!.length; i++) assert.ok(a.words![i]!.start >= a.words![i - 1]!.start, "one timeline");
+  assert.match(
+    text,
+    /sign of trouble\? For us,/,
+    "the question sits between the facts and the take",
+  );
+  for (let i = 1; i < a.words!.length; i++)
+    assert.ok(a.words![i]!.start >= a.words![i - 1]!.start, "one timeline");
   const { segmentInputs } = await import("../src/pipeline.ts");
   const { buildSegments } = await import("../src/render/timeline.ts");
-  const segs = buildSegments(segmentInputs(ep.script_json!, true), a.words!, a.durationSeconds!);
-  assert.deepEqual(segs.map((x) => x.kind), ["hook", "beat", "beat", "desk", "take", "loop"]);
-  assert.match(await fs.readFile(path.join(episodeDirOf(s, ep.id), "captions.srt"), "utf8"), /sign of trouble/);
+  const segs = buildSegments(
+    segmentInputs(ep.script_json!, true),
+    a.words!,
+    a.durationSeconds!,
+  );
+  assert.deepEqual(
+    segs.map((x) => x.kind),
+    ["hook", "beat", "beat", "desk", "take", "loop"],
+  );
+  assert.match(
+    await fs.readFile(
+      path.join(episodeDirOf(s, ep.id), "captions.srt"),
+      "utf8",
+    ),
+    /sign of trouble/,
+  );
   await db.close();
 });
 
 test("outside the experiment's share, or with the desk off, a Short is voiced in one take", async () => {
-  const { db, f, s } = await setup({ deskVoiceId: "voice_alice", deskShare: 0 });
+  const { db, f, s } = await setup({
+    deskVoiceId: "voice_alice",
+    deskShare: 0,
+  });
   await tick(s);
   const ep = await only(db);
   assert.equal(f.voices.length, 1);
@@ -1090,18 +1599,47 @@ function episodeDirOf(s: Services, id: string): string {
 
 test("the narrator test: the test voice narrates its share of news Shorts, and Liam asks the desk question when Alice narrates", async () => {
   const { narratorFor } = await import("../src/pipeline.ts");
-  const cfg = testConfig("x", { narratorTestVoiceId: "voice_alice", narratorTestVoiceName: "Alice", narratorTestShare: 0.5 });
-  const ids = Array.from({ length: 200 }, (_, i) => `ep_2026_${i.toString(16).padStart(6, "0")}`);
-  const alice = ids.filter((id) => narratorFor(cfg, { id, lane: "news" })).length;
+  const cfg = testConfig("x", {
+    narratorTestVoiceId: "voice_alice",
+    narratorTestVoiceName: "Alice",
+    narratorTestShare: 0.5,
+  });
+  const ids = Array.from(
+    { length: 200 },
+    (_, i) => `ep_2026_${i.toString(16).padStart(6, "0")}`,
+  );
+  const alice = ids.filter((id) =>
+    narratorFor(cfg, { id, lane: "news" }),
+  ).length;
   assert.ok(alice > 70 && alice < 130, `about half: ${alice}`);
-  assert.equal(narratorFor(cfg, { id: ids[0]!, lane: "evergreen" }), undefined, "rankings keep the usual narrator");
-  assert.equal(narratorFor(testConfig("x"), { id: ids[0]!, lane: "news" }), undefined, "off by default");
+  assert.equal(
+    narratorFor(cfg, { id: ids[0]!, lane: "evergreen" }),
+    undefined,
+    "rankings keep the usual narrator",
+  );
+  assert.equal(
+    narratorFor(testConfig("x"), { id: ids[0]!, lane: "news" }),
+    undefined,
+    "off by default",
+  );
   // In a Short Alice narrates with the desk on, the question is asked by the usual narrator, never by herself.
   const aliceId = ids.find((id) => narratorFor(cfg, { id, lane: "news" }))!;
-  const { db, f, s } = await setup({ narratorTestVoiceId: "voice_alice", narratorTestVoiceName: "Alice", narratorTestShare: 0.5, deskVoiceId: "voice_alice", deskVoiceName: "Alice", deskShare: 1, elevenLabsVoiceId: "voice_liam", narratorName: "Liam" });
+  const { db, f, s } = await setup({
+    narratorTestVoiceId: "voice_alice",
+    narratorTestVoiceName: "Alice",
+    narratorTestShare: 0.5,
+    deskVoiceId: "voice_alice",
+    deskVoiceName: "Alice",
+    deskShare: 1,
+    elevenLabsVoiceId: "voice_liam",
+    narratorName: "Liam",
+  });
   const { shortId } = await import("../src/lib/util.ts");
   void shortId;
-  await db.query(`INSERT INTO episodes (id, story_hash, story_json, status, lane, script_json) VALUES ($1, $1, '{"headline":"x","items":[],"sources":[],"corroborated":true}', 'scripted', 'news', $2)`, [aliceId, JSON.stringify(goodScript())]);
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, story_json, status, lane, script_json) VALUES ($1, $1, '{"headline":"x","items":[],"sources":[],"corroborated":true}', 'scripted', 'news', $2)`,
+    [aliceId, JSON.stringify(goodScript())],
+  );
   const ep = (await getEpisode(db, aliceId))!;
   const { advance } = await import("../src/pipeline.ts");
   await advance(s, ep);

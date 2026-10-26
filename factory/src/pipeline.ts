@@ -6187,10 +6187,27 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   const marker = markerTag(ep.id);
   const file = path.join(episodeDir(s.cfg, ep.id), "short.mp4");
 
-  // Any previous attempt may have finished server-side without us hearing back.
-  if (ep.attempts > 0 || ep.upload_session_uri) {
+  // A previous attempt may have sent some or all of the bytes. With its session still on record, the
+  // session itself says how much arrived and the rest is sent below. A video found only by its marker
+  // tag can be a stub whose bytes never finished (three sat at "Processing will begin shortly" after a
+  // dropped connection and restarts, 26 Oct 2026), so it is adopted only when YouTube has the whole file.
+  if (!ep.upload_session_uri && ep.attempts > 0) {
     const existing = await yt.findByMarker(marker);
-    if (existing) {
+    const st = existing
+      ? await yt.status(existing).catch(() => undefined)
+      : undefined;
+    const complete =
+      !!st &&
+      (st.uploadStatus === "processed" ||
+        st.processingStatus === "succeeded" ||
+        (st.partsProcessed ?? 0) > 0);
+    if (existing && !complete)
+      await logEvent(s.db, ep.id, "upload_stub_skipped", {
+        videoId: existing,
+        uploadStatus: st?.uploadStatus,
+        processingStatus: st?.processingStatus,
+      });
+    if (existing && complete) {
       // Adopting it makes no new upload call, so nothing is charged.
       await transition(s.db, ep.id, "uploading", "uploaded", {
         youtube_video_id: existing,

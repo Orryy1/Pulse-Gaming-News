@@ -63,6 +63,7 @@ import {
   accessToken,
 } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
+import { activeUploads } from "./youtube/upload.ts";
 import { alert } from "./approval/discord.ts";
 import {
   dailySummary,
@@ -170,6 +171,7 @@ export function createApp(
           ...counts,
           ...sight,
           ...met,
+          uploads_active: activeUploads(),
           lastTick: state.lastTick,
           lastError: state.lastError,
         }),
@@ -644,6 +646,39 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       res
         .writeHead(200, { "content-type": "application/json" })
         .end(JSON.stringify(rows));
+      return;
+    }
+    // Repair: finish an upload that was cut off (the video sits at "Processing will begin shortly") by
+    // resuming its session, which sends only the bytes YouTube is missing. Reports the video's status.
+    if (url.pathname === "/admin/resume-upload" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const ep = await getEpisode(db, url.searchParams.get("id") ?? "");
+      if (!ep) return send(404, page("Not found", "<h1>No such episode</h1>"));
+      const yt = services.youtube();
+      const out: Record<string, unknown> = {
+        id: ep.id,
+        video: ep.youtube_video_id,
+        session: Boolean(ep.upload_session_uri),
+      };
+      if (ep.youtube_video_id)
+        out.before = await yt
+          .status(ep.youtube_video_id)
+          .catch((e) => String(e));
+      if (ep.upload_session_uri) {
+        const file = path.join(cfg.dataDir, "episodes", ep.id, "short.mp4");
+        out.result = await yt
+          .uploadToSession(ep.upload_session_uri, file)
+          .then((videoId) => ({ ok: true, videoId }))
+          .catch((e) => ({ ok: false, error: errorMessage(e) }));
+        if (ep.youtube_video_id)
+          out.after = await yt
+            .status(ep.youtube_video_id)
+            .catch((e) => String(e));
+      }
+      await logEvent(db, ep.id, "upload_resumed", out).catch(() => undefined);
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify(out));
       return;
     }
     // The latest daily community post (question, caption, picture on disk), for the YouTube Community tab.

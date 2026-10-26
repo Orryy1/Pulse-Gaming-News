@@ -28,6 +28,10 @@ export interface VideoMetadata {
 
 export class SessionGone extends Error {}
 
+/** Video bytes being sent to YouTube right now, in this process. */
+let uploadsActive = 0;
+export const activeUploads = () => uploadsActive;
+
 /** Characters YouTube counts for a tag list: each tag, two quotes for one with a space, a comma between. */
 export const tagChars = (tags: string[]) =>
   tags.reduce((n, t) => n + t.length + (/\s/.test(t) ? 2 : 0), 0) +
@@ -173,6 +177,9 @@ export class YouTubeClient {
     const range = statusRes.headers.get("range"); // e.g. "bytes=0-1048575"
     const offset = range ? Number(range.split("-")[1]) + 1 : 0;
 
+    // Counted so a restart waits for the bytes to finish (/health uploads_active): three videos sat at
+    // "Processing will begin shortly" after restarts and a dropped connection cut their uploads (26 Oct 2026).
+    uploadsActive++;
     const res = await this.fetchFn(sessionUri, {
       method: "PUT",
       headers: {
@@ -184,6 +191,8 @@ export class YouTubeClient {
           : {}),
       },
       body: data.subarray(offset),
+    }).finally(() => {
+      uploadsActive--;
     });
     if (res.status === 200 || res.status === 201) return this.idFrom(res);
     if (res.status === 404 || res.status === 410)
@@ -672,6 +681,8 @@ export class YouTubeClient {
         privacyStatus: string;
         failureReason?: string;
         rejectionReason?: string;
+        processingStatus?: string;
+        partsProcessed?: number;
       }
     | undefined
   > {
@@ -687,6 +698,10 @@ export class YouTubeClient {
       privacyStatus: v.status?.privacyStatus,
       failureReason: v.status?.failureReason,
       rejectionReason: v.status?.rejectionReason,
+      processingStatus: v.processingDetails?.processingStatus,
+      partsProcessed: Number(
+        v.processingDetails?.processingProgress?.partsProcessed ?? 0,
+      ),
     };
   }
 

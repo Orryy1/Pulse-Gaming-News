@@ -55,6 +55,8 @@ export interface EpisodeAssets {
   voice?: { provider: "local" | "elevenlabs"; id: string; name: string }; // who narrated, for the Discord card and analytics
   /** The desk experiment: a second presenter asked the viewer's question before the take. */
   desk?: { voice: { id: string; name: string }; question: string };
+  /** The new-look test: this Short got the editor's dressing (src/render/Short.tsx `suite`). */
+  suite?: boolean;
   plan?: import("./render/plan.ts").RenderPlan; // the render plan, persisted so a retried render is identical
   images?: Array<{
     file: string;

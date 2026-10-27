@@ -137,6 +137,8 @@ export interface Config {
   narratorTestVoiceId: string; // empty = off
   narratorTestVoiceName: string;
   narratorTestShare: number;
+  /** The new-look test: a share of Shorts get the editor's dressing (cut accents, punch-ins, period looks). */
+  shortSuiteShare: number;
   narratorName: string; // the usual narrator's name, for the Discord card and the lessons
   focusMatch: string; // regex (case-insensitive) a story about the focus matches, e.g. "grand theft auto|\\bgta\\b"
   focusPlaylist: string; // a playlist every focus video joins while the focus runs, empty = none
@@ -422,6 +424,7 @@ export function loadConfig(): Config {
       0,
       Math.min(1, Number(str("NARRATOR_TEST_SHARE", "0.5"))),
     ),
+    shortSuiteShare: Math.max(0, Math.min(1, Number(str("SHORT_SUITE_SHARE", "0.5")))),
     narratorName: str("NARRATOR_NAME", "Liam"),
     focusMatch: str("FOCUS_MATCH", ""),
     focusPlaylist: str("FOCUS_PLAYLIST", ""),

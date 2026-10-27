@@ -29,6 +29,10 @@ import {
 } from "./components/Overlays.tsx";
 import { Shelf } from "./components/Shelf.tsx";
 import { Stamp, STAMP_FRAMES } from "./components/Stamp.tsx";
+import type { ShotDressing } from "./components/Background.tsx";
+import { CutAccent, ACCENT_FRAMES, ACCENT_LEAD, type AccentKind } from "./components/Accents.tsx";
+import { ChannelStatic, STATIC_FRAMES } from "./components/Retro.tsx";
+import { OLD_YEAR } from "./retroplan.ts";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
 const resolveSrc = (src: string | null) =>
@@ -130,6 +134,55 @@ export const Short: React.FC<ShortProps> = (props) => {
       : undefined,
   );
 
+  // The new-look test (props.suite): the picture punches in on key words, some cuts get an accent (channel
+  // static for an old game) and an old game's shots wear a tape or tube look by turns. The opening frame (the
+  // Short's thumbnail) and the loop's return to it stay clean.
+  const year = Number(props.gameSubtitle.match(/\b(19|20)\d\d\b/)?.[0]) || undefined;
+  const old = Boolean(year && year <= OLD_YEAR);
+  const dressing = useMemo((): {
+    dress: ShotDressing;
+    accents: Array<{ at: number; kind: AccentKind | "static" }>;
+  } => {
+    const punches = new Map<number, number>();
+    const looks = new Map<number, "vhs" | "crt">();
+    const accents: Array<{ at: number; kind: AccentKind | "static" }> = [];
+    if (!props.suite) return { dress: { punches, looks }, accents };
+    const shots = plan.shots;
+    const last = shots.length - 1;
+    // Punch-ins: the first time each kept-lit word is spoken after the hook, at most three, 5 s apart.
+    let lastPunch = -Infinity;
+    for (const w of words) {
+      const f = Math.round(w.start * fps);
+      if (f < hookEnd + 6 || f >= loopStart || f - lastPunch < 5 * fps || punches.size >= 3) continue;
+      if (!emphasis.has(w.text.toLowerCase().replace(/[^a-z0-9'’$%-]/g, ""))) continue;
+      const i = shots.findIndex((s) => f >= s.start && f < s.end);
+      const s = shots[i];
+      if (!s || i === 0 || i === last || punches.has(i) || f - s.start < 18 || s.end - f < 24) continue;
+      punches.set(i, f);
+      lastPunch = f;
+    }
+    // An old game: every other shot after the first wears the tape (or, before 1994, the tube).
+    if (old)
+      shots.forEach((s, i) => {
+        if (i > 0 && i < last && i % 2 === 1) looks.set(i, year! < 1994 ? "crt" : "vhs");
+      });
+    // Accents on about one cut in three, 4 s apart, clear of the turns, the stamps and the loop.
+    const kinds: AccentKind[] = ["flare", "burn", "flash", "glitch"];
+    let lastAccent = -Infinity;
+    let n = props.variant;
+    shots.forEach((s, i) => {
+      const at = s.start;
+      if (i === 0 || at < hookEnd || at >= loopStart - 12 || at - lastAccent < 4 * fps) return;
+      if ((i * 5 + props.variant) % 3 !== 0) return;
+      if (plan.turns.some((t) => Math.abs(t - at) < 20)) return;
+      if ((props.stamps ?? []).some((st) => Math.abs(Math.round(st.at * fps) - at) < STAMP_FRAMES + 10)) return;
+      accents.push({ at, kind: old ? "static" : kinds[n++ % kinds.length]! });
+      lastAccent = at;
+    });
+    return { dress: { punches, looks }, accents };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.suite, plan, words, emphasis, hookEnd, loopStart, old, year, fps, props.variant, props.stamps]);
+
   // Music ducks under the voice with a fast attack and a slower release, and is held (never faded out) through the tail.
   const speaking = useMemo(() => {
     const on = new Uint8Array(durationInFrames + 1);
@@ -160,7 +213,24 @@ export const Short: React.FC<ShortProps> = (props) => {
         accent={accent}
         gameTitle={props.gameTitle}
         footageCredit={props.footageCredit}
+        dress={dressing.dress}
       />
+      {dressing.accents.map((a, k) => (
+        <Sequence
+          key={`acc${k}`}
+          from={Math.max(0, a.at - ACCENT_LEAD)}
+          durationInFrames={ACCENT_FRAMES}
+          layout="none"
+        >
+          {a.kind === "static" ? (
+            <Sequence from={ACCENT_LEAD - 3} durationInFrames={STATIC_FRAMES} layout="none">
+              <ChannelStatic variant={props.variant + k} />
+            </Sequence>
+          ) : (
+            <CutAccent kind={a.kind} variant={props.variant + k} />
+          )}
+        </Sequence>
+      ))}
       <Scrim profile={hasPlate && !props.images.length ? "plate" : "footage"} />
       <Finish grainSrc={staticFile("grain.png")} />
 

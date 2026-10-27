@@ -6,7 +6,7 @@
 // tube did, to a line and then a dot.
 
 import React, { useId } from "react";
-import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOUR } from "../brand.ts";
 import { BODY, DISPLAY, HAND } from "./fonts.ts";
 import { DEVICE_FRAMES, deviceFor, handheldGreen, OLD_YEAR, type Device } from "../retroplan.ts";
@@ -267,14 +267,16 @@ export const ChannelStatic: React.FC<{ variant?: number }> = ({
   variant = 0,
 }) => {
   const frame = useCurrentFrame();
+  // Any frame size: the long videos' 16:9 and the Shorts' 9:16.
+  const { width, height } = useVideoConfig();
   const id = `static${safeId(useId())}`;
   const o = interpolate(frame, [0, 2, 6, 9], [0, 1, 1, 0], clamp);
   if (o <= 0) return null;
   return (
     <AbsoluteFill style={{ opacity: o, pointerEvents: "none" }}>
       <svg
-        width={1920}
-        height={1080}
+        width={width}
+        height={height}
         style={{ position: "absolute", inset: 0 }}
       >
         <filter id={id} x="0" y="0" width="100%" height="100%">
@@ -289,7 +291,7 @@ export const ChannelStatic: React.FC<{ variant?: number }> = ({
             <feFuncA type="linear" slope={0} intercept={1} />
           </feComponentTransfer>
         </filter>
-        <rect width={1920} height={1080} filter={`url(#${id})`} />
+        <rect width={width} height={height} filter={`url(#${id})`} />
       </svg>
       <div
         style={{

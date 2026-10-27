@@ -189,6 +189,7 @@ export function testConfig(
     deskVoiceId: "",
     deskVoiceName: "Alice",
     deskShare: 0,
+    shortSuiteShare: 0,
     narratorTestVoiceId: "",
     narratorTestVoiceName: "Alice",
     narratorTestShare: 0,

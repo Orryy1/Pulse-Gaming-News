@@ -418,6 +418,7 @@ interface RetentionRow {
   lane?: string;
   metrics?: unknown;
   desk?: boolean;
+  suite?: string | boolean | null;
   narrator?: string | null;
   script_json: Episode["script_json"];
   raw:
@@ -447,11 +448,12 @@ async function retentionRows(
     footageShare?: number;
     format?: string;
     desk?: boolean;
+    suite?: boolean;
     narrator?: string;
   }>
 > {
   const rows = await db.query<RetentionRow>(
-    `SELECT e.id, e.lane, e.script_json, m.raw, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS metrics, (e.assets_json->'desk') IS NOT NULL AS desk, e.assets_json->'voice'->>'name' AS narrator
+    `SELECT e.id, e.lane, e.script_json, m.raw, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS metrics, (e.assets_json->'desk') IS NOT NULL AS desk, e.assets_json->>'suite' AS suite, e.assets_json->'voice'->>'name' AS narrator
        FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
       WHERE m.label = 'retention' AND m.captured_at > $1::timestamptz - interval '45 days' AND e.lane <> 'twin'`,
     [now],
@@ -474,6 +476,8 @@ async function retentionRows(
           : undefined,
         footageShare: metric("footage_share"),
         desk: Boolean(r.desk),
+        // Set only on Shorts made since the new-look test began: older ones are on neither side.
+        suite: r.suite == null ? undefined : String(r.suite) === "true",
         // The old rotation stored the voice id as its name; Liam's id reads as Liam.
         narrator:
           r.narrator === "TX3LPaxmHKxFdv7VOQHJ"
@@ -530,6 +534,7 @@ export function formatLessons(
     footageShare?: number;
     format?: string;
     desk?: boolean;
+    suite?: boolean;
     narrator?: string;
   }>,
 ): string[] {
@@ -597,6 +602,11 @@ export function formatLessons(
         "without",
       ),
     );
+  // The new-look test (src/render/Short.tsx `suite`): only Shorts made since it began count on either side.
+  const withSuite = avg(rows.filter((r) => r.suite === true));
+  const noSuite = avg(rows.filter((r) => r.suite === false));
+  if (withSuite && noSuite)
+    out.push(line("New look (accents, punch-ins, period looks)", withSuite, "with it", noSuite, "without"));
   const formats = [
     ...new Set(rows.map((r) => r.format).filter((f): f is string => !!f)),
   ];

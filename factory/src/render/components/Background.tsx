@@ -19,6 +19,15 @@ import {
 } from "../motion.ts";
 import { BANDS, CREDIT_TOP, SAFE, WIDTH } from "../layout.ts";
 import { BODY } from "./fonts.ts";
+import { CrtLook, VhsLook } from "./Retro.tsx";
+
+/** The new-look dressing of a Short's shots (src/render/Short.tsx): punch-ins and an old game's period looks. */
+export interface ShotDressing {
+  /** Per shot index: the absolute frame its picture jumps a tenth closer, on a key word. */
+  punches: Map<number, number>;
+  /** Per shot index: the tape or tube look of an old game. */
+  looks: Map<number, "vhs" | "crt">;
+}
 
 /** Ink field with the game title and an amber rule: shown only when a shot has no media. */
 export const BrandPlate: React.FC<{ accent: string; title: string }> = ({
@@ -270,7 +279,8 @@ export const ArtTrack: React.FC<{
   accent: string;
   gameTitle: string;
   footageCredit: string;
-}> = ({ plan, images, clips, accent, gameTitle, footageCredit }) => {
+  dress?: ShotDressing;
+}> = ({ plan, images, clips, accent, gameTitle, footageCredit, dress }) => {
   const frame = useCurrentFrame();
   const { shot, index } = shotAt(plan, frame);
   const len = shot.end - shot.start;
@@ -310,6 +320,22 @@ export const ArtTrack: React.FC<{
   } else {
     body = <BrandPlate accent={accent} title={gameTitle} />;
   }
+  const punchAt = dress?.punches.get(index);
+  if (punchAt !== undefined) {
+    const p = interpolate(frame, [punchAt, punchAt + 2], [1, 1.1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    body = <AbsoluteFill style={{ transform: `scale(${p})` }}>{body}</AbsoluteFill>;
+  }
+  const look = dress?.looks.get(index);
+  if (look === "vhs")
+    body = (
+      <VhsLook osd={false} seed={index}>
+        {body}
+      </VhsLook>
+    );
+  else if (look === "crt") body = <CrtLook>{body}</CrtLook>;
   return (
     <AbsoluteFill key={index}>
       <Sequence from={shot.start} layout="none">

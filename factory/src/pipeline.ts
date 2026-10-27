@@ -3879,6 +3879,18 @@ export function narratorFor(
   return { id: cfg.narratorTestVoiceId, name: cfg.narratorTestVoiceName };
 }
 
+/**
+ * The new-look test (owner, 27 Oct 2026: "a huge channel overhaul"): SHORT_SUITE_SHARE of Shorts (by a
+ * stable hash of the episode id, salted so it is independent of the other tests) get the editor's dressing.
+ * The Spanish twin copies its source and is left out.
+ */
+export function suiteFor(cfg: Config, ep: Pick<Episode, "id" | "lane">): boolean {
+  if (cfg.shortSuiteShare <= 0 || ep.lane === "twin") return false;
+  let h = 11;
+  for (const c of `suite:${ep.id}`) h = (h * 137 + c.charCodeAt(0)) >>> 0;
+  return h % 1000 < cfg.shortSuiteShare * 1000;
+}
+
 export function deskFor(
   cfg: Config,
   ep: Pick<Episode, "id" | "lane" | "script_json">,
@@ -5814,6 +5826,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       plan.sfx.push({ file: sfxFile(name), frame: f, volume: LEVEL.land });
   }
   assets.plan = plan;
+  assets.suite = suiteFor(s.cfg, ep);
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
     ep.id,
     JSON.stringify(assets),
@@ -5884,6 +5897,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       deskName: assets.desk?.voice.name,
       stamps: stampsFor(script, words),
       plan,
+      suite: assets.suite,
       renderDate: s.now().toISOString().slice(0, 10),
     },
   });

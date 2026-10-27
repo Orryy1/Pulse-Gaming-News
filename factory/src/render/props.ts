@@ -45,6 +45,7 @@ export type ShortProps = {
   deskName?: string; // the desk partner's name, when a desk question is in the Short
   stamps?: Array<{ at: number; text: string; sub?: string; colour: string }>; // word stamps, timed to their words
   plan: RenderPlan | null; // built in the pipeline; the composition builds one for previews
+  suite?: boolean; // the new-look test: cut accents, punch-ins and an old game's period looks
   logoSrc: string | null;
   audioSrc: string | null;
   musicSrc: string | null;

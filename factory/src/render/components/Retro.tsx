@@ -9,6 +9,9 @@ import React, { useId } from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import { COLOUR } from "../brand.ts";
 import { BODY, DISPLAY, HAND } from "./fonts.ts";
+import { DEVICE_FRAMES, deviceFor, handheldGreen, OLD_YEAR, type Device } from "../retroplan.ts";
+
+export { DEVICE_FRAMES, deviceFor, handheldGreen, OLD_YEAR, type Device };
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const inOut = (t: number) =>
@@ -447,14 +450,6 @@ const PushThrough: React.FC<{
   );
 };
 
-/** Frames each device needs before the shot plays plainly (the shot must be longer than this). */
-export const DEVICE_FRAMES = {
-  vcr: 112,
-  arcade: 84,
-  monitor: 80,
-  handheld: 80,
-} as const;
-export type Device = keyof typeof DEVICE_FRAMES;
 
 const WOOD =
   "linear-gradient(180deg, #4a3322 0%, #3a2819 8%, #2a1d12 40%, #120c08 100%)";
@@ -1046,24 +1041,3 @@ export const Handheld: React.FC<{
   );
 };
 
-/** Which hardware an old game opens on: its platform first, then its era. */
-export function deviceFor(
-  year: number,
-  platforms: string,
-  turn: number,
-): Device | "tv" {
-  const p = platforms.toLowerCase();
-  if (
-    /game ?boy|gba|\bds\b|nintendo ds|psp|vita|game gear|lynx|wonderswan|neo ?geo pocket|n-gage/.test(
-      p,
-    )
-  )
-    return "handheld";
-  if (/arcade/.test(p) || year <= 1992) return "arcade";
-  if (/^(pc|ms-dos|dos|windows|mac|amiga|commodore)/.test(p.trim()))
-    return "monitor";
-  return turn % 2 ? "vcr" : "tv";
-}
-
-export const OLD_YEAR = 2006;
-export const handheldGreen = (year: number) => year < 1999;

@@ -874,3 +874,16 @@ test("a moving opening runs straight through the sting; a still one cuts to moti
     `first shot ends at frame ${moving[0]!.end}`,
   );
 });
+
+test("an old game opens on the hardware of its platform and era", async () => {
+  const { deviceFor } = await import("../src/render/retroplan.ts");
+  assert.equal(deviceFor(2004, "Game Boy Advance", 0), "handheld");
+  assert.equal(deviceFor(2005, "Nintendo DS", 0), "handheld");
+  assert.equal(deviceFor(1991, "SNES", 0), "tv"); // a home console plays on a TV, however old
+  assert.equal(deviceFor(1998, "Arcade, PS1", 0), "arcade");
+  assert.equal(deviceFor(1999, "PC", 0), "monitor");
+  assert.equal(deviceFor(2004, "PS2, Xbox", 0), "tv");
+  assert.equal(deviceFor(2004, "PS2, Xbox", 1), "vcr");
+  // "DS" only as a word: not inside another platform's name.
+  assert.equal(deviceFor(2001, "Windows, PS2", 0), "monitor");
+});

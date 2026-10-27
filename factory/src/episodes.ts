@@ -57,6 +57,8 @@ export interface EpisodeAssets {
   desk?: { voice: { id: string; name: string }; question: string };
   /** The new-look test: this Short got the editor's dressing (src/render/Short.tsx `suite`). */
   suite?: boolean;
+  /** The new-look Short's custom thumbnail (frame 0), uploaded once the Short is processed. */
+  shortThumb?: string;
   /** The new-look opening: the hero art's subject cut out by the depth model (src/render/parallax.ts). */
   heroCut?: { fg: string; x?: number };
   plan?: import("./render/plan.ts").RenderPlan; // the render plan, persisted so a retried render is identical

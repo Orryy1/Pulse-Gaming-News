@@ -254,6 +254,8 @@ export interface RenderInput {
   };
   outFile: string;
   posterFile: string;
+  /** The new-look Shorts' custom thumbnail: frame 0, the opening poster, as its own image. */
+  thumbFile?: string;
   concurrency: number;
   gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
   browserExecutable?: string;
@@ -480,6 +482,18 @@ export async function renderShort(input: RenderInput): Promise<void> {
       composition.durationInFrames - 1,
       Math.round(0.9 * composition.fps),
     );
+    if (input.thumbFile)
+      await renderStill({
+        composition,
+        serveUrl,
+        output: input.thumbFile,
+        inputProps: props,
+        frame: 0,
+        imageFormat: "jpeg",
+        jpegQuality: 90,
+        browserExecutable,
+        chromiumOptions: { gl: input.gl ?? "swangle" },
+      });
     await renderStill({
       composition,
       serveUrl,

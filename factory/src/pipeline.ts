@@ -5908,10 +5908,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
 
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
+  if (assets.suite) assets.shortThumb = "thumb_short.jpg";
   await s.render({
     episodeDir: dir,
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
+    thumbFile: assets.shortThumb ? path.join(dir, assets.shortThumb) : undefined,
     concurrency: s.cfg.remotionConcurrency,
     gl: s.cfg.remotionGl,
     browserExecutable: s.cfg.browserExecutable,
@@ -6868,14 +6870,11 @@ async function addCaptions(s: Services, ep: Episode): Promise<void> {
 }
 
 /** The long-form video's custom thumbnail; a refusal (unverified channel) is logged, never fatal. */
-async function setThumbnail(s: Services, ep: Episode): Promise<void> {
+async function setThumbnail(s: Services, ep: Episode, file = ep.assets_json!.thumb!): Promise<void> {
   try {
     await s
-      .youtube()
-      .setThumbnail(
-        ep.youtube_video_id!,
-        path.join(episodeDir(s.cfg, ep.id), ep.assets_json!.thumb!),
-      );
+      .youtube(accountOf(ep))
+      .setThumbnail(ep.youtube_video_id!, path.join(episodeDir(s.cfg, ep.id), file));
     await quotaAdd(s.db, s.now(), QUOTA.comment);
     await logEvent(s.db, ep.id, "thumbnail", { ok: true });
   } catch (err) {
@@ -6918,6 +6917,10 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   if (!ep.publish_at || new Date(ep.publish_at) <= s.now())
     await addPinnedComment(s, ep);
   if (ep.assets_json?.thumb) await setThumbnail(s, ep);
+  // The new-look Short's frame 0 as its custom thumbnail (custom Shorts thumbnails opened in July 2026; if
+  // the API refuses them for Shorts the refusal is logged and the Short keeps the frame YouTube picks).
+  else if (ep.assets_json?.shortThumb && ep.script_json?.runtime !== "long")
+    await setThumbnail(s, ep, ep.assets_json.shortThumb);
   await addToSeries(s, ep);
   await transition(s.db, ep.id, "uploaded", "published", {
     youtube_status: st.privacyStatus,

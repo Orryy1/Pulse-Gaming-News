@@ -85,6 +85,7 @@ import {
 } from "./components/EditorMoves.tsx";
 import { ALL_STYLES } from "./components/packs/index.ts";
 import { CAPTION_STYLES } from "./components/Captions.tsx";
+import { SlateInterlude, TornInterlude, VhsInterlude } from "./components/Interludes.tsx";
 import {
   ACCENT_FRAMES,
   ACCENT_LEAD,
@@ -2597,8 +2598,30 @@ export const Long: React.FC<LongProps> = (props) => {
                   ? displayText(im.label)
                   : `Exhibit ${"ABC"[k]}`,
             }));
-          const board =
-            boardPics.length >= 2 && ((b ?? 0) + props.variant) % 2 === 1;
+          // The breathers take their looks in turn: the title interlude, the evidence board, a clapperboard,
+          // a VHS tape for a game from before 2008, a torn-paper reveal of the chapter's picture.
+          const chapterYear = Number(s.visual.items?.[0]) || undefined;
+          const widePic = props.images.find(
+            (im) => im.beatIndex === b && im.aspect >= 1.3 && ["hero", "screenshot", "article", "photo"].includes(im.kind),
+          )?.src;
+          const looks = [
+            "title",
+            ...(boardPics.length >= 2 ? ["board"] : []),
+            "slate",
+            ...(chapterYear && chapterYear < 2008 ? ["vhs"] : []),
+            ...(widePic ? ["torn"] : []),
+          ];
+          const look = looks[((b ?? 0) + props.variant) % looks.length]!;
+          const board = look === "board";
+          const interlude = {
+            number: s.visual.value_a ?? (b ?? 0) + 1,
+            title: s.visual.primary,
+            game: s.visual.secondary,
+            year: s.visual.items?.[0],
+            frames: pause,
+            variant: props.variant + i,
+            picture: widePic,
+          };
           return (
             <React.Fragment key={i}>
               {pause && board ? (
@@ -2616,6 +2639,20 @@ export const Long: React.FC<LongProps> = (props) => {
                     frames={pause}
                     variant={props.variant + i}
                   />
+                </Sequence>
+              ) : pause && look !== "title" ? (
+                <Sequence
+                  from={starts[i]!}
+                  durationInFrames={pause}
+                  layout="none"
+                >
+                  {look === "slate" ? (
+                    <SlateInterlude {...interlude} />
+                  ) : look === "vhs" ? (
+                    <VhsInterlude {...interlude} />
+                  ) : (
+                    <TornInterlude {...interlude} />
+                  )}
                 </Sequence>
               ) : pause ? (
                 <Sequence

@@ -249,6 +249,8 @@ export interface RenderInput {
       stock?: boolean;
     }>;
     musicFile: string | null;
+    /** The new-look opening's cut-out of the hero art, relative to the episode folder. */
+    heroCutFile?: { fg: string; x?: number };
   };
   outFile: string;
   posterFile: string;
@@ -421,10 +423,11 @@ export async function renderShort(input: RenderInput): Promise<void> {
   const serveUrl = await getBundle();
   const files = await serveDir(input.episodeDir);
   try {
-    const { audioFile, imageFiles, clipFiles, musicFile, ...rest } =
+    const { audioFile, imageFiles, clipFiles, musicFile, heroCutFile, ...rest } =
       input.props;
     const props: ShortProps = {
       ...rest,
+      heroCut: heroCutFile ? { fg: `${files.url}/${heroCutFile.fg}`, x: heroCutFile.x } : undefined,
       audioSrc: audioFile ? `${files.url}/${audioFile}` : null,
       images: imageFiles.map((i) => ({
         src: `${files.url}/${i.file}`,

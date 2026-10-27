@@ -33,6 +33,7 @@ import type { ShotDressing } from "./components/Background.tsx";
 import { CutAccent, ACCENT_FRAMES, ACCENT_LEAD, type AccentKind } from "./components/Accents.tsx";
 import { ChannelStatic, STATIC_FRAMES } from "./components/Retro.tsx";
 import { OLD_YEAR } from "./retroplan.ts";
+import { HookPoster } from "./components/HookPoster.tsx";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
 const resolveSrc = (src: string | null) =>
@@ -183,6 +184,13 @@ export const Short: React.FC<ShortProps> = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.suite, plan, words, emphasis, hookEnd, loopStart, old, year, fps, props.variant, props.stamps]);
 
+  // The new-look opening poster needs the hero still under frame 0 (a Short opening on footage keeps the headline).
+  const firstShot = plan.shots[0];
+  const poster =
+    props.suite && firstShot?.media.type === "image" && firstShot.media.index === plan.heroIndex
+      ? props.images[plan.heroIndex]?.src
+      : undefined;
+
   // Music ducks under the voice with a fast attack and a slower release, and is held (never faded out) through the tail.
   const speaking = useMemo(() => {
     const on = new Uint8Array(durationInFrames + 1);
@@ -234,14 +242,26 @@ export const Short: React.FC<ShortProps> = (props) => {
       <Scrim profile={hasPlate && !props.images.length ? "plate" : "footage"} />
       <Finish grainSrc={staticFile("grain.png")} />
 
-      {/* The headline is fully rendered at frame 0 (the thumbnail) and returns, pixel-identical, for the loop. */}
+      {/* The headline is fully rendered at frame 0 (the thumbnail) and returns, pixel-identical, for the loop.
+          On the new-look Shorts it is a thumbnail-grade poster over the hero art (components/HookPoster.tsx). */}
       <Sequence durationInFrames={hookEnd} layout="none">
-        <HookHeadline
-          headline={props.headline}
-          accent={accent}
-          gameTitle={props.gameTitle}
-          durationInFrames={hookEnd}
-        />
+        {poster ? (
+          <HookPoster
+            headline={props.headline}
+            accent={accent}
+            gameTitle={props.gameTitle}
+            heroSrc={poster}
+            cutSrc={props.heroCut?.fg}
+            durationInFrames={hookEnd}
+          />
+        ) : (
+          <HookHeadline
+            headline={props.headline}
+            accent={accent}
+            gameTitle={props.gameTitle}
+            durationInFrames={hookEnd}
+          />
+        )}
       </Sequence>
       {loopStart < durationInFrames ? (
         <Sequence
@@ -249,12 +269,23 @@ export const Short: React.FC<ShortProps> = (props) => {
           durationInFrames={durationInFrames - loopStart}
           layout="none"
         >
-          <HookHeadline
-            headline={props.headline}
-            accent={accent}
-            gameTitle={props.gameTitle}
-            durationInFrames={Number.POSITIVE_INFINITY}
-          />
+          {poster ? (
+            <HookPoster
+              headline={props.headline}
+              accent={accent}
+              gameTitle={props.gameTitle}
+              heroSrc={poster}
+              cutSrc={props.heroCut?.fg}
+              durationInFrames={Number.POSITIVE_INFINITY}
+            />
+          ) : (
+            <HookHeadline
+              headline={props.headline}
+              accent={accent}
+              gameTitle={props.gameTitle}
+              durationInFrames={Number.POSITIVE_INFINITY}
+            />
+          )}
         </Sequence>
       ) : null}
 

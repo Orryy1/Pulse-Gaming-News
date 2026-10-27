@@ -5866,6 +5866,21 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   }
   assets.plan = plan;
   assets.suite = suiteFor(s.cfg, ep);
+  // The new-look opening poster (src/render/components/HookPoster.tsx): the hero art's subject cut out once.
+  const heroImage = assets.images?.[plan.heroIndex];
+  if (
+    assets.suite &&
+    !assets.heroCut &&
+    s.cfg.parallax &&
+    s.cfg.whisperPython &&
+    heroImage &&
+    plan.shots[0]?.media.type === "image" &&
+    plan.shots[0].media.index === plan.heroIndex
+  ) {
+    const made = await makeParallax(s.cfg.whisperPython, dir, [heroImage.file]);
+    const cut = made.get(heroImage.file);
+    if (cut) assets.heroCut = { fg: cut.fg, x: cut.fgx };
+  }
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
     ep.id,
     JSON.stringify(assets),
@@ -5937,6 +5952,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       stamps: stampsFor(script, words),
       plan,
       suite: assets.suite,
+      heroCutFile: assets.heroCut,
       renderDate: s.now().toISOString().slice(0, 10),
     },
   });

@@ -49,6 +49,7 @@ import {
   GrainVignette,
   KineticCaption,
   MomentGraphicCard,
+  NameTag,
   PopInPicture,
   QuoteMoment,
   TimelineMoment,
@@ -205,7 +206,18 @@ const Still: React.FC<{
   durationFrames: number;
   move: MovePreset;
   fromBlack?: boolean;
-}> = ({ src, aspect, durationFrames, move, fromBlack = false }) => {
+  /** An archive photo: a framed print over its own blurred copy, the way video essays show real photos. */
+  print?: boolean;
+  tilt?: number;
+}> = ({
+  src,
+  aspect,
+  durationFrames,
+  move,
+  fromBlack = false,
+  print = false,
+  tilt = 0,
+}) => {
   const frame = useCurrentFrame();
   const m = moveTransform(
     move,
@@ -214,6 +226,46 @@ const Still: React.FC<{
   const fade = interpolate(frame, [0, 10], [fromBlack ? 0 : 1, 1], {
     extrapolateRight: "clamp",
   });
+  if (print) {
+    const w = aspect >= 1 ? 1240 : 1240 * aspect * 0.75;
+    return (
+      <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+        <Img
+          src={src}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            filter: "blur(36px) brightness(0.4) saturate(1.1)",
+            transform: "scale(1.2)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "48%",
+            width: w,
+            aspectRatio: String(Math.max(0.6, aspect)),
+            padding: 18,
+            background: "#f4f1ea",
+            boxShadow: "0 50px 140px rgba(0,0,0,0.75)",
+            transform: `translate(-50%, -50%) rotate(${tilt}deg) scale(${m.scale - 0.04})`,
+          }}
+        >
+          <Img
+            src={src}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              filter: "contrast(1.04) saturate(0.92)",
+            }}
+          />
+        </div>
+      </AbsoluteFill>
+    );
+  }
   if (aspect < 0.9) {
     // Box art is portrait: cover-cropping it shows a dark band of the cover, so it sits
     // as a framed poster over its own blurred copy instead.
@@ -318,6 +370,71 @@ const Plate: React.FC<{ theme: string }> = ({ theme }) => (
   </AbsoluteFill>
 );
 
+/** A picture's label at the lower right, fading in after the cut and out before the next. */
+const Descriptor: React.FC<{ text: string; frames: number }> = ({
+  text,
+  frames,
+}) => {
+  const frame = useCurrentFrame();
+  const o = interpolate(
+    frame,
+    [14, 26, Math.max(27, frames - 14), Math.max(28, frames - 4)],
+    [0, 1, 1, 0],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    },
+  );
+  if (frames < 75) return null;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        right: 96,
+        bottom: 64,
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        opacity: o * 0.92,
+        fontFamily: BODY,
+        fontWeight: 800,
+        fontSize: 20,
+        letterSpacing: 2.5,
+        color: "rgba(245,245,242,0.9)",
+        textTransform: "uppercase",
+        textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+      }}
+    >
+      <span
+        style={{
+          width: 22,
+          height: 3,
+          background: COLOUR.amber,
+          borderRadius: 2,
+        }}
+      />
+      {text}
+    </div>
+  );
+};
+
+/** The label of the shot on screen, above the scrim so it reads. */
+const ShotLabel: React.FC<{
+  plan: LongPlan;
+  describe: (media: { type: string; index: number }) => string;
+}> = ({ plan, describe }) => {
+  const frame = useCurrentFrame();
+  const shot = plan.shots.find((x) => frame >= x.start && frame < x.end);
+  if (!shot) return null;
+  const text = describe(shot.media);
+  if (!text) return null;
+  return (
+    <Sequence from={shot.start} durationInFrames={Math.max(1, shot.end - shot.start)} layout="none">
+      <Descriptor text={text} frames={shot.end - shot.start} />
+    </Sequence>
+  );
+};
+
 /** Frames a still overlaps the shot before it, so cuts dissolve instead of dipping to black. */
 const XFADE = 9;
 
@@ -352,7 +469,9 @@ const Backdrop: React.FC<{
   images: LongImageProp[];
   clips: LongClipProp[];
   theme: string;
-}> = ({ plan, images, clips, theme }) => (
+  /** What a shot is, as video essays label their pictures: "GRAND THEFT AUTO V · 2013 · KEY ART". */
+  describe?: (media: { type: string; index: number }) => string;
+}> = ({ plan, images, clips, theme, describe }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
       const len = Math.max(1, s.end - s.start);
@@ -373,6 +492,8 @@ const Backdrop: React.FC<{
             <>
               <FadeIn frames={i > 0 ? Math.min(XFADE, s.start) : 0}>
                 <Still
+                  print={img.kind === "photo"}
+                  tilt={((s.media.index * 37) % 5) - 2}
                   src={img.src}
                   aspect={img.aspect}
                   durationFrames={len + (i > 0 ? Math.min(XFADE, s.start) : 0)}
@@ -1355,7 +1476,11 @@ export const Long: React.FC<LongProps> = (props) => {
   };
   // The richer explainers (src/render/components/DocGraphics.tsx). A "versus" shows two of the video's own
   // games from their chapters' pictures; a "people" card uses a portrait when one carries the name.
-  const normTitle = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const normTitle = (t: string) =>
+    t
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
   const gameArt = (title: string) => {
     const k = props.segments.findIndex(
       (x) =>
@@ -1367,22 +1492,37 @@ export const Long: React.FC<LongProps> = (props) => {
       k >= 0
         ? k
         : props.segments.findIndex(
-            (x) => x.kind === "beat" && x.visual?.kind === "rank" && normTitle(x.visual?.primary ?? "") === normTitle(title),
+            (x) =>
+              x.kind === "beat" &&
+              x.visual?.kind === "rank" &&
+              normTitle(x.visual?.primary ?? "") === normTitle(title),
           );
     if (byPrimary < 0) return undefined;
     const e = entryOf(props.segments, byPrimary);
     const im = props.images.find(
-      (i) => i.beatIndex === e && i.aspect >= 1.2 && i.kind !== "capsule" && i.kind !== "portrait",
+      (i) =>
+        i.beatIndex === e &&
+        i.aspect >= 1.2 &&
+        i.kind !== "capsule" &&
+        i.kind !== "portrait",
     );
     const year = props.segments[byPrimary]!.visual?.items?.[0];
-    return im ? { src: im.src, label: [displayText(title), year].filter(Boolean).join(" · ") } : undefined;
+    return im
+      ? {
+          src: im.src,
+          label: [displayText(title), year].filter(Boolean).join(" · "),
+        }
+      : undefined;
   };
   const portraits = Object.fromEntries(
     props.images
       .filter((i) => (i.kind === "portrait" || i.kind === "photo") && i.label)
       .map((i) => [i.label!.toLowerCase(), i.src]),
   );
-  const richGraphic = (g: NonNullable<LongProps["moments"]>[number][number]["graphic"], len: number) => {
+  const richGraphic = (
+    g: NonNullable<LongProps["moments"]>[number][number]["graphic"],
+    len: number,
+  ) => {
     switch (g.kind) {
       case "delay":
         return <DelayMoment g={g} len={len} />;
@@ -1409,6 +1549,80 @@ export const Long: React.FC<LongProps> = (props) => {
         return null;
     }
   };
+  // Each picture's label, as video essays label theirs (Ahoy): the game, its year and what the picture is.
+  // Archive photos carry their own credit and licensed footage its creator's, so they get none.
+  const entryTitle = (e: number | undefined) => {
+    if (e === undefined)
+      return {
+        title: props.recap ? "" : props.theme,
+        year: undefined as string | undefined,
+      };
+    const k = props.segments.findIndex(
+      (x, i) =>
+        x.kind === "beat" &&
+        (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
+        entryOf(props.segments, i) === e,
+    );
+    const v = k >= 0 ? props.segments[k]!.visual : undefined;
+    return {
+      title: (v?.kind === "rank" ? v.primary : v?.secondary) ?? "",
+      year: v?.items?.[0],
+    };
+  };
+  const KIND_WORD: Record<string, string> = {
+    hero: "Key art",
+    header: "Key art",
+    capsule: "Box art",
+    screenshot: "Screenshot",
+    article: "Press image",
+  };
+  const describe = (media: { type: string; index: number }) => {
+    if (media.type === "image") {
+      const im = props.images[media.index];
+      const word = im ? KIND_WORD[im.kind] : undefined;
+      if (!im || !word) return "";
+      const t = entryTitle(im.beatIndex);
+      return [t.title, t.year, word]
+        .filter(Boolean)
+        .map((x) => displayText(String(x)))
+        .join(" · ");
+    }
+    if (media.type === "clip") {
+      const c = props.clips[media.index];
+      if (!c || c.credit) return "";
+      const t = entryTitle(c.beatIndex);
+      return t.title
+        ? [t.title, t.year, "Trailer"]
+            .filter(Boolean)
+            .map((x) => displayText(String(x)))
+            .join(" · ")
+        : "";
+    }
+    return "";
+  };
+  // A person's name tag the first time a chapter turns to them; the role from a who's-who card when there is one.
+  const roles = new Map<string, string>();
+  for (const e of props.moments ?? [])
+    for (const m of e)
+      if (m.graphic.kind === "people")
+        for (const it of m.graphic.items) {
+          const i = it.indexOf(":");
+          if (i > 0)
+            roles.set(
+              it.slice(0, i).trim().toLowerCase(),
+              it.slice(i + 1).trim(),
+            );
+        }
+  const firstMention = new Set<string>();
+  const tagged = new Set<string>();
+  for (const w of windows) {
+    const p = props.moments?.[w.entry]?.[w.moment]?.person?.trim();
+    if (!p || w.moment === 0) continue;
+    const key = `${w.entry}|${p.toLowerCase()}`;
+    if (tagged.has(key)) continue;
+    tagged.add(key);
+    firstMention.add(`${w.entry}|${w.moment}`);
+  }
   const bedAt = (f: number) =>
     beds.find((b) => f >= b.from && f < b.to)?.src ?? props.musicSrc;
   // Each sentence's graphic, caption or picture lands a beat before the narrator names it and holds until
@@ -1489,8 +1703,10 @@ export const Long: React.FC<LongProps> = (props) => {
         images={props.images}
         clips={props.clips}
         theme={props.theme}
+        describe={describe}
       />
       <Scrim />
+      <ShotLabel plan={plan} describe={describe} />
       <GrainVignette />
       <Brand
         logoSrc={resolveSrc(props.logoSrc)}
@@ -1692,7 +1908,17 @@ export const Long: React.FC<LongProps> = (props) => {
           props.images.find(
             (im) => im.beatIndex === w.entry && im.moment === w.moment,
           );
+        const person = raw.person?.trim();
+        const nameTag =
+          person &&
+          firstMention.has(`${w.entry}|${w.moment}`) &&
+          (m.graphic.kind === "none" ||
+            m.graphic.kind === "stat" ||
+            m.graphic.kind === "date")
+            ? { name: person, role: roles.get(person.toLowerCase()) }
+            : undefined;
         const showPop =
+          !nameTag &&
           m.graphic.kind === "none" &&
           shot?.media.type === "clip" &&
           pic &&
@@ -1737,6 +1963,9 @@ export const Long: React.FC<LongProps> = (props) => {
               <>
                 <KineticCaption text={m.emphasis} len={len} />
               </>
+            ) : null}
+            {nameTag ? (
+              <NameTag name={nameTag.name} role={nameTag.role} len={len} />
             ) : null}
             {showPop ? (
               <Sequence

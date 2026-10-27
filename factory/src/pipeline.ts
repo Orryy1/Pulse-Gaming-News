@@ -5446,6 +5446,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
               show: m.show,
               graphic: m.graphic,
               emphasis: m.emphasis,
+              person: m.person || undefined,
             })),
           )
         : undefined,

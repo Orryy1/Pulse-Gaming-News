@@ -48,7 +48,39 @@ export interface MomentProp {
   show: string;
   graphic: MomentGraphic;
   emphasis: string;
+  person?: string;
 }
+
+/**
+ * Who is on screen, the documentary way (Noclip, Ahoy): a lower-third name tag with the role when the
+ * shot list knows it, sliding in on an amber rule.
+ */
+export const NameTag: React.FC<{ name: string; role?: string; len: number }> = ({ name, role, len }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const showFor = Math.min(len - 6, 150);
+  if (frame > showFor || !name.trim()) return null;
+  const inP = spring({ frame: frame - 4, fps, config: SPRING.ENTER });
+  const rule = interpolate(frame, [4, 20], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const out = interpolate(frame, [showFor - 12, showFor], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  return (
+    <div style={{ position: "absolute", left: 96, bottom: 330, opacity: out }}>
+      <div style={{ height: 5, width: 90 * rule, background: COLOUR.amber, borderRadius: 3, marginBottom: 12 }} />
+      <div style={{ overflow: "hidden" }}>
+        <div style={{ fontFamily: DISPLAY, fontSize: 64, lineHeight: 1, color: COLOUR.paper, textTransform: "uppercase", textShadow: "0 6px 30px rgba(0,0,0,0.7)", transform: `translateY(${(1 - inP) * 100}%)` }}>
+          {displayText(name)}
+        </div>
+      </div>
+      {role ? (
+        <div style={{ overflow: "hidden", marginTop: 8 }}>
+          <div style={{ fontFamily: BODY, fontWeight: 800, fontSize: 26, letterSpacing: 3, color: COLOUR.amber, textTransform: "uppercase", transform: `translateY(${(1 - spring({ frame: frame - 10, fps, config: SPRING.ENTER })) * 100}%)` }}>
+            {displayText(role)}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 const RIGHT = 96;
 const TOP = 128;

@@ -5,6 +5,7 @@
 // channel's Associates IDs. The disclosure line Amazon requires goes with them.
 
 import type { Script } from "./schema.ts";
+import { tokens } from "../discovery/cluster.ts";
 
 export type Store = "us" | "uk" | "ca" | "de" | "fr" | "it" | "es" | "au";
 
@@ -39,7 +40,23 @@ export function storeFor(country: string | undefined): Store {
   if (["GB", "IE", "IM", "JE", "GG"].includes(c)) return "uk";
   if (c === "CA") return "ca";
   if (["AU", "NZ"].includes(c)) return "au";
-  if (["DE", "AT", "CH", "LU", "LI", "NL", "PL", "CZ", "DK", "SE", "NO", "FI"].includes(c)) return "de";
+  if (
+    [
+      "DE",
+      "AT",
+      "CH",
+      "LU",
+      "LI",
+      "NL",
+      "PL",
+      "CZ",
+      "DK",
+      "SE",
+      "NO",
+      "FI",
+    ].includes(c)
+  )
+    return "de";
   if (["FR", "BE", "MC"].includes(c)) return "fr";
   if (["IT", "SM", "VA", "MT"].includes(c)) return "it";
   if (["ES", "PT", "AD"].includes(c)) return "es";
@@ -93,20 +110,39 @@ export function productsFor(script: Script, free = false): AffiliateLink[] {
     seen.add(key);
     out.push({ label, query });
   };
+  const generic = /^(new games|gaming news|this week)/i;
   // A free game is not sold; its links would be noise.
   if (!free) {
-    if (script.entries?.length) {
+    if (
+      script.evergreen_format === "documentary" &&
+      script.entries?.length &&
+      script.game_title &&
+      !generic.test(script.game_title)
+    ) {
+      // A documentary's chapters are not all games: a story-shaped one files a person or an event
+      // as the chapter's "game" (the GTA VI documentary linked "Dan Houser" and "2022 Rockstar Games
+      // leak" on Amazon). Link the documentary's own game, then chapter games in story order that
+      // are on a store or share a name with it.
+      const own = CLEAN(script.game_title);
+      add(own, `${own} game`);
+      const ownWords = tokens(own);
+      for (const e of [...script.entries].sort((a, b) => b.rank - a.rank)) {
+        const name = CLEAN(e.game_title);
+        const related = [...tokens(name)].some((w) => ownWords.has(w));
+        if (name && (e.steam_search_term?.trim() || related))
+          add(name, `${name} game`);
+      }
+    } else if (script.entries?.length) {
       // Best first: number one leads the list.
       const achievements = /achievements$/.test(script.evergreen_format ?? "");
       for (const e of [...script.entries].sort((a, b) => a.rank - b.rank)) {
         // An achievement list sells the games the achievements belong to.
-        const name = CLEAN(achievements ? e.steam_search_term || e.platforms : e.game_title);
+        const name = CLEAN(
+          achievements ? e.steam_search_term || e.platforms : e.game_title,
+        );
         if (name) add(name, `${name} game`);
       }
-    } else if (
-      script.game_title &&
-      !/^(new games|gaming news|this week)/i.test(script.game_title)
-    ) {
+    } else if (script.game_title && !generic.test(script.game_title)) {
       add(CLEAN(script.game_title), `${CLEAN(script.game_title)} game`);
     }
   }
@@ -149,7 +185,12 @@ export function affiliateBlock(
   // their own store), then one link to the video's shop page, which lists every product with a button for
   // each country's store. No per-country pairs, so the block stays short.
   const home: Store = tags.us ? "us" : "uk";
-  const lines = products.slice(0, 3).map((p) => `🛒 ${p.label} on Amazon: ${amazonUrl(p.query, tags[home]!, home)}`);
+  const lines = products
+    .slice(0, 3)
+    .map(
+      (p) =>
+        `🛒 ${p.label} on Amazon: ${amazonUrl(p.query, tags[home]!, home)}`,
+    );
   const shop = tags.shopUrl
     ? `🌍 ${products.length > 3 ? `All ${products.length} games and gear` : "Every link"}, with your own country's Amazon store: ${tags.shopUrl}`
     : "";
@@ -160,6 +201,31 @@ export function affiliateBlock(
     "As an Amazon Associate I earn from qualifying purchases.",
   ]
     .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * A live description, in any language, with only the shop lines a video should still carry: the
+ * English block is rebuilt, and in translations a line for a product no longer linked is dropped.
+ */
+export function refreshShopLines(
+  description: string,
+  block: string,
+  keep: AffiliateLink[],
+): string {
+  const english =
+    /\n?Affiliate links \(we may earn from purchases\):[\s\S]*?As an Amazon Associate I earn from qualifying purchases\./;
+  if (english.test(description)) return description.replace(english, block);
+  const ok = new Set(keep.map((p) => p.query.toLowerCase()));
+  return description
+    .split("\n")
+    .filter((line) => {
+      const m = line.match(/amazon\.[a-z.]+\/s\?k=([^&\s]+)/);
+      return (
+        !m ||
+        ok.has(decodeURIComponent(m[1]!.replace(/\+/g, " ")).toLowerCase())
+      );
+    })
     .join("\n");
 }
 
@@ -178,7 +244,13 @@ export function affiliateCommentLine(
 }
 
 const escHtml = (t: string) =>
-  t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+  t.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ]!,
+  );
 
 /**
  * The shop page behind a video's "other countries" link: each product with a
@@ -199,7 +271,10 @@ export function shopPageHtml(opts: {
       const main = `<a class="buy" rel="sponsored nofollow" href="${escHtml(amazonUrl(p.query, opts.tags[home]!, home))}">Find it on Amazon ${escHtml(STORES[home].name)}</a>`;
       const rest = stores
         .filter((k) => k !== home)
-        .map((k) => `<a rel="sponsored nofollow" href="${escHtml(amazonUrl(p.query, opts.tags[k]!, k))}">${escHtml(STORES[k].name)}</a>`)
+        .map(
+          (k) =>
+            `<a rel="sponsored nofollow" href="${escHtml(amazonUrl(p.query, opts.tags[k]!, k))}">${escHtml(STORES[k].name)}</a>`,
+        )
         .join(" · ");
       return `<section><h2>${escHtml(p.label)}</h2>${main}<p class="more">Other stores: ${rest}</p></section>`;
     })

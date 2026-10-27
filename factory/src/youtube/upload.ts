@@ -742,6 +742,63 @@ export class YouTubeClient {
     if (!put.ok) throw await apiError(put, "videos.update (localizations)");
   }
 
+  /**
+   * Rewrites a live video's description and its translations (one videos.update, 50 units), keeping
+   * the title, tags and category. Returns how many descriptions changed; nothing is sent when none did.
+   */
+  async rewriteDescriptions(
+    videoId: string,
+    fn: (description: string, language: string) => string,
+  ): Promise<number> {
+    const res = await this.fetchFn(
+      `${API}/videos?part=snippet,localizations&id=${videoId}`,
+      { headers: await this.auth() },
+    );
+    if (!res.ok) throw await apiError(res, "videos.list");
+    const item = ((await res.json()) as any).items?.[0];
+    if (!item) throw new Error(`video ${videoId} not found`);
+    let changed = 0;
+    const sn = item.snippet;
+    const description = fn(sn.description ?? "", sn.defaultLanguage ?? "en");
+    if (description !== sn.description) changed++;
+    const localizations: Record<
+      string,
+      { title: string; description: string }
+    > = {};
+    for (const [lang, l] of Object.entries(
+      (item.localizations ?? {}) as Record<
+        string,
+        { title: string; description: string }
+      >,
+    )) {
+      const d = fn(l.description ?? "", lang);
+      if (d !== l.description) changed++;
+      localizations[lang] = { title: l.title, description: d };
+    }
+    if (!changed) return 0;
+    const parts = Object.keys(localizations).length
+      ? "snippet,localizations"
+      : "snippet";
+    const put = await this.fetchFn(`${API}/videos?part=${parts}`, {
+      method: "PUT",
+      headers: { ...(await this.auth()), "content-type": "application/json" },
+      body: JSON.stringify({
+        id: videoId,
+        snippet: {
+          title: sn.title,
+          description,
+          categoryId: sn.categoryId,
+          tags: sn.tags,
+          defaultLanguage: sn.defaultLanguage,
+          defaultAudioLanguage: sn.defaultAudioLanguage,
+        },
+        ...(parts.includes("localizations") ? { localizations } : {}),
+      }),
+    });
+    if (!put.ok) throw await apiError(put, "videos.update (description)");
+    return changed;
+  }
+
   /** Makes a video public now, keeping its other status fields as they are. */
   async makePublic(videoId: string): Promise<void> {
     await this.setPrivacy(videoId, "public");

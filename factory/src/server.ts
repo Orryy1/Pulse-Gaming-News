@@ -32,7 +32,13 @@ import {
   quotaUsed,
   setPublishHold,
 } from "./lanes.ts";
-import { productsFor, shopPageHtml } from "./editorial/affiliate.ts";
+import {
+  productsFor,
+  shopPageHtml,
+  affiliateBlock,
+  refreshShopLines,
+} from "./editorial/affiliate.ts";
+import type { Script } from "./editorial/schema.ts";
 import {
   buildPosters,
   crosspostTick,
@@ -533,6 +539,7 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         comment?: string;
         privacy?: "private" | "unlisted";
         spent?: number;
+        fixAffiliate?: boolean;
       };
       const out: Record<string, unknown> = { videoId: job.videoId };
       const yt = services.youtube();
@@ -557,6 +564,28 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
             job.comment.slice(0, 1000),
           );
           await quotaAdd(db, new Date(), QUOTA.comment);
+        }
+        // Rebuilds a live long video's shop links after a fix to what gets linked (its translations too).
+        if (job.fixAffiliate) {
+          const [row] = await db.query<{
+            id: string;
+            lane: string;
+            script_json: Script;
+          }>(
+            `SELECT id, lane, script_json FROM episodes WHERE youtube_video_id = $1`,
+            [job.videoId],
+          );
+          if (!row?.script_json) throw new Error("no episode for that video");
+          const tags = affiliateTags(cfg, row.id);
+          const free = row.lane === "free";
+          const block = affiliateBlock(row.script_json, tags, { free });
+          const keep = productsFor(row.script_json, free);
+          out.descriptionsChanged = await yt.rewriteDescriptions(
+            job.videoId,
+            (d) => refreshShopLines(d, block, keep),
+          );
+          if (out.descriptionsChanged)
+            await quotaAdd(db, new Date(), QUOTA.localize);
         }
         // Hiding a video (never making one public: that stays the owner's call).
         if (job.privacy === "private" || job.privacy === "unlisted") {
@@ -1625,10 +1654,13 @@ function threadsAppFile(cfg: Config): string {
 
 /** The Threads app's ID and secret: from .env when set, else from the connect page's file. */
 function threadsApp(cfg: Config): { id: string; secret: string } | undefined {
-  if (cfg.threadsAppId && cfg.threadsAppSecret) return { id: cfg.threadsAppId, secret: cfg.threadsAppSecret };
+  if (cfg.threadsAppId && cfg.threadsAppSecret)
+    return { id: cfg.threadsAppId, secret: cfg.threadsAppSecret };
   try {
     const j = JSON.parse(fs.readFileSync(threadsAppFile(cfg), "utf8"));
-    return j.id && j.secret ? { id: String(j.id), secret: String(j.secret) } : undefined;
+    return j.id && j.secret
+      ? { id: String(j.id), secret: String(j.secret) }
+      : undefined;
   } catch {
     return undefined;
   }

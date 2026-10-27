@@ -35,6 +35,7 @@ export const VISUAL_KINDS = [
   "specs",
   "milestones",
   "chapter",
+  "report",
 ] as const;
 
 export const SelectionSchema = z.object({

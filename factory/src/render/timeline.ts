@@ -23,7 +23,8 @@ export interface Visual {
     | "versus"
     | "specs"
     | "milestones"
-    | "chapter";
+    | "chapter"
+    | "report";
   primary: string;
   secondary: string;
   date_from?: string;

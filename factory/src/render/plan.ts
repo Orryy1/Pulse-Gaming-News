@@ -122,6 +122,7 @@ export interface RenderPlan {
 }
 
 const QUIET_KINDS = new Set([
+  "report",
   "versus",
   "specs",
   "milestones",

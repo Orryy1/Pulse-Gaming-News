@@ -573,6 +573,136 @@ export const FactCard: React.FC<{
     );
   }
 
+  // A named outlet's report as a recreated news page: generic, credited, tagged as an illustration.
+  if (v.kind === "report") {
+    const outlet = v.secondary.trim();
+    const bars = [92, 86, 95, 70];
+    return (
+      <div style={base}>
+        {ruleBar}
+        <div
+          style={{
+            background: "#ffffff",
+            borderRadius: 18,
+            overflow: "hidden",
+            boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
+            maxWidth: CONTENT_WIDTH,
+          }}
+        >
+          <div
+            style={{
+              height: 50,
+              background: "#e9e9ee",
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              padding: "0 18px",
+            }}
+          >
+            {["#ff5f57", "#febc2e", "#28c840"].map((c) => (
+              <div key={c} style={{ width: 13, height: 13, borderRadius: 7, background: c }} />
+            ))}
+            <div
+              style={{
+                marginLeft: 14,
+                flex: 1,
+                height: 28,
+                borderRadius: 14,
+                background: "#fff",
+                display: "flex",
+                alignItems: "center",
+                padding: "0 14px",
+                fontFamily: BODY,
+                fontSize: 18,
+                color: "#7a7a85",
+              }}
+            >
+              news / gaming
+            </div>
+          </div>
+          <div style={{ padding: "28px 34px 34px" }}>
+            <div
+              style={{
+                fontFamily: BODY,
+                fontWeight: 900,
+                fontSize: 22,
+                letterSpacing: 3,
+                color: "#c2410c",
+              }}
+            >
+              REPORT
+            </div>
+            <Rise delay={FRAMES.ruleLead}>
+              <div
+                style={{
+                  marginTop: 10,
+                  fontFamily: BODY,
+                  fontWeight: 900,
+                  fontSize: 58,
+                  lineHeight: 1.08,
+                  color: "#111114",
+                }}
+              >
+                {v.primary}
+              </div>
+            </Rise>
+            <div style={{ marginTop: 22 }}>
+              {bars.map((w, i) => (
+                <div
+                  key={i}
+                  style={{
+                    height: 13,
+                    width: `${w}%`,
+                    background: "#e1e1e6",
+                    borderRadius: 4,
+                    marginBottom: 13,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div
+          style={{
+            marginTop: 16,
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: BODY,
+              fontWeight: 900,
+              fontSize: 30,
+              letterSpacing: 2,
+              color: accent,
+              textTransform: "uppercase",
+              textShadow: "0 4px 20px rgba(0,0,0,0.6)",
+            }}
+          >
+            {outlet ? `As reported by ${outlet}` : "Report"}
+          </div>
+          <div
+            style={{
+              padding: "3px 9px",
+              borderRadius: 6,
+              border: "1px solid rgba(245,245,242,0.6)",
+              fontFamily: BODY,
+              fontWeight: 800,
+              fontSize: 17,
+              letterSpacing: 2,
+              color: "rgba(245,245,242,0.85)",
+              background: "rgba(11,11,14,0.5)",
+            }}
+          >
+            ILLUSTRATION
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (v.kind === "quote") {
     return (
       <div style={base}>
@@ -617,7 +747,18 @@ export const FactCard: React.FC<{
                 color: COLOUR.muted,
               }}
             >
-              — {label}
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 44,
+                  height: 5,
+                  background: accent,
+                  borderRadius: 3,
+                  verticalAlign: "middle",
+                  marginRight: 14,
+                }}
+              />
+              {label}
             </div>
           ) : null}
         </div>

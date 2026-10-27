@@ -67,6 +67,7 @@ Structure:
    - "versus" for one thing against another (new against old hardware, two games, two prices): primary is a 2-5 word phrase, items are exactly two rows as "label:value", the subject marked with a leading *.
    - "specs" for a sheet of facts (hardware specs, what an edition includes): primary is a 2-5 word phrase, items are 2-6 rows as "label:value" with short values.
    - "milestones" for a history of three to five dates (announced, delayed, trailer, launch): primary is a 2-5 word phrase, items are rows as "YYYY-MM:label" or "YYYY-MM-DD:label", oldest first, labels of 1-3 words.
+   - "report" when the news is a named outlet's report (Bloomberg, The Verge, Insider Gaming): primary is what it reported as a 4-10 word headline, stating only what the sources say; secondary is the outlet exactly as the sources name it. It shows as a recreated news page credited to that outlet, never the outlet's real page.
    - "stat" for any other number, "date" for other dates, "quote" for a short official quote (under 12 words, from the sources), "list" for 2-3 short items separated by " | ", "title" for a key phrase.
    Never pad a card with numbers the sources do not give.
    Numbers move: a before and after, a this against that, a countdown ($69.99 to $79.99; 10 hours to 3), never a list of specs read out (13 maps, 30 weapons, 6 modes). One turn line by about the second beat pivots to the detail that changes the story, in words that differ from Short to Short ("Except there's a catch.", "That's not the strange part.", "And that's where you come in."); never the banned stock phrases.
@@ -485,6 +486,15 @@ export function validateScript(s: Script, recent?: RecentShapes): string[] {
     )
       problems.push(
         `Specs card "${b.visual.primary}" needs at least two label:value rows.`,
+      );
+    if (
+      b.visual.kind === "report" &&
+      (!b.visual.secondary.trim() ||
+        b.visual.primary.trim().split(/\s+/).length < 3 ||
+        b.visual.primary.trim().split(/\s+/).length > 12)
+    )
+      problems.push(
+        `Report card "${b.visual.primary}" needs a 3-12 word headline and the outlet in secondary.`,
       );
     if (
       b.visual.kind === "milestones" &&

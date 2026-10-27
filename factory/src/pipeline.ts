@@ -3550,6 +3550,20 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       recent,
     });
     const problems = validateScript(script, recent);
+    // A report card is credited to an outlet: it must be one of this story's own sources.
+    const outlets = cluster.items.map((i) => i.source.toLowerCase());
+    for (const b of script.beats)
+      if (
+        b.visual.kind === "report" &&
+        !outlets.some(
+          (o) =>
+            o.includes(b.visual.secondary.toLowerCase().trim()) ||
+            b.visual.secondary.toLowerCase().includes(o),
+        )
+      )
+        problems.push(
+          `Report card names "${b.visual.secondary}", which is not one of this story's sources (${[...new Set(cluster.items.map((i) => i.source))].join(", ")}).`,
+        );
     check = await factCheck(s.llm, script, cluster, articles, storeData);
     const blockers = check.issues
       .filter((i) => i.severity === "blocker")

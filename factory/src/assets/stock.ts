@@ -134,12 +134,15 @@ export async function stockClips(
         const beatIndex = t.key.startsWith("beat:")
           ? Number.parseInt(t.key.slice(5), 10)
           : undefined;
+        // "beat:3#m7": a documentary chapter's sentence 7 (its shot list asked for this B-roll).
+        const sentence = t.key.match(/#m(\d+)$/)?.[1];
         out.push({
           kind: "clip",
           file: rel,
           sourceUrl: v.url,
           durationSeconds: STOCK_CLIP_SECONDS,
           beatIndex,
+          ...(sentence !== undefined ? { moment: Number(sentence) } : {}),
           stock: true,
           label: q,
           reason: `stock: "${q}"`,

@@ -33,6 +33,9 @@ export interface LongClip {
 /** One sentence of a ranking entry on the timeline (seconds). */
 export interface MomentWindow {
   entry: number;
+  /** The segment (paragraph) the sentence is in: a documentary chapter has many. */
+  segment: number;
+  /** The sentence's index across its whole entry, matching the entry's shot list. */
   moment: number;
   start: number;
   end: number;
@@ -63,6 +66,12 @@ export function momentKeys(m: MomentKeySource): string[] {
   const g = m.graphic;
   if (g && usefulGraphic(g)) {
     if (g.kind === "list") keys.push(...(g.items ?? []));
+    // A quote lands with the sentence it belongs to; a timeline on its first year.
+    else if (g.kind === "quote") {
+    } else if (g.kind === "timeline")
+      keys.push(
+        ...(g.items ?? []).map((x) => x.split(":")[0]!.trim()).slice(0, 1),
+      );
     else if (g.kind === "compare")
       keys.push(...(g.items ?? []).map((x) => x.split(":")[0]!.trim()));
     else keys.push(g.primary);
@@ -157,18 +166,21 @@ export function momentWindows(
   keys?: string[][][],
 ): MomentWindow[] {
   const out: MomentWindow[] = [];
+  // A documentary chapter spans several paragraphs: its shot list runs on across them.
+  const offset = new Map<number, number>();
   for (const [i, seg] of segments.entries()) {
     if (seg.kind !== "beat") continue;
     const e = entryOf(segments, i);
-    const n = e === undefined ? 0 : (counts[e] ?? 0);
+    const before = e === undefined ? 0 : (offset.get(e) ?? 0);
+    const n = e === undefined ? 0 : Math.max(0, (counts[e] ?? 0) - before);
+    const sentences = splitSentences(seg.text);
+    if (e !== undefined) offset.set(e, before + sentences.length);
     if (!n || e === undefined) continue;
     const segEnd = i === segments.length - 1 ? seg.end : segments[i + 1]!.start;
     const ws = words.filter(
       (w) => w.start >= seg.start - 0.05 && w.start < segEnd,
     );
-    const lens = splitSentences(seg.text).map(
-      (x) => x.split(/\s+/).filter(Boolean).length,
-    );
+    const lens = sentences.map((x) => x.split(/\s+/).filter(Boolean).length);
     const k = Math.min(n, lens.length || 1);
     const starts: number[] = [];
     let idx = 0;
@@ -179,14 +191,15 @@ export function momentWindows(
     for (let j = 0; j < k; j++) {
       const start = starts[j]!;
       const end = j === k - 1 ? segEnd : starts[j + 1]!;
-      // The first sentence opens the entry on its rank card: it stays anchored to its start.
+      // A paragraph's first sentence stays anchored to its start (the entry's opens on its rank card).
       let at = start;
-      if (j > 0 && keys?.[e]?.[j]?.length) {
+      const m = before + j;
+      if (j > 0 && keys?.[e]?.[m]?.length) {
         const lo = words.indexOf(
           ws[lens.slice(0, j).reduce((a, b) => a + b, 0)] ?? words[0]!,
         );
         const hi = Math.max(lo, lo + (lens[j] ?? 0));
-        for (const key of keys[e]![j]!) {
+        for (const key of keys[e]![m]!) {
           const t = keyTime(words, Math.max(0, lo), hi, key);
           if (t !== undefined) {
             // Within the first half second it is the sentence's opening anyway.
@@ -195,7 +208,7 @@ export function momentWindows(
           }
         }
       }
-      out.push({ entry: e, moment: j, start, end, at });
+      out.push({ entry: e, segment: i, moment: m, start, end, at });
     }
   }
   return out;
@@ -369,7 +382,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     const entry = entryOf(segments, i, input.takeEntry);
     // A ranking entry with a shot list: each sentence opens on what it names.
     const mine =
-      seg.kind === "beat" ? windows.filter((w) => w.entry === entry) : [];
+      seg.kind === "beat" ? windows.filter((w) => w.segment === i) : [];
     if (mine.length && entry !== undefined) {
       const allEntry = images
         .map((_, k) => k)
@@ -397,9 +410,20 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           return { type: "plate", index: 0 };
         }
         const pool = entryImages;
+        // Least shown first; on a tie, a different kind from the last still (a documentary alternates the
+        // game's art with archive photos of the real story instead of three office photos in a row).
+        const lastKind =
+          last?.type === "image" ? images[last.index]?.kind : undefined;
+        const otherKind = (k: number) =>
+          lastKind && images[k]!.kind === lastKind ? 1 : 0;
         const pick =
           [...pool]
-            .sort((a, b) => stillUses[a]! - stillUses[b]! || a - b)
+            .sort(
+              (a, b) =>
+                stillUses[a]! - stillUses[b]! ||
+                otherKind(a) - otherKind(b) ||
+                a - b,
+            )
             .find((k) => !same(last, { type: "image", index: k })) ?? pool[0]!;
         return { type: "image", index: pick };
       };
@@ -407,9 +431,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         // A sentence's picture arrives as the narrator names its subject, not when the sentence starts.
         const from = j === 0 ? start : Math.max(start, toFrame(w.at));
         const to =
-          j === mine.length - 1
-            ? end
-            : Math.min(end, toFrame(mine[j + 1]!.at));
+          j === mine.length - 1 ? end : Math.min(end, toFrame(mine[j + 1]!.at));
         if (to <= from) continue;
         // Every clip picked for this sentence (a trailer moment and a gameplay moment), then its still.
         const mineClips = entryClips.filter(
@@ -419,7 +441,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         const queue: LongMedia[] = [];
         // The entry opens on its art so the rank card lands over a picture; later sentences open on footage.
         // With no picture of its own for the first sentence it borrows the entry's art: a dark clip under the rank card reads as an empty frame.
-        if (j === 0) {
+        if (w.moment === 0) {
           const opener =
             still ??
             (entryImages.length
@@ -429,13 +451,15 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             queue.push({ type: "image", index: opener });
         }
         for (const k of mineClips) queue.push({ type: "clip", index: k });
-        if (j !== 0 && still !== undefined)
+        if (w.moment !== 0 && still !== undefined)
           queue.push({ type: "image", index: still });
-        // When the sentence's own media runs out, any unused footage of the entry comes before another still.
+        // When the sentence's own media runs out, any unused footage of the entry comes before another still,
+        // but never a clip picked for a sentence still to come (a chapter's B-roll would play a minute early).
         const footageFirst = (): LongMedia => {
           const spare = entryClips.find(
             (k) =>
               !clipUsed[k] &&
+              !((clips[k]!.moment ?? -1) > w.moment) &&
               !queue.some((q) => q.type === "clip" && q.index === k),
           );
           return spare !== undefined
@@ -666,6 +690,9 @@ export function usefulGraphic<
   G extends { kind: string; primary: string; secondary: string },
 >(g: G): boolean {
   if (g.kind === "none") return false;
+  // A documentary's quote or timeline never restates a rank ("the best place to work" is not a ranking).
+  if (g.kind === "quote" || g.kind === "timeline")
+    return Boolean(g.primary.trim() || g.kind === "timeline");
   const text = `${g.primary} ${g.secondary}`;
   if (
     /\b(rank(ing)?|position|place[sd]?|spot|on the list|where it lands|entry number)\b/i.test(

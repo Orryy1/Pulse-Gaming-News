@@ -22,7 +22,15 @@ import { SPRING } from "../motion.ts";
 import { displayText } from "../timeline.ts";
 
 export interface MomentGraphic {
-  kind: "none" | "stat" | "date" | "score" | "list" | "compare";
+  kind:
+    | "none"
+    | "stat"
+    | "date"
+    | "score"
+    | "list"
+    | "compare"
+    | "quote"
+    | "timeline";
   primary: string;
   secondary: string;
   items: string[];
@@ -75,8 +83,16 @@ const numberIn = (t: string) =>
   Number((t.match(/[\d,.]+/)?.[0] ?? "").replace(/,/g, ""));
 
 /** The fact a sentence states, drawn as a graphic at the top right. */
-export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({ g: raw, len }) => {
-  const g = { ...raw, primary: displayText(raw.primary), secondary: displayText(raw.secondary), items: raw.items.map(displayText) };
+export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
+  g: raw,
+  len,
+}) => {
+  const g = {
+    ...raw,
+    primary: displayText(raw.primary),
+    secondary: displayText(raw.secondary),
+    items: raw.items.map(displayText),
+  };
   const { frame, fps, inP, out, visible } = useInOut(len);
   if (!visible || g.kind === "none") return null;
   const wrap: React.CSSProperties = {
@@ -332,6 +348,277 @@ export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
   );
 };
 
+/**
+ * A quote at full size, the documentary way: the picture behind blurs and darkens, the words rise into
+ * place one by one, and the speaker's name slides in under an amber rule. Held long enough to read.
+ */
+export const QuoteMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
+  g,
+  len,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const text = displayText(g.primary)
+    .replace(/^["“]+|["”]+$/g, "")
+    .trim();
+  const words = text.split(/\s+/).filter(Boolean);
+  // Readable: about four words a second after the build, at least 4 s, at most 9 s.
+  const showFor = Math.min(
+    len - 6,
+    Math.max(120, Math.min(270, 50 + words.length * 8)),
+  );
+  if (frame > showFor || !words.length) return null;
+  const dim = interpolate(frame, [0, 14, showFor - 14, showFor], [0, 1, 1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const step = Math.max(1.5, Math.min(4, 60 / words.length));
+  const builtAt = 10 + words.length * step;
+  const who = spring({ frame: frame - builtAt, fps, config: SPRING.ENTER });
+  const size = words.length > 22 ? 58 : words.length > 12 ? 70 : 84;
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      <AbsoluteFill
+        style={{
+          backdropFilter: `blur(${14 * dim}px)`,
+          background: `rgba(11,11,14,${0.62 * dim})`,
+        }}
+      />
+      <AbsoluteFill
+        style={{ alignItems: "center", justifyContent: "center", opacity: dim }}
+      >
+        <div
+          style={{ maxWidth: 1420, padding: "0 140px", position: "relative" }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: 40,
+              top: -120,
+              fontFamily: DISPLAY,
+              fontSize: 320,
+              lineHeight: 1,
+              color: COLOUR.amber,
+              opacity:
+                0.9 * spring({ frame: frame - 2, fps, config: SPRING.POP }),
+            }}
+          >
+            {"“"}
+          </div>
+          <div
+            style={{
+              fontFamily: BODY,
+              fontWeight: 800,
+              fontSize: size,
+              lineHeight: 1.18,
+              color: COLOUR.paper,
+              textShadow: "0 8px 40px rgba(0,0,0,0.6)",
+            }}
+          >
+            {words.map((w, i) => {
+              const s = spring({
+                frame: frame - 10 - i * step,
+                fps,
+                config: SPRING.SNAP,
+              });
+              return (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-block",
+                    marginRight: size * 0.26,
+                    opacity: s,
+                    transform: `translateY(${(1 - s) * 46}px)`,
+                  }}
+                >
+                  {w}
+                </span>
+              );
+            })}
+          </div>
+          {g.secondary ? (
+            <div
+              style={{
+                marginTop: 34,
+                display: "flex",
+                alignItems: "center",
+                gap: 20,
+                opacity: who,
+                transform: `translateX(${(1 - who) * -40}px)`,
+              }}
+            >
+              <div
+                style={{
+                  width: 90 * who,
+                  height: 6,
+                  background: COLOUR.amber,
+                  borderRadius: 3,
+                }}
+              />
+              <div
+                style={{
+                  fontFamily: BODY,
+                  fontWeight: 900,
+                  fontSize: 32,
+                  letterSpacing: 3,
+                  color: COLOUR.amber,
+                  textTransform: "uppercase",
+                }}
+              >
+                {displayText(g.secondary)}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
+/** Years along a line that draws itself left to right, each stop popping in as the line reaches it. */
+export const TimelineMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
+  g,
+  len,
+}) => {
+  const { frame, fps, out, visible } = useInOut(len, 240);
+  const rows = g.items
+    .map((x) => {
+      const i = x.indexOf(":");
+      return i > 0
+        ? {
+            year: x.slice(0, i).trim(),
+            what: displayText(x.slice(i + 1).trim()),
+          }
+        : undefined;
+    })
+    .filter((x): x is { year: string; what: string } => Boolean(x))
+    .slice(0, 5);
+  if (!visible || rows.length < 2) return null;
+  const W = 1500;
+  const draw = interpolate(frame, [8, 8 + rows.length * 16], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: (x) => 1 - (1 - x) ** 2,
+  });
+  const panelIn = spring({ frame, fps, config: SPRING.ENTER });
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: (1920 - W - 80) / 2,
+        bottom: 150,
+        width: W + 80,
+        padding: "30px 40px 40px",
+        opacity: panelIn * out,
+        transform: `translateY(${(1 - panelIn) * 40}px)`,
+        ...panel,
+      }}
+    >
+      {g.primary ? (
+        <div
+          style={{
+            fontFamily: BODY,
+            fontWeight: 900,
+            fontSize: 26,
+            letterSpacing: 2.5,
+            color: COLOUR.amber,
+            textTransform: "uppercase",
+            marginBottom: 26,
+          }}
+        >
+          {displayText(g.primary)}
+        </div>
+      ) : null}
+      <div style={{ position: "relative", height: 150 }}>
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 54,
+            height: 6,
+            width: W,
+            background: "rgba(255,255,255,0.12)",
+            borderRadius: 3,
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 54,
+            height: 6,
+            width: W * draw,
+            background: COLOUR.amber,
+            borderRadius: 3,
+          }}
+        />
+        {rows.map((r, i) => {
+          const x = rows.length === 1 ? 0 : (i / (rows.length - 1)) * W;
+          const reach = i / Math.max(1, rows.length - 1);
+          const s = spring({
+            frame: frame - 8 - reach * rows.length * 16,
+            fps,
+            config: SPRING.POP,
+          });
+          return (
+            <div
+              key={i}
+              style={{
+                position: "absolute",
+                left: x,
+                top: 0,
+                width: 300,
+                transform: `translateX(${i === 0 ? 0 : i === rows.length - 1 ? -300 : -150}px)`,
+                textAlign:
+                  i === 0 ? "left" : i === rows.length - 1 ? "right" : "center",
+                opacity: s,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: DISPLAY,
+                  fontSize: 44,
+                  lineHeight: 1,
+                  color: COLOUR.paper,
+                }}
+              >
+                {r.year}
+              </div>
+              <div
+                style={{
+                  position: "absolute",
+                  top: 48,
+                  left: i === 0 ? 0 : i === rows.length - 1 ? 282 : 141,
+                  width: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  background: COLOUR.amber,
+                  boxShadow: "0 0 0 5px rgba(11,11,14,0.9)",
+                  transform: `scale(${s})`,
+                }}
+              />
+              <div
+                style={{
+                  marginTop: 42,
+                  fontFamily: BODY,
+                  fontWeight: 800,
+                  fontSize: 26,
+                  lineHeight: 1.2,
+                  color: COLOUR.paper,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                }}
+              >
+                {r.what}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 /** A second picture of what is being said, framed and captioned, popping in beside the footage. */
 export const PopInPicture: React.FC<{
   src: string;
@@ -397,7 +684,10 @@ export const PopInPicture: React.FC<{
 };
 
 /** A name or phrase worth landing, word by word, with an underline swipe. */
-export const KineticCaption: React.FC<{ text: string; len: number }> = ({ text: raw, len }) => {
+export const KineticCaption: React.FC<{ text: string; len: number }> = ({
+  text: raw,
+  len,
+}) => {
   const text = displayText(raw);
   const { frame, fps, out, visible } = useInOut(len, 75);
   if (!visible || !text.trim()) return null;
@@ -501,4 +791,6 @@ export const GrainVignette: React.FC = () => {
 export const Sfx: React.FC<{
   name: string; // a file under public/sfx without .mp3, e.g. "v2/air-1" (src/render/soundscape.ts)
   volume?: number;
-}> = ({ name, volume = 0.28 }) => <Audio src={staticFile(`sfx/${name}.mp3`)} volume={volume} />;
+}> = ({ name, volume = 0.28 }) => (
+  <Audio src={staticFile(`sfx/${name}.mp3`)} volume={volume} />
+);

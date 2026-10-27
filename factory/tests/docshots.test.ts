@@ -1,0 +1,261 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  docToScript,
+  groundDocMoments,
+  type DocDraft,
+  type DocMoment,
+} from "../src/editorial/documentary.ts";
+import {
+  buildLongPlan,
+  momentWindows,
+  usefulGraphic,
+} from "../src/render/longplan.ts";
+import { buildSegments } from "../src/render/timeline.ts";
+import { segmentInputs } from "../src/pipeline.ts";
+import { sentencesOf } from "../src/editorial/longform.ts";
+
+const source = {
+  title: "Grand Theft Auto V",
+  url: "https://en.wikipedia.org/wiki/Grand_Theft_Auto_V",
+  text: `## Development\nDevelopment began in 2008 and the budget was $265 million. Dan Houser said "we wanted the city to feel alive". It sold 11.21 million copies in 2013.`,
+};
+
+const none = {
+  kind: "none" as const,
+  primary: "",
+  secondary: "",
+  items: [] as string[],
+};
+const moment = (
+  g: Partial<DocMoment["graphic"]> = {},
+  broll = "",
+): DocMoment => ({
+  show: "Los Santos skyline",
+  keywords: ["Los Santos"],
+  broll,
+  graphic: { ...none, ...g },
+  emphasis: "",
+  person: "",
+});
+
+test("the shot list keeps only on-screen facts that are in the source", () => {
+  const { moments, removed } = groundDocMoments(
+    [
+      moment({ kind: "stat", primary: "$265 million", secondary: "budget" }), // under the chapter card: dropped
+      moment({
+        kind: "quote",
+        primary: "we wanted the city to feel alive",
+        secondary: "Dan Houser",
+      }),
+      moment({ kind: "stat", primary: "11.21 million", secondary: "copies" }), // straight after a graphic: dropped
+      moment(),
+      moment({
+        kind: "quote",
+        primary: "the greatest game of all time, ever made",
+        secondary: "Nobody",
+      }),
+      moment(),
+      moment({
+        kind: "timeline",
+        primary: "The road",
+        items: ["2008: Work begins", "2013: Launch"],
+      }),
+      moment(),
+      moment({
+        kind: "timeline",
+        primary: "Made up",
+        items: ["1999: Something", "2013: Launch"],
+      }),
+      moment(),
+      moment({
+        kind: "compare",
+        primary: "Budget",
+        items: ["GTA V:$265 million", "GTA IV:$100 million"],
+      }),
+    ],
+    source,
+  );
+  assert.deepEqual(
+    moments.map((m) => m.graphic.kind),
+    [
+      "none",
+      "quote",
+      "none",
+      "none",
+      "none",
+      "none",
+      "timeline",
+      "none",
+      "none",
+      "none",
+      "none",
+    ],
+  );
+  assert.equal(removed.length, 5);
+});
+
+function draftWithMoments(): DocDraft {
+  const para = (seed: string) => ({
+    narration: `${seed} opens the scene in 2008. The team grows to hundreds of people. Money pours in.`,
+    callout: { kind: "none" as const, primary: "", secondary: "" },
+    footage: { want: "gameplay" as const, keywords: [seed] },
+  });
+  const chapters = [0, 1].map((ci) => {
+    const paragraphs = [
+      para(`Alpha${ci}`),
+      para(`Beta${ci}`),
+      para(`Gamma${ci}`),
+    ];
+    const n = paragraphs.flatMap((p) => sentencesOf(p.narration)).length;
+    return {
+      plan: {
+        chapter_title: `Turn ${ci + 1}`,
+        game_title: `Game ${ci + 1}`,
+        wiki_title: `Game ${ci + 1}`,
+        steam_search_term: "",
+        year: 2008,
+        platforms: "PS3",
+        focus: "x",
+        photo_searches: [] as string[],
+      },
+      chapter: { paragraphs, claims: [] },
+      source,
+      moments: Array.from({ length: n }, (_, k) =>
+        moment(
+          k === 4
+            ? {
+                kind: "quote",
+                primary: "we wanted the city to feel alive",
+                secondary: "Dan Houser",
+              }
+            : {},
+          k === 7 ? "office at night" : "",
+        ),
+      ),
+    };
+  });
+  return {
+    topic: {
+      kind: "story",
+      franchise_index: -1,
+      story_index: 0,
+      franchise: "GTA",
+      title_idea: "x",
+      angle: "x",
+      reason: "x",
+    },
+    outline: {
+      question: "Why?",
+      title: "Why",
+      kicker: "k",
+      franchise_wiki_title: "GTA",
+      chapters: chapters.map((c) => c.plan),
+      youtube: { title: "t", description: "d", tags: [] },
+    },
+    chapters,
+    bookends: {
+      intro: {
+        narration: "Welcome to the story. It begins here.",
+        on_screen: "x",
+      },
+      outro: {
+        label: "Verdict",
+        narration: "That is the story. Thanks for watching.",
+        on_screen: "y",
+      },
+    },
+  } as DocDraft;
+}
+
+function timed(s: ReturnType<typeof docToScript>) {
+  const all = segmentInputs(s).flatMap((x) =>
+    x.text.split(/\s+/).filter(Boolean),
+  );
+  return all.map((text, i) => ({ text, start: i * 0.4, end: i * 0.4 + 0.35 }));
+}
+
+test("a documentary chapter's shot list runs on across its paragraphs (27 Oct 2026)", () => {
+  const s = docToScript(draftWithMoments());
+  const entries = [...s.entries!].sort((a, b) => b.rank - a.rank);
+  assert.equal(
+    entries[0]!.moments!.length,
+    9,
+    "three sentences in each of three paragraphs",
+  );
+  const w = timed(s);
+  const segs = buildSegments(segmentInputs(s), w, w.at(-1)!.end + 6);
+  const windows = momentWindows(
+    segs,
+    w,
+    entries.map((e) => e.moments!.length),
+  );
+  const first = windows.filter((x) => x.entry === 0);
+  assert.deepEqual(
+    first.map((x) => x.moment),
+    [0, 1, 2, 3, 4, 5, 6, 7, 8],
+  );
+  // Paragraph two's first sentence is moment 3 and starts its own segment.
+  assert.equal(new Set(first.map((x) => x.segment)).size, 3);
+  assert.ok(first[3]!.segment !== first[2]!.segment);
+});
+
+test("a B-roll clip plays on the sentence it was picked for, not earlier", () => {
+  const s = docToScript(draftWithMoments());
+  const entries = [...s.entries!].sort((a, b) => b.rank - a.rank);
+  const w = timed(s);
+  const segs = buildSegments(segmentInputs(s), w, w.at(-1)!.end + 6);
+  const windows = momentWindows(
+    segs,
+    w,
+    entries.map((e) => e.moments!.length),
+  );
+  const images = Array.from({ length: 6 }, () => ({
+    kind: "screenshot",
+    aspect: 1.78,
+    beatIndex: 0,
+  }));
+  const clips = [
+    { durationSeconds: 4, beatIndex: 0, moment: 7 }, // stock for sentence 7
+    { durationSeconds: 4, beatIndex: 0 }, // a trailer moment
+  ];
+  const plan = buildLongPlan({
+    segments: segs,
+    words: w,
+    durationSeconds: w.at(-1)!.end + 6,
+    images,
+    clips,
+    variant: 0,
+    momentCounts: entries.map((e) => e.moments!.length),
+  });
+  const stockShot = plan.shots.find(
+    (x) => x.media.type === "clip" && x.media.index === 0,
+  );
+  assert.ok(stockShot, "the B-roll is used");
+  const seven = windows.find((x) => x.entry === 0 && x.moment === 7)!;
+  assert.ok(
+    stockShot!.start >= Math.round(seven.start * 30) - 1,
+    "not before its sentence",
+  );
+  assert.ok(plan.shots.every((x) => x.end > x.start));
+});
+
+test("a quote or timeline is never mistaken for a rank graphic", () => {
+  assert.equal(
+    usefulGraphic({
+      kind: "quote",
+      primary: "the best place to work in the first place",
+      secondary: "x",
+    }),
+    true,
+  );
+  assert.equal(
+    usefulGraphic({
+      kind: "timeline",
+      primary: "",
+      secondary: "",
+      items: ["2008: a", "2013: b"],
+    } as any),
+    true,
+  );
+});

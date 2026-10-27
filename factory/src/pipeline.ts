@@ -52,6 +52,9 @@ import {
   writeBookends,
   validateBookends,
   docToScript,
+  writeDocMoments,
+  groundDocMoments,
+  type DocMoment,
   docWordCount,
   DOC_CHAPTERS_MIN,
   DOC_WORDS_MIN,
@@ -1895,7 +1898,37 @@ async function stepScriptDocumentary(
             `${plan.game_title}: on-screen ${r} not in the source, removed`,
         ),
       );
-    chapters.push({ plan, chapter: grounded.chapter, source });
+    // The shot list: a picture, graphic, caption or B-roll for every sentence (one mid-tier call a chapter).
+    let moments: DocMoment[] | undefined;
+    try {
+      const sentences = grounded.chapter.paragraphs.flatMap((p) =>
+        sentencesOf(p.narration),
+      );
+      const shot = groundDocMoments(
+        await writeDocMoments(s.llm, {
+          game: plan.game_title,
+          chapterTitle: plan.chapter_title,
+          sentences,
+          source,
+        }),
+        source,
+      );
+      moments = shot.moments;
+      if (shot.removed.length)
+        warnings.push(
+          ...shot.removed.map(
+            (r) =>
+              `${plan.game_title}: on-screen ${r} not in the source, removed`,
+          ),
+        );
+    } catch (err) {
+      log("warn", "documentary shot list failed", {
+        episode: ep.id,
+        chapter: index + 1,
+        error: errorMessage(err),
+      });
+    }
+    chapters.push({ plan, chapter: grounded.chapter, source, moments });
     log("info", "documentary chapter written", {
       episode: ep.id,
       chapter: index + 1,
@@ -4911,7 +4944,53 @@ async function gatherChapterMedia(
       error: errorMessage(err),
     });
   }
+  // Real-world B-roll: licensed stock for the sentences the shot list marks (the studio, money, a leak),
+  // played on its own sentence and labelled illustrative on screen.
+  try {
+    const targets: FootageTarget[] = (entry.moments ?? [])
+      .map((m, k) => ({ m, k }))
+      .filter((x) => x.m.broll?.trim())
+      .slice(0, DOC_BROLL_PER_CHAPTER)
+      .map(({ m, k }) => ({
+        key: `beat:${beatIndex}#m${k}`,
+        text: m.broll!,
+        want: "cinematic" as const,
+        energy: "medium" as const,
+        keywords: [m.broll!],
+      }));
+    if (targets.length)
+      for (const c of await s.fetchStock(
+        edir,
+        targets,
+        franchise.split(/\s+/),
+        targets.length,
+      ))
+        clips.push({
+          file: rel(c.file),
+          sourceUrl: c.sourceUrl,
+          provenance: c.provenance,
+          durationSeconds: c.durationSeconds ?? 4,
+          beatIndex,
+          role: undefined,
+          motion: 0.5,
+          luma: undefined,
+          label: c.label,
+          reason: c.reason,
+          startSeconds: 0,
+          stock: true,
+          moment: c.moment,
+          credit: "ILLUSTRATIVE · STOCK FOOTAGE: PEXELS",
+        });
+  } catch (err) {
+    log("warn", "documentary B-roll failed", {
+      game: entry.game_title,
+      error: errorMessage(err),
+    });
+  }
 }
+
+/** Licensed stock shots a documentary chapter may use for its real-world sentences. */
+const DOC_BROLL_PER_CHAPTER = 5;
 
 /**
  * The Steam page for a ranking entry, only when it is that release: Steam's

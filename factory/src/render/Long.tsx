@@ -3,7 +3,20 @@
 // each entry that collapses to a tag, an intro title, the pick as the outro
 // and a quiet end card. No burned captions: the SRT track carries them.
 
-import { gateLongSounds, inKey, leadFrames, LEVEL, SFX, type LongSoundCandidate } from "./soundscape.ts";
+import {
+  BEDS,
+  gateLongSounds,
+  inKey,
+  leadFrames,
+  LEVEL,
+  SFX,
+  type LongSoundCandidate,
+} from "./soundscape.ts";
+
+/** Seconds a long video stays on one music bed before changing at the next chapter or entry. */
+const MUSIC_SECTION_SECONDS = 150;
+/** Frames two beds overlap as one hands over to the next. */
+const MUSIC_XFADE = 45;
 import React, { useMemo } from "react";
 import {
   AbsoluteFill,
@@ -37,6 +50,8 @@ import {
   KineticCaption,
   MomentGraphicCard,
   PopInPicture,
+  QuoteMoment,
+  TimelineMoment,
   Sfx,
   type MomentProp,
 } from "./components/LongMoments.tsx";
@@ -241,7 +256,11 @@ const Still: React.FC<{
   );
 };
 
-const Clip: React.FC<{ src: string; audio?: boolean; frames?: number }> = ({ src, audio, frames }) => {
+const Clip: React.FC<{ src: string; audio?: boolean; frames?: number }> = ({
+  src,
+  audio,
+  frames,
+}) => {
   const frame = useCurrentFrame();
   // A hard cut: fading in from transparent showed the black canvas under it for a few frames.
   return (
@@ -1134,20 +1153,70 @@ export const Long: React.FC<LongProps> = (props) => {
       talk += speaking[Math.min(durationInFrames, Math.max(0, f + k))] ?? 0;
     return fadeIn * fadeOut * interpolate(talk / 5, [0, 1], [0.22, 0.07]);
   };
+  // The music changes bed at the first chapter or entry after MUSIC_SECTION_SECONDS on one bed: a 30-minute
+  // documentary looped a single two-minute bed fifteen times (owner, 27 Oct 2026).
+  const beds = useMemo(() => {
+    if (!props.musicSrc)
+      return [] as Array<{ from: number; to: number; src: string }>;
+    const first = BEDS.findIndex((b) => b.file === props.musicSrc);
+    if (first < 0)
+      return [{ from: 0, to: durationInFrames, src: props.musicSrc }];
+    const cuts = props.segments
+      .map((s, i) =>
+        s.kind === "beat" &&
+        (s.visual?.kind === "rank" || s.visual?.kind === "chapter") &&
+        i > 0
+          ? starts[i]!
+          : -1,
+      )
+      .filter((f) => f > 0);
+    const out: Array<{ from: number; to: number; src: string }> = [];
+    let from = 0;
+    let k = first;
+    for (const c of cuts) {
+      if (c - from < MUSIC_SECTION_SECONDS * fps) continue;
+      out.push({ from, to: c, src: BEDS[k % BEDS.length]!.file });
+      from = c;
+      k++;
+    }
+    out.push({ from, to: durationInFrames, src: BEDS[k % BEDS.length]!.file });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.musicSrc, props.segments, durationInFrames, fps]);
+  const bedAt = (f: number) =>
+    beds.find((b) => f >= b.from && f < b.to)?.src ?? props.musicSrc;
   // Each sentence's graphic, caption or picture lands a beat before the narrator names it and holds until
   // the next sentence's lands (2.5 s at least, so it can be read), instead of riding the whole sentence.
-  const spanOf = (k: number): { from: number; len: number; anchored: boolean } => {
+  const spanOf = (
+    k: number,
+  ): { from: number; len: number; anchored: boolean } => {
     const w = windows[k]!;
     const next = windows[k + 1];
     const anchored = w.at > w.start;
-    const from = Math.max(Math.round(w.start * fps), Math.round((w.at - 0.15) * fps));
-    const until = next && next.entry === w.entry ? Math.round((next.at - 0.15) * fps) : Math.round(w.end * fps);
-    return { from, len: Math.max(1, Math.max(until, from + Math.round(2.5 * fps)) - from), anchored };
+    const from = Math.max(
+      Math.round(w.start * fps),
+      Math.round((w.at - 0.15) * fps),
+    );
+    const until =
+      next && next.entry === w.entry
+        ? Math.round((next.at - 0.15) * fps)
+        : Math.round(w.end * fps);
+    return {
+      from,
+      len: Math.max(1, Math.max(until, from + Math.round(2.5 * fps)) - from),
+      anchored,
+    };
   };
   // Moment sounds, gated (src/render/soundscape.ts): glints on numbers and whooshes on pop-in pictures,
   // spaced out and kept clear of each entry's own swell and landing.
   const entryFrames = props.segments
-    .map((s, i) => (s.kind === "beat" && (s.visual?.kind === "rank" || s.visual?.kind === "chapter") && i > 0 ? starts[i]! : -1))
+    .map((s, i) =>
+      s.kind === "beat" &&
+      (s.visual?.kind === "rank" || s.visual?.kind === "chapter") &&
+      i > 0
+        ? starts[i]!
+        : -1,
+    )
     .filter((f) => f >= 0);
   const momentSounds = gateLongSounds(
     windows.flatMap((w, k): LongSoundCandidate[] => {
@@ -1155,11 +1224,25 @@ export const Long: React.FC<LongProps> = (props) => {
       if (!raw) return [];
       const { from, len, anchored } = spanOf(k);
       const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
-      if (graphic === "stat" || graphic === "score") return [{ key: k, frame: from, kind: "glint" as const }];
+      if (graphic === "stat" || graphic === "score")
+        return [{ key: k, frame: from, kind: "glint" as const }];
       const shot = plan.shots.find((x) => from >= x.start && from < x.end);
-      const pic = props.images.some((im) => im.beatIndex === w.entry && im.moment === w.moment);
-      if (graphic === "none" && shot?.media.type === "clip" && pic && w.moment > 0)
-        return [{ key: k, frame: from + (anchored ? 0 : Math.min(30, Math.max(0, len - 90))), kind: "pop" as const }];
+      const pic = props.images.some(
+        (im) => im.beatIndex === w.entry && im.moment === w.moment,
+      );
+      if (
+        graphic === "none" &&
+        shot?.media.type === "clip" &&
+        pic &&
+        w.moment > 0
+      )
+        return [
+          {
+            key: k,
+            frame: from + (anchored ? 0 : Math.min(30, Math.max(0, len - 90))),
+            kind: "pop" as const,
+          },
+        ];
       return [];
     }),
     entryFrames,
@@ -1185,7 +1268,15 @@ export const Long: React.FC<LongProps> = (props) => {
       <GrainVignette />
       <Brand
         logoSrc={resolveSrc(props.logoSrc)}
-        chip={props.recap ? "THIS WEEK" : documentary ? "DOCUMENTARY" : total ? `TOP ${total}` : "RANKED"}
+        chip={
+          props.recap
+            ? "THIS WEEK"
+            : documentary
+              ? "DOCUMENTARY"
+              : total
+                ? `TOP ${total}`
+                : "RANKED"
+        }
         progress={Math.min(1, frame / Math.max(1, durationInFrames))}
       />
       <Credit text={creditAt(frame)} />
@@ -1265,9 +1356,11 @@ export const Long: React.FC<LongProps> = (props) => {
             </Sequence>
           );
         }
+        // A chapter with a shot list puts its facts on screen sentence by sentence instead.
         if (
           s.kind === "beat" &&
           documentary &&
+          !props.moments?.[entryOf(props.segments, i) ?? -1]?.length &&
           (s.visual?.kind === "quote" ||
             s.visual?.kind === "stat" ||
             s.visual?.kind === "date") &&
@@ -1351,10 +1444,16 @@ export const Long: React.FC<LongProps> = (props) => {
             durationInFrames={len}
             layout="none"
           >
-            {m.graphic.kind !== "none" ? (
+            {m.graphic.kind === "quote" ? (
+              <QuoteMoment g={m.graphic} len={len} />
+            ) : m.graphic.kind === "timeline" ? (
+              <TimelineMoment g={m.graphic} len={len} />
+            ) : m.graphic.kind !== "none" ? (
               <>
                 <MomentGraphicCard g={m.graphic} len={len} />
-                {momentSounds.get(k) ? <Sfx name={momentSounds.get(k)!} volume={LEVEL.glintLong} /> : null}
+                {momentSounds.get(k) ? (
+                  <Sfx name={momentSounds.get(k)!} volume={LEVEL.glintLong} />
+                ) : null}
               </>
             ) : m.emphasis && w.moment > 0 ? (
               <>
@@ -1372,7 +1471,9 @@ export const Long: React.FC<LongProps> = (props) => {
                   len={anchored ? len : len - 30}
                   side={w.moment % 2 ? "right" : "left"}
                 />
-                {momentSounds.get(k) ? <Sfx name={momentSounds.get(k)!} volume={LEVEL.airLong} /> : null}
+                {momentSounds.get(k) ? (
+                  <Sfx name={momentSounds.get(k)!} volume={LEVEL.airLong} />
+                ) : null}
               </Sequence>
             ) : null}
           </Sequence>
@@ -1395,13 +1496,29 @@ export const Long: React.FC<LongProps> = (props) => {
       )}
       {/* Each new entry: a swell whose peak meets a warm low hit as the rank card arrives, both in the music's key. */}
       {props.segments.map((s, i) =>
-        s.kind === "beat" && (s.visual?.kind === "rank" || s.visual?.kind === "chapter") && i > 0 ? (
+        s.kind === "beat" &&
+        (s.visual?.kind === "rank" || s.visual?.kind === "chapter") &&
+        i > 0 ? (
           <React.Fragment key={`snd${i}`}>
-            <Sequence from={Math.max(0, starts[i]! - leadFrames(SFX.swell, fps))} durationInFrames={60} layout="none">
-              <Sfx name={inKey(SFX.swell, props.musicSrc)} volume={LEVEL.swellLong} />
+            <Sequence
+              from={Math.max(0, starts[i]! - leadFrames(SFX.swell, fps))}
+              durationInFrames={60}
+              layout="none"
+            >
+              <Sfx
+                name={inKey(SFX.swell, bedAt(starts[i]!))}
+                volume={LEVEL.swellLong}
+              />
             </Sequence>
-            <Sequence from={Math.max(0, starts[i]! - leadFrames(SFX.land[0], fps))} durationInFrames={75} layout="none">
-              <Sfx name={inKey(SFX.land[i % SFX.land.length]!, props.musicSrc)} volume={LEVEL.landLong} />
+            <Sequence
+              from={Math.max(0, starts[i]! - leadFrames(SFX.land[0], fps))}
+              durationInFrames={75}
+              layout="none"
+            >
+              <Sfx
+                name={inKey(SFX.land[i % SFX.land.length]!, bedAt(starts[i]!))}
+                volume={LEVEL.landLong}
+              />
             </Sequence>
           </React.Fragment>
         ) : null,
@@ -1409,15 +1526,50 @@ export const Long: React.FC<LongProps> = (props) => {
       {/* The brand sting opens the video and closes it, ringing out before the last frame. The closing one
           plays after the narrator has finished, with nothing to mask it, so it sits 3 dB lower. */}
       <Sequence from={0} durationInFrames={75} layout="none">
-        <Sfx name={inKey(SFX.sting, props.musicSrc)} volume={LEVEL.sting * 0.8} />
+        <Sfx
+          name={inKey(SFX.sting, props.musicSrc)}
+          volume={LEVEL.sting * 0.8}
+        />
       </Sequence>
-      <Sequence from={Math.max(0, durationInFrames - 75)} durationInFrames={75} layout="none">
-        <Sfx name={inKey(SFX.sting, props.musicSrc)} volume={LEVEL.sting * 0.5} />
+      <Sequence
+        from={Math.max(0, durationInFrames - 75)}
+        durationInFrames={75}
+        layout="none"
+      >
+        <Sfx
+          name={inKey(SFX.sting, bedAt(durationInFrames - 1))}
+          volume={LEVEL.sting * 0.5}
+        />
       </Sequence>
       {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
-      {props.musicSrc ? (
-        <Audio src={resolveSrc(props.musicSrc)!} volume={musicVolume} loop />
-      ) : null}
+      {beds.map((b, k) => {
+        // Each bed fades in and out over MUSIC_XFADE frames around its section, under the chapter's swell.
+        const lead = k === 0 ? 0 : MUSIC_XFADE;
+        const tail = k === beds.length - 1 ? 0 : MUSIC_XFADE;
+        const from = b.from - lead;
+        const span = b.to - b.from + lead + tail;
+        return (
+          <Sequence
+            key={`bed${k}`}
+            from={from}
+            durationInFrames={Math.max(1, span)}
+            layout="none"
+          >
+            <Audio
+              src={resolveSrc(b.src)!}
+              loop
+              volume={(f) => {
+                const edge = Math.min(
+                  1,
+                  lead ? f / lead : 1,
+                  tail ? (span - f) / tail : 1,
+                );
+                return musicVolume(from + f) * Math.max(0, edge);
+              }}
+            />
+          </Sequence>
+        );
+      })}
     </AbsoluteFill>
   );
 };

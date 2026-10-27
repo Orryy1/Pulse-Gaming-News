@@ -82,6 +82,13 @@ export const MomentSchema = z.object({
     ),
 });
 export type Moment = z.infer<typeof MomentSchema>;
+/** A documentary's shot list adds a full-screen quote, a timeline and real-world B-roll (src/editorial/documentary.ts). */
+export type AnyMoment = Omit<Moment, "graphic"> & {
+  graphic: Omit<Moment["graphic"], "kind"> & {
+    kind: Moment["graphic"]["kind"] | "quote" | "timeline";
+  };
+  broll?: string;
+};
 
 /** Sentences as the narration is split for moments and on-screen timing. */
 export function sentencesOf(text: string): string[] {

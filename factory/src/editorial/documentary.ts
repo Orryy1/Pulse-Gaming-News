@@ -515,6 +515,182 @@ export function groundCallouts(
 
 const wordCount = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 
+// ---------------------------------------------------------------- shot list
+
+/**
+ * A documentary's shot list, one moment per sentence (the long-form rankings' picture editor, widened):
+ * the documentaries ran on a still with a small corner card every two minutes and repeated the same
+ * three photos for whole chapters (GTA VI documentary, 27 Oct 2026). Each sentence now names what is on
+ * screen and may carry a graphic (including a full-screen quote and a timeline), a kinetic caption, the
+ * person it is about, or real-world B-roll from licensed stock.
+ */
+export const DOC_GRAPHIC_KINDS = [
+  "none",
+  "stat",
+  "date",
+  "list",
+  "compare",
+  "timeline",
+  "quote",
+] as const;
+
+export const DocMomentSchema = z.object({
+  show: z
+    .string()
+    .describe(
+      "What is on screen while this sentence is spoken: the game moment, place, person or real-world thing it names, 3-12 words",
+    ),
+  keywords: z
+    .array(z.string())
+    .max(4)
+    .describe("1-4 short search terms for that picture"),
+  broll: z
+    .string()
+    .describe(
+      "Only when the sentence is about the real world rather than a game (a studio, money, a court case, crunch, a leak, a launch event, hardware): 2-4 plain words to search licensed stock footage, e.g. 'office at night', 'counting cash', 'server room', 'people queueing at a shop'. Never a game, a brand, a logo or a named person. Otherwise empty",
+    ),
+  graphic: z.object({
+    kind: z.enum(DOC_GRAPHIC_KINDS),
+    primary: z
+      .string()
+      .describe(
+        "stat: the figure as the source writes it, e.g. '17 million'; date: e.g. 'September 2013'; list, compare, timeline: a 2-4 word heading; quote: the quote copied word for word from the SOURCE, 6-30 words; none: empty",
+      ),
+    secondary: z
+      .string()
+      .describe(
+        "stat/date: what it is, 2-6 words; quote: who said it and their role, e.g. 'Dan Houser, Rockstar co-founder'; empty otherwise",
+      ),
+    items: z
+      .array(z.string())
+      .max(5)
+      .describe(
+        "list: 2-5 short items; compare: exactly two or three 'label:value' rows; timeline: 2-5 'year: what happened' rows in time order, 2-6 words each, e.g. '2013: GTA V launches'; empty otherwise",
+      ),
+  }),
+  emphasis: z
+    .string()
+    .describe(
+      "0-4 words from this sentence to land on screen as a kinetic caption (a name or phrase), or empty",
+    ),
+  person: z
+    .string()
+    .describe(
+      "The real person or character this sentence is mainly about, by full name, or empty",
+    ),
+});
+export type DocMoment = z.infer<typeof DocMomentSchema>;
+
+export function docMomentsSchema(count: number) {
+  return z.object({
+    moments: z
+      .array(DocMomentSchema)
+      .min(count)
+      .max(count)
+      .describe(`Exactly ${count}: moment 1 for sentence 1, and so on`),
+  });
+}
+
+export const DOC_MOMENTS_PROMPT = `You are the picture editor and motion-graphics designer for a long gaming documentary in the style of the best YouTube documentary channels. You get one chapter's narration as numbered sentences and its SOURCE, and return exactly one moment per sentence, in order.
+The viewer should never sit on one picture for long. Every sentence names what is on screen ("show"), with 1-4 search keywords.
+Explanatory graphics carry the story. Across the chapter, about four sentences in ten carry a graphic, never two in a row:
+- quote: when the SOURCE quotes someone saying something revealing, put it on screen full size. Copy it word for word from the SOURCE (6-30 words) and name the speaker and role. One or two per chapter when the source has them; never invent or reword one.
+- timeline: when a sentence moves through time or the chapter spans years, 2-5 "year: what happened" rows from the source, in order.
+- compare: two or three "label:value" rows for a contrast the sentence draws ($59 against $69, 11 million against 25 million).
+- stat: one striking figure the sentence says, exactly as the source writes it.
+- date: the moment something happened.
+- list: 2-5 things the sentence names.
+Every figure, year and quote in a graphic must be in the SOURCE.
+B-roll: when a sentence is about the real world (the studio, its staff, money, contracts, a court case, a leak, crunch, a launch queue, a console), give "broll" a plain stock-footage search so a real shot can play; about one sentence in four. Never for something inside a game.
+"emphasis" lands a complete name or phrase in about a third of the sentences without a graphic, never a fragment. "person" names the real person or character a sentence is mainly about.`;
+
+/** One moment per sentence of a chapter; a short answer is padded so no sentence goes without one. */
+export async function writeDocMoments(
+  llm: Llm,
+  ctx: {
+    game: string;
+    chapterTitle: string;
+    sentences: string[];
+    source: WikiArticle;
+  },
+): Promise<DocMoment[]> {
+  const n = Math.max(1, ctx.sentences.length);
+  let got: DocMoment[] = [];
+  for (let attempt = 0; attempt < 2 && got.length !== n; attempt++) {
+    try {
+      const r = await llm.structured({
+        tier: "mid",
+        system: DOC_MOMENTS_PROMPT,
+        content: `Chapter: ${ctx.chapterTitle} (${ctx.game})\n\n${ctx.sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}\n\nReturn exactly ${n} moments.`,
+        schema: docMomentsSchema(n),
+        effort: "low",
+        maxTokens: 12000,
+      });
+      got = r.moments;
+    } catch {
+      // A list of the wrong length fails the schema; the second try or the padding covers it.
+    }
+  }
+  const pad = (i: number): DocMoment => ({
+    show: `${ctx.game}: ${ctx.sentences[i] ?? ctx.game}`.slice(0, 120),
+    keywords: [ctx.game],
+    broll: "",
+    graphic: { kind: "none", primary: "", secondary: "", items: [] },
+    emphasis: "",
+    person: "",
+  });
+  return Array.from({ length: n }, (_, i) => got[i] ?? pad(i));
+}
+
+/**
+ * On-screen facts in the shot list must be in the source as written, the same rule as the callouts:
+ * a quote word for word, every number and year in a graphic. A graphic that fails is taken off the
+ * screen (the sentence keeps its picture); two graphics in a row lose the second.
+ */
+export function groundDocMoments(
+  moments: DocMoment[],
+  source: WikiArticle,
+): { moments: DocMoment[]; removed: string[] } {
+  const hay = norm(source.text);
+  const removed: string[] = [];
+  const none = { kind: "none" as const, primary: "", secondary: "", items: [] };
+  const digitsOk = (t: string) =>
+    (t.match(/\d[\d,.]*/g) ?? []).every((d) => hay.includes(norm(d)));
+  let prevGraphic = false;
+  const out = moments.map((m, i) => {
+    const g = m.graphic;
+    // The chapter's first sentence plays under its title card.
+    let ok = g.kind !== "none" && i > 0;
+    if (ok && g.kind === "quote")
+      ok =
+        wordCount(g.primary) >= 4 &&
+        wordCount(g.primary) <= 40 &&
+        hay.includes(norm(g.primary.replace(/^["“]|["”]$/g, "")));
+    if (ok && g.kind === "stat")
+      ok = /\d/.test(g.primary) && digitsOk(g.primary);
+    if (ok && g.kind === "date") {
+      const year = g.primary.match(/\b(19|20)\d\d\b/)?.[0];
+      ok = !year || hay.includes(year);
+    }
+    if (
+      ok &&
+      (g.kind === "timeline" || g.kind === "compare" || g.kind === "list")
+    )
+      ok =
+        g.items.length >= 2 &&
+        g.items.every((x) => digitsOk(x)) &&
+        (g.kind !== "compare" || g.items.every((x) => x.includes(":"))) &&
+        (g.kind !== "timeline" ||
+          g.items.every((x) => /\b(19|20)\d\d\b/.test(x)));
+    if (ok && prevGraphic) ok = false;
+    if (g.kind !== "none" && !ok)
+      removed.push(`${g.kind}: ${g.primary || g.items.join(" | ")}`);
+    prevGraphic = ok;
+    return ok ? m : { ...m, graphic: none };
+  });
+  return { moments: out, removed };
+}
+
 export function validateChapter(c: DocChapter): string[] {
   const p: string[] = [];
   const words = c.paragraphs.reduce((n, x) => n + wordCount(x.narration), 0);
@@ -618,6 +794,8 @@ export interface DocDraft {
     plan: DocChapterPlan;
     chapter: DocChapter;
     source: WikiArticle;
+    /** One per sentence across the chapter's paragraphs, in order. */
+    moments?: DocMoment[];
   }>;
   bookends: DocBookends;
 }
@@ -687,13 +865,14 @@ export function docToScript(d: DocDraft): Script {
         source_url: c.source.url,
       })),
     ),
-    entries: d.chapters.map(({ plan }, ci) => ({
+    entries: d.chapters.map(({ plan, moments }, ci) => ({
       rank: n - ci,
       game_title: plan.game_title,
       steam_search_term: plan.steam_search_term,
       year: plan.year,
       platforms: plan.platforms,
       photos: plan.photo_searches ?? [],
+      ...(moments?.length ? { moments } : {}),
     })),
     evergreen_format: "documentary",
     runtime: "long",

@@ -237,7 +237,7 @@ export type Script = z.infer<typeof ScriptSchema> & {
     platforms: string;
     icon?: string;
     photos?: string[];
-    moments?: import("./longform.ts").Moment[];
+    moments?: import("./longform.ts").AnyMoment[];
     /** A recap chapter: the Short whose checked media it reuses. */ from_episode?: string;
   }>;
   /** Which evergreen format produced the Short, for its title formula. */

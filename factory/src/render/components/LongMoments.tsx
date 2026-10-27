@@ -526,7 +526,7 @@ const lines = (n: number, seed: number) =>
   Array.from({ length: n }, (_, i) => 62 + ((i * 37 + seed * 11) % 36));
 
 /**
- * The press story as a recreated clipping: a newspaper cutting for older stories (before 2005), a
+ * The press story as a recreated clipping: a newspaper cutting for older stories (before 2007), a
  * web article for later ones. Never a real outlet's page: a generic section header, the headline the
  * shot list wrote from the source, placeholder text, and the outlet only in the credit underneath,
  * tagged as an illustration.
@@ -543,7 +543,7 @@ export const HeadlineMoment: React.FC<{
   const outlet = g.secondary.split(",")[0]!.trim();
   const named =
     outlet && !/^(19|20)\d\d$/.test(outlet) ? displayText(outlet) : "";
-  const print = Boolean(year && Number(year) < 2005);
+  const print = Boolean(year && Number(year) < 2007);
   const headline = displayText(g.primary);
   const dim = interpolate(frame, [0, 12, showFor - 12, showFor], [0, 1, 1, 0], {
     extrapolateLeft: "clamp",

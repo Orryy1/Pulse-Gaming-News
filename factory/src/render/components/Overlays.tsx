@@ -600,7 +600,15 @@ export const FactCard: React.FC<{
             }}
           >
             {["#ff5f57", "#febc2e", "#28c840"].map((c) => (
-              <div key={c} style={{ width: 13, height: 13, borderRadius: 7, background: c }} />
+              <div
+                key={c}
+                style={{
+                  width: 13,
+                  height: 13,
+                  borderRadius: 7,
+                  background: c,
+                }}
+              />
             ))}
             <div
               style={{
@@ -662,12 +670,16 @@ export const FactCard: React.FC<{
             </div>
           </div>
         </div>
+        {/* The credit on a dark pill: it must read over any footage. */}
         <div
           style={{
             marginTop: 16,
-            display: "flex",
+            display: "inline-flex",
             alignItems: "center",
             gap: 14,
+            padding: "10px 16px",
+            background: "rgba(11,11,14,0.85)",
+            borderRadius: 10,
           }}
         >
           <div

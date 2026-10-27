@@ -288,7 +288,9 @@ export const TextureBackground: React.FC<{
       // narrow bands), amber on slate, drifting like a slow map pan.
       const id = `contour${v}`;
       const x = -drift(frame, 0.3);
-      const bands = Array.from({ length: 13 }, (_, i) => (i % 2 ? "0 1 0" : "0 0 0")).join(" ");
+      const bands = Array.from({ length: 13 }, (_, i) =>
+        i % 2 ? "0 1 0" : "0 0 0",
+      ).join(" ");
       return (
         <AbsoluteFill style={{ background: "#14171c", overflow: "hidden" }}>
           <svg
@@ -296,11 +298,28 @@ export const TextureBackground: React.FC<{
             preserveAspectRatio="none"
             width={1200}
             height={700}
-            style={{ position: "absolute", left: x * 1.6, top: -60, width: 2400, height: 1400, opacity: 0.5 }}
+            style={{
+              position: "absolute",
+              left: x * 1.6,
+              top: -60,
+              width: 2400,
+              height: 1400,
+              opacity: 0.5,
+            }}
           >
             <filter id={id}>
-              <feTurbulence type="fractalNoise" baseFrequency="0.004" numOctaves={2} seed={200 + v} result="n" />
-              <feColorMatrix in="n" type="matrix" values="0 0 0 0 1  0 0 0 0 0.45  0 0 0 0 0.12  1 0 0 0 0" />
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.004"
+                numOctaves={2}
+                seed={200 + v}
+                result="n"
+              />
+              <feColorMatrix
+                in="n"
+                type="matrix"
+                values="0 0 0 0 1  0 0 0 0 0.45  0 0 0 0 0.12  1 0 0 0 0"
+              />
               <feComponentTransfer>
                 <feFuncA type="table" tableValues={bands} />
               </feComponentTransfer>
@@ -319,21 +338,22 @@ export const TextureBackground: React.FC<{
       return (
         <AbsoluteFill
           style={{
-            background: "#0b0f0d",
+            background: "#0e1512",
             overflow: "hidden",
             opacity: flicker,
           }}
         >
+          {/* The tube's glow, brighter at the centre like a warmed-up set. */}
           <AbsoluteFill
             style={{
               background:
-                "radial-gradient(ellipse at 50% 45%, rgba(70,140,110,0.55) 0%, rgba(20,40,30,0.3) 45%, rgba(0,0,0,0) 75%)",
+                "radial-gradient(ellipse at 50% 45%, rgba(90,190,140,0.75) 0%, rgba(30,70,50,0.45) 45%, rgba(0,0,0,0) 80%)",
             }}
           />
           <AbsoluteFill
             style={{
               backgroundImage:
-                "repeating-linear-gradient(180deg, rgba(0,0,0,0.55) 0 2px, transparent 2px 4px)",
+                "repeating-linear-gradient(180deg, rgba(0,0,0,0.6) 0 3px, transparent 3px 6px)",
             }}
           />
           <AbsoluteFill
@@ -535,7 +555,7 @@ export function backgroundFor(
     case "source":
       return pick(["kraft", "crumpled", "notebook"]);
     case "headline":
-      return year && year < 2005
+      return year && year < 2007
         ? pick(["kraft", "crumpled", "newsprint"])
         : pick(["graph", "aurora", "lightleak"]);
     case "timeline":

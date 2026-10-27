@@ -85,6 +85,24 @@ import {
 } from "./components/EditorMoves.tsx";
 import { ALL_STYLES } from "./components/packs/index.ts";
 import { CAPTION_STYLES } from "./components/Captions.tsx";
+import { motifsFor } from "./components/motifs/index.ts";
+import type { Motif } from "./components/motifs/types.ts";
+import {
+  ArcadeCabinet,
+  ChannelStatic,
+  CrtLook,
+  DEVICE_FRAMES,
+  deviceFor,
+  Handheld,
+  handheldGreen,
+  OLD_YEAR,
+  PowerOff,
+  RetroMonitor,
+  STATIC_FRAMES,
+  VcrTV,
+  VhsLook,
+  type Device,
+} from "./components/Retro.tsx";
 import { NAMETAG_STYLES } from "./components/NameTags.tsx";
 import { SlateInterlude, TornInterlude, VhsInterlude } from "./components/Interludes.tsx";
 import {
@@ -157,6 +175,10 @@ const resolveSrc = (src: string | null) =>
 const CROP = 1.12; // trims letterbox bars and burned-in subtitles from trailer clips
 const SAFE_X = 96;
 const SAFE_BOTTOM = 72;
+/** Frames the video's motif title card opens the video for, before the usual title. */
+const MOTIF_OPEN = 150;
+/** The hardware an old game's opening shot plays on (src/render/components/Retro.tsx). */
+type OldDevice = { device: Device | "tv"; label: string; green: boolean };
 /** How far a punch-in jumps: a tenth closer, the editor's cut-in on a key word. */
 const PUNCH = 1.1;
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
@@ -854,53 +876,79 @@ const Backdrop: React.FC<{
     number,
     { from: number; origin: { x: number; y: number }; zoom: number }
   >;
-  /** Shots of a pre-2006 game shown on a CRT of its day before the camera pushes through the glass. */
-  retro?: Set<number>;
+  /** Shots of an old game opening on the hardware of its day before the camera pushes through the glass. */
+  retro?: Map<number, OldDevice>;
+  /** Shots of an old game worn as a VHS tape or a CRT picture. */
+  looks?: Map<number, "vhs" | "crt">;
+  /** An old game's last shot, switching off the way a tube did. */
+  powerOff?: Set<number>;
   /** Per shot index: the absolute frame of its punch-in. */
   punches?: Map<number, number>;
-}> = ({ plan, images, clips, theme, describe, focusFor, retro, punches }) => (
+}> = ({ plan, images, clips, theme, describe, focusFor, retro, looks, powerOff, punches }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
       const len = Math.max(1, s.end - s.start);
       const img = s.media.type === "image" ? images[s.media.index] : undefined;
       const clip = s.media.type === "clip" ? clips[s.media.index] : undefined;
+      // A still dissolves in over the shot before, except after a tube switching off (it cuts from black).
+      const xf = powerOff?.has(i - 1) ? 0 : Math.min(XFADE, s.start);
+      const seqLen = img && i > 0 ? len + xf : len;
+      const dev = retro?.get(i);
+      // An old game's dressing: its period look, the hardware it opens on, the tube switching off.
+      const dress = (node: React.ReactNode) => {
+        let out = node;
+        const look = looks?.get(i);
+        if (look === "vhs") out = <VhsLook seed={i}>{out}</VhsLook>;
+        else if (look === "crt") out = <CrtLook>{out}</CrtLook>;
+        if (dev)
+          out =
+            dev.device === "vcr" ? (
+              <VcrTV label={dev.label}>{out}</VcrTV>
+            ) : dev.device === "arcade" ? (
+              <ArcadeCabinet label={dev.label}>{out}</ArcadeCabinet>
+            ) : dev.device === "monitor" ? (
+              <RetroMonitor>{out}</RetroMonitor>
+            ) : dev.device === "handheld" ? (
+              <Handheld green={dev.green}>{out}</Handheld>
+            ) : (
+              <RetroTV>{out}</RetroTV>
+            );
+        if (powerOff?.has(i)) out = <PowerOff frames={seqLen}>{out}</PowerOff>;
+        return out;
+      };
       return (
         <Sequence
           key={i}
-          from={img && i > 0 ? s.start - Math.min(XFADE, s.start) : s.start}
-          durationInFrames={img && i > 0 ? len + Math.min(XFADE, s.start) : len}
+          from={img && i > 0 ? s.start - xf : s.start}
+          durationInFrames={img && i > 0 ? len + xf : len}
           layout="none"
         >
           {clip ? (
-            retro?.has(i) ? (
-              <RetroTV>
-                <Clip src={clip.src} audio={clip.audio} frames={len} />
-              </RetroTV>
-            ) : (
+            dress(
               <Clip
                 src={clip.src}
                 audio={clip.audio}
                 frames={len}
-                punchAt={punches?.has(i) ? punches.get(i)! - s.start : undefined}
-              />
+                punchAt={!dev && punches?.has(i) ? punches.get(i)! - s.start : undefined}
+              />,
             )
           ) : img ? (
             <>
-              <FadeIn frames={i > 0 ? Math.min(XFADE, s.start) : 0}>
-                {retro?.has(i) ? (
-                  <RetroTV>
+              <FadeIn frames={i > 0 ? xf : 0}>
+                {dev ? (
+                  dress(
                     <Still
                       src={img.src}
                       aspect={img.aspect}
-                      durationFrames={len + (i > 0 ? Math.min(XFADE, s.start) : 0)}
+                      durationFrames={len + (i > 0 ? xf : 0)}
                       move={s.move}
-                    />
-                  </RetroTV>
+                    />,
+                  )
                 ) : (
-                <Still
+                dress(<Still
                   punchAt={
                     punches?.has(i)
-                      ? punches.get(i)! - (i > 0 ? s.start - Math.min(XFADE, s.start) : s.start)
+                      ? punches.get(i)! - (i > 0 ? s.start - xf : s.start)
                       : undefined
                   }
                   print={img.kind === "photo"}
@@ -913,7 +961,7 @@ const Backdrop: React.FC<{
                           at:
                             focusFor.get(i)!.from -
                             (i > 0
-                              ? s.start - Math.min(XFADE, s.start)
+                              ? s.start - xf
                               : s.start),
                           origin: focusFor.get(i)!.origin,
                           zoom: focusFor.get(i)!.zoom,
@@ -922,10 +970,10 @@ const Backdrop: React.FC<{
                   }
                   src={img.src}
                   aspect={img.aspect}
-                  durationFrames={len + (i > 0 ? Math.min(XFADE, s.start) : 0)}
+                  durationFrames={len + (i > 0 ? xf : 0)}
                   move={s.move}
                   fromBlack={i === 0}
-                />
+                />)
                 )}
               </FadeIn>
               {img.credit ? (
@@ -2269,34 +2317,91 @@ export const Long: React.FC<LongProps> = (props) => {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.segments, props.clips, props.images, plan, fps]);
-  // A pre-2006 game's first long enough shot (footage first, else a screenshot) plays on a CRT of its day,
-  // once per entry and never under the entry's opening burst.
+  // An old game (before 2007) opens on the hardware of its day: its platform's (a handheld, an arcade
+  // cabinet, a beige PC monitor) or, by turns, a TV switching on or a TV and VCR taking a tape. Its first
+  // long enough shot (footage first, else a screenshot), once per entry, never under the opening burst.
+  const oldEntry = (e: number | undefined) => {
+    if (e === undefined) return undefined;
+    const year = Number(entryTitle(e).year);
+    if (!year || year > OLD_YEAR) return undefined;
+    const k = props.segments.findIndex(
+      (x, i) =>
+        x.kind === "beat" &&
+        (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
+        entryOf(props.segments, i) === e,
+    );
+    const v = k >= 0 ? props.segments[k]!.visual : undefined;
+    return {
+      year,
+      platforms: v?.items?.[1] ?? "",
+      title: displayText((v?.kind === "rank" ? v.primary : v?.secondary) ?? ""),
+    };
+  };
+  const shotEntry = (sh: { media: { type: string; index: number } }) =>
+    sh.media.type === "clip"
+      ? props.clips[sh.media.index]?.beatIndex
+      : sh.media.type === "image"
+        ? props.images[sh.media.index]?.beatIndex
+        : undefined;
   const retro = useMemo(() => {
-    const out = new Set<number>();
+    const out = new Map<number, OldDevice>();
     const done = new Set<number>();
+    let turn = props.variant;
     for (const type of ["clip", "image"] as const)
       plan.shots.forEach((sh, i) => {
         if (sh.media.type !== type) return;
-        const media =
-          type === "clip" ? props.clips[sh.media.index] : props.images[sh.media.index];
-        const e = media?.beatIndex;
-        if (!media || e === undefined || done.has(e)) return;
-        const year = Number(entryTitle(e).year);
-        if (!year || year > 2005) return;
+        const e = shotEntry(sh);
+        const old = oldEntry(e);
+        if (e === undefined || !old || done.has(e)) return;
         if (
           type === "image" &&
           (props.images[sh.media.index]!.kind !== "screenshot" ||
             props.images[sh.media.index]!.aspect < 1.2)
         )
           return;
-        if (sh.end - sh.start < TV_HOLD + TV_PUSH + 30 || focusFor.has(i)) return;
+        if (focusFor.has(i)) return;
         if (openings.some((o) => sh.start >= o.from - 5 && sh.start < o.from + 75)) return;
-        out.add(i);
+        let device: Device | "tv" = deviceFor(old.year, old.platforms, turn);
+        const room = sh.end - sh.start - 30;
+        if (device !== "tv" && room < DEVICE_FRAMES[device]) device = "tv";
+        if (device === "tv" && room < TV_HOLD + TV_PUSH) return;
+        out.set(i, { device, label: old.title, green: handheldGreen(old.year) });
         done.add(e);
+        turn++;
       });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan, props.clips, props.images, openings]);
+  // Every other shot of an old game wears its period: a VHS tape, or a CRT picture before 1994. Archive
+  // photos and the detail zooms stay clean.
+  const periodLooks = useMemo(() => {
+    const out = new Map<number, "vhs" | "crt">();
+    const count = new Map<number, number>();
+    plan.shots.forEach((sh, i) => {
+      const e = shotEntry(sh);
+      const old = oldEntry(e);
+      if (e === undefined || !old || retro.has(i) || focusFor.has(i)) return;
+      if (sh.media.type === "image" && props.images[sh.media.index]?.kind === "photo") return;
+      if (sh.media.type === "plate") return;
+      const n = count.get(e) ?? 0;
+      count.set(e, n + 1);
+      if ((n + props.variant) % 2 === 0) out.set(i, old.year < 1994 ? "crt" : "vhs");
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, retro, props.images]);
+  // An old game's last shot before the next entry switches off like a tube.
+  const powerOff = useMemo(() => {
+    const out = new Set<number>();
+    plan.shots.forEach((sh, i) => {
+      const next = plan.shots[i + 1];
+      const e = shotEntry(sh);
+      if (!next || !oldEntry(e) || sh.end - sh.start < 45) return;
+      if (shotEntry(next) !== e && entryFrames.some((f) => Math.abs(f - next.start) < 4)) out.add(i);
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, entryFrames]);
   // A punch-in on the narrator's key word, the editor's cut-in: on footage or a wide still, when the picture
   // is not under a full-screen explainer, at most one every 18 seconds.
   const punches = useMemo(() => {
@@ -2326,6 +2431,41 @@ export const Long: React.FC<LongProps> = (props) => {
   // The suite (src/render/components/packs): each graphic kind rotates through the house design and every
   // pack style that can draw it, so two stats or two headlines in a video never look the same. A figure
   // or date keeps its small card half the time, so footage still carries most of the video.
+  // Motifs (src/render/components/motifs): the look of a game's series, console or genre, most specific first.
+  const motifCache = new Map<number, Motif | undefined>();
+  const motifOf = (e: number | undefined): Motif | undefined => {
+    if (e === undefined) return undefined;
+    if (motifCache.has(e)) return motifCache.get(e);
+    const k = props.segments.findIndex(
+      (x, i) =>
+        x.kind === "beat" &&
+        (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
+        entryOf(props.segments, i) === e,
+    );
+    const v = k >= 0 ? props.segments[k]!.visual : undefined;
+    const m = v
+      ? motifsFor({
+          title: displayText((v.kind === "rank" ? v.primary : v.secondary) ?? ""),
+          platforms: v.items?.[1] ?? "",
+          year: Number(v.items?.[0]) || undefined,
+          theme: props.theme,
+        })[0]
+      : undefined;
+    motifCache.set(e, m);
+    return m;
+  };
+  const videoMotif = motifsFor({ title: props.title, platforms: "", theme: props.theme })[0];
+  /** Wide pictures for a motif's panels, tiles and screens: an entry's own, or the topic's for the opening. */
+  const motifPictures = (e: number | undefined) =>
+    props.images
+      .filter(
+        (im) =>
+          (e === undefined ? true : im.beatIndex === e) &&
+          im.aspect >= 1.3 &&
+          ["hero", "screenshot", "article", "header"].includes(im.kind),
+      )
+      .map((im) => im.src)
+      .slice(0, 6);
   const packFor = useMemo(() => {
     const out = new Map<number, GfxStyle>();
     const turn = new Map<string, number>();
@@ -2345,9 +2485,18 @@ export const Long: React.FC<LongProps> = (props) => {
         ...(HOUSE.has(g.kind) ? (SMALL.has(g.kind) ? styles.map(() => undefined) : [undefined]) : []),
         ...styles,
       ];
-      if (!choices.length) return;
+      // A sentence about a game with a motif takes the motif's own style every other time it can.
+      const motif = motifOf(w.entry);
+      const own = Object.values(motif?.styles ?? {}).filter(
+        (s) => s.kind === g.kind && (!s.fits || s.fits(g)),
+      );
+      if (!choices.length && !own.length) return;
       const n = turn.get(g.kind) ?? 0;
       turn.set(g.kind, n + 1);
+      if (own.length && ((n + props.variant) % 2 === 0 || !choices.length)) {
+        out.set(k, own[Math.floor(n / 2) % own.length]!);
+        return;
+      }
       const pick = choices[(n + props.variant) % choices.length];
       if (pick) out.set(k, pick);
     });
@@ -2371,7 +2520,7 @@ export const Long: React.FC<LongProps> = (props) => {
   // An accent on about one cut in four, at least eight seconds apart: never on an entry's landing, a
   // breather, an opening burst or the old TV, and never under a full-screen explainer.
   const accents = useMemo(() => {
-    const out: Array<{ at: number; kind: AccentKind }> = [];
+    const out: Array<{ at: number; kind: AccentKind | "static" }> = [];
     let last = -Infinity;
     let n = props.variant;
     const covered = (f: number) =>
@@ -2390,7 +2539,8 @@ export const Long: React.FC<LongProps> = (props) => {
       if (breakFrames.some((b) => at >= b.from - 20 && at <= b.to + 20)) return;
       if (openings.some((o) => at >= o.from - 10 && at < o.from + 60)) return;
       if (retro.has(i) || covered(at)) return;
-      out.push({ at, kind: ACCENTS[n++ % ACCENTS.length]! });
+      const old = oldEntry(shotEntry(sh)) && oldEntry(shotEntry(plan.shots[i - 1]!));
+      out.push({ at, kind: old ? "static" : ACCENTS[n++ % ACCENTS.length]! });
       last = at;
     });
     return out;
@@ -2478,6 +2628,8 @@ export const Long: React.FC<LongProps> = (props) => {
         describe={describe}
         focusFor={focusFor}
         retro={retro}
+        looks={periodLooks}
+        powerOff={powerOff}
         punches={punches}
       />
       {accents.map((a, k) => (
@@ -2487,7 +2639,13 @@ export const Long: React.FC<LongProps> = (props) => {
           durationInFrames={ACCENT_FRAMES}
           layout="none"
         >
-          <CutAccent kind={a.kind} variant={props.variant + k} />
+          {a.kind === "static" ? (
+            <Sequence from={ACCENT_LEAD - 3} durationInFrames={STATIC_FRAMES} layout="none">
+              <ChannelStatic variant={props.variant + k} />
+            </Sequence>
+          ) : (
+            <CutAccent kind={a.kind} variant={props.variant + k} />
+          )}
         </Sequence>
       ))}
       {openings.map((o, k) => (
@@ -2532,13 +2690,37 @@ export const Long: React.FC<LongProps> = (props) => {
               durationInFrames={len}
               layout="none"
             >
-              <IntroTitle
-                title={props.title}
-                spoilers={props.spoilers}
-                kicker={props.kicker}
-                criterion={props.criterion}
-                durationFrames={len}
-              />
+              {videoMotif?.card && len >= 240 ? (
+                <>
+                  <Sequence durationInFrames={MOTIF_OPEN} layout="none">
+                    {React.createElement(videoMotif.card, {
+                      heading: props.title,
+                      kicker: props.recap ? "THIS WEEK" : documentary ? "DOCUMENTARY" : "RANKED",
+                      game: props.theme,
+                      pictures: motifPictures(undefined),
+                      frames: MOTIF_OPEN,
+                      variant: props.variant,
+                    })}
+                  </Sequence>
+                  <Sequence from={MOTIF_OPEN} layout="none">
+                    <IntroTitle
+                      title={props.title}
+                      spoilers={props.spoilers}
+                      kicker={props.kicker}
+                      criterion={props.criterion}
+                      durationFrames={len - MOTIF_OPEN}
+                    />
+                  </Sequence>
+                </>
+              ) : (
+                <IntroTitle
+                  title={props.title}
+                  spoilers={props.spoilers}
+                  kicker={props.kicker}
+                  criterion={props.criterion}
+                  durationFrames={len}
+                />
+              )}
               {documentary ? <Letterbox len={len} /> : null}
             </Sequence>
           );
@@ -2615,7 +2797,11 @@ export const Long: React.FC<LongProps> = (props) => {
             ...(chapterYear && chapterYear < 2008 ? ["vhs"] : []),
             ...(widePic ? ["torn"] : []),
           ];
-          const look = looks[((b ?? 0) + props.variant) % looks.length]!;
+          const motif = motifOf(b);
+          const look =
+            motif?.card && ((b ?? 0) + props.variant) % 2 === 0
+              ? "motif"
+              : looks[((b ?? 0) + props.variant) % looks.length]!;
           const board = look === "board";
           const interlude = {
             number: s.visual.value_a ?? (b ?? 0) + 1,
@@ -2643,6 +2829,22 @@ export const Long: React.FC<LongProps> = (props) => {
                     frames={pause}
                     variant={props.variant + i}
                   />
+                </Sequence>
+              ) : pause && look === "motif" && motif?.card ? (
+                <Sequence
+                  from={starts[i]!}
+                  durationInFrames={pause}
+                  layout="none"
+                >
+                  {React.createElement(motif.card, {
+                    heading: s.visual.primary,
+                    kicker: `CHAPTER ${s.visual.value_a ?? (b ?? 0) + 1}`,
+                    game: s.visual.secondary,
+                    year: s.visual.items?.[0],
+                    pictures: motifPictures(b),
+                    frames: pause,
+                    variant: props.variant + i,
+                  })}
                 </Sequence>
               ) : pause && look !== "title" ? (
                 <Sequence

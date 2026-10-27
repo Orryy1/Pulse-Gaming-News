@@ -2952,6 +2952,7 @@ async function stepScriptRecap(
     (st, i) => packaging.chapter_titles[i] ?? st.headline,
   );
   const chapters: import("./editorial/documentary.ts").DocChapter[] = [];
+  const recapMoments: Array<DocMoment[] | undefined> = [];
   const warnings: string[] = [];
   for (const [index, story] of stories.entries()) {
     let feedback: string[] = [];
@@ -2988,6 +2989,29 @@ async function stepScriptRecap(
         ),
       );
     chapters.push(grounded.chapter);
+    // The recap's shot list, as a documentary chapter's: graphics, clippings of the coverage, captions.
+    try {
+      const shot = groundDocMoments(
+        await writeDocMoments(s.llm, {
+          game: story.game,
+          chapterTitle: titles[index]!,
+          sentences: grounded.chapter.paragraphs.flatMap((p) =>
+            sentencesOf(p.narration),
+          ),
+          source: story.source,
+          games: stories.map((st) => st.game),
+        }),
+        story.source,
+        stories.map((st) => st.game),
+      );
+      recapMoments[index] = shot.moments;
+    } catch (err) {
+      log("warn", "recap shot list failed", {
+        episode: ep.id,
+        story: index + 1,
+        error: errorMessage(err),
+      });
+    }
     log("info", "recap story written", {
       episode: ep.id,
       story: index + 1,
@@ -3005,6 +3029,7 @@ async function stepScriptRecap(
     chapters,
     bookends,
     Number(dayKey(s.now(), s.cfg.timezone).slice(0, 4)),
+    recapMoments,
   );
   script.sources = [
     ...new Set(stories.flatMap((st) => (st.source.url ? [st.source.url] : []))),

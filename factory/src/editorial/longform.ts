@@ -39,6 +39,13 @@ export const GRAPHIC_KINDS = [
   "score",
   "list",
   "compare",
+  // The documentary's explainers that need no source text beyond the narration (27 Oct 2026).
+  "timeline",
+  "span",
+  "versus",
+  "milestone",
+  "reviews",
+  "delay",
 ] as const;
 
 /** One sentence's picture and graphic: the editor's shot list, line by line. */
@@ -57,16 +64,18 @@ export const MomentSchema = z.object({
     primary: z
       .string()
       .describe(
-        "stat: the figure as the narration says it, e.g. '1 billion dollars'; date: e.g. 'November 2009'; score: e.g. '94'; list: a 2-4 word heading; compare: a 2-4 word heading; none: empty",
+        "stat: the figure as the narration says it, e.g. '1 billion dollars'; date: e.g. 'November 2009'; score: e.g. '94'; list, compare, timeline, versus, reviews: a 2-4 word heading; span: e.g. '13 years between games'; milestone: the record, 3-10 words; delay: what slipped, e.g. 'Release date'; none: empty",
       ),
     secondary: z
       .string()
-      .describe("stat/date/score: what it is, 2-6 words; empty otherwise"),
+      .describe(
+        "stat/date/score: what it is, 2-6 words; milestone: the year; delay: the reason, 2-8 words, if the narration gives one; empty otherwise",
+      ),
     items: z
       .array(z.string())
       .max(5)
       .describe(
-        "list: 2-5 short items named in the narration; compare: exactly two 'label:value' rows taken from the narration; empty otherwise",
+        "list: 2-5 short items named in the narration; compare: exactly two 'label:value' rows taken from the narration; timeline: 2-5 'year: what happened' rows; span: the start and end year; versus: two game titles from this ranking's entries (listed), older first; reviews: 2-6 'Outlet: score' rows the narration says; delay: the original date then the new one; empty otherwise",
       ),
   }),
   emphasis: z
@@ -282,6 +291,7 @@ const MOMENTS_PROMPT = `You are the picture editor for a long-form gaming rankin
 "show" names the precise in-game thing on screen while that sentence is spoken: the mission, the character, the place, the weapon, the vehicle, the set piece, the twist. It is always a moment from the game itself, never a title card, logo, menu, store page, launcher, box art, review score screen or anything made of text, and never a generic "gameplay".
 keywords: 1-4 short search terms for that moment (a mission name, a character, a place).
 About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that sentence. Never make a graphic of the entry's rank or place on the list: the rank card already shows it. "emphasis" lands a complete name or phrase from the sentence on screen ("Captain Price", "No Russian") in about a third of the moments, never a fragment like "series at"; leave it empty when the moment has a graphic.
+Richer graphics when a sentence calls for one: a timeline when it moves through years; a span when it measures a gap in years; a versus when it compares this game with another entry in the ranking (both titles from the list given); a milestone for a record or a first; reviews when it gives critics' scores; a delay when a date slipped. Same rule: every figure must appear in that sentence.
 "person": when a sentence is mainly about one character or real person, give their full name ("Polina Petrova", "Viktor Reznov") so a portrait can remind viewers who they are, and leave the graphic as none for that moment; otherwise leave it empty.`;
 
 /** One moment per sentence; a list that comes back short is padded from the sentences themselves so no sentence goes without a picture. */
@@ -289,6 +299,8 @@ export async function writeMoments(
   llm: Llm,
   game: string,
   narration: string,
+  /** The ranking's other entries: a "versus" names one of these. */
+  others: string[] = [],
 ): Promise<Moment[]> {
   const sentences = sentencesOf(narration);
   const n = Math.max(1, sentences.length);
@@ -298,7 +310,7 @@ export async function writeMoments(
       const r = await llm.structured({
         tier: "mid",
         system: MOMENTS_PROMPT,
-        content: `Game: ${game}\n\n${sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nReturn exactly ${n} moments.`,
+        content: `Game: ${game}${others.length ? `\nOther entries in this ranking: ${others.join("; ")}` : ""}\n\n${sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nReturn exactly ${n} moments.`,
         schema: momentsSchema(n),
         effort: "low",
         maxTokens: 6000,
@@ -390,7 +402,12 @@ ${before}`
       maxTokens: 8000,
     });
     const { angle: _notes, ...head } = e;
-    const moments = await writeMoments(llm, e.game_title, body.narration);
+    const moments = await writeMoments(
+      llm,
+      e.game_title,
+      body.narration,
+      plan.entries.map((x) => x.game_title).filter((t) => t !== e.game_title),
+    );
     written.push({
       ...head,
       year: body.year || head.year,
@@ -448,6 +465,16 @@ export function validateLongform(e: LongformScript): string[] {
       )
         p.push(
           `Entry "${x.game_title}": the graphic "${m.graphic.primary}" shows a figure the narration does not say.`,
+        );
+      // A versus shows two entries' own pictures: both must be in this ranking.
+      const titles = e.entries.map((y) => y.game_title.toLowerCase());
+      if (
+        m.graphic.kind === "versus" &&
+        (m.graphic.items.length !== 2 ||
+          m.graphic.items.some((t) => !titles.includes(t.toLowerCase().trim())))
+      )
+        p.push(
+          `Entry "${x.game_title}": a versus must name two entries of this ranking exactly as listed.`,
         );
     }
     const n = wordCount(x.narration);

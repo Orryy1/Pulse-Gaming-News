@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import type { Script } from "./schema.ts";
 import {
+  type DocMoment,
   DocBookendsSchema,
   DocChapterSchema,
   docToScript,
@@ -189,6 +190,8 @@ export function recapToScript(
   chapters: DocChapter[],
   bookends: DocBookends,
   year: number,
+  /** Each story's shot list (one moment per sentence), as the documentaries have. */
+  moments?: Array<DocMoment[] | undefined>,
 ): Script {
   const plans: DocChapterPlan[] = stories.map((s, i) => ({
     chapter_title: packaging.chapter_titles[i] ?? s.headline,
@@ -223,6 +226,7 @@ export function recapToScript(
       plan,
       chapter: chapters[i]!,
       source: stories[i]!.source,
+      moments: moments?.[i],
     })),
     bookends,
   };

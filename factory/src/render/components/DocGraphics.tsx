@@ -17,6 +17,7 @@ import { BODY, DISPLAY } from "./fonts.ts";
 import { SPRING } from "../motion.ts";
 import { displayText } from "../timeline.ts";
 import type { MomentGraphic } from "./LongMoments.tsx";
+import { TextureBackground, type BackgroundKind } from "./Backgrounds.tsx";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const SERIF = "Georgia, 'Times New Roman', serif";
@@ -38,15 +39,23 @@ function useStage(len: number, hold: number) {
 const Stage: React.FC<{
   dim: number;
   blur?: number;
+  bg?: BackgroundKind;
+  variant?: number;
   children: React.ReactNode;
-}> = ({ dim, blur = 10, children }) => (
+}> = ({ dim, blur = 10, bg, variant = 0, children }) => (
   <AbsoluteFill style={{ pointerEvents: "none" }}>
-    <AbsoluteFill
-      style={{
-        backdropFilter: `blur(${blur * dim}px)`,
-        background: `rgba(11,11,14,${0.6 * dim})`,
-      }}
-    />
+    {bg ? (
+      <AbsoluteFill style={{ opacity: dim }}>
+        <TextureBackground kind={bg} variant={variant} />
+      </AbsoluteFill>
+    ) : (
+      <AbsoluteFill
+        style={{
+          backdropFilter: `blur(${blur * dim}px)`,
+          background: `rgba(11,11,14,${0.6 * dim})`,
+        }}
+      />
+    )}
     <AbsoluteFill
       style={{ alignItems: "center", justifyContent: "center", opacity: dim }}
     >
@@ -89,10 +98,12 @@ export function pairs(items: string[]): Array<{ a: string; b: string }> {
 }
 
 /** A release date struck through, a DELAYED stamp, the new date. items: ["old date", "new date"]. */
-export const DelayMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
-  g,
-  len,
-}) => {
+export const DelayMoment: React.FC<{
+  g: MomentGraphic;
+  len: number;
+  bg?: BackgroundKind;
+  variant?: number;
+}> = ({ g, len, bg, variant }) => {
   const { frame, fps, dim, visible } = useStage(len, 200);
   const [before, after] = g.items.map(displayText);
   if (!visible || !before || !after) return null;
@@ -142,7 +153,7 @@ export const DelayMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
     </div>
   );
   return (
-    <Stage dim={dim}>
+    <Stage dim={dim} bg={bg} variant={variant}>
       <div style={{ textAlign: "center" }}>
         <Label>{g.primary ? displayText(g.primary) : "Release date"}</Label>
         <div
@@ -175,7 +186,6 @@ export const DelayMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
                 letterSpacing: 4,
                 opacity: stamp > 0.02 ? Math.min(1, stamp * 1.4) : 0,
                 transform: `rotate(-12deg) scale(${2.2 - 1.2 * stamp})`,
-                
               }}
             >
               DELAYED
@@ -229,10 +239,12 @@ export const DelayMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
 };
 
 /** A span of years, the years rolling over like a counter. items: ["2013", "2026"]. */
-export const SpanMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
-  g,
-  len,
-}) => {
+export const SpanMoment: React.FC<{
+  g: MomentGraphic;
+  len: number;
+  bg?: BackgroundKind;
+  variant?: number;
+}> = ({ g, len, bg, variant }) => {
   const { frame, dim, visible } = useStage(len, 180);
   const [from, to] = g.items.map((x) =>
     Number(x.match(/\b(19|20)\d\d\b/)?.[0] ?? NaN),
@@ -254,7 +266,7 @@ export const SpanMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
   const years = to - from;
   const ticks = Array.from({ length: years + 1 }, (_, i) => i);
   return (
-    <Stage dim={dim}>
+    <Stage dim={dim} bg={bg} variant={variant}>
       <div style={{ textAlign: "center", width: 1500 }}>
         <Label>{g.primary ? displayText(g.primary) : `${years} years`}</Label>
         <div
@@ -319,16 +331,18 @@ export const SpanMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
 };
 
 /** Critics' scores as tiles flipping in. items: ["Outlet: 10/10", ...] as the source gives them. */
-export const ReviewsMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
-  g,
-  len,
-}) => {
+export const ReviewsMoment: React.FC<{
+  g: MomentGraphic;
+  len: number;
+  bg?: BackgroundKind;
+  variant?: number;
+}> = ({ g, len, bg, variant }) => {
   const { frame, fps, dim, visible } = useStage(len, 210);
   const rows = pairs(g.items).slice(0, 6);
   if (!visible || rows.length < 2) return null;
   const cols = rows.length <= 3 ? rows.length : Math.ceil(rows.length / 2);
   return (
-    <Stage dim={dim}>
+    <Stage dim={dim} bg={bg} variant={variant}>
       <div style={{ textAlign: "center" }}>
         <Label>
           {g.primary ? displayText(g.primary) : "What the critics said"}
@@ -501,10 +515,12 @@ export const VersusMoment: React.FC<{
 };
 
 /** The source's own words on a page, the key phrase swept with a highlighter. */
-export const SourceMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
-  g,
-  len,
-}) => {
+export const SourceMoment: React.FC<{
+  g: MomentGraphic;
+  len: number;
+  bg?: BackgroundKind;
+  variant?: number;
+}> = ({ g, len, bg, variant }) => {
   const { frame, fps, dim, visible } = useStage(len, 230);
   const text = displayText(g.primary);
   const mark = displayText(g.items[0] ?? "");
@@ -513,7 +529,7 @@ export const SourceMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
   const sweep = interpolate(frame, [30, 60], [0, 100], clamp);
   const page = spring({ frame, fps, config: SPRING.ENTER });
   return (
-    <Stage dim={dim}>
+    <Stage dim={dim} bg={bg} variant={variant}>
       <div
         style={{
           width: 1240,
@@ -662,12 +678,14 @@ export const PeopleMoment: React.FC<{
   g: MomentGraphic;
   len: number;
   photos?: Record<string, string>;
-}> = ({ g, len, photos = {} }) => {
+  bg?: BackgroundKind;
+  variant?: number;
+}> = ({ g, len, photos = {}, bg, variant }) => {
   const { frame, fps, dim, visible } = useStage(len, 210);
   const rows = pairs(g.items).slice(0, 4);
   if (!visible || !rows.length) return null;
   return (
-    <Stage dim={dim}>
+    <Stage dim={dim} bg={bg} variant={variant}>
       <div style={{ textAlign: "center" }}>
         <Label>{g.primary ? displayText(g.primary) : "The people"}</Label>
         <div

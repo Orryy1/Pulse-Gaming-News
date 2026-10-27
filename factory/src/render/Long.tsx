@@ -59,6 +59,11 @@ import {
 } from "./components/LongMoments.tsx";
 import { displayText, type Segment } from "./timeline.ts";
 import {
+  backgroundFor,
+  TextureBackground,
+  type BackgroundKind,
+} from "./components/Backgrounds.tsx";
+import {
   AchievementMoment,
   DelayMoment,
   PeopleMoment,
@@ -1076,7 +1081,9 @@ const ChapterInterlude: React.FC<{
   year?: string;
   quote?: { text: string; who: string };
   frames: number;
-}> = ({ number, title, game, year, quote, frames }) => {
+  bg?: BackgroundKind;
+  variant?: number;
+}> = ({ number, title, game, year, quote, frames, bg, variant }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const out = interpolate(frame, [frames - 12, frames], [1, 0], {
@@ -1095,11 +1102,17 @@ const ChapterInterlude: React.FC<{
   });
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
-      <AbsoluteFill
+      {bg ? (
+        <AbsoluteFill style={{ opacity: dim }}>
+          <TextureBackground kind={bg} variant={variant} />
+        </AbsoluteFill>
+      ) : (
+        <AbsoluteFill
         style={{
           background: `radial-gradient(90% 80% at 50% 50%, rgba(11,11,14,${0.45 * dim}) 0%, rgba(11,11,14,${0.85 * dim}) 100%)`,
         }}
       />
+      )}
       <AbsoluteFill
         style={{ alignItems: "center", justifyContent: "center", opacity: out }}
       >
@@ -1522,20 +1535,22 @@ export const Long: React.FC<LongProps> = (props) => {
   const richGraphic = (
     g: NonNullable<LongProps["moments"]>[number][number]["graphic"],
     len: number,
+    bg?: BackgroundKind,
+    variant?: number,
   ) => {
     switch (g.kind) {
       case "delay":
-        return <DelayMoment g={g} len={len} />;
+        return <DelayMoment g={g} len={len} bg={bg} variant={variant} />;
       case "span":
-        return <SpanMoment g={g} len={len} />;
+        return <SpanMoment g={g} len={len} bg={bg} variant={variant} />;
       case "reviews":
-        return <ReviewsMoment g={g} len={len} />;
+        return <ReviewsMoment g={g} len={len} bg={bg} variant={variant} />;
       case "source":
-        return <SourceMoment g={g} len={len} />;
+        return <SourceMoment g={g} len={len} bg={bg} variant={variant} />;
       case "milestone":
         return <AchievementMoment g={g} len={len} />;
       case "people":
-        return <PeopleMoment g={g} len={len} photos={portraits} />;
+        return <PeopleMoment g={g} len={len} photos={portraits} bg={bg} variant={variant} />;
       case "versus":
         return (
           <VersusMoment
@@ -1791,6 +1806,8 @@ export const Long: React.FC<LongProps> = (props) => {
                   layout="none"
                 >
                   <ChapterInterlude
+                    bg={backgroundFor("interlude", Number(s.visual.items?.[0]) || undefined, props.variant + i)}
+                    variant={props.variant + i}
                     number={s.visual.value_a ?? (b ?? 0) + 1}
                     title={s.visual.primary}
                     game={s.visual.secondary}
@@ -1896,6 +1913,12 @@ export const Long: React.FC<LongProps> = (props) => {
             raw.emphasis && usefulEmphasis(raw.emphasis) ? raw.emphasis : "",
         };
         const { from, len, anchored } = spanOf(k);
+        // The explainer's background: suited to the graphic and the game's era, rotating through the video.
+        const bg = backgroundFor(
+          m.graphic.kind,
+          Number(entryTitle(w.entry).year) || undefined,
+          props.variant + k,
+        );
         const shot = plan.shots.find((x) => from >= x.start && from < x.end);
         // A character's portrait first (a reminder of who they are), else the still matched to the sentence.
         const pic =
@@ -1931,13 +1954,15 @@ export const Long: React.FC<LongProps> = (props) => {
             layout="none"
           >
             {richGraphic(m.graphic, len) ? (
-              richGraphic(m.graphic, len)
+              richGraphic(m.graphic, len, bg, props.variant + k)
             ) : m.graphic.kind === "quote" ? (
-              <QuoteMoment g={m.graphic} len={len} />
+              <QuoteMoment g={m.graphic} len={len} bg={bg} variant={props.variant + k} />
             ) : m.graphic.kind === "headline" ? (
               <HeadlineMoment
                 g={m.graphic}
                 len={len}
+                bg={bg}
+                variant={props.variant + k}
                 src={
                   (
                     pic ??

@@ -9,6 +9,7 @@ import { Engage, SAMPLE_ENGAGE } from "./Engage.tsx";
 import { Cutdown, SAMPLE_CUTDOWN, type CutdownProps } from "./Cutdown.tsx";
 import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
 import { ConceptAvatar, ConceptBanner, BroadcastCover } from "./BrandConcepts.tsx";
+import { TextureBackground, type BackgroundKind } from "./components/Backgrounds.tsx";
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -65,6 +66,16 @@ export const RemotionRoot: React.FC = () => (
       calculateMetadata={({ props }: { props: CutdownProps }) => ({
         durationInFrames: Math.max(FPS * 5, Math.ceil(props.durationSeconds * FPS)),
       })}
+    />
+    {/* The explainer backgrounds on their own, for previews (src/render/components/Backgrounds.tsx). */}
+    <Composition
+      id="PulseBackground"
+      component={TextureBackground as React.FC<{ kind: BackgroundKind; variant?: number }>}
+      fps={LONG_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={LONG_FPS * 6}
+      defaultProps={{ kind: "crumpled" as BackgroundKind, variant: 0 }}
     />
     {/* Channel brand stills: rendered by `npm run brand` into factory/brand/. */}
     <Still id="PulseBanner" component={Banner} width={2560} height={1440} />

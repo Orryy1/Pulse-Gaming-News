@@ -20,6 +20,7 @@ import { COLOUR } from "../brand.ts";
 import { BODY, DISPLAY } from "./fonts.ts";
 import { SPRING } from "../motion.ts";
 import { displayText } from "../timeline.ts";
+import { TextureBackground, type BackgroundKind } from "./Backgrounds.tsx";
 
 export interface MomentGraphic {
   kind:
@@ -392,10 +393,9 @@ export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
  * A quote at full size, the documentary way: the picture behind blurs and darkens, the words rise into
  * place one by one, and the speaker's name slides in under an amber rule. Held long enough to read.
  */
-export const QuoteMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
+export const QuoteMoment: React.FC<{ g: MomentGraphic; len: number; bg?: BackgroundKind; variant?: number }> = ({
   g,
-  len,
-}) => {
+  len, bg, variant }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const text = displayText(g.primary)
@@ -418,12 +418,18 @@ export const QuoteMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
   const size = words.length > 22 ? 58 : words.length > 12 ? 70 : 84;
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
-      <AbsoluteFill
+      {bg ? (
+        <AbsoluteFill style={{ opacity: dim }}>
+          <TextureBackground kind={bg} variant={variant} />
+        </AbsoluteFill>
+      ) : (
+        <AbsoluteFill
         style={{
           backdropFilter: `blur(${14 * dim}px)`,
           background: `rgba(11,11,14,${0.62 * dim})`,
         }}
       />
+      )}
       <AbsoluteFill
         style={{ alignItems: "center", justifyContent: "center", opacity: dim }}
       >
@@ -528,8 +534,7 @@ const lines = (n: number, seed: number) =>
 export const HeadlineMoment: React.FC<{
   g: MomentGraphic;
   len: number;
-  src?: string;
-}> = ({ g, len, src }) => {
+  src?: string; bg?: BackgroundKind; variant?: number }> = ({ g, len, src, bg, variant }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const showFor = Math.min(len - 6, 200);
@@ -555,12 +560,18 @@ export const HeadlineMoment: React.FC<{
   };
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
-      <AbsoluteFill
+      {bg ? (
+        <AbsoluteFill style={{ opacity: dim }}>
+          <TextureBackground kind={bg} variant={variant} />
+        </AbsoluteFill>
+      ) : (
+        <AbsoluteFill
         style={{
           backdropFilter: `blur(${10 * dim}px)`,
           background: `rgba(11,11,14,${0.55 * dim})`,
         }}
       />
+      )}
       <AbsoluteFill
         style={{ alignItems: "center", justifyContent: "center", opacity: dim }}
       >

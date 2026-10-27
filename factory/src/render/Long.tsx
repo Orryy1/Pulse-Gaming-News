@@ -108,7 +108,13 @@ export type LongProps = {
   moments?: MomentProp[][]; // per ranking entry, one per sentence: graphics, kinetic captions, pop-ins
   breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds)
   /** Zoom to the detail: the sentence, the picture on screen and where the named thing sits (0-1). */
-  annotations?: Array<{ entry: number; moment: number; image: number; box: [number, number, number, number]; label: string }>;
+  annotations?: Array<{
+    entry: number;
+    moment: number;
+    image: number;
+    box: [number, number, number, number];
+    label: string;
+  }>;
   segments: Segment[];
   words: Word[];
   images: LongImageProp[];
@@ -210,7 +216,11 @@ function synthWords(segments: Segment[]): Word[] {
 }
 
 /** A point of a picture (0-1 of the picture) on the 1920x1080 frame when the picture covers it. */
-export function coverPoint(aspect: number, x: number, y: number): { x: number; y: number } {
+export function coverPoint(
+  aspect: number,
+  x: number,
+  y: number,
+): { x: number; y: number } {
   const F = 1920 / 1080;
   if (aspect > F) {
     const w = aspect * 1080;
@@ -221,14 +231,20 @@ export function coverPoint(aspect: number, x: number, y: number): { x: number; y
 }
 
 /** The zoom that brings a box to about two fifths of the frame's height, between 1 and 1.7. */
-export function focusZoom(box: { x1: number; y1: number; x2: number; y2: number }): number {
+export function focusZoom(box: {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}): number {
   const h = Math.max(0.01, box.y2 - box.y1);
   const w = Math.max(0.01, box.x2 - box.x1);
   return Math.max(1, Math.min(1.7, 0.42 / (h * 1.04), 0.6 / (w * 1.04)));
 }
 
 const FOCUS_FRAMES = 26;
-const focusEase = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2);
+const focusEase = (x: number) =>
+  x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2;
 
 const Still: React.FC<{
   src: string;
@@ -266,11 +282,16 @@ const Still: React.FC<{
   });
   if (focus && !print && aspect >= 0.9) {
     // Held still, then a push in on the named detail; its label draws on over it (DetailCallout).
-    const z = interpolate(frame, [focus.at, focus.at + FOCUS_FRAMES], [1, focus.zoom], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: focusEase,
-    });
+    const z = interpolate(
+      frame,
+      [focus.at, focus.at + FOCUS_FRAMES],
+      [1, focus.zoom],
+      {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+        easing: focusEase,
+      },
+    );
     return (
       <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
         <Img
@@ -292,11 +313,12 @@ const Still: React.FC<{
     // background and the foreground twice as far, the 2.5D look of video essays.
     const p = Math.min(1, frame / Math.max(1, durationFrames));
     const truck = (p - 0.5) * 34 * dir;
-    const layer = (
-      layerSrc: string,
-      k: number,
-      key: string,
-    ) => (
+    // A rack focus, like a cinema lens: the background softens behind the subject, or (the other way)
+    // the shot opens soft and pulls into focus.
+    const t = Math.max(0, Math.min(1, (p - 0.12) / 0.6));
+    const eased = t * t * (3 - 2 * t);
+    const pull = dir > 0 ? eased : 1 - eased;
+    const layer = (layerSrc: string, k: number, key: string) => (
       <Img
         key={key}
         src={layerSrc}
@@ -306,7 +328,7 @@ const Still: React.FC<{
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          filter: "contrast(1.03) saturate(1.05)",
+          filter: `contrast(1.03) saturate(1.05) blur(${(k === 0 ? 5 : k < 1 ? 2.2 : 0) * pull}px)`,
           transform: `scale(${m.scale + 0.06 + 0.035 * k * p}) translate(${m.x * (1 + k) + truck * k}px, ${m.y * (1 + k * 0.6)}px)`,
         }}
       />
@@ -475,8 +497,17 @@ const DetailCallout: React.FC<{
   len: number;
 }> = ({ box, origin, zoom, label, len }) => {
   const frame = useCurrentFrame();
-  const z = 1.04 * interpolate(frame, [0, FOCUS_FRAMES], [1, zoom], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: focusEase });
-  const map = (x: number, y: number) => ({ x: (origin.x + (x - origin.x) * z) * 1920, y: (origin.y + (y - origin.y) * z) * 1080 });
+  const z =
+    1.04 *
+    interpolate(frame, [0, FOCUS_FRAMES], [1, zoom], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: focusEase,
+    });
+  const map = (x: number, y: number) => ({
+    x: (origin.x + (x - origin.x) * z) * 1920,
+    y: (origin.y + (y - origin.y) * z) * 1080,
+  });
   const a = map(box.x1, box.y1);
   const b = map(box.x2, box.y2);
   const pad = 12;
@@ -485,20 +516,63 @@ const DetailCallout: React.FC<{
   const w = b.x - a.x + pad * 2;
   const h = b.y - a.y + pad * 2;
   const perim = 2 * (w + h);
-  const draw = interpolate(frame, [FOCUS_FRAMES - 4, FOCUS_FRAMES + 14], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const line = interpolate(frame, [FOCUS_FRAMES + 10, FOCUS_FRAMES + 22], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const tag = interpolate(frame, [FOCUS_FRAMES + 18, FOCUS_FRAMES + 28], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const out = interpolate(frame, [len - 12, len - 2], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const draw = interpolate(
+    frame,
+    [FOCUS_FRAMES - 4, FOCUS_FRAMES + 14],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const line = interpolate(
+    frame,
+    [FOCUS_FRAMES + 10, FOCUS_FRAMES + 22],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const tag = interpolate(
+    frame,
+    [FOCUS_FRAMES + 18, FOCUS_FRAMES + 28],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const out = interpolate(frame, [len - 12, len - 2], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
   const right = (x + w / 2) / 1920 < 0.55;
   const cy = Math.max(140, Math.min(940, y + h / 2));
   const lx0 = right ? x + w : x;
-  const lx1 = right ? Math.min(1920 - 420, lx0 + 120) : Math.max(420, lx0 - 120);
+  const lx1 = right
+    ? Math.min(1920 - 420, lx0 + 120)
+    : Math.max(420, lx0 - 120);
   if (frame > len) return null;
   return (
     <AbsoluteFill style={{ pointerEvents: "none", opacity: out }}>
-      <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
-        <rect x={x} y={y} width={w} height={h} rx={14} fill="none" stroke={COLOUR.amber} strokeWidth={6} strokeDasharray={perim} strokeDashoffset={perim * (1 - draw)} style={{ filter: "drop-shadow(0 0 10px rgba(0,0,0,0.8))" }} />
-        <line x1={lx0} y1={cy} x2={lx0 + (lx1 - lx0) * line} y2={cy} stroke={COLOUR.amber} strokeWidth={5} />
+      <svg
+        width={1920}
+        height={1080}
+        style={{ position: "absolute", inset: 0 }}
+      >
+        <rect
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          rx={14}
+          fill="none"
+          stroke={COLOUR.amber}
+          strokeWidth={6}
+          strokeDasharray={perim}
+          strokeDashoffset={perim * (1 - draw)}
+          style={{ filter: "drop-shadow(0 0 10px rgba(0,0,0,0.8))" }}
+        />
+        <line
+          x1={lx0}
+          y1={cy}
+          x2={lx0 + (lx1 - lx0) * line}
+          y2={cy}
+          stroke={COLOUR.amber}
+          strokeWidth={5}
+        />
       </svg>
       <div
         style={{
@@ -522,6 +596,105 @@ const DetailCallout: React.FC<{
       >
         {displayText(label)}
       </div>
+    </AbsoluteFill>
+  );
+};
+
+/**
+ * How a chapter or entry arrives (top channels' signature transitions): a warm light sweep, a film-burn
+ * bloom, or a short digital glitch, chosen by the game's era so the 1990s chapters feel of their time.
+ */
+type TransitionKind = "sweep" | "burn" | "glitch";
+export function transitionFor(
+  year: number | undefined,
+  i: number,
+  variant: number,
+): TransitionKind {
+  if (year && year < 2000) return "glitch";
+  if (year && year < 2010) return "burn";
+  if (year) return "sweep";
+  return (["sweep", "burn", "glitch"] as const)[(i + variant) % 3]!;
+}
+
+const ChapterTransition: React.FC<{ kind: TransitionKind }> = ({ kind }) => {
+  const frame = useCurrentFrame();
+  if (kind === "sweep") {
+    const x = interpolate(frame, [0, 16], [-40, 140], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    const o = interpolate(frame, [0, 3, 14, 21], [0, 1, 1, 0], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    return (
+      <AbsoluteFill
+        style={{ pointerEvents: "none", opacity: o, mixBlendMode: "screen" }}
+      >
+        <AbsoluteFill
+          style={{
+            background: `linear-gradient(105deg, transparent ${x - 22}%, rgba(255,170,90,0.55) ${x - 6}%, rgba(255,245,225,0.95) ${x}%, rgba(255,170,90,0.55) ${x + 6}%, transparent ${x + 22}%)`,
+          }}
+        />
+      </AbsoluteFill>
+    );
+  }
+  if (kind === "burn") {
+    const o = interpolate(frame, [0, 3, 10, 21], [0, 0.95, 0.6, 0], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    const r = interpolate(frame, [0, 21], [30, 120]);
+    return (
+      <AbsoluteFill
+        style={{ pointerEvents: "none", opacity: o, mixBlendMode: "screen" }}
+      >
+        <AbsoluteFill
+          style={{
+            background: `radial-gradient(${r}% ${r * 0.8}% at 30% 40%, rgba(255,230,190,1) 0%, rgba(255,140,40,0.85) 35%, rgba(160,40,10,0.4) 65%, transparent 85%)`,
+          }}
+        />
+      </AbsoluteFill>
+    );
+  }
+  // glitch: colour-split bars stuttering across the frame for a few frames
+  if (frame > 12) return null;
+  const rows = Array.from({ length: 9 }, (_, k) => {
+    const seed = Math.sin((frame + 1) * 12.9898 + k * 78.233) * 43758.5453;
+    const r = seed - Math.floor(seed);
+    return {
+      top: (k * 11 + r * 9) % 100,
+      h: 2 + r * 9,
+      shift: (r - 0.5) * 160,
+      on: r > 0.35,
+    };
+  });
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      {rows
+        .filter((x) => x.on)
+        .map((x, k) => (
+          <div
+            key={k}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: `${x.top}%`,
+              height: `${x.h}%`,
+              transform: `translateX(${x.shift}px)`,
+              background:
+                k % 2 ? "rgba(255,40,80,0.35)" : "rgba(40,200,255,0.35)",
+              mixBlendMode: "screen",
+            }}
+          />
+        ))}
+      <AbsoluteFill
+        style={{
+          background: "rgba(255,255,255,0.12)",
+          opacity: frame < 3 ? 1 : 0,
+        }}
+      />
     </AbsoluteFill>
   );
 };
@@ -585,7 +758,11 @@ const ShotLabel: React.FC<{
   const text = describe(shot.media);
   if (!text) return null;
   return (
-    <Sequence from={shot.start} durationInFrames={Math.max(1, shot.end - shot.start)} layout="none">
+    <Sequence
+      from={shot.start}
+      durationInFrames={Math.max(1, shot.end - shot.start)}
+      layout="none"
+    >
       <Descriptor text={text} frames={shot.end - shot.start} />
     </Sequence>
   );
@@ -628,7 +805,10 @@ const Backdrop: React.FC<{
   /** What a shot is, as video essays label their pictures: "GRAND THEFT AUTO V · 2013 · KEY ART". */
   describe?: (media: { type: string; index: number }) => string;
   /** Per shot index: when (absolute frame) and where the camera pushes in on a named detail. */
-  focusFor?: Map<number, { from: number; origin: { x: number; y: number }; zoom: number }>;
+  focusFor?: Map<
+    number,
+    { from: number; origin: { x: number; y: number }; zoom: number }
+  >;
 }> = ({ plan, images, clips, theme, describe, focusFor }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
@@ -657,7 +837,11 @@ const Backdrop: React.FC<{
                   focus={
                     focusFor?.get(i)
                       ? {
-                          at: focusFor.get(i)!.from - (i > 0 ? s.start - Math.min(XFADE, s.start) : s.start),
+                          at:
+                            focusFor.get(i)!.from -
+                            (i > 0
+                              ? s.start - Math.min(XFADE, s.start)
+                              : s.start),
                           origin: focusFor.get(i)!.origin,
                           zoom: focusFor.get(i)!.zoom,
                         }
@@ -730,18 +914,60 @@ const Brand: React.FC<{
   logoSrc: string | null;
   chip: string;
   progress: number;
-}> = ({ logoSrc, chip, progress }) => (
+  /** Where each chapter or entry starts (0-1): the bar splits into segments so viewers see how far through they are. */
+  marks?: number[];
+}> = ({ logoSrc, chip, progress, marks }) => (
   <AbsoluteFill style={{ pointerEvents: "none" }}>
-    <div
-      style={{
-        position: "absolute",
-        left: 0,
-        top: 0,
-        width: `${progress * 100}%`,
-        height: 5,
-        background: COLOUR.amber,
-      }}
-    />
+    {marks && marks.length > 1 ? (
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 0,
+          height: 6,
+          display: "flex",
+          gap: 4,
+        }}
+      >
+        {[0, ...marks, 1].slice(0, -1).map((a, i, arr) => {
+          const b = i + 1 < arr.length ? arr[i + 1]! : 1;
+          const fill = Math.max(
+            0,
+            Math.min(1, (progress - a) / Math.max(1e-6, b - a)),
+          );
+          return (
+            <div
+              key={i}
+              style={{
+                flex: b - a,
+                height: 6,
+                background: "rgba(245,245,242,0.18)",
+              }}
+            >
+              <div
+                style={{
+                  width: `${fill * 100}%`,
+                  height: 6,
+                  background: COLOUR.amber,
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+    ) : (
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: `${progress * 100}%`,
+          height: 5,
+          background: COLOUR.amber,
+        }}
+      />
+    )}
     <div
       style={{
         position: "absolute",
@@ -1258,6 +1484,7 @@ const ChapterInterlude: React.FC<{
     interpolate(frame, [0, 10], [0, 1], { extrapolateRight: "clamp" }) * out;
   const label = spring({ frame: frame - 4, fps, config: SPRING.ENTER });
   const head = spring({ frame: frame - 10, fps, config: SPRING.ENTER });
+  const sweep = interpolate(frame, [28, 62], [-20, 125], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const sub = spring({ frame: frame - 22, fps, config: SPRING.ENTER });
   const rule = interpolate(frame, [8, 34], [0, 1], {
     extrapolateLeft: "clamp",
@@ -1272,10 +1499,10 @@ const ChapterInterlude: React.FC<{
         </AbsoluteFill>
       ) : (
         <AbsoluteFill
-        style={{
-          background: `radial-gradient(90% 80% at 50% 50%, rgba(11,11,14,${0.45 * dim}) 0%, rgba(11,11,14,${0.85 * dim}) 100%)`,
-        }}
-      />
+          style={{
+            background: `radial-gradient(90% 80% at 50% 50%, rgba(11,11,14,${0.45 * dim}) 0%, rgba(11,11,14,${0.85 * dim}) 100%)`,
+          }}
+        />
       )}
       <AbsoluteFill
         style={{ alignItems: "center", justifyContent: "center", opacity: out }}
@@ -1303,20 +1530,26 @@ const ChapterInterlude: React.FC<{
               borderRadius: 3,
             }}
           />
+          {/* The title rises up through a mask, then a warm light sweeps across its letters. */}
           <div
-            style={{
-              marginTop: 26,
-              fontFamily: DISPLAY,
-              fontSize: title.length > 26 ? 110 : 140,
-              lineHeight: 0.98,
-              color: COLOUR.paper,
-              textTransform: "uppercase",
-              textShadow: "0 12px 60px rgba(0,0,0,0.7)",
-              opacity: head,
-              transform: `translateY(${(1 - head) * 40}px) scale(${0.96 + 0.04 * head})`,
-            }}
+            style={{ marginTop: 26, overflow: "hidden", padding: "0 10px 8px" }}
           >
-            {title}
+            <div
+              style={{
+                fontFamily: DISPLAY,
+                fontSize: title.length > 26 ? 110 : 140,
+                lineHeight: 0.98,
+                textTransform: "uppercase",
+                transform: `translateY(${(1 - head) * 105}%)`,
+                backgroundImage: `linear-gradient(100deg, ${COLOUR.paper} 0%, ${COLOUR.paper} ${sweep - 12}%, #fff3d6 ${sweep - 3}%, #ffffff ${sweep}%, #ffd9a8 ${sweep + 3}%, ${COLOUR.paper} ${sweep + 12}%, ${COLOUR.paper} 100%)`,
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                color: "transparent",
+                filter: "drop-shadow(0 12px 40px rgba(0,0,0,0.65))",
+              }}
+            >
+              {title}
+            </div>
           </div>
           <div
             style={{
@@ -1714,7 +1947,15 @@ export const Long: React.FC<LongProps> = (props) => {
       case "milestone":
         return <AchievementMoment g={g} len={len} />;
       case "people":
-        return <PeopleMoment g={g} len={len} photos={portraits} bg={bg} variant={variant} />;
+        return (
+          <PeopleMoment
+            g={g}
+            len={len}
+            photos={portraits}
+            bg={bg}
+            variant={variant}
+          />
+        );
       case "versus":
         return (
           <VersusMoment
@@ -1839,34 +2080,74 @@ export const Long: React.FC<LongProps> = (props) => {
     .filter((f) => f >= 0);
   // Zoom to the detail: each annotation's window, the shot showing its picture then, and the box on screen.
   const details = useMemo(() => {
-    const out: Array<{ k: number; shot: number; from: number; len: number; origin: { x: number; y: number }; zoom: number; box: { x1: number; y1: number; x2: number; y2: number }; label: string }> = [];
+    const out: Array<{
+      k: number;
+      shot: number;
+      from: number;
+      len: number;
+      origin: { x: number; y: number };
+      zoom: number;
+      box: { x1: number; y1: number; x2: number; y2: number };
+      label: string;
+    }> = [];
     for (const a of props.annotations ?? []) {
-      const k = windows.findIndex((w) => w.entry === a.entry && w.moment === a.moment);
+      const k = windows.findIndex(
+        (w) => w.entry === a.entry && w.moment === a.moment,
+      );
       if (k < 0) continue;
       const { from, len } = spanOf(k);
-      const shot = plan.shots.findIndex((x) => from >= x.start && from < x.end && x.media.type === "image" && x.media.index === a.image);
+      const shot = plan.shots.findIndex(
+        (x) =>
+          from >= x.start &&
+          from < x.end &&
+          x.media.type === "image" &&
+          x.media.index === a.image,
+      );
       const im = props.images[a.image];
       if (shot < 0 || !im) continue;
       const p1 = coverPoint(im.aspect, a.box[0], a.box[1]);
       const p2 = coverPoint(im.aspect, a.box[2], a.box[3]);
       const box = { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
-      if (box.x1 < 0.02 || box.y1 < 0.02 || box.x2 > 0.98 || box.y2 > 0.98) continue; // cropped off by the frame
-      const origin = { x: Math.max(0.15, Math.min(0.85, (box.x1 + box.x2) / 2)), y: Math.max(0.2, Math.min(0.8, (box.y1 + box.y2) / 2)) };
+      if (box.x1 < 0.02 || box.y1 < 0.02 || box.x2 > 0.98 || box.y2 > 0.98)
+        continue; // cropped off by the frame
+      const origin = {
+        x: Math.max(0.15, Math.min(0.85, (box.x1 + box.x2) / 2)),
+        y: Math.max(0.2, Math.min(0.8, (box.y1 + box.y2) / 2)),
+      };
       // The push never carries the box off the frame: each edge caps the zoom.
       let zoom = focusZoom(box);
       const cap = (edge: number, o: number, limit: number) =>
         edge === o ? Infinity : (limit - o) / ((edge - o) * 1.04);
-      for (const z of [cap(box.x1, origin.x, 0.04), cap(box.x2, origin.x, 0.96), cap(box.y1, origin.y, 0.07), cap(box.y2, origin.y, 0.93)])
+      for (const z of [
+        cap(box.x1, origin.x, 0.04),
+        cap(box.x2, origin.x, 0.96),
+        cap(box.y1, origin.y, 0.07),
+        cap(box.y2, origin.y, 0.93),
+      ])
         if (z > 0) zoom = Math.min(zoom, z);
       zoom = Math.max(1, zoom);
       // On screen for at least four seconds (the box and label need time to read), or to the end of the shot.
       const shotLeft = plan.shots[shot]!.end - from;
-      out.push({ k, shot, from, len: Math.min(shotLeft, Math.max(len, 120)), origin, zoom, box, label: a.label });
+      out.push({
+        k,
+        shot,
+        from,
+        len: Math.min(shotLeft, Math.max(len, 120)),
+        origin,
+        zoom,
+        box,
+        label: a.label,
+      });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.annotations, windows, plan]);
-  const focusFor = new Map(details.map((d) => [d.shot, { from: d.from, origin: d.origin, zoom: d.zoom }]));
+  const focusFor = new Map(
+    details.map((d) => [
+      d.shot,
+      { from: d.from, origin: d.origin, zoom: d.zoom },
+    ]),
+  );
   const momentSounds = gateLongSounds(
     windows.flatMap((w, k): LongSoundCandidate[] => {
       const raw = props.moments?.[w.entry]?.[w.moment];
@@ -1930,6 +2211,7 @@ export const Long: React.FC<LongProps> = (props) => {
                 : "RANKED"
         }
         progress={Math.min(1, frame / Math.max(1, durationInFrames))}
+        marks={entryFrames.map((f) => f / Math.max(1, durationInFrames))}
       />
       <Credit text={creditAt(frame)} />
       {props.segments.map((s, i) => {
@@ -2001,7 +2283,11 @@ export const Long: React.FC<LongProps> = (props) => {
                   layout="none"
                 >
                   <ChapterInterlude
-                    bg={backgroundFor("interlude", Number(s.visual.items?.[0]) || undefined, props.variant + i)}
+                    bg={backgroundFor(
+                      "interlude",
+                      Number(s.visual.items?.[0]) || undefined,
+                      props.variant + i,
+                    )}
                     variant={props.variant + i}
                     number={s.visual.value_a ?? (b ?? 0) + 1}
                     title={s.visual.primary}
@@ -2151,7 +2437,12 @@ export const Long: React.FC<LongProps> = (props) => {
             {richGraphic(m.graphic, len) ? (
               richGraphic(m.graphic, len, bg, props.variant + k)
             ) : m.graphic.kind === "quote" ? (
-              <QuoteMoment g={m.graphic} len={len} bg={bg} variant={props.variant + k} />
+              <QuoteMoment
+                g={m.graphic}
+                len={len}
+                bg={bg}
+                variant={props.variant + k}
+              />
             ) : m.graphic.kind === "headline" ? (
               <HeadlineMoment
                 g={m.graphic}
@@ -2208,8 +2499,19 @@ export const Long: React.FC<LongProps> = (props) => {
       })}
       {/* Zoom to the detail: the labelled box over the pushed-in picture. */}
       {details.map((d, i) => (
-        <Sequence key={`det${i}`} from={d.from} durationInFrames={Math.max(1, d.len)} layout="none">
-          <DetailCallout box={d.box} origin={d.origin} zoom={d.zoom} label={d.label} len={d.len} />
+        <Sequence
+          key={`det${i}`}
+          from={d.from}
+          durationInFrames={Math.max(1, d.len)}
+          layout="none"
+        >
+          <DetailCallout
+            box={d.box}
+            origin={d.origin}
+            zoom={d.zoom}
+            label={d.label}
+            len={d.len}
+          />
         </Sequence>
       ))}
       {/* A white punch as each entry lands. */}
@@ -2220,10 +2522,16 @@ export const Long: React.FC<LongProps> = (props) => {
           <Sequence
             key={`f${i}`}
             from={starts[i]!}
-            durationInFrames={12}
+            durationInFrames={22}
             layout="none"
           >
-            <FlashPunch />
+            <ChapterTransition
+              kind={transitionFor(
+                Number(s.visual?.items?.[0]) || undefined,
+                i,
+                props.variant,
+              )}
+            />
           </Sequence>
         ) : null,
       )}

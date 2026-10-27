@@ -126,7 +126,7 @@ export async function waitForHeadroom(
  * Martin's PC runs Orryy's After Effects renders, the explainer and other projects too. A render here holds
  * all 8 cores and 3-12 GB for 10-40 min, so it takes a turn from the PC orchestrator (C:\Claude\orchestrator)
  * first: it waits behind Orryy's renders and any outside render, then holds the PC until it's done. After
- * 60 min of waiting it renders anyway so no slot is missed; without the orchestrator it's a no-op.
+ * 3 hours of waiting (longer than any normal Orryy render) it renders anyway so a stuck job can't block it; without the orchestrator it's a no-op.
  */
 async function withPcTurn<T>(job: string, fn: () => Promise<T>): Promise<T> {
   let release = () => {};
@@ -140,7 +140,7 @@ async function withPcTurn<T>(job: string, fn: () => Promise<T>): Promise<T> {
       priority: 60,
       kind: `pulse:${job.split(" ")[0]}`,
       ram: 6,
-      maxWait: 60,
+      maxWait: 180,
       onWait: (why: string) => log("info", "render waiting for the PC", { why }),
     });
   } catch (e) {

@@ -39,6 +39,7 @@ import {
 } from "./editorial/longform.ts";
 import { trailerMatchesGame } from "./assets/commons.ts";
 import { rankStills } from "./assets/stillscore.ts";
+import { makeParallax, LAYERED_KINDS } from "./render/parallax.ts";
 import {
   tightenPauses,
   chapterGaps,
@@ -5252,6 +5253,28 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   );
   const variant = variantOf(ep.id);
   const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
+  // 2.5D: the wide stills get depth layers on this machine's GPU, once per video (kept in assets).
+  if (s.cfg.parallax && s.cfg.whisperPython && assets.images?.length) {
+    const want = assets.images.filter(
+      (i) => !i.layers && LAYERED_KINDS.has(i.kind) && i.aspect >= 1.2,
+    );
+    if (want.length) {
+      const made = await makeParallax(
+        s.cfg.whisperPython,
+        dir,
+        want.map((i) => i.file),
+      );
+      for (const i of assets.images) {
+        const l = made.get(i.file.split(path.sep).join("/"));
+        if (l) i.layers = l;
+      }
+      if (made.size)
+        await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+          ep.id,
+          JSON.stringify(assets),
+        ]);
+    }
+  }
   const images = (assets.images ?? []).map((i) => ({
     file: i.file,
     kind: i.kind,
@@ -5260,6 +5283,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     credit: photoCredit(i),
     moment: i.moment,
     label: i.label,
+    layers: i.layers,
   }));
   // The shot list per entry, in on-screen order (lowest rank first), for sentence-level pictures and graphics.
   const moments = [...(script.entries ?? [])]
@@ -5332,6 +5356,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           credit: photoCredit(img),
           moment: undefined,
           label: undefined,
+          layers: undefined,
         });
         added++;
       }

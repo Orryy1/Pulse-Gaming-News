@@ -219,6 +219,7 @@ export function testConfig(
     oauthRedirectUri: "http://localhost:8080/oauth/callback",
     youtubeChannelId: "",
     musicBed: true,
+    parallax: false,
     dryRun: false,
     maxAttempts: 3,
     remotionConcurrency: 1,

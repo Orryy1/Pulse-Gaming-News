@@ -273,6 +273,7 @@ export interface LongRenderInput {
       credit?: string;
       moment?: number;
       label?: string;
+      layers?: { bg: string; mid: string; fg: string };
     }>;
     clipFiles: Array<{
       file: string;
@@ -320,6 +321,13 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
         credit: i.credit,
         moment: i.moment,
         label: i.label,
+        layers: i.layers
+          ? {
+              bg: `${files.url}/${i.layers.bg}`,
+              mid: `${files.url}/${i.layers.mid}`,
+              fg: `${files.url}/${i.layers.fg}`,
+            }
+          : undefined,
       })),
       clips: clipFiles.map((c) => ({
         src: `${files.url}/${c.file}`,

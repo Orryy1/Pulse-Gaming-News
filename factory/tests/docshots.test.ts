@@ -360,3 +360,10 @@ test("a documentary breathes before each chapter: silence in the gap, words and 
   assert.equal(opened[1]!.start, 1.3);
   assert.equal(opened[0]!.end, 1.3);
 });
+
+import { makeParallax } from "../src/render/parallax.ts";
+
+test("without a Python for the depth model the stills simply stay flat", async () => {
+  const made = await makeParallax("", "C:/nowhere", ["assets/a.jpg"]);
+  assert.equal(made.size, 0);
+});

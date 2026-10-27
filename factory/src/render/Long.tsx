@@ -82,6 +82,8 @@ export interface LongImageProp {
   credit?: string; // archive photos: author / licence / source, shown on screen
   moment?: number;
   label?: string;
+  /** 2.5D layers (src/render/parallax.ts): drifted at different speeds so the still moves like footage. */
+  layers?: { bg: string; mid: string; fg: string };
 }
 
 export interface LongClipProp {
@@ -214,6 +216,9 @@ const Still: React.FC<{
   /** An archive photo: a framed print over its own blurred copy, the way video essays show real photos. */
   print?: boolean;
   tilt?: number;
+  /** 2.5D layers: each drifts at its own speed, nearer faster, so the still reads as a camera move. */
+  layers?: { bg: string; mid: string; fg: string };
+  dir?: number; // 1 or -1: which way the camera trucks
 }> = ({
   src,
   aspect,
@@ -222,6 +227,8 @@ const Still: React.FC<{
   fromBlack = false,
   print = false,
   tilt = 0,
+  layers,
+  dir = 1,
 }) => {
   const frame = useCurrentFrame();
   const m = moveTransform(
@@ -231,6 +238,38 @@ const Still: React.FC<{
   const fade = interpolate(frame, [0, 10], [fromBlack ? 0 : 1, 1], {
     extrapolateRight: "clamp",
   });
+  if (layers && !print && aspect >= 0.9) {
+    // The camera trucks sideways and pushes in a touch; the middle moves half again as far as the
+    // background and the foreground twice as far, the 2.5D look of video essays.
+    const p = Math.min(1, frame / Math.max(1, durationFrames));
+    const truck = (p - 0.5) * 34 * dir;
+    const layer = (
+      layerSrc: string,
+      k: number,
+      key: string,
+    ) => (
+      <Img
+        key={key}
+        src={layerSrc}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          filter: "contrast(1.03) saturate(1.05)",
+          transform: `scale(${m.scale + 0.06 + 0.035 * k * p}) translate(${m.x * (1 + k) + truck * k}px, ${m.y * (1 + k * 0.6)}px)`,
+        }}
+      />
+    );
+    return (
+      <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+        {layer(layers.bg, 0, "bg")}
+        {layer(layers.mid, 0.6, "mid")}
+        {layer(layers.fg, 1.4, "fg")}
+      </AbsoluteFill>
+    );
+  }
   if (print) {
     const w = aspect >= 1 ? 1240 : 1240 * aspect * 0.75;
     return (
@@ -499,6 +538,8 @@ const Backdrop: React.FC<{
                 <Still
                   print={img.kind === "photo"}
                   tilt={((s.media.index * 37) % 5) - 2}
+                  layers={img.layers}
+                  dir={i % 2 ? -1 : 1}
                   src={img.src}
                   aspect={img.aspect}
                   durationFrames={len + (i > 0 ? Math.min(XFADE, s.start) : 0)}

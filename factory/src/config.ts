@@ -285,6 +285,8 @@ export interface Config {
   twinDelayMinutes: number; // the twin follows the original by this long
   oauthRedirectUri: string; // where Google returns after consent; this PC's own address works for the desktop OAuth client
   musicBed: boolean;
+  /** 2.5D depth layers for long videos' stills (src/render/parallax.ts). */
+  parallax: boolean;
   dryRun: boolean;
   maxAttempts: number;
   remotionConcurrency: number;
@@ -642,6 +644,7 @@ export function loadConfig(): Config {
     twinChannelId: str("TWIN_YOUTUBE_CHANNEL_ID", ""),
     twinDelayMinutes: int("TWIN_DELAY_MINUTES", 30),
     musicBed: bool("MUSIC_BED", true),
+    parallax: bool("PARALLAX", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),

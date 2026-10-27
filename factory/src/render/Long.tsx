@@ -2148,6 +2148,7 @@ export const Long: React.FC<LongProps> = (props) => {
       { from: d.from, origin: d.origin, zoom: d.zoom },
     ]),
   );
+  const richSoundAt = new Map<number, number>();
   const momentSounds = gateLongSounds(
     windows.flatMap((w, k): LongSoundCandidate[] => {
       const raw = props.moments?.[w.entry]?.[w.moment];
@@ -2156,6 +2157,21 @@ export const Long: React.FC<LongProps> = (props) => {
       const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
       if (graphic === "stat" || graphic === "score")
         return [{ key: k, frame: from, kind: "glint" as const }];
+      // The richer graphics have their own cue: a whoosh as a full-screen explainer lands, the stamp's
+      // low hit as it slams down, a tick as a counter finishes or a milestone pops.
+      if (["quote", "headline", "source", "reviews", "people", "versus", "timeline"].includes(graphic)) {
+        richSoundAt.set(k, from);
+        return [{ key: k, frame: from, kind: "pop" as const }];
+      }
+      if (graphic === "delay") {
+        richSoundAt.set(k, from + 34);
+        return [{ key: k, frame: from + 34, kind: "stamp" as const }];
+      }
+      if (graphic === "span" || graphic === "milestone") {
+        const at = from + (graphic === "span" ? 70 : 6);
+        richSoundAt.set(k, at);
+        return [{ key: k, frame: at, kind: "glint" as const }];
+      }
       const shot = plan.shots.find((x) => from >= x.start && from < x.end);
       const pic = props.images.some(
         (im) => im.beatIndex === w.entry && im.moment === w.moment,
@@ -2174,7 +2190,13 @@ export const Long: React.FC<LongProps> = (props) => {
           },
         ];
       return [];
-    }),
+    }).concat(
+      // A detail's box drawing on gets a tick (keys from 100000, clear of the moment windows').
+      details.map((d, i): LongSoundCandidate => {
+        richSoundAt.set(100000 + i, d.from + 26);
+        return { key: 100000 + i, frame: d.from + 26, kind: "glint" };
+      }),
+    ),
     entryFrames,
     fps,
   );
@@ -2494,6 +2516,17 @@ export const Long: React.FC<LongProps> = (props) => {
                 ) : null}
               </Sequence>
             ) : null}
+          </Sequence>
+        );
+      })}
+      {/* The richer graphics' and detail boxes' cues (the plain graphics play theirs inline). */}
+      {[...richSoundAt].map(([key, at]) => {
+        const name = momentSounds.get(key);
+        if (!name) return null;
+        const vol = name.includes("land") ? LEVEL.landLong : name.includes("air") ? LEVEL.airLong : LEVEL.glintLong;
+        return (
+          <Sequence key={`rs${key}`} from={Math.max(0, at - leadFrames(name, fps))} durationInFrames={75} layout="none">
+            <Sfx name={inKey(name, bedAt(at))} volume={vol} />
           </Sequence>
         );
       })}

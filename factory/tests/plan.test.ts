@@ -744,6 +744,18 @@ test("long-video moment sounds are spaced out and keep clear of each entry's swe
     [0, 2, 4, 5],
   );
   assert.notEqual(out.get(2), out.get(5), "whoosh variants rotate");
+  // The delay card's stamp lands on the low hit, and two stamps never come within 20 s.
+  const stamps = gateLongSounds(
+    [
+      { key: 0, frame: 100, kind: "stamp" as const },
+      { key: 1, frame: 500, kind: "stamp" as const },
+      { key: 2, frame: 800, kind: "stamp" as const },
+    ],
+    [],
+    fps,
+  );
+  assert.deepEqual([...stamps.keys()], [0, 2]);
+  assert.match(stamps.get(0)!, /land/);
 });
 
 test("a corner credit's fades always form a strictly increasing range, however short the shot", async () => {

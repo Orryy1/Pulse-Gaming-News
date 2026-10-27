@@ -88,7 +88,7 @@ export const leadFrames = (name: string, fps: number) =>
 export interface LongSoundCandidate {
   key: number; // the moment window's index
   frame: number;
-  kind: "glint" | "pop";
+  kind: "glint" | "pop" | "stamp"; // stamp: the delay card's rubber stamp lands
 }
 
 /**
@@ -105,17 +105,17 @@ export function gateLongSounds(
   const near = (f: number) =>
     entryFrames.some((e) => Math.abs(f - e) < 1.5 * fps);
   let last = -Infinity;
-  const lastOf = { glint: -Infinity, pop: -Infinity };
-  const turn = { glint: 0, pop: 0 };
+  const lastOf = { glint: -Infinity, pop: -Infinity, stamp: -Infinity };
+  const turn = { glint: 0, pop: 0, stamp: 0 };
   for (const c of [...cands].sort((a, b) => a.frame - b.frame)) {
-    const gap = c.kind === "glint" ? 8 : 14;
+    const gap = c.kind === "glint" ? 8 : c.kind === "stamp" ? 20 : 14;
     if (
       near(c.frame) ||
       c.frame - last < 4 * fps ||
       c.frame - lastOf[c.kind] < gap * fps
     )
       continue;
-    const list = c.kind === "glint" ? SFX.glint : SFX.air;
+    const list = c.kind === "glint" ? SFX.glint : c.kind === "stamp" ? SFX.land : SFX.air;
     out.set(c.key, list[turn[c.kind]++ % list.length]!);
     last = c.frame;
     lastOf[c.kind] = c.frame;

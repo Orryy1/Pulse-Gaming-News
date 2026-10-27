@@ -296,6 +296,8 @@ export interface LongRenderInput {
   gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
   browserExecutable?: string;
   onProgress?: (p: number) => void;
+  /** Only these frames (a preview excerpt); the whole video when absent. */
+  frameRange?: [number, number];
 }
 
 type ThumbInput = Omit<ThumbProps, "imageSrc" | "image2Src" | "fgSrc"> & {
@@ -363,6 +365,7 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       concurrency: input.concurrency,
       browserExecutable,
       chromiumOptions,
+      frameRange: input.frameRange ?? null,
       // A busy PC can take far longer than the 30 s default to decode a clip frame.
       timeoutInMilliseconds: 180_000,
       onProgress: ({ progress }) => input.onProgress?.(progress),

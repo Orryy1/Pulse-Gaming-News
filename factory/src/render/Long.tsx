@@ -71,6 +71,7 @@ import {
   SourceMoment,
   SpanMoment,
   VersusMoment,
+  WipeCompare,
 } from "./components/DocGraphics.tsx";
 import {
   EvidenceBoard,
@@ -2079,14 +2080,13 @@ export const Long: React.FC<LongProps> = (props) => {
           />
         );
       case "versus":
-        return (
-          <VersusMoment
-            len={len}
-            heading={displayText(g.primary)}
-            left={gameArt(g.items[0] ?? "")}
-            right={gameArt(g.items[1] ?? "")}
-          />
-        );
+        // Two looks taken in turn: the split card and the remaster-style wipe.
+        return React.createElement((variant ?? 0) % 2 ? WipeCompare : VersusMoment, {
+          len,
+          heading: displayText(g.primary),
+          left: gameArt(g.items[0] ?? ""),
+          right: gameArt(g.items[1] ?? ""),
+        });
       default:
         return null;
     }

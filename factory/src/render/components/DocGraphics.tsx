@@ -786,3 +786,110 @@ export const PeopleMoment: React.FC<{
     </Stage>
   );
 };
+
+/**
+ * Two games compared the way remaster videos do it: one picture over the other, a divider with a handle
+ * sweeping across and back to show each, their names in the corners.
+ */
+export const WipeCompare: React.FC<{
+  len: number;
+  left?: { src: string; label: string };
+  right?: { src: string; label: string };
+  heading: string;
+}> = ({ len, left, right, heading }) => {
+  const { frame, fps, dim, visible, showFor } = useStage(len, 210);
+  if (!visible || !left || !right) return null;
+  // The divider: in from the right, across to show the older game, back to rest in the middle.
+  const x = interpolate(
+    frame,
+    [0, 18, 70, 120, Math.max(121, showFor - 20)],
+    [100, 50, 15, 85, 50],
+    { ...clamp, easing: (t) => t * t * (3 - 2 * t) },
+  );
+  const tag = spring({ frame: frame - 10, fps, config: SPRING.ENTER });
+  const name = (p: { label: string }, side: "l" | "r") => (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 110,
+        [side === "l" ? "left" : "right"]: 96,
+        padding: "10px 22px",
+        background: "rgba(11,11,14,0.82)",
+        borderLeft: side === "l" ? `6px solid ${COLOUR.amber}` : undefined,
+        borderRight: side === "r" ? `6px solid ${COLOUR.amber}` : undefined,
+        fontFamily: BODY,
+        fontWeight: 900,
+        fontSize: 30,
+        letterSpacing: 2,
+        color: COLOUR.paper,
+        textTransform: "uppercase",
+        opacity: tag,
+      }}
+    >
+      {p.label}
+    </div>
+  );
+  return (
+    <AbsoluteFill style={{ opacity: dim, background: COLOUR.ink }}>
+      <Img src={right.src} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+      <div style={{ position: "absolute", inset: 0, clipPath: `inset(0 ${100 - x}% 0 0)` }}>
+        <Img src={left.src} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      </div>
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          left: `${x}%`,
+          width: 6,
+          marginLeft: -3,
+          background: COLOUR.paper,
+          boxShadow: "0 0 24px rgba(0,0,0,0.7)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: `${x}%`,
+          width: 76,
+          height: 76,
+          margin: "-38px 0 0 -38px",
+          borderRadius: 38,
+          background: COLOUR.paper,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: BODY,
+          fontWeight: 900,
+          fontSize: 30,
+          color: COLOUR.ink,
+        }}
+      >
+        {"\u2039\u203A"}
+      </div>
+      {name(left, "l")}
+      {name(right, "r")}
+      {heading ? (
+        <div
+          style={{
+            position: "absolute",
+            top: 140,
+            left: 0,
+            right: 0,
+            textAlign: "center",
+            fontFamily: DISPLAY,
+            fontSize: 72,
+            color: COLOUR.paper,
+            textTransform: "uppercase",
+            textShadow: "0 8px 30px rgba(0,0,0,0.85)",
+            opacity: tag,
+          }}
+        >
+          {heading}
+        </div>
+      ) : null}
+    </AbsoluteFill>
+  );
+};

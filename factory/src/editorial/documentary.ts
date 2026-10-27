@@ -8,7 +8,7 @@
 // against them by a second pass and rewritten when a claim is not supported.
 // On-screen quotes and numbers must appear in the source text verbatim.
 
-import { voiceFor, withSignOff } from "./voice.ts";
+import { advertiserProblems, voiceFor, withSignOff } from "./voice.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
@@ -705,6 +705,16 @@ export function validateChapter(c: DocChapter): string[] {
         `Paragraph ${i + 1} is ${n} words; keep paragraphs ${DOC_PARAGRAPH_WORDS_MIN}-${DOC_PARAGRAPH_WORDS_MAX}.`,
       );
   }
+  // Advertiser-friendly words in the narration and on screen ("hidden sex minigame" became "hidden adult content").
+  p.push(
+    ...advertiserProblems(
+      c.paragraphs
+        .map(
+          (x) => `${x.narration} ${x.callout.primary} ${x.callout.secondary}`,
+        )
+        .join(" "),
+    ),
+  );
   const callouts = c.paragraphs.filter((x) => x.callout.kind !== "none").length;
   if (callouts > Math.ceil(c.paragraphs.length / 2))
     p.push("Too many callouts: at most half the paragraphs carry one.");
@@ -780,6 +790,7 @@ export function validateBookends(b: DocBookends): string[] {
   const p: string[] = [];
   const i = wordCount(b.intro.narration);
   if (i < 90 || i > 230) p.push(`The intro is ${i} words; it must be 110-200.`);
+  p.push(...advertiserProblems(`${b.intro.narration} ${b.outro.narration}`));
   const o = wordCount(b.outro.narration);
   if (o < 70 || o > 210) p.push(`The outro is ${o} words; it must be 90-180.`);
   return p;

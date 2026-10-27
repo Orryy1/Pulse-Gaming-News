@@ -3,7 +3,7 @@
 // Short: same week, room to explain, and the watch hours a channel needs for the Partner Program.
 // It reuses the documentary's shape (chapters of paragraphs with callouts) so it renders, voices
 // and passes QA through the documentary path.
-import { voiceFor } from "./voice.ts";
+import { advertiserProblems, voiceFor } from "./voice.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import type { Script } from "./schema.ts";
@@ -143,6 +143,15 @@ export function validateRecapChapter(c: DocChapter): string[] {
     )
   )
     p.push("Banned phrase.");
+  p.push(
+    ...advertiserProblems(
+      c.paragraphs
+        .map(
+          (x) => `${x.narration} ${x.callout.primary} ${x.callout.secondary}`,
+        )
+        .join(" "),
+    ),
+  );
   return p;
 }
 
@@ -218,7 +227,11 @@ export function recapToScript(
     bookends,
   };
   const script = docToScript(draft);
-  const beats = script.beats.map((b) => (b.visual.kind === "chapter" ? { ...b, visual: { ...b.visual, items: [] } } : b));
+  const beats = script.beats.map((b) =>
+    b.visual.kind === "chapter"
+      ? { ...b, visual: { ...b.visual, items: [] } }
+      : b,
+  );
   return {
     ...script,
     beats,
@@ -236,7 +249,9 @@ export function recapToScript(
     })),
     recap: true,
     take_entry:
-      typeof bookends.outro.about_index === "number" && bookends.outro.about_index >= 0 && bookends.outro.about_index < stories.length
+      typeof bookends.outro.about_index === "number" &&
+      bookends.outro.about_index >= 0 &&
+      bookends.outro.about_index < stories.length
         ? bookends.outro.about_index
         : 0,
   } as Script;

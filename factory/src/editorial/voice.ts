@@ -37,7 +37,7 @@ export const PULSE_FACT_RULES = `Facts and safety (non-negotiable):
 - American English spelling and vocabulary for a US-first audience (color, favorite, center, rumor), AP style with no serial (Oxford) comma. Prices in US dollars first; launch times in ET/PT.
 - Never invent facts, numbers, dates, prices, quotes, poll results or viewer comments. Every factual claim comes from the provided material or long-established public knowledge.
 - Rumors are labeled in the first two sentences and stay labeled to the end: say "reportedly", "according to" or "rumored", name who is reporting it and, when known, their track record. Split what is confirmed from what is not. Never upgrade a rumor in the closer.
-- Advertiser-friendly: no profanity, no graphic violence, no shock language, no fake stakes or outrage.
+- Advertiser-friendly: no profanity, no graphic violence, no shock language, no fake stakes or outrage. Sexual material is "adult content" or "mature content", never "sex"; drugs are "drugs"; real deaths and self-harm are mentioned gently or not at all.
 - The channel speaks as "we", never about itself in the third person ("Pulse is"); the name is on screen. No personal details about whoever runs it. No calls to like, subscribe or comment.`;
 
 /** The sign-off that closes every long video and weekly recap (Shorts loop instead). */
@@ -93,11 +93,49 @@ export const VOICE_BANNED: RegExp[] = [
   /\bchanges everything\b/i,
 ];
 
+/**
+ * Words advertisers mark down, with the gentler wording to use instead (owner, 27 Oct 2026: the GTA
+ * documentary said "hidden sex minigame" about Hot Coffee). YouTube's guidelines let a factual,
+ * non-graphic mention pass, but the softer phrase costs nothing and keeps every video green.
+ */
+export const ADVERTISER_SOFTER: Array<[RegExp, string]> = [
+  // Game and character names stay as they are: Naked Snake, Suicide Squad, The Texas Chain Saw Massacre.
+  [
+    /\bsex(ual|ually)?\b|\bporn\w*|\bnud(e|ity)\b|\berotic\b/i,
+    `"adult content", "mature content" or "explicit scenes"`,
+  ],
+  [/\bprostitut\w*/i, `"the game's seedier side", or leave it out`],
+  [
+    /\bsuicid(?!e squad)\w*|\bkill(ed|ing)? (him|her|them)sel(f|ves)\b|\bself[- ]harm\b/i,
+    `"died" or leave it out`,
+  ],
+  [
+    /\b(gore|gory|decapitat\w*|dismember\w*|mutilat\w*|disembowel\w*|tortur(e|ed|es|ing))\b/i,
+    `"graphic violence", "brutal" or "an interrogation scene"`,
+  ],
+  [
+    /\b(mass shooting|school shooting|terroris[mt]s?)\b/i,
+    `"real-world tragedy" in neutral words`,
+  ],
+  [/\b(fuck\w*|shit\w*|bitch\w*|cunt|whore)\b/i, `no profanity, even quoted`],
+  [/\b(cocaine|heroin|meth(amphetamine)?)\b/i, `"drugs" or "illegal substances"`],
+];
+
+/** Advertiser problems in spoken or on-screen text, as instructions a rewrite can follow. */
+export function advertiserProblems(text: string): string[] {
+  const p: string[] = [];
+  for (const [re, instead] of ADVERTISER_SOFTER) {
+    const m = text.match(re);
+    if (m) p.push(`"${m[0]}" is advertiser-unfriendly; use ${instead}.`);
+  }
+  return p;
+}
+
 const HYPE = /\b(insane|insanely|massive|huge|crazy|mind[- ]blowing)\b/gi;
 
 /** Voice problems in spoken text, as instructions a rewrite can follow. Empty means the voice is fine. */
 export function voiceProblems(spoken: string): string[] {
-  const p: string[] = [];
+  const p: string[] = [...advertiserProblems(spoken)];
   for (const re of VOICE_BANNED) {
     const m = spoken.match(re);
     if (m)

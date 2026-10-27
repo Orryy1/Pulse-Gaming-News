@@ -259,3 +259,14 @@ test("a quote or timeline is never mistaken for a rank graphic", () => {
     true,
   );
 });
+
+import { advertiserProblems } from "../src/editorial/voice.ts";
+
+test("advertiser-unfriendly words are sent back with a softer phrase; game names pass (27 Oct 2026)", () => {
+  assert.equal(advertiserProblems("The hidden sex minigame was found by modders.").length, 1);
+  assert.match(advertiserProblems("a sexual content patch")[0]!, /adult content/);
+  assert.equal(advertiserProblems("a torture scene drew complaints").length, 1);
+  assert.deepEqual(advertiserProblems("Naked Snake meets Suicide Squad in The Texas Chain Saw Massacre."), []);
+  assert.deepEqual(advertiserProblems("Hot Coffee: hidden adult content left in the files."), []);
+  assert.deepEqual(advertiserProblems("Sussex studios and the Method engine"), []);
+});

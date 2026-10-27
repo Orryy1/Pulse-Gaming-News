@@ -72,6 +72,17 @@ import {
   SpanMoment,
   VersusMoment,
 } from "./components/DocGraphics.tsx";
+import {
+  EvidenceBoard,
+  Letterbox,
+  Montage,
+  montageFrames,
+  RetroTV,
+  TV_HOLD,
+  TV_PUSH,
+  type BoardPicture,
+  type MontageItem,
+} from "./components/EditorMoves.tsx";
 import type { Word } from "../voice/elevenlabs.ts";
 
 export interface LongImageProp {
@@ -133,6 +144,9 @@ const resolveSrc = (src: string | null) =>
 const CROP = 1.12; // trims letterbox bars and burned-in subtitles from trailer clips
 const SAFE_X = 96;
 const SAFE_BOTTOM = 72;
+/** How far a punch-in jumps: a tenth closer, the editor's cut-in on a key word. */
+const PUNCH = 1.1;
+const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const CARD_HOLD = 240; // frames the full lower third stays before collapsing to a tag
 
 export const SAMPLE_LONG_PROPS: LongProps = {
@@ -260,6 +274,8 @@ const Still: React.FC<{
   dir?: number; // 1 or -1: which way the camera trucks
   /** Zoom to the detail: from frame `at` the camera pushes in on `origin` (frame fractions) to `zoom`. */
   focus?: { at: number; origin: { x: number; y: number }; zoom: number };
+  /** A punch-in: from this frame the picture jumps a tenth closer, on the narrator's key word. */
+  punchAt?: number;
 }> = ({
   src,
   aspect,
@@ -271,8 +287,10 @@ const Still: React.FC<{
   layers,
   dir = 1,
   focus,
+  punchAt,
 }) => {
   const frame = useCurrentFrame();
+  const punch = punchAt === undefined ? 1 : interpolate(frame, [punchAt, punchAt + 2], [1, PUNCH], clamp);
   const m = moveTransform(
     move,
     Math.min(1, frame / Math.max(1, durationFrames)),
@@ -329,7 +347,7 @@ const Still: React.FC<{
           height: "100%",
           objectFit: "cover",
           filter: `contrast(1.03) saturate(1.05) blur(${(k === 0 ? 5 : k < 1 ? 2.2 : 0) * pull}px)`,
-          transform: `scale(${m.scale + 0.06 + 0.035 * k * p}) translate(${m.x * (1 + k) + truck * k}px, ${m.y * (1 + k * 0.6)}px)`,
+          transform: `scale(${(m.scale + 0.06 + 0.035 * k * p) * punch}) translate(${m.x * (1 + k) + truck * k}px, ${m.y * (1 + k * 0.6)}px)`,
         }}
       />
     );
@@ -427,19 +445,21 @@ const Still: React.FC<{
           height: "100%",
           objectFit: "cover",
           filter: "contrast(1.03) saturate(1.05)",
-          transform: `scale(${m.scale + 0.04}) translate(${m.x}px, ${m.y}px)`,
+          transform: `scale(${(m.scale + 0.04) * punch}) translate(${m.x}px, ${m.y}px)`,
         }}
       />
     </AbsoluteFill>
   );
 };
 
-const Clip: React.FC<{ src: string; audio?: boolean; frames?: number }> = ({
-  src,
-  audio,
-  frames,
-}) => {
+const Clip: React.FC<{
+  src: string;
+  audio?: boolean;
+  frames?: number;
+  punchAt?: number;
+}> = ({ src, audio, frames, punchAt }) => {
   const frame = useCurrentFrame();
+  const punch = punchAt === undefined ? 1 : interpolate(frame, [punchAt, punchAt + 2], [1, PUNCH], clamp);
   // A hard cut: fading in from transparent showed the black canvas under it for a few frames.
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
@@ -452,7 +472,7 @@ const Clip: React.FC<{ src: string; audio?: boolean; frames?: number }> = ({
           height: "100%",
           objectFit: "cover",
           objectPosition: "center 46%",
-          transform: `scale(${CROP})`,
+          transform: `scale(${CROP * punch})`,
           filter: "contrast(1.03) saturate(1.05)",
         }}
       />
@@ -700,21 +720,22 @@ const ChapterTransition: React.FC<{ kind: TransitionKind }> = ({ kind }) => {
 };
 
 /** A picture's label at the lower right, fading in after the cut and out before the next. */
-const Descriptor: React.FC<{ text: string; frames: number }> = ({
+const Descriptor: React.FC<{ text: string; frames: number; delay?: number }> = ({
   text,
   frames,
+  delay = 0,
 }) => {
   const frame = useCurrentFrame();
   const o = interpolate(
     frame,
-    [14, 26, Math.max(27, frames - 14), Math.max(28, frames - 4)],
+    [14 + delay, 26 + delay, Math.max(27 + delay, frames - 14), Math.max(28 + delay, frames - 4)],
     [0, 1, 1, 0],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     },
   );
-  if (frames < 75) return null;
+  if (frames - delay < 75) return null;
   return (
     <div
       style={{
@@ -751,7 +772,9 @@ const Descriptor: React.FC<{ text: string; frames: number }> = ({
 const ShotLabel: React.FC<{
   plan: LongPlan;
   describe: (media: { type: string; index: number }) => string;
-}> = ({ plan, describe }) => {
+  /** Opening bursts (frames): a shot that starts under one is labelled once it has played. */
+  bursts?: Array<{ from: number; to: number }>;
+}> = ({ plan, describe, bursts = [] }) => {
   const frame = useCurrentFrame();
   const shot = plan.shots.find((x) => frame >= x.start && frame < x.end);
   if (!shot) return null;
@@ -763,7 +786,16 @@ const ShotLabel: React.FC<{
       durationInFrames={Math.max(1, shot.end - shot.start)}
       layout="none"
     >
-      <Descriptor text={text} frames={shot.end - shot.start} />
+      <Descriptor
+        text={text}
+        frames={shot.end - shot.start}
+        delay={Math.max(
+          0,
+          ...bursts
+            .filter((b) => shot.start >= b.from - 2 && shot.start < b.to)
+            .map((b) => b.to - shot.start),
+        )}
+      />
     </Sequence>
   );
 };
@@ -809,7 +841,11 @@ const Backdrop: React.FC<{
     number,
     { from: number; origin: { x: number; y: number }; zoom: number }
   >;
-}> = ({ plan, images, clips, theme, describe, focusFor }) => (
+  /** Shots of a pre-2006 game shown on a CRT of its day before the camera pushes through the glass. */
+  retro?: Set<number>;
+  /** Per shot index: the absolute frame of its punch-in. */
+  punches?: Map<number, number>;
+}> = ({ plan, images, clips, theme, describe, focusFor, retro, punches }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
       const len = Math.max(1, s.end - s.start);
@@ -823,13 +859,37 @@ const Backdrop: React.FC<{
           layout="none"
         >
           {clip ? (
-            <>
-              <Clip src={clip.src} audio={clip.audio} frames={len} />
-            </>
+            retro?.has(i) ? (
+              <RetroTV>
+                <Clip src={clip.src} audio={clip.audio} frames={len} />
+              </RetroTV>
+            ) : (
+              <Clip
+                src={clip.src}
+                audio={clip.audio}
+                frames={len}
+                punchAt={punches?.has(i) ? punches.get(i)! - s.start : undefined}
+              />
+            )
           ) : img ? (
             <>
               <FadeIn frames={i > 0 ? Math.min(XFADE, s.start) : 0}>
+                {retro?.has(i) ? (
+                  <RetroTV>
+                    <Still
+                      src={img.src}
+                      aspect={img.aspect}
+                      durationFrames={len + (i > 0 ? Math.min(XFADE, s.start) : 0)}
+                      move={s.move}
+                    />
+                  </RetroTV>
+                ) : (
                 <Still
+                  punchAt={
+                    punches?.has(i)
+                      ? punches.get(i)! - (i > 0 ? s.start - Math.min(XFADE, s.start) : s.start)
+                      : undefined
+                  }
                   print={img.kind === "photo"}
                   tilt={((s.media.index * 37) % 5) - 2}
                   layers={img.layers}
@@ -853,6 +913,7 @@ const Backdrop: React.FC<{
                   move={s.move}
                   fromBlack={i === 0}
                 />
+                )}
               </FadeIn>
               {img.credit ? (
                 <div
@@ -2148,6 +2209,104 @@ export const Long: React.FC<LongProps> = (props) => {
       { from: d.from, origin: d.origin, zoom: d.zoom },
     ]),
   );
+  // The editor's moves (src/render/components/EditorMoves.tsx).
+  // Each entry or chapter opens on a burst of quick cuts from its own footage and pictures (never a
+  // credited clip or archive photo, whose credit would not show, nor the picture the entry then opens on).
+  const openings = useMemo(() => {
+    const out: Array<{ from: number; items: MontageItem[] }> = [];
+    props.segments.forEach((s, i) => {
+      if (
+        s.kind !== "beat" ||
+        (s.visual?.kind !== "rank" && s.visual?.kind !== "chapter")
+      )
+        return;
+      const e = entryOf(props.segments, i);
+      if (e === undefined) return;
+      const from = starts[i]! + breakAt(i);
+      const after = plan.shots.find(
+        (x) => from + montageFrames(4) >= x.start && from + montageFrames(4) < x.end,
+      );
+      const clips = props.clips
+        .filter((c) => c.beatIndex === e && !c.credit && c.durationSeconds >= 1.5)
+        .map((c): MontageItem => ({
+          kind: "clip",
+          src: c.src,
+          startFrom: Math.round(c.durationSeconds * fps * 0.55),
+        }));
+      const pics = props.images
+        .map((im, k) => ({ im, k }))
+        .filter(
+          ({ im, k }) =>
+            im.beatIndex === e &&
+            im.aspect >= 1.2 &&
+            ["screenshot", "hero", "header", "article"].includes(im.kind) &&
+            !(after?.media.type === "image" && after.media.index === k),
+        )
+        .map(({ im }): MontageItem => ({ kind: "image", src: im.src }));
+      const items: MontageItem[] = [];
+      for (let k = 0; items.length < 4 && k < Math.max(clips.length, pics.length); k++) {
+        if (clips[k]) items.push(clips[k]!);
+        if (items.length < 4 && pics[k]) items.push(pics[k]!);
+      }
+      if (items.length >= 3) out.push({ from, items });
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.segments, props.clips, props.images, plan, fps]);
+  // A pre-2006 game's first long enough shot (footage first, else a screenshot) plays on a CRT of its day,
+  // once per entry and never under the entry's opening burst.
+  const retro = useMemo(() => {
+    const out = new Set<number>();
+    const done = new Set<number>();
+    for (const type of ["clip", "image"] as const)
+      plan.shots.forEach((sh, i) => {
+        if (sh.media.type !== type) return;
+        const media =
+          type === "clip" ? props.clips[sh.media.index] : props.images[sh.media.index];
+        const e = media?.beatIndex;
+        if (!media || e === undefined || done.has(e)) return;
+        const year = Number(entryTitle(e).year);
+        if (!year || year > 2005) return;
+        if (
+          type === "image" &&
+          (props.images[sh.media.index]!.kind !== "screenshot" ||
+            props.images[sh.media.index]!.aspect < 1.2)
+        )
+          return;
+        if (sh.end - sh.start < TV_HOLD + TV_PUSH + 30 || focusFor.has(i)) return;
+        if (openings.some((o) => sh.start >= o.from - 5 && sh.start < o.from + 75)) return;
+        out.add(i);
+        done.add(e);
+      });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, props.clips, props.images, openings]);
+  // A punch-in on the narrator's key word, the editor's cut-in: on footage or a wide still, when the picture
+  // is not under a full-screen explainer, at most one every 18 seconds.
+  const punches = useMemo(() => {
+    const out = new Map<number, number>();
+    let lastAt = -Infinity;
+    for (const w of windows) {
+      const raw = props.moments?.[w.entry]?.[w.moment];
+      if (!raw || w.moment === 0 || w.at - w.start < 0.3) continue;
+      const kind = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
+      if (!["none", "stat", "date", "list", "compare"].includes(kind)) continue;
+      const f = Math.round(w.at * fps);
+      if (f - lastAt < 18 * fps) continue;
+      const i = plan.shots.findIndex((x) => f >= x.start && f < x.end);
+      const sh = plan.shots[i];
+      if (!sh || sh.media.type === "plate") continue;
+      if (f - sh.start < 24 || sh.end - f < 36 || focusFor.has(i) || retro.has(i)) continue;
+      if (sh.media.type === "image") {
+        const im = props.images[sh.media.index];
+        if (!im || im.kind === "photo" || im.aspect < 0.9) continue;
+      }
+      out.set(i, f);
+      lastAt = f;
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windows, plan, props.moments, props.images, fps, retro]);
   const richSoundAt = new Map<number, number>();
   const momentSounds = gateLongSounds(
     windows.flatMap((w, k): LongSoundCandidate[] => {
@@ -2217,9 +2376,25 @@ export const Long: React.FC<LongProps> = (props) => {
         theme={props.theme}
         describe={describe}
         focusFor={focusFor}
+        retro={retro}
+        punches={punches}
       />
+      {openings.map((o, k) => (
+        <Sequence
+          key={`open${k}`}
+          from={o.from}
+          durationInFrames={montageFrames(o.items.length)}
+          layout="none"
+        >
+          <Montage items={o.items} />
+        </Sequence>
+      ))}
       <Scrim />
-      <ShotLabel plan={plan} describe={describe} />
+      <ShotLabel
+        plan={plan}
+        describe={describe}
+        bursts={openings.map((o) => ({ from: o.from, to: o.from + montageFrames(o.items.length) }))}
+      />
       <GrainVignette />
       <Brand
         logoSrc={resolveSrc(props.logoSrc)}
@@ -2253,6 +2428,7 @@ export const Long: React.FC<LongProps> = (props) => {
                 criterion={props.criterion}
                 durationFrames={len}
               />
+              {documentary ? <Letterbox len={len} /> : null}
             </Sequence>
           );
         }
@@ -2296,9 +2472,46 @@ export const Long: React.FC<LongProps> = (props) => {
             (m) => m.graphic.kind === "quote",
           )?.graphic;
           const span = Math.max(1, chapterEnd(i) - starts[i]! - pause);
+          // Every other breather is the story so far pinned to a board: the chapter's archive photos first.
+          const rankPic = (k: string) =>
+            ({ photo: 0, portrait: 1, screenshot: 2, article: 3, hero: 4 })[k] ?? 9;
+          const boardPics: BoardPicture[] = props.images
+            .filter(
+              (im) =>
+                im.beatIndex === b &&
+                im.aspect >= 0.75 &&
+                rankPic(im.kind) < 9,
+            )
+            .sort((x, y) => rankPic(x.kind) - rankPic(y.kind))
+            .slice(0, 3)
+            .map((im, k) => ({
+              src: im.src,
+              caption:
+                im.label && im.label.length <= 22
+                  ? displayText(im.label)
+                  : `Exhibit ${"ABC"[k]}`,
+            }));
+          const board =
+            boardPics.length >= 2 && ((b ?? 0) + props.variant) % 2 === 1;
           return (
             <React.Fragment key={i}>
-              {pause ? (
+              {pause && board ? (
+                <Sequence
+                  from={starts[i]!}
+                  durationInFrames={pause}
+                  layout="none"
+                >
+                  <EvidenceBoard
+                    number={s.visual.value_a ?? (b ?? 0) + 1}
+                    title={s.visual.primary}
+                    game={s.visual.secondary}
+                    year={s.visual.items?.[0]}
+                    pictures={boardPics}
+                    frames={pause}
+                    variant={props.variant + i}
+                  />
+                </Sequence>
+              ) : pause ? (
                 <Sequence
                   from={starts[i]!}
                   durationInFrames={pause}

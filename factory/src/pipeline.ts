@@ -5434,18 +5434,50 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     images.find((i) => i.beatIndex === b && i.kind === "hero") ??
     images.find((i) => i.beatIndex === b && i.aspect >= 1.2);
   const lastArt = !doc && winnerBeat > 0 ? wide(0) : undefined;
+  // The second design: the subject cut out in front of the headline when the art has depth layers (the
+  // big creators' trick), else the full-bleed art. The third: last place against the winner for a ranking,
+  // the headline as a newspaper cutting for a documentary.
+  const depthArt =
+    (thumbArt?.layers ? thumbArt : undefined) ??
+    images.find((i) => i.layers && i.kind === "hero" && (i.beatIndex === winnerBeat || i.beatIndex === undefined));
   const thumbVariants = [
     {
       file: path.join(dir, "thumb_b.jpg"),
-      thumb: {
-        headline: thumbTitle(script),
-        kicker: doc ? "DOCUMENTARY" : "RANKED",
-        game: "",
-        accent: "#FF6B1A",
-        imageFile: thumbArt?.file ?? null,
-        layout: "full" as const,
-      },
+      thumb: depthArt?.layers
+        ? {
+            headline: thumbTitle(script),
+            kicker: doc ? "DOCUMENTARY" : "RANKED",
+            game: "",
+            accent: "#FF6B1A",
+            imageFile: depthArt.file,
+            fgFile: depthArt.layers.fg,
+            subjectX: depthArt.layers.fgx,
+            layout: "depth" as const,
+          }
+        : {
+            headline: thumbTitle(script),
+            kicker: doc ? "DOCUMENTARY" : "RANKED",
+            game: "",
+            accent: "#FF6B1A",
+            imageFile: thumbArt?.file ?? null,
+            layout: "full" as const,
+          },
     },
+    ...(doc && thumbArt
+      ? [
+          {
+            file: path.join(dir, "thumb_c.jpg"),
+            thumb: {
+              headline: thumbTitle(script),
+              kicker: "",
+              game: script.recap ? "This week" : script.game_title,
+              accent: "#FF6B1A",
+              imageFile: thumbArt.file,
+              layout: "clipping" as const,
+            },
+          },
+        ]
+      : []),
     ...(lastArt && thumbArt
       ? [
           {

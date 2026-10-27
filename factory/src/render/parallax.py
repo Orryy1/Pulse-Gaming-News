@@ -78,7 +78,10 @@ def layers(pipe, src, prefix):
     Image.fromarray(bg_rgb).save(f"{prefix}.bg.webp", quality=88)
     Image.fromarray(np.dstack([mid_rgb, mid_a])).save(f"{prefix}.mid.webp", quality=88)
     Image.fromarray(np.dstack([rgb, fg_a])).save(f"{prefix}.fg.webp", quality=88)
-    return {"src": src, "bg": f"{prefix}.bg.webp", "mid": f"{prefix}.mid.webp", "fg": f"{prefix}.fg.webp"}, None
+    # Where the subject stands across the picture (0 left to 1 right): thumbnails set the headline on the other side.
+    cols = fg.mean(axis=0)
+    fgx = float((cols * np.arange(w)).sum() / max(1e-6, cols.sum()) / w)
+    return {"src": src, "bg": f"{prefix}.bg.webp", "mid": f"{prefix}.mid.webp", "fg": f"{prefix}.fg.webp", "fgx": round(fgx, 3)}, None
 
 
 def main():

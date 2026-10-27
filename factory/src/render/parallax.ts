@@ -19,6 +19,8 @@ export interface Layers {
   bg: string;
   mid: string;
   fg: string;
+  /** Where the foreground subject stands across the picture, 0 (left) to 1 (right). */
+  fgx?: number;
 }
 
 /** Pictures worth layering: wide stills shown full bleed (not box art, archive prints or portraits). */
@@ -59,13 +61,13 @@ export async function makeParallax(
       windowsHide: true,
     });
     const r = JSON.parse(await fs.readFile(resultFile, "utf8")) as {
-      done: Array<{ src: string; bg: string; mid: string; fg: string }>;
+      done: Array<{ src: string; bg: string; mid: string; fg: string; fgx?: number }>;
       skipped: Array<{ src: string; why: string }>;
     };
     const rel = (p: string) =>
       path.relative(episodeDir, p).split(path.sep).join("/");
     for (const d of r.done)
-      out.set(rel(d.src), { bg: rel(d.bg), mid: rel(d.mid), fg: rel(d.fg) });
+out.set(rel(d.src), { bg: rel(d.bg), mid: rel(d.mid), fg: rel(d.fg), fgx: d.fgx });
     log("info", "parallax layers", {
       made: r.done.length,
       skipped: r.skipped.length,

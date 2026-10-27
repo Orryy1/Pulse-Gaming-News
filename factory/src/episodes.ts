@@ -67,7 +67,7 @@ export interface EpisodeAssets {
     moment?: number;
     label?: string;
     wordy?: boolean;
-    layers?: { bg: string; mid: string; fg: string }; // 2.5D depth layers (src/render/parallax.ts)
+    layers?: { bg: string; mid: string; fg: string; fgx?: number }; // 2.5D depth layers (src/render/parallax.ts)
   }>; // wordy: the local screen saw menu or HUD text on it
   video?: string;
   poster?: string;

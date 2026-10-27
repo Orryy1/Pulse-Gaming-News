@@ -202,14 +202,108 @@ export type ThumbProps = {
   accent: string;
   // A/B designs for YouTube's Test & compare: "split" (the default), "full" bleed art with a
   // short line, or "versus": last place against the winner.
-  layout?: "split" | "full" | "versus";
+  layout?: "split" | "full" | "versus" | "depth" | "clipping";
   image2Src?: string | null; // versus: the winner's art (imageSrc is last place)
+  fgSrc?: string | null; // depth: the art's foreground cut-out (src/render/parallax.ts), set in front of the headline
+  subjectX?: number; // depth: where the subject stands (0-1); the headline goes on the other side so it stays readable
   labels?: [string, string]; // versus: the two corner tags
 };
 
 /** Long-form thumbnail, 1280x720, in one of three designs. */
 export const Thumb: React.FC<ThumbProps> = (p) =>
-  p.layout === "full" ? <FullThumb {...p} /> : p.layout === "versus" ? <VersusThumb {...p} /> : <SplitThumb {...p} />;
+  p.layout === "full" ? (
+    <FullThumb {...p} />
+  ) : p.layout === "versus" ? (
+    <VersusThumb {...p} />
+  ) : p.layout === "depth" && p.fgSrc ? (
+    <DepthThumb {...p} />
+  ) : p.layout === "clipping" ? (
+    <ClippingThumb {...p} />
+  ) : (
+    <SplitThumb {...p} />
+  );
+
+/**
+ * The headline huge across the art with the subject standing in front of the letters (the cut-out from
+ * the depth model): the thumbnail trick of the biggest creators.
+ */
+const DepthThumb: React.FC<ThumbProps> = ({ headline, kicker, imageSrc, fgSrc, accent, subjectX }) => {
+  // The headline sits on the side away from the subject, only its edge tucked behind them.
+  const side = subjectX === undefined ? "centre" : subjectX >= 0.5 ? "left" : "right";
+  const box: React.CSSProperties =
+    side === "centre"
+      ? { left: 0, right: 0, textAlign: "center", padding: "0 40px" }
+      : side === "left"
+        ? { left: 56, width: 820, textAlign: "left" }
+        : { right: 56, width: 820, textAlign: "right" };
+  const size = side === "centre" ? (headline.length > 22 ? 150 : headline.length > 14 ? 190 : 230) : headline.length > 22 ? 118 : headline.length > 14 ? 140 : 170;
+  return (
+  <Field glow={accent}>
+    {imageSrc ? <Img src={imageSrc} style={{ position: "absolute", inset: 0, width: 1280, height: 720, objectFit: "cover", filter: "brightness(0.8) saturate(1.1)" }} /> : null}
+    <Shade to="linear-gradient(180deg, rgba(10,10,14,0.35) 0%, rgba(10,10,14,0.05) 45%, rgba(10,10,14,0.55) 100%)" />
+    <div style={{ position: "absolute", top: side === "centre" ? 70 : 110, ...box }}>
+      <div
+        style={{
+          fontFamily: DISPLAY,
+          fontSize: size,
+          lineHeight: 0.9,
+          color: COLOUR.paper,
+          textTransform: "uppercase",
+          textShadow: "0 10px 60px rgba(0,0,0,0.6)",
+          letterSpacing: 1,
+        }}
+      >
+        {titleLines(headline).map((l, i) => (
+          <div key={i}>{l}</div>
+        ))}
+      </div>
+    </div>
+    {fgSrc ? (
+      <Img src={fgSrc} style={{ position: "absolute", inset: 0, width: 1280, height: 720, objectFit: "cover", filter: "drop-shadow(0 0 30px rgba(0,0,0,0.75)) saturate(1.12) contrast(1.05)" }} />
+    ) : null}
+    <div style={{ position: "absolute", left: 44, bottom: 44 }}>
+      <Lockup size={36} />
+    </div>
+    {kicker ? (
+      <div style={{ position: "absolute", right: 44, bottom: 44, padding: "8px 18px", background: accent, color: COLOUR.ink, fontFamily: BODY, fontWeight: 900, fontSize: 28, letterSpacing: 3, borderRadius: 8 }}>
+        {kicker.toUpperCase()}
+      </div>
+    ) : null}
+    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 10, background: accent }} />
+  </Field>
+  );
+};
+
+/** The headline as a recreated newspaper cutting over dimmed art: the documentary's own look, never a real paper's. */
+const ClippingThumb: React.FC<ThumbProps> = ({ headline, game, imageSrc, accent }) => (
+  <Field glow={accent}>
+    {imageSrc ? <Img src={imageSrc} style={{ position: "absolute", inset: 0, width: 1280, height: 720, objectFit: "cover", filter: "brightness(0.55) saturate(0.9)" }} /> : null}
+    <div
+      style={{
+        position: "absolute",
+        left: 70,
+        top: 90,
+        width: 820,
+        padding: "26px 40px 50px",
+        background: "#efe7d3",
+        transform: "rotate(-3deg)",
+        boxShadow: "0 30px 80px rgba(0,0,0,0.7)",
+        clipPath: "polygon(0 0, 100% 0, 100% 93%, 94% 97%, 87% 93%, 79% 98%, 70% 94%, 61% 98%, 52% 94%, 43% 98%, 34% 94%, 25% 98%, 16% 94%, 7% 98%, 0 94%)",
+      }}
+    >
+      <div style={{ borderTop: "3px solid #2b2620", borderBottom: "1px solid #2b2620", padding: "6px 0", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 20, letterSpacing: 4, color: "#2b2620", textTransform: "uppercase" }}>
+        {game || "Gaming"}
+      </div>
+      <div style={{ marginTop: 18, fontFamily: "Georgia, 'Times New Roman', serif", fontWeight: 700, fontSize: headline.length > 30 ? 70 : 86, lineHeight: 1.02, color: "#1d1915" }}>
+        {headline}
+      </div>
+    </div>
+    <div style={{ position: "absolute", right: 48, top: 44 }}>
+      <Lockup size={38} />
+    </div>
+    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 10, background: accent }} />
+  </Field>
+);
 
 const Shade: React.FC<{ to: string }> = ({ to }) => (
   <div style={{ position: "absolute", inset: 0, background: to }} />

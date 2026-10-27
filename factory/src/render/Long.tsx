@@ -85,6 +85,7 @@ import {
 } from "./components/EditorMoves.tsx";
 import { ALL_STYLES } from "./components/packs/index.ts";
 import { CAPTION_STYLES } from "./components/Captions.tsx";
+import { NAMETAG_STYLES } from "./components/NameTags.tsx";
 import { SlateInterlude, TornInterlude, VhsInterlude } from "./components/Interludes.tsx";
 import {
   ACCENT_FRAMES,
@@ -2107,6 +2108,8 @@ export const Long: React.FC<LongProps> = (props) => {
             );
         }
   const firstMention = new Set<string>();
+  // Name tags take their looks in turn, by the order people first appear.
+  const firstMentionOrder = new Map<string, number>();
   const tagged = new Set<string>();
   for (const w of windows) {
     const p = props.moments?.[w.entry]?.[w.moment]?.person?.trim();
@@ -2115,6 +2118,7 @@ export const Long: React.FC<LongProps> = (props) => {
     if (tagged.has(key)) continue;
     tagged.add(key);
     firstMention.add(`${w.entry}|${w.moment}`);
+    firstMentionOrder.set(`${w.entry}|${w.moment}`, firstMentionOrder.size + props.variant);
   }
   const bedAt = (f: number) =>
     beds.find((b) => f >= b.from && f < b.to)?.src ?? props.musicSrc;
@@ -2875,7 +2879,16 @@ export const Long: React.FC<LongProps> = (props) => {
               </>
             ) : null}
             {nameTag ? (
-              <NameTag name={nameTag.name} role={nameTag.role} len={len} />
+              React.createElement(
+                NAMETAG_STYLES[(firstMentionOrder.get(`${w.entry}|${w.moment}`) ?? 0) % NAMETAG_STYLES.length] ?? NameTag,
+                {
+                  name: nameTag.name,
+                  role: nameTag.role,
+                  len,
+                  photo: portraits[nameTag.name.toLowerCase()],
+                  variant: props.variant + k,
+                },
+              )
             ) : null}
             {showPop ? (
               <Sequence

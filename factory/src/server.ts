@@ -69,6 +69,7 @@ import {
   accessToken,
 } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
+import { publishPcSchedule } from "./pcschedule.ts";
 import { activeUploads } from "./youtube/upload.ts";
 import { alert } from "./approval/discord.ts";
 import {
@@ -1387,6 +1388,11 @@ async function main(): Promise<void> {
   setInterval(() => void discover(), Math.max(1, cfg.discoverMinutes) * 60_000);
   setTimeout(() => void runTick(services, state), 15_000);
   setInterval(() => void runTick(services, state), cfg.tickMinutes * 60_000);
+  // The PC orchestrator keeps the PC free before each slot; it hears the schedule on its own clock, since a
+  // tick can hold for an hour.
+  const pcSchedule = () => void publishPcSchedule(db, cfg, services.now());
+  setTimeout(pcSchedule, 20_000);
+  setInterval(pcSchedule, 2 * 60_000);
   // Every public Short follows to Facebook, Instagram, TikTok and X on its own clock, never inside the production tick.
   const posters = await buildPosters(cfg, (content) =>
     services.notify({ content, ping: true }),

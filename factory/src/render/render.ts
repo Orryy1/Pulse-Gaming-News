@@ -125,8 +125,9 @@ export async function waitForHeadroom(
 /**
  * Martin's PC runs Orryy's After Effects renders, the explainer and other projects too. A render here holds
  * all 8 cores and 3-12 GB for 10-40 min, so it takes a turn from the PC orchestrator (C:\Claude\orchestrator)
- * first: it waits behind Orryy's renders and any outside render, then holds the PC until it's done. After
- * 3 hours of waiting (longer than any normal Orryy render) it renders anyway so a stuck job can't block it; without the orchestrator it's a no-op.
+ * first, then holds the PC until it's done. Inside the window before one of its slots (src/pcschedule.ts) it
+ * goes ahead of everything, and starts regardless at the last moment that still makes the slot; outside one it
+ * waits behind Orryy's renders, for up to 3 hours. Without the orchestrator it's a no-op.
  */
 async function withPcTurn<T>(job: string, fn: () => Promise<T>): Promise<T> {
   let release = () => {};
@@ -141,12 +142,17 @@ async function withPcTurn<T>(job: string, fn: () => Promise<T>): Promise<T> {
       kind: `pulse:${job.split(" ")[0]}`,
       ram: 6,
       maxWait: 180,
-      onWait: (why: string) => log("info", "render waiting for the PC", { why }),
+      onWait: (why: string) =>
+        log("info", "render waiting for the PC", { why }),
     });
   } catch (e) {
-    log("warn", "PC orchestrator unavailable or wait ran out; rendering anyway", {
-      error: String(e),
-    });
+    log(
+      "warn",
+      "PC orchestrator unavailable or wait ran out; rendering anyway",
+      {
+        error: String(e),
+      },
+    );
   }
   try {
     return await fn();
@@ -158,7 +164,10 @@ async function withPcTurn<T>(job: string, fn: () => Promise<T>): Promise<T> {
 /** renderMedia inside a PC turn; the frame cache is sized from the memory free once the turn starts. */
 async function renderWithTurn(
   job: string,
-  options: Omit<Parameters<typeof renderMedia>[0], "offthreadVideoCacheSizeInBytes">,
+  options: Omit<
+    Parameters<typeof renderMedia>[0],
+    "offthreadVideoCacheSizeInBytes"
+  >,
 ): Promise<void> {
   await withPcTurn(job, async () => {
     await renderMedia({ ...(await renderMemory()), ...options });

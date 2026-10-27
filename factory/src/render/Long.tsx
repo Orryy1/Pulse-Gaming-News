@@ -84,6 +84,15 @@ import {
   type MontageItem,
 } from "./components/EditorMoves.tsx";
 import { ALL_STYLES } from "./components/packs/index.ts";
+import { CAPTION_STYLES } from "./components/Captions.tsx";
+import {
+  ACCENT_FRAMES,
+  ACCENT_LEAD,
+  ACCENTS,
+  CutAccent,
+  POPIN_STYLES,
+  type AccentKind,
+} from "./components/Accents.tsx";
 import type { GfxStyle } from "./components/packs/types.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 
@@ -2340,6 +2349,48 @@ export const Long: React.FC<LongProps> = (props) => {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windows, props.moments, props.variant]);
+  // Captions and pop-in pictures take their looks in turn (src/render/components/Captions.tsx, Accents.tsx).
+  const lookOf = useMemo(() => {
+    const out = new Map<number, number>();
+    let caption = props.variant;
+    let pop = props.variant;
+    windows.forEach((w, k) => {
+      const m = props.moments?.[w.entry]?.[w.moment];
+      if (!m) return;
+      if (m.emphasis) out.set(k, caption++ % CAPTION_STYLES.length);
+      else out.set(k, pop++ % POPIN_STYLES.length);
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windows, props.moments, props.variant]);
+  // An accent on about one cut in four, at least eight seconds apart: never on an entry's landing, a
+  // breather, an opening burst or the old TV, and never under a full-screen explainer.
+  const accents = useMemo(() => {
+    const out: Array<{ at: number; kind: AccentKind }> = [];
+    let last = -Infinity;
+    let n = props.variant;
+    const covered = (f: number) =>
+      windows.some((w, k) => {
+        const style = packFor.get(k);
+        const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
+        if (!style && !(g && ["quote", "headline", "source", "timeline", "delay", "span", "reviews", "people", "versus", "milestone"].includes(g.kind)))
+          return false;
+        const { from, len } = spanOf(k);
+        return f >= from - 10 && f < from + Math.min(len, 220) + 10;
+      });
+    plan.shots.forEach((sh, i) => {
+      const at = sh.start;
+      if (i === 0 || at - last < 8 * fps || (i * 7 + props.variant) % 4 !== 0) return;
+      if (entryFrames.some((e) => Math.abs(at - e) < 2 * fps)) return;
+      if (breakFrames.some((b) => at >= b.from - 20 && at <= b.to + 20)) return;
+      if (openings.some((o) => at >= o.from - 10 && at < o.from + 60)) return;
+      if (retro.has(i) || covered(at)) return;
+      out.push({ at, kind: ACCENTS[n++ % ACCENTS.length]! });
+      last = at;
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, windows, packFor, openings, retro, fps, props.variant]);
   const richSoundAt = new Map<number, number>();
   const momentSounds = gateLongSounds(
     windows.flatMap((w, k): LongSoundCandidate[] => {
@@ -2424,6 +2475,16 @@ export const Long: React.FC<LongProps> = (props) => {
         retro={retro}
         punches={punches}
       />
+      {accents.map((a, k) => (
+        <Sequence
+          key={`acc${k}`}
+          from={Math.max(0, a.at - ACCENT_LEAD)}
+          durationInFrames={ACCENT_FRAMES}
+          layout="none"
+        >
+          <CutAccent kind={a.kind} variant={props.variant + k} />
+        </Sequence>
+      ))}
       {openings.map((o, k) => (
         <Sequence
           key={`open${k}`}
@@ -2769,7 +2830,11 @@ export const Long: React.FC<LongProps> = (props) => {
               </>
             ) : m.emphasis && w.moment > 0 ? (
               <>
-                <KineticCaption text={m.emphasis} len={len} />
+                {React.createElement(CAPTION_STYLES[lookOf.get(k) ?? 0] ?? KineticCaption, {
+                  text: m.emphasis,
+                  len,
+                  variant: props.variant + k,
+                })}
               </>
             ) : null}
             {nameTag ? (
@@ -2780,12 +2845,13 @@ export const Long: React.FC<LongProps> = (props) => {
                 from={anchored ? 0 : Math.min(30, Math.max(0, len - 90))}
                 layout="none"
               >
-                <PopInPicture
-                  src={pic!.src}
-                  caption={pic!.label ?? ""}
-                  len={anchored ? len : len - 30}
-                  side={w.moment % 2 ? "right" : "left"}
-                />
+                {React.createElement(POPIN_STYLES[lookOf.get(k) ?? 0] ?? PopInPicture, {
+                  src: pic!.src,
+                  caption: pic!.label ?? "",
+                  len: anchored ? len : len - 30,
+                  side: w.moment % 2 ? "right" : "left",
+                  variant: props.variant + k,
+                })}
                 {momentSounds.get(k) ? (
                   <Sfx name={momentSounds.get(k)!} volume={LEVEL.airLong} />
                 ) : null}

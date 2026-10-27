@@ -73,7 +73,9 @@ export function momentKeys(m: MomentKeySource): string[] {
         ...(g.items ?? []).map((x) => x.split(":")[0]!.trim()).slice(0, 1),
       );
     // Named things land on their first name: an outlet, a person, a game, a date.
-    else if (["reviews", "people", "versus", "delay"].includes(g.kind))
+    else if (
+      ["reviews", "people", "versus", "delay", "map", "bars", "share", "specs", "lineage"].includes(g.kind)
+    )
       keys.push(...(g.items ?? []).map((x) => x.split(":")[0]!.trim()).slice(0, 1));
     else if (g.kind === "span")
       keys.push(...(g.items ?? []).slice(0, 1));
@@ -733,9 +735,14 @@ export function usefulGraphic<
       "source",
       "milestone",
       "people",
+      "map",
+      "bars",
+      "share",
+      "specs",
+      "lineage",
     ].includes(g.kind)
   )
-    return Boolean(g.primary.trim() || g.kind === "timeline");
+    return Boolean(g.primary.trim() || g.kind === "timeline" || g.kind === "map");
   const text = `${g.primary} ${g.secondary}`;
   if (
     /\b(rank(ing)?|position|place[sd]?|spot|on the list|where it lands|entry number)\b/i.test(

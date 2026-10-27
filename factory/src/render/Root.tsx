@@ -10,6 +10,7 @@ import { Cutdown, SAMPLE_CUTDOWN, type CutdownProps } from "./Cutdown.tsx";
 import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
 import { ConceptAvatar, ConceptBanner, BroadcastCover } from "./BrandConcepts.tsx";
 import { TextureBackground, type BackgroundKind } from "./components/Backgrounds.tsx";
+import { GfxPreview, SAMPLE_GFX, type GfxPreviewProps } from "./components/packs/Preview.tsx";
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -65,6 +66,19 @@ export const RemotionRoot: React.FC = () => (
       defaultProps={SAMPLE_CUTDOWN}
       calculateMetadata={({ props }: { props: CutdownProps }) => ({
         durationInFrames: Math.max(FPS * 5, Math.ceil(props.durationSeconds * FPS)),
+      })}
+    />
+    {/* One graphic style on its own, for previews (src/render/components/packs). */}
+    <Composition
+      id="PulseGfx"
+      component={GfxPreview}
+      fps={LONG_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={Math.ceil(SAMPLE_GFX.durationSeconds * LONG_FPS)}
+      defaultProps={SAMPLE_GFX}
+      calculateMetadata={({ props }: { props: GfxPreviewProps }) => ({
+        durationInFrames: Math.ceil(props.durationSeconds * LONG_FPS),
       })}
     />
     {/* The explainer backgrounds on their own, for previews (src/render/components/Backgrounds.tsx). */}

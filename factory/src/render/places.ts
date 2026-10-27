@@ -1,0 +1,322 @@
+// The places an animated map can show (src/render/components/MapMoment.tsx): the cities where games are
+// made and set, the regions stories name and the countries, each with where it is and the country it is
+// in (as the map data names it, for the highlight). A map only shows a place the chapter's source names
+// and this list knows, so a pin is never guessed (src/editorial/documentary.ts groundDocMoments).
+
+export interface Place {
+  name: string;
+  lat: number;
+  lon: number;
+  /** The country it is in, as src/render/components/worldmap.ts names it. */
+  country: string;
+  kind: "city" | "region" | "country";
+  aliases?: string[];
+}
+
+const UK = "United Kingdom";
+const US = "United States of America";
+
+const c = (
+  name: string,
+  lat: number,
+  lon: number,
+  country: string,
+  aliases?: string[],
+): Place => ({
+  name,
+  lat,
+  lon,
+  country,
+  kind: "city",
+  aliases,
+});
+const r = (
+  name: string,
+  lat: number,
+  lon: number,
+  country: string,
+  aliases?: string[],
+): Place => ({
+  name,
+  lat,
+  lon,
+  country,
+  kind: "region",
+  aliases,
+});
+const n = (
+  name: string,
+  lat: number,
+  lon: number,
+  country: string,
+  aliases?: string[],
+): Place => ({
+  name,
+  lat,
+  lon,
+  country,
+  kind: "country",
+  aliases,
+});
+
+export const PLACES: Place[] = [
+  // The UK and Ireland
+  c("Edinburgh", 55.95, -3.19, UK),
+  c("Dundee", 56.46, -2.97, UK),
+  c("Glasgow", 55.86, -4.25, UK),
+  c("London", 51.51, -0.13, UK),
+  c("Leeds", 53.8, -1.55, UK),
+  c("Lincoln", 53.23, -0.54, UK),
+  c("Leamington Spa", 52.29, -1.53, UK, ["Royal Leamington Spa"]),
+  c("Guildford", 51.24, -0.57, UK),
+  c("Manchester", 53.48, -2.24, UK),
+  c("Liverpool", 53.41, -2.98, UK),
+  c("Sheffield", 53.38, -1.47, UK),
+  c("Birmingham", 52.49, -1.89, UK),
+  c("Brighton", 50.82, -0.14, UK),
+  c("Oxford", 51.75, -1.26, UK),
+  c("Bristol", 51.45, -2.59, UK),
+  c("Twycross", 52.64, -1.49, UK),
+  c("Dublin", 53.35, -6.26, "Ireland"),
+  r("Scotland", 56.6, -4.2, UK),
+  r("England", 52.6, -1.5, UK),
+  r("Wales", 52.3, -3.7, UK),
+  // Europe
+  c("Paris", 48.86, 2.35, "France"),
+  c("Montpellier", 43.61, 3.88, "France"),
+  c("Lyon", 45.76, 4.84, "France"),
+  c("Bordeaux", 44.84, -0.58, "France"),
+  c("Amsterdam", 52.37, 4.9, "Netherlands"),
+  c("Brussels", 50.85, 4.35, "Belgium"),
+  c("Berlin", 52.52, 13.4, "Germany"),
+  c("Frankfurt", 50.11, 8.68, "Germany"),
+  c("Munich", 48.14, 11.58, "Germany"),
+  c("Hamburg", 53.55, 9.99, "Germany"),
+  c("Cologne", 50.94, 6.96, "Germany"),
+  c("Leipzig", 51.34, 12.37, "Germany"),
+  c("Vienna", 48.21, 16.37, "Austria"),
+  c("Prague", 50.08, 14.44, "Czechia"),
+  c("Warsaw", 52.23, 21.01, "Poland"),
+  c("Kraków", 50.06, 19.94, "Poland", ["Krakow", "Cracow"]),
+  c("Wrocław", 51.11, 17.04, "Poland", ["Wroclaw"]),
+  c("Kyiv", 50.45, 30.52, "Ukraine", ["Kiev"]),
+  c("Moscow", 55.76, 37.62, "Russia"),
+  c("Saint Petersburg", 59.94, 30.31, "Russia", [
+    "St. Petersburg",
+    "St Petersburg",
+  ]),
+  c("Stockholm", 59.33, 18.07, "Sweden"),
+  c("Malmö", 55.6, 13.0, "Sweden", ["Malmo"]),
+  c("Uppsala", 59.86, 17.64, "Sweden"),
+  c("Gothenburg", 57.71, 11.97, "Sweden", ["Göteborg"]),
+  c("Copenhagen", 55.68, 12.57, "Denmark"),
+  c("Oslo", 59.91, 10.75, "Norway"),
+  c("Helsinki", 60.17, 24.94, "Finland"),
+  c("Espoo", 60.21, 24.66, "Finland"),
+  c("Reykjavík", 64.15, -21.94, "Iceland", ["Reykjavik"]),
+  c("Madrid", 40.42, -3.7, "Spain"),
+  c("Barcelona", 41.39, 2.17, "Spain"),
+  c("Lisbon", 38.72, -9.14, "Portugal"),
+  c("Milan", 45.46, 9.19, "Italy"),
+  c("Rome", 41.9, 12.5, "Italy"),
+  c("Zurich", 47.38, 8.54, "Switzerland", ["Zürich"]),
+  c("Geneva", 46.2, 6.14, "Switzerland"),
+  c("Bucharest", 44.43, 26.1, "Romania"),
+  c("Sofia", 42.7, 23.32, "Bulgaria"),
+  c("Belgrade", 44.79, 20.45, "Serbia"),
+  c("Budapest", 47.5, 19.04, "Hungary"),
+  c("Athens", 37.98, 23.73, "Greece"),
+  c("Istanbul", 41.01, 28.98, "Turkey"),
+  // Canada
+  c("Montreal", 45.5, -73.57, "Canada", ["Montréal"]),
+  c("Quebec City", 46.81, -71.21, "Canada", ["Québec City"]),
+  c("Toronto", 43.65, -79.38, "Canada"),
+  c("Oakville", 43.47, -79.69, "Canada"),
+  c("Vancouver", 49.28, -123.12, "Canada"),
+  c("Edmonton", 53.55, -113.49, "Canada"),
+  c("Ottawa", 45.42, -75.7, "Canada"),
+  // The United States
+  c("New York City", 40.71, -74.01, US, ["New York", "Manhattan", "NYC"]),
+  c("Los Angeles", 34.05, -118.24, US),
+  c("San Francisco", 37.77, -122.42, US),
+  c("San Diego", 32.72, -117.16, US),
+  c("Carlsbad", 33.16, -117.35, US),
+  c("Santa Monica", 34.02, -118.49, US),
+  c("Irvine", 33.68, -117.83, US),
+  c("Burbank", 34.18, -118.31, US),
+  c("Redwood City", 37.49, -122.24, US),
+  c("San Mateo", 37.56, -122.33, US),
+  c("Novato", 38.11, -122.57, US),
+  c("Redmond", 47.67, -122.12, US),
+  c("Seattle", 47.61, -122.33, US),
+  c("Bellevue", 47.61, -122.2, US),
+  c("Kirkland", 47.68, -122.21, US),
+  c("Austin", 30.27, -97.74, US),
+  c("Dallas", 32.78, -96.8, US),
+  c("Plano", 33.02, -96.7, US),
+  c("Richardson", 32.95, -96.73, US),
+  c("Mesquite", 32.77, -96.6, US),
+  c("Houston", 29.76, -95.37, US),
+  c("Rockville", 39.08, -77.15, US),
+  c("Bethesda", 38.98, -77.1, US),
+  c("Hunt Valley", 39.5, -76.64, US),
+  c("Boston", 42.36, -71.06, US),
+  c("Chicago", 41.88, -87.63, US),
+  c("Las Vegas", 36.17, -115.14, US),
+  c("Miami", 25.76, -80.19, US),
+  c("Orlando", 28.54, -81.38, US),
+  c("Atlanta", 33.75, -84.39, US),
+  c("Raleigh", 35.78, -78.64, US),
+  c("Cary", 35.79, -78.78, US),
+  c("New Orleans", 29.95, -90.07, US),
+  c("Denver", 39.74, -104.99, US),
+  c("Salt Lake City", 40.76, -111.89, US),
+  c("Washington, D.C.", 38.91, -77.04, US, [
+    "Washington DC",
+    "Washington D.C.",
+  ]),
+  c("Philadelphia", 39.95, -75.17, US),
+  c("Detroit", 42.33, -83.05, US),
+  c("Baltimore", 39.29, -76.61, US),
+  c("Honolulu", 21.31, -157.86, US),
+  r("California", 36.8, -119.4, US),
+  r("Florida", 27.8, -81.6, US),
+  r("Texas", 31.3, -99.3, US),
+  r("Nevada", 39.3, -116.6, US),
+  r("Arizona", 34.3, -111.7, US),
+  r("Hawaii", 20.8, -156.3, US),
+  r("Alaska", 63.6, -150.0, US),
+  // Latin America
+  c("Mexico City", 19.43, -99.13, "Mexico"),
+  c("São Paulo", -23.55, -46.63, "Brazil", ["Sao Paulo"]),
+  c("Rio de Janeiro", -22.91, -43.17, "Brazil"),
+  c("Buenos Aires", -34.6, -58.38, "Argentina"),
+  c("Havana", 23.11, -82.37, "Cuba"),
+  // Asia and the Middle East
+  c("Tokyo", 35.68, 139.69, "Japan"),
+  c("Kyoto", 35.01, 135.77, "Japan"),
+  c("Osaka", 34.69, 135.5, "Japan"),
+  c("Yokohama", 35.44, 139.64, "Japan"),
+  c("Nagoya", 35.18, 136.91, "Japan"),
+  c("Fukuoka", 33.59, 130.4, "Japan"),
+  c("Sapporo", 43.06, 141.35, "Japan"),
+  c("Seoul", 37.57, 126.98, "South Korea"),
+  c("Busan", 35.18, 129.08, "South Korea"),
+  c("Seongnam", 37.42, 127.13, "South Korea", ["Pangyo"]),
+  c("Beijing", 39.9, 116.41, "China"),
+  c("Shanghai", 31.23, 121.47, "China"),
+  c("Shenzhen", 22.54, 114.06, "China"),
+  c("Guangzhou", 23.13, 113.26, "China"),
+  c("Hangzhou", 30.27, 120.16, "China"),
+  c("Chengdu", 30.57, 104.07, "China"),
+  c("Hong Kong", 22.32, 114.17, "Hong Kong"),
+  c("Taipei", 25.03, 121.57, "Taiwan"),
+  c("Singapore", 1.35, 103.82, "Singapore"),
+  c("Kuala Lumpur", 3.14, 101.69, "Malaysia"),
+  c("Bangkok", 13.76, 100.5, "Thailand"),
+  c("Manila", 14.6, 120.98, "Philippines"),
+  c("Ho Chi Minh City", 10.82, 106.63, "Vietnam", ["Saigon"]),
+  c("Jakarta", -6.2, 106.85, "Indonesia"),
+  c("Mumbai", 19.08, 72.88, "India", ["Bombay"]),
+  c("Bangalore", 12.97, 77.59, "India", ["Bengaluru"]),
+  c("Pune", 18.52, 73.86, "India"),
+  c("Hyderabad", 17.39, 78.49, "India"),
+  c("Dubai", 25.2, 55.27, "United Arab Emirates"),
+  c("Abu Dhabi", 24.45, 54.38, "United Arab Emirates"),
+  c("Riyadh", 24.71, 46.68, "Saudi Arabia"),
+  c("Tel Aviv", 32.09, 34.78, "Israel"),
+  c("Cairo", 30.04, 31.24, "Egypt"),
+  // Africa and Oceania
+  c("Johannesburg", -26.2, 28.05, "South Africa"),
+  c("Cape Town", -33.92, 18.42, "South Africa"),
+  c("Lagos", 6.52, 3.38, "Nigeria"),
+  c("Nairobi", -1.29, 36.82, "Kenya"),
+  c("Sydney", -33.87, 151.21, "Australia"),
+  c("Melbourne", -37.81, 144.96, "Australia"),
+  c("Brisbane", -27.47, 153.03, "Australia"),
+  c("Adelaide", -34.93, 138.6, "Australia"),
+  c("Canberra", -35.28, 149.13, "Australia"),
+  c("Auckland", -36.85, 174.76, "New Zealand"),
+  c("Wellington", -41.29, 174.78, "New Zealand"),
+  // Countries (the pin sits near the middle; the whole country lights up)
+  n("United States", 39.5, -98.4, US, [
+    "USA",
+    "U.S.",
+    "America",
+    "United States of America",
+  ]),
+  n("United Kingdom", 53.5, -2.0, UK, [
+    "UK",
+    "U.K.",
+    "Britain",
+    "Great Britain",
+  ]),
+  n("Ireland", 53.2, -8.0, "Ireland"),
+  n("Canada", 56.0, -106.0, "Canada"),
+  n("Mexico", 23.6, -102.5, "Mexico"),
+  n("Brazil", -10.8, -52.9, "Brazil"),
+  n("Argentina", -35.0, -65.0, "Argentina"),
+  n("Japan", 36.5, 138.3, "Japan"),
+  n("China", 35.0, 103.0, "China"),
+  n("South Korea", 36.4, 127.9, "South Korea", ["Korea"]),
+  n("Taiwan", 23.7, 121.0, "Taiwan"),
+  n("India", 22.0, 79.0, "India"),
+  n("Thailand", 15.5, 101.0, "Thailand"),
+  n("Vietnam", 15.9, 105.8, "Vietnam"),
+  n("Malaysia", 4.2, 102.0, "Malaysia"),
+  n("Indonesia", -2.5, 117.5, "Indonesia"),
+  n("Philippines", 12.5, 122.5, "Philippines"),
+  n("Australia", -25.3, 134.0, "Australia"),
+  n("New Zealand", -41.5, 172.5, "New Zealand"),
+  n("France", 46.6, 2.4, "France"),
+  n("Germany", 51.1, 10.4, "Germany"),
+  n("Netherlands", 52.2, 5.5, "Netherlands", ["Holland"]),
+  n("Belgium", 50.6, 4.6, "Belgium"),
+  n("Spain", 40.2, -3.6, "Spain"),
+  n("Portugal", 39.6, -8.0, "Portugal"),
+  n("Italy", 42.8, 12.6, "Italy"),
+  n("Switzerland", 46.8, 8.2, "Switzerland"),
+  n("Austria", 47.6, 14.1, "Austria"),
+  n("Poland", 52.0, 19.4, "Poland"),
+  n("Czech Republic", 49.8, 15.5, "Czechia", ["Czechia"]),
+  n("Hungary", 47.2, 19.4, "Hungary"),
+  n("Romania", 45.9, 24.9, "Romania"),
+  n("Ukraine", 49.0, 31.4, "Ukraine"),
+  n("Russia", 58.0, 45.0, "Russia"),
+  n("Sweden", 62.5, 16.0, "Sweden"),
+  n("Norway", 61.5, 9.0, "Norway"),
+  n("Finland", 62.5, 26.0, "Finland"),
+  n("Denmark", 56.0, 9.5, "Denmark"),
+  n("Iceland", 64.9, -18.6, "Iceland"),
+  n("Greece", 39.3, 22.0, "Greece"),
+  n("Turkey", 39.0, 35.2, "Turkey"),
+  n("Israel", 31.2, 34.9, "Israel"),
+  n("Saudi Arabia", 23.9, 45.1, "Saudi Arabia"),
+  n("United Arab Emirates", 23.9, 54.3, "United Arab Emirates", ["UAE"]),
+  n("Egypt", 26.8, 30.8, "Egypt"),
+  n("South Africa", -30.6, 22.9, "South Africa"),
+  n("Nigeria", 9.1, 8.7, "Nigeria"),
+  n("Kenya", 0.2, 37.9, "Kenya"),
+  n("Cuba", 21.8, -79.0, "Cuba"),
+];
+
+/** A name as it is compared: lower case, accents and punctuation gone. */
+export const placeKey = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const BY_KEY = new Map<string, Place>();
+for (const p of PLACES)
+  for (const k of [p.name, ...(p.aliases ?? [])]) {
+    const key = placeKey(k);
+    if (key && !BY_KEY.has(key)) BY_KEY.set(key, p);
+  }
+
+/** The place a name refers to ("Montréal", "montreal" and "Montreal" alike), or undefined. */
+export function placeFor(name: string): Place | undefined {
+  return BY_KEY.get(placeKey(name));
+}

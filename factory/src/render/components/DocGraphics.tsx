@@ -23,7 +23,7 @@ const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const SERIF = "Georgia, 'Times New Roman', serif";
 
 /** The picture behind dims and blurs while a full-screen explainer is up; everything fades together. */
-function useStage(len: number, hold: number) {
+export function useStage(len: number, hold: number) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const showFor = Math.max(60, Math.min(len - 6, hold));
@@ -36,7 +36,7 @@ function useStage(len: number, hold: number) {
   return { frame, fps, showFor, dim, visible: frame <= showFor };
 }
 
-const Stage: React.FC<{
+export const Stage: React.FC<{
   dim: number;
   blur?: number;
   bg?: BackgroundKind;
@@ -64,7 +64,7 @@ const Stage: React.FC<{
   </AbsoluteFill>
 );
 
-const Label: React.FC<{ children: React.ReactNode; colour?: string }> = ({
+export const Label: React.FC<{ children: React.ReactNode; colour?: string }> = ({
   children,
   colour = COLOUR.amber,
 }) => (

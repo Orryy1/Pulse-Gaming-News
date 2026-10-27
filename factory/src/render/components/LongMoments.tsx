@@ -39,7 +39,13 @@ export interface MomentGraphic {
     | "versus"
     | "source"
     | "milestone"
-    | "people";
+    | "people"
+    // The wider suite (src/render/components/packs): places, bar charts, shares, specs, lineages.
+    | "map"
+    | "bars"
+    | "share"
+    | "specs"
+    | "lineage";
   primary: string;
   secondary: string;
   items: string[];

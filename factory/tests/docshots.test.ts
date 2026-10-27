@@ -367,3 +367,40 @@ test("without a Python for the depth model the stills simply stay flat", async (
   const made = await makeParallax("", "C:/nowhere", ["assets/a.jpg"]);
   assert.equal(made.size, 0);
 });
+
+test("a map pins only places the source names and the place list knows; charts and lineages keep to the source", async () => {
+  const { placeFor } = await import("../src/render/places.ts");
+  assert.equal(placeFor("Montréal")?.name, "Montreal");
+  assert.equal(placeFor("new york")?.name, "New York City");
+  assert.equal(placeFor("Atlantis"), undefined);
+  const src = {
+    title: "Rockstar North",
+    url: "https://en.wikipedia.org/wiki/Rockstar_North",
+    text: "DMA Design was founded in Dundee in 1987 and became Rockstar North in 2002, based in Edinburgh. Grand Theft Auto III sold 14.5 million copies and Vice City sold 17.5 million.",
+  };
+  const g = (x: Partial<DocMoment["graphic"]>) => moment(x);
+  const { moments, removed } = groundDocMoments(
+    [
+      moment(),
+      g({ kind: "map", primary: "Where it began", items: ["Dundee", "Edinburgh"] }),
+      moment(),
+      g({ kind: "map", primary: "Where it began", items: ["Edinburgh", "Atlantis"] }), // not a place we know
+      moment(),
+      g({ kind: "map", primary: "A new home", items: ["Montreal"] }), // not in the source
+      moment(),
+      g({ kind: "bars", primary: "Copies sold", items: ["GTA III: 14.5 million", "Vice City: 17.5 million"] }),
+      moment(),
+      g({ kind: "bars", primary: "Copies sold", items: ["GTA III: 14.5 million", "Vice City: 20 million"] }), // 20 is not in the source
+      moment(),
+      g({ kind: "lineage", primary: "One studio", items: ["DMA Design: 1987", "Rockstar North: 2002"] }),
+      moment(),
+      g({ kind: "lineage", primary: "One studio", items: ["DMA Design: 1987", "Rockstar Leeds: 2004"] }), // not in the source
+    ],
+    src,
+  );
+  assert.deepEqual(
+    moments.map((m) => m.graphic.kind),
+    ["none", "map", "none", "none", "none", "none", "none", "bars", "none", "none", "none", "lineage", "none", "none"],
+  );
+  assert.equal(removed.length, 4);
+});

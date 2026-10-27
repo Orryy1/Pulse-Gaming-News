@@ -567,6 +567,13 @@ export function backgroundFor(
       return pick(["graph", "newsprint", "aurora"]);
     case "people":
       return pick(["cork", "kraft", "crumpled"]);
+    case "bars":
+    case "share":
+      return pick(["graph", "aurora", "blueprint"]);
+    case "specs":
+      return pick(["blueprint", "graph", "crt"]);
+    case "lineage":
+      return pick(["kraft", "contour", "blueprint"]);
     case "interlude":
       if (year && year < 2000) return pick(["crt", "pixels"]);
       if (year && year < 2010) return pick(["newsprint", "filmburn", "kraft"]);

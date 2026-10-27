@@ -13,6 +13,7 @@ import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
 import type { WikiArticle } from "../discovery/wikipedia.ts";
+import { placeFor } from "../render/places.ts";
 
 export const DOC_CHAPTERS_MIN = 5;
 export const DOC_CHAPTERS_MAX = 10;
@@ -540,6 +541,12 @@ export const DOC_GRAPHIC_KINDS = [
   "source",
   "milestone",
   "people",
+  // The wider suite (27 Oct 2026): a map, a bar chart, a share of a whole, technical specs, a family line.
+  "map",
+  "bars",
+  "share",
+  "specs",
+  "lineage",
 ] as const;
 
 export const DocMomentSchema = z.object({
@@ -562,18 +569,18 @@ export const DocMomentSchema = z.object({
     primary: z
       .string()
       .describe(
-        "stat: the figure as the source writes it, e.g. '17 million'; date: e.g. 'September 2013'; list, compare, timeline: a 2-4 word heading; quote: the quote copied word for word from the SOURCE, 6-30 words; headline: the press story as a newspaper headline, 4-12 words, stating only what the SOURCE says; delay: what was delayed, e.g. 'GTA VI release'; span: e.g. '13 years in the making'; reviews: a 2-5 word heading; versus: a 2-5 word heading; source: a passage copied word for word from the SOURCE, 15-60 words; milestone: the record or first, 3-10 words, e.g. 'Fastest-selling entertainment product ever'; people: a 2-4 word heading; none: empty",
+        "stat: the figure as the source writes it, e.g. '17 million'; date: e.g. 'September 2013'; list, compare, timeline: a 2-4 word heading; quote: the quote copied word for word from the SOURCE, 6-30 words; headline: the press story as a newspaper headline, 4-12 words, stating only what the SOURCE says; delay: what was delayed, e.g. 'GTA VI release'; span: e.g. '13 years in the making'; reviews: a 2-5 word heading; versus: a 2-5 word heading; source: a passage copied word for word from the SOURCE, 15-60 words; milestone: the record or first, 3-10 words, e.g. 'Fastest-selling entertainment product ever'; people: a 2-4 word heading; map: a 2-6 word heading, e.g. 'Where Rockstar North works'; bars, share, specs, lineage: a 2-5 word heading; none: empty",
       ),
     secondary: z
       .string()
       .describe(
-        "stat/date: what it is, 2-6 words; quote: who said it and their role, e.g. 'Dan Houser, Rockstar co-founder'; headline: the outlet as the SOURCE names it and the year, e.g. 'The Guardian, 2005', or just the year when the source names no outlet; delay: the reason in 2-8 words if the source gives one; milestone: the year; empty otherwise",
+        "stat/date: what it is, 2-6 words; quote: who said it and their role, e.g. 'Dan Houser, Rockstar co-founder'; headline: the outlet as the SOURCE names it and the year, e.g. 'The Guardian, 2005', or just the year when the source names no outlet; delay: the reason in 2-8 words if the source gives one; milestone: the year; bars: what the figures count, 2-4 words, e.g. 'copies sold'; empty otherwise",
       ),
     items: z
       .array(z.string())
-      .max(5)
+      .max(6)
       .describe(
-        "list: 2-5 short items; compare: exactly two or three 'label:value' rows; timeline: 2-5 'year: what happened' rows in time order, 2-6 words each, e.g. '2013: GTA V launches'; delay: exactly two dates, the original then the new, e.g. 'Fall 2025', 'May 26, 2026'; span: exactly two years, start then end; reviews: 2-6 'Outlet: score' rows exactly as the SOURCE gives them, e.g. 'IGN: 10/10'; versus: exactly two game titles from this documentary's chapters (listed), older first; source: one 2-8 word phrase of the passage to highlight; people: 1-4 'Full Name: role' rows; empty otherwise",
+        "list: 2-5 short items; compare: exactly two or three 'label:value' rows; map: 1-3 real places the SOURCE names (cities, states or countries) in the order the story moves, e.g. 'Edinburgh', 'New York City'; bars: 2-6 'label: figure' rows from the SOURCE, e.g. 'Grand Theft Auto V: 210 million'; share: 2-5 'label: percent' rows from the SOURCE; specs: 2-6 'label: value' technical rows from the SOURCE, e.g. 'RAM: 32 MB'; lineage: 2-5 names in order, each 'Name: year' when the SOURCE gives the year, e.g. 'DMA Design: 1987'; timeline: 2-5 'year: what happened' rows in time order, 2-6 words each, e.g. '2013: GTA V launches'; delay: exactly two dates, the original then the new, e.g. 'Fall 2025', 'May 26, 2026'; span: exactly two years, start then end; reviews: 2-6 'Outlet: score' rows exactly as the SOURCE gives them, e.g. 'IGN: 10/10'; versus: exactly two game titles from this documentary's chapters (listed), older first; source: one 2-8 word phrase of the passage to highlight; people: 1-4 'Full Name: role' rows; empty otherwise",
       ),
   }),
   emphasis: z
@@ -615,6 +622,11 @@ Explanatory graphics carry the story. Across the chapter, about four sentences i
 - source: once or twice a chapter, the most telling passage of the SOURCE word for word, with the key phrase to highlight; it shows the viewer the record itself.
 - milestone: a record or a first ("fastest-selling entertainment product in history"), as a game-style unlock.
 - people: when a sentence introduces the people behind a decision, up to four names with their roles.
+- map: when the story moves to a real place (the studio's city, a game's real-world setting, a launch abroad), 1-3 places the SOURCE names, cities or countries, in the order the story travels. About once a chapter when places matter.
+- bars: when the SOURCE gives figures for two to six comparable things (sales of several games, budgets, team sizes), "label: figure" rows for a bar chart.
+- share: when the SOURCE gives parts of a whole (a percentage split), 2-5 "label: percent" rows.
+- specs: technical facts the SOURCE gives (hardware, engine, map size, team size, file size) as 2-6 "label: value" rows.
+- lineage: when the SOURCE traces a family line (a studio renamed or bought, a series and its spin-offs), 2-5 names in order with their years.
 - headline: when a sentence says the press or critics reported or reacted to something (a review, a scandal, a leak, a lawsuit, a launch), restate it as a newspaper headline of 4-12 words that says only what the SOURCE says, with the outlet and year the SOURCE gives. It appears as a recreated clipping, never a real outlet's page.
 Every figure, year and quote in a graphic must be in the SOURCE.
 B-roll: when a sentence is about the real world (the studio, its staff, money, contracts, a court case, a leak, crunch, a launch queue, a console), give "broll" a plain stock-footage search so a real shot can play; about one sentence in four. Never for something inside a game.
@@ -676,6 +688,14 @@ export function groundDocMoments(
   const none = { kind: "none" as const, primary: "", secondary: "", items: [] };
   const digitsOk = (t: string) =>
     (t.match(/\d[\d,.]*/g) ?? []).every((d) => hay.includes(norm(d)));
+  // Stricter for the charts: a figure must stand on its own in the source ("20" is not in "2002").
+  const figuresOk = (t: string) =>
+    (t.match(/\d[\d,.]*/g) ?? []).every((d) => {
+      const f = norm(d)
+        .replace(/[.]+$/, "")
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(^|[^0-9.])${f}($|[^0-9])`).test(hay);
+    });
   let prevGraphic = false;
   const out = moments.map((m, i) => {
     const g = m.graphic;
@@ -719,7 +739,8 @@ export function groundDocMoments(
         g.items.every(
           (x) =>
             digitsOk(x) &&
-            (!(x.match(/\b(19|20)\d\d\b/)) || hay.includes(x.match(/\b(19|20)\d\d\b/)![0])),
+            (!x.match(/\b(19|20)\d\d\b/) ||
+              hay.includes(x.match(/\b(19|20)\d\d\b/)![0])),
         );
     if (ok && g.kind === "span") {
       const ys = g.items.map((x) => x.match(/\b(19|20)\d\d\b/)?.[0]);
@@ -736,7 +757,11 @@ export function groundDocMoments(
         g.items.length >= 2 &&
         g.items.every((x) => {
           const i = x.indexOf(":");
-          return i > 0 && hay.includes(norm(x.slice(0, i))) && digitsOk(x.slice(i + 1));
+          return (
+            i > 0 &&
+            hay.includes(norm(x.slice(0, i))) &&
+            digitsOk(x.slice(i + 1))
+          );
         });
     if (ok && g.kind === "versus")
       ok =
@@ -763,13 +788,54 @@ export function groundDocMoments(
           const i = x.indexOf(":");
           return i > 0 && hay.includes(norm(x.slice(0, i)));
         });
+    // A map pins only places the source names and the place list knows (src/render/places.ts).
+    if (ok && g.kind === "map")
+      ok =
+        g.items.length >= 1 &&
+        g.items.length <= 3 &&
+        g.items.every((x) => placeFor(x) && hay.includes(norm(x))) &&
+        digitsOk(g.primary);
+    if (ok && (g.kind === "bars" || g.kind === "share" || g.kind === "specs")) {
+      const rows = g.items.map((x) => {
+        const i = x.indexOf(":");
+        return i > 0
+          ? { a: x.slice(0, i).trim(), b: x.slice(i + 1).trim() }
+          : undefined;
+      });
+      ok =
+        rows.length >= 2 &&
+        rows.length <= (g.kind === "share" ? 5 : 6) &&
+        rows.every(
+          (r) =>
+            r &&
+            r.a &&
+            r.b &&
+            (g.kind === "specs" || /\d/.test(r.b)) &&
+            (/\d/.test(r.b) ? figuresOk(r.b) : hay.includes(norm(r.b))),
+        ) &&
+        figuresOk(g.primary);
+    }
+    if (ok && g.kind === "lineage")
+      ok =
+        g.items.length >= 2 &&
+        g.items.length <= 5 &&
+        g.items.every((x) => {
+          const name = x.split(":")[0]!.trim();
+          const year = x.match(/\b(19|20)\d\d\b/)?.[0];
+          return (
+            name && hay.includes(norm(name)) && (!year || hay.includes(year))
+          );
+        });
     if (ok && prevGraphic) ok = false;
     if (g.kind !== "none" && !ok)
       removed.push(`${g.kind}: ${g.primary || g.items.join(" | ")}`);
     prevGraphic = ok;
     // The record's own words are credited to their article.
     if (ok && g.kind === "source")
-      return { ...m, graphic: { ...g, secondary: `Wikipedia: ${source.title}` } };
+      return {
+        ...m,
+        graphic: { ...g, secondary: `Wikipedia: ${source.title}` },
+      };
     return ok ? m : { ...m, graphic: none };
   });
   return { moments: out, removed };

@@ -83,6 +83,8 @@ import {
   type BoardPicture,
   type MontageItem,
 } from "./components/EditorMoves.tsx";
+import { ALL_STYLES } from "./components/packs/index.ts";
+import type { GfxStyle } from "./components/packs/types.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 
 export interface LongImageProp {
@@ -2307,6 +2309,37 @@ export const Long: React.FC<LongProps> = (props) => {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windows, plan, props.moments, props.images, fps, retro]);
+  // The suite (src/render/components/packs): each graphic kind rotates through the house design and every
+  // pack style that can draw it, so two stats or two headlines in a video never look the same. A figure
+  // or date keeps its small card half the time, so footage still carries most of the video.
+  const packFor = useMemo(() => {
+    const out = new Map<number, GfxStyle>();
+    const turn = new Map<string, number>();
+    const HOUSE = new Set([
+      "quote", "headline", "timeline", "delay", "span", "reviews", "source",
+      "milestone", "people", "versus", "stat", "date", "list", "compare", "score",
+    ]);
+    const SMALL = new Set(["stat", "date", "list", "compare", "score"]);
+    windows.forEach((w, k) => {
+      const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
+      if (!g || !usefulGraphic(g)) return;
+      const styles = Object.keys(ALL_STYLES)
+        .sort()
+        .map((name) => ALL_STYLES[name]!)
+        .filter((s) => s.kind === g.kind && (!s.fits || s.fits(g)));
+      const choices: Array<GfxStyle | undefined> = [
+        ...(HOUSE.has(g.kind) ? (SMALL.has(g.kind) ? styles.map(() => undefined) : [undefined]) : []),
+        ...styles,
+      ];
+      if (!choices.length) return;
+      const n = turn.get(g.kind) ?? 0;
+      turn.set(g.kind, n + 1);
+      const pick = choices[(n + props.variant) % choices.length];
+      if (pick) out.set(k, pick);
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windows, props.moments, props.variant]);
   const richSoundAt = new Map<number, number>();
   const momentSounds = gateLongSounds(
     windows.flatMap((w, k): LongSoundCandidate[] => {
@@ -2314,6 +2347,18 @@ export const Long: React.FC<LongProps> = (props) => {
       if (!raw) return [];
       const { from, len, anchored } = spanOf(k);
       const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
+      const style = packFor.get(k);
+      if (style) {
+        const at = from + (style.sound === "stamp" ? 34 : 0);
+        richSoundAt.set(k, at);
+        return [
+          {
+            key: k,
+            frame: at,
+            kind: style.sound === "glint" ? ("glint" as const) : style.sound === "stamp" ? ("stamp" as const) : ("pop" as const),
+          },
+        ];
+      }
       if (graphic === "stat" || graphic === "score")
         return [{ key: k, frame: from, kind: "glint" as const }];
       // The richer graphics have their own cue: a whoosh as a full-screen explainer lands, the stamp's
@@ -2669,7 +2714,22 @@ export const Long: React.FC<LongProps> = (props) => {
             durationInFrames={len}
             layout="none"
           >
-            {richGraphic(m.graphic, len) ? (
+            {packFor.get(k) ? (
+              React.createElement(packFor.get(k)!.component, {
+                g: m.graphic,
+                len,
+                bg,
+                variant: props.variant + k,
+                year: Number(entryTitle(w.entry).year) || undefined,
+                photos: portraits,
+                src: (
+                  pic ??
+                  props.images.find(
+                    (im) => im.beatIndex === w.entry && im.aspect >= 1.2 && im.kind !== "capsule",
+                  )
+                )?.src,
+              })
+            ) : richGraphic(m.graphic, len) ? (
               richGraphic(m.graphic, len, bg, props.variant + k)
             ) : m.graphic.kind === "quote" ? (
               <QuoteMoment
@@ -2698,7 +2758,9 @@ export const Long: React.FC<LongProps> = (props) => {
               />
             ) : m.graphic.kind === "timeline" ? (
               <TimelineMoment g={m.graphic} len={len} />
-            ) : m.graphic.kind !== "none" ? (
+            ) : m.graphic.kind !== "none" &&
+              // The suite's own kinds have no card: with no style that fits, the picture carries the line.
+              !["map", "bars", "share", "specs", "lineage"].includes(m.graphic.kind) ? (
               <>
                 <MomentGraphicCard g={m.graphic} len={len} />
                 {momentSounds.get(k) ? (

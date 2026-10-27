@@ -9,6 +9,7 @@ import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
 import type { SteamFacts } from "../assets/steam.ts";
 import { factsText } from "../assets/steam.ts";
+import { placeFor } from "../render/places.ts";
 import {
   EvergreenTopicSchema,
   type EvergreenTopic,
@@ -46,6 +47,10 @@ export const GRAPHIC_KINDS = [
   "milestone",
   "reviews",
   "delay",
+  // The wider suite (27 Oct 2026): places and charts the narration names.
+  "map",
+  "bars",
+  "specs",
 ] as const;
 
 /** One sentence's picture and graphic: the editor's shot list, line by line. */
@@ -64,7 +69,7 @@ export const MomentSchema = z.object({
     primary: z
       .string()
       .describe(
-        "stat: the figure as the narration says it, e.g. '1 billion dollars'; date: e.g. 'November 2009'; score: e.g. '94'; list, compare, timeline, versus, reviews: a 2-4 word heading; span: e.g. '13 years between games'; milestone: the record, 3-10 words; delay: what slipped, e.g. 'Release date'; none: empty",
+        "stat: the figure as the narration says it, e.g. '1 billion dollars'; date: e.g. 'November 2009'; score: e.g. '94'; list, compare, timeline, versus, reviews: a 2-4 word heading; span: e.g. '13 years between games'; milestone: the record, 3-10 words; delay: what slipped, e.g. 'Release date'; map, bars, specs: a 2-5 word heading; none: empty",
       ),
     secondary: z
       .string()
@@ -75,7 +80,7 @@ export const MomentSchema = z.object({
       .array(z.string())
       .max(5)
       .describe(
-        "list: 2-5 short items named in the narration; compare: exactly two 'label:value' rows taken from the narration; timeline: 2-5 'year: what happened' rows; span: the start and end year; versus: two game titles from this ranking's entries (listed), older first; reviews: 2-6 'Outlet: score' rows the narration says; delay: the original date then the new one; empty otherwise",
+        "list: 2-5 short items named in the narration; compare: exactly two 'label:value' rows taken from the narration; timeline: 2-5 'year: what happened' rows; span: the start and end year; versus: two game titles from this ranking's entries (listed), older first; reviews: 2-6 'Outlet: score' rows the narration says; delay: the original date then the new one; map: 1-3 real places the narration names (a city, state or country), e.g. 'Los Angeles'; bars: 2-6 'label: figure' rows the narration says; specs: 2-6 'label: value' technical rows the narration says; empty otherwise",
       ),
   }),
   emphasis: z
@@ -94,7 +99,23 @@ export type Moment = z.infer<typeof MomentSchema>;
 /** A documentary's shot list adds a full-screen quote, a timeline and real-world B-roll (src/editorial/documentary.ts). */
 export type AnyMoment = Omit<Moment, "graphic"> & {
   graphic: Omit<Moment["graphic"], "kind"> & {
-    kind: Moment["graphic"]["kind"] | "quote" | "timeline" | "headline" | "delay" | "span" | "reviews" | "versus" | "source" | "milestone" | "people";
+    kind:
+      | Moment["graphic"]["kind"]
+      | "quote"
+      | "timeline"
+      | "headline"
+      | "delay"
+      | "span"
+      | "reviews"
+      | "versus"
+      | "source"
+      | "milestone"
+      | "people"
+      | "map"
+      | "bars"
+      | "share"
+      | "specs"
+      | "lineage";
   };
   broll?: string;
 };
@@ -465,6 +486,17 @@ export function validateLongform(e: LongformScript): string[] {
       )
         p.push(
           `Entry "${x.game_title}": the graphic "${m.graphic.primary}" shows a figure the narration does not say.`,
+        );
+      // A map pins only places the narration names and the place list knows.
+      if (
+        m.graphic.kind === "map" &&
+        (!m.graphic.items.length ||
+          m.graphic.items.some(
+            (t) => !placeFor(t) || !x.narration.toLowerCase().includes(t.toLowerCase().trim()),
+          ))
+      )
+        p.push(
+          `Entry "${x.game_title}": a map must name 1-3 real places exactly as the narration says them.`,
         );
       // A versus shows two entries' own pictures: both must be in this ranking.
       const titles = e.entries.map((y) => y.game_title.toLowerCase());

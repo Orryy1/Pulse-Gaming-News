@@ -463,7 +463,8 @@ Two heavy jobs at once slow both badly. A second render once made an Orryy rende
 
 - **Before any render, GPU/ML job or long encode**, run `C:\Claude\orchestrator\orch.cmd status` to see what's running, what's waiting and what's using the PC outside the orchestrator.
 - **Wrap your own test renders and experiments** so they wait their turn instead of competing:
-  `C:\Claude\orchestrator\orch.cmd run --class heavy --project <name> --job "<what>" --priority 20 -- <command>`
+  `C:\Claude\orchestrator\orch.cmd run --class heavy --project <name> --job "<what>" --priority 20 --est <minutes> -- <command>`
+  Always give `--est`: without it a job counts as an hour long and waits for a gap that big between Pulse's slot windows. Tests run at priority 20, never inherit a slot's deadline and stay out of slot windows.
   - **Classes:**
     - `heavy`: whole PC; AE, Blender, Remotion
     - `gpu`: ML or ComfyUI

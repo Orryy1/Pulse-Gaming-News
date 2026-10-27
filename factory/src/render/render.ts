@@ -304,10 +304,11 @@ export interface LongRenderInput {
   frameRange?: [number, number];
 }
 
-type ThumbInput = Omit<ThumbProps, "imageSrc" | "image2Src" | "fgSrc"> & {
+type ThumbInput = Omit<ThumbProps, "imageSrc" | "image2Src" | "fgSrc" | "pictureSrcs"> & {
   imageFile: string | null;
   image2File?: string | null;
   fgFile?: string | null; // depth: the art's foreground layer
+  pictureFiles?: string[]; // motif: pictures for its panels and screens
 };
 
 /** Renders the 16:9 long-form video, a poster frame and a 1280x720 thumbnail. */
@@ -392,12 +393,13 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       { file: input.thumbFile, thumb: input.thumb },
       ...(input.thumbVariants ?? []),
     ]) {
-      const { imageFile, image2File, fgFile, ...thumb } = t.thumb;
+      const { imageFile, image2File, fgFile, pictureFiles, ...thumb } = t.thumb;
       const thumbProps: ThumbProps = {
         ...thumb,
         imageSrc: imageFile ? `${files.url}/${imageFile}` : null,
         image2Src: image2File ? `${files.url}/${image2File}` : null,
         fgSrc: fgFile ? `${files.url}/${fgFile}` : null,
+        pictureSrcs: pictureFiles?.map((f) => `${files.url}/${f}`),
       };
       const still = await selectComposition({
         serveUrl,

@@ -6,7 +6,7 @@ import { AbsoluteFill, Img, staticFile } from "remotion";
 import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY } from "./components/fonts.ts";
 import { titleLines } from "./longplan.ts";
-import { ClashThumb, HeroThumb, MysteryThumb, NumberThumb, RetroThumb } from "./ThumbStudio.tsx";
+import { ClashThumb, HeroThumb, MotifThumb, MysteryThumb, NumberThumb, RetroThumb } from "./ThumbStudio.tsx";
 
 const Grid: React.FC<{ opacity?: number; cell?: number }> = ({
   opacity = 0.05,
@@ -203,18 +203,22 @@ export type ThumbProps = {
   accent: string;
   // A/B designs for YouTube's Test & compare: "split" (the default), "full" bleed art with a
   // short line, or "versus": last place against the winner.
-  layout?: "split" | "full" | "versus" | "depth" | "clipping" | "hero" | "number" | "retro" | "mystery" | "clash";
+  layout?: "split" | "full" | "versus" | "depth" | "clipping" | "hero" | "number" | "retro" | "mystery" | "clash" | "motif";
   image2Src?: string | null; // versus: the winner's art (imageSrc is last place)
   fgSrc?: string | null; // depth: the art's foreground cut-out (src/render/parallax.ts), set in front of the headline
   subjectX?: number; // depth: where the subject stands (0-1); the headline goes on the other side so it stays readable
   labels?: [string, string]; // versus: the two corner tags
   year?: string; // retro: the old game's year on its tape
   focus?: [number, number, number, number]; // mystery: the thing to circle (fractions of the picture)
+  motif?: string; // motif: the look's id (src/render/components/motifs)
+  pictureSrcs?: string[]; // motif: pictures for its panels and screens
 };
 
 /** Long-form thumbnail, 1280x720, in one of three designs. */
 export const Thumb: React.FC<ThumbProps> = (p) =>
-  p.layout === "hero" ? (
+  p.layout === "motif" ? (
+    <MotifThumb {...p} />
+  ) : p.layout === "hero" ? (
     <HeroThumb {...p} />
   ) : p.layout === "number" ? (
     <NumberThumb {...p} />

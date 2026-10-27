@@ -6,20 +6,24 @@ export const DISPLAY = "PulseDisplay"; // Anton: glanced text
 export const BODY = "PulseBody"; // Inter: read text
 export const HAND = "PulseHand"; // Permanent Marker (Apache 2.0): marker notes on boards and stickers
 
-loadFont({
-  family: DISPLAY,
-  url: staticFile("fonts/anton-latin-400-normal.woff2"),
-  weight: "400",
-});
-loadFont({
-  family: HAND,
-  url: staticFile("fonts/permanent-marker-latin-400-normal.woff2"),
-  weight: "400",
-});
-for (const w of ["600", "800", "900"]) {
+// Only in a browser (the renderer): Node imports these modules too (the pipeline asks the motifs which
+// one suits a video), and loading a font there fails with an unhandled rejection.
+if (typeof document !== "undefined") {
   loadFont({
-    family: BODY,
-    url: staticFile(`fonts/inter-latin-${w}-normal.woff2`),
-    weight: w,
+    family: DISPLAY,
+    url: staticFile("fonts/anton-latin-400-normal.woff2"),
+    weight: "400",
   });
+  loadFont({
+    family: HAND,
+    url: staticFile("fonts/permanent-marker-latin-400-normal.woff2"),
+    weight: "400",
+  });
+  for (const w of ["600", "800", "900"]) {
+    loadFont({
+      family: BODY,
+      url: staticFile(`fonts/inter-latin-${w}-normal.woff2`),
+      weight: w,
+    });
+  }
 }

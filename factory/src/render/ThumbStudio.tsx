@@ -7,7 +7,8 @@
 // recognisable at a glance in a crowded feed.
 
 import React from "react";
-import { AbsoluteFill, Img, staticFile } from "remotion";
+import { AbsoluteFill, Freeze, Img, staticFile } from "remotion";
+import { ALL_MOTIFS } from "./components/motifs/index.ts";
 import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY, HAND } from "./components/fonts.ts";
 
@@ -657,3 +658,45 @@ export const ClashThumb: React.FC<StudioThumbProps> = ({
     <Signature kicker={kicker} accent={accent} />
   </AbsoluteFill>
 );
+
+/**
+ * The video's own look (src/render/components/motifs): its series', console's or genre's card frozen at
+ * its best moment, carrying the thumbnail's words, with the Pulse signature. Bespoke to every topic.
+ */
+export const MotifThumb: React.FC<
+  StudioThumbProps & { motif?: string; pictureSrcs?: string[] }
+> = (p) => {
+  const m = ALL_MOTIFS.find((x) => x.id === p.motif);
+  if (!m?.card) return p.fgSrc ? <HeroThumb {...p} /> : <NumberThumb {...p} />;
+  const pictures = (p.pictureSrcs?.length ? p.pictureSrcs : [p.imageSrc, p.image2Src]).filter(
+    (x): x is string => Boolean(x),
+  );
+  return (
+    <AbsoluteFill style={{ background: "#060608", overflow: "hidden" }}>
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: 1920,
+          height: 1080,
+          transform: `scale(${W / 1920})`,
+          transformOrigin: "0 0",
+        }}
+      >
+        <Freeze frame={72}>
+          {React.createElement(m.card, {
+            heading: p.headline,
+            kicker: p.kicker,
+            game: p.game,
+            year: p.year,
+            pictures,
+            frames: 120,
+            variant: 0,
+          })}
+        </Freeze>
+      </div>
+      <Signature kicker="" accent={p.accent} corner="right" />
+    </AbsoluteFill>
+  );
+};

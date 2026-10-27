@@ -5483,7 +5483,32 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const circled = (assets.annotations ?? []).find((a) => a.image === thumbIndex);
   const base = { headline: text, kicker: tag, game: "", accent: "#FF6B1A" };
   type Candidate = { layout: string; thumb: Record<string, unknown> & { imageFile: string | null } };
+  // The video's own look first (src/render/components/motifs): its series', console's or genre's card with
+  // the thumbnail's words. Loaded on demand so a motif can never stop a render.
+  const motif = await import("./render/components/motifs/index.ts")
+    .then((m) => m.motifsFor({ title: script.headline, platforms: "", theme: script.recap ? script.headline : script.game_title })[0])
+    .catch(() => undefined);
+  const motifPictures = images
+    .filter((i) => i.aspect >= 1.3 && ["hero", "screenshot", "article", "header"].includes(i.kind))
+    .map((i) => i.file)
+    .slice(0, 6);
   const candidates: Candidate[] = [
+    ...(motif?.card && motifPictures.length
+      ? [
+          {
+            layout: "motif",
+            thumb: {
+              ...base,
+              layout: "motif" as const,
+              motif: motif.id,
+              game: script.recap ? "" : script.game_title,
+              imageFile: thumbArt?.file ?? null,
+              fgFile: depthArt?.layers?.fg ?? null,
+              pictureFiles: motifPictures,
+            },
+          },
+        ]
+      : []),
     ...(depthArt?.layers
       ? [{ layout: "hero", thumb: { ...base, layout: "hero" as const, imageFile: depthArt.file, fgFile: depthArt.layers.fg, subjectX: depthArt.layers.fgx } }]
       : []),

@@ -92,6 +92,7 @@ import {
   LONG_FPS,
   chapterLines,
   LONG_TAIL_SECONDS,
+  entryOf,
 } from "./render/longplan.ts";
 import type { LongRenderInput } from "./render/render.ts";
 import type { renderCutdown } from "./render/render.ts";
@@ -5452,40 +5453,53 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const depthArt =
     (thumbArt?.layers ? thumbArt : undefined) ??
     images.find((i) => i.layers && i.kind === "hero" && (i.beatIndex === winnerBeat || i.beatIndex === undefined));
-  const thumbVariants = [
-    {
-      file: path.join(dir, "thumb_b.jpg"),
-      thumb: depthArt?.layers
-        ? {
-            headline: thumbTitle(script),
-            kicker: doc ? "DOCUMENTARY" : "RANKED",
-            game: "",
-            accent: "#FF6B1A",
-            imageFile: depthArt.file,
-            fgFile: depthArt.layers.fg,
-            subjectX: depthArt.layers.fgx,
-            layout: "depth" as const,
-          }
-        : {
-            headline: thumbTitle(script),
-            kicker: doc ? "DOCUMENTARY" : "RANKED",
-            game: "",
-            accent: "#FF6B1A",
-            imageFile: thumbArt?.file ?? null,
-            layout: "full" as const,
-          },
-    },
-    ...(doc && thumbArt
+  // The thumbnail overhaul (src/render/ThumbStudio.tsx): every design that suits this video, best first;
+  // the first is the thumbnail, the next two go to YouTube's Test & compare. The niche study ranked them:
+  // a huge subject with a rim and a few words, a giant number, an old game's nostalgia, a hard versus, a
+  // circle on the thing that matters; the older designs stay as fallbacks.
+  const tag = script.recap ? "THIS WEEK" : doc ? "DOC" : "RANKED";
+  const text = thumbTitle(script);
+  const entryInfo = (b: number | undefined) => {
+    if (b === undefined) return undefined;
+    const k = segments.findIndex(
+      (x, i) =>
+        x.kind === "beat" &&
+        (x.visual?.kind === "rank" || x.visual?.kind === "chapter") &&
+        entryOf(segments, i) === b,
+    );
+    const v = k >= 0 ? segments[k]!.visual : undefined;
+    return v
+      ? {
+          year: Number(v.items?.[0]) || undefined,
+          game: (v.kind === "rank" ? v.primary : v.secondary) ?? "",
+        }
+      : undefined;
+  };
+  // An old game: the thumbnail art's own entry, else the oldest entry with wide art.
+  const oldEntry = [thumbArt?.beatIndex, ...images.map((i) => i.beatIndex)]
+    .map((b) => ({ b, info: entryInfo(b) }))
+    .find((x) => x.info?.year && x.info.year <= 2006 && wide(x.b!));
+  const thumbIndex = thumbArt ? images.indexOf(thumbArt) : -1;
+  const circled = (assets.annotations ?? []).find((a) => a.image === thumbIndex);
+  const base = { headline: text, kicker: tag, game: "", accent: "#FF6B1A" };
+  type Candidate = { layout: string; thumb: Record<string, unknown> & { imageFile: string | null } };
+  const candidates: Candidate[] = [
+    ...(depthArt?.layers
+      ? [{ layout: "hero", thumb: { ...base, layout: "hero" as const, imageFile: depthArt.file, fgFile: depthArt.layers.fg, subjectX: depthArt.layers.fgx } }]
+      : []),
+    ...(/\d/.test(text) && thumbArt
+      ? [{ layout: "number", thumb: { ...base, layout: "number" as const, imageFile: thumbArt.file } }]
+      : []),
+    ...(oldEntry
       ? [
           {
-            file: path.join(dir, "thumb_c.jpg"),
+            layout: "retro",
             thumb: {
-              headline: thumbTitle(script),
-              kicker: "",
-              game: script.recap ? "This week" : script.game_title,
-              accent: "#FF6B1A",
-              imageFile: thumbArt.file,
-              layout: "clipping" as const,
+              ...base,
+              layout: "retro" as const,
+              game: oldEntry.info!.game,
+              year: String(oldEntry.info!.year),
+              imageFile: wide(oldEntry.b!)!.file,
             },
           },
         ]
@@ -5493,24 +5507,59 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     ...(lastArt && thumbArt
       ? [
           {
-            file: path.join(dir, "thumb_c.jpg"),
+            layout: "clash",
             thumb: {
-              headline: thumbTitle(script),
-              kicker: "",
-              game: "",
-              accent: "#FF6B1A",
+              ...base,
+              layout: "clash" as const,
               imageFile: lastArt.file,
               image2File: thumbArt.file,
-              layout: "versus" as const,
-              labels: [`#${script.entries![0]!.rank}`, "#1"] as [
-                string,
-                string,
-              ],
+              labels: [`#${script.entries![0]!.rank}`, "#1"] as [string, string],
             },
           },
         ]
       : []),
+    ...(circled && thumbArt
+      ? [
+          {
+            layout: "mystery",
+            thumb: {
+              ...base,
+              layout: "mystery" as const,
+              imageFile: thumbArt.file,
+              focus: [circled.box[0], circled.box[1], circled.box[2] - circled.box[0], circled.box[3] - circled.box[1]] as [number, number, number, number],
+            },
+          },
+        ]
+      : []),
+    ...(doc && thumbArt
+      ? [
+          {
+            layout: "clipping",
+            thumb: { ...base, kicker: "", game: script.recap ? "This week" : script.game_title, layout: "clipping" as const, imageFile: thumbArt.file },
+          },
+        ]
+      : []),
+    {
+      layout: "split",
+      thumb: {
+        headline: text,
+        kicker: script.recap ? "THIS WEEK" : doc ? "DOCUMENTARY" : "RANKED",
+        game: doc
+          ? (script.kicker ?? script.game_title).slice(0, 48)
+          : script.criterion
+            ? thumbCriterion(script.criterion)
+            : script.game_title,
+        accent: "#FF6B1A",
+        imageFile: thumbArt?.file ?? null,
+      },
+    },
   ];
+  const [mainThumb, ...restThumbs] = candidates;
+  const thumbVariants = restThumbs.slice(0, 2).map((c, i) => ({
+    file: path.join(dir, i === 0 ? "thumb_b.jpg" : "thumb_c.jpg"),
+    thumb: c.thumb as never,
+  }));
+  log("info", "thumbnail designs", { episode: ep.id, designs: candidates.map((c) => c.layout).slice(0, 3) });
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   await s.renderLong({
@@ -5518,17 +5567,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
     thumbFile: path.join(dir, "thumb.jpg"),
-    thumb: {
-      headline: thumbTitle(script),
-      kicker: script.recap ? "THIS WEEK" : doc ? "DOCUMENTARY" : "RANKED",
-      game: doc
-        ? (script.kicker ?? script.game_title).slice(0, 48)
-        : script.criterion
-          ? thumbCriterion(script.criterion)
-          : script.game_title,
-      accent: "#FF6B1A",
-      imageFile: thumbArt?.file ?? null,
-    },
+    thumb: mainThumb!.thumb as never,
     thumbVariants,
     concurrency: s.cfg.remotionConcurrency,
     gl: s.cfg.remotionGl,

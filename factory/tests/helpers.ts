@@ -220,6 +220,7 @@ export function testConfig(
     youtubeChannelId: "",
     musicBed: true,
     parallax: false,
+    annotate: false,
     dryRun: false,
     maxAttempts: 3,
     remotionConcurrency: 1,

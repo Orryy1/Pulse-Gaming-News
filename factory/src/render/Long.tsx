@@ -107,6 +107,8 @@ export type LongProps = {
   endLine?: string; // the line under the end card
   moments?: MomentProp[][]; // per ranking entry, one per sentence: graphics, kinetic captions, pop-ins
   breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds)
+  /** Zoom to the detail: the sentence, the picture on screen and where the named thing sits (0-1). */
+  annotations?: Array<{ entry: number; moment: number; image: number; box: [number, number, number, number]; label: string }>;
   segments: Segment[];
   words: Word[];
   images: LongImageProp[];
@@ -207,6 +209,27 @@ function synthWords(segments: Segment[]): Word[] {
   return out;
 }
 
+/** A point of a picture (0-1 of the picture) on the 1920x1080 frame when the picture covers it. */
+export function coverPoint(aspect: number, x: number, y: number): { x: number; y: number } {
+  const F = 1920 / 1080;
+  if (aspect > F) {
+    const w = aspect * 1080;
+    return { x: (x * w - (w - 1920) / 2) / 1920, y };
+  }
+  const h = 1920 / aspect;
+  return { x, y: (y * h - (h - 1080) / 2) / 1080 };
+}
+
+/** The zoom that brings a box to about two fifths of the frame's height, between 1 and 1.7. */
+export function focusZoom(box: { x1: number; y1: number; x2: number; y2: number }): number {
+  const h = Math.max(0.01, box.y2 - box.y1);
+  const w = Math.max(0.01, box.x2 - box.x1);
+  return Math.max(1, Math.min(1.7, 0.42 / (h * 1.04), 0.6 / (w * 1.04)));
+}
+
+const FOCUS_FRAMES = 26;
+const focusEase = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2);
+
 const Still: React.FC<{
   src: string;
   aspect: number;
@@ -219,6 +242,8 @@ const Still: React.FC<{
   /** 2.5D layers: each drifts at its own speed, nearer faster, so the still reads as a camera move. */
   layers?: { bg: string; mid: string; fg: string };
   dir?: number; // 1 or -1: which way the camera trucks
+  /** Zoom to the detail: from frame `at` the camera pushes in on `origin` (frame fractions) to `zoom`. */
+  focus?: { at: number; origin: { x: number; y: number }; zoom: number };
 }> = ({
   src,
   aspect,
@@ -229,6 +254,7 @@ const Still: React.FC<{
   tilt = 0,
   layers,
   dir = 1,
+  focus,
 }) => {
   const frame = useCurrentFrame();
   const m = moveTransform(
@@ -238,6 +264,29 @@ const Still: React.FC<{
   const fade = interpolate(frame, [0, 10], [fromBlack ? 0 : 1, 1], {
     extrapolateRight: "clamp",
   });
+  if (focus && !print && aspect >= 0.9) {
+    // Held still, then a push in on the named detail; its label draws on over it (DetailCallout).
+    const z = interpolate(frame, [focus.at, focus.at + FOCUS_FRAMES], [1, focus.zoom], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: focusEase,
+    });
+    return (
+      <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+        <Img
+          src={src}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            filter: "contrast(1.03) saturate(1.05)",
+            transformOrigin: `${focus.origin.x * 100}% ${focus.origin.y * 100}%`,
+            transform: `scale(${1.04 * z})`,
+          }}
+        />
+      </AbsoluteFill>
+    );
+  }
   if (layers && !print && aspect >= 0.9) {
     // The camera trucks sideways and pushes in a touch; the middle moves half again as far as the
     // background and the foreground twice as far, the 2.5D look of video essays.
@@ -414,6 +463,69 @@ const Plate: React.FC<{ theme: string }> = ({ theme }) => (
   </AbsoluteFill>
 );
 
+/**
+ * The detail's label (Game Maker's Toolkit style): once the camera has pushed in, an amber box draws itself
+ * round the thing, and a leader line runs out to its name. Positions follow the zoom exactly.
+ */
+const DetailCallout: React.FC<{
+  box: { x1: number; y1: number; x2: number; y2: number };
+  origin: { x: number; y: number };
+  zoom: number;
+  label: string;
+  len: number;
+}> = ({ box, origin, zoom, label, len }) => {
+  const frame = useCurrentFrame();
+  const z = 1.04 * interpolate(frame, [0, FOCUS_FRAMES], [1, zoom], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: focusEase });
+  const map = (x: number, y: number) => ({ x: (origin.x + (x - origin.x) * z) * 1920, y: (origin.y + (y - origin.y) * z) * 1080 });
+  const a = map(box.x1, box.y1);
+  const b = map(box.x2, box.y2);
+  const pad = 12;
+  const x = a.x - pad;
+  const y = a.y - pad;
+  const w = b.x - a.x + pad * 2;
+  const h = b.y - a.y + pad * 2;
+  const perim = 2 * (w + h);
+  const draw = interpolate(frame, [FOCUS_FRAMES - 4, FOCUS_FRAMES + 14], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const line = interpolate(frame, [FOCUS_FRAMES + 10, FOCUS_FRAMES + 22], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const tag = interpolate(frame, [FOCUS_FRAMES + 18, FOCUS_FRAMES + 28], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const out = interpolate(frame, [len - 12, len - 2], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const right = (x + w / 2) / 1920 < 0.55;
+  const cy = Math.max(140, Math.min(940, y + h / 2));
+  const lx0 = right ? x + w : x;
+  const lx1 = right ? Math.min(1920 - 420, lx0 + 120) : Math.max(420, lx0 - 120);
+  if (frame > len) return null;
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none", opacity: out }}>
+      <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
+        <rect x={x} y={y} width={w} height={h} rx={14} fill="none" stroke={COLOUR.amber} strokeWidth={6} strokeDasharray={perim} strokeDashoffset={perim * (1 - draw)} style={{ filter: "drop-shadow(0 0 10px rgba(0,0,0,0.8))" }} />
+        <line x1={lx0} y1={cy} x2={lx0 + (lx1 - lx0) * line} y2={cy} stroke={COLOUR.amber} strokeWidth={5} />
+      </svg>
+      <div
+        style={{
+          position: "absolute",
+          top: cy - 30,
+          [right ? "left" : "right"]: right ? lx1 + 6 : 1920 - lx1 + 6,
+          opacity: tag,
+          transform: `translateX(${(1 - tag) * (right ? -20 : 20)}px)`,
+          padding: "12px 20px",
+          background: "rgba(11,11,14,0.9)",
+          border: `3px solid ${COLOUR.amber}`,
+          borderRadius: 10,
+          fontFamily: BODY,
+          fontWeight: 900,
+          fontSize: 30,
+          letterSpacing: 2,
+          color: COLOUR.paper,
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {displayText(label)}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 /** A picture's label at the lower right, fading in after the cut and out before the next. */
 const Descriptor: React.FC<{ text: string; frames: number }> = ({
   text,
@@ -515,7 +627,9 @@ const Backdrop: React.FC<{
   theme: string;
   /** What a shot is, as video essays label their pictures: "GRAND THEFT AUTO V · 2013 · KEY ART". */
   describe?: (media: { type: string; index: number }) => string;
-}> = ({ plan, images, clips, theme, describe }) => (
+  /** Per shot index: when (absolute frame) and where the camera pushes in on a named detail. */
+  focusFor?: Map<number, { from: number; origin: { x: number; y: number }; zoom: number }>;
+}> = ({ plan, images, clips, theme, describe, focusFor }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
       const len = Math.max(1, s.end - s.start);
@@ -540,6 +654,15 @@ const Backdrop: React.FC<{
                   tilt={((s.media.index * 37) % 5) - 2}
                   layers={img.layers}
                   dir={i % 2 ? -1 : 1}
+                  focus={
+                    focusFor?.get(i)
+                      ? {
+                          at: focusFor.get(i)!.from - (i > 0 ? s.start - Math.min(XFADE, s.start) : s.start),
+                          origin: focusFor.get(i)!.origin,
+                          zoom: focusFor.get(i)!.zoom,
+                        }
+                      : undefined
+                  }
                   src={img.src}
                   aspect={img.aspect}
                   durationFrames={len + (i > 0 ? Math.min(XFADE, s.start) : 0)}
@@ -1714,6 +1837,36 @@ export const Long: React.FC<LongProps> = (props) => {
         : -1,
     )
     .filter((f) => f >= 0);
+  // Zoom to the detail: each annotation's window, the shot showing its picture then, and the box on screen.
+  const details = useMemo(() => {
+    const out: Array<{ k: number; shot: number; from: number; len: number; origin: { x: number; y: number }; zoom: number; box: { x1: number; y1: number; x2: number; y2: number }; label: string }> = [];
+    for (const a of props.annotations ?? []) {
+      const k = windows.findIndex((w) => w.entry === a.entry && w.moment === a.moment);
+      if (k < 0) continue;
+      const { from, len } = spanOf(k);
+      const shot = plan.shots.findIndex((x) => from >= x.start && from < x.end && x.media.type === "image" && x.media.index === a.image);
+      const im = props.images[a.image];
+      if (shot < 0 || !im) continue;
+      const p1 = coverPoint(im.aspect, a.box[0], a.box[1]);
+      const p2 = coverPoint(im.aspect, a.box[2], a.box[3]);
+      const box = { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+      if (box.x1 < 0.02 || box.y1 < 0.02 || box.x2 > 0.98 || box.y2 > 0.98) continue; // cropped off by the frame
+      const origin = { x: Math.max(0.15, Math.min(0.85, (box.x1 + box.x2) / 2)), y: Math.max(0.2, Math.min(0.8, (box.y1 + box.y2) / 2)) };
+      // The push never carries the box off the frame: each edge caps the zoom.
+      let zoom = focusZoom(box);
+      const cap = (edge: number, o: number, limit: number) =>
+        edge === o ? Infinity : (limit - o) / ((edge - o) * 1.04);
+      for (const z of [cap(box.x1, origin.x, 0.04), cap(box.x2, origin.x, 0.96), cap(box.y1, origin.y, 0.07), cap(box.y2, origin.y, 0.93)])
+        if (z > 0) zoom = Math.min(zoom, z);
+      zoom = Math.max(1, zoom);
+      // On screen for at least four seconds (the box and label need time to read), or to the end of the shot.
+      const shotLeft = plan.shots[shot]!.end - from;
+      out.push({ k, shot, from, len: Math.min(shotLeft, Math.max(len, 120)), origin, zoom, box, label: a.label });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.annotations, windows, plan]);
+  const focusFor = new Map(details.map((d) => [d.shot, { from: d.from, origin: d.origin, zoom: d.zoom }]));
   const momentSounds = gateLongSounds(
     windows.flatMap((w, k): LongSoundCandidate[] => {
       const raw = props.moments?.[w.entry]?.[w.moment];
@@ -1760,6 +1913,7 @@ export const Long: React.FC<LongProps> = (props) => {
         clips={props.clips}
         theme={props.theme}
         describe={describe}
+        focusFor={focusFor}
       />
       <Scrim />
       <ShotLabel plan={plan} describe={describe} />
@@ -2052,6 +2206,12 @@ export const Long: React.FC<LongProps> = (props) => {
           </Sequence>
         );
       })}
+      {/* Zoom to the detail: the labelled box over the pushed-in picture. */}
+      {details.map((d, i) => (
+        <Sequence key={`det${i}`} from={d.from} durationInFrames={Math.max(1, d.len)} layout="none">
+          <DetailCallout box={d.box} origin={d.origin} zoom={d.zoom} label={d.label} len={d.len} />
+        </Sequence>
+      ))}
       {/* A white punch as each entry lands. */}
       {props.segments.map((s, i) =>
         s.kind === "beat" &&

@@ -40,6 +40,8 @@ import {
 import { trailerMatchesGame } from "./assets/commons.ts";
 import { rankStills } from "./assets/stillscore.ts";
 import { makeParallax, LAYERED_KINDS } from "./render/parallax.ts";
+import { annotationLabel, locate } from "./assets/annotate.ts";
+import { unloadLocalVision } from "./assets/localvision.ts";
 import {
   tightenPauses,
   chapterGaps,
@@ -86,6 +88,8 @@ import {
   momentKeys,
   planGaps,
   openChaptersAtBreaks,
+  momentWindows,
+  LONG_FPS,
   chapterLines,
   LONG_TAIL_SECONDS,
 } from "./render/longplan.ts";
@@ -5376,6 +5380,39 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       });
   }
   assets.longPlan = plan;
+  // Zoom to the detail: a sentence that names something on screen gets the camera pushed in on it, with a
+  // label, when the local vision model finds it in that picture. At most one every 40 s, 30 a video.
+  if (s.cfg.annotate && hasMoments && !assets.annotations) {
+    const ws = momentWindows(
+      segments,
+      words,
+      moments.map((m) => m.length),
+      moments.map((e) => e.map(momentKeys)),
+    );
+    const ranked = [...(script.entries ?? [])].sort((a, b) => b.rank - a.rank);
+    const found: NonNullable<EpisodeAssets["annotations"]> = [];
+    let lastAt = -Infinity;
+    for (const w of ws) {
+      if (found.length >= 30) break;
+      const m = moments[w.entry]?.[w.moment];
+      if (!m || m.graphic.kind !== "none" || w.moment === 0) continue;
+      const from = Math.round(Math.max(w.start, w.at - 0.15) * LONG_FPS);
+      if (from - lastAt < 40 * LONG_FPS) continue;
+      const shot = plan.shots.find((x) => from >= x.start && from < x.end);
+      if (!shot || shot.media.type !== "image" || shot.end - from < 3.5 * LONG_FPS) continue;
+      const img = assets.images?.[shot.media.index];
+      if (!img || !LAYERED_KINDS.has(img.kind)) continue;
+      const label = annotationLabel(m, ranked[w.entry]?.game_title ?? script.game_title);
+      if (!label) continue;
+      const box = await locate(path.join(dir, img.file), label);
+      if (!box) continue;
+      found.push({ entry: w.entry, moment: w.moment, image: shot.media.index, box, label });
+      lastAt = from;
+    }
+    assets.annotations = found;
+    await unloadLocalVision();
+    log("info", "detail annotations", { episode: ep.id, count: found.length });
+  }
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
     ep.id,
     JSON.stringify(assets),
@@ -5486,6 +5523,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       plan,
       renderDate: s.now().toISOString().slice(0, 10),
       breaks: assets.breaks,
+      annotations: assets.annotations,
     },
   });
   await s.normalise(raw, final);

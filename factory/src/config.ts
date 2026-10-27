@@ -287,6 +287,8 @@ export interface Config {
   musicBed: boolean;
   /** 2.5D depth layers for long videos' stills (src/render/parallax.ts). */
   parallax: boolean;
+  /** Zoom-to-the-detail annotations on long videos' stills (src/assets/annotate.ts). */
+  annotate: boolean;
   dryRun: boolean;
   maxAttempts: number;
   remotionConcurrency: number;
@@ -645,6 +647,7 @@ export function loadConfig(): Config {
     twinDelayMinutes: int("TWIN_DELAY_MINUTES", 30),
     musicBed: bool("MUSIC_BED", true),
     parallax: bool("PARALLAX", true),
+    annotate: bool("ANNOTATE", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),

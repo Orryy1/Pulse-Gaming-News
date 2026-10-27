@@ -87,19 +87,48 @@ export async function readMeta(dir: string): Promise<GameplayMeta | undefined> {
   }
 }
 
-/** Updates meta.json in place (written to a temp file first, so the finder never reads half a file). */
+/**
+ * Writes a file whole: a temp file first (so the finder never reads half a file), then a rename.
+ * Google Drive for desktop backs up the Videos folder and holds new files open while it reads
+ * them, so on Windows the write or rename fails with EBUSY/EPERM for a few seconds (27 Oct 2026:
+ * every clip from the night's stream stuck at "reviewing"). Each attempt uses its own temp name,
+ * since the last one may still be held, and waits a little longer before trying again.
+ */
+export async function writeWhole(
+  file: string,
+  text: string,
+  waits = [500, 1500, 4000, 10_000],
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    const tmp = `${file}.${process.pid}.${attempt}.tmp`;
+    try {
+      await fs.writeFile(tmp, text);
+      await fs.rename(tmp, file);
+      return;
+    } catch (err) {
+      await fs.rm(tmp, { force: true }).catch(() => undefined);
+      const code = (err as NodeJS.ErrnoException).code ?? "";
+      if (
+        !["EBUSY", "EPERM", "EACCES"].includes(code) ||
+        attempt >= waits.length
+      )
+        throw err;
+      await new Promise((r) => setTimeout(r, waits[attempt]));
+    }
+  }
+}
+
+/** Updates meta.json in place. */
 export async function writeMeta(
   dir: string,
   patch: Partial<GameplayMeta>,
 ): Promise<void> {
   const meta = await readMeta(dir);
   if (!meta) return;
-  const file = path.join(dir, "meta.json");
-  await fs.writeFile(
-    `${file}.tmp`,
+  await writeWhole(
+    path.join(dir, "meta.json"),
     JSON.stringify({ ...meta, ...patch }, null, 2),
   );
-  await fs.rename(`${file}.tmp`, file);
 }
 
 /** Clips waiting for review, the finder's strongest first. */
@@ -113,6 +142,13 @@ export async function newClips(
     const dir = path.join(inbox, name);
     const meta = await readMeta(dir);
     if (meta?.status === "new") found.push({ dir, meta });
+    // A review that died part-way (a locked file, a restart) left "reviewing" behind: look again after 30 minutes.
+    else if (meta?.status === "reviewing") {
+      const at =
+        (await fs.stat(path.join(dir, "meta.json")).catch(() => undefined))
+          ?.mtimeMs ?? Date.now();
+      if (Date.now() - at > 30 * 60_000) found.push({ dir, meta });
+    }
   }
   return found.sort((a, b) => (b.meta.score ?? 0) - (a.meta.score ?? 0));
 }
@@ -353,7 +389,9 @@ export function wordsInWindow(
  * go on when the window holds real speech: a few words, most of them different.
  */
 export function captionable(words: Word[]): boolean {
-  const said = words.map((w) => w.text.toLowerCase().replace(/[^a-z0-9']/g, "")).filter(Boolean);
+  const said = words
+    .map((w) => w.text.toLowerCase().replace(/[^a-z0-9']/g, ""))
+    .filter(Boolean);
   return said.length >= 4 && new Set(said).size / said.length >= 0.6;
 }
 
@@ -374,7 +412,6 @@ export async function writeManifest(
   const file = path.join(dir, `${m.id}.json`);
   if (await fs.stat(file).catch(() => undefined)) return false;
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(`${file}.tmp`, JSON.stringify(m, null, 2));
-  await fs.rename(`${file}.tmp`, file);
+  await writeWhole(file, JSON.stringify(m, null, 2));
   return true;
 }

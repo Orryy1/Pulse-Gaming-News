@@ -474,3 +474,87 @@ export const TornInterlude: React.FC<InterludeProps> = ({
     </AbsoluteFill>
   );
 };
+
+/**
+ * The chapter's title enormous, the chapter's picture showing through its letters; then the camera flies
+ * through the letters and out into the picture itself.
+ */
+export const MaskInterlude: React.FC<InterludeProps> = ({ number, title, game, year, frames, picture, variant = 0 }) => {
+  const { frame, fade } = useBreather(frames);
+  const id = `mask${number}${variant}`;
+  const text = title.toUpperCase();
+  const size = Math.min(380, 1700 / Math.max(1, text.length * 0.47));
+  const start = Math.max(40, frames - 62);
+  const t = interpolate(frame, [start, frames - 12], [0, 1], { ...clamp, easing: (x) => x * x * x });
+  const z = 1 + t * 45;
+  const reveal = interpolate(frame, [start + 22, frames - 14], [0, 1], clamp);
+  const settle = interpolate(frame, [0, start], [1.06, 1], clamp);
+  const label = interpolate(frame, [6, 18, start, start + 10], [0, 1, 1, 0], clamp);
+  return (
+    <AbsoluteFill style={{ opacity: fade, background: "#050506", overflow: "hidden" }}>
+      {picture ? (
+        <AbsoluteFill style={{ opacity: reveal }}>
+          <Img src={picture} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </AbsoluteFill>
+      ) : null}
+      <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
+        <defs>
+          <mask id={id}>
+            <rect width={1920} height={1080} fill="#000" />
+            <text
+              x={960}
+              y={540 + size * 0.36}
+              textAnchor="middle"
+              fontFamily={DISPLAY}
+              fontSize={size}
+              fill="#fff"
+              transform={`translate(960 540) scale(${z * settle}) translate(-960 -540)`}
+            >
+              {text}
+            </text>
+          </mask>
+        </defs>
+        {picture ? (
+          <image href={picture} width={1920} height={1080} preserveAspectRatio="xMidYMid slice" mask={`url(#${id})`} />
+        ) : (
+          <rect width={1920} height={1080} fill={COLOUR.amber} mask={`url(#${id})`} />
+        )}
+      </svg>
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 540 - size * 0.62 - 70,
+          textAlign: "center",
+          fontFamily: BODY,
+          fontWeight: 900,
+          fontSize: 30,
+          letterSpacing: 10,
+          color: COLOUR.amber,
+          opacity: label,
+        }}
+      >
+        CHAPTER {number}
+      </div>
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 540 + size * 0.5 + 30,
+          textAlign: "center",
+          fontFamily: BODY,
+          fontWeight: 800,
+          fontSize: 28,
+          letterSpacing: 4,
+          color: "rgba(245,245,242,0.8)",
+          textTransform: "uppercase",
+          opacity: label,
+        }}
+      >
+        {[game, year].filter(Boolean).join(" \u00B7 ")}
+      </div>
+    </AbsoluteFill>
+  );
+};

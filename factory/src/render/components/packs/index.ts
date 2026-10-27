@@ -6,6 +6,7 @@ import { STYLES as SCREEN } from "./GfxScreen.tsx";
 import { STYLES as GAME } from "./GfxGame.tsx";
 import { STYLES as MAP } from "./GfxMap.tsx";
 import { STYLES as EDITORIAL } from "./GfxEditorial.tsx";
+import { STYLES as TYPE } from "./GfxType.tsx";
 import type { GfxStyle } from "./types.ts";
 
 const tag = (pack: string, styles: Record<string, GfxStyle>) =>
@@ -18,4 +19,5 @@ export const ALL_STYLES: Record<string, GfxStyle> = {
   ...tag("Game", GAME),
   ...tag("Map", MAP),
   ...tag("Editorial", EDITORIAL),
+  ...tag("Type", TYPE),
 };

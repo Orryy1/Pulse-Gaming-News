@@ -104,7 +104,7 @@ import {
   type Device,
 } from "./components/Retro.tsx";
 import { NAMETAG_STYLES } from "./components/NameTags.tsx";
-import { SlateInterlude, TornInterlude, VhsInterlude } from "./components/Interludes.tsx";
+import { MaskInterlude, SlateInterlude, TornInterlude, VhsInterlude } from "./components/Interludes.tsx";
 import {
   ACCENT_FRAMES,
   ACCENT_LEAD,
@@ -2795,7 +2795,7 @@ export const Long: React.FC<LongProps> = (props) => {
             ...(boardPics.length >= 2 ? ["board"] : []),
             "slate",
             ...(chapterYear && chapterYear < 2008 ? ["vhs"] : []),
-            ...(widePic ? ["torn"] : []),
+            ...(widePic ? ["torn", "mask"] : []),
           ];
           const motif = motifOf(b);
           const look =
@@ -2854,6 +2854,8 @@ export const Long: React.FC<LongProps> = (props) => {
                 >
                   {look === "slate" ? (
                     <SlateInterlude {...interlude} />
+                  ) : look === "mask" ? (
+                    <MaskInterlude {...interlude} />
                   ) : look === "vhs" ? (
                     <VhsInterlude {...interlude} />
                   ) : (

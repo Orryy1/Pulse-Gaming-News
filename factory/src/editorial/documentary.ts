@@ -533,6 +533,13 @@ export const DOC_GRAPHIC_KINDS = [
   "timeline",
   "quote",
   "headline",
+  "delay",
+  "span",
+  "reviews",
+  "versus",
+  "source",
+  "milestone",
+  "people",
 ] as const;
 
 export const DocMomentSchema = z.object({
@@ -555,18 +562,18 @@ export const DocMomentSchema = z.object({
     primary: z
       .string()
       .describe(
-        "stat: the figure as the source writes it, e.g. '17 million'; date: e.g. 'September 2013'; list, compare, timeline: a 2-4 word heading; quote: the quote copied word for word from the SOURCE, 6-30 words; headline: the press story as a newspaper headline, 4-12 words, stating only what the SOURCE says; none: empty",
+        "stat: the figure as the source writes it, e.g. '17 million'; date: e.g. 'September 2013'; list, compare, timeline: a 2-4 word heading; quote: the quote copied word for word from the SOURCE, 6-30 words; headline: the press story as a newspaper headline, 4-12 words, stating only what the SOURCE says; delay: what was delayed, e.g. 'GTA VI release'; span: e.g. '13 years in the making'; reviews: a 2-5 word heading; versus: a 2-5 word heading; source: a passage copied word for word from the SOURCE, 15-60 words; milestone: the record or first, 3-10 words, e.g. 'Fastest-selling entertainment product ever'; people: a 2-4 word heading; none: empty",
       ),
     secondary: z
       .string()
       .describe(
-        "stat/date: what it is, 2-6 words; quote: who said it and their role, e.g. 'Dan Houser, Rockstar co-founder'; headline: the outlet as the SOURCE names it and the year, e.g. 'The Guardian, 2005', or just the year when the source names no outlet; empty otherwise",
+        "stat/date: what it is, 2-6 words; quote: who said it and their role, e.g. 'Dan Houser, Rockstar co-founder'; headline: the outlet as the SOURCE names it and the year, e.g. 'The Guardian, 2005', or just the year when the source names no outlet; delay: the reason in 2-8 words if the source gives one; milestone: the year; empty otherwise",
       ),
     items: z
       .array(z.string())
       .max(5)
       .describe(
-        "list: 2-5 short items; compare: exactly two or three 'label:value' rows; timeline: 2-5 'year: what happened' rows in time order, 2-6 words each, e.g. '2013: GTA V launches'; empty otherwise",
+        "list: 2-5 short items; compare: exactly two or three 'label:value' rows; timeline: 2-5 'year: what happened' rows in time order, 2-6 words each, e.g. '2013: GTA V launches'; delay: exactly two dates, the original then the new, e.g. 'Fall 2025', 'May 26, 2026'; span: exactly two years, start then end; reviews: 2-6 'Outlet: score' rows exactly as the SOURCE gives them, e.g. 'IGN: 10/10'; versus: exactly two game titles from this documentary's chapters (listed), older first; source: one 2-8 word phrase of the passage to highlight; people: 1-4 'Full Name: role' rows; empty otherwise",
       ),
   }),
   emphasis: z
@@ -601,6 +608,13 @@ Explanatory graphics carry the story. Across the chapter, about four sentences i
 - stat: one striking figure the sentence says, exactly as the source writes it.
 - date: the moment something happened.
 - list: 2-5 things the sentence names.
+- delay: when a release slipped, the original date struck through and the new one, both from the SOURCE.
+- span: when the story spans years ("thirteen years after GTA V"), the start and end year.
+- reviews: when the SOURCE lists critics' scores, up to six of them as it gives them.
+- versus: when a sentence compares this game with another game in the documentary (graphics, map size, sales), the two titles from the chapter list.
+- source: once or twice a chapter, the most telling passage of the SOURCE word for word, with the key phrase to highlight; it shows the viewer the record itself.
+- milestone: a record or a first ("fastest-selling entertainment product in history"), as a game-style unlock.
+- people: when a sentence introduces the people behind a decision, up to four names with their roles.
 - headline: when a sentence says the press or critics reported or reacted to something (a review, a scandal, a leak, a lawsuit, a launch), restate it as a newspaper headline of 4-12 words that says only what the SOURCE says, with the outlet and year the SOURCE gives. It appears as a recreated clipping, never a real outlet's page.
 Every figure, year and quote in a graphic must be in the SOURCE.
 B-roll: when a sentence is about the real world (the studio, its staff, money, contracts, a court case, a leak, crunch, a launch queue, a console), give "broll" a plain stock-footage search so a real shot can play; about one sentence in four. Never for something inside a game.
@@ -614,6 +628,8 @@ export async function writeDocMoments(
     chapterTitle: string;
     sentences: string[];
     source: WikiArticle;
+    /** Every chapter's game, for a "versus". */
+    games?: string[];
   },
 ): Promise<DocMoment[]> {
   const n = Math.max(1, ctx.sentences.length);
@@ -623,7 +639,7 @@ export async function writeDocMoments(
       const r = await llm.structured({
         tier: "mid",
         system: DOC_MOMENTS_PROMPT,
-        content: `Chapter: ${ctx.chapterTitle} (${ctx.game})\n\n${ctx.sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}\n\nReturn exactly ${n} moments.`,
+        content: `Chapter: ${ctx.chapterTitle} (${ctx.game})${ctx.games?.length ? `\nGames in this documentary's chapters: ${ctx.games.join("; ")}` : ""}\n\n${ctx.sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}\n\nReturn exactly ${n} moments.`,
         schema: docMomentsSchema(n),
         effort: "low",
         maxTokens: 12000,
@@ -652,6 +668,8 @@ export async function writeDocMoments(
 export function groundDocMoments(
   moments: DocMoment[],
   source: WikiArticle,
+  /** The documentary's chapter games: a "versus" may only name these (their pictures are on hand). */
+  games?: string[],
 ): { moments: DocMoment[]; removed: string[] } {
   const hay = norm(source.text);
   const removed: string[] = [];
@@ -695,10 +713,63 @@ export function groundDocMoments(
         (!year || hay.includes(year)) &&
         (!outlet || /^(19|20)\d\d$/.test(outlet) || hay.includes(norm(outlet)));
     }
+    if (ok && g.kind === "delay")
+      ok =
+        g.items.length === 2 &&
+        g.items.every(
+          (x) =>
+            digitsOk(x) &&
+            (!(x.match(/\b(19|20)\d\d\b/)) || hay.includes(x.match(/\b(19|20)\d\d\b/)![0])),
+        );
+    if (ok && g.kind === "span") {
+      const ys = g.items.map((x) => x.match(/\b(19|20)\d\d\b/)?.[0]);
+      ok =
+        ys.length === 2 &&
+        ys.every((y) => y && hay.includes(y)) &&
+        Number(ys[1]) > Number(ys[0]) &&
+        (g.primary.match(/\d+/g) ?? []).every(
+          (d) => d === String(Number(ys[1]) - Number(ys[0])) || hay.includes(d),
+        );
+    }
+    if (ok && g.kind === "reviews")
+      ok =
+        g.items.length >= 2 &&
+        g.items.every((x) => {
+          const i = x.indexOf(":");
+          return i > 0 && hay.includes(norm(x.slice(0, i))) && digitsOk(x.slice(i + 1));
+        });
+    if (ok && g.kind === "versus")
+      ok =
+        g.items.length === 2 &&
+        g.items.every((x) => (games ?? []).some((t) => norm(t) === norm(x)));
+    if (ok && g.kind === "source")
+      ok =
+        wordCount(g.primary) >= 10 &&
+        wordCount(g.primary) <= 70 &&
+        hay.includes(norm(g.primary)) &&
+        (!g.items[0] || norm(g.primary).includes(norm(g.items[0])));
+    if (ok && g.kind === "milestone") {
+      const year = g.secondary.match(/\b(19|20)\d\d\b/)?.[0];
+      ok =
+        wordCount(g.primary) >= 2 &&
+        wordCount(g.primary) <= 12 &&
+        digitsOk(g.primary) &&
+        (!year || hay.includes(year));
+    }
+    if (ok && g.kind === "people")
+      ok =
+        g.items.length >= 1 &&
+        g.items.every((x) => {
+          const i = x.indexOf(":");
+          return i > 0 && hay.includes(norm(x.slice(0, i)));
+        });
     if (ok && prevGraphic) ok = false;
     if (g.kind !== "none" && !ok)
       removed.push(`${g.kind}: ${g.primary || g.items.join(" | ")}`);
     prevGraphic = ok;
+    // The record's own words are credited to their article.
+    if (ok && g.kind === "source")
+      return { ...m, graphic: { ...g, secondary: `Wikipedia: ${source.title}` } };
     return ok ? m : { ...m, graphic: none };
   });
   return { moments: out, removed };

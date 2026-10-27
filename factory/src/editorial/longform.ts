@@ -85,7 +85,7 @@ export type Moment = z.infer<typeof MomentSchema>;
 /** A documentary's shot list adds a full-screen quote, a timeline and real-world B-roll (src/editorial/documentary.ts). */
 export type AnyMoment = Omit<Moment, "graphic"> & {
   graphic: Omit<Moment["graphic"], "kind"> & {
-    kind: Moment["graphic"]["kind"] | "quote" | "timeline" | "headline";
+    kind: Moment["graphic"]["kind"] | "quote" | "timeline" | "headline" | "delay" | "span" | "reviews" | "versus" | "source" | "milestone" | "people";
   };
   broll?: string;
 };

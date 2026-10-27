@@ -72,7 +72,13 @@ export function momentKeys(m: MomentKeySource): string[] {
       keys.push(
         ...(g.items ?? []).map((x) => x.split(":")[0]!.trim()).slice(0, 1),
       );
-    else if (g.kind === "compare")
+    // Named things land on their first name: an outlet, a person, a game, a date.
+    else if (["reviews", "people", "versus", "delay"].includes(g.kind))
+      keys.push(...(g.items ?? []).map((x) => x.split(":")[0]!.trim()).slice(0, 1));
+    else if (g.kind === "span")
+      keys.push(...(g.items ?? []).slice(0, 1));
+    else if (g.kind === "source") {
+    } else if (g.kind === "compare")
       keys.push(...(g.items ?? []).map((x) => x.split(":")[0]!.trim()));
     else keys.push(g.primary);
   }
@@ -715,7 +721,20 @@ export function usefulGraphic<
 >(g: G): boolean {
   if (g.kind === "none") return false;
   // A documentary's quote or timeline never restates a rank ("the best place to work" is not a ranking).
-  if (g.kind === "quote" || g.kind === "timeline" || g.kind === "headline")
+  if (
+    [
+      "quote",
+      "timeline",
+      "headline",
+      "delay",
+      "span",
+      "reviews",
+      "versus",
+      "source",
+      "milestone",
+      "people",
+    ].includes(g.kind)
+  )
     return Boolean(g.primary.trim() || g.kind === "timeline");
   const text = `${g.primary} ${g.secondary}`;
   if (

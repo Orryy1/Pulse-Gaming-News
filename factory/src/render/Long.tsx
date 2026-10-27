@@ -57,6 +57,15 @@ import {
   type MomentProp,
 } from "./components/LongMoments.tsx";
 import { displayText, type Segment } from "./timeline.ts";
+import {
+  AchievementMoment,
+  DelayMoment,
+  PeopleMoment,
+  ReviewsMoment,
+  SourceMoment,
+  SpanMoment,
+  VersusMoment,
+} from "./components/DocGraphics.tsx";
 import type { Word } from "../voice/elevenlabs.ts";
 
 export interface LongImageProp {
@@ -1344,6 +1353,62 @@ export const Long: React.FC<LongProps> = (props) => {
     const b = breakFrames.find((x) => Math.abs(x.from - starts[i]!) <= 3);
     return b ? Math.max(0, b.to - b.from) : 0;
   };
+  // The richer explainers (src/render/components/DocGraphics.tsx). A "versus" shows two of the video's own
+  // games from their chapters' pictures; a "people" card uses a portrait when one carries the name.
+  const normTitle = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const gameArt = (title: string) => {
+    const k = props.segments.findIndex(
+      (x) =>
+        x.kind === "beat" &&
+        (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
+        normTitle(x.visual?.secondary ?? "") === normTitle(title),
+    );
+    const byPrimary =
+      k >= 0
+        ? k
+        : props.segments.findIndex(
+            (x) => x.kind === "beat" && x.visual?.kind === "rank" && normTitle(x.visual?.primary ?? "") === normTitle(title),
+          );
+    if (byPrimary < 0) return undefined;
+    const e = entryOf(props.segments, byPrimary);
+    const im = props.images.find(
+      (i) => i.beatIndex === e && i.aspect >= 1.2 && i.kind !== "capsule" && i.kind !== "portrait",
+    );
+    const year = props.segments[byPrimary]!.visual?.items?.[0];
+    return im ? { src: im.src, label: [displayText(title), year].filter(Boolean).join(" · ") } : undefined;
+  };
+  const portraits = Object.fromEntries(
+    props.images
+      .filter((i) => (i.kind === "portrait" || i.kind === "photo") && i.label)
+      .map((i) => [i.label!.toLowerCase(), i.src]),
+  );
+  const richGraphic = (g: NonNullable<LongProps["moments"]>[number][number]["graphic"], len: number) => {
+    switch (g.kind) {
+      case "delay":
+        return <DelayMoment g={g} len={len} />;
+      case "span":
+        return <SpanMoment g={g} len={len} />;
+      case "reviews":
+        return <ReviewsMoment g={g} len={len} />;
+      case "source":
+        return <SourceMoment g={g} len={len} />;
+      case "milestone":
+        return <AchievementMoment g={g} len={len} />;
+      case "people":
+        return <PeopleMoment g={g} len={len} photos={portraits} />;
+      case "versus":
+        return (
+          <VersusMoment
+            len={len}
+            heading={displayText(g.primary)}
+            left={gameArt(g.items[0] ?? "")}
+            right={gameArt(g.items[1] ?? "")}
+          />
+        );
+      default:
+        return null;
+    }
+  };
   const bedAt = (f: number) =>
     beds.find((b) => f >= b.from && f < b.to)?.src ?? props.musicSrc;
   // Each sentence's graphic, caption or picture lands a beat before the narrator names it and holds until
@@ -1639,7 +1704,9 @@ export const Long: React.FC<LongProps> = (props) => {
             durationInFrames={len}
             layout="none"
           >
-            {m.graphic.kind === "quote" ? (
+            {richGraphic(m.graphic, len) ? (
+              richGraphic(m.graphic, len)
+            ) : m.graphic.kind === "quote" ? (
               <QuoteMoment g={m.graphic} len={len} />
             ) : m.graphic.kind === "headline" ? (
               <HeadlineMoment

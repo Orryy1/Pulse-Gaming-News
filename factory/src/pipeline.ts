@@ -1919,8 +1919,10 @@ async function stepScriptDocumentary(
           chapterTitle: plan.chapter_title,
           sentences,
           source,
+          games: outline.chapters.map((c) => c.game_title),
         }),
         source,
+        outline.chapters.map((c) => c.game_title),
       );
       moments = shot.moments;
       if (shot.removed.length)

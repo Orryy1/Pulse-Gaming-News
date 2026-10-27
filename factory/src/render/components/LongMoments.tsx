@@ -31,7 +31,14 @@ export interface MomentGraphic {
     | "compare"
     | "quote"
     | "timeline"
-    | "headline";
+    | "headline"
+    | "delay"
+    | "span"
+    | "reviews"
+    | "versus"
+    | "source"
+    | "milestone"
+    | "people";
   primary: string;
   secondary: string;
   items: string[];

@@ -39,7 +39,15 @@ import {
 } from "./editorial/longform.ts";
 import { trailerMatchesGame } from "./assets/commons.ts";
 import { rankStills } from "./assets/stillscore.ts";
-import { tightenPauses } from "./voice/pauses.ts";
+import {
+  tightenPauses,
+  chapterGaps,
+  insertSilence,
+  openWords,
+} from "./voice/pauses.ts";
+
+/** Seconds of breather before each documentary chapter: narrator silent, music up, the chapter's title full screen. */
+const DOC_BREAK_SECONDS = 4;
 import { sentencesOf } from "./editorial/longform.ts";
 import {
   pickPhotos,
@@ -76,6 +84,7 @@ import {
   buildLongPlan,
   momentKeys,
   planGaps,
+  openChaptersAtBreaks,
   chapterLines,
   LONG_TAIL_SECONDS,
 } from "./render/longplan.ts";
@@ -3744,6 +3753,42 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     throw new FatalError(
       `narration is ${narration.durationSeconds.toFixed(1)}s, over the ${maxSeconds}s cap for the ${ep.lane} lane`,
     );
+  // A documentary breathes before each chapter: a few seconds with the narrator silent, the music up
+  // and the chapter's title full screen (owner, 27 Oct 2026: "very narrative and word heavy").
+  let breaks: EpisodeAssets["breaks"];
+  if (
+    ep.script_json?.evergreen_format === "documentary" &&
+    narration.words.length
+  ) {
+    try {
+      const segs = buildSegments(
+        segmentInputs(ep.script_json),
+        narration.words,
+        narration.durationSeconds,
+      );
+      const firstWords = segs
+        .filter((g) => g.kind === "beat" && g.visual?.kind === "chapter")
+        .map((g) => narration.words.findIndex((w) => w.start >= g.start - 0.05))
+        .filter((k) => k > 0);
+      const gaps = chapterGaps(narration.words, firstWords, DOC_BREAK_SECONDS);
+      if (gaps.length) {
+        await insertSilence(path.join(dir, "voice.mp3"), gaps);
+        narration.words = openWords(narration.words, gaps);
+        narration.durationSeconds += gaps.reduce((n, g) => n + g.seconds, 0);
+        let added = 0;
+        breaks = gaps.map((g) => {
+          const start = g.at + added;
+          added += g.seconds;
+          return { start, end: start + g.seconds };
+        });
+      }
+    } catch (err) {
+      log("warn", "documentary breathers skipped", {
+        episode: ep.id,
+        error: errorMessage(err),
+      });
+    }
+  }
   await fs.writeFile(
     path.join(dir, "captions.srt"),
     srtFromWords(narration.words),
@@ -3756,6 +3801,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     durationSeconds: narration.durationSeconds,
     srt: "captions.srt",
     voice: narration.voice,
+    ...(breaks?.length ? { breaks } : {}),
     ...(desk && s.stitchTakes
       ? {
           desk: { voice: desk.voice, question: ep.script_json!.desk_question! },
@@ -5158,10 +5204,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   const duration = (assets.durationSeconds ?? 300) + LONG_TAIL_SECONDS;
   const words = assets.words ?? [];
-  const segments = buildSegments(
-    segmentInputs(script, Boolean(assets.desk)),
-    words,
-    duration,
+  // A documentary's breathers open each chapter (assets.breaks, put in when it was voiced).
+  const segments = openChaptersAtBreaks(
+    buildSegments(segmentInputs(script, Boolean(assets.desk)), words, duration),
+    assets.breaks,
   );
   const variant = variantOf(ep.id);
   const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
@@ -5372,13 +5418,18 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       clipFiles: clips,
       plan,
       renderDate: s.now().toISOString().slice(0, 10),
+      breaks: assets.breaks,
     },
   });
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
   const tech = await s.technicalQa(final, duration, {
     minSeconds: 180,
-    maxSeconds: (doc ? s.cfg.docMaxSeconds : s.cfg.longformMaxSeconds) + 60,
+    // The breathers are on top of the narration cap.
+    maxSeconds:
+      (doc ? s.cfg.docMaxSeconds : s.cfg.longformMaxSeconds) +
+      60 +
+      (assets.breaks ?? []).reduce((n, b) => n + b.end - b.start, 0),
     width: 1920,
     height: 1080,
   });
@@ -6022,10 +6073,13 @@ export function longChapters(ep: Episode): string[] {
   const words = ep.assets_json?.words ?? [];
   if (!script || !words.length) return [];
   const duration = (ep.assets_json?.durationSeconds ?? 0) + LONG_TAIL_SECONDS;
-  const segments = buildSegments(
-    segmentInputs(script, Boolean(ep.assets_json?.desk)),
-    words,
-    duration,
+  const segments = openChaptersAtBreaks(
+    buildSegments(
+      segmentInputs(script, Boolean(ep.assets_json?.desk)),
+      words,
+      duration,
+    ),
+    ep.assets_json?.breaks,
   );
   return chapterLines(segments, (seg) =>
     seg.kind === "hook"

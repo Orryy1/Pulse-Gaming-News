@@ -88,6 +88,7 @@ export type LongProps = {
   footageCredit: string;
   endLine?: string; // the line under the end card
   moments?: MomentProp[][]; // per ranking entry, one per sentence: graphics, kinetic captions, pop-ins
+  breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds)
   segments: Segment[];
   words: Word[];
   images: LongImageProp[];
@@ -932,6 +933,137 @@ const CalloutCard: React.FC<{
   );
 };
 
+/**
+ * A documentary's breather before a chapter: the narrator is silent, the music lifts, and the chapter
+ * arrives full screen (its number, its title, the game and year, and a line from the chapter if it has
+ * a quote) over its first picture, then clears for the narration.
+ */
+const ChapterInterlude: React.FC<{
+  number: number;
+  title: string;
+  game: string;
+  year?: string;
+  quote?: { text: string; who: string };
+  frames: number;
+}> = ({ number, title, game, year, quote, frames }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const out = interpolate(frame, [frames - 12, frames], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const dim =
+    interpolate(frame, [0, 10], [0, 1], { extrapolateRight: "clamp" }) * out;
+  const label = spring({ frame: frame - 4, fps, config: SPRING.ENTER });
+  const head = spring({ frame: frame - 10, fps, config: SPRING.ENTER });
+  const sub = spring({ frame: frame - 22, fps, config: SPRING.ENTER });
+  const rule = interpolate(frame, [8, 34], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: (x) => 1 - (1 - x) ** 3,
+  });
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      <AbsoluteFill
+        style={{
+          background: `radial-gradient(90% 80% at 50% 50%, rgba(11,11,14,${0.45 * dim}) 0%, rgba(11,11,14,${0.85 * dim}) 100%)`,
+        }}
+      />
+      <AbsoluteFill
+        style={{ alignItems: "center", justifyContent: "center", opacity: out }}
+      >
+        <div style={{ textAlign: "center", maxWidth: 1500 }}>
+          <div
+            style={{
+              fontFamily: BODY,
+              fontWeight: 900,
+              fontSize: 30,
+              letterSpacing: 8,
+              color: COLOUR.amber,
+              opacity: label,
+              transform: `translateY(${(1 - label) * 20}px)`,
+            }}
+          >
+            CHAPTER {number}
+          </div>
+          <div
+            style={{
+              margin: "22px auto 0",
+              height: 5,
+              width: 220 * rule,
+              background: COLOUR.amber,
+              borderRadius: 3,
+            }}
+          />
+          <div
+            style={{
+              marginTop: 26,
+              fontFamily: DISPLAY,
+              fontSize: title.length > 26 ? 110 : 140,
+              lineHeight: 0.98,
+              color: COLOUR.paper,
+              textTransform: "uppercase",
+              textShadow: "0 12px 60px rgba(0,0,0,0.7)",
+              opacity: head,
+              transform: `translateY(${(1 - head) * 40}px) scale(${0.96 + 0.04 * head})`,
+            }}
+          >
+            {title}
+          </div>
+          <div
+            style={{
+              marginTop: 22,
+              fontFamily: BODY,
+              fontWeight: 800,
+              fontSize: 30,
+              letterSpacing: 3,
+              color: "rgba(245,245,242,0.8)",
+              textTransform: "uppercase",
+              opacity: sub,
+            }}
+          >
+            {[game, year].filter(Boolean).join(" · ")}
+          </div>
+          {quote ? (
+            <div
+              style={{
+                marginTop: 40,
+                fontFamily: BODY,
+                fontWeight: 700,
+                fontStyle: "italic",
+                fontSize: 34,
+                lineHeight: 1.3,
+                color: COLOUR.paper,
+                opacity: interpolate(frame, [30, 46], [0, 1], {
+                  extrapolateLeft: "clamp",
+                  extrapolateRight: "clamp",
+                }),
+              }}
+            >
+              {"“"}
+              {quote.text}
+              {"”"}
+              <span
+                style={{
+                  fontStyle: "normal",
+                  fontWeight: 900,
+                  fontSize: 24,
+                  letterSpacing: 2,
+                  color: COLOUR.amber,
+                  marginLeft: 16,
+                  textTransform: "uppercase",
+                }}
+              >
+                {quote.who}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
 const OutroCard: React.FC<{
   label: string;
   winner: string;
@@ -1151,7 +1283,26 @@ export const Long: React.FC<LongProps> = (props) => {
     let talk = 0;
     for (let k = -2; k <= 2; k++)
       talk += speaking[Math.min(durationInFrames, Math.max(0, f + k))] ?? 0;
-    return fadeIn * fadeOut * interpolate(talk / 5, [0, 1], [0.22, 0.07]);
+    // In a documentary's breather the music comes up to carry the pause, easing in and out.
+    const lift = Math.max(
+      0,
+      ...breakFrames.map((b) =>
+        interpolate(
+          f,
+          [b.from, b.from + 15, b.to - 12, b.to + 6],
+          [0, 1, 1, 0],
+          {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          },
+        ),
+      ),
+    );
+    return (
+      fadeIn *
+      fadeOut *
+      Math.max(interpolate(talk / 5, [0, 1], [0.22, 0.07]), 0.42 * lift)
+    );
   };
   // The music changes bed at the first chapter or entry after MUSIC_SECTION_SECONDS on one bed: a 30-minute
   // documentary looped a single two-minute bed fifteen times (owner, 27 Oct 2026).
@@ -1183,6 +1334,15 @@ export const Long: React.FC<LongProps> = (props) => {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.musicSrc, props.segments, durationInFrames, fps]);
+  // A documentary's breathers: the chapter segment that opens on one, and the frames it lasts.
+  const breakFrames = (props.breaks ?? []).map((b) => ({
+    from: Math.round(b.start * fps),
+    to: Math.round(b.end * fps),
+  }));
+  const breakAt = (i: number) => {
+    const b = breakFrames.find((x) => Math.abs(x.from - starts[i]!) <= 3);
+    return b ? Math.max(0, b.to - b.from) : 0;
+  };
   const bedAt = (f: number) =>
     beds.find((b) => f >= b.from && f < b.to)?.src ?? props.musicSrc;
   // Each sentence's graphic, caption or picture lands a beat before the narrator names it and holds until
@@ -1334,26 +1494,60 @@ export const Long: React.FC<LongProps> = (props) => {
               (im) => im.beatIndex === b && im.kind === "capsule",
             ) ??
             props.images.find((im) => im.beatIndex === b && im.aspect < 0.9);
-          const span = Math.max(1, chapterEnd(i) - starts[i]!);
+          // A breather opens the chapter: its interlude first, then the lower-third card as the narration resumes.
+          const pause = breakAt(i);
+          const quote = props.moments?.[b ?? -1]?.find(
+            (m) => m.graphic.kind === "quote",
+          )?.graphic;
+          const span = Math.max(1, chapterEnd(i) - starts[i]! - pause);
           return (
-            <Sequence
-              key={i}
-              from={starts[i]!}
-              durationInFrames={span}
-              layout="none"
-            >
-              <EntryCard
-                rank={s.visual.value_a ?? (b ?? 0) + 1}
-                total={0}
-                title={s.visual.primary}
-                verdict=""
-                chapter={s.visual.secondary}
-                year={s.visual.items?.[0]}
-                platforms={s.visual.items?.[1]}
-                capsuleSrc={capsule?.src ?? null}
-                durationFrames={span}
-              />
-            </Sequence>
+            <React.Fragment key={i}>
+              {pause ? (
+                <Sequence
+                  from={starts[i]!}
+                  durationInFrames={pause}
+                  layout="none"
+                >
+                  <ChapterInterlude
+                    number={s.visual.value_a ?? (b ?? 0) + 1}
+                    title={s.visual.primary}
+                    game={s.visual.secondary}
+                    year={s.visual.items?.[0]}
+                    quote={
+                      quote && quote.primary.split(/\s+/).length <= 18
+                        ? {
+                            text: displayText(quote.primary).replace(
+                              /^["“]+|["”]+$/g,
+                              "",
+                            ),
+                            who: displayText(
+                              quote.secondary.split(",")[0] ?? "",
+                            ),
+                          }
+                        : undefined
+                    }
+                    frames={pause}
+                  />
+                </Sequence>
+              ) : null}
+              <Sequence
+                from={starts[i]! + pause}
+                durationInFrames={span}
+                layout="none"
+              >
+                <EntryCard
+                  rank={s.visual.value_a ?? (b ?? 0) + 1}
+                  total={0}
+                  title={s.visual.primary}
+                  verdict=""
+                  chapter={s.visual.secondary}
+                  year={s.visual.items?.[0]}
+                  platforms={s.visual.items?.[1]}
+                  capsuleSrc={capsule?.src ?? null}
+                  durationFrames={span}
+                />
+              </Sequence>
+            </React.Fragment>
           );
         }
         // A chapter with a shot list puts its facts on screen sentence by sentence instead.

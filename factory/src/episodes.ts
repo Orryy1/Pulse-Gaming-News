@@ -56,29 +56,81 @@ export interface EpisodeAssets {
   /** The desk experiment: a second presenter asked the viewer's question before the take. */
   desk?: { voice: { id: string; name: string }; question: string };
   plan?: import("./render/plan.ts").RenderPlan; // the render plan, persisted so a retried render is identical
-  images?: Array<{ file: string; kind: string; aspect: number; sourceUrl: string; provenance: string; blurFile?: string; beatIndex?: number; moment?: number; label?: string; wordy?: boolean }>; // wordy: the local screen saw menu or HUD text on it
+  images?: Array<{
+    file: string;
+    kind: string;
+    aspect: number;
+    sourceUrl: string;
+    provenance: string;
+    blurFile?: string;
+    beatIndex?: number;
+    moment?: number;
+    label?: string;
+    wordy?: boolean;
+  }>; // wordy: the local screen saw menu or HUD text on it
   video?: string;
   poster?: string;
   musicFile?: string | null;
-  clips?: Array<{ file: string; sourceUrl: string; provenance: string; durationSeconds: number; blurFile?: string; beatIndex?: number; role?: "hook"; stock?: boolean; audio?: boolean; motion?: number; luma?: number; label?: string; reason?: string; startSeconds?: number; moment?: number; credit?: string }>;
-  steam?: { appId: number; name: string; facts: import("./assets/steam.ts").SteamFacts };
+  clips?: Array<{
+    file: string;
+    sourceUrl: string;
+    provenance: string;
+    durationSeconds: number;
+    blurFile?: string;
+    beatIndex?: number;
+    role?: "hook";
+    stock?: boolean;
+    audio?: boolean;
+    motion?: number;
+    luma?: number;
+    label?: string;
+    reason?: string;
+    startSeconds?: number;
+    moment?: number;
+    credit?: string;
+  }>;
+  steam?: {
+    appId: number;
+    name: string;
+    facts: import("./assets/steam.ts").SteamFacts;
+  };
   longPlan?: import("./render/longplan.ts").LongPlan; // the long-form render plan
+  breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds, narration silent)
   thumb?: string; // thumb.jpg for the long-form video
   thumbVariants?: string[]; // thumb_b.jpg, thumb_c.jpg: extra designs for YouTube's Test & compare
-  officialTrailer?: { videoId: string; title: string; publisher: string; channelTitle: string; url: string; clipSeconds: number }; // the publisher's YouTube trailer, for games not on Steam
+  officialTrailer?: {
+    videoId: string;
+    title: string;
+    publisher: string;
+    channelTitle: string;
+    url: string;
+    clipSeconds: number;
+  }; // the publisher's YouTube trailer, for games not on Steam
 }
 
-export async function getEpisode(db: Db, id: string): Promise<Episode | undefined> {
-  const [row] = await db.query<Episode>(`SELECT * FROM episodes WHERE id = $1`, [id]);
+export async function getEpisode(
+  db: Db,
+  id: string,
+): Promise<Episode | undefined> {
+  const [row] = await db.query<Episode>(
+    `SELECT * FROM episodes WHERE id = $1`,
+    [id],
+  );
   return row;
 }
 
 export async function listEpisodes(db: Db, limit = 20): Promise<Episode[]> {
-  return db.query<Episode>(`SELECT * FROM episodes ORDER BY created_at DESC LIMIT $1`, [limit]);
+  return db.query<Episode>(
+    `SELECT * FROM episodes ORDER BY created_at DESC LIMIT $1`,
+    [limit],
+  );
 }
 
 /** Episodes that can be advanced right now, oldest first. */
-export async function dueEpisodes(db: Db, now = new Date()): Promise<Episode[]> {
+export async function dueEpisodes(
+  db: Db,
+  now = new Date(),
+): Promise<Episode[]> {
   // The clock is passed in so holds (a slot, a quota reset) are judged by the factory's time, not the database's.
   return db.query<Episode>(
     `SELECT * FROM episodes
@@ -89,12 +141,27 @@ export async function dueEpisodes(db: Db, now = new Date()): Promise<Episode[]> 
   );
 }
 
-export async function createEpisode(db: Db, id: string, cluster: StoryCluster, lane: { lane: string; priority: number; slotAt?: Date } = { lane: "news", priority: 50 }): Promise<boolean> {
+export async function createEpisode(
+  db: Db,
+  id: string,
+  cluster: StoryCluster,
+  lane: { lane: string; priority: number; slotAt?: Date } = {
+    lane: "news",
+    priority: 50,
+  },
+): Promise<boolean> {
   // cluster may carry gameHint from the editor's selection.
   const rows = await db.query(
     `INSERT INTO episodes (id, story_hash, status, story_json, lane, priority, slot_at) VALUES ($1, $2, 'selected', $3, $4, $5, $6)
      ON CONFLICT (story_hash) DO NOTHING RETURNING id`,
-    [id, cluster.hash, JSON.stringify(cluster), lane.lane, lane.priority, lane.slotAt ?? null],
+    [
+      id,
+      cluster.hash,
+      JSON.stringify(cluster),
+      lane.lane,
+      lane.priority,
+      lane.slotAt ?? null,
+    ],
   );
   return rows.length === 1;
 }
@@ -114,7 +181,9 @@ export async function transition(
   const sets = cols.map((c, i) => `${c} = $${i + 4}`);
   const values = cols.map((c) => {
     const v = (fields as Record<string, unknown>)[c];
-    return v !== null && typeof v === "object" && !(v instanceof Date) ? JSON.stringify(v) : v;
+    return v !== null && typeof v === "object" && !(v instanceof Date)
+      ? JSON.stringify(v)
+      : v;
   });
   // A step change resets the retry bookkeeping unless the caller sets it.
   const defaults = [
@@ -130,7 +199,12 @@ export async function transition(
   return rows.length === 1;
 }
 
-export async function recordFailure(db: Db, id: string, error: string, retryInMinutes: number): Promise<number> {
+export async function recordFailure(
+  db: Db,
+  id: string,
+  error: string,
+  retryInMinutes: number,
+): Promise<number> {
   const [row] = await db.query<{ attempts: number }>(
     `UPDATE episodes SET attempts = attempts + 1, last_error = $2, updated_at = now(),
        next_attempt_at = now() + make_interval(mins => $3)
@@ -140,11 +214,25 @@ export async function recordFailure(db: Db, id: string, error: string, retryInMi
   return row?.attempts ?? 0;
 }
 
-export async function logEvent(db: Db, episodeId: string | null, kind: string, detail: Record<string, unknown> = {}): Promise<void> {
-  await db.query(`INSERT INTO events (episode_id, kind, detail) VALUES ($1, $2, $3)`, [episodeId, kind, JSON.stringify(detail)]);
+export async function logEvent(
+  db: Db,
+  episodeId: string | null,
+  kind: string,
+  detail: Record<string, unknown> = {},
+): Promise<void> {
+  await db.query(
+    `INSERT INTO events (episode_id, kind, detail) VALUES ($1, $2, $3)`,
+    [episodeId, kind, JSON.stringify(detail)],
+  );
 }
 
-export async function markSeen(db: Db, hash: string, title: string, decision: string, reason = ""): Promise<void> {
+export async function markSeen(
+  db: Db,
+  hash: string,
+  title: string,
+  decision: string,
+  reason = "",
+): Promise<void> {
   await db.query(
     `INSERT INTO seen_stories (story_hash, title, decision, reason) VALUES ($1, $2, $3, $4)
      ON CONFLICT (story_hash) DO UPDATE SET decision = EXCLUDED.decision, reason = EXCLUDED.reason`,
@@ -153,7 +241,9 @@ export async function markSeen(db: Db, hash: string, title: string, decision: st
 }
 
 export async function seenHashes(db: Db): Promise<Set<string>> {
-  const rows = await db.query<{ story_hash: string }>(`SELECT story_hash FROM seen_stories WHERE seen_at > now() - interval '7 days'`);
+  const rows = await db.query<{ story_hash: string }>(
+    `SELECT story_hash FROM seen_stories WHERE seen_at > now() - interval '7 days'`,
+  );
   return new Set(rows.map((r) => r.story_hash));
 }
 
@@ -169,7 +259,11 @@ export async function recentHeadlines(db: Db, days = 5): Promise<string[]> {
 /** Episodes started today (UTC) that have not failed or been rejected. */
 /** Episodes created today in the owner's day (Europe/London), excluding failed and rejected. */
 /** Episodes made today (all lanes but the owner's gameplay Shorts, which are extra), or one lane's. */
-export async function countToday(db: Db, timeZone = "Europe/London", lane?: string): Promise<number> {
+export async function countToday(
+  db: Db,
+  timeZone = "Europe/London",
+  lane?: string,
+): Promise<number> {
   // The owner's day: "today" rolls over at local midnight in winter and summer alike.
   const [row] = await db.query<{ n: string | number }>(
     `SELECT count(*) AS n FROM episodes
@@ -183,12 +277,16 @@ export async function countToday(db: Db, timeZone = "Europe/London", lane?: stri
 
 /** Episodes mid-production (not waiting on approval, YouTube or a terminal state). Gameplay Shorts are extra and never hold the news back. */
 export async function countProducing(db: Db): Promise<number> {
-  const [row] = await db.query<{ n: string | number }>(`SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered') AND lane NOT IN ('gameplay','twin')`);
+  const [row] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered') AND lane NOT IN ('gameplay','twin')`,
+  );
   return Number(row?.n ?? 0);
 }
 
 /** Slot instants already claimed by live episodes. */
 export async function takenSlots(db: Db): Promise<Date[]> {
-  const rows = await db.query<{ slot_at: string }>(`SELECT slot_at FROM episodes WHERE slot_at IS NOT NULL AND status NOT IN ('failed','rejected')`);
+  const rows = await db.query<{ slot_at: string }>(
+    `SELECT slot_at FROM episodes WHERE slot_at IS NOT NULL AND status NOT IN ('failed','rejected')`,
+  );
   return rows.map((r) => new Date(r.slot_at));
 }

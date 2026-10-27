@@ -263,10 +263,100 @@ test("a quote or timeline is never mistaken for a rank graphic", () => {
 import { advertiserProblems } from "../src/editorial/voice.ts";
 
 test("advertiser-unfriendly words are sent back with a softer phrase; game names pass (27 Oct 2026)", () => {
-  assert.equal(advertiserProblems("The hidden sex minigame was found by modders.").length, 1);
-  assert.match(advertiserProblems("a sexual content patch")[0]!, /adult content/);
+  assert.equal(
+    advertiserProblems("The hidden sex minigame was found by modders.").length,
+    1,
+  );
+  assert.match(
+    advertiserProblems("a sexual content patch")[0]!,
+    /adult content/,
+  );
   assert.equal(advertiserProblems("a torture scene drew complaints").length, 1);
-  assert.deepEqual(advertiserProblems("Naked Snake meets Suicide Squad in The Texas Chain Saw Massacre."), []);
-  assert.deepEqual(advertiserProblems("Hot Coffee: hidden adult content left in the files."), []);
-  assert.deepEqual(advertiserProblems("Sussex studios and the Method engine"), []);
+  assert.deepEqual(
+    advertiserProblems(
+      "Naked Snake meets Suicide Squad in The Texas Chain Saw Massacre.",
+    ),
+    [],
+  );
+  assert.deepEqual(
+    advertiserProblems("Hot Coffee: hidden adult content left in the files."),
+    [],
+  );
+  assert.deepEqual(
+    advertiserProblems("Sussex studios and the Method engine"),
+    [],
+  );
+});
+
+import { chapterGaps, openWords, insertSilence } from "../src/voice/pauses.ts";
+import { openChaptersAtBreaks } from "../src/render/longplan.ts";
+import { execFileSync } from "node:child_process";
+import os from "node:os";
+import fsp from "node:fs/promises";
+import pathM from "node:path";
+import { FFMPEG, FFPROBE } from "../src/lib/bin.ts";
+
+test("a documentary breathes before each chapter: silence in the gap, words and chapters moved with it", async () => {
+  const words = [
+    { text: "Intro.", start: 0, end: 1 },
+    { text: "Chapter", start: 1.6, end: 2 },
+    { text: "one.", start: 2, end: 2.5 },
+    { text: "Chapter", start: 3.1, end: 3.5 },
+    { text: "two.", start: 3.5, end: 4 },
+  ];
+  const gaps = chapterGaps(words, [1, 3], 4);
+  assert.deepEqual(
+    gaps.map((g) => g.at),
+    [1.3, 2.8],
+  );
+  const moved = openWords(words, gaps);
+  assert.deepEqual(
+    moved.map((w) => w.start),
+    [0, 5.6, 6, 11.1, 11.5],
+  );
+  // The audio: a two-tone file gets 4 s of silence in each gap and grows by 8 s.
+  const dir = await fsp.mkdtemp(pathM.join(os.tmpdir(), "brk-"));
+  const file = pathM.join(dir, "voice.mp3");
+  execFileSync(FFMPEG, [
+    "-loglevel",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:duration=4.5",
+    "-ac",
+    "1",
+    "-ar",
+    "44100",
+    "-c:a",
+    "libmp3lame",
+    file,
+  ]);
+  await insertSilence(file, gaps);
+  const probe = execFileSync(FFPROBE, [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "csv=p=0",
+    file,
+  ]).toString();
+  assert.ok(Math.abs(Number(probe) - 12.5) < 0.15, `duration ${probe}`);
+  await fsp.rm(dir, { recursive: true, force: true });
+  // The chapter's segment opens with its breather.
+  const segs = [
+    { kind: "hook", text: "Intro.", start: 0, end: 5.6 },
+    {
+      kind: "beat",
+      text: "Chapter one.",
+      start: 5.6,
+      end: 11.1,
+      visual: { kind: "chapter", primary: "One", secondary: "G" },
+    },
+  ] as any;
+  const opened = openChaptersAtBreaks(segs, [{ start: 1.3, end: 5.3 }]);
+  assert.equal(opened[1]!.start, 1.3);
+  assert.equal(opened[0]!.end, 1.3);
 });

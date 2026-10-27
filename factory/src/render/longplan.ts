@@ -629,6 +629,30 @@ function stillRank(img: LongImage): number {
   return 3;
 }
 
+/**
+ * A documentary's breathers belong to the chapter that follows: its segment opens when the breather
+ * does, so the new chapter's title and pictures arrive with the music instead of after it.
+ */
+export function openChaptersAtBreaks(
+  segments: Segment[],
+  breaks: Array<{ start: number; end: number }> | undefined,
+): Segment[] {
+  const out = segments.map((s) => ({ ...s }));
+  for (const b of breaks ?? []) {
+    const i = out.findIndex(
+      (s) =>
+        s.kind === "beat" &&
+        s.visual?.kind === "chapter" &&
+        s.start >= b.start - 0.05 &&
+        s.start <= b.end + 1.5,
+    );
+    if (i <= 0) continue;
+    out[i]!.start = b.start;
+    out[i - 1]!.end = Math.min(out[i - 1]!.end, b.start);
+  }
+  return out;
+}
+
 /** The shot on screen at a frame. */
 export function longShotAt(
   plan: LongPlan,

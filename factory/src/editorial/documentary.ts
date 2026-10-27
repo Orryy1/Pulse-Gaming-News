@@ -532,6 +532,7 @@ export const DOC_GRAPHIC_KINDS = [
   "compare",
   "timeline",
   "quote",
+  "headline",
 ] as const;
 
 export const DocMomentSchema = z.object({
@@ -554,12 +555,12 @@ export const DocMomentSchema = z.object({
     primary: z
       .string()
       .describe(
-        "stat: the figure as the source writes it, e.g. '17 million'; date: e.g. 'September 2013'; list, compare, timeline: a 2-4 word heading; quote: the quote copied word for word from the SOURCE, 6-30 words; none: empty",
+        "stat: the figure as the source writes it, e.g. '17 million'; date: e.g. 'September 2013'; list, compare, timeline: a 2-4 word heading; quote: the quote copied word for word from the SOURCE, 6-30 words; headline: the press story as a newspaper headline, 4-12 words, stating only what the SOURCE says; none: empty",
       ),
     secondary: z
       .string()
       .describe(
-        "stat/date: what it is, 2-6 words; quote: who said it and their role, e.g. 'Dan Houser, Rockstar co-founder'; empty otherwise",
+        "stat/date: what it is, 2-6 words; quote: who said it and their role, e.g. 'Dan Houser, Rockstar co-founder'; headline: the outlet as the SOURCE names it and the year, e.g. 'The Guardian, 2005', or just the year when the source names no outlet; empty otherwise",
       ),
     items: z
       .array(z.string())
@@ -600,6 +601,7 @@ Explanatory graphics carry the story. Across the chapter, about four sentences i
 - stat: one striking figure the sentence says, exactly as the source writes it.
 - date: the moment something happened.
 - list: 2-5 things the sentence names.
+- headline: when a sentence says the press or critics reported or reacted to something (a review, a scandal, a leak, a lawsuit, a launch), restate it as a newspaper headline of 4-12 words that says only what the SOURCE says, with the outlet and year the SOURCE gives. It appears as a recreated clipping, never a real outlet's page.
 Every figure, year and quote in a graphic must be in the SOURCE.
 B-roll: when a sentence is about the real world (the studio, its staff, money, contracts, a court case, a leak, crunch, a launch queue, a console), give "broll" a plain stock-footage search so a real shot can play; about one sentence in four. Never for something inside a game.
 "emphasis" lands a complete name or phrase in about a third of the sentences without a graphic, never a fragment. "person" names the real person or character a sentence is mainly about.`;
@@ -682,6 +684,17 @@ export function groundDocMoments(
         (g.kind !== "compare" || g.items.every((x) => x.includes(":"))) &&
         (g.kind !== "timeline" ||
           g.items.every((x) => /\b(19|20)\d\d\b/.test(x)));
+    if (ok && g.kind === "headline") {
+      // A recreated clipping: its figures and year from the source, and an outlet only as the source names it.
+      const outlet = g.secondary.split(",")[0]!.trim();
+      const year = g.secondary.match(/\b(19|20)\d\d\b/)?.[0];
+      ok =
+        wordCount(g.primary) >= 3 &&
+        wordCount(g.primary) <= 14 &&
+        digitsOk(g.primary) &&
+        (!year || hay.includes(year)) &&
+        (!outlet || /^(19|20)\d\d$/.test(outlet) || hay.includes(norm(outlet)));
+    }
     if (ok && prevGraphic) ok = false;
     if (g.kind !== "none" && !ok)
       removed.push(`${g.kind}: ${g.primary || g.items.join(" | ")}`);

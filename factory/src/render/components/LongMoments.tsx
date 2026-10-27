@@ -30,7 +30,8 @@ export interface MomentGraphic {
     | "list"
     | "compare"
     | "quote"
-    | "timeline";
+    | "timeline"
+    | "headline";
   primary: string;
   secondary: string;
   items: string[];
@@ -469,6 +470,298 @@ export const QuoteMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
               </div>
             </div>
           ) : null}
+        </div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
+/** Placeholder text lines for a recreated page: varied, stable widths (no invented copy). */
+const lines = (n: number, seed: number) =>
+  Array.from({ length: n }, (_, i) => 62 + ((i * 37 + seed * 11) % 36));
+
+/**
+ * The press story as a recreated clipping: a newspaper cutting for older stories (before 2005), a
+ * web article for later ones. Never a real outlet's page: a generic section header, the headline the
+ * shot list wrote from the source, placeholder text, and the outlet only in the credit underneath,
+ * tagged as an illustration.
+ */
+export const HeadlineMoment: React.FC<{
+  g: MomentGraphic;
+  len: number;
+  src?: string;
+}> = ({ g, len, src }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const showFor = Math.min(len - 6, 200);
+  if (frame > showFor) return null;
+  const year = g.secondary.match(/\b(19|20)\d\d\b/)?.[0];
+  const outlet = g.secondary.split(",")[0]!.trim();
+  const named =
+    outlet && !/^(19|20)\d\d$/.test(outlet) ? displayText(outlet) : "";
+  const print = Boolean(year && Number(year) < 2005);
+  const headline = displayText(g.primary);
+  const dim = interpolate(frame, [0, 12, showFor - 12, showFor], [0, 1, 1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const inP = spring({ frame: frame - 2, fps, config: SPRING.ENTER });
+  const push = interpolate(frame, [0, showFor], [1, 1.05]);
+  const credit = spring({ frame: frame - 18, fps, config: SPRING.ENTER });
+  const seed = headline.length;
+  const card: React.CSSProperties = {
+    width: 1120,
+    transform: `translateY(${(1 - inP) * 120}px) rotate(${(print ? -1.6 : 0) * inP + (1 - inP) * -4}deg) scale(${push})`,
+    boxShadow: "0 40px 120px rgba(0,0,0,0.65)",
+  };
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      <AbsoluteFill
+        style={{
+          backdropFilter: `blur(${10 * dim}px)`,
+          background: `rgba(11,11,14,${0.55 * dim})`,
+        }}
+      />
+      <AbsoluteFill
+        style={{ alignItems: "center", justifyContent: "center", opacity: dim }}
+      >
+        {print ? (
+          <div
+            style={{
+              ...card,
+              background: "#efe7d3",
+              padding: "34px 54px 64px",
+              clipPath:
+                "polygon(0 0, 100% 0, 100% 94%, 96% 97%, 91% 94%, 85% 98%, 78% 95%, 70% 99%, 62% 95%, 55% 98%, 47% 94%, 39% 98%, 31% 95%, 24% 99%, 16% 95%, 8% 98%, 0 95%)",
+            }}
+          >
+            <div
+              style={{
+                borderTop: "3px solid #2b2620",
+                borderBottom: "1px solid #2b2620",
+                padding: "8px 0",
+                display: "flex",
+                justifyContent: "space-between",
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                fontSize: 22,
+                letterSpacing: 4,
+                color: "#2b2620",
+                textTransform: "uppercase",
+              }}
+            >
+              <span>Entertainment</span>
+              <span>{year}</span>
+            </div>
+            <div
+              style={{
+                marginTop: 26,
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                fontWeight: 700,
+                fontSize: headline.length > 60 ? 62 : 74,
+                lineHeight: 1.06,
+                color: "#1d1915",
+              }}
+            >
+              {headline}
+            </div>
+            <div
+              style={{
+                marginTop: 30,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 34,
+              }}
+            >
+              {[0, 1, 2].map((c) => (
+                <div key={c}>
+                  {/* The cutting's photo, newsprint black and white, at the head of the first column. */}
+                  {c === 0 && src ? (
+                    <Img
+                      src={src}
+                      style={{
+                        width: "100%",
+                        height: 150,
+                        objectFit: "cover",
+                        filter: "grayscale(1) contrast(1.15) sepia(0.15)",
+                        marginBottom: 14,
+                        display: "block",
+                      }}
+                    />
+                  ) : null}
+                  {lines(c === 0 && src ? 3 : 7, seed + c).map((w, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        height: 11,
+                        width: `${w}%`,
+                        background: "rgba(43,38,32,0.28)",
+                        borderRadius: 2,
+                        marginBottom: 12,
+                      }}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              ...card,
+              background: "#ffffff",
+              borderRadius: 16,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: 54,
+                background: "#e9e9ee",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "0 20px",
+              }}
+            >
+              {["#ff5f57", "#febc2e", "#28c840"].map((c) => (
+                <div
+                  key={c}
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: 7,
+                    background: c,
+                  }}
+                />
+              ))}
+              <div
+                style={{
+                  marginLeft: 18,
+                  flex: 1,
+                  height: 30,
+                  borderRadius: 15,
+                  background: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0 16px",
+                  fontFamily: BODY,
+                  fontSize: 17,
+                  color: "#7a7a85",
+                }}
+              >
+                🔒 news / gaming {year ? `/ ${year}` : ""}
+              </div>
+            </div>
+            <div style={{ padding: "34px 48px 44px" }}>
+              <div
+                style={{
+                  fontFamily: BODY,
+                  fontWeight: 900,
+                  fontSize: 20,
+                  letterSpacing: 3,
+                  color: "#c2410c",
+                  textTransform: "uppercase",
+                }}
+              >
+                Gaming
+              </div>
+              <div
+                style={{
+                  marginTop: 14,
+                  fontFamily: BODY,
+                  fontWeight: 900,
+                  fontSize: headline.length > 60 ? 54 : 64,
+                  lineHeight: 1.08,
+                  color: "#111114",
+                }}
+              >
+                {headline}
+              </div>
+              <div
+                style={{
+                  marginTop: 18,
+                  height: 12,
+                  width: 260,
+                  background: "#d4d4da",
+                  borderRadius: 3,
+                }}
+              />
+              <div style={{ marginTop: 28, display: "flex", gap: 34 }}>
+                <div
+                  style={{
+                    width: 360,
+                    height: 200,
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    background: "linear-gradient(135deg, #3a3a46, #1c1c24)",
+                  }}
+                >
+                  {src ? (
+                    <Img
+                      src={src}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : null}
+                </div>
+                <div style={{ flex: 1 }}>
+                  {lines(8, seed).map((w, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        height: 12,
+                        width: `${w}%`,
+                        background: "#e1e1e6",
+                        borderRadius: 3,
+                        marginBottom: 13,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        <div
+          style={{
+            marginTop: 34,
+            display: "flex",
+            alignItems: "center",
+            gap: 18,
+            opacity: credit,
+            transform: `translateY(${(1 - credit) * 20}px)`,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: BODY,
+              fontWeight: 900,
+              fontSize: 26,
+              letterSpacing: 3,
+              color: COLOUR.amber,
+              textTransform: "uppercase",
+            }}
+          >
+            {named ? `As reported by ${named}` : "Press coverage"}
+            {year ? ` · ${year}` : ""}
+          </div>
+          <div
+            style={{
+              padding: "4px 10px",
+              borderRadius: 6,
+              border: "1px solid rgba(245,245,242,0.5)",
+              fontFamily: BODY,
+              fontWeight: 800,
+              fontSize: 16,
+              letterSpacing: 2,
+              color: "rgba(245,245,242,0.75)",
+            }}
+          >
+            ILLUSTRATION
+          </div>
         </div>
       </AbsoluteFill>
     </AbsoluteFill>

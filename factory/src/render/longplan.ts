@@ -715,7 +715,7 @@ export function usefulGraphic<
 >(g: G): boolean {
   if (g.kind === "none") return false;
   // A documentary's quote or timeline never restates a rank ("the best place to work" is not a ranking).
-  if (g.kind === "quote" || g.kind === "timeline")
+  if (g.kind === "quote" || g.kind === "timeline" || g.kind === "headline")
     return Boolean(g.primary.trim() || g.kind === "timeline");
   const text = `${g.primary} ${g.secondary}`;
   if (

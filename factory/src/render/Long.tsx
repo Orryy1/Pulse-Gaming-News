@@ -52,6 +52,7 @@ import {
   PopInPicture,
   QuoteMoment,
   TimelineMoment,
+  HeadlineMoment,
   Sfx,
   type MomentProp,
 } from "./components/LongMoments.tsx";
@@ -1640,6 +1641,22 @@ export const Long: React.FC<LongProps> = (props) => {
           >
             {m.graphic.kind === "quote" ? (
               <QuoteMoment g={m.graphic} len={len} />
+            ) : m.graphic.kind === "headline" ? (
+              <HeadlineMoment
+                g={m.graphic}
+                len={len}
+                src={
+                  (
+                    pic ??
+                    props.images.find(
+                      (im) =>
+                        im.beatIndex === w.entry &&
+                        im.aspect >= 1.2 &&
+                        im.kind !== "capsule",
+                    )
+                  )?.src
+                }
+              />
             ) : m.graphic.kind === "timeline" ? (
               <TimelineMoment g={m.graphic} len={len} />
             ) : m.graphic.kind !== "none" ? (

@@ -597,7 +597,10 @@ export function displayWords(words: Word[]): Word[] {
     {
       const n = twoDigit([w.text]);
       const starts = !prev || /[.!?:]["”’)]*$/.test(prev);
-      if (n && n.used === 1 && n.value >= 10 && !starts && !own && /^[a-z]+(-[a-z]+)?[.,;:!?)"”’]*$/.test(w.text)) {
+      // "twenty-first" is an ordinal (below), not 20: the part after a hyphen must be a plain digit word.
+      const part = bare(i).split("-")[1];
+      const plain = part === undefined || UNITS[part] !== undefined;
+      if (n && n.used === 1 && n.value >= 10 && plain && !starts && !own && /^[a-z]+(-[a-z]+)?[.,;:!?)"”’]*$/.test(w.text)) {
         out.push({ text: `${n.value}${tail(i)}`, start: w.start, end: w.end });
         continue;
       }

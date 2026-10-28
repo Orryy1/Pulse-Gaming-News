@@ -166,6 +166,7 @@ import {
 } from "./analytics.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
+import { titleVariants } from "./editorial/titles.ts";
 import {
   addDays,
   localTime,
@@ -5525,6 +5526,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     JSON.stringify(assets),
   ]);
   const doc = script.evergreen_format === "documentary";
+  // Two alternative titles for the Test & compare (one mid-tier call; a failure only means no title test).
+  if (!script.youtube.title_variants) {
+    const variants = await titleVariants(s.llm, script).catch(() => [] as string[]);
+    script.youtube.title_variants = variants;
+    await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
+  }
   const footageCredit = clips.length
     ? "FOOTAGE: OFFICIAL TRAILERS · STEAM"
     : "";
@@ -7051,6 +7058,33 @@ async function addCaptions(s: Services, ep: Episode): Promise<void> {
 }
 
 /** The long-form video's custom thumbnail; a refusal (unverified channel) is logged, never fatal. */
+/**
+ * Hands a long video's Test & compare to the Studio browser task (scheduled task pulse-studio-abtest):
+ * data/abtests/pending.json lists the video, its title and the alternatives, and its thumbnails.
+ */
+async function queueAbTest(s: Services, ep: Episode): Promise<void> {
+  try {
+    const dir = episodeDir(s.cfg, ep.id);
+    const file = path.join(s.cfg.dataDir, "abtests", "pending.json");
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const list = JSON.parse(await fs.readFile(file, "utf8").catch(() => "[]")) as Array<{ videoId: string }>;
+    if (list.some((x) => x.videoId === ep.youtube_video_id)) return;
+    const thumbs = ["thumb.jpg", ...(ep.assets_json?.thumbVariants ?? [])].map((f) => path.join(dir, f));
+    list.push({
+      videoId: ep.youtube_video_id!,
+      episode: ep.id,
+      titles: [ep.script_json!.youtube.title, ...(ep.script_json!.youtube.title_variants ?? [])],
+      thumbs,
+      publishAt: ep.publish_at,
+      added: s.now().toISOString(),
+    } as { videoId: string });
+    await fs.writeFile(file, JSON.stringify(list, null, 2), "utf8");
+    await logEvent(s.db, ep.id, "abtest_queued", { thumbs: thumbs.length });
+  } catch (err) {
+    log("warn", "a/b test hand-off failed", { episode: ep.id, error: errorMessage(err) });
+  }
+}
+
 async function setThumbnail(s: Services, ep: Episode, file = ep.assets_json!.thumb!): Promise<void> {
   try {
     await s
@@ -7097,7 +7131,10 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   // YouTube refuses comments on a video that is still private: a scheduled one is commented once it is public.
   if (!ep.publish_at || new Date(ep.publish_at) <= s.now())
     await addPinnedComment(s, ep);
-  if (ep.assets_json?.thumb) await setThumbnail(s, ep);
+  if (ep.assets_json?.thumb) {
+    await setThumbnail(s, ep);
+    await queueAbTest(s, ep);
+  }
   // The new-look Short's frame 0 as its custom thumbnail (custom Shorts thumbnails opened in July 2026; if
   // the API refuses them for Shorts the refusal is logged and the Short keeps the frame YouTube picks).
   else if (ep.assets_json?.shortThumb && ep.script_json?.runtime !== "long")

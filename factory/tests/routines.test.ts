@@ -439,6 +439,12 @@ test("routine pages through the server: data, done records, poll result, and a 4
     const unknown = await fetch(`${app}/no-such-page`);
     assert.equal(tunnel.status, 404);
     assert.equal(await tunnel.text(), await unknown.text());
+    // The data export for the review routines: open to this PC, the same "Not found" through the tunnel.
+    const exp = await fetch(`${app}/routine/export?days=7`);
+    assert.equal(exp.status, 200);
+    assert.ok(Array.isArray(await exp.json()));
+    const expTunnel = await fetch(`${app}/routine/export?days=7`, { headers: { "cf-ray": "abc" } });
+    assert.equal(expTunnel.status, 404);
   } finally {
     server.close();
   }

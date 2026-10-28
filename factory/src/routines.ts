@@ -445,6 +445,11 @@ export async function handleRoutine(
         json(res, 200, { ok: true, unchanged: Boolean(same), options });
         return true;
       }
+      // The channel report and export are served by server.ts (the same code as /admin/...), for the
+      // review routines that cannot read the admin key.
+      case "/routine/channel-report":
+      case "/routine/export":
+        return false;
       default:
         json(res, 404, { ok: false, error: "no such routine page" });
         return true;

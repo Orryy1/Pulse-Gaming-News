@@ -73,7 +73,7 @@ import {
 import { errorMessage, log } from "./lib/util.ts";
 import { publishPcSchedule } from "./pcschedule.ts";
 import { activeUploads } from "./youtube/upload.ts";
-import { handleRoutine, startBraveFront } from "./routines.ts";
+import { handleRoutine, routineAllowed, startBraveFront } from "./routines.ts";
 import { alert } from "./approval/discord.ts";
 import {
   dailySummary,
@@ -633,8 +633,14 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
     // Admin: published videos with their scripts, QA scores and captured numbers, for performance reviews.
     // The channel diagnosis: every upload with its YouTube numbers, where the views came from for the
     // biggest 40, and what the factory knows about each (lane, script, voice, rubric). Read-only.
-    if (url.pathname === "/admin/channel-report" && req.method === "GET") {
-      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+    // Also at /routine/channel-report for this PC's browser routines (routineAllowed: loopback only, never the tunnel).
+    if (
+      (url.pathname === "/admin/channel-report" ||
+        (url.pathname === "/routine/channel-report" && routineAllowed(req))) &&
+      req.method === "GET"
+    ) {
+      if (url.pathname.startsWith("/admin/") && !isAdmin())
+        return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const days = Math.min(
         365,
         Math.max(7, Number(url.searchParams.get("days") ?? 120)),
@@ -790,8 +796,13 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         .end(JSON.stringify(row ?? null));
       return;
     }
-    if (url.pathname === "/admin/export" && req.method === "GET") {
-      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+    if (
+      (url.pathname === "/admin/export" ||
+        (url.pathname === "/routine/export" && routineAllowed(req))) &&
+      req.method === "GET"
+    ) {
+      if (url.pathname.startsWith("/admin/") && !isAdmin())
+        return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const days = Math.min(
         120,
         Math.max(1, Number(url.searchParams.get("days") ?? 30)),

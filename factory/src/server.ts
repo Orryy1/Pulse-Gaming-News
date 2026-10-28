@@ -72,6 +72,7 @@ import {
 import { errorMessage, log } from "./lib/util.ts";
 import { publishPcSchedule } from "./pcschedule.ts";
 import { activeUploads } from "./youtube/upload.ts";
+import { handleRoutine, startBraveFront } from "./routines.ts";
 import { alert } from "./approval/discord.ts";
 import {
   dailySummary,
@@ -186,6 +187,16 @@ export function createApp(
       );
       return;
     }
+
+    // The Studio browser routines' pages (this PC only; refused requests fall through to "Not found").
+    if (
+      await handleRoutine(req, res, url, {
+        db,
+        cfg,
+        pollCandidates: () => services.discoverEvergreen(),
+      })
+    )
+      return;
 
     // The public website (home, news, game hubs, videos, sitemaps).
     if (
@@ -1357,6 +1368,8 @@ async function main(): Promise<void> {
   const app = createApp(db, cfg, services, state);
   startGameWarmer({ db, cfg, tags: (id) => affiliateTags(cfg, id) });
   startSiteIndexNow({ db, cfg, tags: (id) => affiliateTags(cfg, id) });
+  // Brave to the front around each Studio routine's start, so its dialogs render.
+  startBraveFront(cfg.timezone);
   http
     .createServer((req, res) => {
       app(req, res).catch((err) => {

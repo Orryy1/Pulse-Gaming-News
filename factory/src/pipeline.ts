@@ -162,6 +162,8 @@ import {
   hookLessons,
   longLessons,
   captureCurves,
+  captureReach,
+  reachAlert,
   performanceNotes,
   retentionNotes,
   visualLessons,
@@ -7475,6 +7477,15 @@ export async function tick(
           error: errorMessage(err),
         }),
       );
+    // Shorts: whether the Shorts feed served each one, and a warning when it stops (read-only).
+    if (!s.cfg.dryRun) {
+      await captureReach(s.db, s.youtube(), s.now()).catch((err) =>
+        log("warn", "reach capture failed", { error: errorMessage(err) }),
+      );
+      await reachAlert(s.db, s.now(), (m) => s.notify(m)).catch((err) =>
+        log("warn", "reach alert failed", { error: errorMessage(err) }),
+      );
+    }
     return { selected };
   });
   return result ? { ran: true, ...result } : { ran: false };

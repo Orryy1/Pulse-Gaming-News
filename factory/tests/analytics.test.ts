@@ -208,3 +208,44 @@ test("segment losses read the share of viewers lost during each part of a Short"
   assert.equal(await dropLessons(db, new Date(), () => []), "", "nothing until Shorts have curves");
   await db.close();
 });
+
+test("reach: a Short's Shorts-feed share is read once, and the owner hears when the feed stops serving them", async () => {
+  const { captureReach, reachAlert, withheld } = await import("../src/analytics.ts");
+  // Pure rule: two or more of the last five with almost nothing from the feed; tiny counts say nothing.
+  assert.deepEqual(withheld([{ title: "a", views: 600, feed: 520 }, { title: "b", views: 29, feed: 2 }]), []);
+  assert.equal(withheld([{ title: "a", views: 29, feed: 2 }, { title: "b", views: 31, feed: 0 }, { title: "c", views: 5, feed: 0 }]).length, 2);
+
+  const db = await testDb();
+  const now = new Date("2026-11-20T12:00:00Z");
+  const sources: Record<string, Record<string, number>> = {
+    v1: { SHORTS: 1, SUBSCRIBER: 20, NO_LINK_OTHER: 8 },
+    v2: { SHORTS: 0, SUBSCRIBER: 25, YT_CHANNEL: 6 },
+    v3: { SHORTS: 540, SUBSCRIBER: 40 },
+    v4: {}, // Analytics has nothing yet
+  };
+  const hours = [40, 50, 60, 70];
+  for (const [i, v] of ["v1", "v2", "v3", "v4"].entries())
+    await db.query(
+      `INSERT INTO episodes (id, story_hash, status, story_json, lane, script_json, youtube_video_id, publish_at) VALUES ($1, $1, 'published', '{"headline":"x","items":[]}', 'news', $2, $3, $4)`,
+      [`ep_${v}`, JSON.stringify({ youtube: { title: `Short ${v}` } }), v, new Date(now.getTime() - hours[i]! * H)],
+    );
+  // A long video is never checked here.
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane, youtube_video_id, publish_at) VALUES ('ep_long', 'long', 'published', '{"headline":"x","items":[]}', 'longform', 'vL', $1)`,
+    [new Date(now.getTime() - 50 * H)],
+  );
+  const asked: string[] = [];
+  const yt = { trafficSources: async (id: string) => (asked.push(id), sources[id] ?? {}) };
+  assert.equal(await captureReach(db, yt, now), 3, "v4 waits for Analytics");
+  assert.ok(!asked.includes("vL"));
+  assert.equal(await captureReach(db, yt, now), 0, "captured once (v4 still empty)");
+
+  const sent: string[] = [];
+  const notify = async (m: { content?: string }) => sent.push(m.content ?? "");
+  assert.equal(await reachAlert(db, now, notify), true);
+  assert.match(sent[0]!, /2 of our last 5 Shorts/);
+  assert.match(sent[0]!, /"Short v1"/);
+  assert.match(sent[0]!, /How viewers find this Short/);
+  assert.equal(await reachAlert(db, new Date(now.getTime() + 24 * H), notify), false, "at most one alert every three days");
+  await db.close();
+});

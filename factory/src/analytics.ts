@@ -1055,3 +1055,109 @@ export async function longLessons(db: Db, now: Date): Promise<string> {
     ...entries.slice(-3).reverse().map(line),
   ].join("\n");
 }
+
+/**
+ * Reach check (command centre, 28 Oct 2026): between 17 Jun and 2 Jul YouTube withheld 18 of 19 Pulse Shorts
+ * from the Shorts feed (about 29 views each instead of about 600) and nothing noticed for two weeks. Once a
+ * Short is a day and a half old (Analytics lags), its traffic sources are read once and stored as a "reach"
+ * row; when two or more of the last five got almost nothing from the Shorts feed, the owner hears once.
+ */
+export interface ReachSource {
+  trafficSources?(
+    videoId: string,
+    start: string,
+    end: string,
+  ): Promise<Record<string, number>>;
+}
+
+/** The lanes that publish Shorts (long videos and the twin channel are judged elsewhere). */
+const SHORT_LANES = ["news_breaking", "news", "free", "evergreen", "cutdown", "gameplay"];
+/** Below this share of views from the Shorts feed, a Short was not served there. */
+export const REACH_FEED_SHARE = 0.2;
+/** Fewer views than this says nothing either way. */
+export const REACH_MIN_VIEWS = 10;
+
+export async function captureReach(db: Db, yt: ReachSource, now: Date): Promise<number> {
+  if (!yt.trafficSources) return 0;
+  const eps = await db.query<{ id: string; youtube_video_id: string; live_at: string }>(
+    `SELECT e.id, e.youtube_video_id, ${LIVE_AT("e")} AS live_at FROM episodes e
+      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane = ANY($2)
+        AND ${LIVE_AT("e")} < $1::timestamptz - interval '36 hours'
+        AND ${LIVE_AT("e")} > $1::timestamptz - interval '4 days'
+        AND NOT EXISTS (SELECT 1 FROM video_metrics m WHERE m.episode_id = e.id AND m.label = 'reach')
+      ORDER BY 3 LIMIT 6`,
+    [now, SHORT_LANES],
+  );
+  let n = 0;
+  for (const e of eps) {
+    const sources = await yt.trafficSources(
+      e.youtube_video_id,
+      new Date(e.live_at).toISOString().slice(0, 10),
+      now.toISOString().slice(0, 10),
+    );
+    const views = Object.values(sources).reduce((a, b) => a + b, 0);
+    if (!views) continue; // Analytics has nothing yet: tried again next tick
+    await db.query(
+      `INSERT INTO video_metrics (episode_id, label, captured_at, views, likes, comments, raw) VALUES ($1, 'reach', $2, $3, 0, 0, $4)
+       ON CONFLICT (episode_id, label) DO NOTHING`,
+      [e.id, now, views, JSON.stringify(sources)],
+    );
+    n++;
+  }
+  if (n) log("info", "reach captured", { videos: n });
+  return n;
+}
+
+export interface ReachRow {
+  title: string;
+  views: number;
+  feed: number; // views from the Shorts feed
+}
+
+/** The Shorts the feed passed over, when two or more of the last five were; otherwise none. */
+export function withheld(latestFirst: ReachRow[]): ReachRow[] {
+  const low = latestFirst
+    .slice(0, 5)
+    .filter((r) => r.views >= REACH_MIN_VIEWS && r.feed / r.views < REACH_FEED_SHARE);
+  return low.length >= 2 ? low : [];
+}
+
+/** One Discord alert, at most every three days, when the Shorts feed stops serving our Shorts. */
+export async function reachAlert(
+  db: Db,
+  now: Date,
+  notify: (m: DiscordMessage) => Promise<unknown>,
+): Promise<boolean> {
+  const rows = await db.query<{ title: string | null; views: number; raw: unknown }>(
+    `SELECT COALESCE(e.script_json->'youtube'->>'title', e.story_json->>'headline', e.id) AS title, m.views, m.raw
+       FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
+      WHERE m.label = 'reach' AND m.captured_at > $1::timestamptz - interval '7 days'
+      ORDER BY ${LIVE_AT("e")} DESC LIMIT 5`,
+    [now],
+  );
+  const low = withheld(
+    rows.map((r) => {
+      const raw = (typeof r.raw === "string" ? JSON.parse(r.raw) : r.raw) as Record<string, number>;
+      return { title: r.title ?? "", views: Number(r.views), feed: Number(raw?.SHORTS ?? 0) };
+    }),
+  );
+  if (!low.length) return false;
+  const [recent] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM events WHERE kind = 'reach_alert' AND (detail->>'at')::timestamptz > $1::timestamptz - interval '3 days'`,
+    [now],
+  );
+  if (Number(recent?.n ?? 0) > 0) return false;
+  const lines = low.map(
+    (r) => `- "${r.title}": ${r.views} views, ${Math.round((r.feed / r.views) * 100)}% from the Shorts feed`,
+  );
+  await notify({
+    content: [
+      `**Reach warning:** YouTube is not showing ${low.length} of our last 5 Shorts in the Shorts feed (normally most views come from there).`,
+      ...lines,
+      `Check YouTube Studio > the Short > Analytics > Reach > "How viewers find this Short". If the feed share stays near zero, the channel may be held back; tell Claude and it will look into why.`,
+    ].join("\n"),
+  });
+  await logEvent(db, null, "reach_alert", { at: now.toISOString(), videos: low.length, titles: low.map((r) => r.title) });
+  log("warn", "reach alert sent", { videos: low.length });
+  return true;
+}

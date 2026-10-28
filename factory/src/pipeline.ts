@@ -192,6 +192,7 @@ import {
   weekday,
   storyText,
   lastPublishAt,
+  publishTimes,
   publishHeld,
   staleAfterHours,
   nextWindowStart,
@@ -6418,14 +6419,15 @@ async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
 /**
  * When this episode goes live: breaking publishes now inside its window (else
  * at the window's next opening); news publishes at its slot (now if the slot
- * has passed); every lane keeps MIN_UPLOAD_GAP_MINUTES after the last publish.
+ * has passed); every lane keeps MIN_UPLOAD_GAP_MINUTES clear of any other publish.
  * Returns undefined for "now".
  */
 export function choosePublishAt(
   cfg: Config,
   now: Date,
   ep?: Pick<Episode, "lane" | "slot_at">,
-  lastPublish?: Date,
+  /** Other publish times on the same channel, past and scheduled (src/lanes.ts publishTimes). */
+  published?: Date | Date[],
 ): Date | undefined {
   let at: Date | undefined;
   if (ep?.lane === "news_breaking") {
@@ -6459,12 +6461,22 @@ export function choosePublishAt(
       );
     else if (cfg.youtubeVetoMinutes > 0) at = earliest;
   }
-  if (lastPublish) {
-    const gapEnd = new Date(
-      lastPublish.getTime() + cfg.minUploadGapMinutes * 60_000,
-    );
-    if (gapEnd > (at ?? now)) at = gapEnd;
+  // Clear of every other publish by the gap, past or scheduled. Only publishes near this one move it: a
+  // documentary scheduled two days out once held every Short behind it (27-28 Oct 2026, nine videos queued).
+  const others = (Array.isArray(published) ? published : published ? [published] : [])
+    .map((d) => d.getTime())
+    .sort((x, y) => x - y);
+  const gap = cfg.minUploadGapMinutes * 60_000;
+  let t = (at ?? now).getTime();
+  for (let moved = true, i = 0; moved && i < 200; i++) {
+    moved = false;
+    for (const o of others)
+      if (Math.abs(o - t) < gap) {
+        t = o + gap;
+        moved = true;
+      }
   }
+  if (t > (at ?? now).getTime()) at = new Date(t);
   // YouTube needs scheduled times comfortably in the future; otherwise go now.
   if (at && at.getTime() - now.getTime() < 15 * 60_000) return undefined;
   return at;
@@ -6497,7 +6509,7 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
     s.cfg,
     s.now(),
     ep,
-    await lastPublishAt(s.db, ep.lane === "twin"),
+    await publishTimes(s.db, s.now(), ep.lane === "twin"),
   );
   // Public uploads are scheduled on YouTube (private until publish_at). Anything else
   // cannot be scheduled there, so the upload itself waits until the slot.

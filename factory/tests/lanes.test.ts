@@ -202,6 +202,23 @@ test("publish time: breaking goes now inside its window, news goes at its slot, 
     "2026-10-16T12:30:00.000Z",
     "never within an hour of the last publish",
   );
+  // A documentary scheduled two days out never holds back today's news (27-28 Oct 2026).
+  assert.equal(
+    choosePublishAt(cfg, now, { lane: "news_breaking", slot_at: null }, [
+      new Date("2026-10-16T10:30:00Z"),
+      new Date("2026-10-18T19:00:00Z"),
+    ]),
+    undefined,
+    "a far-off scheduled video does not move this one",
+  );
+  assert.equal(
+    choosePublishAt(cfg, now, { lane: "news", slot_at: "2026-10-16T15:00:00Z" }, [
+      new Date("2026-10-16T15:20:00Z"),
+      new Date("2026-10-16T16:30:00Z"),
+    ])?.toISOString(),
+    "2026-10-16T17:30:00.000Z",
+    "a nearby publish moves it clear, and so does the next one along",
+  );
   assert.equal(
     quotaResetAt(new Date("2026-10-16T12:00:00Z")).toISOString(),
     "2026-10-17T07:00:00.000Z",

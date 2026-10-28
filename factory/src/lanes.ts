@@ -411,6 +411,18 @@ export async function lastPublishAt(
   return row?.t ? new Date(row.t) : undefined;
 }
 
+/** Every publish time on the channel from two hours ago on, done or scheduled, for spacing a new upload. */
+export async function publishTimes(db: Db, now: Date, twin = false): Promise<Date[]> {
+  const rows = await db.query<{ t: string }>(
+    `SELECT greatest(coalesce(publish_at, updated_at), updated_at) AS t FROM episodes
+      WHERE status IN ('uploading','uploaded','published') AND youtube_status IS DISTINCT FROM 'dry_run'
+        AND ${twin ? "lane = 'twin'" : "lane <> 'twin'"}
+        AND greatest(coalesce(publish_at, updated_at), updated_at) > $1::timestamptz - interval '2 hours'`,
+    [now],
+  );
+  return rows.map((r) => new Date(r.t));
+}
+
 // ------------------------------------------------------------------ publishing hold
 
 /**

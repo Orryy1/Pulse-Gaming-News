@@ -210,3 +210,18 @@ test("Threads and Bluesky captions fit their limits and carry the link; Bluesky 
   const [f] = linkFacets(text);
   assert.equal(Buffer.from(text, "utf8").subarray(f!.index.byteStart, f!.index.byteEnd).toString("utf8"), "https://youtube.com/shorts/abc123");
 });
+
+test("Threads posts go to /me, never to a saved id that JSON may have rounded", async () => {
+  const { postThreadsVideo } = await import("../src/social/platforms.ts");
+  const urls: string[] = [];
+  const fake = async (url: string) => {
+    urls.push(url);
+    const body = url.includes("/threads_publish") ? { id: "post1" } : url.includes("fields=") ? { status: "FINISHED" } : { id: "c1" };
+    return new Response(JSON.stringify(body), { status: 200 });
+  };
+  const id = await postThreadsVideo({ userId: "39441857878762960", token: "t" }, "https://x/v.mp4", "hi", fake as any, 0);
+  assert.equal(id, "post1");
+  assert.ok(urls.every((u) => !u.includes("39441857878762960")), "the saved id is never used");
+  assert.ok(urls[0]!.includes("/v1.0/me/threads?"));
+  assert.ok(urls.at(-1)!.includes("/v1.0/me/threads_publish?"));
+});

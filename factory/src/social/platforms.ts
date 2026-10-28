@@ -585,7 +585,9 @@ export async function postThreadsVideo(
   const q = (o: Record<string, string>) =>
     new URLSearchParams({ ...o, access_token: login.token }).toString();
   const made = await json(
-    await fetchFn(`${THREADS}/${login.userId}/threads?${q({ media_type: "VIDEO", video_url: videoUrl, text: text.slice(0, 500) })}`, { method: "POST" }),
+    // "me", not the saved id: Threads ids exceed 2^53, and one rounded by JSON.parse (39...958 saved as 39...960)
+    // made every post fail with "does not exist" from 25 to 28 Oct 2026.
+    await fetchFn(`${THREADS}/me/threads?${q({ media_type: "VIDEO", video_url: videoUrl, text: text.slice(0, 500) })}`, { method: "POST" }),
     "threads container",
   );
   const id = made.id as string;
@@ -601,7 +603,7 @@ export async function postThreadsVideo(
     await sleep(waitMs);
   }
   const pub = await json(
-    await fetchFn(`${THREADS}/${login.userId}/threads_publish?${q({ creation_id: id })}`, { method: "POST" }),
+    await fetchFn(`${THREADS}/me/threads_publish?${q({ creation_id: id })}`, { method: "POST" }),
     "threads publish",
   );
   return pub.id as string;

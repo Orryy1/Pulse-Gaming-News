@@ -983,7 +983,7 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         );
       try {
         const redirect = `${(cfg.siteUrl || cfg.publicUrl).replace(/\/$/, "")}/oauth/threads`;
-        const short = await fetch(
+        const shortRes = await fetch(
           "https://graph.threads.net/oauth/access_token",
           {
             method: "POST",
@@ -995,7 +995,12 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
               code,
             }),
           },
-        ).then((r) => r.json() as Promise<any>);
+        );
+        // The user id is read from the text: it is past 2^53, so JSON.parse would round its last digits.
+        const shortText = await shortRes.text();
+        const short = JSON.parse(shortText) as any;
+        const userId =
+          shortText.match(/"user_id"\s*:\s*"?(\d+)/)?.[1] ?? String(short?.user_id);
         if (!short?.access_token)
           throw new Error(JSON.stringify(short?.error ?? short).slice(0, 300));
         const long = await fetch(
@@ -1007,13 +1012,13 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         fs.writeFileSync(
           cfg.threadsLoginPath,
           JSON.stringify({
-            userId: String(short.user_id),
+            userId,
             token: long.access_token,
             refreshedAt: new Date().toISOString(),
           }),
           { mode: 0o600 },
         );
-        log("info", "threads connected", { user: String(short.user_id) });
+        log("info", "threads connected", { user: userId });
         return send(
           200,
           page(

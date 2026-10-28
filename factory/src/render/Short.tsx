@@ -385,6 +385,7 @@ export const Short: React.FC<ShortProps> = (props) => {
             gameTitle={props.gameTitle}
             heroSrc={poster}
             cutSrc={props.heroCut?.fg}
+            cutX={props.heroCut?.x}
             durationInFrames={hookEnd}
           />
         ) : (
@@ -409,6 +410,7 @@ export const Short: React.FC<ShortProps> = (props) => {
               gameTitle={props.gameTitle}
               heroSrc={poster}
               cutSrc={props.heroCut?.fg}
+            cutX={props.heroCut?.x}
               durationInFrames={Number.POSITIVE_INFINITY}
             />
           ) : (

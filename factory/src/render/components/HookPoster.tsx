@@ -40,8 +40,10 @@ export const HookPoster: React.FC<{
   gameTitle: string;
   heroSrc: string;
   cutSrc?: string;
+  /** Where the subject stands across the art (0-1): the vertical crop is centred on them. */
+  cutX?: number;
   durationInFrames: number;
-}> = ({ headline, accent, gameTitle, heroSrc, cutSrc, durationInFrames }) => {
+}> = ({ headline, accent, gameTitle, heroSrc, cutSrc, cutX, durationInFrames }) => {
   const frame = useCurrentFrame();
   const words = headline.toUpperCase().split(/\s+/).filter(Boolean);
   const gameWords = new Set(
@@ -51,17 +53,19 @@ export const HookPoster: React.FC<{
       .map((w) => w.replace(/[^A-Z0-9]/g, "")),
   );
   const out = exitProgress(frame, durationInFrames);
-  // A slow push so the opening is never a still poster; frame 0 is the thumbnail, fully drawn.
+  // A slow push so the opening is never a still poster; frame 0 is the thumbnail, fully drawn. The art sits
+  // lower so faces land under the headline.
   const push = interpolate(frame, [0, 90], [1.0, 1.05], {
     extrapolateRight: "clamp",
     easing: ease.out,
   });
-  const size = posterSize(words);
+  const size = Math.min(150, posterSize(words));
+  const crop = `${Math.round((cutX ?? 0.5) * 100)}% 40%`;
   const lit = (w: string) =>
     gameWords.has(w.replace(/[^A-Z0-9]/g, "")) || /\d/.test(w);
   return (
     <AbsoluteFill style={{ overflow: "hidden", opacity: out }}>
-      <AbsoluteFill style={{ transform: `scale(${push})` }}>
+      <AbsoluteFill style={{ transform: `translateY(11%) scale(${push * 1.25})` }}>
         <Img
           src={heroSrc}
           style={{
@@ -83,6 +87,8 @@ export const HookPoster: React.FC<{
           }}
         />
         {cutSrc ? (
+          // The subject lifted off the art: a touch larger and lower, a soft shadow behind (no rim, the cut-out
+          // is a depth layer, not a clean outline).
           <Img
             src={cutSrc}
             style={{
@@ -91,10 +97,10 @@ export const HookPoster: React.FC<{
               width: "100%",
               height: "100%",
               objectFit: "cover",
-              transform: "scale(1.06)",
-              transformOrigin: "50% 70%",
-              filter:
-                "drop-shadow(5px 0 0 #fff) drop-shadow(-5px 0 0 #fff) drop-shadow(0 5px 0 #fff) drop-shadow(0 -5px 0 #fff) drop-shadow(0 0 30px rgba(255,150,70,0.9)) saturate(1.2) contrast(1.1)",
+              objectPosition: crop,
+              transform: "translateY(4%) scale(1.07)",
+              transformOrigin: "50% 100%",
+              filter: "drop-shadow(0 30px 40px rgba(0,0,0,0.75)) saturate(1.15) contrast(1.08)",
             }}
           />
         ) : null}
@@ -102,16 +108,16 @@ export const HookPoster: React.FC<{
       <AbsoluteFill
         style={{
           background:
-            "linear-gradient(180deg, rgba(5,5,7,0.55) 0%, rgba(5,5,7,0) 22%, rgba(5,5,7,0) 48%, rgba(5,5,7,0.82) 78%, rgba(5,5,7,0.92) 100%)",
+            "linear-gradient(180deg, rgba(5,5,7,0.7) 0%, rgba(5,5,7,0.35) 30%, rgba(5,5,7,0) 50%, rgba(5,5,7,0.82) 80%, rgba(5,5,7,0.92) 100%)",
         }}
       />
-      {/* The words in the band every crop keeps (about y 640 to 1180). */}
+      {/* The words high, above the subject's face. */}
       <div
         style={{
           position: "absolute",
           left: SAFE.left,
           width: CONTENT_WIDTH,
-          top: 640,
+          top: 420,
           display: "flex",
           flexWrap: "wrap",
           gap: "0 20px",

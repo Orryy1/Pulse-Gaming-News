@@ -129,8 +129,12 @@ export async function waitForHeadroom(
  * goes ahead of everything, and starts regardless at the last moment that still makes the slot; outside one it
  * waits behind Orryy's renders, for up to 3 hours. Without the orchestrator it's a no-op.
  */
-async function withPcTurn<T>(job: string, fn: () => Promise<T>): Promise<T> {
+async function withPcTurn<T>(
+  job: string,
+  fn: (granted: boolean) => Promise<T>,
+): Promise<T> {
   let release = () => {};
+  let granted = false;
   try {
     const orch: any = await import(
       process.env.ORCH_CLIENT || "file:///C:/Claude/orchestrator/orch.mjs"
@@ -145,6 +149,7 @@ async function withPcTurn<T>(job: string, fn: () => Promise<T>): Promise<T> {
       onWait: (why: string) =>
         log("info", "render waiting for the PC", { why }),
     });
+    granted = true;
   } catch (e) {
     log(
       "warn",
@@ -155,7 +160,7 @@ async function withPcTurn<T>(job: string, fn: () => Promise<T>): Promise<T> {
     );
   }
   try {
-    return await fn();
+    return await fn(granted);
   } finally {
     release();
   }
@@ -169,16 +174,20 @@ async function renderWithTurn(
     "offthreadVideoCacheSizeInBytes"
   >,
 ): Promise<void> {
-  await withPcTurn(job, async () => {
-    await renderMedia({ ...(await renderMemory()), ...options });
+  await withPcTurn(job, async (granted) => {
+    await renderMedia({ ...(await renderMemory(granted)), ...options });
   });
 }
 
-async function renderMemory(): Promise<{
+async function renderMemory(turnGranted = false): Promise<{
   offthreadVideoCacheSizeInBytes: number;
 }> {
   await unloadLocalVision();
-  await waitForHeadroom();
+  // The orchestrator already weighed memory when it gave the turn (and lets a slot's render through
+  // regardless), so waiting again here only made slots late (28 Oct: 20 min on a breaking Short). On a
+  // Mac the factory has the machine to itself, and os.freemem() leaves out the memory macOS keeps as
+  // cache, so it would read "short" before every render.
+  if (!turnGranted && process.platform !== "darwin") await waitForHeadroom();
   const GB = 1024 ** 3;
   // The old 6 GB ceiling sat below Remotion's own default (half the free memory) and a long video
   // drawing on ~100 clips and their blurred plates evicted frames mid-render ("No frame found at
@@ -304,7 +313,10 @@ export interface LongRenderInput {
   frameRange?: [number, number];
 }
 
-type ThumbInput = Omit<ThumbProps, "imageSrc" | "image2Src" | "fgSrc" | "pictureSrcs"> & {
+type ThumbInput = Omit<
+  ThumbProps,
+  "imageSrc" | "image2Src" | "fgSrc" | "pictureSrcs"
+> & {
   imageFile: string | null;
   image2File?: string | null;
   fgFile?: string | null; // depth: the art's foreground layer
@@ -427,11 +439,19 @@ export async function renderShort(input: RenderInput): Promise<void> {
   const serveUrl = await getBundle();
   const files = await serveDir(input.episodeDir);
   try {
-    const { audioFile, imageFiles, clipFiles, musicFile, heroCutFile, ...rest } =
-      input.props;
+    const {
+      audioFile,
+      imageFiles,
+      clipFiles,
+      musicFile,
+      heroCutFile,
+      ...rest
+    } = input.props;
     const props: ShortProps = {
       ...rest,
-      heroCut: heroCutFile ? { fg: `${files.url}/${heroCutFile.fg}`, x: heroCutFile.x } : undefined,
+      heroCut: heroCutFile
+        ? { fg: `${files.url}/${heroCutFile.fg}`, x: heroCutFile.x }
+        : undefined,
       audioSrc: audioFile ? `${files.url}/${audioFile}` : null,
       images: imageFiles.map((i) => ({
         src: `${files.url}/${i.file}`,

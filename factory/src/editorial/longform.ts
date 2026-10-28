@@ -10,6 +10,7 @@ import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
 import type { SteamFacts } from "../assets/steam.ts";
 import { factsText } from "../assets/steam.ts";
 import { placeFor } from "../render/places.ts";
+import { REHOOK_RULE, rehookProblems, rehooksOf } from "./rehooks.ts";
 import {
   EvergreenTopicSchema,
   type EvergreenTopic,
@@ -218,6 +219,7 @@ Write a long-form ranking video of ${LONG_WORDS_MIN}-${LONG_WORDS_MAX} spoken wo
 Structure:
 1. intro.narration: 60-120 words, so entry one starts within about forty seconds. The first sentence is the most surprising concrete fact or image in the whole ranking, under 15 words. Then the rule in one sentence, naming two or three things every game is judged on ("how it plays today, what it changed, and whether it still holds up"), and why the viewer can trust the order (what was weighed: sales, reviews, how each plays now; never a claim to have played them). Then say plainly that number one is held to the end and that at least one placement will be argued with. No greeting, no channel name, no "welcome" or "today we're ranking": in a study of 1,573 long gaming videos, a greeting or brand line came first in 15 of the 50 weakest and 1 of the 50 strongest.
 2. entries: ${LONG_ENTRIES_MIN}-${LONG_ENTRIES_MAX}, spoken from the lowest rank to number one. Each narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} words, six to ten sentences: what the game is and when it landed, the story around it (how it was made or received, from the facts given or long-established knowledge), two specific details a fan would nod at (a mechanic, a level, a moment), the fair counterpoint, and why it sits here, argued against its neighbor ("above Vice City because...", "below San Andreas, and here's the one thing that kept it there"), never a plot synopsis followed by praise words. Commit to every call: no "arguably", "for our money" or "it's hard to say". Numbers come as a contrast (a figure and the fact that undercuts it), never a list of stats. Place one deliberate surprise somewhere in the order and defend it. The last line hands over to the next entry. Vary the sentence openings; never start two entries the same way. verdict_chip is 1-4 words. footage names the trailer moment to show, with 1-4 keywords.
+${REHOOK_RULE} In a ranking that means about one per entry, often the line that hands over to the next entry ("So why does the 'bad' one land this high?"), and one near the end of the intro.
 3. outro.narration: 60-150 words. Why number one wins by the rule, the top three in one line, the ranking's hardest call, honestly, and a last line that returns to the image or fact the intro opened on. No more than one sentence inviting comments.
 The YouTube title names the franchise and the promise in plain words ("Every GTA Game Ranked, and Number One Isn't San Andreas"); leave out years and "top 10" counts unless the count is the point, and never "changed gaming forever".
 Keep every number to the Steam facts provided or long-established knowledge. List every factual claim in "claims".
@@ -294,6 +296,7 @@ function entryPrompt(): string {
   return `${HOUSE}
 
 You are writing one entry of a long-form ranking video, from the plan you are given. The narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words (count them), three to five sentences: what the game is and when it landed, the specific detail from the plan, and why it sits at this rank by the criterion. It starts by naming the rank and the game in a fresh way: never open the way an earlier entry opened (they are listed). footage names an in-game moment to show, with 1-4 keywords.
+${REHOOK_RULE} In one entry that means one such line, often the last one handing over to the next entry; never reuse the wording of a re-hook already in the video (they are listed).
 List every factual claim in this entry in "claims".`;
 }
 
@@ -402,6 +405,11 @@ export async function writeLongform(
     const before = written
       .map((w) => `#${w.rank}: "${w.narration.split(/(?<=[.!?])\s/)[0]}"`)
       .join("\n");
+    // The re-hooks already spoken, so no line comes round twice.
+    const hooks = rehooksOf([
+      plan.intro.narration,
+      ...written.map((w) => w.narration),
+    ]);
     const body = await llm.structured({
       system: entryPrompt(),
       content: `${brief}\nTitle: ${plan.title}\n\nThe full ranking, spoken from the bottom up:\n${outline}\n\nWrite entry #${e.rank} of ${order.length}: ${e.game_title} (${e.year}, ${e.platforms}). Verdict chip: ${e.verdict_chip}. Notes: ${e.angle}${
@@ -416,6 +424,13 @@ ${own.join("\n")}`
 
 How the earlier entries opened (do not repeat these openings):
 ${before}`
+          : ""
+      }${
+        hooks.length
+          ? `
+
+Re-hooks already in the video (never reuse their wording):
+${hooks.map((h) => `- ${h}`).join("\n")}`
           : ""
       }${fb}`,
       schema: LongformEntryBodySchema,
@@ -492,7 +507,9 @@ export function validateLongform(e: LongformScript): string[] {
         m.graphic.kind === "map" &&
         (!m.graphic.items.length ||
           m.graphic.items.some(
-            (t) => !placeFor(t) || !x.narration.toLowerCase().includes(t.toLowerCase().trim()),
+            (t) =>
+              !placeFor(t) ||
+              !x.narration.toLowerCase().includes(t.toLowerCase().trim()),
           ))
       )
         p.push(
@@ -535,6 +552,15 @@ export function validateLongform(e: LongformScript): string[] {
   );
   if (new Set(openings).size < openings.length)
     p.push("Two entries open with the same words; vary the openings.");
+  // A fresh question or tease every 150-300 words, measured across the whole video as it is spoken.
+  const spoken = [...e.entries].sort((a, b) => b.rank - a.rank);
+  p.push(
+    ...rehookProblems([
+      e.intro.narration,
+      ...spoken.map((x) => x.narration),
+      e.outro.narration,
+    ]),
+  );
   if (
     /let me know in the comments|like and subscribe|without further ado/i.test(
       narrationOfLongform(e),

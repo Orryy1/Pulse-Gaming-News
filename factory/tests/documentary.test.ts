@@ -38,7 +38,11 @@ function chapter(
 ): DocChapter {
   return {
     paragraphs: Array.from({ length: 5 }, (_, i) => ({
-      narration: words(90, `${seed}${i}`),
+      // The middle paragraph asks a question: a re-hook, so no stretch runs past the limit.
+      narration:
+        i === 2
+          ? words(90, `${seed}${i}`).replace(/\.$/, "?")
+          : words(90, `${seed}${i}`),
       callout: callouts[i] ?? {
         kind: "none" as const,
         primary: "",

@@ -38,7 +38,8 @@ function longScript(entries = 10): LongformScript {
       steam_search_term: `Resident Evil ${i + 1}`,
       year: 1996 + i,
       platforms: "PC, PS5",
-      narration: sentence(180, `Entry${i}`),
+      // Each entry is one question: a re-hook, so no stretch runs past the limit.
+      narration: sentence(180, `Entry${i}`).replace(/\.$/, "?"),
       verdict_chip: "Pure dread",
       footage: { want: "gameplay", keywords: ["zombie"] },
       moments: [{ show: "a zombie in the mansion hall", keywords: ["zombie"], graphic: { kind: "none" as const, primary: "", secondary: "", items: [] as string[] }, emphasis: "" }],
@@ -66,6 +67,10 @@ test("a long-form script validates on word bands, ranks and varied openings", ()
   assert.ok(
     validateLongform(same).some((p) => /open with the same words/.test(p)),
   );
+  // No question or tease for 400-odd words is sent back once with the stretch named.
+  const quiet = longScript();
+  for (const x of quiet.entries) x.narration = x.narration.replace(/\?$/, ".");
+  assert.ok(validateLongform(quiet).some((p) => /without a re-hook/.test(p)));
   const words = narrationOfLongform(ok).split(/\s+/).length;
   assert.ok(words >= LONG_WORDS_MIN && words <= LONG_WORDS_MAX, String(words));
 });

@@ -14,6 +14,7 @@ import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
 import type { WikiArticle } from "../discovery/wikipedia.ts";
 import { placeFor } from "../render/places.ts";
+import { REHOOK_RULE, rehookProblems } from "./rehooks.ts";
 
 export const DOC_CHAPTERS_MIN = 5;
 export const DOC_CHAPTERS_MAX = 10;
@@ -404,6 +405,7 @@ Hold attention the way the best documentaries do:
 - A hard number or a two-sided contrast at least every other paragraph ($399 against $499, 58 million against 117 million), always from the source.
 - Name the people who made the decisions, with their roles, and judge decisions, never people; criticism is attributed to whoever made it in the source.
 - One dry aside at most per chapter, aimed at a company or a situation, never at players.
+- ${REHOOK_RULE} In a chapter that means two or three inside it, besides the forward-looking last line.
 Every fact, number, date, name and quote must come from the SOURCE text provided. If the source does not say it, do not say it. Do not repeat what earlier chapters covered.
 Callouts put a real fact on screen: at most half the paragraphs carry one, and a quote must be copied word for word from the source. Most paragraphs use "none".
 footage names what the picture should show for that paragraph, with 1-4 keywords.
@@ -870,6 +872,8 @@ export function validateChapter(c: DocChapter): string[] {
   const callouts = c.paragraphs.filter((x) => x.callout.kind !== "none").length;
   if (callouts > Math.ceil(c.paragraphs.length / 2))
     p.push("Too many callouts: at most half the paragraphs carry one.");
+  // A fresh question or tease every 150-300 words; a chapter that goes quiet for too long is sent back.
+  p.push(...rehookProblems(c.paragraphs.map((x) => x.narration)));
   if (
     /let me know in the comments|like and subscribe|without further ado|buckle up/i.test(
       c.paragraphs.map((x) => x.narration).join(" "),

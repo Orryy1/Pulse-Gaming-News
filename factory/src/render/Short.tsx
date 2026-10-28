@@ -280,6 +280,18 @@ export const Short: React.FC<ShortProps> = (props) => {
       ? props.images[plan.heroIndex]?.src
       : undefined;
 
+  // A delay beat's two dates as the departures board's rows ("2027-03: Now March").
+  const flapRows = (from: string, to: string) => {
+    const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const when = (iso: string) => {
+      const [, m, d] = iso.split("-").map(Number);
+      return m ? `${MONTHS[m - 1]}${d ? ` ${d}` : ""}` : "";
+    };
+    const a = when(from);
+    const b = when(to);
+    return [`${from}: ${a ? `Was due ${a}` : "Was due"}`, `${to}: ${b ? `Now ${b}` : "Now due"}`];
+  };
+
   // The new-look fact cards: each beat's card rotates between the house card and every vertical style that
   // can draw it (src/render/components/vertical), so two stats in a Short never look the same.
   const vstyleOf = useMemo(() => {
@@ -294,7 +306,10 @@ export const Short: React.FC<ShortProps> = (props) => {
         kind: v.kind,
         primary: v.primary,
         secondary: v.secondary,
-        items: v.items ?? [],
+        items:
+          v.kind === "timeline" && v.date_from && v.date_to
+            ? flapRows(v.date_from, v.date_to)
+            : (v.items ?? []),
       };
       const styles = Object.keys(V_STYLES)
         .sort()

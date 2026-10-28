@@ -7,6 +7,8 @@
 // composition that leaves the narrator's space clear. pickepidemic.py then measures them like every bed.
 //
 // Usage (from the factory dir): node src/tools/sfxlab/epidemic.mjs [--per 12] [--only tense]
+//   --restore: remakes the mixes of the beds in src/assets/epidemic_beds.json (a new machine, the Mac), after
+//   which pickepidemic.py rebuilds public/music/es from them.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -149,6 +151,31 @@ await rpc("initialize", {
 await post({ jsonrpc: "2.0", method: "notifications/initialized" });
 
 const manifestPath = path.join(WORK, "manifest.json");
+if (argv.includes("--restore")) {
+  const { beds } = JSON.parse(await fs.readFile(path.join("src", "assets", "epidemic_beds.json"), "utf8"));
+  const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8").catch(() => "{}"));
+  for (const b of beds) {
+    const slug = `${b.mood}_${b.epidemic_id.slice(0, 8)}`;
+    const out = path.join(WORK, "mix", `es_${slug}.wav`);
+    const files = [];
+    try {
+      for (const p of b.parts) {
+        const f = path.join(WORK, "stems", `${slug}_${p.toLowerCase()}.wav`);
+        await download(b.epidemic_id, p, f);
+        files.push(f);
+      }
+      await run("ffmpeg", ["-v", "error", "-y", ...files.flatMap((f) => ["-i", f]), "-filter_complex", `amix=inputs=${files.length}:normalize=0:duration=longest`, "-ar", "48000", "-c:a", "pcm_s16le", out]);
+      manifest[b.epidemic_id] = { mood: b.mood, file: out, title: b.title, artists: b.artists, parts: b.parts, tags: [] };
+      await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 1));
+      console.log("  restored", slug, b.title);
+    } catch (e) {
+      console.log("  failed", slug, b.title, e.message);
+    } finally {
+      for (const f of files) await fs.rm(f, { force: true });
+    }
+  }
+  process.exit(0);
+}
 const manifest = JSON.parse(
   await fs.readFile(manifestPath, "utf8").catch(() => "{}"),
 );

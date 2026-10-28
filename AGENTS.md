@@ -220,3 +220,12 @@ node server.js        — Dashboard + API + built-in autonomous scheduler
 - Never use advertiser-unfriendly language in titles/descriptions
 - Always validate script word count before accepting
 - Always check for missing audio/image before assembly
+
+## Database Backups (D:\pulse-data\backups)
+
+Each backup is a full ~3.4 GB copy of `D:\pulse-data\pulse.db`. Repair and recovery work once filled D: with 700+ GB of them, so:
+
+- Reuse an existing backup when the database has not changed since it was taken, rather than making another.
+- Check free space on D: first; do not create a backup if it would leave less than 150 GB free.
+- Once an operation is finished and verified, delete any backups it made that nothing still needs.
+- Keep at most 20 backups in total; delete the oldest unreferenced ones first and never the newest 5.

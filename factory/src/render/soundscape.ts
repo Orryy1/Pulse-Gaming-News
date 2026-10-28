@@ -16,6 +16,19 @@ export const SFX = {
 } as const;
 
 /**
+ * The retro kit's sounds (public/sfx/retro, made and measured 28 Oct 2026 by src/tools/sfxlab/retrolab.py, report
+ * data/sfxlab/retro_report.json): an old TV switching on, a tape drawn into a VCR, soft static on a cut. Each is
+ * rolled off high so it reads as heard across a room. The power-off take is made but unused: it would land
+ * within half a second of the next entry's own landing.
+ */
+export const RETRO_SFX = {
+  tvon: "retro/tvon",
+  vhs: "retro/vhs",
+  static: "retro/static",
+  poweroff: "retro/poweroff",
+} as const;
+
+/**
  * Mix levels (the narrator plays at 1), set from the narrator's measured loudness: the sting 10 dB under
  * it, the swell 16, the landing and whooshes 17 and the number tick 20, the quietest (a loud tonal glint
  * was the most jarring sound of the old set).
@@ -31,6 +44,9 @@ export const LEVEL = {
   glintLong: 0.11,
   swellLong: 0.175,
   landLong: 0.156,
+  /** The retro sounds, at the lab's levels less the long videos' 2 dB: the TV and tape 18 dB under the narrator, static 22. */
+  retroLong: 0.139,
+  staticLong: 0.088,
 } as const;
 
 /** Under the narrator a sound dips by a quarter, so a word is never masked. */
@@ -59,7 +75,7 @@ const MUSIC_KEY: Record<string, "D" | "E"> = {
   "music_3.mp3": "E",
   "music_4.mp3": "E",
 };
-const TUNED = new Set<string>([SFX.sting, SFX.swell, ...SFX.land]);
+const TUNED = new Set<string>([SFX.sting, SFX.swell, ...SFX.land, RETRO_SFX.static, RETRO_SFX.poweroff]);
 
 /** The version of a sound tuned to the music playing under it ("v3/sting" or "sfx/v3/sting.mp3" alike). */
 export function inKey(
@@ -81,6 +97,10 @@ const PEAK: Record<string, number> = {
   "v3/sting": 0.18,
   "v3/swell": 0.9,
   "v3/land": 0.155,
+  "retro/tvon": 0,
+  "retro/vhs": 0.795,
+  "retro/static": 0.005,
+  "retro/poweroff": 0.005,
 };
 export const leadFrames = (name: string, fps: number) =>
   Math.round((PEAK[name] ?? 0) * fps);
@@ -88,8 +108,12 @@ export const leadFrames = (name: string, fps: number) =>
 export interface LongSoundCandidate {
   key: number; // the moment window's index
   frame: number;
-  kind: "glint" | "pop" | "stamp"; // stamp: the delay card's rubber stamp lands
+  kind: "glint" | "pop" | "stamp" | RetroKind; // stamp: the delay card's rubber stamp lands
 }
+
+/** The retro kit's moments: a screen switching on, a tape going in, static on a cut. */
+type RetroKind = "tvon" | "vhs" | "static";
+const isRetro = (k: LongSoundCandidate["kind"]): k is RetroKind => k === "tvon" || k === "vhs" || k === "static";
 
 /**
  * Which moment sounds a long video plays: glints at least 8 s apart, pop-in whooshes at least 14 s
@@ -104,20 +128,24 @@ export function gateLongSounds(
   const out = new Map<number, string>();
   const near = (f: number) =>
     entryFrames.some((e) => Math.abs(f - e) < 1.5 * fps);
-  let last = -Infinity;
+  const chosen: number[] = [];
   const lastOf = { glint: -Infinity, pop: -Infinity, stamp: -Infinity };
   const turn = { glint: 0, pop: 0, stamp: 0 };
-  for (const c of [...cands].sort((a, b) => a.frame - b.frame)) {
-    const gap = c.kind === "glint" ? 8 : c.kind === "stamp" ? 20 : 14;
-    if (
-      near(c.frame) ||
-      c.frame - last < 4 * fps ||
-      c.frame - lastOf[c.kind] < gap * fps
-    )
+  // The retro kit's sounds belong to what is on screen, so they claim their moments first; the moment sounds
+  // then fit around them by the same rules.
+  const order = [...cands].sort((a, b) => Number(isRetro(b.kind)) - Number(isRetro(a.kind)) || a.frame - b.frame);
+  for (const c of order) {
+    if (near(c.frame) || chosen.some((f) => Math.abs(c.frame - f) < 4 * fps)) continue;
+    if (isRetro(c.kind)) {
+      out.set(c.key, RETRO_SFX[c.kind]);
+      chosen.push(c.frame);
       continue;
+    }
+    const gap = c.kind === "glint" ? 8 : c.kind === "stamp" ? 20 : 14;
+    if (c.frame - lastOf[c.kind] < gap * fps) continue;
     const list = c.kind === "glint" ? SFX.glint : c.kind === "stamp" ? SFX.land : SFX.air;
     out.set(c.key, list[turn[c.kind]++ % list.length]!);
-    last = c.frame;
+    chosen.push(c.frame);
     lastOf[c.kind] = c.frame;
   }
   return out;

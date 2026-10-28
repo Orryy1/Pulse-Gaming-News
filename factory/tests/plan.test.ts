@@ -756,6 +756,24 @@ test("long-video moment sounds are spaced out and keep clear of each entry's swe
   );
   assert.deepEqual([...stamps.keys()], [0, 2]);
   assert.match(stamps.get(0)!, /land/);
+  // The retro kit's sounds claim their moment first: a glint 2 s before an old TV switching on gives way,
+  // and the TV still keeps clear of the entry change.
+  const retro = gateLongSounds(
+    [
+      { key: 0, frame: 100, kind: "glint" as const },
+      { key: 1, frame: 160, kind: "tvon" as const },
+      { key: 2, frame: 610, kind: "vhs" as const },
+      { key: 3, frame: 900, kind: "static" as const },
+    ],
+    [600],
+    fps,
+  );
+  assert.deepEqual(
+    [...retro.keys()].sort((a, b) => a - b),
+    [1, 3],
+  );
+  assert.equal(retro.get(1), "retro/tvon");
+  assert.equal(retro.get(3), "retro/static");
 });
 
 test("a corner credit's fades always form a strictly increasing range, however short the shot", async () => {
@@ -891,7 +909,11 @@ test("an old game opens on the hardware of its platform and era", async () => {
 test("the graphics check reads which frames a problem names", async () => {
   const { framesNamed } = await import("../src/qa/vision.ts");
   assert.deepEqual(
-    framesNamed(["Frame 3: heading cut off", "Frames 5 and 7: text overlaps", "frame 2, 4: misspelt"]).sort(),
+    framesNamed([
+      "Frame 3: heading cut off",
+      "Frames 5 and 7: text overlaps",
+      "frame 2, 4: misspelt",
+    ]).sort(),
     [2, 3, 4, 5, 7],
   );
   assert.deepEqual(framesNamed(["looks fine"]), []);
@@ -899,9 +921,22 @@ test("the graphics check reads which frames a problem names", async () => {
 
 test("a picture's own colour is its strongest vivid hue, and a grey picture has none", async () => {
   const { dominantVivid } = await import("../src/assets/palette.ts");
-  const px = (r: number, g: number, b: number, n: number) => Array.from({ length: n }, () => [r, g, b]).flat();
-  const red = dominantVivid(new Uint8Array([...px(200, 40, 30, 300), ...px(40, 40, 200, 60), ...px(90, 90, 90, 200)]))!;
+  const px = (r: number, g: number, b: number, n: number) =>
+    Array.from({ length: n }, () => [r, g, b]).flat();
+  const red = dominantVivid(
+    new Uint8Array([
+      ...px(200, 40, 30, 300),
+      ...px(40, 40, 200, 60),
+      ...px(90, 90, 90, 200),
+    ]),
+  )!;
   assert.match(red, /^#[0-9a-f]{6}$/);
-  assert.ok(parseInt(red.slice(1, 3), 16) > parseInt(red.slice(5, 7), 16), "red wins");
-  assert.equal(dominantVivid(new Uint8Array(px(120, 120, 120, 500))), undefined);
+  assert.ok(
+    parseInt(red.slice(1, 3), 16) > parseInt(red.slice(5, 7), 16),
+    "red wins",
+  );
+  assert.equal(
+    dominantVivid(new Uint8Array(px(120, 120, 120, 500))),
+    undefined,
+  );
 });

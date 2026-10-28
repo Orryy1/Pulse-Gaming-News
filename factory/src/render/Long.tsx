@@ -2905,6 +2905,27 @@ export const Long: React.FC<LongProps> = (props) => {
           richSoundAt.set(100000 + i, d.from + 26);
           return { key: 100000 + i, frame: d.from + 26, kind: "glint" };
         }),
+        // The retro kit heard: the old screen switching on (or the tape's thunk into the VCR as it goes in),
+        // and soft static on a channel-static cut (keys from 200000 and 300000).
+        [...retro].map(([i, dev]): LongSoundCandidate => {
+          const sh = plan.shots[i]!;
+          const img = sh.media.type === "image" && i > 0;
+          const from = img
+            ? sh.start - (powerOff.has(i - 1) ? 0 : Math.min(XFADE, sh.start))
+            : sh.start;
+          const at = from + (dev.device === "vcr" ? 26 : 3);
+          richSoundAt.set(200000 + i, at);
+          return {
+            key: 200000 + i,
+            frame: at,
+            kind: dev.device === "vcr" ? "vhs" : "tvon",
+          };
+        }),
+        accents.flatMap((a, k): LongSoundCandidate[] => {
+          if (a.kind !== "static") return [];
+          richSoundAt.set(300000 + k, a.at - 3);
+          return [{ key: 300000 + k, frame: a.at - 3, kind: "static" }];
+        }),
       ),
     entryFrames,
     fps,
@@ -3471,11 +3492,16 @@ export const Long: React.FC<LongProps> = (props) => {
       {[...richSoundAt].map(([key, at]) => {
         const name = momentSounds.get(key);
         if (!name) return null;
-        const vol = name.includes("land")
-          ? LEVEL.landLong
-          : name.includes("air")
-            ? LEVEL.airLong
-            : LEVEL.glintLong;
+        const vol =
+          name === "retro/static"
+            ? LEVEL.staticLong
+            : name.startsWith("retro/")
+              ? LEVEL.retroLong
+              : name.includes("land")
+                ? LEVEL.landLong
+                : name.includes("air")
+                  ? LEVEL.airLong
+                  : LEVEL.glintLong;
         return (
           <Sequence
             key={`rs${key}`}

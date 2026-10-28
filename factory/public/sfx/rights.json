@@ -36,6 +36,42 @@
       "sha256": "172215c18657ad1e77b3ded3e8fd6381393b439d980d43a710dca49b0d02ed2e",
       "origin": "ffmpeg amix of punch-deep.mp3 and tick-blip.mp3 (both synthesised in-house), 0.45 s",
       "licence": "owned"
+    },
+    {
+      "file": "retro/poweroff-D.mp3",
+      "sha256": "635195928503d5159de63855bf75480a5cf95d6102b73658a409d304af3d4e35",
+      "origin": "ElevenLabs sound effects (generated 28 Oct 2026 by src/tools/sfxlab/retrolab.py, chosen by measurement)",
+      "licence": "ElevenLabs paid plan: commercial use permitted"
+    },
+    {
+      "file": "retro/poweroff-E.mp3",
+      "sha256": "5a81b7e13f2060cc6fa280580156e0e3f32d58ed2129c20457c00de01bb2de91",
+      "origin": "ElevenLabs sound effects (generated 28 Oct 2026 by src/tools/sfxlab/retrolab.py, chosen by measurement)",
+      "licence": "ElevenLabs paid plan: commercial use permitted"
+    },
+    {
+      "file": "retro/static-D.mp3",
+      "sha256": "c966c474b64df6a684b5d848b10f1b25d18d5638d5efcc50b1b538ed379fdf99",
+      "origin": "ElevenLabs sound effects (generated 28 Oct 2026 by src/tools/sfxlab/retrolab.py, chosen by measurement)",
+      "licence": "ElevenLabs paid plan: commercial use permitted"
+    },
+    {
+      "file": "retro/static-E.mp3",
+      "sha256": "bc45c1856219a03ebff220505c9d4a6c90c43bf75e3333fe32c5a8b444c2b132",
+      "origin": "ElevenLabs sound effects (generated 28 Oct 2026 by src/tools/sfxlab/retrolab.py, chosen by measurement)",
+      "licence": "ElevenLabs paid plan: commercial use permitted"
+    },
+    {
+      "file": "retro/tvon.mp3",
+      "sha256": "deab01af943ef7589a096672bd7455e2f10bf612e13eca224fcdafb6c1ed5327",
+      "origin": "ElevenLabs sound effects (generated 28 Oct 2026 by src/tools/sfxlab/retrolab.py, chosen by measurement)",
+      "licence": "ElevenLabs paid plan: commercial use permitted"
+    },
+    {
+      "file": "retro/vhs.mp3",
+      "sha256": "fe099ce5ef0b18414031d6fbd7d1c695b8cd8a1a27c55f2da5189a517fc01a8f",
+      "origin": "ElevenLabs sound effects (generated 28 Oct 2026 by src/tools/sfxlab/retrolab.py, chosen by measurement)",
+      "licence": "ElevenLabs paid plan: commercial use permitted"
     }
   ]
 }

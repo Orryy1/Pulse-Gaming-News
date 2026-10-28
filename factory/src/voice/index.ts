@@ -43,6 +43,21 @@ export async function elevenLabsCreditsLeft(apiKey: string): Promise<number | un
  * Highpass, gentle compression and a limiter: the narration chain from the Codex mix. Returns the
  * seconds of leading silence it trimmed, which the word timings must lose too.
  */
+/** The speed-up a take needs to reach `minWpm` (never more than 25%, never for a take under 15 words); 1 when none. */
+export function paceFactor(words: number, seconds: number, minWpm: number): number {
+  if (!minWpm || words < 15 || seconds <= 0) return 1;
+  const wpm = (words / seconds) * 60;
+  if (wpm >= minWpm) return 1;
+  return Math.min(1.25, (minWpm + 3) / wpm);
+}
+
+/** Plays the file faster without changing its pitch. */
+export async function speedUp(file: string, factor: number): Promise<void> {
+  const tmp = `${file}.paced.mp3`;
+  await run(FFMPEG, ["-loglevel", "error", "-y", "-i", file, "-af", `atempo=${factor.toFixed(4)}`, "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", tmp]);
+  await fs.rename(tmp, file);
+}
+
 export async function polishVoice(file: string): Promise<number> {
   const tmp = `${file}.polished.mp3`;
   const before = await decodedSeconds(file);
@@ -99,6 +114,18 @@ export async function narrate(cfg: Config, text: string, outPath: string, voice?
           words: n.words.map((w) => ({ ...w, start: Math.max(0, w.start - trimmed), end: Math.max(0, w.end - trimmed) })),
           durationSeconds: n.durationSeconds - trimmed,
         };
+      // Never a sleepy read: the newer voice model ignores the speed setting, and Alice came out at 109-129 words
+      // a minute on 28 Oct (Liam ran 142-151). A slow take is sped up, pitch kept, its timings scaled to match.
+      const factor = paceFactor(n.words.length, n.durationSeconds, cfg.minWordsPerMinute);
+      if (factor > 1) {
+        await speedUp(outPath, factor);
+        n = {
+          ...n,
+          words: n.words.map((w) => ({ ...w, start: w.start / factor, end: w.end / factor })),
+          durationSeconds: n.durationSeconds / factor,
+        };
+        log("info", "narration sped up", { factor: factor.toFixed(3) });
+      }
       const used = provider === "local" ? { provider, id: cfg.localVoiceId, name: `${cfg.narratorName} (local clone)` } : { provider, id: voice?.id ?? cfg.elevenLabsVoiceId, name: voice?.name ?? cfg.elevenLabsVoiceId };
       log("info", "narration ready", { provider, voice: used.name, seconds: n.durationSeconds.toFixed(1) });
       return { ...n, voice: used };

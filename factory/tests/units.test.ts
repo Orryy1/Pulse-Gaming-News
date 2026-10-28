@@ -1039,3 +1039,12 @@ test("a stamp's word and figure may be a figure the narration says in words, at 
   assert.match(validateScript(s).join(" "), /stamp's word "300,000"/);
   assert.match(validateScript(s).join(" "), /stamp's figure "300,000"/);
 });
+
+test("a slow narration take is sped up to a natural pace, by at most a quarter", async () => {
+  const { paceFactor } = await import("../src/voice/index.ts");
+  assert.equal(paceFactor(100, 40, 145), 1, "150 wpm is fine");
+  assert.ok(Math.abs(paceFactor(100, 45, 145) - 148 / (100 / 45 * 60)) < 1e-9, "133 wpm lifted just past the floor");
+  assert.equal(paceFactor(95, 52, 145), 1.25, "109 wpm: capped at 25%");
+  assert.equal(paceFactor(10, 10, 145), 1, "too short to judge");
+  assert.equal(paceFactor(100, 60, 0), 1, "off");
+});

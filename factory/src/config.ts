@@ -202,6 +202,8 @@ export interface Config {
   /** Long videos (rankings, documentaries) start this long before their slot: script and voice the day before,
    * so the owner can record what the shot list wants and the render finds a gap between Shorts (28 Oct 2026). */
   longLeadMinutes: number;
+  /** Narration slower than this is sped up (by up to 25%, pitch kept): MIN_WORDS_PER_MINUTE, 0 turns it off. */
+  minWordsPerMinute: number;
   docMaxSeconds: number;
   docClipsPerChapter: number;
   crosspost: {
@@ -566,6 +568,7 @@ export function loadConfig(): Config {
       .filter((w) => w >= 1 && w <= 5),
     docLeadMinutes: int("DOC_LEAD_MINUTES", 600),
     longLeadMinutes: int("LONG_LEAD_MINUTES", 30 * 60),
+    minWordsPerMinute: int("MIN_WORDS_PER_MINUTE", 145),
     docMaxSeconds: int("DOC_MAX_SECONDS", 3000),
     docClipsPerChapter: int("DOC_CLIPS_PER_CHAPTER", 4),
     crosspost: {

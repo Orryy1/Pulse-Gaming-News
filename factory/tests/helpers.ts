@@ -212,6 +212,7 @@ export function testConfig(
     whisperPython: "",
     parallaxPython: "",
     longLeadMinutes: 0,
+    minWordsPerMinute: 0,
     backupDir: "",
     tiktokDaily: 0,
     tiktokFromHour: 16,

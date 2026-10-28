@@ -225,3 +225,12 @@ test("US dollars, names ending in a dollar sign, NvN and store titles in capital
   assert.equal(speakable("TEKKEN 7 and FINAL FANTASY XIV"), "Tekken 7 and Final Fantasy 14");
   assert.equal(speakable("JRPGS on the SNES and an MMORPG"), "JRPGS on the SNES and an MMORPG");
 });
+
+test("a year the aligner split into three words is still one figure on screen", async () => {
+  // The Astro Bot Short (ep_20261028_9547f065) captioned "twenty twenty four's" as "2020".
+  const { displayWords } = await import("../src/render/timeline.ts");
+  const show = (t: string) => displayWords(t.split(" ").map((text, i) => ({ text, start: i, end: i + 1 }))).map((w) => w.text).join(" ");
+  assert.equal(show("cameo in twenty twenty four's Astro Bot,"), "cameo in 2024's Astro Bot,");
+  assert.equal(show("cameo in twenty twenty-four's Astro Bot,"), "cameo in 2024's Astro Bot,");
+  assert.equal(show("back in twenty twenty four"), "back in 2024");
+});

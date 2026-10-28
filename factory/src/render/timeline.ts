@@ -424,6 +424,20 @@ function twoDigit(
     };
   if (TEENS[a] !== undefined) return { value: TEENS[a]!, used: 1 };
   const [t, u] = a.split("-");
+  // The aligner sometimes splits "twenty-four's" into "twenty" "four's": the Astro Bot Short showed
+  // "2020 4's" for "2024's" (28 Oct 2026). Only when nothing separates them ("twenty, four" stays apart).
+  const next = words[1]
+    ?.toLowerCase()
+    .replace(/['’]s\b/, "")
+    .replace(/[^a-z]/g, "");
+  if (
+    TENS_W[t!] !== undefined &&
+    !u &&
+    /^[a-z]+$/i.test(words[0]!) &&
+    next &&
+    UNITS[next]
+  )
+    return { value: TENS_W[t!]! + UNITS[next]!, used: 2 };
   if (TENS_W[t!] !== undefined)
     return { value: TENS_W[t!]! + (u ? (UNITS[u] ?? 0) : 0), used: 1 };
   return undefined;

@@ -896,3 +896,12 @@ test("the graphics check reads which frames a problem names", async () => {
   );
   assert.deepEqual(framesNamed(["looks fine"]), []);
 });
+
+test("a picture's own colour is its strongest vivid hue, and a grey picture has none", async () => {
+  const { dominantVivid } = await import("../src/assets/palette.ts");
+  const px = (r: number, g: number, b: number, n: number) => Array.from({ length: n }, () => [r, g, b]).flat();
+  const red = dominantVivid(new Uint8Array([...px(200, 40, 30, 300), ...px(40, 40, 200, 60), ...px(90, 90, 90, 200)]))!;
+  assert.match(red, /^#[0-9a-f]{6}$/);
+  assert.ok(parseInt(red.slice(1, 3), 16) > parseInt(red.slice(5, 7), 16), "red wins");
+  assert.equal(dominantVivid(new Uint8Array(px(120, 120, 120, 500))), undefined);
+});

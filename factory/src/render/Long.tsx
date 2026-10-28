@@ -152,6 +152,7 @@ export type LongProps = {
   moments?: MomentProp[][]; // per ranking entry, one per sentence: graphics, kinetic captions, pop-ins
   breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds)
   quietBreaks?: number[]; // breathers the graphics check faulted: the plain title card instead
+  palette?: Array<string | null>; // each entry's own colour from its key art: its footage is washed in it
   /** Zoom to the detail: the sentence, the picture on screen and where the named thing sits (0-1). */
   annotations?: Array<{
     entry: number;
@@ -922,7 +923,9 @@ const Backdrop: React.FC<{
   powerOff?: Set<number>;
   /** Per shot index: the absolute frame of its punch-in. */
   punches?: Map<number, number>;
-}> = ({ plan, images, clips, theme, describe, focusFor, retro, looks, powerOff, punches }) => (
+  /** Per shot index: its game's own colour, washed softly over the picture. */
+  tints?: Map<number, string>;
+}> = ({ plan, images, clips, theme, describe, focusFor, retro, looks, powerOff, punches, tints }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
       const len = Math.max(1, s.end - s.start);
@@ -951,6 +954,14 @@ const Backdrop: React.FC<{
             ) : (
               <RetroTV>{out}</RetroTV>
             );
+        const tint = tints?.get(i);
+        if (tint)
+          out = (
+            <>
+              {out}
+              <AbsoluteFill style={{ background: tint, mixBlendMode: "soft-light", opacity: 0.28, pointerEvents: "none" }} />
+            </>
+          );
         if (powerOff?.has(i)) out = <PowerOff frames={seqLen}>{out}</PowerOff>;
         return out;
       };
@@ -2427,6 +2438,17 @@ export const Long: React.FC<LongProps> = (props) => {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan, retro, props.images]);
+  // Each game's own colour on its shots (props.palette, from the pipeline).
+  const tints = useMemo(() => {
+    const out = new Map<number, string>();
+    plan.shots.forEach((sh, i) => {
+      const e = shotEntry(sh);
+      const c = e === undefined ? undefined : props.palette?.[e];
+      if (c) out.set(i, c);
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, props.palette]);
   // An old game's last shot before the next entry switches off like a tube.
   const powerOff = useMemo(() => {
     const out = new Set<number>();
@@ -2705,6 +2727,7 @@ export const Long: React.FC<LongProps> = (props) => {
         describe={describe}
         focusFor={focusFor}
         retro={retro}
+        tints={tints}
         looks={periodLooks}
         powerOff={powerOff}
         punches={punches}

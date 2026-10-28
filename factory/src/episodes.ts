@@ -57,6 +57,8 @@ export interface EpisodeAssets {
   desk?: { voice: { id: string; name: string }; question: string };
   /** The new-look test: this Short got the editor's dressing (src/render/Short.tsx `suite`). */
   suite?: boolean;
+  /** Each entry's own colour from its key art ("#rrggbb", null when it has none): src/assets/palette.ts. */
+  palette?: Array<string | null>;
   /** Graphics the graphics check faulted ("entry:moment"), left out of the next render. */
   quietMoments?: string[];
   /** Chapter breathers the graphics check faulted (their index), shown as the plain title card instead. */

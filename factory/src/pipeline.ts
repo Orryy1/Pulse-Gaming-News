@@ -168,6 +168,7 @@ import {
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
 import { titleVariants } from "./editorial/titles.ts";
+import { paletteOf } from "./assets/palette.ts";
 import {
   addDays,
   localTime,
@@ -5498,6 +5499,18 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       });
   }
   assets.longPlan = plan;
+  // Each game's own colour, from its key art (src/assets/palette.ts): its chapter's footage is washed in it.
+  if (!assets.palette) {
+    const entries = [...new Set(images.map((i) => i.beatIndex).filter((b): b is number => b !== undefined))];
+    const palette: Array<string | null> = [];
+    for (const b of entries) {
+      const art =
+        images.find((i) => i.beatIndex === b && i.kind === "hero") ??
+        images.find((i) => i.beatIndex === b && i.aspect >= 1.2 && i.kind !== "photo");
+      palette[b] = (art && (await paletteOf(path.join(dir, art.file)))) || null;
+    }
+    assets.palette = palette;
+  }
   // Zoom to the detail: a sentence that names something on screen gets the camera pushed in on it, with a
   // label, when the local vision model finds it in that picture. At most one every 40 s, 30 a video.
   if (s.cfg.annotate && hasMoments && !assets.annotations) {
@@ -5746,6 +5759,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       renderDate: s.now().toISOString().slice(0, 10),
       breaks: assets.breaks,
       quietBreaks: assets.quietBreaks,
+      palette: assets.palette,
       annotations: assets.annotations,
     },
   });

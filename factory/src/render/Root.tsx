@@ -94,11 +94,14 @@ export const RemotionRoot: React.FC = () => (
     {/* Channel brand stills: rendered by `npm run brand` into factory/brand/. */}
     <Still id="PulseBanner" component={Banner} width={2560} height={1440} />
     <Still id="PulseAvatar" component={Avatar} width={800} height={800} />
-    <Still
+    {/* A timeline, not a Still: the motif thumbnail freezes a motif card part-way through its animation. */}
+    <Composition
       id="PulseThumb"
       component={Thumb}
       width={1280}
       height={720}
+      fps={30}
+      durationInFrames={150}
       defaultProps={SAMPLE_THUMB}
     />
     {/* Redesign directions for the owner to choose from (src/render/BrandConcepts.tsx). */}

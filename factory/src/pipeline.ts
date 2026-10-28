@@ -1992,6 +1992,98 @@ async function stepScriptDocumentary(
   });
 }
 
+/**
+ * The remake (owner, 28 Oct 2026: "remake the documentaries that haven't posted yet, saving their
+ * narration ... with this whole new massive visual overhaul"). A long video keeps its narration (no new
+ * ElevenLabs credits) and gets what it was made without: a shot list for every sentence (one mid-tier call a
+ * chapter, grounded in its Wikipedia source), the breathers before each chapter (silence put into the same
+ * voice file), and fresh media matched to the shot list. Its old upload goes private for the owner to delete
+ * (never deleted here) and the pipeline renders and uploads it again into its original slot.
+ */
+export async function prepareRemake(
+  s: Services,
+  id: string,
+): Promise<{ moments: number; breaks: number; oldVideo?: string }> {
+  const ep = await getEpisode(s.db, id);
+  if (!ep?.script_json || !ep.assets_json?.audio) throw new Error("no voiced episode with that id");
+  if (ep.script_json.runtime !== "long") throw new Error("only long videos are remade");
+  if (ep.status === "uploading") throw new Error("it is uploading now; try again once that finishes");
+  const dir = episodeDir(s.cfg, ep.id);
+  const script = structuredClone(ep.script_json);
+  const assets: EpisodeAssets = { ...ep.assets_json };
+  const doc = script.evergreen_format === "documentary";
+  let moments = 0;
+  // 1. The shot list, chapter by chapter, for a documentary made before it existed.
+  if (doc && script.entries?.length && !script.entries.some((e) => e.moments?.length)) {
+    const chapterBeats: string[][] = [];
+    for (const b of script.beats) {
+      if (b.visual?.kind === "chapter" || !chapterBeats.length) chapterBeats.push([]);
+      chapterBeats[chapterBeats.length - 1]!.push(b.narration);
+    }
+    const games = script.entries.map((e) => e.game_title);
+    const norm = (t: string) => decodeURIComponent(t).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    for (const [ci, entry] of script.entries.entries()) {
+      const sentences = (chapterBeats[ci] ?? []).flatMap((n) => sentencesOf(n));
+      if (!sentences.length) continue;
+      const url = (script.sources ?? []).find((u) => norm(u.split("/wiki/")[1] ?? "") === norm(entry.game_title));
+      const source = await s.research(
+        url ? decodeURIComponent(url.split("/wiki/")[1]!).replace(/_/g, " ") : entry.game_title,
+        `${entry.game_title} ${entry.year} video game`,
+        9000,
+      );
+      if (!source) continue;
+      const chapterTitle =
+        script.beats.filter((b) => b.visual?.kind === "chapter")[ci]?.visual?.primary ?? entry.game_title;
+      const shot = groundDocMoments(
+        await writeDocMoments(s.llm, { game: entry.game_title, chapterTitle, sentences, source, games }),
+        source,
+        games,
+      );
+      entry.moments = shot.moments;
+      moments += shot.moments.filter((m) => m.graphic.kind !== "none").length;
+    }
+  }
+  // 2. The breathers before each chapter, put into the narration it already has.
+  let breaks = 0;
+  if (doc && !assets.breaks?.length && assets.words?.length) {
+    const words = assets.words;
+    const duration = assets.durationSeconds ?? words[words.length - 1]!.end;
+    const segs = buildSegments(segmentInputs(script), words, duration);
+    const firstWords = segs
+      .filter((g) => g.kind === "beat" && g.visual?.kind === "chapter")
+      .map((g) => words.findIndex((w) => w.start >= g.start - 0.05))
+      .filter((k) => k > 0);
+    const gaps = chapterGaps(words, firstWords, DOC_BREAK_SECONDS);
+    if (gaps.length) {
+      await insertSilence(path.join(dir, assets.audio!), gaps);
+      assets.words = openWords(words, gaps);
+      assets.durationSeconds = duration + gaps.reduce((n, g) => n + g.seconds, 0);
+      let added = 0;
+      assets.breaks = gaps.map((g) => {
+        const start = g.at + added;
+        added += g.seconds;
+        return { start, end: start + g.seconds };
+      });
+      await fs.writeFile(path.join(dir, "captions.srt"), srtFromWords(assets.words), "utf8");
+      breaks = gaps.length;
+    }
+  }
+  // 3. Fresh media matched to the shot list, and a new plan, details and thumbnails.
+  for (const k of ["images", "clips", "plan", "longPlan", "annotations", "thumb"] as const)
+    delete (assets as Record<string, unknown>)[k];
+  // 4. The old upload goes private (the owner deletes it); the episode renders again into its slot.
+  const oldVideo = ep.youtube_video_id ?? undefined;
+  if (oldVideo) await s.youtube(accountOf(ep)).setPrivacy(oldVideo, "private").catch(() => undefined);
+  await s.db.query(
+    `UPDATE episodes SET status = 'voiced', script_json = $2, assets_json = $3, youtube_video_id = NULL,
+            youtube_status = NULL, upload_session_uri = NULL, qa_json = NULL, attempts = 0, last_error = NULL,
+            next_attempt_at = NULL WHERE id = $1`,
+    [ep.id, JSON.stringify(script), JSON.stringify(assets)],
+  );
+  await logEvent(s.db, ep.id, "remake", { moments, breaks, oldVideo, publishAt: ep.publish_at });
+  return { moments, breaks, oldVideo };
+}
+
 /** The weekly long-form ranking video: same topic pool as the evergreen Shorts, its own slot and lane. */
 export async function maybeSelectLongform(
   s: Services,

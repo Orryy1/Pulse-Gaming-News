@@ -23,6 +23,7 @@ import {
   affiliateTags,
   approvalLinks,
   quotaHeadroom,
+  prepareRemake,
   type Services,
 } from "./pipeline.ts";
 import {
@@ -714,6 +715,19 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
     // Repair: YouTube has the whole file but its processing never started (stuck at "Processing will
     // begin shortly" for a day). The broken entry is set private (reversible; it plays for nobody) and the
     // same finished video is queued for a fresh upload, which the stub check will not adopt.
+    // The remake (src/pipeline.ts prepareRemake): a long video keeps its narration and is made again.
+    if (url.pathname === "/admin/remake" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      try {
+        const out = await prepareRemake(services, url.searchParams.get("id") ?? "");
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, ...out }));
+      } catch (err) {
+        res
+          .writeHead(400, { "content-type": "application/json" })
+          .end(JSON.stringify({ ok: false, error: errorMessage(err) }));
+      }
+      return;
+    }
     if (url.pathname === "/admin/reupload" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const ep = await getEpisode(db, url.searchParams.get("id") ?? "");

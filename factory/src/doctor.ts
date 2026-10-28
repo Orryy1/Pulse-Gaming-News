@@ -305,14 +305,21 @@ async function checkPublicUrl(cfg: Config): Promise<Check | undefined> {
   if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(cfg.publicUrl))
     return undefined;
   try {
-    const res = await fetchWithTimeout(`${cfg.publicUrl}/health`, {}, 8_000);
+    // The approve route with a wrong token: the factory itself answers 403. (/health is hidden from the internet
+    // by a Cloudflare rule, so its 404 said nothing about whether approval links work.)
+    const res = await fetchWithTimeout(
+      `${cfg.publicUrl}/episodes/doctor/approve?t=0`,
+      { redirect: "manual" },
+      8_000,
+    );
+    const ok = res.status === 403;
     return {
       name: "public_url",
-      ok: res.ok,
+      ok,
       critical: false,
-      detail: res.ok
+      detail: ok
         ? `${cfg.publicUrl} reachable (approval links work from a phone)`
-        : `${cfg.publicUrl} answered HTTP ${res.status}`,
+        : `${cfg.publicUrl} approval route answered HTTP ${res.status}`,
     };
   } catch {
     return {

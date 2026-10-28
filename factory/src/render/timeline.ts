@@ -411,7 +411,8 @@ export function spokenMoney(
 function twoDigit(
   words: string[],
 ): { value: number; used: number } | undefined {
-  const a = words[0]?.toLowerCase().replace(/[^a-z-]/g, "");
+  // "eighteen's" is eighteen: the possessive is put back on the figure by the caller.
+  const a = words[0]?.toLowerCase().replace(/['’]s\b/, "").replace(/[^a-z-]/g, "");
   if (!a) return undefined;
   if (a === "oh" && UNITS[words[1]?.toLowerCase().replace(/[^a-z]/g, "") ?? ""])
     return {
@@ -431,6 +432,10 @@ function twoDigit(
  * ("twenty sixteen", "two thousand seven") are digits again.
  * Timings merge, so a caption still lights when its words are spoken.
  */
+/** The possessive on a spoken number ("twenty eighteen's"), kept on the figure ("2018's"). */
+const possessive = (text: string | undefined) =>
+  (text ?? "").match(/(['’]s)[.,;:!?)"”’]*$/)?.[1] ?? "";
+
 export function displayWords(words: Word[]): Word[] {
   const out: Word[] = [];
   for (let i = 0; i < words.length; i++) {
@@ -487,10 +492,11 @@ export function displayWords(words: Word[]): Word[] {
       const u =
         tail(i + 1) || ["hundred", "thousand"].includes(bare(i + 3))
           ? undefined
-          : UNITS[bare(i + 2)];
+          : UNITS[bare(i + 2).replace(/s$/, "")] ??
+            (possessive(words[i + 2]?.text) ? undefined : UNITS[bare(i + 2)]);
       if (u !== undefined) {
         out.push({
-          text: `200${u}${tail(i + 2)}`,
+          text: `200${u}${possessive(words[i + 2]?.text)}${tail(i + 2)}`,
           start: w.start,
           end: words[i + 2]!.end,
         });
@@ -534,6 +540,17 @@ export function displayWords(words: Word[]): Word[] {
     const hi =
       bare(i) === "nineteen" ? 19 : bare(i) === "twenty" ? 20 : undefined;
     if (hi !== undefined) {
+      // a decade: "the nineteen nineties" is "the 1990s"
+      const decade = TENS_W[bare(i + 1).replace(/ies$/, "y")];
+      if (decade !== undefined && /ies$/.test(bare(i + 1)) && hi * 100 + decade >= 1950) {
+        out.push({
+          text: `${hi * 100 + decade}s${tail(i + 1)}`,
+          start: w.start,
+          end: words[i + 1]!.end,
+        });
+        i += 1;
+        continue;
+      }
       const lo = twoDigit(words.slice(i + 1, i + 3).map((x) => x.text));
       if (
         (lo && lo.value >= 10) ||
@@ -543,7 +560,7 @@ export function displayWords(words: Word[]): Word[] {
         const year = hi * 100 + lo!.value;
         if (year >= 1950 && year <= 2099) {
           out.push({
-            text: `${year}${tail(last)}`,
+            text: `${year}${possessive(words[last]?.text)}${tail(last)}`,
             start: w.start,
             end: words[last]!.end,
           });

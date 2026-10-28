@@ -940,3 +940,17 @@ test("a picture's own colour is its strongest vivid hue, and a grey picture has 
     undefined,
   );
 });
+
+test("spoken years keep their possessive and decades as figures in captions", async () => {
+  const { displayWords } = await import("../src/render/timeline.ts");
+  const show = (t: string) =>
+    displayWords(t.split(" ").map((text, i) => ({ text, start: i, end: i + 1 })))
+      .map((w) => w.text)
+      .join(" ");
+  assert.equal(show("twenty eighteen's best seller"), "2018's best seller");
+  assert.equal(show("after twenty eighteen’s launch,"), "after 2018’s launch,");
+  assert.equal(show("two thousand seven's sequel"), "2007's sequel");
+  assert.equal(show("back in the nineteen nineties, arcades"), "back in the 1990s, arcades");
+  assert.equal(show("twenty sixteen. Then"), "2016. Then", "the plain year is unchanged");
+  assert.equal(show("two thousand players"), "2,000 players", "a count is a figure, not a year");
+});

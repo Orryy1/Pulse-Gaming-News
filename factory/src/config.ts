@@ -261,6 +261,9 @@ export interface Config {
   localizeLanguages: string[];
   /** Python with faster-whisper (PC) or MLX Whisper (Mac) for the narration check; empty switches it off. */
   whisperPython: string;
+  /** Python for the depth layers (src/render/parallax.py): its own environment, so OpenCV and Pillow stay
+   * out of the speech recogniser's locked runtime (adding them there broke PulseGaming-ASR on 27 Oct 2026). */
+  parallaxPython: string;
   /** Where nightly encrypted restore points go: a folder synced off the PC (the owner's Google Drive). */
   backupDir: string;
   footage: boolean;
@@ -620,6 +623,7 @@ export function loadConfig(): Config {
       .map((l) => l.trim())
       .filter(Boolean),
     whisperPython: str("WHISPER_PYTHON", defaultWhisperPython()),
+    parallaxPython: str("PARALLAX_PYTHON", defaultParallaxPython()),
     backupDir: str("BACKUP_DIR", "G:/My Drive/Pulse backups"),
     footage: bool("TRAILER_FOOTAGE", true),
     maxClips: int("MAX_TRAILER_CLIPS", 8), // enough for the hook, four beats, the take and the loop
@@ -726,6 +730,12 @@ export function redactedConfig(c: Config): Record<string, unknown> {
 }
 
 /** The Python that has Whisper on this machine: the PC's speech runtime or the Mac's MLX one. */
+/** The parallax environment (D:/pulse-tools/parallax-venv: the runtime's torch plus its own OpenCV and Pillow), else the Whisper Python. */
+function defaultParallaxPython(): string {
+  const venv = "D:/pulse-tools/parallax-venv/Scripts/python.exe";
+  return fs.existsSync(venv) ? venv : defaultWhisperPython();
+}
+
 function defaultWhisperPython(): string {
   const candidates = [
     "D:/pulse-tools/pulse-python-runtime/Scripts/python.exe",

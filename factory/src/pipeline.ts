@@ -5403,13 +5403,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const variant = variantOf(ep.id);
   const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
   // 2.5D: the wide stills get depth layers on this machine's GPU, once per video (kept in assets).
-  if (s.cfg.parallax && s.cfg.whisperPython && assets.images?.length) {
+  if (s.cfg.parallax && s.cfg.parallaxPython && assets.images?.length) {
     const want = assets.images.filter(
       (i) => !i.layers && LAYERED_KINDS.has(i.kind) && i.aspect >= 1.2,
     );
     if (want.length) {
       const made = await makeParallax(
-        s.cfg.whisperPython,
+        s.cfg.parallaxPython,
         dir,
         want.map((i) => i.file),
       );
@@ -6115,12 +6115,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     assets.suite &&
     !assets.heroCut &&
     s.cfg.parallax &&
-    s.cfg.whisperPython &&
+    s.cfg.parallaxPython &&
     heroImage &&
     plan.shots[0]?.media.type === "image" &&
     plan.shots[0].media.index === plan.heroIndex
   ) {
-    const made = await makeParallax(s.cfg.whisperPython, dir, [heroImage.file]);
+    const made = await makeParallax(s.cfg.parallaxPython, dir, [heroImage.file]);
     const cut = made.get(heroImage.file);
     if (cut) assets.heroCut = { fg: cut.fg, x: cut.fgx };
   }

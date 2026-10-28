@@ -74,7 +74,8 @@ export async function synthesise(text: string, outPath: string, opts: VoiceOptio
       body: JSON.stringify({
         text,
         model_id: opts.modelId,
-        language_code: opts.modelId.includes("multilingual") ? undefined : "en",
+        // Multilingual models (v2 multilingual, v3) detect the language themselves: the twin channel speaks Spanish.
+        language_code: opts.modelId.includes("multilingual") || opts.modelId.startsWith("eleven_v3") ? undefined : "en",
         voice_settings: { ...DEFAULT_VOICE_SETTINGS, ...(opts.settings ?? {}) },
       }),
     },

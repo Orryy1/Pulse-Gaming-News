@@ -207,6 +207,7 @@ export function testConfig(
     visionQa: true,
     localizeLanguages: [],
     whisperPython: "",
+    parallaxPython: "",
     backupDir: "",
     tiktokDaily: 0,
     tiktokFromHour: 16,

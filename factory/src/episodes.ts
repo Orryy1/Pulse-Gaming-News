@@ -290,10 +290,13 @@ export async function countToday(
   return Number(row?.n ?? 0);
 }
 
-/** Episodes mid-production (not waiting on approval, YouTube or a terminal state). Gameplay Shorts are extra and never hold the news back. */
+/**
+ * Shorts mid-production (not waiting on approval, YouTube or a terminal state). Gameplay Shorts are extra and
+ * never hold the news back; long videos are made in their own lane and never take a Short's place.
+ */
 export async function countProducing(db: Db): Promise<number> {
   const [row] = await db.query<{ n: string | number }>(
-    `SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered') AND lane NOT IN ('gameplay','twin')`,
+    `SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered') AND lane NOT IN ('gameplay','twin','longform')`,
   );
   return Number(row?.n ?? 0);
 }

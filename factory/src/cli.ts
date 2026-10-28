@@ -10,7 +10,7 @@
 import { loadConfig, redactedConfig } from "./config.ts";
 import { openDb, migrate } from "./db.ts";
 import { createServices } from "./services.ts";
-import { tick } from "./pipeline.ts";
+import { tick, tickLong } from "./pipeline.ts";
 import { listEpisodes, getEpisode } from "./episodes.ts";
 import { FEEDS } from "./discovery/feeds.ts";
 import { fetchFeeds } from "./discovery/rss.ts";
@@ -51,7 +51,8 @@ async function main(): Promise<void> {
     } else if (cmd === "tick") {
       await migrate(db);
       console.log(redactedConfig(cfg));
-      console.log(await tick(createServices(db, cfg)));
+      const services = createServices(db, cfg);
+      console.log(await tick(services), await tickLong(services));
     } else if (cmd === "episodes") {
       for (const e of await listEpisodes(db, 30)) {
         console.log(`${e.id}  ${e.status.padEnd(18)} ${e.script_json?.youtube.title ?? e.story_json.headline}${e.last_error ? `\n    ! ${e.last_error.slice(0, 160)}` : ""}`);

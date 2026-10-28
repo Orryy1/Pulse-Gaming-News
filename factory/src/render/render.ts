@@ -18,6 +18,7 @@ import {
 import type { ShortProps } from "./props.ts";
 import { unloadLocalVision } from "../assets/localvision.ts";
 import { log } from "../lib/util.ts";
+import { PcTurnTimeout } from "../pcschedule.ts";
 import type { LongProps } from "./Long.tsx";
 import type { ThumbProps } from "./Brand.tsx";
 import type { EngageProps } from "./Engage.tsx";
@@ -144,11 +145,13 @@ export async function waitForHeadroom(
  * all 8 cores and 3-12 GB for 10-40 min, so it takes a turn from the PC orchestrator (C:\Claude\orchestrator)
  * first, then holds the PC until it's done. Inside the window before one of its slots (src/pcschedule.ts) it
  * goes ahead of everything, and starts regardless at the last moment that still makes the slot; outside one it
- * waits behind Orryy's renders, for up to 3 hours. Without the orchestrator it's a no-op.
+ * waits behind Orryy's renders, for up to 3 hours. Without the orchestrator it's a no-op. A long render waits
+ * only `yieldAfter` minutes, then hands back (PcTurnTimeout) rather than take a Short's coming slot.
  */
 async function withPcTurn<T>(
   job: string,
   fn: (granted: boolean) => Promise<T>,
+  yieldAfter?: number,
 ): Promise<T> {
   let release = () => {};
   let granted = false;
@@ -162,12 +165,14 @@ async function withPcTurn<T>(
       priority: 60,
       kind: `pulse:${job.split(" ")[0]}`,
       ram: 6,
-      maxWait: 180,
+      maxWait: yieldAfter ?? 180,
       onWait: (why: string) =>
         log("info", "render waiting for the PC", { why }),
     });
     granted = true;
   } catch (e) {
+    if (yieldAfter !== undefined && String(e).includes("orchestrator:"))
+      throw new PcTurnTimeout(`${job}: no turn within ${Math.round(yieldAfter)} min`);
     log(
       "warn",
       "PC orchestrator unavailable or wait ran out; rendering anyway",
@@ -190,10 +195,15 @@ async function renderWithTurn(
     Parameters<typeof renderMedia>[0],
     "offthreadVideoCacheSizeInBytes"
   >,
+  yieldAfter?: number,
 ): Promise<void> {
-  await withPcTurn(job, async (granted) => {
-    await renderMedia({ ...(await renderMemory(granted)), ...options });
-  });
+  await withPcTurn(
+    job,
+    async (granted) => {
+      await renderMedia({ ...(await renderMemory(granted)), ...options });
+    },
+    yieldAfter,
+  );
 }
 
 async function renderMemory(turnGranted = false): Promise<{
@@ -328,6 +338,8 @@ export interface LongRenderInput {
   onProgress?: (p: number) => void;
   /** Only these frames (a preview excerpt); the whole video when absent. */
   frameRange?: [number, number];
+  /** How long the PC turn may wait before it is handed back (PcTurnTimeout); 3 hours, then render anyway, when absent. */
+  turnWaitMinutes?: number;
 }
 
 type ThumbInput = Omit<
@@ -404,7 +416,7 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       // A busy PC can take far longer than the 30 s default to decode a clip frame.
       timeoutInMilliseconds: 180_000,
       onProgress: ({ progress }) => input.onProgress?.(progress),
-    });
+    }, input.turnWaitMinutes);
     await renderStill({
       composition,
       serveUrl,

@@ -18,6 +18,7 @@ import { createServices, oauthConfig } from "./services.ts";
 import {
   discoverTick,
   tick,
+  tickLong,
   episodeDir,
   clearSelectionPause,
   affiliateTags,
@@ -145,7 +146,7 @@ export function createApp(
   db: Db,
   cfg: Config,
   services: Services,
-  state: { lastTick?: string; lastError?: string },
+  state: { lastTick?: string; lastError?: string; lastLongTick?: string },
 ) {
   return async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const url = new URL(req.url ?? "/", "http://local");
@@ -182,6 +183,7 @@ export function createApp(
           ...met,
           uploads_active: activeUploads(),
           lastTick: state.lastTick,
+          lastLongTick: state.lastLongTick,
           lastError: state.lastError,
         }),
       );
@@ -1328,6 +1330,24 @@ async function runTick(
   }
 }
 
+/** The long-form lane on the same clock, never awaited by the Shorts tick (src/pipeline.ts tickLong). */
+let runningLong = false;
+async function runLongTick(
+  services: Services,
+  state: { lastLongTick?: string },
+): Promise<void> {
+  if (runningLong) return;
+  runningLong = true;
+  try {
+    await tickLong(services);
+    state.lastLongTick = new Date().toISOString();
+  } catch (err) {
+    log("error", "long-form tick crashed", { error: errorMessage(err) });
+  } finally {
+    runningLong = false;
+  }
+}
+
 /** Once a day, shout if nothing went out in the last 26 hours. */
 async function deadMansSwitch(db: Db, cfg: Config): Promise<void> {
   const [row] = await db.query<{ n: string }>(
@@ -1356,7 +1376,7 @@ async function main(): Promise<void> {
   const db = await openDb(cfg.databaseUrl, cfg.dataDir);
   const applied = await migrate(db);
   // One process runs this factory: any lease on the table was left by a process that died mid-tick
-  // (a restart during a render) and would otherwise block every tick until it expired.
+  // (a restart during a render) and would otherwise block every tick, Shorts or long-form, until it expired.
   const stale = await db.query<{ name: string }>(
     `DELETE FROM leases RETURNING name`,
   );
@@ -1369,7 +1389,12 @@ async function main(): Promise<void> {
     migrationsApplied: applied,
   });
   const services = createServices(db, cfg);
-  const state: { lastTick?: string; lastError?: string; doctor?: string } = {};
+  const state: {
+    lastTick?: string;
+    lastLongTick?: string;
+    lastError?: string;
+    doctor?: string;
+  } = {};
   const app = createApp(db, cfg, services, state);
   startGameWarmer({ db, cfg, tags: (id) => affiliateTags(cfg, id) });
   startSiteIndexNow({ db, cfg, tags: (id) => affiliateTags(cfg, id) });
@@ -1420,6 +1445,12 @@ async function main(): Promise<void> {
   setInterval(() => void discover(), Math.max(1, cfg.discoverMinutes) * 60_000);
   setTimeout(() => void runTick(services, state), 15_000);
   setInterval(() => void runTick(services, state), cfg.tickMinutes * 60_000);
+  // Long videos in their own lane, so hours of gathering and rendering never hold a Short back.
+  setTimeout(() => void runLongTick(services, state), 45_000);
+  setInterval(
+    () => void runLongTick(services, state),
+    cfg.tickMinutes * 60_000,
+  );
   // The PC orchestrator keeps the PC free before each slot; it hears the schedule on its own clock, since a
   // tick can hold for an hour.
   const pcSchedule = () => void publishPcSchedule(db, cfg, services.now());

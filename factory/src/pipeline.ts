@@ -12,6 +12,12 @@ import { promisify } from "node:util";
 import type { Config } from "./config.ts";
 import type { Db } from "./db.ts";
 import { withLease } from "./db.ts";
+import {
+  INHERIT_MINUTES,
+  longRenderMinutes,
+  PcTurnTimeout,
+  shortWindows,
+} from "./pcschedule.ts";
 import type { Llm } from "./editorial/llm.ts";
 import type { StoryCluster } from "./discovery/cluster.ts";
 import type { ArticleText } from "./discovery/article.ts";
@@ -5380,6 +5386,49 @@ async function belowMediaFloor(
   return true;
 }
 
+/**
+ * The PC goes to the Shorts first: a long render does not start while a Short's window (the same windows the PC
+ * orchestrator keeps free, src/pcschedule.ts) is open or would open before it is done. It looks again in five
+ * minutes (undefined); on a busy afternoon that can mean the evening, and a long video past its slot goes out
+ * once made. In a gap it returns how long its turn may wait in the orchestrator's queue (behind an Orryy
+ * render, say): until half an hour before the next Short's window, after which it would take that Short's place.
+ */
+async function longRenderGap(
+  s: Services,
+  ep: Episode,
+): Promise<number | undefined> {
+  const minutes = longRenderMinutes();
+  const now = s.now().getTime();
+  const ahead = await shortWindows(
+    s.db,
+    s.cfg,
+    s.now(),
+    ep.slot_at ? new Date(ep.slot_at) : undefined,
+  );
+  const clash = ahead.find((w) => Date.parse(w.from) < now + minutes * 60_000);
+  if (!clash) {
+    const next = Math.min(...ahead.map((w) => Date.parse(w.from)));
+    return Math.min(180, (next - now) / 60_000 - INHERIT_MINUTES);
+  }
+  await deferLong(s, ep);
+  log("info", "long render waits for a Short's slot", {
+    episode: ep.id,
+    lane: clash.lane,
+    window: `${clash.from} to ${clash.until}`,
+    note: clash.note,
+    minutes: Math.round(minutes),
+  });
+  return undefined;
+}
+
+/** Looks again in five minutes; not a failure, so no attempt is used. */
+async function deferLong(s: Services, ep: Episode): Promise<void> {
+  await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [
+    ep.id,
+    new Date(s.now().getTime() + 5 * 60_000),
+  ]);
+}
+
 /** The long-form 16:9 render: its own plan, composition, QA band and thumbnail. */
 async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const dir = episodeDir(s.cfg, ep.id);
@@ -5394,6 +5443,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       JSON.stringify(assets),
     ]);
   }
+  // Media are kept; everything from here on works this PC, so it waits for a gap between the Shorts.
+  if ((await longRenderGap(s, ep)) === undefined) return;
   const duration = (assets.durationSeconds ?? 300) + LONG_TAIL_SECONDS;
   const words = assets.words ?? [];
   // A documentary's breathers open each chapter (assets.breaks, put in when it was voiced).
@@ -5741,9 +5792,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     thumb: c.thumb as never,
   }));
   log("info", "thumbnail designs", { episode: ep.id, designs: candidates.map((c) => c.layout).slice(0, 3) });
+  // Again just before the turn is asked for: a breaking Short may have started while the stills were prepared.
+  const turnWait = await longRenderGap(s, ep);
+  if (turnWait === undefined) return;
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
-  await s.renderLong({
+  const rendered = await s.renderLong({
+    turnWaitMinutes: turnWait,
     episodeDir: dir,
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
@@ -5794,7 +5849,17 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       palette: assets.palette,
       annotations: assets.annotations,
     },
-  });
+  }).then(
+    () => true,
+    (err) => {
+      if (err instanceof PcTurnTimeout) return false;
+      throw err;
+    },
+  );
+  if (!rendered) {
+    log("info", "long render's turn did not come before a Short's window", { episode: ep.id });
+    return deferLong(s, ep);
+  }
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
   const tech = await s.technicalQa(final, duration, {
@@ -7370,10 +7435,57 @@ export async function pruneMedia(s: Services, days = 14): Promise<number> {
   return n;
 }
 
+/** Long videos (rankings, documentaries, recaps, remakes): made in their own lane (tickLong), never in the Shorts tick. */
+export function isLongEpisode(ep: Pick<Episode, "lane">): boolean {
+  return ep.lane === "longform";
+}
+
+/**
+ * Pushes one episode as far as it can go (script → upload); it stops on its own at a wait (approval,
+ * processing, a slot, a quota reset) or a failure.
+ */
+async function pushEpisode(s: Services, ep: Episode): Promise<void> {
+  let current: Episode | undefined = ep;
+  for (let i = 0; i < 10 && current; i++) {
+    const moved = await advance(s, current);
+    if (!moved) break;
+    current = await getEpisode(s.db, ep.id);
+    if (
+      current?.next_attempt_at &&
+      new Date(current.next_attempt_at) > s.now()
+    )
+      break;
+  }
+}
+
+/**
+ * The long-form lane. A long video takes hours to gather and render, and inside the Shorts tick it once held
+ * every Short back (28 Oct 2026: a documentary remake from 15:31 cost the 17:00 and 18:30 slots). It has its
+ * own lease, so one long video is worked on at a time and the Shorts tick never waits for it; a crashed holder
+ * is cleared at boot with the other leases. Selection stays in the Shorts tick.
+ */
+export async function tickLong(
+  s: Services,
+): Promise<{ ran: boolean; episodes?: string[] }> {
+  const result = await withLease(s.db, "tick-long", 360 * 60, async () => {
+    const PRE = ["selected", "scripted", "voiced"];
+    // One that is made goes first (approval, upload, the post-upload checks), not behind another's render.
+    const due = (await dueEpisodes(s.db, s.now()))
+      .filter(isLongEpisode)
+      .sort(
+        (a, b) =>
+          Number(PRE.includes(a.status)) - Number(PRE.includes(b.status)),
+      );
+    for (const ep of due) await pushEpisode(s, ep);
+    return { episodes: due.map((ep) => ep.id) };
+  });
+  return result ? { ran: true, ...result } : { ran: false };
+}
+
 export async function tick(
   s: Services,
 ): Promise<{ ran: boolean; selected?: string }> {
-  // A monthly documentary can hold the tick for over an hour (write, voice, render); a crashed holder is cleared at boot.
+  // Shorts only: long videos advance in tickLong. A crashed holder is cleared at boot.
   const result = await withLease(s.db, "tick", 180 * 60, async () => {
     let selected: string | undefined;
     try {
@@ -7387,21 +7499,9 @@ export async function tick(
           content: `Story selection failed once: ${errorMessage(err)}`,
         });
     }
-    for (const ep of await dueEpisodes(s.db, s.now())) {
-      // Push one episode as far as it can go this tick (script → upload);
-      // it stops on its own at a wait (approval, processing, a slot, a quota reset) or a failure.
-      let current: Episode | undefined = ep;
-      for (let i = 0; i < 10 && current; i++) {
-        const moved = await advance(s, current);
-        if (!moved) break;
-        current = await getEpisode(s.db, ep.id);
-        if (
-          current?.next_attempt_at &&
-          new Date(current.next_attempt_at) > s.now()
-        )
-          break;
-      }
-    }
+    // A long video selected above is left to its own lane.
+    for (const ep of await dueEpisodes(s.db, s.now()))
+      if (!isLongEpisode(ep)) await pushEpisode(s, ep);
     // The owner's recordings: new clips heard and looked at, picked ones started on (they ride the same tick next time).
     await ingestGameplay(s).catch((err) =>
       log("warn", "gameplay intake failed", { error: errorMessage(err) }),

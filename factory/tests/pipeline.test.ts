@@ -14,6 +14,7 @@ import {
 } from "../src/editorial/schema.ts";
 import {
   tick,
+  tickLong,
   maybeSelectWeekly,
   footageCredits,
   selectionPause,
@@ -37,6 +38,7 @@ import {
   type EvergreenScript,
 } from "../src/editorial/evergreen.ts";
 import { TwinScriptSchema } from "../src/editorial/twin.ts";
+import { LongformPlanSchema } from "../src/editorial/longform.ts";
 
 /** A small, valid ranking draft for the fake writer. */
 function rankingDraft(): EvergreenScript {
@@ -1644,5 +1646,99 @@ test("the narrator test: the test voice narrates its share of news Shorts, and L
   const { advance } = await import("../src/pipeline.ts");
   await advance(s, ep);
   assert.deepEqual(f.voices, ["Alice", "Liam", "Alice"]);
+  await db.close();
+});
+
+/** A ranking video already selected, its writer next. */
+async function longEpisode(db: Db, id: string) {
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane, priority, factcheck_json)
+     VALUES ($1, $2, 'selected', $3, 'longform', 40, $4)`,
+    [
+      id,
+      `long:${id}`,
+      JSON.stringify({ hash: `long:${id}`, headline: `Long ${id}`, items: [] }),
+      JSON.stringify({
+        topic: {
+          theme: "Open worlds",
+          title_idea: "The best open worlds",
+          criterion: "By how much there is to find",
+        },
+      }),
+    ],
+  );
+}
+
+/** The long-form writer, busy until the test lets it go (then it fails, as the fake knows no such script). */
+function slowLongWriter(s: Services) {
+  const base = s.llm;
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let started!: () => void;
+  const writing = new Promise<void>((r) => (started = r));
+  const w = { calls: 0, active: 0, most: 0, release, writing };
+  s.llm = {
+    structured: (async (opts: Parameters<Llm["structured"]>[0]) => {
+      if (opts.schema !== LongformPlanSchema) return base.structured(opts);
+      w.calls++;
+      w.most = Math.max(w.most, ++w.active);
+      started();
+      try {
+        await gate;
+      } finally {
+        w.active--;
+      }
+      throw new Error("the long-form writer stopped");
+    }) as Llm["structured"],
+  };
+  return w;
+}
+
+test("a long video hours into its work never holds back a due Short", async () => {
+  // 28 Oct 2026: a documentary remake held the tick from 15:31 and the 17:00 and 18:30 Shorts were missed.
+  // (The long video counts towards the day's videos, so the target leaves room for the Short.)
+  const { s, db, f } = await setup({ dailyTarget: 2 });
+  await longEpisode(db, "long1");
+  const writer = slowLongWriter(s);
+  const long = tickLong(s);
+  await writer.writing;
+  // The news slot is due: the Short is written, voiced, rendered and uploaded while the long video is still busy.
+  const r = await tick(s);
+  assert.equal(r.ran, true);
+  const short = (await listEpisodes(db)).find((e) => e.lane === "news");
+  assert.equal(short?.status, "published");
+  assert.equal(f.uploads, 1);
+  // The Shorts tick left the long video to its own lane.
+  assert.equal(writer.calls, 1);
+  assert.equal((await getEpisode(db, "long1"))?.status, "selected");
+  writer.release();
+  assert.deepEqual(await long, { ran: true, episodes: ["long1"] });
+  await db.close();
+});
+
+test("only one long video is worked on at a time", async () => {
+  const { s, db } = await setup({ newsSlots: [] });
+  await longEpisode(db, "long1");
+  await longEpisode(db, "long2");
+  const writer = slowLongWriter(s);
+  const first = tickLong(s);
+  const second = tickLong(s);
+  await writer.writing;
+  // The lane is held: a second run finds the lease taken and does nothing.
+  assert.deepEqual(await second, { ran: false });
+  assert.equal((await tick(s)).ran, true);
+  assert.equal(writer.calls, 1);
+  writer.release();
+  await first;
+  // Both were worked on, one after the other, never together.
+  assert.equal(writer.calls, 2);
+  assert.equal(writer.most, 1);
+  const rows = await db.query<{ attempts: number }>(
+    `SELECT attempts FROM episodes WHERE lane = 'longform' ORDER BY id`,
+  );
+  assert.deepEqual(
+    rows.map((r) => r.attempts),
+    [1, 1],
+  );
   await db.close();
 });

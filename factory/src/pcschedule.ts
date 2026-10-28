@@ -185,27 +185,37 @@ export function pcWindows(
   return out.sort((a, b) => a.from.localeCompare(b.from));
 }
 
+/** Where the orchestrator reads reservations from; its history sits in the folder above. */
+function reservationsDir(): string {
+  return (
+    process.env.ORCH_RESERVATIONS_DIR ||
+    "C:/Claude/orchestrator/state/reservations"
+  );
+}
+
+/** The episodes the windows are built from: everything before its render, and anything with a slot near now. */
+async function scheduleRows(
+  db: Db,
+  now: Date,
+): Promise<{ lane: string; status: string; slot_at: string | null }[]> {
+  return db.query<{ lane: string; status: string; slot_at: string | null }>(
+    `SELECT lane, status, slot_at FROM episodes
+      WHERE status IN ('selected','scripted','voiced')
+         OR slot_at BETWEEN $1::timestamptz - interval '3 hours' AND $1::timestamptz + interval '13 hours'`,
+    [now.toISOString()],
+  );
+}
+
 /** Writes the windows for the orchestrator; a no-op on a machine without it. Never throws. */
 export async function publishPcSchedule(
   db: Db,
   cfg: Config,
   now: Date,
 ): Promise<void> {
-  const dir =
-    process.env.ORCH_RESERVATIONS_DIR ||
-    "C:/Claude/orchestrator/state/reservations";
+  const dir = reservationsDir();
   if (cfg.dryRun || !fs.existsSync(path.dirname(dir))) return;
   try {
-    const rows = await db.query<{
-      lane: string;
-      status: string;
-      slot_at: string | null;
-    }>(
-      `SELECT lane, status, slot_at FROM episodes
-        WHERE status IN ('selected','scripted','voiced')
-           OR slot_at BETWEEN $1::timestamptz - interval '3 hours' AND $1::timestamptz + interval '13 hours'`,
-      [now.toISOString()],
-    );
+    const rows = await scheduleRows(db, now);
     const doc = {
       project: "pulse",
       class: "heavy",
@@ -219,4 +229,74 @@ export async function publishPcSchedule(
   } catch (err) {
     log("warn", "PC schedule not published", { error: errorMessage(err) });
   }
+}
+
+/** Planned slots of long videos: their windows belong to the long render, never to a Short. */
+const LONG_LANES = ["longform", "documentary"];
+
+/**
+ * How long a long render keeps the PC, in minutes: the slowest of its last five turns in the orchestrator's
+ * history (the figure the orchestrator itself plans with; an hour at least, since preview excerpts share the
+ * kind), plus 20 for the work around it (depth layers, normalising, frame checks). Two hours without history.
+ */
+export function longRenderMinutes(): number {
+  try {
+    const file = path.join(path.dirname(reservationsDir()), "history.jsonl");
+    const secs = fs
+      .readFileSync(file, "utf8")
+      .split("\n")
+      .slice(-500)
+      .flatMap((l) => {
+        try {
+          const r = JSON.parse(l) as {
+            kind?: string;
+            outcome?: string;
+            seconds?: number;
+          };
+          return r.kind === "pulse:long" && r.outcome === "done"
+            ? [Number(r.seconds) || 0]
+            : [];
+        } catch {
+          return [];
+        }
+      })
+      .slice(-5);
+    if (secs.length) return Math.max(60, Math.max(...secs) / 60) + 20;
+  } catch {
+    // No orchestrator on this machine, or no history yet.
+  }
+  return 120;
+}
+
+/**
+ * The Shorts' windows not yet released, open now or to come, soonest first: what a long render must keep out
+ * of. The orchestrator gives a Pulse job the deadline of any Pulse window opening within half an hour, so a
+ * long render granted then would jump the queue as if it were that Short, and a turn holding a deadline stops
+ * the Short's own start at its last safe moment, so it would wait out the whole render. Long videos' own
+ * windows (their planned slots, this episode's slot) are left out.
+ */
+export async function shortWindows(
+  db: Db,
+  cfg: Config,
+  now: Date,
+  ownSlot?: Date,
+): Promise<PcWindow[]> {
+  const rows = (await scheduleRows(db, now)).filter(
+    (r) => r.lane !== "longform",
+  );
+  return pcWindows(cfg, now, rows).filter(
+    (w) =>
+      !w.done &&
+      !LONG_LANES.includes(w.lane) &&
+      Date.parse(w.until) !== ownSlot?.getTime() &&
+      Date.parse(w.until) > now.getTime(),
+  );
+}
+
+/** How long a Pulse turn may wait in the orchestrator's queue before the next Short's window would hand it that Short's deadline. */
+export const INHERIT_MINUTES = 30;
+
+/** A long render's turn did not come in time: it goes back to the pipeline, which waits for the next gap. */
+export class PcTurnTimeout extends Error {
+  override name = "PcTurnTimeout";
 }

@@ -298,13 +298,32 @@ export const UNIT_WORDS: Record<string, [string, string]> = {
   Hz: ["hertz", "hertz"],
 };
 
-/** "134GB" and "134 GB" as "134 gigabytes", "1GB" as "1 gigabyte". */
+/** How people shorten them after the first time, and before a noun ("a 210 gig download"). */
+const SHORT_UNIT: Record<string, [string, string]> = {
+  GB: ["gig", "gigs"],
+  MB: ["meg", "megs"],
+};
+const BEFORE_NOUN =
+  /^\s+(?:[a-z]+-)?(download|install|installation|update|patch|file|game|drive|card|version|client|folder|map|expansion|dlc|ssd|preload|pre-load)\b/i;
+
+/**
+ * "134GB" and "134 GB" as "134 gigabytes" the first time, then "134 gigs" (saying "gigabytes" every time
+ * sounded robotic, owner 28 Oct 2026); before a noun "a 210 gig download"; "1GB" as "1 gigabyte".
+ */
 export function speakUnits(text: string): string {
+  const seen = new Set<string>();
   return text.replace(
     /(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s?(TB|GB|MB|KB|GHz|MHz|Hz)\b/g,
-    (_m, n: string, unit: string) => {
+    (m: string, n: string, unit: string, offset: number, all: string) => {
       const [one, many] = UNIT_WORDS[unit]!;
-      return `${n} ${Number(n.replace(/,/g, "")) === 1 ? one : many}`;
+      const single = Number(n.replace(/,/g, "")) === 1;
+      const short = SHORT_UNIT[unit];
+      const noun = BEFORE_NOUN.test(all.slice(offset + m.length));
+      const again = seen.has(unit);
+      seen.add(unit);
+      if (short && (noun || again))
+        return `${n} ${noun || single ? short[0] : short[1]}`;
+      return `${n} ${single ? one : many}`;
     },
   );
 }

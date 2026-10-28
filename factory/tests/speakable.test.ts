@@ -144,7 +144,7 @@ test("big counts are rounded the way people say them", async () => {
 test("storage and frequency units are said in full and captioned as symbols", async () => {
   const { speakUnits } = await import("../src/voice/speakable.ts");
   assert.equal(speakUnits("Phantom Blade Zero needs 134GB of space"), "Phantom Blade Zero needs 134 gigabytes of space");
-  assert.equal(speakUnits("a 1 TB drive, 16 GB of RAM and a 1.5GB patch at 120Hz"), "a 1 terabyte drive, 16 gigabytes of RAM and a 1.5 gigabytes patch at 120 hertz");
+  assert.equal(speakUnits("a 1 TB drive, 16 GB of RAM and a 1.5GB patch at 120Hz"), "a 1 terabyte drive, 16 gigabytes of RAM and a 1.5 gig patch at 120 hertz");
   assert.equal(speakUnits("the GB in GBA and 4K"), "the GB in GBA and 4K");
   assert.equal(speakable("It needs 134GB."), "It needs 134 gigabytes.");
   const w = (text: string, start: number) => ({ text, start, end: start + 0.2 });
@@ -180,4 +180,19 @@ test("a possessive digit is said as one word and a rank before a name is not str
   assert.equal(speakable("to help save fellow Marine Nick Eufrazio."), "to help save fellow marine Nick Eufrazio.");
   assert.equal(speakable("The Marine Corps and the 1990's"), "The Marine Corps and the nineteen ninety's");
   assert.equal(speakable("GTA 6's map and the PS5's fans"), "GTA six's map and the PS5's fans");
+});
+
+test("sizes are said like a person says them: gigabytes once, then gigs, and a 210 gig download", async () => {
+  const { speakUnits } = await import("../src/voice/speakable.ts");
+  const { displayWords } = await import("../src/render/timeline.ts");
+  assert.equal(
+    speakUnits("It needs 210GB. The PS5 version is 150GB and the patch adds 20GB."),
+    "It needs 210 gigabytes. The PS5 version is 150 gigs and the patch adds 20 gigs.",
+  );
+  assert.equal(speakUnits("Grab the 120GB download now"), "Grab the 120 gig download now");
+  assert.equal(speakUnits("a 1GB file and then 1GB more"), "a 1 gig file and then 1 gig more");
+  const show = (t: string) => displayWords(t.split(" ").map((text, i) => ({ text, start: i, end: i + 1 }))).map((w) => w.text).join(" ");
+  assert.equal(show("is 150 gigs and a 210 gig download"), "is 150GB and a 210GB download");
+  const { tokens } = await import("../src/qa/narration.ts");
+  assert.deepEqual(tokens("gigs"), tokens("gigabytes"), "the narration check hears them as one word");
 });

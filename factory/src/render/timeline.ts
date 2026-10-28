@@ -412,7 +412,10 @@ function twoDigit(
   words: string[],
 ): { value: number; used: number } | undefined {
   // "eighteen's" is eighteen: the possessive is put back on the figure by the caller.
-  const a = words[0]?.toLowerCase().replace(/['’]s\b/, "").replace(/[^a-z-]/g, "");
+  const a = words[0]
+    ?.toLowerCase()
+    .replace(/['’]s\b/, "")
+    .replace(/[^a-z-]/g, "");
   if (!a) return undefined;
   if (a === "oh" && UNITS[words[1]?.toLowerCase().replace(/[^a-z]/g, "") ?? ""])
     return {
@@ -492,8 +495,8 @@ export function displayWords(words: Word[]): Word[] {
       const u =
         tail(i + 1) || ["hundred", "thousand"].includes(bare(i + 3))
           ? undefined
-          : UNITS[bare(i + 2).replace(/s$/, "")] ??
-            (possessive(words[i + 2]?.text) ? undefined : UNITS[bare(i + 2)]);
+          : (UNITS[bare(i + 2).replace(/s$/, "")] ??
+            (possessive(words[i + 2]?.text) ? undefined : UNITS[bare(i + 2)]));
       if (u !== undefined) {
         out.push({
           text: `200${u}${possessive(words[i + 2]?.text)}${tail(i + 2)}`,
@@ -542,7 +545,11 @@ export function displayWords(words: Word[]): Word[] {
     if (hi !== undefined) {
       // a decade: "the nineteen nineties" is "the 1990s"
       const decade = TENS_W[bare(i + 1).replace(/ies$/, "y")];
-      if (decade !== undefined && /ies$/.test(bare(i + 1)) && hi * 100 + decade >= 1950) {
+      if (
+        decade !== undefined &&
+        /ies$/.test(bare(i + 1)) &&
+        hi * 100 + decade >= 1950
+      ) {
         out.push({
           text: `${hi * 100 + decade}s${tail(i + 1)}`,
           start: w.start,
@@ -586,9 +593,14 @@ export function displayWords(words: Word[]): Word[] {
     const prev = out[out.length - 1]?.text ?? "";
     if (own && /^[A-Z0-9]/.test(prev) && !/[.!?:]["”’)]*$/.test(prev)) {
       const unit = UNITS[w.text.toLowerCase().replace(/['’]s.*$/, "")];
-      const n = unit !== undefined ? { value: unit, used: 1 } : twoDigit([w.text]);
+      const n =
+        unit !== undefined ? { value: unit, used: 1 } : twoDigit([w.text]);
       if (n && n.used === 1 && n.value >= 2) {
-        out.push({ text: `${n.value}${own}${tail(i)}`, start: w.start, end: w.end });
+        out.push({
+          text: `${n.value}${own}${tail(i)}`,
+          start: w.start,
+          end: w.end,
+        });
         continue;
       }
     }
@@ -600,7 +612,15 @@ export function displayWords(words: Word[]): Word[] {
       // "twenty-first" is an ordinal (below), not 20: the part after a hyphen must be a plain digit word.
       const part = bare(i).split("-")[1];
       const plain = part === undefined || UNITS[part] !== undefined;
-      if (n && n.used === 1 && n.value >= 10 && plain && !starts && !own && /^[a-z]+(-[a-z]+)?[.,;:!?)"”’]*$/.test(w.text)) {
+      if (
+        n &&
+        n.used === 1 &&
+        n.value >= 10 &&
+        plain &&
+        !starts &&
+        !own &&
+        /^[a-z]+(-[a-z]+)?[.,;:!?)"”’]*$/.test(w.text)
+      ) {
         out.push({ text: `${n.value}${tail(i)}`, start: w.start, end: w.end });
         continue;
       }
@@ -621,8 +641,12 @@ export function displayWords(words: Word[]): Word[] {
     terabytes: "TB",
     gigabyte: "GB",
     gigabytes: "GB",
+    gig: "GB",
+    gigs: "GB",
     megabyte: "MB",
     megabytes: "MB",
+    meg: "MB",
+    megs: "MB",
     kilobyte: "KB",
     kilobytes: "KB",
     gigahertz: "GHz",

@@ -122,6 +122,15 @@ const ROMAN: Record<string, number> = {
   IX: 9,
 };
 
+const UNIT_SAME: Record<string, string> = {
+  gig: "gigabytes",
+  gigs: "gigabytes",
+  gigabyte: "gigabytes",
+  meg: "megabytes",
+  megs: "megabytes",
+  megabyte: "megabytes",
+};
+
 export function tokens(word: string): string[] {
   // Whisper writes "GTA 5" as "GTA V": a capital Roman numeral (never "I" or "X", which are words) is its number.
   const roman = word.replace(/[.,;:!?)"”’]+$/, "");
@@ -138,6 +147,8 @@ export function tokens(word: string): string[] {
       .toLowerCase()
       .replace(/[’']s$/, "s")
       .replace(/[^a-z0-9]/g, "");
+    // "gigs" and "gigabytes" are the same word to the check (the voice shortens repeats, speakUnits).
+    t = UNIT_SAME[t] ?? t;
     const ord = t.match(/^(\d+)(st|nd|rd|th)$/);
     if (ord) t = ord[1]!;
     if (/^\d+$/.test(t) && t.length <= 9) {

@@ -38,6 +38,7 @@ import {
   writeLongform,
 } from "./editorial/longform.ts";
 import { trailerMatchesGame } from "./assets/commons.ts";
+import { maybeSendCaptureChecklist } from "./capture.ts";
 import { rankStills } from "./assets/stillscore.ts";
 import { makeParallax, LAYERED_KINDS } from "./render/parallax.ts";
 import { annotationLabel, locate } from "./assets/annotate.ts";
@@ -5382,6 +5383,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const script = ep.script_json!;
   const assets = { ...(ep.assets_json ?? {}) };
   if (!assets.images) {
+    // The shot list is final: the owner gets a "record these moments" list when it covers a game they play.
+    await maybeSendCaptureChecklist(s, ep);
     Object.assign(assets, await gatherMedia(s, ep, dir));
     await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
       ep.id,

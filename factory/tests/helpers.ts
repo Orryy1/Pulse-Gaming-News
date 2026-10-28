@@ -57,6 +57,8 @@ export function testConfig(
     sprintExtra: 3,
     sprintScoreMin: 60,
     recapLong: false,
+    ownerGames: [],
+    captureChecklist: false,
     footageLibrary: "",
     voiceProvider: "local",
     localTtsUrl: "http://127.0.0.1:1",

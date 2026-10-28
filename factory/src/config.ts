@@ -268,6 +268,9 @@ export interface Config {
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
   ytdlpPath: string;
+  /** Games the owner plays (and records): long videos about them send them a "record these moments" list. */
+  ownerGames: string[];
+  captureChecklist: boolean; // send that list on Discord when a long video or documentary covers one of their games
   footageLibrary: string; // the owner's own recordings (NVIDIA: Videos\\<Game>\\...); empty = off
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
   amazonUkTag: string; // Amazon Associates UK tracking ID
@@ -625,6 +628,11 @@ export function loadConfig(): Config {
       | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
     ytdlpPath: str("YTDLP_PATH", "yt-dlp"),
+    ownerGames: str("OWNER_GAMES", "Grand Theft Auto V, Grand Theft Auto VI")
+      .split(",")
+      .map((g) => g.trim())
+      .filter(Boolean),
+    captureChecklist: bool("CAPTURE_CHECKLIST", true),
     footageLibrary: str(
       "FOOTAGE_LIBRARY",
       path.join(process.env.USERPROFILE ?? "", "Videos"),

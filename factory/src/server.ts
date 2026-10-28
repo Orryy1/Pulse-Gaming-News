@@ -75,6 +75,7 @@ import { publishPcSchedule } from "./pcschedule.ts";
 import { activeUploads } from "./youtube/upload.ts";
 import { handleRoutine, routineAllowed, startBraveFront } from "./routines.ts";
 import { alert, postDiscord } from "./approval/discord.ts";
+import { sendDueNotices } from "./notices.ts";
 import {
   dailySummary,
   digestDue,
@@ -1650,6 +1651,12 @@ async function main(): Promise<void> {
   }
   // Daily at 04:00 UTC, when nothing is mid-production, exit cleanly so the
   // Windows runner can pull updates and restart.
+  // Messages for the owner at a set time (data/admin/notices.json, src/notices.ts).
+  setInterval(
+    () =>
+      void sendDueNotices(cfg, new Date(), (m) => services.notify(m)).catch(() => undefined),
+    2 * 60_000,
+  );
   let lastRestartDay = new Date().toISOString().slice(0, 10);
   setInterval(async () => {
     const now = new Date();

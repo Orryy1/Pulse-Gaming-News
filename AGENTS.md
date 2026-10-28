@@ -229,3 +229,4 @@ Each backup is a full ~3.4 GB copy of `D:\pulse-data\pulse.db`. Repair and recov
 - Check free space on D: first; do not create a backup if it would leave less than 150 GB free.
 - Once an operation is finished and verified, delete any backups it made that nothing still needs.
 - Keep at most 20 backups in total; delete the oldest unreferenced ones first and never the newest 5.
+- Backups from 27 Sept to 12 Oct 2026 were moved to Google Drive as 7-Zip archives (`My Drive\Pulse DB backup archive`, one `<backup folder name>.7z` each). `D:\pulse-data\backup-archive\manifest.csv` lists them. Restore one by extracting it back into `D:\pulse-data\backups`.

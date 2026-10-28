@@ -53,6 +53,8 @@ export interface GameplayMeta {
     reason: string;
     episode?: string;
     radio?: boolean;
+    /** The game the reviewer saw (the stream title can be wrong); long videos use the clip as footage of it. */
+    game?: string;
   };
 }
 

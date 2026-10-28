@@ -1,5 +1,6 @@
 // The owner's own gameplay: NVIDIA instant replay (and similar) saves clips to
-// Videos\<Game>\<Game> YYYY.MM.DD - HH.MM.SS.NN.mp4. When a video covers a game
+// Videos\<Game>\<Game> YYYY.MM.DD - HH.MM.SS.NN.mp4, and the gameplay lane's inbox holds 40-second
+// cuts of every Twitch/Xbox broadcast, each with the game its reviewer saw. When a video covers a game
 // the owner has recorded, those recordings come first: they are the best footage
 // there is, and publishers' content-usage rules allow it. Originals are never
 // changed or deleted: the matcher works on hard links inside the episode folder.
@@ -50,6 +51,31 @@ export async function libraryFiles(root: string): Promise<LibraryFile[]> {
   return out.sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
 
+/**
+ * The gameplay lane's inbox clips (Pulse Gameplay\inbox\<id>\clip.mp4) whose reviewer named the game, newest
+ * first. A clip with licensed radio audible stays out (Content ID), and so does one not yet looked at.
+ */
+export async function inboxFiles(root: string): Promise<LibraryFile[]> {
+  const out: LibraryFile[] = [];
+  const inbox = path.join(root, "inbox");
+  for (const id of await fs.readdir(inbox).catch(() => [] as string[])) {
+    const dir = path.join(inbox, id);
+    const meta = await fs
+      .readFile(path.join(dir, "meta.json"), "utf8")
+      .then((t) => JSON.parse(t.trimStart()))
+      .catch(() => undefined);
+    const game = meta?.review?.game;
+    if (typeof game !== "string" || !game.trim() || meta.review.radio === true)
+      continue;
+    if (meta.status === "new" || meta.status === "reviewing") continue;
+    const file = path.join(dir, meta.clip?.file || "clip.mp4");
+    const st = await fs.stat(file).catch(() => undefined);
+    if (st?.isFile())
+      out.push({ game, file, mtimeMs: st.mtimeMs, bytes: st.size });
+  }
+  return out.sort((a, b) => b.mtimeMs - a.mtimeMs);
+}
+
 /** The recordings of exactly this game (a sequel's or the series' other games' never count). */
 export function recordingsOf(
   files: LibraryFile[],
@@ -65,6 +91,8 @@ export function recordingsOf(
 
 export interface LibraryClipOpts {
   root: string;
+  /** The gameplay lane's folder (holds inbox/); empty leaves those clips out. */
+  inbox?: string;
   game: string;
   franchise: string;
   episodeDir: string;
@@ -76,12 +104,20 @@ export interface LibraryClipOpts {
 
 /** Moments from the owner's recordings matched to the given lines, with game sound when nobody is talking. */
 export async function libraryClips(o: LibraryClipOpts): Promise<VisualAsset[]> {
-  if (!o.root || !o.targets.length || o.maxClips <= 0) return [];
-  const mine = recordingsOf(
-    await libraryFiles(o.root),
-    o.game,
-    o.franchise,
-  ).slice(0, 3);
+  if ((!o.root && !o.inbox) || !o.targets.length || o.maxClips <= 0) return [];
+  // Long NVIDIA recordings: the newest three. The inbox's 40-second cuts are short, so up to eight of them.
+  const mine = [
+    ...recordingsOf(
+      o.root ? await libraryFiles(o.root) : [],
+      o.game,
+      o.franchise,
+    ).slice(0, 3),
+    ...recordingsOf(
+      o.inbox ? await inboxFiles(o.inbox) : [],
+      o.game,
+      o.franchise,
+    ).slice(0, 8),
+  ];
   if (!mine.length) return [];
   const prefix = o.prefix ?? "own";
   const work = path.join(o.episodeDir, `${prefix}_work`);

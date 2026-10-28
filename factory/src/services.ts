@@ -111,8 +111,8 @@ export function createServices(db: Db, cfg: Config): Services {
     steamClimbers: (now) => steamClimbers(now),
     steamDeals: (exclude) => steamDeals(exclude),
     ownClips: (game, franchise, dir, targets, maxClips) =>
-      cfg.footage && cfg.footageLibrary
-        ? libraryClips({ root: cfg.footageLibrary, game, franchise, episodeDir: dir, targets, maxClips, llm: cfg.clipRanking === "llm" ? llm : undefined })
+      cfg.footage && (cfg.footageLibrary || cfg.gameplayRoot)
+        ? libraryClips({ root: cfg.footageLibrary, inbox: cfg.gameplayRoot, game, franchise, episodeDir: dir, targets, maxClips, llm: cfg.clipRanking === "llm" ? llm : undefined })
         : Promise.resolve([]),
     trending: () => trendingVideos(() => accessToken(db, oauthConfig(cfg)), (units) => quotaAdd(db, new Date(), units)),
     research: (title, fallbackQuery, maxChars) => researchGame(title, fallbackQuery, maxChars),

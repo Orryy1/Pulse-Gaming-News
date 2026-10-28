@@ -1,6 +1,5 @@
 {
-  "_description": "Map ElevenLabs voice_id → local VoxCPM config. Lets one server handle both Pulse Gaming (Liam) and Sleepy Stories (Christopher) without restart. Path is relative to tts_server/. If voice_id hits the server and is missing here, the server falls back to REF_VOICE_PATH env var (default voice mode).",
-
+  "_description": "Map ElevenLabs voice_id \u2192 local VoxCPM config. Lets one server handle both Pulse Gaming (Liam) and Sleepy Stories (Christopher) without restart. Path is relative to tts_server/. If voice_id hits the server and is missing here, the server falls back to REF_VOICE_PATH env var (default voice mode).",
   "TX3LPaxmHKxFdv7VOQHJ": {
     "alias": "liam",
     "channel": "pulse-gaming",
@@ -9,9 +8,8 @@
     "cfg_value": 2.0,
     "inference_timesteps": 20,
     "ref_voice_text": "A new Metro game just dropped its official reveal trailer, and nobody expected this franchise to return. Metro twenty 39 is officially happening, The reveal trailer just went live, showing what appears to be a deeply personal story centred on a protagonist grappling with a haunting past. Based on the trailer's tone and imagery, the narrative explores themes of indoctrination and trauma.",
-    "notes": "Liam — moderate-pace clone. 25s ref extracted from output/audio/1sn9xhe.mp3 (real ElevenLabs render at natural speed — was previously a 15s clip from 1s4denn.mp3 with stretch artifacts already baked in, plus base_speed 2.6 causing phase-vocoder formant warble = demonic clone-of-a-clone). v2: cleaner ref + 1.4 stretch."
+    "notes": "Liam \u2014 moderate-pace clone. 25s ref extracted from output/audio/1sn9xhe.mp3 (real ElevenLabs render at natural speed \u2014 was previously a 15s clip from 1s4denn.mp3 with stretch artifacts already baked in, plus base_speed 2.6 causing phase-vocoder formant warble = demonic clone-of-a-clone). v2: cleaner ref + 1.4 stretch."
   },
-
   "G17SuINrv2H9FC6nvetn": {
     "alias": "christopher",
     "channel": "sleepy-stories",
@@ -19,6 +17,16 @@
     "base_speed": 1.4,
     "cfg_value": 2.0,
     "inference_timesteps": 20,
-    "notes": "Christopher — calm documentary narration, 85-95 WPM target. Needs 15-30s clean clone ref (not yet extracted)."
+    "notes": "Christopher \u2014 calm documentary narration, 85-95 WPM target. Needs 15-30s clean clone ref (not yet extracted)."
+  },
+  "OJ8Q3U8s4XUozYoCc8n7": {
+    "alias": "pulse-narrator",
+    "channel": "pulse-gaming",
+    "ref_voice_path": "voices/pulse_narrator.wav",
+    "base_speed": 1.2,
+    "cfg_value": 2.0,
+    "inference_timesteps": 20,
+    "ref_voice_text": "Welcome back to Pulse. Today we're digging into one of the strangest stories in gaming history, a project that nearly died three times before it ever shipped. The team was tiny, the budget was a joke and the deadline kept slipping. And yet, somehow, it changed everything that came after it.",
+    "notes": "Pulse Narrator (ElevenLabs Voice Design 'journalist_2', eleven_v3), the channel's voice from 28 Oct 2026. 17s ref rendered by ElevenLabs v3 at natural speed. Local fallback when ElevenLabs is unavailable."
   }
 }

@@ -580,6 +580,28 @@ export function displayWords(words: Word[]): Word[] {
       i += count.used - 1;
       continue;
     }
+    // A title's number the voice says as a word to avoid a pause ("GTA four's", speakCadence): a figure again
+    // after a capitalised name. Not "one" ("Xbox One's" is the console's name).
+    const own = possessive(w.text);
+    const prev = out[out.length - 1]?.text ?? "";
+    if (own && /^[A-Z0-9]/.test(prev) && !/[.!?:]["”’)]*$/.test(prev)) {
+      const unit = UNITS[w.text.toLowerCase().replace(/['’]s.*$/, "")];
+      const n = unit !== undefined ? { value: unit, used: 1 } : twoDigit([w.text]);
+      if (n && n.used === 1 && n.value >= 2) {
+        out.push({ text: `${n.value}${own}${tail(i)}`, start: w.start, end: w.end });
+        continue;
+      }
+    }
+    // A number from 10 to 99 said on its own ("fifteen radio stations") is a figure, as people write it,
+    // except at the start of a sentence ("Ten years after...").
+    {
+      const n = twoDigit([w.text]);
+      const starts = !prev || /[.!?:]["”’)]*$/.test(prev);
+      if (n && n.used === 1 && n.value >= 10 && !starts && !own && /^[a-z]+(-[a-z]+)?[.,;:!?)"”’]*$/.test(w.text)) {
+        out.push({ text: `${n.value}${tail(i)}`, start: w.start, end: w.end });
+        continue;
+      }
+    }
     // An ordinal said in words ("the fourteenth of March", "twenty-first") is shown as people write it:
     // "14th", "21st". "First", "second" and "third" are ordinary words too often ("the first time"), so
     // they only turn when a month or "the ... of" marks a date.

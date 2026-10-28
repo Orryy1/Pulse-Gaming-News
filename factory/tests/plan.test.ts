@@ -667,7 +667,7 @@ test("prices the voice says in words are shown as prices again", async () => {
   );
   assert.equal(
     show("only seventy dollars for twenty games"),
-    "only $70 for twenty games",
+    "only $70 for 20 games",
   );
   assert.equal(
     show("fifty-nine pounds ninety-nine in the UK"),
@@ -680,8 +680,8 @@ test("prices the voice says in words are shown as prices again", async () => {
   );
   assert.equal(
     show("only twenty games"),
-    "only twenty games",
-    "small numbers in words stay words",
+    "only 20 games",
+    "10 and up are figures (28 Oct 2026); one to nine stay words",
   );
   assert.equal(
     show("Majora's Mask, two thousand. Its clock"),
@@ -953,4 +953,21 @@ test("spoken years keep their possessive and decades as figures in captions", as
   assert.equal(show("back in the nineteen nineties, arcades"), "back in the 1990s, arcades");
   assert.equal(show("twenty sixteen. Then"), "2016. Then", "the plain year is unchanged");
   assert.equal(show("two thousand players"), "2,000 players", "a count is a figure, not a year");
+});
+
+test("title numbers said as words for the voice, and 10 to 99, are figures in captions", async () => {
+  const { displayWords } = await import("../src/render/timeline.ts");
+  const show = (t: string) =>
+    displayWords(t.split(" ").map((text, i) => ({ text, start: i, end: i + 1 })))
+      .map((w) => w.text)
+      .join(" ");
+  assert.equal(show("the size of GTA three's Liberty City."), "the size of GTA 3's Liberty City.");
+  assert.equal(show("fix GTA four's awkward controls"), "fix GTA 4's awkward controls");
+  assert.equal(show("Modern Warfare twenty's"), "Modern Warfare 20's");
+  assert.equal(show("on Xbox One's store"), "on Xbox One's store", "a console's name stays");
+  assert.equal(show("241 tracks across fifteen radio stations, plus"), "241 tracks across 15 radio stations, plus");
+  assert.equal(show("it lasted twenty-four hours."), "it lasted 24 hours.");
+  assert.equal(show("its first year. Ten years after its launch"), "its first year. Ten years after its launch", "sentence start stays");
+  assert.equal(show("two days later, three islands"), "two days later, three islands", "small counts stay words");
+  assert.equal(show("that's everyone's favourite"), "that's everyone's favourite");
 });

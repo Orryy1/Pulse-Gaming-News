@@ -887,3 +887,12 @@ test("an old game opens on the hardware of its platform and era", async () => {
   // "DS" only as a word: not inside another platform's name.
   assert.equal(deviceFor(2001, "Windows, PS2", 0), "monitor");
 });
+
+test("the graphics check reads which frames a problem names", async () => {
+  const { framesNamed } = await import("../src/qa/vision.ts");
+  assert.deepEqual(
+    framesNamed(["Frame 3: heading cut off", "Frames 5 and 7: text overlaps", "frame 2, 4: misspelt"]).sort(),
+    [2, 3, 4, 5, 7],
+  );
+  assert.deepEqual(framesNamed(["looks fine"]), []);
+});

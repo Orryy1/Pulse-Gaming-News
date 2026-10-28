@@ -22,12 +22,42 @@ You see frames sampled across the video in order. Fail the video only for real p
 - anything advertiser-unfriendly (gore, nudity, offensive imagery).
 Stylistic preferences are not failures. Note them in "notes". Captions show a few uppercase words of a sentence at a time and may start or end mid-sentence; judge spelling in that context (possessive "its" is correct English, not a missing apostrophe). Dark brand-plate backgrounds with the theme's name are a deliberate choice when no art exists; never fail for that.`;
 
-export async function visionQa(llm: Llm, frames: string[], context: { headline: string; gameTitle: string; format?: "short" | "long" }): Promise<VisionQa> {
+/** The graphics check: one frame from each full-screen graphic and chapter breather of a long video. */
+export const GRAPHICS_VISION_PROMPT = `You check the on-screen graphics of a 16:9 gaming documentary or ranking before it is published.
+Each frame shows one animated graphic (a chart, map, quote card, recreated document, console-menu homage, chapter title card and so on) at the moment it should be fully readable.
+Fail a frame only for a real fault a viewer would notice: text cut off at an edge or by another element, text overlapping other text, text unreadable against its background, misspelt or garbled words, raw code or placeholder text, broken or missing images, empty panels or boxes where content clearly belongs, elements spilling outside the frame, or anything advertiser-unfriendly.
+Deliberate looks are not faults: redaction bars, scanlines, VHS noise, pixel art, film grain, torn paper, handwriting, retro or console-menu styling, an ILLUSTRATION tag, a frame still mid-animation with something partly drawn.
+Write every problem as "Frame N: what is wrong", one per frame, using the frame numbers given. Pass when nothing is wrong.`;
+
+/** The thumbnail check: the designs that will go to YouTube. */
+export const THUMB_VISION_PROMPT = `You check YouTube thumbnails for a gaming channel before they are used. Each frame is one 1280x720 thumbnail.
+Fail a thumbnail only for a real fault: words cut off or overlapping, words unreadable at phone size, garbled or misspelt words, a broken or missing picture, a large empty area, an awkward crop that cuts the main subject's face in half, or anything advertiser-unfriendly.
+Bold styling, outlines, glow, red circles, console or retro looks and the PULSE badge are deliberate.
+Write every problem as "Frame N: what is wrong", using the frame numbers given. Pass when nothing is wrong.`;
+
+/** The frame numbers (1-based) a checker's problems name. */
+export function framesNamed(problems: string[]): number[] {
+  const out = new Set<number>();
+  for (const p of problems)
+    for (const m of p.matchAll(/frames?\s+(\d+(?:\s*(?:,|and|&)\s*\d+)*)/gi))
+      for (const n of m[1]!.split(/\s*(?:,|and|&)\s*/i)) if (Number(n) > 0) out.add(Number(n));
+  return [...out];
+}
+
+export async function visionQa(llm: Llm, frames: string[], context: { headline: string; gameTitle: string; format?: "short" | "long" | "graphics" | "thumbs" }): Promise<VisionQa> {
   const content: LlmContent = [];
   for (const [i, f] of frames.entries()) {
     content.push({ type: "text", text: `Frame ${i + 1} of ${frames.length}` });
     content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: (await fs.readFile(f)).toString("base64") } });
   }
   content.push({ type: "text", text: `Headline: ${context.headline}\nGame: ${context.gameTitle || "(not about one game)"}` });
-  return llm.structured({ system: context.format === "long" ? LONG_VISION_PROMPT : VISION_PROMPT, content, schema: VisionQaSchema, effort: "low" });
+  const system =
+    context.format === "long"
+      ? LONG_VISION_PROMPT
+      : context.format === "graphics"
+        ? GRAPHICS_VISION_PROMPT
+        : context.format === "thumbs"
+          ? THUMB_VISION_PROMPT
+          : VISION_PROMPT;
+  return llm.structured({ system, content, schema: VisionQaSchema, effort: "low" });
 }

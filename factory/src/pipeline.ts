@@ -93,6 +93,7 @@ import {
   chapterLines,
   LONG_TAIL_SECONDS,
   entryOf,
+  usefulGraphic,
 } from "./render/longplan.ts";
 import type { LongRenderInput } from "./render/render.ts";
 import type { renderCutdown } from "./render/render.ts";
@@ -164,6 +165,7 @@ import {
   retentionNotes,
 } from "./analytics.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
+import { framesNamed } from "./qa/vision.ts";
 import {
   addDays,
   localTime,
@@ -358,7 +360,7 @@ export interface Services {
   ): Promise<string[]>;
   visionQa(
     frames: string[],
-    ctx: { headline: string; gameTitle: string; format?: "short" | "long" },
+    ctx: { headline: string; gameTitle: string; format?: "short" | "long" | "graphics" | "thumbs" },
   ): Promise<VisionQa>;
   /** The ElevenLabs cycle: what is left and what would be lost at the reset (undefined when unknown). */
   creditPlan?(): Promise<import("./voice/credits.ts").CreditPlan | undefined>;
@@ -5703,10 +5705,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           ? "A new documentary every month · Shorts every day"
           : "A new ranking every week · Shorts every day",
       moments: hasMoments
-        ? moments.map((ms) =>
-            ms.map((m) => ({
+        ? moments.map((ms, ei) =>
+            ms.map((m, mi) => ({
               show: m.show,
-              graphic: m.graphic,
+              // A graphic the graphics check faulted is left out (the sentence keeps its picture).
+              graphic: (assets.quietMoments ?? []).includes(`${ei}:${mi}`)
+                ? { kind: "none" as const, primary: "", secondary: "", items: [] }
+                : m.graphic,
               emphasis: m.emphasis,
               person: m.person || undefined,
             })),
@@ -5723,6 +5728,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       plan,
       renderDate: s.now().toISOString().slice(0, 10),
       breaks: assets.breaks,
+      quietBreaks: assets.quietBreaks,
       annotations: assets.annotations,
     },
   });
@@ -5790,13 +5796,71 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     );
     throw new Error(`QA failed: ${problems.join(" | ")}`);
   }
+  // The graphics check (owner, 28 Oct 2026: "do all safely"): a frame from every full-screen graphic and
+  // chapter breather goes to the vision checker. A graphic it faults is left out and the video renders again;
+  // a faulted thumbnail is dropped, and a passing design takes the main thumbnail's place if it was that one.
+  let thumbFiles = thumbVariants.map((v) => path.basename(v.file));
+  if (s.cfg.visionQa) {
+    const checks: Array<{ t: number; what: string }> = [];
+    if (hasMoments) {
+      const ws = momentWindows(segments, words, moments.map((m) => m.length), moments.map((e) => e.map(momentKeys)));
+      for (const w of ws) {
+        const g = moments[w.entry]?.[w.moment]?.graphic;
+        if (!g || !usefulGraphic(g) || (assets.quietMoments ?? []).includes(`${w.entry}:${w.moment}`)) continue;
+        const t = Math.max(w.start, w.at - 0.15) + 2.2;
+        if (t < duration - 1) checks.push({ t, what: `${w.entry}:${w.moment}` });
+      }
+    }
+    (assets.breaks ?? []).forEach((b, i) => {
+      if (!(assets.quietBreaks ?? []).includes(i)) checks.push({ t: b.start + 2.5, what: `break:${i}` });
+    });
+    const sample = checks.slice(0, 32);
+    const faulted: string[] = [];
+    for (let k = 0; k < sample.length; k += 8) {
+      const batch = sample.slice(k, k + 8);
+      const frames = await s.extractFrames(final, path.join(dir, "qa", `gfx${k}`), batch.map((c) => c.t));
+      const v = await s
+        .visionQa(frames, { headline: script.headline, gameTitle: script.game_title, format: "graphics" })
+        .catch(() => undefined);
+      if (v?.verdict === "fail") for (const n of framesNamed(v.problems)) if (batch[n - 1]) faulted.push(batch[n - 1]!.what);
+      if (v?.problems.length) await logEvent(s.db, ep.id, "graphics_check", { problems: v.problems, at: batch.map((c) => c.what) });
+    }
+    if (faulted.length) {
+      assets.quietMoments = [...(assets.quietMoments ?? []), ...faulted.filter((f) => !f.startsWith("break:"))];
+      assets.quietBreaks = [
+        ...(assets.quietBreaks ?? []),
+        ...faulted.filter((f) => f.startsWith("break:")).map((f) => Number(f.slice(6))),
+      ];
+      const { longPlan: _dropped, ...again } = assets;
+      await s.db.query(`UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`, [
+        ep.id,
+        JSON.stringify({ ...qa, graphics: faulted }),
+        JSON.stringify(again),
+      ]);
+      throw new Error(`graphics check: ${faulted.length} graphic(s) left out, rendering again`);
+    }
+    const thumbs = ["thumb.jpg", ...thumbFiles];
+    const tv = await s
+      .visionQa(thumbs.map((f) => path.join(dir, f)), { headline: script.headline, gameTitle: script.game_title, format: "thumbs" })
+      .catch(() => undefined);
+    const bad = new Set(tv?.verdict === "fail" ? framesNamed(tv.problems).map((n) => thumbs[n - 1]).filter(Boolean) : []);
+    if (bad.size) {
+      await logEvent(s.db, ep.id, "thumbnail_check", { problems: tv!.problems });
+      const good = thumbFiles.filter((f) => !bad.has(f));
+      if (bad.has("thumb.jpg") && good[0]) {
+        await fs.copyFile(path.join(dir, good[0]), path.join(dir, "thumb.jpg"));
+        good.shift();
+      }
+      thumbFiles = good;
+    }
+  }
   await transition(s.db, ep.id, "voiced", "rendered", {
     assets_json: {
       ...assets,
       video: "short.mp4",
       poster: "poster.jpg",
       thumb: "thumb.jpg",
-      thumbVariants: thumbVariants.map((v) => path.basename(v.file)),
+      thumbVariants: thumbFiles,
       musicFile,
       // When each entry begins (seconds), so its retention can be read off the curve later.
       entryStarts: segments

@@ -150,6 +150,7 @@ export type LongProps = {
   endLine?: string; // the line under the end card
   moments?: MomentProp[][]; // per ranking entry, one per sentence: graphics, kinetic captions, pop-ins
   breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds)
+  quietBreaks?: number[]; // breathers the graphics check faulted: the plain title card instead
   /** Zoom to the detail: the sentence, the picture on screen and where the named thing sits (0-1). */
   annotations?: Array<{
     entry: number;
@@ -2798,8 +2799,11 @@ export const Long: React.FC<LongProps> = (props) => {
             ...(widePic ? ["torn", "mask"] : []),
           ];
           const motif = motifOf(b);
-          const look =
-            motif?.card && ((b ?? 0) + props.variant) % 2 === 0
+          // A breather the graphics check faulted falls back to the plain title card.
+          const breakIndex = breakFrames.findIndex((x) => Math.abs(x.from - starts[i]!) <= 3);
+          const look = (props.quietBreaks ?? []).includes(breakIndex)
+            ? "title"
+            : motif?.card && ((b ?? 0) + props.variant) % 2 === 0
               ? "motif"
               : looks[((b ?? 0) + props.variant) % looks.length]!;
           const board = look === "board";

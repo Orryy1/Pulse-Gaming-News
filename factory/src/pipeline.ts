@@ -2569,6 +2569,7 @@ export async function ingestGameplay(
           reason: review.reason,
           episode,
           radio: review.radio_audible,
+          game: review.game_title,
         },
       });
       log("info", "gameplay clip reviewed", {
@@ -5057,13 +5058,33 @@ async function gatherChapterMedia(
         energy: "medium",
         keywords: [entry.game_title, ...f.keywords].slice(0, 4),
       }));
+      // The owner's own recordings of this game come first (owner, 28 Oct 2026); licensed gameplay fills the rest.
+      const own = await s
+        .ownClips(entry.game_title, franchise, edir, targets, Math.ceil(targets.length / 2))
+        .catch(() => [] as VisualAsset[]);
+      for (const c of own)
+        clips.push({
+          file: rel(c.file),
+          sourceUrl: c.sourceUrl,
+          provenance: c.provenance,
+          durationSeconds: Math.min(c.durationSeconds ?? 4, 8),
+          beatIndex,
+          moment: c.moment,
+          role: undefined,
+          motion: c.motion,
+          luma: c.luma,
+          label: c.label,
+          reason: c.reason,
+          startSeconds: c.startSeconds,
+          audio: c.audio,
+        });
       for (const c of await s.gameplayClips(
         entry.game_title,
         franchise,
         entry.year,
         edir,
         targets,
-        targets.length,
+        Math.max(1, targets.length - own.length),
       ))
         clips.push({
           file: rel(c.file),
@@ -5398,6 +5419,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         ]);
     }
   }
+  // Some pictures were stored without their shape (older episodes, some entry art); measure them now, since
+  // the framing and the zoom-to-detail maths need it.
+  for (const i of assets.images ?? [])
+    if (!Number.isFinite(i.aspect))
+      i.aspect = await s.imageAspect(path.join(dir, i.file)).catch(() => 16 / 9);
   const images = (assets.images ?? []).map((i) => ({
     file: i.file,
     kind: i.kind,

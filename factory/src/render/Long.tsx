@@ -106,7 +106,12 @@ import {
   type Device,
 } from "./components/Retro.tsx";
 import { NAMETAG_STYLES } from "./components/NameTags.tsx";
-import { MaskInterlude, SlateInterlude, TornInterlude, VhsInterlude } from "./components/Interludes.tsx";
+import {
+  MaskInterlude,
+  SlateInterlude,
+  TornInterlude,
+  VhsInterlude,
+} from "./components/Interludes.tsx";
 import {
   ACCENT_FRAMES,
   ACCENT_LEAD,
@@ -184,14 +189,21 @@ const TEASE_ITEMS = 4;
 const TEASE_FRAMES = 42;
 
 /** One cut of the flash-forward: the graphic punched in, a COMING UP tag, a flash into the next. */
-const TeaseCut: React.FC<{ children: React.ReactNode; last: boolean }> = ({ children, last }) => {
+const TeaseCut: React.FC<{ children: React.ReactNode; last: boolean }> = ({
+  children,
+  last,
+}) => {
   const frame = useCurrentFrame();
   const scale = interpolate(frame, [0, TEASE_FRAMES], [1.06, 1.0], clamp);
   const flash = interpolate(frame, [0, 3], [0.55, 0], clamp);
-  const out = last ? interpolate(frame, [TEASE_FRAMES - 8, TEASE_FRAMES], [1, 0], clamp) : 1;
+  const out = last
+    ? interpolate(frame, [TEASE_FRAMES - 8, TEASE_FRAMES], [1, 0], clamp)
+    : 1;
   return (
     <AbsoluteFill style={{ background: COLOUR.ink, opacity: out }}>
-      <AbsoluteFill style={{ transform: `scale(${scale})` }}>{children}</AbsoluteFill>
+      <AbsoluteFill style={{ transform: `scale(${scale})` }}>
+        {children}
+      </AbsoluteFill>
       <div
         style={{
           position: "absolute",
@@ -364,7 +376,10 @@ const Still: React.FC<{
   punchAt,
 }) => {
   const frame = useCurrentFrame();
-  const punch = punchAt === undefined ? 1 : interpolate(frame, [punchAt, punchAt + 2], [1, PUNCH], clamp);
+  const punch =
+    punchAt === undefined
+      ? 1
+      : interpolate(frame, [punchAt, punchAt + 2], [1, PUNCH], clamp);
   const m = moveTransform(
     move,
     Math.min(1, frame / Math.max(1, durationFrames)),
@@ -533,7 +548,10 @@ const Clip: React.FC<{
   punchAt?: number;
 }> = ({ src, audio, frames, punchAt }) => {
   const frame = useCurrentFrame();
-  const punch = punchAt === undefined ? 1 : interpolate(frame, [punchAt, punchAt + 2], [1, PUNCH], clamp);
+  const punch =
+    punchAt === undefined
+      ? 1
+      : interpolate(frame, [punchAt, punchAt + 2], [1, PUNCH], clamp);
   // A hard cut: fading in from transparent showed the black canvas under it for a few frames.
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
@@ -794,15 +812,20 @@ const ChapterTransition: React.FC<{ kind: TransitionKind }> = ({ kind }) => {
 };
 
 /** A picture's label at the lower right, fading in after the cut and out before the next. */
-const Descriptor: React.FC<{ text: string; frames: number; delay?: number }> = ({
-  text,
-  frames,
-  delay = 0,
-}) => {
+const Descriptor: React.FC<{
+  text: string;
+  frames: number;
+  delay?: number;
+}> = ({ text, frames, delay = 0 }) => {
   const frame = useCurrentFrame();
   const o = interpolate(
     frame,
-    [14 + delay, 26 + delay, Math.max(27 + delay, frames - 14), Math.max(28 + delay, frames - 4)],
+    [
+      14 + delay,
+      26 + delay,
+      Math.max(27 + delay, frames - 14),
+      Math.max(28 + delay, frames - 4),
+    ],
     [0, 1, 1, 0],
     {
       extrapolateLeft: "clamp",
@@ -925,7 +948,19 @@ const Backdrop: React.FC<{
   punches?: Map<number, number>;
   /** Per shot index: its game's own colour, washed softly over the picture. */
   tints?: Map<number, string>;
-}> = ({ plan, images, clips, theme, describe, focusFor, retro, looks, powerOff, punches, tints }) => (
+}> = ({
+  plan,
+  images,
+  clips,
+  theme,
+  describe,
+  focusFor,
+  retro,
+  looks,
+  powerOff,
+  punches,
+  tints,
+}) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
       const len = Math.max(1, s.end - s.start);
@@ -959,7 +994,14 @@ const Backdrop: React.FC<{
           out = (
             <>
               {out}
-              <AbsoluteFill style={{ background: tint, mixBlendMode: "soft-light", opacity: 0.28, pointerEvents: "none" }} />
+              <AbsoluteFill
+                style={{
+                  background: tint,
+                  mixBlendMode: "soft-light",
+                  opacity: 0.28,
+                  pointerEvents: "none",
+                }}
+              />
             </>
           );
         if (powerOff?.has(i)) out = <PowerOff frames={seqLen}>{out}</PowerOff>;
@@ -978,52 +1020,54 @@ const Backdrop: React.FC<{
                 src={clip.src}
                 audio={clip.audio}
                 frames={len}
-                punchAt={!dev && punches?.has(i) ? punches.get(i)! - s.start : undefined}
+                punchAt={
+                  !dev && punches?.has(i)
+                    ? punches.get(i)! - s.start
+                    : undefined
+                }
               />,
             )
           ) : img ? (
             <>
               <FadeIn frames={i > 0 ? xf : 0}>
-                {dev ? (
-                  dress(
-                    <Still
-                      src={img.src}
-                      aspect={img.aspect}
-                      durationFrames={len + (i > 0 ? xf : 0)}
-                      move={s.move}
-                    />,
-                  )
-                ) : (
-                dress(<Still
-                  punchAt={
-                    punches?.has(i)
-                      ? punches.get(i)! - (i > 0 ? s.start - xf : s.start)
-                      : undefined
-                  }
-                  print={img.kind === "photo"}
-                  tilt={((s.media.index * 37) % 5) - 2}
-                  layers={img.layers}
-                  dir={i % 2 ? -1 : 1}
-                  focus={
-                    focusFor?.get(i)
-                      ? {
-                          at:
-                            focusFor.get(i)!.from -
-                            (i > 0
-                              ? s.start - xf
-                              : s.start),
-                          origin: focusFor.get(i)!.origin,
-                          zoom: focusFor.get(i)!.zoom,
+                {dev
+                  ? dress(
+                      <Still
+                        src={img.src}
+                        aspect={img.aspect}
+                        durationFrames={len + (i > 0 ? xf : 0)}
+                        move={s.move}
+                      />,
+                    )
+                  : dress(
+                      <Still
+                        punchAt={
+                          punches?.has(i)
+                            ? punches.get(i)! - (i > 0 ? s.start - xf : s.start)
+                            : undefined
                         }
-                      : undefined
-                  }
-                  src={img.src}
-                  aspect={img.aspect}
-                  durationFrames={len + (i > 0 ? xf : 0)}
-                  move={s.move}
-                  fromBlack={i === 0}
-                />)
-                )}
+                        print={img.kind === "photo"}
+                        tilt={((s.media.index * 37) % 5) - 2}
+                        layers={img.layers}
+                        dir={i % 2 ? -1 : 1}
+                        focus={
+                          focusFor?.get(i)
+                            ? {
+                                at:
+                                  focusFor.get(i)!.from -
+                                  (i > 0 ? s.start - xf : s.start),
+                                origin: focusFor.get(i)!.origin,
+                                zoom: focusFor.get(i)!.zoom,
+                              }
+                            : undefined
+                        }
+                        src={img.src}
+                        aspect={img.aspect}
+                        durationFrames={len + (i > 0 ? xf : 0)}
+                        move={s.move}
+                        fromBlack={i === 0}
+                      />,
+                    )}
               </FadeIn>
               {img.credit ? (
                 <div
@@ -1655,7 +1699,10 @@ const ChapterInterlude: React.FC<{
     interpolate(frame, [0, 10], [0, 1], { extrapolateRight: "clamp" }) * out;
   const label = spring({ frame: frame - 4, fps, config: SPRING.ENTER });
   const head = spring({ frame: frame - 10, fps, config: SPRING.ENTER });
-  const sweep = interpolate(frame, [28, 62], [-20, 125], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const sweep = interpolate(frame, [28, 62], [-20, 125], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
   const sub = spring({ frame: frame - 22, fps, config: SPRING.ENTER });
   const rule = interpolate(frame, [8, 34], [0, 1], {
     extrapolateLeft: "clamp",
@@ -2129,12 +2176,15 @@ export const Long: React.FC<LongProps> = (props) => {
         );
       case "versus":
         // Two looks taken in turn: the split card and the remaster-style wipe.
-        return React.createElement((variant ?? 0) % 2 ? WipeCompare : VersusMoment, {
-          len,
-          heading: displayText(g.primary),
-          left: gameArt(g.items[0] ?? ""),
-          right: gameArt(g.items[1] ?? ""),
-        });
+        return React.createElement(
+          (variant ?? 0) % 2 ? WipeCompare : VersusMoment,
+          {
+            len,
+            heading: displayText(g.primary),
+            left: gameArt(g.items[0] ?? ""),
+            right: gameArt(g.items[1] ?? ""),
+          },
+        );
       default:
         return null;
     }
@@ -2214,7 +2264,10 @@ export const Long: React.FC<LongProps> = (props) => {
     if (tagged.has(key)) continue;
     tagged.add(key);
     firstMention.add(`${w.entry}|${w.moment}`);
-    firstMentionOrder.set(`${w.entry}|${w.moment}`, firstMentionOrder.size + props.variant);
+    firstMentionOrder.set(
+      `${w.entry}|${w.moment}`,
+      firstMentionOrder.size + props.variant,
+    );
   }
   const bedAt = (f: number) =>
     beds.find((b) => f >= b.from && f < b.to)?.src ?? props.musicSrc;
@@ -2277,7 +2330,14 @@ export const Long: React.FC<LongProps> = (props) => {
           x.media.index === a.image,
       );
       const im = props.images[a.image];
-      if (shot < 0 || !im) continue;
+      if (shot < 0 || !im || !Number.isFinite(im.aspect)) continue;
+      // A box that isn't four numbers (a malformed annotation) is skipped rather than zooming to nowhere.
+      if (
+        !Array.isArray(a.box) ||
+        a.box.length < 4 ||
+        !a.box.slice(0, 4).every((n) => Number.isFinite(Number(n)))
+      )
+        continue;
       const p1 = coverPoint(im.aspect, a.box[0], a.box[1]);
       const p2 = coverPoint(im.aspect, a.box[2], a.box[3]);
       const box = { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
@@ -2336,15 +2396,20 @@ export const Long: React.FC<LongProps> = (props) => {
       if (e === undefined) return;
       const from = starts[i]! + breakAt(i);
       const after = plan.shots.find(
-        (x) => from + montageFrames(4) >= x.start && from + montageFrames(4) < x.end,
+        (x) =>
+          from + montageFrames(4) >= x.start && from + montageFrames(4) < x.end,
       );
       const clips = props.clips
-        .filter((c) => c.beatIndex === e && !c.credit && c.durationSeconds >= 1.5)
-        .map((c): MontageItem => ({
-          kind: "clip",
-          src: c.src,
-          startFrom: Math.round(c.durationSeconds * fps * 0.55),
-        }));
+        .filter(
+          (c) => c.beatIndex === e && !c.credit && c.durationSeconds >= 1.5,
+        )
+        .map(
+          (c): MontageItem => ({
+            kind: "clip",
+            src: c.src,
+            startFrom: Math.round(c.durationSeconds * fps * 0.55),
+          }),
+        );
       const pics = props.images
         .map((im, k) => ({ im, k }))
         .filter(
@@ -2356,7 +2421,11 @@ export const Long: React.FC<LongProps> = (props) => {
         )
         .map(({ im }): MontageItem => ({ kind: "image", src: im.src }));
       const items: MontageItem[] = [];
-      for (let k = 0; items.length < 4 && k < Math.max(clips.length, pics.length); k++) {
+      for (
+        let k = 0;
+        items.length < 4 && k < Math.max(clips.length, pics.length);
+        k++
+      ) {
         if (clips[k]) items.push(clips[k]!);
         if (items.length < 4 && pics[k]) items.push(pics[k]!);
       }
@@ -2408,12 +2477,19 @@ export const Long: React.FC<LongProps> = (props) => {
         )
           return;
         if (focusFor.has(i)) return;
-        if (openings.some((o) => sh.start >= o.from - 5 && sh.start < o.from + 75)) return;
+        if (
+          openings.some((o) => sh.start >= o.from - 5 && sh.start < o.from + 75)
+        )
+          return;
         let device: Device | "tv" = deviceFor(old.year, old.platforms, turn);
         const room = sh.end - sh.start - 30;
         if (device !== "tv" && room < DEVICE_FRAMES[device]) device = "tv";
         if (device === "tv" && room < TV_HOLD + TV_PUSH) return;
-        out.set(i, { device, label: old.title, green: handheldGreen(old.year) });
+        out.set(i, {
+          device,
+          label: old.title,
+          green: handheldGreen(old.year),
+        });
         done.add(e);
         turn++;
       });
@@ -2429,11 +2505,16 @@ export const Long: React.FC<LongProps> = (props) => {
       const e = shotEntry(sh);
       const old = oldEntry(e);
       if (e === undefined || !old || retro.has(i) || focusFor.has(i)) return;
-      if (sh.media.type === "image" && props.images[sh.media.index]?.kind === "photo") return;
+      if (
+        sh.media.type === "image" &&
+        props.images[sh.media.index]?.kind === "photo"
+      )
+        return;
       if (sh.media.type === "plate") return;
       const n = count.get(e) ?? 0;
       count.set(e, n + 1);
-      if ((n + props.variant) % 2 === 0) out.set(i, old.year < 1994 ? "crt" : "vhs");
+      if ((n + props.variant) % 2 === 0)
+        out.set(i, old.year < 1994 ? "crt" : "vhs");
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2456,7 +2537,11 @@ export const Long: React.FC<LongProps> = (props) => {
       const next = plan.shots[i + 1];
       const e = shotEntry(sh);
       if (!next || !oldEntry(e) || sh.end - sh.start < 45) return;
-      if (shotEntry(next) !== e && entryFrames.some((f) => Math.abs(f - next.start) < 4)) out.add(i);
+      if (
+        shotEntry(next) !== e &&
+        entryFrames.some((f) => Math.abs(f - next.start) < 4)
+      )
+        out.add(i);
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2476,7 +2561,13 @@ export const Long: React.FC<LongProps> = (props) => {
       const i = plan.shots.findIndex((x) => f >= x.start && f < x.end);
       const sh = plan.shots[i];
       if (!sh || sh.media.type === "plate") continue;
-      if (f - sh.start < 24 || sh.end - f < 36 || focusFor.has(i) || retro.has(i)) continue;
+      if (
+        f - sh.start < 24 ||
+        sh.end - f < 36 ||
+        focusFor.has(i) ||
+        retro.has(i)
+      )
+        continue;
       if (sh.media.type === "image") {
         const im = props.images[sh.media.index];
         if (!im || im.kind === "photo" || im.aspect < 0.9) continue;
@@ -2504,7 +2595,9 @@ export const Long: React.FC<LongProps> = (props) => {
     const v = k >= 0 ? props.segments[k]!.visual : undefined;
     const m = v
       ? motifsFor({
-          title: displayText((v.kind === "rank" ? v.primary : v.secondary) ?? ""),
+          title: displayText(
+            (v.kind === "rank" ? v.primary : v.secondary) ?? "",
+          ),
           platforms: v.items?.[1] ?? "",
           year: Number(v.items?.[0]) || undefined,
           theme: props.theme,
@@ -2513,7 +2606,11 @@ export const Long: React.FC<LongProps> = (props) => {
     motifCache.set(e, m);
     return m;
   };
-  const videoMotif = motifsFor({ title: props.title, platforms: "", theme: props.theme })[0];
+  const videoMotif = motifsFor({
+    title: props.title,
+    platforms: "",
+    theme: props.theme,
+  })[0];
   /** Wide pictures for a motif's panels, tiles and screens: an entry's own, or the topic's for the opening. */
   const motifPictures = (e: number | undefined) =>
     props.images
@@ -2529,8 +2626,21 @@ export const Long: React.FC<LongProps> = (props) => {
     const out = new Map<number, GfxStyle>();
     const turn = new Map<string, number>();
     const HOUSE = new Set([
-      "quote", "headline", "timeline", "delay", "span", "reviews", "source",
-      "milestone", "people", "versus", "stat", "date", "list", "compare", "score",
+      "quote",
+      "headline",
+      "timeline",
+      "delay",
+      "span",
+      "reviews",
+      "source",
+      "milestone",
+      "people",
+      "versus",
+      "stat",
+      "date",
+      "list",
+      "compare",
+      "score",
     ]);
     const SMALL = new Set(["stat", "date", "list", "compare", "score"]);
     windows.forEach((w, k) => {
@@ -2541,7 +2651,11 @@ export const Long: React.FC<LongProps> = (props) => {
         .map((name) => ALL_STYLES[name]!)
         .filter((s) => s.kind === g.kind && (!s.fits || s.fits(g)));
       const choices: Array<GfxStyle | undefined> = [
-        ...(HOUSE.has(g.kind) ? (SMALL.has(g.kind) ? styles.map(() => undefined) : [undefined]) : []),
+        ...(HOUSE.has(g.kind)
+          ? SMALL.has(g.kind)
+            ? styles.map(() => undefined)
+            : [undefined]
+          : []),
         ...styles,
       ];
       // A sentence about a game with a motif takes the motif's own style every other time it can.
@@ -2578,15 +2692,45 @@ export const Long: React.FC<LongProps> = (props) => {
   }, [windows, props.moments, props.variant]);
   // The flash-forward (owner, 28 Oct 2026): the opening teases the video's biggest graphics still to come, a
   // few frames of each frozen fully drawn, under a COMING UP tag, while the narrator sets the story up.
-  const TEASE_KINDS = ["stat", "map", "quote", "milestone", "span", "headline", "bars", "delay", "reviews", "versus"];
+  const TEASE_KINDS = [
+    "stat",
+    "map",
+    "quote",
+    "milestone",
+    "span",
+    "headline",
+    "bars",
+    "delay",
+    "reviews",
+    "versus",
+  ];
   const teaser = useMemo(() => {
     const picks: number[] = [];
     const seen = new Set<number>();
     for (const kind of TEASE_KINDS)
       windows.forEach((w, k) => {
         const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
-        if (!g || g.kind !== kind || !usefulGraphic(g) || seen.has(w.entry) || w.start < 60) return;
-        if (!packFor.get(k) && !["quote", "headline", "span", "milestone", "delay", "reviews", "versus"].includes(kind)) return;
+        if (
+          !g ||
+          g.kind !== kind ||
+          !usefulGraphic(g) ||
+          seen.has(w.entry) ||
+          w.start < 60
+        )
+          return;
+        if (
+          !packFor.get(k) &&
+          ![
+            "quote",
+            "headline",
+            "span",
+            "milestone",
+            "delay",
+            "reviews",
+            "versus",
+          ].includes(kind)
+        )
+          return;
         if (picks.length >= TEASE_ITEMS) return;
         picks.push(k);
         seen.add(w.entry);
@@ -2597,8 +2741,15 @@ export const Long: React.FC<LongProps> = (props) => {
   const teaseGraphic = (k: number) => {
     const w = windows[k]!;
     const g = props.moments![w.entry]![w.moment]!.graphic;
-    const bg = backgroundFor(g.kind, Number(entryTitle(w.entry).year) || undefined, props.variant + k);
-    const src = props.images.find((im) => im.beatIndex === w.entry && im.aspect >= 1.2 && im.kind !== "capsule")?.src;
+    const bg = backgroundFor(
+      g.kind,
+      Number(entryTitle(w.entry).year) || undefined,
+      props.variant + k,
+    );
+    const src = props.images.find(
+      (im) =>
+        im.beatIndex === w.entry && im.aspect >= 1.2 && im.kind !== "capsule",
+    )?.src;
     const style = packFor.get(k);
     if (style)
       return React.createElement(style.component, {
@@ -2611,8 +2762,20 @@ export const Long: React.FC<LongProps> = (props) => {
         src,
       });
     if (richGraphic(g, 200)) return richGraphic(g, 200, bg, props.variant + k);
-    if (g.kind === "quote") return <QuoteMoment g={g} len={200} bg={bg} variant={props.variant + k} />;
-    if (g.kind === "headline") return <HeadlineMoment g={g} len={200} bg={bg} variant={props.variant + k} src={src} />;
+    if (g.kind === "quote")
+      return (
+        <QuoteMoment g={g} len={200} bg={bg} variant={props.variant + k} />
+      );
+    if (g.kind === "headline")
+      return (
+        <HeadlineMoment
+          g={g}
+          len={200}
+          bg={bg}
+          variant={props.variant + k}
+          src={src}
+        />
+      );
     return null;
   };
 
@@ -2626,19 +2789,38 @@ export const Long: React.FC<LongProps> = (props) => {
       windows.some((w, k) => {
         const style = packFor.get(k);
         const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
-        if (!style && !(g && ["quote", "headline", "source", "timeline", "delay", "span", "reviews", "people", "versus", "milestone"].includes(g.kind)))
+        if (
+          !style &&
+          !(
+            g &&
+            [
+              "quote",
+              "headline",
+              "source",
+              "timeline",
+              "delay",
+              "span",
+              "reviews",
+              "people",
+              "versus",
+              "milestone",
+            ].includes(g.kind)
+          )
+        )
           return false;
         const { from, len } = spanOf(k);
         return f >= from - 10 && f < from + Math.min(len, 220) + 10;
       });
     plan.shots.forEach((sh, i) => {
       const at = sh.start;
-      if (i === 0 || at - last < 8 * fps || (i * 7 + props.variant) % 4 !== 0) return;
+      if (i === 0 || at - last < 8 * fps || (i * 7 + props.variant) % 4 !== 0)
+        return;
       if (entryFrames.some((e) => Math.abs(at - e) < 2 * fps)) return;
       if (breakFrames.some((b) => at >= b.from - 20 && at <= b.to + 20)) return;
       if (openings.some((o) => at >= o.from - 10 && at < o.from + 60)) return;
       if (retro.has(i) || covered(at)) return;
-      const old = oldEntry(shotEntry(sh)) && oldEntry(shotEntry(plan.shots[i - 1]!));
+      const old =
+        oldEntry(shotEntry(sh)) && oldEntry(shotEntry(plan.shots[i - 1]!));
       out.push({ at, kind: old ? "static" : ACCENTS[n++ % ACCENTS.length]! });
       last = at;
     });
@@ -2647,65 +2829,83 @@ export const Long: React.FC<LongProps> = (props) => {
   }, [plan, windows, packFor, openings, retro, fps, props.variant]);
   const richSoundAt = new Map<number, number>();
   const momentSounds = gateLongSounds(
-    windows.flatMap((w, k): LongSoundCandidate[] => {
-      const raw = props.moments?.[w.entry]?.[w.moment];
-      if (!raw) return [];
-      const { from, len, anchored } = spanOf(k);
-      const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
-      const style = packFor.get(k);
-      if (style) {
-        const at = from + (style.sound === "stamp" ? 34 : 0);
-        richSoundAt.set(k, at);
-        return [
-          {
-            key: k,
-            frame: at,
-            kind: style.sound === "glint" ? ("glint" as const) : style.sound === "stamp" ? ("stamp" as const) : ("pop" as const),
-          },
-        ];
-      }
-      if (graphic === "stat" || graphic === "score")
-        return [{ key: k, frame: from, kind: "glint" as const }];
-      // The richer graphics have their own cue: a whoosh as a full-screen explainer lands, the stamp's
-      // low hit as it slams down, a tick as a counter finishes or a milestone pops.
-      if (["quote", "headline", "source", "reviews", "people", "versus", "timeline"].includes(graphic)) {
-        richSoundAt.set(k, from);
-        return [{ key: k, frame: from, kind: "pop" as const }];
-      }
-      if (graphic === "delay") {
-        richSoundAt.set(k, from + 34);
-        return [{ key: k, frame: from + 34, kind: "stamp" as const }];
-      }
-      if (graphic === "span" || graphic === "milestone") {
-        const at = from + (graphic === "span" ? 70 : 6);
-        richSoundAt.set(k, at);
-        return [{ key: k, frame: at, kind: "glint" as const }];
-      }
-      const shot = plan.shots.find((x) => from >= x.start && from < x.end);
-      const pic = props.images.some(
-        (im) => im.beatIndex === w.entry && im.moment === w.moment,
-      );
-      if (
-        graphic === "none" &&
-        shot?.media.type === "clip" &&
-        pic &&
-        w.moment > 0
-      )
-        return [
-          {
-            key: k,
-            frame: from + (anchored ? 0 : Math.min(30, Math.max(0, len - 90))),
-            kind: "pop" as const,
-          },
-        ];
-      return [];
-    }).concat(
-      // A detail's box drawing on gets a tick (keys from 100000, clear of the moment windows').
-      details.map((d, i): LongSoundCandidate => {
-        richSoundAt.set(100000 + i, d.from + 26);
-        return { key: 100000 + i, frame: d.from + 26, kind: "glint" };
-      }),
-    ),
+    windows
+      .flatMap((w, k): LongSoundCandidate[] => {
+        const raw = props.moments?.[w.entry]?.[w.moment];
+        if (!raw) return [];
+        const { from, len, anchored } = spanOf(k);
+        const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
+        const style = packFor.get(k);
+        if (style) {
+          const at = from + (style.sound === "stamp" ? 34 : 0);
+          richSoundAt.set(k, at);
+          return [
+            {
+              key: k,
+              frame: at,
+              kind:
+                style.sound === "glint"
+                  ? ("glint" as const)
+                  : style.sound === "stamp"
+                    ? ("stamp" as const)
+                    : ("pop" as const),
+            },
+          ];
+        }
+        if (graphic === "stat" || graphic === "score")
+          return [{ key: k, frame: from, kind: "glint" as const }];
+        // The richer graphics have their own cue: a whoosh as a full-screen explainer lands, the stamp's
+        // low hit as it slams down, a tick as a counter finishes or a milestone pops.
+        if (
+          [
+            "quote",
+            "headline",
+            "source",
+            "reviews",
+            "people",
+            "versus",
+            "timeline",
+          ].includes(graphic)
+        ) {
+          richSoundAt.set(k, from);
+          return [{ key: k, frame: from, kind: "pop" as const }];
+        }
+        if (graphic === "delay") {
+          richSoundAt.set(k, from + 34);
+          return [{ key: k, frame: from + 34, kind: "stamp" as const }];
+        }
+        if (graphic === "span" || graphic === "milestone") {
+          const at = from + (graphic === "span" ? 70 : 6);
+          richSoundAt.set(k, at);
+          return [{ key: k, frame: at, kind: "glint" as const }];
+        }
+        const shot = plan.shots.find((x) => from >= x.start && from < x.end);
+        const pic = props.images.some(
+          (im) => im.beatIndex === w.entry && im.moment === w.moment,
+        );
+        if (
+          graphic === "none" &&
+          shot?.media.type === "clip" &&
+          pic &&
+          w.moment > 0
+        )
+          return [
+            {
+              key: k,
+              frame:
+                from + (anchored ? 0 : Math.min(30, Math.max(0, len - 90))),
+              kind: "pop" as const,
+            },
+          ];
+        return [];
+      })
+      .concat(
+        // A detail's box drawing on gets a tick (keys from 100000, clear of the moment windows').
+        details.map((d, i): LongSoundCandidate => {
+          richSoundAt.set(100000 + i, d.from + 26);
+          return { key: 100000 + i, frame: d.from + 26, kind: "glint" };
+        }),
+      ),
     entryFrames,
     fps,
   );
@@ -2740,7 +2940,11 @@ export const Long: React.FC<LongProps> = (props) => {
           layout="none"
         >
           {a.kind === "static" ? (
-            <Sequence from={ACCENT_LEAD - 3} durationInFrames={STATIC_FRAMES} layout="none">
+            <Sequence
+              from={ACCENT_LEAD - 3}
+              durationInFrames={STATIC_FRAMES}
+              layout="none"
+            >
               <ChannelStatic variant={props.variant + k} />
             </Sequence>
           ) : (
@@ -2762,7 +2966,10 @@ export const Long: React.FC<LongProps> = (props) => {
       <ShotLabel
         plan={plan}
         describe={describe}
-        bursts={openings.map((o) => ({ from: o.from, to: o.from + montageFrames(o.items.length) }))}
+        bursts={openings.map((o) => ({
+          from: o.from,
+          to: o.from + montageFrames(o.items.length),
+        }))}
       />
       <GrainVignette />
       <Brand
@@ -2793,14 +3000,21 @@ export const Long: React.FC<LongProps> = (props) => {
               {(() => {
                 // The opening: the video's motif card, the flash-forward, then the title.
                 const open = videoMotif?.card && len >= 240 ? MOTIF_OPEN : 0;
-                const tease = teaser.length >= 2 && len - open >= 480 ? teaser.length * TEASE_FRAMES : 0;
+                const tease =
+                  teaser.length >= 2 && len - open >= 480
+                    ? teaser.length * TEASE_FRAMES
+                    : 0;
                 return (
                   <>
                     {open ? (
                       <Sequence durationInFrames={open} layout="none">
                         {React.createElement(videoMotif!.card!, {
                           heading: props.title,
-                          kicker: props.recap ? "THIS WEEK" : documentary ? "DOCUMENTARY" : "RANKED",
+                          kicker: props.recap
+                            ? "THIS WEEK"
+                            : documentary
+                              ? "DOCUMENTARY"
+                              : "RANKED",
                           game: props.theme,
                           pictures: motifPictures(undefined),
                           frames: open,
@@ -2810,11 +3024,19 @@ export const Long: React.FC<LongProps> = (props) => {
                     ) : null}
                     {tease
                       ? teaser.map((k, n) => (
-                          <Sequence key={`tease${k}`} from={open + n * TEASE_FRAMES} durationInFrames={TEASE_FRAMES} layout="none">
+                          <Sequence
+                            key={`tease${k}`}
+                            from={open + n * TEASE_FRAMES}
+                            durationInFrames={TEASE_FRAMES}
+                            layout="none"
+                          >
                             <TeaseCut last={n === teaser.length - 1}>
                               <Freeze frame={84}>{teaseGraphic(k)}</Freeze>
                             </TeaseCut>
-                            <Sfx name={SFX.air[n % SFX.air.length]!} volume={LEVEL.airLong} />
+                            <Sfx
+                              name={SFX.air[n % SFX.air.length]!}
+                              volume={LEVEL.airLong}
+                            />
                           </Sequence>
                         ))
                       : null}
@@ -2876,13 +3098,13 @@ export const Long: React.FC<LongProps> = (props) => {
           const span = Math.max(1, chapterEnd(i) - starts[i]! - pause);
           // Every other breather is the story so far pinned to a board: the chapter's archive photos first.
           const rankPic = (k: string) =>
-            ({ photo: 0, portrait: 1, screenshot: 2, article: 3, hero: 4 })[k] ?? 9;
+            ({ photo: 0, portrait: 1, screenshot: 2, article: 3, hero: 4 })[
+              k
+            ] ?? 9;
           const boardPics: BoardPicture[] = props.images
             .filter(
               (im) =>
-                im.beatIndex === b &&
-                im.aspect >= 0.75 &&
-                rankPic(im.kind) < 9,
+                im.beatIndex === b && im.aspect >= 0.75 && rankPic(im.kind) < 9,
             )
             .sort((x, y) => rankPic(x.kind) - rankPic(y.kind))
             .slice(0, 3)
@@ -2897,7 +3119,10 @@ export const Long: React.FC<LongProps> = (props) => {
           // a VHS tape for a game from before 2008, a torn-paper reveal of the chapter's picture.
           const chapterYear = Number(s.visual.items?.[0]) || undefined;
           const widePic = props.images.find(
-            (im) => im.beatIndex === b && im.aspect >= 1.3 && ["hero", "screenshot", "article", "photo"].includes(im.kind),
+            (im) =>
+              im.beatIndex === b &&
+              im.aspect >= 1.3 &&
+              ["hero", "screenshot", "article", "photo"].includes(im.kind),
           )?.src;
           const looks = [
             "title",
@@ -2908,7 +3133,9 @@ export const Long: React.FC<LongProps> = (props) => {
           ];
           const motif = motifOf(b);
           // A breather the graphics check faulted falls back to the plain title card.
-          const breakIndex = breakFrames.findIndex((x) => Math.abs(x.from - starts[i]!) <= 3);
+          const breakIndex = breakFrames.findIndex(
+            (x) => Math.abs(x.from - starts[i]!) <= 3,
+          );
           const look = (props.quietBreaks ?? []).includes(breakIndex)
             ? "title"
             : motif?.card && ((b ?? 0) + props.variant) % 2 === 0
@@ -3143,7 +3370,10 @@ export const Long: React.FC<LongProps> = (props) => {
                 src: (
                   pic ??
                   props.images.find(
-                    (im) => im.beatIndex === w.entry && im.aspect >= 1.2 && im.kind !== "capsule",
+                    (im) =>
+                      im.beatIndex === w.entry &&
+                      im.aspect >= 1.2 &&
+                      im.kind !== "capsule",
                   )
                 )?.src,
               })
@@ -3178,7 +3408,9 @@ export const Long: React.FC<LongProps> = (props) => {
               <TimelineMoment g={m.graphic} len={len} />
             ) : m.graphic.kind !== "none" &&
               // The suite's own kinds have no card: with no style that fits, the picture carries the line.
-              !["map", "bars", "share", "specs", "lineage"].includes(m.graphic.kind) ? (
+              !["map", "bars", "share", "specs", "lineage"].includes(
+                m.graphic.kind,
+              ) ? (
               <>
                 <MomentGraphicCard g={m.graphic} len={len} />
                 {momentSounds.get(k) ? (
@@ -3187,37 +3419,46 @@ export const Long: React.FC<LongProps> = (props) => {
               </>
             ) : m.emphasis && w.moment > 0 ? (
               <>
-                {React.createElement(CAPTION_STYLES[lookOf.get(k) ?? 0] ?? KineticCaption, {
-                  text: m.emphasis,
-                  len,
-                  variant: props.variant + k,
-                })}
+                {React.createElement(
+                  CAPTION_STYLES[lookOf.get(k) ?? 0] ?? KineticCaption,
+                  {
+                    text: m.emphasis,
+                    len,
+                    variant: props.variant + k,
+                  },
+                )}
               </>
             ) : null}
-            {nameTag ? (
-              React.createElement(
-                NAMETAG_STYLES[(firstMentionOrder.get(`${w.entry}|${w.moment}`) ?? 0) % NAMETAG_STYLES.length] ?? NameTag,
-                {
-                  name: nameTag.name,
-                  role: nameTag.role,
-                  len,
-                  photo: portraits[nameTag.name.toLowerCase()],
-                  variant: props.variant + k,
-                },
-              )
-            ) : null}
+            {nameTag
+              ? React.createElement(
+                  NAMETAG_STYLES[
+                    (firstMentionOrder.get(`${w.entry}|${w.moment}`) ?? 0) %
+                      NAMETAG_STYLES.length
+                  ] ?? NameTag,
+                  {
+                    name: nameTag.name,
+                    role: nameTag.role,
+                    len,
+                    photo: portraits[nameTag.name.toLowerCase()],
+                    variant: props.variant + k,
+                  },
+                )
+              : null}
             {showPop ? (
               <Sequence
                 from={anchored ? 0 : Math.min(30, Math.max(0, len - 90))}
                 layout="none"
               >
-                {React.createElement(POPIN_STYLES[lookOf.get(k) ?? 0] ?? PopInPicture, {
-                  src: pic!.src,
-                  caption: pic!.label ?? "",
-                  len: anchored ? len : len - 30,
-                  side: w.moment % 2 ? "right" : "left",
-                  variant: props.variant + k,
-                })}
+                {React.createElement(
+                  POPIN_STYLES[lookOf.get(k) ?? 0] ?? PopInPicture,
+                  {
+                    src: pic!.src,
+                    caption: pic!.label ?? "",
+                    len: anchored ? len : len - 30,
+                    side: w.moment % 2 ? "right" : "left",
+                    variant: props.variant + k,
+                  },
+                )}
                 {momentSounds.get(k) ? (
                   <Sfx name={momentSounds.get(k)!} volume={LEVEL.airLong} />
                 ) : null}
@@ -3230,9 +3471,18 @@ export const Long: React.FC<LongProps> = (props) => {
       {[...richSoundAt].map(([key, at]) => {
         const name = momentSounds.get(key);
         if (!name) return null;
-        const vol = name.includes("land") ? LEVEL.landLong : name.includes("air") ? LEVEL.airLong : LEVEL.glintLong;
+        const vol = name.includes("land")
+          ? LEVEL.landLong
+          : name.includes("air")
+            ? LEVEL.airLong
+            : LEVEL.glintLong;
         return (
-          <Sequence key={`rs${key}`} from={Math.max(0, at - leadFrames(name, fps))} durationInFrames={75} layout="none">
+          <Sequence
+            key={`rs${key}`}
+            from={Math.max(0, at - leadFrames(name, fps))}
+            durationInFrames={75}
+            layout="none"
+          >
             <Sfx name={inKey(name, bedAt(at))} volume={vol} />
           </Sequence>
         );

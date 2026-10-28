@@ -72,7 +72,10 @@ export const BEDS = [
  * 2026): a long video's chapter plays the one that fits its era or story (src/render/musicplan.ts). A mood
  * with no bed that passed the measurement keeps the house beds.
  */
-export const MOOD_BEDS: Record<Mood, ReadonlyArray<{ file: string; key: "D" | "E" }>> = {
+export const MOOD_BEDS: Record<
+  Mood,
+  ReadonlyArray<{ file: string; key: "D" | "E" }>
+> = {
   tense: [
     { file: "music/mood_tense_1.wav", key: "D" },
     { file: "music/mood_tense_2.wav", key: "E" },
@@ -81,18 +84,29 @@ export const MOOD_BEDS: Record<Mood, ReadonlyArray<{ file: string; key: "D" | "E
   triumph: [{ file: "music/mood_triumph_1.wav", key: "D" }],
   reflective: [{ file: "music/mood_reflective_1.wav", key: "D" }],
 };
-export const bedFor = (variant: number) => BEDS[((variant % BEDS.length) + BEDS.length) % BEDS.length]!.file;
+export const bedFor = (variant: number) =>
+  BEDS[((variant % BEDS.length) + BEDS.length) % BEDS.length]!.file;
 
 /** The key of each bed by file name, the retired Suno beds included (older renders name them). */
 const MUSIC_KEY: Record<string, "D" | "E"> = {
   ...Object.fromEntries(BEDS.map((b) => [b.file.split("/").pop()!, b.key])),
-  ...Object.fromEntries(Object.values(MOOD_BEDS).flat().map((b) => [b.file.split("/").pop()!, b.key])),
+  ...Object.fromEntries(
+    Object.values(MOOD_BEDS)
+      .flat()
+      .map((b) => [b.file.split("/").pop()!, b.key]),
+  ),
   "music_1.mp3": "D",
   "music_2.mp3": "D",
   "music_3.mp3": "E",
   "music_4.mp3": "E",
 };
-const TUNED = new Set<string>([SFX.sting, SFX.swell, ...SFX.land, RETRO_SFX.static, RETRO_SFX.poweroff]);
+const TUNED = new Set<string>([
+  SFX.sting,
+  SFX.swell,
+  ...SFX.land,
+  RETRO_SFX.static,
+  RETRO_SFX.poweroff,
+]);
 
 /** The version of a sound tuned to the music playing under it ("v3/sting" or "sfx/v3/sting.mp3" alike). */
 export function inKey(
@@ -101,7 +115,9 @@ export function inKey(
 ): string {
   const bare = name.replace(/^sfx\//, "").replace(/\.mp3$/, "");
   if (!TUNED.has(bare)) return name;
-  const key = MUSIC_KEY[(musicSrc ?? "").split(/[\\/]/).pop() ?? ""] ?? "E";
+  const file = (musicSrc ?? "").split(/[\\/]/).pop() ?? "";
+  // The Epidemic beds carry their key in the name ("tense_2-D.wav").
+  const key = MUSIC_KEY[file] ?? file.match(/-([DE])\.\w+$/)?.[1] ?? "E";
   return name.replace(bare, `${bare}-${key}`);
 }
 
@@ -130,7 +146,8 @@ export interface LongSoundCandidate {
 
 /** The retro kit's moments: a screen switching on, a tape going in, static on a cut. */
 type RetroKind = "tvon" | "vhs" | "static";
-const isRetro = (k: LongSoundCandidate["kind"]): k is RetroKind => k === "tvon" || k === "vhs" || k === "static";
+const isRetro = (k: LongSoundCandidate["kind"]): k is RetroKind =>
+  k === "tvon" || k === "vhs" || k === "static";
 
 /**
  * Which moment sounds a long video plays: glints at least 8 s apart, pop-in whooshes at least 14 s
@@ -150,9 +167,13 @@ export function gateLongSounds(
   const turn = { glint: 0, pop: 0, stamp: 0 };
   // The retro kit's sounds belong to what is on screen, so they claim their moments first; the moment sounds
   // then fit around them by the same rules.
-  const order = [...cands].sort((a, b) => Number(isRetro(b.kind)) - Number(isRetro(a.kind)) || a.frame - b.frame);
+  const order = [...cands].sort(
+    (a, b) =>
+      Number(isRetro(b.kind)) - Number(isRetro(a.kind)) || a.frame - b.frame,
+  );
   for (const c of order) {
-    if (near(c.frame) || chosen.some((f) => Math.abs(c.frame - f) < 4 * fps)) continue;
+    if (near(c.frame) || chosen.some((f) => Math.abs(c.frame - f) < 4 * fps))
+      continue;
     if (isRetro(c.kind)) {
       out.set(c.key, RETRO_SFX[c.kind]);
       chosen.push(c.frame);
@@ -160,7 +181,8 @@ export function gateLongSounds(
     }
     const gap = c.kind === "glint" ? 8 : c.kind === "stamp" ? 20 : 14;
     if (c.frame - lastOf[c.kind] < gap * fps) continue;
-    const list = c.kind === "glint" ? SFX.glint : c.kind === "stamp" ? SFX.land : SFX.air;
+    const list =
+      c.kind === "glint" ? SFX.glint : c.kind === "stamp" ? SFX.land : SFX.air;
     out.set(c.key, list[turn[c.kind]++ % list.length]!);
     chosen.push(c.frame);
     lastOf[c.kind] = c.frame;

@@ -65,6 +65,7 @@ import {
   dropOuts,
   musicSections,
   type MusicChapter,
+  type Mood,
 } from "./musicplan.ts";
 import {
   backgroundFor,
@@ -181,6 +182,8 @@ export type LongProps = {
   logoSrc: string | null;
   audioSrc: string | null;
   musicSrc: string | null;
+  /** Epidemic Sound beds in this bundle (house or a mood), alongside the generated ones. */
+  extraBeds?: Array<{ file: string; key: "D" | "E"; mood: string }>;
   durationSeconds: number;
   variant: number;
   renderDate: string;
@@ -2072,6 +2075,10 @@ export const Long: React.FC<LongProps> = (props) => {
   };
   // The music changes bed at the first chapter or entry after MUSIC_SECTION_SECONDS on one bed: a 30-minute
   // documentary looped a single two-minute bed fifteen times (owner, 27 Oct 2026).
+  const moodBeds = (m: Mood) => [
+    ...MOOD_BEDS[m].map((b) => b.file),
+    ...(props.extraBeds ?? []).filter((b) => b.mood === m).map((b) => b.file),
+  ];
   const beds = useMemo(() => {
     if (!props.musicSrc)
       return [] as Array<{ from: number; to: number; src: string }>;
@@ -2103,21 +2110,33 @@ export const Long: React.FC<LongProps> = (props) => {
       documentary,
       45 * fps,
       MUSIC_SECTION_SECONDS * fps,
-      (m) => MOOD_BEDS[m].length > 0,
+      (m) => moodBeds(m).length > 0,
     );
+    // The house list: the generated beds, then the Epidemic ones, starting from the video's own bed.
+    const house = [
+      ...BEDS.map((b) => b.file),
+      ...(props.extraBeds ?? [])
+        .filter((b) => b.mood === "house")
+        .map((b) => b.file),
+    ];
     let k = first;
     const turn: Record<string, number> = {};
     return sections.map((sec) => {
       if (sec.mood) {
-        const list = MOOD_BEDS[sec.mood];
+        const list = moodBeds(sec.mood);
         const n = turn[sec.mood] ?? 0;
         turn[sec.mood] = n + 1;
-        return { from: sec.from, to: sec.to, src: list[n % list.length]!.file };
+        // Rotated by the video's variant too, so two videos rarely share a mood's bed.
+        return {
+          from: sec.from,
+          to: sec.to,
+          src: list[(n + props.variant) % list.length]!,
+        };
       }
-      return { from: sec.from, to: sec.to, src: BEDS[k++ % BEDS.length]!.file };
+      return { from: sec.from, to: sec.to, src: house[k++ % house.length]! };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.musicSrc, props.segments, durationInFrames, fps]);
+  }, [props.musicSrc, props.segments, props.extraBeds, durationInFrames, fps]);
   // A documentary's breathers: the chapter segment that opens on one, and the frames it lasts.
   const breakFrames = (props.breaks ?? []).map((b) => ({
     from: Math.round(b.start * fps),
@@ -2607,10 +2626,14 @@ export const Long: React.FC<LongProps> = (props) => {
   // a breather or around an entry change.
   const drops = useMemo(
     () =>
-      dropOuts(beds, [...punches.values()], fps, (f) =>
-        f < 20 * fps ||
-        entryFrames.some((e) => Math.abs(f - e) < 3 * fps) ||
-        breakFrames.some((b) => f >= b.from - 3 * fps && f <= b.to + 3 * fps),
+      dropOuts(
+        beds,
+        [...punches.values()],
+        fps,
+        (f) =>
+          f < 20 * fps ||
+          entryFrames.some((e) => Math.abs(f - e) < 3 * fps) ||
+          breakFrames.some((b) => f >= b.from - 3 * fps && f <= b.to + 3 * fps),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [beds, punches, fps],

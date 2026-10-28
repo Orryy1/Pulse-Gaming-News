@@ -3,3 +3,6 @@ node_modules/
 out/
 .env
 *.log
+
+# Epidemic Sound beds: too large for git, listed in src/assets/epidemic_beds.json (src/tools/sfxlab/pickepidemic.py)
+public/music/es/

@@ -27,6 +27,23 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(here, "index.ts");
 const PUBLIC_DIR = path.join(here, "..", "..", "public");
 
+/**
+ * The Epidemic Sound beds (src/assets/epidemic_beds.json, chosen by src/tools/sfxlab/pickepidemic.py) that
+ * this bundle carries: they live outside git, so a machine or a bundle without them simply goes without.
+ */
+function extraBeds(serveUrl: string): NonNullable<LongProps["extraBeds"]> {
+  try {
+    const list = JSON.parse(
+      fs.readFileSync(path.join(here, "..", "assets", "epidemic_beds.json"), "utf8"),
+    ) as { beds: Array<{ file: string; key: "D" | "E"; mood: string }> };
+    return list.beds
+      .filter((b) => fs.existsSync(path.join(serveUrl, "public", b.file)))
+      .map(({ file, key, mood }) => ({ file, key, mood }));
+  } catch {
+    return [];
+  }
+}
+
 let bundlePromise: Promise<string> | undefined;
 let bundleDir: string | undefined;
 export function getBundle(): Promise<string> {
@@ -360,6 +377,7 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       })),
       logoSrc: "logo.png",
       musicSrc: musicFile,
+      extraBeds: extraBeds(serveUrl),
     };
     const browserExecutable = input.browserExecutable || undefined;
     const chromiumOptions = { gl: input.gl ?? "swangle" } as const;

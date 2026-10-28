@@ -150,7 +150,7 @@ import {
   type AffiliateTags,
 } from "./editorial/affiliate.ts";
 import { pickVoice } from "./voice/index.ts";
-import { speakable } from "./voice/speakable.ts";
+import { speakable, speakContext } from "./voice/speakable.ts";
 import {
   buildSegments,
   srtFromWords,
@@ -3804,12 +3804,15 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     // The desk experiment: the narrator up to the facts, the desk partner's question in a second voice,
     // the narrator's take and close; three takes stitched onto one timeline.
     const sc = ep.script_json!;
+    const ctx = speakContext(); // the same order as segmentInputs, so the timings match the voice
     const partA = speakable(
       [sc.hook, ...sc.beats.map((b) => b.narration)].join(" "),
+      ctx,
     );
-    const partQ = speakable(sc.desk_question!);
+    const partQ = speakable(sc.desk_question!, ctx);
     const partB = speakable(
       [sc.pulse_take.narration, tidyLoopLine(sc.loop_line)].join(" "),
+      ctx,
     );
     const a = await s.synthesise(partA, path.join(dir, "voice_a.mp3"), voice, {
       provider: "elevenlabs",
@@ -5269,21 +5272,23 @@ export async function steamAppForEntry(
 }
 
 export function segmentInputs(script: Script, desk = false): SegmentInput[] {
+  // One context in spoken order, as the voice was given it (narrationOf and the desk parts do the same).
+  const ctx = speakContext();
   return [
     // The same speakable text the voice was given, so segment timings line up word for word.
-    { kind: "hook", text: speakable(script.hook) },
+    { kind: "hook", text: speakable(script.hook, ctx) },
     ...script.beats.map((b) => ({
       kind: "beat" as const,
-      text: speakable(b.narration),
+      text: speakable(b.narration, ctx),
       visual: b.visual,
     })),
     // The desk partner's question sits between the facts and the take when the Short has one.
     ...(desk && script.desk_question
-      ? [{ kind: "desk" as const, text: speakable(script.desk_question) }]
+      ? [{ kind: "desk" as const, text: speakable(script.desk_question, ctx) }]
       : []),
     {
       kind: "take",
-      text: speakable(script.pulse_take.narration),
+      text: speakable(script.pulse_take.narration, ctx),
       label: script.pulse_take.label,
       visual: {
         kind: "title" as const,
@@ -5292,7 +5297,7 @@ export function segmentInputs(script: Script, desk = false): SegmentInput[] {
       },
     },
     // The same tidied last line the voice was given, so timings line up.
-    { kind: "loop", text: speakable(tidyLoopLine(script.loop_line)) },
+    { kind: "loop", text: speakable(tidyLoopLine(script.loop_line), ctx) },
   ];
 }
 

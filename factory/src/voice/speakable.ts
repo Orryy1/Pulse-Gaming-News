@@ -269,8 +269,12 @@ export function roundCount(n: number): string {
   return r === n ? fmt(n) : `${n < r ? "almost" : "over"} ${fmt(r)}`;
 }
 
+// "to" only closes a range ("from 1,200 to 1,500" keeps both); "grew to 346,258" is still rounded.
 const QUALIFIED =
-  /\b(about|around|almost|nearly|over|than|roughly|under|some|approximately|to|of exactly|exactly)\s*$/i;
+  /(?:\b(?:about|around|almost|nearly|over|than|roughly|under|some|approximately|of exactly|exactly)|\d\s+to)\s*$/i;
+// A number that names something is never rounded ("number 500,001" is not "number over 500,000").
+const NAMED =
+  /(?:\b(?:number|no\.|rank|ranked|patch|version|issue|episode|id)|#)\s*$/i;
 
 /**
  * Exact counts rounded for the ear ("from 346,258 reviews" is "from almost 350,000 reviews"): only
@@ -281,7 +285,8 @@ export function roundCounts(text: string): string {
   return text.replace(
     /(?<![\w$£€¥.,#:/-])(\d{1,3}(?:,\d{3})+)(?![\d%]|[.,]\d|\s?(?:percent|%|€))/g,
     (m: string, num: string, offset: number, all: string) =>
-      QUALIFIED.test(all.slice(Math.max(0, offset - 20), offset))
+      QUALIFIED.test(all.slice(Math.max(0, offset - 20), offset)) ||
+      NAMED.test(all.slice(Math.max(0, offset - 12), offset))
         ? m
         : roundCount(Number(num.replace(/,/g, ""))),
   );
@@ -310,8 +315,8 @@ const BEFORE_NOUN =
  * "134GB" and "134 GB" as "134 gigabytes" the first time, then "134 gigs" (saying "gigabytes" every time
  * sounded robotic, owner 28 Oct 2026); before a noun "a 210 gig download"; "1GB" as "1 gigabyte".
  */
-export function speakUnits(text: string): string {
-  const seen = new Set<string>();
+export function speakUnits(text: string, ctx?: SpeakContext): string {
+  const seen = ctx?.units ?? new Set<string>();
   return text.replace(
     /(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s?(TB|GB|MB|KB|GHz|MHz|Hz)\b/g,
     (m: string, n: string, unit: string, offset: number, all: string) => {
@@ -328,12 +333,51 @@ export function speakUnits(text: string): string {
   );
 }
 
-export function speakable(text: string): string {
+/**
+ * What one script has said so far, shared by its segments in spoken order (hook, beats, desk question,
+ * take, loop): a unit said in the hook is "gigs" by the take. Every place that speaks a Short's segments
+ * passes one fresh context in that order, so the voice and the timings get the same words.
+ */
+export interface SpeakContext {
+  units: Set<string>;
+}
+export const speakContext = (): SpeakContext => ({ units: new Set() });
+
+export function speakable(text: string, ctx?: SpeakContext): string {
   return speakCadence(
     speakNumbers(
-      speakYearsAndMoney(roundPrices(roundCounts(speakUnits(text)))),
+      speakYearsAndMoney(
+        roundPrices(roundCounts(speakUnits(speakNames(text), ctx))),
+      ),
     ),
   );
+}
+
+// Capitalised words that are letters, not names: left as written so the voice spells them.
+const SPELLED = new Set(["MMORPG", "MMORPGS", "UNICEF"]);
+
+/**
+ * Written forms the voice reads wrongly (the human-sounding audit, 28 Oct 2026):
+ * - "US$265 million" was read "U S two hundred..."; it is "$265 million" to the ear.
+ * - "Lapsus$" came out "Lapsus dollars": a dollar sign stuck to the end of a name is not said.
+ * - "10v10" and "vs" are "10 versus 10" and "versus".
+ * - Store titles in capitals ("TEKKEN 7", "FINAL FANTASY") were shouted (v3 stresses capitals), so a
+ *   capitalised word of five letters or more with two vowels is said in title case. Short acronyms,
+ *   letter runs ("JRPGS"), roman numerals and the few spelled names above keep their capitals.
+ */
+export function speakNames(text: string): string {
+  return text
+    .replace(/\bUS\s?\$(?=\s?\d)/g, "$")
+    .replace(/\b([A-Za-z][A-Za-z0-9]*)\$(?!\s?\d)/g, "$1")
+    .replace(/\b(\d{1,2})\s?v\s?(\d{1,2})\b/g, "$1 versus $2")
+    .replace(/\bvs\.?(?=\s)/gi, "versus")
+    .replace(/\b[A-Z]{5,}\b/g, (w) =>
+      SPELLED.has(w) ||
+      /^[IVXLCDM]+$/.test(w) ||
+      (w.match(/[AEIOUY]/g) ?? []).length < 2
+        ? w
+        : w[0] + w.slice(1).toLowerCase(),
+    );
 }
 
 /**

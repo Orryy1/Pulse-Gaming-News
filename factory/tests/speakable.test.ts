@@ -196,3 +196,32 @@ test("sizes are said like a person says them: gigabytes once, then gigs, and a 2
   const { tokens } = await import("../src/qa/narration.ts");
   assert.deepEqual(tokens("gigs"), tokens("gigabytes"), "the narration check hears them as one word");
 });
+
+test("one Short shares its units: gigabytes in the hook, gigs in the take", async () => {
+  const { segmentInputs } = await import("../src/pipeline.ts");
+  const { narrationOf } = await import("../src/editorial/schema.ts");
+  const script = {
+    hook: "GTA 6 needs 210GB.",
+    beats: [{ narration: "The PS5 copy is 150GB.", visual: "x" }],
+    pulse_take: { narration: "Clear 20GB more." },
+    loop_line: "Is 210GB worth it?",
+  } as never;
+  const segs = segmentInputs(script).map((s) => s.text).join(" ");
+  assert.match(segs, /210 gigabytes.*150 gigs.*20 gigs.*210 gigs/);
+  assert.match(String(narrationOf(script)), /210 gigabytes.*150 gigs/);
+});
+
+test("counts that name something stay exact, and a single bound is still rounded", () => {
+  assert.equal(speakable("It grew to 346,258 players."), "It grew to almost three hundred fifty thousand players.");
+  assert.equal(speakable("from 1,200 to 1,500 players"), "from one thousand two hundred to one thousand five hundred players");
+  assert.equal(speakable("ticket number 500,001"), "ticket number five hundred thousand one");
+  assert.equal(speakable("No. 1,024 on the list"), "No. one thousand twenty-four on the list");
+});
+
+test("US dollars, names ending in a dollar sign, NvN and store titles in capitals", () => {
+  assert.equal(speakable("a US$265 million deal"), "a two hundred sixty-five million dollars deal");
+  assert.equal(speakable("Lapsus$ hacked them"), "Lapsus hacked them");
+  assert.equal(speakable("a 10v10 mode, Halo vs Destiny"), "a 10 versus 10 mode, Halo versus Destiny");
+  assert.equal(speakable("TEKKEN 7 and FINAL FANTASY XIV"), "Tekken 7 and Final Fantasy 14");
+  assert.equal(speakable("JRPGS on the SNES and an MMORPG"), "JRPGS on the SNES and an MMORPG");
+});

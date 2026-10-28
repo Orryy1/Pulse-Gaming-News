@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { speakable } from "../voice/speakable.ts";
+import { speakable, speakContext } from "../voice/speakable.ts";
 
 export const STORY_TYPES = [
   "explainer",
@@ -345,13 +345,14 @@ export function tidyLoopLine(line: string): string {
 export function narrationOf(
   s: Pick<Script, "hook" | "beats" | "pulse_take" | "loop_line">,
 ): string {
+  const ctx = speakContext(); // one script: "gigabytes" in the hook, "gigs" after it
   return [
     s.hook,
     ...s.beats.map((b) => b.narration),
     s.pulse_take.narration,
     tidyLoopLine(s.loop_line),
   ]
-    .map((t) => speakable(t.trim()))
+    .map((t) => speakable(t.trim(), ctx))
     .filter(Boolean)
     .join(" ");
 }

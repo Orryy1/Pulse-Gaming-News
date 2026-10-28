@@ -89,6 +89,8 @@ export interface Config {
   voiceRotation: number; // Shorts per voice before moving to the next
 
   discordWebhookUrl: string;
+
+  discordTiktokWebhookUrl: string; // #tiktok-posts: the TikTok draft links on their own
   healthcheckPingUrl: string;
 
   legacyTokenDir: string;
@@ -139,6 +141,10 @@ export interface Config {
   narratorTestShare: number;
   /** The new-look test: a share of Shorts get the editor's dressing (cut accents, punch-ins, period looks). */
   shortSuiteShare: number;
+  /** Pip the mascot: a share of Shorts carry the code-drawn amber mascot (src/render/components/Pip.tsx). */
+  mascotShare: number;
+  /** The UK day the factory first judges its experiments (src/experiments.ts), as YYYY-MM-DD. */
+  experimentVerdictDate: string;
   narratorName: string; // the usual narrator's name, for the Discord card and the lessons
   focusMatch: string; // regex (case-insensitive) a story about the focus matches, e.g. "grand theft auto|\\bgta\\b"
   focusPlaylist: string; // a playlist every focus video joins while the focus runs, empty = none
@@ -193,6 +199,9 @@ export interface Config {
   docSlot: string;
   docWeeks: number[]; // weeks of the month it runs: 1 = the first such weekday
   docLeadMinutes: number; // how long before the slot production starts
+  /** Long videos (rankings, documentaries) start this long before their slot: script and voice the day before,
+   * so the owner can record what the shot list wants and the render finds a gap between Shorts (28 Oct 2026). */
+  longLeadMinutes: number;
   docMaxSeconds: number;
   docClipsPerChapter: number;
   crosspost: {
@@ -373,6 +382,7 @@ export function loadConfig(): Config {
     voiceRotation: Math.max(1, int("VOICE_ROTATION", 2)),
 
     discordWebhookUrl: str("DISCORD_WEBHOOK_URL"),
+    discordTiktokWebhookUrl: str("DISCORD_TIKTOK_WEBHOOK_URL"),
     healthcheckPingUrl: str("HEALTHCHECK_PING_URL"),
 
     legacyTokenDir: str("PULSE_TOKEN_DIR"),
@@ -431,6 +441,8 @@ export function loadConfig(): Config {
       Math.min(1, Number(str("NARRATOR_TEST_SHARE", "0.5"))),
     ),
     shortSuiteShare: Math.max(0, Math.min(1, Number(str("SHORT_SUITE_SHARE", "0.5")))),
+    mascotShare: Math.max(0, Math.min(1, Number(str("MASCOT_SHARE", "0")))),
+    experimentVerdictDate: str("EXPERIMENT_VERDICT_DATE", "2026-11-08"),
     narratorName: str("NARRATOR_NAME", "Liam"),
     focusMatch: str("FOCUS_MATCH", ""),
     focusPlaylist: str("FOCUS_PLAYLIST", ""),
@@ -553,6 +565,7 @@ export function loadConfig(): Config {
       .map((w) => Number(w.trim()))
       .filter((w) => w >= 1 && w <= 5),
     docLeadMinutes: int("DOC_LEAD_MINUTES", 600),
+    longLeadMinutes: int("LONG_LEAD_MINUTES", 30 * 60),
     docMaxSeconds: int("DOC_MAX_SECONDS", 3000),
     docClipsPerChapter: int("DOC_CLIPS_PER_CHAPTER", 4),
     crosspost: {

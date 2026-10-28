@@ -29,6 +29,7 @@ import {
 } from "./components/Overlays.tsx";
 import { Shelf } from "./components/Shelf.tsx";
 import { Stamp, STAMP_FRAMES } from "./components/Stamp.tsx";
+import { Pip, PIP_SHORT, sinceLast } from "./components/Pip.tsx";
 import type { ShotDressing } from "./components/Background.tsx";
 import {
   CutAccent,
@@ -516,7 +517,26 @@ export const Short: React.FC<ShortProps> = (props) => {
         isRumour={props.isRumour}
         attribution={props.attribution}
         logoSrc={resolveSrc(props.logoSrc)}
+        reserveRight={props.mascot ? 1016 - PIP_SHORT.left + 12 : 0}
       />
+      {/* Pip the mascot test (props.mascot): in the brand band beside the logo row, clear of the Shorts header
+          above, the right-hand rail below y 1000 and everything else on the Short. */}
+      {props.mascot ? (
+        <Pip
+          words={words}
+          reactions={(props.stamps ?? []).map((st) => st.at)}
+          lookAt={(f) => {
+            // At a stamp while it holds (it lands below, left of centre), at the headline in the hook, else at the viewer.
+            const st = sinceLast(f, fps, (props.stamps ?? []).map((x) => x.at));
+            if (st !== undefined && st < STAMP_FRAMES) return { x: -0.7, y: 0.8 };
+            if (f < hookEnd) return { x: -0.6, y: 0.7 };
+            return { x: -0.1, y: 0.1 };
+          }}
+          left={PIP_SHORT.left}
+          top={PIP_SHORT.top}
+          size={PIP_SHORT.size}
+        />
+      ) : null}
       <ProgressRail
         segments={props.segments}
         accent={accent}

@@ -225,13 +225,18 @@ export function evergreenDue(
   },
   taken: Date[],
 ): Date | undefined {
-  if (!plan.days.includes(weekday(now, plan.timeZone))) return undefined;
-  const slot = localTime(dayKey(now, plan.timeZone), plan.slot, plan.timeZone);
-  if (taken.some((t) => t.getTime() === slot.getTime())) return undefined;
-  const ms = slot.getTime() - now.getTime();
-  if (ms > plan.leadMinutes * 60_000 || ms < -plan.graceMinutes * 60_000)
-    return undefined;
-  return slot;
+  // Today's slot, or (for a lead past a day, as long videos have) one of the next three days'.
+  const today = dayKey(now, plan.timeZone);
+  for (let d = 0; d <= 3; d++) {
+    const slot = localTime(addDays(today, d), plan.slot, plan.timeZone);
+    if (!plan.days.includes(weekday(slot, plan.timeZone))) continue;
+    if (taken.some((t) => t.getTime() === slot.getTime())) continue;
+    const ms = slot.getTime() - now.getTime();
+    if (ms > plan.leadMinutes * 60_000 || ms < -plan.graceMinutes * 60_000)
+      continue;
+    return slot;
+  }
+  return undefined;
 }
 
 // --------------------------------------------------------------------- breaking

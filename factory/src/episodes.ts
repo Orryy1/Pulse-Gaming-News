@@ -57,6 +57,8 @@ export interface EpisodeAssets {
   desk?: { voice: { id: string; name: string }; question: string };
   /** The new-look test: this Short got the editor's dressing (src/render/Short.tsx `suite`). */
   suite?: boolean;
+  /** Pip the mascot test: this Short carried Pip (src/render/components/Pip.tsx); unset before the test began. */
+  mascot?: boolean;
   /** Each entry's own colour from its key art ("#rrggbb", null when it has none): src/assets/palette.ts. */
   palette?: Array<string | null>;
   /** Graphics the graphics check faulted ("entry:moment"), left out of the next render. */

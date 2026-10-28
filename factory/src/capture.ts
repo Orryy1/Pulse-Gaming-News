@@ -169,7 +169,7 @@ export function captureMessage(
 ): string {
   return [
     `**Fancy getting your own gameplay into the next video?**`,
-    `"${title}" goes out ${captureWhen(publishAt, timeZone)}. If you play before then, these are the moments it would love:`,
+    `"${title}" goes out ${captureWhen(publishAt, timeZone)}. Anything you record before ${captureWhen(new Date(publishAt.getTime() - CAPTURE_GATHER_LEAD_HOURS * 3600_000), timeZone)} can make it in. These are the moments it would love:`,
     ...list.games.flatMap((g) => [
       "",
       `**${g.game}**`,
@@ -178,6 +178,29 @@ export function captureMessage(
     "",
     "No extra steps: anything you stream on Twitch or save as an Xbox capture gets picked up automatically, and the best bits go straight into the video. The sooner, the better. Totally optional, the video gets made either way.",
   ].join("\n");
+}
+
+/** Hours before the slot that a held video gathers its footage (rendering takes about three hours). */
+export const CAPTURE_GATHER_LEAD_HOURS = 10;
+
+/**
+ * Sends the checklist when it applies, then says until when the footage should wait: CAPTURE_GATHER_LEAD_HOURS
+ * before the slot, for a video whose list went out. Remakes never wait (their slot is close and set).
+ */
+export async function captureHold(
+  s: Pick<Services, "cfg" | "db" | "notify" | "now">,
+  ep: Pick<Episode, "id" | "lane" | "script_json" | "publish_at" | "slot_at">,
+): Promise<Date | undefined> {
+  await maybeSendCaptureChecklist(s, ep);
+  const when = ep.publish_at ?? ep.slot_at;
+  if (!when || !s.cfg.captureChecklist) return undefined;
+  const [sent] = await s.db.query<{ remade: boolean; listed: boolean }>(
+    `SELECT bool_or(kind = 'remake') AS remade, bool_or(kind = 'capture_checklist') AS listed FROM events WHERE episode_id = $1`,
+    [ep.id],
+  );
+  if (!sent?.listed || sent.remade) return undefined;
+  const until = new Date(new Date(when).getTime() - CAPTURE_GATHER_LEAD_HOURS * 3600_000);
+  return until > s.now() ? until : undefined;
 }
 
 /**

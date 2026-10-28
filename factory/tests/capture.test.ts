@@ -240,3 +240,24 @@ test("the checklist is sent once, and only with at least 12 hours to play", asyn
   assert.equal(sent.length, 1);
   await db.close();
 });
+
+test("a long video about the owner's game waits for their recordings until 10 hours before its slot", async () => {
+  const { captureHold } = await import("../src/capture.ts");
+  const { testDb, testConfig, goodScript } = await import("./helpers.ts");
+  const db = await testDb();
+  const cfg = testConfig("x", { captureChecklist: true, ownerGames: ["Grand Theft Auto V"] });
+  const now = new Date("2026-10-28T12:00:00Z");
+  const slot = "2026-10-29T19:00:00.000Z";
+  const sent: string[] = [];
+  const s = { cfg, db, now: () => now, notify: async (m: { content?: string }) => (sent.push(m.content ?? ""), true) } as any;
+  await db.query(`INSERT INTO episodes (id, story_hash, status, story_json, lane) VALUES ('ep_l', 'l', 'voiced', '{"headline":"x","items":[]}', 'longform')`);
+  // An episode whose checklist went out waits; one without a list, or a remake, does not.
+  await db.query(`INSERT INTO events (episode_id, kind, detail) VALUES ('ep_l', 'capture_checklist', '{}')`);
+  const ep = { id: "ep_l", lane: "longform", script_json: { ...goodScript(), runtime: "long" }, publish_at: null, slot_at: slot } as any;
+  assert.equal((await captureHold(s, ep))?.toISOString(), "2026-10-29T09:00:00.000Z");
+  assert.equal(await captureHold({ ...s, now: () => new Date("2026-10-29T09:30:00Z") }, ep), undefined, "time to gather");
+  await db.query(`INSERT INTO events (episode_id, kind, detail) VALUES ('ep_l', 'remake', '{}')`);
+  assert.equal(await captureHold(s, ep), undefined, "remakes never wait");
+  assert.equal(await captureHold({ ...s, cfg: { ...cfg, captureChecklist: false } }, { ...ep, id: "ep_none" }), undefined);
+  await db.close();
+});

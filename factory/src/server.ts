@@ -74,7 +74,7 @@ import { errorMessage, log } from "./lib/util.ts";
 import { publishPcSchedule } from "./pcschedule.ts";
 import { activeUploads } from "./youtube/upload.ts";
 import { handleRoutine, routineAllowed, startBraveFront } from "./routines.ts";
-import { alert } from "./approval/discord.ts";
+import { alert, postDiscord } from "./approval/discord.ts";
 import {
   dailySummary,
   digestDue,
@@ -738,8 +738,13 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
     if (url.pathname === "/admin/remake" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       try {
-        const out = await prepareRemake(services, url.searchParams.get("id") ?? "");
-        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, ...out }));
+        const out = await prepareRemake(
+          services,
+          url.searchParams.get("id") ?? "",
+        );
+        res
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ ok: true, ...out }));
       } catch (err) {
         res
           .writeHead(400, { "content-type": "application/json" })
@@ -1013,7 +1018,8 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         const shortText = await shortRes.text();
         const short = JSON.parse(shortText) as any;
         const userId =
-          shortText.match(/"user_id"\s*:\s*"?(\d+)/)?.[1] ?? String(short?.user_id);
+          shortText.match(/"user_id"\s*:\s*"?(\d+)/)?.[1] ??
+          String(short?.user_id);
         if (!short?.access_token)
           throw new Error(JSON.stringify(short?.error ?? short).slice(0, 300));
         const long = await fetch(
@@ -1503,6 +1509,10 @@ async function main(): Promise<void> {
           }
         },
         notify: (m) => services.notify(m),
+        // TikTok drafts go to their own channel (#tiktok-posts), so the owner finds them at once (28 Oct 2026).
+        notifyTiktok: cfg.discordTiktokWebhookUrl
+          ? (m) => postDiscord(cfg.discordTiktokWebhookUrl, m)
+          : undefined,
         episodeDir: (id) => episodeDir(cfg, id),
         videoUrl: (id) => approvalLinks(cfg, id).preview,
       }),

@@ -44,7 +44,7 @@ import {
   writeLongform,
 } from "./editorial/longform.ts";
 import { trailerMatchesGame } from "./assets/commons.ts";
-import { maybeSendCaptureChecklist } from "./capture.ts";
+import { captureHold } from "./capture.ts";
 import { rankStills } from "./assets/stillscore.ts";
 import { makeParallax, LAYERED_KINDS } from "./render/parallax.ts";
 import { annotationLabel, locate } from "./assets/annotate.ts";
@@ -174,6 +174,7 @@ import {
   retentionNotes,
   visualLessons,
 } from "./analytics.ts";
+import { deskShareNow, experimentVerdicts, mascotFor, mascotShareNow, rumoursPerDayNow } from "./experiments.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
 import { titleVariants } from "./editorial/titles.ts";
@@ -900,6 +901,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   const rumoursToday = cfg.includeRumours
     ? await countRumoursToday(db, cfg.timezone)
     : 0;
+  const rumourCap = await rumoursPerDayNow(db, cfg); // the leak verdict may have lowered it (src/experiments.ts)
   const eligible = sightings
     .filter(
       (x) =>
@@ -907,7 +909,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
         (cfg.includeRumours && x.cluster.rumourSignals),
     )
     .filter(
-      (x) => !(x.cluster.rumourSignals && rumoursToday >= cfg.rumoursPerDay),
+      (x) => !(x.cluster.rumourSignals && rumoursToday >= rumourCap),
     )
     .filter((x) => x.cluster.score > 0);
 
@@ -1768,7 +1770,7 @@ export async function maybeSelectDocumentary(
         {
           days: cfg.docDays,
           slot: cfg.docSlot,
-          leadMinutes: cfg.docLeadMinutes,
+          leadMinutes: Math.max(cfg.docLeadMinutes, cfg.longLeadMinutes),
           graceMinutes: cfg.slotGraceMinutes,
           timeZone: cfg.timezone,
         },
@@ -2120,8 +2122,9 @@ export async function maybeSelectLongform(
     {
       days: cfg.longformDays,
       slot: cfg.longformSlot,
-      // Fifteen to twenty minutes of footage takes four hours or more to gather, voice and render.
-      leadMinutes: cfg.slotLeadMinutes + 420,
+      // Fifteen to twenty minutes of footage takes four hours or more to gather, voice and render; the day
+      // before, so the owner's recordings can join and the render can wait for a gap between Shorts.
+      leadMinutes: Math.max(cfg.slotLeadMinutes + 420, cfg.longLeadMinutes),
       graceMinutes: cfg.slotGraceMinutes,
       timeZone: cfg.timezone,
     },
@@ -3790,7 +3793,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   // A twin reads its figures in its own language (no English number-to-words pass) and only ElevenLabs
   // speaks it: the local clone speaks English.
   const twin = ep.lane === "twin";
-  const desk0 = deskFor(s.cfg, ep);
+  const desk0 = deskFor({ ...s.cfg, deskShare: await deskShareNow(s.db, s.cfg) }, ep);
   // When the desk partner would be the narrator, the usual narrator asks the question instead.
   const desk =
     desk0 && desk0.voice.id === voice.id
@@ -5436,7 +5439,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const assets = { ...(ep.assets_json ?? {}) };
   if (!assets.images) {
     // The shot list is final: the owner gets a "record these moments" list when it covers a game they play.
-    await maybeSendCaptureChecklist(s, ep);
+    // A video about the owner's games waits for their recordings: the list goes out now, and the footage
+    // is gathered CAPTURE_GATHER_LEAD_HOURS before the slot.
+    const holdUntil = await captureHold(s, ep);
+    if (holdUntil) {
+      await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [ep.id, holdUntil]);
+      log("info", "footage waits for the owner's recordings", { episode: ep.id, until: holdUntil.toISOString() });
+      return;
+    }
     Object.assign(assets, await gatherMedia(s, ep, dir));
     await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
       ep.id,
@@ -6175,6 +6185,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   }
   assets.plan = plan;
   assets.suite = suiteFor(s.cfg, ep);
+  // Pip the mascot (src/experiments.ts): recorded either way only while the test runs, and kept on a re-render.
+  const mascotShare = await mascotShareNow(s.db, s.cfg);
+  if (assets.mascot === undefined && mascotShare > 0) assets.mascot = mascotFor(mascotShare, ep);
   // The new-look opening poster (src/render/components/HookPoster.tsx): the hero art's subject cut out once.
   const heroImage = assets.images?.[plan.heroIndex];
   if (
@@ -6263,6 +6276,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       stamps: stampsFor(script, words),
       plan,
       suite: assets.suite,
+      mascot: assets.mascot,
       heroCutFile: assets.heroCut,
       renderDate: s.now().toISOString().slice(0, 10),
     },
@@ -7588,6 +7602,11 @@ export async function tick(
         log("warn", "retention curve capture failed", {
           error: errorMessage(err),
         }),
+      );
+    // The experiments' verdicts: once on EXPERIMENT_VERDICT_DATE, then weekly while the desk test is undecided.
+    if (!s.cfg.dryRun)
+      await experimentVerdicts(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch((err) =>
+        log("warn", "experiment verdicts failed", { error: errorMessage(err) }),
       );
     // Shorts: whether the Shorts feed served each one, and a warning when it stops (read-only).
     if (!s.cfg.dryRun) {

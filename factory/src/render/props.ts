@@ -46,6 +46,7 @@ export type ShortProps = {
   stamps?: Array<{ at: number; text: string; sub?: string; colour: string }>; // word stamps, timed to their words
   plan: RenderPlan | null; // built in the pipeline; the composition builds one for previews
   suite?: boolean; // the new-look test: cut accents, punch-ins and an old game's period looks
+  mascot?: boolean; // Pip the mascot test: the amber mascot in the brand band, beside the logo
   heroCut?: { fg: string; x?: number }; // the new-look opening: the hero art's subject cut out (src/render/parallax.ts)
   logoSrc: string | null;
   audioSrc: string | null;

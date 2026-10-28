@@ -290,6 +290,8 @@ export interface CrosspostDeps {
     level?: "info";
     ping?: boolean;
   }) => Promise<unknown>;
+  /** The owner's TikTok channel on Discord (#tiktok-posts), when it has its own webhook; else notify. */
+  notifyTiktok?: (m: { content: string; ping?: boolean }) => Promise<unknown>;
   episodeDir: (id: string) => string;
   /** A signed public link to the episode's video, for platforms that fetch it themselves. */
   videoUrl?: (id: string) => string;
@@ -417,15 +419,13 @@ export async function crosspostTick(
         const link = base
           ? `${base}/tiktok/${ep.id}?t=${signToken(`tiktok:${ep.id}`, d.cfg.appSecret, 3 * 86_400)}`
           : "";
-        await d
-          .notify({
+        const tell = d.notifyTiktok ?? d.notify;
+        await tell({
             ping: true,
             content: `📲 Your turn, TikTok: "${polishTitle(script)}"${link ? `\nTap: ${link}\n(one button copies the caption and opens TikTok: tap the draft, paste, post)` : "\nOpen TikTok, tap the draft, paste the next message as the caption, post."}`,
           })
           .catch(() => undefined);
-        await d
-          .notify({ content: caption.slice(0, 2000) })
-          .catch(() => undefined);
+        await tell({ content: caption.slice(0, 2000) }).catch(() => undefined);
       }
       log("info", "crossposted", { platform, episode: ep.id, id });
       done.push({ platform, episode: ep.id, ok: true });

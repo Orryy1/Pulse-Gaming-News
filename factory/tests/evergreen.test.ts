@@ -220,3 +220,15 @@ test("each entry's box art and clip land under that entry, never another's", () 
   }
   assert.ok(FRANCHISE_SEEDS.length >= 20);
 });
+
+test("a lead past a day reaches tomorrow's slot, and only on the plan's days", async () => {
+  const { evergreenDue } = await import("../src/lanes.ts");
+  // Long videos on Thursdays at 19:00 UK, 30 hours ahead (28 Oct 2026 is a Wednesday, UK on GMT).
+  const plan = { days: ["thu"], slot: "19:00", leadMinutes: 30 * 60, graceMinutes: 30, timeZone: "Europe/London" };
+  assert.equal(evergreenDue(new Date("2026-10-28T14:00:00Z"), plan, [])?.toISOString(), "2026-10-29T19:00:00.000Z", "29 hours ahead");
+  assert.equal(evergreenDue(new Date("2026-10-28T12:00:00Z"), plan, []), undefined, "31 hours ahead is past the lead");
+  assert.equal(evergreenDue(new Date("2026-10-28T14:00:00Z"), plan, [new Date("2026-10-29T19:00:00Z")]), undefined, "taken");
+  assert.equal(evergreenDue(new Date("2026-10-28T14:00:00Z"), { ...plan, days: ["fri"] }, []), undefined, "Friday's slot is past the lead");
+  // A short lead keeps today's behaviour.
+  assert.equal(evergreenDue(new Date("2026-10-28T12:00:00Z"), { ...plan, days: ["wed", "thu"], leadMinutes: 120 }, []), undefined);
+});

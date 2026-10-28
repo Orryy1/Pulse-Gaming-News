@@ -61,7 +61,9 @@ export const TopBar: React.FC<{
   isRumour: boolean;
   attribution: string;
   logoSrc: string | null;
-}> = ({ chip, accent, isRumour, attribution, logoSrc }) => {
+  /** Pixels kept clear at the right of the source line (Pip sits there on the mascot Shorts). */
+  reserveRight?: number;
+}> = ({ chip, accent, isRumour, attribution, logoSrc, reserveRight = 0 }) => {
   // The brand bar is complete at frame 0: frame 0 is the thumbnail.
   const rowIn = 1;
   const srcRule = 1;
@@ -139,7 +141,7 @@ export const TopBar: React.FC<{
           fontSize: source.length > 30 ? 24 : 28,
           color: "rgba(245,245,242,0.88)",
           letterSpacing: 1.5,
-          maxWidth: CONTENT_WIDTH - 18,
+          maxWidth: CONTENT_WIDTH - 18 - reserveRight,
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",

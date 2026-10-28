@@ -21,6 +21,7 @@ import React, { useMemo } from "react";
 import {
   AbsoluteFill,
   Audio,
+  Freeze,
   Img,
   OffthreadVideo,
   Sequence,
@@ -177,6 +178,41 @@ const resolveSrc = (src: string | null) =>
 const CROP = 1.12; // trims letterbox bars and burned-in subtitles from trailer clips
 const SAFE_X = 96;
 const SAFE_BOTTOM = 72;
+/** The flash-forward: at most this many graphics, each up for this many frames. */
+const TEASE_ITEMS = 4;
+const TEASE_FRAMES = 42;
+
+/** One cut of the flash-forward: the graphic punched in, a COMING UP tag, a flash into the next. */
+const TeaseCut: React.FC<{ children: React.ReactNode; last: boolean }> = ({ children, last }) => {
+  const frame = useCurrentFrame();
+  const scale = interpolate(frame, [0, TEASE_FRAMES], [1.06, 1.0], clamp);
+  const flash = interpolate(frame, [0, 3], [0.55, 0], clamp);
+  const out = last ? interpolate(frame, [TEASE_FRAMES - 8, TEASE_FRAMES], [1, 0], clamp) : 1;
+  return (
+    <AbsoluteFill style={{ background: COLOUR.ink, opacity: out }}>
+      <AbsoluteFill style={{ transform: `scale(${scale})` }}>{children}</AbsoluteFill>
+      <div
+        style={{
+          position: "absolute",
+          left: SAFE_X,
+          top: 130,
+          padding: "8px 18px",
+          background: COLOUR.amber,
+          color: COLOUR.ink,
+          fontFamily: BODY,
+          fontWeight: 900,
+          fontSize: 26,
+          letterSpacing: 4,
+          borderRadius: 6,
+        }}
+      >
+        COMING UP
+      </div>
+      <AbsoluteFill style={{ background: "#fff", opacity: flash }} />
+    </AbsoluteFill>
+  );
+};
+
 /** Frames the video's motif title card opens the video for, before the usual title. */
 const MOTIF_OPEN = 150;
 /** The hardware an old game's opening shot plays on (src/render/components/Retro.tsx). */
@@ -2518,6 +2554,46 @@ export const Long: React.FC<LongProps> = (props) => {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windows, props.moments, props.variant]);
+  // The flash-forward (owner, 28 Oct 2026): the opening teases the video's biggest graphics still to come, a
+  // few frames of each frozen fully drawn, under a COMING UP tag, while the narrator sets the story up.
+  const TEASE_KINDS = ["stat", "map", "quote", "milestone", "span", "headline", "bars", "delay", "reviews", "versus"];
+  const teaser = useMemo(() => {
+    const picks: number[] = [];
+    const seen = new Set<number>();
+    for (const kind of TEASE_KINDS)
+      windows.forEach((w, k) => {
+        const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
+        if (!g || g.kind !== kind || !usefulGraphic(g) || seen.has(w.entry) || w.start < 60) return;
+        if (!packFor.get(k) && !["quote", "headline", "span", "milestone", "delay", "reviews", "versus"].includes(kind)) return;
+        if (picks.length >= TEASE_ITEMS) return;
+        picks.push(k);
+        seen.add(w.entry);
+      });
+    return picks.sort((a, b) => a - b);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windows, props.moments, packFor]);
+  const teaseGraphic = (k: number) => {
+    const w = windows[k]!;
+    const g = props.moments![w.entry]![w.moment]!.graphic;
+    const bg = backgroundFor(g.kind, Number(entryTitle(w.entry).year) || undefined, props.variant + k);
+    const src = props.images.find((im) => im.beatIndex === w.entry && im.aspect >= 1.2 && im.kind !== "capsule")?.src;
+    const style = packFor.get(k);
+    if (style)
+      return React.createElement(style.component, {
+        g,
+        len: 200,
+        bg,
+        variant: props.variant + k,
+        year: Number(entryTitle(w.entry).year) || undefined,
+        photos: portraits,
+        src,
+      });
+    if (richGraphic(g, 200)) return richGraphic(g, 200, bg, props.variant + k);
+    if (g.kind === "quote") return <QuoteMoment g={g} len={200} bg={bg} variant={props.variant + k} />;
+    if (g.kind === "headline") return <HeadlineMoment g={g} len={200} bg={bg} variant={props.variant + k} src={src} />;
+    return null;
+  };
+
   // An accent on about one cut in four, at least eight seconds apart: never on an entry's landing, a
   // breather, an opening burst or the old TV, and never under a full-screen explainer.
   const accents = useMemo(() => {
@@ -2691,37 +2767,46 @@ export const Long: React.FC<LongProps> = (props) => {
               durationInFrames={len}
               layout="none"
             >
-              {videoMotif?.card && len >= 240 ? (
-                <>
-                  <Sequence durationInFrames={MOTIF_OPEN} layout="none">
-                    {React.createElement(videoMotif.card, {
-                      heading: props.title,
-                      kicker: props.recap ? "THIS WEEK" : documentary ? "DOCUMENTARY" : "RANKED",
-                      game: props.theme,
-                      pictures: motifPictures(undefined),
-                      frames: MOTIF_OPEN,
-                      variant: props.variant,
-                    })}
-                  </Sequence>
-                  <Sequence from={MOTIF_OPEN} layout="none">
-                    <IntroTitle
-                      title={props.title}
-                      spoilers={props.spoilers}
-                      kicker={props.kicker}
-                      criterion={props.criterion}
-                      durationFrames={len - MOTIF_OPEN}
-                    />
-                  </Sequence>
-                </>
-              ) : (
-                <IntroTitle
-                  title={props.title}
-                  spoilers={props.spoilers}
-                  kicker={props.kicker}
-                  criterion={props.criterion}
-                  durationFrames={len}
-                />
-              )}
+              {(() => {
+                // The opening: the video's motif card, the flash-forward, then the title.
+                const open = videoMotif?.card && len >= 240 ? MOTIF_OPEN : 0;
+                const tease = teaser.length >= 2 && len - open >= 480 ? teaser.length * TEASE_FRAMES : 0;
+                return (
+                  <>
+                    {open ? (
+                      <Sequence durationInFrames={open} layout="none">
+                        {React.createElement(videoMotif!.card!, {
+                          heading: props.title,
+                          kicker: props.recap ? "THIS WEEK" : documentary ? "DOCUMENTARY" : "RANKED",
+                          game: props.theme,
+                          pictures: motifPictures(undefined),
+                          frames: open,
+                          variant: props.variant,
+                        })}
+                      </Sequence>
+                    ) : null}
+                    {tease
+                      ? teaser.map((k, n) => (
+                          <Sequence key={`tease${k}`} from={open + n * TEASE_FRAMES} durationInFrames={TEASE_FRAMES} layout="none">
+                            <TeaseCut last={n === teaser.length - 1}>
+                              <Freeze frame={84}>{teaseGraphic(k)}</Freeze>
+                            </TeaseCut>
+                            <Sfx name={SFX.air[n % SFX.air.length]!} volume={LEVEL.airLong} />
+                          </Sequence>
+                        ))
+                      : null}
+                    <Sequence from={open + tease} layout="none">
+                      <IntroTitle
+                        title={props.title}
+                        spoilers={props.spoilers}
+                        kicker={props.kicker}
+                        criterion={props.criterion}
+                        durationFrames={len - open - tease}
+                      />
+                    </Sequence>
+                  </>
+                );
+              })()}
               {documentary ? <Letterbox len={len} /> : null}
             </Sequence>
           );

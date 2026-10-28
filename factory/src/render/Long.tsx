@@ -5,6 +5,7 @@
 
 import {
   BEDS,
+  MOOD_BEDS,
   gateLongSounds,
   inKey,
   leadFrames,
@@ -59,6 +60,12 @@ import {
   type MomentProp,
 } from "./components/LongMoments.tsx";
 import { displayText, type Segment } from "./timeline.ts";
+import {
+  dropLevel,
+  dropOuts,
+  musicSections,
+  type MusicChapter,
+} from "./musicplan.ts";
 import {
   backgroundFor,
   TextureBackground,
@@ -2071,26 +2078,44 @@ export const Long: React.FC<LongProps> = (props) => {
     const first = BEDS.findIndex((b) => b.file === props.musicSrc);
     if (first < 0)
       return [{ from: 0, to: durationInFrames, src: props.musicSrc }];
-    const cuts = props.segments
+    // Each chapter or entry: where it opens, its narration and its game's year (src/render/musicplan.ts
+    // gives each a mood; a mood bed plays its chapters, the house beds rotate through the rest).
+    const opens = props.segments
       .map((s, i) =>
         s.kind === "beat" &&
         (s.visual?.kind === "rank" || s.visual?.kind === "chapter") &&
         i > 0
-          ? starts[i]!
+          ? i
           : -1,
       )
-      .filter((f) => f > 0);
-    const out: Array<{ from: number; to: number; src: string }> = [];
-    let from = 0;
+      .filter((i) => i > 0);
+    const chapters: MusicChapter[] = opens.map((i, n) => ({
+      frame: starts[i]!,
+      text: props.segments
+        .slice(i, opens[n + 1] ?? props.segments.length)
+        .map((x) => x.text)
+        .join(" "),
+      year: Number(props.segments[i]!.visual?.items?.[0]) || undefined,
+    }));
+    const sections = musicSections(
+      chapters,
+      durationInFrames,
+      documentary,
+      45 * fps,
+      MUSIC_SECTION_SECONDS * fps,
+      (m) => MOOD_BEDS[m].length > 0,
+    );
     let k = first;
-    for (const c of cuts) {
-      if (c - from < MUSIC_SECTION_SECONDS * fps) continue;
-      out.push({ from, to: c, src: BEDS[k % BEDS.length]!.file });
-      from = c;
-      k++;
-    }
-    out.push({ from, to: durationInFrames, src: BEDS[k % BEDS.length]!.file });
-    return out;
+    const turn: Record<string, number> = {};
+    return sections.map((sec) => {
+      if (sec.mood) {
+        const list = MOOD_BEDS[sec.mood];
+        const n = turn[sec.mood] ?? 0;
+        turn[sec.mood] = n + 1;
+        return { from: sec.from, to: sec.to, src: list[n % list.length]!.file };
+      }
+      return { from: sec.from, to: sec.to, src: BEDS[k++ % BEDS.length]!.file };
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.musicSrc, props.segments, durationInFrames, fps]);
   // A documentary's breathers: the chapter segment that opens on one, and the frames it lasts.
@@ -2578,6 +2603,18 @@ export const Long: React.FC<LongProps> = (props) => {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windows, plan, props.moments, props.images, fps, retro]);
+  // The music drops out for a beat on one key line a section (src/render/musicplan.ts), never in the hook,
+  // a breather or around an entry change.
+  const drops = useMemo(
+    () =>
+      dropOuts(beds, [...punches.values()], fps, (f) =>
+        f < 20 * fps ||
+        entryFrames.some((e) => Math.abs(f - e) < 3 * fps) ||
+        breakFrames.some((b) => f >= b.from - 3 * fps && f <= b.to + 3 * fps),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [beds, punches, fps],
+  );
   // The suite (src/render/components/packs): each graphic kind rotates through the house design and every
   // pack style that can draw it, so two stats or two headlines in a video never look the same. A figure
   // or date keeps its small card half the time, so footage still carries most of the video.
@@ -3621,7 +3658,11 @@ export const Long: React.FC<LongProps> = (props) => {
                   lead ? f / lead : 1,
                   tail ? (span - f) / tail : 1,
                 );
-                return musicVolume(from + f) * Math.max(0, edge);
+                return (
+                  musicVolume(from + f) *
+                  dropLevel(from + f, drops) *
+                  Math.max(0, edge)
+                );
               }}
             />
           </Sequence>

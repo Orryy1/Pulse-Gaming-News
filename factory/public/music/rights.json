@@ -33,5 +33,52 @@
       "licence": "ElevenLabs paid-plan commercial use; retire the bed on any Content ID claim",
       "finishing": "beat-aligned seamless loop, pitch -1 semitones (rubberband, tempo kept), -12.7 LUFS (src/tools/sfxlab/pickbeds.py)"
     }
+  ],
+  "moods": [
+    {
+      "mood": "reflective",
+      "file": "music/mood_reflective_1.wav",
+      "key": "D",
+      "sha256": "5d3f9823529e5ebb0555861a8c18c17aa3f695548efa00199248169778cdc111",
+      "origin": "ElevenLabs Music, generated 2026-10-28 (reflective_3)",
+      "licence": "ElevenLabs paid-plan commercial use; retire the bed on any Content ID claim",
+      "finishing": "beat-aligned seamless loop, pitch +0 semitones (rubberband, tempo kept), -12.7 LUFS (src/tools/sfxlab/pickmoods.py)"
+    },
+    {
+      "mood": "retro",
+      "file": "music/mood_retro_1.wav",
+      "key": "D",
+      "sha256": "890ef2e723271bb6188cbb7c81b1048a2c3e0b7839ed3ec0944f3029cd41f0a4",
+      "origin": "ElevenLabs Music, generated 2026-10-28 (retro_0)",
+      "licence": "ElevenLabs paid-plan commercial use; retire the bed on any Content ID claim",
+      "finishing": "beat-aligned seamless loop, pitch +0 semitones (rubberband, tempo kept), -12.7 LUFS (src/tools/sfxlab/pickmoods.py)"
+    },
+    {
+      "mood": "tense",
+      "file": "music/mood_tense_1.wav",
+      "key": "D",
+      "sha256": "bfcf8dc6e078585108db32dca764b95ef10ec8bd467f60f02dc4dbfcac9e903d",
+      "origin": "ElevenLabs Music, generated 2026-10-28 (tense_2)",
+      "licence": "ElevenLabs paid-plan commercial use; retire the bed on any Content ID claim",
+      "finishing": "beat-aligned seamless loop, pitch +0 semitones (rubberband, tempo kept), -12.7 LUFS (src/tools/sfxlab/pickmoods.py)"
+    },
+    {
+      "mood": "tense",
+      "file": "music/mood_tense_2.wav",
+      "key": "E",
+      "sha256": "8c316c97c2f3414aa321d3d511b256ae30ac4ced1df29bddd01ce3bfccd9e744",
+      "origin": "ElevenLabs Music, generated 2026-10-28 (tense_3)",
+      "licence": "ElevenLabs paid-plan commercial use; retire the bed on any Content ID claim",
+      "finishing": "beat-aligned seamless loop, pitch +0 semitones (rubberband, tempo kept), -12.7 LUFS (src/tools/sfxlab/pickmoods.py)"
+    },
+    {
+      "mood": "triumph",
+      "file": "music/mood_triumph_1.wav",
+      "key": "D",
+      "sha256": "af1ef9a098d5a1553a51360fdbad17809a21078197585e0f65710f070af9af46",
+      "origin": "ElevenLabs Music, generated 2026-10-28 (triumph_1)",
+      "licence": "ElevenLabs paid-plan commercial use; retire the bed on any Content ID claim",
+      "finishing": "beat-aligned seamless loop, pitch +2 semitones (rubberband, tempo kept), -12.7 LUFS (src/tools/sfxlab/pickmoods.py)"
+    }
   ]
 }

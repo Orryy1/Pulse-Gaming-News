@@ -7,6 +7,8 @@
 // ringing high tones, no jolts. Every file is matched for perceived loudness, so a level here means the
 // same thing for every sound. Pitched sounds come tuned to each music bed's key.
 
+import type { Mood } from "./musicplan.ts";
+
 export const SFX = {
   air: ["v3/air-1", "v3/air-2", "v3/air-3"],
   swell: "v3/swell",
@@ -65,11 +67,26 @@ export const BEDS = [
   { file: "music/bed_3.wav", key: "D" },
   { file: "music/bed_4.wav", key: "E" },
 ] as const;
+/**
+ * The mood beds (public/music/mood_*, chosen by src/tools/sfxlab/pickmoods.py from ElevenLabs Music takes, 28 Oct
+ * 2026): a long video's chapter plays the one that fits its era or story (src/render/musicplan.ts). A mood
+ * with no bed that passed the measurement keeps the house beds.
+ */
+export const MOOD_BEDS: Record<Mood, ReadonlyArray<{ file: string; key: "D" | "E" }>> = {
+  tense: [
+    { file: "music/mood_tense_1.wav", key: "D" },
+    { file: "music/mood_tense_2.wav", key: "E" },
+  ],
+  retro: [{ file: "music/mood_retro_1.wav", key: "D" }],
+  triumph: [{ file: "music/mood_triumph_1.wav", key: "D" }],
+  reflective: [{ file: "music/mood_reflective_1.wav", key: "D" }],
+};
 export const bedFor = (variant: number) => BEDS[((variant % BEDS.length) + BEDS.length) % BEDS.length]!.file;
 
 /** The key of each bed by file name, the retired Suno beds included (older renders name them). */
 const MUSIC_KEY: Record<string, "D" | "E"> = {
   ...Object.fromEntries(BEDS.map((b) => [b.file.split("/").pop()!, b.key])),
+  ...Object.fromEntries(Object.values(MOOD_BEDS).flat().map((b) => [b.file.split("/").pop()!, b.key])),
   "music_1.mp3": "D",
   "music_2.mp3": "D",
   "music_3.mp3": "E",

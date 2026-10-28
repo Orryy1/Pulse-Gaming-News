@@ -3,7 +3,13 @@
 // Short: same week, room to explain, and the watch hours a channel needs for the Partner Program.
 // It reuses the documentary's shape (chapters of paragraphs with callouts) so it renders, voices
 // and passes QA through the documentary path.
-import { advertiserProblems, voiceFor } from "./voice.ts";
+import {
+  advertiserProblems,
+  phraseProblems,
+  stockSegueProblems,
+  voiceFor,
+  writingProblems,
+} from "./voice.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import type { Script } from "./schema.ts";
@@ -88,7 +94,8 @@ export function recapChapterPrompt(): string {
   return `${HOUSE}
 
 Write one story of this week's gaming news recap, ${RECAP_CHAPTER_WORDS_MIN}-${RECAP_CHAPTER_WORDS_MAX} spoken words in ${RECAP_PARAGRAPHS_MIN}-${RECAP_PARAGRAPHS_MAX} paragraphs of 40-90 words.
-Open on the news itself, with the game's name, in the first sentence. Then the details a fan would want (dates, prices, platforms, what was shown); then the context the sources give (the last game, earlier delays, how it compares); then what it means for players. End on a short line that hands over to the next story without naming it.
+Open on the news itself, with the game's name, in the first sentence. Then the details a fan would want (dates, prices, platforms, what was shown); then the context the sources give (the last game, earlier delays, how it compares); then what it means for players. End on this story's own consequence or the next date to watch; the next story's title card does the handover, so never a stock segue ("speaking of...", "our next story...", "meanwhile...").
+In the whole recap, "we think" comes at most twice, and "in fairness" and "which, fair" once each at most: find other words for the rest. A game's full title and a person's role once, then the short form and the surname.
 Every fact, number, date, name and quote must come from the SOURCES text provided. If the sources do not say it, do not say it. A rumor stays a rumor: say who reported it.
 Callouts put a real fact on screen: at most half the paragraphs carry one, and a quote must be copied word for word from the sources. Most paragraphs use "none".
 footage names what the picture should show for that paragraph, with 1-4 keywords.
@@ -123,8 +130,23 @@ export async function writeRecapChapter(
 
 const wordCount = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 
-export function validateRecapChapter(c: DocChapter): string[] {
+export function validateRecapChapter(
+  c: DocChapter,
+  /** The stories written before this one: the stock lines are counted across the whole recap. */
+  earlier: DocChapter[] = [],
+): string[] {
   const p: string[] = [];
+  const text = c.paragraphs.map((x) => x.narration).join(" ");
+  // Stock segues ("speaking of"), a possessive year, copied example lines and how it sounds aloud.
+  p.push(...phraseProblems(text), ...writingProblems(text, { long: true }));
+  p.push(
+    ...stockSegueProblems(
+      [
+        ...earlier.flatMap((x) => x.paragraphs.map((y) => y.narration)),
+        text,
+      ].join(" "),
+    ),
+  );
   const words = c.paragraphs.reduce((n, x) => n + wordCount(x.narration), 0);
   if (words < RECAP_CHAPTER_WORDS_MIN || words > RECAP_CHAPTER_WORDS_MAX)
     p.push(
@@ -173,7 +195,7 @@ export async function writeRecapBookends(
   return llm.structured({
     system: `${HOUSE}
 
-Write the intro and outro of this week's finished gaming news recap. The intro opens on the week's single biggest fact (no "In this video", no "Welcome"), then says in one sentence what else is coming up. The outro picks the story that matters most and says what to watch for next; it may close with one question to the viewer. Set about_index to that story's number (0-based, in the given order): its footage plays behind the outro. Use only facts from the story notes. The outro label is 2-4 words, e.g. "OUR READ".`,
+Write the intro and outro of this week's finished gaming news recap. The intro opens on the week's single biggest fact (no "In this video", no "Welcome"), then says in one sentence what else is coming up. The outro picks the story that matters most and says what to watch for next; it may close with one question to the viewer. Set about_index to that story's number (0-based, in the given order): its footage plays behind the outro. Use only facts from the story notes. The outro label is 2-4 words, e.g. "THE TAKEAWAY". Never a stock segue such as "speaking of".`,
     content: `Recap: ${packaging.title}\n\nStories and their facts:\n${digest}`,
     schema: DocBookendsSchema,
     effort: "medium",

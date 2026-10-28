@@ -77,7 +77,7 @@ Likely answer to test against the sources: ${angle}
 Structure for this Short (it replaces the news hook and beat rules where they differ):
 - hook: the question as tension, in under 3 seconds, ideally with a contrast fact: "Rockstar has re-released GTA 5 three times. GTA 4? Not once." The hook may be or contain the question itself.
 - beats: two to four pieces of evidence from the sources, each with a hard specific (a year, a number, a named person or a quote).
-- pulse_take: the verdict in the Pulse voice, with the fair counterpoint ("in fairness... but...").
+- pulse_take: the verdict in the Pulse voice, with the fair counterpoint in your own words (never a stock "in fairness" opener).
 - loop_line: hand back to the question so the end runs into the start ("So why does it still get ignored?" style), never a call to comment.
 - story_type is "explainer". If the sources do not support an answer, say what is known and what is not, never guess.
 The YouTube title is the question or a claim with a named company or game and a verb, under 60 characters.`;

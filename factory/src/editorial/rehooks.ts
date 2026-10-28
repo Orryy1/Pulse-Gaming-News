@@ -9,7 +9,7 @@
 export const REHOOK_GAP_MAX_WORDS = 400;
 
 /** The prompt rule, shared by the documentary and long-form writers so they ask for the same thing. */
-export const REHOOK_RULE = `Re-hooks: about every 60-120 seconds of narration (every 150-300 words), give the viewer a fresh reason to keep watching with one line that opens a question or teases what is coming, in the Pulse voice. The shape, not the words: "But that wasn't the strangest part.", "And that is where it started to go wrong.", "So why did Rockstar wait twelve years?", "There was just one problem." Word every one differently: never the same line twice in a video. Never clickbait ("you won't believe", "this changes everything"), and never a false promise: whatever a line teases is paid off later in the script. No em dashes.`;
+export const REHOOK_RULE = `Re-hooks: about every 60-120 seconds of narration (every 150-300 words), give the viewer a fresh reason to keep watching with one line that opens a question or teases what is coming, in the Pulse voice. The shape, not the words: "But that wasn't the strangest part.", "And that's where it started to go wrong.", "So why did Rockstar wait twelve years?", "There was just one problem." Word every one differently: never the same line twice in a video. Never clickbait ("you won't believe", "this changes everything"), and never a false promise: whatever a line teases is paid off later in the script. No em dashes.`;
 
 // Sentence openers that turn the story or open a gap. "But" counts only on a short sentence (a turn,
 // "But it would not last."), not on a long contrast clause.

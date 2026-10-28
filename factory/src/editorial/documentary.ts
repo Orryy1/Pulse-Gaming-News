@@ -8,7 +8,17 @@
 // against them by a second pass and rewritten when a claim is not supported.
 // On-screen quotes and numbers must appear in the source text verbatim.
 
-import { advertiserProblems, voiceFor, withSignOff } from "./voice.ts";
+import {
+  advertiserProblems,
+  phraseProblems,
+  roleMentions,
+  sentencesIn,
+  sharedRuns,
+  stockSegueProblems,
+  voiceFor,
+  withSignOff,
+  writingProblems,
+} from "./voice.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
@@ -401,15 +411,50 @@ export function chapterPrompt(): string {
 Write one chapter of a game-by-game franchise documentary, ${DOC_CHAPTER_WORDS_MIN}-${DOC_CHAPTER_WORDS_MAX} spoken words in ${DOC_PARAGRAPHS_MIN}-${DOC_PARAGRAPHS_MAX} paragraphs of ${DOC_PARAGRAPH_WORDS_MIN}-${DOC_PARAGRAPH_WORDS_MAX} words.
 The first paragraph opens on a scene or a moment that names the year, so the viewer knows where they are. Then the people and the decisions; then what happened and how it landed; end on what it changed.
 Hold attention the way the best documentaries do:
-- The last sentence of the chapter looks forward: it names what is coming without saying how it ends ("It would not stay that way for long." / "That decision would cost them a generation."). Never "In the next chapter".
-- A hard number or a two-sided contrast at least every other paragraph ($399 against $499, 58 million against 117 million), always from the source.
-- Name the people who made the decisions, with their roles, and judge decisions, never people; criticism is attributed to whoever made it in the source.
+- The last sentence of the chapter either looks forward, naming what's coming without saying how it ends (a calm that won't last, a choice that will cost someone), or, in about one chapter in three, lands on a plain consequence: what this chapter changed, said flatly. You're told which below. Word it fresh every time, and never "In the next chapter".
+- A hard number or a two-sided contrast at least every other paragraph ($399 against $499, 58 million against 117 million), always from the source. Never more than two figures in one sentence, and a date's year only the first time that date comes up in the chapter.
+- Name the people who made the decisions. A person's role goes with their first mention in the whole documentary (the earlier chapters are listed below), then the surname alone. Judge decisions, never people; criticism is attributed to whoever made it in the source.
+- A game's full title once in the chapter; after that the short form people say ("Vice City", "GTA 5", "Red Dead 2").
+- At most one sentence in the chapter opens "That's a" or "That's an".
 - One dry aside at most per chapter, aimed at a company or a situation, never at players.
-- ${REHOOK_RULE} In a chapter that means two or three inside it, besides the forward-looking last line.
-Every fact, number, date, name and quote must come from the SOURCE text provided. If the source does not say it, do not say it. Do not repeat what earlier chapters covered.
+- ${REHOOK_RULE} In a chapter that means two or three inside it, besides the last line.
+Every fact, number, date, name and quote must come from the SOURCE text provided. If the source doesn't say it, don't say it. Don't repeat what earlier chapters covered: what they said is listed below, so refer back to it in a few words at most and never reuse their wording.
 Callouts put a real fact on screen: at most half the paragraphs carry one, and a quote must be copied word for word from the source. Most paragraphs use "none".
 footage names what the picture should show for that paragraph, with 1-4 keywords.
 List every factual claim in "claims" with the source section it came from.`;
+}
+
+/** Earlier chapters as the pipeline holds them: plain chapters, or { plan, chapter, ... } entries. */
+export type EarlierChapters = ReadonlyArray<
+  DocChapter | { chapter: DocChapter }
+>;
+
+function earlierOf(earlier?: EarlierChapters): DocChapter[] {
+  return (earlier ?? []).map((c) => ("chapter" in c ? c.chapter : c));
+}
+
+const chapterText = (c: DocChapter) =>
+  c.paragraphs.map((x) => x.narration).join(" ");
+
+/** About one chapter in three ends on a plain consequence rather than a forward tease (the third, sixth...). */
+export function endsOnConsequence(index: number): boolean {
+  return index % 3 === 2;
+}
+
+/**
+ * The sentences of an earlier documentary on the same subject that touch this chapter (its game or its
+ * year), for the writer to avoid echoing. The validator checks the whole earlier text.
+ */
+export function priorSentencesFor(
+  prior: string,
+  plan: Pick<DocChapterPlan, "game_title" | "year">,
+  max = 40,
+): string[] {
+  const game = plan.game_title.toLowerCase();
+  const year = String(plan.year);
+  return sentencesIn(prior)
+    .filter((x) => x.toLowerCase().includes(game) || x.includes(year))
+    .slice(0, max);
 }
 
 export async function writeChapter(
@@ -422,6 +467,10 @@ export async function writeChapter(
     source: WikiArticle;
     previousEnding?: string;
     feedback?: string[];
+    /** The chapters written so far, so nothing they said is said again. */
+    earlier?: EarlierChapters;
+    /** The narration of an earlier Pulse documentary on the same subject, whose wording is not reused. */
+    priorDoc?: string;
   },
 ): Promise<DocChapter> {
   const others = ctx.outline.chapters
@@ -433,9 +482,22 @@ export async function writeChapter(
   const fb = ctx.feedback?.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${ctx.feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
+  const said = earlierOf(ctx.earlier)
+    .flatMap((c) => c.claims.map((x) => x.claim))
+    .slice(-80);
+  const saidBlock = said.length
+    ? `\n\nAlready said in earlier chapters (don't say these again; refer back in a few words at most):\n${said.map((x) => `- ${x}`).join("\n")}`
+    : "";
+  const prior = ctx.priorDoc ? priorSentencesFor(ctx.priorDoc, ctx.plan) : [];
+  const priorBlock = prior.length
+    ? `\n\nAn earlier Pulse documentary on this subject said the lines below. Don't reuse their wording; a fact may come up again only in new words:\n${prior.map((x) => `- ${x}`).join("\n")}`
+    : "";
+  const ending = endsOnConsequence(ctx.index)
+    ? "This chapter ends on a plain consequence: what it changed, said flatly, with no tease."
+    : "This chapter ends looking forward: name what's coming without saying how it ends.";
   return llm.structured({
     system: chapterPrompt(),
-    content: `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\nThis chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}${fb}`,
+    content: `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\nThis chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}\n${ending}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}${saidBlock}${priorBlock}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}${fb}`,
     schema: DocChapterSchema,
     effort: "medium",
     maxTokens: 12000,
@@ -845,8 +907,51 @@ export function groundDocMoments(
   return { moments: out, removed };
 }
 
-export function validateChapter(c: DocChapter): string[] {
+export function validateChapter(
+  c: DocChapter,
+  opts: {
+    /** The chapters written before this one: repeated wording and roles are checked against them. */
+    earlier?: EarlierChapters;
+    /** An earlier Pulse documentary on the same subject, whose wording must not come back. */
+    priorDoc?: string;
+  } = {},
+): string[] {
   const p: string[] = [];
+  const text = chapterText(c);
+  const before = earlierOf(opts.earlier).map(chapterText);
+  // Banned phrases, a possessive on a year, copied example lines, and how it sounds aloud.
+  p.push(...phraseProblems(text), ...writingProblems(text, { long: true }));
+  p.push(...stockSegueProblems([...before, text].join(" ")));
+  const thats = sentencesIn(text).filter((x) => /^That['’]s an?\b/.test(x));
+  if (thats.length > 1)
+    p.push(
+      `${thats.length} sentences open "That's a" or "That's an"; keep one at most and start the others another way.`,
+    );
+  // The same seven words in two chapters: the documentary is repeating itself.
+  const again = sharedRuns(text, before, 7);
+  if (again.length)
+    p.push(
+      `"${again[0]}" repeats wording from an earlier chapter; say something new or refer back in a few words.`,
+    );
+  if (opts.priorDoc) {
+    const copied = sharedRuns(text, [opts.priorDoc], 8);
+    if (copied.length >= 2)
+      p.push(
+        `"${copied[0]}" repeats the wording of our earlier documentary on this subject; tell it in new words.`,
+      );
+  }
+  // A role goes with a person's first mention in the documentary only.
+  const roles = new Map<string, number>();
+  for (const t of before)
+    for (const [name, n] of roleMentions(t))
+      roles.set(name, (roles.get(name) ?? 0) + n);
+  for (const [name, n] of roleMentions(text))
+    if ((roles.get(name) ?? 0) + n > 1) {
+      p.push(
+        `${name}'s role is spelled out again; give it on first mention only, then the surname.`,
+      );
+      break;
+    }
   const words = c.paragraphs.reduce((n, x) => n + wordCount(x.narration), 0);
   if (words < DOC_CHAPTER_WORDS_MIN || words > DOC_CHAPTER_WORDS_MAX)
     p.push(
@@ -920,7 +1025,16 @@ export async function writeBookends(
   outline: DocOutline,
   chapters: Array<{ plan: DocChapterPlan; chapter: DocChapter }>,
   franchiseNotes: string,
+  /** The narration of an earlier Pulse documentary on the same subject, whose opening is not reused. */
+  opts: { priorDoc?: string } = {},
 ): Promise<DocBookends> {
+  const prior = opts.priorDoc
+    ? `\n\nOur earlier documentary on this subject opened like this; open differently and reuse none of its wording:\n${sentencesIn(
+        opts.priorDoc,
+      )
+        .slice(0, 12)
+        .join(" ")}`
+    : "";
   const digest = chapters
     .map(
       ({ plan, chapter }, i) =>
@@ -934,9 +1048,9 @@ export async function writeBookends(
     system: `${HOUSE}
 
 Write the intro and outro of a finished documentary.
-The intro is a cold open, in this order: the first sentence names a date, a place and a named person or an exact figure, inside one true moment from the chapters below; by about word 60 the stakes, as a consequence that tells the viewer how it ends ("it handed a generation to Sony"): give away the outcome, hold back the how, which is what the strongest long videos in our study did; somewhere in the intro one line that leans forward ("and that was only the start of it"); by about word 120 the title line ("This is the story of..." or "This is how..."), then a turn back to the beginning ("But to understand how it got there, we have to go back to..."). Never "In this video", never a greeting.
+The intro is a cold open, in this order: the first sentence names a date, a place and a named person or an exact figure, inside one true moment from the chapters below; by about word 60 the stakes, as a consequence that tells the viewer how it ends (who lost what, or who won a generation): give away the outcome, hold back the how, which is what the strongest long videos in our study did; somewhere in the intro one short line that leans forward, saying in your own words that the first success was only the beginning; by about word 120 one line that names what this documentary is about, in your own words rather than a stock "This is the story of"; then a turn back to where it began, again in your own words. Never "In this video", never a greeting, and never a line you'd expect in any other documentary.
 The outro closes in three moves: the verdict, answering the documentary's question in its first two sentences; where things stand today, with a date; and a last line that calls back to the opening moment or date. Use only facts from the chapter notes and the overview.`,
-    content: `Documentary: ${outline.title}\nThe question it answers: ${outline.question ?? outline.title}\n\nChapters and their facts:\n${digest}\n\nOverview (Wikipedia):\n${franchiseNotes.slice(0, 5000)}`,
+    content: `Documentary: ${outline.title}\nThe question it answers: ${outline.question ?? outline.title}\n\nChapters and their facts:\n${digest}\n\nOverview (Wikipedia):\n${franchiseNotes.slice(0, 5000)}${prior}`,
     schema: DocBookendsSchema,
     effort: "medium",
   });
@@ -947,6 +1061,8 @@ export function validateBookends(b: DocBookends): string[] {
   const i = wordCount(b.intro.narration);
   if (i < 90 || i > 230) p.push(`The intro is ${i} words; it must be 110-200.`);
   p.push(...advertiserProblems(`${b.intro.narration} ${b.outro.narration}`));
+  // Stock lines and copied example lines ("And that was only the start of it" opened both GTA documentaries).
+  p.push(...phraseProblems(`${b.intro.narration} ${b.outro.narration}`));
   const o = wordCount(b.outro.narration);
   if (o < 70 || o > 210) p.push(`The outro is ${o} words; it must be 90-180.`);
   return p;

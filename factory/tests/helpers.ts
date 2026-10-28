@@ -275,7 +275,7 @@ export function goodScript(overrides: Partial<Script> = {}): Script {
       },
       {
         narration:
-          "The expansion was previously due this December, so that is a slip of at least three months if you were waiting on it.",
+          "The expansion was previously due this December, so that's a slip of at least three months if you were waiting on it.",
         visual: {
           kind: "stat",
           primary: "3+ months",
@@ -286,7 +286,7 @@ export function goodScript(overrides: Partial<Script> = {}): Script {
     pulse_take: {
       label: "WHAT IT MEANS",
       narration:
-        "For us, Bethesda has delayed big content before and it usually lands in better shape, so this is not a red flag yet.",
+        "For us, Bethesda has delayed big content before and it usually lands in better shape, so this isn't a red flag yet.",
       on_screen: "Not a red flag yet",
     },
     loop_line:

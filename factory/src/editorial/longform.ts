@@ -3,7 +3,14 @@
 // evergreen Short but with a paragraph per entry, an intro, an outro and
 // chapters. Topics come from the evergreen candidate pool.
 
-import { voiceFor, voiceProblems, withSignOff } from "./voice.ts";
+import {
+  repeatedRoles,
+  stockSegueProblems,
+  voiceFor,
+  voiceProblems,
+  withSignOff,
+  writingProblems,
+} from "./voice.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
@@ -217,7 +224,7 @@ export function longformPrompt(): string {
 
 Write a long-form ranking video of ${LONG_WORDS_MIN}-${LONG_WORDS_MAX} spoken words in total, fifteen to twenty minutes when read at a natural pace.
 Structure:
-1. intro.narration: 60-120 words, so entry one starts within about forty seconds. The first sentence is the most surprising concrete fact or image in the whole ranking, under 15 words. Then the rule in one sentence, naming two or three things every game is judged on ("how it plays today, what it changed, and whether it still holds up"), and why the viewer can trust the order (what was weighed: sales, reviews, how each plays now; never a claim to have played them). Then say plainly that number one is held to the end and that at least one placement will be argued with. No greeting, no channel name, no "welcome" or "today we're ranking": in a study of 1,573 long gaming videos, a greeting or brand line came first in 15 of the 50 weakest and 1 of the 50 strongest.
+1. intro.narration: 60-120 words, so entry one starts within about forty seconds. The first sentence is the most surprising concrete fact or image in the whole ranking, under 15 words. Then the rule in one sentence, naming two or three things every game is judged on (how it plays now, what it changed, whether it holds up), in your own words, and why the viewer can trust the order (what was weighed: sales, reviews, how each plays now; never a claim to have played them). Then say plainly that number one is held to the end and that at least one placement will be argued with. No greeting, no channel name, no "welcome" or "today we're ranking": in a study of 1,573 long gaming videos, a greeting or brand line came first in 15 of the 50 weakest and 1 of the 50 strongest.
 2. entries: ${LONG_ENTRIES_MIN}-${LONG_ENTRIES_MAX}, spoken from the lowest rank to number one. Each narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} words, six to ten sentences: what the game is and when it landed, the story around it (how it was made or received, from the facts given or long-established knowledge), two specific details a fan would nod at (a mechanic, a level, a moment), the fair counterpoint, and why it sits here, argued against its neighbor ("above Vice City because...", "below San Andreas, and here's the one thing that kept it there"), never a plot synopsis followed by praise words. Commit to every call: no "arguably", "for our money" or "it's hard to say". Numbers come as a contrast (a figure and the fact that undercuts it), never a list of stats. Place one deliberate surprise somewhere in the order and defend it. The last line hands over to the next entry. Vary the sentence openings; never start two entries the same way. verdict_chip is 1-4 words. footage names the trailer moment to show, with 1-4 keywords.
 ${REHOOK_RULE} In a ranking that means about one per entry, often the line that hands over to the next entry ("So why does the 'bad' one land this high?"), and one near the end of the intro.
 3. outro.narration: 60-150 words. Why number one wins by the rule, the top three in one line, the ranking's hardest call, honestly, and a last line that returns to the image or fact the intro opened on. No more than one sentence inviting comments.
@@ -295,7 +302,7 @@ This step plans the video only: the order, the intro, the outro and the packagin
 function entryPrompt(): string {
   return `${HOUSE}
 
-You are writing one entry of a long-form ranking video, from the plan you are given. The narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words (count them), three to five sentences: what the game is and when it landed, the specific detail from the plan, and why it sits at this rank by the criterion. It starts by naming the rank and the game in a fresh way: never open the way an earlier entry opened (they are listed). footage names an in-game moment to show, with 1-4 keywords.
+You are writing one entry of a long-form ranking video, from the plan you are given. The narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words (count them), three to five sentences: what the game is and when it landed, the specific detail from the plan, and why it sits at this rank by the criterion. It starts by naming the rank and the game in a fresh way: never open the way an earlier entry opened (they are listed). Say the game's full title once, then the short form people use; a person's role goes with their first mention in the video only. In the whole video "we think" comes at most twice and "in fairness" and "which, fair" once each at most. footage names an in-game moment to show, with 1-4 keywords.
 ${REHOOK_RULE} In one entry that means one such line, often the last one handing over to the next entry; never reuse the wording of a re-hook already in the video (they are listed).
 List every factual claim in this entry in "claims".`;
 }
@@ -469,8 +476,17 @@ export function narrationOfLongform(e: LongformScript): string {
 
 export function validateLongform(e: LongformScript): string[] {
   const p: string[] = [];
-  const words = wordCount(narrationOfLongform(e));
-  p.push(...voiceProblems(narrationOfLongform(e)));
+  const spokenText = narrationOfLongform(e);
+  const words = wordCount(spokenText);
+  p.push(...voiceProblems(spokenText));
+  // How it sounds aloud, with a long video's allowance; stock lines and job titles across the whole video.
+  p.push(...writingProblems(spokenText, { long: true }));
+  p.push(...stockSegueProblems(spokenText));
+  const roles = repeatedRoles(spokenText);
+  if (roles.length)
+    p.push(
+      `${roles[0]}'s role is spelled out more than once; give it on first mention only, then the surname.`,
+    );
   if (words < LONG_WORDS_MIN || words > LONG_WORDS_MAX)
     p.push(
       `Spoken word count is ${words}; it must be ${LONG_WORDS_MIN}-${LONG_WORDS_MAX}.`,

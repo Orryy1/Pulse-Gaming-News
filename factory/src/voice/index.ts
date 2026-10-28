@@ -99,7 +99,7 @@ export async function narrate(cfg: Config, text: string, outPath: string, voice?
           words: n.words.map((w) => ({ ...w, start: Math.max(0, w.start - trimmed), end: Math.max(0, w.end - trimmed) })),
           durationSeconds: n.durationSeconds - trimmed,
         };
-      const used = provider === "local" ? { provider, id: cfg.localVoiceId, name: "Liam (local clone)" } : { provider, id: voice?.id ?? cfg.elevenLabsVoiceId, name: voice?.name ?? cfg.elevenLabsVoiceId };
+      const used = provider === "local" ? { provider, id: cfg.localVoiceId, name: `${cfg.narratorName} (local clone)` } : { provider, id: voice?.id ?? cfg.elevenLabsVoiceId, name: voice?.name ?? cfg.elevenLabsVoiceId };
       log("info", "narration ready", { provider, voice: used.name, seconds: n.durationSeconds.toFixed(1) });
       return { ...n, voice: used };
     } catch (err) {

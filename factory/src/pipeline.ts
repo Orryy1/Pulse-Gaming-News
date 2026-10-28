@@ -163,6 +163,7 @@ import {
   captureCurves,
   performanceNotes,
   retentionNotes,
+  visualLessons,
 } from "./analytics.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
@@ -1929,6 +1930,7 @@ async function stepScriptDocumentary(
           sentences,
           source,
           games: outline.chapters.map((c) => c.game_title),
+          lessons: await visualLessons(s.db, s.now(), segmentInputs).catch(() => ""),
         }),
         source,
         outline.chapters.map((c) => c.game_title),
@@ -2038,7 +2040,14 @@ export async function prepareRemake(
       const chapterTitle =
         script.beats.filter((b) => b.visual?.kind === "chapter")[ci]?.visual?.primary ?? entry.game_title;
       const shot = groundDocMoments(
-        await writeDocMoments(s.llm, { game: entry.game_title, chapterTitle, sentences, source, games }),
+        await writeDocMoments(s.llm, {
+          game: entry.game_title,
+          chapterTitle,
+          sentences,
+          source,
+          games,
+          lessons: await visualLessons(s.db, s.now(), segmentInputs).catch(() => ""),
+        }),
         source,
         games,
       );
@@ -3101,6 +3110,7 @@ async function stepScriptRecap(
           ),
           source: story.source,
           games: stories.map((st) => st.game),
+          lessons: await visualLessons(s.db, s.now(), segmentInputs).catch(() => ""),
         }),
         story.source,
         stories.map((st) => st.game),

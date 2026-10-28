@@ -20,6 +20,7 @@ import { claudeSpend } from "./editorial/llm.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
 import { log } from "./lib/util.ts";
 import { buildSegments, type SegmentInput } from "./render/timeline.ts";
+import { momentKeys, momentWindows } from "./render/longplan.ts";
 import type { Script } from "./editorial/schema.ts";
 
 /** Ages at which a Short's numbers are read, and the window in which a late capture still counts. */
@@ -778,6 +779,73 @@ export async function captureCurves(
   }
   if (n) log("info", "retention curves captured", { videos: n });
   return n;
+}
+
+/**
+ * For the documentary shot-list writer (owner, 28 Oct 2026: learn from the retention curves): how fast
+ * viewers left while each kind of graphic was on screen, and during the breathers, against each long video's
+ * own average. Empty until a few long videos with shot lists have curves.
+ */
+export async function visualLessons(
+  db: Db,
+  now: Date,
+  segmentsOf?: (script: Script, desk: boolean) => SegmentInput[],
+): Promise<string> {
+  if (!segmentsOf) return "";
+  const rows = await db.query<{ id: string; script_json: any; assets_json: any; raw: unknown }>(
+    `SELECT e.id, e.script_json, e.assets_json, m.raw FROM video_metrics m JOIN episodes e ON e.id = m.episode_id
+      WHERE m.label = 'curve' AND e.lane = 'longform' AND m.captured_at > $1::timestamptz - interval '180 days'`,
+    [now],
+  );
+  const groups = new Map<string, { ratios: number[]; videos: Set<string> }>();
+  const add = (k: string, r: number, id: string) => {
+    const g = groups.get(k) ?? { ratios: [], videos: new Set<string>() };
+    g.ratios.push(r);
+    g.videos.add(id);
+    groups.set(k, g);
+  };
+  for (const r of rows) {
+    const curve = (typeof r.raw === "string" ? JSON.parse(r.raw) : r.raw) as Curve;
+    const script = r.script_json as Script | null;
+    const words = r.assets_json?.words;
+    const duration = Number(r.assets_json?.durationSeconds ?? 0);
+    const moments = (script?.entries ?? []).map((e) => e.moments ?? []);
+    if (!script?.beats || !Array.isArray(words) || !duration || curve.length < 20 || !moments.some((m) => m.length)) continue;
+    // The video's own pace of loss, between its first and last twentieth.
+    const avg = (watchAt(curve, duration * 0.05, duration) - watchAt(curve, duration * 0.95, duration)) / (duration * 0.9);
+    if (avg <= 0) continue;
+    const rate = (a: number, b: number) =>
+      b - a > 2 ? (watchAt(curve, a, duration) - watchAt(curve, b, duration)) / (b - a) / avg : undefined;
+    try {
+      const segments = buildSegments(segmentsOf(script, false), words, duration);
+      const ws = momentWindows(segments, words, moments.map((m) => m.length), moments.map((e) => e.map(momentKeys)));
+      for (const w of ws) {
+        const kind = moments[w.entry]?.[w.moment]?.graphic?.kind ?? "none";
+        const x = rate(w.start, Math.min(w.end, w.start + 12));
+        if (x !== undefined) add(kind === "none" ? "no graphic (footage and pictures)" : `${kind} graphics`, x, r.id);
+      }
+    } catch {
+      continue;
+    }
+    for (const b of (r.assets_json?.breaks ?? []) as Array<{ start: number; end: number }>) {
+      const x = rate(b.start, b.end + 4);
+      if (x !== undefined) add("chapter breathers", x, r.id);
+    }
+  }
+  const lines = [...groups.entries()]
+    .filter(([, g]) => g.ratios.length >= 6 && g.videos.size >= 2)
+    .map(([k, g]) => {
+      const mean = g.ratios.reduce((a, b) => a + b, 0) / g.ratios.length;
+      return { k, mean, n: g.ratios.length, v: g.videos.size };
+    })
+    .sort((a, b) => a.mean - b.mean);
+  if (lines.length < 2) return "";
+  const word = (m: number) =>
+    m < 0.95 ? `viewers left ${Math.round((1 - m) * 100)}% slower than average` : m > 1.05 ? `viewers left ${Math.round((m - 1) * 100)}% faster than average` : "about average";
+  return [
+    "How our long videos' audiences reacted while each kind of graphic was on screen (YouTube retention, against each video's own average; lean on what held them, use what lost them more sparingly):",
+    ...lines.map((l) => `- ${l.k}: ${word(l.mean)} (${l.n} moments in ${l.v} videos)`),
+  ].join("\n");
 }
 
 /** The share of viewers watching at each segment's start who had left by its end, from a Short's curve. */

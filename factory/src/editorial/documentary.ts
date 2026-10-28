@@ -642,6 +642,8 @@ export async function writeDocMoments(
     source: WikiArticle;
     /** Every chapter's game, for a "versus". */
     games?: string[];
+    /** What the retention curves taught about graphics (src/analytics.ts visualLessons). */
+    lessons?: string;
   },
 ): Promise<DocMoment[]> {
   const n = Math.max(1, ctx.sentences.length);
@@ -651,7 +653,7 @@ export async function writeDocMoments(
       const r = await llm.structured({
         tier: "mid",
         system: DOC_MOMENTS_PROMPT,
-        content: `Chapter: ${ctx.chapterTitle} (${ctx.game})${ctx.games?.length ? `\nGames in this documentary's chapters: ${ctx.games.join("; ")}` : ""}\n\n${ctx.sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}\n\nReturn exactly ${n} moments.`,
+        content: `Chapter: ${ctx.chapterTitle} (${ctx.game})${ctx.games?.length ? `\nGames in this documentary's chapters: ${ctx.games.join("; ")}` : ""}\n\n${ctx.sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}${ctx.lessons ? `\n\n${ctx.lessons}` : ""}\n\nReturn exactly ${n} moments.`,
         schema: docMomentsSchema(n),
         effort: "low",
         maxTokens: 12000,

@@ -40,7 +40,8 @@ prepare)
   git -C .. push mac "$BRANCH"
   echo "== speech check (MLX Whisper)"
   on_mac 'cd ~/PulseFactory && [ -x asr/bin/python ] || python3.12 -m venv asr; asr/bin/pip install -q --upgrade pip mlx-whisper'
-  on_mac 'bash ~/PulseFactory/factory/mac/launchd.sh && sleep 3 && curl -s http://127.0.0.1:8877/health'
+  # The speech check loads its model at start: up to two minutes before its health answers.
+  on_mac 'bash ~/PulseFactory/factory/mac/launchd.sh && for i in $(seq 1 24); do curl -sf -m 5 http://127.0.0.1:8877/health && break; sleep 5; done'
   # The frame screen's vision model and the free Liam voice stay on the PC's 4090 (owner, 28 Oct 2026): the
   # Mac reaches them over the LAN, so no model is pulled onto its 16 GB.
   echo "== checks on the Mac"

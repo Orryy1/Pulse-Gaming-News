@@ -29,7 +29,7 @@ while true; do
     # Fresh code (deployed by mac/post-receive), and it died inside three minutes: back to the version that ran.
     echo "[$(date -Iseconds)] release $release died ${ran}s after boot; rolling back to ${good:-the previous code}" >> "$log"
     echo "$release" > data/admin/bad_release
-    rsync -a --delete --exclude data --exclude .env --exclude node_modules "$PREV/" "$HOME/PulseFactory/factory/"
+    rsync -a --delete --exclude /data --exclude /.env --exclude /node_modules "$PREV/" "$HOME/PulseFactory/factory/"
     if ! cmp -s package-lock.json "$PREV/package-lock.json" 2>/dev/null; then npm ci --no-audit --no-fund >/dev/null 2>&1; fi
     [ -n "$good" ] && echo "$good" > data/admin/release || rm -f data/admin/release
     notify "⚠️ Pulse Factory (Mac): the update ${release:0:9} died ${ran}s after starting, so I went back to the previous version, which is running again. That update will not be deployed again; push a fix on top of it. The log has the error: data/logs/factory-$(date +%Y-%m-%d).log"

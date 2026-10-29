@@ -30,9 +30,10 @@ while read -r _old new ref; do
   fi
   # The running code is kept beside the live folder, so mac/run.sh can go back to it if the new code dies at boot.
   mkdir -p "$PREV"
-  rsync -a --delete --exclude data --exclude .env --exclude node_modules "$LIVE/" "$PREV/"
-  # Code only: data/, .env and node_modules in the live folder stay as they are.
-  rsync -a --delete --exclude data --exclude .env --exclude node_modules "$SRC/factory/" "$LIVE/"
+  rsync -a --delete --exclude /data --exclude /.env --exclude /node_modules "$LIVE/" "$PREV/"
+  # Code only: the top-level data/, .env and node_modules in the live folder stay as they are (anchored: an
+  # unanchored "data" also dropped src/render/components/packs/data, 29 Oct 2026).
+  rsync -a --delete --exclude /data --exclude /.env --exclude /node_modules "$SRC/factory/" "$LIVE/"
   mkdir -p "$LIVE/data/admin"
   echo "$new" > "$LIVE/data/admin/release"
   if [ "$deps_changed" = yes ]; then (cd "$LIVE" && npm ci --no-audit --no-fund >/dev/null 2>&1); fi

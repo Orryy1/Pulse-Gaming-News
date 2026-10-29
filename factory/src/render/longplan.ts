@@ -487,13 +487,30 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           queue.push({ type: "image", index: still });
         // When the sentence's own media runs out, any unused footage of the entry comes before another still,
         // but never a clip picked for a sentence still to come (a chapter's B-roll would play a minute early).
+        // A spare clip of a sentence just gone comes first (it shows the same thing); footage matched to no
+        // sentence is spread across the chapter instead of all playing in its first minute and leaving the
+        // rest to stills (29 Oct 2026 review).
         const footageFirst = (): LongMedia => {
-          const spare = entryClips.find(
-            (k) =>
-              !clipUsed[k] &&
-              !((clips[k]!.moment ?? -1) > w.moment) &&
-              !queue.some((q) => q.type === "clip" && q.index === k),
+          const loose = entryClips.filter(
+            (k) => clips[k]!.moment === undefined,
           );
+          const looseUsed = loose.filter((k) => clipUsed[k]).length;
+          const looseOk =
+            looseUsed < Math.ceil(((j + 1) / mine.length) * loose.length);
+          const spare = entryClips
+            .filter(
+              (k) =>
+                !clipUsed[k] &&
+                !((clips[k]!.moment ?? -1) > w.moment) &&
+                (clips[k]!.moment !== undefined || looseOk) &&
+                !queue.some((q) => q.type === "clip" && q.index === k),
+            )
+            .sort(
+              (a, b) =>
+                w.moment -
+                (clips[a]!.moment ?? -999) -
+                (w.moment - (clips[b]!.moment ?? -999)),
+            )[0];
           return spare !== undefined
             ? { type: "clip", index: spare }
             : leastUsed();

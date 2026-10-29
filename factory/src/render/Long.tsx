@@ -198,6 +198,7 @@ const SAFE_BOTTOM = 72;
 const TEASE_ITEMS = 4;
 const TEASE_FRAMES = 42;
 const FLASH_FORWARD = false;
+const INTRO_TITLE_FRAMES = 180;
 
 /** One cut of the flash-forward: the graphic punched in, a COMING UP tag, a flash into the next. */
 const TeaseCut: React.FC<{ children: React.ReactNode; last: boolean }> = ({
@@ -3124,13 +3125,25 @@ export const Long: React.FC<LongProps> = (props) => {
                           </Sequence>
                         ))
                       : null}
-                    <Sequence from={open + tease} layout="none">
+                    {/* The title stands for six seconds, then the opening's own pictures carry the story: kept for
+                        the whole intro it covered a minute of narration (29 Oct 2026 review). */}
+                    <Sequence
+                      from={open + tease}
+                      durationInFrames={Math.min(
+                        len - open - tease,
+                        INTRO_TITLE_FRAMES,
+                      )}
+                      layout="none"
+                    >
                       <IntroTitle
                         title={props.title}
                         spoilers={props.spoilers}
                         kicker={props.kicker}
                         criterion={props.criterion}
-                        durationFrames={len - open - tease}
+                        durationFrames={Math.min(
+                          len - open - tease,
+                          INTRO_TITLE_FRAMES,
+                        )}
                       />
                     </Sequence>
                   </>

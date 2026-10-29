@@ -216,8 +216,13 @@ export function usableCandidates(
 }
 
 /** How long the shot that opens at this moment runs before the trailer cuts. */
-export function ownShotSeconds(c: Candidate, clipSeconds = CLIP_SECONDS): number {
-  return c.nextCut === undefined ? clipSeconds : Math.min(clipSeconds, Math.max(0, c.nextCut - c.time - 0.2));
+export function ownShotSeconds(
+  c: Candidate,
+  clipSeconds = CLIP_SECONDS,
+): number {
+  return c.nextCut === undefined
+    ? clipSeconds
+    : Math.min(clipSeconds, Math.max(0, c.nextCut - c.time - 0.2));
 }
 
 /** How long a clip opening at this moment runs: its own shot, or through one trailer cut when that shot is short. */
@@ -287,15 +292,25 @@ export function withCuts(candidates: Candidate[], cuts: number[]): Candidate[] {
     }
     const start = prev !== undefined && c.time - prev <= 6 ? prev : c.time;
     const next = sorted.find((t) => t > start + 0.1);
-    const next2 = next === undefined ? undefined : sorted.find((t) => t > next + 0.1);
-    const later = next2 === undefined ? [] : sorted.filter((t) => t > next2 + 0.1).slice(0, MAX_CUTS_INSIDE);
+    const next2 =
+      next === undefined ? undefined : sorted.find((t) => t > next + 0.1);
+    const later =
+      next2 === undefined
+        ? []
+        : sorted.filter((t) => t > next2 + 0.1).slice(0, MAX_CUTS_INSIDE);
     const key = Math.round(start * 100);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(
       next === undefined
         ? { ...c, time: start }
-        : { ...c, time: start, nextCut: next, ...(next2 === undefined ? {} : { nextCut2: next2 }), ...(later.length ? { laterCuts: later } : {}) },
+        : {
+            ...c,
+            time: start,
+            nextCut: next,
+            ...(next2 === undefined ? {} : { nextCut2: next2 }),
+            ...(later.length ? { laterCuts: later } : {}),
+          },
     );
   }
   return out;
@@ -353,7 +368,9 @@ export const ClipRankingSchema = z.object({
     z.object({
       key: z
         .string()
-        .describe("The target key exactly as given, e.g. hook, beat:1, take or loop"),
+        .describe(
+          "The target key exactly as given, e.g. hook, beat:1, take or loop",
+        ),
       candidate_index: z.number(),
       confidence: z
         .number()
@@ -576,12 +593,27 @@ async function cutClip(
 
 /** The picture stream's length in seconds, or undefined when ffmpeg cannot say. */
 export async function videoSeconds(file: string): Promise<number | undefined> {
-  const { stderr } = await run(FFMPEG, ["-hide_banner", "-i", file, "-map", "0:v:0", "-c", "copy", "-f", "null", "-"], { maxBuffer: 8 * 1024 * 1024 }).catch(
-    (e: { stderr?: string }) => ({ stderr: String(e.stderr ?? "") }),
-  );
+  const { stderr } = await run(
+    FFMPEG,
+    [
+      "-hide_banner",
+      "-i",
+      file,
+      "-map",
+      "0:v:0",
+      "-c",
+      "copy",
+      "-f",
+      "null",
+      "-",
+    ],
+    { maxBuffer: 8 * 1024 * 1024 },
+  ).catch((e: { stderr?: string }) => ({ stderr: String(e.stderr ?? "") }));
   const times = [...String(stderr).matchAll(/time=(\d+):(\d+):([\d.]+)/g)];
   const last = times.at(-1);
-  return last ? Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]) : undefined;
+  return last
+    ? Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3])
+    : undefined;
 }
 
 /** A trailer already on disk, ready for keyframe matching. */
@@ -624,7 +656,11 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       try {
         const all = await analyseTrailer(t.file, i, work, candidates.length);
         candidates.push(
-          ...usableCandidates(o.continuous ? all.map((x) => ({ ...x, nextCut: undefined })) : all, t.total, clipSeconds),
+          ...usableCandidates(
+            o.continuous ? all.map((x) => ({ ...x, nextCut: undefined })) : all,
+            t.total,
+            clipSeconds,
+          ),
         );
       } catch (err) {
         log("warn", "trailer analysis failed", {
@@ -685,7 +721,10 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       base =
         clean.length >= MAX_CANDIDATES_TO_MODEL
           ? clean
-          : [...clean, ...spread(rest, MAX_CANDIDATES_TO_MODEL - clean.length)].sort((a, b) => a.index - b.index);
+          : [
+              ...clean,
+              ...spread(rest, MAX_CANDIDATES_TO_MODEL - clean.length),
+            ].sort((a, b) => a.index - b.index);
     }
     // Even spread when there are more keyframes than the model can look at.
     const pool = spread(base, MAX_CANDIDATES_TO_MODEL);
@@ -705,14 +744,15 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
     const missing = o.targets.filter(
       (t) => !assignments.some((a) => a.key === t.key),
     );
+    const ruled = new Set<string>();
     if (missing.length) {
       const taken = new Set(assignments.map((a) => a.candidate));
-      assignments.push(
-        ...rankByRule(
-          missing,
-          pool.filter((c) => !taken.has(c.index)),
-        ),
+      const byRule = rankByRule(
+        missing,
+        pool.filter((c) => !taken.has(c.index)),
       );
+      for (const a of byRule) ruled.add(a.key);
+      assignments.push(...byRule);
     }
     const out: VisualAsset[] = [];
     const prefix = o.prefix ?? "clip";
@@ -762,7 +802,11 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       const beatIndex = t.key.startsWith("beat:")
         ? Number.parseInt(t.key.slice(5), 10)
         : undefined;
-      const moment = t.key.match(/#m(\d+)$/)?.[1];
+      // A sentence keeps a clip only when it was matched to its words: the rule's "liveliest unused moment"
+      // stays as general footage, never pinned to a line it does not show (29 Oct 2026 review).
+      const moment = ruled.has(t.key)
+        ? undefined
+        : t.key.match(/#m(\d+)$/)?.[1];
       // The file's own picture length, not the planned one: the source can end early, and a shot
       // planned past the last real frame stops the renderer ("no frame found").
       const real = await videoSeconds(path.join(o.episodeDir, file));
@@ -770,7 +814,10 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         kind: "clip",
         file,
         sourceUrl: r.url,
-        durationSeconds: real !== undefined ? Math.min(seconds, Math.max(0, real - 0.05)) : seconds,
+        durationSeconds:
+          real !== undefined
+            ? Math.min(seconds, Math.max(0, real - 0.05))
+            : seconds,
         beatIndex,
         moment: moment === undefined ? undefined : Number(moment),
         role: t.key === "hook" ? "hook" : undefined,

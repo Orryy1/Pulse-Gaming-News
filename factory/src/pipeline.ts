@@ -4807,6 +4807,55 @@ export function chapterFootage(
   return out;
 }
 
+/** A documentary chapter's sentences in order: the ones its shot list (entry.moments) was written for. */
+export function chapterSentences(script: Script, chapter: number): string[] {
+  const out: string[] = [];
+  let c = -1;
+  for (const b of script.beats) {
+    if (b.visual?.kind === "chapter") c++;
+    if (c === chapter) out.push(...sentencesOf(b.narration));
+  }
+  return out;
+}
+
+/**
+ * The footage asks of a documentary chapter, one per in-game sentence of its shot list, so a matched clip
+ * plays on the sentence that names it (29 Oct 2026: chapters played their footage in gathering order and
+ * barely one shot in ten showed what the narrator said). Real-world sentences (B-roll) get photos instead.
+ */
+export function docShotTargets(
+  entry: NonNullable<Script["entries"]>[number],
+  sentences: string[],
+  beatIndex: number,
+): FootageTarget[] {
+  return (entry.moments ?? []).flatMap((m, k) =>
+    m.broll?.trim()
+      ? []
+      : [
+          {
+            key: `beat:${beatIndex}#m${k}`,
+            text: `${sentences[k] ?? ""} (show: ${m.show})`,
+            want: "gameplay" as const,
+            energy: "medium" as const,
+            keywords: [
+              entry.game_title,
+              ...(m.person ? [m.person] : []),
+              ...m.keywords.filter((x) => x !== m.person),
+            ].slice(0, 4),
+          },
+        ],
+  );
+}
+
+/** Up to n items spread evenly across a list, so a chapter's late sentences are asked for too. */
+function spreadPick<T>(xs: T[], n: number): T[] {
+  if (xs.length <= n) return xs;
+  return Array.from(
+    { length: n },
+    (_, i) => xs[Math.floor((i * xs.length) / n)]!,
+  );
+}
+
 function titleCaseLabel(label: string): string {
   return label.toLowerCase().replace(/\b[a-z]/g, (m) => m.toUpperCase());
 }
@@ -5114,6 +5163,7 @@ async function gatherChapterMedia(
       provenance: c.provenance,
       durationSeconds: Math.min(c.durationSeconds ?? 4, 4.8),
       beatIndex,
+      moment: c.moment,
       role: undefined,
       motion: c.motion,
       luma: c.luma,
@@ -5121,6 +5171,26 @@ async function gatherChapterMedia(
       reason: c.reason,
       startSeconds: c.startSeconds,
     });
+  // Footage is asked for sentence by sentence from the shot list; a chapter written before the shot list
+  // existed falls back to its paragraphs.
+  const sentences = chapterSentences(script, beatIndex);
+  const shots = docShotTargets(entry, sentences, beatIndex);
+  const paragraphTargets = (n: number, tag: string): FootageTarget[] =>
+    chapterFootage(script, beatIndex)
+      .slice(0, n)
+      .map((f, k) => ({
+        key: `beat:${beatIndex}#${tag}${k + 1}`,
+        text: `${entry.game_title}: ${f.keywords.join(", ")}`,
+        want: f.want,
+        energy: "medium" as const,
+        keywords: [entry.game_title, ...f.keywords].slice(0, 4),
+      }));
+  const tagged = () =>
+    new Set(
+      clips
+        .filter((c) => c.beatIndex === beatIndex && c.moment !== undefined)
+        .map((c) => c.moment!),
+    );
   try {
     if (eapp) {
       for (const a of (await s.fetchArt(eapp, edir, 12)).filter(
@@ -5128,22 +5198,16 @@ async function gatherChapterMedia(
       ))
         images.push({ ...a, file: rel(a.file), beatIndex });
       if (s.cfg.footage) {
-        const targets: FootageTarget[] = chapterFootage(script, beatIndex)
-          .slice(0, Math.max(1, s.cfg.docClipsPerChapter))
-          .map((f, k) => ({
-            key: `beat:${beatIndex}#${k + 1}`,
-            text: `${entry.game_title}: ${f.keywords.join(", ")}`,
-            want: f.want,
-            energy: "medium" as const,
-            keywords: [entry.game_title, ...f.keywords].slice(0, 4),
-          }));
+        const targets: FootageTarget[] = shots.length
+          ? spreadPick(shots, 16)
+          : paragraphTargets(Math.max(1, s.cfg.docClipsPerChapter), "");
         if (targets.length)
           for (const c of capFootage(
             await s.fetchClips(
               eapp,
               edir,
               targets,
-              targets.length,
+              Math.max(s.cfg.docClipsPerChapter, Math.min(12, targets.length)),
               scopeOf(script),
             ),
             footageBudgetSeconds(eapp),
@@ -5153,11 +5217,9 @@ async function gatherChapterMedia(
       }
     } else if (s.cfg.footage) {
       const want = chapterFootage(script, beatIndex)[0];
-      const om = await s
-        .fetchOfficialMedia(
-          entry.game_title,
-          edir,
-          [
+      const asks: FootageTarget[] = shots.length
+        ? spreadPick(shots, 8)
+        : [
             {
               key: `beat:${beatIndex}`,
               text: entry.game_title,
@@ -5165,8 +5227,13 @@ async function gatherChapterMedia(
               energy: "medium",
               keywords: want?.keywords ?? [entry.game_title],
             },
-          ],
-          1,
+          ];
+      const om = await s
+        .fetchOfficialMedia(
+          entry.game_title,
+          edir,
+          asks,
+          asks.length,
           entry.year ? String(entry.year) : "",
         )
         .catch(() => ({ clips: [], stills: [] }) as OfficialMedia);
@@ -5194,18 +5261,19 @@ async function gatherChapterMedia(
       error: errorMessage(err),
     });
   }
-  // Licensed gameplay: a few real moments per chapter, matched to its paragraphs, credited.
+  // Licensed gameplay: real moments for the in-game sentences no trailer shot matched, credited.
   try {
-    const paragraphs = chapterFootage(script, beatIndex).slice(0, 4);
+    const done = tagged();
+    const open = shots.filter(
+      (t) => !done.has(Number(t.key.match(/#m(\d+)$/)?.[1])),
+    );
     const have = clips.filter((c) => c.beatIndex === beatIndex).length;
-    if (paragraphs.length && have < 6) {
-      const targets: FootageTarget[] = paragraphs.map((f, k) => ({
-        key: `beat:${beatIndex}#g${k}`,
-        text: `${entry.game_title}: ${f.keywords.join(", ")}`,
-        want: f.want,
-        energy: "medium",
-        keywords: [entry.game_title, ...f.keywords].slice(0, 4),
-      }));
+    const targets: FootageTarget[] = shots.length
+      ? spreadPick(open, 8)
+      : have < 6
+        ? paragraphTargets(4, "g")
+        : [];
+    if (targets.length) {
       // The owner's own recordings of this game come first (owner, 28 Oct 2026); licensed gameplay fills the rest.
       const own = await s
         .ownClips(
@@ -5246,6 +5314,7 @@ async function gatherChapterMedia(
           provenance: c.provenance,
           durationSeconds: Math.min(c.durationSeconds ?? 4, 8),
           beatIndex,
+          moment: c.moment,
           role: undefined,
           motion: c.motion,
           luma: c.luma,
@@ -5330,6 +5399,48 @@ async function gatherChapterMedia(
       error: errorMessage(err),
     });
   }
+  // The people the narration names, on the sentence that names them (29 Oct 2026 review: Sam Houser,
+  // Leslie Benzies and the critics only ever got a name tag on an unrelated picture).
+  try {
+    const people = new Map<string, number>();
+    for (const [k, m] of (entry.moments ?? []).entries()) {
+      const p = m.person?.trim();
+      if (p && p.split(/\s+/).length >= 2 && !people.has(p)) people.set(p, k);
+    }
+    let n = 0;
+    for (const [person, k] of [...people].slice(0, DOC_PEOPLE_PER_CHAPTER)) {
+      const found = (await s.searchPhotos(person).catch(() => [])).slice(0, 8);
+      if (!found.length) continue;
+      const [pick] = await pickPhotos(
+        s.llm,
+        {
+          franchise,
+          game: entry.game_title,
+          title: `${person}, the real person`,
+          opening: `${sentences[k] ?? ""} Keep only a photo of ${person} themself, never a game character, a building or someone else.`,
+        },
+        found,
+      ).catch(() => [] as number[]);
+      const img = pick === undefined ? undefined : found[pick];
+      if (!img) continue;
+      const file = rel(path.join("assets", `person_${n++}.jpg`));
+      if (await s.downloadPhoto(img, path.join(dir, file)))
+        images.push({
+          kind: "photo",
+          file,
+          sourceUrl: img.pageUrl,
+          provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+          beatIndex,
+          moment: k,
+          label: person.toUpperCase(),
+        } as VisualAsset & { beatIndex?: number });
+    }
+  } catch (err) {
+    log("warn", "documentary people photos failed", {
+      game: entry.game_title,
+      error: errorMessage(err),
+    });
+  }
   // Real-world B-roll: licensed stock for the sentences the shot list marks (the studio, money, a leak),
   // played on its own sentence and labelled illustrative on screen.
   try {
@@ -5373,10 +5484,75 @@ async function gatherChapterMedia(
       error: errorMessage(err),
     });
   }
+  // The picture editor, as the ranked videos have it: every still and photo of the chapter is looked at and
+  // each sentence gets the one showing what it names; pictures carrying text are kept off the screen.
+  const moments = entry.moments ?? [];
+  if (!moments.length) return;
+  try {
+    const stills = images.filter(
+      (i) =>
+        i.beatIndex === beatIndex &&
+        i.kind !== "capsule" &&
+        i.moment === undefined,
+    );
+    const placed = new Set(
+      images
+        .filter((i) => i.beatIndex === beatIndex && i.moment !== undefined)
+        .map((i) => i.moment!),
+    );
+    const noText = new Set<VisualAsset>();
+    for (let b = 0; b < stills.length; b += 24) {
+      const batch = stills.slice(b, b + 24);
+      const want = moments
+        .map((m, k) => ({
+          key: `m${k}`,
+          show: m.show,
+          sentence: sentences[k] ?? "",
+        }))
+        .filter((t) => !placed.has(Number(t.key.slice(1))));
+      if (!want.length) break;
+      const ranked = await rankStills(
+        s.llm,
+        want,
+        batch.map((a) => ({ file: path.join(dir, a.file) })),
+        path.join(edir, `stillscore_${b}`),
+        scopeOf(script),
+      );
+      for (const [i, a] of batch.entries()) {
+        a.label ??= ranked.labels.get(i);
+        if (ranked.withText.has(i)) noText.add(a);
+      }
+      for (const p of ranked.picks) {
+        batch[p.image]!.moment = Number(p.key.slice(1));
+        placed.add(Number(p.key.slice(1)));
+      }
+    }
+    // Text-laden pictures leave, unless that would leave the chapter almost bare.
+    if (stills.length - noText.size >= 3)
+      for (const a of noText) {
+        const at = images.indexOf(a as never);
+        if (at >= 0 && a.moment === undefined) images.splice(at, 1);
+      }
+    log("info", "documentary chapter pictures matched", {
+      game: entry.game_title,
+      sentences: moments.length,
+      withPicture: placed.size,
+      withFootage: tagged().size,
+      stills: stills.length,
+      textDropped: noText.size,
+    });
+  } catch (err) {
+    log("warn", "documentary still ranking failed", {
+      game: entry.game_title,
+      error: errorMessage(err),
+    });
+  }
 }
 
 /** Licensed stock shots a documentary chapter may use for its real-world sentences. */
 const DOC_BROLL_PER_CHAPTER = 5;
+/** Named real people a documentary chapter looks up photos of. */
+const DOC_PEOPLE_PER_CHAPTER = 5;
 
 /**
  * The Steam page for a ranking entry, only when it is that release: Steam's

@@ -238,4 +238,6 @@ test("a long game name breaks after its colon", () => {
   assert.deepEqual(titleLines("Call of Duty 4: Modern Warfare"), ["Call of Duty 4:", "Modern Warfare"]);
   assert.deepEqual(titleLines("Halo: Reach"), ["Halo: Reach"]);
   assert.deepEqual(titleLines("Call of Duty 2"), ["Call of Duty 2"]);
+  // A long title without a colon splits where its two lines balance, so it never runs off the frame.
+  assert.deepEqual(titleLines("Why Grand Theft Auto Went Back to Vice City"), ["Why Grand Theft Auto", "Went Back to Vice City"]);
 });

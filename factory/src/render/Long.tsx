@@ -197,6 +197,7 @@ const SAFE_BOTTOM = 72;
 /** The flash-forward: at most this many graphics, each up for this many frames. */
 const TEASE_ITEMS = 4;
 const TEASE_FRAMES = 42;
+const FLASH_FORWARD = false;
 
 /** One cut of the flash-forward: the graphic punched in, a COMING UP tag, a flash into the next. */
 const TeaseCut: React.FC<{ children: React.ReactNode; last: boolean }> = ({
@@ -3081,8 +3082,10 @@ export const Long: React.FC<LongProps> = (props) => {
               {(() => {
                 // The opening: the video's motif card, the flash-forward, then the title.
                 const open = videoMotif?.card && len >= 240 ? MOTIF_OPEN : 0;
+                // Off since 29 Oct 2026: the owner found the silent flash of figures under the opening
+                // narration unrelated to the words; it returns only when it carries the narrator's own lines.
                 const tease =
-                  teaser.length >= 2 && len - open >= 480
+                  FLASH_FORWARD && teaser.length >= 2 && len - open >= 480
                     ? teaser.length * TEASE_FRAMES
                     : 0;
                 return (

@@ -74,11 +74,22 @@ export function momentKeys(m: MomentKeySource): string[] {
       );
     // Named things land on their first name: an outlet, a person, a game, a date.
     else if (
-      ["reviews", "people", "versus", "delay", "map", "bars", "share", "specs", "lineage"].includes(g.kind)
+      [
+        "reviews",
+        "people",
+        "versus",
+        "delay",
+        "map",
+        "bars",
+        "share",
+        "specs",
+        "lineage",
+      ].includes(g.kind)
     )
-      keys.push(...(g.items ?? []).map((x) => x.split(":")[0]!.trim()).slice(0, 1));
-    else if (g.kind === "span")
-      keys.push(...(g.items ?? []).slice(0, 1));
+      keys.push(
+        ...(g.items ?? []).map((x) => x.split(":")[0]!.trim()).slice(0, 1),
+      );
+    else if (g.kind === "span") keys.push(...(g.items ?? []).slice(0, 1));
     else if (g.kind === "source") {
     } else if (g.kind === "compare")
       keys.push(...(g.items ?? []).map((x) => x.split(":")[0]!.trim()));
@@ -119,7 +130,15 @@ const ANCHOR_STOP = new Set([
   "from",
 ]);
 // "gig", "gigs" and "gigabytes" are one word to an anchor (the voice shortens a repeated unit, speakUnits).
-const UNIT_SAME: Record<string, string> = { gig: "gigabytes", gigs: "gigabytes", gigabyte: "gigabytes", meg: "megabytes", megs: "megabytes", megabyte: "megabytes", pollish: "polish" };
+const UNIT_SAME: Record<string, string> = {
+  gig: "gigabytes",
+  gigs: "gigabytes",
+  gigabyte: "gigabytes",
+  meg: "megabytes",
+  megs: "megabytes",
+  megabyte: "megabytes",
+  pollish: "polish",
+};
 const anchorToken = (t: string) => {
   const k = t.toLowerCase().replace(/[^a-z0-9]/g, "");
   return UNIT_SAME[k] ?? k;
@@ -719,7 +738,18 @@ export function titleLines(text: string): string[] {
   // "Call of Duty Campaigns Ranked": the franchise on top, what is ranked underneath.
   const ranked = text.match(/^(\S+(?:\s+\S+)+?)\s+(\S+\s+Ranked\b.*)$/i);
   if (ranked && text.length > 20) return [ranked[1]!, ranked[2]!];
-  return [text];
+  // Any other long title splits at the word that best balances two lines: kept on one line it ran off the
+  // frame (29 Oct 2026: "WHY GRAND THEFT AUTO WENT BACK TO VICE", its "CITY" cut off).
+  const words = text.split(/\s+/);
+  if (text.length <= 22 || words.length < 2) return [text];
+  const worst = (n: number) =>
+    Math.max(
+      words.slice(0, n).join(" ").length,
+      words.slice(n).join(" ").length,
+    );
+  let best = 1;
+  for (let k = 2; k < words.length; k++) if (worst(k) < worst(best)) best = k;
+  return [words.slice(0, best).join(" "), words.slice(best).join(" ")];
 }
 
 /** A graphic worth showing: never the entry's own rank (the rank card already says it). */
@@ -747,7 +777,9 @@ export function usefulGraphic<
       "lineage",
     ].includes(g.kind)
   )
-    return Boolean(g.primary.trim() || g.kind === "timeline" || g.kind === "map");
+    return Boolean(
+      g.primary.trim() || g.kind === "timeline" || g.kind === "map",
+    );
   const text = `${g.primary} ${g.secondary}`;
   if (
     /\b(rank(ing)?|position|place[sd]?|spot|on the list|where it lands|entry number)\b/i.test(

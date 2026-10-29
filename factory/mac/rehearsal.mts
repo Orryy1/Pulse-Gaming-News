@@ -43,8 +43,9 @@ await migrate(db);
 await db.query("DELETE FROM leases");
 const [target] = await db.query<{ id: string; has_plan: boolean }>(
   `UPDATE episodes SET status = 'voiced', attempts = 0, next_attempt_at = NULL, last_error = NULL, qa_json = NULL
-     WHERE id = (SELECT id FROM episodes WHERE lane = 'longform' AND assets_json ? 'longPlan' ORDER BY id DESC LIMIT 1)
+     WHERE id = COALESCE($1, (SELECT id FROM episodes WHERE lane = 'longform' AND assets_json ? 'longPlan' ORDER BY id DESC LIMIT 1))
      RETURNING id, (assets_json ? 'longPlan') AS has_plan`,
+  [process.argv[2] ?? null],
 );
 if (!target)
   throw new Error("no long episode with a plan in the rehearsal sandbox");

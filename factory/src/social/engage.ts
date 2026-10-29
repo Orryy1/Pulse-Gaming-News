@@ -1,5 +1,5 @@
 import { publishHeld } from "../lanes.ts";
-// One community post a day on Facebook and Instagram: "which was better", "guess
+// One community post a day on Facebook (and Instagram when ENGAGE_INSTAGRAM is on): "which was better", "guess
 // the game", "rate it" or an open question, built around games people are
 // talking about. The post image is rendered from official IGDB screenshots;
 // a "guess" post gets its answer as a comment a day later; comment counts are
@@ -286,7 +286,8 @@ export async function engageTick(d: EngageDeps): Promise<void> {
           undefined
         ),
       );
-  if (d.instagram)
+  // The question pictures drew nothing on Instagram (9 posts, 0 likes by 29 Oct 2026): off unless ENGAGE_INSTAGRAM.
+  if (d.instagram && d.cfg.engageInstagram)
     detail.instagram = await d.instagram
       .image(url, `${topic.question}\n\n${topic.caption}`)
       .catch(

@@ -59,6 +59,12 @@ export interface SocialPosters {
   ) => Promise<string>;
   tiktok?: (file: string, caption: string) => Promise<string>;
   x?: (text: string) => Promise<string>;
+  /** The page's own first comment under a reel (needs pages_manage_engagement); when set, the link moves there. */
+  facebookComment?: (videoId: string, text: string) => Promise<string>;
+  /** Whether the login may comment as the page right now (it changes when the owner reconnects); absent: yes. */
+  facebookCommentReady?: () => boolean;
+  /** Rewrites a reel's caption, to put the link back when the first comment could not be posted. */
+  facebookDescription?: (videoId: string, description: string) => Promise<void>;
   threads?: (
     file: string,
     caption: string,
@@ -113,6 +119,7 @@ export function socialCaption(
   platform: Platform,
   script: Script,
   youtubeId: string,
+  opts: { linkInComment?: boolean } = {},
 ): string {
   const title = polishTitle(script);
   const url = `https://youtube.com/shorts/${youtubeId}`;
@@ -172,7 +179,9 @@ export function socialCaption(
       ? ""
       : `${script.hook}${question ? ` ${question}` : ""}`,
     rumour,
-    platform === "facebook" ? `\nFull story and sources: ${url}` : "",
+    platform === "facebook" && !opts.linkInComment
+      ? `\nFull story and sources: ${url}`
+      : "",
     platform === "instagram" ? "\nFull story and sources: link in bio." : "",
     "\nNarrated with an AI voice.",
     "",
@@ -188,6 +197,7 @@ export interface CrosspostCandidate {
   id: string;
   youtube_video_id: string;
   script_json: Script;
+  live_at?: string | Date;
 }
 
 /** The next Short a platform should get: public long enough, not done, not given up on. */
@@ -197,9 +207,11 @@ export async function nextForPlatform(
   delayMinutes: number,
   windowHours: number,
   now: Date,
+  /** The delay for a Short that went live at this time, when it depends on the hour (the posting-time test). */
+  delayFor?: (liveAt: Date) => number,
 ): Promise<CrosspostCandidate | undefined> {
   const rows = await db.query<CrosspostCandidate>(
-    `SELECT e.id, e.youtube_video_id, e.script_json FROM episodes e
+    `SELECT e.id, e.youtube_video_id, e.script_json, COALESCE(e.publish_at, e.updated_at) AS live_at FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane NOT IN ('longform','twin')
         AND COALESCE(e.script_json->>'runtime', 'short') = 'short'
         AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
@@ -207,10 +219,21 @@ export async function nextForPlatform(
         AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('crosspost','crosspost_skip') AND v.detail->>'platform' = $4)
         AND (SELECT count(*) FROM events v WHERE v.episode_id = e.id AND v.kind = 'crosspost_failed' AND v.detail->>'platform' = $4 AND v.created_at >= $6) < $5
       ORDER BY COALESCE(e.publish_at, e.updated_at) ASC
-      LIMIT 1`,
+      LIMIT 25`,
     [now, delayMinutes, windowHours, platform, MAX_TRIES, BOOT],
   );
-  return rows[0];
+  return rows.find((r) => dueAfter(r, now, delayFor));
+}
+
+/** Whether a candidate's own delay has passed (always, when the delay is the same for every Short). */
+function dueAfter(
+  r: CrosspostCandidate,
+  now: Date,
+  delayFor?: (liveAt: Date) => number,
+): boolean {
+  if (!delayFor || !r.live_at) return true;
+  const live = new Date(r.live_at);
+  return live.getTime() + delayFor(live) * 60_000 <= now.getTime();
 }
 
 /**
@@ -229,6 +252,7 @@ export async function nextForTikTok(
     | "crosspostWindowHours"
   >,
   now: Date,
+  delayFor?: (liveAt: Date) => number,
 ): Promise<CrosspostCandidate | undefined> {
   const hour = Number(
     new Intl.DateTimeFormat("en-GB", {
@@ -244,7 +268,7 @@ export async function nextForTikTok(
   );
   if (Number(sent?.n ?? 0) >= cfg.tiktokDaily) return undefined;
   const rows = await db.query<CrosspostCandidate>(
-    `SELECT e.id, e.youtube_video_id, e.script_json FROM episodes e
+    `SELECT e.id, e.youtube_video_id, e.script_json, COALESCE(e.publish_at, e.updated_at) AS live_at FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane NOT IN ('longform','twin')
         AND COALESCE(e.script_json->>'runtime', 'short') = 'short'
         AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
@@ -254,7 +278,7 @@ export async function nextForTikTok(
       ORDER BY COALESCE((SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id), 0)
                / GREATEST(1, EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(e.publish_at, e.updated_at))) / 3600) DESC,
                COALESCE(e.publish_at, e.updated_at) DESC
-      LIMIT 1`,
+      LIMIT 25`,
     [
       now,
       cfg.crosspostDelays.tiktok,
@@ -263,7 +287,44 @@ export async function nextForTikTok(
       BOOT,
     ],
   );
-  return rows[0];
+  return rows.find((r) => dueAfter(r, now, delayFor));
+}
+
+/**
+ * The posting-time test (29 Oct to 12 Nov 2026, src/experiments.ts primeTimeNow): Facebook, Instagram and the
+ * TikTok draft aim for 16:00-20:00 US Eastern, when US viewers scroll most, instead of trailing the YouTube slot
+ * by a few minutes. A Short that went live earlier in the Eastern day waits for the window (keeping each
+ * platform's place in the stagger), never more than six hours; one already in or past the window keeps today's
+ * stagger.
+ */
+export const PRIME_WINDOW = {
+  timeZone: "America/New_York",
+  startHour: 16,
+  endHour: 20,
+  maxDelayMinutes: 360,
+} as const;
+export const PRIME_PLATFORMS: Platform[] = ["facebook", "instagram", "tiktok"];
+
+export function primeTimeDelay(
+  liveAt: Date,
+  baseMinutes: number,
+  offsetMinutes = 0,
+): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: PRIME_WINDOW.timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(liveAt)
+      .map((x) => [x.type, x.value]),
+  );
+  const minute = Number(p.hour) * 60 + Number(p.minute);
+  const start = PRIME_WINDOW.startHour * 60;
+  if (minute >= start) return baseMinutes; // inside or after the window: the usual stagger
+  const wait = Math.min(PRIME_WINDOW.maxDelayMinutes, start - minute + offsetMinutes);
+  return Math.max(baseMinutes, wait);
 }
 
 /** True when anyone can watch it: YouTube's public oEmbed answers for public and unlisted videos only. */
@@ -301,6 +362,8 @@ export interface CrosspostDeps {
     episodeId: string,
     file: string,
   ) => Promise<string | undefined>;
+  /** Whether the posting-time test is on now (src/experiments.ts primeTimeNow); off when absent. */
+  primeTime?: () => Promise<boolean>;
 }
 
 /** One pass: at most one post per platform, oldest eligible Short first. */
@@ -309,20 +372,39 @@ export async function crosspostTick(
 ): Promise<Array<{ platform: Platform; episode: string; ok: boolean }>> {
   const done: Array<{ platform: Platform; episode: string; ok: boolean }> = [];
   if (await publishHeld(d.db)) return done; // the owner's publishing hold
+  const prime = Boolean(await d.primeTime?.().catch(() => false));
   for (const platform of PLATFORMS) {
     const post = d.posters[platform];
     if (!post) continue;
+    const base = d.cfg.crosspostDelays[platform];
+    // Each platform keeps its place in the stagger inside the window (Facebook first, Instagram, then TikTok).
+    const delayFor =
+      prime && PRIME_PLATFORMS.includes(platform)
+        ? (live: Date) =>
+            primeTimeDelay(
+              live,
+              base,
+              Math.max(0, base - d.cfg.crosspostDelays.facebook),
+            )
+        : undefined;
     const ep =
       platform === "tiktok" && d.cfg.tiktokDaily > 0
-        ? await nextForTikTok(d.db, d.cfg, d.now())
+        ? await nextForTikTok(d.db, d.cfg, d.now(), delayFor)
         : await nextForPlatform(
             d.db,
             platform,
-            d.cfg.crosspostDelays[platform],
+            base,
             d.cfg.crosspostWindowHours,
             d.now(),
+            delayFor,
           );
     if (!ep) continue;
+    const timing =
+      delayFor && ep.live_at
+        ? delayFor(new Date(ep.live_at)) > base
+          ? "prime"
+          : "stagger"
+        : undefined;
     const file = path.join(d.episodeDir(ep.id), "short.mp4");
     try {
       let isPublic: boolean;
@@ -352,7 +434,14 @@ export async function crosspostTick(
         continue;
       }
       const script = ep.script_json;
-      const caption = socialCaption(platform, script, ep.youtube_video_id);
+      // Facebook holds back reels whose caption carries an outside link: the link goes in the page's first comment.
+      const linkInComment =
+        platform === "facebook" &&
+        Boolean(d.posters.facebookComment) &&
+        (d.posters.facebookCommentReady?.() ?? true);
+      const caption = socialCaption(platform, script, ep.youtube_video_id, {
+        linkInComment,
+      });
       // A crash or a lost response between the remote post and its record used to make the next pass
       // post again (one Short reached TikTok's inbox twice, 23 Oct 2026). The attempt is recorded first;
       // a "started" with no "crosspost" after it is uncertain and is reconciled before anything is re-sent.
@@ -409,7 +498,12 @@ export async function crosspostTick(
                       description: script.hook ?? "",
                     })
                   : await d.posters.x!(caption);
-      await logEvent(d.db, ep.id, "crosspost", { platform, id });
+      await logEvent(d.db, ep.id, "crosspost", {
+        platform,
+        id,
+        ...(timing ? { timing } : {}),
+      });
+      if (linkInComment) await linkComment(d, ep, id);
       // TikTok has not approved the app for public posting yet: the video waits in the owner's TikTok inbox.
       // TikTok's draft upload has no caption field (no tool can prefill one). The owner gets one link: a page
       // with the caption, a Copy button and an Open TikTok button. The caption also follows on its own.
@@ -421,10 +515,9 @@ export async function crosspostTick(
           : "";
         const tell = d.notifyTiktok ?? d.notify;
         await tell({
-            ping: true,
-            content: `📲 Your turn, TikTok: "${polishTitle(script)}"${link ? `\nTap: ${link}\n(one button copies the caption and opens TikTok: tap the draft, paste, post)` : "\nOpen TikTok, tap the draft, paste the next message as the caption, post."}`,
-          })
-          .catch(() => undefined);
+          ping: true,
+          content: `📲 Your turn, TikTok: "${polishTitle(script)}"${link ? `\nTap: ${link}\n(one button copies the caption and opens TikTok: tap the draft, paste, post)` : "\nOpen TikTok, tap the draft, paste the next message as the caption, post."}`,
+        }).catch(() => undefined);
         await tell({ content: caption.slice(0, 2000) }).catch(() => undefined);
       }
       log("info", "crossposted", { platform, episode: ep.id, id });
@@ -465,6 +558,45 @@ export async function crosspostTick(
     }
   }
   return done;
+}
+
+/** The YouTube link as the page's first comment on its reel; if that is refused, the caption gets the link back. */
+async function linkComment(
+  d: CrosspostDeps,
+  ep: CrosspostCandidate,
+  videoId: string,
+): Promise<void> {
+  const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
+  try {
+    const comment = await d.posters.facebookComment!(
+      videoId,
+      `Full story and sources: ${url}`,
+    );
+    await logEvent(d.db, ep.id, "crosspost_comment", {
+      platform: "facebook",
+      id: comment,
+    });
+  } catch (err) {
+    log("warn", "facebook link comment failed; the link goes back in the caption", {
+      episode: ep.id,
+      error: errorMessage(err),
+    });
+    await d.posters
+      .facebookDescription?.(
+        videoId,
+        socialCaption("facebook", ep.script_json, ep.youtube_video_id),
+      )
+      .catch((e) =>
+        log("warn", "facebook caption repair failed", {
+          episode: ep.id,
+          error: errorMessage(e),
+        }),
+      );
+    await logEvent(d.db, ep.id, "crosspost_comment_failed", {
+      platform: "facebook",
+      error: errorMessage(err).slice(0, 300),
+    });
+  }
 }
 
 let tiktokUnaudited = false;
@@ -619,6 +751,16 @@ export async function buildPosters(
         title,
         description,
       });
+  // Commenting as the page needs pages_manage_engagement, which only a /connect?account=meta login can carry;
+  // without it the link stays in the caption (the .env token cannot comment, checked 29 Oct 2026).
+  if (out.facebook && cfg.facebookLinkComment) {
+    out.facebookCommentReady = () =>
+      Boolean(cfg.metaGranted?.includes("pages_manage_engagement"));
+    out.facebookComment = (videoId, text) =>
+      p.graphComment(videoId, cfg.facebookPageToken, text, false);
+    out.facebookDescription = (videoId, description) =>
+      p.facebookVideoDescription(videoId, cfg.facebookPageToken, description);
+  }
   if (cfg.crosspost.instagram && cfg.instagramAccountId && cfg.instagramToken)
     out.instagram = async (file, caption, videoUrl) =>
       p.postInstagramReel({

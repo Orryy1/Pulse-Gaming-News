@@ -142,7 +142,7 @@ export const EvergreenScriptSchema = z.object({
   title: z.string().describe("On-screen title, 3-8 words"),
   hook: z
     .string()
-    .describe("First spoken line: the premise and the criterion, 8-16 words"),
+    .describe("First spoken line: the premise and the criterion, 8-12 words"),
   entries: z
     .array(EvergreenEntrySchema)
     .min(4)
@@ -190,7 +190,7 @@ export function evergreenScriptPrompt(): string {
 
 Write an evergreen ranking Short of ${EVERGREEN_WORDS_MIN}-${EVERGREEN_WORDS_MAX} spoken words in total (hook, entries, take, loop line), 55-75 seconds when read. Shorter Shorts keep more viewers: every word must earn its place.
 Structure:
-1. hook: the premise and the criterion in one breath, 8-16 words, no question that withholds the point.
+1. hook: the premise and the criterion in one breath, 8-12 words and never more (on our channel, hooks of 16 or more words drew a median 114 views a Short against 303 for shorter ones), no question that withholds the point.
 2. entries: ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX}, spoken from the lowest rank to number one. Each one_line is one full sentence with a verb, under 15 words: one fact (year, what it did, how it was received) and one opinion by the criterion. Never a telegram fragment ("Pure joy.", "Now $1.99."), and never a stock line repeated from another Short. verdict_chip is 1-4 words of punch. footage says what the trailer moment should show for that entry, with 1-4 keywords.
 3. pulse_take: why number one wins by the stated criterion, at most 32 words.
 4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that echoes the hook's subject or words, so a rewatch feels connected: a short callback or a question to the viewer. Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
@@ -335,7 +335,7 @@ export function validateEvergreen(
     if (x.year < 1970 || x.year > 2030)
       p.push(`Entry "${x.game_title}" has an implausible year.`);
   }
-  if (wordCount(e.hook) > 18) p.push("The hook is longer than 18 words.");
+  if (wordCount(e.hook) > 12) p.push("The hook is longer than 12 words; say the premise and the criterion in 8-12.");
   if (wordCount(e.loop_line) > 22) p.push("The loop line is longer than 22 words; one short closing sentence.");
   // A long take holds one card on screen for 15+ seconds, the slowest part of the Short.
   if (wordCount(e.pulse_take.narration) > 32)

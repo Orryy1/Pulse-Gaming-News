@@ -1,5 +1,6 @@
 // Read-only pages and done-records for the Studio browser routines (the Claude scheduled tasks
-// pulse-youtube-community, pulse-related-video-links, pulse-studio-abtest and pulse-weekly-poll).
+// pulse-youtube-community, pulse-related-video-links, pulse-studio-abtest and pulse-weekly-poll), and
+// the TikTok Studio numbers a routine copies in (POST /routine/tiktok-stats, the one page that takes a body).
 // A scheduled run cannot answer a shell approval prompt, so every step it takes is a browser step:
 // it opens http://127.0.0.1:8080/routine/... in a tab and reads the JSON, and records progress by
 // opening /routine/done?kind=...&key=.... These pages are for this PC only: the Cloudflare tunnel
@@ -20,6 +21,7 @@ import { dayKey, weekday } from "./lanes.ts";
 import { YTDLP_TEXT } from "./lib/bin.ts";
 import { errorMessage, log } from "./lib/util.ts";
 import { pollPlan, readPoll, recordPollResult } from "./social/poll.ts";
+import { recordTikTokStats, tiktokStatus } from "./social/metrics.ts";
 
 const run = promisify(execFile);
 
@@ -49,6 +51,25 @@ export function routineAllowed(
   for (const h of Object.keys(req.headers))
     if (h.startsWith("cf-") || PROXY_HEADERS.includes(h)) return false;
   return true;
+}
+
+const LOOPBACK_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+/** A request body up to `max` bytes; longer is refused. */
+function readBody(req: http.IncomingMessage, max: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > max) {
+        reject(new Error("body too large"));
+        req.destroy();
+      } else chunks.push(c);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
 }
 
 // ------------------------------------------------------------------ done records
@@ -312,9 +333,14 @@ export async function handleRoutine(
   url: URL,
   ctx: RoutineContext,
 ): Promise<boolean> {
-  if (!url.pathname.startsWith("/routine/") || req.method !== "GET")
+  const posting =
+    req.method === "POST" && url.pathname === "/routine/tiktok-stats";
+  if (!url.pathname.startsWith("/routine/") || (req.method !== "GET" && !posting))
     return false;
   if (!routineAllowed(req)) return false;
+  // A page on some other site could make this PC's browser send the body: only a page on this PC may.
+  if (posting && req.headers.origin && !LOOPBACK_ORIGIN.test(String(req.headers.origin)))
+    return false;
   const { db, cfg } = ctx;
   const now = ctx.now?.() ?? new Date();
   const today = dayKey(now, cfg.timezone);
@@ -443,6 +469,39 @@ export async function handleRoutine(
           await logEvent(db, null, "poll_result", { options, via: "routine" });
         }
         json(res, 200, { ok: true, unchanged: Boolean(same), options });
+        return true;
+      }
+      // TikTok Studio's numbers: GET says which TikTok drafts to look for and which still need a 24 h or
+      // 7 d reading; POST (JSON, from a tab on http://127.0.0.1:8080) stores what the routine copied.
+      case "/routine/tiktok-stats": {
+        if (!posting) {
+          const videos = await tiktokStatus(db, now);
+          json(res, 200, {
+            now: now.toISOString(),
+            count: videos.length,
+            missing: videos.filter((v) => v.needs.length).length,
+            videos,
+          });
+          return true;
+        }
+        let body: unknown;
+        try {
+          body = JSON.parse(await readBody(req, 512 * 1024));
+        } catch (err) {
+          json(res, 400, { ok: false, error: `not JSON: ${errorMessage(err)}` });
+          return true;
+        }
+        try {
+          const r = await recordTikTokStats(db, cfg, body, now);
+          log("info", "tiktok numbers recorded", {
+            matched: r.matched.length,
+            unmatched: r.unmatched.length,
+            account: r.account,
+          });
+          json(res, 200, { ok: true, ...r });
+        } catch (err) {
+          json(res, 400, { ok: false, error: errorMessage(err) });
+        }
         return true;
       }
       // The channel report and export are served by server.ts (the same code as /admin/...), for the

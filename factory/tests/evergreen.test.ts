@@ -28,7 +28,7 @@ function ranking(entries = 8): EvergreenScript {
     format: "ranking",
     theme: "Resident Evil",
     title: "Ranking Every Resident Evil",
-    hook: "Every mainline Resident Evil ranked by one thing only, how much it still scares you today.",
+    hook: "Every mainline Resident Evil ranked by how much it still scares you.",
     entries: names.slice(0, entries).map((game_title, i) => ({
       rank: entries - i,
       game_title,

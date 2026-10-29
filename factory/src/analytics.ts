@@ -298,6 +298,8 @@ export async function weeklyDigest(
     `**YouTube quota used today:** ${(await quotaUsed(db, now)).toLocaleString("en-US")} of ${cfg.quotaUnitsPerDay.toLocaleString("en-US")} units; uploads ${await quotaCalls(db, now, "upload")} of ${cfg.uploadCallsPerDay}`,
     "Reminders: check Studio for Content ID claims on anything over 60 s; the retention curve arrives once analytics is reconnected.",
   ];
+  // The other platforms in an embed of their own, so a long week above never cuts the table in half.
+  const social = await socialTable(db, now).catch(() => [] as string[]);
   return {
     embeds: [
       {
@@ -305,6 +307,9 @@ export async function weeklyDigest(
         description: lines.join("\n").slice(0, 3900),
         color: 0xff6b1a,
       },
+      ...(social.length
+        ? [{ description: social.join("\n").slice(0, 3900), color: 0xff6b1a }]
+        : []),
     ],
   };
 }
@@ -1169,4 +1174,311 @@ export async function reachAlert(
   await logEvent(db, null, "reach_alert", { at: now.toISOString(), videos: low.length, titles: low.map((r) => r.title) });
   log("warn", "reach alert sent", { videos: low.length });
   return true;
+}
+// ------------------------------------------------------------------ the other platforms
+
+/** Shorts a platform needs with numbers on both sides before anything is said about it. */
+export const SOCIAL_MIN_SHORTS = 6;
+/** A Short whose rank there is this far (as a share of the field) from its YouTube rank over- or under-performed. */
+export const SOCIAL_RANK_GAP = 0.25;
+/** A story type needs this many Shorts before its average gap counts, and this big a gap. */
+const SOCIAL_TYPE_MIN = 3;
+const SOCIAL_TYPE_GAP = 0.15;
+
+export interface PlatformShort {
+  title: string;
+  hook: string;
+  question: string;
+  storyType?: string;
+  ytViews: number;
+  views: number;
+}
+
+/** Each value's rank as a share of the field, 0 for the lowest to 1 for the highest; ties share their average rank. */
+export function percentileRanks(values: number[]): number[] {
+  if (values.length < 2) return values.map(() => 0.5);
+  const order = values.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v);
+  const out = new Array<number>(values.length);
+  for (let k = 0; k < order.length; ) {
+    let j = k;
+    while (j + 1 < order.length && order[j + 1]!.v === order[k]!.v) j++;
+    const rank = (k + j) / 2 / (values.length - 1);
+    for (let m = k; m <= j; m++) out[order[m]!.i] = rank;
+    k = j + 1;
+  }
+  return out;
+}
+
+/** How far each Short ranked higher (positive) or lower on the platform than on YouTube. */
+export function rankGaps(
+  rows: PlatformShort[],
+): Array<PlatformShort & { gap: number }> {
+  const yt = percentileRanks(rows.map((r) => r.ytViews));
+  const there = percentileRanks(rows.map((r) => r.views));
+  return rows.map((r, i) => ({ ...r, gap: there[i]! - yt[i]! }));
+}
+
+const PLATFORM_NAMES: Record<string, string> = {
+  instagram: "Instagram",
+  facebook: "Facebook",
+  threads: "Threads",
+  tiktok: "TikTok",
+  bluesky: "Bluesky",
+  x: "X",
+};
+
+/** For the writers: which Shorts did better or worse on a platform than their YouTube rank says; nothing on thin data. */
+export function platformLessons(
+  platform: string,
+  rows: PlatformShort[],
+): string[] {
+  if (rows.length < SOCIAL_MIN_SHORTS) return [];
+  const ranked = rankGaps(rows).sort((a, b) => b.gap - a.gap);
+  const over = ranked.filter((r) => r.gap >= SOCIAL_RANK_GAP).slice(0, 3);
+  const under = ranked
+    .filter((r) => r.gap <= -SOCIAL_RANK_GAP)
+    .slice(-3)
+    .reverse();
+  const describe = (r: (typeof ranked)[number]) =>
+    `- "${r.title}" (${r.views.toLocaleString("en-US")} views there, ${r.ytViews.toLocaleString("en-US")} on YouTube): hook "${r.hook}"${r.question ? `, asked "${r.question}"` : ""}`;
+  const types = new Map<string, number[]>();
+  for (const r of ranked)
+    if (r.storyType)
+      types.set(r.storyType, [...(types.get(r.storyType) ?? []), r.gap]);
+  const typeLines = [...types.entries()]
+    .filter(([, g]) => g.length >= SOCIAL_TYPE_MIN)
+    .map(([t, g]) => ({
+      t,
+      n: g.length,
+      mean: g.reduce((a, b) => a + b, 0) / g.length,
+    }))
+    .filter((x) => Math.abs(x.mean) >= SOCIAL_TYPE_GAP)
+    .map(
+      (x) =>
+        `- ${x.t.replace(/_/g, " ")} stories ranked ${x.mean > 0 ? "higher" : "lower"} there than on YouTube (${x.n} Shorts).`,
+    );
+  if (!over.length && !under.length && !typeLines.length) return [];
+  const name = PLATFORM_NAMES[platform] ?? platform;
+  return [
+    `${name} (${rows.length} Shorts, median ${median(rows.map((r) => r.views)).toLocaleString("en-US")} views a day after posting):`,
+    ...(over.length
+      ? [`Did better on ${name} than on YouTube:`, ...over.map(describe)]
+      : []),
+    ...(under.length
+      ? [`Did worse on ${name} than on YouTube:`, ...under.map(describe)]
+      : []),
+    ...typeLines,
+  ];
+}
+
+/** The hour of day (0-23) in `to` that an hour in `from` falls on, at `at`. */
+function shiftHour(hour: number, from: string, to: string, at: Date): number {
+  const h = (tz: string) =>
+    Number(
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: tz,
+        hour: "2-digit",
+        hourCycle: "h23",
+      }).format(at),
+    );
+  return (((hour + h(to) - h(from)) % 24) + 24) % 24;
+}
+
+/** The three busiest hours, in US Eastern, from 24 counts by hour in `timeZone`; none below `minTotal`. */
+export function bestHours(
+  counts: Array<number | undefined>,
+  timeZone: string,
+  at: Date,
+  minTotal = 50,
+): number[] {
+  const xs = counts
+    .slice(0, 24)
+    .map((c) => (typeof c === "number" && Number.isFinite(c) ? c : 0));
+  if (xs.length < 24 || xs.reduce((a, b) => a + b, 0) < minTotal) return [];
+  return xs
+    .map((v, hour) => ({ v, hour }))
+    .sort((a, b) => b.v - a.v || a.hour - b.hour)
+    .slice(0, 3)
+    .map((x) => shiftHour(x.hour, timeZone, "America/New_York", at))
+    .sort((a, b) => a - b);
+}
+
+/** 24 counts by hour from Instagram's {"0": n, ...} map, TikTok's 24 numbers or [{hour, value}] rows. */
+export function hourCounts(raw: unknown): Array<number | undefined> {
+  if (Array.isArray(raw)) {
+    if (raw.every((x) => typeof x === "number" || x === null))
+      return raw as number[];
+    const out = new Array<number | undefined>(24).fill(0);
+    for (const r of raw as Array<{ hour?: number; value?: number }>)
+      if (r && typeof r.hour === "number" && r.hour >= 0 && r.hour < 24)
+        out[r.hour] = Number(r.value) || 0;
+    return out;
+  }
+  if (raw && typeof raw === "object")
+    return Array.from(
+      { length: 24 },
+      (_, h) => Number((raw as Record<string, unknown>)[String(h)]) || 0,
+    );
+  return [];
+}
+
+const hhmm = (h: number) => `${String(h).padStart(2, "0")}:00`;
+
+/**
+ * For the editor and the news writer: how our Shorts did on the other platforms against their YouTube rank, and
+ * the hours their followers are about. Each platform's numbers a day after posting (or the nearest age read).
+ */
+export async function socialLessons(db: Db, now: Date): Promise<string> {
+  const rows = await db.query<{
+    platform: string;
+    views: number | string;
+    yt_views: number | string;
+    script_json: Episode["script_json"];
+  }>(
+    `SELECT DISTINCT ON (s.platform, s.episode_id) s.platform, s.views, ym.views AS yt_views, e.script_json
+       FROM social_metrics s
+       JOIN episodes e ON e.id = s.episode_id
+       JOIN video_metrics ym ON ym.episode_id = e.id AND ym.label = '24h'
+      WHERE s.post_id <> 'account' AND s.views IS NOT NULL AND s.label IN ('24h', '72h', '7d')
+        AND s.captured_at > $1::timestamptz - interval '45 days'
+      ORDER BY s.platform, s.episode_id, CASE s.label WHEN '24h' THEN 0 WHEN '72h' THEN 1 ELSE 2 END`,
+    [now],
+  );
+  const by = new Map<string, PlatformShort[]>();
+  for (const r of rows) {
+    const sc = r.script_json;
+    const loop = (sc?.loop_line ?? "").trim();
+    by.set(r.platform, [
+      ...(by.get(r.platform) ?? []),
+      {
+        title: sc?.youtube?.title ?? sc?.headline ?? "",
+        hook: sc?.hook ?? "",
+        question: /\?$/.test(loop) ? loop : "",
+        storyType: sc?.story_type,
+        ytViews: Number(r.yt_views),
+        views: Number(r.views),
+      },
+    ]);
+  }
+  const lines: string[] = [];
+  for (const p of ["instagram", "facebook", "threads", "tiktok"])
+    lines.push(...platformLessons(p, by.get(p) ?? []));
+  // When followers are about: Instagram's online followers (Meta counts those hours in Pacific time) and
+  // TikTok's active hours (as TikTok Studio shows them, in the time zone the routine names).
+  const accounts = await db.query<{ platform: string; extra: any }>(
+    `SELECT DISTINCT ON (platform) platform, extra FROM social_metrics
+      WHERE post_id = 'account' AND platform IN ('instagram', 'tiktok') AND captured_at > $1::timestamptz - interval '14 days'
+        AND (extra ? 'online_followers' OR extra ? 'active_hours')
+      ORDER BY platform, label DESC`,
+    [now],
+  );
+  for (const a of accounts) {
+    const extra = typeof a.extra === "string" ? JSON.parse(a.extra) : a.extra;
+    const hours =
+      a.platform === "instagram"
+        ? bestHours(
+            hourCounts(extra?.online_followers),
+            "America/Los_Angeles",
+            now,
+          )
+        : bestHours(
+            hourCounts(extra?.active_hours),
+            String(extra?.active_hours_timezone || "Europe/London"),
+            now,
+            3,
+          );
+    if (hours.length)
+      lines.push(
+        `${PLATFORM_NAMES[a.platform]} followers are most active around ${hours.map(hhmm).join(", ")} US Eastern.`,
+      );
+  }
+  if (!lines.length) return "";
+  return [
+    "How our Shorts did on the other platforms against their YouTube rank (a day after posting there). A story that wins on Instagram or TikTok but not on YouTube says something about its hook and its question; advice, not rules:",
+    ...lines,
+  ].join("\n");
+}
+
+/** The Monday table: each platform's last seven days of posts and what they drew (latest reading of each post). */
+export async function socialTable(db: Db, now: Date): Promise<string[]> {
+  const posts = await db.query<{ platform: string; n: string | number }>(
+    `SELECT detail->>'platform' AS platform, count(*) AS n FROM events
+      WHERE kind = 'crosspost' AND created_at > $1::timestamptz - interval '7 days' GROUP BY 1`,
+    [now],
+  );
+  const nums = await db.query<{
+    platform: string;
+    views: Array<number | string> | null;
+    likes: string | number | null;
+    comments: string | number | null;
+    shares: string | number | null;
+  }>(
+    `WITH latest AS (
+       SELECT DISTINCT ON (s.platform, s.post_id) s.* FROM social_metrics s
+        WHERE s.post_id <> 'account' AND EXISTS (
+          SELECT 1 FROM events v WHERE v.kind = 'crosspost' AND v.episode_id = s.episode_id
+             AND v.detail->>'platform' = s.platform AND v.created_at > $1::timestamptz - interval '7 days')
+        ORDER BY s.platform, s.post_id, s.captured_at DESC)
+     SELECT platform, array_agg(views) FILTER (WHERE views IS NOT NULL) AS views,
+            sum(likes) AS likes, sum(comments) AS comments, sum(shares) AS shares
+       FROM latest GROUP BY platform`,
+    [now],
+  );
+  const growth = await db.query<{
+    platform: string;
+    follows: string | number | null;
+  }>(
+    `SELECT platform, sum(follows) AS follows FROM social_metrics
+      WHERE post_id = 'account' AND captured_at > $1::timestamptz - interval '7 days' GROUP BY platform`,
+    [now],
+  );
+  const order = ["facebook", "instagram", "threads", "tiktok", "bluesky", "x"];
+  const platforms = order.filter(
+    (p) =>
+      posts.some((r) => r.platform === p) || nums.some((r) => r.platform === p),
+  );
+  if (!platforms.length) return [];
+  const cell = (v: unknown) =>
+    v === null || v === undefined || v === ""
+      ? "-"
+      : Number(v).toLocaleString("en-US");
+  const row = (cols: string[]) =>
+    cols
+      .map((c, i) => (i === 0 ? c.padEnd(9) : c.padStart(i === 2 ? 9 : 6)))
+      .join(" ");
+  const lines = [
+    row([
+      "Platform",
+      "Posts",
+      "Med views",
+      "Likes",
+      "Comms",
+      "Shares",
+      "Follow",
+    ]),
+  ];
+  for (const p of platforms) {
+    const n = nums.find((r) => r.platform === p);
+    const g = growth.find((r) => r.platform === p)?.follows;
+    const views = (n?.views ?? []).map(Number);
+    lines.push(
+      row([
+        PLATFORM_NAMES[p] ?? p,
+        cell(posts.find((r) => r.platform === p)?.n ?? 0),
+        views.length ? cell(median(views)) : "-",
+        cell(n?.likes),
+        cell(n?.comments),
+        cell(n?.shares),
+        g === null || g === undefined
+          ? "-"
+          : `${Number(g) >= 0 ? "+" : ""}${Number(g).toLocaleString("en-US")}`,
+      ]),
+    );
+  }
+  return [
+    "**Other platforms (last 7 days; TikTok counts drafts sent, Follow is followers gained):**",
+    "```",
+    ...lines,
+    "```",
+  ];
 }

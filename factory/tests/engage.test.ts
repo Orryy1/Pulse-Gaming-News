@@ -9,6 +9,7 @@ test("community posts: once a day after the slot, the answer a day later, the co
   const dir = await tmpDir();
   const cfg = testConfig(dir, {
     engageEnabled: true,
+    engageInstagram: true,
     engageSlot: "15:00",
     publicUrl: "https://pulse.orryy.com",
     timezone: "Europe/London",
@@ -102,4 +103,50 @@ test("the format rotates by day", () => {
   ];
   const formats = new Set(days.map(formatForDay));
   assert.ok(formats.size >= 3, [...formats].join(","));
+});
+
+test("the Instagram question picture stays off unless ENGAGE_INSTAGRAM is on; Facebook still gets it", async () => {
+  const db = await testDb();
+  const dir = await tmpDir();
+  const cfg = testConfig(dir, {
+    engageEnabled: true,
+    engageSlot: "15:00",
+    publicUrl: "https://pulse.orryy.com",
+    timezone: "Europe/London",
+  });
+  const posted: string[] = [];
+  await engageTick({
+    db,
+    cfg,
+    llm: {
+      structured: async () => ({
+        format: "rate",
+        games: ["Hades II"],
+        kicker: "RATE IT",
+        question: "Hades II out of 10?",
+        caption: "Your score below. #gaming",
+        answer: "",
+      }),
+    } as unknown as Llm,
+    now: () => new Date("2026-10-19T14:05:00Z"),
+    headlines: async () => [],
+    candidates: async () => [],
+    igdbArt: async () => [
+      { kind: "screenshot" as const, file: "a.jpg", sourceUrl: "x", provenance: "IGDB" },
+    ],
+    render: async () => undefined,
+    facebook: {
+      photo: async () => (posted.push("fb"), "fb1"),
+      comment: async () => "c",
+      comments: async () => 0,
+    },
+    instagram: {
+      image: async () => (posted.push("ig"), "ig1"),
+      comment: async () => "c",
+      comments: async () => 0,
+    },
+    notify: async () => true,
+  });
+  assert.deepEqual(posted, ["fb"]);
+  await db.close();
 });

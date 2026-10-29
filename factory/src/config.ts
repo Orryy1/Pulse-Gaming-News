@@ -234,7 +234,20 @@ export interface Config {
   /** Local hour (TIMEZONE) from which the day's TikTok picks are sent: 16 = US lunchtime. */
   tiktokFromHour: number;
   engageEnabled: boolean; // a daily community post on Facebook and Instagram
+  /** The daily question picture on Instagram as well (ENGAGE_INSTAGRAM): off, 9 posts drew 0 likes by 29 Oct 2026. */
+  engageInstagram: boolean;
   engageSlot: string; // local time it goes out
+  /** The Meta login saved by /connect?account=meta; when present its page token wins over the .env tokens. */
+  metaLoginPath: string;
+  /** A Facebook Login for Business configuration id (FACEBOOK_LOGIN_CONFIG_ID), when the app uses one instead of scopes. */
+  facebookLoginConfigId: string;
+  /** Permissions the saved Meta login was granted (set from the login file; empty until the owner connects). */
+  metaGranted?: string[];
+  /** The YouTube link goes in the Facebook reel's first comment, not its caption, when the login may comment as the page. */
+  facebookLinkComment: boolean;
+  /** The Meta app the connect page signs in with (FACEBOOK_APP_ID, FACEBOOK_APP_SECRET). */
+  facebookAppId: string;
+  facebookAppSecret: string;
   facebookPageId: string;
   facebookPageToken: string;
   instagramAccountId: string;
@@ -442,7 +455,10 @@ export function loadConfig(): Config {
       0,
       Math.min(1, Number(str("NARRATOR_TEST_SHARE", "0.5"))),
     ),
-    shortSuiteShare: Math.max(0, Math.min(1, Number(str("SHORT_SUITE_SHARE", "0.5")))),
+    shortSuiteShare: Math.max(
+      0,
+      Math.min(1, Number(str("SHORT_SUITE_SHARE", "0.5"))),
+    ),
     mascotShare: Math.max(0, Math.min(1, Number(str("MASCOT_SHARE", "0")))),
     experimentVerdictDate: str("EXPERIMENT_VERDICT_DATE", "2026-11-08"),
     narratorName: str("NARRATOR_NAME", "Liam"),
@@ -601,7 +617,13 @@ export function loadConfig(): Config {
     tiktokDaily: int("TIKTOK_DAILY", 0),
     tiktokFromHour: int("TIKTOK_FROM_HOUR", 16),
     engageEnabled: bool("ENGAGE_ENABLED", true),
+    engageInstagram: bool("ENGAGE_INSTAGRAM", false),
     engageSlot: str("ENGAGE_SLOT", "15:00"),
+    metaLoginPath: str("META_LOGIN_PATH", path.join(tokenDir, "meta.json")),
+    facebookLoginConfigId: str("FACEBOOK_LOGIN_CONFIG_ID"),
+    facebookLinkComment: bool("FACEBOOK_LINK_COMMENT", true),
+    facebookAppId: str("FACEBOOK_APP_ID"),
+    facebookAppSecret: str("FACEBOOK_APP_SECRET"),
     facebookPageId: str("FACEBOOK_PAGE_ID"),
     facebookPageToken: str("FACEBOOK_PAGE_TOKEN"),
     instagramAccountId: str("INSTAGRAM_BUSINESS_ACCOUNT_ID"),
@@ -686,7 +708,49 @@ export function loadConfig(): Config {
     browserExecutable: str("REMOTION_BROWSER_EXECUTABLE"),
   };
   if (cfg.legacyTokenDir) adoptLegacyYouTubeTokens(cfg);
+  applyMetaLogin(cfg);
   return cfg;
+}
+
+/** The Meta login saved by /connect?account=meta: a never-expiring page token and the accounts it reaches. */
+export interface MetaLogin {
+  pageId: string;
+  pageName?: string;
+  pageToken: string;
+  instagramAccountId?: string;
+  granted: string[];
+  declined: string[];
+  savedAt: string;
+}
+
+export function readMetaLogin(file: string): MetaLogin | undefined {
+  try {
+    const j = JSON.parse(fs.readFileSync(file, "utf8")) as MetaLogin;
+    return j?.pageToken && j?.pageId ? j : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Puts the saved Meta login in place of the .env tokens, everywhere the factory reads them (crossposting,
+ * the community posts, the numbers poller). A page token reaches the page's Instagram account as well.
+ * Called at start-up and again by the connect page, so a new login works without a restart.
+ */
+export function applyMetaLogin(
+  cfg: Config,
+  login: MetaLogin | undefined = cfg.metaLoginPath
+    ? readMetaLogin(cfg.metaLoginPath)
+    : undefined,
+): boolean {
+  if (!login) return false;
+  cfg.facebookPageId = login.pageId;
+  cfg.facebookPageToken = login.pageToken;
+  cfg.instagramToken = login.pageToken;
+  if (login.instagramAccountId)
+    cfg.instagramAccountId = login.instagramAccountId;
+  cfg.metaGranted = login.granted ?? [];
+  return true;
 }
 
 /**

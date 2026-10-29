@@ -574,3 +574,105 @@ export async function experimentVerdicts(
   await notify({ content: report });
   return run;
 }
+
+// ---- The posting-time test -----------------------------------------------------------------------
+// Facebook, Instagram and the TikTok draft aim for 16:00-20:00 US Eastern (src/social/crosspost.ts
+// primeTimeDelay) for two weeks from 29 Oct 2026. On PRIME_TIME_END the factory reports how posts in the
+// window did against posts outside it on each platform, and the test stops unless the owner keeps it:
+// override:prime_time_posting 1 keeps it on, 0 turns it off at any time.
+
+export const PRIME_TIME_START = "2026-10-29";
+export const PRIME_TIME_END = "2026-11-12";
+const PRIME_OVERRIDE = "override:prime_time_posting";
+const PRIME_REPORT_KEY = "prime_time_report";
+/** Posts a side before the report compares a platform. */
+export const PRIME_MIN_EACH = 3;
+
+/** Whether the posting-time test is on now: the owner's setting when there is one, else the two test weeks. */
+export async function primeTimeNow(
+  db: Db,
+  now: Date,
+  timeZone = "Europe/London",
+): Promise<boolean> {
+  const o = await readOverride(db, PRIME_OVERRIDE);
+  if (o !== undefined) return o > 0;
+  const day = dayKey(now, timeZone);
+  return day >= PRIME_TIME_START && day < PRIME_TIME_END;
+}
+
+/** Whether a post went out inside the evening window, by its US Eastern hour. */
+export function inPrimeWindow(at: Date): boolean {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "America/New_York",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(at),
+  );
+  return hour >= 16 && hour < 20;
+}
+
+const mid = (xs: number[]): number => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m]! : Math.round((s[m - 1]! + s[m]!) / 2);
+};
+
+/** One line per platform: median views a day after posting, inside the window against outside it. */
+export function primeTimeLines(
+  rows: Array<{ platform: string; at: Date; views: number }>,
+): string[] {
+  const names: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok" };
+  return Object.keys(names).map((p) => {
+    const mine = rows.filter((r) => r.platform === p);
+    const inside = mine.filter((r) => inPrimeWindow(r.at)).map((r) => r.views);
+    const outside = mine.filter((r) => !inPrimeWindow(r.at)).map((r) => r.views);
+    if (inside.length < PRIME_MIN_EACH || outside.length < PRIME_MIN_EACH)
+      return `• ${names[p]}: not enough numbers to compare (${inside.length} posts in the evening window, ${outside.length} outside; ${PRIME_MIN_EACH} a side needed).`;
+    const a = mid(inside);
+    const b = mid(outside);
+    const verdict = a > b * 1.2 ? "the evening did better" : b > a * 1.2 ? "the evening did worse" : "about the same";
+    return `• ${names[p]}: ${a.toLocaleString("en-US")} median views posted 16:00-20:00 Eastern (${inside.length} posts) against ${b.toLocaleString("en-US")} at other times (${outside.length}): ${verdict}.`;
+  });
+}
+
+/** On the end day, once: the report, and the test reverts to the usual stagger unless the owner set the override. */
+export async function primeTimeVerdict(
+  db: Db,
+  cfg: Pick<Config, "timezone">,
+  now: Date,
+  notify: (m: DiscordMessage) => Promise<unknown>,
+): Promise<boolean> {
+  if (dayKey(now, cfg.timezone) < PRIME_TIME_END) return false;
+  const [done] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = $1`, [PRIME_REPORT_KEY]);
+  if (done) return false;
+  // Each post's numbers a day on (or the nearest age read), from 14 days before the test to its end.
+  const rows = await db.query<{ platform: string; at: string; views: number | string }>(
+    `SELECT v.detail->>'platform' AS platform, v.created_at AS at,
+            (SELECT s.views FROM social_metrics s WHERE s.episode_id = v.episode_id AND s.platform = v.detail->>'platform' AND s.views IS NOT NULL
+              ORDER BY CASE s.label WHEN '24h' THEN 0 WHEN '72h' THEN 1 WHEN '7d' THEN 2 ELSE 3 END LIMIT 1) AS views
+       FROM events v
+      WHERE v.kind = 'crosspost' AND v.detail->>'platform' IN ('facebook','instagram','tiktok')
+        AND v.created_at >= $1::date - 14 AND v.created_at < $2::date`,
+    [PRIME_TIME_START, PRIME_TIME_END],
+  );
+  const lines = primeTimeLines(
+    rows.filter((r) => r.views !== null).map((r) => ({ platform: r.platform, at: new Date(r.at), views: Number(r.views) })),
+  );
+  const kept = (await readOverride(db, PRIME_OVERRIDE)) ?? 0;
+  await db.query(
+    `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [PRIME_REPORT_KEY, now.toISOString()],
+  );
+  await notify({
+    content: [
+      `**Posting-time test, ${PRIME_TIME_START} to ${PRIME_TIME_END}:** Facebook, Instagram and TikTok drafts aimed for 16:00-20:00 US Eastern.`,
+      ...lines,
+      kept > 0
+        ? "You kept evening posting on, so it carries on."
+        : "The test has ended and posts are back to following YouTube by a few minutes. To keep evening posting, tell Claude and it will switch it back on.",
+    ].join("\n"),
+  });
+  log("info", "posting-time test reported", { kept: kept > 0 });
+  return true;
+}

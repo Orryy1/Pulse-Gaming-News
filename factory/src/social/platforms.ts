@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import { oauth1Header, type OAuth1Keys } from "./oauth1.ts";
 
 type FetchLike = typeof fetch;
-const GRAPH = "https://graph.facebook.com/v21.0";
+export const GRAPH = "https://graph.facebook.com/v21.0";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function json(res: Response, what: string): Promise<any> {
@@ -526,6 +526,26 @@ export async function graphComment(
   return String(r.id);
 }
 
+/** Replaces a Facebook video's description (the reel's caption), e.g. to put back a link a comment could not carry. */
+export async function facebookVideoDescription(
+  videoId: string,
+  token: string,
+  description: string,
+  fetchFn: FetchLike = fetch,
+): Promise<void> {
+  await json(
+    await fetchFn(`${GRAPH}/${videoId}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        description: description.slice(0, 2000),
+        access_token: token,
+      }),
+    }),
+    "facebook description",
+  );
+}
+
 /** How many comments a post has drawn. */
 export async function graphCommentCount(
   objectId: string,
@@ -546,7 +566,7 @@ export async function graphCommentCount(
 
 // ------------------------------------------------------------------ Threads
 
-const THREADS = "https://graph.threads.net/v1.0";
+export const THREADS = "https://graph.threads.net/v1.0";
 
 export interface ThreadsLogin {
   userId: string;

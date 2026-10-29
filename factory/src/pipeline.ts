@@ -172,9 +172,10 @@ import {
   reachAlert,
   performanceNotes,
   retentionNotes,
+  socialLessons,
   visualLessons,
 } from "./analytics.ts";
-import { deskShareNow, experimentVerdicts, mascotFor, mascotShareNow, rumoursPerDayNow } from "./experiments.ts";
+import { deskShareNow, experimentVerdicts, mascotFor, mascotShareNow, primeTimeVerdict, rumoursPerDayNow } from "./experiments.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
 import { titleVariants } from "./editorial/titles.ts";
@@ -814,6 +815,7 @@ async function createFromChoice(
       calendarFor(s.cfg, s.now(), "news", 3),
       await performanceNotes(db, s.now()).catch(() => ""),
       await retentionNotes(db, s.now()).catch(() => ""),
+      await socialLessons(db, s.now()).catch(() => ""),
       trendingBlock(await s.trending().catch(() => [])),
     ]
       .filter(Boolean)
@@ -3710,7 +3712,13 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const recent = await recentShapes(s.db, ep.id).catch(() => undefined);
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
-      lessons: await hookLessons(s.db, s.now(), segmentInputs).catch(() => ""),
+      // YouTube's lessons, then how the same Shorts did on Instagram, Facebook, Threads and TikTok.
+      lessons: [
+        await hookLessons(s.db, s.now(), segmentInputs).catch(() => ""),
+        await socialLessons(s.db, s.now()).catch(() => ""),
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       mustLabelRumour,
       feedback,
       storeData,
@@ -7653,6 +7661,11 @@ export async function tick(
     if (!s.cfg.dryRun)
       await experimentVerdicts(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch((err) =>
         log("warn", "experiment verdicts failed", { error: errorMessage(err) }),
+      );
+    // The posting-time test's report on its last day (src/experiments.ts). The other platforms' numbers are read on their own clock (server.ts).
+    if (!s.cfg.dryRun)
+      await primeTimeVerdict(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch((err) =>
+        log("warn", "posting-time report failed", { error: errorMessage(err) }),
       );
     // Shorts: whether the Shorts feed served each one, and a warning when it stops (read-only).
     if (!s.cfg.dryRun) {

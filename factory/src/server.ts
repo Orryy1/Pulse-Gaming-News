@@ -9,7 +9,12 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { creditLine } from "./voice/credits.ts";
 import { fileURLToPath } from "node:url";
-import { loadConfig, redactedConfig, type Config } from "./config.ts";
+import {
+  applyMetaLogin,
+  loadConfig,
+  redactedConfig,
+  type Config,
+} from "./config.ts";
 import { runDoctor, formatDoctor } from "./doctor.ts";
 import { storedRefreshToken } from "./youtube/oauth.ts";
 import { openDb, migrate, withLease, type Db } from "./db.ts";
@@ -76,6 +81,7 @@ import { activeUploads } from "./youtube/upload.ts";
 import { handleRoutine, routineAllowed, startBraveFront } from "./routines.ts";
 import { alert, postDiscord } from "./approval/discord.ts";
 import { sendDueNotices } from "./notices.ts";
+import { primeTimeNow } from "./experiments.ts";
 import {
   dailySummary,
   digestDue,
@@ -908,6 +914,78 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         ),
       );
     }
+    // Facebook and Instagram: Meta's sign-in for the Pulse app with posting, numbers and comments, then a
+    // never-expiring page token saved beside the other logins (src/social/metaConnect.ts). It replaces the .env
+    // tokens at once, without a restart.
+    if (
+      url.pathname === "/connect" &&
+      url.searchParams.get("account") === "meta"
+    ) {
+      if (!fromThisPc && !isAdmin())
+        return send(
+          403,
+          page(
+            "Forbidden",
+            "<h1>Open http://localhost:8080/connect?account=meta on the PC running the factory.</h1>",
+          ),
+        );
+      if (!cfg.facebookAppId || !cfg.facebookAppSecret)
+        return send(
+          500,
+          page(
+            "Missing app",
+            "<h1>FACEBOOK_APP_ID and FACEBOOK_APP_SECRET are not set.</h1>",
+          ),
+        );
+      const { metaAuthorizeUrl } = await import("./social/metaConnect.ts");
+      const nonce = crypto.randomBytes(12).toString("hex");
+      const state = `${nonce}.${signToken(`meta:${nonce}`, cfg.appSecret, 3600)}`;
+      res
+        .writeHead(302, { location: metaAuthorizeUrl(cfg, state) })
+        .end();
+      return;
+    }
+    if (url.pathname === "/oauth/meta") {
+      const [nonce, ...rest] = (url.searchParams.get("state") ?? "").split(".");
+      if (!nonce || !verifyToken(`meta:${nonce}`, rest.join("."), cfg.appSecret))
+        return send(
+          403,
+          page(
+            "Bad state",
+            "<h1>Sign-in check failed. Start again from /connect?account=meta.</h1>",
+          ),
+        );
+      const code = url.searchParams.get("code");
+      if (!code)
+        return send(
+          400,
+          page(
+            "No code",
+            `<h1>Facebook returned: ${esc(url.searchParams.get("error_description") ?? url.searchParams.get("error") ?? "no code")}</h1><p>Nothing was changed.</p>`,
+          ),
+        );
+      try {
+        const m = await import("./social/metaConnect.ts");
+        const login = await m.finishMetaLogin(cfg, code);
+        m.saveMetaLogin(cfg.metaLoginPath, login);
+        applyMetaLogin(cfg, login);
+        log("info", "meta connected", {
+          page: login.pageId,
+          instagram: Boolean(login.instagramAccountId),
+          granted: login.granted,
+          declined: login.declined,
+        });
+        return send(200, page("Facebook and Instagram connected", m.metaResultHtml(login)));
+      } catch (err) {
+        return send(
+          200,
+          page(
+            "Facebook",
+            `<h1>Facebook sign-in did not finish.</h1><p>${esc(errorMessage(err))}</p><p>Nothing was changed. <a href="/connect?account=meta" style="font-size:22px">Try again</a></p>`,
+          ),
+        );
+      }
+    }
     // Threads: Meta's sign-in for the Threads profile, then a 60-day token the factory renews itself.
     if (
       url.pathname === "/connect" &&
@@ -967,7 +1045,8 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       const q = new URLSearchParams({
         client_id: app.id,
         redirect_uri: redirect,
-        scope: "threads_basic,threads_content_publish",
+        scope:
+          "threads_basic,threads_content_publish,threads_manage_insights,threads_read_replies",
         response_type: "code",
         state,
       });
@@ -1516,6 +1595,8 @@ async function main(): Promise<void> {
           : undefined,
         episodeDir: (id) => episodeDir(cfg, id),
         videoUrl: (id) => approvalLinks(cfg, id).preview,
+        // The posting-time test: Facebook, Instagram and TikTok drafts aim for the US evening (src/experiments.ts).
+        primeTime: () => primeTimeNow(db, new Date(), cfg.timezone),
       }),
     ).catch((err) =>
       log("warn", "crosspost pass failed", { error: errorMessage(err) }),
@@ -1523,6 +1604,24 @@ async function main(): Promise<void> {
   if (Object.keys(posters).length) {
     setTimeout(() => void crosspost(), 60_000);
     setInterval(() => void crosspost(), 5 * 60_000);
+  }
+  // Every other platform's numbers for the Shorts posted there (src/social/metrics.ts): its own clock and lease,
+  // so a long render holding the tick never delays them and they never slow the tick. Read-only.
+  if (!cfg.dryRun) {
+    const { socialReaders, socialMetricsTick } = await import(
+      "./social/metrics.ts"
+    );
+    const readers = socialReaders(cfg);
+    const social = () =>
+      withLease(db, "social-metrics", 20 * 60, () =>
+        socialMetricsTick(db, cfg, readers, new Date()),
+      ).catch((err) =>
+        log("warn", "social numbers pass failed", {
+          error: errorMessage(err),
+        }),
+      );
+    setTimeout(() => void social(), 4 * 60_000);
+    setInterval(() => void social(), 15 * 60_000);
   }
   // The renderer leaves a bundle and an assets folder in the system temp folder for every start and render.
   const sweep = () =>
@@ -1581,6 +1680,8 @@ async function main(): Promise<void> {
                     p.graphCommentCount(id, cfg.facebookPageToken, false),
                 }
               : undefined,
+          // Answers and comment counts still work on older Instagram posts; new picture posts are off unless
+          // ENGAGE_INSTAGRAM is on (engage.ts).
           instagram:
             cfg.instagramAccountId && cfg.instagramToken
               ? {

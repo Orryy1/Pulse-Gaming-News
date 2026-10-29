@@ -58,10 +58,12 @@ export async function readHotTopic(
   }
 }
 
-/** The note the story, why, ranking and long-video editors see while a Short is taking off. */
+/** The note the story, why, ranking and long-video editors see while a Short is taking off. The pull can be
+ * a bigger name the title carries rather than the story's own game (29 Oct: "Rayman Legends Retold Gives
+ * PS5 a Free Astro Bot Suit" took off on Astro Bot), so everything the title names counts. */
 export function hotBlock(t: HotTopic | undefined): string {
   if (!t) return "";
-  return `Taking off right now: our Short "${t.title}" is running at ${t.pace}x our usual pace, about ${t.game}. New viewers are finding the channel through it. Until ${t.until.slice(0, 16).replace("T", " ")} UTC, when a ${t.game} story, question or ranking is anywhere near as strong as the alternatives, pick it, from a fresh angle (never the same story again), so the people who just found us get more of what they came for.`;
+  return `Taking off right now: our Short "${t.title}" is running at ${t.pace}x our usual pace. Its story is about ${t.game}, but the pull may be any game, series or character the title names; a crossover usually travels on the bigger name. New viewers are finding the channel through it. Until ${t.until.slice(0, 16).replace("T", " ")} UTC, when a story, question or ranking on ${t.game} or on anything else that title names is anywhere near as strong as the alternatives, pick it, from a fresh angle (never the same story again), so the people who just found us get more of what they came for.`;
 }
 
 export interface HitDeps {
@@ -144,7 +146,7 @@ export async function watchHits(d: HitDeps): Promise<string[]> {
     await d
       .notify({
         ping: true,
-        content: `🔥 Taking off: "${title}" has ${views.toLocaleString("en-US")} views in ${Math.round(hours)} hours, ${pace}x our usual pace. For the next ${Math.round(d.cfg.hitHours / 24)} days the editors lean towards more on ${game}, from fresh angles.\nhttps://youtube.com/shorts/${r.vid}`,
+        content: `🔥 Taking off: "${title}" has ${views.toLocaleString("en-US")} views in ${Math.round(hours)} hours, ${pace}x our usual pace. For the next ${Math.round(d.cfg.hitHours / 24)} days the editors lean towards more on ${game} and anything else the title names, from fresh angles.\nhttps://youtube.com/shorts/${r.vid}`,
       })
       .catch(() => undefined);
     hits.push(r.id);

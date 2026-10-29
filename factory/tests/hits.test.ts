@@ -70,6 +70,8 @@ test("a Short far ahead of the usual pace is announced once and becomes the hot 
   const hot = await readHotTopic(db, now);
   assert.equal(hot?.game, "Silksong");
   assert.match(hotBlock(hot), /Silksong/);
+  // The title's other names count too: a crossover often travels on the bigger name.
+  assert.match(hotBlock(hot), /anything else that title names/);
   // Announced once only.
   assert.deepEqual(await watchHits(deps), []);
   // The hot topic lapses after its window.

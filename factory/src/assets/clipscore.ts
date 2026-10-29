@@ -403,6 +403,8 @@ export async function rankByModel(
     content,
     schema: ClipRankingSchema,
     effort: "low",
+    // Several lines and Shorts an hour come back to the same instructions.
+    cache: "1h",
   });
   const bad = new Set(
     r.candidates.filter((c) => c.has_text_or_logo).map((c) => c.index),

@@ -7,6 +7,7 @@ import type { z } from "zod";
 import fs from "node:fs";
 import path from "node:path";
 import { FatalError } from "../lib/util.ts";
+import { PULSE_FACT_RULES, PULSE_VOICE } from "./voice.ts";
 
 /** One line per Claude call in data/usage/<day>.jsonl: what it was for and the tokens it used, so the bill can be explained. */
 function meter(model: string, system: string, usage: any): void {
@@ -19,17 +20,13 @@ function meter(model: string, system: string, usage: any): void {
     const line = {
       t: new Date().toISOString(),
       model,
-      // The house style opens many prompts; the job is named in the paragraph after it.
-      job: (system.includes("\n\n")
-        ? system.slice(system.indexOf("\n\n") + 2)
-        : system
-      )
-        .replace(/\s+/g, " ")
-        .slice(0, 70),
+      job: jobOf(system),
       in: usage?.input_tokens ?? 0,
       out: usage?.output_tokens ?? 0,
       cacheRead: usage?.cache_read_input_tokens ?? 0,
       cacheWrite: usage?.cache_creation_input_tokens ?? 0,
+      // The part of cacheWrite kept five minutes (priced lower than the hour); older lines have none.
+      cacheWrite5m: usage?.cache_creation?.ephemeral_5m_input_tokens ?? 0,
     };
     fs.appendFileSync(
       path.join(dir, `${line.t.slice(0, 10)}.jsonl`),
@@ -41,7 +38,21 @@ function meter(model: string, system: string, usage: any): void {
   }
 }
 
-/** $ per million tokens: input, output, cache read, cache write (1-hour cache writes cost twice the input). */
+/**
+ * What a call was for. The house style opens every writer's prompt, so the job is named after it: the
+ * format's notes (news, documentary, ranking...) or the paragraph after the opening.
+ */
+export function jobOf(system: string): string {
+  const shared = `${PULSE_VOICE}\n\n${PULSE_FACT_RULES}\n\n`;
+  const body = system.startsWith(shared)
+    ? system.slice(shared.length)
+    : system.includes("\n\n")
+      ? system.slice(system.indexOf("\n\n") + 2)
+      : system;
+  return body.replace(/\s+/g, " ").slice(0, 70);
+}
+
+/** $ per million tokens: input, output, cache read, 1-hour cache write (twice the input; a 5-minute write is 1.25 times). */
 const PRICES: Record<string, [number, number, number, number]> = {
   "claude-opus-5-5": [4, 20, 0.2, 8],
   "claude-sonnet-5-5": [2, 10, 0.2, 4],
@@ -67,10 +78,17 @@ export function claudeSpend(
           out: number;
           cacheRead: number;
           cacheWrite: number;
+          cacheWrite5m?: number;
         };
         const [i, o, cr, cw] = PRICES[r.model] ?? PRICES["claude-opus-5-5"]!;
+        const w5 = r.cacheWrite5m ?? 0;
         total +=
-          (r.in * i + r.out * o + r.cacheRead * cr + r.cacheWrite * cw) / 1e6;
+          (r.in * i +
+            r.out * o +
+            r.cacheRead * cr +
+            (r.cacheWrite - w5) * cw +
+            w5 * i * 1.25) /
+          1e6;
       }
     } catch {
       // no log for that day
@@ -99,10 +117,14 @@ export interface Llm {
     maxTokens?: number;
     /** top: writing and final checks (Opus); mid: picking footage and posts (Sonnet); low: simple filtering (Haiku). */
     tier?: Tier;
+    /** How long the instructions stay cached: "1h" only for jobs that come back to the same instructions over the hour. */
+    cache?: CacheTtl;
   }): Promise<z.infer<S>>;
 }
 
 export type Tier = "top" | "mid" | "low";
+
+export type CacheTtl = "5m" | "1h";
 
 export function createClaude(
   models: string | Partial<Record<Tier, string>>,
@@ -126,6 +148,7 @@ export function createClaude(
       effort = "medium",
       maxTokens = 16000,
       tier,
+      cache = "5m",
     }) {
       const model = pick(tier);
       const response = await client.beta.messages.parse(
@@ -138,14 +161,16 @@ export function createClaude(
           fallbacks: "default",
           thinking: { type: "adaptive" },
           output_config: { effort, format: betaZodOutputFormat(schema) },
-          // Each job's instructions are fixed text, sent again on every call: cached for an hour, a repeat
-          // (the picture editor's bursts, the next Short's writer) reads them at a twentieth of the price.
-          // Replaying 19-22 Oct usage: 13% off the bill (the five-minute cache: 6%).
+          // Each job's instructions are fixed text, sent again on every call, and a repeat reads them from the
+          // cache at a twentieth of the price. Most jobs repeat within minutes (a rewrite half a minute after
+          // its draft) and then not for hours, so they keep the cheaper five-minute cache: an hour's write
+          // costs 60% more and was mostly never read (23-29 Oct). Jobs that come back over the hour (the
+          // picture editor's bursts, the translations) ask for the hour.
           system: [
             {
               type: "text",
               text: system,
-              cache_control: { type: "ephemeral", ttl: "1h" },
+              cache_control: { type: "ephemeral", ttl: cache },
             },
           ],
           messages: [{ role: "user", content }],

@@ -21,6 +21,7 @@ import {
 } from "./voice.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
+import { reviseByEdits } from "./revise.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
 import type { WikiArticle } from "../discovery/wikipedia.ts";
 import { placeFor } from "../render/places.ts";
@@ -471,6 +472,8 @@ export async function writeChapter(
     earlier?: EarlierChapters;
     /** The narration of an earlier Pulse documentary on the same subject, whose wording is not reused. */
     priorDoc?: string;
+    /** The rejected draft: fixed by edits where the feedback points, written again only if that fails. */
+    draft?: DocChapter;
   },
 ): Promise<DocChapter> {
   const others = ctx.outline.chapters
@@ -495,13 +498,28 @@ export async function writeChapter(
   const ending = endsOnConsequence(ctx.index)
     ? "This chapter ends on a plain consequence: what it changed, said flatly, with no tease."
     : "This chapter ends looking forward: name what's coming without saying how it ends.";
-  return llm.structured({
-    system: chapterPrompt(),
-    content: `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\nThis chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}\n${ending}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}${saidBlock}${priorBlock}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}${fb}`,
-    schema: DocChapterSchema,
-    effort: "medium",
-    maxTokens: 12000,
-  });
+  const brief = `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\nThis chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}\n${ending}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}${saidBlock}${priorBlock}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}`;
+  const edited =
+    ctx.draft && ctx.feedback?.length
+      ? await reviseByEdits(llm, {
+          system: chapterPrompt(),
+          content: brief,
+          schema: DocChapterSchema,
+          draft: ctx.draft,
+          problems: ctx.feedback,
+          job: "documentary chapter",
+        })
+      : undefined;
+  return (
+    edited ??
+    llm.structured({
+      system: chapterPrompt(),
+      content: `${brief}${fb}`,
+      schema: DocChapterSchema,
+      effort: "medium",
+      maxTokens: 12000,
+    })
+  );
 }
 
 export const DocCheckSchema = z.object({

@@ -1920,6 +1920,7 @@ async function stepScriptDocumentary(
         feedback,
         earlier: chapters,
         priorDoc,
+        draft: attempt > 0 ? chapter : undefined,
       });
       const problems = validateChapter(chapter, {
         earlier: chapters,
@@ -3782,7 +3783,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   let script: Script | undefined;
   let feedback: string[] = [];
   let check;
-  // Draft, check house rules, fact-check; one rewrite with the problems fed back.
+  // Draft, check house rules, fact-check; one fix with the problems fed back (edits to the draft, or a
+  // whole new draft when the edits do not apply).
   const recent = await recentShapes(s.db, ep.id).catch(() => undefined);
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
@@ -3797,6 +3799,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       feedback,
       storeData,
       recent,
+      draft: attempt > 0 ? script : undefined,
     });
     const problems = validateScript(script, recent);
     // A report card is credited to an outlet: it must be one of this story's own sources.

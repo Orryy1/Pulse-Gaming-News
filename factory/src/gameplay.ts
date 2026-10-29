@@ -283,6 +283,8 @@ export async function reviewClip(
     schema: GameplayReviewSchema,
     effort: "medium",
     tier: "mid",
+    // One review per recording, several recordings an hour when a session lands.
+    cache: "1h",
   });
 }
 

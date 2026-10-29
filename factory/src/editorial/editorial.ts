@@ -19,6 +19,7 @@ import {
 } from "./phrasing.ts";
 import { numberWords } from "../voice/speakable.ts";
 import type { Llm } from "./llm.ts";
+import { reviseByEdits } from "./revise.ts";
 import {
   parsePairs,
   parseMilestones,
@@ -166,6 +167,8 @@ export async function writeScript(
     lessons?: string;
     /** The last few Shorts' take openers and loop lines, so no shape becomes a tic. */
     recent?: RecentShapes;
+    /** The rejected draft: fixed by edits where the feedback points, written again only if that fails. */
+    draft?: Script;
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -187,12 +190,29 @@ export async function writeScript(
     opts.recent ? recentConcessions(opts.recent) : [],
   );
   const shapeNote = `\n\nThis Short's take shape: ${shape.rule}.${shape.id === "concession" ? "" : " Concede nothing anywhere in this Short."}`;
-  const script = await llm.structured({
-    system: scriptPrompt(),
-    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${recent}${feedback}`,
-    schema: ScriptSchema,
-    effort: "medium",
-  });
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${recent}`;
+  // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
+  const edited =
+    opts.draft &&
+    opts.feedback?.length &&
+    !opts.feedback.some((f) => /rumou?r labell?ing/i.test(f))
+      ? await reviseByEdits(llm, {
+          system: scriptPrompt(),
+          content: brief,
+          schema: ScriptSchema,
+          draft: opts.draft,
+          problems: opts.feedback,
+          job: "news Short",
+        })
+      : undefined;
+  const script =
+    edited ??
+    (await llm.structured({
+      system: scriptPrompt(),
+      content: `${brief}${feedback}`,
+      schema: ScriptSchema,
+      effort: "medium",
+    }));
   return varyOpinion(
     cluster.why ? { ...script, story_type: "explainer" } : script,
     cluster.hash,

@@ -54,6 +54,8 @@ export async function translateMetadata(
     schema: LocalizationsSchema,
     effort: "low",
     tier: "mid",
+    // Each upload and the backfill come back to the same instructions over the hour.
+    cache: "1h",
   });
   const out: Localizations = {};
   for (const l of r.localizations) {

@@ -1,4 +1,269 @@
 {
  "schema": "pulse-epidemic-beds-v1",
- "beds": []
+ "beds": [
+  {
+   "mood": "house",
+   "file": "music/es/house_1-E.wav",
+   "key": "E",
+   "epidemic_id": "54230dbc-d7b4-423f-8b1e-2ebb707a849c",
+   "title": "Digital Daydream",
+   "artists": [
+    "Cherry The Penguin"
+   ],
+   "parts": [
+    "BASS",
+    "DRUMS",
+    "INSTRUMENTS"
+   ],
+   "penalty": 6.18,
+   "sha256": "48ad080216f3d32f39930693e15ce1f107a8f9353a763ca9c7811382bd01f7f2",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "bass+drums+instruments stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch -3 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "house",
+   "file": "music/es/house_2-D.wav",
+   "key": "D",
+   "epidemic_id": "4047108a-b841-4651-a56e-43b895fc30e8",
+   "title": "Jetski",
+   "artists": [
+    "Billo Boi"
+   ],
+   "parts": [
+    "INSTRUMENTS",
+    "DRUMS",
+    "BASS"
+   ],
+   "penalty": 6.44,
+   "sha256": "c75aa063705ff06ffe8c50cf4f18667ac8b7687efc68a7e885592030bcd9d7fd",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "instruments+drums+bass stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch -1 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "house",
+   "file": "music/es/house_3-E.wav",
+   "key": "E",
+   "epidemic_id": "54d792f9-d835-44ae-b80b-ab21de145c24",
+   "title": "Cologne, 4AM",
+   "artists": [
+    "William Claeson"
+   ],
+   "parts": [
+    "INSTRUMENTS",
+    "BASS",
+    "DRUMS"
+   ],
+   "penalty": 7.2,
+   "sha256": "1eb6b812514b628f2720f1ca0027a824a6314684fc56a6bb40200ea1e7852fda",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "instruments+bass+drums stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch -2 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "reflective",
+   "file": "music/es/reflective_1-D.wav",
+   "key": "D",
+   "epidemic_id": "49cc7d49-0146-4ece-a00f-e19d56fec634",
+   "title": "Awakening",
+   "artists": [
+    "Erik Fernholm"
+   ],
+   "parts": [
+    "BASS",
+    "DRUMS",
+    "INSTRUMENTS"
+   ],
+   "penalty": 0.0,
+   "sha256": "443bc1bcd42643a14a1524b5ed43ddb731cd8b7b6750c9e2dfd2826661a55982",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "bass+drums+instruments stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch +0 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "reflective",
+   "file": "music/es/reflective_2-E.wav",
+   "key": "E",
+   "epidemic_id": "2f95052a-f7de-4724-842d-effcda1b130b",
+   "title": "A Quiet Border",
+   "artists": [
+    "Jay Taylor"
+   ],
+   "parts": [
+    "BASS",
+    "INSTRUMENTS",
+    "DRUMS"
+   ],
+   "penalty": 0.6,
+   "sha256": "ff19b801a7531c219ad1eb859270c109d8387c874b8e92cc00092580ea6143f7",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "bass+instruments+drums stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch -1 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "reflective",
+   "file": "music/es/reflective_3-E.wav",
+   "key": "E",
+   "epidemic_id": "97d993f2-ae14-469f-94f1-78ec08927dee",
+   "title": "While We Still Breathe",
+   "artists": [
+    "Lama House"
+   ],
+   "parts": [
+    "INSTRUMENTS",
+    "BASS"
+   ],
+   "penalty": 1.8,
+   "sha256": "100067346782c8d99403a75605523a2cb0fff89719bb334c7fe5c1850f6c9dd4",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "instruments+bass stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch +0 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "reflective",
+   "file": "music/es/reflective_4-D.wav",
+   "key": "D",
+   "epidemic_id": "eae857a3-1652-4705-8e18-c835171a4945",
+   "title": "Just Surrender",
+   "artists": [
+    "Lars Meyer"
+   ],
+   "parts": [
+    "INSTRUMENTS",
+    "DRUMS",
+    "BASS"
+   ],
+   "penalty": 7.95,
+   "sha256": "c95baecf53cd2020e3d6c86e546a8a611c51982295e00bc2d499828a34af0879",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "instruments+drums+bass stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch +2 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "retro",
+   "file": "music/es/retro_1-D.wav",
+   "key": "D",
+   "epidemic_id": "219ce188-a184-4ac0-9d01-0a7cd4586960",
+   "title": "Andromeda",
+   "artists": [
+    "Ben Elson"
+   ],
+   "parts": [
+    "INSTRUMENTS",
+    "DRUMS",
+    "BASS"
+   ],
+   "penalty": 4.25,
+   "sha256": "0a3b9c3735d9591da414f8a39f8836b522c5eff18f6f74475d4d92bd2ab55d1c",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "instruments+drums+bass stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch +1 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "tense",
+   "file": "music/es/tense_1-E.wav",
+   "key": "E",
+   "epidemic_id": "35742269-95a6-4f37-a2eb-1a497bda9623",
+   "title": "There Is Still Time",
+   "artists": [
+    "John Utah"
+   ],
+   "parts": [
+    "INSTRUMENTS",
+    "BASS"
+   ],
+   "penalty": 0.0,
+   "sha256": "46e49e7c930b32e3b874081f6bada54511b6b8f7408602bf58150c56e868c652",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "instruments+bass stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch -2 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "tense",
+   "file": "music/es/tense_2-D.wav",
+   "key": "D",
+   "epidemic_id": "a227905b-d133-4d32-92c3-ce285bc0b1f8",
+   "title": "Out There",
+   "artists": [
+    "Out To The World"
+   ],
+   "parts": [
+    "INSTRUMENTS",
+    "BASS",
+    "DRUMS"
+   ],
+   "penalty": 0.24,
+   "sha256": "06ed9f19c1b2fc86bd6bf2c8da8b8207c27409fd2524e45db99c0eb4eab18819",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "instruments+bass+drums stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch +0 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "tense",
+   "file": "music/es/tense_3-D.wav",
+   "key": "D",
+   "epidemic_id": "889485b3-de90-4ac7-b4bb-511ee0af5aa6",
+   "title": "Shadowed",
+   "artists": [
+    "John B. Lund"
+   ],
+   "parts": [
+    "INSTRUMENTS",
+    "BASS",
+    "DRUMS"
+   ],
+   "penalty": 2.25,
+   "sha256": "706bd38476289423a1134dc93461d1eae18d0da131ebbb250bbe2d70629c603f",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "instruments+bass+drums stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch +1 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "tense",
+   "file": "music/es/tense_4-D.wav",
+   "key": "D",
+   "epidemic_id": "403c22a7-2fc3-3188-8eb7-9badb7a70538",
+   "title": "The Stakeout",
+   "artists": [
+    "Christoffer Moe Ditlevsen"
+   ],
+   "parts": [
+    "BASS",
+    "INSTRUMENTS",
+    "DRUMS"
+   ],
+   "penalty": 3.16,
+   "sha256": "e0565cd56287c868be72f7b323024f1e2ef65b976397de6f0b0a08424723ec13",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "bass+instruments+drums stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch +2 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "tense",
+   "file": "music/es/tense_5-D.wav",
+   "key": "D",
+   "epidemic_id": "883bf493-6079-3e38-a6ee-a027e39b493e",
+   "title": "Make Way for Hearses",
+   "artists": [
+    "Christian Andersen"
+   ],
+   "parts": [
+    "BASS",
+    "DRUMS",
+    "INSTRUMENTS"
+   ],
+   "penalty": 7.44,
+   "sha256": "7d29156831cf8f6dd2e9b667f78ef77747bfca27823d3c6f21481ae1213c997d",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "bass+drums+instruments stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch +0 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  },
+  {
+   "mood": "tense",
+   "file": "music/es/tense_6-D.wav",
+   "key": "D",
+   "epidemic_id": "75a52919-f401-415d-a479-b86c13d6db0a",
+   "title": "Question Mark",
+   "artists": [
+    "Dream Cave"
+   ],
+   "parts": [
+    "INSTRUMENTS",
+    "DRUMS",
+    "BASS"
+   ],
+   "penalty": 7.45,
+   "sha256": "0648b51fe58033306615a81d4c9d32bf7e5e3f3cae089ae06119d9e4a3d762a5",
+   "licence": "Epidemic Sound Creator plan; Pulse's YouTube, TikTok, Facebook and Instagram are safelisted",
+   "finishing": "instruments+drums+bass stems (no melody), steadiest 16 bars as a seamless loop, 6 dB speech-band carve, pitch +1 semitones, -12.7 LUFS (src/tools/sfxlab/pickepidemic.py)"
+  }
+ ]
 }

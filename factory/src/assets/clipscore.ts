@@ -27,7 +27,7 @@ const run = promisify(execFile);
 export const CLIP_SECONDS = 4.8;
 export const MIN_CLIP_SECONDS = 1.6; // a shot shorter than this cannot carry a line (the planner's shortest shot is 1.5 s)
 export const CANDIDATE_STEP = 1.5;
-const MAX_CANDIDATES_TO_MODEL = 16; // clean frames only, after the local screen
+const MAX_CANDIDATES_TO_MODEL = 32; // 16 until 29 Oct 2026: too few for sixteen sentence targets at once // clean frames only, after the local screen
 const LOCAL_SCREEN_MAX = 120;
 const QUIET_KINDS = new Set([
   "stat",

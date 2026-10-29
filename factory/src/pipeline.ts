@@ -5208,7 +5208,7 @@ async function gatherChapterMedia(
         images.push({ ...a, file: rel(a.file), beatIndex });
       if (s.cfg.footage) {
         const targets: FootageTarget[] = shots.length
-          ? spreadPick(shots, 16)
+          ? spreadPick(shots, 24)
           : paragraphTargets(Math.max(1, s.cfg.docClipsPerChapter), "");
         if (targets.length)
           for (const c of capFootage(
@@ -5216,7 +5216,7 @@ async function gatherChapterMedia(
               eapp,
               edir,
               targets,
-              Math.max(s.cfg.docClipsPerChapter, Math.min(12, targets.length)),
+              Math.max(s.cfg.docClipsPerChapter, Math.min(16, targets.length)),
               scopeOf(script),
             ),
             footageBudgetSeconds(eapp),
@@ -5227,7 +5227,7 @@ async function gatherChapterMedia(
     } else if (s.cfg.footage) {
       const want = chapterFootage(script, beatIndex)[0];
       const asks: FootageTarget[] = shots.length
-        ? spreadPick(shots, 8)
+        ? spreadPick(shots, 12)
         : [
             {
               key: `beat:${beatIndex}`,
@@ -5278,7 +5278,7 @@ async function gatherChapterMedia(
     );
     const have = clips.filter((c) => c.beatIndex === beatIndex).length;
     const targets: FootageTarget[] = shots.length
-      ? spreadPick(open, 8)
+      ? spreadPick(open, 16)
       : have < 6
         ? paragraphTargets(4, "g")
         : [];

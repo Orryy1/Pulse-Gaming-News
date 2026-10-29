@@ -25,9 +25,14 @@ plist() { # label, program and args...
     echo "<key>StandardErrorPath</key><string>$HOME/PulseFactory/logs/$label.log</string>"
     echo '</dict></plist>'
   } > "$AGENTS/$label.plist"
+  # A service already loaded answers bootstrap with "Input/output error": it is restarted on the new plist instead.
   launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
-  launchctl bootstrap "gui/$(id -u)" "$AGENTS/$label.plist"
-  echo "loaded $label"
+  sleep 1
+  if launchctl bootstrap "gui/$(id -u)" "$AGENTS/$label.plist" 2>/dev/null; then
+    echo "loaded $label"
+  else
+    launchctl kickstart -k "gui/$(id -u)/$label" && echo "restarted $label"
+  fi
 }
 plist com.pulse.asr "$HOME/PulseFactory/asr/bin/python" "$HOME/PulseFactory/factory/mac/asr_server.py"
 if [ "$1" = "factory" ]; then

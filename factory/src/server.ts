@@ -232,6 +232,8 @@ export function createApp(
       const codeFile = path.join(cfg.dataDir, "admin", "mac_code");
       const body = fs
         .readFileSync(script, "utf8")
+        // bash on the Mac refuses a carriage return ("set: invalid option", 29 Oct 2026).
+        .replace(/\r\n/g, "\n")
         .replace("__PUBKEY__", fs.readFileSync(key, "utf8").trim())
         .replace(
           "__CODE__",
@@ -940,14 +942,15 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       const { metaAuthorizeUrl } = await import("./social/metaConnect.ts");
       const nonce = crypto.randomBytes(12).toString("hex");
       const state = `${nonce}.${signToken(`meta:${nonce}`, cfg.appSecret, 3600)}`;
-      res
-        .writeHead(302, { location: metaAuthorizeUrl(cfg, state) })
-        .end();
+      res.writeHead(302, { location: metaAuthorizeUrl(cfg, state) }).end();
       return;
     }
     if (url.pathname === "/oauth/meta") {
       const [nonce, ...rest] = (url.searchParams.get("state") ?? "").split(".");
-      if (!nonce || !verifyToken(`meta:${nonce}`, rest.join("."), cfg.appSecret))
+      if (
+        !nonce ||
+        !verifyToken(`meta:${nonce}`, rest.join("."), cfg.appSecret)
+      )
         return send(
           403,
           page(
@@ -975,7 +978,10 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
           granted: login.granted,
           declined: login.declined,
         });
-        return send(200, page("Facebook and Instagram connected", m.metaResultHtml(login)));
+        return send(
+          200,
+          page("Facebook and Instagram connected", m.metaResultHtml(login)),
+        );
       } catch (err) {
         return send(
           200,
@@ -1608,9 +1614,8 @@ async function main(): Promise<void> {
   // Every other platform's numbers for the Shorts posted there (src/social/metrics.ts): its own clock and lease,
   // so a long render holding the tick never delays them and they never slow the tick. Read-only.
   if (!cfg.dryRun) {
-    const { socialReaders, socialMetricsTick } = await import(
-      "./social/metrics.ts"
-    );
+    const { socialReaders, socialMetricsTick } =
+      await import("./social/metrics.ts");
     const readers = socialReaders(cfg);
     const social = () =>
       withLease(db, "social-metrics", 20 * 60, () =>
@@ -1755,7 +1760,9 @@ async function main(): Promise<void> {
   // Messages for the owner at a set time (data/admin/notices.json, src/notices.ts).
   setInterval(
     () =>
-      void sendDueNotices(cfg, new Date(), (m) => services.notify(m)).catch(() => undefined),
+      void sendDueNotices(cfg, new Date(), (m) => services.notify(m)).catch(
+        () => undefined,
+      ),
     2 * 60_000,
   );
   let lastRestartDay = new Date().toISOString().slice(0, 10);

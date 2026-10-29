@@ -85,6 +85,8 @@ cutover)
     tar -C /d/pulse-data -cf - tokens | on_mac 'cd ~/PulseFactory/factory/data && tar -xf - && chmod 600 tokens/*'
   fi
   [ -d public/music/es ] && tar -cf - public/music/es | on_mac 'cd ~/PulseFactory/factory && tar -xf -'
+  # The small sandbox scripts the QA routines render stills with (data/smoke/*.mts), not the sandboxes themselves.
+  ls data/smoke/*.mts >/dev/null 2>&1 && tar -C data -cf - $(cd data && ls smoke/*.mts) | on_mac 'cd ~/PulseFactory/factory/data && tar -xf -'
   echo "== the five Brave routines now read the Mac (pulse-mac.local:8080); check them in the scheduled tasks list"
   echo "== starting the Mac side"
   on_mac 'bash ~/PulseFactory/factory/mac/launchd.sh factory'

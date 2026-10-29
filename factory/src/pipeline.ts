@@ -5550,6 +5550,25 @@ async function gatherChapterMedia(
   }
 }
 
+/** The share of a long video's sentences with a clip or still chosen for that sentence (moments[entry][k]). */
+export function matchedShare(
+  moments: unknown[][],
+  images: Array<{ beatIndex?: number; moment?: number }>,
+  clips: Array<{ beatIndex?: number; moment?: number }>,
+): number {
+  const total = moments.reduce((n, m) => n + m.length, 0);
+  if (!total) return 0;
+  const hit = new Set(
+    [...images, ...clips]
+      .filter((x) => x.beatIndex !== undefined && x.moment !== undefined)
+      .map((x) => `${x.beatIndex}:${x.moment}`),
+  );
+  let n = 0;
+  for (const [e, ms] of moments.entries())
+    for (let k = 0; k < ms.length; k++) if (hit.has(`${e}:${k}`)) n++;
+  return n / total;
+}
+
 /** Licensed stock shots a documentary chapter may use for its real-world sentences. */
 const DOC_BROLL_PER_CHAPTER = 5;
 /** Named real people a documentary chapter looks up photos of. */
@@ -5920,6 +5939,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       });
   }
   assets.longPlan = plan;
+  // How much of the narration has a picture or clip chosen for its own words (29 Oct 2026 review: barely one
+  // shot in ten matched). Logged for every long video; the owner hears when under half do.
+  if (hasMoments) {
+    const share = matchedShare(moments, images, clips);
+    log(share < 0.5 ? "warn" : "info", "sentences with their own picture", {
+      episode: ep.id,
+      share: Math.round(share * 100),
+    });
+    if (share < 0.5)
+      await s.notify({
+        content: `🎞️ "${script.headline}": only ${Math.round(share * 100)}% of its sentences got a picture or clip chosen for their own words. It renders anyway; the rest fall back to the chapter's pool.`,
+      });
+  }
   // Each game's own colour, from its key art (src/assets/palette.ts): its chapter's footage is washed in it.
   if (!assets.palette) {
     const entries = [

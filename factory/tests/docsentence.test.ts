@@ -45,3 +45,16 @@ test("a chapter's sentences are its own paragraphs', and every in-game sentence 
   // A named person leads the keywords after the game, once.
   assert.deepEqual(t[2]!.keywords, ["Grand Theft Auto: Vice City", "Sam Houser", "Rockstar"]);
 });
+
+test("the matched share counts sentences with a clip or still chosen for them, once each", async () => {
+  const { matchedShare } = await import("../src/pipeline.ts");
+  const moments = [[1, 2, 3, 4], [1, 2]];
+  const images = [
+    { beatIndex: 0, moment: 0 },
+    { beatIndex: 0, moment: 0 },
+    { beatIndex: 1, moment: 1 },
+    { beatIndex: 0 },
+  ];
+  const clips = [{ beatIndex: 0, moment: 2 }];
+  assert.equal(matchedShare(moments, images, clips), 3 / 6);
+});

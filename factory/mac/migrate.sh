@@ -61,7 +61,7 @@ cutover)
   echo "   the Mac reaches the PC as $pc"
   # Homebrew's ffmpeg and ffprobe: the bundled ffprobe-static binary does not run on Apple silicon (error -86, 29 Oct 2026).
   grep -vE '^(DATA_DIR|YTDLP_PATH|FFMPEG_PATH|FFPROBE_PATH|LOCAL_TTS_URL|LOCAL_VISION_URL|VOICE_PROVIDER|REMOTION_CONCURRENCY)=' .env > "$tmp"
-  printf 'DATA_DIR=%s/PulseFactory/factory/data\nVOICE_PROVIDER=elevenlabs-first\nLOCAL_TTS_URL=http://%s:8766\nLOCAL_VISION_URL=http://%s:11434\nREMOTION_CONCURRENCY=6\n' "$home" "$pc" "$pc" >> "$tmp"
+  printf 'DATA_DIR=%s/PulseFactory/factory/data\nVOICE_PROVIDER=elevenlabs-first\nLOCAL_TTS_URL=http://%s:8766\nLOCAL_VISION_URL=http://%s:11434\nREMOTION_CONCURRENCY=6\nFFMPEG_PATH=/opt/homebrew/bin/ffmpeg\nFFPROBE_PATH=/opt/homebrew/bin/ffprobe\n' "$home" "$pc" "$pc" >> "$tmp"
   scp -q "$tmp" pulse-mac:PulseFactory/factory/.env && rm -f "$tmp"
   on_mac 'chmod 600 ~/PulseFactory/factory/.env'
   echo "== tunnel files (started at cutover)"

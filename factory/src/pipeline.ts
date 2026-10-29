@@ -5527,6 +5527,7 @@ async function gatherChapterMedia(
         batch.map((a) => ({ file: path.join(dir, a.file) })),
         path.join(edir, `stillscore_${b}`),
         scopeOf(script),
+        "documentary",
       );
       for (const [i, a] of batch.entries()) {
         a.label ??= ranked.labels.get(i);

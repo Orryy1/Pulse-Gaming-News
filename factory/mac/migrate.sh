@@ -60,7 +60,7 @@ cutover)
   schtasks //change //tn "Pulse Factory" //disable >/dev/null; schtasks //end //tn "Pulse Factory" >/dev/null 2>&1 || true
   schtasks //change //tn "Pulse Tunnel" //disable >/dev/null; schtasks //end //tn "Pulse Tunnel" >/dev/null 2>&1 || true
   schtasks //change //tn "Pulse Discord" //disable >/dev/null 2>&1; schtasks //end //tn "Pulse Discord" >/dev/null 2>&1 || true
-  powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match 'windows[\\\\]run\.ps1|src[\\\\/]server\.ts|src[\\\\/]discord[\\\\/]bot\.ts|discord-bot\.ps1|cloudflared-pulse' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }"
+  powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.ProcessId -ne \$PID -and \$_.CommandLine -match 'windows.run\.ps1|src.server\.ts|src.discord.bot\.ts|discord-bot\.ps1|cloudflared-pulse' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }"
   sleep 5
   echo "== final copy (database and episodes)"
   tar -C data -cf - db episodes site engage admin discord $(cd data && ls -d tokens tiktok-session.json 2>/dev/null) | on_mac 'mkdir -p ~/PulseFactory/factory/data && cd ~/PulseFactory/factory/data && rm -f db.lock && tar -xf -'

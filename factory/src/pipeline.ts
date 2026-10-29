@@ -1877,6 +1877,8 @@ async function stepScriptDocumentary(
     6000,
   );
   const outline = await outlineDoc(s.llm, topic, franchise?.text ?? "");
+  // An earlier documentary on the same franchise: its wording and opening are not reused.
+  const priorDoc = await priorDocNarration(s.db, ep.id, topic.franchise).catch(() => undefined);
   const chapters: DocDraft["chapters"] = [];
   const warnings: string[] = [];
   for (const [index, plan] of outline.chapters.entries()) {
@@ -1902,8 +1904,10 @@ async function stepScriptDocumentary(
         source,
         previousEnding: chapters.at(-1)?.chapter.paragraphs.at(-1)?.narration,
         feedback,
+        earlier: chapters,
+        priorDoc,
       });
-      const problems = validateChapter(chapter);
+      const problems = validateChapter(chapter, { earlier: chapters, priorDoc });
       const unsupported = await checkChapter(s.llm, chapter, source).catch(
         (err) => {
           log("warn", "documentary fact check failed", {
@@ -1979,6 +1983,7 @@ async function stepScriptDocumentary(
     outline,
     chapters,
     franchise?.text ?? "",
+    { priorDoc },
   );
   if (validateBookends(bookends).length)
     bookends = await writeBookends(
@@ -1986,6 +1991,7 @@ async function stepScriptDocumentary(
       outline,
       chapters,
       franchise?.text ?? "",
+      { priorDoc },
     );
   const draft: DocDraft = { topic, outline, chapters, bookends };
   const words = docWordCount(draft);
@@ -2985,12 +2991,45 @@ export async function recentShapes(
        ORDER BY created_at DESC LIMIT 8`,
     [exceptId],
   );
+  // The last 20 Shorts' whole spoken scripts: the concession, data-feed and repeated-story checks read them.
+  const full = await db.query<{ script: Script }>(
+    `SELECT script_json AS script FROM episodes WHERE script_json IS NOT NULL AND id <> $1 AND status NOT IN ('failed','rejected')
+         AND COALESCE(script_json->>'runtime', 'short') = 'short'
+       ORDER BY created_at DESC LIMIT 20`,
+    [exceptId],
+  );
+  const scripts = full.flatMap((r) => {
+    try {
+      return r.script?.hook && r.script.pulse_take ? [narrationOf({ ...r.script, beats: r.script.beats ?? [] })] : [];
+    } catch {
+      return [];
+    }
+  });
   return {
     takes: rows
       .map((r) => (r.take ?? "").trim().split(/\s+/).slice(0, 4).join(" "))
       .filter(Boolean),
     loops: rows.map((r) => (r.loop ?? "").trim()).filter(Boolean),
+    scripts,
   };
+}
+
+/**
+ * The narration of the newest earlier documentary on the same franchise ("Grand Theft Auto" matches
+ * "Grand Theft Auto VI"), so a new one reuses none of its wording; undefined when there is none.
+ */
+export async function priorDocNarration(db: Db, exceptId: string, franchise: string): Promise<string | undefined> {
+  const rows = await db.query<{ script: Script }>(
+    `SELECT script_json AS script FROM episodes
+      WHERE id <> $1 AND script_json->>'evergreen_format' = 'documentary' AND status NOT IN ('failed','rejected')
+        AND (position(lower($2) in lower(coalesce(script_json->>'game_title', ''))) > 0
+             OR position(lower(coalesce(script_json->>'game_title', '~')) in lower($2)) > 0)
+      ORDER BY created_at DESC LIMIT 1`,
+    [exceptId, franchise],
+  );
+  const sc = rows[0]?.script;
+  if (!sc) return undefined;
+  return [sc.hook, ...(sc.beats ?? []).map((b) => b.narration), sc.pulse_take?.narration ?? ""].join(" ").trim() || undefined;
 }
 
 /** The week's published news Shorts, most watched first (their best captured view count), rumours left out. */
@@ -3097,7 +3136,7 @@ async function stepScriptRecap(
         story.source,
       ).catch(() => [] as string[]);
       feedback = [
-        ...validateRecapChapter(chapter),
+        ...validateRecapChapter(chapter, chapters),
         ...unsupported.map(
           (u) => `Not supported by the sources, remove or correct it: ${u}`,
         ),
@@ -3524,9 +3563,11 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   let facts: Array<{ title: string; facts: SteamFacts }> = [];
   let feedback: string[] = [];
   let draft: import("./editorial/evergreen.ts").EvergreenScript | undefined;
+  // The recent Shorts' scripts, so an evergreen Short never retells one of them.
+  const recentScripts = (await recentShapes(s.db, ep.id).catch(() => undefined))?.scripts ?? [];
   for (let attempt = 0; attempt < 2; attempt++) {
     draft = await writeEvergreen(s.llm, topic, facts, feedback, brief);
-    const problems = validateEvergreen(draft);
+    const problems = validateEvergreen(draft, recentScripts);
     // Fetch the facts for the entries the writer chose, then rewrite once against them.
     if (attempt === 0) {
       facts = [];

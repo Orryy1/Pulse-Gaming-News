@@ -1,0 +1,2 @@
+*.sh text eol=lf
+*.mts text eol=lf

@@ -29,7 +29,7 @@ const { loadConfig } = await import("../src/config.ts");
 const { openDb, migrate } = await import("../src/db.ts");
 const { createServices } = await import("../src/services.ts");
 const { tickLong } = await import("../src/pipeline.ts");
-const { listEpisodes } = await import("../src/episodes.ts");
+const { getEpisode } = await import("../src/episodes.ts");
 
 const cfg = loadConfig();
 console.log("rehearsal", {
@@ -54,9 +54,7 @@ for (const f of ["short.mp4", "render_raw.mp4"])
   fs.rmSync(path.join(DATA, "episodes", target.id, f), { force: true });
 console.log("rendering again", target.id);
 const s = createServices(db, cfg);
-// The sandbox's clock: a Sunday afternoon with the slot ahead, as the PC's dry runs pretend.
-const offset = new Date("2026-10-18T15:05:00Z").getTime() - Date.now();
-s.now = () => new Date(Date.now() + offset);
+// The real clock: the copied episode's slot is in the past, so the long lane finds it due.
 s.notify = async (m) => {
   console.log(
     "DISCORD:",
@@ -72,7 +70,7 @@ for (let i = 0; i < 8; i++) {
     "UPDATE episodes SET next_attempt_at = NULL WHERE status NOT IN ('published','failed','rejected')",
   );
   const r = await tickLong(s);
-  [ep] = await listEpisodes(db, 1);
+  ep = await getEpisode(db, target.id);
   const t = (Date.now() - t0) / 1000;
   if (
     renderSeconds === undefined &&

@@ -632,7 +632,11 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     // A documentary's cold open previews its chapters: each sentence shows the matched shot of the chapter
     // sentence it shares the most names with ("a small team in Dundee" opens on the Dundee photo), and the
     // montage fills the rest (29 Oct 2026 review: the opening minute was a title over unrelated stock).
-    if (seg.kind === "hook" && input.momentShows?.length) {
+    // The closing recap previews them the same way (it was almost all stock footage).
+    if (
+      (seg.kind === "hook" || seg.kind === "take") &&
+      input.momentShows?.length
+    ) {
       const sentences = splitSentences(seg.text);
       const segEnd =
         i === segments.length - 1 ? seg.end : segments[i + 1]!.start;

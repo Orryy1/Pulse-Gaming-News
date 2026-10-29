@@ -85,3 +85,11 @@ test("a cold-open sentence previews the chapter shot it shares names with, each 
   // Used once only.
   assert.equal(previewShot("Dundee, DMA Design again.", shows, taken, images, clips, used), undefined);
 });
+
+test("a kinetic caption must be a whole name or phrase", async () => {
+  const { wholePhrase } = await import("../src/editorial/documentary.ts");
+  for (const ok of ["Sam Houser", "Vice City", "1986", "Race'n'Chase", "the Malibu Club"])
+    assert.ok(wholePhrase(ok), ok);
+  for (const bad of ["MORE", "fresh and new", "and the", "it", "of", "a whole new kind of open world"])
+    assert.ok(!wholePhrase(bad), bad);
+});

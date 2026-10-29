@@ -690,7 +690,7 @@ export function docMomentsSchema(count: number) {
 
 export const DOC_MOMENTS_PROMPT = `You are the picture editor and motion-graphics designer for a long gaming documentary in the style of the best YouTube documentary channels. You get one chapter's narration as numbered sentences and its SOURCE, and return exactly one moment per sentence, in order.
 The viewer should never sit on one picture for long. Every sentence names what is on screen ("show"), with 1-4 search keywords.
-Explanatory graphics carry the story. Across the chapter, about four sentences in ten carry a graphic, never two in a row:
+Explanatory graphics carry the story. Every sentence that states a figure, a date, a quote, a comparison or a record carries one (a spoken number with nothing on screen is a missed beat); across the chapter about half the sentences carry a graphic, never two in a row:
 - quote: when the SOURCE quotes someone saying something revealing, put it on screen full size. Copy it word for word from the SOURCE (6-30 words) and name the speaker and role. One or two per chapter when the source has them; never invent or reword one.
 - timeline: when a sentence moves through time or the chapter spans years, 2-5 "year: what happened" rows from the source, in order.
 - compare: two or three "label:value" rows for a contrast the sentence draws ($59 against $69, 11 million against 25 million).
@@ -915,14 +915,37 @@ export function groundDocMoments(
       removed.push(`${g.kind}: ${g.primary || g.items.join(" | ")}`);
     prevGraphic = ok;
     // The record's own words are credited to their article.
+    // A kinetic caption is a whole name or phrase, never a fragment ("MORE", "FRESH AND NEW" landed on
+    // unrelated stills, 29 Oct 2026 review), and never beside a graphic.
+    const emphasis = ok || !wholePhrase(m.emphasis) ? "" : m.emphasis.trim();
     if (ok && g.kind === "source")
       return {
         ...m,
+        emphasis,
         graphic: { ...g, secondary: `Wikipedia: ${source.title}` },
       };
-    return ok ? m : { ...m, graphic: none };
+    return ok ? { ...m, emphasis } : { ...m, graphic: none, emphasis };
   });
   return { moments: out, removed };
+}
+
+const FRAGMENT_WORDS = new Set(
+  "more new fresh and the a an of it that this then just also very but so for to in on at by with from was were is are be".split(
+    " ",
+  ),
+);
+/** One to four words that read as a complete name or phrase, not a stray word or a sentence's tail. */
+export function wholePhrase(text: string): boolean {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 4) return false;
+  const low = words.map((w) => w.toLowerCase().replace(/[^a-z0-9']/g, ""));
+  if (low.every((w) => FRAGMENT_WORDS.has(w))) return false;
+  if (words.length === 1 && low[0]!.length < 4 && !/\d/.test(low[0]!))
+    return false;
+  // A phrase does not open on a joining word or trail off on one ("the Malibu Club" is fine; "and the" is not).
+  const open = new Set(["and", "or", "but", "of", "to"]);
+  const close = new Set(["and", "the", "a", "an", "of", "to", "or", "but"]);
+  return !open.has(low[0]!) && !close.has(low[low.length - 1]!);
 }
 
 export function validateChapter(

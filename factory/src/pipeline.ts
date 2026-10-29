@@ -5156,6 +5156,13 @@ async function gatherChapterMedia(
       break;
     }
   }
+  // Footage from a re-release says so on screen instead of wearing the original's year (29 Oct 2026 review:
+  // 2021 Definitive Edition footage captioned 2001).
+  const RERELEASE = /definitive|remaster|trilogy|enhanced|\bHD\b|anniversary/i;
+  const remaster =
+    eapp && RERELEASE.test(eapp.name) && !RERELEASE.test(entry.game_title)
+      ? `FOOTAGE: ${eapp.name.toUpperCase()} · STEAM`
+      : undefined;
   const pushClip = (c: VisualAsset) =>
     clips.push({
       file: rel(c.file),
@@ -5164,6 +5171,7 @@ async function gatherChapterMedia(
       durationSeconds: Math.min(c.durationSeconds ?? 4, 4.8),
       beatIndex,
       moment: c.moment,
+      credit: remaster,
       role: undefined,
       motion: c.motion,
       luma: c.luma,
@@ -5886,7 +5894,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         : undefined,
       // What each sentence shows and who it names, so the cold open can preview its chapters.
       momentShows: hasMoments
-        ? moments.map((e) => e.map((m) => `${m.show} ${m.person ?? ""} ${m.keywords?.join(" ") ?? ""}`))
+        ? moments.map((e) =>
+            e.map(
+              (m) =>
+                `${m.show} ${m.person ?? ""} ${m.keywords?.join(" ") ?? ""}`,
+            ),
+          )
         : undefined,
       takeEntry: script.take_entry,
     });

@@ -16,9 +16,15 @@ on_mac() { ssh -o BatchMode=yes pulse-mac "export PATH=/opt/homebrew/bin:\$PATH;
 case "${1:-}" in
 hello)
   user=$2 ip=$3
+  # The Mac is on Wi-Fi with a DHCP address: its Bonjour name is used when the PC resolves it, so a new
+  # lease does not break the alias; otherwise the address it reported in with.
+  host=$ip
+  ping -n 1 -w 2000 pulse-mac.local >/dev/null 2>&1 && host=pulse-mac.local
   touch ~/.ssh/config
-  if ! grep -q "^Host pulse-mac" ~/.ssh/config; then
-    printf '\nHost pulse-mac\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/pulse_mac\n  StrictHostKeyChecking accept-new\n' "$ip" "$user" >> ~/.ssh/config
+  if grep -q "^Host pulse-mac" ~/.ssh/config; then
+    sed -i "/^Host pulse-mac\$/,/^Host /{s/^  HostName .*/  HostName $host/}" ~/.ssh/config
+  else
+    printf '\nHost pulse-mac\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/pulse_mac\n  StrictHostKeyChecking accept-new\n' "$host" "$user" >> ~/.ssh/config
   fi
   on_mac 'echo "reached $(scutil --get ComputerName) as $(whoami); macOS $(sw_vers -productVersion); $(sysctl -n hw.memsize | awk "{print \$1/1073741824}") GB"'
   ;;

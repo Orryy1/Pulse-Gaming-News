@@ -74,6 +74,8 @@ export async function rankStills(
   images: Array<{ file: string }>,
   workDir: string,
   scope?: "campaign",
+  /** "documentary": the game's own interface in a screenshot is fine; only stamped-on text is refused. */
+  mode?: "documentary",
 ): Promise<{
   picks: StillPick[];
   labels: Map<number, string>;
@@ -112,10 +114,15 @@ export async function rankStills(
   });
   const r = await llm.structured({
     tier: "mid",
-    system:
+    system: `${PROMPT}${
       scope === "campaign"
-        ? `${PROMPT}\nThis video is about the single-player story campaign. Also mark as has_text, so it is never used, any picture that shows multiplayer (an arena map, operators or skins, scoreboards, killstreaks, a lobby) or Zombies, or that you cannot place in the story campaign.`
-        : PROMPT,
+        ? `\nThis video is about the single-player story campaign. Also mark as has_text, so it is never used, any picture that shows multiplayer (an arena map, operators or skins, scoreboards, killstreaks, a lobby) or Zombies, or that you cannot place in the story campaign.`
+        : ""
+    }${
+      mode === "documentary"
+        ? `\nThis is a documentary about the game: a screenshot showing the game's own interface (the HUD, a map, money or health, in-game signs) is fine and is NOT has_text. Mark has_text only for text stamped onto the picture from outside the game: title cards and taglines, store or review text, uploader logos and watermarks, subtitles and captions, menus and text screens.`
+        : ""
+    }`,
     content,
     schema: StillRankingSchema,
     effort: "low",

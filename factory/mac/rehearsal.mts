@@ -21,7 +21,8 @@ Object.assign(process.env, {
   DRY_RUN: "true",
   LONGFORM_ENABLED: "true",
   EVERGREEN_ENABLED: "false",
-  NEWS_SLOTS: "03:00",
+  // A news slot twelve hours away: close enough to exist, far enough that the long render never waits for it.
+  NEWS_SLOTS: `${String((new Date().getUTCHours() + 12) % 24).padStart(2, "0")}:00`,
   BREAKING_SCORE_MIN: "1000",
   PORT: "0",
 });

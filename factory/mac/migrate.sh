@@ -55,11 +55,12 @@ cutover)
   on_mac 'mkdir -p ~/.cloudflared && chmod 700 ~/.cloudflared'
   scp -q "$HOME/.cloudflared/$id.json" "pulse-mac:.cloudflared/$id.json"
   sed -e "s#^credentials-file:.*#credentials-file: $home/.cloudflared/$id.json#" -e 's/\r$//' -e '1s/^\xEF\xBB\xBF//' "$cfg" | on_mac "cat > ~/PulseFactory/cloudflared-pulse.yml"
+  # One factory per API key: the PC side, its keep-alive loop included, is fully down before the Mac starts.
   echo "== stopping the PC side"
   schtasks //change //tn "Pulse Factory" //disable >/dev/null; schtasks //end //tn "Pulse Factory" >/dev/null 2>&1 || true
   schtasks //change //tn "Pulse Tunnel" //disable >/dev/null; schtasks //end //tn "Pulse Tunnel" >/dev/null 2>&1 || true
   schtasks //change //tn "Pulse Discord" //disable >/dev/null 2>&1; schtasks //end //tn "Pulse Discord" >/dev/null 2>&1 || true
-  powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match 'src[\\\\/]server\.ts|src[\\\\/]discord[\\\\/]bot\.ts|discord-bot\.ps1|cloudflared-pulse' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }"
+  powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match 'windows[\\\\]run\.ps1|src[\\\\/]server\.ts|src[\\\\/]discord[\\\\/]bot\.ts|discord-bot\.ps1|cloudflared-pulse' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }"
   sleep 5
   echo "== final copy (database and episodes)"
   tar -C data -cf - db episodes site engage admin discord $(cd data && ls -d tokens tiktok-session.json 2>/dev/null) | on_mac 'mkdir -p ~/PulseFactory/factory/data && cd ~/PulseFactory/factory/data && rm -f db.lock && tar -xf -'

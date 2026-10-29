@@ -2997,6 +2997,11 @@ export const Long: React.FC<LongProps> = (props) => {
     const shot = plan.shots.find((s) => f >= s.start && f < s.end);
     const clip =
       shot?.media.type === "clip" ? props.clips[shot.media.index] : undefined;
+    // A real photo carries its own credit: the trailers-and-Steam line sat on Wikimedia photos of Dundee
+    // and Rockstar North (29 Oct 2026 review).
+    const image =
+      shot?.media.type === "image" ? props.images[shot.media.index] : undefined;
+    if (image?.kind === "photo") return image.credit ?? "";
     return clip?.credit ? clip.credit : props.footageCredit;
   };
 

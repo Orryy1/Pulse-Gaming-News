@@ -30,7 +30,19 @@ export interface PexelsVideo {
   duration: number;
   user?: { name?: string };
   video_files: PexelsFile[];
+  /** The video's preview picture. */
+  image?: string;
 }
+
+/**
+ * Looks at the preview pictures of a line's stock results and says which one shows what the line is about,
+ * or none: the first search result used to go on screen unseen (29 Oct 2026 review: a woman on a phone for
+ * a game's budget, PS4 pads for the PS3 era).
+ */
+export type StockPicker = (
+  target: FootageTarget,
+  previews: string[],
+) => Promise<number | undefined>;
 
 /** The smallest MP4 that is still at least 1080 px on its long side (or the largest there is). */
 export function pickFile(v: PexelsVideo): PexelsFile | undefined {
@@ -82,6 +94,7 @@ export async function stockClips(
   targets: FootageTarget[],
   gameWords: string[],
   maxClips = 4,
+  pick?: StockPicker,
 ): Promise<VisualAsset[]> {
   const out: VisualAsset[] = [];
   const used = new Set<number>();
@@ -94,8 +107,34 @@ export async function stockClips(
       const q = stockQuery(t, gameWords);
       if (!q) continue;
       try {
-        const videos = await searchPexels(apiKey, q);
-        const v = videos.find((x) => !used.has(x.id));
+        const videos = (await searchPexels(apiKey, q)).filter(
+          (x) => !used.has(x.id),
+        );
+        let v = videos[0];
+        if (pick) {
+          // Only a result whose preview shows the line goes on screen; with none, the line keeps its picture.
+          const shown: PexelsVideo[] = [];
+          const previews: string[] = [];
+          for (const x of videos.filter((x) => x.image).slice(0, 6)) {
+            const f = path.join(work, `preview_${x.id}.jpg`);
+            const r = await fetchWithTimeout(x.image!, {}, 20_000).catch(
+              () => undefined,
+            );
+            if (!r?.ok) continue;
+            await fs.writeFile(f, Buffer.from(await r.arrayBuffer()));
+            shown.push(x);
+            previews.push(f);
+          }
+          const i = previews.length ? await pick(t, previews) : undefined;
+          v = i === undefined ? undefined : shown[i];
+          if (!v) {
+            log("info", "stock refused: no preview shows the line", {
+              query: q,
+              line: t.text.slice(0, 120),
+            });
+            continue;
+          }
+        }
         const file = v && pickFile(v);
         if (!v || !file) continue;
         used.add(v.id);

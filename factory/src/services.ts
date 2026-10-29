@@ -26,6 +26,8 @@ import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken, storedRefreshToken } from "./youtube/oauth.ts";
 import { officialMedia } from "./assets/officialTrailer.ts";
 import { stockClips } from "./assets/stock.ts";
+import { rankStills } from "./assets/stillscore.ts";
+import path from "node:path";
 import { fetchRockstarNewswire } from "./discovery/newsrooms.ts";
 import { releaseRadar, freeGames } from "./discovery/weekly.ts";
 import { fetchAchievements } from "./discovery/achievements.ts";
@@ -116,7 +118,14 @@ export function createServices(db: Db, cfg: Config): Services {
         : Promise.resolve([]),
     trending: () => trendingVideos(() => accessToken(db, oauthConfig(cfg)), (units) => quotaAdd(db, new Date(), units)),
     research: (title, fallbackQuery, maxChars) => researchGame(title, fallbackQuery, maxChars),
-    fetchStock: (dir, targets, gameWords, maxClips) => (cfg.pexelsApiKey ? stockClips(cfg.pexelsApiKey, dir, targets, gameWords, maxClips) : Promise.resolve([])),
+    fetchStock: (dir, targets, gameWords, maxClips) =>
+      cfg.pexelsApiKey
+        ? stockClips(cfg.pexelsApiKey, dir, targets, gameWords, maxClips, async (t, previews) => {
+            // The picture editor sees each result's preview beside the line and keeps one only when it fits.
+            const r = await rankStills(llm, [{ key: "m0", show: t.keywords.join(", "), sentence: t.text }], previews.map((file) => ({ file })), path.join(dir, "stock", "pick"));
+            return r.picks[0]?.image;
+          })
+        : Promise.resolve([]),
     fetchOfficialMedia: async (gameTitle, dir, targets, maxClips, hint, story) => {
       if (!cfg.officialTrailers) return { clips: [], stills: [] };
       return officialMedia({

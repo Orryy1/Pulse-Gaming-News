@@ -5450,7 +5450,8 @@ async function gatherChapterMedia(
       .slice(0, DOC_BROLL_PER_CHAPTER)
       .map(({ m, k }) => ({
         key: `beat:${beatIndex}#m${k}`,
-        text: m.broll!,
+        // The sentence itself, so the picture editor judges the preview against what is said.
+        text: `${sentences[k] ?? ""} (show: ${m.broll})`,
         want: "cinematic" as const,
         energy: "medium" as const,
         keywords: [m.broll!],

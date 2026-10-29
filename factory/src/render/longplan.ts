@@ -119,7 +119,7 @@ const ANCHOR_STOP = new Set([
   "from",
 ]);
 // "gig", "gigs" and "gigabytes" are one word to an anchor (the voice shortens a repeated unit, speakUnits).
-const UNIT_SAME: Record<string, string> = { gig: "gigabytes", gigs: "gigabytes", gigabyte: "gigabytes", meg: "megabytes", megs: "megabytes", megabyte: "megabytes" };
+const UNIT_SAME: Record<string, string> = { gig: "gigabytes", gigs: "gigabytes", gigabyte: "gigabytes", meg: "megabytes", megs: "megabytes", megabyte: "megabytes", pollish: "polish" };
 const anchorToken = (t: string) => {
   const k = t.toLowerCase().replace(/[^a-z0-9]/g, "");
   return UNIT_SAME[k] ?? k;

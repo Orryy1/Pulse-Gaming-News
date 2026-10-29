@@ -234,3 +234,14 @@ test("a year the aligner split into three words is still one figure on screen", 
   assert.equal(show("cameo in twenty twenty-four's Astro Bot,"), "cameo in 2024's Astro Bot,");
   assert.equal(show("back in twenty twenty four"), "back in 2024");
 });
+
+test("polish (a finish) is respelt so the voice never says Polish (from Poland); captions show polish", async () => {
+  // A GTA documentary read "for more polish" as the nationality (owner, 29 Oct 2026).
+  assert.equal(speakable("pushed to September 17 for more polish."), "pushed to September 17 for more pollish.");
+  assert.equal(speakable("Polish solo developer SaikingS and polished combat"), "Polish solo developer SaikingS and polished combat");
+  const { displayWords } = await import("../src/render/timeline.ts");
+  const show = (t: string) => displayWords(t.split(" ").map((text, i) => ({ text, start: i, end: i + 1 }))).map((w) => w.text).join(" ");
+  assert.equal(show("for more pollish."), "for more polish.");
+  const { tokens } = await import("../src/qa/narration.ts");
+  assert.deepEqual(tokens("pollish"), tokens("polish"));
+});

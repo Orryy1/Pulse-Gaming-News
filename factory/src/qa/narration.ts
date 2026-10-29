@@ -129,6 +129,8 @@ const UNIT_SAME: Record<string, string> = {
   meg: "megabytes",
   megs: "megabytes",
   megabyte: "megabytes",
+  // Respelt for the voice (speakable.ts RESPELL): the same word to the check.
+  pollish: "polish",
 };
 
 export function tokens(word: string): string[] {

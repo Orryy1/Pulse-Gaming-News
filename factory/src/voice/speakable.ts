@@ -353,6 +353,17 @@ export function speakable(text: string, ctx?: SpeakContext): string {
   );
 }
 
+/**
+ * Words the voice says the wrong way, respelt so it can only say them one way; captions and the narration
+ * check turn them back (SPOKEN_BACK). "polish" (finishing a game) came out as "Polish" (from Poland) in a
+ * GTA documentary, 29 Oct 2026: lower case is always the finish, so only lower case is respelt.
+ */
+const RESPELL: Array<[RegExp, string]> = [[/\bpolish\b/g, "pollish"]];
+export const SPOKEN_BACK: Record<string, string> = { pollish: "polish" };
+export function respell(text: string): string {
+  return RESPELL.reduce((t, [re, to]) => t.replace(re, to), text);
+}
+
 // Capitalised words that are letters, not names: left as written so the voice spells them.
 const SPELLED = new Set(["MMORPG", "MMORPGS", "UNICEF"]);
 
@@ -366,7 +377,7 @@ const SPELLED = new Set(["MMORPG", "MMORPGS", "UNICEF"]);
  *   letter runs ("JRPGS"), roman numerals and the few spelled names above keep their capitals.
  */
 export function speakNames(text: string): string {
-  return text
+  return respell(text)
     .replace(/\bUS\s?\$(?=\s?\d)/g, "$")
     .replace(/\b([A-Za-z][A-Za-z0-9]*)\$(?!\s?\d)/g, "$1")
     .replace(/\b(\d{1,2})\s?v\s?(\d{1,2})\b/g, "$1 versus $2")

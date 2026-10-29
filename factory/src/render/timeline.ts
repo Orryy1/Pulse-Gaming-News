@@ -682,7 +682,13 @@ export function displayWords(words: Word[]): Word[] {
       k++;
     } else merged.push(w);
   }
-  return merged;
+  // A word respelt for the voice ("pollish", speakable.ts RESPELL) is shown as written ("polish").
+  const SPOKEN_BACK: Record<string, string> = { pollish: "polish" };
+  return merged.map((w) => {
+    const m = w.text.match(/^([a-z]+)(.*)$/);
+    const back = m ? SPOKEN_BACK[m[1]!] : undefined;
+    return back ? { ...w, text: `${back}${m![2]}` } : w;
+  });
 }
 
 const ORDINALS: Record<string, number> = {

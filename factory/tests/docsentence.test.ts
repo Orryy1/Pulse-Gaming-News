@@ -42,8 +42,8 @@ test("a chapter's sentences are its own paragraphs', and every in-game sentence 
   // The B-roll sentence is left to stock and photos.
   assert.deepEqual(t.map((x) => x.key), ["beat:1#m0", "beat:1#m1", "beat:1#m2"]);
   assert.match(t[0]!.text, /^Vice City launched in 2002\. \(show: the Vice City skyline at launch\)$/);
-  // A named person leads the keywords after the game, once.
-  assert.deepEqual(t[2]!.keywords, ["Grand Theft Auto: Vice City", "Sam Houser", "Rockstar"]);
+  // A named real person is kept out of the footage keywords (no gameplay shows Sam Houser).
+  assert.deepEqual(t[2]!.keywords, ["Grand Theft Auto: Vice City", "Rockstar"]);
 });
 
 test("the matched share counts sentences with a clip or still chosen for them, once each", async () => {

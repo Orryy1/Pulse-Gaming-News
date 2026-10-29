@@ -4837,9 +4837,10 @@ export function docShotTargets(
             text: `${sentences[k] ?? ""} (show: ${m.show})`,
             want: "gameplay" as const,
             energy: "medium" as const,
+            // A named real person is left out of the keywords: licensed gameplay has no footage of Sam
+            // Houser, and the search for a "mission" by that name costs YouTube quota (29 Oct 2026).
             keywords: [
               entry.game_title,
-              ...(m.person ? [m.person] : []),
               ...m.keywords.filter((x) => x !== m.person),
             ].slice(0, 4),
           },

@@ -853,6 +853,9 @@ const GENERIC_WORDS =
 const STUDIOS =
   /\b(infinity ward|treyarch|sledgehammer( games)?|raven software|activision|blizzard|ubisoft|electronic arts|bethesda|rockstar( games)?|naughty dog|bungie|343 industries|respawn|bioware|cd projekt|square enix|capcom|nintendo|sony|microsoft|xbox game studios|playstation studios|epic games|valve|beenox|high moon)\b/i;
 
+const NOT_A_MISSION =
+  /(PlayStation|PS[1-5]|Xbox|Nintendo|Switch|GameCube|Wii|Sega|Saturn|Dreamcast|Mega Drive|Genesis|Game Boy|Steam Deck|console|hardware|GPU|CPU|Scotland|England|Edinburgh|Dundee|New York|London|Tokyo|Kyoto|Los Angeles|Miami|Florida|California|Texas)/i;
+
 export function namedThings(
   targets: FootageTarget[],
   game: string,
@@ -881,8 +884,9 @@ export function namedThings(
         (w) => !gameWords.has(normTitle(w)) && !GENERIC_WORDS.test(w),
       );
       if (!distinct.length) continue;
-      // Studios and publishers are not footage.
-      if (STUDIOS.test(name)) continue;
+      // Studios and publishers are not footage; nor are consoles, hardware and the real places a
+      // documentary names (29 Oct 2026: "Sega Saturn", "Dundee Scotland" were searched as missions).
+      if (STUDIOS.test(name) || NOT_A_MISSION.test(name)) continue;
       const key = normTitle(name);
       const hit = found.get(key) ?? { name, keys: [], mission: false };
       if (!hit.keys.includes(t.key)) hit.keys.push(t.key);

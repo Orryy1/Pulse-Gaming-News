@@ -58,3 +58,30 @@ test("the matched share counts sentences with a clip or still chosen for them, o
   const clips = [{ beatIndex: 0, moment: 2 }];
   assert.equal(matchedShare(moments, images, clips), 3 / 6);
 });
+
+test("a cold-open sentence previews the chapter shot it shares names with, each shot once", async () => {
+  const { previewShot } = await import("../src/render/longplan.ts");
+  const shows = [
+    ["Dundee skyline and the DMA Design office", "Race'n'Chase prototype on a 1995 PC"],
+    ["Vice City neon beach at night", "Tommy Vercetti in the Malibu Club"],
+  ];
+  const images = [
+    { beatIndex: 0, moment: 0 },
+    { beatIndex: 1, moment: 1 },
+  ];
+  const clips = [{ beatIndex: 0, moment: 1 }];
+  const taken = new Set<string>();
+  const used = [false];
+  assert.deepEqual(
+    previewShot("A small team at DMA Design in Dundee started work.", shows, taken, images, clips, used),
+    { type: "image", index: 0 },
+  );
+  assert.deepEqual(
+    previewShot("It began in 1995 as a prototype.", shows, taken, images, clips, used),
+    { type: "clip", index: 0 },
+  );
+  // Nothing shared: the montage keeps the sentence.
+  assert.equal(previewShot("Get comfortable.", shows, taken, images, clips, used), undefined);
+  // Used once only.
+  assert.equal(previewShot("Dundee, DMA Design again.", shows, taken, images, clips, used), undefined);
+});

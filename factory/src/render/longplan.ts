@@ -259,6 +259,60 @@ export interface LongPlanInput {
   momentKeys?: string[][][];
   /** The entry whose media plays behind the outro (the weekly recap's "our read" story). */
   takeEntry?: number;
+  /** Per entry, per sentence: what its shot shows and who it names, so the cold open can preview them. */
+  momentShows?: string[][];
+}
+
+const PREVIEW_STOP = new Set(
+  "that this with from were what when then they them their there into over after about would could which while have been only just more most first years year game games".split(
+    " ",
+  ),
+);
+const previewWords = (t: string) =>
+  new Set(
+    t
+      .toLowerCase()
+      .replace(/[^a-z0-9 ]+/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length >= 4 && !PREVIEW_STOP.has(w)),
+  );
+
+/**
+ * The matched shot of the chapter sentence a cold-open sentence previews: the most shared words, at least
+ * two, or one telling one (a year, or a name of six letters or more). Each chapter sentence is used once.
+ */
+export function previewShot(
+  sentence: string,
+  shows: string[][],
+  taken: Set<string>,
+  images: Array<{ beatIndex?: number; moment?: number }>,
+  clips: Array<{ beatIndex?: number; moment?: number }>,
+  clipUsed: boolean[],
+): LongMedia | undefined {
+  const mine = previewWords(sentence);
+  if (!mine.size) return undefined;
+  let best: { e: number; k: number; score: number } | undefined;
+  for (const [e, list] of shows.entries())
+    for (const [k, show] of list.entries()) {
+      if (taken.has(`${e}:${k}`)) continue;
+      const shared = [...previewWords(show)].filter((w) => mine.has(w));
+      const telling = shared.some((w) => /^\d{4}$/.test(w) || w.length >= 6);
+      const score = shared.length + (telling ? 0.5 : 0);
+      if ((shared.length >= 2 || telling) && score > (best?.score ?? 0))
+        best = { e, k, score };
+    }
+  if (!best) return undefined;
+  const clip = clips.findIndex(
+    (c, n) => c.beatIndex === best!.e && c.moment === best!.k && !clipUsed[n],
+  );
+  const image = images.findIndex(
+    (m) => m.beatIndex === best!.e && m.moment === best!.k,
+  );
+  if (clip < 0 && image < 0) return undefined;
+  taken.add(`${best.e}:${best.k}`);
+  return clip >= 0
+    ? { type: "clip", index: clip }
+    : { type: "image", index: image };
 }
 
 export type LongMedia = { type: "image" | "clip" | "plate"; index: number };
@@ -574,6 +628,62 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     for (let k = 0; k < Math.max(photos.length, others.length); k++) {
       if (others[k] !== undefined) order.push(others[k]!);
       if (photos[k] !== undefined) order.push(photos[k]!);
+    }
+    // A documentary's cold open previews its chapters: each sentence shows the matched shot of the chapter
+    // sentence it shares the most names with ("a small team in Dundee" opens on the Dundee photo), and the
+    // montage fills the rest (29 Oct 2026 review: the opening minute was a title over unrelated stock).
+    if (seg.kind === "hook" && input.momentShows?.length) {
+      const sentences = splitSentences(seg.text);
+      const segEnd =
+        i === segments.length - 1 ? seg.end : segments[i + 1]!.start;
+      const ws = input.words.filter(
+        (w) => w.start >= seg.start - 0.05 && w.start < segEnd,
+      );
+      const taken = new Set<string>();
+      let idx = 0;
+      const plans = sentences.map((x, j) => {
+        const from =
+          j === 0
+            ? start
+            : Math.max(start, toFrame(ws[idx]?.start ?? seg.start));
+        idx += x.split(/\s+/).filter(Boolean).length;
+        return {
+          from,
+          best: previewShot(
+            x,
+            input.momentShows!,
+            taken,
+            images,
+            clips,
+            clipUsed,
+          ),
+        };
+      });
+      if (plans.some((p) => p.best)) {
+        let cursor = 0;
+        const generic = (): LongMedia => {
+          const own = ownClips.find((k) => !clipUsed[k]);
+          if (own !== undefined && cursor % 2 === 0) {
+            cursor++;
+            return { type: "clip", index: own };
+          }
+          cursor++;
+          return order.length
+            ? { type: "image", index: order[cursor % order.length]! }
+            : { type: "plate", index: 0 };
+        };
+        const genericStill = (): LongMedia =>
+          order.length
+            ? { type: "image", index: order[cursor++ % order.length]! }
+            : { type: "plate", index: 0 };
+        for (const [j, p] of plans.entries()) {
+          const to =
+            j === plans.length - 1 ? end : Math.min(end, plans[j + 1]!.from);
+          if (to <= p.from) continue;
+          fill(i, p.from, to, p.best ? [p.best] : [], generic, genericStill);
+        }
+        continue;
+      }
     }
     let at = start;
     let turn = seg.kind === "hook" ? 0 : 1; // the intro opens on a moment; an entry opens on its art so the card lands over a picture

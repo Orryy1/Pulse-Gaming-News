@@ -5884,6 +5884,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       momentKeys: hasMoments
         ? moments.map((e) => e.map(momentKeys))
         : undefined,
+      // What each sentence shows and who it names, so the cold open can preview its chapters.
+      momentShows: hasMoments
+        ? moments.map((e) => e.map((m) => `${m.show} ${m.person ?? ""} ${m.keywords?.join(" ") ?? ""}`))
+        : undefined,
       takeEntry: script.take_entry,
     });
   let plan = assets.longPlan ?? makePlan();

@@ -175,7 +175,14 @@ import {
   socialLessons,
   visualLessons,
 } from "./analytics.ts";
-import { deskShareNow, experimentVerdicts, mascotFor, mascotShareNow, primeTimeVerdict, rumoursPerDayNow } from "./experiments.ts";
+import {
+  deskShareNow,
+  experimentVerdicts,
+  mascotFor,
+  mascotShareNow,
+  primeTimeVerdict,
+  rumoursPerDayNow,
+} from "./experiments.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
 import { titleVariants } from "./editorial/titles.ts";
@@ -366,6 +373,7 @@ export interface Services {
       maxSeconds: number;
       width?: number;
       height?: number;
+      chapterStarts?: number[];
     },
   ): Promise<TechQa>;
   extractFrames(
@@ -375,7 +383,11 @@ export interface Services {
   ): Promise<string[]>;
   visionQa(
     frames: string[],
-    ctx: { headline: string; gameTitle: string; format?: "short" | "long" | "graphics" | "thumbs" },
+    ctx: {
+      headline: string;
+      gameTitle: string;
+      format?: "short" | "long" | "graphics" | "thumbs";
+    },
   ): Promise<VisionQa>;
   /** The ElevenLabs cycle: what is left and what would be lost at the reset (undefined when unknown). */
   creditPlan?(): Promise<import("./voice/credits.ts").CreditPlan | undefined>;
@@ -910,9 +922,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
         x.cluster.corroborated ||
         (cfg.includeRumours && x.cluster.rumourSignals),
     )
-    .filter(
-      (x) => !(x.cluster.rumourSignals && rumoursToday >= rumourCap),
-    )
+    .filter((x) => !(x.cluster.rumourSignals && rumoursToday >= rumourCap))
     .filter((x) => x.cluster.score > 0);
 
   // 1. Breaking lane. During a live showcase (a Direct, a State of Play) it sprints: a few more
@@ -1880,7 +1890,9 @@ async function stepScriptDocumentary(
   );
   const outline = await outlineDoc(s.llm, topic, franchise?.text ?? "");
   // An earlier documentary on the same franchise: its wording and opening are not reused.
-  const priorDoc = await priorDocNarration(s.db, ep.id, topic.franchise).catch(() => undefined);
+  const priorDoc = await priorDocNarration(s.db, ep.id, topic.franchise).catch(
+    () => undefined,
+  );
   const chapters: DocDraft["chapters"] = [];
   const warnings: string[] = [];
   for (const [index, plan] of outline.chapters.entries()) {
@@ -1909,7 +1921,10 @@ async function stepScriptDocumentary(
         earlier: chapters,
         priorDoc,
       });
-      const problems = validateChapter(chapter, { earlier: chapters, priorDoc });
+      const problems = validateChapter(chapter, {
+        earlier: chapters,
+        priorDoc,
+      });
       const unsupported = await checkChapter(s.llm, chapter, source).catch(
         (err) => {
           log("warn", "documentary fact check failed", {
@@ -1949,7 +1964,9 @@ async function stepScriptDocumentary(
           sentences,
           source,
           games: outline.chapters.map((c) => c.game_title),
-          lessons: await visualLessons(s.db, s.now(), segmentInputs).catch(() => ""),
+          lessons: await visualLessons(s.db, s.now(), segmentInputs).catch(
+            () => "",
+          ),
         }),
         source,
         outline.chapters.map((c) => c.game_title),
@@ -2031,35 +2048,52 @@ export async function prepareRemake(
   id: string,
 ): Promise<{ moments: number; breaks: number; oldVideo?: string }> {
   const ep = await getEpisode(s.db, id);
-  if (!ep?.script_json || !ep.assets_json?.audio) throw new Error("no voiced episode with that id");
-  if (ep.script_json.runtime !== "long") throw new Error("only long videos are remade");
-  if (ep.status === "uploading") throw new Error("it is uploading now; try again once that finishes");
+  if (!ep?.script_json || !ep.assets_json?.audio)
+    throw new Error("no voiced episode with that id");
+  if (ep.script_json.runtime !== "long")
+    throw new Error("only long videos are remade");
+  if (ep.status === "uploading")
+    throw new Error("it is uploading now; try again once that finishes");
   const dir = episodeDir(s.cfg, ep.id);
   const script = structuredClone(ep.script_json);
   const assets: EpisodeAssets = { ...ep.assets_json };
   const doc = script.evergreen_format === "documentary";
   let moments = 0;
   // 1. The shot list, chapter by chapter, for a documentary made before it existed.
-  if (doc && script.entries?.length && !script.entries.some((e) => e.moments?.length)) {
+  if (
+    doc &&
+    script.entries?.length &&
+    !script.entries.some((e) => e.moments?.length)
+  ) {
     const chapterBeats: string[][] = [];
     for (const b of script.beats) {
-      if (b.visual?.kind === "chapter" || !chapterBeats.length) chapterBeats.push([]);
+      if (b.visual?.kind === "chapter" || !chapterBeats.length)
+        chapterBeats.push([]);
       chapterBeats[chapterBeats.length - 1]!.push(b.narration);
     }
     const games = script.entries.map((e) => e.game_title);
-    const norm = (t: string) => decodeURIComponent(t).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const norm = (t: string) =>
+      decodeURIComponent(t)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
     for (const [ci, entry] of script.entries.entries()) {
       const sentences = (chapterBeats[ci] ?? []).flatMap((n) => sentencesOf(n));
       if (!sentences.length) continue;
-      const url = (script.sources ?? []).find((u) => norm(u.split("/wiki/")[1] ?? "") === norm(entry.game_title));
+      const url = (script.sources ?? []).find(
+        (u) => norm(u.split("/wiki/")[1] ?? "") === norm(entry.game_title),
+      );
       const source = await s.research(
-        url ? decodeURIComponent(url.split("/wiki/")[1]!).replace(/_/g, " ") : entry.game_title,
+        url
+          ? decodeURIComponent(url.split("/wiki/")[1]!).replace(/_/g, " ")
+          : entry.game_title,
         `${entry.game_title} ${entry.year} video game`,
         9000,
       );
       if (!source) continue;
       const chapterTitle =
-        script.beats.filter((b) => b.visual?.kind === "chapter")[ci]?.visual?.primary ?? entry.game_title;
+        script.beats.filter((b) => b.visual?.kind === "chapter")[ci]?.visual
+          ?.primary ?? entry.game_title;
       const shot = groundDocMoments(
         await writeDocMoments(s.llm, {
           game: entry.game_title,
@@ -2067,7 +2101,9 @@ export async function prepareRemake(
           sentences,
           source,
           games,
-          lessons: await visualLessons(s.db, s.now(), segmentInputs).catch(() => ""),
+          lessons: await visualLessons(s.db, s.now(), segmentInputs).catch(
+            () => "",
+          ),
         }),
         source,
         games,
@@ -2090,30 +2126,51 @@ export async function prepareRemake(
     if (gaps.length) {
       await insertSilence(path.join(dir, assets.audio!), gaps);
       assets.words = openWords(words, gaps);
-      assets.durationSeconds = duration + gaps.reduce((n, g) => n + g.seconds, 0);
+      assets.durationSeconds =
+        duration + gaps.reduce((n, g) => n + g.seconds, 0);
       let added = 0;
       assets.breaks = gaps.map((g) => {
         const start = g.at + added;
         added += g.seconds;
         return { start, end: start + g.seconds };
       });
-      await fs.writeFile(path.join(dir, "captions.srt"), srtFromWords(assets.words), "utf8");
+      await fs.writeFile(
+        path.join(dir, "captions.srt"),
+        srtFromWords(assets.words),
+        "utf8",
+      );
       breaks = gaps.length;
     }
   }
   // 3. Fresh media matched to the shot list, and a new plan, details and thumbnails.
-  for (const k of ["images", "clips", "plan", "longPlan", "annotations", "thumb"] as const)
+  for (const k of [
+    "images",
+    "clips",
+    "plan",
+    "longPlan",
+    "annotations",
+    "thumb",
+  ] as const)
     delete (assets as Record<string, unknown>)[k];
   // 4. The old upload goes private (the owner deletes it); the episode renders again into its slot.
   const oldVideo = ep.youtube_video_id ?? undefined;
-  if (oldVideo) await s.youtube(accountOf(ep)).setPrivacy(oldVideo, "private").catch(() => undefined);
+  if (oldVideo)
+    await s
+      .youtube(accountOf(ep))
+      .setPrivacy(oldVideo, "private")
+      .catch(() => undefined);
   await s.db.query(
     `UPDATE episodes SET status = 'voiced', script_json = $2, assets_json = $3, youtube_video_id = NULL,
             youtube_status = NULL, upload_session_uri = NULL, qa_json = NULL, attempts = 0, last_error = NULL,
             next_attempt_at = NULL WHERE id = $1`,
     [ep.id, JSON.stringify(script), JSON.stringify(assets)],
   );
-  await logEvent(s.db, ep.id, "remake", { moments, breaks, oldVideo, publishAt: ep.publish_at });
+  await logEvent(s.db, ep.id, "remake", {
+    moments,
+    breaks,
+    oldVideo,
+    publishAt: ep.publish_at,
+  });
   return { moments, breaks, oldVideo };
 }
 
@@ -3002,7 +3059,9 @@ export async function recentShapes(
   );
   const scripts = full.flatMap((r) => {
     try {
-      return r.script?.hook && r.script.pulse_take ? [narrationOf({ ...r.script, beats: r.script.beats ?? [] })] : [];
+      return r.script?.hook && r.script.pulse_take
+        ? [narrationOf({ ...r.script, beats: r.script.beats ?? [] })]
+        : [];
     } catch {
       return [];
     }
@@ -3020,7 +3079,11 @@ export async function recentShapes(
  * The narration of the newest earlier documentary on the same franchise ("Grand Theft Auto" matches
  * "Grand Theft Auto VI"), so a new one reuses none of its wording; undefined when there is none.
  */
-export async function priorDocNarration(db: Db, exceptId: string, franchise: string): Promise<string | undefined> {
+export async function priorDocNarration(
+  db: Db,
+  exceptId: string,
+  franchise: string,
+): Promise<string | undefined> {
   const rows = await db.query<{ script: Script }>(
     `SELECT script_json AS script FROM episodes
       WHERE id <> $1 AND script_json->>'evergreen_format' = 'documentary' AND status NOT IN ('failed','rejected')
@@ -3031,7 +3094,15 @@ export async function priorDocNarration(db: Db, exceptId: string, franchise: str
   );
   const sc = rows[0]?.script;
   if (!sc) return undefined;
-  return [sc.hook, ...(sc.beats ?? []).map((b) => b.narration), sc.pulse_take?.narration ?? ""].join(" ").trim() || undefined;
+  return (
+    [
+      sc.hook,
+      ...(sc.beats ?? []).map((b) => b.narration),
+      sc.pulse_take?.narration ?? "",
+    ]
+      .join(" ")
+      .trim() || undefined
+  );
 }
 
 /** The week's published news Shorts, most watched first (their best captured view count), rumours left out. */
@@ -3166,7 +3237,9 @@ async function stepScriptRecap(
           ),
           source: story.source,
           games: stories.map((st) => st.game),
-          lessons: await visualLessons(s.db, s.now(), segmentInputs).catch(() => ""),
+          lessons: await visualLessons(s.db, s.now(), segmentInputs).catch(
+            () => "",
+          ),
         }),
         story.source,
         stories.map((st) => st.game),
@@ -3566,7 +3639,8 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   let feedback: string[] = [];
   let draft: import("./editorial/evergreen.ts").EvergreenScript | undefined;
   // The recent Shorts' scripts, so an evergreen Short never retells one of them.
-  const recentScripts = (await recentShapes(s.db, ep.id).catch(() => undefined))?.scripts ?? [];
+  const recentScripts =
+    (await recentShapes(s.db, ep.id).catch(() => undefined))?.scripts ?? [];
   for (let attempt = 0; attempt < 2; attempt++) {
     draft = await writeEvergreen(s.llm, topic, facts, feedback, brief);
     const problems = validateEvergreen(draft, recentScripts);
@@ -3842,7 +3916,10 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   // A twin reads its figures in its own language (no English number-to-words pass) and only ElevenLabs
   // speaks it: the local clone speaks English.
   const twin = ep.lane === "twin";
-  const desk0 = deskFor({ ...s.cfg, deskShare: await deskShareNow(s.db, s.cfg) }, ep);
+  const desk0 = deskFor(
+    { ...s.cfg, deskShare: await deskShareNow(s.db, s.cfg) },
+    ep,
+  );
   // When the desk partner would be the narrator, the usual narrator asks the question instead.
   const desk =
     desk0 && desk0.voice.id === voice.id
@@ -4057,7 +4134,10 @@ export function narratorFor(
  * stable hash of the episode id, salted so it is independent of the other tests) get the editor's dressing.
  * The Spanish twin copies its source and is left out.
  */
-export function suiteFor(cfg: Config, ep: Pick<Episode, "id" | "lane">): boolean {
+export function suiteFor(
+  cfg: Config,
+  ep: Pick<Episode, "id" | "lane">,
+): boolean {
   if (cfg.shortSuiteShare <= 0 || ep.lane === "twin") return false;
   let h = 11;
   for (const c of `suite:${ep.id}`) h = (h * 137 + c.charCodeAt(0)) >>> 0;
@@ -5125,7 +5205,13 @@ async function gatherChapterMedia(
       }));
       // The owner's own recordings of this game come first (owner, 28 Oct 2026); licensed gameplay fills the rest.
       const own = await s
-        .ownClips(entry.game_title, franchise, edir, targets, Math.ceil(targets.length / 2))
+        .ownClips(
+          entry.game_title,
+          franchise,
+          edir,
+          targets,
+          Math.ceil(targets.length / 2),
+        )
         .catch(() => [] as VisualAsset[]);
       for (const c of own)
         clips.push({
@@ -5497,8 +5583,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     // is gathered CAPTURE_GATHER_LEAD_HOURS before the slot.
     const holdUntil = await captureHold(s, ep);
     if (holdUntil) {
-      await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [ep.id, holdUntil]);
-      log("info", "footage waits for the owner's recordings", { episode: ep.id, until: holdUntil.toISOString() });
+      await s.db.query(
+        `UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`,
+        [ep.id, holdUntil],
+      );
+      log("info", "footage waits for the owner's recordings", {
+        episode: ep.id,
+        until: holdUntil.toISOString(),
+      });
       return;
     }
     Object.assign(assets, await gatherMedia(s, ep, dir));
@@ -5544,7 +5636,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // the framing and the zoom-to-detail maths need it.
   for (const i of assets.images ?? [])
     if (!Number.isFinite(i.aspect))
-      i.aspect = await s.imageAspect(path.join(dir, i.file)).catch(() => 16 / 9);
+      i.aspect = await s
+        .imageAspect(path.join(dir, i.file))
+        .catch(() => 16 / 9);
   const images = (assets.images ?? []).map((i) => ({
     file: i.file,
     kind: i.kind,
@@ -5648,12 +5742,20 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   assets.longPlan = plan;
   // Each game's own colour, from its key art (src/assets/palette.ts): its chapter's footage is washed in it.
   if (!assets.palette) {
-    const entries = [...new Set(images.map((i) => i.beatIndex).filter((b): b is number => b !== undefined))];
+    const entries = [
+      ...new Set(
+        images
+          .map((i) => i.beatIndex)
+          .filter((b): b is number => b !== undefined),
+      ),
+    ];
     const palette: Array<string | null> = [];
     for (const b of entries) {
       const art =
         images.find((i) => i.beatIndex === b && i.kind === "hero") ??
-        images.find((i) => i.beatIndex === b && i.aspect >= 1.2 && i.kind !== "photo");
+        images.find(
+          (i) => i.beatIndex === b && i.aspect >= 1.2 && i.kind !== "photo",
+        );
       palette[b] = (art && (await paletteOf(path.join(dir, art.file)))) || null;
     }
     assets.palette = palette;
@@ -5677,14 +5779,28 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       const from = Math.round(Math.max(w.start, w.at - 0.15) * LONG_FPS);
       if (from - lastAt < 40 * LONG_FPS) continue;
       const shot = plan.shots.find((x) => from >= x.start && from < x.end);
-      if (!shot || shot.media.type !== "image" || shot.end - from < 3.5 * LONG_FPS) continue;
+      if (
+        !shot ||
+        shot.media.type !== "image" ||
+        shot.end - from < 3.5 * LONG_FPS
+      )
+        continue;
       const img = assets.images?.[shot.media.index];
       if (!img || !LAYERED_KINDS.has(img.kind)) continue;
-      const label = annotationLabel(m, ranked[w.entry]?.game_title ?? script.game_title);
+      const label = annotationLabel(
+        m,
+        ranked[w.entry]?.game_title ?? script.game_title,
+      );
       if (!label) continue;
       const box = await locate(path.join(dir, img.file), label);
       if (!box) continue;
-      found.push({ entry: w.entry, moment: w.moment, image: shot.media.index, box, label });
+      found.push({
+        entry: w.entry,
+        moment: w.moment,
+        image: shot.media.index,
+        box,
+        label,
+      });
       lastAt = from;
     }
     assets.annotations = found;
@@ -5698,9 +5814,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const doc = script.evergreen_format === "documentary";
   // Two alternative titles for the Test & compare (one mid-tier call; a failure only means no title test).
   if (!script.youtube.title_variants) {
-    const variants = await titleVariants(s.llm, script).catch(() => [] as string[]);
+    const variants = await titleVariants(s.llm, script).catch(
+      () => [] as string[],
+    );
     script.youtube.title_variants = variants;
-    await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
+    await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(script),
+    ]);
   }
   const footageCredit = clips.length
     ? "FOOTAGE: OFFICIAL TRAILERS · STEAM"
@@ -5723,7 +5844,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // the headline as a newspaper cutting for a documentary.
   const depthArt =
     (thumbArt?.layers ? thumbArt : undefined) ??
-    images.find((i) => i.layers && i.kind === "hero" && (i.beatIndex === winnerBeat || i.beatIndex === undefined));
+    images.find(
+      (i) =>
+        i.layers &&
+        i.kind === "hero" &&
+        (i.beatIndex === winnerBeat || i.beatIndex === undefined),
+    );
   // The thumbnail overhaul (src/render/ThumbStudio.tsx): every design that suits this video, best first;
   // the first is the thumbnail, the next two go to YouTube's Test & compare. The niche study ranked them:
   // a huge subject with a rim and a few words, a giant number, an old game's nostalgia, a hard versus, a
@@ -5751,16 +5877,32 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     .map((b) => ({ b, info: entryInfo(b) }))
     .find((x) => x.info?.year && x.info.year <= 2006 && wide(x.b!));
   const thumbIndex = thumbArt ? images.indexOf(thumbArt) : -1;
-  const circled = (assets.annotations ?? []).find((a) => a.image === thumbIndex);
+  const circled = (assets.annotations ?? []).find(
+    (a) => a.image === thumbIndex,
+  );
   const base = { headline: text, kicker: tag, game: "", accent: "#FF6B1A" };
-  type Candidate = { layout: string; thumb: Record<string, unknown> & { imageFile: string | null } };
+  type Candidate = {
+    layout: string;
+    thumb: Record<string, unknown> & { imageFile: string | null };
+  };
   // The video's own look first (src/render/components/motifs): its series', console's or genre's card with
   // the thumbnail's words. Loaded on demand so a motif can never stop a render.
   const motif = await import("./render/components/motifs/index.ts")
-    .then((m) => m.motifsFor({ title: script.headline, platforms: "", theme: script.recap ? script.headline : script.game_title })[0])
+    .then(
+      (m) =>
+        m.motifsFor({
+          title: script.headline,
+          platforms: "",
+          theme: script.recap ? script.headline : script.game_title,
+        })[0],
+    )
     .catch(() => undefined);
   const motifPictures = images
-    .filter((i) => i.aspect >= 1.3 && ["hero", "screenshot", "article", "header"].includes(i.kind))
+    .filter(
+      (i) =>
+        i.aspect >= 1.3 &&
+        ["hero", "screenshot", "article", "header"].includes(i.kind),
+    )
     .map((i) => i.file)
     .slice(0, 6);
   const candidates: Candidate[] = [
@@ -5781,10 +5923,30 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         ]
       : []),
     ...(depthArt?.layers
-      ? [{ layout: "hero", thumb: { ...base, layout: "hero" as const, imageFile: depthArt.file, fgFile: depthArt.layers.fg, subjectX: depthArt.layers.fgx } }]
+      ? [
+          {
+            layout: "hero",
+            thumb: {
+              ...base,
+              layout: "hero" as const,
+              imageFile: depthArt.file,
+              fgFile: depthArt.layers.fg,
+              subjectX: depthArt.layers.fgx,
+            },
+          },
+        ]
       : []),
     ...(/\d/.test(text) && thumbArt
-      ? [{ layout: "number", thumb: { ...base, layout: "number" as const, imageFile: thumbArt.file } }]
+      ? [
+          {
+            layout: "number",
+            thumb: {
+              ...base,
+              layout: "number" as const,
+              imageFile: thumbArt.file,
+            },
+          },
+        ]
       : []),
     ...(oldEntry
       ? [
@@ -5809,7 +5971,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
               layout: "clash" as const,
               imageFile: lastArt.file,
               image2File: thumbArt.file,
-              labels: [`#${script.entries![0]!.rank}`, "#1"] as [string, string],
+              labels: [`#${script.entries![0]!.rank}`, "#1"] as [
+                string,
+                string,
+              ],
             },
           },
         ]
@@ -5822,7 +5987,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
               ...base,
               layout: "mystery" as const,
               imageFile: thumbArt.file,
-              focus: [circled.box[0], circled.box[1], circled.box[2] - circled.box[0], circled.box[3] - circled.box[1]] as [number, number, number, number],
+              focus: [
+                circled.box[0],
+                circled.box[1],
+                circled.box[2] - circled.box[0],
+                circled.box[3] - circled.box[1],
+              ] as [number, number, number, number],
             },
           },
         ]
@@ -5831,7 +6001,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       ? [
           {
             layout: "clipping",
-            thumb: { ...base, kicker: "", game: script.recap ? "This week" : script.game_title, layout: "clipping" as const, imageFile: thumbArt.file },
+            thumb: {
+              ...base,
+              kicker: "",
+              game: script.recap ? "This week" : script.game_title,
+              layout: "clipping" as const,
+              imageFile: thumbArt.file,
+            },
           },
         ]
       : []),
@@ -5855,73 +6031,85 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     file: path.join(dir, i === 0 ? "thumb_b.jpg" : "thumb_c.jpg"),
     thumb: c.thumb as never,
   }));
-  log("info", "thumbnail designs", { episode: ep.id, designs: candidates.map((c) => c.layout).slice(0, 3) });
+  log("info", "thumbnail designs", {
+    episode: ep.id,
+    designs: candidates.map((c) => c.layout).slice(0, 3),
+  });
   // Again just before the turn is asked for: a breaking Short may have started while the stills were prepared.
   const turnWait = await longRenderGap(s, ep);
   if (turnWait === undefined) return;
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
-  const rendered = await s.renderLong({
-    turnWaitMinutes: turnWait,
-    episodeDir: dir,
-    outFile: raw,
-    posterFile: path.join(dir, "poster.jpg"),
-    thumbFile: path.join(dir, "thumb.jpg"),
-    thumb: mainThumb!.thumb as never,
-    thumbVariants,
-    concurrency: s.cfg.remotionConcurrency,
-    gl: s.cfg.remotionGl,
-    browserExecutable: s.cfg.browserExecutable,
-    props: {
-      title: script.headline,
-      kicker: script.kicker ?? "",
-      criterion: script.criterion ?? "",
-      spoilers: scopeOf(script) === "campaign",
-      recap: !!script.recap,
-      theme: script.recap ? script.headline : script.game_title,
-      footageCredit,
-      endLine: script.recap
-        ? "The week's biggest stories every Friday · Shorts every day"
-        : doc
-          ? "A new documentary every month · Shorts every day"
-          : "A new ranking every week · Shorts every day",
-      moments: hasMoments
-        ? moments.map((ms, ei) =>
-            ms.map((m, mi) => ({
-              show: m.show,
-              // A graphic the graphics check faulted is left out (the sentence keeps its picture).
-              graphic: (assets.quietMoments ?? []).includes(`${ei}:${mi}`)
-                ? { kind: "none" as const, primary: "", secondary: "", items: [] }
-                : m.graphic,
-              emphasis: m.emphasis,
-              person: m.person || undefined,
-            })),
-          )
-        : undefined,
-      segments,
-      words,
-      durationSeconds: duration,
-      variant,
-      audioFile: assets.audio ?? null,
-      musicFile,
-      imageFiles: images,
-      clipFiles: clips,
-      plan,
-      renderDate: s.now().toISOString().slice(0, 10),
-      breaks: assets.breaks,
-      quietBreaks: assets.quietBreaks,
-      palette: assets.palette,
-      annotations: assets.annotations,
-    },
-  }).then(
-    () => true,
-    (err) => {
-      if (err instanceof PcTurnTimeout) return false;
-      throw err;
-    },
-  );
+  const rendered = await s
+    .renderLong({
+      turnWaitMinutes: turnWait,
+      episodeDir: dir,
+      outFile: raw,
+      posterFile: path.join(dir, "poster.jpg"),
+      thumbFile: path.join(dir, "thumb.jpg"),
+      thumb: mainThumb!.thumb as never,
+      thumbVariants,
+      concurrency: s.cfg.remotionConcurrency,
+      gl: s.cfg.remotionGl,
+      browserExecutable: s.cfg.browserExecutable,
+      props: {
+        title: script.headline,
+        kicker: script.kicker ?? "",
+        criterion: script.criterion ?? "",
+        spoilers: scopeOf(script) === "campaign",
+        recap: !!script.recap,
+        theme: script.recap ? script.headline : script.game_title,
+        footageCredit,
+        endLine: script.recap
+          ? "The week's biggest stories every Friday · Shorts every day"
+          : doc
+            ? "A new documentary every month · Shorts every day"
+            : "A new ranking every week · Shorts every day",
+        moments: hasMoments
+          ? moments.map((ms, ei) =>
+              ms.map((m, mi) => ({
+                show: m.show,
+                // A graphic the graphics check faulted is left out (the sentence keeps its picture).
+                graphic: (assets.quietMoments ?? []).includes(`${ei}:${mi}`)
+                  ? {
+                      kind: "none" as const,
+                      primary: "",
+                      secondary: "",
+                      items: [],
+                    }
+                  : m.graphic,
+                emphasis: m.emphasis,
+                person: m.person || undefined,
+              })),
+            )
+          : undefined,
+        segments,
+        words,
+        durationSeconds: duration,
+        variant,
+        audioFile: assets.audio ?? null,
+        musicFile,
+        imageFiles: images,
+        clipFiles: clips,
+        plan,
+        renderDate: s.now().toISOString().slice(0, 10),
+        breaks: assets.breaks,
+        quietBreaks: assets.quietBreaks,
+        palette: assets.palette,
+        annotations: assets.annotations,
+      },
+    })
+    .then(
+      () => true,
+      (err) => {
+        if (err instanceof PcTurnTimeout) return false;
+        throw err;
+      },
+    );
   if (!rendered) {
-    log("info", "long render's turn did not come before a Short's window", { episode: ep.id });
+    log("info", "long render's turn did not come before a Short's window", {
+      episode: ep.id,
+    });
     return deferLong(s, ep);
   }
   await s.normalise(raw, final);
@@ -5935,6 +6123,15 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       (assets.breaks ?? []).reduce((n, b) => n + b.end - b.start, 0),
     width: 1920,
     height: 1080,
+    // An old game's last shot switches off like a tube just before the next chapter: meant, not a flash.
+    chapterStarts: segments
+      .filter(
+        (g, i) =>
+          i > 0 &&
+          g.kind === "beat" &&
+          (g.visual?.kind === "chapter" || g.visual?.kind === "rank"),
+      )
+      .map((g) => g.start),
   });
   let vision: VisionQa | undefined;
   let times: number[] = [];
@@ -5995,49 +6192,100 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   if (s.cfg.visionQa) {
     const checks: Array<{ t: number; what: string }> = [];
     if (hasMoments) {
-      const ws = momentWindows(segments, words, moments.map((m) => m.length), moments.map((e) => e.map(momentKeys)));
+      const ws = momentWindows(
+        segments,
+        words,
+        moments.map((m) => m.length),
+        moments.map((e) => e.map(momentKeys)),
+      );
       for (const w of ws) {
         const g = moments[w.entry]?.[w.moment]?.graphic;
-        if (!g || !usefulGraphic(g) || (assets.quietMoments ?? []).includes(`${w.entry}:${w.moment}`)) continue;
+        if (
+          !g ||
+          !usefulGraphic(g) ||
+          (assets.quietMoments ?? []).includes(`${w.entry}:${w.moment}`)
+        )
+          continue;
         const t = Math.max(w.start, w.at - 0.15) + 2.2;
-        if (t < duration - 1) checks.push({ t, what: `${w.entry}:${w.moment}` });
+        if (t < duration - 1)
+          checks.push({ t, what: `${w.entry}:${w.moment}` });
       }
     }
     (assets.breaks ?? []).forEach((b, i) => {
-      if (!(assets.quietBreaks ?? []).includes(i)) checks.push({ t: b.start + 2.5, what: `break:${i}` });
+      if (!(assets.quietBreaks ?? []).includes(i))
+        checks.push({ t: b.start + 2.5, what: `break:${i}` });
     });
     const sample = checks.slice(0, 32);
     const faulted: string[] = [];
     for (let k = 0; k < sample.length; k += 8) {
       const batch = sample.slice(k, k + 8);
-      const frames = await s.extractFrames(final, path.join(dir, "qa", `gfx${k}`), batch.map((c) => c.t));
+      const frames = await s.extractFrames(
+        final,
+        path.join(dir, "qa", `gfx${k}`),
+        batch.map((c) => c.t),
+      );
       const v = await s
-        .visionQa(frames, { headline: script.headline, gameTitle: script.game_title, format: "graphics" })
+        .visionQa(frames, {
+          headline: script.headline,
+          gameTitle: script.game_title,
+          format: "graphics",
+        })
         .catch(() => undefined);
-      if (v?.verdict === "fail") for (const n of framesNamed(v.problems)) if (batch[n - 1]) faulted.push(batch[n - 1]!.what);
-      if (v?.problems.length) await logEvent(s.db, ep.id, "graphics_check", { problems: v.problems, at: batch.map((c) => c.what) });
+      if (v?.verdict === "fail")
+        for (const n of framesNamed(v.problems))
+          if (batch[n - 1]) faulted.push(batch[n - 1]!.what);
+      if (v?.problems.length)
+        await logEvent(s.db, ep.id, "graphics_check", {
+          problems: v.problems,
+          at: batch.map((c) => c.what),
+        });
     }
     if (faulted.length) {
-      assets.quietMoments = [...(assets.quietMoments ?? []), ...faulted.filter((f) => !f.startsWith("break:"))];
+      assets.quietMoments = [
+        ...(assets.quietMoments ?? []),
+        ...faulted.filter((f) => !f.startsWith("break:")),
+      ];
       assets.quietBreaks = [
         ...(assets.quietBreaks ?? []),
-        ...faulted.filter((f) => f.startsWith("break:")).map((f) => Number(f.slice(6))),
+        ...faulted
+          .filter((f) => f.startsWith("break:"))
+          .map((f) => Number(f.slice(6))),
       ];
       const { longPlan: _dropped, ...again } = assets;
-      await s.db.query(`UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`, [
-        ep.id,
-        JSON.stringify({ ...qa, graphics: faulted }),
-        JSON.stringify(again),
-      ]);
-      throw new Error(`graphics check: ${faulted.length} graphic(s) left out, rendering again`);
+      await s.db.query(
+        `UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`,
+        [
+          ep.id,
+          JSON.stringify({ ...qa, graphics: faulted }),
+          JSON.stringify(again),
+        ],
+      );
+      throw new Error(
+        `graphics check: ${faulted.length} graphic(s) left out, rendering again`,
+      );
     }
     const thumbs = ["thumb.jpg", ...thumbFiles];
     const tv = await s
-      .visionQa(thumbs.map((f) => path.join(dir, f)), { headline: script.headline, gameTitle: script.game_title, format: "thumbs" })
+      .visionQa(
+        thumbs.map((f) => path.join(dir, f)),
+        {
+          headline: script.headline,
+          gameTitle: script.game_title,
+          format: "thumbs",
+        },
+      )
       .catch(() => undefined);
-    const bad = new Set(tv?.verdict === "fail" ? framesNamed(tv.problems).map((n) => thumbs[n - 1]).filter(Boolean) : []);
+    const bad = new Set(
+      tv?.verdict === "fail"
+        ? framesNamed(tv.problems)
+            .map((n) => thumbs[n - 1])
+            .filter(Boolean)
+        : [],
+    );
     if (bad.size) {
-      await logEvent(s.db, ep.id, "thumbnail_check", { problems: tv!.problems });
+      await logEvent(s.db, ep.id, "thumbnail_check", {
+        problems: tv!.problems,
+      });
       const good = thumbFiles.filter((f) => !bad.has(f));
       if (bad.has("thumb.jpg") && good[0]) {
         await fs.copyFile(path.join(dir, good[0]), path.join(dir, "thumb.jpg"));
@@ -6241,7 +6489,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   assets.suite = suiteFor(s.cfg, ep);
   // Pip the mascot (src/experiments.ts): recorded either way only while the test runs, and kept on a re-render.
   const mascotShare = await mascotShareNow(s.db, s.cfg);
-  if (assets.mascot === undefined && mascotShare > 0) assets.mascot = mascotFor(mascotShare, ep);
+  if (assets.mascot === undefined && mascotShare > 0)
+    assets.mascot = mascotFor(mascotShare, ep);
   // The new-look opening poster (src/render/components/HookPoster.tsx): the hero art's subject cut out once.
   const heroImage = assets.images?.[plan.heroIndex];
   if (
@@ -6253,7 +6502,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     plan.shots[0]?.media.type === "image" &&
     plan.shots[0].media.index === plan.heroIndex
   ) {
-    const made = await makeParallax(s.cfg.parallaxPython, dir, [heroImage.file]);
+    const made = await makeParallax(s.cfg.parallaxPython, dir, [
+      heroImage.file,
+    ]);
     const cut = made.get(heroImage.file);
     if (cut) assets.heroCut = { fg: cut.fg, x: cut.fgx };
   }
@@ -6289,7 +6540,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     episodeDir: dir,
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
-    thumbFile: assets.shortThumb ? path.join(dir, assets.shortThumb) : undefined,
+    thumbFile: assets.shortThumb
+      ? path.join(dir, assets.shortThumb)
+      : undefined,
     concurrency: s.cfg.remotionConcurrency,
     gl: s.cfg.remotionGl,
     browserExecutable: s.cfg.browserExecutable,
@@ -6596,7 +6849,9 @@ export function choosePublishAt(
   }
   // Clear of every other publish by the gap, past or scheduled. Only publishes near this one move it: a
   // documentary scheduled two days out once held every Short behind it (27-28 Oct 2026, nine videos queued).
-  const others = (Array.isArray(published) ? published : published ? [published] : [])
+  const others = (
+    Array.isArray(published) ? published : published ? [published] : []
+  )
     .map((d) => d.getTime())
     .sort((x, y) => x - y);
   const gap = cfg.minUploadGapMinutes * 60_000;
@@ -7267,13 +7522,20 @@ async function queueAbTest(s: Services, ep: Episode): Promise<void> {
     const dir = episodeDir(s.cfg, ep.id);
     const file = path.join(s.cfg.dataDir, "abtests", "pending.json");
     await fs.mkdir(path.dirname(file), { recursive: true });
-    const list = JSON.parse(await fs.readFile(file, "utf8").catch(() => "[]")) as Array<{ videoId: string }>;
+    const list = JSON.parse(
+      await fs.readFile(file, "utf8").catch(() => "[]"),
+    ) as Array<{ videoId: string }>;
     if (list.some((x) => x.videoId === ep.youtube_video_id)) return;
-    const thumbs = ["thumb.jpg", ...(ep.assets_json?.thumbVariants ?? [])].map((f) => path.join(dir, f));
+    const thumbs = ["thumb.jpg", ...(ep.assets_json?.thumbVariants ?? [])].map(
+      (f) => path.join(dir, f),
+    );
     list.push({
       videoId: ep.youtube_video_id!,
       episode: ep.id,
-      titles: [ep.script_json!.youtube.title, ...(ep.script_json!.youtube.title_variants ?? [])],
+      titles: [
+        ep.script_json!.youtube.title,
+        ...(ep.script_json!.youtube.title_variants ?? []),
+      ],
       thumbs,
       publishAt: ep.publish_at,
       added: s.now().toISOString(),
@@ -7281,15 +7543,25 @@ async function queueAbTest(s: Services, ep: Episode): Promise<void> {
     await fs.writeFile(file, JSON.stringify(list, null, 2), "utf8");
     await logEvent(s.db, ep.id, "abtest_queued", { thumbs: thumbs.length });
   } catch (err) {
-    log("warn", "a/b test hand-off failed", { episode: ep.id, error: errorMessage(err) });
+    log("warn", "a/b test hand-off failed", {
+      episode: ep.id,
+      error: errorMessage(err),
+    });
   }
 }
 
-async function setThumbnail(s: Services, ep: Episode, file = ep.assets_json!.thumb!): Promise<void> {
+async function setThumbnail(
+  s: Services,
+  ep: Episode,
+  file = ep.assets_json!.thumb!,
+): Promise<void> {
   try {
     await s
       .youtube(accountOf(ep))
-      .setThumbnail(ep.youtube_video_id!, path.join(episodeDir(s.cfg, ep.id), file));
+      .setThumbnail(
+        ep.youtube_video_id!,
+        path.join(episodeDir(s.cfg, ep.id), file),
+      );
     await quotaAdd(s.db, s.now(), QUOTA.comment);
     await logEvent(s.db, ep.id, "thumbnail", { ok: true });
   } catch (err) {
@@ -7518,10 +7790,7 @@ async function pushEpisode(s: Services, ep: Episode): Promise<void> {
     const moved = await advance(s, current);
     if (!moved) break;
     current = await getEpisode(s.db, ep.id);
-    if (
-      current?.next_attempt_at &&
-      new Date(current.next_attempt_at) > s.now()
-    )
+    if (current?.next_attempt_at && new Date(current.next_attempt_at) > s.now())
       break;
   }
 }
@@ -7659,13 +7928,19 @@ export async function tick(
       );
     // The experiments' verdicts: once on EXPERIMENT_VERDICT_DATE, then weekly while the desk test is undecided.
     if (!s.cfg.dryRun)
-      await experimentVerdicts(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch((err) =>
-        log("warn", "experiment verdicts failed", { error: errorMessage(err) }),
+      await experimentVerdicts(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch(
+        (err) =>
+          log("warn", "experiment verdicts failed", {
+            error: errorMessage(err),
+          }),
       );
     // The posting-time test's report on its last day (src/experiments.ts). The other platforms' numbers are read on their own clock (server.ts).
     if (!s.cfg.dryRun)
-      await primeTimeVerdict(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch((err) =>
-        log("warn", "posting-time report failed", { error: errorMessage(err) }),
+      await primeTimeVerdict(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch(
+        (err) =>
+          log("warn", "posting-time report failed", {
+            error: errorMessage(err),
+          }),
       );
     // Shorts: whether the Shorts feed served each one, and a warning when it stops (read-only).
     if (!s.cfg.dryRun) {

@@ -9,6 +9,7 @@ import { SPRING } from "../../motion.ts";
 import { displayText } from "../../timeline.ts";
 import { useStage } from "../DocGraphics.tsx";
 import type { GfxProps, GfxStyle } from "./types.ts";
+import { maskLayers, Preload } from "./preload.tsx";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
@@ -23,6 +24,7 @@ const TextMask: React.FC<GfxProps> = ({ g, len, src }) => {
   const label = interpolate(frame, [16, 30], [0, 1], clamp);
   return (
     <AbsoluteFill style={{ opacity: dim, background: "#070709" }}>
+      <Preload src={src} />
       <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
         <div
           style={{
@@ -38,7 +40,7 @@ const TextMask: React.FC<GfxProps> = ({ g, len, src }) => {
               letterSpacing: -2,
               whiteSpace: "nowrap",
               color: src ? "transparent" : COLOUR.amber,
-              backgroundImage: src ? `url(${src})` : undefined,
+              backgroundImage: src ? maskLayers(src) : undefined,
               backgroundSize: "cover",
               backgroundPosition: `${50 + drift / 10}% 50%`,
               WebkitBackgroundClip: src ? "text" : undefined,

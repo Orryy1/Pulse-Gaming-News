@@ -10,6 +10,7 @@ import { SPRING } from "../../motion.ts";
 import { displayText } from "../../timeline.ts";
 import { useStage } from "../DocGraphics.tsx";
 import type { GfxProps, GfxStyle } from "./types.ts";
+import { maskLayers, Preload } from "./preload.tsx";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const YEAR = /\b(19|20)\d\d\b/;
@@ -19,7 +20,7 @@ const masked = (src: string | undefined, drift: number): React.CSSProperties =>
   src
     ? {
         color: "transparent",
-        backgroundImage: `url(${src})`,
+        backgroundImage: maskLayers(src),
         backgroundSize: "cover",
         backgroundPosition: `${50 + drift}% 50%`,
         WebkitBackgroundClip: "text",
@@ -60,6 +61,7 @@ const YearMask: React.FC<GfxProps> = ({ g, len, src }) => {
         justifyContent: "center",
       }}
     >
+      <Preload src={src} />
       <div
         style={{ textAlign: "center", transform: `scale(${1.15 - 0.15 * s})` }}
       >
@@ -134,6 +136,7 @@ const SpanMask: React.FC<GfxProps> = ({ g, len, src }) => {
         justifyContent: "center",
       }}
     >
+      <Preload src={src} />
       <div style={{ display: "flex", alignItems: "center", gap: 40 }}>
         <div
           style={{

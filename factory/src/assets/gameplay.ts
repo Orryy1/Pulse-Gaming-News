@@ -40,6 +40,8 @@ export interface GameplaySource {
   url: string;
   kind: "cc" | "official";
   durationSeconds: number;
+  /** The video's own chapter list from its description ("12:34 Phnom Penh"), when it has one. */
+  chapters?: Array<{ at: number; title: string }>;
 }
 
 const NOT_GAMEPLAY =
@@ -199,15 +201,28 @@ async function details(
   token: () => Promise<string>,
   ids: string[],
 ): Promise<
-  Map<string, { license: string; seconds: number; embeddable: boolean }>
+  Map<
+    string,
+    {
+      license: string;
+      seconds: number;
+      embeddable: boolean;
+      description: string;
+    }
+  >
 > {
   const out = new Map<
     string,
-    { license: string; seconds: number; embeddable: boolean }
+    {
+      license: string;
+      seconds: number;
+      embeddable: boolean;
+      description: string;
+    }
   >();
   if (!ids.length) return out;
   const res = await fetchWithTimeout(
-    `${API}/videos?part=status,contentDetails&id=${ids.join(",")}`,
+    `${API}/videos?part=status,contentDetails,snippet&id=${ids.join(",")}`,
     { headers: { authorization: `Bearer ${await token()}` } },
     20_000,
   );
@@ -217,6 +232,7 @@ async function details(
       license: String(v.status?.license ?? ""),
       seconds: isoSeconds(String(v.contentDetails?.duration ?? "")),
       embeddable: Boolean(v.status?.embeddable),
+      description: String(v.snippet?.description ?? ""),
     });
   return out;
 }
@@ -233,8 +249,25 @@ export const GameplayJudgeSchema = z.object({
  * Titles alone cannot tell Black Ops from Black Ops 6, or Call of Duty 4 (2007)
  * from Modern Warfare 4 (2026): a reader checks each title and description.
  */
-const ROMAN_N: Record<string, string> = { ii: "2", iii: "3", iv: "4", v: "5", vi: "6", vii: "7", viii: "8", ix: "9", x: "10", xi: "11", xii: "12", xiii: "13", xiv: "14", xv: "15", xvi: "16" };
-const SEQUEL_RE = /(?<![a-z0-9])(?:(\d{1,2})|(ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi))(?![a-z0-9])/g;
+const ROMAN_N: Record<string, string> = {
+  ii: "2",
+  iii: "3",
+  iv: "4",
+  v: "5",
+  vi: "6",
+  vii: "7",
+  viii: "8",
+  ix: "9",
+  x: "10",
+  xi: "11",
+  xii: "12",
+  xiii: "13",
+  xiv: "14",
+  xv: "15",
+  xvi: "16",
+};
+const SEQUEL_RE =
+  /(?<![a-z0-9])(?:(\d{1,2})|(ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi))(?![a-z0-9])/g;
 
 /**
  * The entry number a title gives a series: the first number or Roman numeral after the series name,
@@ -243,7 +276,14 @@ const SEQUEL_RE = /(?<![a-z0-9])(?:(\d{1,2})|(ii|iii|iv|v|vi|vii|viii|ix|x|xi|xi
  */
 export function entryNumber(title: string, series = ""): string | undefined {
   const t = title.toLowerCase();
-  const at = series ? t.indexOf(series.toLowerCase().replace(/[®™©:]/g, "").trim()) : 0;
+  const at = series
+    ? t.indexOf(
+        series
+          .toLowerCase()
+          .replace(/[®™©:]/g, "")
+          .trim(),
+      )
+    : 0;
   if (at < 0) return undefined;
   const tail = t.slice(at + series.length);
   const m = SEQUEL_RE.exec(tail);
@@ -251,8 +291,19 @@ export function entryNumber(title: string, series = ""): string | undefined {
   if (!m) return undefined;
   // The number must come straight after the series name (a word or two of edition text at most), and
   // not after a word that numbers something else: "part 2", "trailer 2", "mission 4".
-  const gap = tail.slice(0, m.index).replace(/[^a-z]/g, " ").trim().split(/\s+/).filter(Boolean);
-  if (gap.length > 2 || /^(part|episode|ep|trailer|chapter|mission|level|day|act|season|vol|volume)$/.test(gap[gap.length - 1] ?? "")) return undefined;
+  const gap = tail
+    .slice(0, m.index)
+    .replace(/[^a-z]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (
+    gap.length > 2 ||
+    /^(part|episode|ep|trailer|chapter|mission|level|day|act|season|vol|volume)$/.test(
+      gap[gap.length - 1] ?? "",
+    )
+  )
+    return undefined;
   const n = m[1] ?? ROMAN_N[m[2]!];
   return n && Number(n) <= 16 ? String(Number(n)) : undefined;
 }
@@ -265,7 +316,14 @@ export function seriesName(game: string): string {
 }
 
 /** Short series names as fans write them, so "GTA 6" matches "Grand Theft Auto VI". */
-const SHORT: Record<string, string> = { "grand theft auto": "gta", "call of duty": "cod", "final fantasy": "ff", "resident evil": "re", "the legend of zelda": "zelda", "assassin's creed": "ac" };
+const SHORT: Record<string, string> = {
+  "grand theft auto": "gta",
+  "call of duty": "cod",
+  "final fantasy": "ff",
+  "resident evil": "re",
+  "the legend of zelda": "zelda",
+  "assassin's creed": "ac",
+};
 
 /**
  * A title that names a different entry in the series than the one wanted. "GTA VI" requested and a
@@ -278,10 +336,18 @@ export function wrongEntry(game: string, title: string): boolean {
   // The series as the title may write it: the full name, its last part ("Modern Warfare" for
   // "Call of Duty: Modern Warfare"), or the fans' short form; the longest one present decides.
   const parts = series.split(/\s*[:\-–—]\s*/).filter(Boolean);
-  const names = [series, ...parts.slice(1), parts[0], SHORT[series.toLowerCase()], SHORT[(parts[0] ?? "").toLowerCase()]]
+  const names = [
+    series,
+    ...parts.slice(1),
+    parts[0],
+    SHORT[series.toLowerCase()],
+    SHORT[(parts[0] ?? "").toLowerCase()],
+  ]
     .filter((x): x is string => !!x && x.length >= 3)
     .sort((a, b) => b.length - a.length);
-  const found = names.find((n) => title.toLowerCase().includes(n.toLowerCase()));
+  const found = names.find((n) =>
+    title.toLowerCase().includes(n.toLowerCase()),
+  );
   if (!found) return false; // the title does not name the series at all: the model decides
   const have = entryNumber(title, found);
   return (want ?? "1") !== (have ?? "1");
@@ -296,7 +362,9 @@ export async function judgeGameplay(
 ): Promise<number[]> {
   if (!items.length) return [];
   // The hard rule first: nothing naming a different entry reaches the model, and nothing it keeps may either.
-  const allowed = new Set(items.map((v, i) => i).filter((i) => !wrongEntry(game, items[i]!.title)));
+  const allowed = new Set(
+    items.map((v, i) => i).filter((i) => !wrongEntry(game, items[i]!.title)),
+  );
   if (!allowed.size) return [];
   const r = await llm.structured({
     tier: "low",
@@ -306,7 +374,9 @@ export async function judgeGameplay(
     schema: GameplayJudgeSchema,
     effort: "low",
   });
-  return [...new Set(r.keep)].filter((i) => i >= 0 && i < items.length && allowed.has(i));
+  return [...new Set(r.keep)].filter(
+    (i) => i >= 0 && i < items.length && allowed.has(i),
+  );
 }
 
 /** Up to `max` gameplay videos of the game: Creative Commons first, then the publisher's own uploads. */
@@ -370,6 +440,7 @@ export async function findGameplay(
         url: `https://www.youtube.com/watch?v=${i.videoId}`,
         kind: "cc",
         durationSeconds: m.seconds,
+        chapters: videoChapters(m.description),
       });
       if (out.length >= max) return out;
     }
@@ -400,6 +471,7 @@ export async function findGameplay(
         url: `https://www.youtube.com/watch?v=${i.videoId}`,
         kind: "official",
         durationSeconds: m.seconds,
+        chapters: videoChapters(m.description),
       });
       if (out.length >= max) break;
     }
@@ -407,14 +479,91 @@ export async function findGameplay(
   return out;
 }
 
-/** A slice of the video (skipping the intro), video only, at most 720p. */
+/** A video's chapter list from its description: lines such as "12:34 Phnom Penh" or "1:02:03 - Finale". */
+export function videoChapters(
+  description: string,
+): Array<{ at: number; title: string }> {
+  const out: Array<{ at: number; title: string }> = [];
+  for (const line of description.split(/\r?\n/)) {
+    const m = line.match(
+      /^\s*\(?((?:\d{1,2}:)?\d{1,2}:\d{2})\)?\s*[-–—:|]?\s*(.{2,80})$/,
+    );
+    if (!m) continue;
+    const at = m[1]!
+      .split(":")
+      .map(Number)
+      .reduce((n, x) => n * 60 + x, 0);
+    if (out.length && at <= out[out.length - 1]!.at) continue;
+    out.push({ at, title: m[2]!.trim() });
+  }
+  return out.length >= 3 ? out : [];
+}
+
+const CHAPTER_STOP = new Set(
+  "the a an of and in on to for with at by from is it its this that part mission chapter level gameplay walkthrough".split(
+    " ",
+  ),
+);
+const chapterWords = (t: string) =>
+  t
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !CHAPTER_STOP.has(w));
+
+/**
+ * The chapter of a long playthrough that the lines name ("the Phnom Penh mission", "the Heist"), so that
+ * part is downloaded instead of the game's opening minutes (29 Oct 2026 review: every gameplay clip came
+ * from the first five minutes). The game's own name never counts as a match.
+ */
+export function chapterFor(
+  chapters: Array<{ at: number; title: string }>,
+  targets: Array<{ text: string; keywords: string[] }>,
+  game: string,
+): { at: number; title: string } | undefined {
+  if (!chapters.length) return undefined;
+  const skip = new Set(chapterWords(game));
+  const want = new Map<string, number>();
+  for (const t of targets)
+    for (const w of chapterWords(`${t.keywords.join(" ")} ${t.text}`))
+      if (!skip.has(w)) want.set(w, (want.get(w) ?? 0) + 1);
+  let best: { at: number; title: string } | undefined;
+  let bestScore = 0;
+  for (const c of chapters) {
+    const score = chapterWords(c.title)
+      .filter((w) => !skip.has(w))
+      .reduce((n, w) => n + (want.get(w) ?? 0), 0);
+    if (score > bestScore) {
+      best = c;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/** A slice of the video (skipping the intro, or the chapter the lines name), video only, at most 720p. */
 async function downloadSlice(
   src: GameplaySource,
   dest: string,
   ytdlp: string,
+  aim?: { targets: Array<{ text: string; keywords: string[] }>; game: string },
 ): Promise<number> {
-  const from = Math.min(60, Math.floor(src.durationSeconds * 0.1));
-  const to = Math.min(src.durationSeconds - 15, from + 300);
+  const named = aim && chapterFor(src.chapters ?? [], aim.targets, aim.game);
+  const next = named && src.chapters!.find((c) => c.at > named.at);
+  const from = named
+    ? Math.min(named.at, Math.max(0, src.durationSeconds - 60))
+    : Math.min(60, Math.floor(src.durationSeconds * 0.1));
+  const to = Math.min(
+    src.durationSeconds - 15,
+    from + 300,
+    next ? Math.max(from + 60, next.at) : Infinity,
+  );
+  if (named)
+    log("info", "gameplay chapter chosen", {
+      video: src.videoId,
+      chapter: named.title,
+      from,
+    });
   await fs.mkdir(path.dirname(dest), { recursive: true });
   await run(
     ytdlp,
@@ -812,6 +961,7 @@ export async function findMissionGameplay(
       url: `https://www.youtube.com/watch?v=${i.videoId}`,
       kind: "cc",
       durationSeconds: m.seconds,
+      chapters: videoChapters(m.description),
     };
   }
   return undefined;
@@ -851,7 +1001,10 @@ async function clipsFrom(
   for (const [i, src] of sources.entries()) {
     const file = path.join(work, `${prefix}_${i}.mp4`);
     try {
-      const total = await downloadSlice(src, file, o.ytdlp);
+      const total = await downloadSlice(src, file, o.ytdlp, {
+        targets,
+        game: o.game,
+      });
       files.push({ file, name: src.title, url: src.url, total, src });
     } catch (err) {
       log("warn", "gameplay download failed", {

@@ -39,6 +39,7 @@ import {
 } from "./components/Accents.tsx";
 import { ChannelStatic, STATIC_FRAMES } from "./components/Retro.tsx";
 import { OLD_YEAR } from "./retroplan.ts";
+import { keyTime } from "./longplan.ts";
 import { HookPoster } from "./components/HookPoster.tsx";
 import { V_STYLES } from "./components/vertical/index.ts";
 import { VBOX, type VStyle } from "./components/vertical/types.ts";
@@ -182,6 +183,32 @@ export const Short: React.FC<ShortProps> = (props) => {
       ? props.segments.slice(0, i).filter((x) => x.kind === "beat").length
       : undefined,
   );
+  // A graphic lands on the word it is about and stays a beat or two, not for the whole sentence (owner,
+  // 29 Oct 2026: cards sat for 4-10 s and covered the footage). Its words: the figure or name it shows.
+  const graphicWindow = (i: number): { from: number; len: number } => {
+    const s = props.segments[i]!;
+    const start = segmentStarts[i]!;
+    const end = segmentEnds[i]!;
+    const v = s.visual;
+    const hold = Math.round(
+      (s.kind === "take" ? 3.5 : v && ["list", "timeline", "compare"].includes(v.kind) ? 3 : 2.5) * fps,
+    );
+    let at = start;
+    if (v && s.kind !== "take") {
+      const lo = Math.max(0, words.findIndex((w) => w.start >= s.start - 0.05));
+      let hi = words.findIndex((w) => w.start >= s.end);
+      if (hi < 0) hi = words.length;
+      for (const key of [v.primary, ...(v.items ?? []), v.secondary].filter(Boolean)) {
+        const t = keyTime(words, lo, hi, key);
+        if (t !== undefined) {
+          at = Math.max(start, Math.round(t * fps) - 6);
+          break;
+        }
+      }
+    }
+    const len = Math.max(1, Math.min(end - at, hold));
+    return { from: at, len };
+  };
 
   // The new-look test (props.suite): the picture punches in on key words, some cuts get an accent (channel
   // static for an old game) and an old game's shots wear a tape or tube look by turns. The opening frame (the
@@ -415,8 +442,8 @@ export const Short: React.FC<ShortProps> = (props) => {
       </Sequence>
       {loopStart < durationInFrames ? (
         <Sequence
-          from={loopStart}
-          durationInFrames={durationInFrames - loopStart}
+          from={Math.max(loopStart, durationInFrames - 2 * fps)}
+          durationInFrames={Math.min(durationInFrames - loopStart, 2 * fps)}
           layout="none"
         >
           {poster ? (
@@ -444,8 +471,8 @@ export const Short: React.FC<ShortProps> = (props) => {
         s.kind === "beat" || s.kind === "take" ? (
           <Sequence
             key={i}
-            from={segmentStarts[i]!}
-            durationInFrames={Math.max(1, segmentEnds[i]! - segmentStarts[i]!)}
+            from={graphicWindow(i).from}
+            durationInFrames={graphicWindow(i).len}
             layout="none"
           >
             {vstyleOf.get(i) ? (
@@ -465,7 +492,7 @@ export const Short: React.FC<ShortProps> = (props) => {
                     secondary: s.visual!.secondary,
                     items: s.visual!.items ?? [],
                   },
-                  len: segmentEnds[i]! - segmentStarts[i]!,
+                  len: graphicWindow(i).len,
                   accent,
                   variant: props.variant + i,
                   src: props.images.find((im) => im.aspect >= 1.2)?.src,
@@ -477,7 +504,7 @@ export const Short: React.FC<ShortProps> = (props) => {
                 segment={s}
                 accent={accent}
                 takeLabel={theme.takeLabel}
-                durationInFrames={segmentEnds[i]! - segmentStarts[i]!}
+                durationInFrames={graphicWindow(i).len}
                 renderDate={props.renderDate}
                 images={props.images}
                 rankTotal={rankTotal}

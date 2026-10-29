@@ -61,7 +61,9 @@ export interface VoiceSettings {
   speed: number;
 }
 
-export const DEFAULT_VOICE_SETTINGS: VoiceSettings = { stability: 0.4, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true, speed: 1.05 };
+// Owner's pick of 29 Oct 2026 (sample B of three): on eleven_v3, stability 1.0 is the "robust" delivery, which
+// breathes far less audibly than 0.4; style 0 with it. The pace stays at 1.05.
+export const DEFAULT_VOICE_SETTINGS: VoiceSettings = { stability: 1.0, similarity_boost: 0.8, style: 0.0, use_speaker_boost: true, speed: 1.05 };
 
 export async function synthesise(text: string, outPath: string, opts: VoiceOptions): Promise<Narration> {
   if (!opts.apiKey) throw new FatalError("ELEVENLABS_API_KEY is not set");

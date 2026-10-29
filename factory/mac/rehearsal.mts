@@ -41,6 +41,12 @@ console.log("rehearsal", {
 const db = await openDb(cfg.databaseUrl, cfg.dataDir);
 await migrate(db);
 await db.query("DELETE FROM leases");
+// The snapshot carries the live Shorts schedule; in the sandbox nothing else is in production, so the long
+// render never waits for a Short's slot.
+await db.query(
+  "UPDATE episodes SET status = 'published', next_attempt_at = NULL WHERE id <> $1 AND status NOT IN ('published','failed','rejected')",
+  [process.argv[2] ?? ""],
+);
 const [target] = await db.query<{ id: string; has_plan: boolean }>(
   `UPDATE episodes SET status = 'voiced', attempts = 0, next_attempt_at = NULL, last_error = NULL, qa_json = NULL
      WHERE id = COALESCE($1, (SELECT id FROM episodes WHERE lane = 'longform' AND assets_json ? 'longPlan' ORDER BY id DESC LIMIT 1))

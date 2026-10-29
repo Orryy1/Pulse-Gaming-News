@@ -18,9 +18,8 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 grep -q 'brew shellenv' ~/.zprofile 2>/dev/null || echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
 
 echo "Installing the factory's tools (this takes a few minutes)..."
-brew install node git ffmpeg yt-dlp ollama cloudflared python@3.12 || true
+brew install node git ffmpeg yt-dlp cloudflared python@3.12 || true
 brew install --cask brave-browser claude || true
-brew services start ollama || true
 
 echo "Keeping the Mac awake and restarting after power cuts..."
 sudo pmset -a sleep 0 disksleep 0 displaysleep 30 autorestart 1 womp 1

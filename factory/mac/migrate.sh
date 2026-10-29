@@ -25,17 +25,18 @@ hello)
 
 prepare)
   echo "== tools"
-  on_mac 'for t in node git ffmpeg yt-dlp cloudflared ollama python3.12 rsync; do command -v $t >/dev/null || brew install ${t/python3.12/python@3.12}; done; node -v'
+  on_mac 'for t in node git ffmpeg yt-dlp cloudflared python3.12 rsync; do command -v $t >/dev/null || brew install ${t/python3.12/python@3.12}; done; node -v'
   echo "== code (a bare repo the PC pushes to; mac/post-receive typechecks before switching)"
   on_mac 'mkdir -p ~/PulseFactory/factory && cd ~/PulseFactory && [ -d repo.git ] || git init -q --bare repo.git'
   scp -q mac/post-receive pulse-mac:PulseFactory/repo.git/hooks/post-receive
   on_mac 'chmod +x ~/PulseFactory/repo.git/hooks/post-receive'
   git -C .. remote get-url mac >/dev/null 2>&1 || git -C .. remote add mac pulse-mac:PulseFactory/repo.git
   git -C .. push mac "$BRANCH"
-  echo "== speech check (MLX Whisper) and the frame screen's vision model"
+  echo "== speech check (MLX Whisper)"
   on_mac 'cd ~/PulseFactory && [ -x asr/bin/python ] || python3.12 -m venv asr; asr/bin/pip install -q --upgrade pip mlx-whisper'
   on_mac 'bash ~/PulseFactory/factory/mac/launchd.sh && sleep 3 && curl -s http://127.0.0.1:8877/health'
-  on_mac 'brew services start ollama >/dev/null 2>&1; ollama pull qwen3-vl:8b >/dev/null && echo "vision model ready"'
+  # The frame screen's vision model and the free Liam voice stay on the PC's 4090 (owner, 28 Oct 2026): the
+  # Mac reaches them over the LAN, so no model is pulled onto its 16 GB.
   echo "== checks on the Mac"
   on_mac 'cd ~/PulseFactory/factory && npx tsc --noEmit -p . && node --import tsx --test tests/*.test.ts 2>&1 | grep -E "^ℹ (pass|fail)"'
   echo "prepare done: run mac/migrate.sh cutover when ready"
@@ -45,8 +46,14 @@ cutover)
   echo "== settings (.env, with the Mac's paths)"
   home=$(on_mac 'echo $HOME')
   tmp=$(mktemp)
-  grep -vE '^(DATA_DIR|YTDLP_PATH|FFMPEG_PATH|FFPROBE_PATH|LOCAL_TTS_URL|VOICE_PROVIDER|REMOTION_CONCURRENCY)=' .env > "$tmp"
-  printf 'DATA_DIR=%s/PulseFactory/factory/data\nVOICE_PROVIDER=elevenlabs\nREMOTION_CONCURRENCY=6\n' "$home" >> "$tmp"
+  # The PC keeps serving the free Liam voice (8766) and the frame screen's vision model (11434) over the LAN:
+  # ElevenLabs first, Liam when the credits run out, as on the PC (Martin's money rule). The PC's name is
+  # tried first; its hub address when the Mac cannot resolve .local.
+  pc=DESKTOP-D3EI9PV.local
+  on_mac "curl -sf -m 5 http://$pc:8766/health >/dev/null" || pc=192.168.0.93
+  echo "   the Mac reaches the PC as $pc"
+  grep -vE '^(DATA_DIR|YTDLP_PATH|FFMPEG_PATH|FFPROBE_PATH|LOCAL_TTS_URL|LOCAL_VISION_URL|VOICE_PROVIDER|REMOTION_CONCURRENCY)=' .env > "$tmp"
+  printf 'DATA_DIR=%s/PulseFactory/factory/data\nVOICE_PROVIDER=elevenlabs-first\nLOCAL_TTS_URL=http://%s:8766\nLOCAL_VISION_URL=http://%s:11434\nREMOTION_CONCURRENCY=6\n' "$home" "$pc" "$pc" >> "$tmp"
   scp -q "$tmp" pulse-mac:PulseFactory/factory/.env && rm -f "$tmp"
   on_mac 'chmod 600 ~/PulseFactory/factory/.env'
   echo "== tunnel files (started at cutover)"
@@ -64,6 +71,13 @@ cutover)
   sleep 5
   echo "== final copy (database and episodes)"
   tar -C data -cf - db episodes site engage admin discord $(cd data && ls -d tokens tiktok-session.json 2>/dev/null) | on_mac 'mkdir -p ~/PulseFactory/factory/data && cd ~/PulseFactory/factory/data && rm -f db.lock && tar -xf -'
+  # The platform logins live outside the data folder (Threads, TikTok, Facebook, Instagram), and the Spanish
+  # music beds are not in git.
+  if [ -d /d/pulse-data/tokens ]; then
+    tar -C /d/pulse-data -cf - tokens | on_mac 'cd ~/PulseFactory/factory/data && tar -xf - && chmod 600 tokens/*'
+  fi
+  [ -d public/music/es ] && tar -cf - public/music/es | on_mac 'cd ~/PulseFactory/factory && tar -xf -'
+  echo "== the five Brave routines now read the Mac (pulse-mac.local:8080); check them in the scheduled tasks list"
   echo "== starting the Mac side"
   on_mac 'bash ~/PulseFactory/factory/mac/launchd.sh factory'
   ok=no

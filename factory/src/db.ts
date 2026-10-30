@@ -138,7 +138,13 @@ export async function migrate(db: Db): Promise<string[]> {
  * Cross-process mutex so two replicas (or an overlapping tick) never advance
  * the pipeline at once. The lease expires on its own if the holder dies.
  */
-export async function withLease<T>(db: Db, name: string, ttlSeconds: number, fn: () => Promise<T>): Promise<T | undefined> {
+/** What a lease holder may ask mid-run: whether it still holds the lease (a watchdog may have released it). */
+export interface Lease {
+  holder: string;
+  held(): Promise<boolean>;
+}
+
+export async function withLease<T>(db: Db, name: string, ttlSeconds: number, fn: (lease: Lease) => Promise<T>): Promise<T | undefined> {
   const holder = `${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
   const rows = await db.query<{ holder: string }>(
     `INSERT INTO leases (name, holder, expires_at) VALUES ($1, $2, now() + make_interval(secs => $3))
@@ -148,8 +154,15 @@ export async function withLease<T>(db: Db, name: string, ttlSeconds: number, fn:
     [name, holder, ttlSeconds],
   );
   if (rows[0]?.holder !== holder) return undefined;
+  const lease: Lease = {
+    holder,
+    held: async () => {
+      const [row] = await db.query<{ ok: boolean }>(`SELECT (holder = $2 AND expires_at > now()) AS ok FROM leases WHERE name = $1`, [name, holder]);
+      return Boolean(row?.ok);
+    },
+  };
   try {
-    return await fn();
+    return await fn(lease);
   } finally {
     await db.query(`DELETE FROM leases WHERE name = $1 AND holder = $2`, [name, holder]);
   }

@@ -214,14 +214,23 @@ async function renderWithTurn(
   await withPcTurn(
     job,
     async (granted) => {
-      await renderMediaWatched({
-        ...(await renderMemory(granted)),
-        ...options,
-      });
+      rendersActive++;
+      try {
+        await renderMediaWatched({
+          ...(await renderMemory(granted)),
+          ...options,
+        });
+      } finally {
+        rendersActive--;
+      }
     },
     yieldAfter,
   );
 }
+
+/** Renders drawing frames right now (the wait for a PC turn does not count): the lane watchdog never acts during one. */
+let rendersActive = 0;
+export const activeRenders = (): number => rendersActive;
 
 /** Minutes without a new frame before a render counts as frozen (before the first frame, and after it). */
 export const STALL_MINUTES = { first: 15, between: 10 };

@@ -11,8 +11,7 @@
 
 import path from "node:path";
 import fs from "node:fs/promises";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { runCapped } from "../lib/child.ts";
 import { z } from "zod";
 import type { Llm } from "../editorial/llm.ts";
 import type { VisualAsset } from "./steam.ts";
@@ -30,7 +29,8 @@ import { trailerMatchesGame, distinguishing } from "./commons.ts";
 import { normTitle } from "./igdb.ts";
 import { fetchWithTimeout, errorMessage, log } from "../lib/util.ts";
 
-const run = promisify(execFile);
+// Every child (yt-dlp, ffmpeg) runs under the download cap and is killed on overrun (src/lib/child.ts).
+const run = runCapped;
 const API = "https://www.googleapis.com/youtube/v3";
 
 export interface GameplaySource {

@@ -52,7 +52,12 @@ import {
   isPublicOnYouTube,
 } from "./social/crosspost.ts";
 import { engageTick } from "./social/engage.ts";
-import { renderEngage, sweepRenderTemp } from "./render/render.ts";
+import {
+  activeRenders,
+  renderEngage,
+  sweepRenderTemp,
+} from "./render/render.ts";
+import { watchLongLane } from "./longlane.ts";
 import {
   handleSite,
   startGameWarmer,
@@ -1414,9 +1419,18 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
 }
 
 let running = false;
+/** The long lane as the watchdog sees it (src/longlane.ts): when this process started, what it last reported. */
+const laneState = {
+  startedAt: new Date().toISOString(),
+  lastLongTick: undefined as string | undefined,
+  stallReported: undefined as string | undefined,
+  longTicking: false,
+  rendering: false,
+  uploading: false,
+};
 async function runTick(
   services: Services,
-  state: { lastTick?: string; lastError?: string },
+  state: { lastTick?: string; lastError?: string; lastLongTick?: string },
 ): Promise<void> {
   if (running) return;
   running = true;
@@ -1426,6 +1440,24 @@ async function runTick(
     state.lastError = undefined;
     if (r.ran && services.cfg.healthcheckPingUrl)
       await fetch(services.cfg.healthcheckPingUrl).catch(() => undefined);
+    // The long lane's watchdog: a long tick not completed for LONG_TICK_STALL_MINUTES while no render or
+    // upload is running is reported and its lease released, so the next pass can run. Never kills a render.
+    laneState.lastLongTick = state.lastLongTick;
+    laneState.longTicking = runningLong;
+    laneState.rendering = activeRenders() > 0;
+    laneState.uploading = activeUploads() > 0;
+    await watchLongLane({
+      db: services.db,
+      now: new Date(),
+      stallMinutes: services.cfg.longTickStallMinutes,
+      state: laneState,
+      notify: (m) => services.notify(m),
+      reset: () => {
+        runningLong = false;
+      },
+    }).catch((err) =>
+      log("warn", "long lane watchdog failed", { error: errorMessage(err) }),
+    );
   } catch (err) {
     state.lastError = errorMessage(err);
     log("error", "tick crashed", { error: state.lastError });

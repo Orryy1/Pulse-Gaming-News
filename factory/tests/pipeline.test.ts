@@ -1743,6 +1743,23 @@ test("only one long video is worked on at a time", async () => {
   await db.close();
 });
 
+test("the long lane works the nearest slot first, an unscripted video due within hours ahead of the rest", async () => {
+  // 30 Oct 2026: the weekly recap for 20:00 waited behind the Halo ranking's gather and missed its slot.
+  const { s, db } = await setup({ newsSlots: [] });
+  await longEpisode(db, "far");
+  await longEpisode(db, "soon");
+  await longEpisode(db, "none");
+  const now = s.now().getTime();
+  await db.query(`UPDATE episodes SET slot_at = $2 WHERE id = $1`, ["far", new Date(now + 30 * 3600_000)]);
+  await db.query(`UPDATE episodes SET slot_at = $2 WHERE id = $1`, ["soon", new Date(now + 2 * 3600_000)]);
+  const writer = slowLongWriter(s);
+  const run = tickLong(s);
+  await writer.writing;
+  writer.release();
+  assert.deepEqual(await run, { ran: true, episodes: ["soon", "far", "none"] });
+  await db.close();
+});
+
 test("the retention test rides a news Short: announced once, recorded on the episode, checked on the draft, and the media-richness measure lands in qa_json", async () => {
   const { db, f, s } = await setup({ growthTests: true });
   await tick(s);

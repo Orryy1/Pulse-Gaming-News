@@ -56,9 +56,12 @@ import { unloadLocalVision } from "./assets/localvision.ts";
 import {
   tightenPauses,
   chapterGaps,
+  gapSpans,
   insertSilence,
   openWords,
 } from "./voice/pauses.ts";
+import { quietBeatGaps } from "./voice/quietbeats.ts";
+import { soundDesignLine, soundDesignSummary } from "./render/sounddesign.ts";
 
 /** Seconds of breather before each documentary chapter: narrator silent, music up, the chapter's title full screen. */
 const DOC_BREAK_SECONDS = 4;
@@ -4170,16 +4173,26 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
         .filter((g) => g.kind === "beat" && g.visual?.kind === "chapter")
         .map((g) => narration.words.findIndex((w) => w.start >= g.start - 0.05))
         .filter((k) => k > 0);
-      const gaps = chapterGaps(narration.words, firstWords, DOC_BREAK_SECONDS);
+      // The writer's quiet beats take a breath after their sentence too (src/voice/quietbeats.ts).
+      const quiet = s.cfg.docSoundBeats
+        ? quietBeatGaps(ep.script_json, narration.words, segs)
+        : [];
+      const gaps = [
+        ...chapterGaps(narration.words, firstWords, DOC_BREAK_SECONDS),
+        ...quiet,
+      ];
       if (gaps.length) {
         await insertSilence(path.join(dir, "voice.mp3"), gaps);
         narration.words = openWords(narration.words, gaps);
         narration.durationSeconds += gaps.reduce((n, g) => n + g.seconds, 0);
-        let added = 0;
-        breaks = gaps.map((g) => {
-          const start = g.at + added;
-          added += g.seconds;
-          return { start, end: start + g.seconds };
+        breaks = gapSpans(gaps)
+          .filter((g) => g.kind === "chapter")
+          .map((g) => ({ start: g.start, end: g.end }));
+        if (quiet.length)
+          await logEvent(s.db, ep.id, "quiet_beats", {
+            breaths: quiet.length,
+            seconds:
+              Math.round(quiet.reduce((n, g) => n + g.seconds, 0) * 10) / 10,
         });
       }
     } catch (err) {
@@ -6214,6 +6227,20 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     JSON.stringify(assets),
   ]);
   const doc = script.evergreen_format === "documentary";
+  // What the mix will do with the writer's beats and the era beds (src/render/sounddesign.ts), logged and
+  // told to the owner in one line; DOC_SOUND_BEATS off means neither.
+  if (doc && s.cfg.docSoundBeats && hasMoments) {
+    const sound = soundDesignSummary(
+      moments,
+      [...(script.entries ?? [])]
+        .sort((a, b) => b.rank - a.rank)
+        .map((e) => e.year),
+      true,
+    );
+    await logEvent(s.db, ep.id, "sound_design", { ...sound });
+    if (sound.total || sound.chapters)
+      await s.notify({ content: soundDesignLine(script.headline, sound) });
+  }
   // Two alternative titles for the Test & compare (one mid-tier call; a failure only means no title test).
   if (!script.youtube.title_variants) {
     const variants = await titleVariants(s.llm, script).catch(
@@ -6482,6 +6509,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
                   : m.graphic,
                 emphasis: m.emphasis,
                 person: m.person || undefined,
+                // The sound editor's cue (src/render/musicplan.ts), when the setting is on.
+                beat: s.cfg.docSoundBeats ? m.beat : undefined,
               })),
             )
           : undefined,
@@ -6499,6 +6528,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         quietBreaks: assets.quietBreaks,
         palette: assets.palette,
         annotations: assets.annotations,
+        eraBeds: doc && s.cfg.docSoundBeats,
       },
     })
     .then(

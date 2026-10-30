@@ -5,7 +5,12 @@
 
 import {
   BEDS,
+  ERA_BEDS,
+  ERA_BED_FADE_IN_SECONDS,
+  ERA_BED_FADE_OUT_SECONDS,
+  ERA_BED_SECONDS,
   MOOD_BEDS,
+  eraBed,
   gateLongSounds,
   inKey,
   leadFrames,
@@ -62,9 +67,16 @@ import {
 } from "./components/LongMoments.tsx";
 import { displayText, type Segment } from "./timeline.ts";
 import {
+  BEAT_CLEAR_SECONDS,
+  TURN_MIN_SECTION_SECONDS,
+  TURN_REACH_SECONDS,
+  beatCuesFrom,
+  beatLevel,
   dropLevel,
   dropOuts,
   musicSections,
+  nearBeat,
+  turnSections,
   type MusicChapter,
   type Mood,
 } from "./musicplan.ts";
@@ -187,6 +199,8 @@ export type LongProps = {
   musicSrc: string | null;
   /** Epidemic Sound beds in this bundle (house or a mood), alongside the generated ones. */
   extraBeds?: Array<{ file: string; key: "D" | "E"; mood: string }>;
+  /** A documentary: each chapter opens on the quiet bed of its era (src/render/soundscape.ts eraBed). */
+  eraBeds?: boolean;
   durationSeconds: number;
   variant: number;
   renderDate: string;
@@ -2014,6 +2028,20 @@ export const Long: React.FC<LongProps> = (props) => {
         : [],
     [props.moments, props.segments, words],
   );
+  // The writer's beats on the timeline (src/render/musicplan.ts): the music and the sounds react to them.
+  const beatCues = useMemo(
+    () =>
+      beatCuesFrom(
+        windows,
+        props.moments,
+        fps,
+        (props.breaks ?? []).map((b) => ({
+          from: Math.round(b.start * fps),
+          to: Math.round(b.end * fps),
+        })),
+      ),
+    [windows, props.moments, props.breaks, fps],
+  );
   const starts = props.segments.map((s, i) =>
     i === 0 ? 0 : Math.round(s.start * fps),
   );
@@ -2109,13 +2137,19 @@ export const Long: React.FC<LongProps> = (props) => {
         .join(" "),
       year: Number(props.segments[i]!.visual?.items?.[0]) || undefined,
     }));
-    const sections = musicSections(
-      chapters,
-      durationInFrames,
-      documentary,
-      45 * fps,
-      MUSIC_SECTION_SECONDS * fps,
-      (m) => moodBeds(m).length > 0,
+    // A turn beat pulls the nearest bed change onto its line (src/render/musicplan.ts turnSections).
+    const sections = turnSections(
+      musicSections(
+        chapters,
+        durationInFrames,
+        documentary,
+        45 * fps,
+        MUSIC_SECTION_SECONDS * fps,
+        (m) => moodBeds(m).length > 0,
+      ),
+      beatCues.filter((c) => c.kind === "turn").map((c) => c.start),
+      TURN_REACH_SECONDS * fps,
+      TURN_MIN_SECTION_SECONDS * fps,
     );
     // The house list: the generated beds, then the Epidemic ones, starting from the video's own bed.
     const house = [
@@ -2141,7 +2175,14 @@ export const Long: React.FC<LongProps> = (props) => {
       return { from: sec.from, to: sec.to, src: house[k++ % house.length]! };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.musicSrc, props.segments, props.extraBeds, durationInFrames, fps]);
+  }, [
+    props.musicSrc,
+    props.segments,
+    props.extraBeds,
+    durationInFrames,
+    fps,
+    beatCues,
+  ]);
   // A documentary's breathers: the chapter segment that opens on one, and the frames it lasts.
   const breakFrames = (props.breaks ?? []).map((b) => ({
     from: Math.round(b.start * fps),
@@ -2326,7 +2367,10 @@ export const Long: React.FC<LongProps> = (props) => {
   // as nothing else is drawn for that entry in the meantime.
   const drawn = (entry: number, moment: number): boolean => {
     const r = props.moments?.[entry]?.[moment];
-    return !!r && (usefulGraphic(r.graphic) || (!!r.emphasis && usefulEmphasis(r.emphasis)));
+    return (
+      !!r &&
+      (usefulGraphic(r.graphic) || (!!r.emphasis && usefulEmphasis(r.emphasis)))
+    );
   };
   const readSeconds = (entry: number, moment: number): number => {
     const r = props.moments?.[entry]?.[moment];
@@ -2653,7 +2697,7 @@ export const Long: React.FC<LongProps> = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windows, plan, props.moments, props.images, fps, retro]);
   // The music drops out for a beat on one key line a section (src/render/musicplan.ts), never in the hook,
-  // a breather or around an entry change.
+  // a breather, around an entry change or near a beat the writer marked (that one has its own drop).
   const drops = useMemo(
     () =>
       dropOuts(
@@ -2663,10 +2707,13 @@ export const Long: React.FC<LongProps> = (props) => {
         (f) =>
           f < 20 * fps ||
           entryFrames.some((e) => Math.abs(f - e) < 3 * fps) ||
-          breakFrames.some((b) => f >= b.from - 3 * fps && f <= b.to + 3 * fps),
+          breakFrames.some(
+            (b) => f >= b.from - 3 * fps && f <= b.to + 3 * fps,
+          ) ||
+          nearBeat(f, beatCues, BEAT_CLEAR_SECONDS * fps),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [beds, punches, fps],
+    [beds, punches, fps, beatCues],
   );
   // The suite (src/render/components/packs): each graphic kind rotates through the house design and every
   // pack style that can draw it, so two stats or two headlines in a video never look the same. A figure
@@ -2929,6 +2976,24 @@ export const Long: React.FC<LongProps> = (props) => {
         if (!raw) return [];
         const { from, len, anchored } = spanOf(k);
         const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
+        // A record beat: the sting (in the bed's key) lands on the sentence's key word, instead of whatever
+        // sound its graphic would have had, and never within 4 s of a key line's silence (keys from 500000).
+        const recordAt = Math.round(Math.max(w.start, w.at) * fps);
+        if (
+          raw.beat === "record" &&
+          beatCues.some((c) => c.kind === "record" && c.at === recordAt) &&
+          !beatCues.some(
+            (c) =>
+              c.kind === "key" &&
+              recordAt >= c.start - 4 * fps &&
+              recordAt <= c.end + 4 * fps,
+          )
+        ) {
+          richSoundAt.set(500000 + k, recordAt);
+          return [
+            { key: 500000 + k, frame: recordAt, kind: "record" as const },
+          ];
+        }
         const style = packFor.get(k);
         if (style) {
           const at = from + (style.sound === "stamp" ? 34 : 0);
@@ -3607,15 +3672,17 @@ export const Long: React.FC<LongProps> = (props) => {
         const name = momentSounds.get(key);
         if (!name) return null;
         const vol =
-          name === "retro/static"
-            ? LEVEL.staticLong
-            : name.startsWith("retro/")
-              ? LEVEL.retroLong
-              : name.includes("land")
-                ? LEVEL.landLong
-                : name.includes("air")
-                  ? LEVEL.airLong
-                  : LEVEL.glintLong;
+          name === SFX.sting
+            ? LEVEL.recordLong
+            : name === "retro/static"
+              ? LEVEL.staticLong
+              : name.startsWith("retro/")
+                ? LEVEL.retroLong
+                : name.includes("land")
+                  ? LEVEL.landLong
+                  : name.includes("air")
+                    ? LEVEL.airLong
+                    : LEVEL.glintLong;
         return (
           <Sequence
             key={`rs${key}`}
@@ -3738,6 +3805,7 @@ export const Long: React.FC<LongProps> = (props) => {
                 return (
                   musicVolume(from + f) *
                   dropLevel(from + f, drops) *
+                  beatLevel(from + f, beatCues, fps) *
                   Math.max(0, edge)
                 );
               }}
@@ -3745,6 +3813,40 @@ export const Long: React.FC<LongProps> = (props) => {
           </Sequence>
         );
       })}
+      {/* A documentary chapter opens on the quiet bed of its era (src/render/soundscape.ts eraBed) under its
+          first ERA_BED_SECONDS, fading in and out, and out entirely under a key line like the music. */}
+      {props.eraBeds && documentary
+        ? props.segments.map((s, i) => {
+            if (s.kind !== "beat" || s.visual?.kind !== "chapter" || i === 0)
+              return null;
+            const era = eraBed(Number(s.visual?.items?.[0]) || undefined);
+            const from = starts[i]!;
+            const span = Math.min(
+              ERA_BED_SECONDS * fps,
+              durationInFrames - from,
+            );
+            if (!era || span < 2 * fps) return null;
+            const fadeIn = ERA_BED_FADE_IN_SECONDS * fps;
+            const fadeOut = ERA_BED_FADE_OUT_SECONDS * fps;
+            return (
+              <Sequence
+                key={`era${i}`}
+                from={from}
+                durationInFrames={span}
+                layout="none"
+              >
+                <Audio
+                  src={staticFile(ERA_BEDS[era])}
+                  volume={(f) =>
+                    LEVEL.eraLong *
+                    Math.max(0, Math.min(1, f / fadeIn, (span - f) / fadeOut)) *
+                    beatLevel(from + f, beatCues, fps)
+                  }
+                />
+              </Sequence>
+            );
+          })
+        : null}
     </AbsoluteFill>
   );
 };

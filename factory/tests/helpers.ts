@@ -137,6 +137,7 @@ export function testConfig(
     docLeadMinutes: 600,
     docMaxSeconds: 3000,
     docClipsPerChapter: 4,
+    docSoundBeats: true,
     crosspost: {
       facebook: false,
       instagram: false,

@@ -162,6 +162,63 @@ export async function cutAudio(file: string, cuts: Cut[]): Promise<void> {
 export interface Gap {
   at: number;
   seconds: number;
+  /** A chapter's breather (the title card plays over it) or a quiet beat's breath; a chapter when unset. */
+  kind?: "chapter" | "quiet";
+}
+
+/** The writer's quiet beat lengthens the pause after its sentence by up to this long ... */
+export const QUIET_BEAT_SECONDS = 0.8;
+/** ... but the whole pause never grows past this: a longer hole reads as the voice cutting out. */
+export const QUIET_BEAT_PAUSE_MAX = 1.4;
+
+/**
+ * The breaths after the writer's quiet beats (pure): for each sentence window (seconds, the window's
+ * last word is the last one starting inside it), silence in the middle of the pause before the next
+ * word, as much as takes that pause to QUIET_BEAT_PAUSE_MAX and never more than QUIET_BEAT_SECONDS.
+ * A sentence that ends the narration, or whose pause is already long enough, gets nothing.
+ */
+export function quietGaps(
+  words: TimedWord[],
+  windows: Array<{ start: number; end: number }>,
+): Gap[] {
+  const out: Gap[] = [];
+  for (const w of windows) {
+    let k = -1;
+    for (let i = 0; i < words.length; i++)
+      if (words[i]!.start >= w.start - 0.05 && words[i]!.start < w.end) k = i;
+    const last = words[k];
+    const next = words[k + 1];
+    if (!last || !next) continue;
+    const pause = Math.max(0, next.start - last.end);
+    const extra = Math.min(QUIET_BEAT_SECONDS, QUIET_BEAT_PAUSE_MAX - pause);
+    if (extra < 0.1) continue;
+    const at = Math.round(((last.end + next.start) / 2) * 1000) / 1000;
+    if (out.some((g) => Math.abs(g.at - at) < 0.5)) continue;
+    out.push({ at, seconds: Math.round(extra * 1000) / 1000, kind: "quiet" });
+  }
+  return out;
+}
+
+/**
+ * Where each gap lands once they are all put in (pure): sorted by time, each one's start shifted by the
+ * silence put in before it. The chapter ones become the render's breathers (the title card plays over
+ * them); the quiet ones are only the narration taking a breath.
+ */
+export function gapSpans(
+  gaps: Gap[],
+): Array<{ start: number; end: number; kind: "chapter" | "quiet" }> {
+  let added = 0;
+  return [...gaps]
+    .sort((a, b) => a.at - b.at)
+    .map((g) => {
+      const start = Math.round((g.at + added) * 1000) / 1000;
+      added += g.seconds;
+      return {
+        start,
+        end: Math.round((start + g.seconds) * 1000) / 1000,
+        kind: g.kind ?? "chapter",
+      };
+    });
 }
 
 /** Word timings after silence is put in: every word at or after a gap moves later by it. */

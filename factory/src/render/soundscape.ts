@@ -49,7 +49,51 @@ export const LEVEL = {
   /** The retro sounds, at the lab's levels less the long videos' 2 dB: the TV and tape 18 dB under the narrator, static 22. */
   retroLong: 0.139,
   staticLong: 0.088,
+  /**
+   * A record beat's sting (30 Oct 2026): the brand sting at its long-video level (10 dB under the narrator
+   * less 2 dB, 0.346) and a quarter down again because it plays under a spoken line (UNDER_VOICE): 0.26,
+   * about 14 dB under the narrator, so the word it marks is never masked.
+   */
+  recordLong: 0.26,
+  /**
+   * An era bed (public/soundscape/era, made by data/smoke/erabeds.mts at ERA_BED_TARGET_LUFS): played 3 dB
+   * down from its file, so it sits at about -36 LUFS under the chapter's opening, texture rather than sound.
+   */
+  eraLong: 0.708,
 } as const;
+
+// ---------------------------------------------------------------- era beds (30 Oct 2026)
+/**
+ * A quiet ambient bed for the period a chapter opens in, under its first ERA_BED_SECONDS: an arcade room's
+ * hum and crowd wash for the 1980s, a console's boot hum for the early 1990s, a modem's warble (kept far
+ * down) for 1995-2003, and a clean room tone after that. Synthesised with ffmpeg (no licensed asset exists
+ * for these), mastered to ERA_BED_TARGET_LUFS and checked under ERA_BED_LUFS_CEILING by the same script.
+ */
+export const ERA_BEDS = {
+  arcade: "soundscape/era/arcade.wav",
+  console: "soundscape/era/console.wav",
+  modem: "soundscape/era/modem.wav",
+  room: "soundscape/era/room.wav",
+} as const;
+export type EraBed = keyof typeof ERA_BEDS;
+/** How long a chapter's era bed plays from the chapter's first frame, fades included. */
+export const ERA_BED_SECONDS = 20;
+/** The beds fade in over this long and out over ERA_BED_FADE_OUT_SECONDS at the end of their 20 s. */
+export const ERA_BED_FADE_IN_SECONDS = 1;
+export const ERA_BED_FADE_OUT_SECONDS = 3;
+/** The files are mastered to this integrated loudness ... */
+export const ERA_BED_TARGET_LUFS = -33;
+/** ... and a file louder than this fails the validate step (the lead's ceiling). */
+export const ERA_BED_LUFS_CEILING = -30;
+
+/** The era bed for a chapter whose game came out in `year`; none when the year is unknown. */
+export function eraBed(year: number | undefined): EraBed | undefined {
+  if (!year || !Number.isFinite(year) || year < 1970) return undefined;
+  if (year < 1990) return "arcade";
+  if (year < 1995) return "console";
+  if (year <= 2003) return "modem";
+  return "room";
+}
 
 /** Under the narrator a sound dips by a quarter, so a word is never masked. */
 export const UNDER_VOICE = 0.75;
@@ -141,18 +185,22 @@ export const leadFrames = (name: string, fps: number) =>
 export interface LongSoundCandidate {
   key: number; // the moment window's index
   frame: number;
-  kind: "glint" | "pop" | "stamp" | RetroKind; // stamp: the delay card's rubber stamp lands
+  /** stamp: the delay card's rubber stamp lands; record: the writer's record beat (the sting, in key). */
+  kind: "glint" | "pop" | "stamp" | "record" | RetroKind;
 }
 
 /** The retro kit's moments: a screen switching on, a tape going in, static on a cut. */
 type RetroKind = "tvon" | "vhs" | "static";
 const isRetro = (k: LongSoundCandidate["kind"]): k is RetroKind =>
   k === "tvon" || k === "vhs" || k === "static";
+/** Record stings at least this far apart: a sting is the loudest cue, and two a minute would cheapen it. */
+export const RECORD_GAP_SECONDS = 45;
 
 /**
  * Which moment sounds a long video plays: glints at least 8 s apart, pop-in whooshes at least 14 s
- * apart, any two sounds at least 4 s apart, and silence within 1.5 s of an entry change (its swell and
- * landing own that moment). Variants rotate so the same sound never plays twice running.
+ * apart, record stings RECORD_GAP_SECONDS apart, any two sounds at least 4 s apart, and silence within
+ * 1.5 s of an entry change (its swell and landing own that moment). Variants rotate so the same sound
+ * never plays twice running.
  */
 export function gateLongSounds(
   cands: LongSoundCandidate[],
@@ -163,13 +211,19 @@ export function gateLongSounds(
   const near = (f: number) =>
     entryFrames.some((e) => Math.abs(f - e) < 1.5 * fps);
   const chosen: number[] = [];
-  const lastOf = { glint: -Infinity, pop: -Infinity, stamp: -Infinity };
-  const turn = { glint: 0, pop: 0, stamp: 0 };
-  // The retro kit's sounds belong to what is on screen, so they claim their moments first; the moment sounds
-  // then fit around them by the same rules.
+  const lastOf = {
+    glint: -Infinity,
+    pop: -Infinity,
+    stamp: -Infinity,
+    record: -Infinity,
+  };
+  const turn = { glint: 0, pop: 0, stamp: 0, record: 0 };
+  // The retro kit's sounds belong to what is on screen and a record sting to the writer's line, so they
+  // claim their moments first; the moment sounds then fit around them by the same rules.
+  const claims = (k: LongSoundCandidate["kind"]) =>
+    Number(isRetro(k) || k === "record");
   const order = [...cands].sort(
-    (a, b) =>
-      Number(isRetro(b.kind)) - Number(isRetro(a.kind)) || a.frame - b.frame,
+    (a, b) => claims(b.kind) - claims(a.kind) || a.frame - b.frame,
   );
   for (const c of order) {
     if (near(c.frame) || chosen.some((f) => Math.abs(c.frame - f) < 4 * fps))
@@ -177,6 +231,13 @@ export function gateLongSounds(
     if (isRetro(c.kind)) {
       out.set(c.key, RETRO_SFX[c.kind]);
       chosen.push(c.frame);
+      continue;
+    }
+    if (c.kind === "record") {
+      if (c.frame - lastOf.record < RECORD_GAP_SECONDS * fps) continue;
+      out.set(c.key, SFX.sting);
+      chosen.push(c.frame);
+      lastOf.record = c.frame;
       continue;
     }
     const gap = c.kind === "glint" ? 8 : c.kind === "stamp" ? 20 : 14;

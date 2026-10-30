@@ -126,6 +126,8 @@ export type AnyMoment = Omit<Moment, "graphic"> & {
       | "lineage";
   };
   broll?: string;
+  /** The sound editor's cue for the sentence (src/editorial/documentary.ts DOC_BEAT_KINDS). */
+  beat?: "none" | "reveal" | "key" | "record" | "turn" | "quiet";
 };
 
 /** Sentences as the narration is split for moments and on-screen timing. */

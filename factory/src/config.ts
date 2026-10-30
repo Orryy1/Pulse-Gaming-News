@@ -206,6 +206,9 @@ export interface Config {
   minWordsPerMinute: number;
   docMaxSeconds: number;
   docClipsPerChapter: number;
+  /** The documentary mix follows the writer's beats and plays an era bed under each chapter's opening
+   * (DOC_SOUND_BEATS, default on): off, the beats are still written but the mix and the voice ignore them. */
+  docSoundBeats: boolean;
   crosspost: {
     facebook: boolean;
     instagram: boolean;
@@ -587,6 +590,7 @@ export function loadConfig(): Config {
     minWordsPerMinute: int("MIN_WORDS_PER_MINUTE", 145),
     docMaxSeconds: int("DOC_MAX_SECONDS", 3000),
     docClipsPerChapter: int("DOC_CLIPS_PER_CHAPTER", 4),
+    docSoundBeats: bool("DOC_SOUND_BEATS", true),
     crosspost: {
       facebook: bool("CROSSPOST_FACEBOOK", true),
       instagram: bool("CROSSPOST_INSTAGRAM", true),

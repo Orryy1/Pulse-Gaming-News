@@ -125,3 +125,156 @@ export function dropLevel(f: number, drops: number[]): number {
   }
   return level;
 }
+
+// ---------------------------------------------------------------- the writer's beats (30 Oct 2026)
+// The documentary writer marks a few sentences a chapter (src/editorial/documentary.ts DOC_BEAT_KINDS) and
+// the mix reacts: the music ducks before a reveal, leaves entirely under the key line, a sting marks a
+// record, the bed changes on a turn, and the narrator leaves a breath after a quiet line (that one is put
+// into the voice file when it is voiced, src/voice/pauses.ts quietGaps). Everything here is in frames.
+
+export type Beat = "reveal" | "key" | "record" | "turn" | "quiet";
+
+export interface BeatCue {
+  kind: Beat;
+  /** The frame the sentence lands on: its key word when the shot list found one, else its first word. */
+  at: number;
+  /** The frame the sentence starts. */
+  start: number;
+  /** The frame the sentence ends (the next one starts). */
+  end: number;
+}
+
+/** A reveal: the music sits at this share of its level (-14 dB) ... */
+export const REVEAL_DUCK = 0.2;
+/** ... from this long before the sentence lands ... */
+export const REVEAL_LEAD_SECONDS = 1.5;
+/** ... reaching the floor over this long ... */
+export const REVEAL_FALL_SECONDS = 0.6;
+/** ... and rising back softly over this long after the sentence lands. */
+export const REVEAL_RISE_SECONDS = 2.5;
+/** A key line: the music fades to nothing over this long before the sentence starts ... */
+export const KEY_OUT_SECONDS = 0.5;
+/** ... stays out under the whole sentence, and comes back over this long after it ends. */
+export const KEY_BACK_SECONDS = 2;
+/** A turn moves the nearest bed change (within this long) onto the sentence's first word. */
+export const TURN_REACH_SECONDS = 20;
+/** A section the turn leaves shorter than this keeps its old boundary. */
+export const TURN_MIN_SECTION_SECONDS = 20;
+/** No automatic drop-out within this long of a written beat: the two would stack. */
+export const BEAT_CLEAR_SECONDS = 30;
+/** No beat in the opening (the hook keeps the house energy). */
+export const BEAT_OPENING_SECONDS = 20;
+
+/**
+ * The cues from the shot list (pure): one per sentence with a beat, never a chapter's first sentence,
+ * never in the opening, never inside a breather. `windows` are the moment windows in seconds.
+ */
+export function beatCuesFrom(
+  windows: Array<{
+    entry: number;
+    moment: number;
+    start: number;
+    end: number;
+    at: number;
+  }>,
+  moments: Array<Array<{ beat?: string } | undefined>> | undefined,
+  fps: number,
+  breaks: Array<{ from: number; to: number }> = [],
+): BeatCue[] {
+  const out: BeatCue[] = [];
+  for (const w of windows) {
+    const b = moments?.[w.entry]?.[w.moment]?.beat;
+    if (!b || b === "none" || w.moment === 0) continue;
+    const start = Math.round(w.start * fps);
+    const at = Math.round(Math.max(w.start, w.at) * fps);
+    const end = Math.round(w.end * fps);
+    if (start < BEAT_OPENING_SECONDS * fps || end <= start) continue;
+    if (breaks.some((x) => start < x.to + fps && end > x.from - fps)) continue;
+    out.push({ kind: b as Beat, at, start, end });
+  }
+  return out;
+}
+
+/** Whether frame f lies within `frames` of a reveal or key cue (the automatic drop-outs keep clear). */
+export function nearBeat(f: number, cues: BeatCue[], frames: number): boolean {
+  return cues.some(
+    (c) =>
+      (c.kind === "key" || c.kind === "reveal") &&
+      f >= c.start - frames &&
+      f <= c.end + frames,
+  );
+}
+
+const ramp = (f: number, from: number, to: number) =>
+  to <= from
+    ? f < from
+      ? 0
+      : 1
+    : Math.max(0, Math.min(1, (f - from) / (to - from)));
+
+/**
+ * The music's level from the beats (pure, 0-1, multiplied into the bed's volume): a reveal ducks to
+ * REVEAL_DUCK before the sentence lands and rises back softly after; a key line takes the music out from
+ * just before its first word until KEY_BACK_SECONDS after its last. Where cues overlap the lower wins.
+ */
+export function beatLevel(f: number, cues: BeatCue[], fps: number): number {
+  let level = 1;
+  for (const c of cues) {
+    if (c.kind === "reveal") {
+      const lead = c.at - Math.round(REVEAL_LEAD_SECONDS * fps);
+      const floor = lead + Math.round(REVEAL_FALL_SECONDS * fps);
+      const back = c.at + Math.round(REVEAL_RISE_SECONDS * fps);
+      if (f < lead || f > back) continue;
+      const v =
+        f < floor
+          ? 1 - (1 - REVEAL_DUCK) * ramp(f, lead, floor)
+          : f < c.at
+            ? REVEAL_DUCK
+            : REVEAL_DUCK + (1 - REVEAL_DUCK) * ramp(f, c.at, back);
+      level = Math.min(level, v);
+    } else if (c.kind === "key") {
+      const lead = c.start - Math.round(KEY_OUT_SECONDS * fps);
+      const back = c.end + Math.round(KEY_BACK_SECONDS * fps);
+      if (f < lead || f > back) continue;
+      const v =
+        f < c.start
+          ? 1 - ramp(f, lead, c.start)
+          : f <= c.end
+            ? 0
+            : ramp(f, c.end, back);
+      level = Math.min(level, v);
+    }
+  }
+  return level;
+}
+
+/**
+ * A turn moves the nearest section boundary (within reach) onto the sentence's first word, so the bed
+ * changes as the story does; a boundary that would leave either section under minLen stays put, and
+ * each boundary moves once. Pure; sections stay contiguous.
+ */
+export function turnSections<S extends { from: number; to: number }>(
+  sections: S[],
+  turns: number[],
+  reach: number,
+  minLen: number,
+): S[] {
+  const out = sections.map((s) => ({ ...s }));
+  const moved = new Set<number>();
+  for (const t of [...turns].sort((a, b) => a - b)) {
+    let best = -1;
+    for (let i = 1; i < out.length; i++) {
+      if (moved.has(i)) continue;
+      const d = Math.abs(out[i]!.from - t);
+      if (d <= reach && (best < 0 || d < Math.abs(out[best]!.from - t)))
+        best = i;
+    }
+    if (best < 0) continue;
+    if (t - out[best - 1]!.from < minLen || out[best]!.to - t < minLen)
+      continue;
+    out[best - 1]!.to = t;
+    out[best]!.from = t;
+    moved.add(best);
+  }
+  return out;
+}

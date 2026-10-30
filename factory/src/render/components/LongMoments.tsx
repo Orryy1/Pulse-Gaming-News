@@ -56,6 +56,8 @@ export interface MomentProp {
   graphic: MomentGraphic;
   emphasis: string;
   person?: string;
+  /** The beat the writer marked on the sentence: the mix reacts to it (src/render/musicplan.ts). */
+  beat?: "none" | "reveal" | "key" | "record" | "turn" | "quiet";
 }
 
 /**

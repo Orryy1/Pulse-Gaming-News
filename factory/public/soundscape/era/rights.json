@@ -1,0 +1,33 @@
+{
+  "schema": "pulse-audio-rights-v1",
+  "beds": [
+    {
+      "file": "arcade.wav",
+      "sha256": "c25248bfe1b19465b1fd0403dff097d38ee7cd20ff41d42ca9bb0ee6e93a4d76",
+      "origin": "synthesised by data/smoke/erabeds.mts with ffmpeg generators (sine, anoisesrc); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "24 s mono 48000 Hz, gain to -33 LUFS integrated (ffmpeg ebur128), measured -33.0 LUFS"
+    },
+    {
+      "file": "console.wav",
+      "sha256": "473847b2d066edae3eeb231e1a87e949bca3440e7441cdfed7a3dcedaec5fece",
+      "origin": "synthesised by data/smoke/erabeds.mts with ffmpeg generators (sine, anoisesrc); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "24 s mono 48000 Hz, gain to -33 LUFS integrated (ffmpeg ebur128), measured -33.0 LUFS"
+    },
+    {
+      "file": "modem.wav",
+      "sha256": "eecca3d0b3c525a220238c81d5b7780006570ed711b55b7bdbaca3f97fefb95c",
+      "origin": "synthesised by data/smoke/erabeds.mts with ffmpeg generators (sine, anoisesrc); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "24 s mono 48000 Hz, gain to -33 LUFS integrated (ffmpeg ebur128), measured -33.0 LUFS"
+    },
+    {
+      "file": "room.wav",
+      "sha256": "54640b9c99427046c3aa2d319054f7428ef8ca6cdfe49ae85f2bcbc66799b0ef",
+      "origin": "synthesised by data/smoke/erabeds.mts with ffmpeg generators (sine, anoisesrc); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "24 s mono 48000 Hz, gain to -33 LUFS integrated (ffmpeg ebur128), measured -33.0 LUFS"
+    }
+  ]
+}

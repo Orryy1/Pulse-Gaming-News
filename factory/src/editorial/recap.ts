@@ -80,6 +80,7 @@ export async function packageRecap(
   weekOf: string,
 ): Promise<RecapPackaging> {
   return llm.structured({
+    site: "recap.package",
     system: `${HOUSE}
 
 Package this week's gaming news recap video: its title, a chapter title for each story (in the order given, biggest first) and the YouTube metadata. Titles must be accurate to the stories; no clickbait.`,
@@ -120,6 +121,7 @@ export async function writeRecapChapter(
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${ctx.feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
   return llm.structured({
+    site: "recap.chapter",
     system: recapChapterPrompt(),
     content: `This week's stories:\n${list}\n\nThis story: ${ctx.title}\nGame: ${ctx.story.game}${ctx.previousEnding ? `\n\nThe previous story ended: "${ctx.previousEnding}"` : ""}\n\nSOURCES:\n${ctx.story.source.text}${fb}`,
     schema: DocChapterSchema,
@@ -193,6 +195,7 @@ export async function writeRecapBookends(
     )
     .join("\n");
   return llm.structured({
+    site: "recap.bookends",
     system: `${HOUSE}
 
 Write the intro and outro of this week's finished gaming news recap. The intro opens on the week's single biggest fact (no "In this video", no "Welcome"), then says in one sentence what else is coming up. The outro picks the story that matters most and says what to watch for next; it may close with one question to the viewer. Set about_index to that story's number (0-based, in the given order): its footage plays behind the outro. Use only facts from the story notes. The outro label is 2-4 words, e.g. "THE TAKEAWAY". Never a stock segue such as "speaking of".`,

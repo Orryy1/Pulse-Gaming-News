@@ -24,6 +24,7 @@ export async function titleVariants(
   script: Script,
 ): Promise<string[]> {
   const r = await llm.structured({
+    site: "titles.long",
     tier: "mid",
     system: TITLE_VARIANTS_PROMPT,
     content: `Current title: ${script.youtube.title}\nThumbnail words: ${script.youtube.thumb_text ?? ""}\nDescription: ${script.youtube.description.slice(0, 900)}`,

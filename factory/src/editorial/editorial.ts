@@ -260,6 +260,7 @@ export async function factCheckRanking(
     ),
   ];
   return llm.structured({
+    site: "factcheck.ranking",
     system: `${factCheckPrompt()}\nThis is a ranking or explainer, not a news story: the "sources" are the facts the writer was given for each game. Release years, platforms, prices, scores, review counts, player counts, sales and dates must match those facts or be long-established public knowledge; a figure that appears in neither is a blocker. Opinions and the ranking order itself are not facts.`,
     content: `Facts given to the writer:\n${facts.map((f) => `<game title="${f.title}">\n${f.facts}\n</game>`).join("\n")}\n\nScript (spoken):\n${narrationOf(script)}\n\nOn-screen text and card figures (every one must be supported):\n${cards.map((c) => `- ${c}`).join("\n")}\n\nYouTube title: ${script.youtube.title}\nYouTube description: ${script.youtube.description}`,
     schema: FactCheckSchema,

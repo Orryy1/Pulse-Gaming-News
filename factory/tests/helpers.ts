@@ -222,6 +222,7 @@ export function testConfig(
     publishWindowStartUtc: 0,
     publishWindowEndUtc: 24,
     visionQa: true,
+    shortWordLooks: true,
     graphicsPrepass: true,
     graphicsPrepassMax: 200,
     graphicsRerenderPasses: 1,

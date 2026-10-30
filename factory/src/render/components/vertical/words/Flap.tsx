@@ -213,9 +213,9 @@ const Flip: React.FC<{
           position: "absolute",
           left: 0,
           right: 0,
-          top: h / 2 - 1.5,
-          height: 3,
-          background: "#060608",
+          top: h / 2 - 1,
+          height: 2,
+          background: "rgba(6,6,8,0.6)",
           boxShadow: "0 1px 0 rgba(255,255,255,0.06)",
         }}
       />

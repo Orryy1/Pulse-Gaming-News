@@ -8,7 +8,7 @@ import { spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { HAND } from "../../fonts.ts";
 import type { VGfxProps } from "../types.ts";
 import { exitOf, jit, listOf, rnd, textW, wrap } from "./kit.ts";
-import { SOFT_GRAIN } from "./kit.ts";
+import { SOFT_GRAIN, shadow } from "./kit.ts";
 
 const W = 952;
 const H = 500;
@@ -166,7 +166,7 @@ export const Sticky: React.FC<VGfxProps> = ({
               right: 10,
               top: 12,
               bottom: 2,
-              boxShadow: "0 10px 18px rgba(0,0,0,0.4)",
+              boxShadow: shadow(0.35),
             }}
           />
           <div

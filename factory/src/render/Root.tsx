@@ -12,6 +12,7 @@ import { ConceptAvatar, ConceptBanner, BroadcastCover } from "./BrandConcepts.ts
 import { TextureBackground, type BackgroundKind } from "./components/Backgrounds.tsx";
 import { GfxPreview, SAMPLE_GFX, type GfxPreviewProps } from "./components/packs/Preview.tsx";
 import { SketchPreview, SAMPLE_SKETCH, type SketchPreviewProps } from "./SketchPreview.tsx";
+import { WordPreview, SAMPLE_WORD, type WordPreviewProps } from "./components/wordmoment/Preview.tsx";
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -80,6 +81,19 @@ export const RemotionRoot: React.FC = () => (
       defaultProps={SAMPLE_GFX}
       calculateMetadata={({ props }: { props: GfxPreviewProps }) => ({
         durationInFrames: Math.ceil(props.durationSeconds * LONG_FPS),
+      })}
+    />
+    {/* One word-moment look on its own, for previews (src/render/components/wordmoment/Preview.tsx). */}
+    <Composition
+      id="PulseWord"
+      component={WordPreview}
+      fps={FPS}
+      width={WIDTH}
+      height={HEIGHT}
+      durationInFrames={Math.ceil(SAMPLE_WORD.durationSeconds * FPS)}
+      defaultProps={SAMPLE_WORD}
+      calculateMetadata={({ props }: { props: WordPreviewProps }) => ({
+        durationInFrames: Math.max(30, Math.ceil(props.durationSeconds * FPS)),
       })}
     />
     {/* One concept-sketch treatment on its own, for previews (src/render/SketchPreview.tsx). */}

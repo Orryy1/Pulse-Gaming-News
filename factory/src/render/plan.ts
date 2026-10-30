@@ -119,6 +119,8 @@ export interface RenderPlan {
   turns: number[]; // frames of the two accent flashes: hook end, take start
   sfx: SfxCue[];
   shelf: ShelfItem[];
+  /** The word moment's look (src/render/wordlook.ts), stored so a retried render is identical. */
+  wordLook?: string;
 }
 
 const QUIET_KINDS = new Set([

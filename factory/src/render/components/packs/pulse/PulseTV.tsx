@@ -24,11 +24,19 @@ import { pressCredit, tvLook, type TvLook } from "./pressKit.ts";
 /** The picture tube's visible area (4:3), and the cabinet round it. */
 const SW = 880;
 const SH = 660;
-const CAB: Record<TvLook, { w: number; h: number; sx: number; sy: number }> = {
+/**
+ * Each cabinet's size, where its tube sits, where the camera settles its screen centre (cy) and how far the
+ * push-in ends (zoom). The plastic set is compact and its front strip hangs below the screen, so it pushes in
+ * further and sits a little higher to keep that strip in frame (lead, 30 Oct 2026: it looked the smaller set).
+ */
+const CAB: Record<
+  TvLook,
+  { w: number; h: number; sx: number; sy: number; cy: number; zoom: number }
+> = {
   // Wood: the screen sits left, the control column to its right.
-  wood: { w: 1320, h: 860, sx: 70, sy: 100 },
+  wood: { w: 1320, h: 860, sx: 70, sy: 100, cy: 520, zoom: 1.18 },
   // Plastic: the screen centred above a strip of grilles and buttons.
-  plastic: { w: 1120, h: 920, sx: 120, sy: 70 },
+  plastic: { w: 1120, h: 836, sx: 120, sy: 54, cy: 505, zoom: 1.22 },
 };
 
 /** Channel-change snow: turbulence re-seeded every frame, so it crawls but renders the same each time. */
@@ -159,7 +167,7 @@ const PlasticFront: React.FC<{ top: number; frame: number }> = ({
       left: 60,
       right: 60,
       top,
-      height: 120,
+      height: 76,
       display: "flex",
       alignItems: "center",
       gap: 28,
@@ -274,13 +282,14 @@ export const PulseTV: React.FC<GfxProps> = ({
     ...clamp,
     easing: easeInOut,
   });
-  const scale = 0.86 + 0.32 * zoom;
+  const scale = 0.86 + (cab.zoom - 0.86) * zoom;
 
+  // Never under 40 px before the push-in, so a long headline still reads on a phone.
   const headSize = sizeByLength(headline.length, [
-    [30, 50],
-    [56, 44],
-    [80, 38],
-    [999, 34],
+    [30, 54],
+    [56, 48],
+    [80, 42],
+    [999, 40],
   ]);
   const segments = [headline, outlet?.toUpperCase()].filter(
     Boolean,
@@ -299,7 +308,7 @@ export const PulseTV: React.FC<GfxProps> = ({
         style={{
           position: "absolute",
           left: 960 - screenCx,
-          top: 520 - screenCy + (1 - rise) * 360,
+          top: cab.cy - screenCy + (1 - rise) * 360,
           width: cab.w,
           height: cab.h,
           transformOrigin: `${screenCx}px ${screenCy}px`,
@@ -314,18 +323,16 @@ export const PulseTV: React.FC<GfxProps> = ({
         }}
       >
         {wood && <WoodControls x={cab.sx + SW + 50} h={cab.h} />}
-        {!wood && (
-          <PlasticFront top={cab.sy + SH + 50} frame={frame} />
-        )}
+        {!wood && <PlasticFront top={cab.sy + SH + 24} frame={frame} />}
         {/* The bezel round the tube. */}
         <div
           style={{
             position: "absolute",
-            left: cab.sx - 30,
-            top: cab.sy - 30,
-            width: SW + 60,
-            height: SH + 60,
-            borderRadius: 60,
+            left: cab.sx - (wood ? 30 : 22),
+            top: cab.sy - (wood ? 30 : 22),
+            width: SW + (wood ? 60 : 44),
+            height: SH + (wood ? 60 : 44),
+            borderRadius: wood ? 60 : 54,
             background: wood
               ? "linear-gradient(180deg,#c9c7bf,#8d8b83)"
               : "linear-gradient(180deg,#24242a,#0d0d10)",

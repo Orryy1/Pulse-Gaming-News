@@ -40,17 +40,36 @@ export function framesNamed(problems: string[]): number[] {
   const out = new Set<number>();
   for (const p of problems)
     for (const m of p.matchAll(/frames?\s+(\d+(?:\s*(?:,|and|&)\s*\d+)*)/gi))
-      for (const n of m[1]!.split(/\s*(?:,|and|&)\s*/i)) if (Number(n) > 0) out.add(Number(n));
+      for (const n of m[1]!.split(/\s*(?:,|and|&)\s*/i))
+        if (Number(n) > 0) out.add(Number(n));
   return [...out];
 }
 
-export async function visionQa(llm: Llm, frames: string[], context: { headline: string; gameTitle: string; format?: "short" | "long" | "graphics" | "thumbs" }): Promise<VisionQa> {
+export async function visionQa(
+  llm: Llm,
+  frames: string[],
+  context: {
+    headline: string;
+    gameTitle: string;
+    format?: "short" | "long" | "graphics" | "thumbs";
+  },
+): Promise<VisionQa> {
   const content: LlmContent = [];
   for (const [i, f] of frames.entries()) {
     content.push({ type: "text", text: `Frame ${i + 1} of ${frames.length}` });
-    content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: (await fs.readFile(f)).toString("base64") } });
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: (await fs.readFile(f)).toString("base64"),
+      },
+    });
   }
-  content.push({ type: "text", text: `Headline: ${context.headline}\nGame: ${context.gameTitle || "(not about one game)"}` });
+  content.push({
+    type: "text",
+    text: `Headline: ${context.headline}\nGame: ${context.gameTitle || "(not about one game)"}`,
+  });
   const system =
     context.format === "long"
       ? LONG_VISION_PROMPT
@@ -59,5 +78,13 @@ export async function visionQa(llm: Llm, frames: string[], context: { headline: 
         : context.format === "thumbs"
           ? THUMB_VISION_PROMPT
           : VISION_PROMPT;
-  return llm.structured({ system, content, schema: VisionQaSchema, effort: "low" });
+  // The graphics check now looks at every graphic of a long video (up to 200 stills before the render), so it
+  // runs on the mid tier; the other checks are a handful of frames and keep the top tier.
+  return llm.structured({
+    system,
+    content,
+    schema: VisionQaSchema,
+    effort: "low",
+    ...(context.format === "graphics" ? { tier: "mid" as const } : {}),
+  });
 }

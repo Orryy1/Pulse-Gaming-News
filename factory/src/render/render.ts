@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import {
   makeCancelSignal,
+  openBrowser,
   renderMedia,
   renderStill,
   selectComposition,
@@ -450,29 +451,29 @@ type ThumbInput = Omit<
   pictureFiles?: string[]; // motif: pictures for its panels and screens
 };
 
-/** Renders the 16:9 long-form video, a poster frame and a 1280x720 thumbnail. */
-export async function renderLong(input: LongRenderInput): Promise<void> {
-  const serveUrl = await getBundle();
-  const files = await serveDir(input.episodeDir);
-  try {
-    const { audioFile, imageFiles, clipFiles, musicFile, next, ...rest } =
-      input.props;
-    const props: LongProps = {
-      ...rest,
-      // The end card's thumbnail: a copy of the next documentary's thumb inside this episode's folder.
-      ...(next === undefined
-        ? {}
-        : {
-            next: next && {
-              title: next.title,
-              thumbSrc: next.thumbFile
-                ? `${files.url}/${webPath(next.thumbFile)}`
-                : null,
-            },
-          }),
-      audioSrc: audioFile ? `${files.url}/${webPath(audioFile)}` : null,
+/** The long composition's props with every episode file as a URL on the loopback server. */
+function longProps(
+  filesUrl: string,
+  serveUrl: string,
+  p: LongRenderInput["props"],
+): LongProps {
+  const { audioFile, imageFiles, clipFiles, musicFile, next, ...rest } = p;
+  return {
+    ...rest,
+    // The end card's thumbnail: a copy of the next documentary's thumb inside this episode's folder.
+    ...(next === undefined
+      ? {}
+      : {
+          next: next && {
+            title: next.title,
+            thumbSrc: next.thumbFile
+              ? `${filesUrl}/${webPath(next.thumbFile)}`
+              : null,
+          },
+        }),
+    audioSrc: audioFile ? `${filesUrl}/${webPath(audioFile)}` : null,
       images: imageFiles.map((i) => ({
-        src: `${files.url}/${webPath(i.file)}`,
+      src: `${filesUrl}/${webPath(i.file)}`,
         kind: i.kind,
         aspect: i.aspect,
         beatIndex: i.beatIndex,
@@ -481,14 +482,14 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
         label: i.label,
         layers: i.layers
           ? {
-              bg: `${files.url}/${webPath(i.layers.bg)}`,
-              mid: `${files.url}/${webPath(i.layers.mid)}`,
-              fg: `${files.url}/${webPath(i.layers.fg)}`,
+            bg: `${filesUrl}/${webPath(i.layers.bg)}`,
+            mid: `${filesUrl}/${webPath(i.layers.mid)}`,
+            fg: `${filesUrl}/${webPath(i.layers.fg)}`,
             }
           : undefined,
       })),
       clips: clipFiles.map((c) => ({
-        src: `${files.url}/${webPath(c.file)}`,
+      src: `${filesUrl}/${webPath(c.file)}`,
         durationSeconds: c.durationSeconds,
         beatIndex: c.beatIndex,
         role: c.role,
@@ -500,6 +501,73 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       musicSrc: musicFile,
       extraBeds: extraBeds(serveUrl),
     };
+}
+
+export interface LongStillsInput {
+  episodeDir: string;
+  props: LongRenderInput["props"];
+  /** The frames wanted and where each JPEG goes. */
+  stills: Array<{ frame: number; file: string }>;
+  /** Output width as a share of 1920 (0.28 gives the 540 px the frame checks use). */
+  scale?: number;
+  gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
+  browserExecutable?: string;
+}
+
+/**
+ * Single frames of the long composition, from the same bundle and props as the full render, through one
+ * browser: the graphics check looks at every graphic this way before the render (src/qa/graphicscheck.ts),
+ * seconds a frame instead of an hour a pass. No PC turn is taken: one headless Chrome drawing one frame at
+ * a time is far lighter than a render.
+ */
+export async function renderLongStills(input: LongStillsInput): Promise<void> {
+  if (!input.stills.length) return;
+  const serveUrl = await getBundle();
+  const files = await serveDir(input.episodeDir);
+  const browserExecutable = input.browserExecutable || undefined;
+  const chromiumOptions = { gl: input.gl ?? "swangle" } as const;
+  const browser = await openBrowser("chrome", {
+    browserExecutable,
+    chromiumOptions,
+  });
+  try {
+    const props = longProps(files.url, serveUrl, input.props);
+    const composition = await selectComposition({
+      serveUrl,
+      id: "PulseLong",
+      inputProps: props,
+      browserExecutable,
+      puppeteerInstance: browser,
+    });
+    for (const s of input.stills) {
+      await fsp.mkdir(path.dirname(s.file), { recursive: true });
+      await renderStill({
+        composition,
+        serveUrl,
+        output: s.file,
+        inputProps: props,
+        frame: Math.min(composition.durationInFrames - 1, Math.max(0, s.frame)),
+        imageFormat: "jpeg",
+        jpegQuality: 82,
+        scale: input.scale ?? 540 / 1920,
+        browserExecutable,
+        chromiumOptions,
+        puppeteerInstance: browser,
+        timeoutInMilliseconds: 180_000,
+      });
+    }
+  } finally {
+    await browser.close({ silent: true }).catch(() => undefined);
+    await files.close();
+  }
+}
+
+/** Renders the 16:9 long-form video, a poster frame and a 1280x720 thumbnail. */
+export async function renderLong(input: LongRenderInput): Promise<void> {
+  const serveUrl = await getBundle();
+  const files = await serveDir(input.episodeDir);
+  try {
+    const props = longProps(files.url, serveUrl, input.props);
     const browserExecutable = input.browserExecutable || undefined;
     const chromiumOptions = { gl: input.gl ?? "swangle" } as const;
     const composition = await selectComposition({

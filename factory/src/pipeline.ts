@@ -108,9 +108,8 @@ import {
   chapterLines,
   LONG_TAIL_SECONDS,
   entryOf,
-  usefulGraphic,
 } from "./render/longplan.ts";
-import type { LongRenderInput } from "./render/render.ts";
+import type { LongRenderInput, LongStillsInput } from "./render/render.ts";
 import type { renderCutdown } from "./render/render.ts";
 import {
   CUTDOWN_TAIL_SECONDS,
@@ -208,6 +207,15 @@ import { holdSlotForCap } from "./cadence.ts";
 import { mediaRichNotice, shortMediaRichness } from "./qa/mediarich.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
+import {
+  checkFrame,
+  graphicChecks,
+  graphicsNotice,
+  judgeGraphics,
+  muteFaults,
+  passDecision,
+} from "./qa/graphicscheck.ts";
+import { releaseGateStep } from "./qa/releaseGate.ts";
 import { titleVariants } from "./editorial/titles.ts";
 import { paletteOf } from "./assets/palette.ts";
 import {
@@ -391,6 +399,8 @@ export interface Services {
   imageAspect(file: string): Promise<number>;
   render(input: RenderInput): Promise<void>;
   renderLong(input: LongRenderInput): Promise<void>;
+  /** Single frames of the long composition for the graphics check before the render (absent in tests). */
+  renderLongStills?(input: LongStillsInput): Promise<void>;
   renderCutdown?: typeof renderCutdown;
   normalise(input: string, output: string): Promise<void>;
   technicalQa(
@@ -6494,9 +6504,6 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     episode: ep.id,
     designs: candidates.map((c) => c.layout).slice(0, 3),
   });
-  // Again just before the turn is asked for: a breaking Short may have started while the stills were prepared.
-  const turnWait = await longRenderGap(s, ep);
-  if (turnWait === undefined) return;
   // A documentary's end card (DOC_END_CARD): the newest public documentary, decided now and kept on the
   // episode so the description's "Next" line matches the card; its thumbnail is copied in beside the render.
   const endCard = doc && s.cfg.docEndCard;
@@ -6524,21 +6531,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   // The render runs past the narration's tail by the end card; the plan and the chapter marks do not change.
   const renderSeconds = duration + (endCard ? END_CARD_SECONDS : 0);
-  const raw = path.join(dir, "render_raw.mp4");
-  const final = path.join(dir, "short.mp4");
-  const rendered = await s
-    .renderLong({
-      turnWaitMinutes: turnWait,
-      episodeDir: dir,
-      outFile: raw,
-      posterFile: path.join(dir, "poster.jpg"),
-      thumbFile: path.join(dir, "thumb.jpg"),
-      thumb: mainThumb!.thumb as never,
-      thumbVariants,
-      concurrency: s.cfg.remotionConcurrency,
-      gl: s.cfg.remotionGl,
-      browserExecutable: s.cfg.browserExecutable,
-      props: {
+  // The composition's props, read afresh each time: the graphics check below mutes faulted graphics
+  // (quietMoments, quietBreaks) and the render must see the lists as they stand then.
+  const longPropsNow = (): LongRenderInput["props"] => ({
         title: script.headline,
         kicker: script.kicker ?? "",
         criterion: script.criterion ?? "",
@@ -6594,7 +6589,126 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         palette: assets.palette,
         annotations: assets.annotations,
         eraBeds: doc && s.cfg.docSoundBeats,
-      },
+  });
+  // The graphics check before the render (src/qa/graphicscheck.ts): every graphic and breather as a still
+  // from the same composition and props, faulted ones muted, so the full render runs once instead of again
+  // per fault. Once per episode; a check that cannot run (no stills service, a browser fault) never stops
+  // the render, and the check on the finished video below still catches what it would have.
+  const graphicsCtx = {
+    headline: script.headline,
+    gameTitle: script.game_title,
+    format: "graphics" as const,
+  };
+  const graphicsInput = () => ({
+    windows: hasMoments
+      ? momentWindows(
+          segments,
+          words,
+          moments.map((m) => m.length),
+          moments.map((e) => e.map(momentKeys)),
+        )
+      : [],
+    graphicOf: (e: number, m: number) => moments[e]?.[m]?.graphic,
+    breaks: assets.breaks,
+    durationSeconds: duration,
+  });
+  if (
+    s.cfg.visionQa &&
+    s.cfg.graphicsPrepass &&
+    s.renderLongStills &&
+    !assets.graphicsPrepass
+  ) {
+    const checks = graphicChecks(
+      graphicsInput(),
+      assets,
+      s.cfg.graphicsPrepassMax,
+    );
+    if (checks.length) {
+      const stillDir = path.join(dir, "qa", "prepass");
+      await fs.rm(stillDir, { recursive: true, force: true });
+      const items = checks.map((c, i) => ({
+        ...c,
+        file: path.join(stillDir, `g${i}.jpg`),
+      }));
+      try {
+        await s.renderLongStills({
+          episodeDir: dir,
+          props: longPropsNow(),
+          stills: items.map((c) => ({
+            frame: checkFrame(c, LONG_FPS),
+            file: c.file,
+          })),
+          gl: s.cfg.remotionGl,
+          browserExecutable: s.cfg.browserExecutable,
+        });
+        const r = await judgeGraphics(items, (frames) =>
+          s.visionQa(frames, graphicsCtx),
+        );
+        const muted = muteFaults(assets, r.faulted);
+        assets.quietMoments = muted.quietMoments;
+        assets.quietBreaks = muted.quietBreaks;
+        assets.graphicsPrepass = {
+          checked: items.length,
+          muted: r.faulted.length,
+          at: s.now().toISOString(),
+        };
+        await s.db.query(
+          `UPDATE episodes SET assets_json = $2 WHERE id = $1`,
+          [ep.id, JSON.stringify(assets)],
+        );
+        const problems = r.problems.flatMap((p) => p.problems);
+        await logEvent(s.db, ep.id, "graphics_prepass", {
+          checked: items.length,
+          faulted: r.faulted,
+          problems: r.problems,
+        });
+        log(
+          r.faulted.length ? "warn" : "info",
+          "graphics checked before the render",
+          { episode: ep.id, checked: items.length, muted: r.faulted },
+        );
+        const content = graphicsNotice(
+          script.headline,
+          "prepass",
+          items.length,
+          r.faulted,
+          problems,
+        );
+        await s.notify(
+          r.faulted.length ? { content } : { level: "info", content },
+        );
+      } catch (err) {
+        log("warn", "graphics pre-pass skipped", {
+          episode: ep.id,
+          error: errorMessage(err),
+        });
+        await logEvent(s.db, ep.id, "graphics_prepass", {
+          skipped: errorMessage(err).slice(0, 300),
+        });
+      }
+      await fs
+        .rm(stillDir, { recursive: true, force: true })
+        .catch(() => undefined);
+    }
+  }
+  // Again just before the turn is asked for: a breaking Short may have started while the stills were prepared.
+  const turnWait = await longRenderGap(s, ep);
+  if (turnWait === undefined) return;
+  const raw = path.join(dir, "render_raw.mp4");
+  const final = path.join(dir, "short.mp4");
+  const rendered = await s
+    .renderLong({
+      turnWaitMinutes: turnWait,
+      episodeDir: dir,
+      outFile: raw,
+      posterFile: path.join(dir, "poster.jpg"),
+      thumbFile: path.join(dir, "thumb.jpg"),
+      thumb: mainThumb!.thumb as never,
+      thumbVariants,
+      concurrency: s.cfg.remotionConcurrency,
+      gl: s.cfg.remotionGl,
+      browserExecutable: s.cfg.browserExecutable,
+      props: longPropsNow(),
     })
     .then(
       () => true,
@@ -6682,84 +6796,76 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     );
     throw new Error(`QA failed: ${problems.join(" | ")}`);
   }
-  // The graphics check (owner, 28 Oct 2026: "do all safely"): a frame from every full-screen graphic and
-  // chapter breather goes to the vision checker. A graphic it faults is left out and the video renders again;
-  // a faulted thumbnail is dropped, and a passing design takes the main thumbnail's place if it was that one.
+  // The graphics check on the finished video (owner, 28 Oct 2026: "do all safely"), now the safety net
+  // behind the stills pre-pass above: a sample of the graphics and breathers (GRAPHICS_POSTCHECK_MAX) goes to
+  // the vision checker. A fault mutes the graphic and may ask for one more full render, at most
+  // GRAPHICS_RERENDER_PASSES times an episode; past that the video is accepted as rendered, the faults stay
+  // muted for any later render, and the owner hears which and why either way (src/qa/graphicscheck.ts).
+  // A faulted thumbnail is dropped, and a passing design takes the main thumbnail's place if it was that one.
   let thumbFiles = thumbVariants.map((v) => path.basename(v.file));
+  let acceptedFaults: string[] | undefined;
   if (s.cfg.visionQa) {
-    const checks: Array<{ t: number; what: string }> = [];
-    if (hasMoments) {
-      const ws = momentWindows(
-        segments,
-        words,
-        moments.map((m) => m.length),
-        moments.map((e) => e.map(momentKeys)),
+    const sample = graphicChecks(
+      graphicsInput(),
+      assets,
+      s.cfg.graphicsPostcheckMax,
       );
-      for (const w of ws) {
-        const g = moments[w.entry]?.[w.moment]?.graphic;
-        if (
-          !g ||
-          !usefulGraphic(g) ||
-          (assets.quietMoments ?? []).includes(`${w.entry}:${w.moment}`)
-        )
-          continue;
-        const t = Math.max(w.start, w.at - 0.15) + 2.2;
-        if (t < duration - 1)
-          checks.push({ t, what: `${w.entry}:${w.moment}` });
-      }
-    }
-    (assets.breaks ?? []).forEach((b, i) => {
-      if (!(assets.quietBreaks ?? []).includes(i))
-        checks.push({ t: b.start + 2.5, what: `break:${i}` });
-    });
-    const sample = checks.slice(0, 32);
-    const faulted: string[] = [];
-    for (let k = 0; k < sample.length; k += 8) {
-      const batch = sample.slice(k, k + 8);
-      const frames = await s.extractFrames(
+    const frames = sample.length
+      ? await s.extractFrames(
         final,
-        path.join(dir, "qa", `gfx${k}`),
-        batch.map((c) => c.t),
+          path.join(dir, "qa", "gfx"),
+          sample.map((c) => c.t),
+        )
+      : [];
+    const r = await judgeGraphics(
+      sample.map((c, i) => ({ ...c, file: frames[i]! })),
+      (fs) => s.visionQa(fs, graphicsCtx),
       );
-      const v = await s
-        .visionQa(frames, {
-          headline: script.headline,
-          gameTitle: script.game_title,
-          format: "graphics",
-        })
-        .catch(() => undefined);
-      if (v?.verdict === "fail")
-        for (const n of framesNamed(v.problems))
-          if (batch[n - 1]) faulted.push(batch[n - 1]!.what);
-      if (v?.problems.length)
-        await logEvent(s.db, ep.id, "graphics_check", {
-          problems: v.problems,
-          at: batch.map((c) => c.what),
+    for (const p of r.problems)
+      await logEvent(s.db, ep.id, "graphics_check", p);
+    if (r.faulted.length) {
+      const muted = muteFaults(assets, r.faulted);
+      assets.quietMoments = muted.quietMoments;
+      assets.quietBreaks = muted.quietBreaks;
+      const passes = assets.graphicsPasses ?? 0;
+      const decision = passDecision(passes, s.cfg.graphicsRerenderPasses);
+      await logEvent(s.db, ep.id, "graphics_faulted", {
+        faulted: r.faulted,
+        decision,
+        passes,
+        max: s.cfg.graphicsRerenderPasses,
         });
-    }
-    if (faulted.length) {
-      assets.quietMoments = [
-        ...(assets.quietMoments ?? []),
-        ...faulted.filter((f) => !f.startsWith("break:")),
-      ];
-      assets.quietBreaks = [
-        ...(assets.quietBreaks ?? []),
-        ...faulted
-          .filter((f) => f.startsWith("break:"))
-          .map((f) => Number(f.slice(6))),
-      ];
+      log("warn", "graphics faulted on the finished video", {
+        episode: ep.id,
+        faulted: r.faulted,
+        decision,
+        passes,
+      });
+      await s.notify({
+        content: graphicsNotice(
+          script.headline,
+          decision,
+          sample.length,
+          r.faulted,
+          r.problems.flatMap((p) => p.problems),
+        ),
+      });
+      if (decision === "rerender") {
+        assets.graphicsPasses = passes + 1;
       const { longPlan: _dropped, ...again } = assets;
       await s.db.query(
         `UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`,
         [
           ep.id,
-          JSON.stringify({ ...qa, graphics: faulted }),
+            JSON.stringify({ ...qa, graphics: r.faulted }),
           JSON.stringify(again),
         ],
       );
       throw new Error(
-        `graphics check: ${faulted.length} graphic(s) left out, rendering again`,
+          `graphics check: ${r.faulted.length} graphic(s) left out, rendering again (re-render ${passes + 1} of ${s.cfg.graphicsRerenderPasses})`,
       );
+    }
+      acceptedFaults = r.faulted;
     }
     const thumbs = ["thumb.jpg", ...thumbFiles];
     const tv = await s
@@ -6809,7 +6915,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         )
         .map((g) => Math.round(g.start * 10) / 10),
     },
-    qa_json: qa,
+    qa_json: acceptedFaults
+      ? { ...qa, graphics: { faulted: acceptedFaults, accepted: true } }
+      : qa,
   });
 }
 
@@ -7195,6 +7303,40 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
 async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const script = ep.script_json!;
   const links = approvalLinks(s.cfg, ep.id);
+  // The release gate (src/qa/releaseGate.ts): a documentary's every shot is scored against the words spoken
+  // over it before it may go out on its own. A held one waits here for the owner like a manual approval.
+  if (
+    ep.lane === "longform" &&
+    s.cfg.releaseGate &&
+    script.evergreen_format === "documentary" &&
+    ep.assets_json?.longPlan
+  ) {
+    const a = ep.assets_json;
+    const segments = openChaptersAtBreaks(
+      buildSegments(
+        segmentInputs(script, Boolean(a.desk)),
+        a.words ?? [],
+        (a.durationSeconds ?? 0) + LONG_TAIL_SECONDS,
+      ),
+      a.breaks,
+    );
+    const chapters = [...(script.entries ?? [])]
+      .sort((x, y) => y.rank - x.rank)
+      .map((e) => ({ game: e.game_title, year: e.year }));
+    const held = await releaseGateStep(
+      {
+        db: s.db,
+        cfg: s.cfg,
+        llm: s.llm,
+        notify: (m) => s.notify(m),
+        now: () => s.now(),
+        episodeDir: (id) => episodeDir(s.cfg, id),
+      },
+      ep,
+      { segments, chapters, links },
+    );
+    if (held) return;
+  }
   // A single-source story always waits for a human. A rumour that two outlets (or an official source)
   // carry is reported as a labelled report ("reportedly" throughout, the title says so) under the lane's
   // usual mode: from 25 Oct 2026 the channel covers leaks and reports, clearly marked.

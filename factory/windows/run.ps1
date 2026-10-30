@@ -79,8 +79,17 @@ while ($true) {
   $started = Get-Date
   & cmd /c "start `"pulse-factory`" /b /wait /abovenormal node --import tsx src/server.ts >> `"$log`" 2>&1"
   $ran = ((Get-Date) - $started).TotalSeconds
-  Log $log "factory exited with $LASTEXITCODE after $([int]$ran)s; restarting in 30s"
-  if ($script:updatedFrom -and $ran -lt 180) {
+  $code = $LASTEXITCODE
+  Log $log "factory exited with $code after $([int]$ran)s; restarting in 30s"
+  # 75: the factory itself asked for a reload (data\admin\reload-requested, src/reload.ts) at an idle moment,
+  # so it comes straight back with whatever the branch now holds. A 75 inside the first minute is treated like
+  # any other exit (30 s pause, the bad-release check) so a stuck flag can never spin the launcher.
+  if ($code -eq 75 -and $ran -ge 60) {
+    Log $log "reload requested by the factory; restarting now"
+    $script:updatedFrom = $null
+    continue
+  }
+  if ($script:updatedFrom -and $ran -lt 180 -and $code -ne 75) {
     # Fresh code, and it died inside three minutes: back to the version that was running.
     $bad = (git -C $repo rev-parse HEAD).Trim()
     New-Item -ItemType Directory -Force -Path (Split-Path $badRelease) | Out-Null

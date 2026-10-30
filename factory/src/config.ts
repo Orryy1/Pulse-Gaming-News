@@ -300,6 +300,19 @@ export interface Config {
   publishWindowStartUtc: number;
   publishWindowEndUtc: number;
   visionQa: boolean;
+  /** The graphics check before a long render (src/qa/graphicscheck.ts): every graphic as a cheap still, faulted
+   * ones muted, so the full render runs once instead of again per faulted graphic. */
+  graphicsPrepass: boolean;
+  graphicsPrepassMax: number; // graphics checked as stills before the render, at most
+  /** Full re-renders the post-render graphics check may ask for; past that it accepts the video with the faults muted. */
+  graphicsRerenderPasses: number;
+  graphicsPostcheckMax: number; // graphics sampled from the finished video, at most
+  /** The release gate for documentaries (src/qa/releaseGate.ts): every shot scored against the words over it. */
+  releaseGate: boolean;
+  releaseGateMinMean: number; // 0-3, the time-weighted mean a documentary needs to go out on its own
+  releaseGateMaxZero: number; // 0-1, the share of screen time that may show the wrong thing
+  /** A code reload (data/admin/reload-requested, src/reload.ts) never happens this close before a slot. */
+  reloadMinutesBeforeSlot: number;
   /** Languages each video's title and description are also set in on YouTube (empty switches it off). */
   localizeLanguages: string[];
   /** Python with faster-whisper (PC) or MLX Whisper (Mac) for the narration check; empty switches it off. */
@@ -696,6 +709,17 @@ export function loadConfig(): Config {
     publishWindowStartUtc: int("PUBLISH_WINDOW_START_UTC", 7),
     publishWindowEndUtc: int("PUBLISH_WINDOW_END_UTC", 22),
     visionQa: bool("VISION_QA", true),
+    graphicsPrepass: bool("GRAPHICS_PREPASS", true),
+    graphicsPrepassMax: int("GRAPHICS_PREPASS_MAX", 200),
+    graphicsRerenderPasses: int("GRAPHICS_RERENDER_PASSES", 1),
+    graphicsPostcheckMax: int("GRAPHICS_POSTCHECK_MAX", 32),
+    releaseGate: bool("RELEASE_GATE", true),
+    releaseGateMinMean: Number(str("RELEASE_GATE_MIN_MEAN", "2.0")) || 2.0,
+    releaseGateMaxZero: Math.max(
+      0,
+      Math.min(1, Number(str("RELEASE_GATE_MAX_ZERO", "0.03")) || 0.03),
+    ),
+    reloadMinutesBeforeSlot: int("RELOAD_MINUTES_BEFORE_SLOT", 30),
     localizeLanguages: str("LOCALIZE_LANGUAGES", "es,pt,de,fr,ja")
       .split(",")
       .map((l) => l.trim())

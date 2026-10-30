@@ -550,6 +550,24 @@ export async function checkChapter(
   return r.unsupported.map((u) => `"${u.quote}": ${u.problem}`);
 }
 
+/** A quote's credit without any medium ("on Twitter", "in an email") the source text does not mention. */
+export function groundedCredit(credit: string, hay: string): string {
+  return credit
+    .split(",")
+    .filter((part) => {
+      const m = part.toLowerCase().match(MEDIUM);
+      if (!m) return true;
+      // hay is normalised text: "e-mail" reads "e mail" there, so either spelling counts.
+      const w = norm(m[0]);
+      return hay.includes(w) || (/^e ?mail$/.test(w) && /\be ?mail/.test(hay));
+    })
+    .join(",")
+    .trim();
+}
+
+const MEDIUM =
+  /\b(twitter|tweet(ed)?|reddit|resetera|neogaf|forums?|message board|blog|instagram|bluesky|threads|facebook|usenet|newsgroup|e-?mail|memo|letter|slack|discord|text message|sms|chat|irc|dm)\b/;
+
 const norm = (t: string) =>
   t
     .toLowerCase()
@@ -656,7 +674,7 @@ export const DocMomentSchema = z.object({
     secondary: z
       .string()
       .describe(
-        "stat/date: what it is, 2-6 words; quote: who said it and their role, e.g. 'Dan Houser, Rockstar co-founder'; headline: the outlet as the SOURCE names it and the year, e.g. 'The Guardian, 2005', or just the year when the source names no outlet; delay: the reason in 2-8 words if the source gives one; milestone: the year; bars: what the figures count, 2-4 words, e.g. 'copies sold'; empty otherwise",
+        "stat/date: what it is, 2-6 words; quote: who said it and their role, e.g. 'Dan Houser, Rockstar co-founder', and where it was said only when the SOURCE says so, e.g. 'Leslie Benzies, on Twitter' or 'Dan Houser, in an internal email'; headline: the outlet as the SOURCE names it and the year, e.g. 'The Guardian, 2005', or just the year when the source names no outlet; delay: the reason in 2-8 words if the source gives one; milestone: the year; bars: what the figures count, 2-4 words, e.g. 'copies sold'; empty otherwise",
       ),
     items: z
       .array(z.string())
@@ -792,6 +810,9 @@ export function groundDocMoments(
         wordCount(g.primary) >= 4 &&
         wordCount(g.primary) <= 40 &&
         hay.includes(norm(g.primary.replace(/^["“]|["”]$/g, "")));
+    // Where a quote was said (a post, an email, a chat) picks its on-screen look, so it must be in the source too.
+    if (ok && g.kind === "quote")
+      g.secondary = groundedCredit(g.secondary, hay);
     if (ok && g.kind === "stat")
       ok = /\d/.test(g.primary) && digitsOk(g.primary);
     if (ok && g.kind === "date") {
@@ -951,7 +972,10 @@ export function wholePhrase(text: string, sentence?: string): boolean {
   if (sentence && words.length > 2) {
     const at = sentence.toLowerCase().indexOf(text.trim().toLowerCase());
     if (at < 0) return false;
-    const after = sentence.slice(at + text.trim().length, at + text.trim().length + 2);
+    const after = sentence.slice(
+      at + text.trim().length,
+      at + text.trim().length + 2,
+    );
     if (after && !/^[\s]*$|^[\s]*[.,;:!?)"”'’]/.test(after)) return false;
   }
   const low = words.map((w) => w.toLowerCase().replace(/[^a-z0-9']/g, ""));

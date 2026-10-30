@@ -101,3 +101,12 @@ test("every device is a Pulse one of the story's era", () => {
   assert.deepEqual(phoneLook(2017, 1), { gen: "slim", skin: "droid", network: "4G" });
   assert.deepEqual(phoneLook(2023, 0), { gen: "edge", skin: "orbit", network: "5G" });
 });
+
+import { groundedCredit } from "../src/editorial/documentary.ts";
+
+test("a quote keeps where it was said only when the source says so", () => {
+  assert.equal(groundedCredit("Leslie Benzies, on Twitter, 2013", "benzies wrote on twitter that"), "Leslie Benzies, on Twitter, 2013");
+  assert.equal(groundedCredit("Leslie Benzies, on Twitter, 2013", "benzies told the guardian"), "Leslie Benzies, 2013");
+  assert.equal(groundedCredit("Dan Houser, in an internal e-mail", "an internal e mail from houser"), "Dan Houser, in an internal e-mail");
+  assert.equal(groundedCredit("Dan Houser, Rockstar co-founder", "anything"), "Dan Houser, Rockstar co-founder");
+});

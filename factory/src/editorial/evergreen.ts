@@ -46,9 +46,20 @@ export const EVERGREEN_FORMATS = [
 ] as const;
 
 /** Weekly formats built from data the factory hands the writer; they run shorter lists. */
-export const WEEKLY_FORMATS = new Set<string>(["release_radar", "weekly_recap", "rarest_achievements", "hardest_achievements", "steam_climbers", "steam_deals"]);
-export const ACHIEVEMENT_FORMATS = new Set<string>(["rarest_achievements", "hardest_achievements"]);
-export const entriesMin = (format: string) => (WEEKLY_FORMATS.has(format) ? 4 : EVERGREEN_ENTRIES_MIN);
+export const WEEKLY_FORMATS = new Set<string>([
+  "release_radar",
+  "weekly_recap",
+  "rarest_achievements",
+  "hardest_achievements",
+  "steam_climbers",
+  "steam_deals",
+]);
+export const ACHIEVEMENT_FORMATS = new Set<string>([
+  "rarest_achievements",
+  "hardest_achievements",
+]);
+export const entriesMin = (format: string) =>
+  WEEKLY_FORMATS.has(format) ? 4 : EVERGREEN_ENTRIES_MIN;
 
 /** What the writer is told for each data-driven format. */
 export const FORMAT_RULES: Record<string, string> = {
@@ -57,13 +68,13 @@ export const FORMAT_RULES: Record<string, string> = {
   hardest_achievements:
     "Hardest Achievements rules: the entries are exactly the achievements in the data, one per game, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest, spoken from the least rare up to the rarest. steam_search_term is that achievement's game, platforms is that game's name, year is that game's release year. one_line says what it asks and why so few players have it, under 15 words; quote percentages exactly as in the data, never invent one. verdict_chip is 1-4 words. Hook: how few players have these and in which games, in your own words. The take names the one that is truly the hardest and why.",
   release_radar:
-    "Release Radar rules: the entries are the games in the data and nothing else, spoken in release order, earliest first, so the earliest release has the highest rank number and the last release is rank 1. Set each entry's date to its release date exactly as in the data (YYYY-MM-DD) and steam_search_term to its name. platforms is \"PC (Steam)\" unless the data says more. one_line says what the game is and one reason to care, under 15 words; never invent a price or a platform. verdict_chip is a 1-4 word hook such as \"SOULSLIKE WITH GUNS\". The take names the one to watch. Hook: the week, how many games and one stake for the viewer, in your own words.",
+    'Release Radar rules: the entries are the games in the data and nothing else, spoken in release order, earliest first, so the earliest release has the highest rank number and the last release is rank 1. Set each entry\'s date to its release date exactly as in the data (YYYY-MM-DD) and steam_search_term to its name. platforms is "PC (Steam)" unless the data says more. one_line says what the game is and one reason to care, under 15 words; never invent a price or a platform. verdict_chip is a 1-4 word hook such as "SOULSLIKE WITH GUNS". The take names the one to watch. Hook: the week, how many games and one stake for the viewer, in your own words.',
   steam_climbers:
-    "Steam Climbers rules: the entries are exactly the games in the data, ranked by places climbed: rank 1 climbed the most, spoken from the smallest climb up to the biggest. game_title and steam_search_term are the game's name exactly as in the data; year is its release year from the data; platforms is \"PC (Steam)\". one_line says what the game is and why it climbed, under 15 words, using only the Steam news given for it (an update, an event, a sale, a launch); if its news gives no reason, say what it is and that players are flooding back, and never invent a reason. Peak player numbers may be quoted exactly as in the data. verdict_chip is 1-4 words such as \"HUGE UPDATE\" or \"FREE WEEKEND\". Hook: which games climbed Steam's charts this week and how far, naming the week, in your own words. The take names the climb that matters most and why.",
+    'Steam Climbers rules: the entries are exactly the games in the data, ranked by places climbed: rank 1 climbed the most, spoken from the smallest climb up to the biggest. game_title and steam_search_term are the game\'s name exactly as in the data; year is its release year from the data; platforms is "PC (Steam)". one_line says what the game is and why it climbed, under 15 words, using only the Steam news given for it (an update, an event, a sale, a launch); if its news gives no reason, say what it is and that players are flooding back, and never invent a reason. Peak player numbers may be quoted exactly as in the data. verdict_chip is 1-4 words such as "HUGE UPDATE" or "FREE WEEKEND". Hook: which games climbed Steam\'s charts this week and how far, naming the week, in your own words. The take names the climb that matters most and why.',
   steam_deals:
-    "Steam Deals rules: the entries are exactly the games in the data, ranked by our deal pick: rank 1 is the best deal in the data, spoken from the least to the best. game_title and steam_search_term are the game's name exactly as in the data; year is its release year from the data; platforms is \"PC (Steam)\". one_line is one sentence with a verb saying what the game is and its US sale price exactly as in the data, under 15 words; say prices in US dollars only, never invent a price, a discount or an end date, and never say a sale ends soon. verdict_chip is 1-4 words such as \"ALL-TIME GREAT\" or \"CULT CLASSIC\". Hook: sell the prices in one line of your own (how cheap the cheapest is, or how many great games sit under a price), never a comparison with a sandwich or any other stock image. The hook never claims an order (not \"ranked by the biggest cut\"); it sells the prices. The take names the one to grab first and why. youtube.title leads with the best deal and its US price, e.g. \"Hogwarts Legacy Is $5.99 Right Now, Plus 4 More Steam Deals\". Prices change: never promise a price will last.",
+    'Steam Deals rules: the entries are exactly the games in the data, ranked by our deal pick: rank 1 is the best deal in the data, spoken from the least to the best. game_title and steam_search_term are the game\'s name exactly as in the data; year is its release year from the data; platforms is "PC (Steam)". one_line is one sentence with a verb saying what the game is and its US sale price exactly as in the data, under 15 words; say prices in US dollars only, never invent a price, a discount or an end date, and never say a sale ends soon. verdict_chip is 1-4 words such as "ALL-TIME GREAT" or "CULT CLASSIC". Hook: sell the prices in one line of your own (how cheap the cheapest is, or how many great games sit under a price), never a comparison with a sandwich or any other stock image. The hook never claims an order (not "ranked by the biggest cut"); it sells the prices. The take names the one to grab first and why. youtube.title leads with the best deal and its US price, e.g. "Hogwarts Legacy Is $5.99 Right Now, Plus 4 More Steam Deals". Prices change: never promise a price will last.',
   weekly_recap:
-    "Weekly Recap rules: the entries are the five biggest stories in the data, spoken from fifth to the biggest. game_title is the game or company the story is about; steam_search_term finds that game on Steam or is empty; year is that game's release year, or this year for a company story; platforms lists the outlets that reported it, e.g. \"IGN, Xbox Wire\". one_line says what happened and why it matters, under 15 words. verdict_chip is 1-4 words such as \"DELAYED AGAIN\". Only stories in the data, never a rumour as fact. Hook: how many stories and which one matters most to the viewer, in your own words.",
+    'Weekly Recap rules: the entries are the five biggest stories in the data, spoken from fifth to the biggest. game_title is the game or company the story is about; steam_search_term finds that game on Steam or is empty; year is that game\'s release year, or this year for a company story; platforms lists the outlets that reported it, e.g. "IGN, Xbox Wire". one_line says what happened and why it matters, under 15 words. verdict_chip is 1-4 words such as "DELAYED AGAIN". Only stories in the data, never a rumour as fact. Hook: how many stories and which one matters most to the viewer, in your own words.',
 };
 export type EvergreenFormat = (typeof EVERGREEN_FORMATS)[number];
 
@@ -128,11 +139,29 @@ export const EvergreenEntrySchema = z.object({
     .string()
     .describe("On-screen verdict, 1-4 words, e.g. 'PEAK CHAOS' or 'SKIP IT'"),
   footage: FootageSchema,
-  percent: z.number().optional().describe("achievement formats only: the unlock percentage exactly as in the data"),
+  percent: z
+    .number()
+    .optional()
+    .describe(
+      "achievement formats only: the unlock percentage exactly as in the data",
+    ),
   icon: z.string().optional().describe("leave empty; filled in by the factory"),
-  date: z.string().optional().describe("release_radar only: the release date as YYYY-MM-DD, exactly as in the data"),
-  peak: z.number().optional().describe("steam_climbers only: peak players this week, exactly as in the data"),
-  price: z.string().optional().describe("leave empty; filled in by the factory"),
+  date: z
+    .string()
+    .optional()
+    .describe(
+      "release_radar only: the release date as YYYY-MM-DD, exactly as in the data",
+    ),
+  peak: z
+    .number()
+    .optional()
+    .describe(
+      "steam_climbers only: peak players this week, exactly as in the data",
+    ),
+  price: z
+    .string()
+    .optional()
+    .describe("leave empty; filled in by the factory"),
   was: z.string().optional().describe("leave empty; filled in by the factory"),
 });
 
@@ -152,7 +181,9 @@ export const EvergreenScriptSchema = z.object({
     label: z.string().describe("Card label, e.g. THE CRITERION or OUR PICK"),
     narration: z
       .string()
-      .describe("Why number one wins by the stated criterion, 1-2 sentences, at most 32 words"),
+      .describe(
+        "Why number one wins by the stated criterion, 1-2 sentences, at most 32 words",
+      ),
     on_screen: z.string().describe("3-8 word on-screen summary"),
   }),
   loop_line: z.string().describe("Final line that ties back to the hook"),
@@ -166,7 +197,9 @@ export const EvergreenScriptSchema = z.object({
   claims: z.array(
     z.object({
       claim: z.string(),
-      source: z.string().describe("'steam facts', 'wikipedia' or 'public knowledge'"),
+      source: z
+        .string()
+        .describe("'steam facts', 'wikipedia' or 'public knowledge'"),
     }),
   ),
 });
@@ -205,8 +238,13 @@ export async function selectEvergreenTopic(
   demand = "",
 ): Promise<EvergreenTopic> {
   return llm.structured({
+    site: "evergreen.topic",
     system: topicPrompt(),
-    content: `Candidates:\n${candidates.map((c, i) => `${i}. ${c.name} (${c.source}${c.note ? `: ${c.note}` : ""})`).join("\n")}\n\nCovered in the last six months:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}${demand ? `\n\n${demand}\n\nWhen two candidates are equally strong, prefer the franchise that is trending above or that viewers asked for.` : ""}\n\nFormats: ${EVERGREEN_FORMATS.filter((f) => !WEEKLY_FORMATS.has(f)).map((f) => `${f} ("${FORMAT_TITLES[f]}")`).join("; ")}`,
+    content: `Candidates:\n${candidates.map((c, i) => `${i}. ${c.name} (${c.source}${c.note ? `: ${c.note}` : ""})`).join("\n")}\n\nCovered in the last six months:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}${demand ? `\n\n${demand}\n\nWhen two candidates are equally strong, prefer the franchise that is trending above or that viewers asked for.` : ""}\n\nFormats: ${EVERGREEN_FORMATS.filter(
+      (f) => !WEEKLY_FORMATS.has(f),
+    )
+      .map((f) => `${f} ("${FORMAT_TITLES[f]}")`)
+      .join("; ")}`,
     schema: EvergreenTopicSchema,
     effort: "low",
   });
@@ -219,7 +257,9 @@ export async function writeEvergreen(
   feedback: string[] = [],
   brief = "",
 ): Promise<EvergreenScript> {
-  const dataBlock = brief ? `\n\nThis week's data (use these and nothing else):\n${brief}\n\n${FORMAT_RULES[topic.format] ?? ""}` : "";
+  const dataBlock = brief
+    ? `\n\nThis week's data (use these and nothing else):\n${brief}\n\n${FORMAT_RULES[topic.format] ?? ""}`
+    : "";
   const factBlock = facts.length
     ? `\n\nFacts for entries: Steam figures and a Wikipedia background (use these numbers, never others):\n${facts.map((f) => `- ${f.title}: ${factsText(f.facts)}`).join("\n")}`
     : "";
@@ -227,6 +267,7 @@ export async function writeEvergreen(
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
   return llm.structured({
+    site: "evergreen.write",
     system: evergreenScriptPrompt(),
     content: `Format: ${topic.format} ("${FORMAT_TITLES[topic.format]}")\nTheme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}${dataBlock}${factBlock}${fb}`,
     schema: EvergreenScriptSchema,
@@ -261,7 +302,10 @@ export function fragments(text: string): string[] {
     const words = x.split(/\s+/).filter(Boolean);
     if (words.length > 4) return false;
     const low = words.map((w) =>
-      w.toLowerCase().replace(/’/g, "'").replace(/[^a-z']/g, ""),
+      w
+        .toLowerCase()
+        .replace(/’/g, "'")
+        .replace(/[^a-z']/g, ""),
     );
     if (
       words.length >= 2 &&
@@ -323,7 +367,8 @@ export function validateEvergreen(
     );
   if (e.format === "release_radar")
     for (const x of e.entries)
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(x.date ?? "")) p.push(`Entry "${x.game_title}" needs its release date as YYYY-MM-DD.`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(x.date ?? ""))
+        p.push(`Entry "${x.game_title}" needs its release date as YYYY-MM-DD.`);
   const ranks = e.entries.map((x) => x.rank).sort((a, b) => a - b);
   if (ranks.some((r, i) => r !== i + 1))
     p.push("Ranks must be 1..N with no gaps or repeats.");
@@ -335,11 +380,19 @@ export function validateEvergreen(
     if (x.year < 1970 || x.year > 2030)
       p.push(`Entry "${x.game_title}" has an implausible year.`);
   }
-  if (wordCount(e.hook) > 12) p.push("The hook is longer than 12 words; say the premise and the criterion in 8-12.");
-  if (wordCount(e.loop_line) > 22) p.push("The loop line is longer than 22 words; one short closing sentence.");
+  if (wordCount(e.hook) > 12)
+    p.push(
+      "The hook is longer than 12 words; say the premise and the criterion in 8-12.",
+    );
+  if (wordCount(e.loop_line) > 22)
+    p.push(
+      "The loop line is longer than 22 words; one short closing sentence.",
+    );
   // A long take holds one card on screen for 15+ seconds, the slowest part of the Short.
   if (wordCount(e.pulse_take.narration) > 32)
-    p.push("The take is longer than 32 words; keep it to one or two short sentences.");
+    p.push(
+      "The take is longer than 32 words; keep it to one or two short sentences.",
+    );
   if (
     /let me know in the comments|like and subscribe/i.test(
       narrationOfEvergreen(e),
@@ -371,7 +424,7 @@ export function evergreenToScript(e: EvergreenScript): Script {
             ? [x.platforms, `${x.peak.toLocaleString("en-US")} peak players`]
             : e.format === "steam_deals" && x.price
               ? [x.price, x.was ?? x.platforms]
-            : [String(x.year), x.platforms],
+              : [String(x.year), x.platforms],
       ...(x.date ? { date_to: x.date } : {}),
     } satisfies BeatVisual,
   }));

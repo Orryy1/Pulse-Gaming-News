@@ -9,25 +9,29 @@ import path from "node:path";
 import { FatalError } from "../lib/util.ts";
 import { PULSE_FACT_RULES, PULSE_VOICE } from "./voice.ts";
 
-/** One line per Claude call in data/usage/<day>.jsonl: what it was for and the tokens it used, so the bill can be explained. */
-function meter(model: string, system: string, usage: any): void {
+/** One usage line as the logs keep it; Codex answers add provider "codex" at zero tokens (src/editorial/codex.ts). */
+export interface UsageLine {
+  t: string;
+  model: string;
+  job: string;
+  in: number;
+  out: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cacheWrite5m?: number;
+  provider?: "codex";
+  site?: string;
+  ms?: number;
+}
+
+/** Appends one line to data/usage/<day>.jsonl. Never throws: the meter must not break a run. */
+export function recordUsage(line: UsageLine): void {
   try {
     const dir = path.join(
       path.resolve(process.env.DATA_DIR || "./data"),
       "usage",
     );
     fs.mkdirSync(dir, { recursive: true });
-    const line = {
-      t: new Date().toISOString(),
-      model,
-      job: jobOf(system),
-      in: usage?.input_tokens ?? 0,
-      out: usage?.output_tokens ?? 0,
-      cacheRead: usage?.cache_read_input_tokens ?? 0,
-      cacheWrite: usage?.cache_creation_input_tokens ?? 0,
-      // The part of cacheWrite kept five minutes (priced lower than the hour); older lines have none.
-      cacheWrite5m: usage?.cache_creation?.ephemeral_5m_input_tokens ?? 0,
-    };
     fs.appendFileSync(
       path.join(dir, `${line.t.slice(0, 10)}.jsonl`),
       `${JSON.stringify(line)}
@@ -36,6 +40,21 @@ function meter(model: string, system: string, usage: any): void {
   } catch {
     // The meter must never break a run.
   }
+}
+
+/** One line per Claude call in data/usage/<day>.jsonl: what it was for and the tokens it used, so the bill can be explained. */
+function meter(model: string, system: string, usage: any): void {
+  recordUsage({
+    t: new Date().toISOString(),
+    model,
+    job: jobOf(system),
+    in: usage?.input_tokens ?? 0,
+    out: usage?.output_tokens ?? 0,
+    cacheRead: usage?.cache_read_input_tokens ?? 0,
+    cacheWrite: usage?.cache_creation_input_tokens ?? 0,
+    // The part of cacheWrite kept five minutes (priced lower than the hour); older lines have none.
+    cacheWrite5m: usage?.cache_creation?.ephemeral_5m_input_tokens ?? 0,
+  });
 }
 
 /**
@@ -119,8 +138,18 @@ export interface Llm {
     tier?: Tier;
     /** How long the instructions stay cached: "1h" only for jobs that come back to the same instructions over the hour. */
     cache?: CacheTtl;
+    /**
+     * The step this call belongs to ("doc.chapter", "evergreen.write"), so a router can send named steps to
+     * another provider (src/editorial/codex.ts). Unset: the calling module's file name. Claude ignores it.
+     */
+    site?: string;
   }): Promise<z.infer<S>>;
 }
+
+/** The options one structured() call takes. */
+export type StructuredOptions<S extends z.ZodType> = Parameters<
+  Llm["structured"]
+>[0] & { schema: S };
 
 export type Tier = "top" | "mid" | "low";
 

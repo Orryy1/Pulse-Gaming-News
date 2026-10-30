@@ -239,6 +239,7 @@ export async function selectDocTopic(
   demand = "",
 ): Promise<DocTopic | undefined> {
   const t = await llm.structured({
+    site: "doc.topic",
     system: `${HOUSE}
 
 You are choosing the next long documentary. Two shapes: a franchise history told game by game (25-40 minutes, needs at least five major games), or a single story told in turning points (20-30 minutes: one event, decision, flop or downfall). Single stories broke out for small channels far more often than franchise histories (a 24-minute story of one Xbox reveal drew 100 times its channel's subscribers), so prefer a single story unless a franchise is in the news right now (a new release, trailer or anniversary) and has a dramatic history. Every pick needs one engine: a person, a hunt or mystery (something unreleased, hidden or lost), one failure moment, a rivalry, or an underdog; in a study of 1,573 long gaming videos those angles carried the strongest, while even-paced surveys of well-covered subjects (a fourth "history of PlayStation") sat with the weakest however well they were made. Pick what will pull the most viewers now. Never repeat anything already covered (listed).`,
@@ -351,6 +352,7 @@ export async function outlineDoc(
   franchiseNotes: string,
 ): Promise<DocOutline> {
   return llm.structured({
+    site: "doc.outline",
     system:
       topic.kind === "story"
         ? `${HOUSE}
@@ -513,6 +515,7 @@ export async function writeChapter(
   return (
     edited ??
     llm.structured({
+      site: "doc.chapter",
       system: chapterPrompt(),
       content: `${brief}${fb}`,
       schema: DocChapterSchema,
@@ -542,6 +545,7 @@ export async function checkChapter(
   source: WikiArticle,
 ): Promise<string[]> {
   const r = await llm.structured({
+    site: "doc.check",
     system: `You are a documentary fact-checker. Compare the narration with the SOURCE. List every specific factual statement (a date, number, name, quote, ranking, sales figure, event or cause) that the source does not support or that contradicts it. Framing, scene-setting description, transitions and clearly marked opinion are fine. Be strict about numbers and quotes. Return an empty list when everything checks out.`,
     content: `NARRATION:\n${chapter.paragraphs.map((p) => p.narration).join("\n\n")}\n\nSOURCE (Wikipedia, "${source.title}"):\n${source.text}`,
     schema: DocCheckSchema,
@@ -775,6 +779,7 @@ export async function writeDocMoments(
   for (let attempt = 0; attempt < 2 && got.length !== n; attempt++) {
     try {
       const r = await llm.structured({
+        site: "doc.shots",
         tier: "mid",
         system: DOC_MOMENTS_PROMPT,
         content: `Chapter: ${ctx.chapterTitle} (${ctx.game})${ctx.games?.length ? `\nGames in this documentary's chapters: ${ctx.games.join("; ")}` : ""}\n\n${ctx.sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}${ctx.lessons ? `\n\n${ctx.lessons}` : ""}\n\nReturn exactly ${n} moments.`,
@@ -1208,6 +1213,7 @@ export async function writeBookends(
     )
     .join("\n");
   return llm.structured({
+    site: "doc.bookends",
     system: `${HOUSE}
 
 Write the intro and outro of a finished documentary.
@@ -1344,6 +1350,7 @@ export async function pickPhotos(
 ): Promise<number[]> {
   if (!candidates.length) return [];
   const r = await llm.structured({
+    site: "doc.photos",
     tier: "low",
     system:
       "You pick archive photos for a video game documentary chapter. Keep a photo only when it clearly shows something the chapter is about: the studio, its people, the city or real place the game is set in or based on, a launch event, the hardware of the era. Reject anything about an unrelated person, place or thing that merely shares a word.",

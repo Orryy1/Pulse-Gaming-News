@@ -76,6 +76,17 @@ export interface Config {
   anthropicModel: string;
   claudeModelMid: string; // picking footage, posts, story selection
   claudeModelLow: string; // simple filtering
+  /** Codex (the owner's ChatGPT plan) answers the listed steps instead of Claude (src/editorial/codex.ts). */
+  codexLlm: boolean;
+  /** The steps routed: "doc.chapter", a family "doc", or "*". Empty: nothing, even with CODEX_LLM on. */
+  codexCalls: string[];
+  /** Listed steps that carry images (vision checks) go to Codex too; off until each check has its side-by-side. */
+  codexVision: boolean;
+  /** A Codex run is killed after this many minutes and Claude answers instead. */
+  codexTimeoutMinutes: number;
+  /** The Python that can import the orchestrator's codex_runner, and where that file lives. */
+  codexPython: string;
+  codexRunnerDir: string;
   voiceProvider: VoiceProvider;
   localTtsUrl: string;
   localVoiceId: string;
@@ -417,6 +428,15 @@ export function loadConfig(): Config {
     anthropicModel: str("CLAUDE_MODEL", "claude-opus-5-5"),
     claudeModelMid: str("CLAUDE_MODEL_MID", "claude-sonnet-5-5"),
     claudeModelLow: str("CLAUDE_MODEL_LOW", "claude-haiku-5-5"),
+    codexLlm: bool("CODEX_LLM", false),
+    codexCalls: str("CODEX_CALLS", "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    codexVision: bool("CODEX_VISION", false),
+    codexTimeoutMinutes: int("CODEX_TIMEOUT_MINUTES", 20),
+    codexPython: str("CODEX_PYTHON", "python"),
+    codexRunnerDir: str("CODEX_RUNNER_DIR", "C:\\Claude\\orchestrator"),
     voiceProvider: str("VOICE_PROVIDER", "auto") as VoiceProvider,
     localTtsUrl: str("LOCAL_TTS_URL", "http://127.0.0.1:8765").replace(
       /\/$/,
@@ -862,6 +882,9 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     database: Boolean(c.databaseUrl),
     anthropicModel: c.anthropicModel,
     anthropicKey: Boolean(process.env.ANTHROPIC_API_KEY),
+    codexLlm: c.codexLlm,
+    codexCalls: c.codexCalls,
+    codexVision: c.codexVision,
     voiceProvider: c.voiceProvider,
     localTtsUrl: c.localTtsUrl,
     elevenLabsFallback: Boolean(c.elevenLabsApiKey),

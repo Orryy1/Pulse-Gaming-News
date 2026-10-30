@@ -250,6 +250,7 @@ export async function selectLongformTopic(
   demand = "",
 ): Promise<EvergreenTopic> {
   const topic = await llm.structured({
+    site: "longform.topic",
     system: longformTopicPrompt(),
     content: `Candidates:\n${candidates.map((c, i) => `${i}. ${c.name} (${c.source}${c.note ? `: ${c.note}` : ""})`).join("\n")}\n\nCovered in the last six months:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}${demand ? `\n\n${demand}\n\nWhen two candidates are equally strong, prefer the franchise that is trending above or that viewers asked for.` : ""}\n\nFormat: ranking ("${FORMAT_TITLES.ranking}")`,
     schema: EvergreenTopicSchema,
@@ -341,6 +342,7 @@ export async function writeMoments(
   for (let attempt = 0; attempt < 2 && got.length !== n; attempt++) {
     try {
       const r = await llm.structured({
+        site: "longform.shots",
         tier: "mid",
         system: MOMENTS_PROMPT,
         content: `Game: ${game}${others.length ? `\nOther entries in this ranking: ${others.join("; ")}` : ""}\n\n${sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nReturn exactly ${n} moments.`,
@@ -391,6 +393,7 @@ export async function writeLongform(
     : "";
   const brief = `Theme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}${lessons ? `\n\n${lessons}` : ""}`;
   const plan = await llm.structured({
+    site: "longform.plan",
     system: planPrompt(),
     content: `${brief}${factBlock}${fb}`,
     schema: LongformPlanSchema,
@@ -420,6 +423,7 @@ export async function writeLongform(
       ...written.map((w) => w.narration),
     ]);
     const body = await llm.structured({
+      site: "longform.write",
       system: entryPrompt(),
       content: `${brief}\nTitle: ${plan.title}\n\nThe full ranking, spoken from the bottom up:\n${outline}\n\nWrite entry #${e.rank} of ${order.length}: ${e.game_title} (${e.year}, ${e.platforms}). Verdict chip: ${e.verdict_chip}. Notes: ${e.angle}${
         own.length

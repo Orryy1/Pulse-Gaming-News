@@ -59,3 +59,16 @@ test("words a minute counts speaking time only", () => {
   assert.ok(Math.abs(wordsPerMinute(paused) - 150) <= 2);
   assert.ok(voiceProblems(breathsIn(take(-70, 2)), 196).length === 1);
 });
+
+import { visionAnswer } from "../src/assets/localvision.ts";
+
+test("a vision answer is read from the reply, or from the end of the model's reasoning", () => {
+  assert.deepEqual(visionAnswer({ message: { content: '{"text": true}' } }), { text: true });
+  // Ollama 0.40 with qwen3-vl: the reasoning comes first and the reply may be empty or cut short.
+  assert.deepEqual(
+    visionAnswer({ message: { content: "", thinking: '<think>\nSo, is there text? {maybe}\n</think>\n{"text": false, "dark": true}' } }),
+    { text: false, dark: true },
+  );
+  assert.deepEqual(visionAnswer({ message: { content: '{\n\n  "', thinking: "<think>\nSo, let's" } }), {});
+  assert.deepEqual(visionAnswer({}), {});
+});

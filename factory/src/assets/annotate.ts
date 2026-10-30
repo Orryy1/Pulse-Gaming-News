@@ -4,7 +4,12 @@
 // (the Game Maker's Toolkit look, owner 27 Oct 2026). Nothing is drawn unless the model finds the thing.
 import fs from "node:fs/promises";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
-import { LOCAL_VISION_MODEL, LOCAL_VISION_URL } from "./localvision.ts";
+import {
+  LOCAL_VISION_MODEL,
+  LOCAL_VISION_URL,
+  THINK_ROOM,
+  visionAnswer,
+} from "./localvision.ts";
 
 /** A box as fractions of the picture: [left, top, right, bottom], 0 to 1. */
 export type Box = [number, number, number, number];
@@ -59,7 +64,7 @@ export async function locate(
           think: false,
           format: SCHEMA,
           keep_alive: "5m",
-          options: { temperature: 0, num_predict: 120, num_ctx: 8192 },
+          options: { temperature: 0, num_predict: 120 + THINK_ROOM, num_ctx: 8192 },
           messages: [
             {
               role: "user",
@@ -75,9 +80,7 @@ export async function locate(
     const body = (await res.json()) as {
       message?: { content?: string; thinking?: string };
     };
-    const ans = JSON.parse(
-      body.message?.content?.trim() || body.message?.thinking?.trim() || "{}",
-    );
+    const ans = visionAnswer(body);
     return ans.found === true ? usableBox(ans.bbox_2d) : undefined;
   } catch (err) {
     log("warn", "locate failed", { what, error: errorMessage(err) });

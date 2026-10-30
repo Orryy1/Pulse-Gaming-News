@@ -55,6 +55,38 @@ const SCHEMA = {
 };
 
 /** Whether a frame is unusable as footage, and why. Text alone is reported separately: it also marks where a clip must stop. */
+/**
+ * Room for the model's reasoning before its answer. Ollama 0.40 runs qwen3-vl's thinking even with
+ * think: false (30 Oct 2026), about 100-200 tokens, and a budget sized for the bare answer cut it off
+ * before the answer began: every frame check failed and went to Claude.
+ */
+export const THINK_ROOM = 900;
+
+/**
+ * The model's JSON answer: the reply itself, or the last {...} in the reply or its reasoning when the
+ * answer arrived wrapped in thinking. Anything unreadable is an empty answer, never a throw.
+ */
+export function visionAnswer(body: {
+  message?: { content?: string; thinking?: string };
+}): any {
+  for (const t of [body.message?.content, body.message?.thinking]) {
+    const text = t?.trim();
+    if (!text) continue;
+    try {
+      return JSON.parse(text);
+    } catch {
+      const m = text.match(/\{[^{}]*\}(?![\s\S]*\{[^{}]*\})/);
+      if (m)
+        try {
+          return JSON.parse(m[0]);
+        } catch {
+          // not JSON after all
+        }
+    }
+  }
+  return {};
+}
+
 export const rejectReason = (f: FrameFlags): string | undefined =>
   f.webcam
     ? "webcam or overlay"
@@ -79,7 +111,11 @@ const NUM_CTX = 8192;
 export async function unloadLocalVision(): Promise<void> {
   await fetchWithTimeout(
     `${LOCAL_VISION_URL}/api/generate`,
-    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: LOCAL_VISION_MODEL, keep_alive: 0 }) },
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: LOCAL_VISION_MODEL, keep_alive: 0 }),
+    },
     15_000,
   ).catch(() => undefined);
 }
@@ -97,7 +133,11 @@ async function checkOne(file: string): Promise<FrameFlags | undefined> {
         think: false,
         format: SCHEMA,
         keep_alive: "15m",
-        options: { temperature: 0, num_predict: 120, num_ctx: NUM_CTX },
+        options: {
+          temperature: 0,
+          num_predict: 120 + THINK_ROOM,
+          num_ctx: NUM_CTX,
+        },
         messages: [{ role: "user", content: PROMPT, images: [image] }],
       }),
     },
@@ -111,9 +151,7 @@ async function checkOne(file: string): Promise<FrameFlags | undefined> {
     message?: { content?: string; thinking?: string };
   };
   // Some vision models put their whole answer in the thinking field even with thinking off.
-  const parsed = JSON.parse(
-    body.message?.content?.trim() || body.message?.thinking?.trim() || "{}",
-  );
+  const parsed = visionAnswer(body);
   const yes = (k: string) => parsed[k] === true;
   // Writing that is only the game's own small HUD does not count as text on screen.
   const hud = yes("text") && yes("hud_only");
@@ -199,7 +237,11 @@ async function faceBox(
         think: false,
         format: FACE_SCHEMA,
         keep_alive: "15m",
-        options: { temperature: 0, num_predict: 80, num_ctx: NUM_CTX },
+        options: {
+          temperature: 0,
+          num_predict: 80 + THINK_ROOM,
+          num_ctx: NUM_CTX,
+        },
         messages: [
           {
             role: "user",
@@ -216,9 +258,7 @@ async function faceBox(
   const body = (await res.json()) as {
     message?: { content?: string; thinking?: string };
   };
-  const r = JSON.parse(
-    body.message?.content?.trim() || body.message?.thinking?.trim() || "{}",
-  ) as { found?: boolean; box?: number[] };
+  const r = visionAnswer(body) as { found?: boolean; box?: number[] };
   const b = r.box;
   if (!r.found || !b || b.length !== 4) return undefined;
   const [x1, y1, x2, y2] = b.map((v) => Math.min(1, Math.max(0, v / 1000))) as [
@@ -353,7 +393,11 @@ async function clearFace(file: string): Promise<boolean> {
           required: ["clear_face"],
         },
         keep_alive: "15m",
-        options: { temperature: 0, num_predict: 20, num_ctx: NUM_CTX },
+        options: {
+          temperature: 0,
+          num_predict: 20 + THINK_ROOM,
+          num_ctx: NUM_CTX,
+        },
         messages: [
           {
             role: "user",
@@ -370,11 +414,5 @@ async function clearFace(file: string): Promise<boolean> {
   const body = (await res.json()) as {
     message?: { content?: string; thinking?: string };
   };
-  return (
-    (
-      JSON.parse(
-        body.message?.content?.trim() || body.message?.thinking?.trim() || "{}",
-      ) as { clear_face?: boolean }
-    ).clear_face === true
-  );
+  return (visionAnswer(body) as { clear_face?: boolean }).clear_face === true;
 }

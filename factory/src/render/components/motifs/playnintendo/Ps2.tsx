@@ -14,6 +14,7 @@ import {
   quantityRows,
 } from "../../packs/data/figures.ts";
 import type { MotifCardProps } from "../types.ts";
+import { PulseBadge } from "../../packs/pulse/PulseBadge.tsx";
 import {
   clamp,
   clean,
@@ -429,6 +430,20 @@ const BootCard: React.FC<MotifCardProps> = (props) => {
           ) : null}
         </div>
       </AbsoluteFill>
+      {/* The Pulse badge resolving low on the floor, where a boot sequence shows the console's name. */}
+      <PulseBadge
+        size={44}
+        colour={LIGHT}
+        opacity={resolve * 0.9}
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 92,
+          justifyContent: "center",
+          filter: "drop-shadow(0 0 14px rgba(110,165,255,0.85))",
+        }}
+      />
     </AbsoluteFill>
   );
 };

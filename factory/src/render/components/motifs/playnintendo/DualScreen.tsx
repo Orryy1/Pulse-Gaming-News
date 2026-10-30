@@ -11,6 +11,7 @@ import type { MomentGraphic } from "../../LongMoments.tsx";
 import type { GfxProps, GfxStyle } from "../../packs/types.ts";
 import { countText, parseFigure } from "../../packs/data/figures.ts";
 import type { MotifCardProps } from "../types.ts";
+import { PulseBadge } from "../../packs/pulse/PulseBadge.tsx";
 import {
   clamp,
   clean,
@@ -347,6 +348,19 @@ const Device: React.FC<{
             boxShadow: on > 0.5 ? "0 0 10px #4ade80" : "none",
           }}
         />
+        {/* The Pulse badge printed under the touch screen. */}
+        <PulseBadge
+          size={26}
+          colour={way.accent}
+          opacity={0.85}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: BOT.y + BOT.h + 18,
+            justifyContent: "center",
+          }}
+        />
       </div>
       {/* The hinge. */}
       <div
@@ -405,6 +419,12 @@ const Device: React.FC<{
               border: `4px solid ${way.edge}`,
               opacity: 0.6,
             }}
+          />
+          {/* The Pulse badge on the closed lid, where the maker's name is printed. */}
+          <PulseBadge
+            size={64}
+            colour={way.edge}
+            style={{ position: "absolute", inset: 0, justifyContent: "center" }}
           />
         </div>
       </div>
@@ -519,7 +539,10 @@ const DualCard: React.FC<MotifCardProps> = (props) => {
   });
   const size = fit(heading, BOT.w - 92, 4, [62, 56, 50, 44, 40], 0.58);
   const bw = BOT.w - 56;
-  const lines = Math.min(4, Math.max(1, linesNeeded(heading, BOT.w - 92, size, 0.58)));
+  const lines = Math.min(
+    4,
+    Math.max(1, linesNeeded(heading, BOT.w - 92, size, 0.58)),
+  );
   const bh = Math.min(260, Math.round(size * 1.12 * lines) + 64);
   // The stylus taps the button's lower right corner, clear of the centred words.
   const tap = {

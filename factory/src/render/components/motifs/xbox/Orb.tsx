@@ -16,6 +16,7 @@ import { SPRING, ease } from "../../../motion.ts";
 import { useStage } from "../../DocGraphics.tsx";
 import type { MotifCardProps } from "../types.ts";
 import type { GfxProps, GfxStyle } from "../../packs/types.ts";
+import { PulseMark } from "../../packs/screen/pulse.tsx";
 import { cardFade, clamp, fitLabel, rng, sizeFor, txt, uniq } from "./util.ts";
 
 const G = {
@@ -291,6 +292,18 @@ const Orb: React.FC<{
             mixBlendMode: "screen",
           }}
         />
+        {/* The Pulse mark glowing in the core, where the console's own emblem sat in its orb. */}
+        <div
+          style={{
+            position: "absolute",
+            left: r - r * 0.42,
+            top: r - r * 0.42,
+            opacity: 0.5 + 0.25 * beat,
+            filter: `drop-shadow(0 0 ${10 + 8 * beat}px rgba(200,255,140,0.9))`,
+          }}
+        >
+          <PulseMark size={r * 0.84} colour={G.pale} />
+        </div>
         {/* Glass: dark rim, top-left light */}
         <div
           style={{

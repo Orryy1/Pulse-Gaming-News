@@ -17,6 +17,7 @@ import { SPRING, ease } from "../../../motion.ts";
 import { useStage } from "../../DocGraphics.tsx";
 import type { MotifCardProps } from "../types.ts";
 import type { GfxProps, GfxStyle } from "../../packs/types.ts";
+import { PulseBadge } from "../../packs/pulse/PulseBadge.tsx";
 import {
   cardFade,
   clamp,
@@ -437,7 +438,14 @@ export const BladesCard: React.FC<MotifCardProps> = (p) => {
                     "linear-gradient(160deg, rgba(255,255,255,0.3), rgba(255,255,255,0) 40%)",
                 }}
               />
-              <div style={{ position: "absolute", left: 56, right: 56, bottom: 48 }}>
+              <div
+                style={{
+                  position: "absolute",
+                  left: 56,
+                  right: 56,
+                  bottom: 48,
+                }}
+              >
                 {title("#ffffff", "#e6ffc8", "0 2px 18px rgba(10,40,0,0.45)")}
               </div>
             </div>
@@ -458,7 +466,11 @@ export const BladesCard: React.FC<MotifCardProps> = (p) => {
                   <>
                     <Shot src={pics[0]!} w={760} h={PH} push={push} />
                     <div
-                      style={{ display: "flex", flexDirection: "column", gap: 24 }}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 24,
+                      }}
                     >
                       {pics.slice(1).map((src, i) => (
                         <Shot
@@ -487,6 +499,13 @@ export const BladesCard: React.FC<MotifCardProps> = (p) => {
           }}
         />
       </div>
+      {/* The Pulse badge above the open blade, where the dashboard named the console. */}
+      <PulseBadge
+        size={34}
+        colour={INK}
+        opacity={0.75 * show}
+        style={{ position: "absolute", left: PX + 8, top: 44 }}
+      />
     </AbsoluteFill>
   );
 };
@@ -573,6 +592,13 @@ const BladeRows: React.FC<{
             >
               {head}
             </div>
+            {/* The Pulse badge at the far end of the header, where the dashboard named the console. */}
+            <PulseBadge
+              size={34}
+              colour={INK}
+              opacity={0.75}
+              style={{ marginLeft: "auto", flex: "none" }}
+            />
           </div>
         ) : null}
         {rows.map((r, i) => {

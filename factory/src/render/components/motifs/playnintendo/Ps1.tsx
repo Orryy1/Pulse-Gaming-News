@@ -8,6 +8,7 @@ import { useStage } from "../../DocGraphics.tsx";
 import type { MomentGraphic } from "../../LongMoments.tsx";
 import type { GfxProps, GfxStyle } from "../../packs/types.ts";
 import type { MotifCardProps } from "../types.ts";
+import { PulseBadge } from "../../packs/pulse/PulseBadge.tsx";
 import {
   clamp,
   clean,
@@ -281,6 +282,18 @@ const MemoryCardCard: React.FC<MotifCardProps> = (props) => {
           MEMORY CARD
         </div>
       </div>
+      {/* The Pulse badge in the top corner, where the console's own name would sit. */}
+      <PulseBadge
+        size={46}
+        colour={INK}
+        opacity={interpolate(frame, [0, 8], [0, 1], clamp) * panelsDim}
+        style={{
+          position: "absolute",
+          right: 170,
+          top: 112,
+          filter: "drop-shadow(0 3px 0 rgba(0,0,0,0.35))",
+        }}
+      />
       {/* The save's name field under the cards, filled as the highlight lands. */}
       <div
         style={{
@@ -312,7 +325,12 @@ const MemoryCardCard: React.FC<MotifCardProps> = (props) => {
           }}
         >
           <div style={{ transform: "scale(0.6667)", transformOrigin: "0 0" }}>
-            <IconView icon={icons[SELECTED]!} size={96} filter={small} frame={frame} />
+            <IconView
+              icon={icons[SELECTED]!}
+              size={96}
+              filter={small}
+              frame={frame}
+            />
           </div>
         </div>
         <div
@@ -812,6 +830,18 @@ const Saves: React.FC<GfxProps> = ({ g, len, src, variant = 0 }) => {
         >
           MEMORY CARD
         </div>
+        {/* The Pulse badge where a maker's name sits on a memory card. */}
+        <PulseBadge
+          size={30}
+          colour={SOFT}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: -54,
+            justifyContent: "center",
+          }}
+        />
         {Array.from({ length: 15 }, (_, slot) => {
           const k = order.indexOf(slot);
           const save = k >= 0 && k < n ? k : -1;

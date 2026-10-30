@@ -3,10 +3,47 @@
 import React from "react";
 import { interpolate } from "remotion";
 import { BODY } from "../../fonts.ts";
-import { clamp } from "../screen/common.ts";
+import { clamp, easeInOut } from "../screen/common.ts";
 import { anonymous, initialsOf } from "./socialCredit.ts";
 
-/** The honest-framing tag, bottom right, exactly as PhoneStory has it. */
+/** A rectangle in frame pixels. */
+export type Rect = { left: number; top: number; width: number; height: number };
+
+/** The camera's push-in, 0 before `from` and 1 twenty frames later. */
+export const pushInAt = (frame: number, from: number) =>
+  interpolate(frame, [from, from + 20], [0, 1], {
+    ...clamp,
+    easing: easeInOut,
+  });
+
+/**
+ * The camera pushing in on a message pane the way PhoneStory does: a full-frame wrapper scales `s` times about
+ * the pane's centre, which slides to the middle of the frame, so the words grow to a readable size while the
+ * window's chrome stays in view round the edges. `zoom` 0-1 is how far in the push is.
+ */
+export function pushIn(
+  pane: Rect,
+  s: number,
+  zoom: number,
+): React.CSSProperties {
+  const cx = pane.left + pane.width / 2;
+  const cy = pane.top + pane.height / 2;
+  return {
+    position: "absolute",
+    inset: 0,
+    transformOrigin: `${cx}px ${cy}px`,
+    transform: `translate(${(960 - cx) * zoom}px, ${(540 - cy) * zoom}px) scale(${1 + (s - 1) * zoom})`,
+  };
+}
+
+/** A dark pill behind the frame's captions, so they read over a window the camera has pushed in on. */
+const PILL: React.CSSProperties = {
+  background: "rgba(11,11,14,0.72)",
+  borderRadius: 10,
+  padding: "8px 16px",
+};
+
+/** The honest-framing tag, bottom right, exactly where PhoneStory has it. */
 export const IllustrationTag: React.FC<{ frame: number; from?: number }> = ({
   frame,
   from = 30,
@@ -15,7 +52,8 @@ export const IllustrationTag: React.FC<{ frame: number; from?: number }> = ({
     style={{
       position: "absolute",
       right: 60,
-      bottom: 48,
+      bottom: 40,
+      ...PILL,
       color: "rgba(255,255,255,0.7)",
       fontFamily: BODY,
       fontSize: 20,
@@ -41,8 +79,9 @@ export const CreditCaption: React.FC<{
       style={{
         position: "absolute",
         left: 60,
-        bottom: 42,
+        bottom: 36,
         maxWidth: 1420,
+        ...PILL,
         display: "flex",
         alignItems: "center",
         gap: 14,

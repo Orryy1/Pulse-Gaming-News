@@ -148,9 +148,10 @@ export const SketchPreview: React.FC<SketchPreviewProps> = (p) => {
   );
 };
 
+// No treatment here: Remotion lays default props under the input props, and a preview that leaves the
+// treatment out means "pick it from the context", which a default would override.
 export const SAMPLE_SKETCH: SketchPreviewProps = {
   src: "",
-  treatment: "drawOn",
   seed: 1,
   len: 180,
   durationSeconds: 180 / LONG_FPS,

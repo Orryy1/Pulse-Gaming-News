@@ -398,19 +398,22 @@ const DrawOn: React.FC<
   const glow = dissolve
     ? interpolate(frame, [d0, d0 + 12, len - 6, len], [0, 0.55, 0.4, 0], clamp)
     : 0;
-  // A screenshot or art that follows plays full-bleed: the sheet grows to fill the frame so the next shot
-  // fades in over the same picture at the same size. A photo keeps the framed print's geometry and tilt.
+  // The hand-off on the light table: a screenshot or art that follows plays full-bleed, so the sheet grows
+  // to fill the frame and the next shot fades in over the same picture at the same size; a photo keeps the
+  // framed print's geometry (its opening scale and tilt), so the print takes over in place.
   const innerW = SHEET_W - 2 * SHEET_PAD;
   const innerH = h - 2 * SHEET_PAD;
-  const fill =
-    dissolve && next && next.kind !== "photo"
-      ? interpolate(frame, [len - 12, len], [0, 1], {
-          ...clamp,
-          easing: easeInOut,
-        })
-      : 0;
+  const toPhoto = Boolean(dissolve && next && next.kind === "photo");
+  const handoff = dissolve
+    ? interpolate(frame, [len - 12, len], [0, 1], {
+        ...clamp,
+        easing: easeInOut,
+      })
+    : 0;
+  const fill = toPhoto ? 0 : handoff;
   const coverScale = Math.max(1920 / innerW, 1080 / innerH);
-  const scale = (m.scale - 0.04) * (1 - fill) + coverScale * fill;
+  const target = toPhoto ? moveTransform(move, 0).scale - 0.04 : coverScale;
+  const scale = m.scale * (1 - handoff) + target * handoff;
   const top = 48 + 2 * fill;
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
@@ -553,7 +556,8 @@ const StopMotion: React.FC<SketchShotProps & { frame: number }> = ({
   frame,
   caption,
 }) => {
-  const W = 1200;
+  // Wide enough that the drawing itself (inside the paper border and the torn head) fills 61% of the frame height.
+  const W = 1260;
   const pad = 20;
   const h = Math.round(W / Math.max(0.6, aspect));
   const step = stepOf(frame);
@@ -857,9 +861,10 @@ const CorkBoard: React.FC<SketchShotProps & { frame: number }> = ({
   });
   const settle = interpolate(frame, [12, 16, 20], [0, -5, 0], clamp);
   const pin = interpolate(frame, [12, 16, 19], [0, 1.25, 1], clamp);
+  // The camera pushes in on the newest once it has landed: by about two seconds it fills 61% of the height.
   const push = interpolate(
     frame,
-    [16, Math.max(40, Math.min(96, len * 0.5))],
+    [16, Math.max(40, Math.min(70, len * 0.4))],
     [1, 1.3],
     {
       ...clamp,

@@ -523,7 +523,15 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         const mineClips = entryClips.filter(
           (k) => clips[k]!.moment === w.moment && !clipUsed[k],
         );
-        const still = entryImages.find((k) => images[k]!.moment === w.moment);
+        const mineStills = entryImages.filter(
+          (k) => images[k]!.moment === w.moment,
+        );
+        // A real photo picked for the sentence (the person it names, the real place) is what the sentence is
+        // about, so it opens the sentence; a sentence's footage usually fills it, and a photo queued behind the
+        // footage never played (30 Oct 2026: five people's photos were found and none was shown).
+        const photos = mineStills.filter((k) => images[k]!.kind === "photo");
+        const stills = mineStills.filter((k) => images[k]!.kind !== "photo");
+        const still = mineStills[0];
         const queue: LongMedia[] = [];
         // The entry opens on its art so the rank card lands over a picture; later sentences open on footage.
         // With no picture of its own for the first sentence it borrows the entry's art: a dark clip under the rank card reads as an empty frame.
@@ -535,10 +543,10 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
               : undefined);
           if (opener !== undefined)
             queue.push({ type: "image", index: opener });
-        }
+        } else for (const k of photos) queue.push({ type: "image", index: k });
         for (const k of mineClips) queue.push({ type: "clip", index: k });
-        if (w.moment !== 0 && still !== undefined)
-          queue.push({ type: "image", index: still });
+        if (w.moment !== 0)
+          for (const k of stills) queue.push({ type: "image", index: k });
         // When the sentence's own media runs out, any unused footage of the entry comes before another still,
         // but never a clip picked for a sentence still to come (a chapter's B-roll would play a minute early).
         // A spare clip of a sentence just gone comes first (it shows the same thing); footage matched to no

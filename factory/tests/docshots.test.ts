@@ -240,6 +240,50 @@ test("a B-roll clip plays on the sentence it was picked for, not earlier", () =>
   assert.ok(plan.shots.every((x) => x.end > x.start));
 });
 
+test("a sentence naming a person opens on their photo, before its footage", () => {
+  const s = docToScript(draftWithMoments());
+  const entries = [...s.entries!].sort((a, b) => b.rank - a.rank);
+  const w = timed(s);
+  const segs = buildSegments(segmentInputs(s), w, w.at(-1)!.end + 6);
+  const windows = momentWindows(
+    segs,
+    w,
+    entries.map((e) => e.moments!.length),
+  );
+  const images = [
+    ...Array.from({ length: 5 }, () => ({
+      kind: "screenshot",
+      aspect: 1.78,
+      beatIndex: 0,
+    })),
+    { kind: "screenshot", aspect: 1.78, beatIndex: 0, moment: 7 },
+    { kind: "photo", aspect: 1.5, beatIndex: 0, moment: 7 }, // the person named in sentence 7
+  ];
+  const clips = [
+    { durationSeconds: 12, beatIndex: 0, moment: 7 }, // footage long enough to fill the sentence
+    { durationSeconds: 4, beatIndex: 0 },
+  ];
+  const plan = buildLongPlan({
+    segments: segs,
+    words: w,
+    durationSeconds: w.at(-1)!.end + 6,
+    images,
+    clips,
+    variant: 0,
+    momentCounts: entries.map((e) => e.moments!.length),
+  });
+  const seven = windows.find((x) => x.entry === 0 && x.moment === 7)!;
+  const first = plan.shots.find(
+    (x) => x.start >= Math.round(seven.at * 30) - 1,
+  )!;
+  assert.deepEqual(first.media, { type: "image", index: 6 });
+  // The sentence's footage is not thrown away: if it plays, it plays after the photo (on this sentence or
+  // the next, as a spare clip of a sentence just gone).
+  for (const x of plan.shots)
+    if (x.media.type === "clip" && x.media.index === 0)
+      assert.ok(x.start >= first.end, "footage after the photo");
+});
+
 test("a quote or timeline is never mistaken for a rank graphic", () => {
   assert.equal(
     usefulGraphic({
@@ -382,25 +426,64 @@ test("a map pins only places the source names and the place list knows; charts a
   const { moments, removed } = groundDocMoments(
     [
       moment(),
-      g({ kind: "map", primary: "Where it began", items: ["Dundee", "Edinburgh"] }),
+      g({
+        kind: "map",
+        primary: "Where it began",
+        items: ["Dundee", "Edinburgh"],
+      }),
       moment(),
-      g({ kind: "map", primary: "Where it began", items: ["Edinburgh", "Atlantis"] }), // not a place we know
+      g({
+        kind: "map",
+        primary: "Where it began",
+        items: ["Edinburgh", "Atlantis"],
+      }), // not a place we know
       moment(),
       g({ kind: "map", primary: "A new home", items: ["Montreal"] }), // not in the source
       moment(),
-      g({ kind: "bars", primary: "Copies sold", items: ["GTA III: 14.5 million", "Vice City: 17.5 million"] }),
+      g({
+        kind: "bars",
+        primary: "Copies sold",
+        items: ["GTA III: 14.5 million", "Vice City: 17.5 million"],
+      }),
       moment(),
-      g({ kind: "bars", primary: "Copies sold", items: ["GTA III: 14.5 million", "Vice City: 20 million"] }), // 20 is not in the source
+      g({
+        kind: "bars",
+        primary: "Copies sold",
+        items: ["GTA III: 14.5 million", "Vice City: 20 million"],
+      }), // 20 is not in the source
       moment(),
-      g({ kind: "lineage", primary: "One studio", items: ["DMA Design: 1987", "Rockstar North: 2002"] }),
+      g({
+        kind: "lineage",
+        primary: "One studio",
+        items: ["DMA Design: 1987", "Rockstar North: 2002"],
+      }),
       moment(),
-      g({ kind: "lineage", primary: "One studio", items: ["DMA Design: 1987", "Rockstar Leeds: 2004"] }), // not in the source
+      g({
+        kind: "lineage",
+        primary: "One studio",
+        items: ["DMA Design: 1987", "Rockstar Leeds: 2004"],
+      }), // not in the source
     ],
     src,
   );
   assert.deepEqual(
     moments.map((m) => m.graphic.kind),
-    ["none", "map", "none", "none", "none", "none", "none", "bars", "none", "none", "none", "lineage", "none", "none"],
+    [
+      "none",
+      "map",
+      "none",
+      "none",
+      "none",
+      "none",
+      "none",
+      "bars",
+      "none",
+      "none",
+      "none",
+      "lineage",
+      "none",
+      "none",
+    ],
   );
   assert.equal(removed.length, 4);
 });

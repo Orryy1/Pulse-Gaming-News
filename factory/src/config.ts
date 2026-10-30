@@ -313,6 +313,12 @@ export interface Config {
   releaseGateMaxZero: number; // 0-1, the share of screen time that may show the wrong thing
   /** A code reload (data/admin/reload-requested, src/reload.ts) never happens this close before a slot. */
   reloadMinutesBeforeSlot: number;
+  /** A long video's media gather stops with what it has after this long (src/assets/gatherbudget.ts); 0 = no limit. */
+  gatherMaxMinutes: number;
+  /** Every yt-dlp and ffmpeg download child is killed after this long (src/lib/child.ts; read from the environment there too). */
+  downloadTimeoutSeconds: number;
+  /** A long-lane tick not completed for this long, with no render or upload running, is reported and its lease released. */
+  longTickStallMinutes: number;
   /** Languages each video's title and description are also set in on YouTube (empty switches it off). */
   localizeLanguages: string[];
   /** Python with faster-whisper (PC) or MLX Whisper (Mac) for the narration check; empty switches it off. */
@@ -722,6 +728,9 @@ export function loadConfig(): Config {
       Math.min(1, Number(str("RELEASE_GATE_MAX_ZERO", "0.03")) || 0.03),
     ),
     reloadMinutesBeforeSlot: int("RELOAD_MINUTES_BEFORE_SLOT", 30),
+    gatherMaxMinutes: int("GATHER_MAX_MINUTES", 45),
+    downloadTimeoutSeconds: int("DOWNLOAD_TIMEOUT_SECONDS", 300),
+    longTickStallMinutes: int("LONG_TICK_STALL_MINUTES", 150),
     localizeLanguages: str("LOCALIZE_LANGUAGES", "es,pt,de,fr,ja")
       .split(",")
       .map((l) => l.trim())

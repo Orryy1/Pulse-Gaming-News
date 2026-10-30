@@ -216,6 +216,17 @@ import {
   passDecision,
 } from "./qa/graphicscheck.ts";
 import { releaseGateStep } from "./qa/releaseGate.ts";
+import {
+  GatherBudget,
+  GatherOutOfTime,
+  reportGatherStop,
+} from "./assets/gatherbudget.ts";
+import {
+  LONG_LEASE,
+  LONG_URGENT_HOURS,
+  isUrgentLong,
+  orderLongEpisodes,
+} from "./longlane.ts";
 import { titleVariants } from "./editorial/titles.ts";
 import { paletteOf } from "./assets/palette.ts";
 import {
@@ -4298,6 +4309,19 @@ async function gatherMedia(
   rich = false,
 ): Promise<Pick<EpisodeAssets, "images" | "clips" | "officialTrailer">> {
   const script = ep.script_json!;
+  // The gather's time budget (GATHER_MAX_MINUTES, src/assets/gatherbudget.ts): past it the entry loop below
+  // stops with what it has; and a long video yields the lane early to an urgent one (a slot within hours,
+  // still unscripted) rather than keep it waiting behind hours of downloads (30 Oct 2026, the missed recap).
+  const gatherBudget = new GatherBudget(s.cfg.gatherMaxMinutes, async () => {
+    if (ep.lane !== "longform") return undefined;
+    const other = (await dueEpisodes(s.db, s.now())).find(
+      (e) => e.id !== ep.id && isLongEpisode(e) && isUrgentLong(e, s.now()),
+    );
+    return other
+      ? `"${other.script_json?.headline ?? other.story_json.headline}" is due within ${LONG_URGENT_HOURS} hours and still unscripted`
+      : undefined;
+  });
+  let budgetReported = false;
   // Prefer the exact store name resolved at script time so art and clips come from the same app as the facts.
   const term =
     ep.assets_json?.steam?.name ||
@@ -4530,13 +4554,29 @@ async function gatherMedia(
           });
       }
       try {
+        // Out of time, or an urgent long video waiting for the lane: this and the entries after it get no
+        // gather of their own (the thin-entry top-up and the plate cover them), reported once.
+        if (await gatherBudget.exhausted()) {
+          if (!budgetReported) {
+            budgetReported = true;
+            await reportGatherStop(
+              s.db,
+              (m) => s.notify(m),
+              ep,
+              gatherBudget,
+              sorted.length - beatIndex,
+            );
+          }
+          continue;
+        }
         // A long-form entry with a shot list: a picture for every sentence.
         if (
           ep.lane === "longform" &&
           entry.moments?.length &&
           script.evergreen_format !== "documentary"
         ) {
-          await gatherLongEntryMedia(
+          await gatherBudget.within(
+            gatherLongEntryMedia(
             s,
             script,
             entry,
@@ -4544,6 +4584,9 @@ async function gatherMedia(
             dir,
             images,
             clips,
+              gatherBudget,
+            ),
+            undefined,
           );
           continue;
         }
@@ -4562,7 +4605,8 @@ async function gatherMedia(
           continue;
         // A documentary chapter runs minutes: its own gallery, matched footage and archive photos.
         if (script.evergreen_format === "documentary") {
-          await gatherChapterMedia(
+          await gatherBudget.within(
+            gatherChapterMedia(
             s,
             script,
             entry,
@@ -4570,6 +4614,9 @@ async function gatherMedia(
             dir,
             images,
             clips,
+              gatherBudget,
+            ),
+            undefined,
           );
           continue;
         }
@@ -4775,7 +4822,8 @@ async function gatherMedia(
   };
   return {
     images: out.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)),
-    clips,
+    // A copy: an entry's gather left behind by the budget may still push into the live array for a while.
+    clips: [...clips],
     officialTrailer: official.trailer,
   };
 }
@@ -5005,6 +5053,8 @@ export async function gatherLongEntryMedia(
   dir: string,
   images: Array<VisualAsset & { beatIndex?: number }>,
   clips: NonNullable<EpisodeAssets["clips"]>,
+  /** The gather's time budget: past it the slow fetches (own recordings, licensed gameplay) are skipped. */
+  budget?: GatherBudget,
 ): Promise<void> {
   const edir = path.join(dir, `entry_${beatIndex}`);
   const rel = (f: string) => path.join(`entry_${beatIndex}`, f);
@@ -5093,6 +5143,8 @@ export async function gatherLongEntryMedia(
           trailer: om.trailer.title,
         });
     }
+    // Past the gather budget the entry keeps its art and stops here: no own recordings, no licensed gameplay.
+    if (budget?.over()) throw new GatherOutOfTime();
     // The owner's own recordings come first: the best footage there is.
     for (const c of await s
       .ownClips(
@@ -5129,7 +5181,7 @@ export async function gatherLongEntryMedia(
         text: `${t.text}, a different moment`,
       },
     ]);
-    if (missing.length)
+    if (missing.length && !budget?.over())
       for (const c of await s
         .gameplayClips(
           entry.game_title,
@@ -5166,6 +5218,7 @@ export async function gatherLongEntryMedia(
         if (a.kind !== "capsule" || !mine.some((m) => m.kind === "capsule"))
           mine.push(a);
   } catch (err) {
+    if (!(err instanceof GatherOutOfTime))
     log("warn", "long entry media failed", {
       game: entry.game_title,
       error: errorMessage(err),
@@ -5265,6 +5318,8 @@ async function gatherChapterMedia(
   dir: string,
   images: Array<VisualAsset & { beatIndex?: number }>,
   clips: NonNullable<EpisodeAssets["clips"]>,
+  /** The gather's time budget: past it each remaining fetch block (footage, gameplay, photos, stock) is skipped. */
+  budget?: GatherBudget,
 ): Promise<void> {
   const franchise = script.game_title;
   const edir = path.join(dir, `entry_${beatIndex}`);
@@ -5330,6 +5385,7 @@ async function gatherChapterMedia(
         .filter((c) => c.beatIndex === beatIndex && c.moment !== undefined)
         .map((c) => c.moment!),
     );
+  if (!budget?.over())
   try {
     if (eapp) {
       for (const a of (await s.fetchArt(eapp, edir, 12)).filter(
@@ -5410,7 +5466,7 @@ async function gatherChapterMedia(
       game: entry.game_title,
       year: entry.year,
     });
-  if (!upcoming)
+  if (!upcoming && !budget?.over())
     try {
       const done = tagged();
       const open = shots.filter(
@@ -5504,6 +5560,7 @@ async function gatherChapterMedia(
     });
   }
   // Archive photos: the real places and people, freely licensed and credited on screen.
+  if (!budget?.over())
   try {
     const queries = (
       entry.photos?.length ? entry.photos : [`${entry.game_title} video game`]
@@ -5550,6 +5607,7 @@ async function gatherChapterMedia(
   }
   // The people the narration names, on the sentence that names them (29 Oct 2026 review: Sam Houser,
   // Leslie Benzies and the critics only ever got a name tag on an unrelated picture).
+  if (!budget?.over())
   try {
     const people = new Map<string, number>();
     for (const [k, m] of (entry.moments ?? []).entries()) {
@@ -5592,6 +5650,7 @@ async function gatherChapterMedia(
   }
   // Real-world B-roll: licensed stock for the sentences the shot list marks (the studio, money, a leak),
   // played on its own sentence and labelled illustrative on screen.
+  if (!budget?.over())
   try {
     const targets: FootageTarget[] = (entry.moments ?? [])
       .map((m, k) => ({ m, k }))
@@ -8508,17 +8567,36 @@ async function pushEpisode(s: Services, ep: Episode): Promise<void> {
 export async function tickLong(
   s: Services,
 ): Promise<{ ran: boolean; episodes?: string[] }> {
-  const result = await withLease(s.db, "tick-long", 360 * 60, async () => {
-    const PRE = ["selected", "scripted", "voiced"];
-    // One that is made goes first (approval, upload, the post-upload checks), not behind another's render.
-    const due = (await dueEpisodes(s.db, s.now()))
-      .filter(isLongEpisode)
-      .sort(
-        (a, b) =>
-          Number(PRE.includes(a.status)) - Number(PRE.includes(b.status)),
-      );
-    for (const ep of due) await pushEpisode(s, ep);
-    return { episodes: due.map((ep) => ep.id) };
+  const result = await withLease(s.db, LONG_LEASE, 360 * 60, async (lease) => {
+    // One step at a time, the lane re-ordered after each (src/longlane.ts): the nearest slot first, and an
+    // unscripted video due within hours ahead of everything, so another's gather or render never queues it
+    // (30 Oct 2026: the recap for 20:00 sat behind the Halo ranking's gather and missed its slot). An episode
+    // that did not move (a wait, a failure) rests for the remainder of this pass; the pass ends when nothing
+    // is left to do or the lease is gone (the lane watchdog released it).
+    const worked: string[] = [];
+    const resting = new Set<string>();
+    for (let guard = 0; guard < 60; guard++) {
+      if (!(await lease.held())) {
+        log("warn", "long tick stopping: its lease was released", { worked });
+        break;
+      }
+      const due = orderLongEpisodes(
+        (await dueEpisodes(s.db, s.now())).filter(isLongEpisode),
+        s.now(),
+      ).filter((e) => !resting.has(e.id));
+      const ep = due[0];
+      if (!ep) break;
+      if (!worked.includes(ep.id)) worked.push(ep.id);
+      const moved = await advance(s, ep);
+      const after = await getEpisode(s.db, ep.id);
+      if (
+        !moved ||
+        !after ||
+        (after.next_attempt_at && new Date(after.next_attempt_at) > s.now())
+      )
+        resting.add(ep.id);
+    }
+    return { episodes: worked };
   });
   return result ? { ran: true, ...result } : { ran: false };
 }

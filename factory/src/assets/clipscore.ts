@@ -7,8 +7,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { runCapped } from "../lib/child.ts";
 import { z } from "zod";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
@@ -22,7 +21,8 @@ import {
   type VisualAsset,
 } from "./steam.ts";
 
-const run = promisify(execFile);
+// Every child (yt-dlp, ffmpeg) runs under the download cap and is killed on overrun (src/lib/child.ts).
+const run = runCapped;
 
 export const CLIP_SECONDS = 4.8;
 export const MIN_CLIP_SECONDS = 1.6; // a shot shorter than this cannot carry a line (the planner's shortest shot is 1.5 s)

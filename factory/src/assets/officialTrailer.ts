@@ -6,15 +6,15 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { runCapped } from "../lib/child.ts";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
 import { YTDLP_TEXT } from "../lib/bin.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
 import type { VisualAsset } from "./steam.ts";
 import type { Llm } from "../editorial/llm.ts";
 
-const run = promisify(execFile);
+// Every child (yt-dlp, ffmpeg) runs under the download cap and is killed on overrun (src/lib/child.ts).
+const run = runCapped;
 const API = "https://www.googleapis.com/youtube/v3";
 
 export interface PublisherRule {

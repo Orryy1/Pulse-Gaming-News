@@ -233,7 +233,8 @@ export interface MontageItem {
   startFrom?: number;
 }
 /** Frames each cut of an opening burst lasts. */
-export const MONTAGE_CUT = 7;
+// Each shot of an opening burst: 7 frames read as a strobe at full speed (30 Oct 2026, measured at 10 fps), so 18.
+export const MONTAGE_CUT = 18;
 export const montageFrames = (n: number) => n * MONTAGE_CUT + 4;
 
 const MontageShot: React.FC<{ item: MontageItem; last: boolean }> = ({

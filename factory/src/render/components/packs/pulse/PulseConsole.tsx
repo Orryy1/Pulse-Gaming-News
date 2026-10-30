@@ -52,9 +52,20 @@ export function consoleOf(year: number): { gen: ConsoleGen; name: string } {
 }
 
 // The stage: the console stands on a turntable left of centre, the callouts run down the right.
-const CX = 620;
+const CX = 580;
 const FLOOR = 800;
-const COL_X = 1120;
+/** The rigs are drawn at a modest size round (CX, FLOOR); on stage each is scaled up and dropped by DY. */
+const DY = 50;
+const COL_X = 1170;
+/** How much each generation grows on stage: the wide boxes to about 1000 px across, the tower to full height. */
+const SCALE: Record<ConsoleGen, number> = {
+  tempo: 1.64,
+  prism: 1.4,
+  basalt: 1.54,
+  comet: 1.64,
+  facet: 1.38,
+  spire: 1.05,
+};
 // The era's own action (cartridge in, lid or tray shut, a gloss sweep) and the moment the power comes on.
 const ACT: [number, number] = [18, 36];
 const POWER = 42;
@@ -413,10 +424,12 @@ function prism(c: Ctx): Rig {
   const I = 60;
   const lidX = CX - 50;
   const lidY = 580;
-  // The lid stands open over the disc and swings shut (open is 1).
+  // The lid is hinged at its back edge: open (1) it stands tilted up behind the disc, seen foreshortened
+  // from underneath, and it swings down flat over the disc as the console lands.
   const open = 1 - c.act;
-  const lidCy = lidY + (lidY - 80 - 112 - lidY) * open;
-  const lidRy = 76 + (112 - 76) * open;
+  const hingeY = lidY - 76;
+  const lidCy = hingeY + 76 * (1 - open) - 96 * open;
+  const lidRy = 76 * (1 - open) + 34 * open;
   const vents = [0, 1, 2, 3, 4]
     .map((k) => `M${CX + 120 + k * 16} 530 l14 66`)
     .join(" ");
@@ -444,14 +457,21 @@ function prism(c: Ctx): Rig {
         {open > 0.02 && (
           <Disc cx={lidX} cy={lidY} r={140} squash={0.5} src={c.src} />
         )}
+        {open > 0.5 && (
+          // The lid's edge, from the hinge up to the raised rim.
+          <path
+            d={`M${lidX - 152} ${hingeY} L${lidX - 152} ${lidCy} A152 ${lidRy} 0 0 1 ${lidX + 152} ${lidCy} L${lidX + 152} ${hingeY} Z`}
+            fill="#8f8c85"
+          />
+        )}
         <ellipse
           cx={lidX}
           cy={lidCy}
           rx={152}
           ry={lidRy}
-          fill={open > 0.5 ? "#a6a39c" : "url(#pcon-prism-lid)"}
-          stroke="#9b988f"
-          strokeWidth={2}
+          fill={open > 0.5 ? "#7d7a73" : "url(#pcon-prism-lid)"}
+          stroke={open > 0.5 ? "#c3c0b9" : "#9b988f"}
+          strokeWidth={open > 0.5 ? 3 : 2}
         />
         {open <= 0.5 && (
           <g>
@@ -1254,11 +1274,20 @@ export const PulseConsole: React.FC<GfxProps> = ({
   const rig = RIGS[gen]({ frame, act, on, src, year: y, name });
   const look = PADS[gen];
 
-  // The pad stands front left, clear of the callouts.
-  const px = Math.min(CX - rig.w / 2 - 20, CX - 250);
-  const py = FLOOR + 62;
+  // The stage: the rig grows by its generation's scale round (CX, FLOOR) and drops to the stage floor.
+  const sc = SCALE[gen];
+  const SF = FLOOR + DY;
+  const onStage = ([x, y]: [number, number]): [number, number] => [
+    CX + (x - CX) * sc,
+    SF + (y - FLOOR) * sc,
+  ];
+  const stageW = rig.w * sc;
+
+  // The pad stands on the floor in front of the console's left end, clear of the callouts.
+  const px = Math.max(260, CX - stageW / 2 + 150);
+  const py = SF + 78;
   const ROT = -12;
-  const S = 0.82;
+  const S = 1.15;
   const padDx = (1 - padIn) * -280;
   const padDy = (1 - padIn) * 70;
   const rad = (ROT * Math.PI) / 180;
@@ -1273,17 +1302,18 @@ export const PulseConsole: React.FC<GfxProps> = ({
     easing: easeOut,
   });
 
+  // The rows run down the right, centred on the console, below the heading (which ends by about y 200).
   const n = rows.length;
-  const gap = Math.min(150, 520 / (n - 1));
-  const rowY = (i: number) => 590 + (i - (n - 1) / 2) * gap;
-  const spots = [...rig.spots].sort((a, b) => a[1] - b[1]);
+  const gap = Math.min(160, 560 / (n - 1));
+  const rowY = (i: number) => 600 + (i - (n - 1) / 2) * gap;
+  const spots = rig.spots.map(onStage).sort((a, b) => a[1] - b[1]);
   const spotFor = (i: number) =>
     spots[Math.round((i * (spots.length - 1)) / (n - 1))]!;
-  const valueSize = n <= 3 ? 54 : n <= 4 ? 50 : 44;
+  const valueSize = n <= 3 ? 62 : n <= 4 ? 56 : 48;
   const headSize = sizeByLength(heading.length, [
-    [18, 88],
-    [28, 72],
-    [999, 60],
+    [18, 84],
+    [28, 70],
+    [999, 58],
   ]);
   const headIn = easeOut(interpolate(frame, [8, 26], [0, 1], clamp));
 
@@ -1320,6 +1350,46 @@ export const PulseConsole: React.FC<GfxProps> = ({
           <filter id="pcon-soft" x="-20%" y="-50%" width="140%" height="200%">
             <feGaussianBlur stdDeviation={14} />
           </filter>
+          {/* Rim light: the silhouette grown a few px, lit warm and nudged upward, drawn under the body. */}
+          <filter id="pcon-rim" x="-10%" y="-10%" width="120%" height="120%">
+            <feMorphology
+              in="SourceAlpha"
+              operator="dilate"
+              radius={3}
+              result="d"
+            />
+            <feOffset in="d" dy={-3} result="o" />
+            <feFlood floodColor="#ffe2bf" floodOpacity={0.9} />
+            <feComposite in2="o" operator="in" result="rim" />
+            <feGaussianBlur in="rim" stdDeviation={1.4} />
+          </filter>
+          {/* A wide soft halo behind the silhouette, so a dark body stands off the backdrop. */}
+          <filter id="pcon-halo" x="-20%" y="-20%" width="140%" height="140%">
+            <feMorphology
+              in="SourceAlpha"
+              operator="dilate"
+              radius={6}
+              result="d"
+            />
+            <feFlood floodColor="#ffd1a0" floodOpacity={0.55} />
+            <feComposite in2="d" operator="in" result="h" />
+            <feGaussianBlur in="h" stdDeviation={22} />
+          </filter>
+          <radialGradient id="pcon-room" cx={CX / 1920} cy={0.48} r={0.62}>
+            <stop offset="0" stopColor="#3b3c44" />
+            <stop offset="0.55" stopColor="#24252b" />
+            <stop offset="1" stopColor="#15161a" />
+          </radialGradient>
+          <linearGradient id="pcon-floor" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#45434a" />
+            <stop offset="0.5" stopColor="#2b2a30" />
+            <stop offset="1" stopColor="#1a1a1e" />
+          </linearGradient>
+          <radialGradient id="pcon-pool">
+            <stop offset="0" stopColor="#ffb878" stopOpacity={0.42} />
+            <stop offset="0.6" stopColor="#ffb878" stopOpacity={0.12} />
+            <stop offset="1" stopColor="#ffb878" stopOpacity={0} />
+          </radialGradient>
           <radialGradient id="pcon-spot">
             <stop offset="0" stopColor={COLOUR.amber} stopOpacity={0.2} />
             <stop offset="0.55" stopColor={COLOUR.amber} stopOpacity={0.06} />
@@ -1387,40 +1457,72 @@ export const PulseConsole: React.FC<GfxProps> = ({
           </linearGradient>
         </defs>
 
-        {/* The spotlight and the turntable. */}
+        {/* The room: a dark grey backdrop lit from the console, a warm floor and a spotlight pool on it. */}
+        <rect
+          width={1920}
+          height={1080}
+          fill="url(#pcon-room)"
+          opacity={0.96}
+        />
+        <rect
+          x={0}
+          y={SF - 6}
+          width={1920}
+          height={1080 - SF + 6}
+          fill="url(#pcon-floor)"
+        />
+        <line
+          x1={0}
+          x2={1920}
+          y1={SF - 6}
+          y2={SF - 6}
+          stroke="#5a585f"
+          strokeWidth={2}
+        />
         <g opacity={enter}>
-          <circle cx={CX} cy={FLOOR - 170} r={600} fill="url(#pcon-spot)" />
+          <circle cx={CX} cy={SF - 240} r={760} fill="url(#pcon-spot)" />
           <ellipse
             cx={CX}
-            cy={FLOOR + 10}
-            rx={Math.max(rig.w / 2 + 110, 300)}
-            ry={42}
+            cy={SF + 30}
+            rx={820}
+            ry={150}
+            fill="url(#pcon-pool)"
+          />
+          {/* The turntable. */}
+          <ellipse
+            cx={CX}
+            cy={SF + 12}
+            rx={Math.max(stageW / 2 + 120, 360)}
+            ry={48}
             fill="url(#pcon-plinth)"
             stroke={COLOUR.amber}
-            strokeOpacity={0.35}
-            strokeWidth={2}
+            strokeOpacity={0.45}
+            strokeWidth={2.5}
           />
           <ellipse
             cx={CX}
-            cy={FLOOR + 4}
-            rx={rig.w / 2 + 30}
-            ry={18}
+            cy={SF + 4}
+            rx={stageW / 2 + 40}
+            ry={22}
             fill="#000"
-            opacity={0.6}
+            opacity={0.55}
             filter="url(#pcon-soft)"
           />
         </g>
 
+        {/* The console: its halo and rim light first, then the body over them. */}
         <g
           opacity={enter}
-          transform={`translate(${(1 - enter) * -460} 0) translate(${CX} ${FLOOR}) skewY(${(1 - enter) * -6}) scale(${0.7 + 0.3 * enter} 1) translate(${-CX} ${-FLOOR})`}
+          transform={`translate(${(1 - enter) * -460} ${DY}) translate(${CX} ${FLOOR}) skewY(${(1 - enter) * -6}) scale(${sc * (0.7 + 0.3 * enter)} ${sc}) translate(${-CX} ${-FLOOR})`}
         >
+          <g filter="url(#pcon-halo)">{rig.body}</g>
+          <g filter="url(#pcon-rim)">{rig.body}</g>
           {rig.body}
         </g>
 
         {rig.port && !look.wireless && cord > 0 && (
           <path
-            d={`M${rig.port[0]} ${rig.port[1]} C${rig.port[0]} ${FLOOR + 40} ${padTop[0] + 40} ${padTop[1] - 60} ${padTop[0]} ${padTop[1]}`}
+            d={`M${onStage(rig.port)[0]} ${onStage(rig.port)[1]} C${onStage(rig.port)[0]} ${SF + 50} ${padTop[0] + 40} ${padTop[1] - 70} ${padTop[0]} ${padTop[1]}`}
             fill="none"
             stroke={gen === "prism" ? "#8f8c85" : "#0d0d10"}
             strokeWidth={5}
@@ -1493,7 +1595,7 @@ export const PulseConsole: React.FC<GfxProps> = ({
               />
               <circle cx={c.spot[0]} cy={c.spot[1]} r={6} fill={COLOUR.amber} />
               {c.line >= 1 && (
-                <circle cx={COL_X} cy={c.y} r={7} fill={COLOUR.amber} />
+                <circle cx={COL_X} cy={c.y} r={8} fill={COLOUR.amber} />
               )}
             </g>
           ) : null,
@@ -1552,7 +1654,7 @@ export const PulseConsole: React.FC<GfxProps> = ({
             style={{
               fontFamily: BODY,
               fontWeight: 600,
-              fontSize: 26,
+              fontSize: 28,
               letterSpacing: 3,
               textTransform: "uppercase",
               color: COLOUR.muted,

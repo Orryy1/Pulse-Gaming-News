@@ -71,3 +71,20 @@ test("a sentence that names another game asks for that game's pictures, exact ti
   assert.deepEqual(otherGames({ show: "", keywords: ["Grand Theft Auto"] }, "Grand Theft Auto", "Grand Theft Auto", "Grand Theft Auto shipped."), []);
   assert.equal(igdbNameOf('IGDB screenshot for "Grand Theft Auto 2" (1999), publisher material via igdb.com'), "grand theft auto 2");
 });
+
+import { outletOf } from "../src/render/components/packs/screen/PhoneStory.tsx";
+import { storyYear } from "../src/render/components/packs/screen/OldWeb.tsx";
+import { inEra } from "../src/render/components/packs/types.ts";
+
+test("a press story's card names its outlet and keeps to its own era", () => {
+  assert.equal(outletOf("The Guardian, 1997"), "The Guardian");
+  assert.equal(outletOf("Chris Carter, Destructoid, 2013", "quote"), "Destructoid");
+  assert.equal(outletOf("Keith Hamilton, project leader", "quote"), "NEWS");
+  const g = (secondary: string) => ({ kind: "headline", primary: "MP calls for ban", secondary, items: [] }) as never;
+  assert.equal(storyYear(g("The Guardian, 1997")), 1997);
+  assert.equal(storyYear(g("BBC"), 2013), 2013);
+  const phone = { kind: "headline", component: () => null, era: { from: 2012 } } as never;
+  assert.equal(inEra(phone, 1997), false);
+  assert.equal(inEra(phone, 2023), true);
+  assert.equal(inEra(phone, undefined), true);
+});

@@ -95,6 +95,8 @@ import {
   type MontageItem,
 } from "./components/EditorMoves.tsx";
 import { ALL_STYLES } from "./components/packs/index.ts";
+import { inEra } from "./components/packs/types.ts";
+import { storyYear } from "./components/packs/screen/OldWeb.tsx";
 import { CAPTION_STYLES } from "./components/Captions.tsx";
 import { motifsFor } from "./components/motifs/index.ts";
 import type { Motif } from "./components/motifs/types.ts";
@@ -2734,10 +2736,14 @@ export const Long: React.FC<LongProps> = (props) => {
     windows.forEach((w, k) => {
       const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
       if (!g || !usefulGraphic(g)) return;
+      // A look from the story's own time: no smartphone for a 1997 story (owner, 30 Oct 2026).
+      const year = storyYear(g, Number(entryTitle(w.entry).year) || undefined);
       const styles = Object.keys(ALL_STYLES)
         .sort()
         .map((name) => ALL_STYLES[name]!)
-        .filter((s) => s.kind === g.kind && (!s.fits || s.fits(g)));
+        .filter(
+          (s) => s.kind === g.kind && (!s.fits || s.fits(g)) && inEra(s, year),
+        );
       const choices: Array<GfxStyle | undefined> = [
         ...(HOUSE.has(g.kind)
           ? SMALL.has(g.kind)
@@ -2749,7 +2755,7 @@ export const Long: React.FC<LongProps> = (props) => {
       // A sentence about a game with a motif takes the motif's own style every other time it can.
       const motif = motifOf(w.entry);
       const own = Object.values(motif?.styles ?? {}).filter(
-        (s) => s.kind === g.kind && (!s.fits || s.fits(g)),
+        (s) => s.kind === g.kind && (!s.fits || s.fits(g)) && inEra(s, year),
       );
       if (!choices.length && !own.length) return;
       const n = turn.get(g.kind) ?? 0;

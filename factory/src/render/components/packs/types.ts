@@ -28,4 +28,15 @@ export interface GfxStyle {
   fits?: (g: MomentGraphic) => boolean;
   /** Sound on entry: "pop" (a whoosh), "glint" (a tick) or "stamp" (a low hit 34 frames in). */
   sound?: "pop" | "glint" | "stamp";
+  /**
+   * The years a look belongs to (owner, 30 Oct 2026: old stories came up on modern smartphones). A story from
+   * outside them takes another style; a graphic with no year takes the game's.
+   */
+  era?: { from?: number; to?: number };
+}
+
+/** Whether a style may draw a story from this year (no year known: any style). */
+export function inEra(style: GfxStyle, year: number | undefined): boolean {
+  if (year === undefined || !style.era) return true;
+  return (style.era.from ?? -Infinity) <= year && year <= (style.era.to ?? Infinity);
 }

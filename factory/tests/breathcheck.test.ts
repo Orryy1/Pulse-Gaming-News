@@ -106,3 +106,17 @@ test("a render counts as frozen only after its quiet spell runs out", () => {
   assert.equal(renderStalled((STALL_MINUTES.between + 1) * min, 0, false), false);
   assert.equal(renderStalled((STALL_MINUTES.first + 1) * min, 0, false), true);
 });
+
+import { uncoveredTargets } from "../src/assets/stillscore.ts";
+
+test("a second look asks about uncovered sentences, those without a graphic first", () => {
+  const moments = [
+    { show: "a", graphic: { kind: "none" } },
+    { show: "b", graphic: { kind: "stat" } },
+    { show: "c" },
+    { show: "d", graphic: { kind: "none" } },
+  ];
+  const got = uncoveredTargets(moments, ["s0", "s1", "s2", "s3"], new Set([3]));
+  assert.deepEqual(got.map((t) => t.key), ["m0", "m2", "m1"]);
+  assert.equal(got[0]!.sentence, "s0");
+});

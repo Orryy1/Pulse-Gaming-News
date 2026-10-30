@@ -67,6 +67,52 @@ async function thumb(src: string, dest: string): Promise<void> {
   ]);
 }
 
+/** One frame from the middle of a clip, as a picture the editor can judge. */
+export async function clipFrame(
+  src: string,
+  seconds: number,
+  dest: string,
+): Promise<void> {
+  await fs.mkdir(path.dirname(dest), { recursive: true });
+  await run(FFMPEG, [
+    "-loglevel",
+    "error",
+    "-y",
+    "-ss",
+    Math.max(0, seconds / 2).toFixed(2),
+    "-i",
+    src,
+    "-frames:v",
+    "1",
+    "-q:v",
+    "3",
+    dest,
+  ]);
+}
+
+/**
+ * The sentences a second look should try to pin footage to: those with neither a picture nor a clip of their
+ * own, the ones without a graphic first (a graphic already shows what they say).
+ */
+export function uncoveredTargets(
+  moments: Array<{ show: string; graphic?: { kind: string } }>,
+  sentences: string[],
+  covered: Set<number>,
+): StillTarget[] {
+  const open = moments
+    .map((m, k) => ({ m, k }))
+    .filter(({ k }) => !covered.has(k));
+  const bare = (x: { m: { graphic?: { kind: string } } }) =>
+    !x.m.graphic || x.m.graphic.kind === "none";
+  return [...open.filter(bare), ...open.filter((x) => !bare(x))].map(
+    ({ m, k }) => ({
+      key: `m${k}`,
+      show: m.show,
+      sentence: sentences[k] ?? "",
+    }),
+  );
+}
+
 /** Labels every picture and picks one per sentence; pictures with text are never picked. */
 export async function rankStills(
   llm: Llm,

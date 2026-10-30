@@ -235,6 +235,23 @@ export function renderStalled(
   return now - since > limit * 60_000;
 }
 
+/** Thread wait states of the renderer's processes, e.g. "Suspended=180 UserRequest=12" (Windows only). */
+async function threadStates(): Promise<string> {
+  if (process.platform !== "win32") return "";
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { stdout } = await promisify(execFile)(
+    "powershell",
+    [
+      "-NoProfile",
+      "-Command",
+      'Get-Process chrome-headless-shell,remotion,ffmpeg -ErrorAction SilentlyContinue | ForEach-Object { $_.Threads } | ForEach-Object { if ($_.ThreadState -eq "Wait") { [string]$_.WaitReason } else { [string]$_.ThreadState } } | Group-Object | ForEach-Object { "$($_.Name)=$($_.Count)" }',
+    ],
+    { timeout: 20_000 },
+  );
+  return stdout.trim().split(/\r?\n/).join(" ");
+}
+
 /**
  * renderMedia with a freeze guard. 30 Oct 2026: the Vice City documentary's render stopped at about a fifth
  * of the way with Chrome, the decoder and ffmpeg all at zero CPU and no error; Remotion's per-frame timeout
@@ -252,7 +269,12 @@ async function renderMediaWatched(
     if (!renderStalled(Date.now(), since, frames > 0)) return;
     stalled = true;
     clearInterval(timer);
-    cancel();
+    // Whether something outside froze it (a "sleep mode" optimiser suspends programs): the renderer's
+    // threads' wait states, logged before the cancel tears them down.
+    void threadStates()
+      .then((states) => log("warn", "render frozen", { frames, states }))
+      .catch(() => undefined)
+      .finally(() => cancel());
   }, 30_000);
   const report = options.onProgress;
   try {

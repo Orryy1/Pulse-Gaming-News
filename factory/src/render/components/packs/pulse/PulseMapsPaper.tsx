@@ -10,6 +10,7 @@ import { interpolate, spring } from "remotion";
 import { BODY, HAND } from "../../fonts.ts";
 import { Stage, useStage } from "../../DocGraphics.tsx";
 import type { GfxProps } from "../types.ts";
+import { DRAWN_BY } from "../fit.ts";
 import { GRAIN, RED_PEN, Write, rnd } from "../paper/kit.tsx";
 import { clamp, easeOut, txt } from "../screen/common.ts";
 import { PulseMark } from "../screen/pulse.tsx";
@@ -185,13 +186,10 @@ export const PulseMapsPaper: React.FC<GfxProps> = ({
       ...clamp,
       easing: easeOut,
     });
-  const route = interpolate(frame, [90, 124], [0, 1], clamp);
-  const distWrite = interpolate(
-    frame,
-    [124, 124 + Math.min(30, 10 + (dist?.length ?? 0))],
-    [0, 1],
-    clamp,
-  );
+  // The pen finishes by DRAWN_BY: labels 40-80, the route 66-86, the distance 86-98 (the last label once
+  // wrote until 110 and the pre-check's still caught it half written, 30 Oct 2026).
+  const route = interpolate(frame, [66, 86], [0, 1], clamp);
+  const distWrite = interpolate(frame, [86, DRAWN_BY - 2], [0, 1], clamp);
   const push = interpolate(frame, [40, showFor], [1, 1.07], clamp);
 
   // The distance goes beside the middle of the route, above it, kept on the sheet.
@@ -327,7 +325,7 @@ export const PulseMapsPaper: React.FC<GfxProps> = ({
             );
           })}
           {stops.map((s, i) => {
-            const c = interpolate(frame, [54 + i * 12, 68 + i * 12], [0, 1], {
+            const c = interpolate(frame, [34 + i * 12, 46 + i * 12], [0, 1], {
               ...clamp,
               easing: easeOut,
             });
@@ -354,7 +352,7 @@ export const PulseMapsPaper: React.FC<GfxProps> = ({
         {stops.map((s, i) => {
           const w = interpolate(
             frame,
-            [62 + i * 12, 62 + i * 12 + Math.min(24, 8 + s.label.length)],
+            [40 + i * 12, 40 + i * 12 + Math.min(16, 6 + s.label.length)],
             [0, 1],
             clamp,
           );

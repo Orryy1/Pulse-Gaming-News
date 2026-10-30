@@ -15,6 +15,7 @@ import { COLOUR } from "../brand.ts";
 import { BODY, DISPLAY, HAND } from "./fonts.ts";
 import { SPRING } from "../motion.ts";
 import { TextureBackground } from "./Backgrounds.tsx";
+import { CONTENT_W, LEGIBLE_SHADOW, fitSize } from "./packs/fit.ts";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
@@ -418,10 +419,20 @@ export const TornInterlude: React.FC<InterludeProps> = ({
           }}
         />
       ) : null}
+      {/* A dark band behind the title: the chapter's picture is often a face or a bright sky, and the
+          title over it read as "sitting on a character's head" (30 Oct 2026). */}
+      <AbsoluteFill
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(5,5,7,0) 26%, rgba(5,5,7,0.78) 40%, rgba(5,5,7,0.78) 62%, rgba(5,5,7,0) 76%)",
+          opacity: head,
+        }}
+      />
       <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
         <div
           style={{
             textAlign: "center",
+            maxWidth: CONTENT_W,
             opacity: head,
             transform: `translateY(${(1 - head) * 30}px)`,
           }}
@@ -433,6 +444,7 @@ export const TornInterlude: React.FC<InterludeProps> = ({
               fontSize: 30,
               letterSpacing: 8,
               color: COLOUR.amber,
+              textShadow: LEGIBLE_SHADOW,
             }}
           >
             CHAPTER {number}
@@ -440,12 +452,17 @@ export const TornInterlude: React.FC<InterludeProps> = ({
           <div
             style={{
               fontFamily: DISPLAY,
-              fontSize: title.length > 24 ? 112 : 140,
+              fontSize: fitSize(
+                title.toUpperCase(),
+                "anton",
+                CONTENT_W,
+                [140, 112, 96, 80, 68],
+              ).size,
               lineHeight: 1,
               marginTop: 14,
               color: COLOUR.paper,
               textTransform: "uppercase",
-              textShadow: "0 14px 50px rgba(0,0,0,0.8)",
+              textShadow: LEGIBLE_SHADOW,
             }}
           >
             {title}
@@ -479,25 +496,50 @@ export const TornInterlude: React.FC<InterludeProps> = ({
  * The chapter's title enormous, the chapter's picture showing through its letters; then the camera flies
  * through the letters and out into the picture itself.
  */
-export const MaskInterlude: React.FC<InterludeProps> = ({ number, title, game, year, frames, picture, variant = 0 }) => {
+export const MaskInterlude: React.FC<InterludeProps> = ({
+  number,
+  title,
+  game,
+  year,
+  frames,
+  picture,
+  variant = 0,
+}) => {
   const { frame, fade } = useBreather(frames);
   const id = `mask${number}${variant}`;
   const text = title.toUpperCase();
   const size = Math.min(380, 1700 / Math.max(1, text.length * 0.47));
   const start = Math.max(40, frames - 62);
-  const t = interpolate(frame, [start, frames - 12], [0, 1], { ...clamp, easing: (x) => x * x * x });
+  const t = interpolate(frame, [start, frames - 12], [0, 1], {
+    ...clamp,
+    easing: (x) => x * x * x,
+  });
   const z = 1 + t * 45;
   const reveal = interpolate(frame, [start + 22, frames - 14], [0, 1], clamp);
   const settle = interpolate(frame, [0, start], [1.06, 1], clamp);
-  const label = interpolate(frame, [6, 18, start, start + 10], [0, 1, 1, 0], clamp);
+  const label = interpolate(
+    frame,
+    [6, 18, start, start + 10],
+    [0, 1, 1, 0],
+    clamp,
+  );
   return (
-    <AbsoluteFill style={{ opacity: fade, background: "#050506", overflow: "hidden" }}>
+    <AbsoluteFill
+      style={{ opacity: fade, background: "#050506", overflow: "hidden" }}
+    >
       {picture ? (
         <AbsoluteFill style={{ opacity: reveal }}>
-          <Img src={picture} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <Img
+            src={picture}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
         </AbsoluteFill>
       ) : null}
-      <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
+      <svg
+        width={1920}
+        height={1080}
+        style={{ position: "absolute", inset: 0 }}
+      >
         <defs>
           <mask id={id}>
             <rect width={1920} height={1080} fill="#000" />
@@ -515,9 +557,20 @@ export const MaskInterlude: React.FC<InterludeProps> = ({ number, title, game, y
           </mask>
         </defs>
         {picture ? (
-          <image href={picture} width={1920} height={1080} preserveAspectRatio="xMidYMid slice" mask={`url(#${id})`} />
+          <image
+            href={picture}
+            width={1920}
+            height={1080}
+            preserveAspectRatio="xMidYMid slice"
+            mask={`url(#${id})`}
+          />
         ) : (
-          <rect width={1920} height={1080} fill={COLOUR.amber} mask={`url(#${id})`} />
+          <rect
+            width={1920}
+            height={1080}
+            fill={COLOUR.amber}
+            mask={`url(#${id})`}
+          />
         )}
       </svg>
       <div

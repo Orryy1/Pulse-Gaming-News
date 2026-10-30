@@ -16,14 +16,7 @@ import { displayText } from "../../../timeline.ts";
 import { pairs, useStage } from "../../DocGraphics.tsx";
 import type { GfxProps, GfxStyle } from "../../packs/types.ts";
 import type { Motif, MotifCardProps } from "../types.ts";
-import {
-  ANTON,
-  cardFade,
-  clamp,
-  fitText,
-  fitsAt,
-  initials,
-} from "./shared.ts";
+import { ANTON, cardFade, clamp, fitText, fitsAt, initials } from "./shared.ts";
 
 const SHEET = "#f1eadb";
 const INK = "#0e0d0c";
@@ -33,6 +26,13 @@ const GUTTER = 16;
 
 type Cell = [number, number, number, number];
 type Rect = { x: number; y: number; w: number; h: number };
+
+/** The rects in reading order: by row (tops within 40 px count as one row), then left to right. */
+export function readingOrder(list: Rect[]): Rect[] {
+  return [...list].sort(
+    (a, b) => (Math.abs(a.y - b.y) <= 40 ? 0 : a.y - b.y) || a.x - b.x,
+  );
+}
 
 /** Cells as fractions of a box, to pixel rects with a cream gutter between neighbours. */
 function rects(cells: Cell[], box: Rect, mirror = false): Rect[] {
@@ -823,7 +823,14 @@ const GtaPeople: React.FC<GfxProps> = ({
                 </AbsoluteFill>
               </Field>
             )}
-            <NameCaption name={p.a} role={p.b} w={w} frame={frame} at={at} />
+            {/* A role that only repeats the heading ("Design document credit" twice, 30 Oct 2026) is left off. */}
+            <NameCaption
+              name={p.a}
+              role={p.b.toUpperCase() === heading ? "" : p.b}
+              w={w}
+              frame={frame}
+              at={at}
+            />
           </Frame>
         );
       })}
@@ -861,6 +868,9 @@ const GtaList: React.FC<GfxProps> = ({ g, len, src, variant = 0 }) => {
   const v = Math.abs(Math.floor(variant));
   const all = rects(LIST_LAYOUTS[items.length]!, SAFE, v % 2 === 1);
   const titleRect = all[0]!;
+  // The items take the panels in reading order (top to bottom, left to right), so their numbers read 01,
+  // 02, 03 across the sheet (a mirrored layout once read 01, 03, 02, 30 Oct 2026).
+  const slots = readingOrder(all.slice(1));
   const t = interpolate(frame, [0, showFor], [0, 1], clamp);
   const centre = { x: 960, y: 569 };
   const accent = ACCENTS[v % ACCENTS.length]!;
@@ -869,7 +879,7 @@ const GtaList: React.FC<GfxProps> = ({ g, len, src, variant = 0 }) => {
   return (
     <AbsoluteFill style={{ opacity: dim, background: SHEET }}>
       {items.map((item, i) => {
-        const r = all[i + 1]!;
+        const r = slots[i]!;
         const at = 8 + i * 5;
         const s = slam(frame, fps, at, r, centre);
         const w = r.w - 2 * BORDER;

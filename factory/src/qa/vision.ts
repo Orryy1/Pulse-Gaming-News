@@ -27,6 +27,7 @@ export const GRAPHICS_VISION_PROMPT = `You check the on-screen graphics of a 16:
 Each frame shows one animated graphic (a chart, map, quote card, recreated document, console-menu homage, chapter title card and so on) at the moment it should be fully readable.
 Fail a frame only for a real fault a viewer would notice: text cut off at an edge or by another element, text overlapping other text, text unreadable against its background, misspelt or garbled words, raw code or placeholder text, broken or missing images, empty panels or boxes where content clearly belongs, elements spilling outside the frame, or anything advertiser-unfriendly.
 Deliberate looks are not faults: redaction bars, scanlines, VHS noise, pixel art, film grain, torn paper, handwriting, retro or console-menu styling, an ILLUSTRATION tag, a frame still mid-animation with something partly drawn.
+Also intended, never a fault: grey placeholder bars standing in for body text on a recreated press page, article or magazine card; a scrolling news ticker whose words pass the edges of its band; a lower-third report card whose upper area is left empty for the footage; a big figure or word filled with a picture or texture; a watermark of the speaker's initials behind a quote. Clipped, overlapping, off-edge or unreadable text stays a fault wherever it appears.
 Write every problem as "Frame N: what is wrong", one per frame, using the frame numbers given. Pass when nothing is wrong.`;
 
 /** The thumbnail check: the designs that will go to YouTube. */

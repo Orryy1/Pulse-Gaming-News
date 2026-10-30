@@ -11,11 +11,14 @@ import { TextureBackground } from "../../Backgrounds.tsx";
 import type { GfxProps } from "../types.ts";
 import type { MomentGraphic } from "../../LongMoments.tsx";
 import { clamp, easeOut, sizeByLength, txt, wordCount } from "./common.ts";
+import { LOWER_THIRD } from "../fit.ts";
 
 const SIDE = 96;
 const WIDTH = 1920 - SIDE * 2;
 const TICKER_H = 60;
-const TICKER_BOTTOM = 72;
+// The ticker sits above the lower third, where the documentary's chapter tag and title bar live: at 72 px
+// it ran over them and the check read both as garbled (30 Oct 2026).
+const TICKER_BOTTOM = LOWER_THIRD;
 
 /** Splits the headline into lines of roughly equal length so each can rise through its own mask. */
 function balance(text: string, perLine: number): string[] {

@@ -11,6 +11,7 @@ import { COLOUR } from "../../../brand.ts";
 import { BODY, DISPLAY, HAND } from "../../fonts.ts";
 import { Stage, useStage } from "../../DocGraphics.tsx";
 import type { GfxProps } from "../types.ts";
+import { DRAWN_BY } from "../fit.ts";
 import {
   GRAIN,
   MOTTLE,
@@ -89,8 +90,9 @@ export const PulseCalendarPaper: React.FC<GfxProps> = ({
         ? BODY
         : DISPLAY;
 
-  // The beats: drop onto the nail and swing 0-40, push in 56-84, the pen circles 76-96, the arrow 96-108,
-  // the note is written from 108.
+  // The beats: drop onto the nail and swing 0-40, push in 40-64, the pen circles 56-74, the arrow 74-84,
+  // the note is written 84-98: everything is on the page by DRAWN_BY (the note once ran to frame 138 and the
+  // pre-check's still read "XBOX 36", 30 Oct 2026).
   const fall = spring({
     frame,
     fps,
@@ -101,24 +103,19 @@ export const PulseCalendarPaper: React.FC<GfxProps> = ({
     fps,
     config: { damping: 6, stiffness: 70, mass: 0.8 },
   });
-  const zoom = interpolate(frame, [56, 84], [0, 1], {
+  const zoom = interpolate(frame, [40, 64], [0, 1], {
     ...clamp,
     easing: easeInOut,
   });
-  const circle = interpolate(frame, [76, 96], [0, 1], {
+  const circle = interpolate(frame, [56, 74], [0, 1], {
     ...clamp,
     easing: easeOut,
   });
-  const arrow = interpolate(frame, [96, 108], [0, 1], {
+  const arrow = interpolate(frame, [74, 84], [0, 1], {
     ...clamp,
     easing: easeOut,
   });
-  const write = interpolate(
-    frame,
-    [108, 108 + Math.min(30, 10 + what.length)],
-    [0, 1],
-    clamp,
-  );
+  const write = interpolate(frame, [84, DRAWN_BY - 2], [0, 1], clamp);
 
   // The circle: round the day's number (top left of its box), or round the month's name.
   const idx = date.day !== undefined ? grid.lead + date.day - 1 : -1;

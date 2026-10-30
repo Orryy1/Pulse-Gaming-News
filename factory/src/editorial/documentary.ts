@@ -938,7 +938,7 @@ const FRAGMENT_WORDS = new Set(
   ),
 );
 const UNSAFE_ON_SCREEN =
-  /(kill(s|ed|er|ers|ing)?|murder\w*|dead|death|die[sd]?|dying|drugs?|cocaine|heroin|criminals?|guns?|shoot(s|ing)?|shot|blood\w*|suicide|rape\w*|terror\w*|war|nazi\w*|slaughter\w*)/i;
+  /\b(kill(s|ed|er|ers|ing)?|murder\w*|dead|death|die[sd]?|dying|drugs?|cocaine|heroin|criminals?|guns?|shoot(s|ing)?|shot|blood\w*|suicide|rape\w*|terror\w*|war|nazi\w*|slaughter\w*)\b/i;
 /**
  * One to four words that read as a complete name or phrase, not a stray word or a sentence's tail; never a
  * word advertisers dislike printed large (30 Oct 2026: "killer", "criminals" on screen). With the sentence

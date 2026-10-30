@@ -24,26 +24,26 @@ import {
 import { readOverride } from "../src/experiments.ts";
 
 const hookStyle = GROWTH_TESTS[0]!;
-const titleShape = GROWTH_TESTS[1]!;
-const coldOpen = GROWTH_TESTS[2]!;
+const coldOpen = GROWTH_TESTS[1]!;
+const titleShape = GROWTH_TESTS[2]!;
 
-test("the tests run in order, one at a time, and the variants alternate", () => {
+test("the tests run in order, title shape last, one at a time, and the variants alternate", () => {
   assert.deepEqual(
     GROWTH_TESTS.map((t) => t.key),
-    ["hook_style", "title_shape", "cold_open_length"],
+    ["hook_style", "cold_open_length", "title_shape"],
   );
   assert.deepEqual([0, 1, 2, 3].map(assignVariant), ["A", "B", "A", "B"]);
   assert.equal(nextTest({ done: [] })?.key, "hook_style");
   assert.equal(
     nextTest({ done: [{ key: "hook_style", at: "" }] })?.key,
-    "title_shape",
+    "cold_open_length",
   );
   assert.equal(
     nextTest({
-      current: { key: "title_shape", since: "", checks: 0 },
+      current: { key: "cold_open_length", since: "", checks: 0 },
       done: [{ key: "hook_style", at: "" }],
     })?.key,
-    "cold_open_length",
+    "title_shape",
   );
   assert.equal(
     nextTest({ done: GROWTH_TESTS.map((t) => ({ key: t.key, at: "" })) }),
@@ -215,7 +215,7 @@ test("the verdict reads as plain English, under one Discord message, with no das
   const win = verdictReport(
     hookStyle,
     judgeTest([...side("A", 7, 0.6), ...side("B", 7, 0.75)]),
-    { ...o, following: titleShape },
+    { ...o, following: coldOpen },
   );
   assert.match(win, /^\*\*Growth test 1 of 3: hook style\*\*/);
   assert.match(
@@ -228,7 +228,7 @@ test("the verdict reads as plain English, under one Discord message, with no das
   );
   assert.match(
     win,
-    /Next test: \*\*title shape\*\*, a number-first title against a question title, starting with the next news Short\./,
+    /Next test: \*\*cold-open length\*\*, a 5-7 word hook against a 9-12 word hook, starting with the next news Short\./,
   );
   const few = verdictReport(
     hookStyle,
@@ -249,10 +249,11 @@ test("the verdict reads as plain English, under one Discord message, with no das
     /Verdict: \*\*too close to call\*\* \(stated stake ahead in \d+ of 100 resamples, (90 is the bar|under 2 points apart)\)\. The test carries on; next check 14 Nov\./,
   );
   const closed = verdictReport(
-    coldOpen,
+    titleShape,
     judgeTest([...side("A", 6, 0.6), ...side("B", 6, 0.61)]),
     { ...o, checks: MAX_CHECKS, closed: true },
   );
+  assert.match(closed, /^\*\*Growth test 3 of 3: title shape\*\*/);
   assert.match(closed, /no clear difference after 4 checks/);
   assert.match(closed, /That was the last test on the list/);
   for (const t of [win, few, close, closed]) {
@@ -403,7 +404,7 @@ test("verdict: waits a week, needs six a side with a curve, applies the winner a
   });
   await addShort(db, { test: { key: "hook_style", variant: "B" }, pct: 90 });
   await addShort(db, {
-    test: { key: "cold_open_length", variant: "B" },
+    test: { key: "title_shape", variant: "B" },
     hold3: 0.9,
   });
   const rows = await testShorts(db, "hook_style");
@@ -450,7 +451,7 @@ test("verdict: waits a week, needs six a side with a curve, applies the winner a
     notify,
   );
   assert.match(win!, /stated stake wins/);
-  assert.match(win!, /Next test: \*\*title shape\*\*/);
+  assert.match(win!, /Next test: \*\*cold-open length\*\*/);
   assert.equal(sent.length, 2);
   assert.equal(sent[1]!.content, win);
   assert.equal(
@@ -464,7 +465,7 @@ test("verdict: waits a week, needs six a side with a curve, applies the winner a
     s2.done.map((d) => [d.key, d.winner]),
     [["hook_style", "B"]],
   );
-  assert.equal(s2.current?.key, "title_shape");
+  assert.equal(s2.current?.key, "cold_open_length");
   // The winner is now a standing rule for the writer, and the new test assigns from A again.
   const defaults = await growthDefaults(db);
   assert.deepEqual(
@@ -479,9 +480,9 @@ test("verdict: waits a week, needs six a side with a curve, applies the winner a
     notify,
   );
   assert.deepEqual(next, {
-    key: "title_shape",
+    key: "cold_open_length",
     variant: "A",
-    label: "number first",
+    label: "5-7 words",
   });
   assert.match(
     growthNotes(next, defaults),
@@ -489,7 +490,7 @@ test("verdict: waits a week, needs six a side with a curve, applies the winner a
   );
   assert.match(
     growthNotes(next, defaults),
-    /YouTube title shape for this Short: a statement/,
+    /Hook length for this Short: the hook is 5 to 7 words/,
   );
   await db.close();
 });
@@ -531,11 +532,11 @@ test("verdict: a test with no clear answer after four checks is closed without a
       notify,
     );
   assert.match(last!, /no clear difference after 4 checks/);
-  assert.match(last!, /Next test: \*\*title shape\*\*/);
+  assert.match(last!, /Next test: \*\*cold-open length\*\*/);
   assert.equal(await readOverride(db, "override:growth_hook_style"), undefined);
   const s = await readGrowthState(db);
   assert.equal(s.done[0]?.winner, undefined);
-  assert.equal(s.current?.key, "title_shape");
+  assert.equal(s.current?.key, "cold_open_length");
   assert.equal(s.current?.checks, 0);
   await db.close();
 });

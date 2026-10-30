@@ -44,7 +44,11 @@ export interface GrowthTest {
   variants: [GrowthVariant, GrowthVariant];
 }
 
-/** The tests, in the order they run. Each later test starts the moment the one before it has a verdict. */
+/**
+ * The tests, in the order they run. Each later test starts the moment the one before it has a verdict. The
+ * title shape runs last on purpose: titles also feed YouTube search (a fifth of the channel's views), and the
+ * judge sees only retention, so that verdict needs the most care and the best-rehearsed loop.
+ */
 export const GROWTH_TESTS: GrowthTest[] = [
   {
     key: "hook_style",
@@ -66,25 +70,6 @@ export const GROWTH_TESTS: GrowthTest[] = [
     ],
   },
   {
-    key: "title_shape",
-    name: "title shape",
-    what: "a number-first title against a question title",
-    variants: [
-      {
-        id: "A",
-        label: "number first",
-        instruction:
-          'YouTube title shape for this Short: a statement, never a question, with the game named first and the number that carries the story (a price, a date, a count) in it when the story has one, e.g. "Switch 2 Games Now Cost $80". No question mark in the title.',
-      },
-      {
-        id: "B",
-        label: "question",
-        instruction:
-          'YouTube title shape for this Short: a question the Short answers, ending with "?", with the game named first, e.g. "Is $80 the New Normal for Switch 2?"',
-      },
-    ],
-  },
-  {
     key: "cold_open_length",
     name: "cold-open length",
     what: "a 5-7 word hook against a 9-12 word hook",
@@ -100,6 +85,25 @@ export const GROWTH_TESTS: GrowthTest[] = [
         label: "9-12 words",
         instruction:
           "Hook length for this Short: the hook is 9 to 12 words, the news and its why in one breath.",
+      },
+    ],
+  },
+  {
+    key: "title_shape",
+    name: "title shape",
+    what: "a number-first title against a question title",
+    variants: [
+      {
+        id: "A",
+        label: "number first",
+        instruction:
+          'YouTube title shape for this Short: a statement, never a question, with the game named first and the number that carries the story (a price, a date, a count) in it when the story has one, e.g. "Switch 2 Games Now Cost $80". No question mark in the title.',
+      },
+      {
+        id: "B",
+        label: "question",
+        instruction:
+          'YouTube title shape for this Short: a question the Short answers, ending with "?", with the game named first, e.g. "Is $80 the New Normal for Switch 2?"',
       },
     ],
   },

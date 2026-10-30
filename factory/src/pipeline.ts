@@ -47,6 +47,7 @@ import { trailerMatchesGame } from "./assets/commons.ts";
 import { captureHold } from "./capture.ts";
 import { rankStills } from "./assets/stillscore.ts";
 import { coverageShare, fillSentencePictures } from "./assets/fill.ts";
+import { createSketchRun } from "./assets/illustrate.ts";
 
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
 export const MEDIA_RICH_TARGET = 0.85;
@@ -5957,6 +5958,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         sentences: chapterSentences(script, i),
       }));
     assets.clips ??= [];
+    // Scene lines nothing filmed can show get a drawn concept sketch, tagged ILLUSTRATION, when switched on
+    // (ILLUSTRATE_ENABLED, off by default; src/assets/illustrate.ts). Off, nothing here changes.
+    const sketches = s.cfg.illustrate
+      ? createSketchRun({
+          llm: s.llm,
+          dir,
+          episodeId: ep.id,
+          url: s.cfg.illustrateUrl,
+          max: s.cfg.illustrateMax,
+          stub: s.cfg.illustrateStub,
+          timeoutMs: s.cfg.illustrateTimeoutSeconds * 1000,
+        })
+      : undefined;
     const r = await fillSentencePictures(
       s,
       dir,
@@ -5965,8 +5979,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       assets.clips,
       script.game_title || script.headline,
       scopeOf(script),
+      sketches?.forChapter,
     );
     assets.filled = { before: r.before, after: r.after };
+    if (sketches) {
+      const sum = sketches.summary();
+      assets.sketches = sum;
+      await logEvent(s.db, ep.id, "sketches", { ...sum });
+      if (sum.asked)
+        await s.notify({
+          level: "info",
+          content: `Documentary "${script.headline}": ${sum.kept} concept sketch${sum.kept === 1 ? "" : "es"} drawn for lines nothing filmed can show (${sum.asked} asked, ${sum.dropped} refused by the picture editor, ${sum.failed} not drawn; ${sum.seconds}s). Each is tagged ILLUSTRATION on screen. Setting: ILLUSTRATE_ENABLED.`,
+        });
+    }
     // The graphics pass writes into the shot list (script.entries[].moments), so the script is kept too.
     await s.db.query(
       `UPDATE episodes SET assets_json = $2, script_json = $3 WHERE id = $1`,

@@ -1075,7 +1075,7 @@ const Backdrop: React.FC<{
                             ? punches.get(i)! - (i > 0 ? s.start - xf : s.start)
                             : undefined
                         }
-                        print={img.kind === "photo"}
+                        print={img.kind === "photo" || img.kind === "sketch"}
                         tilt={((s.media.index * 37) % 5) - 2}
                         layers={img.layers}
                         dir={i % 2 ? -1 : 1}
@@ -1115,6 +1115,26 @@ const Backdrop: React.FC<{
                   }}
                 >
                   PHOTO: {img.credit}
+                </div>
+              ) : img.kind === "sketch" ? (
+                // A drawn concept sketch (src/assets/illustrate.ts) says so, the way the graphic cards do.
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 40,
+                    bottom: 26,
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(245,245,242,0.5)",
+                    background: "rgba(11,11,14,0.45)",
+                    fontFamily: BODY,
+                    fontWeight: 800,
+                    fontSize: 16,
+                    letterSpacing: 2,
+                    color: "rgba(245,245,242,0.75)",
+                  }}
+                >
+                  ILLUSTRATION
                 </div>
               ) : null}
             </>
@@ -2305,6 +2325,7 @@ export const Long: React.FC<LongProps> = (props) => {
     capsule: "Box art",
     screenshot: "Screenshot",
     article: "Press image",
+    sketch: "Concept sketch",
   };
   const describe = (media: { type: string; index: number }) => {
     if (media.type === "image") {
@@ -2376,10 +2397,15 @@ export const Long: React.FC<LongProps> = (props) => {
     const r = props.moments?.[entry]?.[moment];
     if (!r) return 2.5;
     const g = usefulGraphic(r.graphic) ? r.graphic : undefined;
-    const text = [g?.primary, g?.secondary, ...(g?.items ?? []), r.emphasis].filter(Boolean).join(" ");
+    const text = [g?.primary, g?.secondary, ...(g?.items ?? []), r.emphasis]
+      .filter(Boolean)
+      .join(" ");
     const words = text.split(/\s+/).filter(Boolean).length;
     // A card's build (typewriter, flip board, counter) eats 1.5 s before it can be read (measured 30 Oct 2026).
-    return Math.min(8, 2.5 + (g ? 1.5 : 0) + 0.3 * words + 0.5 * (g?.items?.length ?? 0));
+    return Math.min(
+      8,
+      2.5 + (g ? 1.5 : 0) + 0.3 * words + 0.5 * (g?.items?.length ?? 0),
+    );
   };
   const spanOf = (
     k: number,
@@ -2404,10 +2430,16 @@ export const Long: React.FC<LongProps> = (props) => {
       }
       stop = Math.round(windows[j]!.end * fps);
     }
-    const read = Math.min(stop, from + Math.round(readSeconds(w.entry, w.moment) * fps));
+    const read = Math.min(
+      stop,
+      from + Math.round(readSeconds(w.entry, w.moment) * fps),
+    );
     return {
       from,
-      len: Math.max(1, Math.max(until, read, from + Math.round(2.5 * fps)) - from),
+      len: Math.max(
+        1,
+        Math.max(until, read, from + Math.round(2.5 * fps)) - from,
+      ),
       anchored,
     };
   };
@@ -3540,7 +3572,14 @@ export const Long: React.FC<LongProps> = (props) => {
         const nameTag =
           person &&
           firstMention.has(`${w.entry}|${w.moment}`) &&
-          personOnScreen(plan.shots, props.images, w.entry, w.moment, from, len) &&
+          personOnScreen(
+            plan.shots,
+            props.images,
+            w.entry,
+            w.moment,
+            from,
+            len,
+          ) &&
           (m.graphic.kind === "none" ||
             m.graphic.kind === "stat" ||
             m.graphic.kind === "date")

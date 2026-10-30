@@ -330,6 +330,16 @@ export interface Config {
   parallax: boolean;
   /** Zoom-to-the-detail annotations on long videos' stills (src/assets/annotate.ts). */
   annotate: boolean;
+  /** Drawn concept sketches for documentary lines nothing filmed can show (src/assets/illustrate.ts); off by default. */
+  illustrate: boolean;
+  /** The ComfyUI server that draws them (this PC's FLUX.1 dev). */
+  illustrateUrl: string;
+  /** At most this many sketches per documentary, so a run cannot take all night. */
+  illustrateMax: number;
+  /** Each sketch's time to queue, draw and download; past it the job is dropped. */
+  illustrateTimeoutSeconds: number;
+  /** A placeholder PNG instead of the model: dry runs and the trial without the GPU. */
+  illustrateStub: boolean;
   dryRun: boolean;
   maxAttempts: number;
   remotionConcurrency: number;
@@ -717,6 +727,11 @@ export function loadConfig(): Config {
     musicBed: bool("MUSIC_BED", true),
     parallax: bool("PARALLAX", true),
     annotate: bool("ANNOTATE", true),
+    illustrate: bool("ILLUSTRATE_ENABLED", false),
+    illustrateUrl: str("ILLUSTRATE_URL", "http://127.0.0.1:8188"),
+    illustrateMax: int("ILLUSTRATE_MAX", 24),
+    illustrateTimeoutSeconds: int("ILLUSTRATE_TIMEOUT_SECONDS", 180),
+    illustrateStub: bool("ILLUSTRATE_STUB", false),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),

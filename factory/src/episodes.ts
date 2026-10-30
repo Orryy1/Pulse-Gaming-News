@@ -48,6 +48,15 @@ export interface EpisodeAssets {
   rich?: boolean;
   /** A long video's sentences without a picture of their own were topped up, one search each (fillSentencePictures). */
   filled?: { before: number; after: number };
+  /** Concept sketches drawn for bare scene lines (src/assets/illustrate.ts): how many were asked, drawn, kept. */
+  sketches?: {
+    asked: number;
+    drawn: number;
+    kept: number;
+    dropped: number;
+    failed: number;
+    seconds: number;
+  };
   /** A Short cut from a long ranking: the section's seconds in the long video and the files cut from it. */
   cutdown?: { start: number; end: number; video: string; background: string };
   audio?: string;

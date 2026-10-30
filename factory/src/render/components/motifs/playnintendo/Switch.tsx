@@ -11,6 +11,7 @@ import type { MomentGraphic } from "../../LongMoments.tsx";
 import type { GfxProps, GfxStyle } from "../../packs/types.ts";
 import { reviewRows } from "../../packs/data/figures.ts";
 import type { MotifCardProps } from "../types.ts";
+import { PulseBadge } from "../../packs/pulse/PulseBadge.tsx";
 import {
   clamp,
   clean,
@@ -252,6 +253,13 @@ const TopBar: React.FC<{
           gap: 22,
         }}
       >
+        {/* The Pulse badge leads the status corner, where the console's own name would sit. */}
+        <PulseBadge
+          size={36}
+          colour={theme.ink}
+          opacity={0.85}
+          style={{ marginRight: 14 }}
+        />
         {year ? (
           <div
             style={{

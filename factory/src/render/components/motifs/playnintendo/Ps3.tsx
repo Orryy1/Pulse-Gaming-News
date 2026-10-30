@@ -10,6 +10,7 @@ import { useStage } from "../../DocGraphics.tsx";
 import type { MomentGraphic } from "../../LongMoments.tsx";
 import type { GfxProps, GfxStyle } from "../../packs/types.ts";
 import type { MotifCardProps } from "../types.ts";
+import { PulseBadge } from "../../packs/pulse/PulseBadge.tsx";
 import {
   clamp,
   clean,
@@ -332,6 +333,21 @@ const Thumb: React.FC<{
 // ---------------------------------------------------------------------------------------------------
 // The card.
 
+/** The Pulse badge in the top left corner of the bar's screen, white and a little translucent. */
+const XmbBadge: React.FC<{ frame: number }> = ({ frame }) => (
+  <PulseBadge
+    size={40}
+    colour="#fff"
+    opacity={0.85 * interpolate(frame, [4, 14], [0, 1], clamp)}
+    style={{
+      position: "absolute",
+      left: 110,
+      top: 66,
+      filter: "drop-shadow(0 0 10px rgba(255,255,255,0.35))",
+    }}
+  />
+);
+
 const XmbCard: React.FC<MotifCardProps> = (props) => {
   const { frame, fps, fade } = useCard(props.frames);
   const variant = props.variant ?? 0;
@@ -361,6 +377,7 @@ const XmbCard: React.FC<MotifCardProps> = (props) => {
   return (
     <AbsoluteFill style={{ opacity: fade, overflow: "hidden" }}>
       <Backdrop variant={variant} frame={frame} />
+      <XmbBadge frame={frame} />
       {year ? (
         <div
           style={{
@@ -525,6 +542,7 @@ const Bar: React.FC<GfxProps> = ({ g, len, src, variant = 0 }) => {
   return (
     <AbsoluteFill style={{ opacity: dim, overflow: "hidden" }}>
       <Backdrop variant={variant} frame={frame} />
+      <XmbBadge frame={frame} />
       <CategoryRow
         selected={clean(g.primary)}
         selX={selX}

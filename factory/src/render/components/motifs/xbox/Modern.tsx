@@ -15,11 +15,31 @@ import { SPRING, ease } from "../../../motion.ts";
 import { useStage } from "../../DocGraphics.tsx";
 import type { MotifCardProps } from "../types.ts";
 import type { GfxProps, GfxStyle } from "../../packs/types.ts";
+import { PulseBadge } from "../../packs/pulse/PulseBadge.tsx";
 import { cardFade, clamp, sizeFor, splitRow, txt } from "./util.ts";
 
 const FOCUS = { damping: 13, stiffness: 170, mass: 0.6 } as const;
 const GLASS =
   "linear-gradient(160deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 60%, rgba(255,255,255,0.03) 100%)";
+
+/** The Pulse badge in the top right corner, where a home screen shows the console's own mark. */
+const ModernBadge: React.FC<{
+  right: number;
+  top: number;
+  opacity: number;
+}> = ({ right, top, opacity }) => (
+  <PulseBadge
+    size={36}
+    colour="#ffffff"
+    opacity={0.88 * opacity}
+    style={{
+      position: "absolute",
+      right,
+      top,
+      filter: "drop-shadow(0 2px 10px rgba(0,0,0,0.45))",
+    }}
+  />
+);
 
 /** A soft abstract backdrop for when there is no picture: slow light in deep green, teal and blue. */
 const Ambient: React.FC<{ frame: number }> = ({ frame }) => {
@@ -40,7 +60,9 @@ const Ambient: React.FC<{ frame: number }> = ({ frame }) => {
   );
   return (
     <AbsoluteFill
-      style={{ background: "linear-gradient(180deg, #0d171b 0%, #05090b 100%)" }}
+      style={{
+        background: "linear-gradient(180deg, #0d171b 0%, #05090b 100%)",
+      }}
     >
       {blob(760 + a, -320 + b, 1500, 1100, "rgba(40,150,90,0.75)")}
       {blob(-360 - b, 380 + a * 0.5, 1400, 1000, "rgba(36,96,170,0.55)")}
@@ -230,6 +252,7 @@ export const ModernCard: React.FC<MotifCardProps> = (p) => {
           </div>
         ))}
       </div>
+      <ModernBadge right={120} top={72} opacity={nav} />
       {/* Hero title */}
       <div
         style={{ position: "absolute", left: 120, bottom: 394, width: 1200 }}
@@ -388,6 +411,7 @@ const TileRows: React.FC<{
         />
       </AbsoluteFill>
       <AbsoluteFill style={{ opacity: dim }}>
+        <ModernBadge right={96} top={66} opacity={headIn} />
         <div
           style={{
             position: "absolute",

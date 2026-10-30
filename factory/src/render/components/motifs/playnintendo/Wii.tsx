@@ -10,6 +10,7 @@ import { useStage } from "../../DocGraphics.tsx";
 import type { MomentGraphic } from "../../LongMoments.tsx";
 import type { GfxProps, GfxStyle } from "../../packs/types.ts";
 import type { MotifCardProps } from "../types.ts";
+import { PulseMark } from "../../packs/screen/pulse.tsx";
 import {
   clamp,
   clean,
@@ -163,6 +164,18 @@ const ClockBar: React.FC<{ year: string; y?: number; enter: number }> = ({
               opacity: 0.55,
             }}
           />
+          {/* The Pulse mark in the left button, where the console's name sits on its menu. */}
+          {cx === ends[0] ? (
+            <div
+              style={{
+                position: "absolute",
+                left: R - 5 - 24,
+                top: R - 5 - 24,
+              }}
+            >
+              <PulseMark size={48} colour={CYAN} />
+            </div>
+          ) : null}
         </div>
       ))}
       {year ? (

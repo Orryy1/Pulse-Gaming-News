@@ -15,6 +15,7 @@ import { ease } from "../../../motion.ts";
 import { useStage } from "../../DocGraphics.tsx";
 import type { MotifCardProps } from "../types.ts";
 import type { GfxProps, GfxStyle } from "../../packs/types.ts";
+import { PulseBadge } from "../../packs/pulse/PulseBadge.tsx";
 import {
   cardFade,
   clamp,
@@ -371,6 +372,21 @@ const Channels: React.FC<{
   </div>
 );
 
+/** The Pulse badge in the top right corner, where the dashboard named the console. */
+const NxeBadge: React.FC<{ frame: number }> = ({ frame }) => (
+  <PulseBadge
+    size={38}
+    colour={MINT}
+    opacity={0.85 * interpolate(frame, [4, 16], [0, 1], clamp)}
+    style={{
+      position: "absolute",
+      right: 96,
+      top: 66,
+      filter: "drop-shadow(0 0 14px rgba(150,255,100,0.4))",
+    }}
+  />
+);
+
 /** The opening title or chapter breather as the 2008 dashboard: the carousel turns to the heading. */
 export const NxeCard: React.FC<MotifCardProps> = (p) => {
   const frame = useCurrentFrame();
@@ -420,6 +436,7 @@ export const NxeCard: React.FC<MotifCardProps> = (p) => {
       style={{ background: "#040806", opacity: fade, overflow: "hidden" }}
     >
       <Streaks frame={frame} />
+      <NxeBadge frame={frame} />
       <Channels
         labels={labels}
         sel={1}
@@ -560,7 +577,10 @@ const CarouselRows: React.FC<{
   const cur = Math.max(0, Math.min(n - 1, Math.round(turn)));
   // One picture across every tile: each shows a different part of it so the stack never repeats.
   const crops = ["50% 50%", "18% 40%", "82% 60%", "35% 75%", "65% 25%"];
-  const tiles: Tile[] = rows.map((_, i) => ({ pic: src, pos: crops[i % crops.length] }));
+  const tiles: Tile[] = rows.map((_, i) => ({
+    pic: src,
+    pos: crops[i % crops.length],
+  }));
   const longest = rows.reduce((a, r) => Math.max(a, r.text.length), 0);
   const textSize = timeline
     ? sizeFor("x".repeat(longest), [
@@ -583,6 +603,7 @@ const CarouselRows: React.FC<{
       <AbsoluteFill style={{ opacity: 0.94 }}>
         <Streaks frame={frame} strength={0.85} />
       </AbsoluteFill>
+      <NxeBadge frame={frame} />
       {head ? (
         <div
           style={{

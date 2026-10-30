@@ -95,3 +95,14 @@ test("a Windows file name becomes a URL path the renderer's CSS can load", () =>
   );
   assert.equal(webPath("voice.mp3"), "voice.mp3");
 });
+
+import { renderStalled, STALL_MINUTES } from "../src/render/render.ts";
+
+test("a render counts as frozen only after its quiet spell runs out", () => {
+  const min = 60_000;
+  assert.equal(renderStalled(9 * min, 0, true), false);
+  assert.equal(renderStalled((STALL_MINUTES.between + 1) * min, 0, true), true);
+  // Before the first frame the browser is still starting, so it gets longer.
+  assert.equal(renderStalled((STALL_MINUTES.between + 1) * min, 0, false), false);
+  assert.equal(renderStalled((STALL_MINUTES.first + 1) * min, 0, false), true);
+});

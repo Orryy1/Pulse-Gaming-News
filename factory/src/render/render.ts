@@ -11,6 +11,7 @@ import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import {
+  makeCancelSignal,
   renderMedia,
   renderStill,
   selectComposition,
@@ -31,7 +32,6 @@ import type { CutdownProps } from "./Cutdown.tsx";
  */
 export const webPath = (file: string): string => file.replace(/\\/g, "/");
 
-
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(here, "index.ts");
 const PUBLIC_DIR = path.join(here, "..", "..", "public");
@@ -43,7 +43,10 @@ const PUBLIC_DIR = path.join(here, "..", "..", "public");
 function extraBeds(serveUrl: string): NonNullable<LongProps["extraBeds"]> {
   try {
     const list = JSON.parse(
-      fs.readFileSync(path.join(here, "..", "assets", "epidemic_beds.json"), "utf8"),
+      fs.readFileSync(
+        path.join(here, "..", "assets", "epidemic_beds.json"),
+        "utf8",
+      ),
     ) as { beds: Array<{ file: string; key: "D" | "E"; mood: string }> };
     return list.beds
       .filter((b) => fs.existsSync(path.join(serveUrl, "public", b.file)))
@@ -180,7 +183,9 @@ async function withPcTurn<T>(
     granted = true;
   } catch (e) {
     if (yieldAfter !== undefined && String(e).includes("orchestrator:"))
-      throw new PcTurnTimeout(`${job}: no turn within ${Math.round(yieldAfter)} min`);
+      throw new PcTurnTimeout(
+        `${job}: no turn within ${Math.round(yieldAfter)} min`,
+      );
     log(
       "warn",
       "PC orchestrator unavailable or wait ran out; rendering anyway",
@@ -208,10 +213,71 @@ async function renderWithTurn(
   await withPcTurn(
     job,
     async (granted) => {
-      await renderMedia({ ...(await renderMemory(granted)), ...options });
+      await renderMediaWatched({
+        ...(await renderMemory(granted)),
+        ...options,
+      });
     },
     yieldAfter,
   );
+}
+
+/** Minutes without a new frame before a render counts as frozen (before the first frame, and after it). */
+export const STALL_MINUTES = { first: 15, between: 10 };
+
+/** Whether a render whose last frame (or start) was at `since` has frozen by `now`. */
+export function renderStalled(
+  now: number,
+  since: number,
+  framesSeen: boolean,
+): boolean {
+  const limit = framesSeen ? STALL_MINUTES.between : STALL_MINUTES.first;
+  return now - since > limit * 60_000;
+}
+
+/**
+ * renderMedia with a freeze guard. 30 Oct 2026: the Vice City documentary's render stopped at about a fifth
+ * of the way with Chrome, the decoder and ffmpeg all at zero CPU and no error; Remotion's per-frame timeout
+ * never fired and the episode sat for 85 minutes. Now the render is cancelled when no frame arrives for
+ * STALL_MINUTES, and the error lets the pipeline's normal retry start it again.
+ */
+async function renderMediaWatched(
+  options: Parameters<typeof renderMedia>[0],
+): Promise<void> {
+  const { cancelSignal, cancel } = makeCancelSignal();
+  let since = Date.now();
+  let frames = -1;
+  let stalled = false;
+  const timer = setInterval(() => {
+    if (!renderStalled(Date.now(), since, frames > 0)) return;
+    stalled = true;
+    clearInterval(timer);
+    cancel();
+  }, 30_000);
+  const report = options.onProgress;
+  try {
+    await renderMedia({
+      ...options,
+      cancelSignal,
+      onProgress: (p) => {
+        if (p.renderedFrames !== frames) {
+          frames = p.renderedFrames;
+          since = Date.now();
+        }
+        report?.(p);
+      },
+    });
+  } catch (err) {
+    if (stalled) {
+      const minutes = frames > 0 ? STALL_MINUTES.between : STALL_MINUTES.first;
+      throw new Error(
+        `render froze: no new frame for ${minutes} min after frame ${Math.max(0, frames)}`,
+      );
+    }
+    throw err;
+  } finally {
+    clearInterval(timer);
+  }
 }
 
 async function renderMemory(turnGranted = false): Promise<{
@@ -407,24 +473,28 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       inputProps: props,
       browserExecutable,
     });
-    await renderWithTurn(`long ${path.basename(input.outFile)}`, {
-      composition,
-      serveUrl,
-      codec: "h264",
-      crf: 20,
-      pixelFormat: "yuv420p",
-      audioCodec: "aac",
-      audioBitrate: "192k",
-      outputLocation: input.outFile,
-      inputProps: props,
-      concurrency: input.concurrency,
-      browserExecutable,
-      chromiumOptions,
-      frameRange: input.frameRange ?? null,
-      // A busy PC can take far longer than the 30 s default to decode a clip frame.
-      timeoutInMilliseconds: 180_000,
-      onProgress: ({ progress }) => input.onProgress?.(progress),
-    }, input.turnWaitMinutes);
+    await renderWithTurn(
+      `long ${path.basename(input.outFile)}`,
+      {
+        composition,
+        serveUrl,
+        codec: "h264",
+        crf: 20,
+        pixelFormat: "yuv420p",
+        audioCodec: "aac",
+        audioBitrate: "192k",
+        outputLocation: input.outFile,
+        inputProps: props,
+        concurrency: input.concurrency,
+        browserExecutable,
+        chromiumOptions,
+        frameRange: input.frameRange ?? null,
+        // A busy PC can take far longer than the 30 s default to decode a clip frame.
+        timeoutInMilliseconds: 180_000,
+        onProgress: ({ progress }) => input.onProgress?.(progress),
+      },
+      input.turnWaitMinutes,
+    );
     await renderStill({
       composition,
       serveUrl,
@@ -626,7 +696,9 @@ export async function renderCutdown(input: {
     const props: CutdownProps = {
       ...rest,
       videoSrc: `${files.url}/${webPath(videoFile)}`,
-      backgroundSrc: backgroundFile ? `${files.url}/${webPath(backgroundFile)}` : null,
+      backgroundSrc: backgroundFile
+        ? `${files.url}/${webPath(backgroundFile)}`
+        : null,
       logoSrc: "logo.png",
     };
     const browserExecutable = input.browserExecutable || undefined;

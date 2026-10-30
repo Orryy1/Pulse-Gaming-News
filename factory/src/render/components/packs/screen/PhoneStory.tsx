@@ -65,8 +65,12 @@ const ROLE =
  * 2026 test: "Chris Carter, Destructoid, 2013" showed CHRIS CARTER as the site). NEWS when none is given.
  */
 export function outletOf(credit: string, kind = "headline"): string {
-  const parts = credit.split(",").map((x) => x.trim()).filter(Boolean);
-  const ok = (o: string | undefined) => !!o && !/^(19|20)\d\d$/.test(o) && o.length <= 28 && !ROLE.test(o);
+  const parts = credit
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const ok = (o: string | undefined) =>
+    !!o && !/^(19|20)\d\d$/.test(o) && o.length <= 28 && !ROLE.test(o);
   if (kind === "headline") return ok(parts[0]) ? parts[0]! : "NEWS";
   const o = parts.slice(1).find(ok);
   return o ?? "NEWS";
@@ -121,7 +125,10 @@ export const PhoneStory: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
     ...clamp,
     easing: easeInOut,
   });
-  const zoom = interpolate(frame, [58, 80], [0, 1], { ...clamp, easing: easeInOut });
+  const zoom = interpolate(frame, [58, 80], [0, 1], {
+    ...clamp,
+    easing: easeInOut,
+  });
   const readFrom = 72;
   const readTo = Math.max(readFrom + 30, showFor - 24);
   const read = interpolate(frame, [readFrom, readTo], [0, 1], clamp);
@@ -129,7 +136,7 @@ export const PhoneStory: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
   const scroll = interpolate(
     frame,
     [66, readFrom + 18, readTo],
-    [0, passage ? 210 : 30, passage ? 330 : 60],
+    [0, passage ? 210 : 0, passage ? 330 : 0],
     {
       ...clamp,
       easing: easeOut,
@@ -169,8 +176,9 @@ export const PhoneStory: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
           borderRadius: 74,
           background: "#0d0d10",
           boxShadow: "0 40px 120px rgba(0,0,0,0.65), inset 0 0 0 3px #2a2a30",
-          // Once the article is open the camera pushes in on the screen so the words can be read.
-          transform: `rotate(${(variant % 2 ? 1 : -1) * 2.2 * (1 - open)}deg) scale(${1 + 0.42 * zoom}) translateY(${-60 * zoom}px)`,
+          // Once the article is open the camera pushes in on the screen so the words can be read: on the
+          // passage being read, or on the headline when the story has no passage (it sits near the top).
+          transform: `rotate(${(variant % 2 ? 1 : -1) * 2.2 * (1 - open)}deg) scale(${1 + 0.42 * zoom}) translateY(${(passage ? -60 : 170) * zoom}px)`,
         }}
       >
         <div

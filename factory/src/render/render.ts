@@ -24,6 +24,14 @@ import type { ThumbProps } from "./Brand.tsx";
 import type { EngageProps } from "./Engage.tsx";
 import type { CutdownProps } from "./Cutdown.tsx";
 
+/**
+ * A file name as a URL path: on Windows path.join writes backslashes, and inside a CSS url() a backslash
+ * starts an escape ("\\a" is a newline), so "entry_2\\assets\\hero_0.jpg" loaded as "entry_2ssetshero_0.jpg"
+ * and the graphic cards that use a background picture showed none (29-30 Oct 2026 renders).
+ */
+export const webPath = (file: string): string => file.replace(/\\/g, "/");
+
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(here, "index.ts");
 const PUBLIC_DIR = path.join(here, "..", "..", "public");
@@ -361,9 +369,9 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       input.props;
     const props: LongProps = {
       ...rest,
-      audioSrc: audioFile ? `${files.url}/${audioFile}` : null,
+      audioSrc: audioFile ? `${files.url}/${webPath(audioFile)}` : null,
       images: imageFiles.map((i) => ({
-        src: `${files.url}/${i.file}`,
+        src: `${files.url}/${webPath(i.file)}`,
         kind: i.kind,
         aspect: i.aspect,
         beatIndex: i.beatIndex,
@@ -372,14 +380,14 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
         label: i.label,
         layers: i.layers
           ? {
-              bg: `${files.url}/${i.layers.bg}`,
-              mid: `${files.url}/${i.layers.mid}`,
-              fg: `${files.url}/${i.layers.fg}`,
+              bg: `${files.url}/${webPath(i.layers.bg)}`,
+              mid: `${files.url}/${webPath(i.layers.mid)}`,
+              fg: `${files.url}/${webPath(i.layers.fg)}`,
             }
           : undefined,
       })),
       clips: clipFiles.map((c) => ({
-        src: `${files.url}/${c.file}`,
+        src: `${files.url}/${webPath(c.file)}`,
         durationSeconds: c.durationSeconds,
         beatIndex: c.beatIndex,
         role: c.role,
@@ -438,10 +446,10 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       const { imageFile, image2File, fgFile, pictureFiles, ...thumb } = t.thumb;
       const thumbProps: ThumbProps = {
         ...thumb,
-        imageSrc: imageFile ? `${files.url}/${imageFile}` : null,
-        image2Src: image2File ? `${files.url}/${image2File}` : null,
-        fgSrc: fgFile ? `${files.url}/${fgFile}` : null,
-        pictureSrcs: pictureFiles?.map((f) => `${files.url}/${f}`),
+        imageSrc: imageFile ? `${files.url}/${webPath(imageFile)}` : null,
+        image2Src: image2File ? `${files.url}/${webPath(image2File)}` : null,
+        fgSrc: fgFile ? `${files.url}/${webPath(fgFile)}` : null,
+        pictureSrcs: pictureFiles?.map((f) => `${files.url}/${webPath(f)}`),
       };
       const still = await selectComposition({
         serveUrl,
@@ -480,20 +488,20 @@ export async function renderShort(input: RenderInput): Promise<void> {
     const props: ShortProps = {
       ...rest,
       heroCut: heroCutFile
-        ? { fg: `${files.url}/${heroCutFile.fg}`, x: heroCutFile.x }
+        ? { fg: `${files.url}/${webPath(heroCutFile.fg)}`, x: heroCutFile.x }
         : undefined,
-      audioSrc: audioFile ? `${files.url}/${audioFile}` : null,
+      audioSrc: audioFile ? `${files.url}/${webPath(audioFile)}` : null,
       images: imageFiles.map((i) => ({
-        src: `${files.url}/${i.file}`,
+        src: `${files.url}/${webPath(i.file)}`,
         kind: i.kind,
         aspect: i.aspect,
-        blurSrc: i.blurFile ? `${files.url}/${i.blurFile}` : null,
+        blurSrc: i.blurFile ? `${files.url}/${webPath(i.blurFile)}` : null,
         beatIndex: i.beatIndex,
       })),
       clips: clipFiles.map((c) => ({
-        src: `${files.url}/${c.file}`,
+        src: `${files.url}/${webPath(c.file)}`,
         durationSeconds: c.durationSeconds,
-        blurSrc: c.blurFile ? `${files.url}/${c.blurFile}` : null,
+        blurSrc: c.blurFile ? `${files.url}/${webPath(c.blurFile)}` : null,
         beatIndex: c.beatIndex,
         role: c.role,
         motion: c.motion,
@@ -575,7 +583,7 @@ export async function renderEngage(input: {
     const { imageFiles, ...rest } = input.props;
     const props: EngageProps = {
       ...rest,
-      images: imageFiles.map((f) => `${files.url}/${f}`),
+      images: imageFiles.map((f) => `${files.url}/${webPath(f)}`),
     };
     const still = await selectComposition({
       serveUrl,
@@ -617,8 +625,8 @@ export async function renderCutdown(input: {
     const { videoFile, backgroundFile, ...rest } = input.props;
     const props: CutdownProps = {
       ...rest,
-      videoSrc: `${files.url}/${videoFile}`,
-      backgroundSrc: backgroundFile ? `${files.url}/${backgroundFile}` : null,
+      videoSrc: `${files.url}/${webPath(videoFile)}`,
+      backgroundSrc: backgroundFile ? `${files.url}/${webPath(backgroundFile)}` : null,
       logoSrc: "logo.png",
     };
     const browserExecutable = input.browserExecutable || undefined;

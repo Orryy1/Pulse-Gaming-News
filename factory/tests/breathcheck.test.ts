@@ -63,12 +63,35 @@ test("words a minute counts speaking time only", () => {
 import { visionAnswer } from "../src/assets/localvision.ts";
 
 test("a vision answer is read from the reply, or from the end of the model's reasoning", () => {
-  assert.deepEqual(visionAnswer({ message: { content: '{"text": true}' } }), { text: true });
+  assert.deepEqual(visionAnswer({ message: { content: '{"text": true}' } }), {
+    text: true,
+  });
   // Ollama 0.40 with qwen3-vl: the reasoning comes first and the reply may be empty or cut short.
   assert.deepEqual(
-    visionAnswer({ message: { content: "", thinking: '<think>\nSo, is there text? {maybe}\n</think>\n{"text": false, "dark": true}' } }),
+    visionAnswer({
+      message: {
+        content: "",
+        thinking:
+          '<think>\nSo, is there text? {maybe}\n</think>\n{"text": false, "dark": true}',
+      },
+    }),
     { text: false, dark: true },
   );
-  assert.deepEqual(visionAnswer({ message: { content: '{\n\n  "', thinking: "<think>\nSo, let's" } }), {});
+  assert.deepEqual(
+    visionAnswer({
+      message: { content: '{\n\n  "', thinking: "<think>\nSo, let's" },
+    }),
+    {},
+  );
   assert.deepEqual(visionAnswer({}), {});
+});
+
+import { webPath } from "../src/render/render.ts";
+
+test("a Windows file name becomes a URL path the renderer's CSS can load", () => {
+  assert.equal(
+    webPath(["entry_2", "assets", "hero_0.jpg"].join("\\")),
+    "entry_2/assets/hero_0.jpg",
+  );
+  assert.equal(webPath("voice.mp3"), "voice.mp3");
 });

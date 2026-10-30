@@ -214,7 +214,12 @@ export const PulseMaps: React.FC<GfxProps> = ({
   const many = stops.length > 1;
   const searchTop = screen.status + 14;
   const sheetH = many ? 236 : 176;
-  const sheetTop = screen.h - sheetH - (gen === "edge" ? 24 : 0);
+  // The sheet rises no further than the screen's bottom, and on a tall screen it stops higher so that the
+  // search bar, the map and the sheet's text fit the frame at the camera's push-in (740 px at x1.42).
+  const sheetTop = Math.min(
+    screen.h - sheetH - (gen === "edge" ? 24 : 0),
+    searchTop + 690 - sheetH,
+  );
   const clear = {
     left: 40,
     top: searchTop + 110,
@@ -255,10 +260,13 @@ export const PulseMaps: React.FC<GfxProps> = ({
     ...clamp,
     easing: easeInOut,
   });
-  // The push-in shows the whole screen below the status bar (x1.12 to x1.3 by the phone's height).
-  const push = Math.max(1.12, Math.min(1.3, 960 / (screen.h - screen.status)));
+  // The camera pushes in x1.42 (as PhoneStory does), or as far as keeps the screen from its status bar to the
+  // sheet's text inside the frame, about that region's middle: the distance line then reads at about 50 px
+  // and a place's name at 34.
+  const region = sheetTop + sheetH;
+  const push = Math.min(1.42, 1040 / region);
   const scale = 1 + (push - 1) * zoom;
-  const focus = screen.top + (screen.status + screen.h) / 2;
+  const focus = screen.top + region / 2;
   const lift = -(focus - HANDSET_H / 2);
 
   const pins = stopPoints(stops).map((p) => toScreen(f, p));
@@ -275,7 +283,7 @@ export const PulseMaps: React.FC<GfxProps> = ({
   const appInk = open > 0.5;
 
   return (
-    <Stage dim={dim} bg={bg} variant={variant} blur={14}>
+    <Stage dim={dim} bg={bg ?? "contour"} variant={variant} blur={14}>
       <Handset
         gen={gen}
         skin={skin}
@@ -455,8 +463,8 @@ export const PulseMaps: React.FC<GfxProps> = ({
               position: "absolute",
               left: gen === "edge" ? 12 : 0,
               right: gen === "edge" ? 12 : 0,
-              top: sheetTop + (1 - sheet) * (sheetH + 60),
-              height: sheetH,
+              top: sheetTop + (1 - sheet) * (screen.h - sheetTop + 60),
+              height: screen.h - sheetTop,
               boxSizing: "border-box",
               padding: "16px 26px",
               borderRadius: gen === "edge" ? 34 : "22px 22px 0 0",

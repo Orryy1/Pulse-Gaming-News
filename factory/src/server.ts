@@ -1773,21 +1773,25 @@ async function main(): Promise<void> {
   const reloadState: { lastWhy?: string } = {};
   setInterval(
     () =>
-      void maybeReload({
-        db,
-        cfg,
-        now: new Date(),
-        activity: () => ({
-          ticking: running,
-          longTicking: runningLong,
-          uploadsActive: activeUploads(),
-        }),
-        notify: (m) => services.notify(m),
-        exit: (code) => process.exit(code),
-        state: reloadState,
-      }).catch((err) =>
-        log("warn", "reload check failed", { error: errorMessage(err) }),
-      ),
+      // Never inside the first three minutes: the launcher reads an exit that soon after an update as a
+      // release that died at boot and rolls the code back.
+      process.uptime() < 180
+        ? undefined
+        : void maybeReload({
+            db,
+            cfg,
+            now: new Date(),
+            activity: () => ({
+              ticking: running,
+              longTicking: runningLong,
+              uploadsActive: activeUploads(),
+            }),
+            notify: (m) => services.notify(m),
+            exit: (code) => process.exit(code),
+            state: reloadState,
+          }).catch((err) =>
+            log("warn", "reload check failed", { error: errorMessage(err) }),
+          ),
     60_000,
   );
   let lastRestartDay = new Date().toISOString().slice(0, 10);

@@ -47,6 +47,7 @@ import { trailerMatchesGame } from "./assets/commons.ts";
 import { captureHold } from "./capture.ts";
 import { rankStills } from "./assets/stillscore.ts";
 import { coverageShare, fillSentencePictures } from "./assets/fill.ts";
+import { createSketchRun } from "./assets/illustrate.ts";
 
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
 export const MEDIA_RICH_TARGET = 0.85;
@@ -5886,7 +5887,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   // Every sentence still without a picture or graphic of its own is searched for on its own, once per video
   // (src/assets/fill.ts; owner, 30 Oct 2026: "all videos must be fully media rich all the way through").
-  if (!assets.filled && assets.images && script.entries?.some((e) => e.moments?.length)) {
+  if (
+    !assets.filled &&
+    assets.images &&
+    script.entries?.some((e) => e.moments?.length)
+  ) {
     const chapters = [...script.entries]
       .sort((a, b) => b.rank - a.rank)
       .map((e, i) => ({
@@ -5897,6 +5902,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         sentences: chapterSentences(script, i),
       }));
     assets.clips ??= [];
+    // Scene lines nothing filmed can show get a drawn concept sketch, tagged ILLUSTRATION, when switched on
+    // (ILLUSTRATE_ENABLED, off by default; src/assets/illustrate.ts). Off, nothing here changes.
+    const sketches = s.cfg.illustrate
+      ? createSketchRun({
+          llm: s.llm,
+          dir,
+          episodeId: ep.id,
+          url: s.cfg.illustrateUrl,
+          max: s.cfg.illustrateMax,
+          stub: s.cfg.illustrateStub,
+          timeoutMs: s.cfg.illustrateTimeoutSeconds * 1000,
+        })
+      : undefined;
     const r = await fillSentencePictures(
       s,
       dir,
@@ -5905,8 +5923,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       assets.clips,
       script.game_title || script.headline,
       scopeOf(script),
+      sketches?.forChapter,
     );
     assets.filled = { before: r.before, after: r.after };
+    if (sketches) {
+      const sum = sketches.summary();
+      assets.sketches = sum;
+      await logEvent(s.db, ep.id, "sketches", { ...sum });
+      if (sum.asked)
+        await s.notify({
+          level: "info",
+          content: `Documentary "${script.headline}": ${sum.kept} concept sketch${sum.kept === 1 ? "" : "es"} drawn for lines nothing filmed can show (${sum.asked} asked, ${sum.dropped} refused by the picture editor, ${sum.failed} not drawn; ${sum.seconds}s). Each is tagged ILLUSTRATION on screen. Setting: ILLUSTRATE_ENABLED.`,
+        });
+    }
     // The graphics pass writes into the shot list (script.entries[].moments), so the script is kept too.
     await s.db.query(
       `UPDATE episodes SET assets_json = $2, script_json = $3 WHERE id = $1`,
@@ -6072,15 +6101,24 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   if (hasMoments) {
     const own = matchedShare(moments, images, clips);
     const covered = coverageShare(
-      moments.map((m, i) => ({ entry: i, game: "", moments: m, sentences: [] })),
+      moments.map((m, i) => ({
+        entry: i,
+        game: "",
+        moments: m,
+        sentences: [],
+      })),
       images,
       clips,
     );
-    log(covered < MEDIA_RICH_TARGET ? "warn" : "info", "sentences with their own picture", {
-      episode: ep.id,
-      share: Math.round(own * 100),
-      covered: Math.round(covered * 100),
-    });
+    log(
+      covered < MEDIA_RICH_TARGET ? "warn" : "info",
+      "sentences with their own picture",
+      {
+        episode: ep.id,
+        share: Math.round(own * 100),
+        covered: Math.round(covered * 100),
+      },
+    );
     if (covered < MEDIA_RICH_TARGET)
       await s.notify({
         content: `🎞️ "${script.headline}": ${Math.round(covered * 100)}% of its sentences have something chosen for their own words (${Math.round(own * 100)}% a picture or clip of their own, the rest a graphic), under the ${Math.round(MEDIA_RICH_TARGET * 100)}% target. It renders anyway; the rest sit on the chapter's footage.`,

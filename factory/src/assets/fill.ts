@@ -57,9 +57,10 @@ export interface FillDeps {
 
 type Placed = { beatIndex?: number; moment?: number };
 /** A picture as the episode stores it (kind is a plain string there); new ones get their shape measured later. */
-type Image = {
+export type Image = {
   file: string;
   kind: string;
+  aspect?: number;
   sourceUrl?: string;
   provenance?: string;
   beatIndex?: number;
@@ -145,6 +146,13 @@ const MAX_PHOTO_QUERIES = 12;
 const MAX_STOCK = 8;
 const BATCH = 24;
 
+/** Draws concept sketches for a chapter's bare scene lines, pinning what passes (src/assets/illustrate.ts). */
+export type Illustrate = (
+  ch: FillChapter,
+  bare: number[],
+  images: Image[],
+) => Promise<number>;
+
 /**
  * Tops up a long video's sentences without a picture or graphic of their own. Images and clips are added in
  * place; returns the coverage before and after.
@@ -157,6 +165,7 @@ export async function fillSentencePictures(
   clips: Clip[],
   franchise: string,
   scope?: "campaign",
+  illustrate?: Illustrate,
 ): Promise<{ before: number; after: number }> {
   const before = coverageShare(chapters, images, clips);
   const games = chapters.map((c) => c.game);
@@ -166,8 +175,14 @@ export async function fillSentencePictures(
       // What is still bare, or has only illustrative stock, and states a date, place, figure or name gets the
       // graphic that shows it (30 Oct 2026 shot review: generic stock scored 1 of 3, a card stating the fact 3).
       const real = clips.filter((c) => !c.stock);
-      const covered = coveredMoments(ch.entry, ch.moments, images, real);
-      const bare = ch.moments.map((_, k) => k).filter((k) => !covered.has(k));
+      const open = () => {
+        const covered = coveredMoments(ch.entry, ch.moments, images, real);
+        return ch.moments.map((_, k) => k).filter((k) => !covered.has(k));
+      };
+      // Scene lines nothing filmed can show (an office, a meeting) get a drawn sketch first, when switched on
+      // (ILLUSTRATE_ENABLED); the graphics pass then sees only what is still bare.
+      if (illustrate) await illustrate(ch, open(), images);
+      const bare = open();
       await graphicsForBare(deps.llm, ch, bare, ch.sentences.join(" "), games);
     } catch (err) {
       log("warn", "sentence top-up failed for a chapter", {
@@ -260,14 +275,23 @@ async function fillChapter(
   // showed the chapter's game instead).
   const others = new Map<string, number[]>();
   for (const k of open())
-    for (const t of otherGames(ch.moments[k]!, ch.game, franchise, ch.sentences[k] ?? ""))
+    for (const t of otherGames(
+      ch.moments[k]!,
+      ch.game,
+      franchise,
+      ch.sentences[k] ?? "",
+    ))
       others.set(t, [...(others.get(t) ?? []), k]);
   for (const [title] of [...others].slice(0, 6)) {
     const got = await deps
       .igdbArt(title, undefined, path.join(abs, "other", slug(title)), 6)
       .catch(() => [] as VisualAsset[]);
     for (const a of got)
-      if (a.kind !== "capsule" && igdbNameOf(a.provenance) === norm(title) && !have.has(a.sourceUrl))
+      if (
+        a.kind !== "capsule" &&
+        igdbNameOf(a.provenance) === norm(title) &&
+        !have.has(a.sourceUrl)
+      )
         candidates.push({
           ...a,
           file: path.join(base, "other", slug(title), a.file),
@@ -552,7 +576,15 @@ export async function graphicsForBare(
       ch.sentences[g.sentence] ?? "",
     ]).moments[1]!;
     if (grounded.graphic.kind === "none") continue;
-    if (!graphicFitsSentence(grounded.graphic, ch.sentences, g.sentence, chapterText)) continue;
+    if (
+      !graphicFitsSentence(
+        grounded.graphic,
+        ch.sentences,
+        g.sentence,
+        chapterText,
+      )
+    )
+      continue;
     m.graphic = grounded.graphic;
     n++;
   }
@@ -578,7 +610,18 @@ export function graphicFitsSentence(
   const flat = (t: string) => t.toLowerCase().replace(/,/g, "");
   const near = flat(`${sentences[k - 1] ?? ""} ${sentences[k] ?? ""}`);
   const nums = (t: string) => flat(t).match(/\d[\d.]*/g) ?? [];
-  if (["date", "stat", "delay", "milestone", "headline", "compare", "bars", "share"].includes(g.kind)) {
+  if (
+    [
+      "date",
+      "stat",
+      "delay",
+      "milestone",
+      "headline",
+      "compare",
+      "bars",
+      "share",
+    ].includes(g.kind)
+  ) {
     const said = [g.primary, ...g.items].flatMap(nums);
     if (!said.every((d) => near.includes(d))) return false;
   }
@@ -586,17 +629,27 @@ export function graphicFitsSentence(
     const who = g.secondary.split(",")[0]!.trim().toLowerCase();
     if (!who || !chapterText.toLowerCase().includes(who)) return false;
     // Only words the narration puts in quotation marks, in this sentence or a neighbour, are a quote.
-    const words = (t: string) => t.toLowerCase().replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
-    const quoted = `${sentences[k - 1] ?? ""} ${sentences[k] ?? ""} ${sentences[k + 1] ?? ""}`
-      .match(/["“]([^"”]{3,})["”]/g)
-      ?.map(words) ?? [];
+    const words = (t: string) =>
+      t
+        .toLowerCase()
+        .replace(/[^a-z0-9' ]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const quoted =
+      `${sentences[k - 1] ?? ""} ${sentences[k] ?? ""} ${sentences[k + 1] ?? ""}`
+        .match(/["“]([^"”]{3,})["”]/g)
+        ?.map(words) ?? [];
     const said = words(g.primary);
     if (!said || !quoted.some((q) => q.includes(said))) return false;
   }
   return true;
 }
 
-const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const norm = (t: string) =>
+  t
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 const slug = (t: string) => norm(t).replace(/ /g, "_").slice(0, 40);
 
 /** The game an IGDB picture belongs to, from its provenance line. */
@@ -621,7 +674,11 @@ export function otherGames(
     const t = k.trim();
     const words = t.split(/\s+/);
     if (words.length < 2 || words.length > 6) continue;
-    if (words.filter((w) => /^[A-Z0-9]/.test(w)).length < Math.ceil(words.length * 0.6)) continue;
+    if (
+      words.filter((w) => /^[A-Z0-9]/.test(w)).length <
+      Math.ceil(words.length * 0.6)
+    )
+      continue;
     if (own.has(norm(t)) || norm(game).includes(norm(t))) continue;
     if (m.person && norm(m.person) === norm(t)) continue;
     // The sentence itself says the title (a place called Ocean Drive is not a game called Ocean Drive).

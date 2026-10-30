@@ -145,6 +145,12 @@ export interface Config {
   mascotShare: number;
   /** The UK day the factory first judges its experiments (src/experiments.ts), as YYYY-MM-DD. */
   experimentVerdictDate: string;
+  /** The weekly retention tests on news Shorts (src/growth.ts): one thing at a time, judged by the factory. */
+  growthTests: boolean;
+  /** News-lane Shorts a day (scheduled and breaking) before the remaining slots are held back; 0 = no cap (src/cadence.ts). */
+  shortsPerDayMax: number;
+  /** The share of a Short's narration that should have its own picture, clip or card (0-1); under it, a note (src/qa/mediarich.ts). */
+  shortMediaRichTarget: number;
   narratorName: string; // the usual narrator's name, for the Discord card and the lessons
   focusMatch: string; // regex (case-insensitive) a story about the focus matches, e.g. "grand theft auto|\\bgta\\b"
   focusPlaylist: string; // a playlist every focus video joins while the focus runs, empty = none
@@ -461,6 +467,12 @@ export function loadConfig(): Config {
     ),
     mascotShare: Math.max(0, Math.min(1, Number(str("MASCOT_SHARE", "0")))),
     experimentVerdictDate: str("EXPERIMENT_VERDICT_DATE", "2026-11-08"),
+    growthTests: bool("GROWTH_TESTS", true),
+    shortsPerDayMax: Math.max(0, int("SHORTS_PER_DAY_MAX", 0)),
+    shortMediaRichTarget: Math.max(
+      0,
+      Math.min(1, Number(str("SHORT_MEDIA_RICH_TARGET", "0.85")) || 0.85),
+    ),
     narratorName: str("NARRATOR_NAME", "Liam"),
     focusMatch: str("FOCUS_MATCH", ""),
     focusPlaylist: str("FOCUS_PLAYLIST", ""),
@@ -797,6 +809,8 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     youtubeOAuthClient: Boolean(c.googleClientId && c.googleClientSecret),
     youtubePrivacy: c.youtubePrivacy,
     dailyTarget: c.dailyTarget,
+    shortsPerDayMax: c.shortsPerDayMax || "no cap",
+    growthTests: c.growthTests,
     newsSlots: c.newsSlots.join(","),
     breaking: c.breakingEnabled
       ? `${c.breakingPerDay}/day, score>=${c.breakingScoreMin}, <=${c.breakingMaxAgeMinutes}min old`

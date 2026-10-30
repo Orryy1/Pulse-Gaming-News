@@ -61,6 +61,8 @@ export interface EpisodeAssets {
   suite?: boolean;
   /** Pip the mascot test: this Short carried Pip (src/render/components/Pip.tsx); unset before the test began. */
   mascot?: boolean;
+  /** The weekly retention test this news Short was written under (src/growth.ts): which test and which variant. */
+  test?: { key: string; variant: "A" | "B"; label: string };
   /** Each entry's own colour from its key art ("#rrggbb", null when it has none): src/assets/palette.ts. */
   palette?: Array<string | null>;
   /** Graphics the graphics check faulted ("entry:moment"), left out of the next render. */

@@ -1742,3 +1742,82 @@ test("only one long video is worked on at a time", async () => {
   );
   await db.close();
 });
+
+test("the retention test rides a news Short: announced once, recorded on the episode, checked on the draft, and the media-richness measure lands in qa_json", async () => {
+  const { db, f, s } = await setup({ growthTests: true });
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(ep.status, "published", ep.last_error ?? "");
+  // The first news Short starts test 1 and takes variant A (the question gap); the owner hears once.
+  assert.deepEqual(ep.assets_json?.test, {
+    key: "hook_style",
+    variant: "A",
+    label: "question gap",
+  });
+  assert.equal(
+    f.notifications.filter((n) => n.startsWith("Growth test 1 of 3 started"))
+      .length,
+    1,
+  );
+  // The fixture's hook is a statement, so the variant check sent the draft back; the second try is
+  // accepted with a style warning that names the rule.
+  const warnings = await db.query<{ detail: { problems: string[] } }>(
+    `SELECT detail FROM events WHERE episode_id = $1 AND kind = 'style_warnings'`,
+    [ep.id],
+  );
+  assert.ok(
+    warnings.some((w) =>
+      w.detail.problems.some((p) => /is a statement; this Short's rule is one answerable question/.test(p)),
+    ),
+    "the variant rule is checked on the draft",
+  );
+  // Every Short's plan is measured; the share is stored with its QA and reported under the target.
+  const rich = (ep.qa_json as { media_rich?: { covered: number; own: number } })
+    .media_rich;
+  assert.ok(rich && rich.covered >= 0 && rich.covered <= 1, "media richness measured");
+  assert.ok(rich!.own <= rich!.covered);
+  const events = await db.query<{ detail: { covered: number } }>(
+    `SELECT detail FROM events WHERE episode_id = $1 AND kind = 'media_rich'`,
+    [ep.id],
+  );
+  assert.equal(events.length, 1);
+  assert.equal(events[0]!.detail.covered, rich!.covered);
+  if (rich!.covered < 0.85)
+    assert.ok(
+      f.notifications.some((n) => n.startsWith("🎞️") && /under the 85% target/.test(n)),
+      "a line for the evening summary",
+    );
+  await db.close();
+});
+
+test("SHORTS_PER_DAY_MAX holds the day's later news slots and names the stories left waiting, once", async () => {
+  const { db, f, s, setClock } = await setup({
+    dailyTarget: 4,
+    newsSlots: ["13:00", "14:30"],
+    approvalMode: "manual",
+    breakingEnabled: false,
+    youtubePrivacy: "unlisted",
+    shortsPerDayMax: 1,
+  });
+  await tick(s);
+  const first = await only(db);
+  assert.equal(first.lane, "news");
+  // 12:20Z: the 14:30 slot is due, a fresh story is waiting, but the day's one news Short is made.
+  const later = new Date("2026-10-16T12:20:00Z");
+  setClock(later);
+  freshStory(s, later);
+  await tick(s);
+  assert.equal((await listEpisodes(db)).length, 1, "the slot is held back");
+  const held = f.notifications.filter((n) => n.startsWith("Shorts cap:"));
+  assert.equal(held.length, 1);
+  assert.match(
+    held[0]!,
+    /^Shorts cap: 1 news Short already today, the SHORTS_PER_DAY_MAX limit of 1, so the 14:30 slot was held back\. 1 story stayed on the shelf: "Hollow Knight Silksong expansion dated for December" \(score \d+\)\. Raise SHORTS_PER_DAY_MAX \(or set it to 0\) to allow more\.$/,
+  );
+  // The next tick that day stays quiet.
+  setClock(new Date("2026-10-16T12:30:00Z"));
+  await tick(s);
+  assert.equal((await listEpisodes(db)).length, 1);
+  assert.equal(f.notifications.filter((n) => n.startsWith("Shorts cap:")).length, 1);
+  await db.close();
+});

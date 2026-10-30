@@ -169,6 +169,8 @@ export async function writeScript(
     recent?: RecentShapes;
     /** The rejected draft: fixed by edits where the feedback points, written again only if that fails. */
     draft?: Script;
+    /** The retention tests' rules for this Short (src/growth.ts growthNotes): the running test's variant and the winners so far. */
+    variantNote?: string;
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -190,7 +192,9 @@ export async function writeScript(
     opts.recent ? recentConcessions(opts.recent) : [],
   );
   const shapeNote = `\n\nThis Short's take shape: ${shape.rule}.${shape.id === "concession" ? "" : " Concede nothing anywhere in this Short."}`;
-  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${recent}`;
+  // The test variant comes last, after the general shapes, so it is the rule the writer reads nearest the draft.
+  const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${recent}${variantNote}`;
   // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
   const edited =
     opts.draft &&

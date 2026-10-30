@@ -34,11 +34,11 @@ Re-run `INSTALL.cmd` any time to update. Run `windows\uninstall.ps1` to stop and
 
 ## Voice
 
-| `VOICE_PROVIDER` | Behaviour |
-|---|---|
+| `VOICE_PROVIDER` | Behaviour                                                                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `auto` (default) | The local Liam voice. If its server is down and can't be started, it falls back to ElevenLabs, but only when the plan has enough characters left. |
-| `local` | Local voice only; never spends ElevenLabs credits. |
-| `elevenlabs` | ElevenLabs only. |
+| `local`          | Local voice only; never spends ElevenLabs credits.                                                                                                |
+| `elevenlabs`     | ElevenLabs only.                                                                                                                                  |
 
 If the voice server isn't running, the factory starts it with `LOCAL_TTS_START` (`windows\start-liam.bat`, which runs the Codex `tts_server\` from `PULSE_TTS_DIR` on the port in `LOCAL_TTS_URL`) and waits for it to load, which takes 2–5 minutes cold. On the production PC port 8765 belongs to the old governed VoxCPM service, which answers `/health` but not `/with-timestamps`, so `LOCAL_TTS_URL` is `http://127.0.0.1:8766`; the factory refuses a server that lacks the route instead of failing silently. Long scripts are split into takes of at most 36 words, because VoxCPM is unstable on longer takes under Windows CUDA. The takes are stitched with exact word timings for the captions. Use `LOCAL_TTS_SPEAKING_RATE` to change the pace (1.0 by default; Codex's proven slower read was 0.85).
 
@@ -52,6 +52,8 @@ Two lanes feed one producer.
 
 - **News** fills fixed daily slots (`NEWS_SLOTS`, default `12:00,16:00,19:30` in `TIMEZONE`, default Europe/London). An episode starts `SLOT_LEAD_MINUTES` (75) before its slot and publishes at the slot: public uploads are scheduled on YouTube, unlisted or private uploads wait until the slot. A slot missed by more than `SLOT_GRACE_MINUTES` (30) is skipped, never double-booked.
 - **Breaking** is reserved for massive stories: an official source, corroborated, not a rumour, first seen by the discovery poll no more than `BREAKING_MAX_AGE_MINUTES` (90) ago and scoring at least `BREAKING_SCORE_MIN` (75). It fires any time inside `BREAKING_WINDOW` (07:00-23:00 local), at most `BREAKING_PER_DAY` (2) times, with a per-franchise cooldown of `BREAKING_COOLDOWN_HOURS` (2), a `BREAKING_APPROVAL_MINUTES` (20) countdown instead of the normal one, and a Discord heads-up the moment it starts.
+
+`SHORTS_PER_DAY_MAX` (0, no cap) is the news lane's own allowance: once that many news-lane Shorts exist today (scheduled slots and breaking together), the remaining news slots are held back and the stories that were waiting for them are named once in the evening summary ("Shorts cap: 3 news Shorts already today ... 2 stories stayed on the shelf"). Breaking Shorts count towards it but are never blocked by it, so a breaking story displaces the day's last slot. Set it to 3 for three news Shorts a day; the evergreen, why, weekly, cutdown and gameplay lanes are outside it. The growth research (docs/research/breakout-playbook-2026-10-26.md) is the reason: none of the organic breakouts won on multi-game news volume.
 
 Discovery runs every `DISCOVER_MINUTES` (3) on its own lease and remembers when each story cluster was first seen, so "breaking" means minutes old, not "has a new follow-up". `SHORTS_PER_DAY` (4) caps all lanes together; `MAX_PRODUCING` (2) episodes can be mid-production at once and episodes waiting on approval or YouTube never block the next one; every publish keeps `MIN_UPLOAD_GAP_MINUTES` (60) after the last. YouTube Data API units are metered per Pacific day in `quota_ledger`; an upload is deferred to the next reset when fewer than about 2,100 units remain, and `QUOTA_UNITS_PER_DAY` (10,000) is the project's default quota. `/health` reports per-lane counts, producing and scheduled episodes and the last discovery.
 
@@ -87,11 +89,11 @@ Once a week (Sunday 18:00 London by default, `LONGFORM_DAYS`, `LONGFORM_SLOT`) t
 
 ## Approval
 
-| `APPROVAL_MODE` | Behaviour |
-|---|---|
+| `APPROVAL_MODE`     | Behaviour                                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `timeout` (default) | Posts to Discord and publishes after `APPROVAL_TIMEOUT_MINUTES` unless rejected. Rumours always wait for a human. |
-| `manual` | Waits for Approve. |
-| `auto` | Publishes as soon as QA passes. |
+| `manual`            | Waits for Approve.                                                                                                |
+| `auto`              | Publishes as soon as QA passes.                                                                                   |
 
 The Approve and Reject links point at `PUBLIC_URL`. On `http://localhost:8080` they only work on this PC. To tap them from your phone, set `PUBLIC_URL` to the Cloudflare tunnel Codex used (`pulse.orryy.com`, pointed at port 8080). `windows\install-tunnel.ps1` registers a hidden "Pulse Tunnel" start-up task that keeps that tunnel running.
 
@@ -116,6 +118,10 @@ Every episode writes `captions.srt` from the narration's word timings, and once 
 ## Analytics
 
 Every published Short's public views, likes and comments are read 1 h, 3 h, 24 h, 72 h, 7 d and 28 d after it goes live (`video_metrics`; one quota unit per fifty videos, a window missed by more than half its age is skipped rather than back-filled). Once four Shorts have a 24 h figure the editor is shown the best and worst five of the last 28 days, with story type, game, lane and narrator voice, as advice when it picks the next story. Every Monday at 09:00 the Discord digest gives the week's counts per lane, median views at 24 h, best and weakest Shorts, median views per voice over 28 days (the voice rotation test) and the quota used. Retention curves and engaged views need the analytics scope and arrive once the YouTube login is reconnected.
+
+**Retention tests** (`GROWTH_TESTS`, default true; src/growth.ts). One controlled test at a time on the news Shorts, two variants of one thing, given to Shorts alternately as they are written and recorded on the episode (`assets_json.test`): first the hook style (an answerable question against the stated stake), then the title shape (number first against a question), then the cold-open length (5-7 against 9-12 words). The variant is a rule in the writer's brief and a house check, so a draft that ignores it is sent back. A week after a test starts, and weekly after that, the analytics tick judges it from the retention curves: the share still watching at 3 seconds (one minus the swipe-away rate) decides, the average view duration can only veto. The rule: six Shorts a side with a curve; a side wins when it holds more at 3 seconds in 90 of 100 bootstrap resamples of the per-Short values and by at least 2 points, unless its average percentage viewed trails by more than 2 points. A winner becomes the default for every later Short through a settings override (`override:growth_<key>`, 0 = A, 1 = B; delete the row to lift it), the loser is dropped, the next test starts; a test with no answer after four checks is closed without a default. Every start and verdict is one plain-English Discord post. Caption density is the next thing to test and needs a render switch first.
+
+**Media richness of Shorts** (`SHORT_MEDIA_RICH_TARGET`, default 0.85; src/qa/mediarich.ts). Every Short's render plan is measured for the share of its narration, by time, that has something chosen for its own words on screen: a trailer moment or picture matched to the line, or a card. Stored in `qa_json.media_rich` and the `media_rich` event; under the target it is a line in the evening summary. Nothing about what the Short shows changes yet.
 
 ## Costs
 

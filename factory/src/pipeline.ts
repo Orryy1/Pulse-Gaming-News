@@ -193,6 +193,15 @@ import {
   primeTimeVerdict,
   rumoursPerDayNow,
 } from "./experiments.ts";
+import {
+  growthAssign,
+  growthDefaults,
+  growthNotes,
+  growthProblems,
+  growthVerdict,
+} from "./growth.ts";
+import { holdSlotForCap } from "./cadence.ts";
+import { mediaRichNotice, shortMediaRichness } from "./qa/mediarich.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
 import { titleVariants } from "./editorial/titles.ts";
@@ -1010,7 +1019,25 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     },
     await takenSlots(db),
   );
-  if (!slot)
+  // SHORTS_PER_DAY_MAX (src/cadence.ts): once the day's news allowance is used, the slot is held back and the
+  // stories that were waiting for it are named once in the evening summary.
+  const capped =
+    !!slot &&
+    (await holdSlotForCap(
+      db,
+      cfg,
+      now,
+      slot,
+      eligible.map((x) => ({
+        headline: x.cluster.headline,
+        score: x.cluster.score,
+      })),
+      (m) => s.notify(m),
+    ).catch((err) => {
+      log("warn", "news cap check failed", { error: errorMessage(err) });
+      return false;
+    }));
+  if (!slot || capped)
     return (
       (await maybeSelectDocumentary(s)) ??
       (await maybeSelectEvergreen(s)) ??
@@ -3799,8 +3826,19 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // Draft, check house rules, fact-check; one fix with the problems fed back (edits to the draft, or a
   // whole new draft when the edits do not apply).
   const recent = await recentShapes(s.db, ep.id).catch(() => undefined);
+  // The weekly retention test (src/growth.ts): this Short's variant of the thing under test, and the rules the
+  // finished tests settled. Recorded on the episode so the judge can find it; a failure here never stops a Short.
+  const test = await growthAssign(s.db, s.cfg, s.now(), ep, (m) =>
+    s.notify(m),
+  ).catch((err) => {
+    log("warn", "growth test assignment failed", { error: errorMessage(err) });
+    return undefined;
+  });
+  const testDefaults = await growthDefaults(s.db).catch(() => []);
+  const variantNote = growthNotes(test, testDefaults);
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
+      variantNote,
       // YouTube's lessons, then how the same Shorts did on Instagram, Facebook, Threads and TikTok.
       lessons: [
         await hookLessons(s.db, s.now(), segmentInputs).catch(() => ""),
@@ -3815,6 +3853,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       draft: attempt > 0 ? script : undefined,
     });
     const problems = validateScript(script, recent);
+    // The test variant is a house rule for this Short: a draft that ignored it is sent back like any other.
+    problems.push(...growthProblems(script, test, testDefaults));
     // A report card is credited to an outlet: it must be one of this story's own sources.
     const outlets = cluster.items.map((i) => i.source.toLowerCase());
     for (const b of script.beats)
@@ -3910,7 +3950,10 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: check,
-    assets_json: steam ? { steam } : null,
+    assets_json:
+      steam || test
+        ? { ...(steam ? { steam } : {}), ...(test ? { test } : {}) }
+        : null,
   });
 }
 
@@ -5886,7 +5929,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   // Every sentence still without a picture or graphic of its own is searched for on its own, once per video
   // (src/assets/fill.ts; owner, 30 Oct 2026: "all videos must be fully media rich all the way through").
-  if (!assets.filled && assets.images && script.entries?.some((e) => e.moments?.length)) {
+  if (
+    !assets.filled &&
+    assets.images &&
+    script.entries?.some((e) => e.moments?.length)
+  ) {
     const chapters = [...script.entries]
       .sort((a, b) => b.rank - a.rank)
       .map((e, i) => ({
@@ -6072,15 +6119,24 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   if (hasMoments) {
     const own = matchedShare(moments, images, clips);
     const covered = coverageShare(
-      moments.map((m, i) => ({ entry: i, game: "", moments: m, sentences: [] })),
+      moments.map((m, i) => ({
+        entry: i,
+        game: "",
+        moments: m,
+        sentences: [],
+      })),
       images,
       clips,
     );
-    log(covered < MEDIA_RICH_TARGET ? "warn" : "info", "sentences with their own picture", {
-      episode: ep.id,
-      share: Math.round(own * 100),
-      covered: Math.round(covered * 100),
-    });
+    log(
+      covered < MEDIA_RICH_TARGET ? "warn" : "info",
+      "sentences with their own picture",
+      {
+        episode: ep.id,
+        share: Math.round(own * 100),
+        covered: Math.round(covered * 100),
+      },
+    );
     if (covered < MEDIA_RICH_TARGET)
       await s.notify({
         content: `🎞️ "${script.headline}": ${Math.round(covered * 100)}% of its sentences have something chosen for their own words (${Math.round(own * 100)}% a picture or clip of their own, the rest a graphic), under the ${Math.round(MEDIA_RICH_TARGET * 100)}% target. It renders anyway; the rest sit on the chapter's footage.`,
@@ -6832,6 +6888,39 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       plan.sfx.push({ file: sfxFile(name), frame: f, volume: LEVEL.land });
   }
   assets.plan = plan;
+  // How much of the narration has something chosen for its own words on screen (src/qa/mediarich.ts): measured
+  // on every Short and kept in qa_json; under SHORT_MEDIA_RICH_TARGET it is a line in the evening summary.
+  const mediaRich = shortMediaRichness(
+    segments,
+    plan,
+    assets.images ?? [],
+    assets.clips ?? [],
+  );
+  log(
+    mediaRich.covered < s.cfg.shortMediaRichTarget ? "warn" : "info",
+    "short media richness",
+    {
+      episode: ep.id,
+      covered: Math.round(mediaRich.covered * 100),
+      own: Math.round(mediaRich.own * 100),
+      target: Math.round(s.cfg.shortMediaRichTarget * 100),
+    },
+  );
+  await logEvent(s.db, ep.id, "media_rich", {
+    covered: mediaRich.covered,
+    own: mediaRich.own,
+    graphicOnly: mediaRich.graphicOnly,
+    target: s.cfg.shortMediaRichTarget,
+  });
+  if (mediaRich.covered < s.cfg.shortMediaRichTarget)
+    await s.notify({
+      level: "info",
+      content: mediaRichNotice(
+        script.headline,
+        mediaRich,
+        s.cfg.shortMediaRichTarget,
+      ),
+    });
   assets.suite = suiteFor(s.cfg, ep);
   // Pip the mascot (src/experiments.ts): recorded either way only while the test runs, and kept on a re-render.
   const mascotShare = await mascotShareNow(s.db, s.cfg);
@@ -6966,6 +7055,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     technical: tech,
     vision: vision ?? null,
     rubric,
+    media_rich: mediaRich,
     checked_at: s.now().toISOString(),
   };
   const visionProblems =
@@ -8285,6 +8375,14 @@ export async function tick(
       await primeTimeVerdict(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch(
         (err) =>
           log("warn", "posting-time report failed", {
+            error: errorMessage(err),
+          }),
+      );
+    // The weekly retention test on news Shorts (src/growth.ts): judged a week after it starts, then weekly until called.
+    if (!s.cfg.dryRun)
+      await growthVerdict(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch(
+        (err) =>
+          log("warn", "growth test verdict failed", {
             error: errorMessage(err),
           }),
       );

@@ -52,7 +52,11 @@ const OVERRIDE = {
 
 // ---- Runtime overrides -------------------------------------------------------------------------
 
-async function readOverride(db: Db, key: string): Promise<number | undefined> {
+/** A numeric setting override (also used by the growth tests, src/growth.ts). */
+export async function readOverride(
+  db: Db,
+  key: string,
+): Promise<number | undefined> {
   const [row] = await db.query<{ value: string }>(
     `SELECT value FROM settings WHERE key = $1`,
     [key],
@@ -61,7 +65,7 @@ async function readOverride(db: Db, key: string): Promise<number | undefined> {
   return Number.isFinite(n) ? n : undefined;
 }
 
-async function writeOverride(
+export async function writeOverride(
   db: Db,
   key: string,
   value: number,
@@ -622,16 +626,27 @@ const mid = (xs: number[]): number => {
 export function primeTimeLines(
   rows: Array<{ platform: string; at: Date; views: number }>,
 ): string[] {
-  const names: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok" };
+  const names: Record<string, string> = {
+    facebook: "Facebook",
+    instagram: "Instagram",
+    tiktok: "TikTok",
+  };
   return Object.keys(names).map((p) => {
     const mine = rows.filter((r) => r.platform === p);
     const inside = mine.filter((r) => inPrimeWindow(r.at)).map((r) => r.views);
-    const outside = mine.filter((r) => !inPrimeWindow(r.at)).map((r) => r.views);
+    const outside = mine
+      .filter((r) => !inPrimeWindow(r.at))
+      .map((r) => r.views);
     if (inside.length < PRIME_MIN_EACH || outside.length < PRIME_MIN_EACH)
       return `• ${names[p]}: not enough numbers to compare (${inside.length} posts in the evening window, ${outside.length} outside; ${PRIME_MIN_EACH} a side needed).`;
     const a = mid(inside);
     const b = mid(outside);
-    const verdict = a > b * 1.2 ? "the evening did better" : b > a * 1.2 ? "the evening did worse" : "about the same";
+    const verdict =
+      a > b * 1.2
+        ? "the evening did better"
+        : b > a * 1.2
+          ? "the evening did worse"
+          : "about the same";
     return `• ${names[p]}: ${a.toLocaleString("en-US")} median views posted 16:00-20:00 Eastern (${inside.length} posts) against ${b.toLocaleString("en-US")} at other times (${outside.length}): ${verdict}.`;
   });
 }
@@ -644,10 +659,17 @@ export async function primeTimeVerdict(
   notify: (m: DiscordMessage) => Promise<unknown>,
 ): Promise<boolean> {
   if (dayKey(now, cfg.timezone) < PRIME_TIME_END) return false;
-  const [done] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = $1`, [PRIME_REPORT_KEY]);
+  const [done] = await db.query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = $1`,
+    [PRIME_REPORT_KEY],
+  );
   if (done) return false;
   // Each post's numbers a day on (or the nearest age read), from 14 days before the test to its end.
-  const rows = await db.query<{ platform: string; at: string; views: number | string }>(
+  const rows = await db.query<{
+    platform: string;
+    at: string;
+    views: number | string;
+  }>(
     `SELECT v.detail->>'platform' AS platform, v.created_at AS at,
             (SELECT s.views FROM social_metrics s WHERE s.episode_id = v.episode_id AND s.platform = v.detail->>'platform' AND s.views IS NOT NULL
               ORDER BY CASE s.label WHEN '24h' THEN 0 WHEN '72h' THEN 1 WHEN '7d' THEN 2 ELSE 3 END LIMIT 1) AS views
@@ -657,7 +679,13 @@ export async function primeTimeVerdict(
     [PRIME_TIME_START, PRIME_TIME_END],
   );
   const lines = primeTimeLines(
-    rows.filter((r) => r.views !== null).map((r) => ({ platform: r.platform, at: new Date(r.at), views: Number(r.views) })),
+    rows
+      .filter((r) => r.views !== null)
+      .map((r) => ({
+        platform: r.platform,
+        at: new Date(r.at),
+        views: Number(r.views),
+      })),
   );
   const kept = (await readOverride(db, PRIME_OVERRIDE)) ?? 0;
   await db.query(

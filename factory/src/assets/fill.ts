@@ -15,6 +15,11 @@ import type { FootageTarget } from "./clipscore.ts";
 import type { VisualAsset } from "./steam.ts";
 import { clipFrame, rankStills, uncoveredTargets } from "./stillscore.ts";
 import { log } from "../lib/util.ts";
+import {
+  DocMomentSchema,
+  groundDocMoments,
+  type DocMoment,
+} from "../editorial/documentary.ts";
 
 export interface FillMoment {
   show: string;
@@ -154,9 +159,14 @@ export async function fillSentencePictures(
   scope?: "campaign",
 ): Promise<{ before: number; after: number }> {
   const before = coverageShare(chapters, images, clips);
+  const games = chapters.map((c) => c.game);
   for (const ch of chapters) {
     try {
       await fillChapter(deps, dir, ch, images, clips, franchise, scope);
+      // What is still bare and states a date, place, figure or name gets the graphic that shows it.
+      const covered = coveredMoments(ch.entry, ch.moments, images, clips);
+      const bare = ch.moments.map((_, k) => k).filter((k) => !covered.has(k));
+      await graphicsForBare(deps.llm, ch, bare, ch.sentences.join(" "), games);
     } catch (err) {
       log("warn", "sentence top-up failed for a chapter", {
         game: ch.game,
@@ -312,7 +322,11 @@ async function fillChapter(
   // 3b. Footage nobody described: one frame of each unlabelled clip goes to the editor, which labels it (so the
   //     bin pass can cut to it) and pins it where it truly shows a sentence.
   const unlabelled = clips.filter(
-    (c) => c.beatIndex === ch.entry && c.moment === undefined && !c.label && !c.stock,
+    (c) =>
+      c.beatIndex === ch.entry &&
+      c.moment === undefined &&
+      !c.label &&
+      !c.stock,
   );
   for (let b = 0; b < unlabelled.length; b += BATCH) {
     const batch = unlabelled.slice(b, b + BATCH);
@@ -321,7 +335,11 @@ async function fillChapter(
     for (const [i, c] of batch.entries()) {
       const frame = path.join(abs, "frames", `clip_${b + i}.jpg`);
       try {
-        await clipFrame(path.join(dir, String(c.file)), Number(c.durationSeconds ?? 4), frame);
+        await clipFrame(
+          path.join(dir, String(c.file)),
+          Number(c.durationSeconds ?? 4),
+          frame,
+        );
         frames.push({ file: frame });
         shown.push(c);
       } catch {
@@ -335,12 +353,20 @@ async function fillChapter(
       new Set(ch.moments.map((_, k) => k).filter((k) => !open().includes(k))),
     );
     if (!want.length) break;
-    const ranked = await rankStills(deps.llm, want, frames, path.join(abs, `clipscore_${b}`), scope, "documentary");
+    const ranked = await rankStills(
+      deps.llm,
+      want,
+      frames,
+      path.join(abs, `clipscore_${b}`),
+      scope,
+      "documentary",
+    );
     shown.forEach((c, i) => {
       c.label ??= ranked.labels.get(i);
     });
     for (const p of ranked.picks)
-      if (!ranked.withText.has(p.image)) shown[p.image]!.moment = Number(p.key.slice(1));
+      if (!ranked.withText.has(p.image))
+        shown[p.image]!.moment = Number(p.key.slice(1));
   }
 
   // 4. The editor's pass over the bin: what is left uncovered gets the best fitting shot the chapter already has
@@ -444,4 +470,106 @@ export async function assignFromBin(
     given: n,
   });
   return n;
+}
+
+const GraphicPicks = z.object({
+  graphics: z.array(
+    z.object({
+      sentence: z.number().describe("The sentence number exactly as given"),
+      graphic: DocMomentSchema.shape.graphic,
+    }),
+  ),
+});
+
+const GRAPHICS_PROMPT = `You are the motion-graphics designer of a long gaming documentary in the style of the best YouTube documentary channels. Each numbered sentence below has no picture of its own yet. Give each one the explanatory graphic that shows what it says, the way a top documentary would put it on screen:
+- a date or a moment in time: "date" (a calendar page), or "timeline" when the chapter text gives several years in order, "delay" when a date slipped, "span" for years between two events;
+- a place, a move or a journey (a studio, a city, a research trip): "map" with the real places in the order the story moves;
+- a figure: "stat" for one number, "bars" or "compare" for two or more, "share" for parts of a whole;
+- a record or a first: "milestone"; press coverage: "headline"; named people and their roles: "people"; two or more things named: "list"; this game against another chapter's game: "versus"; hardware or technical figures: "specs"; a studio or series family line: "lineage".
+Use only what the sentence itself or the chapter text states, word for word for every name, figure and date; never invent, round or convert one. Answer "none" for a sentence that states nothing a graphic can show (a mood, an opinion, a transition): an empty card is worse than footage.`;
+
+/**
+ * Explanatory graphics for the sentences still bare after the picture search (owner, 30 Oct 2026: dates,
+ * places and journeys should get calendars, timelines, maps and the rest of the suite). Each graphic is grounded
+ * in the chapter's own fact-checked narration by the documentary's usual checks; one that fails is dropped.
+ */
+export async function graphicsForBare(
+  llm: Llm,
+  ch: FillChapter,
+  bare: number[],
+  chapterText: string,
+  games: string[],
+): Promise<number> {
+  const asked = bare.filter((k) => k > 0);
+  if (!asked.length) return 0;
+  const r = await llm.structured({
+    tier: "mid",
+    system: GRAPHICS_PROMPT,
+    content: [
+      `Game: ${ch.game}${ch.year ? ` (${ch.year})` : ""}. Chapter games of this documentary: ${games.join("; ")}`,
+      "",
+      "Chapter text:",
+      chapterText,
+      "",
+      "Sentences needing a graphic:",
+      ...asked.map((k) => `${k}. "${ch.sentences[k] ?? ""}"`),
+    ].join("\n"),
+    schema: GraphicPicks,
+    effort: "low",
+  });
+  const source = { title: ch.game, url: "", text: chapterText } as never;
+  let n = 0;
+  for (const g of r.graphics) {
+    if (!asked.includes(g.sentence) || g.graphic.kind === "none") continue;
+    const m = ch.moments[g.sentence] as DocMoment | undefined;
+    if (!m || (m.graphic && m.graphic.kind !== "none")) continue;
+    // Grounded on its own (index 1: a chapter's first sentence plays under its title card).
+    const probe = { ...m, graphic: g.graphic } as DocMoment;
+    const grounded = groundDocMoments([probe, probe], source, games, [
+      ch.sentences[g.sentence - 1] ?? "",
+      ch.sentences[g.sentence] ?? "",
+    ]).moments[1]!;
+    if (grounded.graphic.kind === "none") continue;
+    if (!graphicFitsSentence(grounded.graphic, ch.sentences, g.sentence, chapterText)) continue;
+    m.graphic = grounded.graphic;
+    n++;
+  }
+  log("info", "graphics for bare sentences", {
+    game: ch.game,
+    asked: asked.length,
+    given: n,
+  });
+  return n;
+}
+
+/**
+ * A graphic belongs on the sentence that says it: a date, figure, delay, milestone or headline only carries
+ * numbers spoken in this sentence or the one before (30 Oct 2026 trial: a Forbes line got a server shutdown
+ * date from elsewhere in the chapter); a quote names a speaker the chapter names.
+ */
+export function graphicFitsSentence(
+  g: { kind: string; primary: string; secondary: string; items: string[] },
+  sentences: string[],
+  k: number,
+  chapterText: string,
+): boolean {
+  const flat = (t: string) => t.toLowerCase().replace(/,/g, "");
+  const near = flat(`${sentences[k - 1] ?? ""} ${sentences[k] ?? ""}`);
+  const nums = (t: string) => flat(t).match(/\d[\d.]*/g) ?? [];
+  if (["date", "stat", "delay", "milestone", "headline", "compare", "bars", "share"].includes(g.kind)) {
+    const said = [g.primary, ...g.items].flatMap(nums);
+    if (!said.every((d) => near.includes(d))) return false;
+  }
+  if (g.kind === "quote") {
+    const who = g.secondary.split(",")[0]!.trim().toLowerCase();
+    if (!who || !chapterText.toLowerCase().includes(who)) return false;
+    // Only words the narration puts in quotation marks, in this sentence or a neighbour, are a quote.
+    const words = (t: string) => t.toLowerCase().replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
+    const quoted = `${sentences[k - 1] ?? ""} ${sentences[k] ?? ""} ${sentences[k + 1] ?? ""}`
+      .match(/["“]([^"”]{3,})["”]/g)
+      ?.map(words) ?? [];
+    const said = words(g.primary);
+    if (!said || !quoted.some((q) => q.includes(said))) return false;
+  }
+  return true;
 }

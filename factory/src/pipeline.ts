@@ -5752,7 +5752,7 @@ export function steamStat(
   return null;
 }
 
-function variantOf(id: string): number {
+export function variantOf(id: string): number {
   return [...id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % 4;
 }
 
@@ -5907,10 +5907,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       scopeOf(script),
     );
     assets.filled = { before: r.before, after: r.after };
-    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
-      ep.id,
-      JSON.stringify(assets),
-    ]);
+    // The graphics pass writes into the shot list (script.entries[].moments), so the script is kept too.
+    await s.db.query(
+      `UPDATE episodes SET assets_json = $2, script_json = $3 WHERE id = $1`,
+      [ep.id, JSON.stringify(assets), JSON.stringify(script)],
+    );
   }
   // Media are kept; everything from here on works this PC, so it waits for a gap between the Shorts.
   if ((await longRenderGap(s, ep)) === undefined) return;
@@ -5998,14 +5999,17 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       momentKeys: hasMoments
         ? moments.map((e) => e.map(momentKeys))
         : undefined,
-      // What each sentence shows and who it names, so the cold open can preview its chapters.
+      // What each sentence says, shows and names, so the cold open can preview its chapters: a cold-open line
+      // that restates a chapter's fact ("production was meant to end by July 1, 1996") finds that sentence's
+      // own picture (30 Oct 2026 shot audit: the cold open matched nothing and played unrelated photos).
       momentShows: hasMoments
-        ? moments.map((e) =>
-            e.map(
-              (m) =>
-                `${m.show} ${m.person ?? ""} ${m.keywords?.join(" ") ?? ""}`,
-            ),
-          )
+        ? moments.map((e, i) => {
+            const said = chapterSentences(script, i);
+            return e.map(
+              (m, k) =>
+                `${said[k] ?? ""} ${m.show} ${m.person ?? ""} ${m.keywords?.join(" ") ?? ""}`,
+            );
+          })
         : undefined,
       takeEntry: script.take_entry,
     });

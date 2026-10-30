@@ -315,6 +315,14 @@ export function previewShot(
     : { type: "image", index: image };
 }
 
+/**
+ * Whether media picked for sentence `pinned` (undefined: picked for none) may fill sentence `now`: unpinned
+ * media, the sentence's own, or the one just gone (it usually shows the same thing), never another sentence's.
+ */
+export function fillerFor(pinned: number | undefined, now: number): boolean {
+  return pinned === undefined || pinned === now || pinned === now - 1;
+}
+
 export type LongMedia = { type: "image" | "clip" | "plate"; index: number };
 
 export interface LongShot {
@@ -375,6 +383,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   // A clip's real length: one shorter than a shot is skipped by the fill, never stretched past its last frame.
   const clipFrames = clips.map((c) => Math.floor(c.durationSeconds * LONG_FPS));
   const clipUsed = clips.map(() => false);
+  const previewed = new Set<number>();
   const stillUses = images.map(() => 0);
   // Where each entry's stills left off, so a chapter's paragraphs walk its gallery instead of restarting it.
   const cursors = new Map<number | undefined, number>();
@@ -478,12 +487,19 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             images[k]!.kind !== "capsule" &&
             images[k]!.kind !== "portrait",
         );
-      const noHero = allEntry.filter((k) => images[k]!.kind !== "hero");
+      // Key art stays out of the rotation when there is enough else, unless a sentence was given it.
+      const noHero = allEntry.filter(
+        (k) => images[k]!.kind !== "hero" || images[k]!.moment !== undefined,
+      );
       const entryImages = noHero.length >= 4 ? noHero : allEntry;
       const entryClips = clips
         .map((_, k) => k)
         .filter((k) => clips[k]!.beatIndex === entry);
       let reuse = 0;
+      // The sentence being filled: filler never shows a picture chosen for another sentence (30 Oct 2026
+      // shot audit: 11% of the Vice City documentary showed a sentence's picture two or more lines away from
+      // it, such as David Jones's photo while the narrator talked about Keith Hamilton).
+      let current = 0;
       const leastUsed = (): LongMedia => {
         // An entry with no picture of its own never borrows the topic's art: for "Grand Theft Auto" that was
         // GTA V's key art under GTA Advance. It replays its own footage, or shows the branded plate.
@@ -495,7 +511,10 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             };
           return { type: "plate", index: 0 };
         }
-        const pool = entryImages;
+        const free = entryImages.filter((k) =>
+          fillerFor(images[k]!.moment, current),
+        );
+        const pool = free.length ? free : entryImages;
         // Least shown first; on a tie, a different kind from the last still (a documentary alternates the
         // game's art with archive photos of the real story instead of three office photos in a row).
         const lastKind =
@@ -514,6 +533,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         return { type: "image", index: pick };
       };
       for (const [j, w] of mine.entries()) {
+        current = w.moment;
         // A sentence's picture arrives as the narrator names its subject, not when the sentence starts.
         const from = j === 0 ? start : Math.max(start, toFrame(w.at));
         const to =
@@ -521,7 +541,10 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         if (to <= from) continue;
         // Every clip picked for this sentence (a trailer moment and a gameplay moment), then its still.
         const mineClips = entryClips.filter(
-          (k) => clips[k]!.moment === w.moment && !clipUsed[k],
+          // A clip the cold open previewed still plays on its own sentence (30 Oct 2026 audit: the preview
+          // used it up and the sentence it was found for never showed it).
+          (k) =>
+            clips[k]!.moment === w.moment && (!clipUsed[k] || previewed.has(k)),
         );
         const mineStills = entryImages.filter(
           (k) => images[k]!.moment === w.moment,
@@ -563,8 +586,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             .filter(
               (k) =>
                 !clipUsed[k] &&
-                !((clips[k]!.moment ?? -1) > w.moment) &&
-                (clips[k]!.moment !== undefined || looseOk) &&
+                (clips[k]!.moment === undefined
+                  ? looseOk
+                  : fillerFor(clips[k]!.moment, w.moment)) &&
                 !queue.some((q) => q.type === "clip" && q.index === k),
             )
             .sort(
@@ -692,6 +716,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           const to =
             j === plans.length - 1 ? end : Math.min(end, plans[j + 1]!.from);
           if (to <= p.from) continue;
+          if (p.best?.type === "clip") previewed.add(p.best.index);
           fill(i, p.from, to, p.best ? [p.best] : [], generic, genericStill);
         }
         continue;

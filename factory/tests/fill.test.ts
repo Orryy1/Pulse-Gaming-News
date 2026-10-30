@@ -44,3 +44,17 @@ test("the bin pass gives each open sentence one unused, fitting item and leaves 
   assert.equal(clips[0]!.moment, 1);
   assert.equal(images[0]!.moment, undefined);
 });
+
+import { graphicFitsSentence } from "../src/assets/fill.ts";
+
+test("a graphic only carries figures and quotes its own sentence says", () => {
+  const s = ["It slipped.", "Production was meant to end on July 1, 1996.", 'Penn said "nobody wants to be the cop".', "Then it shipped."];
+  const text = s.join(" ") + " Gary Penn, creative director.";
+  const g = (kind: string, primary: string, secondary = "", items: string[] = []) => ({ kind, primary, secondary, items });
+  assert.equal(graphicFitsSentence(g("date", "July 1, 1996"), s, 1, text), true);
+  assert.equal(graphicFitsSentence(g("date", "December 16, 2021"), s, 1, text), false);
+  assert.equal(graphicFitsSentence(g("quote", "nobody wants to be the cop", "Gary Penn, creative director"), s, 2, text), true);
+  // The narrator's own words are not a quote, and a speaker the chapter never names is refused.
+  assert.equal(graphicFitsSentence(g("quote", "Then it shipped", "Gary Penn"), s, 2, text), false);
+  assert.equal(graphicFitsSentence(g("quote", "nobody wants to be the cop", "Rockstar mission dialogue"), s, 2, text), false);
+});

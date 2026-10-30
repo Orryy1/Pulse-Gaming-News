@@ -2331,7 +2331,8 @@ export const Long: React.FC<LongProps> = (props) => {
     const g = usefulGraphic(r.graphic) ? r.graphic : undefined;
     const text = [g?.primary, g?.secondary, ...(g?.items ?? []), r.emphasis].filter(Boolean).join(" ");
     const words = text.split(/\s+/).filter(Boolean).length;
-    return Math.min(7, 2.5 + 0.3 * words + 0.5 * (g?.items?.length ?? 0));
+    // A card's build (typewriter, flip board, counter) eats 1.5 s before it can be read (measured 30 Oct 2026).
+    return Math.min(8, 2.5 + (g ? 1.5 : 0) + 0.3 * words + 0.5 * (g?.items?.length ?? 0));
   };
   const spanOf = (
     k: number,

@@ -2108,6 +2108,7 @@ export async function prepareRemake(
         }),
         source,
         games,
+        sentences,
       );
       entry.moments = shot.moments;
       moments += shot.moments.filter((m) => m.graphic.kind !== "none").length;

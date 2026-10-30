@@ -766,6 +766,8 @@ export function groundDocMoments(
   source: WikiArticle,
   /** The documentary's chapter games: a "versus" may only name these (their pictures are on hand). */
   games?: string[],
+  /** The sentences the moments were written for: a caption must end where its clause ends. */
+  sentences?: string[],
 ): { moments: DocMoment[]; removed: string[] } {
   const hay = norm(source.text);
   const removed: string[] = [];
@@ -917,7 +919,8 @@ export function groundDocMoments(
     // The record's own words are credited to their article.
     // A kinetic caption is a whole name or phrase, never a fragment ("MORE", "FRESH AND NEW" landed on
     // unrelated stills, 29 Oct 2026 review), and never beside a graphic.
-    const emphasis = ok || !wholePhrase(m.emphasis) ? "" : m.emphasis.trim();
+    const emphasis =
+      ok || !wholePhrase(m.emphasis, sentences?.[i]) ? "" : m.emphasis.trim();
     if (ok && g.kind === "source")
       return {
         ...m,
@@ -934,10 +937,23 @@ const FRAGMENT_WORDS = new Set(
     " ",
   ),
 );
-/** One to four words that read as a complete name or phrase, not a stray word or a sentence's tail. */
-export function wholePhrase(text: string): boolean {
+const UNSAFE_ON_SCREEN =
+  /(kill(s|ed|er|ers|ing)?|murder\w*|dead|death|die[sd]?|dying|drugs?|cocaine|heroin|criminals?|guns?|shoot(s|ing)?|shot|blood\w*|suicide|rape\w*|terror\w*|war|nazi\w*|slaughter\w*)/i;
+/**
+ * One to four words that read as a complete name or phrase, not a stray word or a sentence's tail; never a
+ * word advertisers dislike printed large (30 Oct 2026: "killer", "criminals" on screen). With the sentence
+ * given, the phrase must end where a clause ends, so "DOWNLOAD CODES INSTEAD OF" never lands.
+ */
+export function wholePhrase(text: string, sentence?: string): boolean {
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (!words.length || words.length > 4) return false;
+  if (UNSAFE_ON_SCREEN.test(text)) return false;
+  if (sentence && words.length > 2) {
+    const at = sentence.toLowerCase().indexOf(text.trim().toLowerCase());
+    if (at < 0) return false;
+    const after = sentence.slice(at + text.trim().length, at + text.trim().length + 2);
+    if (after && !/^[\s]*$|^[\s]*[.,;:!?)"”'’]/.test(after)) return false;
+  }
   const low = words.map((w) => w.toLowerCase().replace(/[^a-z0-9']/g, ""));
   if (low.every((w) => FRAGMENT_WORDS.has(w))) return false;
   if (words.length === 1 && low[0]!.length < 4 && !/\d/.test(low[0]!))

@@ -40,6 +40,7 @@ import {
   entryOf,
   momentKeys,
   momentWindows,
+  personOnScreen,
   titleLines,
   gameSoundVolume,
   type LongPlan,
@@ -3468,6 +3469,7 @@ export const Long: React.FC<LongProps> = (props) => {
         const nameTag =
           person &&
           firstMention.has(`${w.entry}|${w.moment}`) &&
+          personOnScreen(plan.shots, props.images, w.entry, w.moment, from, len) &&
           (m.graphic.kind === "none" ||
             m.graphic.kind === "stat" ||
             m.graphic.kind === "date")

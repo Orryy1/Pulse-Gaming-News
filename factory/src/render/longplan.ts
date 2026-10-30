@@ -1016,3 +1016,29 @@ export function planGaps(
     }))
     .filter((x) => x.plateSeconds > 15 || x.maxRepeat > 3);
 }
+
+/**
+ * Whether the person a sentence names is actually on screen while its name tag would show: a shot in the span
+ * plays a photo or portrait picked for that sentence. 30 Oct 2026 review: "KEITH HAMILTON" was drawn with an
+ * arrow onto a road in GTA 1 gameplay; a name tag belongs on the person, as a human editor would place it.
+ */
+export function personOnScreen(
+  shots: LongShot[],
+  images: Array<{ kind: string; beatIndex?: number; moment?: number }>,
+  entry: number,
+  moment: number,
+  from: number,
+  len: number,
+): boolean {
+  return shots.some((s) => {
+    if (s.media.type !== "image" || s.end <= from || s.start >= from + len)
+      return false;
+    const im = images[s.media.index];
+    return (
+      !!im &&
+      im.beatIndex === entry &&
+      im.moment === moment &&
+      (im.kind === "photo" || im.kind === "portrait")
+    );
+  });
+}

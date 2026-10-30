@@ -5325,75 +5325,85 @@ async function gatherChapterMedia(
     });
   }
   // Licensed gameplay: real moments for the in-game sentences no trailer shot matched, credited.
-  try {
-    const done = tagged();
-    const open = shots.filter(
-      (t) => !done.has(Number(t.key.match(/#m(\d+)$/)?.[1])),
-    );
-    const have = clips.filter((c) => c.beatIndex === beatIndex).length;
-    const targets: FootageTarget[] = shots.length
-      ? spreadPick(open, 16)
-      : have < 6
-        ? paragraphTargets(4, "g")
-        : [];
-    if (targets.length) {
-      // The owner's own recordings of this game come first (owner, 28 Oct 2026); licensed gameplay fills the rest.
-      const own = await s
-        .ownClips(
+  // Not for a game from this year on (30 Oct 2026 review: the GTA VI chapter's "gameplay" was a fake upload full
+  // of Spider-Man, Sonic and Minions mods, and re-uploads of Rockstar's trailers wrongly marked Creative Commons).
+  // Before a game is out, uploaded "gameplay" can only be fake or someone else's trailer.
+  const upcoming = upcomingGame(entry.year);
+  if (upcoming)
+    log("info", "documentary gameplay skipped: the game is not out", {
+      game: entry.game_title,
+      year: entry.year,
+    });
+  if (!upcoming)
+    try {
+      const done = tagged();
+      const open = shots.filter(
+        (t) => !done.has(Number(t.key.match(/#m(\d+)$/)?.[1])),
+      );
+      const have = clips.filter((c) => c.beatIndex === beatIndex).length;
+      const targets: FootageTarget[] = shots.length
+        ? spreadPick(open, 16)
+        : have < 6
+          ? paragraphTargets(4, "g")
+          : [];
+      if (targets.length) {
+        // The owner's own recordings of this game come first (owner, 28 Oct 2026); licensed gameplay fills the rest.
+        const own = await s
+          .ownClips(
+            entry.game_title,
+            franchise,
+            edir,
+            targets,
+            Math.ceil(targets.length / 2),
+          )
+          .catch(() => [] as VisualAsset[]);
+        for (const c of own)
+          clips.push({
+            file: rel(c.file),
+            sourceUrl: c.sourceUrl,
+            provenance: c.provenance,
+            durationSeconds: Math.min(c.durationSeconds ?? 4, 8),
+            beatIndex,
+            moment: c.moment,
+            role: undefined,
+            motion: c.motion,
+            luma: c.luma,
+            label: c.label,
+            reason: c.reason,
+            startSeconds: c.startSeconds,
+            audio: c.audio,
+          });
+        for (const c of await s.gameplayClips(
           entry.game_title,
           franchise,
+          entry.year,
           edir,
           targets,
-          Math.ceil(targets.length / 2),
-        )
-        .catch(() => [] as VisualAsset[]);
-      for (const c of own)
-        clips.push({
-          file: rel(c.file),
-          sourceUrl: c.sourceUrl,
-          provenance: c.provenance,
-          durationSeconds: Math.min(c.durationSeconds ?? 4, 8),
-          beatIndex,
-          moment: c.moment,
-          role: undefined,
-          motion: c.motion,
-          luma: c.luma,
-          label: c.label,
-          reason: c.reason,
-          startSeconds: c.startSeconds,
-          audio: c.audio,
-        });
-      for (const c of await s.gameplayClips(
-        entry.game_title,
-        franchise,
-        entry.year,
-        edir,
-        targets,
-        Math.max(1, targets.length - own.length),
-      ))
-        clips.push({
-          file: rel(c.file),
-          sourceUrl: c.sourceUrl,
-          provenance: c.provenance,
-          durationSeconds: Math.min(c.durationSeconds ?? 4, 8),
-          beatIndex,
-          moment: c.moment,
-          role: undefined,
-          motion: c.motion,
-          luma: c.luma,
-          label: c.label,
-          reason: c.reason,
-          startSeconds: c.startSeconds,
-          credit: c.credit,
-          audio: c.audio,
-        });
+          Math.max(1, targets.length - own.length),
+        ))
+          clips.push({
+            file: rel(c.file),
+            sourceUrl: c.sourceUrl,
+            provenance: c.provenance,
+            durationSeconds: Math.min(c.durationSeconds ?? 4, 8),
+            beatIndex,
+            moment: c.moment,
+            role: undefined,
+            motion: c.motion,
+            luma: c.luma,
+            label: c.label,
+            reason: c.reason,
+            startSeconds: c.startSeconds,
+            credit: c.credit,
+            audio: c.audio,
+          });
+      }
+    } catch (err) {
+      log("warn", "documentary gameplay failed", {
+        game: entry.game_title,
+        error: errorMessage(err),
+      });
     }
-  } catch (err) {
-    log("warn", "documentary gameplay failed", {
-      game: entry.game_title,
-      error: errorMessage(err),
-    });
-  }
   // IGDB: official screenshots and key art for games Steam cannot supply, or a thin Steam gallery.
   try {
     const have = images.filter(
@@ -5612,6 +5622,14 @@ async function gatherChapterMedia(
       error: errorMessage(err),
     });
   }
+}
+
+/** A game from this calendar year or later: its uploaded "gameplay" is not trusted in a documentary. */
+export function upcomingGame(
+  year: number | undefined,
+  now = new Date(),
+): boolean {
+  return !!year && year >= now.getFullYear();
 }
 
 /** The share of a long video's sentences with a clip or still chosen for that sentence (moments[entry][k]). */

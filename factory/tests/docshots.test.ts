@@ -487,3 +487,37 @@ test("a map pins only places the source names and the place list knows; charts a
   );
   assert.equal(removed.length, 4);
 });
+
+import { personOnScreen } from "../src/render/longplan.ts";
+
+test("a name tag shows only while the named person's own photo is on screen", () => {
+  const images = [
+    { kind: "screenshot", beatIndex: 0, moment: 3 },
+    { kind: "photo", beatIndex: 0, moment: 3 },
+    { kind: "photo", beatIndex: 0, moment: 4 },
+  ];
+  const shot = (index: number, start: number, end: number) => ({
+    start,
+    end,
+    segment: 0,
+    media: { type: "image" as const, index },
+    move: "push" as never,
+  });
+  // Gameplay art for the sentence: no tag.
+  assert.equal(personOnScreen([shot(0, 0, 100)], images, 0, 3, 10, 50), false);
+  // The person's photo inside the span: tag.
+  assert.equal(personOnScreen([shot(0, 0, 40), shot(1, 40, 100)], images, 0, 3, 10, 50), true);
+  // Another sentence's photo: no tag; a photo outside the span: no tag.
+  assert.equal(personOnScreen([shot(2, 0, 100)], images, 0, 3, 10, 50), false);
+  assert.equal(personOnScreen([shot(1, 70, 100)], images, 0, 3, 10, 50), false);
+});
+
+import { upcomingGame } from "../src/pipeline.ts";
+
+test("a documentary trusts uploaded gameplay only for games from before this year", () => {
+  const now = new Date("2026-10-30T12:00:00Z");
+  assert.equal(upcomingGame(2026, now), true);
+  assert.equal(upcomingGame(2027, now), true);
+  assert.equal(upcomingGame(2013, now), false);
+  assert.equal(upcomingGame(undefined, now), false);
+});

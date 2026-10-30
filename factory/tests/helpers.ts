@@ -138,6 +138,10 @@ export function testConfig(
     docMaxSeconds: 3000,
     docClipsPerChapter: 4,
     docSoundBeats: true,
+    docEndCard: true,
+    docColdOpen: true,
+    docPinMoment: true,
+    communityDrafts: true,
     crosspost: {
       facebook: false,
       instagram: false,

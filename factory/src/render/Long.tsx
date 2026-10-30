@@ -145,6 +145,9 @@ import {
 } from "./components/Accents.tsx";
 import type { GfxStyle } from "./components/packs/types.ts";
 import type { Word } from "../voice/elevenlabs.ts";
+import { ColdOpen } from "./components/ColdOpen.tsx";
+import { EndCard } from "./components/EndCard.tsx";
+import { coldOpenTiming, endCardTiming } from "./bookends.ts";
 
 export interface LongImageProp {
   src: string;
@@ -177,6 +180,10 @@ export type LongProps = {
   theme: string; // franchise or theme name
   footageCredit: string;
   endLine?: string; // the line under the end card
+  /** A documentary's rendered end card: the channel's most recent public documentary (src/render/components/EndCard.tsx). Absent: no card. */
+  next?: { title: string; thumbSrc: string | null } | null;
+  /** A documentary's signature opening: the line of type under the mark (src/render/components/ColdOpen.tsx). Absent: no card. */
+  coldOpenLine?: string;
   moments?: MomentProp[][]; // per ranking entry, one per sentence: graphics, kinetic captions, pop-ins
   breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds)
   quietBreaks?: number[]; // breathers the graphics check faulted: the plain title card instead
@@ -3215,8 +3222,16 @@ export const Long: React.FC<LongProps> = (props) => {
               layout="none"
             >
               {(() => {
+                // A documentary's signature opening comes first: the mark and one line of the hook over the
+                // sting (src/render/components/ColdOpen.tsx), then the motif card, the flash-forward, the title.
+                const cold =
+                  props.coldOpenLine !== undefined && documentary && len >= 240
+                    ? coldOpenTiming(fps).frames
+                    : 0;
                 // The opening: the video's motif card, the flash-forward, then the title.
-                const open = videoMotif?.card && len >= 240 ? MOTIF_OPEN : 0;
+                const open =
+                  cold +
+                  (videoMotif?.card && len - cold >= 240 ? MOTIF_OPEN : 0);
                 // Off since 29 Oct 2026: the owner found the silent flash of figures under the opening
                 // narration unrelated to the words; it returns only when it carries the narrator's own lines.
                 const tease =
@@ -3225,8 +3240,21 @@ export const Long: React.FC<LongProps> = (props) => {
                     : 0;
                 return (
                   <>
-                    {open ? (
-                      <Sequence durationInFrames={open} layout="none">
+                    {cold ? (
+                      <Sequence durationInFrames={cold} layout="none">
+                        <ColdOpen
+                          line={props.coldOpenLine!}
+                          logoSrc={resolveSrc(props.logoSrc)}
+                          variant={props.variant}
+                        />
+                      </Sequence>
+                    ) : null}
+                    {open > cold ? (
+                      <Sequence
+                        from={cold}
+                        durationInFrames={open - cold}
+                        layout="none"
+                      >
                         {React.createElement(videoMotif!.card!, {
                           heading: props.title,
                           kicker: props.recap
@@ -3236,7 +3264,7 @@ export const Long: React.FC<LongProps> = (props) => {
                               : "RANKED",
                           game: props.theme,
                           pictures: motifPictures(undefined),
-                          frames: open,
+                          frames: open - cold,
                           variant: props.variant,
                         })}
                       </Sequence>
@@ -3800,6 +3828,26 @@ export const Long: React.FC<LongProps> = (props) => {
           </React.Fragment>
         ) : null,
       )}
+      {/* A documentary's end card: "Up next" with the newest public documentary, the mark and the subscribe
+          nudge over the last twenty seconds (src/render/components/EndCard.tsx). */}
+      {props.next !== undefined && documentary
+        ? (() => {
+            const t = endCardTiming(durationInFrames, fps);
+            return (
+              <Sequence from={t.from} durationInFrames={t.frames} layout="none">
+                <EndCard
+                  next={props.next ?? undefined}
+                  logoSrc={resolveSrc(props.logoSrc)}
+                  variant={props.variant}
+                  endLine={
+                    props.endLine ??
+                    "A new documentary every month · Shorts every day"
+                  }
+                />
+              </Sequence>
+            );
+          })()
+        : null}
       {/* The brand sting opens the video and closes it, ringing out before the last frame. The closing one
           plays after the narrator has finished, with nothing to mask it, so it sits 3 dB lower. */}
       <Sequence from={0} durationInFrames={75} layout="none">

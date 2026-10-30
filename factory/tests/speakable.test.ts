@@ -245,3 +245,10 @@ test("polish (a finish) is respelt so the voice never says Polish (from Poland);
   const { tokens } = await import("../src/qa/narration.ts");
   assert.deepEqual(tokens("pollish"), tokens("polish"));
 });
+
+test("names the voice got wrong are respelt for it and shown as written", () => {
+  assert.equal(
+    speakable("Technical director Obbe Vermeij said so, and t0st fixed it."),
+    "Technical director Obbuh Vermeij said so, and tohst fixed it.",
+  );
+});

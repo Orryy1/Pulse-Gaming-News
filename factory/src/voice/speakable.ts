@@ -357,9 +357,19 @@ export function speakable(text: string, ctx?: SpeakContext): string {
  * Words the voice says the wrong way, respelt so it can only say them one way; captions and the narration
  * check turn them back (SPOKEN_BACK). "polish" (finishing a game) came out as "Polish" (from Poland) in a
  * GTA documentary, 29 Oct 2026: lower case is always the finish, so only lower case is respelt.
+ * Names the voice got wrong in the Vice City documentary (30 Oct 2026): the Dutch "Obbe" (Vermeij) came
+ * out "Obi"; the modder "t0st" came out "Tiest". The keys of SPOKEN_BACK are matched without case.
  */
-const RESPELL: Array<[RegExp, string]> = [[/\bpolish\b/g, "pollish"]];
-export const SPOKEN_BACK: Record<string, string> = { pollish: "polish" };
+const RESPELL: Array<[RegExp, string]> = [
+  [/\bpolish\b/g, "pollish"],
+  [/\bObbe\b/g, "Obbuh"],
+  [/\bt0st\b/gi, "tohst"],
+];
+export const SPOKEN_BACK: Record<string, string> = {
+  pollish: "polish",
+  obbuh: "Obbe",
+  tohst: "t0st",
+};
 export function respell(text: string): string {
   return RESPELL.reduce((t, [re, to]) => t.replace(re, to), text);
 }

@@ -110,3 +110,14 @@ test("a quote keeps where it was said only when the source says so", () => {
   assert.equal(groundedCredit("Dan Houser, in an internal e-mail", "an internal e mail from houser"), "Dan Houser, in an internal e-mail");
   assert.equal(groundedCredit("Dan Houser, Rockstar co-founder", "anything"), "Dan Houser, Rockstar co-founder");
 });
+
+import { tornPages, parseDate } from "../src/render/components/packs/paper/Calendar.tsx";
+
+test("the tear-off calendar counts up to the date, across a month's end", () => {
+  assert.deepEqual(
+    tornPages(parseDate("March 3, 2009")).map((p) => `${p.head} ${p.big}`),
+    ["February 27", "February 28", "March 1", "March 2"],
+  );
+  assert.deepEqual(tornPages(parseDate("February 2017")).map((p) => p.big), ["October", "November", "December", "January"]);
+  assert.deepEqual(tornPages(parseDate("2009")).map((p) => p.big), ["2005", "2006", "2007", "2008"]);
+});

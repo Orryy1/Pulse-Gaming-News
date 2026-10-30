@@ -1,7 +1,7 @@
 // Paper/Calendar: a tear-off desk calendar. Its pages flip up and tear away in quick succession, then it
 // settles on the date the sentence names: the month across the top band, the day large if given, the year
-// beneath. What happened is written on a strip of masking tape stuck below. The torn pages carry no
-// figures of their own, only the band, so nothing appears that the source did not give.
+// beneath. What happened is written on a strip of masking tape stuck below. The torn pages count up to the
+// date (tornPages): calendar structure from the date itself, never a fact the source did not give.
 
 import React from "react";
 import { Easing, interpolate, spring } from "remotion";
@@ -161,6 +161,91 @@ const Page: React.FC<{
 
 const TORN = 4;
 
+/** A page's face: the day (or month, or year) large and the line under it. */
+const PageBody: React.FC<{ big: string; foot: string; size: number }> = ({
+  big,
+  foot,
+  size,
+}) => (
+  <div
+    style={{
+      height: PAGE_H - BAND - 15,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingBottom: foot ? 20 : 34,
+      boxSizing: "border-box",
+    }}
+  >
+    <div
+      style={{
+        fontFamily: DISPLAY,
+        fontSize: size,
+        lineHeight: 0.92,
+        color: INK,
+        textTransform: "uppercase",
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      {big}
+    </div>
+    {foot ? (
+      <div
+        style={{
+          marginTop: 18,
+          fontFamily: BODY,
+          fontWeight: 900,
+          fontSize: 52,
+          letterSpacing: 16,
+          marginRight: -16,
+          color: "#6b6357",
+        }}
+      >
+        {foot}
+      </div>
+    ) : null}
+  </div>
+);
+
+/**
+ * The torn pages, top (first to go) first: the days, months or years leading up to the date, the way a real
+ * tear-off pad counts towards it (owner, 31 Oct 2026: four blank pages all headed MARCH made no sense). Only
+ * calendar structure from the date itself, never a fact: before "March 3, 2009" come February 27 and 28 and
+ * March 1 and 2. A date with no year counts days in a non-leap year.
+ */
+export function tornPages(
+  d: CalendarDate,
+  n = TORN,
+): Array<{ head: string; big: string; foot: string }> {
+  const out: Array<{ head: string; big: string; foot: string }> = [];
+  if (d.month !== undefined && d.day !== undefined) {
+    const y = Number(d.year ?? 2001);
+    for (let k = n; k >= 1; k--) {
+      const t = new Date(Date.UTC(y, d.month, d.day - k));
+      out.push({
+        head: MONTHS[t.getUTCMonth()]!,
+        big: String(t.getUTCDate()),
+        foot: d.year ? String(t.getUTCFullYear()) : "",
+      });
+    }
+  } else if (d.month !== undefined) {
+    const y = Number(d.year ?? 2001);
+    for (let k = n; k >= 1; k--) {
+      const t = new Date(Date.UTC(y, d.month - k, 1));
+      out.push({
+        head: d.year ? String(t.getUTCFullYear()) : "",
+        big: MONTHS[t.getUTCMonth()]!,
+        foot: "",
+      });
+    }
+  } else if (d.year) {
+    for (let k = n; k >= 1; k--)
+      out.push({ head: "", big: String(Number(d.year) - k), foot: "" });
+  }
+  return out;
+}
+
 export const Calendar: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
   const { frame, fps, showFor, dim, visible } = useStage(len, 180);
   if (!visible || !fitsCalendar(g)) return null;
@@ -193,6 +278,7 @@ export const Calendar: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
         ? Math.min(230, Math.floor(530 / (big.length * 0.5)))
         : 260;
 
+  const torn = tornPages(d);
   const enter = spring({ frame, fps, config: SPRING.ENTER });
   const out = interpolate(frame, [showFor - 14, showFor], [0, 1], {
     ...clamp,
@@ -284,45 +370,7 @@ export const Calendar: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
               }}
             >
               <Page head={head}>
-                <div
-                  style={{
-                    height: PAGE_H - BAND - 15,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingBottom: foot ? 20 : 34,
-                    boxSizing: "border-box",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontFamily: DISPLAY,
-                      fontSize: bigSize,
-                      lineHeight: 0.92,
-                      color: INK,
-                      textTransform: "uppercase",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
-                    {big}
-                  </div>
-                  {foot ? (
-                    <div
-                      style={{
-                        marginTop: 18,
-                        fontFamily: BODY,
-                        fontWeight: 900,
-                        fontSize: 52,
-                        letterSpacing: 16,
-                        marginRight: -16,
-                        color: "#6b6357",
-                      }}
-                    >
-                      {foot}
-                    </div>
-                  ) : null}
-                </div>
+                <PageBody big={big} foot={foot} size={bigSize} />
               </Page>
               {/* The pages that tear away: the first to go is on top. */}
               {Array.from({ length: TORN }, (_, i) => TORN - 1 - i).map((k) => {
@@ -354,7 +402,7 @@ export const Calendar: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                     }}
                   >
                     <Page
-                      head={head}
+                      head={torn[k]?.head ?? head}
                       style={{
                         clipPath:
                           u > 0
@@ -362,18 +410,12 @@ export const Calendar: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                             : undefined,
                       }}
                     >
-                      {/* A ruled notes page: the torn pages carry no figures of their own. */}
-                      <div style={{ margin: "34px 46px 0" }}>
-                        {[0, 1, 2, 3, 4, 5, 6].map((r) => (
-                          <div
-                            key={r}
-                            style={{
-                              height: 58,
-                              borderBottom: "2px solid rgba(29,27,24,0.12)",
-                            }}
-                          />
-                        ))}
-                      </div>
+                      {/* The days (or months, or years) counting up to the date. */}
+                      <PageBody
+                        big={torn[k]?.big ?? ""}
+                        foot={torn[k]?.foot ?? ""}
+                        size={bigSize}
+                      />
                     </Page>
                   </div>
                 );

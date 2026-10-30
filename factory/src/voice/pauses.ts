@@ -8,7 +8,23 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import { FFMPEG } from "../lib/bin.ts";
-import { loudness } from "./breaths.ts";
+import { loudness, SMOOTH_FRAME } from "./breaths.ts";
+
+/**
+ * Seconds the audio fades to nothing on each side of a cut (31 Oct 2026: a hard splice left a click at the
+ * start of the word after it). Short enough to sit in the silence the cut leaves behind.
+ */
+export const CUT_FADE = 0.006;
+
+/** The gain envelope for cutting: 0 inside every cut, rising to 1 over CUT_FADE on either side. */
+export function cutEnvelope(cuts: Array<{ from: number; to: number }>): string {
+  return cuts
+    .map(
+      (c) =>
+        `clip(max((${c.from.toFixed(3)}-t)/${CUT_FADE},(t-${c.to.toFixed(3)})/${CUT_FADE}),0,1)`,
+    )
+    .join("*");
+}
 
 const run = promisify(execFile);
 
@@ -137,6 +153,13 @@ export async function cutAudio(file: string, cuts: Cut[]): Promise<void> {
     .map((c) => `between(t,${c.from.toFixed(3)},${c.to.toFixed(3)})`)
     .join("+");
   const tmp = file.replace(/\.mp3$/i, ".tight.mp3");
+  const script = `${file}.cuts.txt`;
+  // Fade to silence either side of each cut before splicing, so the joined samples meet at zero.
+  await fs.writeFile(
+    script,
+    `${SMOOTH_FRAME},volume=eval=frame:volume='${cutEnvelope(cuts)}',aselect='not(${expr})',asetpts=N/SR/TB`,
+    "utf8",
+  );
   await run(
     FFMPEG,
     [
@@ -145,8 +168,8 @@ export async function cutAudio(file: string, cuts: Cut[]): Promise<void> {
       "-y",
       "-i",
       file,
-      "-af",
-      `aselect='not(${expr})',asetpts=N/SR/TB`,
+      "-filter_script:a",
+      script,
       "-c:a",
       "libmp3lame",
       "-q:a",
@@ -155,6 +178,7 @@ export async function cutAudio(file: string, cuts: Cut[]): Promise<void> {
     ],
     { maxBuffer: 8 * 1024 * 1024 },
   );
+  await fs.rm(script, { force: true }).catch(() => undefined);
   await fs.rename(tmp, file);
 }
 

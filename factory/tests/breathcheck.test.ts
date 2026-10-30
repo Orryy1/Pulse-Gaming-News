@@ -120,3 +120,18 @@ test("a second look asks about uncovered sentences, those without a graphic firs
   assert.deepEqual(got.map((t) => t.key), ["m0", "m2", "m1"]);
   assert.equal(got[0]!.sentence, "s0");
 });
+
+import { clauseBreaths } from "../src/voice/breaths.ts";
+
+test("a breath folded into the next word's timestamp is still found at a sentence end", () => {
+  // 10 ms windows: "him." sounds to 8.85 s, a breath at -20 dB to 9.35 s, then "His" (timestamped from 8.97).
+  const db = Array.from({ length: 1000 }, (_, k) => (k < 885 ? -15 : k < 935 ? -35 : -15));
+  const words = [
+    { text: "him.", start: 8.63, end: 8.83 },
+    { text: "His", start: 8.97, end: 9.39 },
+  ];
+  const [[a, b]] = clauseBreaths(words, db, -15) as [[number, number]];
+  assert.ok(a >= 8.85 && a <= 8.9 && b >= 9.3 && b <= 9.35, `${a}-${b}`);
+  // No punctuation, no boundary: a pause inside a sentence is left to the loudness rule.
+  assert.equal(clauseBreaths([{ ...words[0]!, text: "him" }, words[1]!], db, -15).length, 0);
+});

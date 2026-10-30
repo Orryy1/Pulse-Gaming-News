@@ -4209,7 +4209,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
             breaths: quiet.length,
             seconds:
               Math.round(quiet.reduce((n, g) => n + g.seconds, 0) * 10) / 10,
-        });
+          });
       }
     } catch (err) {
       log("warn", "documentary breathers skipped", {
@@ -6537,63 +6537,66 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // The composition's props, read afresh each time: the graphics check below mutes faulted graphics
   // (quietMoments, quietBreaks) and the render must see the lists as they stand then.
   const longPropsNow = (): LongRenderInput["props"] => ({
-        title: script.headline,
-        kicker: script.kicker ?? "",
-        criterion: script.criterion ?? "",
-        spoilers: scopeOf(script) === "campaign",
-        recap: !!script.recap,
-        theme: script.recap ? script.headline : script.game_title,
-        footageCredit,
-        endLine: script.recap
-          ? "The week's biggest stories every Friday · Shorts every day"
-          : doc
-            ? "A new documentary every month · Shorts every day"
-            : "A new ranking every week · Shorts every day",
-        moments: hasMoments
-          ? moments.map((ms, ei) =>
-              ms.map((m, mi) => ({
-                show: m.show,
-                // A graphic the graphics check faulted is left out (the sentence keeps its picture).
-                graphic: (assets.quietMoments ?? []).includes(`${ei}:${mi}`)
-                  ? {
-                      kind: "none" as const,
-                      primary: "",
-                      secondary: "",
-                      items: [],
-                    }
-                  : m.graphic,
-                emphasis: m.emphasis,
-                person: m.person || undefined,
-                // The sound editor's cue (src/render/musicplan.ts), when the setting is on.
-                beat: s.cfg.docSoundBeats ? m.beat : undefined,
-              })),
-            )
-          : undefined,
-        segments,
-        words,
-        durationSeconds: renderSeconds,
-        // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
-        coldOpenLine:
-          doc && s.cfg.docColdOpen ? coldOpenLine(script.hook) : undefined,
-        next: endCard
-          ? nextDoc
-            ? { title: nextDoc.title, thumbFile: nextThumb }
-            : null
-          : undefined,
-        variant,
-        audioFile: assets.audio ?? null,
-        musicFile,
-        imageFiles: images,
-        clipFiles: clips,
-        plan,
-        renderDate: s.now().toISOString().slice(0, 10),
-        breaks: assets.breaks,
-        quietBreaks: assets.quietBreaks,
-        palette: assets.palette,
-        annotations: assets.annotations,
-        eraBeds: doc && s.cfg.docSoundBeats,
-        // Concept sketches drawn on, stepped, flipped, dissolved or pinned up (src/render/sketchplan.ts).
-        sketchAnimation: s.cfg.sketchAnimation,
+    title: script.headline,
+    kicker: script.kicker ?? "",
+    criterion: script.criterion ?? "",
+    spoilers: scopeOf(script) === "campaign",
+    recap: !!script.recap,
+    theme: script.recap ? script.headline : script.game_title,
+    footageCredit,
+    endLine: script.recap
+      ? "The week's biggest stories every Friday · Shorts every day"
+      : doc
+        ? "A new documentary every month · Shorts every day"
+        : "A new ranking every week · Shorts every day",
+    moments: hasMoments
+      ? moments.map((ms, ei) =>
+          ms.map((m, mi) => ({
+            show: m.show,
+            // A graphic the graphics check faulted is left out (the sentence keeps its picture).
+            graphic: (assets.quietMoments ?? []).includes(`${ei}:${mi}`)
+              ? {
+                  kind: "none" as const,
+                  primary: "",
+                  secondary: "",
+                  items: [],
+                }
+              : m.graphic,
+            emphasis: m.emphasis,
+            person: m.person || undefined,
+            // The sound editor's cue (src/render/musicplan.ts), when the setting is on.
+            beat: s.cfg.docSoundBeats ? m.beat : undefined,
+          })),
+        )
+      : undefined,
+    segments,
+    words,
+    durationSeconds: renderSeconds,
+    // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
+    coldOpenLine:
+      doc && s.cfg.docColdOpen ? coldOpenLine(script.hook) : undefined,
+    next: endCard
+      ? nextDoc
+        ? { title: nextDoc.title, thumbFile: nextThumb }
+        : null
+      : undefined,
+    variant,
+    audioFile: assets.audio ?? null,
+    musicFile,
+    imageFiles: images,
+    clipFiles: clips,
+    plan,
+    renderDate: s.now().toISOString().slice(0, 10),
+    breaks: assets.breaks,
+    quietBreaks: assets.quietBreaks,
+    palette: assets.palette,
+    annotations: assets.annotations,
+    eraBeds: doc && s.cfg.docSoundBeats,
+    // Concept sketches drawn on, stepped, flipped, dissolved or pinned up (src/render/sketchplan.ts).
+    sketchAnimation: s.cfg.sketchAnimation,
+    // Photos and portraits as instant prints, tape, pins, trays and screens; screenshots in the display
+    // of their day (src/render/photoplan.ts).
+    photoTreatments: s.cfg.photoTreatments,
   });
   // The graphics check before the render (src/qa/graphicscheck.ts): every graphic and breather as a still
   // from the same composition and props, faulted ones muted, so the full render runs once instead of again
@@ -6657,10 +6660,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           muted: r.faulted.length,
           at: s.now().toISOString(),
         };
-        await s.db.query(
-          `UPDATE episodes SET assets_json = $2 WHERE id = $1`,
-          [ep.id, JSON.stringify(assets)],
-        );
+        await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+          ep.id,
+          JSON.stringify(assets),
+        ]);
         const problems = r.problems.flatMap((p) => p.problems);
         await logEvent(s.db, ep.id, "graphics_prepass", {
           checked: items.length,
@@ -6814,10 +6817,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       graphicsInput(),
       assets,
       s.cfg.graphicsPostcheckMax,
-      );
+    );
     const frames = sample.length
       ? await s.extractFrames(
-        final,
+          final,
           path.join(dir, "qa", "gfx"),
           sample.map((c) => c.t),
         )
@@ -6825,7 +6828,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     const r = await judgeGraphics(
       sample.map((c, i) => ({ ...c, file: frames[i]! })),
       (fs) => s.visionQa(fs, graphicsCtx),
-      );
+    );
     for (const p of r.problems)
       await logEvent(s.db, ep.id, "graphics_check", p);
     if (r.faulted.length) {
@@ -6839,7 +6842,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         decision,
         passes,
         max: s.cfg.graphicsRerenderPasses,
-        });
+      });
       log("warn", "graphics faulted on the finished video", {
         episode: ep.id,
         faulted: r.faulted,
@@ -6857,19 +6860,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       });
       if (decision === "rerender") {
         assets.graphicsPasses = passes + 1;
-      const { longPlan: _dropped, ...again } = assets;
-      await s.db.query(
-        `UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`,
-        [
-          ep.id,
+        const { longPlan: _dropped, ...again } = assets;
+        await s.db.query(
+          `UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`,
+          [
+            ep.id,
             JSON.stringify({ ...qa, graphics: r.faulted }),
-          JSON.stringify(again),
-        ],
-      );
-      throw new Error(
+            JSON.stringify(again),
+          ],
+        );
+        throw new Error(
           `graphics check: ${r.faulted.length} graphic(s) left out, rendering again (re-render ${passes + 1} of ${s.cfg.graphicsRerenderPasses})`,
-      );
-    }
+        );
+      }
       acceptedFaults = r.faulted;
     }
     const thumbs = ["thumb.jpg", ...thumbFiles];

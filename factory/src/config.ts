@@ -365,6 +365,8 @@ export interface Config {
   illustrateStub: boolean;
   /** Sketches animated on screen (drawn on, stop-motion paper, flipbook, light table, cork board; src/render/sketchplan.ts). Off: the static framed print. */
   sketchAnimation: boolean;
+  /** Photos and portraits in documentaries arriving as instant prints, tape, pins, trays, screens and more (src/render/photoplan.ts). Off: the static framed print and full-bleed screenshots. */
+  photoTreatments: boolean;
   dryRun: boolean;
   maxAttempts: number;
   remotionConcurrency: number;
@@ -773,6 +775,7 @@ export function loadConfig(): Config {
     illustrateTimeoutSeconds: int("ILLUSTRATE_TIMEOUT_SECONDS", 180),
     illustrateStub: bool("ILLUSTRATE_STUB", false),
     sketchAnimation: bool("SKETCH_ANIMATION", true),
+    photoTreatments: bool("PHOTO_TREATMENTS", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),

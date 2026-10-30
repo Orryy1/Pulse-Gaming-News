@@ -285,7 +285,7 @@ export function previewShot(
   sentence: string,
   shows: string[][],
   taken: Set<string>,
-  images: Array<{ beatIndex?: number; moment?: number }>,
+  images: Array<{ beatIndex?: number; moment?: number; kind?: string }>,
   clips: Array<{ beatIndex?: number; moment?: number }>,
   clipUsed: boolean[],
 ): LongMedia | undefined {
@@ -302,17 +302,28 @@ export function previewShot(
         best = { e, k, score };
     }
   if (!best) return undefined;
-  const clip = clips.findIndex(
-    (c, n) => c.beatIndex === best!.e && c.moment === best!.k && !clipUsed[n],
-  );
-  const image = images.findIndex(
-    (m) => m.beatIndex === best!.e && m.moment === best!.k,
-  );
-  if (clip < 0 && image < 0) return undefined;
-  taken.add(`${best.e}:${best.k}`);
-  return clip >= 0
-    ? { type: "clip", index: clip }
-    : { type: "image", index: image };
+  // The matched sentence's own shot, else the nearest pinned one within two sentences of it (the same story
+  // beat): a cold-open line restating a fact that carries only a graphic in its chapter still shows its moment.
+  for (const d of [0, -1, 1, -2, 2]) {
+    const k = best.k + d;
+    if (k < 0 || (d !== 0 && taken.has(`${best.e}:${k}`))) continue;
+    const clip = clips.findIndex(
+      (c, n) => c.beatIndex === best!.e && c.moment === k && !clipUsed[n],
+    );
+    // A neighbour's photo is of its own person or place; only game footage and art carry over.
+    const image = images.findIndex(
+      (m) =>
+        m.beatIndex === best!.e &&
+        m.moment === k &&
+        (d === 0 || (m.kind !== "photo" && m.kind !== "portrait")),
+    );
+    if (clip < 0 && image < 0) continue;
+    taken.add(`${best.e}:${k}`);
+    return clip >= 0
+      ? { type: "clip", index: clip }
+      : { type: "image", index: image };
+  }
+  return undefined;
 }
 
 /**

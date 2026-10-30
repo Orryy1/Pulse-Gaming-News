@@ -43,7 +43,7 @@ export type ShortProps = {
   steam: PlanSteam | null;
   emphasis: string[]; // words the captions keep lit after they are spoken
   deskName?: string; // the desk partner's name, when a desk question is in the Short
-  stamps?: Array<{ at: number; text: string; sub?: string; colour: string }>; // word stamps, timed to their words
+  stamps?: Array<{ at: number; text: string; sub?: string; colour: string; tone?: string }>; // word stamps, timed to their words
   plan: RenderPlan | null; // built in the pipeline; the composition builds one for previews
   suite?: boolean; // the new-look test: cut accents, punch-ins and an old game's period looks
   mascot?: boolean; // Pip the mascot test: the amber mascot in the brand band, beside the logo

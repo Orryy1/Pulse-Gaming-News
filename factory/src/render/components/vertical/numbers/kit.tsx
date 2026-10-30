@@ -1,12 +1,12 @@
 // Shared pieces for the vertical Numbers styles (../VNumbers.tsx): the beat's timing (build, hold, exit over
 // the last 10 frames), type fitting from Anton's measured widths, colour mixing for an accent of any hue,
 // letters cut from a picture, the label line and a soft dark pool that keeps a figure readable over footage.
-// Everything is a pure function of the frame and the props.
+// Everything is a pure function of the frame and the props. The pieces every pack shares (timing, paper,
+// grain, ink, shadows, colour mixing, seeded numbers) live in ../kit.ts and are re-exported here.
 import React from "react";
 import { Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOUR } from "../../../brand.ts";
 import { BODY } from "../../fonts.ts";
-import { displayText } from "../../../timeline.ts";
 import {
   ANTON,
   fitText,
@@ -14,48 +14,54 @@ import {
   type Metrics,
 } from "../../motifs/franchises/shared.ts";
 import { VBOX } from "../types.ts";
+import {
+  EXIT_FRAMES,
+  INK,
+  PAPER,
+  PAPER_GRADIENT,
+  SOFT_GRAIN,
+  alpha,
+  clamp,
+  clean as cleanText,
+  easeOut,
+  easeOutQuint,
+  exitStyle,
+  mix,
+  seeded,
+  shadow,
+} from "../kit.ts";
 
 export { ANTON, textEm };
+/** Text from the beat, screen-ready: percent as %, long dashes as a spaced hyphen, single spaces. */
+export const clean = (s: string | undefined) => cleanText(s);
+export {
+  INK,
+  PAPER,
+  PAPER_GRADIENT,
+  SOFT_GRAIN,
+  alpha,
+  clamp,
+  easeOut,
+  easeOutQuint,
+  exitStyle,
+  mix,
+  seeded,
+  shadow,
+};
 export const W = VBOX.width;
 export const H = VBOX.height;
 
-export const clamp = {
-  extrapolateLeft: "clamp",
-  extrapolateRight: "clamp",
-} as const;
-export const easeOut = Easing.out(Easing.cubic);
-export const easeOutQuint = Easing.out(Easing.poly(5));
-
-/** The two long dashes, built from char codes so the source never holds either character. */
-const LONG_DASHES = new RegExp(
-  `\\s*[${String.fromCharCode(0x2013, 0x2014)}]\\s*`,
-  "g",
-);
-
-/** Text from the beat, screen-ready: percent as %, long dashes as a spaced hyphen, single spaces. */
-export const clean = (s: string | undefined) =>
-  displayText(String(s ?? ""))
-    .replace(LONG_DASHES, " - ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-/** The beat's clock: the frame, and `out` going 1 to 0 over the last 10 frames. */
+/** The beat's clock: the frame, and `out` going 1 to 0 over the last EXIT_FRAMES. */
 export function useBeat(len: number) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const L = Math.max(24, len);
-  const out = interpolate(frame, [L - 10, L], [1, 0], {
+  const out = interpolate(frame, [L - EXIT_FRAMES, L], [1, 0], {
     ...clamp,
     easing: Easing.in(Easing.quad),
   });
   return { frame, fps, out, visible: frame < L };
 }
-
-/** The exit every style shares: a lift, a slight shrink and a fade, all inside the last 10 frames. */
-export const exitStyle = (out: number): React.CSSProperties => ({
-  opacity: out,
-  transform: `translateY(${(1 - out) * -26}px) scale(${0.96 + 0.04 * out})`,
-});
 
 /** The biggest Anton size at which `text` fits `width` (tracking in em). */
 export const antonFit = (
@@ -110,36 +116,6 @@ export function labelFits(text: string, width: number, lines = 2): boolean {
   return f.lines.every(
     (l) => textEm(l, INTER_CAPS, 0.04) * f.size <= width + 2,
   );
-}
-
-/** Two colours mixed: t 0 is a, 1 is b. Hex in, hex out (#rgb and #rrggbb). */
-export function mix(a: string, b: string, t: number): string {
-  const p = (h: string) => {
-    let x = h.replace("#", "");
-    if (x.length === 3)
-      x = x
-        .split("")
-        .map((c) => c + c)
-        .join("");
-    const n = parseInt(x.slice(0, 6), 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  };
-  const [r1, g1, b1] = p(a);
-  const [r2, g2, b2] = p(b);
-  const m = (u: number, v: number) => Math.round(u + (v - u) * t);
-  return `#${[m(r1!, r2!), m(g1!, g2!), m(b1!, b2!)].map((n) => n.toString(16).padStart(2, "0")).join("")}`;
-}
-
-/** The accent at an alpha, for glows and washes. */
-export function alpha(hex: string, a: number): string {
-  let x = hex.replace("#", "");
-  if (x.length === 3)
-    x = x
-      .split("")
-      .map((c) => c + c)
-      .join("");
-  const n = parseInt(x.slice(0, 6), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
 /**
@@ -241,11 +217,5 @@ export const Label: React.FC<{
     </div>
   );
 };
-
-/** A stable 0..1 from a variant and a slot: the styles' only randomness. */
-export function seeded(variant: number, slot: number): number {
-  const x = Math.sin((variant + 1) * 12.9898 + slot * 78.233) * 43758.5453;
-  return x - Math.floor(x);
-}
 
 export const YEAR = /\b(19|20)\d\d\b/;

@@ -264,6 +264,7 @@ import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
 import { calendarBlock, readCalendar, type CalendarLane } from "./calendar.ts";
 import { stampColour } from "./render/brand.ts";
+import { chooseWordLook, motifIdFor, wordSoundCue } from "./render/wordlook.ts";
 import {
   translateScript,
   twinFooter,
@@ -3085,7 +3086,7 @@ async function stepScriptTwin(s: Services, ep: Episode): Promise<void> {
 export function stampsFor(
   script: Pick<Script, "stamp">,
   words: Array<{ text: string; start: number }>,
-): Array<{ at: number; text: string; sub?: string; colour: string }> {
+): Array<{ at: number; text: string; sub?: string; colour: string; tone?: string }> {
   const st = script.stamp;
   if (!st?.word?.trim() || !st.text?.trim()) return [];
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9$]/g, "");
@@ -3104,6 +3105,7 @@ export function stampsFor(
       text: st.text.toUpperCase().slice(0, 14),
       sub: st.sub?.trim() ? st.sub.toUpperCase() : undefined,
       colour: stampColour(st.tone),
+      tone: st.tone,
     },
   ];
 }
@@ -7144,9 +7146,26 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     grade: rubric.grade,
     summary: rubricSummary(rubric) || "all green",
   });
-  // The stamp lands with the channel's landing sound, peak on the word, when the mix has room for it.
+  // The word moment's look (src/render/wordlook.ts): one of the suite, never the previous Short's, with a
+  // memory of the channel's last twelve; off (SHORT_WORD_LOOKS=false) it is always the rubber stamp.
+  const [stamp] = stampsFor(script, words);
+  if (stamp && !plan.wordLook) {
+    const gameYear = Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined;
+    const chosen = s.cfg.shortWordLooks
+      ? await chooseWordLook(s.db, stamp, {
+          year: gameYear,
+          motif: await motifIdFor(script.game_title, gameYear),
+          day: s.now().toISOString().slice(0, 10),
+          seed: variant,
+        })
+      : { look: "Stamp", recent: [] };
+    plan.wordLook = chosen.look;
+    await logEvent(s.db, ep.id, "word_look", { look: chosen.look, text: stamp.text, tone: stamp.tone, recent: chosen.recent });
+  }
+  // The moment lands with its look's sound (the stamp's landing by default), peak on the word, when the mix has room for it.
   for (const st of stampsFor(script, words)) {
-    const name = SFX.land[0];
+    const cue = wordSoundCue(plan.wordLook);
+    const name = cue.name;
     const f = Math.max(
       0,
       Math.round(st.at * plan.fps) - leadFrames(name, plan.fps),
@@ -7155,7 +7174,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       plan.sfx.length < MAX_SFX &&
       plan.sfx.every((c) => Math.abs(c.frame - f) >= 60)
     )
-      plan.sfx.push({ file: sfxFile(name), frame: f, volume: LEVEL.land });
+      plan.sfx.push({ file: sfxFile(name), frame: f, volume: cue.volume });
   }
   assets.plan = plan;
   // How much of the narration has something chosen for its own words on screen (src/qa/mediarich.ts): measured

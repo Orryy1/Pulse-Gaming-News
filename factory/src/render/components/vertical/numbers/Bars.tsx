@@ -52,7 +52,7 @@ export function barRows(items: string[]): Row[] {
 function sizes(rows: Row[]) {
   const n = rows.length;
   const rowH = H / n;
-  const labelSize = n === 2 ? 44 : 38;
+  const labelSize = n === 2 ? 46 : 40;
   const fig = Math.min(
     n === 2 ? 170 : 124,
     ...rows.map((r) => antonFit(r.fig.text.toUpperCase(), W * 0.5, 200)),
@@ -105,7 +105,7 @@ export const Bars: React.FC<VGfxProps> = ({ v, len, accent }) => {
                 fontSize: label.size,
                 lineHeight: 1.15,
                 letterSpacing: "0.04em",
-                color: isLead ? COLOUR.paper : "rgba(245,245,242,0.82)",
+                color: COLOUR.paper,
                 textTransform: "uppercase",
                 whiteSpace: "nowrap",
                 textShadow: "0 2px 12px rgba(0,0,0,0.9)",

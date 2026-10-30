@@ -300,6 +300,8 @@ export interface Config {
   publishWindowStartUtc: number;
   publishWindowEndUtc: number;
   visionQa: boolean;
+  /** The Shorts' word-moment suite (src/render/wordlook.ts): off draws every word moment as the rubber stamp. */
+  shortWordLooks: boolean;
   /** The graphics check before a long render (src/qa/graphicscheck.ts): every graphic as a cheap still, faulted
    * ones muted, so the full render runs once instead of again per faulted graphic. */
   graphicsPrepass: boolean;
@@ -719,6 +721,7 @@ export function loadConfig(): Config {
     publishWindowStartUtc: int("PUBLISH_WINDOW_START_UTC", 7),
     publishWindowEndUtc: int("PUBLISH_WINDOW_END_UTC", 22),
     visionQa: bool("VISION_QA", true),
+    shortWordLooks: bool("SHORT_WORD_LOOKS", true),
     graphicsPrepass: bool("GRAPHICS_PREPASS", true),
     graphicsPrepassMax: int("GRAPHICS_PREPASS_MAX", 200),
     graphicsRerenderPasses: int("GRAPHICS_RERENDER_PASSES", 1),

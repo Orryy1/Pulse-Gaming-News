@@ -17,7 +17,7 @@ import {
   words,
   wrap,
 } from "./kit.ts";
-import { SOFT_GRAIN } from "./kit.ts";
+import { SOFT_GRAIN, shadow } from "./kit.ts";
 
 const W = 952;
 const H = 500;
@@ -344,7 +344,7 @@ const Platen: React.FC<{ drop: number; accent: string }> = ({
           borderRadius: 16,
           background:
             "linear-gradient(180deg, #060607 0%, #34343a 14%, #5a5a62 24%, #26262b 46%, #111113 78%, #060607 100%)",
-          boxShadow: "0 14px 26px rgba(0,0,0,0.55)",
+          boxShadow: shadow(0.5),
         }}
       />
       <div

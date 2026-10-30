@@ -28,7 +28,10 @@ import {
   TopBar,
 } from "./components/Overlays.tsx";
 import { Shelf } from "./components/Shelf.tsx";
-import { Stamp, STAMP_FRAMES } from "./components/Stamp.tsx";
+import { STAMP_FRAMES } from "./components/Stamp.tsx";
+import { W_STYLES, DEFAULT_LOOK } from "./components/wordmoment/index.ts";
+import type { Tone } from "./components/wordmoment/types.ts";
+import { pickWordLook } from "./wordlook.ts";
 import { Pip, PIP_SHORT, sinceLast } from "./components/Pip.tsx";
 import type { ShotDressing } from "./components/Background.tsx";
 import {
@@ -363,6 +366,21 @@ export const Short: React.FC<ShortProps> = (props) => {
       })[0]
     : undefined;
 
+  // The word moment's look (src/render/components/wordmoment): the plan's choice (src/render/wordlook.ts); a plan
+  // from before the suite draws the rubber stamp, and a preview with no plan picks as the pipeline would.
+  const firstStamp = props.stamps?.[0];
+  const wordLook =
+    W_STYLES[plan.wordLook ?? ""] ??
+    W_STYLES[
+      props.plan || !firstStamp
+        ? DEFAULT_LOOK
+        : pickWordLook(
+            firstStamp,
+            { year, motif: motif?.id, day: props.renderDate ?? "", seed: props.variant },
+            [],
+          )
+    ]!;
+
   // Music ducks under the voice with a fast attack and a slower release, and is held (never faded out) through the tail.
   const speaking = useMemo(() => {
     const on = new Uint8Array(durationInFrames + 1);
@@ -523,7 +541,13 @@ export const Short: React.FC<ShortProps> = (props) => {
           durationInFrames={STAMP_FRAMES}
           layout="none"
         >
-          <Stamp stamp={st} top={930} size={104} />
+          {React.createElement(wordLook.component, {
+            stamp: { ...st, tone: st.tone as Tone | undefined },
+            hold: STAMP_FRAMES,
+            top: 930,
+            size: 104,
+            variant: props.variant,
+          })}
         </Sequence>
       ))}
       {/* The shelf steps back while a stamp holds the band, so the two never overlap. */}

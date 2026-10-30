@@ -20,6 +20,8 @@ import {
   mix,
   seeded,
   useBeat,
+  PAPER_GRADIENT,
+  shadow,
 } from "./kit.tsx";
 
 const TAG_W = 900;
@@ -137,7 +139,7 @@ export const Price: React.FC<VGfxProps> = ({ v, len, accent, variant = 0 }) => {
             top: 18,
             bottom: 6,
             borderRadius: 24,
-            boxShadow: "0 30px 50px rgba(0,0,0,0.6)",
+            boxShadow: shadow(1),
           }}
         />
         <div
@@ -145,8 +147,7 @@ export const Price: React.FC<VGfxProps> = ({ v, len, accent, variant = 0 }) => {
             position: "absolute",
             inset: 0,
             clipPath: tornEdge(variant),
-            background:
-              "linear-gradient(165deg, #fbf8f0 0%, #f3ede0 55%, #e4dccb 100%)",
+            background: PAPER_GRADIENT,
           }}
         >
           {/* The accent band at the hole end and the hole itself, with a reinforcing ring. */}

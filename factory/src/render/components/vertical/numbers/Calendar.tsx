@@ -24,6 +24,8 @@ import {
   seeded,
   useBeat,
   exitStyle,
+  PAPER_GRADIENT,
+  shadow,
 } from "./kit.tsx";
 
 const MONTHS = [
@@ -80,7 +82,7 @@ const Page: React.FC<{
     style={{
       position: "absolute",
       inset: 0,
-      background: `linear-gradient(170deg, #fbf8f1 0%, ${PAPER} 55%, #e6dfcf 100%)`,
+      background: PAPER_GRADIENT,
       borderRadius: 6,
       overflow: "hidden",
       ...style,
@@ -174,7 +176,7 @@ export const CalendarV: React.FC<VGfxProps> = ({
             bottom: -16,
             borderRadius: 10,
             background: "linear-gradient(180deg, #34302c 0%, #1c1a18 100%)",
-            boxShadow: "0 34px 60px rgba(0,0,0,0.6)",
+            boxShadow: shadow(1.1),
           }}
         />
         {[3, 2, 1].map((k) => (

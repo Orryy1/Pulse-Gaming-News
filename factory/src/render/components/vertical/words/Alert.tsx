@@ -6,7 +6,7 @@ import React from "react";
 import { spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { BODY } from "../../fonts.ts";
 import type { VGfxProps } from "../types.ts";
-import { exitOf, onAccent, ramp, textW, txt, words, wrapEven } from "./kit.ts";
+import { exitOf, onAccent, ramp, shadow, textW, txt, words, wrapEven } from "./kit.ts";
 
 const W = 952;
 const H = 500;
@@ -126,7 +126,7 @@ export const Alert: React.FC<VGfxProps> = ({ v, len, accent, variant = 0 }) => {
           height: 60,
           borderRadius: 30,
           background: dark ? "rgba(30,30,35,0.7)" : "rgba(235,235,240,0.72)",
-          boxShadow: "0 16px 30px rgba(0,0,0,0.35)",
+          boxShadow: shadow(0.6),
           opacity: ghost,
         }}
       />

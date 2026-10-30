@@ -24,6 +24,7 @@ import {
   txt,
   words,
   wrapEven,
+  shadow,
 } from "./kit.ts";
 
 const W = 952;
@@ -139,7 +140,7 @@ export const Duotone: React.FC<VGfxProps> = ({
           borderRadius: 8,
           overflow: "hidden",
           clipPath: `inset(0 ${(1 - wipe) * 100}% 0 0 round 8px)`,
-          boxShadow: "0 28px 70px rgba(0,0,0,0.6)",
+          boxShadow: shadow(1),
           isolation: "isolate",
           background: "#120d0b",
         }}

@@ -8,7 +8,7 @@ import { useCurrentFrame } from "remotion";
 import { BODY, DISPLAY } from "../../fonts.ts";
 import { COLOUR } from "../../../brand.ts";
 import type { VGfxProps } from "../types.ts";
-import { exitOf, onAccent, ramp, textW, txt, words, wrapEven } from "./kit.ts";
+import { exitOf, onAccent, ramp, shadow, textW, txt, words, wrapEven } from "./kit.ts";
 
 const W = 952;
 const H = 500;
@@ -151,7 +151,7 @@ export const Breaking: React.FC<VGfxProps> = ({
           width: W,
           height: bannerH,
           clipPath: `inset(0 ${(1 - wipe) * 100}% 0 0)`,
-          boxShadow: "0 26px 60px rgba(0,0,0,0.55)",
+          boxShadow: shadow(0.9),
           background: bannerBg,
           overflow: "hidden",
         }}

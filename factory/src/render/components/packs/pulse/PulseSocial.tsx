@@ -31,6 +31,8 @@ import {
   IllustrationTag,
   ReadWords,
   litCount,
+  pushIn,
+  pushInAt,
   type IconName,
 } from "./socialKit.tsx";
 
@@ -42,6 +44,8 @@ type LookProps = {
   show: number;
   /** How far the narrator is through the quote, 0-1. */
   read: number;
+  /** The camera's push-in on the message, 0-1 (only the small-type looks use it). */
+  zoom: number;
   quote: string;
   words: string[];
   credit: QuoteCredit;
@@ -52,359 +56,381 @@ type LookProps = {
 
 const WIN98 = "'MS Sans Serif', Tahoma, Arial, sans-serif";
 
-/** To 1999: a three-pane newsgroup reader in grey bevelled chrome; the message types out as it is read. */
+/**
+ * To 1999: a three-pane newsgroup reader in grey bevelled chrome; the message types out as it is read. Once the
+ * message is open the camera pushes in 1.6x on its pane, so the 26 px mono type reads at about 42 px.
+ */
 const GroupsLook: React.FC<LookProps> = ({
   frame,
   enter,
   show,
   read,
+  zoom,
   quote,
   credit,
 }) => {
-  const W = 1500;
-  const H = 900;
+  const W = 1360;
+  const H = 860;
+  const left = 960 - W / 2;
+  const top = 540 - H / 2;
   const chars = Math.round(read * quote.length);
   const typing = chars < quote.length;
   const picked = frame >= 22;
   const name = displayName(credit.speaker);
   const bevelOut = "2px outset #f2f2f2";
   const bevelIn = "2px inset #e0e0e0";
+  // The message pane: right of the 300 px folder pane, under the 236 px message list.
+  const pane = {
+    left: left + 314,
+    top: top + 396,
+    width: W - 322,
+    height: H - 432,
+  };
   return (
-    <div
-      style={{
-        position: "absolute",
-        left: 960 - W / 2,
-        top: 70 + (1 - enter) * 300,
-        width: W,
-        height: H,
-        background: "#c0c0c0",
-        border: "3px outset #e8e8e8",
-        boxShadow: "0 40px 110px rgba(0,0,0,0.6)",
-        opacity: enter,
-        fontFamily: WIN98,
-        color: "#111",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          height: 40,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "0 10px",
-          color: "#fff",
-          fontSize: 20,
-          fontWeight: 700,
-          background: "linear-gradient(90deg,#000080,#1084d0)",
-        }}
-      >
-        <PulseMark size={24} colour="#fff" />
-        Pulse Groups
-        <span style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-          {["_", "□", "x"].map((c) => (
-            <span
-              key={c}
-              style={{
-                width: 28,
-                height: 26,
-                background: "#c0c0c0",
-                border: bevelOut,
-                color: "#111",
-                fontSize: 16,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {c}
-            </span>
-          ))}
-        </span>
-      </div>
-      <div
-        style={{
-          height: 32,
-          display: "flex",
-          gap: 22,
-          alignItems: "center",
-          padding: "0 14px",
-          fontSize: 18,
-        }}
-      >
-        {["File", "Edit", "View", "Go", "Message", "Tools", "Help"].map((m) => (
-          <span key={m}>{m}</span>
-        ))}
-      </div>
-      <div
-        style={{
-          height: 76,
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "0 10px",
-          borderTop: "2px groove #fff",
-        }}
-      >
-        {(
-          [
-            ["pencil", "New Post"],
-            ["reply", "Reply"],
-            ["forward", "Forward"],
-            ["print", "Print"],
-          ] as Array<[IconName, string]>
-        ).map(([n, label]) => (
-          <div
-            key={label}
-            style={{
-              width: 96,
-              height: 66,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              fontSize: 15,
-              border: bevelOut,
-            }}
-          >
-            <Icon name={n} size={28} colour="#1d3f8a" width={2.6} />
-            {label}
-          </div>
-        ))}
-        {/* The throbber: the mark spins while the group's messages come down the line. */}
-        <div
-          style={{
-            marginLeft: "auto",
-            width: 76,
-            height: 66,
-            background: "#000",
-            border: bevelIn,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <PulseMark
-            size={54}
-            spin={frame < 30 ? frame * 8 : 0}
-            beat={frame < 30 ? (frame % 20) / 20 : undefined}
-          />
-        </div>
-      </div>
+    <div style={pushIn(pane, 1.6, zoom)}>
       <div
         style={{
           position: "absolute",
-          top: 154,
-          left: 8,
-          right: 8,
-          bottom: 36,
-          display: "flex",
-          gap: 6,
+          left,
+          top: top + (1 - enter) * 300,
+          width: W,
+          height: H,
+          background: "#c0c0c0",
+          border: "3px outset #e8e8e8",
+          boxShadow: "0 40px 110px rgba(0,0,0,0.6)",
+          opacity: enter,
+          fontFamily: WIN98,
+          color: "#111",
+          overflow: "hidden",
         }}
       >
-        {/* Folders: our own labels, and bars for group names the graphic does not give. */}
         <div
           style={{
-            width: 300,
-            background: "#fff",
-            border: bevelIn,
-            padding: "14px 12px",
-            fontSize: 21,
+            height: 40,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "0 10px",
+            color: "#fff",
+            fontSize: 20,
+            fontWeight: 700,
+            background: "linear-gradient(90deg,#000080,#1084d0)",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontWeight: 700,
-            }}
-          >
-            <PulseMark size={22} colour="#000080" />
-            Pulse Groups
-          </div>
-          {["Newsgroups", "", "", "", "Outbox", "Sent Items"].map(
-            (label, i) => (
-              <div
-                key={i}
+          <PulseMark size={24} colour="#fff" />
+          Pulse Groups
+          <span style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+            {["_", "□", "x"].map((c) => (
+              <span
+                key={c}
                 style={{
+                  width: 28,
+                  height: 26,
+                  background: "#c0c0c0",
+                  border: bevelOut,
+                  color: "#111",
+                  fontSize: 16,
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
-                  marginTop: 12,
-                  marginLeft: label ? 22 : 48,
-                  padding: "2px 4px",
-                  background: i === 0 ? "#000080" : "transparent",
-                  color: i === 0 ? "#fff" : "#111",
+                  justifyContent: "center",
                 }}
               >
-                <Icon
-                  name="folder"
-                  size={22}
-                  colour={i === 0 ? "#fff" : "#8a6d1a"}
-                />
-                {label || (
-                  <div
-                    style={{
-                      width: 120 - i * 14,
-                      height: 12,
-                      background: "#cfcfcf",
-                    }}
-                  />
-                )}
-              </div>
+                {c}
+              </span>
+            ))}
+          </span>
+        </div>
+        <div
+          style={{
+            height: 32,
+            display: "flex",
+            gap: 22,
+            alignItems: "center",
+            padding: "0 14px",
+            fontSize: 18,
+          }}
+        >
+          {["File", "Edit", "View", "Go", "Message", "Tools", "Help"].map(
+            (m) => (
+              <span key={m}>{m}</span>
             ),
           )}
         </div>
         <div
-          style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}
+          style={{
+            height: 76,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "0 10px",
+            borderTop: "2px groove #fff",
+          }}
         >
-          {/* The message list: one row is this post (its author and year); the others are bars. */}
+          {(
+            [
+              ["pencil", "New Post"],
+              ["reply", "Reply"],
+              ["forward", "Forward"],
+              ["print", "Print"],
+            ] as Array<[IconName, string]>
+          ).map(([n, label]) => (
+            <div
+              key={label}
+              style={{
+                width: 96,
+                height: 66,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                fontSize: 15,
+                border: bevelOut,
+              }}
+            >
+              <Icon name={n} size={28} colour="#1d3f8a" width={2.6} />
+              {label}
+            </div>
+          ))}
+          {/* The throbber: the mark spins while the group's messages come down the line. */}
           <div
             style={{
-              height: 236,
-              background: "#fff",
+              marginLeft: "auto",
+              width: 76,
+              height: 66,
+              background: "#000",
               border: bevelIn,
-              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <div style={{ display: "flex", fontSize: 18 }}>
-              {[
-                ["Subject", 520],
-                ["From", 380],
-                ["Sent", 0],
-              ].map(([label, w]) => (
-                <div
-                  key={label}
-                  style={{
-                    width: w || undefined,
-                    flex: w ? undefined : 1,
-                    padding: "3px 10px",
-                    background: "#c0c0c0",
-                    border: bevelOut,
-                  }}
-                >
-                  {label}
-                </div>
-              ))}
+            <PulseMark
+              size={54}
+              spin={frame < 30 ? frame * 8 : 0}
+              beat={frame < 30 ? (frame % 20) / 20 : undefined}
+            />
+          </div>
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            top: 154,
+            left: 8,
+            right: 8,
+            bottom: 36,
+            display: "flex",
+            gap: 6,
+          }}
+        >
+          {/* Folders: our own labels, and bars for group names the graphic does not give. */}
+          <div
+            style={{
+              width: 300,
+              background: "#fff",
+              border: bevelIn,
+              padding: "14px 12px",
+              fontSize: 21,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontWeight: 700,
+              }}
+            >
+              <PulseMark size={22} colour="#000080" />
+              Pulse Groups
             </div>
-            {[0, 1, 2, 3, 4].map((i) => {
-              const me = i === 2;
-              const on = me && picked;
-              const bar = (w: number) => (
-                <div
-                  style={{
-                    width: w,
-                    height: 12,
-                    background: on ? "rgba(255,255,255,0.7)" : "#d4d4d4",
-                  }}
-                />
-              );
-              return (
+            {["Newsgroups", "", "", "", "Outbox", "Sent Items"].map(
+              (label, i) => (
                 <div
                   key={i}
                   style={{
-                    height: 38,
                     display: "flex",
                     alignItems: "center",
-                    background: on ? "#000080" : "transparent",
-                    color: on ? "#fff" : "#111",
-                    fontSize: 22,
-                    fontWeight: me ? 700 : 400,
+                    gap: 8,
+                    marginTop: 12,
+                    marginLeft: label ? 22 : 48,
+                    padding: "2px 4px",
+                    background: i === 0 ? "#000080" : "transparent",
+                    color: i === 0 ? "#fff" : "#111",
                   }}
                 >
-                  <div style={{ width: 520, padding: "0 12px" }}>
-                    {bar(me ? 300 : 220 + ((i * 53) % 160))}
-                  </div>
-                  <div
-                    style={{
-                      width: 380,
-                      padding: "0 12px",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {me ? name : bar(140 + ((i * 31) % 90))}
-                  </div>
-                  <div style={{ flex: 1, padding: "0 12px" }}>
-                    {me ? (credit.year ?? "") : bar(70)}
-                  </div>
+                  <Icon
+                    name="folder"
+                    size={22}
+                    colour={i === 0 ? "#fff" : "#8a6d1a"}
+                  />
+                  {label || (
+                    <div
+                      style={{
+                        width: 120 - i * 14,
+                        height: 12,
+                        background: "#cfcfcf",
+                      }}
+                    />
+                  )}
                 </div>
-              );
-            })}
+              ),
+            )}
           </div>
           <div
             style={{
               flex: 1,
-              background: "#fff",
-              border: bevelIn,
-              overflow: "hidden",
-              opacity: show,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
             }}
           >
+            {/* The message list: one row is this post (its author and year); the others are bars. */}
             <div
               style={{
-                background: "#e4e4e4",
-                borderBottom: "1px solid #a0a0a0",
-                padding: "12px 18px",
-                fontSize: 24,
-                lineHeight: 1.45,
+                height: 236,
+                background: "#fff",
+                border: bevelIn,
+                overflow: "hidden",
               }}
             >
-              <div>
-                <b>From:</b> {name}
+              <div style={{ display: "flex", fontSize: 18 }}>
+                {[
+                  ["Subject", 520],
+                  ["From", 380],
+                  ["Sent", 0],
+                ].map(([label, w]) => (
+                  <div
+                    key={label}
+                    style={{
+                      width: w || undefined,
+                      flex: w ? undefined : 1,
+                      padding: "3px 10px",
+                      background: "#c0c0c0",
+                      border: bevelOut,
+                    }}
+                  >
+                    {label}
+                  </div>
+                ))}
               </div>
-              {credit.year && (
-                <div>
-                  <b>Date:</b> {credit.year}
-                </div>
-              )}
+              {[0, 1, 2, 3, 4].map((i) => {
+                const me = i === 2;
+                const on = me && picked;
+                const bar = (w: number) => (
+                  <div
+                    style={{
+                      width: w,
+                      height: 12,
+                      background: on ? "rgba(255,255,255,0.7)" : "#d4d4d4",
+                    }}
+                  />
+                );
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      height: 38,
+                      display: "flex",
+                      alignItems: "center",
+                      background: on ? "#000080" : "transparent",
+                      color: on ? "#fff" : "#111",
+                      fontSize: 22,
+                      fontWeight: me ? 700 : 400,
+                    }}
+                  >
+                    <div style={{ width: 520, padding: "0 12px" }}>
+                      {bar(me ? 300 : 220 + ((i * 53) % 160))}
+                    </div>
+                    <div
+                      style={{
+                        width: 380,
+                        padding: "0 12px",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {me ? name : bar(140 + ((i * 31) % 90))}
+                    </div>
+                    <div style={{ flex: 1, padding: "0 12px" }}>
+                      {me ? (credit.year ?? "") : bar(70)}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             <div
               style={{
-                padding: "18px 22px",
-                fontFamily: MONO,
-                fontSize: 30,
-                lineHeight: 1.42,
-                whiteSpace: "pre-wrap",
-                color: "#111",
+                flex: 1,
+                background: "#fff",
+                border: bevelIn,
+                overflow: "hidden",
+                opacity: show,
               }}
             >
-              {quote.slice(0, chars)}
-              {typing && (
-                <span
-                  style={{
-                    background: frame % 20 < 10 ? "#111" : "transparent",
-                    marginLeft: 2,
-                  }}
-                >
-                  {" "}
-                </span>
-              )}
+              <div
+                style={{
+                  background: "#e4e4e4",
+                  borderBottom: "1px solid #a0a0a0",
+                  padding: "12px 18px",
+                  fontSize: 24,
+                  lineHeight: 1.45,
+                }}
+              >
+                <div>
+                  <b>From:</b> {name}
+                </div>
+                {credit.year && (
+                  <div>
+                    <b>Date:</b> {credit.year}
+                  </div>
+                )}
+              </div>
+              <div
+                style={{
+                  padding: "18px 22px",
+                  fontFamily: MONO,
+                  fontSize: 26,
+                  lineHeight: 1.42,
+                  whiteSpace: "pre-wrap",
+                  color: "#111",
+                }}
+              >
+                {quote.slice(0, chars)}
+                {typing && (
+                  <span
+                    style={{
+                      background: frame % 20 < 10 ? "#111" : "transparent",
+                      marginLeft: 2,
+                    }}
+                  >
+                    {" "}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 30,
-          borderTop: "2px groove #fff",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 12px",
-          fontSize: 17,
-        }}
-      >
-        {frame < 30
-          ? "Downloading headers..."
-          : typing
-            ? "Opening message..."
-            : "Done"}
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 30,
+            borderTop: "2px groove #fff",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 12px",
+            fontSize: 17,
+          }}
+        >
+          {frame < 30
+            ? "Downloading headers..."
+            : typing
+              ? "Opening message..."
+              : "Done"}
+        </div>
       </div>
     </div>
   );
@@ -1010,11 +1036,14 @@ export const PulseSocial: React.FC<GfxProps> = ({
   const readFrom = 44;
   const readTo = Math.max(readFrom + 30, showFor - 24);
   const read = interpolate(frame, [readFrom, readTo], [0, 1], clamp);
+  // The newsgroup reader pushes in on the message once it is open (30-50); the board and feed are big enough.
+  const zoom = pushInAt(frame, 30);
   const props: LookProps = {
     frame,
     enter,
     show,
     read,
+    zoom,
     quote,
     words,
     credit,

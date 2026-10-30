@@ -30,6 +30,8 @@ import {
   IllustrationTag,
   ReadWords,
   litCount,
+  pushIn,
+  pushInAt,
   type IconName,
 } from "./socialKit.tsx";
 
@@ -39,6 +41,8 @@ type LookProps = {
   /** The message opening in the reading pane, 0-1. */
   open: number;
   read: number;
+  /** The camera's push-in on the reading pane, 0-1 (the desktop client only). */
+  zoom: number;
   quote: string;
   words: string[];
   credit: QuoteCredit;
@@ -54,18 +58,26 @@ export const mailSubject = (c: QuoteCredit) =>
 const W = 1500;
 const H = 900;
 
-/** To 2004: the desktop client, grey and bevelled, a Windows 2000 era layout of panes. */
+/**
+ * To 2004: the desktop client, grey and bevelled, a Windows 2000 era layout of panes. Once the message is open
+ * the camera pushes in 1.6x on the reading pane, so its 23-28 px type reads at 37-45 px.
+ */
 const DesktopLook: React.FC<LookProps> = ({
   frame,
   enter,
   open,
   read,
+  zoom,
   quote,
   words,
   credit,
   subject,
   y,
 }) => {
+  const DW = 1360;
+  const DH = 860;
+  const left = 960 - DW / 2;
+  const top = 540 - DH / 2;
   // 2000-2004 clients went softer: a blue-grey title bar and flat buttons instead of the late 90s bevel.
   const late = (y ?? 2000) >= 2001;
   const tahoma = "Tahoma, Verdana, Arial, sans-serif";
@@ -73,326 +85,340 @@ const DesktopLook: React.FC<LookProps> = ({
   const bevelIn = late ? "1px solid #7f9db9" : "2px inset #e0e0e0";
   const picked = frame >= 22;
   const size = sizeByLength(quote.length, [
-    [140, 36],
-    [280, 32],
-    [999, 29],
+    [140, 28],
+    [280, 25],
+    [999, 23],
   ]);
   const lit = litCount(words.length, read);
   const name = displayName(credit.speaker);
+  // The reading pane: right of the 280 px folder pane, under the 196 px message list.
+  const pane = {
+    left: left + 294,
+    top: top + 354,
+    width: DW - 302,
+    height: DH - 390,
+  };
   return (
-    <div
-      style={{
-        position: "absolute",
-        left: 960 - W / 2,
-        top: 70 + (1 - enter) * 300,
-        width: W,
-        height: H,
-        background: late ? "#ece9d8" : "#c0c0c0",
-        border: late ? "3px solid #2457c4" : "3px outset #e8e8e8",
-        borderRadius: late ? "10px 10px 0 0" : 0,
-        boxShadow: "0 40px 110px rgba(0,0,0,0.6)",
-        overflow: "hidden",
-        opacity: enter,
-        fontFamily: tahoma,
-        color: "#111",
-      }}
-    >
-      <div
-        style={{
-          height: 40,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "0 12px",
-          color: "#fff",
-          fontSize: 20,
-          fontWeight: 700,
-          background: late
-            ? "linear-gradient(#3d8bf5,#0a5ae0 40%,#0848c4)"
-            : "linear-gradient(90deg,#000080,#1084d0)",
-        }}
-      >
-        <PulseMark size={24} colour="#fff" />
-        Pulse Mail
-      </div>
-      <div
-        style={{
-          height: 32,
-          display: "flex",
-          gap: 22,
-          alignItems: "center",
-          padding: "0 14px",
-          fontSize: 18,
-        }}
-      >
-        {["File", "Edit", "View", "Tools", "Message", "Help"].map((m) => (
-          <span key={m}>{m}</span>
-        ))}
-      </div>
-      <div
-        style={{
-          height: 74,
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "0 10px",
-          borderTop: late ? "1px solid #fff" : "2px groove #fff",
-          borderBottom: late ? "1px solid #c8c4b0" : "none",
-        }}
-      >
-        {(
-          [
-            ["pencil", "New"],
-            ["reply", "Reply"],
-            ["forward", "Forward"],
-            ["print", "Print"],
-            ["trash", "Delete"],
-            ["send", "Send/Recv"],
-          ] as Array<[IconName, string]>
-        ).map(([n, label]) => (
-          <div
-            key={label}
-            style={{
-              width: 100,
-              height: 64,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              fontSize: 16,
-              border: late ? "1px solid transparent" : bevelOut,
-            }}
-          >
-            <Icon
-              name={n}
-              size={28}
-              colour={n === "trash" ? "#a03030" : "#1d3f8a"}
-              width={2.4}
-            />
-            {label}
-          </div>
-        ))}
-      </div>
+    <div style={pushIn(pane, 1.6, zoom)}>
       <div
         style={{
           position: "absolute",
-          top: 152,
-          left: 8,
-          right: 8,
-          bottom: 36,
-          display: "flex",
-          gap: 6,
+          left,
+          top: top + (1 - enter) * 300,
+          width: DW,
+          height: DH,
+          background: late ? "#ece9d8" : "#c0c0c0",
+          border: late ? "3px solid #2457c4" : "3px outset #e8e8e8",
+          borderRadius: late ? "10px 10px 0 0" : 0,
+          boxShadow: "0 40px 110px rgba(0,0,0,0.6)",
+          overflow: "hidden",
+          opacity: enter,
+          fontFamily: tahoma,
+          color: "#111",
         }}
       >
         <div
           style={{
-            width: 280,
-            background: "#fff",
-            border: bevelIn,
-            padding: "14px 12px",
-            fontSize: 22,
+            height: 40,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "0 12px",
+            color: "#fff",
+            fontSize: 20,
+            fontWeight: 700,
+            background: late
+              ? "linear-gradient(#3d8bf5,#0a5ae0 40%,#0848c4)"
+              : "linear-gradient(90deg,#000080,#1084d0)",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontWeight: 700,
-            }}
-          >
-            <PulseMark size={22} colour="#1d3f8a" />
-            Pulse Mail
-          </div>
+          <PulseMark size={24} colour="#fff" />
+          Pulse Mail
+        </div>
+        <div
+          style={{
+            height: 32,
+            display: "flex",
+            gap: 22,
+            alignItems: "center",
+            padding: "0 14px",
+            fontSize: 18,
+          }}
+        >
+          {["File", "Edit", "View", "Tools", "Message", "Help"].map((m) => (
+            <span key={m}>{m}</span>
+          ))}
+        </div>
+        <div
+          style={{
+            height: 74,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "0 10px",
+            borderTop: late ? "1px solid #fff" : "2px groove #fff",
+            borderBottom: late ? "1px solid #c8c4b0" : "none",
+          }}
+        >
           {(
             [
-              ["inbox", "Inbox"],
-              ["send", "Outbox"],
-              ["folder", "Sent Items"],
-              ["trash", "Deleted Items"],
-              ["draft", "Drafts"],
+              ["pencil", "New"],
+              ["reply", "Reply"],
+              ["forward", "Forward"],
+              ["print", "Print"],
+              ["trash", "Delete"],
+              ["send", "Send/Recv"],
             ] as Array<[IconName, string]>
-          ).map(([n, label], i) => (
+          ).map(([n, label]) => (
             <div
               key={label}
               style={{
+                width: 100,
+                height: 64,
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
-                gap: 8,
-                marginTop: 12,
-                marginLeft: 22,
-                padding: "2px 6px",
-                background:
-                  i === 0 ? (late ? "#316ac5" : "#000080") : "transparent",
-                color: i === 0 ? "#fff" : "#111",
+                justifyContent: "center",
+                gap: 4,
+                fontSize: 16,
+                border: late ? "1px solid transparent" : bevelOut,
               }}
             >
-              <Icon name={n} size={22} colour={i === 0 ? "#fff" : "#555"} />
+              <Icon
+                name={n}
+                size={28}
+                colour={n === "trash" ? "#a03030" : "#1d3f8a"}
+                width={2.4}
+              />
               {label}
             </div>
           ))}
         </div>
         <div
-          style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}
+          style={{
+            position: "absolute",
+            top: 152,
+            left: 8,
+            right: 8,
+            bottom: 36,
+            display: "flex",
+            gap: 6,
+          }}
         >
-          {/* The list: this message picked (its sender and year), bars for others the graphic does not give. */}
           <div
             style={{
-              height: 196,
+              width: 280,
               background: "#fff",
               border: bevelIn,
-              overflow: "hidden",
+              padding: "14px 12px",
+              fontSize: 22,
             }}
           >
-            <div style={{ display: "flex", fontSize: 18 }}>
-              {[
-                ["From", 380],
-                ["Subject", 540],
-                ["Received", 0],
-              ].map(([label, w]) => (
-                <div
-                  key={label}
-                  style={{
-                    width: w || undefined,
-                    flex: w ? undefined : 1,
-                    padding: "3px 10px",
-                    background: late
-                      ? "linear-gradient(#fff,#ebeadb)"
-                      : "#c0c0c0",
-                    border: bevelOut,
-                  }}
-                >
-                  {label}
-                </div>
-              ))}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontWeight: 700,
+              }}
+            >
+              <PulseMark size={22} colour="#1d3f8a" />
+              Pulse Mail
             </div>
-            {[0, 1, 2, 3].map((i) => {
-              const me = i === 1;
-              const on = me && picked;
-              const bar = (w: number) => (
-                <div
-                  style={{
-                    width: w,
-                    height: 12,
-                    background: on ? "rgba(255,255,255,0.7)" : "#d4d4d4",
-                  }}
-                />
-              );
-              return (
-                <div
-                  key={i}
-                  style={{
-                    height: 38,
-                    display: "flex",
-                    alignItems: "center",
-                    fontSize: 22,
-                    fontWeight: me ? 700 : 400,
-                    background: on
-                      ? late
-                        ? "#316ac5"
-                        : "#000080"
-                      : "transparent",
-                    color: on ? "#fff" : "#111",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 380,
-                      padding: "0 12px",
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "center",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <Icon
-                      name="inbox"
-                      size={20}
-                      colour={on ? "#fff" : "#888"}
-                    />
-                    {me ? name : bar(150 + ((i * 41) % 80))}
-                  </div>
-                  <div style={{ width: 540, padding: "0 12px" }}>
-                    {me && subject
-                      ? subject
-                      : bar(me ? 260 : 200 + ((i * 67) % 180))}
-                  </div>
-                  <div style={{ flex: 1, padding: "0 12px" }}>
-                    {me ? (credit.year ?? "") : bar(80)}
-                  </div>
-                </div>
-              );
-            })}
+            {(
+              [
+                ["inbox", "Inbox"],
+                ["send", "Outbox"],
+                ["folder", "Sent Items"],
+                ["trash", "Deleted Items"],
+                ["draft", "Drafts"],
+              ] as Array<[IconName, string]>
+            ).map(([n, label], i) => (
+              <div
+                key={label}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginTop: 12,
+                  marginLeft: 22,
+                  padding: "2px 6px",
+                  background:
+                    i === 0 ? (late ? "#316ac5" : "#000080") : "transparent",
+                  color: i === 0 ? "#fff" : "#111",
+                }}
+              >
+                <Icon name={n} size={22} colour={i === 0 ? "#fff" : "#555"} />
+                {label}
+              </div>
+            ))}
           </div>
           <div
             style={{
               flex: 1,
-              background: "#fff",
-              border: bevelIn,
-              overflow: "hidden",
-              opacity: open,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
             }}
           >
+            {/* The list: this message picked (its sender and year), bars for others the graphic does not give. */}
             <div
               style={{
-                background: late
-                  ? "linear-gradient(#f6f5ee,#e7e4d4)"
-                  : "#e4e4e4",
-                borderBottom: "1px solid #a0a0a0",
-                padding: "12px 20px",
-                fontSize: 24,
-                lineHeight: 1.45,
+                height: 196,
+                background: "#fff",
+                border: bevelIn,
+                overflow: "hidden",
               }}
             >
-              <div>
-                <b>From:</b> {name}
+              <div style={{ display: "flex", fontSize: 18 }}>
+                {[
+                  ["From", 380],
+                  ["Subject", 540],
+                  ["Received", 0],
+                ].map(([label, w]) => (
+                  <div
+                    key={label}
+                    style={{
+                      width: w || undefined,
+                      flex: w ? undefined : 1,
+                      padding: "3px 10px",
+                      background: late
+                        ? "linear-gradient(#fff,#ebeadb)"
+                        : "#c0c0c0",
+                      border: bevelOut,
+                    }}
+                  >
+                    {label}
+                  </div>
+                ))}
               </div>
-              {credit.year && (
-                <div>
-                  <b>Date:</b> {credit.year}
-                </div>
-              )}
-              {subject && (
-                <div>
-                  <b>Subject:</b> {subject}
-                </div>
-              )}
+              {[0, 1, 2, 3].map((i) => {
+                const me = i === 1;
+                const on = me && picked;
+                const bar = (w: number) => (
+                  <div
+                    style={{
+                      width: w,
+                      height: 12,
+                      background: on ? "rgba(255,255,255,0.7)" : "#d4d4d4",
+                    }}
+                  />
+                );
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      height: 38,
+                      display: "flex",
+                      alignItems: "center",
+                      fontSize: 22,
+                      fontWeight: me ? 700 : 400,
+                      background: on
+                        ? late
+                          ? "#316ac5"
+                          : "#000080"
+                        : "transparent",
+                      color: on ? "#fff" : "#111",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 380,
+                        padding: "0 12px",
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "center",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <Icon
+                        name="inbox"
+                        size={20}
+                        colour={on ? "#fff" : "#888"}
+                      />
+                      {me ? name : bar(150 + ((i * 41) % 80))}
+                    </div>
+                    <div style={{ width: 540, padding: "0 12px" }}>
+                      {me && subject
+                        ? subject
+                        : bar(me ? 260 : 200 + ((i * 67) % 180))}
+                    </div>
+                    <div style={{ flex: 1, padding: "0 12px" }}>
+                      {me ? (credit.year ?? "") : bar(80)}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             <div
               style={{
-                padding: "22px 26px",
-                fontFamily: "Arial, Helvetica, sans-serif",
-                fontSize: size,
-                lineHeight: 1.45,
-                color: "#111",
+                flex: 1,
+                background: "#fff",
+                border: bevelIn,
+                overflow: "hidden",
+                opacity: open,
               }}
             >
-              <ReadWords
-                words={words}
-                lit={lit}
-                on={{ background: "rgba(255,230,0,0.75)" }}
-              />
+              <div
+                style={{
+                  background: late
+                    ? "linear-gradient(#f6f5ee,#e7e4d4)"
+                    : "#e4e4e4",
+                  borderBottom: "1px solid #a0a0a0",
+                  padding: "12px 20px",
+                  fontSize: 24,
+                  lineHeight: 1.45,
+                }}
+              >
+                <div>
+                  <b>From:</b> {name}
+                </div>
+                {credit.year && (
+                  <div>
+                    <b>Date:</b> {credit.year}
+                  </div>
+                )}
+                {subject && (
+                  <div>
+                    <b>Subject:</b> {subject}
+                  </div>
+                )}
+              </div>
+              <div
+                style={{
+                  padding: "22px 26px",
+                  fontFamily: "Arial, Helvetica, sans-serif",
+                  fontSize: size,
+                  lineHeight: 1.45,
+                  color: "#111",
+                }}
+              >
+                <ReadWords
+                  words={words}
+                  lit={lit}
+                  on={{ background: "rgba(255,230,0,0.75)" }}
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 30,
-          borderTop: late ? "1px solid #c8c4b0" : "2px groove #fff",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 12px",
-          fontSize: 17,
-        }}
-      >
-        {frame < 22 ? "Checking for new messages..." : "Working Online"}
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 30,
+            borderTop: late ? "1px solid #c8c4b0" : "2px groove #fff",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 12px",
+            fontSize: 17,
+          }}
+        >
+          {frame < 22 ? "Checking for new messages..." : "Working Online"}
+        </div>
       </div>
     </div>
   );
@@ -784,11 +810,14 @@ export const PulseMail: React.FC<GfxProps> = ({
   const readFrom = 48;
   const readTo = Math.max(readFrom + 30, showFor - 24);
   const read = interpolate(frame, [readFrom, readTo], [0, 1], clamp);
+  // The desktop client pushes in on the reading pane as the message opens (40-60); webmail is big enough.
+  const zoom = pushInAt(frame, 40);
   const props: LookProps = {
     frame,
     enter,
     open,
     read,
+    zoom,
     quote,
     words,
     credit,

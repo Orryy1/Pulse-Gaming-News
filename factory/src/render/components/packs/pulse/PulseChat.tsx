@@ -36,6 +36,8 @@ import {
   IllustrationTag,
   ReadWords,
   litCount,
+  pushIn,
+  pushInAt,
   type IconName,
 } from "./socialKit.tsx";
 
@@ -47,6 +49,8 @@ type LookProps = {
   /** The message arriving, 0-1. */
   arrive: number;
   read: number;
+  /** The camera's push-in on the message once it has arrived, 0-1 (the team window is big enough without). */
+  zoom: number;
   quote: string;
   words: string[];
   credit: QuoteCredit;
@@ -88,173 +92,190 @@ const TypingDots: React.FC<{ frame: number; colour: string; size: number }> = ({
   </div>
 );
 
-/** To 1997, or any IRC credit: a channel window of lines; the speaker's line arrives and is read. */
+/**
+ * To 1997, or any IRC credit: a channel window of lines; the speaker's line arrives and is read, and the camera
+ * pushes in 1.6x on the bottom of the channel pane, so the 26 px mono type reads at about 42 px.
+ */
 const RelayLook: React.FC<LookProps> = ({
   frame,
   enter,
   arrive,
   read,
+  zoom,
   words,
   credit,
 }) => {
-  const W = 1460;
+  const W = 1360;
   const H = 860;
+  const left = 960 - W / 2;
+  const top = 540 - H / 2;
   const lit = litCount(words.length, read);
   const name = displayName(credit.speaker);
+  // The bottom 440 px of the channel pane (left of the 300 px nick list), where the line lands.
+  const pane = { left: left + 8, top: top + 360, width: W - 322, height: 440 };
   return (
-    <div
-      style={{
-        position: "absolute",
-        left: 960 - W / 2,
-        top: 80 + (1 - enter) * 300,
-        width: W,
-        height: H,
-        background: "#c0c0c0",
-        border: "3px outset #e8e8e8",
-        boxShadow: "0 40px 110px rgba(0,0,0,0.6)",
-        opacity: enter,
-        overflow: "hidden",
-        fontFamily: "'MS Sans Serif', Tahoma, Arial, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          height: 40,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "0 12px",
-          color: "#fff",
-          fontSize: 20,
-          fontWeight: 700,
-          background: "linear-gradient(90deg,#000080,#1084d0)",
-        }}
-      >
-        <PulseMark size={24} colour="#fff" />
-        Pulse Relay
-      </div>
-      <div
-        style={{
-          height: 32,
-          display: "flex",
-          gap: 22,
-          alignItems: "center",
-          padding: "0 14px",
-          fontSize: 18,
-        }}
-      >
-        {["File", "View", "Commands", "Window", "Help"].map((m) => (
-          <span key={m}>{m}</span>
-        ))}
-      </div>
+    <div style={pushIn(pane, 1.6, zoom)}>
       <div
         style={{
           position: "absolute",
-          top: 78,
-          left: 8,
-          right: 8,
-          bottom: 8,
-          display: "flex",
-          gap: 6,
+          left,
+          top: top + (1 - enter) * 300,
+          width: W,
+          height: H,
+          background: "#c0c0c0",
+          border: "3px outset #e8e8e8",
+          boxShadow: "0 40px 110px rgba(0,0,0,0.6)",
+          opacity: enter,
+          overflow: "hidden",
+          fontFamily: "'MS Sans Serif', Tahoma, Arial, sans-serif",
         }}
       >
         <div
-          style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}
+          style={{
+            height: 40,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "0 12px",
+            color: "#fff",
+            fontSize: 20,
+            fontWeight: 700,
+            background: "linear-gradient(90deg,#000080,#1084d0)",
+          }}
         >
-          <div
-            style={{
-              flex: 1,
-              background: "#000",
-              border: "2px inset #e0e0e0",
-              padding: "20px 24px",
-              fontFamily: MONO,
-              fontSize: 30,
-              lineHeight: 1.45,
-              color: "#c8c8c8",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "flex-end",
-              gap: 14,
-            }}
-          >
-            {/* Earlier lines as dim bars: nobody else's words or names are invented. */}
-            {[420, 760, 300, 620].map((w, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  gap: 16,
-                  alignItems: "center",
-                  opacity: 0.6,
-                }}
-              >
-                <div
-                  style={{
-                    width: 120 + ((i * 37) % 60),
-                    height: 14,
-                    background: "#3a6a8a",
-                  }}
-                />
-                <div style={{ width: w, height: 14, background: "#3a3a3a" }} />
-              </div>
-            ))}
-            <div style={{ opacity: arrive, minHeight: 44 }}>
-              <span style={{ color: "#ffb347" }}>{`<${name}> `}</span>
-              <ReadWords
-                words={words}
-                lit={lit}
-                on={{ color: "#ffffff" }}
-                off={{ color: "#7c7c7c" }}
-              />
-            </div>
-          </div>
-          <div
-            style={{
-              height: 46,
-              background: "#fff",
-              border: "2px inset #e0e0e0",
-              display: "flex",
-              alignItems: "center",
-              padding: "0 12px",
-              fontFamily: MONO,
-              fontSize: 26,
-            }}
-          >
-            <span
-              style={{ background: frame % 20 < 10 ? "#111" : "transparent" }}
-            >
-              {" "}
-            </span>
-          </div>
+          <PulseMark size={24} colour="#fff" />
+          Pulse Relay
         </div>
-        {/* The nick list: the speaker, then bars. */}
         <div
           style={{
-            width: 300,
-            background: "#fff",
-            border: "2px inset #e0e0e0",
-            padding: "14px 14px",
-            fontSize: 24,
+            height: 32,
+            display: "flex",
+            gap: 22,
+            alignItems: "center",
+            padding: "0 14px",
+            fontSize: 18,
+          }}
+        >
+          {["File", "View", "Commands", "Window", "Help"].map((m) => (
+            <span key={m}>{m}</span>
+          ))}
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            top: 78,
+            left: 8,
+            right: 8,
+            bottom: 8,
+            display: "flex",
+            gap: 6,
           }}
         >
           <div
             style={{
-              fontWeight: 700,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
             }}
           >
-            {name}
+            <div
+              style={{
+                flex: 1,
+                background: "#000",
+                border: "2px inset #e0e0e0",
+                padding: "20px 24px",
+                fontFamily: MONO,
+                fontSize: 26,
+                lineHeight: 1.45,
+                color: "#c8c8c8",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "flex-end",
+                gap: 14,
+              }}
+            >
+              {/* Earlier lines as dim bars: nobody else's words or names are invented. */}
+              {[420, 760, 300, 620].map((w, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    gap: 16,
+                    alignItems: "center",
+                    opacity: 0.6,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 120 + ((i * 37) % 60),
+                      height: 14,
+                      background: "#3a6a8a",
+                    }}
+                  />
+                  <div
+                    style={{ width: w, height: 14, background: "#3a3a3a" }}
+                  />
+                </div>
+              ))}
+              <div style={{ opacity: arrive, minHeight: 44 }}>
+                <span style={{ color: "#ffb347" }}>{`<${name}> `}</span>
+                <ReadWords
+                  words={words}
+                  lit={lit}
+                  on={{ color: "#ffffff" }}
+                  off={{ color: "#7c7c7c" }}
+                />
+              </div>
+            </div>
+            <div
+              style={{
+                height: 46,
+                background: "#fff",
+                border: "2px inset #e0e0e0",
+                display: "flex",
+                alignItems: "center",
+                padding: "0 12px",
+                fontFamily: MONO,
+                fontSize: 26,
+              }}
+            >
+              <span
+                style={{ background: frame % 20 < 10 ? "#111" : "transparent" }}
+              >
+                {" "}
+              </span>
+            </div>
           </div>
-          <div style={{ marginTop: 16 }}>
-            <Bars
-              widths={[180, 140, 210, 120, 170, 150]}
-              height={13}
-              gap={22}
-              colour="#d0d0d0"
-              radius={0}
-            />
+          {/* The nick list: the speaker, then bars. */}
+          <div
+            style={{
+              width: 300,
+              background: "#fff",
+              border: "2px inset #e0e0e0",
+              padding: "14px 14px",
+              fontSize: 24,
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {name}
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <Bars
+                widths={[180, 140, 210, 120, 170, 150]}
+                height={13}
+                gap={22}
+                colour="#d0d0d0"
+                radius={0}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -262,13 +283,18 @@ const RelayLook: React.FC<LookProps> = ({
   );
 };
 
-/** 1998-2008: the Pulse Messenger buddy list and a conversation window. Grey bevels to 2002, glossy blue after. */
+/**
+ * 1998-2008: the Pulse Messenger buddy list and a conversation window. Grey bevels to 2002, glossy blue after.
+ * Once the message arrives the camera pushes in 1.5x on the conversation pane, so its 23-28 px type reads at
+ * 35-42 px with the toolbar, the input box and the edge of the buddy list still in view.
+ */
 const MessengerLook: React.FC<LookProps> = ({
   frame,
   enter,
   typing,
   arrive,
   read,
+  zoom,
   quote,
   words,
   credit,
@@ -281,10 +307,12 @@ const MessengerLook: React.FC<LookProps> = ({
     ? "Tahoma, 'Segoe UI', Verdana, sans-serif"
     : "'MS Sans Serif', Tahoma, Arial, sans-serif";
   const size = sizeByLength(quote.length, [
-    [100, 36],
-    [180, 32],
-    [999, 29],
+    [100, 28],
+    [180, 25],
+    [999, 23],
   ]);
+  // The conversation window's message pane: 12 px in from its sides, under the 120 px title and toolbar.
+  const focus = { left: 647, top: 190, width: 1036, height: 524 };
   const frameStyle = (
     w: number,
     h: number,
@@ -351,7 +379,7 @@ const MessengerLook: React.FC<LookProps> = ({
     config: { damping: 18, stiffness: 120, mass: 0.9 },
   });
   return (
-    <>
+    <div style={pushIn(focus, 1.5, zoom)}>
       {/* The buddy list: the speaker online, bars for anyone else. */}
       <div style={frameStyle(380, 820, 225, 80, enter)}>
         {title("Pulse Messenger")}
@@ -593,7 +621,7 @@ const MessengerLook: React.FC<LookProps> = ({
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 
@@ -915,23 +943,39 @@ const BODY_BY_GEN: Record<
   edge: { side: 12, top: 12, bottom: 12, radius: 66, screen: 54, status: 52 },
 };
 
-/** 2009 on, for texts and DMs: a Pulse OS phone, the speaker's thread, a typing bubble and then the message. */
+/**
+ * 2009 on, for texts and DMs: a Pulse OS phone, the speaker's thread, a typing bubble and then the message. As
+ * the bubble lands the camera pushes in on the thread, from the speaker's name down to the message box: 1.7x
+ * on the classic and slim phones, as far as fits on the taller edge-to-edge screen (1.4x), and the bubble's
+ * type is raised so it reads at 40 px or more either way, with the bezels and the message box still in view.
+ */
 const PhoneLook: React.FC<LookProps> = ({
   frame,
   enter,
   typing,
   arrive,
   read,
+  zoom,
   quote,
   words,
   credit,
   y,
   variant,
 }) => {
-  const W = 520;
-  const H = 900;
+  const W = 500;
+  const H = 820;
+  const left = 960 - W / 2;
+  const top = 540 - H / 2;
   const { gen } = phoneLook(Math.max(y ?? 2016, 2009), variant);
   const b = BODY_BY_GEN[gen];
+  // The thread from its header (status bar and name row) down to the 81 px message box.
+  const pane = {
+    left: left + b.side,
+    top: top + b.top,
+    width: W - b.side * 2,
+    height: H - b.top - b.bottom - 81,
+  };
+  const push = Math.min(1.7, 1000 / pane.height);
   const dark = variant % 2 === 1;
   const classic = gen === "classic";
   const C = dark
@@ -951,11 +995,15 @@ const PhoneLook: React.FC<LookProps> = ({
         bubble: "#e9e9ee",
         line: "#e2e2e6",
       };
-  const size = sizeByLength(quote.length, [
-    [70, 34],
-    [150, 30],
-    [999, 26],
-  ]);
+  // The bubble's type: by length, but never under 40 px once the camera has pushed in.
+  const size = Math.max(
+    Math.ceil(40 / push),
+    sizeByLength(quote.length, [
+      [70, 30],
+      [150, 28],
+      [999, 27],
+    ]),
+  );
   const lit = litCount(words.length, read);
   const tile = ["#e0602a", "#3c6fd8", "#7b55c9", "#23926d"][variant % 4]!;
   const name = displayName(credit.speaker);
@@ -970,275 +1018,277 @@ const PhoneLook: React.FC<LookProps> = ({
     color: C.ink,
   };
   return (
-    <div
-      style={{
-        position: "absolute",
-        left: 960 - W / 2,
-        top: 60 + (1 - enter) * 360,
-        width: W,
-        height: H,
-        borderRadius: b.radius,
-        background: classic
-          ? "linear-gradient(90deg,#1a1a1e,#2c2c32 50%,#1a1a1e)"
-          : "#0d0d10",
-        boxShadow: `0 40px 120px rgba(0,0,0,0.65), inset 0 0 0 ${classic ? 5 : 3}px ${classic ? "#8a8d94" : "#2a2a30"}`,
-        transform: `rotate(${(variant % 2 ? 1 : -1) * 1.6 * (1 - enter)}deg)`,
-        opacity: Math.min(1, enter * 1.5),
-      }}
-    >
-      {gen !== "edge" && (
-        <>
-          <div
-            style={{
-              position: "absolute",
-              left: W / 2 - 44,
-              top: b.top / 2 - 5,
-              width: 88,
-              height: 10,
-              borderRadius: 5,
-              background: "#3a3a40",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              left: W / 2 - 32,
-              top: H - b.bottom / 2 - 32,
-              width: 64,
-              height: 64,
-              borderRadius: "50%",
-              background: "#141418",
-              boxShadow: "inset 0 0 0 3px #3e3e46",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <PulseMark size={30} colour="#55565e" />
-          </div>
-        </>
-      )}
+    <div style={pushIn(pane, push, zoom)}>
       <div
         style={{
           position: "absolute",
-          left: b.side,
-          top: b.top,
-          right: b.side,
-          bottom: b.bottom,
-          borderRadius: b.screen,
-          overflow: "hidden",
-          background: C.screen,
-          fontFamily: BODY,
-          display: "flex",
-          flexDirection: "column",
+          left,
+          top: top + (1 - enter) * 360,
+          width: W,
+          height: H,
+          borderRadius: b.radius,
+          background: classic
+            ? "linear-gradient(90deg,#1a1a1e,#2c2c32 50%,#1a1a1e)"
+            : "#0d0d10",
+          boxShadow: `0 40px 120px rgba(0,0,0,0.65), inset 0 0 0 ${classic ? 5 : 3}px ${classic ? "#8a8d94" : "#2a2a30"}`,
+          transform: `rotate(${(variant % 2 ? 1 : -1) * 1.6 * (1 - enter)}deg)`,
+          opacity: Math.min(1, enter * 1.5),
         }}
       >
-        {/* Status bar and the thread's header: back, the speaker's initials and name. */}
-        <div
-          style={{
-            background: C.head,
-            borderBottom: `1px solid ${C.line}`,
-            paddingTop: b.status,
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: 0,
-              height: b.status,
-              display: "flex",
-              alignItems: gen === "edge" ? "flex-end" : "center",
-              padding: gen === "edge" ? "0 30px 4px" : "0 14px",
-              fontSize: 18,
-              fontWeight: 700,
-              color: C.ink,
-            }}
-          >
-            9:41
-            <span
+        {gen !== "edge" && (
+          <>
+            <div
               style={{
-                marginLeft: "auto",
-                display: "flex",
-                gap: 6,
-                alignItems: "flex-end",
+                position: "absolute",
+                left: W / 2 - 44,
+                top: b.top / 2 - 5,
+                width: 88,
+                height: 10,
+                borderRadius: 5,
+                background: "#3a3a40",
               }}
-            >
-              {[0, 1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  style={{
-                    width: 5,
-                    height: 5 + i * 4,
-                    borderRadius: 1,
-                    background: C.ink,
-                  }}
-                />
-              ))}
-              <div
-                style={{
-                  width: 30,
-                  height: 14,
-                  marginLeft: 6,
-                  borderRadius: 4,
-                  border: `2px solid ${C.ink}`,
-                  padding: 2,
-                  boxSizing: "border-box",
-                }}
-              >
-                <div
-                  style={{
-                    width: "70%",
-                    height: "100%",
-                    background: C.ink,
-                    borderRadius: 1,
-                  }}
-                />
-              </div>
-            </span>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-              padding: "14px 18px 16px",
-            }}
-          >
-            <Icon
-              name="back"
-              size={30}
-              colour={classic && !dark ? "#2a4f9a" : COLOUR.amber}
-              width={2.8}
             />
-            <Avatar speaker={credit.speaker} size={58} colour={tile} />
             <div
               style={{
-                fontSize: 26,
-                fontWeight: 800,
-                color: C.ink,
-                lineHeight: 1.1,
-                overflow: "hidden",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
+                position: "absolute",
+                left: W / 2 - 32,
+                top: H - b.bottom / 2 - 32,
+                width: 64,
+                height: 64,
+                borderRadius: "50%",
+                background: "#141418",
+                boxShadow: "inset 0 0 0 3px #3e3e46",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              {name}
+              <PulseMark size={30} colour="#55565e" />
             </div>
-          </div>
-        </div>
-        <div
-          style={{
-            flex: 1,
-            padding: "18px 18px",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "flex-end",
-            gap: 14,
-            minHeight: 0,
-            overflow: "hidden",
-          }}
-        >
-          {credit.year && (
-            <div
-              style={{
-                alignSelf: "center",
-                fontSize: 20,
-                fontWeight: 600,
-                color: C.sub,
-                marginBottom: 6,
-              }}
-            >
-              {credit.year}
-            </div>
-          )}
-          {typing > 0 && typing < 1 && (
-            <div
-              style={{
-                ...bubble,
-                padding: "12px 22px",
-                transform: `scale(${Math.min(1, typing * 6)})`,
-                transformOrigin: "0 100%",
-              }}
-            >
-              <TypingDots frame={frame} colour={C.sub} size={12} />
-            </div>
-          )}
-          {arrive > 0 && (
-            <div
-              style={{
-                ...bubble,
-                fontSize: size,
-                lineHeight: 1.32,
-                fontWeight: 500,
-                transform: `scale(${0.6 + 0.4 * arrive})`,
-                transformOrigin: "0 100%",
-                opacity: Math.min(1, arrive * 2),
-              }}
-            >
-              <ReadWords
-                words={words}
-                lit={lit}
-                on={{ opacity: 1 }}
-                off={{ opacity: 0.38 }}
-              />
-            </div>
-          )}
-        </div>
-        <div
-          style={{
-            padding: "12px 16px 18px",
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            borderTop: `1px solid ${C.line}`,
-          }}
-        >
-          <div
-            style={{
-              flex: 1,
-              height: 50,
-              borderRadius: 25,
-              border: `2px solid ${C.line}`,
-              display: "flex",
-              alignItems: "center",
-              padding: "0 18px",
-              fontSize: 22,
-              color: C.sub,
-            }}
-          >
-            Message
-          </div>
-          <div
-            style={{
-              width: 50,
-              height: 50,
-              borderRadius: "50%",
-              background: COLOUR.amber,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Icon name="send" size={26} colour="#fff" />
-          </div>
-        </div>
-      </div>
-      {gen === "edge" && (
+          </>
+        )}
         <div
           style={{
             position: "absolute",
-            left: W / 2 - 12,
-            top: b.top + 16,
-            width: 24,
-            height: 24,
-            borderRadius: "50%",
-            background: "#050507",
+            left: b.side,
+            top: b.top,
+            right: b.side,
+            bottom: b.bottom,
+            borderRadius: b.screen,
+            overflow: "hidden",
+            background: C.screen,
+            fontFamily: BODY,
+            display: "flex",
+            flexDirection: "column",
           }}
-        />
-      )}
+        >
+          {/* Status bar and the thread's header: back, the speaker's initials and name. */}
+          <div
+            style={{
+              background: C.head,
+              borderBottom: `1px solid ${C.line}`,
+              paddingTop: b.status,
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: 0,
+                height: b.status,
+                display: "flex",
+                alignItems: gen === "edge" ? "flex-end" : "center",
+                padding: gen === "edge" ? "0 30px 4px" : "0 14px",
+                fontSize: 18,
+                fontWeight: 700,
+                color: C.ink,
+              }}
+            >
+              9:41
+              <span
+                style={{
+                  marginLeft: "auto",
+                  display: "flex",
+                  gap: 6,
+                  alignItems: "flex-end",
+                }}
+              >
+                {[0, 1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: 5,
+                      height: 5 + i * 4,
+                      borderRadius: 1,
+                      background: C.ink,
+                    }}
+                  />
+                ))}
+                <div
+                  style={{
+                    width: 30,
+                    height: 14,
+                    marginLeft: 6,
+                    borderRadius: 4,
+                    border: `2px solid ${C.ink}`,
+                    padding: 2,
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "70%",
+                      height: "100%",
+                      background: C.ink,
+                      borderRadius: 1,
+                    }}
+                  />
+                </div>
+              </span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                padding: "14px 18px 16px",
+              }}
+            >
+              <Icon
+                name="back"
+                size={30}
+                colour={classic && !dark ? "#2a4f9a" : COLOUR.amber}
+                width={2.8}
+              />
+              <Avatar speaker={credit.speaker} size={58} colour={tile} />
+              <div
+                style={{
+                  fontSize: 26,
+                  fontWeight: 800,
+                  color: C.ink,
+                  lineHeight: 1.1,
+                  overflow: "hidden",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                }}
+              >
+                {name}
+              </div>
+            </div>
+          </div>
+          <div
+            style={{
+              flex: 1,
+              padding: "18px 18px",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "flex-end",
+              gap: 14,
+              minHeight: 0,
+              overflow: "hidden",
+            }}
+          >
+            {credit.year && (
+              <div
+                style={{
+                  alignSelf: "center",
+                  fontSize: 20,
+                  fontWeight: 600,
+                  color: C.sub,
+                  marginBottom: 6,
+                }}
+              >
+                {credit.year}
+              </div>
+            )}
+            {typing > 0 && typing < 1 && (
+              <div
+                style={{
+                  ...bubble,
+                  padding: "12px 22px",
+                  transform: `scale(${Math.min(1, typing * 6)})`,
+                  transformOrigin: "0 100%",
+                }}
+              >
+                <TypingDots frame={frame} colour={C.sub} size={12} />
+              </div>
+            )}
+            {arrive > 0 && (
+              <div
+                style={{
+                  ...bubble,
+                  fontSize: size,
+                  lineHeight: 1.32,
+                  fontWeight: 500,
+                  transform: `scale(${0.6 + 0.4 * arrive})`,
+                  transformOrigin: "0 100%",
+                  opacity: Math.min(1, arrive * 2),
+                }}
+              >
+                <ReadWords
+                  words={words}
+                  lit={lit}
+                  on={{ opacity: 1 }}
+                  off={{ opacity: 0.38 }}
+                />
+              </div>
+            )}
+          </div>
+          <div
+            style={{
+              padding: "12px 16px 18px",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              borderTop: `1px solid ${C.line}`,
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                height: 50,
+                borderRadius: 25,
+                border: `2px solid ${C.line}`,
+                display: "flex",
+                alignItems: "center",
+                padding: "0 18px",
+                fontSize: 22,
+                color: C.sub,
+              }}
+            >
+              Message
+            </div>
+            <div
+              style={{
+                width: 50,
+                height: 50,
+                borderRadius: "50%",
+                background: COLOUR.amber,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Icon name="send" size={26} colour="#fff" />
+            </div>
+          </div>
+        </div>
+        {gen === "edge" && (
+          <div
+            style={{
+              position: "absolute",
+              left: W / 2 - 12,
+              top: b.top + 16,
+              width: 24,
+              height: 24,
+              borderRadius: "50%",
+              background: "#050507",
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 };
@@ -1273,12 +1323,15 @@ export const PulseChat: React.FC<GfxProps> = ({
   const readFrom = 52;
   const readTo = Math.max(readFrom + 30, showFor - 24);
   const read = interpolate(frame, [readFrom, readTo], [0, 1], clamp);
+  // The relay, messenger and phone looks push in on the message as it arrives (44-64).
+  const zoom = pushInAt(frame, 44);
   const props: LookProps = {
     frame,
     enter,
     typing,
     arrive,
     read,
+    zoom,
     quote,
     words,
     credit,

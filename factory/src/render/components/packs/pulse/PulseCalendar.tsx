@@ -104,10 +104,11 @@ function themeOf(screen: ScreenBox): Theme {
 }
 
 /** Where everything sits on the app's screen, so the camera, the ring and the chip agree. */
-function layoutOf(screen: ScreenBox, rows: number) {
+function layoutOf(screen: ScreenBox, rows: number, chipInBar: boolean) {
   const pad = 14;
   const cellW = (screen.w - pad * 2) / 7;
-  const barH = screen.status + 132;
+  // A month with no day keeps its event chip in the app bar, under the title, so the bar is taller.
+  const barH = screen.status + (chipInBar ? 190 : 132);
   const weekTop = barH + 12;
   const gridTop = weekTop + 40;
   const cellH = rows >= 6 ? 70 : 76;
@@ -132,7 +133,7 @@ export const PulseCalendar: React.FC<GfxProps> = ({
   const screen = screenOf(gen, skin);
   const t = themeOf(screen);
   const grid = monthGrid(date.year, date.month);
-  const L = layoutOf(screen, grid.rows);
+  const L = layoutOf(screen, grid.rows, date.day === undefined && !!what);
   const monthName = MONTHS[date.month]!;
 
   // The beats: rise 0-18, tap Calendar 24, the app opens 32-48, push in 48-72, the day is ringed (or the
@@ -181,18 +182,22 @@ export const PulseCalendar: React.FC<GfxProps> = ({
       ? above
         ? cy - 30 - 14 - chipH
         : cy + 30 + 14
-      : L.barH - 8;
+      : screen.status + 122;
   const ringR = 27;
   const ringC = 2 * Math.PI * ringR;
 
-  // The camera pushes in about the middle of the month and its agenda row.
-  const scale = 1 + 0.3 * zoom;
-  const focus = screen.top + (screen.status + L.agendaTop + 96) / 2;
+  // The camera pushes in x1.42 (as PhoneStory does), or as far as keeps the screen from its status bar to the
+  // agenda row inside the frame, about that region's middle; a day's number then reads at 37-40 px, the chip
+  // at 34-37.
+  const region = L.agendaTop + 96;
+  const push = Math.min(1.42, 1040 / region);
+  const scale = 1 + (push - 1) * zoom;
+  const focus = screen.top + region / 2;
   const lift = -(focus - HANDSET_H / 2);
 
   const appInk = open > 0.5;
   return (
-    <Stage dim={dim} bg={bg} variant={variant} blur={14}>
+    <Stage dim={dim} bg={bg ?? "contour"} variant={variant} blur={14}>
       <Handset
         gen={gen}
         skin={skin}

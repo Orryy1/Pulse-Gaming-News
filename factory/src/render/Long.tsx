@@ -2318,7 +2318,21 @@ export const Long: React.FC<LongProps> = (props) => {
   const bedAt = (f: number) =>
     beds.find((b) => f >= b.from && f < b.to)?.src ?? props.musicSrc;
   // Each sentence's graphic, caption or picture lands a beat before the narrator names it and holds until
-  // the next sentence's lands (2.5 s at least, so it can be read), instead of riding the whole sentence.
+  // the next sentence's lands, and for as long as it takes to read (owner, 30 Oct 2026: cards and captions
+  // vanished before they could be taken in): 2.5 s plus 0.3 s a word and 0.5 s a row, up to 7 s, as long
+  // as nothing else is drawn for that entry in the meantime.
+  const drawn = (entry: number, moment: number): boolean => {
+    const r = props.moments?.[entry]?.[moment];
+    return !!r && (usefulGraphic(r.graphic) || (!!r.emphasis && usefulEmphasis(r.emphasis)));
+  };
+  const readSeconds = (entry: number, moment: number): number => {
+    const r = props.moments?.[entry]?.[moment];
+    if (!r) return 2.5;
+    const g = usefulGraphic(r.graphic) ? r.graphic : undefined;
+    const text = [g?.primary, g?.secondary, ...(g?.items ?? []), r.emphasis].filter(Boolean).join(" ");
+    const words = text.split(/\s+/).filter(Boolean).length;
+    return Math.min(7, 2.5 + 0.3 * words + 0.5 * (g?.items?.length ?? 0));
+  };
   const spanOf = (
     k: number,
   ): { from: number; len: number; anchored: boolean } => {
@@ -2333,9 +2347,19 @@ export const Long: React.FC<LongProps> = (props) => {
       next && next.entry === w.entry
         ? Math.round((next.at - 0.15) * fps)
         : Math.round(w.end * fps);
+    // The reading time may run past the next sentence, but never into the next thing drawn for this entry.
+    let stop = Math.round(w.end * fps);
+    for (let j = k + 1; windows[j] && windows[j]!.entry === w.entry; j++) {
+      if (drawn(windows[j]!.entry, windows[j]!.moment)) {
+        stop = Math.round((windows[j]!.at - 0.3) * fps);
+        break;
+      }
+      stop = Math.round(windows[j]!.end * fps);
+    }
+    const read = Math.min(stop, from + Math.round(readSeconds(w.entry, w.moment) * fps));
     return {
       from,
-      len: Math.max(1, Math.max(until, from + Math.round(2.5 * fps)) - from),
+      len: Math.max(1, Math.max(until, read, from + Math.round(2.5 * fps)) - from),
       anchored,
     };
   };

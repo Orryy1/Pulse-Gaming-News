@@ -278,3 +278,54 @@ export function turnSections<S extends { from: number; to: number }>(
   }
   return out;
 }
+
+// ---------------------------------------------------------------- the bed under the voice (31 Oct 2026)
+// The music sat at 7% under speech and jumped to 22% within a fifth of a second in every pause, so it pumped
+// up and down between sentences (+10 dB) and the voice seemed to change level line to line (owner: "the
+// voice seems to change from sentence to sentence ... in volume"). Now it stays under the voice, rises only
+// in a pause long enough to carry, by about 4 dB, slowly, and is back down before the next word starts.
+
+/** A pause shorter than this is part of the delivery: the music stays down. */
+export const BED_PAUSE_SECONDS = 0.9;
+/** Seconds the music takes to rise in a long pause. */
+export const BED_RISE_SECONDS = 0.8;
+/** Seconds before the next word that the music starts to come back down. */
+export const BED_FALL_SECONDS = 0.3;
+
+/**
+ * The bed's level on every frame (pure): `under` while the voice speaks or in a short pause, easing up to
+ * `pause` over BED_RISE_SECONDS in a pause of BED_PAUSE_SECONDS or more, and down again to reach `under`
+ * as the next word starts. `speaking[f]` is 1 on frames with a word (with its lead-in and tail).
+ */
+export function bedEnvelope(
+  speaking: Uint8Array,
+  fps: number,
+  under: number,
+  pause: number,
+): Float32Array {
+  const n = speaking.length;
+  const target = new Float32Array(n).fill(under);
+  const minPause = Math.round(BED_PAUSE_SECONDS * fps);
+  for (let f = 0; f < n; ) {
+    if (speaking[f]) {
+      f++;
+      continue;
+    }
+    let g = f;
+    while (g < n && !speaking[g]) g++;
+    // The silence before the first word and after the last is the intro and outro: the music carries those.
+    if (g - f >= minPause || f === 0 || g === n) target.fill(pause, f, g);
+    f = g;
+  }
+  const out = new Float32Array(n);
+  const up = (pause - under) / Math.max(1, BED_RISE_SECONDS * fps);
+  const down = (pause - under) / Math.max(1, BED_FALL_SECONDS * fps);
+  let level = target[0] ?? under;
+  for (let f = 0; f < n; f++) {
+    level = target[f]! > level ? Math.min(target[f]!, level + up) : target[f]!;
+    out[f] = level;
+  }
+  // Back down before the word, not on it: no frame may sit higher than a straight fall to the next low frame.
+  for (let f = n - 2; f >= 0; f--) out[f] = Math.min(out[f]!, out[f + 1]! + down);
+  return out;
+}

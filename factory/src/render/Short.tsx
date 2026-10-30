@@ -1,3 +1,4 @@
+import { bedEnvelope } from "./musicplan.ts";
 import React, { useMemo } from "react";
 import { inKey, UNDER_VOICE } from "./soundscape.ts";
 import {
@@ -391,15 +392,17 @@ export const Short: React.FC<ShortProps> = (props) => {
     }
     return on;
   }, [words, fps, durationInFrames]);
+  // The bed under the voice (src/render/musicplan.ts bedEnvelope): no pumping between sentences.
+  const bedLevels = useMemo(
+    () => bedEnvelope(speaking, fps, 0.085, 0.13),
+    [speaking, fps],
+  );
   const musicVolume = (f: number) => {
     const fadeIn = interpolate(f, [0, 12], [0, 1], {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     });
-    let talk = 0;
-    for (let k = -2; k <= 2; k++)
-      talk += speaking[Math.min(durationInFrames, Math.max(0, f + k))] ?? 0;
-    return fadeIn * interpolate(talk / 5, [0, 1], [0.2, 0.085]);
+    return fadeIn * (bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.085);
   };
 
   return (

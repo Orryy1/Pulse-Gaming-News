@@ -73,6 +73,7 @@ import {
   beatCuesFrom,
   beatLevel,
   dropLevel,
+  bedEnvelope,
   dropOuts,
   musicSections,
   nearBeat,
@@ -2201,6 +2202,12 @@ export const Long: React.FC<LongProps> = (props) => {
     }
     return on;
   }, [words, fps, durationInFrames]);
+  // The bed under the voice (src/render/musicplan.ts bedEnvelope): steady through the delivery, up by about
+  // 4 dB only in a pause long enough to carry.
+  const bedLevels = useMemo(
+    () => bedEnvelope(speaking, fps, 0.07, 0.11),
+    [speaking, fps],
+  );
   const musicVolume = (f: number) => {
     const fadeIn = interpolate(f, [0, 24], [0, 1], {
       extrapolateLeft: "clamp",
@@ -2212,9 +2219,6 @@ export const Long: React.FC<LongProps> = (props) => {
       [1, 0],
       { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
     );
-    let talk = 0;
-    for (let k = -2; k <= 2; k++)
-      talk += speaking[Math.min(durationInFrames, Math.max(0, f + k))] ?? 0;
     // In a documentary's breather the music comes up to carry the pause, easing in and out.
     const lift = Math.max(
       0,
@@ -2233,7 +2237,10 @@ export const Long: React.FC<LongProps> = (props) => {
     return (
       fadeIn *
       fadeOut *
-      Math.max(interpolate(talk / 5, [0, 1], [0.22, 0.07]), 0.42 * lift)
+      Math.max(
+        bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.07,
+        0.42 * lift,
+      )
     );
   };
   // The music changes bed at the first chapter or entry after MUSIC_SECTION_SECONDS on one bed: a 30-minute

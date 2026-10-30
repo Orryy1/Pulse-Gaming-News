@@ -135,3 +135,18 @@ test("a breath folded into the next word's timestamp is still found at a sentenc
   // No punctuation, no boundary: a pause inside a sentence is left to the loudness rule.
   assert.equal(clauseBreaths([{ ...words[0]!, text: "him" }, words[1]!], db, -15).length, 0);
 });
+
+import { bedEnvelope } from "../src/render/musicplan.ts";
+
+test("the bed stays under the voice through short pauses and eases up only in a long one", () => {
+  const fps = 30;
+  // 2 s of words, a 0.4 s pause, 2 s of words, a 2 s pause, 2 s of words.
+  const on = new Uint8Array(253);
+  on.fill(1, 0, 60); on.fill(1, 72, 132); on.fill(1, 192, 252);
+  const env = bedEnvelope(on, fps, 0.07, 0.11);
+  assert.ok(Math.max(...env.slice(60, 72)) <= 0.0701, "a short pause keeps it down");
+  const peak = Math.max(...env.slice(132, 192));
+  assert.ok(peak > 0.1 && peak <= 0.11, `a long pause lifts it: ${peak}`);
+  assert.ok(env[192]! <= 0.0701, "down again by the next word");
+  for (let f = 1; f < env.length; f++) assert.ok(Math.abs(env[f]! - env[f - 1]!) < 0.006, `smooth at ${f}`);
+});

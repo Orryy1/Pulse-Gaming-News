@@ -150,6 +150,12 @@ import { EndCard } from "./components/EndCard.tsx";
 import { coldOpenTiming, endCardTiming } from "./bookends.ts";
 import { SketchShot } from "./components/SketchShot.tsx";
 import { planSketchShots, type SketchDecision } from "./sketchplan.ts";
+import { DisplayShot, PhotoShot } from "./components/PhotoShot.tsx";
+import {
+  planPhotoShots,
+  type DisplayDecision,
+  type PhotoDecision,
+} from "./photoplan.ts";
 
 export interface LongImageProp {
   src: string;
@@ -212,6 +218,8 @@ export type LongProps = {
   eraBeds?: boolean;
   /** Concept sketches animated (src/render/sketchplan.ts); false keeps the static framed print. Default true. */
   sketchAnimation?: boolean;
+  /** Photos and portraits arriving as prints, pins, tape, trays and screens (src/render/photoplan.ts); false keeps the static framed print and the full-bleed screenshot. Default true. */
+  photoTreatments?: boolean;
   durationSeconds: number;
   variant: number;
   renderDate: string;
@@ -1000,6 +1008,10 @@ const Backdrop: React.FC<{
   tints?: Map<number, string>;
   /** Per shot index: how a concept sketch arrives (src/render/sketchplan.ts); absent, the static framed print. */
   sketches?: Map<number, SketchDecision>;
+  /** Per shot index: how a photo or portrait arrives (src/render/photoplan.ts); absent, the static framed print. */
+  photos?: Map<number, PhotoDecision>;
+  /** Per shot index: the display a screenshot plays inside; absent, full-bleed. */
+  displays?: Map<number, DisplayDecision>;
 }> = ({
   plan,
   images,
@@ -1013,6 +1025,8 @@ const Backdrop: React.FC<{
   punches,
   tints,
   sketches,
+  photos,
+  displays,
 }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
@@ -1025,6 +1039,13 @@ const Backdrop: React.FC<{
       const dev = retro?.get(i);
       // A concept sketch's animated arrival (components/SketchShot.tsx) replaces the framed print.
       const sk = img?.kind === "sketch" ? sketches?.get(i) : undefined;
+      // A photo's or portrait's arrival (components/PhotoShot.tsx) replaces the framed print; a screenshot
+      // plays inside the display of its day with its own Still (and Ken Burns move) on the screen.
+      const ph =
+        img && (img.kind === "photo" || img.kind === "portrait")
+          ? photos?.get(i)
+          : undefined;
+      const disp = img?.kind === "screenshot" ? displays?.get(i) : undefined;
       // An old game's dressing: its period look, the hardware it opens on, the tube switching off.
       const dress = (node: React.ReactNode) => {
         let out = node;
@@ -1110,44 +1131,81 @@ const Backdrop: React.FC<{
                         : undefined
                     }
                   />
-                ) : dev
-                  ? dress(
-                      <Still
-                        src={img.src}
-                        aspect={img.aspect}
-                        durationFrames={len + (i > 0 ? xf : 0)}
-                        move={s.move}
-                      />,
-                    )
-                  : dress(
+                ) : ph ? (
+                  <PhotoShot
+                    src={img.src}
+                    aspect={img.aspect}
+                    len={seqLen}
+                    move={s.move}
+                    treatment={ph.treatment}
+                    seed={ph.seed}
+                    kind={img.kind === "portrait" ? "portrait" : "photo"}
+                    caption={img.credit ?? img.label}
+                    year={ph.year}
+                    index={ph.index}
+                    earlier={ph.earlier.flatMap((k) => {
+                      const e = images[k];
+                      return e ? [{ src: e.src, aspect: e.aspect }] : [];
+                    })}
+                  />
+                ) : dev ? (
+                  dress(
+                    <Still
+                      src={img.src}
+                      aspect={img.aspect}
+                      durationFrames={len + (i > 0 ? xf : 0)}
+                      move={s.move}
+                    />,
+                  )
+                ) : disp ? (
+                  dress(
+                    <DisplayShot kind={disp.display} seed={disp.seed}>
                       <Still
                         punchAt={
                           punches?.has(i)
                             ? punches.get(i)! - (i > 0 ? s.start - xf : s.start)
                             : undefined
                         }
-                        print={img.kind === "photo" || img.kind === "sketch"}
-                        tilt={((s.media.index * 37) % 5) - 2}
                         layers={img.layers}
                         dir={i % 2 ? -1 : 1}
-                        focus={
-                          focusFor?.get(i)
-                            ? {
-                                at:
-                                  focusFor.get(i)!.from -
-                                  (i > 0 ? s.start - xf : s.start),
-                                origin: focusFor.get(i)!.origin,
-                                zoom: focusFor.get(i)!.zoom,
-                              }
-                            : undefined
-                        }
                         src={img.src}
                         aspect={img.aspect}
                         durationFrames={len + (i > 0 ? xf : 0)}
                         move={s.move}
-                        fromBlack={i === 0}
-                      />,
-                    )}
+                      />
+                    </DisplayShot>,
+                  )
+                ) : (
+                  dress(
+                    <Still
+                      punchAt={
+                        punches?.has(i)
+                          ? punches.get(i)! - (i > 0 ? s.start - xf : s.start)
+                          : undefined
+                      }
+                      print={img.kind === "photo" || img.kind === "sketch"}
+                      tilt={((s.media.index * 37) % 5) - 2}
+                      layers={img.layers}
+                      dir={i % 2 ? -1 : 1}
+                      focus={
+                        focusFor?.get(i)
+                          ? {
+                              at:
+                                focusFor.get(i)!.from -
+                                (i > 0 ? s.start - xf : s.start),
+                              origin: focusFor.get(i)!.origin,
+                              zoom: focusFor.get(i)!.zoom,
+                            }
+                          : undefined
+                      }
+                      src={img.src}
+                      aspect={img.aspect}
+                      durationFrames={len + (i > 0 ? xf : 0)}
+                      move={s.move}
+                      fromBlack={i === 0}
+                    />,
+                  )
+                )}
               </FadeIn>
               {img.credit ? (
                 <div
@@ -3191,6 +3249,52 @@ export const Long: React.FC<LongProps> = (props) => {
           ),
     [plan, props.images, props.segments, props.sketchAnimation, props.variant],
   );
+  // How each photo and portrait arrives (src/render/photoplan.ts): instant prints, tape, the evidence
+  // board, the darkroom and the rest, by the chapter's year and the photo shots around it; and which
+  // screenshots play inside the display of their day. Shots already dressed (retro hardware, a period look,
+  // a detail zoom) keep that. PHOTO_TREATMENTS=false: the framed print and the full-bleed screenshot.
+  const photoPlan = useMemo(() => {
+    if (props.photoTreatments === false)
+      return {
+        photos: new Map<number, PhotoDecision>(),
+        displays: new Map<number, DisplayDecision>(),
+      };
+    const dressed = new Set<number>([
+      ...retro.keys(),
+      ...periodLooks.keys(),
+      ...focusFor.keys(),
+    ]);
+    const eraOf = (chapter: number) => {
+      const k = props.segments.findIndex(
+        (x, i) =>
+          x.kind === "beat" &&
+          (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
+          entryOf(props.segments, i) === chapter,
+      );
+      const v = k >= 0 ? props.segments[k]!.visual : undefined;
+      return {
+        year: Number(v?.items?.[0]) || undefined,
+        platforms: v?.items?.[1],
+      };
+    };
+    return planPhotoShots({
+      shots: plan.shots,
+      images: props.images,
+      chapterOf: (segment) => entryOf(props.segments, segment) ?? -1,
+      eraOf,
+      dressed,
+      baseSeed: props.variant,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    plan,
+    props.images,
+    props.segments,
+    props.photoTreatments,
+    props.variant,
+    retro,
+    periodLooks,
+  ]);
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
@@ -3207,6 +3311,8 @@ export const Long: React.FC<LongProps> = (props) => {
         powerOff={powerOff}
         punches={punches}
         sketches={sketches}
+        photos={photoPlan.photos}
+        displays={photoPlan.displays}
       />
       {accents.map((a, k) => (
         <Sequence

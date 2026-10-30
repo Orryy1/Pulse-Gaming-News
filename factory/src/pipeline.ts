@@ -6653,6 +6653,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         eraBeds: doc && s.cfg.docSoundBeats,
         // Concept sketches drawn on, stepped, flipped, dissolved or pinned up (src/render/sketchplan.ts).
         sketchAnimation: s.cfg.sketchAnimation,
+    // Photos and portraits as instant prints, tape, pins, trays and screens; screenshots in the display
+    // of their day (src/render/photoplan.ts).
+    photoTreatments: s.cfg.photoTreatments,
   });
   // The graphics check before the render (src/qa/graphicscheck.ts): every graphic and breather as a still
   // from the same composition and props, faulted ones muted, so the full render runs once instead of again
@@ -6716,10 +6719,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           muted: r.faulted.length,
           at: s.now().toISOString(),
         };
-        await s.db.query(
-          `UPDATE episodes SET assets_json = $2 WHERE id = $1`,
-          [ep.id, JSON.stringify(assets)],
-        );
+        await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+          ep.id,
+          JSON.stringify(assets),
+        ]);
         const problems = r.problems.flatMap((p) => p.problems);
         await logEvent(s.db, ep.id, "graphics_prepass", {
           checked: items.length,

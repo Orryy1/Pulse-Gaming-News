@@ -8,10 +8,30 @@ import { LONG_FPS, LONG_WIDTH, LONG_HEIGHT } from "./longplan.ts";
 import { Engage, SAMPLE_ENGAGE } from "./Engage.tsx";
 import { Cutdown, SAMPLE_CUTDOWN, type CutdownProps } from "./Cutdown.tsx";
 import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
-import { ConceptAvatar, ConceptBanner, BroadcastCover } from "./BrandConcepts.tsx";
-import { TextureBackground, type BackgroundKind } from "./components/Backgrounds.tsx";
-import { GfxPreview, SAMPLE_GFX, type GfxPreviewProps } from "./components/packs/Preview.tsx";
-import { SketchPreview, SAMPLE_SKETCH, type SketchPreviewProps } from "./SketchPreview.tsx";
+import {
+  ConceptAvatar,
+  ConceptBanner,
+  BroadcastCover,
+} from "./BrandConcepts.tsx";
+import {
+  TextureBackground,
+  type BackgroundKind,
+} from "./components/Backgrounds.tsx";
+import {
+  GfxPreview,
+  SAMPLE_GFX,
+  type GfxPreviewProps,
+} from "./components/packs/Preview.tsx";
+import {
+  SketchPreview,
+  SAMPLE_SKETCH,
+  type SketchPreviewProps,
+} from "./SketchPreview.tsx";
+import {
+  PhotoPreview,
+  SAMPLE_PHOTO,
+  type PhotoPreviewProps,
+} from "./PhotoPreview.tsx";
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -66,7 +86,10 @@ export const RemotionRoot: React.FC = () => (
       durationInFrames={Math.ceil(SAMPLE_CUTDOWN.durationSeconds * FPS)}
       defaultProps={SAMPLE_CUTDOWN}
       calculateMetadata={({ props }: { props: CutdownProps }) => ({
-        durationInFrames: Math.max(FPS * 5, Math.ceil(props.durationSeconds * FPS)),
+        durationInFrames: Math.max(
+          FPS * 5,
+          Math.ceil(props.durationSeconds * FPS),
+        ),
       })}
     />
     {/* One graphic style on its own, for previews (src/render/components/packs). */}
@@ -82,6 +105,22 @@ export const RemotionRoot: React.FC = () => (
         durationInFrames: Math.ceil(props.durationSeconds * LONG_FPS),
       })}
     />
+    {/* One photo treatment or screenshot display on its own, for previews (src/render/PhotoPreview.tsx). */}
+    <Composition
+      id="PulsePhoto"
+      component={PhotoPreview}
+      fps={LONG_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={Math.ceil(SAMPLE_PHOTO.durationSeconds * LONG_FPS)}
+      defaultProps={SAMPLE_PHOTO}
+      calculateMetadata={({ props }: { props: PhotoPreviewProps }) => ({
+        durationInFrames: Math.max(
+          30,
+          Math.ceil(props.durationSeconds * LONG_FPS),
+        ),
+      })}
+    />
     {/* One concept-sketch treatment on its own, for previews (src/render/SketchPreview.tsx). */}
     <Composition
       id="PulseSketch"
@@ -92,13 +131,21 @@ export const RemotionRoot: React.FC = () => (
       durationInFrames={Math.ceil(SAMPLE_SKETCH.durationSeconds * LONG_FPS)}
       defaultProps={SAMPLE_SKETCH}
       calculateMetadata={({ props }: { props: SketchPreviewProps }) => ({
-        durationInFrames: Math.max(30, Math.ceil(props.durationSeconds * LONG_FPS)),
+        durationInFrames: Math.max(
+          30,
+          Math.ceil(props.durationSeconds * LONG_FPS),
+        ),
       })}
     />
     {/* The explainer backgrounds on their own, for previews (src/render/components/Backgrounds.tsx). */}
     <Composition
       id="PulseBackground"
-      component={TextureBackground as React.FC<{ kind: BackgroundKind; variant?: number }>}
+      component={
+        TextureBackground as React.FC<{
+          kind: BackgroundKind;
+          variant?: number;
+        }>
+      }
       fps={LONG_FPS}
       width={LONG_WIDTH}
       height={LONG_HEIGHT}
@@ -119,10 +166,45 @@ export const RemotionRoot: React.FC = () => (
       defaultProps={SAMPLE_THUMB}
     />
     {/* Redesign directions for the owner to choose from (src/render/BrandConcepts.tsx). */}
-    <Still id="FacebookCover" component={BroadcastCover} width={1640} height={624} defaultProps={{ width: 1640, height: 624, contentWidth: 1180 }} />
-    <Still id="XHeader" component={BroadcastCover} width={1500} height={500} defaultProps={{ width: 1500, height: 500, contentWidth: 1000, offsetX: 140 }} />
-    <Still id="ConceptAvatar" component={ConceptAvatar} width={800} height={800} defaultProps={{ concept: "signal" as const }} />
-    <Still id="ConceptBanner" component={ConceptBanner} width={2560} height={1440} defaultProps={{ concept: "signal" as const }} />
-    <Still id="PulseEngage" component={Engage} width={1080} height={1350} defaultProps={SAMPLE_ENGAGE} />
+    <Still
+      id="FacebookCover"
+      component={BroadcastCover}
+      width={1640}
+      height={624}
+      defaultProps={{ width: 1640, height: 624, contentWidth: 1180 }}
+    />
+    <Still
+      id="XHeader"
+      component={BroadcastCover}
+      width={1500}
+      height={500}
+      defaultProps={{
+        width: 1500,
+        height: 500,
+        contentWidth: 1000,
+        offsetX: 140,
+      }}
+    />
+    <Still
+      id="ConceptAvatar"
+      component={ConceptAvatar}
+      width={800}
+      height={800}
+      defaultProps={{ concept: "signal" as const }}
+    />
+    <Still
+      id="ConceptBanner"
+      component={ConceptBanner}
+      width={2560}
+      height={1440}
+      defaultProps={{ concept: "signal" as const }}
+    />
+    <Still
+      id="PulseEngage"
+      component={Engage}
+      width={1080}
+      height={1350}
+      defaultProps={SAMPLE_ENGAGE}
+    />
   </>
 );

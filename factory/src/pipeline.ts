@@ -46,6 +46,10 @@ import {
 import { trailerMatchesGame } from "./assets/commons.ts";
 import { captureHold } from "./capture.ts";
 import { rankStills } from "./assets/stillscore.ts";
+import { coverageShare, fillSentencePictures } from "./assets/fill.ts";
+
+/** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
+export const MEDIA_RICH_TARGET = 0.85;
 import { makeParallax, LAYERED_KINDS } from "./render/parallax.ts";
 import { annotationLabel, locate } from "./assets/annotate.ts";
 import { unloadLocalVision } from "./assets/localvision.ts";
@@ -5880,6 +5884,34 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       JSON.stringify(assets),
     ]);
   }
+  // Every sentence still without a picture or graphic of its own is searched for on its own, once per video
+  // (src/assets/fill.ts; owner, 30 Oct 2026: "all videos must be fully media rich all the way through").
+  if (!assets.filled && assets.images && script.entries?.some((e) => e.moments?.length)) {
+    const chapters = [...script.entries]
+      .sort((a, b) => b.rank - a.rank)
+      .map((e, i) => ({
+        entry: i,
+        game: e.game_title,
+        year: e.year,
+        moments: e.moments ?? [],
+        sentences: chapterSentences(script, i),
+      }));
+    assets.clips ??= [];
+    const r = await fillSentencePictures(
+      s,
+      dir,
+      chapters,
+      assets.images,
+      assets.clips,
+      script.game_title || script.headline,
+      scopeOf(script),
+    );
+    assets.filled = { before: r.before, after: r.after };
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(assets),
+    ]);
+  }
   // Media are kept; everything from here on works this PC, so it waits for a gap between the Shorts.
   if ((await longRenderGap(s, ep)) === undefined) return;
   const duration = (assets.durationSeconds ?? 300) + LONG_TAIL_SECONDS;
@@ -6030,17 +6062,24 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       });
   }
   assets.longPlan = plan;
-  // How much of the narration has a picture or clip chosen for its own words (29 Oct 2026 review: barely one
-  // shot in ten matched). Logged for every long video; the owner hears when under half do.
+  // How much of the narration has something chosen for its own words on screen: a picture or clip of its own,
+  // or a graphic (29 Oct 2026 review: barely one shot in ten matched; 30 Oct, owner: every video must be media
+  // rich all the way through). Logged for every long video; the owner hears when under MEDIA_RICH_TARGET.
   if (hasMoments) {
-    const share = matchedShare(moments, images, clips);
-    log(share < 0.5 ? "warn" : "info", "sentences with their own picture", {
+    const own = matchedShare(moments, images, clips);
+    const covered = coverageShare(
+      moments.map((m, i) => ({ entry: i, game: "", moments: m, sentences: [] })),
+      images,
+      clips,
+    );
+    log(covered < MEDIA_RICH_TARGET ? "warn" : "info", "sentences with their own picture", {
       episode: ep.id,
-      share: Math.round(share * 100),
+      share: Math.round(own * 100),
+      covered: Math.round(covered * 100),
     });
-    if (share < 0.5)
+    if (covered < MEDIA_RICH_TARGET)
       await s.notify({
-        content: `🎞️ "${script.headline}": only ${Math.round(share * 100)}% of its sentences got a picture or clip chosen for their own words. It renders anyway; the rest fall back to the chapter's pool.`,
+        content: `🎞️ "${script.headline}": ${Math.round(covered * 100)}% of its sentences have something chosen for their own words (${Math.round(own * 100)}% a picture or clip of their own, the rest a graphic), under the ${Math.round(MEDIA_RICH_TARGET * 100)}% target. It renders anyway; the rest sit on the chapter's footage.`,
       });
   }
   // Each game's own colour, from its key art (src/assets/palette.ts): its chapter's footage is washed in it.

@@ -46,6 +46,8 @@ export interface Episode {
 export interface EpisodeAssets {
   /** Media was gathered a second time, richer, after a red media rubric. */
   rich?: boolean;
+  /** A long video's sentences without a picture of their own were topped up, one search each (fillSentencePictures). */
+  filled?: { before: number; after: number };
   /** A Short cut from a long ranking: the section's seconds in the long video and the files cut from it. */
   cutdown?: { start: number; end: number; video: string; background: string };
   audio?: string;
@@ -111,7 +113,13 @@ export interface EpisodeAssets {
   };
   longPlan?: import("./render/longplan.ts").LongPlan; // the long-form render plan
   /** Zoom-to-the-detail annotations (src/assets/annotate.ts): the sentence, its picture and where the named thing sits. */
-  annotations?: Array<{ entry: number; moment: number; image: number; box: [number, number, number, number]; label: string }>;
+  annotations?: Array<{
+    entry: number;
+    moment: number;
+    image: number;
+    box: [number, number, number, number];
+    label: string;
+  }>;
   breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds, narration silent)
   thumb?: string; // thumb.jpg for the long-form video
   thumbVariants?: string[]; // thumb_b.jpg, thumb_c.jpg: extra designs for YouTube's Test & compare

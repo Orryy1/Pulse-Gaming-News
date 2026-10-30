@@ -9,6 +9,7 @@ import { SPRING } from "../../motion.ts";
 import { displayText } from "../../timeline.ts";
 import { useStage } from "../DocGraphics.tsx";
 import type { GfxProps, GfxStyle } from "./types.ts";
+import { DRAWN_BY } from "./fit.ts";
 import { maskLayers, Preload } from "./preload.tsx";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
@@ -235,9 +236,11 @@ const Departures: React.FC<GfxProps> = ({ g, len, variant = 0 }) => {
   const [before, after] = g.items.map((x) => displayText(x).toUpperCase());
   if (!visible || !before || !after) return null;
   const what = displayText(g.primary).toUpperCase() || "RELEASE";
+  // Every row settles by frame 58 (the NOW row last): the pre-check's still, never before frame 60, saw
+  // "APRIL OV" and "OCTOBES 6D" while the last two flaps were still turning (30 Oct 2026).
   const flip = (text: string, at: number) =>
     text.split("").map((ch, i) => {
-      const settle = at + i * 1.2;
+      const settle = at + i * 0.8;
       const shown =
         frame >= settle || ch === " "
           ? ch
@@ -260,8 +263,10 @@ const Departures: React.FC<GfxProps> = ({ g, len, variant = 0 }) => {
         </span>
       );
     });
-  const delayed = frame >= 46;
-  const blink = delayed && Math.floor((frame - 46) / 10) % 2 === 0;
+  // DELAYED blinks on at 34 and holds steady from DRAWN_BY on, so a still never catches it dim.
+  const delayed = frame >= 34;
+  const blink =
+    delayed && (frame >= DRAWN_BY || Math.floor((frame - 34) / 10) % 2 === 0);
   const row = (
     label: string,
     value: React.ReactNode,
@@ -377,7 +382,7 @@ const Departures: React.FC<GfxProps> = ({ g, len, variant = 0 }) => {
           "#ff4d3a",
           2,
         )}
-        {row("NOW", flip(after.slice(0, 22), 60), COLOUR.amber, 3)}
+        {row("NOW", flip(after.slice(0, 22), 40), COLOUR.amber, 3)}
         {g.secondary ? (
           <div
             style={{
@@ -387,7 +392,7 @@ const Departures: React.FC<GfxProps> = ({ g, len, variant = 0 }) => {
               fontSize: 26,
               color: "rgba(245,245,242,0.7)",
               borderTop: "2px solid rgba(255,255,255,0.06)",
-              opacity: interpolate(frame, [70, 82], [0, 1], clamp),
+              opacity: interpolate(frame, [50, 60], [0, 1], clamp),
             }}
           >
             {displayText(g.secondary)}

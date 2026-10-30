@@ -136,8 +136,8 @@ export const PulseCalendar: React.FC<GfxProps> = ({
   const L = layoutOf(screen, grid.rows, date.day === undefined && !!what);
   const monthName = MONTHS[date.month]!;
 
-  // The beats: rise 0-18, tap Calendar 24, the app opens 32-48, push in 48-72, the day is ringed (or the
-  // title lit) 62-80, the event drops 80, the agenda row slides in 98.
+  // The beats: rise 0-18, tap Calendar 24, the app opens 32-48, push in 48-68, the day is ringed (or the
+  // title lit) 56-70, the event drops 70, the agenda row slides in 82: all landed by DRAWN_BY.
   const tapAt = 24;
   const rise = spring({
     frame,
@@ -145,22 +145,22 @@ export const PulseCalendar: React.FC<GfxProps> = ({
     config: { damping: 16, stiffness: 110, mass: 0.9 },
   });
   const open = openOf(frame, tapAt);
-  const zoom = interpolate(frame, [48, 72], [0, 1], {
+  const zoom = interpolate(frame, [48, 68], [0, 1], {
     ...clamp,
     easing: easeInOut,
   });
-  const ring = interpolate(frame, [62, 80], [0, 1], {
+  const ring = interpolate(frame, [56, 70], [0, 1], {
     ...clamp,
     easing: easeOut,
   });
-  const fill = interpolate(frame, [78, 86], [0, 1], clamp);
+  const fill = interpolate(frame, [68, 76], [0, 1], clamp);
   const drop = spring({
-    frame: frame - 80,
+    frame: frame - 70,
     fps,
     config: { damping: 13, stiffness: 170, mass: 0.7 },
   });
   const agenda = spring({
-    frame: frame - 98,
+    frame: frame - 82,
     fps,
     config: { damping: 18, stiffness: 160, mass: 0.7 },
   });

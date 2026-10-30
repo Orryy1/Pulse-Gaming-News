@@ -21,6 +21,7 @@ import { BODY, DISPLAY } from "./fonts.ts";
 import { SPRING } from "../motion.ts";
 import { displayText } from "../timeline.ts";
 import { TextureBackground, type BackgroundKind } from "./Backgrounds.tsx";
+import { fitSize, textWidth, LOWER_THIRD } from "./packs/fit.ts";
 
 export interface MomentGraphic {
   kind:
@@ -64,25 +65,63 @@ export interface MomentProp {
  * Who is on screen, the documentary way (Noclip, Ahoy): a lower-third name tag with the role when the
  * shot list knows it, sliding in on an amber rule.
  */
-export const NameTag: React.FC<{ name: string; role?: string; len: number }> = ({ name, role, len }) => {
+export const NameTag: React.FC<{
+  name: string;
+  role?: string;
+  len: number;
+}> = ({ name, role, len }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const showFor = Math.min(len - 6, 150);
   if (frame > showFor || !name.trim()) return null;
   const inP = spring({ frame: frame - 4, fps, config: SPRING.ENTER });
-  const rule = interpolate(frame, [4, 20], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const out = interpolate(frame, [showFor - 12, showFor], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const rule = interpolate(frame, [4, 20], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const out = interpolate(frame, [showFor - 12, showFor], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
   return (
     <div style={{ position: "absolute", left: 96, bottom: 330, opacity: out }}>
-      <div style={{ height: 5, width: 90 * rule, background: COLOUR.amber, borderRadius: 3, marginBottom: 12 }} />
+      <div
+        style={{
+          height: 5,
+          width: 90 * rule,
+          background: COLOUR.amber,
+          borderRadius: 3,
+          marginBottom: 12,
+        }}
+      />
       <div style={{ overflow: "hidden" }}>
-        <div style={{ fontFamily: DISPLAY, fontSize: 64, lineHeight: 1, color: COLOUR.paper, textTransform: "uppercase", textShadow: "0 6px 30px rgba(0,0,0,0.7)", transform: `translateY(${(1 - inP) * 100}%)` }}>
+        <div
+          style={{
+            fontFamily: DISPLAY,
+            fontSize: 64,
+            lineHeight: 1,
+            color: COLOUR.paper,
+            textTransform: "uppercase",
+            textShadow: "0 6px 30px rgba(0,0,0,0.7)",
+            transform: `translateY(${(1 - inP) * 100}%)`,
+          }}
+        >
           {displayText(name)}
         </div>
       </div>
       {role ? (
         <div style={{ overflow: "hidden", marginTop: 8 }}>
-          <div style={{ fontFamily: BODY, fontWeight: 800, fontSize: 26, letterSpacing: 3, color: COLOUR.amber, textTransform: "uppercase", transform: `translateY(${(1 - spring({ frame: frame - 10, fps, config: SPRING.ENTER })) * 100}%)` }}>
+          <div
+            style={{
+              fontFamily: BODY,
+              fontWeight: 800,
+              fontSize: 26,
+              letterSpacing: 3,
+              color: COLOUR.amber,
+              textTransform: "uppercase",
+              transform: `translateY(${(1 - spring({ frame: frame - 10, fps, config: SPRING.ENTER })) * 100}%)`,
+            }}
+          >
             {displayText(role)}
           </div>
         </div>
@@ -131,6 +170,38 @@ function countUp(primary: string, p: number): string {
 const numberIn = (t: string) =>
   Number((t.match(/[\d,.]+/)?.[0] ?? "").replace(/,/g, ""));
 
+/** The card's width and the room its text has inside the panel's padding. */
+export const CARD_W = 680;
+const CARD_TEXT_W = CARD_W - 64;
+
+/**
+ * The date card's layout, measured: the badge's size from a ladder so the date stays on one line, and the
+ * caption beside it only when both fit the card, else under it. The pre-check (30 Oct 2026) saw
+ * "NOVEMBER 6, 2012 · Halo 4 Xbox 360 release" run past the card to the frame edge.
+ */
+export function dateCardLayout(
+  primary: string,
+  secondary: string,
+): {
+  badgeSize: number;
+  beside: boolean;
+} {
+  const badge = fitSize(
+    primary.toUpperCase(),
+    "anton",
+    CARD_TEXT_W - 40,
+    [64, 56, 48, 40, 34],
+  );
+  const badgeW = textWidth(primary.toUpperCase(), "anton", badge.size) + 40;
+  const captionW = secondary
+    ? textWidth(secondary.toUpperCase(), "inter", 32, 1)
+    : 0;
+  return {
+    badgeSize: badge.size,
+    beside: !secondary || badgeW + 22 + captionW <= CARD_TEXT_W,
+  };
+}
+
 /** The fact a sentence states, drawn as a graphic at the top right. */
 export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
   g: raw,
@@ -144,11 +215,14 @@ export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
   };
   const { frame, fps, inP, out, visible } = useInOut(len);
   if (!visible || g.kind === "none") return null;
+  // Hard-capped and clipped: text inside is sized to fit, so nothing runs past the card or the frame.
   const wrap: React.CSSProperties = {
     position: "absolute",
     right: RIGHT,
     top: TOP,
-    maxWidth: 680,
+    maxWidth: CARD_W,
+    overflow: "hidden",
+    boxSizing: "border-box",
     opacity: inP * out,
     transform: `translateX(${(1 - inP) * 60}px)`,
     ...panel,
@@ -179,7 +253,12 @@ export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
         <div
           style={{
             fontFamily: DISPLAY,
-            fontSize: g.primary.length > 14 ? 84 : 112,
+            fontSize: fitSize(
+              g.primary.toUpperCase(),
+              "anton",
+              CARD_TEXT_W,
+              [112, 84, 64, 52, 44],
+            ).size,
             lineHeight: 1,
             color: COLOUR.amber,
             textTransform: "uppercase",
@@ -192,8 +271,17 @@ export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
     );
   }
   if (g.kind === "date") {
+    const L = dateCardLayout(g.primary, g.secondary);
     return (
-      <div style={{ ...wrap, display: "flex", alignItems: "center", gap: 22 }}>
+      <div
+        style={{
+          ...wrap,
+          display: "flex",
+          flexDirection: L.beside ? "row" : "column",
+          alignItems: L.beside ? "center" : "flex-start",
+          gap: L.beside ? 22 : 14,
+        }}
+      >
         <div
           style={{
             background: COLOUR.amber,
@@ -201,10 +289,11 @@ export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
             borderRadius: 12,
             padding: "12px 20px",
             fontFamily: DISPLAY,
-            fontSize: 64,
+            fontSize: L.badgeSize,
             lineHeight: 1,
             textTransform: "uppercase",
             whiteSpace: "nowrap",
+            flex: "none",
           }}
         >
           {g.primary}
@@ -217,6 +306,7 @@ export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
             color: COLOUR.paper,
             textTransform: "uppercase",
             letterSpacing: 1,
+            minWidth: 0,
           }}
         >
           {g.secondary}
@@ -401,9 +491,12 @@ export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
  * A quote at full size, the documentary way: the picture behind blurs and darkens, the words rise into
  * place one by one, and the speaker's name slides in under an amber rule. Held long enough to read.
  */
-export const QuoteMoment: React.FC<{ g: MomentGraphic; len: number; bg?: BackgroundKind; variant?: number }> = ({
-  g,
-  len, bg, variant }) => {
+export const QuoteMoment: React.FC<{
+  g: MomentGraphic;
+  len: number;
+  bg?: BackgroundKind;
+  variant?: number;
+}> = ({ g, len, bg, variant }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const text = displayText(g.primary)
@@ -432,11 +525,11 @@ export const QuoteMoment: React.FC<{ g: MomentGraphic; len: number; bg?: Backgro
         </AbsoluteFill>
       ) : (
         <AbsoluteFill
-        style={{
-          backdropFilter: `blur(${14 * dim}px)`,
-          background: `rgba(11,11,14,${0.62 * dim})`,
-        }}
-      />
+          style={{
+            backdropFilter: `blur(${14 * dim}px)`,
+            background: `rgba(11,11,14,${0.62 * dim})`,
+          }}
+        />
       )}
       <AbsoluteFill
         style={{ alignItems: "center", justifyContent: "center", opacity: dim }}
@@ -542,7 +635,10 @@ const lines = (n: number, seed: number) =>
 export const HeadlineMoment: React.FC<{
   g: MomentGraphic;
   len: number;
-  src?: string; bg?: BackgroundKind; variant?: number }> = ({ g, len, src, bg, variant }) => {
+  src?: string;
+  bg?: BackgroundKind;
+  variant?: number;
+}> = ({ g, len, src, bg, variant }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const showFor = Math.min(len - 6, 200);
@@ -574,11 +670,11 @@ export const HeadlineMoment: React.FC<{
         </AbsoluteFill>
       ) : (
         <AbsoluteFill
-        style={{
-          backdropFilter: `blur(${10 * dim}px)`,
-          background: `rgba(11,11,14,${0.55 * dim})`,
-        }}
-      />
+          style={{
+            backdropFilter: `blur(${10 * dim}px)`,
+            background: `rgba(11,11,14,${0.55 * dim})`,
+          }}
+        />
       )}
       <AbsoluteFill
         style={{ alignItems: "center", justifyContent: "center", opacity: dim }}
@@ -846,6 +942,19 @@ export const TimelineMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
     .slice(0, 5);
   if (!visible || rows.length < 2) return null;
   const W = 1500;
+  // Each stop's label box: 300 px, or the gap between stops when they sit closer, so labels never overlap;
+  // the year's size is measured to its box ("NOVEMBER 28, 1997" at 44 px ran into its neighbour, 30 Oct 2026).
+  const stopW = Math.min(
+    300,
+    Math.floor(W / Math.max(1, rows.length - 1)) - 16,
+  );
+  const yearSize = Math.min(
+    ...rows.map(
+      (r) =>
+        fitSize(r.year.toUpperCase(), "anton", stopW - 8, [44, 38, 32, 28, 24])
+          .size,
+    ),
+  );
   const draw = interpolate(frame, [8, 8 + rows.length * 16], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -857,7 +966,8 @@ export const TimelineMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
       style={{
         position: "absolute",
         left: (1920 - W - 80) / 2,
-        bottom: 150,
+        // Clear of the chapter tag and title bar in the lower third (the panel sat on them, 30 Oct 2026).
+        bottom: LOWER_THIRD + 30,
         width: W + 80,
         padding: "30px 40px 40px",
         opacity: panelIn * out,
@@ -918,8 +1028,8 @@ export const TimelineMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
                 position: "absolute",
                 left: x,
                 top: 0,
-                width: 300,
-                transform: `translateX(${i === 0 ? 0 : i === rows.length - 1 ? -300 : -150}px)`,
+                width: stopW,
+                transform: `translateX(${i === 0 ? 0 : i === rows.length - 1 ? -stopW : -stopW / 2}px)`,
                 textAlign:
                   i === 0 ? "left" : i === rows.length - 1 ? "right" : "center",
                 opacity: s,
@@ -928,9 +1038,10 @@ export const TimelineMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
               <div
                 style={{
                   fontFamily: DISPLAY,
-                  fontSize: 44,
+                  fontSize: yearSize,
                   lineHeight: 1,
                   color: COLOUR.paper,
+                  whiteSpace: "nowrap",
                 }}
               >
                 {r.year}
@@ -939,7 +1050,12 @@ export const TimelineMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
                 style={{
                   position: "absolute",
                   top: 48,
-                  left: i === 0 ? 0 : i === rows.length - 1 ? 282 : 141,
+                  left:
+                    i === 0
+                      ? 0
+                      : i === rows.length - 1
+                        ? stopW - 18
+                        : stopW / 2 - 9,
                   width: 18,
                   height: 18,
                   borderRadius: 9,

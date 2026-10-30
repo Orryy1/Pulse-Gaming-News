@@ -18,15 +18,36 @@ import { SPRING } from "../motion.ts";
 import { displayText } from "../timeline.ts";
 import type { MomentGraphic } from "./LongMoments.tsx";
 import { TextureBackground, type BackgroundKind } from "./Backgrounds.tsx";
+import {
+  CONTENT_W,
+  LEGIBLE_SHADOW,
+  LOWER_THIRD,
+  SAFE_EDGE,
+  fitBlock,
+  fitSize,
+  plate,
+  textWidth,
+} from "./packs/fit.ts";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const SERIF = "Georgia, 'Times New Roman', serif";
+
+/**
+ * How long a full-screen explainer holds: its own hold, at least MIN_HOLD when the moment allows, never
+ * past the moment less 6 frames, never under 60. The floor keeps every look on screen, settled and not yet
+ * fading, at the frame the graphics check looks (src/qa/graphicscheck.ts settledFrame): a two-item GTA
+ * box-art list once held 112 frames and was caught mid-fade as a "double exposure" (30 Oct 2026).
+ */
+export const MIN_HOLD = 130;
+export function stageHold(len: number, hold: number): number {
+  return Math.max(60, Math.min(len - 6, Math.max(hold, MIN_HOLD)));
+}
 
 /** The picture behind dims and blurs while a full-screen explainer is up; everything fades together. */
 export function useStage(len: number, hold: number) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const showFor = Math.max(60, Math.min(len - 6, hold));
+  const showFor = stageHold(len, hold);
   const dim = interpolate(
     frame,
     [0, 12, showFor - 12, showFor],
@@ -64,10 +85,10 @@ export const Stage: React.FC<{
   </AbsoluteFill>
 );
 
-export const Label: React.FC<{ children: React.ReactNode; colour?: string }> = ({
-  children,
-  colour = COLOUR.amber,
-}) => (
+export const Label: React.FC<{
+  children: React.ReactNode;
+  colour?: string;
+}> = ({ children, colour = COLOUR.amber }) => (
   <div
     style={{
       fontFamily: BODY,
@@ -97,6 +118,18 @@ export function pairs(items: string[]): Array<{ a: string; b: string }> {
     .filter((x): x is { a: string; b: string } => Boolean(x));
 }
 
+/** The date cards' size: both dates, 88 px of card padding each, the 90 px arrow and two 70 px gaps in the safe width. */
+export function delayDateSize(before: string, after: string): number {
+  const room = CONTENT_W - 90 - 2 * 70 - 2 * 88;
+  for (const size of [96, 84, 72, 62, 54, 46]) {
+    const w =
+      textWidth(before.toUpperCase(), "anton", size) +
+      textWidth(after.toUpperCase(), "anton", size);
+    if (w <= room) return size;
+  }
+  return 46;
+}
+
 /** A release date struck through, a DELAYED stamp, the new date. items: ["old date", "new date"]. */
 export const DelayMoment: React.FC<{
   g: MomentGraphic;
@@ -114,6 +147,9 @@ export const DelayMoment: React.FC<{
     config: { damping: 11, stiffness: 180, mass: 0.8 },
   });
   const next = spring({ frame: frame - 56, fps, config: SPRING.ENTER });
+  // Both dates, their cards, the arrow and the gaps have to fit the safe width: the size comes from a
+  // measured ladder ("NOVEMBER 18, 2014" and "APRIL 14, 2015" at 96 px ran past it, 30 Oct 2026).
+  const dateSize = delayDateSize(before, after);
   const card = (text: string, crossed: boolean) => (
     <div
       style={{
@@ -127,7 +163,7 @@ export const DelayMoment: React.FC<{
       <div
         style={{
           fontFamily: DISPLAY,
-          fontSize: 96,
+          fontSize: dateSize,
           lineHeight: 1,
           color: crossed ? "#6d6559" : "#15130f",
           textTransform: "uppercase",
@@ -158,7 +194,8 @@ export const DelayMoment: React.FC<{
         <Label>{g.primary ? displayText(g.primary) : "Release date"}</Label>
         <div
           style={{
-            marginTop: 90,
+            // Room for the stamp above the struck card without touching the label.
+            marginTop: 140,
             display: "flex",
             alignItems: "center",
             gap: 70,
@@ -167,13 +204,15 @@ export const DelayMoment: React.FC<{
         >
           <div style={{ position: "relative" }}>
             {card(before, true)}
+            {/* The stamp lands on the card's top edge, above the struck date, so the date stays readable
+                (it covered the date when it sat in the middle, 30 Oct 2026) and nothing below is hidden. */}
             <div
               style={{
                 position: "absolute",
-                left: "50%",
-                top: "50%",
-                marginLeft: -170,
-                marginTop: -52,
+                left: "100%",
+                top: 0,
+                marginLeft: -300,
+                marginTop: -100,
                 width: 340,
                 textAlign: "center",
                 padding: "6px 0",
@@ -376,16 +415,30 @@ export const ReviewsMoment: React.FC<{
                   transformOrigin: "top center",
                 }}
               >
-                <div
-                  style={{
-                    fontFamily: DISPLAY,
-                    fontSize: r.b.length > 6 ? 76 : 100,
-                    lineHeight: 1,
-                    color: COLOUR.paper,
-                  }}
-                >
-                  {r.b}
-                </div>
+                {/* The verdict sized to its tile, wrapping to two lines when it is words rather than a
+                    score ("lost character data" at 76 px crowded the tile, 30 Oct 2026). */}
+                {(() => {
+                  const fit = fitBlock(r.b, "anton", {
+                    maxWidth: 340,
+                    sizes: [100, 76, 60, 50, 42, 36],
+                    maxLines: 2,
+                  });
+                  return (
+                    <div
+                      style={{
+                        fontFamily: DISPLAY,
+                        fontSize: fit.size,
+                        lineHeight: 1.05,
+                        color: COLOUR.paper,
+                        overflow: "hidden",
+                      }}
+                    >
+                      {fit.lines.map((l, k) => (
+                        <div key={k}>{l}</div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 <div
                   style={{
                     marginTop: 14,
@@ -422,6 +475,14 @@ export const VersusMoment: React.FC<{
     easing: (x) => 1 - (1 - x) ** 3,
   });
   const badge = spring({ frame: frame - 26, fps, config: SPRING.POP });
+  // The heading in display type on a plate, sized to the safe width (the 26 px label read as tiny over
+  // busy footage, 30 Oct 2026); the names sit above the lower third's chapter tag, on their own plates.
+  const headSize = fitSize(
+    heading.toUpperCase(),
+    "anton",
+    CONTENT_W - 52,
+    [60, 52, 46, 40],
+  ).size;
   const half = (side: "l" | "r", p: { src: string; label: string }) => (
     <div
       style={{
@@ -446,14 +507,19 @@ export const VersusMoment: React.FC<{
       <div
         style={{
           position: "absolute",
-          bottom: 120,
-          [side === "l" ? "left" : "right"]: 110,
-          padding: "12px 22px",
-          background: "rgba(11,11,14,0.85)",
-          borderRadius: 10,
+          bottom: LOWER_THIRD + 40,
+          [side === "l" ? "left" : "right"]: SAFE_EDGE + 50,
+          maxWidth: 760,
+          ...plate({ pad: "12px 22px", radius: 10 }),
           fontFamily: BODY,
           fontWeight: 900,
-          fontSize: 34,
+          fontSize: fitSize(
+            p.label.toUpperCase(),
+            "inter",
+            716,
+            [34, 30, 26, 22],
+            1.5,
+          ).size,
           letterSpacing: 1.5,
           color: COLOUR.paper,
           textTransform: "uppercase",
@@ -493,20 +559,24 @@ export const VersusMoment: React.FC<{
         <div
           style={{
             position: "absolute",
-            top: 130,
+            top: SAFE_EDGE + 40,
             width: "100%",
             textAlign: "center",
           }}
         >
           <div
             style={{
-              display: "inline-block",
-              padding: "12px 26px",
-              background: "rgba(11,11,14,0.88)",
-              borderRadius: 12,
+              ...plate({ pad: "14px 30px 10px" }),
+              fontFamily: DISPLAY,
+              fontSize: headSize,
+              lineHeight: 1,
+              letterSpacing: 1,
+              color: COLOUR.paper,
+              textTransform: "uppercase",
+              whiteSpace: "nowrap",
             }}
           >
-            <Label>{heading}</Label>
+            {heading}
           </div>
         </div>
       ) : null}
@@ -661,7 +731,12 @@ export const AchievementMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
           style={{
             fontFamily: BODY,
             fontWeight: 900,
-            fontSize: 40,
+            fontSize: fitSize(
+              displayText(g.primary),
+              "inter",
+              1300 - 62 - 84 - 26,
+              [40, 34, 30, 26],
+            ).size,
             color: COLOUR.paper,
             marginTop: 4,
           }}
@@ -807,19 +882,28 @@ export const WipeCompare: React.FC<{
     { ...clamp, easing: (t) => t * t * (3 - 2 * t) },
   );
   const tag = spring({ frame: frame - 10, fps, config: SPRING.ENTER });
+  // The names sit above the lower third's chapter tag; the heading goes on a plate with a strong shadow
+  // ("CAMPAIGN SHOWDOWN" in white over a bright sky was unreadable, 30 Oct 2026).
+  const headSize = fitSize(
+    heading.toUpperCase(),
+    "anton",
+    CONTENT_W - 60,
+    [72, 62, 54, 46, 40],
+  ).size;
   const name = (p: { label: string }, side: "l" | "r") => (
     <div
       style={{
         position: "absolute",
-        bottom: 110,
-        [side === "l" ? "left" : "right"]: 96,
-        padding: "10px 22px",
-        background: "rgba(11,11,14,0.82)",
+        bottom: LOWER_THIRD + 40,
+        [side === "l" ? "left" : "right"]: SAFE_EDGE + 36,
+        maxWidth: 760,
+        ...plate({ pad: "10px 22px", radius: 0 }),
         borderLeft: side === "l" ? `6px solid ${COLOUR.amber}` : undefined,
         borderRight: side === "r" ? `6px solid ${COLOUR.amber}` : undefined,
         fontFamily: BODY,
         fontWeight: 900,
-        fontSize: 30,
+        fontSize: fitSize(p.label.toUpperCase(), "inter", 716, [30, 26, 22], 2)
+          .size,
         letterSpacing: 2,
         color: COLOUR.paper,
         textTransform: "uppercase",
@@ -831,9 +915,27 @@ export const WipeCompare: React.FC<{
   );
   return (
     <AbsoluteFill style={{ opacity: dim, background: COLOUR.ink }}>
-      <Img src={right.src} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-      <div style={{ position: "absolute", inset: 0, clipPath: `inset(0 ${100 - x}% 0 0)` }}>
-        <Img src={left.src} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      <Img
+        src={right.src}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          clipPath: `inset(0 ${100 - x}% 0 0)`,
+        }}
+      >
+        <Img
+          src={left.src}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
       </div>
       <div
         style={{
@@ -875,19 +977,27 @@ export const WipeCompare: React.FC<{
         <div
           style={{
             position: "absolute",
-            top: 140,
+            top: SAFE_EDGE + 50,
             left: 0,
             right: 0,
             textAlign: "center",
-            fontFamily: DISPLAY,
-            fontSize: 72,
-            color: COLOUR.paper,
-            textTransform: "uppercase",
-            textShadow: "0 8px 30px rgba(0,0,0,0.85)",
             opacity: tag,
           }}
         >
-          {heading}
+          <div
+            style={{
+              ...plate({ pad: "14px 34px 10px", radius: 14 }),
+              fontFamily: DISPLAY,
+              fontSize: headSize,
+              lineHeight: 1,
+              color: COLOUR.paper,
+              textTransform: "uppercase",
+              textShadow: LEGIBLE_SHADOW,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {heading}
+          </div>
         </div>
       ) : null}
     </AbsoluteFill>

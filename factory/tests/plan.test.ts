@@ -917,6 +917,19 @@ test("the graphics check reads which frames a problem names", async () => {
     [2, 3, 4, 5, 7],
   );
   assert.deepEqual(framesNamed(["looks fine"]), []);
+  // A cross-reference inside a problem is not a fault of that frame (tonight's real lines, 30 Oct 2026).
+  assert.deepEqual(
+    framesNamed([
+      'Frame 4: Quote is attributed to "Sam Houser" while Frame 2 names Dan Houser as Rockstar Producer.',
+      "Frame 4: The rank badge reads #9, but Frame 6 and Frame 8 show Halo 5 as #8.",
+    ]),
+    [4],
+  );
+  // With no leading frame, every frame named still counts.
+  assert.deepEqual(
+    framesNamed(["Text overlaps in frames 3 and 5"]).sort(),
+    [3, 5],
+  );
 });
 
 test("a picture's own colour is its strongest vivid hue, and a grey picture has none", async () => {
@@ -944,30 +957,69 @@ test("a picture's own colour is its strongest vivid hue, and a grey picture has 
 test("spoken years keep their possessive and decades as figures in captions", async () => {
   const { displayWords } = await import("../src/render/timeline.ts");
   const show = (t: string) =>
-    displayWords(t.split(" ").map((text, i) => ({ text, start: i, end: i + 1 })))
+    displayWords(
+      t.split(" ").map((text, i) => ({ text, start: i, end: i + 1 })),
+    )
       .map((w) => w.text)
       .join(" ");
   assert.equal(show("twenty eighteen's best seller"), "2018's best seller");
   assert.equal(show("after twenty eighteen’s launch,"), "after 2018’s launch,");
   assert.equal(show("two thousand seven's sequel"), "2007's sequel");
-  assert.equal(show("back in the nineteen nineties, arcades"), "back in the 1990s, arcades");
-  assert.equal(show("twenty sixteen. Then"), "2016. Then", "the plain year is unchanged");
-  assert.equal(show("two thousand players"), "2,000 players", "a count is a figure, not a year");
+  assert.equal(
+    show("back in the nineteen nineties, arcades"),
+    "back in the 1990s, arcades",
+  );
+  assert.equal(
+    show("twenty sixteen. Then"),
+    "2016. Then",
+    "the plain year is unchanged",
+  );
+  assert.equal(
+    show("two thousand players"),
+    "2,000 players",
+    "a count is a figure, not a year",
+  );
 });
 
 test("title numbers said as words for the voice, and 10 to 99, are figures in captions", async () => {
   const { displayWords } = await import("../src/render/timeline.ts");
   const show = (t: string) =>
-    displayWords(t.split(" ").map((text, i) => ({ text, start: i, end: i + 1 })))
+    displayWords(
+      t.split(" ").map((text, i) => ({ text, start: i, end: i + 1 })),
+    )
       .map((w) => w.text)
       .join(" ");
-  assert.equal(show("the size of GTA three's Liberty City."), "the size of GTA 3's Liberty City.");
-  assert.equal(show("fix GTA four's awkward controls"), "fix GTA 4's awkward controls");
+  assert.equal(
+    show("the size of GTA three's Liberty City."),
+    "the size of GTA 3's Liberty City.",
+  );
+  assert.equal(
+    show("fix GTA four's awkward controls"),
+    "fix GTA 4's awkward controls",
+  );
   assert.equal(show("Modern Warfare twenty's"), "Modern Warfare 20's");
-  assert.equal(show("on Xbox One's store"), "on Xbox One's store", "a console's name stays");
-  assert.equal(show("241 tracks across fifteen radio stations, plus"), "241 tracks across 15 radio stations, plus");
+  assert.equal(
+    show("on Xbox One's store"),
+    "on Xbox One's store",
+    "a console's name stays",
+  );
+  assert.equal(
+    show("241 tracks across fifteen radio stations, plus"),
+    "241 tracks across 15 radio stations, plus",
+  );
   assert.equal(show("it lasted twenty-four hours."), "it lasted 24 hours.");
-  assert.equal(show("its first year. Ten years after its launch"), "its first year. Ten years after its launch", "sentence start stays");
-  assert.equal(show("two days later, three islands"), "two days later, three islands", "small counts stay words");
-  assert.equal(show("that's everyone's favourite"), "that's everyone's favourite");
+  assert.equal(
+    show("its first year. Ten years after its launch"),
+    "its first year. Ten years after its launch",
+    "sentence start stays",
+  );
+  assert.equal(
+    show("two days later, three islands"),
+    "two days later, three islands",
+    "small counts stay words",
+  );
+  assert.equal(
+    show("that's everyone's favourite"),
+    "that's everyone's favourite",
+  );
 });

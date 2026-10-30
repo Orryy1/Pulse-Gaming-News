@@ -11,6 +11,7 @@ import { SPRING } from "../../../motion.ts";
 import { Stage, useStage } from "../../DocGraphics.tsx";
 import type { MomentGraphic } from "../../LongMoments.tsx";
 import type { GfxProps } from "../types.ts";
+import { DRAWN_BY, fitBlock } from "../fit.ts";
 import {
   GRAIN,
   INK,
@@ -103,6 +104,8 @@ export function fitsCalendar(g: MomentGraphic): boolean {
 const PAGE_W = 600;
 const PAGE_H = 610;
 const BAND = 132;
+/** The caption's room on the tape (the tape adds 46 px each side, inside the 1240 px it may take). */
+const TAPE_TEXT_W = 1140;
 
 /** One page of the pad: the coloured band with `head`, and the body (ruled lines on the torn pages). */
 const Page: React.FC<{
@@ -203,25 +206,21 @@ export const Calendar: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
     config: { damping: 9, stiffness: 260, mass: 0.6 },
   });
   const bump = frame >= 33 ? (1 - settle) * 0.03 : 0;
-  const tape = spring({ frame: frame - 40, fps, config: SPRING.POP });
-  const write = interpolate(
-    frame,
-    [46, 46 + Math.min(26, 10 + label.length)],
-    [0, 1],
-    {
-      ...clamp,
-      easing: Easing.out(Easing.quad),
-    },
-  );
+  // The tape lands at 36 and the caption is fully written by 58: the pre-check's still (never before frame
+  // 60) saw "Spartan Strike release dat" when the writing ran to 72 (30 Oct 2026).
+  const tape = spring({ frame: frame - 36, fps, config: SPRING.POP });
+  const write = interpolate(frame, [40, Math.min(DRAWN_BY - 2, 58)], [0, 1], {
+    ...clamp,
+    easing: Easing.out(Easing.quad),
+  });
   const tilt = side * (9 + 2 * jit(seed, 1));
-  const labelSize =
-    label.length <= 16
-      ? 60
-      : label.length <= 26
-        ? 52
-        : label.length <= 40
-          ? 44
-          : 38;
+  // The caption's size is measured against the tape (at most two lines), not guessed from its length.
+  const fit = fitBlock(label, "marker", {
+    maxWidth: TAPE_TEXT_W,
+    sizes: [60, 52, 44, 38, 34],
+    maxLines: 2,
+    lineHeight: 1.08,
+  });
 
   return (
     <Stage dim={dim} bg={bg} variant={variant}>
@@ -428,14 +427,17 @@ export const Calendar: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                 p={write}
                 style={{
                   fontFamily: HAND,
-                  fontSize: labelSize,
+                  fontSize: fit.size,
                   lineHeight: 1.08,
                   color: INK,
                   textAlign: "center",
-                  maxWidth: 1140,
+                  maxWidth: TAPE_TEXT_W,
+                  overflow: "hidden",
                 }}
               >
-                {label}
+                {fit.lines.map((l, i) => (
+                  <div key={i}>{l}</div>
+                ))}
               </Write>
             </Tape>
           </div>

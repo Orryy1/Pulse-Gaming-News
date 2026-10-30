@@ -27,6 +27,7 @@ export const GRAPHICS_VISION_PROMPT = `You check the on-screen graphics of a 16:
 Each frame shows one animated graphic (a chart, map, quote card, recreated document, console-menu homage, chapter title card and so on) at the moment it should be fully readable.
 Fail a frame only for a real fault a viewer would notice: text cut off at an edge or by another element, text overlapping other text, text unreadable against its background, misspelt or garbled words, raw code or placeholder text, broken or missing images, empty panels or boxes where content clearly belongs, elements spilling outside the frame, or anything advertiser-unfriendly.
 Deliberate looks are not faults: redaction bars, scanlines, VHS noise, pixel art, film grain, torn paper, handwriting, retro or console-menu styling, an ILLUSTRATION tag, a frame still mid-animation with something partly drawn.
+Also intended, never a fault: grey placeholder bars standing in for body text on a recreated press page, article or magazine card; a scrolling news ticker whose words pass the edges of its band; a lower-third report card whose upper area is left empty for the footage; a big figure or word filled with a picture or texture; a watermark of the speaker's initials behind a quote. Clipped, overlapping, off-edge or unreadable text stays a fault wherever it appears.
 Write every problem as "Frame N: what is wrong", one per frame, using the frame numbers given. Pass when nothing is wrong.`;
 
 /** The thumbnail check: the designs that will go to YouTube. */
@@ -35,13 +36,27 @@ Fail a thumbnail only for a real fault: words cut off or overlapping, words unre
 Bold styling, outlines, glow, red circles, console or retro looks and the PULSE badge are deliberate.
 Write every problem as "Frame N: what is wrong", using the frame numbers given. Pass when nothing is wrong.`;
 
-/** The frame numbers (1-based) a checker's problems name. */
+const FRAME_REF = /frames?\s+(\d+(?:\s*(?:,|and|&)\s*\d+)*)/gi;
+
+/**
+ * The frame numbers (1-based) a checker's problems are about. A problem written the asked way ("Frame 4:
+ * ...") is about its leading frame only: a cross-reference inside it ("... while Frame 2 names Dan Houser")
+ * does not fault that other frame. On 30 Oct 2026 such cross-references muted four good graphics (Vice City
+ * 1:28, Halo 4:0, 4:2 and 6:3). A problem with no leading frame falls back to every frame it names.
+ */
 export function framesNamed(problems: string[]): number[] {
   const out = new Set<number>();
-  for (const p of problems)
-    for (const m of p.matchAll(/frames?\s+(\d+(?:\s*(?:,|and|&)\s*\d+)*)/gi))
-      for (const n of m[1]!.split(/\s*(?:,|and|&)\s*/i))
-        if (Number(n) > 0) out.add(Number(n));
+  const add = (list: string) => {
+    for (const n of list.split(/\s*(?:,|and|&)\s*/i))
+      if (Number(n) > 0) out.add(Number(n));
+  };
+  for (const p of problems) {
+    const lead = p.match(
+      /^\W*frames?\s+(\d+(?:\s*(?:,|and|&)\s*\d+)*)\s*(?:[:.)\-]|$)/i,
+    );
+    if (lead) add(lead[1]!);
+    else for (const m of p.matchAll(FRAME_REF)) add(m[1]!);
+  }
   return [...out];
 }
 

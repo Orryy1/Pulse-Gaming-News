@@ -34,10 +34,51 @@ export interface QuietLists {
 /** How many graphics the checker sees in one call. */
 export const GRAPHICS_BATCH = 8;
 
+/** The long video's frame rate (src/render/Root.tsx LONG_FPS), for the settle arithmetic. */
+const FPS = 30;
+/** No graphic's still is taken before this frame of its moment (its entry build is still running). */
+export const MIN_SETTLE_FRAMES = 60;
+/** How far into a breather its still is taken: after every look's title has landed (the VHS label is
+ * written by frame 34, the torn head lands by 40) and before the mask look starts its zoom at frame 58. */
+export const BREAK_SETTLE_SECONDS = 1.6;
+
 /**
- * Every graphic and breather worth checking, in time order: a useful graphic 2.2 s after its sentence lands
- * (fully drawn by then), a breather 2.5 s in. Muted ones and anything past the end are left out. `max` caps
- * the list (the stills pre-pass takes them all up to GRAPHICS_PREPASS_MAX; the post-render sample fewer).
+ * The frame of a moment at which its graphic has settled: 58% into the hold (every style's build is done,
+ * src/render/components/packs/fit.ts DRAWN_BY; the fade-out, which starts 14 frames before the hold ends,
+ * has not begun), never before MIN_SETTLE_FRAMES unless the moment is too short for that. The hold is the
+ * one the styles use (useStage: the moment less 6 frames, at most 180 here, at least 60). Until 30 Oct 2026
+ * the still was taken 2.2 s in and caught split-flap rows mid-flip ("APRIL OV") and tape captions
+ * half-written ("Spartan Strike release dat").
+ */
+export function settledFrame(lenFrames: number): number {
+  const hold = Math.max(60, Math.min(lenFrames - 6, 180));
+  const late = hold - 14;
+  return Math.max(
+    Math.min(MIN_SETTLE_FRAMES, late),
+    Math.min(Math.round(hold * 0.58), late),
+  );
+}
+
+/**
+ * When a sentence's graphic starts and how long it is drawn, in seconds, as the renderer spans it
+ * (src/render/Long.tsx spanOf): from 0.15 s before the key word (never before the sentence) to the next
+ * sentence of the same entry, or the sentence's end, and never under 2.5 s.
+ */
+export function momentSpan(
+  w: MomentWindow,
+  next: MomentWindow | undefined,
+): { from: number; len: number } {
+  const from = Math.max(w.start, w.at - 0.15);
+  const until =
+    next && next.entry === w.entry ? Math.max(from, next.at - 0.15) : w.end;
+  return { from, len: Math.max(2.5, until - from) };
+}
+
+/**
+ * Every graphic and breather worth checking, in time order: a useful graphic at its settled frame
+ * (settledFrame), a breather BREAK_SETTLE_SECONDS in. Muted ones and anything past the end are left out.
+ * `max` caps the list (the stills pre-pass takes them all up to GRAPHICS_PREPASS_MAX; the post-render
+ * sample fewer).
  */
 export function graphicChecks(
   input: {
@@ -52,16 +93,18 @@ export function graphicChecks(
   const out: GraphicCheck[] = [];
   const mutedMoments = new Set(quiet.quietMoments ?? []);
   const mutedBreaks = new Set(quiet.quietBreaks ?? []);
-  for (const w of input.windows) {
+  input.windows.forEach((w, k) => {
     const key = `${w.entry}:${w.moment}`;
     const g = input.graphicOf(w.entry, w.moment);
-    if (!g || !usefulGraphic(g) || mutedMoments.has(key)) continue;
-    const t = Math.max(w.start, w.at - 0.15) + 2.2;
+    if (!g || !usefulGraphic(g) || mutedMoments.has(key)) return;
+    const span = momentSpan(w, input.windows[k + 1]);
+    const t = span.from + settledFrame(Math.round(span.len * FPS)) / FPS;
     if (t < input.durationSeconds - 1) out.push({ t, what: key });
-  }
+  });
   (input.breaks ?? []).forEach((b, i) => {
-    if (!mutedBreaks.has(i) && b.start + 2.5 < input.durationSeconds - 1)
-      out.push({ t: b.start + 2.5, what: `break:${i}` });
+    const t = b.start + Math.min(BREAK_SETTLE_SECONDS, (b.end - b.start) / 2);
+    if (!mutedBreaks.has(i) && t < input.durationSeconds - 1)
+      out.push({ t, what: `break:${i}` });
   });
   out.sort((a, b) => a.t - b.t);
   return out.slice(0, Math.max(0, max));

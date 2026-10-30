@@ -11,6 +11,7 @@ import { SPRING } from "../../../motion.ts";
 import { Stage, useStage } from "../../DocGraphics.tsx";
 import type { MomentGraphic } from "../../LongMoments.tsx";
 import type { GfxProps } from "../types.ts";
+import { DRAWN_BY } from "../fit.ts";
 import {
   GRAIN,
   INK,
@@ -99,8 +100,10 @@ export const Typewriter: React.FC<GfxProps> = ({
   const seed = 31 + variant * 13;
 
   // Typing runs from t0 and is done by `fin` (about frame 88; sooner for a short quote or a short sentence).
+  // Typing is done by 72 and the name written by DRAWN_BY (the roll and the name once ran to 124, so
+  // the pre-check's still caught "ROCKST" with the caret, 30 Oct 2026).
   const t0 = 14;
-  const fin = Math.max(44, Math.min(88, showFor - 60));
+  const fin = Math.max(44, Math.min(72, showFor - 60));
   const chars = lines.reduce((s, l) => s + l.text.length, 0);
   const cpf = Math.max(0.62, chars / Math.max(10, fin - t0 - RETURN * (N - 1)));
   const starts: number[] = [];
@@ -162,12 +165,16 @@ export const Typewriter: React.FC<GfxProps> = ({
   const attrPlace: React.CSSProperties =
     attrW > maxW ? { left: Math.round((maxW - attrW) / 2) } : { right: 0 };
   // The name follows the roll; on a short sentence it comes sooner so it still holds a second.
-  const attrAt = Math.min(done + 16, Math.max(done + 4, showFor - 50));
-  const write = interpolate(frame, [attrAt, attrAt + 20], [0, 1], {
+  const attrAt = Math.min(
+    done + 8,
+    Math.max(done + 4, showFor - 50),
+    DRAWN_BY - 14,
+  );
+  const write = interpolate(frame, [attrAt, attrAt + 12], [0, 1], {
     ...clamp,
     easing: Easing.out(Easing.quad),
   });
-  const swash = interpolate(frame, [attrAt + 14, attrAt + 28], [0, 1], {
+  const swash = interpolate(frame, [attrAt + 8, attrAt + 18], [0, 1], {
     ...clamp,
     easing: Easing.inOut(Easing.quad),
   });

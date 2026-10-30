@@ -191,7 +191,9 @@ export const SplitFlap: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
   const heading = boardText(txt(g.primary));
   if (!visible || rows.length < 2) return null;
 
-  const cols = Math.max(14, ...rows.map((r) => r.what.length));
+  // One blank module after the longest event, so its last letter never runs into the row's lamp ("WORK
+  // BEGINS" read as cramped and clipped against the board's edge, 30 Oct 2026).
+  const cols = Math.max(14, ...rows.map((r) => r.what.length + 1));
   // Module pitch: the full board fits inside the safe area, and never larger than a comfortable size.
   const inner = 1728 - 2 * 40 - 34 - 46; // padding, column gap, lamps
   const pitch = Math.min(68, Math.floor(inner / (cols + 4)));

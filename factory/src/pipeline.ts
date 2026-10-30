@@ -1971,6 +1971,7 @@ async function stepScriptDocumentary(
         }),
         source,
         outline.chapters.map((c) => c.game_title),
+        sentences,
       );
       moments = shot.moments;
       if (shot.removed.length)
@@ -3245,6 +3246,7 @@ async function stepScriptRecap(
         }),
         story.source,
         stories.map((st) => st.game),
+        grounded.chapter.paragraphs.flatMap((p) => sentencesOf(p.narration)),
       );
       recapMoments[index] = shot.moments;
     } catch (err) {

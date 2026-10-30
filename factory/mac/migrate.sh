@@ -50,6 +50,9 @@ prepare)
   ;;
 
 cutover)
+  # The Mac's clock must be London: the routines, the dated logs and launchd run on it (it shipped on Pacific).
+  tz=$(on_mac 'date +%Z')
+  case "$tz" in GMT|BST) ;; *) echo "the Mac's clock is on $tz, not London: set System Settings > General > Date & Time first"; exit 1 ;; esac
   echo "== settings (.env, with the Mac's paths)"
   home=$(on_mac 'echo $HOME')
   tmp=$(mktemp)

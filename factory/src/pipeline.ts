@@ -150,6 +150,12 @@ import {
   type AffiliateTags,
 } from "./editorial/affiliate.ts";
 import { pickVoice } from "./voice/index.ts";
+import {
+  breathReport,
+  quietenBreaths,
+  voiceProblems,
+  wordsPerMinute,
+} from "./voice/breathcheck.ts";
 import { speakable, speakContext } from "./voice/speakable.ts";
 import {
   buildSegments,
@@ -4042,6 +4048,51 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
         episode: ep.id,
         drift: check.drift,
       });
+  }
+  // How the take sounds, measured (owner, 30 Oct 2026: "run tests on everything as you generate it"; the
+  // new voice's intakes of breath were "quite off-putting"). Audible breaths are found on the loudness
+  // envelope and turned down in place (timings unchanged); a take still breathy after that, or a rushed
+  // one, is reported. The old narrator measured 0.3 audible breaths a minute, the new one 6 before this.
+  if (!twin) {
+    try {
+      const file = path.join(dir, "voice.mp3");
+      let breath = await breathReport(file);
+      const before = breath.loudPerMinute;
+      if (breath.loudPerMinute > 1.5) {
+        await quietenBreaths(file, breath);
+        breath = await breathReport(file);
+      }
+      const wpm = wordsPerMinute(narration.words);
+      const problems = voiceProblems(breath, wpm);
+      await logEvent(s.db, ep.id, "voice_quality", {
+        ok: problems.length === 0,
+        wpm,
+        loudBreathsPerMinute: breath.loudPerMinute,
+        loudBreathsBefore: before,
+        breaths: breath.breaths,
+        loudest: breath.loudest,
+        problems,
+      });
+      if (problems.length) {
+        log("warn", "voice quality check failed; going on", {
+          episode: ep.id,
+          problems,
+        });
+        await s.notify({
+          content: `🎙️ The narration for "${ep.script_json?.headline ?? ep.id}" sounds off and goes ahead anyway: ${problems.join("; ")}`,
+        });
+      } else
+        log("info", "voice quality check passed", {
+          episode: ep.id,
+          wpm,
+          loudBreathsPerMinute: breath.loudPerMinute,
+          loudBreathsBefore: before,
+        });
+    } catch (err) {
+      log("warn", "voice quality check unavailable", {
+        error: errorMessage(err),
+      });
+    }
   }
   const maxSeconds =
     ep.lane === "evergreen"

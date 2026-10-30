@@ -1,5 +1,5 @@
 // Screen pack, "PhoneAlert": a generic smartphone (no brand) in a slight 3D tilt over the blurred
-// picture. Its lock screen wakes at 9:41 and a NEWS ALERT notification drops in with the headline and
+// picture. Its lock screen wakes at 9:41 and a PULSE NEWS notification drops in with the headline and
 // the outlet and year; a softer stack of blank notifications sits behind it. Tagged ILLUSTRATION.
 import React from "react";
 import { Img, interpolate, spring } from "remotion";
@@ -10,25 +10,16 @@ import { Stage, useStage } from "../../DocGraphics.tsx";
 import type { GfxProps } from "../types.ts";
 import type { MomentGraphic } from "../../LongMoments.tsx";
 import { clamp, easeOut, sizeByLength, txt, wordCount } from "./common.ts";
+import { PulseMark } from "./pulse.tsx";
 
 const PHONE_W = 610;
 const PHONE_H = 1250;
 const BEZEL = 16;
 const SCREEN_W = PHONE_W - BEZEL * 2;
 
-/** The app's mark: a rounded amber square with a pulse line, generic and drawn in code. */
+/** The Pulse News app's icon: the Pulse mark on an amber tile (./pulse.tsx). */
 const AppIcon: React.FC<{ size: number }> = ({ size }) => (
-  <svg width={size} height={size} viewBox="0 0 48 48">
-    <rect width={48} height={48} rx={12} fill={COLOUR.amber} />
-    <polyline
-      points="7,26 16,26 20,15 27,35 31,22 34,26 41,26"
-      fill="none"
-      stroke={COLOUR.ink}
-      strokeWidth={4}
-      strokeLinejoin="round"
-      strokeLinecap="round"
-    />
-  </svg>
+  <PulseMark size={size} tile={COLOUR.amber} colour={COLOUR.ink} radius={24} />
 );
 
 /** Signal bars, a wireless fan and a battery: shapes only. */
@@ -324,7 +315,7 @@ export const PhoneAlert: React.FC<GfxProps> = ({
                       color: "#5a5a64",
                     }}
                   >
-                    NEWS ALERT
+                    PULSE NEWS
                   </div>
                 </div>
                 <div

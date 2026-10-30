@@ -88,3 +88,16 @@ test("a press story's card names its outlet and keeps to its own era", () => {
   assert.equal(inEra(phone, 2023), true);
   assert.equal(inEra(phone, undefined), true);
 });
+
+import { browserOf, phoneLook } from "../src/render/components/packs/screen/pulse.tsx";
+
+test("every device is a Pulse one of the story's era", () => {
+  assert.equal(outletOf("IGN, 2006", "source"), "IGN");
+  assert.deepEqual(
+    [1996, 2002, 2006, 2010].map((y) => browserOf(y).name),
+    ["Pulse Navigator", "Pulse Explorer", "Pulse Fox", "Pulse Sphere"],
+  );
+  assert.deepEqual(phoneLook(2013, 0), { gen: "classic", skin: "orbit", network: "4G" });
+  assert.deepEqual(phoneLook(2017, 1), { gen: "slim", skin: "droid", network: "4G" });
+  assert.deepEqual(phoneLook(2023, 0), { gen: "edge", skin: "orbit", network: "5G" });
+});

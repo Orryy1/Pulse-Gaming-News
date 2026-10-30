@@ -206,6 +206,16 @@ export interface Config {
   minWordsPerMinute: number;
   docMaxSeconds: number;
   docClipsPerChapter: number;
+  /** Documentaries end on a rendered twenty-second card ("Up next": the newest public documentary, the
+   * mark, a subscribe nudge) and their description's second line carries that link: DOC_END_CARD, default on. */
+  docEndCard: boolean;
+  /** Documentaries open on the signature three seconds (sting, mark, one line of the hook): DOC_COLD_OPEN, default on. */
+  docColdOpen: boolean;
+  /** A documentary's first comment points at one chapter with its timestamp: DOC_PIN_MOMENT, default on. */
+  docPinMoment: boolean;
+  /** A community post and a poll are drafted for every documentary when it goes live, kept on the episode and
+   * put in the publish notice for the owner to paste (the API cannot post them): COMMUNITY_DRAFTS, default on. */
+  communityDrafts: boolean;
   crosspost: {
     facebook: boolean;
     instagram: boolean;
@@ -587,6 +597,10 @@ export function loadConfig(): Config {
     minWordsPerMinute: int("MIN_WORDS_PER_MINUTE", 145),
     docMaxSeconds: int("DOC_MAX_SECONDS", 3000),
     docClipsPerChapter: int("DOC_CLIPS_PER_CHAPTER", 4),
+    docEndCard: bool("DOC_END_CARD", true),
+    docColdOpen: bool("DOC_COLD_OPEN", true),
+    docPinMoment: bool("DOC_PIN_MOMENT", true),
+    communityDrafts: bool("COMMUNITY_DRAFTS", true),
     crosspost: {
       facebook: bool("CROSSPOST_FACEBOOK", true),
       instagram: bool("CROSSPOST_INSTAGRAM", true),

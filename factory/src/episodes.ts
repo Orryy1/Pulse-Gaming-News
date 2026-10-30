@@ -112,6 +112,15 @@ export interface EpisodeAssets {
     facts: import("./assets/steam.ts").SteamFacts;
   };
   longPlan?: import("./render/longplan.ts").LongPlan; // the long-form render plan
+  /** A documentary's end card: the newest public documentary when this one was rendered (src/youtube/nextdoc.ts); null when there was none. */
+  nextDoc?: {
+    id: string;
+    videoId: string;
+    title: string;
+    thumb: string | null;
+  } | null;
+  /** A documentary's community post and poll, drafted when it went live, for the owner to paste (src/social/community.ts). */
+  community?: import("./social/community.ts").CommunityDrafts;
   /** Zoom-to-the-detail annotations (src/assets/annotate.ts): the sentence, its picture and where the named thing sits. */
   annotations?: Array<{
     entry: number;

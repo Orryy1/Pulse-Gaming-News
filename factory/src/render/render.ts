@@ -398,9 +398,11 @@ export interface LongRenderInput {
   episodeDir: string;
   props: Omit<
     LongProps,
-    "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc"
+    "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc" | "next"
   > & {
     audioFile: string | null;
+    /** A documentary's end card: the next documentary and its thumbnail file (null: a card with no next; absent: no card). */
+    next?: { title: string; thumbFile: string | null } | null;
     imageFiles: Array<{
       file: string;
       kind: string;
@@ -453,10 +455,21 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
   const serveUrl = await getBundle();
   const files = await serveDir(input.episodeDir);
   try {
-    const { audioFile, imageFiles, clipFiles, musicFile, ...rest } =
+    const { audioFile, imageFiles, clipFiles, musicFile, next, ...rest } =
       input.props;
     const props: LongProps = {
       ...rest,
+      // The end card's thumbnail: a copy of the next documentary's thumb inside this episode's folder.
+      ...(next === undefined
+        ? {}
+        : {
+            next: next && {
+              title: next.title,
+              thumbSrc: next.thumbFile
+                ? `${files.url}/${webPath(next.thumbFile)}`
+                : null,
+            },
+          }),
       audioSrc: audioFile ? `${files.url}/${webPath(audioFile)}` : null,
       images: imageFiles.map((i) => ({
         src: `${files.url}/${webPath(i.file)}`,

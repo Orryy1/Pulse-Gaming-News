@@ -252,6 +252,11 @@ import {
   type GameplayStatus,
 } from "./gameplay.ts";
 import { pruneCommentRecords } from "./youtube/replies.ts";
+import { finishChapters } from "./youtube/chapters.ts";
+import { docPinnedComment } from "./youtube/pinned.ts";
+import { latestPublicDocumentary, nextLine } from "./youtube/nextdoc.ts";
+import { communityBlock, communityDrafts } from "./social/community.ts";
+import { coldOpenLine, END_CARD_SECONDS } from "./render/bookends.ts";
 import {
   type Episode,
   type EpisodeAssets,
@@ -6384,6 +6389,33 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // Again just before the turn is asked for: a breaking Short may have started while the stills were prepared.
   const turnWait = await longRenderGap(s, ep);
   if (turnWait === undefined) return;
+  // A documentary's end card (DOC_END_CARD): the newest public documentary, decided now and kept on the
+  // episode so the description's "Next" line matches the card; its thumbnail is copied in beside the render.
+  const endCard = doc && s.cfg.docEndCard;
+  let nextDoc: EpisodeAssets["nextDoc"];
+  let nextThumb: string | null = null;
+  if (endCard) {
+    const next = await latestPublicDocumentary(s.db, s.now(), ep.id);
+    nextDoc = next ?? null;
+    if (next?.thumb) {
+      try {
+        await fs.copyFile(
+          path.join(episodeDir(s.cfg, next.id), next.thumb),
+          path.join(dir, "next_thumb.jpg"),
+        );
+        nextThumb = "next_thumb.jpg";
+      } catch {
+        /* that thumbnail is gone (older episodes are pruned): the card shows the title alone */
+      }
+    }
+    assets.nextDoc = nextDoc;
+    await logEvent(s.db, ep.id, "end_card", {
+      next: next ? { id: next.id, title: next.title } : null,
+      thumb: Boolean(nextThumb),
+    });
+  }
+  // The render runs past the narration's tail by the end card; the plan and the chapter marks do not change.
+  const renderSeconds = duration + (endCard ? END_CARD_SECONDS : 0);
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   const rendered = await s
@@ -6431,7 +6463,15 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           : undefined,
         segments,
         words,
-        durationSeconds: duration,
+        durationSeconds: renderSeconds,
+        // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
+        coldOpenLine:
+          doc && s.cfg.docColdOpen ? coldOpenLine(script.hook) : undefined,
+        next: endCard
+          ? nextDoc
+            ? { title: nextDoc.title, thumbFile: nextThumb }
+            : null
+          : undefined,
         variant,
         audioFile: assets.audio ?? null,
         musicFile,
@@ -6460,7 +6500,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
-  const tech = await s.technicalQa(final, duration, {
+  const tech = await s.technicalQa(final, renderSeconds, {
     minSeconds: 180,
     // The breathers are on top of the narration cap.
     maxSeconds:
@@ -7427,11 +7467,14 @@ export function videoMetadata(
     .replace(/\s{2,}/g, " ")
     .trim();
   const long = script.runtime === "long";
-  const chapters = long ? longChapters(ep) : [];
+  // The chapter marks YouTube reads (src/youtube/chapters.ts): 0:00 first, three or more, ten seconds apart.
+  const chapters = long ? finishChapters(longChapters(ep), body) : [];
   // Shop links for every game and piece of hardware the video names, right under the summary.
   const shop = affiliateBlock(script, affiliate, { free: ep.lane === "free" });
   const description = [
     keywordLead(script),
+    // A documentary's second line: the same "next" its end card shows (src/youtube/nextdoc.ts).
+    nextLine(ep.assets_json?.nextDoc ?? undefined),
     "",
     body,
     shop,
@@ -7809,8 +7852,13 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
   if (await publishHeld(s.db)) return; // the owner's publishing hold
   try {
     // Comment links are clickable on long videos (not on Shorts): the long video's pin carries its top pick.
+    // A documentary's comment points at one chapter with its timestamp (DOC_PIN_MOMENT, src/youtube/pinned.ts).
+    const script = ep.script_json!;
     const text =
-      (ep.script_json!.twin?.pinned || pinnedComment(ep.script_json!)) +
+      (script.twin?.pinned ||
+        (script.evergreen_format === "documentary" && s.cfg.docPinMoment
+          ? docPinnedComment(script, longChapters(ep))
+          : pinnedComment(script))) +
       (ep.script_json!.runtime === "long"
         ? affiliateCommentLine(ep.script_json!, affiliateTags(s.cfg, ep.id))
         : "");
@@ -7964,8 +8012,26 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   if (st.privacyStatus === "public") await gameplayLive(s, ep);
   const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
   const longVideo = ep.script_json?.runtime === "long";
+  // A documentary's community post and poll (COMMUNITY_DRAFTS, src/social/community.ts): drafted now from
+  // its chapters, kept on the episode and put in this notice for the owner to paste; the API cannot post them.
+  let community = "";
+  if (
+    ep.script_json?.evergreen_format === "documentary" &&
+    s.cfg.communityDrafts
+  ) {
+    const drafts = communityDrafts(ep.script_json, ep.youtube_video_id!);
+    await s.db.query(
+      `UPDATE episodes SET assets_json = COALESCE(assets_json, '{}'::jsonb) || $2::jsonb WHERE id = $1`,
+      [ep.id, JSON.stringify({ community: drafts })],
+    );
+    await logEvent(s.db, ep.id, "community_drafted", {
+      post: drafts.post,
+      poll: drafts.poll ?? null,
+    });
+    community = `\n\n${communityBlock(drafts)}\n\nThe first comment goes up when the video is public; pin it from YouTube Studio (the API cannot pin).`;
+  }
   await s.notify({
-    content: `✅ ${ep.publish_at && new Date(ep.publish_at) > s.now() ? `Uploaded, goes live ${ukTime(new Date(ep.publish_at), s.now())}` : "Live now"}${longVideo ? " (long video)" : ""}: ${ep.script_json!.youtube.title}\n${longVideo ? `https://youtu.be/${ep.youtube_video_id}` : url}`,
+    content: `✅ ${ep.publish_at && new Date(ep.publish_at) > s.now() ? `Uploaded, goes live ${ukTime(new Date(ep.publish_at), s.now())}` : "Live now"}${longVideo ? " (long video)" : ""}: ${ep.script_json!.youtube.title}\n${longVideo ? `https://youtu.be/${ep.youtube_video_id}` : url}${community}`,
   });
 }
 

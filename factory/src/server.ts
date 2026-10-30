@@ -81,6 +81,7 @@ import { activeUploads } from "./youtube/upload.ts";
 import { handleRoutine, routineAllowed, startBraveFront } from "./routines.ts";
 import { alert, postDiscord } from "./approval/discord.ts";
 import { sendDueNotices } from "./notices.ts";
+import { maybeReload } from "./reload.ts";
 import { primeTimeNow } from "./experiments.ts";
 import {
   dailySummary,
@@ -1764,6 +1765,30 @@ async function main(): Promise<void> {
         () => undefined,
       ),
     2 * 60_000,
+  );
+  // A code reload between slots (src/reload.ts): whoever deploys writes data/admin/reload-requested, and the
+  // factory exits with RELOAD_EXIT_CODE the first minute it is idle (no tick or upload running, nothing due,
+  // no hold-restart flag, no Pulse job in the PC orchestrator, more than RELOAD_MINUTES_BEFORE_SLOT from a
+  // slot); windows/run.ps1 starts it straight back up on the new code.
+  const reloadState: { lastWhy?: string } = {};
+  setInterval(
+    () =>
+      void maybeReload({
+        db,
+        cfg,
+        now: new Date(),
+        activity: () => ({
+          ticking: running,
+          longTicking: runningLong,
+          uploadsActive: activeUploads(),
+        }),
+        notify: (m) => services.notify(m),
+        exit: (code) => process.exit(code),
+        state: reloadState,
+      }).catch((err) =>
+        log("warn", "reload check failed", { error: errorMessage(err) }),
+      ),
+    60_000,
   );
   let lastRestartDay = new Date().toISOString().slice(0, 10);
   setInterval(async () => {

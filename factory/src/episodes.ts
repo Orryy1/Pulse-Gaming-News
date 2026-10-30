@@ -67,6 +67,10 @@ export interface EpisodeAssets {
   quietMoments?: string[];
   /** Chapter breathers the graphics check faulted (their index), shown as the plain title card instead. */
   quietBreaks?: number[];
+  /** The graphics check ran on stills before the render (src/qa/graphicscheck.ts): how many it looked at and muted. */
+  graphicsPrepass?: { checked: number; muted: number; at: string };
+  /** Full re-renders the post-render graphics check has asked for so far (capped by GRAPHICS_RERENDER_PASSES). */
+  graphicsPasses?: number;
   /** The new-look Short's custom thumbnail (frame 0), uploaded once the Short is processed. */
   shortThumb?: string;
   /** The new-look opening: the hero art's subject cut out by the depth model (src/render/parallax.ts). */

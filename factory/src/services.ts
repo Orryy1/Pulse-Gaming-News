@@ -18,7 +18,7 @@ import { creditPlan, elevenLabsSubscription, type CreditPlan } from "./voice/cre
 import { decodedSeconds, stitch, GAP_SECONDS } from "./voice/local.ts";
 import type { Narration } from "./voice/elevenlabs.ts";
 import { fetchSteamArt, findSteamApp, steamFacts } from "./assets/steam.ts";
-import { renderShort, renderLong, renderCutdown } from "./render/render.ts";
+import { renderShort, renderLong, renderLongStills, renderCutdown } from "./render/render.ts";
 import { extractFrames, imageAspect, normaliseLoudness, technicalQa } from "./qa/media.ts";
 import { visionQa } from "./qa/vision.ts";
 import { checkNarration, transcribeWords } from "./qa/narration.ts";
@@ -159,6 +159,7 @@ export function createServices(db: Db, cfg: Config): Services {
     imageAspect,
         render: renderShort,
     renderLong,
+    renderLongStills,
     renderCutdown,
     normalise: normaliseLoudness,
     technicalQa,

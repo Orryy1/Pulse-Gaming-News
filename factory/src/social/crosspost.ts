@@ -77,12 +77,17 @@ export interface SocialPosters {
   ) => Promise<string>;
 }
 
-// Hashtags per platform: the story's own tags first, then at most the niche tag. Instagram allows five;
-// TikTok's top gaming accounts use four or five (franchise, series, company, niche); Facebook two; X none.
-const PLATFORM_TAGS: Record<Platform, { topic: number; tail: string[] }> = {
+// Hashtags per platform: the story's own tags first, then the niche tags, up to the platform's limit.
+// Instagram and TikTok allow five (owner, 30 Oct 2026: use all five); TikTok's top gaming accounts use
+// franchise, series, company and niche, so a fourth specific tag beats the broad #gaming, which only fills
+// a short list. Facebook two; X none.
+const PLATFORM_TAGS: Record<
+  Platform,
+  { topic: number; tail: string[]; max?: number }
+> = {
   facebook: { topic: 1, tail: ["#GamingNews"] },
-  instagram: { topic: 3, tail: ["#gamingnews", "#gaming"] },
-  tiktok: { topic: 3, tail: ["#gamingnews", "#gaming"] },
+  instagram: { topic: 4, tail: ["#gamingnews", "#gaming"], max: 5 },
+  tiktok: { topic: 4, tail: ["#gamingnews", "#gaming"], max: 5 },
   x: { topic: 0, tail: [] },
   // Threads turns one tag into the post's topic; Bluesky's gaming feeds pick up a #gaming tag.
   threads: { topic: 1, tail: [] },
@@ -124,7 +129,10 @@ export function socialCaption(
   const title = polishTitle(script);
   const url = `https://youtube.com/shorts/${youtubeId}`;
   const spec = PLATFORM_TAGS[platform];
-  const tags = [...topicTags(script, spec.topic), ...spec.tail];
+  const tags = [...topicTags(script, spec.topic), ...spec.tail].slice(
+    0,
+    spec.max ?? Infinity,
+  );
   const question = questionOf(script);
   const rumour = script.is_rumour
     ? "Unconfirmed report: we will update when it is confirmed or denied."
@@ -323,7 +331,10 @@ export function primeTimeDelay(
   const minute = Number(p.hour) * 60 + Number(p.minute);
   const start = PRIME_WINDOW.startHour * 60;
   if (minute >= start) return baseMinutes; // inside or after the window: the usual stagger
-  const wait = Math.min(PRIME_WINDOW.maxDelayMinutes, start - minute + offsetMinutes);
+  const wait = Math.min(
+    PRIME_WINDOW.maxDelayMinutes,
+    start - minute + offsetMinutes,
+  );
   return Math.max(baseMinutes, wait);
 }
 
@@ -577,10 +588,14 @@ async function linkComment(
       id: comment,
     });
   } catch (err) {
-    log("warn", "facebook link comment failed; the link goes back in the caption", {
-      episode: ep.id,
-      error: errorMessage(err),
-    });
+    log(
+      "warn",
+      "facebook link comment failed; the link goes back in the caption",
+      {
+        episode: ep.id,
+        error: errorMessage(err),
+      },
+    );
     await d.posters
       .facebookDescription?.(
         videoId,

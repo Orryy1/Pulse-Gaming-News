@@ -89,3 +89,17 @@ test("channel-wide pass: a late comment on any factory video gets judged and ans
   assert.equal(await replyToChannelComments(later), 0);
   assert.equal(replied.length, 1);
 });
+
+import { recentOpenings } from "../src/youtube/replies.ts";
+
+test("a reply is told the channel's recent openings, each once", () => {
+  assert.deepEqual(
+    recentOpenings([
+      "Fair point, the 1997 original still writes brilliantly.",
+      "Fair point, Fallout 4 does have factions.",
+      "Honest take, and IGN agrees.",
+      "",
+    ]),
+    ["Fair point", "Honest take"],
+  );
+});

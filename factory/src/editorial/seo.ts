@@ -380,6 +380,15 @@ export function topicTags(script: Script, n = 3): string[] {
   for (const [re, tags] of SHORT_TAGS) if (re.test(subject)) tags.forEach(add);
   const game = script.game_title.replace(/[^A-Za-z0-9]/g, "");
   if (game && !/^(gamingnews|thisweek|newgames)/i.test(game)) add(game);
+  // Still short (30 Oct 2026: a Fallout ranking went to TikTok with only #Fallout): a ranking's or recap's own
+  // games, best-placed first, each by its short form when fans search one.
+  const entries = [...(script.entries ?? [])].sort((a, b) => a.rank - b.rank);
+  for (const e of entries) {
+    if (out.length >= n) break;
+    const short = SHORT_TAGS.find(([re]) => re.test(e.game_title));
+    if (short) short[1].forEach(add);
+    add(e.game_title);
+  }
   return out.slice(0, n);
 }
 

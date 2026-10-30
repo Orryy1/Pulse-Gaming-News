@@ -225,3 +225,23 @@ test("Threads posts go to /me, never to a saved id that JSON may have rounded", 
   assert.ok(urls[0]!.includes("/v1.0/me/threads?"));
   assert.ok(urls.at(-1)!.includes("/v1.0/me/threads_publish?"));
 });
+
+test("TikTok and Instagram captions use all five hashtags, a ranking's own games before #gaming", async () => {
+  const { socialCaption } = await import("../src/social/crosspost.ts");
+  const ranking = {
+    hook: "Every mainline Fallout, ranked by how it plays today.",
+    game_title: "Fallout",
+    headline: "Ranking every mainline Fallout game",
+    hashtags: ["#Fallout"],
+    entries: [
+      { rank: 2, game_title: "Fallout 4", year: 2015 },
+      { rank: 1, game_title: "Fallout: New Vegas", year: 2010 },
+      { rank: 3, game_title: "Fallout 3", year: 2008 },
+    ],
+    youtube: { title: "Fallout: Ranking Every Mainline Game", description: "", tags: [] },
+  } as never;
+  for (const platform of ["tiktok", "instagram"] as const) {
+    const tags = socialCaption(platform, ranking, "abc").match(/#\w+/g) ?? [];
+    assert.deepEqual(tags, ["#Fallout", "#FalloutNewVegas", "#Fallout4", "#Fallout3", "#gamingnews"], platform);
+  }
+});

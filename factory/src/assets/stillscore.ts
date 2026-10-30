@@ -121,7 +121,7 @@ export async function rankStills(
   workDir: string,
   scope?: "campaign",
   /** "documentary": the game's own interface in a screenshot is fine; only stamped-on text is refused. */
-  mode?: "documentary",
+  mode?: "documentary" | "stock",
 ): Promise<{
   picks: StillPick[];
   labels: Map<number, string>;
@@ -165,7 +165,10 @@ export async function rankStills(
         ? `\nThis video is about the single-player story campaign. Also mark as has_text, so it is never used, any picture that shows multiplayer (an arena map, operators or skins, scoreboards, killstreaks, a lobby) or Zombies, or that you cannot place in the story campaign.`
         : ""
     }${
-      mode === "documentary"
+      mode === "stock"
+        ? `
+These are licensed stock video previews for a real-world line in a documentary about video games. Pick none (confidence under 0.5) when the preview shows hardware, technology or a product from a different era or a different product than the line names: a modern controller, phone, laptop or flat screen for a line about the 1990s or 2001, a PS4 pad for a PS3 line, an Xbox One for the original Xbox. A generic office, cash or crowd shot fits only when the line is about exactly that.`
+        : mode === "documentary"
         ? `\nThis is a documentary about the game: a screenshot showing the game's own interface (the HUD, a map, money or health, in-game signs) is fine and is NOT has_text. Mark has_text only for text stamped onto the picture from outside the game: title cards and taglines, store or review text, uploader logos and watermarks, subtitles and captions, menus and text screens.`
         : ""
     }`,

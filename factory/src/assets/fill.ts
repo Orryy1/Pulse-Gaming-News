@@ -163,8 +163,10 @@ export async function fillSentencePictures(
   for (const ch of chapters) {
     try {
       await fillChapter(deps, dir, ch, images, clips, franchise, scope);
-      // What is still bare and states a date, place, figure or name gets the graphic that shows it.
-      const covered = coveredMoments(ch.entry, ch.moments, images, clips);
+      // What is still bare, or has only illustrative stock, and states a date, place, figure or name gets the
+      // graphic that shows it (30 Oct 2026 shot review: generic stock scored 1 of 3, a card stating the fact 3).
+      const real = clips.filter((c) => !c.stock);
+      const covered = coveredMoments(ch.entry, ch.moments, images, real);
       const bare = ch.moments.map((_, k) => k).filter((k) => !covered.has(k));
       await graphicsForBare(deps.llm, ch, bare, ch.sentences.join(" "), games);
     } catch (err) {
@@ -253,6 +255,26 @@ async function fillChapter(
         file: path.join(base, a.file),
         beatIndex: ch.entry,
       });
+  // A sentence that names another game (GTA 2, the London expansions, Red Dead Redemption 2, The Warriors)
+  // gets that game's own official pictures, only on an exact title match (30 Oct 2026 shot review: those lines
+  // showed the chapter's game instead).
+  const others = new Map<string, number[]>();
+  for (const k of open())
+    for (const t of otherGames(ch.moments[k]!, ch.game, franchise, ch.sentences[k] ?? ""))
+      others.set(t, [...(others.get(t) ?? []), k]);
+  for (const [title] of [...others].slice(0, 6)) {
+    const got = await deps
+      .igdbArt(title, undefined, path.join(abs, "other", slug(title)), 6)
+      .catch(() => [] as VisualAsset[]);
+    for (const a of got)
+      if (a.kind !== "capsule" && igdbNameOf(a.provenance) === norm(title) && !have.has(a.sourceUrl))
+        candidates.push({
+          ...a,
+          file: path.join(base, "other", slug(title), a.file),
+          beatIndex: ch.entry,
+          label: title,
+        });
+  }
   const queries = new Map<string, { person?: string; words: string[] }>();
   for (const k of open()) {
     const m = ch.moments[k]!;
@@ -572,4 +594,39 @@ export function graphicFitsSentence(
     if (!said || !quoted.some((q) => q.includes(said))) return false;
   }
   return true;
+}
+
+const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const slug = (t: string) => norm(t).replace(/ /g, "_").slice(0, 40);
+
+/** The game an IGDB picture belongs to, from its provenance line. */
+export function igdbNameOf(provenance: string | undefined): string {
+  const m = /for "([^"]+)"/.exec(provenance ?? "");
+  return m ? norm(m[1]!) : "";
+}
+
+/**
+ * Titles of other games a sentence's shot note names: capitalised keywords of two or more words that are not
+ * the chapter's game or the franchise alone ("Grand Theft Auto 2", "Red Dead Redemption 2", "The Warriors").
+ */
+export function otherGames(
+  m: FillMoment,
+  game: string,
+  franchise: string,
+  sentence: string,
+): string[] {
+  const own = new Set([norm(game), norm(franchise)]);
+  const out = new Set<string>();
+  for (const k of m.keywords ?? []) {
+    const t = k.trim();
+    const words = t.split(/\s+/);
+    if (words.length < 2 || words.length > 6) continue;
+    if (words.filter((w) => /^[A-Z0-9]/.test(w)).length < Math.ceil(words.length * 0.6)) continue;
+    if (own.has(norm(t)) || norm(game).includes(norm(t))) continue;
+    if (m.person && norm(m.person) === norm(t)) continue;
+    // The sentence itself says the title (a place called Ocean Drive is not a game called Ocean Drive).
+    if (!norm(sentence).includes(norm(t))) continue;
+    out.add(t);
+  }
+  return [...out];
 }

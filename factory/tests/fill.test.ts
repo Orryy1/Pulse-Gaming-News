@@ -58,3 +58,16 @@ test("a graphic only carries figures and quotes its own sentence says", () => {
   assert.equal(graphicFitsSentence(g("quote", "Then it shipped", "Gary Penn"), s, 2, text), false);
   assert.equal(graphicFitsSentence(g("quote", "nobody wants to be the cop", "Rockstar mission dialogue"), s, 2, text), false);
 });
+
+import { igdbNameOf, otherGames } from "../src/assets/fill.ts";
+
+test("a sentence that names another game asks for that game's pictures, exact titles only", () => {
+  const m = { show: "GTA 2 top-down", keywords: ["Grand Theft Auto 2", "Ocean Drive", "top-down"], person: "" };
+  assert.deepEqual(
+    otherGames(m, "Grand Theft Auto", "Grand Theft Auto", "Grand Theft Auto 2 arrived in October 1999."),
+    ["Grand Theft Auto 2"],
+  );
+  // The chapter's own game is not "another" game, and a title the sentence never says is skipped.
+  assert.deepEqual(otherGames({ show: "", keywords: ["Grand Theft Auto"] }, "Grand Theft Auto", "Grand Theft Auto", "Grand Theft Auto shipped."), []);
+  assert.equal(igdbNameOf('IGDB screenshot for "Grand Theft Auto 2" (1999), publisher material via igdb.com'), "grand theft auto 2");
+});

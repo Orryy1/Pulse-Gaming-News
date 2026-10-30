@@ -122,7 +122,7 @@ export function createServices(db: Db, cfg: Config): Services {
       cfg.pexelsApiKey
         ? stockClips(cfg.pexelsApiKey, dir, targets, gameWords, maxClips, async (t, previews) => {
             // The picture editor sees each result's preview beside the line and keeps one only when it fits.
-            const r = await rankStills(llm, [{ key: "m0", show: t.keywords.join(", "), sentence: t.text }], previews.map((file) => ({ file })), path.join(dir, "stock", "pick"));
+            const r = await rankStills(llm, [{ key: "m0", show: t.keywords.join(", "), sentence: t.text }], previews.map((file) => ({ file })), path.join(dir, "stock", "pick"), undefined, "stock");
             return r.picks[0]?.image;
           })
         : Promise.resolve([]),

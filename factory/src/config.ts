@@ -363,6 +363,8 @@ export interface Config {
   illustrateTimeoutSeconds: number;
   /** A placeholder PNG instead of the model: dry runs and the trial without the GPU. */
   illustrateStub: boolean;
+  /** Sketches animated on screen (drawn on, stop-motion paper, flipbook, light table, cork board; src/render/sketchplan.ts). Off: the static framed print. */
+  sketchAnimation: boolean;
   dryRun: boolean;
   maxAttempts: number;
   remotionConcurrency: number;
@@ -770,6 +772,7 @@ export function loadConfig(): Config {
     illustrateMax: int("ILLUSTRATE_MAX", 24),
     illustrateTimeoutSeconds: int("ILLUSTRATE_TIMEOUT_SECONDS", 180),
     illustrateStub: bool("ILLUSTRATE_STUB", false),
+    sketchAnimation: bool("SKETCH_ANIMATION", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),

@@ -257,6 +257,7 @@ export function testConfig(
     illustrateMax: 24,
     illustrateTimeoutSeconds: 180,
     illustrateStub: true,
+    sketchAnimation: true,
     dryRun: false,
     maxAttempts: 3,
     remotionConcurrency: 1,

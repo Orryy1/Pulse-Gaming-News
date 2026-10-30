@@ -11,6 +11,7 @@ import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
 import { ConceptAvatar, ConceptBanner, BroadcastCover } from "./BrandConcepts.tsx";
 import { TextureBackground, type BackgroundKind } from "./components/Backgrounds.tsx";
 import { GfxPreview, SAMPLE_GFX, type GfxPreviewProps } from "./components/packs/Preview.tsx";
+import { SketchPreview, SAMPLE_SKETCH, type SketchPreviewProps } from "./SketchPreview.tsx";
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -79,6 +80,19 @@ export const RemotionRoot: React.FC = () => (
       defaultProps={SAMPLE_GFX}
       calculateMetadata={({ props }: { props: GfxPreviewProps }) => ({
         durationInFrames: Math.ceil(props.durationSeconds * LONG_FPS),
+      })}
+    />
+    {/* One concept-sketch treatment on its own, for previews (src/render/SketchPreview.tsx). */}
+    <Composition
+      id="PulseSketch"
+      component={SketchPreview}
+      fps={LONG_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={Math.ceil(SAMPLE_SKETCH.durationSeconds * LONG_FPS)}
+      defaultProps={SAMPLE_SKETCH}
+      calculateMetadata={({ props }: { props: SketchPreviewProps }) => ({
+        durationInFrames: Math.max(30, Math.ceil(props.durationSeconds * LONG_FPS)),
       })}
     />
     {/* The explainer backgrounds on their own, for previews (src/render/components/Backgrounds.tsx). */}

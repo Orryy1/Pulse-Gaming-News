@@ -6000,11 +6000,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     if (sketches) {
       const sum = sketches.summary();
       assets.sketches = sum;
-      await logEvent(s.db, ep.id, "sketches", { ...sum });
+      await logEvent(s.db, ep.id, "sketches", {
+        ...sum,
+        animated: s.cfg.sketchAnimation,
+      });
       if (sum.asked)
         await s.notify({
           level: "info",
-          content: `Documentary "${script.headline}": ${sum.kept} concept sketch${sum.kept === 1 ? "" : "es"} drawn for lines nothing filmed can show (${sum.asked} asked, ${sum.dropped} refused by the picture editor, ${sum.failed} not drawn; ${sum.seconds}s). Each is tagged ILLUSTRATION on screen. Setting: ILLUSTRATE_ENABLED.`,
+          content: `Documentary "${script.headline}": ${sum.kept} concept sketch${sum.kept === 1 ? "" : "es"} drawn for lines nothing filmed can show (${sum.asked} asked, ${sum.dropped} refused by the picture editor, ${sum.failed} not drawn; ${sum.seconds}s). Each is tagged ILLUSTRATION on screen${s.cfg.sketchAnimation ? " and animated: drawn on, stop-motion paper, flipbook, light table or cork board (SKETCH_ANIMATION)" : " as a framed print (SKETCH_ANIMATION=false)"}. Setting: ILLUSTRATE_ENABLED.`,
         });
     }
     // The graphics pass writes into the shot list (script.entries[].moments), so the script is kept too.
@@ -6589,6 +6592,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         palette: assets.palette,
         annotations: assets.annotations,
         eraBeds: doc && s.cfg.docSoundBeats,
+        // Concept sketches drawn on, stepped, flipped, dissolved or pinned up (src/render/sketchplan.ts).
+        sketchAnimation: s.cfg.sketchAnimation,
   });
   // The graphics check before the render (src/qa/graphicscheck.ts): every graphic and breather as a still
   // from the same composition and props, faulted ones muted, so the full render runs once instead of again

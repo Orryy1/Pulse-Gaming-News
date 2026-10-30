@@ -148,6 +148,8 @@ import type { Word } from "../voice/elevenlabs.ts";
 import { ColdOpen } from "./components/ColdOpen.tsx";
 import { EndCard } from "./components/EndCard.tsx";
 import { coldOpenTiming, endCardTiming } from "./bookends.ts";
+import { SketchShot } from "./components/SketchShot.tsx";
+import { planSketchShots, type SketchDecision } from "./sketchplan.ts";
 
 export interface LongImageProp {
   src: string;
@@ -208,6 +210,8 @@ export type LongProps = {
   extraBeds?: Array<{ file: string; key: "D" | "E"; mood: string }>;
   /** A documentary: each chapter opens on the quiet bed of its era (src/render/soundscape.ts eraBed). */
   eraBeds?: boolean;
+  /** Concept sketches animated (src/render/sketchplan.ts); false keeps the static framed print. Default true. */
+  sketchAnimation?: boolean;
   durationSeconds: number;
   variant: number;
   renderDate: string;
@@ -962,6 +966,16 @@ const TitleLines: React.FC<{ text: string }> = ({ text }) => (
   </>
 );
 
+/** Each picture's word, as the shot label and the sketch treatments' caption use it. */
+const KIND_WORD: Record<string, string> = {
+  hero: "Key art",
+  header: "Key art",
+  capsule: "Box art",
+  screenshot: "Screenshot",
+  article: "Press image",
+  sketch: "Concept sketch",
+};
+
 const Backdrop: React.FC<{
   plan: LongPlan;
   images: LongImageProp[];
@@ -984,6 +998,8 @@ const Backdrop: React.FC<{
   punches?: Map<number, number>;
   /** Per shot index: its game's own colour, washed softly over the picture. */
   tints?: Map<number, string>;
+  /** Per shot index: how a concept sketch arrives (src/render/sketchplan.ts); absent, the static framed print. */
+  sketches?: Map<number, SketchDecision>;
 }> = ({
   plan,
   images,
@@ -996,6 +1012,7 @@ const Backdrop: React.FC<{
   powerOff,
   punches,
   tints,
+  sketches,
 }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
@@ -1006,6 +1023,8 @@ const Backdrop: React.FC<{
       const xf = powerOff?.has(i - 1) ? 0 : Math.min(XFADE, s.start);
       const seqLen = img && i > 0 ? len + xf : len;
       const dev = retro?.get(i);
+      // A concept sketch's animated arrival (components/SketchShot.tsx) replaces the framed print.
+      const sk = img?.kind === "sketch" ? sketches?.get(i) : undefined;
       // An old game's dressing: its period look, the hardware it opens on, the tube switching off.
       const dress = (node: React.ReactNode) => {
         let out = node;
@@ -1066,7 +1085,32 @@ const Backdrop: React.FC<{
           ) : img ? (
             <>
               <FadeIn frames={i > 0 ? xf : 0}>
-                {dev
+                {sk ? (
+                  <SketchShot
+                    src={img.src}
+                    aspect={img.aspect}
+                    len={seqLen}
+                    move={s.move}
+                    treatment={sk.treatment}
+                    seed={sk.seed}
+                    page={sk.page}
+                    caption={KIND_WORD.sketch ?? "Concept sketch"}
+                    earlier={sk.earlier.flatMap((k) => {
+                      const e = images[k];
+                      return e ? [{ src: e.src, aspect: e.aspect }] : [];
+                    })}
+                    next={
+                      sk.next && images[sk.next.image]
+                        ? {
+                            src: images[sk.next.image]!.src,
+                            aspect: images[sk.next.image]!.aspect,
+                            kind: sk.next.kind,
+                            tilt: ((sk.next.image * 37) % 5) - 2,
+                          }
+                        : undefined
+                    }
+                  />
+                ) : dev
                   ? dress(
                       <Still
                         src={img.src}
@@ -1123,8 +1167,9 @@ const Backdrop: React.FC<{
                 >
                   PHOTO: {img.credit}
                 </div>
-              ) : img.kind === "sketch" ? (
-                // A drawn concept sketch (src/assets/illustrate.ts) says so, the way the graphic cards do.
+              ) : img.kind === "sketch" && !sk ? (
+                // A drawn concept sketch (src/assets/illustrate.ts) says so, the way the graphic cards do
+                // (the animated treatments carry their own tag).
                 <div
                   style={{
                     position: "absolute",
@@ -2326,14 +2371,6 @@ export const Long: React.FC<LongProps> = (props) => {
       year: v?.items?.[0],
     };
   };
-  const KIND_WORD: Record<string, string> = {
-    hero: "Key art",
-    header: "Key art",
-    capsule: "Box art",
-    screenshot: "Screenshot",
-    article: "Press image",
-    sketch: "Concept sketch",
-  };
   const describe = (media: { type: string; index: number }) => {
     if (media.type === "image") {
       const im = props.images[media.index];
@@ -3140,6 +3177,20 @@ export const Long: React.FC<LongProps> = (props) => {
     if (image?.kind === "photo") return image.credit ?? "";
     return clip?.credit ? clip.credit : props.footageCredit;
   };
+  // How each concept sketch arrives (src/render/sketchplan.ts): drawn on, stop-motion paper, a flipbook
+  // page, the light table or the cork board, by the shots around it. SKETCH_ANIMATION=false: the framed print.
+  const sketches = useMemo(
+    () =>
+      props.sketchAnimation === false
+        ? new Map<number, SketchDecision>()
+        : planSketchShots(
+            plan.shots,
+            props.images,
+            (segment) => entryOf(props.segments, segment) ?? -1,
+            props.variant,
+          ),
+    [plan, props.images, props.segments, props.sketchAnimation, props.variant],
+  );
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
@@ -3155,6 +3206,7 @@ export const Long: React.FC<LongProps> = (props) => {
         looks={periodLooks}
         powerOff={powerOff}
         punches={punches}
+        sketches={sketches}
       />
       {accents.map((a, k) => (
         <Sequence

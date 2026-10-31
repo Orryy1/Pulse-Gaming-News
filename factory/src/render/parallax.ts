@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { log, errorMessage } from "../lib/util.ts";
 
@@ -31,6 +32,13 @@ export const LAYERED_KINDS = new Set([
   "header",
 ]);
 
+/** A file's layer name: its base name plus a hash of its path in the episode folder, unique per picture. */
+export const layerName = (file: string): string =>
+  `${path.basename(file).replace(/\.[^.]+$/, "")}_${createHash("sha1")
+    .update(file.split(path.sep).join("/"))
+    .digest("hex")
+    .slice(0, 10)}`;
+
 /**
  * Layers for each file (paths relative to the episode folder), written beside it under assets/px.
  * Returns only the ones made; the rest stay flat.
@@ -44,12 +52,12 @@ export async function makeParallax(
   if (!python || !files.length) return out;
   const pxDir = path.join(episodeDir, "assets", "px");
   await fs.mkdir(pxDir, { recursive: true });
-  const jobs = files.map((f, i) => ({
+  // Named after the whole relative path, not the place in this call's list: every chapter has its own
+  // igdb_5.jpg, and a later call's "81_igdb_5" once overwrote another picture's layers (31 Oct 2026, a
+  // Red Dead still in the GTA VI chapter).
+  const jobs = files.map((f) => ({
     src: path.join(episodeDir, f),
-    prefix: path.join(
-      pxDir,
-      `${i}_${path.basename(f).replace(/\.[^.]+$/, "")}`,
-    ),
+    prefix: path.join(pxDir, layerName(f)),
   }));
   const jobsFile = path.join(pxDir, "jobs.json");
   const resultFile = path.join(pxDir, "result.json");

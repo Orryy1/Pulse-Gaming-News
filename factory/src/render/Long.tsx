@@ -342,6 +342,8 @@ const TeaseCut: React.FC<{ children: React.ReactNode; last: boolean }> = ({
 
 /** Frames the video's motif title card opens the video for, before the usual title. */
 const MOTIF_OPEN = 150;
+/** Frames a motif card starts before the title drop lands, so its own entrance finishes on the beat. */
+const MOTIF_LEAD = 12;
 /** The hardware an old game's opening shot plays on (src/render/components/Retro.tsx). */
 type OldDevice = { device: Device | "tv"; label: string; green: boolean };
 /** How far a punch-in jumps: a tenth closer, the editor's cut-in on a key word. */
@@ -4512,12 +4514,35 @@ export const Long: React.FC<LongProps> = (props) => {
           breather the first chapter's own swell already lands there, so it gets no second one). */}
       {drop ? (
         <Sequence from={drop.from} durationInFrames={drop.len} layout="none">
-          <TitleDrop
-            title={props.title}
-            kicker={props.kicker}
-            len={drop.len}
-            landAt={drop.landAt}
-          />
+          {/* A video with a series look (the GTA cover grid and the like) lands its title on that look's own
+              card, as the opening did before the title drop; the plain drop is for the rest. */}
+          {videoMotif?.card && drop.len - drop.landAt >= 60 ? (
+            <Sequence
+              from={Math.max(0, drop.landAt - MOTIF_LEAD)}
+              durationInFrames={drop.len - Math.max(0, drop.landAt - MOTIF_LEAD)}
+              layout="none"
+            >
+              {React.createElement(videoMotif.card, {
+                heading: props.title,
+                kicker: props.recap
+                  ? "THIS WEEK"
+                  : documentary
+                    ? "DOCUMENTARY"
+                    : "RANKED",
+                game: props.theme,
+                pictures: motifPictures(undefined),
+                frames: drop.len - Math.max(0, drop.landAt - MOTIF_LEAD),
+                variant: props.variant,
+              })}
+            </Sequence>
+          ) : (
+            <TitleDrop
+              title={props.title}
+              kicker={props.kicker}
+              len={drop.len}
+              landAt={drop.landAt}
+            />
+          )}
           {drop.breakSegment === undefined ? (
             <Sequence
               from={Math.max(0, drop.landAt - leadFrames(SFX.swell, fps))}

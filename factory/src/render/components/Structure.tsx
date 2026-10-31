@@ -2,7 +2,7 @@
 //  - TitleDrop: the title lands as a designed card on the cold open's last beat, LEMMiNO style: the picture
 //    sinks under ink, the title tracks in, an amber rule draws out under it, the kicker follows.
 //  - ChapterIndex: a slim row of chapter numbers under the mark, done ones in white, the current one lit
-//    amber with its title beside it, upcoming ones dim.
+//    amber, upcoming ones dim. No title beside it: the chapter's name is already in the lower third.
 //  - YearCounter: the chapter's year in the corner, rolling like an odometer when the chapter changes.
 //  - CallbackCue: when the narrator answers a question raised minutes earlier, a small framed recall of the
 //    shot that was on screen then, with the question under it.
@@ -109,16 +109,6 @@ export const TitleDrop: React.FC<{
   );
 };
 
-/** The current chapter's title beside its number, cut at a word past this many characters. */
-const INDEX_TITLE_MAX = 34;
-const shortTitle = (t: string) => {
-  const s = displayText(t).toUpperCase();
-  if (s.length <= INDEX_TITLE_MAX) return s;
-  const cut = s.slice(0, INDEX_TITLE_MAX);
-  const at = cut.lastIndexOf(" ");
-  return `${cut.slice(0, at > 12 ? at : INDEX_TITLE_MAX)}...`;
-};
-
 /** The persistent chapter index, drawn for the whole video (it hides itself where indexAt says). */
 export const ChapterIndex: React.FC<{
   marks: ChapterMark[];
@@ -166,16 +156,6 @@ export const ChapterIndex: React.FC<{
           {String(m.number).padStart(2, "0")}
         </div>
       ))}
-      <div
-        style={{
-          marginLeft: 8,
-          color: "rgba(245,245,242,0.9)",
-          fontSize: 18,
-          letterSpacing: 2,
-        }}
-      >
-        {shortTitle(marks[current]!.title)}
-      </div>
     </div>
   );
 };

@@ -280,9 +280,14 @@ export async function illustrate(
       },
       10_000,
     ).catch(() => undefined);
+    // Only our own job: a bare /interrupt stops whatever is running, another project's job included.
     await fetchWithTimeout(
       `${url}/interrupt`,
-      { method: "POST" },
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt_id: id }),
+      },
       10_000,
     ).catch(() => undefined);
     throw new Error(

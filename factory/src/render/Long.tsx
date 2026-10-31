@@ -1,0 +1,5008 @@
+// The long-form 16:9 composition: a ranking video of five to seven minutes.
+// Full-bleed trailer moments and art on slow moves, a lower-third card for
+// each entry that collapses to a tag, an intro title, the pick as the outro
+// and a quiet end card. No burned captions: the SRT track carries them.
+
+import {
+  BEDS,
+  ERA_BEDS,
+  ERA_BED_FADE_IN_SECONDS,
+  ERA_BED_FADE_OUT_SECONDS,
+  ERA_BED_SECONDS,
+  MOOD_BEDS,
+  eraBed,
+  gateLongSounds,
+  inKey,
+  leadFrames,
+  LEVEL,
+  SFX,
+  bedGridOf,
+  foleyLevel,
+  type LongSoundCandidate,
+} from "./soundscape.ts";
+import {
+  DEVICE_FOLEY,
+  DISPLAY_FOLEY,
+  GAME_UNDER,
+  PHOTO_FOLEY,
+  SKETCH_FOLEY,
+  bedEdge,
+  bedSchedule,
+  chapterButtons,
+  craftOf,
+  cueFrame,
+  dryLevel,
+  foleyFile,
+  gameEnvelope,
+  gateFoley,
+  jlCuts,
+  jlEdge,
+  pocketOf,
+  pocketWeight,
+  reverbLevel,
+  riserPeaks,
+  type FoleyCandidate,
+  type JlCut,
+  type SoundCraft,
+  type VoiceFxKind,
+} from "./soundfx.ts";
+
+/** Seconds a long video stays on one music bed before changing at the next chapter or entry. */
+const MUSIC_SECTION_SECONDS = 150;
+/** Frames two beds overlap as one hands over to the next. */
+const MUSIC_XFADE = 45;
+import React, { useMemo } from "react";
+import {
+  AbsoluteFill,
+  Audio,
+  Freeze,
+  Img,
+  OffthreadVideo,
+  Sequence,
+  interpolate,
+  spring,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
+import { COLOUR } from "./brand.ts";
+import { BODY, DISPLAY } from "./components/fonts.ts";
+import { moveTransform, SPRING, type MovePreset } from "./motion.ts";
+import {
+  buildLongPlan,
+  entryOf,
+  momentKeys,
+  momentWindows,
+  personOnScreen,
+  titleLines,
+  gameSoundVolume,
+  type LongPlan,
+  type LongShot,
+  usefulEmphasis,
+  usefulGraphic,
+} from "./longplan.ts";
+import {
+  FlashPunch,
+  GrainVignette,
+  KineticCaption,
+  MomentGraphicCard,
+  NameTag,
+  PopInPicture,
+  QuoteMoment,
+  TimelineMoment,
+  HeadlineMoment,
+  Sfx,
+  type MomentProp,
+} from "./components/LongMoments.tsx";
+import { displayText, type Segment } from "./timeline.ts";
+import {
+  BEAT_CLEAR_SECONDS,
+  TURN_MIN_SECTION_SECONDS,
+  TURN_REACH_SECONDS,
+  beatCuesFrom,
+  beatLevel,
+  dropLevel,
+  bedEnvelope,
+  dropOuts,
+  musicSections,
+  nearBeat,
+  turnSections,
+  type MusicChapter,
+  type Mood,
+} from "./musicplan.ts";
+import {
+  backgroundFor,
+  TextureBackground,
+  type BackgroundKind,
+} from "./components/Backgrounds.tsx";
+import {
+  AchievementMoment,
+  DelayMoment,
+  PeopleMoment,
+  ReviewsMoment,
+  SourceMoment,
+  SpanMoment,
+  VersusMoment,
+  WipeCompare,
+} from "./components/DocGraphics.tsx";
+import {
+  EvidenceBoard,
+  Letterbox,
+  Montage,
+  montageFrames,
+  RetroTV,
+  TV_HOLD,
+  TV_PUSH,
+  type BoardPicture,
+  type MontageItem,
+} from "./components/EditorMoves.tsx";
+import { ALL_STYLES } from "./components/packs/index.ts";
+import { inEra } from "./components/packs/types.ts";
+import { storyYear } from "./components/packs/screen/OldWeb.tsx";
+import { CAPTION_STYLES } from "./components/Captions.tsx";
+import { motifsFor } from "./components/motifs/index.ts";
+import type { Motif } from "./components/motifs/types.ts";
+import {
+  ArcadeCabinet,
+  ChannelStatic,
+  CrtLook,
+  DEVICE_FRAMES,
+  deviceFor,
+  Handheld,
+  handheldGreen,
+  OLD_YEAR,
+  PowerOff,
+  RetroMonitor,
+  STATIC_FRAMES,
+  VcrTV,
+  VhsLook,
+  type Device,
+} from "./components/Retro.tsx";
+import { NAMETAG_STYLES } from "./components/NameTags.tsx";
+import {
+  MaskInterlude,
+  SlateInterlude,
+  TornInterlude,
+  VhsInterlude,
+} from "./components/Interludes.tsx";
+import {
+  ACCENT_FRAMES,
+  ACCENT_LEAD,
+  ACCENTS,
+  CutAccent,
+  POPIN_STYLES,
+  type AccentKind,
+} from "./components/Accents.tsx";
+import type { GfxStyle } from "./components/packs/types.ts";
+import type { Word } from "../voice/elevenlabs.ts";
+import { ColdOpen } from "./components/ColdOpen.tsx";
+import { EndCard } from "./components/EndCard.tsx";
+import { coldOpenTiming, endCardTiming } from "./bookends.ts";
+import {
+  callbackCues,
+  chapterMarks,
+  opensChapter,
+  recallMedia,
+  titleDropWindow,
+  type LoopCue,
+} from "./structure.ts";
+import {
+  CallbackCue,
+  ChapterIndex,
+  TitleDrop,
+  YearCounter,
+} from "./components/Structure.tsx";
+import { SketchShot } from "./components/SketchShot.tsx";
+// The filler visuals for lines nothing filmed can show (src/assets/fillers.ts chooses, ./fillerplan.ts times).
+import { KINETIC, type KineticStyle } from "./components/kinetic/index.ts";
+import { wordTimes } from "./components/kinetic/words.ts";
+import { DIAGRAMS, type DiagramStyle } from "./components/diagram/index.ts";
+import { DocumentShot } from "./components/docs/DocumentShot.tsx";
+import { DrawnScene } from "./components/objects/index.ts";
+import { ReconShot } from "./components/recon/ReconShot.tsx";
+import { LocalVideoShot } from "./components/localvideo/LocalVideoShot.tsx";
+import { isLocalVideo } from "./components/localvideo/plan.ts";
+import {
+  fillerSound,
+  reconFillRate,
+  shotWords,
+  type DiagramFillerData,
+  type DocumentFillerData,
+  type KineticFillerData,
+  type MomentFiller,
+  type ReconFillerData,
+  type SceneFillerData,
+} from "./fillerplan.ts";
+import { planSketchShots, type SketchDecision } from "./sketchplan.ts";
+import { DisplayShot, PhotoShot } from "./components/PhotoShot.tsx";
+import {
+  planPhotoShots,
+  type DisplayDecision,
+  type PhotoDecision,
+} from "./photoplan.ts";
+import {
+  cameraInputs,
+  planCamera,
+  type CameraPlan,
+  type CameraTechnique,
+} from "./camera.ts";
+import {
+  DepthShot,
+  FreezeLabel,
+  LensOverlay,
+  MarkCallout,
+  ShotCamera,
+  TextureFlicker,
+} from "./components/CameraMoves.tsx";
+
+export interface LongImageProp {
+  src: string;
+  kind: string;
+  aspect: number;
+  beatIndex?: number;
+  credit?: string; // archive photos: author / licence / source, shown on screen
+  moment?: number;
+  label?: string;
+  /** 2.5D layers (src/render/parallax.ts): drifted at different speeds so the still moves like footage. */
+  layers?: { bg: string; mid: string; fg: string };
+}
+
+export interface LongClipProp {
+  src: string;
+  durationSeconds: number;
+  beatIndex?: number;
+  role?: "hook";
+  moment?: number;
+  credit?: string; // licensed gameplay: creator and licence, shown on screen
+  audio?: boolean; // gameplay with its game sound kept: played low under the narrator
+  /** What the picture check saw in the clip ("Helicopter over city rooftops"): a freeze frame's label. */
+  label?: string;
+}
+
+export type LongProps = {
+  title: string; // on-screen title
+  kicker: string; // line under the title in the intro
+  spoilers?: boolean; // a story ranking: the intro says so on screen
+  recap?: boolean; // the weekly news recap: the chip reads THIS WEEK
+  criterion: string;
+  theme: string; // franchise or theme name
+  footageCredit: string;
+  endLine?: string; // the line under the end card
+  /** A documentary's rendered end card: the channel's most recent public documentary (src/render/components/EndCard.tsx). Absent: no card. */
+  next?: { title: string; thumbSrc: string | null } | null;
+  /** A documentary's signature opening: the line of type under the mark (src/render/components/ColdOpen.tsx). Absent: no card. */
+  coldOpenLine?: string;
+  /** A documentary's structure devices (src/render/structure.ts), each off when absent: the title lands after
+   * the cold open; the chapter index and year counter; open-loop recalls; the cut rhythm and the bookend
+   * ending of the composition's own plan (a plan passed in already carries them). */
+  titleDrop?: boolean;
+  chapterIndex?: boolean;
+  loops?: LoopCue[];
+  cutRhythm?: boolean;
+  /** With the cut rhythm, a burst inside every ranking entry (src/render/structure.ts entryBursts). */
+  entryPace?: boolean;
+  bookendEnding?: boolean;
+  moments?: MomentProp[][]; // per ranking entry, one per sentence: graphics, kinetic captions, pop-ins
+  breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds)
+  quietBreaks?: number[]; // breathers the graphics check faulted: the plain title card instead
+  palette?: Array<string | null>; // each entry's own colour from its key art: its footage is washed in it
+  /** Zoom to the detail: the sentence, the picture on screen and where the named thing sits (0-1). */
+  annotations?: Array<{
+    entry: number;
+    moment: number;
+    image: number;
+    box: [number, number, number, number];
+    label: string;
+  }>;
+  segments: Segment[];
+  words: Word[];
+  images: LongImageProp[];
+  clips: LongClipProp[];
+  plan: LongPlan | null;
+  logoSrc: string | null;
+  audioSrc: string | null;
+  musicSrc: string | null;
+  /** Epidemic Sound beds in this bundle (house or a mood), alongside the generated ones. */
+  extraBeds?: Array<{ file: string; key: "D" | "E"; mood: string }>;
+  /** A documentary: each chapter opens on the quiet bed of its era (src/render/soundscape.ts eraBed). */
+  eraBeds?: boolean;
+  /** Concept sketches animated (src/render/sketchplan.ts); false keeps the static framed print. Default true. */
+  sketchAnimation?: boolean;
+  /** Photos and portraits arriving as prints, pins, tape, trays and screens (src/render/photoplan.ts); false keeps the static framed print and the full-bleed screenshot. Default true. */
+  photoTreatments?: boolean;
+  /** The documentary's camera grammar (src/render/camera.ts, DOC_CAMERA): the techniques it may use. Absent: none. */
+  camera?: CameraTechnique[];
+  /** Previews only (data/smoke/camera.mts): print the camera's chosen moves to the browser console. */
+  debugCamera?: boolean;
+  /** The documentary's sound craft (src/render/soundfx.ts): J and L cuts, foley, risers and the rest. Absent: the old mix. */
+  soundCraft?: Partial<SoundCraft>;
+  /** Music beds whose pocketed copy (music/pocket/*.flac) this bundle carries (src/render/render.ts). */
+  pocketBeds?: string[];
+  /** The narration's texture slices (src/render/voicefx.ts): a telephone band on message quotes, reverb on reveals. */
+  voiceFx?: Array<{ kind: VoiceFxKind; from: number; to: number; src: string }>;
+  /** Proof renders: at this frame the composition logs every sound it places ("SOUNDLOG " and JSON). */
+  soundLog?: number;
+  /** Proof renders of the audio alone (data/smoke/soundfx_proof.mts): the shots' pictures are not drawn. */
+  audioOnly?: boolean;
+  durationSeconds: number;
+  variant: number;
+  renderDate: string;
+};
+
+const resolveSrc = (src: string | null) =>
+  src && !/^(https?:|data:|blob:)/.test(src) ? staticFile(src) : src;
+const CROP = 1.12; // trims letterbox bars and burned-in subtitles from trailer clips
+const SAFE_X = 96;
+const SAFE_BOTTOM = 72;
+/** The flash-forward: at most this many graphics, each up for this many frames. */
+const TEASE_ITEMS = 4;
+const TEASE_FRAMES = 42;
+const FLASH_FORWARD = false;
+const INTRO_TITLE_FRAMES = 180;
+
+/** One cut of the flash-forward: the graphic punched in, a COMING UP tag, a flash into the next. */
+const TeaseCut: React.FC<{ children: React.ReactNode; last: boolean }> = ({
+  children,
+  last,
+}) => {
+  const frame = useCurrentFrame();
+  const scale = interpolate(frame, [0, TEASE_FRAMES], [1.06, 1.0], clamp);
+  const flash = interpolate(frame, [0, 3], [0.55, 0], clamp);
+  const out = last
+    ? interpolate(frame, [TEASE_FRAMES - 8, TEASE_FRAMES], [1, 0], clamp)
+    : 1;
+  return (
+    <AbsoluteFill style={{ background: COLOUR.ink, opacity: out }}>
+      <AbsoluteFill style={{ transform: `scale(${scale})` }}>
+        {children}
+      </AbsoluteFill>
+      <div
+        style={{
+          position: "absolute",
+          left: SAFE_X,
+          top: 130,
+          padding: "8px 18px",
+          background: COLOUR.amber,
+          color: COLOUR.ink,
+          fontFamily: BODY,
+          fontWeight: 900,
+          fontSize: 26,
+          letterSpacing: 4,
+          borderRadius: 6,
+        }}
+      >
+        COMING UP
+      </div>
+      <AbsoluteFill style={{ background: "#fff", opacity: flash }} />
+    </AbsoluteFill>
+  );
+};
+
+/** Frames the video's motif title card opens the video for, before the usual title. */
+const MOTIF_OPEN = 150;
+/** Frames a motif card starts before the title drop lands, so its own entrance finishes on the beat. */
+const MOTIF_LEAD = 12;
+/** The hardware an old game's opening shot plays on (src/render/components/Retro.tsx). */
+type OldDevice = { device: Device | "tv"; label: string; green: boolean };
+/** How far a punch-in jumps: a tenth closer, the editor's cut-in on a key word. */
+const PUNCH = 1.1;
+const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
+const CARD_HOLD = 240; // frames the full lower third stays before collapsing to a tag
+
+export const SAMPLE_LONG_PROPS: LongProps = {
+  title: "Every Resident Evil Game Ranked",
+  kicker: "Worst to best, by pure dread",
+  criterion: "How much survival horror tension it delivers today",
+  theme: "Resident Evil",
+  footageCredit: "FOOTAGE: OFFICIAL TRAILERS · STEAM",
+  segments: [
+    {
+      kind: "hook",
+      text: "Every mainline Resident Evil game, ranked by one thing: how much dread it delivers today.",
+      start: 0,
+      end: 7,
+    },
+    {
+      kind: "beat",
+      text: "Resident Evil 6 arrived in 2012 as four campaigns of action.",
+      start: 7,
+      end: 14,
+      visual: {
+        kind: "rank",
+        primary: "Resident Evil 6",
+        secondary: "All action",
+        value_a: 2,
+        items: ["2012", "PC, PS3, Xbox 360"],
+      },
+    },
+    {
+      kind: "beat",
+      text: "Resident Evil 7 brought the series back to first person and to fear.",
+      start: 14,
+      end: 21,
+      visual: {
+        kind: "rank",
+        primary: "Resident Evil 7: Biohazard",
+        secondary: "Peak terror",
+        value_a: 1,
+        items: ["2017", "PC, PS4, Xbox One"],
+      },
+    },
+    {
+      kind: "take",
+      text: "Number one is the game that made the series frightening again.",
+      start: 21,
+      end: 27,
+      label: "OUR PICK",
+      visual: {
+        kind: "title",
+        primary: "RE7: tension from start to finish",
+        secondary: "",
+      },
+    },
+  ],
+  words: [],
+  images: [],
+  clips: [],
+  plan: null,
+  logoSrc: "logo.png",
+  audioSrc: null,
+  musicSrc: "music_3.mp3",
+  durationSeconds: 33,
+  variant: 0,
+  renderDate: "2026-10-17",
+};
+
+function synthWords(segments: Segment[]): Word[] {
+  const out: Word[] = [];
+  for (const s of segments) {
+    const ws = s.text.split(/\s+/).filter(Boolean);
+    const step = (s.end - s.start) / Math.max(1, ws.length);
+    ws.forEach((w, i) =>
+      out.push({
+        text: w,
+        start: s.start + i * step,
+        end: s.start + (i + 0.85) * step,
+      }),
+    );
+  }
+  return out;
+}
+
+/** A point of a picture (0-1 of the picture) on the 1920x1080 frame when the picture covers it. */
+export function coverPoint(
+  aspect: number,
+  x: number,
+  y: number,
+): { x: number; y: number } {
+  const F = 1920 / 1080;
+  if (aspect > F) {
+    const w = aspect * 1080;
+    return { x: (x * w - (w - 1920) / 2) / 1920, y };
+  }
+  const h = 1920 / aspect;
+  return { x, y: (y * h - (h - 1080) / 2) / 1080 };
+}
+
+/** The zoom that brings a box to about two fifths of the frame's height, between 1 and 1.7. */
+export function focusZoom(box: {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}): number {
+  const h = Math.max(0.01, box.y2 - box.y1);
+  const w = Math.max(0.01, box.x2 - box.x1);
+  return Math.max(1, Math.min(1.7, 0.42 / (h * 1.04), 0.6 / (w * 1.04)));
+}
+
+const FOCUS_FRAMES = 26;
+const focusEase = (x: number) =>
+  x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2;
+
+const Still: React.FC<{
+  src: string;
+  aspect: number;
+  durationFrames: number;
+  move: MovePreset;
+  fromBlack?: boolean;
+  /** An archive photo: a framed print over its own blurred copy, the way video essays show real photos. */
+  print?: boolean;
+  tilt?: number;
+  /** 2.5D layers: each drifts at its own speed, nearer faster, so the still reads as a camera move. */
+  layers?: { bg: string; mid: string; fg: string };
+  dir?: number; // 1 or -1: which way the camera trucks
+  /** Zoom to the detail: from frame `at` the camera pushes in on `origin` (frame fractions) to `zoom`. */
+  focus?: { at: number; origin: { x: number; y: number }; zoom: number };
+  /** A punch-in: from this frame the picture jumps a tenth closer, on the narrator's key word. */
+  punchAt?: number;
+}> = ({
+  src,
+  aspect,
+  durationFrames,
+  move,
+  fromBlack = false,
+  print = false,
+  tilt = 0,
+  layers,
+  dir = 1,
+  focus,
+  punchAt,
+}) => {
+  const frame = useCurrentFrame();
+  const punch =
+    punchAt === undefined
+      ? 1
+      : interpolate(frame, [punchAt, punchAt + 2], [1, PUNCH], clamp);
+  const m = moveTransform(
+    move,
+    Math.min(1, frame / Math.max(1, durationFrames)),
+  );
+  const fade = interpolate(frame, [0, 10], [fromBlack ? 0 : 1, 1], {
+    extrapolateRight: "clamp",
+  });
+  if (focus && !print && aspect >= 0.9) {
+    // Held still, then a push in on the named detail; its label draws on over it (DetailCallout).
+    const z = interpolate(
+      frame,
+      [focus.at, focus.at + FOCUS_FRAMES],
+      [1, focus.zoom],
+      {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+        easing: focusEase,
+      },
+    );
+    return (
+      <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+        <Img
+          src={src}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            filter: "contrast(1.03) saturate(1.05)",
+            transformOrigin: `${focus.origin.x * 100}% ${focus.origin.y * 100}%`,
+            transform: `scale(${1.04 * z})`,
+          }}
+        />
+      </AbsoluteFill>
+    );
+  }
+  if (layers && !print && aspect >= 0.9) {
+    // The camera trucks sideways and pushes in a touch; the middle moves half again as far as the
+    // background and the foreground twice as far, the 2.5D look of video essays.
+    const p = Math.min(1, frame / Math.max(1, durationFrames));
+    const truck = (p - 0.5) * 34 * dir;
+    // A rack focus, like a cinema lens: the background softens behind the subject, or (the other way)
+    // the shot opens soft and pulls into focus.
+    const t = Math.max(0, Math.min(1, (p - 0.12) / 0.6));
+    const eased = t * t * (3 - 2 * t);
+    const pull = dir > 0 ? eased : 1 - eased;
+    const layer = (layerSrc: string, k: number, key: string) => (
+      <Img
+        key={key}
+        src={layerSrc}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          filter: `contrast(1.03) saturate(1.05) blur(${(k === 0 ? 5 : k < 1 ? 2.2 : 0) * pull}px)`,
+          transform: `scale(${(m.scale + 0.06 + 0.035 * k * p) * punch}) translate(${m.x * (1 + k) + truck * k}px, ${m.y * (1 + k * 0.6)}px)`,
+        }}
+      />
+    );
+    return (
+      <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+        {layer(layers.bg, 0, "bg")}
+        {layer(layers.mid, 0.6, "mid")}
+        {layer(layers.fg, 1.4, "fg")}
+      </AbsoluteFill>
+    );
+  }
+  if (print) {
+    const w = aspect >= 1 ? 1240 : 1240 * aspect * 0.75;
+    return (
+      <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+        <Img
+          src={src}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            filter: "blur(36px) brightness(0.4) saturate(1.1)",
+            transform: "scale(1.2)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "48%",
+            width: w,
+            aspectRatio: String(Math.max(0.6, aspect)),
+            padding: 18,
+            background: "#f4f1ea",
+            boxShadow: "0 50px 140px rgba(0,0,0,0.75)",
+            transform: `translate(-50%, -50%) rotate(${tilt}deg) scale(${m.scale - 0.04})`,
+          }}
+        >
+          <Img
+            src={src}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              filter: "contrast(1.04) saturate(0.92)",
+            }}
+          />
+        </div>
+      </AbsoluteFill>
+    );
+  }
+  if (aspect < 0.9) {
+    // Box art is portrait: cover-cropping it shows a dark band of the cover, so it sits
+    // as a framed poster over its own blurred copy instead.
+    return (
+      <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+        <Img
+          src={src}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            filter: "blur(40px) brightness(0.45) saturate(1.2)",
+            transform: "scale(1.2)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            height: 760,
+            aspectRatio: String(aspect),
+            transform: `translate(-50%, -50%) scale(${m.scale - 0.02})`,
+            borderRadius: 14,
+            overflow: "hidden",
+            boxShadow:
+              "0 50px 140px rgba(0,0,0,0.7), inset 0 0 0 2px rgba(255,255,255,0.14)",
+          }}
+        >
+          <Img
+            src={src}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        </div>
+      </AbsoluteFill>
+    );
+  }
+  return (
+    <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+      <Img
+        src={src}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          filter: "contrast(1.03) saturate(1.05)",
+          transform: `scale(${(m.scale + 0.04) * punch}) translate(${m.x}px, ${m.y}px)`,
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
+const Clip: React.FC<{
+  src: string;
+  audio?: boolean;
+  frames?: number;
+  punchAt?: number;
+  /** A J/L cut (src/render/soundfx.ts jlCuts): the picture starts this far in and its sound plays apart. */
+  startFrom?: number;
+  /** The game sound's level by the shot's own frame (soundfx.ts gameEnvelope); absent, the fixed level. */
+  level?: (f: number) => number;
+  /** An audio-only proof render: the clip's sound alone, no picture decoded. */
+  audioOnly?: boolean;
+}> = ({ src, audio, frames, punchAt, startFrom, level, audioOnly }) => {
+  const frame = useCurrentFrame();
+  const punch =
+    punchAt === undefined
+      ? 1
+      : interpolate(frame, [punchAt, punchAt + 2], [1, PUNCH], clamp);
+  // A J/L clip's sound is its own <Audio> outside the shot (it runs past both cuts), so the picture is muted.
+  const sound = audio && frames && startFrom === undefined;
+  if (audioOnly)
+    return sound ? (
+      <Audio
+        src={src}
+        volume={
+          level
+            ? (f) =>
+                level(f) * Math.max(0, Math.min(1, f / 8, (frames - f) / 8))
+            : (f) => gameSoundVolume(f, frames)
+        }
+      />
+    ) : null;
+  // A hard cut: fading in from transparent showed the black canvas under it for a few frames.
+  return (
+    <AbsoluteFill style={{ overflow: "hidden" }}>
+      <OffthreadVideo
+        src={src}
+        muted={!sound}
+        startFrom={startFrom}
+        volume={
+          sound
+            ? level
+              ? (f) =>
+                  level(f) * Math.max(0, Math.min(1, f / 8, (frames - f) / 8))
+              : (f) => gameSoundVolume(f, frames)
+            : undefined
+        }
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          objectPosition: "center 46%",
+          transform: `scale(${CROP * punch})`,
+          filter: "contrast(1.03) saturate(1.05)",
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
+const Plate: React.FC<{ theme: string }> = ({ theme }) => (
+  <AbsoluteFill
+    style={{
+      background: `radial-gradient(120% 70% at 50% 30%, #1a1a22 0%, ${COLOUR.ink} 70%)`,
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+  >
+    <div
+      style={{
+        fontFamily: DISPLAY,
+        fontSize: 180,
+        color: "rgba(245,245,242,0.12)",
+        letterSpacing: 4,
+        textTransform: "uppercase",
+        textAlign: "center",
+        padding: "0 120px",
+        lineHeight: 1,
+      }}
+    >
+      {theme}
+    </div>
+  </AbsoluteFill>
+);
+
+/**
+ * The detail's label (Game Maker's Toolkit style): once the camera has pushed in, an amber box draws itself
+ * round the thing, and a leader line runs out to its name. Positions follow the zoom exactly.
+ */
+const DetailCallout: React.FC<{
+  box: { x1: number; y1: number; x2: number; y2: number };
+  origin: { x: number; y: number };
+  zoom: number;
+  label: string;
+  len: number;
+}> = ({ box, origin, zoom, label, len }) => {
+  const frame = useCurrentFrame();
+  const z =
+    1.04 *
+    interpolate(frame, [0, FOCUS_FRAMES], [1, zoom], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: focusEase,
+    });
+  const map = (x: number, y: number) => ({
+    x: (origin.x + (x - origin.x) * z) * 1920,
+    y: (origin.y + (y - origin.y) * z) * 1080,
+  });
+  const a = map(box.x1, box.y1);
+  const b = map(box.x2, box.y2);
+  const pad = 12;
+  const x = a.x - pad;
+  const y = a.y - pad;
+  const w = b.x - a.x + pad * 2;
+  const h = b.y - a.y + pad * 2;
+  const perim = 2 * (w + h);
+  const draw = interpolate(
+    frame,
+    [FOCUS_FRAMES - 4, FOCUS_FRAMES + 14],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const line = interpolate(
+    frame,
+    [FOCUS_FRAMES + 10, FOCUS_FRAMES + 22],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const tag = interpolate(
+    frame,
+    [FOCUS_FRAMES + 18, FOCUS_FRAMES + 28],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const out = interpolate(frame, [len - 12, len - 2], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const right = (x + w / 2) / 1920 < 0.55;
+  const cy = Math.max(140, Math.min(940, y + h / 2));
+  const lx0 = right ? x + w : x;
+  const lx1 = right
+    ? Math.min(1920 - 420, lx0 + 120)
+    : Math.max(420, lx0 - 120);
+  if (frame > len) return null;
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none", opacity: out }}>
+      <svg
+        width={1920}
+        height={1080}
+        style={{ position: "absolute", inset: 0 }}
+      >
+        <rect
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          rx={14}
+          fill="none"
+          stroke={COLOUR.amber}
+          strokeWidth={6}
+          strokeDasharray={perim}
+          strokeDashoffset={perim * (1 - draw)}
+          style={{ filter: "drop-shadow(0 0 10px rgba(0,0,0,0.8))" }}
+        />
+        <line
+          x1={lx0}
+          y1={cy}
+          x2={lx0 + (lx1 - lx0) * line}
+          y2={cy}
+          stroke={COLOUR.amber}
+          strokeWidth={5}
+        />
+      </svg>
+      <div
+        style={{
+          position: "absolute",
+          top: cy - 30,
+          [right ? "left" : "right"]: right ? lx1 + 6 : 1920 - lx1 + 6,
+          opacity: tag,
+          transform: `translateX(${(1 - tag) * (right ? -20 : 20)}px)`,
+          padding: "12px 20px",
+          background: "rgba(11,11,14,0.9)",
+          border: `3px solid ${COLOUR.amber}`,
+          borderRadius: 10,
+          fontFamily: BODY,
+          fontWeight: 900,
+          fontSize: 30,
+          letterSpacing: 2,
+          color: COLOUR.paper,
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {displayText(label)}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/**
+ * How a chapter or entry arrives (top channels' signature transitions): a warm light sweep, a film-burn
+ * bloom, or a short digital glitch, chosen by the game's era so the 1990s chapters feel of their time.
+ */
+type TransitionKind = "sweep" | "burn" | "glitch";
+export function transitionFor(
+  year: number | undefined,
+  i: number,
+  variant: number,
+): TransitionKind {
+  if (year && year < 2000) return "glitch";
+  if (year && year < 2010) return "burn";
+  if (year) return "sweep";
+  return (["sweep", "burn", "glitch"] as const)[(i + variant) % 3]!;
+}
+
+const ChapterTransition: React.FC<{ kind: TransitionKind }> = ({ kind }) => {
+  const frame = useCurrentFrame();
+  if (kind === "sweep") {
+    const x = interpolate(frame, [0, 16], [-40, 140], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    const o = interpolate(frame, [0, 3, 14, 21], [0, 1, 1, 0], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    return (
+      <AbsoluteFill
+        style={{ pointerEvents: "none", opacity: o, mixBlendMode: "screen" }}
+      >
+        <AbsoluteFill
+          style={{
+            background: `linear-gradient(105deg, transparent ${x - 22}%, rgba(255,170,90,0.55) ${x - 6}%, rgba(255,245,225,0.95) ${x}%, rgba(255,170,90,0.55) ${x + 6}%, transparent ${x + 22}%)`,
+          }}
+        />
+      </AbsoluteFill>
+    );
+  }
+  if (kind === "burn") {
+    const o = interpolate(frame, [0, 3, 10, 21], [0, 0.95, 0.6, 0], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    const r = interpolate(frame, [0, 21], [30, 120]);
+    return (
+      <AbsoluteFill
+        style={{ pointerEvents: "none", opacity: o, mixBlendMode: "screen" }}
+      >
+        <AbsoluteFill
+          style={{
+            background: `radial-gradient(${r}% ${r * 0.8}% at 30% 40%, rgba(255,230,190,1) 0%, rgba(255,140,40,0.85) 35%, rgba(160,40,10,0.4) 65%, transparent 85%)`,
+          }}
+        />
+      </AbsoluteFill>
+    );
+  }
+  // glitch: colour-split bars stuttering across the frame for a few frames
+  if (frame > 12) return null;
+  const rows = Array.from({ length: 9 }, (_, k) => {
+    const seed = Math.sin((frame + 1) * 12.9898 + k * 78.233) * 43758.5453;
+    const r = seed - Math.floor(seed);
+    return {
+      top: (k * 11 + r * 9) % 100,
+      h: 2 + r * 9,
+      shift: (r - 0.5) * 160,
+      on: r > 0.35,
+    };
+  });
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      {rows
+        .filter((x) => x.on)
+        .map((x, k) => (
+          <div
+            key={k}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: `${x.top}%`,
+              height: `${x.h}%`,
+              transform: `translateX(${x.shift}px)`,
+              background:
+                k % 2 ? "rgba(255,40,80,0.35)" : "rgba(40,200,255,0.35)",
+              mixBlendMode: "screen",
+            }}
+          />
+        ))}
+      <AbsoluteFill
+        style={{
+          background: "rgba(255,255,255,0.12)",
+          opacity: frame < 3 ? 1 : 0,
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
+/** A picture's label at the lower right, fading in after the cut and out before the next. */
+const Descriptor: React.FC<{
+  text: string;
+  frames: number;
+  delay?: number;
+}> = ({ text, frames, delay = 0 }) => {
+  const frame = useCurrentFrame();
+  const o = interpolate(
+    frame,
+    [
+      14 + delay,
+      26 + delay,
+      Math.max(27 + delay, frames - 14),
+      Math.max(28 + delay, frames - 4),
+    ],
+    [0, 1, 1, 0],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    },
+  );
+  if (frames - delay < 75) return null;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        right: 96,
+        bottom: 64,
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        opacity: o * 0.92,
+        fontFamily: BODY,
+        fontWeight: 800,
+        fontSize: 20,
+        letterSpacing: 2.5,
+        color: "rgba(245,245,242,0.9)",
+        textTransform: "uppercase",
+        textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+      }}
+    >
+      <span
+        style={{
+          width: 22,
+          height: 3,
+          background: COLOUR.amber,
+          borderRadius: 2,
+        }}
+      />
+      {text}
+    </div>
+  );
+};
+
+/** The label of the shot on screen, above the scrim so it reads. */
+const ShotLabel: React.FC<{
+  plan: LongPlan;
+  describe: (media: { type: string; index: number }) => string;
+  /** Opening bursts (frames): a shot that starts under one is labelled once it has played. */
+  bursts?: Array<{ from: number; to: number }>;
+}> = ({ plan, describe, bursts = [] }) => {
+  const frame = useCurrentFrame();
+  const shot = plan.shots.find((x) => frame >= x.start && frame < x.end);
+  if (!shot) return null;
+  const text = describe(shot.media);
+  if (!text) return null;
+  return (
+    <Sequence
+      from={shot.start}
+      durationInFrames={Math.max(1, shot.end - shot.start)}
+      layout="none"
+    >
+      <Descriptor
+        text={text}
+        frames={shot.end - shot.start}
+        delay={Math.max(
+          0,
+          ...bursts
+            .filter((b) => shot.start >= b.from - 2 && shot.start < b.to)
+            .map((b) => b.to - shot.start),
+        )}
+      />
+    </Sequence>
+  );
+};
+
+/** Frames a still overlaps the shot before it, so cuts dissolve instead of dipping to black. */
+const XFADE = 9;
+
+/** Fades its contents in over the first frames of its sequence; what is behind shows through. */
+const FadeIn: React.FC<{ frames: number; children: React.ReactNode }> = ({
+  frames,
+  children,
+}) => {
+  const frame = useCurrentFrame();
+  const o =
+    frames > 0
+      ? interpolate(frame, [0, frames], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })
+      : 1;
+  return <AbsoluteFill style={{ opacity: o }}>{children}</AbsoluteFill>;
+};
+
+const TitleLines: React.FC<{ text: string }> = ({ text }) => (
+  <>
+    {titleLines(text).map((l, k) => (
+      <div key={k} style={{ whiteSpace: "nowrap" }}>
+        {l}
+      </div>
+    ))}
+  </>
+);
+
+/** Each picture's word, as the shot label and the sketch treatments' caption use it. */
+const KIND_WORD: Record<string, string> = {
+  hero: "Key art",
+  header: "Key art",
+  capsule: "Box art",
+  screenshot: "Screenshot",
+  article: "Press image",
+  sketch: "Concept sketch",
+};
+
+const Backdrop: React.FC<{
+  plan: LongPlan;
+  images: LongImageProp[];
+  clips: LongClipProp[];
+  theme: string;
+  /** What a shot is, as video essays label their pictures: "GRAND THEFT AUTO V · 2013 · KEY ART". */
+  describe?: (media: { type: string; index: number }) => string;
+  /** Per shot index: when (absolute frame) and where the camera pushes in on a named detail. */
+  focusFor?: Map<
+    number,
+    { from: number; origin: { x: number; y: number }; zoom: number }
+  >;
+  /** Shots of an old game opening on the hardware of its day before the camera pushes through the glass. */
+  retro?: Map<number, OldDevice>;
+  /** Shots of an old game worn as a VHS tape or a CRT picture. */
+  looks?: Map<number, "vhs" | "crt">;
+  /** An old game's last shot, switching off the way a tube did. */
+  powerOff?: Set<number>;
+  /** Per shot index: the absolute frame of its punch-in. */
+  punches?: Map<number, number>;
+  /** Per shot index: its game's own colour, washed softly over the picture. */
+  tints?: Map<number, string>;
+  /** Per shot index: how a concept sketch arrives (src/render/sketchplan.ts); absent, the static framed print. */
+  sketches?: Map<number, SketchDecision>;
+  /** Per shot index: how a photo or portrait arrives (src/render/photoplan.ts); absent, the static framed print. */
+  photos?: Map<number, PhotoDecision>;
+  /** Per shot index: the display a screenshot plays inside; absent, full-bleed. */
+  displays?: Map<number, DisplayDecision>;
+  /** Draws a filler shot (a sentence's kinetic card, diagram, document, drawn scene or reconstruction). */
+  filler?: (shot: LongShot, len: number) => React.ReactNode;
+  /** The camera's moves (src/render/camera.ts): transitions through the cut, freezes, beats, depth moves. */
+  camera?: CameraPlan;
+  fps?: number;
+  /** Per shot index: a clip whose sound leads or trails its picture (src/render/soundfx.ts jlCuts). */
+  jl?: Map<number, JlCut>;
+  /** The game sound's level by absolute frame (src/render/soundfx.ts gameEnvelope); absent, the fixed level. */
+  gameLevel?: (f: number) => number;
+  /** An audio-only proof render (LongProps.audioOnly): only the clips' sound, no pictures. */
+  audioOnly?: boolean;
+}> = ({
+  plan,
+  images,
+  clips,
+  theme,
+  describe,
+  focusFor,
+  retro,
+  looks,
+  powerOff,
+  punches,
+  tints,
+  sketches,
+  photos,
+  displays,
+  filler,
+  camera,
+  fps = 30,
+  jl,
+  gameLevel,
+  audioOnly,
+}) => (
+  <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
+    {plan.shots.map((s, i) => {
+      const len = Math.max(1, s.end - s.start);
+      // A sentence's filler visual: it carries its own fade, tag and framing.
+      if (s.media.type === "filler")
+        return (
+          <Sequence key={i} from={s.start} durationInFrames={len} layout="none">
+            {filler?.(s, len) ?? <Plate theme={theme} />}
+          </Sequence>
+        );
+      const img = s.media.type === "image" ? images[s.media.index] : undefined;
+      const clip = s.media.type === "clip" ? clips[s.media.index] : undefined;
+      // A still dissolves in over the shot before, except after a tube switching off (it cuts from black)
+      // and when the camera moves through the cut (it carries the eye across instead).
+      const cutIn = camera?.cuts.get(i);
+      const cutOut = camera?.cuts.get(i + 1);
+      const move = camera?.shots.get(i);
+      const xf = powerOff?.has(i - 1) || cutIn ? 0 : Math.min(XFADE, s.start);
+      const seqLen = img && i > 0 ? len + xf : len;
+      const cam = (node: React.ReactNode) =>
+        cutIn ||
+        cutOut ||
+        move?.kind === "freeze" ||
+        move?.kind === "emotion" ? (
+          <ShotCamera
+            len={seqLen}
+            from={img && i > 0 ? s.start - xf : s.start}
+            fps={fps}
+            into={cutIn}
+            out={cutOut}
+            move={move}
+          >
+            {node}
+          </ShotCamera>
+        ) : (
+          node
+        );
+      const depth =
+        (move?.kind === "rack" || move?.kind === "dolly") && img?.layers
+          ? move
+          : undefined;
+      const dev = retro?.get(i);
+      // A concept sketch's animated arrival (components/SketchShot.tsx) replaces the framed print.
+      const sk = img?.kind === "sketch" ? sketches?.get(i) : undefined;
+      // A photo's or portrait's arrival (components/PhotoShot.tsx) replaces the framed print; a screenshot
+      // plays inside the display of its day with its own Still (and Ken Burns move) on the screen.
+      const ph =
+        img && (img.kind === "photo" || img.kind === "portrait")
+          ? photos?.get(i)
+          : undefined;
+      const disp = img?.kind === "screenshot" ? displays?.get(i) : undefined;
+      // An old game's dressing: its period look, the hardware it opens on, the tube switching off.
+      const dress = (node: React.ReactNode) => {
+        let out = node;
+        const look = looks?.get(i);
+        if (look === "vhs") out = <VhsLook seed={i}>{out}</VhsLook>;
+        else if (look === "crt") out = <CrtLook>{out}</CrtLook>;
+        if (dev)
+          out =
+            dev.device === "vcr" ? (
+              <VcrTV label={dev.label}>{out}</VcrTV>
+            ) : dev.device === "arcade" ? (
+              <ArcadeCabinet label={dev.label}>{out}</ArcadeCabinet>
+            ) : dev.device === "monitor" ? (
+              <RetroMonitor>{out}</RetroMonitor>
+            ) : dev.device === "handheld" ? (
+              <Handheld green={dev.green}>{out}</Handheld>
+            ) : (
+              <RetroTV>{out}</RetroTV>
+            );
+        const tint = tints?.get(i);
+        if (tint)
+          out = (
+            <>
+              {out}
+              <AbsoluteFill
+                style={{
+                  background: tint,
+                  mixBlendMode: "soft-light",
+                  opacity: 0.28,
+                  pointerEvents: "none",
+                }}
+              />
+            </>
+          );
+        if (powerOff?.has(i)) out = <PowerOff frames={seqLen}>{out}</PowerOff>;
+        return out;
+      };
+      // An audio-only proof render plays only the clips' sound: no picture is loaded or decoded.
+      if (audioOnly)
+        return clip ? (
+          <Sequence key={i} from={s.start} durationInFrames={len} layout="none">
+            <Clip
+              src={clip.src}
+              audio={clip.audio}
+              frames={len}
+              startFrom={jl?.get(i)?.lead}
+              level={gameLevel ? (f) => gameLevel(s.start + f) : undefined}
+              audioOnly
+            />
+          </Sequence>
+        ) : null;
+      return (
+        <Sequence
+          key={i}
+          from={img && i > 0 ? s.start - xf : s.start}
+          durationInFrames={img && i > 0 ? len + xf : len}
+          layout="none"
+        >
+          {cam(
+          clip && isLocalVideo({ file: clip.src }) ? (
+            // A concept sketch brought to life on this PC (src/assets/localvideo.ts): taped to the desk as
+            // its print, tagged ILLUSTRATION, never full-bleed like footage.
+            <LocalVideoShot
+              src={clip.src}
+              aspect={1280 / 704}
+              clipSeconds={clip.durationSeconds}
+              len={len}
+              treatment="print"
+              seed={i}
+            />
+          ) : clip ? (
+            dress(
+              <Clip
+                src={clip.src}
+                audio={clip.audio}
+                frames={len}
+                startFrom={jl?.get(i)?.lead}
+                level={gameLevel ? (f) => gameLevel(s.start + f) : undefined}
+                audioOnly={audioOnly}
+                punchAt={
+                  !dev && punches?.has(i)
+                    ? punches.get(i)! - s.start
+                    : undefined
+                }
+              />,
+            )
+          ) : img ? (
+            <>
+              <FadeIn frames={i > 0 ? xf : 0}>
+                {sk ? (
+                  <SketchShot
+                    src={img.src}
+                    aspect={img.aspect}
+                    len={seqLen}
+                    move={s.move}
+                    treatment={sk.treatment}
+                    seed={sk.seed}
+                    page={sk.page}
+                    caption={KIND_WORD.sketch ?? "Concept sketch"}
+                    earlier={sk.earlier.flatMap((k) => {
+                      const e = images[k];
+                      return e ? [{ src: e.src, aspect: e.aspect }] : [];
+                    })}
+                    next={
+                      sk.next && images[sk.next.image]
+                        ? {
+                            src: images[sk.next.image]!.src,
+                            aspect: images[sk.next.image]!.aspect,
+                            kind: sk.next.kind,
+                            tilt: ((sk.next.image * 37) % 5) - 2,
+                          }
+                        : undefined
+                    }
+                  />
+                ) : ph ? (
+                  <PhotoShot
+                    src={img.src}
+                    aspect={img.aspect}
+                    len={seqLen}
+                    move={s.move}
+                    treatment={ph.treatment}
+                    seed={ph.seed}
+                    kind={img.kind === "portrait" ? "portrait" : "photo"}
+                    caption={img.credit ?? img.label}
+                    year={ph.year}
+                    index={ph.index}
+                    earlier={ph.earlier.flatMap((k) => {
+                      const e = images[k];
+                      return e ? [{ src: e.src, aspect: e.aspect }] : [];
+                    })}
+                  />
+                ) : dev ? (
+                  dress(
+                    <Still
+                      src={img.src}
+                      aspect={img.aspect}
+                      durationFrames={len + (i > 0 ? xf : 0)}
+                      move={s.move}
+                    />,
+                  )
+                ) : disp ? (
+                  dress(
+                    <DisplayShot kind={disp.display} seed={disp.seed}>
+                      <Still
+                        punchAt={
+                          punches?.has(i)
+                              ? punches.get(i)! -
+                                (i > 0 ? s.start - xf : s.start)
+                            : undefined
+                        }
+                        layers={img.layers}
+                        dir={i % 2 ? -1 : 1}
+                        src={img.src}
+                        aspect={img.aspect}
+                        durationFrames={len + (i > 0 ? xf : 0)}
+                          move={camera?.moves.get(i) ?? s.move}
+                      />
+                    </DisplayShot>,
+                  )
+                  ) : depth ? (
+                    // A rack focus or a vertigo push from the still's depth layers (components/CameraMoves.tsx).
+                    dress(
+                      <DepthShot
+                        layers={img.layers!}
+                        len={seqLen}
+                        move={depth}
+                        at={
+                          depth.kind === "rack"
+                            ? depth.at - (i > 0 ? s.start - xf : s.start)
+                            : 0
+                        }
+                        dir={i % 2 ? -1 : 1}
+                      />,
+                    )
+                ) : (
+                  dress(
+                    <Still
+                      punchAt={
+                        punches?.has(i)
+                          ? punches.get(i)! - (i > 0 ? s.start - xf : s.start)
+                          : undefined
+                      }
+                      print={img.kind === "photo" || img.kind === "sketch"}
+                      tilt={((s.media.index * 37) % 5) - 2}
+                      layers={img.layers}
+                      dir={i % 2 ? -1 : 1}
+                      focus={
+                        focusFor?.get(i)
+                          ? {
+                              at:
+                                focusFor.get(i)!.from -
+                                (i > 0 ? s.start - xf : s.start),
+                              origin: focusFor.get(i)!.origin,
+                              zoom: focusFor.get(i)!.zoom,
+                            }
+                          : undefined
+                      }
+                      src={img.src}
+                      aspect={img.aspect}
+                      durationFrames={len + (i > 0 ? xf : 0)}
+                        move={camera?.moves.get(i) ?? s.move}
+                      fromBlack={i === 0}
+                    />,
+                  )
+                )}
+              </FadeIn>
+              {img.credit ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 40,
+                    bottom: 26,
+                    padding: "4px 10px",
+                    background: "rgba(11,11,14,0.55)",
+                    borderRadius: 6,
+                    fontFamily: BODY,
+                    fontWeight: 600,
+                    fontSize: 16,
+                    letterSpacing: 0.5,
+                    color: "rgba(245,245,242,0.8)",
+                  }}
+                >
+                  PHOTO: {img.credit}
+                </div>
+              ) : img.kind === "sketch" && !sk ? (
+                // A drawn concept sketch (src/assets/illustrate.ts) says so, the way the graphic cards do
+                // (the animated treatments carry their own tag).
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 40,
+                    bottom: 26,
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(245,245,242,0.5)",
+                    background: "rgba(11,11,14,0.45)",
+                    fontFamily: BODY,
+                    fontWeight: 800,
+                    fontSize: 16,
+                    letterSpacing: 2,
+                    color: "rgba(245,245,242,0.75)",
+                  }}
+                >
+                  ILLUSTRATION
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <Plate theme={theme} />
+            ),
+          )}
+        </Sequence>
+      );
+    })}
+  </AbsoluteFill>
+);
+
+const Scrim: React.FC = () => (
+  <AbsoluteFill style={{ pointerEvents: "none" }}>
+    <div
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: 520,
+        background:
+          "linear-gradient(180deg, rgba(11,11,14,0) 0%, rgba(11,11,14,0.55) 45%, rgba(11,11,14,0.9) 100%)",
+      }}
+    />
+    <div
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: 0,
+        height: 180,
+        background:
+          "linear-gradient(180deg, rgba(11,11,14,0.55) 0%, rgba(11,11,14,0) 100%)",
+      }}
+    />
+  </AbsoluteFill>
+);
+
+const Brand: React.FC<{
+  logoSrc: string | null;
+  chip: string;
+  progress: number;
+  /** Where each chapter or entry starts (0-1): the bar splits into segments so viewers see how far through they are. */
+  marks?: number[];
+}> = ({ logoSrc, chip, progress, marks }) => (
+  <AbsoluteFill style={{ pointerEvents: "none" }}>
+    {marks && marks.length > 1 ? (
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 0,
+          height: 6,
+          display: "flex",
+          gap: 4,
+        }}
+      >
+        {[0, ...marks, 1].slice(0, -1).map((a, i, arr) => {
+          const b = i + 1 < arr.length ? arr[i + 1]! : 1;
+          const fill = Math.max(
+            0,
+            Math.min(1, (progress - a) / Math.max(1e-6, b - a)),
+          );
+          return (
+            <div
+              key={i}
+              style={{
+                flex: b - a,
+                height: 6,
+                background: "rgba(245,245,242,0.18)",
+              }}
+            >
+              <div
+                style={{
+                  width: `${fill * 100}%`,
+                  height: 6,
+                  background: COLOUR.amber,
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+    ) : (
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: `${progress * 100}%`,
+          height: 5,
+          background: COLOUR.amber,
+        }}
+      />
+    )}
+    <div
+      style={{
+        position: "absolute",
+        left: SAFE_X,
+        top: 44,
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+      }}
+    >
+      {logoSrc ? (
+        <Img
+          src={logoSrc}
+          style={{ width: 52, height: 52, borderRadius: 13 }}
+        />
+      ) : null}
+      <div
+        style={{
+          fontFamily: DISPLAY,
+          fontSize: 44,
+          color: COLOUR.paper,
+          letterSpacing: 2,
+          lineHeight: 1,
+        }}
+      >
+        PULSE<span style={{ color: COLOUR.amber }}>.</span>
+      </div>
+      <div
+        style={{
+          padding: "7px 14px",
+          background: COLOUR.amber,
+          color: COLOUR.ink,
+          fontFamily: BODY,
+          fontWeight: 900,
+          fontSize: 20,
+          letterSpacing: 2,
+          borderRadius: 7,
+        }}
+      >
+        {chip}
+      </div>
+    </div>
+  </AbsoluteFill>
+);
+
+const IntroTitle: React.FC<{
+  title: string;
+  kicker: string;
+  criterion: string;
+  durationFrames: number;
+  spoilers?: boolean;
+}> = ({ title, kicker, criterion, durationFrames, spoilers }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const inProg = spring({ frame, fps, config: SPRING.ENTER });
+  const out = interpolate(
+    frame,
+    [durationFrames - 18, durationFrames - 2],
+    [1, 0],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const big = title.length > 30;
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none", opacity: out }}>
+      <div
+        style={{
+          position: "absolute",
+          left: SAFE_X,
+          bottom: 150,
+          width: 1400,
+          transform: `translateY(${(1 - inProg) * 40}px)`,
+          opacity: inProg,
+        }}
+      >
+        {spoilers ? (
+          <div
+            style={{
+              display: "inline-block",
+              marginBottom: 22,
+              padding: "8px 16px",
+              background: "#FF3B3B",
+              color: COLOUR.paper,
+              fontFamily: BODY,
+              fontWeight: 900,
+              fontSize: 30,
+              letterSpacing: 3,
+              borderRadius: 8,
+            }}
+          >
+            SPOILERS AHEAD
+          </div>
+        ) : null}
+        <div
+          style={{
+            width: 120,
+            height: 8,
+            background: COLOUR.amber,
+            marginBottom: 26,
+          }}
+        />
+        <div
+          style={{
+            fontFamily: DISPLAY,
+            fontSize: big ? 112 : 136,
+            lineHeight: 0.98,
+            color: COLOUR.paper,
+            textTransform: "uppercase",
+            textShadow: "0 10px 50px rgba(0,0,0,0.7)",
+          }}
+        >
+          <TitleLines text={title} />
+        </div>
+        <div
+          style={{
+            marginTop: 22,
+            fontFamily: BODY,
+            fontWeight: 800,
+            fontSize: 36,
+            color: COLOUR.amber,
+            letterSpacing: 1,
+          }}
+        >
+          {kicker}
+        </div>
+        <div
+          style={{
+            marginTop: 10,
+            fontFamily: BODY,
+            fontWeight: 600,
+            fontSize: 28,
+            color: COLOUR.muted,
+            letterSpacing: 1,
+            textTransform: "uppercase",
+          }}
+        >
+          {criterion ? `Criterion · ${criterion}` : ""}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const EntryCard: React.FC<{
+  rank: number;
+  total: number;
+  title: string;
+  verdict: string;
+  year?: string;
+  platforms?: string;
+  capsuleSrc: string | null;
+  durationFrames: number;
+  chapter?: string; // documentary: the game, shown in the meta line; the badge reads CHAPTER
+}> = ({
+  rank,
+  total,
+  title,
+  verdict,
+  year,
+  platforms,
+  capsuleSrc,
+  durationFrames,
+  chapter,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const badge = spring({ frame, fps, config: SPRING.POP });
+  const card = spring({ frame: frame - 5, fps, config: SPRING.ENTER });
+  const chip = spring({ frame: frame - 18, fps, config: SPRING.SNAP });
+  const collapseAt = Math.min(CARD_HOLD, Math.max(60, durationFrames - 30));
+  const collapse = interpolate(frame, [collapseAt, collapseAt + 14], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const top = rank === 1 && chapter === undefined;
+  const meta = [chapter, year, platforms].filter(Boolean).join(" · ");
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      {/* The full lower third */}
+      <div
+        style={{
+          position: "absolute",
+          left: SAFE_X,
+          bottom: SAFE_BOTTOM,
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 28,
+          opacity: 1 - collapse,
+          transform: `translateY(${collapse * 40}px)`,
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            width: 150,
+            height: 150,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transform: `scale(${badge})`,
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: 30,
+              background: top ? COLOUR.amber : "rgba(11,11,14,0.85)",
+              border: `4px solid ${COLOUR.amber}`,
+              boxShadow: top
+                ? `0 0 40px ${COLOUR.amber}88`
+                : "0 20px 60px rgba(0,0,0,0.5)",
+            }}
+          />
+          <div
+            style={{
+              position: "relative",
+              fontFamily: DISPLAY,
+              fontSize: rank >= 10 ? 72 : 92,
+              color: top ? COLOUR.ink : COLOUR.paper,
+              lineHeight: 1,
+            }}
+          >
+            {rank}
+          </div>
+          <div
+            style={{
+              position: "absolute",
+              bottom: -32,
+              fontFamily: BODY,
+              fontWeight: 800,
+              fontSize: 20,
+              letterSpacing: 2,
+              color: COLOUR.muted,
+            }}
+          >
+            {chapter !== undefined ? "CHAPTER" : `OF ${total}`}
+          </div>
+        </div>
+        {capsuleSrc ? (
+          <div
+            style={{
+              width: 140,
+              height: 210,
+              borderRadius: 10,
+              overflow: "hidden",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
+              opacity: card,
+              transform: `translateY(${(1 - card) * 20}px)`,
+            }}
+          >
+            <Img
+              src={capsuleSrc}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          </div>
+        ) : null}
+        <div
+          style={{
+            maxWidth: 1180,
+            opacity: card,
+            transform: `translateX(${(1 - card) * 24}px)`,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: DISPLAY,
+              fontSize: title.length > 24 ? 72 : 92,
+              lineHeight: 1,
+              color: COLOUR.paper,
+              textTransform: "uppercase",
+              textShadow: "0 8px 40px rgba(0,0,0,0.7)",
+            }}
+          >
+            <TitleLines text={title} />
+          </div>
+          {meta ? (
+            <div
+              style={{
+                marginTop: 10,
+                fontFamily: BODY,
+                fontWeight: 800,
+                fontSize: 26,
+                letterSpacing: 2,
+                color: COLOUR.muted,
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                maxWidth: 1180,
+              }}
+            >
+              {meta}
+            </div>
+          ) : null}
+          {verdict ? (
+            <div
+              style={{
+                display: "inline-block",
+                marginTop: 14,
+                padding: "8px 18px",
+                background: COLOUR.amber,
+                color: COLOUR.ink,
+                fontFamily: BODY,
+                fontWeight: 900,
+                fontSize: 28,
+                letterSpacing: 2.5,
+                borderRadius: 8,
+                transform: `scale(${chip})`,
+                transformOrigin: "left center",
+                textTransform: "uppercase",
+              }}
+            >
+              {verdict}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {/* The compact tag that stays */}
+      <div
+        style={{
+          position: "absolute",
+          left: SAFE_X,
+          bottom: SAFE_BOTTOM,
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          opacity: collapse,
+          transform: `translateY(${(1 - collapse) * 30}px)`,
+        }}
+      >
+        <div
+          style={{
+            padding: "8px 16px",
+            background: top ? COLOUR.amber : "rgba(11,11,14,0.8)",
+            border: `3px solid ${COLOUR.amber}`,
+            borderRadius: 12,
+            fontFamily: DISPLAY,
+            fontSize: 40,
+            color: top ? COLOUR.ink : COLOUR.paper,
+            lineHeight: 1,
+          }}
+        >
+          {chapter !== undefined ? `CH ${rank}` : `#${rank}`}
+        </div>
+        <div
+          style={{
+            padding: "10px 18px",
+            background: "rgba(11,11,14,0.72)",
+            borderRadius: 10,
+            fontFamily: BODY,
+            fontWeight: 800,
+            fontSize: 30,
+            letterSpacing: 1.5,
+            color: COLOUR.paper,
+            textTransform: "uppercase",
+          }}
+        >
+          {title}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const CalloutCard: React.FC<{
+  kind: "quote" | "stat" | "date";
+  primary: string;
+  secondary: string;
+  durationFrames: number;
+}> = ({ kind, primary, secondary, durationFrames }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const showFor = Math.min(330, Math.max(60, durationFrames - 12));
+  const inProg = spring({ frame: frame - 12, fps, config: SPRING.ENTER });
+  const out = interpolate(frame, [showFor - 14, showFor], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  if (frame > showFor) return null;
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      <div
+        style={{
+          position: "absolute",
+          left: SAFE_X,
+          bottom: SAFE_BOTTOM + 96,
+          maxWidth: 1180,
+          padding: "26px 34px",
+          background: "rgba(11,11,14,0.8)",
+          borderLeft: `8px solid ${COLOUR.amber}`,
+          borderRadius: 14,
+          boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
+          opacity: inProg * out,
+          transform: `translateY(${(1 - inProg) * 30}px)`,
+        }}
+      >
+        {kind === "quote" ? (
+          <>
+            <div
+              style={{
+                fontFamily: BODY,
+                fontWeight: 700,
+                fontStyle: "italic",
+                fontSize: primary.length > 90 ? 38 : 46,
+                lineHeight: 1.25,
+                color: COLOUR.paper,
+              }}
+            >
+              {"\u201c"}
+              {primary.replace(/^["\u201c]|["\u201d]$/g, "")}
+              {"\u201d"}
+            </div>
+            {secondary ? (
+              <div
+                style={{
+                  marginTop: 14,
+                  fontFamily: BODY,
+                  fontWeight: 800,
+                  fontSize: 26,
+                  letterSpacing: 2,
+                  color: COLOUR.amber,
+                  textTransform: "uppercase",
+                }}
+              >
+                {secondary}
+              </div>
+            ) : null}
+          </>
+        ) : kind === "stat" ? (
+          <>
+            <div
+              style={{
+                fontFamily: DISPLAY,
+                fontSize: primary.length > 14 ? 92 : 124,
+                lineHeight: 1,
+                color: COLOUR.amber,
+                textTransform: "uppercase",
+              }}
+            >
+              {primary}
+            </div>
+            <div
+              style={{
+                marginTop: 10,
+                fontFamily: BODY,
+                fontWeight: 800,
+                fontSize: 32,
+                letterSpacing: 1.5,
+                color: COLOUR.paper,
+                textTransform: "uppercase",
+              }}
+            >
+              {secondary}
+            </div>
+          </>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+            <div
+              style={{
+                padding: "10px 20px",
+                background: COLOUR.amber,
+                color: COLOUR.ink,
+                borderRadius: 10,
+                fontFamily: DISPLAY,
+                fontSize: 60,
+                lineHeight: 1,
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {primary}
+            </div>
+            <div
+              style={{
+                fontFamily: BODY,
+                fontWeight: 800,
+                fontSize: 34,
+                color: COLOUR.paper,
+                textTransform: "uppercase",
+                letterSpacing: 1,
+              }}
+            >
+              {secondary}
+            </div>
+          </div>
+        )}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/**
+ * A documentary's breather before a chapter: the narrator is silent, the music lifts, and the chapter
+ * arrives full screen (its number, its title, the game and year, and a line from the chapter if it has
+ * a quote) over its first picture, then clears for the narration.
+ */
+const ChapterInterlude: React.FC<{
+  number: number;
+  title: string;
+  game: string;
+  year?: string;
+  quote?: { text: string; who: string };
+  frames: number;
+  bg?: BackgroundKind;
+  variant?: number;
+}> = ({ number, title, game, year, quote, frames, bg, variant }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const out = interpolate(frame, [frames - 12, frames], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const dim =
+    interpolate(frame, [0, 10], [0, 1], { extrapolateRight: "clamp" }) * out;
+  const label = spring({ frame: frame - 4, fps, config: SPRING.ENTER });
+  const head = spring({ frame: frame - 10, fps, config: SPRING.ENTER });
+  const sweep = interpolate(frame, [28, 62], [-20, 125], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const sub = spring({ frame: frame - 22, fps, config: SPRING.ENTER });
+  const rule = interpolate(frame, [8, 34], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: (x) => 1 - (1 - x) ** 3,
+  });
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      {bg ? (
+        <AbsoluteFill style={{ opacity: dim }}>
+          <TextureBackground kind={bg} variant={variant} />
+        </AbsoluteFill>
+      ) : (
+        <AbsoluteFill
+          style={{
+            background: `radial-gradient(90% 80% at 50% 50%, rgba(11,11,14,${0.45 * dim}) 0%, rgba(11,11,14,${0.85 * dim}) 100%)`,
+          }}
+        />
+      )}
+      <AbsoluteFill
+        style={{ alignItems: "center", justifyContent: "center", opacity: out }}
+      >
+        <div style={{ textAlign: "center", maxWidth: 1500 }}>
+          <div
+            style={{
+              fontFamily: BODY,
+              fontWeight: 900,
+              fontSize: 30,
+              letterSpacing: 8,
+              color: COLOUR.amber,
+              opacity: label,
+              transform: `translateY(${(1 - label) * 20}px)`,
+            }}
+          >
+            CHAPTER {number}
+          </div>
+          <div
+            style={{
+              margin: "22px auto 0",
+              height: 5,
+              width: 220 * rule,
+              background: COLOUR.amber,
+              borderRadius: 3,
+            }}
+          />
+          {/* The title rises up through a mask, then a warm light sweeps across its letters. */}
+          <div
+            style={{ marginTop: 26, overflow: "hidden", padding: "0 10px 8px" }}
+          >
+            <div
+              style={{
+                fontFamily: DISPLAY,
+                fontSize: title.length > 26 ? 110 : 140,
+                lineHeight: 0.98,
+                textTransform: "uppercase",
+                transform: `translateY(${(1 - head) * 105}%)`,
+                backgroundImage: `linear-gradient(100deg, ${COLOUR.paper} 0%, ${COLOUR.paper} ${sweep - 12}%, #fff3d6 ${sweep - 3}%, #ffffff ${sweep}%, #ffd9a8 ${sweep + 3}%, ${COLOUR.paper} ${sweep + 12}%, ${COLOUR.paper} 100%)`,
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                color: "transparent",
+                filter: "drop-shadow(0 12px 40px rgba(0,0,0,0.65))",
+              }}
+            >
+              {title}
+            </div>
+          </div>
+          <div
+            style={{
+              marginTop: 22,
+              fontFamily: BODY,
+              fontWeight: 800,
+              fontSize: 30,
+              letterSpacing: 3,
+              color: "rgba(245,245,242,0.8)",
+              textTransform: "uppercase",
+              opacity: sub,
+            }}
+          >
+            {[game, year].filter(Boolean).join(" · ")}
+          </div>
+          {quote ? (
+            <div
+              style={{
+                marginTop: 40,
+                fontFamily: BODY,
+                fontWeight: 700,
+                fontStyle: "italic",
+                fontSize: 34,
+                lineHeight: 1.3,
+                color: COLOUR.paper,
+                opacity: interpolate(frame, [30, 46], [0, 1], {
+                  extrapolateLeft: "clamp",
+                  extrapolateRight: "clamp",
+                }),
+              }}
+            >
+              {"“"}
+              {quote.text}
+              {"”"}
+              <span
+                style={{
+                  fontStyle: "normal",
+                  fontWeight: 900,
+                  fontSize: 24,
+                  letterSpacing: 2,
+                  color: COLOUR.amber,
+                  marginLeft: 16,
+                  textTransform: "uppercase",
+                }}
+              >
+                {quote.who}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
+const OutroCard: React.FC<{
+  label: string;
+  winner: string;
+  onScreen: string;
+  tailStart: number;
+  durationFrames: number;
+  endLine?: string;
+}> = ({ label, winner, onScreen, tailStart, durationFrames, endLine }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const inProg = spring({ frame, fps, config: SPRING.ENTER });
+  const endIn = interpolate(frame, [tailStart, tailStart + 20], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      <div
+        style={{
+          position: "absolute",
+          left: SAFE_X,
+          bottom: SAFE_BOTTOM + 20,
+          width: 1200,
+          // Gone before the end line lands (31 Oct 2026: the recap's QA saw the two drawn over each other).
+          opacity: inProg * (1 - endIn),
+          transform: `translateY(${(1 - inProg) * 40}px)`,
+        }}
+      >
+        <div
+          style={{
+            display: "inline-block",
+            padding: "8px 18px",
+            background: COLOUR.ink,
+            border: `3px solid ${COLOUR.amber}`,
+            color: COLOUR.paper,
+            fontFamily: BODY,
+            fontWeight: 900,
+            fontSize: 26,
+            letterSpacing: 3,
+            borderRadius: 8,
+          }}
+        >
+          {label}
+        </div>
+        <div
+          style={{
+            marginTop: 18,
+            fontFamily: DISPLAY,
+            fontSize: 108,
+            lineHeight: 0.98,
+            color: COLOUR.paper,
+            textTransform: "uppercase",
+            textShadow: "0 10px 50px rgba(0,0,0,0.7)",
+          }}
+        >
+          <TitleLines text={winner} />
+        </div>
+        <div
+          style={{
+            marginTop: 16,
+            display: "inline-block",
+            padding: "12px 22px",
+            background: COLOUR.amber,
+            color: COLOUR.ink,
+            fontFamily: BODY,
+            fontWeight: 900,
+            fontSize: 34,
+            letterSpacing: 1,
+            borderRadius: 10,
+          }}
+        >
+          {onScreen}
+        </div>
+      </div>
+      {/* Quiet end card on the right during the tail */}
+      <div
+        style={{
+          position: "absolute",
+          right: SAFE_X,
+          // Clear of the picture credit in the bottom-right corner.
+          bottom: SAFE_BOTTOM + 110,
+          textAlign: "right",
+          opacity: endIn,
+          transform: `translateY(${(1 - endIn) * 30}px)`,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: DISPLAY,
+            fontSize: 64,
+            color: COLOUR.paper,
+            letterSpacing: 2,
+            lineHeight: 1,
+          }}
+        >
+          PULSE GAMING NEWS<span style={{ color: COLOUR.amber }}>.</span>
+        </div>
+        <div
+          style={{
+            marginTop: 12,
+            fontFamily: BODY,
+            fontWeight: 700,
+            fontSize: 28,
+            color: COLOUR.muted,
+            letterSpacing: 1.5,
+            textTransform: "uppercase",
+          }}
+        >
+          {endLine ?? "A new ranking every week · Shorts every day"}
+        </div>
+      </div>
+      {durationFrames > 0 ? null : null}
+    </AbsoluteFill>
+  );
+};
+
+const Credit: React.FC<{ text: string }> = ({ text }) =>
+  text ? (
+    <div
+      style={{
+        position: "absolute",
+        right: SAFE_X,
+        top: 52,
+        padding: "6px 12px",
+        background: "rgba(11,11,14,0.6)",
+        borderRadius: 6,
+        fontFamily: BODY,
+        fontWeight: 700,
+        fontSize: 18,
+        letterSpacing: 1.5,
+        color: "rgba(245,245,242,0.85)",
+        textTransform: "uppercase",
+      }}
+    >
+      {text}
+    </div>
+  ) : null;
+
+export const Long: React.FC<LongProps> = (props) => {
+  const frame = useCurrentFrame();
+  const { fps, durationInFrames } = useVideoConfig();
+  const words = props.words.length ? props.words : synthWords(props.segments);
+  const plan = useMemo(
+    () =>
+      props.plan ??
+      buildLongPlan({
+        segments: props.segments,
+        words,
+        durationSeconds: props.durationSeconds,
+        images: props.images.map((i) => ({
+          kind: i.kind,
+          aspect: i.aspect,
+          beatIndex: i.beatIndex,
+        })),
+        clips: props.clips.map((c) => ({
+          durationSeconds: c.durationSeconds,
+          beatIndex: c.beatIndex,
+          role: c.role,
+          moment: c.moment,
+        })),
+        variant: props.variant,
+        momentCounts: props.moments?.map((m) => m.length),
+        momentKeys: props.moments?.map((e) => e.map(momentKeys)),
+        momentFillers: props.moments?.map((e) => e.map((m) => m.filler)),
+        rhythm: props.cutRhythm,
+        entryPace: props.entryPace,
+        bookend: props.bookendEnding,
+        coldOpenFrames:
+          props.coldOpenLine !== undefined ? coldOpenTiming(fps).frames : 0,
+      }),
+    [props, words],
+  );
+  const windows = useMemo(
+    () =>
+      props.moments?.length
+        ? momentWindows(
+            props.segments,
+            words,
+            props.moments.map((m) => m.length),
+            props.moments.map((e) => e.map(momentKeys)),
+          )
+        : [],
+    [props.moments, props.segments, words],
+  );
+  // The sentences the plan gives a filler shot ("entry:moment" to the shot): those draw their filler and
+  // nothing else of theirs (no caption, pop-in or name tag over a kinetic card or a document).
+  const fillerShots = useMemo(() => {
+    const out = new Map<string, LongShot>();
+    for (const s of plan.shots)
+      if (s.media.type === "filler" && s.media.entry !== undefined)
+        out.set(`${s.media.entry}:${s.media.index}`, s);
+    return out;
+  }, [plan]);
+  const fillerOfShot = (s: LongShot): MomentFiller | undefined =>
+    s.media.entry === undefined
+      ? undefined
+      : props.moments?.[s.media.entry]?.[s.media.index]?.filler;
+  /** A filler shot drawn by its family's component, with the props its notes ask for. */
+  const fillerNode = (s: LongShot, len: number): React.ReactNode => {
+    const f = fillerOfShot(s);
+    const e = s.media.entry ?? -1;
+    const w = windows.find((x) => x.entry === e && x.moment === s.media.index);
+    if (!f || !w) return null;
+    const origin = s.start / fps;
+    const seed = props.variant + e * 31 + s.media.index;
+    const picture = (k?: number) =>
+      k === undefined || k < 0 ? undefined : props.images[k]?.src;
+    if (f.family === "kinetic") {
+      const d = f.data as KineticFillerData;
+      const entry = KINETIC[f.style as KineticStyle];
+      if (!entry) return null;
+      return React.createElement(entry.component, {
+        data: d.card,
+        times: wordTimes(
+          d.card.tokens,
+          shotWords(words, w.start, w.end, 0),
+          origin,
+        ),
+        len,
+        src: picture(d.backdrop),
+        seed,
+      });
+    }
+    if (f.family === "diagram") {
+      const d = f.data as DiagramFillerData;
+      const entry = DIAGRAMS[f.style as DiagramStyle];
+      if (!entry) return null;
+      return React.createElement(entry.component, {
+        data: d.diagram,
+        len,
+        src: picture(d.backdrop),
+        seed,
+      });
+    }
+    if (f.family === "document")
+      return (
+        <DocumentShot
+          scene={(f.data as DocumentFillerData).scene}
+          len={len}
+          words={shotWords(words, w.start, w.end, origin)}
+        />
+      );
+    if (f.family === "recon") {
+      const d = f.data as ReconFillerData;
+      const clip = props.clips[d.clip];
+      if (!clip) return null;
+      return (
+        <ReconShot
+          src={clip.src}
+          len={len}
+          seed={seed}
+          tags={d.tags}
+          palette={props.palette?.[e] ?? null}
+          game={d.game}
+          year={d.year}
+          rate={reconFillRate(d.clipSeconds, len, fps)}
+          hud={d.hud}
+        />
+      );
+    }
+    const d = f.data as SceneFillerData;
+    return (
+      <DrawnScene
+        style={f.style}
+        len={len}
+        year={d.year}
+        month={d.month}
+        variant={d.variant}
+        src={picture(d.picture)}
+      />
+    );
+  };
+  // The writer's beats on the timeline (src/render/musicplan.ts): the music and the sounds react to them.
+  const beatCues = useMemo(
+    () =>
+      beatCuesFrom(
+        windows,
+        props.moments,
+        fps,
+        (props.breaks ?? []).map((b) => ({
+          from: Math.round(b.start * fps),
+          to: Math.round(b.end * fps),
+        })),
+      ),
+    [windows, props.moments, props.breaks, fps],
+  );
+  const starts = props.segments.map((s, i) =>
+    i === 0 ? 0 : Math.round(s.start * fps),
+  );
+  const ends = props.segments.map((_, i) =>
+    i === props.segments.length - 1 ? durationInFrames : starts[i + 1]!,
+  );
+  const total = props.segments.filter((s) => s.visual?.kind === "rank").length;
+  const documentary = props.segments.some((s) => s.visual?.kind === "chapter");
+  // A chapter's card runs until the next chapter (or the outro) begins, collapsing to a tag that stays.
+  const chapterEnd = (i: number) => {
+    for (let k = i + 1; k < props.segments.length; k++) {
+      const x = props.segments[k]!;
+      if (x.kind !== "beat" || x.visual?.kind === "chapter") return starts[k]!;
+    }
+    return durationInFrames;
+  };
+  const lastWordEnd = words.length
+    ? Math.round(words[words.length - 1]!.end * fps)
+    : durationInFrames - plan.tailFrames;
+
+  const speaking = useMemo(() => {
+    const on = new Uint8Array(durationInFrames + 1);
+    for (const w of words) {
+      const a = Math.max(0, Math.floor((w.start - 0.06) * fps));
+      const b = Math.min(durationInFrames, Math.ceil((w.end + 0.3) * fps));
+      for (let f = a; f <= b; f++) on[f] = 1;
+    }
+    return on;
+  }, [words, fps, durationInFrames]);
+  // The bed under the voice (src/render/musicplan.ts bedEnvelope): steady through the delivery, up by about
+  // 4 dB only in a pause long enough to carry.
+  const bedLevels = useMemo(
+    () => bedEnvelope(speaking, fps, 0.07, 0.11),
+    [speaking, fps],
+  );
+  // The sound craft (src/render/soundfx.ts): each part its own setting; an absent prop is the old mix.
+  const craft = craftOf(props.soundCraft);
+  // Game sound by the same pause rule: its old level under the voice, up softly in a long pause.
+  const gameLevels = useMemo(
+    () => (craft.pockets ? gameEnvelope(speaking, fps) : undefined),
+    [craft.pockets, speaking, fps],
+  );
+  const gameLevel = gameLevels
+    ? (f: number) =>
+        gameLevels[Math.min(durationInFrames, Math.max(0, Math.round(f)))] ??
+        GAME_UNDER
+    : undefined;
+  const musicVolume = (f: number) => {
+    const fadeIn = interpolate(f, [0, 24], [0, 1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    const fadeOut = interpolate(
+      f,
+      [durationInFrames - 60, durationInFrames - 2],
+      [1, 0],
+      { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+    );
+    // In a documentary's breather the music comes up to carry the pause, easing in and out.
+    const lift = Math.max(
+      0,
+      ...breakFrames.map((b) =>
+        interpolate(
+          f,
+          [b.from, b.from + 15, b.to - 12, b.to + 6],
+          [0, 1, 1, 0],
+          {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          },
+        ),
+      ),
+    );
+    return (
+      fadeIn *
+      fadeOut *
+      Math.max(
+        bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.07,
+        0.42 * lift,
+      )
+    );
+  };
+  // The music changes bed at the first chapter or entry after MUSIC_SECTION_SECONDS on one bed: a 30-minute
+  // documentary looped a single two-minute bed fifteen times (owner, 27 Oct 2026).
+  const moodBeds = (m: Mood) => [
+    ...MOOD_BEDS[m].map((b) => b.file),
+    ...(props.extraBeds ?? []).filter((b) => b.mood === m).map((b) => b.file),
+  ];
+  const beds = useMemo(() => {
+    if (!props.musicSrc)
+      return [] as Array<{ from: number; to: number; src: string }>;
+    const first = BEDS.findIndex((b) => b.file === props.musicSrc);
+    if (first < 0)
+      return [{ from: 0, to: durationInFrames, src: props.musicSrc }];
+    // Each chapter or entry: where it opens, its narration and its game's year (src/render/musicplan.ts
+    // gives each a mood; a mood bed plays its chapters, the house beds rotate through the rest).
+    const opens = props.segments
+      .map((s, i) =>
+        s.kind === "beat" &&
+        (s.visual?.kind === "rank" || s.visual?.kind === "chapter") &&
+        i > 0
+          ? i
+          : -1,
+      )
+      .filter((i) => i > 0);
+    const chapters: MusicChapter[] = opens.map((i, n) => ({
+      frame: starts[i]!,
+      text: props.segments
+        .slice(i, opens[n + 1] ?? props.segments.length)
+        .map((x) => x.text)
+        .join(" "),
+      year: Number(props.segments[i]!.visual?.items?.[0]) || undefined,
+    }));
+    // A turn beat pulls the nearest bed change onto its line (src/render/musicplan.ts turnSections).
+    const sections = turnSections(
+      musicSections(
+        chapters,
+        durationInFrames,
+        documentary,
+        45 * fps,
+        MUSIC_SECTION_SECONDS * fps,
+        (m) => moodBeds(m).length > 0,
+      ),
+      beatCues.filter((c) => c.kind === "turn").map((c) => c.start),
+      TURN_REACH_SECONDS * fps,
+      TURN_MIN_SECTION_SECONDS * fps,
+    );
+    // The house list: the generated beds, then the Epidemic ones, starting from the video's own bed.
+    const house = [
+      ...BEDS.map((b) => b.file),
+      ...(props.extraBeds ?? [])
+        .filter((b) => b.mood === "house")
+        .map((b) => b.file),
+    ];
+    let k = first;
+    const turn: Record<string, number> = {};
+    return sections.map((sec) => {
+      if (sec.mood) {
+        const list = moodBeds(sec.mood);
+        const n = turn[sec.mood] ?? 0;
+        turn[sec.mood] = n + 1;
+        // Rotated by the video's variant too, so two videos rarely share a mood's bed.
+        return {
+          from: sec.from,
+          to: sec.to,
+          src: list[(n + props.variant) % list.length]!,
+        };
+      }
+      return { from: sec.from, to: sec.to, src: house[k++ % house.length]! };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    props.musicSrc,
+    props.segments,
+    props.extraBeds,
+    durationInFrames,
+    fps,
+    beatCues,
+  ]);
+  // A documentary's breathers: the chapter segment that opens on one, and the frames it lasts.
+  const breakFrames = (props.breaks ?? []).map((b) => ({
+    from: Math.round(b.start * fps),
+    to: Math.round(b.end * fps),
+  }));
+  const breakAt = (i: number) => {
+    const b = breakFrames.find((x) => Math.abs(x.from - starts[i]!) <= 3);
+    return b ? Math.max(0, b.to - b.from) : 0;
+  };
+  // The structure devices (src/render/structure.ts): where the title drops, the chapters for the index
+  // and the year counter, and the open-loop recalls with the picture each one brings back.
+  // Every long format since 31 Oct 2026 (src/longformat.ts): the props carry each device only where it applies.
+  const drop = props.titleDrop
+    ? titleDropWindow(props.segments, words, fps, breakFrames)
+    : undefined;
+  const marks = props.chapterIndex
+    ? chapterMarks(props.segments, starts, durationInFrames, breakFrames)
+    : [];
+  const indexEnd =
+    props.next !== undefined
+      ? endCardTiming(durationInFrames, fps).from
+      : durationInFrames;
+  const cues = callbackCues(
+    props.loops,
+    props.segments,
+    words,
+    windows,
+    fps,
+  ).map((c) => {
+    const r = recallMedia(plan, c.plantFrame);
+    const src =
+      r?.media.type === "image"
+        ? props.images[r.media.index]?.src
+        : r?.media.type === "clip"
+          ? props.clips[r.media.index]?.src
+          : undefined;
+    return {
+      ...c,
+      media:
+        r && src
+          ? {
+              src: resolveSrc(src)!,
+              clip: r.media.type === "clip",
+              offset: r.offset,
+            }
+          : undefined,
+    };
+  });
+  // The richer explainers (src/render/components/DocGraphics.tsx). A "versus" shows two of the video's own
+  // games from their chapters' pictures; a "people" card uses a portrait when one carries the name.
+  const normTitle = (t: string) =>
+    t
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const gameArt = (title: string) => {
+    const k = props.segments.findIndex(
+      (x) =>
+        x.kind === "beat" &&
+        (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
+        normTitle(x.visual?.secondary ?? "") === normTitle(title),
+    );
+    const byPrimary =
+      k >= 0
+        ? k
+        : props.segments.findIndex(
+            (x) =>
+              x.kind === "beat" &&
+              x.visual?.kind === "rank" &&
+              normTitle(x.visual?.primary ?? "") === normTitle(title),
+          );
+    if (byPrimary < 0) return undefined;
+    const e = entryOf(props.segments, byPrimary);
+    const im = props.images.find(
+      (i) =>
+        i.beatIndex === e &&
+        i.aspect >= 1.2 &&
+        i.kind !== "capsule" &&
+        i.kind !== "portrait",
+    );
+    const year = props.segments[byPrimary]!.visual?.items?.[0];
+    return im
+      ? {
+          src: im.src,
+          label: [displayText(title), year].filter(Boolean).join(" · "),
+        }
+      : undefined;
+  };
+  const portraits = Object.fromEntries(
+    props.images
+      .filter((i) => (i.kind === "portrait" || i.kind === "photo") && i.label)
+      .map((i) => [i.label!.toLowerCase(), i.src]),
+  );
+  const richGraphic = (
+    g: NonNullable<LongProps["moments"]>[number][number]["graphic"],
+    len: number,
+    bg?: BackgroundKind,
+    variant?: number,
+  ) => {
+    switch (g.kind) {
+      case "delay":
+        return <DelayMoment g={g} len={len} bg={bg} variant={variant} />;
+      case "span":
+        return <SpanMoment g={g} len={len} bg={bg} variant={variant} />;
+      case "reviews":
+        return <ReviewsMoment g={g} len={len} bg={bg} variant={variant} />;
+      case "source":
+        return <SourceMoment g={g} len={len} bg={bg} variant={variant} />;
+      case "milestone":
+        return <AchievementMoment g={g} len={len} />;
+      case "people":
+        return (
+          <PeopleMoment
+            g={g}
+            len={len}
+            photos={portraits}
+            bg={bg}
+            variant={variant}
+          />
+        );
+      case "versus":
+        // Two looks taken in turn: the split card and the remaster-style wipe.
+        return React.createElement(
+          (variant ?? 0) % 2 ? WipeCompare : VersusMoment,
+          {
+            len,
+            heading: displayText(g.primary),
+            left: gameArt(g.items[0] ?? ""),
+            right: gameArt(g.items[1] ?? ""),
+          },
+        );
+      default:
+        return null;
+    }
+  };
+  // Each picture's label, as video essays label theirs (Ahoy): the game, its year and what the picture is.
+  // Archive photos carry their own credit and licensed footage its creator's, so they get none.
+  const entryTitle = (e: number | undefined) => {
+    if (e === undefined)
+      return {
+        title: props.recap ? "" : props.theme,
+        year: undefined as string | undefined,
+      };
+    const k = props.segments.findIndex(
+      (x, i) =>
+        x.kind === "beat" &&
+        (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
+        entryOf(props.segments, i) === e,
+    );
+    const v = k >= 0 ? props.segments[k]!.visual : undefined;
+    return {
+      title: (v?.kind === "rank" ? v.primary : v?.secondary) ?? "",
+      year: v?.items?.[0],
+    };
+  };
+  const describe = (media: { type: string; index: number }) => {
+    if (media.type === "image") {
+      const im = props.images[media.index];
+      const word = im ? KIND_WORD[im.kind] : undefined;
+      if (!im || !word) return "";
+      const t = entryTitle(im.beatIndex);
+      return [t.title, t.year, word]
+        .filter(Boolean)
+        .map((x) => displayText(String(x)))
+        .join(" · ");
+    }
+    if (media.type === "clip") {
+      const c = props.clips[media.index];
+      if (!c || c.credit) return "";
+      const t = entryTitle(c.beatIndex);
+      return t.title
+        ? [t.title, t.year, "Trailer"]
+            .filter(Boolean)
+            .map((x) => displayText(String(x)))
+            .join(" · ")
+        : "";
+    }
+    return "";
+  };
+  // A person's name tag the first time a chapter turns to them; the role from a who's-who card when there is one.
+  const roles = new Map<string, string>();
+  for (const e of props.moments ?? [])
+    for (const m of e)
+      if (m.graphic.kind === "people")
+        for (const it of m.graphic.items) {
+          const i = it.indexOf(":");
+          if (i > 0)
+            roles.set(
+              it.slice(0, i).trim().toLowerCase(),
+              it.slice(i + 1).trim(),
+            );
+        }
+  const firstMention = new Set<string>();
+  // Name tags take their looks in turn, by the order people first appear.
+  const firstMentionOrder = new Map<string, number>();
+  const tagged = new Set<string>();
+  for (const w of windows) {
+    const p = props.moments?.[w.entry]?.[w.moment]?.person?.trim();
+    if (!p || w.moment === 0) continue;
+    const key = `${w.entry}|${p.toLowerCase()}`;
+    if (tagged.has(key)) continue;
+    tagged.add(key);
+    firstMention.add(`${w.entry}|${w.moment}`);
+    firstMentionOrder.set(
+      `${w.entry}|${w.moment}`,
+      firstMentionOrder.size + props.variant,
+    );
+  }
+  const bedAt = (f: number) =>
+    beds.find((b) => f >= b.from && f < b.to)?.src ?? props.musicSrc;
+  // Each sentence's graphic, caption or picture lands a beat before the narrator names it and holds until
+  // the next sentence's lands, and for as long as it takes to read (owner, 30 Oct 2026: cards and captions
+  // vanished before they could be taken in): 2.5 s plus 0.3 s a word and 0.5 s a row, up to 7 s, as long
+  // as nothing else is drawn for that entry in the meantime.
+  const drawn = (entry: number, moment: number): boolean => {
+    const r = props.moments?.[entry]?.[moment];
+    return (
+      !!r &&
+      (usefulGraphic(r.graphic) ||
+        (!!r.emphasis && usefulEmphasis(r.emphasis)) ||
+        fillerShots.has(`${entry}:${moment}`))
+    );
+  };
+  const readSeconds = (entry: number, moment: number): number => {
+    const r = props.moments?.[entry]?.[moment];
+    if (!r) return 2.5;
+    const g = usefulGraphic(r.graphic) ? r.graphic : undefined;
+    const text = [g?.primary, g?.secondary, ...(g?.items ?? []), r.emphasis]
+      .filter(Boolean)
+      .join(" ");
+    const words = text.split(/\s+/).filter(Boolean).length;
+    // A card's build (typewriter, flip board, counter) eats 1.5 s before it can be read (measured 30 Oct 2026).
+    return Math.min(
+      8,
+      2.5 + (g ? 1.5 : 0) + 0.3 * words + 0.5 * (g?.items?.length ?? 0),
+    );
+  };
+  const spanOf = (
+    k: number,
+  ): { from: number; len: number; anchored: boolean } => {
+    const w = windows[k]!;
+    const next = windows[k + 1];
+    const anchored = w.at > w.start;
+    const from = Math.max(
+      Math.round(w.start * fps),
+      Math.round((w.at - 0.15) * fps),
+    );
+    const until =
+      next && next.entry === w.entry
+        ? Math.round((next.at - 0.15) * fps)
+        : Math.round(w.end * fps);
+    // The reading time may run past the next sentence, but never into the next thing drawn for this entry.
+    let stop = Math.round(w.end * fps);
+    for (let j = k + 1; windows[j] && windows[j]!.entry === w.entry; j++) {
+      if (drawn(windows[j]!.entry, windows[j]!.moment)) {
+        // A filler shot opens with its sentence's first word: the card before it is gone by then.
+        const next = fillerShots.get(
+          `${windows[j]!.entry}:${windows[j]!.moment}`,
+        );
+        stop = next
+          ? next.start - Math.round(0.3 * fps)
+          : Math.round((windows[j]!.at - 0.3) * fps);
+        break;
+      }
+      stop = Math.round(windows[j]!.end * fps);
+    }
+    const read = Math.min(
+      stop,
+      from + Math.round(readSeconds(w.entry, w.moment) * fps),
+    );
+    // Never over the next sentence's filler shot, which takes the whole frame from its first word.
+    const nextFiller =
+      next && next.entry === w.entry
+        ? fillerShots.get(`${next.entry}:${next.moment}`)
+        : undefined;
+    const endAt = Math.max(until, read, from + Math.round(2.5 * fps));
+    return {
+      from,
+      len: Math.max(
+        1,
+        (nextFiller ? Math.min(endAt, nextFiller.start) : endAt) - from,
+      ),
+      anchored,
+    };
+  };
+  // Moment sounds, gated (src/render/soundscape.ts): glints on numbers and whooshes on pop-in pictures,
+  // spaced out and kept clear of each entry's own swell and landing.
+  const entryFrames = props.segments
+    .map((s, i) =>
+      s.kind === "beat" &&
+      (s.visual?.kind === "rank" || s.visual?.kind === "chapter") &&
+      i > 0
+        ? starts[i]!
+        : -1,
+    )
+    .filter((f) => f >= 0);
+  // J and L cuts (src/render/soundfx.ts jlCuts): gameplay clips whose own sound leads or trails the picture.
+  const jl = useMemo(
+    () =>
+      craft.jl
+        ? jlCuts(plan.shots, props.clips, fps, entryFrames)
+        : new Map<number, JlCut>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [craft.jl, plan, props.clips, fps, entryFrames.join(",")],
+  );
+  // Zoom to the detail: each annotation's window, the shot showing its picture then, and the box on screen.
+  const details = useMemo(() => {
+    const out: Array<{
+      k: number;
+      shot: number;
+      from: number;
+      len: number;
+      origin: { x: number; y: number };
+      zoom: number;
+      box: { x1: number; y1: number; x2: number; y2: number };
+      label: string;
+    }> = [];
+    for (const a of props.annotations ?? []) {
+      const k = windows.findIndex(
+        (w) => w.entry === a.entry && w.moment === a.moment,
+      );
+      if (k < 0) continue;
+      const { from, len } = spanOf(k);
+      const shot = plan.shots.findIndex(
+        (x) =>
+          from >= x.start &&
+          from < x.end &&
+          x.media.type === "image" &&
+          x.media.index === a.image,
+      );
+      const im = props.images[a.image];
+      if (shot < 0 || !im || !Number.isFinite(im.aspect)) continue;
+      // A box that isn't four numbers (a malformed annotation) is skipped rather than zooming to nowhere.
+      if (
+        !Array.isArray(a.box) ||
+        a.box.length < 4 ||
+        !a.box.slice(0, 4).every((n) => Number.isFinite(Number(n)))
+      )
+        continue;
+      const p1 = coverPoint(im.aspect, a.box[0], a.box[1]);
+      const p2 = coverPoint(im.aspect, a.box[2], a.box[3]);
+      const box = { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+      if (box.x1 < 0.02 || box.y1 < 0.02 || box.x2 > 0.98 || box.y2 > 0.98)
+        continue; // cropped off by the frame
+      const origin = {
+        x: Math.max(0.15, Math.min(0.85, (box.x1 + box.x2) / 2)),
+        y: Math.max(0.2, Math.min(0.8, (box.y1 + box.y2) / 2)),
+      };
+      // The push never carries the box off the frame: each edge caps the zoom.
+      let zoom = focusZoom(box);
+      const cap = (edge: number, o: number, limit: number) =>
+        edge === o ? Infinity : (limit - o) / ((edge - o) * 1.04);
+      for (const z of [
+        cap(box.x1, origin.x, 0.04),
+        cap(box.x2, origin.x, 0.96),
+        cap(box.y1, origin.y, 0.07),
+        cap(box.y2, origin.y, 0.93),
+      ])
+        if (z > 0) zoom = Math.min(zoom, z);
+      zoom = Math.max(1, zoom);
+      // On screen for at least four seconds (the box and label need time to read), or to the end of the shot.
+      const shotLeft = plan.shots[shot]!.end - from;
+      out.push({
+        k,
+        shot,
+        from,
+        len: Math.min(shotLeft, Math.max(len, 120)),
+        origin,
+        zoom,
+        box,
+        label: a.label,
+      });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.annotations, windows, plan]);
+  const focusFor = new Map(
+    details.map((d) => [
+      d.shot,
+      { from: d.from, origin: d.origin, zoom: d.zoom },
+    ]),
+  );
+  // The editor's moves (src/render/components/EditorMoves.tsx).
+  // Each entry or chapter opens on a burst of quick cuts from its own footage and pictures (never a
+  // credited clip or archive photo, whose credit would not show, nor the picture the entry then opens on).
+  const openings = useMemo(() => {
+    const out: Array<{ from: number; items: MontageItem[] }> = [];
+    props.segments.forEach((s, i) => {
+      if (
+        s.kind !== "beat" ||
+        (s.visual?.kind !== "rank" && s.visual?.kind !== "chapter")
+      )
+        return;
+      const e = entryOf(props.segments, i);
+      if (e === undefined) return;
+      const from = starts[i]! + breakAt(i);
+      const after = plan.shots.find(
+        (x) =>
+          from + montageFrames(4) >= x.start && from + montageFrames(4) < x.end,
+      );
+      const clips = props.clips
+        .filter(
+          (c) => c.beatIndex === e && !c.credit && c.durationSeconds >= 1.5,
+        )
+        .map(
+          (c): MontageItem => ({
+            kind: "clip",
+            src: c.src,
+            startFrom: Math.round(c.durationSeconds * fps * 0.55),
+          }),
+        );
+      const pics = props.images
+        .map((im, k) => ({ im, k }))
+        .filter(
+          ({ im, k }) =>
+            im.beatIndex === e &&
+            im.aspect >= 1.2 &&
+            ["screenshot", "hero", "header", "article"].includes(im.kind) &&
+            !(after?.media.type === "image" && after.media.index === k),
+        )
+        .map(({ im }): MontageItem => ({ kind: "image", src: im.src }));
+      const items: MontageItem[] = [];
+      for (
+        let k = 0;
+        items.length < 4 && k < Math.max(clips.length, pics.length);
+        k++
+      ) {
+        if (clips[k]) items.push(clips[k]!);
+        if (items.length < 4 && pics[k]) items.push(pics[k]!);
+      }
+      if (items.length >= 3) out.push({ from, items });
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.segments, props.clips, props.images, plan, fps]);
+  // An old game (before 2007) opens on the hardware of its day: its platform's (a handheld, an arcade
+  // cabinet, a beige PC monitor) or, by turns, a TV switching on or a TV and VCR taking a tape. Its first
+  // long enough shot (footage first, else a screenshot), once per entry, never under the opening burst.
+  const oldEntry = (e: number | undefined) => {
+    if (e === undefined) return undefined;
+    const year = Number(entryTitle(e).year);
+    if (!year || year > OLD_YEAR) return undefined;
+    const k = props.segments.findIndex(
+      (x, i) =>
+        x.kind === "beat" &&
+        (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
+        entryOf(props.segments, i) === e,
+    );
+    const v = k >= 0 ? props.segments[k]!.visual : undefined;
+    return {
+      year,
+      platforms: v?.items?.[1] ?? "",
+      title: displayText((v?.kind === "rank" ? v.primary : v?.secondary) ?? ""),
+    };
+  };
+  const shotEntry = (sh: { media: { type: string; index: number } }) =>
+    sh.media.type === "clip"
+      ? props.clips[sh.media.index]?.beatIndex
+      : sh.media.type === "image"
+        ? props.images[sh.media.index]?.beatIndex
+        : undefined;
+  const retro = useMemo(() => {
+    const out = new Map<number, OldDevice>();
+    const done = new Set<number>();
+    let turn = props.variant;
+    for (const type of ["clip", "image"] as const)
+      plan.shots.forEach((sh, i) => {
+        if (sh.media.type !== type) return;
+        const e = shotEntry(sh);
+        const old = oldEntry(e);
+        if (e === undefined || !old || done.has(e)) return;
+        if (
+          type === "image" &&
+          (props.images[sh.media.index]!.kind !== "screenshot" ||
+            props.images[sh.media.index]!.aspect < 1.2)
+        )
+          return;
+        if (focusFor.has(i)) return;
+        if (
+          openings.some((o) => sh.start >= o.from - 5 && sh.start < o.from + 75)
+        )
+          return;
+        let device: Device | "tv" = deviceFor(old.year, old.platforms, turn);
+        const room = sh.end - sh.start - 30;
+        if (device !== "tv" && room < DEVICE_FRAMES[device]) device = "tv";
+        if (device === "tv" && room < TV_HOLD + TV_PUSH) return;
+        out.set(i, {
+          device,
+          label: old.title,
+          green: handheldGreen(old.year),
+        });
+        done.add(e);
+        turn++;
+      });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, props.clips, props.images, openings]);
+  // Every other shot of an old game wears its period: a VHS tape, or a CRT picture before 1994. Archive
+  // photos and the detail zooms stay clean.
+  const periodLooks = useMemo(() => {
+    const out = new Map<number, "vhs" | "crt">();
+    const count = new Map<number, number>();
+    plan.shots.forEach((sh, i) => {
+      const e = shotEntry(sh);
+      const old = oldEntry(e);
+      if (e === undefined || !old || retro.has(i) || focusFor.has(i)) return;
+      if (
+        sh.media.type === "image" &&
+        props.images[sh.media.index]?.kind === "photo"
+      )
+        return;
+      if (sh.media.type === "plate") return;
+      const n = count.get(e) ?? 0;
+      count.set(e, n + 1);
+      if ((n + props.variant) % 2 === 0)
+        out.set(i, old.year < 1994 ? "crt" : "vhs");
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, retro, props.images]);
+  // Each game's own colour on its shots (props.palette, from the pipeline).
+  const tints = useMemo(() => {
+    const out = new Map<number, string>();
+    plan.shots.forEach((sh, i) => {
+      const e = shotEntry(sh);
+      const c = e === undefined ? undefined : props.palette?.[e];
+      if (c) out.set(i, c);
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, props.palette]);
+  // An old game's last shot before the next entry switches off like a tube.
+  const powerOff = useMemo(() => {
+    const out = new Set<number>();
+    plan.shots.forEach((sh, i) => {
+      const next = plan.shots[i + 1];
+      const e = shotEntry(sh);
+      if (!next || !oldEntry(e) || sh.end - sh.start < 45) return;
+      if (
+        shotEntry(next) !== e &&
+        entryFrames.some((f) => Math.abs(f - next.start) < 4)
+      )
+        out.add(i);
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, entryFrames]);
+  // A punch-in on the narrator's key word, the editor's cut-in: on footage or a wide still, when the picture
+  // is not under a full-screen explainer, at most one every 18 seconds.
+  const punches = useMemo(() => {
+    const out = new Map<number, number>();
+    let lastAt = -Infinity;
+    for (const w of windows) {
+      const raw = props.moments?.[w.entry]?.[w.moment];
+      if (!raw || w.moment === 0 || w.at - w.start < 0.3) continue;
+      const kind = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
+      if (!["none", "stat", "date", "list", "compare"].includes(kind)) continue;
+      const f = Math.round(w.at * fps);
+      if (f - lastAt < 18 * fps) continue;
+      const i = plan.shots.findIndex((x) => f >= x.start && f < x.end);
+      const sh = plan.shots[i];
+      if (!sh || sh.media.type === "plate" || sh.media.type === "filler")
+        continue;
+      if (
+        f - sh.start < 24 ||
+        sh.end - f < 36 ||
+        focusFor.has(i) ||
+        retro.has(i)
+      )
+        continue;
+      if (sh.media.type === "image") {
+        const im = props.images[sh.media.index];
+        if (!im || im.kind === "photo" || im.aspect < 0.9) continue;
+      }
+      out.set(i, f);
+      lastAt = f;
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windows, plan, props.moments, props.images, fps, retro]);
+  // The music drops out for a beat on one key line a section (src/render/musicplan.ts), never in the hook,
+  // a breather, around an entry change or near a beat the writer marked (that one has its own drop).
+  const drops = useMemo(
+    () =>
+      dropOuts(
+        beds,
+        [...punches.values()],
+        fps,
+        (f) =>
+          f < 20 * fps ||
+          entryFrames.some((e) => Math.abs(f - e) < 3 * fps) ||
+          breakFrames.some(
+            (b) => f >= b.from - 3 * fps && f <= b.to + 3 * fps,
+          ) ||
+          nearBeat(f, beatCues, BEAT_CLEAR_SECONDS * fps),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [beds, punches, fps, beatCues],
+  );
+  // The suite (src/render/components/packs): each graphic kind rotates through the house design and every
+  // pack style that can draw it, so two stats or two headlines in a video never look the same. A figure
+  // or date keeps its small card half the time, so footage still carries most of the video.
+  // Motifs (src/render/components/motifs): the look of a game's series, console or genre, most specific first.
+  const motifCache = new Map<number, Motif | undefined>();
+  const motifOf = (e: number | undefined): Motif | undefined => {
+    if (e === undefined) return undefined;
+    if (motifCache.has(e)) return motifCache.get(e);
+    const k = props.segments.findIndex(
+      (x, i) =>
+        x.kind === "beat" &&
+        (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
+        entryOf(props.segments, i) === e,
+    );
+    const v = k >= 0 ? props.segments[k]!.visual : undefined;
+    const m = v
+      ? motifsFor({
+          title: displayText(
+            (v.kind === "rank" ? v.primary : v.secondary) ?? "",
+          ),
+          platforms: v.items?.[1] ?? "",
+          year: Number(v.items?.[0]) || undefined,
+          theme: props.theme,
+        })[0]
+      : undefined;
+    motifCache.set(e, m);
+    return m;
+  };
+  const videoMotif = motifsFor({
+    title: props.title,
+    platforms: "",
+    theme: props.theme,
+  })[0];
+  /** Wide pictures for a motif's panels, tiles and screens: an entry's own, or the topic's for the opening. */
+  const motifPictures = (e: number | undefined) =>
+    props.images
+      .filter(
+        (im) =>
+          (e === undefined ? true : im.beatIndex === e) &&
+          im.aspect >= 1.3 &&
+          ["hero", "screenshot", "article", "header"].includes(im.kind),
+      )
+      .map((im) => im.src)
+      .slice(0, 6);
+  // Each pack style's name ("Paper/Typewriter"), for its own foley (src/render/soundfx.ts DEVICE_FOLEY).
+  const styleName = useMemo(
+    () =>
+      new Map<GfxStyle, string>(
+        Object.entries(ALL_STYLES).map(([n, s]) => [s, n] as const),
+      ),
+    [],
+  );
+  const packFor = useMemo(() => {
+    const out = new Map<number, GfxStyle>();
+    const turn = new Map<string, number>();
+    const HOUSE = new Set([
+      "quote",
+      "headline",
+      "timeline",
+      "delay",
+      "span",
+      "reviews",
+      "source",
+      "milestone",
+      "people",
+      "versus",
+      "stat",
+      "date",
+      "list",
+      "compare",
+      "score",
+    ]);
+    const SMALL = new Set(["stat", "date", "list", "compare", "score"]);
+    windows.forEach((w, k) => {
+      const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
+      if (!g || !usefulGraphic(g)) return;
+      // A look from the story's own time: no smartphone for a 1997 story (owner, 30 Oct 2026).
+      const year = storyYear(g, Number(entryTitle(w.entry).year) || undefined);
+      const styles = Object.keys(ALL_STYLES)
+        .sort()
+        .map((name) => ALL_STYLES[name]!)
+        .filter(
+          (s) => s.kind === g.kind && (!s.fits || s.fits(g)) && inEra(s, year),
+        );
+      const choices: Array<GfxStyle | undefined> = [
+        ...(HOUSE.has(g.kind)
+          ? SMALL.has(g.kind)
+            ? styles.map(() => undefined)
+            : [undefined]
+          : []),
+        ...styles,
+      ];
+      // A sentence about a game with a motif takes the motif's own style every other time it can.
+      const motif = motifOf(w.entry);
+      const own = Object.values(motif?.styles ?? {}).filter(
+        (s) => s.kind === g.kind && (!s.fits || s.fits(g)) && inEra(s, year),
+      );
+      if (!choices.length && !own.length) return;
+      const n = turn.get(g.kind) ?? 0;
+      turn.set(g.kind, n + 1);
+      if (own.length && ((n + props.variant) % 2 === 0 || !choices.length)) {
+        out.set(k, own[Math.floor(n / 2) % own.length]!);
+        return;
+      }
+      const pick = choices[(n + props.variant) % choices.length];
+      if (pick) out.set(k, pick);
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windows, props.moments, props.variant]);
+  // Captions and pop-in pictures take their looks in turn (src/render/components/Captions.tsx, Accents.tsx).
+  const lookOf = useMemo(() => {
+    const out = new Map<number, number>();
+    let caption = props.variant;
+    let pop = props.variant;
+    windows.forEach((w, k) => {
+      const m = props.moments?.[w.entry]?.[w.moment];
+      if (!m) return;
+      if (m.emphasis) out.set(k, caption++ % CAPTION_STYLES.length);
+      else out.set(k, pop++ % POPIN_STYLES.length);
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windows, props.moments, props.variant]);
+  // The flash-forward (owner, 28 Oct 2026): the opening teases the video's biggest graphics still to come, a
+  // few frames of each frozen fully drawn, under a COMING UP tag, while the narrator sets the story up.
+  const TEASE_KINDS = [
+    "stat",
+    "map",
+    "quote",
+    "milestone",
+    "span",
+    "headline",
+    "bars",
+    "delay",
+    "reviews",
+    "versus",
+  ];
+  const teaser = useMemo(() => {
+    const picks: number[] = [];
+    const seen = new Set<number>();
+    for (const kind of TEASE_KINDS)
+      windows.forEach((w, k) => {
+        const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
+        if (
+          !g ||
+          g.kind !== kind ||
+          !usefulGraphic(g) ||
+          seen.has(w.entry) ||
+          w.start < 60
+        )
+          return;
+        if (
+          !packFor.get(k) &&
+          ![
+            "quote",
+            "headline",
+            "span",
+            "milestone",
+            "delay",
+            "reviews",
+            "versus",
+          ].includes(kind)
+        )
+          return;
+        if (picks.length >= TEASE_ITEMS) return;
+        picks.push(k);
+        seen.add(w.entry);
+      });
+    return picks.sort((a, b) => a - b);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windows, props.moments, packFor]);
+  const teaseGraphic = (k: number) => {
+    const w = windows[k]!;
+    const g = props.moments![w.entry]![w.moment]!.graphic;
+    const bg = backgroundFor(
+      g.kind,
+      Number(entryTitle(w.entry).year) || undefined,
+      props.variant + k,
+    );
+    const src = props.images.find(
+      (im) =>
+        im.beatIndex === w.entry && im.aspect >= 1.2 && im.kind !== "capsule",
+    )?.src;
+    const style = packFor.get(k);
+    if (style)
+      return React.createElement(style.component, {
+        g,
+        len: 200,
+        bg,
+        variant: props.variant + k,
+        year: Number(entryTitle(w.entry).year) || undefined,
+        photos: portraits,
+        src,
+      });
+    if (richGraphic(g, 200)) return richGraphic(g, 200, bg, props.variant + k);
+    if (g.kind === "quote")
+      return (
+        <QuoteMoment g={g} len={200} bg={bg} variant={props.variant + k} />
+      );
+    if (g.kind === "headline")
+      return (
+        <HeadlineMoment
+          g={g}
+          len={200}
+          bg={bg}
+          variant={props.variant + k}
+          src={src}
+        />
+      );
+    return null;
+  };
+
+  // An accent on about one cut in four, at least eight seconds apart: never on an entry's landing, a
+  // breather, an opening burst or the old TV, and never under a full-screen explainer.
+  const accents = useMemo(() => {
+    const out: Array<{ at: number; kind: AccentKind | "static" }> = [];
+    let last = -Infinity;
+    let n = props.variant;
+    const covered = (f: number) =>
+      windows.some((w, k) => {
+        const style = packFor.get(k);
+        const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
+        if (
+          !style &&
+          !(
+            g &&
+            [
+              "quote",
+              "headline",
+              "source",
+              "timeline",
+              "delay",
+              "span",
+              "reviews",
+              "people",
+              "versus",
+              "milestone",
+            ].includes(g.kind)
+          )
+        )
+          return false;
+        const { from, len } = spanOf(k);
+        return f >= from - 10 && f < from + Math.min(len, 220) + 10;
+      });
+    plan.shots.forEach((sh, i) => {
+      const at = sh.start;
+      if (i === 0 || at - last < 8 * fps || (i * 7 + props.variant) % 4 !== 0)
+        return;
+      if (entryFrames.some((e) => Math.abs(at - e) < 2 * fps)) return;
+      if (breakFrames.some((b) => at >= b.from - 20 && at <= b.to + 20)) return;
+      if (openings.some((o) => at >= o.from - 10 && at < o.from + 60)) return;
+      // A filler shot is a full-screen explainer of its own: no accent cuts into it.
+      if (retro.has(i) || covered(at) || sh.media.type === "filler") return;
+      const old =
+        oldEntry(shotEntry(sh)) && oldEntry(shotEntry(plan.shots[i - 1]!));
+      out.push({ at, kind: old ? "static" : ACCENTS[n++ % ACCENTS.length]! });
+      last = at;
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, windows, packFor, openings, retro, fps, props.variant]);
+  // How each concept sketch arrives (src/render/sketchplan.ts): drawn on, stop-motion paper, a flipbook
+  // page, the light table or the cork board, by the shots around it. SKETCH_ANIMATION=false: the framed print.
+  const sketches = useMemo(
+    () =>
+      props.sketchAnimation === false
+        ? new Map<number, SketchDecision>()
+        : planSketchShots(
+            plan.shots,
+            props.images,
+            (segment) => entryOf(props.segments, segment) ?? -1,
+            props.variant,
+          ),
+    [plan, props.images, props.segments, props.sketchAnimation, props.variant],
+  );
+  // How each photo and portrait arrives (src/render/photoplan.ts): instant prints, tape, the evidence
+  // board, the darkroom and the rest, by the chapter's year and the photo shots around it; and which
+  // screenshots play inside the display of their day. Shots already dressed (retro hardware, a period look,
+  // a detail zoom) keep that. PHOTO_TREATMENTS=false: the framed print and the full-bleed screenshot.
+  const photoPlan = useMemo(() => {
+    if (props.photoTreatments === false)
+      return {
+        photos: new Map<number, PhotoDecision>(),
+        displays: new Map<number, DisplayDecision>(),
+      };
+    const dressed = new Set<number>([
+      ...retro.keys(),
+      ...periodLooks.keys(),
+      ...focusFor.keys(),
+    ]);
+    const eraOf = (chapter: number) => {
+      const k = props.segments.findIndex(
+        (x, i) =>
+          x.kind === "beat" &&
+          (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
+          entryOf(props.segments, i) === chapter,
+      );
+      const v = k >= 0 ? props.segments[k]!.visual : undefined;
+      return {
+        year: Number(v?.items?.[0]) || undefined,
+        platforms: v?.items?.[1],
+      };
+    };
+    return planPhotoShots({
+      shots: plan.shots,
+      images: props.images,
+      chapterOf: (segment) => entryOf(props.segments, segment) ?? -1,
+      eraOf,
+      dressed,
+      baseSeed: props.variant,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    plan,
+    props.images,
+    props.segments,
+    props.photoTreatments,
+    props.variant,
+    retro,
+    periodLooks,
+  ]);
+  // The camera's moves (src/render/camera.ts, DOC_CAMERA): chosen shot by shot by rules, clear of the
+  // chapter openings, breathers and explainers, and never on a shot another treatment already dresses.
+  const explainerSpans = useMemo(
+    () =>
+      windows.flatMap((w, k) => {
+        const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
+        const full =
+          packFor.get(k) ||
+          (g &&
+            usefulGraphic(g) &&
+            [
+              "quote",
+              "headline",
+              "source",
+              "timeline",
+              "delay",
+              "span",
+              "reviews",
+              "people",
+              "versus",
+              "milestone",
+            ].includes(g.kind));
+        if (!full) return [];
+        const { from, len } = spanOf(k);
+        return [{ from, to: from + len }];
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [windows, packFor, props.moments],
+  );
+  const cameraMoves = useMemo(() => {
+    if (!props.camera?.length) return undefined;
+    const quiet = [
+      { from: 0, to: 12 * fps },
+      { from: durationInFrames - 20 * fps, to: durationInFrames },
+      ...entryFrames.map((f) => ({ from: f - 30, to: f + 3 * fps })),
+      ...openings.map((o) => ({
+        from: o.from - 10,
+        to: o.from + montageFrames(o.items.length) + 30,
+      })),
+      ...breakFrames.map((b) => ({ from: b.from - 20, to: b.to + 30 })),
+      // A cut that already has an accent (a light leak, a burn, static) keeps it to itself.
+      ...accents.map((a) => ({ from: a.at - 15, to: a.at + 15 })),
+    ];
+    // An old game's VHS or CRT look moves with the camera; its hardware, a tube switching off, a photo's
+    // or sketch's own arrival and a screenshot inside a display keep their moves, and a punch-in its shot.
+    const dressed = new Set<number>([
+      ...retro.keys(),
+      ...sketches.keys(),
+      ...photoPlan.photos.keys(),
+      ...photoPlan.displays.keys(),
+      ...[...powerOff].flatMap((i) => [i, i + 1]),
+    ]);
+    const fixed = new Set<number>([
+      ...retro.keys(),
+      ...[...powerOff].flatMap((i) => [i, i + 1]),
+    ]);
+    const input = cameraInputs({
+      shots: plan.shots,
+      images: props.images,
+      clips: props.clips,
+      chapterOf: (segment) => entryOf(props.segments, segment) ?? -1,
+      fps,
+      enabled: props.camera,
+      variant: props.variant,
+      dressed,
+      punched: new Set(punches.keys()),
+      fixed,
+      quiet,
+      explainers: explainerSpans,
+      beats: beatCues,
+      windows,
+      moments: props.moments,
+      words,
+      details: details.map((d, id) => ({
+        id,
+        shot: d.shot,
+        from: d.from,
+        label: d.label,
+        k: d.k,
+      })),
+    });
+    const chosen = planCamera(input);
+    if (props.debugCamera)
+      console.log(
+        `CAMERA ${JSON.stringify({ events: chosen.events, input: { ...input, chapterOf: undefined, dressed: [...(input.dressed ?? [])], punched: [...(input.punched ?? [])], fixed: [...(input.fixed ?? [])], chapters: input.shots.map((s) => input.chapterOf(s.segment)) } })}`,
+      );
+    return { plan: chosen, input };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    props.camera,
+    plan,
+    accents,
+    details,
+    windows,
+    beatCues,
+    explainerSpans,
+    retro,
+    punches,
+    sketches,
+    photoPlan,
+    powerOff,
+  ]);
+  // A marked detail pushes in to land as its word is said, and its circle or arrow draws on the word.
+  const markOf = (id: number) => {
+    const look = cameraMoves?.plan.details.get(id);
+    const at = cameraMoves?.input.details?.find((d) => d.id === id)?.at;
+    if (!look || at === undefined) return undefined;
+    const d = details[id]!;
+    const pushAt = Math.max(d.from, at - FOCUS_FRAMES + 4);
+    // The mark draws on the word, or as the push settles when the word comes with the cut.
+    return { look, pushAt, draw: Math.max(at, pushAt + FOCUS_FRAMES - 8) };
+  };
+  const focusAt = new Map(
+    details.map((d, id) => [
+      d.shot,
+      { from: markOf(id)?.pushAt ?? d.from, origin: d.origin, zoom: d.zoom },
+    ]),
+  );
+
+  const richSoundAt = new Map<number, number>();
+  const soundCands: LongSoundCandidate[] = windows
+      .flatMap((w, k): LongSoundCandidate[] => {
+        const raw = props.moments?.[w.entry]?.[w.moment];
+        if (!raw) return [];
+        // A filler lands with its family's sound as its shot opens (a stamp as the first word hits).
+        const fs = fillerShots.get(`${w.entry}:${w.moment}`);
+        if (fs && raw.filler) {
+          const kind = fillerSound(raw.filler);
+          if (!kind) return [];
+          const at = fs.start + (kind === "stamp" ? 34 : 0);
+          richSoundAt.set(k, at);
+          return [{ key: k, frame: at, kind }];
+        }
+        const { from, len, anchored } = spanOf(k);
+        const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
+        // A record beat: the sting (in the bed's key) lands on the sentence's key word, instead of whatever
+        // sound its graphic would have had, and never within 4 s of a key line's silence (keys from 500000).
+        const recordAt = Math.round(Math.max(w.start, w.at) * fps);
+        if (
+          raw.beat === "record" &&
+          beatCues.some((c) => c.kind === "record" && c.at === recordAt) &&
+          !beatCues.some(
+            (c) =>
+              c.kind === "key" &&
+              recordAt >= c.start - 4 * fps &&
+              recordAt <= c.end + 4 * fps,
+          )
+        ) {
+          richSoundAt.set(500000 + k, recordAt);
+        return [{ key: 500000 + k, frame: recordAt, kind: "record" as const }];
+        }
+        const style = packFor.get(k);
+        if (style) {
+          const at = from + (style.sound === "stamp" ? 34 : 0);
+          richSoundAt.set(k, at);
+          return [
+            {
+              key: k,
+              frame: at,
+              kind:
+                style.sound === "glint"
+                  ? ("glint" as const)
+                  : style.sound === "stamp"
+                    ? ("stamp" as const)
+                    : ("pop" as const),
+            },
+          ];
+        }
+        if (graphic === "stat" || graphic === "score")
+          return [{ key: k, frame: from, kind: "glint" as const }];
+        // The richer graphics have their own cue: a whoosh as a full-screen explainer lands, the stamp's
+        // low hit as it slams down, a tick as a counter finishes or a milestone pops.
+        if (
+          [
+            "quote",
+            "headline",
+            "source",
+            "reviews",
+            "people",
+            "versus",
+            "timeline",
+          ].includes(graphic)
+        ) {
+          richSoundAt.set(k, from);
+          return [{ key: k, frame: from, kind: "pop" as const }];
+        }
+        if (graphic === "delay") {
+          richSoundAt.set(k, from + 34);
+          return [{ key: k, frame: from + 34, kind: "stamp" as const }];
+        }
+        if (graphic === "span" || graphic === "milestone") {
+          const at = from + (graphic === "span" ? 70 : 6);
+          richSoundAt.set(k, at);
+          return [{ key: k, frame: at, kind: "glint" as const }];
+        }
+        const shot = plan.shots.find((x) => from >= x.start && from < x.end);
+        const pic = props.images.some(
+          (im) => im.beatIndex === w.entry && im.moment === w.moment,
+        );
+        if (
+          graphic === "none" &&
+          shot?.media.type === "clip" &&
+          pic &&
+          w.moment > 0
+        )
+          return [
+            {
+              key: k,
+            frame: from + (anchored ? 0 : Math.min(30, Math.max(0, len - 90))),
+              kind: "pop" as const,
+            },
+          ];
+        return [];
+      })
+      .concat(
+        // A detail's box drawing on gets a tick (keys from 100000, clear of the moment windows').
+        details.map((d, i): LongSoundCandidate => {
+          // A hand-drawn mark ticks as it draws on the word; the plain box as it draws after the push.
+          const at = markOf(i)?.draw ?? d.from + 26;
+          richSoundAt.set(100000 + i, at);
+          return { key: 100000 + i, frame: at, kind: "glint" };
+        }),
+        // The retro kit heard: the old screen switching on (or the tape's thunk into the VCR as it goes in),
+        // and soft static on a channel-static cut (keys from 200000 and 300000).
+        [...retro].map(([i, dev]): LongSoundCandidate => {
+          const sh = plan.shots[i]!;
+          const img = sh.media.type === "image" && i > 0;
+          const from = img
+            ? sh.start - (powerOff.has(i - 1) ? 0 : Math.min(XFADE, sh.start))
+            : sh.start;
+          const at = from + (dev.device === "vcr" ? 26 : 3);
+          richSoundAt.set(200000 + i, at);
+          return {
+            key: 200000 + i,
+            frame: at,
+            kind: dev.device === "vcr" ? "vhs" : "tvon",
+          };
+        }),
+        accents.flatMap((a, k): LongSoundCandidate[] => {
+          if (a.kind !== "static") return [];
+          richSoundAt.set(300000 + k, a.at - 3);
+          return [{ key: 300000 + k, frame: a.at - 3, kind: "static" }];
+        }),
+        // The camera heard (keys from 600000): a whoosh peaking on a push or whip through the cut, a tick
+        // as a freeze frame holds.
+        [...(cameraMoves?.plan.cuts ?? [])].map(([i]): LongSoundCandidate => {
+          const at = plan.shots[i]!.start;
+          richSoundAt.set(600000 + i, at);
+          return { key: 600000 + i, frame: at, kind: "pop" };
+        }),
+        [...(cameraMoves?.plan.shots ?? [])].flatMap(
+          ([i, m]): LongSoundCandidate[] => {
+            if (m.kind !== "freeze") return [];
+            richSoundAt.set(700000 + i, m.at);
+            return [{ key: 700000 + i, frame: m.at, kind: "glint" }];
+          },
+        ),
+      // A riser into each reveal beat, peaking on the revealed word (src/render/soundfx.ts; keys from
+      // 800000). It claims its moment like a record sting; the reveal's own duck makes room for it.
+      (craft.risers ? riserPeaks(beatCues) : []).map(
+        (at, i): LongSoundCandidate => {
+          richSoundAt.set(800000 + i, at);
+          return { key: 800000 + i, frame: at, kind: "riser" };
+        },
+      ),
+  );
+  const momentSounds = gateLongSounds(soundCands, entryFrames, fps);
+  // A Pulse device or paper look makes its own sound in place of the shared whoosh or tick, on the same
+  // moment the gate gave it (src/render/soundfx.ts DEVICE_FOLEY); a stamp stays a stamp.
+  if (craft.foley)
+    for (const [k, style] of packFor) {
+      const name = styleName.get(style);
+      const cue = name ? DEVICE_FOLEY[name] : undefined;
+      if (!cue || style.sound === "stamp" || !momentSounds.has(k)) continue;
+      momentSounds.set(k, foleyFile(cue.sound));
+      richSoundAt.set(k, spanOf(k).from + cueFrame(cue, spanOf(k).len));
+    }
+  // The corner names the source of what is on screen: a licensed gameplay clip its creator, else the trailers.
+  const creditAt = (f: number) => {
+    const shot = plan.shots.find((s) => f >= s.start && f < s.end);
+    // A drawn filler (type, a diagram, a document, a scene) shows no footage to credit; a reconstruction
+    // credits the clip it stages.
+    if (shot?.media.type === "filler") {
+      const fl = fillerOfShot(shot);
+      if (fl?.family !== "recon") return "";
+      const c = props.clips[(fl.data as ReconFillerData).clip];
+      return c?.credit ? c.credit : props.footageCredit;
+    }
+    const clip =
+      shot?.media.type === "clip" ? props.clips[shot.media.index] : undefined;
+    // A real photo carries its own credit: the trailers-and-Steam line sat on Wikimedia photos of Dundee
+    // and Rockstar North (29 Oct 2026 review).
+    const image =
+      shot?.media.type === "image" ? props.images[shot.media.index] : undefined;
+    if (image?.kind === "photo") return image.credit ?? "";
+    return clip?.credit ? clip.credit : props.footageCredit;
+  };
+  // Foley for the treatments (src/render/soundfx.ts): each photo, sketch and screenshot display makes its own
+  // small sound on its landing frame, fitted around every sound the gate above chose (keys from 900000).
+  const foleyAt = new Map<number, number>();
+  const foley = (() => {
+    if (!craft.foley) return new Map<number, string>();
+    const cands: FoleyCandidate[] = [];
+    plan.shots.forEach((s, i) => {
+      const img =
+        s.media.type === "image" ? props.images[s.media.index] : undefined;
+      if (!img) return;
+      const xf = powerOff.has(i - 1) ? 0 : Math.min(XFADE, s.start);
+      const from = i > 0 ? s.start - xf : s.start;
+      const len = s.end - s.start + (i > 0 ? xf : 0);
+      const ph = photoPlan.photos.get(i);
+      const sk = img.kind === "sketch" ? sketches.get(i) : undefined;
+      const disp = photoPlan.displays.get(i);
+      const cue =
+        (ph && (img.kind === "photo" || img.kind === "portrait")
+          ? PHOTO_FOLEY[ph.treatment]
+          : undefined) ??
+        (sk ? SKETCH_FOLEY[sk.treatment] : undefined) ??
+        (disp && img.kind === "screenshot"
+          ? DISPLAY_FOLEY[disp.display]
+          : undefined);
+      if (!cue) return;
+      const frame = from + cueFrame(cue, len);
+      foleyAt.set(900000 + i, frame);
+      cands.push({ key: 900000 + i, frame, sound: cue.sound });
+    });
+    const taken = [
+      ...soundCands.filter((c) => momentSounds.has(c.key)).map((c) => c.frame),
+      ...[...richSoundAt]
+        .filter(([k]) => momentSounds.has(k))
+        .map(([, f]) => f),
+    ];
+    return new Map(
+      [...gateFoley(cands, taken, entryFrames, fps)].map(
+        ([k, s]) => [k, foleyFile(s)] as const,
+      ),
+    );
+  })();
+  // A chapter ends on a soft final hit on its last word instead of the landing a breath later (SOUND_CHAPTER_BUTTONS).
+  const buttonAt = new Map<number, number>(
+    craft.buttons
+      ? chapterButtons(
+          entryFrames,
+          words.map((w) => w.end * fps),
+          fps,
+        ).map((b, n) => [entryFrames[n]!, b] as const)
+      : [],
+  );
+  // Where each bed plays and fades; with SOUND_PHRASE_EDITS a change lands on the outgoing bed's bar line.
+  const bedSlots = bedSchedule(beds, fps, MUSIC_XFADE, craft.phrase, (src) =>
+    bedGridOf(src),
+  );
+  const pockets = new Set(craft.voicePocket ? (props.pocketBeds ?? []) : []);
+  const voiceFx = craft.voiceFx ? (props.voiceFx ?? []) : [];
+  // Every sound placed, for the proof renders (data/smoke/soundfx_proof.mts): logged once at props.soundLog.
+  const soundLog =
+    props.soundLog === undefined
+      ? undefined
+      : [
+          ...[...richSoundAt]
+            .filter(([k]) => momentSounds.has(k))
+            .map(([k, f]) => ({ frame: f, sound: momentSounds.get(k)! })),
+          ...soundCands
+            .filter((c) => momentSounds.has(c.key) && !richSoundAt.has(c.key))
+            .map((c) => ({ frame: c.frame, sound: momentSounds.get(c.key)! })),
+          ...[...foley].map(([k, s]) => ({ frame: foleyAt.get(k)!, sound: s })),
+          ...entryFrames.flatMap((e) => [
+            { frame: e, sound: "v3/swell" },
+            buttonAt.has(e)
+              ? { frame: buttonAt.get(e)!, sound: "foley/button" }
+              : { frame: e, sound: "v3/land" },
+          ]),
+          ...[...jl].map(([i, c]) => ({
+            frame: plan.shots[i]!.start,
+            sound: `jl lead ${c.lead} tail ${c.tail} (clip ${plan.shots[i]!.media.index})`,
+          })),
+          ...bedSlots.map((b) => ({
+            frame: b.from + b.inAt,
+            sound: `bed ${b.src}${pockets.has(b.src) ? " +pocket" : ""}`,
+          })),
+          ...drops.map((d) => ({ frame: d, sound: "music drop-out" })),
+          ...voiceFx.map((v) => ({
+            frame: Math.round(v.from * fps),
+            sound: `voice ${v.kind} ${v.from.toFixed(2)}-${v.to.toFixed(2)} s`,
+          })),
+        ].sort((a, b) => a.frame - b.frame);
+  if (soundLog && frame === props.soundLog)
+    console.log(`SOUNDLOG ${JSON.stringify(soundLog)}`);
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
+      <Backdrop
+        plan={plan}
+        images={props.images}
+        clips={props.clips}
+        theme={props.theme}
+        describe={describe}
+        focusFor={focusAt}
+        retro={retro}
+        tints={tints}
+        looks={periodLooks}
+        powerOff={powerOff}
+        punches={punches}
+        sketches={sketches}
+        photos={photoPlan.photos}
+        displays={photoPlan.displays}
+        filler={fillerNode}
+        camera={cameraMoves?.plan}
+        fps={fps}
+        jl={jl}
+        gameLevel={gameLevel}
+        audioOnly={props.audioOnly}
+      />
+      {accents.map((a, k) => (
+        <Sequence
+          key={`acc${k}`}
+          from={Math.max(0, a.at - ACCENT_LEAD)}
+          durationInFrames={ACCENT_FRAMES}
+          layout="none"
+        >
+          {a.kind === "static" ? (
+            <Sequence
+              from={ACCENT_LEAD - 3}
+              durationInFrames={STATIC_FRAMES}
+              layout="none"
+            >
+              <ChannelStatic variant={props.variant + k} />
+            </Sequence>
+          ) : (
+            <CutAccent kind={a.kind} variant={props.variant + k} />
+          )}
+        </Sequence>
+      ))}
+      {(props.audioOnly ? [] : openings).map((o, k) => (
+        <Sequence
+          key={`open${k}`}
+          from={o.from}
+          durationInFrames={montageFrames(o.items.length)}
+          layout="none"
+        >
+          <Montage items={o.items} />
+        </Sequence>
+      ))}
+      {/* The lens's edges over the picture, under the type (CameraMoves.tsx LensOverlay). */}
+      {cameraMoves?.plan.lens ? <LensOverlay /> : null}
+      <Scrim />
+      <ShotLabel
+        plan={plan}
+        describe={describe}
+        bursts={openings.map((o) => ({
+          from: o.from,
+          to: o.from + montageFrames(o.items.length),
+        }))}
+      />
+      {/* A freeze frame's annotation: the paused chip, the brackets and what is named. */}
+      {[...(cameraMoves?.plan.shots ?? [])].map(([i, m]) =>
+        m.kind === "freeze" ? (
+          <Sequence
+            key={`frz${i}`}
+            from={m.at}
+            durationInFrames={m.hold + 12}
+            layout="none"
+          >
+            <FreezeLabel
+              label={m.label}
+              hold={m.hold}
+              seconds={(m.at - plan.shots[i]!.start) / fps}
+            />
+          </Sequence>
+        ) : null,
+      )}
+      <GrainVignette />
+      <Brand
+        logoSrc={resolveSrc(props.logoSrc)}
+        chip={
+          props.recap
+            ? "THIS WEEK"
+            : documentary
+              ? "DOCUMENTARY"
+              : total
+                ? `TOP ${total}`
+                : "RANKED"
+        }
+        progress={Math.min(1, frame / Math.max(1, durationInFrames))}
+        marks={entryFrames.map((f) => f / Math.max(1, durationInFrames))}
+      />
+      <Credit text={creditAt(frame)} />
+      {marks.length ? (
+        <>
+          <ChapterIndex marks={marks} endFrom={indexEnd} />
+          <YearCounter marks={marks} endFrom={indexEnd} />
+        </>
+      ) : null}
+      {props.segments.map((s, i) => {
+        const len = Math.max(1, ends[i]! - starts[i]!);
+        if (s.kind === "hook") {
+          return (
+            <Sequence
+              key={i}
+              from={starts[i]!}
+              durationInFrames={len}
+              layout="none"
+            >
+              {(() => {
+                // A documentary's signature opening comes first: the mark and one line of the hook over the
+                // sting (src/render/components/ColdOpen.tsx), then the motif card, the flash-forward, the title.
+                const cold =
+                  props.coldOpenLine !== undefined && len >= 240
+                    ? coldOpenTiming(fps).frames
+                    : 0;
+                // The opening: the video's motif card, the flash-forward, then the title.
+                // With the title drop the title waits for the cold open's last beat, so neither the motif
+                // card nor the intro title shows it at the start (src/render/structure.ts titleDropWindow).
+                const open =
+                  cold +
+                  (videoMotif?.card && len - cold >= 240 && !drop
+                    ? MOTIF_OPEN
+                    : 0);
+                // Off since 29 Oct 2026: the owner found the silent flash of figures under the opening
+                // narration unrelated to the words; it returns only when it carries the narrator's own lines.
+                const tease =
+                  FLASH_FORWARD && teaser.length >= 2 && len - open >= 480
+                    ? teaser.length * TEASE_FRAMES
+                    : 0;
+                return (
+                  <>
+                    {cold ? (
+                      <Sequence durationInFrames={cold} layout="none">
+                        <ColdOpen
+                          line={props.coldOpenLine!}
+                          logoSrc={resolveSrc(props.logoSrc)}
+                          variant={props.variant}
+                        />
+                      </Sequence>
+                    ) : null}
+                    {open > cold ? (
+                      <Sequence
+                        from={cold}
+                        durationInFrames={open - cold}
+                        layout="none"
+                      >
+                        {React.createElement(videoMotif!.card!, {
+                          heading: props.title,
+                          kicker: props.recap
+                            ? "THIS WEEK"
+                            : documentary
+                              ? "DOCUMENTARY"
+                              : "RANKED",
+                          game: props.theme,
+                          pictures: motifPictures(undefined),
+                          frames: open - cold,
+                          variant: props.variant,
+                        })}
+                      </Sequence>
+                    ) : null}
+                    {tease
+                      ? teaser.map((k, n) => (
+                          <Sequence
+                            key={`tease${k}`}
+                            from={open + n * TEASE_FRAMES}
+                            durationInFrames={TEASE_FRAMES}
+                            layout="none"
+                          >
+                            <TeaseCut last={n === teaser.length - 1}>
+                              <Freeze frame={84}>{teaseGraphic(k)}</Freeze>
+                            </TeaseCut>
+                            <Sfx
+                              name={SFX.air[n % SFX.air.length]!}
+                              volume={LEVEL.airLong}
+                            />
+                          </Sequence>
+                        ))
+                      : null}
+                    {/* The title stands for six seconds, then the opening's own pictures carry the story: kept for
+                        the whole intro it covered a minute of narration (29 Oct 2026 review). */}
+                    {drop ? null : (
+                      <Sequence
+                        from={open + tease}
+                        durationInFrames={Math.min(
+                          len - open - tease,
+                          INTRO_TITLE_FRAMES,
+                        )}
+                        layout="none"
+                      >
+                        <IntroTitle
+                          title={props.title}
+                          spoilers={props.spoilers}
+                          kicker={props.kicker}
+                          criterion={props.criterion}
+                          durationFrames={Math.min(
+                            len - open - tease,
+                            INTRO_TITLE_FRAMES,
+                          )}
+                        />
+                      </Sequence>
+                    )}
+                  </>
+                );
+              })()}
+              {documentary ? <Letterbox len={len} /> : null}
+            </Sequence>
+          );
+        }
+        if (s.kind === "beat" && s.visual?.kind === "rank") {
+          const b = entryOf(props.segments, i);
+          const capsule =
+            props.images.find(
+              (im) => im.beatIndex === b && im.kind === "capsule",
+            ) ??
+            props.images.find((im) => im.beatIndex === b && im.aspect < 0.9);
+          return (
+            <Sequence
+              key={i}
+              from={starts[i]!}
+              durationInFrames={len}
+              layout="none"
+            >
+              <EntryCard
+                rank={s.visual.value_a ?? 0}
+                total={total}
+                title={s.visual.primary}
+                verdict={s.visual.secondary}
+                year={s.visual.items?.[0]}
+                platforms={s.visual.items?.[1]}
+                capsuleSrc={capsule?.src ?? null}
+                durationFrames={len}
+              />
+            </Sequence>
+          );
+        }
+        if (s.kind === "beat" && s.visual?.kind === "chapter") {
+          const b = entryOf(props.segments, i);
+          const capsule =
+            props.images.find(
+              (im) => im.beatIndex === b && im.kind === "capsule",
+            ) ??
+            props.images.find((im) => im.beatIndex === b && im.aspect < 0.9);
+          // A breather opens the chapter: its interlude first, then the lower-third card as the narration resumes.
+          const pause = breakAt(i);
+          const quote = props.moments?.[b ?? -1]?.find(
+            (m) => m.graphic.kind === "quote",
+          )?.graphic;
+          const span = Math.max(1, chapterEnd(i) - starts[i]! - pause);
+          // Every other breather is the story so far pinned to a board: the chapter's archive photos first.
+          const rankPic = (k: string) =>
+            ({ photo: 0, portrait: 1, screenshot: 2, article: 3, hero: 4 })[
+              k
+            ] ?? 9;
+          const boardPics: BoardPicture[] = props.images
+            .filter(
+              (im) =>
+                im.beatIndex === b && im.aspect >= 0.75 && rankPic(im.kind) < 9,
+            )
+            .sort((x, y) => rankPic(x.kind) - rankPic(y.kind))
+            .slice(0, 3)
+            .map((im, k) => ({
+              src: im.src,
+              caption:
+                im.label && im.label.length <= 22
+                  ? displayText(im.label)
+                  : `Exhibit ${"ABC"[k]}`,
+            }));
+          // The breathers take their looks in turn: the title interlude, the evidence board, a clapperboard,
+          // a VHS tape for a game from before 2008, a torn-paper reveal of the chapter's picture.
+          const chapterYear = Number(s.visual.items?.[0]) || undefined;
+          const widePic = props.images.find(
+            (im) =>
+              im.beatIndex === b &&
+              im.aspect >= 1.3 &&
+              ["hero", "screenshot", "article", "photo"].includes(im.kind),
+          )?.src;
+          const looks = [
+            "title",
+            ...(boardPics.length >= 2 ? ["board"] : []),
+            "slate",
+            ...(chapterYear && chapterYear < 2008 ? ["vhs"] : []),
+            ...(widePic ? ["torn", "mask"] : []),
+          ];
+          const motif = motifOf(b);
+          // A breather the graphics check faulted falls back to the plain title card.
+          const breakIndex = breakFrames.findIndex(
+            (x) => Math.abs(x.from - starts[i]!) <= 3,
+          );
+          const look = (props.quietBreaks ?? []).includes(breakIndex)
+            ? "title"
+            : motif?.card && ((b ?? 0) + props.variant) % 2 === 0
+              ? "motif"
+              : looks[((b ?? 0) + props.variant) % looks.length]!;
+          const board = look === "board";
+          const interlude = {
+            number: s.visual.value_a ?? (b ?? 0) + 1,
+            title: s.visual.primary,
+            game: s.visual.secondary,
+            year: s.visual.items?.[0],
+            frames: pause,
+            variant: props.variant + i,
+            picture: widePic,
+          };
+          return (
+            <React.Fragment key={i}>
+              {/* The title drop fills the first chapter's breather instead of its interlude. */}
+              {drop?.breakSegment === i ? null : pause && board ? (
+                <Sequence
+                  from={starts[i]!}
+                  durationInFrames={pause}
+                  layout="none"
+                >
+                  <EvidenceBoard
+                    number={s.visual.value_a ?? (b ?? 0) + 1}
+                    title={s.visual.primary}
+                    game={s.visual.secondary}
+                    year={s.visual.items?.[0]}
+                    pictures={boardPics}
+                    frames={pause}
+                    variant={props.variant + i}
+                  />
+                </Sequence>
+              ) : pause && look === "motif" && motif?.card ? (
+                <Sequence
+                  from={starts[i]!}
+                  durationInFrames={pause}
+                  layout="none"
+                >
+                  {React.createElement(motif.card, {
+                    heading: s.visual.primary,
+                    kicker: `CHAPTER ${s.visual.value_a ?? (b ?? 0) + 1}`,
+                    game: s.visual.secondary,
+                    year: s.visual.items?.[0],
+                    pictures: motifPictures(b),
+                    frames: pause,
+                    variant: props.variant + i,
+                  })}
+                </Sequence>
+              ) : pause && look !== "title" ? (
+                <Sequence
+                  from={starts[i]!}
+                  durationInFrames={pause}
+                  layout="none"
+                >
+                  {look === "slate" ? (
+                    <SlateInterlude {...interlude} />
+                  ) : look === "mask" ? (
+                    <MaskInterlude {...interlude} />
+                  ) : look === "vhs" ? (
+                    <VhsInterlude {...interlude} />
+                  ) : (
+                    <TornInterlude {...interlude} />
+                  )}
+                </Sequence>
+              ) : pause ? (
+                <Sequence
+                  from={starts[i]!}
+                  durationInFrames={pause}
+                  layout="none"
+                >
+                  <ChapterInterlude
+                    bg={backgroundFor(
+                      "interlude",
+                      Number(s.visual.items?.[0]) || undefined,
+                      props.variant + i,
+                    )}
+                    variant={props.variant + i}
+                    number={s.visual.value_a ?? (b ?? 0) + 1}
+                    title={s.visual.primary}
+                    game={s.visual.secondary}
+                    year={s.visual.items?.[0]}
+                    quote={
+                      quote && quote.primary.split(/\s+/).length <= 18
+                        ? {
+                            text: displayText(quote.primary).replace(
+                              /^["“]+|["”]+$/g,
+                              "",
+                            ),
+                            who: displayText(
+                              quote.secondary.split(",")[0] ?? "",
+                            ),
+                          }
+                        : undefined
+                    }
+                    frames={pause}
+                  />
+                </Sequence>
+              ) : null}
+              <Sequence
+                from={starts[i]! + pause}
+                durationInFrames={span}
+                layout="none"
+              >
+                <EntryCard
+                  rank={s.visual.value_a ?? (b ?? 0) + 1}
+                  total={0}
+                  title={s.visual.primary}
+                  verdict=""
+                  chapter={s.visual.secondary}
+                  year={s.visual.items?.[0]}
+                  platforms={s.visual.items?.[1]}
+                  capsuleSrc={capsule?.src ?? null}
+                  durationFrames={span}
+                />
+              </Sequence>
+            </React.Fragment>
+          );
+        }
+        // A chapter with a shot list puts its facts on screen sentence by sentence instead.
+        if (
+          s.kind === "beat" &&
+          documentary &&
+          !props.moments?.[entryOf(props.segments, i) ?? -1]?.length &&
+          (s.visual?.kind === "quote" ||
+            s.visual?.kind === "stat" ||
+            s.visual?.kind === "date") &&
+          s.visual.primary
+        ) {
+          return (
+            <Sequence
+              key={i}
+              from={starts[i]!}
+              durationInFrames={len}
+              layout="none"
+            >
+              <CalloutCard
+                kind={s.visual.kind}
+                primary={displayText(s.visual.primary)}
+                secondary={displayText(s.visual.secondary)}
+                durationFrames={len}
+              />
+            </Sequence>
+          );
+        }
+        if (s.kind === "take") {
+          const winner = props.segments
+            .filter((x) => x.visual?.kind === "rank")
+            .find((x) => x.visual?.value_a === 1);
+          return (
+            <Sequence
+              key={i}
+              from={starts[i]!}
+              durationInFrames={len}
+              layout="none"
+            >
+              <OutroCard
+                label={s.label ?? "OUR PICK"}
+                winner={winner?.visual?.primary ?? props.theme}
+                onScreen={s.visual?.primary ?? ""}
+                tailStart={Math.max(0, lastWordEnd - starts[i]!)}
+                durationFrames={len}
+                endLine={props.endLine}
+              />
+            </Sequence>
+          );
+        }
+        return null;
+      })}
+      {/* Sentence by sentence: the stated fact as a graphic, else a kinetic caption; a pop-in picture over footage. */}
+      {windows.map((w, k) => {
+        const raw = props.moments?.[w.entry]?.[w.moment];
+        if (!raw) return null;
+        // The sentence's filler shot is its whole picture: nothing of its own is drawn over it.
+        if (fillerShots.has(`${w.entry}:${w.moment}`)) return null;
+        // A rank graphic repeats the rank card and a fragment ("SERIES AT") reads as a glitch: both are left out.
+        const m = {
+          ...raw,
+          graphic: usefulGraphic(raw.graphic)
+            ? raw.graphic
+            : { ...raw.graphic, kind: "none" as const },
+          emphasis:
+            raw.emphasis && usefulEmphasis(raw.emphasis) ? raw.emphasis : "",
+        };
+        const { from, len, anchored } = spanOf(k);
+        // The explainer's background: suited to the graphic and the game's era, rotating through the video.
+        const bg = backgroundFor(
+          m.graphic.kind,
+          Number(entryTitle(w.entry).year) || undefined,
+          props.variant + k,
+        );
+        const shot = plan.shots.find((x) => from >= x.start && from < x.end);
+        // A character's portrait first (a reminder of who they are), else the still matched to the sentence.
+        const pic =
+          props.images.find(
+            (im) =>
+              im.beatIndex === w.entry &&
+              im.moment === w.moment &&
+              im.kind === "portrait",
+          ) ??
+          props.images.find(
+            (im) => im.beatIndex === w.entry && im.moment === w.moment,
+          );
+        const person = raw.person?.trim();
+        const nameTag =
+          person &&
+          firstMention.has(`${w.entry}|${w.moment}`) &&
+          personOnScreen(
+            plan.shots,
+            props.images,
+            w.entry,
+            w.moment,
+            from,
+            len,
+          ) &&
+          (m.graphic.kind === "none" ||
+            m.graphic.kind === "stat" ||
+            m.graphic.kind === "date")
+            ? { name: person, role: roles.get(person.toLowerCase()) }
+            : undefined;
+        const showPop =
+          !nameTag &&
+          m.graphic.kind === "none" &&
+          shot?.media.type === "clip" &&
+          pic &&
+          w.moment > 0;
+        return (
+          <Sequence
+            key={`m${k}`}
+            from={from}
+            durationInFrames={len}
+            layout="none"
+          >
+            {packFor.get(k) ? (
+              React.createElement(packFor.get(k)!.component, {
+                g: m.graphic,
+                len,
+                bg,
+                variant: props.variant + k,
+                year: Number(entryTitle(w.entry).year) || undefined,
+                photos: portraits,
+                src: (
+                  pic ??
+                  props.images.find(
+                    (im) =>
+                      im.beatIndex === w.entry &&
+                      im.aspect >= 1.2 &&
+                      im.kind !== "capsule",
+                  )
+                )?.src,
+              })
+            ) : richGraphic(m.graphic, len) ? (
+              richGraphic(m.graphic, len, bg, props.variant + k)
+            ) : m.graphic.kind === "quote" ? (
+              <QuoteMoment
+                g={m.graphic}
+                len={len}
+                bg={bg}
+                variant={props.variant + k}
+              />
+            ) : m.graphic.kind === "headline" ? (
+              <HeadlineMoment
+                g={m.graphic}
+                len={len}
+                bg={bg}
+                variant={props.variant + k}
+                src={
+                  (
+                    pic ??
+                    props.images.find(
+                      (im) =>
+                        im.beatIndex === w.entry &&
+                        im.aspect >= 1.2 &&
+                        im.kind !== "capsule",
+                    )
+                  )?.src
+                }
+              />
+            ) : m.graphic.kind === "timeline" ? (
+              <TimelineMoment g={m.graphic} len={len} />
+            ) : m.graphic.kind !== "none" &&
+              // The suite's own kinds have no card: with no style that fits, the picture carries the line.
+              !["map", "bars", "share", "specs", "lineage"].includes(
+                m.graphic.kind,
+              ) ? (
+              <>
+                <MomentGraphicCard g={m.graphic} len={len} />
+                {momentSounds.get(k) ? (
+                  <Sfx name={momentSounds.get(k)!} volume={LEVEL.glintLong} />
+                ) : null}
+              </>
+            ) : m.emphasis && w.moment > 0 ? (
+              <>
+                {React.createElement(
+                  CAPTION_STYLES[lookOf.get(k) ?? 0] ?? KineticCaption,
+                  {
+                    text: m.emphasis,
+                    len,
+                    variant: props.variant + k,
+                  },
+                )}
+              </>
+            ) : null}
+            {nameTag
+              ? React.createElement(
+                  NAMETAG_STYLES[
+                    (firstMentionOrder.get(`${w.entry}|${w.moment}`) ?? 0) %
+                      NAMETAG_STYLES.length
+                  ] ?? NameTag,
+                  {
+                    name: nameTag.name,
+                    role: nameTag.role,
+                    len,
+                    photo: portraits[nameTag.name.toLowerCase()],
+                    variant: props.variant + k,
+                  },
+                )
+              : null}
+            {showPop ? (
+              <Sequence
+                from={anchored ? 0 : Math.min(30, Math.max(0, len - 90))}
+                layout="none"
+              >
+                {React.createElement(
+                  POPIN_STYLES[lookOf.get(k) ?? 0] ?? PopInPicture,
+                  {
+                    src: pic!.src,
+                    caption: pic!.label ?? "",
+                    len: anchored ? len : len - 30,
+                    side: w.moment % 2 ? "right" : "left",
+                    variant: props.variant + k,
+                  },
+                )}
+                {momentSounds.get(k) ? (
+                  <Sfx name={momentSounds.get(k)!} volume={LEVEL.airLong} />
+                ) : null}
+              </Sequence>
+            ) : null}
+          </Sequence>
+        );
+      })}
+      {/* A 12 fps texture flicker over each full-screen explainer (CameraMoves.tsx TextureFlicker). */}
+      {cameraMoves?.plan.boil
+        ? explainerSpans.map((x, k) => (
+            <Sequence
+              key={`flick${k}`}
+              from={x.from}
+              durationInFrames={Math.max(1, x.to - x.from)}
+              layout="none"
+            >
+              <TextureFlicker fps={fps} seed={props.variant + k} />
+            </Sequence>
+          ))
+        : null}
+      {/* The richer graphics' and detail boxes' cues (the plain graphics play theirs inline). */}
+      {[...richSoundAt].map(([key, at]) => {
+        const name = momentSounds.get(key);
+        if (!name) return null;
+        const vol = name.startsWith("foley/")
+          ? foleyLevel(name)
+          : name === SFX.sting
+            ? LEVEL.recordLong
+            : name === "retro/static"
+              ? LEVEL.staticLong
+              : name.startsWith("retro/")
+                ? LEVEL.retroLong
+                : name.includes("land")
+                  ? LEVEL.landLong
+                  : name.includes("air")
+                    ? LEVEL.airLong
+                    : LEVEL.glintLong;
+        return (
+          <Sequence
+            key={`rs${key}`}
+            from={Math.max(0, at - leadFrames(name, fps))}
+            durationInFrames={75}
+            layout="none"
+          >
+            <Sfx name={inKey(name, bedAt(at))} volume={vol} />
+          </Sequence>
+        );
+      })}
+      {/* The treatments' own foley (src/render/soundfx.ts PHOTO_FOLEY, SKETCH_FOLEY, DISPLAY_FOLEY). */}
+      {[...foley].map(([key, name]) => {
+        const at = foleyAt.get(key)!;
+        return (
+          <Sequence
+            key={`fo${key}`}
+            from={Math.max(0, at - leadFrames(name, fps))}
+            durationInFrames={45}
+            layout="none"
+          >
+            <Sfx name={inKey(name, bedAt(at))} volume={foleyLevel(name)} />
+          </Sequence>
+        );
+      })}
+      {/* Zoom to the detail: the labelled box over the pushed-in picture. */}
+      {details.map((d, i) => (
+        <Sequence
+          key={`det${i}`}
+          from={d.from}
+          durationInFrames={Math.max(1, d.len)}
+          layout="none"
+        >
+          {markOf(i) ? (
+            // A named thing that is not a face: a marker circle or arrow drawn on the word (CameraMoves.tsx).
+            <MarkCallout
+              box={d.box}
+              origin={d.origin}
+              zoom={d.zoom}
+              label={d.label}
+              len={d.len}
+              look={markOf(i)!.look}
+              push={FOCUS_FRAMES}
+              pushAt={markOf(i)!.pushAt - d.from}
+              draw={markOf(i)!.draw - d.from}
+              seed={props.variant + i}
+            />
+          ) : (
+          <DetailCallout
+            box={d.box}
+            origin={d.origin}
+            zoom={d.zoom}
+            label={d.label}
+            len={d.len}
+          />
+          )}
+        </Sequence>
+      ))}
+      {/* A white punch as each entry lands. */}
+      {props.segments.map((s, i) =>
+        s.kind === "beat" &&
+        (s.visual?.kind === "rank" || s.visual?.kind === "chapter") &&
+        i > 0 ? (
+          <Sequence
+            key={`f${i}`}
+            from={starts[i]!}
+            durationInFrames={22}
+            layout="none"
+          >
+            <ChapterTransition
+              kind={transitionFor(
+                Number(s.visual?.items?.[0]) || undefined,
+                i,
+                props.variant,
+              )}
+            />
+          </Sequence>
+        ) : null,
+      )}
+      {/* Each new entry: a swell whose peak meets a warm low hit as the rank card arrives, both in the music's key. */}
+      {props.segments.map((s, i) =>
+        s.kind === "beat" &&
+        (s.visual?.kind === "rank" || s.visual?.kind === "chapter") &&
+        i > 0 ? (
+          <React.Fragment key={`snd${i}`}>
+            {/* With SOUND_CHAPTER_BUTTONS the swell peaks on the chapter's last word, into its closing hit. */}
+            <Sequence
+              from={Math.max(
+                0,
+                (buttonAt.get(starts[i]!) ?? starts[i]!) -
+                  leadFrames(SFX.swell, fps),
+              )}
+              durationInFrames={60}
+              layout="none"
+            >
+              <Sfx
+                name={inKey(SFX.swell, bedAt(starts[i]!))}
+                volume={LEVEL.swellLong}
+              />
+            </Sequence>
+            {buttonAt.has(starts[i]!) ? (
+              <Sequence
+                from={Math.max(
+                  0,
+                  buttonAt.get(starts[i]!)! - leadFrames("foley/button", fps),
+                )}
+                durationInFrames={60}
+                layout="none"
+              >
+                <Sfx
+                  name={inKey(
+                    "foley/button",
+                    bedAt(Math.max(0, buttonAt.get(starts[i]!)! - 1)),
+                  )}
+                  volume={LEVEL.buttonLong}
+                />
+              </Sequence>
+            ) : (
+            <Sequence
+              from={Math.max(0, starts[i]! - leadFrames(SFX.land[0], fps))}
+              durationInFrames={75}
+              layout="none"
+            >
+              <Sfx
+                  name={inKey(
+                    SFX.land[i % SFX.land.length]!,
+                    bedAt(starts[i]!),
+                  )}
+                volume={LEVEL.landLong}
+              />
+            </Sequence>
+            )}
+          </React.Fragment>
+        ) : null,
+      )}
+      {/* Open-loop recalls: the earlier shot, held, with its question, as the answer is spoken. */}
+      {cues.map((c, k) => (
+        <Sequence
+          key={`cue${k}`}
+          from={c.from}
+          durationInFrames={c.len}
+          layout="none"
+        >
+          <CallbackCue text={c.text} len={c.len} media={c.media} />
+          <Sfx name={SFX.air[k % SFX.air.length]!} volume={LEVEL.airLong} />
+        </Sequence>
+      ))}
+      {/* The title drop: the title lands on the cold open's last beat, with a swell peaking as it lands (in a
+          breather the first chapter's own swell already lands there, so it gets no second one). */}
+      {drop ? (
+        <Sequence from={drop.from} durationInFrames={drop.len} layout="none">
+          {/* A video with a series look (the GTA cover grid and the like) lands its title on that look's own
+              card, as the opening did before the title drop; the plain drop is for the rest. */}
+          {videoMotif?.card && drop.len - drop.landAt >= 60 ? (
+            <Sequence
+              from={Math.max(0, drop.landAt - MOTIF_LEAD)}
+              durationInFrames={drop.len - Math.max(0, drop.landAt - MOTIF_LEAD)}
+              layout="none"
+            >
+              {React.createElement(videoMotif.card, {
+                heading: props.title,
+                kicker: props.recap
+                  ? "THIS WEEK"
+                  : documentary
+                    ? "DOCUMENTARY"
+                    : "RANKED",
+                game: props.theme,
+                pictures: motifPictures(undefined),
+                frames: drop.len - Math.max(0, drop.landAt - MOTIF_LEAD),
+                variant: props.variant,
+              })}
+            </Sequence>
+          ) : (
+            <TitleDrop
+              title={props.title}
+              kicker={props.kicker}
+              len={drop.len}
+              landAt={drop.landAt}
+            />
+          )}
+          {drop.breakSegment === undefined ? (
+            <Sequence
+              from={Math.max(0, drop.landAt - leadFrames(SFX.swell, fps))}
+              durationInFrames={60}
+              layout="none"
+            >
+              <Sfx
+                name={inKey(SFX.swell, bedAt(drop.from + drop.landAt))}
+                volume={LEVEL.swellLong}
+              />
+            </Sequence>
+          ) : null}
+        </Sequence>
+      ) : null}
+      {/* A documentary's end card: "Up next" with the newest public documentary, the mark and the subscribe
+          nudge over the last twenty seconds (src/render/components/EndCard.tsx). */}
+      {props.next !== undefined && documentary
+        ? (() => {
+            const t = endCardTiming(durationInFrames, fps);
+            return (
+              <Sequence from={t.from} durationInFrames={t.frames} layout="none">
+                <EndCard
+                  next={props.next ?? undefined}
+                  logoSrc={resolveSrc(props.logoSrc)}
+                  variant={props.variant}
+                  endLine={
+                    props.endLine ??
+                    "A new documentary every month · Shorts every day"
+                  }
+                />
+              </Sequence>
+            );
+          })()
+        : null}
+      {/* The brand sting opens the video and closes it, ringing out before the last frame. The closing one
+          plays after the narrator has finished, with nothing to mask it, so it sits 3 dB lower. */}
+      <Sequence from={0} durationInFrames={75} layout="none">
+        <Sfx
+          name={inKey(SFX.sting, props.musicSrc)}
+          volume={LEVEL.sting * 0.8}
+        />
+      </Sequence>
+      <Sequence
+        from={Math.max(0, durationInFrames - 75)}
+        durationInFrames={75}
+        layout="none"
+      >
+        <Sfx
+          name={inKey(SFX.sting, bedAt(durationInFrames - 1))}
+          volume={LEVEL.sting * 0.5}
+        />
+      </Sequence>
+      {props.audioSrc ? (
+        voiceFx.some((v) => v.kind === "phone") ? (
+          // A message quote's words are cut out of the dry narration and played from their telephone slice.
+          <Audio
+            src={props.audioSrc}
+            volume={(f) => dryLevel(f, voiceFx, fps)}
+          />
+        ) : (
+          <Audio src={props.audioSrc} />
+        )
+      ) : null}
+      {/* The narration's texture slices (src/render/voicefx.ts): the telephone band crossfaded in for exactly
+          its span, a reveal's reverb (wet only) swelling under the dry line and ringing past it. */}
+      {voiceFx.map((v, k) => {
+        const from = Math.round(v.from * fps);
+        const len = Math.max(1, Math.round((v.to - v.from) * fps));
+        return (
+          <Sequence
+            key={`vfx${k}`}
+            from={from}
+            durationInFrames={v.kind === "phone" ? len : len + 48}
+            layout="none"
+          >
+            <Audio
+              src={v.src}
+              volume={(f) =>
+                v.kind === "phone"
+                  ? 1 - dryLevel(from + f, voiceFx, fps)
+                  : reverbLevel(f, len)
+              }
+            />
+          </Sequence>
+        );
+      })}
+      {bedSlots.map((b, k) => {
+        // Each bed fades in and out around its section, under the chapter's swell (src/render/soundfx.ts
+        // bedSchedule); under the voice it crossfades to its pocketed copy, the 2-4 kHz dip (pocketWeight).
+        const level = (f: number) =>
+          musicVolume(b.from + f) *
+          dropLevel(b.from + f, drops) *
+          beatLevel(b.from + f, beatCues, fps) *
+          bedEdge(f, b);
+        const pocket = pockets.has(b.src);
+        const weight = (f: number) =>
+          pocketWeight(
+            bedLevels[Math.min(durationInFrames, Math.max(0, b.from + f))] ??
+              0.07,
+            0.07,
+            0.11,
+                );
+                return (
+          <Sequence
+            key={`bed${k}`}
+            from={b.from}
+            durationInFrames={b.span}
+            layout="none"
+          >
+            {/* "extend": the volume curve's frame keeps counting across loops. Remotion's default
+                ("repeat") restarts it at each loop, so after a bed's first two minutes the music ducked
+                to the wrong frames and replayed its opening breather's lift (+13 dB for 4 s) under the
+                voice at every loop point (found by the 31 Oct 2026 sound proof, Vice City at 10:20). */}
+            <Audio
+              src={resolveSrc(b.src)!}
+              loop
+              loopVolumeCurveBehavior="extend"
+              volume={(f) => level(f) * (pocket ? 1 - weight(f) : 1)}
+            />
+            {pocket ? (
+              <Audio
+                src={resolveSrc(pocketOf(b.src))!}
+                loop
+                loopVolumeCurveBehavior="extend"
+                volume={(f) => level(f) * weight(f)}
+              />
+            ) : null}
+          </Sequence>
+                );
+      })}
+      {/* J and L cuts: a gameplay clip's own sound from `lead` frames before its picture to `tail` after,
+          at the game sound's level (up in the narrator's long pauses with SOUND_GAME_POCKETS). */}
+      {[...jl].map(([i, c]) => {
+        const s = plan.shots[i]!;
+        const clip =
+          s.media.type === "clip" ? props.clips[s.media.index] : undefined;
+        if (!clip) return null;
+        const len = s.end - s.start;
+        const from = s.start - c.lead;
+        return (
+          <Sequence
+            key={`jl${i}`}
+            from={from}
+            durationInFrames={c.lead + len + c.tail}
+            layout="none"
+          >
+            <Audio
+              src={clip.src}
+              volume={(f) =>
+                (gameLevel ? gameLevel(from + f) : GAME_UNDER) *
+                jlEdge(f, c.lead, len, c.tail)
+              }
+            />
+          </Sequence>
+        );
+      })}
+      {/* A documentary chapter opens on the quiet bed of its era (src/render/soundscape.ts eraBed) under its
+          first ERA_BED_SECONDS, fading in and out, and out entirely under a key line like the music. */}
+      {props.eraBeds
+        ? props.segments.map((s, i) => {
+            // A ranking's entries open on their era's bed as a documentary's chapters do.
+            if (!opensChapter(s) || i === 0) return null;
+            const era = eraBed(Number(s.visual?.items?.[0]) || undefined);
+            const from = starts[i]!;
+            const span = Math.min(
+              ERA_BED_SECONDS * fps,
+              durationInFrames - from,
+            );
+            if (!era || span < 2 * fps) return null;
+            const fadeIn = ERA_BED_FADE_IN_SECONDS * fps;
+            const fadeOut = ERA_BED_FADE_OUT_SECONDS * fps;
+            return (
+              <Sequence
+                key={`era${i}`}
+                from={from}
+                durationInFrames={span}
+                layout="none"
+              >
+                <Audio
+                  src={staticFile(ERA_BEDS[era])}
+                  volume={(f) =>
+                    LEVEL.eraLong *
+                    Math.max(0, Math.min(1, f / fadeIn, (span - f) / fadeOut)) *
+                    beatLevel(from + f, beatCues, fps)
+                  }
+                />
+              </Sequence>
+            );
+          })
+        : null}
+    </AbsoluteFill>
+  );
+};

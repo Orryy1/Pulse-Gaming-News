@@ -1,0 +1,455 @@
+// The evergreen lane: ranking Shorts in the Epix-Gaming style (75-160 s,
+// six to ten entries, a stated criterion, box art and a trailer moment per
+// entry), chosen from what people are playing and buying rather than from
+// the news. Written against live Steam facts per entry and fact-checked
+// against them, then adapted into the common Script shape so voice, render,
+// SEO and upload stay unchanged.
+
+import {
+  voiceFor,
+  voiceProblems,
+  writingProblems,
+  repeatedTitles,
+  sentencesIn,
+  outsideQuotes,
+  sharedRuns,
+} from "./voice.ts";
+import { z } from "zod";
+import type { Llm } from "./llm.ts";
+import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
+import type { SteamFacts } from "../assets/steam.ts";
+import { factsText } from "../assets/steam.ts";
+
+// Our own numbers (168 Shorts): the share who stay to watch falls as Shorts get longer, and 44-53 s held best.
+export const EVERGREEN_WORDS_MIN = 130;
+// 26 Oct 2026 diagnosis: a 64 s ranking drew 112 views a day, an 81 s one 64; rankings bring 4.5x the subscribers per view of news.
+export const EVERGREEN_WORDS_MAX = 180;
+// The shortest evergreen Short QA accepts. It was 60 s, but 110-130 words (the weekly formats' floor and
+// the rankings') read in about 45-50 s, so two good Shorts at 55.7 s failed QA after three renders each
+// (QA notes, 24 and 26 Oct 2026).
+export const EVERGREEN_MIN_SECONDS = 40;
+export const EVERGREEN_ENTRIES_MIN = 5;
+export const EVERGREEN_ENTRIES_MAX = 8;
+
+export const EVERGREEN_FORMATS = [
+  "ranking",
+  "best_per_year",
+  "versus",
+  "years_later",
+  "still_good",
+  "release_radar",
+  "weekly_recap",
+  "rarest_achievements",
+  "hardest_achievements",
+  "steam_climbers",
+  "steam_deals",
+] as const;
+
+/** Weekly formats built from data the factory hands the writer; they run shorter lists. */
+export const WEEKLY_FORMATS = new Set<string>([
+  "release_radar",
+  "weekly_recap",
+  "rarest_achievements",
+  "hardest_achievements",
+  "steam_climbers",
+  "steam_deals",
+]);
+export const ACHIEVEMENT_FORMATS = new Set<string>([
+  "rarest_achievements",
+  "hardest_achievements",
+]);
+export const entriesMin = (format: string) =>
+  WEEKLY_FORMATS.has(format) ? 4 : EVERGREEN_ENTRIES_MIN;
+
+/** What the writer is told for each data-driven format. */
+export const FORMAT_RULES: Record<string, string> = {
+  rarest_achievements:
+    "Rarest Achievements rules: the entries are exactly the achievements in the data, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest (lowest percentage), spoken from the most common of them up to the rarest. steam_search_term is the game's name, platforms is the game's name, year is the game's release year. one_line says what the achievement asks and why so few players have it, under 15 words, and may quote its percentage exactly as in the data; never invent a percentage. verdict_chip is 1-4 words such as \"PURE PAIN\" or \"SKILL CHECK\". Do not spoil story twists from hidden achievements beyond what the description says. Hook names the game and how few players have these, with the real figure from the data, in your own words. The take says which one is the real test and why.",
+  hardest_achievements:
+    "Hardest Achievements rules: the entries are exactly the achievements in the data, one per game, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest, spoken from the least rare up to the rarest. steam_search_term is that achievement's game, platforms is that game's name, year is that game's release year. one_line says what it asks and why so few players have it, under 15 words; quote percentages exactly as in the data, never invent one. verdict_chip is 1-4 words. Hook: how few players have these and in which games, in your own words. The take names the one that is truly the hardest and why.",
+  release_radar:
+    'Release Radar rules: the entries are the games in the data and nothing else, spoken in release order, earliest first, so the earliest release has the highest rank number and the last release is rank 1. Set each entry\'s date to its release date exactly as in the data (YYYY-MM-DD) and steam_search_term to its name. platforms is "PC (Steam)" unless the data says more. one_line says what the game is and one reason to care, under 15 words; never invent a price or a platform. verdict_chip is a 1-4 word hook such as "SOULSLIKE WITH GUNS". The take names the one to watch. Hook: the week, how many games and one stake for the viewer, in your own words.',
+  steam_climbers:
+    'Steam Climbers rules: the entries are exactly the games in the data, ranked by places climbed: rank 1 climbed the most, spoken from the smallest climb up to the biggest. game_title and steam_search_term are the game\'s name exactly as in the data; year is its release year from the data; platforms is "PC (Steam)". one_line says what the game is and why it climbed, under 15 words, using only the Steam news given for it (an update, an event, a sale, a launch); if its news gives no reason, say what it is and that players are flooding back, and never invent a reason. Peak player numbers may be quoted exactly as in the data. verdict_chip is 1-4 words such as "HUGE UPDATE" or "FREE WEEKEND". Hook: which games climbed Steam\'s charts this week and how far, naming the week, in your own words. The take names the climb that matters most and why.',
+  steam_deals:
+    'Steam Deals rules: the entries are exactly the games in the data, ranked by our deal pick: rank 1 is the best deal in the data, spoken from the least to the best. game_title and steam_search_term are the game\'s name exactly as in the data; year is its release year from the data; platforms is "PC (Steam)". one_line is one sentence with a verb saying what the game is and its US sale price exactly as in the data, under 15 words; say prices in US dollars only, never invent a price, a discount or an end date, and never say a sale ends soon. verdict_chip is 1-4 words such as "ALL-TIME GREAT" or "CULT CLASSIC". Hook: sell the prices in one line of your own (how cheap the cheapest is, or how many great games sit under a price), never a comparison with a sandwich or any other stock image. The hook never claims an order (not "ranked by the biggest cut"); it sells the prices. The take names the one to grab first and why. youtube.title leads with the best deal and its US price, e.g. "Hogwarts Legacy Is $5.99 Right Now, Plus 4 More Steam Deals". Prices change: never promise a price will last.',
+  weekly_recap:
+    'Weekly Recap rules: the entries are the five biggest stories in the data, spoken from fifth to the biggest. game_title is the game or company the story is about; steam_search_term finds that game on Steam or is empty; year is that game\'s release year, or this year for a company story; platforms lists the outlets that reported it, e.g. "IGN, Xbox Wire". one_line says what happened and why it matters, under 15 words. verdict_chip is 1-4 words such as "DELAYED AGAIN". Only stories in the data, never a rumour as fact. Hook: how many stories and which one matters most to the viewer, in your own words.',
+};
+export type EvergreenFormat = (typeof EVERGREEN_FORMATS)[number];
+
+export const FORMAT_TITLES: Record<EvergreenFormat, string> = {
+  ranking: "Ranking EVERY [franchise] game",
+  best_per_year: "The BEST [genre or franchise] game for every year",
+  versus: "[A] vs [B]: which holds up in 2026",
+  years_later: "[Game]: N years later",
+  still_good: "Is [Game] still good in 2026",
+  release_radar: "N Big Games Out This Week",
+  weekly_recap: "The 5 Biggest Gaming Stories This Week",
+  rarest_achievements: "The Rarest Achievements in [Game]",
+  hardest_achievements: "The Hardest Achievements in Gaming Right Now",
+  steam_climbers: "The Games That Exploded on Steam This Week",
+  steam_deals: "N Great Steam Games on Sale Right Now",
+};
+
+export interface EvergreenCandidate {
+  name: string; // a franchise, a game or a theme
+  source: string; // "steam top sellers", "franchise seed", "channel"
+  note?: string;
+}
+
+export const EvergreenTopicSchema = z.object({
+  candidate_index: z
+    .number()
+    .describe(
+      "Index of the chosen candidate, or -1 if none makes a strong ranking Short",
+    ),
+  format: z.enum(EVERGREEN_FORMATS),
+  theme: z
+    .string()
+    .describe(
+      "The franchise, genre or pairing the Short ranks, e.g. 'Resident Evil' or 'open-world RPGs of the 2010s'",
+    ),
+  title_idea: z
+    .string()
+    .describe("Working title in the format's template, under 60 characters"),
+  criterion: z
+    .string()
+    .describe("The single stated criterion the ranking uses, one sentence"),
+  reason: z.string(),
+});
+export type EvergreenTopic = z.infer<typeof EvergreenTopicSchema>;
+
+export const EvergreenEntrySchema = z.object({
+  rank: z
+    .number()
+    .describe("1 is the best; ranks are spoken from the bottom up"),
+  game_title: z.string().describe("Exact official title"),
+  steam_search_term: z
+    .string()
+    .describe("Term to find it on Steam, or empty if it is not on Steam"),
+  year: z.number().describe("Original release year"),
+  platforms: z.string().describe("Short platform list, e.g. 'PC, PS5, Xbox'"),
+  one_line: z
+    .string()
+    .describe(
+      "The spoken line for this entry: one full sentence with a verb, under 15 words, factual with one opinion",
+    ),
+  verdict_chip: z
+    .string()
+    .describe("On-screen verdict, 1-4 words, e.g. 'PEAK CHAOS' or 'SKIP IT'"),
+  footage: FootageSchema,
+  percent: z
+    .number()
+    .optional()
+    .describe(
+      "achievement formats only: the unlock percentage exactly as in the data",
+    ),
+  icon: z.string().optional().describe("leave empty; filled in by the factory"),
+  date: z
+    .string()
+    .optional()
+    .describe(
+      "release_radar only: the release date as YYYY-MM-DD, exactly as in the data",
+    ),
+  peak: z
+    .number()
+    .optional()
+    .describe(
+      "steam_climbers only: peak players this week, exactly as in the data",
+    ),
+  price: z
+    .string()
+    .optional()
+    .describe("leave empty; filled in by the factory"),
+  was: z.string().optional().describe("leave empty; filled in by the factory"),
+});
+
+export const EvergreenScriptSchema = z.object({
+  format: z.enum(EVERGREEN_FORMATS),
+  theme: z.string(),
+  title: z.string().describe("On-screen title, 3-8 words"),
+  hook: z
+    .string()
+    .describe("First spoken line: the premise and the criterion, 8-12 words"),
+  entries: z
+    .array(EvergreenEntrySchema)
+    .min(4)
+    .max(EVERGREEN_ENTRIES_MAX)
+    .describe("Spoken from the lowest rank to number one"),
+  pulse_take: z.object({
+    label: z.string().describe("Card label, e.g. THE CRITERION or OUR PICK"),
+    narration: z
+      .string()
+      .describe(
+        "Why number one wins by the stated criterion, 1-2 sentences, at most 32 words",
+      ),
+    on_screen: z.string().describe("3-8 word on-screen summary"),
+  }),
+  loop_line: z.string().describe("Final line that ties back to the hook"),
+  youtube: z.object({
+    title: z
+      .string()
+      .describe("Title in the format's template, under 60 characters"),
+    description: z.string().describe("2-4 sentences. No hashtags"),
+    tags: z.array(z.string()),
+  }),
+  claims: z.array(
+    z.object({
+      claim: z.string(),
+      source: z
+        .string()
+        .describe("'steam facts', 'wikipedia' or 'public knowledge'"),
+    }),
+  ),
+});
+export type EvergreenScript = z.infer<typeof EvergreenScriptSchema>;
+
+const HOUSE = `You write for Pulse Gaming News, a YouTube Shorts channel about video games.
+
+${voiceFor("ranking")}
+Never invent release years, scores, prices or player counts: use the facts provided (Steam figures and the Wikipedia background) or long-established public knowledge. Opinions are framed as opinion.`;
+
+export function topicPrompt(): string {
+  return `${HOUSE}
+
+You are planning an evergreen ranking Short, the kind that keeps earning views for months: "Ranking EVERY Resident Evil game", "The BEST open-world game for every year of the 2010s", "Skyrim: 15 years later", "Is The Witcher 3 still good in 2026".
+Pick the candidate that gives the strongest 75-160 second ranking for cold viewers: a franchise or theme with six to ten well-known entries, strong feelings, box art people recognise and a clear criterion to rank by.
+Avoid topics the channel covered in the last six months (listed). Return candidate_index -1 if nothing is strong enough.`;
+}
+
+export function evergreenScriptPrompt(): string {
+  return `${HOUSE}
+
+Write an evergreen ranking Short of ${EVERGREEN_WORDS_MIN}-${EVERGREEN_WORDS_MAX} spoken words in total (hook, entries, take, loop line), 55-75 seconds when read. Shorter Shorts keep more viewers: every word must earn its place.
+Structure:
+1. hook: the premise and the criterion in one breath, 8-12 words and never more (on our channel, hooks of 16 or more words drew a median 114 views a Short against 303 for shorter ones), no question that withholds the point.
+2. entries: ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX}, spoken from the lowest rank to number one. Each one_line is one full sentence with a verb, under 15 words: one fact (year, what it did, how it was received) and one opinion by the criterion. Never a telegram fragment ("Pure joy.", "Now $1.99."), and never a stock line repeated from another Short. verdict_chip is 1-4 words of punch. footage says what the trailer moment should show for that entry, with 1-4 keywords.
+3. pulse_take: why number one wins by the stated criterion, at most 32 words.
+4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that echoes the hook's subject or words, so a rewatch feels connected: a short callback or a question to the viewer. Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
+The on-screen title is 3-8 words. The YouTube title follows the format template and front-loads the franchise. List every factual claim in "claims".`;
+}
+
+export async function selectEvergreenTopic(
+  llm: Llm,
+  candidates: EvergreenCandidate[],
+  covered: string[],
+  /** What viewers are watching on YouTube now and what they asked us to rank. */
+  demand = "",
+): Promise<EvergreenTopic> {
+  return llm.structured({
+    site: "evergreen.topic",
+    system: topicPrompt(),
+    content: `Candidates:\n${candidates.map((c, i) => `${i}. ${c.name} (${c.source}${c.note ? `: ${c.note}` : ""})`).join("\n")}\n\nCovered in the last six months:\n${covered.map((c) => `- ${c}`).join("\n") || "- none"}${demand ? `\n\n${demand}\n\nWhen two candidates are equally strong, prefer the franchise that is trending above or that viewers asked for.` : ""}\n\nFormats: ${EVERGREEN_FORMATS.filter(
+      (f) => !WEEKLY_FORMATS.has(f),
+    )
+      .map((f) => `${f} ("${FORMAT_TITLES[f]}")`)
+      .join("; ")}`,
+    schema: EvergreenTopicSchema,
+    effort: "low",
+  });
+}
+
+export async function writeEvergreen(
+  llm: Llm,
+  topic: EvergreenTopic,
+  facts: Array<{ title: string; facts: SteamFacts }>,
+  feedback: string[] = [],
+  brief = "",
+): Promise<EvergreenScript> {
+  const dataBlock = brief
+    ? `\n\nThis week's data (use these and nothing else):\n${brief}\n\n${FORMAT_RULES[topic.format] ?? ""}`
+    : "";
+  const factBlock = facts.length
+    ? `\n\nFacts for entries: Steam figures and a Wikipedia background (use these numbers, never others):\n${facts.map((f) => `- ${f.title}: ${factsText(f.facts)}`).join("\n")}`
+    : "";
+  const fb = feedback.length
+    ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${feedback.map((f) => `- ${f}`).join("\n")}`
+    : "";
+  return llm.structured({
+    site: "evergreen.write",
+    system: evergreenScriptPrompt(),
+    content: `Format: ${topic.format} ("${FORMAT_TITLES[topic.format]}")\nTheme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}${dataBlock}${factBlock}${fb}`,
+    schema: EvergreenScriptSchema,
+    effort: "medium",
+  });
+}
+
+const wordCount = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
+
+export function narrationOfEvergreen(e: EvergreenScript): string {
+  const entries = [...e.entries].sort((a, b) => b.rank - a.rank);
+  return [
+    e.hook,
+    ...entries.map((x) => x.one_line),
+    e.pulse_take.narration,
+    e.loop_line,
+  ].join(" ");
+}
+
+// Verbs a short spoken line is likely to carry; a line of four words or fewer with none of them, no
+// contraction and no pronoun subject is a fragment ("Pure joy.", "Now $1.99."). Leans towards passing.
+const VERBS = new Set(
+  "is are was were be been being am has have had do does did can could will would should may might must get gets got make makes made take takes took go goes went come comes came play plays played sell sells sold cost costs run runs ran hold holds held land lands wait waits skip skips buy buys grab grabs say says said keep keeps work works look looks feel feels need needs win wins beat beats matter matters start starts end ends drop drops launch launches give gives gave let lets put puts see sees saw find finds found know knows knew think thinks want wants try tries turn turns stay stays hit hits lose loses lost leave leaves left bring brings brought show shows call calls ask asks tell tells told use uses climb climbs climbed rules sucks scares shines lasts holds owns".split(
+    " ",
+  ),
+);
+
+/** Spoken lines of four words or fewer with no verb, which the voice stresses oddly. */
+export function fragments(text: string): string[] {
+  return sentencesIn(outsideQuotes(text)).filter((x) => {
+    if (/\?["”]?$/.test(x)) return false;
+    const words = x.split(/\s+/).filter(Boolean);
+    if (words.length > 4) return false;
+    const low = words.map((w) =>
+      w
+        .toLowerCase()
+        .replace(/’/g, "'")
+        .replace(/[^a-z']/g, ""),
+    );
+    if (
+      words.length >= 2 &&
+      /^(it|they|we|you|he|she|this|that|there|nobody|everyone|everything|nothing)$/.test(
+        low[0]!,
+      )
+    )
+      return false;
+    return !low.some(
+      (w, i) =>
+        VERBS.has(w) ||
+        /'(s|re|ve|ll|d|m)$|n't$/.test(w) ||
+        (i > 0 && /ed$/.test(w)),
+    );
+  });
+}
+
+/** House rules for the lane: word band, entry count, ranks, line lengths. */
+export function validateEvergreen(
+  e: EvergreenScript,
+  /** The recent Shorts' spoken scripts, newest first, when the caller has them. */
+  recent: string[] = [],
+): string[] {
+  const p: string[] = [];
+  const spoken = narrationOfEvergreen(e);
+  const words = wordCount(spoken);
+  p.push(...voiceProblems(spoken));
+  p.push(...writingProblems(spoken));
+  const bits = fragments(spoken);
+  if (bits.length)
+    p.push(
+      `"${bits[0]}" is a fragment; make every spoken line a full sentence with a verb.`,
+    );
+  // The theme ("Call of Duty") is the subject of the whole Short; every other full title once or twice.
+  for (const t of repeatedTitles(spoken, 2, [e.theme]))
+    p.push(
+      `"${t.title}" is said in full ${t.times} times; give the full title once, then the short form people say.`,
+    );
+  for (const other of recent.slice(0, 20)) {
+    const shared = sharedRuns(spoken, [other], 6);
+    if (shared.length >= 2) {
+      p.push(
+        `This Short repeats a recent Short word for word ("${shared[0]}"); say it in new words.`,
+      );
+      break;
+    }
+  }
+  const wordsMin = WEEKLY_FORMATS.has(e.format) ? 110 : EVERGREEN_WORDS_MIN;
+  if (words < wordsMin || words > EVERGREEN_WORDS_MAX)
+    p.push(
+      `Spoken word count is ${words}; it must be ${wordsMin}-${EVERGREEN_WORDS_MAX}.`,
+    );
+  if (
+    e.entries.length < entriesMin(e.format) ||
+    e.entries.length > EVERGREEN_ENTRIES_MAX
+  )
+    p.push(
+      `There must be ${entriesMin(e.format)}-${EVERGREEN_ENTRIES_MAX} entries.`,
+    );
+  if (e.format === "release_radar")
+    for (const x of e.entries)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(x.date ?? ""))
+        p.push(`Entry "${x.game_title}" needs its release date as YYYY-MM-DD.`);
+  const ranks = e.entries.map((x) => x.rank).sort((a, b) => a - b);
+  if (ranks.some((r, i) => r !== i + 1))
+    p.push("Ranks must be 1..N with no gaps or repeats.");
+  for (const x of e.entries) {
+    if (wordCount(x.one_line) > 15)
+      p.push(`Entry "${x.game_title}" line is over 15 words.`);
+    if (wordCount(x.verdict_chip) > 4 || !x.verdict_chip.trim())
+      p.push(`Entry "${x.game_title}" verdict chip must be 1-4 words.`);
+    if (x.year < 1970 || x.year > 2030)
+      p.push(`Entry "${x.game_title}" has an implausible year.`);
+  }
+  if (wordCount(e.hook) > 12)
+    p.push(
+      "The hook is longer than 12 words; say the premise and the criterion in 8-12.",
+    );
+  if (wordCount(e.loop_line) > 22)
+    p.push(
+      "The loop line is longer than 22 words; one short closing sentence.",
+    );
+  // A long take holds one card on screen for 15+ seconds, the slowest part of the Short.
+  if (wordCount(e.pulse_take.narration) > 32)
+    p.push(
+      "The take is longer than 32 words; keep it to one or two short sentences.",
+    );
+  if (
+    /let me know in the comments|like and subscribe/i.test(
+      narrationOfEvergreen(e),
+    )
+  )
+    p.push("Banned call to action.");
+  return p;
+}
+
+/**
+ * Adapts an evergreen script into the common Script shape: one "rank" beat
+ * per entry (lowest rank first), the take and loop as usual. Entries ride
+ * along so media can be gathered per entry.
+ */
+export function evergreenToScript(e: EvergreenScript): Script {
+  const entries = [...e.entries].sort((a, b) => b.rank - a.rank);
+  const beats = entries.map((x) => ({
+    narration: x.one_line,
+    footage: x.footage,
+    visual: {
+      kind: "rank",
+      primary: x.game_title,
+      secondary: x.verdict_chip,
+      value_a: x.rank,
+      items:
+        ACHIEVEMENT_FORMATS.has(e.format) && typeof x.percent === "number"
+          ? [`${x.percent}% of players`, x.platforms]
+          : e.format === "steam_climbers" && typeof x.peak === "number"
+            ? [x.platforms, `${x.peak.toLocaleString("en-US")} peak players`]
+            : e.format === "steam_deals" && x.price
+              ? [x.price, x.was ?? x.platforms]
+              : [String(x.year), x.platforms],
+      ...(x.date ? { date_to: x.date } : {}),
+    } satisfies BeatVisual,
+  }));
+  return {
+    story_type: "other",
+    game_title: e.theme,
+    steam_search_term: "",
+    headline: e.title,
+    hook: e.hook,
+    hook_footage: { want: "gameplay", keywords: [e.theme] },
+    beats,
+    pulse_take: e.pulse_take,
+    loop_line: e.loop_line,
+    is_rumour: false,
+    attribution: "Source: Steam / Pulse",
+    youtube: e.youtube,
+    evergreen_format: e.format,
+    claims: e.claims.map((c) => ({ claim: c.claim, source_url: c.source })),
+    entries: entries.map((x) => ({
+      rank: x.rank,
+      game_title: x.game_title,
+      steam_search_term: x.steam_search_term,
+      year: x.year,
+      platforms: x.platforms,
+      ...(x.icon ? { icon: x.icon } : {}),
+    })),
+  };
+}

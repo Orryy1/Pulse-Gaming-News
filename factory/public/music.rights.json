@@ -1,0 +1,33 @@
+{
+  "schema": "pulse-audio-rights-v1",
+  "beds": [
+    {
+      "file": "music_1.mp3",
+      "sha256": "cba38356b905b90124ecd8e67a65181db6677a323608e8fb4c859bc8a39730e5",
+      "origin": "Suno generation",
+      "suno_tag": "made with suno; created=2026-04-06T15:30:03Z; id=b22861ac-d7a4-4c3b-ac93-50a175573725",
+      "licence": "Suno paid-plan commercial licence; retire the bed on any Content ID claim"
+    },
+    {
+      "file": "music_2.mp3",
+      "sha256": "c1f63c8db3c0560253e7f3336d93e335a9d5b0263a457ad9f03e16ed830cc2fa",
+      "origin": "Suno generation",
+      "suno_tag": "made with suno; created=2026-04-06T15:30:19Z; id=88a850b0-87f7-482f-969c-6164102d1fa0",
+      "licence": "Suno paid-plan commercial licence; retire the bed on any Content ID claim"
+    },
+    {
+      "file": "music_3.mp3",
+      "sha256": "578d6613c78a1580e20b5d2cb7d15f2735aa34219fd3c73f3dd23dd74bad3b73",
+      "origin": "Suno generation",
+      "suno_tag": "made with suno; created=2026-04-06T15:30:34Z; id=129bd565-d322-40c7-a0ac-63a59a9331f5",
+      "licence": "Suno paid-plan commercial licence; retire the bed on any Content ID claim"
+    },
+    {
+      "file": "music_4.mp3",
+      "sha256": "47b76a23a45b278e4549d5289feb1e2690748a58ddd31ccf8c6e37e04cad9d56",
+      "origin": "Suno generation",
+      "suno_tag": "made with suno; created=2026-04-06T15:30:54Z; id=55591a90-1dce-4dd1-8e0e-544fe940a119",
+      "licence": "Suno paid-plan commercial licence; retire the bed on any Content ID claim"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+#!/bin/bash
+# Deploy hook for the Mac's bare repo (~/PulseFactory/repo.git): a push from the PC checks the new code
+# out into ~/PulseFactory/factory-src, typechecks it, and only then switches the factory over and
+# restarts it, so a broken push never stops the channel.
+export PATH="/opt/homebrew/bin:$PATH"
+SRC="$HOME/PulseFactory/factory-src"
+LIVE="$HOME/PulseFactory/factory"
+PREV="$HOME/PulseFactory/factory-prev"
+while read -r _old new ref; do
+  [ "$ref" = "refs/heads/claude/epic-pasteur-7s143q" ] || continue
+  # A release that died at boot (mac/run.sh rolled it back) is not deployed again: push a newer commit.
+  if [ -f "$LIVE/data/admin/bad_release" ] && [ "$(head -1 "$LIVE/data/admin/bad_release")" = "$new" ]; then
+    echo "deploy refused: $new died at boot last time; push a fix on top of it"
+    exit 1
+  fi
+  mkdir -p "$SRC"
+  git --work-tree="$SRC" --git-dir="$HOME/PulseFactory/repo.git" checkout -f "$new"
+  cd "$SRC/factory" || exit 1
+  deps_changed=no
+  cmp -s package-lock.json "$LIVE/package-lock.json" 2>/dev/null || deps_changed=yes
+  if [ "$deps_changed" = yes ]; then
+    rm -f node_modules
+    npm ci --no-audit --no-fund >/dev/null 2>&1 || { echo "deploy refused: npm ci failed"; exit 1; }
+  elif [ ! -e node_modules ]; then
+    ln -s "$LIVE/node_modules" node_modules
+  fi
+  if ! npx tsc --noEmit -p . >/tmp/pulse-tsc.log 2>&1; then
+    echo "deploy refused: the new code does not typecheck (see /tmp/pulse-tsc.log)"
+    exit 1
+  fi
+  # The running code is kept beside the live folder, so mac/run.sh can go back to it if the new code dies at boot.
+  mkdir -p "$PREV"
+  rsync -a --delete --exclude /data --exclude /.env --exclude /node_modules "$LIVE/" "$PREV/"
+  # Code only: the top-level data/, .env and node_modules in the live folder stay as they are (anchored: an
+  # unanchored "data" also dropped src/render/components/packs/data, 29 Oct 2026).
+  rsync -a --delete --exclude /data --exclude /.env --exclude /node_modules "$SRC/factory/" "$LIVE/"
+  mkdir -p "$LIVE/data/admin"
+  echo "$new" > "$LIVE/data/admin/release"
+  if [ "$deps_changed" = yes ]; then (cd "$LIVE" && npm ci --no-audit --no-fund >/dev/null 2>&1); fi
+  launchctl kickstart -k "gui/$(id -u)/com.pulse.factory" 2>/dev/null && echo "deployed $new and restarted the factory"
+done

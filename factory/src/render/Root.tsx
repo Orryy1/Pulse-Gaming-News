@@ -33,6 +33,11 @@ import {
   type PhotoPreviewProps,
 } from "./PhotoPreview.tsx";
 import {
+  ReconPreview,
+  SAMPLE_RECON,
+  type ReconPreviewProps,
+} from "./ReconPreview.tsx";
+import {
   WordPreview,
   SAMPLE_WORD,
   type WordPreviewProps,
@@ -154,6 +159,22 @@ export const RemotionRoot: React.FC = () => (
       durationInFrames={Math.ceil(SAMPLE_SKETCH.durationSeconds * LONG_FPS)}
       defaultProps={SAMPLE_SKETCH}
       calculateMetadata={({ props }: { props: SketchPreviewProps }) => ({
+        durationInFrames: Math.max(
+          30,
+          Math.ceil(props.durationSeconds * LONG_FPS),
+        ),
+      })}
+    />
+    {/* One in-game reconstruction shot on its own, for previews (src/render/ReconPreview.tsx). */}
+    <Composition
+      id="PulseRecon"
+      component={ReconPreview}
+      fps={LONG_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={Math.ceil(SAMPLE_RECON.durationSeconds * LONG_FPS)}
+      defaultProps={SAMPLE_RECON}
+      calculateMetadata={({ props }: { props: ReconPreviewProps }) => ({
         durationInFrames: Math.max(
           30,
           Math.ceil(props.durationSeconds * LONG_FPS),

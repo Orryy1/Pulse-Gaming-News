@@ -38,7 +38,7 @@ export interface PulseLook {
 }
 
 const PHONE: Rect = { x: 600, y: 0, w: 720, h: 1080 };
-const APP: Rect = { x: 190, y: 40, w: 1540, h: 980 };
+const APP: Rect = { x: 190, y: 40, w: 1540, h: 950 };
 
 export const PULSE_LOOKS: Record<string, PulseLook> = {
   Phone: {

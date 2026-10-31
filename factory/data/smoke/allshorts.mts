@@ -45,7 +45,7 @@ for (const id of [...EPS, TIME].filter(Boolean)) {
 }
 await db.close();
 
-type Built = { id: string; props: any; craftPlan: any; plainPlan: any; dir: string; stills: Array<{ frame: number; name: string }>; suite: boolean; before?: FrameModel; after?: FrameModel; loopFrom?: number };
+type Built = { id: string; props: any; craftPlan: any; plainPlan: any; dir: string; stills: Array<{ frame: number; name: string }>; cleanPlan?: any; suite: boolean; before?: FrameModel; after?: FrameModel; loopFrom?: number };
 let recent: RecentCraft[] = [];
 const built: Built[] = [];
 // Oldest first, so each Short's memory holds the ones before it.
@@ -175,7 +175,7 @@ for (const id of order) {
       console.log(`elements ${name}: most ${all.max} on any frame (frame ${all.worst}: ${all.worstAt.join(" + ")}), mean ${all.mean}, ${Math.round(all.overTwo * 100)}% of frames over 2; after the opening 3 s and before the loop: most ${mid.max}, mean ${mid.mean}, ${Math.round(mid.overTwo * 100)}% over 2`);
     }
   }
-  built.push({ id, props, craftPlan: afterPlan, plainPlan: plain, dir, stills, suite, before: beforeM, after: afterM, loopFrom: layout.loopFrom });
+  built.push({ id, props, craftPlan, cleanPlan: afterPlan, plainPlan: plain, dir, stills, suite, before: beforeM, after: afterM, loopFrom: layout.loopFrom });
 }
 
 const ONLY_BEFORE = flag("only-before").split(",").filter(Boolean);
@@ -255,7 +255,7 @@ if (args.includes("--clean")) {
   for (const b of built) {
     const files = await serveDir(b.dir);
     try {
-      const inputProps = { ...propsFor(b, files.url, b.craftPlan), clean: true };
+      const inputProps = { ...propsFor(b, files.url, b.cleanPlan), clean: true };
       const composition = await selectComposition({ serveUrl, id: "PulseShort", inputProps, puppeteerInstance: browser });
       const frames = sheetFrames(composition.durationInFrames);
       const pub: string[] = [];

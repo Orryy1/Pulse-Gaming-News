@@ -830,3 +830,25 @@ test("source windows download a few at a time, never more than DOWNLOADS_AT_ONCE
   assert.equal(most, DOWNLOADS_AT_ONCE);
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+test("segments are looked at in rounds: more when most are refused, no more than needed when they pass", async () => {
+  const run = async (refuse: (i: number) => boolean) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
+    let n = 0;
+    const { deps } = fakes(dir, () => (refuse(n++) ? look({ text: true }) : look()));
+    const long: FootageFirstDeps = {
+      ...deps,
+      scan: async () => Array.from({ length: 3001 }, (_, i) => ({ time: i / 10, luma: 90, motion: 3, scene: 0.01 })),
+    };
+    const ch = { entry: 2, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"] };
+    const report = emptyReport();
+    await gatherChapterFootage(long, ch, [], path.join(dir, "entry_2"), "entry_2", 100, FOOTAGE_FIRST_DEFAULTS, report, [], Infinity);
+    await fs.rm(dir, { recursive: true, force: true });
+    return report;
+  };
+  const clean = await run(() => false);
+  const hard = await run((i) => i % 10 !== 0);
+  assert.ok(clean.segments > clean.looked, "a clean chapter stops looking once it has enough");
+  assert.ok(hard.looked > clean.looked, "a chapter whose frames are mostly refused looks at more");
+  assert.ok(hard.looked <= FOOTAGE_FIRST_DEFAULTS.visionMax);
+});

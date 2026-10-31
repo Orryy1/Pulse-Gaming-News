@@ -917,37 +917,54 @@ export async function gatherChapterFootage(
         });
     }
     report.segments += all.length;
-    // 3. The look: an even spread of segments, enough to fill the need twice over, within the frame cap.
-    const want = Math.min(
-      o.visionMax,
-      Math.max(12, Math.ceil((need * 2.5) / 5)),
-    );
-    const sample = spread(all, want);
-    for (const g of sample)
-      await deps
-        .frame(sources[g.src]!.file, g.at + g.len / 2, g.frame)
-        .catch(() => undefined);
+    // 3. The look, in rounds: an even spread of the segments not yet looked at, sized to what is still
+    // missing, until the clean ones could fill the need with room to spare or the frame cap is reached. Only a
+    // third or so pass (31 Oct 2026 proof: subtitles, prompts and district names on screen), so one round sized
+    // for the need left the Vice City chapter short.
     const release = deps.lease
       ? await deps
           .lease(
             "Pulse footage-first: labelling gameplay segments",
-            Math.ceil(sample.length / 20) + 1,
+            Math.ceil(Math.min(o.visionMax, all.length) / 10) + 1,
           )
           .catch(() => undefined)
       : undefined;
-    let looks: Array<SegmentLook | undefined>;
+    const verdicts: Array<{
+      g: (typeof all)[number];
+      look: SegmentLook | undefined;
+      reason: string | undefined;
+      source: string;
+    }> = [];
     try {
-      looks = await deps.look(sample.map((g) => g.frame));
+      const looked = new Set<number>();
+      let clean = 0;
+      while (looked.size < Math.min(o.visionMax, all.length) && clean < need * 1.25) {
+        const left = all.filter((g) => !looked.has(g.id));
+        const size = Math.min(
+          o.visionMax - looked.size,
+          Math.max(8, Math.ceil(((need * 1.25 - clean) / 5) * 3)),
+        );
+        const round = spread(left, size);
+        if (!round.length) break;
+        for (const g of round) {
+          looked.add(g.id);
+          await deps
+            .frame(sources[g.src]!.file, g.at + g.len / 2, g.frame)
+            .catch(() => undefined);
+        }
+        const looks = await deps.look(round.map((g) => g.frame));
+        report.looked += looks.filter(Boolean).length;
+        for (const [i, g] of round.entries()) {
+          const reason = segmentRejectReason(looks[i]);
+          verdicts.push({ g, look: looks[i], reason, source: sources[g.src]!.url });
+          if (!reason) clean += g.len;
+        }
+        // Nothing could be looked at (the local model is down): another round would see nothing either.
+        if (looks.every((l) => !l)) break;
+      }
     } finally {
       release?.();
     }
-    report.looked += looks.filter(Boolean).length;
-    const verdicts = sample.map((g, i) => ({
-      g,
-      look: looks[i],
-      reason: segmentRejectReason(looks[i]),
-      source: sources[g.src]!.url,
-    }));
     const condemned = condemnedSources(verdicts);
     const good: Array<{ g: (typeof all)[number]; label: string }> = [];
     for (const v of verdicts) {
@@ -1041,7 +1058,7 @@ export async function gatherChapterFootage(
       game: ch.game,
       sources: sources.length,
       segments: all.length,
-      looked: sample.length,
+      looked: verdicts.length,
       kept: out.length - before,
       seconds: Math.round(added),
     });

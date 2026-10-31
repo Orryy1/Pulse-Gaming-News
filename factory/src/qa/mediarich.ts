@@ -4,7 +4,8 @@
 // plan: for every shot, whether what is on screen was chosen for that line (a trailer moment tagged to the beat
 // or the hook, a picture tagged to the beat) or the line carries a card (a beat's visual, the take's title card),
 // weighted by how long the shot runs. Hook, desk and loop lines have no card, so they count only on matched
-// footage. Measured and stored (qa_json.media_rich) for now; nothing about what the Short shows changes.
+// footage. Measured and stored (qa_json.media_rich). Since 31 Oct 2026 the craft planner (src/render/shortcraft.ts)
+// reads it to find the bare lines and fills them; the "after" reading counts the fillers' seconds as covered.
 
 import type { RenderPlan } from "../render/plan.ts";
 import type { Segment } from "../render/timeline.ts";
@@ -35,6 +36,8 @@ export function shortMediaRichness(
   plan: Pick<RenderPlan, "shots" | "fps">,
   images: Array<{ beatIndex?: number }>,
   clips: Array<{ beatIndex?: number; role?: string }>,
+  /** Seconds per segment under a filler made for the line's own words (src/render/shortcraft.ts fillSeconds). */
+  fills?: Map<number, number>,
 ): MediaRichness {
   // Which beat (0, 1, 2...) each segment is, so a tag on a clip or picture can be matched to it.
   const beatOf = segments.map((s, i) =>
@@ -70,11 +73,15 @@ export function shortMediaRichness(
   let total = 0;
   let own = 0;
   let covered = 0;
-  for (const seg of per) {
+  per.forEach((seg, i) => {
     total += seg.seconds;
     own += seg.own;
-    covered += seg.graphic ? seg.seconds : seg.own;
-  }
+    // A filler covers the stretch it runs over, on top of whatever own footage the line already had.
+    const fill = Math.max(0, fills?.get(i) ?? 0);
+    covered += seg.graphic
+      ? seg.seconds
+      : Math.min(seg.seconds, seg.own + fill);
+  });
   const share = (x: number) =>
     total > 0 ? Math.round((x / total) * 1000) / 1000 : 1;
   return {
@@ -98,4 +105,9 @@ export function mediaRichNotice(
 ): string {
   const pc = (x: number) => `${Math.round(x * 100)}%`;
   return `🎞️ "${headline}": ${pc(m.covered)} of its narration has something chosen for its own words on screen (${pc(m.own)} a trailer moment or picture matched to the line, ${pc(m.graphicOnly)} a card), under the ${pc(target)} target. It renders as it is; this is measured only for now.`;
+}
+
+/** Per segment: a bare line, with no card and under half its time on footage or a picture chosen for it. */
+export function bareLines(m: MediaRichness): boolean[] {
+  return m.segments.map((s) => s.seconds > 0 && !s.graphic && s.own < s.seconds * 0.5);
 }

@@ -13,6 +13,7 @@ export interface ShortImage {
   blurSrc?: string | null; // pre-blurred plate for the framed panel
   luma?: number;
   beatIndex?: number; // tagged for one entry of a ranking Short
+  credit?: string; // a credit its licence asks for on screen (a CC BY photo), shown while it shows
 }
 
 export interface ShortClip {
@@ -25,6 +26,7 @@ export interface ShortClip {
   role?: "hook";
   stock?: boolean; // licensed stock: shown with an ILLUSTRATIVE tag
   audio?: boolean; // gameplay with its game sound kept: played low under the narrator
+  credit?: string; // a credit its licence asks for on screen (CC BY gameplay), shown while it plays
 }
 
 // A type alias (not an interface) so it satisfies Remotion's Record<string, unknown> props constraint.
@@ -46,6 +48,7 @@ export type ShortProps = {
   stamps?: Array<{ at: number; text: string; sub?: string; colour: string; tone?: string }>; // word stamps, timed to their words
   plan: RenderPlan | null; // built in the pipeline; the composition builds one for previews
   suite?: boolean; // the new-look test: cut accents, punch-ins and an old game's period looks
+  clean?: boolean; // the clean frame (src/render/cleanframe.ts): full-bleed, one overlay at a time, a small mark
   mascot?: boolean; // Pip the mascot test: the amber mascot in the brand band, beside the logo
   heroCut?: { fg: string; x?: number }; // the new-look opening: the hero art's subject cut out (src/render/parallax.ts)
   logoSrc: string | null;

@@ -233,6 +233,8 @@ import {
 } from "./growth.ts";
 import { holdSlotForCap } from "./cadence.ts";
 import { mediaRichNotice, shortMediaRichness } from "./qa/mediarich.ts";
+import { craftForShort, shortsCleanStep } from "./shortcraftstep.ts";
+import { ccCredit } from "./render/cleanframe.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
 import {
@@ -7605,11 +7607,25 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   assets.plan = plan;
   // How much of the narration has something chosen for its own words on screen (src/qa/mediarich.ts): measured
   // on every Short and kept in qa_json; under SHORT_MEDIA_RICH_TARGET it is a line in the evening summary.
+  // The long videos' craft on the new-look Shorts (src/shortcraftstep.ts): planned once, stored on the plan.
+  const craftFills = await craftForShort(s, ep.id, {
+    suite: suiteFor(s.cfg, ep),
+    segments,
+    words,
+    plan,
+    images: (assets.images ?? []).map((i) => ({ kind: i.kind, credit: photoCredit(i), beatIndex: i.beatIndex })),
+    clips: assets.clips ?? [],
+    stamps: stampsFor(script, words),
+    game: script.game_title,
+    gameYear: Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined,
+    seed: variant,
+  });
   const mediaRich = shortMediaRichness(
     segments,
     plan,
     assets.images ?? [],
     assets.clips ?? [],
+    craftFills,
   );
   log(
     mediaRich.covered < s.cfg.shortMediaRichTarget ? "warn" : "info",
@@ -7716,6 +7732,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         aspect: i.aspect,
         blurFile: i.blurFile,
         beatIndex: i.beatIndex,
+        credit: photoCredit(i),
       })),
       clipFiles: (assets.clips ?? []).map((c) => ({
         file: c.file,
@@ -7726,6 +7743,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         motion: c.motion,
         luma: c.luma,
         stock: c.stock,
+        credit: ccCredit(c.provenance),
       })),
       steam: steamLite,
       emphasis: emphasisWords(script),
@@ -7733,6 +7751,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       stamps: stampsFor(script, words),
       plan,
       suite: assets.suite,
+      // The clean frame (src/render/cleanframe.ts): SHORTS_CLEAN, or the clean-frame retention test's arm or winner.
+      clean: await shortsCleanStep(s, ep.id, assets.test),
       mascot: assets.mascot,
       heroCutFile: assets.heroCut,
       renderDate: s.now().toISOString().slice(0, 10),

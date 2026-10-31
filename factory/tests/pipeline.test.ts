@@ -1772,7 +1772,7 @@ test("the retention test rides a news Short: announced once, recorded on the epi
     label: "question gap",
   });
   assert.equal(
-    f.notifications.filter((n) => n.startsWith("Growth test 1 of 3 started"))
+    f.notifications.filter((n) => n.startsWith("Growth test 1 of 4 started"))
       .length,
     1,
   );

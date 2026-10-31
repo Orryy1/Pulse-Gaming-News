@@ -121,6 +121,8 @@ export interface RenderPlan {
   shelf: ShelfItem[];
   /** The word moment's look (src/render/wordlook.ts), stored so a retried render is identical. */
   wordLook?: string;
+  /** The long videos' craft on the Short (src/render/shortcraft.ts): cards, photos, fillers and camera moves. */
+  craft?: import("./shortcraft.ts").ShortCraft;
 }
 
 const QUIET_KINDS = new Set([

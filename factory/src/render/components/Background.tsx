@@ -20,6 +20,10 @@ import {
 import { BANDS, CREDIT_TOP, SAFE, WIDTH } from "../layout.ts";
 import { BODY } from "./fonts.ts";
 import { CrtLook, VhsLook } from "./Retro.tsx";
+import { ShotCamera } from "./CameraMoves.tsx";
+import { VPhotoShot } from "./vertical/craft.tsx";
+import type { CutMove, ShotMove } from "../camera.ts";
+import type { PhotoTreatment } from "../photoplan.ts";
 
 /** The new-look dressing of a Short's shots (src/render/Short.tsx): punch-ins and an old game's period looks. */
 export interface ShotDressing {
@@ -27,6 +31,10 @@ export interface ShotDressing {
   punches: Map<number, number>;
   /** Per shot index: the tape or tube look of an old game. */
   looks: Map<number, "vhs" | "crt">;
+  /** Per shot index: a real photo's treatment (src/render/shortcraft.ts), drawn in place of the plain still. */
+  photos?: Map<number, { treatment: PhotoTreatment; seed: number }>;
+  /** Per shot index: the craft camera's push through the cut into or out of it, or its freeze-frame. */
+  camera?: Map<number, { into?: CutMove; out?: CutMove; move?: ShotMove }>;
 }
 
 /** Ink field with the game title and an amber rule: shown only when a shot has no media. */
@@ -228,9 +236,10 @@ const Clip: React.FC<{
 };
 
 /** "FOOTAGE: PUBLISHER · OFFICIAL TRAILER" tag in the soft margin during clip shots. */
-const FootageCredit: React.FC<{ credit: string; durationFrames: number }> = ({
+const FootageCredit: React.FC<{ credit: string; durationFrames: number; small?: boolean }> = ({
   credit,
   durationFrames,
+  small = false,
 }) => {
   const frame = useCurrentFrame();
   // Fades in and out over 8 frames, shorter on a short shot: overlapping fades gave Remotion a
@@ -255,7 +264,7 @@ const FootageCredit: React.FC<{ credit: string; durationFrames: number }> = ({
         fontFamily: BODY,
         // Bolder and on a darker plate: the visual check kept calling the credit "very low contrast".
         fontWeight: 800,
-        fontSize: 27,
+        fontSize: small ? 21 : 27,
         letterSpacing: 2,
         color: COLOUR.paper,
         background: "rgba(11,11,14,0.88)",
@@ -280,9 +289,12 @@ export const ArtTrack: React.FC<{
   gameTitle: string;
   footageCredit: string;
   dress?: ShotDressing;
-}> = ({ plan, images, clips, accent, gameTitle, footageCredit, dress }) => {
+  /** The clean frame (src/render/cleanframe.ts): every shot full-bleed, only licence-required credits on screen. */
+  clean?: boolean;
+}> = ({ plan, images, clips, accent, gameTitle, footageCredit, dress, clean = false }) => {
   const frame = useCurrentFrame();
-  const { shot, index } = shotAt(plan, frame);
+  const { shot: planned, index } = shotAt(plan, frame);
+  const shot = clean && planned.framed ? { ...planned, framed: false } : planned;
   const len = shot.end - shot.start;
   const media = shot.media;
   const image = media.type === "image" ? images[media.index] : undefined;
@@ -328,6 +340,27 @@ export const ArtTrack: React.FC<{
     });
     body = <AbsoluteFill style={{ transform: `scale(${p})` }}>{body}</AbsoluteFill>;
   }
+  const photo = dress?.photos?.get(index);
+  if (photo && image && (image.kind === "photo" || image.kind === "portrait"))
+    body = (
+      <VPhotoShot
+        src={image.src}
+        blurSrc={image.blurSrc}
+        aspect={image.aspect}
+        kind={image.kind}
+        treatment={photo.treatment}
+        seed={photo.seed}
+        len={len}
+        move={shot.move}
+      />
+    );
+  const cam = dress?.camera?.get(index);
+  if (cam)
+    body = (
+      <ShotCamera len={len} from={shot.start} fps={plan.fps} into={cam.into} out={cam.out} move={cam.move}>
+        {body}
+      </ShotCamera>
+    );
   const look = dress?.looks.get(index);
   if (look === "vhs")
     body = (
@@ -345,6 +378,10 @@ export const ArtTrack: React.FC<{
             credit="ILLUSTRATIVE · STOCK FOOTAGE"
             durationFrames={len}
           />
+        ) : clean ? (
+          (clip?.credit ?? image?.credit) ? (
+            <FootageCredit credit={(clip?.credit ?? image?.credit)!} durationFrames={len} small />
+          ) : null
         ) : clip && footageCredit ? (
           <FootageCredit credit={footageCredit} durationFrames={len} />
         ) : null}

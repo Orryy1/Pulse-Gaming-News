@@ -333,6 +333,14 @@ export interface Config {
   visionQa: boolean;
   /** The Shorts' word-moment suite (src/render/wordlook.ts): off draws every word moment as the rubber stamp. */
   shortWordLooks: boolean;
+  /** The long videos' craft on the Shorts (src/render/shortcraft.ts), each layer on its own: the Pulse-universe
+   * cards in the rotation, the treatments of real photos, fillers for bare lines and the light camera moves. */
+  shortCraftCards: boolean;
+  shortCraftPhotos: boolean;
+  shortCraftFillers: boolean;
+  shortCraftCamera: boolean;
+  /** The clean frame on every Short (src/render/cleanframe.ts): full-bleed, one overlay at a time, a small mark. */
+  shortsClean: boolean;
   /** The graphics check before a long render (src/qa/graphicscheck.ts): every graphic as a cheap still, faulted
    * ones muted, so the full render runs once instead of again per faulted graphic. */
   graphicsPrepass: boolean;
@@ -818,6 +826,11 @@ export function loadConfig(): Config {
     publishWindowEndUtc: int("PUBLISH_WINDOW_END_UTC", 22),
     visionQa: bool("VISION_QA", true),
     shortWordLooks: bool("SHORT_WORD_LOOKS", true),
+    shortCraftCards: bool("SHORT_CRAFT_CARDS", true),
+    shortCraftPhotos: bool("SHORT_CRAFT_PHOTOS", true),
+    shortCraftFillers: bool("SHORT_CRAFT_FILLERS", true),
+    shortCraftCamera: bool("SHORT_CRAFT_CAMERA", true),
+    shortsClean: bool("SHORTS_CLEAN", true),
     graphicsPrepass: bool("GRAPHICS_PREPASS", true),
     graphicsPrepassMax: int("GRAPHICS_PREPASS_MAX", 200),
     graphicsRerenderPasses: int("GRAPHICS_RERENDER_PASSES", 1),

@@ -69,6 +69,18 @@ export const GROWTH_TESTS: GrowthTest[] = [
       },
     ],
   },
+  // The clean frame (31 Oct 2026, src/render/cleanframe.ts): a render-side test, so its variants carry no rule
+  // for the writer (an empty instruction is never shown). Listed second so it runs straight after the hook-style
+  // test; until then, and after a verdict for A, every Short is clean (SHORTS_CLEAN).
+  {
+    key: "shorts_clean",
+    name: "clean frame",
+    what: "full-bleed footage with one overlay at a time against the full header, source line, rule and footer",
+    variants: [
+      { id: "A", label: "clean frame", instruction: "" },
+      { id: "B", label: "full chrome", instruction: "" },
+    ],
+  },
   {
     key: "cold_open_length",
     name: "cold-open length",
@@ -253,6 +265,8 @@ export function growthNotes(
     const t = testByKey(current.key);
     if (t) rules.push(variantOf(t, current.variant).instruction);
   }
+  // A render-side test (the clean frame) has no rule for the writer.
+  rules.splice(0, rules.length, ...rules.filter((r) => r.trim()));
   if (!rules.length) return "";
   return `Rules from the channel's own retention tests (follow each one exactly; they override the general shapes above where they differ):\n${rules.map((r) => `- ${r}`).join("\n")}`;
 }

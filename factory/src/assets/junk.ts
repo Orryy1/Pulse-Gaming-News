@@ -15,8 +15,17 @@ const JUNK_TITLE: Array<[RegExp, string]> = [
     "kids or stunt video",
   ],
   [
-    /\breacts?\b|\breaction\b|\bfacecam\b|\bwebcam\b|\blive ?stream\b|\bstream highlights\b|\bpodcast\b|\bw\/ ?commentary\b|\bwith commentary\b|\bfirst play\b|\bblind\b|\bfirst time\b/i,
+    /\breacts?\b|\breaction\b|\bfacecam\b|\bwebcam\b|\blive ?stream\b|\bstream highlights\b|\bpodcast\b|(?<!\bno[ -])\bcommentary\b|\bfirst play\b|\bblind\b|\bfirst time\b|\bfor \d+ hours\b/i,
     "reaction or facecam",
+  ],
+  // 31 Oct 2026 proof: phone ports carry touch buttons over the picture; wheel videos a steering-wheel cam.
+  [
+    /\b(android|ios|iphone|ipad|mobile|apk|htc|samsung|tablet|netflix)\b/i,
+    "mobile port (touch controls on screen)",
+  ],
+  [
+    /\b(steering wheel|g29|g920|thrustmaster|logitech|simulator|lspdfr|roleplay)\b/i,
+    "simulator, wheel cam or roleplay mod",
   ],
   [
     /\bremaster(ed)?\b|\bdefinitive\b|\bremake\b|\bunreal engine\b|\bue ?[45]\b|\bray ?tracing\b|\brtx\b|\bnext ?gen\b|\bfan[- ]?made\b|\bconcept\b|\bconceptual\b|\brealistic\b|\bgraphics\b|\b8k\b|\breimagined\b|\breviced\b|\bhardlined\b|\bbuild\b|\bbeta\b|\bprototype\b|\bleak(ed|s)?\b/i,

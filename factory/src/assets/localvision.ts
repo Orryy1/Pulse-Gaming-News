@@ -470,10 +470,13 @@ export function lookAnswer(parsed: any): SegmentLook {
   const yes = (k: string) => parsed?.[k] === true;
   const hud = yes("text") && yes("hud_only");
   return {
-    label: String(parsed?.label ?? "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 80),
+    // A label must describe something: the model sometimes answers "true" there (31 Oct 2026 proof).
+    label: ((l: string) => (/^(true|false|yes|no|none|n\/a)?$/i.test(l) || !/[a-z]{3}/i.test(l) ? "" : l))(
+      String(parsed?.label ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 80),
+    ),
     hud,
     text: yes("text") && !hud,
     webcam: yes("webcam"),

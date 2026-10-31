@@ -1105,3 +1105,16 @@ test("every released chapter gets an even share of the time left, so the limit n
   assert.ok(clock <= 4 * 60_000 + 4 * 5000 * 3, "within the limit, give or take a short round");
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+test("phone ports, wheel cams, simulators, co-commentary and long streams are refused by title; a label of 'true' is no label", () => {
+  const no = (t: string, c = "x", g = "Grand Theft Auto V") => junkTitleReason(t, c, g);
+  assert.match(no("Gta 3 gameplay walkthrough part 1 (Android/iOS)", "x", "Grand Theft Auto III")!, /mobile/);
+  assert.match(no("GTA 5 - Let's Go to Work at a Car Rental Company | Steering Wheel Gameplay")!, /wheel/);
+  assert.match(no("GTA 5: Police Cruiser Simulator (Grand Theft Auto 5 Gameplay)")!, /simulator/);
+  assert.match(no("GTA San Andreas Walkthrough with Co-Commentary - Part 1", "x", "Grand Theft Auto: San Andreas")!, /reaction/);
+  assert.match(no("SMii7Y Plays GTA 5 Free Roam FOR 2 HOURS!")!, /reaction/);
+  assert.equal(no("GTA 5 Free Roam Gameplay No Commentary"), undefined);
+  assert.equal(no("GTA VICE CITY Walkthrough Part 8 - No-Commentary", "x", VC), undefined);
+  assert.equal(lookAnswer({ label: "true", text: false }).label, "");
+  assert.equal(segmentRejectReason(lookAnswer({ label: "true" })), "no label");
+});

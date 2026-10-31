@@ -99,11 +99,11 @@ const ON_SCREEN =
 // hours, a manifest about discs and shipments.
 const CUES: Record<DocKind, RegExp> = {
   contract:
-    /\b(contracts?|deals?|signed|signing|signs?|agreements?|NDAs?|non-disclosure|exclusives?|exclusivity|licen[cs]e[ds]?|licensing|rights|offered|offers?|terms|negotiat\w*|acquired|acquisition|bought|buyout|merger|publishing deal)\b/i,
+    /\b(contracts?|deals?|signed|signing|agreements?|NDAs?|non-disclosure|exclusivity (deal|agreement)|licen[cs]ed|licensing (deal|agreement)|acquired|acquisition|bought|buyout|merger|publishing deal)\b/i,
   manifest:
-    /\b(ship|shipped|shipping|shipments?|manufactur\w*|pressed|pressing|discs?|cartridges?|warehouses?|pallets?|purchase orders?|ordered|orders?|in stock|retailers?|stores? shelves|on shelves|shelves|delivered|deliver\w*|went gold|gold master)\b/i,
+    /\b(ship|shipped|shipping|shipments?|manufactur\w*|pressed|pressing|discs?|cartridges?|warehouses?|pallets?|purchase orders?|ordered|orders?|pre-?orders?|delivered|deliveries|went gold|gold master)\b/i,
   budget:
-    /\b(budgets?|costs?|costing|money|funding|funded|spent|spend|spending|paid|pay|salar(y|ies)|revenue|profits?|earn\w*|cash|investment|invested|investors?|expensive|afford\w*|dollars|pounds|bankrupt\w*|broke|bank)\b|[$£€]\s?\d/i,
+    /\b(budgets?|costs?|costing|funding|funded|spent|spend|spending|paid|salar(y|ies)|revenue|profits?|investment|invested|dollars|pounds|euros)\b|[$£€]\s?\d/i,
   schedule:
     /\b(schedules?|scheduled|deadlines?|milestones?|release date|launch date|delay\w*|slipped|slip|pushed back|postpon\w*|on time|ahead of schedule|behind schedule|timeline|calendar|alpha|beta|ship date|in time for|countdown|months? (later|before|after|away)|weeks? (later|before|after|away)|by (spring|summer|autumn|fall|winter|christmas))\b/i,
   rota: /\b(crunch\w*|overtime|late nights?|all-nighters?|weekends?|night shifts?|shifts?|hours a week|\d+-hour|long hours|around the clock|seven days|slept (at|in|under)|sleeping (at|in|under)|exhaust\w*|burn(ed|t)? out|burnout)\b/i,
@@ -133,6 +133,36 @@ const STRONG: Record<DocKind, number> = {
   memo: 0.64,
 };
 const NOTE_ONLY = 0.5;
+/** A general line's memo: at or below 0.5, so kinetic type and the other areas win it. */
+export const GENERIC_CONFIDENCE = 0.48;
+
+// Publications a quoted line may be credited to on a review clipping: a named outlet, or the words for one.
+const PUBLICATION =
+  /\b(IGN|GameSpot|Eurogamer|Destructoid|Polygon|Kotaku|Edge|Famitsu|PC Gamer|Game Informer|GamesRadar|Giant Bomb|1UP|Electronic Gaming Monthly|EGM|GamePro|Next Generation|Computer and Video Games|CVG|The Guardian|Guardian|The Times|Telegraph|New York Times|Wired|Forbes|Variety|Rolling Stone|The Verge|Metacritic|magazine|newspaper|reviewers?|reviews?|critics?)\b/;
+
+// Money as a subject: a page about it needs the figure.
+const MONEY_TALK = /\b(money|cash|earn\w*|profits?|revenue|fortune)\b/i;
+
+// An offer, a pitch or talks: not a contract that was signed.
+const OFFER =
+  /\b(offer(ed|s|ing)?|pitch(ed|es|ing)?|propos\w*|negotiat\w*|talks|discuss\w*|considered|courted|approached)\b/i;
+
+// The words that name a paper itself: a line carrying one is not a general line.
+const PAPER =
+  /\b(contracts?|deals?|signed|agreements?|NDAs?|licen[cs]ed|memos?|emails?|internal|schedules?|deadlines?|milestones?|budgets?|costs?|crunch|overtime|weekends?|shifts?|discs?|shipped|pressed|orders?|critics?|reviews?|scored|ideas?|pitched|brainstorm\w*|design document|maps?)\b/i;
+
+/**
+ * A general line: seven words or fewer, no figure, no quote, no proper name after its first word and no word
+ * that names a paper ("Not everything survived.", "Secrecy became its own department.").
+ */
+export function genericLine(line: string, cue = ""): boolean {
+  const words = tokens(line);
+  if (words.length > 7) return false;
+  if (/\d|"/.test(line)) return false;
+  if (words.slice(1).some((w) => /^[A-Z]/.test(w))) return false;
+  return !PAPER.test(line) && !PAPER.test(cue) && !PUBLICATION.test(line);
+}
+
 /** Below this a candidate is not offered at all. */
 export const DOC_MIN_CONFIDENCE = 0.45;
 
@@ -346,23 +376,48 @@ export function documentFor(
   const notes = `${moment.show ?? ""} ${moment.broll ?? ""}`;
   if (SENSITIVE.test(line) || SENSITIVE.test(notes)) return undefined;
   if (ON_SCREEN.test(line) || ON_SCREEN.test(notes)) return undefined;
-  // Words the narrator quotes from someone at the studio can sit on an internal note, marked as they are said.
+  // A page implies a real paper existed (coordinator, 31 Oct 2026). Quoted words never go on a memo, contract
+  // or any internal paper, which would read as if the speaker wrote them there; only a review clipping may carry
+  // them, and only when the sentence names the publication.
   const quoted = /"[^"]{2,60}"/.test(line);
-  const best =
-    bestKind(line, notes) ??
-    (quoted
-      ? { kind: "memo" as const, strong: false, cue: "quoted words" }
-      : undefined);
+  let best = bestKind(line, notes);
+  if (quoted) {
+    const outlet = line.match(PUBLICATION)?.[0];
+    if (!outlet) return undefined;
+    best = { kind: "reviews", strong: true, cue: outlet };
+  }
   if (!best) return undefined;
   let { kind } = best;
+  // A contract only for a deal stated as made: an offer, a pitch or talks are not a signed paper.
+  if (kind === "contract" && OFFER.test(line)) return undefined;
+  // Money talked about without a figure ("how much money one world could make") has no paper to show.
+  if (MONEY_TALK.test(line) && !MONEY_RE.test(line) && !/\d/.test(line))
+    return undefined;
+  // A budget only with money in it: a figure, or budget, cost or spend with a number.
+  if (kind === "budget" && !MONEY_RE.test(line) && !/\d/.test(line))
+    return undefined;
+  // A manifest or order only for an order, a shipment or a quantity the sentence itself states.
+  if (kind === "manifest" && !CUES.manifest.test(line) && !QTY_RE.test(line))
+    return undefined;
   let confidence = best.strong ? STRONG[kind] : NOTE_ONLY;
   const why: string[] = [
-    best.cue === "quoted words"
-      ? "the sentence quotes words an internal note can carry"
+    quoted
+      ? `the sentence quotes ${best.cue}`
       : best.strong
         ? `the sentence says "${best.cue}"`
         : `the shot note says "${best.cue}"`,
   ];
+  // A short general line with no paper behind it ("The ambition came from the top.") is a memo at most, at a
+  // confidence low enough that kinetic type or another area wins it.
+  const generic = !quoted && genericLine(line, best.strong ? best.cue : "");
+  if (generic) {
+    kind = "memo";
+    why.splice(
+      0,
+      why.length,
+      "a general line with no paper behind it, so a memo at low confidence",
+    );
+  }
   const date = line.match(DATE_RE)?.[0];
   // A dated line about timing is a schedule even when another document's cue came first.
   if (date && kind !== "schedule" && CUES.schedule.test(line)) {
@@ -371,7 +426,7 @@ export function documentFor(
     why.push(`and names the date ${date}`);
   }
   // Very short lines ("Critics agreed.") carry little: the page is mostly placeholder.
-  if (n <= 3) {
+  if (n <= 3 && !generic) {
     confidence -= 0.18;
     why.push("but the line is very short");
   }
@@ -380,7 +435,9 @@ export function documentFor(
     confidence += 0.04;
     why.push("about the real world");
   }
-  confidence = Math.round(Math.min(0.9, confidence) * 100) / 100;
+  confidence = generic
+    ? GENERIC_CONFIDENCE
+    : Math.round(Math.min(0.9, confidence) * 100) / 100;
   if (confidence < DOC_MIN_CONFIDENCE) return undefined;
   const monthName = date?.match(new RegExp(MONTHS.join("|"), "i"))?.[0];
   const figure = (line.match(MONEY_RE) ?? line.match(QTY_RE))?.[0];
@@ -409,6 +466,7 @@ export function documentFor(
   // A line too long for its document (a sticky note, a clipping's headline) goes on a memo page instead, which
   // takes any line the chooser accepts; a candidate is always one the renderer can draw.
   if (!layoutPage(scene)) {
+    if (quoted) return undefined;
     scene.kind = "memo";
     scene.mark = markPhrase(line, "memo", moment);
     delete scene.sketch;

@@ -117,7 +117,7 @@ test("a dated line about timing becomes a schedule with its milestone in that mo
 });
 
 test("a page shows only the sentence's words and the chapter's game", () => {
-  const s = 'He called the job of following up San Andreas "a nightmare".';
+  const s = "They wanted fewer dead spots, like San Andreas's empty deserts.";
   const c = documentFor(s, {}, ch)!;
   assert.equal(c.scene.line, pageLine(s));
   assert.ok(c.scene.line.includes(c.scene.mark));
@@ -181,7 +181,8 @@ test("every document lays out a short and a long line inside its page, the mark 
       if (!line.includes("survived")) scene.mark = "feeling poor";
       const L = layoutPage(scene);
       // A board's sticky note or headline takes a short line only (documentFor moves a long one to a memo).
-      if (!L && (kind === "ideas" || kind === "reviews") && line.length > 60) continue;
+      if (!L && (kind === "ideas" || kind === "reviews") && line.length > 60)
+        continue;
       assert.ok(L, `${kind} lays out`);
       for (const r of [L.mark, L.focus]) {
         assert.ok(r.width > 0 && r.height > 0, kind);
@@ -289,4 +290,43 @@ test("narrow columns take a figure only when it stays legible; the manifest name
     manifestTitle("It sat on store shelves for a month."),
     "PURCHASE ORDER",
   );
+});
+
+// The coordinator's review (31 Oct 2026): a page implies a real paper existed, so its kind must match what the
+// line says. These are the Vice City documentary's own bare sentences.
+const vc = (s: string, m: Record<string, string> = {}) => documentFor(s, m, ch);
+
+test("quoted words never go on a memo or any internal paper; a clipping only when a publication is named", () => {
+  assert.equal(vc('He called the job of following up San Andreas "a nightmare".'), undefined);
+  assert.equal(vc('Earlier games had leaned on movie references, and Houser wanted something "fresh and new" instead.'), undefined);
+  const c = vc('Destructoid\'s Chris Carter called it a "messy launch" that should have been delayed.')!;
+  assert.equal(c.kind, "reviews");
+  assert.equal(c.scene.mark, "messy launch");
+});
+
+test("an order or manifest only for an order, shipment or quantity", () => {
+  assert.equal(vc("It's November 2004, and San Andreas has been on store shelves for barely a month."), undefined);
+  assert.equal(vc("Two million discs were pressed before launch day.")?.kind, "manifest");
+});
+
+test("a budget only with money in it, a contract only for a deal stated as made", () => {
+  assert.equal(vc("Its next game would test how much money one world could make."), undefined);
+  assert.equal(vc("By the end, the budget had grown to $100 million.")?.kind, "budget");
+  assert.equal(vc("Rockstar also offered the game to Microsoft as an Xbox exclusive.", { broll: "Xbox console" }), undefined);
+  assert.equal(vc("Even the windows needed an NDA.")?.kind, "contract");
+});
+
+test("general lines with no paper behind them are a memo at 0.5 or below", () => {
+  for (const s of [
+    "Not everything survived.",
+    "The ambition came from the top.",
+    "Secrecy became its own department.",
+    "The first decision was the name.",
+  ]) {
+    const c = vc(s, { broll: "office" })!;
+    assert.equal(c.kind, "memo", s);
+    assert.ok(c.confidence <= 0.5, s);
+  }
+  // A short line that names a publication or a paper is not general.
+  assert.equal(vc("IGN went furthest.")?.kind, "reviews");
 });

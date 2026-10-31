@@ -14,6 +14,7 @@ import {
   footageShare,
   footageWants,
   gatherChapterFootage,
+  gatherFootageFirst,
   emptyReport,
   junkSourceReason,
   matchWords,
@@ -23,6 +24,8 @@ import {
   roundRobin,
   segmentRejectReason,
   segmentsOf,
+  poorSources,
+  prefetchChapter,
   dHash,
   hamming,
   captionWords,
@@ -972,7 +975,7 @@ test("segments are looked at in rounds: more when most are refused, no more than
     return report;
   };
   const clean = await run(() => false);
-  const hard = await run((i) => i % 10 !== 0);
+  const hard = await run((i) => i % 5 !== 0);
   assert.ok(
     clean.segments > clean.looked / 2,
     "a clean chapter stops looking once it has enough",
@@ -1023,5 +1026,37 @@ test("cheap tests settle a segment before the model: a frozen picture, the same 
   assert.ok(!looked.some((f) => /seg_(0|2|3)\.jpg$/.test(f)), "none of them reached the model");
   assert.ok(looked.every((f) => /seg_\d+\.jpg$/.test(f)), "one composite image a segment");
   assert.equal(report.looked, looked.length);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("a video whose segments keep failing gets no more looks", () => {
+  const v = (source: number, ok: boolean, n: number) => Array.from({ length: n }, () => ({ source, ok }));
+  assert.deepEqual([...poorSources([...v(0, false, 6), ...v(1, false, 5), ...v(2, true, 2), ...v(2, false, 4)])], [0]);
+});
+
+test("the next chapter downloads while this one is looked at", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
+  const { deps } = fakes(dir, () => look());
+  const events: string[] = [];
+  const traced: FootageFirstDeps = {
+    ...deps,
+    download: async (url, a, b, dest) => {
+      events.push(`download ${dest.includes("entry_3") ? 3 : 2}`);
+      return deps.download(url, a, b, dest);
+    },
+    look: async (files) => {
+      events.push(`look ${files[0]?.includes("entry_3") ? 3 : 2}`);
+      await new Promise((r) => setTimeout(r, 30));
+      return deps.look(files);
+    },
+  };
+  const ch = (entry: number) => ({ entry, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"], seconds: 300 });
+  const { report } = await gatherFootageFirst(traced, [ch(2), ch(3)], [], dir, FOOTAGE_FIRST_DEFAULTS);
+  const firstLook2 = events.indexOf("look 2");
+  const lastDownload3 = events.lastIndexOf("download 3");
+  assert.ok(firstLook2 >= 0 && events.indexOf("download 3") < events.lastIndexOf("look 2"), "chapter 3's downloads start before chapter 2's looks end");
+  assert.ok(lastDownload3 > 0);
+  assert.equal(report.perChapter?.length, 2);
+  assert.equal(typeof prefetchChapter, "function");
   await fs.rm(dir, { recursive: true, force: true });
 });

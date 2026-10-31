@@ -106,6 +106,69 @@ export function wordScores(toks: string[], emphasis?: string): number[] {
   });
 }
 
+// Never the hero (coordinator review, 31 Oct 2026: "Nobody outside the studio knows it yet" made YET the
+// giant word). Function and time words carry no meaning on their own, whatever their position.
+const NOT_HERO = new Set(
+  "yet but it the so still now just then also even all a an and or of to in on at by for with as its it's this that was were is are be been had has have".split(
+    " ",
+  ),
+);
+// A negation subject or a quantifier that drives the line ("Nobody ...", "Everyone ...", "Never ...").
+const DRIVER = new Set(
+  "nobody everyone everybody everything nothing never none noone no-one".split(
+    " ",
+  ),
+);
+
+/**
+ * The word a style makes biggest, one of `shown`: the one that carries the line's meaning. In order: the
+ * strongest word of the moment's emphasis phrase, a negation subject or quantifier that drives the line,
+ * a number, a proper noun (a capital away from the sentence start), then the strongest content word.
+ * Never a function, time or filler word.
+ */
+export function heroOf(
+  toks: string[],
+  shown: number[],
+  emphasis?: string,
+): number {
+  const scores = wordScores(toks, emphasis);
+  const ok = shown.filter((i) => {
+    const n = norm(toks[i]!);
+    return n && !NOT_HERO.has(n) && !STOP.has(n) && !WEAK.has(n);
+  });
+  // A line of fillers falls back to any word that is not a function or time word ("come", not "yet").
+  const loose = shown.filter(
+    (i) => norm(toks[i]!) && !NOT_HERO.has(norm(toks[i]!)),
+  );
+  const pool = ok.length ? ok : loose.length ? loose : shown;
+  const strongest = (idx: number[]) =>
+    idx.reduce(
+      (b, i) =>
+        scores[i]! > scores[b]! || (scores[i] === scores[b] && i > b) ? i : b,
+      idx[0]!,
+    );
+  const run = new Set(emphasisRun(toks, emphasis));
+  const tiers: Array<(i: number) => boolean> = [
+    (i) => run.has(i),
+    (i) => DRIVER.has(norm(toks[i]!)),
+    (i) => /\d/.test(toks[i]!),
+    // A one-word name only: half of "San Andreas" set huge reads as a fragment.
+    (i) =>
+      i > 0 &&
+      /^[("“‘']?[A-Z]/.test(toks[i]!) &&
+      // (the sentence's first word is capitalised anyway: "Then Rockstar" is still one name, "San Andreas" not)
+      (i - 1 === 0
+        ? isStop(toks[0]!) || NOT_HERO.has(norm(toks[0]!))
+        : !/^[("“‘']?[A-Z]/.test(toks[i - 1]!)) &&
+      !/^[("“‘']?[A-Z]/.test(toks[i + 1] ?? ""),
+  ];
+  for (const t of tiers) {
+    const hit = pool.filter(t);
+    if (hit.length) return strongest(hit);
+  }
+  return strongest(pool);
+}
+
 /** How many words a sentence of n words puts on screen: all of a short line, about two in five of a long one. */
 export function shownCount(n: number): number {
   if (n <= MAX_SHOWN) return n;
@@ -136,12 +199,7 @@ export function keyWords(
   const toks = tokens(sentence);
   if (!toks.length) return undefined;
   const scores = wordScores(toks, emphasis);
-  const best = (idx: number[]) =>
-    idx.reduce(
-      (b, i) =>
-        scores[i]! > scores[b]! || (scores[i] === scores[b] && i > b) ? i : b,
-      idx[0]!,
-    );
+  const best = (idx: number[]) => heroOf(toks, idx, emphasis);
   if (toks.length <= MAX_SHOWN) {
     const all = toks.map((_, i) => i).filter((i) => norm(toks[i]!));
     if (!all.some((i) => scores[i]! > 0)) return undefined;

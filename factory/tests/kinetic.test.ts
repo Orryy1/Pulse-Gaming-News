@@ -20,6 +20,10 @@ import {
 import { landFrames } from "../src/render/components/kinetic/kit.tsx";
 import { stackSizes } from "../src/render/components/kinetic/styles.tsx";
 import { KINETIC } from "../src/render/components/kinetic/index.ts";
+import {
+  backdropFor,
+  backdropScore,
+} from "../src/render/components/kinetic/backdrop.ts";
 import { DRAWN_BY } from "../src/render/components/packs/fit.ts";
 
 const chapter = (sentences: string[]) => ({
@@ -209,4 +213,94 @@ test("the stack fits its words to the block and the block to the height", () => 
   assert.ok(sizes.every((s) => s <= 300));
   assert.ok(sizes.reduce((a, s) => a + s * 0.94, 0) <= 761);
   assert.ok(width <= 1180);
+});
+
+test("the hero word carries the line's meaning, never a function or time word", () => {
+  const hero = (s: string, e?: string) => {
+    const k = keyWords(s, e)!;
+    return displayWord(k.tokens[k.hero]!);
+  };
+  assert.equal(hero("Nobody outside the studio knows it yet."), "Nobody");
+  assert.ok(
+    ["sales", "weren't"].includes(
+      hero("Reviews were mixed, but sales weren't."),
+    ),
+  );
+  assert.equal(hero("The satire had found its voice."), "voice");
+  assert.equal(hero("San Andreas had been about excess."), "excess");
+  // The emphasis phrase first, then a number, then a name.
+  assert.equal(hero("It sold in 2002 to fans everywhere.", ""), "2002");
+  assert.equal(hero("Then Rockstar moved on again.", ""), "Rockstar");
+  assert.equal(hero("The first decision was the name.", "the name"), "name");
+  for (const s of [
+    "It was just the beginning then.",
+    "But still, even so, it was all yet to come.",
+  ]) {
+    const h = hero(s).toLowerCase();
+    assert.ok(
+      ![
+        "yet",
+        "but",
+        "it",
+        "the",
+        "so",
+        "still",
+        "now",
+        "just",
+        "then",
+        "also",
+        "even",
+        "all",
+      ].includes(h),
+      `${s} -> ${h}`,
+    );
+  }
+});
+
+test("backdrops prefer places over character art, skip other games and rotate", () => {
+  const imgs = [
+    {
+      file: "hero_0.jpg",
+      kind: "hero",
+      label: "Cartoon woman with pistol, dark background",
+      aspect: 3.1,
+    },
+    {
+      file: "igdb_0.jpg",
+      kind: "screenshot",
+      label: "Claude holding baseball bat",
+      aspect: 1.33,
+    },
+    {
+      file: "shot_8.jpg",
+      kind: "screenshot",
+      label: "Subway train beside bridge and skyline",
+      aspect: 1.78,
+    },
+    {
+      file: "igdb_1.jpg",
+      kind: "screenshot",
+      label: "Cars in traffic downtown street",
+      aspect: 1.33,
+    },
+    {
+      file: "fill/other/gta2/igdb_0.jpg",
+      kind: "screenshot",
+      label: "Grand Theft Auto 2",
+      aspect: 1.33,
+    },
+    { file: "capsule_1.jpg", kind: "capsule", aspect: 0.67 },
+  ];
+  assert.ok(backdropScore(imgs[2]!) > backdropScore(imgs[1]!));
+  assert.ok(backdropScore(imgs[3]!) > backdropScore(imgs[0]!));
+  assert.ok(backdropScore(imgs[3]!) > backdropScore(imgs[4]!));
+  const first = backdropFor(imgs, 1, [])!;
+  assert.ok(["shot_8.jpg", "igdb_1.jpg"].includes(first));
+  const second = backdropFor(imgs, 1, [first])!;
+  assert.notEqual(second, first);
+  assert.ok(["shot_8.jpg", "igdb_1.jpg"].includes(second));
+  // Every picture used: the one used longest ago; portrait art never.
+  const all = imgs.map((i) => i.file).filter((f) => f !== "capsule_1.jpg");
+  assert.equal(backdropFor(imgs, 1, all), all[0]);
+  assert.equal(backdropFor([imgs[5]!], 1, []), undefined);
 });

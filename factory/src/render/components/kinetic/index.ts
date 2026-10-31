@@ -66,3 +66,4 @@ export type {
   FillerMoment,
   Verdict,
 } from "./types.ts";
+export { backdropFor, backdropScore, type BackdropImage } from "./backdrop.ts";

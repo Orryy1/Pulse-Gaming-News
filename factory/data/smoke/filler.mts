@@ -19,6 +19,7 @@ import { diagramVerdict } from "../../src/render/components/diagram/choose.ts";
 import { kineticSettle } from "../../src/render/components/kinetic/kit.tsx";
 import { norm, wordTimes, type SpokenWord } from "../../src/render/components/kinetic/words.ts";
 import { DIAGRAMS } from "../../src/render/components/diagram/index.ts";
+import { backdropFor } from "../../src/render/components/kinetic/backdrop.ts";
 import type { FillerChapter } from "../../src/render/components/kinetic/types.ts";
 
 const args = process.argv.slice(2).filter((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--max");
@@ -91,11 +92,16 @@ const covered = (ci: number) => {
     if (x.beatIndex === ci && x.moment !== undefined) set.add(x.moment);
   return set;
 };
+// The backdrop as the integrator will pick it (backdropFor): the chapter's scenery first, rotating per card.
+const usedBackdrops: string[] = [];
 const pictureOf = (ci: number): string | undefined => {
-  const img = (assets.images ?? []).find(
-    (x: any) => x.beatIndex === ci && /\.(jpe?g|png|webp)$/i.test(x.file) && (x.aspect ?? 1.7) > 1.2,
+  const pick = backdropFor(
+    (assets.images ?? []).filter((x: any) => x.beatIndex === ci),
+    ci,
+    usedBackdrops,
   );
-  return img?.file?.replace(/\\/g, "/");
+  if (pick) usedBackdrops.push(pick);
+  return pick?.replace(/\\/g, "/");
 };
 
 type Row = {

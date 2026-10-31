@@ -287,7 +287,10 @@ if (TIME) {
   if (!b) throw new Error(`--time ${TIME} must be one of --eps`);
   const files = await serveDir(b.dir);
   try {
-    for (const [label, plan, clean] of [["as published (no craft, old frame)", b.plainPlan, false], ["craft, old frame", b.craftPlan, false], ["craft, clean frame", b.craftPlan, true], ["as published (again)", b.plainPlan, false], ["craft, old frame (again)", b.craftPlan, false], ["craft, clean frame (again)", b.craftPlan, true]] as const) {
+    // --clean-first alternates, the new look first, so a slower browser late in the run cannot favour it.
+    const runs = [["as published (no craft, old frame)", b.plainPlan, false], ["craft, old frame", b.craftPlan, false], ["craft, clean frame", b.craftPlan, true]] as const;
+    const order = args.includes("--clean-first") ? [runs[2], runs[0], runs[2], runs[0]] : [...runs, ...runs];
+    for (const [label, plan, clean] of order) {
       const inputProps = { ...propsFor(b, files.url, plan), clean };
       const composition = await selectComposition({ serveUrl, id: "PulseShort", inputProps, puppeteerInstance: browser });
       const t0 = Date.now();

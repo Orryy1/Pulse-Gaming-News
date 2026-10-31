@@ -54,6 +54,7 @@ import { trendingVideos } from "./discovery/demand.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { findIgdbGame, fetchIgdbArt } from "./assets/igdb.ts";
 import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
+import { footageFirstDeps } from "./assets/footagedeps.ts";
 import {
   QUOTA,
   QUOTA_RESERVE_FOR_UPLOAD,
@@ -210,6 +211,12 @@ export function createServices(db: Db, cfg: Config): Services {
     achievements: (appId) => fetchAchievements(appId),
     steamClimbers: (now) => steamClimbers(now),
     steamDeals: (exclude) => steamDeals(exclude),
+    footageFirstDeps: () =>
+      footageFirstDeps({
+        ytdlp: cfg.ytdlpPath,
+        // The title check is the existing low-tier judge, one call per chapter, only where clips are ranked by Claude.
+        llm: cfg.clipRanking === "llm" ? llm : undefined,
+      }),
     ownClips: (game, franchise, dir, targets, maxClips) =>
       cfg.footage && (cfg.footageLibrary || cfg.gameplayRoot)
         ? libraryClips({

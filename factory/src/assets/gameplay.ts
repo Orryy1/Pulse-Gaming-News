@@ -27,6 +27,7 @@ import { FFMPEG, FFPROBE, YTDLP_TEXT } from "../lib/bin.ts";
 import { PUBLISHER_CHANNELS } from "./officialTrailer.ts";
 import { trailerMatchesGame, distinguishing } from "./commons.ts";
 import { normTitle } from "./igdb.ts";
+import { junkTitleReason, notOutYet } from "./junk.ts";
 import { fetchWithTimeout, errorMessage, log } from "../lib/util.ts";
 
 // Every child (yt-dlp, ffmpeg) runs under the download cap and is killed on overrun (src/lib/child.ts).
@@ -423,7 +424,11 @@ export async function findGameplay(
           "&videoLicense=creativeCommon&videoDuration=medium",
           opts.quotaOk,
         )
-      ).filter((i) => gameplayTitleFits(i.title, game, franchise)),
+      ).filter(
+        (i) =>
+          gameplayTitleFits(i.title, game, franchise) &&
+          !junkTitleReason(i.title, i.channelTitle, game),
+      ),
     );
     const meta = await details(
       token,
@@ -454,7 +459,9 @@ export async function findGameplay(
         (i) =>
           PUBLISHER_CHANNELS.some(
             (r) => r.match.test(i.channelTitle.trim()) && r.clipSeconds >= 10,
-          ) && gameplayTitleFits(i.title, game, franchise),
+          ) &&
+          gameplayTitleFits(i.title, game, franchise) &&
+          !junkTitleReason(i.title, i.channelTitle, game),
       ),
     );
     const meta = await details(
@@ -934,6 +941,7 @@ export async function findMissionGameplay(
     return (
       t.includes(want) &&
       !NOT_GAMEPLAY.test(i.title) &&
+      !junkTitleReason(i.title, i.channelTitle, game) &&
       (trailerMatchesGame(i.title, game, franchise) ||
         gameplayTitleFits(`${i.title} gameplay`, game, franchise))
     );
@@ -1136,6 +1144,16 @@ export async function gameplayClips(
   o: GameplayClipOpts,
 ): Promise<Array<VisualAsset & { credit: string }>> {
   if (!o.targets.length || o.maxClips <= 0) return [];
+  // A game not out yet has no real gameplay to upload: anything titled so is a mod or a re-cut trailer
+  // (GTA V kids' mods reached the Vice City documentary's GTA VI chapter on 27 Oct; the documentary gather got
+  // its own guard on 30 Oct, a ranking's entry gather had none until this one, which covers every caller).
+  if (notOutYet(o.year)) {
+    log("info", "licensed gameplay skipped: the game is not out", {
+      game: o.game,
+      year: o.year,
+    });
+    return [];
+  }
   const out: Array<VisualAsset & { credit: string }> = [];
   for (const [k, n] of namedThings(o.targets, o.game, o.franchise)
     .slice(0, 3)

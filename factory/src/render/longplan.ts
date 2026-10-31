@@ -67,6 +67,29 @@ export interface LongClip {
   beatIndex?: number;
   role?: "hook";
   moment?: number;
+  /** Where in its source video the clip was cut (seconds), when known: two clips overlapping there are one moment. */
+  span?: { source: string; from: number; to: number };
+}
+
+/**
+ * For each clip, the other clips cut from the same stretch of the same source video: once one plays, they are
+ * spent too, so a chapter never shows one moment twice (owner, 31 Oct 2026: no clip segment repeated within a
+ * chapter). Clips without a span overlap nothing.
+ */
+export function overlappingClips(clips: Array<Pick<LongClip, "span">>): number[][] {
+  return clips.map((a, i) =>
+    a.span
+      ? clips.flatMap((b, j) =>
+          j !== i &&
+          b.span &&
+          b.span.source === a.span!.source &&
+          b.span.from < a.span!.to - 0.05 &&
+          a.span!.from < b.span.to - 0.05
+            ? [j]
+            : [],
+        )
+      : [],
+  );
 }
 
 /** One sentence of a ranking entry on the timeline (seconds). */
@@ -320,6 +343,11 @@ export interface LongPlanInput {
    * can fill), and its chapter's pictures carry any time left. Muted ones are left out by the caller.
    */
   momentFillers?: Array<Array<MomentFiller | undefined>>;
+  /**
+   * Footage first (FOOTAGE_FIRST): a chapter with no pictures never loops its own clips once they have all
+   * played; it shows the plate instead, which the thin-entry top-up then fills with official screenshots.
+   */
+  noRepeats?: boolean;
 }
 
 const PREVIEW_STOP = new Set(
@@ -468,6 +496,12 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   // A clip's real length: one shorter than a shot is skipped by the fill, never stretched past its last frame.
   const clipFrames = clips.map((c) => Math.floor(c.durationSeconds * LONG_FPS));
   const clipUsed = clips.map(() => false);
+  const twins = overlappingClips(clips);
+  /** Marks a clip played, and every clip cut from the same moment of its source. */
+  const spend = (k: number) => {
+    clipUsed[k] = true;
+    for (const j of twins[k] ?? []) clipUsed[j] = true;
+  };
   const previewed = new Set<number>();
   const stillUses = images.map(() => 0);
   // Where each entry's stills left off, so a chapter's paragraphs walk its gallery instead of restarting it.
@@ -536,14 +570,14 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             if (l >= MIN_CLIP_SHOT && (rest === 0 || rest >= MIN_CLIP_SHOT)) {
               media = alt;
               len = l;
-              clipUsed[alt.index] = true;
+              spend(alt.index);
             } else alt = stillFallback?.() ?? { type: "plate", index: 0 };
           }
           if (alt.type !== "clip") {
             media = alt;
             len = Math.min(MAX_STILL_SHOT, remaining, most.still);
           }
-        } else clipUsed[media.index] = true;
+        } else spend(media.index);
       } else {
         len = Math.min(
           STILL_SHOT + ((shotIndex * 37 + variant * 11) % 60) - 30,
@@ -649,10 +683,14 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       const leastUsed = (): LongMedia => {
         // An entry with no picture of its own never borrows the topic's art: for "Grand Theft Auto" that was
         // GTA V's key art under GTA Advance. It replays its own footage, or shows the branded plate.
-        const own = (): LongMedia =>
-          entryClips.length
+        // An unplayed clip first: replaying one the chapter already showed repeats a moment (31 Oct 2026).
+        const own = (): LongMedia => {
+          const fresh = entryClips.find((k) => !clipUsed[k]);
+          if (fresh !== undefined) return { type: "clip", index: fresh };
+          return entryClips.length && !input.noRepeats
             ? { type: "clip", index: entryClips[reuse++ % entryClips.length]! }
             : { type: "plate", index: 0 };
+        };
         if (!entryImages.length) return own();
         const free = entryImages.filter((k) =>
           real(k)
@@ -772,11 +810,11 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           const fl = fillerOf(j)!;
           if (fl.family === "recon") {
             const c = (fl.data as { clip: number }).clip;
-            if (clips[c] && clips[c]!.moment === undefined) clipUsed[c] = true;
+            if (clips[c] && clips[c]!.moment === undefined) spend(c);
           }
           // A sentence given a filler had no own media but a stock clip at most: the filler replaces it, so
           // the stock never plays (not after the filler, nor under the next sentence).
-          for (const k of mineClips) clipUsed[k] = true;
+          for (const k of mineClips) spend(k);
           if (shot.end < to)
             fill(
               i,
@@ -953,7 +991,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         if (left > 0 && left < MIN_CLIP_SHOT) clipLen -= MIN_CLIP_SHOT - left;
         if (clipLen >= MIN_CLIP_SHOT) {
           media = { type: "clip", index: clipIdx };
-          clipUsed[clipIdx] = true;
+          spend(clipIdx);
           if (seg.kind === "take")
             ownClips.splice(ownClips.indexOf(clipIdx), 1);
           len = clipLen;

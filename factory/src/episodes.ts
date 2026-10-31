@@ -48,6 +48,8 @@ export interface EpisodeAssets {
   rich?: boolean;
   /** A long video's sentences without a picture of their own were topped up, one search each (fillSentencePictures). */
   filled?: { before: number; after: number };
+  /** The footage-first gather ran (src/assets/footagefirst.ts): its counts, so it runs once per video. */
+  footageFirst?: import("./assets/footagefirst.ts").FootageReport;
   /** The filler visuals were chosen for the documentary's bare and stock-only lines (src/assets/fillers.ts). */
   fillersChosen?: {
     chosen: number;
@@ -128,6 +130,8 @@ export interface EpisodeAssets {
     startSeconds?: number;
     moment?: number;
     credit?: string;
+    /** Where in its source video the clip was cut (seconds): the planner never plays one moment twice in a chapter. */
+    span?: { source: string; from: number; to: number };
   }>;
   steam?: {
     appId: number;

@@ -47,6 +47,12 @@ import { trailerMatchesGame } from "./assets/commons.ts";
 import { captureHold } from "./capture.ts";
 import { rankStills } from "./assets/stillscore.ts";
 import { coverageShare, fillSentencePictures } from "./assets/fill.ts";
+import {
+  footageShareNotice,
+  measureFootage,
+  runFootageFirst,
+} from "./assets/footagestep.ts";
+import { footageOptions } from "./assets/footagefirst.ts";
 import { capStockTargets } from "./assets/repeats.ts";
 import { stockQuery } from "./assets/stock.ts";
 import { createSketchRun } from "./assets/illustrate.ts";
@@ -376,6 +382,8 @@ export interface Services {
     maxClips: number,
     scope?: "campaign",
   ): Promise<Array<VisualAsset & { credit: string }>>;
+  /** The outside calls of the footage-first gather (src/assets/footagedeps.ts); absent in tests, which skips it. */
+  footageFirstDeps?(): import("./assets/footagefirst.ts").FootageFirstDeps;
   /** Moments from the owner's own recordings of this game (none when there are none). */
   ownClips(
     game: string,
@@ -6101,6 +6109,43 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // Which long-video craft this format gets (src/longformat.ts), each behind its own setting.
   const craft = longCraft(script, s.cfg);
   const kind = longKindLabel(craft.format);
+  // Footage first (src/assets/footagestep.ts; owner, 31 Oct 2026: "loads of gameplay footage" instead of stills):
+  // before the picture top-up, each released game's chapter gathers licensed gameplay until moving footage can
+  // carry FOOTAGE_SHARE_TARGET of its narration, junk refused at intake. Once per video (FOOTAGE_FIRST).
+  if (
+    s.cfg.footageFirst &&
+    s.footageFirstDeps &&
+    !assets.footageFirst &&
+    assets.images &&
+    script.entries?.some((e) => e.moments?.length)
+  ) {
+    assets.clips ??= [];
+    assets.footageFirst = await runFootageFirst({
+      deps: s.footageFirstDeps(),
+      chapters: [...script.entries]
+        .sort((a, b) => b.rank - a.rank)
+        .map((e, i) => ({
+          entry: i,
+          game: e.game_title,
+          franchise: script.game_title || e.game_title,
+          year: e.year,
+          moments: e.moments ?? [],
+          sentences: chapterSentences(script, i),
+        })),
+      clips: assets.clips,
+      dir,
+      options: footageOptions(s.cfg),
+      headline: script.headline,
+      logEvent: (kind, detail) => logEvent(s.db, ep.id, kind, detail),
+      notify: (m) => s.notify(m),
+    });
+    // A plan made before the new clips existed would never play them.
+    if (assets.footageFirst.kept) delete assets.longPlan;
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(assets),
+    ]);
+  }
   // Every sentence still without a picture or graphic of its own is searched for on its own, once per video
   // (src/assets/fill.ts; owner, 30 Oct 2026: "all videos must be fully media rich all the way through").
   if (
@@ -6292,6 +6337,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     audio: c.audio,
     // The picture check's words for the clip: a freeze frame's label (src/render/camera.ts freezeLabel).
     label: c.label,
+    span: c.span,
   }));
   // A sentence's filler visual, read afresh each time: one the graphics check faulted is left out.
   const fillerAt = (e: number, m: number) =>
@@ -6315,7 +6361,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         beatIndex: c.beatIndex,
         role: c.role,
         moment: c.moment,
+        span: c.span,
       })),
+      // Footage first: a chapter never replays a moment it has shown (FOOTAGE_FIRST).
+      noRepeats: s.cfg.footageFirst,
       variant,
       // Real-world photos only on their own sentence (REAL_PHOTOS_PINNED_ONLY; 31 Oct 2026 owner review).
       realPinnedOnly: s.cfg.realPhotosPinnedOnly,
@@ -6406,6 +6455,35 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       });
   }
   assets.longPlan = plan;
+  // How much of the game chapters' narration plays on moving game footage, against FOOTAGE_SHARE_TARGET.
+  if (freshPlan && hasMoments && s.cfg.footageFirst) {
+    const fm = measureFootage({
+      shots: plan.shots,
+      fps: plan.fps,
+      segments,
+      entryOf: (i) => entryOf(segments, i, script.take_entry),
+      clips: assets.clips ?? [],
+    });
+    await logEvent(s.db, ep.id, "footage_share", {
+      share: Math.round(fm.share * 1000) / 1000,
+      target: s.cfg.footageShareTarget,
+      stock: Math.round(fm.stock),
+      perChapter: Object.fromEntries(
+        [...fm.perChapter].map(([c, x]) => [c, Math.round(x * 100) / 100]),
+      ),
+    });
+    await s.notify({
+      level: "info",
+      content: footageShareNotice(
+        script.headline,
+        fm,
+        s.cfg.footageShareTarget,
+        [...(script.entries ?? [])]
+          .sort((a, b) => b.rank - a.rank)
+          .map((e) => e.game_title),
+      ),
+    });
+  }
   // How much of the narration has something chosen for its own words on screen: a picture or clip of its own,
   // or a graphic (29 Oct 2026 review: barely one shot in ten matched; 30 Oct, owner: every video must be media
   // rich all the way through). Logged for every long video; the owner hears when under MEDIA_RICH_TARGET.

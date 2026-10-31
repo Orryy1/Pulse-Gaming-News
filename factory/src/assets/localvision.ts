@@ -416,3 +416,168 @@ async function clearFace(file: string): Promise<boolean> {
   };
   return (visionAnswer(body) as { clear_face?: boolean }).clear_face === true;
 }
+
+/**
+ * One gameplay segment's frame as the footage-first gather sees it (src/assets/footagefirst.ts): a short label
+ * the planner can match to a sentence, plus the reasons a frame is junk for a documentary about this game. The
+ * kids' mod uploads that reached the Vice City documentary's GTA VI chapter (Spider-Man on neon ramps, cartoon
+ * zombies on shark motorbikes) are the "mod" flag; menus, loading and map screens are "menu"; a real camera
+ * image (a person filmed, not rendered) is "live".
+ */
+export interface SegmentLook {
+  label: string;
+  hud: boolean;
+  text: boolean;
+  webcam: boolean;
+  gore: boolean;
+  letterbox: boolean;
+  dark: boolean;
+  blurry: boolean;
+  mod: boolean;
+  menu: boolean;
+  live: boolean;
+}
+
+const LOOK_PROMPT = `You look at one frame of a gameplay recording for a documentary editor. Give a short label and answer each question with true or false.
+label: what the frame shows, under 9 words, concrete nouns (for example "red sports car on a palm-lined beach road at sunset").
+text: any readable words anywhere: titles, subtitles, captions, menus, objective text, watermarks, channel names, subscribe buttons.
+hud_only: true only when every piece of writing is the game's own small heads-up display in a corner (minimap, ammo, health, money); false when there is any other writing, and false when there is no writing at all.
+webcam: a real person's webcam or facecam, a picture-in-picture box, stream chat, alerts or any recording overlay.
+gore: blood sprays, wounds, dead bodies, executions.
+letterbox: black bars covering more than a third of the frame.
+dark: mostly black or too dark to tell what is happening.
+blurry: heavily blurred, smeared or an unreadable close-up of a texture.
+mod: the game has been modded or turned into kids' content: superheroes or cartoon and toy characters (Spider-Man, Hulk, Sonic, Minions, cartoon zombies or animals), giant ramps, neon obstacle courses, impossible vehicles or objects pasted into the world.
+menu: a menu, pause screen, loading screen, title screen, map screen or settings screen rather than the game world.
+live: a real camera image of real people or places, not a rendered game.`;
+
+const LOOK_SCHEMA = {
+  type: "object",
+  properties: {
+    label: { type: "string" },
+    text: { type: "boolean" },
+    hud_only: { type: "boolean" },
+    webcam: { type: "boolean" },
+    gore: { type: "boolean" },
+    letterbox: { type: "boolean" },
+    dark: { type: "boolean" },
+    blurry: { type: "boolean" },
+    mod: { type: "boolean" },
+    menu: { type: "boolean" },
+    live: { type: "boolean" },
+  },
+  required: [
+    "label",
+    "text",
+    "hud_only",
+    "webcam",
+    "gore",
+    "letterbox",
+    "dark",
+    "blurry",
+    "mod",
+    "menu",
+    "live",
+  ],
+};
+
+/** The model's answer as a SegmentLook; anything missing reads as false and an empty label. */
+export function lookAnswer(parsed: any): SegmentLook {
+  const yes = (k: string) => parsed?.[k] === true;
+  const hud = yes("text") && yes("hud_only");
+  return {
+    label: String(parsed?.label ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80),
+    hud,
+    text: yes("text") && !hud,
+    webcam: yes("webcam"),
+    gore: yes("gore"),
+    letterbox: yes("letterbox"),
+    dark: yes("dark"),
+    blurry: yes("blurry"),
+    mod: yes("mod"),
+    menu: yes("menu"),
+    live: yes("live"),
+  };
+}
+
+async function lookOne(file: string): Promise<SegmentLook> {
+  const image = (await fs.readFile(file)).toString("base64");
+  const res = await fetchWithTimeout(
+    `${LOCAL_VISION_URL}/api/chat`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: LOCAL_VISION_MODEL,
+        stream: false,
+        think: false,
+        format: LOOK_SCHEMA,
+        keep_alive: "15m",
+        options: {
+          temperature: 0,
+          num_predict: 160 + THINK_ROOM,
+          num_ctx: NUM_CTX,
+        },
+        messages: [{ role: "user", content: LOOK_PROMPT, images: [image] }],
+      }),
+    },
+    90_000,
+  );
+  if (!res.ok)
+    throw new Error(
+      `ollama ${res.status}: ${(await res.text()).slice(0, 200)}`,
+    );
+  return lookAnswer(
+    visionAnswer(
+      (await res.json()) as {
+        message?: { content?: string; thinking?: string };
+      },
+    ),
+  );
+}
+
+/**
+ * A label and junk flags for each frame, in order, on this PC's GPU (free: no Claude call). Undefined for a
+ * frame the model could not judge, and for all of them when the local model is not running or switched off:
+ * the caller then keeps nothing it could not look at.
+ */
+export async function lookFrames(
+  files: string[],
+  concurrency = 2,
+): Promise<Array<SegmentLook | undefined>> {
+  const out: Array<SegmentLook | undefined> = new Array(files.length).fill(
+    undefined,
+  );
+  if (
+    !files.length ||
+    Date.now() < downUntil ||
+    process.env.LOCAL_VISION === "off" ||
+    Boolean(process.env.NODE_TEST_CONTEXT)
+  )
+    return out;
+  let next = 0;
+  let failures = 0;
+  const worker = async () => {
+    while (next < files.length && failures < 3) {
+      const i = next++;
+      try {
+        out[i] = await lookOne(files[i]!);
+      } catch (err) {
+        failures++;
+        if (failures === 3) {
+          downUntil = Date.now() + 10 * 60_000;
+          log("warn", "local vision unavailable; footage segments not looked at", {
+            error: errorMessage(err),
+          });
+        }
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, files.length) }, worker),
+  );
+  return out;
+}

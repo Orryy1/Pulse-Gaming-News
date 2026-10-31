@@ -17,7 +17,7 @@ import {
 import { lookFrames } from "./localvision.ts";
 import type { Llm } from "../editorial/llm.ts";
 import { judgeGameplay } from "./gameplay.ts";
-import { dHash, letterboxed, type FootageFirstDeps, type SourceHit } from "./footagefirst.ts";
+import { BORDER_H, BORDER_W, dHash, letterboxed, type FootageFirstDeps, type SourceHit } from "./footagefirst.ts";
 import { readText } from "./ocr.ts";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -206,6 +206,14 @@ export function footageFirstDeps(o: {
         "-filter_complex", `${scaled};${files.map((_, i) => `[v${i}]`).join("")}hstack=inputs=${files.length}`,
         "-frames:v", "1", "-q:v", "4", dest,
       ]);
+    },
+    grays: async (files) => {
+      const out: Uint8Array[] = [];
+      for (const f of files) {
+        const { stdout } = await runRaw(FFMPEG, ["-v", "error", "-i", f, "-vf", `scale=${BORDER_W}:${BORDER_H},format=gray`, "-f", "rawvideo", "-"]);
+        if (stdout.length >= BORDER_W * BORDER_H) out.push(new Uint8Array(stdout.subarray(0, BORDER_W * BORDER_H)));
+      }
+      return out;
     },
     bars: async (file) => {
       const { stdout } = await runRaw(FFMPEG, ["-v", "error", "-i", file, "-vf", "scale=9:8,format=gray", "-f", "rawvideo", "-"]);

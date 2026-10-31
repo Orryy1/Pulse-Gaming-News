@@ -18,6 +18,11 @@ const JUNK_TITLE: Array<[RegExp, string]> = [
     /\breacts?\b|\breaction\b|\bfacecam\b|\bwebcam\b|\blive ?stream\b|\bstream highlights\b|\bpodcast\b|(?<!\bno[ -])\bcommentary\b|\bfirst play\b|\bblind\b|\bfirst time\b|\bfor \d+ hours\b/i,
     "reaction or facecam",
   ],
+  // A screen filmed with a phone or camera, when the title says so; most do not (the frame check catches those).
+  [
+    /\b(filmed|recorded|shot) (on|with) (my |a )?(phone|iphone|camera|camcorder)\b|\boff[- ]screen\b|\bcam ?corder\b|\bfilming (my|the) (tv|screen|monitor)\b/i,
+    "filmed off a screen",
+  ],
   // 31 Oct 2026 proof: phone ports carry touch buttons over the picture; wheel videos a steering-wheel cam.
   [
     /\b(android|ios|iphone|ipad|mobile|apk|htc|samsung|tablet|netflix)\b/i,

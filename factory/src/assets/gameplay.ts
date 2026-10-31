@@ -861,7 +861,7 @@ const STUDIOS =
   /\b(infinity ward|treyarch|sledgehammer( games)?|raven software|activision|blizzard|ubisoft|electronic arts|bethesda|rockstar( games)?|naughty dog|bungie|343 industries|respawn|bioware|cd projekt|square enix|capcom|nintendo|sony|microsoft|xbox game studios|playstation studios|epic games|valve|beenox|high moon)\b/i;
 
 const NOT_A_MISSION =
-  /(PlayStation|PS[1-5]|Xbox|Nintendo|Switch|GameCube|Wii|Sega|Saturn|Dreamcast|Mega Drive|Genesis|Game Boy|Steam Deck|console|hardware|GPU|CPU|Scotland|England|Edinburgh|Dundee|New York|London|Tokyo|Kyoto|Los Angeles|Miami|Florida|California|Texas)/i;
+  /\b(PlayStation|PS[1-5]|Xbox|Nintendo|Switch|GameCube|Wii|Sega|Saturn|Dreamcast|Mega Drive|Genesis|Game Boy|Steam Deck|console|hardware|GPU|CPU|Scotland|England|Edinburgh|Dundee|New York|London|Tokyo|Kyoto|Los Angeles|Miami|Florida|California|Texas)\b/i;
 
 export function namedThings(
   targets: FootageTarget[],

@@ -99,6 +99,10 @@ test("junk is refused by title and channel before any download: the GTA VI chapt
     ],
     ["Grand Theft Auto San Andreas gameplay", "Someone", VC, GTA],
     ["GTA Vice City gameplay in GTA 5", "Someone", VC, GTA],
+    ["GAME SINS | Everything WRONG With Grand Theft Auto: San Andreas", "Dartigan", "Grand Theft Auto: San Andreas", GTA],
+    ["Why Does GTA San Andreas Feel like a Horror Game?? | Game Explorations", "sot0sam", "Grand Theft Auto: San Andreas", GTA],
+    ["Grand Theft Auto: Vice City (2002) Kill Count", "Video Game Kill Counts", VC, GTA],
+    ["What Happens If CJ knows everything from the Beginning - GTA San Andreas", "DiezMod97", "Grand Theft Auto: San Andreas", GTA],
   ];
   for (const [title, channel, game, franchise, year] of refused)
     assert.ok(
@@ -132,8 +136,10 @@ test("junk is refused by title and channel before any download: the GTA VI chapt
       "Grand Theft Auto III",
     ],
     ["GTA 3 gameplay no commentary", "Archive", "Grand Theft Auto III"],
+    ["Grand Theft Auto Vice City #12 [GamePlay Only]", "GameMania", VC],
+    ["GTA San Andreas walkthrough #5 l Drive-Thru", "ARConfidential", "Grand Theft Auto: San Andreas"],
     [
-      "Grand Theft Auto - DOS - The First GTA Game Ever (DMA Design 1997)",
+      "Grand Theft Auto (1997) DOS gameplay, no commentary",
       "The Dot Eaters",
       GTA,
       1997,
@@ -449,7 +455,8 @@ function fakes(
     },
     look: async (files) => {
       calls.looked += files.length;
-      return files.map((f, i) => looks(i, f));
+      // Looks keyed by segment: both frames of one segment get the same answer.
+      return files.map((f, i) => looks(Number(f.match(/seg_(\d+)/)?.[1] ?? i), f));
     },
     cut: async (_f, _at, seconds, dest) => {
       await fs.writeFile(dest, "mp4");
@@ -848,7 +855,7 @@ test("segments are looked at in rounds: more when most are refused, no more than
   };
   const clean = await run(() => false);
   const hard = await run((i) => i % 10 !== 0);
-  assert.ok(clean.segments > clean.looked, "a clean chapter stops looking once it has enough");
+  assert.ok(clean.segments > clean.looked / 2, "a clean chapter stops looking once it has enough");
   assert.ok(hard.looked > clean.looked, "a chapter whose frames are mostly refused looks at more");
-  assert.ok(hard.looked <= FOOTAGE_FIRST_DEFAULTS.visionMax);
+  assert.ok(hard.looked <= 2 * FOOTAGE_FIRST_DEFAULTS.visionMax);
 });

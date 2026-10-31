@@ -23,6 +23,10 @@ const JUNK_TITLE: Array<[RegExp, string]> = [
     "remaster, remake or fan build",
   ],
   [
+    /\bsins?\b|everything wrong|\bwhy (does|did|is|was)\b|\bwhat happens if\b|\bwhat if\b|\bhorror\b|\bcreepy(pasta)?\b|\bmyths?\b|\bsecrets?\b|\beaster eggs?\b|\bexplorations?\b|\bnostalgi(a|c)\b|\bessay\b|\bdocumentary\b|\bhistory of\b|\bkill ?counts?\b|\bi (finally|tried|played|beat|spent|robbed|destroyed|ruined)\b|\bpt\/eng\b|\blive\b/i,
+    "video essay, stream or counter overlay",
+  ],
+  [
     /\btrailer\b|\bteaser\b|\breview\b|\bexplained\b|\banalysis\b|\bnews\b|\btop \d+\b|\branking\b|\btier list\b|\bmeme\b|\bcompilation\b|\bmontage\b|\bedit\b|\bshorts?\b|#shorts|\bspeedrun\b|\bglitch(es)?\b|\btutorial\b|\bhow to\b|\btrophy\b|\bachievement\b|\bost\b|\bsoundtrack\b|\bmusic\b|\basmr\b|\b100 days\b/i,
     "not plain gameplay",
   ],

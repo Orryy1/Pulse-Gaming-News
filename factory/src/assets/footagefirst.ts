@@ -88,6 +88,10 @@ export const WORDS_PER_SECOND = 2.6;
 // ---------------------------------------------------------------------------------------------------------
 // Refusing junk before anything is downloaded.
 
+/** The words a plain gameplay upload's title carries. */
+const GAMEPLAY_WORD =
+  /\b(gameplay|walkthrough|playthrough|longplay|let'?s play|missions?|no commentary|full game|part \d+|episode \d+|free ?roam)\b|#\d+/i;
+
 /**
  * Why a video should not be downloaded as footage of this game, or undefined when it may be. Its title must
  * name the game (and no other entry of its series), and nothing in the title or channel may mark it as a mod,
@@ -102,9 +106,16 @@ export function junkSourceReason(
 ): string | undefined {
   const junk = junkTitleReason(title, channel, game);
   if (junk) return junk;
+  // Plain gameplay says so: essays, sketches and "what happens if" videos are edited, with overlays and effects.
+  if (!GAMEPLAY_WORD.test(title)) return "not plain gameplay";
   if (!namesGame(title, game, franchise, year))
     return "title does not name this game";
-  if (wrongEntry(game, title) || otherEntry(title, game))
+  // A video's own numbering ("#12", "Walkthrough #2", "Part 3") is not an entry number of the series.
+  const bare = title.replace(
+    /#\s*\d+|\b(walkthrough|part|episode|ep|mission|chapter|day)\s*#?\s*\d+/gi,
+    " ",
+  );
+  if (wrongEntry(game, bare) || otherEntry(bare, game))
     return "names another entry of the series";
   return undefined;
 }
@@ -938,7 +949,10 @@ export async function gatherChapterFootage(
     try {
       const looked = new Set<number>();
       let clean = 0;
-      while (looked.size < Math.min(o.visionMax, all.length) && clean < need * 1.25) {
+      while (
+        looked.size < Math.min(o.visionMax, all.length) &&
+        clean < need * 1.25
+      ) {
         const left = all.filter((g) => !looked.has(g.id));
         const size = Math.min(
           o.visionMax - looked.size,
@@ -946,17 +960,32 @@ export async function gatherChapterFootage(
         );
         const round = spread(left, size);
         if (!round.length) break;
+        // Two frames a segment, a quarter and three quarters in: one in the middle missed a "Mission passed"
+        // banner, a kill counter and a vehicle name that came and went around it (31 Oct 2026 proof).
+        const late = (f: string) => f.replace(/\.jpg$/, "_b.jpg");
         for (const g of round) {
           looked.add(g.id);
-          await deps
-            .frame(sources[g.src]!.file, g.at + g.len / 2, g.frame)
-            .catch(() => undefined);
+          for (const [f, at] of [
+            [g.frame, g.at + g.len * 0.25],
+            [late(g.frame), g.at + g.len * 0.75],
+          ] as const)
+            await deps
+              .frame(sources[g.src]!.file, at, f)
+              .catch(() => undefined);
         }
-        const looks = await deps.look(round.map((g) => g.frame));
+        const looks = await deps.look(
+          round.flatMap((g) => [g.frame, late(g.frame)]),
+        );
         report.looked += looks.filter(Boolean).length;
         for (const [i, g] of round.entries()) {
-          const reason = segmentRejectReason(looks[i]);
-          verdicts.push({ g, look: looks[i], reason, source: sources[g.src]!.url });
+          const [a, b] = [looks[2 * i], looks[2 * i + 1]];
+          const reason = segmentRejectReason(a) ?? segmentRejectReason(b);
+          verdicts.push({
+            g,
+            look: a?.label ? a : (b ?? a),
+            reason,
+            source: sources[g.src]!.url,
+          });
           if (!reason) clean += g.len;
         }
         // Nothing could be looked at (the local model is down): another round would see nothing either.

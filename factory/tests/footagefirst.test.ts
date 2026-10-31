@@ -23,6 +23,7 @@ import {
   segmentRejectReason,
   segmentsOf,
   FOOTAGE_FIRST_DEFAULTS,
+  DOWNLOADS_AT_ONCE,
   type FootageClip,
   type FootageFirstDeps,
 } from "../src/assets/footagefirst.ts";
@@ -802,4 +803,30 @@ test("the planner never plays one moment of a source twice in a chapter, nor loo
     strict.shots.some((s) => s.segment === 1 && s.media.type === "plate"),
     "the rest is the plate, for the thin-entry top-up",
   );
+});
+
+test("source windows download a few at a time, never more than DOWNLOADS_AT_ONCE", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
+  const { deps } = fakes(dir, () => look());
+  let running = 0;
+  let most = 0;
+  const hits = Array.from({ length: 6 }, (_, i) => ({ videoId: `vid${i}xxxxxxx`.slice(0, 11), title: `GTA Vice City gameplay part ${i + 1}`, channel: `Ch${i}` }));
+  const slow: FootageFirstDeps = {
+    ...deps,
+    search: async () => hits,
+    details: async () => ({ license: "Creative Commons Attribution license (reuse allowed)", seconds: 1800, channel: "", title: "" }),
+    download: async (url, from, to, dest) => {
+      running++;
+      most = Math.max(most, running);
+      await new Promise((r) => setTimeout(r, 20));
+      running--;
+      return deps.download(url, from, to, dest);
+    },
+  };
+  const ch = { entry: 2, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"] };
+  const report = emptyReport();
+  await gatherChapterFootage(slow, ch, [], path.join(dir, "entry_2"), "entry_2", 300, FOOTAGE_FIRST_DEFAULTS, report, [], Infinity);
+  assert.equal(report.downloads, 6);
+  assert.equal(most, DOWNLOADS_AT_ONCE);
+  await fs.rm(dir, { recursive: true, force: true });
 });

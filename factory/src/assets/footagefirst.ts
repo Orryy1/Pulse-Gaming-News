@@ -75,6 +75,9 @@ export function footageOptions(cfg: {
   };
 }
 
+/** Source windows downloaded at the same time. */
+export const DOWNLOADS_AT_ONCE = 3;
+
 /** The shortest segment worth a shot (the planner's shortest clip shot is 1.3 s; a line needs more). */
 export const SEGMENT_MIN_SECONDS = 2.4;
 /** The longest piece one unbroken take is cut into: a long drive becomes several shots, not one. */
@@ -265,7 +268,8 @@ export function spread<T>(xs: T[], n: number): T[] {
 /** Items in turns from each group (the first of every group, then the second, ...), groups in first-seen order. */
 export function roundRobin<T>(xs: T[], group: (x: T) => unknown): T[] {
   const groups = new Map<unknown, T[]>();
-  for (const x of xs) groups.set(group(x), [...(groups.get(group(x)) ?? []), x]);
+  for (const x of xs)
+    groups.set(group(x), [...(groups.get(group(x)) ?? []), x]);
   const out: T[] = [];
   for (let r = 0; out.length < xs.length; r++)
     for (const g of groups.values()) if (g[r] !== undefined) out.push(g[r]!);
@@ -789,7 +793,13 @@ export async function gatherChapterFootage(
         report.sourcesSeen++;
         const why = used.has(`https://www.youtube.com/watch?v=${h.videoId}`)
           ? "already used by this chapter"
-          : junkSourceReason(h.title, h.channel, ch.game, ch.franchise, ch.year);
+          : junkSourceReason(
+              h.title,
+              h.channel,
+              ch.game,
+              ch.franchise,
+              ch.year,
+            );
         if (why)
           report.sourcesRejected.push({
             entry: ch.entry,
@@ -821,11 +831,11 @@ export async function gatherChapterFootage(
     }
     // One video per channel first, so one uploader's habits (an overlay, a mod) cannot fill the chapter.
     const ordered = roundRobin(kept, (h) => h.channel);
-    const sources: Array<
-      SourceHit & SourceDetails & { url: string; file: string; from: number }
-    > = [];
+    type Picked = SourceHit &
+      SourceDetails & { url: string; file: string; from: number; to: number };
+    const picked: Picked[] = [];
     for (const h of ordered) {
-      if (sources.length >= o.sources || now() > deadline) break;
+      if (picked.length >= o.sources || now() > deadline) break;
       const d = await deps.details(h.videoId).catch(() => undefined);
       if (!d) continue;
       if (!ccBy(d.license)) {
@@ -846,29 +856,45 @@ export async function gatherChapterFootage(
         });
         continue;
       }
-      const url = `https://www.youtube.com/watch?v=${h.videoId}`;
-      const win = pullWindow(d.seconds, sources.length, o.pullSeconds);
-      const file = path.join(work, `src_${sources.length}.mp4`);
-      try {
-        const bytes = await deps.download(url, win.from, win.to, file);
-        report.downloads++;
-        report.downloadedMb += bytes / 1e6;
-        sources.push({
-          ...h,
-          ...d,
-          title: h.title,
-          channel: d.channel || h.channel,
-          url,
-          file,
-          from: win.from,
-        });
-      } catch (err) {
-        log("warn", "footage-first: download failed", {
-          video: h.videoId,
-          error: errorMessage(err).split("\n").pop(),
-        });
-      }
+      const win = pullWindow(d.seconds, picked.length, o.pullSeconds);
+      picked.push({
+        ...h,
+        ...d,
+        title: h.title,
+        channel: d.channel || h.channel,
+        url: `https://www.youtube.com/watch?v=${h.videoId}`,
+        file: path.join(work, `src_${picked.length}.mp4`),
+        from: win.from,
+        to: win.to,
+      });
     }
+    // Three windows at a time: one section download runs at about real time (31 Oct 2026 proof: 4 min for 7 min
+    // of 720p), so one after the other a chapter's six took 24 minutes.
+    const fetched = new Set<Picked>();
+    let next = 0;
+    const worker = async () => {
+      while (next < picked.length) {
+        const p = picked[next++]!;
+        try {
+          const bytes = await deps.download(p.url, p.from, p.to, p.file);
+          report.downloads++;
+          report.downloadedMb += bytes / 1e6;
+          fetched.add(p);
+        } catch (err) {
+          log("warn", "footage-first: download failed", {
+            video: p.videoId,
+            error: errorMessage(err).split(/\r?\n/).pop(),
+          });
+        }
+      }
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.min(DOWNLOADS_AT_ONCE, picked.length) },
+        worker,
+      ),
+    );
+    const sources = picked.filter((p) => fetched.has(p));
     if (!sources.length) return;
     // 2. Segments: each window cut at its own edits.
     const all: Array<{

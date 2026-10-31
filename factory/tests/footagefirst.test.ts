@@ -25,6 +25,7 @@ import {
   segmentRejectReason,
   segmentsOf,
   poorSources,
+  letterboxed,
   prefetchChapter,
   dHash,
   hamming,
@@ -1058,5 +1059,26 @@ test("the next chapter downloads while this one is looked at", async () => {
   assert.ok(lastDownload3 > 0);
   assert.equal(report.perChapter?.length, 2);
   assert.equal(typeof prefetchChapter, "function");
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("letterboxing is measured from a thumbnail, not asked of the model", async () => {
+  const frame = (top: number, mid: number) => Array.from({ length: 72 }, (_, i) => (Math.floor(i / 9) === 0 || Math.floor(i / 9) === 7 ? top : mid));
+  assert.equal(letterboxed(frame(2, 90)), true);
+  assert.equal(letterboxed(frame(60, 90)), false);
+  assert.equal(letterboxed(frame(2, 5)), false, "a black frame is dark, not letterboxed");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
+  const { deps } = fakes(dir, () => look());
+  const looked: string[] = [];
+  const barred: FootageFirstDeps = {
+    ...deps,
+    bars: async () => true,
+    look: async (files) => (looked.push(...files), deps.look(files)),
+  };
+  const report = emptyReport();
+  const ch = { entry: 2, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"] };
+  await gatherChapterFootage(barred, ch, [], path.join(dir, "entry_2"), "entry_2", 300, FOOTAGE_FIRST_DEFAULTS, report, [], Infinity);
+  assert.equal(looked.length, 0);
+  assert.ok(report.segmentsRejected.every((r) => r.why === "letterboxed" || r.why === "frozen picture"));
   await fs.rm(dir, { recursive: true, force: true });
 });

@@ -441,18 +441,16 @@ export interface SegmentLook {
 // Short on purpose: qwen3-vl thinks before it answers even with thinking off, and a long list of questions made
 // it think past the token budget, so a quarter of the answers came back cut off with an empty label (31 Oct 2026
 // experiment: the same frames answered in 1.2-3 s with a short prompt, 5-6 s with the long one).
+// Six questions, not eleven: each one lengthens the model's thinking (31 Oct 2026: 5.1 s a look with eleven, the
+// GPU's whole 40 minutes on four chapters). Darkness and dimness are measured from the scan, letterboxing from a
+// thumbnail and menus mostly read by the OCR, so the model is not asked.
 const LOOK_PROMPT = `Three frames of one gameplay segment, side by side. Answer briefly in JSON; a flag is true if it holds in any frame.
 label: what it shows in under 9 plain words, never the game's name (for example "red sports car on a beach road at sunset").
 text: readable words anywhere (subtitles, banners like "mission passed", big place or car names, prompts, menus, watermarks).
 hud_only: all writing is the game's small corner HUD (minimap, money, health).
 webcam: a facecam, picture-in-picture or stream overlay.
 gore: blood, wounds or bodies.
-letterbox: black bars over a third of the frame.
-dark: too dark to see.
-blurry: badly blurred.
-mod: modded or kids' content (superheroes, cartoon or toy characters, giant ramps, neon obstacle courses).
-menu: a menu, pause, loading or map screen.
-live: real camera footage, not a game.`;
+mod: modded or kids' content (superheroes, cartoon or toy characters, giant ramps, neon obstacle courses).`;
 
 const LOOK_SCHEMA = {
   type: "object",
@@ -462,26 +460,9 @@ const LOOK_SCHEMA = {
     hud_only: { type: "boolean" },
     webcam: { type: "boolean" },
     gore: { type: "boolean" },
-    letterbox: { type: "boolean" },
-    dark: { type: "boolean" },
-    blurry: { type: "boolean" },
     mod: { type: "boolean" },
-    menu: { type: "boolean" },
-    live: { type: "boolean" },
   },
-  required: [
-    "label",
-    "text",
-    "hud_only",
-    "webcam",
-    "gore",
-    "letterbox",
-    "dark",
-    "blurry",
-    "mod",
-    "menu",
-    "live",
-  ],
+  required: ["label", "text", "hud_only", "webcam", "gore", "mod"],
 };
 
 /** The model's answer as a SegmentLook; anything missing reads as false and an empty label. */

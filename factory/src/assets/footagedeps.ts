@@ -17,7 +17,7 @@ import {
 import { lookFrames } from "./localvision.ts";
 import type { Llm } from "../editorial/llm.ts";
 import { judgeGameplay } from "./gameplay.ts";
-import { dHash, type FootageFirstDeps, type SourceHit } from "./footagefirst.ts";
+import { dHash, letterboxed, type FootageFirstDeps, type SourceHit } from "./footagefirst.ts";
 import { readText } from "./ocr.ts";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -206,6 +206,10 @@ export function footageFirstDeps(o: {
         "-filter_complex", `${scaled};${files.map((_, i) => `[v${i}]`).join("")}hstack=inputs=${files.length}`,
         "-frames:v", "1", "-q:v", "4", dest,
       ]);
+    },
+    bars: async (file) => {
+      const { stdout } = await runRaw(FFMPEG, ["-v", "error", "-i", file, "-vf", "scale=9:8,format=gray", "-f", "rawvideo", "-"]);
+      return stdout.length >= 72 && letterboxed(new Uint8Array(stdout.subarray(0, 72)));
     },
     hash: async (file) => {
       const { stdout } = await runRaw(FFMPEG, ["-v", "error", "-i", file, "-vf", "scale=9:8,format=gray", "-f", "rawvideo", "-"]);

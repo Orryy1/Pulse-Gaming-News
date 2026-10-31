@@ -314,6 +314,16 @@ export function poorSources(
   return new Set([...by].filter(([, m]) => m.all >= min && m.ok / m.all < rate).map(([k]) => k));
 }
 
+/**
+ * Black bars over a third of the frame, from a 9x8 greyscale thumbnail: the top and bottom rows (an eighth of the
+ * height each) near black while the middle is not. Cutscenes letterboxed in a 16:9 recording read so.
+ */
+export function letterboxed(gray: Uint8Array | number[]): boolean {
+  const row = (y: number) => Array.from({ length: 9 }, (_, x) => gray[y * 9 + x]!).reduce((n, v) => n + v, 0) / 9;
+  const mid = (row(3) + row(4)) / 2;
+  return row(0) < 14 && row(7) < 14 && mid > 30;
+}
+
 /** A 64-bit difference hash from a 9x8 greyscale thumbnail (row by row): each bit is "brighter than its right neighbour". */
 export function dHash(gray: Uint8Array | number[]): string {
   let bits = "";
@@ -695,6 +705,8 @@ export interface FootageFirstDeps {
   frames(file: string, at: number, seconds: number, prefix: string): Promise<string[]>;
   /** One image of these frames side by side. */
   compose(files: string[], dest: string): Promise<void>;
+  /** True when a frame has black bars over a third of its height (a cutscene); absent, not checked. */
+  bars?(file: string): Promise<boolean>;
   /** A frame's difference hash (dHash), or undefined. */
   hash(file: string): Promise<string | undefined>;
   /** The words the Windows OCR reads in each frame (empty where there is no OCR). */
@@ -1124,7 +1136,12 @@ export async function finishChapter(
             refuse(g, "no frames");
             continue;
           }
-          const h = await deps.hash(frames[Math.floor(frames.length / 2)]!).catch(() => undefined);
+          const middle = frames[Math.floor(frames.length / 2)]!;
+          if (await deps.bars?.(middle).catch(() => false)) {
+            refuse(g, "letterboxed");
+            continue;
+          }
+          const h = await deps.hash(middle).catch(() => undefined);
           const same = seenHash.get(g.src) ?? [];
           if (h && same.some((x) => hamming(x, h) <= SAME_PICTURE_BITS)) {
             refuse(g, "same picture as another segment");

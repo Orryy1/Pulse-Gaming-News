@@ -245,6 +245,7 @@ export function testConfig(
     parallaxPython: "",
     longLeadMinutes: 0,
     minWordsPerMinute: 0,
+    voiceTakeCheck: true,
     backupDir: "",
     tiktokDaily: 0,
     tiktokFromHour: 16,

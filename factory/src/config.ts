@@ -221,6 +221,10 @@ export interface Config {
   longLeadMinutes: number;
   /** Narration slower than this is sped up (by up to 25%, pitch kept): MIN_WORDS_PER_MINUTE, 0 turns it off. */
   minWordsPerMinute: number;
+  /** Long ElevenLabs narration: each take's pitch and brightness is measured and a take that strays from the
+   * others (5% in pitch, 10% in centroid) is re-voiced once, the closer kept, at most 3 a narration
+   * (VOICE_TAKE_CHECK, default on; 31 Oct 2026). */
+  voiceTakeCheck: boolean;
   docMaxSeconds: number;
   docClipsPerChapter: number;
   /** The documentary mix follows the writer's beats and plays an era bed under each chapter's opening
@@ -670,6 +674,7 @@ export function loadConfig(): Config {
     docLeadMinutes: int("DOC_LEAD_MINUTES", 600),
     longLeadMinutes: int("LONG_LEAD_MINUTES", 30 * 60),
     minWordsPerMinute: int("MIN_WORDS_PER_MINUTE", 145),
+    voiceTakeCheck: bool("VOICE_TAKE_CHECK", true),
     docMaxSeconds: int("DOC_MAX_SECONDS", 3000),
     docClipsPerChapter: int("DOC_CLIPS_PER_CHAPTER", 4),
     docSoundBeats: bool("DOC_SOUND_BEATS", true),

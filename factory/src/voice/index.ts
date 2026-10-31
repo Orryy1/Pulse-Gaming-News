@@ -6,6 +6,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
+import path from "node:path";
 import type { Config, VoiceProvider } from "../config.ts";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
@@ -76,11 +77,25 @@ export function pickVoice(cfg: Config, ordinal: number): { id: string; name: str
   return cfg.voicePool[Math.floor(Math.max(0, ordinal) / cfg.voiceRotation) % cfg.voicePool.length]!;
 }
 
+/** The episode a narration file belongs to: data/episodes/<id>/..., or undefined for any other path. */
+export function episodeIdOf(dataDir: string, file: string): string | undefined {
+  const rel = path.relative(path.join(dataDir, "episodes"), file);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return undefined;
+  const parts = rel.split(/[\\/]/);
+  return parts.length >= 2 && parts[0] ? parts[0] : undefined;
+}
+
 export interface NarrationWithVoice extends Narration {
   voice: { provider: "local" | "elevenlabs"; id: string; name: string };
 }
 
-export async function narrate(cfg: Config, text: string, outPath: string, voice?: { id: string; name: string }): Promise<NarrationWithVoice> {
+export async function narrate(
+  cfg: Config,
+  text: string,
+  outPath: string,
+  voice?: { id: string; name: string },
+  hooks: { onEvent?: (kind: string, detail: Record<string, unknown>) => Promise<void> | void } = {},
+): Promise<NarrationWithVoice> {
   const order = providerOrder(cfg.voiceProvider);
   const errors: string[] = [];
   for (const provider of order) {
@@ -103,7 +118,12 @@ export async function narrate(cfg: Config, text: string, outPath: string, voice?
         if (left !== undefined && left < text.length * 1.2 + cfg.elevenLabsReserve) throw new Error(`ElevenLabs has ${left} characters left this month`);
         const elOpts = { apiKey: cfg.elevenLabsApiKey, voiceId: voice?.id ?? cfg.elevenLabsVoiceId, modelId: cfg.elevenLabsModel };
         // A long-form script is spoken in takes: the timestamps endpoint takes a few thousand characters at a time.
-        n = text.length > LONG_TEXT_CHARS ? await synthesiseElevenLabsLong(text, outPath, elOpts) : await synthesiseElevenLabs(text, outPath, elOpts);
+        // Re-voicing a stray take spends extra characters, only out of what the balance holds beyond this job and the reserve.
+        const revoiceChars = left === undefined ? undefined : Math.max(0, left - text.length * 1.2 - cfg.elevenLabsReserve);
+        n =
+          text.length > LONG_TEXT_CHARS
+            ? await synthesiseElevenLabsLong(text, outPath, { ...elOpts, takeCheck: cfg.voiceTakeCheck, revoiceChars, onEvent: hooks.onEvent })
+            : await synthesiseElevenLabs(text, outPath, elOpts);
       }
       // ElevenLabs voices breathe audibly between lines; its timestamps say where, so those gaps go quiet.
       if (provider === "elevenlabs") await quietBreaths(outPath, n.words);

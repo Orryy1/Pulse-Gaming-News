@@ -270,6 +270,13 @@ export function testConfig(
     annotate: false,
     realPhotosPinnedOnly: true,
     stockThemeMax: 2,
+    // Footage first downloads and looks at real videos: off in tests unless a test turns it on with fakes.
+    footageFirst: false,
+    footageShareTarget: 60,
+    footageSources: 6,
+    footagePullSeconds: 420,
+    footageVisionMax: 120,
+    footageFirstMaxMinutes: 40,
     illustrate: false,
     illustrateUrl: "http://127.0.0.1:8188",
     illustrateMax: 24,

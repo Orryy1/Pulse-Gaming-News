@@ -397,6 +397,18 @@ export interface Config {
   realPhotosPinnedOnly: boolean;
   /** At most this many stock clips per theme ("office at night", "counting cash") in one video (src/assets/repeats.ts). */
   stockThemeMax: number;
+  /**
+   * Footage first for long videos (src/assets/footagefirst.ts): once per video, before the picture top-up, each
+   * released game's chapter gathers Creative Commons gameplay until moving footage can fill FOOTAGE_SHARE_TARGET
+   * percent of its narration; junk (mods, kids' videos, reactions, remasters, menus) is refused; the planner
+   * never repeats a moment within a chapter. On by default (owner, 31 Oct 2026).
+   */
+  footageFirst: boolean;
+  footageShareTarget: number; // percent of a game chapter's narrated time on moving footage
+  footageSources: number; // CC BY videos per chapter at most
+  footagePullSeconds: number; // seconds downloaded from each
+  footageVisionMax: number; // segment frames checked on this PC per chapter at most
+  footageFirstMaxMinutes: number; // the whole pass stops starting new chapters after this long; 0 = no limit
   /** Drawn concept sketches for documentary lines nothing filmed can show (src/assets/illustrate.ts); off by default. */
   illustrate: boolean;
   /** The ComfyUI server that draws them (this PC's FLUX.1 dev). */
@@ -867,6 +879,12 @@ export function loadConfig(): Config {
     annotate: bool("ANNOTATE", true),
     realPhotosPinnedOnly: bool("REAL_PHOTOS_PINNED_ONLY", true),
     stockThemeMax: int("STOCK_THEME_MAX", 2),
+    footageFirst: bool("FOOTAGE_FIRST", true),
+    footageShareTarget: Math.max(0, Math.min(100, int("FOOTAGE_SHARE_TARGET", 60))),
+    footageSources: Math.max(1, int("FOOTAGE_SOURCES", 6)),
+    footagePullSeconds: Math.max(60, int("FOOTAGE_PULL_SECONDS", 420)),
+    footageVisionMax: Math.max(12, int("FOOTAGE_VISION_MAX", 120)),
+    footageFirstMaxMinutes: Math.max(0, int("FOOTAGE_FIRST_MAX_MINUTES", 40)),
     illustrate: bool("ILLUSTRATE_ENABLED", false),
     illustrateUrl: str("ILLUSTRATE_URL", "http://127.0.0.1:8188"),
     illustrateMax: int("ILLUSTRATE_MAX", 24),

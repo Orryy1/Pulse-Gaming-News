@@ -10,6 +10,8 @@ import { logEvent } from "./episodes.ts";
 import type { RenderPlan } from "./render/plan.ts";
 import type { Segment } from "./render/timeline.ts";
 import { bareLines, shortMediaRichness } from "./qa/mediarich.ts";
+import { growthDefaults } from "./growth.ts";
+import { shortsCleanFor } from "./render/cleanframe.ts";
 import {
   craftSummary,
   fillSeconds,
@@ -128,4 +130,30 @@ export async function craftForShort(
       .catch(() => undefined);
   }
   return fills;
+}
+
+/**
+ * Whether this Short is drawn clean (src/render/cleanframe.ts): SHORTS_CLEAN off, never; a Short in the clean-frame
+ * retention test (src/growth.ts), its arm; after that test, its winner; until then, clean. Logged on the episode.
+ */
+export async function shortsCleanStep(
+  s: Pick<Services, "db" | "cfg">,
+  episodeId: string,
+  test: { key: string; variant: "A" | "B" } | undefined,
+): Promise<boolean> {
+  const winner = s.cfg.shortsClean
+    ? (await growthDefaults(s.db).catch(() => [])).find((d) => d.test.key === "shorts_clean")?.variant
+    : undefined;
+  const clean = shortsCleanFor(s.cfg.shortsClean, test, winner);
+  await logEvent(s.db, episodeId, "shorts_clean", {
+    clean,
+    why: !s.cfg.shortsClean
+      ? "SHORTS_CLEAN is off"
+      : test?.key === "shorts_clean"
+        ? `retention test arm ${test.variant}`
+        : winner
+          ? `retention test winner ${winner}`
+          : "default",
+  });
+  return clean;
 }

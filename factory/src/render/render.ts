@@ -379,6 +379,7 @@ export interface RenderInput {
       aspect: number;
       blurFile?: string;
       beatIndex?: number;
+      credit?: string;
     }>;
     clipFiles: Array<{
       file: string;
@@ -389,6 +390,7 @@ export interface RenderInput {
       motion?: number;
       luma?: number;
       stock?: boolean;
+      credit?: string;
     }>;
     musicFile: string | null;
     /** The new-look opening's cut-out of the hero art, relative to the episode folder. */
@@ -681,6 +683,7 @@ export async function renderShort(input: RenderInput): Promise<void> {
         aspect: i.aspect,
         blurSrc: i.blurFile ? `${files.url}/${webPath(i.blurFile)}` : null,
         beatIndex: i.beatIndex,
+        credit: i.credit,
       })),
       clips: clipFiles.map((c) => ({
         src: `${files.url}/${webPath(c.file)}`,
@@ -691,6 +694,7 @@ export async function renderShort(input: RenderInput): Promise<void> {
         motion: c.motion,
         luma: c.luma,
         stock: c.stock,
+        credit: c.credit,
       })),
       // Brand files ship in the bundle's public dir; Short resolves bare
       // names with staticFile().

@@ -63,7 +63,9 @@ export const TopBar: React.FC<{
   logoSrc: string | null;
   /** Pixels kept clear at the right of the source line (Pip sits there on the mascot Shorts). */
   reserveRight?: number;
-}> = ({ chip, accent, isRumour, attribution, logoSrc, reserveRight = 0 }) => {
+  /** The clean Short (src/render/cleanframe.ts): the flair, rule and source line at this opacity, the mark always. */
+  labelOpacity?: number;
+}> = ({ chip, accent, isRumour, attribution, logoSrc, reserveRight = 0, labelOpacity = 1 }) => {
   // The brand bar is complete at frame 0: frame 0 is the thumbnail.
   const rowIn = 1;
   const srcRule = 1;
@@ -104,6 +106,7 @@ export const TopBar: React.FC<{
         </div>
         <div
           style={{
+            opacity: labelOpacity,
             marginLeft: 4,
             padding: "8px 18px",
             background: isRumour ? COLOUR.alert : accent,
@@ -126,6 +129,7 @@ export const TopBar: React.FC<{
           left: SAFE.left,
           width: 4,
           height: 34,
+          opacity: labelOpacity,
           background: accent,
           transform: `scaleY(${srcRule})`,
           transformOrigin: "top",
@@ -145,7 +149,7 @@ export const TopBar: React.FC<{
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
-          opacity: srcIn,
+          opacity: srcIn * labelOpacity,
           textShadow: "0 2px 12px rgba(0,0,0,0.8)",
           clipPath: `inset(0 ${100 - srcIn * 100}% 0 0)`,
         }}

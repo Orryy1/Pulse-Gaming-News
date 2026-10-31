@@ -219,7 +219,8 @@ import {
 } from "./growth.ts";
 import { holdSlotForCap } from "./cadence.ts";
 import { mediaRichNotice, shortMediaRichness } from "./qa/mediarich.ts";
-import { craftForShort } from "./shortcraftstep.ts";
+import { craftForShort, shortsCleanStep } from "./shortcraftstep.ts";
+import { ccCredit } from "./render/cleanframe.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
 import {
@@ -7576,6 +7577,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         aspect: i.aspect,
         blurFile: i.blurFile,
         beatIndex: i.beatIndex,
+        credit: photoCredit(i),
       })),
       clipFiles: (assets.clips ?? []).map((c) => ({
         file: c.file,
@@ -7586,6 +7588,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         motion: c.motion,
         luma: c.luma,
         stock: c.stock,
+        credit: ccCredit(c.provenance),
       })),
       steam: steamLite,
       emphasis: emphasisWords(script),
@@ -7593,6 +7596,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       stamps: stampsFor(script, words),
       plan,
       suite: assets.suite,
+      // The clean frame (src/render/cleanframe.ts): SHORTS_CLEAN, or the clean-frame retention test's arm or winner.
+      clean: await shortsCleanStep(s, ep.id, assets.test),
       mascot: assets.mascot,
       heroCutFile: assets.heroCut,
       renderDate: s.now().toISOString().slice(0, 10),

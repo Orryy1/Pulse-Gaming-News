@@ -338,6 +338,8 @@ export interface Config {
   shortCraftPhotos: boolean;
   shortCraftFillers: boolean;
   shortCraftCamera: boolean;
+  /** The clean frame on every Short (src/render/cleanframe.ts): full-bleed, one overlay at a time, a small mark. */
+  shortsClean: boolean;
   /** The graphics check before a long render (src/qa/graphicscheck.ts): every graphic as a cheap still, faulted
    * ones muted, so the full render runs once instead of again per faulted graphic. */
   graphicsPrepass: boolean;
@@ -798,6 +800,7 @@ export function loadConfig(): Config {
     shortCraftPhotos: bool("SHORT_CRAFT_PHOTOS", true),
     shortCraftFillers: bool("SHORT_CRAFT_FILLERS", true),
     shortCraftCamera: bool("SHORT_CRAFT_CAMERA", true),
+    shortsClean: bool("SHORTS_CLEAN", true),
     graphicsPrepass: bool("GRAPHICS_PREPASS", true),
     graphicsPrepassMax: int("GRAPHICS_PREPASS_MAX", 200),
     graphicsRerenderPasses: int("GRAPHICS_RERENDER_PASSES", 1),

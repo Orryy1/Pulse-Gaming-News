@@ -4,7 +4,12 @@
 // renders a still of every new look at its settled frame into data/smoke/allshorts_out/ (and a contact sheet).
 // With --time it renders one whole Short twice, without and with the craft, and prints both times.
 //
+// With --clean it compares each Short as published (frames pulled from its short.mp4) with the clean frame
+// (src/render/cleanframe.ts) rendered at the same moments, prints the per-frame element counts of both and writes
+// before/after contact sheets (clean_<ep>.jpg); --only-before <ep,...> does the published half for a Short the
+// database copy does not hold.
 // node --import tsx data/smoke/allshorts.mts [--db data/smoke/dbcopy/db] --eps a,b,c,d [--stills] [--time ep]
+//   [--clean] [--only-before ep]
 // Every episode folder is only read (served over loopback); nothing is written to it or to the database.
 import fs from "node:fs";
 import path from "node:path";
@@ -16,6 +21,8 @@ import { buildSegments } from "../../src/render/timeline.ts";
 import { TAIL_SECONDS } from "../../src/render/plan.ts";
 import { emphasisWords, photoCredit, segmentInputs, stampsFor, variantOf } from "../../src/pipeline.ts";
 import { bareLines, shortMediaRichness } from "../../src/qa/mediarich.ts";
+import { elementsAt, ccCredit, elementStats, frameModel, overlaySpans, shortLayout, OPENING_LABEL_FRAMES, type FrameModel } from "../../src/render/cleanframe.ts";
+import { motifsFor } from "../../src/render/components/motifs/index.ts";
 import { ALL_ON, cardWindow, craftSummary, fillSeconds, HOUSE, planShortCraft, rememberCraft, type RecentCraft } from "../../src/render/shortcraft.ts";
 
 const args = process.argv.slice(2);
@@ -38,7 +45,7 @@ for (const id of [...EPS, TIME].filter(Boolean)) {
 }
 await db.close();
 
-type Built = { id: string; props: any; craftPlan: any; plainPlan: any; dir: string; stills: Array<{ frame: number; name: string }> };
+type Built = { id: string; props: any; craftPlan: any; plainPlan: any; dir: string; stills: Array<{ frame: number; name: string }>; suite: boolean; before?: FrameModel; after?: FrameModel; loopFrom?: number };
 let recent: RecentCraft[] = [];
 const built: Built[] = [];
 // Oldest first, so each Short's memory holds the ones before it.
@@ -120,17 +127,86 @@ for (const id of order) {
     emphasis: emphasisWords(script),
     deskName: assets.desk?.voice?.name,
     stamps,
-    suite: true,
+    suite: args.includes("--clean") ? Boolean(assets.suite) : true,
     renderDate: day,
     _images: images,
     _clips: clips,
     _audio: assets.audio,
     _music: assets.musicFile,
   };
-  built.push({ id, props, craftPlan, plainPlan: plain, dir, stills });
+  // The element count, as published and as the clean frame draws it (the craft only on a new-look Short, as in the pipeline).
+  const suite = Boolean(assets.suite);
+  const fps = plain.fps;
+  const layout = shortLayout(segments, fps, plain.totalFrames, plain.tailFrames);
+  const sting = suite && Boolean(motifsFor({ title: script.game_title, platforms: "", year: gameYear, theme: script.game_title })[0]?.card) && images.length > 0 && layout.hookEnd < plain.totalFrames - 120;
+  const footageCredit = clips.length > 0;
+  const beforeM = frameModel({
+    clean: false,
+    spans: overlaySpans({ segments, words, plan: assets.plan, layout, stamps, sting }),
+    layout,
+    plan: assets.plan,
+    words,
+    fps,
+    credited: (i) => {
+      const m = assets.plan.shots[i]?.media;
+      return m?.type === "clip" && (footageCredit || clips[m.index]?.stock);
+    },
+  });
+  const afterPlan = suite ? craftPlan : plain;
+  const afterM = frameModel({
+    clean: true,
+    spans: overlaySpans({ segments, words, plan: afterPlan, layout, stamps, sting }),
+    layout,
+    plan: afterPlan,
+    words,
+    fps,
+    credited: (i) => {
+      const m = afterPlan.shots[i]?.media;
+      if (m?.type === "clip") return Boolean(clips[m.index]?.stock || ccCredit(clips[m.index]?.provenance));
+      if (m?.type === "image") return Boolean(images[m.index]?.credit);
+      return false;
+    },
+  });
+  if (args.includes("--clean")) {
+    const middle = (f: number) => f < OPENING_LABEL_FRAMES || f >= layout.loopFrom;
+    for (const [name, m] of [["published", beforeM], ["clean", afterM]] as const) {
+      const all = elementStats(m);
+      const mid = elementStats(m, middle);
+      console.log(`elements ${name}: most ${all.max} on any frame (frame ${all.worst}: ${all.worstAt.join(" + ")}), mean ${all.mean}, ${Math.round(all.overTwo * 100)}% of frames over 2; after the opening 3 s and before the loop: most ${mid.max}, mean ${mid.mean}, ${Math.round(mid.overTwo * 100)}% over 2`);
+    }
+  }
+  built.push({ id, props, craftPlan: afterPlan, plainPlan: plain, dir, stills, suite, before: beforeM, after: afterM, loopFrom: layout.loopFrom });
 }
 
-if (!args.includes("--stills") && !TIME) process.exit(0);
+const ONLY_BEFORE = flag("only-before").split(",").filter(Boolean);
+if (args.includes("--plan-only") || (!args.includes("--stills") && !TIME && !args.includes("--clean") && !ONLY_BEFORE.length)) process.exit(0);
+
+const elementsCount = (m: FrameModel, f: number) => elementsAt(m, f).length;
+/** Frames for the before/after sheets: eight moments spread over the Short. */
+const sheetFrames = (total: number) => [0.02, 0.1, 0.22, 0.35, 0.48, 0.62, 0.76, 0.9].map((x) => Math.round(x * total));
+/** A frame of the published Short, pulled from its MP4 (read only), at half size. */
+function publishedFrame(dir: string, frame: number, out: string) {
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-ss", (frame / 30).toFixed(3), "-i", `${dir}/short.mp4`, "-frames:v", "1", "-vf", "scale=540:960", out]);
+}
+/** A row of stills side by side. */
+function row(files: string[], out: string) {
+  const list = path.join(OUT, "_row.txt");
+  fs.writeFileSync(list, files.map((m) => `file '${m.replace(/\\/g, "/")}'`).join("\n"));
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", list, "-vf", `scale=270:480,tile=${files.length}x1:padding=4:color=0x202020`, "-frames:v", "1", out]);
+  fs.rmSync(list, { force: true });
+}
+for (const id of ONLY_BEFORE) {
+  const dir = `${ROOT}/${id}`;
+  const secs = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", `${dir}/short.mp4`]).toString().trim());
+  const files = sheetFrames(Math.round(secs * 30)).map((f) => {
+    const out = path.join(OUT, `_b_${id.slice(-8)}_${f}.jpg`);
+    publishedFrame(dir, f, out);
+    return out;
+  });
+  row(files, path.join(OUT, `clean_${id.slice(-8)}_published.jpg`));
+  files.forEach((f) => fs.rmSync(f, { force: true }));
+  console.log("published sheet", id);
+}
 const serveUrl = await getBundle();
 const browser = await openBrowser("chrome", { chromiumOptions: { gl: "angle" } });
 const propsFor = (b: Built, url: string, plan: any) => {
@@ -138,8 +214,8 @@ const propsFor = (b: Built, url: string, plan: any) => {
   return {
     ...rest,
     plan,
-    images: _images.map((i: any) => ({ src: `${url}/${webPath(i.file)}`, kind: i.kind, aspect: i.aspect, blurSrc: i.blurFile ? `${url}/${webPath(i.blurFile)}` : null, beatIndex: i.beatIndex })),
-    clips: _clips.map((c: any) => ({ src: `${url}/${webPath(c.file)}`, durationSeconds: c.durationSeconds, blurSrc: c.blurFile ? `${url}/${webPath(c.blurFile)}` : null, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, stock: c.stock })),
+    images: _images.map((i: any) => ({ src: `${url}/${webPath(i.file)}`, kind: i.kind, aspect: i.aspect, blurSrc: i.blurFile ? `${url}/${webPath(i.blurFile)}` : null, beatIndex: i.beatIndex, credit: i.credit })),
+    clips: _clips.map((c: any) => ({ src: `${url}/${webPath(c.file)}`, durationSeconds: c.durationSeconds, blurSrc: c.blurFile ? `${url}/${webPath(c.blurFile)}` : null, beatIndex: c.beatIndex, role: c.role, motion: c.motion, luma: c.luma, stock: c.stock, credit: ccCredit(c.provenance) })),
     audioSrc: _audio ? `${url}/${webPath(_audio)}` : null,
     musicSrc: _music ?? null,
     logoSrc: "logo.png",
@@ -151,7 +227,7 @@ if (args.includes("--stills")) {
   for (const b of built) {
     const files = await serveDir(b.dir);
     try {
-      const inputProps = propsFor(b, files.url, b.craftPlan);
+      const inputProps = { ...propsFor(b, files.url, b.craftPlan), clean: !args.includes("--no-clean") };
       const composition = await selectComposition({ serveUrl, id: "PulseShort", inputProps, puppeteerInstance: browser });
       for (const s of b.stills) {
         const out = path.join(OUT, `${b.id.slice(-8)}_${s.name}_f${s.frame}.jpg`);
@@ -175,13 +251,44 @@ if (args.includes("--stills")) {
   }
 }
 
+if (args.includes("--clean")) {
+  for (const b of built) {
+    const files = await serveDir(b.dir);
+    try {
+      const inputProps = { ...propsFor(b, files.url, b.craftPlan), clean: true };
+      const composition = await selectComposition({ serveUrl, id: "PulseShort", inputProps, puppeteerInstance: browser });
+      const frames = sheetFrames(composition.durationInFrames);
+      const pub: string[] = [];
+      const cln: string[] = [];
+      for (const f of frames) {
+        const a = path.join(OUT, `_b_${f}.jpg`);
+        publishedFrame(b.dir, f, a);
+        pub.push(a);
+        const c = path.join(OUT, `_a_${f}.jpg`);
+        await renderStill({ composition, serveUrl, output: c, inputProps, frame: f, imageFormat: "jpeg", jpegQuality: 85, scale: 0.5, puppeteerInstance: browser, timeoutInMilliseconds: 180_000 });
+        cln.push(c);
+      }
+      const top = path.join(OUT, "_top.jpg");
+      const bottom = path.join(OUT, "_bottom.jpg");
+      row(pub, top);
+      row(cln, bottom);
+      execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", top, "-i", bottom, "-filter_complex", "vstack=inputs=2", path.join(OUT, `clean_${b.id.slice(-8)}.jpg`)]);
+      for (const f of [...pub, ...cln, top, bottom]) fs.rmSync(f, { force: true });
+      const counts = (m: FrameModel) => frames.map((f) => (m ? elementsCount(m, f) : 0)).join(" ");
+      console.log(`clean sheet ${b.id}: frames ${frames.join(" ")}; elements published ${counts(b.before!)}; clean ${counts(b.after!)}`);
+    } finally {
+      await files.close();
+    }
+  }
+}
+
 if (TIME) {
   const b = built.find((x) => x.id === TIME);
   if (!b) throw new Error(`--time ${TIME} must be one of --eps`);
   const files = await serveDir(b.dir);
   try {
-    for (const [label, plan] of [["without craft", b.plainPlan], ["with craft", b.craftPlan], ["without craft (again)", b.plainPlan], ["with craft (again)", b.craftPlan]] as const) {
-      const inputProps = propsFor(b, files.url, plan);
+    for (const [label, plan, clean] of [["as published (no craft, old frame)", b.plainPlan, false], ["craft, old frame", b.craftPlan, false], ["craft, clean frame", b.craftPlan, true], ["as published (again)", b.plainPlan, false], ["craft, old frame (again)", b.craftPlan, false], ["craft, clean frame (again)", b.craftPlan, true]] as const) {
+      const inputProps = { ...propsFor(b, files.url, plan), clean };
       const composition = await selectComposition({ serveUrl, id: "PulseShort", inputProps, puppeteerInstance: browser });
       const t0 = Date.now();
       await renderMedia({ composition, serveUrl, codec: "h264", crf: 21, outputLocation: path.join(OUT, `_time_${label.replace(/\W+/g, "_")}.mp4`), inputProps, puppeteerInstance: browser, chromiumOptions: { gl: "angle" }, timeoutInMilliseconds: 300_000 });

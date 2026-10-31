@@ -49,6 +49,7 @@ import {
   titleLines,
   gameSoundVolume,
   type LongPlan,
+  type LongShot,
   usefulEmphasis,
   usefulGraphic,
 } from "./longplan.ts";
@@ -163,6 +164,26 @@ import {
   YearCounter,
 } from "./components/Structure.tsx";
 import { SketchShot } from "./components/SketchShot.tsx";
+// The filler visuals for lines nothing filmed can show (src/assets/fillers.ts chooses, ./fillerplan.ts times).
+import { KINETIC, type KineticStyle } from "./components/kinetic/index.ts";
+import { wordTimes } from "./components/kinetic/words.ts";
+import { DIAGRAMS, type DiagramStyle } from "./components/diagram/index.ts";
+import { DocumentShot } from "./components/docs/DocumentShot.tsx";
+import { DrawnScene } from "./components/objects/index.ts";
+import { ReconShot } from "./components/recon/ReconShot.tsx";
+import { LocalVideoShot } from "./components/localvideo/LocalVideoShot.tsx";
+import { isLocalVideo } from "./components/localvideo/plan.ts";
+import {
+  fillerSound,
+  reconFillRate,
+  shotWords,
+  type DiagramFillerData,
+  type DocumentFillerData,
+  type KineticFillerData,
+  type MomentFiller,
+  type ReconFillerData,
+  type SceneFillerData,
+} from "./fillerplan.ts";
 import { planSketchShots, type SketchDecision } from "./sketchplan.ts";
 import { DisplayShot, PhotoShot } from "./components/PhotoShot.tsx";
 import {
@@ -1034,6 +1055,8 @@ const Backdrop: React.FC<{
   photos?: Map<number, PhotoDecision>;
   /** Per shot index: the display a screenshot plays inside; absent, full-bleed. */
   displays?: Map<number, DisplayDecision>;
+  /** Draws a filler shot (a sentence's kinetic card, diagram, document, drawn scene or reconstruction). */
+  filler?: (shot: LongShot, len: number) => React.ReactNode;
 }> = ({
   plan,
   images,
@@ -1049,10 +1072,18 @@ const Backdrop: React.FC<{
   sketches,
   photos,
   displays,
+  filler,
 }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
       const len = Math.max(1, s.end - s.start);
+      // A sentence's filler visual: it carries its own fade, tag and framing.
+      if (s.media.type === "filler")
+        return (
+          <Sequence key={i} from={s.start} durationInFrames={len} layout="none">
+            {filler?.(s, len) ?? <Plate theme={theme} />}
+          </Sequence>
+        );
       const img = s.media.type === "image" ? images[s.media.index] : undefined;
       const clip = s.media.type === "clip" ? clips[s.media.index] : undefined;
       // A still dissolves in over the shot before, except after a tube switching off (it cuts from black).
@@ -1112,7 +1143,18 @@ const Backdrop: React.FC<{
           durationInFrames={img && i > 0 ? len + xf : len}
           layout="none"
         >
-          {clip ? (
+          {clip && isLocalVideo({ file: clip.src }) ? (
+            // A concept sketch brought to life on this PC (src/assets/localvideo.ts): taped to the desk as
+            // its print, tagged ILLUSTRATION, never full-bleed like footage.
+            <LocalVideoShot
+              src={clip.src}
+              aspect={1280 / 704}
+              clipSeconds={clip.durationSeconds}
+              len={len}
+              treatment="print"
+              seed={i}
+            />
+          ) : clip ? (
             dress(
               <Clip
                 src={clip.src}
@@ -2165,6 +2207,7 @@ export const Long: React.FC<LongProps> = (props) => {
         variant: props.variant,
         momentCounts: props.moments?.map((m) => m.length),
         momentKeys: props.moments?.map((e) => e.map(momentKeys)),
+        momentFillers: props.moments?.map((e) => e.map((m) => m.filler)),
         rhythm: props.cutRhythm,
         bookend: props.bookendEnding,
         coldOpenFrames:
@@ -2184,6 +2227,94 @@ export const Long: React.FC<LongProps> = (props) => {
         : [],
     [props.moments, props.segments, words],
   );
+  // The sentences the plan gives a filler shot ("entry:moment" to the shot): those draw their filler and
+  // nothing else of theirs (no caption, pop-in or name tag over a kinetic card or a document).
+  const fillerShots = useMemo(() => {
+    const out = new Map<string, LongShot>();
+    for (const s of plan.shots)
+      if (s.media.type === "filler" && s.media.entry !== undefined)
+        out.set(`${s.media.entry}:${s.media.index}`, s);
+    return out;
+  }, [plan]);
+  const fillerOfShot = (s: LongShot): MomentFiller | undefined =>
+    s.media.entry === undefined
+      ? undefined
+      : props.moments?.[s.media.entry]?.[s.media.index]?.filler;
+  /** A filler shot drawn by its family's component, with the props its notes ask for. */
+  const fillerNode = (s: LongShot, len: number): React.ReactNode => {
+    const f = fillerOfShot(s);
+    const e = s.media.entry ?? -1;
+    const w = windows.find((x) => x.entry === e && x.moment === s.media.index);
+    if (!f || !w) return null;
+    const origin = s.start / fps;
+    const seed = props.variant + e * 31 + s.media.index;
+    const picture = (k?: number) =>
+      k === undefined || k < 0 ? undefined : props.images[k]?.src;
+    if (f.family === "kinetic") {
+      const d = f.data as KineticFillerData;
+      const entry = KINETIC[f.style as KineticStyle];
+      if (!entry) return null;
+      return React.createElement(entry.component, {
+        data: d.card,
+        times: wordTimes(
+          d.card.tokens,
+          shotWords(words, w.start, w.end, 0),
+          origin,
+        ),
+        len,
+        src: picture(d.backdrop),
+        seed,
+      });
+    }
+    if (f.family === "diagram") {
+      const d = f.data as DiagramFillerData;
+      const entry = DIAGRAMS[f.style as DiagramStyle];
+      if (!entry) return null;
+      return React.createElement(entry.component, {
+        data: d.diagram,
+        len,
+        src: picture(d.backdrop),
+        seed,
+      });
+    }
+    if (f.family === "document")
+      return (
+        <DocumentShot
+          scene={(f.data as DocumentFillerData).scene}
+          len={len}
+          words={shotWords(words, w.start, w.end, origin)}
+        />
+      );
+    if (f.family === "recon") {
+      const d = f.data as ReconFillerData;
+      const clip = props.clips[d.clip];
+      if (!clip) return null;
+      return (
+        <ReconShot
+          src={clip.src}
+          len={len}
+          seed={seed}
+          tags={d.tags}
+          palette={props.palette?.[e] ?? null}
+          game={d.game}
+          year={d.year}
+          rate={reconFillRate(d.clipSeconds, len, fps)}
+          hud={d.hud}
+        />
+      );
+    }
+    const d = f.data as SceneFillerData;
+    return (
+      <DrawnScene
+        style={f.style}
+        len={len}
+        year={d.year}
+        month={d.month}
+        variant={d.variant}
+        src={picture(d.picture)}
+      />
+    );
+  };
   // The writer's beats on the timeline (src/render/musicplan.ts): the music and the sounds react to them.
   const beatCues = useMemo(
     () =>
@@ -2562,7 +2693,9 @@ export const Long: React.FC<LongProps> = (props) => {
     const r = props.moments?.[entry]?.[moment];
     return (
       !!r &&
-      (usefulGraphic(r.graphic) || (!!r.emphasis && usefulEmphasis(r.emphasis)))
+      (usefulGraphic(r.graphic) ||
+        (!!r.emphasis && usefulEmphasis(r.emphasis)) ||
+        fillerShots.has(`${entry}:${moment}`))
     );
   };
   const readSeconds = (entry: number, moment: number): number => {
@@ -2597,7 +2730,13 @@ export const Long: React.FC<LongProps> = (props) => {
     let stop = Math.round(w.end * fps);
     for (let j = k + 1; windows[j] && windows[j]!.entry === w.entry; j++) {
       if (drawn(windows[j]!.entry, windows[j]!.moment)) {
-        stop = Math.round((windows[j]!.at - 0.3) * fps);
+        // A filler shot opens with its sentence's first word: the card before it is gone by then.
+        const next = fillerShots.get(
+          `${windows[j]!.entry}:${windows[j]!.moment}`,
+        );
+        stop = next
+          ? next.start - Math.round(0.3 * fps)
+          : Math.round((windows[j]!.at - 0.3) * fps);
         break;
       }
       stop = Math.round(windows[j]!.end * fps);
@@ -2606,11 +2745,17 @@ export const Long: React.FC<LongProps> = (props) => {
       stop,
       from + Math.round(readSeconds(w.entry, w.moment) * fps),
     );
+    // Never over the next sentence's filler shot, which takes the whole frame from its first word.
+    const nextFiller =
+      next && next.entry === w.entry
+        ? fillerShots.get(`${next.entry}:${next.moment}`)
+        : undefined;
+    const endAt = Math.max(until, read, from + Math.round(2.5 * fps));
     return {
       from,
       len: Math.max(
         1,
-        Math.max(until, read, from + Math.round(2.5 * fps)) - from,
+        (nextFiller ? Math.min(endAt, nextFiller.start) : endAt) - from,
       ),
       anchored,
     };
@@ -2882,7 +3027,8 @@ export const Long: React.FC<LongProps> = (props) => {
       if (f - lastAt < 18 * fps) continue;
       const i = plan.shots.findIndex((x) => f >= x.start && f < x.end);
       const sh = plan.shots[i];
-      if (!sh || sh.media.type === "plate") continue;
+      if (!sh || sh.media.type === "plate" || sh.media.type === "filler")
+        continue;
       if (
         f - sh.start < 24 ||
         sh.end - f < 36 ||
@@ -3163,7 +3309,8 @@ export const Long: React.FC<LongProps> = (props) => {
       if (entryFrames.some((e) => Math.abs(at - e) < 2 * fps)) return;
       if (breakFrames.some((b) => at >= b.from - 20 && at <= b.to + 20)) return;
       if (openings.some((o) => at >= o.from - 10 && at < o.from + 60)) return;
-      if (retro.has(i) || covered(at)) return;
+      // A filler shot is a full-screen explainer of its own: no accent cuts into it.
+      if (retro.has(i) || covered(at) || sh.media.type === "filler") return;
       const old =
         oldEntry(shotEntry(sh)) && oldEntry(shotEntry(plan.shots[i - 1]!));
       out.push({ at, kind: old ? "static" : ACCENTS[n++ % ACCENTS.length]! });
@@ -3178,6 +3325,15 @@ export const Long: React.FC<LongProps> = (props) => {
       .flatMap((w, k): LongSoundCandidate[] => {
         const raw = props.moments?.[w.entry]?.[w.moment];
         if (!raw) return [];
+        // A filler lands with its family's sound as its shot opens (a stamp as the first word hits).
+        const fs = fillerShots.get(`${w.entry}:${w.moment}`);
+        if (fs && raw.filler) {
+          const kind = fillerSound(raw.filler);
+          if (!kind) return [];
+          const at = fs.start + (kind === "stamp" ? 34 : 0);
+          richSoundAt.set(k, at);
+          return [{ key: k, frame: at, kind }];
+        }
         const { from, len, anchored } = spanOf(k);
         const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
         // A record beat: the sting (in the bed's key) lands on the sentence's key word, instead of whatever
@@ -3296,6 +3452,14 @@ export const Long: React.FC<LongProps> = (props) => {
   // The corner names the source of what is on screen: a licensed gameplay clip its creator, else the trailers.
   const creditAt = (f: number) => {
     const shot = plan.shots.find((s) => f >= s.start && f < s.end);
+    // A drawn filler (type, a diagram, a document, a scene) shows no footage to credit; a reconstruction
+    // credits the clip it stages.
+    if (shot?.media.type === "filler") {
+      const fl = fillerOfShot(shot);
+      if (fl?.family !== "recon") return "";
+      const c = props.clips[(fl.data as ReconFillerData).clip];
+      return c?.credit ? c.credit : props.footageCredit;
+    }
     const clip =
       shot?.media.type === "clip" ? props.clips[shot.media.index] : undefined;
     // A real photo carries its own credit: the trailers-and-Steam line sat on Wikimedia photos of Dundee
@@ -3383,6 +3547,7 @@ export const Long: React.FC<LongProps> = (props) => {
         sketches={sketches}
         photos={photoPlan.photos}
         displays={photoPlan.displays}
+        filler={fillerNode}
       />
       {accents.map((a, k) => (
         <Sequence
@@ -3809,6 +3974,8 @@ export const Long: React.FC<LongProps> = (props) => {
       {windows.map((w, k) => {
         const raw = props.moments?.[w.entry]?.[w.moment];
         if (!raw) return null;
+        // The sentence's filler shot is its whole picture: nothing of its own is drawn over it.
+        if (fillerShots.has(`${w.entry}:${w.moment}`)) return null;
         // A rank graphic repeats the rank card and a fragment ("SERIES AT") reads as a glitch: both are left out.
         const m = {
           ...raw,

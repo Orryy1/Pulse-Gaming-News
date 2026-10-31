@@ -59,6 +59,8 @@ export interface MomentProp {
   person?: string;
   /** The beat the writer marked on the sentence: the mix reacts to it (src/render/musicplan.ts). */
   beat?: "none" | "reveal" | "key" | "record" | "turn" | "quiet";
+  /** Its filler visual (src/render/fillerplan.ts), drawn on the plan's filler shot for the sentence. */
+  filler?: import("../fillerplan.ts").MomentFiller;
 }
 
 /**

@@ -48,6 +48,14 @@ export interface EpisodeAssets {
   rich?: boolean;
   /** A long video's sentences without a picture of their own were topped up, one search each (fillSentencePictures). */
   filled?: { before: number; after: number };
+  /** The filler visuals were chosen for the documentary's bare and stock-only lines (src/assets/fillers.ts). */
+  fillersChosen?: {
+    chosen: number;
+    counts: Record<string, number>;
+    at: string;
+    /** The graphics pre-pass has looked at the filler shots (they were chosen after an earlier pre-pass). */
+    checked?: boolean;
+  };
   /** Concept sketches drawn for bare scene lines (src/assets/illustrate.ts): how many were asked, drawn, kept. */
   sketches?: {
     asked: number;

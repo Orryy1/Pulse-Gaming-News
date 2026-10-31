@@ -105,7 +105,11 @@ export function gateShots(
       start,
       end,
       seconds: end - start,
-      frame: Math.floor((s.start + s.end) / 2),
+      // A filler shot (kinetic type, a document, a diagram, a drawn scene) is judged once fully drawn.
+      frame: Math.min(
+        s.end - 1,
+        Math.max(Math.floor((s.start + s.end) / 2), s.start + (s.settle ?? 0)),
+      ),
       words: said
         .map((w) => w.text)
         .join(" ")
@@ -197,7 +201,7 @@ Score every frame 0-3 for how well the picture fits those words:
 2: the right game and era, in keeping with the words, without showing the specific thing named.
 1: loosely related: the right franchise or subject but a different game or era, or generic footage that only vaguely fits.
 0: wrong or broken: a different game or subject, a picture that contradicts the words, a blank or black frame, a broken image, unreadable or cut-off text, or anything advertiser-unfriendly.
-A chart, quote card, map, timeline or other graphic that restates the words scores 3 when readable. A plain branded background with nothing on it scores 1. Give one short line of reason for each frame, naming what the frame actually shows. Use the frame numbers given.`;
+A chart, quote card, map, timeline or other graphic that restates the words scores 3 when readable; so does kinetic type of the narrator's own words, an explainer diagram, a document page or a drawn scene tagged ILLUSTRATION, or the game's own world tagged RECONSTRUCTION, when it shows what is said. A plain branded background with nothing on it scores 1. Give one short line of reason for each frame, naming what the frame actually shows. Use the frame numbers given.`;
 
 export const GateBatchSchema = z.object({
   frames: z.array(

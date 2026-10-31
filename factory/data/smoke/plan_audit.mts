@@ -24,6 +24,23 @@ await db.close();
 const script = ep.script_json, a = ep.assets_json;
 if (process.argv.includes("--dedupe")) a.clips = keepLatestPerFile(a.clips);
 if (cap > 0) a.clips = capStockClips(a.clips, cap);
+// --fillers[=<episode media dir>]: choose the filler visuals as the render step would (src/assets/fillers.ts) and
+// replan with them; with a media dir the reconstructions' clips are frame-checked (read only), without one none
+// is offered. Writes <out>/fillers.json (picks and the lines left as they were, with why).
+const fillersArg = process.argv.find((x) => x === "--fillers" || x.startsWith("--fillers="));
+let fillerSummary: any;
+if (fillersArg) {
+  const { chooseFillers, applyFillers, reconPicks } = await import("../../src/assets/fillers.ts");
+  const { episodeClipCheck } = await import("../../src/assets/fillerstep.ts");
+  const media = fillersArg.includes("=") ? fillersArg.split("=").slice(1).join("=") : "";
+  const chs = [...(script.entries ?? [])]
+    .sort((x: any, y: any) => y.rank - x.rank)
+    .map((e: any, i: number) => ({ entry: i, game: e.game_title, year: e.year, moments: e.moments ?? [], sentences: chapterSentences(script, i) }));
+  const recon = media ? await reconPicks(chs, a.images, a.clips, episodeClipCheck(media)) : undefined;
+  const choice = chooseFillers(chs, { images: a.images, clips: a.clips, seed: variantOf(id), recon: recon?.picks });
+  applyFillers(chs, choice);
+  fillerSummary = { ...choice, reconRefused: recon ? [...recon.refused] : [] };
+}
 const words: Array<{ text: string; start: number; end: number }> = a.words ?? [];
 const duration = (a.durationSeconds ?? 300) + LONG_TAIL_SECONDS;
 const segments = openChaptersAtBreaks(buildSegments(segmentInputs(script, Boolean(a.desk)), words, duration), a.breaks);
@@ -45,6 +62,7 @@ const plan = replan
         return e.map((m: any, k: number) => `${said[k] ?? ""} ${m.show} ${m.person ?? ""} ${m.keywords?.join(" ") ?? ""}`);
       }),
       takeEntry: script.take_entry,
+      momentFillers: fillersArg ? moments.map((e: any[]) => e.map((m: any) => m.filler)) : undefined,
     })
   : a.longPlan;
 if (!plan) throw new Error("no plan in this copy");
@@ -56,6 +74,7 @@ const spokenIn = (t0: number, t1: number) =>
     .sort((x, y) => y.o - x.o);
 const said = (t0: number, t1: number) => words.filter((w) => w.end > t0 && w.start < t1).map((w) => w.text).join(" ");
 const secs: Record<string, number> = {};
+let stockSecs = 0;
 const rows: string[] = ["start\tend\tclass\tmedia\tfor\tspoken\tgraphic\tlabel\twords"];
 for (const s of plan.shots) {
   const t0 = s.start / fps, t1 = s.end / fps, len = t1 - t0;
@@ -64,7 +83,9 @@ for (const s of plan.shots) {
   const top = sp[0]?.w;
   const g = top ? moments[top.entry]?.[top.moment]?.graphic?.kind : undefined;
   let cls: string;
-  if (!m) cls = "plate";
+  const fl = s.media.type === "filler" ? moments[s.media.entry]?.[s.media.index]?.filler : undefined;
+  if (fl) cls = top && top.entry === s.media.entry && top.moment === s.media.index ? `filler-${fl.family}` : `filler-${fl.family}-off`;
+  else if (!m) cls = "plate";
   else if (!top) cls = "no-narration";
   else if (m.moment === undefined) cls = g && g !== "none" ? "pool-under-graphic" : "pool";
   else if (m.beatIndex === top.entry && m.moment === top.moment) cls = "own-on-time";
@@ -72,7 +93,22 @@ for (const s of plan.shots) {
   else cls = m.beatIndex === top.entry ? `own-off-by-${top.moment - m.moment}` : "own-wrong-chapter";
   const bucket = cls.startsWith("own-off-by") ? (Math.abs(Number(cls.slice(11))) === 1 ? "own-off-by-1" : "own-off-by-2+") : cls;
   secs[bucket] = (secs[bucket] ?? 0) + len;
-  rows.push([t0.toFixed(2), t1.toFixed(2), cls, m ? String(m.file).replace(/\\/g, "/") : "-", m?.moment === undefined ? "-" : `${m.beatIndex}.${m.moment}`, top ? `${top.entry}.${top.moment}` : "-", g && g !== "none" ? g : "", m?.label ?? "", said(t0, t1).slice(0, 220)].join("\t"));
+  if (top && s.media.type === "clip" && m?.stock) stockSecs += len;
+  rows.push([t0.toFixed(2), t1.toFixed(2), cls, m ? String(m.file).replace(/\\/g, "/") : "-", m?.moment === undefined ? "-" : `${m.beatIndex}.${m.moment}`, top ? `${top.entry}.${top.moment}` : "-", g && g !== "none" ? g : "", m?.label ?? fl?.style ?? "", said(t0, t1).slice(0, 220)].join("\t"));
+}
+{
+  const narrated = Object.entries(secs).filter(([k]) => k !== "no-narration").reduce((x, [, v]) => x + v, 0);
+  const fill = Object.entries(secs).filter(([k]) => k.startsWith("filler")).reduce((x, [, v]) => x + v, 0);
+  console.log(`narrated ${Math.round(narrated)} s: generic pool footage ${(100 * (secs.pool ?? 0) / narrated).toFixed(1)}%, stock clips ${(100 * stockSecs / narrated).toFixed(1)}%, filler visuals ${(100 * fill / narrated).toFixed(1)}%`);
+}
+if (fillerSummary) {
+  fs.mkdirSync(out, { recursive: true });
+  fs.writeFileSync(path.join(out, "fillers.json"), JSON.stringify(fillerSummary, null, 1));
+  const shotsOf = new Set(plan.shots.filter((s: any) => s.media.type === "filler").map((s: any) => `${s.media.entry}:${s.media.index}`));
+  console.log(`fillers: eligible ${JSON.stringify(fillerSummary.eligible)}, chosen ${fillerSummary.picks.length} ${JSON.stringify(fillerSummary.counts)}, with a shot in the plan ${shotsOf.size}, reconstructions refused by the frame check ${fillerSummary.reconRefused.length}`);
+  for (const p of fillerSummary.picks) if (!shotsOf.has(`${p.entry}:${p.moment}`)) console.log(`  no shot (window too short): ${p.entry}:${p.moment} ${p.filler.family}`);
+  console.log(`left as they were: ${fillerSummary.left.length}`);
+  for (const l of fillerSummary.left) console.log(`  ${l.entry}:${l.moment} [${l.need}] ${l.sentence.slice(0, 70)} => ${l.why.slice(0, 150)}`);
 }
 fs.mkdirSync(out, { recursive: true });
 fs.writeFileSync(path.join(out, "shots.tsv"), rows.join("\n"));

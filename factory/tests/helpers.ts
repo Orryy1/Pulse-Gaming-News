@@ -280,6 +280,8 @@ export function testConfig(
     illustrateVideoTimeoutSeconds: 600,
     illustrateVideoStub: true,
     sketchAnimation: true,
+    // Off in the shared test config, like the sketches: the filler pass has its own tests (tests/fillers.test.ts).
+    fillers: false,
     photoTreatments: true,
     dryRun: false,
     maxAttempts: 3,

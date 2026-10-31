@@ -7,6 +7,15 @@ import type { Segment } from "./timeline.ts";
 import type { MovePreset } from "./motion.ts";
 import { speakable } from "../voice/speakable.ts";
 import { bookendEcho, burstWindows, shotCap } from "./structure.ts";
+import {
+  FILLER_MIN_FRAMES,
+  fillerMaxFrames,
+  fillerSettle,
+  shotWords,
+  type KineticFillerData,
+  type MomentFiller,
+} from "./fillerplan.ts";
+import { wordTimes } from "./components/kinetic/words.ts";
 
 export const LONG_FPS = 30;
 export const LONG_WIDTH = 1920;
@@ -303,6 +312,12 @@ export interface LongPlanInput {
   bookend?: boolean;
   /** Frames of the signature opening card, which the bookend's source picture comes after. */
   coldOpenFrames?: number;
+  /**
+   * Per entry, per sentence: its filler visual (src/assets/fillers.ts), when it has one. The sentence then
+   * opens on a filler shot from its first word, up to FILLER_MAX_SECONDS (a reconstruction: what its clip
+   * can fill), and its chapter's pictures carry any time left. Muted ones are left out by the caller.
+   */
+  momentFillers?: Array<Array<MomentFiller | undefined>>;
 }
 
 const PREVIEW_STOP = new Set(
@@ -381,7 +396,15 @@ export function fillerFor(pinned: number | undefined, now: number): boolean {
   return pinned === undefined || pinned === now || pinned === now - 1;
 }
 
-export type LongMedia = { type: "image" | "clip" | "plate"; index: number };
+/**
+ * What a shot shows. A "filler" is a sentence's filler visual (./fillerplan.ts): `index` is the sentence's
+ * moment and `entry` its chapter, so the composition draws props.moments[entry][index].filler.
+ */
+export type LongMedia = {
+  type: "image" | "clip" | "plate" | "filler";
+  index: number;
+  entry?: number;
+};
 
 export interface LongShot {
   start: number; // frame
@@ -389,6 +412,8 @@ export interface LongShot {
   segment: number;
   media: LongMedia;
   move: MovePreset;
+  /** A filler shot: the frame (from the shot's start) by which it is fully drawn, where checks look. */
+  settle?: number;
 }
 
 export interface LongPlan {
@@ -448,7 +473,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   let shotIndex = 0;
   let last: LongMedia | undefined;
   const same = (a: LongMedia | undefined, b: LongMedia) =>
-    !!a && a.type === b.type && a.index === b.index;
+    !!a && a.type === b.type && a.index === b.index && a.entry === b.entry;
 
   const windows = input.momentCounts?.length
     ? momentWindows(segments, input.words, input.momentCounts, input.momentKeys)
@@ -491,7 +516,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         remaining < MIN_SHOT &&
         shots.length &&
         shots[shots.length - 1]!.segment === seg &&
-        shots[shots.length - 1]!.media.type !== "clip"
+        shots[shots.length - 1]!.media.type !== "clip" &&
+        // A filler shot is timed to its sentence (and a reconstruction to its clip): it is not stretched.
+        shots[shots.length - 1]!.media.type !== "filler"
       ) {
         shots[shots.length - 1]!.end = to;
         break;
@@ -549,6 +576,49 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       at += len;
       shotIndex++;
     }
+  };
+
+  /**
+   * A sentence's filler shot over [from, to), or undefined when the window is too short for it to land. It
+   * runs to the window's end, or to its family's longest (fillerMaxFrames) with the chapter's pictures after;
+   * a sliver of under MIN_SHOT left behind joins the filler, except a reconstruction's, which stops short
+   * of its clip's last frame instead.
+   */
+  const fillerShot = (
+    fl: MomentFiller | undefined,
+    w: MomentWindow,
+    from: number,
+    to: number,
+  ): Omit<LongShot, "segment"> | undefined => {
+    if (!fl) return undefined;
+    const room = to - from;
+    const most = fillerMaxFrames(fl, LONG_FPS);
+    if (room < FILLER_MIN_FRAMES || most < FILLER_MIN_FRAMES) return undefined;
+    // It shows its own sentence: it ends half a second after the sentence does, not when the next
+    // sentence's picture would arrive (the chapter's footage bridges the gap).
+    const own = Math.max(FILLER_MIN_FRAMES, toFrame(w.end) - from + 15);
+    let len = Math.min(room, most, own);
+    const rest = room - len;
+    if (rest > 0 && rest < MIN_SHOT) {
+      if (fl.family !== "recon") len = room;
+      else if (room - MIN_SHOT >= FILLER_MIN_FRAMES) len = room - MIN_SHOT;
+      else return undefined;
+    }
+    const times =
+      fl.family === "kinetic"
+        ? wordTimes(
+            (fl.data as KineticFillerData).card.tokens,
+            shotWords(input.words, w.start, w.end, 0),
+            from / LONG_FPS,
+          )
+        : undefined;
+    return {
+      start: from,
+      end: from + len,
+      media: { type: "filler", index: w.moment, entry: w.entry },
+      move: "settle",
+      settle: fillerSettle(fl, len, LONG_FPS, times),
+    };
   };
 
   for (const [i, seg] of segments.entries()) {
@@ -617,12 +687,28 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             .find((k) => !same(last, { type: "image", index: k })) ?? pool[0]!;
         return { type: "image", index: pick };
       };
+      const fillerOf = (k: number) =>
+        input.momentFillers?.[entry]?.[mine[k]!.moment];
+      // A sentence's picture arrives as the narrator names its subject, not when the sentence starts; a
+      // filler visual opens with the sentence's first word (its type and marks land on the words as said).
+      // The sentence before keeps at least MIN_SHOT of its own picture, and a filler never opens after the
+      // sentence's key word would have brought its picture.
+      const opening = (k: number): number =>
+        k === 0
+          ? start
+          : fillerOf(k)
+            ? Math.max(
+                start,
+                Math.min(
+                  toFrame(mine[k]!.at),
+                  Math.max(toFrame(mine[k]!.start), opening(k - 1) + MIN_SHOT),
+                ),
+              )
+            : Math.max(start, toFrame(mine[k]!.at));
       for (const [j, w] of mine.entries()) {
         current = w.moment;
-        // A sentence's picture arrives as the narrator names its subject, not when the sentence starts.
-        const from = j === 0 ? start : Math.max(start, toFrame(w.at));
-        const to =
-          j === mine.length - 1 ? end : Math.min(end, toFrame(mine[j + 1]!.at));
+        const from = opening(j);
+        const to = j === mine.length - 1 ? end : Math.min(end, opening(j + 1));
         if (to <= from) continue;
         // Every clip picked for this sentence (a trailer moment and a gameplay moment), then its still.
         const mineClips = entryClips.filter(
@@ -685,7 +771,30 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             ? { type: "clip", index: spare }
             : leastUsed();
         };
-        fill(i, from, to, queue, footageFirst, leastUsed);
+        const shot = fillerShot(fillerOf(j), w, from, to);
+        if (shot) {
+          shots.push({ ...shot, segment: i });
+          last = shot.media;
+          shotIndex++;
+          // A reconstruction's clip matched to no sentence does not also play as the chapter's footage.
+          const fl = fillerOf(j)!;
+          if (fl.family === "recon") {
+            const c = (fl.data as { clip: number }).clip;
+            if (clips[c] && clips[c]!.moment === undefined) clipUsed[c] = true;
+          }
+          // A sentence given a filler had no own media but a stock clip at most: the filler replaces it, so
+          // the stock never plays (not after the filler, nor under the next sentence).
+          for (const k of mineClips) clipUsed[k] = true;
+          if (shot.end < to)
+            fill(
+              i,
+              shot.end,
+              to,
+              queue.filter((q) => q.type !== "clip"),
+              footageFirst,
+              leastUsed,
+            );
+        } else fill(i, from, to, queue, footageFirst, leastUsed);
       }
       continue;
     }

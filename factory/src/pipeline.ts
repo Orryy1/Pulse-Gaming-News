@@ -50,6 +50,11 @@ import { coverageShare, fillSentencePictures } from "./assets/fill.ts";
 import { capStockTargets } from "./assets/repeats.ts";
 import { stockQuery } from "./assets/stock.ts";
 import { createSketchRun } from "./assets/illustrate.ts";
+import {
+  animateSketches,
+  chooseEpisodeFillers,
+  episodeClipCheck,
+} from "./assets/fillerstep.ts";
 
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
 export const MEDIA_RICH_TARGET = 0.85;
@@ -6139,12 +6144,67 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           level: "info",
           content: `Documentary "${script.headline}": ${sum.kept} concept sketch${sum.kept === 1 ? "" : "es"} drawn for lines nothing filmed can show (${sum.asked} asked, ${sum.dropped} refused by the picture editor, ${sum.failed} not drawn; ${sum.seconds}s). Each is tagged ILLUSTRATION on screen${s.cfg.sketchAnimation ? " and animated: drawn on, stop-motion paper, flipbook, light table or cork board (SKETCH_ANIMATION)" : " as a framed print (SKETCH_ANIMATION=false)"}. Setting: ILLUSTRATE_ENABLED.`,
         });
+      // A few kept sketches of lines with movement come to life on this PC's video model (off by default).
+      if (s.cfg.illustrateVideo && sum.kept)
+        await animateSketches({
+          chapters: chapters as never,
+          images: assets.images,
+          clips: assets.clips as never,
+          dir,
+          episodeId: ep.id,
+          url: s.cfg.illustrateUrl,
+          max: s.cfg.illustrateVideoMax,
+          stub: s.cfg.illustrateVideoStub,
+          timeoutMs: s.cfg.illustrateVideoTimeoutSeconds * 1000,
+          headline: script.headline,
+          logEvent: (kind, detail) => logEvent(s.db, ep.id, kind, detail),
+          notify: (m) => s.notify(m),
+        });
     }
     // The graphics pass writes into the shot list (script.entries[].moments), so the script is kept too.
     await s.db.query(
       `UPDATE episodes SET assets_json = $2, script_json = $3 WHERE id = $1`,
       [ep.id, JSON.stringify(assets), JSON.stringify(script)],
     );
+  }
+  // A filler visual for each documentary line still bare or on stock (kinetic type, a diagram, a document, a
+  // drawn scene, silhouettes or an in-game reconstruction; src/assets/fillers.ts), once per video and behind
+  // FILLERS_ENABLED. The picks are written on the shot list, so the plan is made again with them.
+  if (
+    s.cfg.fillers &&
+    !assets.fillersChosen &&
+    assets.images &&
+    script.evergreen_format === "documentary" &&
+    script.entries?.some((e) => e.moments?.length)
+  ) {
+    const done = await chooseEpisodeFillers({
+      chapters: [...script.entries]
+        .sort((a, b) => b.rank - a.rank)
+        .map((e, i) => ({
+          entry: i,
+          game: e.game_title,
+          year: e.year,
+          moments: (e.moments ?? []) as never,
+          sentences: chapterSentences(script, i),
+        })),
+      images: assets.images,
+      clips: assets.clips ?? [],
+      variant: variantOf(ep.id),
+      sketches: s.cfg.illustrate,
+      check: episodeClipCheck(dir),
+      now: s.now(),
+      headline: script.headline,
+      logEvent: (kind, detail) => logEvent(s.db, ep.id, kind, detail),
+      notify: (m) => s.notify(m),
+    });
+    if (done) {
+      assets.fillersChosen = done;
+      delete assets.longPlan;
+      await s.db.query(
+        `UPDATE episodes SET assets_json = $2, script_json = $3 WHERE id = $1`,
+        [ep.id, JSON.stringify(assets), JSON.stringify(script)],
+      );
+    }
   }
   // Media are kept; everything from here on works this PC, so it waits for a gap between the Shorts.
   if ((await longRenderGap(s, ep)) === undefined) return;
@@ -6211,6 +6271,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     audio: c.audio,
   }));
   const isDoc = script.evergreen_format === "documentary";
+  // A sentence's filler visual, read afresh each time: one the graphics check faulted is left out.
+  const fillerAt = (e: number, m: number) =>
+    s.cfg.fillers && !(assets.quietMoments ?? []).includes(`${e}:${m}`)
+      ? moments[e]?.[m]?.filler
+      : undefined;
   const makePlan = () =>
     buildLongPlan({
       segments,
@@ -6235,6 +6300,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       momentCounts: hasMoments ? moments.map((m) => m.length) : undefined,
       momentKeys: hasMoments
         ? moments.map((e) => e.map(momentKeys))
+        : undefined,
+      // Each sentence's filler visual (src/assets/fillers.ts) opens it on its own shot.
+      momentFillers: hasMoments
+        ? moments.map((e, ei) => e.map((_, mi) => fillerAt(ei, mi)))
         : undefined,
       // What each sentence says, shows and names, so the cold open can preview its chapters: a cold-open line
       // that restates a chapter's fact ("production was meant to end by July 1, 1996") finds that sentence's
@@ -6746,6 +6815,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
                 person: m.person || undefined,
                 // The sound editor's cue (src/render/musicplan.ts), when the setting is on.
                 beat: s.cfg.docSoundBeats ? m.beat : undefined,
+            // The sentence's filler visual (src/assets/fillers.ts), unless the graphics check muted it.
+            filler: fillerAt(ei, mi),
               })),
             )
           : undefined,
@@ -6805,18 +6876,30 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     graphicOf: (e: number, m: number) => moments[e]?.[m]?.graphic,
     breaks: assets.breaks,
     durationSeconds: duration,
+    // Filler shots are checked at their own settle frame (src/render/fillerplan.ts fillerSettle).
+    shots: plan.shots,
   });
+  // Filler visuals chosen after an earlier pre-pass are checked on their own (the rest were checked then).
+  const fillersOnly =
+    !!assets.graphicsPrepass &&
+    !!assets.fillersChosen &&
+    !assets.fillersChosen.checked;
+  const fillerKeys = new Set(
+    plan.shots
+      .filter((sh) => sh.media.type === "filler")
+      .map((sh) => `${sh.media.entry}:${sh.media.index}`),
+  );
   if (
     s.cfg.visionQa &&
     s.cfg.graphicsPrepass &&
     s.renderLongStills &&
-    !assets.graphicsPrepass
+    (!assets.graphicsPrepass || fillersOnly)
   ) {
     const checks = graphicChecks(
       graphicsInput(),
       assets,
       s.cfg.graphicsPrepassMax,
-    );
+    ).filter((c) => !fillersOnly || fillerKeys.has(c.what));
     if (checks.length) {
       const stillDir = path.join(dir, "qa", "prepass");
       await fs.rm(stillDir, { recursive: true, force: true });
@@ -6841,11 +6924,24 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         const muted = muteFaults(assets, r.faulted);
         assets.quietMoments = muted.quietMoments;
         assets.quietBreaks = muted.quietBreaks;
+        // A faulted filler gives its sentence back to the chapter's pictures: the plan is made again without it.
+        if (
+          plan.shots.some(
+            (sh) =>
+              sh.media.type === "filler" &&
+              r.faulted.includes(`${sh.media.entry}:${sh.media.index}`),
+          )
+        ) {
+          plan = makePlan();
+          assets.longPlan = plan;
+        }
+        const prior = fillersOnly ? assets.graphicsPrepass : undefined;
         assets.graphicsPrepass = {
-          checked: items.length,
-          muted: r.faulted.length,
+          checked: (prior?.checked ?? 0) + items.length,
+          muted: (prior?.muted ?? 0) + r.faulted.length,
           at: s.now().toISOString(),
         };
+        if (assets.fillersChosen) assets.fillersChosen.checked = true;
         await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
           ep.id,
           JSON.stringify(assets),

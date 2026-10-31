@@ -8,7 +8,7 @@
 // The quietMoments / quietBreaks lists are the same ones Long.tsx already reads, so the renderer is unchanged.
 
 import type { VisionQa } from "../editorial/schema.ts";
-import type { MomentWindow } from "../render/longplan.ts";
+import type { LongShot, MomentWindow } from "../render/longplan.ts";
 import { usefulGraphic } from "../render/longplan.ts";
 import { framesNamed } from "./vision.ts";
 
@@ -86,6 +86,11 @@ export function graphicChecks(
     graphicOf: (entry: number, moment: number) => GraphicRef | undefined;
     breaks?: Array<{ start: number; end: number }>;
     durationSeconds: number;
+    /**
+     * The plan's shots: each filler shot (a sentence's kinetic card, diagram, document, drawn scene or
+     * reconstruction; src/render/fillerplan.ts) is checked at its own settle frame, under its moment's key.
+     */
+    shots?: Array<Pick<LongShot, "start" | "end" | "media" | "settle">>;
   },
   quiet: QuietLists,
   max: number,
@@ -93,6 +98,17 @@ export function graphicChecks(
   const out: GraphicCheck[] = [];
   const mutedMoments = new Set(quiet.quietMoments ?? []);
   const mutedBreaks = new Set(quiet.quietBreaks ?? []);
+  for (const sh of input.shots ?? []) {
+    if (sh.media.type !== "filler" || sh.media.entry === undefined) continue;
+    const key = `${sh.media.entry}:${sh.media.index}`;
+    if (mutedMoments.has(key)) continue;
+    const at = Math.min(
+      sh.end - 1,
+      sh.start + (sh.settle ?? MIN_SETTLE_FRAMES),
+    );
+    const t = at / FPS;
+    if (t < input.durationSeconds - 1) out.push({ t, what: key });
+  }
   input.windows.forEach((w, k) => {
     const key = `${w.entry}:${w.moment}`;
     const g = input.graphicOf(w.entry, w.moment);

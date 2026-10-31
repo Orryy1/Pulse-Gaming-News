@@ -750,7 +750,10 @@ export const DocMomentSchema = z.object({
       "The real person or character this sentence is mainly about, by full name, or empty",
     ),
 });
-export type DocMoment = z.infer<typeof DocMomentSchema>;
+/** A moment as stored: the writer's fields, plus the filler visual chosen later (src/assets/fillers.ts). */
+export type DocMoment = z.infer<typeof DocMomentSchema> & {
+  filler?: import("../render/fillerplan.ts").MomentFiller;
+};
 
 export function docMomentsSchema(count: number) {
   return z.object({

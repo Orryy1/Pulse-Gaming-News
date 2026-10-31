@@ -29,6 +29,8 @@ export interface FillMoment {
   broll?: string;
   keywords?: string[];
   graphic?: { kind: string };
+  /** A filler visual chosen for the sentence (src/assets/fillers.ts): its own picture, for coverage. */
+  filler?: unknown;
 }
 
 export interface FillChapter {
@@ -78,7 +80,7 @@ export type Image = {
 };
 type Clip = Placed & Record<string, unknown>;
 
-/** Sentences (by index) that have a picture or clip of their own, or a graphic. */
+/** Sentences (by index) that have a picture or clip of their own, a graphic, or a filler visual. */
 export function coveredMoments(
   entry: number,
   moments: FillMoment[],
@@ -90,11 +92,13 @@ export function coveredMoments(
     if (x.beatIndex === entry && x.moment !== undefined) out.add(x.moment);
   moments.forEach((m, k) => {
     if (m.graphic && m.graphic.kind !== "none") out.add(k);
+    // A kinetic card, diagram, document, drawn scene or reconstruction is drawn for the sentence's own words.
+    if (m.filler) out.add(k);
   });
   return out;
 }
 
-/** The share of all sentences covered (own picture or clip, or a graphic). */
+/** The share of all sentences covered (own picture or clip, a graphic or a filler visual). */
 export function coverageShare(
   chapters: FillChapter[],
   images: Placed[],

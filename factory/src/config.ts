@@ -415,6 +415,8 @@ export interface Config {
   illustrateVideoStub: boolean;
   /** Sketches animated on screen (drawn on, stop-motion paper, flipbook, light table, cork board; src/render/sketchplan.ts). Off: the static framed print. */
   sketchAnimation: boolean;
+  /** A filler visual (kinetic type, diagram, document, drawn scene, silhouettes, in-game reconstruction) for each documentary line still bare or on stock after the top-up (src/assets/fillers.ts). Off: those lines stay on the chapter's footage. */
+  fillers: boolean;
   /** Photos and portraits in documentaries arriving as instant prints, tape, pins, trays, screens and more (src/render/photoplan.ts). Off: the static framed print and full-bleed screenshots. */
   photoTreatments: boolean;
   dryRun: boolean;
@@ -850,6 +852,7 @@ export function loadConfig(): Config {
     illustrateVideoTimeoutSeconds: int("ILLUSTRATE_VIDEO_TIMEOUT_SECONDS", 600),
     illustrateVideoStub: bool("ILLUSTRATE_VIDEO_STUB", false),
     sketchAnimation: bool("SKETCH_ANIMATION", true),
+    fillers: bool("FILLERS_ENABLED", true),
     photoTreatments: bool("PHOTO_TREATMENTS", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),

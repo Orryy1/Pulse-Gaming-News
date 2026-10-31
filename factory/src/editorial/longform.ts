@@ -128,6 +128,8 @@ export type AnyMoment = Omit<Moment, "graphic"> & {
   broll?: string;
   /** The sound editor's cue for the sentence (src/editorial/documentary.ts DOC_BEAT_KINDS). */
   beat?: "none" | "reveal" | "key" | "record" | "turn" | "quiet";
+  /** A documentary sentence's filler visual (src/assets/fillers.ts), chosen after the sentence top-up. */
+  filler?: import("../render/fillerplan.ts").MomentFiller;
 };
 
 /** Sentences as the narration is split for moments and on-screen timing. */

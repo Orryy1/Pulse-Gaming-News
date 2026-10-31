@@ -231,6 +231,20 @@ export interface Config {
   docEndCard: boolean;
   /** Documentaries open on the signature three seconds (sting, mark, one line of the hook): DOC_COLD_OPEN, default on. */
   docColdOpen: boolean;
+  /** The documentary's title lands as a card on the cold open's last beat instead of over its first seconds
+   * (src/render/structure.ts titleDropWindow): DOC_TITLE_DROP, default on. */
+  docTitleDrop: boolean;
+  /** Open loops: the outline lists 2-4 questions, the chapters raise and answer them (checked), and the render
+   * recalls the earlier shot when one is answered (src/editorial/openloops.ts): DOC_OPEN_LOOPS, default on. */
+  docOpenLoops: boolean;
+  /** The outro ends on the cold open's first image, in words (checked) and in its last shot with the move
+   * reversed (src/render/structure.ts bookendEcho): DOC_BOOKEND_ENDING, default on. */
+  docBookendEnding: boolean;
+  /** A slim chapter index (current chapter lit) and the chapter's year in the corner: DOC_CHAPTER_INDEX, default on. */
+  docChapterIndex: boolean;
+  /** Tighter cuts in a documentary's first 3 minutes and a 10 s burst of quicker cuts every 2.5 minutes after
+   * (src/render/structure.ts shotCap): DOC_CUT_RHYTHM, default on. */
+  docCutRhythm: boolean;
   /** A documentary's first comment points at one chapter with its timestamp: DOC_PIN_MOMENT, default on. */
   docPinMoment: boolean;
   /** A community post and a poll are drafted for every documentary when it goes live, kept on the episode and
@@ -670,6 +684,11 @@ export function loadConfig(): Config {
     docSoundBeats: bool("DOC_SOUND_BEATS", true),
     docEndCard: bool("DOC_END_CARD", true),
     docColdOpen: bool("DOC_COLD_OPEN", true),
+    docTitleDrop: bool("DOC_TITLE_DROP", true),
+    docOpenLoops: bool("DOC_OPEN_LOOPS", true),
+    docBookendEnding: bool("DOC_BOOKEND_ENDING", true),
+    docChapterIndex: bool("DOC_CHAPTER_INDEX", true),
+    docCutRhythm: bool("DOC_CUT_RHYTHM", true),
     docPinMoment: bool("DOC_PIN_MOMENT", true),
     communityDrafts: bool("COMMUNITY_DRAFTS", true),
     crosspost: {

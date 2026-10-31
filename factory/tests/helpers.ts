@@ -146,6 +146,11 @@ export function testConfig(
     docSoundBeats: true,
     docEndCard: true,
     docColdOpen: true,
+    docTitleDrop: true,
+    docOpenLoops: true,
+    docBookendEnding: true,
+    docChapterIndex: true,
+    docCutRhythm: true,
     docPinMoment: true,
     communityDrafts: true,
     crosspost: {

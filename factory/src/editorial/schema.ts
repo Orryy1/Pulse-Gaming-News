@@ -265,6 +265,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   kicker?: string;
   /** Documentary: the articles the script was written from, credited in the description. */
   sources?: string[];
+  /** Documentary: the questions it raises and answers, pinned to their sentences (src/editorial/openloops.ts). */
+  open_loops?: import("./openloops.ts").LoopPlacement[];
   /** The weekly news recap (a long video built on the documentary shape). */
   recap?: boolean;
   /** Long video: the entry whose media plays behind the outro, when it is not the last. */

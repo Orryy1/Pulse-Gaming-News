@@ -149,6 +149,19 @@ import type { Word } from "../voice/elevenlabs.ts";
 import { ColdOpen } from "./components/ColdOpen.tsx";
 import { EndCard } from "./components/EndCard.tsx";
 import { coldOpenTiming, endCardTiming } from "./bookends.ts";
+import {
+  callbackCues,
+  chapterMarks,
+  recallMedia,
+  titleDropWindow,
+  type LoopCue,
+} from "./structure.ts";
+import {
+  CallbackCue,
+  ChapterIndex,
+  TitleDrop,
+  YearCounter,
+} from "./components/Structure.tsx";
 import { SketchShot } from "./components/SketchShot.tsx";
 import { planSketchShots, type SketchDecision } from "./sketchplan.ts";
 import { DisplayShot, PhotoShot } from "./components/PhotoShot.tsx";
@@ -193,6 +206,14 @@ export type LongProps = {
   next?: { title: string; thumbSrc: string | null } | null;
   /** A documentary's signature opening: the line of type under the mark (src/render/components/ColdOpen.tsx). Absent: no card. */
   coldOpenLine?: string;
+  /** A documentary's structure devices (src/render/structure.ts), each off when absent: the title lands after
+   * the cold open; the chapter index and year counter; open-loop recalls; the cut rhythm and the bookend
+   * ending of the composition's own plan (a plan passed in already carries them). */
+  titleDrop?: boolean;
+  chapterIndex?: boolean;
+  loops?: LoopCue[];
+  cutRhythm?: boolean;
+  bookendEnding?: boolean;
   moments?: MomentProp[][]; // per ranking entry, one per sentence: graphics, kinetic captions, pop-ins
   breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds)
   quietBreaks?: number[]; // breathers the graphics check faulted: the plain title card instead
@@ -2144,6 +2165,10 @@ export const Long: React.FC<LongProps> = (props) => {
         variant: props.variant,
         momentCounts: props.moments?.map((m) => m.length),
         momentKeys: props.moments?.map((e) => e.map(momentKeys)),
+        rhythm: props.cutRhythm,
+        bookend: props.bookendEnding,
+        coldOpenFrames:
+          props.coldOpenLine !== undefined ? coldOpenTiming(fps).frames : 0,
       }),
     [props, words],
   );
@@ -2329,6 +2354,44 @@ export const Long: React.FC<LongProps> = (props) => {
     const b = breakFrames.find((x) => Math.abs(x.from - starts[i]!) <= 3);
     return b ? Math.max(0, b.to - b.from) : 0;
   };
+  // The structure devices (src/render/structure.ts): where the title drops, the chapters for the index
+  // and the year counter, and the open-loop recalls with the picture each one brings back.
+  const drop =
+    documentary && props.titleDrop
+      ? titleDropWindow(props.segments, words, fps, breakFrames)
+      : undefined;
+  const marks =
+    documentary && props.chapterIndex
+      ? chapterMarks(props.segments, starts, durationInFrames, breakFrames)
+      : [];
+  const indexEnd =
+    props.next !== undefined
+      ? endCardTiming(durationInFrames, fps).from
+      : durationInFrames;
+  const cues = (
+    documentary
+      ? callbackCues(props.loops, props.segments, words, windows, fps)
+      : []
+  ).map((c) => {
+    const r = recallMedia(plan, c.plantFrame);
+    const src =
+      r?.media.type === "image"
+        ? props.images[r.media.index]?.src
+        : r?.media.type === "clip"
+          ? props.clips[r.media.index]?.src
+          : undefined;
+    return {
+      ...c,
+      media:
+        r && src
+          ? {
+              src: resolveSrc(src)!,
+              clip: r.media.type === "clip",
+              offset: r.offset,
+            }
+          : undefined,
+    };
+  });
   // The richer explainers (src/render/components/DocGraphics.tsx). A "versus" shows two of the video's own
   // games from their chapters' pictures; a "people" card uses a portrait when one carries the name.
   const normTitle = (t: string) =>
@@ -3376,6 +3439,12 @@ export const Long: React.FC<LongProps> = (props) => {
         marks={entryFrames.map((f) => f / Math.max(1, durationInFrames))}
       />
       <Credit text={creditAt(frame)} />
+      {marks.length ? (
+        <>
+          <ChapterIndex marks={marks} endFrom={indexEnd} />
+          <YearCounter marks={marks} endFrom={indexEnd} />
+        </>
+      ) : null}
       {props.segments.map((s, i) => {
         const len = Math.max(1, ends[i]! - starts[i]!);
         if (s.kind === "hook") {
@@ -3394,9 +3463,13 @@ export const Long: React.FC<LongProps> = (props) => {
                     ? coldOpenTiming(fps).frames
                     : 0;
                 // The opening: the video's motif card, the flash-forward, then the title.
+                // With the title drop the title waits for the cold open's last beat, so neither the motif
+                // card nor the intro title shows it at the start (src/render/structure.ts titleDropWindow).
                 const open =
                   cold +
-                  (videoMotif?.card && len - cold >= 240 ? MOTIF_OPEN : 0);
+                  (videoMotif?.card && len - cold >= 240 && !drop
+                    ? MOTIF_OPEN
+                    : 0);
                 // Off since 29 Oct 2026: the owner found the silent flash of figures under the opening
                 // narration unrelated to the words; it returns only when it carries the narrator's own lines.
                 const tease =
@@ -3454,25 +3527,27 @@ export const Long: React.FC<LongProps> = (props) => {
                       : null}
                     {/* The title stands for six seconds, then the opening's own pictures carry the story: kept for
                         the whole intro it covered a minute of narration (29 Oct 2026 review). */}
-                    <Sequence
-                      from={open + tease}
-                      durationInFrames={Math.min(
-                        len - open - tease,
-                        INTRO_TITLE_FRAMES,
-                      )}
-                      layout="none"
-                    >
-                      <IntroTitle
-                        title={props.title}
-                        spoilers={props.spoilers}
-                        kicker={props.kicker}
-                        criterion={props.criterion}
-                        durationFrames={Math.min(
+                    {drop ? null : (
+                      <Sequence
+                        from={open + tease}
+                        durationInFrames={Math.min(
                           len - open - tease,
                           INTRO_TITLE_FRAMES,
                         )}
-                      />
-                    </Sequence>
+                        layout="none"
+                      >
+                        <IntroTitle
+                          title={props.title}
+                          spoilers={props.spoilers}
+                          kicker={props.kicker}
+                          criterion={props.criterion}
+                          durationFrames={Math.min(
+                            len - open - tease,
+                            INTRO_TITLE_FRAMES,
+                          )}
+                        />
+                      </Sequence>
+                    )}
                   </>
                 );
               })()}
@@ -3577,7 +3652,8 @@ export const Long: React.FC<LongProps> = (props) => {
           };
           return (
             <React.Fragment key={i}>
-              {pause && board ? (
+              {/* The title drop fills the first chapter's breather instead of its interlude. */}
+              {drop?.breakSegment === i ? null : pause && board ? (
                 <Sequence
                   from={starts[i]!}
                   durationInFrames={pause}
@@ -3993,6 +4069,42 @@ export const Long: React.FC<LongProps> = (props) => {
           </React.Fragment>
         ) : null,
       )}
+      {/* Open-loop recalls: the earlier shot, held, with its question, as the answer is spoken. */}
+      {cues.map((c, k) => (
+        <Sequence
+          key={`cue${k}`}
+          from={c.from}
+          durationInFrames={c.len}
+          layout="none"
+        >
+          <CallbackCue text={c.text} len={c.len} media={c.media} />
+          <Sfx name={SFX.air[k % SFX.air.length]!} volume={LEVEL.airLong} />
+        </Sequence>
+      ))}
+      {/* The title drop: the title lands on the cold open's last beat, with a swell peaking as it lands (in a
+          breather the first chapter's own swell already lands there, so it gets no second one). */}
+      {drop ? (
+        <Sequence from={drop.from} durationInFrames={drop.len} layout="none">
+          <TitleDrop
+            title={props.title}
+            kicker={props.kicker}
+            len={drop.len}
+            landAt={drop.landAt}
+          />
+          {drop.breakSegment === undefined ? (
+            <Sequence
+              from={Math.max(0, drop.landAt - leadFrames(SFX.swell, fps))}
+              durationInFrames={60}
+              layout="none"
+            >
+              <Sfx
+                name={inKey(SFX.swell, bedAt(drop.from + drop.landAt))}
+                volume={LEVEL.swellLong}
+              />
+            </Sequence>
+          ) : null}
+        </Sequence>
+      ) : null}
       {/* A documentary's end card: "Up next" with the newest public documentary, the mark and the subscribe
           nudge over the last twenty seconds (src/render/components/EndCard.tsx). */}
       {props.next !== undefined && documentary

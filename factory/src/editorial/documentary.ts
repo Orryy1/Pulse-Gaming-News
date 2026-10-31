@@ -26,6 +26,19 @@ import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
 import type { WikiArticle } from "../discovery/wikipedia.ts";
 import { placeFor } from "../render/places.ts";
 import { REHOOK_RULE, rehookProblems } from "./rehooks.ts";
+import {
+  OPEN_LOOP_RULE,
+  OpenLoopSchema,
+  OPEN_LOOPS_MAX,
+  bookendEchoProblems,
+  deriveOpenLoops,
+  loopBrief,
+  loopProblems,
+  placeOpenLoops,
+  type LoopPlacement,
+  type OpenLoop,
+} from "./openloops.ts";
+import { sentencesOf } from "./longform.ts";
 
 export const DOC_CHAPTERS_MIN = 5;
 export const DOC_CHAPTERS_MAX = 10;
@@ -324,6 +337,15 @@ export const DocOutlineSchema = z.object({
     .describe(
       "The mainline games in release order, one chapter each; fold minor spin-offs into the nearest chapter's story",
     ),
+  // Optional, so outlines made before 31 Oct 2026 still read; groundOpenLoops (src/editorial/openloops.ts)
+  // keeps only the loops that can work.
+  open_loops: z
+    .array(OpenLoopSchema)
+    .max(OPEN_LOOPS_MAX + 2)
+    .optional()
+    .describe(
+      "2-4 questions the documentary raises early and answers in a later chapter",
+    ),
   youtube: z.object({
     title: z
       .string()
@@ -350,17 +372,21 @@ export async function outlineDoc(
   llm: Llm,
   topic: DocTopic,
   franchiseNotes: string,
+  /** openLoops (DOC_OPEN_LOOPS): the outline also lists the questions to raise and answer (OPEN_LOOP_RULE). */
+  opts: { openLoops?: boolean } = {},
 ): Promise<DocOutline> {
+  const loops = opts.openLoops ? `\n\n${OPEN_LOOP_RULE}` : "";
   return llm.structured({
     site: "doc.outline",
     system:
-      topic.kind === "story"
+      (topic.kind === "story"
         ? `${HOUSE}
 
 Plan a single-story documentary told in turning points, in time order, ${DOC_CHAPTERS_MIN + 2}-${DOC_CHAPTERS_MAX} chapters. Each chapter is one beat of the story (a decision, a reveal, a launch, a reversal) and names, in "wiki_title", the English Wikipedia article that best documents it (a game, a console, a company or a person); "game_title" is that chapter's subject. Chapter titles name the turning point in 2-5 words as a mini-headline with a verb or a conflict ("The Reveal That Backfired", "Sony Answers", "The Reversal"), never a topic label ("Market impact", "Early years"); the last may be a question. The title names one subject and its downfall, fight or hidden side: "How X Ruined Y", "The X That Never Was", "What Really Happened to X", "How Xbox Ended Up on PlayStation". In a study of 1,573 long gaming videos the strongest titles did exactly that, while "The History of", "Evolution", "changed gaming forever", years and "top 10" counts belonged to the weakest; keep numbers out of the title unless the number is the story. Never "Part 1". Write the question the documentary answers.`
         : `${HOUSE}
 
-Plan a franchise documentary told game by game in release order, ${DOC_CHAPTERS_MIN}-${DOC_CHAPTERS_MAX} chapters, one per major game. Choose the games whose development stories matter most; fold spin-offs into a neighboring chapter's story. Chapter titles must be searchable on their own and name the game's turning point as a mini-headline ("GTA III and the Leap to 3D", "The Hot Coffee Mess"), never a topic label. The title is one thesis question or claim about the franchise ("When Did Call of Duty Stop Being Call of Duty?"), never "The Complete History of" or "Evolution of". Write the question the documentary answers.`,
+Plan a franchise documentary told game by game in release order, ${DOC_CHAPTERS_MIN}-${DOC_CHAPTERS_MAX} chapters, one per major game. Choose the games whose development stories matter most; fold spin-offs into a neighboring chapter's story. Chapter titles must be searchable on their own and name the game's turning point as a mini-headline ("GTA III and the Leap to 3D", "The Hot Coffee Mess"), never a topic label. The title is one thesis question or claim about the franchise ("When Did Call of Duty Stop Being Call of Duty?"), never "The Complete History of" or "Evolution of". Write the question the documentary answers.`) +
+      loops,
     content: `${topic.kind === "story" ? "Story" : "Franchise"}: ${topic.franchise}\nWorking title: ${topic.title_idea}\nAngle: ${topic.angle}\n\n${topic.kind === "story" ? "Overview" : "Franchise overview"} (Wikipedia):\n${franchiseNotes || "(not available)"}`,
     schema: DocOutlineSchema,
     effort: "medium",
@@ -476,6 +502,8 @@ export async function writeChapter(
     priorDoc?: string;
     /** The rejected draft: fixed by edits where the feedback points, written again only if that fails. */
     draft?: DocChapter;
+    /** The outline's grounded open loops (src/editorial/openloops.ts): what this chapter raises or answers. */
+    loops?: readonly OpenLoop[];
   },
 ): Promise<DocChapter> {
   const others = ctx.outline.chapters
@@ -500,7 +528,8 @@ export async function writeChapter(
   const ending = endsOnConsequence(ctx.index)
     ? "This chapter ends on a plain consequence: what it changed, said flatly, with no tease."
     : "This chapter ends looking forward: name what's coming without saying how it ends.";
-  const brief = `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\nThis chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}\n${ending}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}${saidBlock}${priorBlock}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}`;
+  const loops = loopBrief(ctx.loops ?? [], ctx.index + 1);
+  const brief = `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\nThis chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}\n${ending}${loops ? `\n${loops}` : ""}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}${saidBlock}${priorBlock}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}`;
   const edited =
     ctx.draft && ctx.feedback?.length
       ? await reviseByEdits(llm, {
@@ -1082,10 +1111,21 @@ export function validateChapter(
     earlier?: EarlierChapters;
     /** An earlier Pulse documentary on the same subject, whose wording must not come back. */
     priorDoc?: string;
+    /** The grounded open loops and this chapter's number (1 is the first): its plant and payoff must be there. */
+    loops?: readonly OpenLoop[];
+    chapter?: number;
   } = {},
 ): string[] {
   const p: string[] = [];
   const text = chapterText(c);
+  if (opts.loops?.length && opts.chapter)
+    p.push(
+      ...loopProblems(
+        c.paragraphs.flatMap((x) => sentencesOf(x.narration)),
+        opts.loops,
+        opts.chapter,
+      ),
+    );
   const before = earlierOf(opts.earlier).map(chapterText);
   // Banned phrases, a possessive on a year, copied example lines, and how it sounds aloud.
   p.push(...phraseProblems(text), ...writingProblems(text, { long: true }));
@@ -1193,9 +1233,23 @@ export async function writeBookends(
   outline: DocOutline,
   chapters: Array<{ plan: DocChapterPlan; chapter: DocChapter }>,
   franchiseNotes: string,
-  /** The narration of an earlier Pulse documentary on the same subject, whose opening is not reused. */
-  opts: { priorDoc?: string } = {},
+  /**
+   * priorDoc: an earlier Pulse documentary on the same subject, whose opening is not reused. loops: the
+   * grounded open loops, so the cold open raises its own (src/editorial/openloops.ts). echo (DOC_BOOKEND_ENDING):
+   * the outro's last two sentences return to the cold open's first image (BOOKEND_RULE).
+   */
+  opts: {
+    priorDoc?: string;
+    loops?: readonly OpenLoop[];
+    echo?: boolean;
+    /** A rejected draft's problems (validateBookends), for the second attempt to fix. */
+    feedback?: string[];
+  } = {},
 ): Promise<DocBookends> {
+  const raise = loopBrief(opts.loops ?? [], 0);
+  const fb = opts.feedback?.length
+    ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
+    : "";
   const prior = opts.priorDoc
     ? `\n\nOur earlier documentary on this subject opened like this; open differently and reuse none of its wording:\n${sentencesIn(
         opts.priorDoc,
@@ -1218,15 +1272,26 @@ export async function writeBookends(
 
 Write the intro and outro of a finished documentary.
 The intro is a cold open, in this order: the first sentence names a date, a place and a named person or an exact figure, inside one true moment from the chapters below; by about word 60 the stakes, as a consequence that tells the viewer how it ends (who lost what, or who won a generation): give away the outcome, hold back the how, which is what the strongest long videos in our study did; somewhere in the intro one short line that leans forward, saying in your own words that the first success was only the beginning; by about word 120 one line that names what this documentary is about, in your own words rather than a stock "This is the story of"; then a turn back to where it began, again in your own words. Never "In this video", never a greeting, and never a line you'd expect in any other documentary.
-The outro closes in three moves: the verdict, answering the documentary's question in its first two sentences; where things stand today, with a date; and a last line that calls back to the opening moment or date. Use only facts from the chapter notes and the overview.`,
-    content: `Documentary: ${outline.title}\nThe question it answers: ${outline.question ?? outline.title}\n\nChapters and their facts:\n${digest}\n\nOverview (Wikipedia):\n${franchiseNotes.slice(0, 5000)}${prior}`,
+The outro closes in three moves: the verdict, answering the documentary's question in its first two sentences; where things stand today, with a date; and a last line that calls back to the opening moment or date. Use only facts from the chapter notes and the overview.${opts.echo ? `\n${BOOKEND_RULE}` : ""}`,
+    content: `Documentary: ${outline.title}\nThe question it answers: ${outline.question ?? outline.title}\n\nChapters and their facts:\n${digest}\n\nOverview (Wikipedia):\n${franchiseNotes.slice(0, 5000)}${prior}${raise ? `\n\n${raise}` : ""}${fb}`,
     schema: DocBookendsSchema,
     effort: "medium",
   });
 }
 
-export function validateBookends(b: DocBookends): string[] {
+/** The bookend ending (creator study no. 84): the documentary ends where it began. Checked by bookendEchoProblems. */
+export const BOOKEND_RULE = `End where it began: the outro's last two sentences return to the cold open's first image, naming the same place, person, object or date as the intro's first sentence, and say in a few calm words what that moment means now that the whole story is told.`;
+
+export function validateBookends(
+  b: DocBookends,
+  /** loops: the cold open must raise the loops planted there; echo: the outro must return to the opening image. */
+  opts: { loops?: readonly OpenLoop[]; echo?: boolean } = {},
+): string[] {
   const p: string[] = [];
+  if (opts.loops?.length)
+    p.push(...loopProblems(sentencesOf(b.intro.narration), opts.loops, 0));
+  if (opts.echo)
+    p.push(...bookendEchoProblems(b.intro.narration, b.outro.narration));
   const i = wordCount(b.intro.narration);
   if (i < 90 || i > 230) p.push(`The intro is ${i} words; it must be 110-200.`);
   p.push(...advertiserProblems(`${b.intro.narration} ${b.outro.narration}`));
@@ -1250,6 +1315,57 @@ export interface DocDraft {
     moments?: DocMoment[];
   }>;
   bookends: DocBookends;
+  /** The open loops pinned to their sentences (placeDocLoops), for the render's callback cues. */
+  loops?: LoopPlacement[];
+}
+
+/**
+ * Pins the grounded open loops to the finished draft's sentences (pure). The outline numbers chapters as it
+ * planned them; a chapter dropped for want of a source shifts the rest, so each loop is mapped onto the
+ * draft's own entries, and one whose chapter was dropped is named in `removed`.
+ */
+export function placeDocLoops(
+  d: Pick<DocDraft, "outline" | "chapters" | "bookends">,
+  loops: readonly OpenLoop[],
+): { placed: LoopPlacement[]; removed: string[] } {
+  const entryOf = d.outline.chapters.map((p) =>
+    d.chapters.findIndex((c) => c.plan === p),
+  );
+  const sentences = d.outline.chapters.map((_, i) => {
+    const c = d.chapters[entryOf[i]!];
+    return c
+      ? c.chapter.paragraphs.flatMap((x) => sentencesOf(x.narration))
+      : [];
+  });
+  const r = placeOpenLoops(
+    loops,
+    sentencesOf(d.bookends.intro.narration),
+    sentences,
+  );
+  const placed = r.placed.map((l) => ({
+    ...l,
+    plant: {
+      ...l.plant,
+      entry: l.plant.entry < 0 ? -1 : entryOf[l.plant.entry]!,
+    },
+    payoff: { ...l.payoff, entry: entryOf[l.payoff.entry]! },
+  }));
+  return { placed, removed: r.removed };
+}
+
+/**
+ * A documentary script's open loops (pure): the ones its outline planted, else, for a script written before
+ * they existed, the ones its own questions make (deriveOpenLoops). Moments index each chapter's sentences in
+ * shot-list order; entry -1 is the cold open (the hook).
+ */
+export function loopsOfScript(script: Script): LoopPlacement[] {
+  if (script.open_loops) return script.open_loops;
+  const chapters: string[][] = [];
+  for (const b of script.beats) {
+    if (b.visual?.kind === "chapter" || !chapters.length) chapters.push([]);
+    chapters[chapters.length - 1]!.push(...sentencesOf(b.narration));
+  }
+  return deriveOpenLoops(sentencesOf(script.hook), chapters);
 }
 
 export function narrationOfDoc(d: DocDraft): string {
@@ -1331,6 +1447,7 @@ export function docToScript(d: DocDraft): Script {
     criterion: "",
     kicker: d.bookends.intro.on_screen || d.outline.kicker,
     sources,
+    ...(d.loops ? { open_loops: d.loops } : {}),
   } as Script;
 }
 

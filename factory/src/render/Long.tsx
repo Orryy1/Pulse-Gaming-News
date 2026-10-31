@@ -2069,7 +2069,8 @@ const OutroCard: React.FC<{
           left: SAFE_X,
           bottom: SAFE_BOTTOM + 20,
           width: 1200,
-          opacity: inProg * (1 - endIn * 0.3),
+          // Gone before the end line lands (31 Oct 2026: the recap's QA saw the two drawn over each other).
+          opacity: inProg * (1 - endIn),
           transform: `translateY(${(1 - inProg) * 40}px)`,
         }}
       >
@@ -2124,7 +2125,8 @@ const OutroCard: React.FC<{
         style={{
           position: "absolute",
           right: SAFE_X,
-          bottom: SAFE_BOTTOM + 40,
+          // Clear of the picture credit in the bottom-right corner.
+          bottom: SAFE_BOTTOM + 110,
           textAlign: "right",
           opacity: endIn,
           transform: `translateY(${(1 - endIn) * 30}px)`,

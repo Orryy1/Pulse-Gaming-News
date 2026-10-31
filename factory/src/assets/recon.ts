@@ -95,7 +95,7 @@ export interface ReconCandidate {
 /** A clip pinned to another sentence of the same chapter may be reused only this far away from it. */
 export const RECON_REUSE_SECONDS = 30;
 /** Below this the integration step should not take the candidate. */
-export const RECON_MIN_CONFIDENCE = 0.5;
+export const RECON_MIN_CONFIDENCE = 0.6;
 /** Shorter clips cannot carry a slow move. */
 export const RECON_MIN_CLIP_SECONDS = 2;
 /** Reconstructions play a little slow: never slower than this, so the motion stays smooth. */
@@ -330,6 +330,11 @@ const TEXT_IN_CLIP =
 const NOT_WORLD_CLIP =
   /\b(artwork|stylized|stylised|illustration|concept art|blurry|blur|close-up|closeup|portrait|engraving|disc)\b/i;
 
+const AIRCRAFT_SUBJECT =
+  /^(a |an |the )?(\w+ )?(helicopter|jet|plane|biplane|airplane|aircraft|blimp|chopper)\b/i;
+const AERIAL_VIEW =
+  /\b(aerial|view|from above|overhead|top-down|bird'?s-eye)\b/i;
+
 /** What a clip's label says it shows; undefined for a clip a reconstruction never uses, with the reason. */
 export function clipTags(
   label: string | undefined,
@@ -341,8 +346,13 @@ export function clipTags(
   if (TEXT_IN_CLIP.test(l)) return { refuse: "text or HUD on screen" };
   if (VIOLENT_CLIP.test(l)) return { refuse: "violence or a chase" };
   if (NOT_WORLD_CLIP.test(l)) return { refuse: "not a shot of the world" };
+  let tags = CLIP_TAGS.filter(([, re]) => re.test(l)).map(([t]) => t);
+  // "Helicopter flying over building" names an aircraft in shot, not a view from the air (31 Oct 2026 sheet:
+  // it was a close-up of the helicopter's underside). Only a label that says it is a view shows the place.
+  if (AIRCRAFT_SUBJECT.test(l) && !AERIAL_VIEW.test(l))
+    tags = tags.filter((t) => t === "vehicle" || t === "night" || t === "dusk" || t === "day");
   return {
-    tags: CLIP_TAGS.filter(([, re]) => re.test(l)).map(([t]) => t),
+    tags,
     figures: FIGURE_IN_CLIP.test(l),
     cutscene: /\bcutscene\b/i.test(l),
   };
@@ -422,14 +432,16 @@ export type ReconJudgement =
 /**
  * The reconstruction a sentence could take, or why it declines. `sentence` is the sentence's index in the
  * chapter (its text is chapter.sentences[sentence]) or its text; given only the text, no pinned clip is reused.
- * `taken` holds clips already given to other sentences by this pass, as pinned to those sentences.
+ * `used` holds clips already serving a reconstruction anywhere in the video: a clip stages one scene per
+ * video (31 Oct 2026 review: one helicopter clip was offered for three lines). `refused` holds clips whose
+ * pictures failed the frame check (src/assets/reconcheck.ts).
  */
 export function judgeRecon(
   sentence: number | string,
   moment: ReconMoment,
   chapter: ReconChapter,
   clips: ReconClip[],
-  taken: Map<number, number[]> = new Map(),
+  opts: { used?: Set<number>; refused?: Set<number> } = {},
 ): ReconJudgement {
   const k =
     typeof sentence === "number"
@@ -462,6 +474,18 @@ export function judgeRecon(
   if (!wanted.length && !scene.survey && !scene.worlds.length)
     return { decline: "no scene to stage (no place, time, vehicle or crowd)" };
 
+  // An abstract line ("Nobody outside the studio knows it yet") says no scene itself; only the shot note
+  // does. It is staged only when the clip's label matches at least two of the note's scene words, never on
+  // a mood alone (31 Oct 2026 review: a dark street under that line read as filler).
+  const own = sceneOf(text, { show: "" }, chapter.game);
+  // A shot note naming a research trip to the game's real city ("staff on a New York research trip") is a
+  // scene, not a mood, even when the sentence only says "there".
+  const abstract =
+    !own.tags.some((t) => t !== "city") &&
+    !own.survey &&
+    !own.worlds.length &&
+    !(scene.survey && scene.worlds.length);
+
   const times = sentenceTimes(chapter);
   const now = k >= 0 ? (times[k] ?? 0) : undefined;
   const figure = FIGURE.test(text);
@@ -469,20 +493,13 @@ export function judgeRecon(
   let bestWhy = "no clip of the chapter shows that scene";
   for (const [i, c] of clips.entries()) {
     if (c.beatIndex !== chapter.entry || c.stock) continue;
-    // Every sentence the clip already plays on: its own pin and any this pass gave it.
-    const pins = [
-      ...(c.moment !== undefined ? [c.moment] : []),
-      ...(taken.get(i) ?? []),
-    ];
-    if (pins.includes(k)) continue;
-    if (pins.length) {
-      if (now === undefined) continue;
-      if (
-        pins.some((p) => Math.abs((times[p] ?? 0) - now) < RECON_REUSE_SECONDS)
-      )
-        continue;
+    if (opts.used?.has(i) || opts.refused?.has(i)) continue;
+    // A clip the picture editor pinned to another sentence may be reused only 30 seconds or more away.
+    const pinned = c.moment;
+    if (pinned !== undefined) {
+      if (pinned === k || now === undefined) continue;
+      if (Math.abs((times[pinned] ?? 0) - now) < RECON_REUSE_SECONDS) continue;
     }
-    const pinned = pins[0];
     const seconds = Number(c.durationSeconds ?? 0);
     if (seconds < RECON_MIN_CLIP_SECONDS) continue;
     const look = clipTags(c.label);
@@ -504,12 +521,17 @@ export function judgeRecon(
     const establishing =
       !look.tags.includes("interior") &&
       look.tags.some((t) =>
-        ["aerial", "skyline", "street", "vehicle", "city"].includes(t),
+        ["aerial", "skyline", "street", "city"].includes(t),
       );
     if (scene.survey && establishing && !matched.some((t) => t !== "city"))
       score += 0.2;
     if (!matched.some((t) => t !== "city") && !(scene.survey && establishing))
       continue;
+    if (abstract && matched.filter((t) => t !== "city").length < 2) {
+      bestWhy =
+        "an abstract line: no clip matches its shot note closely enough to stage it";
+      continue;
+    }
     // The game's own model of the real place the line names.
     if (scene.worlds.length) score += 0.15;
     // Time of day that contradicts the line.
@@ -577,30 +599,98 @@ export function reconFor(
 }
 
 /**
- * Candidates for several bare sentences of one chapter at once, most confident first, so two sentences never
- * take the same clip within RECON_REUSE_SECONDS of each other. Pure: returns sentence index to candidate.
+ * Candidates for several bare sentences of one chapter at once, most confident first. Every clip stages at
+ * most one reconstruction: a clip picked here is added to `used` (pass the same set for every chapter of a
+ * video). Pure apart from `used`: returns sentence index to candidate.
  */
 export function reconForChapter(
   chapter: ReconChapter,
   moments: ReconMoment[],
   bare: number[],
   clips: ReconClip[],
+  used: Set<number> = new Set(),
+  refused: Set<number> = new Set(),
 ): Map<number, ReconCandidate> {
   const out = new Map<number, ReconCandidate>();
-  const taken = new Map<number, number[]>();
   const left = new Set(bare);
   while (left.size) {
     let pick: { k: number; c: ReconCandidate } | undefined;
     for (const k of left) {
       const m = moments[k];
       if (!m) continue;
-      const r = judgeRecon(k, m, chapter, clips, taken).candidate;
+      const r = judgeRecon(k, m, chapter, clips, { used, refused }).candidate;
       if (r && (!pick || r.confidence > pick.c.confidence)) pick = { k, c: r };
     }
     if (!pick) break;
     out.set(pick.k, pick.c);
-    taken.set(pick.c.clip, [...(taken.get(pick.c.clip) ?? []), pick.k]);
+    used.add(pick.c.clip);
     left.delete(pick.k);
   }
   return out;
+}
+
+/** Looks at a clip's pictures (src/assets/reconcheck.ts checkReconClip, or a stand-in in tests). */
+export type ReconClipCheck = (
+  clip: ReconClip,
+  index: number,
+) => Promise<{ ok: boolean; reason: string }>;
+
+export interface ReconVideoChapter {
+  chapter: ReconChapter;
+  moments: ReconMoment[];
+  bare: number[];
+}
+
+/**
+ * Reconstructions for a whole video: each chapter's picks, one clip per reconstruction across the video, and
+ * every picked clip verified from three of its frames before it is accepted. A clip that fails is refused
+ * and its chapter chosen again without it. Returns per chapter (by entry) sentence index to candidate, and
+ * the clips refused with the reason.
+ */
+export async function reconForVideo(
+  chapters: ReconVideoChapter[],
+  clips: ReconClip[],
+  check: ReconClipCheck,
+): Promise<{
+  picks: Map<number, Map<number, ReconCandidate>>;
+  refused: Map<number, string>;
+}> {
+  const used = new Set<number>();
+  const refusedSet = new Set<number>();
+  const refused = new Map<number, string>();
+  const verdicts = new Map<number, boolean>();
+  const picks = new Map<number, Map<number, ReconCandidate>>();
+  for (const ch of chapters) {
+    for (;;) {
+      const tryUsed = new Set(used);
+      const got = reconForChapter(
+        ch.chapter,
+        ch.moments,
+        ch.bare,
+        clips,
+        tryUsed,
+        refusedSet,
+      );
+      let failed = false;
+      for (const c of got.values()) {
+        if (!verdicts.has(c.clip)) {
+          const v = await check(clips[c.clip]!, c.clip).catch((err) => ({
+            ok: false,
+            reason: err instanceof Error ? err.message : String(err),
+          }));
+          verdicts.set(c.clip, v.ok);
+          if (!v.ok) refused.set(c.clip, v.reason);
+        }
+        if (!verdicts.get(c.clip)) {
+          refusedSet.add(c.clip);
+          failed = true;
+        }
+      }
+      if (failed) continue;
+      for (const c of got.values()) used.add(c.clip);
+      picks.set(ch.chapter.entry, got);
+      break;
+    }
+  }
+  return { picks, refused };
 }

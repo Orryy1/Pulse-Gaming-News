@@ -6,6 +6,8 @@ import {
   judgeRecon,
   reconFor,
   reconForChapter,
+  reconForVideo,
+  RECON_MIN_CONFIDENCE,
   reconMaxSeconds,
   reconRate,
   hasHud,
@@ -16,6 +18,12 @@ import {
   type ReconClip,
   type ReconMoment,
 } from "../src/assets/recon.ts";
+import {
+  MIN_LUMA,
+  clipVerdict,
+  frameFault,
+  frameStats,
+} from "../src/assets/reconcheck.ts";
 import {
   BAR,
   BARS_IN,
@@ -62,7 +70,7 @@ const clips: ReconClip[] = [
   {
     file: "b.mp4",
     beatIndex: 4,
-    label: "Helicopter flying over building",
+    label: "Aerial view of city through clouds",
     durationSeconds: 2.3,
   },
   {
@@ -237,7 +245,7 @@ test("harmless phrases holding a sensitive word are not sensitive", () => {
   assert.ok(trip);
   assert.deepEqual(trip.scene.worlds, ["los santos"]);
   assert.equal(trip.scene.survey, true);
-  assert.ok(reconFor(2, m("Empty roads"), ch, v));
+  assert.ok(reconFor(2, m("Empty roads across the city"), ch, v));
 });
 
 test("a named person's line never takes a clip with a game character in it", () => {
@@ -316,7 +324,7 @@ test("clips shorter than two seconds cannot carry a slow move", () => {
   );
 });
 
-test("the chapter pass gives one clip to two sentences only when they are 30 seconds apart", () => {
+test("a clip stages one reconstruction per video, across chapters too", () => {
   const ch: ReconChapter = {
     entry: 1,
     game: "Grand Theft Auto III",
@@ -337,12 +345,149 @@ test("the chapter pass gives one clip to two sentences only when they are 30 sec
       durationSeconds: 5,
     },
   ];
-  const got = reconForChapter(ch, [m(), m(), m(), m(), m()], [1, 2, 4], one);
-  // 1 and 2 are 5 s apart, so only one of them takes it; 4 is 40+ s away from either.
-  assert.equal(got.size, 2);
-  assert.ok(got.has(4));
-  assert.ok(got.has(1) !== got.has(2));
-  assert.equal(got.get(4)!.reuse, true);
+  const used = new Set<number>();
+  const got = reconForChapter(
+    ch,
+    [m(), m(), m(), m(), m()],
+    [1, 2, 4],
+    one,
+    used,
+  );
+  // Three lines want it, even 40 s apart: only one gets it.
+  assert.equal(got.size, 1);
+  assert.deepEqual([...used], [0]);
+  // The same set passed to the next chapter keeps it out there too.
+  const again = reconForChapter(
+    ch,
+    [m(), m(), m(), m(), m()],
+    [1, 2, 4],
+    one,
+    used,
+  );
+  assert.equal(again.size, 0);
+});
+
+test("an aircraft in shot is not a view from the air", () => {
+  const heli = clipTags("Helicopter flying over building");
+  assert.ok(!("refuse" in heli));
+  assert.ok(!heli.tags.includes("aerial") && !heli.tags.includes("city"));
+  const view = clipTags("Aerial view of city through clouds");
+  assert.ok(!("refuse" in view) && view.tags.includes("aerial"));
+  // A New York trip line no longer takes the helicopter close-up (31 Oct 2026 sheet).
+  const ch: ReconChapter = {
+    entry: 4,
+    game: "Grand Theft Auto IV",
+    sentences: ["x", "Then the team went to New York."],
+  };
+  const c = reconFor(1, m("New York skyline from the air"), ch, [
+    {
+      file: "h.mp4",
+      beatIndex: 4,
+      label: "Helicopter flying over building",
+      durationSeconds: 5,
+    },
+  ]);
+  assert.equal(c, undefined);
+});
+
+test("abstract lines are not staged on a mood; the bar is 0.6", () => {
+  const ch: ReconChapter = {
+    entry: 2,
+    game: "Grand Theft Auto: Vice City",
+    sentences: ["x", "Nobody outside the studio knows it yet."],
+  };
+  const night: ReconClip[] = [
+    {
+      file: "official_1.mp4",
+      beatIndex: 2,
+      label: "Station wagon on dark street",
+      durationSeconds: 6,
+    },
+  ];
+  const j = judgeRecon(
+    1,
+    m("Closed studio door, secret project", { broll: "office at night" }),
+    ch,
+    night,
+  );
+  assert.match(j.decline!, /abstract/);
+  // Two of the note's scene words matching the label is enough.
+  const two = judgeRecon(
+    1,
+    m("A car driving down a dark street at night"),
+    ch,
+    night,
+  );
+  assert.ok(two.candidate);
+  assert.ok(two.candidate.confidence >= 0.6);
+  assert.equal(RECON_MIN_CONFIDENCE, 0.6);
+});
+
+test("the video pass verifies each picked clip from its frames and picks again without a failing one", async () => {
+  const ch: ReconChapter = {
+    entry: 1,
+    game: "Grand Theft Auto III",
+    sentences: ["x", "They drove the city streets at night."],
+  };
+  const clips: ReconClip[] = [
+    {
+      file: "dark.mp4",
+      beatIndex: 1,
+      label: "Car driving on a city street at night",
+      durationSeconds: 6,
+    },
+    {
+      file: "ok.mp4",
+      beatIndex: 1,
+      label: "Car on a city street at night",
+      durationSeconds: 6,
+    },
+  ];
+  const looked: string[] = [];
+  const { picks, refused } = await reconForVideo(
+    [{ chapter: ch, moments: [m(), m()], bare: [1] }],
+    clips,
+    async (c) => {
+      looked.push(c.file);
+      return c.file === "dark.mp4"
+        ? { ok: false, reason: "3 of 3 frames fail: too dark" }
+        : { ok: true, reason: "3 of 3 frames read" };
+    },
+  );
+  assert.equal(picks.get(1)!.get(1)!.clip, 1);
+  assert.match(refused.get(0)!, /too dark/);
+  assert.deepEqual(looked, ["dark.mp4", "ok.mp4"]);
+});
+
+test("frame check: dark, flat and detail-free frames fail; a dark frame under a lit sky reads", () => {
+  const W = 40;
+  const H = 20;
+  const fill = (f: (x: number, y: number) => number) => {
+    const g = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) g[y * W + x] = f(x, y);
+    return frameStats(g, W, H);
+  };
+  // Busy mid-grey detail: reads.
+  const busy = fill((x, y) => ((x * 7 + y * 13) % 5) * 40 + 40);
+  assert.equal(frameFault(busy), undefined);
+  // Near-black with faint detail (the dark highway: luma 22): too dark.
+  assert.match(
+    frameFault(fill((x, y) => 15 + ((x + y) % 2) * 14))!,
+    /too dark/,
+  );
+  // One flat grey (the grey abstract frame): flat.
+  assert.match(frameFault(fill(() => 120))!, /flat/);
+  // Smooth gradient, no edges: no detail.
+  assert.match(frameFault(fill((x) => 60 + x * 3))!, /detail|flat/);
+  // Dark street with a lit sky across the top 15% (the dusk car): reads.
+  const dusk = fill((x, y) => (y < 3 ? 160 : 4 + ((x * 7 + y * 13) % 5) * 8));
+  assert.ok(dusk.luma < MIN_LUMA);
+  assert.equal(frameFault(dusk), undefined);
+  // A clip passes on two of three frames, fails on one of three.
+  assert.equal(clipVerdict([busy, busy, fill(() => 120)]).ok, true);
+  assert.equal(clipVerdict([busy, fill(() => 120), fill(() => 5)]).ok, false);
+  assert.equal(clipVerdict([]).ok, false);
 });
 
 test("worlds, words and timings", () => {
@@ -437,7 +582,10 @@ test("gameplay captures are framed tight enough to push the HUD corners out of t
       const p = poseAt(mv, f, 90);
       const screenY = 540 + (840 - 540 + p.y) * p.scale;
       const screenX = 960 + (240 - 960 + p.x) * p.scale;
-      assert.ok(screenY > 1080 - BAR || screenX <= 0, `seed ${seed} frame ${f}`);
+      assert.ok(
+        screenY > 1080 - BAR || screenX <= 0,
+        `seed ${seed} frame ${f}`,
+      );
       assert.ok(((p.scale - 1) * 1920) / 2 > Math.abs(p.x) * p.scale);
     }
   }

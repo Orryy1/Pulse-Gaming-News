@@ -150,7 +150,7 @@ for (const want of wanted) {
   const chosen = names
     ? names.flatMap((nm) => { const k = picks.findIndex((p) => p[0].startsWith(nm)); return k >= 0 ? picks.splice(k, 1) : []; })
     : picks;
-  const stills = chosen.map(([name, frame]) => ({ frame, file: path.join(out, `${id}_${name}.jpg`) }));
+  const stills = chosen.map(([name, frame]) => ({ frame, file: path.join(out, `${id}_${name}_${frame}.jpg`) }));
   await renderLongStills({ episodeDir: path.join(episodes, id), props, stills, scale: 960 / 1920, gl: "angle" });
   for (const [k, s] of stills.entries()) {
     files.push(s.file);

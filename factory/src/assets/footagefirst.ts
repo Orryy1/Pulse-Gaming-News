@@ -391,25 +391,101 @@ export function segmentRejectReason(
 }
 
 /** Sources whose looked-at segments are mostly mods or facecams: every segment of theirs is refused. */
+/** The refusal reason for a filmed screen. */
+export const FILMED = "filmed screen (bezel or tilted picture)";
+
+/** Width and height of the greyscale thumbnails the border check reads. */
+export const BORDER_W = 160;
+export const BORDER_H = 90;
+
+/**
+ * A screen filmed with a camera (31 Oct 2026: "Grand Theft Auto Online - PS3 Playthrough 1.2", a TV with its
+ * bezel at both sides), from three greyscale thumbnails of one segment (BORDER_W x BORDER_H, row by row). A
+ * border is the run of pixels from an edge that stay dark (under 50) and still (moving under 12) in every
+ * thumbnail; it is measured across the middle 60% of the picture. Refused:
+ *   - borders at both sides, at least one straight (its widths within 3 pixels) and at least one grey rather
+ *     than black (a bezel or a wall, mean over 12): a capture card's pillarbox is pure black and stays allowed;
+ *   - straight borders on all four sides with any of them grey (a screen in a room);
+ *   - a side border straight in each half of the picture but shifted 3 pixels or more between them (a picture
+ *     filmed at an angle).
+ * Dark game scenes have no straight edge-to-edge run, so night footage passes (checked on run 8's 155 kept
+ * clips: only the filmed TV's clips trip it; 4:3 PS2 captures with black bars on all sides do not).
+ */
+export function filmedScreen(frames: Array<Uint8Array | number[]>, W = BORDER_W, H = BORDER_H): boolean {
+  if (frames.length < 2 || frames.some((f) => f.length < W * H)) return false;
+  const still = (x: number, y: number) => {
+    let lo = 255;
+    let hi = 0;
+    for (const f of frames) {
+      const v = f[y * W + x]!;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    return hi < 50 && hi - lo < 12;
+  };
+  const ys = range(Math.floor(H * 0.2), Math.floor(H * 0.8));
+  const xs = range(Math.floor(W * 0.2), Math.floor(W * 0.8));
+  const run = (n: number, at: (k: number) => boolean) => {
+    let k = 0;
+    while (k < n && at(k)) k++;
+    return k;
+  };
+  const L = ys.map((y) => run(Math.floor(W / 3), (k) => still(k, y)));
+  const R = ys.map((y) => run(Math.floor(W / 3), (k) => still(W - 1 - k, y)));
+  const T = xs.map((x) => run(Math.floor(H / 3), (k) => still(x, k)));
+  const B = xs.map((x) => run(Math.floor(H / 3), (k) => still(x, H - 1 - k)));
+  const first = frames[0]!;
+  const luma = (pts: Array<[number, number]>) =>
+    pts.length ? pts.reduce((n, [x, y]) => n + first[y * W + x]!, 0) / pts.length : 0;
+  const side = (w: number[], pts: Array<[number, number]>) => ({
+    has: quantile(w, 0.5) >= 3,
+    straight: quantile(w, 0.75) - quantile(w, 0.25) <= 3,
+    grey: luma(pts) > 12,
+  });
+  const l = side(L, ys.flatMap((y, i) => range(0, L[i]!).map((x) => [x, y] as [number, number])));
+  const r = side(R, ys.flatMap((y, i) => range(0, R[i]!).map((x) => [W - 1 - x, y] as [number, number])));
+  const t = side(T, xs.flatMap((x, i) => range(0, T[i]!).map((y) => [x, y] as [number, number])));
+  const b = side(B, xs.flatMap((x, i) => range(0, B[i]!).map((y) => [x, H - 1 - y] as [number, number])));
+  const pair = l.has && r.has && (l.straight || r.straight) && (l.grey || r.grey);
+  const four = l.has && r.has && t.has && b.has && l.straight && r.straight && t.straight && b.straight && (l.grey || r.grey || t.grey || b.grey);
+  const half = Math.floor(ys.length / 2);
+  const tilted = (w: number[]) => {
+    const a = w.slice(0, half);
+    const c = w.slice(half);
+    const iqr = (v: number[]) => quantile(v, 0.75) - quantile(v, 0.25);
+    return (quantile(a, 0.5) >= 3 || quantile(c, 0.5) >= 3) && iqr(a) <= 2 && iqr(c) <= 2 && Math.abs(quantile(a, 0.5) - quantile(c, 0.5)) >= 3;
+  };
+  return pair || four || tilted(L) || tilted(R);
+}
+
+const range = (from: number, to: number) => Array.from({ length: Math.max(0, to - from) }, (_, i) => from + i);
+function quantile(v: number[], q: number): number {
+  if (!v.length) return 0;
+  const s = [...v].sort((a, b) => a - b);
+  return s[Math.floor(q * (s.length - 1))]!;
+}
+
 export function condemnedSources(
   verdicts: Array<{ source: string; reason?: string }>,
   share = 0.25,
 ): Set<string> {
-  const by = new Map<string, { bad: number; all: number }>();
+  const by = new Map<string, { bad: number; all: number; filmed: number }>();
   for (const v of verdicts) {
     if (v.reason === "not looked at") continue;
-    const m = by.get(v.source) ?? { bad: 0, all: 0 };
+    const m = by.get(v.source) ?? { bad: 0, all: 0, filmed: 0 };
     m.all++;
     if (
       v.reason === "mod or kids' content" ||
       v.reason === "facecam or overlay"
     )
       m.bad++;
+    if (v.reason === FILMED) m.filmed++;
     by.set(v.source, m);
   }
   return new Set(
     [...by]
-      .filter(([, m]) => m.bad >= Math.max(2, m.all * share))
+      // A video whose segments are mostly a filmed screen is a filmed screen throughout (the coordinator's rule).
+      .filter(([, m]) => m.bad >= Math.max(2, m.all * share) || m.filmed > m.all / 2)
       .map(([s]) => s),
   );
 }
@@ -714,6 +790,8 @@ export interface FootageFirstDeps {
   frames(file: string, at: number, seconds: number, prefix: string): Promise<string[]>;
   /** One image of these frames side by side. */
   compose(files: string[], dest: string): Promise<void>;
+  /** Greyscale thumbnails (BORDER_W x BORDER_H, row by row) of frames, for the filmed-screen check; absent, not checked. */
+  grays?(files: string[]): Promise<Uint8Array[]>;
   /** True when a frame has black bars over a third of its height (a cutscene); absent, not checked. */
   bars?(file: string): Promise<boolean>;
   /** A frame's difference hash (dHash), or undefined. */
@@ -1148,6 +1226,13 @@ export async function finishChapter(
             continue;
           }
           const middle = frames[Math.floor(frames.length / 2)]!;
+          const thumbs = deps.grays
+            ? await deps.grays([frames[0]!, middle, frames[frames.length - 1]!]).catch(() => [])
+            : [];
+          if (filmedScreen(thumbs)) {
+            refuse(g, FILMED);
+            continue;
+          }
           if (await deps.bars?.(middle).catch(() => false)) {
             refuse(g, "letterboxed");
             continue;

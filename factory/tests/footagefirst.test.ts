@@ -26,6 +26,10 @@ import {
   segmentsOf,
   poorSources,
   letterboxed,
+  filmedScreen,
+  BORDER_W,
+  BORDER_H,
+  FILMED,
   fairDeadline,
   prefetchChapter,
   dHash,
@@ -44,7 +48,7 @@ import {
   footageShareNotice,
   runFootageFirst,
 } from "../src/assets/footagestep.ts";
-import { gameplayClips } from "../src/assets/gameplay.ts";
+import { gameplayClips, namedThings } from "../src/assets/gameplay.ts";
 import { buildLongPlan, overlappingClips } from "../src/render/longplan.ts";
 import type { Segment } from "../src/render/timeline.ts";
 
@@ -1117,4 +1121,41 @@ test("phone ports, wheel cams, simulators, co-commentary and long streams are re
   assert.equal(no("GTA VICE CITY Walkthrough Part 8 - No-Commentary", "x", VC), undefined);
   assert.equal(lookAnswer({ label: "true", text: false }).label, "");
   assert.equal(segmentRejectReason(lookAnswer({ label: "true" })), "no label");
+});
+
+test("a filmed screen is refused (a grey bezel, four grey edges, a tilted picture); black bars of a 4:3 capture are not", () => {
+  const W = BORDER_W;
+  const H = BORDER_H;
+  // Three thumbnails of moving game content (bright, changing), with a border painted on by `edge`.
+  const shots = (edge: (x: number, y: number) => number | undefined) =>
+    [0, 1, 2].map((k) =>
+      Uint8Array.from({ length: W * H }, (_, i) => {
+        const x = i % W;
+        const y = Math.floor(i / W);
+        return edge(x, y) ?? 80 + ((x * 7 + y * 13 + k * 41) % 120);
+      }),
+    );
+  const pillar = shots((x) => (x < 20 || x >= W - 20 ? 0 : undefined));
+  const windowed = shots((x, y) => (x < 10 || x >= W - 11 || y < 4 || y >= H - 6 ? 1 : undefined));
+  const bezel = shots((x) => (x < 7 || x >= W - 6 ? 22 : undefined));
+  const room = shots((x, y) => (x < 6 || x >= W - 6 || y < 5 || y >= H - 5 ? 18 : undefined));
+  const tilted = shots((x, y) => (x < (y < H / 2 ? 4 : 10) ? 2 : undefined));
+  const night = [0, 1, 2].map((k) => Uint8Array.from({ length: W * H }, (_, i) => ((i * 31 + k * 97) % 45)));
+  assert.equal(filmedScreen(pillar), false, "a pillarbox stays");
+  assert.equal(filmedScreen(windowed), false, "a 4:3 capture with black on all sides stays");
+  assert.equal(filmedScreen(shots(() => undefined)), false);
+  assert.equal(filmedScreen(night), false, "a dark scene that moves is not a border");
+  assert.equal(filmedScreen(bezel), true, "a TV's grey bezel at both sides");
+  assert.equal(filmedScreen(room), true, "grey edges on all four sides");
+  assert.equal(filmedScreen(tilted), true, "a picture filmed at an angle");
+  assert.equal(filmedScreen([]), false);
+  // More than half of a video's segments a filmed screen: the whole video goes.
+  const v = (source: string, reason?: string) => ({ source, reason });
+  assert.deepEqual([...condemnedSources([v("a", FILMED), v("a", FILMED), v("a"), v("b", FILMED), v("b"), v("b")])], ["a"]);
+  assert.match(junkTitleReason("GTA 5 gameplay filmed on my phone", "x", "Grand Theft Auto V")!, /filmed off a screen/);
+});
+
+test("consoles, studios and real places are never searched as a mission (the regex began with a backspace)", () => {
+  const t = { key: "beat:0#m0", text: "the Sega Saturn and Dundee Scotland, then the mission Phnom Penh Job", want: "gameplay" as const, energy: "medium" as const, keywords: ["Sega Saturn", "Dundee Scotland", "Phnom Penh Job"] };
+  assert.deepEqual(namedThings([t], "Grand Theft Auto", "Grand Theft Auto").map((n) => n.name), ["Phnom Penh Job"]);
 });

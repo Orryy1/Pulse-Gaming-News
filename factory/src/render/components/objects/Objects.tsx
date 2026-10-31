@@ -173,7 +173,7 @@ export const DeskScene: React.FC<SceneProps> = ({ len, year, variant = 0 }) => {
         });
   const glow = era === "crt" ? "#ffb347" : COLOUR.sky;
   return (
-    <SceneFrame p={p} len={len} cx={860} cy={520}>
+    <SceneFrame p={p} len={len} cx={880} cy={560} zoom={1.25}>
       <ScanDefs p={p} />
       <Room p={p} surface={DESK} deskFront={FRONT} cx={860} cy={440} />
       {/* The screen's light on the desk and the wall. */}
@@ -256,7 +256,7 @@ export const DiscsScene: React.FC<SceneProps> = ({
       : kind === "jewel"
         ? [170, 150]
         : [150, 210];
-  const stackX = 300;
+  const stackX = 460;
   const floor = 880;
   const thick = kind === "cartridge" ? 34 : kind === "jewel" ? 16 : 22;
   const flight = (i: number) => {
@@ -289,7 +289,7 @@ export const DiscsScene: React.FC<SceneProps> = ({
   const caseFill =
     kind === "cartridge" ? "#56575f" : kind === "jewel" ? "#cfd6df" : "#1b2433";
   return (
-    <SceneFrame p={p} len={len} cx={900} cy={600}>
+    <SceneFrame p={p} len={len} cx={840} cy={700} zoom={1.55}>
       <Room
         p={p}
         surface={640}
@@ -479,7 +479,7 @@ export const FaxScene: React.FC<SceneProps> = ({ len, year, variant = 0 }) => {
   }));
   const lcd = Math.floor(frame / 8) % 4;
   return (
-    <SceneFrame p={p} len={len} cx={960} cy={520}>
+    <SceneFrame p={p} len={len} cx={960} cy={500} zoom={1.12}>
       <Room p={p} surface={DESK} deskFront={FRONT + 40} cx={960} cy={420} />
       <Papers x={160} y={850} n={3} />
       <Shadow p={p} cx={960} cy={FT + 4} rx={400} />
@@ -627,7 +627,9 @@ export const PhoneScene: React.FC<SceneProps> = ({
   // Each burst walks it a few px across the desk.
   const creep = Math.min(n, 4) * 7 + (burst ? ((t % 40) / 22) * 7 : 0);
   const cx = 940 + creep;
-  const cy = 760;
+  const cy = 700;
+  // The device's size on the desk: a pager is small, so it is drawn larger to read on a phone screen.
+  const size = kind === "pager" ? 2.6 : kind === "flip" ? 1.2 : 1.1;
   const glow = burst ? 1 : 0.55;
   const enter = at(0, 18);
   const device = (() => {
@@ -793,7 +795,7 @@ export const PhoneScene: React.FC<SceneProps> = ({
     ? [0, 1, 2].map((k) => {
         const o = 0.5 + 0.5 * Math.sin(frame * 0.9 + k);
         const r = 30 + k * 26;
-        const w = kind === "pager" ? 150 : kind === "flip" ? 110 : 190;
+        const w = kind === "pager" ? 350 : kind === "flip" ? 130 : 210;
         return (
           <g
             key={k}
@@ -814,7 +816,7 @@ export const PhoneScene: React.FC<SceneProps> = ({
       })
     : null;
   return (
-    <SceneFrame p={p} len={len} cx={960} cy={620}>
+    <SceneFrame p={p} len={len} cx={960} cy={700} zoom={1.4}>
       <Room
         p={p}
         surface={560}
@@ -829,13 +831,13 @@ export const PhoneScene: React.FC<SceneProps> = ({
         <rect x={0} y={-12} width={240} height={14} rx={7} fill="#2b2d33" />
         <path d="M240 -12 l26 7 l-26 7 z" fill="#c9c4bb" />
       </g>
-      <Shadow p={p} cx={cx} cy={cy + 60} rx={kind === "smart" ? 230 : 170} />
+      <Shadow p={p} cx={cx} cy={cy + (kind === "pager" ? 170 : kind === "flip" ? 200 : 190)} rx={kind === "pager" ? 360 : 240} />
       <g
         opacity={enter}
         transform={`translate(${cx + shake} ${cy + (1 - enter) * 30})`}
       >
         <Lit p={p}>
-          <g transform={`scale(${kind === "smart" ? 1 : 1.5})`}>{device}</g>
+          <g transform={`scale(${size})`}>{device}</g>
         </Lit>
       </g>
       {arcs}
@@ -869,7 +871,7 @@ export const ClockScene: React.FC<SceneProps> = ({
     clamp,
   );
   const CX = 1000;
-  const CY = 300;
+  const CY = 330;
   const R = 160;
   const hand = (deg: number, l: number, w: number, fill: string) => (
     <line
@@ -883,7 +885,7 @@ export const ClockScene: React.FC<SceneProps> = ({
     />
   );
   return (
-    <SceneFrame p={p} len={len} cx={980} cy={480}>
+    <SceneFrame p={p} len={len} cx={980} cy={600} zoom={1.15}>
       <Room
         p={p}
         surface={DESK + 20}
@@ -1061,7 +1063,7 @@ export const CalendarScene: React.FC<SceneProps> = ({
   };
   const ring = at(88, 100);
   return (
-    <SceneFrame p={p} len={len} cx={960} cy={520}>
+    <SceneFrame p={p} len={len} cx={960} cy={520} zoom={1}>
       {/* Cork: a warm brown wall speckled with seeded grains. */}
       <rect width={1920} height={1080} fill="#7b5a39" />
       <rect
@@ -1423,7 +1425,7 @@ export const WhiteboardScene: React.FC<SceneProps> = ({ len, variant = 0 }) => {
   const pen = alongPolyline(strokes[cur]!.pts, prog[cur]!);
   const away = at(94, 104);
   return (
-    <SceneFrame p={p} len={len} cx={960} cy={460}>
+    <SceneFrame p={p} len={len} cx={960} cy={460} zoom={1}>
       <Room p={p} surface={940} cx={960} cy={420} />
       <Shadow p={p} cx={968} cy={470} rx={760} ry={360} o={0.4} />
       <Lit p={p} halo={false}>
@@ -1543,10 +1545,10 @@ export const BoothScene: React.FC<SceneProps> = ({
         </g>,
       );
     }
-  const MX = 820;
+  const MX = 700;
   const MY = 380;
   return (
-    <SceneFrame p={p} len={len} cx={900} cy={520}>
+    <SceneFrame p={p} len={len} cx={980} cy={540} zoom={1.38}>
       <g>{tiles}</g>
       <rect
         width={1920}
@@ -1557,17 +1559,17 @@ export const BoothScene: React.FC<SceneProps> = ({
       <circle cx={MX} cy={MY} r={620} fill={`url(#${p}-warm)`} opacity={0.75} />
       <rect x={0} y={900} width={1920} height={180} fill="#16161a" />
       {/* The red light by the door: on while recording. */}
-      <circle cx={1660} cy={180} r={44} fill="#3a1412" />
+      <circle cx={1500} cy={290} r={44} fill="#3a1412" />
       <circle
-        cx={1660}
-        cy={180}
+        cx={1500}
+        cy={290}
         r={34}
         fill={COLOUR.alert}
         opacity={0.25 + 0.75 * on}
       />
       <circle
-        cx={1660}
-        cy={180}
+        cx={1500}
+        cy={290}
         r={90}
         fill={COLOUR.alert}
         opacity={0.25 * on}
@@ -1683,6 +1685,7 @@ export const BoothScene: React.FC<SceneProps> = ({
         />
       </g>
       {/* The recorder on its table. */}
+      <g transform="translate(-180 0)">
       <rect x={1180} y={680} width={560} height={30} rx={4} fill="#3a3b42" />
       <rect x={1220} y={710} width={20} height={190} fill="#2b2c32" />
       <rect x={1680} y={710} width={20} height={190} fill="#2b2c32" />
@@ -1821,6 +1824,7 @@ export const BoothScene: React.FC<SceneProps> = ({
           })}
         </g>
       )}
+      </g>
     </SceneFrame>
   );
 };
@@ -1841,14 +1845,14 @@ export const DriveScene: React.FC<SceneProps> = ({
   const prog = at(44, 98, (x) => x);
   if (kind === "hdd") {
     return (
-      <SceneFrame p={p} len={len} cx={960} cy={560}>
+      <SceneFrame p={p} len={len} cx={1000} cy={600} zoom={1.22}>
         <Room p={p} surface={DESK} deskFront={FRONT + 40} cx={960} cy={440} />
         {flatMonitor({
-          x: 360,
+          x: 400,
           // Its foot sits on the desk.
-          y: DESK + 14 - 380 - 88,
-          w: 640,
-          h: 380,
+          y: DESK + 14 - 340 - 88,
+          w: 560,
+          h: 340,
           p,
           on: 1,
           screen: (b) => (
@@ -1906,9 +1910,9 @@ export const DriveScene: React.FC<SceneProps> = ({
             </g>
           ),
         })}
-        <Shadow p={p} cx={1350} cy={DESK + 150} rx={240} />
+        <Shadow p={p} cx={1330} cy={DESK + 150} rx={330} />
         <path
-          d={`M1180 ${DESK + 110} C1100 ${DESK + 150} 900 ${DESK + 150} 760 ${DESK + 86}`}
+          d={`M1060 ${DESK + 120} C1000 ${DESK + 150} 860 ${DESK + 150} 740 ${DESK + 86}`}
           fill="none"
           stroke="#202126"
           strokeWidth={9}
@@ -1917,7 +1921,7 @@ export const DriveScene: React.FC<SceneProps> = ({
         />
         <g
           opacity={at(0, 14)}
-          transform={`translate(0 ${(1 - at(0, 18)) * 40})`}
+          transform={`translate(0 ${(1 - at(0, 18)) * 40}) translate(1330 ${DESK + 150}) scale(1.5) translate(-1350 ${-(DESK + 150)})`}
         >
           <Lit p={p}>
             <g>
@@ -1954,7 +1958,6 @@ export const DriveScene: React.FC<SceneProps> = ({
             </g>
           </Lit>
         </g>
-        <Mug x={1650} y={DESK + 150} />
       </SceneFrame>
     );
   }
@@ -1969,7 +1972,7 @@ export const DriveScene: React.FC<SceneProps> = ({
         })
       : 0;
   return (
-    <SceneFrame p={p} len={len} cx={960} cy={540}>
+    <SceneFrame p={p} len={len} cx={1000} cy={540} zoom={1.2}>
       <Room p={p} surface={DESK} deskFront={FRONT + 40} cx={960} cy={440} />
       <Shadow p={p} cx={caseX + 260} cy={DESK + 30} rx={330} />
       <Lit p={p}>
@@ -2122,7 +2125,7 @@ export const DriveScene: React.FC<SceneProps> = ({
           {[0, 1, 2, 3].map((i) => (
             <g
               key={i}
-              transform={`translate(${300 + i * 34} ${DESK + 120 - i * 6}) rotate(${-14 + i * 7})`}
+              transform={`translate(${470 + i * 30} ${DESK + 20 - i * 6}) rotate(${-14 + i * 7}) scale(0.8)`}
             >
               <rect
                 x={0}
@@ -2193,7 +2196,7 @@ export const MovingScene: React.FC<SceneProps> = ({
   const BX = 900;
   const BY = DESK + 80;
   return (
-    <SceneFrame p={p} len={len} cx={960} cy={560}>
+    <SceneFrame p={p} len={len} cx={980} cy={600} zoom={1.4}>
       <Room
         p={p}
         surface={DESK}

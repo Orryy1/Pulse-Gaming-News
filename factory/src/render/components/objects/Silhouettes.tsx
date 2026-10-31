@@ -181,7 +181,7 @@ export const MeetingScene: React.FC<SceneProps> = ({
   const TX = 960;
   const TY = 700;
   return (
-    <SceneFrame p={p} len={len} cx={960} cy={560}>
+    <SceneFrame p={p} len={len} cx={960} cy={640} zoom={1.3}>
       <Room p={p} surface={640} cx={960} cy={500} pool={{ rx: 820, ry: 150 }} />
       <Pendant p={p} x={960} y={220} on={1} w={150} reach={600} />
       <g opacity={enter}>
@@ -335,12 +335,12 @@ export const PitchScene: React.FC<SceneProps> = ({
   const gesture = frame > 40 ? Math.sin((frame - 40) * 0.14) : 0;
   const nod = (d: number) =>
     Math.max(0, Math.sin(Math.max(0, frame - d) * 0.3)) * 7 * at(d, d + 4);
-  const BX = 240;
+  const BX = 300;
   const BY = 230;
   const BW = 640;
   const BH = 400;
   return (
-    <SceneFrame p={p} len={len} cx={960} cy={560}>
+    <SceneFrame p={p} len={len} cx={1000} cy={560} zoom={1.06}>
       <Room
         p={p}
         surface={FLOOR - 40}
@@ -447,12 +447,12 @@ export const PitchScene: React.FC<SceneProps> = ({
         />
       )}
       {/* The presenter, facing the panel, pointing back at the board, then talking with the other hand. */}
-      <Shadow p={p} cx={1010} cy={FLOOR + 2} rx={90} ry={12} />
+      <Shadow p={p} cx={1040} cy={FLOOR + 2} rx={90} ry={12} />
       <Lit p={p}>
         <Figure
-          x={1010}
+          x={1040}
           y={FLOOR}
-          s={1.05}
+          s={1.12}
           pose={{
             far: [-96 * point, -10 * point],
             near: [24 + 26 * (0.5 + 0.5 * gesture) * at(40, 50), 40],
@@ -463,7 +463,7 @@ export const PitchScene: React.FC<SceneProps> = ({
         />
       </Lit>
       {/* The panel behind its table, facing the presenter. */}
-      {[1380, 1550, 1720].map((x, i) => (
+      {[1300, 1470, 1640].map((x, i) => (
         <g key={i}>
           <Chair x={x + 20} y={FLOOR} dir={-1} />
           <Figure
@@ -485,17 +485,17 @@ export const PitchScene: React.FC<SceneProps> = ({
       <Lit p={p} halo={false}>
         <g>
           <rect
-            x={1280}
+            x={1200}
             y={690}
             width={560}
             height={22}
             rx={4}
             fill="#45464e"
           />
-          <rect x={1300} y={712} width={520} height={160} fill="#2a2b31" />
+          <rect x={1220} y={712} width={520} height={160} fill="#2a2b31" />
         </g>
       </Lit>
-      {[1340, 1510, 1680].map((x, i) => (
+      {[1260, 1430, 1600].map((x, i) => (
         <rect
           key={i}
           x={x}
@@ -536,7 +536,7 @@ export const CrunchScene: React.FC<SceneProps> = ({
   };
   const clockMin = 50 + Math.floor(frame / 12);
   return (
-    <SceneFrame p={p} len={len} cx={960} cy={540}>
+    <SceneFrame p={p} len={len} cx={960} cy={700} zoom={1.12}>
       <Room
         p={p}
         surface={760}
@@ -642,7 +642,7 @@ export const HandshakeScene: React.FC<SceneProps> = ({ len, variant = 0 }) => {
   const L = 790 - (1 - step) * 160;
   const R = 1130 + (1 - step) * 160;
   return (
-    <SceneFrame p={p} len={len} cx={960} cy={560}>
+    <SceneFrame p={p} len={len} cx={960} cy={620} zoom={1.15}>
       <Room
         p={p}
         surface={FLOOR - 20}
@@ -779,14 +779,15 @@ export const WalkoutScene: React.FC<SceneProps> = ({
   const walk = at(0, 86, (x) => x);
   const inside = at(92, 124, (x) => x);
   const x = 470 + walk * 980 + inside * 90;
-  const fade = 1 - inside;
+  // Fully there until frame 110 (the graphics check's frame), then gone into the light.
+  const fade = 1 - at(110, 132);
   const close = at(116, 140, easeInOut);
   const DL = 1420;
   const DR = 1640;
   const DT = 300;
   const open = 1 - close * 0.7;
   return (
-    <SceneFrame p={p} len={len} cx={1000} cy={560}>
+    <SceneFrame p={p} len={len} cx={1000} cy={620} zoom={1.15}>
       <Room p={p} surface={FLOOR - 10} cx={1100} cy={460} light={0.8} />
       {/* The doorway: bright beyond, its light spilling across the floor, the door swung open towards us. */}
       <rect
@@ -903,9 +904,9 @@ export const QueueScene: React.FC<SceneProps> = ({
   const shuffle = at(50, 84, easeInOut);
   const walking = shuffle > 0 && shuffle < 1;
   const N = 9;
-  const SX = 1180;
+  const SX = 1080;
   return (
-    <SceneFrame p={p} len={len} cx={900} cy={560}>
+    <SceneFrame p={p} len={len} cx={1150} cy={640} zoom={1.2}>
       {/* Night: a dark blue sky, a moon and stars, a pavement under the shop. */}
       <rect width={1920} height={1080} fill="#0b1020" />
       <rect width={1920} height={700} fill="url(#si-queue-sky)" />
@@ -1039,7 +1040,7 @@ export const QueueScene: React.FC<SceneProps> = ({
       {/* The queue, facing the door, a step forward once the doors open. */}
       {Array.from({ length: N }, (_, i) => {
         const x = SX + 380 - i * 128 + shuffle * 70;
-        const s = 0.88 + rand(i * 11 + variant) * 0.16;
+        const s = 0.95 + rand(i * 11 + variant) * 0.14;
         const phone = era === "flat" && i % 3 === 1;
         return (
           <g key={i}>
@@ -1098,7 +1099,7 @@ export const CheerScene: React.FC<SceneProps> = ({
     COLOUR.alert,
   ];
   return (
-    <SceneFrame p={p} len={len} cx={960} cy={540}>
+    <SceneFrame p={p} len={len} cx={960} cy={620} zoom={1.15}>
       <Room
         p={p}
         surface={FLOOR - 40}

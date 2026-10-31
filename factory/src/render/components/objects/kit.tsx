@@ -230,11 +230,17 @@ export const SceneFrame: React.FC<{
   children: React.ReactNode;
   /** HTML laid over the drawing (rarely: the calendar's numbers are SVG text too). */
   over?: React.ReactNode;
-}> = ({ p, len, cx, cy, children, over }) => {
+  /**
+   * How far the camera sits in on (cx, cy) once settled, so the hero object or group fills about half the
+   * frame height on a phone (coordinator, 31 Oct 2026: heroes sat at a quarter of the frame in empty room).
+   */
+  zoom?: number;
+}> = ({ p, len, cx, cy, children, over, zoom = 1 }) => {
   const frame = useCurrentFrame();
   const push = easeOut(interpolate(frame, [0, 40], [0, 1], clamp));
   const drift = interpolate(frame, [40, Math.max(41, len)], [0, 1], clamp);
-  const s = 1.06 - 0.06 * push + 0.018 * drift;
+  // A slow push in that settles by frame 40, then a slight drift further in.
+  const s = zoom * (1 + 0.05 * push + 0.015 * drift);
   const tagIn = interpolate(frame, [14, 24], [0, 1], clamp);
   return (
     <AbsoluteFill style={{ background: COLOUR.ink }}>

@@ -147,12 +147,14 @@ export async function fetchIgdbArt(
   ].slice(0, max);
   if (game.cover)
     want.push({ id: game.cover, kind: "capsule", size: "t_cover_big_2x" });
-  for (const [k, w] of want.entries()) {
+  for (const w of want) {
     const url = IMG(w.id, w.size);
     try {
       const res = await fetchFn(url, { signal: AbortSignal.timeout(20_000) });
       if (!res.ok) continue;
-      const file = path.join("assets", `igdb_${k}.jpg`);
+      // Named by IGDB's own picture id, so a second fetch into the same folder rewrites a file with the same
+      // picture and never puts a different one under a name an earlier pass placed (it was igdb_<k>).
+      const file = path.join("assets", `igdb-${w.id}.jpg`);
       await fs.writeFile(
         path.join(episodeDir, file),
         Buffer.from(await res.arrayBuffer()),

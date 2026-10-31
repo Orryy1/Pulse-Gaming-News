@@ -372,6 +372,11 @@ export interface Config {
   parallax: boolean;
   /** Zoom-to-the-detail annotations on long videos' stills (src/assets/annotate.ts). */
   annotate: boolean;
+  /** A long video's real-world photos (Commons photos, portraits, sketches) only on the sentence they were picked for,
+   *  never as filler; unpinned ones not shown (src/render/longplan.ts realWorldImage). On by default. */
+  realPhotosPinnedOnly: boolean;
+  /** At most this many stock clips per theme ("office at night", "counting cash") in one video (src/assets/repeats.ts). */
+  stockThemeMax: number;
   /** Drawn concept sketches for documentary lines nothing filmed can show (src/assets/illustrate.ts); off by default. */
   illustrate: boolean;
   /** The ComfyUI server that draws them (this PC's FLUX.1 dev). */
@@ -801,6 +806,8 @@ export function loadConfig(): Config {
     musicBed: bool("MUSIC_BED", true),
     parallax: bool("PARALLAX", true),
     annotate: bool("ANNOTATE", true),
+    realPhotosPinnedOnly: bool("REAL_PHOTOS_PINNED_ONLY", true),
+    stockThemeMax: int("STOCK_THEME_MAX", 2),
     illustrate: bool("ILLUSTRATE_ENABLED", false),
     illustrateUrl: str("ILLUSTRATE_URL", "http://127.0.0.1:8188"),
     illustrateMax: int("ILLUSTRATE_MAX", 24),

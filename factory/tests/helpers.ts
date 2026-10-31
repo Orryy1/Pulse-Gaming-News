@@ -262,6 +262,8 @@ export function testConfig(
     musicBed: true,
     parallax: false,
     annotate: false,
+    realPhotosPinnedOnly: true,
+    stockThemeMax: 2,
     illustrate: false,
     illustrateUrl: "http://127.0.0.1:8188",
     illustrateMax: 24,

@@ -521,3 +521,81 @@ test("a documentary trusts uploaded gameplay only for games from before this yea
   assert.equal(upcomingGame(2013, now), false);
   assert.equal(upcomingGame(undefined, now), false);
 });
+
+import { realWorldImage, realWorldMayFill } from "../src/render/longplan.ts";
+
+test("a real-world picture is a photo, portrait, sketch or a non-art file the top-up fetched", () => {
+  assert.equal(realWorldImage({ kind: "photo", file: "entry_3/assets/photo_0.jpg" }), true);
+  assert.equal(realWorldImage({ kind: "portrait" }), true);
+  assert.equal(realWorldImage({ kind: "sketch", file: "entry_1/fill/sketch_4.png" }), true);
+  assert.equal(realWorldImage({ kind: "article", file: "entry_1/fill/photos/p-1.jpg" }), true);
+  // Official game art stays art wherever it came from.
+  assert.equal(realWorldImage({ kind: "screenshot", file: "entry_1/fill/assets/igdb-abc.jpg" }), false);
+  assert.equal(realWorldImage({ kind: "hero", file: "entry_1/fill/other/gta_2/assets/igdb-x.jpg" }), false);
+  assert.equal(realWorldImage({ kind: "article", file: "assets/article.jpg" }), false);
+  assert.equal(realWorldMayFill(undefined, 3), false);
+  assert.equal(realWorldMayFill(3, 3), true);
+  assert.equal(realWorldMayFill(3, 4), true);
+  assert.equal(realWorldMayFill(3, 5), false);
+  assert.equal(realWorldMayFill(3, 2), false);
+});
+
+test("a real-world photo shows only on its own sentence; one pinned to none is never shown (31 Oct 2026)", () => {
+  const s = docToScript(draftWithMoments());
+  const entries = [...s.entries!].sort((a, b) => b.rank - a.rank);
+  const w = timed(s);
+  const segs = buildSegments(segmentInputs(s), w, w.at(-1)!.end + 6);
+  const counts = entries.map((e) => e.moments!.length);
+  const windows = momentWindows(segs, w, counts);
+  const images = [
+    { kind: "screenshot", aspect: 1.78, beatIndex: 0 },
+    { kind: "screenshot", aspect: 1.78, beatIndex: 0 },
+    { kind: "photo", aspect: 1.5, beatIndex: 0 }, // "Real apartment building under scaffolding": pinned to nothing
+    { kind: "photo", aspect: 1.5, beatIndex: 0, moment: 4 }, // the street sentence 4 names
+    { kind: "screenshot", aspect: 1.78, beatIndex: 1 },
+    { kind: "photo", aspect: 1.5, beatIndex: 1 },
+  ];
+  const plan = (realPinnedOnly?: boolean) =>
+    buildLongPlan({
+      segments: segs,
+      words: w,
+      durationSeconds: w.at(-1)!.end + 6,
+      images,
+      clips: [],
+      variant: 0,
+      momentCounts: counts,
+      realPinnedOnly,
+    });
+  const shots = plan().shots;
+  const on = (k: number) => shots.filter((x) => x.media.type === "image" && x.media.index === k);
+  assert.equal(on(2).length, 0, "the unpinned photo is never shown");
+  assert.equal(on(5).length, 0, "nor another chapter's");
+  const w4 = windows.find((x) => x.entry === 0 && x.moment === 4)!;
+  const w5 = windows.find((x) => x.entry === 0 && x.moment === 5)!;
+  assert.ok(on(3).length >= 1, "the pinned photo plays on its sentence");
+  for (const x of on(3))
+    assert.ok(x.start >= Math.round(w4.at * 30) - 1 && x.start < Math.round(w5.end * 30), "only on sentence 4 or the one after");
+  // Game art is still the chapter's filler.
+  assert.ok(on(0).length + on(1).length >= 3);
+  // Before the rule the unpinned photo was reused as filler.
+  const old = plan(false).shots.filter((x) => x.media.type === "image" && x.media.index === 2);
+  assert.ok(old.length >= 1);
+});
+
+test("without shot lists photos stay in the rotation (nothing to pin them to)", () => {
+  const s = docToScript(draftWithMoments());
+  const w = timed(s);
+  const segs = buildSegments(segmentInputs(s), w, w.at(-1)!.end + 6);
+  const plan = buildLongPlan({
+    segments: segs,
+    words: w,
+    durationSeconds: w.at(-1)!.end + 6,
+    images: [
+      { kind: "screenshot", aspect: 1.78, beatIndex: 0 },
+      { kind: "photo", aspect: 1.5, beatIndex: 0 },
+    ],
+    clips: [],
+    variant: 0,
+  });
+  assert.ok(plan.shots.some((x) => x.media.type === "image" && x.media.index === 1));
+});

@@ -11,6 +11,7 @@ import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import type { VisualAsset } from "./steam.ts";
 import type { FootageTarget } from "./clipscore.ts";
+import { freeName, samePath } from "./repeats.ts";
 
 const run = promisify(execFile);
 const API = "https://api.pexels.com/videos/search";
@@ -87,6 +88,10 @@ export async function searchPexels(
 /**
  * One illustrative clip per real-world line, tagged with its beat. Each video
  * is used once; a line with no match gets nothing (the planner falls back).
+ * A Pexels video already in the episode (`avoidUrls`, its page URLs) is never
+ * picked again, and each clip is written under a name no file in the folder
+ * has: a re-run used to restart at stock_0.mp4 and overwrite the clips an
+ * earlier run had placed (31 Oct 2026, Vice City documentary).
  */
 export async function stockClips(
   apiKey: string,
@@ -95,12 +100,19 @@ export async function stockClips(
   gameWords: string[],
   maxClips = 4,
   pick?: StockPicker,
+  avoidUrls: Iterable<string> = [],
 ): Promise<VisualAsset[]> {
   const out: VisualAsset[] = [];
   const used = new Set<number>();
+  const avoid = new Set(avoidUrls);
   const work = path.join(episodeDir, "stock");
   await fs.mkdir(work, { recursive: true });
   await fs.mkdir(path.join(episodeDir, "assets"), { recursive: true });
+  const taken = new Set(
+    (await fs.readdir(path.join(episodeDir, "assets")).catch(() => [])).map(
+      (n) => samePath(n),
+    ),
+  );
   try {
     for (const t of targets) {
       if (out.length >= maxClips) break;
@@ -108,7 +120,7 @@ export async function stockClips(
       if (!q) continue;
       try {
         const videos = (await searchPexels(apiKey, q)).filter(
-          (x) => !used.has(x.id),
+          (x) => !used.has(x.id) && !avoid.has(x.url),
         );
         let v = videos[0];
         if (pick) {
@@ -146,7 +158,9 @@ export async function stockClips(
           0,
           Math.min(v.duration - STOCK_CLIP_SECONDS - 0.5, v.duration * 0.25),
         );
-        const rel = path.join("assets", `stock_${out.length}.mp4`);
+        const name = freeName(`stock-${v.id}`, ".mp4", taken);
+        taken.add(samePath(name));
+        const rel = path.join("assets", name);
         await run(FFMPEG, [
           "-loglevel",
           "error",

@@ -223,7 +223,7 @@ export function createServices(db: Db, cfg: Config): Services {
       ),
     research: (title, fallbackQuery, maxChars) =>
       researchGame(title, fallbackQuery, maxChars),
-    fetchStock: (dir, targets, gameWords, maxClips) =>
+    fetchStock: (dir, targets, gameWords, maxClips, avoidUrls) =>
       cfg.pexelsApiKey
         ? stockClips(
             cfg.pexelsApiKey,
@@ -243,6 +243,7 @@ export function createServices(db: Db, cfg: Config): Services {
               );
               return r.picks[0]?.image;
             },
+            avoidUrls,
           )
         : Promise.resolve([]),
     fetchOfficialMedia: async (

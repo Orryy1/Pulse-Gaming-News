@@ -15,6 +15,8 @@ import type { FootageTarget } from "./clipscore.ts";
 import type { VisualAsset } from "./steam.ts";
 import { clipFrame, rankStills, uncoveredTargets } from "./stillscore.ts";
 import { log } from "../lib/util.ts";
+import { stockQuery } from "./stock.ts";
+import { capStockTargets, samePath, shortHash } from "./repeats.ts";
 import {
   DocMomentSchema,
   groundDocMoments,
@@ -52,7 +54,14 @@ export interface FillDeps {
     targets: FootageTarget[],
     gameWords: string[],
     maxClips: number,
+    avoidUrls?: string[],
   ): Promise<VisualAsset[]>;
+}
+
+/** Tunables of the top-up (from the settings). */
+export interface FillOptions {
+  /** At most this many stock clips per theme in the whole video (STOCK_THEME_MAX); 0 is no cap. */
+  stockThemeMax?: number;
 }
 
 type Placed = { beatIndex?: number; moment?: number };
@@ -166,12 +175,14 @@ export async function fillSentencePictures(
   franchise: string,
   scope?: "campaign",
   illustrate?: Illustrate,
-): Promise<{ before: number; after: number }> {
+  opts: FillOptions = {},
+): Promise<{ before: number; after: number; stockCapped: number }> {
   const before = coverageShare(chapters, images, clips);
   const games = chapters.map((c) => c.game);
+  const tally = { stockCapped: 0 };
   for (const ch of chapters) {
     try {
-      await fillChapter(deps, dir, ch, images, clips, franchise, scope);
+      await fillChapter(deps, dir, ch, images, clips, franchise, scope, opts, tally);
       // What is still bare, or has only illustrative stock, and states a date, place, figure or name gets the
       // graphic that shows it (30 Oct 2026 shot review: generic stock scored 1 of 3, a card stating the fact 3).
       const real = clips.filter((c) => !c.stock);
@@ -195,8 +206,9 @@ export async function fillSentencePictures(
   log("info", "sentence pictures topped up", {
     before: Math.round(before * 100),
     after: Math.round(after * 100),
+    stockCapped: tally.stockCapped,
   });
-  return { before, after };
+  return { before, after, stockCapped: tally.stockCapped };
 }
 
 async function fillChapter(
@@ -207,6 +219,8 @@ async function fillChapter(
   clips: Clip[],
   franchise: string,
   scope?: "campaign",
+  opts: FillOptions = {},
+  tally = { stockCapped: 0 },
 ): Promise<void> {
   const open = () => {
     const covered = coveredMoments(ch.entry, ch.moments, images, clips);
@@ -217,10 +231,11 @@ async function fillChapter(
   const abs = path.join(dir, base);
   await fs.mkdir(abs, { recursive: true });
 
-  // 1. Licensed stock for the real-world sentences that ask for it.
-  const stockTargets: FootageTarget[] = open()
+  // 1. Licensed stock for the real-world sentences that ask for it, a theme at most STOCK_THEME_MAX times in the
+  //    whole video: past that the sentence goes to the graphics pass or stays on the chapter's footage.
+  const gameWords = franchise.split(/\s+/);
+  const asked: FootageTarget[] = open()
     .filter((k) => realWorld(ch.moments[k]!))
-    .slice(0, MAX_STOCK)
     .map((k) => ({
       key: `beat:${ch.entry}#m${k}`,
       text: `${ch.sentences[k] ?? ""} (show: ${ch.moments[k]!.broll})`,
@@ -228,19 +243,35 @@ async function fillChapter(
       energy: "medium" as const,
       keywords: [ch.moments[k]!.broll!],
     }));
+  const capped = capStockTargets(
+    asked,
+    clips,
+    (t) => stockQuery(t, gameWords),
+    opts.stockThemeMax ?? 2,
+  );
+  tally.stockCapped += capped.dropped.length;
+  const stockTargets = capped.kept.slice(0, MAX_STOCK);
   if (stockTargets.length) {
+    const inVideo = clips
+      .map((c) => c.sourceUrl)
+      .filter((u): u is string => typeof u === "string");
     const got = await deps
       .fetchStock(
         path.join(abs, "stock"),
         stockTargets,
-        franchise.split(/\s+/),
+        gameWords,
         stockTargets.length,
+        inVideo,
       )
       .catch(() => [] as VisualAsset[]);
-    for (const c of got)
-      if (c.moment !== undefined)
+    const files = new Set(clips.map((c) => samePath(String(c.file ?? ""))));
+    for (const c of got) {
+      const file = path.join(base, "stock", c.file);
+      // Never a second entry for a file another clip points to (its content would be one of the two).
+      if (c.moment === undefined || files.has(samePath(file))) continue;
+      files.add(samePath(file));
         clips.push({
-          file: path.join(base, "stock", c.file),
+          file,
           sourceUrl: c.sourceUrl,
           provenance: c.provenance,
           durationSeconds: c.durationSeconds ?? 4,
@@ -255,6 +286,7 @@ async function fillChapter(
           moment: c.moment,
           credit: "ILLUSTRATIVE · STOCK FOOTAGE: PEXELS",
         });
+    }
   }
 
   // 2. Candidates: every official screenshot and artwork of the game not already in the video, and Commons
@@ -310,15 +342,24 @@ async function fillChapter(
         queries.set(m.show.split(/\s+/).slice(0, 6).join(" "), { words });
     }
   }
-  let n = 0;
   const seen = new Set<string>();
   for (const [q, want] of [...queries].slice(0, MAX_PHOTO_QUERIES)) {
     const found = (await deps.searchPhotos(q).catch(() => [] as CommonsImage[]))
-      .filter((img) => !seen.has(img.title) && photoMatches(img.title, want))
+      .filter(
+        (img) =>
+          !seen.has(img.title) &&
+          !have.has(img.pageUrl) &&
+          photoMatches(img.title, want),
+      )
       .slice(0, 3);
     for (const img of found) {
       seen.add(img.title);
-      const file = path.join(base, "photos", `p_${n++}.jpg`);
+      // Named by the photo's own page: a re-run never writes a different photo under a name already placed.
+      const file = path.join(
+        base,
+        "photos",
+        `p-${shortHash(img.pageUrl || img.title)}.jpg`,
+      );
       if (!(await deps.downloadPhoto(img, path.join(dir, file)))) continue;
       candidates.push({
         kind: "photo",

@@ -21,6 +21,35 @@ export interface LongImage {
   aspect: number;
   beatIndex?: number;
   moment?: number; // the sentence of the entry it was picked for
+  /** Its path in the episode folder: a picture the sentence top-up fetched (under fill/) may be a real-world one. */
+  file?: string;
+}
+
+/** Official game art: any line about its game may show it. */
+const GAME_ART = new Set(["screenshot", "hero", "header", "capsule"]);
+
+/**
+ * A picture of the real world (a Commons photo, a person's portrait, a concept sketch, or anything else the
+ * sentence top-up fetched that is not official game art). It shows one particular building, street or person,
+ * so it belongs only to the sentence it was picked for: 31 Oct 2026, the owner on the Vice City documentary,
+ * "what's with the constant repeated random property photos" (the same scaffolded apartment block and Dundee
+ * shopping centre came back as filler under unrelated lines).
+ */
+export function realWorldImage(img: { kind: string; file?: string }): boolean {
+  if (img.kind === "photo" || img.kind === "portrait" || img.kind === "sketch")
+    return true;
+  return !GAME_ART.has(img.kind) && /(^|[\\/])fill[\\/]/.test(img.file ?? "");
+}
+
+/**
+ * Whether a real-world picture pinned to sentence `pinned` may be on screen during sentence `now`: on its own
+ * sentence, or running on into the next as fillerFor allows. One pinned to nothing is never shown.
+ */
+export function realWorldMayFill(
+  pinned: number | undefined,
+  now: number,
+): boolean {
+  return pinned !== undefined && fillerFor(pinned, now);
 }
 
 export interface LongClip {
@@ -261,6 +290,12 @@ export interface LongPlanInput {
   takeEntry?: number;
   /** Per entry, per sentence: what its shot shows and who it names, so the cold open can preview them. */
   momentShows?: string[][];
+  /**
+   * Real-world pictures (realWorldImage) only on their own sentence, never as filler; unpinned ones not at all
+   * (REAL_PHOTOS_PINNED_ONLY, default on). Applies only to a plan with shot lists (momentCounts): a video
+   * without them has no sentence to pin a photo to and keeps its photos in the rotation.
+   */
+  realPinnedOnly?: boolean;
 }
 
 const PREVIEW_STOP = new Set(
@@ -285,7 +320,12 @@ export function previewShot(
   sentence: string,
   shows: string[][],
   taken: Set<string>,
-  images: Array<{ beatIndex?: number; moment?: number; kind?: string }>,
+  images: Array<{
+    beatIndex?: number;
+    moment?: number;
+    kind?: string;
+    file?: string;
+  }>,
   clips: Array<{ beatIndex?: number; moment?: number }>,
   clipUsed: boolean[],
 ): LongMedia | undefined {
@@ -315,7 +355,7 @@ export function previewShot(
       (m) =>
         m.beatIndex === best!.e &&
         m.moment === k &&
-        (d === 0 || (m.kind !== "photo" && m.kind !== "portrait")),
+        (d === 0 || !realWorldImage({ kind: m.kind ?? "", file: m.file })),
     );
     if (clip < 0 && image < 0) continue;
     taken.add(`${best.e}:${k}`);
@@ -406,6 +446,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   const windows = input.momentCounts?.length
     ? momentWindows(segments, input.words, input.momentCounts, input.momentKeys)
     : [];
+  // With shot lists, a real-world picture is shown only on its own sentence (realWorldImage).
+  const strict = (input.realPinnedOnly ?? true) && windows.length > 0;
+  const real = (k: number) => strict && realWorldImage(images[k]!);
   /** Fills [from, to) with a queue of media, never stretching a clip and never leaving a sliver. */
   const fill = (
     seg: number,
@@ -496,7 +539,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           (k) =>
             images[k]!.beatIndex === entry &&
             images[k]!.kind !== "capsule" &&
-            images[k]!.kind !== "portrait",
+            images[k]!.kind !== "portrait" &&
+            // A real-world picture pinned to no sentence could be any building: it is not shown.
+            !(real(k) && images[k]!.moment === undefined),
         );
       // Key art stays out of the rotation when there is enough else, unless a sentence was given it.
       const noHero = allEntry.filter(
@@ -514,18 +559,19 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       const leastUsed = (): LongMedia => {
         // An entry with no picture of its own never borrows the topic's art: for "Grand Theft Auto" that was
         // GTA V's key art under GTA Advance. It replays its own footage, or shows the branded plate.
-        if (!entryImages.length) {
-          if (entryClips.length)
-            return {
-              type: "clip",
-              index: entryClips[reuse++ % entryClips.length]!,
-            };
-          return { type: "plate", index: 0 };
-        }
+        const own = (): LongMedia =>
+          entryClips.length
+            ? { type: "clip", index: entryClips[reuse++ % entryClips.length]! }
+            : { type: "plate", index: 0 };
+        if (!entryImages.length) return own();
         const free = entryImages.filter((k) =>
-          fillerFor(images[k]!.moment, current),
+          real(k)
+            ? realWorldMayFill(images[k]!.moment, current)
+            : fillerFor(images[k]!.moment, current),
         );
-        const pool = free.length ? free : entryImages;
+        // Out of free pictures, game art may stand in for another sentence's; a real-world picture never does.
+        const pool = free.length ? free : entryImages.filter((k) => !real(k));
+        if (!pool.length) return own();
         // Least shown first; on a tie, a different kind from the last still (a documentary alternates the
         // game's art with archive photos of the real story instead of three office photos in a row).
         const lastKind =
@@ -570,11 +616,10 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         // The entry opens on its art so the rank card lands over a picture; later sentences open on footage.
         // With no picture of its own for the first sentence it borrows the entry's art: a dark clip under the rank card reads as an empty frame.
         if (w.moment === 0) {
+          const borrowed =
+            still === undefined && entryImages.length ? leastUsed() : undefined;
           const opener =
-            still ??
-            (entryImages.length
-              ? (leastUsed() as { type: "image"; index: number }).index
-              : undefined);
+            still ?? (borrowed?.type === "image" ? borrowed.index : undefined);
           if (opener !== undefined)
             queue.push({ type: "image", index: opener });
         } else for (const k of photos) queue.push({ type: "image", index: k });
@@ -626,12 +671,15 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             : clips[k]!.beatIndex === entry) &&
           (seg.kind === "take" || !clipUsed[k]),
       );
+    // No sentence plays here (the intro, the outro, a chapter without a shot list): no real-world picture.
     const ownStills = images
       .map((_, k) => k)
-      .filter((k) =>
-        entry === undefined
-          ? images[k]!.beatIndex === undefined
-          : images[k]!.beatIndex === entry,
+      .filter(
+        (k) =>
+          !real(k) &&
+          (entry === undefined
+            ? images[k]!.beatIndex === undefined
+            : images[k]!.beatIndex === entry),
       );
     // The intro of a ranking is a montage: the topic's own art plus one picture from every entry.
     const montage =
@@ -645,9 +693,10 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           ]
             .map((b) =>
               images.findIndex(
-                (im) =>
+                (im, n) =>
                   im.beatIndex === b &&
-                  (im.kind === "screenshot" || im.kind === "photo"),
+                  (im.kind === "screenshot" || im.kind === "photo") &&
+                  !real(n),
               ),
             )
             .filter((k) => k >= 0)
@@ -657,7 +706,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       : [
           ...images
             .map((_, k) => k)
-            .filter((k) => images[k]!.beatIndex === undefined),
+            .filter((k) => images[k]!.beatIndex === undefined && !real(k)),
           ...montage,
         ];
     // Wide art first on a still shot: hero, screenshots, then the rest; capsules (portrait) come last.

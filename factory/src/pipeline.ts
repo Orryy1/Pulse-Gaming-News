@@ -47,6 +47,8 @@ import { trailerMatchesGame } from "./assets/commons.ts";
 import { captureHold } from "./capture.ts";
 import { rankStills } from "./assets/stillscore.ts";
 import { coverageShare, fillSentencePictures } from "./assets/fill.ts";
+import { capStockTargets } from "./assets/repeats.ts";
+import { stockQuery } from "./assets/stock.ts";
 import { createSketchRun } from "./assets/illustrate.ts";
 
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
@@ -108,6 +110,7 @@ import {
   chapterLines,
   LONG_TAIL_SECONDS,
   entryOf,
+  realWorldImage,
 } from "./render/longplan.ts";
 import type { LongRenderInput, LongStillsInput } from "./render/render.ts";
 import type { renderCutdown } from "./render/render.ts";
@@ -391,6 +394,8 @@ export interface Services {
     targets: FootageTarget[],
     gameWords: string[],
     maxClips: number,
+    /** Pexels page URLs already in the video: never picked again. */
+    avoidUrls?: string[],
   ): Promise<VisualAsset[]>;
   releaseRadar(from: Date): Promise<RadarGame[]>;
   freeGames(now: Date): Promise<{ now: FreeGame[]; next: FreeGame[] }>;
@@ -5654,10 +5659,9 @@ async function gatherChapterMedia(
   // played on its own sentence and labelled illustrative on screen.
   if (!budget?.over())
   try {
-    const targets: FootageTarget[] = (entry.moments ?? [])
+    const asked: FootageTarget[] = (entry.moments ?? [])
       .map((m, k) => ({ m, k }))
       .filter((x) => x.m.broll?.trim())
-      .slice(0, DOC_BROLL_PER_CHAPTER)
       .map(({ m, k }) => ({
         key: `beat:${beatIndex}#m${k}`,
         // The sentence itself, so the picture editor judges the preview against what is said.
@@ -5666,12 +5670,26 @@ async function gatherChapterMedia(
         energy: "medium" as const,
         keywords: [m.broll!],
       }));
+    // A stock theme ("office at night") at most STOCK_THEME_MAX times in the whole video (src/assets/repeats.ts).
+    const capped = capStockTargets(
+      asked,
+      clips,
+      (t) => stockQuery(t, franchise.split(/\s+/)),
+      s.cfg.stockThemeMax,
+    );
+    if (capped.dropped.length)
+      log("info", "documentary B-roll: repeated stock themes skipped", {
+        game: entry.game_title,
+        skipped: capped.dropped.map((t) => t.keywords[0]),
+      });
+    const targets = capped.kept.slice(0, DOC_BROLL_PER_CHAPTER);
     if (targets.length)
       for (const c of await s.fetchStock(
         edir,
         targets,
         franchise.split(/\s+/),
         targets.length,
+        clips.map((c) => c.sourceUrl).filter((u): u is string => !!u),
       ))
         clips.push({
           file: rel(c.file),
@@ -6056,8 +6074,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       script.game_title || script.headline,
       scopeOf(script),
       sketches?.forChapter,
+      { stockThemeMax: s.cfg.stockThemeMax },
     );
     assets.filled = { before: r.before, after: r.after };
+    if (r.stockCapped) {
+      await logEvent(s.db, ep.id, "stock_themes_capped", {
+        skipped: r.stockCapped,
+        max: s.cfg.stockThemeMax,
+      });
+      await s.notify({
+        level: "info",
+        content: `Documentary "${script.headline}": ${r.stockCapped} stock clip${r.stockCapped === 1 ? "" : "s"} not fetched because the video already has ${s.cfg.stockThemeMax} of that theme (such as "office at night"); those lines get a graphic or stay on the game's footage. Setting: STOCK_THEME_MAX.`,
+      });
+    }
     if (sketches) {
       const sum = sketches.summary();
       assets.sketches = sum;
@@ -6151,6 +6180,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         aspect: i.aspect,
         beatIndex: i.beatIndex,
         moment: i.moment,
+        file: i.file,
       })),
       clips: clips.map((c) => ({
         durationSeconds: c.durationSeconds,
@@ -6159,6 +6189,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         moment: c.moment,
       })),
       variant,
+      // Real-world photos only on their own sentence (REAL_PHOTOS_PINNED_ONLY; 31 Oct 2026 owner review).
+      realPinnedOnly: s.cfg.realPhotosPinnedOnly,
       momentCounts: hasMoments ? moments.map((m) => m.length) : undefined,
       momentKeys: hasMoments
         ? moments.map((e) => e.map(momentKeys))
@@ -6179,6 +6211,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     });
   let plan = assets.longPlan ?? makePlan();
   if (!assets.longPlan) {
+    // Real-world photos pinned to no sentence stay off screen (REAL_PHOTOS_PINNED_ONLY): say how many.
+    const withheld = hasMoments && s.cfg.realPhotosPinnedOnly
+      ? images.filter((i) => realWorldImage(i) && i.moment === undefined).length
+      : 0;
+    if (withheld)
+      await logEvent(s.db, ep.id, "real_photos_withheld", { count: withheld });
     // An entry left on the plate or looping its few clips gets official screenshots from IGDB, then a new plan.
     const ranked = [...(script.entries ?? [])].sort((a, b) => b.rank - a.rank);
     const gaps = planGaps(plan, segments, script.take_entry);

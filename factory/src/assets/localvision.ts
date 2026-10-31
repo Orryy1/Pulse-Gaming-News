@@ -438,18 +438,19 @@ export interface SegmentLook {
   live: boolean;
 }
 
-const LOOK_PROMPT = `You look at one frame of a gameplay recording for a documentary editor. Give a short label and answer each question with true or false.
-label: what the frame shows, under 9 words, concrete nouns (for example "red sports car on a palm-lined beach road at sunset").
-text: any readable words anywhere: titles, subtitles, captions, menus, objective text, watermarks, channel names, subscribe buttons.
-hud_only: true only when every piece of writing is the game's own small heads-up display in a corner (minimap, ammo, health, money); false when there is any other writing, and false when there is no writing at all.
-webcam: a real person's webcam or facecam, a picture-in-picture box, stream chat, alerts or any recording overlay.
-gore: blood sprays, wounds, dead bodies, executions.
-letterbox: black bars covering more than a third of the frame.
-dark: mostly black or too dark to tell what is happening.
-blurry: heavily blurred, smeared or an unreadable close-up of a texture.
-mod: the game has been modded or turned into kids' content: superheroes or cartoon and toy characters (Spider-Man, Hulk, Sonic, Minions, cartoon zombies or animals), giant ramps, neon obstacle courses, impossible vehicles or objects pasted into the world.
-menu: a menu, pause screen, loading screen, title screen, map screen or settings screen rather than the game world.
-live: a real camera image of real people or places, not a rendered game.`;
+// Short on purpose: qwen3-vl thinks before it answers even with thinking off, and a long list of questions made
+// it think past the token budget, so a quarter of the answers came back cut off with an empty label (31 Oct 2026
+// experiment: the same frames answered in 1.2-3 s with a short prompt, 5-6 s with the long one).
+// Six questions, not eleven: each one lengthens the model's thinking (31 Oct 2026: 5.1 s a look with eleven, the
+// GPU's whole 40 minutes on four chapters). Darkness and dimness are measured from the scan, letterboxing from a
+// thumbnail and menus mostly read by the OCR, so the model is not asked.
+const LOOK_PROMPT = `Three frames of one gameplay segment, side by side. Answer briefly in JSON; a flag is true if it holds in any frame.
+label: what it shows in under 9 plain words, never the game's name (for example "red sports car on a beach road at sunset").
+text: readable words anywhere (subtitles, banners like "mission passed", big place or car names, prompts, menus, watermarks).
+hud_only: all writing is the game's small corner HUD (minimap, money, health).
+webcam: a facecam, picture-in-picture or stream overlay.
+gore: blood, wounds or bodies.
+mod: modded or kids' content (superheroes, cartoon or toy characters, giant ramps, neon obstacle courses).`;
 
 const LOOK_SCHEMA = {
   type: "object",
@@ -459,26 +460,9 @@ const LOOK_SCHEMA = {
     hud_only: { type: "boolean" },
     webcam: { type: "boolean" },
     gore: { type: "boolean" },
-    letterbox: { type: "boolean" },
-    dark: { type: "boolean" },
-    blurry: { type: "boolean" },
     mod: { type: "boolean" },
-    menu: { type: "boolean" },
-    live: { type: "boolean" },
   },
-  required: [
-    "label",
-    "text",
-    "hud_only",
-    "webcam",
-    "gore",
-    "letterbox",
-    "dark",
-    "blurry",
-    "mod",
-    "menu",
-    "live",
-  ],
+  required: ["label", "text", "hud_only", "webcam", "gore", "mod"],
 };
 
 /** The model's answer as a SegmentLook; anything missing reads as false and an empty label. */
@@ -486,10 +470,13 @@ export function lookAnswer(parsed: any): SegmentLook {
   const yes = (k: string) => parsed?.[k] === true;
   const hud = yes("text") && yes("hud_only");
   return {
-    label: String(parsed?.label ?? "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 80),
+    // A label must describe something: the model sometimes answers "true" there (31 Oct 2026 proof).
+    label: ((l: string) => (/^(true|false|yes|no|none|n\/a)?$/i.test(l) || !/[a-z]{3}/i.test(l) ? "" : l))(
+      String(parsed?.label ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 80),
+    ),
     hud,
     text: yes("text") && !hud,
     webcam: yes("webcam"),
@@ -518,7 +505,8 @@ async function lookOne(file: string): Promise<SegmentLook> {
         keep_alive: "15m",
         options: {
           temperature: 0,
-          num_predict: 160 + THINK_ROOM,
+          // Room for the thinking a cut-off answer showed it needs: Ollama stops when the answer is done.
+          num_predict: 160 + 2 * THINK_ROOM,
           num_ctx: NUM_CTX,
         },
         messages: [{ role: "user", content: LOOK_PROMPT, images: [image] }],

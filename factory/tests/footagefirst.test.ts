@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs/promises";
 import os from "node:os";
+import { createHash } from "node:crypto";
 import {
   assignSegments,
   ccBy,
@@ -13,6 +14,7 @@ import {
   footageShare,
   footageWants,
   gatherChapterFootage,
+  gatherFootageFirst,
   emptyReport,
   junkSourceReason,
   matchWords,
@@ -22,6 +24,13 @@ import {
   roundRobin,
   segmentRejectReason,
   segmentsOf,
+  poorSources,
+  letterboxed,
+  fairDeadline,
+  prefetchChapter,
+  dHash,
+  hamming,
+  captionWords,
   FOOTAGE_FIRST_DEFAULTS,
   DOWNLOADS_AT_ONCE,
   type FootageClip,
@@ -295,10 +304,18 @@ const look = (over: Partial<SegmentLook> = {}): SegmentLook => ({
 });
 
 test("a dim stretch is left out even with no black frame in it", () => {
-  const rows = Array.from({ length: 201 }, (_, i) => ({ time: i / 10, luma: i < 100 ? 38 : 90, motion: 3, scene: 0.01 }));
+  const rows = Array.from({ length: 201 }, (_, i) => ({
+    time: i / 10,
+    luma: i < 100 ? 38 : 90,
+    motion: 3,
+    scene: 0.01,
+  }));
   const segs = segmentsOf(rows, 20);
   assert.ok(segs.length > 0);
-  assert.ok(!segs.some((s) => s.from + s.len <= 10), "no segment wholly in the dim half");
+  assert.ok(
+    !segs.some((s) => s.from + s.len <= 10),
+    "no segment wholly in the dim half",
+  );
 });
 
 test("a segment is refused for mods, facecams, menus, text, real footage; a mostly-mod video loses every segment", () => {
@@ -482,9 +499,23 @@ function fakes(
         motion: 3,
         scene: 0.01,
       })),
-    frame: async (_f, _at, dest) => {
+    frames: async (_f, _at, _s, prefix) => {
+      const out = [1, 2, 3].map((k) => `${prefix}_0${k}.jpg`);
+      for (const f of out) await fs.writeFile(f, "jpg");
+      return out;
+    },
+    compose: async (_files, dest) => {
       await fs.writeFile(dest, "jpg");
     },
+    // Every segment its own picture unless a test says otherwise.
+    hash: async (f) => {
+      const n = Number(f.match(/seg_(\d+)/)?.[1] ?? 0);
+      // A pseudo-random 64-bit pattern per segment: two segments differ in about 32 bits.
+      return [...createHash("sha256").update(String(n)).digest().subarray(0, 8)]
+        .map((x) => x.toString(2).padStart(8, "0"))
+        .join("");
+    },
+    ocr: async () => new Map(),
     look: async (files) => {
       calls.looked += files.length;
       // Looks keyed by segment: both frames of one segment get the same answer.
@@ -717,6 +748,8 @@ test("the step appends the new clips with their spans, logs the counts and tells
     r.kept > 0 && clips.length === r.kept && clips.every((c) => c.span),
   );
   assert.deepEqual(events, ["footage_first"]);
+  assert.deepEqual(r.perChapter?.map((c) => [c.entry, c.kept]), [[0, r.kept]], "minutes and clips per chapter");
+  assert.ok(r.phases && r.phases.download! >= 0 && r.phases.look! >= 0, "seconds per step");
   assert.equal(notes.length, 1);
   assert.match(notes[0]!, /Creative Commons gameplay clips/);
   assert.ok(!/—/.test(notes[0]!));
@@ -944,7 +977,7 @@ test("segments are looked at in rounds: more when most are refused, no more than
     return report;
   };
   const clean = await run(() => false);
-  const hard = await run((i) => i % 10 !== 0);
+  const hard = await run((i) => i % 5 !== 0);
   assert.ok(
     clean.segments > clean.looked / 2,
     "a clean chapter stops looking once it has enough",
@@ -954,4 +987,134 @@ test("segments are looked at in rounds: more when most are refused, no more than
     "a chapter whose frames are mostly refused looks at more",
   );
   assert.ok(hard.looked <= 2 * FOOTAGE_FIRST_DEFAULTS.visionMax);
+});
+
+test("cheap tests settle a segment before the model: a frozen picture, the same picture again, words the OCR reads", async () => {
+  // A difference hash and its distance.
+  const ramp = Array.from({ length: 72 }, (_, i) => (i % 9) * 10);
+  assert.equal(dHash(ramp), "0".repeat(64));
+  assert.equal(dHash(ramp.map((v) => 255 - v)), "1".repeat(64));
+  assert.equal(hamming("0101", "0110"), 2);
+  assert.equal(hamming(undefined, "0"), 64);
+  // OCR words: a subtitle counts, HUD digits and corner scraps do not.
+  const page = (words: Array<[string, number, number]>) => ({ width: 640, height: 360, words: words.map(([text, x, y]) => ({ text, x, y, w: 40, h: 12 })) });
+  assert.equal(captionWords(page([["Sniper", 280, 300], ["roof!", 330, 300]])), 2);
+  assert.equal(captionWords(page([["sunne7274", 540, 30], ["Ian", 560, 40], ["0-30", 300, 70]])), 0);
+  assert.equal(captionWords(page([["Ocean", 30, 300], ["Beach", 60, 300]])), 0, "the minimap corner");
+  assert.equal(captionWords(undefined), 0);
+  // The flow: segment 0 frozen, 1 the same picture as 2, 3 has a subtitle; one composite look per remaining segment.
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
+  const { deps } = fakes(dir, () => look());
+  const looked: string[] = [];
+  const rows = Array.from({ length: 601 }, (_, i) => ({ time: i / 10, luma: 90, motion: i < 70 ? 0 : 3, scene: 0.01 }));
+  const counted: FootageFirstDeps = {
+    ...deps,
+    search: async () => [{ videoId: "aaaaaaaaaaa", title: "GTA Vice City gameplay", channel: "Alpha" }],
+    scan: async () => rows,
+    hash: async (f) => (/seg_(1|2)_/.test(f) ? "0".repeat(64) : deps.hash(f)),
+    ocr: async (files) => new Map(files.filter((f) => /seg_3_/.test(f)).map((f) => [f, page([["Sniper", 280, 300], ["roof!", 330, 300]])])),
+    look: async (files) => {
+      looked.push(...files);
+      return deps.look(files);
+    },
+  };
+  const report = emptyReport();
+  const ch = { entry: 2, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"] };
+  await gatherChapterFootage(counted, ch, [], path.join(dir, "entry_2"), "entry_2", 300, FOOTAGE_FIRST_DEFAULTS, report, [], Infinity);
+  const why = (n: number) => report.segmentsRejected.find((r) => r.at === Math.round(pullWindow(1800, 0, FOOTAGE_FIRST_DEFAULTS.pullSeconds).from + n * 7))?.why;
+  assert.equal(why(0), "frozen picture");
+  assert.equal(why(2), "same picture as another segment");
+  assert.equal(why(3), "text on screen (read)");
+  assert.ok(!looked.some((f) => /seg_(0|2|3)\.jpg$/.test(f)), "none of them reached the model");
+  assert.ok(looked.every((f) => /seg_\d+\.jpg$/.test(f)), "one composite image a segment");
+  assert.equal(report.looked, looked.length);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("a video whose segments keep failing gets no more looks", () => {
+  const v = (source: number, ok: boolean, n: number) => Array.from({ length: n }, () => ({ source, ok }));
+  assert.deepEqual([...poorSources([...v(0, false, 6), ...v(1, false, 5), ...v(2, true, 2), ...v(2, false, 4)])], [0]);
+});
+
+test("the next chapter downloads while this one is looked at", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
+  const { deps } = fakes(dir, () => look());
+  const events: string[] = [];
+  const traced: FootageFirstDeps = {
+    ...deps,
+    download: async (url, a, b, dest) => {
+      events.push(`download ${dest.includes("entry_3") ? 3 : 2}`);
+      return deps.download(url, a, b, dest);
+    },
+    look: async (files) => {
+      events.push(`look ${files[0]?.includes("entry_3") ? 3 : 2}`);
+      await new Promise((r) => setTimeout(r, 30));
+      return deps.look(files);
+    },
+  };
+  const ch = (entry: number) => ({ entry, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"], seconds: 300 });
+  const { report } = await gatherFootageFirst(traced, [ch(2), ch(3)], [], dir, FOOTAGE_FIRST_DEFAULTS);
+  const firstLook2 = events.indexOf("look 2");
+  const lastDownload3 = events.lastIndexOf("download 3");
+  assert.ok(firstLook2 >= 0 && events.indexOf("download 3") < events.lastIndexOf("look 2"), "chapter 3's downloads start before chapter 2's looks end");
+  assert.ok(lastDownload3 > 0);
+  assert.equal(report.perChapter?.length, 2);
+  assert.equal(typeof prefetchChapter, "function");
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("letterboxing is measured from a thumbnail, not asked of the model", async () => {
+  const frame = (top: number, mid: number) => Array.from({ length: 72 }, (_, i) => (Math.floor(i / 9) === 0 || Math.floor(i / 9) === 7 ? top : mid));
+  assert.equal(letterboxed(frame(2, 90)), true);
+  assert.equal(letterboxed(frame(60, 90)), false);
+  assert.equal(letterboxed(frame(2, 5)), false, "a black frame is dark, not letterboxed");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
+  const { deps } = fakes(dir, () => look());
+  const looked: string[] = [];
+  const barred: FootageFirstDeps = {
+    ...deps,
+    bars: async () => true,
+    look: async (files) => (looked.push(...files), deps.look(files)),
+  };
+  const report = emptyReport();
+  const ch = { entry: 2, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"] };
+  await gatherChapterFootage(barred, ch, [], path.join(dir, "entry_2"), "entry_2", 300, FOOTAGE_FIRST_DEFAULTS, report, [], Infinity);
+  assert.equal(looked.length, 0);
+  assert.ok(report.segmentsRejected.every((r) => r.why === "letterboxed" || r.why === "frozen picture"));
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("every released chapter gets an even share of the time left, so the limit never leaves chapters untouched", async () => {
+  assert.equal(fairDeadline(0, 600_000, 3), 200_000);
+  assert.equal(fairDeadline(500_000, 600_000, 1), 600_000);
+  assert.equal(fairDeadline(700_000, 600_000, 2), 700_000, "past the limit: no time");
+  assert.equal(fairDeadline(0, Infinity, 4), Infinity);
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
+  const { deps } = fakes(dir, () => look());
+  let clock = 0;
+  const slow: FootageFirstDeps = {
+    ...deps,
+    now: () => clock,
+    // Each look costs five seconds on the fake clock.
+    look: async (files) => ((clock += files.length * 5000), deps.look(files)),
+  };
+  const ch = (entry: number) => ({ entry, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"], seconds: 2000 });
+  const { report } = await gatherFootageFirst(slow, [ch(1), ch(2), ch(3)], [], dir, { ...FOOTAGE_FIRST_DEFAULTS, maxMinutes: 4 });
+  assert.deepEqual(report.perChapter?.map((c) => c.entry), [1, 2, 3], "all three chapters gathered");
+  assert.ok(report.perChapter!.every((c) => c.kept > 0));
+  assert.ok(clock <= 4 * 60_000 + 4 * 5000 * 3, "within the limit, give or take a short round");
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("phone ports, wheel cams, simulators, co-commentary and long streams are refused by title; a label of 'true' is no label", () => {
+  const no = (t: string, c = "x", g = "Grand Theft Auto V") => junkTitleReason(t, c, g);
+  assert.match(no("Gta 3 gameplay walkthrough part 1 (Android/iOS)", "x", "Grand Theft Auto III")!, /mobile/);
+  assert.match(no("GTA 5 - Let's Go to Work at a Car Rental Company | Steering Wheel Gameplay")!, /wheel/);
+  assert.match(no("GTA 5: Police Cruiser Simulator (Grand Theft Auto 5 Gameplay)")!, /simulator/);
+  assert.match(no("GTA San Andreas Walkthrough with Co-Commentary - Part 1", "x", "Grand Theft Auto: San Andreas")!, /reaction/);
+  assert.match(no("SMii7Y Plays GTA 5 Free Roam FOR 2 HOURS!")!, /reaction/);
+  assert.equal(no("GTA 5 Free Roam Gameplay No Commentary"), undefined);
+  assert.equal(no("GTA VICE CITY Walkthrough Part 8 - No-Commentary", "x", VC), undefined);
+  assert.equal(lookAnswer({ label: "true", text: false }).label, "");
+  assert.equal(segmentRejectReason(lookAnswer({ label: "true" })), "no label");
 });

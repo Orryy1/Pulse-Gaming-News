@@ -895,7 +895,7 @@ export function loadConfig(): Config {
     footageFirst: bool("FOOTAGE_FIRST", true),
     footageShareTarget: Math.max(0, Math.min(100, int("FOOTAGE_SHARE_TARGET", 60))),
     footageSources: Math.max(1, int("FOOTAGE_SOURCES", 6)),
-    footagePullSeconds: Math.max(60, int("FOOTAGE_PULL_SECONDS", 420)),
+    footagePullSeconds: Math.max(60, int("FOOTAGE_PULL_SECONDS", 240)),
     footageVisionMax: Math.max(12, int("FOOTAGE_VISION_MAX", 120)),
     footageFirstMaxMinutes: Math.max(0, int("FOOTAGE_FIRST_MAX_MINUTES", 40)),
     illustrate: bool("ILLUSTRATE_ENABLED", false),

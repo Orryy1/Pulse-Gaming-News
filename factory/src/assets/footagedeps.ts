@@ -17,7 +17,14 @@ import {
 import { lookFrames } from "./localvision.ts";
 import type { Llm } from "../editorial/llm.ts";
 import { judgeGameplay } from "./gameplay.ts";
-import type { FootageFirstDeps, SourceHit } from "./footagefirst.ts";
+import { dHash, letterboxed, type FootageFirstDeps, type SourceHit } from "./footagefirst.ts";
+import { readText } from "./ocr.ts";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+/** A child whose stdout is bytes (the hash thumbnail), not text. */
+const runRaw = (cmd: string, args: string[]) =>
+  promisify(execFile)(cmd, args, { encoding: "buffer", maxBuffer: 1024 * 1024, timeout: 30_000 }) as Promise<{ stdout: Buffer; stderr: Buffer }>;
 
 const run = runCapped;
 
@@ -176,24 +183,39 @@ export function footageFirstDeps(o: {
       await fs.rm(path.join(dir, stats), { force: true });
       return rows;
     },
-    frame: async (file, at, dest) => {
+    frames: async (file, at, seconds, prefix) => {
+      // One pass for the whole segment: about a frame a second, a little in from each end, at least three.
+      const n = Math.max(3, Math.min(7, Math.round(seconds)));
+      const fps = n / Math.max(0.5, seconds - 0.2);
       await run(FFMPEG, [
-        "-v",
-        "error",
-        "-y",
-        "-ss",
-        at.toFixed(2),
-        "-i",
-        file,
-        "-frames:v",
-        "1",
-        "-vf",
-        "scale=640:-2",
-        "-q:v",
-        "4",
-        dest,
+        "-v", "error", "-y", "-ss", (at + 0.1).toFixed(2), "-i", file, "-t", (seconds - 0.2).toFixed(2),
+        "-vf", `fps=${fps.toFixed(4)},scale=640:-2`, "-frames:v", String(n), "-q:v", "4", `${prefix}_%02d.jpg`,
+      ]);
+      const out: string[] = [];
+      for (let k = 1; k <= n; k++) {
+        const f = `${prefix}_${String(k).padStart(2, "0")}.jpg`;
+        if (await fs.stat(f).then(() => true, () => false)) out.push(f);
+      }
+      return out;
+    },
+    compose: async (files, dest) => {
+      const inputs = files.flatMap((f) => ["-i", f]);
+      const scaled = files.map((_, i) => `[${i}:v]scale=512:288,setsar=1[v${i}]`).join(";");
+      await run(FFMPEG, [
+        "-v", "error", "-y", ...inputs,
+        "-filter_complex", `${scaled};${files.map((_, i) => `[v${i}]`).join("")}hstack=inputs=${files.length}`,
+        "-frames:v", "1", "-q:v", "4", dest,
       ]);
     },
+    bars: async (file) => {
+      const { stdout } = await runRaw(FFMPEG, ["-v", "error", "-i", file, "-vf", "scale=9:8,format=gray", "-f", "rawvideo", "-"]);
+      return stdout.length >= 72 && letterboxed(new Uint8Array(stdout.subarray(0, 72)));
+    },
+    hash: async (file) => {
+      const { stdout } = await runRaw(FFMPEG, ["-v", "error", "-i", file, "-vf", "scale=9:8,format=gray", "-f", "rawvideo", "-"]);
+      return stdout.length >= 72 ? dHash(new Uint8Array(stdout.subarray(0, 72))) : undefined;
+    },
+    ocr: (files) => readText(files),
     look: (files) => lookFrames(files),
     cut: async (file, at, seconds, dest) => {
       await run(FFMPEG, [
@@ -214,7 +236,7 @@ export function footageFirstDeps(o: {
         "-crf",
         "18",
         "-preset",
-        "fast",
+        "veryfast",
         "-pix_fmt",
         "yuv420p",
         dest,

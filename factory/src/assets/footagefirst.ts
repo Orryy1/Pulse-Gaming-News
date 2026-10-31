@@ -51,7 +51,7 @@ export interface FootageFirstOptions {
 export const FOOTAGE_FIRST_DEFAULTS: FootageFirstOptions = {
   sharePct: 60,
   sources: 6,
-  pullSeconds: 420,
+  pullSeconds: 240,
   visionMax: 120,
   perSentence: 2,
   maxMinutes: 40,
@@ -75,8 +75,17 @@ export function footageOptions(cfg: {
   };
 }
 
+/** Seconds one look on the local model takes, near enough (31 Oct 2026: 4.7-5.1 s). */
+export const LOOK_SECONDS = 5;
+
+/** This chapter's end: an even share of the time left among the released chapters still to come. */
+export function fairDeadline(now: number, deadline: number, chaptersLeft: number): number {
+  if (!Number.isFinite(deadline)) return deadline;
+  return now + Math.max(0, deadline - now) / Math.max(1, chaptersLeft);
+}
+
 /** Source windows downloaded at the same time. */
-export const DOWNLOADS_AT_ONCE = 3;
+export const DOWNLOADS_AT_ONCE = 6;
 
 /** The shortest segment worth a shot (the planner's shortest clip shot is 1.3 s; a line needs more). */
 export const SEGMENT_MIN_SECONDS = 2.4;
@@ -234,15 +243,15 @@ export function pullWindow(
  * of each edit.
  */
 export function segmentsOf(
-  rows: Array<{ time: number; luma: number; scene?: number }>,
+  rows: Array<{ time: number; luma: number; motion?: number; scene?: number }>,
   totalSeconds: number,
   min = SEGMENT_MIN_SECONDS,
   max = SEGMENT_MAX_SECONDS,
   darkLuma = 30,
-): Array<{ from: number; len: number }> {
+): Array<{ from: number; len: number; motion: number }> {
   const jumps = clipJumps(rows);
   const edges = [0, ...jumps, totalSeconds];
-  const out: Array<{ from: number; len: number }> = [];
+  const out: Array<{ from: number; len: number; motion: number }> = [];
   for (let k = 0; k + 1 < edges.length; k++) {
     const a = k === 0 ? 0 : edges[k]! + 1 / 15;
     const b =
@@ -261,8 +270,10 @@ export function segmentsOf(
       // A dim stretch reads as black on a phone even with no single black frame (31 Oct 2026 proof: a night
       // warehouse in San Andreas): the segment's mean brightness must clear DIM_LUMA too.
       const mean = all ? inside.reduce((n, r) => n + r.luma, 0) / all : 255;
+      // How much the picture moves: a paused game or a held menu reads as a frozen video.
+      const motion = all ? inside.reduce((n, r) => n + (r.motion ?? 0), 0) / all : 0;
       if (!all || (dark / all < 0.1 && mean >= DIM_LUMA))
-        out.push({ from: round(at), len: round(take) });
+        out.push({ from: round(at), len: round(take), motion: Math.round(motion * 100) / 100 });
       at += take;
     }
   }
@@ -289,6 +300,73 @@ export function roundRobin<T>(xs: T[], group: (x: T) => unknown): T[] {
   for (let r = 0; out.length < xs.length; r++)
     for (const g of groups.values()) if (g[r] !== undefined) out.push(g[r]!);
   return out;
+}
+
+/** Below this mean frame difference (0-255, at 320 px) a segment is a frozen picture: a pause, a held menu. */
+export const FROZEN_MOTION = 0.3;
+/** Two segments of one video whose middle frames' hashes differ in at most this many of 64 bits look the same. */
+export const SAME_PICTURE_BITS = 6;
+
+/** Videos with at least `min` segments judged and under `rate` of them passing: their other segments are skipped. */
+export function poorSources(
+  verdicts: Array<{ source: number; ok: boolean }>,
+  min = 6,
+  rate = 0.15,
+): Set<number> {
+  const by = new Map<number, { all: number; ok: number }>();
+  for (const v of verdicts) {
+    const m = by.get(v.source) ?? { all: 0, ok: 0 };
+    m.all++;
+    if (v.ok) m.ok++;
+    by.set(v.source, m);
+  }
+  return new Set([...by].filter(([, m]) => m.all >= min && m.ok / m.all < rate).map(([k]) => k));
+}
+
+/**
+ * Black bars over a third of the frame, from a 9x8 greyscale thumbnail: the top and bottom rows (an eighth of the
+ * height each) near black while the middle is not. Cutscenes letterboxed in a 16:9 recording read so.
+ */
+export function letterboxed(gray: Uint8Array | number[]): boolean {
+  const row = (y: number) => Array.from({ length: 9 }, (_, x) => gray[y * 9 + x]!).reduce((n, v) => n + v, 0) / 9;
+  const mid = (row(3) + row(4)) / 2;
+  return row(0) < 14 && row(7) < 14 && mid > 30;
+}
+
+/** A 64-bit difference hash from a 9x8 greyscale thumbnail (row by row): each bit is "brighter than its right neighbour". */
+export function dHash(gray: Uint8Array | number[]): string {
+  let bits = "";
+  for (let y = 0; y < 8; y++)
+    for (let x = 0; x < 8; x++) bits += gray[y * 9 + x]! > gray[y * 9 + x + 1]! ? "1" : "0";
+  return bits;
+}
+
+/** How many bits two hashes differ in (64 when either is missing). */
+export function hamming(a: string | undefined, b: string | undefined): number {
+  if (!a || !b || a.length !== b.length) return 64;
+  let n = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) n++;
+  return n;
+}
+
+/**
+ * Readable words in a frame the OCR found, outside the game's own HUD corners (the minimap bottom left, money
+ * and clock top right). Subtitles, tutorial prompts and mission lines are words; HUD digits and the scraps the
+ * engine makes of stylised numbers are not (31 Oct 2026: 60 frames read in 1.2 s, subtitles read cleanly).
+ */
+export function captionWords(page: { width: number; height: number; words: Array<{ text: string; x: number; y: number; w: number; h: number }> } | undefined): number {
+  if (!page || !page.width || !page.height) return 0;
+  return page.words.filter((w) => {
+    const letters = (w.text.match(/[a-z]/gi) ?? []).length;
+    if (letters < 3 || letters / w.text.length < 0.75) return false;
+    // Lower-case letters after the first: a real word, not a run of digits read as capitals.
+    if (!/^[A-Za-z][a-z'.,!?:-]+$/.test(w.text) && !/^[A-Z]{3,}[.,!?]?$/.test(w.text)) return false;
+    const cx = (w.x + w.w / 2) / page.width;
+    const cy = (w.y + w.h / 2) / page.height;
+    if (cx > 0.6 && cy < 0.35) return false; // money, clock, health, wanted stars
+    if (cx < 0.25 && cy > 0.65) return false; // the minimap
+    return true;
+  }).length;
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -632,8 +710,16 @@ export interface FootageFirstDeps {
   ): Promise<
     Array<{ time: number; luma: number; motion: number; scene?: number }>
   >;
-  /** One frame of a file at a time, as a jpeg. */
-  frame(file: string, at: number, dest: string): Promise<void>;
+  /** Frames across [at, at+seconds] of a file, about one a second and at least three, as jpegs named from prefix. */
+  frames(file: string, at: number, seconds: number, prefix: string): Promise<string[]>;
+  /** One image of these frames side by side. */
+  compose(files: string[], dest: string): Promise<void>;
+  /** True when a frame has black bars over a third of its height (a cutscene); absent, not checked. */
+  bars?(file: string): Promise<boolean>;
+  /** A frame's difference hash (dHash), or undefined. */
+  hash(file: string): Promise<string | undefined>;
+  /** The words the Windows OCR reads in each frame (empty where there is no OCR). */
+  ocr(files: string[]): Promise<Map<string, { width: number; height: number; words: Array<{ text: string; x: number; y: number; w: number; h: number }> }>>;
   /** The local model's look at each frame. */
   look(files: string[]): Promise<Array<SegmentLook | undefined>>;
   /** Cuts [at, at+seconds] of a file into dest; returns the real length, or undefined when it failed or went dark. */
@@ -707,6 +793,10 @@ export interface FootageReport {
   modelCalls: number;
   minutes: number;
   stoppedEarly?: string;
+  /** Seconds spent in each outside call (summed: the three downloads at a time overlap). */
+  phases?: Record<string, number>;
+  /** Each gathered chapter: its minutes, clips kept and seconds kept. */
+  perChapter?: Array<{ entry: number; minutes: number; kept: number; seconds: number }>;
 }
 
 export function emptyReport(): FootageReport {
@@ -765,6 +855,24 @@ export function footageQueries(game: string, year?: number): string[] {
   ];
 }
 
+/** A chapter's sources, downloaded and scanned, ready for the looks. */
+type Picked = SourceHit &
+  SourceDetails & { url: string; file: string; from: number; to: number };
+export interface Prefetched {
+  need: number;
+  work: string;
+  sources: Picked[];
+  scans: Map<Picked, Array<{ time: number; luma: number; motion: number; scene?: number }>>;
+}
+
+type Have = Array<{
+  beatIndex?: number;
+  moment?: number;
+  stock?: boolean;
+  sourceUrl?: string;
+  durationSeconds?: number;
+}>;
+
 /**
  * One chapter's footage-first gather into `dir` (the chapter's folder): new CC BY clips appended to `out`, with
  * every count added to `report`. Never throws: a failure leaves the chapter with what it had.
@@ -772,13 +880,7 @@ export function footageQueries(game: string, year?: number): string[] {
 export async function gatherChapterFootage(
   deps: FootageFirstDeps,
   ch: FootageChapter,
-  clips: Array<{
-    beatIndex?: number;
-    moment?: number;
-    stock?: boolean;
-    sourceUrl?: string;
-    durationSeconds?: number;
-  }>,
+  clips: Have,
   dir: string,
   relDir: string,
   chapterSeconds: number,
@@ -788,20 +890,40 @@ export async function gatherChapterFootage(
   deadline: number,
   keepFrames?: string,
 ): Promise<void> {
+  const pre = await prefetchChapter(deps, ch, clips, dir, chapterSeconds, o, report, deadline);
+  if (pre) await finishChapter(deps, ch, clips, relDir, dir, o, report, out, deadline, pre, keepFrames);
+}
+
+/**
+ * The first half: the skip checks, the search, the title and licence checks, the downloads and their scans.
+ * Undefined when the chapter is skipped or nothing could be downloaded (its work folder is then gone).
+ */
+export async function prefetchChapter(
+  deps: FootageFirstDeps,
+  ch: FootageChapter,
+  clips: Have,
+  dir: string,
+  chapterSeconds: number,
+  o: FootageFirstOptions,
+  report: FootageReport,
+  deadline: number,
+): Promise<Prefetched | undefined> {
   const now = deps.now ?? Date.now;
   const skip = (why: string) => {
     report.skipped.push({ entry: ch.entry, game: ch.game, why });
     log("info", "footage-first: chapter skipped", { game: ch.game, why });
   };
-  if (notOutYet(ch.year))
-    return skip(
-      "the game is not out: uploaded gameplay of it can only be fake",
-    );
+  if (notOutYet(ch.year)) {
+    skip("the game is not out: uploaded gameplay of it can only be fake");
+    return undefined;
+  }
   const mine = clips.filter((c) => c.beatIndex === ch.entry && !c.stock);
   const haveSeconds = mine.reduce((n, c) => n + (c.durationSeconds ?? 4), 0);
   const need = footageNeed(chapterSeconds, haveSeconds, o.sharePct);
-  if (need < 10)
-    return skip(`already has ${Math.round(haveSeconds)} s of footage`);
+  if (need < 10) {
+    skip(`already has ${Math.round(haveSeconds)} s of footage`);
+    return undefined;
+  }
   report.chapters++;
   const work = path.join(dir, "ff_work");
   await fs.mkdir(work, { recursive: true });
@@ -857,8 +979,6 @@ export async function gatherChapterFootage(
     }
     // One video per channel first, so one uploader's habits (an overlay, a mod) cannot fill the chapter.
     const ordered = roundRobin(kept, (h) => h.channel);
-    type Picked = SourceHit &
-      SourceDetails & { url: string; file: string; from: number; to: number };
     const picked: Picked[] = [];
     for (const h of ordered) {
       if (picked.length >= o.sources || now() > deadline) break;
@@ -894,9 +1014,11 @@ export async function gatherChapterFootage(
         to: win.to,
       });
     }
-    // Three windows at a time: one section download runs at about real time (31 Oct 2026 proof: 4 min for 7 min
-    // of 720p), so one after the other a chapter's six took 24 minutes.
+    // All six windows at once: one section download runs at under twice real time however fast the line is
+    // (31 Oct 2026 proof: 4 min for 7 min of 720p), so one after the other a chapter's six took 24 minutes.
     const fetched = new Set<Picked>();
+    // Each window is scanned for its edits as soon as it lands, while the others still download.
+    const scans: Prefetched["scans"] = new Map();
     let next = 0;
     const worker = async () => {
       while (next < picked.length) {
@@ -906,6 +1028,7 @@ export async function gatherChapterFootage(
           report.downloads++;
           report.downloadedMb += bytes / 1e6;
           fetched.add(p);
+          scans.set(p, await deps.scan(p.file).catch(() => []));
         } catch (err) {
           log("warn", "footage-first: download failed", {
             video: p.videoId,
@@ -921,17 +1044,42 @@ export async function gatherChapterFootage(
       ),
     );
     const sources = picked.filter((p) => fetched.has(p));
-    if (!sources.length) return;
+    if (sources.length) return { need, work, sources, scans };
+  } catch (err) {
+    log("warn", "footage-first: chapter failed", { game: ch.game, error: errorMessage(err) });
+  }
+  await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
+  return undefined;
+}
+
+/** The second half: segments, the cheap tests and the looks, the pins, the cuts; the work folder is removed. */
+export async function finishChapter(
+  deps: FootageFirstDeps,
+  ch: FootageChapter,
+  clips: Have,
+  relDir: string,
+  dir: string,
+  o: FootageFirstOptions,
+  report: FootageReport,
+  out: FootageClip[],
+  deadline: number,
+  pre: Prefetched,
+  keepFrames?: string,
+): Promise<void> {
+  const now = deps.now ?? Date.now;
+  const { need, work, sources, scans } = pre;
+  try {
     // 2. Segments: each window cut at its own edits.
     const all: Array<{
       id: number;
       src: number;
       at: number;
       len: number;
+      motion: number;
       frame: string;
     }> = [];
     for (const [i, s] of sources.entries()) {
-      const rows = await deps.scan(s.file).catch(() => []);
+      const rows = scans.get(s) ?? [];
       const total = rows.at(-1)?.time ?? 0;
       for (const g of segmentsOf(rows, total))
         all.push({
@@ -939,6 +1087,7 @@ export async function gatherChapterFootage(
           src: i,
           at: g.from,
           len: g.len,
+          motion: g.motion,
           frame: path.join(work, `seg_${all.length}.jpg`),
         });
     }
@@ -963,48 +1112,78 @@ export async function gatherChapterFootage(
     }> = [];
     try {
       const looked = new Set<number>();
+      // Middle-frame hashes of each video's segments already sent to the model.
+      const seenHash = new Map<number, string[]>();
+      let modelLooks = 0;
       let clean = 0;
-      while (
-        looked.size < Math.min(o.visionMax, all.length) &&
-        clean < need * 1.25
-      ) {
-        const left = all.filter((g) => !looked.has(g.id));
+      while (modelLooks < o.visionMax && clean < need * 1.25 && now() <= deadline) {
+        // A video whose segments keep failing (subtitles on every line, a streamer's overlay) is not worth more
+        // looks: the rounds go to the videos that pass (31 Oct 2026: text refused 288 of 347 segments).
+        const poor = poorSources(verdicts.map((v) => ({ source: v.g.src, ok: !v.reason })));
+        const left = all.filter((g) => !looked.has(g.id) && !poor.has(g.src));
         const size = Math.min(
-          o.visionMax - looked.size,
+          o.visionMax - modelLooks,
           Math.max(8, Math.ceil(((need * 1.25 - clean) / 5) * 3)),
+          // No round runs far past the chapter's time: one could take six minutes (31 Oct 2026 proof).
+          Math.max(4, Math.floor((deadline - now()) / (LOOK_SECONDS * 1000))),
         );
         const round = spread(left, size);
         if (!round.length) break;
-        // Two frames a segment, a quarter and three quarters in: one in the middle missed a "Mission passed"
-        // banner, a kill counter and a vehicle name that came and went around it (31 Oct 2026 proof).
-        const late = (f: string) => f.replace(/\.jpg$/, "_b.jpg");
+        const refuse = (g: (typeof all)[number], reason: string) =>
+          verdicts.push({ g, look: undefined, reason, source: sources[g.src]!.url });
+        // The cheap tests first, on this PC's CPU: a frozen picture, frames across the segment, a picture the
+        // video already showed, words the Windows OCR can read.
+        const pending: Array<{ g: (typeof all)[number]; frames: string[] }> = [];
         for (const g of round) {
           looked.add(g.id);
-          for (const [f, at] of [
-            [g.frame, g.at + g.len * 0.25],
-            [late(g.frame), g.at + g.len * 0.75],
-          ] as const)
-            await deps
-              .frame(sources[g.src]!.file, at, f)
-              .catch(() => undefined);
+          if (g.motion < FROZEN_MOTION) {
+            refuse(g, "frozen picture");
+            continue;
+          }
+          const frames = await deps
+            .frames(sources[g.src]!.file, g.at, g.len, g.frame.replace(/\.jpg$/, ""))
+            .catch(() => [] as string[]);
+          if (frames.length < 3) {
+            refuse(g, "no frames");
+            continue;
+          }
+          const middle = frames[Math.floor(frames.length / 2)]!;
+          if (await deps.bars?.(middle).catch(() => false)) {
+            refuse(g, "letterboxed");
+            continue;
+          }
+          const h = await deps.hash(middle).catch(() => undefined);
+          const same = seenHash.get(g.src) ?? [];
+          if (h && same.some((x) => hamming(x, h) <= SAME_PICTURE_BITS)) {
+            refuse(g, "same picture as another segment");
+            continue;
+          }
+          if (h) seenHash.set(g.src, [...same, h]);
+          pending.push({ g, frames });
         }
-        const looks = await deps.look(
-          round.flatMap((g) => [g.frame, late(g.frame)]),
-        );
+        const pages = await deps.ocr(pending.flatMap((x) => x.frames)).catch(() => new Map());
+        const ask: typeof pending = [];
+        for (const x of pending)
+          if (x.frames.some((f) => captionWords(pages.get(f)) >= 2)) refuse(x.g, "text on screen (read)");
+          else ask.push(x);
+        // One look a segment: its first, middle and last frames side by side (31 Oct 2026: two separate looks a
+        // segment cost 44 of a 64-minute run, and the middle frame alone missed banners that came and went).
+        for (const x of ask) {
+          const f = x.frames;
+          await deps
+            .compose([f[0]!, f[Math.floor(f.length / 2)]!, f[f.length - 1]!], x.g.frame)
+            .catch(() => undefined);
+        }
+        const looks = ask.length ? await deps.look(ask.map((x) => x.g.frame)) : [];
+        modelLooks += ask.length;
         report.looked += looks.filter(Boolean).length;
-        for (const [i, g] of round.entries()) {
-          const [a, b] = [looks[2 * i], looks[2 * i + 1]];
-          const reason = segmentRejectReason(a) ?? segmentRejectReason(b);
-          verdicts.push({
-            g,
-            look: a?.label ? a : (b ?? a),
-            reason,
-            source: sources[g.src]!.url,
-          });
-          if (!reason) clean += g.len;
+        for (const [i, x] of ask.entries()) {
+          const reason = segmentRejectReason(looks[i]);
+          verdicts.push({ g: x.g, look: looks[i], reason, source: sources[x.g.src]!.url });
+          if (!reason) clean += x.g.len;
         }
         // Nothing could be looked at (the local model is down): another round would see nothing either.
-        if (looks.every((l) => !l)) break;
+        if (ask.length && looks.every((l) => !l)) break;
       }
     } finally {
       release?.();
@@ -1116,6 +1295,26 @@ export async function gatherChapterFootage(
   }
 }
 
+/** The same calls, each one's seconds added to `phases` under its name, so a slow step shows in the report. */
+export function timedDeps(
+  deps: FootageFirstDeps,
+  phases: Record<string, number>,
+  now: () => number = Date.now,
+): FootageFirstDeps {
+  const out: Record<string, unknown> = { ...deps };
+  for (const [k, f] of Object.entries(deps))
+    if (typeof f === "function" && k !== "now" && k !== "lease")
+      out[k] = async (...args: unknown[]) => {
+        const t = now();
+        try {
+          return await (f as (...a: unknown[]) => Promise<unknown>)(...args);
+        } finally {
+          phases[k] = Math.round(((phases[k] ?? 0) + (now() - t) / 1000) * 10) / 10;
+        }
+      };
+  return out as unknown as FootageFirstDeps;
+}
+
 /** Every game chapter of a long video in turn, within the pass's time limit. */
 export async function gatherFootageFirst(
   deps: FootageFirstDeps,
@@ -1133,26 +1332,43 @@ export async function gatherFootageFirst(
       : Number.POSITIVE_INFINITY;
   const report = emptyReport();
   const out: FootageClip[] = [];
-  for (const ch of chapters) {
+  deps = timedDeps(deps, (report.phases = {}), now);
+  // The next chapter's search and downloads run while this one is looked at on the GPU: the network and the
+  // model are each busy all the time (31 Oct 2026 proof: downloads were a third of a chapter's minutes).
+  const prefetch = (k: number) => {
+    const ch = chapters[k];
+    if (!ch || now() > deadline) return Promise.resolve(undefined);
+    return prefetchChapter(deps, ch, clips, path.join(episodeDir, `entry_${ch.entry}`), ch.seconds, o, report, deadline);
+  };
+  let ahead = prefetch(0);
+  let started0 = now();
+  for (const [k, ch] of chapters.entries()) {
+    const pre = await ahead;
     if (now() > deadline) {
       report.stoppedEarly = `its ${o.maxMinutes}-minute limit (FOOTAGE_FIRST_MAX_MINUTES) ran out`;
+      if (pre) await fs.rm(pre.work, { recursive: true, force: true }).catch(() => undefined);
       break;
     }
+    ahead = prefetch(k + 1);
     const rel = `entry_${ch.entry}`;
-    await gatherChapterFootage(
-      deps,
-      ch,
-      clips,
-      path.join(episodeDir, rel),
-      rel,
-      ch.seconds,
-      o,
-      report,
-      out,
-      deadline,
-      keepFrames,
-    );
+    const k0 = out.length;
+    // Every released chapter gets its share of the time left: the first ones took 10-12 minutes each and the
+    // limit ran out with three chapters untouched (31 Oct 2026 proof).
+    const own = fairDeadline(now(), deadline, chapters.slice(k).filter((c) => !notOutYet(c.year)).length);
+    if (pre) await finishChapter(deps, ch, clips, rel, path.join(episodeDir, rel), o, report, out, own, pre, keepFrames);
+    if (!report.skipped.some((x) => x.entry === ch.entry))
+      (report.perChapter ??= []).push({
+        entry: ch.entry,
+        // From when this chapter's own work began to the end of its looks (its download overlapped the last one).
+        minutes: Math.round((now() - started0) / 6_000) / 10,
+        kept: out.length - k0,
+        seconds: Math.round(out.slice(k0).reduce((n, c) => n + c.durationSeconds, 0)),
+      });
+    started0 = now();
   }
+  // A download left running past the limit: its folder goes too.
+  const left = await ahead;
+  if (left && report.stoppedEarly) await fs.rm(left.work, { recursive: true, force: true }).catch(() => undefined);
   report.minutes = Math.round((now() - started) / 6_000) / 10;
   report.downloadedMb = Math.round(report.downloadedMb);
   report.keptMb = Math.round(report.keptMb);

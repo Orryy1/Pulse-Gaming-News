@@ -35,7 +35,9 @@ export type MovePreset =
   | "pullBack"
   | "pushPan"
   | "driftDown"
-  | "settle";
+  | "settle"
+  /** "Move, settle, move" (src/render/camera.ts): eased in and out twice with a held beat between. */
+  | "twoStage";
 
 /** One ambient movement per shot; the first shot always pushes in. */
 export function movePreset(shotIndex: number, variant: number): MovePreset {
@@ -61,7 +63,24 @@ export function moveTransform(
       return { scale: 1.05, x: 0, y: -18 + 36 * p };
     case "settle":
       return { scale: 1.06, x: 0, y: 0 };
+    case "twoStage": {
+      // An operator's move rather than a linear one: a push and pan, a held beat, then the same again.
+      const k = twoStageProgress(p);
+      return { scale: 1.03 + 0.06 * k, x: -26 + 52 * k, y: 0 };
+    }
   }
+}
+
+/**
+ * The two-stage Ken Burns curve: 0..1 over the shot, eased out and in over its first 42%, held at a half
+ * through the middle 16%, then eased again to 1. Continuous, so the move never jumps.
+ */
+export function twoStageProgress(p: number): number {
+  const x = Math.max(0, Math.min(1, p));
+  const smooth = (t: number) => t * t * (3 - 2 * t);
+  if (x < 0.42) return 0.5 * smooth(x / 0.42);
+  if (x < 0.58) return 0.5;
+  return 0.5 + 0.5 * smooth((x - 0.58) / 0.42);
 }
 
 /** 0..1 entrance for a component: an accent rule draws first, content follows. */

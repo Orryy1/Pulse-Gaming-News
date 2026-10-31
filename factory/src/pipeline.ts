@@ -172,6 +172,8 @@ import {
 import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
 import { leadFrames, LEVEL, SFX, sfxFile } from "./render/soundscape.ts";
 import { bedFor } from "./render/soundscape.ts";
+import { cameraNotice } from "./render/camera.ts";
+import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
 import { blurPlate } from "./assets/plates.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
@@ -6326,6 +6328,46 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     await unloadLocalVision();
     log("info", "detail annotations", { episode: ep.id, count: found.length });
   }
+  // Named details written in the pictures (src/assets/ocr.ts): a sign or shop front the narrator names gets
+  // a hand-drawn circle or arrow from the documentary's camera (DOC_CAMERA detail). Once per video.
+  const docCamera =
+    script.evergreen_format === "documentary" ? s.cfg.docCamera : [];
+  if (docCamera.length && hasMoments && !assets.textDetails) {
+    assets.textDetails = !docCamera.includes("detail")
+      ? []
+      : await findTextDetails({
+      dir,
+      fps: LONG_FPS,
+      windows: momentWindows(
+        segments,
+        words,
+        moments.map((m) => m.length),
+        moments.map((e) => e.map(momentKeys)),
+      ),
+      moments,
+      keys: (e, m) => (moments[e]?.[m] ? momentKeys(moments[e]![m]!) : []),
+      shots: plan.shots,
+      images,
+      brands: [
+        script.game_title,
+        ...(script.entries ?? []).map((x) => x.game_title),
+        "Rockstar",
+        "Take-Two",
+      ],
+      });
+    await logEvent(s.db, ep.id, "camera", {
+      techniques: docCamera,
+      textDetails: assets.textDetails.map((d) => d.label),
+    });
+    await s.notify({
+      level: "info",
+      content: cameraNotice(
+        script.headline,
+        docCamera,
+        assets.textDetails.length,
+      ),
+    });
+  }
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
     ep.id,
     JSON.stringify(assets),
@@ -6651,7 +6693,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         breaks: assets.breaks,
         quietBreaks: assets.quietBreaks,
         palette: assets.palette,
-        annotations: assets.annotations,
+        // The vision model's boxes, then the details read from the pictures' text (src/assets/ocr.ts).
+        annotations: [
+          ...(assets.annotations ?? []),
+          ...(assets.textDetails ?? []),
+        ],
+        // The documentary's camera grammar (src/render/camera.ts, DOC_CAMERA).
+        camera: docCamera,
         eraBeds: doc && s.cfg.docSoundBeats,
         // Concept sketches drawn on, stepped, flipped, dissolved or pinned up (src/render/sketchplan.ts).
         sketchAnimation: s.cfg.sketchAnimation,

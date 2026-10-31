@@ -269,6 +269,7 @@ export function testConfig(
     illustrateStub: true,
     sketchAnimation: true,
     photoTreatments: true,
+    docCamera: [],
     dryRun: false,
     maxAttempts: 3,
     remotionConcurrency: 1,

@@ -461,7 +461,7 @@ type ThumbInput = Omit<
 };
 
 /** The long composition's props with every episode file as a URL on the loopback server. */
-function longProps(
+export function longProps(
   filesUrl: string,
   serveUrl: string,
   p: LongRenderInput["props"],

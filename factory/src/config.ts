@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { parseCameraSetting, type CameraTechnique } from "./render/camera.ts";
 
 // Local installs keep settings in factory/.env (never committed).
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
@@ -386,6 +387,12 @@ export interface Config {
   sketchAnimation: boolean;
   /** Photos and portraits in documentaries arriving as instant prints, tape, pins, trays, screens and more (src/render/photoplan.ts). Off: the static framed print and full-bleed screenshots. */
   photoTreatments: boolean;
+  /**
+   * The documentary's camera grammar (src/render/camera.ts): pushes and whips through the cut, hand-drawn
+   * marks on named details, freeze frames, beat-driven pushes, two-stage Ken Burns, rack focus, a vertigo
+   * push, a lens look and a texture flicker on explainers. DOC_CAMERA: "all" (default), "off", or a list.
+   */
+  docCamera: CameraTechnique[];
   dryRun: boolean;
   maxAttempts: number;
   remotionConcurrency: number;
@@ -808,6 +815,7 @@ export function loadConfig(): Config {
     illustrateStub: bool("ILLUSTRATE_STUB", false),
     sketchAnimation: bool("SKETCH_ANIMATION", true),
     photoTreatments: bool("PHOTO_TREATMENTS", true),
+    docCamera: parseCameraSetting(process.env.DOC_CAMERA),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),

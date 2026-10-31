@@ -157,6 +157,20 @@ import {
   type DisplayDecision,
   type PhotoDecision,
 } from "./photoplan.ts";
+import {
+  cameraInputs,
+  planCamera,
+  type CameraPlan,
+  type CameraTechnique,
+} from "./camera.ts";
+import {
+  DepthShot,
+  FreezeLabel,
+  LensOverlay,
+  MarkCallout,
+  ShotCamera,
+  TextureFlicker,
+} from "./components/CameraMoves.tsx";
 
 export interface LongImageProp {
   src: string;
@@ -221,6 +235,10 @@ export type LongProps = {
   sketchAnimation?: boolean;
   /** Photos and portraits arriving as prints, pins, tape, trays and screens (src/render/photoplan.ts); false keeps the static framed print and the full-bleed screenshot. Default true. */
   photoTreatments?: boolean;
+  /** The documentary's camera grammar (src/render/camera.ts, DOC_CAMERA): the techniques it may use. Absent: none. */
+  camera?: CameraTechnique[];
+  /** Previews only (data/smoke/camera.mts): print the camera's chosen moves to the browser console. */
+  debugCamera?: boolean;
   durationSeconds: number;
   variant: number;
   renderDate: string;
@@ -1013,6 +1031,9 @@ const Backdrop: React.FC<{
   photos?: Map<number, PhotoDecision>;
   /** Per shot index: the display a screenshot plays inside; absent, full-bleed. */
   displays?: Map<number, DisplayDecision>;
+  /** The camera's moves (src/render/camera.ts): transitions through the cut, freezes, beats, depth moves. */
+  camera?: CameraPlan;
+  fps?: number;
 }> = ({
   plan,
   images,
@@ -1028,15 +1049,43 @@ const Backdrop: React.FC<{
   sketches,
   photos,
   displays,
+  camera,
+  fps = 30,
 }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
       const len = Math.max(1, s.end - s.start);
       const img = s.media.type === "image" ? images[s.media.index] : undefined;
       const clip = s.media.type === "clip" ? clips[s.media.index] : undefined;
-      // A still dissolves in over the shot before, except after a tube switching off (it cuts from black).
-      const xf = powerOff?.has(i - 1) ? 0 : Math.min(XFADE, s.start);
+      // A still dissolves in over the shot before, except after a tube switching off (it cuts from black)
+      // and when the camera moves through the cut (it carries the eye across instead).
+      const cutIn = camera?.cuts.get(i);
+      const cutOut = camera?.cuts.get(i + 1);
+      const move = camera?.shots.get(i);
+      const xf = powerOff?.has(i - 1) || cutIn ? 0 : Math.min(XFADE, s.start);
       const seqLen = img && i > 0 ? len + xf : len;
+      const cam = (node: React.ReactNode) =>
+        cutIn ||
+        cutOut ||
+        move?.kind === "freeze" ||
+        move?.kind === "emotion" ? (
+          <ShotCamera
+            len={seqLen}
+            from={img && i > 0 ? s.start - xf : s.start}
+            fps={fps}
+            into={cutIn}
+            out={cutOut}
+            move={move}
+          >
+            {node}
+          </ShotCamera>
+        ) : (
+          node
+        );
+      const depth =
+        (move?.kind === "rack" || move?.kind === "dolly") && img?.layers
+          ? move
+          : undefined;
       const dev = retro?.get(i);
       // A concept sketch's animated arrival (components/SketchShot.tsx) replaces the framed print.
       const sk = img?.kind === "sketch" ? sketches?.get(i) : undefined;
@@ -1091,166 +1140,184 @@ const Backdrop: React.FC<{
           durationInFrames={img && i > 0 ? len + xf : len}
           layout="none"
         >
-          {clip ? (
-            dress(
-              <Clip
-                src={clip.src}
-                audio={clip.audio}
-                frames={len}
-                punchAt={
-                  !dev && punches?.has(i)
-                    ? punches.get(i)! - s.start
-                    : undefined
-                }
-              />,
-            )
-          ) : img ? (
-            <>
-              <FadeIn frames={i > 0 ? xf : 0}>
-                {sk ? (
-                  <SketchShot
-                    src={img.src}
-                    aspect={img.aspect}
-                    len={seqLen}
-                    move={s.move}
-                    treatment={sk.treatment}
-                    seed={sk.seed}
-                    page={sk.page}
-                    caption={KIND_WORD.sketch ?? "Concept sketch"}
-                    earlier={sk.earlier.flatMap((k) => {
-                      const e = images[k];
-                      return e ? [{ src: e.src, aspect: e.aspect }] : [];
-                    })}
-                    next={
-                      sk.next && images[sk.next.image]
-                        ? {
-                            src: images[sk.next.image]!.src,
-                            aspect: images[sk.next.image]!.aspect,
-                            kind: sk.next.kind,
-                            tilt: ((sk.next.image * 37) % 5) - 2,
-                          }
-                        : undefined
-                    }
-                  />
-                ) : ph ? (
-                  <PhotoShot
-                    src={img.src}
-                    aspect={img.aspect}
-                    len={seqLen}
-                    move={s.move}
-                    treatment={ph.treatment}
-                    seed={ph.seed}
-                    kind={img.kind === "portrait" ? "portrait" : "photo"}
-                    caption={img.credit ?? img.label}
-                    year={ph.year}
-                    index={ph.index}
-                    earlier={ph.earlier.flatMap((k) => {
-                      const e = images[k];
-                      return e ? [{ src: e.src, aspect: e.aspect }] : [];
-                    })}
-                  />
-                ) : dev ? (
-                  dress(
-                    <Still
+          {cam(
+            clip ? (
+              dress(
+                <Clip
+                  src={clip.src}
+                  audio={clip.audio}
+                  frames={len}
+                  punchAt={
+                    !dev && punches?.has(i)
+                      ? punches.get(i)! - s.start
+                      : undefined
+                  }
+                />,
+              )
+            ) : img ? (
+              <>
+                <FadeIn frames={i > 0 ? xf : 0}>
+                  {sk ? (
+                    <SketchShot
                       src={img.src}
                       aspect={img.aspect}
-                      durationFrames={len + (i > 0 ? xf : 0)}
+                      len={seqLen}
                       move={s.move}
-                    />,
-                  )
-                ) : disp ? (
-                  dress(
-                    <DisplayShot kind={disp.display} seed={disp.seed}>
+                      treatment={sk.treatment}
+                      seed={sk.seed}
+                      page={sk.page}
+                      caption={KIND_WORD.sketch ?? "Concept sketch"}
+                      earlier={sk.earlier.flatMap((k) => {
+                        const e = images[k];
+                        return e ? [{ src: e.src, aspect: e.aspect }] : [];
+                      })}
+                      next={
+                        sk.next && images[sk.next.image]
+                          ? {
+                              src: images[sk.next.image]!.src,
+                              aspect: images[sk.next.image]!.aspect,
+                              kind: sk.next.kind,
+                              tilt: ((sk.next.image * 37) % 5) - 2,
+                            }
+                          : undefined
+                      }
+                    />
+                  ) : ph ? (
+                    <PhotoShot
+                      src={img.src}
+                      aspect={img.aspect}
+                      len={seqLen}
+                      move={s.move}
+                      treatment={ph.treatment}
+                      seed={ph.seed}
+                      kind={img.kind === "portrait" ? "portrait" : "photo"}
+                      caption={img.credit ?? img.label}
+                      year={ph.year}
+                      index={ph.index}
+                      earlier={ph.earlier.flatMap((k) => {
+                        const e = images[k];
+                        return e ? [{ src: e.src, aspect: e.aspect }] : [];
+                      })}
+                    />
+                  ) : dev ? (
+                    dress(
+                      <Still
+                        src={img.src}
+                        aspect={img.aspect}
+                        durationFrames={len + (i > 0 ? xf : 0)}
+                        move={s.move}
+                      />,
+                    )
+                  ) : disp ? (
+                    dress(
+                      <DisplayShot kind={disp.display} seed={disp.seed}>
+                        <Still
+                          punchAt={
+                            punches?.has(i)
+                              ? punches.get(i)! -
+                                (i > 0 ? s.start - xf : s.start)
+                              : undefined
+                          }
+                          layers={img.layers}
+                          dir={i % 2 ? -1 : 1}
+                          src={img.src}
+                          aspect={img.aspect}
+                          durationFrames={len + (i > 0 ? xf : 0)}
+                          move={camera?.moves.get(i) ?? s.move}
+                        />
+                      </DisplayShot>,
+                    )
+                  ) : depth ? (
+                    // A rack focus or a vertigo push from the still's depth layers (components/CameraMoves.tsx).
+                    dress(
+                      <DepthShot
+                        layers={img.layers!}
+                        len={seqLen}
+                        move={depth}
+                        at={
+                          depth.kind === "rack"
+                            ? depth.at - (i > 0 ? s.start - xf : s.start)
+                            : 0
+                        }
+                        dir={i % 2 ? -1 : 1}
+                      />,
+                    )
+                  ) : (
+                    dress(
                       <Still
                         punchAt={
                           punches?.has(i)
                             ? punches.get(i)! - (i > 0 ? s.start - xf : s.start)
                             : undefined
                         }
+                        print={img.kind === "photo" || img.kind === "sketch"}
+                        tilt={((s.media.index * 37) % 5) - 2}
                         layers={img.layers}
                         dir={i % 2 ? -1 : 1}
+                        focus={
+                          focusFor?.get(i)
+                            ? {
+                                at:
+                                  focusFor.get(i)!.from -
+                                  (i > 0 ? s.start - xf : s.start),
+                                origin: focusFor.get(i)!.origin,
+                                zoom: focusFor.get(i)!.zoom,
+                              }
+                            : undefined
+                        }
                         src={img.src}
                         aspect={img.aspect}
                         durationFrames={len + (i > 0 ? xf : 0)}
-                        move={s.move}
-                      />
-                    </DisplayShot>,
-                  )
-                ) : (
-                  dress(
-                    <Still
-                      punchAt={
-                        punches?.has(i)
-                          ? punches.get(i)! - (i > 0 ? s.start - xf : s.start)
-                          : undefined
-                      }
-                      print={img.kind === "photo" || img.kind === "sketch"}
-                      tilt={((s.media.index * 37) % 5) - 2}
-                      layers={img.layers}
-                      dir={i % 2 ? -1 : 1}
-                      focus={
-                        focusFor?.get(i)
-                          ? {
-                              at:
-                                focusFor.get(i)!.from -
-                                (i > 0 ? s.start - xf : s.start),
-                              origin: focusFor.get(i)!.origin,
-                              zoom: focusFor.get(i)!.zoom,
-                            }
-                          : undefined
-                      }
-                      src={img.src}
-                      aspect={img.aspect}
-                      durationFrames={len + (i > 0 ? xf : 0)}
-                      move={s.move}
-                      fromBlack={i === 0}
-                    />,
-                  )
-                )}
-              </FadeIn>
-              {img.credit ? (
-                <div
-                  style={{
-                    position: "absolute",
-                    right: 40,
-                    bottom: 26,
-                    padding: "4px 10px",
-                    background: "rgba(11,11,14,0.55)",
-                    borderRadius: 6,
-                    fontFamily: BODY,
-                    fontWeight: 600,
-                    fontSize: 16,
-                    letterSpacing: 0.5,
-                    color: "rgba(245,245,242,0.8)",
-                  }}
-                >
-                  PHOTO: {img.credit}
-                </div>
-              ) : img.kind === "sketch" && !sk ? (
-                // A drawn concept sketch (src/assets/illustrate.ts) says so, the way the graphic cards do
-                // (the animated treatments carry their own tag).
-                <div
-                  style={{
-                    position: "absolute",
-                    right: 40,
-                    bottom: 26,
-                    padding: "4px 10px",
-                    borderRadius: 6,
-                    border: "1px solid rgba(245,245,242,0.5)",
-                    background: "rgba(11,11,14,0.45)",
-                    fontFamily: BODY,
-                    fontWeight: 800,
-                    fontSize: 16,
-                    letterSpacing: 2,
-                    color: "rgba(245,245,242,0.75)",
-                  }}
-                >
-                  ILLUSTRATION
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <Plate theme={theme} />
+                        move={camera?.moves.get(i) ?? s.move}
+                        fromBlack={i === 0}
+                      />,
+                    )
+                  )}
+                </FadeIn>
+                {img.credit ? (
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: 40,
+                      bottom: 26,
+                      padding: "4px 10px",
+                      background: "rgba(11,11,14,0.55)",
+                      borderRadius: 6,
+                      fontFamily: BODY,
+                      fontWeight: 600,
+                      fontSize: 16,
+                      letterSpacing: 0.5,
+                      color: "rgba(245,245,242,0.8)",
+                    }}
+                  >
+                    PHOTO: {img.credit}
+                  </div>
+                ) : img.kind === "sketch" && !sk ? (
+                  // A drawn concept sketch (src/assets/illustrate.ts) says so, the way the graphic cards do
+                  // (the animated treatments carry their own tag).
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: 40,
+                      bottom: 26,
+                      padding: "4px 10px",
+                      borderRadius: 6,
+                      border: "1px solid rgba(245,245,242,0.5)",
+                      background: "rgba(11,11,14,0.45)",
+                      fontFamily: BODY,
+                      fontWeight: 800,
+                      fontSize: 16,
+                      letterSpacing: 2,
+                      color: "rgba(245,245,242,0.75)",
+                    }}
+                  >
+                    ILLUSTRATION
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <Plate theme={theme} />
+            ),
           )}
         </Sequence>
       );
@@ -3109,6 +3176,185 @@ export const Long: React.FC<LongProps> = (props) => {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan, windows, packFor, openings, retro, fps, props.variant]);
+  // How each concept sketch arrives (src/render/sketchplan.ts): drawn on, stop-motion paper, a flipbook
+  // page, the light table or the cork board, by the shots around it. SKETCH_ANIMATION=false: the framed print.
+  const sketches = useMemo(
+    () =>
+      props.sketchAnimation === false
+        ? new Map<number, SketchDecision>()
+        : planSketchShots(
+            plan.shots,
+            props.images,
+            (segment) => entryOf(props.segments, segment) ?? -1,
+            props.variant,
+          ),
+    [plan, props.images, props.segments, props.sketchAnimation, props.variant],
+  );
+  // How each photo and portrait arrives (src/render/photoplan.ts): instant prints, tape, the evidence
+  // board, the darkroom and the rest, by the chapter's year and the photo shots around it; and which
+  // screenshots play inside the display of their day. Shots already dressed (retro hardware, a period look,
+  // a detail zoom) keep that. PHOTO_TREATMENTS=false: the framed print and the full-bleed screenshot.
+  const photoPlan = useMemo(() => {
+    if (props.photoTreatments === false)
+      return {
+        photos: new Map<number, PhotoDecision>(),
+        displays: new Map<number, DisplayDecision>(),
+      };
+    const dressed = new Set<number>([
+      ...retro.keys(),
+      ...periodLooks.keys(),
+      ...focusFor.keys(),
+    ]);
+    const eraOf = (chapter: number) => {
+      const k = props.segments.findIndex(
+        (x, i) =>
+          x.kind === "beat" &&
+          (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
+          entryOf(props.segments, i) === chapter,
+      );
+      const v = k >= 0 ? props.segments[k]!.visual : undefined;
+      return {
+        year: Number(v?.items?.[0]) || undefined,
+        platforms: v?.items?.[1],
+      };
+    };
+    return planPhotoShots({
+      shots: plan.shots,
+      images: props.images,
+      chapterOf: (segment) => entryOf(props.segments, segment) ?? -1,
+      eraOf,
+      dressed,
+      baseSeed: props.variant,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    plan,
+    props.images,
+    props.segments,
+    props.photoTreatments,
+    props.variant,
+    retro,
+    periodLooks,
+  ]);
+  // The camera's moves (src/render/camera.ts, DOC_CAMERA): chosen shot by shot by rules, clear of the
+  // chapter openings, breathers and explainers, and never on a shot another treatment already dresses.
+  const explainerSpans = useMemo(
+    () =>
+      windows.flatMap((w, k) => {
+        const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
+        const full =
+          packFor.get(k) ||
+          (g &&
+            usefulGraphic(g) &&
+            [
+              "quote",
+              "headline",
+              "source",
+              "timeline",
+              "delay",
+              "span",
+              "reviews",
+              "people",
+              "versus",
+              "milestone",
+            ].includes(g.kind));
+        if (!full) return [];
+        const { from, len } = spanOf(k);
+        return [{ from, to: from + len }];
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [windows, packFor, props.moments],
+  );
+  const cameraMoves = useMemo(() => {
+    if (!props.camera?.length) return undefined;
+    const quiet = [
+      { from: 0, to: 12 * fps },
+      { from: durationInFrames - 20 * fps, to: durationInFrames },
+      ...entryFrames.map((f) => ({ from: f - 30, to: f + 3 * fps })),
+      ...openings.map((o) => ({
+        from: o.from - 10,
+        to: o.from + montageFrames(o.items.length) + 30,
+      })),
+      ...breakFrames.map((b) => ({ from: b.from - 20, to: b.to + 30 })),
+      // A cut that already has an accent (a light leak, a burn, static) keeps it to itself.
+      ...accents.map((a) => ({ from: a.at - 15, to: a.at + 15 })),
+    ];
+    // An old game's VHS or CRT look moves with the camera; its hardware, a tube switching off, a photo's
+    // or sketch's own arrival and a screenshot inside a display keep their moves, and a punch-in its shot.
+    const dressed = new Set<number>([
+      ...retro.keys(),
+      ...sketches.keys(),
+      ...photoPlan.photos.keys(),
+      ...photoPlan.displays.keys(),
+      ...[...powerOff].flatMap((i) => [i, i + 1]),
+    ]);
+    const fixed = new Set<number>([
+      ...retro.keys(),
+      ...[...powerOff].flatMap((i) => [i, i + 1]),
+    ]);
+    const input = cameraInputs({
+      shots: plan.shots,
+      images: props.images,
+      clips: props.clips,
+      chapterOf: (segment) => entryOf(props.segments, segment) ?? -1,
+      fps,
+      enabled: props.camera,
+      variant: props.variant,
+      dressed,
+      punched: new Set(punches.keys()),
+      fixed,
+      quiet,
+      explainers: explainerSpans,
+      beats: beatCues,
+      windows,
+      moments: props.moments,
+      words,
+      details: details.map((d, id) => ({
+        id,
+        shot: d.shot,
+        from: d.from,
+        label: d.label,
+        k: d.k,
+      })),
+    });
+    const chosen = planCamera(input);
+    if (props.debugCamera)
+      console.log(
+        `CAMERA ${JSON.stringify({ events: chosen.events, input: { ...input, chapterOf: undefined, dressed: [...(input.dressed ?? [])], punched: [...(input.punched ?? [])], fixed: [...(input.fixed ?? [])], chapters: input.shots.map((s) => input.chapterOf(s.segment)) } })}`,
+      );
+    return { plan: chosen, input };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    props.camera,
+    plan,
+    accents,
+    details,
+    windows,
+    beatCues,
+    explainerSpans,
+    retro,
+    punches,
+    sketches,
+    photoPlan,
+    powerOff,
+  ]);
+  // A marked detail pushes in to land as its word is said, and its circle or arrow draws on the word.
+  const markOf = (id: number) => {
+    const look = cameraMoves?.plan.details.get(id);
+    const at = cameraMoves?.input.details?.find((d) => d.id === id)?.at;
+    if (!look || at === undefined) return undefined;
+    const d = details[id]!;
+    const pushAt = Math.max(d.from, at - FOCUS_FRAMES + 4);
+    // The mark draws on the word, or as the push settles when the word comes with the cut.
+    return { look, pushAt, draw: Math.max(at, pushAt + FOCUS_FRAMES - 8) };
+  };
+  const focusAt = new Map(
+    details.map((d, id) => [
+      d.shot,
+      { from: markOf(id)?.pushAt ?? d.from, origin: d.origin, zoom: d.zoom },
+    ]),
+  );
+
   const richSoundAt = new Map<number, number>();
   const momentSounds = gateLongSounds(
     windows
@@ -3202,8 +3448,10 @@ export const Long: React.FC<LongProps> = (props) => {
       .concat(
         // A detail's box drawing on gets a tick (keys from 100000, clear of the moment windows').
         details.map((d, i): LongSoundCandidate => {
-          richSoundAt.set(100000 + i, d.from + 26);
-          return { key: 100000 + i, frame: d.from + 26, kind: "glint" };
+          // A hand-drawn mark ticks as it draws on the word; the plain box as it draws after the push.
+          const at = markOf(i)?.draw ?? d.from + 26;
+          richSoundAt.set(100000 + i, at);
+          return { key: 100000 + i, frame: at, kind: "glint" };
         }),
         // The retro kit heard: the old screen switching on (or the tape's thunk into the VCR as it goes in),
         // and soft static on a channel-static cut (keys from 200000 and 300000).
@@ -3226,6 +3474,20 @@ export const Long: React.FC<LongProps> = (props) => {
           richSoundAt.set(300000 + k, a.at - 3);
           return [{ key: 300000 + k, frame: a.at - 3, kind: "static" }];
         }),
+        // The camera heard (keys from 600000): a whoosh peaking on a push or whip through the cut, a tick
+        // as a freeze frame holds.
+        [...(cameraMoves?.plan.cuts ?? [])].map(([i]): LongSoundCandidate => {
+          const at = plan.shots[i]!.start;
+          richSoundAt.set(600000 + i, at);
+          return { key: 600000 + i, frame: at, kind: "pop" };
+        }),
+        [...(cameraMoves?.plan.shots ?? [])].flatMap(
+          ([i, m]): LongSoundCandidate[] => {
+            if (m.kind !== "freeze") return [];
+            richSoundAt.set(700000 + i, m.at);
+            return [{ key: 700000 + i, frame: m.at, kind: "glint" }];
+          },
+        ),
       ),
     entryFrames,
     fps,
@@ -3242,67 +3504,6 @@ export const Long: React.FC<LongProps> = (props) => {
     if (image?.kind === "photo") return image.credit ?? "";
     return clip?.credit ? clip.credit : props.footageCredit;
   };
-  // How each concept sketch arrives (src/render/sketchplan.ts): drawn on, stop-motion paper, a flipbook
-  // page, the light table or the cork board, by the shots around it. SKETCH_ANIMATION=false: the framed print.
-  const sketches = useMemo(
-    () =>
-      props.sketchAnimation === false
-        ? new Map<number, SketchDecision>()
-        : planSketchShots(
-            plan.shots,
-            props.images,
-            (segment) => entryOf(props.segments, segment) ?? -1,
-            props.variant,
-          ),
-    [plan, props.images, props.segments, props.sketchAnimation, props.variant],
-  );
-  // How each photo and portrait arrives (src/render/photoplan.ts): instant prints, tape, the evidence
-  // board, the darkroom and the rest, by the chapter's year and the photo shots around it; and which
-  // screenshots play inside the display of their day. Shots already dressed (retro hardware, a period look,
-  // a detail zoom) keep that. PHOTO_TREATMENTS=false: the framed print and the full-bleed screenshot.
-  const photoPlan = useMemo(() => {
-    if (props.photoTreatments === false)
-      return {
-        photos: new Map<number, PhotoDecision>(),
-        displays: new Map<number, DisplayDecision>(),
-      };
-    const dressed = new Set<number>([
-      ...retro.keys(),
-      ...periodLooks.keys(),
-      ...focusFor.keys(),
-    ]);
-    const eraOf = (chapter: number) => {
-      const k = props.segments.findIndex(
-        (x, i) =>
-          x.kind === "beat" &&
-          (x.visual?.kind === "chapter" || x.visual?.kind === "rank") &&
-          entryOf(props.segments, i) === chapter,
-      );
-      const v = k >= 0 ? props.segments[k]!.visual : undefined;
-      return {
-        year: Number(v?.items?.[0]) || undefined,
-        platforms: v?.items?.[1],
-      };
-    };
-    return planPhotoShots({
-      shots: plan.shots,
-      images: props.images,
-      chapterOf: (segment) => entryOf(props.segments, segment) ?? -1,
-      eraOf,
-      dressed,
-      baseSeed: props.variant,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    plan,
-    props.images,
-    props.segments,
-    props.photoTreatments,
-    props.variant,
-    retro,
-    periodLooks,
-  ]);
-
   return (
     <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
       <Backdrop
@@ -3311,7 +3512,7 @@ export const Long: React.FC<LongProps> = (props) => {
         clips={props.clips}
         theme={props.theme}
         describe={describe}
-        focusFor={focusFor}
+        focusFor={focusAt}
         retro={retro}
         tints={tints}
         looks={periodLooks}
@@ -3320,6 +3521,8 @@ export const Long: React.FC<LongProps> = (props) => {
         sketches={sketches}
         photos={photoPlan.photos}
         displays={photoPlan.displays}
+        camera={cameraMoves?.plan}
+        fps={fps}
       />
       {accents.map((a, k) => (
         <Sequence
@@ -3351,6 +3554,8 @@ export const Long: React.FC<LongProps> = (props) => {
           <Montage items={o.items} />
         </Sequence>
       ))}
+      {/* The lens's edges over the picture, under the type (CameraMoves.tsx LensOverlay). */}
+      {cameraMoves?.plan.lens ? <LensOverlay /> : null}
       <Scrim />
       <ShotLabel
         plan={plan}
@@ -3360,6 +3565,23 @@ export const Long: React.FC<LongProps> = (props) => {
           to: o.from + montageFrames(o.items.length),
         }))}
       />
+      {/* A freeze frame's annotation: the paused chip, the brackets and what is named. */}
+      {[...(cameraMoves?.plan.shots ?? [])].map(([i, m]) =>
+        m.kind === "freeze" ? (
+          <Sequence
+            key={`frz${i}`}
+            from={m.at}
+            durationInFrames={m.hold + 12}
+            layout="none"
+          >
+            <FreezeLabel
+              label={m.label}
+              hold={m.hold}
+              seconds={(m.at - plan.shots[i]!.start) / fps}
+            />
+          </Sequence>
+        ) : null,
+      )}
       <GrainVignette />
       <Brand
         logoSrc={resolveSrc(props.logoSrc)}
@@ -3899,6 +4121,19 @@ export const Long: React.FC<LongProps> = (props) => {
           </Sequence>
         );
       })}
+      {/* A 12 fps texture flicker over each full-screen explainer (CameraMoves.tsx TextureFlicker). */}
+      {cameraMoves?.plan.boil
+        ? explainerSpans.map((x, k) => (
+            <Sequence
+              key={`flick${k}`}
+              from={x.from}
+              durationInFrames={Math.max(1, x.to - x.from)}
+              layout="none"
+            >
+              <TextureFlicker fps={fps} seed={props.variant + k} />
+            </Sequence>
+          ))
+        : null}
       {/* The richer graphics' and detail boxes' cues (the plain graphics play theirs inline). */}
       {[...richSoundAt].map(([key, at]) => {
         const name = momentSounds.get(key);
@@ -3934,13 +4169,29 @@ export const Long: React.FC<LongProps> = (props) => {
           durationInFrames={Math.max(1, d.len)}
           layout="none"
         >
-          <DetailCallout
-            box={d.box}
-            origin={d.origin}
-            zoom={d.zoom}
-            label={d.label}
-            len={d.len}
-          />
+          {markOf(i) ? (
+            // A named thing that is not a face: a marker circle or arrow drawn on the word (CameraMoves.tsx).
+            <MarkCallout
+              box={d.box}
+              origin={d.origin}
+              zoom={d.zoom}
+              label={d.label}
+              len={d.len}
+              look={markOf(i)!.look}
+              push={FOCUS_FRAMES}
+              pushAt={markOf(i)!.pushAt - d.from}
+              draw={markOf(i)!.draw - d.from}
+              seed={props.variant + i}
+            />
+          ) : (
+            <DetailCallout
+              box={d.box}
+              origin={d.origin}
+              zoom={d.zoom}
+              label={d.label}
+              len={d.len}
+            />
+          )}
         </Sequence>
       ))}
       {/* A white punch as each entry lands. */}

@@ -63,6 +63,8 @@ import {
 } from "./voice/pauses.ts";
 import { quietBeatGaps } from "./voice/quietbeats.ts";
 import { soundDesignLine, soundDesignSummary } from "./render/sounddesign.ts";
+import { soundCraftLine } from "./render/soundfx.ts";
+import { prepareSoundCraft, type SoundCraftPrep } from "./render/voicefx.ts";
 
 /** Seconds of breather before each documentary chapter: narrator silent, music up, the chapter's title full screen. */
 const DOC_BREAK_SECONDS = 4;
@@ -6345,6 +6347,46 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     if (sound.total || sound.chapters)
       await s.notify({ content: soundDesignLine(script.headline, sound) });
   }
+  // The documentary's sound craft (src/render/soundfx.ts, SOUND_* settings): the voice's texture slices made
+  // now, and what the mix will place, logged and told to the owner in one line.
+  const craft = doc ? s.cfg.soundCraft : undefined;
+  let voiceFxFiles: SoundCraftPrep["voiceFxFiles"] = [];
+  if (craft && Object.values(craft).some(Boolean)) {
+    const prep = await prepareSoundCraft({
+      episodeDir: dir,
+      voiceFile: assets.audio,
+      craft,
+      segments,
+      words,
+      moments: moments.map((ms) =>
+        ms.map((m) => ({
+          ...m,
+          beat: s.cfg.docSoundBeats ? m.beat : undefined,
+        })),
+      ),
+      breaks: assets.breaks,
+      shots: plan.shots,
+      clips,
+      fps: LONG_FPS,
+    }).catch((err) => {
+      log("warn", "sound craft prep failed", {
+        episode: ep.id,
+        error: errorMessage(err),
+      });
+      return undefined;
+    });
+    voiceFxFiles = prep?.voiceFxFiles ?? [];
+    await logEvent(s.db, ep.id, "sound_craft", {
+      settings: craft,
+      counts: prep?.counts,
+      failedSlices: prep?.failed ?? 0,
+    });
+    if (prep)
+      await s.notify({
+        level: "info",
+        content: soundCraftLine(script.headline, craft, prep.counts),
+      });
+  }
   // Two alternative titles for the Test & compare (one mid-tier call; a failure only means no title test).
   if (!script.youtube.title_variants) {
     const variants = await titleVariants(s.llm, script).catch(
@@ -6658,6 +6700,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     // Photos and portraits as instant prints, tape, pins, trays and screens; screenshots in the display
     // of their day (src/render/photoplan.ts).
     photoTreatments: s.cfg.photoTreatments,
+    // The documentary's sound craft and the narration's texture slices (src/render/soundfx.ts, voicefx.ts).
+    soundCraft: craft,
+    voiceFxFiles,
   });
   // The graphics check before the render (src/qa/graphicscheck.ts): every graphic and breather as a still
   // from the same composition and props, faulted ones muted, so the full render runs once instead of again

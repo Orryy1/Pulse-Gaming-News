@@ -1,0 +1,462 @@
+{
+ "voice_ref_db": -17.04,
+ "file_loudness_db": -20.0,
+ "penalty_max": 2.0,
+ "sounds": {
+  "tape": {
+   "penalty": 1.0,
+   "flags": [
+    "jolt 1.0"
+   ],
+   "key_fit": 1.0,
+   "rise_in_speech_db": 0.01,
+   "jolt_db": 3.23,
+   "rise_in_gap_db": 1.11,
+   "level_offset_db": -20,
+   "features": {
+    "seconds": 0.358,
+    "centroid": 1007.223,
+    "presence": 0.006,
+    "air": 0.0,
+    "low": 0.0,
+    "phone": 0.999,
+    "peak_s": 0.175,
+    "decay_ms": 135.0,
+    "tonal": 0.301,
+    "f0": null,
+    "jump_db": 10.254,
+    "flatness": 0.0,
+    "clarity": 0.0
+   }
+  },
+  "pin": {
+   "penalty": 0.0,
+   "flags": [],
+   "key_fit": 1.0,
+   "rise_in_speech_db": 0.01,
+   "jolt_db": 2.49,
+   "rise_in_gap_db": 0.64,
+   "level_offset_db": -20,
+   "features": {
+    "seconds": 0.123,
+    "centroid": 542.72,
+    "presence": 0.0,
+    "air": 0.0,
+    "low": 0.001,
+    "phone": 0.99,
+    "peak_s": 0.0,
+    "decay_ms": 75.0,
+    "tonal": 0.117,
+    "f0": null,
+    "jump_db": 1.153,
+    "flatness": 0.0,
+    "clarity": 0.0
+   }
+  },
+  "shutter": {
+   "penalty": 0.0,
+   "flags": [],
+   "key_fit": 1.0,
+   "rise_in_speech_db": 0.02,
+   "jolt_db": 1.96,
+   "rise_in_gap_db": 0.42,
+   "level_offset_db": -20,
+   "features": {
+    "seconds": 0.189,
+    "centroid": 766.287,
+    "presence": 0.002,
+    "air": 0.0,
+    "low": 0.007,
+    "phone": 0.974,
+    "peak_s": 0.0,
+    "decay_ms": 140.0,
+    "tonal": 0.176,
+    "f0": null,
+    "jump_db": 5.184,
+    "flatness": 0.0,
+    "clarity": 0.0
+   }
+  },
+  "paper": {
+   "penalty": 0.0,
+   "flags": [],
+   "key_fit": 1.0,
+   "rise_in_speech_db": 0.01,
+   "jolt_db": 3.47,
+   "rise_in_gap_db": 0.74,
+   "level_offset_db": -20,
+   "features": {
+    "seconds": 0.498,
+    "centroid": 846.214,
+    "presence": 0.006,
+    "air": 0.0,
+    "low": 0.003,
+    "phone": 0.979,
+    "peak_s": 0.045,
+    "decay_ms": 345.0,
+    "tonal": 0.42,
+    "f0": null,
+    "jump_db": 2.874,
+    "flatness": 0.0,
+    "clarity": 0.0
+   }
+  },
+  "page": {
+   "penalty": 0.0,
+   "flags": [],
+   "key_fit": 1.0,
+   "rise_in_speech_db": 0.03,
+   "jolt_db": 2.67,
+   "rise_in_gap_db": 1.29,
+   "level_offset_db": -20,
+   "features": {
+    "seconds": 0.514,
+    "centroid": 758.779,
+    "presence": 0.004,
+    "air": 0.0,
+    "low": 0.011,
+    "phone": 0.965,
+    "peak_s": 0.325,
+    "decay_ms": 125.0,
+    "tonal": 0.367,
+    "f0": null,
+    "jump_db": 3.871,
+    "flatness": 0.0,
+    "clarity": 0.0
+   }
+  },
+  "typewriter": {
+   "penalty": 0.38,
+   "flags": [
+    "jolt 0.4"
+   ],
+   "key_fit": 1.0,
+   "rise_in_speech_db": 0.08,
+   "jolt_db": 3.17,
+   "rise_in_gap_db": 1.32,
+   "level_offset_db": -20,
+   "features": {
+    "seconds": 0.751,
+    "centroid": 553.142,
+    "presence": 0.0,
+    "air": 0.0,
+    "low": 0.014,
+    "phone": 0.957,
+    "peak_s": 0.0,
+    "decay_ms": 685.0,
+    "tonal": 0.2,
+    "f0": null,
+    "jump_db": 9.474,
+    "flatness": 0.0,
+    "clarity": 0.0
+   }
+  },
+  "splitflap": {
+   "penalty": 0.42,
+   "flags": [
+    "pitched 0.4"
+   ],
+   "key_fit": 1.0,
+   "rise_in_speech_db": 0.05,
+   "jolt_db": 2.55,
+   "rise_in_gap_db": 1.67,
+   "level_offset_db": -20,
+   "features": {
+    "seconds": 0.622,
+    "centroid": 726.357,
+    "presence": 0.001,
+    "air": 0.0,
+    "low": 0.005,
+    "phone": 0.975,
+    "peak_s": 0.155,
+    "decay_ms": 420.0,
+    "tonal": 0.642,
+    "f0": 298.855,
+    "jump_db": 4.212,
+    "flatness": 0.0,
+    "clarity": 0.0
+   }
+  },
+  "crt": {
+   "penalty": 0.0,
+   "flags": [],
+   "key_fit": 1.0,
+   "rise_in_speech_db": 0.01,
+   "jolt_db": 3.21,
+   "rise_in_gap_db": 0.0,
+   "level_offset_db": -20,
+   "features": {
+    "seconds": 0.319,
+    "centroid": 180.191,
+    "presence": 0.001,
+    "air": 0.0,
+    "low": 0.552,
+    "phone": 0.447,
+    "peak_s": 0.025,
+    "decay_ms": 215.0,
+    "tonal": 0.991,
+    "f0": 62.602,
+    "jump_db": 6.183,
+    "flatness": 0.0,
+    "clarity": 0.0
+   }
+  },
+  "click": {
+   "penalty": 0.0,
+   "flags": [],
+   "key_fit": 1.0,
+   "rise_in_speech_db": 0.01,
+   "jolt_db": 2.26,
+   "rise_in_gap_db": 0.21,
+   "level_offset_db": -20,
+   "features": {
+    "seconds": 0.08,
+    "centroid": 421.448,
+    "presence": 0.0,
+    "air": 0.0,
+    "low": 0.005,
+    "phone": 0.915,
+    "peak_s": 0.0,
+    "decay_ms": 30.0,
+    "tonal": 0.106,
+    "f0": null,
+    "jump_db": 0.586,
+    "flatness": 0.0,
+    "clarity": 0.0
+   }
+  },
+  "buzz-D": {
+   "penalty": 0.93,
+   "flags": [
+    "key clash 0.9"
+   ],
+   "key_fit": 0.858,
+   "rise_in_speech_db": 0.06,
+   "jolt_db": 3.92,
+   "rise_in_gap_db": 1.25,
+   "level_offset_db": -21,
+   "features": {
+    "seconds": 0.599,
+    "centroid": 236.615,
+    "presence": 0.0,
+    "air": 0.0,
+    "low": 0.316,
+    "phone": 0.683,
+    "peak_s": 0.095,
+    "decay_ms": 455.0,
+    "tonal": 1.0,
+    "f0": 146.952,
+    "jump_db": 4.99,
+    "flatness": 0.0,
+    "clarity": 1.0
+   }
+  },
+  "buzz-E": {
+   "penalty": 0.88,
+   "flags": [
+    "key clash 0.9"
+   ],
+   "key_fit": 0.861,
+   "rise_in_speech_db": 0.16,
+   "jolt_db": 4.66,
+   "rise_in_gap_db": 0.44,
+   "level_offset_db": -21,
+   "features": {
+    "seconds": 0.597,
+    "centroid": 265.952,
+    "presence": 0.0,
+    "air": 0.0,
+    "low": 0.338,
+    "phone": 0.662,
+    "peak_s": 0.085,
+    "decay_ms": 465.0,
+    "tonal": 1.0,
+    "f0": 164.12,
+    "jump_db": 3.857,
+    "flatness": 0.0,
+    "clarity": 1.0
+   }
+  },
+  "tickroll": {
+   "penalty": 1.29,
+   "flags": [
+    "jolt 1.3"
+   ],
+   "key_fit": 1.0,
+   "rise_in_speech_db": 0.15,
+   "jolt_db": 3.34,
+   "rise_in_gap_db": 1.41,
+   "level_offset_db": -21,
+   "features": {
+    "seconds": 0.957,
+    "centroid": 804.837,
+    "presence": 0.002,
+    "air": 0.0,
+    "low": 0.003,
+    "phone": 0.987,
+    "peak_s": 0.005,
+    "decay_ms": 900.0,
+    "tonal": 0.207,
+    "f0": null,
+    "jump_db": 10.609,
+    "flatness": 0.0,
+    "clarity": 0.0
+   }
+  },
+  "bars-D": {
+   "penalty": 1.68,
+   "flags": [
+    "decay 1.4",
+    "key clash 0.3"
+   ],
+   "key_fit": 0.9,
+   "rise_in_speech_db": 0.06,
+   "jolt_db": 2.65,
+   "rise_in_gap_db": 1.71,
+   "level_offset_db": -21,
+   "features": {
+    "seconds": 0.82,
+    "centroid": 312.418,
+    "presence": 0.0,
+    "air": 0.0,
+    "low": 0.021,
+    "phone": 0.964,
+    "peak_s": 0.035,
+    "decay_ms": 685.0,
+    "tonal": 0.999,
+    "f0": 369.597,
+    "jump_db": 3.467,
+    "flatness": 0.0,
+    "clarity": 0.902
+   }
+  },
+  "bars-E": {
+   "penalty": 1.64,
+   "flags": [
+    "decay 1.5",
+    "key clash 0.1"
+   ],
+   "key_fit": 0.91,
+   "rise_in_speech_db": 0.06,
+   "jolt_db": 3.17,
+   "rise_in_gap_db": 0.62,
+   "level_offset_db": -21,
+   "features": {
+    "seconds": 0.82,
+    "centroid": 350.714,
+    "presence": 0.0,
+    "air": 0.0,
+    "low": 0.014,
+    "phone": 0.969,
+    "peak_s": 0.03,
+    "decay_ms": 690.0,
+    "tonal": 0.999,
+    "f0": 414.729,
+    "jump_db": 3.498,
+    "flatness": 0.0,
+    "clarity": 0.932
+   }
+  },
+  "riser-D": {
+   "penalty": 1.65,
+   "flags": [
+    "lost on phones 0.8",
+    "key clash 0.8"
+   ],
+   "key_fit": 0.866,
+   "rise_in_speech_db": 0.87,
+   "jolt_db": 5.54,
+   "rise_in_gap_db": 2.11,
+   "level_offset_db": -18,
+   "features": {
+    "seconds": 1.463,
+    "centroid": 587.581,
+    "presence": 0.027,
+    "air": 0.0,
+    "low": 0.284,
+    "phone": 0.458,
+    "peak_s": 1.28,
+    "decay_ms": 135.0,
+    "tonal": 0.99,
+    "f0": 147.0,
+    "jump_db": 4.666,
+    "flatness": 0.0,
+    "clarity": 1.0
+   }
+  },
+  "riser-E": {
+   "penalty": 0.39,
+   "flags": [
+    "key clash 0.4"
+   ],
+   "key_fit": 0.894,
+   "rise_in_speech_db": 0.9,
+   "jolt_db": 5.71,
+   "rise_in_gap_db": 2.1,
+   "level_offset_db": -18,
+   "features": {
+    "seconds": 1.468,
+    "centroid": 602.574,
+    "presence": 0.023,
+    "air": 0.0,
+    "low": 0.311,
+    "phone": 0.569,
+    "peak_s": 1.27,
+    "decay_ms": 150.0,
+    "tonal": 0.99,
+    "f0": 164.897,
+    "jump_db": 3.783,
+    "flatness": 0.0,
+    "clarity": 1.0
+   }
+  },
+  "button-D": {
+   "penalty": 0.0,
+   "flags": [],
+   "key_fit": 0.921,
+   "rise_in_speech_db": 0.12,
+   "jolt_db": 5.16,
+   "rise_in_gap_db": 2.13,
+   "level_offset_db": -17,
+   "features": {
+    "seconds": 1.4,
+    "centroid": 170.33,
+    "presence": 0.0,
+    "air": 0.0,
+    "low": 0.462,
+    "phone": 0.338,
+    "peak_s": 0.01,
+    "decay_ms": 1155.0,
+    "tonal": 0.982,
+    "f0": 147.152,
+    "jump_db": 5.608,
+    "flatness": 0.0,
+    "clarity": 1.0
+   }
+  },
+  "button-E": {
+   "penalty": 0.0,
+   "flags": [],
+   "key_fit": 0.933,
+   "rise_in_speech_db": 0.26,
+   "jolt_db": 4.21,
+   "rise_in_gap_db": 0.97,
+   "level_offset_db": -17,
+   "features": {
+    "seconds": 1.4,
+    "centroid": 190.508,
+    "presence": 0.0,
+    "air": 0.0,
+    "low": 0.47,
+    "phone": 0.441,
+    "peak_s": 0.01,
+    "decay_ms": 1160.0,
+    "tonal": 0.987,
+    "f0": 165.007,
+    "jump_db": 7.075,
+    "flatness": 0.0,
+    "clarity": 1.0
+   }
+  }
+ }
+}

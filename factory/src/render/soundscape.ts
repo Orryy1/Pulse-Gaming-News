@@ -60,7 +60,51 @@ export const LEVEL = {
    * down from its file, so it sits at about -36 LUFS under the chapter's opening, texture rather than sound.
    */
   eraLong: 0.708,
+  /**
+   * The foley kit (public/sfx/foley, src/tools/sfxlab/foleylab.py, 31 Oct 2026), on the same scale as the
+   * rest (every file matched to -20 dB at its loudest 200 ms): the small sounds 20 dB under the narrator less
+   * the long videos' 2 dB (22 dB under, like the number tick), the busier ones (buzz, counter ticks, bar
+   * tone) a decibel lower, the riser 18 dB under less 2 (20 dB under) and the chapter's closing hit 17 less
+   * 2 (19 dB under, as the landing it stands in for). All at least 14 dB under the narrator.
+   */
+  foleyLong: 0.11,
+  foleyBusyLong: 0.098,
+  riserLong: 0.138,
+  buttonLong: 0.155,
 } as const;
+
+/** The foley files played a decibel lower (LEVEL.foleyBusyLong): runs of hits, or a tone. */
+const BUSY_FOLEY = new Set(["foley/buzz", "foley/tickroll", "foley/bars"]);
+
+/** A foley sound's level in a long video (soundscape.ts LEVEL), by its file ("foley/pin" or "foley/bars-D"). */
+export function foleyLevel(name: string): number {
+  const bare = name.replace(/-[DE]$/, "");
+  if (bare === "foley/riser") return LEVEL.riserLong;
+  if (bare === "foley/button") return LEVEL.buttonLong;
+  return BUSY_FOLEY.has(bare) ? LEVEL.foleyBusyLong : LEVEL.foleyLong;
+}
+
+/**
+ * The music beds' bar grid (seconds), measured by src/tools/sfxlab/bedgrid.py (librosa's beat tracker, a line
+ * fitted through the beats): a bar is four beats from the loop's first one. A bed change lands on one of these
+ * (src/render/soundfx.ts phraseSnap). The retro mood bed is left out: its tracked tempo (65.6 bpm, not a whole
+ * number of bars a loop) is not trustworthy, so its changes stay where the chapter puts them.
+ */
+export const BED_GRID: Record<
+  string,
+  { bar: number; first: number; loop: number }
+> = {
+  "bed_1.wav": { bar: 2.4, first: 0.0227, loop: 134.4 },
+  "bed_2.wav": { bar: 2.0, first: 0.0262, loop: 136.0107 },
+  "bed_3.wav": { bar: 2.449, first: 0.0143, loop: 137.1413 },
+  "bed_4.wav": { bar: 2.3999, first: 0.0244, loop: 105.5302 },
+  "mood_reflective_1.wav": { bar: 2.0, first: 0.0389, loop: 135.9893 },
+  "mood_tense_1.wav": { bar: 2.5, first: 0.0257, loop: 130.0053 },
+  "mood_tense_2.wav": { bar: 2.4, first: 0.0306, loop: 134.4 },
+  "mood_triumph_1.wav": { bar: 2.0, first: 0.0209, loop: 136.0 },
+};
+export const bedGridOf = (src: string | null | undefined) =>
+  BED_GRID[(src ?? "").split(/[\\/]/).pop() ?? ""];
 
 // ---------------------------------------------------------------- era beds (30 Oct 2026)
 /**
@@ -150,6 +194,11 @@ const TUNED = new Set<string>([
   ...SFX.land,
   RETRO_SFX.static,
   RETRO_SFX.poweroff,
+  // The foley kit's pitched sounds, made in both keys from the key's own notes (src/tools/sfxlab/foleylab.py).
+  "foley/buzz",
+  "foley/bars",
+  "foley/riser",
+  "foley/button",
 ]);
 
 /** The version of a sound tuned to the music playing under it ("v3/sting" or "sfx/v3/sting.mp3" alike). */
@@ -178,16 +227,39 @@ const PEAK: Record<string, number> = {
   "retro/vhs": 0.795,
   "retro/static": 0.005,
   "retro/poweroff": 0.005,
+  // The foley kit (src/tools/sfxlab/foley_report.json); the tuned ones' peaks match in both keys within 10 ms.
+  "foley/tape": 0.175,
+  "foley/pin": 0,
+  "foley/shutter": 0,
+  "foley/paper": 0.045,
+  "foley/page": 0.325,
+  "foley/typewriter": 0,
+  "foley/splitflap": 0.155,
+  "foley/crt": 0.025,
+  "foley/click": 0,
+  "foley/buzz": 0.09,
+  "foley/tickroll": 0.005,
+  "foley/bars": 0.03,
+  "foley/riser": 1.275,
+  "foley/button": 0.01,
 };
 export const leadFrames = (name: string, fps: number) =>
-  Math.round((PEAK[name] ?? 0) * fps);
+  Math.round((PEAK[name.replace(/-[DE]$/, "")] ?? 0) * fps);
 
 export interface LongSoundCandidate {
   key: number; // the moment window's index
   frame: number;
-  /** stamp: the delay card's rubber stamp lands; record: the writer's record beat (the sting, in key). */
-  kind: "glint" | "pop" | "stamp" | "record" | RetroKind;
+  /**
+   * stamp: the delay card's rubber stamp lands; record: the writer's record beat (the sting, in key); riser:
+   * the writer's reveal beat, `frame` being where the riser peaks (src/render/soundfx.ts, SOUND_RISERS).
+   */
+  kind: "glint" | "pop" | "stamp" | "record" | "riser" | RetroKind;
 }
+
+/** The riser into a reveal (public/sfx/foley/riser-D and -E, in the bed's key through inKey). */
+export const RISER_SFX = "foley/riser";
+/** Risers at least this far apart (src/render/soundfx.ts RISER_GAP_SECONDS, kept here beside the others). */
+export const RISER_GAP = 20;
 
 /** The retro kit's moments: a screen switching on, a tape going in, static on a cut. */
 type RetroKind = "tvon" | "vhs" | "static";
@@ -216,12 +288,13 @@ export function gateLongSounds(
     pop: -Infinity,
     stamp: -Infinity,
     record: -Infinity,
+    riser: -Infinity,
   };
   const turn = { glint: 0, pop: 0, stamp: 0, record: 0 };
-  // The retro kit's sounds belong to what is on screen and a record sting to the writer's line, so they
-  // claim their moments first; the moment sounds then fit around them by the same rules.
+  // The retro kit's sounds belong to what is on screen and a record sting or a reveal's riser to the
+  // writer's line, so they claim their moments first; the moment sounds then fit around them by the same rules.
   const claims = (k: LongSoundCandidate["kind"]) =>
-    Number(isRetro(k) || k === "record");
+    Number(isRetro(k) || k === "record" || k === "riser");
   const order = [...cands].sort(
     (a, b) => claims(b.kind) - claims(a.kind) || a.frame - b.frame,
   );
@@ -238,6 +311,13 @@ export function gateLongSounds(
       out.set(c.key, SFX.sting);
       chosen.push(c.frame);
       lastOf.record = c.frame;
+      continue;
+    }
+    if (c.kind === "riser") {
+      if (c.frame - lastOf.riser < RISER_GAP * fps) continue;
+      out.set(c.key, RISER_SFX);
+      chosen.push(c.frame);
+      lastOf.riser = c.frame;
       continue;
     }
     const gap = c.kind === "glint" ? 8 : c.kind === "stamp" ? 20 : 14;

@@ -269,6 +269,17 @@ export function testConfig(
     illustrateStub: true,
     sketchAnimation: true,
     photoTreatments: true,
+    // The sound craft off in the harness: its slices run ffmpeg, and the pipeline tests count notices.
+    soundCraft: {
+      jl: false,
+      pockets: false,
+      foley: false,
+      risers: false,
+      buttons: false,
+      phrase: false,
+      voicePocket: false,
+      voiceFx: false,
+    },
     dryRun: false,
     maxAttempts: 3,
     remotionConcurrency: 1,

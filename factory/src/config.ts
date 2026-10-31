@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { SoundCraft } from "./render/soundfx.ts";
 
 // Local installs keep settings in factory/.env (never committed).
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
@@ -386,6 +387,15 @@ export interface Config {
   sketchAnimation: boolean;
   /** Photos and portraits in documentaries arriving as instant prints, tape, pins, trays, screens and more (src/render/photoplan.ts). Off: the static framed print and full-bleed screenshots. */
   photoTreatments: boolean;
+  /**
+   * A documentary's sound craft (src/render/soundfx.ts, 31 Oct 2026), each part on by default: SOUND_JL_CUTS
+   * (a clip's game sound leads or trails its picture), SOUND_GAME_POCKETS (game sound up in long pauses),
+   * SOUND_FOLEY (treatments and devices make their own small sounds), SOUND_RISERS (a riser into each
+   * reveal beat), SOUND_CHAPTER_BUTTONS (a soft final hit on each chapter's last word), SOUND_PHRASE_EDITS
+   * (bed changes on the bar line), SOUND_VOICE_POCKET (the music dips at 2-4 kHz under speech) and
+   * SOUND_VOICE_FX (telephone band on message quotes, reverb swell on reveal lines). Off: the old mix.
+   */
+  soundCraft: SoundCraft;
   dryRun: boolean;
   maxAttempts: number;
   remotionConcurrency: number;
@@ -808,6 +818,16 @@ export function loadConfig(): Config {
     illustrateStub: bool("ILLUSTRATE_STUB", false),
     sketchAnimation: bool("SKETCH_ANIMATION", true),
     photoTreatments: bool("PHOTO_TREATMENTS", true),
+    soundCraft: {
+      jl: bool("SOUND_JL_CUTS", true),
+      pockets: bool("SOUND_GAME_POCKETS", true),
+      foley: bool("SOUND_FOLEY", true),
+      risers: bool("SOUND_RISERS", true),
+      buttons: bool("SOUND_CHAPTER_BUTTONS", true),
+      phrase: bool("SOUND_PHRASE_EDITS", true),
+      voicePocket: bool("SOUND_VOICE_POCKET", true),
+      voiceFx: bool("SOUND_VOICE_FX", true),
+    },
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),

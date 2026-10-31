@@ -16,8 +16,36 @@ import {
   leadFrames,
   LEVEL,
   SFX,
+  bedGridOf,
+  foleyLevel,
   type LongSoundCandidate,
 } from "./soundscape.ts";
+import {
+  DEVICE_FOLEY,
+  DISPLAY_FOLEY,
+  GAME_UNDER,
+  PHOTO_FOLEY,
+  SKETCH_FOLEY,
+  bedEdge,
+  bedSchedule,
+  chapterButtons,
+  craftOf,
+  cueFrame,
+  dryLevel,
+  foleyFile,
+  gameEnvelope,
+  gateFoley,
+  jlCuts,
+  jlEdge,
+  pocketOf,
+  pocketWeight,
+  reverbLevel,
+  riserPeaks,
+  type FoleyCandidate,
+  type JlCut,
+  type SoundCraft,
+  type VoiceFxKind,
+} from "./soundfx.ts";
 
 /** Seconds a long video stays on one music bed before changing at the next chapter or entry. */
 const MUSIC_SECTION_SECONDS = 150;
@@ -221,6 +249,14 @@ export type LongProps = {
   sketchAnimation?: boolean;
   /** Photos and portraits arriving as prints, pins, tape, trays and screens (src/render/photoplan.ts); false keeps the static framed print and the full-bleed screenshot. Default true. */
   photoTreatments?: boolean;
+  /** The documentary's sound craft (src/render/soundfx.ts): J and L cuts, foley, risers and the rest. Absent: the old mix. */
+  soundCraft?: Partial<SoundCraft>;
+  /** Music beds whose pocketed copy (music/pocket/*.flac) this bundle carries (src/render/render.ts). */
+  pocketBeds?: string[];
+  /** The narration's texture slices (src/render/voicefx.ts): a telephone band on message quotes, reverb on reveals. */
+  voiceFx?: Array<{ kind: VoiceFxKind; from: number; to: number; src: string }>;
+  /** Proof renders: at this frame the composition logs every sound it places ("SOUNDLOG " and JSON). */
+  soundLog?: number;
   durationSeconds: number;
   variant: number;
   renderDate: string;
@@ -595,19 +631,33 @@ const Clip: React.FC<{
   audio?: boolean;
   frames?: number;
   punchAt?: number;
-}> = ({ src, audio, frames, punchAt }) => {
+  /** A J/L cut (src/render/soundfx.ts jlCuts): the picture starts this far in and its sound plays apart. */
+  startFrom?: number;
+  /** The game sound's level by the shot's own frame (soundfx.ts gameEnvelope); absent, the fixed level. */
+  level?: (f: number) => number;
+}> = ({ src, audio, frames, punchAt, startFrom, level }) => {
   const frame = useCurrentFrame();
   const punch =
     punchAt === undefined
       ? 1
       : interpolate(frame, [punchAt, punchAt + 2], [1, PUNCH], clamp);
+  // A J/L clip's sound is its own <Audio> outside the shot (it runs past both cuts), so the picture is muted.
+  const sound = audio && frames && startFrom === undefined;
   // A hard cut: fading in from transparent showed the black canvas under it for a few frames.
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <OffthreadVideo
         src={src}
-        muted={!audio}
-        volume={audio && frames ? (f) => gameSoundVolume(f, frames) : undefined}
+        muted={!sound}
+        startFrom={startFrom}
+        volume={
+          sound
+            ? level
+              ? (f) =>
+                  level(f) * Math.max(0, Math.min(1, f / 8, (frames - f) / 8))
+              : (f) => gameSoundVolume(f, frames)
+            : undefined
+        }
         style={{
           width: "100%",
           height: "100%",
@@ -1013,6 +1063,10 @@ const Backdrop: React.FC<{
   photos?: Map<number, PhotoDecision>;
   /** Per shot index: the display a screenshot plays inside; absent, full-bleed. */
   displays?: Map<number, DisplayDecision>;
+  /** Per shot index: a clip whose sound leads or trails its picture (src/render/soundfx.ts jlCuts). */
+  jl?: Map<number, JlCut>;
+  /** The game sound's level by absolute frame (src/render/soundfx.ts gameEnvelope); absent, the fixed level. */
+  gameLevel?: (f: number) => number;
 }> = ({
   plan,
   images,
@@ -1028,6 +1082,8 @@ const Backdrop: React.FC<{
   sketches,
   photos,
   displays,
+  jl,
+  gameLevel,
 }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
@@ -1097,6 +1153,8 @@ const Backdrop: React.FC<{
                 src={clip.src}
                 audio={clip.audio}
                 frames={len}
+                startFrom={jl?.get(i)?.lead}
+                level={gameLevel ? (f) => gameLevel(s.start + f) : undefined}
                 punchAt={
                   !dev && punches?.has(i)
                     ? punches.get(i)! - s.start
@@ -2208,6 +2266,18 @@ export const Long: React.FC<LongProps> = (props) => {
     () => bedEnvelope(speaking, fps, 0.07, 0.11),
     [speaking, fps],
   );
+  // The sound craft (src/render/soundfx.ts): each part its own setting; an absent prop is the old mix.
+  const craft = craftOf(props.soundCraft);
+  // Game sound by the same pause rule: its old level under the voice, up softly in a long pause.
+  const gameLevels = useMemo(
+    () => (craft.pockets ? gameEnvelope(speaking, fps) : undefined),
+    [craft.pockets, speaking, fps],
+  );
+  const gameLevel = gameLevels
+    ? (f: number) =>
+        gameLevels[Math.min(durationInFrames, Math.max(0, Math.round(f)))] ??
+        GAME_UNDER
+    : undefined;
   const musicVolume = (f: number) => {
     const fadeIn = interpolate(f, [0, 24], [0, 1], {
       extrapolateLeft: "clamp",
@@ -2563,6 +2633,15 @@ export const Long: React.FC<LongProps> = (props) => {
         : -1,
     )
     .filter((f) => f >= 0);
+  // J and L cuts (src/render/soundfx.ts jlCuts): gameplay clips whose own sound leads or trails the picture.
+  const jl = useMemo(
+    () =>
+      craft.jl
+        ? jlCuts(plan.shots, props.clips, fps, entryFrames)
+        : new Map<number, JlCut>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [craft.jl, plan, props.clips, fps, entryFrames.join(",")],
+  );
   // Zoom to the detail: each annotation's window, the shot showing its picture then, and the box on screen.
   const details = useMemo(() => {
     const out: Array<{
@@ -2900,6 +2979,14 @@ export const Long: React.FC<LongProps> = (props) => {
       )
       .map((im) => im.src)
       .slice(0, 6);
+  // Each pack style's name ("Paper/Typewriter"), for its own foley (src/render/soundfx.ts DEVICE_FOLEY).
+  const styleName = useMemo(
+    () =>
+      new Map<GfxStyle, string>(
+        Object.entries(ALL_STYLES).map(([n, s]) => [s, n] as const),
+      ),
+    [],
+  );
   const packFor = useMemo(() => {
     const out = new Map<number, GfxStyle>();
     const turn = new Map<string, number>();
@@ -3110,126 +3197,138 @@ export const Long: React.FC<LongProps> = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan, windows, packFor, openings, retro, fps, props.variant]);
   const richSoundAt = new Map<number, number>();
-  const momentSounds = gateLongSounds(
-    windows
-      .flatMap((w, k): LongSoundCandidate[] => {
-        const raw = props.moments?.[w.entry]?.[w.moment];
-        if (!raw) return [];
-        const { from, len, anchored } = spanOf(k);
-        const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
-        // A record beat: the sting (in the bed's key) lands on the sentence's key word, instead of whatever
-        // sound its graphic would have had, and never within 4 s of a key line's silence (keys from 500000).
-        const recordAt = Math.round(Math.max(w.start, w.at) * fps);
-        if (
-          raw.beat === "record" &&
-          beatCues.some((c) => c.kind === "record" && c.at === recordAt) &&
-          !beatCues.some(
-            (c) =>
-              c.kind === "key" &&
-              recordAt >= c.start - 4 * fps &&
-              recordAt <= c.end + 4 * fps,
-          )
-        ) {
-          richSoundAt.set(500000 + k, recordAt);
-          return [
-            { key: 500000 + k, frame: recordAt, kind: "record" as const },
-          ];
-        }
-        const style = packFor.get(k);
-        if (style) {
-          const at = from + (style.sound === "stamp" ? 34 : 0);
-          richSoundAt.set(k, at);
-          return [
-            {
-              key: k,
-              frame: at,
-              kind:
-                style.sound === "glint"
-                  ? ("glint" as const)
-                  : style.sound === "stamp"
-                    ? ("stamp" as const)
-                    : ("pop" as const),
-            },
-          ];
-        }
-        if (graphic === "stat" || graphic === "score")
-          return [{ key: k, frame: from, kind: "glint" as const }];
-        // The richer graphics have their own cue: a whoosh as a full-screen explainer lands, the stamp's
-        // low hit as it slams down, a tick as a counter finishes or a milestone pops.
-        if (
-          [
-            "quote",
-            "headline",
-            "source",
-            "reviews",
-            "people",
-            "versus",
-            "timeline",
-          ].includes(graphic)
-        ) {
-          richSoundAt.set(k, from);
-          return [{ key: k, frame: from, kind: "pop" as const }];
-        }
-        if (graphic === "delay") {
-          richSoundAt.set(k, from + 34);
-          return [{ key: k, frame: from + 34, kind: "stamp" as const }];
-        }
-        if (graphic === "span" || graphic === "milestone") {
-          const at = from + (graphic === "span" ? 70 : 6);
-          richSoundAt.set(k, at);
-          return [{ key: k, frame: at, kind: "glint" as const }];
-        }
-        const shot = plan.shots.find((x) => from >= x.start && from < x.end);
-        const pic = props.images.some(
-          (im) => im.beatIndex === w.entry && im.moment === w.moment,
-        );
-        if (
-          graphic === "none" &&
-          shot?.media.type === "clip" &&
-          pic &&
-          w.moment > 0
+  const soundCands: LongSoundCandidate[] = windows
+    .flatMap((w, k): LongSoundCandidate[] => {
+      const raw = props.moments?.[w.entry]?.[w.moment];
+      if (!raw) return [];
+      const { from, len, anchored } = spanOf(k);
+      const graphic = usefulGraphic(raw.graphic) ? raw.graphic.kind : "none";
+      // A record beat: the sting (in the bed's key) lands on the sentence's key word, instead of whatever
+      // sound its graphic would have had, and never within 4 s of a key line's silence (keys from 500000).
+      const recordAt = Math.round(Math.max(w.start, w.at) * fps);
+      if (
+        raw.beat === "record" &&
+        beatCues.some((c) => c.kind === "record" && c.at === recordAt) &&
+        !beatCues.some(
+          (c) =>
+            c.kind === "key" &&
+            recordAt >= c.start - 4 * fps &&
+            recordAt <= c.end + 4 * fps,
         )
-          return [
-            {
-              key: k,
-              frame:
-                from + (anchored ? 0 : Math.min(30, Math.max(0, len - 90))),
-              kind: "pop" as const,
-            },
-          ];
-        return [];
-      })
-      .concat(
-        // A detail's box drawing on gets a tick (keys from 100000, clear of the moment windows').
-        details.map((d, i): LongSoundCandidate => {
-          richSoundAt.set(100000 + i, d.from + 26);
-          return { key: 100000 + i, frame: d.from + 26, kind: "glint" };
-        }),
-        // The retro kit heard: the old screen switching on (or the tape's thunk into the VCR as it goes in),
-        // and soft static on a channel-static cut (keys from 200000 and 300000).
-        [...retro].map(([i, dev]): LongSoundCandidate => {
-          const sh = plan.shots[i]!;
-          const img = sh.media.type === "image" && i > 0;
-          const from = img
-            ? sh.start - (powerOff.has(i - 1) ? 0 : Math.min(XFADE, sh.start))
-            : sh.start;
-          const at = from + (dev.device === "vcr" ? 26 : 3);
-          richSoundAt.set(200000 + i, at);
-          return {
-            key: 200000 + i,
+      ) {
+        richSoundAt.set(500000 + k, recordAt);
+        return [{ key: 500000 + k, frame: recordAt, kind: "record" as const }];
+      }
+      const style = packFor.get(k);
+      if (style) {
+        const at = from + (style.sound === "stamp" ? 34 : 0);
+        richSoundAt.set(k, at);
+        return [
+          {
+            key: k,
             frame: at,
-            kind: dev.device === "vcr" ? "vhs" : "tvon",
-          };
-        }),
-        accents.flatMap((a, k): LongSoundCandidate[] => {
-          if (a.kind !== "static") return [];
-          richSoundAt.set(300000 + k, a.at - 3);
-          return [{ key: 300000 + k, frame: a.at - 3, kind: "static" }];
-        }),
+            kind:
+              style.sound === "glint"
+                ? ("glint" as const)
+                : style.sound === "stamp"
+                  ? ("stamp" as const)
+                  : ("pop" as const),
+          },
+        ];
+      }
+      if (graphic === "stat" || graphic === "score")
+        return [{ key: k, frame: from, kind: "glint" as const }];
+      // The richer graphics have their own cue: a whoosh as a full-screen explainer lands, the stamp's
+      // low hit as it slams down, a tick as a counter finishes or a milestone pops.
+      if (
+        [
+          "quote",
+          "headline",
+          "source",
+          "reviews",
+          "people",
+          "versus",
+          "timeline",
+        ].includes(graphic)
+      ) {
+        richSoundAt.set(k, from);
+        return [{ key: k, frame: from, kind: "pop" as const }];
+      }
+      if (graphic === "delay") {
+        richSoundAt.set(k, from + 34);
+        return [{ key: k, frame: from + 34, kind: "stamp" as const }];
+      }
+      if (graphic === "span" || graphic === "milestone") {
+        const at = from + (graphic === "span" ? 70 : 6);
+        richSoundAt.set(k, at);
+        return [{ key: k, frame: at, kind: "glint" as const }];
+      }
+      const shot = plan.shots.find((x) => from >= x.start && from < x.end);
+      const pic = props.images.some(
+        (im) => im.beatIndex === w.entry && im.moment === w.moment,
+      );
+      if (
+        graphic === "none" &&
+        shot?.media.type === "clip" &&
+        pic &&
+        w.moment > 0
+      )
+        return [
+          {
+            key: k,
+            frame: from + (anchored ? 0 : Math.min(30, Math.max(0, len - 90))),
+            kind: "pop" as const,
+          },
+        ];
+      return [];
+    })
+    .concat(
+      // A detail's box drawing on gets a tick (keys from 100000, clear of the moment windows').
+      details.map((d, i): LongSoundCandidate => {
+        richSoundAt.set(100000 + i, d.from + 26);
+        return { key: 100000 + i, frame: d.from + 26, kind: "glint" };
+      }),
+      // The retro kit heard: the old screen switching on (or the tape's thunk into the VCR as it goes in),
+      // and soft static on a channel-static cut (keys from 200000 and 300000).
+      [...retro].map(([i, dev]): LongSoundCandidate => {
+        const sh = plan.shots[i]!;
+        const img = sh.media.type === "image" && i > 0;
+        const from = img
+          ? sh.start - (powerOff.has(i - 1) ? 0 : Math.min(XFADE, sh.start))
+          : sh.start;
+        const at = from + (dev.device === "vcr" ? 26 : 3);
+        richSoundAt.set(200000 + i, at);
+        return {
+          key: 200000 + i,
+          frame: at,
+          kind: dev.device === "vcr" ? "vhs" : "tvon",
+        };
+      }),
+      accents.flatMap((a, k): LongSoundCandidate[] => {
+        if (a.kind !== "static") return [];
+        richSoundAt.set(300000 + k, a.at - 3);
+        return [{ key: 300000 + k, frame: a.at - 3, kind: "static" }];
+      }),
+      // A riser into each reveal beat, peaking on the revealed word (src/render/soundfx.ts; keys from
+      // 700000). It claims its moment like a record sting; the reveal's own duck makes room for it.
+      (craft.risers ? riserPeaks(beatCues) : []).map(
+        (at, i): LongSoundCandidate => {
+          richSoundAt.set(700000 + i, at);
+          return { key: 700000 + i, frame: at, kind: "riser" };
+        },
       ),
-    entryFrames,
-    fps,
-  );
+    );
+  const momentSounds = gateLongSounds(soundCands, entryFrames, fps);
+  // A Pulse device or paper look makes its own sound in place of the shared whoosh or tick, on the same
+  // moment the gate gave it (src/render/soundfx.ts DEVICE_FOLEY); a stamp stays a stamp.
+  if (craft.foley)
+    for (const [k, style] of packFor) {
+      const name = styleName.get(style);
+      const cue = name ? DEVICE_FOLEY[name] : undefined;
+      if (!cue || style.sound === "stamp" || !momentSounds.has(k)) continue;
+      momentSounds.set(k, foleyFile(cue.sound));
+      richSoundAt.set(k, spanOf(k).from + cueFrame(cue, spanOf(k).len));
+    }
   // The corner names the source of what is on screen: a licensed gameplay clip its creator, else the trailers.
   const creditAt = (f: number) => {
     const shot = plan.shots.find((s) => f >= s.start && f < s.end);
@@ -3302,6 +3401,97 @@ export const Long: React.FC<LongProps> = (props) => {
     retro,
     periodLooks,
   ]);
+  // Foley for the treatments (src/render/soundfx.ts): each photo, sketch and screenshot display makes its own
+  // small sound on its landing frame, fitted around every sound the gate above chose (keys from 600000).
+  const foleyAt = new Map<number, number>();
+  const foley = (() => {
+    if (!craft.foley) return new Map<number, string>();
+    const cands: FoleyCandidate[] = [];
+    plan.shots.forEach((s, i) => {
+      const img =
+        s.media.type === "image" ? props.images[s.media.index] : undefined;
+      if (!img) return;
+      const xf = powerOff.has(i - 1) ? 0 : Math.min(XFADE, s.start);
+      const from = i > 0 ? s.start - xf : s.start;
+      const len = s.end - s.start + (i > 0 ? xf : 0);
+      const ph = photoPlan.photos.get(i);
+      const sk = img.kind === "sketch" ? sketches.get(i) : undefined;
+      const disp = photoPlan.displays.get(i);
+      const cue =
+        (ph && (img.kind === "photo" || img.kind === "portrait")
+          ? PHOTO_FOLEY[ph.treatment]
+          : undefined) ??
+        (sk ? SKETCH_FOLEY[sk.treatment] : undefined) ??
+        (disp && img.kind === "screenshot"
+          ? DISPLAY_FOLEY[disp.display]
+          : undefined);
+      if (!cue) return;
+      const frame = from + cueFrame(cue, len);
+      foleyAt.set(600000 + i, frame);
+      cands.push({ key: 600000 + i, frame, sound: cue.sound });
+    });
+    const taken = [
+      ...soundCands.filter((c) => momentSounds.has(c.key)).map((c) => c.frame),
+      ...[...richSoundAt]
+        .filter(([k]) => momentSounds.has(k))
+        .map(([, f]) => f),
+    ];
+    return new Map(
+      [...gateFoley(cands, taken, entryFrames, fps)].map(
+        ([k, s]) => [k, foleyFile(s)] as const,
+      ),
+    );
+  })();
+  // A chapter ends on a soft final hit on its last word instead of the landing a breath later (SOUND_CHAPTER_BUTTONS).
+  const buttonAt = new Map<number, number>(
+    craft.buttons
+      ? chapterButtons(
+          entryFrames,
+          words.map((w) => w.end * fps),
+          fps,
+        ).map((b, n) => [entryFrames[n]!, b] as const)
+      : [],
+  );
+  // Where each bed plays and fades; with SOUND_PHRASE_EDITS a change lands on the outgoing bed's bar line.
+  const bedSlots = bedSchedule(beds, fps, MUSIC_XFADE, craft.phrase, (src) =>
+    bedGridOf(src),
+  );
+  const pockets = new Set(craft.voicePocket ? (props.pocketBeds ?? []) : []);
+  const voiceFx = craft.voiceFx ? (props.voiceFx ?? []) : [];
+  // Every sound placed, for the proof renders (data/smoke/soundfx_proof.mts): logged once at props.soundLog.
+  const soundLog =
+    props.soundLog === undefined
+      ? undefined
+      : [
+          ...[...richSoundAt]
+            .filter(([k]) => momentSounds.has(k))
+            .map(([k, f]) => ({ frame: f, sound: momentSounds.get(k)! })),
+          ...soundCands
+            .filter((c) => momentSounds.has(c.key) && !richSoundAt.has(c.key))
+            .map((c) => ({ frame: c.frame, sound: momentSounds.get(c.key)! })),
+          ...[...foley].map(([k, s]) => ({ frame: foleyAt.get(k)!, sound: s })),
+          ...entryFrames.flatMap((e) => [
+            { frame: e, sound: "v3/swell" },
+            buttonAt.has(e)
+              ? { frame: buttonAt.get(e)!, sound: "foley/button" }
+              : { frame: e, sound: "v3/land" },
+          ]),
+          ...[...jl].map(([i, c]) => ({
+            frame: plan.shots[i]!.start,
+            sound: `jl lead ${c.lead} tail ${c.tail} (clip ${plan.shots[i]!.media.index})`,
+          })),
+          ...bedSlots.map((b) => ({
+            frame: b.from + b.inAt,
+            sound: `bed ${b.src}${pockets.has(b.src) ? " +pocket" : ""}`,
+          })),
+          ...drops.map((d) => ({ frame: d, sound: "music drop-out" })),
+          ...voiceFx.map((v) => ({
+            frame: Math.round(v.from * fps),
+            sound: `voice ${v.kind} ${v.from.toFixed(2)}-${v.to.toFixed(2)} s`,
+          })),
+        ].sort((a, b) => a.frame - b.frame);
+  if (soundLog && frame === props.soundLog)
+    console.log(`SOUNDLOG ${JSON.stringify(soundLog)}`);
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
@@ -3320,6 +3510,8 @@ export const Long: React.FC<LongProps> = (props) => {
         sketches={sketches}
         photos={photoPlan.photos}
         displays={photoPlan.displays}
+        jl={jl}
+        gameLevel={gameLevel}
       />
       {accents.map((a, k) => (
         <Sequence
@@ -3903,8 +4095,9 @@ export const Long: React.FC<LongProps> = (props) => {
       {[...richSoundAt].map(([key, at]) => {
         const name = momentSounds.get(key);
         if (!name) return null;
-        const vol =
-          name === SFX.sting
+        const vol = name.startsWith("foley/")
+          ? foleyLevel(name)
+          : name === SFX.sting
             ? LEVEL.recordLong
             : name === "retro/static"
               ? LEVEL.staticLong
@@ -3923,6 +4116,20 @@ export const Long: React.FC<LongProps> = (props) => {
             layout="none"
           >
             <Sfx name={inKey(name, bedAt(at))} volume={vol} />
+          </Sequence>
+        );
+      })}
+      {/* The treatments' own foley (src/render/soundfx.ts PHOTO_FOLEY, SKETCH_FOLEY, DISPLAY_FOLEY). */}
+      {[...foley].map(([key, name]) => {
+        const at = foleyAt.get(key)!;
+        return (
+          <Sequence
+            key={`fo${key}`}
+            from={Math.max(0, at - leadFrames(name, fps))}
+            durationInFrames={45}
+            layout="none"
+          >
+            <Sfx name={inKey(name, bedAt(at))} volume={foleyLevel(name)} />
           </Sequence>
         );
       })}
@@ -3970,8 +4177,13 @@ export const Long: React.FC<LongProps> = (props) => {
         (s.visual?.kind === "rank" || s.visual?.kind === "chapter") &&
         i > 0 ? (
           <React.Fragment key={`snd${i}`}>
+            {/* With SOUND_CHAPTER_BUTTONS the swell peaks on the chapter's last word, into its closing hit. */}
             <Sequence
-              from={Math.max(0, starts[i]! - leadFrames(SFX.swell, fps))}
+              from={Math.max(
+                0,
+                (buttonAt.get(starts[i]!) ?? starts[i]!) -
+                  leadFrames(SFX.swell, fps),
+              )}
               durationInFrames={60}
               layout="none"
             >
@@ -3980,16 +4192,38 @@ export const Long: React.FC<LongProps> = (props) => {
                 volume={LEVEL.swellLong}
               />
             </Sequence>
-            <Sequence
-              from={Math.max(0, starts[i]! - leadFrames(SFX.land[0], fps))}
-              durationInFrames={75}
-              layout="none"
-            >
-              <Sfx
-                name={inKey(SFX.land[i % SFX.land.length]!, bedAt(starts[i]!))}
-                volume={LEVEL.landLong}
-              />
-            </Sequence>
+            {buttonAt.has(starts[i]!) ? (
+              <Sequence
+                from={Math.max(
+                  0,
+                  buttonAt.get(starts[i]!)! - leadFrames("foley/button", fps),
+                )}
+                durationInFrames={60}
+                layout="none"
+              >
+                <Sfx
+                  name={inKey(
+                    "foley/button",
+                    bedAt(Math.max(0, buttonAt.get(starts[i]!)! - 1)),
+                  )}
+                  volume={LEVEL.buttonLong}
+                />
+              </Sequence>
+            ) : (
+              <Sequence
+                from={Math.max(0, starts[i]! - leadFrames(SFX.land[0], fps))}
+                durationInFrames={75}
+                layout="none"
+              >
+                <Sfx
+                  name={inKey(
+                    SFX.land[i % SFX.land.length]!,
+                    bedAt(starts[i]!),
+                  )}
+                  volume={LEVEL.landLong}
+                />
+              </Sequence>
+            )}
           </React.Fragment>
         ) : null,
       )}
@@ -4031,36 +4265,100 @@ export const Long: React.FC<LongProps> = (props) => {
           volume={LEVEL.sting * 0.5}
         />
       </Sequence>
-      {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
-      {beds.map((b, k) => {
-        // Each bed fades in and out over MUSIC_XFADE frames around its section, under the chapter's swell.
-        const lead = k === 0 ? 0 : MUSIC_XFADE;
-        const tail = k === beds.length - 1 ? 0 : MUSIC_XFADE;
-        const from = b.from - lead;
-        const span = b.to - b.from + lead + tail;
+      {props.audioSrc ? (
+        voiceFx.some((v) => v.kind === "phone") ? (
+          // A message quote's words are cut out of the dry narration and played from their telephone slice.
+          <Audio
+            src={props.audioSrc}
+            volume={(f) => dryLevel(f, voiceFx, fps)}
+          />
+        ) : (
+          <Audio src={props.audioSrc} />
+        )
+      ) : null}
+      {/* The narration's texture slices (src/render/voicefx.ts): the telephone band crossfaded in for exactly
+          its span, a reveal's reverb (wet only) swelling under the dry line and ringing past it. */}
+      {voiceFx.map((v, k) => {
+        const from = Math.round(v.from * fps);
+        const len = Math.max(1, Math.round((v.to - v.from) * fps));
+        return (
+          <Sequence
+            key={`vfx${k}`}
+            from={from}
+            durationInFrames={v.kind === "phone" ? len : len + 48}
+            layout="none"
+          >
+            <Audio
+              src={v.src}
+              volume={(f) =>
+                v.kind === "phone"
+                  ? 1 - dryLevel(from + f, voiceFx, fps)
+                  : reverbLevel(f, len)
+              }
+            />
+          </Sequence>
+        );
+      })}
+      {bedSlots.map((b, k) => {
+        // Each bed fades in and out around its section, under the chapter's swell (src/render/soundfx.ts
+        // bedSchedule); under the voice it crossfades to its pocketed copy, the 2-4 kHz dip (pocketWeight).
+        const level = (f: number) =>
+          musicVolume(b.from + f) *
+          dropLevel(b.from + f, drops) *
+          beatLevel(b.from + f, beatCues, fps) *
+          bedEdge(f, b);
+        const pocket = pockets.has(b.src);
+        const weight = (f: number) =>
+          pocketWeight(
+            bedLevels[Math.min(durationInFrames, Math.max(0, b.from + f))] ??
+              0.07,
+            0.07,
+            0.11,
+          );
         return (
           <Sequence
             key={`bed${k}`}
-            from={from}
-            durationInFrames={Math.max(1, span)}
+            from={b.from}
+            durationInFrames={b.span}
             layout="none"
           >
             <Audio
               src={resolveSrc(b.src)!}
               loop
-              volume={(f) => {
-                const edge = Math.min(
-                  1,
-                  lead ? f / lead : 1,
-                  tail ? (span - f) / tail : 1,
-                );
-                return (
-                  musicVolume(from + f) *
-                  dropLevel(from + f, drops) *
-                  beatLevel(from + f, beatCues, fps) *
-                  Math.max(0, edge)
-                );
-              }}
+              volume={(f) => level(f) * (pocket ? 1 - weight(f) : 1)}
+            />
+            {pocket ? (
+              <Audio
+                src={resolveSrc(pocketOf(b.src))!}
+                loop
+                volume={(f) => level(f) * weight(f)}
+              />
+            ) : null}
+          </Sequence>
+        );
+      })}
+      {/* J and L cuts: a gameplay clip's own sound from `lead` frames before its picture to `tail` after,
+          at the game sound's level (up in the narrator's long pauses with SOUND_GAME_POCKETS). */}
+      {[...jl].map(([i, c]) => {
+        const s = plan.shots[i]!;
+        const clip =
+          s.media.type === "clip" ? props.clips[s.media.index] : undefined;
+        if (!clip) return null;
+        const len = s.end - s.start;
+        const from = s.start - c.lead;
+        return (
+          <Sequence
+            key={`jl${i}`}
+            from={from}
+            durationInFrames={c.lead + len + c.tail}
+            layout="none"
+          >
+            <Audio
+              src={clip.src}
+              volume={(f) =>
+                (gameLevel ? gameLevel(from + f) : GAME_UNDER) *
+                jlEdge(f, c.lead, len, c.tail)
+              }
             />
           </Sequence>
         );

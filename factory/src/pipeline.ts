@@ -89,7 +89,11 @@ import {
   DOC_WORDS_MAX,
   type DocTopic,
   type DocDraft,
+  placeDocLoops,
+  loopsOfScript,
 } from "./editorial/documentary.ts";
+import { groundOpenLoops, openLoopsLine } from "./editorial/openloops.ts";
+import { structureLine, structureSummary } from "./render/structure.ts";
 import {
   packageRecap,
   recapToScript,
@@ -292,7 +296,11 @@ import { finishChapters } from "./youtube/chapters.ts";
 import { docPinnedComment } from "./youtube/pinned.ts";
 import { latestPublicDocumentary, nextLine } from "./youtube/nextdoc.ts";
 import { communityBlock, communityDrafts } from "./social/community.ts";
-import { coldOpenLine, END_CARD_SECONDS } from "./render/bookends.ts";
+import {
+  coldOpenLine,
+  coldOpenTiming,
+  END_CARD_SECONDS,
+} from "./render/bookends.ts";
 import {
   type Episode,
   type EpisodeAssets,
@@ -1961,7 +1969,13 @@ async function stepScriptDocumentary(
       : `${topic.franchise} video game series`,
     6000,
   );
-  const outline = await outlineDoc(s.llm, topic, franchise?.text ?? "");
+  const outline = await outlineDoc(s.llm, topic, franchise?.text ?? "", {
+    openLoops: s.cfg.docOpenLoops,
+  });
+  // The questions it raises and answers (src/editorial/openloops.ts), kept only when they can work.
+  const openLoops = s.cfg.docOpenLoops
+    ? groundOpenLoops(outline.open_loops, outline.chapters.length)
+    : { loops: [], removed: [] };
   // An earlier documentary on the same franchise: its wording and opening are not reused.
   const priorDoc = await priorDocNarration(s.db, ep.id, topic.franchise).catch(
     () => undefined,
@@ -1994,10 +2008,13 @@ async function stepScriptDocumentary(
         earlier: chapters,
         priorDoc,
         draft: attempt > 0 ? chapter : undefined,
+        loops: openLoops.loops,
       });
       const problems = validateChapter(chapter, {
         earlier: chapters,
         priorDoc,
+        loops: openLoops.loops,
+        chapter: index + 1,
       });
       const unsupported = await checkChapter(s.llm, chapter, source).catch(
         (err) => {
@@ -2072,22 +2089,45 @@ async function stepScriptDocumentary(
     throw new FatalError(
       `documentary has only ${chapters.length} chapters with sources`,
     );
+  const ends = {
+    priorDoc,
+    loops: openLoops.loops,
+    echo: s.cfg.docBookendEnding,
+  };
   let bookends = await writeBookends(
     s.llm,
     outline,
     chapters,
     franchise?.text ?? "",
-    { priorDoc },
+    ends,
   );
-  if (validateBookends(bookends).length)
+  const endProblems = validateBookends(bookends, ends);
+  if (endProblems.length)
     bookends = await writeBookends(
       s.llm,
       outline,
       chapters,
       franchise?.text ?? "",
-      { priorDoc },
+      { ...ends, feedback: endProblems },
     );
   const draft: DocDraft = { topic, outline, chapters, bookends };
+  if (s.cfg.docOpenLoops) {
+    const placed = placeDocLoops(draft, openLoops.loops);
+    draft.loops = placed.placed;
+    warnings.push(...openLoops.removed, ...placed.removed);
+    await logEvent(s.db, ep.id, "open_loops", {
+      planned: openLoops.loops.length,
+      placed: placed.placed,
+      removed: [...openLoops.removed, ...placed.removed],
+    });
+    await s.notify({
+      content: openLoopsLine(
+        outline.title,
+        placed.placed,
+        openLoops.loops.length,
+      ),
+    });
+  }
   const words = docWordCount(draft);
   if (words < DOC_WORDS_MIN || words > DOC_WORDS_MAX)
     warnings.push(
@@ -6170,6 +6210,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     credit: c.credit,
     audio: c.audio,
   }));
+  const isDoc = script.evergreen_format === "documentary";
   const makePlan = () =>
     buildLongPlan({
       segments,
@@ -6208,7 +6249,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           })
         : undefined,
       takeEntry: script.take_entry,
+      // The documentary's cut rhythm and bookend ending (src/render/structure.ts).
+      rhythm: isDoc && s.cfg.docCutRhythm,
+      bookend: isDoc && s.cfg.docBookendEnding,
+      coldOpenFrames:
+        isDoc && s.cfg.docColdOpen ? coldOpenTiming(LONG_FPS).frames : 0,
     });
+  const freshPlan = !assets.longPlan;
   let plan = assets.longPlan ?? makePlan();
   if (!assets.longPlan) {
     // Real-world photos pinned to no sentence stay off screen (REAL_PHOTOS_PINNED_ONLY): say how many.
@@ -6382,6 +6429,40 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     await logEvent(s.db, ep.id, "sound_design", { ...sound });
     if (sound.total || sound.chapters)
       await s.notify({ content: soundDesignLine(script.headline, sound) });
+  }
+  // The structure devices (src/render/structure.ts): title drop, chapter index and year, callbacks, cut
+  // rhythm, bookend ending; logged and told to the owner in one line. A plan made before them keeps its cuts.
+  const docLoops =
+    doc && s.cfg.docOpenLoops ? loopsOfScript(script) : undefined;
+  if (doc) {
+    const structure = structureSummary({
+      segments,
+      words,
+      windows: hasMoments
+        ? momentWindows(
+            segments,
+            words,
+            moments.map((m) => m.length),
+            moments.map((e) => e.map(momentKeys)),
+          )
+        : [],
+      fps: LONG_FPS,
+      breaks: (assets.breaks ?? []).map((b) => ({
+        from: Math.round(b.start * LONG_FPS),
+        to: Math.round(b.end * LONG_FPS),
+      })),
+      loops: docLoops,
+      plan,
+      on: {
+        titleDrop: s.cfg.docTitleDrop,
+        chapterIndex: s.cfg.docChapterIndex,
+        loops: s.cfg.docOpenLoops,
+        rhythm: s.cfg.docCutRhythm && freshPlan,
+        bookend: s.cfg.docBookendEnding,
+      },
+    });
+    await logEvent(s.db, ep.id, "doc_structure", { ...structure });
+    await s.notify({ content: structureLine(script.headline, structure) });
   }
   // Two alternative titles for the Test & compare (one mid-tier call; a failure only means no title test).
   if (!script.youtube.title_variants) {
@@ -6674,6 +6755,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
         coldOpenLine:
           doc && s.cfg.docColdOpen ? coldOpenLine(script.hook) : undefined,
+    // The structure devices (src/render/structure.ts), each behind its setting.
+    titleDrop: doc && s.cfg.docTitleDrop,
+    chapterIndex: doc && s.cfg.docChapterIndex,
+    loops: docLoops,
+    cutRhythm: doc && s.cfg.docCutRhythm,
+    bookendEnding: doc && s.cfg.docBookendEnding,
         next: endCard
           ? nextDoc
             ? { title: nextDoc.title, thumbFile: nextThumb }

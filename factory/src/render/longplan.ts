@@ -6,6 +6,7 @@
 import type { Segment } from "./timeline.ts";
 import type { MovePreset } from "./motion.ts";
 import { speakable } from "../voice/speakable.ts";
+import { bookendEcho, burstWindows, shotCap } from "./structure.ts";
 
 export const LONG_FPS = 30;
 export const LONG_WIDTH = 1920;
@@ -296,6 +297,12 @@ export interface LongPlanInput {
    * without them has no sentence to pin a photo to and keeps its photos in the rotation.
    */
   realPinnedOnly?: boolean;
+  /** A documentary's cut rhythm (src/render/structure.ts shotCap): tighter opening minutes, bursts later. */
+  rhythm?: boolean;
+  /** A documentary's bookend ending (src/render/structure.ts bookendEcho): the last shot is the cold open's first. */
+  bookend?: boolean;
+  /** Frames of the signature opening card, which the bookend's source picture comes after. */
+  coldOpenFrames?: number;
 }
 
 const PREVIEW_STOP = new Set(
@@ -449,6 +456,25 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   // With shot lists, a real-world picture is shown only on its own sentence (realWorldImage).
   const strict = (input.realPinnedOnly ?? true) && windows.length > 0;
   const real = (k: number) => strict && realWorldImage(images[k]!);
+  // The cut rhythm (src/render/structure.ts): off, every cap is Infinity and nothing below changes.
+  const bursts = input.rhythm
+    ? burstWindows(
+        totalFrames,
+        LONG_FPS,
+        segments
+          .filter(
+            (s, i) =>
+              i > 0 &&
+              s.kind === "beat" &&
+              (s.visual?.kind === "chapter" || s.visual?.kind === "rank"),
+          )
+          .map((s) => toFrame(s.start)),
+      )
+    : [];
+  const cap = (at: number) =>
+    input.rhythm
+      ? shotCap(at, LONG_FPS, bursts)
+      : { still: Number.POSITIVE_INFINITY, clip: Number.POSITIVE_INFINITY };
   /** Fills [from, to) with a queue of media, never stretching a clip and never leaving a sliver. */
   const fill = (
     seg: number,
@@ -476,8 +502,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         media = queue.shift()!;
       }
       let len: number;
+      const most = cap(at);
       if (media.type === "clip") {
-        len = Math.min(clipFrames[media.index]!, remaining);
+        len = Math.min(clipFrames[media.index]!, remaining, most.clip);
         const left = remaining - len;
         if (left > 0 && left < MIN_CLIP_SHOT) len -= MIN_CLIP_SHOT - left;
         if (len < MIN_CLIP_SHOT) {
@@ -485,7 +512,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           // Stretching it as if it were a still froze it on its last frame and left it free to play again.
           let alt = fallback();
           if (alt.type === "clip") {
-            const l = Math.min(clipFrames[alt.index]!, remaining);
+            const l = Math.min(clipFrames[alt.index]!, remaining, most.clip);
             const rest = remaining - l;
             if (l >= MIN_CLIP_SHOT && (rest === 0 || rest >= MIN_CLIP_SHOT)) {
               media = alt;
@@ -495,7 +522,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           }
           if (alt.type !== "clip") {
             media = alt;
-            len = Math.min(MAX_STILL_SHOT, remaining);
+            len = Math.min(MAX_STILL_SHOT, remaining, most.still);
           }
         } else clipUsed[media.index] = true;
       } else {
@@ -503,6 +530,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           STILL_SHOT + ((shotIndex * 37 + variant * 11) % 60) - 30,
           remaining,
           MAX_STILL_SHOT,
+          most.still,
         );
         if (remaining - len < MIN_SHOT) len = remaining;
       }
@@ -816,9 +844,10 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       const clipIdx = wantClip
         ? ownClips.find((k) => !clipUsed[k] || seg.kind === "take")
         : undefined;
+      const most = cap(at);
       if (clipIdx !== undefined) {
         // The clip plays only as long as it lasts; what it would leave behind must be a whole shot.
-        let clipLen = Math.min(clipFrames[clipIdx]!, remaining);
+        let clipLen = Math.min(clipFrames[clipIdx]!, remaining, most.clip);
         const left = remaining - clipLen;
         if (left > 0 && left < MIN_CLIP_SHOT) clipLen -= MIN_CLIP_SHOT - left;
         if (clipLen >= MIN_CLIP_SHOT) {
@@ -836,6 +865,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             STILL_SHOT + ((shotIndex * 37 + variant * 11) % 60) - 30,
             remaining,
             MAX_STILL_SHOT,
+            most.still,
           );
         } else {
           media = { type: "plate", index: 0 };
@@ -875,7 +905,22 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       prev.end = sh.end;
     else merged.push({ ...sh });
   }
-  return { version: 1, fps: LONG_FPS, totalFrames, tailFrames, shots: merged };
+  const done: LongPlan = {
+    version: 1,
+    fps: LONG_FPS,
+    totalFrames,
+    tailFrames,
+    shots: merged,
+  };
+  return input.bookend
+    ? bookendEcho(
+        done,
+        segments,
+        input.words,
+        clipFrames,
+        input.coldOpenFrames ?? 0,
+      )
+    : done;
 }
 
 function stillRank(img: LongImage): number {

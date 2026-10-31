@@ -153,7 +153,7 @@ if (mode === "gather") {
     chapters,
     a.clips,
     path.join(out, "ep"),
-    { ...F.FOOTAGE_FIRST_DEFAULTS, maxMinutes: 0 },
+    { ...F.FOOTAGE_FIRST_DEFAULTS, maxMinutes: Number(process.argv.find((x) => x.startsWith("--max="))?.split("=")[1] ?? 0) },
     path.join(out, "rejects"),
   );
   const clips = [...a.clips, ...r.clips];
@@ -204,6 +204,7 @@ if (mode === "gather") {
     console.log(`  [${s.why}] ${s.title} (${s.channel})`);
   console.log("segments refused:", why(rep.segmentsRejected));
   console.log("skipped chapters:", rep.skipped);
+  console.log("per chapter:", JSON.stringify(rep.perChapter), rep.stoppedEarly ?? "");
 } else if (mode === "stills") {
   const live = rest[0]!;
   const added: any[] = JSON.parse(

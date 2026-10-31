@@ -743,6 +743,7 @@ test("the step appends the new clips with their spans, logs the counts and tells
     r.kept > 0 && clips.length === r.kept && clips.every((c) => c.span),
   );
   assert.deepEqual(events, ["footage_first"]);
+  assert.deepEqual(r.perChapter?.map((c) => [c.entry, c.kept]), [[0, r.kept]], "minutes and clips per chapter");
   assert.equal(notes.length, 1);
   assert.match(notes[0]!, /Creative Commons gameplay clips/);
   assert.ok(!/—/.test(notes[0]!));

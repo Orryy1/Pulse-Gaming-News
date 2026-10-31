@@ -438,18 +438,21 @@ export interface SegmentLook {
   live: boolean;
 }
 
-const LOOK_PROMPT = `You look at three frames of one few-second segment of a gameplay recording, side by side (start, middle, end), for a documentary editor. Give a short label for the segment and answer each question with true or false; a question is true when it holds in any of the three frames.
-label: what the segment shows, under 9 words, concrete nouns (for example "red sports car on a palm-lined beach road at sunset"). Never leave it empty.
-text: any readable words anywhere: titles, subtitles, captions, banners such as "mission passed", place and vehicle names written large, menus, objective text, watermarks, channel names, subscribe buttons.
-hud_only: true only when every piece of writing is the game's own small heads-up display in a corner (minimap, ammo, health, money); false when there is any other writing, and false when there is no writing at all.
-webcam: a real person's webcam or facecam, a picture-in-picture box, stream chat, alerts or any recording overlay.
-gore: blood sprays, wounds, dead bodies, executions.
-letterbox: black bars covering more than a third of the frame.
-dark: mostly black or too dark to tell what is happening.
-blurry: heavily blurred, smeared or an unreadable close-up of a texture.
-mod: the game has been modded or turned into kids' content: superheroes or cartoon and toy characters (Spider-Man, Hulk, Sonic, Minions, cartoon zombies or animals), giant ramps, neon obstacle courses, impossible vehicles or objects pasted into the world.
-menu: a menu, pause screen, loading screen, title screen, map screen or settings screen rather than the game world.
-live: a real camera image of real people or places, not a rendered game.`;
+// Short on purpose: qwen3-vl thinks before it answers even with thinking off, and a long list of questions made
+// it think past the token budget, so a quarter of the answers came back cut off with an empty label (31 Oct 2026
+// experiment: the same frames answered in 1.2-3 s with a short prompt, 5-6 s with the long one).
+const LOOK_PROMPT = `Three frames of one gameplay segment, side by side. Answer briefly in JSON; a flag is true if it holds in any frame.
+label: what it shows in under 9 plain words, never the game's name (for example "red sports car on a beach road at sunset").
+text: readable words anywhere (subtitles, banners like "mission passed", big place or car names, prompts, menus, watermarks).
+hud_only: all writing is the game's small corner HUD (minimap, money, health).
+webcam: a facecam, picture-in-picture or stream overlay.
+gore: blood, wounds or bodies.
+letterbox: black bars over a third of the frame.
+dark: too dark to see.
+blurry: badly blurred.
+mod: modded or kids' content (superheroes, cartoon or toy characters, giant ramps, neon obstacle courses).
+menu: a menu, pause, loading or map screen.
+live: real camera footage, not a game.`;
 
 const LOOK_SCHEMA = {
   type: "object",
@@ -518,7 +521,8 @@ async function lookOne(file: string): Promise<SegmentLook> {
         keep_alive: "15m",
         options: {
           temperature: 0,
-          num_predict: 160 + THINK_ROOM,
+          // Room for the thinking a cut-off answer showed it needs: Ollama stops when the answer is done.
+          num_predict: 160 + 2 * THINK_ROOM,
           num_ctx: NUM_CTX,
         },
         messages: [{ role: "user", content: LOOK_PROMPT, images: [image] }],

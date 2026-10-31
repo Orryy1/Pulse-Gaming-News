@@ -756,6 +756,8 @@ export interface FootageReport {
   modelCalls: number;
   minutes: number;
   stoppedEarly?: string;
+  /** Each gathered chapter: its minutes, clips kept and seconds kept. */
+  perChapter?: Array<{ entry: number; minutes: number; kept: number; seconds: number }>;
 }
 
 export function emptyReport(): FootageReport {
@@ -1018,7 +1020,7 @@ export async function gatherChapterFootage(
       const seenHash = new Map<number, string[]>();
       let modelLooks = 0;
       let clean = 0;
-      while (modelLooks < o.visionMax && clean < need * 1.25) {
+      while (modelLooks < o.visionMax && clean < need * 1.25 && now() <= deadline) {
         const left = all.filter((g) => !looked.has(g.id));
         const size = Math.min(
           o.visionMax - modelLooks,
@@ -1210,6 +1212,8 @@ export async function gatherFootageFirst(
       break;
     }
     const rel = `entry_${ch.entry}`;
+    const t0 = now();
+    const k0 = out.length;
     await gatherChapterFootage(
       deps,
       ch,
@@ -1223,6 +1227,13 @@ export async function gatherFootageFirst(
       deadline,
       keepFrames,
     );
+    if (!report.skipped.some((x) => x.entry === ch.entry))
+      (report.perChapter ??= []).push({
+        entry: ch.entry,
+        minutes: Math.round((now() - t0) / 6_000) / 10,
+        kept: out.length - k0,
+        seconds: Math.round(out.slice(k0).reduce((n, c) => n + c.durationSeconds, 0)),
+      });
   }
   report.minutes = Math.round((now() - started) / 6_000) / 10;
   report.downloadedMb = Math.round(report.downloadedMb);

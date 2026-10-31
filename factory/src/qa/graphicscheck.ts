@@ -126,6 +126,22 @@ export function graphicChecks(
   return out.slice(0, Math.max(0, max));
 }
 
+/** How long a sentence's graphic takes to arrive (its spring and fade), in seconds. */
+export const ENTRANCE_SECONDS = 1.2;
+
+/**
+ * Sample times moved clear of any graphic's entrance: a frame caught while a card is still fading in reads
+ * as a faint, low-contrast card. Vice City failed its final check three times on 31 Oct 2026 on its
+ * "12-hour days" card caught mid-entrance. A time inside an entrance moves to the moment the card settles.
+ */
+export function clearOfEntrances(times: number[], windows: MomentWindow[]): number[] {
+  const entrances = windows.map((w, k) => momentSpan(w, windows[k + 1]).from);
+  return times.map((t) => {
+    const hit = entrances.find((e) => t >= e && t < e + ENTRANCE_SECONDS);
+    return hit === undefined ? t : hit + ENTRANCE_SECONDS;
+  });
+}
+
 /** The frame number of a check in a video at `fps`. */
 export const checkFrame = (c: GraphicCheck, fps: number): number =>
   Math.max(0, Math.round(c.t * fps));

@@ -237,6 +237,7 @@ import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
 import {
   checkFrame,
+  clearOfEntrances,
   graphicChecks,
   graphicsNotice,
   judgeGraphics,
@@ -7248,6 +7249,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       ...marks.filter((_, i) => i % step === 0),
       duration - 2,
     ].slice(0, 8);
+    // Never mid-way through a graphic's entrance (src/qa/graphicscheck.ts clearOfEntrances).
+    times = clearOfEntrances(times, graphicsInput().windows);
     await fs.rm(path.join(dir, "qa"), { recursive: true, force: true });
     const frames = await s.extractFrames(final, path.join(dir, "qa"), times);
     vision = await s.visionQa(frames, {

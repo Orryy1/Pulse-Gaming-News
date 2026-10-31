@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseCameraSetting, type CameraTechnique } from "./render/camera.ts";
+import type { SoundCraft } from "./render/soundfx.ts";
 
 // Local installs keep settings in factory/.env (never committed).
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
@@ -434,6 +435,15 @@ export interface Config {
   /** The ranking writer opens on a 5-10 word first line, a Short's hook length, which the signature cold
    * open then shows (src/editorial/longform.ts): LONG_PUNCHY_HOOK, default on. Off: under 15 words, as before. */
   longPunchyHook: boolean;
+  /**
+   * A documentary's sound craft (src/render/soundfx.ts, 31 Oct 2026), each part on by default: SOUND_JL_CUTS
+   * (a clip's game sound leads or trails its picture), SOUND_GAME_POCKETS (game sound up in long pauses),
+   * SOUND_FOLEY (treatments and devices make their own small sounds), SOUND_RISERS (a riser into each
+   * reveal beat), SOUND_CHAPTER_BUTTONS (a soft final hit on each chapter's last word), SOUND_PHRASE_EDITS
+   * (bed changes on the bar line), SOUND_VOICE_POCKET (the music dips at 2-4 kHz under speech) and
+   * SOUND_VOICE_FX (telephone band on message quotes, reverb swell on reveal lines). Off: the old mix.
+   */
+  soundCraft: SoundCraft;
   dryRun: boolean;
   maxAttempts: number;
   remotionConcurrency: number;
@@ -874,6 +884,16 @@ export function loadConfig(): Config {
     ),
     longEntryPace: bool("LONG_ENTRY_PACE", true),
     longPunchyHook: bool("LONG_PUNCHY_HOOK", true),
+    soundCraft: {
+      jl: bool("SOUND_JL_CUTS", true),
+      pockets: bool("SOUND_GAME_POCKETS", true),
+      foley: bool("SOUND_FOLEY", true),
+      risers: bool("SOUND_RISERS", true),
+      buttons: bool("SOUND_CHAPTER_BUTTONS", true),
+      phrase: bool("SOUND_PHRASE_EDITS", true),
+      voicePocket: bool("SOUND_VOICE_POCKET", true),
+      voiceFx: bool("SOUND_VOICE_FX", true),
+    },
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),

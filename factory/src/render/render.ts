@@ -22,6 +22,8 @@ import { unloadLocalVision } from "../assets/localvision.ts";
 import { log } from "../lib/util.ts";
 import { PcTurnTimeout } from "../pcschedule.ts";
 import type { LongProps } from "./Long.tsx";
+import { BEDS, MOOD_BEDS } from "./soundscape.ts";
+import { pocketOf } from "./soundfx.ts";
 import type { ThumbProps } from "./Brand.tsx";
 import type { EngageProps } from "./Engage.tsx";
 import type { CutdownProps } from "./Cutdown.tsx";
@@ -55,6 +57,22 @@ function extraBeds(serveUrl: string): NonNullable<LongProps["extraBeds"]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * The music beds whose pocketed copy (public/music/pocket, data/smoke/pocketbeds.mts) this bundle carries: a
+ * bed without one plays plain, as before, so a machine without the copies simply goes without the dip.
+ */
+function pocketBeds(serveUrl: string): string[] {
+  const all = [
+    ...BEDS.map((b) => b.file),
+    ...Object.values(MOOD_BEDS)
+      .flat()
+      .map((b) => b.file),
+  ];
+  return all.filter((b) =>
+    fs.existsSync(path.join(serveUrl, "public", pocketOf(b))),
+  );
 }
 
 let bundlePromise: Promise<string> | undefined;
@@ -408,9 +426,23 @@ export interface LongRenderInput {
   episodeDir: string;
   props: Omit<
     LongProps,
-    "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc" | "next"
+    | "audioSrc"
+    | "images"
+    | "clips"
+    | "logoSrc"
+    | "musicSrc"
+    | "next"
+    | "voiceFx"
+    | "pocketBeds"
   > & {
     audioFile: string | null;
+    /** The narration's texture slices (src/render/voicefx.ts makeVoiceFx), relative to the episode folder. */
+    voiceFxFiles?: Array<{
+      kind: "phone" | "reverb";
+      from: number;
+      to: number;
+      file: string;
+    }>;
     /** A documentary's end card: the next documentary and its thumbnail file (null: a card with no next; absent: no card). */
     next?: { title: string; thumbFile: string | null } | null;
     imageFiles: Array<{
@@ -467,9 +499,29 @@ export function longProps(
   serveUrl: string,
   p: LongRenderInput["props"],
 ): LongProps {
-  const { audioFile, imageFiles, clipFiles, musicFile, next, ...rest } = p;
+  const {
+    audioFile,
+    imageFiles,
+    clipFiles,
+    musicFile,
+    next,
+    voiceFxFiles,
+    ...rest
+  } = p;
   return {
     ...rest,
+    // The narration's texture slices (src/render/voicefx.ts), made in the episode's folder before the render.
+    ...(voiceFxFiles?.length
+      ? {
+          voiceFx: voiceFxFiles.map((v) => ({
+            kind: v.kind,
+            from: v.from,
+            to: v.to,
+            src: `${filesUrl}/${webPath(v.file)}`,
+          })),
+        }
+      : {}),
+    pocketBeds: pocketBeds(serveUrl),
     // The end card's thumbnail: a copy of the next documentary's thumb inside this episode's folder.
     ...(next === undefined
       ? {}

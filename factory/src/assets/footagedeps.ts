@@ -232,7 +232,7 @@ export function footageFirstDeps(o: {
         "-crf",
         "18",
         "-preset",
-        "fast",
+        "veryfast",
         "-pix_fmt",
         "yuv420p",
         dest,

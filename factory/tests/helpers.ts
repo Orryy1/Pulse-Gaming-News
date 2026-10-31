@@ -274,7 +274,7 @@ export function testConfig(
     footageFirst: false,
     footageShareTarget: 60,
     footageSources: 6,
-    footagePullSeconds: 420,
+    footagePullSeconds: 240,
     footageVisionMax: 120,
     footageFirstMaxMinutes: 40,
     illustrate: false,

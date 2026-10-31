@@ -744,6 +744,7 @@ test("the step appends the new clips with their spans, logs the counts and tells
   );
   assert.deepEqual(events, ["footage_first"]);
   assert.deepEqual(r.perChapter?.map((c) => [c.entry, c.kept]), [[0, r.kept]], "minutes and clips per chapter");
+  assert.ok(r.phases && r.phases.download! >= 0 && r.phases.look! >= 0, "seconds per step");
   assert.equal(notes.length, 1);
   assert.match(notes[0]!, /Creative Commons gameplay clips/);
   assert.ok(!/—/.test(notes[0]!));
@@ -1015,7 +1016,7 @@ test("cheap tests settle a segment before the model: a frozen picture, the same 
   const report = emptyReport();
   const ch = { entry: 2, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"] };
   await gatherChapterFootage(counted, ch, [], path.join(dir, "entry_2"), "entry_2", 300, FOOTAGE_FIRST_DEFAULTS, report, [], Infinity);
-  const why = (n: number) => report.segmentsRejected.find((r) => r.at === Math.round(pullWindow(1800, 0, 420).from + n * 7))?.why;
+  const why = (n: number) => report.segmentsRejected.find((r) => r.at === Math.round(pullWindow(1800, 0, FOOTAGE_FIRST_DEFAULTS.pullSeconds).from + n * 7))?.why;
   assert.equal(why(0), "frozen picture");
   assert.equal(why(2), "same picture as another segment");
   assert.equal(why(3), "text on screen (read)");

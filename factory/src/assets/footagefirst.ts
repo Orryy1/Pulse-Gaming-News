@@ -51,7 +51,7 @@ export interface FootageFirstOptions {
 export const FOOTAGE_FIRST_DEFAULTS: FootageFirstOptions = {
   sharePct: 60,
   sources: 6,
-  pullSeconds: 420,
+  pullSeconds: 240,
   visionMax: 120,
   perSentence: 2,
   maxMinutes: 40,
@@ -76,7 +76,7 @@ export function footageOptions(cfg: {
 }
 
 /** Source windows downloaded at the same time. */
-export const DOWNLOADS_AT_ONCE = 3;
+export const DOWNLOADS_AT_ONCE = 6;
 
 /** The shortest segment worth a shot (the planner's shortest clip shot is 1.3 s; a line needs more). */
 export const SEGMENT_MIN_SECONDS = 2.4;
@@ -756,6 +756,8 @@ export interface FootageReport {
   modelCalls: number;
   minutes: number;
   stoppedEarly?: string;
+  /** Seconds spent in each outside call (summed: the three downloads at a time overlap). */
+  phases?: Record<string, number>;
   /** Each gathered chapter: its minutes, clips kept and seconds kept. */
   perChapter?: Array<{ entry: number; minutes: number; kept: number; seconds: number }>;
 }
@@ -945,9 +947,11 @@ export async function gatherChapterFootage(
         to: win.to,
       });
     }
-    // Three windows at a time: one section download runs at about real time (31 Oct 2026 proof: 4 min for 7 min
-    // of 720p), so one after the other a chapter's six took 24 minutes.
+    // All six windows at once: one section download runs at under twice real time however fast the line is
+    // (31 Oct 2026 proof: 4 min for 7 min of 720p), so one after the other a chapter's six took 24 minutes.
     const fetched = new Set<Picked>();
+    // Each window is scanned for its edits as soon as it lands, while the others still download.
+    const scans = new Map<Picked, Awaited<ReturnType<FootageFirstDeps["scan"]>>>();
     let next = 0;
     const worker = async () => {
       while (next < picked.length) {
@@ -957,6 +961,7 @@ export async function gatherChapterFootage(
           report.downloads++;
           report.downloadedMb += bytes / 1e6;
           fetched.add(p);
+          scans.set(p, await deps.scan(p.file).catch(() => []));
         } catch (err) {
           log("warn", "footage-first: download failed", {
             video: p.videoId,
@@ -983,7 +988,7 @@ export async function gatherChapterFootage(
       frame: string;
     }> = [];
     for (const [i, s] of sources.entries()) {
-      const rows = await deps.scan(s.file).catch(() => []);
+      const rows = scans.get(s) ?? [];
       const total = rows.at(-1)?.time ?? 0;
       for (const g of segmentsOf(rows, total))
         all.push({
@@ -1189,6 +1194,26 @@ export async function gatherChapterFootage(
   }
 }
 
+/** The same calls, each one's seconds added to `phases` under its name, so a slow step shows in the report. */
+export function timedDeps(
+  deps: FootageFirstDeps,
+  phases: Record<string, number>,
+  now: () => number = Date.now,
+): FootageFirstDeps {
+  const out: Record<string, unknown> = { ...deps };
+  for (const [k, f] of Object.entries(deps))
+    if (typeof f === "function" && k !== "now" && k !== "lease")
+      out[k] = async (...args: unknown[]) => {
+        const t = now();
+        try {
+          return await (f as (...a: unknown[]) => Promise<unknown>)(...args);
+        } finally {
+          phases[k] = Math.round(((phases[k] ?? 0) + (now() - t) / 1000) * 10) / 10;
+        }
+      };
+  return out as unknown as FootageFirstDeps;
+}
+
 /** Every game chapter of a long video in turn, within the pass's time limit. */
 export async function gatherFootageFirst(
   deps: FootageFirstDeps,
@@ -1206,6 +1231,7 @@ export async function gatherFootageFirst(
       : Number.POSITIVE_INFINITY;
   const report = emptyReport();
   const out: FootageClip[] = [];
+  deps = timedDeps(deps, (report.phases = {}), now);
   for (const ch of chapters) {
     if (now() > deadline) {
       report.stoppedEarly = `its ${o.maxMinutes}-minute limit (FOOTAGE_FIRST_MAX_MINUTES) ran out`;

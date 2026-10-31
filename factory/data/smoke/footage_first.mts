@@ -205,6 +205,7 @@ if (mode === "gather") {
   console.log("segments refused:", why(rep.segmentsRejected));
   console.log("skipped chapters:", rep.skipped);
   console.log("per chapter:", JSON.stringify(rep.perChapter), rep.stoppedEarly ?? "");
+  console.log("seconds per step:", JSON.stringify(rep.phases));
 } else if (mode === "stills") {
   const live = rest[0]!;
   const added: any[] = JSON.parse(

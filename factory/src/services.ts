@@ -14,7 +14,7 @@ import { fetchArticle } from "./discovery/article.ts";
 import { selectClips } from "./assets/clipscore.ts";
 import { evergreenCandidates } from "./discovery/evergreen.ts";
 import { dayKey } from "./lanes.ts";
-import { narrate } from "./voice/index.ts";
+import { episodeIdOf, narrate } from "./voice/index.ts";
 import {
   creditPlan,
   elevenLabsSubscription,
@@ -126,6 +126,13 @@ export function createServices(db: Db, cfg: Config): Services {
         text,
         out,
         voice,
+        // The long narrator's take check lands in the episode's log (data/episodes/<id>/voice.mp3).
+        {
+          onEvent: (kind, detail) => {
+            const id = episodeIdOf(cfg.dataDir, out);
+            return id ? logEvent(db, id, kind, detail).catch(() => undefined) : undefined;
+          },
+        },
       ),
     findGame: findSteamApp,
     gameFacts: steamFacts,

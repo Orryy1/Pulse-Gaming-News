@@ -24,9 +24,14 @@ export interface LocalVoiceOptions {
   maxWordsPerTake?: number;
 }
 
+/** The text's sentences, each ending at its full stop, question or exclamation mark (and any closing quote). */
+export function splitSentences(text: string): string[] {
+  return text.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g)?.map((s) => s.trim()).filter(Boolean) ?? [text];
+}
+
 /** Splits narration at sentence (then clause) boundaries into takes of at most maxWords. */
 export function chunkText(text: string, maxWords = 36): string[] {
-  const sentences = text.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g)?.map((s) => s.trim()).filter(Boolean) ?? [text];
+  const sentences = splitSentences(text);
   const pieces: string[] = [];
   for (const s of sentences) {
     const words = s.split(/\s+/);

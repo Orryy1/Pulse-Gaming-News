@@ -9,20 +9,31 @@
 // factory server is running, when the episode has a youtube_video_id, and writes a backup of the old
 // assets_json beside the database folder before changing anything.
 //
-// Usage (from the factory folder): node --import tsx data/smoke/vc_dedupe.mts <db dir> [episode id] [--dry]
+// --cap-stock=N (off by default) also trims the existing stock to N clips per theme ("office at night" was in
+// 7 times), by the rule new videos follow (src/assets/repeats.ts trimStockThemes): within a theme it keeps the
+// clips that are their sentence's only media first, then the earliest; a dropped clip's sentence is left for
+// the graphics pass (nothing is added here).
+//
+// Usage (from the factory folder): node --import tsx data/smoke/vc_dedupe.mts <db dir> [episode id] [--dry] [--cap-stock=N]
 //   <db dir>: the live database folder, e.g. data/db; the episode defaults to Vice City, ep_20261027_865858f8.
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { PGlite } from "@electric-sql/pglite";
-const { duplicateFiles, keepLatestPerFile } = await import("../../src/assets/repeats.ts");
+const { duplicateFiles, keepLatestPerFile, trimStockThemes, stockThemeGroups } = await import("../../src/assets/repeats.ts");
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const dry = process.argv.includes("--dry");
+const capArg = process.argv.find((a) => a.startsWith("--cap-stock"));
+const cap = capArg ? Number(capArg.split("=")[1]) : 0;
+if (capArg && !(Number.isInteger(cap) && cap >= 1)) {
+  console.error("--cap-stock needs a whole number of clips per theme, e.g. --cap-stock=2");
+  process.exit(2);
+}
 const dbDir = args[0];
 const id = args[1] ?? "ep_20261027_865858f8";
 if (!dbDir) {
-  console.error("usage: node --import tsx data/smoke/vc_dedupe.mts <db dir> [episode id] [--dry]");
+  console.error("usage: node --import tsx data/smoke/vc_dedupe.mts <db dir> [episode id] [--dry] [--cap-stock=N]");
   process.exit(2);
 }
 
@@ -58,16 +69,32 @@ try {
   const a = ep.assets_json ?? {};
   const clips: any[] = a.clips ?? [];
   const dups = duplicateFiles(clips);
-  if (!dups.length) {
-    console.log(`${id}: no clip file is listed twice; nothing to do`);
-  } else {
-    const kept = keepLatestPerFile(clips);
-    for (const f of dups) {
-      const all = clips.filter((c) => String(c.file).replace(/\\/g, "/").toLowerCase() === f.replace(/\\/g, "/").toLowerCase());
-      console.log(`${f}`);
-      for (const c of all.slice(0, -1)) console.log(`  drop: sentence ${c.beatIndex}.${c.moment} "${c.label}"`);
-      console.log(`  keep: sentence ${all.at(-1).beatIndex}.${all.at(-1).moment} "${all.at(-1).label}"`);
+  if (dups.length) console.log("files listed twice (the later entry is kept):");
+  else console.log("no clip file is listed twice");
+  for (const f of dups) {
+    const all = clips.filter((c) => String(c.file).replace(/\\/g, "/").toLowerCase() === f.replace(/\\/g, "/").toLowerCase());
+    console.log(`  ${f}`);
+    for (const c of all.slice(0, -1)) console.log(`    drop: sentence ${c.beatIndex}.${c.moment} "${c.label}"`);
+    console.log(`    keep: sentence ${all.at(-1).beatIndex}.${all.at(-1).moment} "${all.at(-1).label}"`);
+  }
+  let kept = keepLatestPerFile(clips);
+  if (cap) {
+    const before = stockThemeGroups(kept);
+    const t = trimStockThemes(kept, a.images ?? [], cap);
+    const still = new Set(t.kept);
+    console.log(`stock per theme, at most ${cap} (${kept.filter((c) => c.stock).length} stock clips -> ${t.kept.filter((c) => c.stock).length}):`);
+    for (const g of before.filter((g) => g.members.length > cap))
+      console.log(`  ${g.theme}: ${g.members.length} -> ${g.members.filter((j) => still.has(kept[j])).length}`);
+    if (!t.dropped.length) console.log("  no theme is over the cap");
+    for (const c of t.dropped) {
+      const others = [...t.kept, ...(a.images ?? [])].some((x: any) => x.beatIndex === c.beatIndex && x.moment === c.moment);
+      console.log(`  sentence ${c.beatIndex}.${c.moment} loses "${c.label}"${others ? " (keeps its other media)" : " (now bare: left for the graphics pass)"}`);
     }
+    kept = t.kept;
+  }
+  if (kept.length === clips.length) {
+    console.log(`${id}: nothing to do`);
+  } else {
     console.log(`${id}: ${clips.length} clips -> ${kept.length}; long plan ${a.longPlan ? "cleared (rebuilt at render)" : "not stored"}`);
     if (dry) console.log("--dry: nothing written");
     else {

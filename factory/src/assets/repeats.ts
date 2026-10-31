@@ -165,3 +165,59 @@ export function keepLatestPerFile<C extends { file?: unknown }>(
     (c, i) => typeof c.file !== "string" || last.get(samePath(c.file)) === i,
   );
 }
+
+type Placed = { beatIndex?: unknown; moment?: unknown };
+
+/** Stock clips grouped by theme: each joins the first group whose first search is the same theme. */
+export function stockThemeGroups<C extends { stock?: unknown; label?: unknown }>(
+  clips: C[],
+): Array<{ theme: string; members: number[] }> {
+  const groups: Array<{ theme: string; members: number[] }> = [];
+  clips.forEach((c, i) => {
+    if (!c.stock || typeof c.label !== "string" || !c.label.trim()) return;
+    const g = groups.find((x) => sameStockTheme(x.theme, c.label as string));
+    if (g) g.members.push(i);
+    else groups.push({ theme: c.label, members: [i] });
+  });
+  return groups;
+}
+
+/**
+ * Trims a video's existing stock to `max` clips per theme (the Vice City repair). Within a theme the clips
+ * kept are first those whose sentence has no other picture or clip of its own (dropping them would leave the
+ * line bare), then the earliest in the video (chapter, then sentence). Repeated until no theme is over, so a
+ * second run drops nothing. A dropped clip's sentence is left for the graphics pass; the order of what is kept
+ * does not change.
+ */
+export function trimStockThemes<C extends Placed & { stock?: unknown; label?: unknown }>(
+  clips: C[],
+  images: Placed[],
+  max: number,
+): { kept: C[]; dropped: C[] } {
+  let kept = [...clips];
+  const dropped: C[] = [];
+  if (max <= 0) return { kept, dropped };
+  for (;;) {
+    const out = new Set<number>();
+    for (const g of stockThemeGroups(kept)) {
+      if (g.members.length <= max) continue;
+      const sole = (i: number) => {
+        const c = kept[i]!;
+        if (c.moment === undefined) return false;
+        const same = (x: Placed) => x.beatIndex === c.beatIndex && x.moment === c.moment;
+        return !images.some(same) && !kept.some((x, k) => k !== i && !out.has(k) && same(x));
+      };
+      const at = (i: number) => [Number(kept[i]!.beatIndex ?? 1e9), Number(kept[i]!.moment ?? 1e9), i];
+      const order = [...g.members].sort((x, y) => {
+        const s = Number(sole(y)) - Number(sole(x));
+        if (s) return s;
+        const [a, b] = [at(x), at(y)];
+        return a[0]! - b[0]! || a[1]! - b[1]! || a[2]! - b[2]!;
+      });
+      for (const i of order.slice(max)) out.add(i);
+    }
+    if (!out.size) return { kept, dropped };
+    dropped.push(...kept.filter((_, i) => out.has(i)));
+    kept = kept.filter((_, i) => !out.has(i));
+  }
+}

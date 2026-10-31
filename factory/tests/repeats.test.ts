@@ -258,3 +258,24 @@ test("IGDB art is named by its picture id, so a second fetch never puts another 
   assert.equal(second[1]!.file, first[0]!.file, "the same picture keeps its name");
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+import { trimStockThemes } from "../src/assets/repeats.ts";
+
+test("trimming a theme keeps the clips that are their sentence's only media, then the earliest", () => {
+  const clips = [
+    { n: 0, stock: true, label: "office at night", beatIndex: 2, moment: 4 }, // the line also has a screenshot
+    { n: 1, stock: true, label: "office at night", beatIndex: 3, moment: 1 }, // its only media
+    { n: 2, label: "trailer", beatIndex: 0, moment: 2 },
+    { n: 3, stock: true, label: "empty office at night", beatIndex: 0, moment: 9 }, // the earliest
+    { n: 4, stock: true, label: "office at night", beatIndex: 0, moment: 2 }, // shares its line with the trailer
+    { n: 5, stock: true, label: "counting cash", beatIndex: 1, moment: 0 },
+  ];
+  const images = [{ beatIndex: 2, moment: 4 }];
+  const r = trimStockThemes(clips, images, 2);
+  // Sole media: 1 and 3 (3 is also the earliest); 0 and 4 share their line with other media.
+  assert.deepEqual(r.kept.map((c) => c.n), [1, 2, 3, 5]);
+  assert.deepEqual(r.dropped.map((c) => c.n).sort(), [0, 4]);
+  // A second run drops nothing; 0 is off.
+  assert.equal(trimStockThemes(r.kept, images, 2).dropped.length, 0);
+  assert.equal(trimStockThemes(clips, images, 0).dropped.length, 0);
+});

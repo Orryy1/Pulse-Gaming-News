@@ -82,6 +82,8 @@ export const DOWNLOADS_AT_ONCE = 3;
 export const SEGMENT_MIN_SECONDS = 2.4;
 /** The longest piece one unbroken take is cut into: a long drive becomes several shots, not one. */
 export const SEGMENT_MAX_SECONDS = 7;
+/** Below this mean brightness a segment is too dim to show. */
+export const DIM_LUMA = 45;
 /** Narration speed used to size a chapter before its words are timed. */
 export const WORDS_PER_SECOND = 2.6;
 
@@ -254,10 +256,12 @@ export function segmentsOf(
       const dark = rows.filter(
         (r) => r.time >= at && r.time <= at + take && r.luma < darkLuma,
       ).length;
-      const all = rows.filter(
-        (r) => r.time >= at && r.time <= at + take,
-      ).length;
-      if (!all || dark / all < 0.1)
+      const inside = rows.filter((r) => r.time >= at && r.time <= at + take);
+      const all = inside.length;
+      // A dim stretch reads as black on a phone even with no single black frame (31 Oct 2026 proof: a night
+      // warehouse in San Andreas): the segment's mean brightness must clear DIM_LUMA too.
+      const mean = all ? inside.reduce((n, r) => n + r.luma, 0) / all : 255;
+      if (!all || (dark / all < 0.1 && mean >= DIM_LUMA))
         out.push({ from: round(at), len: round(take) });
       at += take;
     }
@@ -336,7 +340,7 @@ export function condemnedSources(
 // Matching segments to sentences.
 
 const MATCH_STOP = new Set(
-  "the a an of and in on to for with at by from is it its this that was were are be been his her their they you your into over under out up down off as or not no but so then than there here which who what when where while game games player players gameplay footage video shot shows showing scene frame view city world".split(
+  "the a an of and in on to for with at by from is it its this that was were are be been his her their they you your into over under out up down off as or not no but so then than there here which who what when where while game games player players gameplay footage video shot shows showing scene frame view city world character characters person man men woman building buildings hud element elements ui area".split(
     " ",
   ),
 );

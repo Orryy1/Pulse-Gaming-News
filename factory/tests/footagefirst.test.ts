@@ -294,6 +294,13 @@ const look = (over: Partial<SegmentLook> = {}): SegmentLook => ({
   ...over,
 });
 
+test("a dim stretch is left out even with no black frame in it", () => {
+  const rows = Array.from({ length: 201 }, (_, i) => ({ time: i / 10, luma: i < 100 ? 38 : 90, motion: 3, scene: 0.01 }));
+  const segs = segmentsOf(rows, 20);
+  assert.ok(segs.length > 0);
+  assert.ok(!segs.some((s) => s.from + s.len <= 10), "no segment wholly in the dim half");
+});
+
 test("a segment is refused for mods, facecams, menus, text, real footage; a mostly-mod video loses every segment", () => {
   assert.equal(segmentRejectReason(look()), undefined);
   assert.equal(

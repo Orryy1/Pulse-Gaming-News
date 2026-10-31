@@ -6,7 +6,7 @@
 import type { Segment } from "./timeline.ts";
 import type { MovePreset } from "./motion.ts";
 import { speakable } from "../voice/speakable.ts";
-import { bookendEcho, burstWindows, shotCap } from "./structure.ts";
+import { bookendEcho, rhythmBursts, shotCap } from "./structure.ts";
 import {
   FILLER_MIN_FRAMES,
   fillerMaxFrames,
@@ -308,6 +308,8 @@ export interface LongPlanInput {
   realPinnedOnly?: boolean;
   /** A documentary's cut rhythm (src/render/structure.ts shotCap): tighter opening minutes, bursts later. */
   rhythm?: boolean;
+  /** With the rhythm, a burst of quicker cuts inside every ranking entry (src/render/structure.ts entryBursts). */
+  entryPace?: boolean;
   /** A documentary's bookend ending (src/render/structure.ts bookendEcho): the last shot is the cold open's first. */
   bookend?: boolean;
   /** Frames of the signature opening card, which the bookend's source picture comes after. */
@@ -482,19 +484,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   const strict = (input.realPinnedOnly ?? true) && windows.length > 0;
   const real = (k: number) => strict && realWorldImage(images[k]!);
   // The cut rhythm (src/render/structure.ts): off, every cap is Infinity and nothing below changes.
+  // With entryPace (a ranking, LONG_ENTRY_PACE) every entry gets a burst of its own as well.
   const bursts = input.rhythm
-    ? burstWindows(
-        totalFrames,
-        LONG_FPS,
-        segments
-          .filter(
-            (s, i) =>
-              i > 0 &&
-              s.kind === "beat" &&
-              (s.visual?.kind === "chapter" || s.visual?.kind === "rank"),
-          )
-          .map((s) => toFrame(s.start)),
-      )
+    ? rhythmBursts(segments, totalFrames, LONG_FPS, input.entryPace).all
     : [];
   const cap = (at: number) =>
     input.rhythm

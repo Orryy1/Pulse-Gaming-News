@@ -153,6 +153,7 @@ import { coldOpenTiming, endCardTiming } from "./bookends.ts";
 import {
   callbackCues,
   chapterMarks,
+  opensChapter,
   recallMedia,
   titleDropWindow,
   type LoopCue,
@@ -250,6 +251,8 @@ export type LongProps = {
   chapterIndex?: boolean;
   loops?: LoopCue[];
   cutRhythm?: boolean;
+  /** With the cut rhythm, a burst inside every ranking entry (src/render/structure.ts entryBursts). */
+  entryPace?: boolean;
   bookendEnding?: boolean;
   moments?: MomentProp[][]; // per ranking entry, one per sentence: graphics, kinetic captions, pop-ins
   breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds)
@@ -2280,6 +2283,7 @@ export const Long: React.FC<LongProps> = (props) => {
         momentKeys: props.moments?.map((e) => e.map(momentKeys)),
         momentFillers: props.moments?.map((e) => e.map((m) => m.filler)),
         rhythm: props.cutRhythm,
+        entryPace: props.entryPace,
         bookend: props.bookendEnding,
         coldOpenFrames:
           props.coldOpenLine !== undefined ? coldOpenTiming(fps).frames : 0,
@@ -2558,22 +2562,23 @@ export const Long: React.FC<LongProps> = (props) => {
   };
   // The structure devices (src/render/structure.ts): where the title drops, the chapters for the index
   // and the year counter, and the open-loop recalls with the picture each one brings back.
-  const drop =
-    documentary && props.titleDrop
-      ? titleDropWindow(props.segments, words, fps, breakFrames)
-      : undefined;
-  const marks =
-    documentary && props.chapterIndex
-      ? chapterMarks(props.segments, starts, durationInFrames, breakFrames)
-      : [];
+  // Every long format since 31 Oct 2026 (src/longformat.ts): the props carry each device only where it applies.
+  const drop = props.titleDrop
+    ? titleDropWindow(props.segments, words, fps, breakFrames)
+    : undefined;
+  const marks = props.chapterIndex
+    ? chapterMarks(props.segments, starts, durationInFrames, breakFrames)
+    : [];
   const indexEnd =
     props.next !== undefined
       ? endCardTiming(durationInFrames, fps).from
       : durationInFrames;
-  const cues = (
-    documentary
-      ? callbackCues(props.loops, props.segments, words, windows, fps)
-      : []
+  const cues = callbackCues(
+    props.loops,
+    props.segments,
+    words,
+    windows,
+    fps,
   ).map((c) => {
     const r = recallMedia(plan, c.plantFrame);
     const src =
@@ -3850,7 +3855,7 @@ export const Long: React.FC<LongProps> = (props) => {
                 // A documentary's signature opening comes first: the mark and one line of the hook over the
                 // sting (src/render/components/ColdOpen.tsx), then the motif card, the flash-forward, the title.
                 const cold =
-                  props.coldOpenLine !== undefined && documentary && len >= 240
+                  props.coldOpenLine !== undefined && len >= 240
                     ? coldOpenTiming(fps).frames
                     : 0;
                 // The opening: the video's motif card, the flash-forward, then the title.
@@ -4601,10 +4606,10 @@ export const Long: React.FC<LongProps> = (props) => {
       })}
       {/* A documentary chapter opens on the quiet bed of its era (src/render/soundscape.ts eraBed) under its
           first ERA_BED_SECONDS, fading in and out, and out entirely under a key line like the music. */}
-      {props.eraBeds && documentary
+      {props.eraBeds
         ? props.segments.map((s, i) => {
-            if (s.kind !== "beat" || s.visual?.kind !== "chapter" || i === 0)
-              return null;
+            // A ranking's entries open on their era's bed as a documentary's chapters do.
+            if (!opensChapter(s) || i === 0) return null;
             const era = eraBed(Number(s.visual?.items?.[0]) || undefined);
             const from = starts[i]!;
             const span = Math.min(

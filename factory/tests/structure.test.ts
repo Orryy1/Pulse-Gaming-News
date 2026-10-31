@@ -875,6 +875,8 @@ test("the structure summary and the owner's line say what the video will show", 
     callbacks: 1,
     bursts: 1,
     bookend: true,
+    ranks: 0,
+    entryBursts: 0,
   });
   const line = structureLine("GTA", s);
   assert.match(
@@ -904,6 +906,8 @@ test("the structure summary and the owner's line say what the video will show", 
     callbacks: 0,
     bursts: 0,
     bookend: false,
+    ranks: 0,
+    entryBursts: 0,
   });
   assert.match(
     structureLine("GTA", off),

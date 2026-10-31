@@ -423,9 +423,17 @@ export interface Config {
   /**
    * The documentary's camera grammar (src/render/camera.ts): pushes and whips through the cut, hand-drawn
    * marks on named details, freeze frames, beat-driven pushes, two-stage Ken Burns, rack focus, a vertigo
-   * push, a lens look and a texture flicker on explainers. DOC_CAMERA: "all" (default), "off", or a list.
+   * push, a lens look and a texture flicker on explainers. Since 31 Oct 2026 it covers every long video
+   * (documentaries, rankings, weekly recaps; src/longformat.ts). LONG_CAMERA: "all" (default), "off", or a
+   * list; the older name DOC_CAMERA is read when LONG_CAMERA is not set.
    */
-  docCamera: CameraTechnique[];
+  longCamera: CameraTechnique[];
+  /** A ranking's entries each get a short burst of quicker cuts at their middle, the pace a Short keeps
+   * (src/render/structure.ts entryBursts), on top of DOC_CUT_RHYTHM: LONG_ENTRY_PACE, default on. */
+  longEntryPace: boolean;
+  /** The ranking writer opens on a 5-10 word first line, a Short's hook length, which the signature cold
+   * open then shows (src/editorial/longform.ts): LONG_PUNCHY_HOOK, default on. Off: under 15 words, as before. */
+  longPunchyHook: boolean;
   dryRun: boolean;
   maxAttempts: number;
   remotionConcurrency: number;
@@ -861,7 +869,11 @@ export function loadConfig(): Config {
     sketchAnimation: bool("SKETCH_ANIMATION", true),
     fillers: bool("FILLERS_ENABLED", true),
     photoTreatments: bool("PHOTO_TREATMENTS", true),
-    docCamera: parseCameraSetting(process.env.DOC_CAMERA),
+    longCamera: parseCameraSetting(
+      process.env.LONG_CAMERA ?? process.env.DOC_CAMERA,
+    ),
+    longEntryPace: bool("LONG_ENTRY_PACE", true),
+    longPunchyHook: bool("LONG_PUNCHY_HOOK", true),
     dryRun: bool("DRY_RUN", false),
     maxAttempts: int("MAX_ATTEMPTS", 3),
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),

@@ -100,6 +100,12 @@ import {
 import { groundOpenLoops, openLoopsLine } from "./editorial/openloops.ts";
 import { structureLine, structureSummary } from "./render/structure.ts";
 import {
+  longCraft,
+  longCraftEvent,
+  longKindLabel,
+  loopsFor,
+} from "./longformat.ts";
+import {
   packageRecap,
   recapToScript,
   validateRecapChapter,
@@ -3514,7 +3520,10 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   // What earlier long videos taught us about holding viewers, entry by entry (empty until there is a curve).
   const lessons = await longLessons(s.db, s.now()).catch(() => "");
   for (let attempt = 0; attempt < 2; attempt++) {
-    draft = await writeLongform(s.llm, topic, lookup, feedback, lessons);
+    draft = await writeLongform(s.llm, topic, lookup, feedback, lessons, {
+      punchyHook: s.cfg.longPunchyHook,
+      soundBeats: s.cfg.docSoundBeats,
+    });
     const problems = validateLongform(draft);
     const factual = await adjudicateRanking(
       s,
@@ -4238,10 +4247,13 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       `narration is ${narration.durationSeconds.toFixed(1)}s, over the ${maxSeconds}s cap for the ${ep.lane} lane`,
     );
   // A documentary breathes before each chapter: a few seconds with the narrator silent, the music up
-  // and the chapter's title full screen (owner, 27 Oct 2026: "very narrative and word heavy").
+  // and the chapter's title full screen (owner, 27 Oct 2026: "very narrative and word heavy"). Every long
+  // video's quiet beats take a breath (31 Oct 2026); only chapter cards get breathers, so a ranking gets none.
   let breaks: EpisodeAssets["breaks"];
   if (
-    ep.script_json?.evergreen_format === "documentary" &&
+    ep.script_json &&
+    (ep.script_json.evergreen_format === "documentary" ||
+      ep.lane === "longform") &&
     narration.words.length
   ) {
     try {
@@ -5039,12 +5051,16 @@ export function chapterFootage(
   return out;
 }
 
-/** A documentary chapter's sentences in order: the ones its shot list (entry.moments) was written for. */
+/**
+ * A chapter's sentences in order: the ones its shot list (entry.moments) was written for. A ranking's chapters
+ * are its entries, one "rank" beat each (31 Oct 2026: before, a ranking's came back empty, so its picture top-up
+ * and graphics for bare lines worked without the words).
+ */
 export function chapterSentences(script: Script, chapter: number): string[] {
   const out: string[] = [];
   let c = -1;
   for (const b of script.beats) {
-    if (b.visual?.kind === "chapter") c++;
+    if (b.visual?.kind === "chapter" || b.visual?.kind === "rank") c++;
     if (c === chapter) out.push(...sentencesOf(b.narration));
   }
   return out;
@@ -6082,6 +6098,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       JSON.stringify(assets),
     ]);
   }
+  // Which long-video craft this format gets (src/longformat.ts), each behind its own setting.
+  const craft = longCraft(script, s.cfg);
+  const kind = longKindLabel(craft.format);
   // Every sentence still without a picture or graphic of its own is searched for on its own, once per video
   // (src/assets/fill.ts; owner, 30 Oct 2026: "all videos must be fully media rich all the way through").
   if (
@@ -6131,7 +6150,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       });
       await s.notify({
         level: "info",
-        content: `Documentary "${script.headline}": ${r.stockCapped} stock clip${r.stockCapped === 1 ? "" : "s"} not fetched because the video already has ${s.cfg.stockThemeMax} of that theme (such as "office at night"); those lines get a graphic or stay on the game's footage. Setting: STOCK_THEME_MAX.`,
+        content: `${kind} "${script.headline}": ${r.stockCapped} stock clip${r.stockCapped === 1 ? "" : "s"} not fetched because the video already has ${s.cfg.stockThemeMax} of that theme (such as "office at night"); those lines get a graphic or stay on the game's footage. Setting: STOCK_THEME_MAX.`,
       });
     }
     if (sketches) {
@@ -6144,7 +6163,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       if (sum.asked)
         await s.notify({
           level: "info",
-          content: `Documentary "${script.headline}": ${sum.kept} concept sketch${sum.kept === 1 ? "" : "es"} drawn for lines nothing filmed can show (${sum.asked} asked, ${sum.dropped} refused by the picture editor, ${sum.failed} not drawn; ${sum.seconds}s). Each is tagged ILLUSTRATION on screen${s.cfg.sketchAnimation ? " and animated: drawn on, stop-motion paper, flipbook, light table or cork board (SKETCH_ANIMATION)" : " as a framed print (SKETCH_ANIMATION=false)"}. Setting: ILLUSTRATE_ENABLED.`,
+          content: `${kind} "${script.headline}": ${sum.kept} concept sketch${sum.kept === 1 ? "" : "es"} drawn for lines nothing filmed can show (${sum.asked} asked, ${sum.dropped} refused by the picture editor, ${sum.failed} not drawn; ${sum.seconds}s). Each is tagged ILLUSTRATION on screen${s.cfg.sketchAnimation ? " and animated: drawn on, stop-motion paper, flipbook, light table or cork board (SKETCH_ANIMATION)" : " as a framed print (SKETCH_ANIMATION=false)"}. Setting: ILLUSTRATE_ENABLED.`,
         });
       // A few kept sketches of lines with movement come to life on this PC's video model (off by default).
       if (s.cfg.illustrateVideo && sum.kept)
@@ -6169,14 +6188,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       [ep.id, JSON.stringify(assets), JSON.stringify(script)],
     );
   }
-  // A filler visual for each documentary line still bare or on stock (kinetic type, a diagram, a document, a
+  // A filler visual for each long video's line still bare or on stock (kinetic type, a diagram, a document, a
   // drawn scene, silhouettes or an in-game reconstruction; src/assets/fillers.ts), once per video and behind
   // FILLERS_ENABLED. The picks are written on the shot list, so the plan is made again with them.
   if (
-    s.cfg.fillers &&
+    craft.fillers &&
     !assets.fillersChosen &&
     assets.images &&
-    script.evergreen_format === "documentary" &&
     script.entries?.some((e) => e.moments?.length)
   ) {
     const done = await chooseEpisodeFillers({
@@ -6196,6 +6214,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       check: episodeClipCheck(dir),
       now: s.now(),
       headline: script.headline,
+      kind,
       logEvent: (kind, detail) => logEvent(s.db, ep.id, kind, detail),
       notify: (m) => s.notify(m),
     });
@@ -6274,7 +6293,6 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     // The picture check's words for the clip: a freeze frame's label (src/render/camera.ts freezeLabel).
     label: c.label,
   }));
-  const isDoc = script.evergreen_format === "documentary";
   // A sentence's filler visual, read afresh each time: one the graphics check faulted is left out.
   const fillerAt = (e: number, m: number) =>
     s.cfg.fillers && !(assets.quietMoments ?? []).includes(`${e}:${m}`)
@@ -6322,11 +6340,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           })
         : undefined,
       takeEntry: script.take_entry,
-      // The documentary's cut rhythm and bookend ending (src/render/structure.ts).
-      rhythm: isDoc && s.cfg.docCutRhythm,
-      bookend: isDoc && s.cfg.docBookendEnding,
-      coldOpenFrames:
-        isDoc && s.cfg.docColdOpen ? coldOpenTiming(LONG_FPS).frames : 0,
+      // The cut rhythm, a ranking's per-entry pace and the bookend ending (src/render/structure.ts).
+      rhythm: craft.rhythm,
+      entryPace: craft.entryPace,
+      bookend: craft.bookend,
+      coldOpenFrames: craft.coldOpen ? coldOpenTiming(LONG_FPS).frames : 0,
     });
   const freshPlan = !assets.longPlan;
   let plan = assets.longPlan ?? makePlan();
@@ -6485,9 +6503,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     log("info", "detail annotations", { episode: ep.id, count: found.length });
   }
   // Named details written in the pictures (src/assets/ocr.ts): a sign or shop front the narrator names gets
-  // a hand-drawn circle or arrow from the documentary's camera (DOC_CAMERA detail). Once per video.
-  const docCamera =
-    script.evergreen_format === "documentary" ? s.cfg.docCamera : [];
+  // a hand-drawn circle or arrow from the long video's camera (LONG_CAMERA detail). Once per video.
+  const docCamera = craft.camera;
   if (docCamera.length && hasMoments && !assets.textDetails) {
     assets.textDetails = !docCamera.includes("detail")
       ? []
@@ -6521,6 +6538,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         script.headline,
         docCamera,
         assets.textDetails.length,
+        kind,
       ),
     });
   }
@@ -6529,9 +6547,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     JSON.stringify(assets),
   ]);
   const doc = script.evergreen_format === "documentary";
+  // Which craft this long video gets, for the log (src/longformat.ts); once per render attempt.
+  await logEvent(s.db, ep.id, "long_craft", longCraftEvent(craft));
   // What the mix will do with the writer's beats and the era beds (src/render/sounddesign.ts), logged and
   // told to the owner in one line; DOC_SOUND_BEATS off means neither.
-  if (doc && s.cfg.docSoundBeats && hasMoments) {
+  if (craft.soundBeats && hasMoments) {
     const sound = soundDesignSummary(
       moments,
       [...(script.entries ?? [])]
@@ -6541,13 +6561,16 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     );
     await logEvent(s.db, ep.id, "sound_design", { ...sound });
     if (sound.total || sound.chapters)
-      await s.notify({ content: soundDesignLine(script.headline, sound) });
+      await s.notify({
+        content: soundDesignLine(script.headline, sound, kind),
+      });
   }
   // The structure devices (src/render/structure.ts): title drop, chapter index and year, callbacks, cut
   // rhythm, bookend ending; logged and told to the owner in one line. A plan made before them keeps its cuts.
-  const docLoops =
-    doc && s.cfg.docOpenLoops ? loopsOfScript(script) : undefined;
-  if (doc) {
+  const docLoops = loopsFor(craft, script.open_loops, () =>
+    loopsOfScript(script),
+  );
+  {
     const structure = structureSummary({
       segments,
       words,
@@ -6567,15 +6590,21 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       loops: docLoops,
       plan,
       on: {
-        titleDrop: s.cfg.docTitleDrop,
-        chapterIndex: s.cfg.docChapterIndex,
-        loops: s.cfg.docOpenLoops,
-        rhythm: s.cfg.docCutRhythm && freshPlan,
-        bookend: s.cfg.docBookendEnding,
+        titleDrop: craft.titleDrop,
+        chapterIndex: craft.chapterIndex,
+        loops: craft.loops !== "off",
+        rhythm: craft.rhythm && freshPlan,
+        bookend: craft.bookend,
+        entryPace: craft.entryPace,
       },
     });
-    await logEvent(s.db, ep.id, "doc_structure", { ...structure });
-    await s.notify({ content: structureLine(script.headline, structure) });
+    await logEvent(s.db, ep.id, "doc_structure", {
+      ...structure,
+      format: craft.format,
+    });
+    await s.notify({
+      content: structureLine(script.headline, structure, kind),
+    });
   }
   // Two alternative titles for the Test & compare (one mid-tier call; a failure only means no title test).
   if (!script.youtube.title_variants) {
@@ -6868,14 +6897,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         words,
         durationSeconds: renderSeconds,
         // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
-        coldOpenLine:
-          doc && s.cfg.docColdOpen ? coldOpenLine(script.hook) : undefined,
-    // The structure devices (src/render/structure.ts), each behind its setting.
-    titleDrop: doc && s.cfg.docTitleDrop,
-    chapterIndex: doc && s.cfg.docChapterIndex,
+        coldOpenLine: craft.coldOpen ? coldOpenLine(script.hook) : undefined,
+    // The structure devices (src/render/structure.ts), each behind its setting, for every long format.
+    titleDrop: craft.titleDrop,
+    chapterIndex: craft.chapterIndex,
     loops: docLoops,
-    cutRhythm: doc && s.cfg.docCutRhythm,
-    bookendEnding: doc && s.cfg.docBookendEnding,
+    cutRhythm: craft.rhythm,
+    entryPace: craft.entryPace,
+    bookendEnding: craft.bookend,
         next: endCard
           ? nextDoc
             ? { title: nextDoc.title, thumbFile: nextThumb }
@@ -6896,9 +6925,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           ...(assets.annotations ?? []),
           ...(assets.textDetails ?? []),
         ],
-        // The documentary's camera grammar (src/render/camera.ts, DOC_CAMERA).
+        // The camera grammar (src/render/camera.ts, LONG_CAMERA), every long format.
         camera: docCamera,
-        eraBeds: doc && s.cfg.docSoundBeats,
+        eraBeds: craft.eraBeds,
         // Concept sketches drawn on, stepped, flipped, dissolved or pinned up (src/render/sketchplan.ts).
         sketchAnimation: s.cfg.sketchAnimation,
     // Photos and portraits as instant prints, tape, pins, trays and screens; screenshots in the display
@@ -7660,12 +7689,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
 async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const script = ep.script_json!;
   const links = approvalLinks(s.cfg, ep.id);
-  // The release gate (src/qa/releaseGate.ts): a documentary's every shot is scored against the words spoken
-  // over it before it may go out on its own. A held one waits here for the owner like a manual approval.
+  // The release gate (src/qa/releaseGate.ts): every long video's shots (documentary, ranking, recap) are
+  // scored against the words spoken over them before it may go out on its own, with the same thresholds.
+  // A held one waits here for the owner like a manual approval.
   if (
     ep.lane === "longform" &&
-    s.cfg.releaseGate &&
-    script.evergreen_format === "documentary" &&
+    longCraft(script, s.cfg).releaseGate &&
     ep.assets_json?.longPlan
   ) {
     const a = ep.assets_json;

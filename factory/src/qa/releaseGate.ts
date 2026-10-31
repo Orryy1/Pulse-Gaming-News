@@ -6,6 +6,8 @@
 // mean) or over RELEASE_GATE_MAX_ZERO (share of screen time at 0) is held for the owner with the worst ten
 // shots in Discord, so the lead can fix and re-render (or approve it as it is); one above the gate carries
 // on to its usual publish path. Frames are 384 px wide JPEGs, so a 34-minute documentary costs cents.
+// Since 31 Oct 2026 it checks every long format (rankings and weekly recaps too, src/longformat.ts) with the
+// same thresholds: a ranking's chapters are its entries.
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -22,6 +24,7 @@ import type { Segment } from "../render/timeline.ts";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import { COLOURS, type DiscordMessage } from "../approval/discord.ts";
+import { longFormatOf, longKindLabel } from "../longformat.ts";
 
 const run = promisify(execFile);
 
@@ -195,7 +198,7 @@ export function estimateGateCost(
   };
 }
 
-export const RELEASE_GATE_PROMPT = `You review a gaming documentary shot by shot before it is published. Each frame is one shot of the video, with the exact words the narrator says while it is on screen and the chapter (game and year) it belongs to.
+export const RELEASE_GATE_PROMPT = `You review a long gaming video (a documentary, a ranking or a weekly news recap) shot by shot before it is published. Each frame is one shot of the video, with the exact words the narrator says while it is on screen and the chapter (game and year) it belongs to; a ranking's chapters are its entries, a recap's its stories. A ranking's own rank card and a recap's story card score 3 when they name the entry or story being spoken about.
 Score every frame 0-3 for how well the picture fits those words:
 3: shows exactly what is said (the named game, person, place, screen, document or event).
 2: the right game and era, in keeping with the words, without showing the specific thing named.
@@ -231,6 +234,8 @@ export async function scoreShots(
     frame: (shot: GateShot) => Promise<string>;
     headline: string;
     game: string;
+    /** The owner's word for the format (src/longformat.ts longKindLabel); default Documentary. */
+    kind?: string;
   },
 ): Promise<ScoredShot[]> {
   const out: ScoredShot[] = [];
@@ -253,7 +258,7 @@ export async function scoreShots(
     }
     content.push({
       type: "text",
-      text: `Documentary: ${deps.headline}\nAbout: ${deps.game || "(several games)"}\n${batch.map((s, i) => shotLine(i + 1, s)).join("\n")}`,
+      text: `${deps.kind ?? "Documentary"}: ${deps.headline}\nAbout: ${deps.game || "(several games)"}\n${batch.map((s, i) => shotLine(i + 1, s)).join("\n")}`,
     });
     const r = await deps.llm
       .structured({
@@ -404,6 +409,7 @@ export async function scoreEpisode(
       llm: s.llm,
       headline: script.headline,
       game: script.game_title,
+      kind: longKindLabel(longFormatOf(script)),
       frame: (shot) =>
         grab(
           video,

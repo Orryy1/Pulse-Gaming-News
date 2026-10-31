@@ -20,7 +20,9 @@
 // Everything here is pure: the same plan and inputs always choose the same moves. Rules: never the same
 // technique twice in a row, each technique spaced out (SPACING_SECONDS), at most PER_MINUTE camera moves in
 // any minute and MIN_GAP_SECONDS between two, all tighter in the first EARLY_SECONDS (the cut rhythm a
-// viewer deciding whether to stay needs). Each technique is behind the DOC_CAMERA setting (src/config.ts).
+// viewer deciding whether to stay needs). Each technique is behind the LONG_CAMERA setting (src/config.ts; the
+// older DOC_CAMERA is read when it is not set), and since 31 Oct 2026 every long format uses it, rankings and
+// weekly recaps too (src/longformat.ts).
 
 import { keyTime, momentKeys, usefulEmphasis, usefulGraphic } from "./longplan.ts";
 
@@ -39,7 +41,7 @@ export const CAMERA_TECHNIQUES = [
 export type CameraTechnique = (typeof CAMERA_TECHNIQUES)[number];
 
 /**
- * DOC_CAMERA: "all" (the default) or a comma list of techniques; "off" (or "none", "false") turns the
+ * LONG_CAMERA (or DOC_CAMERA): "all" (the default) or a comma list of techniques; "off" (or "none", "false") turns the
  * whole camera grammar off. Unknown names are ignored; "-whip" in a list after "all" removes one.
  */
 export function parseCameraSetting(raw: string | undefined): CameraTechnique[] {
@@ -659,9 +661,11 @@ export function cameraNotice(
   headline: string,
   enabled: readonly CameraTechnique[],
   textDetails: number,
+  /** The owner's word for the format (src/longformat.ts longKindLabel). */
+  kind = "Documentary",
 ): string {
   if (!enabled.length)
-    return `Documentary "${headline}": the camera moves are off (DOC_CAMERA=off), so cuts and stills keep their plain look.`;
+    return `${kind} "${headline}": the camera moves are off (LONG_CAMERA=off, or DOC_CAMERA=off), so cuts and stills keep their plain look.`;
   const words: Record<CameraTechnique, string> = {
     track: "pushes through the cut",
     whip: "whip pans",
@@ -676,5 +680,5 @@ export function cameraNotice(
   };
   const list = enabled.map((t) => words[t]);
   const tail = list.length > 1 ? `${list.slice(0, -1).join(", ")} and ${list.at(-1)}` : list[0];
-  return `Documentary "${headline}": the camera uses ${tail}, each spaced out and never twice in a row, tighter in the first three minutes${enabled.includes("detail") ? `; ${textDetails} named detail${textDetails === 1 ? "" : "s"} found by reading the pictures' text` : ""}. Setting: DOC_CAMERA.`;
+  return `${kind} "${headline}": the camera uses ${tail}, each spaced out and never twice in a row, tighter in the first three minutes${enabled.includes("detail") ? `; ${textDetails} named detail${textDetails === 1 ? "" : "s"} found by reading the pictures' text` : ""}. Setting: LONG_CAMERA (DOC_CAMERA is still read when it is not set).`;
 }

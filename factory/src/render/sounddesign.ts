@@ -47,6 +47,8 @@ const plural = (n: number, one: string, many = `${one}s`) =>
 export function soundDesignLine(
   headline: string,
   s: SoundDesignSummary,
+  /** The owner's word for the format; the documentary's line has none. */
+  kind?: string,
 ): string {
   const parts = [
     s.beats.reveal ? plural(s.beats.reveal, "reveal") : "",
@@ -64,5 +66,5 @@ export function soundDesignLine(
   const beds = s.chapters
     ? `; era beds open ${plural(s.chapters, "chapter")} (${eras})`
     : "";
-  return `🎚️ "${headline}": ${mix}${beds}.`;
+  return `🎚️ ${kind ? `${kind} ` : ""}"${headline}": ${mix}${beds}.`;
 }

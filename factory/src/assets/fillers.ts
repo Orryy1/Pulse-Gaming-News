@@ -547,7 +547,12 @@ export function fillersEvent(
 }
 
 /** The owner's Discord line, in plain English. */
-export function fillersNotice(headline: string, choice: FillerChoice): string {
+export function fillersNotice(
+  headline: string,
+  choice: FillerChoice,
+  /** The owner's word for the format (src/longformat.ts longKindLabel). */
+  kind = "Documentary",
+): string {
   const n = choice.picks.length;
   const parts = FILLER_FAMILIES.filter((f) => choice.counts[f]).map(
     (f) =>
@@ -557,6 +562,6 @@ export function fillersNotice(headline: string, choice: FillerChoice): string {
   const bare = choice.left.filter((l) => l.need === "bare").length;
   const total = choice.eligible.bare + choice.eligible.stock;
   if (!total)
-    return `Documentary "${headline}": every line already has its own picture, clip or graphic; no filler visuals needed. Setting: FILLERS_ENABLED.`;
-  return `Documentary "${headline}": ${n} of ${total} lines that nothing filmed can show now get a visual of their own${parts.length ? `: ${parts.join(", ")}` : ""}${stock ? ` (${stock} of them replacing a stock clip)` : ""}. Invented scenes are tagged ILLUSTRATION or RECONSTRUCTION on screen. ${bare} line${bare === 1 ? "" : "s"} stay on the chapter's footage because nothing fitted them. Setting: FILLERS_ENABLED.`;
+    return `${kind} "${headline}": every line already has its own picture, clip or graphic; no filler visuals needed. Setting: FILLERS_ENABLED.`;
+  return `${kind} "${headline}": ${n} of ${total} lines that nothing filmed can show now get a visual of their own${parts.length ? `: ${parts.join(", ")}` : ""}${stock ? ` (${stock} of them replacing a stock clip)` : ""}. Invented scenes are tagged ILLUSTRATION or RECONSTRUCTION on screen. ${bare} line${bare === 1 ? "" : "s"} stay on the chapter's footage because nothing fitted them. Setting: FILLERS_ENABLED.`;
 }

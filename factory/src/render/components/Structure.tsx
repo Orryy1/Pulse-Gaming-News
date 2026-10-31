@@ -188,7 +188,8 @@ export const YearCounter: React.FC<{
   const frame = useCurrentFrame();
   const y = yearAt(marks, frame, endFrom);
   if (!y) return null;
-  const digits = odometerDigits(y.from, y.year, y.roll);
+  // A ranking entry with no year shows its rank: "#07", two columns.
+  const digits = odometerDigits(y.from, y.year, y.roll, y.prefix ? 2 : 4);
   return (
     <div
       style={{
@@ -207,6 +208,19 @@ export const YearCounter: React.FC<{
       }}
     >
       <div style={{ display: "flex" }}>
+        {y.prefix ? (
+          <div
+            style={{
+              fontFamily: DISPLAY,
+              fontSize: 40,
+              lineHeight: "56px",
+              color: COLOUR.amber,
+              marginRight: 4,
+            }}
+          >
+            {y.prefix}
+          </div>
+        ) : null}
         {digits.map((d, i) => (
           <div
             key={i}

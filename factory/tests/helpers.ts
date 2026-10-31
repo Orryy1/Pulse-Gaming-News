@@ -283,7 +283,9 @@ export function testConfig(
     // Off in the shared test config, like the sketches: the filler pass has its own tests (tests/fillers.test.ts).
     fillers: false,
     photoTreatments: true,
-    docCamera: [],
+    longCamera: [],
+    longEntryPace: true,
+    longPunchyHook: true,
     dryRun: false,
     maxAttempts: 3,
     remotionConcurrency: 1,

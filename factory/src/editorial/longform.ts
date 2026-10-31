@@ -18,6 +18,7 @@ import type { SteamFacts } from "../assets/steam.ts";
 import { factsText } from "../assets/steam.ts";
 import { placeFor } from "../render/places.ts";
 import { REHOOK_RULE, rehookProblems, rehooksOf } from "./rehooks.ts";
+import { DOC_BEAT_KINDS, groundBeats } from "./beats.ts";
 import {
   EvergreenTopicSchema,
   type EvergreenTopic,
@@ -101,6 +102,13 @@ export const MomentSchema = z.object({
     .optional()
     .describe(
       "The character or real person this sentence is mainly about, by full name (e.g. 'Polina Petrova'), or empty",
+    ),
+  // The sound editor's cue, as the documentary's shot list has it (src/editorial/beats.ts); since 31 Oct 2026.
+  beat: z
+    .enum(DOC_BEAT_KINDS)
+    .optional()
+    .describe(
+      "The sound editor's cue, on at most 3 sentences of the entry, each carrying a figure, a quote or a superlative: reveal, key (the entry's single most important line, once), record, turn or quiet. Omit or 'none' otherwise",
     ),
 });
 export type Moment = z.infer<typeof MomentSchema>;
@@ -223,12 +231,27 @@ export const LongformScriptSchema = z.object({
 });
 export type LongformScript = z.infer<typeof LongformScriptSchema>;
 
-export function longformPrompt(): string {
+/** How the writers are steered by the settings (src/config.ts). */
+export interface LongformOptions {
+  /** LONG_PUNCHY_HOOK: the intro opens on a 5-10 word line, a Short's hook length (the cold open shows it). */
+  punchyHook?: boolean;
+  /** DOC_SOUND_BEATS: the shot list marks the sound editor's beats, grounded as a documentary's are. */
+  soundBeats?: boolean;
+}
+
+/** The intro's first-line rule: a Short's 5-10 word hook (LONG_PUNCHY_HOOK) or the older "under 15 words". */
+export function hookRule(punchy = false): string {
+  return punchy
+    ? "The first sentence is the most surprising concrete fact or image in the whole ranking, 5-10 words, as a Short's hook would say it: it is also the line the opening card shows"
+    : "The first sentence is the most surprising concrete fact or image in the whole ranking, under 15 words";
+}
+
+export function longformPrompt(opts: LongformOptions = {}): string {
   return `${HOUSE}
 
 Write a long-form ranking video of ${LONG_WORDS_MIN}-${LONG_WORDS_MAX} spoken words in total, fifteen to twenty minutes when read at a natural pace.
 Structure:
-1. intro.narration: 60-120 words, so entry one starts within about forty seconds. The first sentence is the most surprising concrete fact or image in the whole ranking, under 15 words. Then the rule in one sentence, naming two or three things every game is judged on (how it plays now, what it changed, whether it holds up), in your own words, and why the viewer can trust the order (what was weighed: sales, reviews, how each plays now; never a claim to have played them). Then say plainly that number one is held to the end and that at least one placement will be argued with. No greeting, no channel name, no "welcome" or "today we're ranking": in a study of 1,573 long gaming videos, a greeting or brand line came first in 15 of the 50 weakest and 1 of the 50 strongest.
+1. intro.narration: 60-120 words, so entry one starts within about forty seconds. ${hookRule(opts.punchyHook)}. Then the rule in one sentence, naming two or three things every game is judged on (how it plays now, what it changed, whether it holds up), in your own words, and why the viewer can trust the order (what was weighed: sales, reviews, how each plays now; never a claim to have played them). Then say plainly that number one is held to the end and that at least one placement will be argued with. No greeting, no channel name, no "welcome" or "today we're ranking": in a study of 1,573 long gaming videos, a greeting or brand line came first in 15 of the 50 weakest and 1 of the 50 strongest.
 2. entries: ${LONG_ENTRIES_MIN}-${LONG_ENTRIES_MAX}, spoken from the lowest rank to number one. Each narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} words, six to ten sentences: what the game is and when it landed, the story around it (how it was made or received, from the facts given or long-established knowledge), two specific details a fan would nod at (a mechanic, a level, a moment), the fair counterpoint, and why it sits here, argued against its neighbor ("above Vice City because...", "below San Andreas, and here's the one thing that kept it there"), never a plot synopsis followed by praise words. Commit to every call: no "arguably", "for our money" or "it's hard to say". Numbers come as a contrast (a figure and the fact that undercuts it), never a list of stats. Place one deliberate surprise somewhere in the order and defend it. The last line hands over to the next entry. Vary the sentence openings; never start two entries the same way. verdict_chip is 1-4 words. footage names the trailer moment to show, with 1-4 keywords.
 ${REHOOK_RULE} In a ranking that means about one per entry, often the line that hands over to the next entry ("So why does the 'bad' one land this high?"), and one near the end of the intro.
 3. outro.narration: 60-150 words. Why number one wins by the rule, the top three in one line, the ranking's hardest call, honestly, and a last line that returns to the image or fact the intro opened on. No more than one sentence inviting comments.
@@ -298,8 +321,8 @@ export const LongformEntryBodySchema = LongformEntrySchema.pick({
   claims: LongformScriptSchema.shape.claims,
 });
 
-function planPrompt(): string {
-  return `${longformPrompt()}
+function planPrompt(opts: LongformOptions = {}): string {
+  return `${longformPrompt(opts)}
 
 This step plans the video only: the order, the intro, the outro and the packaging. For each entry give its rank, title, year, platforms, verdict_chip and an "angle": brief notes on the detail and the reason it sits there. The entry paragraphs and shot lists are written in a later step from your plan.`;
 }
@@ -330,6 +353,9 @@ About half the moments carry a graphic: a stat, date or score the sentence says,
 Richer graphics when a sentence calls for one: a timeline when it moves through years; a span when it measures a gap in years; a versus when it compares this game with another entry in the ranking (both titles from the list given); a milestone for a record or a first; reviews when it gives critics' scores; a delay when a date slipped. Same rule: every figure must appear in that sentence.
 "person": when a sentence is mainly about one character or real person, give their full name ("Polina Petrova", "Viktor Reznov") so a portrait can remind viewers who they are, and leave the graphic as none for that moment; otherwise leave it empty.`;
 
+/** The sound editor's line, added to the shot-list prompt when DOC_SOUND_BEATS is on (the documentary's rule). */
+export const RANK_BEATS_RULE = `"beat" is the sound editor's cue, on at most 3 sentences in the entry and only where the sentence itself carries a figure, a quote or a superlative: "key" once, on the line that decides the entry's place; "reveal" on a surprise the sentence lands; "record" on a first, biggest or fastest; "turn" where the argument changes direction; "quiet" on a reflective line to let breathe. Never on sentence 1, never on two sentences in a row; leave it out everywhere else.`;
+
 /** One moment per sentence; a list that comes back short is padded from the sentences themselves so no sentence goes without a picture. */
 export async function writeMoments(
   llm: Llm,
@@ -337,6 +363,7 @@ export async function writeMoments(
   narration: string,
   /** The ranking's other entries: a "versus" names one of these. */
   others: string[] = [],
+  opts: LongformOptions = {},
 ): Promise<Moment[]> {
   const sentences = sentencesOf(narration);
   const n = Math.max(1, sentences.length);
@@ -346,7 +373,9 @@ export async function writeMoments(
       const r = await llm.structured({
         site: "longform.shots",
         tier: "mid",
-        system: MOMENTS_PROMPT,
+        system: opts.soundBeats
+          ? `${MOMENTS_PROMPT}\n${RANK_BEATS_RULE}`
+          : MOMENTS_PROMPT,
         content: `Game: ${game}${others.length ? `\nOther entries in this ranking: ${others.join("; ")}` : ""}\n\n${sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nReturn exactly ${n} moments.`,
         schema: momentsSchema(n),
         effort: "low",
@@ -364,7 +393,15 @@ export async function writeMoments(
     emphasis: "",
     person: "",
   });
-  return Array.from({ length: n }, (_, i) => got[i] ?? pad(i));
+  const all = Array.from({ length: n }, (_, i) => got[i] ?? pad(i));
+  // The beats are kept only where the sentence earns one (src/editorial/beats.ts groundBeats); off, none at all.
+  if (!opts.soundBeats)
+    return all.map((m) => {
+      if (m.beat === undefined) return m;
+      const { beat: _b, ...rest } = m;
+      return rest;
+    });
+  return groundBeats(all, sentences).moments;
 }
 
 /**
@@ -384,6 +421,7 @@ export async function writeLongform(
   feedback: string[] = [],
   /** How our earlier long videos held viewers, entry by entry (analytics.ts longLessons). */
   lessons = "",
+  opts: LongformOptions = {},
 ): Promise<LongformScript> {
   // Steam facts given up front, or looked up once the plan names the games.
   let facts = Array.isArray(factsFor) ? factsFor : [];
@@ -396,7 +434,7 @@ export async function writeLongform(
   const brief = `Theme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}${lessons ? `\n\n${lessons}` : ""}`;
   const plan = await llm.structured({
     site: "longform.plan",
-    system: planPrompt(),
+    system: planPrompt(opts),
     content: `${brief}${factBlock}${fb}`,
     schema: LongformPlanSchema,
     effort: "medium",
@@ -458,6 +496,7 @@ ${hooks.map((h) => `- ${h}`).join("\n")}`
       e.game_title,
       body.narration,
       plan.entries.map((x) => x.game_title).filter((t) => t !== e.game_title),
+      opts,
     );
     written.push({
       ...head,

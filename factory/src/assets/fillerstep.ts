@@ -1,4 +1,4 @@
-// The render step's filler pass (src/pipeline.ts stepRenderLong calls it once per documentary, after the
+// The render step's filler pass (src/pipeline.ts stepRenderLong calls it once per long video, after the
 // sentence top-up and the graphics for bare lines): the reconstructions are chosen and frame-checked for the
 // whole video, every family is asked about every bare or stock-only sentence (./fillers.ts), the picks are
 // written on the shot list (moment.filler), and the owner hears the outcome in one plain line. Behind
@@ -123,6 +123,8 @@ export async function chooseEpisodeFillers(args: {
   check: ReconClipCheck;
   now: Date;
   headline: string;
+  /** The owner's word for the format in the notice (src/longformat.ts longKindLabel); default Documentary. */
+  kind?: string;
   logEvent: (kind: string, detail: Record<string, unknown>) => Promise<void>;
   notify: (m: { level: "info"; content: string }) => Promise<unknown>;
 }): Promise<FillerStepResult | undefined> {
@@ -162,7 +164,7 @@ export async function chooseEpisodeFillers(args: {
     });
     await args.notify({
       level: "info",
-      content: fillersNotice(args.headline, choice),
+      content: fillersNotice(args.headline, choice, args.kind),
     });
     return {
       chosen: choice.picks.length,

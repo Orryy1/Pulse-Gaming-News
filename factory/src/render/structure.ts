@@ -11,6 +11,9 @@
 //    burst of quicker cuts every two and a half minutes, never over a chapter's opening card.
 //  - The bookend ending (LEMMiNO, Fern): the outro's last shot is the cold open's first picture with the
 //    camera move reversed.
+// Since 31 Oct 2026 every long format uses them (src/longformat.ts): a ranking's chapters are its entries (the
+// "rank" beats), the index counts down its ranks and the corner shows the rank where an entry has no year,
+// and each entry gets a burst of quicker cuts of its own (entryBursts), the pace a Short keeps.
 
 import type { Segment } from "./timeline.ts";
 import type {
@@ -28,6 +31,11 @@ const sentencesOf = (text: string) =>
     .filter(Boolean);
 
 type Frames = { from: number; to: number };
+
+/** A segment that opens a chapter: a documentary's or recap's chapter card, or a ranking's entry. */
+export const opensChapter = (s: Pick<Segment, "kind" | "visual">): boolean =>
+  s.kind === "beat" &&
+  (s.visual?.kind === "chapter" || s.visual?.kind === "rank");
 type TimedWord = { start: number; end: number; text?: string };
 
 /** Each sentence's first spoken frame in a segment, from the voice's word timings (the hook has no shot list). */
@@ -134,6 +142,8 @@ export interface ChapterMark {
   to: number;
   /** The chapter's year, when it is about one period. */
   year?: number;
+  /** A ranking's entry: its rank (the index counts down them; the corner shows it when there is no year). */
+  rank?: number;
 }
 
 /** A year worth showing: four digits from the arcade age to the near future. */
@@ -151,13 +161,13 @@ export function chapterMarks(
 ): ChapterMark[] {
   const out: ChapterMark[] = [];
   for (const [i, s] of segments.entries()) {
-    if (s.kind !== "beat" || s.visual?.kind !== "chapter") continue;
+    if (!opensChapter(s) || !s.visual) continue;
     const from = starts[i]!;
     const b = breaks.find((x) => Math.abs(x.from - from) <= 3);
     let to = durationInFrames;
     for (let k = i + 1; k < segments.length; k++) {
       const x = segments[k]!;
-      if (x.kind !== "beat" || x.visual?.kind === "chapter") {
+      if (x.kind !== "beat" || opensChapter(x)) {
         to = starts[k]!;
         break;
       }
@@ -170,6 +180,10 @@ export function chapterMarks(
       shownFrom: b ? Math.max(from, b.to) : from,
       to,
       year: goodYear(year) ? year : undefined,
+      rank:
+        s.visual.kind === "rank" && typeof s.visual.value_a === "number"
+          ? s.visual.value_a
+          : undefined,
     });
   }
   return out;
@@ -209,18 +223,33 @@ export function yearAt(
   marks: readonly ChapterMark[],
   frame: number,
   endFrom = Number.POSITIVE_INFINITY,
-): { year: number; from: number; roll: number; opacity: number } | undefined {
+):
+  | {
+      year: number;
+      from: number;
+      roll: number;
+      opacity: number;
+      /** "#" when the counter shows a ranking entry's rank (it has no year). */
+      prefix?: "#";
+    }
+  | undefined {
   const { current, opacity } = indexAt(marks, frame, endFrom);
   const m = marks[current];
-  if (!m?.year || opacity <= 0) return undefined;
-  const before = marks
-    .slice(0, current)
-    .reverse()
-    .find((x) => x.year)?.year;
+  if (!m || opacity <= 0) return undefined;
   const roll = Math.max(
     0,
     Math.min(1, (frame - m.shownFrom) / YEAR_ROLL_FRAMES),
   );
+  if (!m.year) {
+    // A ranking entry without a year: its rank, rolling down from the entry before.
+    if (m.rank === undefined) return undefined;
+    const prev = marks[current - 1]?.rank;
+    return { year: m.rank, from: prev ?? m.rank, roll, opacity, prefix: "#" };
+  }
+  const before = marks
+    .slice(0, current)
+    .reverse()
+    .find((x) => x.year)?.year;
   return { year: m.year, from: before ?? m.year, roll, opacity };
 }
 
@@ -229,9 +258,11 @@ export function odometerDigits(
   from: number,
   to: number,
   roll: number,
+  /** Digit columns: 4 for a year, 2 for a rank. */
+  width = 4,
 ): Array<{ out: string; in: string; t: number }> {
-  const a = String(from).padStart(4, "0");
-  const b = String(to).padStart(4, "0");
+  const a = String(from).padStart(width, "0");
+  const b = String(to).padStart(width, "0");
   // The rightmost digits move first and the leftmost last, as a mechanical counter does.
   return [...b].map((d, i) => {
     const delay = (b.length - 1 - i) * 0.12;
@@ -371,6 +402,66 @@ export function burstWindows(
   return out;
 }
 
+/** A ranking entry shorter than this gets no burst of its own (it is over before the pace could change). */
+export const ENTRY_PACE_MIN_SECONDS = 30;
+
+/**
+ * A burst of quicker cuts inside every ranking entry (pure, frames), the pace a Short keeps from line to line:
+ * at the middle of each entry long enough, clear of its opening card by BURST_CLEAR_SECONDS and of its end,
+ * unless one of `existing` (the interval bursts) already falls inside it. `bounds` are the entries' first
+ * frames followed by the frame the last one ends (the outro's start). Returns only the new bursts.
+ */
+export function entryBursts(
+  bounds: readonly number[],
+  fps: number,
+  existing: readonly Frames[] = [],
+): Frames[] {
+  const out: Frames[] = [];
+  const len = Math.round(BURST_SECONDS * fps);
+  const clear = Math.round(BURST_CLEAR_SECONDS * fps);
+  for (let k = 0; k + 1 < bounds.length; k++) {
+    const a = bounds[k]!;
+    const b = bounds[k + 1]!;
+    if (b - a < ENTRY_PACE_MIN_SECONDS * fps) continue;
+    if (existing.some((x) => x.from < b && x.to > a)) continue;
+    const from = Math.max(a + clear, Math.round((a + b - len) / 2));
+    if (from + len > b - Math.round(fps * 2)) continue;
+    out.push({ from, to: from + len });
+  }
+  return out;
+}
+
+/**
+ * Every burst of a plan's cut rhythm (pure, frames): the interval ones (burstWindows, clear of every chapter
+ * or entry opening), and with `entryPace` one inside each entry that has none (entryBursts). `entry` counts
+ * the second kind.
+ */
+export function rhythmBursts(
+  segments: readonly Pick<Segment, "kind" | "visual" | "start">[],
+  totalFrames: number,
+  fps: number,
+  entryPace = false,
+): { all: Frames[]; entry: number } {
+  const firsts = segments
+    .map((s, i) => (opensChapter(s) ? i : -1))
+    .filter((i) => i >= 0);
+  const opens = firsts
+    .filter((i) => i > 0)
+    .map((i) => Math.round(segments[i]!.start * fps));
+  const base = burstWindows(totalFrames, fps, opens);
+  if (!entryPace || !firsts.length) return { all: base, entry: 0 };
+  const take = segments.find((s) => s.kind === "take");
+  const bounds = [
+    ...firsts.map((i) => Math.round(segments[i]!.start * fps)),
+    take ? Math.round(take.start * fps) : totalFrames,
+  ];
+  const extra = entryBursts(bounds, fps, base);
+  return {
+    all: [...base, ...extra].sort((a, b) => a.from - b.from),
+    entry: extra.length,
+  };
+}
+
 /** The longest a shot starting at this frame may run, still and footage (Infinity: the usual rules alone). */
 export function shotCap(
   frame: number,
@@ -456,6 +547,10 @@ export interface StructureSummary {
   callbacks: number;
   bursts: number;
   bookend: boolean;
+  /** Ranking entries whose corner counter shows the rank (they have no year). */
+  ranks: number;
+  /** Of `bursts`, the ones inside a ranking's entries (entryBursts, LONG_ENTRY_PACE). */
+  entryBursts: number;
 }
 
 /**
@@ -477,6 +572,8 @@ export function structureSummary(input: {
     loops: boolean;
     rhythm: boolean;
     bookend: boolean;
+    /** A ranking's burst inside every entry (LONG_ENTRY_PACE), with the rhythm. */
+    entryPace?: boolean;
   };
 }): StructureSummary {
   const { segments, fps, plan, on } = input;
@@ -487,6 +584,9 @@ export function structureSummary(input: {
     ? chapterMarks(segments, starts, plan.totalFrames, input.breaks)
     : [];
   const hook = segments.findIndex((s) => s.kind === "hook");
+  const bursts = on.rhythm
+    ? rhythmBursts(segments, plan.totalFrames, fps, on.entryPace)
+    : { all: [], entry: 0 };
   const last = plan.shots.at(-1);
   const bookend =
     on.bookend &&
@@ -508,36 +608,36 @@ export function structureSummary(input: {
       ? callbackCues(input.loops, segments, input.words, input.windows, fps)
           .length
       : 0,
-    bursts: on.rhythm
-      ? burstWindows(
-          plan.totalFrames,
-          fps,
-          segments
-            .filter(
-              (s, i) =>
-                i > 0 && s.kind === "beat" && s.visual?.kind === "chapter",
-            )
-            .map((s) => Math.round(s.start * fps)),
-        ).length
-      : 0,
+    bursts: bursts.all.length,
     bookend,
+    ranks: marks.filter((m) => !m.year && m.rank !== undefined).length,
+    entryBursts: bursts.entry,
   };
 }
 
-/** What the structure devices did in one documentary, in plain English for the owner (one line). */
-export function structureLine(headline: string, s: StructureSummary): string {
+/** What the structure devices did in one long video, in plain English for the owner (one line). */
+export function structureLine(
+  headline: string,
+  s: StructureSummary,
+  /** The owner's word for the format (src/longformat.ts longKindLabel). */
+  kind = "Documentary",
+): string {
+  const corner = [
+    s.years ? `the year in the corner for ${s.years} of them` : "",
+    s.ranks ? `the rank for ${s.ranks}` : "",
+  ].filter(Boolean);
   const parts = [
     s.titleDrop ? "the title lands after the cold open" : "",
     s.chapters
-      ? `a ${s.chapters}-chapter index${s.years ? ` with the year in the corner for ${s.years} of them` : ""}`
+      ? `a ${s.chapters}-chapter index${corner.length ? ` with ${corner.join(" and ")}` : ""}`
       : "",
     s.callbacks
       ? `${s.callbacks} callback${s.callbacks === 1 ? "" : "s"} when an earlier question is answered`
       : "",
     s.bursts
-      ? `quicker cuts in the first 3 minutes and ${s.bursts} short burst${s.bursts === 1 ? "" : "s"} later`
+      ? `quicker cuts in the first 3 minutes and ${s.bursts} short burst${s.bursts === 1 ? "" : "s"} later${s.entryBursts ? ` (${s.entryBursts} inside the entries, a Short's pace)` : ""}`
       : "",
     s.bookend ? "the last shot returns to the opening picture" : "",
   ].filter(Boolean);
-  return `Documentary structure for "${headline}": ${parts.length ? parts.join("; ") : "none of the structure devices apply"}.`;
+  return `${kind} structure for "${headline}":${parts.length ? parts.join("; ") : "none of the structure devices apply"}.`;
 }

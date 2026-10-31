@@ -12,6 +12,8 @@ import {
   parseCameraSetting,
   planCamera,
   spacingFrames,
+  freezeLabel,
+  WHIP_MAX,
   trackScale,
   TRACK_LAND,
   TRACK_PEAK,
@@ -84,45 +86,51 @@ test("the rules: never the same technique twice in a row, spaced out, a minimum 
     shot: 0,
   });
   // Twice in a row (nothing between, within 90 s) is refused either side.
-  assert.equal(allowed([ev("rack", 300)], "rack", 360 * FPS, FPS), false);
-  assert.equal(allowed([ev("rack", 400)], "rack", 330 * FPS, FPS), false);
-  // Another move between them breaks the run, but the technique's own spacing still holds (rack: 40 s).
-  assert.equal(
-    allowed([ev("rack", 300), ev("track", 320)], "rack", 335 * FPS, FPS),
-    false,
-  );
-  assert.equal(
-    allowed([ev("rack", 300), ev("track", 320)], "rack", 345 * FPS, FPS),
-    true,
-  );
+  assert.equal(allowed([ev("rack", 300)], "rack", 380 * FPS, FPS), false);
+  assert.equal(allowed([ev("rack", 400)], "rack", 320 * FPS, FPS), false);
+  // Another move between them breaks the run, but the technique's own spacing still holds (rack: 80 s).
+  assert.equal(allowed([ev("rack", 300), ev("track", 330)], "rack", 360 * FPS, FPS), false);
+  assert.equal(allowed([ev("rack", 300), ev("track", 330)], "rack", 385 * FPS, FPS), true);
   // Minutes apart with nothing between is not "in a row".
   assert.equal(allowed([ev("rack", 300)], "rack", 500 * FPS, FPS), true);
-  // Later in the video two moves need 8 s between them; the first three minutes only 4.
-  assert.equal(allowed([ev("track", 300)], "rack", 306 * FPS, FPS), false);
-  assert.equal(allowed([ev("track", 100)], "rack", 105 * FPS, FPS), true);
-  // At most 3 moves in a minute later, 5 early.
-  const later = [ev("track", 300), ev("rack", 310), ev("whip", 320)];
-  assert.equal(allowed(later, "detail", 335 * FPS, FPS), false);
-  const early = [
-    ev("track", 20),
-    ev("rack", 26),
-    ev("whip", 32),
-    ev("track", 50),
-  ];
+  // Any two moves at least 15 s apart, the opening included, and the two-stage drift counts too.
+  assert.equal(allowed([ev("track", 300)], "rack", 312 * FPS, FPS), false);
+  assert.equal(allowed([ev("track", 100)], "rack", 110 * FPS, FPS), false);
+  assert.equal(allowed([ev("track", 300)], "twoStage", 310 * FPS, FPS), false);
+  assert.equal(allowed([ev("track", 300)], "rack", 316 * FPS, FPS), true);
+  // At most 2 moves in a minute later, 3 in the first three minutes.
+  const later = [ev("track", 300), ev("rack", 320)];
+  assert.equal(allowed(later, "detail", 345 * FPS, FPS), false);
+  const early = [ev("track", 20), ev("rack", 40)];
   assert.equal(allowed(early, "detail", 60 * FPS, FPS), true);
-  // The ambient two-stage drift never counts against the gap or the cap.
-  assert.equal(allowed(later, "twoStage", 335 * FPS, FPS), true);
+  assert.equal(allowed([...early, ev("whip", 60)], "detail", 77 * FPS, FPS), false);
   // The opening's spacing is tighter.
-  assert.ok(
-    spacingFrames("track", 60 * FPS, FPS) <
-      spacingFrames("track", 600 * FPS, FPS),
-  );
+  assert.ok(spacingFrames("track", 60 * FPS, FPS) < spacingFrames("track", 600 * FPS, FPS));
+});
+
+test("a long video carries at most four whip pans", () => {
+  const shots = shotsOf(400, 150, "clip");
+  const plan = planCamera(input({ shots, images: [], enabled: ["whip"], chapterOf: () => 0 }));
+  assert.equal(plan.events.filter((e) => e.kind === "whip").length, WHIP_MAX);
+});
+
+test("a freeze frame's label says what is in the frame, and only when the sentence names it", () => {
+  const words = [
+    { text: "The", start: 10 },
+    { text: "helicopters", start: 10.3 },
+    { text: "came", start: 10.8 },
+  ];
+  assert.equal(freezeLabel("Helicopter over city rooftops", words, 9.9, 12), "Helicopter over city rooftops");
+  assert.equal(freezeLabel("Car chase on a bridge", words, 9.9, 12), "");
+  assert.equal(freezeLabel(undefined, words, 9.9, 12), "");
+  // Words outside the sentence do not count.
+  assert.equal(freezeLabel("Helicopter over city rooftops", words, 11, 12), "");
 });
 
 test("a plan keeps its own rules: no technique twice in a row, the caps hold, the opening is busier", () => {
   const plan = planCamera(input({ images: wideImages(120, true) }));
   assert.ok(plan.events.length > 10);
-  const loud = plan.events.filter((e) => e.kind !== "twoStage");
+  const loud = plan.events;
   for (let k = 1; k < plan.events.length; k++) {
     const a = plan.events[k - 1]!;
     const b = plan.events[k]!;
@@ -136,7 +144,7 @@ test("a plan keeps its own rules: no technique twice in a row, the caps hold, th
     const n = loud.filter(
       (x) => x.frame > e.frame - 60 * FPS && x.frame <= e.frame,
     ).length;
-    assert.ok(n <= (early ? 5 : 3), `${n} moves in the minute to ${e.frame}`);
+    assert.ok(n <= (early ? 3 : 2), `${n} moves in the minute to ${e.frame}`);
   }
   const perMinute = (from: number, to: number) =>
     loud.filter((e) => e.frame >= from * FPS && e.frame < to * FPS).length /
@@ -378,7 +386,7 @@ test("camera inputs: freeze cues only where nothing else is drawn, faces found b
     images: [{ kind: "screenshot", aspect: 1.78 }],
     clips: [
       { beatIndex: 0, moment: 0 },
-      { beatIndex: 0, moment: 1 },
+      { beatIndex: 0, moment: 1, label: "Neon streets of Vice City" },
     ],
     chapterOf: () => 0,
     fps: FPS,
@@ -401,7 +409,8 @@ test("camera inputs: freeze cues only where nothing else is drawn, faces found b
       { id: 1, shot: 2, from: 640, label: "Ocean Drive sign", k: 1 },
     ],
   });
-  assert.deepEqual(got.freezeCues, [{ at: 303, label: "Vice City" }]);
+  // The frame's own label, since the sentence names what it shows.
+  assert.deepEqual(got.freezeCues, [{ at: 303, label: "Neon streets of Vice City" }]);
   assert.equal(got.details![0]!.face, true);
   assert.equal(got.details![1]!.face, false);
   assert.equal(isPerson("Sam Houser", ["sam houser"]), true);

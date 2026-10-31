@@ -6142,6 +6142,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     moment: c.moment,
     credit: c.credit,
     audio: c.audio,
+    // The picture check's words for the clip: a freeze frame's label (src/render/camera.ts freezeLabel).
+    label: c.label,
   }));
   const makePlan = () =>
     buildLongPlan({

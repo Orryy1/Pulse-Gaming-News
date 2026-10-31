@@ -431,6 +431,7 @@ export interface LongRenderInput {
       moment?: number;
       credit?: string;
       audio?: boolean;
+      label?: string;
     }>;
     musicFile: string | null;
   };
@@ -505,6 +506,7 @@ export function longProps(
         moment: c.moment,
         credit: c.credit,
         audio: c.audio,
+        label: c.label,
       })),
       logoSrc: "logo.png",
       musicSrc: musicFile,

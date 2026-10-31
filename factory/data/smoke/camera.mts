@@ -89,6 +89,7 @@ const clips = (assets.clips ?? []).map((c: any) => ({
   moment: c.moment,
   credit: c.credit,
   audio: c.audio,
+  label: c.label,
 }));
 const plan = assets.longPlan;
 const camera = parseCameraSetting(flag("camera", "all"));

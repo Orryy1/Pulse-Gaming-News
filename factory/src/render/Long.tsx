@@ -192,6 +192,8 @@ export interface LongClipProp {
   moment?: number;
   credit?: string; // licensed gameplay: creator and licence, shown on screen
   audio?: boolean; // gameplay with its game sound kept: played low under the narrator
+  /** What the picture check saw in the clip ("Helicopter over city rooftops"): a freeze frame's label. */
+  label?: string;
 }
 
 export type LongProps = {

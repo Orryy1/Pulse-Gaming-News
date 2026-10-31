@@ -66,22 +66,27 @@ export function parseCameraSetting(raw: string | undefined): CameraTechnique[] {
 export const EARLY_SECONDS = 180;
 /** Seconds between two moves of the same technique (later in the video; the opening uses EARLY_FACTOR of it). */
 export const SPACING_SECONDS: Record<CameraEventKind, number> = {
-  track: 30,
-  whip: 60,
-  detail: 30,
-  freeze: 75,
-  emotion: 12,
-  twoStage: 20,
-  rack: 40,
-  dolly: 150,
+  track: 60,
+  whip: 120,
+  detail: 60,
+  freeze: 150,
+  emotion: 24,
+  twoStage: 40,
+  rack: 80,
+  dolly: 300,
 };
+/** Whip pans in a whole video: they are energy, and a documentary needs only a few. */
+export const WHIP_MAX = 4;
 export const EARLY_FACTOR = 0.6;
 /** Two moves of one technique with no other move between them count as "in a row" within this long. */
 export const REPEAT_WINDOW_SECONDS = 90;
-/** Camera moves (twoStage excepted: it is the ambient move of a still) in any 60 seconds. */
-export const PER_MINUTE = { early: 5, later: 3 } as const;
-/** Seconds between any two camera moves (twoStage excepted). */
-export const MIN_GAP_SECONDS = { early: 4, later: 8 } as const;
+/**
+ * Camera moves of any kind in any 60 seconds (31 Oct 2026 review: 80 moves in 34 minutes, one every 26 s,
+ * was busy against the cuts, the graphics and the structure strip; halved).
+ */
+export const PER_MINUTE = { early: 3, later: 2 } as const;
+/** Seconds between any two camera moves. */
+export const MIN_GAP_SECONDS = { early: 15, later: 15 } as const;
 
 /** Frames each transition takes either side of its cut. */
 export const TRACK_FRAMES = 9;
@@ -159,7 +164,8 @@ export interface CameraPlan {
   events: CameraEvent[];
 }
 
-const AMBIENT: ReadonlySet<CameraEventKind> = new Set(["twoStage"]);
+/** Moves exempt from the gap and the per-minute cap: none since the 31 Oct review (two-stage drift counts). */
+const AMBIENT: ReadonlySet<CameraEventKind> = new Set();
 const PRINT_KINDS = new Set(["photo", "portrait", "sketch", "capsule"]);
 
 /** Whether a frame sits in the early, tighter-cut part of the video. */
@@ -344,6 +350,8 @@ export function planCamera(input: CameraInput): CameraPlan {
           (turn + i) % 3 === 0 ? ["whip", "track"] : ["track", "whip"];
         for (const kind of order) {
           if (!on.has(kind)) continue;
+          if (kind === "whip" && plan.events.filter((e) => e.kind === "whip").length >= WHIP_MAX)
+            continue;
           if (kind === "whip" && (!sameChapter || !like)) continue;
           if (!allowed(plan.events, kind, cut, fps)) continue;
           plan.cuts.set(i, {
@@ -516,6 +524,31 @@ export function spokenFrame(
   return t === undefined ? undefined : Math.round(t * fps);
 }
 
+/**
+ * A freeze frame's label: the clip's own frame label (what the picture check saw in it) when the sentence
+ * spoken over it names one of its telling words ("helicopter", "rooftops"); "" otherwise, and the freeze
+ * shows only its brackets, pause chip and timecode.
+ */
+export function freezeLabel(
+  frameLabel: string | undefined,
+  words: Array<{ text?: string; start: number }>,
+  from: number,
+  to: number,
+): string {
+  const label = (frameLabel ?? "").trim();
+  if (!label || label.length > 44) return "";
+  const stem = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/(es|s)$/, "");
+  const STOP = new Set(["with", "over", "from", "into", "under", "near", "their", "this", "that", "game", "scene", "shot"]);
+  const telling = label
+    .split(/\s+/)
+    .map(stem)
+    .filter((t) => t.length >= 4 && !STOP.has(t));
+  const said = new Set(
+    words.filter((w) => w.start >= from - 0.05 && w.start < to).map((w) => stem(w.text ?? "")),
+  );
+  return telling.some((t) => said.has(t)) ? label : "";
+}
+
 /** Whether a detail's label is a person (a face is never circled): anyone the shot list names. */
 export function isPerson(label: string, people: Iterable<string>): boolean {
   const k = label.trim().toLowerCase();
@@ -536,7 +569,7 @@ export function isPerson(label: string, people: Iterable<string>): boolean {
 export function cameraInputs(a: {
   shots: CameraShot[];
   images: Array<{ kind: string; aspect: number; layers?: unknown; beatIndex?: number; moment?: number }>;
-  clips: Array<{ beatIndex?: number; moment?: number }>;
+  clips: Array<{ beatIndex?: number; moment?: number; label?: string }>;
   chapterOf: (segment: number) => number;
   fps: number;
   enabled: readonly CameraTechnique[];
@@ -577,13 +610,10 @@ export function cameraInputs(a: {
     if (!sh || sh.media.type !== "clip") continue;
     const clip = a.clips[sh.media.index];
     if (!clip || clip.beatIndex !== w.entry || clip.moment !== w.moment) continue;
-    // The label is what the narrator says as the frame holds: the phrase that timed the sentence.
-    const label = momentKeys(m)
-      .map((k) => k.trim().replace(/\s+(of|the|and|in|at|on|to)$/i, ""))
-      .find(
-        (k) => k.length <= 28 && spokenFrame(a.words, w.start, w.end, k, fps) !== undefined,
-      );
-    if (label) freezeCues.push({ at, label });
+    // The label must say what is in the frozen frame (31 Oct 2026 review: a shot-list phrase, "PS3", sat over
+    // a GTA V helicopter shot and read as a caption error): the clip's own frame label from the picture
+    // check, and only when the sentence says something it names. Otherwise the freeze carries no label.
+    freezeCues.push({ at, label: freezeLabel(clip.label, a.words, w.start, w.end) });
   }
   const details = (a.details ?? []).map((d) => {
     const w = a.windows[d.k];

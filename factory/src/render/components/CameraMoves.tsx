@@ -272,6 +272,7 @@ export const FreezeLabel: React.FC<{
         </span>
         {tc}
       </div>
+      {label ? (
       <div
         style={{
           position: "absolute",
@@ -290,6 +291,7 @@ export const FreezeLabel: React.FC<{
       >
         {displayText(label)}
       </div>
+      ) : null}
     </AbsoluteFill>
   );
 };

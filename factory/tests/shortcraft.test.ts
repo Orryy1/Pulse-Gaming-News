@@ -789,3 +789,20 @@ test("the step plans the craft once on a new-look Short, remembers its looks and
   assert.equal(quiet.craft, undefined);
   await db.close();
 });
+
+test("a Short's kinetic filler never takes the styles that need the long frame's width and time", async () => {
+  const { SHORT_KINETIC, shortKineticStyle } = await import("../src/render/shortcraft.ts");
+  const data = {
+    sentence: "Eight years of silence, and we only get a name?",
+    tokens: ["Eight", "years", "of", "silence,", "and", "we", "only", "get", "a", "name?"],
+    shown: [4, 5, 6, 7, 8, 9],
+    hero: 9,
+    split: 2,
+    tone: "punch" as const,
+  };
+  for (const chosen of ["scale", "split", "land"])
+    for (let seed = 0; seed < 6; seed++) assert.ok(SHORT_KINETIC.includes(shortKineticStyle(data, chosen, undefined, seed)));
+  assert.equal(shortKineticStyle(data, "land", undefined, 0), "land");
+  assert.notEqual(shortKineticStyle(data, "land", "land", 0), "land");
+  for (const f of planShortCraft(input(), ALL_ON, []).fillers) if (f.family === "kinetic") assert.ok(SHORT_KINETIC.includes(f.style as never));
+});

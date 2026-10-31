@@ -181,6 +181,10 @@ export const Short: React.FC<ShortProps> = (props) => {
   // The shelf also steps back under a full-width card or a filler, which draw over its band.
   const overShelf = (f: number) =>
     (plan.craft?.fillers ?? []).some((x) => f >= x.from - 4 && f < x.from + x.len + 4) ||
+    (plan.craft?.photos ?? []).some((p) => {
+      const s = plan.shots[p.shot];
+      return !!s && f >= s.start - 4 && f < s.end + 4;
+    }) ||
     (plan.craft?.cards ?? []).some((c) => {
       if (V_STYLES[c.look]?.frame !== "full") return false;
       const w = graphicWindow(c.segment);

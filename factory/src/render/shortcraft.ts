@@ -10,8 +10,8 @@
 //    platforms panel). Never one look twice in a row, at most one full-width Pulse device a Short (it covers
 //    the footage), and a memory across Shorts (the settings row `recent_short_craft`, as wordlook.ts keeps
 //    `recent_word_looks`) so the channel's last Shorts are not repeated.
-// 2. photos: a real-world photo shot of two seconds or more lands as an instant print, taped to a wall,
-//    pinned to an evidence board or (a press photo) as newsprint: the four long-form treatments that settle
+// 2. photos: a real-world photo shot of two seconds or more lands as an instant print, pinned to an
+//    evidence board or (a press photo) as newsprint: the three long-form treatments that settle
 //    inside a second. At most two a Short, never the same twice running.
 // 3. fillers: a line the media-richness measure (src/qa/mediarich.ts) finds bare (no card, nothing chosen for
 //    its own words) gets, in order, kinetic type of its key words, a drawn scene or silhouette, or a document,
@@ -22,8 +22,8 @@
 //
 // Left out as unsuited to Shorts: whip pans, rack focus and vertigo dollies, lens and boil textures, two-stage
 // Ken Burns, explainer diagrams and in-game reconstructions (a Short has no reconstruction clips and no time
-// for a two-stage move), the slow photo treatments (darkroom, camera print, film strip, projector, album,
-// scanner, magnifier, folder, light box, drying line) and the long-form packs whose key content lands after
+// for a two-stage move), the slow photo treatments (duct tape and its torch sweep, darkroom, camera print,
+// film strip, projector, album, scanner, magnifier, folder, light box, drying line) and the long-form packs whose key content lands after
 // about three seconds even when joined part-way.
 
 import type { Db } from "../db.ts";
@@ -34,7 +34,12 @@ import { V_STYLES } from "./components/vertical/index.ts";
 import type { VGfxProps } from "./components/vertical/types.ts";
 import { storyYearOf } from "./components/vertical/pulse/map.ts";
 import { eligible, pressCredit, type PhotoTreatment } from "./photoplan.ts";
-import { kineticFor, type KineticData } from "./components/kinetic/choose.ts";
+import {
+  fittingStyles,
+  kineticFor,
+  type KineticData,
+  type KineticStyle,
+} from "./components/kinetic/choose.ts";
 import {
   keyWords,
   wordsIn,
@@ -52,7 +57,6 @@ export const HOUSE = "House";
 /** The photo treatments that settle inside a second, fit for a Short. */
 export const SHORT_PHOTO_TREATMENTS: readonly PhotoTreatment[] = [
   "instantDrop",
-  "ductTape",
   "evidenceBoard",
   "newsprint",
 ];
@@ -390,6 +394,27 @@ export function pickPhotos(
 
 // ---- 3. Fillers -------------------------------------------------------------------------------------
 
+/**
+ * The kinetic styles that read at once in a Short's window: the words land, stack, are highlighted or typed.
+ * "scale" (a small phrase, its hero word growing later) and "split" (two halves facing off across a wide
+ * frame) need the long frame's width and time, so a Short takes another fitting style instead.
+ */
+export const SHORT_KINETIC: readonly KineticStyle[] = ["land", "stack", "highlight", "typeUnderline"];
+
+/** The chooser's style if it suits a Short, else a fitting Short style other than the previous one. */
+export function shortKineticStyle(
+  d: KineticData,
+  chosen: string,
+  previous: string | undefined,
+  seed: number,
+): KineticStyle {
+  if ((SHORT_KINETIC as readonly string[]).includes(chosen) && chosen !== previous) return chosen as KineticStyle;
+  const fit = fittingStyles(d).filter((s) => SHORT_KINETIC.includes(s));
+  const pool = fit.filter((s) => s !== previous);
+  const list = pool.length ? pool : fit.length ? fit : (["land"] as KineticStyle[]);
+  return list[Math.floor(hash(d.sentence, seed + 11) * list.length)]!;
+}
+
 /** The bare lines' fillers: kinetic type first, then a drawn scene or silhouette, then a document. */
 export function pickFillers(
   input: CraftInput,
@@ -435,12 +460,12 @@ export function pickFillers(
       out.push({
         ...base,
         family: "kinetic",
-        style: k.style,
+        style: shortKineticStyle(k.data, k.style, previousStyle, input.seed),
         data: k.data,
         times: wordTimes(k.data.tokens, spoken, from / fps),
       });
       families.add("kinetic");
-      previousStyle = k.style;
+      previousStyle = (out[out.length - 1] as { style: string }).style;
       return;
     }
     const scene = [

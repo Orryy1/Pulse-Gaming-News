@@ -18,7 +18,7 @@ import { StageWindow, type Rect } from "./pulse/PackCard.tsx";
 import { clamp } from "./kit.ts";
 
 /** The photo band: the print's part of the 1920x1080 frame, full width from just under the brand rows. */
-export const PHOTO_CROP: Rect = { x: 300, y: 0, w: 1320, h: 1080 };
+export const PHOTO_CROP: Rect = { x: 200, y: 0, w: 1520, h: 1080 };
 export const PHOTO_AREA = {
   left: 0,
   top: 320,
@@ -72,6 +72,8 @@ export const VPhotoShot: React.FC<{
 );
 
 const WHOLE: Rect = { x: 0, y: 0, w: 1920, h: 1080 };
+/** Kinetic type sits inside the long frame's 1600 px line width and above its lower third: crop to that. */
+const TYPE: Rect = { x: 160, y: 110, w: 1600, h: 780 };
 
 /** A bare line's filler in the full-width window. */
 export const VFiller: React.FC<{
@@ -103,7 +105,7 @@ export const VFiller: React.FC<{
   if (!body) return null;
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
-      <StageWindow crop={WHOLE} join={0} len={f.len}>
+      <StageWindow crop={f.family === "kinetic" ? TYPE : WHOLE} join={0} len={f.len}>
         {body}
       </StageWindow>
     </AbsoluteFill>

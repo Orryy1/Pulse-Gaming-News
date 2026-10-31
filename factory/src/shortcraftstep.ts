@@ -29,7 +29,7 @@ export function craftNotice(settings: CraftSettings): string {
       ? "Pulse-universe cards (the phone story, posts, mail and chat when the source names them, the calendar, the store, a console, a platforms panel) join the card rotation"
       : "",
     settings.photos
-      ? "real photos land as an instant print, taped to a wall, on an evidence board or as newsprint"
+      ? "real photos land as an instant print, on an evidence board or as newsprint"
       : "",
     settings.fillers
       ? "a line with nothing on screen for it gets kinetic type of its key words (or a drawn scene or a document) for under three seconds"

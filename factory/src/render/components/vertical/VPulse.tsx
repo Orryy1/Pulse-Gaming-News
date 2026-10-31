@@ -38,7 +38,7 @@ export interface PulseLook {
 }
 
 const PHONE: Rect = { x: 600, y: 0, w: 720, h: 1080 };
-const WHOLE: Rect = { x: 0, y: 0, w: 1920, h: 1080 };
+const APP: Rect = { x: 190, y: 40, w: 1540, h: 980 };
 
 export const PULSE_LOOKS: Record<string, PulseLook> = {
   Phone: {
@@ -89,30 +89,31 @@ export const PULSE_LOOKS: Record<string, PulseLook> = {
     crop: { x: 560, y: 60, w: 800, h: 960 },
     tag: true,
   },
-  // Posts, mail and chat keep the whole frame: the credit line (who said it, where) sits in its corner.
+  // Posts, mail and chat: cropped to the window or app (every era's look sits inside it); the post or message
+  // names its sender, the pack's corner credit line falls outside the crop.
   Social: {
     kind: "quote",
     pack: SOCIAL.PulseSocial!,
     as: "quote",
     join: 30,
-    crop: WHOLE,
-    tag: false,
+    crop: APP,
+    tag: true,
   },
   Mail: {
     kind: "quote",
     pack: SOCIAL.PulseMail!,
     as: "quote",
     join: 36,
-    crop: WHOLE,
-    tag: false,
+    crop: APP,
+    tag: true,
   },
   Chat: {
     kind: "quote",
     pack: SOCIAL.PulseChat!,
     as: "quote",
     join: 38,
-    crop: WHOLE,
-    tag: false,
+    crop: APP,
+    tag: true,
   },
   Calendar: {
     kind: "date",

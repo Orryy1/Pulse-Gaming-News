@@ -7,8 +7,12 @@
 // Reads a database COPY and the episode's files read-only; the episode folder it renders from is a scratch
 // folder of junctions to them (data/smoke/soundfx_out/ep), so nothing in the live install is written. Run it
 // through the PC orchestrator (it is a render):
-//   C:\Claude\orchestrator\orch.cmd run --class cpu --project pulse --job "soundfx audio" --priority 20 --est 40 --
+//   set PROOF_ONLY=before   (then before_rest, after_rest, after_demo: one render, about 17 minutes, per PC turn)
+//   C:\Claude\orchestrator\orch.cmd run --class cpu --project pulse --job "soundfx audio" --priority 20 --est 18 --
 //     node --import tsx data/smoke/soundfx_proof.mts <dbcopy> <episode> <fromSeconds> <toSeconds>
+// The renders are audio only (LongProps.audioOnly: no pictures loaded, the clips' sound kept), six tabs. The
+// "after" full mix is not rendered: Remotion's mix is a plain sum (before.wav equals before_rest.wav plus the
+// narration to -75 dB), so data/smoke/soundfx_measure.mts makes after.wav from after_rest.wav and the narration.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -120,11 +124,14 @@ const base = {
   next: assets.nextDoc ? { title: assets.nextDoc.title, thumbFile: null } : undefined,
   variant, audioFile: assets.audio, musicFile: assets.musicFile ?? bedFor(variant), imageFiles: images, clipFiles: clips, plan,
   renderDate: "2026-10-31", breaks: assets.breaks, quietBreaks: assets.quietBreaks, palette: assets.palette, annotations: assets.annotations,
-  eraBeds: doc, sketchAnimation: true, photoTreatments: true,
+  eraBeds: doc, sketchAnimation: true, photoTreatments: true, audioOnly: true,
 };
 const from = Math.round(Number(fromS) * LONG_FPS);
 const to = Math.round(Number(toS) * LONG_FPS) - 1;
+let lastP = -1;
+console.log("bundling");
 const serveUrl = await getBundle();
+console.log("bundled");
 const files = await serveDir(EP);
 const events: Record<string, unknown> = {};
 try {
@@ -135,17 +142,33 @@ try {
     ["after_rest", { soundCraft: craftOn, voiceFxFiles: [] }, false],
     ["after_demo", { soundCraft: craftOn, voiceFxFiles: demoPrep.voiceFxFiles, moments: propMoments(demo) }, true],
   ] as const) {
+    // PROOF_ONLY=before,after: just those renders (each its own short PC turn); the rest are kept or skipped.
+    if (process.env.PROOF_ONLY && !process.env.PROOF_ONLY.split(",").includes(name)) {
+      const f = path.join(OUT, `events_${name}.json`);
+      if (fs.existsSync(f)) events[name] = JSON.parse(fs.readFileSync(f, "utf8"));
+      continue;
+    }
     const props = longProps(files.url, serveUrl, { ...base, ...extra, ...(voice ? {} : { audioFile: null }), soundLog: from } as never);
     const composition = await selectComposition({ serveUrl, id: "PulseLong", inputProps: props });
     const outputLocation = path.join(OUT, `${name}.wav`);
+    const evFile = path.join(OUT, `events_${name}.json`);
+    // A WAV already made (an earlier run stopped part way) is kept, so a rerun takes the PC for less time.
+    if (fs.existsSync(outputLocation) && fs.existsSync(evFile)) {
+      events[name] = JSON.parse(fs.readFileSync(evFile, "utf8"));
+      console.log(`${name}: kept from an earlier run`);
+      continue;
+    }
     const t0 = Date.now();
+    lastP = -1;
     await renderMedia({
-      composition, serveUrl, codec: "wav", outputLocation, inputProps: props, concurrency: 2,
+      composition, serveUrl, codec: "wav", outputLocation, inputProps: props, concurrency: 6,
       frameRange: [from, to], timeoutInMilliseconds: 180_000, chromiumOptions: { gl: "swangle" },
+      onProgress: ({ progress }) => { const p = Math.floor(progress * 10); if (p !== lastP) { lastP = p; console.log(`${name} ${p * 10}%`); } },
       onBrowserLog: (l) => {
         if (l.text.startsWith("SOUNDLOG ")) events[name] = JSON.parse(l.text.slice(9));
       },
     });
+    fs.writeFileSync(evFile, JSON.stringify(events[name] ?? []));
     console.log(`${name}: ${((Date.now() - t0) / 1000).toFixed(0)} s -> ${outputLocation}`);
   }
 } finally {

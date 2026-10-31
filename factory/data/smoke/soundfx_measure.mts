@@ -30,6 +30,15 @@ function lufs(file: string, ss?: number, t?: number): number {
   return m ? Number(m[1]) : Number.NaN;
 }
 
+// The after mix: Remotion's mix is a plain sum (the before render equals before_rest plus the narration to
+// -75 dB), so after.wav is after_rest.wav plus the same narration, summed without normalising.
+const voiceFile = path.join(OUT, "ep", "voice.mp3");
+if (!fs.existsSync(path.join(OUT, "after.wav")))
+  spawnSync("ffmpeg", [
+    "-v", "error", "-y", "-i", path.join(OUT, "after_rest.wav"), "-ss", String(from), "-t", String(to - from), "-i", voiceFile,
+    "-filter_complex", "[1:a]aresample=48000,aformat=channel_layouts=stereo[v];[0:a][v]amix=inputs=2:normalize=0:duration=first",
+    "-c:a", "pcm_s16le", path.join(OUT, "after.wav"),
+  ]);
 // Sentences of the stretch, from the word timings.
 const sentences: Array<{ from: number; to: number; text: string }> = [];
 let cur: typeof words = [];
@@ -68,9 +77,16 @@ const lines = [
   `everything but the voice: before ${lufs(path.join(OUT, "before_rest.wav")).toFixed(1)} LUFS, after ${lufs(path.join(OUT, "after_rest.wav")).toFixed(1)} LUFS`,
   Math.min(...margins.after) >= MIN_MARGIN_DB ? `PASS: speech stays on top by at least ${MIN_MARGIN_DB} dB in every sentence` : `CHECK: a sentence's margin is under ${MIN_MARGIN_DB} dB`,
 ];
-const ev = JSON.parse(fs.readFileSync(path.join(OUT, "events.json"), "utf8"));
+// Each render's own event log (events_<name>.json); the after mix's sounds are the after_rest render's (the
+// narration is the only difference). Only the stretch's events are listed.
+const fps = 30;
+const load = (name: string) =>
+  (JSON.parse(fs.readFileSync(path.join(OUT, `events_${name}.json`), "utf8")) as Array<{ frame: number; sound: string }>).filter(
+    (e) => e.frame >= from * fps - 60 && e.frame < to * fps,
+  );
+const ev = { before: load("before"), after: load("after_rest"), after_demo: load("after_demo") };
 const fmt = (list: Array<{ frame: number; sound: string }>) =>
-  list.map((e) => `  ${(e.frame / ev.fps).toFixed(2).padStart(7)} s  ${e.sound}`);
+  list.map((e) => `  ${(e.frame / fps).toFixed(2).padStart(7)} s  ${e.sound}`);
 lines.push("", `Sound events, before (${ev.before.length}):`, ...fmt(ev.before));
 lines.push("", `Sound events, after (${ev.after.length}):`, ...fmt(ev.after));
 lines.push("", `Sound events, after_demo (${ev.after_demo.length}; two reveals and one message quote marked for the demo only):`, ...fmt(ev.after_demo));

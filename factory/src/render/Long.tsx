@@ -257,6 +257,8 @@ export type LongProps = {
   voiceFx?: Array<{ kind: VoiceFxKind; from: number; to: number; src: string }>;
   /** Proof renders: at this frame the composition logs every sound it places ("SOUNDLOG " and JSON). */
   soundLog?: number;
+  /** Proof renders of the audio alone (data/smoke/soundfx_proof.mts): the shots' pictures are not drawn. */
+  audioOnly?: boolean;
   durationSeconds: number;
   variant: number;
   renderDate: string;
@@ -635,7 +637,9 @@ const Clip: React.FC<{
   startFrom?: number;
   /** The game sound's level by the shot's own frame (soundfx.ts gameEnvelope); absent, the fixed level. */
   level?: (f: number) => number;
-}> = ({ src, audio, frames, punchAt, startFrom, level }) => {
+  /** An audio-only proof render: the clip's sound alone, no picture decoded. */
+  audioOnly?: boolean;
+}> = ({ src, audio, frames, punchAt, startFrom, level, audioOnly }) => {
   const frame = useCurrentFrame();
   const punch =
     punchAt === undefined
@@ -643,6 +647,18 @@ const Clip: React.FC<{
       : interpolate(frame, [punchAt, punchAt + 2], [1, PUNCH], clamp);
   // A J/L clip's sound is its own <Audio> outside the shot (it runs past both cuts), so the picture is muted.
   const sound = audio && frames && startFrom === undefined;
+  if (audioOnly)
+    return sound ? (
+      <Audio
+        src={src}
+        volume={
+          level
+            ? (f) =>
+                level(f) * Math.max(0, Math.min(1, f / 8, (frames - f) / 8))
+            : (f) => gameSoundVolume(f, frames)
+        }
+      />
+    ) : null;
   // A hard cut: fading in from transparent showed the black canvas under it for a few frames.
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
@@ -1067,6 +1083,8 @@ const Backdrop: React.FC<{
   jl?: Map<number, JlCut>;
   /** The game sound's level by absolute frame (src/render/soundfx.ts gameEnvelope); absent, the fixed level. */
   gameLevel?: (f: number) => number;
+  /** An audio-only proof render (LongProps.audioOnly): only the clips' sound, no pictures. */
+  audioOnly?: boolean;
 }> = ({
   plan,
   images,
@@ -1084,6 +1102,7 @@ const Backdrop: React.FC<{
   displays,
   jl,
   gameLevel,
+  audioOnly,
 }) => (
   <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
     {plan.shots.map((s, i) => {
@@ -1140,6 +1159,20 @@ const Backdrop: React.FC<{
         if (powerOff?.has(i)) out = <PowerOff frames={seqLen}>{out}</PowerOff>;
         return out;
       };
+      // An audio-only proof render plays only the clips' sound: no picture is loaded or decoded.
+      if (audioOnly)
+        return clip ? (
+          <Sequence key={i} from={s.start} durationInFrames={len} layout="none">
+            <Clip
+              src={clip.src}
+              audio={clip.audio}
+              frames={len}
+              startFrom={jl?.get(i)?.lead}
+              level={gameLevel ? (f) => gameLevel(s.start + f) : undefined}
+              audioOnly
+            />
+          </Sequence>
+        ) : null;
       return (
         <Sequence
           key={i}
@@ -1155,6 +1188,7 @@ const Backdrop: React.FC<{
                 frames={len}
                 startFrom={jl?.get(i)?.lead}
                 level={gameLevel ? (f) => gameLevel(s.start + f) : undefined}
+                audioOnly={audioOnly}
                 punchAt={
                   !dev && punches?.has(i)
                     ? punches.get(i)! - s.start
@@ -3512,6 +3546,7 @@ export const Long: React.FC<LongProps> = (props) => {
         displays={photoPlan.displays}
         jl={jl}
         gameLevel={gameLevel}
+        audioOnly={props.audioOnly}
       />
       {accents.map((a, k) => (
         <Sequence
@@ -3533,7 +3568,7 @@ export const Long: React.FC<LongProps> = (props) => {
           )}
         </Sequence>
       ))}
-      {openings.map((o, k) => (
+      {(props.audioOnly ? [] : openings).map((o, k) => (
         <Sequence
           key={`open${k}`}
           from={o.from}
@@ -4322,15 +4357,21 @@ export const Long: React.FC<LongProps> = (props) => {
             durationInFrames={b.span}
             layout="none"
           >
+            {/* "extend": the volume curve's frame keeps counting across loops. Remotion's default
+                ("repeat") restarts it at each loop, so after a bed's first two minutes the music ducked
+                to the wrong frames and replayed its opening breather's lift (+13 dB for 4 s) under the
+                voice at every loop point (found by the 31 Oct 2026 sound proof, Vice City at 10:20). */}
             <Audio
               src={resolveSrc(b.src)!}
               loop
+              loopVolumeCurveBehavior="extend"
               volume={(f) => level(f) * (pocket ? 1 - weight(f) : 1)}
             />
             {pocket ? (
               <Audio
                 src={resolveSrc(pocketOf(b.src))!}
                 loop
+                loopVolumeCurveBehavior="extend"
                 volume={(f) => level(f) * weight(f)}
               />
             ) : null}

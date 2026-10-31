@@ -483,3 +483,18 @@ test("the owner's line names what the sound craft will do, and says when it is o
     /off/,
   );
 });
+
+test("every looping music bed in the long video keeps its volume curve across loops (no replayed lift at a loop point)", () => {
+  const src = fs.readFileSync(
+    path.join(ROOT, "src", "render", "Long.tsx"),
+    "utf8",
+  );
+  // Each <Audio ...> element up to its "/>" (its props hold arrow functions, so no [^>] matching).
+  const loops = src
+    .split("<Audio")
+    .slice(1)
+    .map((s) => s.slice(0, s.indexOf("/>")))
+    .filter((a) => /^\s*loop\s*$/m.test(a));
+  assert.ok(loops.length >= 2);
+  for (const a of loops) assert.match(a, /loopVolumeCurveBehavior="extend"/);
+});

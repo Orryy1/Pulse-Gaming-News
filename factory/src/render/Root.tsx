@@ -32,7 +32,16 @@ import {
   SAMPLE_PHOTO,
   type PhotoPreviewProps,
 } from "./PhotoPreview.tsx";
-import { WordPreview, SAMPLE_WORD, type WordPreviewProps } from "./components/wordmoment/Preview.tsx";
+import {
+  WordPreview,
+  SAMPLE_WORD,
+  type WordPreviewProps,
+} from "./components/wordmoment/Preview.tsx";
+import {
+  LocalVideoPreview,
+  SAMPLE_LOCALVIDEO,
+  type LocalVideoPreviewProps,
+} from "./components/localvideo/Preview.tsx";
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -219,6 +228,22 @@ export const RemotionRoot: React.FC = () => (
       width={1080}
       height={1350}
       defaultProps={SAMPLE_ENGAGE}
+    />
+    {/* One AI motion clip shot on its own, for previews (src/render/components/localvideo/Preview.tsx). */}
+    <Composition
+      id="PulseLocalVideo"
+      component={LocalVideoPreview}
+      fps={LONG_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={Math.ceil(SAMPLE_LOCALVIDEO.durationSeconds * LONG_FPS)}
+      defaultProps={SAMPLE_LOCALVIDEO}
+      calculateMetadata={({ props }: { props: LocalVideoPreviewProps }) => ({
+        durationInFrames: Math.max(
+          30,
+          Math.ceil(props.durationSeconds * LONG_FPS),
+        ),
+      })}
     />
   </>
 );

@@ -391,6 +391,7 @@ export const ECHO_LEAD_SECONDS = 4;
 const REVERSE: Record<MovePreset, MovePreset> = {
   pushIn: "pullBack",
   pullBack: "pushIn",
+  twoStage: "pullBack",
   pushPan: "pullBack",
   driftDown: "pullBack",
   settle: "pullBack",

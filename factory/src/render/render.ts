@@ -431,6 +431,7 @@ export interface LongRenderInput {
       moment?: number;
       credit?: string;
       audio?: boolean;
+      label?: string;
     }>;
     musicFile: string | null;
   };
@@ -461,7 +462,7 @@ type ThumbInput = Omit<
 };
 
 /** The long composition's props with every episode file as a URL on the loopback server. */
-function longProps(
+export function longProps(
   filesUrl: string,
   serveUrl: string,
   p: LongRenderInput["props"],
@@ -505,6 +506,7 @@ function longProps(
         moment: c.moment,
         credit: c.credit,
         audio: c.audio,
+        label: c.label,
       })),
       logoSrc: "logo.png",
       musicSrc: musicFile,

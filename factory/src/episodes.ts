@@ -152,6 +152,14 @@ export interface EpisodeAssets {
     box: [number, number, number, number];
     label: string;
   }>;
+  /** Named details written in the pictures (src/assets/ocr.ts), marked by the documentary's camera; same shape. */
+  textDetails?: Array<{
+    entry: number;
+    moment: number;
+    image: number;
+    box: [number, number, number, number];
+    label: string;
+  }>;
   breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds, narration silent)
   thumb?: string; // thumb.jpg for the long-form video
   thumbVariants?: string[]; // thumb_b.jpg, thumb_c.jpg: extra designs for YouTube's Test & compare

@@ -234,15 +234,15 @@ export function pullWindow(
  * of each edit.
  */
 export function segmentsOf(
-  rows: Array<{ time: number; luma: number; scene?: number }>,
+  rows: Array<{ time: number; luma: number; motion?: number; scene?: number }>,
   totalSeconds: number,
   min = SEGMENT_MIN_SECONDS,
   max = SEGMENT_MAX_SECONDS,
   darkLuma = 30,
-): Array<{ from: number; len: number }> {
+): Array<{ from: number; len: number; motion: number }> {
   const jumps = clipJumps(rows);
   const edges = [0, ...jumps, totalSeconds];
-  const out: Array<{ from: number; len: number }> = [];
+  const out: Array<{ from: number; len: number; motion: number }> = [];
   for (let k = 0; k + 1 < edges.length; k++) {
     const a = k === 0 ? 0 : edges[k]! + 1 / 15;
     const b =
@@ -261,8 +261,10 @@ export function segmentsOf(
       // A dim stretch reads as black on a phone even with no single black frame (31 Oct 2026 proof: a night
       // warehouse in San Andreas): the segment's mean brightness must clear DIM_LUMA too.
       const mean = all ? inside.reduce((n, r) => n + r.luma, 0) / all : 255;
+      // How much the picture moves: a paused game or a held menu reads as a frozen video.
+      const motion = all ? inside.reduce((n, r) => n + (r.motion ?? 0), 0) / all : 0;
       if (!all || (dark / all < 0.1 && mean >= DIM_LUMA))
-        out.push({ from: round(at), len: round(take) });
+        out.push({ from: round(at), len: round(take), motion: Math.round(motion * 100) / 100 });
       at += take;
     }
   }
@@ -289,6 +291,47 @@ export function roundRobin<T>(xs: T[], group: (x: T) => unknown): T[] {
   for (let r = 0; out.length < xs.length; r++)
     for (const g of groups.values()) if (g[r] !== undefined) out.push(g[r]!);
   return out;
+}
+
+/** Below this mean frame difference (0-255, at 320 px) a segment is a frozen picture: a pause, a held menu. */
+export const FROZEN_MOTION = 0.3;
+/** Two segments of one video whose middle frames' hashes differ in at most this many of 64 bits look the same. */
+export const SAME_PICTURE_BITS = 6;
+
+/** A 64-bit difference hash from a 9x8 greyscale thumbnail (row by row): each bit is "brighter than its right neighbour". */
+export function dHash(gray: Uint8Array | number[]): string {
+  let bits = "";
+  for (let y = 0; y < 8; y++)
+    for (let x = 0; x < 8; x++) bits += gray[y * 9 + x]! > gray[y * 9 + x + 1]! ? "1" : "0";
+  return bits;
+}
+
+/** How many bits two hashes differ in (64 when either is missing). */
+export function hamming(a: string | undefined, b: string | undefined): number {
+  if (!a || !b || a.length !== b.length) return 64;
+  let n = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) n++;
+  return n;
+}
+
+/**
+ * Readable words in a frame the OCR found, outside the game's own HUD corners (the minimap bottom left, money
+ * and clock top right). Subtitles, tutorial prompts and mission lines are words; HUD digits and the scraps the
+ * engine makes of stylised numbers are not (31 Oct 2026: 60 frames read in 1.2 s, subtitles read cleanly).
+ */
+export function captionWords(page: { width: number; height: number; words: Array<{ text: string; x: number; y: number; w: number; h: number }> } | undefined): number {
+  if (!page || !page.width || !page.height) return 0;
+  return page.words.filter((w) => {
+    const letters = (w.text.match(/[a-z]/gi) ?? []).length;
+    if (letters < 3 || letters / w.text.length < 0.75) return false;
+    // Lower-case letters after the first: a real word, not a run of digits read as capitals.
+    if (!/^[A-Za-z][a-z'.,!?:-]+$/.test(w.text) && !/^[A-Z]{3,}[.,!?]?$/.test(w.text)) return false;
+    const cx = (w.x + w.w / 2) / page.width;
+    const cy = (w.y + w.h / 2) / page.height;
+    if (cx > 0.6 && cy < 0.35) return false; // money, clock, health, wanted stars
+    if (cx < 0.25 && cy > 0.65) return false; // the minimap
+    return true;
+  }).length;
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -632,8 +675,14 @@ export interface FootageFirstDeps {
   ): Promise<
     Array<{ time: number; luma: number; motion: number; scene?: number }>
   >;
-  /** One frame of a file at a time, as a jpeg. */
-  frame(file: string, at: number, dest: string): Promise<void>;
+  /** Frames across [at, at+seconds] of a file, about one a second and at least three, as jpegs named from prefix. */
+  frames(file: string, at: number, seconds: number, prefix: string): Promise<string[]>;
+  /** One image of these frames side by side. */
+  compose(files: string[], dest: string): Promise<void>;
+  /** A frame's difference hash (dHash), or undefined. */
+  hash(file: string): Promise<string | undefined>;
+  /** The words the Windows OCR reads in each frame (empty where there is no OCR). */
+  ocr(files: string[]): Promise<Map<string, { width: number; height: number; words: Array<{ text: string; x: number; y: number; w: number; h: number }> }>>;
   /** The local model's look at each frame. */
   look(files: string[]): Promise<Array<SegmentLook | undefined>>;
   /** Cuts [at, at+seconds] of a file into dest; returns the real length, or undefined when it failed or went dark. */
@@ -928,6 +977,7 @@ export async function gatherChapterFootage(
       src: number;
       at: number;
       len: number;
+      motion: number;
       frame: string;
     }> = [];
     for (const [i, s] of sources.entries()) {
@@ -939,6 +989,7 @@ export async function gatherChapterFootage(
           src: i,
           at: g.from,
           len: g.len,
+          motion: g.motion,
           frame: path.join(work, `seg_${all.length}.jpg`),
         });
     }
@@ -963,48 +1014,68 @@ export async function gatherChapterFootage(
     }> = [];
     try {
       const looked = new Set<number>();
+      // Middle-frame hashes of each video's segments already sent to the model.
+      const seenHash = new Map<number, string[]>();
+      let modelLooks = 0;
       let clean = 0;
-      while (
-        looked.size < Math.min(o.visionMax, all.length) &&
-        clean < need * 1.25
-      ) {
+      while (modelLooks < o.visionMax && clean < need * 1.25) {
         const left = all.filter((g) => !looked.has(g.id));
         const size = Math.min(
-          o.visionMax - looked.size,
+          o.visionMax - modelLooks,
           Math.max(8, Math.ceil(((need * 1.25 - clean) / 5) * 3)),
         );
         const round = spread(left, size);
         if (!round.length) break;
-        // Two frames a segment, a quarter and three quarters in: one in the middle missed a "Mission passed"
-        // banner, a kill counter and a vehicle name that came and went around it (31 Oct 2026 proof).
-        const late = (f: string) => f.replace(/\.jpg$/, "_b.jpg");
+        const refuse = (g: (typeof all)[number], reason: string) =>
+          verdicts.push({ g, look: undefined, reason, source: sources[g.src]!.url });
+        // The cheap tests first, on this PC's CPU: a frozen picture, frames across the segment, a picture the
+        // video already showed, words the Windows OCR can read.
+        const pending: Array<{ g: (typeof all)[number]; frames: string[] }> = [];
         for (const g of round) {
           looked.add(g.id);
-          for (const [f, at] of [
-            [g.frame, g.at + g.len * 0.25],
-            [late(g.frame), g.at + g.len * 0.75],
-          ] as const)
-            await deps
-              .frame(sources[g.src]!.file, at, f)
-              .catch(() => undefined);
+          if (g.motion < FROZEN_MOTION) {
+            refuse(g, "frozen picture");
+            continue;
+          }
+          const frames = await deps
+            .frames(sources[g.src]!.file, g.at, g.len, g.frame.replace(/\.jpg$/, ""))
+            .catch(() => [] as string[]);
+          if (frames.length < 3) {
+            refuse(g, "no frames");
+            continue;
+          }
+          const h = await deps.hash(frames[Math.floor(frames.length / 2)]!).catch(() => undefined);
+          const same = seenHash.get(g.src) ?? [];
+          if (h && same.some((x) => hamming(x, h) <= SAME_PICTURE_BITS)) {
+            refuse(g, "same picture as another segment");
+            continue;
+          }
+          if (h) seenHash.set(g.src, [...same, h]);
+          pending.push({ g, frames });
         }
-        const looks = await deps.look(
-          round.flatMap((g) => [g.frame, late(g.frame)]),
-        );
+        const pages = await deps.ocr(pending.flatMap((x) => x.frames)).catch(() => new Map());
+        const ask: typeof pending = [];
+        for (const x of pending)
+          if (x.frames.some((f) => captionWords(pages.get(f)) >= 2)) refuse(x.g, "text on screen (read)");
+          else ask.push(x);
+        // One look a segment: its first, middle and last frames side by side (31 Oct 2026: two separate looks a
+        // segment cost 44 of a 64-minute run, and the middle frame alone missed banners that came and went).
+        for (const x of ask) {
+          const f = x.frames;
+          await deps
+            .compose([f[0]!, f[Math.floor(f.length / 2)]!, f[f.length - 1]!], x.g.frame)
+            .catch(() => undefined);
+        }
+        const looks = ask.length ? await deps.look(ask.map((x) => x.g.frame)) : [];
+        modelLooks += ask.length;
         report.looked += looks.filter(Boolean).length;
-        for (const [i, g] of round.entries()) {
-          const [a, b] = [looks[2 * i], looks[2 * i + 1]];
-          const reason = segmentRejectReason(a) ?? segmentRejectReason(b);
-          verdicts.push({
-            g,
-            look: a?.label ? a : (b ?? a),
-            reason,
-            source: sources[g.src]!.url,
-          });
-          if (!reason) clean += g.len;
+        for (const [i, x] of ask.entries()) {
+          const reason = segmentRejectReason(looks[i]);
+          verdicts.push({ g: x.g, look: looks[i], reason, source: sources[x.g.src]!.url });
+          if (!reason) clean += x.g.len;
         }
         // Nothing could be looked at (the local model is down): another round would see nothing either.
-        if (looks.every((l) => !l)) break;
+        if (ask.length && looks.every((l) => !l)) break;
       }
     } finally {
       release?.();

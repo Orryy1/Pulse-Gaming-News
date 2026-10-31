@@ -438,9 +438,9 @@ export interface SegmentLook {
   live: boolean;
 }
 
-const LOOK_PROMPT = `You look at one frame of a gameplay recording for a documentary editor. Give a short label and answer each question with true or false.
-label: what the frame shows, under 9 words, concrete nouns (for example "red sports car on a palm-lined beach road at sunset").
-text: any readable words anywhere: titles, subtitles, captions, menus, objective text, watermarks, channel names, subscribe buttons.
+const LOOK_PROMPT = `You look at three frames of one few-second segment of a gameplay recording, side by side (start, middle, end), for a documentary editor. Give a short label for the segment and answer each question with true or false; a question is true when it holds in any of the three frames.
+label: what the segment shows, under 9 words, concrete nouns (for example "red sports car on a palm-lined beach road at sunset"). Never leave it empty.
+text: any readable words anywhere: titles, subtitles, captions, banners such as "mission passed", place and vehicle names written large, menus, objective text, watermarks, channel names, subscribe buttons.
 hud_only: true only when every piece of writing is the game's own small heads-up display in a corner (minimap, ammo, health, money); false when there is any other writing, and false when there is no writing at all.
 webcam: a real person's webcam or facecam, a picture-in-picture box, stream chat, alerts or any recording overlay.
 gore: blood sprays, wounds, dead bodies, executions.

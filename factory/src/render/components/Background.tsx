@@ -20,6 +20,10 @@ import {
 import { BANDS, CREDIT_TOP, SAFE, WIDTH } from "../layout.ts";
 import { BODY } from "./fonts.ts";
 import { CrtLook, VhsLook } from "./Retro.tsx";
+import { ShotCamera } from "./CameraMoves.tsx";
+import { VPhotoShot } from "./vertical/craft.tsx";
+import type { CutMove, ShotMove } from "../camera.ts";
+import type { PhotoTreatment } from "../photoplan.ts";
 
 /** The new-look dressing of a Short's shots (src/render/Short.tsx): punch-ins and an old game's period looks. */
 export interface ShotDressing {
@@ -27,6 +31,10 @@ export interface ShotDressing {
   punches: Map<number, number>;
   /** Per shot index: the tape or tube look of an old game. */
   looks: Map<number, "vhs" | "crt">;
+  /** Per shot index: a real photo's treatment (src/render/shortcraft.ts), drawn in place of the plain still. */
+  photos?: Map<number, { treatment: PhotoTreatment; seed: number }>;
+  /** Per shot index: the craft camera's push through the cut into or out of it, or its freeze-frame. */
+  camera?: Map<number, { into?: CutMove; out?: CutMove; move?: ShotMove }>;
 }
 
 /** Ink field with the game title and an amber rule: shown only when a shot has no media. */
@@ -328,6 +336,27 @@ export const ArtTrack: React.FC<{
     });
     body = <AbsoluteFill style={{ transform: `scale(${p})` }}>{body}</AbsoluteFill>;
   }
+  const photo = dress?.photos?.get(index);
+  if (photo && image && (image.kind === "photo" || image.kind === "portrait"))
+    body = (
+      <VPhotoShot
+        src={image.src}
+        blurSrc={image.blurSrc}
+        aspect={image.aspect}
+        kind={image.kind}
+        treatment={photo.treatment}
+        seed={photo.seed}
+        len={len}
+        move={shot.move}
+      />
+    );
+  const cam = dress?.camera?.get(index);
+  if (cam)
+    body = (
+      <ShotCamera len={len} from={shot.start} fps={plan.fps} into={cam.into} out={cam.out} move={cam.move}>
+        {body}
+      </ShotCamera>
+    );
   const look = dress?.looks.get(index);
   if (look === "vhs")
     body = (

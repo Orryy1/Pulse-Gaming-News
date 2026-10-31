@@ -219,6 +219,7 @@ import {
 } from "./growth.ts";
 import { holdSlotForCap } from "./cadence.ts";
 import { mediaRichNotice, shortMediaRichness } from "./qa/mediarich.ts";
+import { craftForShort } from "./shortcraftstep.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
 import {
@@ -7450,11 +7451,25 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   assets.plan = plan;
   // How much of the narration has something chosen for its own words on screen (src/qa/mediarich.ts): measured
   // on every Short and kept in qa_json; under SHORT_MEDIA_RICH_TARGET it is a line in the evening summary.
+  // The long videos' craft on the new-look Shorts (src/shortcraftstep.ts): planned once, stored on the plan.
+  const craftFills = await craftForShort(s, ep.id, {
+    suite: suiteFor(s.cfg, ep),
+    segments,
+    words,
+    plan,
+    images: (assets.images ?? []).map((i) => ({ kind: i.kind, credit: photoCredit(i), beatIndex: i.beatIndex })),
+    clips: assets.clips ?? [],
+    stamps: stampsFor(script, words),
+    game: script.game_title,
+    gameYear: Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined,
+    seed: variant,
+  });
   const mediaRich = shortMediaRichness(
     segments,
     plan,
     assets.images ?? [],
     assets.clips ?? [],
+    craftFills,
   );
   log(
     mediaRich.covered < s.cfg.shortMediaRichTarget ? "warn" : "info",

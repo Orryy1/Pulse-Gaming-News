@@ -35,6 +35,7 @@ import type { Tone } from "./components/wordmoment/types.ts";
 import { pickWordLook } from "./wordlook.ts";
 import { Pip, PIP_SHORT, sinceLast } from "./components/Pip.tsx";
 import type { ShotDressing } from "./components/Background.tsx";
+import type { CutMove, ShotMove } from "./camera.ts";
 import {
   CutAccent,
   ACCENT_FRAMES,
@@ -45,8 +46,11 @@ import { ChannelStatic, STATIC_FRAMES } from "./components/Retro.tsx";
 import { OLD_YEAR } from "./retroplan.ts";
 import { keyTime } from "./longplan.ts";
 import { HookPoster } from "./components/HookPoster.tsx";
-import { V_STYLES } from "./components/vertical/index.ts";
+import { V_STYLES, V_STYLES_CORE } from "./components/vertical/index.ts";
 import { VBOX, type VStyle } from "./components/vertical/types.ts";
+import { storyYearOf } from "./components/vertical/pulse/map.ts";
+import { VFiller, VFreezeLabel } from "./components/vertical/craft.tsx";
+import { HOUSE, SHORT_TRACK_FRAMES } from "./shortcraft.ts";
 import { motifsFor } from "./components/motifs/index.ts";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
@@ -174,6 +178,15 @@ export const Short: React.FC<ShortProps> = (props) => {
     );
     return Math.min(o, dim);
   }, 1);
+  // The shelf also steps back under a full-width card or a filler, which draw over its band.
+  const overShelf = (f: number) =>
+    (plan.craft?.fillers ?? []).some((x) => f >= x.from - 4 && f < x.from + x.len + 4) ||
+    (plan.craft?.cards ?? []).some((c) => {
+      if (V_STYLES[c.look]?.frame !== "full") return false;
+      const w = graphicWindow(c.segment);
+      return f >= w.from - 4 && f < w.from + w.len + 4;
+    });
+  const shelfLevel = () => (overShelf(frame) ? Math.min(shelfOpacity, 0.06) : shelfOpacity);
   const loopStart =
     loopIndex >= 0
       ? segmentStarts[loopIndex]!
@@ -227,7 +240,21 @@ export const Short: React.FC<ShortProps> = (props) => {
     const punches = new Map<number, number>();
     const looks = new Map<number, "vhs" | "crt">();
     const accents: Array<{ at: number; kind: AccentKind | "static" }> = [];
-    if (!props.suite) return { dress: { punches, looks }, accents };
+    // The craft (src/render/shortcraft.ts): treated photos and camera moves, which keep every other dressing off their shots.
+    const craft = plan.craft;
+    const photos = new Map((craft?.photos ?? []).map((p) => [p.shot, { treatment: p.treatment, seed: p.seed }]));
+    const camera = new Map<number, { into?: CutMove; out?: CutMove; move?: ShotMove }>();
+    for (const m of craft?.moves ?? []) {
+      if (m.kind === "freeze")
+        camera.set(m.shot, { ...camera.get(m.shot), move: { kind: "freeze", at: m.at, hold: m.hold, label: m.label } });
+      else {
+        const cut: CutMove = { kind: "track", dir: 1, frames: SHORT_TRACK_FRAMES };
+        camera.set(m.shot, { ...camera.get(m.shot), into: cut });
+        camera.set(m.shot - 1, { ...camera.get(m.shot - 1), out: cut });
+      }
+    }
+    const crafted = (i: number) => photos.has(i) || camera.has(i);
+    if (!props.suite) return { dress: { punches, looks, photos, camera }, accents };
     const shots = plan.shots;
     const last = shots.length - 1;
     // Punch-ins: the first time each kept-lit word is spoken after the hook, at most three, 5 s apart.
@@ -250,6 +277,7 @@ export const Short: React.FC<ShortProps> = (props) => {
         i === 0 ||
         i === last ||
         punches.has(i) ||
+        crafted(i) ||
         f - s.start < 18 ||
         s.end - f < 24
       )
@@ -260,7 +288,7 @@ export const Short: React.FC<ShortProps> = (props) => {
     // An old game: every other shot after the first wears the tape (or, before 1994, the tube).
     if (old)
       shots.forEach((s, i) => {
-        if (i > 0 && i < last && i % 2 === 1)
+        if (i > 0 && i < last && i % 2 === 1 && !photos.has(i))
           looks.set(i, year! < 1994 ? "crt" : "vhs");
       });
     // Accents on about one cut in three, 4 s apart, clear of the turns, the stamps and the loop.
@@ -277,6 +305,7 @@ export const Short: React.FC<ShortProps> = (props) => {
       )
         return;
       if ((i * 5 + props.variant) % 3 !== 0) return;
+      if (crafted(i) || camera.get(i - 1)?.out) return;
       if (plan.turns.some((t) => Math.abs(t - at) < 20)) return;
       if (
         (props.stamps ?? []).some(
@@ -287,7 +316,7 @@ export const Short: React.FC<ShortProps> = (props) => {
       accents.push({ at, kind: old ? "static" : kinds[n++ % kinds.length]! });
       lastAccent = at;
     });
-    return { dress: { punches, looks }, accents };
+    return { dress: { punches, looks, photos, camera }, accents };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     props.suite,
@@ -328,6 +357,12 @@ export const Short: React.FC<ShortProps> = (props) => {
   // can draw it (src/render/components/vertical), so two stats in a Short never look the same.
   const vstyleOf = useMemo(() => {
     const out = new Map<number, VStyle>();
+    // A plan with the craft carries every card's look, chosen with the channel's memory (src/render/shortcraft.ts).
+    if (plan.craft) {
+      for (const c of plan.craft.cards)
+        if (c.look !== HOUSE && V_STYLES[c.look]) out.set(c.segment, V_STYLES[c.look]!);
+      return out;
+    }
     if (!props.suite) return out;
     const turn = new Map<string, number>();
     props.segments.forEach((sg, i) => {
@@ -343,9 +378,10 @@ export const Short: React.FC<ShortProps> = (props) => {
             ? flapRows(v.date_from, v.date_to)
             : (v.items ?? []),
       };
-      const styles = Object.keys(V_STYLES)
+      // Plans from before the craft rotate through the packs they knew, so a re-render looks the same.
+      const styles = Object.keys(V_STYLES_CORE)
         .sort()
-        .map((k) => V_STYLES[k]!)
+        .map((k) => V_STYLES_CORE[k]!)
         .filter((st) => st.kind === v.kind && (!st.fits || st.fits(data)));
       if (!styles.length) return;
       const n = turn.get(v.kind) ?? 0;
@@ -356,7 +392,8 @@ export const Short: React.FC<ShortProps> = (props) => {
       if (pick) out.set(i, pick);
     });
     return out;
-  }, [props.suite, props.segments, props.variant]);
+  }, [props.suite, props.segments, props.variant, plan.craft]);
+  const madeYear = Number(String(props.renderDate ?? "").slice(0, 4)) || 2026;
   // The new-look motif sting: the story's series, console or genre look for a second as the hook ends.
   const motif = props.suite
     ? motifsFor({
@@ -498,13 +535,17 @@ export const Short: React.FC<ShortProps> = (props) => {
           >
             {vstyleOf.get(i) ? (
               <div
-                style={{
-                  position: "absolute",
-                  left: VBOX.left,
-                  top: VBOX.top,
-                  width: VBOX.width,
-                  height: VBOX.height,
-                }}
+                style={
+                  vstyleOf.get(i)!.frame === "full"
+                    ? { position: "absolute", inset: 0 }
+                    : {
+                        position: "absolute",
+                        left: VBOX.left,
+                        top: VBOX.top,
+                        width: VBOX.width,
+                        height: VBOX.height,
+                      }
+                }
               >
                 {React.createElement(vstyleOf.get(i)!.component, {
                   v: {
@@ -512,7 +553,13 @@ export const Short: React.FC<ShortProps> = (props) => {
                     primary: s.visual!.primary,
                     secondary: s.visual!.secondary,
                     items: s.visual!.items ?? [],
+                    date_to: s.visual!.date_to,
+                    region: s.visual!.region,
                   },
+                  storyYear: storyYearOf(
+                    { kind: s.visual!.kind, primary: s.visual!.primary, secondary: s.visual!.secondary, items: [] },
+                    madeYear,
+                  ),
                   len: graphicWindow(i).len,
                   accent,
                   variant: props.variant + i,
@@ -537,6 +584,19 @@ export const Short: React.FC<ShortProps> = (props) => {
         ) : null,
       )}
 
+      {(plan.craft?.fillers ?? []).map((f, k) => (
+        <Sequence key={`fill${k}`} from={f.from} durationInFrames={f.len} layout="none">
+          <VFiller f={f} seed={props.variant + k} src={props.images.find((im) => im.aspect >= 1.2)?.src} />
+        </Sequence>
+      ))}
+      {(plan.craft?.moves ?? []).map((m, k) =>
+        m.kind === "freeze" ? (
+          <Sequence key={`frz${k}`} from={m.at} durationInFrames={m.hold + 8} layout="none">
+            <VFreezeLabel label={m.label} hold={m.hold} seconds={m.at / fps} accent={accent} />
+          </Sequence>
+        ) : null,
+      )}
+
       {(props.stamps ?? []).map((st, i) => (
         <Sequence
           key={`stamp${i}`}
@@ -554,7 +614,7 @@ export const Short: React.FC<ShortProps> = (props) => {
         </Sequence>
       ))}
       {/* The shelf steps back while a stamp holds the band, so the two never overlap. */}
-      <AbsoluteFill style={{ opacity: shelfOpacity }}>
+      <AbsoluteFill style={{ opacity: shelfLevel() }}>
         <Shelf
           plan={plan}
           accent={accent}

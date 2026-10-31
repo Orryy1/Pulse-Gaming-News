@@ -642,10 +642,12 @@ export const Highlight: React.FC<KineticProps> = ({
                       <span
                         style={{
                           position: "absolute",
-                          left: "-4%",
+                          // Padding in pixels, not percent: a short word like "plan" needs as much
+                          // margin as a long one, and the skew pulls the bottom corner inwards.
+                          left: -fit.size * 0.14,
                           top: "12%",
                           height: "80%",
-                          width: `${108 * sweep}%`,
+                          width: `calc((100% + ${fit.size * 0.28}px) * ${sweep})`,
                           background: COLOUR.amber,
                           transform: "skewX(-8deg)",
                           borderRadius: 6,

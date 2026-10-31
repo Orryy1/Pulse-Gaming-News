@@ -75,6 +75,15 @@ export function footageOptions(cfg: {
   };
 }
 
+/** Seconds one look on the local model takes, near enough (31 Oct 2026: 4.7-5.1 s). */
+export const LOOK_SECONDS = 5;
+
+/** This chapter's end: an even share of the time left among the released chapters still to come. */
+export function fairDeadline(now: number, deadline: number, chaptersLeft: number): number {
+  if (!Number.isFinite(deadline)) return deadline;
+  return now + Math.max(0, deadline - now) / Math.max(1, chaptersLeft);
+}
+
 /** Source windows downloaded at the same time. */
 export const DOWNLOADS_AT_ONCE = 6;
 
@@ -1115,6 +1124,8 @@ export async function finishChapter(
         const size = Math.min(
           o.visionMax - modelLooks,
           Math.max(8, Math.ceil(((need * 1.25 - clean) / 5) * 3)),
+          // No round runs far past the chapter's time: one could take six minutes (31 Oct 2026 proof).
+          Math.max(4, Math.floor((deadline - now()) / (LOOK_SECONDS * 1000))),
         );
         const round = spread(left, size);
         if (!round.length) break;
@@ -1341,7 +1352,10 @@ export async function gatherFootageFirst(
     ahead = prefetch(k + 1);
     const rel = `entry_${ch.entry}`;
     const k0 = out.length;
-    if (pre) await finishChapter(deps, ch, clips, rel, path.join(episodeDir, rel), o, report, out, deadline, pre, keepFrames);
+    // Every released chapter gets its share of the time left: the first ones took 10-12 minutes each and the
+    // limit ran out with three chapters untouched (31 Oct 2026 proof).
+    const own = fairDeadline(now(), deadline, chapters.slice(k).filter((c) => !notOutYet(c.year)).length);
+    if (pre) await finishChapter(deps, ch, clips, rel, path.join(episodeDir, rel), o, report, out, own, pre, keepFrames);
     if (!report.skipped.some((x) => x.entry === ch.entry))
       (report.perChapter ??= []).push({
         entry: ch.entry,

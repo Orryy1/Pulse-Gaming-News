@@ -26,6 +26,7 @@ import {
   segmentsOf,
   poorSources,
   letterboxed,
+  fairDeadline,
   prefetchChapter,
   dHash,
   hamming,
@@ -1080,5 +1081,27 @@ test("letterboxing is measured from a thumbnail, not asked of the model", async 
   await gatherChapterFootage(barred, ch, [], path.join(dir, "entry_2"), "entry_2", 300, FOOTAGE_FIRST_DEFAULTS, report, [], Infinity);
   assert.equal(looked.length, 0);
   assert.ok(report.segmentsRejected.every((r) => r.why === "letterboxed" || r.why === "frozen picture"));
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("every released chapter gets an even share of the time left, so the limit never leaves chapters untouched", async () => {
+  assert.equal(fairDeadline(0, 600_000, 3), 200_000);
+  assert.equal(fairDeadline(500_000, 600_000, 1), 600_000);
+  assert.equal(fairDeadline(700_000, 600_000, 2), 700_000, "past the limit: no time");
+  assert.equal(fairDeadline(0, Infinity, 4), Infinity);
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
+  const { deps } = fakes(dir, () => look());
+  let clock = 0;
+  const slow: FootageFirstDeps = {
+    ...deps,
+    now: () => clock,
+    // Each look costs five seconds on the fake clock.
+    look: async (files) => ((clock += files.length * 5000), deps.look(files)),
+  };
+  const ch = (entry: number) => ({ entry, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"], seconds: 2000 });
+  const { report } = await gatherFootageFirst(slow, [ch(1), ch(2), ch(3)], [], dir, { ...FOOTAGE_FIRST_DEFAULTS, maxMinutes: 4 });
+  assert.deepEqual(report.perChapter?.map((c) => c.entry), [1, 2, 3], "all three chapters gathered");
+  assert.ok(report.perChapter!.every((c) => c.kept > 0));
+  assert.ok(clock <= 4 * 60_000 + 4 * 5000 * 3, "within the limit, give or take a short round");
   await fs.rm(dir, { recursive: true, force: true });
 });

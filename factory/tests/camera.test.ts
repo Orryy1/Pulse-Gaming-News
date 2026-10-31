@@ -416,7 +416,7 @@ test("the owner's notice names what the camera does and the setting", () => {
   );
   assert.match(line, /2 named details/);
   assert.match(line, /DOC_CAMERA/);
-  assert.doesNotMatch(line, /—/);
+  assert.ok(!line.includes(String.fromCharCode(0x2014)), "no long dash");
   assert.match(cameraNotice("Vice City", [], 0), /off/);
 });
 

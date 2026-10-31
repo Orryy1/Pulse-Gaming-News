@@ -99,10 +99,30 @@ test("junk is refused by title and channel before any download: the GTA VI chapt
     ],
     ["Grand Theft Auto San Andreas gameplay", "Someone", VC, GTA],
     ["GTA Vice City gameplay in GTA 5", "Someone", VC, GTA],
-    ["GAME SINS | Everything WRONG With Grand Theft Auto: San Andreas", "Dartigan", "Grand Theft Auto: San Andreas", GTA],
-    ["Why Does GTA San Andreas Feel like a Horror Game?? | Game Explorations", "sot0sam", "Grand Theft Auto: San Andreas", GTA],
-    ["Grand Theft Auto: Vice City (2002) Kill Count", "Video Game Kill Counts", VC, GTA],
-    ["What Happens If CJ knows everything from the Beginning - GTA San Andreas", "DiezMod97", "Grand Theft Auto: San Andreas", GTA],
+    [
+      "GAME SINS | Everything WRONG With Grand Theft Auto: San Andreas",
+      "Dartigan",
+      "Grand Theft Auto: San Andreas",
+      GTA,
+    ],
+    [
+      "Why Does GTA San Andreas Feel like a Horror Game?? | Game Explorations",
+      "sot0sam",
+      "Grand Theft Auto: San Andreas",
+      GTA,
+    ],
+    [
+      "Grand Theft Auto: Vice City (2002) Kill Count",
+      "Video Game Kill Counts",
+      VC,
+      GTA,
+    ],
+    [
+      "What Happens If CJ knows everything from the Beginning - GTA San Andreas",
+      "DiezMod97",
+      "Grand Theft Auto: San Andreas",
+      GTA,
+    ],
   ];
   for (const [title, channel, game, franchise, year] of refused)
     assert.ok(
@@ -137,7 +157,11 @@ test("junk is refused by title and channel before any download: the GTA VI chapt
     ],
     ["GTA 3 gameplay no commentary", "Archive", "Grand Theft Auto III"],
     ["Grand Theft Auto Vice City #12 [GamePlay Only]", "GameMania", VC],
-    ["GTA San Andreas walkthrough #5 l Drive-Thru", "ARConfidential", "Grand Theft Auto: San Andreas"],
+    [
+      "GTA San Andreas walkthrough #5 l Drive-Thru",
+      "ARConfidential",
+      "Grand Theft Auto: San Andreas",
+    ],
     [
       "Grand Theft Auto (1997) DOS gameplay, no commentary",
       "The Dot Eaters",
@@ -360,8 +384,9 @@ test("the share counts moving game footage over narrated game-chapter time; stoc
   assert.ok(Math.abs(m.share - 1 / 3) < 1e-9);
   assert.equal(m.perChapter.get(0), 0.5);
   assert.equal(m.perChapter.get(1), 0);
-  assert.equal(footageNeed(300, 60, 60), 120);
-  assert.equal(footageNeed(100, 90, 60), 0);
+  // 60% of 300 s is 180 s on screen; 100 s of clips play about 60 s; 120 s more to play is 200 s to gather.
+  assert.equal(Math.round(footageNeed(300, 100, 60)), 200);
+  assert.equal(footageNeed(100, 110, 60), 0);
   assert.match(
     footageShareNotice("Vice City", m, 60, ["Vice City", "San Andreas"]),
     /33% .*target 60%.*San Andreas 0%/,
@@ -456,7 +481,9 @@ function fakes(
     look: async (files) => {
       calls.looked += files.length;
       // Looks keyed by segment: both frames of one segment get the same answer.
-      return files.map((f, i) => looks(Number(f.match(/seg_(\d+)/)?.[1] ?? i), f));
+      return files.map((f, i) =>
+        looks(Number(f.match(/seg_(\d+)/)?.[1] ?? i), f),
+      );
     },
     cut: async (_f, _at, seconds, dest) => {
       await fs.writeFile(dest, "mp4");
@@ -586,7 +613,7 @@ test("a game not out yet, or a chapter already on enough footage, is skipped wit
   await gatherChapterFootage(
     counted,
     full,
-    [{ beatIndex: 1, durationSeconds: 130 }],
+    [{ beatIndex: 1, durationSeconds: 220 }],
     dir,
     "entry_1",
     200,
@@ -609,7 +636,7 @@ test("a video whose segments are mostly mods loses every segment, even the clean
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
   // Every frame of the first video (src_0) is a mod but one; the second video is clean.
   const { deps } = fakes(dir, (_i, f) =>
-    /seg_\d+\.jpg$/.test(f) && Number(f.match(/seg_(\d+)/)![1]) < 30
+    /seg_\d+(_b)?\.jpg$/.test(f) && Number(f.match(/seg_(\d+)/)![1]) < 30
       ? look({ mod: Number(f.match(/seg_(\d+)/)![1]) !== 3 })
       : look(),
   );
@@ -690,7 +717,10 @@ test("the step appends the new clips with their spans, logs the counts and tells
 });
 
 test("videos and loose segments are taken in turns from each uploader", () => {
-  assert.deepEqual(roundRobin(["a1", "a2", "a3", "b1", "c1", "c2"], (x) => x[0]), ["a1", "b1", "c1", "a2", "c2", "a3"]);
+  assert.deepEqual(
+    roundRobin(["a1", "a2", "a3", "b1", "c1", "c2"], (x) => x[0]),
+    ["a1", "b1", "c1", "a2", "c2", "a3"],
+  );
 });
 
 test("search rows from yt-dlp keep ids, channels and titles with tabs", () => {
@@ -817,11 +847,20 @@ test("source windows download a few at a time, never more than DOWNLOADS_AT_ONCE
   const { deps } = fakes(dir, () => look());
   let running = 0;
   let most = 0;
-  const hits = Array.from({ length: 6 }, (_, i) => ({ videoId: `vid${i}xxxxxxx`.slice(0, 11), title: `GTA Vice City gameplay part ${i + 1}`, channel: `Ch${i}` }));
+  const hits = Array.from({ length: 6 }, (_, i) => ({
+    videoId: `vid${i}xxxxxxx`.slice(0, 11),
+    title: `GTA Vice City gameplay part ${i + 1}`,
+    channel: `Ch${i}`,
+  }));
   const slow: FootageFirstDeps = {
     ...deps,
     search: async () => hits,
-    details: async () => ({ license: "Creative Commons Attribution license (reuse allowed)", seconds: 1800, channel: "", title: "" }),
+    details: async () => ({
+      license: "Creative Commons Attribution license (reuse allowed)",
+      seconds: 1800,
+      channel: "",
+      title: "",
+    }),
     download: async (url, from, to, dest) => {
       running++;
       most = Math.max(most, running);
@@ -830,9 +869,27 @@ test("source windows download a few at a time, never more than DOWNLOADS_AT_ONCE
       return deps.download(url, from, to, dest);
     },
   };
-  const ch = { entry: 2, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"] };
+  const ch = {
+    entry: 2,
+    game: VC,
+    franchise: GTA,
+    year: 2002,
+    moments: [{ show: "x" }],
+    sentences: ["x"],
+  };
   const report = emptyReport();
-  await gatherChapterFootage(slow, ch, [], path.join(dir, "entry_2"), "entry_2", 300, FOOTAGE_FIRST_DEFAULTS, report, [], Infinity);
+  await gatherChapterFootage(
+    slow,
+    ch,
+    [],
+    path.join(dir, "entry_2"),
+    "entry_2",
+    300,
+    FOOTAGE_FIRST_DEFAULTS,
+    report,
+    [],
+    Infinity,
+  );
   assert.equal(report.downloads, 6);
   assert.equal(most, DOWNLOADS_AT_ONCE);
   await fs.rm(dir, { recursive: true, force: true });
@@ -842,20 +899,52 @@ test("segments are looked at in rounds: more when most are refused, no more than
   const run = async (refuse: (i: number) => boolean) => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
     let n = 0;
-    const { deps } = fakes(dir, () => (refuse(n++) ? look({ text: true }) : look()));
+    const { deps } = fakes(dir, () =>
+      refuse(n++) ? look({ text: true }) : look(),
+    );
     const long: FootageFirstDeps = {
       ...deps,
-      scan: async () => Array.from({ length: 3001 }, (_, i) => ({ time: i / 10, luma: 90, motion: 3, scene: 0.01 })),
+      scan: async () =>
+        Array.from({ length: 3001 }, (_, i) => ({
+          time: i / 10,
+          luma: 90,
+          motion: 3,
+          scene: 0.01,
+        })),
     };
-    const ch = { entry: 2, game: VC, franchise: GTA, year: 2002, moments: [{ show: "x" }], sentences: ["x"] };
+    const ch = {
+      entry: 2,
+      game: VC,
+      franchise: GTA,
+      year: 2002,
+      moments: [{ show: "x" }],
+      sentences: ["x"],
+    };
     const report = emptyReport();
-    await gatherChapterFootage(long, ch, [], path.join(dir, "entry_2"), "entry_2", 100, FOOTAGE_FIRST_DEFAULTS, report, [], Infinity);
+    await gatherChapterFootage(
+      long,
+      ch,
+      [],
+      path.join(dir, "entry_2"),
+      "entry_2",
+      100,
+      FOOTAGE_FIRST_DEFAULTS,
+      report,
+      [],
+      Infinity,
+    );
     await fs.rm(dir, { recursive: true, force: true });
     return report;
   };
   const clean = await run(() => false);
   const hard = await run((i) => i % 10 !== 0);
-  assert.ok(clean.segments > clean.looked / 2, "a clean chapter stops looking once it has enough");
-  assert.ok(hard.looked > clean.looked, "a chapter whose frames are mostly refused looks at more");
+  assert.ok(
+    clean.segments > clean.looked / 2,
+    "a clean chapter stops looking once it has enough",
+  );
+  assert.ok(
+    hard.looked > clean.looked,
+    "a chapter whose frames are mostly refused looks at more",
+  );
   assert.ok(hard.looked <= 2 * FOOTAGE_FIRST_DEFAULTS.visionMax);
 });

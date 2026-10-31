@@ -511,13 +511,24 @@ export function assignSegments(
   return out;
 }
 
-/** Seconds of new footage a chapter still needs to reach the share, given what it has. */
+/**
+ * The share of a chapter's gathered clip time that reaches its plan: on the Vice City documentary 65% of the
+ * existing clips' seconds played (sentence windows end, a clip waits for its own line), and 55% of the first
+ * footage-first proof's new segments (31 Oct 2026).
+ */
+export const PLAYED_SHARE = 0.6;
+
+/**
+ * Seconds of new footage to gather so the chapter's plan can reach the share: what is missing on screen, given
+ * what its clips already play, grossed up for the part of any clip that never plays.
+ */
 export function footageNeed(
   chapterSeconds: number,
   haveSeconds: number,
   sharePct: number,
 ): number {
-  return Math.max(0, (chapterSeconds * sharePct) / 100 - haveSeconds);
+  const missing = (chapterSeconds * sharePct) / 100 - haveSeconds * PLAYED_SHARE;
+  return Math.max(0, missing / PLAYED_SHARE);
 }
 
 // ---------------------------------------------------------------------------------------------------------

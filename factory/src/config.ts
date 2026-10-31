@@ -391,6 +391,14 @@ export interface Config {
   illustrateTimeoutSeconds: number;
   /** A placeholder PNG instead of the model: dry runs and the trial without the GPU. */
   illustrateStub: boolean;
+  /** A few concept sketches of lines with movement brought to life by this PC's own video model (Wan 2.2 TI2V 5B through ComfyUI; src/assets/localvideo.ts); off by default. */
+  illustrateVideo: boolean;
+  /** At most this many AI motion clips per documentary: each holds the GPU about 3 minutes. */
+  illustrateVideoMax: number;
+  /** Each clip's time to upload, animate and download; past it the job is dropped from ComfyUI's queue. */
+  illustrateVideoTimeoutSeconds: number;
+  /** A slow-zoom clip of the sketch made by ffmpeg instead of the model: dry runs and tests without the GPU. */
+  illustrateVideoStub: boolean;
   /** Sketches animated on screen (drawn on, stop-motion paper, flipbook, light table, cork board; src/render/sketchplan.ts). Off: the static framed print. */
   sketchAnimation: boolean;
   /** Photos and portraits in documentaries arriving as instant prints, tape, pins, trays, screens and more (src/render/photoplan.ts). Off: the static framed print and full-bleed screenshots. */
@@ -818,6 +826,10 @@ export function loadConfig(): Config {
     illustrateMax: int("ILLUSTRATE_MAX", 24),
     illustrateTimeoutSeconds: int("ILLUSTRATE_TIMEOUT_SECONDS", 180),
     illustrateStub: bool("ILLUSTRATE_STUB", false),
+    illustrateVideo: bool("ILLUSTRATE_VIDEO_ENABLED", false),
+    illustrateVideoMax: int("ILLUSTRATE_VIDEO_MAX", 6),
+    illustrateVideoTimeoutSeconds: int("ILLUSTRATE_VIDEO_TIMEOUT_SECONDS", 600),
+    illustrateVideoStub: bool("ILLUSTRATE_VIDEO_STUB", false),
     sketchAnimation: bool("SKETCH_ANIMATION", true),
     photoTreatments: bool("PHOTO_TREATMENTS", true),
     dryRun: bool("DRY_RUN", false),

@@ -71,7 +71,7 @@ import {
   photoSourcesLine,
 } from "./assets/libraries.ts";
 import { pressForShort, reportLibraries } from "./assets/librarystep.ts";
-import { createSketchRun } from "./assets/illustrate.ts";
+import { comfyReachable, createSketchRun } from "./assets/illustrate.ts";
 import {
   animateSketches,
   chooseEpisodeFillers,
@@ -364,6 +364,7 @@ import {
   type GameplayStatus,
 } from "./gameplay.ts";
 import { pruneCommentRecords } from "./youtube/replies.ts";
+import { pruneForSpace } from "./retention.ts";
 import { finishChapters } from "./youtube/chapters.ts";
 import { docPinnedComment } from "./youtube/pinned.ts";
 import { latestPublicDocumentary, nextLine } from "./youtube/nextdoc.ts";
@@ -3438,7 +3439,13 @@ async function stepScriptTwin(s: Services, ep: Episode): Promise<void> {
 export function stampsFor(
   script: Pick<Script, "stamp">,
   words: Array<{ text: string; start: number }>,
-): Array<{ at: number; text: string; sub?: string; colour: string; tone?: string }> {
+): Array<{
+  at: number;
+  text: string;
+  sub?: string;
+  colour: string;
+  tone?: string;
+}> {
   const st = script.stamp;
   if (!st?.word?.trim() || !st.text?.trim()) return [];
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9$]/g, "");
@@ -5834,7 +5841,10 @@ async function gatherChapterMedia(
               eapp,
               edir,
               targets,
-              Math.max(s.cfg.docClipsPerChapter, Math.min(16, targets.length)),
+                Math.max(
+                  s.cfg.docClipsPerChapter,
+                  Math.min(16, targets.length),
+                ),
               scopeOf(script),
             ),
             footageBudgetSeconds(eapp),
@@ -6048,7 +6058,10 @@ async function gatherChapterMedia(
     }
     let n = 0;
     for (const [person, k] of [...people].slice(0, DOC_PEOPLE_PER_CHAPTER)) {
-      const found = (await s.searchPhotos(person).catch(() => [])).slice(0, 8);
+        const found = (await s.searchPhotos(person).catch(() => [])).slice(
+          0,
+          8,
+        );
       if (!found.length) continue;
       const [pick] = await pickPhotos(
         s.llm,
@@ -6518,8 +6531,21 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       }));
     assets.clips ??= [];
     // Scene lines nothing filmed can show get a drawn concept sketch, tagged ILLUSTRATION, when switched on
-    // (ILLUSTRATE_ENABLED, off by default; src/assets/illustrate.ts). Off, nothing here changes.
-    const sketches = s.cfg.illustrate
+    // (ILLUSTRATE_ENABLED, off by default; src/assets/illustrate.ts). Off, nothing here changes. A server that
+    // does not answer (closed on the PC, or none on the Mac) skips them for this video, said once.
+    const comfyUp =
+      s.cfg.illustrate &&
+      (s.cfg.illustrateStub || (await comfyReachable(s.cfg.illustrateUrl)));
+    if (s.cfg.illustrate && !comfyUp) {
+      await logEvent(s.db, ep.id, "sketches_skipped", {
+        url: s.cfg.illustrateUrl,
+      });
+      await s.notify({
+        level: "info",
+        content: `${kind} "${script.headline}": no concept sketches this time, because the image server (ComfyUI at ${s.cfg.illustrateUrl}) is not answering. Those lines get a graphic or stay on the game's pictures. Setting: ILLUSTRATE_URL.`,
+      });
+    }
+    const sketches = comfyUp
       ? createSketchRun({
           llm: s.llm,
           dir,
@@ -6761,8 +6787,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   let plan = assets.longPlan ?? makePlan();
   if (!assets.longPlan) {
     // Real-world photos pinned to no sentence stay off screen (REAL_PHOTOS_PINNED_ONLY): say how many.
-    const withheld = hasMoments && s.cfg.realPhotosPinnedOnly
-      ? images.filter((i) => realWorldImage(i) && i.moment === undefined).length
+    const withheld =
+      hasMoments && s.cfg.realPhotosPinnedOnly
+        ? images.filter((i) => realWorldImage(i) && i.moment === undefined)
+            .length
       : 0;
     if (withheld)
       await logEvent(s.db, ep.id, "real_photos_withheld", { count: withheld });
@@ -7414,10 +7442,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         quietBreaks: assets.quietBreaks,
         palette: assets.palette,
         // The vision model's boxes, then the details read from the pictures' text (src/assets/ocr.ts).
-        annotations: [
-          ...(assets.annotations ?? []),
-          ...(assets.textDetails ?? []),
-        ],
+    annotations: [...(assets.annotations ?? []), ...(assets.textDetails ?? [])],
         // The camera grammar (src/render/camera.ts, LONG_CAMERA), every long format.
         camera: docCamera,
         eraBeds: craft.eraBeds,
@@ -7975,7 +8000,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // memory of the channel's last twelve; off (SHORT_WORD_LOOKS=false) it is always the rubber stamp.
   const [stamp] = stampsFor(script, words);
   if (stamp && !plan.wordLook) {
-    const gameYear = Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined;
+    const gameYear =
+      Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) ||
+      undefined;
     const chosen = s.cfg.shortWordLooks
       ? await chooseWordLook(s.db, stamp, {
           year: gameYear,
@@ -7985,7 +8012,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         })
       : { look: "Stamp", recent: [] };
     plan.wordLook = chosen.look;
-    await logEvent(s.db, ep.id, "word_look", { look: chosen.look, text: stamp.text, tone: stamp.tone, recent: chosen.recent });
+    await logEvent(s.db, ep.id, "word_look", {
+      look: chosen.look,
+      text: stamp.text,
+      tone: stamp.tone,
+      recent: chosen.recent,
+    });
   }
   // The moment lands with its look's sound (the stamp's landing by default), peak on the word, when the mix has room for it.
   for (const st of stampsFor(script, words)) {
@@ -8010,11 +8042,17 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     segments,
     words,
     plan,
-    images: (assets.images ?? []).map((i) => ({ kind: i.kind, credit: photoCredit(i), beatIndex: i.beatIndex })),
+    images: (assets.images ?? []).map((i) => ({
+      kind: i.kind,
+      credit: photoCredit(i),
+      beatIndex: i.beatIndex,
+    })),
     clips: assets.clips ?? [],
     stamps: stampsFor(script, words),
     game: script.game_title,
-    gameYear: Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined,
+    gameYear:
+      Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) ||
+      undefined,
     seed: variant,
   });
   const mediaRich = shortMediaRichness(
@@ -9511,8 +9549,12 @@ export async function tick(
     await syncGameplaySkips(s).catch((err) =>
       log("warn", "gameplay status sync failed", { error: errorMessage(err) }),
     );
-    await pruneMedia(s).catch((err) =>
+    await pruneMedia(s, s.cfg.mediaKeepDays).catch((err) =>
       log("warn", "prune failed", { error: errorMessage(err) }),
+    );
+    // Sooner, oldest first, when the disk runs low (the Mac's 256 GB SSD; src/retention.ts).
+    await pruneForSpace(s, (id) => episodeDir(s.cfg, id)).catch((err) =>
+      log("warn", "space prune failed", { error: errorMessage(err) }),
     );
     // Records of comments we judged are kept 90 days (the privacy notice says so), then deleted.
     await pruneCommentRecords(s.db, s.now()).catch((err) =>

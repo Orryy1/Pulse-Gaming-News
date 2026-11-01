@@ -17,14 +17,26 @@ import {
 import { lookFrames } from "./localvision.ts";
 import type { Llm } from "../editorial/llm.ts";
 import { judgeGameplay } from "./gameplay.ts";
-import { BORDER_H, BORDER_W, dHash, letterboxed, type FootageFirstDeps, type SourceHit } from "./footagefirst.ts";
+import {
+  BORDER_H,
+  BORDER_W,
+  dHash,
+  letterboxed,
+  type FootageFirstDeps,
+  type SourceHit,
+} from "./footagefirst.ts";
 import { readText } from "./ocr.ts";
+import { loadOrch } from "../lib/orch.ts";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 /** A child whose stdout is bytes (the hash thumbnail), not text. */
 const runRaw = (cmd: string, args: string[]) =>
-  promisify(execFile)(cmd, args, { encoding: "buffer", maxBuffer: 1024 * 1024, timeout: 30_000 }) as Promise<{ stdout: Buffer; stderr: Buffer }>;
+  promisify(execFile)(cmd, args, {
+    encoding: "buffer",
+    maxBuffer: 1024 * 1024,
+    timeout: 30_000,
+  }) as Promise<{ stdout: Buffer; stderr: Buffer }>;
 
 const run = runCapped;
 
@@ -51,9 +63,7 @@ export function orchVisionLease(): (
 ) => Promise<() => void> {
   return async (job, est) => {
     try {
-      const orch: any = await import(
-        process.env.ORCH_CLIENT || "file:///C:/Claude/orchestrator/orch.mjs"
-      );
+      const orch = await loadOrch();
       return (await orch.lease("gpu", {
         job,
         project: "pulse",
@@ -188,40 +198,106 @@ export function footageFirstDeps(o: {
       const n = Math.max(3, Math.min(7, Math.round(seconds)));
       const fps = n / Math.max(0.5, seconds - 0.2);
       await run(FFMPEG, [
-        "-v", "error", "-y", "-ss", (at + 0.1).toFixed(2), "-i", file, "-t", (seconds - 0.2).toFixed(2),
-        "-vf", `fps=${fps.toFixed(4)},scale=640:-2`, "-frames:v", String(n), "-q:v", "4", `${prefix}_%02d.jpg`,
+        "-v",
+        "error",
+        "-y",
+        "-ss",
+        (at + 0.1).toFixed(2),
+        "-i",
+        file,
+        "-t",
+        (seconds - 0.2).toFixed(2),
+        "-vf",
+        `fps=${fps.toFixed(4)},scale=640:-2`,
+        "-frames:v",
+        String(n),
+        "-q:v",
+        "4",
+        `${prefix}_%02d.jpg`,
       ]);
       const out: string[] = [];
       for (let k = 1; k <= n; k++) {
         const f = `${prefix}_${String(k).padStart(2, "0")}.jpg`;
-        if (await fs.stat(f).then(() => true, () => false)) out.push(f);
+        if (
+          await fs.stat(f).then(
+            () => true,
+            () => false,
+          )
+        )
+          out.push(f);
       }
       return out;
     },
     compose: async (files, dest) => {
       const inputs = files.flatMap((f) => ["-i", f]);
-      const scaled = files.map((_, i) => `[${i}:v]scale=512:288,setsar=1[v${i}]`).join(";");
+      const scaled = files
+        .map((_, i) => `[${i}:v]scale=512:288,setsar=1[v${i}]`)
+        .join(";");
       await run(FFMPEG, [
-        "-v", "error", "-y", ...inputs,
-        "-filter_complex", `${scaled};${files.map((_, i) => `[v${i}]`).join("")}hstack=inputs=${files.length}`,
-        "-frames:v", "1", "-q:v", "4", dest,
+        "-v",
+        "error",
+        "-y",
+        ...inputs,
+        "-filter_complex",
+        `${scaled};${files.map((_, i) => `[v${i}]`).join("")}hstack=inputs=${files.length}`,
+        "-frames:v",
+        "1",
+        "-q:v",
+        "4",
+        dest,
       ]);
     },
     grays: async (files) => {
       const out: Uint8Array[] = [];
       for (const f of files) {
-        const { stdout } = await runRaw(FFMPEG, ["-v", "error", "-i", f, "-vf", `scale=${BORDER_W}:${BORDER_H},format=gray`, "-f", "rawvideo", "-"]);
-        if (stdout.length >= BORDER_W * BORDER_H) out.push(new Uint8Array(stdout.subarray(0, BORDER_W * BORDER_H)));
+        const { stdout } = await runRaw(FFMPEG, [
+          "-v",
+          "error",
+          "-i",
+          f,
+          "-vf",
+          `scale=${BORDER_W}:${BORDER_H},format=gray`,
+          "-f",
+          "rawvideo",
+          "-",
+        ]);
+        if (stdout.length >= BORDER_W * BORDER_H)
+          out.push(new Uint8Array(stdout.subarray(0, BORDER_W * BORDER_H)));
       }
       return out;
     },
     bars: async (file) => {
-      const { stdout } = await runRaw(FFMPEG, ["-v", "error", "-i", file, "-vf", "scale=9:8,format=gray", "-f", "rawvideo", "-"]);
-      return stdout.length >= 72 && letterboxed(new Uint8Array(stdout.subarray(0, 72)));
+      const { stdout } = await runRaw(FFMPEG, [
+        "-v",
+        "error",
+        "-i",
+        file,
+        "-vf",
+        "scale=9:8,format=gray",
+        "-f",
+        "rawvideo",
+        "-",
+      ]);
+      return (
+        stdout.length >= 72 &&
+        letterboxed(new Uint8Array(stdout.subarray(0, 72)))
+      );
     },
     hash: async (file) => {
-      const { stdout } = await runRaw(FFMPEG, ["-v", "error", "-i", file, "-vf", "scale=9:8,format=gray", "-f", "rawvideo", "-"]);
-      return stdout.length >= 72 ? dHash(new Uint8Array(stdout.subarray(0, 72))) : undefined;
+      const { stdout } = await runRaw(FFMPEG, [
+        "-v",
+        "error",
+        "-i",
+        file,
+        "-vf",
+        "scale=9:8,format=gray",
+        "-f",
+        "rawvideo",
+        "-",
+      ]);
+      return stdout.length >= 72
+        ? dHash(new Uint8Array(stdout.subarray(0, 72)))
+        : undefined;
     },
     ocr: (files) => readText(files),
     look: (files) => lookFrames(files),

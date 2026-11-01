@@ -55,6 +55,14 @@ export interface CodexOptions {
 }
 
 export const DEFAULT_RUNNER_DIR = "C:\\Claude\\orchestrator";
+
+/** True when the Codex helper is installed in `runnerDir` on this machine (the PC orchestrator's folder; absent on the Mac). */
+export function codexRunnerPresent(
+  runnerDir: string,
+  exists: (p: string) => boolean = fs.existsSync,
+): boolean {
+  return Boolean(runnerDir) && exists(path.join(runnerDir, "codex_runner.py"));
+}
 export const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
 
 /** Which Codex model class answers a tier: top writing gets the frontier model, mid the workhorse, low the fast one. */

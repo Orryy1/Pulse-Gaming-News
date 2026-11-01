@@ -6,7 +6,7 @@ import type { Config } from "./config.ts";
 import type { Db } from "./db.ts";
 import type { Services } from "./pipeline.ts";
 import { createClaude } from "./editorial/llm.ts";
-import { createCodexLlm } from "./editorial/codex.ts";
+import { codexRunnerPresent, createCodexLlm } from "./editorial/codex.ts";
 import { FEEDS } from "./discovery/feeds.ts";
 import { fetchFeeds } from "./discovery/rss.ts";
 import { clusterItems } from "./discovery/cluster.ts";
@@ -80,7 +80,7 @@ import {
   quotaUsed,
 } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
-import { fetchWithTimeout } from "./lib/util.ts";
+import { fetchWithTimeout, log } from "./lib/util.ts";
 
 export function oauthConfig(cfg: Config) {
   return {
@@ -124,8 +124,19 @@ export function createServices(db: Db, cfg: Config): Services {
     low: cfg.claudeModelLow,
   });
   // Codex answers the listed off-slot steps; anything else, and any Codex failure, is Claude as before.
-  const llm =
-    cfg.codexLlm && cfg.codexCalls.length
+  // Its helper lives in the PC orchestrator's folder: on a machine without it (the Mac mini) every routed
+  // call would fail and then go to Claude, so routing is off there, said once, rather than failing each time.
+  const codexWanted = cfg.codexLlm && cfg.codexCalls.length > 0;
+  const codexHere = codexWanted && codexRunnerPresent(cfg.codexRunnerDir);
+  if (codexWanted && !codexHere) {
+    log("warn", "Codex routing off: codex_runner.py not on this machine", {
+      dir: cfg.codexRunnerDir,
+    });
+    logEvent(db, null, "note", {
+      text: `Codex is switched on (CODEX_LLM) but its helper codex_runner.py is not in ${cfg.codexRunnerDir} on this machine, so these steps use Claude: ${cfg.codexCalls.join(", ")}. Setting: CODEX_RUNNER_DIR.`,
+    }).catch(() => undefined);
+  }
+  const llm = codexHere
       ? createCodexLlm(claude, {
           enabled: true,
           sites: cfg.codexCalls,
@@ -170,7 +181,9 @@ export function createServices(db: Db, cfg: Config): Services {
         {
           onEvent: (kind, detail) => {
             const id = episodeIdOf(cfg.dataDir, out);
-            return id ? logEvent(db, id, kind, detail).catch(() => undefined) : undefined;
+            return id
+              ? logEvent(db, id, kind, detail).catch(() => undefined)
+              : undefined;
           },
         },
       ),

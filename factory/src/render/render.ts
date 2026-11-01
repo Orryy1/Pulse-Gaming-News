@@ -21,6 +21,7 @@ import type { ShortProps } from "./props.ts";
 import { unloadLocalVision } from "../assets/localvision.ts";
 import { log } from "../lib/util.ts";
 import { PcTurnTimeout } from "../pcschedule.ts";
+import { loadOrch, NoOrchestrator } from "../lib/orch.ts";
 import type { LongProps } from "./Long.tsx";
 import { BEDS, MOOD_BEDS } from "./soundscape.ts";
 import { pocketOf } from "./soundfx.ts";
@@ -34,6 +35,27 @@ import type { CutdownProps } from "./Cutdown.tsx";
  * and the graphic cards that use a background picture showed none (29-30 Oct 2026 renders).
  */
 export const webPath = (file: string): string => file.replace(/\\/g, "/");
+
+/**
+ * Whether Chrome draws pages in software while still compositing on the GPU (pure). On the Mac mini (1 Nov
+ * 2026 rehearsal) Chrome's Metal rasteriser, Skia Graphite, aborted the GPU process ~10 minutes into every
+ * long render (SkAbort in graphite::Transform::mapRect under clipRRect: a rounded clip under a degenerate
+ * transform), three crashes and Chrome fell back to a crawl; concurrency 4, no parallax and software GL
+ * (swangle, ~20x slower) did not help. Off on the Mac by default; REMOTION_GPU_RASTER=true turns it back on,
+ * =false turns it off on the PC too. Remotion exposes no flag for it, so this uses the variable its own
+ * Lambda renders read, which only adds Chrome's --disable-gpu-rasterization (and changes one error text).
+ */
+export function gpuRasterOff(
+  platform: string,
+  env: Record<string, string | undefined>,
+): boolean {
+  const v = env.REMOTION_GPU_RASTER?.toLowerCase();
+  if (v === "true") return false;
+  if (v === "false") return true;
+  return platform === "darwin";
+}
+if (gpuRasterOff(process.platform, process.env))
+  process.env.__RESERVED_IS_INSIDE_REMOTION_LAMBDA = "true";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(here, "index.ts");
@@ -186,9 +208,7 @@ async function withPcTurn<T>(
   let release = () => {};
   let granted = false;
   try {
-    const orch: any = await import(
-      process.env.ORCH_CLIENT || "file:///C:/Claude/orchestrator/orch.mjs"
-    );
+    const orch = await loadOrch();
     release = await orch.lease("heavy", {
       job,
       project: "pulse",
@@ -201,6 +221,8 @@ async function withPcTurn<T>(
     });
     granted = true;
   } catch (e) {
+    // The Mac: no PC to share, so no turn to take (its other jobs wait behind renders in ~/orch/macrun.sh).
+    if (e instanceof NoOrchestrator) return fn(false);
     if (yieldAfter !== undefined && String(e).includes("orchestrator:"))
       throw new PcTurnTimeout(
         `${job}: no turn within ${Math.round(yieldAfter)} min`,
@@ -536,36 +558,36 @@ export function longProps(
           },
         }),
     audioSrc: audioFile ? `${filesUrl}/${webPath(audioFile)}` : null,
-      images: imageFiles.map((i) => ({
+    images: imageFiles.map((i) => ({
       src: `${filesUrl}/${webPath(i.file)}`,
-        kind: i.kind,
-        aspect: i.aspect,
-        beatIndex: i.beatIndex,
-        credit: i.credit,
-        moment: i.moment,
-        label: i.label,
-        layers: i.layers
-          ? {
+      kind: i.kind,
+      aspect: i.aspect,
+      beatIndex: i.beatIndex,
+      credit: i.credit,
+      moment: i.moment,
+      label: i.label,
+      layers: i.layers
+        ? {
             bg: `${filesUrl}/${webPath(i.layers.bg)}`,
             mid: `${filesUrl}/${webPath(i.layers.mid)}`,
             fg: `${filesUrl}/${webPath(i.layers.fg)}`,
-            }
-          : undefined,
-      })),
-      clips: clipFiles.map((c) => ({
+          }
+        : undefined,
+    })),
+    clips: clipFiles.map((c) => ({
       src: `${filesUrl}/${webPath(c.file)}`,
-        durationSeconds: c.durationSeconds,
-        beatIndex: c.beatIndex,
-        role: c.role,
-        moment: c.moment,
-        credit: c.credit,
-        audio: c.audio,
-        label: c.label,
-      })),
-      logoSrc: "logo.png",
-      musicSrc: musicFile,
-      extraBeds: extraBeds(serveUrl),
-    };
+      durationSeconds: c.durationSeconds,
+      beatIndex: c.beatIndex,
+      role: c.role,
+      moment: c.moment,
+      credit: c.credit,
+      audio: c.audio,
+      label: c.label,
+    })),
+    logoSrc: "logo.png",
+    musicSrc: musicFile,
+    extraBeds: extraBeds(serveUrl),
+  };
 }
 
 export interface LongStillsInput {

@@ -19,6 +19,8 @@ import { runDoctor, formatDoctor } from "./doctor.ts";
 import { storedRefreshToken } from "./youtube/oauth.ts";
 import { openDb, migrate, withLease, type Db } from "./db.ts";
 import { backupDue, makeBackup, markBackup } from "./backup.ts";
+import { homedir } from "node:os";
+import { defaultTunnelConfig } from "./platform.ts";
 import { createServices, oauthConfig } from "./services.ts";
 import {
   discoverTick,
@@ -1850,7 +1852,7 @@ async function main(): Promise<void> {
         outDir: cfg.backupDir,
         secret: cfg.appSecret,
         tiktokTokenPath: cfg.tiktokTokenPath || undefined,
-        tunnelConfig: "D:/pulse-data/cloudflared-pulse.yml",
+        tunnelConfig: defaultTunnelConfig(process.platform, homedir()),
       });
       await markBackup(db, day, file);
     })().catch((err) => {

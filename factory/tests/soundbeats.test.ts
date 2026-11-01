@@ -481,9 +481,19 @@ test("each chapter opens on the bed of its decade; an unknown year gets none", (
 
 test(
   "the era beds are on disk and under the loudness ceiling (ffmpeg ebur128)",
-  { skip: !fs.existsSync(FFMPEG) && "no ffmpeg" },
+  {
+    // The checker lives in data/smoke (not in git): the PC has it, and the Mac once the cutover copies it.
+    skip:
+      (!fs.existsSync(FFMPEG) && "no ffmpeg") ||
+      (!fs.existsSync("data/smoke/erabeds.mts") &&
+        "no data/smoke/erabeds.mts on this machine"),
+  },
   async () => {
-    const { checkEraBeds } = await import("../data/smoke/erabeds.mts");
+    // A computed path, so a machine without the file (the Mac before its cutover) still typechecks.
+    const checker: string = "../data/smoke/erabeds.mts";
+    const { checkEraBeds } = (await import(checker)) as {
+      checkEraBeds: () => Promise<string[]>;
+    };
     const problems = await checkEraBeds();
     assert.deepEqual(problems, []);
     assert.ok(ERA_BED_LUFS_CEILING <= -30, "the lead's ceiling");

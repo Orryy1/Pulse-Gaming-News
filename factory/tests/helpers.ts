@@ -297,6 +297,10 @@ export function testConfig(
     annotate: false,
     realPhotosPinnedOnly: true,
     stockThemeMax: 2,
+    mediaKeepDays: 14,
+    // Off in tests: the free-space rule would otherwise read the test machine's real disk.
+    mediaMinFreeGb: 0,
+    mediaFloorDays: 2,
     // Footage first downloads and looks at real videos: off in tests unless a test turns it on with fakes.
     footageFirst: false,
     footageShareTarget: 60,

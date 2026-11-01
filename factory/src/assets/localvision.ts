@@ -107,8 +107,24 @@ let downUntil = 0;
 // One frame and a short answer fit easily: the default 32k context held gigabytes the renderer needs.
 const NUM_CTX = 8192;
 
-/** Unloads the vision model (it would otherwise stay resident for 15 minutes), freeing memory for a render. */
+/** True when the vision model runs on this machine (so unloading it frees memory for a render here). */
+export function visionIsLocal(url: string): boolean {
+  try {
+    return ["127.0.0.1", "localhost", "[::1]", "::1"].includes(
+      new URL(url).hostname,
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Unloads the vision model (it would otherwise stay resident for 15 minutes), freeing memory for a render.
+ * Only when it is this machine's: the Mac's renders free nothing by unloading the PC's model over the LAN,
+ * and it would throw out a model another job on the PC is using mid-run.
+ */
 export async function unloadLocalVision(): Promise<void> {
+  if (!visionIsLocal(LOCAL_VISION_URL)) return;
   await fetchWithTimeout(
     `${LOCAL_VISION_URL}/api/generate`,
     {
@@ -471,7 +487,10 @@ export function lookAnswer(parsed: any): SegmentLook {
   const hud = yes("text") && yes("hud_only");
   return {
     // A label must describe something: the model sometimes answers "true" there (31 Oct 2026 proof).
-    label: ((l: string) => (/^(true|false|yes|no|none|n\/a)?$/i.test(l) || !/[a-z]{3}/i.test(l) ? "" : l))(
+    label: ((l: string) =>
+      /^(true|false|yes|no|none|n\/a)?$/i.test(l) || !/[a-z]{3}/i.test(l)
+        ? ""
+        : l)(
       String(parsed?.label ?? "")
         .replace(/\s+/g, " ")
         .trim()
@@ -557,9 +576,13 @@ export async function lookFrames(
         failures++;
         if (failures === 3) {
           downUntil = Date.now() + 10 * 60_000;
-          log("warn", "local vision unavailable; footage segments not looked at", {
-            error: errorMessage(err),
-          });
+          log(
+            "warn",
+            "local vision unavailable; footage segments not looked at",
+            {
+              error: errorMessage(err),
+            },
+          );
         }
       }
     }

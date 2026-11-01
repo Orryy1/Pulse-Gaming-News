@@ -21,6 +21,7 @@ import { ocrCommand, parseOcrOutput } from "../src/assets/ocr.ts";
 import { codexRunnerPresent } from "../src/editorial/codex.ts";
 import { comfyReachable } from "../src/assets/illustrate.ts";
 import { pickBinary } from "../src/lib/bin.ts";
+import { visionIsLocal } from "../src/assets/localvision.ts";
 import {
   planSpacePrune,
   pruneForSpace,
@@ -358,4 +359,12 @@ test("ffmpeg and ffprobe on a Mac are Homebrew's, never the bundled Intel ffprob
     pickBinary("ffmpeg", "linux", undefined, none, undefined),
     "ffmpeg",
   );
+});
+
+test("a render unloads the vision model only when it is this machine's, never the PC's over the LAN", () => {
+  assert.equal(visionIsLocal("http://127.0.0.1:11434"), true);
+  assert.equal(visionIsLocal("http://localhost:11434"), true);
+  assert.equal(visionIsLocal("http://DESKTOP-D3EI9PV.local:11434"), false);
+  assert.equal(visionIsLocal("http://192.168.0.93:11434"), false);
+  assert.equal(visionIsLocal("not a url"), false);
 });

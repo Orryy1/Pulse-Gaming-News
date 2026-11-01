@@ -27,6 +27,7 @@ const ID = args[0];
 const REPLAN = process.argv.includes("--replan");
 if (SHORT && !ID)
   throw new Error("usage: mac/rehearsal.mts short <episode id>");
+const FAR = `${String((new Date().getUTCHours() + 12) % 24).padStart(2, "0")}:00`;
 Object.assign(process.env, {
   DATA_DIR: DATA,
   DRY_RUN: "true",
@@ -34,7 +35,20 @@ Object.assign(process.env, {
   GAMEPLAY_ENABLED: "false",
   EVERGREEN_ENABLED: "false",
   // A news slot twelve hours away: close enough to exist, far enough that the long render never waits for it.
-  NEWS_SLOTS: `${String((new Date().getUTCHours() + 12) % 24).padStart(2, "0")}:00`,
+  NEWS_SLOTS: FAR,
+  // Every other Shorts lane too (1 Nov 2026: a "why" slot copied with the live database held the render).
+  ...Object.fromEntries(
+    [
+      "WHY_SLOT",
+      "DEALS_SLOT",
+      "EVERGREEN_SLOT",
+      "WEEKLY_SLOT",
+      "ENGAGE_SLOT",
+      "CUTDOWN_SLOT",
+      "DOC_SLOT",
+      "GAMEPLAY_SLOTS",
+    ].map((k) => [k, FAR]),
+  ),
   BREAKING_SCORE_MIN: "1000",
   PORT: "0",
 });

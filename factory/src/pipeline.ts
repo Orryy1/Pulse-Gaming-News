@@ -62,7 +62,15 @@ import {
 } from "./assets/footagestep.ts";
 import { footageOptions } from "./assets/footagefirst.ts";
 import { capStockTargets } from "./assets/repeats.ts";
-import { stockQuery } from "./assets/stock.ts";
+import { stockCredit, stockCreditLines, stockQuery } from "./assets/stock.ts";
+import {
+  isPressProvenance,
+  photoCreditLine,
+  photoCreditOf,
+  photoProvenance,
+  photoSourcesLine,
+} from "./assets/libraries.ts";
+import { pressForShort, reportLibraries } from "./assets/librarystep.ts";
 import { createSketchRun } from "./assets/illustrate.ts";
 import {
   animateSketches,
@@ -400,9 +408,13 @@ export interface Services {
     episodeDir: string,
     maxScreens?: number,
   ): Promise<VisualAsset[]>;
-  /** Freely licensed archive photos (Wikimedia Commons) for a search. */
+  /** Freely licensed archive photos for a search: Wikimedia Commons, then Openverse and Pixabay when on. */
   searchPhotos(
     query: string,
+  ): Promise<import("./assets/commons.ts").CommonsImage[]>;
+  /** Publishers' press pictures of a game (src/assets/press.ts, LIBRARY_PRESS); absent in tests. */
+  searchPress?(
+    game: string,
   ): Promise<import("./assets/commons.ts").CommonsImage[]>;
   /** Official screenshots, key art and cover from IGDB for a game by exact title (empty without Twitch keys). */
   igdbArt(
@@ -4886,6 +4898,20 @@ async function gatherMedia(
       }
     }
   }
+  // Publishers' press pictures of the story's game (src/assets/press.ts, LIBRARY_PRESS): an announcement's key
+  // art and screenshots from Xbox Wire, the PlayStation Blog and the other press sites, credited on screen.
+  if (!ranking && script.game_title)
+    images.push(
+      ...(await pressForShort(
+        {
+          searchPress: s.searchPress && ((g) => s.searchPress!(g)),
+          downloadPhoto: (i, d) => s.downloadPhoto(i, d),
+        },
+        dir,
+        script.game_title,
+        new Set(images.map((i) => i.sourceUrl)),
+      )),
+    );
   // Ranking Shorts: each entry brings its own box art and one trailer moment, tagged with its line.
   if (script.entries?.length) {
     const sorted = [...script.entries].sort((a, b) => b.rank - a.rank);
@@ -5146,7 +5172,11 @@ async function gatherMedia(
   const wordy = new Set<string>();
   for (const [k, f] of flags.entries()) {
     if (!f) continue;
-    if ((f.webcam || f.gore) && shots[k]!.kind === "screenshot")
+    // A press picture is screened like a screenshot: a webcam or gore is never used.
+    if (
+      (f.webcam || f.gore) &&
+      (shots[k]!.kind === "screenshot" || isPressProvenance(shots[k]!.provenance))
+    )
       unusable.add(shots[k]!.file);
     else if (f.text) wordy.add(shots[k]!.file);
   }
@@ -5171,6 +5201,9 @@ async function gatherMedia(
       ...(wordy.has(a.file) ? { wordy: true } : {}),
     });
   }
+  // What the newer picture libraries gave this Short, in its log and the owner's note (long videos: after the top-up).
+  if (!isLongEpisode(ep) && !rich)
+    await reportLibraries(s, ep.id, `Short "${script.headline}"`, out, clips);
   // Lead with the most cinematic art; screenshots fill the middle.
   const rank: Record<string, number> = {
     hero: 0,
@@ -5188,18 +5221,15 @@ async function gatherMedia(
   };
 }
 
-/** "Steve Hammond / CC BY-SA 2.0 / Wikimedia Commons" for an archive photo, else nothing. */
+/**
+ * "Steve Hammond / CC BY-SA 2.0 / Wikimedia Commons" for a licensed photo (Commons, Flickr, Openverse, Pixabay),
+ * "Image: Xbox press" for a publisher's press picture, else nothing (src/assets/libraries.ts photoCreditOf).
+ */
 export function photoCredit(i: {
   kind: string;
   provenance?: string;
 }): string | undefined {
-  if (i.kind !== "photo") return undefined;
-  const m = (i.provenance ?? "").match(
-    /^Wikimedia Commons photo by (.+?), ([^,:]+): /,
-  );
-  return m
-    ? `${m[1]!.slice(0, 40)} / ${m[2]} / Wikimedia Commons`
-    : "Wikimedia Commons";
+  return photoCreditOf(i);
 }
 
 /** A video about single-player campaigns keeps multiplayer footage out of every pick. */
@@ -5311,7 +5341,7 @@ async function personPhoto(
         kind: "photo",
         file,
         sourceUrl: img.pageUrl,
-        provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+        provenance: photoProvenance(img),
         label: person,
         ...(line >= 0 && k === 0 ? { beatIndex: line } : {}),
       } as VisualAsset & { beatIndex?: number });
@@ -5959,7 +5989,7 @@ async function gatherChapterMedia(
           kind: "photo",
           file,
           sourceUrl: img.pageUrl,
-          provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+          provenance: photoProvenance(img),
           beatIndex,
         } as VisualAsset & { beatIndex?: number });
     }
@@ -6000,7 +6030,7 @@ async function gatherChapterMedia(
           kind: "photo",
           file,
           sourceUrl: img.pageUrl,
-          provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+          provenance: photoProvenance(img),
           beatIndex,
           moment: k,
           label: person.toUpperCase(),
@@ -6062,7 +6092,7 @@ async function gatherChapterMedia(
           startSeconds: 0,
           stock: true,
           moment: c.moment,
-          credit: "ILLUSTRATIVE · STOCK FOOTAGE: PEXELS",
+          credit: stockCredit(c.provenance),
         });
   } catch (err) {
     log("warn", "documentary B-roll failed", {
@@ -6474,6 +6504,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       { stockThemeMax: s.cfg.stockThemeMax },
     );
     assets.filled = { before: r.before, after: r.after };
+    // What the newer picture libraries gave the whole video, in its log and the owner's note.
+    await reportLibraries(
+      s,
+      ep.id,
+      `${kind} "${script.headline}"`,
+      assets.images ?? [],
+      assets.clips ?? [],
+    );
     if (r.stockCapped) {
       await logEvent(s.db, ep.id, "stock_themes_capped", {
         skipped: r.stockCapped,
@@ -8004,14 +8042,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       : assets.officialTrailer?.publisher) ?? "",
   );
   // A person's licensed photo is credited on screen, as its licence asks.
-  const photoLine = [
-    ...new Set((assets.images ?? []).map(photoCredit).filter(Boolean)),
-  ].join(" · ");
+  const photoLine = photoCreditLine((assets.images ?? []).map(photoCredit));
   const footageCredit = [
     (assets.clips ?? []).length
       ? `Footage: ${publisher || script.game_title} · official trailer`
       : "",
-    photoLine ? `Photo: ${photoLine}` : "",
+    photoLine,
   ]
     .filter(Boolean)
     .join("   ");
@@ -8525,14 +8561,8 @@ export function footageCredits(
   }
   for (const [channel, url] of cc)
     lines.push(`Gameplay: ${channel}, licensed CC BY (${url}).`);
-  const stock = clips
-    .filter((c) => /^Illustrative stock footage from Pexels/.test(c.provenance))
-    .map((c) => c.provenance.match(/\((https?:[^)]+)\)/)?.[1])
-    .filter(Boolean);
-  if (stock.length)
-    lines.push(
-      `Illustrative stock footage (not the real event): Pexels, ${stock.join(", ")}.`,
-    );
+  // Stock and archive footage, one line per library (src/assets/stock.ts).
+  lines.push(...stockCreditLines(clips));
   if (
     /microsoft|xbox game studios|bethesda/i.test(
       `${publisher ?? ""} ${headline}`,
@@ -8631,9 +8661,12 @@ export function videoMetadata(
       script.sources?.length
         ? `\nSources:\n${script.sources.map((u) => `• Wikipedia: ${u}`).join("\n")}`
         : "",
-      (ep.assets_json?.images ?? []).some((i) => i.kind === "photo") &&
+      // The photo libraries used, named (only Commons: the line the channel always had).
       affiliate?.shopUrl
-        ? `\nPhotos: Wikimedia Commons, credited on screen. Full photo and footage credits: ${affiliate.shopUrl.replace(/\/shop\//, "/credits/")}`
+        ? photoSourcesLine(
+            ep.assets_json?.images ?? [],
+            affiliate.shopUrl.replace(/\/shop\//, "/credits/"),
+          )
         : "",
       footage,
     ],

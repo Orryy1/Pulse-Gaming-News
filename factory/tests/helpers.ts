@@ -279,6 +279,12 @@ export function testConfig(
     officialTrailers: false,
     ytdlpPath: "yt-dlp",
     pexelsApiKey: "",
+    // Tests never reach the outside picture libraries.
+    libraryPress: false,
+    libraryOpenverse: false,
+    libraryPixabay: false,
+    pixabayApiKey: "",
+    libraryArchive: false,
     amazonUkTag: "",
     amazonUsTag: "",
     amazonMoreTags: {},

@@ -436,6 +436,21 @@ export interface Config {
   captureChecklist: boolean; // send that list on Discord when a long video or documentary covers one of their games
   footageLibrary: string; // the owner's own recordings (NVIDIA: Videos\\<Game>\\...); empty = off
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
+  /**
+   * More picture libraries (src/assets/libraries.ts, press.ts, stock.ts), each screened, licence-recorded and
+   * credited like Wikimedia Commons and Pexels. All on by default (owner, 1 Nov 2026):
+   *  - libraryPress (LIBRARY_PRESS): publishers' own press and newsroom sites (Xbox Wire, PlayStation Blog, Sony
+   *    Interactive, CD PROJEKT RED, the Steam Deck press kit), editorial use, "Image: <Publisher> press" on screen;
+   *  - libraryOpenverse (LIBRARY_OPENVERSE): Openverse (Flickr and other archives), CC0 / CC BY / CC BY-SA only;
+   *  - libraryPixabay (LIBRARY_PIXABAY): Pixabay video and photos as a second stock library; needs PIXABAY_API_KEY
+   *    (free), skipped without it;
+   *  - libraryArchive (LIBRARY_ARCHIVE): Internet Archive films whose licence is public domain, CC0 or CC BY.
+   */
+  libraryPress: boolean;
+  libraryOpenverse: boolean;
+  libraryPixabay: boolean;
+  pixabayApiKey: string;
+  libraryArchive: boolean;
   amazonUkTag: string; // Amazon Associates UK tracking ID
   amazonUsTag: string; // Amazon Associates US tracking ID, when there is one
   amazonMoreTags: {
@@ -947,6 +962,11 @@ export function loadConfig(): Config {
       path.join(process.env.USERPROFILE ?? "", "Videos"),
     ),
     pexelsApiKey: str("PEXELS_API_KEY"),
+    libraryPress: bool("LIBRARY_PRESS", true),
+    libraryOpenverse: bool("LIBRARY_OPENVERSE", true),
+    libraryPixabay: bool("LIBRARY_PIXABAY", true),
+    pixabayApiKey: str("PIXABAY_API_KEY"),
+    libraryArchive: bool("LIBRARY_ARCHIVE", true),
     amazonUkTag: str("AMAZON_AFFILIATE_TAG"),
     amazonUsTag: str("AMAZON_US_TAG"),
     amazonMoreTags: {

@@ -40,7 +40,20 @@ import { checkNarration, transcribeWords } from "./qa/narration.ts";
 import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken, storedRefreshToken } from "./youtube/oauth.ts";
 import { officialMedia } from "./assets/officialTrailer.ts";
-import { stockClips } from "./assets/stock.ts";
+import {
+  archiveLibrary,
+  libraryStockClips,
+  pexelsLibrary,
+  pixabayLibrary,
+  type StockLibrary,
+} from "./assets/stock.ts";
+import {
+  searchLicensedPhotos,
+  searchOpenverse,
+  searchPixabayImages,
+} from "./assets/libraries.ts";
+import { searchPress } from "./assets/press.ts";
+import { breaker } from "./lib/breaker.ts";
 import { rankStills } from "./assets/stillscore.ts";
 import path from "node:path";
 import { fetchRockstarNewswire } from "./discovery/newsrooms.ts";
@@ -80,6 +93,29 @@ export function oauthConfig(cfg: Config) {
 }
 
 let creditCache: { at: number; plan: CreditPlan | undefined } | undefined;
+
+// The outside picture libraries answer slowly or not at all some days (Openverse and the Internet Archive both
+// timed out on 1 Nov 2026): after two failures in a row a library is skipped for ten minutes.
+const openverseBreaker = breaker("openverse");
+const pixabayBreaker = breaker("pixabay");
+const archiveBreaker = breaker("internet archive");
+
+/** The stock libraries a line's B-roll search asks, Pexels first (each behind its setting and key). */
+export function stockLibraries(
+  cfg: Pick<Config, "pexelsApiKey" | "libraryPixabay" | "pixabayApiKey" | "libraryArchive">,
+): StockLibrary[] {
+  const out: StockLibrary[] = [];
+  if (cfg.pexelsApiKey) out.push(pexelsLibrary(cfg.pexelsApiKey));
+  if (cfg.libraryPixabay && cfg.pixabayApiKey) {
+    const p = pixabayLibrary(cfg.pixabayApiKey);
+    out.push({ name: p.name, search: (q) => pixabayBreaker.call(() => p.search(q), []) });
+  }
+  if (cfg.libraryArchive) {
+    const a = archiveLibrary();
+    out.push({ name: a.name, search: (q) => archiveBreaker.call(() => a.search(q), []) });
+  }
+  return out;
+}
 
 export function createServices(db: Db, cfg: Config): Services {
   const claude = createClaude({
@@ -141,7 +177,23 @@ export function createServices(db: Db, cfg: Config): Services {
     findGame: findSteamApp,
     gameFacts: steamFacts,
     fetchArt: (app, dir, maxScreens) => fetchSteamArt(app, dir, maxScreens),
-    searchPhotos: (q) => searchCommons(q),
+    // Commons, then Openverse (Flickr and other archives) and Pixabay photos when switched on, interleaved; a slow
+    // or failing library is left alone for ten minutes (src/lib/breaker.ts) so the gather never waits on it.
+    searchPhotos: (q) =>
+      searchLicensedPhotos(
+        {
+          commons: (x) => searchCommons(x),
+          openverse: cfg.libraryOpenverse
+            ? (x) => openverseBreaker.call(() => searchOpenverse(x), [])
+            : undefined,
+          pixabay:
+            cfg.libraryPixabay && cfg.pixabayApiKey
+              ? (x) => pixabayBreaker.call(() => searchPixabayImages(cfg.pixabayApiKey, x), [])
+              : undefined,
+        },
+        q,
+      ),
+    searchPress: (game) => (cfg.libraryPress ? searchPress(game) : Promise.resolve([])),
     gameplayClips: async (
       game,
       franchise,
@@ -259,9 +311,9 @@ export function createServices(db: Db, cfg: Config): Services {
     research: (title, fallbackQuery, maxChars) =>
       researchGame(title, fallbackQuery, maxChars),
     fetchStock: (dir, targets, gameWords, maxClips, avoidUrls) =>
-      cfg.pexelsApiKey
-        ? stockClips(
-            cfg.pexelsApiKey,
+      stockLibraries(cfg).length
+        ? libraryStockClips(
+            stockLibraries(cfg),
             dir,
             targets,
             gameWords,

@@ -15,7 +15,8 @@ import type { FootageTarget } from "./clipscore.ts";
 import type { VisualAsset } from "./steam.ts";
 import { clipFrame, rankStills, uncoveredTargets } from "./stillscore.ts";
 import { log } from "../lib/util.ts";
-import { stockQuery } from "./stock.ts";
+import { stockCredit, stockQuery } from "./stock.ts";
+import { isPressProvenance, photoProvenance } from "./libraries.ts";
 import { capStockTargets, samePath, shortHash } from "./repeats.ts";
 import {
   DocMomentSchema,
@@ -51,6 +52,8 @@ export interface FillDeps {
   ): Promise<VisualAsset[]>;
   searchPhotos(query: string): Promise<CommonsImage[]>;
   downloadPhoto(img: CommonsImage, dest: string): Promise<boolean>;
+  /** Publishers' press pictures of a game (src/assets/press.ts); absent: none are asked for. */
+  searchPress?(game: string): Promise<CommonsImage[]>;
   fetchStock(
     dir: string,
     targets: FootageTarget[],
@@ -153,6 +156,46 @@ export function photoMatches(
 /** A sentence about the real world (a studio, people, money, hardware, a launch), not a moment in the game. */
 export function realWorld(m: FillMoment): boolean {
   return !!(m.broll && m.broll.trim());
+}
+
+/** A sentence about an announcement, a reveal or a launch: what a publisher's press pictures show. */
+export const ANNOUNCE_LINE =
+  /announc|reveal|unveil|trailer|first look|showcase|\bpress\b|\bE3\b|gamescom|game awards|state of play|nintendo direct|launch|release|box art|cover art|key art|screenshot/i;
+
+/** Whether any of a chapter's open sentences is about an announcement. */
+export function announcementLines(ch: FillChapter, open: number[]): number[] {
+  return open.filter((k) =>
+    ANNOUNCE_LINE.test(`${ch.sentences[k] ?? ""} ${ch.moments[k]?.show ?? ""}`),
+  );
+}
+
+const MAX_PRESS = 4;
+
+/** Up to MAX_PRESS press pictures of the chapter's game for its announcement sentences, as candidates. */
+async function pressCandidates(
+  deps: FillDeps,
+  dir: string,
+  base: string,
+  ch: FillChapter,
+  open: number[],
+  have: Set<string | undefined>,
+): Promise<Image[]> {
+  if (!deps.searchPress || !announcementLines(ch, open).length) return [];
+  const out: Image[] = [];
+  for (const img of await deps.searchPress(ch.game).catch(() => [] as CommonsImage[])) {
+    if (out.length >= MAX_PRESS) break;
+    if (have.has(img.url)) continue;
+    const file = path.join(base, "press", `p-${shortHash(img.url)}.jpg`);
+    if (!(await deps.downloadPhoto(img, path.join(dir, file)).catch(() => false))) continue;
+    out.push({
+      kind: "article",
+      file,
+      sourceUrl: img.url,
+      provenance: photoProvenance(img),
+      beatIndex: ch.entry,
+    });
+  }
+  return out;
 }
 
 const MAX_PHOTO_QUERIES = 12;
@@ -288,7 +331,7 @@ async function fillChapter(
           startSeconds: 0,
           stock: true,
           moment: c.moment,
-          credit: "ILLUSTRATIVE · STOCK FOOTAGE: PEXELS",
+          credit: stockCredit(c.provenance),
         });
     }
   }
@@ -369,12 +412,16 @@ async function fillChapter(
         kind: "photo",
         file,
         sourceUrl: img.pageUrl,
-        provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+        provenance: photoProvenance(img),
         beatIndex: ch.entry,
         ...(want.person ? { label: want.person.toUpperCase() } : {}),
       } as Image);
     }
   }
+
+  // 2b. The publisher's press pictures of the chapter's game, when a bare sentence is about an announcement, a
+  //     reveal or a launch (LIBRARY_PRESS): pinned only where the picture editor finds one shows the sentence.
+  candidates.push(...(await pressCandidates(deps, dir, base, ch, open(), have)));
 
   // 3. The picture editor pins what truly shows a sentence; official art it passes over still widens the pool.
   for (let b = 0; b < candidates.length; b += BATCH) {
@@ -406,7 +453,9 @@ async function fillChapter(
       if (ranked.withText.has(i)) return;
       a.label ??= ranked.labels.get(i);
       // A photo nobody picked could be anything; official art is always the game.
-      if (picked.has(i) || a.kind !== "photo") images.push(a);
+      // A press picture nobody picked may be of another game in the post: it stays out, like a photo.
+      if (picked.has(i) || (a.kind !== "photo" && !isPressProvenance(a.provenance)))
+        images.push(a);
     });
   }
 

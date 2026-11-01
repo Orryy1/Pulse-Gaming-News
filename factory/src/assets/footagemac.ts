@@ -119,8 +119,9 @@ export function macFootageDeps(
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
   >();
 
+  let closing = false;
   const lost = (why: string) => {
-    if (!up && !ssh) return;
+    if (closing || (!up && !ssh)) return;
     up = false;
     ssh = undefined;
     log("warn", "Mac footage gather lost; the PC carries on", { why });
@@ -226,6 +227,7 @@ export function macFootageDeps(
       };
   out.close = async () => {
     const child = ssh;
+    closing = true;
     up = false;
     // Closing stdin ends the Mac's session, which removes the job folder itself.
     if (child)

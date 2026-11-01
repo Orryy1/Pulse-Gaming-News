@@ -85,7 +85,15 @@ import {
 import { errorMessage, log } from "./lib/util.ts";
 import { publishPcSchedule } from "./pcschedule.ts";
 import { activeUploads } from "./youtube/upload.ts";
-import { handleRoutine, routineAllowed, startBraveFront } from "./routines.ts";
+import {
+  allowRoutineLan,
+  handleRoutine,
+  lanRoutineRequest,
+  routineAllowed,
+  startBraveFront,
+} from "./routines.ts";
+import { filesForMacRoutine, macSettings } from "./macworker.ts";
+import { macGameplayTick } from "./macgameplay.ts";
 import { alert, postDiscord } from "./approval/discord.ts";
 import { sendDueNotices } from "./notices.ts";
 import { maybeReload } from "./reload.ts";
@@ -211,6 +219,7 @@ export function createApp(
         db,
         cfg,
         pollCandidates: () => services.discoverEvergreen(),
+        macFiles: (files) => filesForMacRoutine(macSettings(cfg), files),
       })
     )
       return;
@@ -1549,6 +1558,33 @@ async function main(): Promise<void> {
     .listen(cfg.port, process.env.HOST || "127.0.0.1", () =>
       log("info", "listening", { port: cfg.port }),
     );
+  // The Mac's Brave routines (ROUTINE_LAN_ALLOW): a second listener, /routine/ only, listed addresses only.
+  if (cfg.routineLanAllow.length) {
+    allowRoutineLan(cfg.routineLanPort, cfg.routineLanAllow);
+    http
+      .createServer((req, res) => {
+        const path = new URL(req.url ?? "/", "http://local").pathname;
+        if (!path.startsWith("/routine/") || !lanRoutineRequest(req)) {
+          res.writeHead(404).end("Not found");
+          return;
+        }
+        app(req, res).catch((err) => {
+          log("error", "request failed", { error: errorMessage(err) });
+          if (!res.headersSent) res.writeHead(500).end("error");
+        });
+      })
+      .listen(cfg.routineLanPort, "0.0.0.0", () =>
+        log("info", "routines listening on the LAN", {
+          port: cfg.routineLanPort,
+          allow: cfg.routineLanAllow,
+        }),
+      );
+  }
+  // The highlight finder and the TinoTV download on the Mac (MAC_GAMEPLAY).
+  if (cfg.macGameplay) {
+    void macGameplayTick(cfg);
+    setInterval(() => void macGameplayTick(cfg), 5 * 60_000);
+  }
 
   // Boot checks: everything that silently stops an unattended factory, posted to Discord once.
   void (async () => {

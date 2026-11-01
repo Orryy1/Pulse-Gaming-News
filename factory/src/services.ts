@@ -27,6 +27,8 @@ import {
   renderShort,
   renderLong,
   renderLongStills,
+  renderLongThumbs,
+  countAsRender,
   renderCutdown,
 } from "./render/render.ts";
 import {
@@ -71,6 +73,13 @@ import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { findIgdbGame, fetchIgdbArt } from "./assets/igdb.ts";
 import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
 import { footageFirstDeps } from "./assets/footagedeps.ts";
+import { macFootageDeps } from "./assets/footagemac.ts";
+import { macOrLocal, macSettings, macTranscribeWords } from "./macworker.ts";
+import {
+  macRenderShort,
+  macRenderStills,
+  macRenderThumbs,
+} from "./render/macrender.ts";
 import {
   QUOTA,
   QUOTA_RESERVE_FOR_UPLOAD,
@@ -118,6 +127,22 @@ export function stockLibraries(
 }
 
 export function createServices(db: Db, cfg: Config): Services {
+  // The Mac mini's jobs (src/macworker.ts): each setting off means the old local path, untouched.
+  const mac = macSettings(cfg);
+  const tellMac = (content: string) =>
+    postDiscord(cfg.discordWebhookUrl, { content }).catch(() => undefined);
+  const speechWords = (file: string) =>
+    cfg.macAsr
+      ? macOrLocal(
+          "the speech timing",
+          (f: string) => macTranscribeWords(mac, f),
+          (f: string) =>
+            cfg.whisperPython
+              ? transcribeWords(f, cfg.whisperPython)
+              : Promise.resolve([]),
+          tellMac,
+        )(file)
+      : transcribeWords(file, cfg.whisperPython);
   const claude = createClaude({
     top: cfg.anthropicModel,
     mid: cfg.claudeModelMid,
@@ -279,12 +304,14 @@ export function createServices(db: Db, cfg: Config): Services {
     achievements: (appId) => fetchAchievements(appId),
     steamClimbers: (now) => steamClimbers(now),
     steamDeals: (exclude) => steamDeals(exclude),
-    footageFirstDeps: () =>
-      footageFirstDeps({
+    footageFirstDeps: () => {
+      const local = footageFirstDeps({
         ytdlp: cfg.ytdlpPath,
         // The title check is the existing low-tier judge, one call per chapter, only where clips are ranked by Claude.
         llm: cfg.clipRanking === "llm" ? llm : undefined,
-      }),
+      });
+      return cfg.macFootageGather ? macFootageDeps(mac, local, tellMac) : local;
+    },
     ownClips: (game, franchise, dir, targets, maxClips) =>
       cfg.footage && (cfg.footageLibrary || cfg.gameplayRoot)
         ? libraryClips({
@@ -395,9 +422,34 @@ export function createServices(db: Db, cfg: Config): Services {
       return true;
     },
     imageAspect,
-    render: renderShort,
-    renderLong,
-    renderLongStills,
+    render: cfg.macRenderShorts
+      ? macOrLocal(
+          "the Short render",
+          (input) => countAsRender(() => macRenderShort(mac, input)),
+          renderShort,
+          tellMac,
+        )
+      : renderShort,
+    renderLong: cfg.macStills
+      ? (input) =>
+          renderLong({
+            ...input,
+            thumbRenderer: macOrLocal(
+              "the thumbnails",
+              (t) => macRenderThumbs(mac, t),
+              renderLongThumbs,
+              tellMac,
+            ),
+          })
+      : renderLong,
+    renderLongStills: cfg.macStills
+      ? macOrLocal(
+          "the graphics check's stills",
+          (input) => macRenderStills(mac, input),
+          renderLongStills,
+          tellMac,
+        )
+      : renderLongStills,
     renderCutdown,
     normalise: normaliseLoudness,
     technicalQa,
@@ -439,16 +491,16 @@ export function createServices(db: Db, cfg: Config): Services {
       return plan;
     },
     hearClip: async (file) =>
-      cfg.whisperPython
-        ? (await transcribeWords(file, cfg.whisperPython)).map((w) => ({
+      cfg.whisperPython || cfg.macAsr
+        ? (await speechWords(file)).map((w) => ({
             text: w.text,
             start: w.start,
             end: w.end ?? w.start + 0.3,
           }))
         : [],
     checkNarration: async (file, words) =>
-      cfg.whisperPython
-        ? checkNarration(words, await transcribeWords(file, cfg.whisperPython))
+      cfg.whisperPython || cfg.macAsr
+        ? checkNarration(words, await speechWords(file))
         : undefined,
     youtube: (account = "") =>
       new YouTubeClient(() => accessToken(db, oauthConfig(cfg), account)),

@@ -211,6 +211,19 @@ export interface Config {
   cutdownsEnabled: boolean; // Shorts cut from each long ranking
   cutdownSlot: string; // local publish time for them, one a day
   cutdownsPerLong: number;
+  /** The Mac mini's jobs (src/macworker.ts), each off by default and each falling back to the PC. */
+  macWorkerHost: string; // the ssh alias
+  macMinFreeGb: number; // free disk the Mac always keeps (the orchestrator's floor)
+  macWaitMinutes: number; // how long a job waits for the Mac's heavy turn before the PC does it
+  macRenderConcurrency: number;
+  macAsr: boolean; // narration word timings
+  macRenderShorts: boolean; // Shorts, their poster and thumbnail
+  macFootageGather: boolean; // the footage-first gather, all but the vision looks
+  macStills: boolean; // long videos' thumbnails and the graphics check's stills
+  macGameplay: boolean; // the highlight finder and TinoTV VOD download (retire the PC tasks first)
+  /** The Mac addresses allowed the /routine pages over the LAN, on routineLanPort; empty: loopback only, as ever. */
+  routineLanAllow: string[];
+  routineLanPort: number;
   /** The owner's own recordings, cut into an inbox by the Windows tasks in C:\Claude	inotv-vods. */
   gameplayEnabled: boolean;
   gameplayRoot: string; // holds inbox/ (written by the finder) and published/ (read by Leonida Intel)
@@ -746,6 +759,20 @@ export function loadConfig(): Config {
     cutdownsEnabled: bool("CUTDOWNS_ENABLED", false), // on once a sandbox run has been checked
     cutdownSlot: str("CUTDOWN_SLOT", "15:30"),
     cutdownsPerLong: int("CUTDOWNS_PER_LONG", 3),
+    macWorkerHost: str("MAC_WORKER_HOST", "pulse-mac"),
+    macMinFreeGb: int("MAC_MIN_FREE_GB", 40),
+    macWaitMinutes: int("MAC_WAIT_MINUTES", 10),
+    macRenderConcurrency: int("MAC_RENDER_CONCURRENCY", 6),
+    macAsr: bool("MAC_ASR", false),
+    macRenderShorts: bool("MAC_RENDER_SHORTS", false),
+    macFootageGather: bool("MAC_FOOTAGE_GATHER", false),
+    macStills: bool("MAC_STILLS", false),
+    macGameplay: bool("MAC_GAMEPLAY", false),
+    routineLanAllow: str("ROUTINE_LAN_ALLOW", "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+    routineLanPort: int("ROUTINE_LAN_PORT", 8081),
     gameplayEnabled: bool("GAMEPLAY_ENABLED", true),
     gameplayRoot: str(
       "GAMEPLAY_ROOT",

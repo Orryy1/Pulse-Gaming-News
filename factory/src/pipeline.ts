@@ -144,6 +144,8 @@ import {
   realWorldImage,
 } from "./render/longplan.ts";
 import type { LongRenderInput, LongStillsInput } from "./render/render.ts";
+import { motifPictureOrder } from "./render/motifpictures.ts";
+import { repairPictures, thumbOutcome } from "./qa/thumbrepair.ts";
 import type { renderCutdown } from "./render/render.ts";
 import {
   CUTDOWN_TAIL_SECONDS,
@@ -7057,14 +7059,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         })[0],
     )
     .catch(() => undefined);
-  const motifPictures = images
-    .filter(
-      (i) =>
-        i.aspect >= 1.3 &&
-        ["hero", "screenshot", "article", "header"].includes(i.kind),
-    )
-    .map((i) => i.file)
-    .slice(0, 6);
+  // Panel-shaped pictures first, one per chapter in turn, logo banners last (src/render/motifpictures.ts):
+  // the first six used to be Steam library banners whose empty middle filled the grid's biggest panel.
+  const motifPictures = motifPictureOrder(images).map((i) => i.file);
   const candidates: Candidate[] = [
     ...(motif?.card && motifPictures.length
       ? [
@@ -7191,6 +7188,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     file: path.join(dir, i === 0 ? "thumb_b.jpg" : "thumb_c.jpg"),
     thumb: c.thumb as never,
   }));
+  // The series grid's own repair (THUMB_MOTIF_REPAIR, src/qa/thumbrepair.ts): its next layout with the
+  // pictures in another order, rendered beside it so a failed grid can be swapped for a grid.
+  const motifRepair =
+    mainThumb?.layout === "motif" && s.cfg.thumbMotifRepair
+      ? {
+          file: path.join(dir, "thumb_grid_b.jpg"),
+          thumb: {
+            ...mainThumb.thumb,
+            variant: 1,
+            pictureFiles: repairPictures(motifPictures),
+          } as never,
+        }
+      : undefined;
   log("info", "thumbnail designs", {
     episode: ep.id,
     designs: candidates.map((c) => c.layout).slice(0, 3),
@@ -7312,6 +7322,16 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     gameTitle: script.game_title,
     format: "graphics" as const,
   };
+  // Which sentence graphics the renderer draws at all (src/render/gfxdraws.ts); loaded on demand like the
+  // motifs, so the style registry can never stop a render (without it every useful graphic is checked).
+  const drawsGraphic = await import("./render/gfxdraws.ts")
+    .then((m) =>
+      m.graphicDrawsFor(
+        segments,
+        script.recap ? script.headline : script.game_title,
+      ),
+    )
+    .catch(() => undefined);
   const graphicsInput = () => ({
     windows: hasMoments
       ? momentWindows(
@@ -7326,6 +7346,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     durationSeconds: duration,
     // Filler shots are checked at their own settle frame (src/render/fillerplan.ts fillerSettle).
     shots: plan.shots,
+    // Each graphic at the span the renderer draws it for, and only if it draws (src/render/momentspan.ts).
+    momentOf: (e: number, m: number) => moments[e]?.[m],
+    draws: drawsGraphic
+      ? (e: number, m: number) =>
+          !moments[e]?.[m] || drawsGraphic(e, moments[e]![m]!.graphic)
+      : undefined,
   });
   // Filler visuals chosen after an earlier pre-pass are checked on their own (the rest were checked then).
   const fillersOnly =
@@ -7442,7 +7468,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       posterFile: path.join(dir, "poster.jpg"),
       thumbFile: path.join(dir, "thumb.jpg"),
       thumb: mainThumb!.thumb as never,
-      thumbVariants,
+      thumbVariants: motifRepair ? [...thumbVariants, motifRepair] : thumbVariants,
       concurrency: s.cfg.remotionConcurrency,
       gl: s.cfg.remotionGl,
       browserExecutable: s.cfg.browserExecutable,
@@ -7607,7 +7633,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     }
       acceptedFaults = r.faulted;
     }
-    const thumbs = ["thumb.jpg", ...thumbFiles];
+    const repair = motifRepair ? path.basename(motifRepair.file) : undefined;
+    const thumbs = ["thumb.jpg", ...thumbFiles, ...(repair ? [repair] : [])];
     const tv = await s
       .visionQa(
         thumbs.map((f) => path.join(dir, f)),
@@ -7629,12 +7656,22 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "thumbnail_check", {
         problems: tv!.problems,
       });
-      const good = thumbFiles.filter((f) => !bad.has(f));
-      if (bad.has("thumb.jpg") && good[0]) {
-        await fs.copyFile(path.join(dir, good[0]), path.join(dir, "thumb.jpg"));
-        good.shift();
+      const out = thumbOutcome({ main: "thumb.jpg", variants: thumbFiles, repair, bad });
+      if (out.mainFrom)
+        await fs.copyFile(path.join(dir, out.mainFrom), path.join(dir, "thumb.jpg"));
+      thumbFiles = out.variants;
+      if (repair && bad.has("thumb.jpg")) {
+        await logEvent(s.db, ep.id, "thumbnail_repair", {
+          repaired: out.repaired,
+          replacedBy: out.mainFrom ?? null,
+        });
+        await s.notify({
+          level: "info",
+          content: out.repaired
+            ? `🖼️ "${script.headline}": the thumbnail check failed the series-grid thumbnail, so its second layout with other pictures replaced it (it passed the same check).`
+            : `🖼️ "${script.headline}": the thumbnail check failed the series-grid thumbnail and its second layout too, so ${out.mainFrom ? "another design" : "the grid, as rendered,"} is the thumbnail.`,
+        });
       }
-      thumbFiles = good;
     }
   }
   await transition(s.db, ep.id, "voiced", "rendered", {

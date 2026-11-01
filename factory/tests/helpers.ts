@@ -152,6 +152,7 @@ export function testConfig(
     docClipsPerChapter: 4,
     docSoundBeats: true,
     docEndCard: true,
+    thumbMotifRepair: true,
     docColdOpen: true,
     docTitleDrop: true,
     docOpenLoops: true,

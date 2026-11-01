@@ -889,7 +889,7 @@ const GtaList: React.FC<GfxProps> = ({ g, len, src, variant = 0 }) => {
         const onPic = Boolean(src) && i % 2 === v % 2;
         const text = item.toUpperCase();
         const fit = fitText(text, ANTON, {
-          width: w - 56,
+          width: w - 64,
           height: (h - 110) * (onPic ? 0.62 : 0.9),
           lineHeight: onPic ? 1.2 : 1.02,
           maxLines: 3,
@@ -927,8 +927,10 @@ const GtaList: React.FC<GfxProps> = ({ g, len, src, variant = 0 }) => {
             >
               {String(i + 1).padStart(2, "0")}
             </div>
+            {/* Clear of the panel's black rule: at 22 px the labels looked cut at the bottom edge (Vice City
+                2:7 and 7:15, 31 Oct 2026). */}
             <div
-              style={{ position: "absolute", left: 24, right: 24, bottom: 22 }}
+              style={{ position: "absolute", left: 32, right: 32, bottom: 34 }}
             >
               {onPic ? (
                 <StackedLines
@@ -1040,7 +1042,7 @@ export const GTA: Motif = {
         const items = g.items.map((x) => x.trim()).filter(Boolean);
         if (items.length < 2 || items.length > 6 || g.primary.length > 32)
           return false;
-        const w = LIST_WIDTH[items.length]! - 56;
+        const w = LIST_WIDTH[items.length]! - 64;
         return items.every(
           (x) =>
             x.length <= 48 &&

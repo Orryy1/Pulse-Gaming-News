@@ -212,6 +212,7 @@ export type ThumbProps = {
   focus?: [number, number, number, number]; // mystery: the thing to circle (fractions of the picture)
   motif?: string; // motif: the look's id (src/render/components/motifs)
   pictureSrcs?: string[]; // motif: pictures for its panels and screens
+  variant?: number; // motif: the card's layout (the repair after a failed check takes the next one)
 };
 
 /** Long-form thumbnail, 1280x720, in one of three designs. */

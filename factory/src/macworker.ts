@@ -391,6 +391,7 @@ export async function macTranscribeWords(
   const ext = path.extname(file) || ".mp3";
   const job = `$HOME/PulseFactory/jobs/asr_${process.pid}_${Date.now()}`;
   const line = [
+    "export PATH=/opt/homebrew/bin:$PATH",
     `J=${shq(job)}`,
     'mkdir -p "$J"',
     `cat > "$J/in${ext}"`,

@@ -195,7 +195,7 @@ export const DelayMoment: React.FC<{
         <div
           style={{
             // Room for the stamp above the struck card without touching the label.
-            marginTop: 140,
+            marginTop: 200,
             display: "flex",
             alignItems: "center",
             gap: 70,
@@ -209,10 +209,12 @@ export const DelayMoment: React.FC<{
             <div
               style={{
                 position: "absolute",
-                left: "100%",
                 top: 0,
-                marginLeft: -300,
-                marginTop: -100,
+                // Clear of the struck date even at its tilt (a 340 px stamp at -12 degrees drops 35 px at
+                // its left end): at -100 it still clipped the date's top, and Vice City 3:3 was muted (31 Oct 2026).
+                left: "50%",
+                marginLeft: -170,
+                marginTop: -170,
                 width: 340,
                 textAlign: "center",
                 padding: "6px 0",
@@ -369,6 +371,33 @@ export const SpanMoment: React.FC<{
   );
 };
 
+/**
+ * How a critic's verdict is set on its tile: a score ("4 out of 5", "9/10") in the big display face, words
+ * ("really quite shoddy", "lost character data") in quotes in the body face. Lower-case words in the narrow
+ * display face, squeezed onto two lines, read as smeared and were muted twice on Vice City (31 Oct 2026).
+ */
+export function verdictLook(verdict: string): {
+  text: string;
+  face: "anton" | "inter";
+  sizes: number[];
+  maxLines: number;
+} {
+  const words = !/\d/.test(verdict);
+  return words
+    ? {
+        text: `“${verdict.replace(/^["“”']+|["“”']+$/g, "")}”`,
+        face: "inter",
+        sizes: [54, 46, 40, 34, 30],
+        maxLines: 3,
+      }
+    : {
+        text: verdict,
+        face: "anton",
+        sizes: [100, 76, 60, 50, 42, 36],
+        maxLines: 2,
+      };
+}
+
 /** Critics' scores as tiles flipping in. items: ["Outlet: 10/10", ...] as the source gives them. */
 export const ReviewsMoment: React.FC<{
   g: MomentGraphic;
@@ -418,17 +447,19 @@ export const ReviewsMoment: React.FC<{
                 {/* The verdict sized to its tile, wrapping to two lines when it is words rather than a
                     score ("lost character data" at 76 px crowded the tile, 30 Oct 2026). */}
                 {(() => {
-                  const fit = fitBlock(r.b, "anton", {
+                  const look = verdictLook(r.b);
+                  const fit = fitBlock(look.text, look.face, {
                     maxWidth: 340,
-                    sizes: [100, 76, 60, 50, 42, 36],
-                    maxLines: 2,
+                    sizes: look.sizes,
+                    maxLines: look.maxLines,
                   });
                   return (
                     <div
                       style={{
-                        fontFamily: DISPLAY,
+                        fontFamily: look.face === "anton" ? DISPLAY : BODY,
+                        fontWeight: look.face === "anton" ? undefined : 800,
                         fontSize: fit.size,
-                        lineHeight: 1.05,
+                        lineHeight: look.face === "anton" ? 1.05 : 1.15,
                         color: COLOUR.paper,
                         overflow: "hidden",
                       }}
@@ -460,6 +491,15 @@ export const ReviewsMoment: React.FC<{
     </Stage>
   );
 };
+
+/**
+ * The dark band a two-picture compare keeps for its heading, in px: the heading gets the top of the frame to
+ * itself and the pictures start below it. Set over the pictures it covered faces ("MAP SIZE" across a pair of
+ * sunglasses, "WHERE THE IDEA BEGAN" over a cheek), and three Vice City compares were muted (31 Oct 2026).
+ */
+export function headBand(heading: string, headSize: number): number {
+  return heading ? headSize + 76 : 0;
+}
 
 /** Two games side by side with a diagonal wipe: the series then and now. */
 export const VersusMoment: React.FC<{
@@ -533,9 +573,25 @@ export const VersusMoment: React.FC<{
     <AbsoluteFill
       style={{ opacity: dim, pointerEvents: "none", background: COLOUR.ink }}
     >
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          top: headBand(heading, headSize),
+        }}
+    >
       {half("l", left)}
       {half("r", right)}
-      <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
+      </div>
+      <AbsoluteFill
+        style={{
+          alignItems: "center",
+          justifyContent: "center",
+          top: headBand(heading, headSize),
+        }}
+      >
         <div
           style={{
             width: 150,
@@ -559,7 +615,7 @@ export const VersusMoment: React.FC<{
         <div
           style={{
             position: "absolute",
-            top: SAFE_EDGE + 40,
+            top: 38,
             width: "100%",
             textAlign: "center",
           }}
@@ -678,7 +734,8 @@ export const AchievementMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
     <div
       style={{
         position: "absolute",
-        top: 120,
+        // Below the chapter index and year counter (top 100-170): at 120 it covered both (Vice City 5:5).
+        top: 196,
         left: "50%",
         transform: `translate(-50%, ${(1 - inP) * -160}px)`,
         opacity: out,
@@ -915,6 +972,16 @@ export const WipeCompare: React.FC<{
   );
   return (
     <AbsoluteFill style={{ opacity: dim, background: COLOUR.ink }}>
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          top: headBand(heading, headSize),
+          overflow: "hidden",
+        }}
+      >
       <Img
         src={right.src}
         style={{
@@ -971,13 +1038,14 @@ export const WipeCompare: React.FC<{
       >
         {"\u2039\u203A"}
       </div>
+      </div>
       {name(left, "l")}
       {name(right, "r")}
       {heading ? (
         <div
           style={{
             position: "absolute",
-            top: SAFE_EDGE + 50,
+            top: 38,
             left: 0,
             right: 0,
             textAlign: "center",

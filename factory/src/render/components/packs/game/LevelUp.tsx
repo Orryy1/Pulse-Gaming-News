@@ -117,7 +117,9 @@ export const LevelUp: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
   const glint = interpolate((frame - HIT - 20) % 75, [0, 22], [0, 1], clamp);
 
   // The milestone and the year.
-  const TEXT_IN = HIT + 14;
+  // In by frame 60 for up to 12 words (the earliest the graphics check looks, src/qa/graphicscheck.ts
+  // MIN_SETTLE_FRAMES): at HIT + 14 and two frames a word the last word was still rising there.
+  const TEXT_IN = HIT + 6;
   const textSize = bySize(text, [
     [26, 70],
     [48, 60],
@@ -125,7 +127,7 @@ export const LevelUp: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
     [999, 46],
   ]);
   const yearIn = spring({
-    frame: frame - (TEXT_IN + words.length * 2 + 8),
+    frame: frame - (TEXT_IN + words.length + 8),
     fps,
     config: SPRING.POP,
   });
@@ -508,26 +510,20 @@ export const LevelUp: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
           >
             {words.map((w, i) => {
               const p = spring({
-                frame: frame - TEXT_IN - i * 2,
+                frame: frame - TEXT_IN - i,
                 fps,
                 config: SPRING.ENTER,
               });
               return (
-                <span
-                  key={i}
-                  style={{
-                    display: "inline-block",
-                    overflow: "hidden",
-                    verticalAlign: "top",
-                    paddingBottom: 6,
-                    marginBottom: -6,
-                  }}
-                >
+                // Each word rises a little and fades in whole. It used to slide up out of a clipped box, and a
+                // word caught rising lost its foot: "history" read "historv", "Awards" sat low (Vice City
+                // 4:39 and 6:18, 31 Oct 2026).
+                <span key={i} style={{ display: "inline-block" }}>
                   <span
                     style={{
                       display: "inline-block",
-                      transform: `translateY(${(1 - p) * 105}%)`,
-                      opacity: p > 0.01 ? 1 : 0,
+                      transform: `translateY(${(1 - p) * 30}%)`,
+                      opacity: Math.min(1, Math.max(0, p)),
                     }}
                   >
                     {w}

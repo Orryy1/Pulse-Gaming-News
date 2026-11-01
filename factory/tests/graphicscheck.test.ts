@@ -61,9 +61,9 @@ test("the check list has every useful graphic and breather, skips muted ones and
     ["0:0", "0:1", "1:0", "break:0", "break:1"],
   );
   // At the settled frame after the sentence lands (0.15 s before its key word): 0:1 is drawn from 20.85
-  // until 0:2 lands (29.85), 9 s, so the hold is 180 frames and the still comes 58% in, frame 104. A
-  // breather's still comes 1.6 s in.
-  assert.equal(all[1]!.t, 21 - 0.15 + 104 / 30);
+  // until 0:2 lands (29.85), 9 s, so the hold is 180 frames and the still comes at DRAWN_BY, frame 100.
+  // A breather's still comes 1.6 s in.
+  assert.equal(all[1]!.t, 21 - 0.15 + 100 / 30);
   assert.equal(all[3]!.t, 101.6);
   assert.equal(checkFrame(all[3]!, 30), 3048);
   const muted = graphicChecks(
@@ -79,15 +79,22 @@ test("the check list has every useful graphic and breather, skips muted ones and
   assert.equal(graphicChecks(input, {}, 0).length, 0);
 });
 
-test("a graphic's still is taken once its build has settled: 58% into the hold, never before frame 60, never in the fade", () => {
-  // A full moment (200 frames): the hold is 180, the still at frame 104, past DRAWN_BY's builds.
-  assert.equal(settledFrame(200), 104);
-  assert.equal(settledFrame(400), 104);
-  // Short moments: never before 60 while the hold allows it (a 100-frame moment holds 94, fades from 80).
-  assert.equal(settledFrame(100), 60);
-  assert.equal(settledFrame(120), 66);
-  // The shortest moment the renderer draws (2.5 s): the hold is 69, the fade starts at 55, so 55 it is.
-  assert.equal(settledFrame(75), 55);
+test("a graphic's still is taken once its build has settled: as late as the moment allows up to DRAWN_BY, never in the fade", () => {
+  // A full moment (200 frames): the hold is 180, the still at DRAWN_BY (frame 100), every build done.
+  assert.equal(settledFrame(200), 100);
+  assert.equal(settledFrame(400), 100);
+  // A 100-frame moment holds 94 and fades from 80 (a corner card from 78): the still at 76, past every
+  // build that finishes by then. At frame 60 it caught a map label half written ("Auste", 31 Oct 2026).
+  assert.equal(settledFrame(100), 76);
+  assert.equal(settledFrame(120), 96);
+  // The shortest moment the renderer once drew (2.5 s): the hold is 69, the fade starts at 55, the corner
+  // card's at 53, so 51.
+  assert.equal(settledFrame(75), 51);
+  // Since 1 Nov 2026 a moment may be cut short by the next thing drawn (src/render/momentspan.ts): a
+  // 40-frame moment is looked at on frame 16, inside the moment and before its card fades.
+  assert.equal(settledFrame(40), 16);
+  for (const len of [30, 40, 60, 75, 100, 150, 200])
+    assert.ok(settledFrame(len) < len - 22, `moment of ${len} frames`);
   // Tonight's faults were stills at 2.2 s (frame 66): the calendar's caption wrote until 72 and the
   // departures board's NOW row flipped until 68. Both are done by the frame now chosen.
   assert.ok(settledFrame(200) >= 72);

@@ -969,7 +969,8 @@ export const TimelineMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
         position: "absolute",
         left: (1920 - W - 80) / 2,
         // Clear of the chapter tag and title bar in the lower third (the panel sat on them, 30 Oct 2026).
-        bottom: LOWER_THIRD + 30,
+        // Clear of the chapter tag below it, even with two-line labels (Vice City 5:37, 1 Nov 2026).
+        bottom: LOWER_THIRD + 56,
         width: W + 80,
         padding: "30px 40px 40px",
         opacity: panelIn * out,

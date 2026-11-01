@@ -664,7 +664,7 @@ export const ClashThumb: React.FC<StudioThumbProps> = ({
  * its best moment, carrying the thumbnail's words, with the Pulse signature. Bespoke to every topic.
  */
 export const MotifThumb: React.FC<
-  StudioThumbProps & { motif?: string; pictureSrcs?: string[] }
+  StudioThumbProps & { motif?: string; pictureSrcs?: string[]; variant?: number }
 > = (p) => {
   const m = ALL_MOTIFS.find((x) => x.id === p.motif);
   if (!m?.card) return p.fgSrc ? <HeroThumb {...p} /> : <NumberThumb {...p} />;
@@ -692,7 +692,7 @@ export const MotifThumb: React.FC<
             year: p.year,
             pictures,
             frames: 120,
-            variant: 0,
+            variant: p.variant ?? 0,
           })}
         </Freeze>
       </div>

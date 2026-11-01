@@ -235,6 +235,10 @@ export interface Config {
   /** Documentaries end on a rendered twenty-second card ("Up next": the newest public documentary, the
    * mark, a subscribe nudge) and their description's second line carries that link: DOC_END_CARD, default on. */
   docEndCard: boolean;
+  /** A long video's series-grid (motif) thumbnail that the thumbnail check fails gets one repair, the same
+   * grid in its next layout with other pictures, before another design takes its place: THUMB_MOTIF_REPAIR,
+   * default on (owner, 31 Oct 2026: keep the grid look). */
+  thumbMotifRepair: boolean;
   /** Documentaries open on the signature three seconds (sting, mark, one line of the hook): DOC_COLD_OPEN, default on. */
   docColdOpen: boolean;
   /** The documentary's title lands as a card on the cold open's last beat instead of over its first seconds
@@ -748,6 +752,7 @@ export function loadConfig(): Config {
     docClipsPerChapter: int("DOC_CLIPS_PER_CHAPTER", 4),
     docSoundBeats: bool("DOC_SOUND_BEATS", true),
     docEndCard: bool("DOC_END_CARD", true),
+    thumbMotifRepair: bool("THUMB_MOTIF_REPAIR", true),
     docColdOpen: bool("DOC_COLD_OPEN", true),
     docTitleDrop: bool("DOC_TITLE_DROP", true),
     docOpenLoops: bool("DOC_OPEN_LOOPS", true),

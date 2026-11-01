@@ -138,6 +138,14 @@ import {
 } from "./components/EditorMoves.tsx";
 import { ALL_STYLES } from "./components/packs/index.ts";
 import { inEra } from "./components/packs/types.ts";
+import { motifPictureOrder } from "./motifpictures.ts";
+import {
+  captionHeld,
+  sentenceSpan,
+  type SentenceSpan,
+  type SpanLook,
+} from "./momentspan.ts";
+import { hudYield, type HudSpan } from "./hudyield.ts";
 import { storyYear } from "./components/packs/screen/OldWeb.tsx";
 import { CAPTION_STYLES } from "./components/Captions.tsx";
 import { motifsFor } from "./components/motifs/index.ts";
@@ -314,6 +322,8 @@ export type LongProps = {
   camera?: CameraTechnique[];
   /** Previews only (data/smoke/camera.mts): print the camera's chosen moves to the browser console. */
   debugCamera?: boolean;
+  /** Previews only (data/smoke/gfx_mutes.mts): print which style draws each sentence's graphic. */
+  debugGraphics?: boolean;
   /** The documentary's sound craft (src/render/soundfx.ts): J and L cuts, foley, risers and the rest. Absent: the old mix. */
   soundCraft?: Partial<SoundCraft>;
   /** Music beds whose pocketed copy (music/pocket/*.flac) this bundle carries (src/render/render.ts). */
@@ -2868,80 +2878,23 @@ export const Long: React.FC<LongProps> = (props) => {
   const bedAt = (f: number) =>
     beds.find((b) => f >= b.from && f < b.to)?.src ?? props.musicSrc;
   // Each sentence's graphic, caption or picture lands a beat before the narrator names it and holds until
-  // the next sentence's lands, and for as long as it takes to read (owner, 30 Oct 2026: cards and captions
-  // vanished before they could be taken in): 2.5 s plus 0.3 s a word and 0.5 s a row, up to 7 s, as long
-  // as nothing else is drawn for that entry in the meantime.
-  const drawn = (entry: number, moment: number): boolean => {
-    const r = props.moments?.[entry]?.[moment];
-    return (
-      !!r &&
-      (usefulGraphic(r.graphic) ||
-        (!!r.emphasis && usefulEmphasis(r.emphasis)) ||
-        fillerShots.has(`${entry}:${moment}`))
-    );
+  // the next sentence's lands, and for as long as it takes to read, never into the next thing drawn for
+  // its entry (src/render/momentspan.ts, shared with the graphics check so its stills land on the graphic).
+  // The small corner card (a stat, date, list, compare or score with no pack style) shares the frame with a
+  // caption; every other graphic fills it. The pack choice is made further down (packFor), so it is read
+  // through a ref once it exists.
+  const packRef: { current?: Map<number, GfxStyle> } = {};
+  const windowIndex = new Map(windows.map((w, k) => [`${w.entry}:${w.moment}`, k]));
+  const spanLook: SpanLook = {
+    moment: (e, m) => props.moments?.[e]?.[m],
+    fillerStart: (e, m) => fillerShots.get(`${e}:${m}`)?.start,
+    shares: (e, m) =>
+      ["stat", "date", "list", "compare", "score"].includes(
+        props.moments?.[e]?.[m]?.graphic.kind ?? "",
+      ) && !packRef.current?.has(windowIndex.get(`${e}:${m}`) ?? -1),
   };
-  const readSeconds = (entry: number, moment: number): number => {
-    const r = props.moments?.[entry]?.[moment];
-    if (!r) return 2.5;
-    const g = usefulGraphic(r.graphic) ? r.graphic : undefined;
-    const text = [g?.primary, g?.secondary, ...(g?.items ?? []), r.emphasis]
-      .filter(Boolean)
-      .join(" ");
-    const words = text.split(/\s+/).filter(Boolean).length;
-    // A card's build (typewriter, flip board, counter) eats 1.5 s before it can be read (measured 30 Oct 2026).
-    return Math.min(
-      8,
-      2.5 + (g ? 1.5 : 0) + 0.3 * words + 0.5 * (g?.items?.length ?? 0),
-    );
-  };
-  const spanOf = (
-    k: number,
-  ): { from: number; len: number; anchored: boolean } => {
-    const w = windows[k]!;
-    const next = windows[k + 1];
-    const anchored = w.at > w.start;
-    const from = Math.max(
-      Math.round(w.start * fps),
-      Math.round((w.at - 0.15) * fps),
-    );
-    const until =
-      next && next.entry === w.entry
-        ? Math.round((next.at - 0.15) * fps)
-        : Math.round(w.end * fps);
-    // The reading time may run past the next sentence, but never into the next thing drawn for this entry.
-    let stop = Math.round(w.end * fps);
-    for (let j = k + 1; windows[j] && windows[j]!.entry === w.entry; j++) {
-      if (drawn(windows[j]!.entry, windows[j]!.moment)) {
-        // A filler shot opens with its sentence's first word: the card before it is gone by then.
-        const next = fillerShots.get(
-          `${windows[j]!.entry}:${windows[j]!.moment}`,
-        );
-        stop = next
-          ? next.start - Math.round(0.3 * fps)
-          : Math.round((windows[j]!.at - 0.3) * fps);
-        break;
-      }
-      stop = Math.round(windows[j]!.end * fps);
-    }
-    const read = Math.min(
-      stop,
-      from + Math.round(readSeconds(w.entry, w.moment) * fps),
-    );
-    // Never over the next sentence's filler shot, which takes the whole frame from its first word.
-    const nextFiller =
-      next && next.entry === w.entry
-        ? fillerShots.get(`${next.entry}:${next.moment}`)
-        : undefined;
-    const endAt = Math.max(until, read, from + Math.round(2.5 * fps));
-    return {
-      from,
-      len: Math.max(
-        1,
-        (nextFiller ? Math.min(endAt, nextFiller.start) : endAt) - from,
-      ),
-      anchored,
-    };
-  };
+  const spanOf = (k: number): SentenceSpan => sentenceSpan(windows, k, fps, spanLook);
+  const captionWaits = (k: number): boolean => captionHeld(windows, k, fps, spanLook);
   // Moment sounds, gated (src/render/soundscape.ts): glints on numbers and whooshes on pop-in pictures,
   // spaced out and kept clear of each entry's own swell and landing.
   const entryFrames = props.segments
@@ -3290,16 +3243,11 @@ export const Long: React.FC<LongProps> = (props) => {
     theme: props.theme,
   })[0];
   /** Wide pictures for a motif's panels, tiles and screens: an entry's own, or the topic's for the opening. */
+  // Panel-shaped pictures first, logo banners last (src/render/motifpictures.ts), as on the thumbnail.
   const motifPictures = (e: number | undefined) =>
-    props.images
-      .filter(
-        (im) =>
-          (e === undefined ? true : im.beatIndex === e) &&
-          im.aspect >= 1.3 &&
-          ["hero", "screenshot", "article", "header"].includes(im.kind),
-      )
-      .map((im) => im.src)
-      .slice(0, 6);
+    motifPictureOrder(
+      props.images.filter((im) => e === undefined || im.beatIndex === e),
+    ).map((im) => im.src);
   // Each pack style's name ("Paper/Typewriter"), for its own foley (src/render/soundfx.ts DEVICE_FOLEY).
   const styleName = useMemo(
     () =>
@@ -3363,9 +3311,58 @@ export const Long: React.FC<LongProps> = (props) => {
       const pick = choices[(n + props.variant) % choices.length];
       if (pick) out.set(k, pick);
     });
+    // Previews only (data/smoke/gfx_mutes.mts): which style draws each sentence's graphic, so the graphics
+    // check's faults can be grouped by component.
+    if (props.debugGraphics) {
+      const nameOf = (k: number, entry: number): string => {
+        const st = out.get(k);
+        if (!st) return "house";
+        const own = Object.entries(motifOf(entry)?.styles ?? {}).find(
+          ([, s]) => s === st,
+        );
+        return (
+          styleName.get(st) ??
+          (own ? `${motifOf(entry)!.id}/${own[0]}` : "motif")
+        );
+      };
+      console.log(
+        `GFXSTYLES ${JSON.stringify(
+          Object.fromEntries(
+            windows.map((w, k) => [
+              `${w.entry}:${w.moment}`,
+              nameOf(k, w.entry),
+            ]),
+          ),
+        )}`,
+      );
+    }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windows, props.moments, props.variant]);
+  packRef.current = packFor;
+  // When the corner furniture gives way (src/render/hudyield.ts): the mark and chapter index under every
+  // filler shot, the year counter under those and under every sentence graphic that is drawn.
+  const hudSpans = useMemo(() => {
+    const fillers: HudSpan[] = plan.shots
+      .filter((s) => s.media.type === "filler")
+      .map((s) => ({ from: s.start, to: s.end }));
+    const graphics: HudSpan[] = [];
+    windows.forEach((w, k) => {
+      const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
+      if (!g || !usefulGraphic(g) || fillerShots.has(`${w.entry}:${w.moment}`))
+        return;
+      // The suite's own kinds draw nothing without a style that fits.
+      if (
+        ["map", "bars", "share", "specs", "lineage"].includes(g.kind) &&
+        !packFor.has(k)
+      )
+        return;
+      const sp = spanOf(k);
+      if (!sp.short) graphics.push({ from: sp.from, to: sp.from + sp.len });
+    });
+    return { fillers, all: [...fillers, ...graphics] };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, windows, packFor, fillerShots, props.moments]);
   // Captions and pop-in pictures take their looks in turn (src/render/components/Captions.tsx, Accents.tsx).
   const lookOf = useMemo(() => {
     const out = new Map<number, number>();
@@ -4050,6 +4047,7 @@ export const Long: React.FC<LongProps> = (props) => {
         ) : null,
       )}
       <GrainVignette />
+      <AbsoluteFill style={{ opacity: hudYield(frame, hudSpans.fillers) }}>
       <Brand
         logoSrc={resolveSrc(props.logoSrc)}
         chip={
@@ -4064,12 +4062,20 @@ export const Long: React.FC<LongProps> = (props) => {
         progress={Math.min(1, frame / Math.max(1, durationInFrames))}
         marks={entryFrames.map((f) => f / Math.max(1, durationInFrames))}
       />
+      {marks.length ? (
+          <ChapterIndex marks={marks} endFrom={indexEnd} />
+        ) : null}
+      </AbsoluteFill>
       <Credit text={creditAt(frame)} />
       {marks.length ? (
-        <>
-          <ChapterIndex marks={marks} endFrom={indexEnd} />
+        <AbsoluteFill
+          style={{
+            opacity: hudYield(frame, hudSpans.all),
+            pointerEvents: "none",
+          }}
+        >
           <YearCounter marks={marks} endFrom={indexEnd} />
-        </>
+        </AbsoluteFill>
       ) : null}
       {props.segments.map((s, i) => {
         const len = Math.max(1, ends[i]! - starts[i]!);
@@ -4438,15 +4444,20 @@ export const Long: React.FC<LongProps> = (props) => {
         // The sentence's filler shot is its whole picture: nothing of its own is drawn over it.
         if (fillerShots.has(`${w.entry}:${w.moment}`)) return null;
         // A rank graphic repeats the rank card and a fragment ("SERIES AT") reads as a glitch: both are left out.
+        // A graphic with no time to be read before the next one is left out, and a caption that would land on
+        // an earlier graphic still on screen is too (src/render/momentspan.ts).
+        const { from, len, anchored, short } = spanOf(k);
         const m = {
           ...raw,
-          graphic: usefulGraphic(raw.graphic)
+          graphic:
+            usefulGraphic(raw.graphic) && !short
             ? raw.graphic
             : { ...raw.graphic, kind: "none" as const },
           emphasis:
-            raw.emphasis && usefulEmphasis(raw.emphasis) ? raw.emphasis : "",
+            raw.emphasis && usefulEmphasis(raw.emphasis) && !short && !captionWaits(k)
+              ? raw.emphasis
+              : "",
         };
-        const { from, len, anchored } = spanOf(k);
         // The explainer's background: suited to the graphic and the game's era, rotating through the video.
         const bg = backgroundFor(
           m.graphic.kind,
@@ -4495,7 +4506,7 @@ export const Long: React.FC<LongProps> = (props) => {
             durationInFrames={len}
             layout="none"
           >
-            {packFor.get(k) ? (
+            {packFor.get(k) && m.graphic.kind !== "none" ? (
               React.createElement(packFor.get(k)!.component, {
                 g: m.graphic,
                 len,

@@ -10,6 +10,8 @@
 import type { VisionQa } from "../editorial/schema.ts";
 import type { LongShot, MomentWindow } from "../render/longplan.ts";
 import { usefulGraphic } from "../render/longplan.ts";
+import { sentenceSpan, type SpanMoment } from "../render/momentspan.ts";
+import { DRAWN_BY } from "../render/components/packs/fit.ts";
 import { framesNamed } from "./vision.ts";
 
 /** One graphic to look at: the second it should be fully drawn and its key ("entry:moment" or "break:i"). */
@@ -43,20 +45,19 @@ export const MIN_SETTLE_FRAMES = 60;
 export const BREAK_SETTLE_SECONDS = 1.6;
 
 /**
- * The frame of a moment at which its graphic has settled: 58% into the hold (every style's build is done,
- * src/render/components/packs/fit.ts DRAWN_BY; the fade-out, which starts 14 frames before the hold ends,
- * has not begun), never before MIN_SETTLE_FRAMES unless the moment is too short for that. The hold is the
- * one the styles use (useStage: the moment less 6 frames, at most 180 here, at least 60). Until 30 Oct 2026
- * the still was taken 2.2 s in and caught split-flap rows mid-flip ("APRIL OV") and tape captions
- * half-written ("Spartan Strike release dat").
+ * The frame of a moment at which its graphic has settled: as late as the moment allows, up to DRAWN_BY (every
+ * style's build is done by then, src/render/components/packs/fit.ts), but before any fade-out. The hold is
+ * the one the styles use (useStage: the moment less 6 frames, at most 180 here, at least 60) and their fade
+ * starts 14 frames before it ends; the house corner card fades from 22 frames before its moment ends
+ * (LongMoments.tsx useInOut). Until 30 Oct 2026 the still was taken 2.2 s in and caught split-flap rows
+ * mid-flip ("APRIL OV"); until 1 Nov 2026 it was 58% into the hold and never later than needed, so a short
+ * moment's still came at frame 60 and caught a map label half written ("Auste" for Australia) and a level-up
+ * line still rising ("historv"), and Vice City muted both.
  */
 export function settledFrame(lenFrames: number): number {
   const hold = Math.max(60, Math.min(lenFrames - 6, 180));
-  const late = hold - 14;
-  return Math.max(
-    Math.min(MIN_SETTLE_FRAMES, late),
-    Math.min(Math.round(hold * 0.58), late),
-  );
+  const late = Math.max(0, Math.min(hold - 14, lenFrames - 24));
+  return Math.min(DRAWN_BY, late);
 }
 
 /**
@@ -91,6 +92,17 @@ export function graphicChecks(
      * reconstruction; src/render/fillerplan.ts) is checked at its own settle frame, under its moment's key.
      */
     shots?: Array<Pick<LongShot, "start" | "end" | "media" | "settle">>;
+    /**
+     * The sentence as the renderer reads it (its graphic and caption): when given, a graphic's still is timed
+     * on the span the renderer draws it for (src/render/momentspan.ts), not the older momentSpan guess.
+     */
+    momentOf?: (entry: number, moment: number) => SpanMoment | undefined;
+    /**
+     * Whether the renderer draws the sentence's graphic at all: a map, chart, share, spec sheet or lineage
+     * with no style that fits draws nothing, and its still showed only footage (Vice City 2:8 was muted for
+     * the game's own "Checkpoint Charlie" caption). Absent: every useful graphic is drawn.
+     */
+    draws?: (entry: number, moment: number) => boolean;
   },
   quiet: QuietLists,
   max: number,
@@ -98,6 +110,10 @@ export function graphicChecks(
   const out: GraphicCheck[] = [];
   const mutedMoments = new Set(quiet.quietMoments ?? []);
   const mutedBreaks = new Set(quiet.quietBreaks ?? []);
+  const fillerStart = new Map<string, number>();
+  for (const sh of input.shots ?? [])
+    if (sh.media.type === "filler" && sh.media.entry !== undefined)
+      fillerStart.set(`${sh.media.entry}:${sh.media.index}`, sh.start);
   for (const sh of input.shots ?? []) {
     if (sh.media.type !== "filler" || sh.media.entry === undefined) continue;
     const key = `${sh.media.entry}:${sh.media.index}`;
@@ -113,8 +129,22 @@ export function graphicChecks(
     const key = `${w.entry}:${w.moment}`;
     const g = input.graphicOf(w.entry, w.moment);
     if (!g || !usefulGraphic(g) || mutedMoments.has(key)) return;
+    // A sentence with a filler shot draws the filler, checked above; nothing of its own goes over it.
+    if (input.momentOf && fillerStart.has(key)) return;
+    if (input.draws && !input.draws(w.entry, w.moment)) return;
+    let t: number;
+    if (input.momentOf) {
+      const sp = sentenceSpan(input.windows, k, FPS, {
+        moment: input.momentOf,
+        fillerStart: (e, m) => fillerStart.get(`${e}:${m}`),
+      });
+      // Too short to read before the next graphic: the renderer leaves it out, so there is nothing to see.
+      if (sp.short) return;
+      t = (sp.from + settledFrame(sp.len)) / FPS;
+    } else {
     const span = momentSpan(w, input.windows[k + 1]);
-    const t = span.from + settledFrame(Math.round(span.len * FPS)) / FPS;
+      t = span.from + settledFrame(Math.round(span.len * FPS)) / FPS;
+    }
     if (t < input.durationSeconds - 1) out.push({ t, what: key });
   });
   (input.breaks ?? []).forEach((b, i) => {
@@ -134,7 +164,10 @@ export const ENTRANCE_SECONDS = 1.2;
  * as a faint, low-contrast card. Vice City failed its final check three times on 31 Oct 2026 on its
  * "12-hour days" card caught mid-entrance. A time inside an entrance moves to the moment the card settles.
  */
-export function clearOfEntrances(times: number[], windows: MomentWindow[]): number[] {
+export function clearOfEntrances(
+  times: number[],
+  windows: MomentWindow[],
+): number[] {
   const entrances = windows.map((w, k) => momentSpan(w, windows[k + 1]).from);
   return times.map((t) => {
     const hit = entrances.find((e) => t >= e && t < e + ENTRANCE_SECONDS);

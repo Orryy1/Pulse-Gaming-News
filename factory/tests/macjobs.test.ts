@@ -147,7 +147,7 @@ test("a Short's job carries no PC paths and the Mac's own settings", () => {
   assert.equal(job.input.concurrency, 6);
   assert.equal(job.input.gl, "angle");
   assert.equal(job.want.seconds, 48);
-  assert.ok(!JSON.stringify(job).includes("C:\\\\"));
+  assert.ok(!JSON.stringify(job).includes("C:/"));
 });
 
 test("thumbnails ship each picture they name once", () => {

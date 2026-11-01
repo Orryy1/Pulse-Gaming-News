@@ -381,8 +381,7 @@ test("images go to Claude unless CODEX_VISION is on, then travel as files beside
   assert.equal(fs.existsSync(req.images![0]!), false);
 });
 
-test("Claude's usage limit moves text calls to Codex, flags them and tells the other pipelines", async () => {
-  const reported: string[] = [];
+test("Claude's usage limit moves text calls to Codex, and flags them", async () => {
   const flagged: string[] = [];
   let claudeCalls = 0;
   let codexCalls = 0;
@@ -396,7 +395,6 @@ test("Claude's usage limit moves text calls to Codex, flags them and tells the o
     enabled: true,
     sites: ["doc"],
     tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "limit-")),
-    reportLimit: (m) => reported.push(m),
     onLimitRouted: (s) => flagged.push(s),
     run: async () => {
       codexCalls++;
@@ -408,17 +406,14 @@ test("Claude's usage limit moves text calls to Codex, flags them and tells the o
   assert.deepEqual(await llm.structured(call), { ok: true });
   assert.equal(claudeCalls, 1);
   assert.equal(codexCalls, 2);
-  assert.deepEqual(reported, ["Claude usage limit reached"]);
   assert.deepEqual(flagged, ["news.write", "news.write"]);
 });
 
 test("an unlisted step stays on Claude while it works, and a passing error does not move it", async () => {
   let codexCalls = 0;
-  const reported: string[] = [];
   const opts = {
     enabled: true,
     sites: ["doc"],
-    reportLimit: (m: string) => reported.push(m),
     run: async () => {
       codexCalls++;
       return "{}";
@@ -434,5 +429,4 @@ test("an unlisted step stays on Claude while it works, and a passing error does 
   } as unknown as Llm;
   await assert.rejects(createCodexLlm(busy, opts).structured(call));
   assert.equal(codexCalls, 0);
-  assert.deepEqual(reported, []);
 });

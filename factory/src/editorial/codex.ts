@@ -52,8 +52,6 @@ export interface CodexOptions {
   tmpDir?: string;
   /** The runner; tests substitute a fake so no process is spawned. */
   run?: (req: CodexRequest) => Promise<string>;
-  /** Tells the other pipelines Claude hit its usage limit; claude_budget.py by default. */
-  reportLimit?: (message: string) => void;
   /** A step Claude normally answers went to Codex because Claude is out of allowance: flag it for the owner. */
   onLimitRouted?: (site: string) => void;
 }
@@ -324,20 +322,10 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
     opts.run ??
     ((req: CodexRequest) =>
       runCodex(req, { python, runnerDir, tmpDir: tmp() }));
-  const reportLimit =
-    opts.reportLimit ??
-    ((message: string) => {
-      const child = spawn(
-        python,
-        [path.join(runnerDir, "claude_budget.py"), "limit", message.slice(0, 300)],
-        { stdio: "ignore", windowsHide: true },
-      );
-      child.on("error", () => undefined);
-      child.unref();
-    });
   let limitUntil = 0;
   const claudeOut = () => Date.now() < limitUntil;
-  // Claude first. Its usage limit is recorded for the other pipelines, and a text call then goes to Codex.
+  // Claude first; a text call goes to Codex when Claude refuses on its limit. This is the API key's own limit,
+  // not the subscription's weekly one, so it is not recorded in the orchestrator's claude_budget for others.
   const claude = async <S extends z.ZodType>(
     o: StructuredOptions<S>,
     site: string,
@@ -347,7 +335,6 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
       return await fallback.structured(o);
     } catch (err) {
       if (!isUsageLimit(err)) throw err;
-      reportLimit((err as Error).message);
       limitUntil = Date.now() + LIMIT_HOLD_MS;
       if (hasImages && !opts.vision) throw err;
       if (!siteListed(site, opts.sites)) opts.onLimitRouted?.(site);

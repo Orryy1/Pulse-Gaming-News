@@ -2,7 +2,7 @@
 // Chrome's GPU process when GPU rasterisation is on (1 Nov 2026: Skia Graphite's SkAbort in
 // graphite::Transform::mapRect under clipRRect, ~10 minutes into a long render). Run on the Mac only, in
 // the rehearsal sandbox (~/PulseFactory/rehearsal, a render-only .env), never beside the factory service.
-//   node --import tsx mac/gpubisect.mts dump                 the long render's input, as the pipeline builds
+//   node --import tsx mac/gpubisect.mts dump [episode id]    the long render's input, as the pipeline builds
 //                                                             it, saved to rehearsal/gpubisect/input.json
 //   node --import tsx mac/gpubisect.mts shots <from> <to>    the plan's shots that overlap those frames
 //   node --import tsx mac/gpubisect.mts render <from> <to> [--conc=N] [--raster=off] [--keep=a,b] [--drop=a,b]
@@ -58,12 +58,19 @@ if (mode === "dump") {
   const db = await openDb(cfg.databaseUrl, cfg.dataDir);
   await migrate(db);
   await db.query("DELETE FROM leases");
+  // Named, never "the latest long": each sandbox episode has its own frames, and the logs' crash frames are
+  // the Vice City documentary's (a first version dumped the newest episode instead, 1 Nov 2026).
+  const id = a1 ?? "ep_20261027_865858f8";
+  await db.query(
+    "UPDATE episodes SET status = 'published', next_attempt_at = NULL WHERE id <> $1 AND status NOT IN ('published','failed','rejected')",
+    [id],
+  );
   const [t] = await db.query<{ id: string }>(
     `UPDATE episodes SET status = 'voiced', attempts = 0, next_attempt_at = NULL, last_error = NULL, qa_json = NULL
-       WHERE id = (SELECT id FROM episodes WHERE lane = 'longform' AND assets_json ? 'longPlan' ORDER BY id DESC LIMIT 1)
-       RETURNING id`,
+       WHERE id = $1 AND assets_json ? 'longPlan' RETURNING id`,
+    [id],
   );
-  if (!t) throw new Error("no long episode with a plan in the sandbox");
+  if (!t) throw new Error("that long episode, with a plan, is not in the sandbox");
   const s = createServices(db, cfg);
   s.notify = async () => true;
   s.renderLong = async (input) => {

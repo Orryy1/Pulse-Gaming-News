@@ -226,6 +226,8 @@ export interface Config {
   freeDays: string[];
   recapDays: string[];
   recapLong: boolean; // Friday's recap is a 6-10 minute long video instead of a Short
+  weeklyExplainedTest: boolean; // the weekly long video alternates the round-up with one story explained (src/weeklytest.ts)
+  weeklyExplainedLeadMinutes: number; // while the test runs, the weekly long video's production starts this long before its slot
   achievementDays: string[];
   climbersDays: string[]; // the weekly Steam climbers Short
   dealsDays: string[]; // the Steam deals Short
@@ -729,6 +731,12 @@ export function loadConfig(): Config {
       .map((d) => d.trim().slice(0, 3))
       .filter(Boolean),
     recapLong: bool("RECAP_LONG", false), // on once a sandbox run has been checked
+    // The owner-approved test (1 Nov 2026): the weekly long video takes turns between the round-up and the week's
+    // biggest story explained (src/weeklytest.ts). Needs RECAP_LONG and LONGFORM_ENABLED; false = round-up only.
+    weeklyExplainedTest: bool("WEEKLY_EXPLAINED_TEST", true),
+    // A 15-20 minute explainer takes longer to gather and render than a round-up; both arms start this early so
+    // the test stays fair (the round-up on its own starts 300 minutes ahead).
+    weeklyExplainedLeadMinutes: int("WEEKLY_EXPLAINED_LEAD_MINUTES", 480),
     recapDays: str("RECAP_DAYS", "fri")
       .toLowerCase()
       .split(",")
@@ -1072,6 +1080,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     dailyTarget: c.dailyTarget,
     shortsPerDayMax: c.shortsPerDayMax || "no cap",
     growthTests: c.growthTests,
+    weeklyExplainedTest: c.weeklyExplainedTest && c.recapLong && c.longformEnabled,
     newsSlots: c.newsSlots.join(","),
     breaking: c.breakingEnabled
       ? `${c.breakingPerDay}/day, score>=${c.breakingScoreMin}, <=${c.breakingMaxAgeMinutes}min old${c.breakingBigScore ? `, one more at score>=${c.breakingBigScore}` : ""}`

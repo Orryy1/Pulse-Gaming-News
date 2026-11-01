@@ -132,6 +132,12 @@ import {
   type RecapStory,
 } from "./editorial/recap.ts";
 import {
+  selectExplainedEpisode,
+  stepScriptExplained,
+} from "./explainedstep.ts";
+import type { ExplainedStory } from "./editorial/explained.ts";
+import { recordWeeklyArm, weeklyArm, weeklyVerdict, fallbackNotice } from "./weeklytest.ts";
+import {
   buildLongPlan,
   momentKeys,
   planGaps,
@@ -1913,10 +1919,32 @@ export async function maybeSelectWeekly(
   if (cfg.recapLong && cfg.longformEnabled) {
     const longDue = evergreenDue(
       now,
-      { ...plan(cfg.recapDays), leadMinutes: 300 },
+      {
+        ...plan(cfg.recapDays),
+        // The weekly shape test (src/weeklytest.ts): both arms start early enough for a 15-20 minute explainer.
+        leadMinutes: cfg.weeklyExplainedTest
+          ? Math.max(300, cfg.weeklyExplainedLeadMinutes)
+          : 300,
+      },
       taken,
     );
     if (longDue && !(await weeklyTried(db, `recaplong:${today}`))) {
+      // An explainer week (src/weeklytest.ts) makes one story in depth; with no story strong and safe enough,
+      // the round-up below takes the slot and counts as a round-up week.
+      let fallback: string | undefined;
+      if (
+        (await weeklyArm(db, cfg, now, (m) => s.notify(m)).catch(
+          () => "roundup" as const,
+        )) === "explained"
+      ) {
+        const made = await selectExplainedEpisode(s, now, longDue, today).catch(
+          (err) => ({ id: undefined, reason: errorMessage(err) }),
+        );
+        if (made.id) return made.id;
+        fallback = made.reason ?? "no story";
+        log("info", "weekly explainer fell back to the round-up", { reason: fallback });
+        await s.notify({ content: fallbackNotice(fallback) }).catch(() => undefined);
+      }
       const stories = await recapStoryIds(db, now);
       if (stories.length >= RECAP_STORIES_MIN) {
         const id = shortId();
@@ -1943,6 +1971,9 @@ export async function maybeSelectWeekly(
             stories,
             slot_at: longDue.toISOString(),
           });
+          await recordWeeklyArm(db, cfg, id, "roundup", now, fallback).catch(
+            () => undefined,
+          );
           log("info", "weekly recap video selected", {
             id,
             stories: stories.length,
@@ -3701,11 +3732,18 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   const fc = ep.factcheck_json as {
     doc?: boolean;
     recap?: boolean;
+    explained?: boolean;
+    story?: ExplainedStory;
     stories?: string[];
     topic?: import("./editorial/evergreen.ts").EvergreenTopic;
   } | null;
   if (fc?.recap && fc.stories?.length)
     return stepScriptRecap(s, ep, fc.stories);
+  // The week's biggest story, explained (src/explainedstep.ts).
+  if (fc?.explained && fc.story)
+    return stepScriptExplained(s, ep, fc.story, {
+      segmentInputs: (sc) => segmentInputs(sc),
+    });
   if (fc?.doc && fc.topic)
     return stepScriptDocumentary(s, ep, fc.topic as unknown as DocTopic);
   const topic = fc?.topic;
@@ -7244,7 +7282,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         footageCredit,
         endLine: script.recap
           ? "The week's biggest stories every Friday · Shorts every day"
-          : doc
+          : script.explained
+            ? "The biggest gaming story, explained · Shorts every day"
+            : doc
             ? "A new documentary every month · Shorts every day"
             : "A new ranking every week · Shorts every day",
         moments: hasMoments
@@ -8606,6 +8646,8 @@ export function videoMetadata(
         ? "\nPulse Gaming: we test what games let you do, one question at a time. Tell us what to test next in the comments."
         : script.recap
           ? "\nPulse Gaming News: gaming news, checked and explained. The week's biggest stories every Friday, a new ranking every week, Shorts every day."
+          : script.explained
+            ? "\nPulse Gaming News: gaming news, checked and explained. The biggest story in gaming explained in depth, a new ranking every week, Shorts every day."
           : script.evergreen_format === "documentary"
             ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
             : long
@@ -9494,6 +9536,14 @@ export async function tick(
       await growthVerdict(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch(
         (err) =>
           log("warn", "growth test verdict failed", {
+            error: errorMessage(err),
+          }),
+      );
+    // The weekly long video's shape test (src/weeklytest.ts): each finished week, then the verdict.
+    if (!s.cfg.dryRun)
+      await weeklyVerdict(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch(
+        (err) =>
+          log("warn", "weekly shape verdict failed", {
             error: errorMessage(err),
           }),
       );

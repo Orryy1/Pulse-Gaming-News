@@ -1984,3 +1984,68 @@ test("one breaking Short a day: a second story waits for a news slot unless it s
   assert.equal((await listEpisodes(db)).filter((e) => e.lane === "news_breaking").length, 2);
   await db.close();
 });
+
+// The weekly shape test (src/weeklytest.ts): the explainer week, then the round-up when no story qualifies.
+async function weekShort(db: Db, id: string, game: string, headline: string, views: number, sources: string[]) {
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane, script_json, youtube_video_id, publish_at)
+     VALUES ($1, $1, 'published', $2, 'news', $3, $4, '2026-11-03T17:00:00Z')`,
+    [
+      id,
+      JSON.stringify({
+        headline,
+        score: 80,
+        sources,
+        items: sources.map((s, i) => ({ url: `https://${s.toLowerCase().replace(/\W+/g, "")}.example/${id}${i}`, source: s, title: headline, summary: headline })),
+      }),
+      JSON.stringify(goodScript({ game_title: game, headline })),
+      `vid_${id}`,
+    ],
+  );
+  await db.query(`INSERT INTO video_metrics (episode_id, label, views) VALUES ($1, '72h', $2)`, [id, views]);
+}
+
+test("the weekly long video's explainer week makes one story, and a week with nothing to explain runs the round-up", async () => {
+  const cfg = {
+    weeklyEnabled: true,
+    recapLong: true,
+    longformEnabled: true,
+    weeklyExplainedTest: true,
+    recapDays: ["fri"],
+    newsSlots: [],
+    breakingEnabled: false,
+    evergreenEnabled: false,
+    demandCheck: false,
+  };
+  {
+    const { db, s, f, setClock } = await setup(cfg);
+    await weekShort(db, "ds", "Dark Souls 3", "Dark Souls 3 servers are shutting down indefinitely", 1100, ["Eurogamer", "PC Gamer", "Steam News"]);
+    // Friday 6 Nov, 12:30 London: inside the explainer's 480-minute lead before the 20:00 slot.
+    setClock(new Date("2026-11-06T12:30:00Z"));
+    const id = await maybeSelectWeekly(s);
+    assert.ok(id);
+    const ep = await getEpisode(db, id!);
+    assert.equal(ep!.lane, "longform");
+    assert.equal((ep!.factcheck_json as any).explained, true);
+    assert.ok(f.notifications.some((n) => /Weekly growth test started today/.test(n)));
+    assert.ok(f.notifications.some((n) => /explainer week: the story is/.test(n)));
+    await db.close();
+  }
+  {
+    const { db, s, f, setClock } = await setup(cfg);
+    // Five Shorts, each on one outlet: enough for the round-up, none strong enough to explain alone.
+    for (const [i, g] of ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].entries())
+      await weekShort(db, `s${i}`, g, `${g} gets a patch`, 100 + i, ["IGN"]);
+    setClock(new Date("2026-11-06T12:30:00Z"));
+    const id = await maybeSelectWeekly(s);
+    assert.ok(id);
+    const ep = await getEpisode(db, id!);
+    assert.equal((ep!.factcheck_json as any).recap, true);
+    assert.ok(f.notifications.some((n) => /runs instead/.test(n)));
+    const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = 'weekly_shape_test'`);
+    const state = JSON.parse(row!.value);
+    assert.equal(state.entries[0].arm, "roundup");
+    assert.match(state.entries[0].fallback, /skipped as only 1 outlet/);
+    await db.close();
+  }
+});

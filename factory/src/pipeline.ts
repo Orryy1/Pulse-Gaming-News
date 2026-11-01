@@ -259,6 +259,9 @@ import {
   orderLongEpisodes,
 } from "./longlane.ts";
 import { titleVariants } from "./editorial/titles.ts";
+import { pickBreakoutDoc } from "./docpick.ts";
+import { markEvidence } from "./editorial/evidence.ts";
+import { applyTitleShape, writerTitleProblems } from "./titlestep.ts";
 import { paletteOf } from "./assets/palette.ts";
 import {
   addDays,
@@ -1919,14 +1922,26 @@ export async function maybeSelectDocumentary(
       [now],
     )
   ).map((r) => r.headline);
-  const topic = await selectDocTopic(
-    s.llm,
-    covered,
-    inTheNews,
-    undefined,
-    undefined,
-    await topicDemand(s, "doc"),
-  );
+  // The breakout picker (src/docpick.ts, DOC_BREAKOUT_PICKER) scores every candidate and takes the best with no
+  // model call; the writer's pick from the lists stays the fallback.
+  const breakout = s.cfg.docBreakoutPicker
+    ? await pickBreakoutDoc(s).catch((err) => {
+        log("warn", "breakout documentary picker failed", {
+          error: errorMessage(err),
+        });
+        return undefined;
+      })
+    : undefined;
+  const topic =
+    breakout?.topic ??
+    (await selectDocTopic(
+      s.llm,
+      covered,
+      inTheNews,
+      undefined,
+      undefined,
+      await topicDemand(s, "doc"),
+    ));
   if (!topic) {
     log("info", "no documentary topic this month");
     return undefined;
@@ -1963,6 +1978,10 @@ export async function maybeSelectDocumentary(
     slot_at: due.toISOString(),
     banked,
   });
+  if (breakout) {
+    await logEvent(db, id, "doc_pick", breakout.detail);
+    await s.notify({ level: "info", content: breakout.line });
+  }
   log(
     "info",
     banked
@@ -2084,12 +2103,23 @@ async function stepScriptDocumentary(
           lessons: await visualLessons(s.db, s.now(), segmentInputs).catch(
             () => "",
           ),
+          evidence: s.cfg.docEvidence,
         }),
         source,
         outline.chapters.map((c) => c.game_title),
         sentences,
       );
       moments = shot.moments;
+      // DOC_EVIDENCE: the key beats show the record itself, word for word from the source (src/editorial/evidence.ts).
+      if (s.cfg.docEvidence) {
+        const ev = markEvidence(moments, sentences, source);
+        moments = ev.moments;
+        if (ev.added.length)
+          await logEvent(s.db, ep.id, "doc_evidence", {
+            chapter: index + 1,
+            added: ev.added,
+          });
+      }
       if (shot.removed.length)
         warnings.push(
           ...shot.removed.map(
@@ -3537,7 +3567,10 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
       punchyHook: s.cfg.longPunchyHook,
       soundBeats: s.cfg.docSoundBeats,
     });
-    const problems = validateLongform(draft);
+    const problems = [
+      ...validateLongform(draft),
+      ...writerTitleProblems(s.cfg, draft.youtube.title),
+    ];
     const factual = await adjudicateRanking(
       s,
       ep,
@@ -3790,7 +3823,10 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
     (await recentShapes(s.db, ep.id).catch(() => undefined))?.scripts ?? [];
   for (let attempt = 0; attempt < 2; attempt++) {
     draft = await writeEvergreen(s.llm, topic, facts, feedback, brief);
-    const problems = validateEvergreen(draft, recentScripts);
+    const problems = [
+      ...validateEvergreen(draft, recentScripts),
+      ...writerTitleProblems(s.cfg, draft.youtube.title, topic.format),
+    ];
     // Fetch the facts for the entries the writer chose, then rewrite once against them.
     if (attempt === 0) {
       facts = [];
@@ -6731,10 +6767,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   // Two alternative titles for the Test & compare (one mid-tier call; a failure only means no title test).
   if (!script.youtube.title_variants) {
-    const variants = await titleVariants(s.llm, script).catch(
-      () => [] as string[],
-    );
+    // TITLE_ANGLES: three angles written, the two most distinct from the current title kept (src/editorial/titles.ts).
+    const variants = await titleVariants(s.llm, script, {
+      angles: s.cfg.titleAngles,
+      allow: s.cfg.titleShapeAllow,
+    }).catch(() => [] as string[]);
     script.youtube.title_variants = variants;
+    await applyTitleShape(s, ep, script);
     await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [
       ep.id,
       JSON.stringify(script),

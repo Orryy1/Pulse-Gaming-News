@@ -50,6 +50,13 @@ export interface MomentGraphic {
   primary: string;
   secondary: string;
   items: string[];
+  /** Shown as the record itself, full frame, with its credit (src/editorial/evidence.ts; packs/pulse/evidence.ts). */
+  evidence?: {
+    kind: string;
+    page: "statement" | "aggregate";
+    issuer?: string;
+    credit: string;
+  };
 }
 
 export interface MomentProp {

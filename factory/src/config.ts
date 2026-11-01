@@ -248,6 +248,28 @@ export interface Config {
   docBookendEnding: boolean;
   /** A slim chapter index (current chapter lit) and the chapter's year in the corner: DOC_CHAPTER_INDEX, default on. */
   docChapterIndex: boolean;
+  /** The breakout documentary picker (src/docpick.ts, growth plan move 3): the next documentary is the candidate
+   * that scores best on fame, a collapse-or-comeback arc, a news peg, demand and freshness, with no model call;
+   * the score breakdown is logged and posted to Discord. Off, the writer picks from the lists as before:
+   * DOC_BREAKOUT_PICKER, default on. */
+  docBreakoutPicker: boolean;
+  /** At most this many candidates get the slower lookups (Steam, Wikipedia, YouTube demand) a pick: DOC_PICK_LOOKUPS, default 8. */
+  docPickLookups: number;
+  /** Real evidence on screen (src/editorial/evidence.ts): on key beats (an announcement, a delay, an apology, a
+   * review verdict, a sales milestone, a statement) the documentary shows the source's exact words as a full-frame
+   * statement page, or the review aggregate as a score page, each with a source credit; never invented text:
+   * DOC_EVIDENCE, default on. */
+  docEvidence: boolean;
+  /** Title shapes (src/editorial/titleshape.ts, growth plan moves 4 and 5): ranking and documentary titles that
+   * lead with "Top N", a year, a count or "History of" are sent back to the writer, and a long video's failing
+   * title gives way to a passing alternative before upload: TITLE_SHAPES, default on. */
+  titleShapes: boolean;
+  /** The Test & compare titles are three distinct angles (downfall, hidden side, comeback, why/how, claim):
+   * TITLE_ANGLES, default on. */
+  titleAngles: boolean;
+  /** Title shapes a test has shown to work for this channel, let back in: TITLE_SHAPE_ALLOW (comma list of
+   * top, year, count, history), default empty. */
+  titleShapeAllow: string[];
   /** Tighter cuts in a documentary's first 3 minutes and a 10 s burst of quicker cuts every 2.5 minutes after
    * (src/render/structure.ts shotCap): DOC_CUT_RHYTHM, default on. */
   docCutRhythm: boolean;
@@ -753,6 +775,16 @@ export function loadConfig(): Config {
     docOpenLoops: bool("DOC_OPEN_LOOPS", true),
     docBookendEnding: bool("DOC_BOOKEND_ENDING", true),
     docChapterIndex: bool("DOC_CHAPTER_INDEX", true),
+    docBreakoutPicker: bool("DOC_BREAKOUT_PICKER", true),
+    docPickLookups: int("DOC_PICK_LOOKUPS", 8),
+    docEvidence: bool("DOC_EVIDENCE", true),
+    titleShapes: bool("TITLE_SHAPES", true),
+    titleAngles: bool("TITLE_ANGLES", true),
+    titleShapeAllow: str("TITLE_SHAPE_ALLOW", "")
+      .toLowerCase()
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
     docCutRhythm: bool("DOC_CUT_RHYTHM", true),
     docPinMoment: bool("DOC_PIN_MOMENT", true),
     communityDrafts: bool("COMMUNITY_DRAFTS", true),

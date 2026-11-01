@@ -132,6 +132,8 @@ export type AnyMoment = Omit<Moment, "graphic"> & {
       | "share"
       | "specs"
       | "lineage";
+    /** Shown as the record itself, full frame, with its credit (src/editorial/evidence.ts, DOC_EVIDENCE). */
+    evidence?: import("./evidence.ts").Evidence;
   };
   broll?: string;
   /** The sound editor's cue for the sentence (src/editorial/documentary.ts DOC_BEAT_KINDS). */

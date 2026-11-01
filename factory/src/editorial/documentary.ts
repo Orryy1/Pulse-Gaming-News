@@ -39,6 +39,7 @@ import {
   type OpenLoop,
 } from "./openloops.ts";
 import { sentencesOf } from "./longform.ts";
+import { EVIDENCE_RULE } from "./evidence.ts";
 import {
   DOC_BEAT_KINDS,
   groundBeats,
@@ -204,6 +205,56 @@ export const DOC_STORIES = [
     subject: "The PlayStation 3 launch",
     wiki: "PlayStation 3",
     angle: "$599, the Cell processor and how Sony nearly lost a generation",
+  },
+  // Collapse-and-comeback stories (growth plan move 3, 1 Nov 2026): the shape of "How Cyberpunk 2077 Saved
+  // Itself From Dying", 2.55M views for a six-video faceless channel, published right after the comeback news.
+  {
+    subject: "Final Fantasy XIV",
+    wiki: "Final Fantasy XIV (2010 video game)",
+    angle:
+      "The MMO so broken Square Enix shut it down, apologized and rebuilt it as A Realm Reborn",
+  },
+  {
+    subject: "Fallout 76",
+    wiki: "Fallout 76",
+    angle:
+      "Bethesda's worst launch, the canvas bag and the slow climb back with Wastelanders",
+  },
+  {
+    subject: "Battlefield 2042",
+    wiki: "Battlefield 2042",
+    angle:
+      "The launch that emptied servers, the missing scoreboard and the long road back",
+  },
+  {
+    subject: "Star Wars Battlefront II",
+    wiki: "Star Wars Battlefront II (2017 video game)",
+    angle:
+      "The loot boxes that became the most downvoted comment on Reddit, and the game that came back",
+  },
+  {
+    subject: "Concord",
+    wiki: "Concord (video game)",
+    angle:
+      "Sony's eight-year hero shooter, switched off two weeks after launch",
+  },
+  {
+    subject: "Hytale",
+    wiki: "Hytale",
+    angle:
+      "Cancelled by Riot after years of hype, then bought back by its founder and revived",
+  },
+  {
+    subject: "Diablo III",
+    wiki: "Diablo III",
+    angle:
+      "Error 37, the real-money auction house and how Reaper of Souls won the players back",
+  },
+  {
+    subject: "Mass Effect: Andromeda",
+    wiki: "Mass Effect: Andromeda",
+    angle:
+      "The faces, the five-year development and why the series went quiet for a decade",
   },
 ] as const;
 
@@ -799,6 +850,8 @@ export async function writeDocMoments(
     games?: string[];
     /** What the retention curves taught about graphics (src/analytics.ts visualLessons). */
     lessons?: string;
+    /** DOC_EVIDENCE: key beats show the record itself (src/editorial/evidence.ts EVIDENCE_RULE). */
+    evidence?: boolean;
   },
 ): Promise<DocMoment[]> {
   const n = Math.max(1, ctx.sentences.length);
@@ -808,7 +861,9 @@ export async function writeDocMoments(
       const r = await llm.structured({
         site: "doc.shots",
         tier: "mid",
-        system: DOC_MOMENTS_PROMPT,
+        system: ctx.evidence
+          ? `${DOC_MOMENTS_PROMPT}\n${EVIDENCE_RULE}`
+          : DOC_MOMENTS_PROMPT,
         content: `Chapter: ${ctx.chapterTitle} (${ctx.game})${ctx.games?.length ? `\nGames in this documentary's chapters: ${ctx.games.join("; ")}` : ""}\n\n${ctx.sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}${ctx.lessons ? `\n\n${ctx.lessons}` : ""}\n\nReturn exactly ${n} moments.`,
         schema: docMomentsSchema(n),
         effort: "low",

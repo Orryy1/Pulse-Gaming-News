@@ -481,7 +481,13 @@ test("each chapter opens on the bed of its decade; an unknown year gets none", (
 
 test(
   "the era beds are on disk and under the loudness ceiling (ffmpeg ebur128)",
-  { skip: !fs.existsSync(FFMPEG) && "no ffmpeg" },
+  {
+    // The checker lives in data/smoke (not in git): the PC has it, and the Mac once the cutover copies it.
+    skip:
+      (!fs.existsSync(FFMPEG) && "no ffmpeg") ||
+      (!fs.existsSync("data/smoke/erabeds.mts") &&
+        "no data/smoke/erabeds.mts on this machine"),
+  },
   async () => {
     const { checkEraBeds } = await import("../data/smoke/erabeds.mts");
     const problems = await checkEraBeds();

@@ -20,6 +20,7 @@ import { canStartLocally } from "../src/voice/local.ts";
 import { ocrCommand, parseOcrOutput } from "../src/assets/ocr.ts";
 import { codexRunnerPresent } from "../src/editorial/codex.ts";
 import { comfyReachable } from "../src/assets/illustrate.ts";
+import { pickBinary } from "../src/lib/bin.ts";
 import {
   planSpacePrune,
   pruneForSpace,
@@ -150,29 +151,23 @@ test("picture text is read by Windows OCR on the PC and Apple Vision on the Mac"
   assert.ok(
     win?.args.includes("-ListFile") && win.args.at(-1) === "/tmp/list.json",
   );
-  assert.deepEqual(
-    ocrCommand(
-      "darwin",
-      "/tmp/list.json",
-      "/Users/MORR/PulseFactory/bin/pulse-ocr",
-    ),
-    {
-      cmd: "/Users/MORR/PulseFactory/bin/pulse-ocr",
-      args: ["/tmp/list.json"],
-    },
+  const mac = ocrCommand(
+    "darwin",
+    "/tmp/list.json",
+    "/Users/MORR/PulseFactory/ocr/bin/python",
   );
+  assert.equal(mac?.cmd, "/Users/MORR/PulseFactory/ocr/bin/python");
+  assert.equal(mac?.args[0], "-I");
+  assert.match(mac?.args[1] ?? "", /macocr\.py$/);
+  assert.equal(mac?.args[2], "/tmp/list.json");
+  assert.ok(fs.existsSync(mac!.args[1]!));
   assert.equal(ocrCommand("linux", "/tmp/list.json"), undefined);
-  // The Swift reader's JSON (no BOM, no control characters, a one-word list as a list) parses the same way.
+  // The Mac reader's JSON (no BOM, no control characters, a one-word list as a list) parses the same way.
   const pages = parseOcrOutput(
     '{"results":[{"file":"/a.jpg","width":1920,"height":1080,"words":[{"text":"Vinewood","x":10,"y":20,"w":100,"h":30}]},{"file":"/b.jpg","width":0,"height":0,"words":[],"error":"cannot open image"}]}',
   );
   assert.equal(pages.get("/a.jpg")?.words[0]?.text, "Vinewood");
   assert.equal(pages.get("/b.jpg")?.words.length, 0);
-  assert.ok(
-    fs.existsSync(
-      path.join(import.meta.dirname, "..", "src", "assets", "macocr.swift"),
-    ),
-  );
 });
 
 test("a ComfyUI server that does not answer skips the sketches instead of failing each one", async () => {
@@ -330,6 +325,37 @@ test("the cutover drops the PC-only settings, points backups and tokens at the M
     /TIKTOK_TOKEN_PATH=%s\/PulseFactory\/factory\/data\/tokens\//,
   );
   assert.match(m, /ls -d tokens tiktok-session\.json usage abtests/);
-  assert.match(m, /swiftc -O .*macocr\.swift/);
+  assert.match(m, /pip install -q --upgrade pip pyobjc-framework-Vision/);
   assert.match(m, /parallax\/bin\/pip install/);
+});
+
+test("ffmpeg and ffprobe on a Mac are Homebrew's, never the bundled Intel ffprobe macOS refuses", () => {
+  const brew = (p: string) => p.startsWith("/opt/homebrew/bin/");
+  const none = () => false;
+  assert.equal(
+    pickBinary(
+      "ffprobe",
+      "darwin",
+      undefined,
+      brew,
+      "/x/ffprobe-static/bin/darwin/arm64/ffprobe",
+    ),
+    "/opt/homebrew/bin/ffprobe",
+  );
+  assert.equal(
+    pickBinary("ffmpeg", "darwin", "/custom/ffmpeg", brew, "/x/ffmpeg"),
+    "/custom/ffmpeg",
+  );
+  assert.equal(
+    pickBinary("ffprobe", "darwin", undefined, none, "/x/ffprobe"),
+    "/x/ffprobe",
+  );
+  assert.equal(
+    pickBinary("ffprobe", "win32", undefined, brew, "C:/x/ffprobe.exe"),
+    "C:/x/ffprobe.exe",
+  );
+  assert.equal(
+    pickBinary("ffmpeg", "linux", undefined, none, undefined),
+    "ffmpeg",
+  );
 });

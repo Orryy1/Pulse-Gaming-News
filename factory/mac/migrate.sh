@@ -46,7 +46,7 @@ prepare)
   # Mac reaches them over the LAN, so no model is pulled onto its 16 GB.
   echo "== depth layers for long videos' stills (src/render/parallax.py on Apple's GPU) and the picture-text reader"
   on_mac 'cd ~/PulseFactory && { [ -x parallax/bin/python ] || python3.12 -m venv parallax; } && parallax/bin/pip install -q --upgrade pip torch transformers opencv-python-headless pillow numpy && parallax/bin/python -c "import torch, cv2, PIL, transformers; print(\"parallax ok, mps:\", torch.backends.mps.is_available())"'
-  on_mac 'mkdir -p ~/PulseFactory/bin && swiftc -O ~/PulseFactory/factory/src/assets/macocr.swift -o ~/PulseFactory/bin/pulse-ocr && echo "picture-text reader built"'
+  on_mac 'cd ~/PulseFactory && { [ -x ocr/bin/python ] || python3.12 -m venv ocr; } && ocr/bin/pip install -q --upgrade pip pyobjc-framework-Vision pyobjc-framework-Quartz && ocr/bin/python -c "import Vision, Quartz; print(\"picture-text reader ok\")"'
   echo "== checks on the Mac"
   on_mac 'cd ~/PulseFactory/factory && npx tsc --noEmit -p . && node --import tsx --test tests/*.test.ts 2>&1 | grep -E "^ℹ (pass|fail)"'
   echo "prepare done: run mac/migrate.sh cutover when ready"

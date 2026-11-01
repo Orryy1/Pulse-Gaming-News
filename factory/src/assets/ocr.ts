@@ -2,7 +2,7 @@
 // when a sentence names something written in the screenshot on screen (a sign, a shop front, a street name),
 // the camera can push in on it and a hand-drawn circle or arrow lands on it as the word is said. The words
 // and their boxes come from the OCR engine built into Windows (src/assets/winocr.ps1) or, on the Mac mini,
-// Apple's Vision text recogniser (src/assets/macocr.swift, 1 Nov 2026): local, free and nothing to install.
+// Apple's Vision text recogniser (src/assets/macocr.py, 1 Nov 2026): local, free and nothing to install.
 // Anywhere else it finds nothing, and the vision model's boxes still work.
 // Logos are left alone: a phrase that is the game's own title or the studio's name is never circled.
 import { execFile } from "node:child_process";
@@ -182,19 +182,20 @@ export function parseOcrOutput(raw: string): Map<string, OcrPage> {
   return out;
 }
 
-/** The Mac's OCR program, compiled from macocr.swift on first use (OCR_BIN overrides). */
-export const MAC_OCR_BIN =
-  process.env.OCR_BIN ||
-  path.join(os.homedir(), "PulseFactory", "bin", "pulse-ocr");
+/** The Mac's Python with Apple's Vision bindings (mac/migrate.sh prepare); MAC_OCR_PYTHON overrides. */
+export const MAC_OCR_PYTHON =
+  process.env.MAC_OCR_PYTHON ||
+  path.join(os.homedir(), "PulseFactory", "ocr", "bin", "python");
+const MAC_SCRIPT = path.join(path.dirname(SCRIPT), "macocr.py");
 
 /**
  * The command that reads a list file of pictures on this machine: Windows' OCR engine through PowerShell,
- * Apple's Vision through the compiled pulse-ocr on the Mac, none elsewhere.
+ * Apple's Vision through macocr.py on the Mac, none elsewhere.
  */
 export function ocrCommand(
   platform: string,
   list: string,
-  macBin = MAC_OCR_BIN,
+  macPython = MAC_OCR_PYTHON,
 ): { cmd: string; args: string[] } | undefined {
   if (platform === "win32")
     return {
@@ -209,39 +210,27 @@ export function ocrCommand(
         list,
       ],
     };
-  if (platform === "darwin") return { cmd: macBin, args: [list] };
+  if (platform === "darwin")
+    return { cmd: macPython, args: ["-I", MAC_SCRIPT, list] };
   return undefined;
 }
 
-let macBuild: Promise<boolean> | undefined;
-/** Builds pulse-ocr from macocr.swift once per process when it is missing or older than the source. */
-async function ensureMacOcr(): Promise<boolean> {
-  macBuild ??= (async () => {
-    const src = path.join(path.dirname(SCRIPT), "macocr.swift");
-    const [bin, swift] = await Promise.all([
-      fs.stat(MAC_OCR_BIN).catch(() => undefined),
-      fs.stat(src),
-    ]);
-    if (bin && bin.mtimeMs >= swift.mtimeMs) return true;
-    try {
-      await fs.mkdir(path.dirname(MAC_OCR_BIN), { recursive: true });
-      await run("swiftc", ["-O", src, "-o", MAC_OCR_BIN], {
-        timeout: 5 * 60_000,
-      });
-      log("info", "built the Mac's picture-text reader", { bin: MAC_OCR_BIN });
-      return true;
-    } catch (err) {
-      log(
-        "warn",
-        "the Mac's picture-text reader did not build (needs the Command Line Tools); details fall back to the vision model",
-        {
-          error: errorMessage(err),
-        },
-      );
-      return false;
-    }
-  })();
-  return macBuild;
+let macWarned = false;
+/** True when the Mac's Vision Python is installed; says once when it is not. */
+async function macOcrReady(): Promise<boolean> {
+  const ok = await fs
+    .access(MAC_OCR_PYTHON)
+    .then(() => true)
+    .catch(() => false);
+  if (!ok && !macWarned) {
+    macWarned = true;
+    log(
+      "warn",
+      "no picture-text reader on this Mac (run mac/migrate.sh prepare); details fall back to the vision model",
+      { python: MAC_OCR_PYTHON },
+    );
+  }
+  return ok;
 }
 
 /** Reads the text in pictures (absolute paths) on this machine; an empty map without an engine or on any failure. */
@@ -253,8 +242,7 @@ export async function readText(files: string[]): Promise<Map<string, OcrPage>> {
   );
   const command = ocrCommand(process.platform, list);
   if (!command) return new Map();
-  if (process.platform === "darwin" && !(await ensureMacOcr()))
-    return new Map();
+  if (process.platform === "darwin" && !(await macOcrReady())) return new Map();
   try {
     await fs.writeFile(list, JSON.stringify(files));
     const { stdout } = await run(command.cmd, command.args, {

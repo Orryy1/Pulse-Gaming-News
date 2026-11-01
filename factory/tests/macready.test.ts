@@ -368,3 +368,11 @@ test("a render unloads the vision model only when it is this machine's, never th
   assert.equal(visionIsLocal("http://192.168.0.93:11434"), false);
   assert.equal(visionIsLocal("not a url"), false);
 });
+
+test("Chrome rasterises in software on the Mac (its Metal rasteriser crashed long renders), on the GPU elsewhere", async () => {
+  const { gpuRasterOff } = await import("../src/render/render.ts");
+  assert.equal(gpuRasterOff("darwin", {}), true);
+  assert.equal(gpuRasterOff("win32", {}), false);
+  assert.equal(gpuRasterOff("darwin", { REMOTION_GPU_RASTER: "true" }), false);
+  assert.equal(gpuRasterOff("win32", { REMOTION_GPU_RASTER: "false" }), true);
+});

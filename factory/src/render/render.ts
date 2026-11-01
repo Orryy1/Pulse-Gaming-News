@@ -36,6 +36,27 @@ import type { CutdownProps } from "./Cutdown.tsx";
  */
 export const webPath = (file: string): string => file.replace(/\\/g, "/");
 
+/**
+ * Whether Chrome draws pages in software while still compositing on the GPU (pure). On the Mac mini (1 Nov
+ * 2026 rehearsal) Chrome's Metal rasteriser, Skia Graphite, aborted the GPU process ~10 minutes into every
+ * long render (SkAbort in graphite::Transform::mapRect under clipRRect: a rounded clip under a degenerate
+ * transform), three crashes and Chrome fell back to a crawl; concurrency 4, no parallax and software GL
+ * (swangle, ~20x slower) did not help. Off on the Mac by default; REMOTION_GPU_RASTER=true turns it back on,
+ * =false turns it off on the PC too. Remotion exposes no flag for it, so this uses the variable its own
+ * Lambda renders read, which only adds Chrome's --disable-gpu-rasterization (and changes one error text).
+ */
+export function gpuRasterOff(
+  platform: string,
+  env: Record<string, string | undefined>,
+): boolean {
+  const v = env.REMOTION_GPU_RASTER?.toLowerCase();
+  if (v === "true") return false;
+  if (v === "false") return true;
+  return platform === "darwin";
+}
+if (gpuRasterOff(process.platform, process.env))
+  process.env.__RESERVED_IS_INSIDE_REMOTION_LAMBDA = "true";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(here, "index.ts");
 const PUBLIC_DIR = path.join(here, "..", "..", "public");

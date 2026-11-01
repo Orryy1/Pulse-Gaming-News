@@ -51,6 +51,9 @@ import { steamClimbers } from "./discovery/charts.ts";
 import { steamDeals } from "./discovery/deals.ts";
 import { libraryClips } from "./assets/library.ts";
 import { trendingVideos } from "./discovery/demand.ts";
+import { parseDemandRows } from "./discovery/searchdemand.ts";
+import { runCapped } from "./lib/child.ts";
+import { YTDLP_TEXT } from "./lib/bin.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { findIgdbGame, fetchIgdbArt } from "./assets/igdb.ts";
 import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
@@ -230,6 +233,24 @@ export function createServices(db: Db, cfg: Config): Services {
             llm: cfg.clipRanking === "llm" ? llm : undefined,
           })
         : Promise.resolve([]),
+    // The demand check's search page: yt-dlp reads YouTube's own results (no API quota), 20 videos at most.
+    searchDemand: async (url) => {
+      const { stdout } = await runCapped(
+        cfg.ytdlpPath || "yt-dlp",
+        [
+          ...YTDLP_TEXT.args,
+          "--no-warnings",
+          "--flat-playlist",
+          "--playlist-end",
+          "20",
+          "--print",
+          "%(id)s\t%(view_count)s\t%(channel)s\t%(title)s",
+          url,
+        ],
+        { timeout: 60_000, maxBuffer: 4 * 1024 * 1024, env: YTDLP_TEXT.env },
+      );
+      return parseDemandRows(stdout);
+    },
     trending: () =>
       trendingVideos(
         () => accessToken(db, oauthConfig(cfg)),

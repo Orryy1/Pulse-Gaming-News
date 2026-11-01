@@ -5,6 +5,9 @@
 // a day in the evening summary saying how many and why. The default (0) is no cap, so nothing changes until
 // the lead sets it. Breaking Shorts count towards the cap but are never blocked by it: they already clear a
 // high bar, and a breaking story simply displaces the day's last slot.
+// Story-first (1 Nov 2026, src/storymix.ts): Why Shorts are made in the news lane and count too. A news slot
+// also leaves room for the Why slots still to come today, so news gives way to the stories; a Why slot is
+// only held once the cap itself is reached (two big breaking stories on one day).
 
 import type { Db } from "./db.ts";
 import type { Config } from "./config.ts";
@@ -42,6 +45,8 @@ export function heldBackLine(
   madeToday: number,
   slotLocal: string,
   held: HeldStory[],
+  /** Why slots still to come today that the slot gave way to. */
+  whyAhead = 0,
 ): string {
   const named = [...held]
     .sort((a, b) => b.score - a.score)
@@ -52,7 +57,11 @@ export function heldBackLine(
     held.length === 0
       ? "No other story was waiting for it."
       : `${held.length} ${held.length === 1 ? "story" : "stories"} stayed on the shelf: ${named}${held.length > NAMED ? ` and ${held.length - NAMED} more` : ""}.`;
-  return `Shorts cap: ${madeToday} news Short${madeToday === 1 ? "" : "s"} already today, the SHORTS_PER_DAY_MAX limit of ${cap}, so the ${slotLocal} slot was held back. ${shelf} Raise SHORTS_PER_DAY_MAX (or set it to 0) to allow more.`;
+  const ahead =
+    whyAhead > 0
+      ? ` and ${whyAhead} Why Short${whyAhead === 1 ? "" : "s"} still to come`
+      : "";
+  return `Shorts cap: ${madeToday} news Short${madeToday === 1 ? "" : "s"} already today${ahead}, the SHORTS_PER_DAY_MAX limit of ${cap}, so the ${slotLocal} slot was held back. ${shelf} Raise SHORTS_PER_DAY_MAX (or set it to 0) to allow more.`;
 }
 
 /** Local "HH:MM" of a slot instant. */
@@ -90,10 +99,12 @@ export async function holdSlotForCap(
   slot: Date,
   waiting: HeldStory[],
   notify: (m: DiscordMessage) => Promise<unknown>,
+  /** Why slots still to come today (src/storymix.ts whySlotsAhead): the news slot leaves room for them. */
+  whyAhead = 0,
 ): Promise<boolean> {
   if (cfg.shortsPerDayMax <= 0) return false;
   const made = await newsMadeToday(db, cfg.timezone);
-  if (!newsCapReached(cfg.shortsPerDayMax, made)) return false;
+  if (!newsCapReached(cfg.shortsPerDayMax, made + whyAhead)) return false;
   const day = dayKey(now, cfg.timezone);
   if (await capNoticeDue(db, day)) {
     const line = heldBackLine(
@@ -101,20 +112,64 @@ export async function holdSlotForCap(
       made,
       slotLabel(slot, cfg.timezone),
       waiting,
+      whyAhead,
     );
     log("info", "news slot held back by the cap", {
       slot: slot.toISOString(),
       made,
       cap: cfg.shortsPerDayMax,
       waiting: waiting.length,
+      whyAhead,
     });
     await logEvent(db, null, "news_cap_hold", {
       slot: slot.toISOString(),
       made,
       cap: cfg.shortsPerDayMax,
+      why_ahead: whyAhead,
       held: waiting.slice(0, 12),
     });
     await notify({ level: "info", content: line });
+  }
+  return true;
+}
+
+/** The evening-summary line when a Why slot is held because the day's news-lane Shorts already reach the cap. */
+export function whyHeldLine(cap: number, madeToday: number, slotLocal: string): string {
+  return `Shorts cap: ${madeToday} news-lane Shorts already today (breaking included), the SHORTS_PER_DAY_MAX limit of ${cap}, so the ${slotLocal} Why slot was held back. Raise SHORTS_PER_DAY_MAX (or set it to 0) to allow more.`;
+}
+
+/**
+ * Whether a due Why slot is held by the cap: only once the day's news-lane Shorts reach it (the news slots
+ * already gave way to it). Logged and reported once a day, like a held news slot.
+ */
+export async function holdWhyForCap(
+  db: Db,
+  cfg: Pick<Config, "shortsPerDayMax" | "timezone">,
+  now: Date,
+  slot: Date,
+  notify: (m: DiscordMessage) => Promise<unknown>,
+): Promise<boolean> {
+  if (cfg.shortsPerDayMax <= 0) return false;
+  const made = await newsMadeToday(db, cfg.timezone);
+  if (!newsCapReached(cfg.shortsPerDayMax, made)) return false;
+  const day = dayKey(now, cfg.timezone);
+  const [row] = await db.query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = 'why_cap_notice'`,
+  );
+  if (row?.value !== day) {
+    await db.query(
+      `INSERT INTO settings (key, value) VALUES ('why_cap_notice', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+      [day],
+    );
+    await logEvent(db, null, "why_cap_hold", {
+      slot: slot.toISOString(),
+      made,
+      cap: cfg.shortsPerDayMax,
+    });
+    await notify({
+      level: "info",
+      content: whyHeldLine(cfg.shortsPerDayMax, made, slotLabel(slot, cfg.timezone)),
+    });
   }
   return true;
 }

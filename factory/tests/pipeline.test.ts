@@ -39,6 +39,8 @@ import {
 } from "../src/editorial/evergreen.ts";
 import { TwinScriptSchema } from "../src/editorial/twin.ts";
 import { LongformPlanSchema } from "../src/editorial/longform.ts";
+import { WhyTopicSchema, type WhyTopic } from "../src/editorial/why.ts";
+import { maybeSelectWhy } from "../src/pipeline.ts";
 
 /** A small, valid ranking draft for the fake writer. */
 function rankingDraft(): EvergreenScript {
@@ -84,6 +86,10 @@ interface Fakes {
   failUploadOnce: boolean;
   existingOnChannel?: string;
   notifications: string[];
+  /** The Why editor's picks, in order (a pass once they run out). */
+  whyTopics?: WhyTopic[];
+  /** What the Why editor was shown, call by call. */
+  whyPrompts?: string[];
   captionInserts: number;
   publicReachable?: boolean;
   privacy?: string;
@@ -123,7 +129,26 @@ interface Fakes {
 
 function fakeLlm(f: Fakes): Llm {
   return {
-    async structured<S extends z.ZodType>({ schema }: { schema: S }) {
+    async structured<S extends z.ZodType>({
+      schema,
+      content,
+    }: {
+      schema: S;
+      content?: string;
+    }) {
+      if (schema === (WhyTopicSchema as unknown)) {
+        (f.whyPrompts ??= []).push(String(content ?? ""));
+        return (f.whyTopics?.shift() ?? {
+          candidate_index: -1,
+          question: "",
+          title: "",
+          game: "",
+          wikipedia_title: "",
+          arc: "",
+          angle: "",
+          reason: "nothing strong",
+        }) as z.infer<S>;
+      }
       if (schema === (SelectionSchema as unknown))
         return {
           candidate_index: f.pick,
@@ -1836,5 +1861,126 @@ test("SHORTS_PER_DAY_MAX holds the day's later news slots and names the stories 
   await tick(s);
   assert.equal((await listEpisodes(db)).length, 1);
   assert.equal(f.notifications.filter((n) => n.startsWith("Shorts cap:")).length, 1);
+  await db.close();
+});
+
+/** A Why pick for the fake editor. */
+function whyTopic(game: string, question: string, index = 0): WhyTopic {
+  return {
+    candidate_index: index,
+    question,
+    title: question.replace(/\?$/, ""),
+    game,
+    wikipedia_title: game,
+    arc: "Fans loved it; the studio moved on; it still sells.",
+    angle: "The studio chose a new setting.",
+    reason: "a loved game with a turn",
+  };
+}
+
+test("two Why slots a day; a game used in the last 14 days is refused and the slot passes; the Short points to our long video", async () => {
+  const { db, f, s, setClock } = await setup({
+    whyEnabled: true,
+    whyDays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+    whySlots: ["12:00", "18:30"],
+    whySlot: "12:00",
+    whyFreshDays: 14,
+  });
+  // Tuesday 3 Nov 2026 (GMT), 10:30: the noon Why slot's lead time has begun.
+  setClock(new Date("2026-11-03T10:30:00Z"));
+  f.whyTopics = [
+    whyTopic("Grand Theft Auto: San Andreas", "Why did Rockstar never make a San Andreas sequel?"),
+  ];
+  const first = await maybeSelectWhy(s);
+  assert.ok(first, "the noon slot gets a Why Short");
+  const ep1 = (await getEpisode(db, first!))!;
+  assert.equal(new Date(ep1.slot_at!).toISOString(), "2026-11-03T12:00:00.000Z");
+  assert.deepEqual(ep1.story_json.why?.follow, { kind: "series" }, "no long video yet: the series");
+  assert.equal(ep1.story_json.why?.arc, "Fans loved it; the studio moved on; it still sells.");
+  assert.match(f.whyPrompts![0]!, /well-loved game/, "the editor sees the well-loved list");
+
+  // A GTA documentary goes public; the evening slot's editor picks San Andreas again, twice: refused, the slot passes.
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, script_json, lane, youtube_video_id, publish_at)
+     VALUES ('ep_doc', 'doc:gta', 'published', '{"headline":"x","items":[]}', $1, 'longform', 'DOCVIDEO123', '2026-11-01T19:00:00Z')`,
+    [JSON.stringify({ runtime: "long", evergreen_format: "documentary", game_title: "Grand Theft Auto", youtube: { title: "Why GTA 6 Had to Go Back to Vice City" } })],
+  );
+  setClock(new Date("2026-11-03T17:00:00Z"));
+  f.whyTopics = [
+    whyTopic("Grand Theft Auto: San Andreas", "Why is CJ still loved?"),
+    whyTopic("Grand Theft Auto: San Andreas", "Why is Grove Street still loved?"),
+  ];
+  assert.equal(await maybeSelectWhy(s), undefined);
+  assert.equal(f.whyPrompts!.length, 3, "one retry with the reason, no more");
+  assert.match(f.whyPrompts![1]!, /Games used recently \(never pick these\):\n- Grand Theft Auto: San Andreas/);
+  assert.match(f.whyPrompts![2]!, /already had a Why Short in the last 14 days/);
+  assert.equal((await db.query(`SELECT 1 FROM events WHERE kind = 'why_passed'`)).length, 1);
+  assert.equal(await maybeSelectWhy(s), undefined, "a passed slot is not retried every tick");
+  assert.equal(f.whyPrompts!.length, 3);
+
+  // Next day's noon slot: another GTA game is fine, and it points to the documentary.
+  setClock(new Date("2026-11-04T10:30:00Z"));
+  f.whyTopics = [whyTopic("Grand Theft Auto IV", "Why has Rockstar never remastered GTA 4?")];
+  const third = await maybeSelectWhy(s);
+  assert.ok(third);
+  const ep3 = (await getEpisode(db, third!))!;
+  assert.deepEqual(ep3.story_json.why?.follow, {
+    kind: "documentary",
+    title: "Why GTA 6 Had to Go Back to Vice City",
+    videoId: "DOCVIDEO123",
+    franchise: "GTA",
+  });
+  assert.doesNotMatch(
+    f.whyPrompts![3]!.split("Questions covered recently")[0]!,
+    /\d+\. Grand Theft Auto: San Andreas \(/,
+    "the recent game is not offered again",
+  );
+  await db.close();
+});
+
+test("one breaking Short a day: a second story waits for a news slot unless it scores BREAKING_BIG_SCORE", async () => {
+  const { db, f, s, setClock } = await setup({
+    dailyTarget: 6,
+    newsSlots: ["23:30"],
+    approvalMode: "timeout",
+    approvalTimeoutMinutes: 60,
+    breakingApprovalMinutes: 20,
+    breakingScoreMin: 40,
+    breakingPerDay: 1,
+    breakingBigScore: 100000,
+    breakingCooldownHours: 0,
+  });
+  const at = new Date("2026-10-16T08:00:00Z");
+  setClock(at);
+  breakingStory(s, at);
+  await tick(s);
+  assert.equal((await only(db)).lane, "news_breaking");
+  // An hour later another huge official story, another franchise: today's breaking Short is made.
+  const later = new Date("2026-10-16T09:00:00Z");
+  setClock(later);
+  s.discover = async () =>
+    clusterItems(
+      [
+        item("Nintendo reveals The Legend of Zelda remake for Switch 2", "Nintendo", "official", 2, later),
+        item("The Legend of Zelda remake revealed for Switch 2 by Nintendo", "IGN", "outlet", 1, later),
+        item("Nintendo's Legend of Zelda remake is real and coming to Switch 2", "VGC", "outlet", 1, later),
+      ],
+      later,
+    );
+  await tick(s);
+  assert.equal(
+    (await listEpisodes(db)).filter((e) => e.lane === "news_breaking").length,
+    1,
+    "held: the second needs the big score",
+  );
+  const held = f.notifications.filter((n) => n.startsWith("Breaking: "));
+  assert.equal(held.length, 1);
+  assert.match(held[0]!, /was not rushed out, because today's breaking Short is already made and a second needs a score of 100000/);
+  await tick(s);
+  assert.equal(f.notifications.filter((n) => n.startsWith("Breaking: ")).length, 1, "one line a day");
+  // With a bar it clears, the second goes.
+  s.cfg.breakingBigScore = 1;
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.lane === "news_breaking").length, 2);
   await db.close();
 });

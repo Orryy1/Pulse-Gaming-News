@@ -52,8 +52,10 @@ export function plannedSlots(
     const due: [string, string, number, number][] = []; // lane, HH:MM, lead, keep
     for (const s of cfg.newsSlots)
       due.push(["news", s, cfg.slotLeadMinutes, KEEP_SHORT_MIN]);
+    // Every Why slot (WHY_SLOTS, src/storymix.ts) keeps its own window, like a news slot.
     if (cfg.whyEnabled && cfg.whyDays.includes(day))
-      due.push(["why", cfg.whySlot, cfg.slotLeadMinutes + 30, KEEP_SHORT_MIN]);
+      for (const s of cfg.whySlots)
+        due.push(["why", s, cfg.slotLeadMinutes + 30, KEEP_SHORT_MIN]);
     if (cfg.evergreenEnabled && cfg.evergreenDays.includes(day))
       due.push([
         "evergreen",

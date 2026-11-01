@@ -3,7 +3,15 @@
 // the status moves, so any step can crash and be retried safely.
 
 import { pollBlock, readPoll } from "./social/poll.ts";
-import { selectWhyTopic } from "./editorial/why.ts";
+import {
+  selectWhyTopic,
+  whyCandidates,
+  whyFollowProblems,
+  whyFreshProblems,
+  whyHookProblems,
+  whyPinnedLine,
+  whySlug,
+} from "./editorial/why.ts";
 import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -231,7 +239,28 @@ import {
   growthProblems,
   growthVerdict,
 } from "./growth.ts";
-import { holdSlotForCap } from "./cadence.ts";
+import { holdSlotForCap, holdWhyForCap } from "./cadence.ts";
+import {
+  breakingAllowance,
+  breakingHeldLine,
+  breakingScore,
+  whySlotsAhead,
+} from "./storymix.ts";
+import {
+  fitDescription,
+  recentShortTexts,
+  repetitionProblems,
+} from "./authenticity.ts";
+import { followFor } from "./youtube/longlink.ts";
+import {
+  dbDemandCache,
+  demandFor,
+  demandLine,
+  rankByDemand,
+  type Demand,
+} from "./discovery/searchdemand.ts";
+import { slotLabel } from "./cadence.ts";
+import { recentWhyHooks, sameGame } from "./editorial/why.ts";
 import { mediaRichNotice, shortMediaRichness } from "./qa/mediarich.ts";
 import { craftForShort, shortsCleanStep } from "./shortcraftstep.ts";
 import { ccCredit } from "./render/cleanframe.ts";
@@ -440,6 +469,10 @@ export interface Services {
   steamDeals(exclude: string[]): Promise<import("./discovery/deals.ts").Deal[]>;
   /** YouTube's most-popular US charts (Gaming and everything), cached hourly, for the editor. */
   trending(): Promise<import("./discovery/demand.ts").TrendingVideo[]>;
+  /** One YouTube search page's videos with their views, read without the API (src/discovery/searchdemand.ts); absent in tests. */
+  searchDemand?(
+    url: string,
+  ): Promise<import("./discovery/searchdemand.ts").SearchRow[]>;
   /** A Wikipedia article's useful sections, by title or else by search (documentary research). */
   research(
     title: string,
@@ -591,7 +624,8 @@ export function uploadsLeftToday(cfg: Config, now: Date): number {
     if (cfg.dealsDays.includes(day)) slots.push(cfg.dealsSlot);
     if (cfg.longformEnabled && cfg.longformDays.includes(day))
       slots.push(cfg.longformSlot);
-    if (cfg.whyEnabled && cfg.whyDays.includes(day)) slots.push(cfg.whySlot);
+    if (cfg.whyEnabled && cfg.whyDays.includes(day))
+      slots.push(...cfg.whySlots);
     for (const slot of slots) {
       const t = localTime(d, slot, cfg.timezone).getTime();
       if (t > now.getTime() && t < reset) n++;
@@ -1022,11 +1056,13 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   const sprint =
     (!!showcase || wave) &&
     (await quotaHeadroom(db, cfg, now)) >= QUOTA_RESERVE_FOR_UPLOAD;
-  if (
-    cfg.breakingEnabled &&
-    (await countToday(db, cfg.timezone, "news_breaking")) <
-      cfg.breakingPerDay + (sprint ? cfg.sprintExtra : 0)
-  ) {
+  // One a day; a second only for a very big story (BREAKING_BIG_SCORE, src/storymix.ts).
+  const allowance = breakingAllowance(
+    await countToday(db, cfg.timezone, "news_breaking"),
+    cfg.breakingPerDay + (sprint ? cfg.sprintExtra : 0),
+    cfg.breakingBigScore,
+  );
+  if (cfg.breakingEnabled && allowance.open) {
     const rule = {
       scoreMin: cfg.breakingScoreMin,
       maxAgeMinutes: cfg.breakingMaxAgeMinutes,
@@ -1041,21 +1077,44 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
         )
       ).map((r) => r.franchise),
     );
-    const breaking = eligible
-      .filter(
-        (x) =>
-          (isBreaking(x.cluster, x.sighting, now, rule) ||
-            (sprint &&
-              (SHOWCASE.test(storyText(x.cluster)) ||
-                (wave && focusMatch(cfg, storyText(x.cluster)))) &&
-              isBreaking(x.cluster, x.sighting, now, {
-                ...rule,
-                scoreMin: cfg.sprintScoreMin,
-              }))) &&
-          !cooled.has(franchiseKey(x.cluster)),
-      )
-      .map((x) => x.cluster)
-      .slice(0, 4);
+    const qualified = eligible.filter(
+      (x) =>
+        (isBreaking(x.cluster, x.sighting, now, rule) ||
+          (sprint &&
+            (SHOWCASE.test(storyText(x.cluster)) ||
+              (wave && focusMatch(cfg, storyText(x.cluster)))) &&
+            isBreaking(x.cluster, x.sighting, now, {
+              ...rule,
+              scoreMin: cfg.sprintScoreMin,
+            }))) &&
+        !cooled.has(franchiseKey(x.cluster)),
+    );
+    const big = qualified.filter(
+      (x) => breakingScore(x.cluster, x.sighting) >= allowance.minScore,
+    );
+    // A story that would have broken but for the one-a-day rule: logged, and one evening-summary line a day.
+    const passed = qualified.find((x) => !big.includes(x));
+    if (
+      passed &&
+      !(await weeklyTried(db, `breaking_held:${dayKey(now, cfg.timezone)}`))
+    ) {
+      const score = breakingScore(passed.cluster, passed.sighting);
+      await logEvent(db, null, "breaking_held", {
+        headline: passed.cluster.headline,
+        score,
+        bar: allowance.minScore,
+      });
+      await s.notify({
+        level: "info",
+        content: breakingHeldLine(
+          passed.cluster.headline,
+          score,
+          cfg.breakingPerDay,
+          allowance.minScore,
+        ),
+      });
+    }
+    const breaking = big.map((x) => x.cluster).slice(0, 4);
     if (breaking.length) {
       const id = await createFromChoice(
         s,
@@ -1090,7 +1149,8 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     await takenSlots(db),
   );
   // SHORTS_PER_DAY_MAX (src/cadence.ts): once the day's news allowance is used, the slot is held back and the
-  // stories that were waiting for it are named once in the evening summary.
+  // stories that were waiting for it are named once in the evening summary. The slot also leaves room for
+  // the Why slots still to come today (story first, src/storymix.ts).
   const capped =
     !!slot &&
     (await holdSlotForCap(
@@ -1103,6 +1163,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
         score: x.cluster.score,
       })),
       (m) => s.notify(m),
+      whySlotsAhead(cfg, now, await takenSlots(db)),
     ).catch((err) => {
       log("warn", "news cap check failed", { error: errorMessage(err) });
       return false;
@@ -1172,7 +1233,11 @@ async function createEvergreen(
       [now],
     )
   ).map((r) => r.headline);
-  const candidates = await s.discoverEvergreen();
+  // Ranked by recent YouTube demand, topics with none skipped (src/discovery/searchdemand.ts).
+  const { candidates, demand, skipped } = await demandRanked(
+    s,
+    await s.discoverEvergreen(),
+  );
   if (!candidates.length) return undefined;
   const topic = await selectEvergreenTopic(
     s.llm,
@@ -1186,6 +1251,7 @@ async function createEvergreen(
     });
     return undefined;
   }
+  const pickedDemand = demand.get(candidates[topic.candidate_index]!.name);
   const slug = topic.theme
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -1221,8 +1287,17 @@ async function createEvergreen(
     theme: topic.theme,
     criterion: topic.criterion,
     reason: topic.reason,
+    demand: pickedDemand ?? null,
+    demand_skipped: skipped.map((c) => c.name),
     slot_at: due.toISOString(),
   });
+  await reportDemand(
+    s,
+    `ranking Short at ${slotLabel(due, s.cfg.timezone)}`,
+    topic.theme,
+    pickedDemand,
+    skipped.length,
+  );
   log("info", "evergreen topic selected", {
     id,
     format: topic.format,
@@ -1240,37 +1315,91 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   const { db, cfg } = s;
   if (!cfg.whyEnabled) return undefined;
   const now = s.now();
-  const due = evergreenDue(
-    now,
-    {
-      days: cfg.whyDays,
-      slot: cfg.whySlot,
-      leadMinutes: cfg.slotLeadMinutes + 30,
-      graceMinutes: cfg.slotGraceMinutes,
-      timeZone: cfg.timezone,
-    },
-    await takenSlots(db),
-  );
+  // WHY_SLOTS: the first slot whose lead time has begun and no episode has taken (src/storymix.ts).
+  const taken = await takenSlots(db);
+  const due = cfg.whySlots
+    .map((slot) =>
+      evergreenDue(
+        now,
+        {
+          days: cfg.whyDays,
+          slot,
+          leadMinutes: cfg.slotLeadMinutes + 30,
+          graceMinutes: cfg.slotGraceMinutes,
+          timeZone: cfg.timezone,
+        },
+        taken,
+      ),
+    )
+    .find((d): d is Date => !!d);
   if (!due) return undefined;
   // One editor call per slot: a pass is not retried every tick.
   if (await weeklyTried(db, `why:${due.toISOString()}`)) return undefined;
+  // The news slots already gave way to this one; it is held only once the cap itself is reached.
+  if (
+    await holdWhyForCap(db, cfg, now, due, (m) => s.notify(m)).catch(
+      () => false,
+    )
+  )
+    return undefined;
   const covered = (
     await db.query<{ headline: string }>(
       `SELECT story_json->>'headline' AS headline FROM episodes WHERE story_hash LIKE 'why:%' AND created_at > $1::timestamptz - interval '120 days'`,
       [now],
     )
   ).map((r) => r.headline);
-  const candidates = await s.discoverEvergreen();
+  // Freshness (WHY_FRESH_DAYS, src/editorial/why.ts): no game or topic of the last two weeks' Why Shorts.
+  const fresh = await db.query<{ game: string | null; hash: string }>(
+    `SELECT story_json->>'gameHint' AS game, story_hash AS hash FROM episodes
+      WHERE story_hash LIKE 'why:%' AND status NOT IN ('failed','rejected')
+        AND created_at > $1::timestamptz - ($2 || ' days')::interval`,
+    [now, String(cfg.whyFreshDays)],
+  );
+  const recent = {
+    games: fresh.map((r) => r.game ?? "").filter(Boolean),
+    slugs: fresh.map((r) => r.hash.replace(/^why:/, "")),
+  };
+  // Well-loved games with a story arc first (WHY_SEEDS), then the evergreen list; recent games left out.
+  const base = whyCandidates(
+    await s.discoverEvergreen(),
+    dayKey(now, cfg.timezone),
+  ).filter((c) => !recent.games.some((g) => sameGame(g, c.name)));
+  const { candidates, demand, skipped } = await demandRanked(s, base);
   if (!candidates.length) return undefined;
-  const topic = await selectWhyTopic(
+  const demandText = await topicDemand(s, "why");
+  let topic = await selectWhyTopic(
     s.llm,
     candidates,
     covered,
-    await topicDemand(s, "why"),
+    demandText,
+    recent.games,
   );
-  if (topic.candidate_index < 0) {
+  let stale =
+    topic.candidate_index >= 0
+      ? whyFreshProblems(topic, recent, cfg.whyFreshDays)
+      : [];
+  if (stale.length) {
+    // One more low-tier call with the reason; a second miss passes on the slot.
+    topic = await selectWhyTopic(
+      s.llm,
+      candidates,
+      covered,
+      demandText,
+      recent.games,
+      stale,
+    );
+    stale =
+      topic.candidate_index >= 0
+        ? whyFreshProblems(topic, recent, cfg.whyFreshDays)
+        : [];
+  }
+  if (topic.candidate_index < 0 || stale.length) {
     log("info", "editor passed on every why question", {
-      reason: topic.reason,
+      reason: stale.length ? stale.join(" ") : topic.reason,
+    });
+    await logEvent(db, null, "why_passed", {
+      slot_at: due.toISOString(),
+      reason: stale.length ? stale.join(" ") : topic.reason,
     });
     return undefined;
   }
@@ -1282,11 +1411,11 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     });
     return undefined;
   }
-  const slug = topic.question
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 80);
+  const slug = whySlug(topic.question);
+  // The reason to follow in the last line: our documentary or ranking on the game, else the series.
+  const follow = await followFor(db, topic.game, now).catch(() => ({
+    kind: "series" as const,
+  }));
   const cluster: StoryCluster = {
     hash: `why:${slug}`,
     headline: topic.title,
@@ -1308,7 +1437,12 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     score: 0,
     gameHint: topic.game,
     visualNeed: "game_footage",
-    why: { question: topic.question, angle: topic.angle },
+    why: {
+      question: topic.question,
+      angle: topic.angle,
+      arc: topic.arc,
+      follow,
+    },
   };
   const id = shortId();
   if (
@@ -1319,20 +1453,79 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     }))
   )
     return undefined;
+  const picked = candidates[topic.candidate_index];
+  const pickedDemand = picked ? demand.get(picked.name) : undefined;
   await logEvent(db, id, "selected", {
     headline: topic.title,
     lane: "why",
     question: topic.question,
     game: topic.game,
+    arc: topic.arc,
+    follow,
     reason: topic.reason,
+    demand: pickedDemand ?? null,
+    demand_skipped: skipped.map((c) => c.name),
     slot_at: due.toISOString(),
   });
+  await reportDemand(
+    s,
+    `Why Short at ${slotLabel(due, cfg.timezone)}`,
+    topic.game,
+    pickedDemand,
+    skipped.length,
+  );
   log("info", "why question selected", {
     id,
     question: topic.question,
     game: topic.game,
   });
   return id;
+}
+
+/**
+ * Candidates ranked by recent YouTube demand, the topics with none left out (src/discovery/searchdemand.ts).
+ * With DEMAND_CHECK off or no search service (tests), the list is unchanged.
+ */
+async function demandRanked(
+  s: Services,
+  base: EvergreenCandidate[],
+): Promise<{
+  candidates: EvergreenCandidate[];
+  demand: Map<string, Demand>;
+  skipped: EvergreenCandidate[];
+}> {
+  if (!s.cfg.demandCheck || !s.searchDemand)
+    return { candidates: base, demand: new Map(), skipped: [] };
+  const demand = await demandFor(base, {
+    search: (url) => s.searchDemand!(url),
+    cache: dbDemandCache(s.db, () => s.now()),
+    lookups: s.cfg.demandLookups,
+    minViews: s.cfg.demandMinViews,
+    now: s.now(),
+  }).catch((err) => {
+    log("warn", "demand check failed", { error: errorMessage(err) });
+    return new Map<string, Demand>();
+  });
+  const { kept, skipped } = rankByDemand(base, demand, s.cfg.demandMinViews);
+  if (skipped.length)
+    log("info", "topics skipped for no recent YouTube demand", {
+      skipped: skipped.map((c) => c.name),
+    });
+  return { candidates: kept, demand, skipped };
+}
+
+/** A pick's one Discord line about its demand; none when the check is off. */
+async function reportDemand(
+  s: Services,
+  lane: string,
+  picked: string,
+  d: Demand | undefined,
+  skipped: number,
+): Promise<void> {
+  if (!s.cfg.demandCheck || !s.searchDemand) return;
+  await s
+    .notify({ content: demandLine(lane, picked, d, skipped) })
+    .catch(() => undefined);
 }
 
 /** Spare-quota Shorts created today (owner's day), which sit outside the daily target. */
@@ -2344,7 +2537,11 @@ export async function maybeSelectLongform(
       [now],
     )
   ).map((r) => r.headline);
-  const candidates = await s.discoverEvergreen();
+  // Ranked by recent YouTube demand, topics with none skipped (src/discovery/searchdemand.ts).
+  const { candidates, demand, skipped } = await demandRanked(
+    s,
+    await s.discoverEvergreen(),
+  );
   if (!candidates.length) return undefined;
   const topic = await selectLongformTopic(
     s.llm,
@@ -2385,8 +2582,17 @@ export async function maybeSelectLongform(
     theme: topic.theme,
     criterion: topic.criterion,
     reason: topic.reason,
+    demand: demand.get(candidates[topic.candidate_index]!.name) ?? null,
+    demand_skipped: skipped.map((c) => c.name),
     slot_at: due.toISOString(),
   });
+  await reportDemand(
+    s,
+    "long ranking",
+    topic.theme,
+    demand.get(candidates[topic.candidate_index]!.name),
+    skipped.length,
+  );
   log("info", "long-form topic selected", { id, theme: topic.theme });
   return id;
 }
@@ -3788,9 +3994,20 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   // The recent Shorts' scripts, so an evergreen Short never retells one of them.
   const recentScripts =
     (await recentShapes(s.db, ep.id).catch(() => undefined))?.scripts ?? [];
+  const recentTexts = await recentShortTexts(s.db, ep.id, s.now()).catch(
+    () => [],
+  );
   for (let attempt = 0; attempt < 2; attempt++) {
     draft = await writeEvergreen(s.llm, topic, facts, feedback, brief);
     const problems = validateEvergreen(draft, recentScripts);
+    // No title or hook phrase a few recent Shorts already used (REPEAT_MAX, src/authenticity.ts).
+    problems.push(
+      ...repetitionProblems(
+        { title: draft.youtube.title, hook: draft.hook, game: draft.theme },
+        recentTexts,
+        s.cfg.repeatMax,
+      ),
+    );
     // Fetch the facts for the entries the writer chose, then rewrite once against them.
     if (attempt === 0) {
       facts = [];
@@ -3942,6 +4159,14 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   });
   const testDefaults = await growthDefaults(s.db).catch(() => []);
   const variantNote = growthNotes(test, testDefaults);
+  const recentTexts = await recentShortTexts(s.db, ep.id, s.now()).catch(
+    () => [],
+  );
+  const whyHooks = cluster.why
+    ? await recentWhyHooks(s.db, ep.id, s.now(), s.cfg.whyFreshDays).catch(
+        () => [],
+      )
+    : [];
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
       variantNote,
@@ -3961,6 +4186,24 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     const problems = validateScript(script, recent);
     // The test variant is a house rule for this Short: a draft that ignored it is sent back like any other.
     problems.push(...growthProblems(script, test, testDefaults));
+    // No title or hook phrase a few recent Shorts already used (REPEAT_MAX, src/authenticity.ts); a Why
+    // Short also opens unlike the last two weeks' and gives its reason to follow (src/editorial/why.ts).
+    problems.push(
+      ...repetitionProblems(
+        {
+          title: script.youtube.title,
+          hook: script.hook,
+          game: script.game_title,
+        },
+        recentTexts,
+        s.cfg.repeatMax,
+      ),
+    );
+    if (cluster.why)
+      problems.push(
+        ...whyHookProblems(script.hook, whyHooks),
+        ...whyFollowProblems(script.loop_line, cluster.why.follow),
+      );
     // A report card is credited to an outlet: it must be one of this story's own sources.
     const outlets = cluster.items.map((i) => i.source.toLowerCase());
     for (const b of script.beats)
@@ -8290,48 +8533,55 @@ export function videoMetadata(
   const chapters = long ? finishChapters(longChapters(ep), body) : [];
   // Shop links for every game and piece of hardware the video names, right under the summary.
   const shop = affiliateBlock(script, affiliate, { free: ep.lane === "free" });
-  const description = [
-    keywordLead(script),
-    // A documentary's second line: the same "next" its end card shows (src/youtube/nextdoc.ts).
-    nextLine(ep.assets_json?.nextDoc ?? undefined),
-    "",
-    body,
-    shop,
-    script.is_rumour
-      ? "\nThis story is unconfirmed. We will update if it is confirmed or denied."
-      : "",
-    chapters.length ? `\nChapters:\n${chapters.join("\n")}` : "",
-    credits ? `\nSources:\n${credits}` : "",
-    script.sources?.length
-      ? `\nSources:\n${script.sources.map((u) => `• Wikipedia: ${u}`).join("\n")}`
-      : "",
-    (ep.assets_json?.images ?? []).some((i) => i.kind === "photo") &&
-    affiliate?.shopUrl
-      ? `\nPhotos: Wikimedia Commons, credited on screen. Full photo and footage credits: ${affiliate.shopUrl.replace(/\/shop\//, "/credits/")}`
-      : "",
-    footage,
-    script.gameplay
-      ? `\nGameplay recorded by Pulse Gaming on Xbox Series X from our own copy of ${script.game_title}. No AI voice: the sound is the game's own.`
-      : "\nNarration: AI-generated synthetic voice. Visuals: official publisher material, credited.",
-    script.gameplay
-      ? "\nPulse Gaming: we test what games let you do, one question at a time. Tell us what to test next in the comments."
-      : script.recap
-        ? "\nPulse Gaming News: gaming news, checked and explained. The week's biggest stories every Friday, a new ranking every week, Shorts every day."
-        : script.evergreen_format === "documentary"
-          ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
-          : long
-            ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day."
-            : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
-    (long
-      ? hashtags(script)
-          .filter((h) => h !== "#Shorts")
-          .concat("#Gaming")
-      : hashtags(script)
-    ).join(" "),
-  ]
-    .filter((line) => line !== "")
-    .join("\n")
-    .slice(0, 4950);
+  // A Why Short's long video on the same game (src/youtube/longlink.ts), under the summary.
+  const follow = ep.story_json.why?.follow;
+  // The disclosure and channel lines always survive the length cut (src/authenticity.ts fitDescription).
+  const description = fitDescription(
+    [
+      keywordLead(script),
+      // A documentary's second line: the same "next" its end card shows (src/youtube/nextdoc.ts).
+      nextLine(ep.assets_json?.nextDoc ?? undefined),
+      "",
+      body,
+      follow?.videoId && follow.title
+        ? `\nThe whole story, in our ${follow.kind}: ${follow.title} https://youtu.be/${follow.videoId}`
+        : "",
+      shop,
+      script.is_rumour
+        ? "\nThis story is unconfirmed. We will update if it is confirmed or denied."
+        : "",
+      chapters.length ? `\nChapters:\n${chapters.join("\n")}` : "",
+      credits ? `\nSources:\n${credits}` : "",
+      script.sources?.length
+        ? `\nSources:\n${script.sources.map((u) => `• Wikipedia: ${u}`).join("\n")}`
+        : "",
+      (ep.assets_json?.images ?? []).some((i) => i.kind === "photo") &&
+      affiliate?.shopUrl
+        ? `\nPhotos: Wikimedia Commons, credited on screen. Full photo and footage credits: ${affiliate.shopUrl.replace(/\/shop\//, "/credits/")}`
+        : "",
+      footage,
+    ],
+    [
+      script.gameplay
+        ? `\nGameplay recorded by Pulse Gaming on Xbox Series X from our own copy of ${script.game_title}. No AI voice: the sound is the game's own.`
+        : "\nNarration: AI-generated synthetic voice. Visuals: official publisher material, credited.",
+      script.gameplay
+        ? "\nPulse Gaming: we test what games let you do, one question at a time. Tell us what to test next in the comments."
+        : script.recap
+          ? "\nPulse Gaming News: gaming news, checked and explained. The week's biggest stories every Friday, a new ranking every week, Shorts every day."
+          : script.evergreen_format === "documentary"
+            ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
+            : long
+              ? "\nPulse Gaming News: rankings, news and takes, checked and explained. A new ranking every week, Shorts every day."
+              : "\nPulse Gaming News: fast gaming news, checked and explained. New Shorts every day.",
+      (long
+        ? hashtags(script)
+            .filter((h) => h !== "#Shorts")
+            .concat("#Gaming")
+        : hashtags(script)
+      ).join(" "),
+    ],
+  );
   return {
     title: polishTitle(script),
     description,
@@ -8680,6 +8930,16 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
           : pinnedComment(script))) +
       (ep.script_json!.runtime === "long"
         ? affiliateCommentLine(ep.script_json!, affiliateTags(s.cfg, ep.id))
+        : "") +
+      // A Why Short's comment names our long video on the same game, found now in case one came out since.
+      (ep.story_json.why && !script.twin
+        ? whyPinnedLine(
+            await followFor(
+              s.db,
+              ep.story_json.gameHint || script.game_title,
+              s.now(),
+            ).catch(() => ep.story_json.why?.follow),
+          )
         : "");
     const id = await s
       .youtube(accountOf(ep))

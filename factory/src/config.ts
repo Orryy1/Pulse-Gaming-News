@@ -25,6 +25,23 @@ function int(name: string, fallback: number): number {
   return n;
 }
 
+/** "HH:MM" times from a comma list, sorted, invalid ones dropped. */
+export function slotList(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => /^\d\d:\d\d$/.test(t))
+    .sort();
+}
+
+/** The Why slots: WHY_SLOTS when set, else a single WHY_SLOT, else the two-a-day default. */
+export function whySlotsFrom(list: string, single: string): string[] {
+  const many = slotList(list);
+  if (many.length) return [...new Set(many)];
+  const one = slotList(single);
+  return one.length ? one : ["12:00", "18:30"];
+}
+
 function bool(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
@@ -171,7 +188,21 @@ export interface Config {
   waveTo: string; // ISO date it ends (inclusive)
   whyEnabled: boolean; // the daily "Why" Short
   whyDays: string[];
-  whySlot: string; // local "HH:MM"
+  whySlot: string; // local "HH:MM": the first of whySlots, kept for older callers
+  /** The day's "Why" slots, local "HH:MM" (WHY_SLOTS, else WHY_SLOT); src/storymix.ts. */
+  whySlots: string[];
+  /** Days a Why Short's game, topic and opening shape stay off limits for the next one (src/editorial/why.ts). */
+  whyFreshDays: number;
+  /** A breaking Short past BREAKING_PER_DAY is allowed once more only at or above this score; 0 = never (src/storymix.ts). */
+  breakingBigScore: number;
+  /** The YouTube search demand check before evergreen, ranking and Why picks (src/discovery/searchdemand.ts). */
+  demandCheck: boolean;
+  /** Views on a topic's top recent YouTube hits (last week) below which it has no demand and is skipped. */
+  demandMinViews: number;
+  /** Search pages fetched per pick at most; the rest wait for the cache (24 h). */
+  demandLookups: number;
+  /** A title or hook phrase in this many of the last 30 days' Shorts already is sent back for a rewrite; 0 = off (src/authenticity.ts). */
+  repeatMax: number;
   spareUploads: boolean; // spend the quota left before YouTube's daily reset on extra scheduled Shorts
   spareSlots: string[]; // local "HH:MM" publish times for those Shorts, the first free one is used
   evergreenApprovalMode: ApprovalMode;
@@ -575,7 +606,8 @@ export function loadConfig(): Config {
     minUploadGapMinutes: int("MIN_UPLOAD_GAP_MINUTES", 60),
     discoverMinutes: int("DISCOVER_MINUTES", 3),
     breakingEnabled: bool("BREAKING_ENABLED", true),
-    breakingPerDay: int("BREAKING_PER_DAY", 2),
+    // One a day (owner, 1 Nov 2026); a second only at BREAKING_BIG_SCORE or above.
+    breakingPerDay: int("BREAKING_PER_DAY", 1),
     breakingScoreMin: int("BREAKING_SCORE_MIN", 75),
     breakingMaxAgeMinutes: int("BREAKING_MAX_AGE_MINUTES", 90),
     breakingCooldownHours: int("BREAKING_COOLDOWN_HOURS", 2),
@@ -630,7 +662,16 @@ export function loadConfig(): Config {
       .split(",")
       .map((d) => d.trim().slice(0, 3))
       .filter(Boolean),
-    whySlot: str("WHY_SLOT", "18:30"),
+    // Story-first mix (owner, 1 Nov 2026): two Why Shorts a day by default. WHY_SLOTS wins; an older
+    // WHY_SLOT alone still means that one slot.
+    whySlot: whySlotsFrom(str("WHY_SLOTS"), str("WHY_SLOT"))[0]!,
+    whySlots: whySlotsFrom(str("WHY_SLOTS"), str("WHY_SLOT")),
+    whyFreshDays: Math.max(0, int("WHY_FRESH_DAYS", 14)),
+    breakingBigScore: Math.max(0, int("BREAKING_BIG_SCORE", 95)),
+    demandCheck: bool("DEMAND_CHECK", true),
+    demandMinViews: Math.max(0, int("DEMAND_MIN_VIEWS", 20000)),
+    demandLookups: Math.max(0, int("DEMAND_LOOKUPS", 12)),
+    repeatMax: Math.max(0, int("REPEAT_MAX", 3)),
     // Off: with uploads on their own bucket of 100 a day there is no use-it-or-lose-it quota to spend.
     spareUploads: bool("SPARE_UPLOADS", false),
     spareSlots: str("SPARE_SLOTS", "19:00,15:00,11:00")
@@ -1028,8 +1069,10 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     growthTests: c.growthTests,
     newsSlots: c.newsSlots.join(","),
     breaking: c.breakingEnabled
-      ? `${c.breakingPerDay}/day, score>=${c.breakingScoreMin}, <=${c.breakingMaxAgeMinutes}min old`
+      ? `${c.breakingPerDay}/day, score>=${c.breakingScoreMin}, <=${c.breakingMaxAgeMinutes}min old${c.breakingBigScore ? `, one more at score>=${c.breakingBigScore}` : ""}`
       : "off",
+    whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
+    demandCheck: c.demandCheck,
     approvalMode: c.approvalMode,
     approvalTimeoutMinutes: c.approvalTimeoutMinutes,
     includeRumours: c.includeRumours,

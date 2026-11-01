@@ -23,7 +23,14 @@ export interface StoryCluster {
   /** A Short cut from a long ranking: the long video's episode and the entry's rank. */
   cutdown?: { parent: string; rank: number };
   /** A "Why" Short: the question it answers and the likely answer the writer tests against the sources. */
-  why?: { question: string; angle: string };
+  why?: {
+    question: string;
+    angle: string;
+    /** The story arc the editor saw (what fans loved, the turn, where it stands). */
+    arc?: string;
+    /** The reason to follow the last line points to (src/editorial/why.ts). */
+    follow?: import("../editorial/why.ts").WhyFollow;
+  };
   /** A gameplay Short: the inbox clip's id and folder, and the reviewer's verdict. */
   gameplay?: { id: string; dir: string; review: import("../gameplay.ts").GameplayReview };
   /** A twin of a published Short in another language: the original's episode, the language and the login it uploads with. */

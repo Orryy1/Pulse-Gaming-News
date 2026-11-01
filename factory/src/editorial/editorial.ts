@@ -180,7 +180,7 @@ export async function writeScript(
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
   const why = cluster.why
-    ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle)}`
+    ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle, cluster.why.follow)}`
     : "";
   const recent =
     opts.recent && (opts.recent.takes.length || opts.recent.loops.length)

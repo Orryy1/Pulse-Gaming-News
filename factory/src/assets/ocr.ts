@@ -1,8 +1,9 @@
 // Named details found by reading a picture's text (31 Oct 2026, the documentary's camera, src/render/camera.ts):
 // when a sentence names something written in the screenshot on screen (a sign, a shop front, a street name),
 // the camera can push in on it and a hand-drawn circle or arrow lands on it as the word is said. The words
-// and their boxes come from the OCR engine built into Windows (src/assets/winocr.ps1): local, free and
-// nothing to install. Anywhere else (the Mac) it finds nothing, and the vision model's boxes still work.
+// and their boxes come from the OCR engine built into Windows (src/assets/winocr.ps1) or, on the Mac mini,
+// Apple's Vision text recogniser (src/assets/macocr.swift, 1 Nov 2026): local, free and nothing to install.
+// Anywhere else it finds nothing, and the vision model's boxes still work.
 // Logos are left alone: a phrase that is the game's own title or the studio's name is never circled.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -181,23 +182,24 @@ export function parseOcrOutput(raw: string): Map<string, OcrPage> {
   return out;
 }
 
-/** Reads the text in pictures (absolute paths) on this PC; an empty map off Windows or on any failure. */
-export async function readText(files: string[]): Promise<Map<string, OcrPage>> {
-  if (
-    process.platform !== "win32" ||
-    !files.length ||
-    process.env.NODE_TEST_CONTEXT
-  )
-    return new Map();
-  const list = path.join(
-    os.tmpdir(),
-    `pulse-ocr-${process.pid}-${Date.now()}.json`,
-  );
-  try {
-    await fs.writeFile(list, JSON.stringify(files));
-    const { stdout } = await run(
-      "powershell.exe",
-      [
+/** The Mac's OCR program, compiled from macocr.swift on first use (OCR_BIN overrides). */
+export const MAC_OCR_BIN =
+  process.env.OCR_BIN ||
+  path.join(os.homedir(), "PulseFactory", "bin", "pulse-ocr");
+
+/**
+ * The command that reads a list file of pictures on this machine: Windows' OCR engine through PowerShell,
+ * Apple's Vision through the compiled pulse-ocr on the Mac, none elsewhere.
+ */
+export function ocrCommand(
+  platform: string,
+  list: string,
+  macBin = MAC_OCR_BIN,
+): { cmd: string; args: string[] } | undefined {
+  if (platform === "win32")
+    return {
+      cmd: "powershell.exe",
+      args: [
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -206,8 +208,60 @@ export async function readText(files: string[]): Promise<Map<string, OcrPage>> {
         "-ListFile",
         list,
       ],
-      { timeout: 5 * 60_000, maxBuffer: 64 * 1024 * 1024, windowsHide: true },
-    );
+    };
+  if (platform === "darwin") return { cmd: macBin, args: [list] };
+  return undefined;
+}
+
+let macBuild: Promise<boolean> | undefined;
+/** Builds pulse-ocr from macocr.swift once per process when it is missing or older than the source. */
+async function ensureMacOcr(): Promise<boolean> {
+  macBuild ??= (async () => {
+    const src = path.join(path.dirname(SCRIPT), "macocr.swift");
+    const [bin, swift] = await Promise.all([
+      fs.stat(MAC_OCR_BIN).catch(() => undefined),
+      fs.stat(src),
+    ]);
+    if (bin && bin.mtimeMs >= swift.mtimeMs) return true;
+    try {
+      await fs.mkdir(path.dirname(MAC_OCR_BIN), { recursive: true });
+      await run("swiftc", ["-O", src, "-o", MAC_OCR_BIN], {
+        timeout: 5 * 60_000,
+      });
+      log("info", "built the Mac's picture-text reader", { bin: MAC_OCR_BIN });
+      return true;
+    } catch (err) {
+      log(
+        "warn",
+        "the Mac's picture-text reader did not build (needs the Command Line Tools); details fall back to the vision model",
+        {
+          error: errorMessage(err),
+        },
+      );
+      return false;
+    }
+  })();
+  return macBuild;
+}
+
+/** Reads the text in pictures (absolute paths) on this machine; an empty map without an engine or on any failure. */
+export async function readText(files: string[]): Promise<Map<string, OcrPage>> {
+  if (!files.length || process.env.NODE_TEST_CONTEXT) return new Map();
+  const list = path.join(
+    os.tmpdir(),
+    `pulse-ocr-${process.pid}-${Date.now()}.json`,
+  );
+  const command = ocrCommand(process.platform, list);
+  if (!command) return new Map();
+  if (process.platform === "darwin" && !(await ensureMacOcr()))
+    return new Map();
+  try {
+    await fs.writeFile(list, JSON.stringify(files));
+    const { stdout } = await run(command.cmd, command.args, {
+      timeout: 5 * 60_000,
+      maxBuffer: 64 * 1024 * 1024,
+      windowsHide: true,
+    });
     return parseOcrOutput(stdout);
   } catch (err) {
     log(
@@ -234,10 +288,22 @@ export async function findTextDetails(a: {
   windows: Array<{ entry: number; moment: number; start: number; at: number }>;
   moments: Array<Array<{ graphic: { kind: string } } | undefined>>;
   keys: (entry: number, moment: number) => string[];
-  shots: Array<{ start: number; end: number; media: { type: string; index: number } }>;
+  shots: Array<{
+    start: number;
+    end: number;
+    media: { type: string; index: number };
+  }>;
   images: Array<{ file: string; kind: string }>;
   brands: string[];
-}): Promise<Array<{ entry: number; moment: number; image: number; box: Box; label: string }>> {
+}): Promise<
+  Array<{
+    entry: number;
+    moment: number;
+    image: number;
+    box: Box;
+    label: string;
+  }>
+> {
   const wide = new Set(["hero", "screenshot", "article", "header"]);
   const cands: TextDetailCandidate[] = [];
   for (const w of a.windows) {
@@ -245,7 +311,8 @@ export async function findTextDetails(a: {
     if (!m || m.graphic.kind !== "none" || w.moment === 0) continue;
     const frame = Math.round(Math.max(w.start, w.at - 0.15) * a.fps);
     const shot = a.shots.find((x) => frame >= x.start && frame < x.end);
-    if (!shot || shot.media.type !== "image" || shot.end - frame < 3.5 * a.fps) continue;
+    if (!shot || shot.media.type !== "image" || shot.end - frame < 3.5 * a.fps)
+      continue;
     const img = a.images[shot.media.index];
     if (!img || !wide.has(img.kind)) continue;
     const keys = a.keys(w.entry, w.moment).filter((k) => k.length <= 32);

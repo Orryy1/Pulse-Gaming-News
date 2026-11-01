@@ -6,6 +6,13 @@ import os from "node:os";
 import path from "node:path";
 import { parseCameraSetting, type CameraTechnique } from "./render/camera.ts";
 import type { SoundCraft } from "./render/soundfx.ts";
+import {
+  defaultBackupDir,
+  defaultCodexPython,
+  defaultCodexRunnerDir,
+  relocatedFile,
+  usablePath,
+} from "./platform.ts";
 
 // Local installs keep settings in factory/.env (never committed).
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
@@ -38,10 +45,7 @@ export type PrivacyStatus = "public" | "unlisted" | "private";
 // elevenlabs-first: spend the credits already paid for on the real ElevenLabs voice
 // while the month's balance covers the script, never beyond it, then the local clone.
 export type VoiceProvider =
-  | "local"
-  | "elevenlabs"
-  | "auto"
-  | "elevenlabs-first";
+  "local" | "elevenlabs" | "auto" | "elevenlabs-first";
 export const VOICE_PROVIDERS: VoiceProvider[] = [
   "local",
   "elevenlabs",
@@ -51,12 +55,7 @@ export const VOICE_PROVIDERS: VoiceProvider[] = [
 // Chromium GL backend for Remotion. "angle" uses the GPU (5x faster on the
 // production PC, pixel-identical output); "swangle" is the software fallback.
 export type RemotionGl =
-  | "swangle"
-  | "angle"
-  | "egl"
-  | "swiftshader"
-  | "vulkan"
-  | "angle-egl";
+  "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
 const REMOTION_GLS: RemotionGl[] = [
   "swangle",
   "angle",
@@ -405,6 +404,12 @@ export interface Config {
   realPhotosPinnedOnly: boolean;
   /** At most this many stock clips per theme ("office at night", "counting cash") in one video (src/assets/repeats.ts). */
   stockThemeMax: number;
+  /** Finished episodes' media is deleted after this many days (src/retention.ts; the DB row stays). */
+  mediaKeepDays: number;
+  /** Below this much free disk, finished episodes' media goes sooner, oldest first (the Mac's 256 GB SSD). */
+  mediaMinFreeGb: number;
+  /** ...but never media younger than this many days (a just-published video's files stay for its checks). */
+  mediaFloorDays: number;
   /**
    * Footage first for long videos (src/assets/footagefirst.ts): once per video, before the picture top-up, each
    * released game's chapter gathers Creative Commons gameplay until moving footage can fill FOOTAGE_SHARE_TARGET
@@ -498,8 +503,14 @@ export function loadConfig(): Config {
     );
   const railwayDomain = str("RAILWAY_PUBLIC_DOMAIN");
   // Logins saved by the factory's own connect pages sit beside the TikTok token, outside the repo.
-  const tokenDir = str("TIKTOK_TOKEN_PATH")
-    ? path.dirname(str("TIKTOK_TOKEN_PATH"))
+  // A PC path copied to the Mac (D:/pulse-data/tokens/...) means the same file in data/tokens there.
+  const tiktokTokenPath = relocatedFile(
+    str("TIKTOK_TOKEN_PATH"),
+    process.platform,
+    path.resolve(str("DATA_DIR", "./data"), "tokens"),
+  );
+  const tokenDir = tiktokTokenPath
+    ? path.dirname(tiktokTokenPath)
     : path.resolve(str("DATA_DIR", "./data"), "tokens");
   const cfg: Config = {
     port: int("PORT", 8080),
@@ -523,8 +534,11 @@ export function loadConfig(): Config {
       .filter(Boolean),
     codexVision: bool("CODEX_VISION", false),
     codexTimeoutMinutes: int("CODEX_TIMEOUT_MINUTES", 20),
-    codexPython: str("CODEX_PYTHON", "python"),
-    codexRunnerDir: str("CODEX_RUNNER_DIR", "C:\\Claude\\orchestrator"),
+    codexPython: str("CODEX_PYTHON", defaultCodexPython(process.platform)),
+    codexRunnerDir: str(
+      "CODEX_RUNNER_DIR",
+      defaultCodexRunnerDir(process.platform, os.homedir()),
+    ),
     voiceProvider: str("VOICE_PROVIDER", "auto") as VoiceProvider,
     localTtsUrl: str("LOCAL_TTS_URL", "http://127.0.0.1:8765").replace(
       /\/$/,
@@ -532,7 +546,8 @@ export function loadConfig(): Config {
     ),
     localVoiceId: str("LOCAL_TTS_VOICE_ID", "TX3LPaxmHKxFdv7VOQHJ"),
     localSpeakingRate: Number(str("LOCAL_TTS_SPEAKING_RATE", "1.0")),
-    localTtsStart: str("LOCAL_TTS_START"),
+    // The PC's start.bat means nothing on the Mac, which reaches the PC's Liam over the LAN instead.
+    localTtsStart: usablePath(str("LOCAL_TTS_START"), process.platform),
     syntheticMedia: bool("SYNTHETIC_MEDIA_DISCLOSURE", true),
     elevenLabsApiKey: str("ELEVENLABS_API_KEY"),
     elevenLabsVoiceId: str("ELEVENLABS_VOICE_ID", "TX3LPaxmHKxFdv7VOQHJ"),
@@ -799,7 +814,7 @@ export function loadConfig(): Config {
     instagramToken: str("INSTAGRAM_ACCESS_TOKEN"),
     tiktokClientKey: str("TIKTOK_CLIENT_KEY"),
     tiktokClientSecret: str("TIKTOK_CLIENT_SECRET"),
-    tiktokTokenPath: str("TIKTOK_TOKEN_PATH"),
+    tiktokTokenPath,
     // Off by default: every Short posted through the automated browser from 19 Oct got 0 views (no For You
     // distribution), while drafts the owner posts from the app reached 939 views a week.
     tiktokBrowser: bool("TIKTOK_BROWSER", false),
@@ -851,14 +866,16 @@ export function loadConfig(): Config {
       .filter(Boolean),
     whisperPython: str("WHISPER_PYTHON", defaultWhisperPython()),
     parallaxPython: str("PARALLAX_PYTHON", defaultParallaxPython()),
-    backupDir: str("BACKUP_DIR", "G:/My Drive/Pulse backups"),
+    backupDir: str(
+      "BACKUP_DIR",
+      defaultBackupDir(process.platform, os.homedir()),
+    ),
     footage: bool("TRAILER_FOOTAGE", true),
     maxClips: int("MAX_TRAILER_CLIPS", 8), // enough for the hook, four beats, the take and the loop
     clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as
-      | "llm"
-      | "rule",
+      "llm" | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
-    ytdlpPath: str("YTDLP_PATH", "yt-dlp"),
+    ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
     ownerGames: str("OWNER_GAMES", "Grand Theft Auto V, Grand Theft Auto VI")
       .split(",")
       .map((g) => g.trim())
@@ -892,8 +909,14 @@ export function loadConfig(): Config {
     annotate: bool("ANNOTATE", true),
     realPhotosPinnedOnly: bool("REAL_PHOTOS_PINNED_ONLY", true),
     stockThemeMax: int("STOCK_THEME_MAX", 2),
+    mediaKeepDays: Math.max(1, int("MEDIA_KEEP_DAYS", 14)),
+    mediaMinFreeGb: Math.max(0, int("MEDIA_MIN_FREE_GB", 40)),
+    mediaFloorDays: Math.max(0, int("MEDIA_FLOOR_DAYS", 2)),
     footageFirst: bool("FOOTAGE_FIRST", true),
-    footageShareTarget: Math.max(0, Math.min(100, int("FOOTAGE_SHARE_TARGET", 60))),
+    footageShareTarget: Math.max(
+      0,
+      Math.min(100, int("FOOTAGE_SHARE_TARGET", 60)),
+    ),
     footageSources: Math.max(1, int("FOOTAGE_SOURCES", 6)),
     footagePullSeconds: Math.max(60, int("FOOTAGE_PULL_SECONDS", 240)),
     footageVisionMax: Math.max(12, int("FOOTAGE_VISION_MAX", 120)),
@@ -1039,10 +1062,18 @@ export function redactedConfig(c: Config): Record<string, unknown> {
 }
 
 /** The Python that has Whisper on this machine: the PC's speech runtime or the Mac's MLX one. */
-/** The parallax environment (D:/pulse-tools/parallax-venv: the runtime's torch plus its own OpenCV and Pillow), else the Whisper Python. */
+/**
+ * The parallax environment, else the Whisper Python: D:/pulse-tools/parallax-venv on the PC (the runtime's
+ * torch plus its own OpenCV and Pillow), ~/PulseFactory/parallax on the Mac (mac/migrate.sh prepare: torch,
+ * transformers, OpenCV and Pillow on Apple's GPU). The Mac's Whisper environment has no OpenCV, so without
+ * its own the stills stayed flat there.
+ */
 function defaultParallaxPython(): string {
-  const venv = "D:/pulse-tools/parallax-venv/Scripts/python.exe";
-  return fs.existsSync(venv) ? venv : defaultWhisperPython();
+  const venvs = [
+    "D:/pulse-tools/parallax-venv/Scripts/python.exe",
+    `${os.homedir()}/PulseFactory/parallax/bin/python`,
+  ];
+  return venvs.find((p) => fs.existsSync(p)) ?? defaultWhisperPython();
 }
 
 function defaultWhisperPython(): string {

@@ -21,6 +21,7 @@ import type { ShortProps } from "./props.ts";
 import { unloadLocalVision } from "../assets/localvision.ts";
 import { log } from "../lib/util.ts";
 import { PcTurnTimeout } from "../pcschedule.ts";
+import { loadOrch, NoOrchestrator } from "../lib/orch.ts";
 import type { LongProps } from "./Long.tsx";
 import { BEDS, MOOD_BEDS } from "./soundscape.ts";
 import { pocketOf } from "./soundfx.ts";
@@ -186,9 +187,7 @@ async function withPcTurn<T>(
   let release = () => {};
   let granted = false;
   try {
-    const orch: any = await import(
-      process.env.ORCH_CLIENT || "file:///C:/Claude/orchestrator/orch.mjs"
-    );
+    const orch = await loadOrch();
     release = await orch.lease("heavy", {
       job,
       project: "pulse",
@@ -201,6 +200,8 @@ async function withPcTurn<T>(
     });
     granted = true;
   } catch (e) {
+    // The Mac: no PC to share, so no turn to take (its other jobs wait behind renders in ~/orch/macrun.sh).
+    if (e instanceof NoOrchestrator) return fn(false);
     if (yieldAfter !== undefined && String(e).includes("orchestrator:"))
       throw new PcTurnTimeout(
         `${job}: no turn within ${Math.round(yieldAfter)} min`,
@@ -536,36 +537,36 @@ export function longProps(
           },
         }),
     audioSrc: audioFile ? `${filesUrl}/${webPath(audioFile)}` : null,
-      images: imageFiles.map((i) => ({
+    images: imageFiles.map((i) => ({
       src: `${filesUrl}/${webPath(i.file)}`,
-        kind: i.kind,
-        aspect: i.aspect,
-        beatIndex: i.beatIndex,
-        credit: i.credit,
-        moment: i.moment,
-        label: i.label,
-        layers: i.layers
-          ? {
+      kind: i.kind,
+      aspect: i.aspect,
+      beatIndex: i.beatIndex,
+      credit: i.credit,
+      moment: i.moment,
+      label: i.label,
+      layers: i.layers
+        ? {
             bg: `${filesUrl}/${webPath(i.layers.bg)}`,
             mid: `${filesUrl}/${webPath(i.layers.mid)}`,
             fg: `${filesUrl}/${webPath(i.layers.fg)}`,
-            }
-          : undefined,
-      })),
-      clips: clipFiles.map((c) => ({
+          }
+        : undefined,
+    })),
+    clips: clipFiles.map((c) => ({
       src: `${filesUrl}/${webPath(c.file)}`,
-        durationSeconds: c.durationSeconds,
-        beatIndex: c.beatIndex,
-        role: c.role,
-        moment: c.moment,
-        credit: c.credit,
-        audio: c.audio,
-        label: c.label,
-      })),
-      logoSrc: "logo.png",
-      musicSrc: musicFile,
-      extraBeds: extraBeds(serveUrl),
-    };
+      durationSeconds: c.durationSeconds,
+      beatIndex: c.beatIndex,
+      role: c.role,
+      moment: c.moment,
+      credit: c.credit,
+      audio: c.audio,
+      label: c.label,
+    })),
+    logoSrc: "logo.png",
+    musicSrc: musicFile,
+    extraBeds: extraBeds(serveUrl),
+  };
 }
 
 export interface LongStillsInput {

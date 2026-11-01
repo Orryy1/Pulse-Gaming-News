@@ -44,6 +44,9 @@ prepare)
   on_mac 'bash ~/PulseFactory/factory/mac/launchd.sh && for i in $(seq 1 24); do curl -sf -m 5 http://127.0.0.1:8877/health && break; sleep 5; done'
   # The frame screen's vision model and the free Liam voice stay on the PC's 4090 (owner, 28 Oct 2026): the
   # Mac reaches them over the LAN, so no model is pulled onto its 16 GB.
+  echo "== depth layers for long videos' stills (src/render/parallax.py on Apple's GPU) and the picture-text reader"
+  on_mac 'cd ~/PulseFactory && { [ -x parallax/bin/python ] || python3.12 -m venv parallax; } && parallax/bin/pip install -q --upgrade pip torch transformers opencv-python-headless pillow numpy && parallax/bin/python -c "import torch, cv2, PIL, transformers; print(\"parallax ok, mps:\", torch.backends.mps.is_available())"'
+  on_mac 'mkdir -p ~/PulseFactory/bin && swiftc -O ~/PulseFactory/factory/src/assets/macocr.swift -o ~/PulseFactory/bin/pulse-ocr && echo "picture-text reader built"'
   echo "== checks on the Mac"
   on_mac 'cd ~/PulseFactory/factory && npx tsc --noEmit -p . && node --import tsx --test tests/*.test.ts 2>&1 | grep -E "^ℹ (pass|fail)"'
   echo "prepare done: run mac/migrate.sh cutover when ready"
@@ -63,8 +66,12 @@ cutover)
   on_mac "curl -sf -m 5 http://$pc:8766/health >/dev/null" || pc=192.168.0.93
   echo "   the Mac reaches the PC as $pc"
   # Homebrew's ffmpeg and ffprobe: the bundled ffprobe-static binary does not run on Apple silicon (error -86, 29 Oct 2026).
-  grep -vE '^(DATA_DIR|YTDLP_PATH|FFMPEG_PATH|FFPROBE_PATH|LOCAL_TTS_URL|LOCAL_VISION_URL|VOICE_PROVIDER|REMOTION_CONCURRENCY)=' .env > "$tmp"
-  printf 'DATA_DIR=%s/PulseFactory/factory/data\nVOICE_PROVIDER=elevenlabs-first\nLOCAL_TTS_URL=http://%s:8766\nLOCAL_VISION_URL=http://%s:11434\nREMOTION_CONCURRENCY=6\nFFMPEG_PATH=/opt/homebrew/bin/ffmpeg\nFFPROBE_PATH=/opt/homebrew/bin/ffprobe\n' "$home" "$pc" "$pc" >> "$tmp"
+  # Windows-only paths are dropped too (1 Nov 2026 audit): the PC's Liam start.bat, the old TTS folder and
+  # the Codex helper's Python; the TikTok token path is pointed at data/tokens, where the logins are copied.
+  grep -vE '^(DATA_DIR|YTDLP_PATH|FFMPEG_PATH|FFPROBE_PATH|LOCAL_TTS_URL|LOCAL_VISION_URL|VOICE_PROVIDER|REMOTION_CONCURRENCY|LOCAL_TTS_START|PULSE_TTS_DIR|TIKTOK_TOKEN_PATH|BACKUP_DIR|CODEX_PYTHON|CODEX_RUNNER_DIR)=' .env > "$tmp"
+  printf 'DATA_DIR=%s/PulseFactory/factory/data\nVOICE_PROVIDER=elevenlabs-first\nLOCAL_TTS_URL=http://%s:8766\nLOCAL_VISION_URL=http://%s:11434\nREMOTION_CONCURRENCY=6\nFFMPEG_PATH=/opt/homebrew/bin/ffmpeg\nFFPROBE_PATH=/opt/homebrew/bin/ffprobe\nBACKUP_DIR=%s/PulseFactory/backups\n' "$home" "$pc" "$pc" "$home" >> "$tmp"
+  tt=$(grep -m1 '^TIKTOK_TOKEN_PATH=' .env | cut -d= -f2- | tr -d '\r')
+  [ -n "$tt" ] && printf 'TIKTOK_TOKEN_PATH=%s/PulseFactory/factory/data/tokens/%s\n' "$home" "$(basename "${tt//\\//}")" >> "$tmp"
   scp -q "$tmp" pulse-mac:PulseFactory/factory/.env && rm -f "$tmp"
   on_mac 'chmod 600 ~/PulseFactory/factory/.env'
   echo "== tunnel files (started at cutover)"
@@ -81,7 +88,8 @@ cutover)
   powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.ProcessId -ne \$PID -and \$_.CommandLine -match 'windows.run\.ps1|src.server\.ts|src.discord.bot\.ts|discord-bot\.ps1|cloudflared-pulse' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }"
   sleep 5
   echo "== final copy (database and episodes)"
-  tar -C data -cf - db episodes site engage admin discord $(cd data && ls -d tokens tiktok-session.json 2>/dev/null) | on_mac 'mkdir -p ~/PulseFactory/factory/data && cd ~/PulseFactory/factory/data && rm -f db.lock && tar -xf -'
+  # usage/ is the day's Claude spend (the daily budget reads it) and abtests/ the Studio A/B tests in progress.
+  tar -C data -cf - db episodes site engage admin discord $(cd data && ls -d tokens tiktok-session.json usage abtests 2>/dev/null) | on_mac 'mkdir -p ~/PulseFactory/factory/data && cd ~/PulseFactory/factory/data && rm -f db.lock && tar -xf -'
   # The platform logins live outside the data folder (Threads, TikTok, Facebook, Instagram), and the Spanish
   # music beds are not in git.
   if [ -d /d/pulse-data/tokens ]; then

@@ -55,7 +55,7 @@ import {
 import { footageOptions } from "./assets/footagefirst.ts";
 import { capStockTargets } from "./assets/repeats.ts";
 import { stockQuery } from "./assets/stock.ts";
-import { createSketchRun } from "./assets/illustrate.ts";
+import { comfyReachable, createSketchRun } from "./assets/illustrate.ts";
 import {
   animateSketches,
   chooseEpisodeFillers,
@@ -316,6 +316,7 @@ import {
   type GameplayStatus,
 } from "./gameplay.ts";
 import { pruneCommentRecords } from "./youtube/replies.ts";
+import { pruneForSpace } from "./retention.ts";
 import { finishChapters } from "./youtube/chapters.ts";
 import { docPinnedComment } from "./youtube/pinned.ts";
 import { latestPublicDocumentary, nextLine } from "./youtube/nextdoc.ts";
@@ -3157,7 +3158,13 @@ async function stepScriptTwin(s: Services, ep: Episode): Promise<void> {
 export function stampsFor(
   script: Pick<Script, "stamp">,
   words: Array<{ text: string; start: number }>,
-): Array<{ at: number; text: string; sub?: string; colour: string; tone?: string }> {
+): Array<{
+  at: number;
+  text: string;
+  sub?: string;
+  colour: string;
+  tone?: string;
+}> {
   const st = script.stamp;
   if (!st?.word?.trim() || !st.text?.trim()) return [];
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9$]/g, "");
@@ -4299,7 +4306,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
             breaths: quiet.length,
             seconds:
               Math.round(quiet.reduce((n, g) => n + g.seconds, 0) * 10) / 10,
-        });
+          });
       }
     } catch (err) {
       log("warn", "documentary breathers skipped", {
@@ -4656,13 +4663,13 @@ async function gatherMedia(
         ) {
           await gatherBudget.within(
             gatherLongEntryMedia(
-            s,
-            script,
-            entry,
-            beatIndex,
-            dir,
-            images,
-            clips,
+              s,
+              script,
+              entry,
+              beatIndex,
+              dir,
+              images,
+              clips,
               gatherBudget,
             ),
             undefined,
@@ -4686,13 +4693,13 @@ async function gatherMedia(
         if (script.evergreen_format === "documentary") {
           await gatherBudget.within(
             gatherChapterMedia(
-            s,
-            script,
-            entry,
-            beatIndex,
-            dir,
-            images,
-            clips,
+              s,
+              script,
+              entry,
+              beatIndex,
+              dir,
+              images,
+              clips,
               gatherBudget,
             ),
             undefined,
@@ -5302,10 +5309,10 @@ export async function gatherLongEntryMedia(
           mine.push(a);
   } catch (err) {
     if (!(err instanceof GatherOutOfTime))
-    log("warn", "long entry media failed", {
-      game: entry.game_title,
-      error: errorMessage(err),
-    });
+      log("warn", "long entry media failed", {
+        game: entry.game_title,
+        error: errorMessage(err),
+      });
   }
   // The picture editor: a still per sentence, and no picture with text behind the graphics.
   const stills = mine.filter((a) => a.kind !== "capsule");
@@ -5469,76 +5476,79 @@ async function gatherChapterMedia(
         .map((c) => c.moment!),
     );
   if (!budget?.over())
-  try {
-    if (eapp) {
-      for (const a of (await s.fetchArt(eapp, edir, 12)).filter(
-        (a) => a.kind !== "logo",
-      ))
-        images.push({ ...a, file: rel(a.file), beatIndex });
-      if (s.cfg.footage) {
-        const targets: FootageTarget[] = shots.length
-          ? spreadPick(shots, 24)
-          : paragraphTargets(Math.max(1, s.cfg.docClipsPerChapter), "");
-        if (targets.length)
-          for (const c of capFootage(
-            await s.fetchClips(
-              eapp,
-              edir,
-              targets,
-              Math.max(s.cfg.docClipsPerChapter, Math.min(16, targets.length)),
-              scopeOf(script),
-            ),
-            footageBudgetSeconds(eapp),
-            4.8,
-          ))
-            pushClip(c);
-      }
-    } else if (s.cfg.footage) {
-      const want = chapterFootage(script, beatIndex)[0];
-      const asks: FootageTarget[] = shots.length
-        ? spreadPick(shots, 12)
-        : [
-            {
-              key: `beat:${beatIndex}`,
-              text: entry.game_title,
-              want: want?.want ?? "gameplay",
-              energy: "medium",
-              keywords: want?.keywords ?? [entry.game_title],
-            },
-          ];
-      const om = await s
-        .fetchOfficialMedia(
-          entry.game_title,
-          edir,
-          asks,
-          asks.length,
-          entry.year ? String(entry.year) : "",
-        )
-        .catch(() => ({ clips: [], stills: [] }) as OfficialMedia);
-      if (
-        om.trailer &&
-        trailerMatchesGame(om.trailer.title, entry.game_title, franchise) &&
-        (await s.judgeFootage(
-          entry.game_title,
-          entry.year,
-          om.trailer.title,
-          scopeOf(script),
+    try {
+      if (eapp) {
+        for (const a of (await s.fetchArt(eapp, edir, 12)).filter(
+          (a) => a.kind !== "logo",
         ))
-      )
-        for (const c of capFootage(om.clips, om.trailer.clipSeconds ?? 0))
-          pushClip(c);
-      else if (om.trailer)
-        log("info", "documentary trailer rejected: it names another game", {
-          game: entry.game_title,
-          trailer: om.trailer.title,
-        });
+          images.push({ ...a, file: rel(a.file), beatIndex });
+        if (s.cfg.footage) {
+          const targets: FootageTarget[] = shots.length
+            ? spreadPick(shots, 24)
+            : paragraphTargets(Math.max(1, s.cfg.docClipsPerChapter), "");
+          if (targets.length)
+            for (const c of capFootage(
+              await s.fetchClips(
+                eapp,
+                edir,
+                targets,
+                Math.max(
+                  s.cfg.docClipsPerChapter,
+                  Math.min(16, targets.length),
+                ),
+                scopeOf(script),
+              ),
+              footageBudgetSeconds(eapp),
+              4.8,
+            ))
+              pushClip(c);
+        }
+      } else if (s.cfg.footage) {
+        const want = chapterFootage(script, beatIndex)[0];
+        const asks: FootageTarget[] = shots.length
+          ? spreadPick(shots, 12)
+          : [
+              {
+                key: `beat:${beatIndex}`,
+                text: entry.game_title,
+                want: want?.want ?? "gameplay",
+                energy: "medium",
+                keywords: want?.keywords ?? [entry.game_title],
+              },
+            ];
+        const om = await s
+          .fetchOfficialMedia(
+            entry.game_title,
+            edir,
+            asks,
+            asks.length,
+            entry.year ? String(entry.year) : "",
+          )
+          .catch(() => ({ clips: [], stills: [] }) as OfficialMedia);
+        if (
+          om.trailer &&
+          trailerMatchesGame(om.trailer.title, entry.game_title, franchise) &&
+          (await s.judgeFootage(
+            entry.game_title,
+            entry.year,
+            om.trailer.title,
+            scopeOf(script),
+          ))
+        )
+          for (const c of capFootage(om.clips, om.trailer.clipSeconds ?? 0))
+            pushClip(c);
+        else if (om.trailer)
+          log("info", "documentary trailer rejected: it names another game", {
+            game: entry.game_title,
+            trailer: om.trailer.title,
+          });
+      }
+    } catch (err) {
+      log("warn", "documentary chapter media failed", {
+        game: entry.game_title,
+        error: errorMessage(err),
+      });
     }
-  } catch (err) {
-    log("warn", "documentary chapter media failed", {
-      game: entry.game_title,
-      error: errorMessage(err),
-    });
-  }
   // Licensed gameplay: real moments for the in-game sentences no trailer shot matched, credited.
   // Not for a game from this year on (30 Oct 2026 review: the GTA VI chapter's "gameplay" was a fake upload full
   // of Spider-Man, Sonic and Minions mods, and re-uploads of Rockstar's trailers wrongly marked Creative Commons).
@@ -5644,151 +5654,154 @@ async function gatherChapterMedia(
   }
   // Archive photos: the real places and people, freely licensed and credited on screen.
   if (!budget?.over())
-  try {
-    const queries = (
-      entry.photos?.length ? entry.photos : [`${entry.game_title} video game`]
-    ).slice(0, 4);
-    const seen = new Set<string>();
-    const candidates = (
-      await Promise.all(queries.map((q) => s.searchPhotos(q).catch(() => [])))
-    )
-      .flat()
-      .filter((c) => !seen.has(c.title) && seen.add(c.title))
-      .slice(0, 30);
-    const opening =
-      script.beats.filter((b) => b.visual?.kind === "chapter")[beatIndex]
-        ?.narration ?? "";
-    const keep = await pickPhotos(
-      s.llm,
-      {
-        franchise,
-        game: entry.game_title,
-        title:
-          script.beats.filter((b) => b.visual?.kind === "chapter")[beatIndex]
-            ?.visual.primary ?? entry.game_title,
-        opening,
-      },
-      candidates,
-    );
-    for (const [k, i] of keep.entries()) {
-      const img = candidates[i]!;
-      const file = rel(path.join("assets", `photo_${k}.jpg`));
-      if (await s.downloadPhoto(img, path.join(dir, file)))
-        images.push({
-          kind: "photo",
-          file,
-          sourceUrl: img.pageUrl,
-          provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
-          beatIndex,
-        } as VisualAsset & { beatIndex?: number });
-    }
-  } catch (err) {
-    log("warn", "documentary photos failed", {
-      game: entry.game_title,
-      error: errorMessage(err),
-    });
-  }
-  // The people the narration names, on the sentence that names them (29 Oct 2026 review: Sam Houser,
-  // Leslie Benzies and the critics only ever got a name tag on an unrelated picture).
-  if (!budget?.over())
-  try {
-    const people = new Map<string, number>();
-    for (const [k, m] of (entry.moments ?? []).entries()) {
-      const p = m.person?.trim();
-      if (p && p.split(/\s+/).length >= 2 && !people.has(p)) people.set(p, k);
-    }
-    let n = 0;
-    for (const [person, k] of [...people].slice(0, DOC_PEOPLE_PER_CHAPTER)) {
-      const found = (await s.searchPhotos(person).catch(() => [])).slice(0, 8);
-      if (!found.length) continue;
-      const [pick] = await pickPhotos(
+    try {
+      const queries = (
+        entry.photos?.length ? entry.photos : [`${entry.game_title} video game`]
+      ).slice(0, 4);
+      const seen = new Set<string>();
+      const candidates = (
+        await Promise.all(queries.map((q) => s.searchPhotos(q).catch(() => [])))
+      )
+        .flat()
+        .filter((c) => !seen.has(c.title) && seen.add(c.title))
+        .slice(0, 30);
+      const opening =
+        script.beats.filter((b) => b.visual?.kind === "chapter")[beatIndex]
+          ?.narration ?? "";
+      const keep = await pickPhotos(
         s.llm,
         {
           franchise,
           game: entry.game_title,
-          title: `${person}, the real person`,
-          opening: `${sentences[k] ?? ""} Keep only a photo of ${person} themself, never a game character, a building or someone else.`,
+          title:
+            script.beats.filter((b) => b.visual?.kind === "chapter")[beatIndex]
+              ?.visual.primary ?? entry.game_title,
+          opening,
         },
-        found,
-      ).catch(() => [] as number[]);
-      const img = pick === undefined ? undefined : found[pick];
-      if (!img) continue;
-      const file = rel(path.join("assets", `person_${n++}.jpg`));
-      if (await s.downloadPhoto(img, path.join(dir, file)))
-        images.push({
-          kind: "photo",
-          file,
-          sourceUrl: img.pageUrl,
-          provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
-          beatIndex,
-          moment: k,
-          label: person.toUpperCase(),
-        } as VisualAsset & { beatIndex?: number });
+        candidates,
+      );
+      for (const [k, i] of keep.entries()) {
+        const img = candidates[i]!;
+        const file = rel(path.join("assets", `photo_${k}.jpg`));
+        if (await s.downloadPhoto(img, path.join(dir, file)))
+          images.push({
+            kind: "photo",
+            file,
+            sourceUrl: img.pageUrl,
+            provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+            beatIndex,
+          } as VisualAsset & { beatIndex?: number });
+      }
+    } catch (err) {
+      log("warn", "documentary photos failed", {
+        game: entry.game_title,
+        error: errorMessage(err),
+      });
     }
-  } catch (err) {
-    log("warn", "documentary people photos failed", {
-      game: entry.game_title,
-      error: errorMessage(err),
-    });
-  }
+  // The people the narration names, on the sentence that names them (29 Oct 2026 review: Sam Houser,
+  // Leslie Benzies and the critics only ever got a name tag on an unrelated picture).
+  if (!budget?.over())
+    try {
+      const people = new Map<string, number>();
+      for (const [k, m] of (entry.moments ?? []).entries()) {
+        const p = m.person?.trim();
+        if (p && p.split(/\s+/).length >= 2 && !people.has(p)) people.set(p, k);
+      }
+      let n = 0;
+      for (const [person, k] of [...people].slice(0, DOC_PEOPLE_PER_CHAPTER)) {
+        const found = (await s.searchPhotos(person).catch(() => [])).slice(
+          0,
+          8,
+        );
+        if (!found.length) continue;
+        const [pick] = await pickPhotos(
+          s.llm,
+          {
+            franchise,
+            game: entry.game_title,
+            title: `${person}, the real person`,
+            opening: `${sentences[k] ?? ""} Keep only a photo of ${person} themself, never a game character, a building or someone else.`,
+          },
+          found,
+        ).catch(() => [] as number[]);
+        const img = pick === undefined ? undefined : found[pick];
+        if (!img) continue;
+        const file = rel(path.join("assets", `person_${n++}.jpg`));
+        if (await s.downloadPhoto(img, path.join(dir, file)))
+          images.push({
+            kind: "photo",
+            file,
+            sourceUrl: img.pageUrl,
+            provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+            beatIndex,
+            moment: k,
+            label: person.toUpperCase(),
+          } as VisualAsset & { beatIndex?: number });
+      }
+    } catch (err) {
+      log("warn", "documentary people photos failed", {
+        game: entry.game_title,
+        error: errorMessage(err),
+      });
+    }
   // Real-world B-roll: licensed stock for the sentences the shot list marks (the studio, money, a leak),
   // played on its own sentence and labelled illustrative on screen.
   if (!budget?.over())
-  try {
-    const asked: FootageTarget[] = (entry.moments ?? [])
-      .map((m, k) => ({ m, k }))
-      .filter((x) => x.m.broll?.trim())
-      .map(({ m, k }) => ({
-        key: `beat:${beatIndex}#m${k}`,
-        // The sentence itself, so the picture editor judges the preview against what is said.
-        text: `${sentences[k] ?? ""} (show: ${m.broll})`,
-        want: "cinematic" as const,
-        energy: "medium" as const,
-        keywords: [m.broll!],
-      }));
-    // A stock theme ("office at night") at most STOCK_THEME_MAX times in the whole video (src/assets/repeats.ts).
-    const capped = capStockTargets(
-      asked,
-      clips,
-      (t) => stockQuery(t, franchise.split(/\s+/)),
-      s.cfg.stockThemeMax,
-    );
-    if (capped.dropped.length)
-      log("info", "documentary B-roll: repeated stock themes skipped", {
-        game: entry.game_title,
-        skipped: capped.dropped.map((t) => t.keywords[0]),
-      });
-    const targets = capped.kept.slice(0, DOC_BROLL_PER_CHAPTER);
-    if (targets.length)
-      for (const c of await s.fetchStock(
-        edir,
-        targets,
-        franchise.split(/\s+/),
-        targets.length,
-        clips.map((c) => c.sourceUrl).filter((u): u is string => !!u),
-      ))
-        clips.push({
-          file: rel(c.file),
-          sourceUrl: c.sourceUrl,
-          provenance: c.provenance,
-          durationSeconds: c.durationSeconds ?? 4,
-          beatIndex,
-          role: undefined,
-          motion: 0.5,
-          luma: undefined,
-          label: c.label,
-          reason: c.reason,
-          startSeconds: 0,
-          stock: true,
-          moment: c.moment,
-          credit: "ILLUSTRATIVE · STOCK FOOTAGE: PEXELS",
+    try {
+      const asked: FootageTarget[] = (entry.moments ?? [])
+        .map((m, k) => ({ m, k }))
+        .filter((x) => x.m.broll?.trim())
+        .map(({ m, k }) => ({
+          key: `beat:${beatIndex}#m${k}`,
+          // The sentence itself, so the picture editor judges the preview against what is said.
+          text: `${sentences[k] ?? ""} (show: ${m.broll})`,
+          want: "cinematic" as const,
+          energy: "medium" as const,
+          keywords: [m.broll!],
+        }));
+      // A stock theme ("office at night") at most STOCK_THEME_MAX times in the whole video (src/assets/repeats.ts).
+      const capped = capStockTargets(
+        asked,
+        clips,
+        (t) => stockQuery(t, franchise.split(/\s+/)),
+        s.cfg.stockThemeMax,
+      );
+      if (capped.dropped.length)
+        log("info", "documentary B-roll: repeated stock themes skipped", {
+          game: entry.game_title,
+          skipped: capped.dropped.map((t) => t.keywords[0]),
         });
-  } catch (err) {
-    log("warn", "documentary B-roll failed", {
-      game: entry.game_title,
-      error: errorMessage(err),
-    });
-  }
+      const targets = capped.kept.slice(0, DOC_BROLL_PER_CHAPTER);
+      if (targets.length)
+        for (const c of await s.fetchStock(
+          edir,
+          targets,
+          franchise.split(/\s+/),
+          targets.length,
+          clips.map((c) => c.sourceUrl).filter((u): u is string => !!u),
+        ))
+          clips.push({
+            file: rel(c.file),
+            sourceUrl: c.sourceUrl,
+            provenance: c.provenance,
+            durationSeconds: c.durationSeconds ?? 4,
+            beatIndex,
+            role: undefined,
+            motion: 0.5,
+            luma: undefined,
+            label: c.label,
+            reason: c.reason,
+            startSeconds: 0,
+            stock: true,
+            moment: c.moment,
+            credit: "ILLUSTRATIVE · STOCK FOOTAGE: PEXELS",
+          });
+    } catch (err) {
+      log("warn", "documentary B-roll failed", {
+        game: entry.game_title,
+        error: errorMessage(err),
+      });
+    }
   // The picture editor, as the ranked videos have it: every still and photo of the chapter is looked at and
   // each sentence gets the one showing what it names; pictures carrying text are kept off the screen.
   const moments = entry.moments ?? [];
@@ -6169,8 +6182,21 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       }));
     assets.clips ??= [];
     // Scene lines nothing filmed can show get a drawn concept sketch, tagged ILLUSTRATION, when switched on
-    // (ILLUSTRATE_ENABLED, off by default; src/assets/illustrate.ts). Off, nothing here changes.
-    const sketches = s.cfg.illustrate
+    // (ILLUSTRATE_ENABLED, off by default; src/assets/illustrate.ts). Off, nothing here changes. A server that
+    // does not answer (closed on the PC, or none on the Mac) skips them for this video, said once.
+    const comfyUp =
+      s.cfg.illustrate &&
+      (s.cfg.illustrateStub || (await comfyReachable(s.cfg.illustrateUrl)));
+    if (s.cfg.illustrate && !comfyUp) {
+      await logEvent(s.db, ep.id, "sketches_skipped", {
+        url: s.cfg.illustrateUrl,
+      });
+      await s.notify({
+        level: "info",
+        content: `${kind} "${script.headline}": no concept sketches this time, because the image server (ComfyUI at ${s.cfg.illustrateUrl}) is not answering. Those lines get a graphic or stay on the game's pictures. Setting: ILLUSTRATE_URL.`,
+      });
+    }
+    const sketches = comfyUp
       ? createSketchRun({
           llm: s.llm,
           dir,
@@ -6404,9 +6430,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   let plan = assets.longPlan ?? makePlan();
   if (!assets.longPlan) {
     // Real-world photos pinned to no sentence stay off screen (REAL_PHOTOS_PINNED_ONLY): say how many.
-    const withheld = hasMoments && s.cfg.realPhotosPinnedOnly
-      ? images.filter((i) => realWorldImage(i) && i.moment === undefined).length
-      : 0;
+    const withheld =
+      hasMoments && s.cfg.realPhotosPinnedOnly
+        ? images.filter((i) => realWorldImage(i) && i.moment === undefined)
+            .length
+        : 0;
     if (withheld)
       await logEvent(s.db, ep.id, "real_photos_withheld", { count: withheld });
     // An entry left on the plate or looping its few clips gets official screenshots from IGDB, then a new plan.
@@ -6592,25 +6620,25 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     assets.textDetails = !docCamera.includes("detail")
       ? []
       : await findTextDetails({
-      dir,
-      fps: LONG_FPS,
-      windows: momentWindows(
-        segments,
-        words,
-        moments.map((m) => m.length),
-        moments.map((e) => e.map(momentKeys)),
-      ),
-      moments,
-      keys: (e, m) => (moments[e]?.[m] ? momentKeys(moments[e]![m]!) : []),
-      shots: plan.shots,
-      images,
-      brands: [
-        script.game_title,
-        ...(script.entries ?? []).map((x) => x.game_title),
-        "Rockstar",
-        "Take-Two",
-      ],
-      });
+          dir,
+          fps: LONG_FPS,
+          windows: momentWindows(
+            segments,
+            words,
+            moments.map((m) => m.length),
+            moments.map((e) => e.map(momentKeys)),
+          ),
+          moments,
+          keys: (e, m) => (moments[e]?.[m] ? momentKeys(moments[e]![m]!) : []),
+          shots: plan.shots,
+          images,
+          brands: [
+            script.game_title,
+            ...(script.entries ?? []).map((x) => x.game_title),
+            "Rockstar",
+            "Take-Two",
+          ],
+        });
     await logEvent(s.db, ep.id, "camera", {
       techniques: docCamera,
       textDetails: assets.textDetails.map((d) => d.label),
@@ -6982,45 +7010,45 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // The composition's props, read afresh each time: the graphics check below mutes faulted graphics
   // (quietMoments, quietBreaks) and the render must see the lists as they stand then.
   const longPropsNow = (): LongRenderInput["props"] => ({
-        title: script.headline,
-        kicker: script.kicker ?? "",
-        criterion: script.criterion ?? "",
-        spoilers: scopeOf(script) === "campaign",
-        recap: !!script.recap,
-        theme: script.recap ? script.headline : script.game_title,
-        footageCredit,
-        endLine: script.recap
-          ? "The week's biggest stories every Friday · Shorts every day"
-          : doc
-            ? "A new documentary every month · Shorts every day"
-            : "A new ranking every week · Shorts every day",
-        moments: hasMoments
-          ? moments.map((ms, ei) =>
-              ms.map((m, mi) => ({
-                show: m.show,
-                // A graphic the graphics check faulted is left out (the sentence keeps its picture).
-                graphic: (assets.quietMoments ?? []).includes(`${ei}:${mi}`)
-                  ? {
-                      kind: "none" as const,
-                      primary: "",
-                      secondary: "",
-                      items: [],
-                    }
-                  : m.graphic,
-                emphasis: m.emphasis,
-                person: m.person || undefined,
-                // The sound editor's cue (src/render/musicplan.ts), when the setting is on.
-                beat: s.cfg.docSoundBeats ? m.beat : undefined,
+    title: script.headline,
+    kicker: script.kicker ?? "",
+    criterion: script.criterion ?? "",
+    spoilers: scopeOf(script) === "campaign",
+    recap: !!script.recap,
+    theme: script.recap ? script.headline : script.game_title,
+    footageCredit,
+    endLine: script.recap
+      ? "The week's biggest stories every Friday · Shorts every day"
+      : doc
+        ? "A new documentary every month · Shorts every day"
+        : "A new ranking every week · Shorts every day",
+    moments: hasMoments
+      ? moments.map((ms, ei) =>
+          ms.map((m, mi) => ({
+            show: m.show,
+            // A graphic the graphics check faulted is left out (the sentence keeps its picture).
+            graphic: (assets.quietMoments ?? []).includes(`${ei}:${mi}`)
+              ? {
+                  kind: "none" as const,
+                  primary: "",
+                  secondary: "",
+                  items: [],
+                }
+              : m.graphic,
+            emphasis: m.emphasis,
+            person: m.person || undefined,
+            // The sound editor's cue (src/render/musicplan.ts), when the setting is on.
+            beat: s.cfg.docSoundBeats ? m.beat : undefined,
             // The sentence's filler visual (src/assets/fillers.ts), unless the graphics check muted it.
             filler: fillerAt(ei, mi),
-              })),
-            )
-          : undefined,
-        segments,
-        words,
-        durationSeconds: renderSeconds,
-        // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
-        coldOpenLine: craft.coldOpen ? coldOpenLine(script.hook) : undefined,
+          })),
+        )
+      : undefined,
+    segments,
+    words,
+    durationSeconds: renderSeconds,
+    // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
+    coldOpenLine: craft.coldOpen ? coldOpenLine(script.hook) : undefined,
     // The structure devices (src/render/structure.ts), each behind its setting, for every long format.
     titleDrop: craft.titleDrop,
     chapterIndex: craft.chapterIndex,
@@ -7028,31 +7056,28 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     cutRhythm: craft.rhythm,
     entryPace: craft.entryPace,
     bookendEnding: craft.bookend,
-        next: endCard
-          ? nextDoc
-            ? { title: nextDoc.title, thumbFile: nextThumb }
-            : null
-          : undefined,
-        variant,
-        audioFile: assets.audio ?? null,
-        musicFile,
-        imageFiles: images,
-        clipFiles: clips,
-        plan,
-        renderDate: s.now().toISOString().slice(0, 10),
-        breaks: assets.breaks,
-        quietBreaks: assets.quietBreaks,
-        palette: assets.palette,
-        // The vision model's boxes, then the details read from the pictures' text (src/assets/ocr.ts).
-        annotations: [
-          ...(assets.annotations ?? []),
-          ...(assets.textDetails ?? []),
-        ],
-        // The camera grammar (src/render/camera.ts, LONG_CAMERA), every long format.
-        camera: docCamera,
-        eraBeds: craft.eraBeds,
-        // Concept sketches drawn on, stepped, flipped, dissolved or pinned up (src/render/sketchplan.ts).
-        sketchAnimation: s.cfg.sketchAnimation,
+    next: endCard
+      ? nextDoc
+        ? { title: nextDoc.title, thumbFile: nextThumb }
+        : null
+      : undefined,
+    variant,
+    audioFile: assets.audio ?? null,
+    musicFile,
+    imageFiles: images,
+    clipFiles: clips,
+    plan,
+    renderDate: s.now().toISOString().slice(0, 10),
+    breaks: assets.breaks,
+    quietBreaks: assets.quietBreaks,
+    palette: assets.palette,
+    // The vision model's boxes, then the details read from the pictures' text (src/assets/ocr.ts).
+    annotations: [...(assets.annotations ?? []), ...(assets.textDetails ?? [])],
+    // The camera grammar (src/render/camera.ts, LONG_CAMERA), every long format.
+    camera: docCamera,
+    eraBeds: craft.eraBeds,
+    // Concept sketches drawn on, stepped, flipped, dissolved or pinned up (src/render/sketchplan.ts).
+    sketchAnimation: s.cfg.sketchAnimation,
     // Photos and portraits as instant prints, tape, pins, trays and screens; screenshots in the display
     // of their day (src/render/photoplan.ts).
     photoTreatments: s.cfg.photoTreatments,
@@ -7306,10 +7331,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       graphicsInput(),
       assets,
       s.cfg.graphicsPostcheckMax,
-      );
+    );
     const frames = sample.length
       ? await s.extractFrames(
-        final,
+          final,
           path.join(dir, "qa", "gfx"),
           sample.map((c) => c.t),
         )
@@ -7317,7 +7342,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     const r = await judgeGraphics(
       sample.map((c, i) => ({ ...c, file: frames[i]! })),
       (fs) => s.visionQa(fs, graphicsCtx),
-      );
+    );
     for (const p of r.problems)
       await logEvent(s.db, ep.id, "graphics_check", p);
     if (r.faulted.length) {
@@ -7331,7 +7356,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         decision,
         passes,
         max: s.cfg.graphicsRerenderPasses,
-        });
+      });
       log("warn", "graphics faulted on the finished video", {
         episode: ep.id,
         faulted: r.faulted,
@@ -7349,19 +7374,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       });
       if (decision === "rerender") {
         assets.graphicsPasses = passes + 1;
-      const { longPlan: _dropped, ...again } = assets;
-      await s.db.query(
-        `UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`,
-        [
-          ep.id,
+        const { longPlan: _dropped, ...again } = assets;
+        await s.db.query(
+          `UPDATE episodes SET qa_json = $2, assets_json = $3 WHERE id = $1`,
+          [
+            ep.id,
             JSON.stringify({ ...qa, graphics: r.faulted }),
-          JSON.stringify(again),
-        ],
-      );
-      throw new Error(
+            JSON.stringify(again),
+          ],
+        );
+        throw new Error(
           `graphics check: ${r.faulted.length} graphic(s) left out, rendering again (re-render ${passes + 1} of ${s.cfg.graphicsRerenderPasses})`,
-      );
-    }
+        );
+      }
       acceptedFaults = r.faulted;
     }
     const thumbs = ["thumb.jpg", ...thumbFiles];
@@ -7578,7 +7603,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // memory of the channel's last twelve; off (SHORT_WORD_LOOKS=false) it is always the rubber stamp.
   const [stamp] = stampsFor(script, words);
   if (stamp && !plan.wordLook) {
-    const gameYear = Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined;
+    const gameYear =
+      Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) ||
+      undefined;
     const chosen = s.cfg.shortWordLooks
       ? await chooseWordLook(s.db, stamp, {
           year: gameYear,
@@ -7588,7 +7615,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         })
       : { look: "Stamp", recent: [] };
     plan.wordLook = chosen.look;
-    await logEvent(s.db, ep.id, "word_look", { look: chosen.look, text: stamp.text, tone: stamp.tone, recent: chosen.recent });
+    await logEvent(s.db, ep.id, "word_look", {
+      look: chosen.look,
+      text: stamp.text,
+      tone: stamp.tone,
+      recent: chosen.recent,
+    });
   }
   // The moment lands with its look's sound (the stamp's landing by default), peak on the word, when the mix has room for it.
   for (const st of stampsFor(script, words)) {
@@ -7613,11 +7645,17 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     segments,
     words,
     plan,
-    images: (assets.images ?? []).map((i) => ({ kind: i.kind, credit: photoCredit(i), beatIndex: i.beatIndex })),
+    images: (assets.images ?? []).map((i) => ({
+      kind: i.kind,
+      credit: photoCredit(i),
+      beatIndex: i.beatIndex,
+    })),
     clips: assets.clips ?? [],
     stamps: stampsFor(script, words),
     game: script.game_title,
-    gameYear: Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined,
+    gameYear:
+      Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) ||
+      undefined,
     seed: variant,
   });
   const mediaRich = shortMediaRichness(
@@ -9100,8 +9138,12 @@ export async function tick(
     await syncGameplaySkips(s).catch((err) =>
       log("warn", "gameplay status sync failed", { error: errorMessage(err) }),
     );
-    await pruneMedia(s).catch((err) =>
+    await pruneMedia(s, s.cfg.mediaKeepDays).catch((err) =>
       log("warn", "prune failed", { error: errorMessage(err) }),
+    );
+    // Sooner, oldest first, when the disk runs low (the Mac's 256 GB SSD; src/retention.ts).
+    await pruneForSpace(s, (id) => episodeDir(s.cfg, id)).catch((err) =>
+      log("warn", "space prune failed", { error: errorMessage(err) }),
     );
     // Records of comments we judged are kept 90 days (the privacy notice says so), then deleted.
     await pruneCommentRecords(s.db, s.now()).catch((err) =>

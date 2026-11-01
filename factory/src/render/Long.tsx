@@ -3,6 +3,7 @@
 // each entry that collapses to a tag, an intro title, the pick as the outro
 // and a quiet end card. No burned captions: the SRT track carries them.
 
+import { safeScale } from "./safetransform.ts";
 import {
   BEDS,
   ERA_BEDS,
@@ -1781,7 +1782,7 @@ const EntryCard: React.FC<{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            transform: `scale(${badge})`,
+            transform: `scale(${safeScale(badge)})`,
           }}
         >
           <div
@@ -1890,7 +1891,7 @@ const EntryCard: React.FC<{
                 fontSize: 28,
                 letterSpacing: 2.5,
                 borderRadius: 8,
-                transform: `scale(${chip})`,
+                transform: `scale(${safeScale(chip)})`,
                 transformOrigin: "left center",
                 textTransform: "uppercase",
               }}

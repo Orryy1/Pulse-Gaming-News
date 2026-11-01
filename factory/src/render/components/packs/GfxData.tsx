@@ -3,6 +3,7 @@
 // high-score table, a donut of shares, a mechanical odometer and a critic's gauge. Every figure, word and
 // name is read from g as written (./data/figures.ts) and lands exactly as written; the only fixed words
 // are generic labels (HIGH SCORES, 1ST, SCORE). Everything is a pure function of the frame and variant.
+import { safeScale } from "../../safetransform.ts";
 import React from "react";
 import { Easing, interpolate, spring } from "remotion";
 import { COLOUR } from "../../brand.ts";
@@ -288,7 +289,7 @@ const Bars: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                     q === 0
                       ? "rgba(245,245,242,0.35)"
                       : "rgba(245,245,242,0.09)",
-                  transform: `scaleY(${grid})`,
+                  transform: `scaleY(${safeScale(grid)})`,
                   transformOrigin: "top",
                 }}
               />

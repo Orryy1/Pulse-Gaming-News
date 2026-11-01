@@ -1,3 +1,4 @@
+import { safeScale } from "../../safetransform.ts";
 import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOUR } from "../../brand.ts";
@@ -40,10 +41,10 @@ export const Timeline: React.FC<{ from: string; to: string; delta?: string; labe
       {/* track */}
       <div style={{ position: "absolute", left: x0, right: x0, top: 250, height: 6, background: "rgba(245,245,242,0.18)", borderRadius: 3 }} />
       <div style={{ position: "absolute", left: x0, top: 250, width: (x1 - x0) * line, height: 6, background: `repeating-linear-gradient(90deg, ${accent} 0 18px, transparent 18px 30px)`, borderRadius: 3 }} />
-      <div style={{ position: "absolute", left: x0 - 12, top: 241, width: 24, height: 24, background: COLOUR.paper, transform: `rotate(45deg) scale(${oldIn})`, opacity: fade }} />
-      <div style={{ position: "absolute", left: x1 - 12, top: 241, width: 24, height: 24, background: accent, transform: `rotate(45deg) scale(${newIn})`, boxShadow: `0 0 24px ${accent}` }} />
+      <div style={{ position: "absolute", left: x0 - 12, top: 241, width: 24, height: 24, background: COLOUR.paper, transform: `rotate(45deg) scale(${safeScale(oldIn)})`, opacity: fade }} />
+      <div style={{ position: "absolute", left: x1 - 12, top: 241, width: 24, height: 24, background: accent, transform: `rotate(45deg) scale(${safeScale(newIn)})`, boxShadow: `0 0 24px ${accent}` }} />
       {deltaText ? (
-        <div style={{ position: "absolute", left: "50%", top: 282, transform: `translateX(-50%) scale(${pill})`, padding: "8px 18px", background: accent, color: COLOUR.ink, fontFamily: BODY, fontWeight: 900, fontSize: 28, letterSpacing: 2, borderRadius: 8, whiteSpace: "nowrap" }}>
+        <div style={{ position: "absolute", left: "50%", top: 282, transform: `translateX(-50%) scale(${safeScale(pill)})`, padding: "8px 18px", background: accent, color: COLOUR.ink, fontFamily: BODY, fontWeight: 900, fontSize: 28, letterSpacing: 2, borderRadius: 8, whiteSpace: "nowrap" }}>
           {deltaText}
         </div>
       ) : null}

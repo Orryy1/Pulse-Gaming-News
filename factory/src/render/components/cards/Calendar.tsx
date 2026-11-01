@@ -1,3 +1,4 @@
+import { safeScale } from "../../safetransform.ts";
 import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOUR } from "../../brand.ts";
@@ -145,7 +146,7 @@ export const Calendar: React.FC<{
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      transform: `scale(${dayPop})`,
+                      transform: `scale(${safeScale(dayPop)})`,
                       boxShadow: `0 0 24px ${accent}`,
                     }}
                   >
@@ -219,7 +220,7 @@ export const Calendar: React.FC<{
               letterSpacing: 2,
               borderRadius: 8,
               fontVariantNumeric: "tabular-nums",
-              transform: `scale(${chip})`,
+              transform: `scale(${safeScale(chip)})`,
               transformOrigin: "left center",
               boxShadow: `0 0 ${(8 + 18 * beat).toFixed(1)}px ${accent}`,
             }}

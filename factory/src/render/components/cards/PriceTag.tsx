@@ -1,3 +1,4 @@
+import { safeScale } from "../../safetransform.ts";
 import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOUR } from "../../brand.ts";
@@ -45,7 +46,7 @@ export const PriceTag: React.FC<{ price: string; was?: string; region?: string; 
         </div>
       ) : null}
       {region ? (
-        <div style={{ display: "inline-block", marginTop: 18, padding: "8px 18px", background: accent, color: COLOUR.ink, fontFamily: BODY, fontWeight: 900, fontSize: 30, letterSpacing: 2, borderRadius: 8, transform: `scale(${regionIn})`, transformOrigin: "left center", textTransform: "uppercase" }}>
+        <div style={{ display: "inline-block", marginTop: 18, padding: "8px 18px", background: accent, color: COLOUR.ink, fontFamily: BODY, fontWeight: 900, fontSize: 30, letterSpacing: 2, borderRadius: 8, transform: `scale(${safeScale(regionIn)})`, transformOrigin: "left center", textTransform: "uppercase" }}>
           {region}
         </div>
       ) : null}

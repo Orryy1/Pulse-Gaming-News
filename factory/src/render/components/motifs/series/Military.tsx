@@ -2,6 +2,7 @@
 // on a tactical grid table: a typed briefing page with the heading as the operation name, a stamp with
 // the kicker, a paper-clipped photo over a grid map with a route drawing on, and a slow compass tape
 // along the top. Built from scratch: layout, colour, type and motion only.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -949,7 +950,7 @@ const BriefingSheet: React.FC<GfxProps & { mode: "list" | "timeline" }> = ({
   return (
     <AbsoluteFill style={{ opacity: dim }}>
       <GridTable frame={frame} />
-      <AbsoluteFill style={{ transform: `scale(${cam})` }}>
+      <AbsoluteFill style={{ transform: `scale(${safeScale(cam)})` }}>
         {/* The folder's back peeking out behind the sheet. */}
         <div
           style={{

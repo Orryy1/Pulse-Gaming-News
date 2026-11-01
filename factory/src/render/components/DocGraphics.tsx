@@ -3,6 +3,7 @@
 // line on screen comes from the chapter's source (src/editorial/documentary.ts groundDocMoments);
 // recreations are generic and tagged, never a real outlet's or person's page.
 
+import { safeScale } from "../safetransform.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -604,7 +605,7 @@ export const VersusMoment: React.FC<{
             fontFamily: DISPLAY,
             fontSize: 64,
             color: COLOUR.ink,
-            transform: `scale(${badge})`,
+            transform: `scale(${safeScale(badge)})`,
             boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
           }}
         >

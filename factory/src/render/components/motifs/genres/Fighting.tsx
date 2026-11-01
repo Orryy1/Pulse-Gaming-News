@@ -3,6 +3,7 @@
 // in at the top round a generic round timer, VS stamped in the middle and the heading as the fight card.
 // The style "Versus" sets two "label: value" rows as the two fighters' health bars: the smaller one takes
 // the hit at frame 34 (the stamp sound) and drains to its share.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, Easing, interpolate, spring } from "remotion";
 import { BODY, DISPLAY } from "../../fonts.ts";
@@ -352,7 +353,7 @@ const Card: React.FC<MotifCardProps> = ({
               display: "inline-block",
               padding: "8px 34px 6px",
               background: RED,
-              transform: `skewX(-14deg) scale(${tagIn})`,
+              transform: `skewX(-14deg) scale(${safeScale(tagIn)})`,
               boxShadow: "6px 6px 0 #120406",
               marginBottom: 18,
             }}
@@ -649,7 +650,7 @@ const VersusStyle: React.FC<GfxProps> = ({ g, len }) => {
             top: 418,
             width: 200,
             textAlign: "center",
-            transform: `scale(${vs}) rotate(${(1 - vs) * -20}deg)`,
+            transform: `scale(${safeScale(vs)}) rotate(${(1 - vs) * -20}deg)`,
             fontFamily: DISPLAY,
             fontSize: 140,
             lineHeight: 1,

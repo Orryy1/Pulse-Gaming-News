@@ -3,6 +3,7 @@
 // on a torn label with a highlighter swipe, through an RGB glitch, as a rubber stamp, typed out, or rising
 // through a mask in two tones. The video rotates through them so no two in a row look alike.
 
+import { safeScale } from "../safetransform.ts";
 import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOUR } from "../brand.ts";
@@ -124,7 +125,7 @@ const LabelCaption: React.FC<CaptionProps> = ({ text, len, variant = 0 }) => {
                 top: "18%",
                 height: "70%",
                 background: "rgba(255,140,40,0.75)",
-                transform: `scaleX(${swipe}) skewX(-8deg)`,
+                transform: `scaleX(${safeScale(swipe)}) skewX(-8deg)`,
                 transformOrigin: "left",
                 borderRadius: 4,
               }}

@@ -455,7 +455,12 @@ export interface LongRenderInput {
       credit?: string;
       moment?: number;
       label?: string;
-      layers?: { bg: string; mid: string; fg: string };
+      layers?: {
+        bg: string;
+        mid: string;
+        fg: string;
+        mesh?: import("./parallax.ts").Mesh;
+      };
     }>;
     clipFiles: Array<{
       file: string;
@@ -549,10 +554,22 @@ export function longProps(
             bg: `${filesUrl}/${webPath(i.layers.bg)}`,
             mid: `${filesUrl}/${webPath(i.layers.mid)}`,
             fg: `${filesUrl}/${webPath(i.layers.fg)}`,
-            }
-          : undefined,
-      })),
-      clips: clipFiles.map((c) => ({
+            // The 3D photo maps, when the orbit or the pop-out may use this still (src/render/orbit.ts).
+            ...(i.layers.mesh
+              ? {
+                  mesh: {
+                    depth: `${filesUrl}/${webPath(i.layers.mesh.depth)}`,
+                    far: `${filesUrl}/${webPath(i.layers.mesh.far)}`,
+                    farDepth: `${filesUrl}/${webPath(i.layers.mesh.farDepth)}`,
+                    pivot: i.layers.mesh.pivot,
+                    grid: i.layers.mesh.grid,
+                  },
+                }
+              : {}),
+          }
+        : undefined,
+    })),
+    clips: clipFiles.map((c) => ({
       src: `${filesUrl}/${webPath(c.file)}`,
         durationSeconds: c.durationSeconds,
         beatIndex: c.beatIndex,

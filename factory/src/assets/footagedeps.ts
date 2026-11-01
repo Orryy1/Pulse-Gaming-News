@@ -19,6 +19,7 @@ import type { Llm } from "../editorial/llm.ts";
 import { judgeGameplay } from "./gameplay.ts";
 import { BORDER_H, BORDER_W, dHash, letterboxed, type FootageFirstDeps, type SourceHit } from "./footagefirst.ts";
 import { readText } from "./ocr.ts";
+import { needsUpscale, sdCopy, videoHeight } from "./upscale.ts";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -79,6 +80,8 @@ export function footageFirstDeps(o: {
   ytdlp: string;
   llm?: Llm;
   lease?: boolean;
+  /** Sources at most this many lines tall keep a native-size copy of each cut for upscaling; 0 or absent: none. */
+  sdMaxHeight?: number;
 }): FootageFirstDeps {
   const ytdlp = o.ytdlp || "yt-dlp";
   return {
@@ -255,6 +258,32 @@ export function footageFirstDeps(o: {
         await fs.rm(dest, { force: true });
         return undefined;
       }
+      // An old game's small source keeps a native-size copy for the upscaling pass (src/assets/upscale.ts);
+      // the plain resize above stays the clip until (and unless) that pass replaces it.
+      if (o.sdMaxHeight && needsUpscale(await videoHeight(file), o.sdMaxHeight))
+        await run(FFMPEG, [
+          "-v",
+          "error",
+          "-y",
+          "-ss",
+          at.toFixed(3),
+          "-i",
+          file,
+          "-t",
+          seconds.toFixed(3),
+          "-an",
+          "-vf",
+          "fps=30",
+          "-c:v",
+          "libx264",
+          "-crf",
+          "14",
+          "-preset",
+          "veryfast",
+          "-pix_fmt",
+          "yuv420p",
+          sdCopy(dest),
+        ]).catch(() => undefined);
       const real = await videoSeconds(dest);
       return real === undefined
         ? seconds

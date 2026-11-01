@@ -219,6 +219,9 @@ export function createServices(db: Db, cfg: Config): Services {
         ytdlp: cfg.ytdlpPath,
         // The title check is the existing low-tier judge, one call per chapter, only where clips are ranked by Claude.
         llm: cfg.clipRanking === "llm" ? llm : undefined,
+        // Old games' small sources keep a native-size copy for the upscaling pass (src/assets/upscale.ts).
+        sdMaxHeight:
+          cfg.upscale && cfg.upscaleModelDir ? cfg.upscaleMaxHeight : 0,
       }),
     ownClips: (game, franchise, dir, targets, maxClips) =>
       cfg.footage && (cfg.footageLibrary || cfg.gameplayRoot)

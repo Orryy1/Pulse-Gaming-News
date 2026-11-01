@@ -622,3 +622,18 @@ test("an explainer week picks the story from the factory's own data and creates 
   await db.close();
   await empty.close();
 });
+
+test("a source passage on screen is credited to the article it came from, never to Wikipedia by default", async () => {
+  const { sourceCredit } = await import("../src/editorial/documentary.ts");
+  const src = explainedSource(
+    story,
+    [{ ...url("Eurogamer"), title: "Dark Souls servers go offline", text: "FromSoftware said the servers for both games are offline indefinitely while it investigates." }],
+    ["Our Short said the servers went dark on Thursday night for players everywhere."],
+    { title: "Dark Souls III", url: "https://en.wikipedia.org/wiki/Dark_Souls_III", text: "Dark Souls III is a 2016 action role-playing game developed by FromSoftware." },
+  );
+  assert.equal(sourceCredit("the servers for both games are offline indefinitely", src), "Eurogamer: Dark Souls servers go offline");
+  assert.equal(sourceCredit("Dark Souls III is a 2016 action role-playing game", src), "Wikipedia: Dark Souls III");
+  assert.equal(sourceCredit("the servers went dark on Thursday night", src), "Pulse Gaming News: our earlier report");
+  // A documentary's single Wikipedia article keeps its credit.
+  assert.equal(sourceCredit("a game", { title: "Halo 3", url: "", text: "Halo 3 is a game." }), "Wikipedia: Halo 3");
+});

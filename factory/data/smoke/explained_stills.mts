@@ -51,7 +51,7 @@ const craft = longCraft(script, DEFAULTS);
 const words: Array<{ text: string; start: number; end: number }> = [];
 let t = 0.3;
 for (const seg of P.segmentInputs(script)) {
-  for (const w of String(seg.narration ?? "").split(/\s+/).filter(Boolean)) {
+  for (const w of String(seg.text ?? "").split(/\s+/).filter(Boolean)) {
     words.push({ text: w, start: t, end: t + 0.36 });
     t += 0.4;
   }
@@ -141,7 +141,7 @@ for (const sg of beatSegs) {
     chapter++;
     k = 0;
   }
-  const said = String(sg.narration ?? "").split(/(?<=[.!?])\s+/).filter(Boolean);
+  const said = String(sg.text ?? sg.narration ?? "").split(/(?<=[.!?])\s+/).filter(Boolean);
   let at = sg.start;
   for (const sentence of said) {
     const n = sentence.split(/\s+/).length;

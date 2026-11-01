@@ -63,6 +63,8 @@ export function testConfig(
     sprintExtra: 3,
     sprintScoreMin: 60,
     recapLong: false,
+    weeklyExplainedTest: false,
+    weeklyExplainedLeadMinutes: 480,
     ownerGames: [],
     captureChecklist: false,
     footageLibrary: "",

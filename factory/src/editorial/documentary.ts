@@ -885,13 +885,36 @@ export async function writeDocMoments(
   return Array.from({ length: n }, (_, i) => got[i] ?? pad(i));
 }
 
-
 /**
  * On-screen facts in the shot list must be in the source as written, the same rule as the callouts:
  * a quote word for word, every number and year in a graphic. A graphic that fails is taken off the
  * screen (the sentence keeps its picture); two graphics in a row lose the second. The sound beats pass
  * their own grounding (groundBeats).
  */
+/**
+ * Who a "source" passage is credited to on screen (pure). A documentary's SOURCE is one Wikipedia article; the
+ * weekly recap's and the explainer's are several articles under "[Outlet] title" headers, and crediting their
+ * passages to Wikipedia (as the card did until 1 Nov 2026) put a false source on screen. The passage is credited
+ * to the section it sits in: "Eurogamer: <title>", "Wikipedia: <article>", or our own earlier report.
+ */
+export function sourceCredit(passage: string, source: WikiArticle): string {
+  const parts = source.text.split(/(?:^|\n)\[([^\]\n]+)\][ \t]*/);
+  if (parts.length < 3) return `Wikipedia: ${source.title}`;
+  const want = norm(passage);
+  for (let i = 1; i + 1 < parts.length; i += 2) {
+    if (!norm(parts[i + 1]!).includes(want)) continue;
+    const head = parts[i]!.trim();
+    const wiki = head.match(/^Background: Wikipedia, "?([^"]+)"?/);
+    if (wiki) return `Wikipedia: ${wiki[1]}`;
+    if (/^Pulse Short/i.test(head))
+      return "Pulse Gaming News: our earlier report";
+    if (/^Coverage summaries/i.test(head)) return "News coverage: summaries";
+    const title = parts[i + 1]!.split("\n")[0]!.trim();
+    return title ? `${head}: ${title}` : head;
+  }
+  return `Sources: ${source.title}`;
+}
+
 export function groundDocMoments(
   moments: DocMoment[],
   source: WikiArticle,
@@ -1059,7 +1082,7 @@ export function groundDocMoments(
       return {
         ...m,
         emphasis,
-        graphic: { ...g, secondary: `Wikipedia: ${source.title}` },
+        graphic: { ...g, secondary: sourceCredit(g.primary, source) },
       };
     return ok ? { ...m, emphasis } : { ...m, graphic: none, emphasis };
   });

@@ -711,7 +711,10 @@ export const SourceMoment: React.FC<{
           </div>
         </div>
         <div style={{ marginTop: 26, textAlign: "center" }}>
-          <Label>Source: Wikipedia</Label>
+          <Label>
+            Source:{" "}
+            {displayText(g.secondary).split(":")[0]?.trim() || "Wikipedia"}
+          </Label>
         </div>
       </div>
     </Stage>

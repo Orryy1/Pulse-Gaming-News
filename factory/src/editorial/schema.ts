@@ -269,6 +269,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   open_loops?: import("./openloops.ts").LoopPlacement[];
   /** The weekly news recap (a long video built on the documentary shape). */
   recap?: boolean;
+  /** The week's biggest story, explained (src/editorial/explained.ts): a documentary-shaped script about one story. */
+  explained?: boolean;
   /** Long video: the entry whose media plays behind the outro, when it is not the last. */
   take_entry?: number;
   /** A Short cut from a long ranking: the full video, this entry's rank and the comment question. */

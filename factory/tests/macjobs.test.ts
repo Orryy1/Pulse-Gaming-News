@@ -132,13 +132,13 @@ test("the Mac failing means the PC does the job and the owner hears, once", asyn
 test("a Short's job carries no PC paths and the Mac's own settings", () => {
   const job = shortJob(
     {
-      episodeDir: "C:\\ep",
-      outFile: "C:\\ep\\render_raw.mp4",
-      posterFile: "C:\\ep\\poster.jpg",
-      thumbFile: "C:\\ep\\thumb_short.jpg",
+      episodeDir: "C:/ep",
+      outFile: "C:/ep/render_raw.mp4",
+      posterFile: "C:/ep/poster.jpg",
+      thumbFile: "C:/ep/thumb_short.jpg",
       concurrency: 2,
       gl: "swangle",
-      browserExecutable: "C:\\chrome.exe",
+      browserExecutable: "C:/chrome.exe",
       props: { durationSeconds: 48 } as never,
     },
     6,

@@ -219,7 +219,7 @@ export interface Config {
   macAsr: boolean; // narration word timings
   macRenderShorts: boolean; // Shorts, their poster and thumbnail
   macFootageGather: boolean; // the footage-first gather, all but the vision looks
-  macStills: boolean; // long videos' thumbnails and the graphics check's stills
+  macStills: boolean; // long videos' thumbnails
   macGameplay: boolean; // the highlight finder and TinoTV VOD download (retire the PC tasks first)
   /** The Mac addresses allowed the /routine pages over the LAN, on routineLanPort; empty: loopback only, as ever. */
   routineLanAllow: string[];

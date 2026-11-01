@@ -426,7 +426,7 @@ export async function macTranscribeWords(
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// Rendering: the shape shared by the Short, the thumbnails and the graphics check's stills.
+// Rendering: the shape shared by the Short and the thumbnails.
 
 export interface MacRenderResult {
   renderMs: number;
@@ -440,7 +440,7 @@ export interface MacRenderResult {
 export async function macRenderJob(
   m: MacSettings,
   o: {
-    kind: "short" | "thumbs" | "stills";
+    kind: "short" | "thumbs";
     episodeDir: string;
     /** Relative names under episodeDir; all of them but outputs and scratch when absent. */
     files?: string[];

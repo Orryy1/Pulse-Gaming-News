@@ -1,11 +1,10 @@
-// The Short, the thumbnails and the graphics check's stills as Mac worker jobs (src/macworker.ts): turns the
+// The Short and the long video's thumbnails as Mac worker jobs (src/macworker.ts): turns the
 // render inputs, whose paths are this PC's, into a job the Mac can run from its own copy of the episode.
 // Chrome's Skia crash on the Mac only hits long renders about 10 minutes in, so a Short runs with the GPU
 // rasteriser on (it takes well under a minute; a crash fails the job and the PC renders it).
 import path from "node:path";
 import { macRenderJob, type MacSettings } from "../macworker.ts";
 import type {
-  LongStillsInput,
   LongThumbsInput,
   RenderInput,
 } from "./render.ts";
@@ -98,29 +97,5 @@ export async function macRenderThumbs(
       thumbs: thumbs.map(({ name, thumb }) => ({ name, thumb })),
     },
     places: Object.fromEntries(thumbs.map((t) => [t.name, t.file])),
-  });
-}
-
-export async function macRenderStills(
-  m: MacSettings,
-  input: LongStillsInput,
-): Promise<void> {
-  if (!input.stills.length) return;
-  const stills = input.stills.map((s, i) => ({
-    frame: s.frame,
-    name: `still_${i}.jpg`,
-    file: s.file,
-  }));
-  const { episodeDir: _e, stills: _s, ...rest } = portable(input);
-  await macRenderJob(m, {
-    kind: "stills",
-    episodeDir: input.episodeDir,
-    job: {
-      needGb: 8,
-      input: { ...rest, gl: "angle" },
-      stills: stills.map(({ frame, name }) => ({ frame, name })),
-    },
-    places: Object.fromEntries(stills.map((s) => [s.name, s.file])),
-    stallMinutes: 12,
   });
 }

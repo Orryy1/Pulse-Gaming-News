@@ -3,7 +3,6 @@
 //   health                 JSON: free disk, free memory, the heavy job running
 //   short <job dir>        a Short and its stills from job.json, judged here, the result as the last line
 //   thumbs <job dir>       a long video's thumbnails
-//   stills <job dir>       single frames of a long video (the graphics check)
 //   rpc <job dir>          the footage gather's calls, one JSON line each way, until stdin closes
 //   gameplay [--vods]      the TinoTV VOD download (with --vods) and the highlight finder
 //   sweep                  clears old job folders
@@ -109,11 +108,11 @@ function stopWhenPcLeaves(): void {
 }
 
 /** Old job folders go, and any folder while the disk is under its floor (the Mac's half of the retention rule). */
-async function sweep(): Promise<void> {
+async function sweep(keep = ""): Promise<void> {
   if (!fs.existsSync(JOBS)) return;
   const jobs = [];
   for (const name of await fsp.readdir(JOBS)) {
-    if (name.startsWith(".")) continue;
+    if (name.startsWith(".") || name === keep) continue;
     const p = path.join(JOBS, name);
     const st = await fsp.stat(p);
     const du = spawnSync("du", ["-sk", p], { encoding: "utf8" }).stdout ?? "0";
@@ -144,11 +143,11 @@ function sizesIn(dir: string): Record<string, number> {
 }
 
 async function renderJob(
-  kind: "short" | "thumbs" | "stills",
+  kind: "short" | "thumbs",
   jobDir: string,
 ): Promise<void> {
   stopWhenPcLeaves();
-  void sweep().catch(() => undefined);
+  void sweep(path.basename(jobDir)).catch(() => undefined);
   const job = JSON.parse(
     fs.readFileSync(path.join(jobDir, "job.json"), "utf8"),
   );
@@ -196,26 +195,14 @@ async function renderJob(
     });
     return;
   }
-  if (kind === "thumbs") {
-    await render.renderLongThumbs({
-      episodeDir: ep,
-      thumbs: job.thumbs.map((t: { name: string; thumb: never }) => ({
-        file: path.join(out, t.name),
-        thumb: t.thumb,
-      })),
-      gl: job.gl,
-    });
-  } else {
-    await render.renderLongStills({
-      ...job.input,
-      episodeDir: ep,
-      stills: job.stills.map((s: { frame: number; name: string }) => ({
-        frame: s.frame,
-        file: path.join(out, s.name),
-      })),
-      browserExecutable: undefined,
-    });
-  }
+  await render.renderLongThumbs({
+    episodeDir: ep,
+    thumbs: job.thumbs.map((t: { name: string; thumb: never }) => ({
+      file: path.join(out, t.name),
+      thumb: t.thumb,
+    })),
+    gl: job.gl,
+  });
   const ms = Date.now() - t0;
   say({
     result: { renderMs: ms, totalMs: ms, problems: [], sizes: sizesIn(out) },
@@ -225,7 +212,7 @@ async function renderJob(
 /** The footage gather's Mac half: footagedeps' real calls, answered out of order as they finish. */
 async function rpc(jobDir: string): Promise<void> {
   fs.mkdirSync(jobDir, { recursive: true });
-  void sweep().catch(() => undefined);
+  void sweep(path.basename(jobDir)).catch(() => undefined);
   await heavyTurn(`gather:${path.basename(jobDir)}`, 8);
   const { footageFirstDeps } = await import("../src/assets/footagedeps.ts");
   const d = footageFirstDeps({
@@ -335,7 +322,7 @@ if (cmd === "health") {
     memFreePct: memFreePct(),
     heavy: h && alive(h.pid) ? h.name : null,
   });
-} else if (cmd === "short" || cmd === "thumbs" || cmd === "stills")
+} else if (cmd === "short" || cmd === "thumbs")
   await renderJob(cmd, arg!);
 else if (cmd === "rpc") await rpc(arg!);
 else if (cmd === "gameplay") await gameplay(arg === "--vods");

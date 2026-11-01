@@ -77,7 +77,6 @@ import { macFootageDeps } from "./assets/footagemac.ts";
 import { macOrLocal, macSettings, macTranscribeWords } from "./macworker.ts";
 import {
   macRenderShort,
-  macRenderStills,
   macRenderThumbs,
 } from "./render/macrender.ts";
 import {
@@ -442,14 +441,7 @@ export function createServices(db: Db, cfg: Config): Services {
             ),
           })
       : renderLong,
-    renderLongStills: cfg.macStills
-      ? macOrLocal(
-          "the graphics check's stills",
-          (input) => macRenderStills(mac, input),
-          renderLongStills,
-          tellMac,
-        )
-      : renderLongStills,
+    renderLongStills,
     renderCutdown,
     normalise: normaliseLoudness,
     technicalQa,

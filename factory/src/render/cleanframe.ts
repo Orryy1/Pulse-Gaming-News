@@ -134,7 +134,12 @@ export function ccCredit(provenance: string | undefined): string | undefined {
   const m = String(provenance ?? "").match(
     /^Gameplay "[^"]*" by (.+?), Creative Commons Attribution licence \(CC BY\)/,
   );
-  return m ? `Gameplay: ${m[1]!.slice(0, 40)} · CC BY` : undefined;
+  if (m) return `Gameplay: ${m[1]!.slice(0, 40)} · CC BY`;
+  // An Internet Archive film under CC BY names its author too (a public-domain one needs no credit).
+  const a = String(provenance ?? "").match(
+    /^Archive footage from the Internet Archive \([^)]*\): "[^"]*" by (.+?), (CC BY [\d.]+); chosen/,
+  );
+  return a ? `Footage: ${a[1]!.slice(0, 40)} · ${a[2]} · Internet Archive` : undefined;
 }
 
 /**

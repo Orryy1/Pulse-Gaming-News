@@ -2049,3 +2049,26 @@ test("the weekly long video's explainer week makes one story, and a week with no
     await db.close();
   }
 });
+
+test("a Why pick dropped by its fact-check gets a fresh game for the same slot, at most twice", async () => {
+  const { db, f, s, setClock } = await setup({
+    whyEnabled: true,
+    whyDays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+    whySlots: ["12:00"],
+    whySlot: "12:00",
+    whyFreshDays: 14,
+  });
+  setClock(new Date("2026-11-03T10:30:00Z"));
+  const games = ["Diablo II", "Half-Life 2", "Portal 2", "Skyrim"];
+  for (const game of games.slice(0, 3)) {
+    f.whyTopics = [whyTopic(game, `Why did ${game} last?`)];
+    const id = await maybeSelectWhy(s);
+    assert.ok(id, `${game} gets the slot`);
+    assert.equal(new Date((await getEpisode(db, id!))!.slot_at!).toISOString(), "2026-11-03T12:00:00.000Z");
+    assert.equal(await maybeSelectWhy(s), undefined, "no second pick while this one stands");
+    await db.query(`UPDATE episodes SET status = 'rejected', created_at = '2026-11-03T10:30:00Z' WHERE id = $1`, [id]);
+  }
+  assert.match(f.whyPrompts!.at(-1)!, /Diablo II/, "the dropped games are named as off limits");
+  f.whyTopics = [whyTopic(games[3]!, "Why did Skyrim last?")];
+  assert.equal(await maybeSelectWhy(s), undefined, "two retries, then the slot passes");
+});

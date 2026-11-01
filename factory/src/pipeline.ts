@@ -1335,6 +1335,8 @@ async function createEvergreen(
  * well-known game that its Wikipedia article can answer; the Short is then written and fact-checked
  * like a news Short, from that article.
  */
+const WHY_DROP_RETRIES = 2;
+
 export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   const { db, cfg } = s;
   if (!cfg.whyEnabled) return undefined;
@@ -1357,8 +1359,17 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     )
     .find((d): d is Date => !!d);
   if (!due) return undefined;
-  // One editor call per slot: a pass is not retried every tick.
-  if (await weeklyTried(db, `why:${due.toISOString()}`)) return undefined;
+  // One editor call per slot: a pass is not retried every tick. A pick dropped for failing its fact-check gets
+  // a fresh game instead, up to WHY_DROP_RETRIES (1 Nov 2026: Diablo II failed at 16:55 and 18:30 went empty).
+  const dropped = await db.query<{ game: string | null }>(
+    `SELECT story_json->>'gameHint' AS game FROM episodes
+      WHERE story_hash LIKE 'why:%' AND status = 'rejected'
+        AND created_at > $1::timestamptz - interval '3 hours'`,
+    [now],
+  );
+  if (dropped.length > WHY_DROP_RETRIES) return undefined;
+  const tryKey = `why:${due.toISOString()}${dropped.length ? `:${dropped.length}` : ""}`;
+  if (await weeklyTried(db, tryKey)) return undefined;
   // The news slots already gave way to this one; it is held only once the cap itself is reached.
   if (
     await holdWhyForCap(db, cfg, now, due, (m) => s.notify(m)).catch(
@@ -1383,6 +1394,7 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     games: fresh.map((r) => r.game ?? "").filter(Boolean),
     slugs: fresh.map((r) => r.hash.replace(/^why:/, "")),
   };
+  recent.games.push(...dropped.map((r) => r.game ?? "").filter(Boolean));
   // Well-loved games with a story arc first (WHY_SEEDS), then the evergreen list; recent games left out.
   const base = whyCandidates(
     await s.discoverEvergreen(),

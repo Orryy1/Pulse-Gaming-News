@@ -137,6 +137,7 @@ import {
   type MontageItem,
 } from "./components/EditorMoves.tsx";
 import { ALL_STYLES } from "./components/packs/index.ts";
+import { evidenceStyle } from "./components/packs/pulse/evidence.ts";
 import { inEra } from "./components/packs/types.ts";
 import { motifPictureOrder } from "./motifpictures.ts";
 import {
@@ -3280,6 +3281,12 @@ export const Long: React.FC<LongProps> = (props) => {
     windows.forEach((w, k) => {
       const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
       if (!g || !usefulGraphic(g)) return;
+      // The record itself (DOC_EVIDENCE): a tagged graphic always takes its full-frame evidence page.
+      const record = evidenceStyle(g);
+      if (record) {
+        out.set(k, record);
+        return;
+      }
       // A look from the story's own time: no smartphone for a 1997 story (owner, 30 Oct 2026).
       const year = storyYear(g, Number(entryTitle(w.entry).year) || undefined);
       const styles = Object.keys(ALL_STYLES)

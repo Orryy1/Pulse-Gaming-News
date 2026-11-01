@@ -13,6 +13,8 @@ import { STYLES as PULSE_CONSOLES } from "./pulse/consoles.ts";
 import { STYLES as PULSE_SOCIAL } from "./pulse/social.ts";
 import { STYLES as PULSE_APPS } from "./pulse/apps.ts";
 import { STYLES as PULSE_PRESS } from "./pulse/press.ts";
+// Real evidence, full frame (DOC_EVIDENCE): only graphics tagged as the record fit these.
+import { STYLES as PULSE_EVIDENCE } from "./pulse/evidence.ts";
 import type { GfxStyle } from "./types.ts";
 
 const tag = (pack: string, styles: Record<string, GfxStyle>) =>
@@ -33,5 +35,6 @@ export const ALL_STYLES: Record<string, GfxStyle> = {
     ...PULSE_SOCIAL,
     ...PULSE_APPS,
     ...PULSE_PRESS,
+    ...PULSE_EVIDENCE,
   }),
 };

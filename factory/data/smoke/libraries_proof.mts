@@ -193,7 +193,7 @@ if (mode === "sheet") {
   let n = 0;
   for (const it of items) {
     const dest = path.join(tdir, `t_${String(n).padStart(3, "0")}.jpg`);
-    const vf = `scale=480:270:force_original_aspect_ratio=decrease,pad=480:270:(ow-iw)/2:(oh-ih)/2:color=0x111111,drawbox=y=0:w=iw:h=24:color=black@0.7:t=fill,drawbox=y=ih-24:w=iw:h=24:color=black@0.7:t=fill,drawtext=fontfile='${font}':text='${esc(it.top)}':x=6:y=5:fontsize=14:fontcolor=white,drawtext=fontfile='${font}':text='${esc(it.bottom ?? "")}':x=6:y=h-19:fontsize=13:fontcolor=0xffd27a`;
+    const vf = `scale=480:270:force_original_aspect_ratio=decrease,pad=480:270:(ow-iw)/2:(oh-ih)/2:color=0x111111,drawbox=y=0:w=iw:h=24:color=black@0.7:t=fill,drawbox=y=ih-24:w=iw:h=24:color=black@0.7:t=fill,drawtext=fontfile='${font}':text='${esc(it.top)}':x=6:y=5:fontsize=14:fontcolor=white,drawtext=fontfile='${font}':text='${esc(it.bottom ?? "")}':x=6:y=h-19:fontsize=13:fontcolor=0xffd27a,format=yuvj420p`;
     const input = it.clip ? ["-ss", "2", "-i", it.file] : ["-i", it.file];
     try {
       await run(FFMPEG, ["-loglevel", "error", "-y", ...input, "-frames:v", "1", "-vf", vf, "-q:v", "3", dest]);

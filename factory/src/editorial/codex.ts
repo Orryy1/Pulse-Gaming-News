@@ -52,38 +52,20 @@ export interface CodexOptions {
   tmpDir?: string;
   /** The runner; tests substitute a fake so no process is spawned. */
   run?: (req: CodexRequest) => Promise<string>;
-  /** Whether the shared Claude budget switch is on; read from claude_budget.json by default. */
-  budgetOn?: () => boolean;
   /** Tells the other pipelines Claude hit its usage limit; claude_budget.py by default. */
   reportLimit?: (message: string) => void;
+  /** A step Claude normally answers went to Codex because Claude is out of allowance: flag it for the owner. */
+  onLimitRouted?: (site: string) => void;
 }
-
-/** A call moved to Codex only by the budget switch gives up sooner: it may sit on a slot's critical path. */
-export const BUDGET_TIMEOUT_MS = 8 * 60 * 1000;
-const BUDGET_CACHE_MS = 60 * 1000;
 
 /**
- * The orchestrator's shared switch (state/claude_budget.json, use_codex): true from 90% of Claude's week
- * until its reset, or after any pipeline hits the usage limit. Read at most once a minute; a missing or
- * broken file means off.
+ * How long calls stay off Claude after its usage limit. The 30 Oct blind test tied overall but Claude's hooks
+ * were livelier and Codex took 6-9 minutes a script, so unlisted steps (the news Shorts) move to Codex only
+ * when Claude actually refuses, not on the shared switch at 90% of the week.
  */
-export function budgetSwitch(
-  file: string,
-  now: () => number = Date.now,
-): () => boolean {
-  let at = -Infinity;
-  let on = false;
-  return () => {
-    if (now() - at < BUDGET_CACHE_MS) return on;
-    at = now();
-    try {
-      on = JSON.parse(fs.readFileSync(file, "utf8")).use_codex === true;
-    } catch {
-      on = false;
-    }
-    return on;
-  };
-}
+export const LIMIT_HOLD_MS = 60 * 60 * 1000;
+/** A call moved to Codex only by the limit: long enough for a script, short enough for a slot. */
+export const LIMIT_TIMEOUT_MS = 12 * 60 * 1000;
 
 /** Claude's own refusal for being out of allowance, not a passing overload. */
 export function isUsageLimit(err: unknown): boolean {
@@ -141,11 +123,11 @@ export function routeToCodex(
   opts: Pick<CodexOptions, "enabled" | "sites" | "vision">,
   site: string,
   hasImages: boolean,
-  budgetOn = false,
+  claudeOut = false,
 ): boolean {
   if (!opts.enabled) return false;
   if (hasImages && !opts.vision) return false;
-  return budgetOn || siteListed(site, opts.sites);
+  return claudeOut || siteListed(site, opts.sites);
 }
 
 /**
@@ -342,12 +324,6 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
     opts.run ??
     ((req: CodexRequest) =>
       runCodex(req, { python, runnerDir, tmpDir: tmp() }));
-  // A substituted runner means a test: the live switch stays out of it.
-  const budgetOn =
-    opts.budgetOn ??
-    (opts.run
-      ? () => false
-      : budgetSwitch(path.join(runnerDir, "state", "claude_budget.json")));
   const reportLimit =
     opts.reportLimit ??
     ((message: string) => {
@@ -359,29 +335,34 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
       child.on("error", () => undefined);
       child.unref();
     });
-  // Every call that reaches Claude: its usage limit is recorded so the other pipelines skip Claude too.
+  let limitUntil = 0;
+  const claudeOut = () => Date.now() < limitUntil;
+  // Claude first. Its usage limit is recorded for the other pipelines, and a text call then goes to Codex.
   const claude = async <S extends z.ZodType>(
     o: StructuredOptions<S>,
+    site: string,
+    hasImages: boolean,
   ): Promise<z.infer<S>> => {
     try {
       return await fallback.structured(o);
     } catch (err) {
-      if (isUsageLimit(err)) reportLimit((err as Error).message);
-      throw err;
+      if (!isUsageLimit(err)) throw err;
+      reportLimit((err as Error).message);
+      limitUntil = Date.now() + LIMIT_HOLD_MS;
+      if (hasImages && !opts.vision) throw err;
+      if (!siteListed(site, opts.sites)) opts.onLimitRouted?.(site);
+      return viaCodex(o, site, imagesOf(o.content));
     }
   };
 
-  return {
-    async structured<S extends z.ZodType>(
-      o: StructuredOptions<S>,
-    ): Promise<z.infer<S>> {
-      const images = imagesOf(o.content);
-      const site = siteOf(o.site);
-      const budget = budgetOn();
-      if (!routeToCodex(opts, site, images.length > 0, budget)) return claude(o);
+  const viaCodex = async <S extends z.ZodType>(
+    o: StructuredOptions<S>,
+    site: string,
+    images: ReturnType<typeof imagesOf>,
+  ): Promise<z.infer<S>> => {
       const callTimeout = siteListed(site, opts.sites)
         ? timeoutMs
-        : Math.min(timeoutMs, BUDGET_TIMEOUT_MS);
+        : Math.min(timeoutMs, LIMIT_TIMEOUT_MS);
       const kind = kindFor(o.tier);
       const started = Date.now();
       const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -460,7 +441,9 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
           ms: Date.now() - started,
           error: (err as Error).message.slice(0, 300),
         });
-        const result = await claude(o);
+        // Claude is out of allowance too: fail the step so it retries, rather than asking it again.
+        if (claudeOut()) throw err;
+        const result = await claude(o, site, images.length > 0);
         log("info", "claude answered after codex", {
           site,
           ms: Date.now() - started,
@@ -469,6 +452,19 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
       } finally {
         for (const f of files) fs.rmSync(f, { force: true });
       }
+  };
+
+  return {
+    async structured<S extends z.ZodType>(
+      o: StructuredOptions<S>,
+    ): Promise<z.infer<S>> {
+      const images = imagesOf(o.content);
+      const site = siteOf(o.site);
+      if (!routeToCodex(opts, site, images.length > 0, claudeOut()))
+        return claude(o, site, images.length > 0);
+      if (claudeOut() && !siteListed(site, opts.sites))
+        opts.onLimitRouted?.(site);
+      return viaCodex(o, site, images);
     },
   };
 }

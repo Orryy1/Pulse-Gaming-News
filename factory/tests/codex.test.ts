@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import {
-  budgetSwitch,
   buildCommand,
   buildPrompt,
   createCodexLlm,
@@ -382,37 +381,58 @@ test("images go to Claude unless CODEX_VISION is on, then travel as files beside
   assert.equal(fs.existsSync(req.images![0]!), false);
 });
 
-test("the budget switch sends unlisted sites to Codex, and images stay out unless vision is on", () => {
-  const opts = { enabled: true, sites: ["doc"], vision: false };
-  assert.equal(routeToCodex(opts, "news.write", false, false), false);
-  assert.equal(routeToCodex(opts, "news.write", false, true), true);
-  assert.equal(routeToCodex(opts, "news.write", true, true), false);
-  assert.equal(routeToCodex({ ...opts, enabled: false }, "news.write", false, true), false);
-});
-
-test("the budget file is read once a minute and a missing file means off", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "budget-"));
-  const file = path.join(dir, "claude_budget.json");
-  let t = 0;
-  const on = budgetSwitch(file, () => t);
-  assert.equal(on(), false);
-  fs.writeFileSync(file, JSON.stringify({ use_codex: true }));
-  t = 30_000;
-  assert.equal(on(), false);
-  t = 61_000;
-  assert.equal(on(), true);
-});
-
-test("a Claude usage-limit failure is reported to the shared switch; a passing error is not", async () => {
+test("Claude's usage limit moves text calls to Codex, flags them and tells the other pipelines", async () => {
   const reported: string[] = [];
-  const failing = (message: string) => ({
+  const flagged: string[] = [];
+  let claudeCalls = 0;
+  let codexCalls = 0;
+  const claude = {
     structured: async () => {
-      throw new Error(message);
+      claudeCalls++;
+      throw new Error("Claude usage limit reached");
+    },
+  } as unknown as Llm;
+  const llm = createCodexLlm(claude, {
+    enabled: true,
+    sites: ["doc"],
+    tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "limit-")),
+    reportLimit: (m) => reported.push(m),
+    onLimitRouted: (s) => flagged.push(s),
+    run: async () => {
+      codexCalls++;
+      return "{\"ok\":true}";
     },
   });
-  const opts = { enabled: true, sites: [], budgetOn: () => false, reportLimit: (m: string) => reported.push(m) };
-  const call = { system: "s", content: "c", schema: z.object({}), site: "news.write" } as any;
-  await assert.rejects(createCodexLlm(failing("Claude usage limit reached") as any, opts).structured(call));
-  await assert.rejects(createCodexLlm(failing("overloaded") as any, opts).structured(call));
+  const call = { system: "s", content: "c", schema: z.object({ ok: z.boolean() }), site: "news.write" } as any;
+  assert.deepEqual(await llm.structured(call), { ok: true });
+  assert.deepEqual(await llm.structured(call), { ok: true });
+  assert.equal(claudeCalls, 1);
+  assert.equal(codexCalls, 2);
   assert.deepEqual(reported, ["Claude usage limit reached"]);
+  assert.deepEqual(flagged, ["news.write", "news.write"]);
+});
+
+test("an unlisted step stays on Claude while it works, and a passing error does not move it", async () => {
+  let codexCalls = 0;
+  const reported: string[] = [];
+  const opts = {
+    enabled: true,
+    sites: ["doc"],
+    reportLimit: (m: string) => reported.push(m),
+    run: async () => {
+      codexCalls++;
+      return "{}";
+    },
+  };
+  const call = { system: "s", content: "c", schema: z.object({}), site: "news.write" } as any;
+  const fine = { structured: async () => ({}) } as unknown as Llm;
+  await createCodexLlm(fine, opts).structured(call);
+  const busy = {
+    structured: async () => {
+      throw new Error("overloaded");
+    },
+  } as unknown as Llm;
+  await assert.rejects(createCodexLlm(busy, opts).structured(call));
+  assert.equal(codexCalls, 0);
+  assert.deepEqual(reported, []);
 });

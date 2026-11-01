@@ -145,6 +145,14 @@ export function createServices(db: Db, cfg: Config): Services {
           python: cfg.codexPython,
           runnerDir: cfg.codexRunnerDir,
           tmpDir: path.join(cfg.dataDir, "tmp", "codex"),
+          // Claude is out of allowance: say which normally-Claude steps went to Codex, once each, for checking.
+          onLimitRouted: ((seen) => (site: string) => {
+            if (seen.has(site)) return;
+            seen.add(site);
+            logEvent(db, null, "note", {
+              text: `Claude hit its usage limit, so ${site} is being written by Codex for now. Worth checking those videos.`,
+            }).catch(() => undefined);
+          })(new Set<string>()),
         })
       : claude;
   if (llm !== claude)

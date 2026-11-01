@@ -489,7 +489,11 @@ test(
         "no data/smoke/erabeds.mts on this machine"),
   },
   async () => {
-    const { checkEraBeds } = await import("../data/smoke/erabeds.mts");
+    // A computed path, so a machine without the file (the Mac before its cutover) still typechecks.
+    const checker: string = "../data/smoke/erabeds.mts";
+    const { checkEraBeds } = (await import(checker)) as {
+      checkEraBeds: () => Promise<string[]>;
+    };
     const problems = await checkEraBeds();
     assert.deepEqual(problems, []);
     assert.ok(ERA_BED_LUFS_CEILING <= -30, "the lead's ceiling");

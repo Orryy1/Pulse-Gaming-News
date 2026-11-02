@@ -68,6 +68,8 @@ export async function visionQa(
     headline: string;
     gameTitle: string;
     format?: "short" | "long" | "graphics" | "thumbs";
+    /** What the narrator says: captions repeat these words, so a word found here is not a misspelling. */
+    narration?: string;
   },
 ): Promise<VisionQa> {
   const content: LlmContent = [];
@@ -84,7 +86,12 @@ export async function visionQa(
   }
   content.push({
     type: "text",
-    text: `Headline: ${context.headline}\nGame: ${context.gameTitle || "(not about one game)"}`,
+    text:
+      `Headline: ${context.headline}\nGame: ${context.gameTitle || "(not about one game)"}` +
+      // 2 Nov 2026: "Then the trail thins." failed three times as a misspelling of "things" and lost a slot.
+      (context.narration
+        ? `\n\nThe narration, which the captions repeat word for word. A caption word that appears here is spelled correctly, however unusual it looks:\n${context.narration.slice(0, 6000)}`
+        : ""),
   });
   const system =
     context.format === "long"

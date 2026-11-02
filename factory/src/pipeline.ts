@@ -533,6 +533,7 @@ export interface Services {
       headline: string;
       gameTitle: string;
       format?: "short" | "long" | "graphics" | "thumbs";
+      narration?: string;
     },
   ): Promise<VisionQa>;
   /** The ElevenLabs cycle: what is left and what would be lost at the reset (undefined when unknown). */
@@ -8229,6 +8230,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     vision = await s.visionQa(frames, {
       headline: script.headline,
       gameTitle: script.game_title,
+      narration: narrationOf(script),
     });
   }
   const qa = {

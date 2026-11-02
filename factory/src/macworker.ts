@@ -197,27 +197,50 @@ export async function fetchFolder(
   localDir: string,
 ): Promise<void> {
   await fsp.mkdir(localDir, { recursive: true });
-  await new Promise<void>((resolve, reject) => {
-    const ssh = spawn(
-      "ssh",
-      [...SSH_OPTS, m.host, `tar -cf - -C ${shq(remoteDir)} .`],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
-    const tar = spawn(TAR, ["-xf", "-", "-C", localDir], {
-      stdio: ["pipe", "ignore", "pipe"],
+  // To a file first, then unpacked: on 2 Nov 2026 a real Short came back empty through a live pipe into tar,
+  // and a file also shows whether the bytes arrived at all.
+  const packed = `${localDir}.tar`;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const ssh = spawn(
+        "ssh",
+        [...SSH_OPTS, m.host, `tar -cf - -C ${shq(remoteDir)} .`],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
+      const file = fs.createWriteStream(packed);
+      let err = "";
+      ssh.stderr.on("data", (d) => (err += d));
+      ssh.on("error", reject);
+      file.on("error", reject);
+      ssh.stdout.pipe(file);
+      ssh.on("close", (code) => {
+        if (code !== 0)
+          reject(new Error(`fetching files: ssh ${code}: ${err.slice(-300)}`));
+      });
+      file.on("close", () => resolve());
     });
-    let err = "";
-    ssh.stderr.on("data", (d) => (err += d));
-    tar.stderr.on("data", (d) => (err += d));
-    ssh.stdout.pipe(tar.stdin);
-    ssh.on("error", reject);
-    tar.on("error", reject);
-    tar.on("close", (code) =>
-      code === 0
-        ? resolve()
-        : reject(new Error(`fetching files: tar ${code}: ${err.slice(-300)}`)),
-    );
-  });
+    const bytes = (await fsp.stat(packed)).size;
+    await new Promise<void>((resolve, reject) => {
+      const tar = spawn(TAR, ["-xf", packed, "-C", localDir], {
+        stdio: ["ignore", "ignore", "pipe"],
+        windowsHide: true,
+      });
+      let err = "";
+      tar.stderr.on("data", (d) => (err += d));
+      tar.on("error", reject);
+      tar.on("close", (code) =>
+        code === 0
+          ? resolve()
+          : reject(
+              new Error(
+                `fetching files: tar ${code} on ${bytes} bytes: ${err.slice(-300)}`,
+              ),
+            ),
+      );
+    });
+  } finally {
+    await fsp.rm(packed, { force: true }).catch(() => undefined);
+  }
 }
 
 /**
@@ -328,7 +351,15 @@ export async function placeFetched(
   places: Record<string, string>,
 ): Promise<void> {
   for (const [name, size] of Object.entries(sizes)) {
-    const got = (await fsp.stat(path.join(fetched, name))).size;
+    const got = await fsp.stat(path.join(fetched, name)).then(
+      (st) => st.size,
+      async () => {
+        const here = await fsp.readdir(fetched).catch(() => []);
+        throw new Error(
+          `${name} did not arrive from the Mac; the fetch holds [${here.join(", ")}], the Mac listed [${Object.keys(sizes).join(", ")}]`,
+        );
+      },
+    );
     if (got !== size)
       throw new Error(
         `${name} arrived with ${got} bytes, the Mac sent ${size}`,

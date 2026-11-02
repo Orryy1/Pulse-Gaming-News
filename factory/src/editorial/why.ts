@@ -319,6 +319,21 @@ const GENERIC_CTA =
   /\b(subscribe|smash (that|the)|hit (the )?(like|bell)|like (and|&) (sub|follow)|follow for more|don'?t forget to)\b/i;
 
 /** Why a Why Short's loop line misses its reason to follow, or turns it into a generic plea; empty when it is fine. */
+/**
+ * A Why Short has to answer its question. 2 Nov 2026: the Silent Hill Short asked why Konami went to casinos, then
+ * said "Konami's reasons aren't in the record, and we won't guess". Honest, but a question with no payoff; a pick
+ * like that should be rewritten around what the sources do explain, or dropped for a game whose story they tell.
+ */
+export function whyAnswerProblems(narration: string): string[] {
+  return /(?:reasons?|motives?)[^.?!]{0,40}(?:aren't|are not|isn't|is not|unknown|never)|won't guess|will not guess|no one knows|nobody knows|never explained|hasn't said why|has not said why/i.test(
+    narration,
+  )
+    ? [
+        "A Why Short must answer its question with a sourced reason, but this one says the reason is unknown. Rewrite around a cause the sources state; if they state none, the question is wrong for this format.",
+      ]
+    : [];
+}
+
 export function whyFollowProblems(
   loopLine: string,
   follow: WhyFollow | undefined,

@@ -330,3 +330,10 @@ test("recent Why hooks come from Why Shorts only, newest first, inside the windo
   );
   await db.close();
 });
+
+test("a Why Short that says the reason is unknown is sent back; one that gives a reason is not", async () => {
+  const { whyAnswerProblems } = await import("../src/editorial/why.ts");
+  assert.equal(whyAnswerProblems("Konami's reasons aren't in the record, and we won't guess.").length, 1);
+  assert.equal(whyAnswerProblems("Nobody knows why it happened.").length, 1);
+  assert.equal(whyAnswerProblems("Rockstar moved on because the team wanted a new setting.").length, 0);
+});

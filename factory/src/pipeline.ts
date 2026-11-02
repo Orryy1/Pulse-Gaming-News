@@ -6,6 +6,7 @@ import { pollBlock, readPoll } from "./social/poll.ts";
 import {
   selectWhyTopic,
   whyCandidates,
+  whyAnswerProblems,
   whyFollowProblems,
   whyFreshProblems,
   whyHookProblems,
@@ -4311,6 +4312,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       problems.push(
         ...whyHookProblems(script.hook, whyHooks),
         ...whyFollowProblems(script.loop_line, cluster.why.follow),
+        ...whyAnswerProblems(narrationOf(script)),
       );
     // A report card is credited to an outlet: it must be one of this story's own sources.
     const outlets = cluster.items.map((i) => i.source.toLowerCase());

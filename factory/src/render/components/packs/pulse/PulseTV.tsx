@@ -5,6 +5,7 @@
 // with the outlet's credit under it and a ticker that only repeats the headline and the outlet. Scanlines,
 // a curved glass and a slight colour fringe sell the tube. The camera then eases in on the screen so the words
 // read at 1080p. Tagged ILLUSTRATION.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { Img, interpolate, spring } from "remotion";
 import { COLOUR } from "../../../brand.ts";
@@ -312,7 +313,7 @@ export const PulseTV: React.FC<GfxProps> = ({
           width: cab.w,
           height: cab.h,
           transformOrigin: `${screenCx}px ${screenCy}px`,
-          transform: `scale(${scale}) rotate(${(variant % 2 ? 1 : -1) * 1.2 * (1 - zoom)}deg)`,
+          transform: `scale(${safeScale(scale)}) rotate(${(variant % 2 ? 1 : -1) * 1.2 * (1 - zoom)}deg)`,
           borderRadius: wood ? 26 : 70,
           background: wood
             ? "repeating-linear-gradient(88deg,#5a3418 0px,#6e4220 9px,#5f381a 17px,#7a4a25 26px,#5a3418 34px)"

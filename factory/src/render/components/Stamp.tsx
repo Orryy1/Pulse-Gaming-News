@@ -2,6 +2,7 @@
 // ("CONFIRMED" on the date, "DELAYED", "$49.99"), holds for under two seconds and lifts away. Shared by the
 // Short and the render lab.
 
+import { safeScale } from "../safetransform.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -57,7 +58,7 @@ export const Stamp: React.FC<{
       >
         <div
           style={{
-            transform: `rotate(-7deg) scale(${scale})`,
+            transform: `rotate(-7deg) scale(${safeScale(scale)})`,
             opacity: Math.min(1, hit * 1.4) * out,
             border: `${Math.round(size / 13)}px solid ${stamp.colour}`,
             outline: `${Math.round(size / 33)}px solid ${stamp.colour}`,

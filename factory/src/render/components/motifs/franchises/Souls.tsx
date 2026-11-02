@@ -2,6 +2,7 @@
 // their solemn announcements: a dark screen, a wide soft band across the middle, the words in widely
 // spaced engraved capitals of muted gold that fade up and slowly grow, ash drifting through.
 // Layout, colour, type and motion only: no logo, no series font, no real screen.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, Img, interpolate, useCurrentFrame } from "remotion";
 import { displayText } from "../../../timeline.ts";
@@ -31,7 +32,7 @@ const Band: React.FC<{ height: number; opacity: number; spread: number }> = ({
       top: 540 - height / 2,
       height,
       opacity,
-      transform: `scaleY(${spread})`,
+      transform: `scaleY(${safeScale(spread)})`,
       background:
         "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.72) 26%, rgba(0,0,0,0.82) 50%, rgba(0,0,0,0.72) 74%, rgba(0,0,0,0) 100%)",
     }}

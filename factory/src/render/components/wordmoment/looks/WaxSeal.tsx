@@ -1,6 +1,7 @@
 // Wax seal: a blob of sealing wax in the tone colour, pressed at the hit (it squashes wide and springs
 // back), the word embossed into it with a lit upper edge and a shadowed lower one. The sub is on a paper
 // ribbon that unfurls beneath. For confirmations: official news gets the seal.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { interpolate } from "remotion";
 import type { WordMomentProps, WordStamp } from "../types.ts";
@@ -74,7 +75,7 @@ export const WaxSeal: React.FC<WordMomentProps> = ({
               position: "absolute",
               left: "50%",
               top: d - size * 0.12,
-              transform: `translateX(-50%) scaleX(${ribbon})`,
+              transform: `translateX(-50%) scaleX(${safeScale(ribbon)})`,
               padding: `${Math.round(size * 0.12)}px ${Math.round(size * 0.5)}px`,
               background: PAPER,
               clipPath: `polygon(0 0, 100% 0, calc(100% - ${size * 0.18}px) 50%, 100% 100%, 0 100%, ${size * 0.18}px 50%)`,

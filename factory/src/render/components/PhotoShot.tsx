@@ -43,6 +43,7 @@
 // tape, pins and grain come from the Paper pack and the explainer backgrounds; nothing from a file. SVG
 // filters (the tray's ripple) are bounded and only run during their phase; the rest is CSS transforms.
 
+import { safeScale } from "../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, Img, interpolate, useCurrentFrame } from "remotion";
 import { BODY, DISPLAY } from "./fonts.ts";
@@ -2306,7 +2307,7 @@ const Peg: React.FC<{ show: number; style?: React.CSSProperties }> = ({
       width: 30,
       height: 76,
       marginLeft: -15,
-      transform: `scale(${show})`,
+      transform: `scale(${safeScale(show)})`,
       opacity: show > 0.02 ? 1 : 0,
       transformOrigin: "50% 0%",
       ...style,

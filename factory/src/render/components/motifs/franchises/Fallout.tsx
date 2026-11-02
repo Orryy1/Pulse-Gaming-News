@@ -2,6 +2,7 @@
 // sequence of generic lines, then the chapter as a menu with a blinking selection bar and the
 // pictures coming up line by line in green. Layout, colour, type and motion only: no company names,
 // no logos, no real menu.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, Img, interpolate, useCurrentFrame } from "remotion";
 import { displayText } from "../../../timeline.ts";
@@ -509,7 +510,7 @@ const TerminalList: React.FC<GfxProps> = ({ g, len, variant = 0 }) => {
   return (
     <AbsoluteFill style={{ opacity: dim }}>
       <AbsoluteFill style={{ background: "rgba(2,8,4,0.82)" }} />
-      <AbsoluteFill style={{ transform: `scaleY(${enter})` }}>
+      <AbsoluteFill style={{ transform: `scaleY(${safeScale(enter)})` }}>
         <div
           style={{
             position: "absolute",

@@ -1,6 +1,7 @@
 // Screen pack, "Terminal": specs printed on a retro amber-phosphor monitor. The tube powers on, the
 // heading is typed at a prompt, the "label: value" rows print with dot leaders, the last value lights
 // in inverse video and a cursor blinks on a fresh prompt. All typing ends by about frame 85.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { interpolate, spring } from "remotion";
 import { Stage, useStage } from "../../DocGraphics.tsx";
@@ -176,7 +177,7 @@ export const Terminal: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                 inset: 0,
                 background:
                   "radial-gradient(ellipse at 50% 45%, #2a1907 0%, #140c03 60%, #070402 100%)",
-                transform: `scaleY(${powerOn})`,
+                transform: `scaleY(${safeScale(powerOn)})`,
               }}
             />
             {powerOn > 0 && powerOn < 1 ? (

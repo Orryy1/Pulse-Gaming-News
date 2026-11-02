@@ -1,3 +1,4 @@
+import { safeScale } from "../../safetransform.ts";
 import React from "react";
 import {
   Img,
@@ -62,7 +63,7 @@ export const RankingCard: React.FC<{
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          transform: `scale(${badge})`,
+          transform: `scale(${safeScale(badge)})`,
         }}
       >
         <div
@@ -179,7 +180,7 @@ export const RankingCard: React.FC<{
             fontSize: 30,
             letterSpacing: 2.5,
             borderRadius: 8,
-            transform: `scale(${chip})`,
+            transform: `scale(${safeScale(chip)})`,
             transformOrigin: "left center",
             textTransform: "uppercase",
           }}

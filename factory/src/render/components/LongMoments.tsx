@@ -5,6 +5,7 @@
 // landing, a flash-punch between entries, and a constant film grain and
 // vignette. All timing comes from the sentence windows the planner uses.
 
+import { safeScale } from "../safetransform.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -1071,7 +1072,7 @@ export const TimelineMoment: React.FC<{ g: MomentGraphic; len: number }> = ({
                   borderRadius: 9,
                   background: COLOUR.amber,
                   boxShadow: "0 0 0 5px rgba(11,11,14,0.9)",
-                  transform: `scale(${s})`,
+                  transform: `scale(${safeScale(s)})`,
                 }}
               />
               <div

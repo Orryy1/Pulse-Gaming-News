@@ -1,3 +1,4 @@
+import { safeScale } from "../safetransform.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -193,7 +194,7 @@ const FramedFootage: React.FC<{
           overflow: "hidden",
           boxShadow:
             "0 40px 120px rgba(0,0,0,0.6), inset 0 0 0 2px rgba(255,255,255,0.14)",
-          transform: `translateY(${rise}px) scale(${pop})`,
+          transform: `translateY(${rise}px) scale(${safeScale(pop)})`,
         }}
       >
         <div
@@ -338,7 +339,7 @@ export const ArtTrack: React.FC<{
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     });
-    body = <AbsoluteFill style={{ transform: `scale(${p})` }}>{body}</AbsoluteFill>;
+    body = <AbsoluteFill style={{ transform: `scale(${safeScale(p)})` }}>{body}</AbsoluteFill>;
   }
   const photo = dress?.photos?.get(index);
   if (photo && image && (image.kind === "photo" || image.kind === "portrait"))

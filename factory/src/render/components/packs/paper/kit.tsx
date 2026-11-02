@@ -2,6 +2,7 @@
 // write-on, pushpins, masking tape and the ILLUSTRATION tag. Grain is a small SVG noise tile drawn once by
 // the browser and repeated, so it costs nothing per frame. Everything is a pure function of its props.
 
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { BODY } from "../../fonts.ts";
 import { displayText } from "../../../timeline.ts";
@@ -159,7 +160,7 @@ export const Pin: React.FC<{
       height: 34,
       marginLeft: -17,
       marginTop: -17,
-      transform: `scale(${show})`,
+      transform: `scale(${safeScale(show)})`,
       opacity: show > 0.02 ? 1 : 0,
       ...style,
     }}

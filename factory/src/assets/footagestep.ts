@@ -61,7 +61,7 @@ export async function runFootageFirst(args: {
     args.dir,
     args.options,
     args.keepFrames,
-  );
+  ).finally(() => args.deps.close?.().catch(() => undefined));
   for (const c of added)
     args.clips.push({
       file: c.file,

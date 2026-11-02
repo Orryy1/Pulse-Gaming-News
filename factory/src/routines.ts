@@ -38,6 +38,35 @@ const PROXY_HEADERS = [
   "x-real-ip",
 ];
 
+// The Mac mini's Brave (ROUTINE_LAN_ALLOW, 1 Nov 2026). The LAN gets its own listener on its own port, which
+// answers only /routine/ and only from the listed addresses: the main listener stays on loopback, and the
+// Cloudflare tunnel, which points at the main port, has no way to reach this one. No header can prove more than
+// the address does here: a browser navigation cannot send a token.
+let lanPort = 0;
+let lanAllow = new Set<string>();
+
+const PRIVATE_HOST =
+  /^(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|[\w-]+\.local)(:\d+)?$/i;
+
+/** Which LAN addresses the LAN listener answers, on which port (set once at start; tests set their own). */
+export function allowRoutineLan(port: number, addresses: string[]): void {
+  lanPort = port;
+  lanAllow = new Set(addresses);
+}
+
+/** A request on the LAN listener from a listed address, naming this machine by a private name, unproxied. */
+export function lanRoutineRequest(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+): boolean {
+  if (!lanPort || req.socket?.localPort !== lanPort) return false;
+  const from = String(req.socket?.remoteAddress ?? "").replace(/^::ffff:/, "");
+  if (!lanAllow.has(from)) return false;
+  if (!PRIVATE_HOST.test(String(req.headers.host ?? ""))) return false;
+  for (const h of Object.keys(req.headers))
+    if (h.startsWith("cf-") || PROXY_HEADERS.includes(h)) return false;
+  return true;
+}
+
 /**
  * A request from this PC's own browser: a loopback socket, a loopback Host and no Cloudflare or proxy
  * header (the tunnel connects from 127.0.0.1 too, but always adds cf-ray and cdn-loop). Sec-Fetch-Site
@@ -46,6 +75,7 @@ const PROXY_HEADERS = [
 export function routineAllowed(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
 ): boolean {
+  if (lanRoutineRequest(req)) return true;
   if (!LOOPBACK_ADDR.test(req.socket?.remoteAddress ?? "")) return false;
   if (!LOOPBACK_HOST.test(String(req.headers.host ?? ""))) return false;
   for (const h of Object.keys(req.headers))
@@ -310,6 +340,8 @@ export interface RoutineContext {
   cfg: Config;
   /** This week's ranking candidates, for the poll's options. */
   pollCandidates: () => Promise<EvergreenCandidate[]>;
+  /** Copies files to the Mac for its Brave, returning each one's path there (the LAN path only). */
+  macFiles?: (files: string[]) => Promise<Map<string, string>>;
   /** Long videos on the channel (tests pass a fake; the default reads the channel page). */
   channelLongs?: () => Promise<LongVideo[]>;
   now?: () => Date;
@@ -339,7 +371,16 @@ export async function handleRoutine(
     return false;
   if (!routineAllowed(req)) return false;
   // A page on some other site could make this PC's browser send the body: only a page on this PC may.
-  if (posting && req.headers.origin && !LOOPBACK_ORIGIN.test(String(req.headers.origin)))
+  if (
+    posting &&
+    req.headers.origin &&
+    !LOOPBACK_ORIGIN.test(String(req.headers.origin)) &&
+    !(
+      lanRoutineRequest(req) &&
+      String(req.headers.origin).replace(/^https?:\/\//, "") ===
+        req.headers.host
+    )
+  )
     return false;
   const { db, cfg } = ctx;
   const now = ctx.now?.() ?? new Date();
@@ -356,6 +397,11 @@ export async function handleRoutine(
           `SELECT id, created_at, detail FROM events WHERE kind = 'engage_post' AND detail ? 'question' AND NOT detail ? 'skipped' ORDER BY id DESC LIMIT 1`,
         );
         const posted = readList(doneFile(cfg, "community"));
+        // The Mac's Brave attaches the picture from the Mac's own disk.
+        const image = row?.detail?.image as string | undefined;
+        if (row && image && lanRoutineRequest(req) && ctx.macFiles)
+          row.detail.image =
+            (await ctx.macFiles([image])).get(image) ?? image;
         json(res, 200, {
           today,
           post: row ?? null,
@@ -399,16 +445,26 @@ export async function handleRoutine(
             }>)
           : [];
         const done = new Set(readList(doneFile(cfg, "abtest")));
+        const waiting = pending.filter((t) => !done.has(t.videoId));
+        // Only the ones a run can act on travel to the Mac.
+        const ready = (t: { publishAt?: string | null }) =>
+          Boolean(t.publishAt) &&
+          new Date(t.publishAt!).getTime() <= now.getTime();
+        const thumbsOf = (t: unknown) =>
+          ((t as { thumbs?: string[] }).thumbs ?? []) as string[];
+        const onMac =
+          lanRoutineRequest(req) && ctx.macFiles
+            ? await ctx.macFiles(waiting.filter(ready).flatMap(thumbsOf))
+            : undefined;
         json(res, 200, {
           now: now.toISOString(),
-          tests: pending
-            .filter((t) => !done.has(t.videoId))
-            .map((t) => ({
-              ...t,
-              ready:
-                Boolean(t.publishAt) &&
-                new Date(t.publishAt!).getTime() <= now.getTime(),
-            })),
+          tests: waiting.map((t) => ({
+            ...t,
+            ...(onMac
+              ? { thumbs: thumbsOf(t).map((f) => onMac.get(f) ?? f) }
+              : {}),
+            ready: ready(t),
+          })),
         });
         return true;
       }

@@ -103,10 +103,15 @@ export function getBundle(): Promise<string> {
   // A bundle swept away from the temp folder is rebuilt rather than rendered from a missing folder.
   if (bundleDir && !fs.existsSync(bundleDir))
     bundlePromise = bundleDir = undefined;
+  // The Mac worker keeps one bundle per commit beside the code: a fresh process per job would rebuild it each time.
+  const kept = process.env.REMOTION_BUNDLE_DIR;
+  if (kept && fs.existsSync(path.join(kept, "index.html")))
+    return Promise.resolve(kept);
   bundlePromise ??= bundle({
     entryPoint: ENTRY,
     publicDir: PUBLIC_DIR,
     onProgress: () => undefined,
+    ...(kept ? { outDir: kept } : {}),
   }).then((dir) => (bundleDir = dir));
   return bundlePromise;
 }
@@ -271,6 +276,15 @@ async function renderWithTurn(
 /** Renders drawing frames right now (the wait for a PC turn does not count): the lane watchdog never acts during one. */
 let rendersActive = 0;
 export const activeRenders = (): number => rendersActive;
+/** A render running elsewhere (the Mac) counts too: the lane watchdog must not act on a step waiting for one. */
+export async function countAsRender<T>(fn: () => Promise<T>): Promise<T> {
+  rendersActive++;
+  try {
+    return await fn();
+  } finally {
+    rendersActive--;
+  }
+}
 
 /** Minutes without a new frame before a render counts as frozen (before the first frame, and after it). */
 export const STALL_MINUTES = { first: 15, between: 10 };
@@ -505,6 +519,15 @@ export interface LongRenderInput {
   frameRange?: [number, number];
   /** How long the PC turn may wait before it is handed back (PcTurnTimeout); 3 hours, then render anyway, when absent. */
   turnWaitMinutes?: number;
+  /** Who makes the thumbnails; here, through renderLongThumbs, when absent (the Mac worker: MAC_STILLS). */
+  thumbRenderer?: (input: LongThumbsInput) => Promise<void>;
+}
+
+export interface LongThumbsInput {
+  episodeDir: string;
+  thumbs: Array<{ file: string; thumb: ThumbInput }>;
+  gl?: LongRenderInput["gl"];
+  browserExecutable?: string;
 }
 
 type ThumbInput = Omit<
@@ -649,6 +672,44 @@ export async function renderLongStills(input: LongStillsInput): Promise<void> {
   }
 }
 
+/** A long video's thumbnails: stills of their own composition, needing only their pictures. */
+export async function renderLongThumbs(input: LongThumbsInput): Promise<void> {
+  const serveUrl = await getBundle();
+  const files = await serveDir(input.episodeDir);
+  const browserExecutable = input.browserExecutable || undefined;
+  const chromiumOptions = { gl: input.gl ?? "swangle" } as const;
+  try {
+    for (const t of input.thumbs) {
+      const { imageFile, image2File, fgFile, pictureFiles, ...thumb } = t.thumb;
+      const thumbProps: ThumbProps = {
+        ...thumb,
+        imageSrc: imageFile ? `${files.url}/${webPath(imageFile)}` : null,
+        image2Src: image2File ? `${files.url}/${webPath(image2File)}` : null,
+        fgSrc: fgFile ? `${files.url}/${webPath(fgFile)}` : null,
+        pictureSrcs: pictureFiles?.map((f) => `${files.url}/${webPath(f)}`),
+      };
+      const still = await selectComposition({
+        serveUrl,
+        id: "PulseThumb",
+        inputProps: thumbProps,
+        browserExecutable,
+      });
+      await renderStill({
+        composition: still,
+        serveUrl,
+        output: t.file,
+        inputProps: thumbProps,
+        imageFormat: "jpeg",
+        jpegQuality: 90,
+        browserExecutable,
+        chromiumOptions,
+      });
+    }
+  } finally {
+    await files.close();
+  }
+}
+
 /** Renders the 16:9 long-form video, a poster frame and a 1280x720 thumbnail. */
 export async function renderLong(input: LongRenderInput): Promise<void> {
   const serveUrl = await getBundle();
@@ -699,35 +760,15 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       browserExecutable,
       chromiumOptions,
     });
-    for (const t of [
-      { file: input.thumbFile, thumb: input.thumb },
-      ...(input.thumbVariants ?? []),
-    ]) {
-      const { imageFile, image2File, fgFile, pictureFiles, ...thumb } = t.thumb;
-      const thumbProps: ThumbProps = {
-        ...thumb,
-        imageSrc: imageFile ? `${files.url}/${webPath(imageFile)}` : null,
-        image2Src: image2File ? `${files.url}/${webPath(image2File)}` : null,
-        fgSrc: fgFile ? `${files.url}/${webPath(fgFile)}` : null,
-        pictureSrcs: pictureFiles?.map((f) => `${files.url}/${webPath(f)}`),
-      };
-      const still = await selectComposition({
-        serveUrl,
-        id: "PulseThumb",
-        inputProps: thumbProps,
-        browserExecutable,
-      });
-      await renderStill({
-        composition: still,
-        serveUrl,
-        output: t.file,
-        inputProps: thumbProps,
-        imageFormat: "jpeg",
-        jpegQuality: 90,
-        browserExecutable,
-        chromiumOptions,
-      });
-    }
+    await (input.thumbRenderer ?? renderLongThumbs)({
+      episodeDir: input.episodeDir,
+      thumbs: [
+        { file: input.thumbFile, thumb: input.thumb },
+        ...(input.thumbVariants ?? []),
+      ],
+      gl: input.gl,
+      browserExecutable,
+    });
   } finally {
     await files.close();
   }

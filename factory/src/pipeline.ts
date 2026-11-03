@@ -4443,6 +4443,17 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     desk0 && desk0.voice.id === voice.id
       ? { voice: { id: s.cfg.elevenLabsVoiceId, name: s.cfg.narratorName } }
       : desk0;
+  // A Short outside the desk test still has a take written as the reply to its question, so the narrator asks
+  // it himself. 3 Nov 2026: the GTA 6 pre-load Short said "No. That box holds a download code" to nobody.
+  if (!desk && !twin && ep.script_json?.desk_question?.trim()) {
+    const sc = ep.script_json;
+    sc.pulse_take.narration = `${sc.desk_question!.trim()} ${sc.pulse_take.narration}`;
+    delete sc.desk_question;
+    await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(sc),
+    ]);
+  }
   let narration: Awaited<ReturnType<Services["synthesise"]>>;
   if (desk && s.stitchTakes) {
     // The desk experiment: the narrator up to the facts, the desk partner's question in a second voice,

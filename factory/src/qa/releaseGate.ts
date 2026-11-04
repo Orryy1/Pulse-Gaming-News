@@ -25,6 +25,13 @@ import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import { COLOURS, type DiscordMessage } from "../approval/discord.ts";
 import { longFormatOf, longKindLabel } from "../longformat.ts";
+import { badTextMutes } from "./graphicscheck.ts";
+import { planSlate, scanVideo, type FrameScan, type SlateInput } from "./slate.ts";
+import {
+  releaseWriterNotes,
+  writerNoteSummary,
+  type WriterNoteFinding,
+} from "../editorial/writernotes.ts";
 
 const run = promisify(execFile);
 
@@ -67,7 +74,30 @@ export interface GateStats {
   threeShare: number; // share of screen time at 3
 }
 
+/** What a shot-by-shot score can't see: the film as a whole (src/qa/slate.ts). */
+export interface GateVisuals {
+  /** Share of the video on the empty slate, by its plan. */
+  planSlate: number;
+  /** The same, read off the finished picture; undefined when the file couldn't be read. */
+  frameSlate?: number;
+  /** Share of the video on game footage, stock not counted. */
+  footage: number;
+  /** The game has plenty of footage to find: released, with many sources seen by the gather. */
+  footagePlenty: boolean;
+  /** Graphics the check muted as placeholder or garbled text. */
+  placeholders: number;
+}
+
+/** Three of them are no accident; the check's own wording catches one now and then on a tight card. */
+export const MAX_PLACEHOLDERS = 3;
+/** Sources the footage gather saw for it to count as a game with plenty. */
+export const PLENTY_SOURCES = 20;
+
 export interface GateLimits {
+  /** The most of the video that may sit on the empty slate (RELEASE_GATE_MAX_SLATE). */
+  maxSlate?: number;
+  /** The least game footage for a game that has plenty (RELEASE_GATE_MIN_FOOTAGE). */
+  minFootage?: number;
   minMean: number;
   maxZero: number;
 }
@@ -150,8 +180,34 @@ export function gateStats(
 export function gateDecision(
   stats: GateStats,
   limits: GateLimits,
+  /** Writer's notes found in the words (src/editorial/writernotes.ts): no shot score makes up for those. */
+  writerNotes?: readonly WriterNoteFinding[],
+  visuals?: GateVisuals,
 ): { pass: boolean; reasons: string[] } {
   const reasons: string[] = [];
+  if (visuals) {
+    const slate = Math.max(visuals.planSlate, visuals.frameSlate ?? 0);
+    if (limits.maxSlate !== undefined && slate > limits.maxSlate)
+      reasons.push(
+        `${Math.round(slate * 100)}% of the video sits on the empty slate (allowed ${Math.round(limits.maxSlate * 100)}%)`,
+      );
+    if (
+      limits.minFootage !== undefined &&
+      visuals.footagePlenty &&
+      visuals.footage < limits.minFootage
+    )
+      reasons.push(
+        `only ${Math.round(visuals.footage * 100)}% of the video is game footage, for a game with plenty of it (needs ${Math.round(limits.minFootage * 100)}%)`,
+      );
+    if (visuals.placeholders >= MAX_PLACEHOLDERS)
+      reasons.push(
+        `${visuals.placeholders} graphics were muted as placeholder or garbled text`,
+      );
+  }
+  if (writerNotes?.length)
+    reasons.push(
+      `the narration holds the writer's notes to itself in ${writerNotes.length} places (${writerNoteSummary(writerNotes, 1)})`,
+    );
   if (!stats.shots) reasons.push("no shot could be scored");
   if (stats.shots && stats.mean < limits.minMean)
     reasons.push(
@@ -204,7 +260,8 @@ Score every frame 0-3 for how well the picture fits those words:
 2: the right game and era, in keeping with the words, without showing the specific thing named.
 1: loosely related: the right franchise or subject but a different game or era, or generic footage that only vaguely fits.
 0: wrong or broken: a different game or subject, a picture that contradicts the words, a blank or black frame, a broken image, unreadable or cut-off text, or anything advertiser-unfriendly.
-A chart, quote card, map, timeline or other graphic that restates the words scores 3 when readable; so does kinetic type of the narrator's own words, an explainer diagram, a document page or a drawn scene tagged ILLUSTRATION, or the game's own world tagged RECONSTRUCTION, when it shows what is said. A plain branded background with nothing on it scores 1. Give one short line of reason for each frame, naming what the frame actually shows. Use the frame numbers given.`;
+A chart, quote card, map, timeline or other graphic that restates the words scores 3 when readable; so does kinetic type of the narrator's own words, an explainer diagram, a document page or a drawn scene tagged ILLUSTRATION, or the game's own world tagged RECONSTRUCTION, when it shows what is said. A plain branded background with nothing on it scores 1. Give one short line of reason for each frame, naming what the frame actually shows. Use the frame numbers given.
+An empty dark card with only a faint title, a logo, the chapter strip or a small corner note on it is blank: 0, whatever the words. So is a graphic about the making of the video rather than its story: notes on what material is missing, what a source does or doesn't say, or what has to be added.`;
 
 export const GateBatchSchema = z.object({
   frames: z.array(
@@ -353,12 +410,14 @@ export function heldNotice(
 /** The services the gate step needs (a slice of src/pipeline.ts Services, so tests can fake it). */
 export interface GateServices {
   db: Db;
-  cfg: Pick<Config, "dataDir" | "releaseGateMinMean" | "releaseGateMaxZero">;
+  cfg: Pick<Config, "dataDir" | "releaseGateMinMean" | "releaseGateMaxZero" | "writerNotesGuard" | "releaseGateMaxSlate" | "releaseGateMinFootage" | "releaseGateMinFootageRanking">;
   llm: Llm;
   notify(msg: DiscordMessage): Promise<unknown>;
   now(): Date;
   /** Episode folder, for the final video and the frames (tests point it at a temp folder). */
   episodeDir(id: string): string;
+  /** The picture scan for the empty slate (src/qa/slate.ts); tests swap in a stub. */
+  scan?: (video: string) => Promise<FrameScan>;
   /** The frame grabber (ffmpeg); tests swap in a stub. */
   frame?: (video: string, seconds: number, dest: string) => Promise<string>;
 }
@@ -366,12 +425,55 @@ export interface GateServices {
 export interface GateResult {
   pass: boolean;
   stats: GateStats;
+  visuals?: GateVisuals;
   reasons: string[];
   shots: ScoredShot[];
   cost: ReturnType<typeof estimateGateCost>;
   checked_at: string;
   /** Which render these scores belong to (the render QA's checked_at), so a retry never pays twice. */
   for: string | null;
+}
+
+/** The whole-film measures: the plan, the finished picture, the footage and the graphics check's verdicts. */
+export async function gateVisuals(
+  s: Pick<GateServices, "db" | "scan">,
+  ep: Pick<Episode, "id" | "assets_json">,
+  windows: SlateInput["windows"],
+  moments: SlateInput["moments"],
+  video?: string,
+): Promise<GateVisuals> {
+  const a = ep.assets_json ?? {};
+  const read = planSlate({
+    plan: a.longPlan!,
+    windows,
+    moments,
+    quiet: a.quietMoments,
+    clips: a.clips,
+  });
+  const scanned = video
+    ? await (s.scan ?? scanVideo)(video).catch((err) => {
+        log("warn", "the release gate could not read the frames for the slate", {
+          episode: ep.id,
+          error: errorMessage(err),
+        });
+        return undefined;
+      })
+    : undefined;
+  const rows = await s.db
+    .query<{ detail: { problems?: Array<{ problems?: string[] }> } }>(
+      `SELECT detail FROM events WHERE episode_id = $1 AND kind = 'graphics_prepass' ORDER BY created_at DESC LIMIT 1`,
+      [ep.id],
+    )
+    .catch(() => []);
+  const said = rows[0]?.detail?.problems?.flatMap((p) => p.problems ?? []) ?? [];
+  const seen = (a.footageFirst as { sourcesSeen?: number } | undefined)?.sourcesSeen ?? 0;
+  return {
+    planSlate: read.share,
+    frameSlate: scanned?.share,
+    footage: read.footageShare,
+    footagePlenty: seen >= PLENTY_SOURCES,
+    placeholders: badTextMutes(said).length,
+  };
 }
 
 /** Scores a rendered documentary's shots and decides; nothing is written to the episode here. */
@@ -428,13 +530,33 @@ export async function scoreEpisode(
       `release gate: ${unscored} of ${shots.length} shots could not be scored`,
     );
   const stats = gateStats(scored);
-  const { pass, reasons } = gateDecision(stats, {
-    minMean: s.cfg.releaseGateMinMean,
-    maxZero: s.cfg.releaseGateMaxZero,
-  });
+  const visuals = await gateVisuals(s, ep, windows, moments, video);
+  const { pass, reasons } = gateDecision(
+    stats,
+    {
+      minMean: s.cfg.releaseGateMinMean,
+      maxZero: s.cfg.releaseGateMaxZero,
+      maxSlate: s.cfg.releaseGateMaxSlate,
+      // A documentary leans on footage; a ranking on its art; a recap reuses its Shorts and isn't held to a share.
+      minFootage:
+        longFormatOf(script) === "documentary"
+          ? s.cfg.releaseGateMinFootage
+          : longFormatOf(script) === "ranking"
+            ? s.cfg.releaseGateMinFootageRanking
+            : undefined,
+    },
+    s.cfg.writerNotesGuard
+      ? releaseWriterNotes({
+          script: ep.script_json,
+          words: ep.assets_json?.words,
+        })
+      : [],
+    visuals,
+  );
   return {
     pass,
     stats,
+    visuals,
     reasons,
     shots: scored,
     cost,

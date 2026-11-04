@@ -88,7 +88,9 @@ import {
   quotaUsed,
 } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
+import { startAlertLedger } from "./alertlog.ts";
 import { fetchWithTimeout, log } from "./lib/util.ts";
+import { fetchPublic } from "./lib/publicurl.ts";
 
 export function oauthConfig(cfg: Config) {
   return {
@@ -128,6 +130,11 @@ export function stockLibraries(
 export function createServices(db: Db, cfg: Config): Services {
   // The Mac mini's jobs (src/macworker.ts): each setting off means the old local path, untouched.
   const mac = macSettings(cfg);
+  if (cfg.alertLedger)
+    startAlertLedger(
+      path.join(cfg.dataDir, "logs", "alerts.jsonl"),
+      cfg.discordWebhookUrl,
+    );
   const tellMac = (content: string) =>
     postDiscord(cfg.discordWebhookUrl, { content }).catch(() => undefined);
   const speechWords = (file: string) =>
@@ -205,7 +212,19 @@ export function createServices(db: Db, cfg: Config): Services {
     fetchArticle,
     synthesise: (text, out, voice, opts) =>
       narrate(
-        opts?.provider ? { ...cfg, voiceProvider: opts.provider } : cfg,
+        {
+          ...cfg,
+          ...(opts?.provider ? { voiceProvider: opts.provider } : {}),
+          // LONG_MIN_WPM: a test dial, passed for rankings only; it only ever raises the floor.
+          ...(opts?.minWpm
+            ? {
+                minWordsPerMinute: Math.max(
+                  cfg.minWordsPerMinute,
+                  opts.minWpm,
+                ),
+              }
+            : {}),
+        },
         text,
         out,
         voice,
@@ -355,8 +374,8 @@ export function createServices(db: Db, cfg: Config): Services {
         () => accessToken(db, oauthConfig(cfg)),
         (units) => quotaAdd(db, new Date(), units),
       ),
-    research: (title, fallbackQuery, maxChars) =>
-      researchGame(title, fallbackQuery, maxChars),
+    research: (title, fallbackQuery, maxChars, focus) =>
+      researchGame(title, fallbackQuery, maxChars, undefined, focus),
     fetchStock: (dir, targets, gameWords, maxClips, avoidUrls) =>
       stockLibraries(cfg).length
         ? libraryStockClips(
@@ -417,8 +436,13 @@ export function createServices(db: Db, cfg: Config): Services {
       });
     },
     downloadImage: async (url, dest) => {
-      const res = await fetchWithTimeout(url, {}, 30_000);
+      // A picture link comes from an article or a feed: a private address is a bad link, not a failed step.
+      const res = await fetchPublic(url, {}, 30_000).catch((err: unknown) => {
+        if (String(err).includes("refused link")) return undefined;
+        throw err;
+      });
       if (
+        !res ||
         !res.ok ||
         !(res.headers.get("content-type") ?? "").startsWith("image/")
       )

@@ -13,6 +13,8 @@
 //   (d) demand: YouTube's search page this week (src/docdemand.ts; unknown counts as neutral);
 //   (e) freshness: not already a Pulse documentary, and how crowded the topic is on the big channels.
 // Each pick logs its breakdown and posts one Discord line. DOC_BREAKOUT_PICKER turns it off.
+// SEQUEL_WINNERS (src/sequels.ts) puts one thing ahead of the score: the long version of a Why Short that already did
+// well on the channel, since proof from our own viewers beats a prediction. It is still never a repeat of a documentary.
 import {
   DOC_FRANCHISES,
   DOC_STORIES,
@@ -24,6 +26,12 @@ import {
   type DemandLookup,
 } from "./docdemand.ts";
 import type { Db } from "./db.ts";
+import {
+  sequelWinners,
+  winnerProof,
+  type SequelNorm,
+  type SequelWinner,
+} from "./sequels.ts";
 import { sameGame, type SteamApp, type SteamFacts } from "./assets/steam.ts";
 
 export interface DocCandidate {
@@ -37,6 +45,32 @@ export interface DocCandidate {
   aliases: string[];
   /** A Steam search for its flagship game, for the fanbase figures; empty when it was never on Steam. */
   steam: string;
+  /** The long version of one of our own Shorts that did well: the Short, its question and its numbers. */
+  sequel?: { short: string; title: string; question?: string; proof: string };
+}
+
+/** A Why Short that did well as a documentary candidate: its subject, with the Short's question as the story to tell. */
+export function sequelCandidate(
+  w: SequelWinner,
+  norm: SequelNorm,
+): DocCandidate {
+  return {
+    kind: "story",
+    index: -1,
+    subject: w.subject,
+    wiki: w.subject,
+    angle: w.question
+      ? `${w.question} ${w.angle ?? ""}`.trim()
+      : `The story behind our Short "${w.title}"`,
+    aliases: [w.subject],
+    steam: w.subject,
+    sequel: {
+      short: w.id,
+      title: w.title,
+      question: w.question,
+      proof: winnerProof(w, norm),
+    },
+  };
 }
 
 // The names people use, where the subject line is not one (a story's subject is often a phrase).
@@ -497,7 +531,9 @@ export function topicFromScore(s: DocScore): DocTopic {
     kind: c.kind,
     franchise_index: c.kind === "franchise" ? c.index : -1,
     story_index: c.kind === "story" ? c.index : -1,
-    title_idea: c.kind === "story" ? c.angle : `The ${c.subject} story`,
+    title_idea:
+      c.sequel?.question ??
+      (c.kind === "story" ? c.angle : `The ${c.subject} story`),
     angle: c.angle,
     reason: `Breakout pick ${s.total}: ${s.notes.join("; ")}`,
     franchise: c.subject,
@@ -703,9 +739,15 @@ export async function pickDeps(
 /** The whole pick: every candidate scored from the factory's data, best first. */
 export async function rankBreakoutDocs(
   s: PickServices,
-  o: { now: Date; lookups: number; demand?: DemandLookup; offline?: boolean },
+  o: {
+    now: Date;
+    lookups: number;
+    demand?: DemandLookup;
+    offline?: boolean;
+    extra?: DocCandidate[];
+  },
 ): Promise<DocScore[]> {
-  const cands = docCandidates();
+  const cands = [...(o.extra ?? []), ...docCandidates()];
   const deps = await pickDeps(s, o);
   return rankDocCandidates(cands, await gatherDocSignals(cands, deps), o.now);
 }
@@ -715,19 +757,56 @@ export async function rankBreakoutDocs(
  * Discord line. Undefined when every candidate is excluded (the writer's pick then decides).
  */
 export async function pickBreakoutDoc(
-  s: PickServices & { cfg: { docPickLookups: number }; now(): Date },
+  s: PickServices & {
+    cfg: { docPickLookups: number; sequelWinners?: boolean };
+    now(): Date;
+  },
 ): Promise<
   { topic: DocTopic; detail: Record<string, unknown>; line: string } | undefined
 > {
   const now = s.now();
+  const found = s.cfg.sequelWinners
+    ? await sequelWinners(s.db, now)
+    : undefined;
+  const extra = found
+    ? found.winners
+        .filter((w) => w.kind === "why" && w.subject)
+        .map((w) => sequelCandidate(w, found.norm))
+    : [];
   const ranked = await rankBreakoutDocs(s, {
     now,
     lookups: s.cfg.docPickLookups,
     demand: docDemandLookup(s, () => s.now()),
+    extra,
   });
   const open = ranked.filter((x) => !x.excluded);
-  const win = open[0];
+  // The strongest winner not yet made goes first, in the order sequelWinners ranked them.
+  const sequel = extra
+    .map((c) => open.find((x) => x.candidate === c))
+    .find(Boolean);
+  const win = sequel ?? open[0];
   if (!win) return undefined;
+  if (sequel) {
+    const rest = open.filter((x) => x !== win);
+    const made = win.candidate.sequel!;
+    return {
+      topic: {
+        ...topicFromScore(win),
+        reason: `The long version of our Short "${made.title}": ${made.proof}.`,
+      },
+      detail: {
+        pick: win.candidate.subject,
+        sequel: made,
+        total: win.total,
+        parts: win.parts,
+        notes: win.notes,
+        next: rest
+          .slice(0, 4)
+          .map((x) => ({ subject: x.candidate.subject, total: x.total })),
+      },
+      line: `Next documentary: ${win.candidate.subject}, the long version of our Short "${made.title}" (${made.proof}). It goes ahead of the score pick${rest[0] ? `, ${rest[0].candidate.subject} (${rest[0].total})` : ""}, which comes next.`,
+    };
+  }
   return {
     topic: topicFromScore(win),
     detail: {

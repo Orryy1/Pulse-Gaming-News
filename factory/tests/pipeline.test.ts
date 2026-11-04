@@ -1864,6 +1864,58 @@ test("SHORTS_PER_DAY_MAX holds the day's later news slots and names the stories 
   await db.close();
 });
 
+test("a slot with a launch run topic skips the editor and the freshness rule, and falls back to the editor with no source", async () => {
+  const dir = await tmpDir();
+  const runFile = path.join(dir, "run.json");
+  const entry = (date: string, slot: string, q: string) => ({
+    kind: "why",
+    date,
+    slot,
+    question: q,
+    title: q.replace(/\?$/, ""),
+    game: "Grand Theft Auto VI",
+    arc: "Announced; delayed; here.",
+    angle: "The size is the map and the audio.",
+    sources: [{ url: "https://www.rockstargames.com/newswire/a", source: "Rockstar", official: true }],
+  });
+  await fs.writeFile(
+    runFile,
+    JSON.stringify([
+      entry("2026-11-03", "12:00", "Why does GTA 6 need 212 GB?"),
+      entry("2026-11-03", "18:30", "Why does GTA 6 unlock in New Zealand first?"),
+    ]),
+  );
+  const { db, f, s, setClock } = await setup({
+    whyEnabled: true,
+    whyDays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+    whySlots: ["12:00", "18:30"],
+    whySlot: "12:00",
+    whyFreshDays: 14,
+    shortRunFile: runFile,
+  });
+  (s as unknown as { fetchArticle: unknown }).fetchArticle = async (url: string) =>
+    url.includes("newswire")
+      ? { title: "Pre-load", text: "Pre-load needs 212 GB.", url }
+      : undefined;
+  setClock(new Date("2026-11-03T10:30:00Z"));
+  f.whyTopics = [];
+  const a = await maybeSelectWhy(s);
+  assert.ok(a);
+  const ep = (await getEpisode(db, a!))!;
+  assert.equal(ep.story_json.run, true);
+  assert.equal(ep.story_json.why?.question, "Why does GTA 6 need 212 GB?");
+  assert.equal(ep.story_json.gameHint, "Grand Theft Auto VI");
+  assert.equal(ep.story_json.hasOfficial, true);
+  assert.equal(new Date(ep.slot_at!).toISOString(), "2026-11-03T12:00:00.000Z");
+  assert.equal(f.whyPrompts?.length ?? 0, 0, "no editor call");
+  // The same game six hours later: the freshness rule would refuse it, the plan does not.
+  setClock(new Date("2026-11-03T17:00:00Z"));
+  const b = await maybeSelectWhy(s);
+  assert.ok(b);
+  assert.equal((await getEpisode(db, b!))!.story_json.why?.question, "Why does GTA 6 unlock in New Zealand first?");
+  await db.close();
+});
+
 /** A Why pick for the fake editor. */
 function whyTopic(game: string, question: string, index = 0): WhyTopic {
   return {
@@ -2071,4 +2123,107 @@ test("a Why pick dropped by its fact-check gets a fresh game for the same slot, 
   assert.match(f.whyPrompts!.at(-1)!, /Diablo II/, "the dropped games are named as off limits");
   f.whyTopics = [whyTopic(games[3]!, "Why did Skyrim last?")];
   assert.equal(await maybeSelectWhy(s), undefined, "two retries, then the slot passes");
+});
+
+/** A long ranking ready to render: its pictures in place, nothing left to fetch. */
+async function longRankingReady(db: Db, cfg: Config) {
+  const script = {
+    ...goodScript(),
+    runtime: "long",
+    evergreen_format: "ranking",
+    game_title: "Halo",
+    headline: "Every Halo Campaign Ranked",
+    youtube: { ...goodScript().youtube, thumb_text: "HALO 2 AT 5?" },
+    entries: [
+      { rank: 2, year: 2010, platforms: "Xbox", game_title: "Halo: Reach", steam_search_term: "Halo Reach" },
+      { rank: 1, year: 2007, platforms: "Xbox", game_title: "Halo 3", steam_search_term: "Halo 3" },
+    ],
+  };
+  const art = (file: string, beatIndex: number | undefined, game: string, kind = "screenshot") => ({
+    file,
+    kind,
+    aspect: 16 / 9,
+    beatIndex,
+    sourceUrl: `https://example.com/${file}`,
+    provenance: `IGDB ${kind} for "${game}" (2010), publisher material via igdb.com`,
+  });
+  const assets = {
+    images: [
+      art("assets/topic.jpg", undefined, "Halo Infinite", "hero"),
+      art("entry_0/assets/reach.jpg", 0, "Halo: Reach"),
+      art("entry_1/assets/a.jpg", 1, "Halo 3", "hero"),
+      art("entry_1/assets/b.jpg", 1, "Halo 3"),
+      art("entry_1/assets/c.jpg", 1, "Halo 3"),
+      art("entry_1/assets/d.jpg", 1, "Halo 3"),
+      art("entry_1/assets/rdr.jpg", 1, "Red Dead Redemption 2", "hero"),
+    ],
+    clips: [],
+    filled: { before: 0, after: 0 },
+    durationSeconds: 300,
+    words: [],
+    audio: "voice.mp3",
+    captions: "captions.srt",
+  };
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, script_json, assets_json, lane, slot_at)
+     VALUES ('ep_long', 'h:long', 'voiced', '{"headline":"x","items":[]}', $1, $2, 'longform', '2026-10-20T19:00:00Z')`,
+    [JSON.stringify(script), JSON.stringify(assets)],
+  );
+  await fs.mkdir(path.join(cfg.dataDir, "episodes", "ep_long"), { recursive: true });
+}
+
+test("under the hero rule a long video's thumbnails are posters of the right game, and a failed one gives way without blocking", async () => {
+  const { db, s, f, cfg } = await setup({ visionQa: true });
+  await longRankingReady(db, cfg);
+  const seen: any[] = [];
+  s.renderLong = async (input) => {
+    seen.push(input);
+    await fs.writeFile(input.outFile, "mp4");
+    await fs.writeFile(input.posterFile, "jpg");
+    await fs.writeFile(input.thumbFile, "main");
+    for (const v of input.thumbVariants ?? []) await fs.writeFile(v.file, path.basename(v.file));
+  };
+  // The check fails the main thumbnail only; the repair replaces it.
+  s.visionQa = async (_files, ctx) =>
+    ctx.format === "thumbs"
+      ? { verdict: "fail", problems: ["Frame 1: the crop cuts the hero's face in half"], notes: "" }
+      : { verdict: "pass", problems: [], notes: "" };
+  const ep = await getEpisode(db, "ep_long");
+  const { advance } = await import("../src/pipeline.ts");
+  await advance(s, ep!);
+  assert.equal(seen.length, 1, "rendered once");
+  const main = seen[0].thumb;
+  assert.equal(main.layout, "poster");
+  // The writer's cryptic words gave way to plain ones, and the words name no game, so the winner's art leads.
+  assert.equal(main.headline, "HALO RANKED");
+  assert.equal(main.imageFile, "entry_1/assets/a.jpg");
+  assert.ok(seen[0].thumbVariants.every((v: any) => v.thumb.layout === "poster"));
+  const files = [main.imageFile, ...seen[0].thumbVariants.map((v: any) => v.thumb.imageFile)];
+  assert.equal(new Set(files).size, files.length, "every design has its own picture");
+  assert.ok(!files.some((x: string) => /rdr/.test(x)), "never the other game's art");
+  const after = await getEpisode(db, "ep_long");
+  assert.equal(after!.status, "rendered", "a failed thumbnail never stops the video");
+  const dir = path.join(cfg.dataDir, "episodes", "ep_long");
+  assert.equal(await fs.readFile(path.join(dir, "thumb.jpg"), "utf8"), "thumb_hero_b.jpg");
+  assert.deepEqual((after!.assets_json as any).thumbVariants, ["thumb_b.jpg", "thumb_c.jpg"]);
+  assert.ok(f.notifications.some((n) => /failed the hero thumbnail, so the next picture replaced it/.test(n)));
+  await db.close();
+});
+
+test("with THUMB_HERO_RULE off the thumbnails are the older designs", async () => {
+  const { db, s, cfg } = await setup({ visionQa: false, thumbHeroRule: false });
+  await longRankingReady(db, cfg);
+  const seen: any[] = [];
+  s.renderLong = async (input) => {
+    seen.push(input);
+    await fs.writeFile(input.outFile, "mp4");
+    await fs.writeFile(input.posterFile, "jpg");
+    await fs.writeFile(input.thumbFile, "main");
+  };
+  const { advance } = await import("../src/pipeline.ts");
+  await advance(s, (await getEpisode(db, "ep_long"))!);
+  assert.equal(seen.length, 1);
+  assert.notEqual(seen[0].thumb.layout, "poster");
+  assert.equal(seen[0].thumb.headline, "HALO 2 AT 5?");
+  await db.close();
 });

@@ -31,6 +31,10 @@ export type GameplayStatus =
 export interface GameplayMeta {
   id: string;
   status: GameplayStatus;
+  /** A rehearsal clip (src/tools/gameplay-rehearsal.ts): it goes all the way to a Discord notice and never publishes. */
+  rehearsal?: boolean;
+  /** A rehearsal that goes on to Discord whatever the reviewer says, to test the rest of the lane (--force). */
+  rehearsal_force?: boolean;
   source: {
     file: string;
     title: string;
@@ -94,30 +98,46 @@ export async function readMeta(dir: string): Promise<GameplayMeta | undefined> {
  * Google Drive for desktop backs up the Videos folder and holds new files open while it reads
  * them, so on Windows the write or rename fails with EBUSY/EPERM for a few seconds (27 Oct 2026:
  * every clip from the night's stream stuck at "reviewing"). Each attempt uses its own temp name,
- * since the last one may still be held, and waits a little longer before trying again.
+ * since the last one may still be held, and waits a little longer before trying again. A new
+ * folder can stay held for over 15 seconds (4 Nov 2026), so the waits run to over a minute; then
+ * it writes in place, because a verdict matters more than the temp-file nicety. Temp files the
+ * lock kept from being removed go on the next good write.
  */
 export async function writeWhole(
   file: string,
   text: string,
-  waits = [500, 1500, 4000, 10_000],
+  waits = [500, 1500, 4000, 10_000, 20_000, 40_000],
 ): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     const tmp = `${file}.${process.pid}.${attempt}.tmp`;
     try {
       await fs.writeFile(tmp, text);
       await fs.rename(tmp, file);
+      await sweepTemps(file);
       return;
     } catch (err) {
       await fs.rm(tmp, { force: true }).catch(() => undefined);
       const code = (err as NodeJS.ErrnoException).code ?? "";
-      if (
-        !["EBUSY", "EPERM", "EACCES"].includes(code) ||
-        attempt >= waits.length
-      )
-        throw err;
+      if (!["EBUSY", "EPERM", "EACCES"].includes(code)) throw err;
+      if (attempt >= waits.length) {
+        await fs.writeFile(file, text).catch(() => {
+          throw err;
+        });
+        await sweepTemps(file);
+        return;
+      }
       await new Promise((r) => setTimeout(r, waits[attempt]));
     }
   }
+}
+
+/** Removes this file's leftover temp files; one still locked waits for a later write. */
+async function sweepTemps(file: string): Promise<void> {
+  const dir = path.dirname(file);
+  const stem = `${path.basename(file)}.`;
+  for (const name of await fs.readdir(dir).catch(() => [] as string[]))
+    if (name.startsWith(stem) && name.endsWith(".tmp"))
+      await fs.rm(path.join(dir, name), { force: true }).catch(() => undefined);
 }
 
 /** Updates meta.json in place. */
@@ -172,6 +192,11 @@ export const GameplayReviewSchema = z.object({
   game_title: z
     .string()
     .describe("The game, as commonly written, e.g. 'Grand Theft Auto VI'"),
+  real_test: z
+    .boolean()
+    .describe(
+      "True only when the clip really tests its question ('Can you X?') and the answer is visible in the clip. False for a striking moment, a world detail or a first look: Leonida Intel publishes a 'we tested it' article from a true value, unread",
+    ),
   experiment_number: z
     .number()
     .describe(
@@ -239,8 +264,11 @@ The channel makes experiment Shorts: one question, the attempt, the answer. Keep
 When the stream title or the frames fit one of the listed tests, use its number and keep its question's meaning. Otherwise write a fresh question about what the clip actually shows. The question must be answered by the clip itself, and the answer must be what happened, not a guess.
 Mechanics only: never name or hint at story events, characters' fates, missions or endings. A clip that shows a cutscene or plot is spoiler=true.
 Choose a 20-35 second window inside the clip that starts as the attempt begins and ends right after the outcome. Frame k of 8 is at about (k-0.5)/8 of the clip's length.
+Say only what the frames show. Never claim a landing, an escape or a win the last frames do not show ("RIGHT ON THE TARGET" over a parachute still in the air is a false answer): when the clip stops before the outcome, the result line says how far it got. A jump made and a fall under way is an honest answer to "can you jump off it?"; a clip that shows the attempt clearly is not passed over only because it ends there.
+real_test is true only when the clip genuinely tries something a viewer would ask about and shows the answer. A striking moment or a first look of the world can still be kept (question and result describing what is seen), with real_test false.
+When the source is an Xbox clip, the owner pressed record on purpose because he thought the moment was worth showing: judge the moment on its own, and a first look at something new in the world counts as a striking moment.
 Licensed music triggers Content ID: flag radio_audible when the transcript has song lyrics or a DJ, or a radio station name shows on screen.
-Advertiser safety: no gore close-ups, nudity or hate; avoid the words death, kill, war, attack and crisis in the question, title and result line. British spelling in the result, American is fine for the title.`;
+Advertiser safety: no gore close-ups, nudity or hate; pass over violence against bystanders held on screen or zoomed in (YouTube age-restricts realistic game violence against non-combatants); avoid the words death, kill, war, attack and crisis in the question, title and result line. British spelling in the result, American is fine for the title.`;
 
 export async function reviewClip(
   llm: Llm,
@@ -269,6 +297,7 @@ export async function reviewClip(
   content.push({
     type: "text",
     text: [
+      `Source: ${meta.source.kind === "xbox_clip" ? "an Xbox clip the owner saved on purpose" : "a Twitch broadcast the highlight finder cut"}`,
       `Stream title: ${meta.source.title || "(none)"}`,
       `Clip length: ${meta.clip.seconds} s; the finder's peak is at ${meta.clip.peak_in_clip ?? "?"} s`,
       `What Whisper heard: ${transcript.trim() || "(nothing, or it could not listen)"}`,
@@ -311,6 +340,88 @@ export function gameplayWindow(
     start = Math.max(0, end - GAMEPLAY_MIN_SECONDS);
   }
   return { start: Math.round(start * 10) / 10, end: Math.round(end * 10) / 10 };
+}
+
+/**
+ * The window with its dead air gone (4 Nov 2026: all three kept clips of the 26 Oct stream carried a 2.5-4.7 s
+ * black gap from a teleport, the Maze Bank Short had it 5.7 s in, and each stopped short of its payoff because the
+ * reviewer judges from frames 5 s apart). An end within 5 s of the clip's end runs on to the end, then the window
+ * becomes the unbroken stretch that holds that end, as long as at least 12 s remain; otherwise it stays as it was.
+ */
+export function cleanWindow(
+  win: { start: number; end: number },
+  blacks: Array<{ start: number; end: number }>,
+  clipSeconds: number,
+): { start: number; end: number } {
+  const end = clipSeconds - win.end <= 5 ? clipSeconds : win.end;
+  let from = 0;
+  let to = clipSeconds;
+  for (const b of [...blacks].sort((x, y) => x.start - y.start)) {
+    if (b.end <= end) from = Math.max(from, b.end);
+    else if (b.start < to) to = Math.min(to, b.start);
+  }
+  const stop = Math.min(end, to);
+  if (stop - from < 12) return win;
+  // Up to 35 s, keeping the end: the outcome is what a window is for.
+  const start = Math.max(from, win.start, stop - GAMEPLAY_MAX_SECONDS);
+  const min = Math.min(GAMEPLAY_MIN_SECONDS, stop - from);
+  const round = (n: number) => Math.round(n * 10) / 10;
+  return {
+    start: round(stop - start < min ? stop - min : start),
+    end: round(stop),
+  };
+}
+
+/** The black stretches ffmpeg's blackdetect printed. */
+export function parseBlackSpans(
+  stderr: string,
+): Array<{ start: number; end: number }> {
+  return [
+    ...stderr.matchAll(/black_start:([\d.]+) black_end:([\d.]+)/g),
+  ].map((m) => ({ start: Number(m[1]), end: Number(m[2]) }));
+}
+
+/**
+ * ffmpeg's tone map when a capture is HDR: Xbox fixes some games' clips at 4K HDR (support.xbox.com, "Some game
+ * clips can be captured only in 4K HDR") and untouched HDR looks washed out on YouTube. Empty for SDR.
+ */
+export function hdrFilter(colorTransfer: string): string {
+  return /smpte2084|arib-std-b67/.test(colorTransfer)
+    ? "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p,"
+    : "";
+}
+
+/** The reviewer's bar: a clip the owner saved on purpose may have its own (GAMEPLAY_MIN_SCORE_OWN). */
+export function minScoreFor(
+  meta: Pick<GameplayMeta, "source">,
+  cfg: { gameplayMinScore: number; gameplayMinScoreOwn: number },
+): number {
+  return meta.source.kind === "xbox_clip"
+    ? cfg.gameplayMinScoreOwn
+    : cfg.gameplayMinScore;
+}
+
+/** A clip that rehearses the lane: marked so, or anything reviewed up to GAMEPLAY_REHEARSAL_UNTIL (a local date). */
+export function isRehearsal(
+  meta: Pick<GameplayMeta, "rehearsal">,
+  today: string,
+  until: string,
+): boolean {
+  return Boolean(meta.rehearsal) || (Boolean(until) && today <= until);
+}
+
+/**
+ * What Leonida Intel may turn into an article. Its gameplay-articles.mjs publishes "Can you X in GTA 6? We tested
+ * it", marked as reviewed, from any manifest with youtube_id, question and result (Leonida Intel, 4 Nov 2026), so
+ * those two fields go in only for a real test of GTA 6 itself. Everything else leaves them off.
+ */
+export function articleFields(
+  g: { question: string; result: string; real_test?: boolean },
+  game: string,
+): { question?: string; result?: string } {
+  return g.real_test && /grand theft auto vi\b|\bgta (6|vi)\b/i.test(game)
+    ? { question: g.question, result: g.result }
+    : {};
 }
 
 /** Kept, and safe to put in front of the owner. */
@@ -374,6 +485,7 @@ export function gameplayScript(
       experiment_number: exp?.number ?? 0,
       experiment_slug: exp?.slug ?? null,
       radio: r.radio_audible,
+      real_test: r.real_test,
     },
   };
 }
@@ -406,8 +518,8 @@ export async function writeManifest(
     id: string;
     youtube_id: string;
     title: string;
-    question: string;
-    result: string;
+    question?: string;
+    result?: string;
     experiment_slug: string | null;
     published_at: string;
   },

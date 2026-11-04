@@ -150,3 +150,93 @@ test("the bed stays under the voice through short pauses and eases up only in a 
   assert.ok(env[192]! <= 0.0701, "down again by the next word");
   for (let f = 1; f < env.length; f++) assert.ok(Math.abs(env[f]! - env[f - 1]!) < 0.006, `smooth at ${f}`);
 });
+
+// ---- Turning breaths down (Elder Scrolls Short, 4 Nov 2026)
+
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import { FFMPEG } from "../src/lib/bin.ts";
+import { turnDownBreaths } from "../src/voice/breathcheck.ts";
+
+test("a breath just under the audible line is marked for turning down with the audible ones", () => {
+  const near = breathsIn(take(-33, 8)); // 17 dB under the speech: not audible by the line, but the re-encode can put it there
+  assert.equal(near.loudBreaths, 0);
+  assert.equal(near.spans.length, 8);
+  const quiet = breathsIn(take(-40, 8)); // far under: left alone
+  assert.equal(quiet.breaths, 8);
+  assert.equal(quiet.spans.length, 0);
+});
+
+test("one breath left in a 35 s Short is still reported: the check itself did not get looser", () => {
+  const env = take(-28, 1);
+  while (env.length < 1750) env.push(-16); // 35 s
+  const r = breathsIn(env);
+  assert.equal(r.loudBreaths, 1);
+  assert.ok(r.loudPerMinute > 1.5);
+  assert.equal(voiceProblems(r, 150).length, 1);
+});
+
+/** A real file: 2.7 s tones at the speech level with 0.3 s gaps, every breath one audible, the next just under the line. */
+async function voiceFile(dir: string, seconds: number, perSix = true) {
+  const file = path.join(dir, "voice.mp3");
+  const gap = perSix
+    ? "if(lt(mod(t,6),3),0.036,0.030)*sin(2*PI*900*t)"
+    : "0.030*sin(2*PI*900*t)";
+  await promisify(execFile)(FFMPEG, [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    `aevalsrc='if(lt(mod(t,3),2.7),0.22*sin(2*PI*220*t),${gap})':s=44100:d=${seconds}`,
+    "-codec:a",
+    "libmp3lame",
+    "-q:a",
+    "2",
+    file,
+  ]);
+  return file;
+}
+
+test("turning down leaves no audible breath and takes the ones under the line too, timings untouched", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "breaths-"));
+  const file = await voiceFile(dir, 33);
+  const { before, after, passes } = await turnDownBreaths(file);
+  assert.ok(before.loudBreaths >= 3, `${before.loudBreaths} audible before`);
+  assert.ok(before.spans.length > before.loudBreaths, "some just under the line");
+  assert.equal(after.loudBreaths, 0);
+  assert.equal(after.spans.length, 0);
+  assert.equal(passes, 1);
+  assert.ok(Math.abs(after.minutes - before.minutes) <= 0.01);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("a clean take is not re-encoded", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "breaths-"));
+  const file = path.join(dir, "voice.mp3");
+  await promisify(execFile)(FFMPEG, [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "aevalsrc='if(lt(mod(t,3),2.7),0.22*sin(2*PI*220*t),0)':s=44100:d=12",
+    "-codec:a",
+    "libmp3lame",
+    "-q:a",
+    "2",
+    file,
+  ]);
+  const was = await fs.readFile(file);
+  const { passes } = await turnDownBreaths(file);
+  assert.equal(passes, 0);
+  assert.deepEqual(await fs.readFile(file), was);
+  await fs.rm(dir, { recursive: true, force: true });
+});

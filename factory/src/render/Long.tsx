@@ -1208,7 +1208,7 @@ const Backdrop: React.FC<{
       const cutIn = camera?.cuts.get(i);
       const cutOut = camera?.cuts.get(i + 1);
       const move = camera?.shots.get(i);
-      const xf = powerOff?.has(i - 1) || cutIn ? 0 : Math.min(XFADE, s.start);
+      const xf = powerOff?.has(i - 1) || cutIn ? 0 : Math.min(s.xfade ?? XFADE, s.start);
       const seqLen = img && i > 0 ? len + xf : len;
       const cam = (node: React.ReactNode) =>
         cutIn ||
@@ -3811,7 +3811,7 @@ export const Long: React.FC<LongProps> = (props) => {
           const sh = plan.shots[i]!;
           const img = sh.media.type === "image" && i > 0;
           const from = img
-            ? sh.start - (powerOff.has(i - 1) ? 0 : Math.min(XFADE, sh.start))
+            ? sh.start - (powerOff.has(i - 1) ? 0 : Math.min(sh.xfade ?? XFADE, sh.start))
             : sh.start;
           const at = from + (dev.device === "vcr" ? 26 : 3);
           richSoundAt.set(200000 + i, at);
@@ -3890,7 +3890,7 @@ export const Long: React.FC<LongProps> = (props) => {
       const img =
         s.media.type === "image" ? props.images[s.media.index] : undefined;
       if (!img) return;
-      const xf = powerOff.has(i - 1) ? 0 : Math.min(XFADE, s.start);
+      const xf = powerOff.has(i - 1) ? 0 : Math.min(s.xfade ?? XFADE, s.start);
       const from = i > 0 ? s.start - xf : s.start;
       const len = s.end - s.start + (i > 0 ? xf : 0);
       const ph = photoPlan.photos.get(i);

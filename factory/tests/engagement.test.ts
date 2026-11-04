@@ -1,6 +1,11 @@
 // Engagement around a documentary: the chapter list YouTube reads, the first comment's timestamp, the
 // "next" documentary for the end card and the description, the two bookends' timing, and the community
 // post and poll the owner pastes.
+import {
+  HYPE_COMMENT_LINE,
+  HYPE_END_LINE,
+  hypeAllowed,
+} from "../src/youtube/hype.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -270,6 +275,43 @@ test("the documentary's first comment asks one question and points at a chapter 
   assert.deepEqual(pinnedCommentProblems(text), []);
   // Without usable chapters the question still stands, without a timestamp.
   assert.doesNotMatch(docPinnedComment(ep.script_json!, []), /\d:\d\d/);
+});
+
+test("the Hype ask stays off for this channel's size and off every format but the documentary", async () => {
+  const doc = { evergreen_format: "documentary" } as const;
+  const size = (n?: number) => async () => n;
+  assert.equal(await hypeAllowed(false, doc, size(5000)), false, "setting off");
+  assert.equal(await hypeAllowed(true, doc, size(60)), false, "too small");
+  assert.equal(await hypeAllowed(true, doc, size(499)), false);
+  assert.equal(await hypeAllowed(true, doc, size(500)), true);
+  assert.equal(await hypeAllowed(true, doc, size(500_001)), false, "too big");
+  assert.equal(
+    await hypeAllowed(true, doc, async () => {
+      throw new Error("down");
+    }),
+    false,
+    "an unknown size means no ask",
+  );
+  assert.equal(await hypeAllowed(true, doc, size(undefined)), false);
+  for (const other of [
+    {},
+    { evergreen_format: "ranking" as const },
+    { ...doc, explained: true },
+    { ...doc, recap: true },
+  ])
+    assert.equal(await hypeAllowed(true, other, size(5000)), false);
+});
+
+test("the Hype lines pass the comment rule, speak only to the first week and fit where the old line went", () => {
+  const ep = docEpisode();
+  const text = `${docPinnedComment(ep.script_json!, [])} ${HYPE_COMMENT_LINE}`;
+  assert.deepEqual(pinnedCommentProblems(text), []);
+  assert.match(HYPE_COMMENT_LINE, /first week/);
+  assert.match(HYPE_END_LINE, /First week/);
+  assert.ok(
+    HYPE_END_LINE.length <=
+      "A new documentary every month · Shorts every day".length,
+  );
 });
 
 test("every pinned comment follows the owner's rule: a question, no 'let us know', American spelling", () => {

@@ -11,6 +11,7 @@ import { AbsoluteFill, Freeze, Img, staticFile } from "remotion";
 import { ALL_MOTIFS } from "./components/motifs/index.ts";
 import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY, HAND } from "./components/fonts.ts";
+import { posterCrop, posterWords } from "./thumbposter.ts";
 
 export type StudioThumbProps = {
   headline: string;
@@ -658,6 +659,77 @@ export const ClashThumb: React.FC<StudioThumbProps> = ({
     <Signature kicker={kicker} accent={accent} />
   </AbsoluteFill>
 );
+
+/**
+ * The hero rule's design (THUMB_HERO_RULE, src/qa/thumbrule.ts), after the owner's replacement for the rejected Halo
+ * motif thumbnail (Master Chief on the right, HALO 3 ISN'T #1 huge on the left): the art full bleed with one
+ * recognisable subject, 2-4 big words beside it and nothing else, no frame, no panel, no badge.
+ */
+export const PosterThumb: React.FC<
+  StudioThumbProps & { imageAspect?: number; subjectY?: number; zoom?: number }
+> = ({ headline, imageSrc, accent, imageAspect, subjectX, subjectY, zoom }) => {
+  const crop = posterCrop({ aspect: imageAspect ?? W / H, subjectX, subjectY, zoom });
+  const t = posterWords(headline, crop.landX);
+  let at = -1;
+  return (
+    <AbsoluteFill style={{ background: "#07090f", overflow: "hidden" }}>
+      {imageSrc ? (
+        <Img
+          src={imageSrc}
+          style={{
+            position: "absolute",
+            left: crop.left,
+            top: crop.top,
+            width: crop.width,
+            height: crop.height,
+            filter: "saturate(1.12) contrast(1.05)",
+          }}
+        />
+      ) : null}
+      <AbsoluteFill
+        style={{
+          background: `linear-gradient(${t.side === "left" ? "to right" : "to left"}, rgba(5,7,13,0.86) 0%, rgba(5,7,13,0.66) 34%, rgba(5,7,13,0) 62%)`,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: t.box[1],
+          left: t.side === "left" ? t.box[0] : undefined,
+          right: t.side === "right" ? W - t.box[0] - t.box[2] : undefined,
+          width: t.box[2] + 40,
+          textAlign: t.side,
+          fontFamily: DISPLAY,
+          fontSize: t.fontSize,
+          lineHeight: 1.08,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {t.lines.map((line, i) => (
+          <div key={i}>
+            {line.map((w, j) => {
+              at += 1;
+              return (
+                <span
+                  key={j}
+                  style={{
+                    color: at === t.accent ? accent : COLOUR.paper,
+                    WebkitTextStroke: `${Math.round(t.fontSize / 18)}px #030305`,
+                    paintOrder: "stroke fill",
+                    textShadow: `${Math.round(t.fontSize / 26)}px ${Math.round(t.fontSize / 26)}px 0 #030305`,
+                  }}
+                >
+                  {w}
+                  {j < line.length - 1 ? " " : ""}
+                </span>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </AbsoluteFill>
+  );
+};
 
 /**
  * The video's own look (src/render/components/motifs): its series', console's or genre's card frozen at

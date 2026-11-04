@@ -95,7 +95,7 @@ const ROMAN: Record<string, number> = {
 };
 
 /** Ordered words with sequel numbers kept and Roman numerals as digits ("VII" and "7" match). */
-function nameWords(name: string): string[] {
+export function nameWords(name: string): string[] {
   return name
     .toLowerCase()
     .replace(/['’]s\b/g, "")

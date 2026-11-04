@@ -15,8 +15,8 @@ import {
   type KineticFillerData,
   type MomentFiller,
 } from "./fillerplan.ts";
-import { wordTimes } from "./components/kinetic/words.ts";
 import { capSamePicture, type PictureCapMedia } from "./picturecap.ts";
+import { wordTimes } from "./components/kinetic/words.ts";
 
 export const LONG_FPS = 30;
 export const LONG_WIDTH = 1920;
@@ -315,6 +315,13 @@ export interface LongPlanInput {
   durationSeconds: number; // includes the tail
   images: LongImage[];
   clips: LongClip[];
+  /**
+   * LONG_SAME_PICTURE_MAX_SECONDS (./picturecap.ts): no one still for more than this in any minute. Unset or 0: the
+   * plan as it was.
+   */
+  samePictureMaxSeconds?: number;
+  /** LONG_STILL_XFADE_FRAMES, a test dial: how long a still dissolves in, in frames. Unset: the composition's own 9. */
+  stillXfadeFrames?: number;
   variant: number;
   /** Moments per ranking entry: when given, each sentence gets its own matched picture. */
   momentCounts?: number[];
@@ -349,13 +356,6 @@ export interface LongPlanInput {
    * played; it shows the plate instead, which the thin-entry top-up then fills with official screenshots.
    */
   noRepeats?: boolean;
-  /**
-   * LONG_SAME_PICTURE_MAX_SECONDS (./picturecap.ts): no one still for more than this in any minute. Unset or 0: the
-   * plan as it was.
-   */
-  samePictureMaxSeconds?: number;
-  /** LONG_STILL_XFADE_FRAMES, a test dial: how long a still dissolves in, in frames. Unset: the composition's own 9. */
-  stillXfadeFrames?: number;
 }
 
 const PREVIEW_STOP = new Set(

@@ -125,6 +125,7 @@ import {
 } from "./editorial/documentary.ts";
 import { groundOpenLoops, openLoopsLine } from "./editorial/openloops.ts";
 import { structureLine, structureSummary } from "./render/structure.ts";
+import { wholeLineFiller } from "./render/fillerplan.ts";
 import {
   longCraft,
   longCraftEvent,
@@ -6982,6 +6983,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       clips: assets.clips ?? [],
       variant: variantOf(ep.id),
       sketches: s.cfg.illustrate,
+      pickedWords: !s.cfg.graphicsFit,
       check: episodeClipCheck(dir),
       now: s.now(),
       headline: script.headline,
@@ -7066,10 +7068,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     span: c.span,
   }));
   // A sentence's filler visual, read afresh each time: one the graphics check faulted is left out.
-  const fillerAt = (e: number, m: number) =>
-    s.cfg.fillers && !(assets.quietMoments ?? []).includes(`${e}:${m}`)
-      ? moments[e]?.[m]?.filler
-      : undefined;
+  const fillerAt = (e: number, m: number) => {
+    if (!s.cfg.fillers || (assets.quietMoments ?? []).includes(`${e}:${m}`))
+      return undefined;
+    const f = moments[e]?.[m]?.filler;
+    return f && s.cfg.graphicsFit
+      ? wholeLineFiller(f, moments[e]?.[m]?.emphasis)
+      : f;
+  };
   const makePlan = () =>
     buildLongPlan({
       segments,
@@ -7792,6 +7798,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     // Photos and portraits as instant prints, tape, pins, trays and screens; screenshots in the display
     // of their day (src/render/photoplan.ts).
     photoTreatments: s.cfg.photoTreatments,
+    // Graphics measure their text to fit (GRAPHICS_FIT).
+    graphicsFit: s.cfg.graphicsFit,
     // The documentary's sound craft and the narration's texture slices (src/render/soundfx.ts, voicefx.ts).
     soundCraft,
     voiceFxFiles,

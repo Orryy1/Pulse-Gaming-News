@@ -152,8 +152,11 @@ export const Scale: React.FC<KineticProps> = ({
   const { frame, fps, out } = useClock(len);
   const words = shownWords(data);
   const land = landFrames(data, times, fps, len);
-  const heroK = data.shown.indexOf(data.hero);
+  // A finishing card: the giant word is the line's last word, and the small line stops just before it.
+  const finishing = !!data.finish && words.length > 1;
+  const heroK = finishing ? words.length - 1 : data.shown.indexOf(data.hero);
   const hero = words[heroK]!.toUpperCase();
+  const lead = finishing ? words.slice(0, -1) : words;
   // The hero grows 12% over the shot after landing, so its size leaves that room inside the safe width.
   const big = fitSize(
     hero,
@@ -161,7 +164,7 @@ export const Scale: React.FC<KineticProps> = ({
     MAX_W / 1.12,
     [520, 460, 400, 350, 300, 260, 220, 190],
   ).size;
-  const small = fitBlock(words.join(" ").toUpperCase(), "inter", {
+  const small = fitBlock(lead.join(" ").toUpperCase(), "inter", {
     maxWidth: MAX_W,
     sizes: [56, 50, 44, 40, 36],
     maxLines: 2,
@@ -188,7 +191,7 @@ export const Scale: React.FC<KineticProps> = ({
             lineHeight: 1.25,
           }}
         >
-          {words.map((w, k) => (
+          {lead.map((w, k) => (
             <span
               key={k}
               style={{
@@ -203,7 +206,7 @@ export const Scale: React.FC<KineticProps> = ({
               }}
             >
               {w.toUpperCase()}
-              {k < words.length - 1 ? " " : ""}
+              {k < lead.length - 1 ? " " : ""}
             </span>
           ))}
         </div>

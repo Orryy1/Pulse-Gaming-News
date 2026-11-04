@@ -279,6 +279,7 @@ export function testConfig(
     shortCraftCamera: true,
     shortsClean: true,
     graphicsPrepass: true,
+    graphicsFit: true,
     graphicsPrepassMax: 200,
     graphicsRerenderPasses: 1,
     graphicsPostcheckMax: 32,

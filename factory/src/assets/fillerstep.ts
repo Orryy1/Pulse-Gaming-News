@@ -120,6 +120,8 @@ export async function chooseEpisodeFillers(args: {
   clips: FillerClip[];
   variant: number;
   sketches: boolean;
+  /** GRAPHICS_FIT off: a kinetic line may be a pick of a sentence's words. */
+  pickedWords?: boolean;
   check: ReconClipCheck;
   now: Date;
   headline: string;
@@ -141,6 +143,7 @@ export async function chooseEpisodeFillers(args: {
       seed: args.variant,
       recon: recon.picks,
       sketches: args.sketches,
+      pickedWords: args.pickedWords,
     });
     applyFillers(args.chapters, choice);
     const sketches = args.images.filter(

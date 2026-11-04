@@ -23,6 +23,7 @@ import {
   FRAME_W,
   SETTLED,
   camera,
+  settledBy,
   layoutPage,
   markTiming,
   shotTiming,
@@ -332,7 +333,8 @@ export const DocumentShot: React.FC<DocumentShotProps> = ({
   const Page = PAGES[scene.kind];
   const seed = scene.seed;
   const board = scene.kind === "ideas" || scene.kind === "reviews";
-  const t = shotTiming(markTiming(words, scene.mark), !!L.signature);
+  const t = shotTiming(markTiming(words, scene.mark), !!L.signature, len);
+  const settled = settledBy(len);
   const cam = camera(L.w, L.h, L.focus);
 
   // The page lands (about 20 frames), then the camera pushes in to arrive just before the mark.
@@ -359,7 +361,7 @@ export const DocumentShot: React.FC<DocumentShotProps> = ({
     easing: Easing.inOut(Easing.quad),
   });
   const signFrom = t.to + 3;
-  const signTo = Math.min(SETTLED - 8, signFrom + 24);
+  const signTo = Math.min(settled - 8, signFrom + 24);
   const sp = L.signature
     ? interpolate(frame, [signFrom, signTo], [0, 1], {
         ...clamp,
@@ -377,7 +379,7 @@ export const DocumentShot: React.FC<DocumentShotProps> = ({
   });
   const toolOut = interpolate(
     frame,
-    [done + 2, Math.max(done + 3, Math.min(SETTLED, done + 16))],
+    [done + 2, Math.max(done + 3, Math.min(settled, done + 16))],
     [0, 1],
     {
       ...clamp,
@@ -407,8 +409,7 @@ export const DocumentShot: React.FC<DocumentShotProps> = ({
       : L.style === "underline" && scene.kind === "contract"
         ? "pen"
         : "red";
-  const showTool =
-    frame >= t.from - 12 && frame <= Math.min(SETTLED, done + 16);
+  const showTool = frame >= t.from - 12 && frame < Math.min(settled, done + 16);
 
   const tilt = (rnd(seed, 7) * 2 - 1) * 1.4;
   const enterRot = -6 + tilt;

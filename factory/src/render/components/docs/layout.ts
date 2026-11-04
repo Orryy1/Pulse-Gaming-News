@@ -202,14 +202,38 @@ export function markTiming(
 export function shotTiming(
   t: { from: number; to: number; matched: boolean },
   signature: boolean,
+  len?: number,
 ): { from: number; to: number; matched: boolean } {
-  if (!signature) return t;
-  const from = Math.min(t.from, 46);
-  return { ...t, from, to: from + Math.min(16, Math.max(10, t.to - t.from)) };
+  const paced = !signature
+    ? t
+    : (() => {
+        const from = Math.min(t.from, 46);
+        return {
+          ...t,
+          from,
+          to: from + Math.min(16, Math.max(10, t.to - t.from)),
+        };
+      })();
+  if (len === undefined) return paced;
+  // In a short shot the whole move still ends in time (settledBy): the tool leaves before the last frames.
+  const latest = settledBy(len) - (signature ? 25 : 18);
+  if (paced.to <= latest) return paced;
+  const to = Math.max(14, latest);
+  return { ...paced, to, from: Math.max(4, Math.min(paced.from, to - 10)) };
 }
 
 /** The frame the whole move settles by: pen gone, signature done. */
 export const SETTLED = 98;
+
+/**
+ * The same for a shot of `len` frames. A short line's document ends before frame 98, so until 4 Nov 2026 its
+ * pen or highlighter was still lying across the words when the shot cut away ("Even the windows needed an
+ * NDA", "had out", "inside its"), and the graphics check muted it. The check's still is taken 12 frames before
+ * the end (src/render/fillerplan.ts fillerSettle), the same moment.
+ */
+export function settledBy(len: number): number {
+  return Math.min(SETTLED, Math.max(24, len - 12));
+}
 
 /** The camera: the whole page in view as it lands, then pushed in on the line that matters. */
 export interface Camera {

@@ -320,6 +320,8 @@ export type LongProps = {
   sketchAnimation?: boolean;
   /** Photos and portraits arriving as prints, pins, tape, trays and screens (src/render/photoplan.ts); false keeps the static framed print and the full-bleed screenshot. Default true. */
   photoTreatments?: boolean;
+  /** GRAPHICS_FIT: graphics measure their text to fit (compare card, ./components/LongMoments.tsx); false keeps the old layout. Default true. */
+  graphicsFit?: boolean;
   /** The documentary's camera grammar (src/render/camera.ts, DOC_CAMERA): the techniques it may use. Absent: none. */
   camera?: CameraTechnique[];
   /** Previews only (data/smoke/camera.mts): print the camera's chosen moves to the browser console. */
@@ -4567,7 +4569,11 @@ export const Long: React.FC<LongProps> = (props) => {
                 m.graphic.kind,
               ) ? (
               <>
-                <MomentGraphicCard g={m.graphic} len={len} />
+                <MomentGraphicCard
+                  g={m.graphic}
+                  len={len}
+                  fit={props.graphicsFit !== false}
+                />
                 {momentSounds.get(k) ? (
                   <Sfx name={momentSounds.get(k)!} volume={LEVEL.glintLong} />
                 ) : null}

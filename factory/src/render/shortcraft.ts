@@ -455,6 +455,7 @@ export function pickFillers(
           index: i,
           seed: input.seed,
           previous: previousStyle,
+          complete: false,
         });
     if (k) {
       out.push({

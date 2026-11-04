@@ -130,6 +130,7 @@ export function offersFor(
   k: number,
   recon: ReconCandidate | undefined,
   seed: number,
+  complete: boolean,
 ): { offers: Offer[]; declined: Partial<Record<FillerFamily, string>> } {
   const sentence = ch.sentences[k] ?? "";
   const m = ch.moments[k]!;
@@ -141,7 +142,11 @@ export function offersFor(
   };
   const offers: Offer[] = [];
   const declined: Partial<Record<FillerFamily, string>> = {};
-  const kv = kineticVerdict(sentence, m, chapter, { index: k, seed });
+  const kv = kineticVerdict(sentence, m, chapter, {
+    index: k,
+    seed,
+    complete,
+  });
   if ("candidate" in kv)
     offers.push({
       family: "kinetic",
@@ -237,6 +242,8 @@ export interface ChooseOptions {
   recon?: Map<number, Map<number, ReconCandidate>>;
   /** ILLUSTRATE_ENABLED: says so when a line left bare is one a sketch would suit. */
   sketches?: boolean;
+  /** GRAPHICS_FIT off: a kinetic line may be a pick of a sentence's words, as before 4 Nov 2026. */
+  pickedWords?: boolean;
 }
 
 const short = (s: string, n = 90) =>
@@ -267,6 +274,7 @@ export function chooseFillers(
         k,
         opts.recon?.get(ch.entry)?.get(k),
         opts.seed + ch.entry,
+        !opts.pickedWords,
       );
       declines.set(k, o.declined);
       offers.set(
@@ -364,7 +372,12 @@ export function chooseFillers(
             sentences: ch.sentences,
             moments: ch.moments,
           },
-          { index: k, seed: opts.seed + ch.entry, previous: previousKinetic },
+          {
+            index: k,
+            seed: opts.seed + ch.entry,
+            previous: previousKinetic,
+            complete: !opts.pickedWords,
+          },
         );
         const card = (
           "candidate" in v ? v.candidate.data : o.raw

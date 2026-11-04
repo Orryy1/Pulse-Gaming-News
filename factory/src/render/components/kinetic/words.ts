@@ -12,6 +12,18 @@ import { speakable } from "../../../voice/speakable.ts";
 
 /** At most this many words of a sentence on screen at once (brief, 31 Oct 2026). */
 export const MAX_SHOWN = 6;
+/**
+ * A line up to this long goes on screen whole (GRAPHICS_FIT). A shortened line stopped being a sentence: the
+ * FFXIV documentary (4 Nov 2026) had "DID THEY WANT YOU TO FIND" from "What did they want you to find there?"
+ * and "PROMISED PLAYSTATION VERSION EVER REACH PLAYERS?", and the graphics check muted them as garbled.
+ */
+export const WHOLE_LINE_MAX = 10;
+// A closing clause that opens on one of these leans on the words before it, so it cannot stand alone.
+const LEANS_BACK = new Set(
+  "which who whom whose that and but or nor so because since as though although while when where if than whereas".split(
+    " ",
+  ),
+);
 
 /** A word as the screen shows it: outer quotes and trailing punctuation off, inner apostrophes kept. */
 export function displayWord(w: string): string {
@@ -187,19 +199,55 @@ export interface KeyWords {
 }
 
 /**
+ * The tokens of a sentence that read as a complete thought on their own: all of a line up to WHOLE_LINE_MAX
+ * words, else its longest closing clause (after a comma, colon or semicolon) of three to WHOLE_LINE_MAX words
+ * that does not lean on what came before. Undefined when there is none: the sentence is not one to set in type.
+ */
+export function completeRun(toks: string[]): number[] | undefined {
+  const real = toks.map((_, i) => i).filter((i) => norm(toks[i]!));
+  if (real.length && toks.length <= WHOLE_LINE_MAX) return real;
+  for (let i = 1; i < toks.length; i++) {
+    if (!/[,;:]$/.test(toks[i - 1]!)) continue;
+    const n = toks.length - i;
+    if (n < 3 || n > WHOLE_LINE_MAX || LEANS_BACK.has(norm(toks[i]!))) continue;
+    return real.filter((k) => k >= i);
+  }
+  return undefined;
+}
+
+/**
+ * Whether the line's last word can be the giant word that finishes it (the scale style): a word that means
+ * something, of three letters or more. "THE SECOND WEEK WENT NO" then "BETTER" reads as one sentence; a giant
+ * "IT" or "EITHER" would not.
+ */
+export function canFinish(toks: string[], shown: number[]): boolean {
+  const last = shown[shown.length - 1];
+  if (last === undefined || shown.length < 2) return false;
+  const n = norm(toks[last]!);
+  return n.length >= 3 && !STOP.has(n) && !WEAK.has(n);
+}
+
+/**
  * The words of a sentence that go on screen: a short line (six words or fewer) whole; a longer one by
  * score, the moment's emphasis phrase first when it fits, then figures, names, the final punch word and the
  * strongest content words, with a single small word kept where it joins two chosen ones into a phrase.
- * Undefined when nothing in the sentence is worth setting.
+ * Undefined when nothing in the sentence is worth setting. With `complete` (GRAPHICS_FIT, the default) the
+ * screen only ever shows a complete thought (completeRun), never a pick of words from it.
  */
 export function keyWords(
   sentence: string,
   emphasis?: string,
+  complete = true,
 ): KeyWords | undefined {
   const toks = tokens(sentence);
   if (!toks.length) return undefined;
   const scores = wordScores(toks, emphasis);
   const best = (idx: number[]) => heroOf(toks, idx, emphasis);
+  if (complete) {
+    const run = completeRun(toks);
+    if (!run?.some((i) => scores[i]! > 0)) return undefined;
+    return { tokens: toks, shown: run, hero: best(run) };
+  }
   if (toks.length <= MAX_SHOWN) {
     const all = toks.map((_, i) => i).filter((i) => norm(toks[i]!));
     if (!all.some((i) => scores[i]! > 0)) return undefined;

@@ -36,6 +36,8 @@ export interface FillerAt {
   seed?: number;
   /** The style the previous filler of this family used, so the next one differs. */
   previous?: string;
+  /** GRAPHICS_FIT (the default): a kinetic line is a complete thought; false allows a pick of its words. */
+  complete?: boolean;
 }
 
 /**

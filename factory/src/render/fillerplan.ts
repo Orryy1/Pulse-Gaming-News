@@ -7,7 +7,7 @@
 // graphics check and the release gate look), the reconstruction's playback rate and each family's entry sound.
 // Pure and free of node modules, so both the Remotion bundle and the pipeline import it.
 
-import type { KineticData } from "./components/kinetic/choose.ts";
+import { completeCard, type KineticData } from "./components/kinetic/choose.ts";
 import type { DiagramData } from "./components/diagram/choose.ts";
 import type { DocScene } from "./components/docs/choose.ts";
 import type { ReconTag } from "../assets/recon.ts";
@@ -156,6 +156,23 @@ export function fillerSettle(
   else if (f.family === "recon") at = RECON_SETTLED;
   else at = SCENE_SETTLED;
   return Math.max(0, Math.min(len - 12, at));
+}
+
+/**
+ * A filler as GRAPHICS_FIT draws it: a kinetic card chosen earlier is brought up to a complete thought
+ * (kinetic/choose.ts completeCard), and one with no complete thought short enough is left out so the sentence
+ * goes back to its pictures. Every other family is unchanged.
+ */
+export function wholeLineFiller(
+  f: MomentFiller,
+  emphasis?: string,
+): MomentFiller | undefined {
+  if (f.family !== "kinetic") return f;
+  const d = f.data as KineticFillerData;
+  const done = completeCard(d.card, f.style, emphasis);
+  return done
+    ? { ...f, style: done.style, data: { ...d, card: done.card } }
+    : undefined;
 }
 
 /** A spoken word with its time in seconds from the start of the narration. */

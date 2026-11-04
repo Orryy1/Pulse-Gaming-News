@@ -51,6 +51,7 @@ export const KINETIC: Record<KineticStyle, KineticEntry> = {
 };
 
 export {
+  completeCard,
   kineticFor,
   kineticVerdict,
   KINETIC_STYLES,

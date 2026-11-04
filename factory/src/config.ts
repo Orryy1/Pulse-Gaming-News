@@ -237,6 +237,12 @@ export interface Config {
   gameplayRemindHours: number; // one reminder with fresh links this long after the notice; 0 = none
   gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
+  longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
+  planSlateMax: number; // 0-1, the share of a long video that may sit on the empty slate before its render is stopped
+  releaseGateMaxSlate: number; // 0-1, the same on the finished picture at the release gate
+  releaseGateMinFootage: number; // 0-1, a documentary's share of game footage when the game has plenty of it
+  releaseGateMinFootageRanking: number; // 0-1, the same for a ranking
+  writerNotesGuard: boolean; // writer's notes (src/editorial/writernotes.ts) are sent back, and stop the video before the voice and at release; on by default
   docTestEvidence: boolean; // a run documentary may use approved gameplay tests as a source (src/editorial/testevidence.ts)
   commentReplies: boolean; // answer good comments in a video's first hours
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
@@ -291,6 +297,11 @@ export interface Config {
    * grid in its next layout with other pictures, before another design takes its place: THUMB_MOTIF_REPAIR,
    * default on (owner, 31 Oct 2026: keep the grid look). */
   thumbMotifRepair: boolean;
+  /** The long-video thumbnail rule: one recognisable hero from the right game, 1-4 big words, no frames, visors or
+   * small panels (src/qa/thumbrule.ts). The GTA cover grid stays as the approved special case; a thumbnail that
+   * fails the check gives way to the next design and never holds a release: THUMB_HERO_RULE, default on
+   * (owner, 3-4 Nov 2026). */
+  thumbHeroRule: boolean;
   /** Documentaries open on the signature three seconds (sting, mark, one line of the hook): DOC_COLD_OPEN, default on. */
   docColdOpen: boolean;
   /** The documentary's title lands as a card on the cold open's last beat instead of over its first seconds
@@ -578,6 +589,41 @@ export interface Config {
    * open then shows (src/editorial/longform.ts): LONG_PUNCHY_HOOK, default on. Off: under 15 words, as before. */
   longPunchyHook: boolean;
   /**
+   * The rules from the Inspiration study (reports/Inspiration playlist forensics.md; src/editorial/longrules.ts). All
+   * off by default; a miss costs at most one revision and is then a style warning.
+   * LONG_YOU_PER_1000: the least "you" per 1,000 words in a long video, measured on the script (0: not measured).
+   * GUIDE_YOU_PER_1000: the same in a guide, used only when LONG_YOU_PER_1000 is on (default 35).
+   */
+  longYouPer1000: number;
+  guideYouPer1000: number;
+  /**
+   * DOC_META_GUARD: a chapter that talks about its brief instead of the story ("this excerpt", "shouldn't be recorded")
+   * is sent back, and dropped if it still does. The FFXIV documentary of 4 Nov carried one, voiced.
+   */
+  docMetaGuard: boolean;
+  /** LONG_SENTENCE_GATE: the mean sentence stays under this many words on rankings and guides (0: not measured). */
+  longSentenceGate: number;
+  /** LONG_HOOK_STACK: the opening stacks the stakes, 3 to this many named surprises, a trust line and a saved promise (0: the older opening). */
+  longHookStack: number;
+  /** LONG_OPEN_LOOPS_MAX: the most open loops a guide plans; rankings get real ones, up to 3 (0: as before). */
+  longOpenLoopsMax: number;
+  /** LOOP_NAME_PAYOFF: a payoff says out loud that it's the promise being kept. */
+  loopNamePayoff: boolean;
+  /** LONG_VERDICT_STAMPS: confirmed, reported and busted, spoken and stamped in a guide, under the rumour rules. */
+  longVerdictStamps: boolean;
+  /** LONG_GUIDE_FORMAT: a run entry with format "guide" (src/shortrun.ts) follows the player's journey. Off: it runs as a documentary. */
+  longGuideFormat: boolean;
+  /** GUIDE_CHAPTER_ACTION: each guide chapter ends in a job for day one. */
+  guideChapterAction: boolean;
+  /** LONG_SAME_PICTURE_MAX_SECONDS: no one still for more than this in any minute (src/render/picturecap.ts; 0: off). */
+  longSamePictureMaxSeconds: number;
+  /** LONG_CARD_SHARE: fillers may also take lines with a still of their own until this share of sentences carries a card, 0-1 (0: off). */
+  longCardShare: number;
+  /** LONG_STILL_XFADE_FRAMES: a long video's dissolve between stills, in frames: a test dial only (9: as today, 0: hard cuts). */
+  longStillXfadeFrames: number;
+  /** LONG_MIN_WPM: a test dial only: rankings slower than this are sped up, documentaries never (0: off). */
+  longMinWpm: number;
+  /**
    * A documentary's sound craft (src/render/soundfx.ts, 31 Oct 2026), each part on by default: SOUND_JL_CUTS
    * (a clip's game sound leads or trails its picture), SOUND_GAME_POCKETS (game sound up in long pauses),
    * SOUND_FOLEY (treatments and devices make their own small sounds), SOUND_RISERS (a riser into each
@@ -835,6 +881,12 @@ export function loadConfig(): Config {
     gameplayRemindHours: int("GAMEPLAY_REMIND_HOURS", 12),
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),
+    longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
+    planSlateMax: Number(str("PLAN_SLATE_MAX", "0.08")) || 0.08,
+    releaseGateMaxSlate: Number(str("RELEASE_GATE_MAX_SLATE", "0.08")) || 0.08,
+    releaseGateMinFootage: Number(str("RELEASE_GATE_MIN_FOOTAGE", "0.1")) || 0.1,
+    releaseGateMinFootageRanking: Number(str("RELEASE_GATE_MIN_FOOTAGE_RANKING", "0.05")) || 0.05,
+    writerNotesGuard: bool("WRITER_NOTES_GUARD", true),
     docTestEvidence: bool("DOC_TEST_EVIDENCE", false),
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),
@@ -921,6 +973,7 @@ export function loadConfig(): Config {
     docSoundBeats: bool("DOC_SOUND_BEATS", true),
     docEndCard: bool("DOC_END_CARD", true),
     thumbMotifRepair: bool("THUMB_MOTIF_REPAIR", true),
+    thumbHeroRule: bool("THUMB_HERO_RULE", true),
     docColdOpen: bool("DOC_COLD_OPEN", true),
     docTitleDrop: bool("DOC_TITLE_DROP", true),
     docOpenLoops: bool("DOC_OPEN_LOOPS", true),
@@ -1118,6 +1171,20 @@ export function loadConfig(): Config {
     ),
     longEntryPace: bool("LONG_ENTRY_PACE", true),
     longPunchyHook: bool("LONG_PUNCHY_HOOK", true),
+    longYouPer1000: int("LONG_YOU_PER_1000", 0),
+    guideYouPer1000: int("GUIDE_YOU_PER_1000", 35),
+    docMetaGuard: bool("DOC_META_GUARD", false),
+    longSentenceGate: int("LONG_SENTENCE_GATE", 0),
+    longHookStack: int("LONG_HOOK_STACK", 0),
+    longOpenLoopsMax: int("LONG_OPEN_LOOPS_MAX", 0),
+    loopNamePayoff: bool("LOOP_NAME_PAYOFF", false),
+    longVerdictStamps: bool("LONG_VERDICT_STAMPS", false),
+    longGuideFormat: bool("LONG_GUIDE_FORMAT", false),
+    guideChapterAction: bool("GUIDE_CHAPTER_ACTION", false),
+    longSamePictureMaxSeconds: int("LONG_SAME_PICTURE_MAX_SECONDS", 0),
+    longCardShare: Number(str("LONG_CARD_SHARE", "0")) || 0,
+    longStillXfadeFrames: int("LONG_STILL_XFADE_FRAMES", 9),
+    longMinWpm: int("LONG_MIN_WPM", 0),
     soundCraft: {
       jl: bool("SOUND_JL_CUTS", true),
       pockets: bool("SOUND_GAME_POCKETS", true),

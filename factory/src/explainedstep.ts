@@ -20,7 +20,9 @@ import {
   demandFor,
   type Demand,
 } from "./discovery/searchdemand.ts";
+import { guardScript } from "./writerguard.ts";
 import {
+  chapterRefusal,
   checkChapter,
   groundCallouts,
   groundDocMoments,
@@ -56,6 +58,7 @@ import {
   type StoryShort,
   type StorySighting,
 } from "./editorial/explained.ts";
+import { longRulesFor, youShortfall } from "./editorial/longrules.ts";
 import { dayKey } from "./lanes.ts";
 import { errorMessage, FatalError, log } from "./lib/util.ts";
 
@@ -322,6 +325,7 @@ export async function stepScriptExplained(
     moments?: DocMoment[];
   }> = [];
   const games = [story.game || outline.title];
+  const youFloor = longRulesFor(s.cfg, "explained").youFloor;
   for (const [index] of EXPLAINED_PARTS.entries()) {
     let chapter: DocChapter | undefined;
     let feedback: string[] = [];
@@ -333,7 +337,17 @@ export async function stepScriptExplained(
         source,
         earlier: done.map((d) => d.chapter),
         feedback,
+        youFloor,
       });
+      // LONG_YOU_PER_1000: on the first draft only, so it costs one revision at most.
+      const you =
+        attempt === 0
+          ? youShortfall(
+              done.map((d) => d.chapter.paragraphs.map((x) => x.narration).join(" ")),
+              chapter.paragraphs.map((x) => x.narration).join(" "),
+              youFloor,
+            )
+          : undefined;
       const unsupported = await checkChapter(s.llm, chapter, source).catch(
         () => [] as string[],
       );
@@ -344,6 +358,7 @@ export async function stepScriptExplained(
           game: story.game,
           index,
         }),
+        ...(you ? [you] : []),
         ...unsupported.map(
           (u) => `Not supported by the sources, remove or correct it: ${u}`,
         ),
@@ -354,6 +369,10 @@ export async function stepScriptExplained(
           ...feedback.map((f) => `${EXPLAINED_PARTS[index]!.label}: ${f}`),
         );
     }
+    if (s.cfg.writerNotesGuard && chapterRefusal(chapter!).length)
+      throw new FatalError(
+        `explainer part "${EXPLAINED_PARTS[index]!.label}" refused: ${chapterRefusal(chapter!)[0]!.slice(0, 200)}`,
+      );
     const grounded = groundCallouts(chapter!, source);
     warnings.push(
       ...grounded.removed.map(
@@ -428,6 +447,7 @@ export async function stepScriptExplained(
   if (warnings.length)
     await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
   const script = explainedToScript(story, outline, done, bookends);
+  await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {

@@ -28,8 +28,8 @@ import { placeFor } from "../render/places.ts";
 import { REHOOK_RULE, rehookProblems } from "./rehooks.ts";
 import {
   OPEN_LOOP_RULE,
+  openLoopRule,
   OpenLoopSchema,
-  OPEN_LOOPS_MAX,
   bookendEchoProblems,
   deriveOpenLoops,
   loopBrief,
@@ -39,7 +39,29 @@ import {
   type OpenLoop,
 } from "./openloops.ts";
 import { sentencesOf } from "./longform.ts";
+import { writerNoteProblems } from "./writernotes.ts";
 import { EVIDENCE_RULE } from "./evidence.ts";
+import {
+  GUIDE_OUTLINE_RULE,
+  HookStackSchema,
+  LOOP_NAME_RULE,
+  NO_LONG_RULES,
+  VERDICT_RULE,
+  VERDICT_STAMP_RULE,
+  guideActionProblems,
+  guideChapterShape,
+  hookStackProblems,
+  hookStackRule,
+  longRulesOn,
+  namedPayoffProblems,
+  sentenceRule,
+  sentenceShortfall,
+  verdictHookProblems,
+  verdictProblem,
+  youRule,
+  youShortfall,
+  type LongRules,
+} from "./longrules.ts";
 import {
   DOC_BEAT_KINDS,
   groundBeats,
@@ -56,6 +78,12 @@ export const DOC_CHAPTER_WORDS_MIN = 380;
 export const DOC_CHAPTER_WORDS_MAX = 780;
 export const DOC_WORDS_MIN = 3200;
 export const DOC_WORDS_MAX = 6400;
+/** Characters of a chapter's article the writer sees, the sections about its focus first. */
+export const DOC_CHAPTER_SOURCE_CHARS = 16000;
+/** A chapter that was short of evidence gets this much of each article, and of the documentary's other articles. */
+export const DOC_WIDE_SOURCE_CHARS = 24000;
+/** The overview the outline is planned from: every chapter it plans has to be documented in here. */
+export const DOC_OUTLINE_SOURCE_CHARS = 12000;
 
 /** Franchises with a long, well-documented history and official footage on Steam or the publisher's channel. */
 export const DOC_FRANCHISES = [
@@ -295,6 +323,10 @@ export type DocTopic = z.infer<typeof DocTopicSchema> & {
   wiki?: string;
   /** Approved gameplay tests that count as a source for this documentary alone (src/editorial/testevidence.ts). */
   test_records?: import("./testevidence.ts").TestRecord[];
+  /** A planned entry's own format (src/shortrun.ts): a guide follows the player's journey when LONG_GUIDE_FORMAT is on. */
+  format?: "guide";
+  /** A planned entry's own sources, read and added to every chapter's source, beside its Wikipedia article. */
+  sources?: Array<{ url: string; source: string; official?: boolean }>;
 };
 
 export async function selectDocTopic(
@@ -399,10 +431,10 @@ export const DocOutlineSchema = z.object({
   // keeps only the loops that can work.
   open_loops: z
     .array(OpenLoopSchema)
-    .max(OPEN_LOOPS_MAX + 2)
+    .max(14)
     .optional()
     .describe(
-      "2-4 questions the documentary raises early and answers in a later chapter",
+      "Questions the video raises early and answers in a later chapter, as many as the brief says",
     ),
   youtube: z.object({
     title: z
@@ -413,7 +445,7 @@ export const DocOutlineSchema = z.object({
     thumb_text: z
       .string()
       .describe(
-        "1-4 words in capitals for the thumbnail that add the hook or the emotion and never repeat the title: 'THE $69B MISTAKE', 'NEVER RELEASED', 'IT WAS A TRAP'. In a study of 1,598 gaming thumbnails, short hook text beat restated titles, dates and 'Top 10' labels",
+        "1-4 words in capitals for the thumbnail that add the hook or the emotion and do not restate the whole title (one strong word from its promise is fine), and that make sense to someone who has not watched (no bare ranks like 'HALO 2 AT 5?'): 'THE $69B MISTAKE', 'NEVER RELEASED', 'IT WAS A TRAP'. In a study of 1,598 gaming thumbnails, short hook text beat restated titles, dates and 'Top 10' labels",
       )
       .optional(),
     description: z
@@ -431,16 +463,28 @@ export async function outlineDoc(
   topic: DocTopic,
   franchiseNotes: string,
   /** openLoops (DOC_OPEN_LOOPS): the outline also lists the questions to raise and answer (OPEN_LOOP_RULE). */
-  opts: { openLoops?: boolean } = {},
+  opts: { openLoops?: boolean; rules?: LongRules } = {},
 ): Promise<DocOutline> {
-  const loops = opts.openLoops ? `\n\n${OPEN_LOOP_RULE}` : "";
+  const r = opts.rules ?? NO_LONG_RULES;
+  const rule = r.loopsMax
+    ? openLoopRule({
+        max: r.loopsMax,
+        coldOpen: Math.max(2, r.hookStack),
+        what: r.guide ? "guide" : "documentary",
+      })
+    : OPEN_LOOP_RULE;
+  const loops = opts.openLoops ? `\n\n${rule}` : "";
   return llm.structured({
     site: "doc.outline",
     system:
-      (topic.kind === "story"
+      (r.guide
         ? `${HOUSE}
 
-Plan a single-story documentary told in turning points, in time order, ${DOC_CHAPTERS_MIN + 2}-${DOC_CHAPTERS_MAX} chapters. Each chapter is one beat of the story (a decision, a reveal, a launch, a reversal) and names, in "wiki_title", the English Wikipedia article that best documents it (a game, a console, a company or a person); "game_title" is that chapter's subject. Chapter titles name the turning point in 2-5 words as a mini-headline with a verb or a conflict ("The Reveal That Backfired", "Sony Answers", "The Reversal"), never a topic label ("Market impact", "Early years"); the last may be a question. The title names one subject and its downfall, fight or hidden side: "How X Ruined Y", "The X That Never Was", "What Really Happened to X", "How Xbox Ended Up on PlayStation". In a study of 1,573 long gaming videos the strongest titles did exactly that, while "The History of", "Evolution", "changed gaming forever", years and "top 10" counts belonged to the weakest; keep numbers out of the title unless the number is the story. Never "Part 1". Write the question the documentary answers.`
+${GUIDE_OUTLINE_RULE}`
+        : topic.kind === "story"
+        ? `${HOUSE}
+
+Plan a single-story documentary told in turning points, in time order, ${DOC_CHAPTERS_MIN + 2}-${DOC_CHAPTERS_MAX} chapters. Each chapter is one beat of the story (a decision, a reveal, a launch, a reversal) and names, in "wiki_title", the English Wikipedia article that best documents it (a game, a console, a company or a person); "game_title" is that chapter's subject. Chapter titles name the turning point in 2-5 words as a mini-headline with a verb or a conflict ("The Reveal That Backfired", "Sony Answers", "The Reversal"), never a topic label ("Market impact", "Early years"); the last may be a question. The title names one subject and its downfall, fight or hidden side: "How X Ruined Y", "The X That Never Was", "What Really Happened to X", "How Xbox Ended Up on PlayStation". In a study of 1,573 long gaming videos the strongest titles did exactly that, while "The History of", "Evolution", "changed gaming forever", years and "top 10" counts belonged to the weakest; keep numbers out of the title unless the number is the story. Never "Part 1". Plan only events the overview documents: a chapter built on something it doesn't mention can't be written. Write the question the documentary answers.`
         : `${HOUSE}
 
 Plan a franchise documentary told game by game in release order, ${DOC_CHAPTERS_MIN}-${DOC_CHAPTERS_MAX} chapters, one per major game. Choose the games whose development stories matter most; fold spin-offs into a neighboring chapter's story. Chapter titles must be searchable on their own and name the game's turning point as a mini-headline ("GTA III and the Leap to 3D", "The Hot Coffee Mess"), never a topic label. The title is one thesis question or claim about the franchise ("When Did Call of Duty Stop Being Call of Duty?"), never "The Complete History of" or "Evolution of". Write the question the documentary answers.`) +
@@ -478,10 +522,14 @@ export const DocParagraphSchema = z.object({
 });
 
 export const DocChapterSchema = z.object({
-  paragraphs: z
-    .array(DocParagraphSchema)
-    .min(DOC_PARAGRAPHS_MIN)
-    .max(DOC_PARAGRAPHS_MAX),
+  // No minimum here, so a chapter that reports missing_evidence can leave this empty; validateChapter counts them.
+  paragraphs: z.array(DocParagraphSchema).max(DOC_PARAGRAPHS_MAX),
+  missing_evidence: z
+    .string()
+    .optional()
+    .describe(
+      "Leave this out in a normal chapter. Only when the SOURCE can't support the chapter's main events: one line naming what's missing, with paragraphs left empty. It is never spoken; the factory fetches more sources and asks again",
+    ),
   claims: z.array(
     z.object({
       claim: z.string(),
@@ -492,23 +540,32 @@ export const DocChapterSchema = z.object({
 export type DocChapter = z.infer<typeof DocChapterSchema>;
 export type DocChapterPlan = z.infer<typeof DocChapterPlanSchema>;
 
-export function chapterPrompt(): string {
+export function chapterPrompt(rules: LongRules = NO_LONG_RULES): string {
+  const extra = [
+    rules.youFloor ? youRule(rules.youFloor) : "",
+    rules.sentenceGate ? sentenceRule(rules.sentenceGate) : "",
+    rules.namePayoff ? LOOP_NAME_RULE : "",
+    rules.verdicts ? VERDICT_RULE : "",
+  ]
+    .filter(Boolean)
+    .map((x) => `\n${x}`)
+    .join("");
   return `${HOUSE}
 
-Write one chapter of a game-by-game franchise documentary, ${DOC_CHAPTER_WORDS_MIN}-${DOC_CHAPTER_WORDS_MAX} spoken words in ${DOC_PARAGRAPHS_MIN}-${DOC_PARAGRAPHS_MAX} paragraphs of ${DOC_PARAGRAPH_WORDS_MIN}-${DOC_PARAGRAPH_WORDS_MAX} words.
-The first paragraph opens on a scene or a moment that names the year, so the viewer knows where they are. Then the people and the decisions; then what happened and how it landed; end on what it changed.
+Write one chapter of a ${rules.guide ? "launch guide" : "game-by-game franchise documentary"}, ${DOC_CHAPTER_WORDS_MIN}-${DOC_CHAPTER_WORDS_MAX} spoken words in ${DOC_PARAGRAPHS_MIN}-${DOC_PARAGRAPHS_MAX} paragraphs of ${DOC_PARAGRAPH_WORDS_MIN}-${DOC_PARAGRAPH_WORDS_MAX} words.
+${rules.guide ? guideChapterShape(rules.chapterAction) : "The first paragraph opens on a scene or a moment that names the year, so the viewer knows where they are. Then the people and the decisions; then what happened and how it landed; end on what it changed."}
 Hold attention the way the best documentaries do:
-- The last sentence of the chapter either looks forward, naming what's coming without saying how it ends (a calm that won't last, a choice that will cost someone), or, in about one chapter in three, lands on a plain consequence: what this chapter changed, said flatly. You're told which below. Word it fresh every time, and never "In the next chapter".
-- A hard number or a two-sided contrast at least every other paragraph ($399 against $499, 58 million against 117 million), always from the source. Never more than two figures in one sentence, and a date's year only the first time that date comes up in the chapter.
+${rules.chapterAction ? "" : `- The last sentence of the chapter either looks forward, naming what's coming without saying how it ends (a calm that won't last, a choice that will cost someone), or, in about one chapter in three, lands on a plain consequence: what this chapter changed, said flatly. You're told which below. Word it fresh every time, and never "In the next chapter".
+`}- A hard number or a two-sided contrast at least every other paragraph ($399 against $499, 58 million against 117 million), always from the source. Never more than two figures in one sentence, and a date's year only the first time that date comes up in the chapter.
 - Name the people who made the decisions. A person's role goes with their first mention in the whole documentary (the earlier chapters are listed below), then the surname alone. Judge decisions, never people; criticism is attributed to whoever made it in the source.
 - A game's full title once in the chapter; after that the short form people say ("Vice City", "GTA 5", "Red Dead 2").
 - At most one sentence in the chapter opens "That's a" or "That's an".
 - One dry aside at most per chapter, aimed at a company or a situation, never at players.
 - ${REHOOK_RULE} In a chapter that means two or three inside it, besides the last line.
-Every fact, number, date, name and quote must come from the SOURCE text provided. If the source doesn't say it, don't say it. Don't repeat what earlier chapters covered: what they said is listed below, so refer back to it in a few words at most and never reuse their wording.
+Every fact, number, date, name and quote must come from the SOURCE text provided. If the source doesn't say it, don't say it: tell the part of the story it does cover. The paragraphs are recorded and published as they stand, so they only ever tell the story. They never mention the source, the brief, a draft or these rules, never explain what can't be written and never ask for anything. If the SOURCE can't support the chapter's main events at all, leave paragraphs empty and name what's missing in missing_evidence; that line goes to the factory, which finds more sources and asks again. Don't repeat what earlier chapters covered: what they said is listed below, so refer back to it in a few words at most and never reuse their wording.
 Callouts put a real fact on screen: at most half the paragraphs carry one, and a quote must be copied word for word from the source. Most paragraphs use "none".
 footage names what the picture should show for that paragraph, with 1-4 keywords.
-List every factual claim in "claims" with the source section it came from.`;
+List every factual claim in "claims" with the source section it came from.${extra}`;
 }
 
 /** Earlier chapters as the pipeline holds them: plain chapters, or { plan, chapter, ... } entries. */
@@ -522,6 +579,20 @@ function earlierOf(earlier?: EarlierChapters): DocChapter[] {
 
 const chapterText = (c: DocChapter) =>
   c.paragraphs.map((x) => x.narration).join(" ");
+
+/**
+ * Why a written chapter can't be spoken, whatever else passed: the writer said it lacks the evidence, or wrote
+ * notes about the task. A chapter with one of these is never kept; the caller widens the sources or stops.
+ */
+export function chapterRefusal(c: DocChapter): string[] {
+  return [
+    ...(c.missing_evidence?.trim()
+      ? [`The writer reported missing evidence: ${c.missing_evidence.trim()}`]
+      : []),
+    ...(!c.paragraphs.length ? ["The chapter has no narration."] : []),
+    ...writerNoteProblems(chapterText(c)),
+  ];
+}
 
 /** About one chapter in three ends on a plain consequence rather than a forward tease (the third, sixth...). */
 export function endsOnConsequence(index: number): boolean {
@@ -562,8 +633,13 @@ export async function writeChapter(
     draft?: DocChapter;
     /** The outline's grounded open loops (src/editorial/openloops.ts): what this chapter raises or answers. */
     loops?: readonly OpenLoop[];
+    /** The long-video rules this script runs under (src/editorial/longrules.ts). */
+    rules?: LongRules;
+    /** The only problems are the rules': edits that won't apply leave the draft as it is, never a whole new one. */
+    keepDraft?: boolean;
   },
 ): Promise<DocChapter> {
+  const rules = ctx.rules ?? NO_LONG_RULES;
   const others = ctx.outline.chapters
     .map(
       (c, i) =>
@@ -583,7 +659,9 @@ export async function writeChapter(
   const priorBlock = prior.length
     ? `\n\nAn earlier Pulse documentary on this subject said the lines below. Don't reuse their wording; a fact may come up again only in new words:\n${prior.map((x) => `- ${x}`).join("\n")}`
     : "";
-  const ending = endsOnConsequence(ctx.index)
+  const ending = rules.chapterAction
+    ? "This chapter ends on its one job for day one, then asks for the next chapter."
+    : endsOnConsequence(ctx.index)
     ? "This chapter ends on a plain consequence: what it changed, said flatly, with no tease."
     : "This chapter ends looking forward: name what's coming without saying how it ends.";
   const loops = loopBrief(ctx.loops ?? [], ctx.index + 1);
@@ -591,19 +669,22 @@ export async function writeChapter(
   const edited =
     ctx.draft && ctx.feedback?.length
       ? await reviseByEdits(llm, {
-          system: chapterPrompt(),
+          system: chapterPrompt(rules),
           content: brief,
           schema: DocChapterSchema,
           draft: ctx.draft,
           problems: ctx.feedback,
           job: "documentary chapter",
+          // Under the rules a revision goes where the draft went: Codex's allowance when the step is listed there.
+          ...(longRulesOn(rules) ? { site: "doc.chapter" } : {}),
         })
       : undefined;
+  if (!edited && ctx.keepDraft && ctx.draft) return ctx.draft;
   return (
     edited ??
     llm.structured({
       site: "doc.chapter",
-      system: chapterPrompt(),
+      system: chapterPrompt(rules),
       content: `${brief}${fb}`,
       schema: DocChapterSchema,
       effort: "medium",
@@ -644,7 +725,7 @@ export async function checkChapterItems(
 ): Promise<Array<{ quote: string; problem: string }>> {
   const r = await llm.structured({
     site: "doc.check",
-    system: `You are a documentary fact-checker. Compare the narration with the SOURCE. List every specific factual statement (a date, number, name, quote, ranking, sales figure, event or cause) that the source does not support or that contradicts it. Framing, scene-setting description, transitions and clearly marked opinion are fine. Be strict about numbers and quotes. Return an empty list when everything checks out.`,
+    system: `You are a documentary fact-checker. Compare the narration with the SOURCE. List every specific factual statement (a date, number, name, quote, ranking, sales figure, event or cause) that the source does not support or that contradicts it. Framing, scene-setting description, transitions and clearly marked opinion are fine. Be strict about numbers and quotes. A sentence about the source itself, a brief, a draft, a chapter being written or what is missing from the material isn't narration, even when it's true: list it. Return an empty list when everything checks out.`,
     content: `NARRATION:\n${chapter.paragraphs.map((p) => p.narration).join("\n\n")}\n\nSOURCE (Wikipedia, "${source.title}"):\n${source.text}`,
     schema: DocCheckSchema,
     effort: "medium",
@@ -749,6 +830,8 @@ export const DOC_GRAPHIC_KINDS = [
   "share",
   "specs",
   "lineage",
+  // A guide's spoken verdict, stamped (LONG_VERDICT_STAMPS, src/editorial/longrules.ts); off, groundDocMoments drops it.
+  "verdict",
 ] as const;
 export {
   DOC_BEAT_KINDS,
@@ -784,12 +867,12 @@ export const DocMomentSchema = z.object({
     primary: z
       .string()
       .describe(
-        "stat: the figure as the source writes it, e.g. '17 million'; date: e.g. 'September 2013'; list, compare, timeline: a 2-4 word heading; quote: the quote copied word for word from the SOURCE, 6-30 words; headline: the press story as a newspaper headline, 4-12 words, stating only what the SOURCE says; delay: what was delayed, e.g. 'GTA VI release'; span: e.g. '13 years in the making'; reviews: a 2-5 word heading; versus: a 2-5 word heading; source: a passage copied word for word from the SOURCE, 15-60 words; milestone: the record or first, 3-10 words, e.g. 'Fastest-selling entertainment product ever'; people: a 2-4 word heading; map: a 2-6 word heading, e.g. 'Where Rockstar North works'; bars, share, specs, lineage: a 2-5 word heading; none: empty",
+        "stat: the figure as the source writes it, e.g. '17 million'; date: e.g. 'September 2013'; list, compare, timeline: a 2-4 word heading; quote: the quote copied word for word from the SOURCE, 6-30 words; headline: the press story as a newspaper headline, 4-12 words, stating only what the SOURCE says; delay: what was delayed, e.g. 'GTA VI release'; span: e.g. '13 years in the making'; reviews: a 2-5 word heading; versus: a 2-5 word heading; source: a passage copied word for word from the SOURCE, 15-60 words; milestone: the record or first, 3-10 words, e.g. 'Fastest-selling entertainment product ever'; people: a 2-4 word heading; map: a 2-6 word heading, e.g. 'Where Rockstar North works'; bars, share, specs, lineage: a 2-5 word heading; verdict: CONFIRMED, REPORTED or BUSTED; none: empty",
       ),
     secondary: z
       .string()
       .describe(
-        "stat/date: what it is, 2-6 words; quote: who said it and their role, e.g. 'Dan Houser, Rockstar co-founder', and where it was said only when the SOURCE says so, e.g. 'Leslie Benzies, on Twitter' or 'Dan Houser, in an internal email'; headline: the outlet as the SOURCE names it and the year, e.g. 'The Guardian, 2005', or just the year when the source names no outlet; delay: the reason in 2-8 words if the source gives one; milestone: the year; bars: what the figures count, 2-4 words, e.g. 'copies sold'; empty otherwise",
+        "stat/date: what it is, 2-6 words; quote: who said it and their role, e.g. 'Dan Houser, Rockstar co-founder', and where it was said only when the SOURCE says so, e.g. 'Leslie Benzies, on Twitter' or 'Dan Houser, in an internal email'; headline: the outlet as the SOURCE names it and the year, e.g. 'The Guardian, 2005', or just the year when the source names no outlet; delay: the reason in 2-8 words if the source gives one; milestone: the year; bars: what the figures count, 2-4 words, e.g. 'copies sold'; verdict: who said it, as the sentence names them; empty otherwise",
       ),
     items: z
       .array(z.string())
@@ -865,8 +948,15 @@ export async function writeDocMoments(
     lessons?: string;
     /** DOC_EVIDENCE: key beats show the record itself (src/editorial/evidence.ts EVIDENCE_RULE). */
     evidence?: boolean;
+    /** LONG_VERDICT_STAMPS: a sentence that speaks a verdict gets its stamp. */
+    verdicts?: boolean;
   },
 ): Promise<DocMoment[]> {
+  const system = [
+    DOC_MOMENTS_PROMPT,
+    ...(ctx.evidence ? [EVIDENCE_RULE] : []),
+    ...(ctx.verdicts ? [VERDICT_STAMP_RULE] : []),
+  ].join("\n");
   const n = Math.max(1, ctx.sentences.length);
   let got: DocMoment[] = [];
   for (let attempt = 0; attempt < 2 && got.length !== n; attempt++) {
@@ -874,9 +964,7 @@ export async function writeDocMoments(
       const r = await llm.structured({
         site: "doc.shots",
         tier: "mid",
-        system: ctx.evidence
-          ? `${DOC_MOMENTS_PROMPT}\n${EVIDENCE_RULE}`
-          : DOC_MOMENTS_PROMPT,
+        system,
         content: `Chapter: ${ctx.chapterTitle} (${ctx.game})${ctx.games?.length ? `\nGames in this documentary's chapters: ${ctx.games.join("; ")}` : ""}\n\n${ctx.sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}${ctx.lessons ? `\n\n${ctx.lessons}` : ""}\n\nReturn exactly ${n} moments.`,
         schema: docMomentsSchema(n),
         effort: "low",
@@ -914,6 +1002,9 @@ export function sourceCredit(passage: string, source: WikiArticle): string {
   const parts = source.text.split(/(?:^|\n)\[([^\]\n]+)\][ \t]*/);
   if (parts.length < 3) return `Wikipedia: ${source.title}`;
   const want = norm(passage);
+  // A planned guide's sources follow its article: what comes before the first header is the article itself.
+  if (parts[0]!.trim() && norm(parts[0]!).includes(want))
+    return `Wikipedia: ${source.title}`;
   for (let i = 1; i + 1 < parts.length; i += 2) {
     if (!norm(parts[i + 1]!).includes(want)) continue;
     const head = parts[i]!.trim();
@@ -935,6 +1026,8 @@ export function groundDocMoments(
   games?: string[],
   /** The sentences the moments were written for: a caption must end where its clause ends. */
   sentences?: string[],
+  /** LONG_VERDICT_STAMPS: off, a verdict never reaches the screen; on, only where verdictProblem finds nothing. */
+  verdicts = false,
 ): { moments: DocMoment[]; removed: string[] } {
   const hay = norm(source.text);
   const removed: string[] = [];
@@ -1082,6 +1175,13 @@ export function groundDocMoments(
             name && hay.includes(norm(name)) && (!year || hay.includes(year))
           );
         });
+    if (ok && g.kind === "verdict") {
+      ok =
+        verdicts &&
+        Boolean(sentences?.[i]) &&
+        !verdictProblem(g, sentences?.[i] ?? "", hay);
+      if (ok) g.primary = g.primary.trim().toUpperCase();
+    }
     if (ok && prevGraphic) ok = false;
     if (g.kind !== "none" && !ok)
       removed.push(`${g.kind}: ${g.primary || g.items.join(" | ")}`);
@@ -1141,6 +1241,39 @@ export function wholePhrase(text: string, sentence?: string): boolean {
   return !open.has(low[0]!) && !close.has(low[low.length - 1]!);
 }
 
+/**
+ * What the long-video rules ask of a first draft (pure), kept apart from validateChapter so a miss costs one revision
+ * at most: the pipeline asks for these on the first draft only, and later misses are warnings. `written` is the
+ * narration of the chapters before this one, so the script is what is measured.
+ */
+export function chapterRuleProblems(
+  c: DocChapter,
+  o: {
+    rules: LongRules;
+    written: readonly string[];
+    loops?: readonly OpenLoop[];
+    /** This chapter's number (1 is the first). */
+    chapter: number;
+  },
+): string[] {
+  const text = chapterText(c);
+  const p: string[] = [];
+  const you = youShortfall(o.written, text, o.rules.youFloor);
+  if (you) p.push(you);
+  const long = sentenceShortfall(o.written, text, o.rules.sentenceGate);
+  if (long) p.push(long);
+  if (o.rules.chapterAction) p.push(...guideActionProblems(text));
+  if (o.rules.namePayoff && o.loops?.length)
+    p.push(
+      ...namedPayoffProblems(
+        c.paragraphs.flatMap((x) => sentencesOf(x.narration)),
+        o.loops,
+        o.chapter,
+      ),
+    );
+  return p;
+}
+
 export function validateChapter(
   c: DocChapter,
   opts: {
@@ -1155,6 +1288,14 @@ export function validateChapter(
 ): string[] {
   const p: string[] = [];
   const text = chapterText(c);
+  if (c.missing_evidence?.trim())
+    p.push(
+      `You reported missing evidence (${c.missing_evidence.trim()}). Write the chapter from what the material does cover.`,
+    );
+  if (c.paragraphs.length < DOC_PARAGRAPHS_MIN)
+    p.push(
+      `The chapter has ${c.paragraphs.length} paragraphs; it needs at least ${DOC_PARAGRAPHS_MIN}.`,
+    );
   if (opts.loops?.length && opts.chapter)
     p.push(
       ...loopProblems(
@@ -1240,9 +1381,12 @@ export const DocBookendsSchema = z.object({
     narration: z
       .string()
       .describe(
-        "110-200 spoken words: a cold open on one vivid moment from the story, then what this documentary covers and why it matters",
+        "110-200 spoken words: a cold open on one vivid moment from the story, then what this documentary covers and why it matters; when the brief asks for a stacked hook, that order instead",
       ),
     on_screen: z.string().describe("3-8 word kicker under the title"),
+    hook_stack: HookStackSchema.optional().describe(
+      "Only when the brief asks for a stacked hook: its parts as the intro says them",
+    ),
   }),
   outro: z.object({
     label: z
@@ -1281,8 +1425,11 @@ export async function writeBookends(
     echo?: boolean;
     /** A rejected draft's problems (validateBookends), for the second attempt to fix. */
     feedback?: string[];
+    /** The long-video rules this script runs under (src/editorial/longrules.ts). */
+    rules?: LongRules;
   } = {},
 ): Promise<DocBookends> {
+  const rules = opts.rules ?? NO_LONG_RULES;
   const raise = loopBrief(opts.loops ?? [], 0);
   const fb = opts.feedback?.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
@@ -1307,8 +1454,8 @@ export async function writeBookends(
     site: "doc.bookends",
     system: `${HOUSE}
 
-Write the intro and outro of a finished documentary.
-The intro is a cold open, in this order: the first sentence names a date, a place and a named person or an exact figure, inside one true moment from the chapters below; by about word 60 the stakes, as a consequence that tells the viewer how it ends (who lost what, or who won a generation): give away the outcome, hold back the how, which is what the strongest long videos in our study did; somewhere in the intro one short line that leans forward, saying in your own words that the first success was only the beginning; by about word 120 one line that names what this documentary is about, in your own words rather than a stock "This is the story of"; then a turn back to where it began, again in your own words. Never "In this video", never a greeting, and never a line you'd expect in any other documentary.
+Write the intro and outro of a finished ${rules.guide ? "launch guide" : "documentary"}.
+${rules.hookStack ? `${hookStackRule(rules.hookStack, rules.guide ? "guide" : "documentary")}${rules.verdicts ? `\nRight after the surprises, one line teaches the three verdicts this video gives every claim: confirmed, reported and busted, in those words.` : ""}${rules.youFloor ? `\n${youRule(rules.youFloor)}` : ""}\nThe intro runs 120-220 spoken words.` : `The intro is a cold open, in this order: the first sentence names a date, a place and a named person or an exact figure, inside one true moment from the chapters below; by about word 60 the stakes, as a consequence that tells the viewer how it ends (who lost what, or who won a generation): give away the outcome, hold back the how, which is what the strongest long videos in our study did; somewhere in the intro one short line that leans forward, saying in your own words that the first success was only the beginning; by about word 120 one line that names what this documentary is about, in your own words rather than a stock "This is the story of"; then a turn back to where it began, again in your own words. Never "In this video", never a greeting, and never a line you'd expect in any other documentary.`}
 The outro closes in three moves: the verdict, answering the documentary's question in its first two sentences; where things stand today, with a date; and a last line that calls back to the opening moment or date. Use only facts from the chapter notes and the overview.${opts.echo ? `\n${BOOKEND_RULE}` : ""}`,
     content: `Documentary: ${outline.title}\nThe question it answers: ${outline.question ?? outline.title}\n\nChapters and their facts:\n${digest}\n\nOverview (Wikipedia):\n${franchiseNotes.slice(0, 5000)}${prior}${raise ? `\n\n${raise}` : ""}${fb}`,
     schema: DocBookendsSchema,
@@ -1322,9 +1469,26 @@ export const BOOKEND_RULE = `End where it began: the outro's last two sentences 
 export function validateBookends(
   b: DocBookends,
   /** loops: the cold open must raise the loops planted there; echo: the outro must return to the opening image. */
-  opts: { loops?: readonly OpenLoop[]; echo?: boolean } = {},
+  opts: {
+    loops?: readonly OpenLoop[];
+    echo?: boolean;
+    /** The long-video rules, with the chapters' narrations, so a stacked hook's promises are checked as paid. */
+    rules?: LongRules;
+    chapters?: readonly string[];
+  } = {},
 ): string[] {
   const p: string[] = [];
+  if (opts.rules?.hookStack)
+    p.push(
+      ...hookStackProblems(
+        b.intro.narration,
+        b.intro.hook_stack,
+        opts.rules.hookStack,
+        opts.chapters ?? [],
+        b.outro.narration,
+      ),
+    );
+  if (opts.rules?.verdicts) p.push(...verdictHookProblems(b.intro.narration));
   if (opts.loops?.length)
     p.push(...loopProblems(sentencesOf(b.intro.narration), opts.loops, 0));
   if (opts.echo)
@@ -1446,7 +1610,9 @@ export function docToScript(d: DocDraft): Script {
             }) as BeatVisual,
     })),
   );
-  const sources = [...new Set(d.chapters.map((c) => c.source.url))];
+  const sources = [
+    ...new Set(d.chapters.flatMap((c) => [c.source.url, ...(c.source.also ?? [])])),
+  ];
   return {
     story_type: "other",
     game_title: d.topic.franchise,

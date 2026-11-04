@@ -123,6 +123,8 @@ export async function chooseEpisodeFillers(args: {
   check: ReconClipCheck;
   now: Date;
   headline: string;
+  /** LONG_CARD_SHARE (./fillers.ts ChooseOptions). */
+  cardShare?: number;
   /** The owner's word for the format in the notice (src/longformat.ts longKindLabel); default Documentary. */
   kind?: string;
   logEvent: (kind: string, detail: Record<string, unknown>) => Promise<void>;
@@ -141,6 +143,7 @@ export async function chooseEpisodeFillers(args: {
       seed: args.variant,
       recon: recon.picks,
       sketches: args.sketches,
+      cardShare: args.cardShare,
     });
     applyFillers(args.chapters, choice);
     const sketches = args.images.filter(

@@ -18,6 +18,30 @@ import type { SteamFacts } from "../assets/steam.ts";
 import { factsText } from "../assets/steam.ts";
 import { placeFor } from "../render/places.ts";
 import { REHOOK_RULE, rehookProblems, rehooksOf } from "./rehooks.ts";
+import { reviseByEdits } from "./revise.ts";
+import {
+  OpenLoopSchema,
+  groundOpenLoops,
+  loopBrief,
+  loopProblems,
+  openLoopRule,
+  placeOpenLoops,
+  type LoopPlacement,
+} from "./openloops.ts";
+import {
+  HookStackSchema,
+  LONG_RULE_REVISIONS,
+  LOOP_NAME_RULE,
+  NO_LONG_RULES,
+  hookStackProblems,
+  hookStackRule,
+  namedPayoffProblems,
+  sentenceRule,
+  sentenceShortfall,
+  youRule,
+  youShortfall,
+  type LongRules,
+} from "./longrules.ts";
 import { DOC_BEAT_KINDS, groundBeats } from "./beats.ts";
 import {
   EvergreenTopicSchema,
@@ -131,7 +155,8 @@ export type AnyMoment = Omit<Moment, "graphic"> & {
       | "bars"
       | "share"
       | "specs"
-      | "lineage";
+      | "lineage"
+      | "verdict";
     /** Shown as the record itself, full frame, with its credit (src/editorial/evidence.ts, DOC_EVIDENCE). */
     evidence?: import("./evidence.ts").Evidence;
   };
@@ -165,7 +190,7 @@ export const LongformEntrySchema = z.object({
   narration: z
     .string()
     .describe(
-      `${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words, three to five sentences: what the game is and when it landed, one specific detail a fan would nod at, why it sits at this rank by the criterion`,
+      `${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words: what the game is and when it landed, one specific detail a fan would nod at, why it sits at this rank by the criterion`,
     ),
   verdict_chip: z.string().describe("1-4 words of punch, shown on the card"),
   footage: FootageSchema,
@@ -189,7 +214,17 @@ export const LongformScriptSchema = z.object({
         "60-140 spoken words: a cold-open fact, the premise and the criterion, and one promised surprise in the order",
       ),
     on_screen: z.string().describe("3-8 word kicker under the title"),
+    hook_stack: HookStackSchema.optional().describe(
+      "Only when the brief asks for a stacked hook: its parts as the intro says them; a chapter is an entry, numbered in the order it's spoken",
+    ),
   }),
+  open_loops: z
+    .array(OpenLoopSchema)
+    .max(8)
+    .optional()
+    .describe(
+      "Only when the brief asks for them: questions the intro or an entry raises and a later entry answers; chapter numbers count entries in the order they're spoken",
+    ),
   entries: z
     .array(LongformEntrySchema)
     .min(LONG_ENTRIES_MIN)
@@ -218,7 +253,7 @@ export const LongformScriptSchema = z.object({
     thumb_text: z
       .string()
       .describe(
-        "1-4 words in capitals for the thumbnail that add the hook and never repeat the title: 'NOT SAN ANDREAS?', 'ONE IS A MISTAKE', 'NUMBER 1 SURPRISED US'. In a study of 1,598 gaming thumbnails, short hook text beat restated titles, dates and 'Top 10' labels",
+        "1-4 words in capitals for the thumbnail that add the hook and do not restate the whole title (one strong word from its promise is fine), and that make sense to someone who has not watched (no bare ranks like 'HALO 2 AT 5?'): 'NOT SAN ANDREAS?', 'ONE IS A MISTAKE', 'NUMBER 1 SURPRISED US'. In a study of 1,598 gaming thumbnails, short hook text beat restated titles, dates and 'Top 10' labels",
       )
       .optional(),
   }),
@@ -231,7 +266,10 @@ export const LongformScriptSchema = z.object({
     }),
   ),
 });
-export type LongformScript = z.infer<typeof LongformScriptSchema>;
+export type LongformScript = z.infer<typeof LongformScriptSchema> & {
+  /** The open loops pinned to their sentences, for the render's callback cues (LONG_OPEN_LOOPS_MAX). */
+  placed_loops?: LoopPlacement[];
+};
 
 /** How the writers are steered by the settings (src/config.ts). */
 export interface LongformOptions {
@@ -239,6 +277,8 @@ export interface LongformOptions {
   punchyHook?: boolean;
   /** DOC_SOUND_BEATS: the shot list marks the sound editor's beats, grounded as a documentary's are. */
   soundBeats?: boolean;
+  /** The long-video rules this script runs under (src/editorial/longrules.ts). */
+  rules?: LongRules;
 }
 
 /** The intro's first-line rule: a Short's 5-10 word hook (LONG_PUNCHY_HOOK) or the older "under 15 words". */
@@ -248,18 +288,46 @@ export function hookRule(punchy = false): string {
     : "The first sentence is the most surprising concrete fact or image in the whole ranking, under 15 words";
 }
 
+/** The intro's word range: a stacked hook has more to say (LONG_HOOK_STACK). */
+export function introWords(rules: LongRules = NO_LONG_RULES): [number, number] {
+  return rules.hookStack ? [90, 200] : LONG_INTRO_WORDS;
+}
+
+/** The rule lines a ranking's writer gets, when the rules are on. */
+function ruleLines(rules: LongRules): string {
+  return [
+    rules.youFloor ? youRule(rules.youFloor) : "",
+    rules.sentenceGate ? sentenceRule(rules.sentenceGate) : "",
+    rules.namePayoff ? LOOP_NAME_RULE : "",
+  ]
+    .filter(Boolean)
+    .map((x) => `\n${x}`)
+    .join("");
+}
+
 export function longformPrompt(opts: LongformOptions = {}): string {
+  const rules = opts.rules ?? NO_LONG_RULES;
+  const intro = rules.hookStack
+    ? `1. intro.narration: 110-190 words. ${hookStackRule(rules.hookStack, "ranking")}
+Its first sentence is 5-10 words, the line the opening card shows. The surprises come from the order itself: a placement people will argue with, a detail about a named entry; a chapter number here counts entries in the order they're spoken. The trust line says what was weighed (sales, reviews, how each plays now), never a claim to have played them. The saved promise is number one, held to the end. No greeting, no channel name, no "welcome" or "today we're ranking".`
+    : `1. intro.narration: 60-120 words, so entry one starts within about forty seconds. ${hookRule(opts.punchyHook)}. Then the rule in one sentence, naming two or three things every game is judged on (how it plays now, what it changed, whether it holds up), in your own words, and why the viewer can trust the order (what was weighed: sales, reviews, how each plays now; never a claim to have played them). Then say plainly that number one is held to the end and that at least one placement will be argued with. No greeting, no channel name, no "welcome" or "today we're ranking": in a study of 1,573 long gaming videos, a greeting or brand line came first in 15 of the 50 weakest and 1 of the 50 strongest.`;
+  const sentencesWanted = rules.sentenceGate
+    ? "ten to sixteen short sentences"
+    : "six to ten sentences";
+  const loops = rules.loopsMax
+    ? `\n${openLoopRule({ max: rules.loopsMax, coldOpen: Math.max(2, rules.hookStack), what: "ranking" })} Here a chapter number counts entries in the order they're spoken, so the lowest rank is chapter 1.`
+    : "";
   return `${HOUSE}
 
 Write a long-form ranking video of ${LONG_WORDS_MIN}-${LONG_WORDS_MAX} spoken words in total, fifteen to twenty minutes when read at a natural pace.
 Structure:
-1. intro.narration: 60-120 words, so entry one starts within about forty seconds. ${hookRule(opts.punchyHook)}. Then the rule in one sentence, naming two or three things every game is judged on (how it plays now, what it changed, whether it holds up), in your own words, and why the viewer can trust the order (what was weighed: sales, reviews, how each plays now; never a claim to have played them). Then say plainly that number one is held to the end and that at least one placement will be argued with. No greeting, no channel name, no "welcome" or "today we're ranking": in a study of 1,573 long gaming videos, a greeting or brand line came first in 15 of the 50 weakest and 1 of the 50 strongest.
-2. entries: ${LONG_ENTRIES_MIN}-${LONG_ENTRIES_MAX}, spoken from the lowest rank to number one. Each narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} words, six to ten sentences: what the game is and when it landed, the story around it (how it was made or received, from the facts given or long-established knowledge), two specific details a fan would nod at (a mechanic, a level, a moment), the fair counterpoint, and why it sits here, argued against its neighbor ("above Vice City because...", "below San Andreas, and here's the one thing that kept it there"), never a plot synopsis followed by praise words. Commit to every call: no "arguably", "for our money" or "it's hard to say". Numbers come as a contrast (a figure and the fact that undercuts it), never a list of stats. Place one deliberate surprise somewhere in the order and defend it. The last line hands over to the next entry. Vary the sentence openings; never start two entries the same way. verdict_chip is 1-4 words. footage names the trailer moment to show, with 1-4 keywords.
+${intro}
+2. entries: ${LONG_ENTRIES_MIN}-${LONG_ENTRIES_MAX}, spoken from the lowest rank to number one. Each narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} words, ${sentencesWanted}: what the game is and when it landed, the story around it (how it was made or received, from the facts given or long-established knowledge), two specific details a fan would nod at (a mechanic, a level, a moment), the fair counterpoint, and why it sits here, argued against its neighbor ("above Vice City because...", "below San Andreas, and here's the one thing that kept it there"), never a plot synopsis followed by praise words. Commit to every call: no "arguably", "for our money" or "it's hard to say". Numbers come as a contrast (a figure and the fact that undercuts it), never a list of stats. Place one deliberate surprise somewhere in the order and defend it. The last line hands over to the next entry. Vary the sentence openings; never start two entries the same way. verdict_chip is 1-4 words. footage names the trailer moment to show, with 1-4 keywords.
 ${REHOOK_RULE} In a ranking that means about one per entry, often the line that hands over to the next entry ("So why does the 'bad' one land this high?"), and one near the end of the intro.
 3. outro.narration: 60-150 words. Why number one wins by the rule, the top three in one line, the ranking's hardest call, honestly, and a last line that returns to the image or fact the intro opened on. No more than one sentence inviting comments.
 The YouTube title names the franchise and the promise in plain words ("Every GTA Game Ranked, and Number One Isn't San Andreas"); leave out years and "top 10" counts unless the count is the point, and never "changed gaming forever".
 Keep every number to the Steam facts provided or long-established knowledge. List every factual claim in "claims".
-4. moments: for every entry, exactly one per sentence of its narration, in order. This is the picture editor's shot list. "show" names the precise thing on screen while that sentence is spoken (the mission, the character, the map, the weapon, the twist), never a generic "gameplay". About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that entry's narration. "emphasis" lands a name or phrase from the sentence on screen in about a third of the moments; leave it empty when the moment has a graphic.`;
+4. moments: for every entry, exactly one per sentence of its narration, in order. This is the picture editor's shot list. "show" names the precise thing on screen while that sentence is spoken (the mission, the character, the map, the weapon, the twist), never a generic "gameplay". About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that entry's narration. "emphasis" lands a name or phrase from the sentence on screen in about a third of the moments; leave it empty when the moment has a graphic.${ruleLines(rules)}${loops}`;
 }
 
 export function longformTopicPrompt(): string {
@@ -329,12 +397,12 @@ function planPrompt(opts: LongformOptions = {}): string {
 This step plans the video only: the order, the intro, the outro and the packaging. For each entry give its rank, title, year, platforms, verdict_chip and an "angle": brief notes on the detail and the reason it sits there. The entry paragraphs and shot lists are written in a later step from your plan.`;
 }
 
-function entryPrompt(): string {
+function entryPrompt(rules: LongRules = NO_LONG_RULES): string {
   return `${HOUSE}
 
-You are writing one entry of a long-form ranking video, from the plan you are given. The narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words (count them), three to five sentences: what the game is and when it landed, the specific detail from the plan, and why it sits at this rank by the criterion. It starts by naming the rank and the game in a fresh way: never open the way an earlier entry opened (they are listed). Say the game's full title once, then the short form people use; a person's role goes with their first mention in the video only. In the whole video "we think" comes at most twice and "in fairness" and "which, fair" once each at most. footage names an in-game moment to show, with 1-4 keywords.
+You are writing one entry of a long-form ranking video, from the plan you are given. The narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words (count them), ${rules.sentenceGate ? "ten to sixteen short sentences" : "three to five sentences"}: what the game is and when it landed, the specific detail from the plan, and why it sits at this rank by the criterion. It starts by naming the rank and the game in a fresh way: never open the way an earlier entry opened (they are listed). Say the game's full title once, then the short form people use; a person's role goes with their first mention in the video only. In the whole video "we think" comes at most twice and "in fairness" and "which, fair" once each at most. footage names an in-game moment to show, with 1-4 keywords.
 ${REHOOK_RULE} In one entry that means one such line, often the last one handing over to the next entry; never reuse the wording of a re-hook already in the video (they are listed).
-List every factual claim in this entry in "claims".`;
+List every factual claim in this entry in "claims".${ruleLines(rules)}`;
 }
 
 /** The shot list for one entry: as many moments as the narration has sentences, numbered to match. */
@@ -433,8 +501,9 @@ export async function writeLongform(
   const fb = feedback.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
+  const rules = opts.rules ?? NO_LONG_RULES;
   const brief = `Theme: ${topic.theme}\nWorking title: ${topic.title_idea}\nCriterion: ${topic.criterion}${lessons ? `\n\n${lessons}` : ""}`;
-  const plan = await llm.structured({
+  let plan = await llm.structured({
     site: "longform.plan",
     system: planPrompt(opts),
     content: `${brief}${factBlock}${fb}`,
@@ -442,6 +511,37 @@ export async function writeLongform(
     effort: "medium",
     maxTokens: 12000,
   });
+  // A rule-led revision costs one call, and a video gets a few at most, so a writer that can't reach a floor can't
+  // run up a bill; what still misses is a style warning (pipeline.ts).
+  let revisions = LONG_RULE_REVISIONS;
+  const loops = rules.loopsMax
+    ? groundOpenLoops(plan.open_loops, plan.entries.length, {
+        max: rules.loopsMax,
+        coldOpen: Math.max(2, rules.hookStack),
+      }).loops
+    : [];
+  const hookMisses = [
+    ...hookStackProblems(
+      plan.intro.narration,
+      plan.intro.hook_stack,
+      rules.hookStack,
+      [],
+    ),
+    ...loopProblems(sentencesOf(plan.intro.narration), loops, 0),
+  ];
+  if (hookMisses.length) {
+    revisions--;
+    plan =
+      (await reviseByEdits(llm, {
+        site: "longform.plan",
+        system: planPrompt(opts),
+        content: `${brief}${factBlock}`,
+        schema: LongformPlanSchema,
+        draft: plan,
+        problems: hookMisses,
+        job: "ranking hook",
+      })) ?? plan;
+  }
   if (!Array.isArray(factsFor)) facts = await factsFor(plan.entries);
   const order = [...plan.entries].sort((a, b) => b.rank - a.rank);
   const outline = order
@@ -464,10 +564,17 @@ export async function writeLongform(
       plan.intro.narration,
       ...written.map((w) => w.narration),
     ]);
-    const body = await llm.structured({
-      site: "longform.write",
-      system: entryPrompt(),
-      content: `${brief}\nTitle: ${plan.title}\n\nThe full ranking, spoken from the bottom up:\n${outline}\n\nWrite entry #${e.rank} of ${order.length}: ${e.game_title} (${e.year}, ${e.platforms}). Verdict chip: ${e.verdict_chip}. Notes: ${e.angle}${
+    const spokenAt = written.length + 1;
+    // What this entry raises or answers, and any surprise the hook said it delivers.
+    const owed = [
+      loopBrief(loops, spokenAt),
+      ...(plan.intro.hook_stack?.surprises ?? [])
+        .filter((x) => x.chapter === spokenAt)
+        .map((x) => `The intro promised this surprise and this entry pays it: "${x.tease}"`),
+    ].filter(Boolean);
+    const content = `${brief}\nTitle: ${plan.title}\n\nThe full ranking, spoken from the bottom up:\n${outline}\n\nWrite entry #${e.rank} of ${order.length}: ${e.game_title} (${e.year}, ${e.platforms}). Verdict chip: ${e.verdict_chip}. Notes: ${e.angle}${
+      owed.length ? `\n\n${owed.join("\n")}` : ""
+    }${
         own.length
           ? `
 
@@ -487,11 +594,38 @@ ${before}`
 Re-hooks already in the video (never reuse their wording):
 ${hooks.map((h) => `- ${h}`).join("\n")}`
           : ""
-      }${fb}`,
+      }${fb}`;
+    let body = await llm.structured({
+      site: "longform.write",
+      system: entryPrompt(rules),
+      content,
       schema: LongformEntryBodySchema,
       effort: "medium",
       maxTokens: 8000,
     });
+    // The rules on this first draft, measured on the script so far, before its shot list is paid for.
+    const before_ = [plan.intro.narration, ...written.map((w) => w.narration)];
+    const misses = [
+      youShortfall(before_, body.narration, rules.youFloor),
+      sentenceShortfall(before_, body.narration, rules.sentenceGate),
+      ...loopProblems(sentencesOf(body.narration), loops, spokenAt),
+      ...(rules.namePayoff
+        ? namedPayoffProblems(sentencesOf(body.narration), loops, spokenAt)
+        : []),
+    ].filter((x): x is string => Boolean(x));
+    if (misses.length && revisions > 0) {
+      revisions--;
+      body =
+        (await reviseByEdits(llm, {
+          site: "longform.write",
+          system: entryPrompt(rules),
+          content,
+          schema: LongformEntryBodySchema,
+          draft: body,
+          problems: misses,
+          job: "ranking entry",
+        })) ?? body;
+    }
     const { angle: _notes, ...head } = e;
     const moments = await writeMoments(
       llm,
@@ -509,7 +643,19 @@ ${hooks.map((h) => `- ${h}`).join("\n")}`
     });
     claims.push(...body.claims);
   }
-  return { ...plan, entries: written, claims };
+  const placed = loops.length
+    ? placeOpenLoops(
+        loops,
+        sentencesOf(plan.intro.narration),
+        written.map((w) => sentencesOf(w.narration)),
+      ).placed
+    : [];
+  return {
+    ...plan,
+    entries: written,
+    claims,
+    ...(placed.length ? { placed_loops: placed } : {}),
+  };
 }
 
 const wordCount = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
@@ -523,7 +669,11 @@ export function narrationOfLongform(e: LongformScript): string {
   ].join(" ");
 }
 
-export function validateLongform(e: LongformScript): string[] {
+export function validateLongform(
+  e: LongformScript,
+  rules: LongRules = NO_LONG_RULES,
+): string[] {
+  const [introMin, introMax] = introWords(rules);
   const p: string[] = [];
   const spokenText = narrationOfLongform(e);
   const words = wordCount(spokenText);
@@ -602,10 +752,8 @@ export function validateLongform(e: LongformScript): string[] {
       p.push(`Entry "${x.game_title}" has an implausible year.`);
   }
   const intro = wordCount(e.intro.narration);
-  if (intro < LONG_INTRO_WORDS[0] || intro > LONG_INTRO_WORDS[1])
-    p.push(
-      `The intro is ${intro} words; it must be ${LONG_INTRO_WORDS[0]}-${LONG_INTRO_WORDS[1]}.`,
-    );
+  if (intro < introMin || intro > introMax)
+    p.push(`The intro is ${intro} words; it must be ${introMin}-${introMax}.`);
   const outro = wordCount(e.outro.narration);
   if (outro < LONG_OUTRO_WORDS[0] || outro > LONG_OUTRO_WORDS[1])
     p.push(
@@ -679,5 +827,6 @@ export function longformToScript(e: LongformScript): Script {
     runtime: "long",
     criterion: e.criterion,
     kicker: e.intro.on_screen,
+    ...(e.placed_loops?.length ? { open_loops: e.placed_loops } : {}),
   };
 }

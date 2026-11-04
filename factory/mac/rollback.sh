@@ -22,6 +22,7 @@ pc_running() {
 
 case "$mode" in
 check)
+  set +e
   echo "== the Mac side"; mac_running
   echo "== busy?"
   on_mac 'pgrep -f "[r]emotion|[c]hrome-headless-shell" >/dev/null && echo "a render is running" || echo "no render"; curl -s -m 10 http://127.0.0.1:8080/health | head -c 400; echo'
@@ -29,7 +30,8 @@ check)
   on_mac "du -sh $M/db $M/episodes $M/site $M/engage $M/admin 2>/dev/null"
   echo "== new since the cutover"
   mark=$(cat data/admin/relink_done 2>/dev/null || cat data/admin/mac_seed_started 2>/dev/null || echo "2026-11-05T00:00:00Z")
-  echo "   episode folders changed on the Mac since $mark: $(on_mac "find $M/episodes -maxdepth 1 -type d -newermt '$mark' | wc -l")"
+  # macOS's find wants the date without the T and Z.
+  echo "   episode folders changed on the Mac since $mark: $(on_mac "find $M/episodes -maxdepth 1 -type d -newermt '$(echo "$mark" | tr 'T' ' ' | tr -d 'Z')' | wc -l")"
   echo "== the PC side"
   echo "   factory process: $(pc_running | wc -w) running"
   schtasks //query //tn "Pulse Factory" //fo csv //nh | cut -d, -f3 || true
@@ -64,7 +66,7 @@ go)
   mark=$(cat data/admin/mac_seed_started 2>/dev/null || echo "2026-11-05T00:00:00Z")
   # Episodes: what is newer than the seed; the older ones never left the PC. Folders that retention removed on the Mac
   # stay here until the PC's own retention takes them.
-  on_mac "cd $M && find episodes -type f -newermt '$mark' ! -name '*.part' -print0 | tar -cf - --null -T -" | tar -C data -xf -
+  on_mac "cd $M && find episodes -type f -newermt '$(echo "$mark" | tr 'T' ' ' | tr -d 'Z')' ! -name '*.part' -print0 | tar -cf - --null -T -" | tar -C data -xf -
   gp="$HOME/Videos/Pulse Gameplay"
   mkdir -p "$gp"
   on_mac 'cd "$HOME/Videos/Pulse Gameplay" && tar -cf - $(ls -d inbox published 2>/dev/null | tr "\n" " ")' | tar -C "$gp" -xf -

@@ -44,6 +44,26 @@ export function renderProblems(
   return out;
 }
 
+/**
+ * The line of a failed job's stderr that says what went wrong, with the frame when Remotion names one (pure).
+ * A crash prints the message first and a long stack after it, so the tail of stderr said nothing (4 Nov 2026:
+ * a fallback logged only "ctOnFiber', lineNumber: 95231").
+ */
+export function firstErrorLine(stderr: string): string {
+  const lines = stderr
+    .split(NL_RE)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const stack = /^(at |\{|\}|\[|\]|\^|node:|file:|columnNumber|fileName|functionName|lineNumber|Node\.js v)/;
+  const said =
+    lines.find((l) => /error|timeout|timed out|exception|failed|not cleared|cannot|no word from/i.test(l) && !stack.test(l)) ??
+    lines.find((l) => !stack.test(l)) ??
+    "";
+  const frame = stderr.match(/\bframe: (\d+)/)?.[1];
+  return `${said.slice(0, 500)}${frame ? ` (frame ${frame})` : ""}`;
+}
+const NL_RE = /\r?\n/;
+
 /** An episode file that is an output or scratch, so it does not travel to a render: the rest does (pure). */
 export function skipForRender(rel: string): boolean {
   const r = rel.replace(/\\/g, "/");

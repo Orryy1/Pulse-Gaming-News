@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  firstErrorLine,
   gameplayDue,
   macPath,
   renderProblems,
@@ -247,4 +248,30 @@ test("the routine LAN path: listed address on its own port only, never proxied o
     false,
   );
   allowRoutineLan(0, []);
+});
+
+test("a failed job's log line is its first error, not the tail of the stack", () => {
+  const stderr = [
+    "file:///Users/MORR/PulseFactory/worker/mac/worker.mts:1",
+    "Error: A delayRender() \"Loading <Img>\" was called but not cleared after 180000ms.",
+    "    at bundle.js:1:1",
+    "{",
+    "  stackFrame: [",
+    "    {",
+    "      columnNumber: 39,",
+    "      fileName: 'http://localhost:3000/bundle.js',",
+    "      lineNumber: 107257",
+    "    }",
+    "  ],",
+    "  frame: 267,",
+    "  chunk: null",
+    "}",
+    "",
+    "Node.js v26.13.0",
+  ].join("\n");
+  const line = firstErrorLine(stderr);
+  assert.match(line, /^Error: A delayRender/);
+  assert.match(line, /\(frame 267\)$/);
+  assert.equal(firstErrorLine("no word from the Mac for 8 min\nsomething"), "no word from the Mac for 8 min");
+  assert.equal(firstErrorLine(""), "");
 });

@@ -370,6 +370,9 @@ import {
   captionable,
   gameplayScript,
   gameplayWindow,
+  GameplayReviewSchema,
+  writeWhole,
+  type GameplayReview,
   articleFields,
   cleanWindow,
   hdrFilter,
@@ -3241,6 +3244,22 @@ async function gameplayExperiments(cfg: Config) {
   return parseExperiments(md);
 }
 
+/** The full verdict a clip got in the last day, when its file write never landed. */
+async function priorGameplayReview(
+  db: Db,
+  id: string,
+): Promise<GameplayReview | undefined> {
+  const [row] = await db.query<{ review: unknown }>(
+    `SELECT detail->'review' AS review FROM events
+      WHERE kind = 'gameplay_reviewed' AND detail->>'id' = $1 AND detail->'review' IS NOT NULL
+        AND created_at > now() - interval '24 hours'
+      ORDER BY created_at DESC LIMIT 1`,
+    [id],
+  );
+  const parsed = GameplayReviewSchema.safeParse(row?.review);
+  return parsed.success ? parsed.data : undefined;
+}
+
 /**
  * Hears and looks at new inbox clips (a few a tick, a daily cap on vision calls) and makes an episode
  * from each one worth posting. One gameplay Short is in production at a time, so a long stream's dozen
@@ -3269,27 +3288,41 @@ export async function ingestGameplay(
   const made: string[] = [];
   for (const { dir, meta } of await newClips(cfg.gameplayRoot)) {
     if (left-- <= 0) break;
-    await writeMeta(dir, { status: "reviewing" });
     try {
-      const clip = path.join(dir, meta.clip.file || "clip.mp4");
-      const words = (await s.hearClip?.(clip).catch(() => [])) ?? [];
-      await fs.writeFile(path.join(dir, "words.json"), JSON.stringify(words));
-      const review = await reviewClip(
-        s.llm,
-        dir,
-        meta,
-        words.map((w) => w.text).join(" "),
-        experiments,
+      await writeMeta(dir, { status: "reviewing" });
+      // A verdict whose file write failed (a locked folder) is not paid for or lost: the event holds it, and an
+      // episode already made from it is the same episode (4 Nov 2026: clips reviewed up to five times over).
+      const prior = await priorGameplayReview(db, meta.id);
+      let review: GameplayReview;
+      if (prior) review = prior;
+      else {
+        const clip = path.join(dir, meta.clip.file || "clip.mp4");
+        const words = (await s.hearClip?.(clip).catch(() => [])) ?? [];
+        await writeWhole(path.join(dir, "words.json"), JSON.stringify(words));
+        review = await reviewClip(
+          s.llm,
+          dir,
+          meta,
+          words.map((w) => w.text).join(" "),
+          experiments,
+        );
+        await logEvent(db, null, "gameplay_reviewed", {
+          id: meta.id,
+          keep: review.keep,
+          score: review.score,
+          reason: review.reason,
+          review,
+        });
+      }
+      const keep =
+        worthPosting(review, minScoreFor(meta, cfg)) ||
+        Boolean(meta.rehearsal && meta.rehearsal_force);
+      const [made_before] = await db.query<{ id: string }>(
+        `SELECT id FROM episodes WHERE story_hash = $1`,
+        [`gameplay:${meta.id}`],
       );
-      await logEvent(db, null, "gameplay_reviewed", {
-        id: meta.id,
-        keep: review.keep,
-        score: review.score,
-        reason: review.reason,
-      });
-      const keep = worthPosting(review, minScoreFor(meta, cfg));
-      let episode: string | undefined;
-      if (keep) {
+      let episode: string | undefined = made_before?.id;
+      if (keep && !episode) {
         const cluster: StoryCluster = {
           hash: `gameplay:${meta.id}`,
           headline: review.question,
@@ -3347,8 +3380,9 @@ export async function ingestGameplay(
       // One in production at a time: the next clip waits for this one to reach the owner.
       if (episode) break;
     } catch (err) {
-      // A failed look is tried again later, never thrown away.
-      await writeMeta(dir, { status: "new" });
+      // A failed look is tried again later, never thrown away (a write that fails here leaves "reviewing", which
+      // newClips also comes back to).
+      await writeMeta(dir, { status: "new" }).catch(() => undefined);
       log("warn", "gameplay review failed", {
         id: meta.id,
         error: errorMessage(err),
@@ -8640,6 +8674,9 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
         `**Result:** ${g.result}`,
         `**Game:** ${script.game_title}`,
         `**Why it was picked:** ${ep.story_json.gameplay?.review.reason ?? "n/a"} (score ${ep.story_json.gameplay?.review.score ?? "?"}/10)`,
+        ...(ep.story_json.gameplay?.review.keep
+          ? []
+          : ["The reviewer would have passed on this; it was sent on to test the lane."]),
         "",
         `▶️ [Watch preview](${links.preview})`,
       ]

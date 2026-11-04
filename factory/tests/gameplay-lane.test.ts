@@ -703,6 +703,56 @@ test("the approval notice buzzes, is retried when Discord fails, and is chased o
   assert.match(String(notes.at(-1)!.content), /expired after 48h/);
 });
 
+test("a verdict whose file write failed is neither paid for twice nor lost, and its episode is not made twice", async () => {
+  const { db, root, s } = await setup();
+  const dir = await inboxClip(root, "gp_locked");
+  // The first attempt reviews and makes the episode; the final write to meta.json fails, as under a Drive lock.
+  const realRename = fs.rename;
+  let calls = 0;
+  const m0 = await meta(dir);
+  (fs as { rename: unknown }).rename = async (a: string, b: string) => {
+    if (b.endsWith("meta.json") && ++calls === 2) throw Object.assign(new Error("not busy, broken"), { code: "EIO" });
+    return realRename(a, b);
+  };
+  const spent = async () =>
+    (await db.query(`SELECT 1 FROM events WHERE kind = 'gameplay_reviewed'`)).length;
+  try {
+    assert.equal((await ingestGameplay(s)).length, 1, "the episode is made before the write fails");
+  } finally {
+    (fs as { rename: unknown }).rename = realRename;
+  }
+  assert.ok(m0);
+  assert.equal(await spent(), 1, "one review spent");
+  assert.equal((await listEpisodes(db)).length, 1);
+  // The retry spends nothing, makes nothing new, and the verdict lands.
+  await fs.writeFile(path.join(dir, "meta.json"), JSON.stringify({ ...(await meta(dir)), status: "new" }));
+  await db.query(`UPDATE episodes SET status = 'awaiting_approval'`);
+  await ingestGameplay(s);
+  assert.equal(await spent(), 1, "no second vision call");
+  assert.equal((await listEpisodes(db)).length, 1, "the same episode");
+  const m = await meta(dir);
+  assert.equal(m.status, "picked");
+  assert.equal(m.review.keep, true);
+});
+
+test("a forced rehearsal reaches Discord even when the reviewer passes on it, and still cannot publish", async () => {
+  const { root, s, reviews, notes, uploads } = await setup();
+  reviews.push(review({ keep: false, score: 5, reason: "No clear outcome." }));
+  const dir = await inboxClip(root, "gp_force");
+  await fs.writeFile(path.join(dir, "meta.json"), JSON.stringify({ ...(await meta(dir)), rehearsal: true, rehearsal_force: true }));
+  const [id] = await ingestGameplay(s);
+  assert.ok(id);
+  const ep = await run(s, id!);
+  assert.equal(ep!.status, "rejected");
+  assert.match(String(notes.find((n) => n.embeds?.length)!.embeds![0]!.description), /would have passed/);
+  assert.equal(uploads.length, 0);
+  // Force without the rehearsal mark does nothing.
+  reviews.push(review({ keep: false, score: 5 }));
+  const dir2 = await inboxClip(root, "gp_force2");
+  await fs.writeFile(path.join(dir2, "meta.json"), JSON.stringify({ ...(await meta(dir2)), rehearsal_force: true }));
+  assert.deepEqual(await ingestGameplay(s), []);
+});
+
 test("a clip the owner saved on Xbox can have its own bar; a Twitch cut keeps the strict one", () => {
   const cfg = { gameplayMinScore: 7, gameplayMinScoreOwn: 6 };
   const m = (kind: string) => ({ source: { file: "", title: "", kind } });

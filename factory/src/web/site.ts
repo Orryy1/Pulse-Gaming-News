@@ -923,6 +923,7 @@ export const SITE_EPISODES_SQL = `SELECT e.id, e.lane, e.youtube_video_id, e.scr
   FROM episodes e
  WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane NOT IN ('cutdown','twin')
    AND COALESCE(e.publish_at, e.updated_at) <= now()
+   AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind = 'made_public' AND v.detail->>'skipped' = 'true')
    AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('crosspost_skip','made_private') AND COALESCE(v.detail->>'reason','') IN ('not public on YouTube',''))
  ORDER BY COALESCE(e.publish_at, e.updated_at) DESC
  LIMIT $1`;

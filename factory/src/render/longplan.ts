@@ -15,6 +15,7 @@ import {
   type KineticFillerData,
   type MomentFiller,
 } from "./fillerplan.ts";
+import { capSamePicture, type PictureCapMedia } from "./picturecap.ts";
 import { wordTimes } from "./components/kinetic/words.ts";
 
 export const LONG_FPS = 30;
@@ -316,6 +317,13 @@ export interface LongPlanInput {
   durationSeconds: number; // includes the tail
   images: LongImage[];
   clips: LongClip[];
+  /**
+   * LONG_SAME_PICTURE_MAX_SECONDS (./picturecap.ts): no one still for more than this in any minute. Unset or 0: the
+   * plan as it was.
+   */
+  samePictureMaxSeconds?: number;
+  /** LONG_STILL_XFADE_FRAMES, a test dial: how long a still dissolves in, in frames. Unset: the composition's own 9. */
+  stillXfadeFrames?: number;
   variant: number;
   /** Moments per ranking entry: when given, each sentence gets its own matched picture. */
   momentCounts?: number[];
@@ -458,6 +466,8 @@ export interface LongShot {
   move: MovePreset;
   /** A filler shot: the frame (from the shot's start) by which it is fully drawn, where checks look. */
   settle?: number;
+  /** A still's dissolve in frames, when a test sets one (LONG_STILL_XFADE_FRAMES). */
+  xfade?: number;
 }
 
 export interface LongPlan {
@@ -1123,12 +1133,27 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       prev.end = sh.end;
     else merged.push({ ...sh });
   }
+  const capped = capSamePicture(merged, input.samePictureMaxSeconds ?? 0, LONG_FPS, {
+    images,
+    clips: clips as PictureCapMedia["clips"],
+    real,
+    entryOf: (k) => entryOf(segments, k, input.takeEntry),
+    clipsPlayed: new Set(
+      merged.flatMap((sh) => (sh.media.type === "clip" ? [sh.media.index] : [])),
+    ),
+  });
   const done: LongPlan = {
     version: 1,
     fps: LONG_FPS,
     totalFrames,
     tailFrames,
-    shots: merged,
+    shots:
+      input.stillXfadeFrames === undefined || input.stillXfadeFrames === 9
+        ? capped.shots
+        : capped.shots.map((sh) => ({
+            ...sh,
+            xfade: Math.max(0, input.stillXfadeFrames!),
+          })),
   };
   return input.bookend
     ? bookendEcho(
@@ -1262,6 +1287,7 @@ export function usefulGraphic<
       "share",
       "specs",
       "lineage",
+      "verdict",
     ].includes(g.kind)
   )
     return Boolean(
@@ -1343,13 +1369,22 @@ export function planGaps(
   plan: LongPlan,
   segments: Segment[],
   takeEntry?: number,
+  /** LONG_SAME_PICTURE_MAX_SECONDS: an entry holding one still longer than this is thin too, whatever else it shows. */
+  holdMaxSeconds = 0,
 ): Array<{ entry: number; plateSeconds: number; maxRepeat: number }> {
+  const held = new Set<number>();
   const by = new Map<number, { plate: number; uses: Map<string, number> }>();
   for (const s of plan.shots) {
     if (segments[s.segment]?.kind !== "beat") continue;
     const e = entryOf(segments, s.segment, takeEntry);
     if (e === undefined) continue;
     const g = by.get(e) ?? by.set(e, { plate: 0, uses: new Map() }).get(e)!;
+    if (
+      holdMaxSeconds > 0 &&
+      s.media.type === "image" &&
+      s.end - s.start > holdMaxSeconds * plan.fps
+    )
+      held.add(e);
     if (s.media.type === "plate") g.plate += s.end - s.start;
     else {
       const k = `${s.media.type}${s.media.index}`;
@@ -1362,7 +1397,13 @@ export function planGaps(
       plateSeconds: Math.round(g.plate / plan.fps),
       maxRepeat: Math.max(0, ...g.uses.values()),
     }))
-    .filter((x) => x.plateSeconds > 15 || x.maxRepeat > 3);
+    .filter(
+      (x) =>
+        x.plateSeconds > 15 ||
+        // With the same-picture rule on, a picture back a third time is already one too many.
+        x.maxRepeat > (holdMaxSeconds > 0 ? 2 : 3) ||
+        held.has(x.entry),
+    );
 }
 
 /**

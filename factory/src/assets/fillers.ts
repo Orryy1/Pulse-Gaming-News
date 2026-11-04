@@ -96,11 +96,16 @@ export function needsOf(
   ch: FillersChapter,
   images: FillerImage[],
   clips: FillerClip[],
+  /** LONG_CARD_SHARE: a sentence with only a still of its own may take a sure filler, as one with only stock does. */
+  stillsToo = false,
 ): Map<number, Need> {
   const own = new Set<number>();
   const stock = new Set<number>();
   for (const x of images)
-    if (x.beatIndex === ch.entry && x.moment !== undefined) own.add(x.moment);
+    if (x.beatIndex === ch.entry && x.moment !== undefined) {
+      if (stillsToo) stock.add(x.moment);
+      else own.add(x.moment);
+    }
   for (const c of clips)
     if (c.beatIndex === ch.entry && c.moment !== undefined)
       (c.stock ? stock : own).add(c.moment);
@@ -237,6 +242,12 @@ export interface ChooseOptions {
   recon?: Map<number, Map<number, ReconCandidate>>;
   /** ILLUSTRATE_ENABLED: says so when a line left bare is one a sketch would suit. */
   sketches?: boolean;
+  /**
+   * LONG_CARD_SHARE: below this share of a chapter's sentences carrying a card (a graphic or a filler), a sentence
+   * showing only a still of its own may take a sure filler too, and the type and document caps rise by half. It
+   * stops at the share. Unset or 0: the rules as they were.
+   */
+  cardShare?: number;
 }
 
 const short = (s: string, n = 90) =>
@@ -257,7 +268,19 @@ export function chooseFillers(
   const usedBackdrops: string[] = [];
   let previousKinetic: string | undefined;
   for (const ch of chapters) {
-    const needs = needsOf(ch, opts.images, opts.clips);
+    const target = opts.cardShare ?? 0;
+    // A small corner figure shares its frame with the footage: only a full card counts towards the share.
+    const graphics = ch.moments.filter(
+      (m) =>
+        m.graphic &&
+        !["none", "stat", "date", "list", "compare", "score"].includes(
+          m.graphic.kind,
+        ),
+    ).length;
+    const needs = needsOf(ch, opts.images, opts.clips, target > 0);
+    const plainNeeds = target > 0 ? needsOf(ch, opts.images, opts.clips) : needs;
+    const kineticMax = target > 0 ? Math.ceil(KINETIC_PER_CHAPTER * 1.5) : KINETIC_PER_CHAPTER;
+    const documentMax = target > 0 ? Math.ceil(DOCUMENTS_PER_CHAPTER * 1.5) : DOCUMENTS_PER_CHAPTER;
     const offers = new Map<number, Offer[]>();
     const declines = new Map<number, Partial<Record<FillerFamily, string>>>();
     for (const [k, need] of needs) {
@@ -299,10 +322,16 @@ export function chooseFillers(
         chosen.get(k + 1)?.family === o.family
       )
         why = `the line beside it already has ${FAMILY_WORDS[o.family][0]}`;
-      else if (o.family === "kinetic" && n >= KINETIC_PER_CHAPTER)
-        why = `the chapter already has ${KINETIC_PER_CHAPTER} kinetic type cards`;
-      else if (o.family === "document" && n >= DOCUMENTS_PER_CHAPTER)
-        why = `the chapter already has ${DOCUMENTS_PER_CHAPTER} document pages`;
+      else if (o.family === "kinetic" && n >= kineticMax)
+        why = `the chapter already has ${kineticMax} kinetic type cards`;
+      else if (o.family === "document" && n >= documentMax)
+        why = `the chapter already has ${documentMax} document pages`;
+      // A line that has a picture of its own gives it up only while the chapter is short of cards.
+      else if (
+        !plainNeeds.has(k) &&
+        (graphics + chosen.size) / Math.max(1, ch.moments.length) >= target
+      )
+        why = "the chapter has its share of cards";
       else if (
         (o.family === "objects" || o.family === "silhouettes") &&
         styles.has(o.style)

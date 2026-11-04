@@ -325,7 +325,7 @@ const GENERIC_CTA =
  * like that should be rewritten around what the sources do explain, or dropped for a game whose story they tell.
  */
 export function whyAnswerProblems(narration: string): string[] {
-  return /(?:reasons?|motives?)[^.?!]{0,40}(?:aren't|are not|isn't|is not|unknown|never)|won't guess|will not guess|no one knows|nobody knows|never explained|hasn't said why|has not said why/i.test(
+  return /\b(?:reasons?|motives?)\b[^.?!]{0,40}\b(?:aren't|are not|isn't|is not|unknown|never)\b|won't guess|will not guess|no one knows|nobody knows|never explained|hasn't said why|has not said why/i.test(
     narration,
   )
     ? [

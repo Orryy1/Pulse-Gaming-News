@@ -231,9 +231,20 @@
     "slot": "20:00",
     "make_hours_before": 44,
     "title": "30 GTA 6 Claims Checked Before Launch: Confirmed, Reported or Busted",
+    "format": "guide",
+    "sources": [
+      { "url": "https://support.rockstargames.com/articles/29jV3Cv2cCgvwM1XgtMO5o/grand-theft-auto-vi-regional-pre-load-and-release-times-on-playstation-5-and-xbox-series-x-or-s", "source": "Rockstar Support", "official": true },
+      { "url": "https://www.rockstargames.com/newswire/article/k4ak9okk485712/grand-theft-auto-vi-pre-load-begins-on-november-10", "source": "Rockstar Newswire", "official": true },
+      { "url": "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25", "source": "Rockstar Newswire", "official": true },
+      { "url": "https://kotaku.com/gta-6-pre-load-times-install-size-and-global-release-times-confirmed-2000752787", "source": "Kotaku" },
+      { "url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032", "source": "Kotaku" },
+      { "url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support", "source": "Tom's Hardware" },
+      { "url": "https://www.purexbox.com/news/2026/06/gta-6-costs-usd80-described-as-a-single-player-experience", "source": "Pure Xbox" },
+      { "url": "https://hitmarker.net/news/take-two-ceo-comments-on-why-gta-vi-was-not-announced-for-pc-903138", "source": "Hitmarker" }
+    ],
     "franchise": "Grand Theft Auto VI",
     "wiki": "Grand Theft Auto VI",
-    "angle": "NOT a history and not 'everything you need to know'. The viewer's own first day: buy it, download it, where you are, who you are, the police, money, cars, what is missing, what is false. Teach three verdicts in the first minute (confirmed, reported, busted) and give every claim one, with its source named in the same breath. Plant at most four loops and pay each one by name. Each chapter closes with one job to do on day one and asks for the next chapter. Say what is untested and promise the launch-day test video on Saturday November 21. No leaks, no datamined material, never a fan map number as fact."
+    "angle": "NOT a history and not 'everything you need to know'. The viewer's own first day: buy it, download it, where you are, who you are, the police, money, cars, what is missing, what is false. Teach three verdicts in the first minute (confirmed, reported, busted) and give every claim one, with its source named in the same breath. Plant loops and pay each one by name. Each chapter closes with one job to do on day one and asks for the next chapter. Say what is untested and promise the launch-day test video on Saturday November 21. No leaks, no datamined material, never a fan map number as fact."
   },
   {
     "kind": "why",

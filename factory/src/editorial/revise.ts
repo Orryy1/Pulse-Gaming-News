@@ -76,12 +76,15 @@ export async function reviseByEdits<S extends z.ZodType>(
     problems: string[];
     effort?: "low" | "medium" | "high";
     tier?: Tier;
+    /** The writer's own step, so a revision goes where its draft went (CODEX_CALLS). Absent: read from the caller. */
+    site?: string;
     /** For the log: which writer this was. */
     job: string;
   },
 ): Promise<z.infer<S> | undefined> {
   try {
     const r = await llm.structured({
+      ...(opts.site ? { site: opts.site } : {}),
       system: opts.system,
       content: `${opts.content}\n\nYOUR DRAFT (JSON):\n${JSON.stringify(opts.draft, null, 1)}\n\nThe draft was rejected for these problems:\n${opts.problems.map((p) => `- ${p}`).join("\n")}\n\n${HOW}`,
       schema: EditsSchema,

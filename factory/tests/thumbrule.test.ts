@@ -11,6 +11,7 @@ import {
   artGameName,
   artVerdict,
   heroRuleDesigns,
+  heroRuleFallback,
   heroSizeProblems,
   heroThumbWords,
   layoutProblem,
@@ -451,6 +452,19 @@ test("the designs: posters on different pictures, the GTA grid first, and nothin
     }),
     [],
   );
+});
+
+test("with no usable picture the plain design carries the release, legal words, never the wrong game", () => {
+  const split = {
+    layout: "split",
+    thumb: { headline: "HALO 2 AT 5?", imageFile: "rdr.jpg" },
+  };
+  const script = { headline: "x", game_title: "Halo" };
+  const [wrong] = heroRuleFallback(split, script, steam("Red Dead Redemption 2"));
+  assert.equal(wrong!.thumb.imageFile, null);
+  assert.equal(wrong!.thumb.headline, "THE HALO STORY");
+  const [right] = heroRuleFallback(split, script, igdb("Halo 3"));
+  assert.equal(right!.thumb.imageFile, "rdr.jpg");
 });
 
 test("a failed poster gives way to the reserve, then a variant, and with none left stays as rendered", () => {

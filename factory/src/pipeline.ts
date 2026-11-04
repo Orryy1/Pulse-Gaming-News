@@ -161,7 +161,12 @@ import {
 import type { LongRenderInput, LongStillsInput } from "./render/render.ts";
 import { motifPictureOrder } from "./render/motifpictures.ts";
 import { repairPictures, thumbOutcome } from "./qa/thumbrepair.ts";
-import { artVerdict, heroRuleDesigns, posterProblems } from "./qa/thumbrule.ts";
+import {
+  artVerdict,
+  heroRuleDesigns,
+  heroRuleFallback,
+  posterProblems,
+} from "./qa/thumbrule.ts";
 import type { renderCutdown } from "./render/render.ts";
 import {
   CUTDOWN_TAIL_SECONDS,
@@ -7375,7 +7380,15 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         motifId: motif?.id,
       }).catch(() => [])
     : [];
-  const designs: Candidate[] = ruled.length ? ruled : candidates;
+  const designs: Candidate[] = ruled.length
+    ? ruled
+    : s.cfg.thumbHeroRule
+      ? heroRuleFallback(
+          candidates.find((c) => c.layout === "split")!,
+          script,
+          sourceOf.get(thumbArt?.file ?? "")?.provenance,
+        )
+      : candidates;
   const [mainThumb, ...restThumbs] = designs;
   const thumbVariants = restThumbs.slice(0, 2).map((c, i) => ({
     file: path.join(dir, i === 0 ? "thumb_b.jpg" : "thumb_c.jpg"),

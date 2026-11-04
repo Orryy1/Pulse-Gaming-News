@@ -483,3 +483,25 @@ export async function heroRuleDesigns(o: {
   if (!posters.length) return [];
   return o.grid && approvedGrid(o.motifId) ? [o.grid, ...posters] : posters;
 }
+
+/**
+ * No picture the rule can use: the plain split design carries the release, with legal words and never a picture of
+ * another game. No frame, no panel of pictures, and the only route left when everything else has fallen away.
+ */
+export function heroRuleFallback(
+  split: HeroDesign,
+  script: ThumbScript,
+  provenance?: string,
+): HeroDesign[] {
+  const wrong = artVerdict(provenance, script.game_title) === "other";
+  return [
+    {
+      layout: split.layout,
+      thumb: {
+        ...split.thumb,
+        headline: heroThumbWords(script),
+        imageFile: wrong ? null : split.thumb.imageFile,
+      },
+    },
+  ];
+}

@@ -401,7 +401,7 @@ export function macOrLocal<A extends unknown[], R>(
       if (shouldTell(job, Date.now()))
         await Promise.resolve(
           tell(
-            `Mac mini: ${job} is running on the PC instead (${why.slice(0, 200)}).`,
+            `Mac mini: ${job} went to the PC instead (${why.slice(0, 200)}).`,
           ),
         ).catch(() => undefined);
       return local(...a);

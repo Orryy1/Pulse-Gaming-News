@@ -120,7 +120,7 @@ test("the Mac failing means the PC does the job and the owner hears, once", asyn
   assert.equal(await f(2), 4);
   assert.equal(await f(3), 6);
   assert.equal(told.length, 1);
-  assert.match(told[0]!, /on the PC instead/);
+  assert.match(told[0]!, /to the PC instead/);
   const ok = macOrLocal(
     "another job",
     async () => "mac",

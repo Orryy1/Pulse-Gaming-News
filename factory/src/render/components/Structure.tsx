@@ -247,7 +247,9 @@ export const CallbackCue: React.FC<{
   len: number;
   /** The picture on screen when the question was raised; a clip is held on that frame. */
   media?: { src: string; clip: boolean; offset: number };
-}> = ({ text, len, media }) => {
+  /** The left side while a corner card holds the right (src/render/structure.ts cueSide). */
+  side?: "left" | "right";
+}> = ({ text, len, media, side = "right" }) => {
   const frame = useCurrentFrame();
   const inP = interpolate(frame, [0, 10], [0, 1], clamp);
   const out = interpolate(frame, [len - 10, len - 1], [1, 0], clamp);
@@ -256,11 +258,11 @@ export const CallbackCue: React.FC<{
     <div
       style={{
         position: "absolute",
-        right: SAFE_X,
+        ...(side === "left" ? { left: SAFE_X } : { right: SAFE_X }),
         top: 180,
         width: 380,
         opacity: ease * out,
-        transform: `translateX(${(1 - ease) * 40}px)`,
+        transform: `translateX(${(1 - ease) * (side === "left" ? -40 : 40)}px)`,
         pointerEvents: "none",
       }}
     >

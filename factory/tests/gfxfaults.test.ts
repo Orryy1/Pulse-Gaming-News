@@ -20,6 +20,7 @@ import {
 import { settledBy, shotTiming, SETTLED } from "../src/render/components/docs/layout.ts";
 import { wholeLineFiller } from "../src/render/fillerplan.ts";
 import { faultsByKind, graphicsNotice } from "../src/qa/graphicscheck.ts";
+import { cueSide } from "../src/render/structure.ts";
 
 const row = (s: string) => {
   const i = s.lastIndexOf(":");
@@ -171,6 +172,14 @@ test("a card from an older plan is brought up to a complete thought, or left out
   assert.equal(wholeLineFiller(f as never), undefined);
   const other = { family: "document", style: "memo", data: {} };
   assert.equal(wholeLineFiller(other as never), other);
+});
+
+test("a recall card crosses to the left while a corner card holds the right", () => {
+  const cue = { from: 1000, len: 150 };
+  assert.equal(cueSide(cue, [{ from: 1100, to: 1250 }]), "left");
+  assert.equal(cueSide(cue, [{ from: 900, to: 1001 }]), "left");
+  assert.equal(cueSide(cue, [{ from: 900, to: 1000 }]), "right");
+  assert.equal(cueSide(cue, [{ from: 1150, to: 1300 }]), "right");
 });
 
 test("the alert says which card most of the faults came from", () => {

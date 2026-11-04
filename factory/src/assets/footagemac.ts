@@ -107,6 +107,7 @@ export function macFootageDeps(
   m: MacSettings,
   local: FootageFirstDeps,
   tell: Tell,
+  ensure: (m: MacSettings) => Promise<unknown> = ensureWorker,
 ): FootageFirstDeps {
   const job = `gather_${process.pid}_${Date.now()}`;
   let jobDir = "";
@@ -120,8 +121,11 @@ export function macFootageDeps(
   >();
 
   let closing = false;
+  let said = false;
   const lost = (why: string) => {
-    if (closing || (!up && !ssh)) return;
+    // Once a run. A Mac that never answered has no session to lose and still has to be said (4 Nov 2026).
+    if (closing || said) return;
+    said = true;
     up = false;
     ssh = undefined;
     log("warn", "Mac footage gather lost; the PC carries on", { why });
@@ -139,7 +143,7 @@ export function macFootageDeps(
   const open = () =>
     (opening ??= (async () => {
       try {
-        await ensureWorker(m);
+        await ensure(m);
         const home = await macHome(m);
         jobDir = `${home}/PulseFactory/jobs/${job}`;
         const child = spawn(

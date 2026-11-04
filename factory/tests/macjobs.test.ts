@@ -10,7 +10,7 @@ import {
   sweepPlan,
 } from "../src/macjobs.ts";
 import { macOrLocal, shq, workerLine } from "../src/macworker.ts";
-import { footageOnMac } from "../src/assets/footagemac.ts";
+import { footageOnMac, macFootageDeps } from "../src/assets/footagemac.ts";
 import { shortJob, thumbFiles } from "../src/render/macrender.ts";
 import {
   allowRoutineLan,
@@ -274,4 +274,27 @@ test("a failed job's log line is its first error, not the tail of the stack", ()
   assert.match(line, /\(frame 267\)$/);
   assert.equal(firstErrorLine("no word from the Mac for 8 min\nsomething"), "no word from the Mac for 8 min");
   assert.equal(firstErrorLine(""), "");
+});
+
+test("a Mac that never answers: the gather stays on the PC and the owner hears, once", async () => {
+  const told: string[] = [];
+  const calls: string[] = [];
+  const local = {
+    search: async () => (calls.push("local search"), []),
+    details: async () => (calls.push("local details"), undefined),
+  } as unknown as FootageFirstDeps;
+  const d = macFootageDeps(
+    { host: "pulse-mac", minFreeGb: 40, waitMinutes: 10, concurrency: 6 },
+    local,
+    (t) => told.push(t),
+    async () => {
+      throw new Error("Could not resolve hostname");
+    },
+  );
+  await d.search("q");
+  await d.details("id");
+  assert.deepEqual(calls, ["local search", "local details"]);
+  assert.equal(told.length, 1);
+  assert.match(told[0]!, /back to the PC.*Could not resolve/);
+  await d.close?.();
 });

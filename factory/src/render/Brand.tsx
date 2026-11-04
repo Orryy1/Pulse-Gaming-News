@@ -6,7 +6,7 @@ import { AbsoluteFill, Img, staticFile } from "remotion";
 import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY } from "./components/fonts.ts";
 import { titleLines } from "./longplan.ts";
-import { ClashThumb, HeroThumb, MotifThumb, MysteryThumb, NumberThumb, RetroThumb } from "./ThumbStudio.tsx";
+import { ClashThumb, HeroThumb, MotifThumb, MysteryThumb, NumberThumb, PosterThumb, RetroThumb } from "./ThumbStudio.tsx";
 
 const Grid: React.FC<{ opacity?: number; cell?: number }> = ({
   opacity = 0.05,
@@ -203,7 +203,7 @@ export type ThumbProps = {
   accent: string;
   // A/B designs for YouTube's Test & compare: "split" (the default), "full" bleed art with a
   // short line, or "versus": last place against the winner.
-  layout?: "split" | "full" | "versus" | "depth" | "clipping" | "hero" | "number" | "retro" | "mystery" | "clash" | "motif";
+  layout?: "split" | "full" | "versus" | "depth" | "clipping" | "hero" | "number" | "retro" | "mystery" | "clash" | "motif" | "poster";
   image2Src?: string | null; // versus: the winner's art (imageSrc is last place)
   fgSrc?: string | null; // depth: the art's foreground cut-out (src/render/parallax.ts), set in front of the headline
   subjectX?: number; // depth: where the subject stands (0-1); the headline goes on the other side so it stays readable
@@ -213,11 +213,16 @@ export type ThumbProps = {
   motif?: string; // motif: the look's id (src/render/components/motifs)
   pictureSrcs?: string[]; // motif: pictures for its panels and screens
   variant?: number; // motif: the card's layout (the repair after a failed check takes the next one)
+  imageAspect?: number; // poster: the picture's width over height, to place its subject
+  subjectY?: number; // poster: how far down the picture its subject is (0-1)
+  zoom?: number; // poster: enlarge the picture at least this much (1-1.4)
 };
 
 /** Long-form thumbnail, 1280x720, in one of three designs. */
 export const Thumb: React.FC<ThumbProps> = (p) =>
-  p.layout === "motif" ? (
+  p.layout === "poster" ? (
+    <PosterThumb {...p} />
+  ) : p.layout === "motif" ? (
     <MotifThumb {...p} />
   ) : p.layout === "hero" ? (
     <HeroThumb {...p} />

@@ -173,7 +173,15 @@ import {
 } from "./render/longplan.ts";
 import type { LongRenderInput, LongStillsInput } from "./render/render.ts";
 import { motifPictureOrder } from "./render/motifpictures.ts";
+import { heroLook } from "./assets/localvision.ts";
 import { repairPictures, thumbOutcome } from "./qa/thumbrepair.ts";
+import {
+  artVerdict,
+  cutoutProblems,
+  heroRuleDesigns,
+  heroRuleFallback,
+  posterProblems,
+} from "./qa/thumbrule.ts";
 import type { renderCutdown } from "./render/render.ts";
 import {
   CUTDOWN_TAIL_SECONDS,
@@ -571,6 +579,7 @@ export interface Services {
       headline: string;
       gameTitle: string;
       format?: "short" | "long" | "graphics" | "thumbs";
+      heroRule?: boolean;
       narration?: string;
     },
   ): Promise<VisionQa>;
@@ -7696,7 +7705,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     .catch(() => undefined);
   // Panel-shaped pictures first, one per chapter in turn, logo banners last (src/render/motifpictures.ts):
   // the first six used to be Steam library banners whose empty middle filled the grid's biggest panel.
-  const motifPictures = motifPictureOrder(images).map((i) => i.file);
+  const sourceOf = new Map((assets.images ?? []).map((i) => [i.file, i]));
+  // Under the hero rule, never a picture of another game (the GTA 6 documentary's Red Dead chapter).
+  const motifPictures = motifPictureOrder(
+    s.cfg.thumbHeroRule
+      ? images.filter((i) => artVerdict(sourceOf.get(i.file)?.provenance, script.game_title) !== "other")
+      : images,
+  ).map((i) => i.file);
   const candidates: Candidate[] = [
     ...(motif?.card && motifPictures.length
       ? [
@@ -7818,7 +7833,32 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       },
     },
   ];
-  const [mainThumb, ...restThumbs] = candidates;
+  // The hero rule (THUMB_HERO_RULE, src/qa/thumbrule.ts): the GTA grid where it applies, then posters on the art
+  // that belongs to the game; with no picture to use, the older designs below carry the release.
+  const ruled = s.cfg.thumbHeroRule
+    ? await heroRuleDesigns({
+        images: images.map((i) => ({
+          ...i,
+          provenance: sourceOf.get(i.file)?.provenance,
+          sourceUrl: sourceOf.get(i.file)?.sourceUrl,
+        })),
+        script,
+        dir,
+        grid: candidates.find((c) => c.layout === "motif"),
+        motifId: motif?.id,
+        look: heroLook,
+      }).catch(() => [])
+    : [];
+  const designs: Candidate[] = ruled.length
+    ? ruled
+    : s.cfg.thumbHeroRule
+      ? heroRuleFallback(
+          candidates.find((c) => c.layout === "split")!,
+          script,
+          sourceOf.get(thumbArt?.file ?? "")?.provenance,
+        )
+      : candidates;
+  const [mainThumb, ...restThumbs] = designs;
   const thumbVariants = restThumbs.slice(0, 2).map((c, i) => ({
     file: path.join(dir, i === 0 ? "thumb_b.jpg" : "thumb_c.jpg"),
     thumb: c.thumb as never,
@@ -7836,9 +7876,18 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           } as never,
         }
       : undefined;
+  // A poster's repair is the next poster, on another picture, rendered beside it the same way.
+  const thumbRepair =
+    motifRepair ??
+    (ruled.length && mainThumb?.layout === "poster" && restThumbs[2]
+      ? {
+          file: path.join(dir, "thumb_hero_b.jpg"),
+          thumb: restThumbs[2].thumb as never,
+        }
+      : undefined);
   log("info", "thumbnail designs", {
     episode: ep.id,
-    designs: candidates.map((c) => c.layout).slice(0, 3),
+    designs: designs.map((c) => c.layout).slice(0, 3),
   });
   // A documentary's end card (DOC_END_CARD): the newest public documentary, decided now and kept on the
   // episode so the description's "Next" line matches the card; its thumbnail is copied in beside the render.
@@ -8105,7 +8154,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       posterFile: path.join(dir, "poster.jpg"),
       thumbFile: path.join(dir, "thumb.jpg"),
       thumb: mainThumb!.thumb as never,
-      thumbVariants: motifRepair ? [...thumbVariants, motifRepair] : thumbVariants,
+      thumbVariants: thumbRepair ? [...thumbVariants, thumbRepair] : thumbVariants,
       concurrency: s.cfg.remotionConcurrency,
       gl: s.cfg.remotionGl,
       browserExecutable: s.cfg.browserExecutable,
@@ -8270,28 +8319,57 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     }
       acceptedFaults = r.faulted;
     }
-    const repair = motifRepair ? path.basename(motifRepair.file) : undefined;
+  }
+  const repair = thumbRepair ? path.basename(thumbRepair.file) : undefined;
     const thumbs = ["thumb.jpg", ...thumbFiles, ...(repair ? [repair] : [])];
-    const tv = await s
+  const tv = s.cfg.visionQa
+    ? await s
       .visionQa(
         thumbs.map((f) => path.join(dir, f)),
         {
           headline: script.headline,
           gameTitle: script.game_title,
           format: "thumbs",
+            heroRule: s.cfg.thumbHeroRule,
         },
       )
-      .catch(() => undefined);
-    const bad = new Set(
+        .catch(() => undefined)
+    : undefined;
+  const bad = new Set<string | undefined>(
       tv?.verdict === "fail"
         ? framesNamed(tv.problems)
             .map((n) => thumbs[n - 1])
             .filter(Boolean)
         : [],
     );
+  // The rule's own measurements (the words at 168x94), which need no model. Never a block: a failed design only
+  // gives way to the next, and with none left the thumbnail stays as rendered.
+  const ruleProblems: string[] = [];
+  {
+    const rendered: Array<[string, unknown]> = [
+      ["thumb.jpg", mainThumb!.thumb],
+      ...thumbVariants.map((v): [string, unknown] => [path.basename(v.file), v.thumb]),
+      ...(thumbRepair ? [[path.basename(thumbRepair.file), thumbRepair.thumb] as [string, unknown]] : []),
+    ];
+    for (const [name, thumb] of rendered) {
+      const t = thumb as { layout?: string; fgFile?: string | null; imageFile?: string | null };
+      let problems: string[] = [];
+      if (t.layout === "poster" && ruled.length)
+        problems = await posterProblems(path.join(dir, name), thumb as never);
+      // Any older design that draws a depth cut-out must keep the face whole, rule or no rule.
+      else if ((t.layout === "hero" || t.layout === "depth") && t.fgFile && t.imageFile) {
+        const face = await heroLook(path.join(dir, t.imageFile));
+        if (face?.kind === "face" && face.box)
+          problems = await cutoutProblems(path.join(dir, t.fgFile), face.box);
+      }
+      if (!problems.length) continue;
+      bad.add(name);
+      ruleProblems.push(`${name}: ${problems.join(", ")}`);
+    }
+  }
     if (bad.size) {
       await logEvent(s.db, ep.id, "thumbnail_check", {
-        problems: tv!.problems,
+      problems: [...(tv?.problems ?? []), ...ruleProblems],
       });
       const out = thumbOutcome({ main: "thumb.jpg", variants: thumbFiles, repair, bad });
       if (out.mainFrom)
@@ -8302,15 +8380,16 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           repaired: out.repaired,
           replacedBy: out.mainFrom ?? null,
         });
+      const what = mainThumb?.layout === "motif" ? "series-grid" : "hero";
+      const second = mainThumb?.layout === "motif" ? "its second layout with other pictures" : "the next picture";
         await s.notify({
           level: "info",
           content: out.repaired
-            ? `🖼️ "${script.headline}": the thumbnail check failed the series-grid thumbnail, so its second layout with other pictures replaced it (it passed the same check).`
-            : `🖼️ "${script.headline}": the thumbnail check failed the series-grid thumbnail and its second layout too, so ${out.mainFrom ? "another design" : "the grid, as rendered,"} is the thumbnail.`,
+          ? `🖼️ "${script.headline}": the thumbnail check failed the ${what} thumbnail, so ${second} replaced it (it passed the same check).`
+          : `🖼️ "${script.headline}": the thumbnail check failed the ${what} thumbnail and ${second} too, so ${out.mainFrom ? "another design" : mainThumb?.layout === "motif" ? "the grid, as rendered," : "the first design, as rendered,"} is the thumbnail.`,
         });
       }
     }
-  }
   await transition(s.db, ep.id, "voiced", "rendered", {
     assets_json: {
       ...assets,

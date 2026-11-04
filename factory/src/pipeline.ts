@@ -306,6 +306,7 @@ import {
 } from "./longlane.ts";
 import { titleVariants } from "./editorial/titles.ts";
 import { pickBreakoutDoc } from "./docpick.ts";
+import { pulseCheckProblems } from "./editorial/newssegment.ts";
 import { rankingSequels, sequelWinners } from "./sequels.ts";
 import { markEvidence } from "./editorial/evidence.ts";
 import { applyTitleShape, writerTitleProblems } from "./titlestep.ts";
@@ -4326,6 +4327,11 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         () => [],
       )
     : [];
+  // The Pulse Check is the news desk's own segment: a Why Short has its question and its reason to follow instead.
+  const pulseCheck =
+    s.cfg.newsSegment &&
+    !cluster.why &&
+    (ep.lane === "news" || ep.lane === "news_breaking");
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
       variantNote,
@@ -4341,8 +4347,10 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       storeData,
       recent,
       draft: attempt > 0 ? script : undefined,
+      segment: pulseCheck,
     });
     const problems = validateScript(script, recent);
+    if (pulseCheck) problems.push(...pulseCheckProblems(script));
     // The test variant is a house rule for this Short: a draft that ignored it is sent back like any other.
     problems.push(...growthProblems(script, test, testDefaults));
     // No title or hook phrase a few recent Shorts already used (REPEAT_MAX, src/authenticity.ts); a Why

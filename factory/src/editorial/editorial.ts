@@ -1,6 +1,7 @@
 // Story selection, scripting and fact-checking. The model does the judgement;
 // this file enforces the rules that must never depend on model compliance.
 
+import { pulseCheckRule } from "./newssegment.ts";
 import { whyBrief } from "./why.ts";
 import {
   voiceFor,
@@ -171,6 +172,8 @@ export async function writeScript(
     draft?: Script;
     /** The retention tests' rules for this Short (src/growth.ts growthNotes): the running test's variant and the winners so far. */
     variantNote?: string;
+    /** The Pulse Check for this Short (NEWS_SEGMENT, src/editorial/newssegment.ts). */
+    segment?: boolean;
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -194,7 +197,8 @@ export async function writeScript(
   const shapeNote = `\n\nThis Short's take shape: ${shape.rule}.${shape.id === "concession" ? "" : " Concede nothing anywhere in this Short."}`;
   // The test variant comes last, after the general shapes, so it is the rule the writer reads nearest the draft.
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
-  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${recent}${variantNote}`;
+  const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${recent}${variantNote}${segmentNote}`;
   // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
   const edited =
     opts.draft &&

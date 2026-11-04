@@ -321,6 +321,12 @@ export interface Config {
   /** The Sunday growth report (src/growthreport.ts, plan item 12): subscribers per 1,000 views for each format, week on
    * week, and one line on what to back, to the alerts channel on Sundays at 10:00: GROWTH_REPORT, default off. */
   growthReport: boolean;
+  /** Every post to the alerts channel also goes as one line to data/logs/alerts.jsonl (src/alertlog.ts): ALERT_LEDGER,
+   * default off. */
+  alertLedger: boolean;
+  /** The daily digest of that ledger (src/alertdigest.ts): written to data/logs/alert_digest.md from 09:00 and posted
+   * only when a kind of alert is new or rising: ALERT_DIGEST, default off. */
+  alertDigest: boolean;
   /** The breakout documentary picker (src/docpick.ts, growth plan move 3): the next documentary is the candidate
    * that scores best on fame, a collapse-or-comeback arc, a news peg, demand and freshness, with no model call;
    * the score breakdown is logged and posted to Discord. Off, the writer picks from the lists as before:
@@ -925,6 +931,8 @@ export function loadConfig(): Config {
     newsSegment: bool("NEWS_SEGMENT", false),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
+    alertLedger: bool("ALERT_LEDGER", false),
+    alertDigest: bool("ALERT_DIGEST", false),
     docBreakoutPicker: bool("DOC_BREAKOUT_PICKER", true),
     docPickLookups: int("DOC_PICK_LOOKUPS", 8),
     docEvidence: bool("DOC_EVIDENCE", true),

@@ -190,3 +190,53 @@ test("'a hundred' for 100 and '30fps' for '30 fps' are not narration faults (QA 
     false,
   );
 });
+
+test("a figure's or a Roman numeral's possessive is the same word however Whisper writes it", () => {
+  assert.deepEqual(tokens("64's"), ["sixty", "fours"]);
+  assert.deepEqual(tokens("sixty-four's"), ["sixty", "fours"]);
+  assert.deepEqual(tokens("V's"), ["fives"]);
+  assert.deepEqual(tokens("five's"), ["fives"]);
+  assert.deepEqual(tokens("VI’s,"), tokens("six's"));
+  // The written year still goes through the voice's own reading.
+  assert.deepEqual(tokens("2018's"), tokens("twenty eighteen's"));
+  assert.deepEqual(tokens("Vs"), ["vs"]);
+  // The two real false alarms (2 and 3 Nov 2026).
+  assert.deepEqual(
+    checkNarration(
+      say("Super Mario sixty-four's backflips feel great"),
+      say("Super Mario 64's backflips feel great"),
+    ).issues,
+    [],
+  );
+  assert.deepEqual(
+    checkNarration(
+      say("Street Fighter five's V-Gauge gives you options"),
+      say("Street Fighter V's V-Gauge gives you options"),
+    ).issues,
+    [],
+  );
+  assert.deepEqual(
+    checkNarration(
+      say("Street Fighter five's V-Gauge gives you options"),
+      say("Street Fighter V's V gauge gives you options"),
+    ).issues,
+    [],
+  );
+});
+
+test("a wrong number in a possessive is still a fault", () => {
+  assert.equal(
+    checkNarration(
+      say("Super Mario sixty-four's backflips feel great"),
+      say("Super Mario 65's backflips feel great"),
+    ).ok,
+    false,
+  );
+  assert.equal(
+    checkNarration(
+      say("Street Fighter five's V-Gauge gives you options"),
+      say("Street Fighter four's V-Gauge gives you options"),
+    ).ok,
+    false,
+  );
+});

@@ -209,9 +209,9 @@ import {
   type AffiliateTags,
 } from "./editorial/affiliate.ts";
 import { pickVoice } from "./voice/index.ts";
+import { withAlertScope } from "./alertlog.ts";
 import {
-  breathReport,
-  quietenBreaths,
+  turnDownBreaths,
   voiceProblems,
   wordsPerMinute,
 } from "./voice/breathcheck.ts";
@@ -4885,12 +4885,9 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   if (!twin) {
     try {
       const file = path.join(dir, "voice.mp3");
-      let breath = await breathReport(file);
-      const before = breath.loudPerMinute;
-      if (breath.loudPerMinute > 1.5) {
-        await quietenBreaths(file, breath);
-        breath = await breathReport(file);
-      }
+      const turned = await turnDownBreaths(file);
+      const breath = turned.after;
+      const before = turned.before.loudPerMinute;
       const wpm = wordsPerMinute(narration.words);
       const problems = voiceProblems(breath, wpm);
       await logEvent(s.db, ep.id, "voice_quality", {
@@ -4898,6 +4895,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
         wpm,
         loudBreathsPerMinute: breath.loudPerMinute,
         loudBreathsBefore: before,
+        breathPasses: turned.passes,
         breaths: breath.breaths,
         loudest: breath.loudest,
         problems,
@@ -9740,8 +9738,19 @@ const STEPS: Partial<
   uploaded: stepConfirm,
 };
 
-/** Runs one step; on failure records it and backs off, alerting once it gives up. */
+/** Runs one step, with whatever it posts filed under this video in the alert ledger. */
 export async function advance(s: Services, ep: Episode): Promise<boolean> {
+  return withAlertScope(
+    {
+      episode: ep.id,
+      title: ep.script_json?.headline ?? ep.story_json?.headline,
+    },
+    () => advanceStep(s, ep),
+  );
+}
+
+/** On failure records it and backs off, alerting once it gives up. */
+async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
   const step = STEPS[ep.status];
   if (!step) return false;
   try {

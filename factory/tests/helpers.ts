@@ -52,6 +52,8 @@ export function testConfig(
     cutdownsEnabled: false,
     seriesPlaylists: false,
     growthReport: false,
+    alertLedger: false,
+    alertDigest: false,
     hypeAsk: false,
     newsSegment: false,
     sequelWinners: false,

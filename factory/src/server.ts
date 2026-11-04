@@ -111,6 +111,11 @@ import {
   growthReportDue,
   markGrowthReportSent,
 } from "./growthreport.ts";
+import {
+  alertDigestDue,
+  markAlertDigestSent,
+  writeAlertDigest,
+} from "./alertdigest.ts";
 
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1961,6 +1966,20 @@ async function main(): Promise<void> {
       log("info", "growth report sent", { week: key });
     })().catch((err) =>
       log("error", "growth report failed", { error: errorMessage(err) }),
+    );
+  }, 5 * 60_000);
+  // Each morning from 09:00 local: what the alerts have been saying (ALERT_DIGEST). The page is written every day; the
+  // channel hears about it only when a kind of alert is new or rising.
+  setInterval(() => {
+    void (async () => {
+      const key = await alertDigestDue(db, cfg, new Date());
+      if (!key) return;
+      await markAlertDigestSent(db, key);
+      const post = await writeAlertDigest(cfg, new Date());
+      if (post) await services.notify(post);
+      log("info", "alert digest written", { day: key, posted: Boolean(post) });
+    })().catch((err) =>
+      log("error", "alert digest failed", { error: errorMessage(err) }),
     );
   }, 5 * 60_000);
   let lastDmsDay = "";

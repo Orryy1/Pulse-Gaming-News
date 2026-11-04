@@ -88,6 +88,7 @@ import {
   quotaUsed,
 } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
+import { startAlertLedger } from "./alertlog.ts";
 import { fetchWithTimeout, log } from "./lib/util.ts";
 import { fetchPublic } from "./lib/publicurl.ts";
 
@@ -129,6 +130,11 @@ export function stockLibraries(
 export function createServices(db: Db, cfg: Config): Services {
   // The Mac mini's jobs (src/macworker.ts): each setting off means the old local path, untouched.
   const mac = macSettings(cfg);
+  if (cfg.alertLedger)
+    startAlertLedger(
+      path.join(cfg.dataDir, "logs", "alerts.jsonl"),
+      cfg.discordWebhookUrl,
+    );
   const tellMac = (content: string) =>
     postDiscord(cfg.discordWebhookUrl, { content }).catch(() => undefined);
   const speechWords = (file: string) =>

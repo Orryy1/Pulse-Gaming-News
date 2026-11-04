@@ -106,6 +106,11 @@ import {
   weeklyDigest,
 } from "./analytics.ts";
 import { seriesBackfill } from "./seriesplaylists.ts";
+import {
+  growthReport,
+  growthReportDue,
+  markGrowthReportSent,
+} from "./growthreport.ts";
 
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1944,6 +1949,18 @@ async function main(): Promise<void> {
       log("info", "weekly digest sent", { week: key });
     })().catch((err) =>
       log("error", "weekly digest failed", { error: errorMessage(err) }),
+    );
+  }, 5 * 60_000);
+  // Sunday 10:00 local: subscribers per 1,000 views by format, and what to back (GROWTH_REPORT).
+  setInterval(() => {
+    void (async () => {
+      const key = await growthReportDue(db, cfg, new Date());
+      if (!key) return;
+      await markGrowthReportSent(db, key);
+      await services.notify(await growthReport(db, cfg, new Date()));
+      log("info", "growth report sent", { week: key });
+    })().catch((err) =>
+      log("error", "growth report failed", { error: errorMessage(err) }),
     );
   }, 5 * 60_000);
   let lastDmsDay = "";

@@ -306,6 +306,11 @@ import {
 } from "./longlane.ts";
 import { titleVariants } from "./editorial/titles.ts";
 import { pickBreakoutDoc } from "./docpick.ts";
+import {
+  HYPE_COMMENT_LINE,
+  HYPE_END_LINE,
+  hypeAllowed,
+} from "./youtube/hype.ts";
 import { pulseCheckProblems } from "./editorial/newssegment.ts";
 import { rankingSequels, sequelWinners } from "./sequels.ts";
 import { markEvidence } from "./editorial/evidence.ts";
@@ -7435,6 +7440,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // A documentary's end card (DOC_END_CARD): the newest public documentary, decided now and kept on the
   // episode so the description's "Next" line matches the card; its thumbnail is copied in beside the render.
   const endCard = doc && s.cfg.docEndCard;
+  const hypeLine = endCard && (await hypeOn(s, script));
   let nextDoc: EpisodeAssets["nextDoc"];
   let nextThumb: string | null = null;
   if (endCard) {
@@ -7473,6 +7479,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           ? "The week's biggest stories every Friday · Shorts every day"
           : script.explained
             ? "The biggest gaming story, explained · Shorts every day"
+          : hypeLine
+            ? HYPE_END_LINE
           : doc
             ? "A new documentary every month · Shorts every day"
             : "A new ranking every week · Shorts every day",
@@ -9192,6 +9200,15 @@ export async function confirmPublished(s: Services): Promise<void> {
   }
 }
 
+/** Whether this video asks for a Hype (HYPE_ASK, src/youtube/hype.ts): one quota unit for the look-up, only when it could. */
+async function hypeOn(s: Services, script: Script): Promise<boolean> {
+  return hypeAllowed(s.cfg.hypeAsk, script, async () => {
+    const n = await s.youtube().subscriberCount();
+    await quotaAdd(s.db, s.now(), QUOTA.poll);
+    return n;
+  });
+}
+
 /** Posts the channel's own first comment (the owner pins it from the app; the API cannot pin). Never blocks a live video. */
 async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
   if (await publishHeld(s.db)) return; // the owner's publishing hold
@@ -9204,6 +9221,9 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
         (script.evergreen_format === "documentary" && s.cfg.docPinMoment
           ? docPinnedComment(script, longChapters(ep))
           : pinnedComment(script))) +
+      (!script.twin && (await hypeOn(s, script))
+        ? ` ${HYPE_COMMENT_LINE}`
+        : "") +
       (ep.script_json!.runtime === "long"
         ? affiliateCommentLine(ep.script_json!, affiliateTags(s.cfg, ep.id))
         : "") +

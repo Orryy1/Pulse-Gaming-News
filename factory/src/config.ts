@@ -307,6 +307,13 @@ export interface Config {
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
+  /** The Hype ask (src/youtube/hype.ts, plan item 11): a short line in a documentary's end card and pinned comment. YouTube
+   * offers Hype only to Partner Programme channels of 500-500,000 subscribers, so leave this off until Pulse has joined;
+   * with it on, the subscriber count is still checked before each ask: HYPE_ASK, default off. */
+  hypeAsk: boolean;
+  /** The Sunday growth report (src/growthreport.ts, plan item 12): subscribers per 1,000 views for each format, week on
+   * week, and one line on what to back, to the alerts channel on Sundays at 10:00: GROWTH_REPORT, default off. */
+  growthReport: boolean;
   /** The breakout documentary picker (src/docpick.ts, growth plan move 3): the next documentary is the candidate
    * that scores best on fame, a collapse-or-comeback arc, a news peg, demand and freshness, with no model call;
    * the score breakdown is logged and posted to Discord. Off, the writer picks from the lists as before:
@@ -899,6 +906,8 @@ export function loadConfig(): Config {
     seriesPlaylists: bool("SERIES_PLAYLISTS", false),
     sequelWinners: bool("SEQUEL_WINNERS", false),
     newsSegment: bool("NEWS_SEGMENT", false),
+    hypeAsk: bool("HYPE_ASK", false),
+    growthReport: bool("GROWTH_REPORT", false),
     docBreakoutPicker: bool("DOC_BREAKOUT_PICKER", true),
     docPickLookups: int("DOC_PICK_LOOKUPS", 8),
     docEvidence: bool("DOC_EVIDENCE", true),

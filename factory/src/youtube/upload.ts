@@ -406,6 +406,17 @@ export class YouTubeClient {
     return id;
   }
 
+  /** The channel's subscriber count (channels.list, one quota unit); YouTube rounds it. */
+  async subscriberCount(): Promise<number | undefined> {
+    const res = await this.fetchFn(`${API}/channels?part=statistics&mine=true`, {
+      headers: await this.auth(),
+    });
+    if (!res.ok) throw await apiError(res, "channels.list");
+    const n = ((await res.json()) as any).items?.[0]?.statistics
+      ?.subscriberCount;
+    return n === undefined ? undefined : Number(n);
+  }
+
   /** The channel's own id (channels.list, one quota unit), so its own comments are never answered. */
   async myChannelId(): Promise<string> {
     const res = await this.fetchFn(`${API}/channels?part=id&mine=true`, {

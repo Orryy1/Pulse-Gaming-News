@@ -438,3 +438,19 @@ test("a gate that cannot run lets the documentary carry on and says so", async (
   assert.match(String(events[0]!.detail.skipped), /could not be scored/);
   await db.close();
 });
+
+test("the gate fails a film on the empty slate, without footage or with placeholder graphics, whatever its shots scored", () => {
+  const stats = { shots: 300, seconds: 1500, mean: 2.5, zeroShare: 0, threeShare: 0.4 };
+  const limits = { minMean: 2, maxZero: 0.03, maxSlate: 0.08, minFootage: 0.1 };
+  const good = { planSlate: 0, frameSlate: 0.01, footage: 0.16, footagePlenty: true, placeholders: 0 };
+  assert.equal(gateDecision(stats, limits, [], good).pass, true);
+  assert.match(gateDecision(stats, limits, [], { ...good, planSlate: 0.57 }).reasons[0]!, /empty slate/);
+  assert.match(gateDecision(stats, limits, [], { ...good, frameSlate: 0.4 }).reasons[0]!, /empty slate/);
+  assert.match(gateDecision(stats, limits, [], { ...good, footage: 0.05 }).reasons[0]!, /game footage/);
+  assert.equal(
+    gateDecision(stats, limits, [], { ...good, footage: 0.05, footagePlenty: false }).pass,
+    true,
+    "a game with nothing to find is not held for it",
+  );
+  assert.match(gateDecision(stats, limits, [], { ...good, placeholders: 7 }).reasons[0]!, /placeholder/);
+});

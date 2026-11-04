@@ -33,6 +33,11 @@ export function testConfig(
   overrides: Partial<Config> = {},
 ): Config {
   return {
+    writerNotesGuard: true,
+    longStockNotOnPeople: true,
+    planSlateMax: 1,
+    releaseGateMaxSlate: 1,
+    releaseGateMinFootage: 0,
     port: 0,
     publicUrl: "https://factory.example",
     siteUrl: "",

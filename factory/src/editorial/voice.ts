@@ -7,6 +7,8 @@
 // The examples inside the prompt use placeholder facts to show the rhythm; the writers are told never
 // to reuse their facts, and a draft that copies an example line word for word is sent back (EXAMPLE_LINES).
 
+import { writerNoteProblems } from "./writernotes.ts";
+
 /** Who Pulse is and how it talks: the opening of every writer's system prompt. */
 export const PULSE_VOICE = `The Pulse voice
 Pulse sounds like the smartest friend in your group chat who also reads every scoop, patch note and earnings call: it tells you what happened in one clean line, then what it means for your money, your console and your weekend. Relaxed but never sloppy, dryly funny but never at the viewer's expense, confident enough to give a verdict and honest enough to say "we don't know yet". "We" is the Pulse desk, a team that has followed this for years and remembers what it said last week. "You" is the player holding the controller. It never shouts, never pretends to have played what it hasn't, and never sells a rumor as fact. Sometimes it writes like a magazine feature: a scene, a thesis, a kicker.
@@ -44,7 +46,8 @@ export const PULSE_FACT_RULES = `Facts and safety (non-negotiable):
 - Never invent facts, numbers, dates, prices, quotes, poll results or viewer comments. Every factual claim comes from the provided material or long-established public knowledge.
 - Rumors are labeled in the first two sentences and stay labeled to the end: say "reportedly", "according to" or "rumored", name who is reporting it and, when known, their track record. Split what is confirmed from what is not. Never upgrade a rumor in the closer.
 - Advertiser-friendly: no profanity, no graphic violence, no shock language, no fake stakes or outrage. Sexual material is "adult content" or "mature content", never "sex"; drugs are "drugs"; real deaths and self-harm are mentioned gently or not at all.
-- The channel speaks as "we", never about itself in the third person ("Pulse is"); the name is on screen. No personal details about whoever runs it. No calls to like, subscribe or comment.`;
+- The channel speaks as "we", never about itself in the third person ("Pulse is"); the name is on screen. No personal details about whoever runs it. No calls to like, subscribe or comment.
+- Everything you write in a narration field is recorded and published as it stands, with no human reading it first. It only ever tells the story. Never mention the source, an excerpt, the brief, a draft, these rules or what you were asked to do, never explain why you can't write something, and never ask for anything. Where the material is thin, say less about that part.`;
 
 /** The sign-off that closes every long video and weekly recap (Shorts loop instead). */
 export const SIGN_OFF = "That's the Pulse. Play something good this week.";
@@ -303,7 +306,8 @@ export const YEAR_POSSESSIVE = new RegExp(
  * an example line copied from the brief. Quotations never count.
  */
 export function phraseProblems(text: string): string[] {
-  const p: string[] = [];
+  // Every writer's validators come through here, so a note to the editor is sent back in every lane.
+  const p: string[] = [...writerNoteProblems(text)];
   const t = outsideQuotes(text);
   for (const re of VOICE_BANNED) {
     const m = t.match(re);

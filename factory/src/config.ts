@@ -237,6 +237,11 @@ export interface Config {
   gameplayRemindHours: number; // one reminder with fresh links this long after the notice; 0 = none
   gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
+  longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
+  planSlateMax: number; // 0-1, the share of a long video that may sit on the empty slate before its render is stopped
+  releaseGateMaxSlate: number; // 0-1, the same on the finished picture at the release gate
+  releaseGateMinFootage: number; // 0-1, the share of game footage needed when the game has plenty of it
+  writerNotesGuard: boolean; // writer's notes (src/editorial/writernotes.ts) are sent back, and stop the video before the voice and at release; on by default
   docTestEvidence: boolean; // a run documentary may use approved gameplay tests as a source (src/editorial/testevidence.ts)
   commentReplies: boolean; // answer good comments in a video's first hours
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
@@ -834,6 +839,11 @@ export function loadConfig(): Config {
     gameplayRemindHours: int("GAMEPLAY_REMIND_HOURS", 12),
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),
+    longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
+    planSlateMax: Number(str("PLAN_SLATE_MAX", "0.08")) || 0.08,
+    releaseGateMaxSlate: Number(str("RELEASE_GATE_MAX_SLATE", "0.08")) || 0.08,
+    releaseGateMinFootage: Number(str("RELEASE_GATE_MIN_FOOTAGE", "0.1")) || 0.1,
+    writerNotesGuard: bool("WRITER_NOTES_GUARD", true),
     docTestEvidence: bool("DOC_TEST_EVIDENCE", false),
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),

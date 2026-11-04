@@ -356,8 +356,8 @@ export function createServices(db: Db, cfg: Config): Services {
         () => accessToken(db, oauthConfig(cfg)),
         (units) => quotaAdd(db, new Date(), units),
       ),
-    research: (title, fallbackQuery, maxChars) =>
-      researchGame(title, fallbackQuery, maxChars),
+    research: (title, fallbackQuery, maxChars, focus) =>
+      researchGame(title, fallbackQuery, maxChars, undefined, focus),
     fetchStock: (dir, targets, gameWords, maxClips, avoidUrls) =>
       stockLibraries(cfg).length
         ? libraryStockClips(

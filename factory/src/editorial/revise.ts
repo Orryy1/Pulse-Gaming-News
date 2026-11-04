@@ -24,7 +24,7 @@ const EditsSchema = z.object({
 
 export type Edit = z.infer<typeof EditsSchema>["edits"][number];
 
-const HOW = `Fix every problem above by editing your draft, not by writing it again. Return only the changes: for each, "find" is a passage copied exactly from the draft's text (character for character, with enough words to be unique) and "replace" is what goes there instead. Every line without a problem stays word for word. When a fix changes a fact, a name or a figure, change it everywhere it appears: narration, on-screen cards, title and description. Rewrite a whole sentence when that reads better than patching a few words, and keep the lines around each fix flowing. Every rule above still applies to the edited script.`;
+const HOW = `Fix every problem above by editing your draft, not by writing it again. Return only the changes: for each, "find" is a passage copied exactly from the draft's text (character for character, with enough words to be unique) and "replace" is what goes there instead. Every line without a problem stays word for word. When a fix changes a fact, a name or a figure, change it everywhere it appears: narration, on-screen cards, title and description. Rewrite a whole sentence when that reads better than patching a few words, and keep the lines around each fix flowing. Every rule above still applies to the edited script. When a fix would need a fact the material doesn't have, cut the line; a sentence explaining what the material lacks is never a fix.`;
 
 /** The draft with every edit applied to each text field it appears in, or undefined when an edit finds nothing. */
 export function applyEdits<T>(draft: T, edits: Edit[]): T | undefined {

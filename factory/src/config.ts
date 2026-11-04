@@ -236,6 +236,7 @@ export interface Config {
   gameplayRemindHours: number; // one reminder with fresh links this long after the notice; 0 = none
   gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
+  docTestEvidence: boolean; // a run documentary may use approved gameplay tests as a source (src/editorial/testevidence.ts)
   commentReplies: boolean; // answer good comments in a video's first hours
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
   weeklyEnabled: boolean; // Release Radar, Free This Week and the Weekly Recap
@@ -826,6 +827,7 @@ export function loadConfig(): Config {
     gameplayRemindHours: int("GAMEPLAY_REMIND_HOURS", 12),
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),
+    docTestEvidence: bool("DOC_TEST_EVIDENCE", false),
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),
     weeklyEnabled: bool("WEEKLY_ENABLED", true),

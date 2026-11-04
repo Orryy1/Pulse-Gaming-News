@@ -39,6 +39,12 @@ const RunDocSchema = z.object({
   franchise: z.string(),
   wiki: z.string(),
   angle: z.string(),
+  /** Our own tests (src/editorial/testevidence.ts): an inbox clip and the claim it tests. */
+  evidence: z
+    .array(z.object({ clip: z.string(), claim: z.string() }))
+    .optional(),
+  /** The fewest usable tests this entry needs: under it, it does not run and the slot goes back to the usual lanes. */
+  min_evidence: z.number().optional(),
 });
 export type RunDoc = z.infer<typeof RunDocSchema>;
 
@@ -80,7 +86,7 @@ export function docRunDue(
   now: Date,
   taken: Date[],
   timeZone: string,
-): { at: Date; topic: DocTopic } | undefined {
+): { at: Date; topic: DocTopic; entry: RunDoc } | undefined {
   for (const e of run) {
     if (e.kind !== "doc") continue;
     const at = localTime(e.date, e.slot, timeZone);
@@ -89,6 +95,7 @@ export function docRunDue(
     if (taken.some((t) => t.getTime() === at.getTime())) continue;
     return {
       at,
+      entry: e,
       topic: {
         kind: "story",
         franchise_index: -1,

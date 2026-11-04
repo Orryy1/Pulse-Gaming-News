@@ -449,6 +449,8 @@
     "title": "We Tested GTA 6's Biggest Claims on Launch Day",
     "franchise": "Grand Theft Auto VI",
     "wiki": "Grand Theft Auto VI",
-    "angle": "Mechanics only, never story. EVIDENCE: the owner's approved clips, filled in here by the main chat on Friday 20 November with each test's question and what his Xbox clip actually showed. Verdict for each pre-launch claim: true, wrong or not yet known. Say what was tested on Xbox Series X and when. If the evidence list has fewer than six tests, this entry is removed and the slot goes back to the ranking."
+    "angle": "Mechanics only, never story. For each pre-launch claim in the test records say whether it held: true, wrong or not known yet, from what that clip showed and nothing more. Say what was tested on Xbox Series X and when. A record shows one attempt, so never turn it into a rule about the whole game. Under six usable tests this video does not run.",
+    "evidence": [],
+    "min_evidence": 6
   }
 ]

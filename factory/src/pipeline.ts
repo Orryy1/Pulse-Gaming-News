@@ -105,6 +105,7 @@ import {
   outlineDoc,
   writeChapter,
   checkChapter,
+  checkChapterItems,
   groundCallouts,
   validateChapter,
   writeBookends,
@@ -349,6 +350,7 @@ import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
+import { cleanBookends, cutSentences, resolveTestRecords, unbackedTestClaims, withTestRecords } from "./editorial/testevidence.ts";
 import { calendarBlock, readCalendar, type CalendarLane } from "./calendar.ts";
 import {
   docRunDue,
@@ -2264,12 +2266,34 @@ export async function maybeSelectDocumentary(
   const now = s.now();
   // A long video planned by date (the launch run, src/shortrun.ts): started early enough to be finished and
   // scheduled well ahead, so the PC is free when it goes out.
-  const plannedDoc = docRunDue(
+  let plannedDoc = docRunDue(
     readRun(cfg.shortRunFile),
     now,
     await takenSlots(db),
     cfg.timezone,
   );
+  // A planned documentary built on our own tests needs enough approved ones (DOC_TEST_EVIDENCE); without them it does
+  // not run at all, once told, and the slot goes back to the usual lanes.
+  if (plannedDoc?.entry.min_evidence || plannedDoc?.entry.evidence?.length) {
+    const entry = plannedDoc.entry;
+    const { records, refused } = cfg.docTestEvidence
+      ? await resolveTestRecords(db, entry.evidence ?? [], entry.franchise)
+      : { records: [], refused: ["DOC_TEST_EVIDENCE is off"] };
+    if (records.length < Math.max(1, entry.min_evidence ?? 1)) {
+      if (!(await weeklyTried(db, `doc_evidence:${entry.date}:${entry.slot}`)))
+        await s.notify({
+          content: `"${entry.title}" will not run: ${records.length} usable test${records.length === 1 ? "" : "s"}, ${entry.min_evidence ?? 1} needed.${refused.length ? ` Not used: ${refused.join("; ").slice(0, 900)}.` : ""}`,
+        });
+      plannedDoc = undefined;
+    } else {
+      plannedDoc.topic.test_records = records;
+      if (refused.length)
+        await s.notify({
+          level: "info",
+          content: `"${entry.title}": tests not used: ${refused.join("; ").slice(0, 900)}.`,
+        });
+    }
+  }
   // The monthly documentary on its own week and day; otherwise, while ElevenLabs credits would be lost at
   // the reset, a banked one: made overnight now, while the credits are there, and scheduled for the next
   // free documentary evening, weeks ahead if need be (the owner's idea, 25 Oct 2026).
@@ -2398,14 +2422,20 @@ async function stepScriptDocumentary(
   ep: Episode,
   topic: DocTopic,
 ): Promise<void> {
+  // Our own tests as a source, for this documentary alone and under a stricter check (src/editorial/testevidence.ts).
+  const records = s.cfg.docTestEvidence ? (topic.test_records ?? []) : [];
+  const strict = records.length > 0;
   // A single story starts from its overview article; a franchise from the series article.
-  const franchise = await s.research(
+  const franchiseArticle = await s.research(
     topic.wiki ?? topic.franchise,
     topic.kind === "story"
       ? topic.franchise
       : `${topic.franchise} video game series`,
     6000,
   );
+  const franchise = franchiseArticle
+    ? withTestRecords(franchiseArticle, records)
+    : franchiseArticle;
   const outline = await outlineDoc(s.llm, topic, franchise?.text ?? "", {
     openLoops: s.cfg.docOpenLoops,
   });
@@ -2420,19 +2450,23 @@ async function stepScriptDocumentary(
   const chapters: DocDraft["chapters"] = [];
   const warnings: string[] = [];
   for (const [index, plan] of outline.chapters.entries()) {
-    const source = await s.research(
+    const article = await s.research(
       plan.wiki_title,
       `${plan.game_title} ${plan.year} video game`,
       9000,
     );
-    if (!source) {
+    if (!article) {
       warnings.push(
         `No Wikipedia article for ${plan.game_title}; chapter dropped.`,
       );
       continue;
     }
+    const source = withTestRecords(article, records);
     let feedback: string[] = [];
     let chapter: import("./editorial/documentary.ts").DocChapter | undefined;
+    // In a documentary with records: what is still unsupported after the rewrites, and whether the check ever ran.
+    let stillUnsupported: string[] = [];
+    let checkRan = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       chapter = await writeChapter(s.llm, {
         franchise: topic.franchise,
@@ -2453,14 +2487,37 @@ async function stepScriptDocumentary(
         loops: openLoops.loops,
         chapter: index + 1,
       });
-      const unsupported = await checkChapter(s.llm, chapter, source).catch(
-        (err) => {
-          log("warn", "documentary fact check failed", {
-            error: errorMessage(err),
-          });
-          return [] as string[];
-        },
-      );
+      let unsupported: string[];
+      if (strict) {
+        const items = await checkChapterItems(s.llm, chapter, source).catch(
+          (err) => {
+            log("warn", "documentary fact check failed", {
+              error: errorMessage(err),
+            });
+            return undefined;
+          },
+        );
+        checkRan = items !== undefined;
+        const unbacked = chapter.paragraphs.flatMap((p) =>
+          unbackedTestClaims(p.narration, records),
+        );
+        stillUnsupported = [...(items ?? []).map((u) => u.quote), ...unbacked];
+        unsupported = [
+          ...(items ?? []).map((u) => `"${u.quote}": ${u.problem}`),
+          ...unbacked.map(
+            (q) => `"${q}": it reports a test of ours with no record behind it`,
+          ),
+          ...(items ? [] : ["The fact check could not run on this draft."]),
+        ];
+      } else
+        unsupported = await checkChapter(s.llm, chapter, source).catch(
+          (err) => {
+            log("warn", "documentary fact check failed", {
+              error: errorMessage(err),
+            });
+            return [] as string[];
+          },
+        );
       feedback = [
         ...problems,
         ...unsupported.map(
@@ -2470,6 +2527,21 @@ async function stepScriptDocumentary(
       if (!feedback.length) break;
       if (attempt === 2)
         warnings.push(...feedback.map((f) => `${plan.game_title}: ${f}`));
+    }
+    if (strict) {
+      // Nothing unchecked or unsupported goes out here: no check, no chapter; unsupported sentences are cut.
+      const cut = cutSentences(chapter!, stillUnsupported);
+      if (!checkRan || cut.lost) {
+        warnings.push(
+          `${plan.game_title}: chapter dropped, ${checkRan ? "an unsupported line could not be cut" : "the fact check could not run"}.`,
+        );
+        continue;
+      }
+      if (stillUnsupported.length)
+        warnings.push(
+          `${plan.game_title}: ${stillUnsupported.length} unsupported line${stillUnsupported.length === 1 ? "" : "s"} cut.`,
+        );
+      chapter = cut.chapter;
     }
     const grounded = groundCallouts(chapter!, source);
     if (grounded.removed.length)
@@ -2558,6 +2630,14 @@ async function stepScriptDocumentary(
       franchise?.text ?? "",
       { ...ends, feedback: endProblems },
     );
+  if (strict) {
+    const clean = cleanBookends(bookends, records);
+    bookends = clean.bookends;
+    if (clean.removed.length)
+      warnings.push(
+        ...clean.removed.map((r) => `Bookend line with no test behind it cut: ${r}`),
+      );
+  }
   const draft: DocDraft = { topic, outline, chapters, bookends };
   if (s.cfg.docOpenLoops) {
     const placed = placeDocLoops(draft, openLoops.loops);

@@ -33,6 +33,7 @@ export function testConfig(
   overrides: Partial<Config> = {},
 ): Config {
   return {
+    writerNotesGuard: true,
     port: 0,
     publicUrl: "https://factory.example",
     siteUrl: "",

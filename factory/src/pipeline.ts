@@ -104,6 +104,10 @@ import {
   selectDocTopic,
   outlineDoc,
   writeChapter,
+  chapterRefusal,
+  DOC_CHAPTER_SOURCE_CHARS,
+  DOC_OUTLINE_SOURCE_CHARS,
+  DOC_WIDE_SOURCE_CHARS,
   checkChapter,
   checkChapterItems,
   groundCallouts,
@@ -289,11 +293,16 @@ import {
   clearOfEntrances,
   graphicChecks,
   graphicsNotice,
+  badTextAlert,
+  badTextMutes,
   judgeGraphics,
   muteFaults,
   passDecision,
 } from "./qa/graphicscheck.ts";
 import { releaseGateStep } from "./qa/releaseGate.ts";
+import { releaseWriterNotes, writerNoteHits } from "./editorial/writernotes.ts";
+import { guardScript, stopForWriterNotes } from "./writerguard.ts";
+import { mergeArticles } from "./discovery/wikipedia.ts";
 import {
   GatherBudget,
   GatherOutOfTime,
@@ -528,6 +537,8 @@ export interface Services {
     title: string,
     fallbackQuery: string,
     maxChars?: number,
+    /** What the text is for: the sections that mention it come first and whole. */
+    focus?: string,
   ): Promise<import("./discovery/wikipedia.ts").WikiArticle | undefined>;
   downloadImage(url: string, dest: string): Promise<boolean>;
   imageAspect(file: string): Promise<number>;
@@ -2416,6 +2427,39 @@ export async function maybeSelectDocumentary(
 }
 
 /**
+ * More to write from: the chapter's own article at greater length, the story's main article and the other articles
+ * the outline names. A chapter short of evidence gets this rather than a tighter restriction.
+ */
+export async function widerDocSource(
+  s: Pick<Services, "research">,
+  plan: { wiki_title: string; game_title: string; year: number; focus: string; chapter_title: string },
+  mainTitle: string | undefined,
+  otherTitles: readonly string[],
+): Promise<import("./discovery/wikipedia.ts").WikiArticle | undefined> {
+  const focus = `${plan.chapter_title} ${plan.focus}`;
+  const titles = [
+    ...new Set(
+      [plan.wiki_title, mainTitle, ...otherTitles].filter(
+        (t): t is string => Boolean(t),
+      ),
+    ),
+  ].slice(0, 4);
+  const found: Array<import("./discovery/wikipedia.ts").WikiArticle> = [];
+  for (const [i, title] of titles.entries()) {
+    const a = await s
+      .research(
+        title,
+        i === 0 ? `${plan.game_title} ${plan.year} video game` : title,
+        DOC_WIDE_SOURCE_CHARS,
+        focus,
+      )
+      .catch(() => undefined);
+    if (a) found.push(a);
+  }
+  return mergeArticles(found);
+}
+
+/**
  * Writes the documentary: outline, then each chapter against its own Wikipedia
  * article with a fact-check pass and up to two rewrites, then the intro and
  * outro from what the chapters actually say.
@@ -2434,7 +2478,7 @@ async function stepScriptDocumentary(
     topic.kind === "story"
       ? topic.franchise
       : `${topic.franchise} video game series`,
-    6000,
+    DOC_OUTLINE_SOURCE_CHARS,
   );
   const franchise = franchiseArticle
     ? withTestRecords(franchiseArticle, records)
@@ -2459,7 +2503,8 @@ async function stepScriptDocumentary(
     const article = await s.research(
       plan.wiki_title,
       `${plan.game_title} ${plan.year} video game`,
-      9000,
+      DOC_CHAPTER_SOURCE_CHARS,
+      `${plan.chapter_title} ${plan.focus}`,
     );
     if (!article) {
       warnings.push(
@@ -2467,7 +2512,26 @@ async function stepScriptDocumentary(
       );
       continue;
     }
-    const source = withTestRecords(article, records);
+    let source = withTestRecords(article, records);
+    let widened = false;
+    // Short of evidence: more to write from, on the first sign. A refusal or a list of unsupported lines is what a
+    // thin brief produces; asking again with the same brief and a tighter rule turned a chapter into its own refusal.
+    const widen = async () => {
+      if (widened) return;
+      widened = true;
+      const wider = await widerDocSource(
+        s,
+        plan,
+        topic.wiki ?? franchiseArticle?.title,
+        outline.chapters.map((c) => c.wiki_title),
+      ).catch(() => undefined);
+      if (wider) source = withTestRecords(wider, records);
+      await logEvent(s.db, ep.id, "doc_source_widened", {
+        chapter: index + 1,
+        also: wider?.also ?? [],
+        chars: source.text.length,
+      });
+    };
     let feedback: string[] = [];
     let chapter: import("./editorial/documentary.ts").DocChapter | undefined;
     // In a documentary with records: what is still unsupported after the rewrites, and whether the check ever ran.
@@ -2484,9 +2548,28 @@ async function stepScriptDocumentary(
         feedback,
         earlier: chapters,
         priorDoc,
-        draft: attempt > 0 ? chapter : undefined,
+        // A refusal is not a draft to patch: it is written again from the wider sources.
+        draft:
+          attempt > 0 && chapter && !chapterRefusal(chapter).length
+            ? chapter
+            : undefined,
         loops: openLoops.loops,
       });
+      // The writer says it can't, or wrote notes instead: no fact check to spend, more sources and again.
+      const refused = chapterRefusal(chapter);
+      if (refused.length && s.cfg.writerNotesGuard) {
+        await logEvent(s.db, ep.id, "doc_chapter_refused", {
+          chapter: index + 1,
+          attempt,
+          why: refused.slice(0, 3),
+        });
+        await widen();
+        feedback = [
+          "The SOURCE below now holds more of the record. Tell the chapter from it, as a story.",
+          ...refused,
+        ];
+        continue;
+      }
       const problems = validateChapter(chapter, {
         earlier: chapters,
         priorDoc,
@@ -2533,6 +2616,27 @@ async function stepScriptDocumentary(
       if (!feedback.length) break;
       if (attempt === 2)
         warnings.push(...feedback.map((f) => `${plan.game_title}: ${f}`));
+      // Lines the source doesn't back: the next try has more of the record in front of it.
+      else if (unsupported.length && s.cfg.writerNotesGuard) await widen();
+    }
+    // Still a refusal after the wider sources: this chapter can't be told, so the video stops here. Never a warning.
+    if (s.cfg.writerNotesGuard) {
+      const refused = chapterRefusal(chapter!);
+      if (refused.length) {
+        const title = outline.title;
+        await logEvent(s.db, ep.id, "doc_chapter_refused", {
+          chapter: index + 1,
+          final: true,
+          why: refused.slice(0, 3),
+        });
+        await s.notify({
+          ping: true,
+          content: `🛑 Stopped the documentary "${title}": chapter ${index + 1} ("${plan.chapter_title}") still can't be written after widening its sources. ${refused[0]!.slice(0, 300)}`,
+        });
+        throw new FatalError(
+          `documentary chapter ${index + 1} refused after widening its sources: ${refused[0]!.slice(0, 200)}`,
+        );
+      }
     }
     if (strict) {
       // Nothing unchecked or unsupported goes out here: no check, no chapter; unsupported sentences are cut.
@@ -2669,9 +2773,16 @@ async function stepScriptDocumentary(
     );
   if (warnings.length)
     await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
+  // The fact check's last word used to be a line in the log nobody reads, and the FFXIV refusals were in it.
+  const stillUnbacked = warnings.filter((w) => /Not supported by the source/.test(w));
+  if (stillUnbacked.length)
+    await s.notify({
+      content: `⚠️ "${outline.title}": the fact check still disputes ${stillUnbacked.length} line${stillUnbacked.length === 1 ? "" : "s"} after the rewrites, and they stay in. First: ${stillUnbacked[0]!.slice(0, 280)}`,
+    });
   const script = docToScript(draft);
   if (franchise && !script.sources?.includes(franchise.url))
     script.sources = [franchise.url, ...(script.sources ?? [])];
+  await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
@@ -3156,6 +3267,7 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
   const clips = (pAssets.clips ?? [])
     .filter((_, i) => seen.has(i))
     .map((c) => ({ ...c, file: "" }));
+  await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     assets_json: {
@@ -3498,6 +3610,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     ref.id,
     await gameplayExperiments(s.cfg),
   );
+  await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     assets_json: {
@@ -3736,6 +3849,7 @@ async function stepScriptTwin(s: Services, ep: Episode): Promise<void> {
       .copyFile(path.join(from, f), path.join(dir, f))
       .catch(() => undefined);
   }
+  await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: parent.factcheck_json,
@@ -3968,6 +4082,10 @@ async function stepScriptRecap(
       if (attempt === 2)
         warnings.push(...feedback.map((f) => `${story.game}: ${f}`));
     }
+    if (s.cfg.writerNotesGuard && chapterRefusal(chapter!).length)
+      throw new FatalError(
+        `recap story "${story.game}" refused: ${chapterRefusal(chapter!)[0]!.slice(0, 200)}`,
+      );
     const grounded = groundCallouts(chapter!, story.source);
     if (grounded.removed.length)
       warnings.push(
@@ -4027,6 +4145,7 @@ async function stepScriptRecap(
   ];
   if (warnings.length)
     await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
+  await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
@@ -4170,6 +4289,7 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   }
   if (!draft) throw new Error("long-form script produced nothing");
   const script = withSpoilerWarning(longformToScript(draft));
+  await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
@@ -4507,6 +4627,7 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   }
   draft = ground(draft);
   const script = evergreenToScript(draft);
+  await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
@@ -4718,6 +4839,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     });
     return;
   }
+  await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: check,
@@ -4729,6 +4851,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
 }
 
 async function stepVoice(s: Services, ep: Episode): Promise<void> {
+  // The last door before any credit is spent, whatever the lane and however the script got here.
+  await guardScript(s, ep, ep.script_json, "before the voice");
   // A cutdown speaks with the long video's own narration, cut with its section; a gameplay Short keeps the game's sound.
   if (ep.lane === "cutdown" || ep.lane === "gameplay") {
     await transition(s.db, ep.id, "scripted", "voiced");
@@ -4841,6 +4965,18 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     log("warn", "narration check unavailable", { error: errorMessage(err) });
     return undefined;
   });
+  // What the voice actually said, as much as the script: this fails closed, unlike a misheard word below.
+  if (s.cfg.writerNotesGuard) {
+    const found = [
+      ...writerNoteHits(check?.heard ?? "").map((h) => ({
+        ...h,
+        where: "the voice as heard",
+      })),
+      ...releaseWriterNotes({ words: narration.words }),
+    ];
+    if (found.length)
+      await stopForWriterNotes(s, ep, "at the narration check", found);
+  }
   if (check) {
     await logEvent(s.db, ep.id, "narration_check", {
       ok: check.ok,
@@ -7921,8 +8057,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           r.faulted,
           problems,
         );
+        const bad = badTextMutes(problems);
         await s.notify(
-          r.faulted.length ? { content } : { level: "info", content },
+          bad.length
+            ? { ping: true, content: `${badTextAlert(script.headline, bad)}\n${content}` }
+            : r.faulted.length
+              ? { content }
+              : { level: "info", content },
         );
       } catch (err) {
         log("warn", "graphics pre-pass skipped", {
@@ -8090,14 +8231,16 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         decision,
         passes,
       });
+      const badText = badTextMutes(r.problems.flatMap((p) => p.problems));
       await s.notify({
-        content: graphicsNotice(
+        ...(badText.length ? { ping: true } : {}),
+        content: `${badText.length ? `${badTextAlert(script.headline, badText)}\n` : ""}${graphicsNotice(
           script.headline,
           decision,
           sample.length,
           r.faulted,
           r.problems.flatMap((p) => p.problems),
-        ),
+        )}`,
       });
       if (decision === "rerender") {
         assets.graphicsPasses = passes + 1;
@@ -8610,6 +8753,21 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
 async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const script = ep.script_json!;
   const links = approvalLinks(s.cfg, ep.id);
+  // At release, every lane: the script, the words as voiced and the captions. Fails, never holds for a tap.
+  if (s.cfg.writerNotesGuard) {
+    const srtFile = ep.assets_json?.srt
+      ? path.join(episodeDir(s.cfg, ep.id), ep.assets_json.srt)
+      : undefined;
+    const srt = srtFile
+      ? await fs.readFile(srtFile, "utf8").catch(() => undefined)
+      : undefined;
+    const found = releaseWriterNotes({
+      script,
+      words: ep.assets_json?.words,
+      srt,
+    });
+    if (found.length) await stopForWriterNotes(s, ep, "at release", found);
+  }
   // The release gate (src/qa/releaseGate.ts): every long video's shots (documentary, ranking, recap) are
   // scored against the words spoken over them before it may go out on its own, with the same thresholds.
   // A held one waits here for the owner like a manual approval.

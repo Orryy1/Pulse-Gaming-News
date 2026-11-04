@@ -244,6 +244,25 @@ export function passDecision(
 }
 
 /** The owner's one-line notice for a pass of the check, in plain English. */
+/**
+ * Muted graphics whose text the checker called placeholder or gibberish. On the Final Fantasy XIV documentary this
+ * was the only sign of the writer's notes on screen, and muting them hid it: such text comes from the script or the
+ * plan, so it is a question for a person, not a graphic to drop quietly.
+ */
+export function badTextMutes(problems: readonly string[]): string[] {
+  return problems.filter((p) =>
+    /placeholder|garbled|gibberish|nonsens|lorem ipsum|meaningless|not (?:real|meant for) (?:viewers|text)|internal note|production note|working note/i.test(
+      p,
+    ),
+  );
+}
+
+/** The loud line for those. */
+export function badTextAlert(headline: string, bad: readonly string[]): string {
+  const first = bad[0]!.replace(/^frames?\s+\d+[^:]*:\s*/i, "").slice(0, 220);
+  return `🚨 "${headline}": ${bad.length} graphic${bad.length === 1 ? "" : "s"} muted as placeholder or garbled text. Muting hides it, so read the script around them before this goes out. First: ${first}`;
+}
+
 export function graphicsNotice(
   headline: string,
   stage: "prepass" | "rerender" | "accept",

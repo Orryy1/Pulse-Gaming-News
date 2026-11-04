@@ -25,6 +25,11 @@ import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import { COLOURS, type DiscordMessage } from "../approval/discord.ts";
 import { longFormatOf, longKindLabel } from "../longformat.ts";
+import {
+  releaseWriterNotes,
+  writerNoteSummary,
+  type WriterNoteFinding,
+} from "../editorial/writernotes.ts";
 
 const run = promisify(execFile);
 
@@ -150,8 +155,14 @@ export function gateStats(
 export function gateDecision(
   stats: GateStats,
   limits: GateLimits,
+  /** Writer's notes found in the words (src/editorial/writernotes.ts): no shot score makes up for those. */
+  writerNotes?: readonly WriterNoteFinding[],
 ): { pass: boolean; reasons: string[] } {
   const reasons: string[] = [];
+  if (writerNotes?.length)
+    reasons.push(
+      `the narration holds the writer's notes to itself in ${writerNotes.length} places (${writerNoteSummary(writerNotes, 1)})`,
+    );
   if (!stats.shots) reasons.push("no shot could be scored");
   if (stats.shots && stats.mean < limits.minMean)
     reasons.push(
@@ -353,7 +364,7 @@ export function heldNotice(
 /** The services the gate step needs (a slice of src/pipeline.ts Services, so tests can fake it). */
 export interface GateServices {
   db: Db;
-  cfg: Pick<Config, "dataDir" | "releaseGateMinMean" | "releaseGateMaxZero">;
+  cfg: Pick<Config, "dataDir" | "releaseGateMinMean" | "releaseGateMaxZero" | "writerNotesGuard">;
   llm: Llm;
   notify(msg: DiscordMessage): Promise<unknown>;
   now(): Date;
@@ -428,10 +439,19 @@ export async function scoreEpisode(
       `release gate: ${unscored} of ${shots.length} shots could not be scored`,
     );
   const stats = gateStats(scored);
-  const { pass, reasons } = gateDecision(stats, {
-    minMean: s.cfg.releaseGateMinMean,
-    maxZero: s.cfg.releaseGateMaxZero,
-  });
+  const { pass, reasons } = gateDecision(
+    stats,
+    {
+      minMean: s.cfg.releaseGateMinMean,
+      maxZero: s.cfg.releaseGateMaxZero,
+    },
+    s.cfg.writerNotesGuard
+      ? releaseWriterNotes({
+          script: ep.script_json,
+          words: ep.assets_json?.words,
+        })
+      : [],
+  );
   return {
     pass,
     stats,

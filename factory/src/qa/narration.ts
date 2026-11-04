@@ -36,6 +36,8 @@ export interface NarrationCheck {
   matched: number; // share of the script's words heard as written
   /** Pauses of 0.45 s or more where the script has no punctuation: the voice phrasing a line oddly. */
   pauses: NarrationPause[];
+  /** Everything the recogniser heard, for the check on what was actually said (src/editorial/writernotes.ts). */
+  heard?: string;
 }
 
 export interface NarrationPause {
@@ -346,6 +348,7 @@ export function checkNarration(
     : 0;
   const real = dropShuffles(issues);
   return {
+    heard: heard.map((w) => w.text).join(" "),
     ok: !real.length && drift <= maxDrift,
     issues: real,
     drift: Math.round(drift * 100) / 100,

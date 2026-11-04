@@ -20,7 +20,9 @@ import {
   demandFor,
   type Demand,
 } from "./discovery/searchdemand.ts";
+import { guardScript } from "./writerguard.ts";
 import {
+  chapterRefusal,
   checkChapter,
   groundCallouts,
   groundDocMoments,
@@ -354,6 +356,10 @@ export async function stepScriptExplained(
           ...feedback.map((f) => `${EXPLAINED_PARTS[index]!.label}: ${f}`),
         );
     }
+    if (s.cfg.writerNotesGuard && chapterRefusal(chapter!).length)
+      throw new FatalError(
+        `explainer part "${EXPLAINED_PARTS[index]!.label}" refused: ${chapterRefusal(chapter!)[0]!.slice(0, 200)}`,
+      );
     const grounded = groundCallouts(chapter!, source);
     warnings.push(
       ...grounded.removed.map(
@@ -428,6 +434,7 @@ export async function stepScriptExplained(
   if (warnings.length)
     await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
   const script = explainedToScript(story, outline, done, bookends);
+  await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {

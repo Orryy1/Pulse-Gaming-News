@@ -39,6 +39,7 @@ import {
   type OpenLoop,
 } from "./openloops.ts";
 import { sentencesOf } from "./longform.ts";
+import { writerNoteProblems } from "./writernotes.ts";
 import { EVIDENCE_RULE } from "./evidence.ts";
 import {
   DOC_BEAT_KINDS,
@@ -56,6 +57,12 @@ export const DOC_CHAPTER_WORDS_MIN = 380;
 export const DOC_CHAPTER_WORDS_MAX = 780;
 export const DOC_WORDS_MIN = 3200;
 export const DOC_WORDS_MAX = 6400;
+/** Characters of a chapter's article the writer sees, the sections about its focus first. */
+export const DOC_CHAPTER_SOURCE_CHARS = 16000;
+/** A chapter that was short of evidence gets this much of each article, and of the documentary's other articles. */
+export const DOC_WIDE_SOURCE_CHARS = 24000;
+/** The overview the outline is planned from: every chapter it plans has to be documented in here. */
+export const DOC_OUTLINE_SOURCE_CHARS = 12000;
 
 /** Franchises with a long, well-documented history and official footage on Steam or the publisher's channel. */
 export const DOC_FRANCHISES = [
@@ -440,7 +447,7 @@ export async function outlineDoc(
       (topic.kind === "story"
         ? `${HOUSE}
 
-Plan a single-story documentary told in turning points, in time order, ${DOC_CHAPTERS_MIN + 2}-${DOC_CHAPTERS_MAX} chapters. Each chapter is one beat of the story (a decision, a reveal, a launch, a reversal) and names, in "wiki_title", the English Wikipedia article that best documents it (a game, a console, a company or a person); "game_title" is that chapter's subject. Chapter titles name the turning point in 2-5 words as a mini-headline with a verb or a conflict ("The Reveal That Backfired", "Sony Answers", "The Reversal"), never a topic label ("Market impact", "Early years"); the last may be a question. The title names one subject and its downfall, fight or hidden side: "How X Ruined Y", "The X That Never Was", "What Really Happened to X", "How Xbox Ended Up on PlayStation". In a study of 1,573 long gaming videos the strongest titles did exactly that, while "The History of", "Evolution", "changed gaming forever", years and "top 10" counts belonged to the weakest; keep numbers out of the title unless the number is the story. Never "Part 1". Write the question the documentary answers.`
+Plan a single-story documentary told in turning points, in time order, ${DOC_CHAPTERS_MIN + 2}-${DOC_CHAPTERS_MAX} chapters. Each chapter is one beat of the story (a decision, a reveal, a launch, a reversal) and names, in "wiki_title", the English Wikipedia article that best documents it (a game, a console, a company or a person); "game_title" is that chapter's subject. Chapter titles name the turning point in 2-5 words as a mini-headline with a verb or a conflict ("The Reveal That Backfired", "Sony Answers", "The Reversal"), never a topic label ("Market impact", "Early years"); the last may be a question. The title names one subject and its downfall, fight or hidden side: "How X Ruined Y", "The X That Never Was", "What Really Happened to X", "How Xbox Ended Up on PlayStation". In a study of 1,573 long gaming videos the strongest titles did exactly that, while "The History of", "Evolution", "changed gaming forever", years and "top 10" counts belonged to the weakest; keep numbers out of the title unless the number is the story. Never "Part 1". Plan only events the overview documents: a chapter built on something it doesn't mention can't be written. Write the question the documentary answers.`
         : `${HOUSE}
 
 Plan a franchise documentary told game by game in release order, ${DOC_CHAPTERS_MIN}-${DOC_CHAPTERS_MAX} chapters, one per major game. Choose the games whose development stories matter most; fold spin-offs into a neighboring chapter's story. Chapter titles must be searchable on their own and name the game's turning point as a mini-headline ("GTA III and the Leap to 3D", "The Hot Coffee Mess"), never a topic label. The title is one thesis question or claim about the franchise ("When Did Call of Duty Stop Being Call of Duty?"), never "The Complete History of" or "Evolution of". Write the question the documentary answers.`) +
@@ -478,10 +485,14 @@ export const DocParagraphSchema = z.object({
 });
 
 export const DocChapterSchema = z.object({
-  paragraphs: z
-    .array(DocParagraphSchema)
-    .min(DOC_PARAGRAPHS_MIN)
-    .max(DOC_PARAGRAPHS_MAX),
+  // No minimum here, so a chapter that reports missing_evidence can leave this empty; validateChapter counts them.
+  paragraphs: z.array(DocParagraphSchema).max(DOC_PARAGRAPHS_MAX),
+  missing_evidence: z
+    .string()
+    .optional()
+    .describe(
+      "Leave this out in a normal chapter. Only when the SOURCE can't support the chapter's main events: one line naming what's missing, with paragraphs left empty. It is never spoken; the factory fetches more sources and asks again",
+    ),
   claims: z.array(
     z.object({
       claim: z.string(),
@@ -505,7 +516,7 @@ Hold attention the way the best documentaries do:
 - At most one sentence in the chapter opens "That's a" or "That's an".
 - One dry aside at most per chapter, aimed at a company or a situation, never at players.
 - ${REHOOK_RULE} In a chapter that means two or three inside it, besides the last line.
-Every fact, number, date, name and quote must come from the SOURCE text provided. If the source doesn't say it, don't say it. Don't repeat what earlier chapters covered: what they said is listed below, so refer back to it in a few words at most and never reuse their wording.
+Every fact, number, date, name and quote must come from the SOURCE text provided. If the source doesn't say it, don't say it: tell the part of the story it does cover. The paragraphs are recorded and published as they stand, so they only ever tell the story. They never mention the source, the brief, a draft or these rules, never explain what can't be written and never ask for anything. If the SOURCE can't support the chapter's main events at all, leave paragraphs empty and name what's missing in missing_evidence; that line goes to the factory, which finds more sources and asks again. Don't repeat what earlier chapters covered: what they said is listed below, so refer back to it in a few words at most and never reuse their wording.
 Callouts put a real fact on screen: at most half the paragraphs carry one, and a quote must be copied word for word from the source. Most paragraphs use "none".
 footage names what the picture should show for that paragraph, with 1-4 keywords.
 List every factual claim in "claims" with the source section it came from.`;
@@ -522,6 +533,20 @@ function earlierOf(earlier?: EarlierChapters): DocChapter[] {
 
 const chapterText = (c: DocChapter) =>
   c.paragraphs.map((x) => x.narration).join(" ");
+
+/**
+ * Why a written chapter can't be spoken, whatever else passed: the writer said it lacks the evidence, or wrote
+ * notes about the task. A chapter with one of these is never kept; the caller widens the sources or stops.
+ */
+export function chapterRefusal(c: DocChapter): string[] {
+  return [
+    ...(c.missing_evidence?.trim()
+      ? [`The writer reported missing evidence: ${c.missing_evidence.trim()}`]
+      : []),
+    ...(!c.paragraphs.length ? ["The chapter has no narration."] : []),
+    ...writerNoteProblems(chapterText(c)),
+  ];
+}
 
 /** About one chapter in three ends on a plain consequence rather than a forward tease (the third, sixth...). */
 export function endsOnConsequence(index: number): boolean {
@@ -644,7 +669,7 @@ export async function checkChapterItems(
 ): Promise<Array<{ quote: string; problem: string }>> {
   const r = await llm.structured({
     site: "doc.check",
-    system: `You are a documentary fact-checker. Compare the narration with the SOURCE. List every specific factual statement (a date, number, name, quote, ranking, sales figure, event or cause) that the source does not support or that contradicts it. Framing, scene-setting description, transitions and clearly marked opinion are fine. Be strict about numbers and quotes. Return an empty list when everything checks out.`,
+    system: `You are a documentary fact-checker. Compare the narration with the SOURCE. List every specific factual statement (a date, number, name, quote, ranking, sales figure, event or cause) that the source does not support or that contradicts it. Framing, scene-setting description, transitions and clearly marked opinion are fine. Be strict about numbers and quotes. A sentence about the source itself, a brief, a draft, a chapter being written or what is missing from the material isn't narration, even when it's true: list it. Return an empty list when everything checks out.`,
     content: `NARRATION:\n${chapter.paragraphs.map((p) => p.narration).join("\n\n")}\n\nSOURCE (Wikipedia, "${source.title}"):\n${source.text}`,
     schema: DocCheckSchema,
     effort: "medium",
@@ -1155,6 +1180,14 @@ export function validateChapter(
 ): string[] {
   const p: string[] = [];
   const text = chapterText(c);
+  if (c.missing_evidence?.trim())
+    p.push(
+      `You reported missing evidence (${c.missing_evidence.trim()}). Write the chapter from what the material does cover.`,
+    );
+  if (c.paragraphs.length < DOC_PARAGRAPHS_MIN)
+    p.push(
+      `The chapter has ${c.paragraphs.length} paragraphs; it needs at least ${DOC_PARAGRAPHS_MIN}.`,
+    );
   if (opts.loops?.length && opts.chapter)
     p.push(
       ...loopProblems(
@@ -1446,7 +1479,9 @@ export function docToScript(d: DocDraft): Script {
             }) as BeatVisual,
     })),
   );
-  const sources = [...new Set(d.chapters.map((c) => c.source.url))];
+  const sources = [
+    ...new Set(d.chapters.flatMap((c) => [c.source.url, ...(c.source.also ?? [])])),
+  ];
   return {
     story_type: "other",
     game_title: d.topic.franchise,

@@ -8,7 +8,7 @@
 //   [--keys 0:9,1:19 | --faulted | --passed N | --all] [--scale 0.28125] [--out <dir>] [--judge] [--tag before] [--old-timing]
 //   [--also compare,kinetic] [--skip-chapters 4,5] [--before-fit]
 // --also adds every check of those graphic kinds or filler families, to see that fixes did not break good ones.
-// --skip-chapters leaves out chapters whose words are the fault (FFXIV's writer's notes), --before-fit draws with GRAPHICS_FIT off.
+// --skip-chapters keeps --also out of chapters whose words are the fault (FFXIV's writer's notes), --before-fit draws with GRAPHICS_FIT off.
 // --faulted: every key the episode's last stills pre-pass muted (its graphics_prepass event).
 // --judge reads only the Claude key from the live factory/.env (never written) and records its spend in the copy.
 // The episode folder is only read (served over loopback); nothing is written to it or to the live database.
@@ -262,17 +262,12 @@ for (const c of checks) {
   const mo = moments[e!]?.[m!];
   if (
     mo &&
+    !skip.includes(String(e)) &&
     (also.includes(mo.graphic?.kind) || also.includes(mo.filler?.family)) &&
     !wanted.includes(c.what)
   )
     wanted.push(c.what);
 }
-if (skip.length)
-  wanted.splice(
-    0,
-    wanted.length,
-    ...wanted.filter((k) => !skip.includes(k.split(":")[0]!)),
-  );
 const missing = wanted.filter((k) => !checks.some((c) => c.what === k));
 if (missing.length)
   console.log("not among this run's checks:", missing.join(" "));

@@ -2537,7 +2537,8 @@ async function stepScriptDocumentary(
     // In a documentary with records: what is still unsupported after the rewrites, and whether the check ever ran.
     let stillUnsupported: string[] = [];
     let checkRan = false;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let attempts = 3;
+    for (let attempt = 0; attempt < attempts; attempt++) {
       chapter = await writeChapter(s.llm, {
         franchise: topic.franchise,
         plan,
@@ -2563,6 +2564,8 @@ async function stepScriptDocumentary(
           attempt,
           why: refused.slice(0, 3),
         });
+        // Its last try may be the first to refuse: the wider sources always get one go.
+        if (!widened) attempts = Math.max(attempts, attempt + 2);
         await widen();
         feedback = [
           "The SOURCE below now holds more of the record. Tell the chapter from it, as a story.",
@@ -2614,7 +2617,7 @@ async function stepScriptDocumentary(
         ),
       ];
       if (!feedback.length) break;
-      if (attempt === 2)
+      if (attempt === attempts - 1)
         warnings.push(...feedback.map((f) => `${plan.game_title}: ${f}`));
       // Lines the source doesn't back: the next try has more of the record in front of it.
       else if (unsupported.length && s.cfg.writerNotesGuard) await widen();

@@ -26,6 +26,10 @@ import {
   shareBudget,
 } from "../src/discovery/wikipedia.ts";
 import { guardScript } from "../src/writerguard.ts";
+import { advance, type Services } from "../src/pipeline.ts";
+import type { Llm } from "../src/editorial/llm.ts";
+import { getEpisode } from "../src/episodes.ts";
+import { testDb, testConfig, tmpDir } from "./helpers.ts";
 import { widerDocSource } from "../src/pipeline.ts";
 import { narrate } from "../src/voice/index.ts";
 import { FatalError } from "../src/lib/util.ts";
@@ -401,4 +405,123 @@ test("a chapter short of evidence gets more articles, credited, and not a tighte
   assert.deepEqual(wider!.also, ["https://w/B", "https://w/C"]);
   assert.match(wider!.text, /about C/);
   assert.equal(mergeArticles([]), undefined);
+});
+
+// ---------------------------------------------------------------- the whole writing step, on a fake model
+
+async function writeDoc(chapterAnswer: (no: number, content: string) => unknown) {
+  const db = await testDb();
+  const cfg = testConfig(await tmpDir(), {
+    longformEnabled: true,
+    docEnabled: true,
+    docOpenLoops: false,
+  });
+  const plans = [1, 2, 3, 4, 5, 6, 7].map((n) => ({
+    chapter_title: `Chapter ${n}`,
+    game_title: "Final Fantasy XIV",
+    wiki_title: "Final Fantasy XIV (2010 video game)",
+    steam_search_term: "",
+    year: 2010,
+    platforms: "PC",
+    focus: "x",
+    photo_searches: [],
+  }));
+  const researched: Array<number | undefined> = [];
+  const told: Array<{ ping?: boolean; content?: string }> = [];
+  let no = 0;
+  const llm = {
+    async structured({ site, content }: { site: string; content: unknown }) {
+      if (site === "doc.outline")
+        return { question: "Q?", title: "The Rebuild", description: "d", chapters: plans, open_loops: [], youtube: { title: "t", description: "d", tags: [] } };
+      if (site === "doc.chapter") return chapterAnswer(++no, String(content));
+      if (site === "doc.check") return { unsupported: [] };
+      if (site === "doc.shots") return { moments: [] };
+      if (site === "doc.bookends")
+        return { intro: { narration: "A long wait is over.", on_screen: "x" }, outro: { narration: "Thanks for watching.", on_screen: "y", label: "z" }, description: "d", title: "t", pinned_comment: "p", tags: [] };
+      throw new Error(`no answer for ${site}`);
+    },
+  } as unknown as Llm;
+  const s = {
+    db,
+    cfg,
+    llm,
+    now: () => new Date("2026-11-21T02:00:00Z"),
+    notify: async (m: never) => (told.push(m), true),
+    research: async (_t: string, _q: string, max?: number) => {
+      researched.push(max);
+      return { title: "FFXIV", url: "https://en.wikipedia.org/wiki/FFXIV", text: `${max && max > 16000 ? "WIDE " : ""}The servers closed in 2012.` };
+    },
+  } as unknown as Services;
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane, factcheck_json)
+     VALUES ('ep_doc', 'documentary:x', 'selected', $1, 'longform', $2)`,
+    [
+      JSON.stringify({ headline: "The Rebuild", items: [], sources: [], hash: "documentary:x", gameHint: "Final Fantasy XIV" }),
+      JSON.stringify({ doc: true, topic: { kind: "story", franchise_index: -1, story_index: -1, title_idea: "t", angle: "a", reason: "r", franchise: "Final Fantasy XIV", wiki: "Final Fantasy XIV" } }),
+    ],
+  );
+  await advance(s, (await getEpisode(db, "ep_doc"))!);
+  const ep = (await getEpisode(db, "ep_doc"))!;
+  await db.close();
+  return { ep, told, researched, asked: () => no };
+}
+
+const storyChapter = () =>
+  chapter(
+    "The servers closed in 2012, and the players who had stayed to the end watched the old world go dark together. It was the first time an online game had made its own closure part of the story, and nobody who was there forgot the sight of it.",
+  );
+
+const isChapter = (n: number, content: string) =>
+  new RegExp(`This chapter: Chapter ${n}\\b`).test(content);
+
+test("a refusal gets more sources and a fresh attempt, and the refusal is not what goes out", async () => {
+  const seen: string[] = [];
+  let refusals = 0;
+  const { ep, researched } = await writeDoc((_no, content) => {
+    if (isChapter(2, content) && !refusals++) return chapter(fixture.bad_beats[3]!);
+    if (isChapter(2, content)) seen.push(content);
+    return storyChapter();
+  });
+  assert.notEqual(ep.status, "failed", ep.last_error ?? "");
+  assert.doesNotMatch(JSON.stringify(ep.script_json), /SOURCE|recorded or published/);
+  assert.ok(researched.some((m) => m! > 16000), "the wider brief was fetched");
+  assert.match(seen[0]!, /WIDE/, "the retry sees it");
+  assert.doesNotMatch(seen[0]!, /YOUR DRAFT/, "and the refusal isn't patched");
+});
+
+test("a writer that says it lacks evidence is asked again with more, and that line is never spoken", async () => {
+  let gaps = 0;
+  const { ep } = await writeDoc((_no, content) =>
+    isChapter(3, content) && !gaps++
+      ? { paragraphs: [], claims: [], missing_evidence: "Nothing on billing." }
+      : storyChapter(),
+  );
+  assert.notEqual(ep.status, "failed", ep.last_error ?? "");
+  assert.doesNotMatch(JSON.stringify(ep.script_json), /Nothing on billing/);
+});
+
+test("the first refusal on the last try still gets its go with the wider sources", async () => {
+  let asked = 0;
+  const { ep } = await writeDoc((_no, content) => {
+    if (!isChapter(2, content)) return storyChapter();
+    asked++;
+    return asked === 3 ? chapter(fixture.bad_beats[3]!) : storyChapter();
+  });
+  assert.notEqual(ep.status, "failed", ep.last_error ?? "");
+  assert.equal(asked, 4);
+  assert.doesNotMatch(JSON.stringify(ep.script_json), /SOURCE/);
+});
+
+test("a writer that keeps refusing stops the video with a loud alert, and it never gets to the voice", async () => {
+  let asked = 0;
+  const { ep, told } = await writeDoc((_no, content) => {
+    if (!isChapter(2, content)) return storyChapter();
+    asked++;
+    return chapter(fixture.bad_beats[3]!);
+  });
+  assert.equal(ep.status, "failed");
+  assert.match(ep.last_error ?? "", /refused/);
+  assert.equal(asked, 3);
+  assert.ok(told.some((m) => m.ping && /Stopped the documentary/.test(m.content ?? "")));
+  assert.equal(ep.script_json, null);
 });

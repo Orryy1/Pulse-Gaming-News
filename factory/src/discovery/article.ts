@@ -3,6 +3,7 @@
 
 import * as cheerio from "cheerio";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
+import { fetchPublic } from "../lib/publicurl.ts";
 import { fetchRockstarArticle } from "./newsrooms.ts";
 
 export interface ArticleText {
@@ -126,7 +127,7 @@ export async function fetchArticle(
       process.env.ROCKSTAR_NEWSWIRE_POST_HASH || undefined,
     );
   try {
-    const res = await fetchWithTimeout(
+    const res = await fetchPublic(
       url,
       { headers: { accept: "text/html" } },
       15_000,

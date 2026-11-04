@@ -89,6 +89,7 @@ import {
 } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
 import { fetchWithTimeout, log } from "./lib/util.ts";
+import { fetchPublic } from "./lib/publicurl.ts";
 
 export function oauthConfig(cfg: Config) {
   return {
@@ -417,8 +418,13 @@ export function createServices(db: Db, cfg: Config): Services {
       });
     },
     downloadImage: async (url, dest) => {
-      const res = await fetchWithTimeout(url, {}, 30_000);
+      // A picture link comes from an article or a feed: a private address is a bad link, not a failed step.
+      const res = await fetchPublic(url, {}, 30_000).catch((err: unknown) => {
+        if (String(err).includes("refused link")) return undefined;
+        throw err;
+      });
       if (
+        !res ||
         !res.ok ||
         !(res.headers.get("content-type") ?? "").startsWith("image/")
       )

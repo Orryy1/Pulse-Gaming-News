@@ -170,7 +170,7 @@ import {
   wordsIn,
   writeCutdownCopy,
 } from "./editorial/cutdown.ts";
-import { FFMPEG } from "./lib/bin.ts";
+import { FFMPEG, FFPROBE } from "./lib/bin.ts";
 import { cutPortrait } from "./assets/localvision.ts";
 import { normTitle } from "./assets/igdb.ts";
 import type { RenderInput } from "./render/render.ts";
@@ -343,6 +343,13 @@ import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
 import { calendarBlock, readCalendar, type CalendarLane } from "./calendar.ts";
+import {
+  docRunDue,
+  readRun,
+  runRepeatGame,
+  whyRunEntry,
+  type RunWhy,
+} from "./shortrun.ts";
 import { stampColour } from "./render/brand.ts";
 import { chooseWordLook, motifIdFor, wordSoundCue } from "./render/wordlook.ts";
 import {
@@ -354,6 +361,12 @@ import {
   captionable,
   gameplayScript,
   gameplayWindow,
+  articleFields,
+  cleanWindow,
+  hdrFilter,
+  isRehearsal,
+  minScoreFor,
+  parseBlackSpans,
   newClips,
   parseExperiments,
   readMeta,
@@ -1339,6 +1352,74 @@ async function createEvergreen(
  */
 const WHY_DROP_RETRIES = 2;
 
+/**
+ * A Why Short from the launch run. The topic, its sources and its angle come from the plan, so the editor, the
+ * two-week freshness rule and the demand check stay out of it; the writer and the fact check run as usual against
+ * the entry's own sources. With no source readable there is nothing to check against, so the slot goes to the editor.
+ */
+async function selectRunWhy(
+  s: Services,
+  e: RunWhy,
+  due: Date,
+): Promise<string | undefined> {
+  const now = s.now();
+  const read = await Promise.all(
+    e.sources.map((u) => s.fetchArticle(u.url).catch(() => undefined)),
+  );
+  const items = e.sources
+    .map((u, i) => ({ u, a: read[i] }))
+    .filter((x) => x.a)
+    .map(({ u, a }) => ({
+      title: a!.title,
+      url: u.url,
+      summary: "",
+      publishedAt: now.toISOString(),
+      source: u.source,
+      sourceKind: u.official ? ("official" as const) : ("outlet" as const),
+    }));
+  if (!items.length) {
+    log("warn", "launch run topic has no readable source", { topic: e.question });
+    return undefined;
+  }
+  const follow = await followFor(s.db, e.game, now).catch(() => ({
+    kind: "series" as const,
+  }));
+  const cluster: StoryCluster = {
+    hash: `why:${whySlug(e.question)}`,
+    headline: e.title,
+    items,
+    sources: [...new Set(items.map((i) => i.source))],
+    hasOfficial: items.some((i) => i.sourceKind === "official"),
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint: e.game,
+    visualNeed: "game_footage",
+    run: true,
+    why: { question: e.question, angle: e.angle, arc: e.arc, follow },
+  };
+  const id = shortId();
+  if (
+    !(await createEpisode(s.db, id, cluster, {
+      lane: "news",
+      priority: LANE_PRIORITY.news,
+      slotAt: due,
+    }))
+  )
+    return undefined;
+  await logEvent(s.db, id, "selected", {
+    headline: e.title,
+    lane: "why",
+    run: true,
+    question: e.question,
+    game: e.game,
+    slot_at: due.toISOString(),
+  });
+  log("info", "launch run topic selected", { id, question: e.question });
+  return id;
+}
+
 export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   const { db, cfg } = s;
   if (!cfg.whyEnabled) return undefined;
@@ -1379,6 +1460,18 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     )
   )
     return undefined;
+  // A topic planned for this slot (the launch run, src/shortrun.ts) goes first; with none usable the editor picks.
+  const planned = whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone);
+  if (planned) {
+    const made = await selectRunWhy(s, planned, due).catch((err) => {
+      log("warn", "launch run topic failed", {
+        topic: planned.question,
+        error: errorMessage(err),
+      });
+      return undefined;
+    });
+    if (made) return made;
+  }
   const covered = (
     await db.query<{ headline: string }>(
       `SELECT story_json->>'headline' AS headline FROM episodes WHERE story_hash LIKE 'why:%' AND created_at > $1::timestamptz - interval '120 days'`,
@@ -2136,10 +2229,20 @@ export async function maybeSelectDocumentary(
   const { db, cfg } = s;
   if (!cfg.docEnabled || !cfg.longformEnabled) return undefined;
   const now = s.now();
+  // A long video planned by date (the launch run, src/shortrun.ts): started early enough to be finished and
+  // scheduled well ahead, so the PC is free when it goes out.
+  const plannedDoc = docRunDue(
+    readRun(cfg.shortRunFile),
+    now,
+    await takenSlots(db),
+    cfg.timezone,
+  );
   // The monthly documentary on its own week and day; otherwise, while ElevenLabs credits would be lost at
   // the reset, a banked one: made overnight now, while the credits are there, and scheduled for the next
   // free documentary evening, weeks ahead if need be (the owner's idea, 25 Oct 2026).
-  let due = cfg.docWeeks.includes(weekOfMonth(now, cfg.timezone))
+  let due = plannedDoc
+    ? plannedDoc.at
+    : cfg.docWeeks.includes(weekOfMonth(now, cfg.timezone))
     ? evergreenDue(
         now,
         {
@@ -2177,7 +2280,9 @@ export async function maybeSelectDocumentary(
   ).map((r) => r.headline);
   // The breakout picker (src/docpick.ts, DOC_BREAKOUT_PICKER) scores every candidate and takes the best with no
   // model call; the writer's pick from the lists stays the fallback.
-  const breakout = s.cfg.docBreakoutPicker
+  const breakout = plannedDoc
+    ? undefined
+    : s.cfg.docBreakoutPicker
     ? await pickBreakoutDoc(s).catch((err) => {
         log("warn", "breakout documentary picker failed", {
           error: errorMessage(err),
@@ -2186,6 +2291,7 @@ export async function maybeSelectDocumentary(
       })
     : undefined;
   const topic =
+    plannedDoc?.topic ??
     breakout?.topic ??
     (await selectDocTopic(
     s.llm,
@@ -3045,7 +3151,7 @@ export async function ingestGameplay(
         score: review.score,
         reason: review.reason,
       });
-      const keep = worthPosting(review, cfg.gameplayMinScore);
+      const keep = worthPosting(review, minScoreFor(meta, cfg));
       let episode: string | undefined;
       if (keep) {
         const cluster: StoryCluster = {
@@ -3059,7 +3165,16 @@ export async function ingestGameplay(
           newestAt: s.now().toISOString(),
           score: review.score,
           gameHint: review.game_title,
-          gameplay: { id: meta.id, dir, review },
+          gameplay: {
+            id: meta.id,
+            dir,
+            review,
+            rehearsal: isRehearsal(
+              meta,
+              dayKey(s.now(), cfg.timezone),
+              cfg.gameplayRehearsalUntil,
+            ),
+          },
         };
         episode = shortId();
         if (
@@ -3116,11 +3231,29 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
   const meta = await readMeta(clipDir);
   if (!meta) throw new FatalError("the gameplay clip is gone from the inbox");
   const source = path.join(clipDir, meta.clip.file || "clip.mp4");
-  const win = gameplayWindow(ref.review, meta.clip.seconds);
+  const run = promisify(execFile);
+  // Dead air out and the payoff in (cleanWindow): a failed look at the clip keeps the reviewer's window.
+  const blacks = await run(
+    FFMPEG,
+    ["-hide_banner", "-nostats", "-i", source, "-vf", "blackdetect=d=0.2:pix_th=0.08", "-an", "-f", "null", "-"],
+    { maxBuffer: 16 * 1024 * 1024 },
+  )
+    .then((r) => parseBlackSpans(r.stderr))
+    .catch(() => []);
+  const win = cleanWindow(
+    gameplayWindow(ref.review, meta.clip.seconds),
+    blacks,
+    meta.clip.seconds,
+  );
   const len = win.end - win.start;
+  // An HDR capture is tone-mapped so it does not look washed out.
+  const tone = hdrFilter(
+    await run(FFPROBE, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0", source])
+      .then((r) => r.stdout.trim())
+      .catch(() => ""),
+  );
   const dir = episodeDir(s.cfg, ep.id);
   await fs.mkdir(dir, { recursive: true });
-  const run = promisify(execFile);
   await run(
     FFMPEG,
     [
@@ -3134,7 +3267,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       "-i",
       source,
       "-vf",
-      "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30",
+      `${tone}scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30`,
       "-c:v",
       "libx264",
       "-preset",
@@ -3167,7 +3300,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       source,
       "-an",
       "-vf",
-      "scale=-2:1920,crop=1080:1920,boxblur=28:3,eq=brightness=-0.10:saturation=1.15,fps=30",
+      `${tone}scale=-2:1920,crop=1080:1920,boxblur=28:3,eq=brightness=-0.10:saturation=1.15,fps=30`,
       "-c:v",
       "libx264",
       "-preset",
@@ -3240,8 +3373,7 @@ async function gameplayLive(s: Services, ep: Episode): Promise<void> {
     id: g.inbox_id,
     youtube_id: ep.youtube_video_id,
     title: polishTitle(ep.script_json!),
-    question: g.question,
-    result: g.result,
+    ...articleFields(g, ep.script_json!.game_title),
     experiment_slug: g.experiment_slug,
     published_at: (ep.publish_at
       ? new Date(ep.publish_at)
@@ -4302,7 +4434,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         {
           title: script.youtube.title,
           hook: script.hook,
-          game: script.game_title,
+          game: runRepeatGame(script.game_title, cluster.run),
         },
         recentTexts,
         s.cfg.repeatMax,
@@ -8354,7 +8486,18 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const dir = episodeDir(s.cfg, ep.id);
   // Auto mode needs nothing from the owner: a short "going out" note with a Watch link, no buttons.
   const g = script.gameplay;
-  const description = g
+  const rehearsal = ep.lane === "gameplay" && !!ep.story_json.gameplay?.rehearsal;
+  const description = rehearsal && g
+    ? [
+        "🧪 **Rehearsal: nothing here can publish.**",
+        `**Question:** ${g.question}`,
+        `**Result:** ${g.result}`,
+        `**Game:** ${script.game_title}`,
+        `**Why it was picked:** ${ep.story_json.gameplay?.review.reason ?? "n/a"} (score ${ep.story_json.gameplay?.review.score ?? "?"}/10)`,
+        "",
+        `▶️ [Watch preview](${links.preview})`,
+      ]
+    : g
     ? [
         `**Question:** ${g.question}`,
         `**Result:** ${g.result}`,
@@ -8383,9 +8526,11 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
           when,
         ];
   const delivered = await s.notify({
+    // Gameplay notices buzz the phone: the Maze Bank Short sat unseen for 48 hours among the channel's alerts.
+    ping: ep.lane === "gameplay",
     embeds: [
       {
-        title: `🎬 ${script.youtube.title}`,
+        title: `🎬 ${rehearsal ? "[REHEARSAL] " : ""}${script.youtube.title}`,
         url: links.preview,
         description: description.join("\n"),
         color: script.is_rumour ? COLOURS.alert : COLOURS.brand,
@@ -8399,6 +8544,22 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
     throw new Error(
       "approval notice could not be posted to Discord; retrying before any auto-publish",
     );
+  // The owner's tap is the only way a gameplay Short moves: a notice that never arrived is tried again.
+  if (delivered === false && ep.lane === "gameplay")
+    throw new Error(
+      "gameplay approval notice could not be posted to Discord; trying again",
+    );
+  if (rehearsal) {
+    // Told, and finished: with no approval state left, nothing can publish it.
+    await transition(s.db, ep.id, "rendered", "rejected", {
+      last_error: "rehearsal: reached Discord, nothing published",
+    });
+    await logEvent(s.db, ep.id, "gameplay_rehearsal", {
+      clip: g?.inbox_id,
+      delivered: delivered ?? null,
+    });
+    return;
+  }
   if (mode === "auto") {
     await transition(s.db, ep.id, "rendered", "approved", {
       approval_mode: mode,
@@ -8422,17 +8583,41 @@ async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
   const waited =
     s.now().getTime() - new Date(ep.approval_requested_at).getTime();
   if (ep.approval_mode === "manual") {
+    const gameplay = ep.lane === "gameplay";
+    const expiryHours = gameplay
+      ? s.cfg.gameplayApprovalHours
+      : MANUAL_APPROVAL_EXPIRY_HOURS;
+    // One nudge with fresh links, since a gameplay Short has no other way forward.
+    if (
+      gameplay &&
+      s.cfg.gameplayRemindHours > 0 &&
+      waited >= s.cfg.gameplayRemindHours * 3600_000 &&
+      waited < expiryHours * 3600_000
+    ) {
+      const [told] = await s.db.query<{ n: string | number }>(
+        `SELECT count(*) AS n FROM events WHERE episode_id = $1 AND kind = 'gameplay_reminded'`,
+        [ep.id],
+      );
+      if (Number(told?.n ?? 0) === 0) {
+        const links = approvalLinks(s.cfg, ep.id);
+        await logEvent(s.db, ep.id, "gameplay_reminded", {});
+        await s.notify({
+          ping: true,
+          content: `🎮 Still waiting for your tap: "${ep.script_json?.youtube.title ?? ep.story_json.headline}". It expires ${Math.round(expiryHours - waited / 3600_000)} hours from now.\n▶️ [Watch preview](${links.preview})  ·  ✅ [Approve](${links.approve})  ·  ❌ [Reject](${links.reject})`,
+        });
+      }
+    }
     // An unanswered episode must not block tomorrow's Short forever.
     if (
-      waited >= MANUAL_APPROVAL_EXPIRY_HOURS * 3600_000 &&
+      waited >= expiryHours * 3600_000 &&
       (await transition(s.db, ep.id, "awaiting_approval", "rejected", {
         last_error: "approval expired unanswered",
       }))
     ) {
       await logEvent(s.db, ep.id, "rejected", { by: "expiry" });
       await s.notify({
-        level: "info",
-        content: `⌛ "${ep.script_json?.youtube.title ?? ep.story_json.headline}" expired after ${MANUAL_APPROVAL_EXPIRY_HOURS}h without approval; moving on to new stories.`,
+        ...(gameplay ? {} : { level: "info" as const }),
+        content: `⌛ "${ep.script_json?.youtube.title ?? ep.story_json.headline}" expired after ${expiryHours}h without approval; ${gameplay ? "the clip stays in the inbox." : "moving on to new stories."}`,
       });
     }
     return;

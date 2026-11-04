@@ -201,6 +201,9 @@ cutover)
   done
   if [ "$ok" = yes ]; then
     echo "CUTOVER DONE: the Mac is running the factory and serving pulsegmg.com"
+    echo "   reservations page for the orchestrator: $(curl -s -m 10 http://pulse-mac.local:8080/orch/reservations.json | tr -d '
+ ' | cut -c1-200)"
+    echo "   Going back later: bash mac/rollback.sh check, then go. Code updates: bash mac/deploy.sh <branch>. Old PC tasks stay disabled, not deleted."
   else
     echo "Mac did not come up healthy within 10 minutes: starting the PC side again"
     on_mac 'launchctl bootout gui/$(id -u)/com.pulse.factory 2>/dev/null; launchctl bootout gui/$(id -u)/com.pulse.tunnel 2>/dev/null; launchctl bootout gui/$(id -u)/com.pulse.discord 2>/dev/null' || true

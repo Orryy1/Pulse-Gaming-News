@@ -4,6 +4,7 @@
 # Takes it only if that is a fast-forward of what the Mac runs, waits for a quiet moment there (no render, no upload, no
 # hold-restart flag), pushes, and watches the factory come back. The Mac's hook typechecks first and refuses a broken push; if the
 # new code dies inside three minutes mac/run.sh goes back to the old code by itself and says so in Discord.
+#   bash mac/deploy.sh --restart              settings changed, no new code: wait for quiet, then restart
 #   DEPLOY_WAIT_MINUTES=30   how long to wait for a quiet moment (default 30), then give up changing nothing
 #   DEPLOY_DRY=1             say what it would do, changing nothing
 set -euo pipefail
@@ -14,6 +15,10 @@ host=${PULSE_DEPLOY_HOST:-pulse-mac}
 remote=${PULSE_DEPLOY_REMOTE:-mac}
 on_mac() { ssh -o BatchMode=yes -o ConnectTimeout=15 "$host" "export PATH=/opt/homebrew/bin:\$PATH; $1"; }
 
+# Settings only (.env changed on the Mac): the same wait, then a restart. bash mac/deploy.sh --restart
+if [ "$what" = --restart ]; then
+  new=""
+else
 new=$(git rev-parse "$what^{commit}")
 old=$(on_mac "git --git-dir=\${PULSE_ROOT:-\$HOME/PulseFactory}/repo.git rev-parse refs/heads/$LIVE_BRANCH")
 if [ "$new" = "$old" ]; then echo "the Mac already has $new"; exit 0; fi
@@ -22,7 +27,8 @@ if ! git merge-base --is-ancestor "$old" "$new" 2>/dev/null; then
   exit 2
 fi
 echo "deploying $(git log --oneline -1 "$new")"
-git log --oneline "$old..$new" | head -20
+git log --oneline "$old..$new" | head -20 || true
+fi
 
 # Why not now: the same checks as the hook, read from here so the wait is visible.
 why_busy() {
@@ -38,6 +44,15 @@ while :; do
 done
 if [ "${DEPLOY_DRY:-}" = 1 ]; then echo "DEPLOY_DRY: quiet now, would push $new"; exit 0; fi
 
+if [ -z "$new" ]; then
+  on_mac 'launchctl kickstart -k "gui/$(id -u)/com.pulse.factory"'
+  for i in $(seq 1 60); do
+    sleep 5
+    on_mac "curl -sf -m 5 http://127.0.0.1:8080/health >/dev/null" && { echo "restarted"; exit 0; }
+  done
+  echo "the factory did not answer within five minutes"
+  exit 1
+fi
 # The push is the deploy (mac/post-receive): typecheck, keep the old code, switch, restart.
 git push "$remote" "$new:refs/heads/$LIVE_BRANCH"
 # Keep GitHub and the PC's branch in step, so a later rollback starts from the same code.

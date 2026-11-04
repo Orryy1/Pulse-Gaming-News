@@ -1,6 +1,70 @@
 [
   {
     "kind": "why",
+    "date": "2026-11-05",
+    "slot": "12:00",
+    "question": "Why is a game from 1998 the best-reviewed game of 2026?",
+    "title": "A 1998 Game Is Now the Best-Reviewed Game of 2026",
+    "game": "The Legend of Zelda: Ocarina of Time",
+    "arc": "The remake launches today and sits at the top of Metacritic's 2026 list, already inside its all-time top 30; the original still holds the all-time record; what the critics say it changed and the one complaint they keep raising.",
+    "angle": "Open close to: \"The best-reviewed game of 2026 first came out in 1998.\" Give the scores as the sources report them and say they were the figures at launch. Say what the remake changed and what reviewers praised, then the honest catch they raise, such as no Master Quest. Name who said what. Say only what the sources say.",
+    "sources": [
+      {
+        "url": "https://www.videogameschronicle.com/news/the-zelda-ocarina-of-time-remake-has-shot-to-the-top-of-metacritics-best-games-of-2026-so-far-makes-its-all-time-top-30/",
+        "source": "VGC"
+      },
+      {
+        "url": "https://www.nintendolife.com/news/2026/11/ocarina-of-time-remake-tops-metacritics-goty-list-and-its-high-on-the-all-time-ranking",
+        "source": "Nintendo Life"
+      },
+      {
+        "url": "https://www.nintendolife.com/news/2026/11/round-up-the-reviews-are-in-for-the-legend-of-zelda-ocarina-of-time-on-switch-2",
+        "source": "Nintendo Life"
+      },
+      {
+        "url": "https://www.thegamer.com/ocarina-of-time-switch-2-remake-review-scores/",
+        "source": "TheGamer"
+      },
+      {
+        "url": "https://www.ign.com/articles/the-legend-of-zelda-ocarina-of-time-review-remake",
+        "source": "IGN"
+      }
+    ]
+  },
+  {
+    "kind": "why",
+    "date": "2026-11-05",
+    "slot": "18:30",
+    "question": "Why did God of War Laufey just lose three months?",
+    "title": "Why God of War Laufey Slipped to May 2027",
+    "game": "God of War Laufey",
+    "arc": "The date moved three months to May 2027; what Sony and Santa Monica actually said; what else sits in the window it left, and what that means for anyone waiting.",
+    "angle": "Open close to: \"God of War Laufey just lost three months.\" Separate what Sony said from what outlets infer about the crowded February, and say which is which. Give the new date exactly as the sources do. Say only what the sources say and name them.",
+    "sources": [
+      {
+        "url": "https://www.eurogamer.net/god-of-war-laufey-delayed-may-three-months",
+        "source": "Eurogamer"
+      },
+      {
+        "url": "https://www.videogameschronicle.com/news/god-of-war-laufey-has-officially-been-delayed/",
+        "source": "VGC"
+      },
+      {
+        "url": "https://www.gematsu.com/2026/11/god-of-war-laufey-delayed-to-may-20-2027",
+        "source": "Gematsu"
+      },
+      {
+        "url": "https://www.ign.com/articles/god-of-war-laufey-delayed-to-may-2027",
+        "source": "IGN"
+      },
+      {
+        "url": "https://www.theverge.com/games/1026448/sony-playstation-god-of-war-laufey-delay",
+        "source": "The Verge"
+      }
+    ]
+  },
+  {
+    "kind": "why",
     "date": "2026-11-06",
     "slot": "18:30",
     "question": "Is GTA 6's map really 125 square kilometers?",
@@ -233,14 +297,41 @@
     "title": "30 GTA 6 Claims Checked Before Launch: Confirmed, Reported or Busted",
     "format": "guide",
     "sources": [
-      { "url": "https://support.rockstargames.com/articles/29jV3Cv2cCgvwM1XgtMO5o/grand-theft-auto-vi-regional-pre-load-and-release-times-on-playstation-5-and-xbox-series-x-or-s", "source": "Rockstar Support", "official": true },
-      { "url": "https://www.rockstargames.com/newswire/article/k4ak9okk485712/grand-theft-auto-vi-pre-load-begins-on-november-10", "source": "Rockstar Newswire", "official": true },
-      { "url": "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25", "source": "Rockstar Newswire", "official": true },
-      { "url": "https://kotaku.com/gta-6-pre-load-times-install-size-and-global-release-times-confirmed-2000752787", "source": "Kotaku" },
-      { "url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032", "source": "Kotaku" },
-      { "url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support", "source": "Tom's Hardware" },
-      { "url": "https://www.purexbox.com/news/2026/06/gta-6-costs-usd80-described-as-a-single-player-experience", "source": "Pure Xbox" },
-      { "url": "https://hitmarker.net/news/take-two-ceo-comments-on-why-gta-vi-was-not-announced-for-pc-903138", "source": "Hitmarker" }
+      {
+        "url": "https://support.rockstargames.com/articles/29jV3Cv2cCgvwM1XgtMO5o/grand-theft-auto-vi-regional-pre-load-and-release-times-on-playstation-5-and-xbox-series-x-or-s",
+        "source": "Rockstar Support",
+        "official": true
+      },
+      {
+        "url": "https://www.rockstargames.com/newswire/article/k4ak9okk485712/grand-theft-auto-vi-pre-load-begins-on-november-10",
+        "source": "Rockstar Newswire",
+        "official": true
+      },
+      {
+        "url": "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+        "source": "Rockstar Newswire",
+        "official": true
+      },
+      {
+        "url": "https://kotaku.com/gta-6-pre-load-times-install-size-and-global-release-times-confirmed-2000752787",
+        "source": "Kotaku"
+      },
+      {
+        "url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032",
+        "source": "Kotaku"
+      },
+      {
+        "url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support",
+        "source": "Tom's Hardware"
+      },
+      {
+        "url": "https://www.purexbox.com/news/2026/06/gta-6-costs-usd80-described-as-a-single-player-experience",
+        "source": "Pure Xbox"
+      },
+      {
+        "url": "https://hitmarker.net/news/take-two-ceo-comments-on-why-gta-vi-was-not-announced-for-pc-903138",
+        "source": "Hitmarker"
+      }
     ],
     "franchise": "Grand Theft Auto VI",
     "wiki": "Grand Theft Auto VI",

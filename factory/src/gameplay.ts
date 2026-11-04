@@ -33,6 +33,8 @@ export interface GameplayMeta {
   status: GameplayStatus;
   /** A rehearsal clip (src/tools/gameplay-rehearsal.ts): it goes all the way to a Discord notice and never publishes. */
   rehearsal?: boolean;
+  /** A rehearsal that goes on to Discord whatever the reviewer says, to test the rest of the lane (--force). */
+  rehearsal_force?: boolean;
   source: {
     file: string;
     title: string;
@@ -96,30 +98,46 @@ export async function readMeta(dir: string): Promise<GameplayMeta | undefined> {
  * Google Drive for desktop backs up the Videos folder and holds new files open while it reads
  * them, so on Windows the write or rename fails with EBUSY/EPERM for a few seconds (27 Oct 2026:
  * every clip from the night's stream stuck at "reviewing"). Each attempt uses its own temp name,
- * since the last one may still be held, and waits a little longer before trying again.
+ * since the last one may still be held, and waits a little longer before trying again. A new
+ * folder can stay held for over 15 seconds (4 Nov 2026), so the waits run to over a minute; then
+ * it writes in place, because a verdict matters more than the temp-file nicety. Temp files the
+ * lock kept from being removed go on the next good write.
  */
 export async function writeWhole(
   file: string,
   text: string,
-  waits = [500, 1500, 4000, 10_000],
+  waits = [500, 1500, 4000, 10_000, 20_000, 40_000],
 ): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     const tmp = `${file}.${process.pid}.${attempt}.tmp`;
     try {
       await fs.writeFile(tmp, text);
       await fs.rename(tmp, file);
+      await sweepTemps(file);
       return;
     } catch (err) {
       await fs.rm(tmp, { force: true }).catch(() => undefined);
       const code = (err as NodeJS.ErrnoException).code ?? "";
-      if (
-        !["EBUSY", "EPERM", "EACCES"].includes(code) ||
-        attempt >= waits.length
-      )
-        throw err;
+      if (!["EBUSY", "EPERM", "EACCES"].includes(code)) throw err;
+      if (attempt >= waits.length) {
+        await fs.writeFile(file, text).catch(() => {
+          throw err;
+        });
+        await sweepTemps(file);
+        return;
+      }
       await new Promise((r) => setTimeout(r, waits[attempt]));
     }
   }
+}
+
+/** Removes this file's leftover temp files; one still locked waits for a later write. */
+async function sweepTemps(file: string): Promise<void> {
+  const dir = path.dirname(file);
+  const stem = `${path.basename(file)}.`;
+  for (const name of await fs.readdir(dir).catch(() => [] as string[]))
+    if (name.startsWith(stem) && name.endsWith(".tmp"))
+      await fs.rm(path.join(dir, name), { force: true }).catch(() => undefined);
 }
 
 /** Updates meta.json in place. */
@@ -246,7 +264,7 @@ The channel makes experiment Shorts: one question, the attempt, the answer. Keep
 When the stream title or the frames fit one of the listed tests, use its number and keep its question's meaning. Otherwise write a fresh question about what the clip actually shows. The question must be answered by the clip itself, and the answer must be what happened, not a guess.
 Mechanics only: never name or hint at story events, characters' fates, missions or endings. A clip that shows a cutscene or plot is spoiler=true.
 Choose a 20-35 second window inside the clip that starts as the attempt begins and ends right after the outcome. Frame k of 8 is at about (k-0.5)/8 of the clip's length.
-Say only what the frames show. Never claim a landing, an escape or a win the last frames do not show ("RIGHT ON THE TARGET" over a parachute still in the air is a false answer): when the clip stops before the outcome, the result line says how far it got, or the clip is passed over.
+Say only what the frames show. Never claim a landing, an escape or a win the last frames do not show ("RIGHT ON THE TARGET" over a parachute still in the air is a false answer): when the clip stops before the outcome, the result line says how far it got. A jump made and a fall under way is an honest answer to "can you jump off it?"; a clip that shows the attempt clearly is not passed over only because it ends there.
 real_test is true only when the clip genuinely tries something a viewer would ask about and shows the answer. A striking moment or a first look of the world can still be kept (question and result describing what is seen), with real_test false.
 When the source is an Xbox clip, the owner pressed record on purpose because he thought the moment was worth showing: judge the moment on its own, and a first look at something new in the world counts as a striking moment.
 Licensed music triggers Content ID: flag radio_audible when the transcript has song lyrics or a DJ, or a radio station name shows on screen.

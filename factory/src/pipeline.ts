@@ -105,6 +105,7 @@ import {
   outlineDoc,
   writeChapter,
   checkChapter,
+  checkChapterItems,
   groundCallouts,
   validateChapter,
   writeBookends,
@@ -349,6 +350,7 @@ import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
+import { cleanBookends, cutSentences, resolveTestRecords, testOutlineNote, unbackedTestClaims, withTestRecords } from "./editorial/testevidence.ts";
 import { calendarBlock, readCalendar, type CalendarLane } from "./calendar.ts";
 import {
   docRunDue,
@@ -368,6 +370,9 @@ import {
   captionable,
   gameplayScript,
   gameplayWindow,
+  GameplayReviewSchema,
+  writeWhole,
+  type GameplayReview,
   articleFields,
   cleanWindow,
   hdrFilter,
@@ -2264,12 +2269,34 @@ export async function maybeSelectDocumentary(
   const now = s.now();
   // A long video planned by date (the launch run, src/shortrun.ts): started early enough to be finished and
   // scheduled well ahead, so the PC is free when it goes out.
-  const plannedDoc = docRunDue(
+  let plannedDoc = docRunDue(
     readRun(cfg.shortRunFile),
     now,
     await takenSlots(db),
     cfg.timezone,
   );
+  // A planned documentary built on our own tests needs enough approved ones (DOC_TEST_EVIDENCE); without them it does
+  // not run at all, once told, and the slot goes back to the usual lanes.
+  if (plannedDoc?.entry.min_evidence || plannedDoc?.entry.evidence?.length) {
+    const entry = plannedDoc.entry;
+    const { records, refused } = cfg.docTestEvidence
+      ? await resolveTestRecords(db, entry.evidence ?? [], entry.franchise)
+      : { records: [], refused: ["DOC_TEST_EVIDENCE is off"] };
+    if (records.length < Math.max(1, entry.min_evidence ?? 1)) {
+      if (!(await weeklyTried(db, `doc_evidence:${entry.date}:${entry.slot}`)))
+        await s.notify({
+          content: `"${entry.title}" will not run: ${records.length} usable test${records.length === 1 ? "" : "s"}, ${entry.min_evidence ?? 1} needed.${refused.length ? ` Not used: ${refused.join("; ").slice(0, 900)}.` : ""}`,
+        });
+      plannedDoc = undefined;
+    } else {
+      plannedDoc.topic.test_records = records;
+      if (refused.length)
+        await s.notify({
+          level: "info",
+          content: `"${entry.title}": tests not used: ${refused.join("; ").slice(0, 900)}.`,
+        });
+    }
+  }
   // The monthly documentary on its own week and day; otherwise, while ElevenLabs credits would be lost at
   // the reset, a banked one: made overnight now, while the credits are there, and scheduled for the next
   // free documentary evening, weeks ahead if need be (the owner's idea, 25 Oct 2026).
@@ -2398,17 +2425,26 @@ async function stepScriptDocumentary(
   ep: Episode,
   topic: DocTopic,
 ): Promise<void> {
+  // Our own tests as a source, for this documentary alone and under a stricter check (src/editorial/testevidence.ts).
+  const records = s.cfg.docTestEvidence ? (topic.test_records ?? []) : [];
+  const strict = records.length > 0;
   // A single story starts from its overview article; a franchise from the series article.
-  const franchise = await s.research(
+  const franchiseArticle = await s.research(
     topic.wiki ?? topic.franchise,
     topic.kind === "story"
       ? topic.franchise
       : `${topic.franchise} video game series`,
     6000,
   );
-  const outline = await outlineDoc(s.llm, topic, franchise?.text ?? "", {
-    openLoops: s.cfg.docOpenLoops,
-  });
+  const franchise = franchiseArticle
+    ? withTestRecords(franchiseArticle, records)
+    : franchiseArticle;
+  const outline = await outlineDoc(
+    s.llm,
+    topic,
+    `${franchise?.text ?? ""}${strict ? testOutlineNote(records) : ""}`,
+    { openLoops: s.cfg.docOpenLoops },
+  );
   // The questions it raises and answers (src/editorial/openloops.ts), kept only when they can work.
   const openLoops = s.cfg.docOpenLoops
     ? groundOpenLoops(outline.open_loops, outline.chapters.length)
@@ -2420,19 +2456,23 @@ async function stepScriptDocumentary(
   const chapters: DocDraft["chapters"] = [];
   const warnings: string[] = [];
   for (const [index, plan] of outline.chapters.entries()) {
-    const source = await s.research(
+    const article = await s.research(
       plan.wiki_title,
       `${plan.game_title} ${plan.year} video game`,
       9000,
     );
-    if (!source) {
+    if (!article) {
       warnings.push(
         `No Wikipedia article for ${plan.game_title}; chapter dropped.`,
       );
       continue;
     }
+    const source = withTestRecords(article, records);
     let feedback: string[] = [];
     let chapter: import("./editorial/documentary.ts").DocChapter | undefined;
+    // In a documentary with records: what is still unsupported after the rewrites, and whether the check ever ran.
+    let stillUnsupported: string[] = [];
+    let checkRan = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       chapter = await writeChapter(s.llm, {
         franchise: topic.franchise,
@@ -2453,14 +2493,37 @@ async function stepScriptDocumentary(
         loops: openLoops.loops,
         chapter: index + 1,
       });
-      const unsupported = await checkChapter(s.llm, chapter, source).catch(
-        (err) => {
-          log("warn", "documentary fact check failed", {
-            error: errorMessage(err),
-          });
-          return [] as string[];
-        },
-      );
+      let unsupported: string[];
+      if (strict) {
+        const items = await checkChapterItems(s.llm, chapter, source).catch(
+          (err) => {
+            log("warn", "documentary fact check failed", {
+              error: errorMessage(err),
+            });
+            return undefined;
+          },
+        );
+        checkRan = items !== undefined;
+        const unbacked = chapter.paragraphs.flatMap((p) =>
+          unbackedTestClaims(p.narration, records),
+        );
+        stillUnsupported = [...(items ?? []).map((u) => u.quote), ...unbacked];
+        unsupported = [
+          ...(items ?? []).map((u) => `"${u.quote}": ${u.problem}`),
+          ...unbacked.map(
+            (q) => `"${q}": it reports a test of ours with no record behind it`,
+          ),
+          ...(items ? [] : ["The fact check could not run on this draft."]),
+        ];
+      } else
+        unsupported = await checkChapter(s.llm, chapter, source).catch(
+          (err) => {
+            log("warn", "documentary fact check failed", {
+              error: errorMessage(err),
+            });
+            return [] as string[];
+          },
+        );
       feedback = [
         ...problems,
         ...unsupported.map(
@@ -2470,6 +2533,21 @@ async function stepScriptDocumentary(
       if (!feedback.length) break;
       if (attempt === 2)
         warnings.push(...feedback.map((f) => `${plan.game_title}: ${f}`));
+    }
+    if (strict) {
+      // Nothing unchecked or unsupported goes out here: no check, no chapter; unsupported sentences are cut.
+      const cut = cutSentences(chapter!, stillUnsupported);
+      if (!checkRan || cut.lost) {
+        warnings.push(
+          `${plan.game_title}: chapter dropped, ${checkRan ? "an unsupported line could not be cut" : "the fact check could not run"}.`,
+        );
+        continue;
+      }
+      if (stillUnsupported.length)
+        warnings.push(
+          `${plan.game_title}: ${stillUnsupported.length} unsupported line${stillUnsupported.length === 1 ? "" : "s"} cut.`,
+        );
+      chapter = cut.chapter;
     }
     const grounded = groundCallouts(chapter!, source);
     if (grounded.removed.length)
@@ -2558,6 +2636,14 @@ async function stepScriptDocumentary(
       franchise?.text ?? "",
       { ...ends, feedback: endProblems },
     );
+  if (strict) {
+    const clean = cleanBookends(bookends, records);
+    bookends = clean.bookends;
+    if (clean.removed.length)
+      warnings.push(
+        ...clean.removed.map((r) => `Bookend line with no test behind it cut: ${r}`),
+      );
+  }
   const draft: DocDraft = { topic, outline, chapters, bookends };
   if (s.cfg.docOpenLoops) {
     const placed = placeDocLoops(draft, openLoops.loops);
@@ -3161,6 +3247,22 @@ async function gameplayExperiments(cfg: Config) {
   return parseExperiments(md);
 }
 
+/** The full verdict a clip got in the last day, when its file write never landed. */
+async function priorGameplayReview(
+  db: Db,
+  id: string,
+): Promise<GameplayReview | undefined> {
+  const [row] = await db.query<{ review: unknown }>(
+    `SELECT detail->'review' AS review FROM events
+      WHERE kind = 'gameplay_reviewed' AND detail->>'id' = $1 AND detail->'review' IS NOT NULL
+        AND created_at > now() - interval '24 hours'
+      ORDER BY created_at DESC LIMIT 1`,
+    [id],
+  );
+  const parsed = GameplayReviewSchema.safeParse(row?.review);
+  return parsed.success ? parsed.data : undefined;
+}
+
 /**
  * Hears and looks at new inbox clips (a few a tick, a daily cap on vision calls) and makes an episode
  * from each one worth posting. One gameplay Short is in production at a time, so a long stream's dozen
@@ -3189,27 +3291,41 @@ export async function ingestGameplay(
   const made: string[] = [];
   for (const { dir, meta } of await newClips(cfg.gameplayRoot)) {
     if (left-- <= 0) break;
-    await writeMeta(dir, { status: "reviewing" });
     try {
-      const clip = path.join(dir, meta.clip.file || "clip.mp4");
-      const words = (await s.hearClip?.(clip).catch(() => [])) ?? [];
-      await fs.writeFile(path.join(dir, "words.json"), JSON.stringify(words));
-      const review = await reviewClip(
-        s.llm,
-        dir,
-        meta,
-        words.map((w) => w.text).join(" "),
-        experiments,
+      await writeMeta(dir, { status: "reviewing" });
+      // A verdict whose file write failed (a locked folder) is not paid for or lost: the event holds it, and an
+      // episode already made from it is the same episode (4 Nov 2026: clips reviewed up to five times over).
+      const prior = await priorGameplayReview(db, meta.id);
+      let review: GameplayReview;
+      if (prior) review = prior;
+      else {
+        const clip = path.join(dir, meta.clip.file || "clip.mp4");
+        const words = (await s.hearClip?.(clip).catch(() => [])) ?? [];
+        await writeWhole(path.join(dir, "words.json"), JSON.stringify(words));
+        review = await reviewClip(
+          s.llm,
+          dir,
+          meta,
+          words.map((w) => w.text).join(" "),
+          experiments,
+        );
+        await logEvent(db, null, "gameplay_reviewed", {
+          id: meta.id,
+          keep: review.keep,
+          score: review.score,
+          reason: review.reason,
+          review,
+        });
+      }
+      const keep =
+        worthPosting(review, minScoreFor(meta, cfg)) ||
+        Boolean(meta.rehearsal && meta.rehearsal_force);
+      const [made_before] = await db.query<{ id: string }>(
+        `SELECT id FROM episodes WHERE story_hash = $1`,
+        [`gameplay:${meta.id}`],
       );
-      await logEvent(db, null, "gameplay_reviewed", {
-        id: meta.id,
-        keep: review.keep,
-        score: review.score,
-        reason: review.reason,
-      });
-      const keep = worthPosting(review, minScoreFor(meta, cfg));
-      let episode: string | undefined;
-      if (keep) {
+      let episode: string | undefined = made_before?.id;
+      if (keep && !episode) {
         const cluster: StoryCluster = {
           hash: `gameplay:${meta.id}`,
           headline: review.question,
@@ -3267,8 +3383,9 @@ export async function ingestGameplay(
       // One in production at a time: the next clip waits for this one to reach the owner.
       if (episode) break;
     } catch (err) {
-      // A failed look is tried again later, never thrown away.
-      await writeMeta(dir, { status: "new" });
+      // A failed look is tried again later, never thrown away (a write that fails here leaves "reviewing", which
+      // newClips also comes back to).
+      await writeMeta(dir, { status: "new" }).catch(() => undefined);
       log("warn", "gameplay review failed", {
         id: meta.id,
         error: errorMessage(err),
@@ -8560,6 +8677,9 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
         `**Result:** ${g.result}`,
         `**Game:** ${script.game_title}`,
         `**Why it was picked:** ${ep.story_json.gameplay?.review.reason ?? "n/a"} (score ${ep.story_json.gameplay?.review.score ?? "?"}/10)`,
+        ...(ep.story_json.gameplay?.review.keep
+          ? []
+          : ["The reviewer would have passed on this; it was sent on to test the lane."]),
         "",
         `▶️ [Watch preview](${links.preview})`,
       ]

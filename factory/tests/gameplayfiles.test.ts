@@ -34,6 +34,17 @@ test("a clip left at reviewing by a review that died is looked at again after 30
   await fs.rm(root, { recursive: true, force: true });
 });
 
+test("a good write removes temp files an earlier lock left behind", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gp-"));
+  const dir = await clip(root, "gp_old", "new", 1);
+  await fs.writeFile(path.join(dir, "meta.json.999.4.tmp"), "{}");
+  await fs.writeFile(path.join(dir, "other.json.999.0.tmp"), "kept");
+  await writeMeta(dir, { status: "reviewing" });
+  const left = (await fs.readdir(dir)).filter((f) => f.endsWith(".tmp"));
+  assert.deepEqual(left, ["other.json.999.0.tmp"], "only this file's own");
+  await fs.rm(root, { recursive: true, force: true });
+});
+
 test("meta.json is written whole and leaves no temp files behind", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gp-"));
   const dir = await clip(root, "gp_a", "new", 1);

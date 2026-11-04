@@ -1,7 +1,8 @@
 // Puts one clip through the gameplay lane as a rehearsal: a fresh copy in the inbox marked "rehearsal", which the
 // lane reviews (one vision call), cuts, renders and posts to Discord with a preview link only. It can never publish:
 // the episode ends as soon as the notice is sent, and no manifest reaches Leonida Intel.
-//   npx tsx src/tools/gameplay-rehearsal.ts <inbox id, or a path to a video file>
+//   npx tsx src/tools/gameplay-rehearsal.ts <inbox id, or a path to a video file> [--force]
+// --force sends it on to Discord whatever the reviewer says, to test the rest of the lane on a known clip.
 // A video file is copied whole and gets eight frames, as the highlight finder does for a short Xbox clip.
 
 import { execFileSync } from "node:child_process";
@@ -12,6 +13,7 @@ import { FFMPEG, FFPROBE } from "../lib/bin.ts";
 import { readMeta, type GameplayMeta } from "../gameplay.ts";
 
 const arg = process.argv[2];
+const force = process.argv.includes("--force");
 if (!arg) {
   console.error("usage: gameplay-rehearsal.ts <inbox id or video file>");
   process.exit(1);
@@ -38,6 +40,7 @@ if (from) {
     id,
     status: "new",
     rehearsal: true,
+    rehearsal_force: force,
     review: undefined,
     created_at: new Date().toISOString(),
   };
@@ -70,6 +73,7 @@ if (from) {
     id,
     status: "new",
     rehearsal: true,
+    rehearsal_force: force,
     source: {
       file: arg,
       title: path.basename(arg, path.extname(arg)),

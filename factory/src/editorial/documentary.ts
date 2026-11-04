@@ -293,6 +293,8 @@ export const DocTopicSchema = z.object({
 export type DocTopic = z.infer<typeof DocTopicSchema> & {
   franchise: string;
   wiki?: string;
+  /** Approved gameplay tests that count as a source for this documentary alone (src/editorial/testevidence.ts). */
+  test_records?: import("./testevidence.ts").TestRecord[];
 };
 
 export async function selectDocTopic(
@@ -629,6 +631,17 @@ export async function checkChapter(
   chapter: DocChapter,
   source: WikiArticle,
 ): Promise<string[]> {
+  return (await checkChapterItems(llm, chapter, source)).map(
+    (u) => `"${u.quote}": ${u.problem}`,
+  );
+}
+
+/** The same check, keeping each problem's quote apart so a strict documentary can cut what stays unsupported. */
+export async function checkChapterItems(
+  llm: Llm,
+  chapter: DocChapter,
+  source: WikiArticle,
+): Promise<Array<{ quote: string; problem: string }>> {
   const r = await llm.structured({
     site: "doc.check",
     system: `You are a documentary fact-checker. Compare the narration with the SOURCE. List every specific factual statement (a date, number, name, quote, ranking, sales figure, event or cause) that the source does not support or that contradicts it. Framing, scene-setting description, transitions and clearly marked opinion are fine. Be strict about numbers and quotes. Return an empty list when everything checks out.`,
@@ -636,7 +649,7 @@ export async function checkChapter(
     schema: DocCheckSchema,
     effort: "medium",
   });
-  return r.unsupported.map((u) => `"${u.quote}": ${u.problem}`);
+  return r.unsupported;
 }
 
 /** A quote's credit without any medium ("on Twitter", "in an email") the source text does not mention. */

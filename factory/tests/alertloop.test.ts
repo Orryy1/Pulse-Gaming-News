@@ -314,7 +314,7 @@ test("the channel only hears of a kind that is new or rising", () => {
     "routine",
     "the digest is not an alert",
   );
-  assert.doesNotMatch(post.content, /2014/);
+  assert.doesNotMatch(post.content, /—/);
 });
 
 test("the page is written every day, with or without a post", async () => {

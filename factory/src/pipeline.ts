@@ -306,6 +306,7 @@ import {
 } from "./longlane.ts";
 import { titleVariants } from "./editorial/titles.ts";
 import { pickBreakoutDoc } from "./docpick.ts";
+import { rankingSequels, sequelWinners } from "./sequels.ts";
 import { markEvidence } from "./editorial/evidence.ts";
 import { applyTitleShape, writerTitleProblems } from "./titlestep.ts";
 import { paletteOf } from "./assets/palette.ts";
@@ -2626,6 +2627,20 @@ export async function prepareRemake(
 }
 
 /** The weekly long-form ranking video: same topic pool as the evergreen Shorts, its own slot and lane. */
+/** The ranking Shorts that did well and have no long ranking yet (src/sequels.ts). */
+async function longSequels(s: Services, now: Date) {
+  const { winners, norm } = await sequelWinners(s.db, now);
+  const made = await s.db.query<{ theme: string | null }>(
+    `SELECT story_json->>'gameHint' AS theme FROM episodes WHERE lane = 'longform' AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`,
+    [now],
+  );
+  return rankingSequels(
+    winners,
+    norm,
+    made.map((r) => r.theme ?? ""),
+  );
+}
+
 export async function maybeSelectLongform(
   s: Services,
 ): Promise<string | undefined> {
@@ -2654,16 +2669,25 @@ export async function maybeSelectLongform(
     )
   ).map((r) => r.headline);
   // Ranked by recent YouTube demand, topics with none skipped (src/discovery/searchdemand.ts).
-  const { candidates, demand, skipped } = await demandRanked(
-    s,
-    await s.discoverEvergreen(),
-  );
+  const ranked = await demandRanked(s, await s.discoverEvergreen());
+  const { demand, skipped } = ranked;
+  // The long version of a ranking Short that did well (SEQUEL_WINNERS, src/sequels.ts): already proven on our own
+  // channel, so it joins the list whatever the demand check says, and its Short does not count as covering it.
+  const sequels = s.cfg.sequelWinners ? await longSequels(s, now) : undefined;
+  const candidates = [
+    ...(sequels?.candidates ?? []),
+    ...ranked.candidates.filter(
+      (c) => !sequels?.candidates.some((x) => x.name === c.name),
+    ),
+  ];
   if (!candidates.length) return undefined;
   const topic = await selectLongformTopic(
     s.llm,
     candidates,
-    covered,
-    await topicDemand(s, "long"),
+    covered.filter((h) => !sequels?.headlines.includes(h)),
+    [await topicDemand(s, "long"), sequels?.block ?? ""]
+      .filter(Boolean)
+      .join("\n\n"),
   );
   if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
     log("info", "no long-form topic today", { reason: topic.reason });

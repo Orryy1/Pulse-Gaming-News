@@ -51,6 +51,7 @@ export function testConfig(
     codexRunnerDir: "",
     cutdownsEnabled: false,
     seriesPlaylists: false,
+    sequelWinners: false,
     cutdownSlot: "15:30",
     gameplayEnabled: false,
     gameplayRoot: "",

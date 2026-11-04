@@ -472,8 +472,12 @@ test("the designs: posters on different pictures, the GTA grid first, and nothin
 });
 
 test("a big readable face is the hero first, a body next, a logo last; a real person's photo never", async () => {
-  const images = ["logo", "body", "photo", "unjudged", "face"].map((n) =>
-    shot(`${n}.jpg`, 1, igdb("Halo 3")),
+  const images = ["logo", "body", "unjudged", "face", "photo", "photoreal"].map((n) =>
+    shot(
+      `${n}.jpg`,
+      1,
+      n === "photo" ? "a press picture of a person" : igdb("Halo 3"),
+    ),
   );
   const script = {
     headline: "Every Halo",
@@ -491,13 +495,15 @@ test("a big readable face is the hero first, a body next, a logo last; a real pe
         return { kind: "face", box: [0.6, 0.1, 0.9, 0.5], realPerson: false };
       if (n === "body") return { kind: "body", realPerson: false };
       if (n === "photo") return { kind: "face", realPerson: true };
+      // The model takes photoreal game art for a photograph; the provenance says otherwise.
+      if (n === "photoreal") return { kind: "face", realPerson: true };
       if (n === "logo") return { kind: "thing", realPerson: false };
       return undefined;
     },
   });
   assert.deepEqual(
     out.map((d) => d.thumb.imageFile),
-    ["face.jpg", "body.jpg", "unjudged.jpg", "logo.jpg"],
+    ["face.jpg", "photoreal.jpg", "body.jpg", "unjudged.jpg"],
   );
   // The face sets where the picture sits.
   assert.ok(Math.abs((out[0]!.thumb.subjectX as number) - 0.75) < 0.001);

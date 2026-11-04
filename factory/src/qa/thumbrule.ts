@@ -579,7 +579,8 @@ export async function heroRuleDesigns(o: {
     const look = await o
       .look?.(path.join(o.dir, art.file))
       .catch(() => undefined);
-    if (look?.realPerson) continue;
+    // Only a picture with no game behind it: the model called GTA 6's photoreal Lucia a real photograph (4 Nov 2026).
+    if (look?.realPerson && !artGameName(art.provenance)) continue;
     const subject = art.layers?.fg
       ? await heroSubject(path.join(o.dir, art.layers.fg))
       : undefined;

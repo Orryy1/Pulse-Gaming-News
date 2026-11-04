@@ -4,6 +4,7 @@
 // and a shine, the kicker above, the game and year below and a blinking PRESS START. The style "Pixel"
 // sets a milestone as an 8-bit unlock: a spinning pixel coin, a flash on the chime and the record in
 // pixel letters.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, Easing, interpolate, spring } from "remotion";
 import { BODY } from "../../fonts.ts";
@@ -500,7 +501,7 @@ const PixelStyle: React.FC<GfxProps> = ({ g, len }) => {
         style={{
           position: "relative",
           marginTop: 40,
-          transform: `scale(${pop})`,
+          transform: `scale(${safeScale(pop)})`,
         }}
       >
         {/* Sparkles thrown out on the chime. */}

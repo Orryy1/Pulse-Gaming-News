@@ -15,6 +15,10 @@ export interface CommonsImage {
   license: string; // "CC BY-SA 4.0"
   pageUrl: string;
   description: string;
+  /** The library it came from (src/assets/libraries.ts); absent means Wikimedia Commons. */
+  source?: "commons" | "openverse" | "flickr" | "pixabay" | "press";
+  /** Openverse: the archive it indexes ("Flickr", "Geograph"); press: the publisher ("Xbox"). */
+  via?: string;
 }
 
 const API = "https://commons.wikimedia.org/w/api.php";

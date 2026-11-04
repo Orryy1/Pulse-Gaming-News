@@ -24,6 +24,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fetchWithTimeout, log } from "../lib/util.ts";
 import { FFMPEG } from "../lib/bin.ts";
+import { loadOrch } from "../lib/orch.ts";
 import {
   DEFAULT_ILLUSTRATE_URL,
   illustratable,
@@ -759,9 +760,8 @@ export function orchGpuLease(
   maxWait = 60,
 ): (job: string, estMinutes: number) => Promise<Release> {
   return async (job, est) => {
-    const orch: any = await import(
-      process.env.ORCH_CLIENT || "file:///C:/Claude/orchestrator/orch.mjs"
-    );
+    // No orchestrator (the Mac): this throws, so the batch is skipped rather than run on the PC's GPU unasked.
+    const orch = await loadOrch();
     return (await orch.lease("gpu", {
       job,
       project: "pulse",

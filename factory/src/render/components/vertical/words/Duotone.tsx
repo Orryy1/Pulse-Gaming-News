@@ -2,6 +2,7 @@
 // fills a panel that wipes in; a solid accent tab carries a big quote mark at its corner, the quote rises
 // in heavy type a word at a time beside it, and the speaker sits beneath on an accent dash.
 // primary: the quote (4-30 words); secondary: the speaker (optional, 32 characters at most); src: the picture.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import {
   Img,
@@ -217,7 +218,7 @@ export const Duotone: React.FC<VGfxProps> = ({
           height: TAB,
           background: accent,
           borderRadius: "8px 0 8px 0",
-          transform: `scale(${tab}) rotate(${(1 - tab) * -12}deg)`,
+          transform: `scale(${safeScale(tab)}) rotate(${(1 - tab) * -12}deg)`,
           transformOrigin: "0 0",
           opacity: Math.min(1, tab * 2),
           overflow: "hidden",

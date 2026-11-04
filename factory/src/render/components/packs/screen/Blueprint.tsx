@@ -2,6 +2,7 @@
 // border draws on, a generic schematic takes shape in the middle, each "label: value" row arrives as a
 // callout on a leader line with a dimension mark under it, and the heading sits in the title block.
 // The last value is picked out in amber. All drawing ends by about frame 90.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { interpolate, spring } from "remotion";
 import { COLOUR } from "../../../brand.ts";
@@ -454,7 +455,7 @@ export const Blueprint: React.FC<GfxProps> = ({ g, len, variant = 0 }) => {
                     top: 0,
                     height: 2,
                     background: last ? COLOUR.amber : LINE,
-                    transform: `scaleX(${dimP})`,
+                    transform: `scaleX(${safeScale(dimP)})`,
                   }}
                 />
                 {tick("left")}

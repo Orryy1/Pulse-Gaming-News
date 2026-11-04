@@ -1,6 +1,7 @@
 // Game pack: a list as an RPG-style quest log. A framed panel opens from a line, the quest title sits
 // in its header, and each objective slides in and is ticked in turn with a small flash while a cursor
 // steps down the list. An original panel design, not any real game's journal.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { interpolate, spring } from "remotion";
 import { COLOUR } from "../../../brand.ts";
@@ -295,7 +296,7 @@ export const QuestLog: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
               top: yRule + 1,
               width: 18,
               height: 18,
-              transform: `rotate(45deg) scale(${rule})`,
+              transform: `rotate(45deg) scale(${safeScale(rule)})`,
               background: "#121216",
               border: `3px solid ${COLOUR.amber}`,
             }}
@@ -552,7 +553,7 @@ export const QuestLog: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
             top: -40,
             width: 80,
             height: 80,
-            transform: `scale(${medal}) rotate(${(1 - medal) * -90}deg)`,
+            transform: `scale(${safeScale(medal)}) rotate(${(1 - medal) * -90}deg)`,
           }}
         >
           {completeRing > 0 && completeRing < 1 ? (

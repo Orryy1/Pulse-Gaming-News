@@ -1,3 +1,4 @@
+import { safeScale } from "../safetransform.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -131,7 +132,7 @@ export const TopBar: React.FC<{
           height: 34,
           opacity: labelOpacity,
           background: accent,
-          transform: `scaleY(${srcRule})`,
+          transform: `scaleY(${safeScale(srcRule)})`,
           transformOrigin: "top",
         }}
       />

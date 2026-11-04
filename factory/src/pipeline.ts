@@ -6,6 +6,7 @@ import { pollBlock, readPoll } from "./social/poll.ts";
 import {
   selectWhyTopic,
   whyCandidates,
+  whyAnswerProblems,
   whyFollowProblems,
   whyFreshProblems,
   whyHookProblems,
@@ -62,8 +63,16 @@ import {
 } from "./assets/footagestep.ts";
 import { footageOptions } from "./assets/footagefirst.ts";
 import { capStockTargets } from "./assets/repeats.ts";
-import { stockQuery } from "./assets/stock.ts";
-import { createSketchRun } from "./assets/illustrate.ts";
+import { stockCredit, stockCreditLines, stockQuery } from "./assets/stock.ts";
+import {
+  isPressProvenance,
+  photoCreditLine,
+  photoCreditOf,
+  photoProvenance,
+  photoSourcesLine,
+} from "./assets/libraries.ts";
+import { pressForShort, reportLibraries } from "./assets/librarystep.ts";
+import { comfyReachable, createSketchRun } from "./assets/illustrate.ts";
 import {
   animateSketches,
   chooseEpisodeFillers,
@@ -137,6 +146,12 @@ import {
   RECAP_STORIES_MIN,
   type RecapStory,
 } from "./editorial/recap.ts";
+import {
+  selectExplainedEpisode,
+  stepScriptExplained,
+} from "./explainedstep.ts";
+import type { ExplainedStory } from "./editorial/explained.ts";
+import { recordWeeklyArm, weeklyArm, weeklyVerdict, fallbackNotice } from "./weeklytest.ts";
 import {
   buildLongPlan,
   momentKeys,
@@ -356,6 +371,7 @@ import {
   type GameplayStatus,
 } from "./gameplay.ts";
 import { pruneCommentRecords } from "./youtube/replies.ts";
+import { pruneForSpace } from "./retention.ts";
 import { finishChapters } from "./youtube/chapters.ts";
 import { docPinnedComment } from "./youtube/pinned.ts";
 import { latestPublicDocumentary, nextLine } from "./youtube/nextdoc.ts";
@@ -406,9 +422,13 @@ export interface Services {
     episodeDir: string,
     maxScreens?: number,
   ): Promise<VisualAsset[]>;
-  /** Freely licensed archive photos (Wikimedia Commons) for a search. */
+  /** Freely licensed archive photos for a search: Wikimedia Commons, then Openverse and Pixabay when on. */
   searchPhotos(
     query: string,
+  ): Promise<import("./assets/commons.ts").CommonsImage[]>;
+  /** Publishers' press pictures of a game (src/assets/press.ts, LIBRARY_PRESS); absent in tests. */
+  searchPress?(
+    game: string,
   ): Promise<import("./assets/commons.ts").CommonsImage[]>;
   /** Official screenshots, key art and cover from IGDB for a game by exact title (empty without Twitch keys). */
   igdbArt(
@@ -520,6 +540,7 @@ export interface Services {
       headline: string;
       gameTitle: string;
       format?: "short" | "long" | "graphics" | "thumbs";
+      narration?: string;
     },
   ): Promise<VisionQa>;
   /** The ElevenLabs cycle: what is left and what would be lost at the reset (undefined when unknown). */
@@ -1322,6 +1343,8 @@ async function createEvergreen(
  * well-known game that its Wikipedia article can answer; the Short is then written and fact-checked
  * like a news Short, from that article.
  */
+const WHY_DROP_RETRIES = 2;
+
 export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   const { db, cfg } = s;
   if (!cfg.whyEnabled) return undefined;
@@ -1344,8 +1367,17 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     )
     .find((d): d is Date => !!d);
   if (!due) return undefined;
-  // One editor call per slot: a pass is not retried every tick.
-  if (await weeklyTried(db, `why:${due.toISOString()}`)) return undefined;
+  // One editor call per slot: a pass is not retried every tick. A pick dropped for failing its fact-check gets
+  // a fresh game instead, up to WHY_DROP_RETRIES (1 Nov 2026: Diablo II failed at 16:55 and 18:30 went empty).
+  const dropped = await db.query<{ game: string | null }>(
+    `SELECT story_json->>'gameHint' AS game FROM episodes
+      WHERE story_hash LIKE 'why:%' AND status = 'rejected'
+        AND created_at > $1::timestamptz - interval '3 hours'`,
+    [now],
+  );
+  if (dropped.length > WHY_DROP_RETRIES) return undefined;
+  const tryKey = `why:${due.toISOString()}${dropped.length ? `:${dropped.length}` : ""}`;
+  if (await weeklyTried(db, tryKey)) return undefined;
   // The news slots already gave way to this one; it is held only once the cap itself is reached.
   if (
     await holdWhyForCap(db, cfg, now, due, (m) => s.notify(m)).catch(
@@ -1370,6 +1402,7 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     games: fresh.map((r) => r.game ?? "").filter(Boolean),
     slugs: fresh.map((r) => r.hash.replace(/^why:/, "")),
   };
+  recent.games.push(...dropped.map((r) => r.game ?? "").filter(Boolean));
   // Well-loved games with a story arc first (WHY_SEEDS), then the evergreen list; recent games left out.
   const base = whyCandidates(
     await s.discoverEvergreen(),
@@ -1922,10 +1955,32 @@ export async function maybeSelectWeekly(
   if (cfg.recapLong && cfg.longformEnabled) {
     const longDue = evergreenDue(
       now,
-      { ...plan(cfg.recapDays), leadMinutes: 300 },
+      {
+        ...plan(cfg.recapDays),
+        // The weekly shape test (src/weeklytest.ts): both arms start early enough for a 15-20 minute explainer.
+        leadMinutes: cfg.weeklyExplainedTest
+          ? Math.max(300, cfg.weeklyExplainedLeadMinutes)
+          : 300,
+      },
       taken,
     );
     if (longDue && !(await weeklyTried(db, `recaplong:${today}`))) {
+      // An explainer week (src/weeklytest.ts) makes one story in depth; with no story strong and safe enough,
+      // the round-up below takes the slot and counts as a round-up week.
+      let fallback: string | undefined;
+      if (
+        (await weeklyArm(db, cfg, now, (m) => s.notify(m)).catch(
+          () => "roundup" as const,
+        )) === "explained"
+      ) {
+        const made = await selectExplainedEpisode(s, now, longDue, today).catch(
+          (err) => ({ id: undefined, reason: errorMessage(err) }),
+        );
+        if (made.id) return made.id;
+        fallback = made.reason ?? "no story";
+        log("info", "weekly explainer fell back to the round-up", { reason: fallback });
+        await s.notify({ content: fallbackNotice(fallback) }).catch(() => undefined);
+      }
       const stories = await recapStoryIds(db, now);
       if (stories.length >= RECAP_STORIES_MIN) {
         const id = shortId();
@@ -1952,6 +2007,9 @@ export async function maybeSelectWeekly(
             stories,
             slot_at: longDue.toISOString(),
           });
+          await recordWeeklyArm(db, cfg, id, "roundup", now, fallback).catch(
+            () => undefined,
+          );
           log("info", "weekly recap video selected", {
             id,
             stories: stories.length,
@@ -3401,7 +3459,13 @@ async function stepScriptTwin(s: Services, ep: Episode): Promise<void> {
 export function stampsFor(
   script: Pick<Script, "stamp">,
   words: Array<{ text: string; start: number }>,
-): Array<{ at: number; text: string; sub?: string; colour: string; tone?: string }> {
+): Array<{
+  at: number;
+  text: string;
+  sub?: string;
+  colour: string;
+  tone?: string;
+}> {
   const st = script.stamp;
   if (!st?.word?.trim() || !st.text?.trim()) return [];
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9$]/g, "");
@@ -3737,11 +3801,18 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   const fc = ep.factcheck_json as {
     doc?: boolean;
     recap?: boolean;
+    explained?: boolean;
+    story?: ExplainedStory;
     stories?: string[];
     topic?: import("./editorial/evergreen.ts").EvergreenTopic;
   } | null;
   if (fc?.recap && fc.stories?.length)
     return stepScriptRecap(s, ep, fc.stories);
+  // The week's biggest story, explained (src/explainedstep.ts).
+  if (fc?.explained && fc.story)
+    return stepScriptExplained(s, ep, fc.story, {
+      segmentInputs: (sc) => segmentInputs(sc),
+    });
   if (fc?.doc && fc.topic)
     return stepScriptDocumentary(s, ep, fc.topic as unknown as DocTopic);
   const topic = fc?.topic;
@@ -4247,6 +4318,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       problems.push(
         ...whyHookProblems(script.hook, whyHooks),
         ...whyFollowProblems(script.loop_line, cluster.why.follow),
+        ...whyAnswerProblems(narrationOf(script)),
       );
     // A report card is credited to an outlet: it must be one of this story's own sources.
     const outlets = cluster.items.map((i) => i.source.toLowerCase());
@@ -4377,6 +4449,17 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     desk0 && desk0.voice.id === voice.id
       ? { voice: { id: s.cfg.elevenLabsVoiceId, name: s.cfg.narratorName } }
       : desk0;
+  // A Short outside the desk test still has a take written as the reply to its question, so the narrator asks
+  // it himself. 3 Nov 2026: the GTA 6 pre-load Short said "No. That box holds a download code" to nobody.
+  if (!desk && !twin && ep.script_json?.desk_question?.trim()) {
+    const sc = ep.script_json;
+    sc.pulse_take.narration = `${sc.desk_question!.trim()} ${sc.pulse_take.narration}`;
+    delete sc.desk_question;
+    await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(sc),
+    ]);
+  }
   let narration: Awaited<ReturnType<Services["synthesise"]>>;
   if (desk && s.stitchTakes) {
     // The desk experiment: the narrator up to the facts, the desk partner's question in a second voice,
@@ -4892,6 +4975,20 @@ async function gatherMedia(
       }
     }
   }
+  // Publishers' press pictures of the story's game (src/assets/press.ts, LIBRARY_PRESS): an announcement's key
+  // art and screenshots from Xbox Wire, the PlayStation Blog and the other press sites, credited on screen.
+  if (!ranking && script.game_title)
+    images.push(
+      ...(await pressForShort(
+        {
+          searchPress: s.searchPress && ((g) => s.searchPress!(g)),
+          downloadPhoto: (i, d) => s.downloadPhoto(i, d),
+        },
+        dir,
+        script.game_title,
+        new Set(images.map((i) => i.sourceUrl)),
+      )),
+    );
   // Ranking Shorts: each entry brings its own box art and one trailer moment, tagged with its line.
   if (script.entries?.length) {
     const sorted = [...script.entries].sort((a, b) => b.rank - a.rank);
@@ -5152,7 +5249,11 @@ async function gatherMedia(
   const wordy = new Set<string>();
   for (const [k, f] of flags.entries()) {
     if (!f) continue;
-    if ((f.webcam || f.gore) && shots[k]!.kind === "screenshot")
+    // A press picture is screened like a screenshot: a webcam or gore is never used.
+    if (
+      (f.webcam || f.gore) &&
+      (shots[k]!.kind === "screenshot" || isPressProvenance(shots[k]!.provenance))
+    )
       unusable.add(shots[k]!.file);
     else if (f.text) wordy.add(shots[k]!.file);
   }
@@ -5177,6 +5278,9 @@ async function gatherMedia(
       ...(wordy.has(a.file) ? { wordy: true } : {}),
     });
   }
+  // What the newer picture libraries gave this Short, in its log and the owner's note (long videos: after the top-up).
+  if (!isLongEpisode(ep) && !rich)
+    await reportLibraries(s, ep.id, `Short "${script.headline}"`, out, clips);
   // Lead with the most cinematic art; screenshots fill the middle.
   const rank: Record<string, number> = {
     hero: 0,
@@ -5194,18 +5298,15 @@ async function gatherMedia(
   };
 }
 
-/** "Steve Hammond / CC BY-SA 2.0 / Wikimedia Commons" for an archive photo, else nothing. */
+/**
+ * "Steve Hammond / CC BY-SA 2.0 / Wikimedia Commons" for a licensed photo (Commons, Flickr, Openverse, Pixabay),
+ * "Image: Xbox press" for a publisher's press picture, else nothing (src/assets/libraries.ts photoCreditOf).
+ */
 export function photoCredit(i: {
   kind: string;
   provenance?: string;
 }): string | undefined {
-  if (i.kind !== "photo") return undefined;
-  const m = (i.provenance ?? "").match(
-    /^Wikimedia Commons photo by (.+?), ([^,:]+): /,
-  );
-  return m
-    ? `${m[1]!.slice(0, 40)} / ${m[2]} / Wikimedia Commons`
-    : "Wikimedia Commons";
+  return photoCreditOf(i);
 }
 
 /** A video about single-player campaigns keeps multiplayer footage out of every pick. */
@@ -5317,7 +5418,7 @@ async function personPhoto(
         kind: "photo",
         file,
         sourceUrl: img.pageUrl,
-        provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+        provenance: photoProvenance(img),
         label: person,
         ...(line >= 0 && k === 0 ? { beatIndex: line } : {}),
       } as VisualAsset & { beatIndex?: number });
@@ -5772,7 +5873,10 @@ async function gatherChapterMedia(
               eapp,
               edir,
               targets,
-              Math.max(s.cfg.docClipsPerChapter, Math.min(16, targets.length)),
+                Math.max(
+                  s.cfg.docClipsPerChapter,
+                  Math.min(16, targets.length),
+                ),
               scopeOf(script),
             ),
             footageBudgetSeconds(eapp),
@@ -5965,7 +6069,7 @@ async function gatherChapterMedia(
           kind: "photo",
           file,
           sourceUrl: img.pageUrl,
-          provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+          provenance: photoProvenance(img),
           beatIndex,
         } as VisualAsset & { beatIndex?: number });
     }
@@ -5986,7 +6090,10 @@ async function gatherChapterMedia(
     }
     let n = 0;
     for (const [person, k] of [...people].slice(0, DOC_PEOPLE_PER_CHAPTER)) {
-      const found = (await s.searchPhotos(person).catch(() => [])).slice(0, 8);
+        const found = (await s.searchPhotos(person).catch(() => [])).slice(
+          0,
+          8,
+        );
       if (!found.length) continue;
       const [pick] = await pickPhotos(
         s.llm,
@@ -6006,7 +6113,7 @@ async function gatherChapterMedia(
           kind: "photo",
           file,
           sourceUrl: img.pageUrl,
-          provenance: `Wikimedia Commons photo by ${img.artist}, ${img.license}: ${img.pageUrl}`,
+          provenance: photoProvenance(img),
           beatIndex,
           moment: k,
           label: person.toUpperCase(),
@@ -6068,7 +6175,7 @@ async function gatherChapterMedia(
           startSeconds: 0,
           stock: true,
           moment: c.moment,
-          credit: "ILLUSTRATIVE · STOCK FOOTAGE: PEXELS",
+          credit: stockCredit(c.provenance),
         });
   } catch (err) {
     log("warn", "documentary B-roll failed", {
@@ -6469,8 +6576,21 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       }));
     assets.clips ??= [];
     // Scene lines nothing filmed can show get a drawn concept sketch, tagged ILLUSTRATION, when switched on
-    // (ILLUSTRATE_ENABLED, off by default; src/assets/illustrate.ts). Off, nothing here changes.
-    const sketches = s.cfg.illustrate
+    // (ILLUSTRATE_ENABLED, off by default; src/assets/illustrate.ts). Off, nothing here changes. A server that
+    // does not answer (closed on the PC, or none on the Mac) skips them for this video, said once.
+    const comfyUp =
+      s.cfg.illustrate &&
+      (s.cfg.illustrateStub || (await comfyReachable(s.cfg.illustrateUrl)));
+    if (s.cfg.illustrate && !comfyUp) {
+      await logEvent(s.db, ep.id, "sketches_skipped", {
+        url: s.cfg.illustrateUrl,
+      });
+      await s.notify({
+        level: "info",
+        content: `${kind} "${script.headline}": no concept sketches this time, because the image server (ComfyUI at ${s.cfg.illustrateUrl}) is not answering. Those lines get a graphic or stay on the game's pictures. Setting: ILLUSTRATE_URL.`,
+      });
+    }
+    const sketches = comfyUp
       ? createSketchRun({
           llm: s.llm,
           dir,
@@ -6493,6 +6613,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       { stockThemeMax: s.cfg.stockThemeMax },
     );
     assets.filled = { before: r.before, after: r.after };
+    // What the newer picture libraries gave the whole video, in its log and the owner's note.
+    await reportLibraries(
+      s,
+      ep.id,
+      `${kind} "${script.headline}"`,
+      assets.images ?? [],
+      assets.clips ?? [],
+    );
     if (r.stockCapped) {
       await logEvent(s.db, ep.id, "stock_themes_capped", {
         skipped: r.stockCapped,
@@ -6729,8 +6857,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   let plan = assets.longPlan ?? makePlan();
   if (!assets.longPlan) {
     // Real-world photos pinned to no sentence stay off screen (REAL_PHOTOS_PINNED_ONLY): say how many.
-    const withheld = hasMoments && s.cfg.realPhotosPinnedOnly
-      ? images.filter((i) => realWorldImage(i) && i.moment === undefined).length
+    const withheld =
+      hasMoments && s.cfg.realPhotosPinnedOnly
+        ? images.filter((i) => realWorldImage(i) && i.moment === undefined)
+            .length
       : 0;
     if (withheld)
       await logEvent(s.db, ep.id, "real_photos_withheld", { count: withheld });
@@ -7327,6 +7457,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         footageCredit,
         endLine: script.recap
           ? "The week's biggest stories every Friday · Shorts every day"
+          : script.explained
+            ? "The biggest gaming story, explained · Shorts every day"
           : doc
             ? "A new documentary every month · Shorts every day"
             : "A new ranking every week · Shorts every day",
@@ -7380,10 +7512,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         quietBreaks: assets.quietBreaks,
         palette: assets.palette,
         // The vision model's boxes, then the details read from the pictures' text (src/assets/ocr.ts).
-        annotations: [
-          ...(assets.annotations ?? []),
-          ...(assets.textDetails ?? []),
-        ],
+    annotations: [...(assets.annotations ?? []), ...(assets.textDetails ?? [])],
         // The camera grammar (src/render/camera.ts, LONG_CAMERA), every long format.
         camera: docCamera,
         eraBeds: craft.eraBeds,
@@ -7941,7 +8070,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // memory of the channel's last twelve; off (SHORT_WORD_LOOKS=false) it is always the rubber stamp.
   const [stamp] = stampsFor(script, words);
   if (stamp && !plan.wordLook) {
-    const gameYear = Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined;
+    const gameYear =
+      Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) ||
+      undefined;
     const chosen = s.cfg.shortWordLooks
       ? await chooseWordLook(s.db, stamp, {
           year: gameYear,
@@ -7951,7 +8082,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         })
       : { look: "Stamp", recent: [] };
     plan.wordLook = chosen.look;
-    await logEvent(s.db, ep.id, "word_look", { look: chosen.look, text: stamp.text, tone: stamp.tone, recent: chosen.recent });
+    await logEvent(s.db, ep.id, "word_look", {
+      look: chosen.look,
+      text: stamp.text,
+      tone: stamp.tone,
+      recent: chosen.recent,
+    });
   }
   // The moment lands with its look's sound (the stamp's landing by default), peak on the word, when the mix has room for it.
   for (const st of stampsFor(script, words)) {
@@ -7976,11 +8112,17 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     segments,
     words,
     plan,
-    images: (assets.images ?? []).map((i) => ({ kind: i.kind, credit: photoCredit(i), beatIndex: i.beatIndex })),
+    images: (assets.images ?? []).map((i) => ({
+      kind: i.kind,
+      credit: photoCredit(i),
+      beatIndex: i.beatIndex,
+    })),
     clips: assets.clips ?? [],
     stamps: stampsFor(script, words),
     game: script.game_title,
-    gameYear: Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined,
+    gameYear:
+      Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) ||
+      undefined,
     seed: variant,
   });
   const mediaRich = shortMediaRichness(
@@ -8048,14 +8190,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       : assets.officialTrailer?.publisher) ?? "",
   );
   // A person's licensed photo is credited on screen, as its licence asks.
-  const photoLine = [
-    ...new Set((assets.images ?? []).map(photoCredit).filter(Boolean)),
-  ].join(" · ");
+  const photoLine = photoCreditLine((assets.images ?? []).map(photoCredit));
   const footageCredit = [
     (assets.clips ?? []).length
       ? `Footage: ${publisher || script.game_title} · official trailer`
       : "",
-    photoLine ? `Photo: ${photoLine}` : "",
+    photoLine,
   ]
     .filter(Boolean)
     .join("   ");
@@ -8147,6 +8287,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     vision = await s.visionQa(frames, {
       headline: script.headline,
       gameTitle: script.game_title,
+      narration: narrationOf(script),
     });
   }
   const qa = {
@@ -8569,14 +8710,8 @@ export function footageCredits(
   }
   for (const [channel, url] of cc)
     lines.push(`Gameplay: ${channel}, licensed CC BY (${url}).`);
-  const stock = clips
-    .filter((c) => /^Illustrative stock footage from Pexels/.test(c.provenance))
-    .map((c) => c.provenance.match(/\((https?:[^)]+)\)/)?.[1])
-    .filter(Boolean);
-  if (stock.length)
-    lines.push(
-      `Illustrative stock footage (not the real event): Pexels, ${stock.join(", ")}.`,
-    );
+  // Stock and archive footage, one line per library (src/assets/stock.ts).
+  lines.push(...stockCreditLines(clips));
   if (
     /microsoft|xbox game studios|bethesda/i.test(
       `${publisher ?? ""} ${headline}`,
@@ -8675,9 +8810,12 @@ export function videoMetadata(
       script.sources?.length
         ? `\nSources:\n${script.sources.map((u) => `• Wikipedia: ${u}`).join("\n")}`
         : "",
-      (ep.assets_json?.images ?? []).some((i) => i.kind === "photo") &&
+      // The photo libraries used, named (only Commons: the line the channel always had).
       affiliate?.shopUrl
-        ? `\nPhotos: Wikimedia Commons, credited on screen. Full photo and footage credits: ${affiliate.shopUrl.replace(/\/shop\//, "/credits/")}`
+        ? photoSourcesLine(
+            ep.assets_json?.images ?? [],
+            affiliate.shopUrl.replace(/\/shop\//, "/credits/"),
+          )
         : "",
       footage,
     ],
@@ -8689,6 +8827,8 @@ export function videoMetadata(
         ? "\nPulse Gaming: we test what games let you do, one question at a time. Tell us what to test next in the comments."
         : script.recap
           ? "\nPulse Gaming News: gaming news, checked and explained. The week's biggest stories every Friday, a new ranking every week, Shorts every day."
+          : script.explained
+            ? "\nPulse Gaming News: gaming news, checked and explained. The biggest story in gaming explained in depth, a new ranking every week, Shorts every day."
           : script.evergreen_format === "documentary"
             ? "\nPulse Gaming News: the stories behind the games, checked and explained. A new documentary every month, a new ranking every week, Shorts every day."
             : long
@@ -9480,8 +9620,12 @@ export async function tick(
     await syncGameplaySkips(s).catch((err) =>
       log("warn", "gameplay status sync failed", { error: errorMessage(err) }),
     );
-    await pruneMedia(s).catch((err) =>
+    await pruneMedia(s, s.cfg.mediaKeepDays).catch((err) =>
       log("warn", "prune failed", { error: errorMessage(err) }),
+    );
+    // Sooner, oldest first, when the disk runs low (the Mac's 256 GB SSD; src/retention.ts).
+    await pruneForSpace(s, (id) => episodeDir(s.cfg, id)).catch((err) =>
+      log("warn", "space prune failed", { error: errorMessage(err) }),
     );
     // Records of comments we judged are kept 90 days (the privacy notice says so), then deleted.
     await pruneCommentRecords(s.db, s.now()).catch((err) =>
@@ -9577,6 +9721,14 @@ export async function tick(
       await growthVerdict(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch(
         (err) =>
           log("warn", "growth test verdict failed", {
+            error: errorMessage(err),
+          }),
+      );
+    // The weekly long video's shape test (src/weeklytest.ts): each finished week, then the verdict.
+    if (!s.cfg.dryRun)
+      await weeklyVerdict(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch(
+        (err) =>
+          log("warn", "weekly shape verdict failed", {
             error: errorMessage(err),
           }),
       );

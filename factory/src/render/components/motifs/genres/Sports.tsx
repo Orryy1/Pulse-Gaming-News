@@ -3,6 +3,7 @@
 // top left (kicker, game, year as the clock) and the heading on a two-tier lower third. Styles:
 // "Scoreboard" sets two "label: value" rows on an arena board with dot-matrix figures, and "Matchup"
 // sets a versus (two game titles) as a broadcast matchup plate.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, Easing, interpolate, spring } from "remotion";
 import { BODY, DISPLAY } from "../../fonts.ts";
@@ -715,7 +716,7 @@ const Matchup: React.FC<GfxProps> = ({ g, len, src }) => {
           fontFamily: DISPLAY,
           fontSize: 76,
           color: NAVY,
-          transform: `scale(${vs})`,
+          transform: `scale(${safeScale(vs)})`,
           boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
         }}
       >

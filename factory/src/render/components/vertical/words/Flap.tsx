@@ -4,6 +4,7 @@
 // primary: the heading (optional, 26 characters at most); items: 2-4 "2013: GTA V launches" rows (an ISO
 // date such as 2023-12 shows its year), each event 22 characters or fewer.
 // (An older beat's "2013: a | 2020: b" primary with its heading in secondary reads the same.)
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { BODY } from "../../fonts.ts";
@@ -108,7 +109,7 @@ const Half: React.FC<{
         ? "linear-gradient(180deg, #2d2d33 0%, #232328 100%)"
         : "linear-gradient(180deg, #1c1c21 0%, #17171b 100%)",
       borderRadius: top ? "6px 6px 0 0" : "0 0 6px 6px",
-      transform: scale !== 1 ? `scaleY(${scale})` : undefined,
+      transform: scale !== 1 ? `scaleY(${safeScale(scale)})` : undefined,
       transformOrigin: top ? "50% 100%" : "50% 0%",
     }}
   >

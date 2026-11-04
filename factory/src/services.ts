@@ -6,7 +6,7 @@ import type { Config } from "./config.ts";
 import type { Db } from "./db.ts";
 import type { Services } from "./pipeline.ts";
 import { createClaude } from "./editorial/llm.ts";
-import { createCodexLlm } from "./editorial/codex.ts";
+import { codexRunnerPresent, createCodexLlm } from "./editorial/codex.ts";
 import { FEEDS } from "./discovery/feeds.ts";
 import { fetchFeeds } from "./discovery/rss.ts";
 import { clusterItems } from "./discovery/cluster.ts";
@@ -27,6 +27,8 @@ import {
   renderShort,
   renderLong,
   renderLongStills,
+  renderLongThumbs,
+  countAsRender,
   renderCutdown,
 } from "./render/render.ts";
 import {
@@ -40,7 +42,20 @@ import { checkNarration, transcribeWords } from "./qa/narration.ts";
 import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken, storedRefreshToken } from "./youtube/oauth.ts";
 import { officialMedia } from "./assets/officialTrailer.ts";
-import { stockClips } from "./assets/stock.ts";
+import {
+  archiveLibrary,
+  libraryStockClips,
+  pexelsLibrary,
+  pixabayLibrary,
+  type StockLibrary,
+} from "./assets/stock.ts";
+import {
+  searchLicensedPhotos,
+  searchOpenverse,
+  searchPixabayImages,
+} from "./assets/libraries.ts";
+import { searchPress } from "./assets/press.ts";
+import { breaker } from "./lib/breaker.ts";
 import { rankStills } from "./assets/stillscore.ts";
 import path from "node:path";
 import { fetchRockstarNewswire } from "./discovery/newsrooms.ts";
@@ -58,6 +73,12 @@ import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { findIgdbGame, fetchIgdbArt } from "./assets/igdb.ts";
 import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
 import { footageFirstDeps } from "./assets/footagedeps.ts";
+import { macFootageDeps } from "./assets/footagemac.ts";
+import { macOrLocal, macSettings, macTranscribeWords } from "./macworker.ts";
+import {
+  macRenderShort,
+  macRenderThumbs,
+} from "./render/macrender.ts";
 import {
   QUOTA,
   QUOTA_RESERVE_FOR_UPLOAD,
@@ -67,7 +88,7 @@ import {
   quotaUsed,
 } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
-import { fetchWithTimeout } from "./lib/util.ts";
+import { fetchWithTimeout, log } from "./lib/util.ts";
 
 export function oauthConfig(cfg: Config) {
   return {
@@ -81,15 +102,65 @@ export function oauthConfig(cfg: Config) {
 
 let creditCache: { at: number; plan: CreditPlan | undefined } | undefined;
 
+// The outside picture libraries answer slowly or not at all some days (Openverse and the Internet Archive both
+// timed out on 1 Nov 2026): after two failures in a row a library is skipped for ten minutes.
+const openverseBreaker = breaker("openverse");
+const pixabayBreaker = breaker("pixabay");
+const archiveBreaker = breaker("internet archive");
+
+/** The stock libraries a line's B-roll search asks, Pexels first (each behind its setting and key). */
+export function stockLibraries(
+  cfg: Pick<Config, "pexelsApiKey" | "libraryPixabay" | "pixabayApiKey" | "libraryArchive">,
+): StockLibrary[] {
+  const out: StockLibrary[] = [];
+  if (cfg.pexelsApiKey) out.push(pexelsLibrary(cfg.pexelsApiKey));
+  if (cfg.libraryPixabay && cfg.pixabayApiKey) {
+    const p = pixabayLibrary(cfg.pixabayApiKey);
+    out.push({ name: p.name, search: (q) => pixabayBreaker.call(() => p.search(q), []) });
+  }
+  if (cfg.libraryArchive) {
+    const a = archiveLibrary();
+    out.push({ name: a.name, search: (q) => archiveBreaker.call(() => a.search(q), []) });
+  }
+  return out;
+}
+
 export function createServices(db: Db, cfg: Config): Services {
+  // The Mac mini's jobs (src/macworker.ts): each setting off means the old local path, untouched.
+  const mac = macSettings(cfg);
+  const tellMac = (content: string) =>
+    postDiscord(cfg.discordWebhookUrl, { content }).catch(() => undefined);
+  const speechWords = (file: string) =>
+    cfg.macAsr
+      ? macOrLocal(
+          "the speech timing",
+          (f: string) => macTranscribeWords(mac, f),
+          (f: string) =>
+            cfg.whisperPython
+              ? transcribeWords(f, cfg.whisperPython)
+              : Promise.resolve([]),
+          tellMac,
+        )(file)
+      : transcribeWords(file, cfg.whisperPython);
   const claude = createClaude({
     top: cfg.anthropicModel,
     mid: cfg.claudeModelMid,
     low: cfg.claudeModelLow,
   });
   // Codex answers the listed off-slot steps; anything else, and any Codex failure, is Claude as before.
-  const llm =
-    cfg.codexLlm && cfg.codexCalls.length
+  // Its helper lives in the PC orchestrator's folder: on a machine without it (the Mac mini) every routed
+  // call would fail and then go to Claude, so routing is off there, said once, rather than failing each time.
+  const codexWanted = cfg.codexLlm && cfg.codexCalls.length > 0;
+  const codexHere = codexWanted && codexRunnerPresent(cfg.codexRunnerDir);
+  if (codexWanted && !codexHere) {
+    log("warn", "Codex routing off: codex_runner.py not on this machine", {
+      dir: cfg.codexRunnerDir,
+    });
+    logEvent(db, null, "note", {
+      text: `Codex is switched on (CODEX_LLM) but its helper codex_runner.py is not in ${cfg.codexRunnerDir} on this machine, so these steps use Claude: ${cfg.codexCalls.join(", ")}. Setting: CODEX_RUNNER_DIR.`,
+    }).catch(() => undefined);
+  }
+  const llm = codexHere
       ? createCodexLlm(claude, {
           enabled: true,
           sites: cfg.codexCalls,
@@ -98,6 +169,14 @@ export function createServices(db: Db, cfg: Config): Services {
           python: cfg.codexPython,
           runnerDir: cfg.codexRunnerDir,
           tmpDir: path.join(cfg.dataDir, "tmp", "codex"),
+          // Claude is out of allowance: say which normally-Claude steps went to Codex, once each, for checking.
+          onLimitRouted: ((seen) => (site: string) => {
+            if (seen.has(site)) return;
+            seen.add(site);
+            logEvent(db, null, "note", {
+              text: `Claude hit its usage limit, so ${site} is being written by Codex for now. Worth checking those videos.`,
+            }).catch(() => undefined);
+          })(new Set<string>()),
         })
       : claude;
   if (llm !== claude)
@@ -134,14 +213,32 @@ export function createServices(db: Db, cfg: Config): Services {
         {
           onEvent: (kind, detail) => {
             const id = episodeIdOf(cfg.dataDir, out);
-            return id ? logEvent(db, id, kind, detail).catch(() => undefined) : undefined;
+            return id
+              ? logEvent(db, id, kind, detail).catch(() => undefined)
+              : undefined;
           },
         },
       ),
     findGame: findSteamApp,
     gameFacts: steamFacts,
     fetchArt: (app, dir, maxScreens) => fetchSteamArt(app, dir, maxScreens),
-    searchPhotos: (q) => searchCommons(q),
+    // Commons, then Openverse (Flickr and other archives) and Pixabay photos when switched on, interleaved; a slow
+    // or failing library is left alone for ten minutes (src/lib/breaker.ts) so the gather never waits on it.
+    searchPhotos: (q) =>
+      searchLicensedPhotos(
+        {
+          commons: (x) => searchCommons(x),
+          openverse: cfg.libraryOpenverse
+            ? (x) => openverseBreaker.call(() => searchOpenverse(x), [])
+            : undefined,
+          pixabay:
+            cfg.libraryPixabay && cfg.pixabayApiKey
+              ? (x) => pixabayBreaker.call(() => searchPixabayImages(cfg.pixabayApiKey, x), [])
+              : undefined,
+        },
+        q,
+      ),
+    searchPress: (game) => (cfg.libraryPress ? searchPress(game) : Promise.resolve([])),
     gameplayClips: async (
       game,
       franchise,
@@ -214,15 +311,17 @@ export function createServices(db: Db, cfg: Config): Services {
     achievements: (appId) => fetchAchievements(appId),
     steamClimbers: (now) => steamClimbers(now),
     steamDeals: (exclude) => steamDeals(exclude),
-    footageFirstDeps: () =>
-      footageFirstDeps({
+    footageFirstDeps: () => {
+      const local = footageFirstDeps({
         ytdlp: cfg.ytdlpPath,
         // The title check is the existing low-tier judge, one call per chapter, only where clips are ranked by Claude.
         llm: cfg.clipRanking === "llm" ? llm : undefined,
         // Old games' small sources keep a native-size copy for the upscaling pass (src/assets/upscale.ts).
         sdMaxHeight:
           cfg.upscale && cfg.upscaleModelDir ? cfg.upscaleMaxHeight : 0,
-      }),
+      });
+      return cfg.macFootageGather ? macFootageDeps(mac, local, tellMac) : local;
+    },
     ownClips: (game, franchise, dir, targets, maxClips) =>
       cfg.footage && (cfg.footageLibrary || cfg.gameplayRoot)
         ? libraryClips({
@@ -262,9 +361,9 @@ export function createServices(db: Db, cfg: Config): Services {
     research: (title, fallbackQuery, maxChars) =>
       researchGame(title, fallbackQuery, maxChars),
     fetchStock: (dir, targets, gameWords, maxClips, avoidUrls) =>
-      cfg.pexelsApiKey
-        ? stockClips(
-            cfg.pexelsApiKey,
+      stockLibraries(cfg).length
+        ? libraryStockClips(
+            stockLibraries(cfg),
             dir,
             targets,
             gameWords,
@@ -333,8 +432,26 @@ export function createServices(db: Db, cfg: Config): Services {
       return true;
     },
     imageAspect,
-    render: renderShort,
-    renderLong,
+    render: cfg.macRenderShorts
+      ? macOrLocal(
+          "the Short render",
+          (input) => countAsRender(() => macRenderShort(mac, input)),
+          renderShort,
+          tellMac,
+        )
+      : renderShort,
+    renderLong: cfg.macStills
+      ? (input) =>
+          renderLong({
+            ...input,
+            thumbRenderer: macOrLocal(
+              "the thumbnails",
+              (t) => macRenderThumbs(mac, t),
+              renderLongThumbs,
+              tellMac,
+            ),
+          })
+      : renderLong,
     renderLongStills,
     renderCutdown,
     normalise: normaliseLoudness,
@@ -377,16 +494,16 @@ export function createServices(db: Db, cfg: Config): Services {
       return plan;
     },
     hearClip: async (file) =>
-      cfg.whisperPython
-        ? (await transcribeWords(file, cfg.whisperPython)).map((w) => ({
+      cfg.whisperPython || cfg.macAsr
+        ? (await speechWords(file)).map((w) => ({
             text: w.text,
             start: w.start,
             end: w.end ?? w.start + 0.3,
           }))
         : [],
     checkNarration: async (file, words) =>
-      cfg.whisperPython
-        ? checkNarration(words, await transcribeWords(file, cfg.whisperPython))
+      cfg.whisperPython || cfg.macAsr
+        ? checkNarration(words, await speechWords(file))
         : undefined,
     youtube: (account = "") =>
       new YouTubeClient(() => accessToken(db, oauthConfig(cfg), account)),

@@ -8,6 +8,7 @@
 //   highlight     the line rising in, then a highlighter sweeping across its strongest word
 // Every word on screen is one of the sentence's own (./words.ts); sizes come from the measured ladders of
 // ../packs/fit.ts so nothing runs past the 60 px safe edge or into the lower third.
+import { safeScale } from "../../safetransform.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -340,7 +341,7 @@ export const TypeUnderline: React.FC<KineticProps> = ({
                           borderRadius: 999,
                           background: COLOUR.amber,
                           transformOrigin: "left center",
-                          transform: `rotate(-1.2deg) scaleX(${under})`,
+                          transform: `rotate(-1.2deg) scaleX(${safeScale(under)})`,
                           boxShadow: "0 4px 18px rgba(255,107,26,0.35)",
                         }}
                       />

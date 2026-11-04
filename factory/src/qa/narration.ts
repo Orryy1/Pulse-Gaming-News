@@ -133,6 +133,42 @@ const UNIT_SAME: Record<string, string> = {
   pollish: "polish",
 };
 
+// "2nd" read aloud is "second": the same number to the check, however Whisper writes it (FFXIV doc,
+// 4 Nov 2026: three correct readings cost a second voicing and raised a false alert). The figure still
+// has to match, so "second" heard as "third" is still a fault.
+const ORDINAL_SAME: Record<string, string> = {
+  first: "one",
+  second: "two",
+  third: "three",
+  fourth: "four",
+  fifth: "five",
+  sixth: "six",
+  seventh: "seven",
+  eighth: "eight",
+  ninth: "nine",
+  tenth: "ten",
+  eleventh: "eleven",
+  twelfth: "twelve",
+  thirteenth: "thirteen",
+  fourteenth: "fourteen",
+  fifteenth: "fifteen",
+  sixteenth: "sixteen",
+  seventeenth: "seventeen",
+  eighteenth: "eighteen",
+  nineteenth: "nineteen",
+  twentieth: "twenty",
+  thirtieth: "thirty",
+  fortieth: "forty",
+  fiftieth: "fifty",
+  sixtieth: "sixty",
+  seventieth: "seventy",
+  eightieth: "eighty",
+  ninetieth: "ninety",
+  hundredth: "hundred",
+  thousandth: "thousand",
+  millionth: "million",
+};
+
 export function tokens(word: string): string[] {
   // Whisper writes "GTA 5" as "GTA V": a capital Roman numeral (never "I" or "X", which are words) is its number.
   const roman = word.replace(/[.,;:!?)"”’]+$/, "");
@@ -150,7 +186,7 @@ export function tokens(word: string): string[] {
       .replace(/[’']s$/, "s")
       .replace(/[^a-z0-9]/g, "");
     // "gigs" and "gigabytes" are the same word to the check (the voice shortens repeats, speakUnits).
-    t = UNIT_SAME[t] ?? t;
+    t = UNIT_SAME[t] ?? ORDINAL_SAME[t] ?? t;
     const ord = t.match(/^(\d+)(st|nd|rd|th)$/);
     if (ord) t = ord[1]!;
     if (/^\d+$/.test(t) && t.length <= 9) {

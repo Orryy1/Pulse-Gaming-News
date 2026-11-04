@@ -21,6 +21,7 @@ import type { ShortProps } from "./props.ts";
 import { unloadLocalVision } from "../assets/localvision.ts";
 import { log } from "../lib/util.ts";
 import { PcTurnTimeout } from "../pcschedule.ts";
+import { loadOrch, NoOrchestrator } from "../lib/orch.ts";
 import type { LongProps } from "./Long.tsx";
 import { BEDS, MOOD_BEDS } from "./soundscape.ts";
 import { pocketOf } from "./soundfx.ts";
@@ -34,6 +35,22 @@ import type { CutdownProps } from "./Cutdown.tsx";
  * and the graphic cards that use a background picture showed none (29-30 Oct 2026 renders).
  */
 export const webPath = (file: string): string => file.replace(/\\/g, "/");
+
+/**
+ * Whether Chrome draws pages in software while still compositing on the GPU (pure). Off by default, so pages
+ * rasterise on the GPU everywhere; REMOTION_GPU_RASTER=false is the way back to software. On the Mac mini
+ * (1 Nov 2026 rehearsal) Chrome's Metal rasteriser, Skia Graphite, aborted the GPU process ~10 minutes into
+ * long renders, and software raster was the workaround (a 34-minute documentary took ~80 minutes). The cause
+ * was a rounded clip under a scale of exactly 0, now kept off zero (safetransform.ts): the same documentary
+ * then rendered with no abort in 36 minutes. Remotion exposes no flag for this, so software mode uses the
+ * variable its own Lambda renders read, which only adds Chrome's --disable-gpu-rasterization (and changes one
+ * error text).
+ */
+export function gpuRasterOff(env: Record<string, string | undefined>): boolean {
+  return env.REMOTION_GPU_RASTER?.toLowerCase() === "false";
+}
+if (gpuRasterOff(process.env))
+  process.env.__RESERVED_IS_INSIDE_REMOTION_LAMBDA = "true";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(here, "index.ts");
@@ -81,10 +98,15 @@ export function getBundle(): Promise<string> {
   // A bundle swept away from the temp folder is rebuilt rather than rendered from a missing folder.
   if (bundleDir && !fs.existsSync(bundleDir))
     bundlePromise = bundleDir = undefined;
+  // The Mac worker keeps one bundle per commit beside the code: a fresh process per job would rebuild it each time.
+  const kept = process.env.REMOTION_BUNDLE_DIR;
+  if (kept && fs.existsSync(path.join(kept, "index.html")))
+    return Promise.resolve(kept);
   bundlePromise ??= bundle({
     entryPoint: ENTRY,
     publicDir: PUBLIC_DIR,
     onProgress: () => undefined,
+    ...(kept ? { outDir: kept } : {}),
   }).then((dir) => (bundleDir = dir));
   return bundlePromise;
 }
@@ -186,9 +208,7 @@ async function withPcTurn<T>(
   let release = () => {};
   let granted = false;
   try {
-    const orch: any = await import(
-      process.env.ORCH_CLIENT || "file:///C:/Claude/orchestrator/orch.mjs"
-    );
+    const orch = await loadOrch();
     release = await orch.lease("heavy", {
       job,
       project: "pulse",
@@ -201,6 +221,8 @@ async function withPcTurn<T>(
     });
     granted = true;
   } catch (e) {
+    // The Mac: no PC to share, so no turn to take (its other jobs wait behind renders in ~/orch/macrun.sh).
+    if (e instanceof NoOrchestrator) return fn(false);
     if (yieldAfter !== undefined && String(e).includes("orchestrator:"))
       throw new PcTurnTimeout(
         `${job}: no turn within ${Math.round(yieldAfter)} min`,
@@ -249,6 +271,15 @@ async function renderWithTurn(
 /** Renders drawing frames right now (the wait for a PC turn does not count): the lane watchdog never acts during one. */
 let rendersActive = 0;
 export const activeRenders = (): number => rendersActive;
+/** A render running elsewhere (the Mac) counts too: the lane watchdog must not act on a step waiting for one. */
+export async function countAsRender<T>(fn: () => Promise<T>): Promise<T> {
+  rendersActive++;
+  try {
+    return await fn();
+  } finally {
+    rendersActive--;
+  }
+}
 
 /** Minutes without a new frame before a render counts as frozen (before the first frame, and after it). */
 export const STALL_MINUTES = { first: 15, between: 10 };
@@ -488,6 +519,15 @@ export interface LongRenderInput {
   frameRange?: [number, number];
   /** How long the PC turn may wait before it is handed back (PcTurnTimeout); 3 hours, then render anyway, when absent. */
   turnWaitMinutes?: number;
+  /** Who makes the thumbnails; here, through renderLongThumbs, when absent (the Mac worker: MAC_STILLS). */
+  thumbRenderer?: (input: LongThumbsInput) => Promise<void>;
+}
+
+export interface LongThumbsInput {
+  episodeDir: string;
+  thumbs: Array<{ file: string; thumb: ThumbInput }>;
+  gl?: LongRenderInput["gl"];
+  browserExecutable?: string;
 }
 
 type ThumbInput = Omit<
@@ -644,6 +684,44 @@ export async function renderLongStills(input: LongStillsInput): Promise<void> {
   }
 }
 
+/** A long video's thumbnails: stills of their own composition, needing only their pictures. */
+export async function renderLongThumbs(input: LongThumbsInput): Promise<void> {
+  const serveUrl = await getBundle();
+  const files = await serveDir(input.episodeDir);
+  const browserExecutable = input.browserExecutable || undefined;
+  const chromiumOptions = { gl: input.gl ?? "swangle" } as const;
+  try {
+    for (const t of input.thumbs) {
+      const { imageFile, image2File, fgFile, pictureFiles, ...thumb } = t.thumb;
+      const thumbProps: ThumbProps = {
+        ...thumb,
+        imageSrc: imageFile ? `${files.url}/${webPath(imageFile)}` : null,
+        image2Src: image2File ? `${files.url}/${webPath(image2File)}` : null,
+        fgSrc: fgFile ? `${files.url}/${webPath(fgFile)}` : null,
+        pictureSrcs: pictureFiles?.map((f) => `${files.url}/${webPath(f)}`),
+      };
+      const still = await selectComposition({
+        serveUrl,
+        id: "PulseThumb",
+        inputProps: thumbProps,
+        browserExecutable,
+      });
+      await renderStill({
+        composition: still,
+        serveUrl,
+        output: t.file,
+        inputProps: thumbProps,
+        imageFormat: "jpeg",
+        jpegQuality: 90,
+        browserExecutable,
+        chromiumOptions,
+      });
+    }
+  } finally {
+    await files.close();
+  }
+}
+
 /** Renders the 16:9 long-form video, a poster frame and a 1280x720 thumbnail. */
 export async function renderLong(input: LongRenderInput): Promise<void> {
   const serveUrl = await getBundle();
@@ -694,35 +772,15 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
       browserExecutable,
       chromiumOptions,
     });
-    for (const t of [
+    await (input.thumbRenderer ?? renderLongThumbs)({
+      episodeDir: input.episodeDir,
+      thumbs: [
       { file: input.thumbFile, thumb: input.thumb },
       ...(input.thumbVariants ?? []),
-    ]) {
-      const { imageFile, image2File, fgFile, pictureFiles, ...thumb } = t.thumb;
-      const thumbProps: ThumbProps = {
-        ...thumb,
-        imageSrc: imageFile ? `${files.url}/${webPath(imageFile)}` : null,
-        image2Src: image2File ? `${files.url}/${webPath(image2File)}` : null,
-        fgSrc: fgFile ? `${files.url}/${webPath(fgFile)}` : null,
-        pictureSrcs: pictureFiles?.map((f) => `${files.url}/${webPath(f)}`),
-      };
-      const still = await selectComposition({
-        serveUrl,
-        id: "PulseThumb",
-        inputProps: thumbProps,
+      ],
+      gl: input.gl,
         browserExecutable,
       });
-      await renderStill({
-        composition: still,
-        serveUrl,
-        output: t.file,
-        inputProps: thumbProps,
-        imageFormat: "jpeg",
-        jpegQuality: 90,
-        browserExecutable,
-        chromiumOptions,
-      });
-    }
   } finally {
     await files.close();
   }

@@ -11,7 +11,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { FFMPEG } from "../lib/bin.ts";
 import { fetchWithTimeout, FatalError, log } from "../lib/util.ts";
-import { wordsFromAlignment, type Alignment, type Narration, type Word } from "./elevenlabs.ts";
+import {
+  wordsFromAlignment,
+  type Alignment,
+  type Narration,
+  type Word,
+} from "./elevenlabs.ts";
 import { probe } from "../qa/media.ts";
 
 const run = promisify(execFile);
@@ -26,7 +31,12 @@ export interface LocalVoiceOptions {
 
 /** The text's sentences, each ending at its full stop, question or exclamation mark (and any closing quote). */
 export function splitSentences(text: string): string[] {
-  return text.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g)?.map((s) => s.trim()).filter(Boolean) ?? [text];
+  return (
+    text
+      .match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g)
+      ?.map((s) => s.trim())
+      .filter(Boolean) ?? [text]
+  );
 }
 
 /** Splits narration at sentence (then clause) boundaries into takes of at most maxWords. */
@@ -43,7 +53,10 @@ export function chunkText(text: string, maxWords = 36): string[] {
     let cur: string[] = [];
     for (const w of words) {
       cur.push(w);
-      if ((cur.length >= maxWords * 0.6 && /[,;:]$/.test(w)) || cur.length >= maxWords) {
+      if (
+        (cur.length >= maxWords * 0.6 && /[,;:]$/.test(w)) ||
+        cur.length >= maxWords
+      ) {
         pieces.push(cur.join(" "));
         cur = [];
       }
@@ -82,9 +95,15 @@ async function healthy(baseUrl: string): Promise<"ready" | "warming" | "down"> {
  */
 async function assertSpeaksOurContract(opts: LocalVoiceOptions): Promise<void> {
   try {
-    const res = await fetchWithTimeout(`${opts.baseUrl}/v1/text-to-speech/${encodeURIComponent(opts.voiceId)}/with-timestamps`, {}, 5_000);
+    const res = await fetchWithTimeout(
+      `${opts.baseUrl}/v1/text-to-speech/${encodeURIComponent(opts.voiceId)}/with-timestamps`,
+      {},
+      5_000,
+    );
     if (res.status === 404) {
-      throw new FatalError(`a different server answers on ${opts.baseUrl} (no /with-timestamps route); set LOCAL_TTS_URL to a free port such as http://127.0.0.1:8766 so the factory can start its own tts_server there`);
+      throw new FatalError(
+        `a different server answers on ${opts.baseUrl} (no /with-timestamps route); set LOCAL_TTS_URL to a free port such as http://127.0.0.1:8766 so the factory can start its own tts_server there`,
+      );
     }
   } catch (e) {
     if (e instanceof FatalError) throw e;
@@ -92,17 +111,46 @@ async function assertSpeaksOurContract(opts: LocalVoiceOptions): Promise<void> {
   }
 }
 
+/** True when this machine can start the voice server itself: a start script, and Windows to run it. */
+export function canStartLocally(
+  startScript: string | undefined,
+  platform: string,
+): boolean {
+  return Boolean(startScript) && platform === "win32";
+}
+
 /** Makes sure the voice server is up, starting it with its own start.bat if needed. */
-export async function ensureLocalVoice(opts: LocalVoiceOptions, waitMs = 8 * 60_000): Promise<void> {
+export async function ensureLocalVoice(
+  opts: LocalVoiceOptions,
+  waitMs = 8 * 60_000,
+): Promise<void> {
   let state = await healthy(opts.baseUrl);
   if (state !== "down") await assertSpeaksOurContract(opts);
   if (state === "ready") return;
   if (state === "down") {
-    if (!opts.startScript) throw new Error(`local voice server is not running at ${opts.baseUrl}`);
+    // Only Windows can run the start.bat; the Mac uses the PC's Liam over the LAN and cannot start it, so a
+    // down server is an ordinary error there (the episode retries), never a spawn of cmd.exe, which crashed
+    // the whole process with an unhandled ENOENT.
+    if (!canStartLocally(opts.startScript, process.platform))
+      throw new Error(
+        `local voice server is not running at ${opts.baseUrl}${opts.startScript ? " (its start script only runs on Windows)" : ""}`,
+      );
     const port = new URL(opts.baseUrl).port || "8765";
-    log("info", "starting local voice server", { script: opts.startScript, port });
+    log("info", "starting local voice server", {
+      script: opts.startScript,
+      port,
+    });
     // The start script receives the port so one script can serve any LOCAL_TTS_URL.
-    spawn("cmd.exe", ["/c", opts.startScript, port], { cwd: path.dirname(opts.startScript), detached: true, stdio: "ignore", windowsHide: true }).unref();
+    const child = spawn("cmd.exe", ["/c", opts.startScript!, port], {
+      cwd: path.dirname(opts.startScript!),
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.on("error", (err) =>
+      log("warn", "local voice server start failed", { error: String(err) }),
+    );
+    child.unref();
   } else {
     log("info", "local voice server is still loading", { url: opts.baseUrl });
   }
@@ -112,10 +160,15 @@ export async function ensureLocalVoice(opts: LocalVoiceOptions, waitMs = 8 * 60_
     state = await healthy(opts.baseUrl);
     if (state === "ready") return;
   }
-  throw new Error(`local voice server did not become ready within ${Math.round(waitMs / 60_000)} minutes`);
+  throw new Error(
+    `local voice server did not become ready within ${Math.round(waitMs / 60_000)} minutes`,
+  );
 }
 
-async function synthTake(text: string, opts: LocalVoiceOptions): Promise<{ audio: Buffer; alignment: Alignment }> {
+async function synthTake(
+  text: string,
+  opts: LocalVoiceOptions,
+): Promise<{ audio: Buffer; alignment: Alignment }> {
   const res = await fetchWithTimeout(
     `${opts.baseUrl}/v1/text-to-speech/${encodeURIComponent(opts.voiceId)}/with-timestamps`,
     {
@@ -123,18 +176,36 @@ async function synthTake(text: string, opts: LocalVoiceOptions): Promise<{ audio
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         text,
-        voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.3, speaking_rate: opts.speakingRate },
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.8,
+          style: 0.3,
+          speaking_rate: opts.speakingRate,
+        },
         output_format: "mp3_44100_128",
         alignment_mode: "forced",
       }),
     },
     10 * 60_000,
   );
-  if (res.status === 404) throw new FatalError(`local voice "${opts.voiceId}" is not registered in tts_server/voices.json`);
-  if (!res.ok) throw new Error(`local voice HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  const body = (await res.json()) as { audio_base64: string; alignment: Alignment };
-  if (!body.alignment?.characters?.length) throw new Error("local voice returned no alignment");
-  return { audio: Buffer.from(body.audio_base64, "base64"), alignment: body.alignment };
+  if (res.status === 404)
+    throw new FatalError(
+      `local voice "${opts.voiceId}" is not registered in tts_server/voices.json`,
+    );
+  if (!res.ok)
+    throw new Error(
+      `local voice HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`,
+    );
+  const body = (await res.json()) as {
+    audio_base64: string;
+    alignment: Alignment;
+  };
+  if (!body.alignment?.characters?.length)
+    throw new Error("local voice returned no alignment");
+  return {
+    audio: Buffer.from(body.audio_base64, "base64"),
+    alignment: body.alignment,
+  };
 }
 
 export const GAP_SECONDS = 0.18; // breath between takes
@@ -144,9 +215,21 @@ const MAX_OVERRUN = 2.5; // audio running on past the last aligned word is not t
 
 /** Longest silence (seconds) inside the first `until` seconds of a file. */
 async function longestSilence(file: string, until: number): Promise<number> {
-  const { stderr } = await run(FFMPEG, ["-hide_banner", "-i", file, "-t", String(Math.max(until, 0.1)), "-af", "silencedetect=noise=-35dB:d=0.8", "-f", "null", "-"]);
+  const { stderr } = await run(FFMPEG, [
+    "-hide_banner",
+    "-i",
+    file,
+    "-t",
+    String(Math.max(until, 0.1)),
+    "-af",
+    "silencedetect=noise=-35dB:d=0.8",
+    "-f",
+    "null",
+    "-",
+  ]);
   let max = 0;
-  for (const m of String(stderr).matchAll(/silence_duration: ([\d.]+)/g)) max = Math.max(max, Number(m[1]));
+  for (const m of String(stderr).matchAll(/silence_duration: ([\d.]+)/g))
+    max = Math.max(max, Number(m[1]));
   return max;
 }
 
@@ -157,7 +240,12 @@ async function longestSilence(file: string, until: number): Promise<number> {
  * take is re-synthesised once, and whatever trails the last aligned word is
  * cut so the stitched timeline stays tight.
  */
-async function synthTakeChecked(take: string, index: number, dir: string, opts: LocalVoiceOptions): Promise<{ file: string; alignment: Alignment }> {
+async function synthTakeChecked(
+  take: string,
+  index: number,
+  dir: string,
+  opts: LocalVoiceOptions,
+): Promise<{ file: string; alignment: Alignment }> {
   const file = path.join(dir, `take_${index}.mp3`);
   const raw = path.join(dir, `take_${index}_raw.mp3`);
   let last: { alignment: Alignment; cutAt: number } | undefined;
@@ -168,16 +256,43 @@ async function synthTakeChecked(take: string, index: number, dir: string, opts: 
     const rawDuration = (await probe(raw)).durationSeconds;
     const overrun = rawDuration > 0 ? rawDuration - alignedEnd : 0;
     const stall = await longestSilence(raw, alignedEnd);
-    last = { alignment, cutAt: rawDuration > 0 ? Math.min(rawDuration, alignedEnd + TAIL_SECONDS) : alignedEnd + TAIL_SECONDS };
+    last = {
+      alignment,
+      cutAt:
+        rawDuration > 0
+          ? Math.min(rawDuration, alignedEnd + TAIL_SECONDS)
+          : alignedEnd + TAIL_SECONDS,
+    };
     if (stall <= MAX_INTERNAL_SILENCE && overrun <= MAX_OVERRUN) break;
-    log("warn", attempt === 1 ? "take looks broken, re-synthesising" : "take still looks off, keeping it", { take: index, stall: stall.toFixed(1), overrun: overrun.toFixed(1) });
+    log(
+      "warn",
+      attempt === 1
+        ? "take looks broken, re-synthesising"
+        : "take still looks off, keeping it",
+      { take: index, stall: stall.toFixed(1), overrun: overrun.toFixed(1) },
+    );
   }
-  await run(FFMPEG, ["-loglevel", "error", "-y", "-i", raw, "-t", last!.cutAt.toFixed(3), "-c", "copy", file]);
+  await run(FFMPEG, [
+    "-loglevel",
+    "error",
+    "-y",
+    "-i",
+    raw,
+    "-t",
+    last!.cutAt.toFixed(3),
+    "-c",
+    "copy",
+    file,
+  ]);
   await fs.rm(raw, { force: true });
   return { file, alignment: last!.alignment };
 }
 
-export async function synthesiseLocal(text: string, outPath: string, opts: LocalVoiceOptions): Promise<Narration> {
+export async function synthesiseLocal(
+  text: string,
+  outPath: string,
+  opts: LocalVoiceOptions,
+): Promise<Narration> {
   await ensureLocalVoice(opts);
   const takes = chunkText(text, opts.maxWordsPerTake ?? 36);
   const dir = path.join(path.dirname(outPath), "takes");
@@ -188,12 +303,23 @@ export async function synthesiseLocal(text: string, outPath: string, opts: Local
   for (const [i, take] of takes.entries()) {
     const { file, alignment } = await synthTakeChecked(take, i, dir, opts);
     files.push(file);
-    const duration = (await decodedSeconds(file)) || (alignment.character_end_times_seconds.at(-1) ?? 0);
-    for (const w of wordsFromAlignment(alignment)) words.push({ text: w.text, start: w.start + offset, end: w.end + offset });
+    const duration =
+      (await decodedSeconds(file)) ||
+      (alignment.character_end_times_seconds.at(-1) ?? 0);
+    for (const w of wordsFromAlignment(alignment))
+      words.push({
+        text: w.text,
+        start: w.start + offset,
+        end: w.end + offset,
+      });
     offset += duration + GAP_SECONDS;
   }
   await stitch(files, outPath);
-  return { audioPath: outPath, words, durationSeconds: offset - GAP_SECONDS + 0.15 };
+  return {
+    audioPath: outPath,
+    words,
+    durationSeconds: offset - GAP_SECONDS + 0.15,
+  };
 }
 
 /**
@@ -203,20 +329,46 @@ export async function synthesiseLocal(text: string, outPath: string, opts: Local
  * 23 Oct 2026).
  */
 export async function decodedSeconds(file: string): Promise<number> {
-  const { stdout } = await run(FFMPEG, ["-v", "error", "-i", file, "-ac", "1", "-ar", "44100", "-f", "s16le", "-"], {
-    encoding: "buffer",
-    maxBuffer: 256 * 1024 * 1024,
-  });
+  const { stdout } = await run(
+    FFMPEG,
+    ["-v", "error", "-i", file, "-ac", "1", "-ar", "44100", "-f", "s16le", "-"],
+    {
+      encoding: "buffer",
+      maxBuffer: 256 * 1024 * 1024,
+    },
+  );
   return (stdout as unknown as Buffer).length / 2 / 44100;
 }
 
 /** Concatenates takes with short silences, normalising format so the timings stay exact. */
 export async function stitch(files: string[], outPath: string): Promise<void> {
   const inputs = files.flatMap((f) => ["-i", f]);
-  const parts = files.map((_, i) => `[${i}:a]aresample=44100,aformat=channel_layouts=mono[a${i}]`);
-  const gaps = files.slice(1).map((_, i) => `aevalsrc=0:d=${GAP_SECONDS}:s=44100:c=mono[g${i}]`);
-  const order = files.map((_, i) => (i === 0 ? `[a0]` : `[g${i - 1}][a${i}]`)).join("");
+  const parts = files.map(
+    (_, i) => `[${i}:a]aresample=44100,aformat=channel_layouts=mono[a${i}]`,
+  );
+  const gaps = files
+    .slice(1)
+    .map((_, i) => `aevalsrc=0:d=${GAP_SECONDS}:s=44100:c=mono[g${i}]`);
+  const order = files
+    .map((_, i) => (i === 0 ? `[a0]` : `[g${i - 1}][a${i}]`))
+    .join("");
   const n = files.length * 2 - 1;
-  const graph = [...parts, ...gaps, `${order}concat=n=${n}:v=0:a=1[out]`].join(";");
-  await run(FFMPEG, ["-loglevel", "error", "-y", ...inputs, "-filter_complex", graph, "-map", "[out]", "-c:a", "libmp3lame", "-b:a", "192k", outPath]);
+  const graph = [...parts, ...gaps, `${order}concat=n=${n}:v=0:a=1[out]`].join(
+    ";",
+  );
+  await run(FFMPEG, [
+    "-loglevel",
+    "error",
+    "-y",
+    ...inputs,
+    "-filter_complex",
+    graph,
+    "-map",
+    "[out]",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "192k",
+    outPath,
+  ]);
 }

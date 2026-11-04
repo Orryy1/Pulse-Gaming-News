@@ -380,3 +380,53 @@ test("images go to Claude unless CODEX_VISION is on, then travel as files beside
   // The image file was written for the run and removed after it.
   assert.equal(fs.existsSync(req.images![0]!), false);
 });
+
+test("Claude's usage limit moves text calls to Codex, and flags them", async () => {
+  const flagged: string[] = [];
+  let claudeCalls = 0;
+  let codexCalls = 0;
+  const claude = {
+    structured: async () => {
+      claudeCalls++;
+      throw new Error("Claude usage limit reached");
+    },
+  } as unknown as Llm;
+  const llm = createCodexLlm(claude, {
+    enabled: true,
+    sites: ["doc"],
+    tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "limit-")),
+    onLimitRouted: (s) => flagged.push(s),
+    run: async () => {
+      codexCalls++;
+      return "{\"ok\":true}";
+    },
+  });
+  const call = { system: "s", content: "c", schema: z.object({ ok: z.boolean() }), site: "news.write" } as any;
+  assert.deepEqual(await llm.structured(call), { ok: true });
+  assert.deepEqual(await llm.structured(call), { ok: true });
+  assert.equal(claudeCalls, 1);
+  assert.equal(codexCalls, 2);
+  assert.deepEqual(flagged, ["news.write", "news.write"]);
+});
+
+test("an unlisted step stays on Claude while it works, and a passing error does not move it", async () => {
+  let codexCalls = 0;
+  const opts = {
+    enabled: true,
+    sites: ["doc"],
+    run: async () => {
+      codexCalls++;
+      return "{}";
+    },
+  };
+  const call = { system: "s", content: "c", schema: z.object({}), site: "news.write" } as any;
+  const fine = { structured: async () => ({}) } as unknown as Llm;
+  await createCodexLlm(fine, opts).structured(call);
+  const busy = {
+    structured: async () => {
+      throw new Error("overloaded");
+    },
+  } as unknown as Llm;
+  await assert.rejects(createCodexLlm(busy, opts).structured(call));
+  assert.equal(codexCalls, 0);
+});

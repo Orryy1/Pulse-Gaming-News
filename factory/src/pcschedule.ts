@@ -76,7 +76,12 @@ export function plannedSlots(
           "weekly",
           cfg.weeklySlot,
           cfg.slotLeadMinutes + 30,
-          recap && cfg.recapLong ? KEEP_LONG_MIN : KEEP_SHORT_MIN,
+          // An explainer week (src/weeklytest.ts) renders 15-20 minutes: the documentary's window.
+          recap && cfg.recapLong
+            ? cfg.weeklyExplainedTest
+              ? KEEP_DOC_MIN
+              : KEEP_LONG_MIN
+            : KEEP_SHORT_MIN,
         ]);
     }
     if (cfg.dealsDays.includes(day))

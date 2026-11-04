@@ -14,10 +14,16 @@ import { execFileSync } from "node:child_process";
 import { PGlite } from "@electric-sql/pglite";
 import { backupKey, decryptFile, makeBackup, TAR } from "../backup.ts";
 import { createEmbeddedDb } from "../db.ts";
+import {
+  defaultBackupDir,
+  defaultTunnelConfig,
+  relocatedFile,
+} from "../platform.ts";
 
 const SECRET = process.env.APP_SECRET ?? "";
 const DATA = path.resolve(process.env.DATA_DIR ?? "data");
-const OUT = process.env.BACKUP_DIR ?? "G:/My Drive/Pulse backups";
+const OUT =
+  process.env.BACKUP_DIR || defaultBackupDir(process.platform, os.homedir());
 if (!SECRET) throw new Error("APP_SECRET must be set");
 
 /** Restores the newest backup into a scratch folder and reads it, proving it can be restored. */
@@ -76,8 +82,13 @@ async function backupNow(): Promise<void> {
       dataDir: DATA,
       outDir: OUT,
       secret: SECRET,
-      tiktokTokenPath: process.env.TIKTOK_TOKEN_PATH,
-      tunnelConfig: "D:/pulse-data/cloudflared-pulse.yml",
+      tiktokTokenPath:
+        relocatedFile(
+          process.env.TIKTOK_TOKEN_PATH ?? "",
+          process.platform,
+          path.join(DATA, "tokens"),
+        ) || undefined,
+      tunnelConfig: defaultTunnelConfig(process.platform, os.homedir()),
     });
     console.log(
       `backup written: ${dest} (${(fs.statSync(dest).size / 1024 / 1024).toFixed(1)} MB)`,

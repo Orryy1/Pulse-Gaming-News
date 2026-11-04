@@ -2,6 +2,7 @@
 // over one by one and catch a holographic sheen. The face shows the person's portrait when the shot
 // list has one (props.photos by lower-case name), else a bold monogram on a patterned field; name and
 // role sit on a plate. An original card design: no real card game's frame, icons or type.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, Img, interpolate, spring } from "remotion";
 import { COLOUR } from "../../../brand.ts";
@@ -570,7 +571,7 @@ export const TradingCards: React.FC<GfxProps> = ({
                 top: 0,
                 width: W,
                 height: H,
-                transform: `translate(${x - W / 2}px, ${y - H / 2}px) rotate(${rot}deg) perspective(1600px) rotateY(${(showBack ? angle - 180 : angle) + sway}deg) scale(${lift})`,
+                transform: `translate(${x - W / 2}px, ${y - H / 2}px) rotate(${rot}deg) perspective(1600px) rotateY(${(showBack ? angle - 180 : angle) + sway}deg) scale(${safeScale(lift)})`,
                 borderRadius: W * 0.06,
                 boxShadow:
                   "0 34px 70px rgba(0,0,0,0.55), 0 8px 18px rgba(0,0,0,0.4)",

@@ -21,6 +21,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
+import { loadOrch } from "../lib/orch.ts";
 
 const run = promisify(execFile);
 const SCRIPT = path.join(
@@ -233,9 +234,7 @@ export function orchUpscaleLease(): (
 ) => Promise<() => void> {
   return async (job, est) => {
     try {
-      const orch: any = await import(
-        process.env.ORCH_CLIENT || "file:///C:/Claude/orchestrator/orch.mjs"
-      );
+      const orch = await loadOrch();
       return (await orch.lease("gpu", {
         job,
         project: "pulse",

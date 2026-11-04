@@ -810,6 +810,10 @@ export interface FootageFirstDeps {
   /** A GPU turn from the PC orchestrator around the looks; absent, none is taken. */
   lease?(job: string, estMinutes: number): Promise<() => void>;
   now?: () => number;
+  /** A chapter's work folder is finished with, where the work happened elsewhere (the Mac: src/assets/footagemac.ts). */
+  discard?(dir: string): Promise<void>;
+  /** The whole pass is over. */
+  close?(): Promise<void>;
 }
 
 export interface FootageChapter {
@@ -1127,6 +1131,7 @@ export async function prefetchChapter(
     log("warn", "footage-first: chapter failed", { game: ch.game, error: errorMessage(err) });
   }
   await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
+  await deps.discard?.(work).catch(() => undefined);
   return undefined;
 }
 
@@ -1377,6 +1382,7 @@ export async function finishChapter(
     });
   } finally {
     await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
+    await deps.discard?.(work).catch(() => undefined);
   }
 }
 
@@ -1431,7 +1437,10 @@ export async function gatherFootageFirst(
     const pre = await ahead;
     if (now() > deadline) {
       report.stoppedEarly = `its ${o.maxMinutes}-minute limit (FOOTAGE_FIRST_MAX_MINUTES) ran out`;
-      if (pre) await fs.rm(pre.work, { recursive: true, force: true }).catch(() => undefined);
+      if (pre) {
+        await fs.rm(pre.work, { recursive: true, force: true }).catch(() => undefined);
+        await deps.discard?.(pre.work).catch(() => undefined);
+      }
       break;
     }
     ahead = prefetch(k + 1);
@@ -1453,7 +1462,10 @@ export async function gatherFootageFirst(
   }
   // A download left running past the limit: its folder goes too.
   const left = await ahead;
-  if (left && report.stoppedEarly) await fs.rm(left.work, { recursive: true, force: true }).catch(() => undefined);
+  if (left && report.stoppedEarly) {
+    await fs.rm(left.work, { recursive: true, force: true }).catch(() => undefined);
+    await deps.discard?.(left.work).catch(() => undefined);
+  }
   report.minutes = Math.round((now() - started) / 6_000) / 10;
   report.downloadedMb = Math.round(report.downloadedMb);
   report.keptMb = Math.round(report.keptMb);

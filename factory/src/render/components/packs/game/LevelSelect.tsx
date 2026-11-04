@@ -2,6 +2,7 @@
 // on its button; a dotted path draws between them, a selection marker hops from level to level (each
 // lights up and shows its event as it lands) and the last level pulses. The islands are seeded from
 // the variant, so no two maps match. items: ["1997: Grand Theft Auto launches", ...].
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, interpolate, spring } from "remotion";
 import { COLOUR } from "../../../brand.ts";
@@ -458,7 +459,7 @@ export const LevelSelect: React.FC<GfxProps> = ({
             return (
               <g
                 key={`n${i}`}
-                transform={`translate(${p.x} ${p.y}) scale(${appear})`}
+                transform={`translate(${p.x} ${p.y}) scale(${safeScale(appear)})`}
               >
                 <ellipse
                   cx={0}

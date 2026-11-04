@@ -172,6 +172,24 @@ export interface IllustrateOptions {
 }
 
 export const DEFAULT_ILLUSTRATE_URL = "http://127.0.0.1:8188";
+
+/**
+ * Whether the ComfyUI server answers at all, asked once before a video's sketches. It runs on the PC's
+ * 4090 only when someone has it open, and the Mac mini has none of its own (ILLUSTRATE_URL can point at the
+ * PC's over the LAN): without this every sketch was queued against a closed port and counted "not drawn".
+ */
+export async function comfyReachable(
+  url = DEFAULT_ILLUSTRATE_URL,
+  timeoutMs = 4000,
+  fetcher: (u: string) => Promise<{ ok: boolean }> = (u) =>
+    fetchWithTimeout(u, {}, timeoutMs),
+): Promise<boolean> {
+  try {
+    return (await fetcher(`${url.replace(/\/$/, "")}/system_stats`)).ok;
+  } catch {
+    return false;
+  }
+}
 const POLL_MS = 2000;
 const WORKFLOW_FILE = new URL("./illustrate.workflow.json", import.meta.url);
 

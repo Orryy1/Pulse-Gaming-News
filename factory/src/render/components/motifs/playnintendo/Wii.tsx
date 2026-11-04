@@ -2,6 +2,7 @@
 // a clock bar along the bottom showing the year, a cyan glow settling on one channel and that channel
 // zooming to fill the frame to reveal the heading. The styles set a list or people out as channels.
 // Built from scratch: no logo, wordmark, cursor or real channel art.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, Img, interpolate, spring } from "remotion";
 import { BODY, DISPLAY } from "../../fonts.ts";
@@ -302,7 +303,7 @@ const ChannelsCard: React.FC<MotifCardProps> = (props) => {
           height: box.h,
           borderRadius: box.r,
           overflow: "hidden",
-          transform: `scale(${hovered})`,
+          transform: `scale(${safeScale(hovered)})`,
           boxShadow: zoom < 0.95 ? glow(hover * (1 - zoom)) : "none",
           border:
             zoom < 0.6 ? `3px solid rgba(195,202,209,${1 - zoom})` : "none",

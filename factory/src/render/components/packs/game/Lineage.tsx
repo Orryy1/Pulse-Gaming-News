@@ -4,6 +4,7 @@
 // row, or wrapping to a second row (with an elbow connector) when the names are long. While it holds,
 // a pulse keeps running down the chain. items: ["DMA Design: 1987", "Rockstar North: 2002"] (the year
 // optional).
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, interpolate, spring } from "remotion";
 import { COLOUR } from "../../../brand.ts";
@@ -461,7 +462,7 @@ export const Lineage: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                 style={{
                   width: 12,
                   height: 12,
-                  transform: `rotate(45deg) scale(${underline})`,
+                  transform: `rotate(45deg) scale(${safeScale(underline)})`,
                   background: COLOUR.amber,
                 }}
               />

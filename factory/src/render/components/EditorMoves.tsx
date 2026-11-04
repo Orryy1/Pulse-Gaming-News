@@ -3,6 +3,7 @@
 // the camera pushes through the glass, a burst of quick cuts as an entry opens, a letterbox over a
 // documentary's cold open, and the story so far pinned to an evidence board between chapters.
 
+import { safeScale } from "../safetransform.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -328,7 +329,7 @@ const Pin: React.FC<{ x: number; y: number; show: number }> = ({
       background:
         "radial-gradient(circle at 35% 30%, #ff8a80 0%, #d7262e 45%, #7c0f14 100%)",
       boxShadow: "3px 6px 6px rgba(0,0,0,0.45)",
-      transform: `scale(${show})`,
+      transform: `scale(${safeScale(show)})`,
     }}
   />
 );
@@ -573,7 +574,7 @@ export const EvidenceBoard: React.FC<{
           bottom: 0,
           height: 6,
           background: COLOUR.amber,
-          transform: `scaleX(${interpolate(frame, [6, 40], [0, 1], clamp)})`,
+          transform: `scaleX(${safeScale(interpolate(frame, [6, 40], [0, 1], clamp))})`,
           transformOrigin: "left",
         }}
       />

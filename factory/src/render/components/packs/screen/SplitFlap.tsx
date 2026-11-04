@@ -1,6 +1,7 @@
 // Screen pack, "SplitFlap": the dates as an airport departures board. Every character module flips
 // through a few letters before settling, row by row (a YEAR column and an EVENT column), under the
 // heading painted on the board; the last row lights amber. All flipping settles by about frame 80.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { interpolate, spring } from "remotion";
 import { COLOUR } from "../../../brand.ts";
@@ -47,7 +48,7 @@ const Half: React.FC<{
         ? "linear-gradient(180deg, #2c2c32 0%, #232328 100%)"
         : "linear-gradient(180deg, #1d1d22 0%, #18181c 100%)",
       borderRadius: top ? "5px 5px 0 0" : "0 0 5px 5px",
-      transform: scale !== 1 ? `scaleY(${scale})` : undefined,
+      transform: scale !== 1 ? `scaleY(${safeScale(scale)})` : undefined,
       transformOrigin: top ? "50% 100%" : "50% 0%",
     }}
   >
@@ -228,7 +229,7 @@ export const SplitFlap: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
             boxShadow:
               "0 50px 140px rgba(0,0,0,0.75), inset 0 2px 0 rgba(255,255,255,0.06)",
             opacity: enter,
-            transform: `translateY(${(1 - enter) * 70}px) rotateX(${3 + (1 - enter) * 10}deg) scale(${push})`,
+            transform: `translateY(${(1 - enter) * 70}px) rotateX(${3 + (1 - enter) * 10}deg) scale(${safeScale(push)})`,
             transformOrigin: "50% 60%",
           }}
         >

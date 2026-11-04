@@ -2,6 +2,7 @@
 // open, the top screen lights with the picture, the touch screen below shows the heading and kicker and
 // a stylus taps it. The styles put one side of a comparison on each screen. Built from scratch: no logo,
 // wordmark, real menu or model-specific detail.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, Img, interpolate, spring } from "remotion";
 import { BODY, DISPLAY } from "../../fonts.ts";
@@ -928,7 +929,7 @@ const ScreensStyle: React.FC<{
                   fontFamily: DISPLAY,
                   fontSize: 66,
                   color: way.accent === "#ffcf3a" ? "#1d2a48" : "#ffffff",
-                  transform: `scale(${badge})`,
+                  transform: `scale(${safeScale(badge)})`,
                   boxShadow: "0 14px 34px rgba(0,0,0,0.5)",
                   zIndex: 5,
                 }}

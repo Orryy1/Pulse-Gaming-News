@@ -52,9 +52,35 @@ export interface CodexOptions {
   tmpDir?: string;
   /** The runner; tests substitute a fake so no process is spawned. */
   run?: (req: CodexRequest) => Promise<string>;
+  /** A step Claude normally answers went to Codex because Claude is out of allowance: flag it for the owner. */
+  onLimitRouted?: (site: string) => void;
+}
+
+/**
+ * How long calls stay off Claude after its usage limit. The 30 Oct blind test tied overall but Claude's hooks
+ * were livelier and Codex took 6-9 minutes a script, so unlisted steps (the news Shorts) move to Codex only
+ * when Claude actually refuses, not on the shared switch at 90% of the week.
+ */
+export const LIMIT_HOLD_MS = 60 * 60 * 1000;
+/** A call moved to Codex only by the limit: long enough for a script, short enough for a slot. */
+export const LIMIT_TIMEOUT_MS = 12 * 60 * 1000;
+
+/** Claude's own refusal for being out of allowance, not a passing overload. */
+export function isUsageLimit(err: unknown): boolean {
+  return /usage limit|credit balance|exceeded your .*(limit|quota)/i.test(
+    (err as Error)?.message ?? String(err),
+  );
 }
 
 export const DEFAULT_RUNNER_DIR = "C:\\Claude\\orchestrator";
+
+/** True when the Codex helper is installed in `runnerDir` on this machine (the PC orchestrator's folder; absent on the Mac). */
+export function codexRunnerPresent(
+  runnerDir: string,
+  exists: (p: string) => boolean = fs.existsSync,
+): boolean {
+  return Boolean(runnerDir) && exists(path.join(runnerDir, "codex_runner.py"));
+}
 export const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
 
 /** Which Codex model class answers a tier: top writing gets the frontier model, mid the workhorse, low the fast one. */
@@ -95,10 +121,11 @@ export function routeToCodex(
   opts: Pick<CodexOptions, "enabled" | "sites" | "vision">,
   site: string,
   hasImages: boolean,
+  claudeOut = false,
 ): boolean {
   if (!opts.enabled) return false;
   if (hasImages && !opts.vision) return false;
-  return siteListed(site, opts.sites);
+  return claudeOut || siteListed(site, opts.sites);
 }
 
 /**
@@ -295,15 +322,34 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
     opts.run ??
     ((req: CodexRequest) =>
       runCodex(req, { python, runnerDir, tmpDir: tmp() }));
+  let limitUntil = 0;
+  const claudeOut = () => Date.now() < limitUntil;
+  // Claude first; a text call goes to Codex when Claude refuses on its limit. This is the API key's own limit,
+  // not the subscription's weekly one, so it is not recorded in the orchestrator's claude_budget for others.
+  const claude = async <S extends z.ZodType>(
+    o: StructuredOptions<S>,
+    site: string,
+    hasImages: boolean,
+  ): Promise<z.infer<S>> => {
+    try {
+      return await fallback.structured(o);
+    } catch (err) {
+      if (!isUsageLimit(err)) throw err;
+      limitUntil = Date.now() + LIMIT_HOLD_MS;
+      if (hasImages && !opts.vision) throw err;
+      if (!siteListed(site, opts.sites)) opts.onLimitRouted?.(site);
+      return viaCodex(o, site, imagesOf(o.content));
+    }
+  };
 
-  return {
-    async structured<S extends z.ZodType>(
-      o: StructuredOptions<S>,
-    ): Promise<z.infer<S>> {
-      const images = imagesOf(o.content);
-      const site = siteOf(o.site);
-      if (!routeToCodex(opts, site, images.length > 0))
-        return fallback.structured(o);
+  const viaCodex = async <S extends z.ZodType>(
+    o: StructuredOptions<S>,
+    site: string,
+    images: ReturnType<typeof imagesOf>,
+  ): Promise<z.infer<S>> => {
+      const callTimeout = siteListed(site, opts.sites)
+        ? timeoutMs
+        : Math.min(timeoutMs, LIMIT_TIMEOUT_MS);
       const kind = kindFor(o.tier);
       const started = Date.now();
       const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -336,7 +382,7 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
             kind,
             schema: schemaFile,
             images: imageFiles.length ? imageFiles : undefined,
-            timeoutMs,
+            timeoutMs: callTimeout,
           });
           let parsed: unknown;
           try {
@@ -382,7 +428,9 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
           ms: Date.now() - started,
           error: (err as Error).message.slice(0, 300),
         });
-        const result = await fallback.structured(o);
+        // Claude is out of allowance too: fail the step so it retries, rather than asking it again.
+        if (claudeOut()) throw err;
+        const result = await claude(o, site, images.length > 0);
         log("info", "claude answered after codex", {
           site,
           ms: Date.now() - started,
@@ -391,6 +439,19 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
       } finally {
         for (const f of files) fs.rmSync(f, { force: true });
       }
+  };
+
+  return {
+    async structured<S extends z.ZodType>(
+      o: StructuredOptions<S>,
+    ): Promise<z.infer<S>> {
+      const images = imagesOf(o.content);
+      const site = siteOf(o.site);
+      if (!routeToCodex(opts, site, images.length > 0, claudeOut()))
+        return claude(o, site, images.length > 0);
+      if (claudeOut() && !siteListed(site, opts.sites))
+        opts.onLimitRouted?.(site);
+      return viaCodex(o, site, images);
     },
   };
 }

@@ -1,3 +1,4 @@
+import { safeScale } from "../../safetransform.ts";
 import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOUR } from "../../brand.ts";
@@ -60,7 +61,7 @@ export const Platforms: React.FC<{
                 textTransform: "uppercase",
                 boxShadow:
                   "0 18px 50px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(255,255,255,0.18)",
-                transform: `scale(${pop})`,
+                transform: `scale(${safeScale(pop)})`,
                 transformOrigin: "left center",
                 whiteSpace: "nowrap",
               }}
@@ -183,7 +184,7 @@ export const Versus: React.FC<{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            transform: `scale(${badge})`,
+            transform: `scale(${safeScale(badge)})`,
             boxShadow: `0 0 30px ${accent}88`,
           }}
         >
@@ -320,7 +321,7 @@ export const Milestones: React.FC<{
                   borderRadius: 18,
                   background: last ? accent : COLOUR.paper,
                   boxShadow: last ? `0 0 24px ${accent}` : undefined,
-                  transform: `scale(${p})`,
+                  transform: `scale(${safeScale(p)})`,
                 }}
               />
               <div

@@ -3,6 +3,7 @@
 // clipped on as a print, a red classification stamp with the kicker slamming down, film grain and a slow
 // lamp flicker. Styles: "File" types a source passage on a report page, the key phrase underlined in red
 // pen, and "Statement" types a quote as a signed statement; each takes a red stamp at frame 34.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { AbsoluteFill, Easing, interpolate, spring } from "remotion";
 import { DISPLAY } from "../../fonts.ts";
@@ -224,7 +225,7 @@ const Card: React.FC<MotifCardProps> = ({
       style={{ opacity, background: "#070504", overflow: "hidden" }}
     >
       <AbsoluteFill
-        style={{ transform: `scale(${push})`, transformOrigin: "44% 40%" }}
+        style={{ transform: `scale(${safeScale(push)})`, transformOrigin: "44% 40%" }}
       >
         <Desk level={level} />
         {/* The folder under the report. */}

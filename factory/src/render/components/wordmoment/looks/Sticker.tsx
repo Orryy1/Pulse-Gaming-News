@@ -1,6 +1,7 @@
 // Sticker: a die-cut vinyl sticker in the tone colour with a white border, slapped onto the frame. It lands
 // big and settles with the stamp's spring; its top-right corner is still peeling up at the hit and flattens
 // over the next eight frames, its shadow shrinking as the sticker meets the glass.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { interpolate } from "remotion";
 import type { WordMomentProps } from "../types.ts";
@@ -42,7 +43,7 @@ export const Sticker: React.FC<WordMomentProps> = ({
       <div
         style={{
           position: "relative",
-          transform: `rotate(${tilt}deg) scale(${scale})`,
+          transform: `rotate(${tilt}deg) scale(${safeScale(scale)})`,
           opacity: Math.min(1, hit * 1.6) * out,
           padding: `${Math.round(size * 0.12)}px ${padX}px ${Math.round(size * 0.16)}px`,
           minWidth: Math.round(size * 3.6),

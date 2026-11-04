@@ -3,13 +3,11 @@ import assert from "node:assert/strict";
 import { checkNarration, joinFigures, tokens } from "../src/qa/narration.ts";
 
 const say = (text: string, from = 0, step = 0.35) =>
-  text
-    .split(" ")
-    .map((t, i) => ({
-      text: t,
-      start: from + i * step,
-      end: from + i * step + 0.3,
-    }));
+  text.split(" ").map((t, i) => ({
+    text: t,
+    start: from + i * step,
+    end: from + i * step + 0.3,
+  }));
 
 test("formatting is not a fault: figures, Roman numerals, compounds and hyphens", () => {
   const meant = say(
@@ -79,6 +77,23 @@ test("timings that drift away from the audio fail the check", () => {
   assert.equal(steady.ok, true);
 });
 
+test("an ordinal read aloud is no fault, but a different ordinal is", () => {
+  const ok = checkNarration(
+    say("the 2nd patch and the 6th and 7th expansions on March 14 and 29th"),
+    say(
+      "the second patch and the sixth and seventh expansions on March fourteenth and twenty ninth",
+    ),
+    99,
+  );
+  assert.deepEqual(ok.issues, []);
+  const bad = checkNarration(
+    say("the 2nd patch landed well"),
+    say("the third patch landed well"),
+    99,
+  );
+  assert.equal(bad.issues.length, 1);
+});
+
 test("tokens and split figures", () => {
   assert.deepEqual(tokens("1997,"), ["nineteen", "ninety", "seven"]);
   assert.deepEqual(tokens("V,"), ["five"]);
@@ -91,14 +106,31 @@ test("tokens and split figures", () => {
 });
 
 test("a changed figure, status word or platform is never forgiven as a mishearing (audit, 24 Oct 2026)", () => {
-  const bad = (meant: string, heard: string) => assert.equal(checkNarration(say(meant), say(heard)).ok, false, `${meant} > ${heard}`);
-  bad("It costs fifteen dollars on Steam today", "It costs fifty dollars on Steam today");
-  bad("The sequel is confirmed for next year", "The sequel is cancelled for next year");
+  const bad = (meant: string, heard: string) =>
+    assert.equal(
+      checkNarration(say(meant), say(heard)).ok,
+      false,
+      `${meant} > ${heard}`,
+    );
+  bad(
+    "It costs fifteen dollars on Steam today",
+    "It costs fifty dollars on Steam today",
+  );
+  bad(
+    "The sequel is confirmed for next year",
+    "The sequel is cancelled for next year",
+  );
   bad("It launches on PlayStation first", "It launches on Xbox first");
   bad("GTA 6 arrives in November", "GTA 5 arrives in November");
   bad("The studio is not making a sequel", "The studio is now making a sequel");
   // Ordinary mishearings still pass.
-  assert.equal(checkNarration(say("he plants a seed in the garden"), say("he plants a seat in the garden")).ok, true);
+  assert.equal(
+    checkNarration(
+      say("he plants a seed in the garden"),
+      say("he plants a seat in the garden"),
+    ).ok,
+    true,
+  );
 });
 
 test("a half-second gap where the script has no punctuation is reported as a mid-sentence pause", async () => {
@@ -122,7 +154,11 @@ test("a half-second gap where the script has no punctuation is reported as a mid
     { text: "Kyle", start: 3.42, end: 3.6 },
   ];
   const pauses = midSentencePauses(meant, heard);
-  assert.equal(pauses.length, 1, "the pause after 'DLC.' is a sentence end and is fine");
+  assert.equal(
+    pauses.length,
+    1,
+    "the pause after 'DLC.' is a sentence end and is fine",
+  );
   assert.equal(pauses[0]!.before, "Warfare");
   assert.equal(pauses[0]!.after, "4's");
   assert.ok(pauses[0]!.seconds >= 0.5);
@@ -142,10 +178,15 @@ test("a word shuffled either side of a figure, or a figure-only gap, is not a na
 });
 
 test("'a hundred' for 100 and '30fps' for '30 fps' are not narration faults (QA notes, 26 Oct 2026)", () => {
-  assert.ok(checkNarration(say("over 100 players"), say("over a hundred players")).ok);
+  assert.ok(
+    checkNarration(say("over 100 players"), say("over a hundred players")).ok,
+  );
   assert.ok(checkNarration(say("runs at 30 fps"), say("runs at 30fps")).ok);
   assert.deepEqual(tokens("4GB"), ["four", "gigabytes"]);
   assert.deepEqual(tokens("21st"), ["twenty", "one"]);
   // A changed figure is still a fault.
-  assert.equal(checkNarration(say("over 100 players"), say("over a thousand players")).ok, false);
+  assert.equal(
+    checkNarration(say("over 100 players"), say("over a thousand players")).ok,
+    false,
+  );
 });

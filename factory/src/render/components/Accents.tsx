@@ -2,6 +2,7 @@
 // flash, a dip to black) and the pictures that pop in beside the narration in several looks (a framed
 // card, a taped polaroid, a torn cut-out, a desktop window).
 
+import { safeScale } from "../safetransform.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -338,7 +339,7 @@ const WindowPop: React.FC<PopProps> = ({
         style={{
           height: 5,
           background: COLOUR.amber,
-          transform: `scaleX(${inP})`,
+          transform: `scaleX(${safeScale(inP)})`,
           transformOrigin: "left",
         }}
       />

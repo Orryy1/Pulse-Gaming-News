@@ -7,6 +7,7 @@
 // and shelf bands): a rounded window over the blurred footage, or with `feather` a soft-edged band. It fades in
 // over five frames and leaves the way every vertical card leaves (../kit.ts exitOf). Where the crop cuts away
 // a pack's own ILLUSTRATION tag, the window carries one, so a drawn card never passes as a real screenshot.
+import { safeScale } from "../../../safetransform.ts";
 import React from "react";
 import { interpolate, Sequence, useCurrentFrame } from "remotion";
 import { BODY } from "../../fonts.ts";
@@ -106,7 +107,7 @@ export const StageWindow: React.FC<{
         boxShadow: feather ? undefined : shadow(0.8),
         outline: feather ? undefined : "2px solid rgba(255,255,255,0.08)",
         opacity: fadeIn * ex.opacity,
-        transform: still ? undefined : `${ex.transform} scale(${lift})`,
+        transform: still ? undefined : `${ex.transform} scale(${safeScale(lift)})`,
         background: feather ? undefined : "#0b0b0e",
         WebkitMaskImage: mask,
         maskImage: mask,

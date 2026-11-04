@@ -250,7 +250,7 @@ Say only what the frames show. Never claim a landing, an escape or a win the las
 real_test is true only when the clip genuinely tries something a viewer would ask about and shows the answer. A striking moment or a first look of the world can still be kept (question and result describing what is seen), with real_test false.
 When the source is an Xbox clip, the owner pressed record on purpose because he thought the moment was worth showing: judge the moment on its own, and a first look at something new in the world counts as a striking moment.
 Licensed music triggers Content ID: flag radio_audible when the transcript has song lyrics or a DJ, or a radio station name shows on screen.
-Advertiser safety: no gore close-ups, nudity or hate; avoid the words death, kill, war, attack and crisis in the question, title and result line. British spelling in the result, American is fine for the title.`;
+Advertiser safety: no gore close-ups, nudity or hate; pass over violence against bystanders held on screen or zoomed in (YouTube age-restricts realistic game violence against non-combatants); avoid the words death, kill, war, attack and crisis in the question, title and result line. British spelling in the result, American is fine for the title.`;
 
 export async function reviewClip(
   llm: Llm,

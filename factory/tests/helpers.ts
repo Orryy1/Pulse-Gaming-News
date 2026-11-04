@@ -349,6 +349,7 @@ export function testConfig(
     longPunchyHook: true,
     longYouPer1000: 0,
     guideYouPer1000: 35,
+    docMetaGuard: false,
     longSentenceGate: 0,
     longHookStack: 0,
     longOpenLoopsMax: 0,

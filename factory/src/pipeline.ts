@@ -129,6 +129,7 @@ import {
 import { groundOpenLoops, openLoopsLine } from "./editorial/openloops.ts";
 import {
   LONG_RULE_REVISIONS,
+  writerNoteProblems,
   hookStackProblems,
   longRulesFor,
   longRulesOn,
@@ -2495,7 +2496,10 @@ async function stepScriptDocumentary(
     // In a documentary with records: what is still unsupported after the rewrites, and whether the check ever ran.
     let stillUnsupported: string[] = [];
     let checkRan = false;
+    // Only the rules asked for this revision: if its edits don't land the draft stands, and it isn't checked again.
+    let ruleOnly = false;
     for (let attempt = 0; attempt < 3; attempt++) {
+      const previous = chapter;
       chapter = await writeChapter(s.llm, {
         franchise: topic.franchise,
         plan,
@@ -2509,16 +2513,26 @@ async function stepScriptDocumentary(
         draft: attempt > 0 ? chapter : undefined,
         loops: openLoops.loops,
         rules,
+        keepDraft: ruleOnly,
       });
+      if (ruleOnly && chapter === previous) break;
       const problems = validateChapter(chapter, {
         earlier: chapters,
         priorDoc,
         loops: openLoops.loops,
         chapter: index + 1,
       });
+      // A note to the editor instead of narration goes back every time (DOC_META_GUARD).
+      if (s.cfg.docMetaGuard)
+        problems.push(
+          ...writerNoteProblems(
+            chapter.paragraphs.map((x) => x.narration).join(" "),
+          ),
+        );
       // The rules read the first draft only, so each costs one revision at most.
+      let misses: string[] = [];
       if (attempt === 0 && ruleRevisions > 0) {
-        const misses = chapterRuleProblems(chapter, {
+        misses = chapterRuleProblems(chapter, {
           rules,
           written: chapters.map((c) =>
             c.chapter.paragraphs.map((x) => x.narration).join(" "),
@@ -2569,8 +2583,21 @@ async function stepScriptDocumentary(
         ),
       ];
       if (!feedback.length) break;
+      ruleOnly = misses.length > 0 && feedback.length === misses.length;
       if (attempt === 2)
         warnings.push(...feedback.map((f) => `${plan.game_title}: ${f}`));
+    }
+    // Still a note and not narration after every rewrite: no chapter is better than that one.
+    if (
+      s.cfg.docMetaGuard &&
+      writerNoteProblems(
+        chapter!.paragraphs.map((x) => x.narration).join(" "),
+      ).length
+    ) {
+      warnings.push(
+        `${plan.game_title}: chapter dropped, the writer returned a note instead of narration.`,
+      );
+      continue;
     }
     if (strict) {
       // Nothing unchecked or unsupported goes out here: no check, no chapter; unsupported sentences are cut.

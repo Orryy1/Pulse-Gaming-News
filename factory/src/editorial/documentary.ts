@@ -610,6 +610,8 @@ export async function writeChapter(
     loops?: readonly OpenLoop[];
     /** The long-video rules this script runs under (src/editorial/longrules.ts). */
     rules?: LongRules;
+    /** The only problems are the rules': edits that won't apply leave the draft as it is, never a whole new one. */
+    keepDraft?: boolean;
   },
 ): Promise<DocChapter> {
   const rules = ctx.rules ?? NO_LONG_RULES;
@@ -652,6 +654,7 @@ export async function writeChapter(
           ...(longRulesOn(rules) ? { site: "doc.chapter" } : {}),
         })
       : undefined;
+  if (!edited && ctx.keepDraft && ctx.draft) return ctx.draft;
   return (
     edited ??
     llm.structured({

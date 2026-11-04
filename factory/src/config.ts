@@ -579,6 +579,11 @@ export interface Config {
    */
   longYouPer1000: number;
   guideYouPer1000: number;
+  /**
+   * DOC_META_GUARD: a chapter that talks about its brief instead of the story ("this excerpt", "shouldn't be recorded")
+   * is sent back, and dropped if it still does. The FFXIV documentary of 4 Nov carried one, voiced.
+   */
+  docMetaGuard: boolean;
   /** LONG_SENTENCE_GATE: the mean sentence stays under this many words on rankings and guides (0: not measured). */
   longSentenceGate: number;
   /** LONG_HOOK_STACK: the opening stacks the stakes, 3 to this many named surprises, a trust line and a saved promise (0: the older opening). */
@@ -1142,6 +1147,7 @@ export function loadConfig(): Config {
     longPunchyHook: bool("LONG_PUNCHY_HOOK", true),
     longYouPer1000: int("LONG_YOU_PER_1000", 0),
     guideYouPer1000: int("GUIDE_YOU_PER_1000", 35),
+    docMetaGuard: bool("DOC_META_GUARD", false),
     longSentenceGate: int("LONG_SENTENCE_GATE", 0),
     longHookStack: int("LONG_HOOK_STACK", 0),
     longOpenLoopsMax: int("LONG_OPEN_LOOPS_MAX", 0),

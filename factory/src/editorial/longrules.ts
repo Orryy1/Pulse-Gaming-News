@@ -479,3 +479,19 @@ export function namedPayoffProblems(
   }
   return p;
 }
+
+// A writer that finds its source too thin may answer with a note to its editor instead of narration. On the FFXIV
+// documentary (4 Nov 2026) three rejected drafts ended in one, and it was voiced: "These paragraphs flag the missing
+// evidence. They aren't a finished documentary chapter."
+const WRITER_NOTE =
+  /\b(supplied (?:source|excerpt|text)|(?:the|this) excerpt|your source rule|(?:the|this) brief\b|please provide|shouldn['’]t be (?:recorded|published)|aren['’]t a finished|isn['’]t a finished|unsupported here|the requested (?:scene|chapter)|the omitted|as an ai\b|i (?:can['’]t|cannot) write)/i;
+
+/** A chapter that talks about its brief instead of the story (pure): nothing here is narration. */
+export function writerNoteProblems(text: string): string[] {
+  const hit = outsideQuotes(text).match(WRITER_NOTE);
+  return hit
+    ? [
+        `"${hit[0]}" is a note about the brief, not narration: this is spoken to viewers. Tell the story the SOURCE does support and leave out the rest, with no mention of the source, the brief or what's missing.`,
+      ]
+    : [];
+}

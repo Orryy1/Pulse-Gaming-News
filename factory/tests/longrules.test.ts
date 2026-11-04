@@ -16,6 +16,7 @@ import {
   sentenceStats,
   verdictHookProblems,
   verdictProblem,
+  writerNoteProblems,
   youPer1000,
   youShortfall,
   type HookStack,
@@ -960,4 +961,48 @@ test("a passage from a guide's article is credited to it, one from its added sou
     sourceCredit("The install is up to 212 GB on some devices", source),
     "Kotaku: GTA 6 pre-load times",
   );
+});
+
+test("DOC_META_GUARD: a note to the editor is caught, and ordinary narration isn't", () => {
+  // The FFXIV documentary's chapter 6, as voiced on 4 Nov 2026.
+  for (const line of [
+    "These paragraphs flag the missing evidence. They aren't a finished documentary chapter.",
+    "They shouldn't be recorded or published as narration.",
+    "This excerpt cannot substantiate the chapter's central claim.",
+    "Please provide the omitted shutdown and story transition material.",
+    "That gap matters under your source rule.",
+  ])
+    assert.equal(writerNoteProblems(line).length, 1, line);
+  for (const line of [
+    "The source code leaked, and Rockstar said so.",
+    "Please stop asking about the map, one fan wrote.",
+    "If you've ever sat through a rough launch, that last one will sound familiar.",
+    "The excerpts in the magazine ran for three pages.",
+  ])
+    assert.equal(writerNoteProblems(line).length, 0, line);
+  assert.equal(writerNoteProblems(`He called it "the brief" and left.`).length, 0);
+});
+
+test("a revision only the rules asked for keeps the draft when its edits don't land, so it can never buy a whole new chapter", async () => {
+  let calls = 0;
+  const llm = {
+    structured: async () => {
+      calls++;
+      return { edits: [{ find: "nothing like this anywhere", replace: "x" }] };
+    },
+  } as never;
+  const draft = chapter("The studio shipped the game that year.");
+  const plan = { chapter_title: "T", game_title: "G", wiki_title: "G", steam_search_term: "", year: 2026, platforms: "PS5", focus: "f", photo_searches: [] };
+  const out = await writeChapter(llm, {
+    franchise: "G",
+    plan,
+    index: 0,
+    outline: { title: "T", chapters: [plan] } as never,
+    source: { title: "G", url: "u", text: "t" } as never,
+    feedback: ["Say you more."],
+    draft,
+    keepDraft: true,
+  });
+  assert.equal(calls, 1);
+  assert.equal(out, draft);
 });

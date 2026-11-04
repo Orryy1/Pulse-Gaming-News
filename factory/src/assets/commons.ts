@@ -165,14 +165,62 @@ const ROMAN: Record<string, string> = {
   vi: "6",
 };
 
+/** A Roman numeral's value. */
+function romanValue(r: string): number {
+  const v: Record<string, number> = { i: 1, v: 5, x: 10, l: 50, c: 100 };
+  let n = 0;
+  for (let i = 0; i < r.length; i++) {
+    const a = v[r[i]!] ?? 0;
+    n += a < (v[r[i + 1]!] ?? 0) ? -a : a;
+  }
+  return n;
+}
+
 /** True when a trailer title names this game, not another entry in the series. */
+/**
+ * Whether a title names a series whose name ends in its own number, so that it means one game and all of its
+ * versions: "FINAL FANTASY XIV Online", "FFXIV", "FF14" for "Final Fantasy XIV". Until 4 Nov 2026 a story documentary
+ * about such a game matched nothing: its chapters are titled with the series name, which has no words left to tell a
+ * sequel apart, so all nine chapters of the FFXIV film got no Steam page, no pictures and no footage.
+ */
+export function sameNumberedGame(title: string, series: string): boolean {
+  const norm = (t: string) =>
+    t
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .split(" ")
+      .filter(Boolean);
+  const words = norm(series);
+  const last = words.at(-1) ?? "";
+  if (words.length < 2) return false;
+  const roman = /^[ivxlc]{2,}$/.test(last);
+  const digits = /^\d+$/.test(last);
+  if (!roman && !digits) return false;
+  const other = roman ? String(romanValue(last)) : ROMAN[last];
+  const t = norm(title);
+  const has = (w: string) => t.includes(w);
+  const named = words.slice(0, -1);
+  if (named.every(has) && (has(last) || (other !== undefined && has(other))))
+    return true;
+  // The fans' short form: the initials and the number, "ffxiv" or "ff14".
+  const initials = named.map((w) => w[0]).join("");
+  return (
+    initials.length >= 2 &&
+    (has(`${initials}${last}`) ||
+      (other !== undefined && has(`${initials}${other}`)))
+  );
+}
+
 export function trailerMatchesGame(
   trailerTitle: string,
   game: string,
   franchise: string,
 ): boolean {
   const words = distinguishing(game, franchise);
-  if (!words.length) return false; // the first game shares the series name: no trailer can be told apart safely
+  // The first game shares the series name, so no trailer can be told apart safely; unless the name itself ends in
+  // its number ("Final Fantasy XIV"), which only that game carries.
+  if (!words.length) return sameNumberedGame(trailerTitle, franchise);
   const t = ` ${trailerTitle.toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
   return words.every(
     (w) =>

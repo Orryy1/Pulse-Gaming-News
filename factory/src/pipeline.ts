@@ -302,6 +302,8 @@ import {
 import { releaseGateStep } from "./qa/releaseGate.ts";
 import { releaseWriterNotes, writerNoteHits } from "./editorial/writernotes.ts";
 import { guardScript, stopForWriterNotes } from "./writerguard.ts";
+import { planSlate } from "./qa/slate.ts";
+import { distinguishing, sameNumberedGame } from "./assets/commons.ts";
 import { mergeArticles } from "./discovery/wikipedia.ts";
 import {
   GatherBudget,
@@ -6226,7 +6228,7 @@ export async function gatherLongEntryMedia(
  * only when its title names this game, and never its thumbnail. Then archive
  * photos of the real studio, people and places, picked by an editor pass.
  */
-async function gatherChapterMedia(
+export async function gatherChapterMedia(
   s: Services,
   script: Script,
   entry: NonNullable<Script["entries"]>[number],
@@ -6253,7 +6255,11 @@ async function gatherChapterMedia(
   let eapp: SteamApp | undefined;
   for (const t of terms) {
     const a = await s.findGame(t).catch(() => undefined);
-    if (a && trailerMatchesGame(a.name, entry.game_title, franchise)) {
+    if (
+      a &&
+      (trailerMatchesGame(a.name, entry.game_title, franchise) ||
+        sameNumberedGame(a.name, franchise))
+    ) {
       eapp = a;
       break;
     }
@@ -6261,8 +6267,20 @@ async function gatherChapterMedia(
   // Footage from a re-release says so on screen instead of wearing the original's year (29 Oct 2026 review:
   // 2021 Definitive Edition footage captioned 2001).
   const RERELEASE = /definitive|remaster|trilogy|enhanced|\bHD\b|anniversary/i;
+  // So does footage from the living version of a game whose first release is gone (FFXIV's 2010 chapters).
+  const laterVersion =
+    eapp &&
+    !trailerMatchesGame(eapp.name, entry.game_title, franchise) &&
+    sameNumberedGame(eapp.name, franchise);
+  const sameTitle =
+    eapp &&
+    eapp.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() ===
+      entry.game_title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const remaster =
-    eapp && RERELEASE.test(eapp.name) && !RERELEASE.test(entry.game_title)
+    eapp &&
+    ((RERELEASE.test(eapp.name) && !RERELEASE.test(entry.game_title)) ||
+      laterVersion ||
+      (distinguishing(entry.game_title, franchise).length === 0 && !sameTitle))
       ? `FOOTAGE: ${eapp.name.toUpperCase()} · STEAM`
       : undefined;
   const pushClip = (c: VisualAsset) =>
@@ -6719,6 +6737,46 @@ export function matchedShare(
   for (const [e, ms] of moments.entries())
     for (let k = 0; k < ms.length; k++) if (hit.has(`${e}:${k}`)) n++;
   return n / total;
+}
+
+/**
+ * Which of a long video's chapters are about one game: a series whose name ends in its number means one game in all
+ * its versions, so its chapters may share their footage. A franchise's chapters are different games, and stay apart.
+ */
+export function sameGameGroups(
+  script: Pick<Script, "entries" | "game_title">,
+): Array<number | undefined> | undefined {
+  const sorted = [...(script.entries ?? [])].sort((a, b) => b.rank - a.rank);
+  const groups = sorted.map((e) =>
+    sameNumberedGame(e.game_title, script.game_title) ? 0 : undefined,
+  );
+  return groups.some((g) => g !== undefined) ? groups : undefined;
+}
+
+/**
+ * The sentences a stock shot must keep off: those that name a real person the shot list knows about, by the moment's
+ * own "person" or by surname anywhere in the sentence. A stock man at a desk under "Yoshida" reads as Yoshida.
+ */
+export function linesNamingPeople(
+  moments: ReadonlyArray<{ person?: string }>,
+  sentences: readonly string[],
+  all: ReadonlyArray<{ person?: string }> = moments,
+): boolean[] {
+  const surnames = [
+    ...new Set(
+      all
+        .flatMap((m) => (m.person ?? "").split(/[,&]| and /))
+        .map((p) => p.trim().split(/\s+/).at(-1) ?? "")
+        .filter((n) => n.length >= 3),
+    ),
+  ];
+  return moments.map((m, k) => {
+    if (m.person?.trim()) return true;
+    const line = sentences[k] ?? "";
+    return surnames.some((n) =>
+      new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(line),
+    );
+  });
 }
 
 /** Licensed stock shots a documentary chapter may use for its real-world sentences. */
@@ -7200,6 +7258,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     moment: c.moment,
     credit: c.credit,
     audio: c.audio,
+    stock: c.stock,
     // The picture check's words for the clip: a freeze frame's label (src/render/camera.ts freezeLabel).
     label: c.label,
     span: c.span,
@@ -7227,9 +7286,16 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         role: c.role,
         moment: c.moment,
         span: c.span,
+        stock: c.stock,
       })),
       // Footage first: a chapter never replays a moment it has shown (FOOTAGE_FIRST).
       noRepeats: s.cfg.footageFirst,
+      sameGame: sameGameGroups(script),
+      noStockOn: s.cfg.longStockNotOnPeople
+        ? moments.map((e, i) =>
+            linesNamingPeople(e, chapterSentences(script, i), moments.flat()),
+          )
+        : undefined,
       variant,
       // Real-world photos only on their own sentence (REAL_PHOTOS_PINNED_ONLY; 31 Oct 2026 owner review).
       realPinnedOnly: s.cfg.realPhotosPinnedOnly,
@@ -7322,6 +7388,34 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       });
   }
   assets.longPlan = plan;
+  // A video never renders on the empty slate: everything to fill it has been tried by here, so this one stops and says.
+  if (hasMoments) {
+    const slate = planSlate({
+      plan,
+      windows: momentWindows(
+        segments,
+        words,
+        moments.map((m) => m.length),
+        moments.map((e) => e.map(momentKeys)),
+      ),
+      moments,
+      quiet: assets.quietMoments,
+      clips: assets.clips,
+    });
+    await logEvent(s.db, ep.id, "slate_share", {
+      share: Math.round(slate.share * 1000) / 1000,
+      plate: Math.round(slate.plateShare * 1000) / 1000,
+      footage: Math.round(slate.footageShare * 1000) / 1000,
+    });
+    if (slate.share > s.cfg.planSlateMax) {
+      const line = `${Math.round(slate.share * 100)}% of the video would sit on the empty slate (the most allowed is ${Math.round(s.cfg.planSlateMax * 100)}%)`;
+      await s.notify({
+        ping: true,
+        content: `🛑 Stopped "${script.headline}" before its render: ${line}. Its chapters have too little media. Nothing was rendered.`,
+      });
+      throw new FatalError(`empty slate: ${line}`);
+    }
+  }
   // How much of the game chapters' narration plays on moving game footage, against FOOTAGE_SHARE_TARGET.
   if (freshPlan && hasMoments && s.cfg.footageFirst) {
     const fm = measureFootage({

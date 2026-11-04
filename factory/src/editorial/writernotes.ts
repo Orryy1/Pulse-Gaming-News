@@ -62,6 +62,12 @@ const PHRASES: RegExp[] = [
   /\bhere(?:'s| is) (?:the|a|your) (?:rewritten|revised|updated|corrected|edited|new) (?:chapter|draft|script|narration|version|text)\b/i,
   /\b(?:the|this|my) (?:revised|rewritten|corrected|edited) (?:chapter|draft|narration)\b/i,
   /\bword count\b/i,
+  // On-screen labels for what is missing, not for what happened.
+  /\b(?:material|evidence|attribution|sources?|citation) needed\b/i,
+  /\b(?:still )?unsubstantiated here\b/i,
+  /\bnot (?:stated|given|mentioned|supplied) in the (?:source|sources|excerpt|material|text)\b/i,
+  /\bcontents? not supplied\b/i,
+  /\bunused (?:development )?material\b/i,
   /\blorem ipsum\b/i,
   /\[(?:insert|placeholder|todo|tbd|source needed)\b/i,
 ];

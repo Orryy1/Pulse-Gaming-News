@@ -525,3 +525,105 @@ test("a writer that keeps refusing stops the video with a loud alert, and it nev
   assert.ok(told.some((m) => m.ping && /Stopped the documentary/.test(m.content ?? "")));
   assert.equal(ep.script_json, null);
 });
+
+// ---------------------------------------------------------------- the empty slate, and what stands in for people
+
+import { emptyFrame, planSlate, SCAN_H, SCAN_W } from "../src/qa/slate.ts";
+import { sameNumberedGame, trailerMatchesGame } from "../src/assets/commons.ts";
+import { namesGame } from "../src/assets/footagefirst.ts";
+import { linesNamingPeople, sameGameGroups } from "../src/pipeline.ts";
+import { buildLongPlan } from "../src/render/longplan.ts";
+
+test("a series whose name ends in its number means one game, under every name fans use", () => {
+  for (const t of ["FINAL FANTASY XIV Online", "FFXIV gameplay", "FF14 walkthrough", "Final Fantasy 14 trailer"])
+    assert.ok(sameNumberedGame(t, "Final Fantasy XIV"), t);
+  for (const t of ["Final Fantasy XIII", "FINAL FANTASY XVI", "Final Fantasy VII Remake", "ff13"])
+    assert.ok(!sameNumberedGame(t, "Final Fantasy XIV"), t);
+  assert.ok(!sameNumberedGame("Grand Theft Auto V", "Grand Theft Auto"), "no number: a name shared with its sequels");
+  assert.ok(trailerMatchesGame("FINAL FANTASY XIV Online", "Final Fantasy XIV", "Final Fantasy XIV"));
+  assert.ok(!trailerMatchesGame("Grand Theft Auto V: Trailer", "Grand Theft Auto", "Grand Theft Auto"));
+  assert.ok(namesGame("Final Fantasy XIV gameplay 2010", "Final Fantasy XIV", "Final Fantasy XIV", 2010));
+});
+
+test("only a one-game film's chapters are one family", () => {
+  assert.deepEqual(
+    sameGameGroups({ game_title: "Final Fantasy XIV", entries: [{ rank: 2, game_title: "Final Fantasy XIV" }, { rank: 1, game_title: "Final Fantasy XIV: A Realm Reborn" }] } as never),
+    [0, 0],
+  );
+  assert.equal(
+    sameGameGroups({ game_title: "Grand Theft Auto", entries: [{ rank: 2, game_title: "Grand Theft Auto III" }, { rank: 1, game_title: "Grand Theft Auto V" }] } as never),
+    undefined,
+  );
+});
+
+test("lines naming a real person are found by surname, whichever line first named them", () => {
+  const moments = [{ person: "" }, { person: "Naoki Yoshida" }, { person: "" }, { person: "" }];
+  assert.deepEqual(
+    linesNamingPeople(moments, ["The game launched.", "He took over.", "Yoshida chose a rebuild.", "Critics disagreed."]),
+    [false, true, true, false],
+  );
+});
+
+const twoChapterPlan = (over: object = {}, clips: any[] = [], images: any[] = []) => {
+  const words = Array.from({ length: 120 }, (_, i) => ({ text: i % 10 === 9 ? `Word${i}.` : `Word${i}`, start: i * 0.5, end: i * 0.5 + 0.4 }));
+  const text = (a: number, b: number) => words.slice(a, b).map((w) => w.text).join(" ");
+  const segments = [
+    { kind: "beat", text: text(0, 60), start: 0, end: 30, visual: { kind: "chapter", primary: "A", secondary: "G", value_a: 1, items: ["2010", "PC"] } },
+    { kind: "beat", text: text(60, 120), start: 30, end: 60, visual: { kind: "chapter", primary: "B", secondary: "G", value_a: 2, items: ["2010", "PC"] } },
+  ] as never;
+  const counts = [6, 6];
+  return buildLongPlan({
+    segments, words, durationSeconds: 60, images, clips, variant: 0,
+    momentCounts: counts, momentKeys: counts.map((n) => Array.from({ length: n }, () => [])),
+    noRepeats: true, ...over,
+  } as never);
+};
+
+test("a chapter out of pictures shows the same game's other chapters before the plate", () => {
+  const clips = Array.from({ length: 12 }, () => ({ durationSeconds: 4.8, beatIndex: 1 }));
+  const alone = twoChapterPlan({}, clips);
+  assert.ok(alone.shots.some((s: any) => s.media.type === "plate"), "without a family it has nothing: the plate");
+  const family = twoChapterPlan({ sameGame: [0, 0] }, clips);
+  assert.ok(!family.shots.some((s: any) => s.media.type === "plate"), "its family's footage instead");
+});
+
+test("a stock shot never opens a chapter or plays on a line naming a person", () => {
+  const stock = (moment: number) => ({ durationSeconds: 4.8, beatIndex: 0, stock: true, moment });
+  const clips = [stock(0), stock(1), stock(2), { durationSeconds: 4.8, beatIndex: 1 }, { durationSeconds: 4.8, beatIndex: 1 }, { durationSeconds: 4.8, beatIndex: 1 }];
+  const plan = twoChapterPlan({ sameGame: [0, 0], noStockOn: [[false, true, false, false, false, false], Array(6).fill(false)] }, clips);
+  const played = new Set(plan.shots.filter((s: any) => s.media.type === "clip").map((s: any) => s.media.index));
+  assert.ok(!played.has(0), "the chapter card's stock is gone");
+  assert.ok(!played.has(1), "and the line naming a person");
+  assert.ok(played.has(2), "a stock shot on an ordinary line stays");
+});
+
+const plateShot = (start: number, end: number) => ({ start, end, media: { type: "plate", index: 0 } });
+
+test("the slate is measured from the plan: only a full-screen graphic or filler fills it", () => {
+  const plan = { fps: 30, shots: [plateShot(0, 900), { start: 900, end: 1800, media: { type: "clip", index: 0 } }] };
+  const windows = [
+    { entry: 0, moment: 0, start: 0, end: 10 },
+    { entry: 0, moment: 1, start: 10, end: 20 },
+    { entry: 0, moment: 2, start: 20, end: 30 },
+  ];
+  const r = planSlate({
+    plan, windows,
+    moments: [[{ graphic: { kind: "timeline" } }, { graphic: { kind: "list" } }, { graphic: { kind: "timeline" } }]],
+    quiet: ["0:2"], clips: [{}],
+  });
+  assert.equal(Math.round(r.slateSeconds), 20, "the corner card and the muted graphic leave it empty");
+  assert.equal(Math.round(r.share * 100), 33);
+  assert.equal(Math.round(r.footageShare * 100), 50);
+  assert.equal(planSlate({ plan, windows, moments: [[]], clips: [{ stock: true }] }).footageShare, 0, "stock is not footage");
+});
+
+test("a dark frame with only its furniture is empty; a card or a lit scene is not", () => {
+  const frame = (fill: (x: number, y: number) => number) => {
+    const g = new Uint8Array(SCAN_W * SCAN_H);
+    for (let y = 0; y < SCAN_H; y++) for (let x = 0; x < SCAN_W; x++) g[y * SCAN_W + x] = fill(x, y);
+    return g;
+  };
+  assert.ok(emptyFrame(frame((_, y) => (y < 5 || y > 48 ? 200 : 18))), "the slate, with its strip and logo");
+  assert.ok(!emptyFrame(frame((x, y) => (x > 30 && x < 66 && y > 15 && y < 40 ? 180 : 18))), "a card");
+  assert.ok(!emptyFrame(frame((x) => 30 + (x % 40))), "a dark scene with light in it");
+});

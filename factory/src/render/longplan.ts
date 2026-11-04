@@ -67,6 +67,8 @@ export interface LongClip {
   beatIndex?: number;
   role?: "hook";
   moment?: number;
+  /** Licensed stock, not the game: never on a chapter's card or a line naming a real person, never to fill a gap. */
+  stock?: boolean;
   /** Where in its source video the clip was cut (seconds), when known: two clips overlapping there are one moment. */
   span?: { source: string; from: number; to: number };
 }
@@ -344,10 +346,22 @@ export interface LongPlanInput {
    */
   momentFillers?: Array<Array<MomentFiller | undefined>>;
   /**
-   * Footage first (FOOTAGE_FIRST): a chapter with no pictures never loops its own clips once they have all
-   * played; it shows the plate instead, which the thin-entry top-up then fills with official screenshots.
+   * Footage first (FOOTAGE_FIRST): a chapter with no pictures doesn't loop its own clips while there is anything
+   * else to show. Out of everything it shows the plate, or a replay in a film about one game (sameGame); a video with too much plate stops before its render (FFXIV, 4 Nov 2026: 57% of the film).
    */
   noRepeats?: boolean;
+  /**
+   * Per entry, the group of entries about one game (a story documentary's chapters): a chapter out of its own
+   * media shows the group's game footage and art before anything repeats. A franchise's chapters are different
+   * games and stay apart (GTA V's art under GTA Advance): no entry for them here.
+   */
+  sameGame?: Array<number | undefined>;
+  /**
+   * Per entry, per sentence: a stock shot would pass for the real thing here, so it never plays (a line naming a
+   * real person: a stock man at a desk under "Yoshida chooses a rebuild" reads as Yoshida). A chapter's first
+   * sentence, which carries its title card, counts whenever this is given.
+   */
+  noStockOn?: boolean[][];
 }
 
 const PREVIEW_STOP = new Set(
@@ -576,6 +590,15 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           if (alt.type !== "clip") {
             media = alt;
             len = Math.min(MAX_STILL_SHOT, remaining, most.still);
+          } else if (media.type === "clip" && len < MIN_CLIP_SHOT) {
+            // Nothing that fits the gap but clips: the shot before it holds a beat longer, or a sliver of plate.
+            const prev = shots[shots.length - 1];
+            if (prev && prev.segment === seg && prev.media.type !== "clip") {
+              prev.end = at + remaining;
+              break;
+            }
+            media = { type: "plate", index: 0 };
+            len = remaining;
           }
         } else spend(media.index);
       } else {
@@ -676,6 +699,32 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         .map((_, k) => k)
         .filter((k) => clips[k]!.beatIndex === entry);
       let reuse = 0;
+      // A stock clip plays only on the sentence it was found for, and not where it would pass for the real thing.
+      const stockBarred = (k: number, moment: number) =>
+        !!clips[k]!.stock &&
+        !!input.noStockOn &&
+        (moment === 0 ||
+          clips[k]!.moment !== moment ||
+          !!input.noStockOn[entry!]?.[moment]);
+      // This chapter's game, across its chapters (and the film's opening, which is about the same game).
+      const group = entry === undefined ? undefined : input.sameGame?.[entry];
+      const kin = (beat: number | undefined) =>
+        group !== undefined &&
+        beat !== entry &&
+        (beat === undefined || input.sameGame?.[beat] === group);
+      const kinClips =
+        group === undefined
+          ? []
+          : clips
+              .map((_, k) => k)
+              .filter((k) => kin(clips[k]!.beatIndex) && !clips[k]!.stock);
+      const kinImages =
+        group === undefined
+          ? []
+          : images
+              .map((_, k) => k)
+              .filter((k) => kin(images[k]!.beatIndex) && !realWorldImage(images[k]!));
+      let replay = 0;
       // The sentence being filled: filler never shows a picture chosen for another sentence (30 Oct 2026
       // shot audit: 11% of the Vice City documentary showed a sentence's picture two or more lines away from
       // it, such as David Jones's photo while the narrator talked about Keith Hamilton).
@@ -685,11 +734,38 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         // GTA V's key art under GTA Advance. It replays its own footage, or shows the branded plate.
         // An unplayed clip first: replaying one the chapter already showed repeats a moment (31 Oct 2026).
         const own = (): LongMedia => {
-          const fresh = entryClips.find((k) => !clipUsed[k]);
+          const fresh = entryClips.find(
+            (k) => !clipUsed[k] && !stockBarred(k, current),
+          );
           if (fresh !== undefined) return { type: "clip", index: fresh };
-          return entryClips.length && !input.noRepeats
-            ? { type: "clip", index: entryClips[reuse++ % entryClips.length]! }
-            : { type: "plate", index: 0 };
+          const game = entryClips.filter((k) => !clips[k]!.stock);
+          if (!input.noRepeats && entryClips.length)
+            return {
+              type: "clip",
+              index: (game.length ? game : entryClips)[
+                reuse++ % (game.length ? game : entryClips).length
+              ]!,
+            };
+          // Out of its own: the same game's unseen footage from the film's other chapters, then its art.
+          const borrowed = kinClips.find((k) => !clipUsed[k]);
+          if (borrowed !== undefined) return { type: "clip", index: borrowed };
+          if (kinImages.length) {
+            const pick = [...kinImages].sort(
+              (a, b) => stillUses[a]! - stillUses[b]! || a - b,
+            )[0]!;
+            if (stillUses[pick]! < 2) return { type: "image", index: pick };
+          }
+          // Then, in a film about one game, a replay: there a repeat is a lesser fault than an empty slate. A chapter
+          // with no such family keeps the plate, and a video with too much of it stops before its render (qa/slate.ts).
+          const again = group === undefined ? [] : game.length ? game : kinClips;
+          if (again.length)
+            return { type: "clip", index: again[replay++ % again.length]! };
+          if (kinImages.length)
+            return {
+              type: "image",
+              index: kinImages[replay++ % kinImages.length]!,
+            };
+          return { type: "plate", index: 0 };
         };
         if (!entryImages.length) return own();
         const free = entryImages.filter((k) =>
@@ -745,7 +821,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           // A clip the cold open previewed still plays on its own sentence (30 Oct 2026 audit: the preview
           // used it up and the sentence it was found for never showed it).
           (k) =>
-            clips[k]!.moment === w.moment && (!clipUsed[k] || previewed.has(k)),
+            clips[k]!.moment === w.moment &&
+            (!clipUsed[k] || previewed.has(k)) &&
+            !stockBarred(k, w.moment),
         );
         const mineStills = entryImages.filter(
           (k) => images[k]!.moment === w.moment,
@@ -786,6 +864,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             .filter(
               (k) =>
                 !clipUsed[k] &&
+                !stockBarred(k, w.moment) &&
                 (clips[k]!.moment === undefined
                   ? looseOk
                   : fillerFor(clips[k]!.moment, w.moment)) &&

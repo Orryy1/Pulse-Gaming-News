@@ -2,10 +2,27 @@
 # Deploy hook for the Mac's bare repo (~/PulseFactory/repo.git): a push from the PC checks the new code
 # out into ~/PulseFactory/factory-src, typechecks it, and only then switches the factory over and
 # restarts it, so a broken push never stops the channel.
+# The checks are in mac/deploy.sh too: this hook is the last word, because a code switch under a running render or
+# upload loses it. PULSE_DEPLOY_FORCE=1 (git push -o is not needed; set in the environment of the ssh command) overrides.
+# PULSE_ROOT and PULSE_SERVICE exist so the hook can be tried on a sandbox folder (tests in mac/deploy-test.sh).
 export PATH="/opt/homebrew/bin:$PATH"
-SRC="$HOME/PulseFactory/factory-src"
-LIVE="$HOME/PulseFactory/factory"
-PREV="$HOME/PulseFactory/factory-prev"
+ROOT="${PULSE_ROOT:-$HOME/PulseFactory}"
+SERVICE="${PULSE_SERVICE:-com.pulse.factory}"
+PORT="${PULSE_PORT:-8080}"
+SRC="$ROOT/factory-src"
+LIVE="$ROOT/factory"
+PREV="$ROOT/factory-prev"
+busy() {
+  [ -f "$LIVE/data/admin/hold-restart" ] && { echo "the hold-restart flag is set"; return 0; }
+  pgrep -f "remotion|chrome-headless-shell" >/dev/null && { echo "a render is running"; return 0; }
+  local h
+  h=$(curl -s -m 10 "http://127.0.0.1:$PORT/health" 2>/dev/null) || return 1
+  case "$h" in
+    *'"uploads_active":0'*) return 1 ;;
+    *'"uploads_active"'*) echo "an upload is running"; return 0 ;;
+  esac
+  return 1
+}
 while read -r _old new ref; do
   [ "$ref" = "refs/heads/claude/epic-pasteur-7s143q" ] || continue
   # A release that died at boot (mac/run.sh rolled it back) is not deployed again: push a newer commit.
@@ -13,8 +30,12 @@ while read -r _old new ref; do
     echo "deploy refused: $new died at boot last time; push a fix on top of it"
     exit 1
   fi
+  if [ "${PULSE_DEPLOY_FORCE:-}" != 1 ] && why=$(busy); then
+    echo "deploy refused: $why; nothing changed, push again when it is done (mac/deploy.sh waits for you)"
+    exit 1
+  fi
   mkdir -p "$SRC"
-  git --work-tree="$SRC" --git-dir="$HOME/PulseFactory/repo.git" checkout -f "$new"
+  git --work-tree="$SRC" --git-dir="$ROOT/repo.git" checkout -f "$new"
   cd "$SRC/factory" || exit 1
   deps_changed=no
   cmp -s package-lock.json "$LIVE/package-lock.json" 2>/dev/null || deps_changed=yes
@@ -38,5 +59,5 @@ while read -r _old new ref; do
   mkdir -p "$LIVE/data/admin"
   echo "$new" > "$LIVE/data/admin/release"
   if [ "$deps_changed" = yes ]; then (cd "$LIVE" && npm ci --no-audit --no-fund >/dev/null 2>&1); fi
-  launchctl kickstart -k "gui/$(id -u)/com.pulse.factory" 2>/dev/null && echo "deployed $new and restarted the factory"
+  launchctl kickstart -k "gui/$(id -u)/$SERVICE" 2>/dev/null && echo "deployed $new and restarted the factory" || echo "deployed $new (the factory is not running as $SERVICE, so nothing was restarted)"
 done

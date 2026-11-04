@@ -115,7 +115,7 @@ test("Codex runs through python3 on the Mac, and only where its helper is instal
   );
   assert.equal(
     defaultCodexRunnerDir("darwin", MAC_HOME),
-    "/Users/MORR/PulseFactory/codex",
+    "/Users/MORR/PulseFactory/factory/mac/codex",
   );
   const seen: string[] = [];
   assert.equal(

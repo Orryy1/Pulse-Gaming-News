@@ -162,7 +162,7 @@ export async function scanVideo(video: string): Promise<FrameScan> {
       "nokey",
       "-i",
       video,
-      "-vsync",
+      "-fps_mode",
       "vfr",
       "-vf",
       `scale=${SCAN_W}:${SCAN_H},format=gray,showinfo`,

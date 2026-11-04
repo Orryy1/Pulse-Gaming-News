@@ -64,6 +64,8 @@ export function testConfig(
     newsSegment: false,
     sequelWinners: false,
     cutdownSlot: "15:30",
+    elevenLabsLowCredits: 0,
+    elevenLabsLowDays: 0,
     gameplayEnabled: false,
     gameplayRoot: "",
     gameplayExperiments: "",

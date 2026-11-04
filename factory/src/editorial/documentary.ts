@@ -411,7 +411,7 @@ export const DocOutlineSchema = z.object({
     thumb_text: z
       .string()
       .describe(
-        "2-4 words in capitals for the thumbnail that add the hook or the emotion and never repeat the title, and that make sense to someone who has not watched (no bare ranks like 'HALO 2 AT 5?'): 'THE $69B MISTAKE', 'NEVER RELEASED', 'IT WAS A TRAP'. In a study of 1,598 gaming thumbnails, short hook text beat restated titles, dates and 'Top 10' labels",
+        "1-4 words in capitals for the thumbnail that add the hook or the emotion and do not restate the whole title (one strong word from its promise is fine), and that make sense to someone who has not watched (no bare ranks like 'HALO 2 AT 5?'): 'THE $69B MISTAKE', 'NEVER RELEASED', 'IT WAS A TRAP'. In a study of 1,598 gaming thumbnails, short hook text beat restated titles, dates and 'Top 10' labels",
       )
       .optional(),
     description: z

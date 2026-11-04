@@ -284,7 +284,7 @@ export interface Config {
    * grid in its next layout with other pictures, before another design takes its place: THUMB_MOTIF_REPAIR,
    * default on (owner, 31 Oct 2026: keep the grid look). */
   thumbMotifRepair: boolean;
-  /** The long-video thumbnail rule: one recognisable hero from the right game, 2-4 big words, no frames, visors or
+  /** The long-video thumbnail rule: one recognisable hero from the right game, 1-4 big words, no frames, visors or
    * small panels (src/qa/thumbrule.ts). The GTA cover grid stays as the approved special case; a thumbnail that
    * fails the check gives way to the next design and never holds a release: THUMB_HERO_RULE, default on
    * (owner, 3-4 Nov 2026). */

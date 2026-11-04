@@ -35,7 +35,7 @@ export interface AbQueueEntry {
 export interface AngleTitle {
   title: string;
   angle?: TitleAngle;
-  /** 2-4 words in capitals for the thumbnail, adding to the title and never repeating it. */
+  /** 1-4 words in capitals for the thumbnail, not the whole title again (one strong word from its promise is fine). */
   thumb?: string;
 }
 

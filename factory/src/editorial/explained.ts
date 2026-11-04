@@ -451,7 +451,7 @@ export const ExplainedPackagingSchema = z.object({
     thumb_text: z
       .string()
       .describe(
-        "1-4 words in capitals that add the hook and never repeat the title",
+        "1-4 words in capitals that add the hook and do not restate the whole title (one strong word from its promise is fine)",
       ),
     description: z
       .string()

@@ -10,6 +10,8 @@ import {
   approvedGrid,
   artGameName,
   artVerdict,
+  edgeDensity,
+  MAX_EDGE_DENSITY,
   heroRuleDesigns,
   heroRuleFallback,
   heroSizeProblems,
@@ -57,7 +59,8 @@ test("the words: 2-4 that mean something to a stranger", () => {
     "THE COMEBACK",
   ])
     assert.deepEqual(thumbWordProblems(ok), [], ok);
-  assert.match(thumbWordProblems("RANKED")[0]!, /1 words/);
+  // One giant word is allowed, even the title's own promise (GrandGecko's EVERYTHING).
+  assert.deepEqual(thumbWordProblems("EVERYTHING"), []);
   assert.match(
     thumbWordProblems("EVERY HALO GAME RANKED AGAIN")[0]!,
     /5 words/,
@@ -355,6 +358,17 @@ test("the small-size measure tells readable words from a flat picture", () => {
   const stripes = new Uint8Array(SMALL_W * SMALL_H);
   for (let i = 0; i < stripes.length; i++) stripes[i] = i % 2 ? 250 : 10;
   assert.ok(smallMeasure(stripes, "HALO 3 ISN'T #1", 0.73).contrast > 0.8);
+});
+
+test("edge density tells a simple picture from a collage", () => {
+  const flat = new Uint8Array(SMALL_W * SMALL_H).fill(120);
+  assert.equal(edgeDensity(flat), 0);
+  const checks = new Uint8Array(SMALL_W * SMALL_H);
+  for (let y = 0; y < SMALL_H; y++)
+    for (let x = 0; x < SMALL_W; x++)
+      checks[y * SMALL_W + x] = (x + y) % 2 ? 250 : 10;
+  assert.equal(edgeDensity(checks), 1);
+  assert.ok(MAX_EDGE_DENSITY > 0 && MAX_EDGE_DENSITY < 1);
 });
 
 test("the check on a real file fails a flat picture; an unreadable one is never a block", async () => {

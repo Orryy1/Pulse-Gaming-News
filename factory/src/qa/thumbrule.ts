@@ -1,5 +1,7 @@
-// The thumbnail rule for long videos (THUMB_HERO_RULE, owner, 3-4 Nov 2026): one recognisable hero, 2-4 big words,
-// no decorative frames, visors or small panels. He rejected the Halo motif thumbnail (Halloween skins inside a visor
+// The thumbnail rule for long videos (THUMB_HERO_RULE, owner, 3-4 Nov 2026): one recognisable hero, at most four big
+// words, no decorative frames, visors or small panels. The owner's words were "2-4"; a single strong word is allowed
+// too, even one repeating the title's promise, after the Inspiration study (GrandGecko's 1.66M-view GTA 6 thumbnail
+// is one giant word, one cut-out character and a simple background). He rejected the Halo motif thumbnail (Halloween skins inside a visor
 // frame) and replaced it with Master Chief on the right and HALO 3 ISN'T #1 huge on the left; that is the model
 // (src/render/ThumbStudio.tsx PosterThumb). The GTA cover grid, which he asked for on Vice City, is the one approved
 // special case and keeps its route (approvedGrid).
@@ -25,7 +27,7 @@ import {
 
 const run = promisify(execFile);
 
-export const THUMB_MIN_WORDS = 2;
+export const THUMB_MIN_WORDS = 1;
 export const THUMB_MAX_WORDS = 4;
 /** Longer than this cannot be big, whatever the word count. */
 const THUMB_MAX_CHARS = 26;
@@ -36,6 +38,10 @@ export const SMALL_H = 94;
 export const MIN_CAP_PX = 8;
 /** Brightest letters against the darkest edges in the words' box at 168x94, 0-1. */
 export const MIN_SMALL_CONTRAST = 0.4;
+/** Share of pixels on a hard edge at 168x94 above which a thumbnail is a collage, not a picture (edgeDensity). */
+export const MAX_EDGE_DENSITY = 0.3;
+/** How hard an edge is: the brightness step to the next pixel across and down, added, out of 255. */
+const EDGE_STEP = 50;
 
 /** Words the owner has ruled out for good. */
 const BANNED_WORDS = [/\bIT STARTED IN DUNDEE\b/];
@@ -359,6 +365,20 @@ export function heroSizeProblems(
   return out;
 }
 
+/** How busy a 168x94 greyscale thumbnail is: the share of its pixels on a hard edge (pure). */
+export function edgeDensity(grey: Uint8Array): number {
+  let hard = 0;
+  for (let y = 0; y < SMALL_H - 1; y++)
+    for (let x = 0; x < SMALL_W - 1; x++) {
+      const i = y * SMALL_W + x;
+      const step =
+        Math.abs(grey[i]! - grey[i + 1]!) +
+        Math.abs(grey[i]! - grey[i + SMALL_W]!);
+      if (step > EDGE_STEP) hard += 1;
+    }
+  return hard / ((SMALL_W - 1) * (SMALL_H - 1));
+}
+
 /** A poster's measurements at 168x94 (pure): the letters' height and the contrast in the words' box. */
 export function smallMeasure(
   grey: Uint8Array,
@@ -425,6 +445,9 @@ export async function posterProblems(
       out.push(
         `letters ${m.capPx.toFixed(1)} px tall at ${SMALL_W}x${SMALL_H}`,
       );
+    const edges = edgeDensity(stdout);
+    if (edges > MAX_EDGE_DENSITY)
+      out.push(`edge density ${edges.toFixed(2)} at ${SMALL_W}x${SMALL_H}, too busy`);
     if (m.contrast < MIN_SMALL_CONTRAST)
       out.push(
         `contrast ${m.contrast.toFixed(2)} behind the words at ${SMALL_W}x${SMALL_H}`,

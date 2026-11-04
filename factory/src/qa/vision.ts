@@ -37,6 +37,9 @@ Fail a thumbnail only for a real fault: words cut off or overlapping, words unre
 Bold styling, outlines, glow, red circles, console or retro looks and the PULSE badge are deliberate. So is a busy comic-panel grid of pictures around the title block (a series' cover-art look): judge whether its title reads at phone size and every panel shows a real picture, not how busy it is.
 Write every problem as "Frame N: what is wrong", using the frame numbers given. Pass when nothing is wrong.`;
 
+/** What the thumbnail check adds under the hero rule (THUMB_HERO_RULE, src/qa/thumbrule.ts). */
+export const THUMB_HERO_PROMPT = `These thumbnails follow a rule: one recognisable hero and 2-4 big words. Also fail a thumbnail for: artwork clearly showing a different game from the one named in the Game line or in its own words (any game of the named series is right when its words name no single game); no clear main subject a fan would recognise, a character, creature or vehicle filling much of the frame (a landscape, a blurred wash or a crowd of tiny figures is not one); a logo or title baked into the picture that the crop cuts off or that collides with the words; words that mean nothing to someone who has not watched the video, such as a bare rank. The plain dark gradient behind the words is deliberate.`;
+
 const FRAME_REF = /frames?\s+(\d+(?:\s*(?:,|and|&)\s*\d+)*)/gi;
 
 /**
@@ -68,6 +71,8 @@ export async function visionQa(
     headline: string;
     gameTitle: string;
     format?: "short" | "long" | "graphics" | "thumbs";
+    /** Thumbnails under the hero rule: the check also looks for the wrong game, no hero and cryptic words. */
+    heroRule?: boolean;
     /** What the narrator says: captions repeat these words, so a word found here is not a misspelling. */
     narration?: string;
   },
@@ -99,7 +104,9 @@ export async function visionQa(
       : context.format === "graphics"
         ? GRAPHICS_VISION_PROMPT
         : context.format === "thumbs"
-          ? THUMB_VISION_PROMPT
+          ? context.heroRule
+            ? `${THUMB_VISION_PROMPT}\n${THUMB_HERO_PROMPT}`
+            : THUMB_VISION_PROMPT
           : VISION_PROMPT;
   // The graphics check now looks at every graphic of a long video (up to 200 stills before the render), so it
   // runs on the mid tier; the other checks are a handful of frames and keep the top tier.

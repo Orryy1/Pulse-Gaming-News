@@ -217,7 +217,7 @@ export const ScriptSchema = z.object({
     thumb_text: z
       .string()
       .optional()
-      .describe("Long videos only: the 1-4 words on the thumbnail"),
+      .describe("Long videos only: the 2-4 words on the thumbnail"),
     /** Long videos: two alternative titles for YouTube's Test & compare (src/editorial/titles.ts). */
     title_variants: z.array(z.string()).optional(),
   }),

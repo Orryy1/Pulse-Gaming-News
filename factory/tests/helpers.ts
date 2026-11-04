@@ -166,6 +166,7 @@ export function testConfig(
     docSoundBeats: true,
     docEndCard: true,
     thumbMotifRepair: true,
+    thumbHeroRule: true,
     docColdOpen: true,
     docTitleDrop: true,
     docOpenLoops: true,

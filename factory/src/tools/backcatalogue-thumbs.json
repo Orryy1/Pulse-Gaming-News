@@ -1,0 +1,131 @@
+{
+  "_note": "Back-catalogue Test & compare thumbnails under the hero rule, 4 Nov 2026 (src/tools/backcatalogue-thumbs.ts). BemcTLS8mVI and 7CelsHTQU3s were hand-approved and are not here. subjectX and subjectY are where the hero stands in the picture, read off the picture by eye.",
+  "videos": [
+    {
+      "videoId": "2i7tdUD939s",
+      "episode": "ep_20261026_52575f18",
+      "liveTitle": "Why GTA 6 Took Thirteen Years | Documentary",
+      "publishAt": "2026-10-27T19:00:00.000Z",
+      "dir": "episodes/ep_20261026_52575f18",
+      "nextTitles": ["How Rockstar Came Back From the GTA 6 Leak"],
+      "thumbs": [
+        {
+          "name": "gta6_lucia_13years",
+          "words": "13 YEARS OF SILENCE",
+          "art": "entry_4/assets/igdb_0.jpg",
+          "provenance": "IGDB screenshot for \"Grand Theft Auto VI\" (2026), publisher material via igdb.com",
+          "game": "Grand Theft Auto VI",
+          "subjectX": 0.68,
+          "subjectY": 0.32,
+          "title": "The GTA 6 Nobody Saw: Thirteen Years Inside Rockstar",
+          "angle": "hidden"
+        },
+        {
+          "name": "gta6_jason_13years",
+          "words": "13 YEARS OF SILENCE",
+          "art": "entry_4/assets/igdb_4.jpg",
+          "provenance": "IGDB screenshot for \"Grand Theft Auto VI\" (2026), publisher material via igdb.com",
+          "game": "Grand Theft Auto VI",
+          "subjectX": 0.32,
+          "subjectY": 0.35
+        },
+        {
+          "name": "gta6_online_money_car",
+          "words": "GTA ONLINE MONEY",
+          "art": "entry_1/assets/igdb_3.jpg",
+          "provenance": "IGDB screenshot for \"Grand Theft Auto Online\" (2014), publisher material via igdb.com",
+          "game": "Grand Theft Auto Online",
+          "subjectX": 0.8,
+          "subjectY": 0.45,
+          "title": "How GTA Online's Money Kept GTA 6 Waiting",
+          "angle": "how"
+        },
+        {
+          "name": "gta6_online_money_gold",
+          "words": "GTA ONLINE MONEY",
+          "art": "entry_1/assets/igdb_4.jpg",
+          "provenance": "IGDB screenshot for \"Grand Theft Auto Online\" (2014), publisher material via igdb.com",
+          "game": "Grand Theft Auto Online",
+          "subjectX": 0.55,
+          "subjectY": 0.4
+        }
+      ]
+    },
+    {
+      "videoId": "m62Cbr2WXcM",
+      "episode": "ep_20261021_db8d609b",
+      "liveTitle": "Every Mainline GTA Game, Ranked Worst to Best",
+      "publishAt": "2026-10-24T16:00:00.000Z",
+      "dir": "smoke/longdry/episodes/ep_20261021_db8d609b",
+      "nextTitles": ["How Every GTA Holds Up When You Play It Today"],
+      "thumbs": [
+        {
+          "name": "gta_cj_sa",
+          "words": "SAN ANDREAS ISN'T #1",
+          "art": "entry_8/assets/igdb_3.jpg",
+          "provenance": "IGDB screenshot for \"Grand Theft Auto: San Andreas\" (2004), publisher material via igdb.com",
+          "game": "Grand Theft Auto: San Andreas",
+          "subjectX": 0.64,
+          "subjectY": 0.4,
+          "title": "San Andreas Isn't the Best GTA Anymore",
+          "angle": "claim"
+        },
+        {
+          "name": "gta_trio_keyart",
+          "words": "GTA 5 STILL #1",
+          "art": "assets/hero_0.jpg",
+          "provenance": "Steam store asset for \"Grand Theft Auto V Enhanced\" (app 3240220), publisher-supplied marketing art",
+          "game": "Grand Theft Auto V",
+          "subjectX": 0.68,
+          "subjectY": 0.5,
+          "title": "Why GTA 5 Still Beats Every Other GTA",
+          "angle": "why"
+        },
+        {
+          "name": "gta_trio_walk",
+          "words": "GTA 5 STILL #1",
+          "art": "entry_10/assets/igdb_3.jpg",
+          "provenance": "IGDB screenshot for \"Grand Theft Auto V\" (2013), publisher material via igdb.com",
+          "game": "Grand Theft Auto V",
+          "subjectX": 0.6,
+          "subjectY": 0.45
+        }
+      ]
+    },
+    {
+      "videoId": "lW5Xy9JgPRk",
+      "episode": "ep_20261018_30d12699",
+      "liveTitle": "Call of Duty Campaigns Ranked Worst to Best",
+      "publishAt": "2026-10-18T18:00:00.000Z",
+      "dir": "episodes/ep_20261018_30d12699",
+      "currentUrl": "https://i.ytimg.com/vi/lW5Xy9JgPRk/maxresdefault.jpg",
+      "nextTitles": ["How Call of Duty's Campaigns Lost Their Way"],
+      "thumbs": [
+        {
+          "name": "cod_iw_good",
+          "words": "INFINITE WARFARE WAS GOOD",
+          "art": "entry_4/assets/hero_0.jpg",
+          "artUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/292730/library_hero.jpg",
+          "provenance": "Steam store asset for \"Call of Duty: Infinite Warfare\" (app 292730), publisher-supplied marketing art",
+          "game": "Call of Duty: Infinite Warfare",
+          "subjectX": 0.3,
+          "subjectY": 0.5,
+          "title": "Infinite Warfare Is Better Than You Remember",
+          "angle": "claim"
+        },
+        {
+          "name": "cod_bo_one",
+          "words": "BLACK OPS IS #1",
+          "art": "entry_9/assets/hero_0.jpg",
+          "artUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/42700/library_hero.jpg",
+          "provenance": "Steam store asset for \"Call of Duty: Black Ops\" (app 42700), publisher-supplied marketing art",
+          "game": "Call of Duty: Black Ops",
+          "subjectX": 0.68,
+          "subjectY": 0.5,
+          "title": "Why Black Ops Is Still the Best Call of Duty Campaign",
+          "angle": "why"
+        }
+      ]
+    }
+  ]
+}

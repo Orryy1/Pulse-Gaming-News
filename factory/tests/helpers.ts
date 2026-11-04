@@ -64,6 +64,7 @@ export function testConfig(
     gameplayMinScore: 7,
     gameplayMinScoreOwn: 7,
     gameplayApprovalHours: 48,
+    keepFreeWindows: "",
     gameplayRemindHours: 12,
     gameplayRehearsalUntil: "",
     shortRunFile: "",

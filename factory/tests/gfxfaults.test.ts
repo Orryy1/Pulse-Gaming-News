@@ -19,6 +19,7 @@ import {
 } from "../src/render/components/kinetic/words.ts";
 import { settledBy, shotTiming, SETTLED } from "../src/render/components/docs/layout.ts";
 import { wholeLineFiller } from "../src/render/fillerplan.ts";
+import { faultsByKind, graphicsNotice } from "../src/qa/graphicscheck.ts";
 
 const row = (s: string) => {
   const i = s.lastIndexOf(":");
@@ -170,6 +171,16 @@ test("a card from an older plan is brought up to a complete thought, or left out
   assert.equal(wholeLineFiller(f as never), undefined);
   const other = { family: "document", style: "memo", data: {} };
   assert.equal(wholeLineFiller(other as never), other);
+});
+
+test("the alert says which card most of the faults came from", () => {
+  const by = faultsByKind(["0:1", "0:2", "1:3", "break:2"], (e, m) =>
+    e === 0 ? "compare" : m === 3 ? "kinetic card" : undefined,
+  );
+  assert.deepEqual(by[0], { kind: "compare", n: 2 });
+  assert.equal(by.length, 3);
+  const line = graphicsNotice("T", "prepass", 200, ["0:1", "0:2"], [], by);
+  assert.match(line, /Most: 2 compare, 1 chapter breather, 1 kinetic card\./);
 });
 
 test("a document's pen has left the page before a short shot cuts away", () => {

@@ -290,6 +290,7 @@ import {
   clearOfEntrances,
   graphicChecks,
   graphicsNotice,
+  faultsByKind,
   judgeGraphics,
   muteFaults,
   passDecision,
@@ -7912,10 +7913,18 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           JSON.stringify(assets),
         ]);
         const problems = r.problems.flatMap((p) => p.problems);
+        // What drew each fault, biggest first, for the alert and for ranking the causes later.
+        const byKind = faultsByKind(r.faulted, (e, m) => {
+          const mo = moments[e]?.[m];
+          return mo?.filler?.family
+            ? `${mo.filler.family} card`
+            : mo?.graphic?.kind;
+        });
         await logEvent(s.db, ep.id, "graphics_prepass", {
           checked: items.length,
           faulted: r.faulted,
           problems: r.problems,
+          byKind,
         });
         log(
           r.faulted.length ? "warn" : "info",
@@ -7928,6 +7937,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           items.length,
           r.faulted,
           problems,
+          byKind,
         );
         await s.notify(
           r.faulted.length ? { content } : { level: "info", content },

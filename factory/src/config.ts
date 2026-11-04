@@ -233,6 +233,7 @@ export interface Config {
   gameplayMinScore: number; // the reviewer's 1-10 score a clip needs to reach the owner
   gameplayMinScoreOwn: number; // the same bar for a clip the owner saved on Xbox on purpose (GAMEPLAY_MIN_SCORE_OWN, defaults to the above)
   gameplayApprovalHours: number; // an unanswered gameplay Short expires after this; under the links' 72 hours
+  keepFreeWindows: string; // whole stretches the PC is kept free: "lane|from|until;...", ISO times (pcschedule.ts)
   gameplayRemindHours: number; // one reminder with fresh links this long after the notice; 0 = none
   gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
@@ -823,6 +824,7 @@ export function loadConfig(): Config {
       int("GAMEPLAY_MIN_SCORE", 7),
     ),
     gameplayApprovalHours: Math.min(70, int("GAMEPLAY_APPROVAL_HOURS", 48)),
+    keepFreeWindows: str("KEEP_FREE_WINDOWS", ""),
     gameplayRemindHours: int("GAMEPLAY_REMIND_HOURS", 12),
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),

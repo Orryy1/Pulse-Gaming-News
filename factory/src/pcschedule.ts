@@ -125,6 +125,31 @@ export function plannedSlots(
 }
 
 /**
+ * Days the PC is kept free as a whole, agreed with the orchestrator chat (GTA VI launch, 18 to 20 Nov 2026:
+ * his clips need a render soon after he saves them). "lane|from|until" joined by ";", ISO times. Listed from
+ * two days ahead, so a long job today does not plan around them, and dropped once over.
+ */
+export function extraWindows(spec: string, now: Date): PcWindow[] {
+  const out: PcWindow[] = [];
+  for (const part of spec.split(";")) {
+    const [lane, from, until] = part.split("|").map((x) => x.trim());
+    if (!lane || !from || !until) continue;
+    const a = Date.parse(from),
+      b = Date.parse(until);
+    if (!(a < b) || b <= now.getTime()) continue;
+    if (a - now.getTime() > 48 * 3_600_000) continue;
+    out.push({
+      lane,
+      from: new Date(a).toISOString(),
+      until: new Date(b).toISOString(),
+      done: false,
+      note: "kept free by agreement",
+    });
+  }
+  return out;
+}
+
+/**
  * The windows to keep free: one per planned slot (released once its episode has rendered, or when no episode
  * took it), plus any episode still being made for a slot of its own (spare, gameplay) and breaking Shorts.
  */
@@ -189,6 +214,7 @@ export function pcWindows(
       });
     }
   }
+  out.push(...extraWindows(cfg.keepFreeWindows, now));
   return out.sort((a, b) => a.from.localeCompare(b.from));
 }
 

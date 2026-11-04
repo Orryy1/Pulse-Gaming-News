@@ -11,6 +11,7 @@
 // documentary. Its model sites are named "doc.explained.*" so CODEX_CALLS=doc routes them to Codex as well.
 
 import { z } from "zod";
+import { youRule } from "./longrules.ts";
 import type { Llm } from "./llm.ts";
 import type { Script } from "./schema.ts";
 import type { WikiArticle } from "../discovery/wikipedia.ts";
@@ -592,7 +593,7 @@ export function explainedOutline(
   };
 }
 
-export function explainedChapterPrompt(): string {
+export function explainedChapterPrompt(youFloor = 0): string {
   return `${HOUSE}
 
 Write one chapter of the explainer, ${EXPLAINED_CHAPTER_WORDS_MIN}-${EXPLAINED_CHAPTER_WORDS_MAX} spoken words in ${EXPLAINED_PARAGRAPHS_MIN}-${EXPLAINED_PARAGRAPHS_MAX} paragraphs of 45-140 words. You are told which part of the story this chapter tells; tell only that part, and never repeat what earlier chapters said (listed below).
@@ -601,7 +602,7 @@ A hard number or a two-sided contrast at least every other paragraph, always fro
 Re-hook the viewer two or three times inside the chapter with a specific question the next lines answer; the chapter's last sentence leans into the next part without saying how it ends (the last chapter ends on the one thing to watch).
 Every fact, number, date, name and quote must come from the SOURCES. If the sources do not say it, do not say it. A rumor stays a rumor: say who reported it, every time it comes up.
 Callouts put a real fact on screen: at most half the paragraphs carry one. footage names what the picture should show for that paragraph, with 1-4 keywords.
-List every factual claim in "claims" with the outlet it came from as the section.`;
+List every factual claim in "claims" with the outlet it came from as the section.${youFloor ? `\n${youRule(youFloor)}` : ""}`;
 }
 
 export async function writeExplainedChapter(
@@ -613,6 +614,8 @@ export async function writeExplainedChapter(
     source: WikiArticle;
     earlier: DocChapter[];
     feedback?: string[];
+    /** LONG_YOU_PER_1000 (src/editorial/longrules.ts). */
+    youFloor?: number;
   },
 ): Promise<DocChapter> {
   const part = EXPLAINED_PARTS[ctx.index]!;
@@ -630,7 +633,7 @@ export async function writeExplainedChapter(
     : "";
   return llm.structured({
     site: "doc.explained.chapter",
-    system: explainedChapterPrompt(),
+    system: explainedChapterPrompt(ctx.youFloor),
     content: `Video: ${ctx.outline.title}\nThe question it answers: ${ctx.outline.question}\nChapters:\n${list}\n\nThis chapter tells: ${part.job}${ctx.story.rumour ? "\nThis story is a RUMOR: keep it labeled." : ""}${said.length ? `\n\nAlready said (do not say again):\n${said.map((x) => `- ${x}`).join("\n")}` : ""}\n\nSOURCES:\n${ctx.source.text}${fb}`,
     schema: DocChapterSchema,
     effort: "medium",

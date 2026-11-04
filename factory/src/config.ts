@@ -572,6 +572,36 @@ export interface Config {
    * open then shows (src/editorial/longform.ts): LONG_PUNCHY_HOOK, default on. Off: under 15 words, as before. */
   longPunchyHook: boolean;
   /**
+   * The rules from the Inspiration study (reports/Inspiration playlist forensics.md; src/editorial/longrules.ts). All
+   * off by default; a miss costs at most one revision and is then a style warning.
+   * LONG_YOU_PER_1000: the least "you" per 1,000 words in a long video, measured on the script (0: not measured).
+   * GUIDE_YOU_PER_1000: the same in a guide, used only when LONG_YOU_PER_1000 is on (default 35).
+   */
+  longYouPer1000: number;
+  guideYouPer1000: number;
+  /** LONG_SENTENCE_GATE: the mean sentence stays under this many words on rankings and guides (0: not measured). */
+  longSentenceGate: number;
+  /** LONG_HOOK_STACK: the opening stacks the stakes, 3 to this many named surprises, a trust line and a saved promise (0: the older opening). */
+  longHookStack: number;
+  /** LONG_OPEN_LOOPS_MAX: the most open loops a guide plans; rankings get real ones, up to 3 (0: as before). */
+  longOpenLoopsMax: number;
+  /** LOOP_NAME_PAYOFF: a payoff says out loud that it's the promise being kept. */
+  loopNamePayoff: boolean;
+  /** LONG_VERDICT_STAMPS: confirmed, reported and busted, spoken and stamped in a guide, under the rumour rules. */
+  longVerdictStamps: boolean;
+  /** LONG_GUIDE_FORMAT: a run entry with format "guide" (src/shortrun.ts) follows the player's journey. Off: it runs as a documentary. */
+  longGuideFormat: boolean;
+  /** GUIDE_CHAPTER_ACTION: each guide chapter ends in a job for day one. */
+  guideChapterAction: boolean;
+  /** LONG_SAME_PICTURE_MAX_SECONDS: no one still for more than this in any minute (src/render/picturecap.ts; 0: off). */
+  longSamePictureMaxSeconds: number;
+  /** LONG_CARD_SHARE: fillers may also take lines with a still of their own until this share of sentences carries a card, 0-1 (0: off). */
+  longCardShare: number;
+  /** LONG_STILL_XFADE_FRAMES: a long video's dissolve between stills, in frames: a test dial only (9: as today, 0: hard cuts). */
+  longStillXfadeFrames: number;
+  /** LONG_MIN_WPM: a test dial only: rankings slower than this are sped up, documentaries never (0: off). */
+  longMinWpm: number;
+  /**
    * A documentary's sound craft (src/render/soundfx.ts, 31 Oct 2026), each part on by default: SOUND_JL_CUTS
    * (a clip's game sound leads or trails its picture), SOUND_GAME_POCKETS (game sound up in long pauses),
    * SOUND_FOLEY (treatments and devices make their own small sounds), SOUND_RISERS (a riser into each
@@ -1110,6 +1140,19 @@ export function loadConfig(): Config {
     ),
     longEntryPace: bool("LONG_ENTRY_PACE", true),
     longPunchyHook: bool("LONG_PUNCHY_HOOK", true),
+    longYouPer1000: int("LONG_YOU_PER_1000", 0),
+    guideYouPer1000: int("GUIDE_YOU_PER_1000", 35),
+    longSentenceGate: int("LONG_SENTENCE_GATE", 0),
+    longHookStack: int("LONG_HOOK_STACK", 0),
+    longOpenLoopsMax: int("LONG_OPEN_LOOPS_MAX", 0),
+    loopNamePayoff: bool("LOOP_NAME_PAYOFF", false),
+    longVerdictStamps: bool("LONG_VERDICT_STAMPS", false),
+    longGuideFormat: bool("LONG_GUIDE_FORMAT", false),
+    guideChapterAction: bool("GUIDE_CHAPTER_ACTION", false),
+    longSamePictureMaxSeconds: int("LONG_SAME_PICTURE_MAX_SECONDS", 0),
+    longCardShare: Number(str("LONG_CARD_SHARE", "0")) || 0,
+    longStillXfadeFrames: int("LONG_STILL_XFADE_FRAMES", 9),
+    longMinWpm: int("LONG_MIN_WPM", 0),
     soundCraft: {
       jl: bool("SOUND_JL_CUTS", true),
       pockets: bool("SOUND_GAME_POCKETS", true),

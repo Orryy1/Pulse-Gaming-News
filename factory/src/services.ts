@@ -206,7 +206,19 @@ export function createServices(db: Db, cfg: Config): Services {
     fetchArticle,
     synthesise: (text, out, voice, opts) =>
       narrate(
-        opts?.provider ? { ...cfg, voiceProvider: opts.provider } : cfg,
+        {
+          ...cfg,
+          ...(opts?.provider ? { voiceProvider: opts.provider } : {}),
+          // LONG_MIN_WPM: a test dial, passed for rankings only; it only ever raises the floor.
+          ...(opts?.minWpm
+            ? {
+                minWordsPerMinute: Math.max(
+                  cfg.minWordsPerMinute,
+                  opts.minWpm,
+                ),
+              }
+            : {}),
+        },
         text,
         out,
         voice,

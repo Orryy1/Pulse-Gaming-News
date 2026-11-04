@@ -50,6 +50,7 @@ import {
   longformToScript,
   selectLongformTopic,
   validateLongform,
+  narrationOfLongform,
   writeLongform,
 } from "./editorial/longform.ts";
 import { trailerMatchesGame } from "./assets/commons.ts";
@@ -108,6 +109,8 @@ import {
   checkChapterItems,
   groundCallouts,
   validateChapter,
+  chapterRuleProblems,
+  narrationOfDoc,
   writeBookends,
   validateBookends,
   docToScript,
@@ -124,6 +127,14 @@ import {
   loopsOfScript,
 } from "./editorial/documentary.ts";
 import { groundOpenLoops, openLoopsLine } from "./editorial/openloops.ts";
+import {
+  LONG_RULE_REVISIONS,
+  hookStackProblems,
+  longRulesFor,
+  longRulesOn,
+  longRuleWarnings,
+  scriptMeasures,
+} from "./editorial/longrules.ts";
 import { structureLine, structureSummary } from "./render/structure.ts";
 import {
   longCraft,
@@ -428,7 +439,7 @@ export interface Services {
     text: string,
     outPath: string,
     voice?: { id: string; name: string },
-    opts?: { provider?: Config["voiceProvider"] },
+    opts?: { provider?: Config["voiceProvider"]; minWpm?: number },
   ): Promise<
     Narration & {
       voice?: { provider: "local" | "elevenlabs"; id: string; name: string };
@@ -2428,6 +2439,12 @@ async function stepScriptDocumentary(
   // Our own tests as a source, for this documentary alone and under a stricter check (src/editorial/testevidence.ts).
   const records = s.cfg.docTestEvidence ? (topic.test_records ?? []) : [];
   const strict = records.length > 0;
+  // The Inspiration rules (src/editorial/longrules.ts), all off by default; a guide is a planned entry's own format.
+  const rules = longRulesFor(s.cfg, "documentary", topic.format === "guide");
+  // A planned entry's own sources, beside each chapter's article, so a verdict can name who said it.
+  const runSources = await readRunSources(s, topic);
+  const withRunSources = (a: import("./discovery/wikipedia.ts").WikiArticle) =>
+    runSources.text ? { ...a, text: `${a.text}\n\n${runSources.text}` } : a;
   // A single story starts from its overview article; a franchise from the series article.
   const franchiseArticle = await s.research(
     topic.wiki ?? topic.franchise,
@@ -2437,18 +2454,23 @@ async function stepScriptDocumentary(
     6000,
   );
   const franchise = franchiseArticle
-    ? withTestRecords(franchiseArticle, records)
+    ? withRunSources(withTestRecords(franchiseArticle, records))
     : franchiseArticle;
   const outline = await outlineDoc(
     s.llm,
     topic,
     `${franchise?.text ?? ""}${strict ? testOutlineNote(records) : ""}`,
-    { openLoops: s.cfg.docOpenLoops },
+    { openLoops: s.cfg.docOpenLoops, rules },
   );
   // The questions it raises and answers (src/editorial/openloops.ts), kept only when they can work.
   const openLoops = s.cfg.docOpenLoops
-    ? groundOpenLoops(outline.open_loops, outline.chapters.length)
+    ? groundOpenLoops(outline.open_loops, outline.chapters.length, {
+        max: rules.loopsMax,
+        coldOpen: rules.loopsMax ? Math.max(2, rules.hookStack) : 0,
+      })
     : { loops: [], removed: [] };
+  // A rule-led revision is one call; a video gets a few at most, then a miss is a style warning (longRuleWarnings).
+  let ruleRevisions = LONG_RULE_REVISIONS;
   // An earlier documentary on the same franchise: its wording and opening are not reused.
   const priorDoc = await priorDocNarration(s.db, ep.id, topic.franchise).catch(
     () => undefined,
@@ -2467,7 +2489,7 @@ async function stepScriptDocumentary(
       );
       continue;
     }
-    const source = withTestRecords(article, records);
+    const source = withRunSources(withTestRecords(article, records));
     let feedback: string[] = [];
     let chapter: import("./editorial/documentary.ts").DocChapter | undefined;
     // In a documentary with records: what is still unsupported after the rewrites, and whether the check ever ran.
@@ -2486,6 +2508,7 @@ async function stepScriptDocumentary(
         priorDoc,
         draft: attempt > 0 ? chapter : undefined,
         loops: openLoops.loops,
+        rules,
       });
       const problems = validateChapter(chapter, {
         earlier: chapters,
@@ -2493,6 +2516,21 @@ async function stepScriptDocumentary(
         loops: openLoops.loops,
         chapter: index + 1,
       });
+      // The rules read the first draft only, so each costs one revision at most.
+      if (attempt === 0 && ruleRevisions > 0) {
+        const misses = chapterRuleProblems(chapter, {
+          rules,
+          written: chapters.map((c) =>
+            c.chapter.paragraphs.map((x) => x.narration).join(" "),
+          ),
+          loops: openLoops.loops,
+          chapter: index + 1,
+        });
+        if (misses.length) {
+          ruleRevisions--;
+          problems.push(...misses);
+        }
+      }
       let unsupported: string[];
       if (strict) {
         const items = await checkChapterItems(s.llm, chapter, source).catch(
@@ -2574,10 +2612,12 @@ async function stepScriptDocumentary(
             () => "",
           ),
           evidence: s.cfg.docEvidence,
+          verdicts: rules.verdicts,
         }),
         source,
         outline.chapters.map((c) => c.game_title),
         sentences,
+        rules.verdicts,
       );
       moments = shot.moments;
       // DOC_EVIDENCE: the key beats show the record itself, word for word from the source (src/editorial/evidence.ts).
@@ -2619,6 +2659,10 @@ async function stepScriptDocumentary(
     priorDoc,
     loops: openLoops.loops,
     echo: s.cfg.docBookendEnding,
+    rules,
+    chapters: chapters.map((c) =>
+      c.chapter.paragraphs.map((x) => x.narration).join(" "),
+    ),
   };
   let bookends = await writeBookends(
     s.llm,
@@ -2669,9 +2713,23 @@ async function stepScriptDocumentary(
     );
   if (warnings.length)
     await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
+  if (longRulesOn(rules)) {
+    const said = narrationOfDoc(draft);
+    warnings.push(...longRuleWarnings(said, rules));
+    await logEvent(s.db, ep.id, "long_rules", {
+      kind: rules.kind,
+      measures: scriptMeasures(said),
+      revisionsLeft: ruleRevisions,
+      hookStack: bookends.intro.hook_stack,
+      runSources: runSources.read,
+      runSourcesMissed: runSources.missed,
+    });
+  }
   const script = docToScript(draft);
   if (franchise && !script.sources?.includes(franchise.url))
     script.sources = [franchise.url, ...(script.sources ?? [])];
+  for (const u of runSources.urls)
+    if (!script.sources?.includes(u)) (script.sources ??= []).push(u);
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
@@ -2682,6 +2740,29 @@ async function stepScriptDocumentary(
       warnings,
     },
   });
+}
+
+/** A planned entry's own sources as source text under "[Outlet] title" headers (sourceCredit reads those); a page that won't open is left out and named. */
+async function readRunSources(
+  s: Services,
+  topic: DocTopic,
+): Promise<{ text: string; urls: string[]; read: number; missed: string[] }> {
+  const list = topic.sources ?? [];
+  if (!list.length || topic.format !== "guide" || !s.cfg.longGuideFormat)
+    return { text: "", urls: [], read: 0, missed: [] };
+  const got = await Promise.all(
+    list.map((u) => s.fetchArticle(u.url).catch(() => undefined)),
+  );
+  const parts: string[] = [];
+  const urls: string[] = [];
+  const missed: string[] = [];
+  list.forEach((u, i) => {
+    const a = got[i];
+    if (!a?.text?.trim()) return void missed.push(u.url);
+    parts.push(`[${u.source}] ${a.title}\n${a.text.slice(0, 2500)}`);
+    urls.push(u.url);
+  });
+  return { text: parts.join("\n\n"), urls, read: urls.length, missed };
 }
 
 /**
@@ -4146,13 +4227,16 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   };
   // What earlier long videos taught us about holding viewers, entry by entry (empty until there is a curve).
   const lessons = await longLessons(s.db, s.now()).catch(() => "");
+  // The Inspiration rules (src/editorial/longrules.ts): measured while it's written, so they never force a whole new draft.
+  const rules = longRulesFor(s.cfg, "ranking");
   for (let attempt = 0; attempt < 2; attempt++) {
     draft = await writeLongform(s.llm, topic, lookup, feedback, lessons, {
       punchyHook: s.cfg.longPunchyHook,
       soundBeats: s.cfg.docSoundBeats,
+      rules,
     });
     const problems = [
-      ...validateLongform(draft),
+      ...validateLongform(draft, rules),
       ...writerTitleProblems(s.cfg, draft.youtube.title),
     ];
     const factual = await adjudicateRanking(
@@ -4169,6 +4253,30 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     feedback = [...factual, ...problems];
   }
   if (!draft) throw new Error("long-form script produced nothing");
+  if (longRulesOn(rules)) {
+    const said = narrationOfLongform(draft);
+    const missed = [
+      ...longRuleWarnings(said, rules),
+      ...hookStackProblems(
+        draft.intro.narration,
+        draft.intro.hook_stack,
+        rules.hookStack,
+        [...draft.entries]
+          .sort((a, b) => b.rank - a.rank)
+          .map((x) => x.narration),
+        draft.outro.narration,
+      ),
+    ];
+    await logEvent(s.db, ep.id, "long_rules", {
+      kind: rules.kind,
+      measures: scriptMeasures(said),
+      loops: draft.placed_loops?.length ?? 0,
+      hookStack: draft.intro.hook_stack,
+      missed,
+    });
+    if (missed.length)
+      await logEvent(s.db, ep.id, "style_warnings", { problems: missed });
+  }
   const script = withSpoilerWarning(longformToScript(draft));
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
@@ -4804,7 +4912,12 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       twin ? twinNarration(ep.script_json!) : narrationOf(ep.script_json!),
       path.join(dir, "voice.mp3"),
       voice,
-      twin ? { provider: "elevenlabs" } : undefined,
+      twin
+        ? { provider: "elevenlabs" }
+        : // A test dial, off by default: documentaries keep their natural pace whatever it says.
+          s.cfg.longMinWpm && ep.script_json?.evergreen_format === "ranking"
+          ? { minWpm: s.cfg.longMinWpm }
+          : undefined,
     );
   }
   await logEvent(s.db, ep.id, "voice", {
@@ -6969,6 +7082,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     script.entries?.some((e) => e.moments?.length)
   ) {
     const done = await chooseEpisodeFillers({
+      cardShare: s.cfg.longCardShare,
       chapters: [...script.entries]
         .sort((a, b) => b.rank - a.rank)
         .map((e, i) => ({
@@ -7091,6 +7205,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       })),
       // Footage first: a chapter never replays a moment it has shown (FOOTAGE_FIRST).
       noRepeats: s.cfg.footageFirst,
+      // No one still too long in any minute (LONG_SAME_PICTURE_MAX_SECONDS, src/render/picturecap.ts).
+      samePictureMaxSeconds: s.cfg.longSamePictureMaxSeconds,
+      stillXfadeFrames: s.cfg.longStillXfadeFrames,
       variant,
       // Real-world photos only on their own sentence (REAL_PHOTOS_PINNED_ONLY; 31 Oct 2026 owner review).
       realPinnedOnly: s.cfg.realPhotosPinnedOnly,
@@ -7134,7 +7251,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "real_photos_withheld", { count: withheld });
     // An entry left on the plate or looping its few clips gets official screenshots from IGDB, then a new plan.
     const ranked = [...(script.entries ?? [])].sort((a, b) => b.rank - a.rank);
-    const gaps = planGaps(plan, segments, script.take_entry);
+    const gaps = planGaps(
+      plan,
+      segments,
+      script.take_entry,
+      s.cfg.longSamePictureMaxSeconds,
+    );
     let added = 0;
     for (const g of gaps) {
       const entry = ranked[g.entry];
@@ -7169,7 +7291,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       }
     }
     if (added) plan = makePlan();
-    const left = planGaps(plan, segments, script.take_entry);
+    const left = planGaps(
+      plan,
+      segments,
+      script.take_entry,
+      s.cfg.longSamePictureMaxSeconds,
+    );
     if (gaps.length)
       log(left.length ? "warn" : "info", "thin entries topped up", {
         episode: ep.id,

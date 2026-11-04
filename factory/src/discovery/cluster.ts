@@ -32,7 +32,9 @@ export interface StoryCluster {
     follow?: import("../editorial/why.ts").WhyFollow;
   };
   /** A gameplay Short: the inbox clip's id and folder, and the reviewer's verdict. */
-  gameplay?: { id: string; dir: string; review: import("../gameplay.ts").GameplayReview };
+  gameplay?: { id: string; dir: string; review: import("../gameplay.ts").GameplayReview; rehearsal?: boolean };
+  /** A topic from the launch run (src/shortrun.ts): planned by hand, so the game's own names may repeat in titles. */
+  run?: boolean;
   /** A twin of a published Short in another language: the original's episode, the language and the login it uploads with. */
   twin?: { parent: string; language: string; account: string };
 }

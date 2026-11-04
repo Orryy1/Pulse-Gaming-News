@@ -231,6 +231,11 @@ export interface Config {
   gameplaySlots: string[]; // local publish times, at most one gameplay Short each
   gameplayReviewsPerDay: number; // clips heard and looked at a day (each costs a vision call)
   gameplayMinScore: number; // the reviewer's 1-10 score a clip needs to reach the owner
+  gameplayMinScoreOwn: number; // the same bar for a clip the owner saved on Xbox on purpose (GAMEPLAY_MIN_SCORE_OWN, defaults to the above)
+  gameplayApprovalHours: number; // an unanswered gameplay Short expires after this; under the links' 72 hours
+  gameplayRemindHours: number; // one reminder with fresh links this long after the notice; 0 = none
+  gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
+  shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
   commentReplies: boolean; // answer good comments in a video's first hours
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
   weeklyEnabled: boolean; // Release Radar, Free This Week and the Weekly Recap
@@ -813,6 +818,14 @@ export function loadConfig(): Config {
       .sort(),
     gameplayReviewsPerDay: int("GAMEPLAY_REVIEWS_PER_DAY", 30),
     gameplayMinScore: int("GAMEPLAY_MIN_SCORE", 7),
+    gameplayMinScoreOwn: int(
+      "GAMEPLAY_MIN_SCORE_OWN",
+      int("GAMEPLAY_MIN_SCORE", 7),
+    ),
+    gameplayApprovalHours: Math.min(70, int("GAMEPLAY_APPROVAL_HOURS", 48)),
+    gameplayRemindHours: int("GAMEPLAY_REMIND_HOURS", 12),
+    gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
+    shortRunFile: str("SHORT_RUN_FILE", ""),
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),
     weeklyEnabled: bool("WEEKLY_ENABLED", true),

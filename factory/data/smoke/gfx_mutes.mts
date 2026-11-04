@@ -37,6 +37,7 @@ import {
 import { coldOpenLine, coldOpenTiming } from "../../src/render/bookends.ts";
 import { graphicDrawsFor } from "../../src/render/gfxdraws.ts";
 import { wholeLineFiller } from "../../src/render/fillerplan.ts";
+import { loopsOfScript } from "../../src/editorial/documentary.ts";
 import { parseCameraSetting } from "../../src/render/camera.ts";
 import {
   checkFrame,
@@ -214,6 +215,8 @@ const props = {
   sketchAnimation: true,
   photoTreatments: true,
   graphicsFit: fitOn,
+  // The recall cards, as the render step passes them when the script has open loops.
+  loops: script.open_loops?.length ? loopsOfScript(script) : undefined,
   camera: parseCameraSetting("all"),
   debugGraphics: true,
 };

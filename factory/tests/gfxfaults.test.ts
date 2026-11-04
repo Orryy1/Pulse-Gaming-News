@@ -21,6 +21,7 @@ import { settledBy, shotTiming, SETTLED } from "../src/render/components/docs/la
 import { wholeLineFiller } from "../src/render/fillerplan.ts";
 import { faultsByKind, graphicsNotice } from "../src/qa/graphicscheck.ts";
 import { cueSide } from "../src/render/structure.ts";
+import { underFullScreen } from "../src/render/momentspan.ts";
 
 const row = (s: string) => {
   const i = s.lastIndexOf(":");
@@ -180,6 +181,29 @@ test("a recall card crosses to the left while a corner card holds the right", ()
   assert.equal(cueSide(cue, [{ from: 900, to: 1001 }]), "left");
   assert.equal(cueSide(cue, [{ from: 900, to: 1000 }]), "right");
   assert.equal(cueSide(cue, [{ from: 1150, to: 1300 }]), "right");
+});
+
+test("a name tag waits for a full-screen graphic of the sentence before it", () => {
+  const none = { kind: "none", primary: "", secondary: "", items: [] };
+  const windows = [
+    { entry: 3, moment: 0, start: 10, end: 12, at: 10 },
+    { entry: 3, moment: 1, start: 12, end: 18, at: 12 },
+  ] as never;
+  const look = (shares: boolean) => ({
+    moment: (_: number, m: number) =>
+      ({
+        graphic:
+          m === 0
+            ? { kind: "source", primary: "A passage of the record that runs long enough to read here", secondary: "", items: ["x"] }
+            : none,
+        emphasis: "",
+      }) as never,
+    fillerStart: () => undefined,
+    shares: () => shares,
+  });
+  assert.equal(underFullScreen(windows, 1, 30, look(false)), true);
+  // A corner card shares the frame: the tag may land beside it.
+  assert.equal(underFullScreen(windows, 1, 30, look(true)), false);
 });
 
 test("the alert says which card most of the faults came from", () => {

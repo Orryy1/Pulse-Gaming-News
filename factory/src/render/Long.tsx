@@ -143,6 +143,7 @@ import { inEra } from "./components/packs/types.ts";
 import { motifPictureOrder } from "./motifpictures.ts";
 import {
   captionHeld,
+  underFullScreen,
   sentenceSpan,
   type SentenceSpan,
   type SpanLook,
@@ -4509,7 +4510,11 @@ export const Long: React.FC<LongProps> = (props) => {
           ) &&
           (m.graphic.kind === "none" ||
             m.graphic.kind === "stat" ||
-            m.graphic.kind === "date")
+            m.graphic.kind === "date") &&
+          !(
+            props.graphicsFit !== false &&
+            underFullScreen(windows, k, fps, spanLook)
+          )
             ? { name: person, role: roles.get(person.toLowerCase()) }
             : undefined;
         const showPop =

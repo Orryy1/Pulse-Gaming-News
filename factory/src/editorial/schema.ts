@@ -290,6 +290,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
     experiment_number: number;
     experiment_slug: string | null;
     radio: boolean;
+    /** The clip really tests its question for GTA 6's players (src/gameplay.ts articleFields); older Shorts lack it. */
+    real_test?: boolean;
   };
   /** A translated twin: the original's episode and video, the language, and its pinned comment in that language. */
   twin?: {

@@ -6,7 +6,13 @@ import { execFileSync } from "node:child_process";
 import type { z } from "zod";
 import type { Llm } from "../src/editorial/llm.ts";
 import {
+  articleFields,
+  cleanWindow,
   gameplayWindow,
+  hdrFilter,
+  isRehearsal,
+  minScoreFor,
+  parseBlackSpans,
   GameplayReviewSchema,
   parseExperiments,
   worthPosting,
@@ -53,6 +59,7 @@ function review(over: Partial<GameplayReview> = {}): GameplayReview {
     score: 8,
     reason: "Clear chase with a clean escape at the end.",
     game_title: "Grand Theft Auto VI",
+    real_test: true,
     experiment_number: 1,
     question: "CAN YOU OUTSWIM 5 STARS",
     result_line: "THE COPS GAVE UP",
@@ -270,6 +277,8 @@ async function setup() {
     },
   };
   const notes: Array<{
+    ping?: boolean;
+    level?: string;
     content?: string;
     embeds?: Array<{ title?: string; description?: string }>;
   }> = [];
@@ -535,4 +544,218 @@ test("captions only for real speech, never for Whisper's looping phrase over gun
   assert.ok(!captionable(w("death of death of death of death")));
   assert.ok(!captionable(w("okay go")));
   assert.ok(captionable(w("Okay, five stars, let's see if the boats follow me out")));
+});
+
+test("the window drops the black gap and keeps the payoff: the three kept clips of the 26 Oct stream", () => {
+  // Maze Bank bike: reviewer 8-36, black 13.7-16.2. The bike leaves the roof at about 35 s and the fall is the point.
+  assert.deepEqual(
+    cleanWindow({ start: 8, end: 36 }, [{ start: 13.7, end: 16.2 }], 40),
+    { start: 16.2, end: 40 },
+  );
+  // Rooftop jump: reviewer 11-38, black 10.5-13.3 (the Short used to open on 2.3 s of black).
+  assert.deepEqual(
+    cleanWindow({ start: 11, end: 38 }, [{ start: 10.5, end: 13.3 }], 40),
+    { start: 13.3, end: 40 },
+  );
+  // Train: reviewer 9-38, black 5.4-10.1.
+  assert.deepEqual(
+    cleanWindow({ start: 9, end: 38 }, [{ start: 5.4, end: 10.1 }], 40),
+    { start: 10.1, end: 40 },
+  );
+  // Nothing wrong: left alone, and an end well before the clip's end stays where the reviewer put it.
+  assert.deepEqual(cleanWindow({ start: 6, end: 34 }, [], 40), {
+    start: 6,
+    end: 34,
+  });
+  // A black gap after the end cuts nothing but the stretch past it.
+  assert.deepEqual(
+    cleanWindow({ start: 2, end: 28 }, [{ start: 30, end: 31 }], 60),
+    { start: 2, end: 28 },
+  );
+  // Too little left between the gaps: the reviewer's window stands rather than a 6-second Short.
+  assert.deepEqual(
+    cleanWindow(
+      { start: 2, end: 30 },
+      [
+        { start: 8, end: 10 },
+        { start: 16, end: 18 },
+        { start: 26, end: 28 },
+        { start: 30, end: 40 },
+      ],
+      40,
+    ),
+    { start: 2, end: 30 },
+  );
+  assert.deepEqual(
+    parseBlackSpans(
+      "[blackdetect @ 01] black_start:13.7137 black_end:16.2162 black_duration:2.5025\nother",
+    ),
+    [{ start: 13.7137, end: 16.2162 }],
+  );
+});
+
+test("an HDR capture is tone-mapped to a normal SDR picture by the real ffmpeg; SDR is untouched", async () => {
+  assert.equal(hdrFilter("bt709"), "");
+  assert.equal(hdrFilter(""), "");
+  const dir = await tmpDir();
+  const hdr = path.join(dir, "hdr.mp4");
+  execFileSync(FFMPEG, [
+    "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30:duration=1",
+    "-vf", "format=yuv420p10le,setparams=color_trc=smpte2084:colorspace=bt2020nc:color_primaries=bt2020",
+    "-c:v", "libx264", "-preset", "ultrafast", "-color_trc", "smpte2084", "-colorspace", "bt2020nc", "-color_primaries", "bt2020",
+    hdr,
+  ]);
+  const transfer = execFileSync(FFPROBE, [
+    "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0", hdr,
+  ]).toString().trim();
+  assert.equal(transfer, "smpte2084");
+  const out = path.join(dir, "sdr.mp4");
+  execFileSync(FFMPEG, [
+    "-v", "error", "-y", "-i", hdr,
+    "-vf", `${hdrFilter(transfer)}scale=320:-2`,
+    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", out,
+  ]);
+  assert.ok((await fs.stat(out)).size > 0);
+});
+
+test("Leonida Intel gets question and result only for a real test of GTA 6 itself", () => {
+  const g = { question: "CAN YOU?", result: "You can." };
+  assert.deepEqual(articleFields({ ...g, real_test: true }, "Grand Theft Auto VI"), g);
+  assert.deepEqual(articleFields({ ...g, real_test: true }, "GTA 6"), g);
+  assert.deepEqual(articleFields({ ...g, real_test: false }, "Grand Theft Auto VI"), {});
+  assert.deepEqual(articleFields(g, "Grand Theft Auto VI"), {}, "older Shorts lack the flag");
+  assert.deepEqual(articleFields({ ...g, real_test: true }, "Grand Theft Auto V"), {});
+});
+
+test("a launch clip that is not a real test publishes with no question or result in its manifest", async () => {
+  const { db, root, s, reviews } = await setup();
+  reviews.push(review({ real_test: false, question: "WHAT DOES THE FIRST SUNSET LOOK LIKE?" }));
+  await inboxClip(root, "gp_moment");
+  const [id] = await ingestGameplay(s);
+  await run(s, id!);
+  await transition(db, id!, "awaiting_approval", "approved", { approved_by: "owner" });
+  await db.query(`UPDATE episodes SET slot_at = $2 WHERE id = $1`, [id, new Date("2026-11-20T12:05:00Z")]);
+  await run(s, id!);
+  const m = JSON.parse(await fs.readFile(path.join(root, "published", "gp_moment.json"), "utf8"));
+  assert.ok(m.youtube_id);
+  assert.equal(m.question, undefined);
+  assert.equal(m.result, undefined);
+  assert.ok(m.title, "the rest of the manifest stays");
+});
+
+test("a rehearsal reaches Discord with a preview only, buzzes the phone, and can never publish", async () => {
+  const { db, root, s, notes, uploads, cfg: c } = await setup();
+  c.gameplayRehearsalUntil = "2026-11-20";
+  const dir = await inboxClip(root, "gp_rehearse");
+  const [id] = await ingestGameplay(s);
+  const ep = await run(s, id!);
+  assert.equal(ep!.status, "rejected", "finished as soon as the notice is out");
+  assert.match(ep!.last_error ?? "", /rehearsal/);
+  const n = notes.find((x) => x.embeds?.length)!;
+  assert.equal(n.ping, true);
+  assert.match(String(n.embeds![0]!.title), /\[REHEARSAL\]/);
+  assert.match(String(n.embeds![0]!.description), /nothing here can publish/);
+  assert.doesNotMatch(String(n.embeds![0]!.description), /Approve/);
+  assert.equal(uploads.length, 0);
+  await syncGameplaySkips(s);
+  assert.equal((await meta(dir)).status, "skipped");
+  await assert.rejects(fs.stat(path.join(root, "published", "gp_rehearse.json")));
+  assert.equal(await db.query(`SELECT 1 FROM events WHERE kind = 'gameplay_rehearsal'`).then((r) => r.length), 1);
+  // The day after the date, the lane is back to normal; a clip marked as a rehearsal never is.
+  assert.equal(isRehearsal({}, "2026-11-21", "2026-11-20"), false);
+  assert.equal(isRehearsal({}, "2026-11-20", "2026-11-20"), true);
+  assert.equal(isRehearsal({ rehearsal: true }, "2026-12-25", ""), true);
+  assert.equal(isRehearsal({}, "2026-11-20", ""), false);
+});
+
+test("the approval notice buzzes, is retried when Discord fails, and is chased once before it expires", async () => {
+  const { db, root, s, notes, cfg: c, setClock } = await setup();
+  await inboxClip(root, "gp_tap");
+  const [id] = await ingestGameplay(s);
+  const realNotify = s.notify;
+  // Discord down: the Short waits at "rendered" and the notice goes again next time.
+  (s as { notify: unknown }).notify = async () => false;
+  const down = await run(s, id!);
+  assert.equal(down!.status, "rendered", "nothing moves until the notice is out");
+  (s as { notify: unknown }).notify = realNotify;
+  let ep = await run(s, id!);
+  assert.equal(ep!.status, "awaiting_approval");
+  assert.equal(notes.find((x) => x.embeds?.length)!.ping, true);
+  assert.ok(c.gameplayRemindHours > 0);
+  const asked = new Date(ep!.approval_requested_at!).getTime();
+  // Before the reminder: nothing. After it: one, however many ticks pass.
+  const before = notes.length;
+  setClock(new Date(asked + 3 * 3600_000));
+  await run(s, id!, 1);
+  assert.equal(notes.length, before);
+  setClock(new Date(asked + 13 * 3600_000));
+  await run(s, id!, 1);
+  await run(s, id!, 1);
+  assert.equal(notes.length, before + 1);
+  assert.equal(notes.at(-1)!.ping, true);
+  assert.match(String(notes.at(-1)!.content), /Approve/);
+  // Past the limit it expires, and says so where the owner reads.
+  setClock(new Date(asked + 49 * 3600_000));
+  await run(s, id!, 1);
+  ep = await getEpisode(db, id!);
+  assert.equal(ep!.status, "rejected");
+  assert.equal(notes.at(-1)!.level, undefined, "not parked for the evening summary");
+  assert.match(String(notes.at(-1)!.content), /expired after 48h/);
+});
+
+test("a verdict whose file write failed is neither paid for twice nor lost, and its episode is not made twice", async () => {
+  const { db, root, s } = await setup();
+  const dir = await inboxClip(root, "gp_locked");
+  // The first attempt reviews and makes the episode; the final write to meta.json fails, as under a Drive lock.
+  const realRename = fs.rename;
+  let calls = 0;
+  const m0 = await meta(dir);
+  (fs as { rename: unknown }).rename = async (a: string, b: string) => {
+    if (b.endsWith("meta.json") && ++calls === 2) throw Object.assign(new Error("not busy, broken"), { code: "EIO" });
+    return realRename(a, b);
+  };
+  const spent = async () =>
+    (await db.query(`SELECT 1 FROM events WHERE kind = 'gameplay_reviewed'`)).length;
+  try {
+    assert.equal((await ingestGameplay(s)).length, 1, "the episode is made before the write fails");
+  } finally {
+    (fs as { rename: unknown }).rename = realRename;
+  }
+  assert.ok(m0);
+  assert.equal(await spent(), 1, "one review spent");
+  assert.equal((await listEpisodes(db)).length, 1);
+  // The retry spends nothing, makes nothing new, and the verdict lands.
+  await fs.writeFile(path.join(dir, "meta.json"), JSON.stringify({ ...(await meta(dir)), status: "new" }));
+  await db.query(`UPDATE episodes SET status = 'awaiting_approval'`);
+  await ingestGameplay(s);
+  assert.equal(await spent(), 1, "no second vision call");
+  assert.equal((await listEpisodes(db)).length, 1, "the same episode");
+  const m = await meta(dir);
+  assert.equal(m.status, "picked");
+  assert.equal(m.review.keep, true);
+});
+
+test("a forced rehearsal reaches Discord even when the reviewer passes on it, and still cannot publish", async () => {
+  const { root, s, reviews, notes, uploads } = await setup();
+  reviews.push(review({ keep: false, score: 5, reason: "No clear outcome." }));
+  const dir = await inboxClip(root, "gp_force");
+  await fs.writeFile(path.join(dir, "meta.json"), JSON.stringify({ ...(await meta(dir)), rehearsal: true, rehearsal_force: true }));
+  const [id] = await ingestGameplay(s);
+  assert.ok(id);
+  const ep = await run(s, id!);
+  assert.equal(ep!.status, "rejected");
+  assert.match(String(notes.find((n) => n.embeds?.length)!.embeds![0]!.description), /would have passed/);
+  assert.equal(uploads.length, 0);
+  // Force without the rehearsal mark does nothing.
+  reviews.push(review({ keep: false, score: 5 }));
+  const dir2 = await inboxClip(root, "gp_force2");
+  await fs.writeFile(path.join(dir2, "meta.json"), JSON.stringify({ ...(await meta(dir2)), rehearsal_force: true }));
+  assert.deepEqual(await ingestGameplay(s), []);
+});
+
+test("a clip the owner saved on Xbox can have its own bar; a Twitch cut keeps the strict one", () => {
+  const cfg = { gameplayMinScore: 7, gameplayMinScoreOwn: 6 };
+  const m = (kind: string) => ({ source: { file: "", title: "", kind } });
+  assert.equal(minScoreFor(m("xbox_clip"), cfg), 6);
+  assert.equal(minScoreFor(m("twitch_vod"), cfg), 7);
 });

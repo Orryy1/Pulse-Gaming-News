@@ -1864,6 +1864,58 @@ test("SHORTS_PER_DAY_MAX holds the day's later news slots and names the stories 
   await db.close();
 });
 
+test("a slot with a launch run topic skips the editor and the freshness rule, and falls back to the editor with no source", async () => {
+  const dir = await tmpDir();
+  const runFile = path.join(dir, "run.json");
+  const entry = (date: string, slot: string, q: string) => ({
+    kind: "why",
+    date,
+    slot,
+    question: q,
+    title: q.replace(/\?$/, ""),
+    game: "Grand Theft Auto VI",
+    arc: "Announced; delayed; here.",
+    angle: "The size is the map and the audio.",
+    sources: [{ url: "https://www.rockstargames.com/newswire/a", source: "Rockstar", official: true }],
+  });
+  await fs.writeFile(
+    runFile,
+    JSON.stringify([
+      entry("2026-11-03", "12:00", "Why does GTA 6 need 212 GB?"),
+      entry("2026-11-03", "18:30", "Why does GTA 6 unlock in New Zealand first?"),
+    ]),
+  );
+  const { db, f, s, setClock } = await setup({
+    whyEnabled: true,
+    whyDays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+    whySlots: ["12:00", "18:30"],
+    whySlot: "12:00",
+    whyFreshDays: 14,
+    shortRunFile: runFile,
+  });
+  (s as unknown as { fetchArticle: unknown }).fetchArticle = async (url: string) =>
+    url.includes("newswire")
+      ? { title: "Pre-load", text: "Pre-load needs 212 GB.", url }
+      : undefined;
+  setClock(new Date("2026-11-03T10:30:00Z"));
+  f.whyTopics = [];
+  const a = await maybeSelectWhy(s);
+  assert.ok(a);
+  const ep = (await getEpisode(db, a!))!;
+  assert.equal(ep.story_json.run, true);
+  assert.equal(ep.story_json.why?.question, "Why does GTA 6 need 212 GB?");
+  assert.equal(ep.story_json.gameHint, "Grand Theft Auto VI");
+  assert.equal(ep.story_json.hasOfficial, true);
+  assert.equal(new Date(ep.slot_at!).toISOString(), "2026-11-03T12:00:00.000Z");
+  assert.equal(f.whyPrompts?.length ?? 0, 0, "no editor call");
+  // The same game six hours later: the freshness rule would refuse it, the plan does not.
+  setClock(new Date("2026-11-03T17:00:00Z"));
+  const b = await maybeSelectWhy(s);
+  assert.ok(b);
+  assert.equal((await getEpisode(db, b!))!.story_json.why?.question, "Why does GTA 6 unlock in New Zealand first?");
+  await db.close();
+});
+
 /** A Why pick for the fake editor. */
 function whyTopic(game: string, question: string, index = 0): WhyTopic {
   return {

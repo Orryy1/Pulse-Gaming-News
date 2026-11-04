@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   longRenderMinutes,
   pcWindows,
+  extraWindows,
   plannedSlots,
   publishPcSchedule,
   shortWindows,
@@ -178,4 +179,18 @@ test("a long render is planned from the orchestrator's history, two hours withou
   } finally {
     delete process.env.ORCH_RESERVATIONS_DIR;
   }
+});
+
+test("agreed keep-free windows are listed from two days ahead until they are over", () => {
+  const spec =
+    "gta launch|2026-11-18T10:00:00Z|2026-11-19T03:00:00Z;gta launch|2026-11-19T10:00:00Z|2026-11-20T03:00:00Z";
+  assert.deepEqual(extraWindows(spec, at("2026-11-10T12:00:00Z")), []);
+  const open = extraWindows(spec, at("2026-11-18T12:00:00Z"));
+  assert.equal(open.length, 2);
+  assert.equal(open[0]!.lane, "gta launch");
+  assert.equal(open[0]!.until, "2026-11-19T03:00:00.000Z");
+  assert.equal(open[0]!.done, false);
+  assert.equal(extraWindows(spec, at("2026-11-19T04:00:00Z")).length, 1);
+  assert.deepEqual(extraWindows("", at("2026-11-18T12:00:00Z")), []);
+  assert.deepEqual(extraWindows("nonsense", at("2026-11-18T12:00:00Z")), []);
 });

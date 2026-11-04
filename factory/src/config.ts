@@ -231,6 +231,13 @@ export interface Config {
   gameplaySlots: string[]; // local publish times, at most one gameplay Short each
   gameplayReviewsPerDay: number; // clips heard and looked at a day (each costs a vision call)
   gameplayMinScore: number; // the reviewer's 1-10 score a clip needs to reach the owner
+  gameplayMinScoreOwn: number; // the same bar for a clip the owner saved on Xbox on purpose (GAMEPLAY_MIN_SCORE_OWN, defaults to the above)
+  gameplayApprovalHours: number; // an unanswered gameplay Short expires after this; under the links' 72 hours
+  keepFreeWindows: string; // whole stretches the PC is kept free: "lane|from|until;...", ISO times (pcschedule.ts)
+  gameplayRemindHours: number; // one reminder with fresh links this long after the notice; 0 = none
+  gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
+  shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
+  docTestEvidence: boolean; // a run documentary may use approved gameplay tests as a source (src/editorial/testevidence.ts)
   commentReplies: boolean; // answer good comments in a video's first hours
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
   weeklyEnabled: boolean; // Release Radar, Free This Week and the Weekly Recap
@@ -302,6 +309,23 @@ export interface Config {
   docBookendEnding: boolean;
   /** A slim chapter index (current chapter lit) and the chapter's year in the corner: DOC_CHAPTER_INDEX, default on. */
   docChapterIndex: boolean;
+  /** Series playlists under the owner's rule (src/seriesplaylists.ts, plan item 8): a video joins its playlist only once
+   * it is public, so a scheduled video joins when confirmPublished sees it go live, not while it is still private. Off,
+   * videos join at upload as before: SERIES_PLAYLISTS, default off. */
+  seriesPlaylists: boolean;
+  /** Sequels to winners (src/sequels.ts, plan item 9): a Why Short well ahead of the channel's own norm becomes the next
+   * documentary, ahead of the breakout score, and a ranking Short the next long ranking: SEQUEL_WINNERS, default off. */
+  sequelWinners: boolean;
+  /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
+   * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
+  newsSegment: boolean;
+  /** The Hype ask (src/youtube/hype.ts, plan item 11): a short line in a documentary's end card and pinned comment. YouTube
+   * offers Hype only to Partner Programme channels of 500-500,000 subscribers, so leave this off until Pulse has joined;
+   * with it on, the subscriber count is still checked before each ask: HYPE_ASK, default off. */
+  hypeAsk: boolean;
+  /** The Sunday growth report (src/growthreport.ts, plan item 12): subscribers per 1,000 views for each format, week on
+   * week, and one line on what to back, to the alerts channel on Sundays at 10:00: GROWTH_REPORT, default off. */
+  growthReport: boolean;
   /** The breakout documentary picker (src/docpick.ts, growth plan move 3): the next documentary is the candidate
    * that scores best on fame, a collapse-or-comeback arc, a news peg, demand and freshness, with no model call;
    * the score breakdown is logged and posted to Discord. Off, the writer picks from the lists as before:
@@ -801,6 +825,16 @@ export function loadConfig(): Config {
       .sort(),
     gameplayReviewsPerDay: int("GAMEPLAY_REVIEWS_PER_DAY", 30),
     gameplayMinScore: int("GAMEPLAY_MIN_SCORE", 7),
+    gameplayMinScoreOwn: int(
+      "GAMEPLAY_MIN_SCORE_OWN",
+      int("GAMEPLAY_MIN_SCORE", 7),
+    ),
+    gameplayApprovalHours: Math.min(70, int("GAMEPLAY_APPROVAL_HOURS", 48)),
+    keepFreeWindows: str("KEEP_FREE_WINDOWS", ""),
+    gameplayRemindHours: int("GAMEPLAY_REMIND_HOURS", 12),
+    gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
+    shortRunFile: str("SHORT_RUN_FILE", ""),
+    docTestEvidence: bool("DOC_TEST_EVIDENCE", false),
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),
     weeklyEnabled: bool("WEEKLY_ENABLED", true),
@@ -892,6 +926,11 @@ export function loadConfig(): Config {
     docOpenLoops: bool("DOC_OPEN_LOOPS", true),
     docBookendEnding: bool("DOC_BOOKEND_ENDING", true),
     docChapterIndex: bool("DOC_CHAPTER_INDEX", true),
+    seriesPlaylists: bool("SERIES_PLAYLISTS", false),
+    sequelWinners: bool("SEQUEL_WINNERS", false),
+    newsSegment: bool("NEWS_SEGMENT", false),
+    hypeAsk: bool("HYPE_ASK", false),
+    growthReport: bool("GROWTH_REPORT", false),
     docBreakoutPicker: bool("DOC_BREAKOUT_PICKER", true),
     docPickLookups: int("DOC_PICK_LOOKUPS", 8),
     docEvidence: bool("DOC_EVIDENCE", true),

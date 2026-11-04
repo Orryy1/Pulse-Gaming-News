@@ -1,0 +1,86 @@
+// The Pulse Check (owner's plan, 4 Nov 2026, item 10): one named segment with a consistent take, as the reason to
+// follow news Shorts. The growth plan's finding was that a news Short is about someone else's game and leaves nothing
+// behind; a viewer who knows every news Short ends on one of the same four readings has something of ours to come back
+// for. It is three spoken words at the end of the take, so it fits inside the news writer's word limit and adds no
+// card: the take's usual card carries the name and the reading. The desk question still comes before the take and the
+// loop line still closes the Short, so neither the desk test nor the rewatch loop changes. The reading is an opinion
+// on what the news means for the viewer, not a fact, and a story that is not confirmed can only ever read "faint".
+// Scripts are American English. NEWS_SEGMENT turns it on.
+import type { Script } from "./schema.ts";
+
+export const PULSE_CHECK_LABEL = "PULSE CHECK";
+export const PULSE_CHECK_READINGS = [
+  "strong",
+  "steady",
+  "weak",
+  "faint",
+] as const;
+export type PulseCheckReading = (typeof PULSE_CHECK_READINGS)[number];
+
+/** The sentence's most words: the name, the reading and a short reason in the story's own terms. */
+const MAX_WORDS = 11;
+
+/** The brief's rule, added to one news Short's user message; the system prompt is untouched. */
+export function pulseCheckRule(): string {
+  return `This Short's take ends on the Pulse Check, our named segment and the reason viewers follow the news here. The last sentence of pulse_take.narration starts "Pulse check:", then one reading, optionally a comma and a reason of up to 7 words in this story's own terms. The reading is an opinion about what the news means for the viewer, and each word means the same thing every time:
+- strong: confirmed and good for you, worth acting on or looking forward to.
+- steady: confirmed, but little changes for you; nothing to do yet.
+- weak: confirmed and worse for you: you pay more, wait longer or get less.
+- faint: not confirmed. A leak, a report, an unnamed source or a rumor. Whenever is_rumour is true the reading is faint, with no exception, and the reason says so ("Pulse check: faint, until Sony says it.").
+Example shapes only, in your own words for this story: "Pulse check: weak, if you were planning on launch day." "Pulse check: steady."
+The take's other sentences come first and still answer the desk question or the hook; the reading never replaces that answer, and it is never the take's only sentence. It rates the news for players, never a person, and never people losing their jobs: on a layoffs or closure story rate only what it means for the games, usually steady.
+It does not lengthen the Short: the word limit stands, so cut a weaker line to make room. The loop_line still follows and closes the Short. Say "Pulse check" nowhere else in the script.
+Set pulse_take.label to "${PULSE_CHECK_LABEL}" and start pulse_take.on_screen with the reading in capitals and a colon ("STEADY: 212GB, nothing else changes"), still 3-8 words.`;
+}
+
+const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
+
+/** The reading the take ends on, when it follows the form. */
+export function pulseCheckReading(take: string): PulseCheckReading | undefined {
+  const m = take
+    .trim()
+    .match(
+      /(?:^|[.!?"]\s+)Pulse check:\s*(strong|steady|weak|faint)\b[^.!?]*[.!?]"?$/i,
+    );
+  return m ? (m[1]!.toLowerCase() as PulseCheckReading) : undefined;
+}
+
+/** What is wrong with a news Short's Pulse Check; empty when it is right. */
+export function pulseCheckProblems(s: Script): string[] {
+  const take = s.pulse_take.narration.trim();
+  const reading = pulseCheckReading(take);
+  if (!reading)
+    return [
+      `The take must end on one sentence starting "Pulse check:" with the reading strong, steady, weak or faint.`,
+    ];
+  const out: string[] = [];
+  const last = take.slice(take.toLowerCase().lastIndexOf("pulse check:"));
+  if (words(last) > MAX_WORDS)
+    out.push(
+      `The Pulse Check is ${words(last)} words; keep it to ${MAX_WORDS}: the name, the reading and a short reason.`,
+    );
+  if (words(take) === words(last))
+    out.push(
+      "The Pulse Check is the take's only sentence; answer the question first, then give the reading.",
+    );
+  if (s.is_rumour && reading !== "faint")
+    out.push(
+      `This story is not confirmed, so its Pulse Check reads faint, not ${reading}.`,
+    );
+  const all = [
+    s.hook,
+    ...s.beats.map((b) => b.narration),
+    s.desk_question ?? "",
+    take,
+    s.loop_line,
+  ].join(" ");
+  if ((all.match(/\bpulse check\b/gi) ?? []).length > 1)
+    out.push(`Say "Pulse check" once, at the end of the take.`);
+  if (s.pulse_take.label.toUpperCase() !== PULSE_CHECK_LABEL)
+    out.push(`The take's label must be "${PULSE_CHECK_LABEL}".`);
+  if (!new RegExp(`^${reading}\\b`, "i").test(s.pulse_take.on_screen.trim()))
+    out.push(
+      `The take's on-screen line must start with the reading (${reading.toUpperCase()}:).`,
+    );
+  return out;
+}

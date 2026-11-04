@@ -38,6 +38,7 @@ export function testConfig(
     planSlateMax: 1,
     releaseGateMaxSlate: 1,
     releaseGateMinFootage: 0,
+    releaseGateMinFootageRanking: 0,
     port: 0,
     publicUrl: "https://factory.example",
     siteUrl: "",

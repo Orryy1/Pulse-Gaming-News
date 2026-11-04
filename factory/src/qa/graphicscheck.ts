@@ -245,13 +245,14 @@ export function passDecision(
 
 /** The owner's one-line notice for a pass of the check, in plain English. */
 /**
- * Muted graphics whose text the checker called placeholder or gibberish. On the Final Fantasy XIV documentary this
- * was the only sign of the writer's notes on screen, and muting them hid it: such text comes from the script or the
- * plan, so it is a question for a person, not a graphic to drop quietly.
+ * Muted graphics whose text the checker called placeholder or a working note. On the Final Fantasy XIV documentary
+ * this was the only sign of the writer's notes on screen, and muting them hid it: such text comes from the script or
+ * the plan, so it is a question for a person, not a graphic to drop quietly. "Garbled" alone doesn't count: that is
+ * nearly always a label overlapped or caught mid-animation (four on the Vice City film, none of them bad text).
  */
 export function badTextMutes(problems: readonly string[]): string[] {
   return problems.filter((p) =>
-    /placeholder|garbled|gibberish|nonsens|lorem ipsum|meaningless|not (?:real|meant for) (?:viewers|text)|internal note|production note|working note/i.test(
+    /placeholder|raw prompt|lorem ipsum|not (?:real|viewer) content|not (?:real|meant for) (?:viewers|text)|internal note|production note|working note/i.test(
       p,
     ),
   );

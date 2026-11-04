@@ -34,7 +34,8 @@ const { writeDocMoments, groundDocMoments } = await import("../../src/editorial/
 const { markEvidence } = await import("../../src/editorial/evidence.ts");
 const { fillSentencePictures, coverageShare, coveredMoments } = await import("../../src/assets/fill.ts");
 const { chooseEpisodeFillers, episodeClipCheck } = await import("../../src/assets/fillerstep.ts");
-const { runFootageFirst, footageOptions } = await import("../../src/assets/footagestep.ts");
+const { runFootageFirst } = await import("../../src/assets/footagestep.ts");
+const { footageOptions } = await import("../../src/assets/footagefirst.ts");
 const cfg = loadConfig();
 // A sandbox has no slots to keep clear; the orchestrator keeps it out of the real ones (--est on the outer lease).
 Object.assign(cfg, { newsSlots: [], whyEnabled: false, evergreenEnabled: false, weeklyEnabled: false, dealsDays: [], shortRunFile: "" });

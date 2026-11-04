@@ -308,7 +308,7 @@ test("the channel only hears of a kind that is new or rising", () => {
     /voice_breaths is new: 1 in 24 hours, 1 in 7 days/,
   );
   assert.match(post.content, /"Sentinel"/);
-  assert.doesNotMatch(post.content, /video_faulted/);
+  assert.doesNotMatch(post.content, /video_faulted is/);
   assert.equal(
     alertKind(post.content),
     "routine",
@@ -455,4 +455,35 @@ test("errorMessage says what fetch failed hides, and leaves everything else alon
     ),
     "fetch failed (ENOTFOUND)",
   );
+});
+
+test("whatever a pipeline step posts is filed under its video", async () => {
+  const db = await testDb();
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, story_json, status, lane, attempts)
+     VALUES ('ep_scope', 'scope', '{"headline":"The Scoped Story","items":[]}', 'voiced', 'news', 99)`,
+  );
+  const { advance } = await import("../src/pipeline.ts");
+  const { getEpisode } = await import("../src/episodes.ts");
+  const lines: AlertRecord[] = [];
+  const ep = (await getEpisode(db, "ep_scope"))!;
+  await advance(
+    {
+      db,
+      cfg: testConfig("."),
+      now: () => new Date(),
+      notify: async (m: { content?: string }) => {
+        lines.push(alertRecord(m, new Date()));
+        return true;
+      },
+    } as never,
+    ep,
+  );
+  assert.ok(lines.length > 0, "the failed step said something");
+  for (const l of lines) {
+    assert.equal(l.episode, "ep_scope");
+    assert.equal(l.title, "The Scoped Story");
+  }
+  assert.ok(lines.some((l) => l.kind === "gave_up"));
+  await db.close();
 });

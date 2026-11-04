@@ -131,7 +131,7 @@ cutover)
   # (src/pcschedule.ts lanRequestAllowed). Sketches and local AI video stay off: they need the PC's GPU turn.
   # Windows-only paths are dropped too (1 Nov 2026 audit): the PC's Liam start.bat, the old TTS folder and
   # the Codex helper's Python; the TikTok token path is pointed at data/tokens, where the logins are copied.
-  grep -vE '^(DATA_DIR|YTDLP_PATH|FFMPEG_PATH|FFPROBE_PATH|LOCAL_TTS_URL|LOCAL_VISION_URL|VOICE_PROVIDER|REMOTION_CONCURRENCY|REMOTION_GL|LOCAL_TTS_START|PULSE_TTS_DIR|TIKTOK_TOKEN_PATH|BACKUP_DIR|CODEX_PYTHON|CODEX_RUNNER_DIR|MAC_[A-Z_]*|ROUTINE_LAN_ALLOW|ROUTINE_LAN_PORT|HOST|ILLUSTRATE_ENABLED|ILLUSTRATE_VIDEO_ENABLED)=' .env > "$tmp"
+  grep -vE '^(DATA_DIR|YTDLP_PATH|FFMPEG_PATH|FFPROBE_PATH|LOCAL_TTS_URL|LOCAL_VISION_URL|VOICE_PROVIDER|REMOTION_CONCURRENCY|LOCAL_TTS_START|PULSE_TTS_DIR|TIKTOK_TOKEN_PATH|BACKUP_DIR|CODEX_PYTHON|CODEX_RUNNER_DIR|MAC_[A-Z_]*|ROUTINE_LAN_ALLOW|ROUTINE_LAN_PORT|HOST|ILLUSTRATE_ENABLED|ILLUSTRATE_VIDEO_ENABLED)=' .env > "$tmp"
   printf 'DATA_DIR=%s/PulseFactory/factory/data\nVOICE_PROVIDER=elevenlabs-first\nLOCAL_TTS_URL=http://127.0.0.1:8766\nLOCAL_VISION_URL=http://%s:11434\nREMOTION_CONCURRENCY=6\nFFMPEG_PATH=%s/ffmpeg\nFFPROBE_PATH=%s/ffprobe\nBACKUP_DIR=%s/PulseFactory/backups\nHOST=0.0.0.0\nMAC_RENDER_SHORTS=false\nMAC_ASR=false\nMAC_FOOTAGE_GATHER=false\nMAC_STILLS=false\nMAC_GAMEPLAY=false\nILLUSTRATE_ENABLED=false\nILLUSTRATE_VIDEO_ENABLED=false\n' "$home" "$pc" "$FF" "$FF" "$home" >> "$tmp"
   tt=$(grep -m1 '^TIKTOK_TOKEN_PATH=' .env | cut -d= -f2- | tr -d '\r')
   [ -n "$tt" ] && printf 'TIKTOK_TOKEN_PATH=%s/PulseFactory/factory/data/tokens/%s\n' "$home" "$(basename "${tt//\\//}")" >> "$tmp"

@@ -1,9 +1,8 @@
 #!/bin/bash
 # Code updates once the factory runs on the Mac: what scratchpad restart12.ps1 did on the PC. From the PC in Git Bash:
 #   bash mac/deploy.sh [branch-or-commit]     default claude/stage
-# Merges it into the live branch only if that is a fast-forward, waits for a quiet moment on the Mac (no render, no
-# upload, no hold-restart flag, more than 20 minutes from a slot's render window is the factory's own business, see
-# below), pushes, and watches the factory come back. The Mac's hook typechecks first and refuses a broken push; if the
+# Takes it only if that is a fast-forward of what the Mac runs, waits for a quiet moment there (no render, no upload, no
+# hold-restart flag), pushes, and watches the factory come back. The Mac's hook typechecks first and refuses a broken push; if the
 # new code dies inside three minutes mac/run.sh goes back to the old code by itself and says so in Discord.
 #   DEPLOY_WAIT_MINUTES=30   how long to wait for a quiet moment (default 30), then give up changing nothing
 #   DEPLOY_DRY=1             say what it would do, changing nothing

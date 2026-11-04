@@ -160,6 +160,7 @@ import {
 } from "./render/longplan.ts";
 import type { LongRenderInput, LongStillsInput } from "./render/render.ts";
 import { motifPictureOrder } from "./render/motifpictures.ts";
+import { heroLook } from "./assets/localvision.ts";
 import { repairPictures, thumbOutcome } from "./qa/thumbrepair.ts";
 import {
   artVerdict,
@@ -7378,6 +7379,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         dir,
         grid: candidates.find((c) => c.layout === "motif"),
         motifId: motif?.id,
+        look: heroLook,
       }).catch(() => [])
     : [];
   const designs: Candidate[] = ruled.length

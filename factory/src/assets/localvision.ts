@@ -288,6 +288,102 @@ async function faceBox(
   return [x1, y1, x2, y2];
 }
 
+/** What a thumbnail's picture has for a hero (src/qa/thumbrule.ts). */
+export interface HeroLook {
+  /** A character's face with a readable expression, a character's whole body, or neither. */
+  kind: "face" | "body" | "thing";
+  /** The face or body, as fractions of the picture (x1, y1, x2, y2). */
+  box?: [number, number, number, number];
+  /** A photograph of a real person, not a game character. */
+  realPerson: boolean;
+}
+
+/** The look's answer as a HeroLook (pure); undefined when it says nothing usable. */
+export function heroLookAnswer(parsed: any): HeroLook | undefined {
+  const k = parsed?.subject;
+  if (!["face", "body", "thing"].includes(k)) return undefined;
+  const b = parsed.box;
+  const box =
+    Array.isArray(b) && b.length === 4 && k !== "thing"
+      ? (b.map((v: number) => Math.min(1, Math.max(0, Number(v) / 1000))) as [
+          number,
+          number,
+          number,
+          number,
+        ])
+      : undefined;
+  const sized = box && box[2] > box[0] && box[3] > box[1];
+  return {
+    // A "face" too small to read on a phone is only a body.
+    kind:
+      k === "face" && sized && box![3] - box![1] < 0.15 ? "body" : k,
+    ...(sized ? { box } : {}),
+    realPerson: parsed.real_photo === true,
+  };
+}
+
+/**
+ * What a picture offers a thumbnail, from this PC's own model: free, and undefined whenever it is off, broken or
+ * unsure, which leaves the picture where the other checks put it.
+ */
+export async function heroLook(file: string): Promise<HeroLook | undefined> {
+  if (
+    Date.now() < downUntil ||
+    process.env.LOCAL_VISION === "off" ||
+    process.env.NODE_TEST_CONTEXT
+  )
+    return undefined;
+  try {
+    const image = (await fs.readFile(file)).toString("base64");
+    const res = await fetchWithTimeout(
+      `${LOCAL_VISION_URL}/api/chat`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: LOCAL_VISION_MODEL,
+          stream: false,
+          think: false,
+          format: {
+            type: "object",
+            properties: {
+              subject: { type: "string", enum: ["face", "body", "thing"] },
+              box: { type: "array", items: { type: "number" } },
+              real_photo: { type: "boolean" },
+            },
+            required: ["subject", "box", "real_photo"],
+          },
+          keep_alive: "15m",
+          options: {
+            temperature: 0,
+            num_predict: 80 + THINK_ROOM,
+            num_ctx: NUM_CTX,
+          },
+          messages: [
+            {
+              role: "user",
+              content:
+                'You judge a picture for a video game thumbnail. subject: "face" when one character\'s face is large and its expression can be read, "body" when one large character\'s body fills much of the picture (masked or helmeted counts) but no readable face, "thing" for anything else (a logo, a vehicle, a landscape, a crowd of small figures). box: [x1, y1, x2, y2] around that face or body in 0-1000 coordinates relative to the image width and height, or [0,0,0,0] for a thing. real_photo: true only when this is a photograph of a real person, not a game character or artwork.',
+              images: [image],
+            },
+          ],
+        }),
+      },
+      60_000,
+    );
+    if (!res.ok) return undefined;
+    return heroLookAnswer(
+      visionAnswer(
+        (await res.json()) as {
+          message?: { content?: string; thinking?: string };
+        },
+      ),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * A 16:9 portrait of the person in a clip: three frames, the one with the
  * biggest face, cropped so the face fills about half the height. False when

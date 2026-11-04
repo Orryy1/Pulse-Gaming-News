@@ -11,10 +11,16 @@
 // art, and a ranking's "still the king" thumbnail once showed the wrong entry. As a check it measures the rendered
 // thumbnail at 168x94, the size it is seen at in a feed. A failing thumbnail gives way to the next design
 // (src/qa/thumbrepair.ts); this file never stops a release, and anything it cannot read counts as passing.
+//
+// The hero is a big character with a readable face where the game has one (all four Inspiration thumbnails use one
+// large character); a body comes next, a logo or an object last. No arrows, circles or pointer marks: the mystery
+// design is off the route and no test variant uses one. Faces are the game's own art: nothing here draws one, and
+// photographs (of real people) are never in the running, even the press kinds a chapter may hold.
 
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
+import type { HeroLook } from "../assets/localvision.ts";
 import { nameWords, sameGame } from "../assets/steam.ts";
 import { FFMPEG } from "../lib/bin.ts";
 import {
@@ -266,6 +272,7 @@ export function layoutProblem(
 ): string | undefined {
   if (layout === "poster") return undefined;
   if (layout === "motif" && approvedGrid(motifId)) return undefined;
+  if (layout === "mystery") return "the mystery design has an arrow and a circle";
   return `the ${layout ?? "split"} design has frames or panels`;
 }
 
@@ -478,14 +485,21 @@ export async function heroRuleDesigns(o: {
   grid?: HeroDesign;
   motifId?: string;
   accent?: string;
+  /** What a picture offers as a hero (src/assets/localvision.ts heroLook). */
+  look?: (file: string) => Promise<HeroLook | undefined>;
 }): Promise<HeroDesign[]> {
   const words = heroThumbWords(o.script);
-  const large: HeroDesign[] = [];
-  const small: HeroDesign[] = [];
-  for (const art of rankHeroArt(o.images, o.script, words).slice(0, 8)) {
+  const scored: Array<{ design: HeroDesign; key: number[] }> = [];
+  const arts = rankHeroArt(o.images, o.script, words).slice(0, 10);
+  for (const [at, art] of arts.entries()) {
+    const look = await o
+      .look?.(path.join(o.dir, art.file))
+      .catch(() => undefined);
+    if (look?.realPerson) continue;
     const subject = art.layers?.fg
       ? await heroSubject(path.join(o.dir, art.layers.fg))
       : undefined;
+    const box = look?.box;
     const design: HeroDesign = {
       layout: "poster",
       thumb: {
@@ -496,13 +510,26 @@ export async function heroRuleDesigns(o: {
         layout: "poster",
         imageFile: art.file,
         imageAspect: art.aspect,
-        subjectX: subject?.x ?? art.layers?.fgx,
-        subjectY: subject?.y,
+        // The face or body the model found beats the depth model's cut-out.
+        subjectX: box ? (box[0] + box[2]) / 2 : (subject?.x ?? art.layers?.fgx),
+        subjectY: box ? (box[1] + box[3]) / 2 : subject?.y,
       },
     };
-    (heroSizeProblems(subject, art.aspect).length ? small : large).push(design);
+    scored.push({
+      design,
+      key: [
+        // A face first, then a body; unjudged pictures before a logo or an object.
+        look ? { face: 0, body: 1, thing: 3 }[look.kind] : 2,
+        heroSizeProblems(subject, art.aspect).length ? 1 : 0,
+        at,
+      ],
+    });
   }
-  const posters = [...large, ...small].slice(0, 4);
+  scored.sort(
+    (a, b) =>
+      a.key[0]! - b.key[0]! || a.key[1]! - b.key[1]! || a.key[2]! - b.key[2]!,
+  );
+  const posters = scored.slice(0, 4).map((x) => x.design);
   if (!posters.length) return [];
   return o.grid && approvedGrid(o.motifId) ? [o.grid, ...posters] : posters;
 }

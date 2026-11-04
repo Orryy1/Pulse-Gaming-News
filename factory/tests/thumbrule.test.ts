@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { FFMPEG } from "../src/lib/bin.ts";
 import { HAND_APPROVED } from "../src/backcatalogue.ts";
+import { heroLookAnswer } from "../src/assets/localvision.ts";
 import {
   approvedGrid,
   artGameName,
@@ -466,6 +467,68 @@ test("the designs: posters on different pictures, the GTA grid first, and nothin
     }),
     [],
   );
+});
+
+test("a big readable face is the hero first, a body next, a logo last; a real person's photo never", async () => {
+  const images = ["logo", "body", "photo", "unjudged", "face"].map((n) =>
+    shot(`${n}.jpg`, 1, igdb("Halo 3")),
+  );
+  const script = {
+    headline: "Every Halo",
+    game_title: "Halo",
+    entries: [{ game_title: "Halo: Reach" }, { game_title: "Halo 3" }],
+    youtube: { thumb_text: "HALO 3 ISN'T #1" },
+  };
+  const out = await heroRuleDesigns({
+    images,
+    script,
+    dir: "ep",
+    look: async (file) => {
+      const n = path.basename(file, ".jpg");
+      if (n === "face")
+        return { kind: "face", box: [0.6, 0.1, 0.9, 0.5], realPerson: false };
+      if (n === "body") return { kind: "body", realPerson: false };
+      if (n === "photo") return { kind: "face", realPerson: true };
+      if (n === "logo") return { kind: "thing", realPerson: false };
+      return undefined;
+    },
+  });
+  assert.deepEqual(
+    out.map((d) => d.thumb.imageFile),
+    ["face.jpg", "body.jpg", "unjudged.jpg", "logo.jpg"],
+  );
+  // The face sets where the picture sits.
+  assert.ok(Math.abs((out[0]!.thumb.subjectX as number) - 0.75) < 0.001);
+  assert.ok(Math.abs((out[0]!.thumb.subjectY as number) - 0.3) < 0.001);
+  // A model that fails changes nothing.
+  const down = await heroRuleDesigns({
+    images,
+    script,
+    dir: "ep",
+    look: async () => {
+      throw new Error("ollama is off");
+    },
+  });
+  assert.equal(down[0]!.thumb.imageFile, "logo.jpg");
+});
+
+test("the look's answer: a small face is only a body, and nonsense is no answer", () => {
+  assert.deepEqual(
+    heroLookAnswer({ subject: "face", box: [600, 100, 900, 500], real_photo: false }),
+    { kind: "face", box: [0.6, 0.1, 0.9, 0.5], realPerson: false },
+  );
+  assert.equal(
+    heroLookAnswer({ subject: "face", box: [600, 100, 650, 150], real_photo: false })!.kind,
+    "body",
+  );
+  assert.equal(heroLookAnswer({ subject: "thing", box: [0, 0, 0, 0], real_photo: false })!.box, undefined);
+  assert.equal(heroLookAnswer({ subject: "banana" }), undefined);
+  assert.equal(heroLookAnswer({}), undefined);
+});
+
+test("no arrows or circles on the route", () => {
+  assert.match(layoutProblem("mystery")!, /arrow and a circle/);
+  assert.match(THUMB_HERO_PROMPT, /arrow, circle or other pointer mark/);
 });
 
 test("with no usable picture the plain design carries the release, legal words, never the wrong game", () => {

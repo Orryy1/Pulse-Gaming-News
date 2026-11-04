@@ -410,7 +410,7 @@ export function heldNotice(
 /** The services the gate step needs (a slice of src/pipeline.ts Services, so tests can fake it). */
 export interface GateServices {
   db: Db;
-  cfg: Pick<Config, "dataDir" | "releaseGateMinMean" | "releaseGateMaxZero" | "writerNotesGuard" | "releaseGateMaxSlate" | "releaseGateMinFootage">;
+  cfg: Pick<Config, "dataDir" | "releaseGateMinMean" | "releaseGateMaxZero" | "writerNotesGuard" | "releaseGateMaxSlate" | "releaseGateMinFootage" | "releaseGateMinFootageRanking">;
   llm: Llm;
   notify(msg: DiscordMessage): Promise<unknown>;
   now(): Date;
@@ -537,7 +537,13 @@ export async function scoreEpisode(
       minMean: s.cfg.releaseGateMinMean,
       maxZero: s.cfg.releaseGateMaxZero,
       maxSlate: s.cfg.releaseGateMaxSlate,
-      minFootage: s.cfg.releaseGateMinFootage,
+      // A documentary leans on footage; a ranking on its art; a recap reuses its Shorts and isn't held to a share.
+      minFootage:
+        longFormatOf(script) === "documentary"
+          ? s.cfg.releaseGateMinFootage
+          : longFormatOf(script) === "ranking"
+            ? s.cfg.releaseGateMinFootageRanking
+            : undefined,
     },
     s.cfg.writerNotesGuard
       ? releaseWriterNotes({

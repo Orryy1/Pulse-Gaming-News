@@ -156,6 +156,8 @@ test("a test sentence with no record behind it is caught with no model involved"
     unbackedTestClaims("We tested it and nothing happened.", []).length,
     1,
   );
+  // Saying what the tests cannot show claims nothing.
+  assert.deepEqual(unbackedTestClaims("Our tests can't tell you how Rockstar laid out those roads.", [REC]), []);
 });
 
 test("unsupported sentences are cut; a quote that cannot be found loses the chapter", () => {

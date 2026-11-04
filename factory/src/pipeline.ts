@@ -350,7 +350,7 @@ import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
-import { cleanBookends, cutSentences, resolveTestRecords, unbackedTestClaims, withTestRecords } from "./editorial/testevidence.ts";
+import { cleanBookends, cutSentences, resolveTestRecords, testOutlineNote, unbackedTestClaims, withTestRecords } from "./editorial/testevidence.ts";
 import { calendarBlock, readCalendar, type CalendarLane } from "./calendar.ts";
 import {
   docRunDue,
@@ -2439,9 +2439,12 @@ async function stepScriptDocumentary(
   const franchise = franchiseArticle
     ? withTestRecords(franchiseArticle, records)
     : franchiseArticle;
-  const outline = await outlineDoc(s.llm, topic, franchise?.text ?? "", {
-    openLoops: s.cfg.docOpenLoops,
-  });
+  const outline = await outlineDoc(
+    s.llm,
+    topic,
+    `${franchise?.text ?? ""}${strict ? testOutlineNote(records) : ""}`,
+    { openLoops: s.cfg.docOpenLoops },
+  );
   // The questions it raises and answers (src/editorial/openloops.ts), kept only when they can work.
   const openLoops = s.cfg.docOpenLoops
     ? groundOpenLoops(outline.open_loops, outline.chapters.length)

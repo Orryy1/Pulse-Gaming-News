@@ -103,6 +103,15 @@ export function testRecordsSection(records: TestRecord[]): string {
   ].join("\n");
 }
 
+/** What the outline is told so the video is built on the tests rather than the game's history with a test bolted on. */
+export function testOutlineNote(records: TestRecord[]): string {
+  return [
+    "",
+    "",
+    `PLAN THIS DOCUMENTARY AROUND THE TESTS, not the game's history: one chapter for each of the ${records.length} test records below, in the order that builds best, with the strongest result last. Each chapter's title names what was tested, its wiki_title is this game's own article and its focus is that record's claim and what the clip showed. Time order does not apply. Do not add history chapters, unless there are under five records: then add only enough to reach five, each on what the tests could not settle and what the game's article says about it.`,
+  ].join("\n");
+}
+
 /** The source a documentary with records reads: the article, then the records. */
 export function withTestRecords(
   article: WikiArticle,
@@ -119,6 +128,9 @@ export function withTestRecords(
 // A sentence reporting our own test: this is what must rest on a record.
 const TEST_CLAIM =
   /\b(we|our)\b[^.?!]*\b(tests?|tested|testing|tried|try|found|filmed|recorded|checked|played|ran|run)\b|\b(tested|tried) (it|this|that)\b|\bon (our|his|the owner's) xbox\b|\bour (clip|footage|run|attempt|result)s?\b/i;
+
+// A sentence about what our tests cannot show claims nothing ("Our tests can't tell you how the map was laid out").
+const TEST_LIMIT = /\b(can'?t|cannot|can not|won'?t|doesn'?t|don'?t|didn'?t)\s+(tell|prove|show|say|answer)\b/i;
 
 const STOP = new Set(
   "the a an and or but of to in on at for with from by is are was were be been it its this that these those you your we our they them their he his she her as if so not no yes can could will would do does did have has had how what when where why who which then than there here into out up down off over about after before just very more most".split(
@@ -155,7 +167,7 @@ export function unbackedTestClaims(
   records: TestRecord[],
 ): string[] {
   return sentencesOf(text).filter(
-    (s) => TEST_CLAIM.test(s) && !backedBy(s, records),
+    (s) => TEST_CLAIM.test(s) && !TEST_LIMIT.test(s) && !backedBy(s, records),
   );
 }
 

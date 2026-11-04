@@ -7232,13 +7232,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     .catch(() => undefined);
   // Panel-shaped pictures first, one per chapter in turn, logo banners last (src/render/motifpictures.ts):
   // the first six used to be Steam library banners whose empty middle filled the grid's biggest panel.
-  const provenanceOf = new Map(
-    (assets.images ?? []).map((i) => [i.file, i.provenance]),
-  );
+  const sourceOf = new Map((assets.images ?? []).map((i) => [i.file, i]));
   // Under the hero rule, never a picture of another game (the GTA 6 documentary's Red Dead chapter).
   const motifPictures = motifPictureOrder(
     s.cfg.thumbHeroRule
-      ? images.filter((i) => artVerdict(provenanceOf.get(i.file), script.game_title) !== "other")
+      ? images.filter((i) => artVerdict(sourceOf.get(i.file)?.provenance, script.game_title) !== "other")
       : images,
   ).map((i) => i.file);
   const candidates: Candidate[] = [
@@ -7368,7 +7366,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     ? await heroRuleDesigns({
         images: images.map((i) => ({
           ...i,
-          provenance: provenanceOf.get(i.file),
+          provenance: sourceOf.get(i.file)?.provenance,
+          sourceUrl: sourceOf.get(i.file)?.sourceUrl,
         })),
         script,
         dir,

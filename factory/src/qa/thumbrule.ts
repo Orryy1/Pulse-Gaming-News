@@ -144,6 +144,8 @@ export interface HeroArtImage {
   aspect: number;
   beatIndex?: number;
   provenance?: string;
+  /** Where it came from: the same picture often sits in several chapters' folders. */
+  sourceUrl?: string;
   layers?: { fg?: string; fgx?: number };
 }
 
@@ -235,7 +237,11 @@ export function rankHeroArt<T extends HeroArtImage>(
   const first: T[] = [];
   const later: T[] = [];
   const seen = new Set<number | undefined>();
+  const pictures = new Set<string>();
   for (const { i } of scored) {
+    const picture = i.sourceUrl ?? i.file;
+    if (pictures.has(picture)) continue;
+    pictures.add(picture);
     (seen.has(i.beatIndex) ? later : first).push(i);
     seen.add(i.beatIndex);
   }

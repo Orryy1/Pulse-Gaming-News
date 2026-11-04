@@ -199,6 +199,23 @@ test("a documentary never borrows a thumbnail from a chapter about another game"
   assert.deepEqual(out, ["gta6.jpg", "trailer.jpg", "gta5.jpg"]);
 });
 
+test("the same picture in two chapters' folders counts once", () => {
+  const same = "https://images.igdb.com/lucia.jpg";
+  const images = [
+    { ...shot("e4.jpg", 4, igdb("Grand Theft Auto VI")), sourceUrl: same },
+    { ...shot("e6.jpg", 6, igdb("Grand Theft Auto VI")), sourceUrl: same },
+    shot("other.jpg", 6, igdb("Grand Theft Auto VI")),
+  ];
+  assert.deepEqual(
+    rankHeroArt(
+      images,
+      { headline: "x", game_title: "Grand Theft Auto VI" },
+      "THE REAL STORY",
+    ).map((i) => i.file),
+    ["e4.jpg", "other.jpg"],
+  );
+});
+
 test("a ranking's words name the game on the thumbnail, or its winner is", () => {
   const entries = [
     { game_title: "Grand Theft Auto" },

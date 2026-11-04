@@ -2092,7 +2092,7 @@ async function longRankingReady(db: Db, cfg: Config) {
     kind,
     aspect: 16 / 9,
     beatIndex,
-    sourceUrl: "https://example.com/a.jpg",
+    sourceUrl: `https://example.com/${file}`,
     provenance: `IGDB ${kind} for "${game}" (2010), publisher material via igdb.com`,
   });
   const assets = {

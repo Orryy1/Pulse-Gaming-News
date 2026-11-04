@@ -275,7 +275,7 @@ test("migrate.sh turns the PC-to-Mac settings off and refuses without its prefli
 test("the deploy hook refuses while the factory is busy, and the rollback stops the Mac before the PC starts", () => {
   const hook = fs.readFileSync(path.join("mac", "post-receive"), "utf8");
   assert.ok(
-    hook.indexOf("deploy refused: $why") < hook.indexOf('mkdir -p "$SRC"'),
+    hook.indexOf('refuse "$why') < hook.indexOf('mkdir -p "$SRC"'),
   );
   assert.ok(/remotion\|chrome-headless-shell/.test(hook));
   assert.ok(hook.includes("hold-restart"));

@@ -23,16 +23,24 @@ busy() {
   esac
   return 1
 }
-while read -r _old new ref; do
+# A refusal puts the branch back: post-receive runs after the ref has moved, and a ref left on the refused commit made the
+# next push of that commit say "up to date" and never deploy it.
+refuse() {
+  echo "deploy refused: $1"
+  case "$old" in
+    *[!0]*) git --git-dir="$ROOT/repo.git" update-ref "$ref" "$old" ;;
+    *) git --git-dir="$ROOT/repo.git" update-ref -d "$ref" ;;
+  esac
+  exit 1
+}
+while read -r old new ref; do
   [ "$ref" = "refs/heads/claude/epic-pasteur-7s143q" ] || continue
   # A release that died at boot (mac/run.sh rolled it back) is not deployed again: push a newer commit.
   if [ -f "$LIVE/data/admin/bad_release" ] && [ "$(head -1 "$LIVE/data/admin/bad_release")" = "$new" ]; then
-    echo "deploy refused: $new died at boot last time; push a fix on top of it"
-    exit 1
+    refuse "$new died at boot last time; push a fix on top of it"
   fi
   if [ "${PULSE_DEPLOY_FORCE:-}" != 1 ] && why=$(busy); then
-    echo "deploy refused: $why; nothing changed, push again when it is done (mac/deploy.sh waits for you)"
-    exit 1
+    refuse "$why; nothing changed, push again when it is done (mac/deploy.sh waits for you)"
   fi
   mkdir -p "$SRC"
   git --work-tree="$SRC" --git-dir="$ROOT/repo.git" checkout -f "$new"
@@ -41,13 +49,12 @@ while read -r _old new ref; do
   cmp -s package-lock.json "$LIVE/package-lock.json" 2>/dev/null || deps_changed=yes
   if [ "$deps_changed" = yes ]; then
     rm -f node_modules
-    npm ci --no-audit --no-fund >/dev/null 2>&1 || { echo "deploy refused: npm ci failed"; exit 1; }
+    npm ci --no-audit --no-fund >/dev/null 2>&1 || refuse "npm ci failed"
   elif [ ! -e node_modules ]; then
     ln -s "$LIVE/node_modules" node_modules
   fi
   if ! npx tsc --noEmit -p . >/tmp/pulse-tsc.log 2>&1; then
-    echo "deploy refused: the new code does not typecheck (see /tmp/pulse-tsc.log)"
-    exit 1
+    refuse "the new code does not typecheck (see /tmp/pulse-tsc.log)"
   fi
   # The running code is kept beside the live folder, so mac/run.sh can go back to it if the new code dies at boot.
   mkdir -p "$PREV"

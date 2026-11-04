@@ -16,6 +16,11 @@
 // large character); a body comes next, a logo or an object last. No arrows, circles or pointer marks: the mystery
 // design is off the route and no test variant uses one. Faces are the game's own art: nothing here draws one, and
 // photographs (of real people) are never in the running, even the press kinds a chapter may hold.
+//
+// The poster draws its art whole and never uses the depth layers as a cut-out. The fg layer (src/render/parallax.py)
+// is not a person: it is the nearest fifth of the picture by depth, whatever that holds. On Final Fantasy XIV
+// (4 Nov 2026) the shield and shoulder were nearest, so the hero design's "cut-out" kept 12% of the character's mouth
+// and chin and showed its orange glow through the hole. cutoutProblems catches that on any design that still draws one.
 
 import { execFile } from "node:child_process";
 import path from "node:path";
@@ -273,6 +278,8 @@ export function layoutProblem(
   if (layout === "poster") return undefined;
   if (layout === "motif" && approvedGrid(motifId)) return undefined;
   if (layout === "mystery") return "the mystery design has an arrow and a circle";
+  if (layout === "hero" || layout === "depth")
+    return `the ${layout} design cuts its subject out by depth, which can remove part of a face`;
   return `the ${layout ?? "split"} design has frames or panels`;
 }
 
@@ -318,6 +325,83 @@ export function subjectOfMask(
     bottom: (Math.max(top, bottom) + 1) / h,
     cover: sum / (w * h),
   };
+}
+
+/** The share of a box a cut-out keeps, solid pixels of the alpha channel (pure). */
+function keptIn(
+  alpha: Uint8Array,
+  w: number,
+  h: number,
+  box: [number, number, number, number],
+): number {
+  const x0 = Math.floor(box[0] * w);
+  const x1 = Math.max(x0 + 1, Math.ceil(box[2] * w));
+  const y0 = Math.floor(box[1] * h);
+  const y1 = Math.max(y0 + 1, Math.ceil(box[3] * h));
+  let kept = 0;
+  let all = 0;
+  for (let y = y0; y < Math.min(h, y1); y++)
+    for (let x = x0; x < Math.min(w, x1); x++) {
+      all += 1;
+      if (alpha[y * w + x]! >= 128) kept += 1;
+    }
+  return all ? kept / all : 1;
+}
+
+/**
+ * What a cut-out does to the face inside it (pure): any face must be kept whole. The lower third is measured on its
+ * own because depth slices cut there first: Final Fantasy XIV kept 58% of the face overall, but 12% of its lower part.
+ */
+export function cutoutFaceProblems(
+  alpha: Uint8Array,
+  w: number,
+  h: number,
+  face: [number, number, number, number],
+): string[] {
+  const whole = keptIn(alpha, w, h, face);
+  const lower = keptIn(alpha, w, h, [
+    face[0],
+    face[3] - (face[3] - face[1]) / 3,
+    face[2],
+    face[3],
+  ]);
+  if (whole >= 0.9 && lower >= 0.8) return [];
+  return [
+    `the cut-out keeps ${Math.round(whole * 100)}% of the face and ${Math.round(lower * 100)}% of its lower part`,
+  ];
+}
+
+/** The same on a cut-out file; empty when it cannot be read. */
+export async function cutoutProblems(
+  fgFile: string,
+  face: [number, number, number, number],
+): Promise<string[]> {
+  const w = 192;
+  const h = 108;
+  try {
+    const { stdout } = await run(
+      FFMPEG,
+      [
+        "-v",
+        "error",
+        "-i",
+        fgFile,
+        "-vf",
+        `alphaextract,scale=${w}:${h},format=gray`,
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "-",
+      ],
+      { encoding: "buffer", maxBuffer: 1 << 20, timeout: 30_000 },
+    );
+    return stdout.length === w * h
+      ? cutoutFaceProblems(stdout, w, h, face)
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 /** The subject of a cut-out file; undefined when it cannot be read. */

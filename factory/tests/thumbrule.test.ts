@@ -11,6 +11,8 @@ import {
   approvedGrid,
   artGameName,
   artVerdict,
+  cutoutFaceProblems,
+  cutoutProblems,
   edgeDensity,
   MAX_EDGE_DENSITY,
   heroRuleDesigns,
@@ -30,7 +32,7 @@ import {
   type HeroArtImage,
 } from "../src/qa/thumbrule.ts";
 import { thumbOutcome } from "../src/qa/thumbrepair.ts";
-import { THUMB_HERO_PROMPT } from "../src/qa/vision.ts";
+import { THUMB_HERO_PROMPT, THUMB_VISION_PROMPT } from "../src/qa/vision.ts";
 import {
   CAP_EM,
   POSTER_H,
@@ -529,6 +531,29 @@ test("the look's answer: a small face is only a body, and nonsense is no answer"
 test("no arrows or circles on the route", () => {
   assert.match(layoutProblem("mystery")!, /arrow and a circle/);
   assert.match(THUMB_HERO_PROMPT, /arrow, circle or other pointer mark/);
+});
+
+test("a cut-out that removes part of a face is caught, and a poster never draws one", async () => {
+  // The Final Fantasy XIV hero design's mask, in shape: the eyes kept, the mouth and chin gone.
+  const w = 100;
+  const h = 100;
+  const face: [number, number, number, number] = [0.5, 0.3, 0.7, 0.6];
+  const hole = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) if (y < 45) hole[y * w + x] = 255;
+  assert.match(cutoutFaceProblems(hole, w, h, face)[0]!, /keeps 5\d% of the face and 0% of its lower part/);
+  assert.deepEqual(cutoutFaceProblems(new Uint8Array(w * h).fill(255), w, h, face), []);
+  assert.deepEqual(await cutoutProblems("no-such-file.webp", face), []);
+  assert.match(layoutProblem("hero")!, /part of a face/);
+  assert.match(layoutProblem("depth")!, /part of a face/);
+  assert.match(THUMB_VISION_PROMPT, /mouth, chin or limb/);
+  const out = await heroRuleDesigns({
+    images: [{ ...shot("a.jpg", undefined, igdb("Halo"), "hero"), layers: { fg: "gone.webp", fgx: 0.7 } }],
+    script: { headline: "x", game_title: "Halo" },
+    dir: os.tmpdir(),
+  });
+  assert.equal(out[0]!.layout, "poster");
+  assert.ok(!("fgFile" in out[0]!.thumb), "the art is drawn whole");
 });
 
 test("with no usable picture the plain design carries the release, legal words, never the wrong game", () => {

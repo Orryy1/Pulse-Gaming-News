@@ -24,6 +24,8 @@ interface ManifestThumb {
   words: string;
   /** The picture, relative to the episode folder (or to <out>/art/<episode> when fetched). */
   art: string;
+  /** Another episode's folder holding the picture, relative to the data dir. */
+  artDir?: string;
   /** Its public source, for an episode whose media has been pruned. */
   artUrl?: string;
   /** The provenance line the picture carries, checked against `game`. */
@@ -53,7 +55,7 @@ interface ManifestVideo {
 const [data, out, ...flags] = process.argv.slice(2);
 if (!data || !out)
   throw new Error(
-    "usage: backcatalogue-thumbs.ts <live data dir> <out dir> [--only=name]",
+    "usage: backcatalogue-thumbs.ts <live data dir> <out dir> [--only=name,name]",
   );
 const only = flags.find((f) => f.startsWith("--only="))?.slice(7);
 const manifest = JSON.parse(
@@ -107,9 +109,10 @@ for (const v of manifest) {
   }> = [];
   for (const t of v.thumbs) {
     const file = path.join(backcat, `${t.name}.jpg`);
-    const inHome = fs.existsSync(path.join(home, t.art));
+    const artHome = t.artDir ? path.resolve(data, t.artDir) : home;
+    const inHome = fs.existsSync(path.join(artHome, t.art));
     if (!inHome && t.artUrl) await fetchTo(t.artUrl, path.join(artDir, t.art));
-    const root = inHome ? home : artDir;
+    const root = inHome ? artHome : artDir;
     const verdict = artVerdict(t.provenance, t.game);
     const thumb = {
       headline: t.words,
@@ -123,7 +126,7 @@ for (const v of manifest) {
       subjectY: t.subjectY,
       zoom: t.zoom,
     };
-    if (!only || only === t.name)
+    if (!only || only.split(",").includes(t.name))
       await renderLongThumbs({
         episodeDir: root,
         thumbs: [{ file, thumb: thumb as never }],

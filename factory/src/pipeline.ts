@@ -164,6 +164,7 @@ import { heroLook } from "./assets/localvision.ts";
 import { repairPictures, thumbOutcome } from "./qa/thumbrepair.ts";
 import {
   artVerdict,
+  cutoutProblems,
   heroRuleDesigns,
   heroRuleFallback,
   posterProblems,
@@ -7875,15 +7876,23 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // The rule's own measurements (the words at 168x94), which need no model. Never a block: a failed design only
   // gives way to the next, and with none left the thumbnail stays as rendered.
   const ruleProblems: string[] = [];
-  if (ruled.length) {
+  {
     const rendered: Array<[string, unknown]> = [
       ["thumb.jpg", mainThumb!.thumb],
       ...thumbVariants.map((v): [string, unknown] => [path.basename(v.file), v.thumb]),
       ...(thumbRepair ? [[path.basename(thumbRepair.file), thumbRepair.thumb] as [string, unknown]] : []),
     ];
     for (const [name, thumb] of rendered) {
-      if ((thumb as { layout?: string }).layout !== "poster") continue;
-      const problems = await posterProblems(path.join(dir, name), thumb as never);
+      const t = thumb as { layout?: string; fgFile?: string | null; imageFile?: string | null };
+      let problems: string[] = [];
+      if (t.layout === "poster" && ruled.length)
+        problems = await posterProblems(path.join(dir, name), thumb as never);
+      // Any older design that draws a depth cut-out must keep the face whole, rule or no rule.
+      else if ((t.layout === "hero" || t.layout === "depth") && t.fgFile && t.imageFile) {
+        const face = await heroLook(path.join(dir, t.imageFile));
+        if (face?.kind === "face" && face.box)
+          problems = await cutoutProblems(path.join(dir, t.fgFile), face.box);
+      }
       if (!problems.length) continue;
       bad.add(name);
       ruleProblems.push(`${name}: ${problems.join(", ")}`);

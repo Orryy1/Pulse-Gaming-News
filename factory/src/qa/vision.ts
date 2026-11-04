@@ -33,7 +33,7 @@ Write every problem as "Frame N: what is wrong", one per frame, using the frame 
 
 /** The thumbnail check: the designs that will go to YouTube. */
 export const THUMB_VISION_PROMPT = `You check YouTube thumbnails for a gaming channel before they are used. Each frame is one 1280x720 thumbnail.
-Fail a thumbnail only for a real fault: words cut off or overlapping, words unreadable at phone size, garbled or misspelt words, a broken or missing picture, a large empty area, an awkward crop that cuts the main subject's face in half, or anything advertiser-unfriendly.
+Fail a thumbnail only for a real fault: words cut off or overlapping, words unreadable at phone size, garbled or misspelt words, a broken or missing picture, a large empty area, an awkward crop that cuts the main subject's face in half, a character with part of the face or body missing (a hole, blur or glow where a mouth, chin or limb should be, the mark of a bad cut-out), or anything advertiser-unfriendly.
 Bold styling, outlines, glow, red circles, console or retro looks and the PULSE badge are deliberate. So is a busy comic-panel grid of pictures around the title block (a series' cover-art look): judge whether its title reads at phone size and every panel shows a real picture, not how busy it is.
 Write every problem as "Frame N: what is wrong", using the frame numbers given. Pass when nothing is wrong.`;
 

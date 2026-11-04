@@ -7,7 +7,9 @@
       "liveTitle": "Why GTA 6 Took Thirteen Years | Documentary",
       "publishAt": "2026-10-27T19:00:00.000Z",
       "dir": "episodes/ep_20261026_52575f18",
-      "nextTitles": ["How Rockstar Came Back From the GTA 6 Leak"],
+      "nextTitles": [
+        "How Rockstar Came Back From the GTA 6 Leak"
+      ],
       "thumbs": [
         {
           "name": "gta6_lucia_13years",
@@ -27,7 +29,8 @@
           "provenance": "IGDB screenshot for \"Grand Theft Auto VI\" (2026), publisher material via igdb.com",
           "game": "Grand Theft Auto VI",
           "subjectX": 0.32,
-          "subjectY": 0.35
+          "subjectY": 0.35,
+          "rejected": "same words as the Lucia design; her face and expression are stronger"
         },
         {
           "name": "gta6_online_money_car",
@@ -37,8 +40,7 @@
           "game": "Grand Theft Auto Online",
           "subjectX": 0.8,
           "subjectY": 0.45,
-          "title": "How GTA Online's Money Kept GTA 6 Waiting",
-          "angle": "how"
+          "rejected": "the mansion and yellow car compete with him; his face is small at 168x94"
         },
         {
           "name": "gta6_online_money_gold",
@@ -47,7 +49,9 @@
           "provenance": "IGDB screenshot for \"Grand Theft Auto Online\" (2014), publisher material via igdb.com",
           "game": "Grand Theft Auto Online",
           "subjectX": 0.55,
-          "subjectY": 0.4
+          "subjectY": 0.4,
+          "title": "How GTA Online's Money Kept GTA 6 Waiting",
+          "angle": "how"
         }
       ]
     },
@@ -57,7 +61,9 @@
       "liveTitle": "Every Mainline GTA Game, Ranked Worst to Best",
       "publishAt": "2026-10-24T16:00:00.000Z",
       "dir": "smoke/longdry/episodes/ep_20261021_db8d609b",
-      "nextTitles": ["How Every GTA Holds Up When You Play It Today"],
+      "nextTitles": [
+        "How Every GTA Holds Up When You Play It Today"
+      ],
       "thumbs": [
         {
           "name": "gta_cj_sa",
@@ -78,8 +84,7 @@
           "game": "Grand Theft Auto V",
           "subjectX": 0.68,
           "subjectY": 0.5,
-          "title": "Why GTA 5 Still Beats Every Other GTA",
-          "angle": "why"
+          "rejected": "three equal heroes on a busy map; #1 runs into Franklin's jacket"
         },
         {
           "name": "gta_trio_walk",
@@ -88,7 +93,32 @@
           "provenance": "IGDB screenshot for \"Grand Theft Auto V\" (2013), publisher material via igdb.com",
           "game": "Grand Theft Auto V",
           "subjectX": 0.6,
-          "subjectY": 0.45
+          "subjectY": 0.45,
+          "rejected": "dark, small faces, and the words cover Michael"
+        },
+        {
+          "name": "gta_trevor",
+          "words": "GTA 5 STILL #1",
+          "artDir": "episodes/ep_20261027_865858f8",
+          "art": "entry_5/fill/assets/igdb_35.jpg",
+          "provenance": "IGDB key art for \"Grand Theft Auto V\" (2013), publisher material via igdb.com",
+          "game": "Grand Theft Auto V",
+          "subjectX": 0.5,
+          "subjectY": 0.3,
+          "zoom": 1.4,
+          "title": "Why GTA 5 Still Beats Every Other GTA",
+          "angle": "why"
+        },
+        {
+          "name": "gta_michael",
+          "words": "GTA 5 STILL #1",
+          "artDir": "episodes/ep_20261027_865858f8",
+          "art": "entry_5/fill/assets/igdb_36.jpg",
+          "provenance": "IGDB key art for \"Grand Theft Auto V\" (2013), publisher material via igdb.com",
+          "game": "Grand Theft Auto V",
+          "subjectX": 0.62,
+          "subjectY": 0.3,
+          "zoom": 1.4
         }
       ]
     },
@@ -99,7 +129,9 @@
       "publishAt": "2026-10-18T18:00:00.000Z",
       "dir": "episodes/ep_20261018_30d12699",
       "currentUrl": "https://i.ytimg.com/vi/lW5Xy9JgPRk/maxresdefault.jpg",
-      "nextTitles": ["How Call of Duty's Campaigns Lost Their Way"],
+      "nextTitles": [
+        "How Call of Duty's Campaigns Lost Their Way"
+      ],
       "thumbs": [
         {
           "name": "cod_iw_good",

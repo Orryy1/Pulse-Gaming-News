@@ -105,6 +105,7 @@ import {
   summaryDue,
   weeklyDigest,
 } from "./analytics.ts";
+import { seriesBackfill } from "./seriesplaylists.ts";
 
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -851,6 +852,23 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       res
         .writeHead(200, { "content-type": "application/json" })
         .end(JSON.stringify(rows));
+      return;
+    }
+    // The one-off series playlist backfill (src/seriesplaylists.ts, src/tools/series-playlists.ts): files public
+    // videos in their playlists, skipping what is already there. A dry run unless apply=1. Never changes a video.
+    if (url.pathname === "/admin/series-playlists" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const report = await seriesBackfill({
+        db,
+        cfg,
+        now: () => new Date(),
+        yt: services.youtube(),
+        apply: url.searchParams.get("apply") === "1",
+        max: Number(url.searchParams.get("max") ?? 40),
+      });
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify(report));
       return;
     }
     if (url.pathname === "/unpause" && req.method === "POST") {

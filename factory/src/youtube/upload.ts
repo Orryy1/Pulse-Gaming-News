@@ -273,6 +273,28 @@ export class YouTubeClient {
     if (!res.ok) throw await apiError(res, "playlistItems.insert");
   }
 
+  /** Every video already in a playlist (playlistItems.list, one quota unit per 50). */
+  async playlistVideoIds(
+    playlistId: string,
+  ): Promise<{ ids: string[]; pages: number }> {
+    const ids: string[] = [];
+    let page = "";
+    let pages = 0;
+    do {
+      const res = await this.fetchFn(
+        `${API}/playlistItems?part=contentDetails&maxResults=50&playlistId=${playlistId}${page ? `&pageToken=${page}` : ""}`,
+        { headers: await this.auth() },
+      );
+      if (!res.ok) throw await apiError(res, "playlistItems.list");
+      const body = (await res.json()) as any;
+      pages++;
+      for (const it of body.items ?? [])
+        if (it.contentDetails?.videoId) ids.push(it.contentDetails.videoId);
+      page = body.nextPageToken ?? "";
+    } while (page);
+    return { ids, pages };
+  }
+
   /** Posts a top-level comment as the channel (commentThreads.insert, 50 quota units). Returns the comment id. */
   async insertComment(videoId: string, text: string): Promise<string> {
     const res = await this.fetchFn(`${API}/commentThreads?part=snippet`, {

@@ -50,6 +50,7 @@ export function testConfig(
     codexPython: "python",
     codexRunnerDir: "",
     cutdownsEnabled: false,
+    seriesPlaylists: false,
     cutdownSlot: "15:30",
     gameplayEnabled: false,
     gameplayRoot: "",

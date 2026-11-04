@@ -297,6 +297,10 @@ export interface Config {
   docBookendEnding: boolean;
   /** A slim chapter index (current chapter lit) and the chapter's year in the corner: DOC_CHAPTER_INDEX, default on. */
   docChapterIndex: boolean;
+  /** Series playlists under the owner's rule (src/seriesplaylists.ts, plan item 8): a video joins its playlist only once
+   * it is public, so a scheduled video joins when confirmPublished sees it go live, not while it is still private. Off,
+   * videos join at upload as before: SERIES_PLAYLISTS, default off. */
+  seriesPlaylists: boolean;
   /** The breakout documentary picker (src/docpick.ts, growth plan move 3): the next documentary is the candidate
    * that scores best on fame, a collapse-or-comeback arc, a news peg, demand and freshness, with no model call;
    * the score breakdown is logged and posted to Discord. Off, the writer picks from the lists as before:
@@ -886,6 +890,7 @@ export function loadConfig(): Config {
     docOpenLoops: bool("DOC_OPEN_LOOPS", true),
     docBookendEnding: bool("DOC_BOOKEND_ENDING", true),
     docChapterIndex: bool("DOC_CHAPTER_INDEX", true),
+    seriesPlaylists: bool("SERIES_PLAYLISTS", false),
     docBreakoutPicker: bool("DOC_BREAKOUT_PICKER", true),
     docPickLookups: int("DOC_PICK_LOOKUPS", 8),
     docEvidence: bool("DOC_EVIDENCE", true),

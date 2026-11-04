@@ -825,7 +825,8 @@ export function seriesFor(
   const sc = ep.script_json;
   if (!sc) return [];
   const out: Array<{ title: string; description: string }> = [];
-  if (sc.recap) out.push(SERIES.weekly);
+  // The explainer takes the weekly slot in turn with the recap (src/weeklytest.ts), so it shares the weekly shelf.
+  if (sc.recap || sc.explained) out.push(SERIES.weekly);
   else if (sc.runtime === "long")
     out.push(
       sc.evergreen_format === "documentary" ? SERIES.docs : SERIES.rankedLong,
@@ -833,7 +834,12 @@ export function seriesFor(
   else if (ep.story_hash?.startsWith("why:")) out.push(SERIES.why);
   else if (
     ep.lane === "cutdown" ||
-    (ep.lane === "evergreen" && sc.entries?.length)
+    (ep.lane === "evergreen" &&
+      sc.entries?.length &&
+      // A deals list or a release list has entries but ranks nothing: it stays off the rankings shelf.
+      !["steam_deals", "release_radar", "steam_climbers", "weekly_recap"].includes(
+        sc.evergreen_format ?? "",
+      ))
   )
     out.push(SERIES.rankedShort);
   else if (ep.lane === "news" || ep.lane === "news_breaking")
@@ -860,9 +866,18 @@ export function accountOf(ep: Pick<Episode, "story_json">): string {
   return ep.story_json.twin?.account ?? "";
 }
 
-/** Files a published video in its series playlists (50 units each, plus 50 the first time a playlist is made). */
-async function addToSeries(s: Services, ep: Episode): Promise<void> {
+/**
+ * Files a published video in its series playlists (50 units each, plus 50 the first time a playlist is made).
+ * With SERIES_PLAYLISTS on (src/seriesplaylists.ts) only a video seen public joins: a scheduled one is filed by
+ * confirmPublished when it goes live, and one the owner keeps private never joins. Nothing here changes a video.
+ */
+export async function addToSeries(
+  s: Services,
+  ep: Episode,
+  privacy?: string,
+): Promise<void> {
   if (ep.lane === "twin") return; // the twin channel's playlists are not set up
+  if (s.cfg.seriesPlaylists && privacy !== "public") return;
   const yt = s.youtube() as Partial<{
     findOrCreatePlaylist: (
       t: string,
@@ -874,6 +889,17 @@ async function addToSeries(s: Services, ep: Episode): Promise<void> {
     return;
   for (const series of seriesFor(s.cfg, ep, s.now())) {
     try {
+      // Filed once: the check after a scheduled video goes live must not add it a second time.
+      if (
+        s.cfg.seriesPlaylists &&
+        (
+          await s.db.query(
+            `SELECT 1 FROM events WHERE episode_id = $1 AND kind = 'playlist' AND detail->>'title' = $2 LIMIT 1`,
+            [ep.id, series.title],
+          )
+        ).length
+      )
+        continue;
       const key = `playlist:${series.title}`;
       const [row] = await s.db.query<{ value: string }>(
         `SELECT value FROM settings WHERE key = $1`,
@@ -9099,6 +9125,8 @@ export async function confirmPublished(s: Services): Promise<void> {
       });
       const live = await getEpisode(s.db, ep.id);
       if (live) await gameplayLive(s, live);
+      // Now it is public it can join its series playlist (SERIES_PLAYLISTS; off, it joined at upload).
+      if (live && s.cfg.seriesPlaylists) await addToSeries(s, live, "public");
     } else if (st?.privacyStatus === "private") {
       // Never publish it ourselves: the owner may have made it private on purpose, and YouTube cannot say who did.
       await logEvent(s.db, ep.id, "made_public", {
@@ -9300,7 +9328,7 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   // the API refuses them for Shorts the refusal is logged and the Short keeps the frame YouTube picks).
   else if (ep.assets_json?.shortThumb && ep.script_json?.runtime !== "long")
     await setThumbnail(s, ep, ep.assets_json.shortThumb);
-  await addToSeries(s, ep);
+  await addToSeries(s, ep, st.privacyStatus);
   await transition(s.db, ep.id, "uploaded", "published", {
     youtube_status: st.privacyStatus,
   });

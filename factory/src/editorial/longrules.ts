@@ -484,7 +484,7 @@ export function namedPayoffProblems(
 // documentary (4 Nov 2026) three rejected drafts ended in one, and it was voiced: "These paragraphs flag the missing
 // evidence. They aren't a finished documentary chapter."
 const WRITER_NOTE =
-  /\b(supplied (?:source|excerpt|text)|(?:the|this) excerpt|your source rule|(?:the|this) brief\b|please provide|shouldn['’]t be (?:recorded|published)|aren['’]t a finished|isn['’]t a finished|unsupported here|the requested (?:scene|chapter)|the omitted|as an ai\b|i (?:can['’]t|cannot) write)/i;
+  /\b(supplied (?:source|excerpt|text)|(?:the|this) excerpt\b|your source rule|(?:the|this) brief\b|please provide|shouldn['’]t be (?:recorded|published)|aren['’]t a finished|isn['’]t a finished|unsupported here|the requested (?:scene|chapter)|the omitted|as an ai\b|i (?:can['’]t|cannot) write)/i;
 
 /** A chapter that talks about its brief instead of the story (pure): nothing here is narration. */
 export function writerNoteProblems(text: string): string[] {

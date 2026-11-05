@@ -206,6 +206,8 @@ export interface Config {
   bigStoryPerDay: number;
   /** Filler that gives way, one lane for each big story made today, in this order. */
   bigStoryBumps: string[];
+  /** Hours after a dropped big story before one more go, which also needs an article the first go did not have. */
+  bigStoryRetryHours: number;
   /** The day's count (SHORTS_PER_DAY) counts Shorts only: a long video does not use up a slot's turn. */
   dailyTargetShortsOnly: boolean;
   /** The launch calendar: reviews and launch days of known huge games (src/discovery/launches.ts); empty = none. */
@@ -261,6 +263,8 @@ export interface Config {
   gameplayApprovalHours: number; // an unanswered gameplay Short expires after this; under the links' 72 hours
   keepFreeWindows: string; // whole stretches the PC is kept free: "lane|from|until;...", ISO times (pcschedule.ts)
   gameplayRemindHours: number; // one reminder with fresh links this long after the notice; 0 = none
+  gameplayDirect: boolean; // GAMEPLAY_DIRECT: the rebuilt Short (src/gameplaydirect.ts): full screen, starts on the action, voice, payoff, loop; one more vision call a kept clip
+  gameplayOneTap: boolean; // GAMEPLAY_ONE_TAP: the card's Approve and Reject act on the tap, with no confirmation page (src/server.ts)
   gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
   longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
@@ -390,6 +394,10 @@ export interface Config {
   docBreakoutPicker: boolean;
   /** At most this many candidates get the slower lookups (Steam, Wikipedia, YouTube demand) a pick: DOC_PICK_LOOKUPS, default 8. */
   docPickLookups: number;
+  /** DOC_PICK_SINGLE_SUBJECT: series surveys leave the running and a story is weighed by its shape: one person, one hunt or one failure (src/docpick.ts scoreShape). World-class audit fix 1. */
+  docPickSingleSubject: boolean;
+  /** FILM_SLATE_FILE: a ranked list of films (film_slate.json, from reports/Film slate November 2026.md); the first not yet made goes next. Empty = none. */
+  filmSlateFile: string;
   /** Real evidence on screen (src/editorial/evidence.ts): on key beats (an announcement, a delay, an apology, a
    * review verdict, a sales milestone, a statement) the documentary shows the source's exact words as a full-frame
    * statement page, or the review aggregate as a score page, each with a source credit; never invented text:
@@ -549,6 +557,7 @@ export interface Config {
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
+  docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
   ytdlpPath: string;
   /** Games the owner plays (and records): long videos about them send them a "record these moments" list. */
@@ -668,6 +677,8 @@ export interface Config {
   docMetaGuard: boolean;
   /** LONG_SENTENCE_GATE: the mean sentence stays under this many words on rankings and guides (0: not measured). */
   longSentenceGate: number;
+  /** LONG_HOOK_YOU_MIN: the least "you" words in a long video's opening, which the whole-video floor cannot see (0: off). */
+  longHookYouMin: number;
   /** LONG_HOOK_STACK: the opening stacks the stakes, 3 to this many named surprises, a trust line and a saved promise (0: the older opening). */
   longHookStack: number;
   /** LONG_OPEN_LOOPS_MAX: the most open loops a guide plans; rankings get real ones, up to 3 (0: as before). */
@@ -891,6 +902,7 @@ export function loadConfig(): Config {
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean),
+    bigStoryRetryHours: Math.max(0, int("BIG_STORY_RETRY_HOURS", 6)),
     dailyTargetShortsOnly: bool("DAILY_TARGET_SHORTS_ONLY", true),
     launchCalendarFile: str("LAUNCH_CALENDAR_FILE", ""),
     chatterSources: str("CHATTER_SOURCES", "")
@@ -968,6 +980,8 @@ export function loadConfig(): Config {
     gameplayApprovalHours: Math.min(70, int("GAMEPLAY_APPROVAL_HOURS", 48)),
     keepFreeWindows: str("KEEP_FREE_WINDOWS", ""),
     gameplayRemindHours: int("GAMEPLAY_REMIND_HOURS", 12),
+    gameplayDirect: bool("GAMEPLAY_DIRECT", false),
+    gameplayOneTap: bool("GAMEPLAY_ONE_TAP", false),
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),
     longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
@@ -1099,6 +1113,8 @@ export function loadConfig(): Config {
     alertDigest: bool("ALERT_DIGEST", false),
     docBreakoutPicker: bool("DOC_BREAKOUT_PICKER", true),
     docPickLookups: int("DOC_PICK_LOOKUPS", 8),
+    docPickSingleSubject: bool("DOC_PICK_SINGLE_SUBJECT", false),
+    filmSlateFile: str("FILM_SLATE_FILE", ""),
     docEvidence: bool("DOC_EVIDENCE", true),
     titleShapes: bool("TITLE_SHAPES", true),
     titleAngles: bool("TITLE_ANGLES", true),
@@ -1225,6 +1241,7 @@ export function loadConfig(): Config {
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   shortVivid: bool("SHORT_VIVID", false),
+  docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
     ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
     ownerGames: str("OWNER_GAMES", "Grand Theft Auto V, Grand Theft Auto VI")
       .split(",")
@@ -1298,6 +1315,7 @@ export function loadConfig(): Config {
     docMetaGuard: bool("DOC_META_GUARD", false),
     longSentenceGate: int("LONG_SENTENCE_GATE", 0),
     longHookStack: int("LONG_HOOK_STACK", 0),
+    longHookYouMin: int("LONG_HOOK_YOU_MIN", 0),
     longOpenLoopsMax: int("LONG_OPEN_LOOPS_MAX", 0),
     loopNamePayoff: bool("LOOP_NAME_PAYOFF", false),
     longVerdictStamps: bool("LONG_VERDICT_STAMPS", false),

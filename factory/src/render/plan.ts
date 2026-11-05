@@ -236,6 +236,8 @@ export function planCuts(
   totalFrames: number,
   /** Opening on moving footage: it runs straight through the sting, no cut after 0.4 s. */
   openOnMotion = false,
+  /** All stills and plenty of them: each holds about 2.2 s, since nothing in the picture moves. */
+  stillPace = false,
 ): Array<{ start: number; end: number; segment: number }> {
   const ends = wordEnds(words);
   const clauses = clauseEnds(words);
@@ -258,7 +260,7 @@ export function planCuts(
     const kind = segments[i]!.kind;
     const parts = Math.max(
       1,
-      Math.round(bodyLen / (TARGET_BY_KIND[kind] ?? TARGET_SHOT)),
+      Math.round(bodyLen / (stillPace && kind !== "hook" ? 66 : (TARGET_BY_KIND[kind] ?? TARGET_SHOT))),
     );
     for (let p = 1; p < parts; p++) {
       const raw = bodyStart + Math.round((bodyLen * p) / parts);
@@ -322,7 +324,7 @@ export function thenWindows(words: Word[]): Array<{ from: number; to: number }> 
     let e = i;
     while (e < words.length - 1 && !/[.?!]["”]?$/.test(words[e]!.text.trim()) && words[e + 1]!.start - w.start < 3)
       e++;
-    const to = Math.max(toFrame(words[e]!.end), toFrame(w.start) + 36);
+    const to = Math.max(toFrame(words[e]!.end), toFrame(w.start) + MIN_SHOT);
     out.push({ from: Math.max(0, toFrame(w.start) - 2), to: Math.min(to, toFrame(w.start) + 90) });
   }
   return out;
@@ -349,7 +351,28 @@ export function splitAtThen<T extends { start: number; end: number; segment: num
     }
     out = next;
   }
-  return out;
+  // The same words across a planned cut are one shot of the old game, not a flicker of two.
+  const joined: Array<T & { then?: boolean }> = [];
+  for (const c of out) {
+    const prev = joined.at(-1);
+    if (prev && prev.then && c.then && prev.end === c.start) prev.end = c.end;
+    else joined.push({ ...c });
+  }
+  // What a window leaves too short to stand as a shot joins its neighbour in the same line, never the old game's shot.
+  for (let i = 0; i < joined.length; i++) {
+    const c = joined[i]!;
+    if (c.then || c.end - c.start >= MIN_SHOT) continue;
+    const next = joined[i + 1];
+    const prev = joined[i - 1];
+    if (next && !next.then && next.segment === c.segment) {
+      next.start = c.start;
+      joined.splice(i--, 1);
+    } else if (prev && !prev.then && prev.segment === c.segment) {
+      prev.end = c.end;
+      joined.splice(i--, 1);
+    }
+  }
+  return joined;
 }
 
 /** The still that opens and closes the Short: a 16:9 shot if there is one, else the first image. */
@@ -1178,6 +1201,7 @@ export function buildPlan(input: PlanInput): RenderPlan {
               c.beatIndex === undefined &&
               !input.segments.some((s) => s.visual?.kind === "rank")),
         )),
+    !input.clips.length && input.images.length >= 16,
   );
   const shots = planShots(
     input,

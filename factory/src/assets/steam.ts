@@ -32,6 +32,7 @@ export interface VisualAsset {
   // Beat-matched clips (src/assets/clipscore.ts)
   beatIndex?: number; // clips: the line; images: the ranking entry
   role?: "hook";
+  focusX?: number; // 0-1, where the subject sits across a wide picture, for the vertical crop
   then?: boolean; // the old version of a game whose remake is the story: shown only where a line speaks of the old one
   stock?: boolean; // licensed stock footage, shown with an ILLUSTRATIVE tag
   audio?: boolean; // gameplay that keeps its game sound (no talk over it), mixed low under the narrator

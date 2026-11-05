@@ -12,9 +12,12 @@ import type { Config } from "./config.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
 import type { StoryCluster } from "./discovery/cluster.ts";
 import type { RunEntry, RunWhy } from "./shortrun.ts";
+import { canonicalUrl } from "./discovery/cluster.ts";
 import {
   centralHeadline,
+  figureChange,
   knownEntity,
+  storySubject,
   newDevelopment,
   outletOf,
   similarTitles,
@@ -45,11 +48,15 @@ export type BigMode = "off" | "report" | "make";
 /** Past this the story has been around long enough that "just announced" would be wrong. */
 const LATE_AFTER_HOURS = 3;
 /** Episodes looked at when asking whether a story is already covered. */
-const COVERED_HOURS = 72;
+const COVERED_HOURS = 168;
 /** A second big Short on one game inside this needs BIG_STORY_HUGE. */
 const SAME_GAME_HOURS = 24;
 /** A story whose Short failed gets this many goes before it is reported as failed. */
 export const BIG_ATTEMPTS = 2;
+/** Faults that say nothing about the story. */
+const TRANSIENT = /timeout|timed out|ECONN|socket|overloaded|HTTP 5\d\d|rate limit/i;
+/** The editor's pass says the story is a repeat: never overruled, whatever the size. */
+export const EDITOR_REPEAT = /\brepeat|already covered|already ran|same [\w' ]{0,30}(story|estimate|figure|announcement)|not a new development|covered this/i;
 /** Even huge stories stop here: launch week can make everything about one game huge at once. */
 const HUGE_EXTRA = 2;
 const HUGE_SAME_GAME = 2;
@@ -62,6 +69,7 @@ export type BigCfg = Pick<
   | "bigStoryMaxAgeHours"
   | "bigStoryPerDay"
   | "bigStoryBumps"
+  | "bigStoryRetryHours"
   | "breakingWindow"
   | "timezone"
 >;
@@ -73,6 +81,9 @@ export interface CoverEpisode {
   status: string;
   story_hash: string;
   created_at: string;
+  updated_at?: string;
+  /** The title the writer gave it, usually not the article's. */
+  script_headline?: string | null;
   last_error?: string | null;
   story_json: Pick<
     StoryCluster,
@@ -104,53 +115,106 @@ function aboutOf(texts: Array<string | undefined>): {
   return { entity, events: new Set(said.map(storyEvent)) };
 }
 
+/** The subjects a set of lines is about: what was said, not the whole brief, or a stray word in an angle would count. */
+function subjectsOf(lines: Array<string | null | undefined>): Set<string> {
+  return new Set(
+    lines.filter((l): l is string => !!l).map((l) => storySubject(l).subject),
+  );
+}
+
 function coversStory(
   story: SizedStory,
-  headline: string,
-  texts: Array<string | undefined>,
+  /** The lines that say what it covers: a title, a script's title, a question. */
+  lines: Array<string | null | undefined>,
+  /** Everything known about it, for working out which game. */
+  texts: Array<string | null | undefined>,
 ): boolean {
-  const about = aboutOf(texts);
-  if (story.event === "other" || story.event === "update")
-    return (
-      similarTitles(story.headline, headline) ||
-      (!!texts[2] && similarTitles(story.headline, texts[2]))
-    );
-  const said = texts.filter(Boolean).join(" ").toLowerCase();
+  const said = lines.filter((l): l is string => !!l);
+  if (story.event === "other" || story.event === "update") {
+    if (said.some((l) => similarTitles(story.headline, l))) return true;
+  }
+  const about = aboutOf(texts.map((x) => x ?? undefined));
+  const all = texts.filter(Boolean).join(" ").toLowerCase();
   const sameGame = story.entity.startsWith("w:")
-    ? said.includes(story.entity.slice(2))
+    ? all.includes(story.entity.slice(2))
     : about.entity === story.entity;
   // A launch-day story is what a Why on the game that day already says: reviews, times, what changed.
   if (story.key.includes("|launch:")) return sameGame;
-  return sameGame && about.events.has(story.event);
+  if (story.event === "other" || story.event === "update") return false;
+  return sameGame && subjectsOf(said).has(story.subject ?? story.event);
 }
 
-function episodeTexts(e: CoverEpisode): Array<string | undefined> {
+/** What an episode says it covered, whichever lane made it and whatever hash it went under. */
+function episodeLines(e: CoverEpisode): Array<string | null | undefined> {
   const j = e.story_json;
-  return [j.headline, j.gameHint, j.why?.question, j.why?.angle];
+  return [j.headline, e.script_headline, j.why?.question];
+}
+
+function episodeTexts(e: CoverEpisode): Array<string | null | undefined> {
+  const j = e.story_json;
+  return [...episodeLines(e), j.gameHint, j.why?.angle];
+}
+
+function urlsOf(items: unknown[] | undefined): Set<string> {
+  return new Set(
+    (items ?? [])
+      .map((i) => (i as { url?: string }).url)
+      .filter((u): u is string => !!u)
+      .map(canonicalUrl),
+  );
 }
 
 /**
- * An episode this much older than a story's oldest article is about something else: GTA's score album on 29 Oct is not
- * its pre-load on 3 Nov, and a rumour of a reveal is not the reveal.
+ * An episode this much older than a story's oldest article is about something else, unless they share a figure: GTA's
+ * score album on 29 Oct is not its pre-load on 3 Nov, and a rumour of a reveal is not the reveal.
  */
 const COVER_GAP_HOURS = 48;
+
+/** Does this episode already say what the story says? */
+function episodeCovers(story: SizedStory, e: CoverEpisode): boolean {
+  if (story.hashes.includes(e.story_hash)) return true;
+  const made = new Date(e.created_at).getTime();
+  const earliest = story.coverFrom
+    ? new Date(story.coverFrom).getTime()
+    : new Date(story.firstAt).getTime() - COVER_GAP_HOURS * 3_600_000;
+  const lines = episodeLines(e);
+  const same =
+    e.story_json.bigStory?.key === story.key ||
+    coversStory(story, lines, episodeTexts(e));
+  if (!story.coverFrom) {
+    // Two of the same articles, or half of a small story, is the same story under another hash and headline.
+    const had = urlsOf(e.story_json.items);
+    const shared = story.items.filter((i) =>
+      had.has(canonicalUrl(i.url)),
+    ).length;
+    if (made >= earliest && shared >= Math.min(2, story.items.length)) return true;
+  }
+  if (!same) return false;
+  // On the same game and subject, the figures settle it: the same one rounded differently is covered however long ago
+  // this week, and only articles since the Short can change it.
+  const since = story.items
+    .filter((i) => new Date(i.publishedAt).getTime() > made)
+    .map((i) => i.title);
+  const said = lines.filter((l): l is string => !!l);
+  const before = figureChange(
+    story.items.map((i) => i.title),
+    said,
+  );
+  if (since.length && figureChange(since, said) === "changed") return false;
+  if (before === "same") return true;
+  return made >= earliest;
+}
 
 /** How the story is covered by an episode that was not dropped, if any; failed attempts are counted by the caller. */
 export function coveringEpisode(
   story: SizedStory,
   episodes: CoverEpisode[],
 ): CoverEpisode | undefined {
-  const dropped = new Set(["failed", "rejected"]);
-  const earliest = story.coverFrom
-    ? new Date(story.coverFrom).getTime()
-    : new Date(story.firstAt).getTime() - COVER_GAP_HOURS * 3_600_000;
   return episodes.find(
     (e) =>
-      !dropped.has(e.status) &&
-      (story.hashes.includes(e.story_hash) ||
-        (new Date(e.created_at).getTime() >= earliest &&
-          (e.story_json.bigStory?.key === story.key ||
-            coversStory(story, e.story_json.headline, episodeTexts(e))))),
+      e.status !== "failed" &&
+      e.status !== "rejected" &&
+      episodeCovers(story, e),
   );
 }
 
@@ -165,6 +229,7 @@ export function runEntryCovered(
   now: Date,
 ): CoverEpisode | undefined {
   const about = aboutOf([entry.title, entry.game, entry.question, entry.angle, entry.arc]);
+    const subjects = subjectsOf([entry.title, entry.question]);
   return episodes.find((e) => {
     const big = e.story_json.bigStory;
     return (
@@ -173,7 +238,7 @@ export function runEntryCovered(
       e.status !== "rejected" &&
       now.getTime() - new Date(e.created_at).getTime() < 48 * 3_600_000 &&
       big.entity === about.entity &&
-      about.events.has(big.event as StoryEvent)
+      subjects.has(big.key.slice(big.key.indexOf("|") + 1))
     );
   });
 }
@@ -194,13 +259,11 @@ export function plannedEntry(
       at > now.getTime() + PLANNED_AHEAD_HOURS * 3_600_000
     )
       return false;
-    return coversStory(story, e.title, [
-      e.title,
-      e.game,
-      e.question,
-      e.angle,
-      e.arc,
-    ]);
+    return coversStory(
+      story,
+      [e.title, e.question],
+      [e.title, e.game, e.question, e.angle, e.arc],
+    );
   });
 }
 
@@ -213,6 +276,8 @@ export interface BigContext {
   rumourCap: number;
   includeRumours: boolean;
   bigMadeToday: number;
+  /** Stories the editor has called repeats in the last day. */
+  editorRepeats?: Record<string, string>;
   /** Set when selection cannot run at all right now: paused, or the factory is full. */
   blocked?: string;
 }
@@ -237,7 +302,7 @@ export function judgeBigStories(
         ? newDevelopment(
             story,
             // Not the bare game name: every headline about the game reads like that.
-            [cover.story_json.headline, cover.story_json.why?.question, cover.story_json.why?.angle].filter((x): x is string => !!x),
+            [cover.story_json.headline, cover.script_headline, cover.story_json.why?.question, cover.story_json.why?.angle].filter((x): x is string => !!x),
             new Date(cover.created_at).getTime(),
           )
         : undefined;
@@ -289,13 +354,40 @@ export function judgeBigStories(
     const failed = ctx.episodes.filter(
       (e) =>
         e.story_json.bigStory?.key === story.key &&
-        (e.status === "failed" || e.status === "rejected"),
+        (e.status === "failed" || e.status === "rejected") &&
+        ctx.now.getTime() - new Date(e.created_at).getTime() <
+          COVERED_HOURS * 3_600_000,
     );
+    const lost = failed[0];
+    const lostWhy = lost
+      ? `its Short ${lost.status === "rejected" ? "was rejected" : "failed"}${failed.length > 1 ? ` ${failed.length} times` : ""}${lost.last_error ? ` (${lost.last_error.slice(0, 80)})` : ""}`
+      : "";
     if (failed.length >= BIG_ATTEMPTS) {
-      const last = failed[0]!;
-      hold(
-        `its Short ${last.status === "rejected" ? "was rejected" : "failed"} ${failed.length} times${last.last_error ? ` (${last.last_error.slice(0, 80)})` : ""}`,
-      );
+      hold(lostWhy);
+      continue;
+    }
+    if (lost) {
+      // 5 Nov 2026: a story dropped by the fact check came straight back and spent a second voice-over on the same
+      // articles. One more go, after a wait, and only with an article the first go did not have; a passing fault
+      // (a timeout, a server) needs no new article and waits less.
+      const passing = TRANSIENT.test(lost.last_error ?? "");
+      const lostAt = new Date(lost.updated_at ?? lost.created_at).getTime();
+      const wait = (passing ? 1 : cfg.bigStoryRetryHours) * 3_600_000;
+      if (ctx.now.getTime() - lostAt < wait) {
+        hold(`${lostWhy}, so it waits until ${new Date(lostAt + wait).toISOString().slice(11, 16)} UTC before another go`);
+        continue;
+      }
+      if (!passing) {
+        const had = urlsOf(lost.story_json.items);
+        if (!story.items.some((i) => !had.has(canonicalUrl(i.url)))) {
+          hold(`${lostWhy}, and no outlet has published anything new to try again with`);
+          continue;
+        }
+      }
+    }
+    const repeat = ctx.editorRepeats?.[story.key];
+    if (repeat) {
+      hold(`the editor said it repeats what we already covered: ${repeat.slice(0, 160)}`);
       continue;
     }
     if (story.rumour && !ctx.includeRumours) {
@@ -325,7 +417,11 @@ export function judgeBigStories(
     }
     const sameGames = ctx.episodes.filter(
       (e) =>
-        e.story_json.bigStory?.entity === story.entity &&
+        // Any news Short on the game counts, whichever lane made it. A Why is a different kind of Short and does not.
+        (e.story_json.bigStory?.entity === story.entity ||
+          (!e.story_json.why &&
+            aboutOf(episodeLines(e).map((x) => x ?? undefined)).entity ===
+              story.entity)) &&
         e.status !== "failed" &&
         e.status !== "rejected" &&
         ctx.now.getTime() - new Date(e.created_at).getTime() <
@@ -513,6 +609,7 @@ export async function currentStories(
       sized,
       cfg.chatterSources.length ? await readChatterSignal(db) : undefined,
       now,
+      cfg.bigStoryHuge,
     ),
     readLaunches(cfg.launchCalendarFile),
     now,
@@ -550,10 +647,58 @@ export function forgetStories(db: Db): void {
   memo.delete(db);
 }
 
+const REPEATS_KEY = "big_editor_repeats";
+const REPEAT_HOURS = 24;
+
+/** Stories the editor called repeats in the last day. Asked again after that: something may have changed. */
+export async function readEditorRepeats(
+  db: Db,
+  now: Date,
+): Promise<Record<string, string>> {
+  const [row] = await db.query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = $1`,
+    [REPEATS_KEY],
+  );
+  const out: Record<string, string> = {};
+  try {
+    for (const [k, v] of Object.entries(
+      JSON.parse(row?.value ?? "{}") as Record<string, { at: string; reason: string }>,
+    ))
+      if (now.getTime() - new Date(v.at).getTime() < REPEAT_HOURS * 3_600_000)
+        out[k] = v.reason;
+  } catch {
+    // a broken row just means asking again
+  }
+  return out;
+}
+
+export async function noteEditorRepeat(
+  db: Db,
+  key: string,
+  reason: string,
+  now: Date,
+): Promise<void> {
+  const [row] = await db.query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = $1`,
+    [REPEATS_KEY],
+  );
+  let all: Record<string, { at: string; reason: string }> = {};
+  try {
+    all = JSON.parse(row?.value ?? "{}");
+  } catch {
+    // start again
+  }
+  all[key] = { at: now.toISOString(), reason };
+  await db.query(
+    `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [REPEATS_KEY, JSON.stringify(all)],
+  );
+}
+
 /** Recent episodes that can cover a story, newest first. */
 export async function recentCover(db: Db, now: Date): Promise<CoverEpisode[]> {
   return db.query<CoverEpisode>(
-    `SELECT id, lane, status, story_hash, created_at, last_error, story_json FROM episodes
+    `SELECT id, lane, status, story_hash, created_at, updated_at, last_error, script_json->>'headline' AS script_headline, story_json FROM episodes
       WHERE created_at > $1::timestamptz - ($2 || ' hours')::interval
         AND lane NOT IN ('evergreen','longform','gameplay','twin') ORDER BY created_at DESC`,
     [now, String(COVERED_HOURS)],

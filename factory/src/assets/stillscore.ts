@@ -31,6 +31,12 @@ export const StillRankingSchema = z.object({
     z.object({
       index: z.number(),
       label: z.string().describe("What the picture shows, under 8 words"),
+      subject_x: z
+        .number()
+        .optional()
+        .describe(
+          "Where the main character's face or the main subject sits across the picture: a percentage, 0 is the left edge, 50 the middle, 100 the right edge. Leave it out when nothing in the picture is a clear subject (fog, spray, a blank wall).",
+        ),
       has_text: z
         .boolean()
         .describe(
@@ -127,6 +133,8 @@ export async function rankStills(
   picks: StillPick[];
   labels: Map<number, string>;
   withText: Set<number>;
+  /** 0-1: the subject's place across each picture, for a vertical crop. */
+  focus?: Map<number, number>;
 }> {
   const shown = images.slice(0, MAX_STILLS);
   const empty = {
@@ -202,5 +210,10 @@ These are licensed stock video previews for a real-world line in a documentary a
     });
   }
   await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
-  return { picks, labels, withText };
+  const focus = new Map<number, number>();
+  for (const x of r.images)
+    if (typeof x.subject_x === "number")
+      // Asked for a percentage; a model answering 0-1 means the same place.
+      focus.set(x.index, Math.min(1, Math.max(0, x.subject_x > 1 ? x.subject_x / 100 : x.subject_x)));
+  return { picks, labels, withText, focus };
 }

@@ -81,6 +81,8 @@ interface Fakes {
   script: Script;
   factChecks: FactCheck[];
   pick: number;
+  passReason?: string;
+  selections?: number;
   uploads: number;
   sessions: number;
   failUploadOnce: boolean;
@@ -149,14 +151,16 @@ function fakeLlm(f: Fakes): Llm {
           reason: "nothing strong",
         }) as z.infer<S>;
       }
-      if (schema === (SelectionSchema as unknown))
+      if (schema === (SelectionSchema as unknown)) {
+        f.selections = (f.selections ?? 0) + 1;
         return {
           candidate_index: f.pick,
-          reason: "big story",
+          reason: f.passReason ?? "big story",
           story_type: "delay",
           game_title: "Starfield",
           visual_dependency: f.visual ?? "none",
         } as z.infer<S>;
+      }
       if (schema === (ScriptSchema as unknown)) return f.script as z.infer<S>;
       if (schema === (FactCheckSchema as unknown))
         return (f.factChecks.shift() ?? {
@@ -2389,5 +2393,24 @@ test("a planned Why on the story: no second Short from the big-story desk or fro
     `SELECT detail FROM events WHERE kind = 'big_story'`,
   );
   assert.equal(ev[0]!.detail.action, "planned");
+  await db.close();
+});
+
+test("an editor's repeat is never overruled, and the story is not asked about again for a day", async () => {
+  const { db, f, s, setClock } = await setup({ bigStoryMode: "make", bigStoryHuge: 1, newsSlots: ["03:00"] });
+  const at = new Date("2026-10-16T17:30:00Z");
+  setClock(at);
+  godOfWarDelay(s, at);
+  f.pick = -1;
+  f.passReason = "The only candidate repeats a story we already covered.";
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 0, "not forced");
+  const calls = f.selections ?? 0;
+  const next = new Date(at.getTime() + 4 * 3_600_000);
+  setClock(next);
+  godOfWarDelay(s, next);
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 0);
+  assert.equal(f.selections ?? 0, calls, "no second editor call");
   await db.close();
 });

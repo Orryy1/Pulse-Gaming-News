@@ -251,6 +251,7 @@ test("launch day: one story from everything written about the game, made unless 
     bigStoryMaxAgeHours: 36,
     bigStoryPerDay: 3,
     bigStoryBumps: [],
+    bigStoryRetryHours: 6,
     breakingWindow: "07:00-03:00",
     timezone: TZ,
   };
@@ -349,4 +350,13 @@ test("the evening report names a launch the feeds gave nothing for", async () =>
     /Launch calendar: Quiet Game launch day: too few articles/,
   );
   await db.close();
+});
+
+test("chatter can make a story big, never huge, and does not search ordinary words", () => {
+  const gta = { ...stories[0]!, entity: "gta", size: 84, outlets: ["a", "b", "c"] };
+  const out = applyChatter([gta], { at: EVENING.toISOString(), entities: { gta: { blueskyPerHour: 200, youtubeViews: 5e6 } } }, EVENING, 90);
+  assert.equal(out[0]!.size, 89);
+  const kept = applyChatter([{ ...gta, size: 95 }], { at: EVENING.toISOString(), entities: { gta: { blueskyPerHour: 200 } } }, EVENING, 90);
+  assert.equal(kept[0]!.size, 95);
+  assert.deepEqual(chatterTerms([{ ...gta, entity: "w:cloud", name: "Cloud" }]), []);
 });

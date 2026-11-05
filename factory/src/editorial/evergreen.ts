@@ -515,7 +515,8 @@ export function evergreenToScript(e: EvergreenScript): Script {
             : e.format === "steam_deals" && x.price
               ? [x.price, x.was ?? x.platforms]
               : [String(x.year), x.platforms],
-      ...(x.date ? { date_to: x.date } : {}),
+      // Release Radar's date only: a writer that fills it in elsewhere must not turn the card into a date card.
+      ...(x.date && e.format === "release_radar" ? { date_to: x.date } : {}),
     } satisfies BeatVisual,
   }));
   return {

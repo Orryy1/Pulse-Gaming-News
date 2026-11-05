@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { testConfig, testDb, tmpDir } from "./helpers.ts";
 import {
+  figureChange,
+  figuresIn,
   isJunkTitle,
   knownEntity,
   sizeStories,
@@ -10,6 +12,7 @@ import {
   type SizedSighting,
 } from "../src/discovery/storysize.ts";
 import {
+  EDITOR_REPEAT,
   bigCluster,
   coveredHashes,
   runEntryCovered,
@@ -216,6 +219,7 @@ const cfg = {
   bigStoryMaxAgeHours: 36,
   bigStoryPerDay: 3,
   bigStoryBumps: ["deals", "spare", "evergreen", "why"],
+  bigStoryRetryHours: 6,
   breakingWindow: "07:00-03:00",
   timezone: "Europe/London",
 };
@@ -366,6 +370,7 @@ test("a second big Short on one game inside a day needs the huge size", () => {
   const elder = {
     ...find("god-of-war|delay"),
     key: "god-of-war|reveal",
+    subject: "reveal",
     event: "reveal" as const,
     size: 80,
     hashes: ["z"],
@@ -673,7 +678,8 @@ test("a Why that failed covers nothing: the story is free to be made", () => {
 test("other news on those games is still big: the Why on the reviews does not cover the Arkane-sized news of a sale or a reveal", () => {
   const now = new Date("2026-11-05T17:00:00Z");
   const zelda = sizeStories(sightings, now, 36).find((x) => x.key === "zelda|acclaim")!;
-  const sales = { ...zelda, key: "zelda|commercial", event: "commercial" as const, hashes: ["zz"], headline: "Ocarina of Time Remake Sells 3 Million in Three Days" };
+  const sales = { ...zelda, key: "zelda|commercial",
+    subject: "commercial", event: "commercial" as const, hashes: ["zz"], headline: "Ocarina of Time Remake Sells 3 Million in Three Days" };
   const v = judgeBigStories([sales], cfg, ctx({ now, episodes: [asEpisode(ocarinaWhy, "published", "2026-11-05T10:15:00Z")] }));
   assert.equal(v[0]!.action, "make");
 });
@@ -737,4 +743,132 @@ test("sightings of made and planned stories are closed to the usual lanes, held 
   assert.ok(coveredHashes([{ ...base, story: gow, action: "planned" }]).has(gow.hashes[0]!));
   assert.ok(coveredHashes([{ ...base, story: gow, action: "made" }]).has(gow.hashes[0]!));
   assert.equal(coveredHashes([{ ...base, story: gow, action: "held" }]).size, 0);
+});
+
+// What make mode did on the night of 5 Nov 2026.
+const NIGHT = new Date("2026-11-05T00:42:00Z");
+const night = sizeStories(sightings, NIGHT, 36);
+const preLoad3Nov = episode({
+  id: "preload",
+  headline: "Grand Theft Auto VI pre-download begins November 10",
+  story_hash: "other-hash",
+  created_at: "2026-11-03T15:46:00Z",
+  story_json: { headline: "Grand Theft Auto VI pre-download begins November 10" },
+});
+preLoad3Nov.script_headline = "GTA 6 Pre-Loads Begin November 10";
+
+test("figures: read from real headlines, and a rounding is not a change", () => {
+  assert.deepEqual(figuresIn("GTA 6 Has Made Over $750 Million in Pre-Sales"), [{ unit: "usd", value: 750e6 }]);
+  assert.deepEqual(figuresIn("GTA 6 Sells Nearly 8 Million Copies"), [{ unit: "copies", value: 8e6 }]);
+  assert.deepEqual(figuresIn("GTA 6 Needs 212GB"), [{ unit: "gb", value: 212 }]);
+  assert.equal(figureChange(["GTA 6 Has Made Over $750 Million"], ["GTA 6 Pre-Orders Estimated at $751 Million"]), "same");
+  assert.equal(figureChange(["GTA 6 Passes $1 Billion in Pre-Sales"], ["GTA 6 Pre-Orders Estimated at $751 Million"]), "changed");
+  assert.equal(figureChange(["GTA 6 pre-orders are huge"], ["GTA 6 Pre-Orders Estimated at $751 Million"]), "none");
+});
+
+test("the download size story is covered by the 3 Nov pre-load Short from the normal lane", () => {
+  const dl = night.find((s) => s.key === "gta|download");
+  assert.ok(dl, night.filter((s) => s.entity === "gta").map((s) => s.key).join(","));
+  assert.match(dl.items.map((i) => i.title).join(" "), /Download Size/);
+  const v = judgeBigStories([dl], cfg, ctx({ now: NIGHT, episodes: [preLoad3Nov] }))[0]!;
+  assert.equal(v.action, "made", v.reason);
+  assert.equal(v.episode, "preload");
+});
+
+test("a survey and listicles no longer travel with a download size", () => {
+  for (const s of night)
+    if (s.key === "gta|download")
+      for (const i of s.items) assert.ok(!/survey|every .* so far/i.test(i.title), i.title);
+  assert.ok(isJunkTitle("Every GTA 6 Location Revealed So Far\u2014GTA 6 Map Breakdown"));
+  const survey = night.find((s) => s.key === "gta|survey");
+  if (survey) assert.ok(survey.size < 70, `survey at ${survey.size}`);
+});
+
+test("the $750 million story: a rounded restatement is covered, a new figure is not", () => {
+  const sales = night.find((s) => s.key === "gta|commercial");
+  assert.ok(sales);
+  const earlier = episode({
+    id: "sales",
+    headline: "Something else entirely",
+    story_hash: "another",
+    created_at: "2026-11-03T20:00:00Z",
+    story_json: { headline: "GTA 6 pre-sales are in" },
+  });
+  earlier.script_headline = "GTA 6 Pre-Orders Estimated at $751 Million";
+  assert.equal(judgeBigStories([sales], cfg, ctx({ now: NIGHT, episodes: [earlier] }))[0]!.action, "made");
+  // A week-old one with the same figure still covers; the gap rule is for stories with no figure to compare.
+  const older = { ...earlier, created_at: "2026-10-30T20:00:00Z" };
+  assert.equal(judgeBigStories([sales], cfg, ctx({ now: NIGHT, episodes: [older] }))[0]!.action, "made");
+  const moved = {
+    ...sales,
+    items: [
+      { ...sales.items[0]!, title: "GTA 6 Passes $1 Billion in Pre-Sales", publishedAt: "2026-11-05T00:00:00Z", url: "https://x.example/1b" },
+      ...sales.items,
+    ],
+  };
+  assert.equal(judgeBigStories([moved], cfg, ctx({ now: NIGHT, episodes: [earlier] }))[0]!.action, "make");
+});
+
+test("the same night with nothing earlier: the $750 million story was new, and is made once", () => {
+  const sales = night.find((s) => s.key === "gta|commercial")!;
+  assert.equal(judgeBigStories([sales], cfg, ctx({ now: NIGHT }))[0]!.action, "make");
+});
+
+const dropped = (status: string, last_error: string, updated_at: string) => {
+  const sales = night.find((s) => s.key === "gta|commercial")!;
+  const e = episode({
+    id: "drop1",
+    headline: sales.headline,
+    status,
+    last_error,
+    story_hash: "big:gta|commercial:2026-11-03",
+    created_at: "2026-11-05T00:42:00Z",
+    story_json: {
+      headline: sales.headline,
+      items: sales.items,
+      bigStory: { key: sales.key, entity: "gta", size: 96, event: "commercial" },
+    } as CoverEpisode["story_json"],
+  });
+  e.updated_at = updated_at;
+  return { e, sales };
+};
+
+test("a dropped big story does not loop: it waits, needs a new article, and gets one more go only", () => {
+  const { e, sales } = dropped("rejected", "Fact-check: misattribution", "2026-11-05T00:45:00Z");
+  const soon = judgeBigStories([sales], cfg, ctx({ now: new Date("2026-11-05T00:52:00Z"), episodes: [e] }))[0]!;
+  assert.equal(soon.action, "held");
+  assert.match(soon.reason, /was rejected .* waits until 06:45 UTC/);
+  const later = new Date("2026-11-05T07:00:00Z");
+  const same = judgeBigStories([sales], cfg, ctx({ now: later, episodes: [e] }))[0]!;
+  assert.equal(same.action, "held", "the same articles get no second voice-over");
+  assert.match(same.reason, /no outlet has published anything new/);
+  const fresh = {
+    ...sales,
+    items: [{ ...sales.items[0]!, url: "https://new.example/a", publishedAt: "2026-11-05T06:30:00Z" }, ...sales.items],
+  };
+  const again = judgeBigStories([fresh], cfg, ctx({ now: later, episodes: [e] }))[0]!;
+  assert.equal(again.action, "make");
+  assert.equal(again.attempt, 2);
+  const second = { ...e, id: "drop2", status: "failed", last_error: "QA failed: 71% of the Short would be an empty panel: too little media" };
+  const done = judgeBigStories([fresh], cfg, ctx({ now: later, episodes: [second, e] }))[0]!;
+  assert.equal(done.action, "held");
+  assert.match(done.reason, /failed 2 times \(QA failed: 71%/);
+});
+
+test("too little media waits the same way; a passing fault waits less and needs no new article", () => {
+  const { e, sales } = dropped("failed", "QA failed: 71% of the Short would be an empty panel: too little media", "2026-11-05T01:34:00Z");
+  assert.equal(judgeBigStories([sales], cfg, ctx({ now: new Date("2026-11-05T03:00:00Z"), episodes: [e] }))[0]!.action, "held");
+  const t = dropped("failed", "render timed out", "2026-11-05T01:34:00Z");
+  assert.equal(judgeBigStories([t.sales], cfg, ctx({ now: new Date("2026-11-05T02:00:00Z"), episodes: [t.e] }))[0]!.action, "held");
+  assert.equal(judgeBigStories([t.sales], cfg, ctx({ now: new Date("2026-11-05T02:40:00Z"), episodes: [t.e] }))[0]!.action, "make");
+});
+
+test("the editor's repeat stands for a day, however big the story", () => {
+  const gow = find("god-of-war|delay");
+  const v = judgeBigStories([gow], cfg, ctx({ editorRepeats: { [gow.key]: "same estimate" } }))[0]!;
+  assert.equal(v.action, "held");
+  assert.match(v.reason, /the editor said it repeats/);
+  assert.ok(EDITOR_REPEAT.test("The only candidate repeats a story we already covered"));
+  assert.ok(EDITOR_REPEAT.test("It is the same Sensor Tower estimate"));
+  assert.ok(!EDITOR_REPEAT.test("Niche collaboration update, not worth a Short"));
 });

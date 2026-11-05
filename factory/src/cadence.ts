@@ -15,6 +15,7 @@ import type { DiscordMessage } from "./approval/discord.ts";
 import { countToday, logEvent } from "./episodes.ts";
 import { dayKey } from "./lanes.ts";
 import { log } from "./lib/util.ts";
+import { bigMadeToday } from "./bigstories.ts";
 
 /** The lanes the cap counts: the news writer's Shorts. */
 export const CAPPED_LANES = ["news", "news_breaking"];
@@ -36,7 +37,8 @@ export function newsCapReached(cap: number, madeToday: number): boolean {
 export async function newsMadeToday(db: Db, timeZone: string): Promise<number> {
   let n = 0;
   for (const lane of CAPPED_LANES) n += await countToday(db, timeZone, lane);
-  return n;
+  // A big story is never held by the cap and never pushes out what the cap allows (src/bigstories.ts).
+  return Math.max(0, n - (await bigMadeToday(db, timeZone)));
 }
 
 /** The evening-summary line: how many Shorts today, the cap, the slot held back and what stayed on the shelf. */

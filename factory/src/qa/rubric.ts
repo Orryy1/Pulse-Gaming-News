@@ -21,6 +21,8 @@ export interface Rubric {
 }
 
 export interface RubricInput {
+  /** Above this share of the Short on the bare plate the plan is red (SHORT_PLATE_MAX). */
+  plateShareMax?: number;
   plan: RenderPlan;
   segments: Segment[];
   words: Word[];
@@ -194,6 +196,18 @@ export function scorePlan(i: RubricInput): Rubric {
   });
   // Mostly moving footage reads as a creator's Short; too little (no trailer) or wall-to-wall is noted, never fatal.
   const share = seconds ? i.footageSeconds / seconds : 0;
+  // Time on the bare brand background with only captions over it. The Elder Scrolls Short of 4 Nov 2026 spent 65% of
+  // its 36 s there and passed: thin media fell back to the plate and no metric counted it.
+  const plateFrames = plan.shots
+    .filter((s) => s.media.type === "plate")
+    .reduce((n, s) => n + (s.end - s.start), 0);
+  const plateShare = plan.totalFrames ? plateFrames / plan.totalFrames : 0;
+  m.push({
+    name: "plate_share",
+    value: Number(plateShare.toFixed(2)),
+    grade: grade(plateShare <= 0.05, plateShare <= (i.plateShareMax ?? 0.15)),
+  });
+
   m.push({
     name: "footage_share",
     value: Number(share.toFixed(2)),

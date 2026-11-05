@@ -2227,3 +2227,128 @@ test("with THUMB_HERO_RULE off the thumbnails are the older designs", async () =
   assert.equal(seen[0].thumb.headline, "HALO 2 AT 5?");
   await db.close();
 });
+
+// Big stories (src/bigstories.ts), with the real headlines of 4 Nov 2026: no first-party feed, a full day, everything
+// that stopped God of War's delay becoming a Short that evening.
+function godOfWarDelay(s: Services, now: Date) {
+  s.discover = async () =>
+    clusterItems(
+      [
+        item("God of War Laufey delayed three months to May 2027, as Sony Santa Monica escapes a packed window", "Eurogamer", "outlet", 1, now),
+        item("God of War Laufey Hit With Big Delay", "Polygon", "outlet", 1, now),
+        item("God of War Laufey Delayed to May 2027", "IGN", "outlet", 1, now),
+        item("God of War Laufey Delayed to May 2027", "Push Square", "outlet", 1, now),
+        item("God of War Laufey pushed back to May 2027", "The Verge", "outlet", 1, now),
+        item("God of War Laufey Delayed Until May 2027", "GameSpot", "outlet", 1, now),
+        item("God of War Laufey delayed to next May", "VGC", "outlet", 1, now),
+      ],
+      now,
+    );
+}
+
+test("a big story is made on a full day: no first-party feed, cap reached, breaking used, long video and all", async () => {
+  const { db, f, s, setClock } = await setup({
+    bigStoryMode: "make",
+    dailyTarget: 2,
+    shortsPerDayMax: 1,
+    breakingPerDay: 0,
+    breakingBigScore: 0,
+    newsSlots: ["03:00"],
+  });
+  const at = new Date("2026-10-16T17:30:00Z");
+  setClock(at);
+  // The day already at its count: a news Short and a long video.
+  for (const [id, lane] of [["n1", "news"], ["l1", "longform"]] as const)
+    await db.query(
+      `INSERT INTO episodes (id, story_hash, status, story_json, lane) VALUES ($1, $1, 'published', '{"headline":"x","items":[]}', $2)`,
+      [id, lane],
+    );
+  godOfWarDelay(s, at);
+  await tick(s);
+  const eps = await listEpisodes(db);
+  const big = eps.filter((e) => e.story_json.bigStory);
+  assert.equal(big.length, 1, "made");
+  assert.equal(big[0]!.lane, "news_breaking");
+  assert.equal(big[0]!.story_json.bigStory?.key, "god-of-war|delay");
+  assert.ok(big[0]!.story_json.items.length >= 6, "every outlet's article comes with it");
+  assert.ok(f.notifications.some((n) => n.startsWith("Big story picked:")));
+  // Not again, under any of its hashes.
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 1);
+  const seen = await db.query<{ decision: string }>(
+    `SELECT decision FROM seen_stories WHERE decision = 'big_story'`,
+  );
+  assert.ok(seen.length >= 1, "its splits will not come back through a news slot");
+  await db.close();
+});
+
+test("report mode changes nothing and still says what it would have done", async () => {
+  const { db, s, setClock } = await setup({
+    bigStoryMode: "report",
+    dailyTarget: 0,
+    breakingEnabled: false,
+    newsSlots: ["03:00"],
+  });
+  const at = new Date("2026-10-16T17:30:00Z");
+  setClock(at);
+  godOfWarDelay(s, at);
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 0);
+  const ev = await db.query<{ detail: { reason: string } }>(
+    `SELECT detail FROM events WHERE kind = 'big_story_held'`,
+  );
+  assert.equal(ev.length, 1);
+  assert.match(ev[0]!.detail.reason, /BIG_STORY_MODE is report/);
+  await db.close();
+});
+
+test("a story missed while the factory was down is made at the next chance, marked late", async () => {
+  const { db, s, setClock } = await setup({ bigStoryMode: "make", newsSlots: ["03:00"] });
+  const broke = new Date("2026-10-16T17:30:00Z");
+  setClock(broke);
+  godOfWarDelay(s, broke);
+  // Discovery ran at the time; selection did not (paused: the factory was down, or restarting).
+  const { discoverTick } = await import("../src/pipeline.ts");
+  await discoverTick(s);
+  const later = new Date("2026-10-17T07:30:00Z");
+  setClock(later);
+  s.discover = async () => [];
+  await tick(s);
+  const big = (await listEpisodes(db)).filter((e) => e.story_json.bigStory);
+  assert.equal(big.length, 1);
+  assert.ok((big[0]!.story_json.bigStory?.lateHours ?? 0) >= 13, "the writer is told it is hours old");
+  await db.close();
+});
+
+test("the editor's pass on a big story is reported; on a huge one it is overruled", async () => {
+  const { db, f, s, setClock } = await setup({ bigStoryMode: "make", bigStoryHuge: 100000, newsSlots: ["03:00"] });
+  const at = new Date("2026-10-16T17:30:00Z");
+  setClock(at);
+  godOfWarDelay(s, at);
+  f.pick = -1;
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 0);
+  const ev = await db.query<{ detail: { reason: string } }>(
+    `SELECT detail FROM events WHERE kind = 'big_story_held'`,
+  );
+  assert.ok(ev.some((e) => /the editor passed on it/.test(e.detail.reason)));
+  // Same story, huge bar now cleared, a new three-hour bucket.
+  s.cfg.bigStoryHuge = 1;
+  setClock(new Date(at.getTime() + 3 * 3_600_000));
+  godOfWarDelay(s, new Date(at.getTime() + 3 * 3_600_000));
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 1);
+  await db.close();
+});
+
+test("a long video no longer uses up a slot's turn in the day's count", async () => {
+  const { db, s, setClock } = await setup({ dailyTarget: 1, newsSlots: ["13:00"], breakingEnabled: false });
+  const at = new Date("2026-10-16T12:00:00Z");
+  setClock(at);
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane) VALUES ('l1', 'l1', 'published', '{"headline":"x","items":[]}', 'longform')`,
+  );
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.lane === "news").length, 1);
+  await db.close();
+});

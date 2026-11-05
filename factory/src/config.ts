@@ -194,6 +194,26 @@ export interface Config {
   whyFreshDays: number;
   /** A breaking Short past BREAKING_PER_DAY is allowed once more only at or above this score; 0 = never (src/storymix.ts). */
   breakingBigScore: number;
+  /** Big stories (src/bigstories.ts): off, report (say what it would do, change nothing) or make. */
+  bigStoryMode: "off" | "report" | "make";
+  /** Size at which a story is big: never held by the cap, the breaking allowance or the day's count. */
+  bigStorySize: number;
+  /** Size past which a story ignores the day's ceiling and the same-game rule, and the editor cannot pass on it. */
+  bigStoryHuge: number;
+  /** How long after its newest article a big story can still be made, angled on what has happened since. */
+  bigStoryMaxAgeHours: number;
+  /** Most big-story Shorts a day below BIG_STORY_HUGE, a ceiling on the cost. */
+  bigStoryPerDay: number;
+  /** Filler that gives way, one lane for each big story made today, in this order. */
+  bigStoryBumps: string[];
+  /** The day's count (SHORTS_PER_DAY) counts Shorts only: a long video does not use up a slot's turn. */
+  dailyTargetShortsOnly: boolean;
+  /** The Claude credit a month in dollars (src/claudecredit.ts); 0 turns the forecast off. */
+  claudeMonthlyCredit: number;
+  /** The day of the month the credit renews. */
+  claudeCreditRenewDay: number;
+  /** First warning when the credit would run out in under this many days. */
+  claudeCreditWarnDays: number;
   /** The YouTube search demand check before evergreen, ranking and Why picks (src/discovery/searchdemand.ts). */
   demandCheck: boolean;
   /** Views on a topic's top recent YouTube hits (last week) below which it has no demand and is skipped. */
@@ -225,6 +245,8 @@ export interface Config {
   routineLanAllow: string[];
   routineLanPort: number;
   /** The owner's own recordings, cut into an inbox by the Windows tasks in C:\Claude	inotv-vods. */
+  elevenLabsLowCredits: number; // warn the owner under this many usable credits (ELEVENLABS_LOW_CREDITS, 0 off)
+  elevenLabsLowDays: number; // and under this many days of the current pace (ELEVENLABS_LOW_DAYS, 0 off)
   gameplayEnabled: boolean;
   gameplayRoot: string; // holds inbox/ (written by the finder) and published/ (read by Leonida Intel)
   gameplayExperiments: string; // the numbered test list the reviewer matches clips against
@@ -238,6 +260,7 @@ export interface Config {
   gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
   longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
+  shortPlateMax: number; // 0-1, the share of a Short that may sit on the bare plate before more media is fetched and, failing that, it is stopped
   planSlateMax: number; // 0-1, the share of a long video that may sit on the empty slate before its render is stopped
   releaseGateMaxSlate: number; // 0-1, the same on the finished picture at the release gate
   releaseGateMinFootage: number; // 0-1, a documentary's share of game footage when the game has plenty of it
@@ -833,6 +856,21 @@ export function loadConfig(): Config {
     whySlots: whySlotsFrom(str("WHY_SLOTS"), str("WHY_SLOT")),
     whyFreshDays: Math.max(0, int("WHY_FRESH_DAYS", 14)),
     breakingBigScore: Math.max(0, int("BREAKING_BIG_SCORE", 95)),
+    bigStoryMode: (["off", "report", "make"] as const).find(
+      (m) => m === str("BIG_STORY_MODE", "report"),
+    ) ?? "report",
+    bigStorySize: Math.max(1, int("BIG_STORY_SIZE", 70)),
+    bigStoryHuge: Math.max(1, int("BIG_STORY_HUGE", 90)),
+    bigStoryMaxAgeHours: Math.max(1, int("BIG_STORY_MAX_AGE_HOURS", 36)),
+    bigStoryPerDay: Math.max(0, int("BIG_STORY_PER_DAY", 3)),
+    bigStoryBumps: str("BIG_STORY_BUMPS", "deals,spare,evergreen,why")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+    dailyTargetShortsOnly: bool("DAILY_TARGET_SHORTS_ONLY", true),
+    claudeMonthlyCredit: Math.max(0, Number(str("CLAUDE_MONTHLY_CREDIT", "100")) || 0),
+    claudeCreditRenewDay: Math.max(1, int("CLAUDE_CREDIT_RENEW_DAY", 1)),
+    claudeCreditWarnDays: Math.max(1, int("CLAUDE_CREDIT_WARN_DAYS", 10)),
     demandCheck: bool("DEMAND_CHECK", true),
     demandMinViews: Math.max(0, int("DEMAND_MIN_VIEWS", 20000)),
     demandLookups: Math.max(0, int("DEMAND_LOOKUPS", 12)),
@@ -867,7 +905,11 @@ export function loadConfig(): Config {
       .map((x) => x.trim())
       .filter(Boolean),
     routineLanPort: int("ROUTINE_LAN_PORT", 8081),
-    gameplayEnabled: bool("GAMEPLAY_ENABLED", true),
+    elevenLabsLowCredits: int("ELEVENLABS_LOW_CREDITS", 100_000),
+    elevenLabsLowDays: int("ELEVENLABS_LOW_DAYS", 5),
+    // A dry run (every sandbox and rehearsal) leaves the owner's real inbox alone unless it asks otherwise: 4 Nov
+    // 2026, a sandbox Short took clips out of the live inbox because nothing told it not to.
+    gameplayEnabled: bool("GAMEPLAY_ENABLED", !bool("DRY_RUN", false)),
     gameplayRoot: str(
       "GAMEPLAY_ROOT",
       path.join(os.homedir(), "Videos", "Pulse Gameplay"),
@@ -900,6 +942,7 @@ export function loadConfig(): Config {
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),
     longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
+    shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.15")) || 0.15,
     planSlateMax: Number(str("PLAN_SLATE_MAX", "0.08")) || 0.08,
     releaseGateMaxSlate: Number(str("RELEASE_GATE_MAX_SLATE", "0.08")) || 0.08,
     releaseGateMinFootage: Number(str("RELEASE_GATE_MIN_FOOTAGE", "0.1")) || 0.1,
@@ -1328,6 +1371,9 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     breaking: c.breakingEnabled
       ? `${c.breakingPerDay}/day, score>=${c.breakingScoreMin}, <=${c.breakingMaxAgeMinutes}min old${c.breakingBigScore ? `, one more at score>=${c.breakingBigScore}` : ""}`
       : "off",
+    bigStories: c.bigStoryMode === "off"
+      ? "off"
+      : `${c.bigStoryMode}, size>=${c.bigStorySize}, up to ${c.bigStoryPerDay}/day, ${c.bigStoryMaxAgeHours}h window`,
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
     demandCheck: c.demandCheck,
     approvalMode: c.approvalMode,

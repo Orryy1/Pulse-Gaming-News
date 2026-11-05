@@ -160,7 +160,8 @@ cutover)
   # all of them with no seed; only what changed since the seed otherwise. Not copied, on purpose: sfxlab/ (the lab's
   # working files: public/sfx holds what renders use), smoke/ beyond its scripts, tmp/, and tiktok-browser/ (a Windows
   # Chrome profile whose cookies are locked to this PC, and TIKTOK_BROWSER is off; tiktok-session.json does travel).
-  seen=$(cd data && ls -d tokens tiktok-session.json usage abtests 2>/dev/null | tr '\n' ' ')
+  # ls exits 2 when one is missing (no tokens/ here on 5 Nov 2026), which set -e took as a failed cutover.
+  seen=$(cd data && ls -d tokens tiktok-session.json usage abtests 2>/dev/null | tr '\n' ' ' || true)
   tar -C data -cf - db site engage admin discord $seen $(cd data && ls logs/alerts.jsonl logs/alert_digest.md 2>/dev/null | tr '\n' ' ') | on_mac 'mkdir -p ~/PulseFactory/factory/data && cd ~/PulseFactory/factory/data && rm -f db.lock && rm -f db/postmaster.pid && tar -xf -'
   if [ -f "$SEED_MARK" ]; then
     (cd data && find episodes -type f -newermt "$(cat "../$SEED_MARK")" ! -name '*.part' -print0) > /tmp/pulse-delta.$$

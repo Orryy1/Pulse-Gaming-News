@@ -321,22 +321,25 @@ export function packagingLines(rows: CtrRow[]): string[] {
 
 export interface AbEntry {
   videoId: string;
-  episode: string;
   publishAt?: string | null;
 }
 
 /**
  * The Test & compare queue as a run should see it (pure). The queue keeps entries for uploads that were later replaced
  * (three old Vice City uploads were still marked ready on 5 Nov, and a run does three videos at most, so they ate
- * the run): an entry counts only while its video is still its episode's video. Then the most clicks lost go first.
+ * the run). An entry whose time has passed counts only if it is public on the channel; a scheduled one waits its turn.
+ * With no channel list to hand (publicIds undefined) nothing is dropped. Then the most clicks lost go first.
  */
 export function abQueueView<T extends AbEntry>(
   entries: T[],
-  currentVideo: Map<string, string>,
+  publicIds: Set<string> | undefined,
+  now: Date,
   clicksLost: Map<string, number> = new Map(),
 ): T[] {
+  const due = (e: T) =>
+    Boolean(e.publishAt) && new Date(e.publishAt!).getTime() <= now.getTime();
   return entries
-    .filter((e) => currentVideo.get(e.episode) === e.videoId)
+    .filter((e) => !publicIds || !due(e) || publicIds.has(e.videoId))
     .map((e, i) => ({ e, i, lost: clicksLost.get(e.videoId) ?? 0 }))
     .sort((a, b) => b.lost - a.lost || a.i - b.i)
     .map((x) => x.e);

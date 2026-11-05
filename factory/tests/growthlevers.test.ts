@@ -102,25 +102,29 @@ test("worst long videos: only long, only judged, only under the floor, most lost
   );
 });
 
-test("test queue: a replaced upload goes, the most clicks lost go first, ties keep their order", () => {
+test("test queue: a past video that isn't public goes, a scheduled one stays, the most clicks lost go first", () => {
+  const now = new Date("2026-11-05T00:00:00Z");
+  const past = "2026-10-01T00:00:00Z";
   const q = abQueueView(
     [
-      { videoId: "old", episode: "e1" },
-      { videoId: "a", episode: "e2" },
-      { videoId: "b", episode: "e3" },
-      { videoId: "c", episode: "e4" },
+      { videoId: "old", publishAt: past },
+      { videoId: "a", publishAt: past },
+      { videoId: "b", publishAt: past },
+      { videoId: "c", publishAt: past },
+      { videoId: "later", publishAt: "2026-12-01T00:00:00Z" },
     ],
-    new Map([
-      ["e1", "new"],
-      ["e2", "a"],
-      ["e3", "b"],
-      ["e4", "c"],
-    ]),
+    new Set(["a", "b", "c"]),
+    now,
     new Map([["c", 50]]),
   );
   assert.deepEqual(
     q.map((x) => x.videoId),
-    ["c", "a", "b"],
+    ["c", "a", "b", "later"],
+  );
+  assert.equal(
+    abQueueView([{ videoId: "old", publishAt: past }], undefined, now).length,
+    1,
+    "no channel list, nothing dropped",
   );
 });
 

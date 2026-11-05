@@ -7,7 +7,7 @@
 // also arrives from 127.0.0.1, so anything that carries a proxy header is refused as if the page did
 // not exist. Nothing here needs or shows a secret.
 
-import { CTR_FLOOR, abQueueView, ctrRows, type AbEntry } from "./reach.ts";
+import { CTR_FLOOR, abQueueView, ctrRows } from "./reach.ts";
 import { pinPlan } from "./social/commentcheck.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -447,7 +447,6 @@ export async function handleRoutine(
         const pending = fs.existsSync(file)
           ? (JSON.parse(fs.readFileSync(file, "utf8")) as Array<{
               videoId: string;
-              episode: string;
               publishAt?: string | null;
             }>)
           : [];
@@ -455,8 +454,8 @@ export async function handleRoutine(
         let waiting = pending.filter((t) => !done.has(t.videoId));
         // Replaced uploads out, and the most clicks lost first (src/reach.ts).
         if (cfg.abQueueClean) {
-          const eps = await db.query<{ id: string; youtube_video_id: string }>(
-            `SELECT id, youtube_video_id FROM episodes WHERE youtube_video_id IS NOT NULL`,
+          const longs = await (ctx.channelLongs ?? channelLongs)().catch(
+            () => undefined,
           );
           const lost = new Map(
             (await ctrRows(db)).map((r) => [
@@ -465,8 +464,9 @@ export async function handleRoutine(
             ]),
           );
           waiting = abQueueView(
-            waiting as Array<AbEntry & (typeof waiting)[number]>,
-            new Map(eps.map((e) => [e.id, e.youtube_video_id])),
+            waiting,
+            longs && new Set(longs.map((l) => l.id)),
+            now,
             lost,
           );
         }

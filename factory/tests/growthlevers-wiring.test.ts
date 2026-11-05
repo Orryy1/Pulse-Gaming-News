@@ -153,22 +153,13 @@ test("/routine/abtest: replaced uploads only drop out when AB_QUEUE_CLEAN is on"
       },
     ]),
   );
-  const db = {
-    query: async (sql: string) =>
-      /youtube_video_id IS NOT NULL`?$|FROM episodes WHERE youtube_video_id IS NOT NULL/.test(
-        sql,
-      )
-        ? [
-            { id: "e1", youtube_video_id: "NEW" },
-            { id: "e2", youtube_video_id: "AAA" },
-          ]
-        : [],
-  };
+  const db = { query: async () => [] };
   const ids = async (abQueueClean: boolean): Promise<string[]> => {
     const ctx: any = {
       db,
       cfg: testConfig(dir, { abQueueClean }),
       now: () => new Date("2026-11-05T00:00:00Z"),
+      channelLongs: async () => [{ id: "AAA", title: "A long video" }],
     };
     const srv = http.createServer(async (rq, rs) => {
       if (!(await handleRoutine(rq, rs, new URL(rq.url!, "http://local"), ctx)))

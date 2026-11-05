@@ -387,6 +387,7 @@ export function testConfig(
     docMetaGuard: false,
     longSentenceGate: 0,
     longHookStack: 0,
+    longHookYouMin: 0,
     longOpenLoopsMax: 0,
     loopNamePayoff: false,
     longVerdictStamps: false,

@@ -650,6 +650,8 @@ export interface Config {
   docMetaGuard: boolean;
   /** LONG_SENTENCE_GATE: the mean sentence stays under this many words on rankings and guides (0: not measured). */
   longSentenceGate: number;
+  /** LONG_HOOK_YOU_MIN: the least "you" words in a long video's opening, which the whole-video floor cannot see (0: off). */
+  longHookYouMin: number;
   /** LONG_HOOK_STACK: the opening stacks the stakes, 3 to this many named surprises, a trust line and a saved promise (0: the older opening). */
   longHookStack: number;
   /** LONG_OPEN_LOOPS_MAX: the most open loops a guide plans; rankings get real ones, up to 3 (0: as before). */
@@ -1256,6 +1258,7 @@ export function loadConfig(): Config {
     docMetaGuard: bool("DOC_META_GUARD", false),
     longSentenceGate: int("LONG_SENTENCE_GATE", 0),
     longHookStack: int("LONG_HOOK_STACK", 0),
+    longHookYouMin: int("LONG_HOOK_YOU_MIN", 0),
     longOpenLoopsMax: int("LONG_OPEN_LOOPS_MAX", 0),
     loopNamePayoff: bool("LOOP_NAME_PAYOFF", false),
     longVerdictStamps: bool("LONG_VERDICT_STAMPS", false),

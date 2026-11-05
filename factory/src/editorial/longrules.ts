@@ -17,6 +17,8 @@ export interface LongRuleSettings {
   guideYouPer1000: number;
   longSentenceGate: number;
   longHookStack: number;
+  /** LONG_HOOK_YOU_MIN: the least "you" words in the opening itself (0: not measured). */
+  longHookYouMin?: number;
   longOpenLoopsMax: number;
   loopNamePayoff: boolean;
   longVerdictStamps: boolean;
@@ -35,6 +37,8 @@ export interface LongRules {
   sentenceGate: number;
   /** The most named surprises in the hook (0: the older opening). */
   hookStack: number;
+  /** The least "you" family words in the opening (0: not measured). The whole-video floor cannot see a cold first minute. */
+  hookYouMin: number;
   /** The most open loops this format plans (0: the documentary default, and rankings none). */
   loopsMax: number;
   /** A payoff says out loud that it is the promise being kept. */
@@ -59,6 +63,7 @@ export const NO_LONG_RULES: LongRules = {
   youFloor: 0,
   sentenceGate: 0,
   hookStack: 0,
+  hookYouMin: 0,
   loopsMax: 0,
   namePayoff: false,
   verdicts: false,
@@ -81,6 +86,7 @@ export function longRulesFor(
     sentenceGate:
       kind === "ranking" || guide ? Math.max(0, cfg.longSentenceGate) : 0,
     hookStack: kind === "explained" ? 0 : Math.max(0, cfg.longHookStack),
+    hookYouMin: Math.max(0, cfg.longHookYouMin ?? 0),
     loopsMax: guide
       ? Math.max(0, cfg.longOpenLoopsMax)
       : kind === "ranking"
@@ -242,6 +248,20 @@ export function hookStackRule(count: number, what = "video"): string {
 3. One trust line in plain words: where this comes from and what was checked. Never a claim to have played what we haven't.
 4. One promise saved for the very end: a specific thing the viewer will only get in the last chapter. Say that it's coming last.
 Then hand on to the first chapter. List them in "hook_stack": the stakes, each surprise with the chapter that pays it, the trust line, and the saved promise with the last chapter's number.`;
+}
+
+/**
+ * The opening's own "you" count (pure). 5 Nov 2026: with the hook stack on, a Vice City rewrite passed every check on 4
+ * "you" in its first 165 words, where GrandGecko has 13 by 60 s. Every family word outside quotations counts.
+ */
+export function hookYouProblems(intro: string, least: number): string[] {
+  if (least <= 0) return [];
+  const n = (outsideQuotes(intro).match(YOU) ?? []).length;
+  return n >= least
+    ? []
+    : [
+        `The opening says "you" ${n} times and needs at least ${least}. Turn the surprises and the promise to the viewer: what you will see, pay, assume or get wrong.`,
+      ];
 }
 
 /** A hook's problems as instructions a rewrite can follow (pure). `chapters` are the chapters' narrations in order. */

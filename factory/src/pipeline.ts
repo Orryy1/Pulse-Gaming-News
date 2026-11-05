@@ -200,6 +200,7 @@ import {
   DIRECT_MIN_WPM,
   fitLines,
   loopLeadIn,
+  loopDangles,
   loopRepeatsHook,
 } from "./gameplaydirect.ts";
 import {
@@ -3913,7 +3914,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     direction.payoff_line = cleanLine(direction.payoff_line);
     direction.loop_line = cleanLine(direction.loop_line);
     // A loop that says the hook again sounds like a stutter on the replay: a lead-in takes its place.
-    if (loopRepeatsHook(direction.loop_line, direction.hook))
+    if (loopRepeatsHook(direction.loop_line, direction.hook) || loopDangles(direction.loop_line))
       direction.loop_line = loopLeadIn(ref.id);
     await logEvent(s.db, ep.id, "gameplay_direction", { clip: ref.id, direction });
     if (!direction.payoff_visible && !(meta.rehearsal && meta.rehearsal_force))

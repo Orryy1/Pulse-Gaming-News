@@ -50,6 +50,24 @@ export const normTitle = (t: string) =>
     .trim();
 
 /** The entry that is exactly this game: same title, a main game first, nearest release year. */
+const ROMAN: Array<[string, string]> = [
+  ["2", "II"], ["3", "III"], ["4", "IV"], ["5", "V"], ["6", "VI"], ["7", "VII"], ["8", "VIII"], ["9", "IX"], ["10", "X"],
+];
+
+/**
+ * The same title with its number written the other way: "Grand Theft Auto 6" is "Grand Theft Auto VI" on IGDB. On
+ * 5 Nov 2026 a GTA 6 Short found no art at all under the writer's spelling, and stopped at 71% empty panel.
+ */
+export function numberVariant(title: string): string | undefined {
+  for (const [digit, roman] of ROMAN) {
+    const d = new RegExp(`\\b${digit}\\b(?=[^\\d]*$)`);
+    if (d.test(title)) return title.replace(d, roman);
+    const r = new RegExp(`\\b${roman}\\b(?=[^IVXivx]*$)`);
+    if (r.test(title)) return title.replace(r, digit);
+  }
+  return undefined;
+}
+
 export function pickIgdb(
   games: IgdbGame[],
   title: string,
@@ -116,7 +134,24 @@ export async function findIgdbGame(
       await q(`${fields} where name ~ "${safe}"; limit 20;`),
       title,
       year,
-    ) ?? pickIgdb(await q(`search "${safe}"; ${fields} limit 20;`), title, year)
+    ) ??
+    pickIgdb(await q(`search "${safe}"; ${fields} limit 20;`), title, year) ??
+    (await (async () => {
+      // The number written the other way, then the name without its subtitle ("Street Fighter II: The World Warrior"
+      // is "Street Fighter II" on IGDB; that one entry left a ranking 12% empty panel, 3 Nov 2026).
+      const short = safe.includes(":") ? safe.split(":")[0]!.trim() : undefined;
+      for (const other of [numberVariant(safe), short].filter(Boolean) as string[]) {
+        const hit =
+          pickIgdb(
+            await q(`${fields} where name ~ "${other}"; limit 20;`),
+            other,
+            year,
+          ) ??
+          pickIgdb(await q(`search "${other}"; ${fields} limit 20;`), other, year);
+        if (hit) return hit;
+      }
+      return undefined;
+    })())
   );
 }
 

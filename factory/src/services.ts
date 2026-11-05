@@ -42,7 +42,7 @@ import { visionQa } from "./qa/vision.ts";
 import { checkNarration, transcribeWords } from "./qa/narration.ts";
 import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken, storedRefreshToken } from "./youtube/oauth.ts";
-import { officialMedia } from "./assets/officialTrailer.ts";
+import { trailerFrames, officialMedia } from "./assets/officialTrailer.ts";
 import {
   archiveLibrary,
   libraryStockClips,
@@ -320,7 +320,7 @@ export function createServices(db: Db, cfg: Config): Services {
       return game ? fetchIgdbArt(game, dir, max) : [];
     },
     downloadPhoto: (img, dest) => downloadCommons(img, dest),
-    fetchClips: (app, dir, targets, maxClips, scope) =>
+    fetchClips: (app, dir, targets, maxClips, scope, fill) =>
       selectClips({
         app,
         episodeDir: dir,
@@ -328,7 +328,11 @@ export function createServices(db: Db, cfg: Config): Services {
         maxClips,
         llm: cfg.clipRanking === "llm" ? llm : undefined,
         scope,
+        fillSeconds: fill?.seconds,
+        textCheck: fill?.textCheck,
       }),
+    trailerFrames: (trailer, dir, gameTitle, count, textCheck) =>
+      trailerFrames({ episodeDir: dir, gameTitle, ytdlp: cfg.ytdlpPath }, trailer, count, textCheck),
     releaseRadar: (from) => releaseRadar(from),
     freeGames: (now) => freeGames(now),
     achievements: (appId) => fetchAchievements(appId),
@@ -410,6 +414,7 @@ export function createServices(db: Db, cfg: Config): Services {
       maxClips,
       hint,
       story,
+      fill,
     ) => {
       if (!cfg.officialTrailers) return { clips: [], stills: [] };
       return officialMedia({
@@ -422,6 +427,7 @@ export function createServices(db: Db, cfg: Config): Services {
         ytdlp: cfg.ytdlpPath,
         hint,
         story,
+        fill,
         stillFrames: cfg.officialStillFrames,
         quotaOk: async () => {
           const now = new Date();

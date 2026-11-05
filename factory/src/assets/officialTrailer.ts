@@ -10,7 +10,7 @@ import { runCapped } from "../lib/child.ts";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
 import { YTDLP_TEXT } from "../lib/bin.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
-import { screenFrames } from "./localvision.ts";
+import { stillBigText } from "./cliptext.ts";
 import type { VisualAsset } from "./steam.ts";
 import type { Llm } from "../editorial/llm.ts";
 
@@ -31,7 +31,7 @@ export const PUBLISHER_CHANNELS: PublisherRule[] = [
     match: /^rockstar games$/i,
     name: "Rockstar Games",
     minSubscribers: 1_000_000,
-    clipSeconds: 6,
+    clipSeconds: 10, // the same cap as ROCKSTAR_FOOTAGE_SECONDS (src/assets/footage.ts); this line said 6 until 5 Nov 2026
   },
   {
     match: /^nintendo( of america| uk| europe)?$/i,
@@ -227,6 +227,19 @@ const EXCLUDE =
   /\b(reaction|reacts?|breakdown|analysis|explained|review|leak|leaked|fan[- ]?made|concept|remake|recreated|in real life|parody|react)\b/i;
 
 /** Candidate ranking: a trailer from a known publisher, titled as a trailer, naming the game, newest first. */
+const SERIES_NUMERAL: Record<string, number> = { "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9 };
+
+/** The instalment a title names: "Grand Theft Auto IV" is 4, "Grand Theft Auto: Vice City" none. */
+export function seriesNumber(title: string): number | undefined {
+  // A platform's number is not the game's: "Ocarina of Time - Nintendo Switch 2" has no instalment number.
+  const name = title
+    .toLowerCase()
+    .replace(/\b(?:nintendo\s+)?switch\s*2\b|\bps\s?[2-5]\b|\bplaystation\s*[2-5]\b|\bxbox\s+series\s+[xs]\b|\bsteam\s+deck\b/g, " ");
+  for (const w of name.split(/[^a-z0-9]+/))
+    if (SERIES_NUMERAL[w] !== undefined) return SERIES_NUMERAL[w];
+  return undefined;
+}
+
 export function pickOfficial(
   items: Array<{
     videoId: string;
@@ -254,6 +267,10 @@ export function pickOfficial(
         return undefined;
       const t = it.title.toLowerCase();
       if (EXCLUDE.test(t)) return undefined;
+      // A series' other instalment is the wrong game: "GTA IV" must never take GTA VI's launch trailer.
+      const wanted = seriesNumber(gameTitle);
+      const shown = seriesNumber(it.title);
+      if (shown !== wanted && (shown !== undefined || wanted !== undefined)) return undefined;
       const named =
         tokens.filter((tok) => t.includes(tok)).length /
         Math.max(1, tokens.length);
@@ -714,6 +731,8 @@ export interface OfficialMediaOptions {
   hint?: string;
   /** A picture story: look first for the publisher's own video of it, uploaded since this date. */
   story?: { text: string; after: Date };
+  /** Footage first on Shorts: see MatchClipsOptions. The publisher's cap still applies. */
+  fill?: { seconds?: number; textCheck?: boolean };
   /**
    * OFFICIAL_STILL_FRAMES: a stills-only publisher (clipSeconds 0, Nintendo) gives up to this many frames of its own
    * trailer as stills, matched to the lines like footage. No moving footage is used; 0 keeps only the thumbnail.
@@ -755,9 +774,11 @@ async function sharpestFrames(
  * two of each, tagged with that line), then a pool of clean frames from across the trailer for the other shots.
  */
 async function trailerStills(
-  o: OfficialMediaOptions,
+  o: Pick<OfficialMediaOptions, "episodeDir" | "gameTitle" | "targets" | "stillFrames" | "llm" | "ytdlp">,
   trailer: { videoId: string; title: string; channelTitle: string },
   url: string,
+  /** The pool alone, at most this many: no moments matched to lines, so no model call. */
+  poolOnly?: number,
 ): Promise<VisualAsset[]> {
   const work = path.join(o.episodeDir, "trailers");
   const file = path.join(work, "official.mp4");
@@ -776,7 +797,7 @@ async function trailerStills(
   try {
     const total = await downloadTrailer(trailer.videoId, file, o.ytdlp, true, 2160);
     await fs.copyFile(file, keep);
-    const moments = await matchClips({
+    const moments = poolOnly ? [] : await matchClips({
       trailers: [{ file, name: trailer.title, url, total: total || 120 }],
       episodeDir: o.episodeDir,
       targets: o.targets,
@@ -822,10 +843,11 @@ async function trailerStills(
       const st = await fs.stat(small).catch(() => undefined);
       if (st && st.size > 25_000) pool.push({ at, file: small });
     }
-    const flags = await screenFrames(pool.map((p) => p.file)).catch(() => []);
-    const clean = pool.filter((_, i) => !flags[i]?.text && !flags[i]?.webcam && !flags[i]?.gore);
-    const step = Math.max(1, Math.floor(clean.length / 12));
-    for (const [k, p] of clean.filter((_, i) => i % step === 0).slice(0, 12).entries())
+    // The picture editor reads these afterwards. The local screen is not asked: it calls a game's own interface text
+    // (the ocarina's music staff, the frame the "hum" line needs), and it adds a GPU job for no gain here.
+    const poolMax = poolOnly ?? 16;
+    const step = Math.max(1, Math.floor(pool.length / poolMax));
+    for (const [k, p] of pool.filter((_, i) => i % step === 0).slice(0, poolMax).entries())
       out.push({
         kind: "screenshot",
         file: await grab(p.at, `official_pool_${k}.jpg`),
@@ -841,6 +863,43 @@ async function trailerStills(
   await fs.rm(work, { recursive: true, force: true });
   await fs.rm(scratch, { recursive: true, force: true });
   await fs.rm(keep, { force: true });
+  return out;
+}
+
+/** At or under this many seconds of footage, a publisher's trailer may fill gaps with stills (SHORT_CAPPED_STILLS). */
+export const TIGHT_CAP_SECONDS = 10;
+
+/**
+ * Frames of a tight-cap publisher's trailer, as a last fallback once its own screenshots, press art and IGDB are in
+ * (ruling of 5 Nov 2026). Spread across the trailer at least 6 s apart, clean of text, no big lettering in the crop,
+ * marked `frame` so the planner uses them last, once each and never two in a row: never a way to rebuild the trailer.
+ */
+export async function trailerFrames(
+  o: Pick<OfficialMediaOptions, "episodeDir" | "gameTitle" | "ytdlp">,
+  trailer: { videoId: string; title: string; channelTitle: string; url: string },
+  count: number,
+  textCheck: boolean,
+): Promise<VisualAsset[]> {
+  if (count <= 0) return [];
+  const frames = await trailerStills(
+    { ...o, targets: [], stillFrames: count },
+    trailer,
+    trailer.url,
+    // A few spare: the text check may drop some.
+    count + 3,
+  );
+  const out: VisualAsset[] = [];
+  for (const f of frames) {
+    const words =
+      textCheck && out.length < count
+        ? await stillBigText(path.join(o.episodeDir, f.file))
+        : [];
+    if (out.length >= count || words.length) {
+      await fs.rm(path.join(o.episodeDir, f.file), { force: true }).catch(() => undefined);
+      continue;
+    }
+    out.push({ ...f, frame: true });
+  }
   return out;
 }
 
@@ -955,6 +1014,10 @@ export async function officialMedia(
       maxClips: o.maxClips,
       llm: o.llm,
       prefix: "official",
+      fillSeconds: o.fill?.seconds
+        ? Math.min(o.fill.seconds, trailer.clipSeconds)
+        : undefined,
+      textCheck: o.fill?.textCheck,
       describe: (t, seconds, at) =>
         socialVideo
           ? `Official post "${t.name.slice(0, 80)}" by ${trailer.channelTitle}, publisher: ${trailer.publisher} (${url}), ${seconds}s at ${at.toFixed(1)}s, muted`

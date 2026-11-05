@@ -402,10 +402,21 @@ export const ArtTrack: React.FC<{
 };
 
 /** Legibility bands: dark behind the brand rows and the captions, nearly clear through the hero and the shelf. */
-export const Scrim: React.FC<{ profile?: "footage" | "card" | "plate" | "vivid" }> = ({
-  profile = "footage",
-}) => {
+export const Scrim: React.FC<{
+  profile?: "footage" | "card" | "plate" | "vivid";
+  /** SHORT_BRIGHT: only what the small mark and the caption need; the captions carry their own heavy outline. */
+  bright?: boolean;
+}> = ({ profile = "footage", bright = false }) => {
   const mid = profile === "card" ? 0.22 : profile === "plate" ? 0 : 0.08;
+  if (bright)
+    return (
+      <AbsoluteFill
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(5,5,7,0.42) 0%, rgba(5,5,7,0) 11%, rgba(5,5,7,0) 58%, rgba(5,5,7,0.28) 70%, rgba(5,5,7,0.28) 84%, rgba(5,5,7,0) 100%)",
+        }}
+      />
+    );
   if (profile === "vivid")
     return (
       <AbsoluteFill
@@ -425,7 +436,11 @@ export const Scrim: React.FC<{ profile?: "footage" | "card" | "plate" | "vivid" 
 };
 
 /** Film grain and a soft vignette under the type. */
-export const Finish: React.FC<{ grainSrc: string; vignette?: number }> = ({ grainSrc, vignette = 0.55 }) => {
+export const Finish: React.FC<{ grainSrc: string; vignette?: number; bright?: boolean }> = ({
+  grainSrc,
+  vignette = 0.55,
+  bright = false,
+}) => {
   const frame = useCurrentFrame();
   const x = (frame * 37) % 256;
   const y = (frame * 91) % 256;
@@ -434,7 +449,9 @@ export const Finish: React.FC<{ grainSrc: string; vignette?: number }> = ({ grai
       <AbsoluteFill
         style={{
           background:
-            `radial-gradient(ellipse 85% 70% at 50% 45%, transparent 55%, rgba(0,0,0,${vignette}) 100%)`,
+            bright
+              ? "radial-gradient(ellipse 90% 80% at 50% 45%, transparent 70%, rgba(0,0,0,0.2) 100%)"
+              : `radial-gradient(ellipse 85% 70% at 50% 45%, transparent 55%, rgba(0,0,0,${vignette}) 100%)`,
         }}
       />
       <AbsoluteFill

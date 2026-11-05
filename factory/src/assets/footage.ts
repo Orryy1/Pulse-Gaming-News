@@ -20,12 +20,22 @@ export function footageBudgetSeconds(app: SteamApp): number {
 }
 
 /** Keeps clips in order while their total stays within the budget. */
-export function capFootage<T extends { durationSeconds?: number }>(clips: T[], budgetSeconds: number, fallbackSeconds = 3.4): T[] {
+export function capFootage<T extends { durationSeconds?: number }>(
+  clips: T[],
+  budgetSeconds: number,
+  fallbackSeconds = 3.4,
+  /** The clip that crosses the budget is shortened to fit, so a tight cap is spent to the second (a planner never shows past durationSeconds). */
+  trimToFit = false,
+): T[] {
   const kept: T[] = [];
   let total = 0;
   for (const c of clips) {
     const d = c.durationSeconds ?? fallbackSeconds;
-    if (total + d > budgetSeconds + 0.05) break;
+    if (total + d > budgetSeconds + 0.05) {
+      const left = Math.floor((budgetSeconds - total) * 30) / 30;
+      if (trimToFit && left >= 1.6) kept.push({ ...c, durationSeconds: left });
+      break;
+    }
     kept.push(c);
     total += d;
   }

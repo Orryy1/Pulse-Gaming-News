@@ -604,8 +604,15 @@ export const Short: React.FC<ShortProps> = (props) => {
           />
         </Sequence>
       ))}
-      <Scrim profile={hasPlate && !props.images.length ? "plate" : props.vivid ? "vivid" : "footage"} />
-      <Finish grainSrc={staticFile("grain.png")} vignette={props.vivid ? 0.25 : 0.55} />
+      <Scrim
+        profile={hasPlate && !props.images.length ? "plate" : props.vivid ? "vivid" : "footage"}
+        bright={props.bright}
+      />
+      <Finish
+        grainSrc={staticFile("grain.png")}
+        vignette={props.vivid ? 0.25 : 0.55}
+        bright={props.bright}
+      />
 
       {/* The headline is fully rendered at frame 0 (the thumbnail) and returns, pixel-identical, for the loop.
           On the new-look Shorts it is a thumbnail-grade poster over the hero art (components/HookPoster.tsx). */}
@@ -722,6 +729,7 @@ export const Short: React.FC<ShortProps> = (props) => {
                 entryTop={clean ? ENTRY_CARD_TOP : ENTRY_CARD_TOP_CHROME}
                 beatIndex={beatIndexOf[i]}
                 steamPrices={props.steam?.prices}
+                quickFigures={props.quickFigures}
               />
             )}
           </Sequence>
@@ -772,7 +780,7 @@ export const Short: React.FC<ShortProps> = (props) => {
       </AbsoluteFill>
 
       <TopBar
-        chip={theme.chip}
+        chip={props.ownWork ? "" : theme.chip}
         accent={accent}
         isRumour={props.isRumour}
         attribution={props.attribution}

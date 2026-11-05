@@ -111,3 +111,23 @@ export function mediaRichNotice(
 export function bareLines(m: MediaRichness): boolean[] {
   return m.segments.map((s) => s.seconds > 0 && !s.graphic && s.own < s.seconds * 0.5);
 }
+
+/** Seconds a still can carry before it reads as repetition: about two shots of 2.6 s each. */
+const STILL_CARRIES = 5.2;
+
+/**
+ * Trailer frames wanted to fill what footage and published art leave blank, never above the ceiling. Published art is
+ * spent first: with enough of it this is 0 and no frame is used.
+ */
+export function framesNeeded(
+  narrationSeconds: number,
+  footageSeconds: number,
+  publishedStills: number,
+  ceiling: number,
+): number {
+  const blank = Math.max(
+    0,
+    narrationSeconds - footageSeconds - publishedStills * STILL_CARRIES,
+  );
+  return Math.min(ceiling, Math.ceil(blank / STILL_CARRIES));
+}

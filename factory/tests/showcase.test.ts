@@ -1,9 +1,35 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mediaTitle } from "../src/pipeline.ts";
-import { splitAtThen, thenWindows } from "../src/render/plan.ts";
+import { pickOfficial, seriesNumber } from "../src/assets/officialTrailer.ts";
+import { pictureForWords, splitAtThen, thenWindows } from "../src/render/plan.ts";
 
 const w = (text: string, start: number) => ({ text, start, end: start + 0.3 });
+
+test("an official trailer of another instalment is refused", () => {
+  const items = [
+    { videoId: "a", title: "Grand Theft Auto VI Launch Trailer", channelId: "r", channelTitle: "Rockstar Games", publishedAt: "2026-10-01T00:00:00Z" },
+    { videoId: "b", title: "Grand Theft Auto IV Trailer", channelId: "r", channelTitle: "Rockstar Games", publishedAt: "2008-01-01T00:00:00Z" },
+  ];
+  const subs = new Map([["r", 20_000_000]]);
+  assert.equal(pickOfficial(items, "Grand Theft Auto IV", subs)?.videoId, "b");
+  assert.equal(pickOfficial(items, "Grand Theft Auto 2", subs), undefined);
+  assert.equal(pickOfficial(items, "Grand Theft Auto: Vice City", subs), undefined);
+  assert.equal(seriesNumber("Grand Theft Auto: Vice City"), undefined);
+  assert.equal(seriesNumber("The Legend of Zelda: Ocarina of Time – Overview Trailer – Nintendo Switch 2"), undefined);
+  assert.equal(seriesNumber("Hades II on PS5"), 2);
+});
+
+test("a picture chosen for a clause lands on the shot that says it", () => {
+  const images = [
+    { kind: "screenshot", aspect: 1.78, forWords: "Link finally jumps," },
+    { kind: "screenshot", aspect: 1.78, forWords: "and you can hum into the mic." },
+  ];
+  const words = "Link finally jumps, and you can hum into the mic.".split(" ").map((t, i) => w(t, i * 0.3));
+  assert.equal(pictureForWords(images, words, { start: 0, end: 27 }, [0, 0]), 0);
+  assert.equal(pictureForWords(images, words, { start: 27, end: 90 }, [0, 0]), 1);
+  assert.equal(pictureForWords(images, words, { start: 27, end: 90 }, [0, 1]), undefined);
+});
 
 test("mediaTitle drops a writer's qualifier so picture searches match the exact game", () => {
   assert.equal(

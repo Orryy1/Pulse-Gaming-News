@@ -335,6 +335,8 @@ export interface CraftInput {
   /** The year the Short is made. */
   madeYear: number;
   seed: number;
+  /** Kinetic type repeats the caption's words on screen ("players care abo" over PLAYERS CARE ABOUT): skip it (SHORT_LABELS_CLEAN). */
+  noKinetic?: boolean;
 }
 
 type Span = { from: number; to: number };
@@ -452,7 +454,7 @@ export function pickFillers(
     if (avoid.some((a) => overlaps(a, span))) return;
     const spoken = wordsIn(words, s.start, s.end);
     const base = { segment: i, from, len };
-    const k = families.has("kinetic")
+    const k = families.has("kinetic") || input.noKinetic
       ? undefined
       : kineticFor(s.text, { emphasis: "" }, chapter, {
           index: i,

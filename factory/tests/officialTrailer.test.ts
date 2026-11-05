@@ -30,7 +30,7 @@ test("only the publisher's own channel is accepted, never a reupload or a reacti
   );
   assert.equal(got?.videoId, "ok");
   assert.equal(got?.publisher, "Rockstar Games");
-  assert.equal(got?.clipSeconds, 6);
+  assert.equal(got?.clipSeconds, 10);
 });
 
 test("a channel that borrows a publisher's name without its audience is rejected", () => {
@@ -64,7 +64,7 @@ test("a platform channel's copy of a Rockstar trailer still carries Rockstar's c
   const withSubs = new Map([...subs, ["playstation", 15_000_000]]);
   const alone = pickOfficial([ps], "Grand Theft Auto VI", withSubs);
   assert.equal(alone?.publisher, "Rockstar Games");
-  assert.equal(alone?.clipSeconds, 6);
+  assert.equal(alone?.clipSeconds, 10);
   const both = pickOfficial([ps, item({ videoId: "rs", title: "Grand Theft Auto VI Trailer 2", publishedAt: "2025-05-06T00:00:00Z" })], "Grand Theft Auto VI", withSubs);
   assert.equal(both?.videoId, "rs");
 });

@@ -111,7 +111,7 @@ Mark a "blocker" when the script:
 - presents a rumour, leak or analyst estimate as confirmed fact,
 - misattributes who said or reported something,
 - makes a claim that could be defamatory about a real person or company.
-Opinion clearly framed as opinion, and long-established public knowledge, are fine.
+Opinion clearly framed as opinion, and long-established public knowledge, are fine. A price rounded and said to be rounded ("under two dollars", "about five dollars" for $1.99 and $4.99) is accurate, not a blocker; a flat "two dollars" for $1.99 is minor at most when the exact price is on screen.
 Spelling, style and tone are "minor" at most.
 verdict is "fail" if there is any blocker.`;
 }
@@ -175,6 +175,8 @@ export async function writeScript(
     variantNote?: string;
     /** The Pulse Check for this Short (NEWS_SEGMENT, src/editorial/newssegment.ts). */
     segment?: boolean;
+    /** SHORT_END_PAYOFF: a Why's last line does not point to tomorrow's Why. */
+    noSeriesFollow?: boolean;
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -184,7 +186,7 @@ export async function writeScript(
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
   const why = cluster.why
-    ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle, cluster.why.follow)}`
+    ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle, cluster.why.follow, opts.noSeriesFollow)}`
     : "";
   const recent =
     opts.recent && (opts.recent.takes.length || opts.recent.loops.length)

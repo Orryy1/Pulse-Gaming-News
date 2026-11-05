@@ -14,6 +14,7 @@ import {
   outsideQuotes,
   sharedRuns,
 } from "./voice.ts";
+import { spoilerProblems, normTitle } from "./spoilers.ts";
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
@@ -58,23 +59,33 @@ export const ACHIEVEMENT_FORMATS = new Set<string>([
   "rarest_achievements",
   "hardest_achievements",
 ]);
+// An achievement's line says its exact name, what you must do and why it's hard, so it runs longer than a ranking's.
+// Five of them with the hook, the take and the loop read in about a minute, inside EVERGREEN_MAX_SECONDS.
+export const ACHIEVEMENT_ENTRIES = 5;
+export const ACHIEVEMENT_LINE_WORDS = 26;
+export const ACHIEVEMENT_WORDS_MAX = 200;
+export const ACHIEVEMENT_HOOK_WORDS = 15;
 export const entriesMin = (format: string) =>
   WEEKLY_FORMATS.has(format) ? 4 : EVERGREEN_ENTRIES_MIN;
+
+/** The shape of every achievement line: the owner must hear the name and what it takes, not a comparison. */
+const ACHIEVEMENT_LINE_RULES =
+  'one_line says, in this order, in at most 26 words: the achievement\'s exact name in double quotes, word for word as in the data; exactly what you must do to unlock it, from its description in the data with every condition kept; then one concrete reason it is hard or its percentage exactly as in the data. Example rhythm (placeholder facts, never reuse them): "\\"Iron Will\\" asks you to finish the campaign on Nightmare without dying once, and just 3.2% of players have." Vary the shape from line to line (the verb, how the reason lands): five lines built the same way sound like a list being read. Each line stands alone: never compare it with the entry before and never write "tougher", "trickier", "harder still" or "rarer still". Never invent a condition, a number or a percentage: everything comes from the data. requirement is that description in plain words for the card, at most 14 words, keeping its conditions. verdict_chip is 1-4 words. Do not spoil story twists from hidden achievements beyond what the description says.';
 
 /** What the writer is told for each data-driven format. */
 export const FORMAT_RULES: Record<string, string> = {
   rarest_achievements:
-    "Rarest Achievements rules: the entries are exactly the achievements in the data, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest (lowest percentage), spoken from the most common of them up to the rarest. steam_search_term is the game's name, platforms is the game's name, year is the game's release year. one_line says what the achievement asks and why so few players have it, under 15 words, and may quote its percentage exactly as in the data; never invent a percentage. verdict_chip is 1-4 words such as \"PURE PAIN\" or \"SKILL CHECK\". Do not spoil story twists from hidden achievements beyond what the description says. Hook names the game and how few players have these, with the real figure from the data, in your own words. The take says which one is the real test and why.",
+    "Rarest Achievements rules: the entries are exactly the achievements in the data, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest (lowest percentage), spoken from the most common of them up to the rarest. steam_search_term is the game's name, platforms is the game's name, year is the game's release year. " + ACHIEVEMENT_LINE_RULES + " Hook: says plainly what this video is, so a viewer who has never heard of it understands: the rarest achievements in this game, named in full, and how few players have them, using the data's \"Hook figure\" line (\"The rarest achievements in Hades, all under 5% of players\"). Never the rarest one's name or percentage, in the hook, the on-screen title, the YouTube title or the description. At most 15 words. The take says which one is the real test and why, at most 20 words.",
   hardest_achievements:
-    "Hardest Achievements rules: the entries are exactly the achievements in the data, one per game, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest, spoken from the least rare up to the rarest. steam_search_term is that achievement's game, platforms is that game's name, year is that game's release year. one_line says what it asks and why so few players have it, under 15 words; quote percentages exactly as in the data, never invent one. verdict_chip is 1-4 words. Hook: how few players have these and in which games, in your own words. The take names the one that is truly the hardest and why.",
+    "Hardest Achievements rules: the entries are exactly the achievements in the data, one per game, game_title written exactly as the achievement's name in the data, ranked by rarity: rank 1 is the rarest, spoken from the least rare up to the rarest. steam_search_term is that achievement's game, platforms is that game's name, year is that game's release year. " + ACHIEVEMENT_LINE_RULES + " Each line also names the achievement's game. Hook: says plainly what this video is: the hardest achievements in gaming right now, and how few players have them, using the data's \"Hook figure\" line. Never the rarest one's name or percentage, in the hook, the on-screen title, the YouTube title or the description. At most 15 words. The take names the one that is truly the hardest and why, at most 20 words.",
   release_radar:
     'Release Radar rules: the entries are the games in the data and nothing else, spoken in release order, earliest first, so the earliest release has the highest rank number and the last release is rank 1. Set each entry\'s date to its release date exactly as in the data (YYYY-MM-DD) and steam_search_term to its name. platforms is "PC (Steam)" unless the data says more. one_line says what the game is and one reason to care, under 15 words; never invent a price or a platform. verdict_chip is a 1-4 word hook such as "SOULSLIKE WITH GUNS". The take names the one to watch. Hook: the week, how many games and one stake for the viewer, in your own words.',
   steam_climbers:
-    'Steam Climbers rules: the entries are exactly the games in the data, ranked by places climbed: rank 1 climbed the most, spoken from the smallest climb up to the biggest. game_title and steam_search_term are the game\'s name exactly as in the data; year is its release year from the data; platforms is "PC (Steam)". one_line says what the game is and why it climbed, under 15 words, using only the Steam news given for it (an update, an event, a sale, a launch); if its news gives no reason, say what it is and that players are flooding back, and never invent a reason. Peak player numbers may be quoted exactly as in the data. verdict_chip is 1-4 words such as "HUGE UPDATE" or "FREE WEEKEND". Hook: which games climbed Steam\'s charts this week and how far, naming the week, in your own words. The take names the climb that matters most and why.',
+    'Steam Climbers rules: the entries are exactly the games in the data, ranked by places climbed: rank 1 climbed the most, spoken from the smallest climb up to the biggest. game_title and steam_search_term are the game\'s name exactly as in the data; year is its release year from the data; platforms is "PC (Steam)". one_line says what the game is and why it climbed, under 15 words, using only the Steam news given for it (an update, an event, a sale, a launch); if its news gives no reason, say what it is and that players are flooding back, and never invent a reason. Peak player numbers may be quoted exactly as in the data. verdict_chip is 1-4 words such as "HUGE UPDATE" or "FREE WEEKEND". Hook: Steam\'s biggest climbers this week, naming the week, in your own words, never the game at number one or its climb. The take names the climb that matters most and why.',
   steam_deals:
     'Steam Deals rules: the entries are exactly the games in the data, ranked by our deal pick: rank 1 is the best deal in the data, spoken from the least to the best. game_title and steam_search_term are the game\'s name exactly as in the data; year is its release year from the data; platforms is "PC (Steam)". one_line is one sentence with a verb saying what the game is and its US sale price exactly as in the data, under 15 words; say prices in US dollars only, never invent a price, a discount or an end date, and never say a sale ends soon. verdict_chip is 1-4 words such as "ALL-TIME GREAT" or "CULT CLASSIC". Hook: sell the prices in one line of your own (how cheap the cheapest is, or how many great games sit under a price), never a comparison with a sandwich or any other stock image. The hook never claims an order (not "ranked by the biggest cut"); it sells the prices. The take names the one to grab first and why. youtube.title leads with the best deal and its US price, in words that change from week to week, e.g. "Hogwarts Legacy Drops to $5.99 on Steam" or "Five Steam Classics Under $3 This Week"; never the "Is $X Right Now, Plus 4 More Steam Deals" pattern the channel has already used. Prices change: never promise a price will last.',
   weekly_recap:
-    'Weekly Recap rules: the entries are the five biggest stories in the data, spoken from fifth to the biggest. game_title is the game or company the story is about; steam_search_term finds that game on Steam or is empty; year is that game\'s release year, or this year for a company story; platforms lists the outlets that reported it, e.g. "IGN, Xbox Wire". one_line says what happened and why it matters, under 15 words. verdict_chip is 1-4 words such as "DELAYED AGAIN". Only stories in the data, never a rumour as fact. Hook: how many stories and which one matters most to the viewer, in your own words.',
+    'Weekly Recap rules: the entries are the five biggest stories in the data, spoken from fifth to the biggest. game_title is the game or company the story is about; steam_search_term finds that game on Steam or is empty; year is that game\'s release year, or this year for a company story; platforms lists the outlets that reported it, e.g. "IGN, Xbox Wire". one_line says what happened and why it matters, under 15 words. verdict_chip is 1-4 words such as "DELAYED AGAIN". Only stories in the data, never a rumour as fact. Hook: how many stories and what kind of week it was, in your own words, never naming the biggest one before its turn.',
 };
 export type EvergreenFormat = (typeof EVERGREEN_FORMATS)[number];
 
@@ -133,7 +144,7 @@ export const EvergreenEntrySchema = z.object({
   one_line: z
     .string()
     .describe(
-      "The spoken line for this entry: one full sentence with a verb, under 15 words, factual with one opinion",
+      "The spoken line for this entry: one full sentence with a verb, under 15 words unless the format's rules say otherwise, factual with one opinion",
     ),
   verdict_chip: z
     .string()
@@ -146,6 +157,12 @@ export const EvergreenEntrySchema = z.object({
       "achievement formats only: the unlock percentage exactly as in the data",
     ),
   icon: z.string().optional().describe("leave empty; filled in by the factory"),
+  requirement: z
+    .string()
+    .optional()
+    .describe(
+      "achievement formats only: what you must do to unlock it, from the data's description, at most 14 words",
+    ),
   date: z
     .string()
     .optional()
@@ -171,7 +188,9 @@ export const EvergreenScriptSchema = z.object({
   title: z.string().describe("On-screen title, 3-8 words"),
   hook: z
     .string()
-    .describe("First spoken line: the premise and the criterion, 8-12 words"),
+    .describe(
+      "First spoken line: the premise and the criterion, 8-12 words. Never names or hints at number one",
+    ),
   entries: z
     .array(EvergreenEntrySchema)
     .min(4)
@@ -225,8 +244,8 @@ export function evergreenScriptPrompt(): string {
 
 Write an evergreen ranking Short of ${EVERGREEN_WORDS_MIN}-${EVERGREEN_WORDS_MAX} spoken words in total (hook, entries, take, loop line), 55-75 seconds when read. Shorter Shorts keep more viewers: every word must earn its place.
 Structure:
-1. hook: the premise and the criterion in one breath, 8-12 words and never more (on our channel, hooks of 16 or more words drew a median 114 views a Short against 303 for shorter ones), no question that withholds the point.
-2. entries: ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX}, spoken from the lowest rank to number one. Each one_line is one full sentence with a verb, under 15 words: one fact (year, what it did, how it was received) and one opinion by the criterion. Never a telegram fragment ("Pure joy.", "Now $1.99."), and never a stock line repeated from another Short. verdict_chip is 1-4 words of punch. footage says what the trailer moment should show for that entry, with 1-4 keywords.
+1. hook: the premise and the criterion in one breath, 8-12 words and never more (on our channel, hooks of 16 or more words drew a median 114 views a Short against 303 for shorter ones). It tells a cold viewer exactly what they are watching. The result is the ending: the hook never names number one, never hints at it and never gives its figure. The same goes for every earlier entry, the on-screen title, the YouTube title and the description (a format's own rules can set the title and hook differently: Steam Deals lead with a price).
+2. entries: ${EVERGREEN_ENTRIES_MIN}-${EVERGREEN_ENTRIES_MAX}, spoken from the lowest rank to number one. Each one_line is one full sentence with a verb, under 15 words unless the format's rules allow more: name the game, one concrete fact (year, what it did, how it was received) and one opinion by the criterion. A viewer who joined on this line must understand it: never lean on the entry before ("feels freer", "looks tougher", "those fights"). Never a telegram fragment ("Pure joy.", "Now $1.99."), and never a stock line repeated from another Short. verdict_chip is 1-4 words of punch. footage says what the trailer moment should show for that entry, with 1-4 keywords.
 3. pulse_take: why number one wins by the stated criterion, at most 32 words.
 4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that echoes the hook's subject or words, so a rewatch feels connected: a short callback or a question to the viewer. Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
 The on-screen title is 3-8 words. The YouTube title follows the format template and front-loads the franchise. List every factual claim in "claims".`;
@@ -325,6 +344,56 @@ export function fragments(text: string): string[] {
   });
 }
 
+/** A line that leans on the entry before: a viewer who joined on it has nothing to place it against. */
+export function leansOnLast(line: string): string | undefined {
+  const m =
+    line.match(
+      /\b(?:over|than|into|around|on|with|from|beyond|past|trades|after)\s+(?:that|those|these)\b[^.!?]{0,24}/i,
+    ) ??
+    line.match(/\b(?:those|these)\s+[a-z-]+\b/i) ??
+    line.match(
+      /\b(?:freer|tougher|trickier|richer|cleaner|harder|rarer|better|worse)(?:\s+still)?[.!?]?$/i,
+    ) ??
+    line.match(/\b(?:tougher|trickier|harder|rarer)\s+still\b/i);
+  return m?.[0];
+}
+
+/** An achievement's line says its exact name aloud and what it takes; a condition or number it adds is invented. */
+export function achievementProblems(
+  e: EvergreenScript,
+  /** The data's descriptions by achievement name, when the caller has them. */
+  descriptions?: Map<string, string>,
+): string[] {
+  const p: string[] = [];
+  for (const x of e.entries) {
+    const line = normTitle(x.one_line);
+    const name = normTitle(x.game_title);
+    if (!name || !` ${line} `.includes(` ${name} `))
+      p.push(
+        `Entry "${x.game_title}" never says the achievement's exact name aloud; its line must contain "${x.game_title}" word for word.`,
+      );
+    const want = descriptions?.get(name);
+    if (want !== undefined) {
+      const known = `${normTitle(want)} ${name} ${x.percent ?? ""} ${normTitle(x.platforms)}`;
+      const body = ` ${known} `;
+      for (const n of line.match(/\d+/g) ?? []) {
+        if (String(x.percent ?? "").split(".").includes(n)) continue;
+        if (!body.includes(` ${n} `))
+          p.push(
+            `Entry "${x.game_title}" says ${n}, which is not in Steam's description ("${want}"). Never invent a condition.`,
+          );
+      }
+      const words = normTitle(want).split(" ").filter((w) => w.length > 3);
+      const said = line.replace(name, " ");
+      if (words.length && !words.some((w) => ` ${said} `.includes(` ${w} `)))
+        p.push(
+          `Entry "${x.game_title}" does not say what you must do to unlock it. Steam says: "${want}".`,
+        );
+    }
+  }
+  return p;
+}
+
 /** House rules for the lane: word band, entry count, ranks, line lengths. */
 export function validateEvergreen(
   e: EvergreenScript,
@@ -355,11 +424,14 @@ export function validateEvergreen(
       break;
     }
   }
+  const achieving = ACHIEVEMENT_FORMATS.has(e.format);
   const wordsMin = WEEKLY_FORMATS.has(e.format) ? 110 : EVERGREEN_WORDS_MIN;
-  if (words < wordsMin || words > EVERGREEN_WORDS_MAX)
-    p.push(
-      `Spoken word count is ${words}; it must be ${wordsMin}-${EVERGREEN_WORDS_MAX}.`,
-    );
+  const wordsMax = achieving ? ACHIEVEMENT_WORDS_MAX : EVERGREEN_WORDS_MAX;
+  if (words < wordsMin || words > wordsMax)
+    p.push(`Spoken word count is ${words}; it must be ${wordsMin}-${wordsMax}.`);
+  // Number one stays for its turn, and an achievement's line says its name and what it takes.
+  p.push(...spoilerProblems(e));
+  if (achieving) p.push(...achievementProblems(e));
   if (
     e.entries.length < entriesMin(e.format) ||
     e.entries.length > EVERGREEN_ENTRIES_MAX
@@ -375,16 +447,27 @@ export function validateEvergreen(
   if (ranks.some((r, i) => r !== i + 1))
     p.push("Ranks must be 1..N with no gaps or repeats.");
   for (const x of e.entries) {
-    if (wordCount(x.one_line) > 15)
+    if (achieving) {
+      if (wordCount(x.one_line) > ACHIEVEMENT_LINE_WORDS)
+        p.push(
+          `Entry "${x.game_title}" line is over ${ACHIEVEMENT_LINE_WORDS} words.`,
+        );
+    } else if (wordCount(x.one_line) > 15)
       p.push(`Entry "${x.game_title}" line is over 15 words.`);
+    const leaning = leansOnLast(x.one_line);
+    if (leaning)
+      p.push(
+        `Entry "${x.game_title}" leans on the entry before ("${leaning}"); a viewer who joined on this line can't place it. Say the concrete thing about this entry, or name the game you compare it with.`,
+      );
     if (wordCount(x.verdict_chip) > 4 || !x.verdict_chip.trim())
       p.push(`Entry "${x.game_title}" verdict chip must be 1-4 words.`);
     if (x.year < 1970 || x.year > 2030)
       p.push(`Entry "${x.game_title}" has an implausible year.`);
   }
-  if (wordCount(e.hook) > 12)
+  const hookMax = achieving ? ACHIEVEMENT_HOOK_WORDS : 12;
+  if (wordCount(e.hook) > hookMax)
     p.push(
-      "The hook is longer than 12 words; say the premise and the criterion in 8-12.",
+      `The hook is longer than ${hookMax} words; say the premise and the criterion in ${hookMax - 4}-${hookMax}.`,
     );
   if (wordCount(e.loop_line) > 22)
     p.push(
@@ -421,7 +504,12 @@ export function evergreenToScript(e: EvergreenScript): Script {
       value_a: x.rank,
       items:
         ACHIEVEMENT_FORMATS.has(e.format) && typeof x.percent === "number"
-          ? [`${x.percent}% of players`, x.platforms]
+          ? [
+              `${x.percent}% of players`,
+              // One game's Short says the game in its hook; across games the card names each one.
+              e.format === "hardest_achievements" ? x.platforms : "",
+              x.requirement ?? "",
+            ]
           : e.format === "steam_climbers" && typeof x.peak === "number"
             ? [x.platforms, `${x.peak.toLocaleString("en-US")} peak players`]
             : e.format === "steam_deals" && x.price

@@ -502,7 +502,7 @@ export const FactCard: React.FC<{
         total={rankTotal}
         title={v.primary}
         verdict={v.secondary}
-        year={v.date_to ? undefined : v.items?.[0]}
+        year={v.date_to && !requirement ? undefined : v.items?.[0]}
         platforms={v.items?.[1]}
         capsuleSrc={capsule?.src ?? null}
         accent={accent}

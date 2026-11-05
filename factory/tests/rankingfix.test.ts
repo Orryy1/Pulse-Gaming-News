@@ -542,6 +542,15 @@ test("achievements: Steam's words reach the card, cut only to fit, and never tin
   ]);
 });
 
+test("achievements: a date the writer fills in never reaches the card (it hid the percentage in the proof render)", () => {
+  const e = achievements(['"I\'m Blue" x', '"B" x'], ["I'm Blue", "B"]);
+  e.entries.forEach((x) => (x.date = "May 29, 2018"));
+  for (const b of evergreenToScript(e).beats) assert.equal(b.visual.date_to, undefined);
+  const radar = { ...e, format: "release_radar" as const };
+  radar.entries = e.entries.map((x) => ({ ...x, date: "2026-11-07" }));
+  assert.equal(evergreenToScript(radar).beats[0]!.visual.date_to, "2026-11-07");
+});
+
 test("achievements: Steam's bare icon names become addresses; old full addresses stand", () => {
   assert.equal(
     iconUrl("abc.jpg", 586200),

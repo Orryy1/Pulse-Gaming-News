@@ -111,3 +111,37 @@ export function mediaRichNotice(
 export function bareLines(m: MediaRichness): boolean[] {
   return m.segments.map((s) => s.seconds > 0 && !s.graphic && s.own < s.seconds * 0.5);
 }
+
+/** Seconds a still can carry before it reads as repetition: about two shots of 2.6 s each. */
+const STILL_CARRIES = 5.2;
+
+/**
+ * Trailer frames wanted to fill what footage and published art leave blank, never above the ceiling. Published art is
+ * spent first: with enough of it this is 0 and no frame is used.
+ */
+export function framesNeeded(
+  narrationSeconds: number,
+  footageSeconds: number,
+  publishedStills: number,
+  ceiling: number,
+): number {
+  const blank = Math.max(
+    0,
+    narrationSeconds - footageSeconds - publishedStills * STILL_CARRIES,
+  );
+  return Math.min(ceiling, Math.ceil(blank / STILL_CARRIES));
+}
+
+/**
+ * Before the voice: the share of a Short that would sit on the empty plate with this media. Footage shows once, and a
+ * still can be stretched to three shots of 2.6 s before the planner gives up. On the two real cases it reads 68% and
+ * 77% where the plans gave 65% (srWWslqVZp4) and 71% (ep_20261105_d8d0e098).
+ */
+export function estimatePlateShare(
+  narrationSeconds: number,
+  footageSeconds: number,
+  stills: number,
+): number {
+  if (narrationSeconds <= 0) return 0;
+  return Math.max(0, 1 - (footageSeconds + stills * 3 * 2.6) / narrationSeconds);
+}

@@ -256,6 +256,11 @@ import { cameraNotice } from "./render/camera.ts";
 import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
 import { blurPlate, meanLuma } from "./assets/plates.ts";
+import { TIGHT_CAP_SECONDS } from "./assets/officialTrailer.ts";
+import {
+  estimatePlateShare,
+  framesNeeded,
+} from "./qa/mediarich.ts";
 import {
   argumentArm,
   cardFigureProblems,
@@ -573,8 +578,16 @@ export interface Services {
     maxClips: number,
     hint?: string,
     story?: { text: string; after: Date },
-    fill?: { seconds?: number; textCheck?: boolean; cappedStills?: number },
+    fill?: { seconds?: number; textCheck?: boolean },
   ): Promise<OfficialMedia>;
+  /** A tight-cap publisher's trailer as last-resort stills, once published art has been counted. */
+  trailerFrames?(
+    trailer: { videoId: string; title: string; channelTitle: string; url: string },
+    episodeDir: string,
+    gameTitle: string,
+    count: number,
+    textCheck: boolean,
+  ): Promise<VisualAsset[]>;
   fetchStock(
     episodeDir: string,
     targets: FootageTarget[],
@@ -5325,6 +5338,59 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   }
   const dir = episodeDir(s.cfg, ep.id);
   await fs.mkdir(dir, { recursive: true });
+  // The pictures before the credit: a Short that cannot be pictured is refused before anything is voiced.
+  if (
+    s.cfg.shortMediaBeforeVoice &&
+    ["news", "news_breaking", "free", "evergreen"].includes(ep.lane) &&
+    !ep.assets_json?.images
+  ) {
+    const estSeconds =
+      (narrationOf(ep.script_json!).split(/\s+/).filter(Boolean).length / 160) * 60;
+    const probe = {
+      ...ep,
+      assets_json: { ...(ep.assets_json ?? {}), durationSeconds: estSeconds },
+    } as Episode;
+    const media: Pick<EpisodeAssets, "images" | "clips" | "officialTrailer"> & { rich?: boolean } =
+      await gatherMedia(s, probe, dir);
+    const limit = ep.story_json.bigStory
+      ? Math.max(s.cfg.shortPlateMax, s.cfg.shortPlateMaxBig)
+      : s.cfg.shortPlateMax;
+    const ranked = Boolean(ep.script_json?.entries?.length);
+    const estimate = (m: typeof media) =>
+      estimatePlateShare(
+        estSeconds,
+        (m.clips ?? []).reduce((n, c) => n + c.durationSeconds, 0),
+        (m.images ?? []).length,
+      );
+    let share = estimate(media);
+    if (!ranked && share > limit) {
+      Object.assign(media, await gatherMedia(s, probe, dir, true), { rich: true });
+      share = estimate(media);
+    }
+    await logEvent(s.db, ep.id, "media_before_voice", {
+      images: (media.images ?? []).length,
+      clips: (media.clips ?? []).length,
+      plateEstimate: Math.round(share * 100) / 100,
+      limit,
+    });
+    if (!ranked && share > limit) {
+      const why = `about ${Math.round(share * 100)}% of the Short would be an empty panel`;
+      await markSeen(s.db, ep.story_hash, ep.story_json.headline, "rejected", why);
+      await transition(s.db, ep.id, "scripted", "rejected", {
+        last_error: `not voiced, too little media: ${why}`,
+      });
+      await s.notify({
+        level: "info",
+        content: `Dropped before the voice, no credit spent: "${ep.story_json.headline}". ${why}, even after looking for more. The slot goes to the next story.`,
+      });
+      return;
+    }
+    ep = { ...ep, assets_json: { ...(ep.assets_json ?? {}), ...media } as Episode["assets_json"] };
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(ep.assets_json),
+    ]);
+  }
   // Voice rotation: the n-th Short the channel has made picks the n-th voice of the pool, so a few Shorts in a row share a voice and the analytics can say which one sticks.
   const [ord] = await s.db.query<{ n: string | number }>(
     `SELECT count(*) AS n FROM episodes WHERE created_at < $1 AND status NOT IN ('failed','rejected')`,
@@ -5725,7 +5791,6 @@ async function gatherMedia(
                 s.cfg.shortFootageShare) /
               100,
           textCheck: s.cfg.shortClipTextCheck,
-          cappedStills: ranking ? 0 : s.cfg.shortCappedStills,
         }
       : undefined;
   const clipAssets =
@@ -5956,6 +6021,32 @@ async function gatherMedia(
         new Set(images.map((i) => i.sourceUrl)),
       )),
     );
+  // Last, and only for what the published art leaves blank: frames of a tight-cap publisher's own trailer (Rockstar).
+  if (
+    !ranking &&
+    s.cfg.shortCappedStills > 0 &&
+    s.trailerFrames &&
+    official.trailer &&
+    official.trailer.clipSeconds > 0 &&
+    official.trailer.clipSeconds <= TIGHT_CAP_SECONDS
+  ) {
+    const count = framesNeeded(
+      narrationSeconds,
+      clips.reduce((n, c) => n + c.durationSeconds, 0),
+      images.filter((i) => !i.file.endsWith("official_trailer.jpg")).length,
+      s.cfg.shortCappedStills,
+    );
+    if (count > 0) {
+      const frames = await s
+        .trailerFrames(official.trailer, dir, script.game_title, count, s.cfg.shortClipTextCheck)
+        .catch((err) => {
+          log("warn", "trailer frames failed", { error: errorMessage(err) });
+          return [] as VisualAsset[];
+        });
+      images.push(...frames);
+      await logEvent(s.db, ep.id, "trailer_frames", { wanted: count, used: frames.length });
+    }
+  }
   // Ranking Shorts: each entry brings its own box art and one trailer moment, tagged with its line.
   if (script.entries?.length) {
     const sorted = [...script.entries].sort((a, b) => b.rank - a.rank);
@@ -9114,6 +9205,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       beatIndex: i.beatIndex,
       wordy: i.wordy,
       luma: i.luma,
+      frame: i.frame,
       then: i.then,
     })),
     clips: (assets.clips ?? []).map((c) => ({
@@ -9208,6 +9300,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           beatIndex: i.beatIndex,
           wordy: i.wordy,
           luma: i.luma,
+          frame: i.frame,
           then: i.then,
         })),
         clips: (assets.clips ?? []).map((c) => ({

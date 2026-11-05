@@ -42,6 +42,7 @@ export interface PlanImage {
   luma?: number; // 0-255 mean brightness if known
   beatIndex?: number; // tagged for one entry of a ranking Short
   wordy?: boolean; // the local screen saw menu or HUD text on it: used after clean art
+  frame?: boolean; // a trailer frame, last-resort: only after published art, once each, never two in a row
   then?: boolean; // the old version of a remade game: kept for the words about the old one (thenWindows)
 }
 
@@ -359,8 +360,11 @@ export function pickHero(images: PlanImage[], preferBright = false): number {
     images.map((img, i) => ({ img, i })).filter((x) => !x.img.then),
     images.map((img, i) => ({ img, i })),
   ];
-  for (const pool of pools) {
-    if (!pool.length) continue;
+  for (const all of pools) {
+    if (!all.length) continue;
+    // A trailer frame never opens or closes a Short when published art can.
+    const published = all.filter((x) => !x.img.frame);
+    const pool = published.length ? published : all;
     // A clean wide still before one with lettering on it: the headline sits over the opening frame.
     const isWide = (x: (typeof pool)[number]) =>
       x.img.aspect >= 1.2 && x.img.aspect <= 2.1;
@@ -404,7 +408,12 @@ export function planShots(
   heroIndex: number,
 ): Shot[] {
   const { images, clips, segments, variant } = input;
-  const stillUses = images.map(() => 0);
+  // A trailer frame starts one use down, so it shows once where other stills show twice.
+  const stillUses = images.map((i) => (i.frame ? 1 : 0));
+  const afterFrame = (i: number) =>
+    !!images[i]!.frame &&
+    last?.type === "image" &&
+    !!images[last.index]?.frame;
   const clipUsed = clips.map(() => false);
   const clipFrames = clips.map((c) => Math.floor(c.durationSeconds * PLAN_FPS));
   const footageFirst = !!input.footageFirst;
@@ -468,10 +477,12 @@ export function planShots(
         (i) =>
           images[i]!.beatIndex === undefined &&
           !images[i]!.then &&
-          (i !== heroIndex || images.length === 1),
+          (i !== heroIndex || images.length === 1) &&
+          !afterFrame(i),
       )
       .sort(
         (a, b) =>
+          Number(!!images[a]!.frame) - Number(!!images[b]!.frame) ||
           stillUses[a]! - stillUses[b]! ||
           (input.preferBright
             ? (images[b]!.luma ?? 0) - (images[a]!.luma ?? 0)
@@ -504,6 +515,7 @@ export function planShots(
       .filter(
         (i) =>
           i !== heroIndex &&
+          !afterFrame(i) &&
           !images[i]!.then &&
           !same(exclude, { type: "image", index: i }),
       )
@@ -838,10 +850,12 @@ export function planShots(
                 (i) =>
                   stillUses[i]! < RESCUE_STILL_USES &&
                   !same(last, { type: "image", index: i }) &&
+                  !afterFrame(i) &&
                   !(ranking && images[i]!.beatIndex === winnerBeat),
               )
               .sort(
                 (a, b) =>
+                  Number(!!images[a]!.frame) - Number(!!images[b]!.frame) ||
                   stillUses[a]! - stillUses[b]! ||
                   artPenalty(images[a]!) - artPenalty(images[b]!) ||
                   a - b,

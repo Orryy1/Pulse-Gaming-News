@@ -716,7 +716,7 @@ export interface OfficialMediaOptions {
   /** A picture story: look first for the publisher's own video of it, uploaded since this date. */
   story?: { text: string; after: Date };
   /** Footage first on Shorts: see MatchClipsOptions. The publisher's cap still applies. */
-  fill?: { seconds?: number; textCheck?: boolean; cappedStills?: number };
+  fill?: { seconds?: number; textCheck?: boolean };
   /**
    * OFFICIAL_STILL_FRAMES: a stills-only publisher (clipSeconds 0, Nintendo) gives up to this many frames of its own
    * trailer as stills, matched to the lines like footage. No moving footage is used; 0 keeps only the thumbnail.
@@ -758,9 +758,11 @@ async function sharpestFrames(
  * two of each, tagged with that line), then a pool of clean frames from across the trailer for the other shots.
  */
 async function trailerStills(
-  o: OfficialMediaOptions,
+  o: Pick<OfficialMediaOptions, "episodeDir" | "gameTitle" | "targets" | "stillFrames" | "llm" | "ytdlp">,
   trailer: { videoId: string; title: string; channelTitle: string },
   url: string,
+  /** The pool alone, at most this many: no moments matched to lines, so no model call. */
+  poolOnly?: number,
 ): Promise<VisualAsset[]> {
   const work = path.join(o.episodeDir, "trailers");
   const file = path.join(work, "official.mp4");
@@ -779,7 +781,7 @@ async function trailerStills(
   try {
     const total = await downloadTrailer(trailer.videoId, file, o.ytdlp, true, 2160);
     await fs.copyFile(file, keep);
-    const moments = await matchClips({
+    const moments = poolOnly ? [] : await matchClips({
       trailers: [{ file, name: trailer.title, url, total: total || 120 }],
       episodeDir: o.episodeDir,
       targets: o.targets,
@@ -827,8 +829,9 @@ async function trailerStills(
     }
     const flags = await screenFrames(pool.map((p) => p.file)).catch(() => []);
     const clean = pool.filter((_, i) => !flags[i]?.text && !flags[i]?.webcam && !flags[i]?.gore);
-    const step = Math.max(1, Math.floor(clean.length / 12));
-    for (const [k, p] of clean.filter((_, i) => i % step === 0).slice(0, 12).entries())
+    const poolMax = poolOnly ?? 12;
+    const step = Math.max(1, Math.floor(clean.length / poolMax));
+    for (const [k, p] of clean.filter((_, i) => i % step === 0).slice(0, poolMax).entries())
       out.push({
         kind: "screenshot",
         file: await grab(p.at, `official_pool_${k}.jpg`),
@@ -847,8 +850,42 @@ async function trailerStills(
   return out;
 }
 
-/** At or under this many seconds of footage, a publisher's trailer also gives stills (SHORT_CAPPED_STILLS). */
+/** At or under this many seconds of footage, a publisher's trailer may fill gaps with stills (SHORT_CAPPED_STILLS). */
 export const TIGHT_CAP_SECONDS = 10;
+
+/**
+ * Frames of a tight-cap publisher's trailer, as a last fallback once its own screenshots, press art and IGDB are in
+ * (ruling of 5 Nov 2026). Spread across the trailer at least 6 s apart, clean of text, no big lettering in the crop,
+ * marked `frame` so the planner uses them last, once each and never two in a row: never a way to rebuild the trailer.
+ */
+export async function trailerFrames(
+  o: Pick<OfficialMediaOptions, "episodeDir" | "gameTitle" | "ytdlp">,
+  trailer: { videoId: string; title: string; channelTitle: string; url: string },
+  count: number,
+  textCheck: boolean,
+): Promise<VisualAsset[]> {
+  if (count <= 0) return [];
+  const frames = await trailerStills(
+    { ...o, targets: [], stillFrames: count },
+    trailer,
+    trailer.url,
+    // A few spare: the text check may drop some.
+    count + 3,
+  );
+  const out: VisualAsset[] = [];
+  for (const f of frames) {
+    const words =
+      textCheck && out.length < count
+        ? await stillBigText(path.join(o.episodeDir, f.file))
+        : [];
+    if (out.length >= count || words.length) {
+      await fs.rm(path.join(o.episodeDir, f.file), { force: true }).catch(() => undefined);
+      continue;
+    }
+    out.push({ ...f, frame: true });
+  }
+  return out;
+}
 
 /**
  * Footage and a still for a game that is not on Steam: the publisher's own
@@ -947,36 +984,6 @@ export async function officialMedia(
   if (trailer.clipSeconds <= 0 && (o.stillFrames ?? 0) > 0 && o.targets.length) {
     out.stills.push(...(await trailerStills(o, trailer, url)));
     return out;
-  }
-  // A tight footage cap (Rockstar, 10 s) leaves most of a Short to stills, and the game's own trailer is the best
-  // source of them. A still is not footage: the moving seconds stay under the cap below.
-  if (
-    trailer.clipSeconds > 0 &&
-    trailer.clipSeconds <= TIGHT_CAP_SECONDS &&
-    (o.fill?.cappedStills ?? 0) > 0 &&
-    o.targets.length
-  ) {
-    const frames = await trailerStills(
-      { ...o, stillFrames: o.fill!.cappedStills },
-      trailer,
-      url,
-    );
-    for (const f of frames) {
-      if (o.fill?.textCheck) {
-        const words = await stillBigText(path.join(o.episodeDir, f.file));
-        if (words.length) {
-          log("info", "trailer frame dropped: big text on it", {
-            file: f.file,
-            words: words.slice(0, 6).join(" "),
-          });
-          await fs
-            .rm(path.join(o.episodeDir, f.file), { force: true })
-            .catch(() => undefined);
-          continue;
-        }
-      }
-      out.stills.push(f);
-    }
   }
   if (trailer.clipSeconds <= 0 || o.maxClips <= 0 || !o.targets.length)
     return out;

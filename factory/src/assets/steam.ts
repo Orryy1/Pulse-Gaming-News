@@ -38,6 +38,7 @@ export interface VisualAsset {
   startSeconds?: number;
   motion?: number; // 0-1
   luma?: number; // 0-255
+  frame?: boolean; // a frame of a trailer used as a last-resort still (src/assets/officialTrailer.ts trailerFrames)
   label?: string;
   reason?: string;
   moment?: number; // long-form: the sentence of the entry this picture was picked for

@@ -10,6 +10,7 @@ import { shortSampleTimes, VISION_PROMPT } from "../src/qa/vision.ts";
 import { fillCandidates } from "../src/assets/clipscore.ts";
 import { capFootage } from "../src/assets/footage.ts";
 import { numberVariant } from "../src/assets/igdb.ts";
+import { estimatePlateShare, framesNeeded } from "../src/qa/mediarich.ts";
 import { bigWordsInCrop, longestCleanRun } from "../src/assets/cliptext.ts";
 import type { Segment } from "../src/render/timeline.ts";
 import type { Word } from "../src/voice/elevenlabs.ts";
@@ -439,7 +440,7 @@ test("our own work carries no CONFIRMED chip, and a chip only under a line that 
 });
 
 test("brighter art is chosen only when asked", () => {
-  const images = [
+  const images: PlanInput["images"] = [
     { kind: "hero", aspect: 1.78, luma: 30 },
     { kind: "screenshot", aspect: 1.78, luma: 150 },
   ];
@@ -473,4 +474,38 @@ test("a card's figure must be in the line it sits on", () => {
   assert.equal(cardFigureProblems([b("That's what players are reporting.", "~30GB")]).length, 1);
   assert.equal(cardFigureProblems([b("That's 23 games over 24 years.", "$40B")]).length, 1);
   assert.equal(cardFigureProblems([b("Any line.", "\"single-player\"", "quote")]).length, 0);
+});
+
+test("trailer frames only fill what published art leaves blank, under the ceiling", () => {
+  assert.equal(framesNeeded(47, 10, 9, 6), 0);
+  assert.equal(framesNeeded(47, 10, 1, 6), 6);
+  assert.equal(framesNeeded(47, 10, 5, 6), 3);
+  assert.equal(framesNeeded(47, 10, 1, 0), 0);
+});
+
+test("the plate estimate reads the two real failures", () => {
+  assert.ok(Math.abs(estimatePlateShare(35, 3.5, 1) - 0.68) < 0.02);
+  assert.ok(Math.abs(estimatePlateShare(47.5, 3.1, 1) - 0.77) < 0.02);
+  assert.equal(estimatePlateShare(47, 10, 9), 0);
+});
+
+test("a trailer frame comes last, once, never twice in a row and never as the hero", () => {
+  const images: PlanInput["images"] = [
+    { kind: "hero", aspect: 1.78 },
+    { kind: "screenshot", aspect: 1.78 },
+    ...[0, 1, 2, 3, 4, 5].map(() => ({ kind: "screenshot", aspect: 1.78, frame: true })),
+  ];
+  const p = buildPlan(
+    input({ images, clips: [{ durationSeconds: 5, role: "hook", motion: 0.9 }, { durationSeconds: 5, motion: 0.5 }], footageFirst: true }),
+  );
+  const seen = new Map<number, number>();
+  let prevFrame = false;
+  for (const s of p.shots) {
+    const isFrame = s.media.type === "image" && !!images[s.media.index]!.frame;
+    assert.ok(!(isFrame && prevFrame), `two frames in a row at ${s.start}`);
+    if (isFrame) seen.set(s.media.index, (seen.get(s.media.index) ?? 0) + 1);
+    prevFrame = isFrame;
+  }
+  assert.ok(![...seen.values()].some((n) => n > 2));
+  assert.ok(!images[p.heroIndex]!.frame);
 });

@@ -60,6 +60,7 @@ export function testConfig(
     shortArgumentShare: 0,
     shortMinWpm: 0,
     shortCappedStills: 0,
+    shortMediaBeforeVoice: false,
     shortBright: false,
     shortLabelsClean: false,
     planSlateMax: 1,

@@ -277,7 +277,8 @@ export interface Config {
   shortTightScript: boolean; // fewer full stops and plainer words for a quicker read (SHORT_TIGHT_SCRIPT, off)
   shortArgumentShare: number; // 0-1, the share of news and Why Shorts written as one argument with no labelled take (SHORT_ARGUMENT_SHARE)
   shortMinWpm: number; // speed a Short's voice up to this many words a minute, 25% at most; 0 = as recorded. The owner's ear decides (SHORT_MIN_WPM, off)
-  shortCappedStills: number; // a publisher with a tight footage cap (Rockstar): this many lines' moments of its own trailer as stills, plus a pool of clean frames; 0 = off (SHORT_CAPPED_STILLS)
+  shortCappedStills: number; // the ceiling on trailer frames as stills for a tight-cap publisher (Rockstar), used only to fill what published art leaves blank; 0 = none (SHORT_CAPPED_STILLS)
+  shortMediaBeforeVoice: boolean; // gather a Short's media before the voice, and refuse one that cannot be pictured before credit is spent (SHORT_MEDIA_BEFORE_VOICE)
   shortBright: boolean; // lighter top and bottom fades and vignette, brightest art and footage first (SHORT_BRIGHT)
   shortLabelsClean: boolean; // no NEWS or CONFIRMED on our own work, no stat chip the line does not mention, no card repeating the caption (SHORT_LABELS_CLEAN)
   planSlateMax: number; // 0-1, the share of a long video that may sit on the empty slate before its render is stopped
@@ -985,6 +986,7 @@ export function loadConfig(): Config {
     ),
     shortMinWpm: Math.max(0, int("SHORT_MIN_WPM", 0)),
     shortCappedStills: Math.max(0, int("SHORT_CAPPED_STILLS", 6)),
+    shortMediaBeforeVoice: bool("SHORT_MEDIA_BEFORE_VOICE", true),
     shortBright: bool("SHORT_BRIGHT", true),
     shortLabelsClean: bool("SHORT_LABELS_CLEAN", true),
     planSlateMax: Number(str("PLAN_SLATE_MAX", "0.08")) || 0.08,

@@ -89,6 +89,7 @@ export interface ShortRuleSettings {
   shortEndPayoff: boolean;
   shortTightScript: boolean;
   shortArgumentShare: number;
+  shortEraMatch?: boolean;
 }
 
 /** The rules the news and Why writers read last, for this episode. */
@@ -101,6 +102,7 @@ export function shortRuleNote(
     cfg.shortRefuseThin ? THIN_RULE : "",
     cfg.shortEndPayoff ? `${ENDING_RULE} ${ENDING_RULE_FOLLOW}` : "",
     cfg.shortTightScript ? TIGHT_RULE : "",
+    cfg.shortEraMatch ? ERA_RULE : "",
     argumentArm(cfg, ep) ? ARGUMENT_RULE : "",
   ]
     .filter(Boolean)
@@ -170,4 +172,32 @@ export function sourceTag(text: string, hasOfficialSource: boolean): SourceTag {
   if (ESTIMATE_WORDS.test(text)) return "ESTIMATE";
   if (!hasOfficialSource || REPORT_WORDS.test(text)) return "REPORTED";
   return "CONFIRMED";
+}
+
+/** The writer names the release it is about, so the pictures can be of that release. */
+export const ERA_RULE = `If this Short is about one specific older release and a later remake, remaster or reboot shares its name, put that release's year in "story_year". Say so in the line if a line is truly about both versions.`;
+
+/** The store page is of a release at least this many years after the one the Short is about. */
+export const ERA_GAP_YEARS = 3;
+
+/** Whether the store page's release is a later version than the one the Short is about. */
+export function eraConflict(
+  storyYear: number | undefined,
+  storeDate: string | undefined,
+): boolean {
+  const y = Number(storeDate?.match(/\b(19|20)\d\d\b/)?.[0]);
+  return !!storyYear && !!y && y - storyYear >= ERA_GAP_YEARS;
+}
+
+/** A line honestly about both versions may show the later one. */
+export function lineNamesLaterVersion(
+  narration: string | undefined,
+  storeDate: string | undefined,
+): boolean {
+  if (!narration) return false;
+  const y = storeDate?.match(/\b(19|20)\d\d\b/)?.[0];
+  return (
+    /\b(remakes?|remaster(?:s|ed)?|reboots?|re-?releases?)\b/i.test(narration) ||
+    (!!y && narration.includes(y))
+  );
 }

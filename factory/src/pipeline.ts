@@ -262,6 +262,8 @@ import { framesNeeded } from "./qa/mediarich.ts";
 import {
   argumentArm,
   cardFigureProblems,
+  eraConflict,
+  lineNamesLaterVersion,
   sourceTag,
   endingProblems,
   evergreenRuleNote,
@@ -5349,7 +5351,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       ...ep,
       assets_json: { ...(ep.assets_json ?? {}), durationSeconds: estSeconds },
     } as Episode;
-    const media: Pick<EpisodeAssets, "images" | "clips" | "officialTrailer"> & { rich?: boolean } =
+    const media: Pick<EpisodeAssets, "images" | "clips" | "officialTrailer" | "eraDropped"> & { rich?: boolean } =
       await gatherMedia(s, probe, dir);
     const limit = ep.story_json.bigStory
       ? Math.max(s.cfg.shortPlateMax, s.cfg.shortPlateMaxBig)
@@ -5414,7 +5416,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       limit,
     });
     if (share > limit) {
-      const why = `about ${Math.round(share * 100)}% of the Short would be an empty panel`;
+      const why = `about ${Math.round(share * 100)}% of the Short would be an empty panel${media.eraDropped ? `: the only footage and art are of a later version than the ${ep.script_json?.story_year} game it is about` : ""}`;
       await markSeen(s.db, ep.story_hash, ep.story_json.headline, "rejected", why);
       await transition(s.db, ep.id, "scripted", "rejected", {
         last_error: `not voiced, too little media: ${why}`,
@@ -5788,7 +5790,9 @@ async function gatherMedia(
   dir: string,
   /** The second pass after a red media rubric: more screenshots and clips so the plan can vary. */
   rich = false,
-): Promise<Pick<EpisodeAssets, "images" | "clips" | "officialTrailer">> {
+): Promise<
+  Pick<EpisodeAssets, "images" | "clips" | "officialTrailer" | "eraDropped">
+> {
   const script = ep.script_json!;
   // The gather's time budget (GATHER_MAX_MINUTES, src/assets/gatherbudget.ts): past it the entry loop below
   // stops with what it has; and a long video yields the lane early to an urgent one (a slot within hours,
@@ -6342,6 +6346,44 @@ async function gatherMedia(
       }
     }
   }
+  // A Short about an older release shows that release: the store page and the publisher's trailer are of its later
+  // remake, so they go (a line that names the later version keeps its own clip) and IGDB's stills of the right year
+  // come in. Owner's rule, 5 Nov 2026: 2012 pictures over the 2005 story are a failure, better caught before the voice.
+  let eraDropped = false;
+  const storeDate = app?.details?.release_date?.date as string | undefined;
+  if (
+    s.cfg.shortEraMatch &&
+    !ranking &&
+    ep.lane !== "longform" &&
+    eraConflict(script.story_year, storeDate)
+  ) {
+    eraDropped = true;
+    const keptClips = clips.filter(
+      (c) =>
+        c.beatIndex !== undefined &&
+        lineNamesLaterVersion(script.beats[c.beatIndex]?.narration, storeDate),
+    );
+    const lateArt = new Set([...art, ...official.stills].map((a) => a.file));
+    const before = { clips: clips.length, images: images.length };
+    clips.splice(0, clips.length, ...keptClips);
+    images.splice(
+      0,
+      images.length,
+      ...images.filter((a) => !lateArt.has(a.file)),
+    );
+    for (const a of await s
+      .igdbArt(mediaTitle(script.game_title), script.story_year, dir, rich ? 12 : 8)
+      .catch(() => [] as VisualAsset[])) {
+      const y = Number(a.provenance.match(/\((\d{4})\)/)?.[1]);
+      if (!y || Math.abs(y - script.story_year!) <= 2) images.push(a);
+    }
+    await logEvent(s.db, ep.id, "era_match", {
+      story: script.story_year,
+      store: storeDate,
+      before,
+      after: { clips: clips.length, images: images.length },
+    });
+  }
   // A story about a person shows the person: a freely licensed photo from Wikimedia Commons,
   // credited on screen, on the first line that names them (else wherever a still is needed).
   if (script.person?.trim())
@@ -6391,6 +6433,7 @@ async function gatherMedia(
       label: a.label,
       ...(wordy.has(a.file) ? { wordy: true } : {}),
       ...(a.then ? { then: true } : {}),
+      ...(a.frame ? { frame: true } : {}),
     });
   }
   // What the newer picture libraries gave this Short, in its log and the owner's note (long videos: after the top-up).
@@ -6410,6 +6453,7 @@ async function gatherMedia(
     // A copy: an entry's gather left behind by the budget may still push into the live array for a while.
     clips: [...clips],
     officialTrailer: official.trailer,
+    ...(eraDropped ? { eraDropped } : {}),
   };
 }
 

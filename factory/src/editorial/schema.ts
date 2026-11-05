@@ -196,6 +196,12 @@ export const ScriptSchema = z.object({
     .describe(
       "The one question a viewer would ask before the take, as a second presenter at the desk would say it to the narrator: 5-12 words, ends with '?', in this story's own specifics and fresh words",
     ),
+  story_year: z
+    .number()
+    .optional()
+    .describe(
+      "Only when the Short is about one specific older release and a later remake, remaster or reboot shares its name (the 2005 Need for Speed: Most Wanted, not the 2012 one): that release's year. Otherwise omit",
+    ),
   thin_reason: z
     .string()
     .optional()

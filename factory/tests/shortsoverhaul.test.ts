@@ -11,6 +11,7 @@ import { fillCandidates } from "../src/assets/clipscore.ts";
 import { capFootage } from "../src/assets/footage.ts";
 import { numberVariant } from "../src/assets/igdb.ts";
 import { offendingMedia } from "../src/qa/retry.ts";
+import { eraConflict, lineNamesLaterVersion } from "../src/editorial/shortrules.ts";
 import { framesNeeded } from "../src/qa/mediarich.ts";
 import { bigWordsInCrop, longestCleanRun } from "../src/assets/cliptext.ts";
 import type { Segment } from "../src/render/timeline.ts";
@@ -526,4 +527,14 @@ test("a wrong-era fault takes that picture out of the retry", () => {
   };
   const got = offendingMedia(["Frame 2: wrong era of the series: 2012 art over the 2005 game."], [1, 15], plan);
   assert.ok(got.clips.has(1));
+});
+
+test("a Short about an older release knows when the store page is a later one", () => {
+  assert.equal(eraConflict(2005, "Mar 15, 2012"), true);
+  assert.equal(eraConflict(2005, "2006"), false);
+  assert.equal(eraConflict(undefined, "Mar 15, 2012"), false);
+  assert.equal(eraConflict(2005, undefined), false);
+  assert.equal(lineNamesLaterVersion("The 2012 remake kept the name.", "Mar 15, 2012"), true);
+  assert.equal(lineNamesLaterVersion("Then 2012 brought a new one.", "Mar 15, 2012"), true);
+  assert.equal(lineNamesLaterVersion("Carbon followed in 2006.", "Mar 15, 2012"), false);
 });

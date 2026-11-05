@@ -280,6 +280,7 @@ export interface Config {
   shortCappedStills: number; // the ceiling on trailer frames as stills for a tight-cap publisher (Rockstar), used only to fill what published art leaves blank; 0 = none (SHORT_CAPPED_STILLS)
   shortMediaBeforeVoice: boolean; // gather a Short's media before the voice, and refuse one that cannot be pictured before credit is spent (SHORT_MEDIA_BEFORE_VOICE)
   shortGatherMaxMinutes: number; // a Short's whole gather stops starting entries after this; past half of it a ranking's entries take no extra clips (SHORT_GATHER_MAX_MINUTES)
+  shortEraMatch: boolean; // a Short about an older release shows that release, never its later remake (SHORT_ERA_MATCH, src/editorial/shortrules.ts)
   shortBright: boolean; // lighter top and bottom fades and vignette, brightest art and footage first (SHORT_BRIGHT)
   shortLabelsClean: boolean; // no NEWS or CONFIRMED on our own work, no stat chip the line does not mention, no card repeating the caption (SHORT_LABELS_CLEAN)
   planSlateMax: number; // 0-1, the share of a long video that may sit on the empty slate before its render is stopped
@@ -989,6 +990,7 @@ export function loadConfig(): Config {
     shortCappedStills: Math.max(0, int("SHORT_CAPPED_STILLS", 6)),
     shortMediaBeforeVoice: bool("SHORT_MEDIA_BEFORE_VOICE", true),
     shortGatherMaxMinutes: Math.max(1, int("SHORT_GATHER_MAX_MINUTES", 25)),
+    shortEraMatch: bool("SHORT_ERA_MATCH", true),
     shortBright: bool("SHORT_BRIGHT", true),
     shortLabelsClean: bool("SHORT_LABELS_CLEAN", true),
     planSlateMax: Number(str("PLAN_SLATE_MAX", "0.08")) || 0.08,

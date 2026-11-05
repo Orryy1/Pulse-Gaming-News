@@ -172,6 +172,7 @@ export interface EpisodeAssets {
   breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds, narration silent)
   thumb?: string; // thumb.jpg for the long-form video
   thumbVariants?: string[]; // thumb_b.jpg, thumb_c.jpg: extra designs for YouTube's Test & compare
+  eraDropped?: boolean; // the store page was of a later version than the release the Short is about
   officialTrailer?: {
     videoId: string;
     title: string;

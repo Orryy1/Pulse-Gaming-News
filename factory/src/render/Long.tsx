@@ -4271,30 +4271,37 @@ export const Long: React.FC<LongProps> = (props) => {
             }));
           // The breathers take their looks in turn: the title interlude, the evidence board, a clapperboard,
           // a VHS tape for a game from before 2008, a torn-paper reveal of the chapter's picture.
-          const chapterYear = Number(s.visual.items?.[0]) || undefined;
+          const firstChapter = props.segments.find(
+            (x) => x.kind === "beat" && x.visual?.kind === "chapter",
+          );
+          const chapterYear =
+            Number(
+              (firstChapter as { visual?: { items?: string[] } } | undefined)
+                ?.visual?.items?.[0],
+            ) || undefined;
           const widePic = props.images.find(
             (im) =>
               im.beatIndex === b &&
               im.aspect >= 1.3 &&
               ["hero", "screenshot", "article", "photo"].includes(im.kind),
           )?.src;
-          const looks = [
-            "title",
-            ...(boardPics.length >= 2 ? ["board"] : []),
-            "slate",
-            ...(chapterYear && chapterYear < 2008 ? ["vhs"] : []),
-            ...(widePic ? ["torn", "mask"] : []),
-          ];
           const motif = motifOf(b);
           // A breather the graphics check faulted falls back to the plain title card.
           const breakIndex = breakFrames.findIndex(
             (x) => Math.abs(x.from - starts[i]!) <= 3,
           );
-          const look = (props.quietBreaks ?? []).includes(breakIndex)
-            ? "title"
-            : motif?.card && ((b ?? 0) + props.variant) % 2 === 0
-              ? "motif"
-              : looks[((b ?? 0) + props.variant) % looks.length]!;
+          // One look for every chapter of a video, so a break reads as a break at once (owner, 5 Nov 2026): the game's own
+          // card when it has one, otherwise the title interlude.
+          const chapterEntries = props.segments.flatMap((x, k) =>
+            x.kind === "beat" && x.visual?.kind === "chapter"
+              ? [entryOf(props.segments, k)]
+              : [],
+          );
+          const sameMotif =
+            !!motif?.card &&
+            chapterEntries.every((e) => motifOf(e)?.id === motif.id);
+          const look: string =
+            sameMotif && !(props.quietBreaks ?? []).length ? "motif" : "title";
           const board = look === "board";
           const interlude = {
             number: s.visual.value_a ?? (b ?? 0) + 1,
@@ -4337,7 +4344,7 @@ export const Long: React.FC<LongProps> = (props) => {
                     year: s.visual.items?.[0],
                     pictures: motifPictures(b),
                     frames: pause,
-                    variant: props.variant + i,
+                    variant: props.variant,
                   })}
                 </Sequence>
               ) : pause && look !== "title" ? (
@@ -4365,10 +4372,10 @@ export const Long: React.FC<LongProps> = (props) => {
                   <ChapterInterlude
                     bg={backgroundFor(
                       "interlude",
-                      Number(s.visual.items?.[0]) || undefined,
-                      props.variant + i,
+                      chapterYear,
+                      props.variant,
                     )}
-                    variant={props.variant + i}
+                    variant={props.variant}
                     number={s.visual.value_a ?? (b ?? 0) + 1}
                     title={s.visual.primary}
                     game={s.visual.secondary}

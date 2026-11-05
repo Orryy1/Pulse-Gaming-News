@@ -40,6 +40,7 @@ export function testConfig(
     filmSlateFile: "",
     gameplayDirect: false,
     gameplayOneTap: false,
+    docSandboxChapters: 0,
     writerNotesGuard: true,
     firstCommentQuestion: false,
     firstCommentCheck: false,

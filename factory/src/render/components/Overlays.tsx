@@ -798,8 +798,8 @@ export const FactCard: React.FC<{
   }
 
   if (v.kind === "list") {
-    const items = v.primary
-      .split("|")
+    // The writer may put the rows in items (a heading in primary) or in primary split by "|"; the rows are the card.
+    const items = (v.items?.length ? v.items : v.primary.split("|"))
       .map((s) => s.trim())
       .filter(Boolean)
       .slice(0, 4);

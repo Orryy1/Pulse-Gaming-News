@@ -30,6 +30,21 @@ test("thenWindows finds the words about the old game, up to the end of the sente
   assert.ok(a!.to >= 66 + 36 - 1 && a!.to <= 66 + 90);
 });
 
+test("splitAtThen folds a sliver into its neighbour, not into the old game's shot", () => {
+  const cuts = [
+    { start: 0, end: 60, segment: 0 },
+    { start: 60, end: 100, segment: 0 },
+  ];
+  const out = splitAtThen(cuts, [{ from: 80, to: 100 }]);
+  assert.deepEqual(
+    out.map((c) => [c.start, c.end, Boolean(c.then)]),
+    [
+      [0, 80, false],
+      [80, 100, true],
+    ],
+  );
+});
+
 test("splitAtThen gives each window its own shot and leaves the rest", () => {
   const cuts = [
     { start: 0, end: 100, segment: 0 },

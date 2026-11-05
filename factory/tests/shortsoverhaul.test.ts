@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildPlan, MIN_SHOT, pickHero, type PlanInput } from "../src/render/plan.ts";
-import { argumentArm, cardFigureProblems, endingProblems, evergreenRuleNote, shortRuleNote, thinProblems } from "../src/editorial/shortrules.ts";
+import { argumentArm, cardFigureProblems, sourceTag, endingProblems, evergreenRuleNote, shortRuleNote, thinProblems } from "../src/editorial/shortrules.ts";
 import { whyFollowProblems } from "../src/editorial/why.ts";
 import { evergreenTitle } from "../src/editorial/seo.ts";
 import { scorePlan } from "../src/qa/rubric.ts";
@@ -502,4 +502,15 @@ test("a trailer frame comes last, once, never twice in a row and never as the he
   }
   assert.ok(![...seen.values()].some((n) => n > 2));
   assert.ok(!images[p.heroIndex]!.frame);
+});
+
+test("CONFIRMED only for what an official source states; estimates and reports say so", () => {
+  assert.equal(sourceTag("GTA 6 pre-orders estimated past $750 million", true), "ESTIMATE");
+  assert.equal(sourceTag("Sensor Tower puts it at $750 million", false), "ESTIMATE");
+  assert.equal(sourceTag("Bethesda names The Elder Scrolls VI", false), "REPORTED");
+  assert.equal(sourceTag("It reportedly slips to May", true), "REPORTED");
+  assert.equal(sourceTag("Sony moves God of War to May 2027", true), "CONFIRMED");
+  const plan = buildPlan(input({ attribution: "IGN", sourceTag: "ESTIMATE" }));
+  assert.ok(plan.shelf.some((x) => x.data.label === "ESTIMATE · IGN"));
+  assert.ok(!plan.shelf.some((x) => /CONFIRMED/.test(x.data.label ?? "")));
 });

@@ -84,6 +84,8 @@ export interface PlanInput {
    * footage cannot, and the bare plate is the last resort, after a still has been shown a third time.
    */
   footageFirst?: boolean;
+  /** The word on the source chip (src/editorial/shortrules.ts sourceTag); absent, CONFIRMED as it always was. */
+  sourceTag?: "CONFIRMED" | "REPORTED" | "ESTIMATE";
   /** Our own work (a ranking, a Why, deals): no "CONFIRMED · PULSE" chip on an opinion (SHORT_LABELS_CLEAN). */
   noSourceChip?: boolean;
   /** A stat chip only under a line that mentions it: price chips nobody said were noise (SHORT_LABELS_CLEAN). */
@@ -1058,7 +1060,7 @@ export function planShelf(
   const sourceLabel = input.isRumour
     ? "RUMOR · UNCONFIRMED"
     : shortSource
-      ? `CONFIRMED · ${shortSource.toUpperCase()}`
+      ? `${input.sourceTag ?? "CONFIRMED"} · ${shortSource.toUpperCase()}`
       : "PULSE GAMING NEWS";
   const live =
     steam?.currentPlayers && steam.currentPlayers >= 1000

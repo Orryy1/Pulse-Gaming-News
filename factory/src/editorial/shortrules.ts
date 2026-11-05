@@ -152,3 +152,22 @@ export function cardFigureProblems(
   }
   return out;
 }
+
+export type SourceTag = "CONFIRMED" | "REPORTED" | "ESTIMATE";
+
+const ESTIMATE_WORDS =
+  /\b(estimat\w*|projected|projections?|forecasts?|analysts?|surveys?|polled|polls?|tracking firm|sensor tower|piper sandler|ampere|niko partners|data firm|research firm|expected to|on track to)\b/i;
+const REPORT_WORDS =
+  /\b(reportedly|reports?|reported|according to|sources? (?:say|said|tell|told)|insiders?|claims?|claimed|alleged\w*|leak\w*|rumou?r\w*|supposedly|apparently|unconfirmed)\b/i;
+
+/**
+ * What the Short may call its own claim, a rule and not a preference: rumors and estimates are never shown as fact.
+ * CONFIRMED needs a publisher's or platform's own source in the story and no estimate or report in the words. Anything
+ * built on an estimate says ESTIMATE, anything else from outlets alone says REPORTED. (GTA 6's "$750 million" is a
+ * Sensor Tower estimate, and carried CONFIRMED on the Short of 5 Nov 2026.)
+ */
+export function sourceTag(text: string, hasOfficialSource: boolean): SourceTag {
+  if (ESTIMATE_WORDS.test(text)) return "ESTIMATE";
+  if (!hasOfficialSource || REPORT_WORDS.test(text)) return "REPORTED";
+  return "CONFIRMED";
+}

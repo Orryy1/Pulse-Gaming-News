@@ -23,6 +23,8 @@ export interface Rubric {
 export interface RubricInput {
   /** Above this share of the Short on the bare plate the plan is red (SHORT_PLATE_MAX). */
   plateShareMax?: number;
+  /** SHORT_LABELS_CLEAN: an empty shelf is the aim, not a fault. */
+  shelfOptional?: boolean;
   /** The top of the amber band for words a minute, raised when the owner has lifted the voice's speed (SHORT_MIN_WPM). */
   wpmMax?: number;
   /** No plate at all in this many opening seconds (SHORT_PLATE_FIRST_SECONDS, 0 = off). */
@@ -136,7 +138,7 @@ export function scorePlan(i: RubricInput): Rubric {
   m.push({
     name: "shelf_occupancy",
     value: Number(occupancy.toFixed(2)),
-    grade: grade(occupancy >= 0.85, occupancy >= 0.6),
+    grade: i.shelfOptional ? "green" : grade(occupancy >= 0.85, occupancy >= 0.6),
   });
 
   // Media variety.

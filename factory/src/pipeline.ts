@@ -261,6 +261,7 @@ import { framesNeeded } from "./qa/mediarich.ts";
 import {
   argumentArm,
   cardFigureProblems,
+  sourceTag,
   endingProblems,
   evergreenRuleNote,
   shortRuleNote,
@@ -5791,7 +5792,8 @@ async function gatherMedia(
   // The gather's time budget (GATHER_MAX_MINUTES, src/assets/gatherbudget.ts): past it the entry loop below
   // stops with what it has; and a long video yields the lane early to an urgent one (a slot within hours,
   // still unscripted) rather than keep it waiting behind hours of downloads (30 Oct 2026, the missed recap).
-  const gatherBudget = new GatherBudget(s.cfg.gatherMaxMinutes, async () => {
+  // A Short's slot is 75 to 120 minutes off: its gather gets its own, shorter limit.
+  const gatherBudget = new GatherBudget(ep.lane === "longform" ? s.cfg.gatherMaxMinutes : Math.min(s.cfg.gatherMaxMinutes, s.cfg.shortGatherMaxMinutes), async () => {
     if (ep.lane !== "longform") return undefined;
     const other = (await dueEpisodes(s.db, s.now())).find(
       (e) => e.id !== ep.id && isLongEpisode(e) && isUrgentLong(e, s.now()),
@@ -6091,7 +6093,7 @@ async function gatherMedia(
     for (const [beatIndex, entry] of sorted.entries()) {
       // Footage first on a Short: the entries share the publisher's budget, a few clean moments each.
       const entryFill =
-        shortFill && ep.lane !== "longform"
+        shortFill && ep.lane !== "longform" && gatherBudget.elapsedMinutes() < s.cfg.shortGatherMaxMinutes / 2
           ? { ...shortFill, seconds: DEFAULT_FOOTAGE_SECONDS / Math.max(1, sorted.length) }
           : undefined;
       // An achievement's own icon is its card's box art (Steam community assets, official).
@@ -9233,6 +9235,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     for (const img of assets.images ?? [])
       if (img.luma === undefined)
         img.luma = await meanLuma(path.join(dir, img.file));
+  // Never CONFIRMED on an estimate or a report, on the chip or on a stamp: a rule, not a setting.
+  const tag = sourceTag(
+    `${script.headline} ${script.youtube?.title ?? ""} ${narrationOf(script)}`,
+    (ep.story_json.items ?? []).some((i) => i.sourceKind === "official"),
+  );
+  if (tag !== "CONFIRMED" && script.stamp && /confirm/i.test(`${script.stamp.text} ${script.stamp.sub ?? ""}`)) {
+    await logEvent(s.db, ep.id, "stamp_dropped", { stamp: script.stamp.text, tag });
+    script.stamp = undefined;
+  }
   const planInput = {
     segments,
     words,
@@ -9260,6 +9271,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     steam: steamLite,
     openOnClip: s.cfg.openOnMotion,
     footageFirst: s.cfg.shortFootageFirst,
+    sourceTag: tag,
     noSourceChip: s.cfg.shortLabelsClean && ownWorkShort(script),
     statsWhenSpoken: s.cfg.shortLabelsClean,
     preferBright: s.cfg.shortBright,
@@ -9296,6 +9308,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         ? Math.max(s.cfg.shortPlateMax, s.cfg.shortPlateMaxBig)
         : s.cfg.shortPlateMax,
       plateFirstSeconds: s.cfg.shortPlateFirstSeconds,
+      shelfOptional: s.cfg.shortLabelsClean,
       wpmMax: s.cfg.shortMinWpm ? Math.max(190, s.cfg.shortMinWpm + 25) : 190,
     });
   let plan = assets.plan ?? buildPlan(planInput);

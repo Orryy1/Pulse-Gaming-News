@@ -61,6 +61,7 @@ export function testConfig(
     shortMinWpm: 0,
     shortCappedStills: 0,
     shortMediaBeforeVoice: false,
+    shortGatherMaxMinutes: 25,
     shortBright: false,
     shortLabelsClean: false,
     planSlateMax: 1,

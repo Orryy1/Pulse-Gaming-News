@@ -45,6 +45,7 @@ export function testConfig(
     launchCommunityPosts: false,
     longStockNotOnPeople: true,
     shortPlateMax: 1,
+    shortPlateMaxBig: 1,
     shortPlateFirstSeconds: 0,
     shortFootageFirst: false,
     shortFootageShare: 65,

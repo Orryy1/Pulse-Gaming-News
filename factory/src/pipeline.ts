@@ -9094,7 +9094,11 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       footageSeconds,
       footageBudgetSeconds: footageBudget,
       hookWords: script.hook.split(/\s+/).filter(Boolean).length,
-      plateShareMax: s.cfg.shortPlateMax,
+      // 5 Nov 2026: of 25 failed news Shorts in 45 days, 20 had their slot or one within 3 hours filled by another Short
+      // (the other 5 were one day's render bug), so a stop costs little. A big story has no better story to yield to.
+      plateShareMax: ep.story_json.bigStory
+        ? Math.max(s.cfg.shortPlateMax, s.cfg.shortPlateMaxBig)
+        : s.cfg.shortPlateMax,
       plateFirstSeconds: s.cfg.shortPlateFirstSeconds,
       wpmMax: s.cfg.shortMinWpm ? Math.max(190, s.cfg.shortMinWpm + 25) : 190,
     });
@@ -9165,15 +9169,16 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       (m) => m.name === "plate_share" && m.grade === "red",
     );
     if (plateRed)
-      // Unlike the other notes this one is what the viewer sees: an empty screen. The story's slot goes to the next one.
-      throw new Error(
+      // Unlike the other notes this one is what the viewer sees: an empty screen. The story's slot goes to the next one,
+      // at once: the retries would plan the same media again and hold the slot while they did.
+      throw new FatalError(
         `QA failed: ${Math.round(Number(plateRed.value) * 100)}% of the Short would be an empty panel: too little media`,
       );
     const openingRed = rubric.metrics.find(
       (m) => m.name === "plate_opening_seconds" && m.grade === "red",
     );
     if (openingRed)
-      throw new Error(
+      throw new FatalError(
         `QA failed: the Short would open on an empty panel for ${openingRed.value} s: too little media`,
       );
     if (rubric.grade === "red") {

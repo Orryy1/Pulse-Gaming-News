@@ -261,6 +261,7 @@ export interface Config {
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
   longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
   shortPlateMax: number; // 0-1, the share of a Short that may sit on the bare plate before more media is fetched and, failing that, it is stopped
+  shortPlateMaxBig: number; // the same line for one of the day's big stories, which have no better story to give the slot to (SHORT_PLATE_MAX_BIG)
   shortPlateFirstSeconds: number; // no bare plate in this many opening seconds of a Short; 0 = off (SHORT_PLATE_FIRST_SECONDS)
   shortFootageFirst: boolean; // footage before stills on Shorts: src/render/plan.ts footageFirst, the fill in src/assets/clipscore.ts (SHORT_FOOTAGE_FIRST)
   shortFootageShare: number; // percent of a Short's narration the gather tries to cover with moving footage, within the publisher's cap (SHORT_FOOTAGE_SHARE)
@@ -955,6 +956,7 @@ export function loadConfig(): Config {
     shortRunFile: str("SHORT_RUN_FILE", ""),
     longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
     shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.10")) || 0.1,
+    shortPlateMaxBig: Number(str("SHORT_PLATE_MAX_BIG", "0.35")) || 0.35,
     shortPlateFirstSeconds: Math.max(0, int("SHORT_PLATE_FIRST_SECONDS", 5)),
     shortFootageFirst: bool("SHORT_FOOTAGE_FIRST", true),
     shortFootageShare: Math.max(0, Math.min(85, int("SHORT_FOOTAGE_SHARE", 65))),

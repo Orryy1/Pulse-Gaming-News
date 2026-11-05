@@ -708,6 +708,8 @@ export interface OfficialMediaOptions {
   hint?: string;
   /** A picture story: look first for the publisher's own video of it, uploaded since this date. */
   story?: { text: string; after: Date };
+  /** Footage first on Shorts: see MatchClipsOptions. The publisher's cap still applies. */
+  fill?: { seconds?: number; textCheck?: boolean };
 }
 
 /**
@@ -817,6 +819,10 @@ export async function officialMedia(
       maxClips: o.maxClips,
       llm: o.llm,
       prefix: "official",
+      fillSeconds: o.fill?.seconds
+        ? Math.min(o.fill.seconds, trailer.clipSeconds)
+        : undefined,
+      textCheck: o.fill?.textCheck,
       describe: (t, seconds, at) =>
         socialVideo
           ? `Official post "${t.name.slice(0, 80)}" by ${trailer.channelTitle}, publisher: ${trailer.publisher} (${url}), ${seconds}s at ${at.toFixed(1)}s, muted`

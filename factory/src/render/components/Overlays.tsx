@@ -105,6 +105,7 @@ export const TopBar: React.FC<{
         >
           PULSE<span style={{ color: COLOUR.amber }}>.</span>
         </div>
+        {chip || isRumour ? (
         <div
           style={{
             opacity: labelOpacity,
@@ -122,6 +123,7 @@ export const TopBar: React.FC<{
         >
           {isRumour ? "RUMOR · UNCONFIRMED" : chip}
         </div>
+        ) : null}
       </div>
       <div
         style={{

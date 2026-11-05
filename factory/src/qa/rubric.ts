@@ -23,6 +23,10 @@ export interface Rubric {
 export interface RubricInput {
   /** Above this share of the Short on the bare plate the plan is red (SHORT_PLATE_MAX). */
   plateShareMax?: number;
+  /** The top of the amber band for words a minute, raised when the owner has lifted the voice's speed (SHORT_MIN_WPM). */
+  wpmMax?: number;
+  /** No plate at all in this many opening seconds (SHORT_PLATE_FIRST_SECONDS, 0 = off). */
+  plateFirstSeconds?: number;
   plan: RenderPlan;
   segments: Segment[];
   words: Word[];
@@ -63,7 +67,10 @@ export function scorePlan(i: RubricInput): Rubric {
   m.push({
     name: "wpm",
     value: Math.round(wpm),
-    grade: grade(wpm >= 130 && wpm <= 175, wpm >= 115 && wpm <= 190),
+    grade: grade(
+      wpm >= 130 && wpm <= Math.max(175, (i.wpmMax ?? 190) - 15),
+      wpm >= 115 && wpm <= (i.wpmMax ?? 190),
+    ),
   });
 
   // Cuts and visual events per minute.
@@ -208,6 +215,18 @@ export function scorePlan(i: RubricInput): Rubric {
     grade: grade(plateShare <= 0.05, plateShare <= (i.plateShareMax ?? 0.15)),
   });
 
+  // A blank opening costs the most: it is what the feed judges. Audit, Nov 2026: GTq4ZuV0MSg empty at 0:02.5.
+  if (i.plateFirstSeconds) {
+    const limit = i.plateFirstSeconds * plan.fps;
+    const opening = plan.shots
+      .filter((s) => s.media.type === "plate" && s.start < limit)
+      .reduce((n, s) => n + (Math.min(s.end, limit) - s.start), 0);
+    m.push({
+      name: "plate_opening_seconds",
+      value: Number((opening / plan.fps).toFixed(1)),
+      grade: opening === 0 ? "green" : "red",
+    });
+  }
   m.push({
     name: "footage_share",
     value: Number(share.toFixed(2)),

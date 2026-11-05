@@ -261,6 +261,18 @@ export interface Config {
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
   longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
   shortPlateMax: number; // 0-1, the share of a Short that may sit on the bare plate before more media is fetched and, failing that, it is stopped
+  shortPlateFirstSeconds: number; // no bare plate in this many opening seconds of a Short; 0 = off (SHORT_PLATE_FIRST_SECONDS)
+  shortFootageFirst: boolean; // footage before stills on Shorts: src/render/plan.ts footageFirst, the fill in src/assets/clipscore.ts (SHORT_FOOTAGE_FIRST)
+  shortFootageShare: number; // percent of a Short's narration the gather tries to cover with moving footage, within the publisher's cap (SHORT_FOOTAGE_SHARE)
+  shortClipTextCheck: boolean; // read each Short clip with the local OCR and cut away big burned-in trailer text (SHORT_CLIP_TEXT_CHECK)
+  shortStakeFirst: boolean; // the hook carries a stake for the viewer (SHORT_STAKE_FIRST, src/editorial/shortrules.ts)
+  shortRefuseThin: boolean; // a script that admits it has nothing goes back, then the story is dropped, big stories excepted (SHORT_REFUSE_THIN)
+  shortEndPayoff: boolean; // the last line is a payoff or runs back into the hook, not a question or "next Why tomorrow" (SHORT_END_PAYOFF)
+  shortTightScript: boolean; // fewer full stops and plainer words for a quicker read (SHORT_TIGHT_SCRIPT, off)
+  shortArgumentShare: number; // 0-1, the share of news and Why Shorts written as one argument with no labelled take (SHORT_ARGUMENT_SHARE)
+  shortMinWpm: number; // speed a Short's voice up to this many words a minute, 25% at most; 0 = as recorded. The owner's ear decides (SHORT_MIN_WPM, off)
+  shortBright: boolean; // lighter top and bottom fades and vignette, brightest art and footage first (SHORT_BRIGHT)
+  shortLabelsClean: boolean; // no NEWS or CONFIRMED on our own work, no stat chip the line does not mention, no card repeating the caption (SHORT_LABELS_CLEAN)
   planSlateMax: number; // 0-1, the share of a long video that may sit on the empty slate before its render is stopped
   releaseGateMaxSlate: number; // 0-1, the same on the finished picture at the release gate
   releaseGateMinFootage: number; // 0-1, a documentary's share of game footage when the game has plenty of it
@@ -942,7 +954,22 @@ export function loadConfig(): Config {
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),
     longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
-    shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.15")) || 0.15,
+    shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.10")) || 0.1,
+    shortPlateFirstSeconds: Math.max(0, int("SHORT_PLATE_FIRST_SECONDS", 5)),
+    shortFootageFirst: bool("SHORT_FOOTAGE_FIRST", true),
+    shortFootageShare: Math.max(0, Math.min(85, int("SHORT_FOOTAGE_SHARE", 65))),
+    shortClipTextCheck: bool("SHORT_CLIP_TEXT_CHECK", true),
+    shortStakeFirst: bool("SHORT_STAKE_FIRST", true),
+    shortRefuseThin: bool("SHORT_REFUSE_THIN", true),
+    shortEndPayoff: bool("SHORT_END_PAYOFF", true),
+    shortTightScript: bool("SHORT_TIGHT_SCRIPT", false),
+    shortArgumentShare: Math.max(
+      0,
+      Math.min(1, Number(str("SHORT_ARGUMENT_SHARE", "0.5"))),
+    ),
+    shortMinWpm: Math.max(0, int("SHORT_MIN_WPM", 0)),
+    shortBright: bool("SHORT_BRIGHT", true),
+    shortLabelsClean: bool("SHORT_LABELS_CLEAN", true),
     planSlateMax: Number(str("PLAN_SLATE_MAX", "0.08")) || 0.08,
     releaseGateMaxSlate: Number(str("RELEASE_GATE_MAX_SLATE", "0.08")) || 0.08,
     releaseGateMinFootage: Number(str("RELEASE_GATE_MIN_FOOTAGE", "0.1")) || 0.1,

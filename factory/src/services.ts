@@ -319,7 +319,7 @@ export function createServices(db: Db, cfg: Config): Services {
       return game ? fetchIgdbArt(game, dir, max) : [];
     },
     downloadPhoto: (img, dest) => downloadCommons(img, dest),
-    fetchClips: (app, dir, targets, maxClips, scope) =>
+    fetchClips: (app, dir, targets, maxClips, scope, fill) =>
       selectClips({
         app,
         episodeDir: dir,
@@ -327,6 +327,8 @@ export function createServices(db: Db, cfg: Config): Services {
         maxClips,
         llm: cfg.clipRanking === "llm" ? llm : undefined,
         scope,
+        fillSeconds: fill?.seconds,
+        textCheck: fill?.textCheck,
       }),
     releaseRadar: (from) => releaseRadar(from),
     freeGames: (now) => freeGames(now),
@@ -409,6 +411,7 @@ export function createServices(db: Db, cfg: Config): Services {
       maxClips,
       hint,
       story,
+      fill,
     ) => {
       if (!cfg.officialTrailers) return { clips: [], stills: [] };
       return officialMedia({
@@ -421,6 +424,7 @@ export function createServices(db: Db, cfg: Config): Services {
         ytdlp: cfg.ytdlpPath,
         hint,
         story,
+        fill,
         quotaOk: async () => {
           const now = new Date();
           if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay)

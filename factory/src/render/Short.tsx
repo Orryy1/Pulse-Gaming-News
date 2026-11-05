@@ -528,8 +528,11 @@ export const Short: React.FC<ShortProps> = (props) => {
           )}
         </Sequence>
       ))}
-      <Scrim profile={hasPlate && !props.images.length ? "plate" : "footage"} />
-      <Finish grainSrc={staticFile("grain.png")} />
+      <Scrim
+        profile={hasPlate && !props.images.length ? "plate" : "footage"}
+        bright={props.bright}
+      />
+      <Finish grainSrc={staticFile("grain.png")} bright={props.bright} />
 
       {/* The headline is fully rendered at frame 0 (the thumbnail) and returns, pixel-identical, for the loop.
           On the new-look Shorts it is a thumbnail-grade poster over the hero art (components/HookPoster.tsx). */}
@@ -687,7 +690,7 @@ export const Short: React.FC<ShortProps> = (props) => {
       </AbsoluteFill>
 
       <TopBar
-        chip={theme.chip}
+        chip={props.ownWork ? "" : theme.chip}
         accent={accent}
         isRumour={props.isRumour}
         attribution={props.attribution}

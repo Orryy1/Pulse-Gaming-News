@@ -8,11 +8,40 @@ export const VISION_PROMPT = `You are the final visual quality checker for a ver
 You see frames sampled across the video in order. Fail the video only for real problems a viewer would notice:
 - text that is cut off, overlapping other text, unreadable against the background or misspelt,
 - broken or missing images, obvious rendering artefacts, mostly empty or black frames,
-- artwork clearly showing a different game from the one named in the headline,
+- artwork clearly showing a different game from the one named in the headline, including the wrong entry or era of a series when it is plain from the picture and the narration (a 2012 remake's logo over a story about the 2005 original, a modern game's art on a line about the first one),
+- large lettering burned into a trailer or poster behind the captions: a game's title, "LAUNCH TRAILER", a review quote or a date card, especially when the vertical crop leaves it as a giant fragment ("ULTIMATE SO") or it collides with the captions. Small in-game text, a HUD or a sign in the world is fine,
 - anything advertiser-unfriendly (gore, nudity, offensive imagery), including any sexualised or suggestive character or person, drawn or real, and any crop dominated by a chest, groin or underwear: fail these whatever the game, and always fail if the character could be under 18.
+Frame 1 and the last frame matter most: frame 1 is what the viewer decides on, and the last frame is what the Short loops from. Judge both with the same care as the rest and name them when they are at fault.
 Stylistic preferences are not failures. Note them in "notes". Captions show a few uppercase words of a sentence at a time and may start or end mid-sentence; judge spelling in that context (possessive "its" is correct English, not a missing apostrophe).
-A Short with no game artwork (dark brand-plate backgrounds with the game's name) is a deliberate choice when no official art exists; never fail for that or for empty space below the captions.
+A frame with captions over a plain dark panel and no picture is an empty screen, not a design choice: fail it when it is frame 1 or when two or more frames show it. One such frame elsewhere goes in the notes. Never fail for empty space below the captions when a picture fills the frame.
 Real-world footage carrying a small ILLUSTRATIVE tag is deliberate licensed stock for a real-world story; never fail it for not showing the game.`;
+
+/**
+ * Where a Short's frames are judged: the opening, each line after its card lands, the last second. Always both ends,
+ * however many lines there are: until 5 Nov 2026 the list was cut at eight and a Short with many lines was never
+ * judged on the frame it loops from.
+ */
+export function shortSampleTimes(
+  segmentStarts: number[],
+  duration: number,
+  max = 8,
+): number[] {
+  const first = 0.8;
+  const last = duration - 1;
+  const inner = segmentStarts
+    .slice(1)
+    .map((t) => t + 1.2)
+    .filter((t) => t > first && t < last);
+  const room = Math.max(0, max - 2);
+  const picked =
+    inner.length <= room
+      ? inner
+      : Array.from(
+          { length: room },
+          (_, i) => inner[Math.floor(((i + 0.5) * inner.length) / room)]!,
+        );
+  return [first, ...picked, last].filter((t) => t >= 0 && t < duration);
+}
 
 export const LONG_VISION_PROMPT = `You are the final visual quality checker for a 16:9 long-form ranking video (five to seven minutes) from a gaming channel.
 You see frames sampled across the video in order. Fail the video only for real problems a viewer would notice:

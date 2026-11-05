@@ -337,9 +337,14 @@ export function whyAnswerProblems(narration: string): string[] {
 export function whyFollowProblems(
   loopLine: string,
   follow: WhyFollow | undefined,
+  noSeriesFollow = false,
 ): string[] {
   const f = follow ?? { kind: "series" as const };
   const out: string[] = [];
+  if (noSeriesFollow && f.kind === "series")
+    return GENERIC_CTA.test(loopLine)
+      ? ["The loop line asks for a subscribe or a like; end on the story's payoff."]
+      : [];
   if (GENERIC_CTA.test(loopLine))
     out.push(
       `The loop line asks for a subscribe or a like; give the specific reason to follow instead (${f.kind === "series" ? "a new Why every day" : `our ${f.kind}`}).`,
@@ -358,6 +363,8 @@ export function whyBrief(
   question: string,
   angle: string,
   follow?: WhyFollow,
+  /** SHORT_END_PAYOFF: no "a new Why every day" in the last line; a real documentary or ranking is still pointed to. */
+  noSeriesFollow = false,
 ): string {
   return `This Short is not breaking news: it answers one question about a game, using the sources (its Wikipedia article) as the evidence.
 Question: ${question}
@@ -367,7 +374,7 @@ Structure for this Short (it replaces the news hook and beat rules where they di
 - beats: two to four pieces of evidence from the sources, each with a hard specific (a year, a number, a named person or a quote), told as a story with a turn: what fans loved, what changed, where it stands now.
 - pulse_take: the verdict in the Pulse voice, with the fair counterpoint in your own words (never a stock "in fairness" opener).
 - loop_line: hand back to the question so the end runs into the start ("So why does it still get ignored?" style), never a call to comment.
-${followRule(follow)}
+${noSeriesFollow && (follow?.kind ?? "series") === "series" ? "" : followRule(follow)}
 - story_type is "explainer". If the sources do not support an answer, say what is known and what is not, never guess.
 The YouTube title is the question or a claim with a named company or game and a verb, under 60 characters.`;
 }

@@ -204,12 +204,12 @@ export function wordsPerMinute(
 }
 
 /** Too fast, or breathing the listener can hear: what to say about a take, or nothing when it passes. */
-export function voiceProblems(report: BreathReport, wpm: number): string[] {
+export function voiceProblems(report: BreathReport, wpm: number, wpmMax = 190): string[] {
   const p: string[] = [];
   if (report.loudPerMinute > 1.5)
     p.push(
       `${report.loudPerMinute} audible breaths a minute (${report.loudest.slice(0, 3).join(", ")})`,
     );
-  if (wpm > 190) p.push(`${wpm} words a minute while speaking`);
+  if (wpm > wpmMax) p.push(`${wpm} words a minute while speaking`);
   return p;
 }

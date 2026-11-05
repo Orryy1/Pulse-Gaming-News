@@ -108,6 +108,7 @@ export interface EpisodeAssets {
     moment?: number;
     label?: string;
     wordy?: boolean;
+    luma?: number; // mean brightness, measured under SHORT_BRIGHT
     layers?: { bg: string; mid: string; fg: string; fgx?: number }; // 2.5D depth layers (src/render/parallax.ts)
   }>; // wordy: the local screen saw menu or HUD text on it
   video?: string;

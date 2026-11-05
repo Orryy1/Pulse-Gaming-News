@@ -547,6 +547,65 @@ export async function facebookVideoDescription(
 }
 
 /** How many comments a post has drawn. */
+/** A post's comments, newest page: id, text and who wrote it (Instagram: username; Facebook: the page or person's id). */
+export async function graphListComments(
+  objectId: string,
+  token: string,
+  instagram: boolean,
+  fetchFn: FetchLike = fetch,
+): Promise<Array<{ id: string; text: string; author: string }>> {
+  const fields = instagram ? "id,text,username" : "id,message,from";
+  const r = await json(
+    await fetchFn(
+      `${GRAPH}/${objectId}/comments?fields=${fields}&limit=50&access_token=${encodeURIComponent(token)}`,
+    ),
+    "comment list",
+  );
+  return ((r.data ?? []) as any[]).map((c) => ({
+    id: String(c.id),
+    text: String((instagram ? c.text : c.message) ?? ""),
+    author: String((instagram ? c.username : c.from?.id) ?? ""),
+  }));
+}
+
+/** An account's own name or id, so its own comments are never answered. */
+export async function graphOwnName(
+  objectId: string,
+  token: string,
+  instagram: boolean,
+  fetchFn: FetchLike = fetch,
+): Promise<string> {
+  const r = await json(
+    await fetchFn(
+      `${GRAPH}/${objectId}?fields=${instagram ? "username" : "id"}&access_token=${encodeURIComponent(token)}`,
+    ),
+    "own account",
+  );
+  return String((instagram ? r.username : r.id) ?? "");
+}
+
+/** Answers one comment as the account. Returns the reply's id. */
+export async function graphReply(
+  commentId: string,
+  token: string,
+  text: string,
+  instagram: boolean,
+  fetchFn: FetchLike = fetch,
+): Promise<string> {
+  const r = await json(
+    await fetchFn(
+      `${GRAPH}/${commentId}/${instagram ? "replies" : "comments"}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: text, access_token: token }),
+      },
+    ),
+    "comment reply",
+  );
+  return String(r.id);
+}
+
 export async function graphCommentCount(
   objectId: string,
   token: string,

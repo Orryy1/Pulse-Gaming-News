@@ -15,6 +15,7 @@ import type { Config } from "../config.ts";
 import type { Llm } from "../editorial/llm.ts";
 import { logEvent } from "../episodes.ts";
 import { dayKey, localTime } from "../lanes.ts";
+import { launchPostFor } from "./launchcommunity.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import type { VisualAsset } from "../assets/steam.ts";
 import type { EngageFormat } from "../render/Engage.tsx";
@@ -100,6 +101,15 @@ ${best.length ? `Got the most comments:\n${best.map((r) => `- ${r.format}: ${r.g
     schema: EngageTopicSchema,
     effort: "low",
   });
+}
+
+/** How a game may be listed besides the way the model wrote it ("Dark Souls 3", "Dark Souls III"): 2 of 14 posts lost their day to no pictures. */
+export function artTitles(game: string): string[] {
+  const roman = game.replace(
+    /\b([2-9])\b/g,
+    (_, n) => ["", "", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"][Number(n)]!,
+  );
+  return roman === game ? [game] : [game, roman];
 }
 
 /** The format for a day: rotates so the feed never repeats itself two days running. */
@@ -223,24 +233,31 @@ export async function engageTick(d: EngageDeps): Promise<void> {
   if (now < slot || now.getTime() - slot.getTime() > 3 * 3_600_000) return;
   if (recent.some((p) => p.detail.day === day)) return;
   const format = formatForDay(day);
-  const topic = await chooseEngageTopic(d.llm, {
-    headlines: await d.headlines().catch(() => []),
-    candidates: await d.candidates().catch(() => []),
-    recent: recent.map((p) => ({
-      format: p.detail.format,
-      games: p.detail.games,
-      comments: p.detail.comments,
-    })),
-    format,
-  });
+  const fixed = d.cfg.launchCommunityPosts ? launchPostFor(day) : undefined;
+  const topic =
+    fixed ??
+    (await chooseEngageTopic(d.llm, {
+      headlines: await d.headlines().catch(() => []),
+      candidates: await d.candidates().catch(() => []),
+      recent: recent.map((p) => ({
+        format: p.detail.format,
+        games: p.detail.games,
+        comments: p.detail.comments,
+      })),
+      format,
+    }));
   const dir = path.join(d.cfg.dataDir, "engage", day);
   await fs.promises.mkdir(dir, { recursive: true });
   const games = topic.games.slice(0, topic.format === "versus" ? 2 : 1);
   const files: string[] = [];
   for (const [i, g] of games.entries()) {
-    const art = await d
-      .igdbArt(g, path.join(dir, `g${i}`))
-      .catch(() => [] as VisualAsset[]);
+    let art: VisualAsset[] = [];
+    for (const title of d.cfg.engageRetry ? artTitles(g) : [g]) {
+      art = await d
+        .igdbArt(title, path.join(dir, `g${i}`))
+        .catch(() => [] as VisualAsset[]);
+      if (art.length) break;
+    }
     const pick =
       art.find((a) => a.kind === "screenshot") ??
       art.find((a) => a.kind === "hero");
@@ -248,6 +265,19 @@ export async function engageTick(d: EngageDeps): Promise<void> {
   }
   if (files.length < games.length) {
     log("warn", "engage post skipped: no pictures for the games", { games });
+    // ENGAGE_RETRY: the day stays open for one more topic (a new model call at most once), then the owner hears.
+    if (d.cfg.engageRetry) {
+      const [tried] = await d.db.query<{ n: string }>(
+        `SELECT count(*) AS n FROM events WHERE kind = 'engage_no_pictures' AND detail->>'day' = $1`,
+        [day],
+      );
+      await logEvent(d.db, null, "engage_no_pictures", { day, games });
+      if (Number(tried?.n ?? 0) < 1) return;
+      await d.notify({
+        level: "info",
+        content: `No community post today: no pictures for ${games.join(" or ")}, twice.`,
+      });
+    }
     await logEvent(d.db, null, "engage_post", {
       day,
       format: topic.format,

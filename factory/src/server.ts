@@ -1,6 +1,10 @@
 // The whole service: an HTTP server for approvals, previews, OAuth and health,
 // plus the in-process scheduler that ticks the pipeline.
 
+import { firstCommentCheckTick } from "./social/commentcheck.ts";
+import { metaRepliesTick, type MetaPlatform } from "./social/metacomments.ts";
+import * as metaApi from "./social/platforms.ts";
+import { socialProblems } from "./social/scoreboard.ts";
 import { pollPlan, recordPollResult } from "./social/poll.ts";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
@@ -1818,6 +1822,8 @@ async function main(): Promise<void> {
       llm: services.llm,
       headroom: () => quotaHeadroom(db, cfg, new Date()),
       now: () => new Date(),
+      style: cfg.replyStyle,
+      followups: cfg.replyFollowups,
     };
     // New videos are watched closely; every other comment on the channel is picked up within 15 minutes.
     const replies = () =>
@@ -1840,6 +1846,61 @@ async function main(): Promise<void> {
     setTimeout(() => void replies(), 120_000);
     setInterval(() => void replies(), 5 * 60_000);
   }
+  // Comments on our Instagram and Facebook reels get the same judgement as YouTube's (META_COMMENT_REPLIES).
+  if (cfg.metaCommentReplies && !cfg.dryRun) {
+    const names: Partial<Record<MetaPlatform, string>> = {};
+    const tokenOf = (m: MetaPlatform) =>
+      m === "instagram" ? cfg.instagramToken : cfg.facebookPageToken;
+    const idOf = (m: MetaPlatform) =>
+      m === "instagram" ? cfg.instagramAccountId : cfg.facebookPageId;
+    const pass = () =>
+      metaRepliesTick({
+        db,
+        llm: services.llm,
+        now: () => new Date(),
+        list: async (platform, id) => {
+          const ig = platform === "instagram";
+          // Not sure who we are: answer nothing this pass rather than talk to ourselves.
+          names[platform] ||= await metaApi.graphOwnName(
+            idOf(platform),
+            tokenOf(platform),
+            ig,
+          );
+          return (
+            await metaApi.graphListComments(id, tokenOf(platform), ig)
+          ).map((c) => ({
+            id: c.id,
+            text: c.text,
+            own: c.author === names[platform] || !c.author,
+          }));
+        },
+        reply: (platform, id, text) =>
+          metaApi.graphReply(
+            id,
+            tokenOf(platform),
+            text,
+            platform === "instagram",
+          ),
+      }).catch((err) =>
+        log("warn", "meta comment pass failed", { error: errorMessage(err) }),
+      );
+    setTimeout(() => void pass(), 150_000);
+    setInterval(() => void pass(), 5 * 60_000);
+  }
+  // Whether viewers can actually see the channel's first comments (FIRST_COMMENT_CHECK): no quota unless one is hidden.
+  if (cfg.firstCommentCheck && !cfg.dryRun) {
+    const check = () =>
+      firstCommentCheckTick({
+        db,
+        now: () => new Date(),
+        youtube: services.youtube,
+        notify: (m) => services.notify(m),
+      }).catch((err) =>
+        log("warn", "first comment check failed", { error: errorMessage(err) }),
+      );
+    setTimeout(() => void check(), 180_000);
+    setInterval(() => void check(), 30 * 60_000);
+  }
   // What viewers ask us to rank next, read from the long videos' comments once a day.
   if (!cfg.dryRun) {
     const requests = () =>
@@ -1848,6 +1909,7 @@ async function main(): Promise<void> {
         youtube: services.youtube,
         llm: services.llm,
         now: new Date(),
+        fromShorts: cfg.requestsFromShorts,
       }).catch((err) =>
         log("warn", "audience requests failed", { error: errorMessage(err) }),
       );
@@ -1977,6 +2039,17 @@ async function main(): Promise<void> {
       await markAlertDigestSent(db, key);
       const post = await writeAlertDigest(cfg, new Date());
       if (post) await services.notify(post);
+      // Platforms gone quiet are said once a morning, and only on a morning there are some (SOCIAL_SCOREBOARD).
+      if (cfg.socialScoreboard) {
+        const problems = await socialProblems(db, new Date());
+        if (problems.length)
+          await services.notify({
+            content: `📣 Socials gone quiet:\n${problems.map((x) => `- ${x}`).join("\n")}`.slice(
+              0,
+              1900,
+            ),
+          });
+      }
       log("info", "alert digest written", { day: key, posted: Boolean(post) });
     })().catch((err) =>
       log("error", "alert digest failed", { error: errorMessage(err) }),

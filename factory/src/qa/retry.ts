@@ -5,7 +5,7 @@
 // of rendering the same fault three times and losing the slot.
 
 const MEDIA_FAULT =
-  /\b(text|captions?|subtitles?|words|letter(?:ing|s)?|watermarks?|logos?|title cards?|taglines?|different game|wrong game|not .{0,20}artwork|mismatch)\b/i;
+  /\b(text|captions?|subtitles?|words|letter(?:ing|s)?|watermarks?|logos?|title cards?|taglines?|different game|wrong game|wrong (?:era|entry)|not .{0,20}artwork|mismatch)\b/i;
 
 export interface ShotLike {
   start: number;

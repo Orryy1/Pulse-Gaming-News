@@ -10,6 +10,7 @@ import { shortSampleTimes, VISION_PROMPT } from "../src/qa/vision.ts";
 import { fillCandidates } from "../src/assets/clipscore.ts";
 import { capFootage } from "../src/assets/footage.ts";
 import { numberVariant } from "../src/assets/igdb.ts";
+import { offendingMedia } from "../src/qa/retry.ts";
 import { framesNeeded } from "../src/qa/mediarich.ts";
 import { bigWordsInCrop, longestCleanRun } from "../src/assets/cliptext.ts";
 import type { Segment } from "../src/render/timeline.ts";
@@ -513,4 +514,16 @@ test("CONFIRMED only for what an official source states; estimates and reports s
   const plan = buildPlan(input({ attribution: "IGN", sourceTag: "ESTIMATE" }));
   assert.ok(plan.shelf.some((x) => x.data.label === "ESTIMATE · IGN"));
   assert.ok(!plan.shelf.some((x) => /CONFIRMED/.test(x.data.label ?? "")));
+});
+
+test("a wrong-era fault takes that picture out of the retry", () => {
+  const plan = {
+    fps: 30,
+    shots: [
+      { start: 0, end: 300, media: { type: "image", index: 2 } },
+      { start: 300, end: 600, media: { type: "clip", index: 1 } },
+    ],
+  };
+  const got = offendingMedia(["Frame 2: wrong era of the series: 2012 art over the 2005 game."], [1, 15], plan);
+  assert.ok(got.clips.has(1));
 });

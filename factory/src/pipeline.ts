@@ -9560,7 +9560,13 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     .filter(Boolean)
     .join("   ");
   const year = assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0];
-  const gameSubtitle = [publisher, year].filter(Boolean).join(" · ");
+  // The store page's year can be a re-release's, and a Why about the 2005 game read "Electronic Arts · 2020".
+  const gameSubtitle = [
+    publisher,
+    s.cfg.shortLabelsClean && ownWorkShort(script) ? undefined : year,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");

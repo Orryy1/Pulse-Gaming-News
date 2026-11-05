@@ -9295,8 +9295,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       assets.images = clean;
     }
   }
-  // A clip with no detail left in the crop is a smear, and footage for its own sake is worse than a sharp still.
-  if (s.cfg.shortClipTextCheck) {
+  // A ranking's old games: a clip with no detail left in the crop is a 240p smear, worse than a sharp still. Lists only:
+  // the same measure reads foggy or dark modern footage as low (Silent Hill 2 lost all six clips), and a blur measure
+  // separated them no better. Elsewhere a blurred clip is left to the vision check, whose fault drops it for the retry.
+  if (s.cfg.shortClipTextCheck && script.entries?.length) {
     for (const c of assets.clips ?? [])
       if (c.detailKb === undefined)
         c.detailKb = await clipDetailKb(path.join(dir, c.file), c.durationSeconds);

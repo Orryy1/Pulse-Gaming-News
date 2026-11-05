@@ -73,7 +73,7 @@ export async function stillBigText(file: string): Promise<string[]> {
   }
 }
 
-/** Under this, a clip's vertical crop is a smear: a 240p game blown up, or a whip pan. Read on real clips, 5 Nov 2026. */
+/** Under this, a ranking clip's vertical crop is a smear: a 240p game blown up, or a whip pan. Read on real clips, 5 Nov 2026; rankings only, as fog and dark scenes also read low. */
 export const CLIP_DETAIL_FLOOR_KB = 8;
 
 /**

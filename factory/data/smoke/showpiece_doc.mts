@@ -14,6 +14,8 @@ Object.assign(process.env, {
   ORCH_CLIENT: "file:///C:/nonexistent/orch.mjs",
   PORT: "0",
   BIG_STORY_MODE: "off",
+  CAPTURE_CHECKLIST: "false",
+  OFFICIAL_STILL_FRAMES: "8",
   DOC_SANDBOX_CHAPTERS: process.env.DOC_SANDBOX_CHAPTERS ?? "2",
   LONG_GUIDE_FORMAT: "true",
   GUIDE_CHAPTER_ACTION: "true",

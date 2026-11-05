@@ -228,6 +228,15 @@ const EXCLUDE =
   /\b(reaction|reacts?|breakdown|analysis|explained|review|leak|leaked|fan[- ]?made|concept|remake|recreated|in real life|parody|react)\b/i;
 
 /** Candidate ranking: a trailer from a known publisher, titled as a trailer, naming the game, newest first. */
+const SERIES_NUMERAL: Record<string, number> = { "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9 };
+
+/** The instalment a title names: "Grand Theft Auto IV" is 4, "Grand Theft Auto: Vice City" none. */
+export function seriesNumber(title: string): number | undefined {
+  for (const w of title.toLowerCase().split(/[^a-z0-9]+/))
+    if (SERIES_NUMERAL[w] !== undefined) return SERIES_NUMERAL[w];
+  return undefined;
+}
+
 export function pickOfficial(
   items: Array<{
     videoId: string;
@@ -255,6 +264,10 @@ export function pickOfficial(
         return undefined;
       const t = it.title.toLowerCase();
       if (EXCLUDE.test(t)) return undefined;
+      // A series' other instalment is the wrong game: "GTA IV" must never take GTA VI's launch trailer.
+      const wanted = seriesNumber(gameTitle);
+      const shown = seriesNumber(it.title);
+      if (shown !== wanted && (shown !== undefined || wanted !== undefined)) return undefined;
       const named =
         tokens.filter((tok) => t.includes(tok)).length /
         Math.max(1, tokens.length);

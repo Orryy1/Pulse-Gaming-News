@@ -125,6 +125,9 @@ export const TopBar: React.FC<{
         </div>
         ) : null}
       </div>
+      {/* No source line on our own work: the label alone reads as a broken graphic. */}
+      {source ? (
+        <>
       <div
         style={{
           position: "absolute",
@@ -159,6 +162,8 @@ export const TopBar: React.FC<{
       >
         SOURCE: {source}
       </div>
+        </>
+      ) : null}
     </AbsoluteFill>
   );
 };

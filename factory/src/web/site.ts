@@ -299,7 +299,7 @@ ${STYLE}</head><body><header class="top"><div class="in"><a class="logo" href="/
 <nav>${NAV.map(([href, label]) => `<a href="${href}"${(href === "/" ? here === "/" : here.startsWith(href)) ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>
 <a class="sub" href="${YT}?sub_confirmation=1" rel="noopener">Subscribe</a></div></header>
 <main>${opts.body}</main>
-<footer><div class="in"><p><a href="/news">News</a><a href="/games">Games</a><a href="/videos">Videos</a><a href="/about">About</a><a href="/privacy">Privacy</a><a href="/disclosure">Affiliate disclosure</a><a href="/rss.xml">RSS</a><a href="${YT}" rel="noopener">YouTube</a></p>
+<footer><div class="in"><p><a href="/news">News</a><a href="/games">Games</a><a href="/videos">Videos</a><a href="/about">About</a><a href="/media">Media</a><a href="/privacy">Privacy</a><a href="/disclosure">Affiliate disclosure</a><a href="/rss.xml">RSS</a><a href="${YT}" rel="noopener">YouTube</a></p>
 <p>${BRAND}: gaming news, checked and explained. Stories are written with AI assistance from the sources listed and narrated with an AI voice. As an Amazon Associate we earn from qualifying purchases.</p>
 <p>© ${new Date().getUTCFullYear()} ${BRAND}. Game names, art and trailers belong to their publishers.</p></div></footer></body></html>`;
 }
@@ -766,6 +766,20 @@ const STATIC: Record<
   string,
   { title: string; description: string; html: string }
 > = {
+  media: {
+    title: "Media and press",
+    description: `For publishers, studios and PR: what ${BRAND} covers, how we work and how to reach us.`,
+    html: `<h1>Media and press</h1>
+<p>${BRAND} is a YouTube-first gaming channel: daily news Shorts, "why" stories, rankings and long documentaries, published to YouTube, TikTok, Instagram and Facebook, with articles on this site.</p>
+<h2>What we cover</h2>
+<p>Releases, delays, prices, reviews and the people behind the games. Our focus through launch is Grand Theft Auto VI, and we want to cover more single-player, indie and mid-size games.</p>
+<h2>How we work</h2>
+<p>Every story is written from named sources and fact-checked before it goes out, and rumours are labeled as rumours. We use AI assistance for writing and an AI voice for narration, and we say so. We use official assets and credit them, and we respect each publisher's video policy.</p>
+<h2>Send us</h2>
+<p>Press kits, trailers, screenshots, review codes and news under embargo. We keep embargoes and only show what you allow.</p>
+<h2>Contact</h2>
+<p>Message <a href="https://x.com/Pulse_GMG" rel="noopener">@Pulse_GMG on X</a>.</p>`,
+  },
   about: {
     title: "About",
     description: `${BRAND} explains the day's gaming news in a minute, checked against the sources.`,
@@ -839,6 +853,7 @@ export function sitemapXml(
     [`${base}/games`, now],
     [`${base}/videos`, now],
     [`${base}/about`, "2026-10-19T00:00:00.000Z"],
+    [`${base}/media`, "2026-11-05T00:00:00.000Z"],
     ...eps.map((e): [string, string] => [
       `${base}/news/${articleSlug(e)}`,
       e.live_at,

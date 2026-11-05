@@ -16,6 +16,8 @@ test("an official trailer of another instalment is refused", () => {
   assert.equal(pickOfficial(items, "Grand Theft Auto 2", subs), undefined);
   assert.equal(pickOfficial(items, "Grand Theft Auto: Vice City", subs), undefined);
   assert.equal(seriesNumber("Grand Theft Auto: Vice City"), undefined);
+  assert.equal(seriesNumber("The Legend of Zelda: Ocarina of Time – Overview Trailer – Nintendo Switch 2"), undefined);
+  assert.equal(seriesNumber("Hades II on PS5"), 2);
 });
 
 test("mediaTitle drops a writer's qualifier so picture searches match the exact game", () => {

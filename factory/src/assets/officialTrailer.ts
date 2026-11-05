@@ -232,7 +232,11 @@ const SERIES_NUMERAL: Record<string, number> = { "2": 2, "3": 3, "4": 4, "5": 5,
 
 /** The instalment a title names: "Grand Theft Auto IV" is 4, "Grand Theft Auto: Vice City" none. */
 export function seriesNumber(title: string): number | undefined {
-  for (const w of title.toLowerCase().split(/[^a-z0-9]+/))
+  // A platform's number is not the game's: "Ocarina of Time - Nintendo Switch 2" has no instalment number.
+  const name = title
+    .toLowerCase()
+    .replace(/\b(?:nintendo\s+)?switch\s*2\b|\bps\s?[2-5]\b|\bplaystation\s*[2-5]\b|\bxbox\s+series\s+[xs]\b|\bsteam\s+deck\b/g, " ");
+  for (const w of name.split(/[^a-z0-9]+/))
     if (SERIES_NUMERAL[w] !== undefined) return SERIES_NUMERAL[w];
   return undefined;
 }

@@ -671,6 +671,7 @@ export interface Services {
       format?: "short" | "long" | "graphics" | "thumbs";
       heroRule?: boolean;
       narration?: string;
+      cardTexts?: string[];
     },
   ): Promise<VisionQa>;
   /** The ElevenLabs cycle: what is left and what would be lost at the reset (undefined when unknown). */
@@ -10163,6 +10164,13 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       headline: script.headline,
       gameTitle: script.game_title,
       narration: narrationOf(script),
+      cardTexts: segments.flatMap((g) =>
+        g.visual && g.visual.kind !== "none"
+          ? [g.visual.primary, g.visual.secondary, ...(g.visual.items ?? [])].filter(
+              (t): t is string => !!t,
+            )
+          : [],
+      ),
     });
   }
   // Every rank card must stay up for its whole entry, in text the card can show (src/render/rankcard.ts).

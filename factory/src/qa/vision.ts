@@ -104,6 +104,8 @@ export async function visionQa(
     heroRule?: boolean;
     /** What the narrator says: captions repeat these words, so a word found here is not a misspelling. */
     narration?: string;
+    /** The Short's own cards: a card caught fading in or out is not lettering burned into the picture. */
+    cardTexts?: string[];
   },
 ): Promise<VisionQa> {
   const content: LlmContent = [];
@@ -125,6 +127,10 @@ export async function visionQa(
       // 2 Nov 2026: "Then the trail thins." failed three times as a misspelling of "things" and lost a slot.
       (context.narration
         ? `\n\nThe narration, which the captions repeat word for word. A caption word that appears here is spelled correctly, however unusual it looks:\n${context.narration.slice(0, 6000)}`
+        : "") +
+      // 5 Nov 2026: our own "DISCOVERY WON" card, caught mid-fade, failed three times as burned-in trailer text.
+      (context.cardTexts?.length
+        ? `\n\nThe Short's own cards, which fade in and out and may look faint or ghosted in a frame. Lettering that matches these is our graphic, never burned-in text:\n${context.cardTexts.join("\n").slice(0, 2000)}`
         : ""),
   });
   const system =

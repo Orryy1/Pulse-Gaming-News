@@ -72,6 +72,8 @@ export const HookPoster: React.FC<{
             width: "100%",
             height: "100%",
             objectFit: "cover",
+            // The same crop as the cut-out above it: centred under a cut-out cropped elsewhere, a close-up's face showed twice.
+            objectPosition: cutSrc ? crop : undefined,
             filter: "brightness(0.62) saturate(1.3) contrast(1.15)",
           }}
         />

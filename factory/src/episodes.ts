@@ -110,6 +110,7 @@ export interface EpisodeAssets {
     wordy?: boolean;
     luma?: number; // mean brightness, measured under SHORT_BRIGHT
     frame?: boolean; // a trailer frame, a last-resort still
+    bigText?: boolean; // the local OCR found big lettering in what the vertical crop keeps
     then?: boolean;
     layers?: { bg: string; mid: string; fg: string; fgx?: number }; // 2.5D depth layers (src/render/parallax.ts)
   }>; // wordy: the local screen saw menu or HUD text on it

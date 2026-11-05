@@ -257,6 +257,7 @@ import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
 import { blurPlate, meanLuma } from "./assets/plates.ts";
 import { TIGHT_CAP_SECONDS } from "./assets/officialTrailer.ts";
+import { stillBigText } from "./assets/cliptext.ts";
 import { framesNeeded } from "./qa/mediarich.ts";
 import {
   argumentArm,
@@ -9235,6 +9236,20 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     for (const img of assets.images ?? [])
       if (img.luma === undefined)
         img.luma = await meanLuma(path.join(dir, img.file));
+  // Art with big lettering in what the crop keeps ("LDEN RIN" over the verdict) goes while enough other pictures are
+  // left; the vision check would fail it and cost a whole render to find out.
+  if (s.cfg.shortClipTextCheck && !script.entries?.length) {
+    for (const img of assets.images ?? [])
+      if (img.kind !== "capsule" && img.bigText === undefined)
+        img.bigText = (await stillBigText(path.join(dir, img.file))).length > 0;
+    const clean = (assets.images ?? []).filter((i) => !i.bigText);
+    if (clean.length >= 4 && clean.length < (assets.images ?? []).length) {
+      await logEvent(s.db, ep.id, "lettered_art_dropped", {
+        files: (assets.images ?? []).filter((i) => i.bigText).map((i) => i.file),
+      });
+      assets.images = clean;
+    }
+  }
   // Never CONFIRMED on an estimate or a report, on the chip or on a stamp: a rule, not a setting.
   const tag = sourceTag(
     `${script.headline} ${script.youtube?.title ?? ""} ${narrationOf(script)}`,

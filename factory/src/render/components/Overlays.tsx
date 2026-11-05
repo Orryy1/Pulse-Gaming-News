@@ -125,6 +125,9 @@ export const TopBar: React.FC<{
         </div>
         ) : null}
       </div>
+      {/* Our own work names no source (SHORT_LABELS_CLEAN): no rule, no bare "SOURCE:". */}
+      {attribution.trim() ? (
+        <>
       <div
         style={{
           position: "absolute",
@@ -159,6 +162,8 @@ export const TopBar: React.FC<{
       >
         SOURCE: {source}
       </div>
+        </>
+      ) : null}
     </AbsoluteFill>
   );
 };

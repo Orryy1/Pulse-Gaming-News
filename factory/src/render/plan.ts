@@ -10,6 +10,7 @@ import { leadFrames, LEVEL, SFX, sfxFile } from "./soundscape.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 import type { Segment } from "./timeline.ts";
 import { FRAMES, movePreset, type MovePreset } from "./motion.ts";
+import { applyCodeScenes, type PlannedScene, type SceneContext } from "./codescene.ts";
 
 export const PLAN_FPS = 30;
 export const STING_FRAMES = 12; // frames 0-11: brand sting over the hero still
@@ -41,6 +42,7 @@ export interface PlanImage {
   luma?: number; // 0-255 mean brightness if known
   beatIndex?: number; // tagged for one entry of a ranking Short
   wordy?: boolean; // the local screen saw menu or HUD text on it: used after clean art
+  frame?: boolean; // a trailer frame, last-resort: only after published art, once each, never two in a row
   then?: boolean; // the old version of a remade game: kept for the words about the old one (thenWindows)
 }
 
@@ -76,10 +78,24 @@ export interface PlanInput {
   steam?: PlanSteam | null;
   /** Open on the hook's moving clip instead of the hero still (most viewers decide at the first frame). */
   openOnClip?: boolean;
+  /**
+   * Footage first (SHORT_FOOTAGE_FIRST, world-class audit #3 and #4): a shot runs as long as its clip does and what is
+   * left of a clip comes back later, a line with no moment of its own takes one nobody else used, stills fill only what
+   * footage cannot, and the bare plate is the last resort, after a still has been shown a third time.
+   */
+  footageFirst?: boolean;
+  /** Our own work (a ranking, a Why, deals): no "CONFIRMED · PULSE" chip on an opinion (SHORT_LABELS_CLEAN). */
+  noSourceChip?: boolean;
+  /** A stat chip only under a line that mentions it: price chips nobody said were noise (SHORT_LABELS_CLEAN). */
+  statsWhenSpoken?: boolean;
+  /** Brightest art first where the choice is free (SHORT_BRIGHT). */
+  preferBright?: boolean;
+  /** Code scenes (src/render/codescene.ts, CODE_SCENES): absent, the plan is as it always was. */
+  codeScenes?: { ctx: SceneContext; stampsAt: number[] };
 }
 
 export type PlanMedia = {
-  type: "image" | "clip" | "plate";
+  type: "image" | "clip" | "plate" | "scene";
   index: number;
   trimFrom?: number;
 };
@@ -125,6 +141,8 @@ export interface RenderPlan {
   wordLook?: string;
   /** The long videos' craft on the Short (src/render/shortcraft.ts): cards, photos, fillers and camera moves. */
   craft?: import("./shortcraft.ts").ShortCraft;
+  /** Code scenes drawn over their shots (src/render/codescene.ts). `media.index` of a "scene" shot points here. */
+  scenes?: PlannedScene[];
 }
 
 const QUIET_KINDS = new Set([
@@ -356,7 +374,7 @@ export function splitAtThen<T extends { start: number; end: number; segment: num
 }
 
 /** The still that opens and closes the Short: a 16:9 shot if there is one, else the first image. */
-export function pickHero(images: PlanImage[]): number {
+export function pickHero(images: PlanImage[], preferBright = false): number {
   // The topic's own art first; art tagged for a ranking entry belongs to that entry.
   const pools = [
     images
@@ -365,13 +383,20 @@ export function pickHero(images: PlanImage[]): number {
     images.map((img, i) => ({ img, i })).filter((x) => !x.img.then),
     images.map((img, i) => ({ img, i })),
   ];
-  for (const pool of pools) {
-    if (!pool.length) continue;
+  for (const all of pools) {
+    if (!all.length) continue;
+    // A trailer frame never opens or closes a Short when published art can.
+    const published = all.filter((x) => !x.img.frame);
+    const pool = published.length ? published : all;
     // A clean wide still before one with lettering on it: the headline sits over the opening frame.
     const isWide = (x: (typeof pool)[number]) =>
       x.img.aspect >= 1.2 && x.img.aspect <= 2.1;
+    const brightest = (xs: typeof pool) =>
+      [...xs].sort((a, b) => (b.img.luma ?? 0) - (a.img.luma ?? 0))[0];
     const wide =
-      pool.find((x) => isWide(x) && !x.img.wordy) ?? pool.find(isWide);
+      (preferBright
+        ? brightest(pool.filter((x) => isWide(x) && !x.img.wordy))
+        : pool.find((x) => isWide(x) && !x.img.wordy)) ?? pool.find(isWide);
     if (wide) return wide.i;
     const tall = pool.find((x) => x.img.aspect < 0.9);
     if (tall) return tall.i;
@@ -386,6 +411,9 @@ export const hasPrintedLogo = (img: PlanImage) =>
 /** Art order within an entry: clean first, then a screenshot the local screen called wordy (it over-flags in-world lettering), then printed box art. */
 const artPenalty = (img: PlanImage) =>
   hasPrintedLogo(img) ? 2 : img.wordy ? 1 : 0;
+
+/** How many times a still may show when the alternative is the bare plate. */
+export const RESCUE_STILL_USES = 3;
 
 const isFramedStill = (img: PlanImage) =>
   img.aspect > 2.1 || (img.aspect >= 0.9 && img.aspect < 1.2);
@@ -403,9 +431,18 @@ export function planShots(
   heroIndex: number,
 ): Shot[] {
   const { images, clips, segments, variant } = input;
-  const stillUses = images.map(() => 0);
+  // A trailer frame starts one use down, so it shows once where other stills show twice.
+  const stillUses = images.map((i) => (i.frame ? 1 : 0));
+  const afterFrame = (i: number) =>
+    !!images[i]!.frame &&
+    last?.type === "image" &&
+    !!images[last.index]?.frame;
   const clipUsed = clips.map(() => false);
   const clipFrames = clips.map((c) => Math.floor(c.durationSeconds * PLAN_FPS));
+  const footageFirst = !!input.footageFirst;
+  // Frames of each clip already shown: under footage first a clip is spent by the frame, not by the shot.
+  const clipPos = clips.map(() => 0);
+  const clipLeft = (i: number) => clipFrames[i]! - clipPos[i]!;
   const clipOrder = clips
     .map((c, i) => i)
     .sort((a, b) => (clips[b]!.motion ?? 0.5) - (clips[a]!.motion ?? 0.5)); // liveliest first
@@ -463,9 +500,18 @@ export function planShots(
         (i) =>
           images[i]!.beatIndex === undefined &&
           !images[i]!.then &&
-          (i !== heroIndex || images.length === 1),
+          (i !== heroIndex || images.length === 1) &&
+          !afterFrame(i),
       )
-      .sort((a, b) => stillUses[a]! - stillUses[b]! || a - b);
+      .sort(
+        (a, b) =>
+          Number(!!images[a]!.frame) - Number(!!images[b]!.frame) ||
+          stillUses[a]! - stillUses[b]! ||
+          (input.preferBright
+            ? (images[b]!.luma ?? 0) - (images[a]!.luma ?? 0)
+            : 0) ||
+          a - b,
+      );
     const pick =
       order.find(
         (i) =>
@@ -492,6 +538,7 @@ export function planShots(
       .filter(
         (i) =>
           i !== heroIndex &&
+          !afterFrame(i) &&
           !images[i]!.then &&
           !same(exclude, { type: "image", index: i }),
       )
@@ -513,6 +560,7 @@ export function planShots(
     calm: boolean,
     ownOnly = false,
   ): PlanMedia | undefined => {
+    if (footageFirst) return takeFootage(n, c, forBeat, calm, ownOnly);
     const len = c.end - c.start;
     const fits = clipOrder.filter(
       (i) => !clipUsed[i] && clipFrames[i]! >= Math.min(len, MIN_SHOT),
@@ -570,6 +618,105 @@ export function planShots(
     return { type: "clip", index: pick, trimFrom: 0 };
   };
 
+  // Footage first: the clip for this shot, the shot stretched to show all of it (within the line and the kind's longest
+  // shot) or, when the clip is shorter, cut at its end. Own moment, then an untagged one, then what is left of a moment
+  // whose line has passed. Never another line's moment still to come, and in a ranking never another game's.
+  const takeFootage = (
+    n: number,
+    c: { start: number; end: number; segment: number },
+    forBeat: number | undefined | "hook",
+    calm: boolean,
+    ownOnly: boolean,
+  ): PlanMedia | undefined => {
+    const open = clipOrder.filter((i) => clipLeft(i) >= MIN_SHOT);
+    if (!open.length) return undefined;
+    const fresh = (xs: number[]) =>
+      [...xs].sort((a, b) => clipPos[a]! - clipPos[b]!)[calm ? xs.length - 1 : 0];
+    const own = open.filter((i) =>
+      forBeat === "hook"
+        ? clips[i]!.role === "hook"
+        : forBeat !== undefined && clips[i]!.beatIndex === forBeat,
+    );
+    const free = open.filter(
+      (i) => clips[i]!.beatIndex === undefined && clips[i]!.role === undefined,
+    );
+    const beatsBefore = segments
+      .slice(0, c.segment)
+      .filter((s) => s.kind === "beat").length;
+    const passed = open.filter((i) => {
+      const cl = clips[i]!;
+      return (
+        cl.role === "hook" ||
+        (cl.beatIndex !== undefined && cl.beatIndex < beatsBefore)
+      );
+    });
+    const pick = own.length
+      ? fresh(own)
+      : ownOnly
+        ? undefined
+        : free.length
+          ? fresh(free)
+          : !ranking && passed.length
+            ? fresh(passed)
+            : undefined;
+    if (pick === undefined) return undefined;
+    const left = clipLeft(pick);
+    const limit = maxShotFor(segments[c.segment]!.kind);
+    const want = Math.min(left, limit);
+    const len = c.end - c.start;
+    if (want > len) {
+      // The shot grows to show the clip, taking over the line's later cuts; a remainder too short to stand folds in.
+      let end = c.start + want;
+      for (;;) {
+        const next = cuts[n + 1];
+        if (!next || next.segment !== c.segment) {
+          end = Math.min(end, c.end);
+          break;
+        }
+        if (next.end <= end) {
+          c.end = next.end;
+          cuts.splice(n + 1, 1);
+          continue;
+        }
+        if (next.end - end < MIN_SHOT) {
+          if (
+            next.end - c.start <= limit &&
+            next.end - c.start <= left + FREEZE_TOLERANCE
+          ) {
+            end = next.end;
+            c.end = next.end;
+            cuts.splice(n + 1, 1);
+          } else end = Math.max(c.end, next.end - MIN_SHOT);
+        }
+        break;
+      }
+      if (end > c.end) {
+        const next = cuts[n + 1];
+        if (next && next.segment === c.segment) next.start = end;
+        c.end = end;
+      }
+    } else if (len - left > FREEZE_TOLERANCE) {
+      const clipEnd = c.start + left;
+      const extra = len - left;
+      const next = cuts[n + 1];
+      if (extra >= MIN_SHOT) {
+        cuts.splice(n + 1, 0, { start: clipEnd, end: c.end, segment: c.segment });
+        c.end = clipEnd;
+      } else if (
+        next &&
+        next.segment === c.segment &&
+        next.end - clipEnd <= MAX_SHOT
+      ) {
+        c.end = clipEnd;
+        next.start = clipEnd;
+      } else return undefined;
+    }
+    const trimFrom = clipPos[pick]!;
+    clipPos[pick]! += Math.min(c.end - c.start, left);
+    clipUsed[pick] = true;
+    return { type: "clip", index: pick, trimFrom };
+  };
+
   const shots: Shot[] = [];
   // A ranking Short: ranks are spoken bottom-up, so the last beat is number one and the take ("our pick") shows it.
   const ranking = segments.some(
@@ -620,6 +767,7 @@ export function planShots(
       // The pick opens on the winner's art, never on the topic's or another entry's.
       // Straight after the winner's own line its art may carry on under the pick card.
       media =
+        (footageFirst ? takeClip(n, c, winnerBeat, true, true) : undefined) ??
         takeStill((i) => true, undefined, winnerBeat, true) ??
         takeClip(n, c, winnerBeat, true, true) ??
         (heroIndex >= 0 ? { type: "image", index: heroIndex } : undefined);
@@ -629,6 +777,22 @@ export function planShots(
       (media = takeClip(n, c, "hook", false))
     ) {
       // Motion from the first frame: the hero still waits for the take and the loop.
+    } else if (
+      footageFirst &&
+      isOpening &&
+      input.openOnClip &&
+      !ranking &&
+      (media = takeClip(n, c, undefined, false))
+    ) {
+      // No moment was chosen for the hook: any free footage still opens better than a still.
+    } else if (
+      footageFirst &&
+      !isOpening &&
+      (isClosing || firstTakeShot) &&
+      !ranking &&
+      (media = takeClip(n, c, undefined, true))
+    ) {
+      // The verdict and the last line stay on moving footage while there is any; the hero waits for when there is not.
     } else if ((isOpening || isClosing || firstTakeShot) && heroIndex >= 0) {
       media = { type: "image", index: heroIndex };
       framed = isFramedStill(images[heroIndex]!);
@@ -650,6 +814,7 @@ export function planShots(
       framed = true;
     } else if (seg.kind === "beat" && STILL_KINDS.has(kind)) {
       media =
+        (footageFirst ? takeClip(n, c, beatIndex, true) : undefined) ??
         takeStill((i) => !isFramedStill(images[i]!), last, beatIndex) ??
         takeClip(n, c, beatIndex, true);
     } else if (seg.kind === "beat") {
@@ -698,7 +863,34 @@ export function planShots(
         prevShot.end = c.end;
         continue;
       }
-      media = alt ?? media ?? { type: "plate", index: 0 };
+      // Footage first: a still a third time, or a still tagged for a line (never the ranking's winner before its turn),
+      // beats an empty panel. A ranking entry with no art of its own stays on the plate, for the gate to see.
+      const rescue =
+        footageFirst && !alt && !media && ownBeat === undefined
+          ? images
+              .map((_, i) => i)
+              .filter(
+                (i) =>
+                  stillUses[i]! < RESCUE_STILL_USES &&
+                  !same(last, { type: "image", index: i }) &&
+                  !afterFrame(i) &&
+                  !(ranking && images[i]!.beatIndex === winnerBeat),
+              )
+              .sort(
+                (a, b) =>
+                  Number(!!images[a]!.frame) - Number(!!images[b]!.frame) ||
+                  stillUses[a]! - stillUses[b]! ||
+                  artPenalty(images[a]!) - artPenalty(images[b]!) ||
+                  a - b,
+              )[0]
+          : undefined;
+      if (rescue !== undefined) stillUses[rescue]!++;
+      media =
+        alt ??
+        media ??
+        (rescue !== undefined
+          ? { type: "image", index: rescue }
+          : { type: "plate", index: 0 });
       framed =
         media.type === "image" ? isFramedStill(images[media.index]!) : false;
     }
@@ -729,7 +921,71 @@ export function planShots(
   // Nothing to show at all: the brand plate carries the whole Short.
   if (!images.length && !clips.length)
     for (const s of shots) s.media = { type: "plate", index: 0 };
-  return shots;
+  return footageFirst ? spendLeftoverClips(shots, input, clipLeft, clipPos) : shots;
+}
+
+/**
+ * What the first pass left: any clip with footage to spare replaces a still that was not chosen for its line (a still
+ * tagged for the line stays). A clip shorter than the shot takes its first part and the still keeps the rest. In a
+ * ranking a clip only ever goes under its own entry.
+ */
+function spendLeftoverClips(
+  shots: Shot[],
+  input: PlanInput,
+  clipLeft: (i: number) => number,
+  clipPos: number[],
+): Shot[] {
+  const { clips, images, segments } = input;
+  const ranking = segments.some(
+    (x) => x.kind === "beat" && x.visual?.kind === "rank",
+  );
+  const beatOf = (segment: number) =>
+    segments.slice(0, segment).filter((s) => s.kind === "beat").length;
+  const out: Shot[] = [];
+  for (const [n, s] of shots.entries()) {
+    const seg = segments[s.segment]!;
+    const beat = seg.kind === "beat" ? beatOf(s.segment) : undefined;
+    const im = s.media.type === "image" ? images[s.media.index] : undefined;
+    const prev = out.at(-1);
+    const isLast = n === shots.length - 1;
+    const replaceable =
+      s.media.type === "plate" ||
+      (im && (im.beatIndex === undefined || im.beatIndex !== beat));
+    const len = s.end - s.start;
+    const pick =
+      replaceable && !(n === 0 && s.media.type === "image") && !isLast
+        ? clips
+            .map((_, i) => i)
+            .filter(
+              (i) =>
+                clipLeft(i) >= MIN_SHOT &&
+                !(prev?.media.type === "clip" && prev.media.index === i) &&
+                (ranking
+                  ? beat !== undefined && clips[i]!.beatIndex === beat
+                  : true) &&
+                (clipLeft(i) >= len - FREEZE_TOLERANCE ||
+                  len - clipLeft(i) >= MIN_SHOT),
+            )
+            .sort(
+              (a, b) => clipPos[a]! - clipPos[b]! || clipLeft(b) - clipLeft(a),
+            )[0]
+        : undefined;
+    if (pick === undefined) {
+      out.push(s);
+      continue;
+    }
+    const take = Math.min(len, clipLeft(pick));
+    out.push({
+      ...s,
+      end: s.start + take,
+      media: { type: "clip", index: pick, trimFrom: clipPos[pick]! },
+      framed: false,
+      luma: clips[pick]!.luma ?? 128,
+    });
+    clipPos[pick]! += take;
+    if (take < len) out.push({ ...s, start: s.start + take });
+  }
+  return out;
 }
 
 /**
@@ -848,11 +1104,30 @@ export function planShelf(
     statTiles.push({ value: String(steam.metacritic), label: "METACRITIC" });
   let lastDevice: ShelfDevice | undefined;
   let tileIdx = 0;
+  // What a line says, for a chip that has to be about it.
+  const saidIn = (s: Segment) =>
+    input.words
+      .filter((w) => w.start >= s.start - 0.05 && w.start < s.end)
+      .map((w) => w.text)
+      .join(" ");
+  const tileSaid = (tile: Record<string, string>, said: string) =>
+    /STEAM REVIEWS/.test(tile.label ?? "")
+      ? /\b(reviews?|positive|percent)\b|%/i.test(said)
+      : /METACRITIC/.test(tile.label ?? "")
+        ? /\b(metacritic|scored?|metascore)\b/i.test(said)
+        : /\$|\b(dollars?|bucks?|price[ds]?|costs?|cheap|sale|discount)\b/i.test(said);
+  const liveSaid = (said: string) =>
+    /\b(players?|playing|concurrent|online)\b/i.test(said);
   for (const [i, s] of segments.entries()) {
     const from = i === 0 ? 0 : toFrame(s.start);
     const to =
       i === segments.length - 1 ? totalFrames : toFrame(segments[i + 1]!.start);
     if (to - from < 12) continue;
+    const said = input.statsWhenSpoken ? saidIn(s) : "";
+    const liveHere = !input.statsWhenSpoken || liveSaid(said) ? live : undefined;
+    const tiles = input.statsWhenSpoken
+      ? statTiles.filter((t) => tileSaid(t, said))
+      : statTiles;
     const chain: Array<[ShelfDevice, Record<string, string> | undefined]> = [];
     // A card that already shows a figure never gets a second, possibly different, figure under it.
     const numeric =
@@ -861,17 +1136,25 @@ export function planShelf(
     const rank =
       (s.kind === "beat" && s.visual?.kind === "rank") ||
       segments.some((x) => x.kind === "beat" && x.visual?.kind === "rank"); // a ranking: no single game owns the topic tiles
-    if (s.kind === "hook") chain.push(["source", { label: sourceLabel }]);
-    if (s.kind === "take" && live && !rank) chain.push(["live", live]);
-    if (statTiles.length && !numeric && !rank)
-      chain.push(["stat", statTiles[tileIdx % statTiles.length]]);
-    if (hasCapsule && !rank) chain.push(["gamecard", { title: "" }]);
-    if (live && !numeric && !rank) chain.push(["live", live]);
+    if (s.kind === "hook" && !input.noSourceChip)
     chain.push(["source", { label: sourceLabel }]);
+    if (s.kind === "take" && liveHere && !rank) chain.push(["live", liveHere]);
+    if (tiles.length && !numeric && !rank)
+      chain.push(["stat", tiles[tileIdx % tiles.length]]);
+    if (hasCapsule && !rank) chain.push(["gamecard", { title: "" }]);
+    if (liveHere && !numeric && !rank) chain.push(["live", liveHere]);
+    if (!input.noSourceChip) chain.push(["source", { label: sourceLabel }]);
     chain.push(["rail", {}]);
     let pick = chain.find(([d]) => d !== lastDevice) ?? chain[0]!;
     // The rail is never worth an empty shelf: when nothing else is available the source chip simply stays.
-    if (pick[0] === "rail") pick = ["source", { label: sourceLabel }];
+    if (pick[0] === "rail") {
+      // Our own work has no source to name: the shelf stays empty.
+      if (input.noSourceChip) {
+        lastDevice = undefined;
+        continue;
+      }
+      pick = ["source", { label: sourceLabel }];
+    }
     if (pick[0] === "stat") tileIdx++;
     const prev = items.at(-1);
     if (
@@ -899,13 +1182,21 @@ export function buildPlan(input: PlanInput): RenderPlan {
     PLAN_FPS * 5,
     Math.ceil(input.durationSeconds * PLAN_FPS),
   );
-  const heroIndex = pickHero(input.images);
+  const heroIndex = pickHero(input.images, input.preferBright);
   const hasThen = input.images.some((i) => i.then);
   const cuts = planCuts(
     input.segments,
     input.words,
     totalFrames,
-    hasThen || (!!input.openOnClip && input.clips.some((c) => c.role === "hook")),
+    hasThen ||
+      (!!input.openOnClip &&
+        input.clips.some(
+          (c) =>
+            c.role === "hook" ||
+            (!!input.footageFirst &&
+              c.beatIndex === undefined &&
+              !input.segments.some((s) => s.visual?.kind === "rank")),
+        )),
     !input.clips.length && input.images.length >= 16,
   );
   const shots = planShots(
@@ -919,7 +1210,7 @@ export function buildPlan(input: PlanInput): RenderPlan {
     hook ? toFrame(hook.end) : 0,
     take ? toFrame(take.start) : 0,
   ].filter((f) => f > 0 && f < totalFrames);
-  return {
+  const plan: RenderPlan = {
     version: 1,
     fps: PLAN_FPS,
     totalFrames,
@@ -930,6 +1221,9 @@ export function buildPlan(input: PlanInput): RenderPlan {
     sfx: planSfx(input.segments, totalFrames),
     shelf: planShelf(input, input.segments, totalFrames),
   };
+  return input.codeScenes
+    ? applyCodeScenes(plan, input.segments, input.words, input.codeScenes.ctx, input.codeScenes.stampsAt, input.images)
+    : plan;
 }
 
 /** The shot on screen at a frame. */

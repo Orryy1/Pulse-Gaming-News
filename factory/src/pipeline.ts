@@ -2,6 +2,7 @@
 // Each step reads its inputs from Postgres/disk and writes its outputs before
 // the status moves, so any step can crash and be retried safely.
 
+import { firstComment } from "./social/firstcomment.ts";
 import { pollBlock, readPoll } from "./social/poll.ts";
 import {
   selectWhyTopic,
@@ -33,7 +34,7 @@ import type { ArticleText } from "./discovery/article.ts";
 import type { Narration } from "./voice/elevenlabs.ts";
 import type { VisualAsset, SteamApp, SteamFacts } from "./assets/steam.ts";
 import { factsText } from "./assets/steam.ts";
-import { capFootage, footageBudgetSeconds } from "./assets/footage.ts";
+import { capFootage, DEFAULT_FOOTAGE_SECONDS, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import type { RadarGame, FreeGame } from "./discovery/weekly.ts";
@@ -254,7 +255,17 @@ import { bedFor } from "./render/soundscape.ts";
 import { cameraNotice } from "./render/camera.ts";
 import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
-import { blurPlate } from "./assets/plates.ts";
+import { blurPlate, meanLuma } from "./assets/plates.ts";
+import { TIGHT_CAP_SECONDS } from "./assets/officialTrailer.ts";
+import { framesNeeded } from "./qa/mediarich.ts";
+import {
+  argumentArm,
+  cardFigureProblems,
+  endingProblems,
+  evergreenRuleNote,
+  shortRuleNote,
+  thinProblems,
+} from "./editorial/shortrules.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
 import {
   captureMetrics,
@@ -286,7 +297,10 @@ import {
 } from "./growth.ts";
 import { holdSlotForCap, holdWhyForCap } from "./cadence.ts";
 import {
+  refreshChatter,
   bigCluster,
+  coveredHashes,
+  runEntryCovered,
   bigEditorNote,
   bigMadeToday,
   bumpFiller,
@@ -334,7 +348,7 @@ import {
 } from "./editorial/spoilers.ts";
 import { ccCredit } from "./render/cleanframe.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
-import { framesNamed } from "./qa/vision.ts";
+import { shortSampleTimes, framesNamed } from "./qa/vision.ts";
 import {
   checkFrame,
   clearOfEntrances,
@@ -551,6 +565,8 @@ export interface Services {
     targets: FootageTarget[],
     maxClips: number,
     scope?: "campaign",
+    /** Footage first on Shorts: more clean moments up to these seconds, and the local text check. */
+    fill?: { seconds?: number; textCheck?: boolean },
   ): Promise<VisualAsset[]>;
   fetchOfficialMedia(
     gameTitle: string,
@@ -559,7 +575,16 @@ export interface Services {
     maxClips: number,
     hint?: string,
     story?: { text: string; after: Date },
+    fill?: { seconds?: number; textCheck?: boolean },
   ): Promise<OfficialMedia>;
+  /** A tight-cap publisher's trailer as last-resort stills, once published art has been counted. */
+  trailerFrames?(
+    trailer: { videoId: string; title: string; channelTitle: string; url: string },
+    episodeDir: string,
+    gameTitle: string,
+    count: number,
+    textCheck: boolean,
+  ): Promise<VisualAsset[]>;
   fetchStock(
     episodeDir: string,
     targets: FootageTarget[],
@@ -706,6 +731,9 @@ export async function discoverTick(s: Services): Promise<number> {
   await s.db.query(
     `DELETE FROM cluster_sightings WHERE last_seen < $1::timestamptz - interval '7 days'`,
     [now],
+  );
+  await refreshChatter(s.db, s.cfg, now, () => s.trending()).catch((err) =>
+    log("warn", "chatter read failed", { error: errorMessage(err) }),
   );
   return clusters.length;
 }
@@ -1158,6 +1186,8 @@ async function createFromChoice(
  * happening to each, and makes the biggest one not yet covered. It fills a news slot when one is open, else it goes
  * out like a breaking Short. Report mode and a blocked factory still judge and record, so nothing is passed silently.
  */
+let lastBigCovered = new Set<string>();
+
 async function maybeSelectBig(
   s: Services,
   blocked?: string,
@@ -1179,6 +1209,7 @@ async function maybeSelectBig(
     ...(blocked ? { blocked } : {}),
   };
   const verdicts = judgeBigStories(stories, cfg, context);
+  lastBigCovered = coveredHashes(verdicts);
   const make = verdicts.find((v) => v.action === "make");
   if (make) {
     // The quota is the one limit a big story cannot overrule: an upload past it just fails.
@@ -1210,7 +1241,8 @@ async function createBig(s: Services, v: BigVerdict): Promise<string | undefined
     },
     await takenSlots(db),
   );
-  const force = v.story.size >= cfg.bigStoryHuge;
+  // A follow-up to a story already covered is the editor's call, however big.
+  const force = v.story.size >= cfg.bigStoryHuge && !v.development;
   let passed: string | undefined;
   const id = await createFromChoice(
     s,
@@ -1301,7 +1333,10 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
 
   const seen = await seenHashes(db);
   const sightings = (await recentSightings(s)).filter(
-    (x) => !seen.has(x.cluster.hash),
+    (x) =>
+      !seen.has(x.cluster.hash) &&
+      // A story the big-story desk has made or sees planned is not picked again by a slot under another of its hashes.
+      !(cfg.bigStoryMode === "make" && lastBigCovered.has(x.cluster.hash)),
   );
   // Rumours are capped a day: once today's is in, stories carrying rumour signals wait for tomorrow.
   const rumoursToday = cfg.includeRumours
@@ -1692,7 +1727,20 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   )
     return undefined;
   // A topic planned for this slot (the launch run, src/shortrun.ts) goes first; with none usable the editor picks.
-  const planned = whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone);
+  let planned = whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone);
+  // The news got there first: a big Short already said it, so the slot goes to the editor's pick.
+  const beaten =
+    planned && cfg.bigStoryMode === "make"
+      ? runEntryCovered(planned, await recentCover(db, now), now)
+      : undefined;
+  if (planned && beaten) {
+    log("info", "planned Why gives way to a big story already made", {
+      topic: planned.title,
+      episode: beaten.id,
+    });
+    await logEvent(db, beaten.id, "run_topic_superseded", { topic: planned.title });
+    planned = undefined;
+  }
   if (planned) {
     const made = await selectRunWhy(s, planned, due).catch((err) => {
       log("warn", "launch run topic failed", {
@@ -4913,8 +4961,11 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
         : []),
     ];
   };
+  // The audit's writer rules for a Short's list (src/editorial/shortrules.ts); a long video's brief is left alone.
+  const ruleNote = ep.lane !== "longform" ? evergreenRuleNote(s.cfg) : "";
+  const ruledBrief = ruleNote ? [brief, ruleNote].filter(Boolean).join("\n\n") : brief;
   for (let attempt = 0; attempt < 2; attempt++) {
-    draft = await writeEvergreen(s.llm, topic, facts, feedback, brief);
+    draft = await writeEvergreen(s.llm, topic, facts, feedback, ruledBrief);
     const problems = [
       ...new Set([
       ...validateEvergreen(draft, recentScripts),
@@ -5071,7 +5122,13 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     return undefined;
   });
   const testDefaults = await growthDefaults(s.db).catch(() => []);
-  const variantNote = growthNotes(test, testDefaults);
+  // The audit's writer rules (src/editorial/shortrules.ts) come after the test's variant, nearest the draft.
+  const argument = argumentArm(s.cfg, ep);
+  if (argument)
+    await logEvent(s.db, ep.id, "short_argument", { arm: "argument" });
+  const variantNote = [growthNotes(test, testDefaults), shortRuleNote(s.cfg, ep)]
+    .filter(Boolean)
+    .join("\n\n");
   const recentTexts = await recentShortTexts(s.db, ep.id, s.now()).catch(
     () => [],
   );
@@ -5083,6 +5140,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // The Pulse Check is the news desk's own segment: a Why Short has its question and its reason to follow instead.
   const pulseCheck =
     s.cfg.newsSegment &&
+    !argument &&
     !cluster.why &&
     (ep.lane === "news" || ep.lane === "news_breaking");
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -5101,8 +5159,15 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       recent,
       draft: attempt > 0 ? script : undefined,
       segment: pulseCheck,
+      noSeriesFollow: s.cfg.shortEndPayoff,
     });
     const problems = validateScript(script, recent);
+    const thin = s.cfg.shortRefuseThin
+      ? thinProblems(narrationOf(script), script.thin_reason)
+      : [];
+    problems.push(...thin);
+    if (s.cfg.shortLabelsClean) problems.push(...cardFigureProblems(script.beats));
+    if (s.cfg.shortEndPayoff) problems.push(...endingProblems(script.loop_line));
     if (pulseCheck) problems.push(...pulseCheckProblems(script));
     // The test variant is a house rule for this Short: a draft that ignored it is sent back like any other.
     problems.push(...growthProblems(script, test, testDefaults));
@@ -5122,7 +5187,11 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     if (cluster.why)
       problems.push(
         ...whyHookProblems(script.hook, whyHooks),
-        ...whyFollowProblems(script.loop_line, cluster.why.follow),
+        ...whyFollowProblems(
+          script.loop_line,
+          cluster.why.follow,
+          s.cfg.shortEndPayoff,
+        ),
         ...whyAnswerProblems(narrationOf(script)),
       );
     // A report card is credited to an outlet: it must be one of this story's own sources.
@@ -5195,6 +5264,38 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         return;
       }
       await logEvent(s.db, ep.id, "style_warnings", { problems });
+      // Thin after a rewrite: nothing to watch for. A big story is the channel's duty to cover, so it goes on and the
+      // owner is told why it reads thin; anything else gives its slot to the next story, and he is told that too.
+      if (thin.length) {
+        await logEvent(s.db, ep.id, "thin_story", {
+          big: !!cluster.bigStory,
+          why: thin,
+        });
+        if (cluster.bigStory) {
+          await s.notify({
+            level: "info",
+            content: `Big story "${cluster.headline}" reads thin but is going out, since big stories are always made: ${thin.join(" ").slice(0, 500)}`,
+          });
+        } else {
+          await markSeen(
+            s.db,
+            cluster.hash,
+            cluster.headline,
+            "rejected",
+            "too thin",
+          );
+          await transition(s.db, ep.id, "selected", "rejected", {
+            script_json: script,
+            factcheck_json: check,
+            last_error: `too thin: ${thin.join(" | ")}`,
+          });
+          await s.notify({
+            level: "info",
+            content: `Dropped as too thin, the slot goes to the next story: "${cluster.headline}". ${thin.join(" ").slice(0, 500)}`,
+          });
+          return;
+        }
+      }
     }
   }
   if (!script || !check) throw new Error("script step produced nothing");
@@ -5238,6 +5339,100 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   }
   const dir = episodeDir(s.cfg, ep.id);
   await fs.mkdir(dir, { recursive: true });
+  // The pictures before the credit: a Short that cannot be pictured is refused before anything is voiced.
+  if (
+    s.cfg.shortMediaBeforeVoice &&
+    ["news", "news_breaking", "free", "evergreen"].includes(ep.lane) &&
+    !ep.assets_json?.images
+  ) {
+    const estSeconds =
+      (narrationOf(ep.script_json!).split(/\s+/).filter(Boolean).length / 160) * 60;
+    const probe = {
+      ...ep,
+      assets_json: { ...(ep.assets_json ?? {}), durationSeconds: estSeconds },
+    } as Episode;
+    const media: Pick<EpisodeAssets, "images" | "clips" | "officialTrailer"> & { rich?: boolean } =
+      await gatherMedia(s, probe, dir);
+    const limit = ep.story_json.bigStory
+      ? Math.max(s.cfg.shortPlateMax, s.cfg.shortPlateMaxBig)
+      : s.cfg.shortPlateMax;
+    // The real planner on evenly spaced stand-in word timings: what the render step will decide, before the credit.
+    const estimate = (m: typeof media): number => {
+      try {
+        const script = ep.script_json!;
+        const toks = narrationOf(script).split(/\s+/).filter(Boolean);
+        const per = estSeconds / Math.max(1, toks.length);
+        const words = toks.map((text, i) => ({
+          text,
+          start: i * per,
+          end: i * per + per * 0.85,
+        }));
+        const duration = estSeconds + TAIL_SECONDS;
+        const plan = buildPlan({
+          segments: buildSegments(segmentInputs(script, false), words, duration),
+          words,
+          durationSeconds: duration,
+          images: (m.images ?? []).map((i) => ({
+            kind: i.kind,
+            aspect: i.aspect,
+            beatIndex: i.beatIndex,
+            wordy: i.wordy,
+            frame: i.frame,
+          })),
+          clips: (m.clips ?? []).map((c) => ({
+            durationSeconds: c.durationSeconds,
+            motion: c.motion,
+            luma: c.luma,
+            beatIndex: c.beatIndex,
+            role: c.role,
+          })),
+          storyType: script.is_rumour ? "rumour" : script.story_type,
+          isRumour: script.is_rumour,
+          attribution: script.attribution,
+          variant: variantOf(ep.id),
+          openOnClip: s.cfg.openOnMotion,
+          footageFirst: s.cfg.shortFootageFirst,
+        });
+        return (
+          plan.shots
+            .filter((x) => x.media.type === "plate")
+            .reduce((n, x) => n + x.end - x.start, 0) / plan.totalFrames
+        );
+      } catch (err) {
+        // A check that cannot run never stops a Short: the render step's gate still stands.
+        log("warn", "media estimate failed", { error: errorMessage(err) });
+        return 0;
+      }
+    };
+    let share = estimate(media);
+    if (share > limit) {
+      Object.assign(media, await gatherMedia(s, probe, dir, true), { rich: true });
+      share = estimate(media);
+    }
+    await logEvent(s.db, ep.id, "media_before_voice", {
+      images: (media.images ?? []).length,
+      clips: (media.clips ?? []).length,
+      plateEstimate: Math.round(share * 100) / 100,
+      limit,
+    });
+    if (share > limit) {
+      const why = `about ${Math.round(share * 100)}% of the Short would be an empty panel`;
+      await markSeen(s.db, ep.story_hash, ep.story_json.headline, "rejected", why);
+      await transition(s.db, ep.id, "scripted", "rejected", {
+        last_error: `not voiced, too little media: ${why}`,
+      });
+      await s.notify({
+        level: "info",
+        content: `Dropped before the voice, no credit spent: "${ep.story_json.headline}". ${why}, even after looking for more. The slot goes to the next story.`,
+      });
+      return;
+    }
+    ep = { ...ep, assets_json: { ...(ep.assets_json ?? {}), ...media } as Episode["assets_json"] };
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(ep.assets_json),
+    ]);
+  }
   // Voice rotation: the n-th Short the channel has made picks the n-th voice of the pool, so a few Shorts in a row share a voice and the analytics can say which one sticks.
   const [ord] = await s.db.query<{ n: string | number }>(
     `SELECT count(*) AS n FROM episodes WHERE created_at < $1 AND status NOT IN ('failed','rejected')`,
@@ -5285,6 +5480,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     );
     const a = await s.synthesise(partA, path.join(dir, "voice_a.mp3"), voice, {
       provider: "elevenlabs",
+      ...(s.cfg.shortMinWpm ? { minWpm: s.cfg.shortMinWpm } : {}),
     });
     const q = await s.synthesise(
       partQ,
@@ -5294,6 +5490,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     );
     const b = await s.synthesise(partB, path.join(dir, "voice_b.mp3"), voice, {
       provider: "elevenlabs",
+      ...(s.cfg.shortMinWpm ? { minWpm: s.cfg.shortMinWpm } : {}),
     });
     const joined = await s.stitchTakes([a, q, b], path.join(dir, "voice.mp3"));
     narration = { ...joined, voice: a.voice };
@@ -5311,6 +5508,9 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
         : // A test dial, off by default: documentaries keep their natural pace whatever it says.
           s.cfg.longMinWpm && ep.script_json?.evergreen_format === "ranking"
           ? { minWpm: s.cfg.longMinWpm }
+          : // SHORT_MIN_WPM: off until the owner has heard the samples. Never slows a voice, and lifts 25% at most.
+            s.cfg.shortMinWpm && ep.lane !== "longform"
+            ? { minWpm: s.cfg.shortMinWpm }
           : undefined,
     );
   }
@@ -5408,7 +5608,13 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       const breath = turned.after;
       const before = turned.before.loudPerMinute;
       const wpm = wordsPerMinute(narration.words);
-      const problems = voiceProblems(breath, wpm);
+      const problems = voiceProblems(
+        breath,
+        wpm,
+        s.cfg.shortMinWpm && ep.lane !== "longform"
+          ? Math.max(190, s.cfg.shortMinWpm + 25)
+          : 190,
+      );
       await logEvent(s.db, ep.id, "voice_quality", {
         ok: problems.length === 0,
         wpm,
@@ -5617,6 +5823,18 @@ async function gatherMedia(
   const topicTargets = ranking
     ? targetsFor(script).filter((t) => t.key === "hook")
     : targetsFor(script);
+  // Footage first on a Short: past one moment per line, more clean moments up to this much of the narration.
+  const shortFill =
+    ep.lane !== "longform" && s.cfg.shortFootageFirst
+      ? {
+          seconds: ranking
+            ? 0
+            : ((ep.assets_json?.durationSeconds ?? 45) *
+                s.cfg.shortFootageShare) /
+              100,
+          textCheck: s.cfg.shortClipTextCheck,
+        }
+      : undefined;
   const clipAssets =
     app && s.cfg.footage && s.cfg.maxClips > 0 && topicTargets.length
       ? await s
@@ -5625,6 +5843,8 @@ async function gatherMedia(
             dir,
             topicTargets,
             ranking ? 1 : s.cfg.maxClips + (rich ? 2 : 0),
+            undefined,
+            shortFill,
           )
           .catch((err) => {
             log("warn", "trailer clips failed", {
@@ -5643,10 +5863,17 @@ async function gatherMedia(
     new Date(ep.story_json.newestAt ?? s.now().toISOString()).getTime() -
       7 * 86_400_000,
   );
+  // Footage first: a Steam page whose trailers gave well under the target also tries the publisher's own trailer.
+  const steamSeconds = clipAssets.reduce(
+    (n, c) => n + (c.durationSeconds ?? 0),
+    0,
+  );
+  const steamShort =
+    !ranking && !!shortFill?.seconds && steamSeconds < shortFill.seconds * 0.6;
   const official: OfficialMedia =
     // The publisher's own YouTube trailer: for games not on Steam, picture stories, and Steam pages with no
     // usable trailer (Metal Gear Solid matched an old bundle whose one video would not download, 25 Oct 2026).
-    (pictureStory || !app || clipAssets.length < 2) &&
+    (pictureStory || !app || clipAssets.length < 2 || steamShort) &&
     s.cfg.footage &&
     script.game_title
       ? await s
@@ -5660,6 +5887,12 @@ async function gatherMedia(
               ? {
                   text: `${ep.story_json.headline} ${script.headline}`,
                   after: storyAfter,
+                }
+              : undefined,
+            shortFill
+              ? {
+                  ...shortFill,
+                  seconds: Math.max(0, (shortFill.seconds ?? 0) - steamSeconds),
                 }
               : undefined,
           )
@@ -5691,10 +5924,12 @@ async function gatherMedia(
   const clips: NonNullable<EpisodeAssets["clips"]> = capFootage(
     official.storyVideo || !app
       ? official.clips
-      : clipAssets.length < 2
+      : clipAssets.length < 2 || steamShort
         ? [...clipAssets, ...official.clips]
         : clipAssets,
     budget,
+    3.4,
+    s.cfg.shortFootageFirst,
   ).map((c) => ({
     file: c.file,
     sourceUrl: c.sourceUrl,
@@ -5897,10 +6132,41 @@ async function gatherMedia(
         new Set(images.map((i) => i.sourceUrl)),
       )),
     );
+  // Last, and only for what the published art leaves blank: frames of a tight-cap publisher's own trailer (Rockstar).
+  if (
+    !ranking &&
+    s.cfg.shortCappedStills > 0 &&
+    s.trailerFrames &&
+    official.trailer &&
+    official.trailer.clipSeconds > 0 &&
+    official.trailer.clipSeconds <= TIGHT_CAP_SECONDS
+  ) {
+    const count = framesNeeded(
+      narrationSeconds,
+      clips.reduce((n, c) => n + c.durationSeconds, 0),
+      images.filter((i) => !i.file.endsWith("official_trailer.jpg")).length,
+      s.cfg.shortCappedStills,
+    );
+    if (count > 0) {
+      const frames = await s
+        .trailerFrames(official.trailer, dir, script.game_title, count, s.cfg.shortClipTextCheck)
+        .catch((err) => {
+          log("warn", "trailer frames failed", { error: errorMessage(err) });
+          return [] as VisualAsset[];
+        });
+      images.push(...frames);
+      await logEvent(s.db, ep.id, "trailer_frames", { wanted: count, used: frames.length });
+    }
+  }
   // Ranking Shorts: each entry brings its own box art and one trailer moment, tagged with its line.
   if (script.entries?.length) {
     const sorted = [...script.entries].sort((a, b) => b.rank - a.rank);
     for (const [beatIndex, entry] of sorted.entries()) {
+      // Footage first on a Short: the entries share the publisher's budget, a few clean moments each.
+      const entryFill =
+        shortFill && ep.lane !== "longform"
+          ? { ...shortFill, seconds: DEFAULT_FOOTAGE_SECONDS / Math.max(1, sorted.length) }
+          : undefined;
       // An achievement's own icon is its card's box art (Steam community assets, official).
       if (entry.icon) {
         const file = path.join(
@@ -6011,6 +6277,8 @@ async function gatherMedia(
             ],
             1,
             entry.year ? String(entry.year) : "",
+            undefined,
+            entryFill,
           );
           for (const a of om.stills)
             images.push({
@@ -6032,7 +6300,10 @@ async function gatherMedia(
               file: path.join(`entry_${beatIndex}`, c.file),
               sourceUrl: c.sourceUrl,
               provenance: c.provenance,
-              durationSeconds: Math.min(c.durationSeconds ?? 4, 4),
+              durationSeconds: Math.min(
+                c.durationSeconds ?? 4,
+                entryFill?.seconds ? 4.8 : 4,
+              ),
               beatIndex,
               role: undefined,
               motion: c.motion,
@@ -6109,6 +6380,8 @@ async function gatherMedia(
           path.join(dir, `entry_${beatIndex}`),
           entryTargets,
           perEntry,
+          undefined,
+          entryFill,
         );
         // Footage stays subordinate: a documentary chapter gets the same publisher budget a Short does.
         const got = doc
@@ -6119,7 +6392,10 @@ async function gatherMedia(
             file: path.join(`entry_${beatIndex}`, c.file),
             sourceUrl: c.sourceUrl,
             provenance: c.provenance,
-            durationSeconds: Math.min(c.durationSeconds ?? 4, long ? 4.8 : 4),
+            durationSeconds: Math.min(
+              c.durationSeconds ?? 4,
+              long || entryFill?.seconds ? 4.8 : 4,
+            ),
             beatIndex,
             role: undefined,
             motion: c.motion,
@@ -8512,6 +8788,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
         coldOpenLine: craft.coldOpen ? coldOpenLine(script.hook) : undefined,
     // The structure devices (src/render/structure.ts), each behind its setting, for every long format.
+    codeScenes: s.cfg.codeScenes,
     titleDrop: craft.titleDrop,
     chapterIndex: craft.chapterIndex,
     loops: docLoops,
@@ -8969,6 +9246,16 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   });
 }
 
+/** A Short that is our own reading, not a report of someone else's news: a ranking, a list, a Why. */
+export function ownWorkShort(
+  script: Pick<Script, "evergreen_format" | "story_type" | "is_rumour">,
+): boolean {
+  return (
+    !script.is_rumour &&
+    (!!script.evergreen_format || script.story_type === "explainer")
+  );
+}
+
 async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (ep.lane === "longform") return stepRenderLong(s, ep);
   if (ep.lane === "cutdown" || ep.lane === "gameplay")
@@ -8991,6 +9278,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     words,
     duration,
   );
+  // The argument test: the conclusion is spoken, not labelled, so the take has no card of its own.
+  if (argumentArm(s.cfg, ep))
+    for (const g of segments)
+      if (g.kind === "take") g.visual = undefined;
   const variant = variantOf(ep.id);
   const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
@@ -9013,6 +9304,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     : null;
   // Plan then render: the plan is persisted so a retry renders the identical Short.
   // A red rubric rebuilds the plan once with another variant, then fails the episode.
+  if (s.cfg.shortBright)
+    for (const img of assets.images ?? [])
+      if (img.luma === undefined)
+        img.luma = await meanLuma(path.join(dir, img.file));
   const planInput = {
     segments,
     words,
@@ -9022,6 +9317,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       aspect: i.aspect,
       beatIndex: i.beatIndex,
       wordy: i.wordy,
+      luma: i.luma,
+      frame: i.frame,
       then: i.then,
     })),
     clips: (assets.clips ?? []).map((c) => ({
@@ -9037,6 +9334,23 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     variant,
     steam: steamLite,
     openOnClip: s.cfg.openOnMotion,
+    footageFirst: s.cfg.shortFootageFirst,
+    noSourceChip: s.cfg.shortLabelsClean && ownWorkShort(script),
+    statsWhenSpoken: s.cfg.shortLabelsClean,
+    preferBright: s.cfg.shortBright,
+    codeScenes: s.cfg.codeScenes
+      ? {
+          ctx: {
+            sourced: [
+              ...segments.map((x) => x.text),
+              ...(script.claims ?? []).map((c: { claim: string }) => c.claim),
+            ].join(" "),
+            game: script.game_title,
+            today: new Date(s.now()).toISOString().slice(0, 10),
+          },
+          stampsAt: stampsFor(script, words).map((x) => x.at),
+        }
+      : undefined,
   };
   const footageSeconds = (assets.clips ?? []).reduce(
     (n, c) => n + c.durationSeconds,
@@ -9051,7 +9365,13 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       footageSeconds,
       footageBudgetSeconds: footageBudget,
       hookWords: script.hook.split(/\s+/).filter(Boolean).length,
-      plateShareMax: s.cfg.shortPlateMax,
+      // 5 Nov 2026: of 25 failed news Shorts in 45 days, 20 had their slot or one within 3 hours filled by another Short
+      // (the other 5 were one day's render bug), so a stop costs little. A big story has no better story to yield to.
+      plateShareMax: ep.story_json.bigStory
+        ? Math.max(s.cfg.shortPlateMax, s.cfg.shortPlateMaxBig)
+        : s.cfg.shortPlateMax,
+      plateFirstSeconds: s.cfg.shortPlateFirstSeconds,
+      wpmMax: s.cfg.shortMinWpm ? Math.max(190, s.cfg.shortMinWpm + 25) : 190,
     });
   let plan = assets.plan ?? buildPlan(planInput);
   let rubric = rubricFor(plan);
@@ -9065,7 +9385,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     const mediaRed = rubric.metrics.some(
       (m) =>
         m.grade === "red" &&
-        /^(unique_media_ratio|max_media_repeat|adjacent_repeats|plate_share)$/.test(m.name),
+        /^(unique_media_ratio|max_media_repeat|adjacent_repeats|plate_share|plate_opening_seconds)$/.test(m.name),
     );
     if (rubric.grade === "red" && mediaRed && !assets.rich) {
       // Too little media to vary with: fetch more (screenshots, another clip) and plan again.
@@ -9081,6 +9401,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           clip.blurFile = await blurPlate(dir, clip.file).catch(
             () => undefined,
           );
+      if (s.cfg.shortBright)
+        for (const img of assets.images ?? [])
+          if (img.luma === undefined)
+            img.luma = await meanLuma(path.join(dir, img.file));
       const richInput = {
         ...planInput,
         images: (assets.images ?? []).map((i) => ({
@@ -9088,6 +9412,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           aspect: i.aspect,
           beatIndex: i.beatIndex,
           wordy: i.wordy,
+          luma: i.luma,
+          frame: i.frame,
           then: i.then,
         })),
         clips: (assets.clips ?? []).map((c) => ({
@@ -9116,9 +9442,17 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       (m) => m.name === "plate_share" && m.grade === "red",
     );
     if (plateRed)
-      // Unlike the other notes this one is what the viewer sees: an empty screen. The story's slot goes to the next one.
-      throw new Error(
+      // Unlike the other notes this one is what the viewer sees: an empty screen. The story's slot goes to the next one,
+      // at once: the retries would plan the same media again and hold the slot while they did.
+      throw new FatalError(
         `QA failed: ${Math.round(Number(plateRed.value) * 100)}% of the Short would be an empty panel: too little media`,
+      );
+    const openingRed = rubric.metrics.find(
+      (m) => m.name === "plate_opening_seconds" && m.grade === "red",
+    );
+    if (openingRed)
+      throw new FatalError(
+        `QA failed: the Short would open on an empty panel for ${openingRed.value} s: too little media`,
       );
     if (rubric.grade === "red") {
       // A slot is worth more than a perfect plan: render anyway and say so.
@@ -9263,7 +9597,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const photoLine = photoCreditLine((assets.images ?? []).map(photoCredit));
   const footageCredit = [
     (assets.clips ?? []).length
-      ? `Footage: ${publisher || script.game_title} · official trailer`
+      ? // A list has no one game to credit: "Steam Deals" is not a publisher.
+        s.cfg.shortLabelsClean && !publisher && script.entries?.length
+        ? "Footage: official trailers"
+        : `Footage: ${publisher || script.game_title} · official trailer`
       : "",
     photoLine,
   ]
@@ -9299,7 +9636,11 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       storyType: script.is_rumour ? "rumour" : script.story_type,
       gameTitle: mediaTitle(script.game_title),
       isRumour: script.is_rumour,
-      attribution: script.attribution,
+      attribution:
+        s.cfg.shortLabelsClean && ownWorkShort(script) ? "" : script.attribution,
+      bright: s.cfg.shortBright,
+      quickFigures: s.cfg.shortLabelsClean,
+      ownWork: s.cfg.shortLabelsClean && !!script.evergreen_format,
       gameSubtitle,
       vivid: s.cfg.shortVivid,
       footageCredit,
@@ -9356,15 +9697,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   let times: number[] = [];
   if (tech.ok && s.cfg.visionQa) {
     // Sampled after each card's counters have landed (24 frames) so a mid-count figure is never judged.
-    times = [0.8, ...segments.slice(1).map((g) => g.start + 1.2), duration - 1]
-      .filter((t) => t < duration)
-      .slice(0, 8);
-    await fs.rm(path.join(dir, "qa"), { recursive: true, force: true });
-    const frames = await s.extractFrames(
-      final,
-      path.join(dir, "qa"),
-      times.slice(0, 8),
+    times = shortSampleTimes(
+      segments.map((g) => g.start),
+      duration,
     );
+    await fs.rm(path.join(dir, "qa"), { recursive: true, force: true });
+    const frames = await s.extractFrames(final, path.join(dir, "qa"), times);
     vision = await s.visionQa(frames, {
       headline: script.headline,
       gameTitle: script.game_title,
@@ -10359,6 +10697,8 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
       (script.twin?.pinned ||
         (script.evergreen_format === "documentary" && s.cfg.docPinMoment
           ? docPinnedComment(script, longChapters(ep))
+          : s.cfg.firstCommentQuestion
+            ? firstComment(script)
           : pinnedComment(script))) +
       (!script.twin && (await hypeOn(s, script))
         ? ` ${HYPE_COMMENT_LINE}`

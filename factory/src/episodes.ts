@@ -108,6 +108,8 @@ export interface EpisodeAssets {
     moment?: number;
     label?: string;
     wordy?: boolean;
+    luma?: number; // mean brightness, measured under SHORT_BRIGHT
+    frame?: boolean; // a trailer frame, a last-resort still
     then?: boolean;
     focusX?: number;
     role?: "hook";

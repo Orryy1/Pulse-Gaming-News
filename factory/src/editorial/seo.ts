@@ -159,15 +159,32 @@ export function storyKeywords(script: Script): string[] {
  * ranked worst to best") and says how many entries it holds when it is not
  * the whole series; other evergreen formats keep the writer's templated title.
  */
+/**
+ * The franchise a ranking's title is built around, cleaned of what would break "N X Games Ranked": a leading "The",
+ * a trailing "games", a count or possessive the writer put in the theme ("Street Fighter's six numbered games").
+ */
+export function rankingTheme(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^the\s+/i, "")
+    .replace(
+      /(?:'s|’s)?\s+(?:(?:two|three|four|five|six|seven|eight|nine|ten|\d+)\s+)?(?:(?:main|mainline|numbered|best|core|3d|2d)\s+)*(?:games?|entries|titles|campaigns?)$/i,
+      "",
+    )
+    .trim();
+}
+
 export function evergreenTitle(script: Script): string | undefined {
   const n = script.entries?.length ?? 0;
   if (!n) return undefined;
-  const theme = script.game_title.trim();
+  const theme = rankingTheme(script.game_title);
   if (script.evergreen_format === "ranking" || !script.evergreen_format) {
     // The writer's own "Ranked" headline keeps its qualifier ("Call of Duty Campaigns Ranked Worst to Best").
     const head = script.headline
       .replace(BAD_TITLE_WORDS, "")
       .replace(CLICKBAIT_PUNCT, "")
+      // "Ranked Today" reads as a broken template, and a date dates an evergreen title.
+      .replace(/\b(ranked)\s+(?:today|now|right now)\b/i, "$1")
       .replace(/\s{2,}/g, " ")
       .trim()
       // Digits outperform words in titles: "Six Resident Evil Games" is "6 Resident Evil Games".
@@ -190,7 +207,12 @@ export function evergreenTitle(script: Script): string | undefined {
             ].indexOf(w.toLowerCase()) + 2,
           ),
       );
-    if (/\branked\b/i.test(head) && head.length <= TITLE_MAX) {
+    if (
+      /\branked\b/i.test(head) &&
+      !/^ranked\b/i.test(head) &&
+      !/\b(games?)\s+games?\b/i.test(head) &&
+      head.length <= TITLE_MAX
+    ) {
       const full = /worst to best|best to worst/i.test(head)
         ? head
         : `${head} Worst to Best`;
@@ -217,7 +239,7 @@ export function thumbTitle(script: Script): string {
   if (hook && hook.split(" ").length <= 5 && hook.length <= 32)
     return hook.toUpperCase();
   const n = script.entries?.length ?? 0;
-  const theme = script.game_title.trim() || "Games";
+  const theme = rankingTheme(script.game_title) || "Games";
   if (!n || script.evergreen_format === "documentary") return script.headline;
   if (/\branked\b/i.test(script.headline) && script.headline.length <= 48)
     return script.headline;

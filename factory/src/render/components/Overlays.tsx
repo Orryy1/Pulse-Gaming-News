@@ -105,6 +105,7 @@ export const TopBar: React.FC<{
         >
           PULSE<span style={{ color: COLOUR.amber }}>.</span>
         </div>
+        {chip || isRumour ? (
         <div
           style={{
             opacity: labelOpacity,
@@ -122,6 +123,7 @@ export const TopBar: React.FC<{
         >
           {isRumour ? "RUMOR · UNCONFIRMED" : chip}
         </div>
+        ) : null}
       </div>
       <div
         style={{
@@ -290,6 +292,9 @@ export const HookHeadline: React.FC<{
   );
 };
 
+/** The card starts 6 frames before its word: the figure is true 2 frames after the word begins. */
+const QUICK_COUNT_FRAMES = 8;
+
 function countUp(primary: string, p: number): string {
   const m = primary.match(/^([^\d]*)([\d,.]+)(.*)$/);
   if (!m) return primary;
@@ -314,7 +319,10 @@ export const FactCard: React.FC<{
   entryTop?: number;
   beatIndex?: number;
   steamPrices?: { usd?: string; gbp?: string; eur?: string };
+  /** SHORT_LABELS_CLEAN: a card's figure is right by the time the word is said. */
+  quickFigures?: boolean;
 }> = ({
+  quickFigures = false,
   segment,
   accent,
   takeLabel,
@@ -425,7 +433,8 @@ export const FactCard: React.FC<{
   if (v.kind === "stat" || v.kind === "date") {
     const p = interpolate(
       frame,
-      [FRAMES.ruleLead, FRAMES.ruleLead + 24],
+      // A slow count showed "17%" while the voice said "40%" (JMuGFjZ130E 0:08): quick, it lands as the word does.
+      quickFigures ? [0, QUICK_COUNT_FRAMES] : [FRAMES.ruleLead, FRAMES.ruleLead + 24],
       [0, 1],
       { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease.out },
     );

@@ -208,6 +208,10 @@ export interface Config {
   bigStoryBumps: string[];
   /** The day's count (SHORTS_PER_DAY) counts Shorts only: a long video does not use up a slot's turn. */
   dailyTargetShortsOnly: boolean;
+  /** The launch calendar: reviews and launch days of known huge games (src/discovery/launches.ts); empty = none. */
+  launchCalendarFile: string;
+  /** Free chatter sources read for the story size (src/discovery/chatter.ts): bluesky, trends, youtube; empty = none. */
+  chatterSources: string[];
   /** The Claude credit a month in dollars (src/claudecredit.ts); 0 turns the forecast off. */
   claudeMonthlyCredit: number;
   /** The day of the month the credit renews. */
@@ -260,7 +264,23 @@ export interface Config {
   gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
   longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
+  codeScenes: boolean; // src/render/codescene.ts: drawn scenes from a line's sourced data, over a plate or a repeated still, never over footage
   shortPlateMax: number; // 0-1, the share of a Short that may sit on the bare plate before more media is fetched and, failing that, it is stopped
+  shortPlateMaxBig: number; // the same line for one of the day's big stories, which have no better story to give the slot to (SHORT_PLATE_MAX_BIG)
+  shortPlateFirstSeconds: number; // no bare plate in this many opening seconds of a Short; 0 = off (SHORT_PLATE_FIRST_SECONDS)
+  shortFootageFirst: boolean; // footage before stills on Shorts: src/render/plan.ts footageFirst, the fill in src/assets/clipscore.ts (SHORT_FOOTAGE_FIRST)
+  shortFootageShare: number; // percent of a Short's narration the gather tries to cover with moving footage, within the publisher's cap (SHORT_FOOTAGE_SHARE)
+  shortClipTextCheck: boolean; // read each Short clip with the local OCR and cut away big burned-in trailer text (SHORT_CLIP_TEXT_CHECK)
+  shortStakeFirst: boolean; // the hook carries a stake for the viewer (SHORT_STAKE_FIRST, src/editorial/shortrules.ts)
+  shortRefuseThin: boolean; // a script that admits it has nothing goes back, then the story is dropped, big stories excepted (SHORT_REFUSE_THIN)
+  shortEndPayoff: boolean; // the last line is a payoff or runs back into the hook, not a question or "next Why tomorrow" (SHORT_END_PAYOFF)
+  shortTightScript: boolean; // fewer full stops and plainer words for a quicker read (SHORT_TIGHT_SCRIPT, off)
+  shortArgumentShare: number; // 0-1, the share of news and Why Shorts written as one argument with no labelled take (SHORT_ARGUMENT_SHARE)
+  shortMinWpm: number; // speed a Short's voice up to this many words a minute, 25% at most; 0 = as recorded. The owner's ear decides (SHORT_MIN_WPM, off)
+  shortCappedStills: number; // the ceiling on trailer frames as stills for a tight-cap publisher (Rockstar), used only to fill what published art leaves blank; 0 = none (SHORT_CAPPED_STILLS)
+  shortMediaBeforeVoice: boolean; // gather a Short's media before the voice, and refuse one that cannot be pictured before credit is spent (SHORT_MEDIA_BEFORE_VOICE)
+  shortBright: boolean; // lighter top and bottom fades and vignette, brightest art and footage first (SHORT_BRIGHT)
+  shortLabelsClean: boolean; // no NEWS or CONFIRMED on our own work, no stat chip the line does not mention, no card repeating the caption (SHORT_LABELS_CLEAN)
   planSlateMax: number; // 0-1, the share of a long video that may sit on the empty slate before its render is stopped
   releaseGateMaxSlate: number; // 0-1, the same on the finished picture at the release gate
   releaseGateMinFootage: number; // 0-1, a documentary's share of game footage when the game has plenty of it
@@ -422,6 +442,24 @@ export interface Config {
   /** The daily question picture on Instagram as well (ENGAGE_INSTAGRAM): off, 9 posts drew 0 likes by 29 Oct 2026. */
   engageInstagram: boolean;
   engageSlot: string; // local time it goes out
+  /** The Short's first comment asks the video's own closing question (FIRST_COMMENT_QUESTION, src/social/firstcomment.ts). */
+  firstCommentQuestion: boolean;
+  /** Reads the public comment list to see whether first comments are really showing (FIRST_COMMENT_CHECK, src/social/commentcheck.ts). */
+  firstCommentCheck: boolean;
+  /** Replies lose their stock opener and do not all end on a question (REPLY_STYLE, src/youtube/replies.ts). */
+  replyStyle: boolean;
+  /** Answers a viewer who replies to our reply, up to REPLY_LIMITS.perThread in a thread (REPLY_FOLLOWUPS). */
+  replyFollowups: boolean;
+  /** Answers comments on our Instagram and Facebook reels (META_COMMENT_REPLIES, src/social/metacomments.ts). */
+  metaCommentReplies: boolean;
+  /** Per-platform lines in the Sunday growth report and what went quiet in the alert digest (SOCIAL_SCOREBOARD). */
+  socialScoreboard: boolean;
+  /** A community post that found no pictures tries again instead of leaving the day empty (ENGAGE_RETRY). */
+  engageRetry: boolean;
+  /** Viewer requests are also read from the Shorts' comments the factory already holds (REQUESTS_FROM_SHORTS). */
+  requestsFromShorts: boolean;
+  /** The GTA VI launch's fixed community posts, 18-21 Nov (LAUNCH_COMMUNITY_POSTS, src/social/launchcommunity.ts). */
+  launchCommunityPosts: boolean;
   /** The Meta login saved by /connect?account=meta; when present its page token wins over the .env tokens. */
   metaLoginPath: string;
   /** A Facebook Login for Business configuration id (FACEBOOK_LOGIN_CONFIG_ID), when the app uses one instead of scopes. */
@@ -853,6 +891,11 @@ export function loadConfig(): Config {
       .map((x) => x.trim())
       .filter(Boolean),
     dailyTargetShortsOnly: bool("DAILY_TARGET_SHORTS_ONLY", true),
+    launchCalendarFile: str("LAUNCH_CALENDAR_FILE", ""),
+    chatterSources: str("CHATTER_SOURCES", "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
     claudeMonthlyCredit: Math.max(0, Number(str("CLAUDE_MONTHLY_CREDIT", "100")) || 0),
     claudeCreditRenewDay: Math.max(1, int("CLAUDE_CREDIT_RENEW_DAY", 1)),
     claudeCreditWarnDays: Math.max(1, int("CLAUDE_CREDIT_WARN_DAYS", 10)),
@@ -927,7 +970,26 @@ export function loadConfig(): Config {
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),
     longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
-    shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.15")) || 0.15,
+    codeScenes: bool("CODE_SCENES", false),
+    shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.10")) || 0.1,
+    shortPlateMaxBig: Number(str("SHORT_PLATE_MAX_BIG", "0.35")) || 0.35,
+    shortPlateFirstSeconds: Math.max(0, int("SHORT_PLATE_FIRST_SECONDS", 5)),
+    shortFootageFirst: bool("SHORT_FOOTAGE_FIRST", true),
+    shortFootageShare: Math.max(0, Math.min(85, int("SHORT_FOOTAGE_SHARE", 65))),
+    shortClipTextCheck: bool("SHORT_CLIP_TEXT_CHECK", true),
+    shortStakeFirst: bool("SHORT_STAKE_FIRST", true),
+    shortRefuseThin: bool("SHORT_REFUSE_THIN", true),
+    shortEndPayoff: bool("SHORT_END_PAYOFF", true),
+    shortTightScript: bool("SHORT_TIGHT_SCRIPT", false),
+    shortArgumentShare: Math.max(
+      0,
+      Math.min(1, Number(str("SHORT_ARGUMENT_SHARE", "0.5"))),
+    ),
+    shortMinWpm: Math.max(0, int("SHORT_MIN_WPM", 0)),
+    shortCappedStills: Math.max(0, int("SHORT_CAPPED_STILLS", 6)),
+    shortMediaBeforeVoice: bool("SHORT_MEDIA_BEFORE_VOICE", true),
+    shortBright: bool("SHORT_BRIGHT", true),
+    shortLabelsClean: bool("SHORT_LABELS_CLEAN", true),
     planSlateMax: Number(str("PLAN_SLATE_MAX", "0.08")) || 0.08,
     releaseGateMaxSlate: Number(str("RELEASE_GATE_MAX_SLATE", "0.08")) || 0.08,
     releaseGateMinFootage: Number(str("RELEASE_GATE_MIN_FOOTAGE", "0.1")) || 0.1,
@@ -1077,6 +1139,15 @@ export function loadConfig(): Config {
     engageEnabled: bool("ENGAGE_ENABLED", true),
     engageInstagram: bool("ENGAGE_INSTAGRAM", false),
     engageSlot: str("ENGAGE_SLOT", "15:00"),
+    firstCommentQuestion: bool("FIRST_COMMENT_QUESTION", false),
+    firstCommentCheck: bool("FIRST_COMMENT_CHECK", false),
+    replyStyle: bool("REPLY_STYLE", false),
+    replyFollowups: bool("REPLY_FOLLOWUPS", false),
+    metaCommentReplies: bool("META_COMMENT_REPLIES", false),
+    socialScoreboard: bool("SOCIAL_SCOREBOARD", false),
+    engageRetry: bool("ENGAGE_RETRY", false),
+    requestsFromShorts: bool("REQUESTS_FROM_SHORTS", false),
+    launchCommunityPosts: bool("LAUNCH_COMMUNITY_POSTS", false),
     metaLoginPath: str("META_LOGIN_PATH", path.join(tokenDir, "meta.json")),
     facebookLoginConfigId: str("FACEBOOK_LOGIN_CONFIG_ID"),
     facebookLinkComment: bool("FACEBOOK_LINK_COMMENT", true),

@@ -93,6 +93,7 @@ export async function craftForShort(
       gameYear: input.gameYear,
       madeYear: Number(day.slice(0, 4)),
       seed: input.seed,
+      noKinetic: s.cfg.shortLabelsClean,
     },
     settings,
     recent,

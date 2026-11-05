@@ -388,6 +388,54 @@ export class YouTubeClient {
     });
   }
 
+  /** The replies under a comment (comments.list, one quota unit). */
+  async listReplies(parentId: string): Promise<
+    Array<{
+      id: string;
+      text: string;
+      authorChannelId: string;
+      authorName: string;
+      publishedAt: string;
+    }>
+  > {
+    const q = new URLSearchParams({
+      part: "snippet",
+      parentId,
+      maxResults: "50",
+      textFormat: "plainText",
+    });
+    const res = await this.fetchFn(`${API}/comments?${q}`, {
+      headers: await this.auth(),
+    });
+    if (!res.ok) throw await apiError(res, "comments.list");
+    return (((await res.json()) as any).items ?? []).map((t: any) => {
+      const c = t.snippet ?? {};
+      return {
+        id: String(t.id),
+        text: String(c.textOriginal ?? c.textDisplay ?? ""),
+        authorChannelId: String(c.authorChannelId?.value ?? ""),
+        authorName: String(c.authorDisplayName ?? ""),
+        publishedAt: String(c.publishedAt ?? ""),
+      };
+    });
+  }
+
+  /** A comment's moderation status as its channel sees it (comments.list, one quota unit). */
+  async commentStatus(id: string): Promise<string> {
+    const q = new URLSearchParams({
+      part: "snippet",
+      id,
+      textFormat: "plainText",
+    });
+    const res = await this.fetchFn(`${API}/comments?${q}`, {
+      headers: await this.auth(),
+    });
+    if (!res.ok) throw await apiError(res, "comments.list");
+    const item = ((await res.json()) as any).items?.[0];
+    if (!item) return "not returned";
+    return String(item.snippet?.moderationStatus ?? "no status given");
+  }
+
   /** Replies to a comment as the channel (comments.insert, 50 quota units). Returns the reply id. */
   async replyToComment(parentId: string, text: string): Promise<string> {
     const res = await this.fetchFn(`${API}/comments?part=snippet`, {

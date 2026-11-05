@@ -24,7 +24,7 @@ test("story video: only a publisher channel, only since the story, and the title
   assert.equal(pickStoryVideo([item({ publishedAt: "2026-09-01T00:00:00Z" })], "Grand Theft Auto VI", story, after, subs), undefined, "too old");
   assert.equal(pickStoryVideo([item({ channelId: "fan", channelTitle: "GTA Fan Hub" })], "Grand Theft Auto VI", story, after, subs), undefined, "not a publisher");
   assert.equal(pickStoryVideo([item({ title: "Grand Theft Auto VI Trailer 3" })], "Grand Theft Auto VI", story, after, subs), undefined, "not about the story");
-  assert.equal(pickStoryVideo([item({})], "Grand Theft Auto VI", story, after, subs)?.clipSeconds, 6, "Rockstar's cap holds");
+  assert.equal(pickStoryVideo([item({})], "Grand Theft Auto VI", story, after, subs)?.clipSeconds, 10, "Rockstar's cap holds");
 });
 
 test("official social posts: parsed from yt-dlp's listing, matched to the story, never older than it", () => {

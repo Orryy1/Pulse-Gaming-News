@@ -294,7 +294,10 @@ import {
 } from "./growth.ts";
 import { holdSlotForCap, holdWhyForCap } from "./cadence.ts";
 import {
+  refreshChatter,
   bigCluster,
+  coveredHashes,
+  runEntryCovered,
   bigEditorNote,
   bigMadeToday,
   bumpFiller,
@@ -717,6 +720,9 @@ export async function discoverTick(s: Services): Promise<number> {
   await s.db.query(
     `DELETE FROM cluster_sightings WHERE last_seen < $1::timestamptz - interval '7 days'`,
     [now],
+  );
+  await refreshChatter(s.db, s.cfg, now, () => s.trending()).catch((err) =>
+    log("warn", "chatter read failed", { error: errorMessage(err) }),
   );
   return clusters.length;
 }
@@ -1169,6 +1175,8 @@ async function createFromChoice(
  * happening to each, and makes the biggest one not yet covered. It fills a news slot when one is open, else it goes
  * out like a breaking Short. Report mode and a blocked factory still judge and record, so nothing is passed silently.
  */
+let lastBigCovered = new Set<string>();
+
 async function maybeSelectBig(
   s: Services,
   blocked?: string,
@@ -1190,6 +1198,7 @@ async function maybeSelectBig(
     ...(blocked ? { blocked } : {}),
   };
   const verdicts = judgeBigStories(stories, cfg, context);
+  lastBigCovered = coveredHashes(verdicts);
   const make = verdicts.find((v) => v.action === "make");
   if (make) {
     // The quota is the one limit a big story cannot overrule: an upload past it just fails.
@@ -1221,7 +1230,8 @@ async function createBig(s: Services, v: BigVerdict): Promise<string | undefined
     },
     await takenSlots(db),
   );
-  const force = v.story.size >= cfg.bigStoryHuge;
+  // A follow-up to a story already covered is the editor's call, however big.
+  const force = v.story.size >= cfg.bigStoryHuge && !v.development;
   let passed: string | undefined;
   const id = await createFromChoice(
     s,
@@ -1312,7 +1322,10 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
 
   const seen = await seenHashes(db);
   const sightings = (await recentSightings(s)).filter(
-    (x) => !seen.has(x.cluster.hash),
+    (x) =>
+      !seen.has(x.cluster.hash) &&
+      // A story the big-story desk has made or sees planned is not picked again by a slot under another of its hashes.
+      !(cfg.bigStoryMode === "make" && lastBigCovered.has(x.cluster.hash)),
   );
   // Rumours are capped a day: once today's is in, stories carrying rumour signals wait for tomorrow.
   const rumoursToday = cfg.includeRumours
@@ -1599,7 +1612,7 @@ const WHY_DROP_RETRIES = 2;
  * two-week freshness rule and the demand check stay out of it; the writer and the fact check run as usual against
  * the entry's own sources. With no source readable there is nothing to check against, so the slot goes to the editor.
  */
-async function selectRunWhy(
+export async function selectRunWhy(
   s: Services,
   e: RunWhy,
   due: Date,
@@ -1703,7 +1716,20 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   )
     return undefined;
   // A topic planned for this slot (the launch run, src/shortrun.ts) goes first; with none usable the editor picks.
-  const planned = whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone);
+  let planned = whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone);
+  // The news got there first: a big Short already said it, so the slot goes to the editor's pick.
+  const beaten =
+    planned && cfg.bigStoryMode === "make"
+      ? runEntryCovered(planned, await recentCover(db, now), now)
+      : undefined;
+  if (planned && beaten) {
+    log("info", "planned Why gives way to a big story already made", {
+      topic: planned.title,
+      episode: beaten.id,
+    });
+    await logEvent(db, beaten.id, "run_topic_superseded", { topic: planned.title });
+    planned = undefined;
+  }
   if (planned) {
     const made = await selectRunWhy(s, planned, due).catch((err) => {
       log("warn", "launch run topic failed", {
@@ -5037,7 +5063,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         (a.sourceKind === "official" ? -1 : 1) -
         (b.sourceKind === "official" ? -1 : 1),
     )
-    .slice(0, 4);
+    // A planned run topic lists its sources on purpose (src/shortrun.ts), so all of them are read.
+    .slice(0, cluster.run ? 8 : 4);
   const articles = (
     await Promise.all(items.map((i) => s.fetchArticle(i.url)))
   ).filter((a): a is ArticleText => Boolean(a));
@@ -5071,8 +5098,10 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const recent = await recentShapes(s.db, ep.id).catch(() => undefined);
   // The weekly retention test (src/growth.ts): this Short's variant of the thing under test, and the rules the
   // finished tests settled. Recorded on the episode so the judge can find it; a failure here never stops a Short.
-  const test = await growthAssign(s.db, s.cfg, s.now(), ep, (m) =>
-    s.notify(m),
+  // A planned run topic's angle sets its opener, so it stays out of the opening-line test.
+  const test = await (cluster.run
+    ? Promise.resolve(undefined)
+    : growthAssign(s.db, s.cfg, s.now(), ep, (m) => s.notify(m))
   ).catch((err) => {
     log("warn", "growth test assignment failed", { error: errorMessage(err) });
     return undefined;
@@ -5640,6 +5669,11 @@ export function deskFor(
   return { voice: { id: cfg.deskVoiceId, name: cfg.deskVoiceName } };
 }
 
+/** The game's name for picture searches: a writer's "(Switch 2 remake)" hides an exact title match. */
+export function mediaTitle(title: string): string {
+  return title.replace(/\s*\([^)]*\)\s*$/, "").trim() || title;
+}
+
 async function gatherMedia(
   s: Services,
   ep: Episode,
@@ -5734,7 +5768,7 @@ async function gatherMedia(
     script.game_title
       ? await s
           .fetchOfficialMedia(
-            script.game_title,
+            mediaTitle(script.game_title),
             dir,
             topicTargets,
             ranking ? 1 : s.cfg.maxClips,
@@ -5844,7 +5878,7 @@ async function gatherMedia(
   const igdb =
     !app && !ranking && script.game_title
       ? await s
-          .igdbArt(script.game_title, undefined, dir, 8)
+          .igdbArt(mediaTitle(script.game_title), undefined, dir, 8)
           .catch(() => [] as VisualAsset[])
       : [];
   // In a ranking, the topic page's screenshots would land under the wrong entry: keep its hero and header only.
@@ -5857,6 +5891,17 @@ async function gatherMedia(
     ),
     ...official.stills,
   ];
+  // Trailer frames in hand (OFFICIAL_STILL_FRAMES): the thumbnail, with its logos, is no longer needed, and an IGDB
+  // entry years older than today is the old game of a remake, kept for the words about the old game (thenWindows).
+  if (official.stills.length >= 4) {
+    const nowYear = s.now().getUTCFullYear();
+    for (const a of igdb) {
+      const y = Number(a.provenance.match(/\((\d{4})\)/)?.[1]);
+      if (y && y <= nowYear - 5) a.then = true;
+    }
+    const thumb = images.findIndex((a) => a.file.endsWith("official_trailer.jpg"));
+    if (thumb >= 0) images.splice(thumb, 1);
+  }
   // First-party newsroom images (PlayStation Blog, Xbox Wire) are press
   // material meant for coverage. Outlet images are never used.
   {
@@ -6208,6 +6253,7 @@ async function gatherMedia(
       moment: a.moment,
       label: a.label,
       ...(wordy.has(a.file) ? { wordy: true } : {}),
+      ...(a.then ? { then: true } : {}),
     });
   }
   // What the newer picture libraries gave this Short, in its log and the owner's note (long videos: after the top-up).
@@ -8533,6 +8579,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
         coldOpenLine: craft.coldOpen ? coldOpenLine(script.hook) : undefined,
     // The structure devices (src/render/structure.ts), each behind its setting, for every long format.
+    codeScenes: s.cfg.codeScenes,
     titleDrop: craft.titleDrop,
     chapterIndex: craft.chapterIndex,
     loops: docLoops,
@@ -9062,6 +9109,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       beatIndex: i.beatIndex,
       wordy: i.wordy,
       luma: i.luma,
+      then: i.then,
     })),
     clips: (assets.clips ?? []).map((c) => ({
       durationSeconds: c.durationSeconds,
@@ -9080,6 +9128,19 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     noSourceChip: s.cfg.shortLabelsClean && ownWorkShort(script),
     statsWhenSpoken: s.cfg.shortLabelsClean,
     preferBright: s.cfg.shortBright,
+    codeScenes: s.cfg.codeScenes
+      ? {
+          ctx: {
+            sourced: [
+              ...segments.map((x) => x.text),
+              ...(script.claims ?? []).map((c: { claim: string }) => c.claim),
+            ].join(" "),
+            game: script.game_title,
+            today: new Date(s.now()).toISOString().slice(0, 10),
+          },
+          stampsAt: stampsFor(script, words).map((x) => x.at),
+        }
+      : undefined,
   };
   const footageSeconds = (assets.clips ?? []).reduce(
     (n, c) => n + c.durationSeconds,
@@ -9142,6 +9203,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           beatIndex: i.beatIndex,
           wordy: i.wordy,
           luma: i.luma,
+          then: i.then,
         })),
         clips: (assets.clips ?? []).map((c) => ({
           durationSeconds: c.durationSeconds,
@@ -9361,13 +9423,14 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     props: {
       headline: script.headline,
       storyType: script.is_rumour ? "rumour" : script.story_type,
-      gameTitle: script.game_title,
+      gameTitle: mediaTitle(script.game_title),
       isRumour: script.is_rumour,
       attribution:
         s.cfg.shortLabelsClean && ownWorkShort(script) ? "" : script.attribution,
       bright: s.cfg.shortBright,
       ownWork: s.cfg.shortLabelsClean && !!script.evergreen_format,
       gameSubtitle,
+      vivid: s.cfg.shortVivid,
       footageCredit,
       segments,
       words,

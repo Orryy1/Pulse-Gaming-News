@@ -33,6 +33,9 @@ export function testConfig(
   overrides: Partial<Config> = {},
 ): Config {
   return {
+    officialStillFrames: 0,
+    shortVivid: false,
+    codeScenes: false,
     writerNotesGuard: true,
     firstCommentQuestion: false,
     firstCommentCheck: false,
@@ -185,6 +188,8 @@ export function testConfig(
     bigStoryPerDay: 3,
     bigStoryBumps: ["deals", "spare", "evergreen", "why"],
     dailyTargetShortsOnly: true,
+    launchCalendarFile: "",
+    chatterSources: [],
     claudeMonthlyCredit: 0,
     claudeCreditRenewDay: 1,
     claudeCreditWarnDays: 10,

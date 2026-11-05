@@ -50,6 +50,7 @@ export type ShortProps = {
   suite?: boolean; // the new-look test: cut accents, punch-ins and an old game's period looks
   bright?: boolean; // SHORT_BRIGHT: lighter fades over the picture
   ownWork?: boolean; // a ranking, deals list or other evergreen Short: no NEWS chip (SHORT_LABELS_CLEAN)
+  vivid?: boolean; // SHORT_VIVID: a lighter scrim and vignette
   clean?: boolean; // the clean frame (src/render/cleanframe.ts): full-bleed, one overlay at a time, a small mark
   mascot?: boolean; // Pip the mascot test: the amber mascot in the brand band, beside the logo
   heroCut?: { fg: string; x?: number }; // the new-look opening: the hero art's subject cut out (src/render/parallax.ts)

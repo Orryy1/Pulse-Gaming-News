@@ -10,6 +10,7 @@ import { leadFrames, LEVEL, SFX, sfxFile } from "./soundscape.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 import type { Segment } from "./timeline.ts";
 import { FRAMES, movePreset, type MovePreset } from "./motion.ts";
+import { applyCodeScenes, type PlannedScene, type SceneContext } from "./codescene.ts";
 
 export const PLAN_FPS = 30;
 export const STING_FRAMES = 12; // frames 0-11: brand sting over the hero still
@@ -41,6 +42,7 @@ export interface PlanImage {
   luma?: number; // 0-255 mean brightness if known
   beatIndex?: number; // tagged for one entry of a ranking Short
   wordy?: boolean; // the local screen saw menu or HUD text on it: used after clean art
+  then?: boolean; // the old version of a remade game: kept for the words about the old one (thenWindows)
 }
 
 export interface PlanClip {
@@ -87,10 +89,12 @@ export interface PlanInput {
   statsWhenSpoken?: boolean;
   /** Brightest art first where the choice is free (SHORT_BRIGHT). */
   preferBright?: boolean;
+  /** Code scenes (src/render/codescene.ts, CODE_SCENES): absent, the plan is as it always was. */
+  codeScenes?: { ctx: SceneContext; stampsAt: number[] };
 }
 
 export type PlanMedia = {
-  type: "image" | "clip" | "plate";
+  type: "image" | "clip" | "plate" | "scene";
   index: number;
   trimFrom?: number;
 };
@@ -103,6 +107,7 @@ export interface Shot {
   move: MovePreset;
   framed: boolean; // footage in the framed panel over a blurred plate
   luma: number;
+  then?: boolean; // the old game's picture on the words about the old game (thenWindows)
 }
 
 export interface SfxCue {
@@ -135,6 +140,8 @@ export interface RenderPlan {
   wordLook?: string;
   /** The long videos' craft on the Short (src/render/shortcraft.ts): cards, photos, fillers and camera moves. */
   craft?: import("./shortcraft.ts").ShortCraft;
+  /** Code scenes drawn over their shots (src/render/codescene.ts). `media.index` of a "scene" shot points here. */
+  scenes?: PlannedScene[];
 }
 
 const QUIET_KINDS = new Set([
@@ -298,13 +305,58 @@ export function planCuts(
   return split;
 }
 
+/**
+ * Then and now: a Short about a remake cuts to the original on the words about the original ("first came out in
+ * nineteen ninety-eight", "the original's 99"), from that word to the end of its sentence, at least 1.2 s, at most 3 s.
+ */
+const THEN_WORD = /^(?:nineteen|19\d\d|original(?:'s|’s)?|originals|n64)[.,!?]?$/i;
+export function thenWindows(words: Word[]): Array<{ from: number; to: number }> {
+  const out: Array<{ from: number; to: number }> = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    if (!THEN_WORD.test(w.text.trim())) continue;
+    if (out.length && toFrame(w.start) < out.at(-1)!.to) continue;
+    let e = i;
+    while (e < words.length - 1 && !/[.?!]["”]?$/.test(words[e]!.text.trim()) && words[e + 1]!.start - w.start < 3)
+      e++;
+    const to = Math.max(toFrame(words[e]!.end), toFrame(w.start) + 36);
+    out.push({ from: Math.max(0, toFrame(w.start) - 2), to: Math.min(to, toFrame(w.start) + 90) });
+  }
+  return out;
+}
+
+/** The cuts with each window as a shot of its own, marked `then`. */
+export function splitAtThen<T extends { start: number; end: number; segment: number }>(
+  cuts: T[],
+  windows: Array<{ from: number; to: number }>,
+): Array<T & { then?: boolean }> {
+  let out: Array<T & { then?: boolean }> = cuts.map((c) => ({ ...c }));
+  for (const w of windows) {
+    const next: Array<T & { then?: boolean }> = [];
+    for (const c of out) {
+      if (c.then || w.to <= c.start || w.from >= c.end) {
+        next.push(c);
+        continue;
+      }
+      const a = w.from - c.start < 15 ? c.start : w.from;
+      const b = c.end - w.to < 15 ? c.end : w.to;
+      if (a > c.start) next.push({ ...c, end: a });
+      next.push({ ...c, start: a, end: b, then: true });
+      if (b < c.end) next.push({ ...c, start: b });
+    }
+    out = next;
+  }
+  return out;
+}
+
 /** The still that opens and closes the Short: a 16:9 shot if there is one, else the first image. */
 export function pickHero(images: PlanImage[], preferBright = false): number {
   // The topic's own art first; art tagged for a ranking entry belongs to that entry.
   const pools = [
     images
       .map((img, i) => ({ img, i }))
-      .filter((x) => x.img.beatIndex === undefined),
+      .filter((x) => x.img.beatIndex === undefined && !x.img.then),
+    images.map((img, i) => ({ img, i })).filter((x) => !x.img.then),
     images.map((img, i) => ({ img, i })),
   ];
   for (const pool of pools) {
@@ -348,7 +400,7 @@ const isFramedStill = (img: PlanImage) =>
  */
 export function planShots(
   input: PlanInput,
-  cuts: ReturnType<typeof planCuts>,
+  cuts: Array<ReturnType<typeof planCuts>[number] & { then?: boolean }>,
   heroIndex: number,
 ): Shot[] {
   const { images, clips, segments, variant } = input;
@@ -415,6 +467,7 @@ export function planShots(
       .filter(
         (i) =>
           images[i]!.beatIndex === undefined &&
+          !images[i]!.then &&
           (i !== heroIndex || images.length === 1),
       )
       .sort(
@@ -449,7 +502,10 @@ export function planShots(
     const pick = images
       .map((_, i) => i)
       .filter(
-        (i) => i !== heroIndex && !same(exclude, { type: "image", index: i }),
+        (i) =>
+          i !== heroIndex &&
+          !images[i]!.then &&
+          !same(exclude, { type: "image", index: i }),
       )
       .sort(
         (a, b) =>
@@ -657,7 +713,22 @@ export function planShots(
         : ranking && seg.kind === "take"
           ? winnerBeat
           : undefined;
-    if (firstTakeShot && ranking && !isClosing) {
+    if (c.then) {
+      // The words about the old game show the old game, a different picture each time.
+      const pick = images
+        .map((_, i) => i)
+        .filter((i) => images[i]!.then && !same(last, { type: "image", index: i }))
+        .sort(
+          (a, b) =>
+            stillUses[a]! - stillUses[b]! ||
+            artPenalty(images[a]!) - artPenalty(images[b]!) ||
+            a - b,
+        )[0];
+      if (pick !== undefined) {
+        stillUses[pick]!++;
+        media = { type: "image", index: pick };
+      }
+    } else if (firstTakeShot && ranking && !isClosing) {
       // The pick opens on the winner's art, never on the topic's or another entry's.
       // Straight after the winner's own line its art may carry on under the pick card.
       media =
@@ -806,6 +877,7 @@ export function planShots(
       move,
       framed,
       luma,
+      ...(c.then ? { then: true } : {}),
     });
     last = media;
   }
@@ -1074,27 +1146,33 @@ export function buildPlan(input: PlanInput): RenderPlan {
     Math.ceil(input.durationSeconds * PLAN_FPS),
   );
   const heroIndex = pickHero(input.images, input.preferBright);
+  const hasThen = input.images.some((i) => i.then);
   const cuts = planCuts(
     input.segments,
     input.words,
     totalFrames,
-    !!input.openOnClip &&
-      input.clips.some(
-        (c) =>
-          c.role === "hook" ||
-          (!!input.footageFirst &&
-            c.beatIndex === undefined &&
-            !input.segments.some((s) => s.visual?.kind === "rank")),
-      ),
+    hasThen ||
+      (!!input.openOnClip &&
+        input.clips.some(
+          (c) =>
+            c.role === "hook" ||
+            (!!input.footageFirst &&
+              c.beatIndex === undefined &&
+              !input.segments.some((s) => s.visual?.kind === "rank")),
+        )),
   );
-  const shots = planShots(input, cuts, heroIndex);
+  const shots = planShots(
+    input,
+    hasThen ? splitAtThen(cuts, thenWindows(input.words)) : cuts,
+    heroIndex,
+  );
   const hook = input.segments.find((s) => s.kind === "hook");
   const take = input.segments.find((s) => s.kind === "take");
   const turns = [
     hook ? toFrame(hook.end) : 0,
     take ? toFrame(take.start) : 0,
   ].filter((f) => f > 0 && f < totalFrames);
-  return {
+  const plan: RenderPlan = {
     version: 1,
     fps: PLAN_FPS,
     totalFrames,
@@ -1105,6 +1183,9 @@ export function buildPlan(input: PlanInput): RenderPlan {
     sfx: planSfx(input.segments, totalFrames),
     shelf: planShelf(input, input.segments, totalFrames),
   };
+  return input.codeScenes
+    ? applyCodeScenes(plan, input.segments, input.words, input.codeScenes.ctx, input.codeScenes.stampsAt, input.images)
+    : plan;
 }
 
 /** The shot on screen at a frame. */

@@ -208,6 +208,10 @@ export interface Config {
   bigStoryBumps: string[];
   /** The day's count (SHORTS_PER_DAY) counts Shorts only: a long video does not use up a slot's turn. */
   dailyTargetShortsOnly: boolean;
+  /** The launch calendar: reviews and launch days of known huge games (src/discovery/launches.ts); empty = none. */
+  launchCalendarFile: string;
+  /** Free chatter sources read for the story size (src/discovery/chatter.ts): bluesky, trends, youtube; empty = none. */
+  chatterSources: string[];
   /** The Claude credit a month in dollars (src/claudecredit.ts); 0 turns the forecast off. */
   claudeMonthlyCredit: number;
   /** The day of the month the credit renews. */
@@ -260,6 +264,7 @@ export interface Config {
   gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
   longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
+  codeScenes: boolean; // src/render/codescene.ts: drawn scenes from a line's sourced data, over a plate or a repeated still, never over footage
   shortPlateMax: number; // 0-1, the share of a Short that may sit on the bare plate before more media is fetched and, failing that, it is stopped
   shortPlateMaxBig: number; // the same line for one of the day's big stories, which have no better story to give the slot to (SHORT_PLATE_MAX_BIG)
   shortPlateFirstSeconds: number; // no bare plate in this many opening seconds of a Short; 0 = off (SHORT_PLATE_FIRST_SECONDS)
@@ -539,6 +544,8 @@ export interface Config {
   maxClips: number;
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
+  officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
+  shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
   ytdlpPath: string;
   /** Games the owner plays (and records): long videos about them send them a "record these moments" list. */
   ownerGames: string[];
@@ -881,6 +888,11 @@ export function loadConfig(): Config {
       .map((x) => x.trim())
       .filter(Boolean),
     dailyTargetShortsOnly: bool("DAILY_TARGET_SHORTS_ONLY", true),
+    launchCalendarFile: str("LAUNCH_CALENDAR_FILE", ""),
+    chatterSources: str("CHATTER_SOURCES", "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
     claudeMonthlyCredit: Math.max(0, Number(str("CLAUDE_MONTHLY_CREDIT", "100")) || 0),
     claudeCreditRenewDay: Math.max(1, int("CLAUDE_CREDIT_RENEW_DAY", 1)),
     claudeCreditWarnDays: Math.max(1, int("CLAUDE_CREDIT_WARN_DAYS", 10)),
@@ -955,6 +967,7 @@ export function loadConfig(): Config {
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),
     longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
+    codeScenes: bool("CODE_SCENES", false),
     shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.10")) || 0.1,
     shortPlateMaxBig: Number(str("SHORT_PLATE_MAX_BIG", "0.35")) || 0.35,
     shortPlateFirstSeconds: Math.max(0, int("SHORT_PLATE_FIRST_SECONDS", 5)),
@@ -1202,6 +1215,8 @@ export function loadConfig(): Config {
     clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as
       "llm" | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
+  officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
+  shortVivid: bool("SHORT_VIVID", false),
     ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
     ownerGames: str("OWNER_GAMES", "Grand Theft Auto V, Grand Theft Auto VI")
       .split(",")

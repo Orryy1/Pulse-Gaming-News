@@ -425,6 +425,7 @@ export function createServices(db: Db, cfg: Config): Services {
         hint,
         story,
         fill,
+        stillFrames: cfg.officialStillFrames,
         quotaOk: async () => {
           const now = new Date();
           if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay)

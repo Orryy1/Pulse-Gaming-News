@@ -393,7 +393,7 @@ export const ArtTrack: React.FC<{
 
 /** Legibility bands: dark behind the brand rows and the captions, nearly clear through the hero and the shelf. */
 export const Scrim: React.FC<{
-  profile?: "footage" | "card" | "plate";
+  profile?: "footage" | "card" | "plate" | "vivid";
   /** SHORT_BRIGHT: only what the small mark and the caption need; the captions carry their own heavy outline. */
   bright?: boolean;
 }> = ({ profile = "footage", bright = false }) => {
@@ -407,6 +407,15 @@ export const Scrim: React.FC<{
         }}
       />
     );
+  if (profile === "vivid")
+    return (
+      <AbsoluteFill
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(5,5,7,0.5) 0%, rgba(5,5,7,0) 16%, rgba(5,5,7,0) 62%, rgba(5,5,7,0.45) 76%, rgba(5,5,7,0.7) 100%)",
+        }}
+      />
+    );
   return (
     <AbsoluteFill
       style={{
@@ -417,8 +426,9 @@ export const Scrim: React.FC<{
 };
 
 /** Film grain and a soft vignette under the type. */
-export const Finish: React.FC<{ grainSrc: string; bright?: boolean }> = ({
+export const Finish: React.FC<{ grainSrc: string; vignette?: number; bright?: boolean }> = ({
   grainSrc,
+  vignette = 0.55,
   bright = false,
 }) => {
   const frame = useCurrentFrame();
@@ -431,7 +441,7 @@ export const Finish: React.FC<{ grainSrc: string; bright?: boolean }> = ({
           background:
             bright
               ? "radial-gradient(ellipse 90% 80% at 50% 45%, transparent 70%, rgba(0,0,0,0.2) 100%)"
-              : "radial-gradient(ellipse 85% 70% at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%)",
+              : `radial-gradient(ellipse 85% 70% at 50% 45%, transparent 55%, rgba(0,0,0,${vignette}) 100%)`,
         }}
       />
       <AbsoluteFill

@@ -757,7 +757,7 @@ const Ladder: React.FC<P<Extract<CodeScene, { type: "ladder" }>>> = ({
   const n = s.rows.length;
   const rowH = Math.min(106, 560 / n);
   const gap = 10;
-  const top = 138;
+  const top = 150;
   // They land from the bottom of the list up, each dropped from above; the story's own row lands last on its word.
   const order = s.rows
     .map((r, i) => ({ r, i }))
@@ -794,7 +794,7 @@ const Ladder: React.FC<P<Extract<CodeScene, { type: "ladder" }>>> = ({
               top: y,
               height: rowH,
               opacity: on,
-              transform: `translateY(${-lift * 90}px)`,
+              transform: `translateY(${-lift * 36}px)`,
               display: "flex",
               alignItems: "center",
               gap: 24,
@@ -1097,6 +1097,7 @@ const Crowd: React.FC<P<Extract<CodeScene, { type: "crowd" }>>> = ({
             lineHeight: 1.04,
             color: col,
             fontVariantNumeric: "tabular-nums",
+            opacity: prog(frame, lightAt - 16, lightAt - 10),
           }}
         >
           {s.lost ? "-" : ""}
@@ -1125,7 +1126,7 @@ const Crowd: React.FC<P<Extract<CodeScene, { type: "crowd" }>>> = ({
           const delay = 2 + hash(i) * (fine ? 18 : 22);
           const t = (frame - delay) / 26;
           if (t <= 0) return null;
-          const drop = bounce(t) * (cy + 200);
+          const drop = bounce(t) * 110;
           const lit = picks.has(i);
           const on = lit ? prog(frame, lightAt - 6, lightAt + 6) : 0;
           // A share that is gone leaves its dots' places empty as they sink away.
@@ -1135,7 +1136,7 @@ const Crowd: React.FC<P<Extract<CodeScene, { type: "crowd" }>>> = ({
               : 0;
           const fade =
             lit && s.lost
-              ? 1 - 0.75 * prog(frame, lightAt + 6, lightAt + 40)
+              ? 1 - 0.45 * prog(frame, lightAt + 6, lightAt + 40)
               : 1;
           return (
             <circle

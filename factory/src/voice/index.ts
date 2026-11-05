@@ -53,10 +53,15 @@ export function paceFactor(words: number, seconds: number, minWpm: number): numb
   return Math.min(1.25, (minWpm + 3) / wpm);
 }
 
-/** Plays the file faster without changing its pitch. */
+/** Plays the file faster without changing its pitch: Rubber Band (the cleaner stretcher, the owner's pick of 5 Nov 2026), plain atempo when it is missing. */
 export async function speedUp(file: string, factor: number): Promise<void> {
   const tmp = `${file}.paced.mp3`;
-  await run(FFMPEG, ["-loglevel", "error", "-y", "-i", file, "-af", `atempo=${factor.toFixed(4)}`, "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", tmp]);
+  const enc = ["-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", tmp];
+  try {
+    await run(FFMPEG, ["-loglevel", "error", "-y", "-i", file, "-af", `rubberband=tempo=${factor.toFixed(4)}:pitchq=quality:formant=preserved`, ...enc]);
+  } catch {
+    await run(FFMPEG, ["-loglevel", "error", "-y", "-i", file, "-af", `atempo=${factor.toFixed(4)}`, ...enc]);
+  }
   await fs.rename(tmp, file);
 }
 
@@ -145,7 +150,7 @@ export async function narrate(
         };
       // Never a sleepy read: the newer voice model ignores the speed setting, and Alice came out at 109-129 words
       // a minute on 28 Oct (Liam ran 142-151). A slow take is sped up, pitch kept, its timings scaled to match.
-      const factor = paceFactor(n.words.length, n.durationSeconds, cfg.minWordsPerMinute);
+      const factor = Math.min(1.25, Math.max(paceFactor(n.words.length, n.durationSeconds, cfg.minWordsPerMinute), cfg.speedFactor ?? 1));
       if (factor > 1) {
         await speedUp(outPath, factor);
         n = {

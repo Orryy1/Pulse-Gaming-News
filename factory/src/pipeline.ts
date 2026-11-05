@@ -531,7 +531,7 @@ export interface Services {
     text: string,
     outPath: string,
     voice?: { id: string; name: string },
-    opts?: { provider?: Config["voiceProvider"]; minWpm?: number },
+    opts?: { provider?: Config["voiceProvider"]; minWpm?: number; speed?: number },
   ): Promise<
     Narration & {
       voice?: { provider: "local" | "elevenlabs"; id: string; name: string };
@@ -931,6 +931,11 @@ export function focusBlock(cfg: Config, now: Date): string {
     ? ` LAUNCH WEEK: this is the launch wave for ${cfg.focusTopic}. Cover it from every angle (reviews, performance, hidden details, what fans are finding, how it compares, prices and editions) and prefer a strong ${cfg.focusTopic} story over anything of equal weight.`
     : "";
   return `Channel focus${cfg.focusUntil ? ` until ${cfg.focusUntil}` : ""}: ${cfg.focusTopic}.${cfg.focusNote ? ` ${cfg.focusNote}` : ""} When a ${cfg.focusTopic} story or topic is as strong as the alternatives, pick it, and prefer fresh angles (history, hidden details, why things happened, what fans argue about) over repeating news already covered. Never pick a weak story or invent one because of the focus.${wave}`;
+}
+
+/** The fastest a Short's voice may run before the checks call it rushed: higher once SHORT_MIN_WPM or SHORT_SPEED lifts it. */
+export function shortWpmMax(cfg: Pick<Config, "shortMinWpm" | "shortSpeed">): number {
+  return Math.max(190, cfg.shortMinWpm ? cfg.shortMinWpm + 25 : 0, cfg.shortSpeed > 1 ? Math.round(205 * cfg.shortSpeed) : 0);
 }
 
 /** True when a story or title is about the channel focus (FOCUS_MATCH). */
@@ -5847,9 +5852,12 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
         : // A test dial, off by default: documentaries keep their natural pace whatever it says.
           s.cfg.longMinWpm && ep.script_json?.evergreen_format === "ranking"
           ? { minWpm: s.cfg.longMinWpm }
-          : // SHORT_MIN_WPM: off until the owner has heard the samples. Never slows a voice, and lifts 25% at most.
-            s.cfg.shortMinWpm && ep.lane !== "longform"
-            ? { minWpm: s.cfg.shortMinWpm }
+          : ep.lane !== "longform" && (s.cfg.shortMinWpm || s.cfg.shortSpeed > 1)
+            ? {
+                // SHORT_MIN_WPM lifts a slow take; SHORT_SPEED plays every Short faster (owner's pick, 5 Nov 2026).
+                ...(s.cfg.shortMinWpm ? { minWpm: s.cfg.shortMinWpm } : {}),
+                ...(s.cfg.shortSpeed > 1 ? { speed: s.cfg.shortSpeed } : {}),
+              }
             : undefined,
     );
   }
@@ -5950,9 +5958,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       const problems = voiceProblems(
         breath,
         wpm,
-        s.cfg.shortMinWpm && ep.lane !== "longform"
-          ? Math.max(190, s.cfg.shortMinWpm + 25)
-          : 190,
+        ep.lane !== "longform" ? shortWpmMax(s.cfg) : 190,
       );
       await logEvent(s.db, ep.id, "voice_quality", {
         ok: problems.length === 0,
@@ -9849,7 +9855,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         : s.cfg.shortPlateMax,
       plateFirstSeconds: s.cfg.shortPlateFirstSeconds,
       shelfOptional: s.cfg.shortLabelsClean,
-      wpmMax: s.cfg.shortMinWpm ? Math.max(190, s.cfg.shortMinWpm + 25) : 190,
+      wpmMax: shortWpmMax(s.cfg),
     });
   let plan = assets.plan ?? buildPlan(planInput);
   let rubric = rubricFor(plan);

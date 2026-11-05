@@ -330,6 +330,10 @@ export interface Config {
   longLeadMinutes: number;
   /** Narration slower than this is sped up (by up to 25%, pitch kept): MIN_WORDS_PER_MINUTE, 0 turns it off. */
   minWordsPerMinute: number;
+  /** Every Short's take played this much faster, pitch kept (SHORT_SPEED; 1 = as recorded, 1.25 at most). Chosen 5 Nov 2026: 1.15. */
+  shortSpeed: number;
+  /** The speed-up for this take (set per call, from shortSpeed): 1 = none. */
+  speedFactor?: number;
   /** Long ElevenLabs narration: each take's pitch and brightness is measured and a take that strays from the
    * others (5% in pitch, 10% in centroid) is re-voiced once, the closer kept, at most 3 a narration
    * (VOICE_TAKE_CHECK, default on; 31 Oct 2026). */
@@ -1104,6 +1108,7 @@ export function loadConfig(): Config {
     docLeadMinutes: int("DOC_LEAD_MINUTES", 600),
     longLeadMinutes: int("LONG_LEAD_MINUTES", 30 * 60),
     minWordsPerMinute: int("MIN_WORDS_PER_MINUTE", 145),
+    shortSpeed: Math.min(1.25, Math.max(1, Number(str("SHORT_SPEED", "1")) || 1)),
     voiceTakeCheck: bool("VOICE_TAKE_CHECK", true),
     docMaxSeconds: int("DOC_MAX_SECONDS", 3000),
     docClipsPerChapter: int("DOC_CLIPS_PER_CHAPTER", 4),

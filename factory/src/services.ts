@@ -221,6 +221,7 @@ export function createServices(db: Db, cfg: Config): Services {
         {
           ...cfg,
           ...(opts?.provider ? { voiceProvider: opts.provider } : {}),
+          ...(opts?.speed ? { speedFactor: opts.speed } : {}),
           // LONG_MIN_WPM: a test dial, passed for rankings only; it only ever raises the floor.
           ...(opts?.minWpm
             ? {

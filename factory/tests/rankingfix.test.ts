@@ -144,6 +144,43 @@ test("spoilers: the published hook, near-matches and short forms are caught", ()
     assert.ok(spoilerProblems(draft(over)).length, JSON.stringify(over));
 });
 
+test("spoilers: a theme written as a sentence hides nothing (the real oiyFG7VPy-k theme)", () => {
+  const theme =
+    "Street Fighter's six numbered mainline games ranked by how well their core one-on-one combat holds up today";
+  assert.ok(
+    spoilerProblems(
+      draft({ theme, hook: "Street Fighter 6 wins. We rank numbered entries by combat today." }),
+    ).some((x) => x.startsWith("The hook gives away")),
+  );
+  // A short form every entry shares says nothing; the series name in a title is not a spoiler.
+  const mw = entries(["Call of Duty 4: Modern Warfare", "Call of Duty: Modern Warfare 3", "Call of Duty: Modern Warfare II"]);
+  assert.deepEqual(
+    spoilerProblems(
+      draft({
+        theme: "Call of Duty: Modern Warfare series, ranked by campaign",
+        entries: mw,
+        title: "Every Modern Warfare Campaign, Ranked",
+        hook: "Every Modern Warfare campaign from 2007 to 2023, ranked by missions.",
+        youtube: { title: "Ranking EVERY Modern Warfare Campaign", description: "Every Modern Warfare story.", tags: [] },
+      }),
+    ),
+    [],
+  );
+  const gta = entries(["Grand Theft Auto III", "Grand Theft Auto V"]);
+  assert.deepEqual(
+    spoilerProblems(draft({ theme: "Grand Theft Auto", entries: gta, title: "Every GTA Ranked", hook: "Every GTA, ranked by what it did for open worlds." })),
+    [],
+  );
+  assert.ok(
+    spoilerProblems(draft({ theme: "Grand Theft Auto", entries: gta, hook: "GTA 3 changed everything, and we rank the rest." })).length,
+  );
+  // The series, worked out from the entries when the theme doesn't say it.
+  const mario = entries(["Super Mario Galaxy 2", "Super Mario 64", "Super Mario Sunshine"]);
+  assert.ok(
+    spoilerProblems(draft({ theme: "3D Super Mario games", entries: mario, hook: "Galaxy 2 is the one, and we rank the rest of them." })).length,
+  );
+});
+
 test("spoilers: a clean countdown passes, with no false alarms from other entries or the theme", () => {
   assert.deepEqual(spoilerProblems(draft()), []);
   // "Halo 3" is number one and "Halo 3: ODST" is an earlier entry: its own line must not fire.

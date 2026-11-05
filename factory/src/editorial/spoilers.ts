@@ -32,16 +32,16 @@ const WORDS: Record<string, string> = {
 };
 
 /** Lower case, no marks or punctuation, a possessive off, Roman numerals and small number words as digits. */
-export function normTitle(text: string): string {
+export function normTitle(text: string, numberWords = true): string {
   return text
     .toLowerCase()
-    .replace(/[®™©]/g, "")
-    .replace(/['’]s\b/g, "")
-    .replace(/['’]/g, "")
+    .replace(/[\u00ae\u2122\u00a9]/g, "")
+    .replace(/['\u2019]s\b/g, "")
+    .replace(/['\u2019]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .split(" ")
-    .map((w) => ROMAN[w] ?? WORDS[w] ?? w)
+    .map((w) => ROMAN[w] ?? (numberWords ? WORDS[w] : undefined) ?? w)
     .join(" ");
 }
 
@@ -51,7 +51,7 @@ const cut = (hay: string, needle: string) =>
     ? ` ${hay} `.split(` ${needle} `).join(" ").replace(/\s+/g, " ").trim()
     : hay;
 
-/** "Street Fighter 6" as "sf6", "sf 6"; "Grand Theft Auto V" as "gta5", "gta 5", "gta". */
+/** "Street Fighter 6" as "sf6" and "sf 6"; a title with no number, "Red Dead Redemption", as "rdr" too. */
 function acronyms(base: string): string[] {
   const words = base.split(" ").filter(Boolean);
   const num = /^\d+$/.test(words.at(-1) ?? "") ? words.at(-1)! : "";
@@ -62,9 +62,21 @@ function acronyms(base: string): string[] {
     const letters = w.map((x) => x[0]).join("");
     if (letters.length < 2) continue;
     if (num) out.push(`${letters}${num}`, `${letters} ${num}`);
-    if (letters.length >= 3) out.push(letters);
+    else if (letters.length >= 3) out.push(letters);
   }
   return [...new Set(out)];
+}
+
+/** The words every entry's title starts with: the series, when the theme doesn't say it ("Super Mario"). */
+function sharedStart(titles: string[]): string {
+  if (titles.length < 2) return "";
+  const lists = titles.map((x) => x.split(" "));
+  const out: string[] = [];
+  for (const [i, w] of lists[0]!.entries()) {
+    if (!lists.every((l) => l[i] === w)) break;
+    out.push(w);
+  }
+  return out.join(" ");
 }
 
 export interface WinnerAliases {
@@ -76,8 +88,10 @@ export interface WinnerAliases {
 
 /**
  * Every form of number one a viewer would recognise: the full title, the title without its subtitle, the subtitle,
- * the title without the series name and the acronym. A form that is the theme, or another entry's own title, says
- * nothing about number one and is dropped ("Halo 3" must not fire on "Halo 3: ODST").
+ * the title without the series name and the acronym. A form that is only the theme, or another entry's title, says
+ * nothing about number one: a short form every Modern Warfare entry shares, or "Halo 3" when "Halo 3" is an entry.
+ * The theme is often a whole sentence ("Street Fighter's six numbered mainline games ranked by..."), so it is read
+ * with its number words as written: that "six" is no "Street Fighter 6".
  */
 export function winnerAliases(
   title: string,
@@ -85,25 +99,28 @@ export function winnerAliases(
   others: string[],
 ): WinnerAliases {
   const full = normTitle(title);
-  const themed = normTitle(theme);
-  const otherTitles = others.map(normTitle);
-  const parts = title.split(/\s*(?::| - | – )\s*/);
+  const themed = normTitle(theme, false);
+  const otherTitles = others.map((o) => normTitle(o));
+  const parts = title.split(/\s*(?::| - | \u2013 )\s*/);
   const base = normTitle(parts[0] ?? title);
   const subtitle = parts.length > 1 ? normTitle(parts.slice(1).join(" ")) : "";
-  const candidates = new Set<string>([
-    full,
-    base,
-    ...acronyms(base),
-    ...acronyms(full),
-  ]);
+  const series = sharedStart([full, ...otherTitles]);
+  // The short forms stand only if no other entry's title or the theme shares them.
+  const distinctive = (p: string) =>
+    !has(themed, p) && !otherTitles.some((o) => has(o, p));
+  const phrases = new Set<string>();
+  for (const p of [full, base])
+    if (p && p !== themed && !has(themed, p) && !otherTitles.includes(p))
+      phrases.add(p);
   const lone: string[] = [];
-  const add = (form: string, written: string) => {
-    if (!form) return;
-    if (form.includes(" ") || /\d/.test(form)) candidates.add(form);
+  const shortForm = (form: string, written: string) => {
+    if (!form || !/[a-z]/.test(form) || !distinctive(form)) return;
+    if (form.includes(" ") || /\d/.test(form)) phrases.add(form);
     else if (form.length >= 4) lone.push(written);
   };
+  for (const p of [...acronyms(base), ...acronyms(full)]) shortForm(p, p);
   if (subtitle)
-    add(
+    shortForm(
       subtitle.replace(/^the /, ""),
       parts
         .slice(1)
@@ -111,21 +128,17 @@ export function winnerAliases(
         .trim()
         .replace(/^the\s+/i, ""),
     );
-  if (themed && full.startsWith(`${themed} `)) {
-    const rest = full.slice(themed.length + 1).replace(/^the /, "");
-    if (/[a-z]/.test(rest)) add(rest, title.split(/\s+/).at(-1) ?? rest);
-  }
-  const phrases = [...candidates].filter(
-    (p) =>
-      p &&
-      p !== themed &&
-      !has(themed, p) &&
-      !otherTitles.includes(p) &&
-      /[a-z]/.test(p),
-  );
+  for (const lead of [themed, series])
+    if (lead && full.startsWith(`${lead} `))
+      shortForm(
+        full.slice(lead.length + 1).replace(/^the /, ""),
+        title.split(/\s+/).at(-1) ?? "",
+      );
   return {
-    phrases: phrases.sort((a, b) => b.length - a.length),
-    capitalised: lone.filter((w) => !has(themed, normTitle(w))),
+    phrases: [...phrases]
+      .filter((p) => /[a-z]/.test(p))
+      .sort((x, y) => y.length - x.length),
+    capitalised: lone,
   };
 }
 
@@ -138,7 +151,7 @@ export function namesWinner(
 ): string | undefined {
   const aliases = winnerAliases(winner, theme, others);
   const norm = normTitle(text);
-  const longer = others.map(normTitle).sort((a, b) => b.length - a.length);
+  const longer = others.map((o) => normTitle(o)).sort((a, b) => b.length - a.length);
   // Only another entry's title that contains the form can explain it away: "Halo 3 ODST" for "Halo 3".
   for (const p of aliases.phrases) {
     let rest = norm;

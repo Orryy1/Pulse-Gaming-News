@@ -998,7 +998,10 @@ export const Captions: React.FC<{
       {page.words.map((w, i) => {
         const active = t >= w.start - 0.03 && t < w.end + 0.08;
         const spoken = t >= w.start - 0.03;
-        const shown = w.text.replace(/[.,;:!?]+$/, "");
+        // An achievement's name is spoken in quotes; the marks are for the voice, not the caption.
+        const shown = w.text
+          .replace(/^["\u201c\u201d]+/, "")
+          .replace(/["\u201c\u201d.,;:!?]+$/, "");
         const lit =
           spoken && (EMPHASIS.test(shown) || emphasis.has(shown.toLowerCase()));
         const activeScale = active

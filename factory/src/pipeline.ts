@@ -9025,7 +9025,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     segments,
     words,
     plan,
-    layout: shortLayout(segments, 30, Math.round(duration * 30), plan.tailFrames),
+    layout: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames),
     stamps: stampsFor(script, words),
     sting: false,
   });
@@ -9117,11 +9117,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // Every rank card must stay up for its whole entry, in text the card can show (src/render/rankcard.ts).
   const entryCards = entryHolds(
     segments,
-    shortClean
-      ? arbitrate(entrySpans)
-      : entrySpans,
-    30,
-    Math.round(duration * 30),
+    shortClean ? arbitrate(entrySpans) : entrySpans,
+    plan.fps,
+    plan.totalFrames,
   );
   const entryProblems = entryCardProblems(entryCards, segments);
   const qa = {

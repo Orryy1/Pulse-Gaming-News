@@ -60,7 +60,7 @@ import {
 import { trailerMatchesGame } from "./assets/commons.ts";
 import { captureHold } from "./capture.ts";
 import { rankStills } from "./assets/stillscore.ts";
-import { PUBLISHER_CHANNELS } from "./assets/officialTrailer.ts";
+import { PUBLISHER_CHANNELS, franchisePublisher } from "./assets/officialTrailer.ts";
 import { coverageShare, fillSentencePictures } from "./assets/fill.ts";
 import {
   footageShareNotice,
@@ -5790,7 +5790,9 @@ export function capPublisherTotal<T extends { provenance: string; durationSecond
   );
   const keep = new Set<T>();
   for (const c of order) {
-    const rule = PUBLISHER_CHANNELS.find((r) => c.provenance.includes(`publisher: ${r.name}`));
+    // A Steam trailer's line names the game, not the publisher; Rockstar's stricter cap still counts it.
+    const steamOwner = franchisePublisher(c.provenance.match(/trailer "([^"]+)"/i)?.[1] ?? "");
+    const rule = PUBLISHER_CHANNELS.find((r) => c.provenance.includes(`publisher: ${r.name}`) || (steamOwner === "Rockstar Games" && r.name === steamOwner));
     if (!rule) {
       keep.add(c);
       continue;

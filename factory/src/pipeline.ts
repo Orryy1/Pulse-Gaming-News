@@ -5341,6 +5341,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     (ep.lane === "news" || ep.lane === "news_breaking");
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
+      desk: s.cfg.deskShare > 0,
       variantNote,
       // YouTube's lessons, then how the same Shorts did on Instagram, Facebook, Threads and TikTok.
       lessons: [

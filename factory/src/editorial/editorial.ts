@@ -62,7 +62,9 @@ You are the editor choosing today's story. Pick the single candidate that will m
 Return candidate_index -1 if nothing is worth a Short today.`;
 }
 
-export function scriptPrompt(): string {
+/** The news writer's brief. With the desk voice off (DESK_SHARE=0, owner 5 Nov 2026) no desk question is asked for: a take
+ * written to answer it reads as an answer to nothing once the question is gone. */
+export function scriptPrompt(desk = true): string {
   return `${HOUSE_STYLE}
 
 Write a 25-40 second vertical Short script (${WORDS_MIN}-${WORDS_MAX} spoken words in total across hook, beats, take and loop line). Quoted examples in this brief show a shape; a draft that reuses one word for word is sent back.
@@ -94,7 +96,7 @@ person: when the story is about one real person (a cameo, a hire, a departure, a
 Talk to the viewer: at least two sentences in the script say "you" or "your" about what this means for them (their console, their money, their weekend).
 Community stakes: the framing says plainly what the fan gains, loses or can do about it (save, wait, claim, pre-order, skip), and when the loop line asks, it is a personal either/or the viewer answers about their own choice ("Keep your disc drive, or go all digital?"), never a question about the company.
 3a. stamp: the one word that carries the news gets a rubber stamp on screen as it is spoken: a date that was confirmed ("NOV 19" / "CONFIRMED"), a delay ("DELAYED" / "TO 2027"), a price ("$49.99"), "FREE", "LEAKED" (with "REPORTED" under it for a rumor). "word" is that word exactly as written in your narration; the stamp's figures must be the narration's own. Omit it when nothing deserves it.
-3b. desk_question: before the take, the sceptic's objection, the line the top comment would otherwise make, put by a second presenter at the desk in 5-12 words, ending with "?". Shapes that work, always in this story's own specifics and fresh words: the feature an older game already had, who wanted this at all, whether it's worth the price on day one, what it means for people who already bought in. Never open two Shorts' questions the same way. The take then answers it head on. In a study of 12,679 top comments on gaming Shorts, the most-liked comment on news Shorts was very often exactly that objection; saying it first takes it off the table. Always provide one.
+${desk ? "3b. desk_question: before the take, the sceptic's objection, the line the top comment would otherwise make, put by a second presenter at the desk in 5-12 words, ending with \"?\". Shapes that work, always in this story's own specifics and fresh words: the feature an older game already had, who wanted this at all, whether it's worth the price on day one, what it means for people who already bought in. Never open two Shorts' questions the same way. The take then answers it head on. In a study of 12,679 top comments on gaming Shorts, the most-liked comment on news Shorts was very often exactly that objection; saying it first takes it off the table. Always provide one." : "3b. desk_question: leave it out. The take answers the hook, so it must make sense on its own."}
 4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that echoes the hook's subject, so a rewatch feels connected: the game, the people or the stake, never the hook's number again (a price, size or date said in the hook stays out of the loop). Vary the closing shape: a fact, a comma, then a question ("After that, which one...?") is one shape of many, and never the shape the recent Shorts listed below just used. When it asks the viewer something, make it specific enough to answer in five words: a named fork ("Should Pokemon keep turn-based battles, or go full action?"), three options for a buying story ("Day one, wait for a sale, or skip it?"), "name one" ("Which starter deserves a Mega next?") or the viewer's own numbers ("How many raids before your first shiny?"); put the money in it, dollars first, when the story is about money. Specific questions were answered by 73% of top comments in the comment study, "thoughts?" by 46% and rhetorical ones by 12%. Never a rhetorical question, a punchline dressed as a question, or "will you play it?". Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
 
 Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone.
@@ -164,6 +166,8 @@ export async function writeScript(
   articles: ArticleText[],
   opts: {
     mustLabelRumour: boolean;
+    /** False when the desk voice is off: no desk question is written. */
+    desk?: boolean;
     feedback?: string[];
     storeData?: string;
     lessons?: string;
@@ -209,7 +213,7 @@ export async function writeScript(
     opts.feedback?.length &&
     !opts.feedback.some((f) => /rumou?r labell?ing/i.test(f))
       ? await reviseByEdits(llm, {
-          system: scriptPrompt(),
+          system: scriptPrompt(opts.desk ?? true),
           content: brief,
           schema: ScriptSchema,
           draft: opts.draft,
@@ -220,7 +224,7 @@ export async function writeScript(
   const script =
     edited ??
     (await llm.structured({
-      system: scriptPrompt(),
+      system: scriptPrompt(opts.desk ?? true),
       content: `${brief}${feedback}`,
       schema: ScriptSchema,
       effort: "medium",

@@ -1588,7 +1588,7 @@ const WHY_DROP_RETRIES = 2;
  * two-week freshness rule and the demand check stay out of it; the writer and the fact check run as usual against
  * the entry's own sources. With no source readable there is nothing to check against, so the slot goes to the editor.
  */
-async function selectRunWhy(
+export async function selectRunWhy(
   s: Services,
   e: RunWhy,
   due: Date,
@@ -5023,7 +5023,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         (a.sourceKind === "official" ? -1 : 1) -
         (b.sourceKind === "official" ? -1 : 1),
     )
-    .slice(0, 4);
+    // A planned run topic lists its sources on purpose (src/shortrun.ts), so all of them are read.
+    .slice(0, cluster.run ? 8 : 4);
   const articles = (
     await Promise.all(items.map((i) => s.fetchArticle(i.url)))
   ).filter((a): a is ArticleText => Boolean(a));
@@ -5057,8 +5058,10 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const recent = await recentShapes(s.db, ep.id).catch(() => undefined);
   // The weekly retention test (src/growth.ts): this Short's variant of the thing under test, and the rules the
   // finished tests settled. Recorded on the episode so the judge can find it; a failure here never stops a Short.
-  const test = await growthAssign(s.db, s.cfg, s.now(), ep, (m) =>
-    s.notify(m),
+  // A planned run topic's angle sets its opener, so it stays out of the opening-line test.
+  const test = await (cluster.run
+    ? Promise.resolve(undefined)
+    : growthAssign(s.db, s.cfg, s.now(), ep, (m) => s.notify(m))
   ).catch((err) => {
     log("warn", "growth test assignment failed", { error: errorMessage(err) });
     return undefined;
@@ -5566,6 +5569,11 @@ export function deskFor(
   return { voice: { id: cfg.deskVoiceId, name: cfg.deskVoiceName } };
 }
 
+/** The game's name for picture searches: a writer's "(Switch 2 remake)" hides an exact title match. */
+export function mediaTitle(title: string): string {
+  return title.replace(/\s*\([^)]*\)\s*$/, "").trim() || title;
+}
+
 async function gatherMedia(
   s: Services,
   ep: Episode,
@@ -5639,7 +5647,7 @@ async function gatherMedia(
     script.game_title
       ? await s
           .fetchOfficialMedia(
-            script.game_title,
+            mediaTitle(script.game_title),
             dir,
             topicTargets,
             ranking ? 1 : s.cfg.maxClips,
@@ -5743,7 +5751,7 @@ async function gatherMedia(
   const igdb =
     !app && !ranking && script.game_title
       ? await s
-          .igdbArt(script.game_title, undefined, dir, 8)
+          .igdbArt(mediaTitle(script.game_title), undefined, dir, 8)
           .catch(() => [] as VisualAsset[])
       : [];
   // In a ranking, the topic page's screenshots would land under the wrong entry: keep its hero and header only.
@@ -5756,6 +5764,17 @@ async function gatherMedia(
     ),
     ...official.stills,
   ];
+  // Trailer frames in hand (OFFICIAL_STILL_FRAMES): the thumbnail, with its logos, is no longer needed, and an IGDB
+  // entry years older than today is the old game of a remake, kept for the words about the old game (thenWindows).
+  if (official.stills.length >= 4) {
+    const nowYear = s.now().getUTCFullYear();
+    for (const a of igdb) {
+      const y = Number(a.provenance.match(/\((\d{4})\)/)?.[1]);
+      if (y && y <= nowYear - 5) a.then = true;
+    }
+    const thumb = images.findIndex((a) => a.file.endsWith("official_trailer.jpg"));
+    if (thumb >= 0) images.splice(thumb, 1);
+  }
   // First-party newsroom images (PlayStation Blog, Xbox Wire) are press
   // material meant for coverage. Outlet images are never used.
   {
@@ -6092,6 +6111,7 @@ async function gatherMedia(
       moment: a.moment,
       label: a.label,
       ...(wordy.has(a.file) ? { wordy: true } : {}),
+      ...(a.then ? { then: true } : {}),
     });
   }
   // What the newer picture libraries gave this Short, in its log and the owner's note (long videos: after the top-up).
@@ -8927,6 +8947,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       aspect: i.aspect,
       beatIndex: i.beatIndex,
       wordy: i.wordy,
+      then: i.then,
     })),
     clips: (assets.clips ?? []).map((c) => ({
       durationSeconds: c.durationSeconds,
@@ -8992,6 +9013,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           aspect: i.aspect,
           beatIndex: i.beatIndex,
           wordy: i.wordy,
+          then: i.then,
         })),
         clips: (assets.clips ?? []).map((c) => ({
           durationSeconds: c.durationSeconds,
@@ -9200,10 +9222,11 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     props: {
       headline: script.headline,
       storyType: script.is_rumour ? "rumour" : script.story_type,
-      gameTitle: script.game_title,
+      gameTitle: mediaTitle(script.game_title),
       isRumour: script.is_rumour,
       attribution: script.attribution,
       gameSubtitle,
+      vivid: s.cfg.shortVivid,
       footageCredit,
       segments,
       words,

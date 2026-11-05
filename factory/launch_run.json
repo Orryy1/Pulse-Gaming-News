@@ -6,8 +6,8 @@
     "question": "Why is a game from 1998 the best-reviewed game of 2026?",
     "title": "A 1998 Game Is Now the Best-Reviewed Game of 2026",
     "game": "The Legend of Zelda: Ocarina of Time",
-    "arc": "The remake launches today and sits at the top of Metacritic's 2026 list, already inside its all-time top 30; the original still holds the all-time record; what the critics say it changed and the one complaint they keep raising.",
-    "angle": "Open close to: \"The best-reviewed game of 2026 first came out in 1998.\" Give the scores as the sources report them and say they were the figures at launch. Say what the remake changed and what reviewers praised, then the honest catch they raise, such as no Master Quest. Name who said what. Say only what the sources say.",
+    "arc": "The remake launches today and sits at the top of Metacritic's 2026 list, already inside its all-time top 30; the original still holds the all-time record; what the remake changed that you can feel in your hands, and the one complaint critics raise.",
+    "angle": "Open close to: \"The best-reviewed game of 2026 first came out in 1998.\" Give the scores as the sources report them and say they were the figures the day before launch (November 4). The first beat is the most surprising change you can feel: you can hum or whistle the ocarina songs into the Switch 2's microphone, and Link can finally jump. Then the 96 against the original's 99 (the only 99 on Metacritic). Then the honest catch they raise, such as no Master Quest. Name who said what. Say only what the sources say.",
     "sources": [
       {
         "url": "https://www.videogameschronicle.com/news/the-zelda-ocarina-of-time-remake-has-shot-to-the-top-of-metacritics-best-games-of-2026-so-far-makes-its-all-time-top-30/",
@@ -28,6 +28,18 @@
       {
         "url": "https://www.ign.com/articles/the-legend-of-zelda-ocarina-of-time-review-remake",
         "source": "IGN"
+      },
+      {
+        "url": "https://www.creativebloq.com/news/the-legend-of-zelda-ocarina-of-time-on-switch-2-10-things-the-hands-on-previews-have-told-us",
+        "source": "Creative Bloq"
+      },
+      {
+        "url": "https://www.dlcompare.com/gaming-news/ocarina-of-time-remake-reviews-scores-and-all-the-changes",
+        "source": "DLCompare"
+      },
+      {
+        "url": "https://engadget.com/2285785/the-legend-of-zelda-ocarina-of-time-preview/",
+        "source": "Engadget"
       }
     ]
   },

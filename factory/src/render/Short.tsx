@@ -299,6 +299,13 @@ export const Short: React.FC<ShortProps> = (props) => {
         if (i > 0 && i < last && i % 2 === 1 && !photos.has(i))
           looks.set(i, year! < 1994 ? "crt" : "vhs");
       });
+    // Then and now (plan.ts thenWindows): the old game's shots wear the tube and arrive through channel static.
+    shots.forEach((s, i) => {
+      if (s.then) {
+        looks.set(i, "crt");
+        accents.push({ at: s.start, kind: "static" });
+      }
+    });
     // Accents on about one cut in three, 4 s apart, clear of the turns, the stamps and the loop.
     const kinds: AccentKind[] = ["flare", "burn", "flash", "glitch"];
     let lastAccent = -Infinity;
@@ -528,8 +535,8 @@ export const Short: React.FC<ShortProps> = (props) => {
           )}
         </Sequence>
       ))}
-      <Scrim profile={hasPlate && !props.images.length ? "plate" : "footage"} />
-      <Finish grainSrc={staticFile("grain.png")} />
+      <Scrim profile={hasPlate && !props.images.length ? "plate" : props.vivid ? "vivid" : "footage"} />
+      <Finish grainSrc={staticFile("grain.png")} vignette={props.vivid ? 0.25 : 0.55} />
 
       {/* The headline is fully rendered at frame 0 (the thumbnail) and returns, pixel-identical, for the loop.
           On the new-look Shorts it is a thumbnail-grade poster over the hero art (components/HookPoster.tsx). */}

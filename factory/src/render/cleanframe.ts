@@ -19,8 +19,10 @@
 import type { RenderPlan } from "./plan.ts";
 import type { Segment } from "./timeline.ts";
 import { cardWindow } from "./shortcraft.ts";
+import { isEntryCard } from "./rankcard.ts";
 
 export type OverlayKind =
+  | "entry"
   | "hook"
   | "stamp"
   | "freeze"
@@ -29,8 +31,9 @@ export type OverlayKind =
   | "sting"
   | "shelf";
 
-/** Higher wins. */
+/** Higher wins. A ranked Short's rank card (src/render/rankcard.ts) stays up for its whole entry: the rest gives way. */
 export const PRIORITY: Record<OverlayKind, number> = {
+  entry: 8,
   stamp: 7,
   hook: 6,
   freeze: 5,
@@ -42,6 +45,7 @@ export const PRIORITY: Record<OverlayKind, number> = {
 
 /** The shortest stretch a cut-down overlay keeps; shorter and it is dropped. */
 export const MIN_KEEP: Record<OverlayKind, number> = {
+  entry: 24,
   hook: 1,
   stamp: 1,
   freeze: 20,
@@ -281,7 +285,7 @@ export function overlaySpans(input: {
     if (s.kind !== "beat" && s.kind !== "take") return;
     if (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim()) return;
     const w = cardWindow(segments, words, i, fps, plan.totalFrames);
-    out.push({ key: `card${i}`, kind: "card", from: w.from, to: w.from + w.len });
+    out.push({ key: `card${i}`, kind: isEntryCard(s) ? "entry" : "card", from: w.from, to: w.from + w.len });
   });
   if (input.sting) out.push({ key: "sting", kind: "sting", from: layout.hookEnd, to: layout.hookEnd + STING_FRAMES });
   plan.shelf.forEach((it, i) => {

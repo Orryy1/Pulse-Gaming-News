@@ -14,8 +14,20 @@ export interface Achievement {
   percent: number; // share of the game's players who unlocked it, 0-100
 }
 
+/** Steam's page gives an icon as a bare file name now ("25702a...jpg"); older pages gave the whole address. */
+export function iconUrl(icon: string, appId?: number): string | undefined {
+  if (!icon) return undefined;
+  if (/^https?:/.test(icon)) return icon;
+  return appId
+    ? `https://shared.akamai.steamstatic.com/community_assets/images/apps/${appId}/${icon}`
+    : undefined;
+}
+
 /** Pulls achievements and unlock shares out of the page's embedded data (quotes may be JSON-escaped). */
-export function parseAchievementsPage(html: string): Achievement[] {
+export function parseAchievementsPage(
+  html: string,
+  appId?: number,
+): Achievement[] {
   const text = html
     .replace(/\\\\"/g, '"')
     .replace(/\\"/g, '"')
@@ -38,7 +50,7 @@ export function parseAchievementsPage(html: string): Achievement[] {
       name: m[3]!.trim(),
       description: m[4]!.trim(),
       hidden: m[5] === "true",
-      icon: m[6] || undefined,
+      icon: iconUrl(m[6] ?? "", appId),
       percent: Math.round(percents.get(key)! * 10) / 10,
     });
   }
@@ -53,7 +65,7 @@ export async function fetchAchievements(appId: number): Promise<Achievement[]> {
       20_000,
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return parseAchievementsPage(await res.text());
+    return parseAchievementsPage(await res.text(), appId);
   } catch (err) {
     log("warn", "achievements unavailable", {
       appId,

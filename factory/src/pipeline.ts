@@ -8464,6 +8464,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
         coldOpenLine: craft.coldOpen ? coldOpenLine(script.hook) : undefined,
     // The structure devices (src/render/structure.ts), each behind its setting, for every long format.
+    codeScenes: s.cfg.codeScenes,
     titleDrop: craft.titleDrop,
     chapterIndex: craft.chapterIndex,
     loops: docLoops,
@@ -8989,6 +8990,19 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     variant,
     steam: steamLite,
     openOnClip: s.cfg.openOnMotion,
+    codeScenes: s.cfg.codeScenes
+      ? {
+          ctx: {
+            sourced: [
+              ...segments.map((x) => x.text),
+              ...(script.claims ?? []).map((c: { claim: string }) => c.claim),
+            ].join(" "),
+            game: script.game_title,
+            today: new Date(s.now()).toISOString().slice(0, 10),
+          },
+          stampsAt: stampsFor(script, words).map((x) => x.at),
+        }
+      : undefined,
   };
   const footageSeconds = (assets.clips ?? []).reduce(
     (n, c) => n + c.durationSeconds,

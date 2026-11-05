@@ -270,6 +270,8 @@ export interface LongClipProp {
 }
 
 export type LongProps = {
+  /** Code scenes join the graphic rotation (src/render/codescene.ts, CODE_SCENES). */
+  codeScenes?: boolean;
   title: string; // on-screen title
   kicker: string; // line under the title in the intro
   spoilers?: boolean; // a story ranking: the intro says so on screen
@@ -3292,6 +3294,7 @@ export const Long: React.FC<LongProps> = (props) => {
       const year = storyYear(g, Number(entryTitle(w.entry).year) || undefined);
       const styles = Object.keys(ALL_STYLES)
         .sort()
+        .filter((name) => props.codeScenes || !name.startsWith("Scene/"))
         .map((name) => ALL_STYLES[name]!)
         .filter(
           (s) => s.kind === g.kind && (!s.fits || s.fits(g)) && inEra(s, year),

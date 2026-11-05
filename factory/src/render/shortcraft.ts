@@ -322,7 +322,7 @@ export function pickCards(
 export interface CraftInput {
   segments: Segment[];
   words: Array<{ text: string; start: number; end: number }>;
-  plan: Pick<RenderPlan, "shots" | "fps" | "totalFrames" | "turns">;
+  plan: Pick<RenderPlan, "shots" | "fps" | "totalFrames" | "turns" | "scenes">;
   images: Array<{ kind: string; credit?: string; beatIndex?: number }>;
   clips: Array<{ durationSeconds: number; beatIndex?: number; role?: string }>;
   /** The word moments' times (seconds). */
@@ -662,8 +662,9 @@ export function planShortCraft(
     const a = Math.round(st.at * fps);
     return { from: a - 6, to: a + STAMP_HOLD + 6 };
   });
+  const scenes: Span[] = (plan.scenes ?? []).map((x) => ({ from: x.from, to: x.to }));
   const fillers = settings.fillers
-    ? pickFillers(input, [...windows, ...stamps], recent)
+    ? pickFillers(input, [...windows, ...stamps, ...scenes], recent)
     : [];
   const fillSpans = fillers.map((f) => ({ from: f.from, to: f.from + f.len }));
   const photos = settings.photos ? pickPhotos(input, recent, fillSpans) : [];

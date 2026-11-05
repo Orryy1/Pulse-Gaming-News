@@ -15,6 +15,8 @@ import { STYLES as PULSE_APPS } from "./pulse/apps.ts";
 import { STYLES as PULSE_PRESS } from "./pulse/press.ts";
 // Real evidence, full frame (DOC_EVIDENCE): only graphics tagged as the record fit these.
 import { STYLES as PULSE_EVIDENCE } from "./pulse/evidence.ts";
+// Drawn from the sentence's figures (src/render/codescene.ts); Long.tsx offers them only with CODE_SCENES on.
+import { STYLES as SCENE } from "../codescene/GfxScene.tsx";
 import type { GfxStyle } from "./types.ts";
 
 const tag = (pack: string, styles: Record<string, GfxStyle>) =>
@@ -30,6 +32,7 @@ export const ALL_STYLES: Record<string, GfxStyle> = {
   ...tag("Map", MAP),
   ...tag("Editorial", EDITORIAL),
   ...tag("Type", TYPE),
+  ...tag("Scene", SCENE),
   ...tag("Pulse", {
     ...PULSE_CONSOLES,
     ...PULSE_SOCIAL,

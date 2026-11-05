@@ -35,6 +35,7 @@ export function testConfig(
   return {
     officialStillFrames: 0,
     shortVivid: false,
+    codeScenes: false,
     writerNotesGuard: true,
     firstCommentQuestion: false,
     firstCommentCheck: false,

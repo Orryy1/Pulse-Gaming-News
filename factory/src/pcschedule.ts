@@ -239,6 +239,33 @@ async function scheduleRows(
   );
 }
 
+/**
+ * What the PC orchestrator's watchdog copies from the Mac once the factory lives there (GET
+ * /orch/reservations.json): the same shape as the file written here. Renders no longer need the PC, so slots keep
+ * nothing free and `windows` stays empty; only windows set by agreement (KEEP_FREE_WINDOWS, the launch days while
+ * the PC is the fallback) are listed. `updated` is fresh on every read, so the orchestrator can tell it is alive.
+ */
+export function macReservationsDoc(
+  cfg: Pick<Config, "keepFreeWindows">,
+  now: Date,
+): { project: string; class: string; updated: number; windows: PcWindow[] } {
+  return {
+    project: "pulse",
+    class: "heavy",
+    updated: now.getTime() / 1000,
+    windows: extraWindows(cfg.keepFreeWindows, now),
+  };
+}
+
+/** Requests from the network itself (HOST=0.0.0.0 on the Mac): only the orchestrator's one page; the tunnel and this machine arrive on loopback. */
+export function lanRequestAllowed(remote: string, pathname: string): boolean {
+  return (
+    LOOPBACK_RE.test(remote) || pathname === "/orch/reservations.json"
+  );
+}
+const LOOPBACK_RE =
+  /^(127\.\d{1,3}\.\d{1,3}\.\d{1,3}|::1|::ffff:127\.\d{1,3}\.\d{1,3}\.\d{1,3})$/;
+
 /** Writes the windows for the orchestrator; a no-op on a machine without it. Never throws. */
 export async function publishPcSchedule(
   db: Db,

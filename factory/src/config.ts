@@ -225,6 +225,8 @@ export interface Config {
   routineLanAllow: string[];
   routineLanPort: number;
   /** The owner's own recordings, cut into an inbox by the Windows tasks in C:\Claude	inotv-vods. */
+  elevenLabsLowCredits: number; // warn the owner under this many usable credits (ELEVENLABS_LOW_CREDITS, 0 off)
+  elevenLabsLowDays: number; // and under this many days of the current pace (ELEVENLABS_LOW_DAYS, 0 off)
   gameplayEnabled: boolean;
   gameplayRoot: string; // holds inbox/ (written by the finder) and published/ (read by Leonida Intel)
   gameplayExperiments: string; // the numbered test list the reviewer matches clips against
@@ -850,7 +852,11 @@ export function loadConfig(): Config {
       .map((x) => x.trim())
       .filter(Boolean),
     routineLanPort: int("ROUTINE_LAN_PORT", 8081),
-    gameplayEnabled: bool("GAMEPLAY_ENABLED", true),
+    elevenLabsLowCredits: int("ELEVENLABS_LOW_CREDITS", 100_000),
+    elevenLabsLowDays: int("ELEVENLABS_LOW_DAYS", 5),
+    // A dry run (every sandbox and rehearsal) leaves the owner's real inbox alone unless it asks otherwise: 4 Nov
+    // 2026, a sandbox Short took clips out of the live inbox because nothing told it not to.
+    gameplayEnabled: bool("GAMEPLAY_ENABLED", !bool("DRY_RUN", false)),
     gameplayRoot: str(
       "GAMEPLAY_ROOT",
       path.join(os.homedir(), "Videos", "Pulse Gameplay"),

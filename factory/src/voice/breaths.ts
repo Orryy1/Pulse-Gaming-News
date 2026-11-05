@@ -6,7 +6,7 @@
 import fs from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { FFMPEG } from "../lib/bin.ts";
+import { FFMPEG, audioFilterScriptArgs, installedFfmpegMajor } from "../lib/bin.ts";
 import type { Word } from "./elevenlabs.ts";
 
 const run = promisify(execFile);
@@ -171,8 +171,7 @@ export async function quietBreaths(
       "-y",
       "-i",
       file,
-      "-filter_script:a",
-      script,
+      ...audioFilterScriptArgs(script, installedFfmpegMajor()),
       "-ar",
       "44100",
       "-c:a",

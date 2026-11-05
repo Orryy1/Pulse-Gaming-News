@@ -4,7 +4,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { FFMPEG } from "../lib/bin.ts";
+import { FFMPEG, audioFilterScriptArgs, installedFfmpegMajor } from "../lib/bin.ts";
 
 const run = promisify(execFile);
 
@@ -148,8 +148,7 @@ export async function quietenBreaths(
       "-nostats",
       "-i",
       file,
-      "-filter_script:a",
-      script,
+      ...audioFilterScriptArgs(script, installedFfmpegMajor()),
       "-codec:a",
       "libmp3lame",
       "-q:a",

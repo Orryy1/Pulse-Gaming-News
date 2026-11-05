@@ -83,7 +83,12 @@ import {
   accessToken,
 } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
-import { publishPcSchedule } from "./pcschedule.ts";
+import {
+  lanRequestAllowed,
+  macReservationsDoc,
+  publishPcSchedule,
+} from "./pcschedule.ts";
+import { creditAlertDue } from "./voice/creditalert.ts";
 import { activeUploads } from "./youtube/upload.ts";
 import {
   allowRoutineLan,
@@ -194,6 +199,13 @@ export function createApp(
         String(req.headers["x-admin-key"] ?? url.searchParams.get("key") ?? ""),
         cfg.adminToken,
       );
+
+    if (url.pathname === "/orch/reservations.json") {
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify(macReservationsDoc(cfg, new Date()), null, 1));
+      return;
+    }
 
     if (url.pathname === "/health") {
       const [counts] = await db.query<Record<string, string>>(
@@ -1577,12 +1589,22 @@ async function main(): Promise<void> {
   startBraveFront(cfg.timezone);
   http
     .createServer((req, res) => {
+      if (
+        !lanRequestAllowed(
+          req.socket.remoteAddress ?? "",
+          new URL(req.url ?? "/", "http://local").pathname,
+        )
+      ) {
+        res.writeHead(404).end("Not found");
+        return;
+      }
       app(req, res).catch((err) => {
         log("error", "request failed", { error: errorMessage(err) });
         if (!res.headersSent) res.writeHead(500).end("error");
       });
     })
-    // Localhost only: the Cloudflare tunnel connects locally, so nothing else on the network needs in.
+    // Localhost by default: the Cloudflare tunnel connects locally, so nothing else on the network needs in. The Mac
+    // sets HOST=0.0.0.0 so the PC's orchestrator can read its reservations; the check above keeps everything else local.
     .listen(cfg.port, process.env.HOST || "127.0.0.1", () =>
       log("info", "listening", { port: cfg.port }),
     );
@@ -1926,6 +1948,24 @@ async function main(): Promise<void> {
       });
     });
   }, 10 * 60_000);
+  // ElevenLabs running out: an early warning, once a day while it is low (src/voice/creditalert.ts).
+  setInterval(() => {
+    void (async () => {
+      const text = creditAlertDue(
+        await services.creditPlan?.().catch(() => undefined),
+        {
+          lowCredits: cfg.elevenLabsLowCredits,
+          lowDays: cfg.elevenLabsLowDays,
+          reserve: cfg.elevenLabsReserve,
+        },
+        path.join(cfg.dataDir, "admin", "credit_alert.json"),
+        new Date().toISOString().slice(0, 10),
+      );
+      if (text) await services.notify({ content: text });
+    })().catch((err) =>
+      log("warn", "credit check failed", { error: errorMessage(err) }),
+    );
+  }, 30 * 60_000);
   // 21:30 local: the day in one message (what went live, TikTok drafts waiting, background news).
   setInterval(() => {
     void (async () => {

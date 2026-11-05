@@ -184,6 +184,40 @@ export async function checkYouTube(
   }
 }
 
+/** The filters that quietly go missing on a slim ffmpeg build (Homebrew's plain ffmpeg, 4 Nov 2026): the HDR tone-map for console clips above all. */
+export const NEEDED_FILTERS = ["zscale", "tonemap", "rubberband", "loudnorm"];
+
+/** The filters from NEEDED_FILTERS not in `ffmpeg -filters` (pure). */
+export function missingFilters(listing: string): string[] {
+  return NEEDED_FILTERS.filter(
+    (f) => !new RegExp(`^\\s*\\S+\\s+${f}\\s`, "m").test(listing),
+  );
+}
+
+async function checkFfmpegFilters(): Promise<Check> {
+  try {
+    const { stdout } = await run(FFMPEG, ["-hide_banner", "-filters"], {
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    const missing = missingFilters(stdout);
+    return {
+      name: "ffmpeg_filters",
+      ok: missing.length === 0,
+      critical: false,
+      detail: missing.length
+        ? `${FFMPEG} has no ${missing.join(", ")}: HDR console clips and some audio steps will fail or degrade. On the Mac use ffmpeg-full (FFMPEG_PATH).`
+        : "all present",
+    };
+  } catch (e) {
+    return {
+      name: "ffmpeg_filters",
+      ok: false,
+      critical: false,
+      detail: `could not list filters: ${errorMessage(e)}`,
+    };
+  }
+}
+
 async function checkLocalVoice(cfg: Config): Promise<Check> {
   try {
     const res = await fetchWithTimeout(`${cfg.localTtsUrl}/health`, {}, 5_000);
@@ -387,6 +421,7 @@ export async function runDoctor(
   const results = await Promise.all([
     checkAnthropic(),
     checkYouTube(cfg, refreshToken),
+    checkFfmpegFilters(),
     checkLocalVoice(cfg),
     checkElevenLabs(cfg),
     checkFfmpeg(),

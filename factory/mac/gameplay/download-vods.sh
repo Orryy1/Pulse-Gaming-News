@@ -1,8 +1,8 @@
 #!/bin/bash
 # The Mac's copy of C:\Claude\tinotv-vods\download-vods.ps1: new TinoTV Twitch past broadcasts into
-# ~/Videos/TinoTV VODs, skipped when the disk would drop under its floor, with the same phone notices. The PC
-# pulls each finished file and the Mac's copy then goes (src/macworker.ts pullGameplay), so the owner's archive
-# stays on the PC.
+# ~/Videos/TinoTV VODs, skipped when the disk would drop under its floor, with the same phone notices. With the
+# factory on the PC, the PC pulls each finished file and the Mac's copy then goes (src/macworker.ts pullGameplay).
+# With the factory on the Mac the files stay here and src/macgameplay.ts clears them by age and free space.
 set -u
 export PATH="/opt/homebrew/bin:$PATH"
 OUT="$HOME/Videos/TinoTV VODs"
@@ -29,5 +29,5 @@ yt-dlp "https://www.twitch.tv/tinotv/videos?filter=archives&sort=time" \
 new=$(( $(wc -l < "$HERE/downloaded.txt") - before ))
 echo "done: $new new VOD(s)"
 if [ "$new" -gt 0 ]; then
-  notify "TinoTV VODs saved" "$new new stream VOD(s) saved on the Mac mini; they come to Videos\\TinoTV VODs on the PC once scored."
+  notify "TinoTV VODs saved" "$new new stream VOD(s) saved on the Mac mini, ready to be cut into clips."
 fi

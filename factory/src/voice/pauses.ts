@@ -7,7 +7,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
-import { FFMPEG } from "../lib/bin.ts";
+import { FFMPEG, audioFilterScriptArgs, installedFfmpegMajor } from "../lib/bin.ts";
 import { loudness, SMOOTH_FRAME } from "./breaths.ts";
 
 /**
@@ -168,8 +168,7 @@ export async function cutAudio(file: string, cuts: Cut[]): Promise<void> {
       "-y",
       "-i",
       file,
-      "-filter_script:a",
-      script,
+      ...audioFilterScriptArgs(script, installedFfmpegMajor()),
       "-c:a",
       "libmp3lame",
       "-q:a",

@@ -62,6 +62,17 @@ export function longestCleanRun(
   return best;
 }
 
+/** The big words on one still, as the vertical crop would show them; none where there is no OCR. */
+export async function stillBigText(file: string): Promise<string[]> {
+  try {
+    const pages = await readText([file]);
+    const page = pages.get(file);
+    return page ? bigWordsInCrop(page) : [];
+  } catch {
+    return [];
+  }
+}
+
 export interface ClipTextResult {
   clean: boolean;
   words: string[];

@@ -277,6 +277,7 @@ export interface Config {
   shortTightScript: boolean; // fewer full stops and plainer words for a quicker read (SHORT_TIGHT_SCRIPT, off)
   shortArgumentShare: number; // 0-1, the share of news and Why Shorts written as one argument with no labelled take (SHORT_ARGUMENT_SHARE)
   shortMinWpm: number; // speed a Short's voice up to this many words a minute, 25% at most; 0 = as recorded. The owner's ear decides (SHORT_MIN_WPM, off)
+  shortCappedStills: number; // a publisher with a tight footage cap (Rockstar): this many lines' moments of its own trailer as stills, plus a pool of clean frames; 0 = off (SHORT_CAPPED_STILLS)
   shortBright: boolean; // lighter top and bottom fades and vignette, brightest art and footage first (SHORT_BRIGHT)
   shortLabelsClean: boolean; // no NEWS or CONFIRMED on our own work, no stat chip the line does not mention, no card repeating the caption (SHORT_LABELS_CLEAN)
   planSlateMax: number; // 0-1, the share of a long video that may sit on the empty slate before its render is stopped
@@ -983,6 +984,7 @@ export function loadConfig(): Config {
       Math.min(1, Number(str("SHORT_ARGUMENT_SHARE", "0.5"))),
     ),
     shortMinWpm: Math.max(0, int("SHORT_MIN_WPM", 0)),
+    shortCappedStills: Math.max(0, int("SHORT_CAPPED_STILLS", 6)),
     shortBright: bool("SHORT_BRIGHT", true),
     shortLabelsClean: bool("SHORT_LABELS_CLEAN", true),
     planSlateMax: Number(str("PLAN_SLATE_MAX", "0.08")) || 0.08,

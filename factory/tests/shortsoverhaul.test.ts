@@ -8,6 +8,8 @@ import { evergreenTitle } from "../src/editorial/seo.ts";
 import { scorePlan } from "../src/qa/rubric.ts";
 import { shortSampleTimes, VISION_PROMPT } from "../src/qa/vision.ts";
 import { fillCandidates } from "../src/assets/clipscore.ts";
+import { capFootage } from "../src/assets/footage.ts";
+import { numberVariant } from "../src/assets/igdb.ts";
 import { bigWordsInCrop, longestCleanRun } from "../src/assets/cliptext.ts";
 import type { Segment } from "../src/render/timeline.ts";
 import type { Word } from "../src/voice/elevenlabs.ts";
@@ -443,4 +445,23 @@ test("brighter art is chosen only when asked", () => {
   ];
   assert.equal(pickHero(images), 0);
   assert.equal(pickHero(images, true), 1);
+});
+
+test("a tight cap is spent to the second and never passed", () => {
+  const clips = [3.13, 4.17, 3.37, 4.4].map((durationSeconds) => ({ durationSeconds }));
+  const kept = capFootage(clips, 10, 3.4, true);
+  const total = kept.reduce((n, c) => n + c.durationSeconds, 0);
+  assert.ok(total <= 10.001 && total >= 9.9, String(total));
+  assert.equal(capFootage(clips, 10).length, 2);
+  const p = buildPlan(input({ clips: kept, footageFirst: true }));
+  const shown = p.shots
+    .filter((s) => s.media.type === "clip")
+    .reduce((n, s) => n + s.end - s.start, 0);
+  assert.ok(shown / 30 <= 10.2, String(shown / 30));
+});
+
+test("a game's number is tried both ways", () => {
+  assert.equal(numberVariant("Grand Theft Auto 6"), "Grand Theft Auto VI");
+  assert.equal(numberVariant("Grand Theft Auto VI"), "Grand Theft Auto 6");
+  assert.equal(numberVariant("Halo"), undefined);
 });

@@ -572,7 +572,7 @@ export interface Services {
     maxClips: number,
     hint?: string,
     story?: { text: string; after: Date },
-    fill?: { seconds?: number; textCheck?: boolean },
+    fill?: { seconds?: number; textCheck?: boolean; cappedStills?: number },
   ): Promise<OfficialMedia>;
   fetchStock(
     episodeDir: string,
@@ -5723,6 +5723,7 @@ async function gatherMedia(
                 s.cfg.shortFootageShare) /
               100,
           textCheck: s.cfg.shortClipTextCheck,
+          cappedStills: ranking ? 0 : s.cfg.shortCappedStills,
         }
       : undefined;
   const clipAssets =
@@ -5818,6 +5819,8 @@ async function gatherMedia(
         ? [...clipAssets, ...official.clips]
         : clipAssets,
     budget,
+    3.4,
+    s.cfg.shortFootageFirst,
   ).map((c) => ({
     file: c.file,
     sourceUrl: c.sourceUrl,

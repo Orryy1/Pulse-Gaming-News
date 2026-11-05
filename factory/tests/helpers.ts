@@ -59,6 +59,7 @@ export function testConfig(
     shortTightScript: false,
     shortArgumentShare: 0,
     shortMinWpm: 0,
+    shortCappedStills: 0,
     shortBright: false,
     shortLabelsClean: false,
     planSlateMax: 1,

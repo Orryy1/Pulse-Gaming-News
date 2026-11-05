@@ -10,6 +10,7 @@ import { runCapped } from "../lib/child.ts";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
 import { YTDLP_TEXT } from "../lib/bin.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
+import { stillBigText } from "./cliptext.ts";
 import { screenFrames } from "./localvision.ts";
 import type { VisualAsset } from "./steam.ts";
 import type { Llm } from "../editorial/llm.ts";
@@ -31,7 +32,7 @@ export const PUBLISHER_CHANNELS: PublisherRule[] = [
     match: /^rockstar games$/i,
     name: "Rockstar Games",
     minSubscribers: 1_000_000,
-    clipSeconds: 6,
+    clipSeconds: 10, // the same cap as ROCKSTAR_FOOTAGE_SECONDS (src/assets/footage.ts); this line said 6 until 5 Nov 2026
   },
   {
     match: /^nintendo( of america| uk| europe)?$/i,
@@ -715,7 +716,7 @@ export interface OfficialMediaOptions {
   /** A picture story: look first for the publisher's own video of it, uploaded since this date. */
   story?: { text: string; after: Date };
   /** Footage first on Shorts: see MatchClipsOptions. The publisher's cap still applies. */
-  fill?: { seconds?: number; textCheck?: boolean };
+  fill?: { seconds?: number; textCheck?: boolean; cappedStills?: number };
   /**
    * OFFICIAL_STILL_FRAMES: a stills-only publisher (clipSeconds 0, Nintendo) gives up to this many frames of its own
    * trailer as stills, matched to the lines like footage. No moving footage is used; 0 keeps only the thumbnail.
@@ -846,6 +847,9 @@ async function trailerStills(
   return out;
 }
 
+/** At or under this many seconds of footage, a publisher's trailer also gives stills (SHORT_CAPPED_STILLS). */
+export const TIGHT_CAP_SECONDS = 10;
+
 /**
  * Footage and a still for a game that is not on Steam: the publisher's own
  * trailer on YouTube, matched to the narration like a Steam trailer, under
@@ -943,6 +947,36 @@ export async function officialMedia(
   if (trailer.clipSeconds <= 0 && (o.stillFrames ?? 0) > 0 && o.targets.length) {
     out.stills.push(...(await trailerStills(o, trailer, url)));
     return out;
+  }
+  // A tight footage cap (Rockstar, 10 s) leaves most of a Short to stills, and the game's own trailer is the best
+  // source of them. A still is not footage: the moving seconds stay under the cap below.
+  if (
+    trailer.clipSeconds > 0 &&
+    trailer.clipSeconds <= TIGHT_CAP_SECONDS &&
+    (o.fill?.cappedStills ?? 0) > 0 &&
+    o.targets.length
+  ) {
+    const frames = await trailerStills(
+      { ...o, stillFrames: o.fill!.cappedStills },
+      trailer,
+      url,
+    );
+    for (const f of frames) {
+      if (o.fill?.textCheck) {
+        const words = await stillBigText(path.join(o.episodeDir, f.file));
+        if (words.length) {
+          log("info", "trailer frame dropped: big text on it", {
+            file: f.file,
+            words: words.slice(0, 6).join(" "),
+          });
+          await fs
+            .rm(path.join(o.episodeDir, f.file), { force: true })
+            .catch(() => undefined);
+          continue;
+        }
+      }
+      out.stills.push(f);
+    }
   }
   if (trailer.clipSeconds <= 0 || o.maxClips <= 0 || !o.targets.length)
     return out;

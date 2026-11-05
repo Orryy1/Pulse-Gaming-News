@@ -11,6 +11,8 @@ import {
 } from "../src/discovery/storysize.ts";
 import {
   bigCluster,
+  coveredHashes,
+  runEntryCovered,
   bigMadeToday,
   bumpFiller,
   fillerBumped,
@@ -599,4 +601,140 @@ test("the evening line: made, planned and missed side by side; nothing big says 
   );
   assert.equal(alertKind(quiet), "routine");
   assert.equal(alertKind(line), "big_story_missed");
+});
+
+// The launch run's two Why Shorts for 5 Nov against the real headlines (the second-Short gap, 5 Nov 2026).
+const runFile = JSON.parse(
+  fs.readFileSync(new URL("../launch_run.json", import.meta.url), "utf8"),
+);
+const ocarinaWhy = runFile.find((e: { title: string }) => /Best-Reviewed/.test(e.title));
+const gowWhy = runFile.find((e: { title: string }) => /Laufey/.test(e.title));
+const asEpisode = (e: typeof ocarinaWhy, status: string, created_at: string) =>
+  episode({
+    id: "why1",
+    headline: e.title,
+    status,
+    story_hash: `why:${e.title}`,
+    created_at,
+    story_json: {
+      headline: e.title,
+      gameHint: e.game,
+      why: { question: e.question, angle: e.angle },
+    },
+  });
+const THU = new Date("2026-11-05T07:00:00Z");
+const thuStories = sizeStories(sightings, THU, 36);
+const thu = (key: string) => {
+  const s = thuStories.find((x) => x.key === key);
+  assert.ok(s, `no story ${key}`);
+  return s;
+};
+
+test("both planned Whys hold their own stories back from the moment they are within a day", () => {
+  assert.ok(ocarinaWhy && gowWhy);
+  const v = judgeBigStories([thu("god-of-war|delay"), thu("zelda|acclaim")], cfg, ctx({ now: THU, run: runFile }));
+  assert.deepEqual(v.map((x) => x.action), ["planned", "planned"]);
+  // More than a day before the 18:30 slot it does not hold.
+  const early = judgeBigStories(
+    [find("god-of-war|delay")],
+    cfg,
+    ctx({ now: new Date("2026-11-04T17:30:00Z"), run: runFile }),
+  );
+  assert.equal(early[0]!.action, "make");
+  // Just past the slot, still within its grace, it holds; after that the story is free again.
+  const grace = judgeBigStories([thu("zelda|acclaim")], cfg, ctx({ now: new Date("2026-11-05T12:20:00Z"), run: runFile }));
+  assert.equal(grace[0]!.action, "planned");
+});
+
+test("every split of the two stories under another event's words stays covered once the Why exists, in progress or published", () => {
+  for (const status of ["selected", "scripted", "rendered", "awaiting_approval", "published"]) {
+    const eps = [
+      asEpisode(gowWhy, status, "2026-11-05T15:45:00Z"),
+      { ...asEpisode(ocarinaWhy, status, "2026-11-05T10:15:00Z"), id: "why2" },
+    ];
+    const now = new Date("2026-11-05T17:00:00Z");
+    const stories2 = sizeStories(sightings, now, 36);
+    for (const key of ["god-of-war|delay", "zelda|acclaim"]) {
+      const s = stories2.find((x) => x.key === key)!;
+      assert.equal(judgeBigStories([s], cfg, ctx({ now, episodes: eps }))[0]!.action, "made", `${key} ${status}`);
+    }
+  }
+});
+
+test("a Why that failed covers nothing: the story is free to be made", () => {
+  const now = new Date("2026-11-05T17:00:00Z");
+  const s = sizeStories(sightings, now, 36).find((x) => x.key === "god-of-war|delay")!;
+  assert.equal(
+    judgeBigStories([s], cfg, ctx({ now, episodes: [asEpisode(gowWhy, "failed", "2026-11-05T15:45:00Z")] }))[0]!.action,
+    "make",
+  );
+});
+
+test("other news on those games is still big: the Why on the reviews does not cover the Arkane-sized news of a sale or a reveal", () => {
+  const now = new Date("2026-11-05T17:00:00Z");
+  const zelda = sizeStories(sightings, now, 36).find((x) => x.key === "zelda|acclaim")!;
+  const sales = { ...zelda, key: "zelda|commercial", event: "commercial" as const, hashes: ["zz"], headline: "Ocarina of Time Remake Sells 3 Million in Three Days" };
+  const v = judgeBigStories([sales], cfg, ctx({ now, episodes: [asEpisode(ocarinaWhy, "published", "2026-11-05T10:15:00Z")] }));
+  assert.equal(v[0]!.action, "make");
+});
+
+const later = (title: string, source: string, n: number) => ({
+  title,
+  url: `https://x${n}.example/${n}`,
+  summary: "",
+  publishedAt: "2026-11-05T20:00:00Z",
+  source,
+  sourceKind: "outlet" as const,
+});
+
+test("the same delay reworded by more outlets is not a new development; a real one on the same story is", () => {
+  const now = new Date("2026-11-05T21:00:00Z");
+  const base = sizeStories(sightings, now, 36).find((x) => x.key === "god-of-war|delay")!;
+  const eps = [asEpisode(gowWhy, "published", "2026-11-05T15:45:00Z")];
+  const reworded = {
+    ...base,
+    items: [
+      later("God of War Laufey delayed three months to May 2027", "PC Gamer", 1),
+      later("God of War Laufey Pushed Back to May 2027", "Polygon", 2),
+      later("Sony delays God of War Laufey to May 2027", "Kotaku", 3),
+      ...base.items,
+    ],
+  };
+  assert.equal(judgeBigStories([reworded], cfg, ctx({ now, episodes: eps }))[0]!.action, "made");
+  const second = {
+    ...base,
+    items: [
+      later("God of War Laufey delayed again after Santa Monica studio walkout", "PC Gamer", 1),
+      later("Santa Monica walkout forces second God of War Laufey delay", "Polygon", 2),
+      later("Santa Monica walkout behind second God of War Laufey delay", "IGN", 3),
+      ...base.items,
+    ],
+  };
+  const v = judgeBigStories([second], cfg, ctx({ now, episodes: eps }))[0]!;
+  assert.equal(v.action, "make");
+  assert.equal(v.development, "why1");
+  assert.equal(v.story.articles, 3, "only the new articles go forward");
+  assert.match(v.story.headline, /walkout/i);
+  assert.match(bigCluster(v, now).hash, /:after-why1$/);
+});
+
+test("the other way round: a big Short already out makes the planned Why give way, only on the same story", () => {
+  const now = new Date("2026-11-05T15:00:00Z");
+  const made = episode({
+    headline: "God of War Laufey delayed",
+    created_at: "2026-11-04T18:00:00Z",
+    story_json: { headline: "God of War Laufey delayed", bigStory: { key: "god-of-war|delay", entity: "god-of-war", size: 111, event: "delay" } },
+  });
+  assert.ok(runEntryCovered(gowWhy, [made], now));
+  assert.equal(runEntryCovered(ocarinaWhy, [made], now), undefined);
+  assert.equal(runEntryCovered(gowWhy, [made], new Date("2026-11-07T15:00:00Z")), undefined, "not two days on");
+  assert.equal(runEntryCovered(gowWhy, [{ ...made, status: "failed" }], now), undefined);
+});
+
+test("sightings of made and planned stories are closed to the usual lanes, held ones are not", () => {
+  const gow = find("god-of-war|delay");
+  const base = { reason: "", attempt: 1 };
+  assert.ok(coveredHashes([{ ...base, story: gow, action: "planned" }]).has(gow.hashes[0]!));
+  assert.ok(coveredHashes([{ ...base, story: gow, action: "made" }]).has(gow.hashes[0]!));
+  assert.equal(coveredHashes([{ ...base, story: gow, action: "held" }]).size, 0);
 });

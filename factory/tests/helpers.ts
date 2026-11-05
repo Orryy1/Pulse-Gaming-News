@@ -176,6 +176,8 @@ export function testConfig(
     bigStoryPerDay: 3,
     bigStoryBumps: ["deals", "spare", "evergreen", "why"],
     dailyTargetShortsOnly: true,
+    launchCalendarFile: "",
+    chatterSources: [],
     claudeMonthlyCredit: 0,
     claudeCreditRenewDay: 1,
     claudeCreditWarnDays: 10,

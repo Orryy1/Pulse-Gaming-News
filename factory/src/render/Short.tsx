@@ -552,10 +552,6 @@ export const Short: React.FC<ShortProps> = (props) => {
           )}
         </Sequence>
       ))}
-<<<<<<< HEAD
-      <Scrim profile={hasPlate && !props.images.length ? "plate" : props.vivid ? "vivid" : "footage"} />
-      <Finish grainSrc={staticFile("grain.png")} vignette={props.vivid ? 0.25 : 0.55} />
-=======
       {scenes.map((x, k) => (
         <Sequence key={`scene${k}`} from={x.from} durationInFrames={x.to - x.from} layout="none">
           <CodeSceneView
@@ -566,9 +562,8 @@ export const Short: React.FC<ShortProps> = (props) => {
           />
         </Sequence>
       ))}
-      <Scrim profile={hasPlate && !props.images.length ? "plate" : "footage"} />
-      <Finish grainSrc={staticFile("grain.png")} />
->>>>>>> claude/code-scenes
+      <Scrim profile={hasPlate && !props.images.length ? "plate" : props.vivid ? "vivid" : "footage"} />
+      <Finish grainSrc={staticFile("grain.png")} vignette={props.vivid ? 0.25 : 0.55} />
 
       {/* The headline is fully rendered at frame 0 (the thumbnail) and returns, pixel-identical, for the loop.
           On the new-look Shorts it is a thumbnail-grade poster over the hero art (components/HookPoster.tsx). */}

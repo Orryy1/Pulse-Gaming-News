@@ -2,6 +2,10 @@
 // Each step reads its inputs from Postgres/disk and writes its outputs before
 // the status moves, so any step can crash and be retried safely.
 
+import { captureCtr, ctrCaptureDue, type ReachClient } from "./reach.ts";
+import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
+import { searchLine, searchTermsFor } from "./searchterms.ts";
+import type { renderShortThumb } from "./render/render.ts";
 import { firstComment } from "./social/firstcomment.ts";
 import { pollBlock, readPoll } from "./social/poll.ts";
 import {
@@ -222,6 +226,7 @@ import { screenFrames } from "./assets/localvision.ts";
 import { readRequests, requestsBlock } from "./social/requests.ts";
 import {
   buildTags,
+  tagChars,
   hashtags,
   keywordLead,
   pinnedComment,
@@ -580,6 +585,9 @@ export interface Services {
   renderLong(input: LongRenderInput): Promise<void>;
   /** Single frames of the long composition for the graphics check before the render (absent in tests). */
   renderLongStills?(input: LongStillsInput): Promise<void>;
+  renderShortThumb?: typeof renderShortThumb;
+  /** The Reporting API with this channel's login (src/reach.ts). */
+  reachClient?: () => ReachClient;
   renderCutdown?: typeof renderCutdown;
   normalise(input: string, output: string): Promise<void>;
   technicalQa(
@@ -9164,6 +9172,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   });
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
+  await designShortThumb(s, ep.id, dir, script, assets, plan.heroIndex);
 
   const tech = await s.technicalQa(
     final,
@@ -9766,6 +9775,7 @@ export function videoMetadata(
   const description = fitDescription(
     [
       keywordLead(script),
+      ...(ep.assets_json?.searchTerms?.length ? [searchLine(ep.assets_json.searchTerms)] : []),
       // A documentary's second line: the same "next" its end card shows (src/youtube/nextdoc.ts).
       nextLine(ep.assets_json?.nextDoc ?? undefined),
       "",
@@ -9817,7 +9827,13 @@ export function videoMetadata(
   return {
     title: polishTitle(script),
     description,
-    tags: buildTags(script),
+    tags: [
+      ...new Set([
+        ...buildTags(script).slice(0, 2),
+        ...(ep.assets_json?.searchTerms ?? []),
+        ...buildTags(script).slice(2),
+      ]),
+    ].filter((_, i, all) => tagChars(all.slice(0, i + 1)) <= 490),
     categoryId: "20",
     privacyStatus: privacy,
     publishAt: ep.publish_at
@@ -9828,6 +9844,33 @@ export function videoMetadata(
     containsSyntheticMedia: syntheticMedia,
     defaultLanguage: "en",
   };
+}
+
+/** Asks autocomplete once for this video's terms (src/searchterms.ts); no terms is fine, and the twin lane has its own. */
+async function addSearchTerms(s: Services, ep: Episode): Promise<void> {
+  const script = ep.script_json;
+  if (!s.cfg.searchTerms || !script || script.twin || !script.game_title) return;
+  if (ep.assets_json?.searchTerms) return;
+  const text = [
+    script.headline,
+    script.hook,
+    script.youtube?.title,
+    script.youtube?.description,
+    ...(script.beats ?? []).map((b) => b.narration),
+    ...(script.entries ?? []).map((e) => JSON.stringify(e)),
+  ].join(" ");
+  const terms = await searchTermsFor(
+    script.game_title,
+    text,
+    fetch,
+    script.youtube?.title ?? "",
+    [script.headline, script.hook, script.youtube?.title].join(" "),
+  ).catch(() => []);
+  ep.assets_json = { ...ep.assets_json!, searchTerms: terms };
+  await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+    ep.id,
+    JSON.stringify(ep.assets_json),
+  ]);
 }
 
 async function stepUpload(s: Services, ep: Episode): Promise<void> {
@@ -10010,6 +10053,7 @@ async function localizeMetadata(
   const langs = s.cfg.localizeLanguages.filter((l) => l.toLowerCase() !== "en");
   if (!langs.length || ep.lane === "twin") return;
   try {
+    await addSearchTerms(s, ep);
     const meta = videoMetadata(
       ep,
       s.cfg.youtubePrivacy,
@@ -10266,6 +10310,48 @@ async function queueAbTest(s: Services, ep: Episode): Promise<void> {
   } catch (err) {
     log("warn", "a/b test hand-off failed", {
       episode: ep.id,
+      error: errorMessage(err),
+    });
+  }
+}
+
+/**
+ * The search tile's thumbnail for a Short on the test's designed side (src/shortthumb.ts). Any trouble leaves the Short
+ * on its first frame, and it counts on that side of the test: a thumbnail can never stop a video.
+ */
+export async function designShortThumb(
+  s: Services,
+  id: string,
+  dir: string,
+  script: Script,
+  assets: NonNullable<Episode["assets_json"]>,
+  heroIndex: number | undefined,
+): Promise<void> {
+  const share = s.cfg.shortSearchThumbShare;
+  if (share <= 0 || !s.renderShortThumb) return;
+  assets.shortThumbArm = shortThumbArm(id, share);
+  if (assets.shortThumbArm !== "designed") return;
+  const words = thumbWords(script.youtube?.thumb_text);
+  const image = pickThumbImage(assets.images, heroIndex);
+  if (!words || !image) {
+    assets.shortThumbArm = "frame";
+    return;
+  }
+  try {
+    await s.renderShortThumb({
+      episodeDir: dir,
+      outFile: path.join(dir, "thumb_search.jpg"),
+      imageFile: image.file,
+      words,
+      label: script.is_rumour ? "REPORTED" : undefined,
+      gl: s.cfg.remotionGl,
+      browserExecutable: s.cfg.browserExecutable,
+    });
+    assets.shortThumb = "thumb_search.jpg";
+  } catch (err) {
+    assets.shortThumbArm = "frame";
+    log("warn", "search thumbnail failed", {
+      episode: id,
       error: errorMessage(err),
     });
   }
@@ -10739,6 +10825,15 @@ export async function tick(
       await reachAlert(s.db, s.now(), (m) => s.notify(m)).catch((err) =>
         log("warn", "reach alert failed", { error: errorMessage(err) }),
       );
+      // Click-through per video, once a day (src/reach.ts).
+      if (s.cfg.reachReport && s.reachClient && (await ctrCaptureDue(s.db, s.now()))) {
+        await logEvent(s.db, null, "reach_report_tick", {});
+        await captureCtr(
+          s.db,
+          s.reachClient(),
+          s.now(),
+        );
+      }
     }
     return { selected };
   });

@@ -668,6 +668,46 @@ export async function renderLongStills(input: LongStillsInput): Promise<void> {
 }
 
 /** A long video's thumbnails: stills of their own composition, needing only their pictures. */
+/** One Short's thumbnail for the search tile (src/shortthumb.ts), rendered where the factory runs. */
+export async function renderShortThumb(input: {
+  episodeDir: string;
+  outFile: string;
+  imageFile: string;
+  words: string;
+  label?: string;
+  gl?: LongRenderInput["gl"];
+  browserExecutable?: string;
+}): Promise<void> {
+  const serveUrl = await getBundle();
+  const files = await serveDir(input.episodeDir);
+  const browserExecutable = input.browserExecutable || undefined;
+  try {
+    const inputProps = {
+      imageSrc: `${files.url}/${webPath(input.imageFile)}`,
+      words: input.words,
+      label: input.label,
+    };
+    const still = await selectComposition({
+      serveUrl,
+      id: "PulseShortThumb",
+      inputProps,
+      browserExecutable,
+    });
+    await renderStill({
+      composition: still,
+      serveUrl,
+      output: input.outFile,
+      inputProps,
+      imageFormat: "jpeg",
+      jpegQuality: 88,
+      browserExecutable,
+      chromiumOptions: { gl: input.gl ?? "swangle" },
+    });
+  } finally {
+    await files.close();
+  }
+}
+
 export async function renderLongThumbs(input: LongThumbsInput): Promise<void> {
   const serveUrl = await getBundle();
   const files = await serveDir(input.episodeDir);

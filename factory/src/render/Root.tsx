@@ -3,6 +3,7 @@ import { Composition, Still } from "remotion";
 import { Short } from "./Short.tsx";
 import { FPS, WIDTH, HEIGHT, SAMPLE_PROPS, type ShortProps } from "./props.ts";
 import { Avatar, Banner, Thumb, SAMPLE_THUMB } from "./Brand.tsx";
+import { ShortSearchThumb, SHORT_THUMB_H, SHORT_THUMB_W } from "./ShortSearchThumb.tsx";
 import { Long, SAMPLE_LONG_PROPS, type LongProps } from "./Long.tsx";
 import { LONG_FPS, LONG_WIDTH, LONG_HEIGHT } from "./longplan.ts";
 import { Engage, SAMPLE_ENGAGE } from "./Engage.tsx";
@@ -199,6 +200,13 @@ export const RemotionRoot: React.FC = () => (
     {/* Channel brand stills: rendered by `npm run brand` into factory/brand/. */}
     <Still id="PulseBanner" component={Banner} width={2560} height={1440} />
     <Still id="PulseAvatar" component={Avatar} width={800} height={800} />
+    <Still
+      id="PulseShortThumb"
+      component={ShortSearchThumb as never}
+      width={SHORT_THUMB_W}
+      height={SHORT_THUMB_H}
+      defaultProps={{ imageSrc: "", words: "HOOK WORDS" } as never}
+    />
     {/* A timeline, not a Still: the motif thumbnail freezes a motif card part-way through its animation. */}
     <Composition
       id="PulseThumb"

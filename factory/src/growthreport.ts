@@ -4,6 +4,7 @@
 // and subscribers gained for each video, taken once from day four: src/analytics.ts), so a video counts in the week
 // its numbers arrived and shows its first days, not its whole life. Nothing is estimated: a format short of data says
 // so, and the call says so when no format has earned one. GROWTH_REPORT turns it on.
+import { ctrRows, packagingLines } from "./reach.ts";
 import { scoreboardLines, socialBoard } from "./social/scoreboard.ts";
 import type { Config } from "./config.ts";
 import type { Db } from "./db.ts";
@@ -197,7 +198,7 @@ export async function growthRows(db: Db): Promise<GrowthRow[]> {
 /** The Discord message. */
 export async function growthReport(
   db: Db,
-  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard">>,
+  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport">>,
   now: Date,
 ): Promise<DiscordMessage> {
   return {
@@ -206,6 +207,7 @@ export async function growthReport(
         title: `🌱 Pulse growth report, week to ${new Intl.DateTimeFormat("en-GB", { timeZone: cfg.timezone, day: "numeric", month: "short" }).format(now)}`,
         description: [
           ...growthLines(await growthRows(db), now),
+          ...(cfg.reachReport ? packagingLines(await ctrRows(db)) : []),
           ...(cfg.socialScoreboard
             ? scoreboardLines(await socialBoard(db, now))
             : []),

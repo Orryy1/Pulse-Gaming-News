@@ -146,6 +146,7 @@ import {
   scriptMeasures,
 } from "./editorial/longrules.ts";
 import { structureLine, structureSummary } from "./render/structure.ts";
+import { wholeLineFiller } from "./render/fillerplan.ts";
 import {
   longCraft,
   longCraftEvent,
@@ -378,6 +379,7 @@ import {
   clearOfEntrances,
   graphicChecks,
   graphicsNotice,
+  faultsByKind,
   badTextAlert,
   badTextMutes,
   judgeGraphics,
@@ -8325,6 +8327,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       clips: assets.clips ?? [],
       variant: variantOf(ep.id),
       sketches: s.cfg.illustrate,
+      pickedWords: !s.cfg.graphicsFit,
       check: episodeClipCheck(dir),
       now: s.now(),
       headline: script.headline,
@@ -8410,10 +8413,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     span: c.span,
   }));
   // A sentence's filler visual, read afresh each time: one the graphics check faulted is left out.
-  const fillerAt = (e: number, m: number) =>
-    s.cfg.fillers && !(assets.quietMoments ?? []).includes(`${e}:${m}`)
-      ? moments[e]?.[m]?.filler
-      : undefined;
+  const fillerAt = (e: number, m: number) => {
+    if (!s.cfg.fillers || (assets.quietMoments ?? []).includes(`${e}:${m}`))
+      return undefined;
+    const f = moments[e]?.[m]?.filler;
+    return f && s.cfg.graphicsFit
+      ? wholeLineFiller(f, moments[e]?.[m]?.emphasis)
+      : f;
+  };
   const makePlan = () =>
     buildLongPlan({
       segments,
@@ -9225,6 +9232,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     // Photos and portraits as instant prints, tape, pins, trays and screens; screenshots in the display
     // of their day (src/render/photoplan.ts).
     photoTreatments: s.cfg.photoTreatments,
+    // Graphics measure their text to fit (GRAPHICS_FIT).
+    graphicsFit: s.cfg.graphicsFit,
     // The documentary's sound craft and the narration's texture slices (src/render/soundfx.ts, voicefx.ts).
     soundCraft,
     voiceFxFiles,
@@ -9308,8 +9317,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           gl: s.cfg.remotionGl,
           browserExecutable: s.cfg.browserExecutable,
         });
-        const r = await judgeGraphics(items, (frames) =>
-          s.visionQa(frames, graphicsCtx),
+        const r = await judgeGraphics(
+          items,
+          (frames) => s.visionQa(frames, graphicsCtx),
+          { secondLook: s.cfg.graphicsSecondLook },
         );
         const muted = muteFaults(assets, r.faulted);
         assets.quietMoments = muted.quietMoments;
@@ -9337,10 +9348,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           JSON.stringify(assets),
         ]);
         const problems = r.problems.flatMap((p) => p.problems);
+        // What drew each fault, biggest first, for the alert and for ranking the causes later.
+        const byKind = faultsByKind(r.faulted, (e, m) => {
+          const mo = moments[e]?.[m];
+          return mo?.filler?.family
+            ? `${mo.filler.family} card`
+            : mo?.graphic?.kind;
+        });
         await logEvent(s.db, ep.id, "graphics_prepass", {
           checked: items.length,
           faulted: r.faulted,
           problems: r.problems,
+          byKind,
+          ...(r.cleared ? { cleared: r.cleared } : {}),
         });
         log(
           r.faulted.length ? "warn" : "info",
@@ -9353,6 +9373,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           items.length,
           r.faulted,
           problems,
+          byKind,
         );
         const bad = badTextMutes(problems);
         await s.notify(

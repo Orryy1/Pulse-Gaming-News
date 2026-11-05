@@ -143,6 +143,7 @@ import { inEra } from "./components/packs/types.ts";
 import { motifPictureOrder } from "./motifpictures.ts";
 import {
   captionHeld,
+  underFullScreen,
   sentenceSpan,
   type SentenceSpan,
   type SpanLook,
@@ -190,6 +191,7 @@ import { EndCard } from "./components/EndCard.tsx";
 import { coldOpenTiming, endCardTiming } from "./bookends.ts";
 import {
   callbackCues,
+  cueSide,
   chapterMarks,
   opensChapter,
   recallMedia,
@@ -322,6 +324,8 @@ export type LongProps = {
   sketchAnimation?: boolean;
   /** Photos and portraits arriving as prints, pins, tape, trays and screens (src/render/photoplan.ts); false keeps the static framed print and the full-bleed screenshot. Default true. */
   photoTreatments?: boolean;
+  /** GRAPHICS_FIT: graphics measure their text to fit (compare card, ./components/LongMoments.tsx); false keeps the old layout. Default true. */
+  graphicsFit?: boolean;
   /** The documentary's camera grammar (src/render/camera.ts, DOC_CAMERA): the techniques it may use. Absent: none. */
   camera?: CameraTechnique[];
   /** Previews only (data/smoke/camera.mts): print the camera's chosen moves to the browser console. */
@@ -3358,6 +3362,8 @@ export const Long: React.FC<LongProps> = (props) => {
       .filter((s) => s.media.type === "filler")
       .map((s) => ({ from: s.start, to: s.end }));
     const graphics: HudSpan[] = [];
+    // The small corner cards among them: what a recall card must stay clear of (structure.ts cueSide).
+    const corners: HudSpan[] = [];
     windows.forEach((w, k) => {
       const g = props.moments?.[w.entry]?.[w.moment]?.graphic;
       if (!g || !usefulGraphic(g) || fillerShots.has(`${w.entry}:${w.moment}`))
@@ -3369,9 +3375,15 @@ export const Long: React.FC<LongProps> = (props) => {
       )
         return;
       const sp = spanOf(k);
-      if (!sp.short) graphics.push({ from: sp.from, to: sp.from + sp.len });
+      if (sp.short) return;
+      graphics.push({ from: sp.from, to: sp.from + sp.len });
+      if (
+        ["stat", "date", "list", "compare", "score"].includes(g.kind) &&
+        !packFor.has(k)
+      )
+        corners.push({ from: sp.from, to: sp.from + sp.len });
     });
-    return { fillers, all: [...fillers, ...graphics] };
+    return { fillers, corners, all: [...fillers, ...graphics] };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan, windows, packFor, fillerShots, props.moments]);
   // Captions and pop-in pictures take their looks in turn (src/render/components/Captions.tsx, Accents.tsx).
@@ -4501,7 +4513,11 @@ export const Long: React.FC<LongProps> = (props) => {
           ) &&
           (m.graphic.kind === "none" ||
             m.graphic.kind === "stat" ||
-            m.graphic.kind === "date")
+            m.graphic.kind === "date") &&
+          !(
+            props.graphicsFit !== false &&
+            underFullScreen(windows, k, fps, spanLook)
+          )
             ? { name: person, role: roles.get(person.toLowerCase()) }
             : undefined;
         const showPop =
@@ -4570,7 +4586,11 @@ export const Long: React.FC<LongProps> = (props) => {
                 m.graphic.kind,
               ) ? (
               <>
-                <MomentGraphicCard g={m.graphic} len={len} />
+                <MomentGraphicCard
+                  g={m.graphic}
+                  len={len}
+                  fit={props.graphicsFit !== false}
+                />
                 {momentSounds.get(k) ? (
                   <Sfx name={momentSounds.get(k)!} volume={LEVEL.glintLong} />
                 ) : null}
@@ -4798,7 +4818,16 @@ export const Long: React.FC<LongProps> = (props) => {
           durationInFrames={c.len}
           layout="none"
         >
-          <CallbackCue text={c.text} len={c.len} media={c.media} />
+          <CallbackCue
+            text={c.text}
+            len={c.len}
+            media={c.media}
+            side={
+              props.graphicsFit === false
+                ? "right"
+                : cueSide(c, hudSpans.corners)
+            }
+          />
           <Sfx name={SFX.air[k % SFX.air.length]!} volume={LEVEL.airLong} />
         </Sequence>
       ))}

@@ -351,6 +351,20 @@ export function callbackCues(
   return out;
 }
 
+/**
+ * Which side a recall card takes. It sits at the top right, where a sentence's corner card (a stat, date, list,
+ * compare or score) also sits: on FFXIV (4 Nov 2026) "EARLIER" and its question landed on the rows of the
+ * "What is established" card. While a corner card is on screen, the recall crosses to the left.
+ */
+export function cueSide(
+  cue: { from: number; len: number },
+  corners: ReadonlyArray<{ from: number; to: number }>,
+): "left" | "right" {
+  return corners.some((c) => c.from < cue.from + cue.len && cue.from < c.to)
+    ? "left"
+    : "right";
+}
+
 /** The media the recall card shows: what was on screen at the frame, and how far into its shot (never the plate). */
 export function recallMedia(
   plan: Pick<LongPlan, "shots">,

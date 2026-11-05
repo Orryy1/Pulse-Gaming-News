@@ -187,9 +187,16 @@ export const checkFrame = (c: GraphicCheck, fps: number): number =>
 export async function judgeGraphics(
   items: Array<GraphicCheck & { file: string }>,
   visionQa: (frames: string[]) => Promise<VisionQa>,
+  /**
+   * GRAPHICS_SECOND_LOOK: a faulted graphic is looked at again before it is muted, and stays only if faulted
+   * twice. On 5 Nov 2026 eight Vice City stills faulted in one pass drew two faults when judged again unchanged.
+   */
+  opts: { secondLook?: boolean } = {},
 ): Promise<{
   faulted: string[];
   problems: Array<{ at: string[]; problems: string[] }>;
+  /** Faulted on the first look and cleared on the second. */
+  cleared?: string[];
 }> {
   const faulted: string[] = [];
   const problems: Array<{ at: string[]; problems: string[] }> = [];
@@ -204,7 +211,16 @@ export async function judgeGraphics(
     if (v.problems.length)
       problems.push({ at: batch.map((b) => b.what), problems: v.problems });
   }
-  return { faulted, problems };
+  if (!opts.secondLook || !faulted.length) return { faulted, problems };
+  const again = await judgeGraphics(
+    items.filter((i) => faulted.includes(i.what)),
+    visionQa,
+  );
+  return {
+    faulted: faulted.filter((k) => again.faulted.includes(k)),
+    problems: [...problems, ...again.problems],
+    cleared: faulted.filter((k) => !again.faulted.includes(k)),
+  };
 }
 
 /** The mute lists with the faulted keys added (no duplicates), and how many were new. */
@@ -243,6 +259,28 @@ export function passDecision(
   return passes < Math.max(0, maxPasses) ? "rerender" : "accept";
 }
 
+/**
+ * The faulted graphics counted by what drew them ("compare", "kinetic card", "chapter breather"), biggest first:
+ * the alert's reasons are cut short, and FFXIV's 22 faults in one card (4 Nov 2026) were hidden among 41.
+ * Stored on the event, so the next run's causes can be ranked without reading every line.
+ */
+export function faultsByKind(
+  faulted: string[],
+  kindOf: (entry: number, moment: number) => string | undefined,
+): Array<{ kind: string; n: number }> {
+  const counts = new Map<string, number>();
+  for (const f of faulted) {
+    const [e, m] = f.split(":").map(Number);
+    const kind = f.startsWith("break:")
+      ? "chapter breather"
+      : (kindOf(e!, m!) ?? "other");
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return [...counts]
+    .map(([kind, n]) => ({ kind, n }))
+    .sort((a, b) => b.n - a.n || a.kind.localeCompare(b.kind));
+}
+
 /** The owner's one-line notice for a pass of the check, in plain English. */
 /**
  * Muted graphics whose text the checker called placeholder or a working note. On the Final Fantasy XIV documentary
@@ -270,6 +308,7 @@ export function graphicsNotice(
   checked: number,
   faulted: string[],
   problems: string[],
+  byKind: Array<{ kind: string; n: number }> = [],
 ): string {
   const n = faulted.length;
   const what = faulted.filter((f) => !f.startsWith("break:")).length;
@@ -284,9 +323,15 @@ export function graphicsNotice(
     .slice(0, 3)
     .map((p) => p.replace(/^frames?\s+\d+[^:]*:\s*/i, ""))
     .join("; ");
+  const most = byKind.length
+    ? ` Most: ${byKind
+        .slice(0, 3)
+        .map((k) => `${k.n} ${k.kind}`)
+        .join(", ")}.`
+    : "";
   if (stage === "prepass")
     return n
-      ? `🎨 "${headline}": the graphics check looked at ${checked} graphics before the render and muted ${parts} (${why}). The video renders once, without them.`
+      ? `🎨 "${headline}": the graphics check looked at ${checked} graphics before the render and muted ${parts} (${why}).${most} The video renders once, without them.`
       : `🎨 "${headline}": the graphics check looked at ${checked} graphics before the render and found nothing wrong.`;
   if (stage === "rerender")
     return `🎨 "${headline}": the check of the finished video faulted ${parts} (${why}). They are muted and the video renders again, once.`;

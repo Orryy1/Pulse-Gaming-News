@@ -191,6 +191,21 @@ export function captionHeld(
     look.fillerStart(w.entry, w.moment) !== undefined
   )
     return false;
+  return underFullScreen(windows, k, fps, look);
+}
+
+/**
+ * Whether an earlier full-screen graphic of the same entry is still on screen when sentence `k` starts. A name
+ * tag waits for it like a caption does: "NAOKI YOSHIDA" landed across the recreated file of the sentence
+ * before (FFXIV 3:2, 4 Nov 2026), and the graphics check muted the file for it.
+ */
+export function underFullScreen(
+  windows: MomentWindow[],
+  k: number,
+  fps: number,
+  look: SpanLook,
+): boolean {
+  const w = windows[k]!;
   const from = fromOf(w, fps);
   for (let j = k - 1; j >= 0 && windows[j]!.entry === w.entry; j--) {
     const o = windows[j]!;

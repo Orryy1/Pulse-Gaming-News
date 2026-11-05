@@ -22,7 +22,7 @@ import { BODY, DISPLAY } from "./fonts.ts";
 import { SPRING } from "../motion.ts";
 import { displayText } from "../timeline.ts";
 import { TextureBackground, type BackgroundKind } from "./Backgrounds.tsx";
-import { fitSize, textWidth, LOWER_THIRD } from "./packs/fit.ts";
+import { fitBlock, fitSize, textWidth, LOWER_THIRD } from "./packs/fit.ts";
 
 export interface MomentGraphic {
   kind:
@@ -214,11 +214,84 @@ export function dateCardLayout(
   };
 }
 
+/** The room a compare row has between its label and its value (px). */
+const COMPARE_GAP = 28;
+/** The compare card's width while every row fits on one line, as it always was. */
+const COMPARE_W = 620;
+const COMPARE_ROW_SIZE = 28;
+
+/** What follows a value's figure, in lower case: "11 million" and "25 million" count the same thing. */
+const unitOf = (v: string) =>
+  v
+    .replace(/^[^\d]*[\d,.]+/, "")
+    .trim()
+    .toLowerCase();
+
+/**
+ * The compare card's layout, measured (GRAPHICS_FIT). The FFXIV documentary (4 Nov 2026) had 22 of its 41
+ * muted graphics here: label and value shared a line with no gap ("PlayersSubscription fees", "BeforeHiromichi
+ * Tanaka") and wrapped into each other, with a meaningless stub of a bar under a value that is not a figure.
+ *   - Every row on one line with a clear gap while they all fit (the card as it always looked).
+ *   - Otherwise every row stacks, the label over its value, at the largest size that keeps each value to two
+ *     lines, and the card takes its full width.
+ *   - Bars only when every value leads with a figure of the same kind ($59 and $69, 11 and 25 million): "$10
+ *     more" against "$69.99" or "1 billion" against "500 million" would draw a false comparison.
+ */
+export function compareLayout(rows: Array<{ label: string; value: string }>): {
+  stacked: boolean;
+  bars: boolean;
+  width: number;
+  labelSize: number;
+  valueSize: number;
+} {
+  const room = COMPARE_W - 64;
+  const oneLine = rows.every(
+    (r) =>
+      textWidth(r.label, "inter", COMPARE_ROW_SIZE) +
+        COMPARE_GAP +
+        textWidth(r.value, "inter", COMPARE_ROW_SIZE) <=
+      room,
+  );
+  const bars =
+    rows.length >= 2 &&
+    rows.every((r) => /^[^\w]*\d/.test(r.value)) &&
+    new Set(rows.map((r) => unitOf(r.value))).size === 1;
+  if (oneLine)
+    return {
+      stacked: false,
+      bars,
+      width: COMPARE_W,
+      labelSize: COMPARE_ROW_SIZE,
+      valueSize: COMPARE_ROW_SIZE,
+    };
+  const sizes = [32, 30, 28, 26, 24];
+  const valueSize =
+    sizes.find((size) =>
+      rows.every(
+        (r) =>
+          fitBlock(r.value, "inter", {
+            maxWidth: CARD_TEXT_W,
+            sizes: [size],
+            maxLines: 2,
+          }).fits,
+      ),
+    ) ?? 24;
+  return {
+    stacked: true,
+    bars,
+    width: CARD_W,
+    labelSize: Math.min(24, valueSize),
+    valueSize,
+  };
+}
+
 /** The fact a sentence states, drawn as a graphic at the top right. */
-export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
-  g: raw,
-  len,
-}) => {
+export const MomentGraphicCard: React.FC<{
+  g: MomentGraphic;
+  len: number;
+  /** GRAPHICS_FIT (default on): the compare card's measured layout; false keeps the old shared line. */
+  fit?: boolean;
+}> = ({ g: raw, len, fit = true }) => {
   const g = {
     ...raw,
     primary: displayText(raw.primary),
@@ -500,8 +573,9 @@ export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
     .filter((x): x is { label: string; value: string } => Boolean(x))
     .slice(0, 3);
   const max = Math.max(1, ...rows.map((r) => numberIn(r.value) || 0));
+  const fitted = fit ? compareLayout(rows) : undefined;
   return (
-    <div style={{ ...wrap, width: 620 }}>
+    <div style={{ ...wrap, width: fitted?.width ?? COMPARE_W }}>
       <div
         style={{
           fontFamily: BODY,
@@ -522,21 +596,62 @@ export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
           config: { damping: 22, stiffness: 90 },
         });
         const share = (numberIn(r.value) || 0) / max;
+        const showBar = fitted ? fitted.bars : true;
         return (
-          <div key={i} style={{ marginBottom: 14 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontFamily: BODY,
-                fontWeight: 800,
-                fontSize: 28,
-                color: COLOUR.paper,
-              }}
-            >
-              <span>{r.label}</span>
-              <span style={{ color: COLOUR.amber }}>{r.value}</span>
-            </div>
+          <div
+            key={i}
+            style={{
+              marginBottom:
+                i === rows.length - 1 && fitted && !showBar
+                  ? 0
+                  : fitted?.stacked
+                    ? 20
+                    : 14,
+              opacity: fitted ? Math.min(1, s * 1.5) : 1,
+            }}
+          >
+            {fitted?.stacked ? (
+              <div style={{ fontFamily: BODY, fontWeight: 800 }}>
+                <div
+                  style={{
+                    fontSize: fitted.labelSize,
+                    lineHeight: 1.2,
+                    color: COLOUR.paper,
+                    opacity: 0.72,
+                  }}
+                >
+                  {r.label}
+                </div>
+                <div
+                  style={{
+                    fontSize: fitted.valueSize,
+                    lineHeight: 1.18,
+                    color: COLOUR.amber,
+                    marginTop: 2,
+                    // No word left alone on a second line ("... from Final Fantasy" / "XI").
+                    textWrap: "balance",
+                  }}
+                >
+                  {r.value}
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: fitted ? COMPARE_GAP : undefined,
+                  fontFamily: BODY,
+                  fontWeight: 800,
+                  fontSize: 28,
+                  color: COLOUR.paper,
+                }}
+              >
+                <span>{r.label}</span>
+                <span style={{ color: COLOUR.amber }}>{r.value}</span>
+              </div>
+            )}
+            {showBar ? (
             <div
               style={{
                 height: 14,
@@ -554,6 +669,7 @@ export const MomentGraphicCard: React.FC<{ g: MomentGraphic; len: number }> = ({
                 }}
               />
             </div>
+            ) : null}
           </div>
         );
       })}

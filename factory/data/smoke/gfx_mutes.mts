@@ -6,6 +6,9 @@
 //
 // node --import tsx data/smoke/gfx_mutes.mts [--db data/smoke/dbcopy/db] [--ep ep_20261027_865858f8]
 //   [--keys 0:9,1:19 | --faulted | --passed N | --all] [--scale 0.28125] [--out <dir>] [--judge] [--tag before] [--old-timing]
+//   [--also compare,kinetic] [--skip-chapters 4,5] [--before-fit]
+// --also adds every check of those graphic kinds or filler families, to see that fixes did not break good ones.
+// --skip-chapters keeps --also out of chapters whose words are the fault (FFXIV's writer's notes), --before-fit draws with GRAPHICS_FIT off.
 // --faulted: every key the episode's last stills pre-pass muted (its graphics_prepass event).
 // --judge reads only the Claude key from the live factory/.env (never written) and records its spend in the copy.
 // The episode folder is only read (served over loopback); nothing is written to it or to the live database.
@@ -33,6 +36,8 @@ import {
 } from "../../src/pipeline.ts";
 import { coldOpenLine, coldOpenTiming } from "../../src/render/bookends.ts";
 import { graphicDrawsFor } from "../../src/render/gfxdraws.ts";
+import { wholeLineFiller } from "../../src/render/fillerplan.ts";
+import { loopsOfScript } from "../../src/editorial/documentary.ts";
 import { parseCameraSetting } from "../../src/render/camera.ts";
 import {
   checkFrame,
@@ -97,9 +102,18 @@ const images = (assets.images ?? []).map((i: any) => ({
   label: i.label,
   layers: i.layers,
 }));
+const fitOn = !args.includes("--before-fit");
 const moments = [...(script.entries ?? [])]
   .sort((a: any, b: any) => b.rank - a.rank)
-  .map((e: any) => e.moments ?? []);
+  .map((e: any) => e.moments ?? [])
+  // As the render step reads them with GRAPHICS_FIT on: a kinetic card from an older plan is made whole.
+  .map((ms: any[]) =>
+    ms.map((m: any) =>
+      m.filler && fitOn
+        ? { ...m, filler: wholeLineFiller(m.filler, m.emphasis) }
+        : m,
+    ),
+  );
 const clips = (assets.clips ?? []).map((c: any) => ({
   file: c.file,
   durationSeconds: c.durationSeconds,
@@ -200,6 +214,9 @@ const props = {
   eraBeds: true,
   sketchAnimation: true,
   photoTreatments: true,
+  graphicsFit: fitOn,
+  // The recall cards, as the render step passes them when the script has open loops.
+  loops: script.open_loops?.length ? loopsOfScript(script) : undefined,
   camera: parseCameraSetting("all"),
   debugGraphics: true,
 };
@@ -241,6 +258,19 @@ const wanted = args.includes("--all")
           .filter((k) => !(lastPrepass?.faulted ?? []).includes(k))
           .filter((_, i) => i % Number(flag("passed", "4")) === 0)
       : flag("keys").split(",").filter(Boolean);
+const skip = flag("skip-chapters").split(",").filter(Boolean);
+const also = flag("also").split(",").filter(Boolean);
+for (const c of checks) {
+  const [e, m] = c.what.split(":").map(Number);
+  const mo = moments[e!]?.[m!];
+  if (
+    mo &&
+    !skip.includes(String(e)) &&
+    (also.includes(mo.graphic?.kind) || also.includes(mo.filler?.family)) &&
+    !wanted.includes(c.what)
+  )
+    wanted.push(c.what);
+}
 const missing = wanted.filter((k) => !checks.some((c) => c.what === k));
 if (missing.length)
   console.log("not among this run's checks:", missing.join(" "));

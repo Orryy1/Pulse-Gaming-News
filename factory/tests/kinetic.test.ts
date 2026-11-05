@@ -32,7 +32,7 @@ const chapter = (sentences: string[]) => ({
   sentences,
 });
 const shown = (s: string, e?: string) => {
-  const k = keyWords(s, e)!;
+  const k = keyWords(s, e, false)!;
   return k.shown.map((i) => displayWord(k.tokens[i]!)).join(" ");
 };
 
@@ -57,7 +57,7 @@ test("a short punch line goes on screen whole, its punch word the hero", () => {
 
 test("never more than six words, and only the sentence's own words in its order", () => {
   const s = "Rockstar also offered the game to Microsoft as an Xbox exclusive.";
-  const k = keyWords(s)!;
+  const k = keyWords(s, undefined, false)!;
   assert.ok(k.shown.length <= MAX_SHOWN && k.shown.length >= 3);
   assert.deepEqual(
     [...k.shown].sort((a, b) => a - b),

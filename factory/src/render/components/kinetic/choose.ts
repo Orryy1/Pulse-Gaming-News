@@ -13,7 +13,7 @@ import {
   type FillerMoment,
   type Verdict,
 } from "./types.ts";
-import { keyWords, norm, tokens } from "./words.ts";
+import { canFinish, keyWords, norm, tokens } from "./words.ts";
 
 /** The kinetic styles, in registry order (./index.ts draws them). */
 export const KINETIC_STYLES = [
@@ -38,10 +38,18 @@ export interface KineticData {
   split?: number;
   /** The line's register, from the beat and the wording: it sets the pace and the weight. */
   tone: "punch" | "turn" | "quiet" | "reveal";
+  /**
+   * The scale style's giant word finishes the line instead of repeating a word from it (GRAPHICS_FIT): "NOT
+   * EVERYTHING" then a giant "SURVIVED". Vice City and FFXIV were faulted for a giant "WANT" under "DID THEY
+   * WANT YOU TO FIND", and "BETTER" twice over "THE SECOND WEEK WENT NO BETTER".
+   */
+  finish?: boolean;
 }
 
 /** Longer than this and a sentence is narration to hear, not type to read. */
 export const KINETIC_MAX_WORDS = 22;
+/** The most words a finishing scale card takes: FFXIV 1:16's nine wrapped down onto its giant "LAUNCH?". */
+export const SCALE_MAX_WORDS = 7;
 /** Below this the chooser declines. */
 export const KINETIC_MIN_CONFIDENCE = 0.5;
 
@@ -87,7 +95,10 @@ export function fittingStyles(d: KineticData): KineticStyle[] {
     // Five or six lines squeeze the block to a narrow column (first stills): three or four words only.
     if (s === "stack") return d.shown.length >= 3 && d.shown.length <= 4;
     if (s === "highlight") return d.shown.length >= 3;
-    if (s === "scale") return norm(d.tokens[d.hero] ?? "").length >= 3;
+    if (s === "scale")
+      return d.finish
+        ? d.shown.length <= SCALE_MAX_WORDS && canFinish(d.tokens, d.shown)
+        : norm(d.tokens[d.hero] ?? "").length >= 3;
     return true;
   });
 }
@@ -135,8 +146,14 @@ export function kineticVerdict(
     return {
       declined: `${n} words is narration to hear, not a line to set in type`,
     };
-  const kw = keyWords(sentence, moment.emphasis);
-  if (!kw) return { declined: "no word in it is worth setting" };
+  const complete = at.complete !== false;
+  const kw = keyWords(sentence, moment.emphasis, complete);
+  if (!kw)
+    return {
+      declined: complete
+        ? "it is too long to set whole, and a pick of its words would not read as a sentence"
+        : "no word in it is worth setting",
+    };
 
   const beat = moment.beat && moment.beat !== "none" ? moment.beat : undefined;
   const why: string[] = [];
@@ -198,6 +215,7 @@ export function kineticVerdict(
     hero: kw.hero,
     split: splitPoint(kw.tokens, kw.shown),
     tone,
+    ...(complete ? { finish: true } : {}),
   };
   const style = pickStyle(data, (at.seed ?? 0) + Math.max(0, idx), at.previous);
   return {
@@ -208,6 +226,33 @@ export function kineticVerdict(
       reason: `kinetic type: ${why.join(", ")}`,
       data,
     },
+  };
+}
+
+/**
+ * A card chosen before GRAPHICS_FIT brought up to it, for a plan already written: the same sentence as a
+ * complete thought, in the same style when that style can draw it, else in "land", which can draw any line.
+ * Undefined when the sentence has no complete thought short enough, and the line goes back to its pictures.
+ */
+export function completeCard(
+  d: KineticData,
+  style: string,
+  emphasis?: string,
+): { card: KineticData; style: string } | undefined {
+  if (d.finish) return { card: d, style };
+  const kw = keyWords(d.sentence, emphasis, true);
+  if (!kw) return undefined;
+  const card: KineticData = {
+    ...d,
+    tokens: kw.tokens,
+    shown: kw.shown,
+    hero: kw.hero,
+    split: splitPoint(kw.tokens, kw.shown),
+    finish: true,
+  };
+  return {
+    card,
+    style: (fittingStyles(card) as string[]).includes(style) ? style : "land",
   };
 }
 

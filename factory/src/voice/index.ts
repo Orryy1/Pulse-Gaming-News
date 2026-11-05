@@ -53,15 +53,10 @@ export function paceFactor(words: number, seconds: number, minWpm: number): numb
   return Math.min(1.25, (minWpm + 3) / wpm);
 }
 
-/** Plays the file faster without changing its pitch: Rubber Band (the cleaner stretcher, the owner's pick of 5 Nov 2026), plain atempo when it is missing. */
+/** Plays the file faster without changing its pitch (atempo: the owner preferred it to Rubber Band by ear, 5 Nov 2026). */
 export async function speedUp(file: string, factor: number): Promise<void> {
   const tmp = `${file}.paced.mp3`;
-  const enc = ["-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", tmp];
-  try {
-    await run(FFMPEG, ["-loglevel", "error", "-y", "-i", file, "-af", `rubberband=tempo=${factor.toFixed(4)}:pitchq=quality:formant=preserved`, ...enc]);
-  } catch {
-    await run(FFMPEG, ["-loglevel", "error", "-y", "-i", file, "-af", `atempo=${factor.toFixed(4)}`, ...enc]);
-  }
+  await run(FFMPEG, ["-loglevel", "error", "-y", "-i", file, "-af", `atempo=${factor.toFixed(4)}`, "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", tmp]);
   await fs.rename(tmp, file);
 }
 

@@ -6057,7 +6057,12 @@ async function gatherMedia(
         return parts.map((sentence, k) => ({
           key: `${t.key}#${k}`,
           // The writer's keywords describe the whole line; a clause of it asks for what it says itself.
-          show: parts.length > 1 ? "exactly what this clause says" : [t.want, ...t.keywords].join(", "),
+          show:
+            t.key === "hook"
+              ? "the most striking picture of the main character: large in the frame, face visible, easy to read on a phone"
+              : parts.length > 1
+                ? "exactly what this clause says"
+                : [t.want, ...t.keywords].join(", "),
           sentence,
         }));
       });
@@ -6079,6 +6084,7 @@ async function gatherMedia(
         a.label = p.label;
         const [line, clause] = p.key.split("#");
         order.set(a, targets.findIndex((t) => t.key === p.key));
+        a.forWords = targets.find((t) => t.key === p.key)?.sentence;
         if (line === "hook") {
           a.role = "hook";
           a.beatIndex = undefined;
@@ -6486,6 +6492,7 @@ async function gatherMedia(
       ...(wordy.has(a.file) ? { wordy: true } : {}),
       ...(a.then ? { then: true } : {}),
       ...(a.focusX !== undefined ? { focusX: a.focusX } : {}),
+      ...(a.forWords ? { forWords: a.forWords } : {}),
       ...(a.role ? { role: a.role } : {}),
     });
   }
@@ -9347,6 +9354,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       luma: i.luma,
       frame: i.frame,
       then: i.then,
+      forWords: i.forWords,
+      role: i.role,
     })),
     clips: (assets.clips ?? []).map((c) => ({
       durationSeconds: c.durationSeconds,
@@ -9442,6 +9451,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           luma: i.luma,
           frame: i.frame,
           then: i.then,
+          forWords: i.forWords,
+          role: i.role,
         })),
         clips: (assets.clips ?? []).map((c) => ({
           durationSeconds: c.durationSeconds,

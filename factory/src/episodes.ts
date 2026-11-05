@@ -112,6 +112,7 @@ export interface EpisodeAssets {
     frame?: boolean; // a trailer frame, a last-resort still
     then?: boolean;
     focusX?: number;
+    forWords?: string;
     role?: "hook";
     layers?: { bg: string; mid: string; fg: string; fgx?: number }; // 2.5D depth layers (src/render/parallax.ts)
   }>; // wordy: the local screen saw menu or HUD text on it

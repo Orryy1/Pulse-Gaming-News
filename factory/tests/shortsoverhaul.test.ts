@@ -10,7 +10,7 @@ import { shortSampleTimes, VISION_PROMPT } from "../src/qa/vision.ts";
 import { fillCandidates } from "../src/assets/clipscore.ts";
 import { capFootage } from "../src/assets/footage.ts";
 import { numberVariant } from "../src/assets/igdb.ts";
-import { estimatePlateShare, framesNeeded } from "../src/qa/mediarich.ts";
+import { framesNeeded } from "../src/qa/mediarich.ts";
 import { bigWordsInCrop, longestCleanRun } from "../src/assets/cliptext.ts";
 import type { Segment } from "../src/render/timeline.ts";
 import type { Word } from "../src/voice/elevenlabs.ts";
@@ -481,12 +481,6 @@ test("trailer frames only fill what published art leaves blank, under the ceilin
   assert.equal(framesNeeded(47, 10, 1, 6), 6);
   assert.equal(framesNeeded(47, 10, 5, 6), 3);
   assert.equal(framesNeeded(47, 10, 1, 0), 0);
-});
-
-test("the plate estimate reads the two real failures", () => {
-  assert.ok(Math.abs(estimatePlateShare(35, 3.5, 1) - 0.68) < 0.02);
-  assert.ok(Math.abs(estimatePlateShare(47.5, 3.1, 1) - 0.77) < 0.02);
-  assert.equal(estimatePlateShare(47, 10, 9), 0);
 });
 
 test("a trailer frame comes last, once, never twice in a row and never as the hero", () => {

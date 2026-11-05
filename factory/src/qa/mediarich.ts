@@ -131,17 +131,3 @@ export function framesNeeded(
   );
   return Math.min(ceiling, Math.ceil(blank / STILL_CARRIES));
 }
-
-/**
- * Before the voice: the share of a Short that would sit on the empty plate with this media. Footage shows once, and a
- * still can be stretched to three shots of 2.6 s before the planner gives up. On the two real cases it reads 68% and
- * 77% where the plans gave 65% (srWWslqVZp4) and 71% (ep_20261105_d8d0e098).
- */
-export function estimatePlateShare(
-  narrationSeconds: number,
-  footageSeconds: number,
-  stills: number,
-): number {
-  if (narrationSeconds <= 0) return 0;
-  return Math.max(0, 1 - (footageSeconds + stills * 3 * 2.6) / narrationSeconds);
-}

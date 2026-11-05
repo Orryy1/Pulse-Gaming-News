@@ -257,10 +257,7 @@ import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
 import { blurPlate, meanLuma } from "./assets/plates.ts";
 import { TIGHT_CAP_SECONDS } from "./assets/officialTrailer.ts";
-import {
-  estimatePlateShare,
-  framesNeeded,
-} from "./qa/mediarich.ts";
+import { framesNeeded } from "./qa/mediarich.ts";
 import {
   argumentArm,
   cardFigureProblems,
@@ -5355,15 +5352,56 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     const limit = ep.story_json.bigStory
       ? Math.max(s.cfg.shortPlateMax, s.cfg.shortPlateMaxBig)
       : s.cfg.shortPlateMax;
-    const ranked = Boolean(ep.script_json?.entries?.length);
-    const estimate = (m: typeof media) =>
-      estimatePlateShare(
-        estSeconds,
-        (m.clips ?? []).reduce((n, c) => n + c.durationSeconds, 0),
-        (m.images ?? []).length,
-      );
+    // The real planner on evenly spaced stand-in word timings: what the render step will decide, before the credit.
+    const estimate = (m: typeof media): number => {
+      try {
+        const script = ep.script_json!;
+        const toks = narrationOf(script).split(/\s+/).filter(Boolean);
+        const per = estSeconds / Math.max(1, toks.length);
+        const words = toks.map((text, i) => ({
+          text,
+          start: i * per,
+          end: i * per + per * 0.85,
+        }));
+        const duration = estSeconds + TAIL_SECONDS;
+        const plan = buildPlan({
+          segments: buildSegments(segmentInputs(script, false), words, duration),
+          words,
+          durationSeconds: duration,
+          images: (m.images ?? []).map((i) => ({
+            kind: i.kind,
+            aspect: i.aspect,
+            beatIndex: i.beatIndex,
+            wordy: i.wordy,
+            frame: i.frame,
+          })),
+          clips: (m.clips ?? []).map((c) => ({
+            durationSeconds: c.durationSeconds,
+            motion: c.motion,
+            luma: c.luma,
+            beatIndex: c.beatIndex,
+            role: c.role,
+          })),
+          storyType: script.is_rumour ? "rumour" : script.story_type,
+          isRumour: script.is_rumour,
+          attribution: script.attribution,
+          variant: variantOf(ep.id),
+          openOnClip: s.cfg.openOnMotion,
+          footageFirst: s.cfg.shortFootageFirst,
+        });
+        return (
+          plan.shots
+            .filter((x) => x.media.type === "plate")
+            .reduce((n, x) => n + x.end - x.start, 0) / plan.totalFrames
+        );
+      } catch (err) {
+        // A check that cannot run never stops a Short: the render step's gate still stands.
+        log("warn", "media estimate failed", { error: errorMessage(err) });
+        return 0;
+      }
+    };
     let share = estimate(media);
-    if (!ranked && share > limit) {
+    if (share > limit) {
       Object.assign(media, await gatherMedia(s, probe, dir, true), { rich: true });
       share = estimate(media);
     }
@@ -5373,7 +5411,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       plateEstimate: Math.round(share * 100) / 100,
       limit,
     });
-    if (!ranked && share > limit) {
+    if (share > limit) {
       const why = `about ${Math.round(share * 100)}% of the Short would be an empty panel`;
       await markSeen(s.db, ep.story_hash, ep.story_json.headline, "rejected", why);
       await transition(s.db, ep.id, "scripted", "rejected", {

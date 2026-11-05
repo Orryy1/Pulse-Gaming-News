@@ -33,6 +33,8 @@ export function testConfig(
   overrides: Partial<Config> = {},
 ): Config {
   return {
+    officialStillFrames: 0,
+    shortVivid: false,
     writerNotesGuard: true,
     firstCommentQuestion: false,
     firstCommentCheck: false,

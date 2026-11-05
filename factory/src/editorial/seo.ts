@@ -454,17 +454,18 @@ export function pinnedComment(script: Script): string {
   if (script.evergreen_format === "release_radar")
     return `Our pick: ${take}. Which one are you picking up this week?`;
   if (script.evergreen_format && /achievements$/.test(script.evergreen_format))
-    return `Our pick for the real test: ${take}. Which of these have you unlocked? Be honest.`;
+    return `Which of these have you unlocked? Be honest.`;
   if (script.evergreen_format === "steam_climbers")
-    return `Our pick: ${take}. Which of these are you playing right now?`;
+    return `Which of these are you playing right now?`;
   if (script.evergreen_format === "steam_deals")
     return `Our pick: ${take}. Prices are Steam's at the time we checked and can change. Which one are you grabbing?`;
   if (script.evergreen_format === "weekly_recap")
-    return `Which story was the biggest one for you this week? ${lead} ${take}.`;
+    return `Which story was the biggest one for you this week?`;
   if (script.entries?.length && script.runtime === "long")
     return `Our number one: ${take}. Too high, too low? Name yours below, and tell us which series we should rank next. The most-asked ones go to the top of our list.`;
+  // The comment is up from the first second, and a ranking keeps number one for its turn (src/editorial/spoilers.ts).
   if (script.entries?.length)
-    return `Our pick: ${take}. Which ${game} game would you move up or down the list? Every pick is explained in the video.`;
+    return `Which ${game} game would you move up or down the list? Every pick is explained in the video.`;
   const q =
     script.story_type === "explainer"
       ? `Do you buy that answer, or is there a better one?`

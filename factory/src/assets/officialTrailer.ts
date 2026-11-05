@@ -10,6 +10,7 @@ import { runCapped } from "../lib/child.ts";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
 import { YTDLP_TEXT } from "../lib/bin.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
+import { screenFrames } from "./localvision.ts";
 import type { VisualAsset } from "./steam.ts";
 import type { Llm } from "../editorial/llm.ts";
 
@@ -587,10 +588,12 @@ export async function downloadTrailer(
   dest: string,
   ytdlp = "yt-dlp",
   retry = true,
+  /** Above 1080: for stills only, any codec, since nothing plays it back. */
+  maxHeight = 1080,
 ): Promise<number> {
   await fs.mkdir(path.dirname(dest), { recursive: true });
   try {
-    await downloadOnce(videoId, dest, ytdlp);
+    await downloadOnce(videoId, dest, ytdlp, maxHeight);
   } catch (err) {
     // A 403 or a signature failure means YouTube moved and yt-dlp is behind: update once and try again.
     if (
@@ -604,7 +607,7 @@ export async function downloadTrailer(
         error: errorMessage(err).split("\n").pop(),
       });
       await run(ytdlp, ["-U"], { timeout: 120_000 }).catch(() => undefined);
-      return downloadTrailer(videoId, dest, ytdlp, false);
+      return downloadTrailer(videoId, dest, ytdlp, false, maxHeight);
     }
     throw err;
   }
@@ -629,6 +632,7 @@ async function downloadOnce(
   videoId: string,
   dest: string,
   ytdlp: string,
+  maxHeight = 1080,
 ): Promise<void> {
   const target = /^https?:/.test(videoId)
     ? videoId
@@ -639,14 +643,16 @@ async function downloadOnce(
       "--no-playlist",
       "--no-warnings",
       "-f",
-      "bv*[height<=1080][ext=mp4][vcodec^=avc1]/bv*[height<=1080][ext=mp4]/b[height<=1080][ext=mp4]/b",
+      maxHeight > 1080
+        ? `bv*[height<=${maxHeight}][vcodec^=vp9]/bv*[height<=${maxHeight}][vcodec^=vp09]/bv*[height<=1080][ext=mp4]/b`
+        : "bv*[height<=1080][ext=mp4][vcodec^=avc1]/bv*[height<=1080][ext=mp4]/b[height<=1080][ext=mp4]/b",
       "--merge-output-format",
       "mp4",
       "-o",
       dest,
       target,
     ],
-    { timeout: 180_000, maxBuffer: 8 * 1024 * 1024 },
+    { timeout: maxHeight > 1080 ? 600_000 : 180_000, maxBuffer: 8 * 1024 * 1024 },
   );
 }
 
@@ -708,6 +714,134 @@ export interface OfficialMediaOptions {
   hint?: string;
   /** A picture story: look first for the publisher's own video of it, uploaded since this date. */
   story?: { text: string; after: Date };
+  /**
+   * OFFICIAL_STILL_FRAMES: a stills-only publisher (clipSeconds 0, Nintendo) gives up to this many frames of its own
+   * trailer as stills, matched to the lines like footage. No moving footage is used; 0 keeps only the thumbnail.
+   */
+  stillFrames?: number;
+}
+
+/** The sharpest of a few frames across a stretch, largest JPEG first (fine detail costs bytes): at most `take`, kept apart. */
+async function sharpestFrames(
+  source: string,
+  from: number,
+  seconds: number,
+  take: number,
+  scratch: string,
+): Promise<number[]> {
+  const samples = 8;
+  const found: Array<{ at: number; bytes: number }> = [];
+  await fs.mkdir(scratch, { recursive: true });
+  for (let i = 0; i < samples; i++) {
+    const at = from + (seconds * (i + 0.5)) / samples;
+    const file = path.join(scratch, `s${i}.jpg`);
+    await run(
+      "ffmpeg",
+      ["-y", "-ss", at.toFixed(2), "-i", source, "-frames:v", "1", "-vf", "scale=-2:720", "-q:v", "3", file],
+      { timeout: 60_000 },
+    );
+    const st = await fs.stat(file).catch(() => undefined);
+    if (st) found.push({ at, bytes: st.size });
+  }
+  const out: number[] = [];
+  for (const f of found.sort((x, y) => y.bytes - x.bytes))
+    if (out.length < take && out.every((o) => Math.abs(o - f.at) >= seconds / 4))
+      out.push(f.at);
+  return out;
+}
+
+/**
+ * Frames of a stills-only publisher's trailer at its full resolution: the moment chosen for each line (the sharpest
+ * two of each, tagged with that line), then a pool of clean frames from across the trailer for the other shots.
+ */
+async function trailerStills(
+  o: OfficialMediaOptions,
+  trailer: { videoId: string; title: string; channelTitle: string },
+  url: string,
+): Promise<VisualAsset[]> {
+  const work = path.join(o.episodeDir, "trailers");
+  const file = path.join(work, "official.mp4");
+  const keep = path.join(o.episodeDir, "stillsource.video");
+  const scratch = path.join(o.episodeDir, "stillscratch");
+  const out: VisualAsset[] = [];
+  const grab = async (at: number, name: string) => {
+    const still = path.join("assets", name);
+    await run(
+      "ffmpeg",
+      ["-y", "-ss", at.toFixed(2), "-i", keep, "-frames:v", "1", "-q:v", "2", path.join(o.episodeDir, still)],
+      { timeout: 120_000 },
+    );
+    return still;
+  };
+  try {
+    const total = await downloadTrailer(trailer.videoId, file, o.ytdlp, true, 2160);
+    await fs.copyFile(file, keep);
+    const moments = await matchClips({
+      trailers: [{ file, name: trailer.title, url, total: total || 120 }],
+      episodeDir: o.episodeDir,
+      targets: o.targets,
+      maxClips: o.stillFrames!,
+      llm: o.llm,
+      prefix: "officialstill",
+      describe: (t, seconds, at) =>
+        `Frame of official trailer "${t.name}" from the ${trailer.channelTitle} YouTube channel (${url}), at ${at.toFixed(1)}s`,
+    });
+    const used: number[] = [];
+    for (const [k, m] of moments.entries()) {
+      const seconds = m.durationSeconds ?? 2;
+      const ats = await sharpestFrames(keep, m.startSeconds ?? 0, seconds, 2, scratch);
+      for (const [j, at] of ats.entries()) {
+        used.push(at);
+        out.push({
+          kind: "screenshot",
+          file: await grab(at, `official_frame_${k}_${j}.jpg`),
+          sourceUrl: url,
+          provenance: m.provenance,
+          beatIndex: m.beatIndex,
+          role: m.role,
+          label: m.label,
+          reason: m.reason,
+        });
+      }
+      await fs.rm(path.join(o.episodeDir, m.file), { force: true });
+    }
+    // The pool: one look every few seconds, clean of on-screen text, each at least 6 s from a frame already taken.
+    const span = total || 120;
+    const looks = Math.min(36, Math.floor(span / 4));
+    const pool: Array<{ at: number; file: string }> = [];
+    await fs.mkdir(scratch, { recursive: true });
+    for (let i = 0; i < looks; i++) {
+      const at = (span * (i + 0.5)) / looks;
+      if (used.some((u) => Math.abs(u - at) < 6)) continue;
+      const small = path.join(scratch, `p${i}.jpg`);
+      await run(
+        "ffmpeg",
+        ["-y", "-ss", at.toFixed(2), "-i", keep, "-frames:v", "1", "-vf", "scale=-2:540", "-q:v", "4", small],
+        { timeout: 60_000 },
+      ).catch(() => undefined);
+      const st = await fs.stat(small).catch(() => undefined);
+      if (st && st.size > 25_000) pool.push({ at, file: small });
+    }
+    const flags = await screenFrames(pool.map((p) => p.file)).catch(() => []);
+    const clean = pool.filter((_, i) => !flags[i]?.text && !flags[i]?.webcam && !flags[i]?.gore);
+    const step = Math.max(1, Math.floor(clean.length / 12));
+    for (const [k, p] of clean.filter((_, i) => i % step === 0).slice(0, 12).entries())
+      out.push({
+        kind: "screenshot",
+        file: await grab(p.at, `official_pool_${k}.jpg`),
+        sourceUrl: url,
+        provenance: `Frame of official trailer "${trailer.title}" from the ${trailer.channelTitle} YouTube channel (${url}), at ${p.at.toFixed(1)}s`,
+      });
+  } catch (err) {
+    log("warn", "official trailer stills failed", {
+      game: o.gameTitle,
+      error: errorMessage(err),
+    });
+  }
+  await fs.rm(work, { recursive: true, force: true });
+  await fs.rm(scratch, { recursive: true, force: true });
+  await fs.rm(keep, { force: true });
+  return out;
 }
 
 /**
@@ -803,6 +937,10 @@ export async function officialMedia(
       sourceUrl: url,
       provenance: `Official trailer thumbnail "${trailer.title}" from the ${trailer.channelTitle} YouTube channel (${url})`,
     });
+  }
+  if (trailer.clipSeconds <= 0 && (o.stillFrames ?? 0) > 0 && o.targets.length) {
+    out.stills.push(...(await trailerStills(o, trailer, url)));
+    return out;
   }
   if (trailer.clipSeconds <= 0 || o.maxClips <= 0 || !o.targets.length)
     return out;

@@ -421,6 +421,7 @@ export function createServices(db: Db, cfg: Config): Services {
         ytdlp: cfg.ytdlpPath,
         hint,
         story,
+        stillFrames: cfg.officialStillFrames,
         quotaOk: async () => {
           const now = new Date();
           if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay)

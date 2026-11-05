@@ -77,7 +77,7 @@ Structure:
    - "timeline" for a delay or date change: primary is a 2-5 word phrase, date_from is the old date and date_to the new date, both ISO (YYYY-MM or YYYY-MM-DD).
    - "countdown" for a confirmed release date: primary is the date as spoken, date_to is the ISO date.
    - "price" for a price: primary is the US dollar price exactly as written (e.g. $69.99) when the sources or Steam facts give one, else the price as given; was is the old price in the same currency if the story gives one; region is the platform or "US"; items lists the same price in the other currencies (£ and €) only when the sources or Steam facts state them. Speak the US price in the narration.
-   - "score" for a review score or rating out of 100: primary is the score as written, value_a the number 0-100, items up to 3 outlet names.
+   - "score" for a review score or rating out of 100: primary is the score as written, value_a the number 0-100, secondary says whose score it is, items up to 3 outlets that themselves gave exactly that score. An aggregate (Metacritic, OpenCritic) has empty items: critics who gave a 5/5 or a 9/10 did not give it a 96, and listing them under it is a misattribution the fact check rejects.
    - "compare" for one number against others (sales, players, prices across platforms): items are 2-5 rows as "label:value" with the subject row marked "*label:value".
    - "platforms" when the platforms are the news (a port, a new console, a "not on Switch" story): primary is a 2-5 word phrase, items are 1-6 platform names as written (PS5, Xbox Series X|S, PC, Switch 2), secondary may carry a short note such as "Day one on Game Pass". The card carries the full list; the narration says platforms the way people do ("PS5, Xbox and PC"), never "Xbox Series X|S" in a list.
    - "versus" for one thing against another (new against old hardware, two games, two prices): primary is a 2-5 word phrase, items are exactly two rows as "label:value", the subject marked with a leading *.
@@ -662,6 +662,14 @@ export function validateScript(s: Script, recent?: RecentShapes): string[] {
     )
       problems.push(
         `Score card "${b.visual.primary}" needs value_a between 0 and 100.`,
+      );
+    if (
+      b.visual.kind === "score" &&
+      b.visual.items?.length &&
+      /metacritic|metascore|opencritic/i.test(`${b.visual.primary} ${b.visual.secondary}`)
+    )
+      problems.push(
+        `Score card "${b.visual.primary}" is an aggregate, so it lists no outlets: those critics gave their own scores, not this one.`,
       );
     if (
       b.visual.kind === "compare" &&

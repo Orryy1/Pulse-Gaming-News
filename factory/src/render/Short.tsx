@@ -52,6 +52,7 @@ import { storyYearOf } from "./components/vertical/pulse/map.ts";
 import { VFiller, VFreezeLabel } from "./components/vertical/craft.tsx";
 import { HOUSE, SHORT_TRACK_FRAMES } from "./shortcraft.ts";
 import { arbitrate, keptSpan, OPENING_LABEL_FRAMES, overlaySpans, shortLayout } from "./cleanframe.ts";
+import { ENTRY_CARD_TOP, ENTRY_CARD_TOP_CHROME, isEntryCard } from "./rankcard.ts";
 import { motifsFor } from "./components/motifs/index.ts";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
@@ -211,6 +212,8 @@ export const Short: React.FC<ShortProps> = (props) => {
     const s = props.segments[i]!;
     const start = segmentStarts[i]!;
     const end = segmentEnds[i]!;
+    // A rank card stays up for its whole entry (src/render/rankcard.ts); word-level timing is for the small graphics.
+    if (isEntryCard(s)) return { from: start, len: Math.max(1, end - start) };
     const v = s.visual;
     const hold = Math.round(
       (s.kind === "take" ? 3.5 : v && ["list", "timeline", "compare"].includes(v.kind) ? 3 : 2.5) * fps,
@@ -296,6 +299,13 @@ export const Short: React.FC<ShortProps> = (props) => {
         if (i > 0 && i < last && i % 2 === 1 && !photos.has(i))
           looks.set(i, year! < 1994 ? "crt" : "vhs");
       });
+    // Then and now (plan.ts thenWindows): the old game's shots wear the tube and arrive through channel static.
+    shots.forEach((s, i) => {
+      if (s.then) {
+        looks.set(i, "crt");
+        accents.push({ at: s.start, kind: "static" });
+      }
+    });
     // Accents on about one cut in three, 4 s apart, clear of the turns, the stamps and the loop.
     const kinds: AccentKind[] = ["flare", "burn", "flash", "glitch"];
     let lastAccent = -Infinity;
@@ -525,8 +535,8 @@ export const Short: React.FC<ShortProps> = (props) => {
           )}
         </Sequence>
       ))}
-      <Scrim profile={hasPlate && !props.images.length ? "plate" : "footage"} />
-      <Finish grainSrc={staticFile("grain.png")} />
+      <Scrim profile={hasPlate && !props.images.length ? "plate" : props.vivid ? "vivid" : "footage"} />
+      <Finish grainSrc={staticFile("grain.png")} vignette={props.vivid ? 0.25 : 0.55} />
 
       {/* The headline is fully rendered at frame 0 (the thumbnail) and returns, pixel-identical, for the loop.
           On the new-look Shorts it is a thumbnail-grade poster over the hero art (components/HookPoster.tsx). */}
@@ -631,6 +641,7 @@ export const Short: React.FC<ShortProps> = (props) => {
                 renderDate={props.renderDate}
                 images={props.images}
                 rankTotal={rankTotal}
+                entryTop={clean ? ENTRY_CARD_TOP : ENTRY_CARD_TOP_CHROME}
                 beatIndex={beatIndexOf[i]}
                 steamPrices={props.steam?.prices}
               />

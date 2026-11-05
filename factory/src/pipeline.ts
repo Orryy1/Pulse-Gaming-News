@@ -284,7 +284,10 @@ import {
 } from "./growth.ts";
 import { holdSlotForCap, holdWhyForCap } from "./cadence.ts";
 import {
+  refreshChatter,
   bigCluster,
+  coveredHashes,
+  runEntryCovered,
   bigEditorNote,
   bigMadeToday,
   bumpFiller,
@@ -691,6 +694,9 @@ export async function discoverTick(s: Services): Promise<number> {
   await s.db.query(
     `DELETE FROM cluster_sightings WHERE last_seen < $1::timestamptz - interval '7 days'`,
     [now],
+  );
+  await refreshChatter(s.db, s.cfg, now, () => s.trending()).catch((err) =>
+    log("warn", "chatter read failed", { error: errorMessage(err) }),
   );
   return clusters.length;
 }
@@ -1143,6 +1149,8 @@ async function createFromChoice(
  * happening to each, and makes the biggest one not yet covered. It fills a news slot when one is open, else it goes
  * out like a breaking Short. Report mode and a blocked factory still judge and record, so nothing is passed silently.
  */
+let lastBigCovered = new Set<string>();
+
 async function maybeSelectBig(
   s: Services,
   blocked?: string,
@@ -1164,6 +1172,7 @@ async function maybeSelectBig(
     ...(blocked ? { blocked } : {}),
   };
   const verdicts = judgeBigStories(stories, cfg, context);
+  lastBigCovered = coveredHashes(verdicts);
   const make = verdicts.find((v) => v.action === "make");
   if (make) {
     // The quota is the one limit a big story cannot overrule: an upload past it just fails.
@@ -1195,7 +1204,8 @@ async function createBig(s: Services, v: BigVerdict): Promise<string | undefined
     },
     await takenSlots(db),
   );
-  const force = v.story.size >= cfg.bigStoryHuge;
+  // A follow-up to a story already covered is the editor's call, however big.
+  const force = v.story.size >= cfg.bigStoryHuge && !v.development;
   let passed: string | undefined;
   const id = await createFromChoice(
     s,
@@ -1286,7 +1296,10 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
 
   const seen = await seenHashes(db);
   const sightings = (await recentSightings(s)).filter(
-    (x) => !seen.has(x.cluster.hash),
+    (x) =>
+      !seen.has(x.cluster.hash) &&
+      // A story the big-story desk has made or sees planned is not picked again by a slot under another of its hashes.
+      !(cfg.bigStoryMode === "make" && lastBigCovered.has(x.cluster.hash)),
   );
   // Rumours are capped a day: once today's is in, stories carrying rumour signals wait for tomorrow.
   const rumoursToday = cfg.includeRumours
@@ -1677,7 +1690,20 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   )
     return undefined;
   // A topic planned for this slot (the launch run, src/shortrun.ts) goes first; with none usable the editor picks.
-  const planned = whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone);
+  let planned = whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone);
+  // The news got there first: a big Short already said it, so the slot goes to the editor's pick.
+  const beaten =
+    planned && cfg.bigStoryMode === "make"
+      ? runEntryCovered(planned, await recentCover(db, now), now)
+      : undefined;
+  if (planned && beaten) {
+    log("info", "planned Why gives way to a big story already made", {
+      topic: planned.title,
+      episode: beaten.id,
+    });
+    await logEvent(db, beaten.id, "run_topic_superseded", { topic: planned.title });
+    planned = undefined;
+  }
   if (planned) {
     const made = await selectRunWhy(s, planned, due).catch((err) => {
       log("warn", "launch run topic failed", {

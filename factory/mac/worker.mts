@@ -315,6 +315,27 @@ async function gameplay(vods: boolean): Promise<void> {
 }
 
 const [cmd, arg] = process.argv.slice(2);
+// A failed job's full error stays on the Mac: the PC's log keeps its first line (macjobs.ts firstErrorLine).
+function keepError(err: unknown): void {
+  try {
+    const dir = path.join(ROOT, "logs");
+    fs.mkdirSync(dir, { recursive: true });
+    const text = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    fs.appendFileSync(
+      path.join(dir, "worker-errors.log"),
+      `${new Date().toISOString()} ${cmd} ${arg ?? ""}${"\n"}${text.slice(0, 8000)}${"\n\n"}`,
+    );
+  } catch {
+    /* the job's error still reaches the PC */
+  }
+}
+const fail = (err: unknown): never => {
+  keepError(err);
+  console.error(err);
+  process.exit(1);
+};
+process.on("uncaughtException", fail);
+process.on("unhandledRejection", fail);
 if (cmd === "health") {
   const h = heavyHolder();
   say({
@@ -323,9 +344,9 @@ if (cmd === "health") {
     heavy: h && alive(h.pid) ? h.name : null,
   });
 } else if (cmd === "short" || cmd === "thumbs")
-  await renderJob(cmd, arg!);
-else if (cmd === "rpc") await rpc(arg!);
-else if (cmd === "gameplay") await gameplay(arg === "--vods");
+  await renderJob(cmd, arg!).catch(fail);
+else if (cmd === "rpc") await rpc(arg!).catch(fail);
+else if (cmd === "gameplay") await gameplay(arg === "--vods").catch(fail);
 else if (cmd === "sweep") await sweep();
 else throw new Error(`unknown job: ${cmd}`);
 process.exit(0);

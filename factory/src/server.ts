@@ -1,6 +1,10 @@
 // The whole service: an HTTP server for approvals, previews, OAuth and health,
 // plus the in-process scheduler that ticks the pipeline.
 
+import { firstCommentCheckTick } from "./social/commentcheck.ts";
+import { metaRepliesTick, type MetaPlatform } from "./social/metacomments.ts";
+import * as metaApi from "./social/platforms.ts";
+import { socialProblems } from "./social/scoreboard.ts";
 import { pollPlan, recordPollResult } from "./social/poll.ts";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
@@ -83,7 +87,12 @@ import {
   accessToken,
 } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
-import { publishPcSchedule } from "./pcschedule.ts";
+import {
+  lanRequestAllowed,
+  macReservationsDoc,
+  publishPcSchedule,
+} from "./pcschedule.ts";
+import { creditAlertDue } from "./voice/creditalert.ts";
 import { activeUploads } from "./youtube/upload.ts";
 import {
   allowRoutineLan,
@@ -98,6 +107,8 @@ import { alert, postDiscord } from "./approval/discord.ts";
 import { sendDueNotices } from "./notices.ts";
 import { maybeReload } from "./reload.ts";
 import { primeTimeNow } from "./experiments.ts";
+import { sendMissReport } from "./bigstories.ts";
+import { creditForecastAlert } from "./claudecredit.ts";
 import {
   dailySummary,
   digestDue,
@@ -111,6 +122,11 @@ import {
   growthReportDue,
   markGrowthReportSent,
 } from "./growthreport.ts";
+import {
+  alertDigestDue,
+  markAlertDigestSent,
+  writeAlertDigest,
+} from "./alertdigest.ts";
 
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -189,6 +205,13 @@ export function createApp(
         String(req.headers["x-admin-key"] ?? url.searchParams.get("key") ?? ""),
         cfg.adminToken,
       );
+
+    if (url.pathname === "/orch/reservations.json") {
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify(macReservationsDoc(cfg, new Date()), null, 1));
+      return;
+    }
 
     if (url.pathname === "/health") {
       const [counts] = await db.query<Record<string, string>>(
@@ -438,6 +461,24 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         return streamFile(req, res, file, "video/mp4");
       }
       // GET shows a confirmation page (link unfurlers must never trigger an action); POST acts.
+      // GAMEPLAY_ONE_TAP: a gameplay card's link carries now=1 and the page posts itself as it opens, which a person's
+      // browser does and an unfurler, running no script, does not. A browser with no script still gets the button.
+      if (
+        req.method !== "POST" &&
+        cfg.gameplayOneTap &&
+        url.searchParams.get("now") === "1" &&
+        episode.lane === "gameplay"
+      )
+        return send(
+          200,
+          page(
+            kind === "approve" ? "Approving" : "Rejecting",
+            `<h1>${kind === "approve" ? "Approving" : "Rejecting"}: ${esc(episode.script_json?.youtube.title ?? episode.story_json.headline)}</h1>
+<form method="post" id="tap"><input type="hidden" name="t" value="${esc(token)}">
+<button class="${kind === "approve" ? "ok" : "no"}" type="submit">${kind === "approve" ? "Approve and publish" : "Reject this episode"}</button></form>
+<script>document.getElementById("tap").submit();</script>`,
+          ),
+        );
       if (req.method !== "POST") {
         const preview = `/episodes/${id}/video.mp4?t=${signToken(`preview:${id}`, cfg.appSecret, 3600)}`;
         return send(
@@ -1572,12 +1613,22 @@ async function main(): Promise<void> {
   startBraveFront(cfg.timezone);
   http
     .createServer((req, res) => {
+      if (
+        !lanRequestAllowed(
+          req.socket.remoteAddress ?? "",
+          new URL(req.url ?? "/", "http://local").pathname,
+        )
+      ) {
+        res.writeHead(404).end("Not found");
+        return;
+      }
       app(req, res).catch((err) => {
         log("error", "request failed", { error: errorMessage(err) });
         if (!res.headersSent) res.writeHead(500).end("error");
       });
     })
-    // Localhost only: the Cloudflare tunnel connects locally, so nothing else on the network needs in.
+    // Localhost by default: the Cloudflare tunnel connects locally, so nothing else on the network needs in. The Mac
+    // sets HOST=0.0.0.0 so the PC's orchestrator can read its reservations; the check above keeps everything else local.
     .listen(cfg.port, process.env.HOST || "127.0.0.1", () =>
       log("info", "listening", { port: cfg.port }),
     );
@@ -1813,6 +1864,8 @@ async function main(): Promise<void> {
       llm: services.llm,
       headroom: () => quotaHeadroom(db, cfg, new Date()),
       now: () => new Date(),
+      style: cfg.replyStyle,
+      followups: cfg.replyFollowups,
     };
     // New videos are watched closely; every other comment on the channel is picked up within 15 minutes.
     const replies = () =>
@@ -1835,6 +1888,61 @@ async function main(): Promise<void> {
     setTimeout(() => void replies(), 120_000);
     setInterval(() => void replies(), 5 * 60_000);
   }
+  // Comments on our Instagram and Facebook reels get the same judgement as YouTube's (META_COMMENT_REPLIES).
+  if (cfg.metaCommentReplies && !cfg.dryRun) {
+    const names: Partial<Record<MetaPlatform, string>> = {};
+    const tokenOf = (m: MetaPlatform) =>
+      m === "instagram" ? cfg.instagramToken : cfg.facebookPageToken;
+    const idOf = (m: MetaPlatform) =>
+      m === "instagram" ? cfg.instagramAccountId : cfg.facebookPageId;
+    const pass = () =>
+      metaRepliesTick({
+        db,
+        llm: services.llm,
+        now: () => new Date(),
+        list: async (platform, id) => {
+          const ig = platform === "instagram";
+          // Not sure who we are: answer nothing this pass rather than talk to ourselves.
+          names[platform] ||= await metaApi.graphOwnName(
+            idOf(platform),
+            tokenOf(platform),
+            ig,
+          );
+          return (
+            await metaApi.graphListComments(id, tokenOf(platform), ig)
+          ).map((c) => ({
+            id: c.id,
+            text: c.text,
+            own: c.author === names[platform] || !c.author,
+          }));
+        },
+        reply: (platform, id, text) =>
+          metaApi.graphReply(
+            id,
+            tokenOf(platform),
+            text,
+            platform === "instagram",
+          ),
+      }).catch((err) =>
+        log("warn", "meta comment pass failed", { error: errorMessage(err) }),
+      );
+    setTimeout(() => void pass(), 150_000);
+    setInterval(() => void pass(), 5 * 60_000);
+  }
+  // Whether viewers can actually see the channel's first comments (FIRST_COMMENT_CHECK): no quota unless one is hidden.
+  if (cfg.firstCommentCheck && !cfg.dryRun) {
+    const check = () =>
+      firstCommentCheckTick({
+        db,
+        now: () => new Date(),
+        youtube: services.youtube,
+        notify: (m) => services.notify(m),
+      }).catch((err) =>
+        log("warn", "first comment check failed", { error: errorMessage(err) }),
+      );
+    setTimeout(() => void check(), 180_000);
+    setInterval(() => void check(), 30 * 60_000);
+  }
   // What viewers ask us to rank next, read from the long videos' comments once a day.
   if (!cfg.dryRun) {
     const requests = () =>
@@ -1843,6 +1951,7 @@ async function main(): Promise<void> {
         youtube: services.youtube,
         llm: services.llm,
         now: new Date(),
+        fromShorts: cfg.requestsFromShorts,
       }).catch((err) =>
         log("warn", "audience requests failed", { error: errorMessage(err) }),
       );
@@ -1921,6 +2030,24 @@ async function main(): Promise<void> {
       });
     });
   }, 10 * 60_000);
+  // ElevenLabs running out: an early warning, once a day while it is low (src/voice/creditalert.ts).
+  setInterval(() => {
+    void (async () => {
+      const text = creditAlertDue(
+        await services.creditPlan?.().catch(() => undefined),
+        {
+          lowCredits: cfg.elevenLabsLowCredits,
+          lowDays: cfg.elevenLabsLowDays,
+          reserve: cfg.elevenLabsReserve,
+        },
+        path.join(cfg.dataDir, "admin", "credit_alert.json"),
+        new Date().toISOString().slice(0, 10),
+      );
+      if (text) await services.notify({ content: text });
+    })().catch((err) =>
+      log("warn", "credit check failed", { error: errorMessage(err) }),
+    );
+  }, 30 * 60_000);
   // 21:30 local: the day in one message (what went live, TikTok drafts waiting, background news).
   setInterval(() => {
     void (async () => {
@@ -1935,6 +2062,14 @@ async function main(): Promise<void> {
         ),
       );
       log("info", "daily summary sent");
+      await sendMissReport(db, cfg, new Date(), (m) => services.notify(m)).catch(
+        (err) =>
+          log("error", "big story report failed", { error: errorMessage(err) }),
+      );
+      await creditForecastAlert(cfg, new Date(), db, (m) => services.notify(m)).catch(
+        (err) =>
+          log("error", "Claude credit forecast failed", { error: errorMessage(err) }),
+      );
     })().catch((err) =>
       log("error", "daily summary failed", { error: errorMessage(err) }),
     );
@@ -1961,6 +2096,31 @@ async function main(): Promise<void> {
       log("info", "growth report sent", { week: key });
     })().catch((err) =>
       log("error", "growth report failed", { error: errorMessage(err) }),
+    );
+  }, 5 * 60_000);
+  // Each morning from 09:00 local: what the alerts have been saying (ALERT_DIGEST). The page is written every day; the
+  // channel hears about it only when a kind of alert is new or rising.
+  setInterval(() => {
+    void (async () => {
+      const key = await alertDigestDue(db, cfg, new Date());
+      if (!key) return;
+      await markAlertDigestSent(db, key);
+      const post = await writeAlertDigest(cfg, new Date());
+      if (post) await services.notify(post);
+      // Platforms gone quiet are said once a morning, and only on a morning there are some (SOCIAL_SCOREBOARD).
+      if (cfg.socialScoreboard) {
+        const problems = await socialProblems(db, new Date());
+        if (problems.length)
+          await services.notify({
+            content: `📣 Socials gone quiet:\n${problems.map((x) => `- ${x}`).join("\n")}`.slice(
+              0,
+              1900,
+            ),
+          });
+      }
+      log("info", "alert digest written", { day: key, posted: Boolean(post) });
+    })().catch((err) =>
+      log("error", "alert digest failed", { error: errorMessage(err) }),
     );
   }, 5 * 60_000);
   let lastDmsDay = "";

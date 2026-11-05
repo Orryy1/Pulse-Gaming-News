@@ -36,6 +36,8 @@ export interface NarrationCheck {
   matched: number; // share of the script's words heard as written
   /** Pauses of 0.45 s or more where the script has no punctuation: the voice phrasing a line oddly. */
   pauses: NarrationPause[];
+  /** Everything the recogniser heard, for the check on what was actually said (src/editorial/writernotes.ts). */
+  heard?: string;
 }
 
 export interface NarrationPause {
@@ -174,6 +176,15 @@ export function tokens(word: string): string[] {
   const roman = word.replace(/[.,;:!?)"”’]+$/, "");
   if (ROMAN[roman] !== undefined)
     return numberWords(ROMAN[roman]!).split(/[\s-]+/);
+  // "64's" and "V's" are how Whisper writes "sixty-four's" and "five's" (false alarms on 2 and 3 Nov 2026, each costing
+  // a second voicing): the number's words with the last one possessive, as the script spells it. A year goes through the voice's own reading below.
+  const owned = /^(\d{1,3}|[IVX]+)['’]s$/.exec(roman)?.[1];
+  const ownedNumber = owned && (ROMAN[owned] ?? Number(owned));
+  if (ownedNumber) {
+    const said = numberWords(ownedNumber).split(/[\s-]+/);
+    said[said.length - 1] += "s";
+    return said;
+  }
   const out: string[] = [];
   // A figure run into its unit ("30fps", "4GB") is the number then the unit, as the voice says it
   // (it failed a good narration against "30 fps", QA notes 26 Oct 2026). Ordinals stay whole.
@@ -187,6 +198,9 @@ export function tokens(word: string): string[] {
       .replace(/[^a-z0-9]/g, "");
     // "gigs" and "gigabytes" are the same word to the check (the voice shortens repeats, speakUnits).
     t = UNIT_SAME[t] ?? ORDINAL_SAME[t] ?? t;
+    // The letter V inside a word ("V-Gauge") and Whisper's lone "V" for it are one sound; a lone capital V already reads
+    // as five above, so the two have to meet or every "V-" name is a fault.
+    if (t === "v") t = "five";
     const ord = t.match(/^(\d+)(st|nd|rd|th)$/);
     if (ord) t = ord[1]!;
     if (/^\d+$/.test(t) && t.length <= 9) {
@@ -257,8 +271,13 @@ function benign(meant: string[], heard: string[]): boolean {
   if (a === b) return true; // compounds: "rockstar"/"rock star"
   const content = (xs: string[]) => xs.filter((x) => !FILLER.has(x));
   if (!content(meant).length && !content(heard).length) return true; // "and", "the"
-  // Nothing that changes the claim may differ.
-  if ([...meant, ...heard].some((x) => PROTECTED.has(x))) return false;
+  // Nothing that changes the claim may differ, a number's possessive ("five's", "sixty-four's") included.
+  const claims = (x: string) =>
+    PROTECTED.has(x) ||
+    (x.endsWith("s") &&
+      NUMBERISH.has(x.slice(0, -1)) &&
+      PROTECTED.has(x.slice(0, -1)));
+  if ([...meant, ...heard].some(claims)) return false;
   if (similar(a, b)) return true; // spellings: "cel"/"cell", "huangli"/"huang lee"
   // One ordinary word heard as another ("Lee" as "Li", "seed" as "seat") is Whisper mishearing, not a
   // voice fault: a garbled voice loses or mangles more than one word ("San Andreas" as "Sayus").
@@ -346,6 +365,7 @@ export function checkNarration(
     : 0;
   const real = dropShuffles(issues);
   return {
+    heard: heard.map((w) => w.text).join(" "),
     ok: !real.length && drift <= maxDrift,
     issues: real,
     drift: Math.round(drift * 100) / 100,

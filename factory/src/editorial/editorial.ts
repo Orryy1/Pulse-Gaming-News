@@ -1,6 +1,7 @@
 // Story selection, scripting and fact-checking. The model does the judgement;
 // this file enforces the rules that must never depend on model compliance.
 
+import { lateAngleNote } from "../bigstories.ts";
 import { pulseCheckRule } from "./newssegment.ts";
 import { whyBrief } from "./why.ts";
 import {
@@ -76,7 +77,7 @@ Structure:
    - "timeline" for a delay or date change: primary is a 2-5 word phrase, date_from is the old date and date_to the new date, both ISO (YYYY-MM or YYYY-MM-DD).
    - "countdown" for a confirmed release date: primary is the date as spoken, date_to is the ISO date.
    - "price" for a price: primary is the US dollar price exactly as written (e.g. $69.99) when the sources or Steam facts give one, else the price as given; was is the old price in the same currency if the story gives one; region is the platform or "US"; items lists the same price in the other currencies (£ and €) only when the sources or Steam facts state them. Speak the US price in the narration.
-   - "score" for a review score or rating out of 100: primary is the score as written, value_a the number 0-100, items up to 3 outlet names.
+   - "score" for a review score or rating out of 100: primary is the score as written, value_a the number 0-100, secondary says whose score it is, items up to 3 outlets that themselves gave exactly that score. An aggregate (Metacritic, OpenCritic) has empty items: critics who gave a 5/5 or a 9/10 did not give it a 96, and listing them under it is a misattribution the fact check rejects.
    - "compare" for one number against others (sales, players, prices across platforms): items are 2-5 rows as "label:value" with the subject row marked "*label:value".
    - "platforms" when the platforms are the news (a port, a new console, a "not on Switch" story): primary is a 2-5 word phrase, items are 1-6 platform names as written (PS5, Xbox Series X|S, PC, Switch 2), secondary may carry a short note such as "Day one on Game Pass". The card carries the full list; the narration says platforms the way people do ("PS5, Xbox and PC"), never "Xbox Series X|S" in a list.
    - "versus" for one thing against another (new against old hardware, two games, two prices): primary is a 2-5 word phrase, items are exactly two rows as "label:value", the subject marked with a leading *.
@@ -110,7 +111,7 @@ Mark a "blocker" when the script:
 - presents a rumour, leak or analyst estimate as confirmed fact,
 - misattributes who said or reported something,
 - makes a claim that could be defamatory about a real person or company.
-Opinion clearly framed as opinion, and long-established public knowledge, are fine.
+Opinion clearly framed as opinion, and long-established public knowledge, are fine. A price rounded and said to be rounded ("under two dollars", "about five dollars" for $1.99 and $4.99) is accurate, not a blocker; a flat "two dollars" for $1.99 is minor at most when the exact price is on screen.
 Spelling, style and tone are "minor" at most.
 verdict is "fail" if there is any blocker.`;
 }
@@ -174,6 +175,8 @@ export async function writeScript(
     variantNote?: string;
     /** The Pulse Check for this Short (NEWS_SEGMENT, src/editorial/newssegment.ts). */
     segment?: boolean;
+    /** SHORT_END_PAYOFF: a Why's last line does not point to tomorrow's Why. */
+    noSeriesFollow?: boolean;
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -183,7 +186,7 @@ export async function writeScript(
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
   const why = cluster.why
-    ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle, cluster.why.follow)}`
+    ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle, cluster.why.follow, opts.noSeriesFollow)}`
     : "";
   const recent =
     opts.recent && (opts.recent.takes.length || opts.recent.loops.length)
@@ -198,7 +201,8 @@ export async function writeScript(
   // The test variant comes last, after the general shapes, so it is the rule the writer reads nearest the draft.
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
   const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
-  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${recent}${variantNote}${segmentNote}`;
+  const late = lateAngleNote(cluster.bigStory?.lateHours);
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${recent}${variantNote}${segmentNote}`;
   // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
   const edited =
     opts.draft &&
@@ -660,6 +664,14 @@ export function validateScript(s: Script, recent?: RecentShapes): string[] {
     )
       problems.push(
         `Score card "${b.visual.primary}" needs value_a between 0 and 100.`,
+      );
+    if (
+      b.visual.kind === "score" &&
+      b.visual.items?.length &&
+      /metacritic|metascore|opencritic/i.test(`${b.visual.primary} ${b.visual.secondary}`)
+    )
+      problems.push(
+        `Score card "${b.visual.primary}" is an aggregate, so it lists no outlets: those critics gave their own scores, not this one.`,
       );
     if (
       b.visual.kind === "compare" &&

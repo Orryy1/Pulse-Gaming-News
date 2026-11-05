@@ -68,9 +68,9 @@ export function defaultCodexPython(platform: string): string {
   return platform === "win32" ? "python" : "python3";
 }
 
-/** Where the Codex helper (codex_runner.py) lives: the PC orchestrator's folder; on the Mac a copy beside the factory, when one is installed. */
+/** Where the Codex helper (codex_runner.py) lives: the PC orchestrator's folder; on the Mac the kit's own, deployed with the code. */
 export function defaultCodexRunnerDir(platform: string, home: string): string {
   return platform === "win32"
     ? "C:\\Claude\\orchestrator"
-    : `${home}/PulseFactory/codex`;
+    : `${home}/PulseFactory/factory/mac/codex`;
 }

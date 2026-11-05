@@ -27,3 +27,34 @@ export async function blurPlate(episodeDir: string, file: string): Promise<strin
   ]);
   return out;
 }
+
+/** A picture's mean brightness (0-255), for choosing the brighter art; undefined when ffmpeg cannot say. */
+export async function meanLuma(file: string): Promise<number | undefined> {
+  try {
+    const { stdout } = await run(
+      FFMPEG,
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        file,
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale=64:-2,format=gray",
+        "-f",
+        "rawvideo",
+        "-",
+      ],
+      { encoding: "buffer", maxBuffer: 4 * 1024 * 1024 },
+    );
+    const b = stdout as unknown as Buffer;
+    if (!b.length) return undefined;
+    let n = 0;
+    for (const v of b) n += v;
+    return Math.round(n / b.length);
+  } catch {
+    return undefined;
+  }
+}

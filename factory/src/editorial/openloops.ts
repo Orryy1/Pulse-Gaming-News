@@ -50,6 +50,27 @@ export type OpenLoop = z.infer<typeof OpenLoopSchema>;
 /** The outline prompt's rule, so the planner and the tests agree on it. */
 export const OPEN_LOOP_RULE = `Open loops: in "open_loops" list ${OPEN_LOOPS_MIN}-${OPEN_LOOPS_MAX} questions this documentary raises early and answers later, the way the best documentaries keep a viewer watching. Each is one short question a viewer would ask (5-16 words, ending in a question mark) about something the sources can answer for certain, never a rumour. plant_chapter is where it is first raised (0 for the cold open, else the chapter number); payoff_chapter is the later chapter that answers it, at least one chapter after it is raised and never chapter 1. Spread them out: at most one raised and one answered in any chapter (the cold open may raise two).`;
 
+/** The same rule when a format plans more than a documentary does (LONG_OPEN_LOOPS_MAX), in a ranking's own words. */
+export function openLoopRule(o: {
+  max: number;
+  coldOpen?: number;
+  what?: string;
+}): string {
+  const what = o.what ?? "documentary";
+  return OPEN_LOOP_RULE.replace(
+    `${OPEN_LOOPS_MIN}-${OPEN_LOOPS_MAX} questions this documentary`,
+    `${OPEN_LOOPS_MIN}-${o.max} questions this ${what}`,
+  )
+    .replace(
+      "the way the best documentaries keep",
+      "the way the best long videos keep",
+    )
+    .replace(
+      "the cold open may raise two",
+      `the cold open may raise ${o.coldOpen ?? 2}`,
+    );
+}
+
 export interface OpenLoopGrounding {
   loops: OpenLoop[];
   removed: string[];
@@ -71,7 +92,11 @@ const norm = (t: string) =>
 export function groundOpenLoops(
   loops: readonly OpenLoop[] | undefined,
   chapters: number,
+  /** LONG_OPEN_LOOPS_MAX: a guide plans more, and a stacked hook raises more of them in its cold open. */
+  limits: { max?: number; coldOpen?: number } = {},
 ): OpenLoopGrounding {
+  const most = limits.max || OPEN_LOOPS_MAX;
+  const coldOpen = limits.coldOpen || 2;
   const removed: string[] = [];
   const kept: OpenLoop[] = [];
   const planted = new Map<number, number>();
@@ -99,11 +124,11 @@ export function groundOpenLoops(
               : seen.has(norm(q))
                 ? "asked twice"
                 : (planted.get(l.plant_chapter) ?? 0) >=
-                    (l.plant_chapter === 0 ? 2 : 1)
+                    (l.plant_chapter === 0 ? coldOpen : 1)
                   ? `chapter ${l.plant_chapter} already raises one`
                   : paid.has(l.payoff_chapter)
                     ? `chapter ${l.payoff_chapter} already answers one`
-                    : kept.length >= OPEN_LOOPS_MAX
+                    : kept.length >= most
                       ? "too many"
                       : "";
     if (why) {

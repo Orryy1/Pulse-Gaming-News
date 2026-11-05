@@ -10,6 +10,7 @@ import { runCapped } from "../lib/child.ts";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
 import { YTDLP_TEXT } from "../lib/bin.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
+import { stillBigText } from "./cliptext.ts";
 import type { VisualAsset } from "./steam.ts";
 import type { Llm } from "../editorial/llm.ts";
 
@@ -30,7 +31,7 @@ export const PUBLISHER_CHANNELS: PublisherRule[] = [
     match: /^rockstar games$/i,
     name: "Rockstar Games",
     minSubscribers: 1_000_000,
-    clipSeconds: 6,
+    clipSeconds: 10, // the same cap as ROCKSTAR_FOOTAGE_SECONDS (src/assets/footage.ts); this line said 6 until 5 Nov 2026
   },
   {
     match: /^nintendo( of america| uk| europe)?$/i,
@@ -226,6 +227,19 @@ const EXCLUDE =
   /\b(reaction|reacts?|breakdown|analysis|explained|review|leak|leaked|fan[- ]?made|concept|remake|recreated|in real life|parody|react)\b/i;
 
 /** Candidate ranking: a trailer from a known publisher, titled as a trailer, naming the game, newest first. */
+const SERIES_NUMERAL: Record<string, number> = { "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9 };
+
+/** The instalment a title names: "Grand Theft Auto IV" is 4, "Grand Theft Auto: Vice City" none. */
+export function seriesNumber(title: string): number | undefined {
+  // A platform's number is not the game's: "Ocarina of Time - Nintendo Switch 2" has no instalment number.
+  const name = title
+    .toLowerCase()
+    .replace(/\b(?:nintendo\s+)?switch\s*2\b|\bps\s?[2-5]\b|\bplaystation\s*[2-5]\b|\bxbox\s+series\s+[xs]\b|\bsteam\s+deck\b/g, " ");
+  for (const w of name.split(/[^a-z0-9]+/))
+    if (SERIES_NUMERAL[w] !== undefined) return SERIES_NUMERAL[w];
+  return undefined;
+}
+
 export function pickOfficial(
   items: Array<{
     videoId: string;
@@ -253,6 +267,10 @@ export function pickOfficial(
         return undefined;
       const t = it.title.toLowerCase();
       if (EXCLUDE.test(t)) return undefined;
+      // A series' other instalment is the wrong game: "GTA IV" must never take GTA VI's launch trailer.
+      const wanted = seriesNumber(gameTitle);
+      const shown = seriesNumber(it.title);
+      if (shown !== wanted && (shown !== undefined || wanted !== undefined)) return undefined;
       const named =
         tokens.filter((tok) => t.includes(tok)).length /
         Math.max(1, tokens.length);
@@ -587,10 +605,12 @@ export async function downloadTrailer(
   dest: string,
   ytdlp = "yt-dlp",
   retry = true,
+  /** Above 1080: for stills only, any codec, since nothing plays it back. */
+  maxHeight = 1080,
 ): Promise<number> {
   await fs.mkdir(path.dirname(dest), { recursive: true });
   try {
-    await downloadOnce(videoId, dest, ytdlp);
+    await downloadOnce(videoId, dest, ytdlp, maxHeight);
   } catch (err) {
     // A 403 or a signature failure means YouTube moved and yt-dlp is behind: update once and try again.
     if (
@@ -604,7 +624,7 @@ export async function downloadTrailer(
         error: errorMessage(err).split("\n").pop(),
       });
       await run(ytdlp, ["-U"], { timeout: 120_000 }).catch(() => undefined);
-      return downloadTrailer(videoId, dest, ytdlp, false);
+      return downloadTrailer(videoId, dest, ytdlp, false, maxHeight);
     }
     throw err;
   }
@@ -629,6 +649,7 @@ async function downloadOnce(
   videoId: string,
   dest: string,
   ytdlp: string,
+  maxHeight = 1080,
 ): Promise<void> {
   const target = /^https?:/.test(videoId)
     ? videoId
@@ -639,14 +660,16 @@ async function downloadOnce(
       "--no-playlist",
       "--no-warnings",
       "-f",
-      "bv*[height<=1080][ext=mp4][vcodec^=avc1]/bv*[height<=1080][ext=mp4]/b[height<=1080][ext=mp4]/b",
+      maxHeight > 1080
+        ? `bv*[height<=${maxHeight}][vcodec^=vp9]/bv*[height<=${maxHeight}][vcodec^=vp09]/bv*[height<=1080][ext=mp4]/b`
+        : "bv*[height<=1080][ext=mp4][vcodec^=avc1]/bv*[height<=1080][ext=mp4]/b[height<=1080][ext=mp4]/b",
       "--merge-output-format",
       "mp4",
       "-o",
       dest,
       target,
     ],
-    { timeout: 180_000, maxBuffer: 8 * 1024 * 1024 },
+    { timeout: maxHeight > 1080 ? 600_000 : 180_000, maxBuffer: 8 * 1024 * 1024 },
   );
 }
 
@@ -708,6 +731,176 @@ export interface OfficialMediaOptions {
   hint?: string;
   /** A picture story: look first for the publisher's own video of it, uploaded since this date. */
   story?: { text: string; after: Date };
+  /** Footage first on Shorts: see MatchClipsOptions. The publisher's cap still applies. */
+  fill?: { seconds?: number; textCheck?: boolean };
+  /**
+   * OFFICIAL_STILL_FRAMES: a stills-only publisher (clipSeconds 0, Nintendo) gives up to this many frames of its own
+   * trailer as stills, matched to the lines like footage. No moving footage is used; 0 keeps only the thumbnail.
+   */
+  stillFrames?: number;
+}
+
+/** The sharpest of a few frames across a stretch, largest JPEG first (fine detail costs bytes): at most `take`, kept apart. */
+async function sharpestFrames(
+  source: string,
+  from: number,
+  seconds: number,
+  take: number,
+  scratch: string,
+): Promise<number[]> {
+  const samples = 5;
+  const found: Array<{ at: number; bytes: number }> = [];
+  await fs.mkdir(scratch, { recursive: true });
+  for (let i = 0; i < samples; i++) {
+    const at = from + (seconds * (i + 0.5)) / samples;
+    const file = path.join(scratch, `s${i}.jpg`);
+    await run(
+      "ffmpeg",
+      ["-y", "-ss", at.toFixed(2), "-i", source, "-frames:v", "1", "-vf", "scale=-2:720", "-q:v", "3", file],
+      { timeout: 60_000 },
+    );
+    const st = await fs.stat(file).catch(() => undefined);
+    if (st) found.push({ at, bytes: st.size });
+  }
+  const out: number[] = [];
+  for (const f of found.sort((x, y) => y.bytes - x.bytes))
+    if (out.length < take && out.every((o) => Math.abs(o - f.at) >= seconds / 4))
+      out.push(f.at);
+  return out;
+}
+
+/**
+ * Frames of a stills-only publisher's trailer at its full resolution: the moment chosen for each line (the sharpest
+ * two of each, tagged with that line), then a pool of clean frames from across the trailer for the other shots.
+ */
+async function trailerStills(
+  o: Pick<OfficialMediaOptions, "episodeDir" | "gameTitle" | "targets" | "stillFrames" | "llm" | "ytdlp">,
+  trailer: { videoId: string; title: string; channelTitle: string },
+  url: string,
+  /** The pool alone, at most this many: no moments matched to lines, so no model call. */
+  poolOnly?: number,
+): Promise<VisualAsset[]> {
+  const work = path.join(o.episodeDir, "trailers");
+  const file = path.join(work, "official.mp4");
+  const keep = path.join(o.episodeDir, "stillsource.video");
+  const scratch = path.join(o.episodeDir, "stillscratch");
+  const out: VisualAsset[] = [];
+  const grab = async (at: number, name: string) => {
+    const still = path.join("assets", name);
+    await run(
+      "ffmpeg",
+      ["-y", "-ss", at.toFixed(2), "-i", keep, "-frames:v", "1", "-q:v", "2", path.join(o.episodeDir, still)],
+      { timeout: 120_000 },
+    );
+    return still;
+  };
+  try {
+    const total = await downloadTrailer(trailer.videoId, file, o.ytdlp, true, 2160);
+    await fs.copyFile(file, keep);
+    const moments = poolOnly ? [] : await matchClips({
+      trailers: [{ file, name: trailer.title, url, total: total || 120 }],
+      episodeDir: o.episodeDir,
+      targets: o.targets,
+      maxClips: o.stillFrames!,
+      llm: o.llm,
+      prefix: "officialstill",
+      describe: (t, seconds, at) =>
+        `Frame of official trailer "${t.name}" from the ${trailer.channelTitle} YouTube channel (${url}), at ${at.toFixed(1)}s`,
+    });
+    const used: number[] = [];
+    for (const [k, m] of moments.entries()) {
+      const seconds = m.durationSeconds ?? 2;
+      const ats = await sharpestFrames(keep, m.startSeconds ?? 0, seconds, 1, scratch);
+      for (const [j, at] of ats.entries()) {
+        used.push(at);
+        out.push({
+          kind: "screenshot",
+          file: await grab(at, `official_frame_${k}_${j}.jpg`),
+          sourceUrl: url,
+          provenance: m.provenance,
+          beatIndex: m.beatIndex,
+          role: m.role,
+          label: m.label,
+          reason: m.reason,
+        });
+      }
+      await fs.rm(path.join(o.episodeDir, m.file), { force: true });
+    }
+    // The pool: one look every few seconds, clean of on-screen text, each at least 6 s from a frame already taken.
+    const span = total || 120;
+    const looks = Math.min(36, Math.floor(span / 4));
+    const pool: Array<{ at: number; file: string }> = [];
+    await fs.mkdir(scratch, { recursive: true });
+    for (let i = 0; i < looks; i++) {
+      const at = (span * (i + 0.5)) / looks;
+      if (used.some((u) => Math.abs(u - at) < 6)) continue;
+      const small = path.join(scratch, `p${i}.jpg`);
+      await run(
+        "ffmpeg",
+        ["-y", "-skip_frame", "nokey", "-ss", at.toFixed(2), "-i", keep, "-frames:v", "1", "-vf", "scale=-2:540", "-q:v", "4", small],
+        { timeout: 60_000 },
+      ).catch(() => undefined);
+      const st = await fs.stat(small).catch(() => undefined);
+      if (st && st.size > 25_000) pool.push({ at, file: small });
+    }
+    // The picture editor reads these afterwards. The local screen is not asked: it calls a game's own interface text
+    // (the ocarina's music staff, the frame the "hum" line needs), and it adds a GPU job for no gain here.
+    const poolMax = poolOnly ?? 16;
+    const step = Math.max(1, Math.floor(pool.length / poolMax));
+    for (const [k, p] of pool.filter((_, i) => i % step === 0).slice(0, poolMax).entries())
+      out.push({
+        kind: "screenshot",
+        file: await grab(p.at, `official_pool_${k}.jpg`),
+        sourceUrl: url,
+        provenance: `Frame of official trailer "${trailer.title}" from the ${trailer.channelTitle} YouTube channel (${url}), at ${p.at.toFixed(1)}s`,
+      });
+  } catch (err) {
+    log("warn", "official trailer stills failed", {
+      game: o.gameTitle,
+      error: errorMessage(err),
+    });
+  }
+  await fs.rm(work, { recursive: true, force: true });
+  await fs.rm(scratch, { recursive: true, force: true });
+  await fs.rm(keep, { force: true });
+  return out;
+}
+
+/** At or under this many seconds of footage, a publisher's trailer may fill gaps with stills (SHORT_CAPPED_STILLS). */
+export const TIGHT_CAP_SECONDS = 10;
+
+/**
+ * Frames of a tight-cap publisher's trailer, as a last fallback once its own screenshots, press art and IGDB are in
+ * (ruling of 5 Nov 2026). Spread across the trailer at least 6 s apart, clean of text, no big lettering in the crop,
+ * marked `frame` so the planner uses them last, once each and never two in a row: never a way to rebuild the trailer.
+ */
+export async function trailerFrames(
+  o: Pick<OfficialMediaOptions, "episodeDir" | "gameTitle" | "ytdlp">,
+  trailer: { videoId: string; title: string; channelTitle: string; url: string },
+  count: number,
+  textCheck: boolean,
+): Promise<VisualAsset[]> {
+  if (count <= 0) return [];
+  const frames = await trailerStills(
+    { ...o, targets: [], stillFrames: count },
+    trailer,
+    trailer.url,
+    // A few spare: the text check may drop some.
+    count + 3,
+  );
+  const out: VisualAsset[] = [];
+  for (const f of frames) {
+    const words =
+      textCheck && out.length < count
+        ? await stillBigText(path.join(o.episodeDir, f.file))
+        : [];
+    if (out.length >= count || words.length) {
+      await fs.rm(path.join(o.episodeDir, f.file), { force: true }).catch(() => undefined);
+      continue;
+    }
+    out.push({ ...f, frame: true });
+  }
+  return out;
 }
 
 /**
@@ -804,6 +997,10 @@ export async function officialMedia(
       provenance: `Official trailer thumbnail "${trailer.title}" from the ${trailer.channelTitle} YouTube channel (${url})`,
     });
   }
+  if (trailer.clipSeconds <= 0 && (o.stillFrames ?? 0) > 0 && o.targets.length) {
+    out.stills.push(...(await trailerStills(o, trailer, url)));
+    return out;
+  }
   if (trailer.clipSeconds <= 0 || o.maxClips <= 0 || !o.targets.length)
     return out;
   const work = path.join(o.episodeDir, "trailers");
@@ -817,6 +1014,10 @@ export async function officialMedia(
       maxClips: o.maxClips,
       llm: o.llm,
       prefix: "official",
+      fillSeconds: o.fill?.seconds
+        ? Math.min(o.fill.seconds, trailer.clipSeconds)
+        : undefined,
+      textCheck: o.fill?.textCheck,
       describe: (t, seconds, at) =>
         socialVideo
           ? `Official post "${t.name.slice(0, 80)}" by ${trailer.channelTitle}, publisher: ${trailer.publisher} (${url}), ${seconds}s at ${at.toFixed(1)}s, muted`

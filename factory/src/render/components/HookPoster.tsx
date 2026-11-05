@@ -43,7 +43,10 @@ export const HookPoster: React.FC<{
   /** Where the subject stands across the art (0-1): the vertical crop is centred on them. */
   cutX?: number;
   durationInFrames: number;
-}> = ({ headline, accent, gameTitle, heroSrc, cutSrc, cutX, durationInFrames }) => {
+  /** SHORT_VIVID: the art stays bright under the headline. */
+  vivid?: boolean;
+  heroPosition?: string;
+}> = ({ headline, accent, gameTitle, heroSrc, cutSrc, cutX, durationInFrames, vivid, heroPosition }) => {
   const frame = useCurrentFrame();
   const words = headline.toUpperCase().split(/\s+/).filter(Boolean);
   const gameWords = new Set(
@@ -72,7 +75,8 @@ export const HookPoster: React.FC<{
             width: "100%",
             height: "100%",
             objectFit: "cover",
-            filter: "brightness(0.62) saturate(1.3) contrast(1.15)",
+            objectPosition: heroPosition,
+            filter: `brightness(${vivid ? 0.86 : 0.62}) saturate(1.3) contrast(1.15)`,
           }}
         />
         <AbsoluteFill

@@ -4,6 +4,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
+import { noteAlert } from "../alertlog.ts";
 
 export interface DiscordMessage {
   content?: string;
@@ -17,6 +18,7 @@ export interface DiscordMessage {
 
 /** true = delivered, false = delivery failed, undefined = Discord not configured. */
 export async function postDiscord(webhookUrl: string, msg: DiscordMessage): Promise<boolean | undefined> {
+  noteAlert(webhookUrl, msg);
   if (!webhookUrl) {
     log("info", "discord (not configured)", { content: msg.content, title: msg.embeds?.[0]?.title });
     return undefined;

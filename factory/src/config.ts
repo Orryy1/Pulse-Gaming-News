@@ -194,6 +194,32 @@ export interface Config {
   whyFreshDays: number;
   /** A breaking Short past BREAKING_PER_DAY is allowed once more only at or above this score; 0 = never (src/storymix.ts). */
   breakingBigScore: number;
+  /** Big stories (src/bigstories.ts): off, report (say what it would do, change nothing) or make. */
+  bigStoryMode: "off" | "report" | "make";
+  /** Size at which a story is big: never held by the cap, the breaking allowance or the day's count. */
+  bigStorySize: number;
+  /** Size past which a story ignores the day's ceiling and the same-game rule, and the editor cannot pass on it. */
+  bigStoryHuge: number;
+  /** How long after its newest article a big story can still be made, angled on what has happened since. */
+  bigStoryMaxAgeHours: number;
+  /** Most big-story Shorts a day below BIG_STORY_HUGE, a ceiling on the cost. */
+  bigStoryPerDay: number;
+  /** Filler that gives way, one lane for each big story made today, in this order. */
+  bigStoryBumps: string[];
+  /** Hours after a dropped big story before one more go, which also needs an article the first go did not have. */
+  bigStoryRetryHours: number;
+  /** The day's count (SHORTS_PER_DAY) counts Shorts only: a long video does not use up a slot's turn. */
+  dailyTargetShortsOnly: boolean;
+  /** The launch calendar: reviews and launch days of known huge games (src/discovery/launches.ts); empty = none. */
+  launchCalendarFile: string;
+  /** Free chatter sources read for the story size (src/discovery/chatter.ts): bluesky, trends, youtube; empty = none. */
+  chatterSources: string[];
+  /** The Claude credit a month in dollars (src/claudecredit.ts); 0 turns the forecast off. */
+  claudeMonthlyCredit: number;
+  /** The day of the month the credit renews. */
+  claudeCreditRenewDay: number;
+  /** First warning when the credit would run out in under this many days. */
+  claudeCreditWarnDays: number;
   /** The YouTube search demand check before evergreen, ranking and Why picks (src/discovery/searchdemand.ts). */
   demandCheck: boolean;
   /** Views on a topic's top recent YouTube hits (last week) below which it has no demand and is skipped. */
@@ -225,6 +251,8 @@ export interface Config {
   routineLanAllow: string[];
   routineLanPort: number;
   /** The owner's own recordings, cut into an inbox by the Windows tasks in C:\Claude	inotv-vods. */
+  elevenLabsLowCredits: number; // warn the owner under this many usable credits (ELEVENLABS_LOW_CREDITS, 0 off)
+  elevenLabsLowDays: number; // and under this many days of the current pace (ELEVENLABS_LOW_DAYS, 0 off)
   gameplayEnabled: boolean;
   gameplayRoot: string; // holds inbox/ (written by the finder) and published/ (read by Leonida Intel)
   gameplayExperiments: string; // the numbered test list the reviewer matches clips against
@@ -235,8 +263,33 @@ export interface Config {
   gameplayApprovalHours: number; // an unanswered gameplay Short expires after this; under the links' 72 hours
   keepFreeWindows: string; // whole stretches the PC is kept free: "lane|from|until;...", ISO times (pcschedule.ts)
   gameplayRemindHours: number; // one reminder with fresh links this long after the notice; 0 = none
+  gameplayDirect: boolean; // GAMEPLAY_DIRECT: the rebuilt Short (src/gameplaydirect.ts): full screen, starts on the action, voice, payoff, loop; one more vision call a kept clip
+  gameplayOneTap: boolean; // GAMEPLAY_ONE_TAP: the card's Approve and Reject act on the tap, with no confirmation page (src/server.ts)
   gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
+  longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
+  codeScenes: boolean; // src/render/codescene.ts: drawn scenes from a line's sourced data, over a plate or a repeated still, never over footage
+  shortPlateMax: number; // 0-1, the share of a Short that may sit on the bare plate before more media is fetched and, failing that, it is stopped
+  shortPlateMaxBig: number; // the same line for one of the day's big stories, which have no better story to give the slot to (SHORT_PLATE_MAX_BIG)
+  shortPlateFirstSeconds: number; // no bare plate in this many opening seconds of a Short; 0 = off (SHORT_PLATE_FIRST_SECONDS)
+  shortFootageFirst: boolean; // footage before stills on Shorts: src/render/plan.ts footageFirst, the fill in src/assets/clipscore.ts (SHORT_FOOTAGE_FIRST)
+  shortFootageShare: number; // percent of a Short's narration the gather tries to cover with moving footage, within the publisher's cap (SHORT_FOOTAGE_SHARE)
+  shortClipTextCheck: boolean; // read each Short clip with the local OCR and cut away big burned-in trailer text (SHORT_CLIP_TEXT_CHECK)
+  shortStakeFirst: boolean; // the hook carries a stake for the viewer (SHORT_STAKE_FIRST, src/editorial/shortrules.ts)
+  shortRefuseThin: boolean; // a script that admits it has nothing goes back, then the story is dropped, big stories excepted (SHORT_REFUSE_THIN)
+  shortEndPayoff: boolean; // the last line is a payoff or runs back into the hook, not a question or "next Why tomorrow" (SHORT_END_PAYOFF)
+  shortTightScript: boolean; // fewer full stops and plainer words for a quicker read (SHORT_TIGHT_SCRIPT, off)
+  shortArgumentShare: number; // 0-1, the share of news and Why Shorts written as one argument with no labelled take (SHORT_ARGUMENT_SHARE)
+  shortMinWpm: number; // speed a Short's voice up to this many words a minute, 25% at most; 0 = as recorded. The owner's ear decides (SHORT_MIN_WPM, off)
+  shortCappedStills: number; // the ceiling on trailer frames as stills for a tight-cap publisher (Rockstar), used only to fill what published art leaves blank; 0 = none (SHORT_CAPPED_STILLS)
+  shortMediaBeforeVoice: boolean; // gather a Short's media before the voice, and refuse one that cannot be pictured before credit is spent (SHORT_MEDIA_BEFORE_VOICE)
+  shortBright: boolean; // lighter top and bottom fades and vignette, brightest art and footage first (SHORT_BRIGHT)
+  shortLabelsClean: boolean; // no NEWS or CONFIRMED on our own work, no stat chip the line does not mention, no card repeating the caption (SHORT_LABELS_CLEAN)
+  planSlateMax: number; // 0-1, the share of a long video that may sit on the empty slate before its render is stopped
+  releaseGateMaxSlate: number; // 0-1, the same on the finished picture at the release gate
+  releaseGateMinFootage: number; // 0-1, a documentary's share of game footage when the game has plenty of it
+  releaseGateMinFootageRanking: number; // 0-1, the same for a ranking
+  writerNotesGuard: boolean; // writer's notes (src/editorial/writernotes.ts) are sent back, and stop the video before the voice and at release; on by default
   docTestEvidence: boolean; // a run documentary may use approved gameplay tests as a source (src/editorial/testevidence.ts)
   commentReplies: boolean; // answer good comments in a video's first hours
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
@@ -291,6 +344,11 @@ export interface Config {
    * grid in its next layout with other pictures, before another design takes its place: THUMB_MOTIF_REPAIR,
    * default on (owner, 31 Oct 2026: keep the grid look). */
   thumbMotifRepair: boolean;
+  /** The long-video thumbnail rule: one recognisable hero from the right game, 1-4 big words, no frames, visors or
+   * small panels (src/qa/thumbrule.ts). The GTA cover grid stays as the approved special case; a thumbnail that
+   * fails the check gives way to the next design and never holds a release: THUMB_HERO_RULE, default on
+   * (owner, 3-4 Nov 2026). */
+  thumbHeroRule: boolean;
   /** Documentaries open on the signature three seconds (sting, mark, one line of the hook): DOC_COLD_OPEN, default on. */
   docColdOpen: boolean;
   /** The documentary's title lands as a card on the cold open's last beat instead of over its first seconds
@@ -321,6 +379,12 @@ export interface Config {
   /** The Sunday growth report (src/growthreport.ts, plan item 12): subscribers per 1,000 views for each format, week on
    * week, and one line on what to back, to the alerts channel on Sundays at 10:00: GROWTH_REPORT, default off. */
   growthReport: boolean;
+  /** Every post to the alerts channel also goes as one line to data/logs/alerts.jsonl (src/alertlog.ts): ALERT_LEDGER,
+   * default off. */
+  alertLedger: boolean;
+  /** The daily digest of that ledger (src/alertdigest.ts): written to data/logs/alert_digest.md from 09:00 and posted
+   * only when a kind of alert is new or rising: ALERT_DIGEST, default off. */
+  alertDigest: boolean;
   /** The breakout documentary picker (src/docpick.ts, growth plan move 3): the next documentary is the candidate
    * that scores best on fame, a collapse-or-comeback arc, a news peg, demand and freshness, with no model call;
    * the score breakdown is logged and posted to Discord. Off, the writer picks from the lists as before:
@@ -328,6 +392,10 @@ export interface Config {
   docBreakoutPicker: boolean;
   /** At most this many candidates get the slower lookups (Steam, Wikipedia, YouTube demand) a pick: DOC_PICK_LOOKUPS, default 8. */
   docPickLookups: number;
+  /** DOC_PICK_SINGLE_SUBJECT: series surveys leave the running and a story is weighed by its shape: one person, one hunt or one failure (src/docpick.ts scoreShape). World-class audit fix 1. */
+  docPickSingleSubject: boolean;
+  /** FILM_SLATE_FILE: a ranked list of films (film_slate.json, from reports/Film slate November 2026.md); the first not yet made goes next. Empty = none. */
+  filmSlateFile: string;
   /** Real evidence on screen (src/editorial/evidence.ts): on key beats (an announcement, a delay, an apology, a
    * review verdict, a sales milestone, a statement) the documentary shows the source's exact words as a full-frame
    * statement page, or the review aggregate as a score page, each with a source credit; never invented text:
@@ -382,6 +450,24 @@ export interface Config {
   /** The daily question picture on Instagram as well (ENGAGE_INSTAGRAM): off, 9 posts drew 0 likes by 29 Oct 2026. */
   engageInstagram: boolean;
   engageSlot: string; // local time it goes out
+  /** The Short's first comment asks the video's own closing question (FIRST_COMMENT_QUESTION, src/social/firstcomment.ts). */
+  firstCommentQuestion: boolean;
+  /** Reads the public comment list to see whether first comments are really showing (FIRST_COMMENT_CHECK, src/social/commentcheck.ts). */
+  firstCommentCheck: boolean;
+  /** Replies lose their stock opener and do not all end on a question (REPLY_STYLE, src/youtube/replies.ts). */
+  replyStyle: boolean;
+  /** Answers a viewer who replies to our reply, up to REPLY_LIMITS.perThread in a thread (REPLY_FOLLOWUPS). */
+  replyFollowups: boolean;
+  /** Answers comments on our Instagram and Facebook reels (META_COMMENT_REPLIES, src/social/metacomments.ts). */
+  metaCommentReplies: boolean;
+  /** Per-platform lines in the Sunday growth report and what went quiet in the alert digest (SOCIAL_SCOREBOARD). */
+  socialScoreboard: boolean;
+  /** A community post that found no pictures tries again instead of leaving the day empty (ENGAGE_RETRY). */
+  engageRetry: boolean;
+  /** Viewer requests are also read from the Shorts' comments the factory already holds (REQUESTS_FROM_SHORTS). */
+  requestsFromShorts: boolean;
+  /** The GTA VI launch's fixed community posts, 18-21 Nov (LAUNCH_COMMUNITY_POSTS, src/social/launchcommunity.ts). */
+  launchCommunityPosts: boolean;
   /** The Meta login saved by /connect?account=meta; when present its page token wins over the .env tokens. */
   metaLoginPath: string;
   /** A Facebook Login for Business configuration id (FACEBOOK_LOGIN_CONFIG_ID), when the app uses one instead of scopes. */
@@ -472,6 +558,9 @@ export interface Config {
   maxClips: number;
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
+  officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
+  docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
+  shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
   ytdlpPath: string;
   /** Games the owner plays (and records): long videos about them send them a "record these moments" list. */
   ownerGames: string[];
@@ -575,6 +664,43 @@ export interface Config {
   /** The ranking writer opens on a 5-10 word first line, a Short's hook length, which the signature cold
    * open then shows (src/editorial/longform.ts): LONG_PUNCHY_HOOK, default on. Off: under 15 words, as before. */
   longPunchyHook: boolean;
+  /**
+   * The rules from the Inspiration study (reports/Inspiration playlist forensics.md; src/editorial/longrules.ts). All
+   * off by default; a miss costs at most one revision and is then a style warning.
+   * LONG_YOU_PER_1000: the least "you" per 1,000 words in a long video, measured on the script (0: not measured).
+   * GUIDE_YOU_PER_1000: the same in a guide, used only when LONG_YOU_PER_1000 is on (default 35).
+   */
+  longYouPer1000: number;
+  guideYouPer1000: number;
+  /**
+   * DOC_META_GUARD: a chapter that talks about its brief instead of the story ("this excerpt", "shouldn't be recorded")
+   * is sent back, and dropped if it still does. The FFXIV documentary of 4 Nov carried one, voiced.
+   */
+  docMetaGuard: boolean;
+  /** LONG_SENTENCE_GATE: the mean sentence stays under this many words on rankings and guides (0: not measured). */
+  longSentenceGate: number;
+  /** LONG_HOOK_YOU_MIN: the least "you" words in a long video's opening, which the whole-video floor cannot see (0: off). */
+  longHookYouMin: number;
+  /** LONG_HOOK_STACK: the opening stacks the stakes, 3 to this many named surprises, a trust line and a saved promise (0: the older opening). */
+  longHookStack: number;
+  /** LONG_OPEN_LOOPS_MAX: the most open loops a guide plans; rankings get real ones, up to 3 (0: as before). */
+  longOpenLoopsMax: number;
+  /** LOOP_NAME_PAYOFF: a payoff says out loud that it's the promise being kept. */
+  loopNamePayoff: boolean;
+  /** LONG_VERDICT_STAMPS: confirmed, reported and busted, spoken and stamped in a guide, under the rumour rules. */
+  longVerdictStamps: boolean;
+  /** LONG_GUIDE_FORMAT: a run entry with format "guide" (src/shortrun.ts) follows the player's journey. Off: it runs as a documentary. */
+  longGuideFormat: boolean;
+  /** GUIDE_CHAPTER_ACTION: each guide chapter ends in a job for day one. */
+  guideChapterAction: boolean;
+  /** LONG_SAME_PICTURE_MAX_SECONDS: no one still for more than this in any minute (src/render/picturecap.ts; 0: off). */
+  longSamePictureMaxSeconds: number;
+  /** LONG_CARD_SHARE: fillers may also take lines with a still of their own until this share of sentences carries a card, 0-1 (0: off). */
+  longCardShare: number;
+  /** LONG_STILL_XFADE_FRAMES: a long video's dissolve between stills, in frames: a test dial only (9: as today, 0: hard cuts). */
+  longStillXfadeFrames: number;
+  /** LONG_MIN_WPM: a test dial only: rankings slower than this are sped up, documentaries never (0: off). */
+  longMinWpm: number;
   /**
    * A documentary's sound craft (src/render/soundfx.ts, 31 Oct 2026), each part on by default: SOUND_JL_CUTS
    * (a clip's game sound leads or trails its picture), SOUND_GAME_POCKETS (game sound up in long pauses),
@@ -767,6 +893,27 @@ export function loadConfig(): Config {
     whySlots: whySlotsFrom(str("WHY_SLOTS"), str("WHY_SLOT")),
     whyFreshDays: Math.max(0, int("WHY_FRESH_DAYS", 14)),
     breakingBigScore: Math.max(0, int("BREAKING_BIG_SCORE", 95)),
+    bigStoryMode: (["off", "report", "make"] as const).find(
+      (m) => m === str("BIG_STORY_MODE", "report"),
+    ) ?? "report",
+    bigStorySize: Math.max(1, int("BIG_STORY_SIZE", 70)),
+    bigStoryHuge: Math.max(1, int("BIG_STORY_HUGE", 90)),
+    bigStoryMaxAgeHours: Math.max(1, int("BIG_STORY_MAX_AGE_HOURS", 36)),
+    bigStoryPerDay: Math.max(0, int("BIG_STORY_PER_DAY", 3)),
+    bigStoryBumps: str("BIG_STORY_BUMPS", "deals,spare,evergreen,why")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+    bigStoryRetryHours: Math.max(0, int("BIG_STORY_RETRY_HOURS", 6)),
+    dailyTargetShortsOnly: bool("DAILY_TARGET_SHORTS_ONLY", true),
+    launchCalendarFile: str("LAUNCH_CALENDAR_FILE", ""),
+    chatterSources: str("CHATTER_SOURCES", "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+    claudeMonthlyCredit: Math.max(0, Number(str("CLAUDE_MONTHLY_CREDIT", "100")) || 0),
+    claudeCreditRenewDay: Math.max(1, int("CLAUDE_CREDIT_RENEW_DAY", 1)),
+    claudeCreditWarnDays: Math.max(1, int("CLAUDE_CREDIT_WARN_DAYS", 10)),
     demandCheck: bool("DEMAND_CHECK", true),
     demandMinViews: Math.max(0, int("DEMAND_MIN_VIEWS", 20000)),
     demandLookups: Math.max(0, int("DEMAND_LOOKUPS", 12)),
@@ -801,7 +948,11 @@ export function loadConfig(): Config {
       .map((x) => x.trim())
       .filter(Boolean),
     routineLanPort: int("ROUTINE_LAN_PORT", 8081),
-    gameplayEnabled: bool("GAMEPLAY_ENABLED", true),
+    elevenLabsLowCredits: int("ELEVENLABS_LOW_CREDITS", 100_000),
+    elevenLabsLowDays: int("ELEVENLABS_LOW_DAYS", 5),
+    // A dry run (every sandbox and rehearsal) leaves the owner's real inbox alone unless it asks otherwise: 4 Nov
+    // 2026, a sandbox Short took clips out of the live inbox because nothing told it not to.
+    gameplayEnabled: bool("GAMEPLAY_ENABLED", !bool("DRY_RUN", false)),
     gameplayRoot: str(
       "GAMEPLAY_ROOT",
       path.join(os.homedir(), "Videos", "Pulse Gameplay"),
@@ -831,8 +982,36 @@ export function loadConfig(): Config {
     gameplayApprovalHours: Math.min(70, int("GAMEPLAY_APPROVAL_HOURS", 48)),
     keepFreeWindows: str("KEEP_FREE_WINDOWS", ""),
     gameplayRemindHours: int("GAMEPLAY_REMIND_HOURS", 12),
+    gameplayDirect: bool("GAMEPLAY_DIRECT", false),
+    gameplayOneTap: bool("GAMEPLAY_ONE_TAP", false),
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),
+    longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
+    codeScenes: bool("CODE_SCENES", false),
+    shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.10")) || 0.1,
+    shortPlateMaxBig: Number(str("SHORT_PLATE_MAX_BIG", "0.35")) || 0.35,
+    shortPlateFirstSeconds: Math.max(0, int("SHORT_PLATE_FIRST_SECONDS", 5)),
+    shortFootageFirst: bool("SHORT_FOOTAGE_FIRST", true),
+    shortFootageShare: Math.max(0, Math.min(85, int("SHORT_FOOTAGE_SHARE", 65))),
+    shortClipTextCheck: bool("SHORT_CLIP_TEXT_CHECK", true),
+    shortStakeFirst: bool("SHORT_STAKE_FIRST", true),
+    shortRefuseThin: bool("SHORT_REFUSE_THIN", true),
+    shortEndPayoff: bool("SHORT_END_PAYOFF", true),
+    shortTightScript: bool("SHORT_TIGHT_SCRIPT", false),
+    shortArgumentShare: Math.max(
+      0,
+      Math.min(1, Number(str("SHORT_ARGUMENT_SHARE", "0.5"))),
+    ),
+    shortMinWpm: Math.max(0, int("SHORT_MIN_WPM", 0)),
+    shortCappedStills: Math.max(0, int("SHORT_CAPPED_STILLS", 6)),
+    shortMediaBeforeVoice: bool("SHORT_MEDIA_BEFORE_VOICE", true),
+    shortBright: bool("SHORT_BRIGHT", true),
+    shortLabelsClean: bool("SHORT_LABELS_CLEAN", true),
+    planSlateMax: Number(str("PLAN_SLATE_MAX", "0.08")) || 0.08,
+    releaseGateMaxSlate: Number(str("RELEASE_GATE_MAX_SLATE", "0.08")) || 0.08,
+    releaseGateMinFootage: Number(str("RELEASE_GATE_MIN_FOOTAGE", "0.1")) || 0.1,
+    releaseGateMinFootageRanking: Number(str("RELEASE_GATE_MIN_FOOTAGE_RANKING", "0.05")) || 0.05,
+    writerNotesGuard: bool("WRITER_NOTES_GUARD", true),
     docTestEvidence: bool("DOC_TEST_EVIDENCE", false),
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),
@@ -919,6 +1098,7 @@ export function loadConfig(): Config {
     docSoundBeats: bool("DOC_SOUND_BEATS", true),
     docEndCard: bool("DOC_END_CARD", true),
     thumbMotifRepair: bool("THUMB_MOTIF_REPAIR", true),
+    thumbHeroRule: bool("THUMB_HERO_RULE", true),
     docColdOpen: bool("DOC_COLD_OPEN", true),
     docTitleDrop: bool("DOC_TITLE_DROP", true),
     docOpenLoops: bool("DOC_OPEN_LOOPS", true),
@@ -929,8 +1109,12 @@ export function loadConfig(): Config {
     newsSegment: bool("NEWS_SEGMENT", false),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
+    alertLedger: bool("ALERT_LEDGER", false),
+    alertDigest: bool("ALERT_DIGEST", false),
     docBreakoutPicker: bool("DOC_BREAKOUT_PICKER", true),
     docPickLookups: int("DOC_PICK_LOOKUPS", 8),
+    docPickSingleSubject: bool("DOC_PICK_SINGLE_SUBJECT", false),
+    filmSlateFile: str("FILM_SLATE_FILE", ""),
     docEvidence: bool("DOC_EVIDENCE", true),
     titleShapes: bool("TITLE_SHAPES", true),
     titleAngles: bool("TITLE_ANGLES", true),
@@ -974,6 +1158,15 @@ export function loadConfig(): Config {
     engageEnabled: bool("ENGAGE_ENABLED", true),
     engageInstagram: bool("ENGAGE_INSTAGRAM", false),
     engageSlot: str("ENGAGE_SLOT", "15:00"),
+    firstCommentQuestion: bool("FIRST_COMMENT_QUESTION", false),
+    firstCommentCheck: bool("FIRST_COMMENT_CHECK", false),
+    replyStyle: bool("REPLY_STYLE", false),
+    replyFollowups: bool("REPLY_FOLLOWUPS", false),
+    metaCommentReplies: bool("META_COMMENT_REPLIES", false),
+    socialScoreboard: bool("SOCIAL_SCOREBOARD", false),
+    engageRetry: bool("ENGAGE_RETRY", false),
+    requestsFromShorts: bool("REQUESTS_FROM_SHORTS", false),
+    launchCommunityPosts: bool("LAUNCH_COMMUNITY_POSTS", false),
     metaLoginPath: str("META_LOGIN_PATH", path.join(tokenDir, "meta.json")),
     facebookLoginConfigId: str("FACEBOOK_LOGIN_CONFIG_ID"),
     facebookLinkComment: bool("FACEBOOK_LINK_COMMENT", true),
@@ -1048,6 +1241,9 @@ export function loadConfig(): Config {
     clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as
       "llm" | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
+  officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
+  shortVivid: bool("SHORT_VIVID", false),
+  docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
     ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
     ownerGames: str("OWNER_GAMES", "Grand Theft Auto V, Grand Theft Auto VI")
       .split(",")
@@ -1116,6 +1312,21 @@ export function loadConfig(): Config {
     ),
     longEntryPace: bool("LONG_ENTRY_PACE", true),
     longPunchyHook: bool("LONG_PUNCHY_HOOK", true),
+    longYouPer1000: int("LONG_YOU_PER_1000", 0),
+    guideYouPer1000: int("GUIDE_YOU_PER_1000", 35),
+    docMetaGuard: bool("DOC_META_GUARD", false),
+    longSentenceGate: int("LONG_SENTENCE_GATE", 0),
+    longHookStack: int("LONG_HOOK_STACK", 0),
+    longHookYouMin: int("LONG_HOOK_YOU_MIN", 0),
+    longOpenLoopsMax: int("LONG_OPEN_LOOPS_MAX", 0),
+    loopNamePayoff: bool("LOOP_NAME_PAYOFF", false),
+    longVerdictStamps: bool("LONG_VERDICT_STAMPS", false),
+    longGuideFormat: bool("LONG_GUIDE_FORMAT", false),
+    guideChapterAction: bool("GUIDE_CHAPTER_ACTION", false),
+    longSamePictureMaxSeconds: int("LONG_SAME_PICTURE_MAX_SECONDS", 0),
+    longCardShare: Number(str("LONG_CARD_SHARE", "0")) || 0,
+    longStillXfadeFrames: int("LONG_STILL_XFADE_FRAMES", 9),
+    longMinWpm: int("LONG_MIN_WPM", 0),
     soundCraft: {
       jl: bool("SOUND_JL_CUTS", true),
       pockets: bool("SOUND_GAME_POCKETS", true),
@@ -1232,6 +1443,9 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     breaking: c.breakingEnabled
       ? `${c.breakingPerDay}/day, score>=${c.breakingScoreMin}, <=${c.breakingMaxAgeMinutes}min old${c.breakingBigScore ? `, one more at score>=${c.breakingBigScore}` : ""}`
       : "off",
+    bigStories: c.bigStoryMode === "off"
+      ? "off"
+      : `${c.bigStoryMode}, size>=${c.bigStorySize}, up to ${c.bigStoryPerDay}/day, ${c.bigStoryMaxAgeHours}h window`,
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
     demandCheck: c.demandCheck,
     approvalMode: c.approvalMode,

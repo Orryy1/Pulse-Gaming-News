@@ -30,6 +30,7 @@ import {
   renderLongThumbs,
   countAsRender,
   renderCutdown,
+  renderGameplayShort,
 } from "./render/render.ts";
 import {
   extractFrames,
@@ -41,7 +42,7 @@ import { visionQa } from "./qa/vision.ts";
 import { checkNarration, transcribeWords } from "./qa/narration.ts";
 import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken, storedRefreshToken } from "./youtube/oauth.ts";
-import { officialMedia } from "./assets/officialTrailer.ts";
+import { trailerFrames, officialMedia } from "./assets/officialTrailer.ts";
 import {
   archiveLibrary,
   libraryStockClips,
@@ -88,6 +89,7 @@ import {
   quotaUsed,
 } from "./lanes.ts";
 import { postDiscord } from "./approval/discord.ts";
+import { startAlertLedger } from "./alertlog.ts";
 import { fetchWithTimeout, log } from "./lib/util.ts";
 import { fetchPublic } from "./lib/publicurl.ts";
 
@@ -129,6 +131,11 @@ export function stockLibraries(
 export function createServices(db: Db, cfg: Config): Services {
   // The Mac mini's jobs (src/macworker.ts): each setting off means the old local path, untouched.
   const mac = macSettings(cfg);
+  if (cfg.alertLedger)
+    startAlertLedger(
+      path.join(cfg.dataDir, "logs", "alerts.jsonl"),
+      cfg.discordWebhookUrl,
+    );
   const tellMac = (content: string) =>
     postDiscord(cfg.discordWebhookUrl, { content }).catch(() => undefined);
   const speechWords = (file: string) =>
@@ -198,7 +205,10 @@ export function createServices(db: Db, cfg: Config): Services {
       return clusterItems(
         [...rss, ...rockstar],
         new Date(),
-        cfg.maxStoryAgeHours,
+        // After a day or two down, a big story is still in the feeds: keep it long enough to be made late.
+        cfg.bigStoryMode === "off"
+          ? cfg.maxStoryAgeHours
+          : Math.max(cfg.maxStoryAgeHours, cfg.bigStoryMaxAgeHours),
       );
     },
     discoverEvergreen: () =>
@@ -206,7 +216,19 @@ export function createServices(db: Db, cfg: Config): Services {
     fetchArticle,
     synthesise: (text, out, voice, opts) =>
       narrate(
-        opts?.provider ? { ...cfg, voiceProvider: opts.provider } : cfg,
+        {
+          ...cfg,
+          ...(opts?.provider ? { voiceProvider: opts.provider } : {}),
+          // LONG_MIN_WPM: a test dial, passed for rankings only; it only ever raises the floor.
+          ...(opts?.minWpm
+            ? {
+                minWordsPerMinute: Math.max(
+                  cfg.minWordsPerMinute,
+                  opts.minWpm,
+                ),
+              }
+            : {}),
+        },
         text,
         out,
         voice,
@@ -298,7 +320,7 @@ export function createServices(db: Db, cfg: Config): Services {
       return game ? fetchIgdbArt(game, dir, max) : [];
     },
     downloadPhoto: (img, dest) => downloadCommons(img, dest),
-    fetchClips: (app, dir, targets, maxClips, scope) =>
+    fetchClips: (app, dir, targets, maxClips, scope, fill) =>
       selectClips({
         app,
         episodeDir: dir,
@@ -306,7 +328,11 @@ export function createServices(db: Db, cfg: Config): Services {
         maxClips,
         llm: cfg.clipRanking === "llm" ? llm : undefined,
         scope,
+        fillSeconds: fill?.seconds,
+        textCheck: fill?.textCheck,
       }),
+    trailerFrames: (trailer, dir, gameTitle, count, textCheck) =>
+      trailerFrames({ episodeDir: dir, gameTitle, ytdlp: cfg.ytdlpPath }, trailer, count, textCheck),
     releaseRadar: (from) => releaseRadar(from),
     freeGames: (now) => freeGames(now),
     achievements: (appId) => fetchAchievements(appId),
@@ -356,8 +382,8 @@ export function createServices(db: Db, cfg: Config): Services {
         () => accessToken(db, oauthConfig(cfg)),
         (units) => quotaAdd(db, new Date(), units),
       ),
-    research: (title, fallbackQuery, maxChars) =>
-      researchGame(title, fallbackQuery, maxChars),
+    research: (title, fallbackQuery, maxChars, focus) =>
+      researchGame(title, fallbackQuery, maxChars, undefined, focus),
     fetchStock: (dir, targets, gameWords, maxClips, avoidUrls) =>
       stockLibraries(cfg).length
         ? libraryStockClips(
@@ -388,6 +414,7 @@ export function createServices(db: Db, cfg: Config): Services {
       maxClips,
       hint,
       story,
+      fill,
     ) => {
       if (!cfg.officialTrailers) return { clips: [], stills: [] };
       return officialMedia({
@@ -400,6 +427,8 @@ export function createServices(db: Db, cfg: Config): Services {
         ytdlp: cfg.ytdlpPath,
         hint,
         story,
+        fill,
+        stillFrames: cfg.officialStillFrames,
         quotaOk: async () => {
           const now = new Date();
           if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay)
@@ -457,6 +486,7 @@ export function createServices(db: Db, cfg: Config): Services {
       : renderLong,
     renderLongStills,
     renderCutdown,
+    renderGameplayShort,
     normalise: normaliseLoudness,
     technicalQa,
     extractFrames,

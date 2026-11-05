@@ -36,6 +36,12 @@ const INBOX = path.join(ROOT, "inbox");
 const STATE = path.join(ROOT, "state.json");
 const NTFY = "https://ntfy.sh/leonida-alerts-547db63b3fb46528bf";
 const VIDEO = /\.(mp4|mkv|mov|webm)$/i;
+// The PC's copy uses the 4090; the Mac has no NVENC (4 Nov 2026: every cut failed "Unrecognized option 'cq'").
+// libx264 at these settings came within 0.001 SSIM of the PC's cut against the source (4 Nov 2026), in 7 s on the M4.
+const VIDEO_ENCODER =
+  process.platform === "darwin"
+    ? ["libx264", "-preset", "fast", "-crf", "15"]
+    : ["h264_nvenc", "-preset", "p5", "-cq", "19"];
 const CLIP_SECONDS = 40;
 const MIN_GAP_SECONDS = 90;
 const DRY = process.argv.includes("--dry");
@@ -197,11 +203,7 @@ async function cut(file, w, dir) {
     "-map",
     "0:a:0?",
     "-c:v",
-    "h264_nvenc",
-    "-preset",
-    "p5",
-    "-cq",
-    "19",
+    ...VIDEO_ENCODER,
     "-pix_fmt",
     "yuv420p",
     "-c:a",
@@ -228,9 +230,32 @@ async function cut(file, w, dir) {
   ]);
 }
 
+// Xbox auto-upload puts clips in a folder such as OneDrive\Videos\Xbox Game DVR.
+// Looked up on every run: it doesn't exist until the first clip uploads, and the
+// name varies by console version.
+async function oneDriveXboxFolders() {
+  const root =
+    process.env.GAMEPLAY_ONEDRIVE ||
+    process.env.OneDriveConsumer ||
+    path.join(HOME, "OneDrive");
+  const found = [];
+  for (const parent of [root, path.join(root, "Video"), path.join(root, "Videos")]) {
+    const entries = await fs
+      .readdir(parent, { withFileTypes: true })
+      .catch(() => []);
+    for (const e of entries)
+      if (e.isDirectory() && /xbox/i.test(e.name))
+        found.push(path.join(parent, e.name));
+  }
+  return found;
+}
+
+// The same clip can arrive twice: OneDrive upload and USB into "Drop clips here".
+const sameClip = (full, size) => `${path.basename(full).toLowerCase()}|${size}`;
+
 async function listRecordings() {
   const files = [];
-  for (const dir of WATCH) {
+  for (const dir of [...WATCH, ...(await oneDriveXboxFolders())]) {
     let entries = [];
     try {
       entries = await fs.readdir(dir, { withFileTypes: true, recursive: true });
@@ -271,10 +296,24 @@ async function main() {
     );
     return;
   }
-  const todo = (await listRecordings()).filter((f) => !state.done[f.key]);
+  const seen = new Set(
+    Object.keys(state.done).map((key) => {
+      const [full, size] = key.split("|");
+      return sameClip(full, size);
+    }),
+  );
+  const todo = (await listRecordings()).filter((f) => {
+    const clip = sameClip(f.full, f.size);
+    if (seen.has(clip)) return false;
+    seen.add(clip);
+    return true;
+  });
   log(`${todo.length} new recording(s)`);
   let total = 0;
   for (const f of todo) {
+    // One unreadable recording (or a OneDrive file that can't download yet) must
+    // not stop the rest. It isn't marked done, so the next run tries it again.
+    try {
     const duration = await ffprobeDuration(f.full);
     const title = recordingTitle(f.full);
     log(`scoring "${title}" (${Math.round(duration / 60)} min)`);
@@ -350,16 +389,27 @@ async function main() {
       state.done[f.key] = new Date().toISOString();
       await fs.writeFile(STATE, JSON.stringify(state, null, 2));
     }
+    } catch (e) {
+      log(`  skipped for now: ${f.full}: ${e?.message || e}`);
+    }
   }
-  if (total) {
+  // At most one phone alert an hour: this runs every 15 minutes during launch.
+  if (!DRY) state.unnotified = (state.unnotified || 0) + total;
+  const alertDue =
+    !state.notifiedAt ||
+    Date.now() - Date.parse(state.notifiedAt) >= 60 * 60_000;
+  if (!DRY && state.unnotified && alertDue) {
     try {
       await fetch(NTFY, {
         method: "POST",
-        body: `${total} gameplay moment(s) cut from ${todo.length} recording(s). Pulse Factory will turn the best into Shorts for your approval.`,
+        body: `${state.unnotified} gameplay moment(s) cut. Pulse Factory will turn the best into Shorts for your approval.`,
         headers: { Title: "Gameplay moments found", Tags: "video_game" },
       });
+      state.unnotified = 0;
+      state.notifiedAt = new Date().toISOString();
     } catch {}
   }
+  if (!DRY && total) await fs.writeFile(STATE, JSON.stringify(state, null, 2));
   log(`done: ${total} clip(s) in ${INBOX}`);
 }
 

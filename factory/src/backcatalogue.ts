@@ -12,6 +12,9 @@ import {
   type TitleAngle,
 } from "./editorial/titleshape.ts";
 
+/** Hand-approved by the owner (4 Nov 2026): never re-rendered or replaced by a repackaging run. */
+export const HAND_APPROVED: ReadonlySet<string> = new Set(["BemcTLS8mVI", "7CelsHTQU3s"]);
+
 export interface AbQueueEntry {
   videoId: string;
   episode: string;
@@ -25,12 +28,14 @@ export interface AbQueueEntry {
   angles?: TitleAngle[];
   nextTitles?: string[];
   repackage?: true;
+  /** The words on each new thumbnail, for the hero rule's check when the entry is applied. */
+  thumbWords?: string[];
 }
 
 export interface AngleTitle {
   title: string;
   angle?: TitleAngle;
-  /** 2-4 words in capitals for the thumbnail, adding to the title and never repeating it. */
+  /** 1-4 words in capitals for the thumbnail, not the whole title again (one strong word from its promise is fine). */
   thumb?: string;
 }
 

@@ -81,6 +81,8 @@ interface Fakes {
   script: Script;
   factChecks: FactCheck[];
   pick: number;
+  passReason?: string;
+  selections?: number;
   uploads: number;
   sessions: number;
   failUploadOnce: boolean;
@@ -149,14 +151,16 @@ function fakeLlm(f: Fakes): Llm {
           reason: "nothing strong",
         }) as z.infer<S>;
       }
-      if (schema === (SelectionSchema as unknown))
+      if (schema === (SelectionSchema as unknown)) {
+        f.selections = (f.selections ?? 0) + 1;
         return {
           candidate_index: f.pick,
-          reason: "big story",
+          reason: f.passReason ?? "big story",
           story_type: "delay",
           game_title: "Starfield",
           visual_dependency: f.visual ?? "none",
         } as z.infer<S>;
+      }
       if (schema === (ScriptSchema as unknown)) return f.script as z.infer<S>;
       if (schema === (FactCheckSchema as unknown))
         return (f.factChecks.shift() ?? {
@@ -2123,4 +2127,290 @@ test("a Why pick dropped by its fact-check gets a fresh game for the same slot, 
   assert.match(f.whyPrompts!.at(-1)!, /Diablo II/, "the dropped games are named as off limits");
   f.whyTopics = [whyTopic(games[3]!, "Why did Skyrim last?")];
   assert.equal(await maybeSelectWhy(s), undefined, "two retries, then the slot passes");
+});
+
+/** A long ranking ready to render: its pictures in place, nothing left to fetch. */
+async function longRankingReady(db: Db, cfg: Config) {
+  const script = {
+    ...goodScript(),
+    runtime: "long",
+    evergreen_format: "ranking",
+    game_title: "Halo",
+    headline: "Every Halo Campaign Ranked",
+    youtube: { ...goodScript().youtube, thumb_text: "HALO 2 AT 5?" },
+    entries: [
+      { rank: 2, year: 2010, platforms: "Xbox", game_title: "Halo: Reach", steam_search_term: "Halo Reach" },
+      { rank: 1, year: 2007, platforms: "Xbox", game_title: "Halo 3", steam_search_term: "Halo 3" },
+    ],
+  };
+  const art = (file: string, beatIndex: number | undefined, game: string, kind = "screenshot") => ({
+    file,
+    kind,
+    aspect: 16 / 9,
+    beatIndex,
+    sourceUrl: `https://example.com/${file}`,
+    provenance: `IGDB ${kind} for "${game}" (2010), publisher material via igdb.com`,
+  });
+  const assets = {
+    images: [
+      art("assets/topic.jpg", undefined, "Halo Infinite", "hero"),
+      art("entry_0/assets/reach.jpg", 0, "Halo: Reach"),
+      art("entry_1/assets/a.jpg", 1, "Halo 3", "hero"),
+      art("entry_1/assets/b.jpg", 1, "Halo 3"),
+      art("entry_1/assets/c.jpg", 1, "Halo 3"),
+      art("entry_1/assets/d.jpg", 1, "Halo 3"),
+      art("entry_1/assets/rdr.jpg", 1, "Red Dead Redemption 2", "hero"),
+    ],
+    clips: [],
+    filled: { before: 0, after: 0 },
+    durationSeconds: 300,
+    words: [],
+    audio: "voice.mp3",
+    captions: "captions.srt",
+  };
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, script_json, assets_json, lane, slot_at)
+     VALUES ('ep_long', 'h:long', 'voiced', '{"headline":"x","items":[]}', $1, $2, 'longform', '2026-10-20T19:00:00Z')`,
+    [JSON.stringify(script), JSON.stringify(assets)],
+  );
+  await fs.mkdir(path.join(cfg.dataDir, "episodes", "ep_long"), { recursive: true });
+}
+
+test("under the hero rule a long video's thumbnails are posters of the right game, and a failed one gives way without blocking", async () => {
+  const { db, s, f, cfg } = await setup({ visionQa: true });
+  await longRankingReady(db, cfg);
+  const seen: any[] = [];
+  s.renderLong = async (input) => {
+    seen.push(input);
+    await fs.writeFile(input.outFile, "mp4");
+    await fs.writeFile(input.posterFile, "jpg");
+    await fs.writeFile(input.thumbFile, "main");
+    for (const v of input.thumbVariants ?? []) await fs.writeFile(v.file, path.basename(v.file));
+  };
+  // The check fails the main thumbnail only; the repair replaces it.
+  s.visionQa = async (_files, ctx) =>
+    ctx.format === "thumbs"
+      ? { verdict: "fail", problems: ["Frame 1: the crop cuts the hero's face in half"], notes: "" }
+      : { verdict: "pass", problems: [], notes: "" };
+  const ep = await getEpisode(db, "ep_long");
+  const { advance } = await import("../src/pipeline.ts");
+  await advance(s, ep!);
+  assert.equal(seen.length, 1, "rendered once");
+  const main = seen[0].thumb;
+  assert.equal(main.layout, "poster");
+  // The writer's cryptic words gave way to plain ones, and the words name no game, so the winner's art leads.
+  assert.equal(main.headline, "HALO RANKED");
+  assert.equal(main.imageFile, "entry_1/assets/a.jpg");
+  assert.ok(seen[0].thumbVariants.every((v: any) => v.thumb.layout === "poster"));
+  const files = [main.imageFile, ...seen[0].thumbVariants.map((v: any) => v.thumb.imageFile)];
+  assert.equal(new Set(files).size, files.length, "every design has its own picture");
+  assert.ok(!files.some((x: string) => /rdr/.test(x)), "never the other game's art");
+  const after = await getEpisode(db, "ep_long");
+  assert.equal(after!.status, "rendered", "a failed thumbnail never stops the video");
+  const dir = path.join(cfg.dataDir, "episodes", "ep_long");
+  assert.equal(await fs.readFile(path.join(dir, "thumb.jpg"), "utf8"), "thumb_hero_b.jpg");
+  assert.deepEqual((after!.assets_json as any).thumbVariants, ["thumb_b.jpg", "thumb_c.jpg"]);
+  assert.ok(f.notifications.some((n) => /failed the hero thumbnail, so the next picture replaced it/.test(n)));
+  await db.close();
+});
+
+test("with THUMB_HERO_RULE off the thumbnails are the older designs", async () => {
+  const { db, s, cfg } = await setup({ visionQa: false, thumbHeroRule: false });
+  await longRankingReady(db, cfg);
+  const seen: any[] = [];
+  s.renderLong = async (input) => {
+    seen.push(input);
+    await fs.writeFile(input.outFile, "mp4");
+    await fs.writeFile(input.posterFile, "jpg");
+    await fs.writeFile(input.thumbFile, "main");
+  };
+  const { advance } = await import("../src/pipeline.ts");
+  await advance(s, (await getEpisode(db, "ep_long"))!);
+  assert.equal(seen.length, 1);
+  assert.notEqual(seen[0].thumb.layout, "poster");
+  assert.equal(seen[0].thumb.headline, "HALO 2 AT 5?");
+  await db.close();
+});
+
+// Big stories (src/bigstories.ts), with the real headlines of 4 Nov 2026: no first-party feed, a full day, everything
+// that stopped God of War's delay becoming a Short that evening.
+function godOfWarDelay(s: Services, now: Date) {
+  s.discover = async () =>
+    clusterItems(
+      [
+        item("God of War Laufey delayed three months to May 2027, as Sony Santa Monica escapes a packed window", "Eurogamer", "outlet", 1, now),
+        item("God of War Laufey Hit With Big Delay", "Polygon", "outlet", 1, now),
+        item("God of War Laufey Delayed to May 2027", "IGN", "outlet", 1, now),
+        item("God of War Laufey Delayed to May 2027", "Push Square", "outlet", 1, now),
+        item("God of War Laufey pushed back to May 2027", "The Verge", "outlet", 1, now),
+        item("God of War Laufey Delayed Until May 2027", "GameSpot", "outlet", 1, now),
+        item("God of War Laufey delayed to next May", "VGC", "outlet", 1, now),
+      ],
+      now,
+    );
+}
+
+test("a big story is made on a full day: no first-party feed, cap reached, breaking used, long video and all", async () => {
+  const { db, f, s, setClock } = await setup({
+    bigStoryMode: "make",
+    dailyTarget: 2,
+    shortsPerDayMax: 1,
+    breakingPerDay: 0,
+    breakingBigScore: 0,
+    newsSlots: ["03:00"],
+  });
+  const at = new Date("2026-10-16T17:30:00Z");
+  setClock(at);
+  // The day already at its count: a news Short and a long video.
+  for (const [id, lane] of [["n1", "news"], ["l1", "longform"]] as const)
+    await db.query(
+      `INSERT INTO episodes (id, story_hash, status, story_json, lane) VALUES ($1, $1, 'published', '{"headline":"x","items":[]}', $2)`,
+      [id, lane],
+    );
+  godOfWarDelay(s, at);
+  await tick(s);
+  const eps = await listEpisodes(db);
+  const big = eps.filter((e) => e.story_json.bigStory);
+  assert.equal(big.length, 1, "made");
+  assert.equal(big[0]!.lane, "news_breaking");
+  assert.equal(big[0]!.story_json.bigStory?.key, "god-of-war|delay");
+  assert.ok(big[0]!.story_json.items.length >= 6, "every outlet's article comes with it");
+  assert.ok(f.notifications.some((n) => n.startsWith("Big story picked:")));
+  // Not again, under any of its hashes.
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 1);
+  const seen = await db.query<{ decision: string }>(
+    `SELECT decision FROM seen_stories WHERE decision = 'big_story'`,
+  );
+  assert.ok(seen.length >= 1, "its splits will not come back through a news slot");
+  await db.close();
+});
+
+test("report mode changes nothing and still says what it would have done", async () => {
+  const { db, s, setClock } = await setup({
+    bigStoryMode: "report",
+    dailyTarget: 0,
+    breakingEnabled: false,
+    newsSlots: ["03:00"],
+  });
+  const at = new Date("2026-10-16T17:30:00Z");
+  setClock(at);
+  godOfWarDelay(s, at);
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 0);
+  const ev = await db.query<{ detail: { reason: string } }>(
+    `SELECT detail FROM events WHERE kind = 'big_story_held'`,
+  );
+  assert.equal(ev.length, 1);
+  assert.match(ev[0]!.detail.reason, /BIG_STORY_MODE is report/);
+  await db.close();
+});
+
+test("a story missed while the factory was down is made at the next chance, marked late", async () => {
+  const { db, s, setClock } = await setup({ bigStoryMode: "make", newsSlots: ["03:00"] });
+  const broke = new Date("2026-10-16T17:30:00Z");
+  setClock(broke);
+  godOfWarDelay(s, broke);
+  // Discovery ran at the time; selection did not (paused: the factory was down, or restarting).
+  const { discoverTick } = await import("../src/pipeline.ts");
+  await discoverTick(s);
+  const later = new Date("2026-10-17T07:30:00Z");
+  setClock(later);
+  s.discover = async () => [];
+  await tick(s);
+  const big = (await listEpisodes(db)).filter((e) => e.story_json.bigStory);
+  assert.equal(big.length, 1);
+  assert.ok((big[0]!.story_json.bigStory?.lateHours ?? 0) >= 13, "the writer is told it is hours old");
+  await db.close();
+});
+
+test("the editor's pass on a big story is reported; on a huge one it is overruled", async () => {
+  const { db, f, s, setClock } = await setup({ bigStoryMode: "make", bigStoryHuge: 100000, newsSlots: ["03:00"] });
+  const at = new Date("2026-10-16T17:30:00Z");
+  setClock(at);
+  godOfWarDelay(s, at);
+  f.pick = -1;
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 0);
+  const ev = await db.query<{ detail: { reason: string } }>(
+    `SELECT detail FROM events WHERE kind = 'big_story_held'`,
+  );
+  assert.ok(ev.some((e) => /the editor passed on it/.test(e.detail.reason)));
+  // Same story, huge bar now cleared, a new three-hour bucket.
+  s.cfg.bigStoryHuge = 1;
+  setClock(new Date(at.getTime() + 3 * 3_600_000));
+  godOfWarDelay(s, new Date(at.getTime() + 3 * 3_600_000));
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 1);
+  await db.close();
+});
+
+test("a long video no longer uses up a slot's turn in the day's count", async () => {
+  const { db, s, setClock } = await setup({ dailyTarget: 1, newsSlots: ["13:00"], breakingEnabled: false });
+  const at = new Date("2026-10-16T12:00:00Z");
+  setClock(at);
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane) VALUES ('l1', 'l1', 'published', '{"headline":"x","items":[]}', 'longform')`,
+  );
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.lane === "news").length, 1);
+  await db.close();
+});
+
+test("a planned Why on the story: no second Short from the big-story desk or from a news slot, under any hash", async () => {
+  const { db, s, setClock } = await setup({
+    bigStoryMode: "make",
+    newsSlots: ["18:00"],
+    breakingEnabled: false,
+  });
+  const file = path.join(s.cfg.dataDir, "run.json");
+  await fs.writeFile(
+    file,
+    JSON.stringify([
+      {
+        kind: "why",
+        date: "2026-10-17",
+        slot: "12:00",
+        question: "Why did God of War Laufey just lose three months?",
+        title: "Why God of War Laufey Slipped to May 2027",
+        game: "God of War Laufey",
+        arc: "The date moved three months to May 2027.",
+        angle: "Say only what the sources say.",
+        sources: [{ url: "https://example.com/a", source: "IGN" }],
+      },
+    ]),
+  );
+  s.cfg.shortRunFile = file;
+  const at = new Date("2026-10-16T17:30:00Z");
+  setClock(at);
+  godOfWarDelay(s, at);
+  const { discoverTick } = await import("../src/pipeline.ts");
+  await discoverTick(s);
+  await tick(s);
+  const eps = await listEpisodes(db);
+  assert.equal(eps.length, 0, JSON.stringify(eps.map((e) => [e.lane, e.story_json.headline])));
+  const ev = await db.query<{ detail: { action: string } }>(
+    `SELECT detail FROM events WHERE kind = 'big_story'`,
+  );
+  assert.equal(ev[0]!.detail.action, "planned");
+  await db.close();
+});
+
+test("an editor's repeat is never overruled, and the story is not asked about again for a day", async () => {
+  const { db, f, s, setClock } = await setup({ bigStoryMode: "make", bigStoryHuge: 1, newsSlots: ["03:00"] });
+  const at = new Date("2026-10-16T17:30:00Z");
+  setClock(at);
+  godOfWarDelay(s, at);
+  f.pick = -1;
+  f.passReason = "The only candidate repeats a story we already covered.";
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 0, "not forced");
+  const calls = f.selections ?? 0;
+  const next = new Date(at.getTime() + 4 * 3_600_000);
+  setClock(next);
+  godOfWarDelay(s, next);
+  await tick(s);
+  assert.equal((await listEpisodes(db)).filter((e) => e.story_json.bigStory).length, 0);
+  assert.equal(f.selections ?? 0, calls, "no second editor call");
+  await db.close();
 });

@@ -42,6 +42,8 @@ export interface MomentGraphic {
     | "source"
     | "milestone"
     | "people"
+    // A guide's spoken verdict: CONFIRMED, REPORTED or BUSTED, and who said it.
+    | "verdict"
     // The wider suite (src/render/components/packs): places, bar charts, shares, specs, lineages.
     | "map"
     | "bars"
@@ -325,6 +327,68 @@ export const MomentGraphicCard: React.FC<{
       {t}
     </div>
   );
+  if (g.kind === "verdict") {
+    // A rubber stamp, like the Shorts' (src/render/components/Captions.tsx): the colour says how sure, and the word
+    // is the one just said. Green for the publisher's own word, amber for a named report, red for a claim that fell.
+    const ink =
+      g.primary === "CONFIRMED"
+        ? COLOUR.up
+        : g.primary === "BUSTED"
+          ? COLOUR.alert
+          : COLOUR.gold;
+    const land = spring({
+      frame,
+      fps,
+      config: { damping: 11, stiffness: 180, mass: 0.8 },
+    });
+    return (
+      <div
+        style={{
+          position: "absolute",
+          right: RIGHT,
+          top: TOP,
+          maxWidth: CARD_W,
+          boxSizing: "border-box",
+          opacity: Math.min(1, land * 1.4) * out,
+          transform: `rotate(-5deg) scale(${1.8 - 0.8 * land})`,
+          transformOrigin: "center",
+          padding: "20px 34px 18px",
+          border: `8px solid ${ink}`,
+          borderRadius: 12,
+          background: "rgba(11, 11, 14, 0.82)",
+          color: ink,
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            fontFamily: DISPLAY,
+            fontWeight: 800,
+            fontSize: 74,
+            lineHeight: 1,
+            letterSpacing: 3,
+          }}
+        >
+          {g.primary}
+        </div>
+        {g.secondary ? (
+          <div
+            style={{
+              fontFamily: BODY,
+              fontWeight: 800,
+              fontSize: 28,
+              letterSpacing: 2,
+              marginTop: 10,
+              color: COLOUR.paper,
+              textTransform: "uppercase",
+            }}
+          >
+            {g.secondary}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   if (g.kind === "stat") {
     const p = interpolate(frame, [6, 42], [0, 1], {
       extrapolateLeft: "clamp",

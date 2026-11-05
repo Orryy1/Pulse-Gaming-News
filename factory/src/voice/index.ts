@@ -9,7 +9,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Config, VoiceProvider } from "../config.ts";
 import { FFMPEG } from "../lib/bin.ts";
-import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
+import { errorMessage, FatalError, fetchWithTimeout, log } from "../lib/util.ts";
+import { writerNoteHits } from "../editorial/writernotes.ts";
 import { synthesise as synthesiseElevenLabs, type Narration } from "./elevenlabs.ts";
 import { synthesiseElevenLabsLong, LONG_TEXT_CHARS } from "./elevenlabsLong.ts";
 import { decodedSeconds, synthesiseLocal } from "./local.ts";
@@ -96,6 +97,14 @@ export async function narrate(
   voice?: { id: string; name: string },
   hooks: { onEvent?: (kind: string, detail: Record<string, unknown>) => Promise<void> | void } = {},
 ): Promise<NarrationWithVoice> {
+  // The very last door: nothing that talks about the writing task reaches a voice, whoever is calling.
+  if (cfg.writerNotesGuard !== false) {
+    const notes = writerNoteHits(text);
+    if (notes.length)
+      throw new FatalError(
+        `writer's notes in the narration, not voiced: "${notes[0]!.sentence.slice(0, 160)}"`,
+      );
+  }
   const order = providerOrder(cfg.voiceProvider);
   const errors: string[] = [];
   for (const provider of order) {

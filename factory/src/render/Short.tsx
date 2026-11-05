@@ -12,12 +12,15 @@ import {
 } from "remotion";
 import type { ShortProps } from "./props.ts";
 import { COLOUR, themeFor } from "./brand.ts";
+import { DISPLAY } from "./components/fonts.ts";
+import { safeScale } from "./safetransform.ts";
 import { displayWords, pageCaptions } from "./timeline.ts";
 import { buildPlan, STING_FRAMES, type RenderPlan } from "./plan.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 import {
   ArtTrack,
   Finish,
+  focusPosition,
   Scrim,
   TurnFlash,
 } from "./components/Background.tsx";
@@ -52,7 +55,9 @@ import { storyYearOf } from "./components/vertical/pulse/map.ts";
 import { VFiller, VFreezeLabel } from "./components/vertical/craft.tsx";
 import { HOUSE, SHORT_TRACK_FRAMES } from "./shortcraft.ts";
 import { arbitrate, keptSpan, OPENING_LABEL_FRAMES, overlaySpans, shortLayout } from "./cleanframe.ts";
+import { ENTRY_CARD_TOP, ENTRY_CARD_TOP_CHROME, isEntryCard } from "./rankcard.ts";
 import { motifsFor } from "./components/motifs/index.ts";
+import { CodeSceneView } from "./components/codescene/CodeScenes.tsx";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
 /** Frames the new-look motif sting lasts after the hook. */
@@ -89,6 +94,31 @@ const MotifSting: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         }}
       >
         {children}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/** A year spoken over the old game's picture, filling the frame's width. */
+const ThenYear: React.FC<{ year: string; accent: string }> = ({ year, accent }) => {
+  const frame = useCurrentFrame();
+  const sc = interpolate(frame, [0, 4, 8], [1.35, 0.97, 1], { extrapolateRight: "clamp" });
+  return (
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+      <div
+        style={{
+          marginTop: -260,
+          fontFamily: DISPLAY,
+          fontWeight: 900,
+          fontSize: 340,
+          lineHeight: 1,
+          letterSpacing: -6,
+          color: "#fff",
+          transform: `scale(${safeScale(sc)})`,
+          textShadow: `0 10px 0 ${accent}, 0 26px 60px rgba(0,0,0,0.75)`,
+        }}
+      >
+        {year}
       </div>
     </AbsoluteFill>
   );
@@ -161,6 +191,17 @@ export const Short: React.FC<ShortProps> = (props) => {
   const hookIndex = props.segments.findIndex((s) => s.kind === "hook");
   const hookEnd =
     hookIndex >= 0 ? segmentEnds[hookIndex]! : Math.round(3 * fps);
+  // The hook's cut to the old game (plan.ts thenWindows) ends the opening poster: the year needs the whole frame.
+  const hookThen = plan.shots.find((s) => s.then && s.start < hookEnd);
+  const posterEnd = hookThen && hookThen.start > 12 ? hookThen.start : hookEnd;
+  const thenYears = plan.shots.flatMap((s) => {
+    // Only over the hook, where nothing else claims the frame; a later card keeps its place.
+    if (!s.then || s.start >= hookEnd) return [];
+    const w = displayWords(words).find(
+      (x) => Math.round(x.start * fps) >= s.start - 2 && Math.round(x.start * fps) < s.end && /^\d{4}/.test(x.text),
+    );
+    return w ? [{ from: s.start, len: s.end - s.start, year: w.text.replace(/\D/g, "").slice(0, 4) }] : [];
+  });
   const loopIndex = props.segments.findIndex((s) => s.kind === "loop");
   const deskIndex = props.segments.findIndex((s) => s.kind === "desk");
   // While a stamp is up the shelf fades almost out (6 frames each way), then comes back.
@@ -192,6 +233,20 @@ export const Short: React.FC<ShortProps> = (props) => {
       return f >= w.from - 4 && f < w.from + w.len + 4;
     });
   const shelfLevel = () => (overShelf(frame) ? Math.min(shelfOpacity, 0.06) : shelfOpacity);
+  // A code scene (src/render/codescene.ts) has the screen to itself, and draws the line's card as its own figure.
+  // Over a bare landscape the line keeps its card. Either way the shelf stands back.
+  const scenes = plan.scenes ?? [];
+  const inScene = scenes.some((x) => frame >= x.from - 2 && frame < x.to + 2);
+  const sceneOwnsCard = (i: number) =>
+    scenes.find((x) => x.segment === i && !(x.scene.type === "terrain" && !x.scene.title));
+  // A take's verdict still has to be read: when a scene opens the take, its card closes it, once the scene is done.
+  const afterScene = (i: number) => {
+    const sc = sceneOwnsCard(i);
+    const end = segmentEnds[i]!;
+    if (!sc || props.segments[i]!.kind !== "take" || end - sc.to < 45) return undefined;
+    const len = Math.min(150, end - sc.to);
+    return { from: end - len, len };
+  };
   const loopStart =
     loopIndex >= 0
       ? segmentStarts[loopIndex]!
@@ -211,6 +266,8 @@ export const Short: React.FC<ShortProps> = (props) => {
     const s = props.segments[i]!;
     const start = segmentStarts[i]!;
     const end = segmentEnds[i]!;
+    // A rank card stays up for its whole entry (src/render/rankcard.ts); word-level timing is for the small graphics.
+    if (isEntryCard(s)) return { from: start, len: Math.max(1, end - start) };
     const v = s.visual;
     const hold = Math.round(
       (s.kind === "take" ? 3.5 : v && ["list", "timeline", "compare"].includes(v.kind) ? 3 : 2.5) * fps,
@@ -296,6 +353,13 @@ export const Short: React.FC<ShortProps> = (props) => {
         if (i > 0 && i < last && i % 2 === 1 && !photos.has(i))
           looks.set(i, year! < 1994 ? "crt" : "vhs");
       });
+    // Then and now (plan.ts thenWindows): the old game's shots wear the tube and arrive through channel static.
+    shots.forEach((s, i) => {
+      if (s.then) {
+        looks.set(i, "crt");
+        accents.push({ at: s.start, kind: "static" });
+      }
+    });
     // Accents on about one cut in three, 4 s apart, clear of the turns, the stamps and the loop.
     const kinds: AccentKind[] = ["flare", "burn", "flash", "glitch"];
     let lastAccent = -Infinity;
@@ -311,6 +375,7 @@ export const Short: React.FC<ShortProps> = (props) => {
         return;
       if ((i * 5 + props.variant) % 3 !== 0) return;
       if (crafted(i) || camera.get(i - 1)?.out) return;
+      if (s.media.type === "scene" || shots[i - 1]?.media.type === "scene") return;
       if (plan.turns.some((t) => Math.abs(t - at) < 20)) return;
       if (
         (props.stamps ?? []).some(
@@ -435,7 +500,8 @@ export const Short: React.FC<ShortProps> = (props) => {
   // A word moment over the hook: the headline is hidden for the moment's stretch (cleanframe.ts arbitrate).
   const headlineAside =
     !!kept && frame < hookEnd && kept.some((k) => k.kind === "stamp" && frame >= k.from && frame < k.to);
-  const cardAt = (i: number) => placed(`card${i}`, graphicWindow(i).from, graphicWindow(i).len);
+  const cardAt = (i: number) =>
+    sceneOwnsCard(i) ? afterScene(i) : placed(`card${i}`, graphicWindow(i).from, graphicWindow(i).len);
   // The flair, rule and source line: the opening 3 s (fading over its last 10 frames) and the loop's return to frame 0.
   const labelOpacity = !clean
     ? 1
@@ -450,6 +516,9 @@ export const Short: React.FC<ShortProps> = (props) => {
         ...plan,
         shelf: plan.shelf.map((it, i) => {
           const k = keptSpan(kept, `shelf${i}`);
+          // SHORT_VIVID: each small strip says its piece once, then the picture has the frame.
+          if (props.vivid && (it.device === "gamecard" || plan.shelf.findIndex((x) => x.device === it.device) !== i))
+            return { ...it, to: it.from };
           return k ? { ...it, from: k.from, to: k.to } : { ...it, to: it.from };
         }),
       }
@@ -525,12 +594,29 @@ export const Short: React.FC<ShortProps> = (props) => {
           )}
         </Sequence>
       ))}
-      <Scrim profile={hasPlate && !props.images.length ? "plate" : "footage"} />
-      <Finish grainSrc={staticFile("grain.png")} />
+      {scenes.map((x, k) => (
+        <Sequence key={`scene${k}`} from={x.from} durationInFrames={x.to - x.from} layout="none">
+          <CodeSceneView
+            planned={x}
+            len={x.to - x.from}
+            accent={accent}
+            src={props.images.find((im) => im.aspect >= 1.2)?.src}
+          />
+        </Sequence>
+      ))}
+      <Scrim
+        profile={hasPlate && !props.images.length ? "plate" : props.vivid ? "vivid" : "footage"}
+        bright={props.bright}
+      />
+      <Finish
+        grainSrc={staticFile("grain.png")}
+        vignette={props.vivid ? 0.25 : 0.55}
+        bright={props.bright}
+      />
 
       {/* The headline is fully rendered at frame 0 (the thumbnail) and returns, pixel-identical, for the loop.
           On the new-look Shorts it is a thumbnail-grade poster over the hero art (components/HookPoster.tsx). */}
-      <Sequence durationInFrames={hookEnd} layout="none">
+      <Sequence durationInFrames={posterEnd} layout="none">
         {/* On a clean Short the headline steps aside while a word moment holds, then comes back. */}
         <AbsoluteFill style={{ opacity: headlineAside ? 0 : 1 }}>
         {poster ? (
@@ -541,14 +627,16 @@ export const Short: React.FC<ShortProps> = (props) => {
             heroSrc={poster}
             cutSrc={props.heroCut?.fg}
             cutX={props.heroCut?.x}
-            durationInFrames={hookEnd}
+            durationInFrames={posterEnd}
+            vivid={props.vivid}
+            heroPosition={props.images[plan.heroIndex] ? focusPosition(props.images[plan.heroIndex]!) : undefined}
           />
         ) : (
           <HookHeadline
             headline={props.headline}
             accent={accent}
             gameTitle={props.gameTitle}
-            durationInFrames={hookEnd}
+            durationInFrames={posterEnd}
           />
         )}
         </AbsoluteFill>
@@ -568,6 +656,8 @@ export const Short: React.FC<ShortProps> = (props) => {
               cutSrc={props.heroCut?.fg}
             cutX={props.heroCut?.x}
               durationInFrames={Number.POSITIVE_INFINITY}
+              vivid={props.vivid}
+              heroPosition={props.images[plan.heroIndex] ? focusPosition(props.images[plan.heroIndex]!) : undefined}
             />
           ) : (
             <HookHeadline
@@ -580,6 +670,11 @@ export const Short: React.FC<ShortProps> = (props) => {
         </Sequence>
       ) : null}
 
+      {thenYears.map((y, k) => (
+        <Sequence key={`then${k}`} from={y.from} durationInFrames={y.len} layout="none">
+          <ThenYear year={y.year} accent={accent} />
+        </Sequence>
+      ))}
       {props.segments.map((s, i) =>
         (s.kind === "beat" || s.kind === "take") && cardAt(i) ? (
           <Sequence
@@ -631,8 +726,10 @@ export const Short: React.FC<ShortProps> = (props) => {
                 renderDate={props.renderDate}
                 images={props.images}
                 rankTotal={rankTotal}
+                entryTop={clean ? ENTRY_CARD_TOP : ENTRY_CARD_TOP_CHROME}
                 beatIndex={beatIndexOf[i]}
                 steamPrices={props.steam?.prices}
+                quickFigures={props.quickFigures}
               />
             )}
           </Sequence>
@@ -664,14 +761,14 @@ export const Short: React.FC<ShortProps> = (props) => {
           {React.createElement(wordLook.component, {
             stamp: { ...st, tone: st.tone as Tone | undefined },
             hold: STAMP_FRAMES,
-            top: 930,
-            size: 104,
+            top: props.vivid ? 760 : 930,
+            size: props.vivid ? 170 : 104,
             variant: props.variant,
           })}
         </Sequence>
       ))}
       {/* The shelf steps back while a stamp holds the band, so the two never overlap. */}
-      <AbsoluteFill style={{ opacity: clean ? 1 : shelfLevel() }}>
+      <AbsoluteFill style={{ opacity: inScene ? 0 : clean ? 1 : shelfLevel() }}>
         <Shelf
           plan={cleanShelf}
           accent={accent}
@@ -683,7 +780,7 @@ export const Short: React.FC<ShortProps> = (props) => {
       </AbsoluteFill>
 
       <TopBar
-        chip={theme.chip}
+        chip={props.ownWork ? "" : theme.chip}
         accent={accent}
         isRumour={props.isRumour}
         attribution={props.attribution}

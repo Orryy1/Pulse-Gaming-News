@@ -14,7 +14,7 @@ import readline from "node:readline";
 import { promisify } from "node:util";
 import { TAR } from "./backup.ts";
 import { errorMessage, log } from "./lib/util.ts";
-import { skipForRender } from "./macjobs.ts";
+import { firstErrorLine, skipForRender } from "./macjobs.ts";
 
 const run = promisify(execFile);
 
@@ -267,13 +267,14 @@ export function runWorker<R>(
     let quiet = Date.now();
     const timer = setInterval(() => {
       if (Date.now() - quiet > o.stallMinutes * 60_000) {
-        err += ` no word from the Mac for ${o.stallMinutes} min`;
+        err = `no word from the Mac for ${o.stallMinutes} min${"\n"}${err}`;
         ssh.kill();
       }
     }, 15_000);
     ssh.stderr.on("data", (d) => {
       quiet = Date.now();
-      err = (err + d).slice(-1500);
+      // The start says what went wrong; the end is the stack (and "no word from the Mac" when the PC gave up).
+      err = err.length < 6000 ? err + d : err;
     });
     readline
       .createInterface({ input: ssh.stdout, crlfDelay: Infinity })
@@ -297,7 +298,7 @@ export function runWorker<R>(
       else
         reject(
           new Error(
-            `Mac job ${args[0]} ended with ${code}: ${err.trim().slice(-400)}`,
+            `Mac job ${args[0]} ended with ${code}: ${firstErrorLine(err)}`,
           ),
         );
     });
@@ -400,7 +401,7 @@ export function macOrLocal<A extends unknown[], R>(
       if (shouldTell(job, Date.now()))
         await Promise.resolve(
           tell(
-            `Mac mini: ${job} is running on the PC instead (${why.slice(0, 200)}).`,
+            `Mac mini: ${job} went to the PC instead (${why.slice(0, 200)}).`,
           ),
         ).catch(() => undefined);
       return local(...a);

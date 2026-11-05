@@ -69,6 +69,13 @@ export interface EpisodeAssets {
   };
   /** A Short cut from a long ranking: the section's seconds in the long video and the files cut from it. */
   cutdown?: { start: number; end: number; video: string; background: string };
+  /** The rebuilt gameplay Short: when its lines sit, for the render (src/render/GameplayShort.tsx). */
+  gameplayShort?: {
+    hookEnd: number;
+    payoffAt: number;
+    answerAt: number;
+    voiced: Array<{ start: number; end: number }>;
+  };
   audio?: string;
   words?: Array<{ text: string; start: number; end: number }>;
   durationSeconds?: number;
@@ -108,6 +115,12 @@ export interface EpisodeAssets {
     moment?: number;
     label?: string;
     wordy?: boolean;
+    luma?: number; // mean brightness, measured under SHORT_BRIGHT
+    frame?: boolean; // a trailer frame, a last-resort still
+    then?: boolean;
+    focusX?: number;
+    forWords?: string;
+    role?: "hook";
     layers?: { bg: string; mid: string; fg: string; fgx?: number }; // 2.5D depth layers (src/render/parallax.ts)
   }>; // wordy: the local screen saw menu or HUD text on it
   video?: string;

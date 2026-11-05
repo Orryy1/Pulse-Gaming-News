@@ -325,7 +325,7 @@ const GENERIC_CTA =
  * like that should be rewritten around what the sources do explain, or dropped for a game whose story they tell.
  */
 export function whyAnswerProblems(narration: string): string[] {
-  return /(?:reasons?|motives?)[^.?!]{0,40}(?:aren't|are not|isn't|is not|unknown|never)|won't guess|will not guess|no one knows|nobody knows|never explained|hasn't said why|has not said why/i.test(
+  return /\b(?:reasons?|motives?)\b[^.?!]{0,40}\b(?:aren't|are not|isn't|is not|unknown|never)\b|won't guess|will not guess|no one knows|nobody knows|never explained|hasn't said why|has not said why/i.test(
     narration,
   )
     ? [
@@ -337,9 +337,14 @@ export function whyAnswerProblems(narration: string): string[] {
 export function whyFollowProblems(
   loopLine: string,
   follow: WhyFollow | undefined,
+  noSeriesFollow = false,
 ): string[] {
   const f = follow ?? { kind: "series" as const };
   const out: string[] = [];
+  if (noSeriesFollow && f.kind === "series")
+    return GENERIC_CTA.test(loopLine)
+      ? ["The loop line asks for a subscribe or a like; end on the story's payoff."]
+      : [];
   if (GENERIC_CTA.test(loopLine))
     out.push(
       `The loop line asks for a subscribe or a like; give the specific reason to follow instead (${f.kind === "series" ? "a new Why every day" : `our ${f.kind}`}).`,
@@ -358,16 +363,18 @@ export function whyBrief(
   question: string,
   angle: string,
   follow?: WhyFollow,
+  /** SHORT_END_PAYOFF: no "a new Why every day" in the last line; a real documentary or ranking is still pointed to. */
+  noSeriesFollow = false,
 ): string {
   return `This Short is not breaking news: it answers one question about a game, using the sources (its Wikipedia article) as the evidence.
 Question: ${question}
 Likely answer to test against the sources: ${angle}
 Structure for this Short (it replaces the news hook and beat rules where they differ):
-- hook: the question as tension, in under 3 seconds, ideally with a contrast fact: "Rockstar has re-released GTA 5 three times. GTA 4? Not once." The hook may be or contain the question itself.
+- hook: the question as tension, in under 3 seconds, ideally with a contrast fact: "Rockstar has re-released GTA 5 three times. GTA 4? Not once." The hook may be or contain the question itself. When the answer text above says "Open close to" a line, the hook is that line, almost word for word: it was chosen on purpose and it outranks the rule about naming the game in the first five words.
 - beats: two to four pieces of evidence from the sources, each with a hard specific (a year, a number, a named person or a quote), told as a story with a turn: what fans loved, what changed, where it stands now.
 - pulse_take: the verdict in the Pulse voice, with the fair counterpoint in your own words (never a stock "in fairness" opener).
-- loop_line: hand back to the question so the end runs into the start ("So why does it still get ignored?" style), never a call to comment.
-${followRule(follow)}
+- loop_line: hand back to the question so the end runs into the start ("So why does it still get ignored?" style), never a call to comment. Read the loop line and then the hook aloud: on a replay the hook must sound like the natural next sentence.
+${noSeriesFollow && (follow?.kind ?? "series") === "series" ? "" : followRule(follow)}
 - story_type is "explainer". If the sources do not support an answer, say what is known and what is not, never guess.
 The YouTube title is the question or a claim with a named company or game and a verb, under 60 characters.`;
 }

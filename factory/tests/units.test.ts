@@ -769,7 +769,7 @@ test("SEO: titles are game-first, short and clean; tags, hashtags, lead and comm
   );
   assert.match(
     pinnedComment(ranking),
-    /^Our pick: RE7 wins on dread\. Which Resident Evil game would you move/,
+    /^Which Resident Evil game would you move/,
   );
   assert.match(
     pinnedComment(s),

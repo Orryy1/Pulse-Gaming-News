@@ -159,15 +159,32 @@ export function storyKeywords(script: Script): string[] {
  * ranked worst to best") and says how many entries it holds when it is not
  * the whole series; other evergreen formats keep the writer's templated title.
  */
+/**
+ * The franchise a ranking's title is built around, cleaned of what would break "N X Games Ranked": a leading "The",
+ * a trailing "games", a count or possessive the writer put in the theme ("Street Fighter's six numbered games").
+ */
+export function rankingTheme(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^the\s+/i, "")
+    .replace(
+      /(?:'s|’s)?\s+(?:(?:two|three|four|five|six|seven|eight|nine|ten|\d+)\s+)?(?:(?:main|mainline|numbered|best|core|3d|2d)\s+)*(?:games?|entries|titles|campaigns?)$/i,
+      "",
+    )
+    .trim();
+}
+
 export function evergreenTitle(script: Script): string | undefined {
   const n = script.entries?.length ?? 0;
   if (!n) return undefined;
-  const theme = script.game_title.trim();
+  const theme = rankingTheme(script.game_title);
   if (script.evergreen_format === "ranking" || !script.evergreen_format) {
     // The writer's own "Ranked" headline keeps its qualifier ("Call of Duty Campaigns Ranked Worst to Best").
     const head = script.headline
       .replace(BAD_TITLE_WORDS, "")
       .replace(CLICKBAIT_PUNCT, "")
+      // "Ranked Today" reads as a broken template, and a date dates an evergreen title.
+      .replace(/\b(ranked)\s+(?:today|now|right now)\b/i, "$1")
       .replace(/\s{2,}/g, " ")
       .trim()
       // Digits outperform words in titles: "Six Resident Evil Games" is "6 Resident Evil Games".
@@ -190,7 +207,12 @@ export function evergreenTitle(script: Script): string | undefined {
             ].indexOf(w.toLowerCase()) + 2,
           ),
       );
-    if (/\branked\b/i.test(head) && head.length <= TITLE_MAX) {
+    if (
+      /\branked\b/i.test(head) &&
+      !/^ranked\b/i.test(head) &&
+      !/\b(games?)\s+games?\b/i.test(head) &&
+      head.length <= TITLE_MAX
+    ) {
       const full = /worst to best|best to worst/i.test(head)
         ? head
         : `${head} Worst to Best`;
@@ -217,7 +239,7 @@ export function thumbTitle(script: Script): string {
   if (hook && hook.split(" ").length <= 5 && hook.length <= 32)
     return hook.toUpperCase();
   const n = script.entries?.length ?? 0;
-  const theme = script.game_title.trim() || "Games";
+  const theme = rankingTheme(script.game_title) || "Games";
   if (!n || script.evergreen_format === "documentary") return script.headline;
   if (/\branked\b/i.test(script.headline) && script.headline.length <= 48)
     return script.headline;
@@ -454,17 +476,18 @@ export function pinnedComment(script: Script): string {
   if (script.evergreen_format === "release_radar")
     return `Our pick: ${take}. Which one are you picking up this week?`;
   if (script.evergreen_format && /achievements$/.test(script.evergreen_format))
-    return `Our pick for the real test: ${take}. Which of these have you unlocked? Be honest.`;
+    return `Which of these have you unlocked? Be honest.`;
   if (script.evergreen_format === "steam_climbers")
-    return `Our pick: ${take}. Which of these are you playing right now?`;
+    return `Which of these are you playing right now?`;
   if (script.evergreen_format === "steam_deals")
     return `Our pick: ${take}. Prices are Steam's at the time we checked and can change. Which one are you grabbing?`;
   if (script.evergreen_format === "weekly_recap")
-    return `Which story was the biggest one for you this week? ${lead} ${take}.`;
+    return `Which story was the biggest one for you this week?`;
   if (script.entries?.length && script.runtime === "long")
     return `Our number one: ${take}. Too high, too low? Name yours below, and tell us which series we should rank next. The most-asked ones go to the top of our list.`;
+  // The comment is up from the first second, and a ranking keeps number one for its turn (src/editorial/spoilers.ts).
   if (script.entries?.length)
-    return `Our pick: ${take}. Which ${game} game would you move up or down the list? Every pick is explained in the video.`;
+    return `Which ${game} game would you move up or down the list? Every pick is explained in the video.`;
   const q =
     script.story_type === "explainer"
       ? `Do you buy that answer, or is there a better one?`

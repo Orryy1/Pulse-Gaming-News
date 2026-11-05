@@ -1,4 +1,13 @@
 import crypto from "node:crypto";
+import net from "node:net";
+
+// Node gives each address of a host 250 ms to connect, then gives up on it and tries the next. This PC has no IPv6
+// route, so on a host with one IPv4 and one IPv6 address a single event-loop stall over 250 ms (a database write, boot
+// work) drops a good IPv4 connection, the IPv6 one fails at once with ENETUNREACH, and fetch says "fetch failed". That
+// is what the boot check's "youtube_login: unreachable" was (4 Nov 2026), and the same hosts lead the failed-feed logs.
+// A real outage still fails: this only stops a healthy connection being abandoned, within undici's 10 s connect limit.
+export const CONNECT_ATTEMPT_MS = 5_000;
+net.setDefaultAutoSelectFamilyAttemptTimeout(CONNECT_ATTEMPT_MS);
 
 export function log(level: "info" | "warn" | "error", msg: string, extra?: Record<string, unknown>): void {
   const line = JSON.stringify({ t: new Date().toISOString(), level, msg, ...extra });
@@ -31,8 +40,22 @@ export function shortId(): string {
   return `ep_${d}_${crypto.randomBytes(4).toString("hex")}`;
 }
 
+/** Why a fetch failed, which its own message never says: the socket's codes, for each address tried. */
+function networkCause(err: Error): string {
+  const c = err.cause as
+    | { code?: string; message?: string; address?: string; errors?: Array<{ code?: string; address?: string }> }
+    | undefined;
+  if (!c) return "";
+  if (c.errors?.length)
+    return c.errors.map((e) => [e.code, e.address].filter(Boolean).join(" ")).join("; ");
+  return [c.code, c.address].filter(Boolean).join(" ") || (c.message ?? "");
+}
+
 export function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
+  if (err instanceof Error) {
+    const why = err.message === "fetch failed" ? networkCause(err) : "";
+    return why ? `${err.message} (${why})` : err.message;
+  }
   return String(err);
 }
 

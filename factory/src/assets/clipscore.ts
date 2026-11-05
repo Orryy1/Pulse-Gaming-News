@@ -13,6 +13,7 @@ import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import type { Llm, LlmContent } from "../editorial/llm.ts";
 import { screenFrames } from "./localvision.ts";
+import { clipBigText } from "./cliptext.ts";
 import type { Script } from "../editorial/schema.ts";
 import {
   parseMediaPlaylist,
@@ -189,8 +190,8 @@ export function parseSignalStats(
   return out;
 }
 
-/** Keyframes that could open a clip: past the rating boards, before the end slate, neither black nor blown out. */
-export function usableCandidates(
+/** Keyframes past the rating boards and before the end slate, neither black nor blown out, however fast the trailer cuts. */
+export function fittingCandidates(
   all: Candidate[],
   totalSeconds: number,
   clipSeconds = CLIP_SECONDS,
@@ -200,13 +201,22 @@ export function usableCandidates(
       ? Math.max(22, totalSeconds * 0.15)
       : Math.max(10, totalSeconds * 0.2);
   const tail = totalSeconds > 60 ? 12 : 8;
-  const fits = all.filter(
+  return all.filter(
     (c) =>
       c.time >= lead &&
       c.time + clipSeconds <= totalSeconds - tail &&
       c.luma >= 38 &&
       c.luma <= 230,
   );
+}
+
+/** Keyframes that could open a clip: past the rating boards, before the end slate, neither black nor blown out. */
+export function usableCandidates(
+  all: Candidate[],
+  totalSeconds: number,
+  clipSeconds = CLIP_SECONDS,
+): Candidate[] {
+  const fits = fittingCandidates(all, totalSeconds, clipSeconds);
   // A clip that changes shot right under the words it was chosen for no longer shows what they say:
   // its own first shot must be long enough to carry a line, whatever follows it.
   const whole = fits.filter(
@@ -637,6 +647,13 @@ export interface MatchClipsOptions {
   describe: (trailer: TrailerFile, seconds: number, at: number) => string;
   /** Written output name prefix inside assets/, so two sources never collide. */
   prefix?: string;
+  /**
+   * Footage first on Shorts: once the lines have their moments, more clean moments (no model call, the liveliest
+   * spaced apart) are cut until the clips reach this many seconds. Untagged, so the planner uses them where it likes.
+   */
+  fillSeconds?: number;
+  /** Read each clip with the local OCR: big burned-in text is cut away, or the clip dropped (src/assets/cliptext.ts). */
+  textCheck?: boolean;
 }
 
 /**
@@ -651,17 +668,27 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
   const assetsDir = path.join(o.episodeDir, "assets");
   await fs.mkdir(assetsDir, { recursive: true });
   const candidates: Candidate[] = [];
+  // Fast-cut moments the lines would not want (their first shot is too short to carry a sentence): fine as extra footage.
+  const fastCut: Candidate[] = [];
   try {
     for (const [i, t] of o.trailers.entries()) {
       try {
-        const all = await analyseTrailer(t.file, i, work, candidates.length);
-        candidates.push(
-          ...usableCandidates(
-            o.continuous ? all.map((x) => ({ ...x, nextCut: undefined })) : all,
-            t.total,
-            clipSeconds,
-          ),
-        );
+        // Numbered per trailer: an offset of "candidates so far" let two trailers' keyframes share a number, so the
+        // model's pick could cut the wrong trailer's moment.
+        const all = await analyseTrailer(t.file, i, work, i * 100_000);
+        const sized = o.continuous
+          ? all.map((x) => ({ ...x, nextCut: undefined }))
+          : all;
+        const usable = usableCandidates(sized, t.total, clipSeconds);
+        candidates.push(...usable);
+        if (o.fillSeconds) {
+          const taken = new Set(usable.map((c) => c.index));
+          fastCut.push(
+            ...fittingCandidates(sized, t.total, clipSeconds).filter(
+              (c) => !taken.has(c.index),
+            ),
+          );
+        }
       } catch (err) {
         log("warn", "trailer analysis failed", {
           movie: t.name,
@@ -681,6 +708,7 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
     const screened = spread(candidates, LOCAL_SCREEN_MAX);
     const flags = await screenFrames(screened.map((c) => c.frame));
     let base = candidates;
+    const wordyFrames = new Set<number>();
     if (flags.some(Boolean)) {
       // Unusable whatever happens: a webcam, gore, a black frame. Text only blocks a frame while there are clean ones.
       const never = new Set<number>();
@@ -690,7 +718,10 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         const f = flags[i];
         if (!f) return;
         // The local model's "text" is a hint, not a verdict: it errs both ways, so Claude still judges words.
-        if (f.text) wordy.add(c.index);
+        if (f.text) {
+          wordy.add(c.index);
+          wordyFrames.add(c.index);
+        }
         if (f.webcam || f.gore || f.dark) never.add(c.index);
         const m = webcamByMovie.get(c.movie) ?? { cam: 0, all: 0 };
         m.all++;
@@ -777,15 +808,22 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         .map((x) => x.time - c.time);
       if (textAt.length) span = Math.min(span, Math.min(...textAt) - 0.2);
       if (span < MIN_CLIP_SECONDS) continue;
-      const seconds = Math.round(Math.max(MIN_CLIP_SECONDS, span) * 30) / 30;
+      let seconds = Math.round(Math.max(MIN_CLIP_SECONDS, span) * 30) / 30;
+      let at = c.time;
       try {
-        await cutClip(r.file, c.time, seconds, path.join(o.episodeDir, file));
+        await cutClip(r.file, at, seconds, path.join(o.episodeDir, file));
       } catch (err) {
         log("warn", "clip cut failed", {
           at: c.time,
           error: errorMessage(err),
         });
         continue;
+      }
+      if (o.textCheck) {
+        const kept = await keepCleanRun(r.file, at, seconds, path.join(o.episodeDir, file));
+        if (!kept) continue;
+        at = kept.at;
+        seconds = kept.seconds;
       }
       // A shot that fades to black or sinks into darkness inside the clip reads as a broken video.
       const darkest = await darkestLuma(path.join(o.episodeDir, file));
@@ -821,13 +859,24 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         beatIndex,
         moment: moment === undefined ? undefined : Number(moment),
         role: t.key === "hook" ? "hook" : undefined,
-        startSeconds: c.time,
+        startSeconds: at,
         motion: Math.min(1, c.motion / 40),
         luma: c.luma,
         label: a.label,
         reason: `${how}: ${a.reason}`,
         provenance: `${o.describe(r, seconds, c.time)}; chosen for ${t.key} by ${how} (${a.label ?? a.reason})`,
       });
+    }
+    if (o.fillSeconds) {
+      const extra = spread(fastCut, 60);
+      const seen = extra.length
+        ? await screenFrames(extra.map((c) => c.frame))
+        : [];
+      const fine = extra.filter((_, i) => {
+        const f = seen[i];
+        return !f || !(f.webcam || f.gore || f.dark || f.text);
+      });
+      await fillClips(o, [...base, ...fine], wordyFrames, textFrames, out, clipSeconds, prefix);
     }
     log("info", "beat-matched clips", {
       count: out.length,
@@ -841,6 +890,142 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
   }
 }
 
+/**
+ * Cuts the clip again down to its longest stretch without big burned-in text. Returns where it now starts and how long
+ * it runs, or undefined when no stretch can carry a shot (the file is removed).
+ */
+async function keepCleanRun(
+  source: string,
+  at: number,
+  seconds: number,
+  file: string,
+): Promise<{ at: number; seconds: number } | undefined> {
+  const read = await clipBigText(file, seconds);
+  if (read.clean) return { at, seconds };
+  if (read.run.length < MIN_CLIP_SECONDS) {
+    log("info", "clip dropped: big text on screen", {
+      at,
+      words: read.words.slice(0, 6).join(" "),
+    });
+    await fs.rm(file, { force: true }).catch(() => undefined);
+    return undefined;
+  }
+  const next = {
+    at: at + read.run.start,
+    seconds: Math.round(read.run.length * 30) / 30,
+  };
+  log("info", "clip trimmed: big text on screen", {
+    at,
+    words: read.words.slice(0, 6).join(" "),
+    from: next.at,
+    seconds: next.seconds,
+  });
+  try {
+    await cutClip(source, next.at, next.seconds, file);
+    return next;
+  } catch {
+    await fs.rm(file, { force: true }).catch(() => undefined);
+    return undefined;
+  }
+}
+
+/** No two fill clips (or a line's moment and a fill clip) closer than this in one trailer. */
+export const FILL_SPACING = 5;
+const FILL_MIN_MOTION = 2;
+
+/**
+ * Which keyframes the fill may cut from, liveliest first: clean of text, not dark, some movement, and far enough from
+ * every moment already taken. Pure, so it is tested without ffmpeg.
+ */
+export function fillCandidates<
+  C extends { index: number; movie: number; time: number; motion: number; luma: number },
+>(pool: C[], taken: Array<{ movie: number; time: number }>, wordy: Set<number>): C[] {
+  return pool
+    .filter(
+      (c) =>
+        !wordy.has(c.index) &&
+        c.motion >= FILL_MIN_MOTION &&
+        c.luma >= DARK_LUMA * 1.5,
+    )
+    // Lively and well lit: a dark moment has to move a lot more to win (audit: our Shorts read darker than rivals').
+    .sort(
+      (a, b) =>
+        b.motion * Math.min(1, b.luma / 90) -
+        a.motion * Math.min(1, a.luma / 90),
+    )
+    .filter((c) =>
+      taken.every(
+        (t) => t.movie !== c.movie || Math.abs(t.time - c.time) >= FILL_SPACING,
+      ),
+    );
+}
+
+async function fillClips(
+  o: MatchClipsOptions,
+  pool: Candidate[],
+  wordy: Set<number>,
+  textFrames: Set<number>,
+  out: VisualAsset[],
+  clipSeconds: number,
+  prefix: string,
+): Promise<void> {
+  const movieOf = (c: VisualAsset) =>
+    o.trailers.findIndex((t) => t.url === c.sourceUrl);
+  const taken = out.map((c) => ({ movie: movieOf(c), time: c.startSeconds ?? 0 }));
+  let total = out.reduce((n, c) => n + (c.durationSeconds ?? 0), 0);
+  // The whole clean pool, not the model's spread of 32: this step spends nothing.
+  const skip = new Set([...wordy, ...textFrames]);
+  for (let tries = 0; total < o.fillSeconds! && tries < 24; tries++) {
+    const c = fillCandidates(pool, taken, skip)[0];
+    if (!c) break;
+    taken.push({ movie: c.movie, time: c.time });
+    const r = o.trailers[c.movie];
+    if (!r) continue;
+    const file = path.join("assets", `${prefix}_fill_${tries}.mp4`);
+    const full = path.join(o.episodeDir, file);
+    let seconds =
+      Math.round(
+        Math.max(MIN_CLIP_SECONDS, o.continuous ? clipSeconds : shotLength(c, clipSeconds)) * 30,
+      ) / 30;
+    let at = c.time;
+    try {
+      await cutClip(r.file, at, seconds, full);
+    } catch {
+      continue;
+    }
+    const darkest = await darkestLuma(full);
+    if (darkest !== undefined && darkest < DARK_LUMA) {
+      await fs.rm(full, { force: true }).catch(() => undefined);
+      continue;
+    }
+    if (o.textCheck) {
+      const kept = await keepCleanRun(r.file, at, seconds, full);
+      if (!kept) continue;
+      at = kept.at;
+      seconds = kept.seconds;
+    }
+    const real = await videoSeconds(full);
+    const durationSeconds =
+      real !== undefined ? Math.min(seconds, Math.max(0, real - 0.05)) : seconds;
+    if (durationSeconds < MIN_CLIP_SECONDS) {
+      await fs.rm(full, { force: true }).catch(() => undefined);
+      continue;
+    }
+    out.push({
+      kind: "clip",
+      file,
+      sourceUrl: r.url,
+      durationSeconds,
+      startSeconds: at,
+      motion: Math.min(1, c.motion / 40),
+      luma: c.luma,
+      reason: "fill: liveliest clean moment left",
+      provenance: `${o.describe(r, seconds, at)}; extra footage, not matched to one line`,
+    });
+    total += durationSeconds;
+  }
+}
+
 export interface SelectClipsOptions {
   /** "campaign": the video is about single-player campaigns; multiplayer trailers are skipped. */
   scope?: "campaign";
@@ -850,6 +1035,8 @@ export interface SelectClipsOptions {
   maxClips: number;
   llm?: Llm; // omitted or failing: the motion rule decides
   clipSeconds?: number;
+  fillSeconds?: number; // see MatchClipsOptions
+  textCheck?: boolean;
 }
 
 /**

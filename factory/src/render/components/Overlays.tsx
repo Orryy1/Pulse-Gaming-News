@@ -105,6 +105,7 @@ export const TopBar: React.FC<{
         >
           PULSE<span style={{ color: COLOUR.amber }}>.</span>
         </div>
+        {chip || isRumour ? (
         <div
           style={{
             opacity: labelOpacity,
@@ -122,7 +123,11 @@ export const TopBar: React.FC<{
         >
           {isRumour ? "RUMOR · UNCONFIRMED" : chip}
         </div>
+        ) : null}
       </div>
+      {/* No source line on our own work: the label alone reads as a broken graphic. */}
+      {source ? (
+        <>
       <div
         style={{
           position: "absolute",
@@ -157,6 +162,8 @@ export const TopBar: React.FC<{
       >
         SOURCE: {source}
       </div>
+        </>
+      ) : null}
     </AbsoluteFill>
   );
 };
@@ -290,6 +297,9 @@ export const HookHeadline: React.FC<{
   );
 };
 
+/** The card starts 6 frames before its word: the figure is true 2 frames after the word begins. */
+const QUICK_COUNT_FRAMES = 8;
+
 function countUp(primary: string, p: number): string {
   const m = primary.match(/^([^\d]*)([\d,.]+)(.*)$/);
   if (!m) return primary;
@@ -310,9 +320,14 @@ export const FactCard: React.FC<{
   renderDate: string;
   images?: ShortImage[];
   rankTotal?: number;
+  /** A rank card's top, higher than the other cards': it stays up for its entry, so it keeps clear of the subject. */
+  entryTop?: number;
   beatIndex?: number;
   steamPrices?: { usd?: string; gbp?: string; eur?: string };
+  /** SHORT_LABELS_CLEAN: a card's figure is right by the time the word is said. */
+  quickFigures?: boolean;
 }> = ({
+  quickFigures = false,
   segment,
   accent,
   takeLabel,
@@ -320,6 +335,7 @@ export const FactCard: React.FC<{
   renderDate,
   images = [],
   rankTotal = 0,
+  entryTop,
   beatIndex,
   steamPrices,
 }) => {
@@ -328,14 +344,17 @@ export const FactCard: React.FC<{
   const v = segment.visual;
   if (!v || v.kind === "none" || !v.primary.trim()) return null;
   const { rule, content } = ruleThenContent(frame, fps);
-  const out = exitProgress(frame, durationInFrames);
+  const isRank = v.kind === "rank" && typeof v.value_a === "number";
+  // A rank card hands straight over to the next one; only the last fades, into the take.
+  const lastRank = beatIndex !== undefined && beatIndex >= rankTotal - 1;
+  const out = isRank && !lastRank ? 1 : exitProgress(frame, durationInFrames);
   const label =
     segment.kind === "take" ? segment.label || takeLabel : v.secondary;
   const base: React.CSSProperties = {
     position: "absolute",
     left: SAFE.left,
     width: CONTENT_WIDTH,
-    top: HERO_TOP,
+    top: isRank && entryTop !== undefined ? entryTop : HERO_TOP,
     opacity: Math.min(content, out),
     transform: `translateX(${interpolate(content, [0, 1], [40, 0]) - (1 - out) * 24}px)`,
   };
@@ -419,7 +438,8 @@ export const FactCard: React.FC<{
   if (v.kind === "stat" || v.kind === "date") {
     const p = interpolate(
       frame,
-      [FRAMES.ruleLead, FRAMES.ruleLead + 24],
+      // A slow count showed "17%" while the voice said "40%" (JMuGFjZ130E 0:08): quick, it lands as the word does.
+      quickFigures ? [0, QUICK_COUNT_FRAMES] : [FRAMES.ruleLead, FRAMES.ruleLead + 24],
       [0, 1],
       { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease.out },
     );
@@ -478,12 +498,17 @@ export const FactCard: React.FC<{
   }
 
   // The entry's box art; a game off Steam has only its trailer still, which the card crops to the box.
+  const requirement = v.kind === "rank" ? v.items?.[2] : undefined;
   const capsule =
     beatIndex === undefined
       ? undefined
       : (images.find(
           (i) => i.beatIndex === beatIndex && i.kind === "capsule",
-        ) ?? images.find((i) => i.beatIndex === beatIndex));
+        ) ??
+        // An achievement shows its own icon or nothing: the game's art repeated on every card says nothing.
+        (requirement
+          ? undefined
+          : images.find((i) => i.beatIndex === beatIndex)));
   const dataCard =
     v.kind === "rank" && typeof v.value_a === "number" ? (
       <RankingCard
@@ -491,11 +516,12 @@ export const FactCard: React.FC<{
         total={rankTotal}
         title={v.primary}
         verdict={v.secondary}
-        year={v.date_to ? undefined : v.items?.[0]}
+        year={v.date_to && !requirement ? undefined : v.items?.[0]}
         platforms={v.items?.[1]}
         capsuleSrc={capsule?.src ?? null}
         accent={accent}
         date={v.date_to}
+        requirement={requirement}
       />
     ) : v.kind === "timeline" && v.date_from && v.date_to ? (
       <Timeline
@@ -786,8 +812,8 @@ export const FactCard: React.FC<{
   }
 
   if (v.kind === "list") {
-    const items = v.primary
-      .split("|")
+    // The writer may put the rows in items (a heading in primary) or in primary split by "|"; the rows are the card.
+    const items = (v.items?.length ? v.items : v.primary.split("|"))
       .map((s) => s.trim())
       .filter(Boolean)
       .slice(0, 4);
@@ -986,7 +1012,10 @@ export const Captions: React.FC<{
       {page.words.map((w, i) => {
         const active = t >= w.start - 0.03 && t < w.end + 0.08;
         const spoken = t >= w.start - 0.03;
-        const shown = w.text.replace(/[.,;:!?]+$/, "");
+        // An achievement's name is spoken in quotes; the marks are for the voice, not the caption.
+        const shown = w.text
+          .replace(/^["\u201c\u201d]+/, "")
+          .replace(/["\u201c\u201d.,;:!?]+$/, "");
         const lit =
           spoken && (EMPHASIS.test(shown) || emphasis.has(shown.toLowerCase()));
         const activeScale = active

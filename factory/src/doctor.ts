@@ -8,11 +8,38 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Config } from "./config.ts";
 import { FFMPEG } from "./lib/bin.ts";
-import { fetchWithTimeout } from "./lib/util.ts";
+import { errorMessage, fetchWithTimeout, log } from "./lib/util.ts";
 import { SCOPES } from "./youtube/oauth.ts";
 import { fetchRockstarNewswire } from "./discovery/newsrooms.ts";
 
 const run = promisify(execFile);
+
+/**
+ * The waits between tries when a request gets no answer at all. A boot is the busiest moment the process has, so one
+ * lost connection says little; a real outage fails all three and still alerts. An answer of any kind, such as a
+ * refused login, is taken the first time.
+ */
+export const NETWORK_RETRY_WAITS: readonly number[] = [5_000, 15_000];
+
+async function steadyFetch(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  waits: readonly number[] = NETWORK_RETRY_WAITS,
+): Promise<Response> {
+  for (let k = 0; ; k++) {
+    try {
+      return await fetchWithTimeout(url, init, timeoutMs);
+    } catch (err) {
+      if (k >= waits.length) throw err;
+      log("info", "doctor: no answer, trying again", {
+        host: new URL(url).host,
+        error: errorMessage(err),
+      });
+      await new Promise((r) => setTimeout(r, waits[k]));
+    }
+  }
+}
 
 export interface Check {
   name: string;
@@ -46,7 +73,7 @@ async function checkAnthropic(): Promise<Check> {
     };
   try {
     const workspace = process.env.ANTHROPIC_WORKSPACE_ID;
-    const res = await fetchWithTimeout(
+    const res = await steadyFetch(
       "https://api.anthropic.com/v1/models?limit=1",
       {
         headers: {
@@ -79,14 +106,15 @@ async function checkAnthropic(): Promise<Check> {
       name: "anthropic_key",
       ok: false,
       critical: true,
-      detail: `unreachable: ${(e as Error).message}`,
+      detail: `unreachable: ${errorMessage(e)}`,
     };
   }
 }
 
-async function checkYouTube(
+export async function checkYouTube(
   cfg: Config,
   refreshToken: string,
+  waits: readonly number[] = NETWORK_RETRY_WAITS,
 ): Promise<Check[]> {
   if (!cfg.googleClientId || !cfg.googleClientSecret || !refreshToken)
     return [
@@ -98,7 +126,7 @@ async function checkYouTube(
       },
     ];
   try {
-    const res = await fetchWithTimeout(
+    const res = await steadyFetch(
       "https://oauth2.googleapis.com/token",
       {
         method: "POST",
@@ -111,6 +139,7 @@ async function checkYouTube(
         }),
       },
       15_000,
+      waits,
     );
     const body = (await res.json()) as {
       access_token?: string;
@@ -149,9 +178,43 @@ async function checkYouTube(
         name: "youtube_login",
         ok: false,
         critical: !cfg.dryRun,
-        detail: `unreachable: ${(e as Error).message}`,
+        detail: `unreachable: ${errorMessage(e)}`,
       },
     ];
+  }
+}
+
+/** The filters that quietly go missing on a slim ffmpeg build (Homebrew's plain ffmpeg, 4 Nov 2026): the HDR tone-map for console clips above all. */
+export const NEEDED_FILTERS = ["zscale", "tonemap", "rubberband", "loudnorm"];
+
+/** The filters from NEEDED_FILTERS not in `ffmpeg -filters` (pure). */
+export function missingFilters(listing: string): string[] {
+  return NEEDED_FILTERS.filter(
+    (f) => !new RegExp(`^\\s*\\S+\\s+${f}\\s`, "m").test(listing),
+  );
+}
+
+async function checkFfmpegFilters(): Promise<Check> {
+  try {
+    const { stdout } = await run(FFMPEG, ["-hide_banner", "-filters"], {
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    const missing = missingFilters(stdout);
+    return {
+      name: "ffmpeg_filters",
+      ok: missing.length === 0,
+      critical: false,
+      detail: missing.length
+        ? `${FFMPEG} has no ${missing.join(", ")}: HDR console clips and some audio steps will fail or degrade. On the Mac use ffmpeg-full (FFMPEG_PATH).`
+        : "all present",
+    };
+  } catch (e) {
+    return {
+      name: "ffmpeg_filters",
+      ok: false,
+      critical: false,
+      detail: `could not list filters: ${errorMessage(e)}`,
+    };
   }
 }
 
@@ -196,7 +259,7 @@ async function checkLocalVoice(cfg: Config): Promise<Check> {
 async function checkElevenLabs(cfg: Config): Promise<Check | undefined> {
   if (!cfg.elevenLabsApiKey) return undefined;
   try {
-    const res = await fetchWithTimeout(
+    const res = await steadyFetch(
       "https://api.elevenlabs.io/v1/user/subscription",
       { headers: { "xi-api-key": cfg.elevenLabsApiKey } },
       15_000,
@@ -225,7 +288,7 @@ async function checkElevenLabs(cfg: Config): Promise<Check | undefined> {
       name: "elevenlabs",
       ok: false,
       critical: false,
-      detail: `unreachable: ${(e as Error).message}`,
+      detail: `unreachable: ${errorMessage(e)}`,
     };
   }
 }
@@ -307,7 +370,7 @@ async function checkPublicUrl(cfg: Config): Promise<Check | undefined> {
   try {
     // The approve route with a wrong token: the factory itself answers 403. (/health is hidden from the internet
     // by a Cloudflare rule, so its 404 said nothing about whether approval links work.)
-    const res = await fetchWithTimeout(
+    const res = await steadyFetch(
       `${cfg.publicUrl}/episodes/doctor/approve?t=0`,
       { redirect: "manual" },
       8_000,
@@ -334,7 +397,7 @@ async function checkPublicUrl(cfg: Config): Promise<Check | undefined> {
 async function checkDiscord(cfg: Config): Promise<Check | undefined> {
   if (!cfg.discordWebhookUrl) return undefined;
   try {
-    const res = await fetchWithTimeout(cfg.discordWebhookUrl, {}, 8_000); // GET returns the webhook object, sends nothing
+    const res = await steadyFetch(cfg.discordWebhookUrl, {}, 8_000); // GET returns the webhook object, sends nothing
     return {
       name: "discord",
       ok: res.ok,
@@ -358,6 +421,7 @@ export async function runDoctor(
   const results = await Promise.all([
     checkAnthropic(),
     checkYouTube(cfg, refreshToken),
+    checkFfmpegFilters(),
     checkLocalVoice(cfg),
     checkElevenLabs(cfg),
     checkFfmpeg(),

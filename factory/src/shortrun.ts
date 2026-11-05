@@ -45,6 +45,10 @@ const RunDocSchema = z.object({
     .optional(),
   /** The fewest usable tests this entry needs: under it, it does not run and the slot goes back to the usual lanes. */
   min_evidence: z.number().optional(),
+  /** "guide": told as the player's own journey, when LONG_GUIDE_FORMAT is on (src/editorial/longrules.ts). */
+  format: z.literal("guide").optional(),
+  /** Read at write time and added to every chapter's source, so a verdict can name who said it. */
+  sources: z.array(SourceSchema).optional(),
 });
 export type RunDoc = z.infer<typeof RunDocSchema>;
 
@@ -105,6 +109,8 @@ export function docRunDue(
         reason: "Planned in the launch run",
         franchise: e.franchise,
         wiki: e.wiki,
+        ...(e.format ? { format: e.format } : {}),
+        ...(e.sources?.length ? { sources: e.sources } : {}),
       },
     };
   }

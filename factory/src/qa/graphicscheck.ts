@@ -282,6 +282,26 @@ export function faultsByKind(
 }
 
 /** The owner's one-line notice for a pass of the check, in plain English. */
+/**
+ * Muted graphics whose text the checker called placeholder or a working note. On the Final Fantasy XIV documentary
+ * this was the only sign of the writer's notes on screen, and muting them hid it: such text comes from the script or
+ * the plan, so it is a question for a person, not a graphic to drop quietly. "Garbled" alone doesn't count: that is
+ * nearly always a label overlapped or caught mid-animation (four on the Vice City film, none of them bad text).
+ */
+export function badTextMutes(problems: readonly string[]): string[] {
+  return problems.filter((p) =>
+    /placeholder|raw prompt|lorem ipsum|not (?:real|viewer) content|not (?:real|meant for) (?:viewers|text)|internal note|production note|working note/i.test(
+      p,
+    ),
+  );
+}
+
+/** The loud line for those. */
+export function badTextAlert(headline: string, bad: readonly string[]): string {
+  const first = bad[0]!.replace(/^frames?\s+\d+[^:]*:\s*/i, "").slice(0, 220);
+  return `🚨 "${headline}": ${bad.length} graphic${bad.length === 1 ? "" : "s"} muted as placeholder or garbled text. Muting hides it, so read the script around them before this goes out. First: ${first}`;
+}
+
 export function graphicsNotice(
   headline: string,
   stage: "prepass" | "rerender" | "accept",

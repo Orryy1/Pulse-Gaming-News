@@ -21,6 +21,12 @@ export interface Rubric {
 }
 
 export interface RubricInput {
+  /** Above this share of the Short on the bare plate the plan is red (SHORT_PLATE_MAX). */
+  plateShareMax?: number;
+  /** The top of the amber band for words a minute, raised when the owner has lifted the voice's speed (SHORT_MIN_WPM). */
+  wpmMax?: number;
+  /** No plate at all in this many opening seconds (SHORT_PLATE_FIRST_SECONDS, 0 = off). */
+  plateFirstSeconds?: number;
   plan: RenderPlan;
   segments: Segment[];
   words: Word[];
@@ -61,7 +67,10 @@ export function scorePlan(i: RubricInput): Rubric {
   m.push({
     name: "wpm",
     value: Math.round(wpm),
-    grade: grade(wpm >= 130 && wpm <= 175, wpm >= 115 && wpm <= 190),
+    grade: grade(
+      wpm >= 130 && wpm <= Math.max(175, (i.wpmMax ?? 190) - 15),
+      wpm >= 115 && wpm <= (i.wpmMax ?? 190),
+    ),
   });
 
   // Cuts and visual events per minute.
@@ -135,6 +144,8 @@ export function scorePlan(i: RubricInput): Rubric {
   const unique = new Set(keys).size / Math.max(1, keys.length);
   // With little media there is nothing to vary with: variety metrics can only warn, not reject.
   const scarce = new Set(keys.filter((k) => !k.startsWith("plate"))).size < 4;
+  // A code scene runs across its shots' cuts as one drawing: not a picture seen twice.
+  const isRepeatable = (k: string) => !k.startsWith("plate") && !k.startsWith("scene");
   const ranking = segments.some((s) => s.kind === "beat" && s.visual?.kind === "rank");
   m.push({
     name: "unique_media_ratio",
@@ -146,7 +157,7 @@ export function scorePlan(i: RubricInput): Rubric {
   });
   const counts = new Map<string, number>();
   for (const k of keys)
-    if (!k.startsWith("plate")) counts.set(k, (counts.get(k) ?? 0) + 1);
+    if (isRepeatable(k)) counts.set(k, (counts.get(k) ?? 0) + 1);
   const maxRepeat = Math.max(0, ...counts.values());
   m.push({
     name: "max_media_repeat",
@@ -162,7 +173,7 @@ export function scorePlan(i: RubricInput): Rubric {
     (k, n) =>
       n > 0 &&
       k === keys[n - 1] &&
-      !k.startsWith("plate") &&
+      isRepeatable(k) &&
       n !== loopStart &&
       !(n === keys.length - 1),
   ).length;
@@ -194,6 +205,30 @@ export function scorePlan(i: RubricInput): Rubric {
   });
   // Mostly moving footage reads as a creator's Short; too little (no trailer) or wall-to-wall is noted, never fatal.
   const share = seconds ? i.footageSeconds / seconds : 0;
+  // Time on the bare brand background with only captions over it. The Elder Scrolls Short of 4 Nov 2026 spent 65% of
+  // its 36 s there and passed: thin media fell back to the plate and no metric counted it.
+  const plateFrames = plan.shots
+    .filter((s) => s.media.type === "plate")
+    .reduce((n, s) => n + (s.end - s.start), 0);
+  const plateShare = plan.totalFrames ? plateFrames / plan.totalFrames : 0;
+  m.push({
+    name: "plate_share",
+    value: Number(plateShare.toFixed(2)),
+    grade: grade(plateShare <= 0.05, plateShare <= (i.plateShareMax ?? 0.15)),
+  });
+
+  // A blank opening costs the most: it is what the feed judges. Audit, Nov 2026: GTq4ZuV0MSg empty at 0:02.5.
+  if (i.plateFirstSeconds) {
+    const limit = i.plateFirstSeconds * plan.fps;
+    const opening = plan.shots
+      .filter((s) => s.media.type === "plate" && s.start < limit)
+      .reduce((n, s) => n + (Math.min(s.end, limit) - s.start), 0);
+    m.push({
+      name: "plate_opening_seconds",
+      value: Number((opening / plan.fps).toFixed(1)),
+      grade: opening === 0 ? "green" : "red",
+    });
+  }
   m.push({
     name: "footage_share",
     value: Number(share.toFixed(2)),

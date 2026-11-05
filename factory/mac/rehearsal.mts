@@ -13,13 +13,16 @@ import path from "node:path";
 import os from "node:os";
 
 const HOME = os.homedir();
-const envFile = path.join(HOME, "PulseFactory", "rehearsal", ".env");
+// REHEARSAL_DATA: another sandbox folder, with its own .env (the cutover rehearsal, 4 Nov 2026).
+const SANDBOX =
+  process.env.REHEARSAL_DATA || path.join(HOME, "PulseFactory", "rehearsal");
+const envFile = path.join(SANDBOX, ".env");
 if (!fs.existsSync(envFile))
   throw new Error(
     "no ~/PulseFactory/rehearsal/.env: the PC writes a render-only one (no publishing tokens)",
   );
 process.loadEnvFile(envFile);
-const DATA = path.join(HOME, "PulseFactory", "rehearsal");
+const DATA = SANDBOX;
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const SHORT = args[0] === "short";
 if (args[0] === "short" || args[0] === "long") args.shift();

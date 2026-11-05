@@ -196,6 +196,12 @@ export const ScriptSchema = z.object({
     .describe(
       "The one question a viewer would ask before the take, as a second presenter at the desk would say it to the narrator: 5-12 words, ends with '?', in this story's own specifics and fresh words",
     ),
+  thin_reason: z
+    .string()
+    .optional()
+    .describe(
+      "Only when the sources give the viewer nothing to care about beyond a name or a date: one plain sentence saying why. Otherwise omit",
+    ),
   is_rumour: z.boolean(),
   attribution: z
     .string()
@@ -292,6 +298,18 @@ export type Script = z.infer<typeof ScriptSchema> & {
     radio: boolean;
     /** The clip really tests its question for GTA 6's players (src/gameplay.ts articleFields); older Shorts lack it. */
     real_test?: boolean;
+    /** The rebuilt Short (src/gameplaydirect.ts): the cut's timing and the narrator's lines; older Shorts lack it. */
+    direct?: {
+      hook: string;
+      setup: string;
+      payoff_line: string;
+      loop_line: string;
+      segments: Array<{ start: number; end: number }>;
+      seconds: number;
+      payoff_at: number;
+      focus_start: number;
+      focus_payoff: number;
+    };
   };
   /** A translated twin: the original's episode and video, the language, and its pinned comment in that language. */
   twin?: {

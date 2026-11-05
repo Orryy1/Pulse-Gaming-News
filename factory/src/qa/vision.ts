@@ -9,7 +9,7 @@ You see frames sampled across the video in order. Fail the video only for real p
 - text that is cut off, overlapping other text, unreadable against the background or misspelt,
 - broken or missing images, obvious rendering artefacts, mostly empty or black frames,
 - artwork clearly showing a different game from the one named in the headline,
-- anything advertiser-unfriendly (gore, nudity, offensive imagery).
+- anything advertiser-unfriendly (gore, nudity, offensive imagery), including any sexualised or suggestive character or person, drawn or real, and any crop dominated by a chest, groin or underwear: fail these whatever the game, and always fail if the character could be under 18.
 Stylistic preferences are not failures. Note them in "notes". Captions show a few uppercase words of a sentence at a time and may start or end mid-sentence; judge spelling in that context (possessive "its" is correct English, not a missing apostrophe).
 A Short with no game artwork (dark brand-plate backgrounds with the game's name) is a deliberate choice when no official art exists; never fail for that or for empty space below the captions.
 Real-world footage carrying a small ILLUSTRATIVE tag is deliberate licensed stock for a real-world story; never fail it for not showing the game.`;
@@ -19,7 +19,7 @@ You see frames sampled across the video in order. Fail the video only for real p
 - text that is cut off, overlapping other text, unreadable against the background or misspelt,
 - broken or missing images, obvious rendering artefacts, mostly empty or black frames,
 - a lower-third card naming one game over artwork or footage clearly from a different game,
-- anything advertiser-unfriendly (gore, nudity, offensive imagery).
+- anything advertiser-unfriendly (gore, nudity, offensive imagery), including any sexualised or suggestive character or person, drawn or real, and any crop dominated by a chest, groin or underwear: fail these whatever the game, and always fail if the character could be under 18.
 Stylistic preferences are not failures. Note them in "notes". Captions show a few uppercase words of a sentence at a time and may start or end mid-sentence; judge spelling in that context (possessive "its" is correct English, not a missing apostrophe). Dark brand-plate backgrounds with the theme's name are a deliberate choice when no art exists; never fail for that.`;
 
 /** The graphics check: one frame from each full-screen graphic and chapter breather of a long video. */

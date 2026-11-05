@@ -60,6 +60,7 @@ import {
 import { trailerMatchesGame } from "./assets/commons.ts";
 import { captureHold } from "./capture.ts";
 import { rankStills } from "./assets/stillscore.ts";
+import { PUBLISHER_CHANNELS } from "./assets/officialTrailer.ts";
 import { coverageShare, fillSentencePictures } from "./assets/fill.ts";
 import {
   footageShareNotice,
@@ -3075,7 +3076,7 @@ async function stepScriptDocumentary(
       game: plan.game_title,
     });
   }
-  if (chapters.length < DOC_CHAPTERS_MIN)
+  if (!s.cfg.docSandboxChapters && chapters.length < DOC_CHAPTERS_MIN)
     throw new FatalError(
       `documentary has only ${chapters.length} chapters with sources`,
     );
@@ -6106,6 +6107,29 @@ export function deskFor(
   return { voice: { id: cfg.deskVoiceId, name: cfg.deskVoiceName } };
 }
 
+/** Clips kept within each capped publisher's total for one Short (src/assets/officialTrailer.ts PUBLISHER_CHANNELS). */
+export function capPublisherTotal<T extends { provenance: string; durationSeconds: number; beatIndex?: number }>(clips: T[]): T[] {
+  const used = new Map<string, number>();
+  const order = [...clips].sort(
+    (a, b) =>
+      Number(b.beatIndex === undefined) - Number(a.beatIndex === undefined) ||
+      (b.beatIndex ?? 0) - (a.beatIndex ?? 0),
+  );
+  const keep = new Set<T>();
+  for (const c of order) {
+    const rule = PUBLISHER_CHANNELS.find((r) => c.provenance.includes(`publisher: ${r.name}`));
+    if (!rule) {
+      keep.add(c);
+      continue;
+    }
+    const sofar = used.get(rule.name) ?? 0;
+    if (sofar + c.durationSeconds > rule.clipSeconds) continue;
+    used.set(rule.name, sofar + c.durationSeconds);
+    keep.add(c);
+  }
+  return clips.filter((c) => keep.has(c));
+}
+
 /** The game's name for picture searches: a writer's "(Switch 2 remake)" hides an exact title match. */
 export function mediaTitle(title: string): string {
   return title.replace(/\s*\([^)]*\)\s*$/, "").trim() || title;
@@ -6378,7 +6402,7 @@ async function gatherMedia(
         frames.map((a) => ({ file: path.join(dir, a.file) })),
         path.join(dir, "stillscore"),
         undefined,
-        "documentary",
+        "frames",
       );
       for (const p of ranked.picks) {
         const a = frames[p.image]!;
@@ -6846,10 +6870,13 @@ async function gatherMedia(
     screenshot: 4,
     header: 5,
   };
+  // A Short's whole footage from a capped publisher stays under that cap, however many entries asked for some: the
+  // opening moment, then the winner backwards (a ranking of one publisher's series got 45 s of Rockstar, 5 Nov 2026).
+  const shortClips = isLongEpisode(ep) ? clips : capPublisherTotal(clips);
   return {
     images: out.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)),
     // A copy: an entry's gather left behind by the budget may still push into the live array for a while.
-    clips: [...clips],
+    clips: [...shortClips],
     officialTrailer: official.trailer,
     ...(eraDropped ? { eraDropped } : {}),
   };

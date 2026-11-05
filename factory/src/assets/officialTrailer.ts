@@ -228,6 +228,19 @@ const EXCLUDE =
   /\b(reaction|reacts?|breakdown|analysis|explained|review|leak|leaked|fan[- ]?made|concept|remake|recreated|in real life|parody|react)\b/i;
 
 /** Candidate ranking: a trailer from a known publisher, titled as a trailer, naming the game, newest first. */
+const SERIES_NUMERAL: Record<string, number> = { "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9 };
+
+/** The instalment a title names: "Grand Theft Auto IV" is 4, "Grand Theft Auto: Vice City" none. */
+export function seriesNumber(title: string): number | undefined {
+  // A platform's number is not the game's: "Ocarina of Time - Nintendo Switch 2" has no instalment number.
+  const name = title
+    .toLowerCase()
+    .replace(/\b(?:nintendo\s+)?switch\s*2\b|\bps\s?[2-5]\b|\bplaystation\s*[2-5]\b|\bxbox\s+series\s+[xs]\b|\bsteam\s+deck\b/g, " ");
+  for (const w of name.split(/[^a-z0-9]+/))
+    if (SERIES_NUMERAL[w] !== undefined) return SERIES_NUMERAL[w];
+  return undefined;
+}
+
 export function pickOfficial(
   items: Array<{
     videoId: string;
@@ -255,6 +268,10 @@ export function pickOfficial(
         return undefined;
       const t = it.title.toLowerCase();
       if (EXCLUDE.test(t)) return undefined;
+      // A series' other instalment is the wrong game: "GTA IV" must never take GTA VI's launch trailer.
+      const wanted = seriesNumber(gameTitle);
+      const shown = seriesNumber(it.title);
+      if (shown !== wanted && (shown !== undefined || wanted !== undefined)) return undefined;
       const named =
         tokens.filter((tok) => t.includes(tok)).length /
         Math.max(1, tokens.length);

@@ -125,8 +125,8 @@ export const TopBar: React.FC<{
         </div>
         ) : null}
       </div>
-      {/* Our own work names no source (SHORT_LABELS_CLEAN): no rule, no bare "SOURCE:". */}
-      {attribution.trim() ? (
+      {/* No source line on our own work: the label alone reads as a broken graphic. */}
+      {source ? (
         <>
       <div
         style={{

@@ -41,6 +41,10 @@ const STOP = new Set(
     .split(/\s+/)
     .filter(Boolean),
 );
+// Pronouns a clause cannot lose and still read as English.
+// Only after a word that opens a clause: "If it sold" needs its "it", "knows it yet" reads without one.
+const SUBJECT = new Set(["it", "he", "she", "they", "we", "you", "i"]);
+const CLAUSE_OPENER = new Set(["if", "when", "because", "since", "though", "although", "while", "once", "unless"]);
 // Words that carry the turn of a punch line even though they are short or common.
 const PUNCH = new Set(
   (
@@ -222,6 +226,18 @@ export function keyWords(
   for (let i = 1; i < toks.length - 1 && pick.size < MAX_SHOWN; i++)
     if (!pick.has(i) && pick.has(i - 1) && pick.has(i + 1) && norm(toks[i]!))
       pick.add(i);
+  // A subject left out reads as a typo, not a key word ("If sold 18 million"): it takes the place of the
+  // weakest chosen word that isn't next to it or in the emphasis phrase.
+  for (let i = 1; i < toks.length - 1; i++) {
+    if (pick.has(i) || !pick.has(i - 1) || !pick.has(i + 1)) continue;
+    if (!SUBJECT.has(norm(toks[i]!)) || !CLAUSE_OPENER.has(norm(toks[i - 1]!))) continue;
+    const weakest = [...pick]
+      .filter((k) => Math.abs(k - i) > 1 && !run.includes(k))
+      .sort((a, b) => scores[a]! - scores[b]!)[0];
+    if (weakest === undefined) continue;
+    pick.delete(weakest);
+    pick.add(i);
+  }
   const scattered = [...pick].sort((a, b) => a - b);
   // In a line of up to ten words a run of six reads better than the same words with gaps ("started life
   // as a Godzilla project", not "Internally, started life a Godzilla project"), but only when the run keeps

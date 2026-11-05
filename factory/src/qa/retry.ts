@@ -1,11 +1,12 @@
 // What a failed vision check tells the retry. The checker names frames; the
 // frames map to sample times, the times to shots, the shots to the clip or
-// still on screen. A moment it faulted for text, a logo or the wrong game is
-// taken out of the episode's media so the retry re-plans without it instead
-// of rendering the same fault three times and losing the slot.
+// still on screen. A moment it faulted for text, a logo, the wrong game or a
+// picture advertisers would object to is taken out of the episode's media so
+// the retry re-plans without it instead of rendering the same fault three times
+// and losing the slot.
 
 const MEDIA_FAULT =
-  /\b(text|captions?|subtitles?|words|letter(?:ing|s)?|watermarks?|logos?|title cards?|taglines?|different game|wrong game|not .{0,20}artwork|mismatch)\b/i;
+  /\b(text|captions?|subtitles?|words|letter(?:ing|s)?|watermarks?|logos?|title cards?|taglines?|different game|wrong game|not .{0,20}artwork|mismatch|suggestive|groin|crotch|sexual|nudity|advertiser[- ](?:un)?friendly)\b/i;
 
 export interface ShotLike {
   start: number;

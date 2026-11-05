@@ -41,6 +41,19 @@ test("a frame faulted for text maps to the clip on screen; a layout fault drops 
   assert.equal(vague.allClips, true);
 });
 
+test("a clip faulted as unsafe for advertisers is dropped, not rendered again (AI slop Short, 5 Nov)", () => {
+  const off = offendingMedia(
+    [
+      "Frame 3: stock footage of a person's hands at the waistband of their trousers fills the frame. The crop is dominated by the groin area and reads as suggestive. This is advertiser-unfriendly.",
+      "Frame 4: the crop is not advertiser-friendly.",
+    ],
+    times,
+    plan,
+  );
+  assert.deepEqual([...off.clips], [1, 2]);
+  assert.equal(off.allClips, false);
+});
+
 test("dropping removes only the faulted media and never leaves the episode without art", () => {
   const assets = {
     clips: [{ f: "a" }, { f: "b" }, { f: "c" }],

@@ -52,6 +52,8 @@ export interface SizedStory {
   items: FeedItem[];
   /** Every sighting holding one of the articles: all of them count as covered once the story is made. */
   hashes: string[];
+  /** An episode older than this does not cover the story, whatever it says (a launch day; default: its first article). */
+  coverFrom?: string;
 }
 
 // [key, name, pattern, tier]. Tier 1 is what the whole hobby talks about; tier 3 still has its own audience.

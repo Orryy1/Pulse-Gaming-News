@@ -208,6 +208,10 @@ export interface Config {
   bigStoryBumps: string[];
   /** The day's count (SHORTS_PER_DAY) counts Shorts only: a long video does not use up a slot's turn. */
   dailyTargetShortsOnly: boolean;
+  /** The launch calendar: reviews and launch days of known huge games (src/discovery/launches.ts); empty = none. */
+  launchCalendarFile: string;
+  /** Free chatter sources read for the story size (src/discovery/chatter.ts): bluesky, trends, youtube; empty = none. */
+  chatterSources: string[];
   /** The Claude credit a month in dollars (src/claudecredit.ts); 0 turns the forecast off. */
   claudeMonthlyCredit: number;
   /** The day of the month the credit renews. */
@@ -847,6 +851,11 @@ export function loadConfig(): Config {
       .map((x) => x.trim())
       .filter(Boolean),
     dailyTargetShortsOnly: bool("DAILY_TARGET_SHORTS_ONLY", true),
+    launchCalendarFile: str("LAUNCH_CALENDAR_FILE", ""),
+    chatterSources: str("CHATTER_SOURCES", "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
     claudeMonthlyCredit: Math.max(0, Number(str("CLAUDE_MONTHLY_CREDIT", "100")) || 0),
     claudeCreditRenewDay: Math.max(1, int("CLAUDE_CREDIT_RENEW_DAY", 1)),
     claudeCreditWarnDays: Math.max(1, int("CLAUDE_CREDIT_WARN_DAYS", 10)),

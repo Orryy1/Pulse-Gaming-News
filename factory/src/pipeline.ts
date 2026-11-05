@@ -283,6 +283,7 @@ import {
 } from "./growth.ts";
 import { holdSlotForCap, holdWhyForCap } from "./cadence.ts";
 import {
+  refreshChatter,
   bigCluster,
   bigEditorNote,
   bigMadeToday,
@@ -690,6 +691,9 @@ export async function discoverTick(s: Services): Promise<number> {
   await s.db.query(
     `DELETE FROM cluster_sightings WHERE last_seen < $1::timestamptz - interval '7 days'`,
     [now],
+  );
+  await refreshChatter(s.db, s.cfg, now, () => s.trending()).catch((err) =>
+    log("warn", "chatter read failed", { error: errorMessage(err) }),
   );
   return clusters.length;
 }

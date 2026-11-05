@@ -21,6 +21,18 @@ import {
   type SizedStory,
   type StoryEvent,
 } from "./discovery/storysize.ts";
+import {
+  applyChatter,
+  chatterTerms,
+  readChatter,
+  type ChatterSignal,
+} from "./discovery/chatter.ts";
+import type { TrendingVideo } from "./discovery/demand.ts";
+import {
+  applyLaunches,
+  launchesWithoutStory,
+  readLaunches,
+} from "./discovery/launches.ts";
 import { logEvent } from "./episodes.ts";
 import { dayKey, inWindow, localTime } from "./lanes.ts";
 import { log } from "./lib/util.ts";
@@ -118,8 +130,9 @@ export function coveringEpisode(
   episodes: CoverEpisode[],
 ): CoverEpisode | undefined {
   const dropped = new Set(["failed", "rejected"]);
-  const earliest =
-    new Date(story.firstAt).getTime() - COVER_GAP_HOURS * 3_600_000;
+  const earliest = story.coverFrom
+    ? new Date(story.coverFrom).getTime()
+    : new Date(story.firstAt).getTime() - COVER_GAP_HOURS * 3_600_000;
   return episodes.find(
     (e) =>
       !dropped.has(e.status) &&
@@ -371,25 +384,90 @@ export async function bumpFiller(
 
 const memo = new WeakMap<object, { at: number; stories: SizedStory[] }>();
 const MEMO_MS = 5 * 60_000;
+const CHATTER_KEY = "chatter_signal";
+const CHATTER_EVERY_MS = 60 * 60_000;
 
-/** The stories the sightings hold now, biggest first. Sized at most once every five minutes: it is a lot of JSON. */
-export async function currentStories(
+/** What sizing reads besides the sightings. */
+export type StoryCfg = Pick<
+  Config,
+  | "bigStoryMaxAgeHours"
+  | "bigStoryHuge"
+  | "timezone"
+  | "launchCalendarFile"
+  | "chatterSources"
+>;
+
+async function storiesFromSightings(
   db: Db,
-  cfg: Pick<BigCfg, "bigStoryMaxAgeHours">,
+  hours: number,
   now: Date,
 ): Promise<SizedStory[]> {
-  const hit = memo.get(db);
-  if (hit && Math.abs(now.getTime() - hit.at) < MEMO_MS) return hit.stories;
   const rows = await db.query<{
     hash: string;
     cluster_json: Pick<StoryCluster, "items">;
   }>(
     `SELECT hash, cluster_json FROM cluster_sightings WHERE last_seen > $1::timestamptz - ($2 || ' hours')::interval`,
-    [now, String(cfg.bigStoryMaxAgeHours)],
+    [now, String(hours)],
   );
-  const stories = sizeStories(rows, now, cfg.bigStoryMaxAgeHours);
+  return sizeStories(rows, now, hours);
+}
+
+async function readChatterSignal(db: Db): Promise<ChatterSignal | undefined> {
+  const [row] = await db.query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = $1`,
+    [CHATTER_KEY],
+  );
+  try {
+    return row ? (JSON.parse(row.value) as ChatterSignal) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The stories the sightings hold now, biggest first, with chatter and the launch calendar applied. Sized at most once every five minutes: it is a lot of JSON. */
+export async function currentStories(
+  db: Db,
+  cfg: StoryCfg,
+  now: Date,
+): Promise<SizedStory[]> {
+  const hit = memo.get(db);
+  if (hit && Math.abs(now.getTime() - hit.at) < MEMO_MS) return hit.stories;
+  const sized = await storiesFromSightings(db, cfg.bigStoryMaxAgeHours, now);
+  const stories = applyLaunches(
+    applyChatter(
+      sized,
+      cfg.chatterSources.length ? await readChatterSignal(db) : undefined,
+      now,
+    ),
+    readLaunches(cfg.launchCalendarFile),
+    now,
+    cfg.timezone,
+    cfg.bigStoryHuge,
+  );
   memo.set(db, { at: now.getTime(), stories });
   return stories;
+}
+
+/** Runs after discovery, at most once an hour: asks the free sources about the games in the news. */
+export async function refreshChatter(
+  db: Db,
+  cfg: StoryCfg & Pick<Config, "bigStoryMode">,
+  now: Date,
+  trending: () => Promise<TrendingVideo[]>,
+  read: typeof readChatter = readChatter,
+): Promise<ChatterSignal | undefined> {
+  if (cfg.bigStoryMode === "off" || !cfg.chatterSources.length) return undefined;
+  const was = await readChatterSignal(db);
+  if (was && now.getTime() - new Date(was.at).getTime() < CHATTER_EVERY_MS)
+    return was;
+  const stories = await storiesFromSightings(db, cfg.bigStoryMaxAgeHours, now);
+  const signal = await read(chatterTerms(stories), cfg.chatterSources, now, trending);
+  await db.query(
+    `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [CHATTER_KEY, JSON.stringify(signal)],
+  );
+  log("info", "chatter read", { entities: signal.entities });
+  return signal;
 }
 
 /** Forgets the sized stories, for tests that move the clock and the feeds. */
@@ -527,7 +605,7 @@ export function missReportLine(
 /** Sent each evening with the daily summary. Missed stories make it a warning, and so a line in the alert digest. */
 export async function sendMissReport(
   db: Db,
-  cfg: BigCfg,
+  cfg: BigCfg & StoryCfg,
   now: Date,
   notify: (m: DiscordMessage) => Promise<unknown>,
 ): Promise<string | undefined> {
@@ -535,10 +613,16 @@ export async function sendMissReport(
   const day = dayKey(now, cfg.timezone);
   const state = await readState(db, day);
   const stories = await currentStories(db, cfg, now);
-  const line = missReportLine(
+  const due = launchesWithoutStory(
+    stories,
+    readLaunches(cfg.launchCalendarFile),
+    now,
+    cfg.timezone,
+  );
+  const line = `${missReportLine(
     Object.values(state.stories),
     stories.slice(0, 3).map((s) => ({ headline: s.headline, size: s.size })),
-  );
+  )}${due.length ? ` Launch calendar: ${due.join("; ")}.` : ""}`;
   const missed = Object.values(state.stories).filter(
     (r) => r.action === "held",
   ).length;

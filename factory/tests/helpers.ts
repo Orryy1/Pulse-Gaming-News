@@ -34,6 +34,15 @@ export function testConfig(
 ): Config {
   return {
     writerNotesGuard: true,
+    firstCommentQuestion: false,
+    firstCommentCheck: false,
+    replyStyle: false,
+    replyFollowups: false,
+    metaCommentReplies: false,
+    socialScoreboard: false,
+    engageRetry: false,
+    requestsFromShorts: false,
+    launchCommunityPosts: false,
     longStockNotOnPeople: true,
     shortPlateMax: 1,
     planSlateMax: 1,

@@ -61,6 +61,8 @@ export async function collectRequests(d: {
   youtube: () => YouTubeClient;
   llm: Llm;
   now: Date;
+  /** REQUESTS_FROM_SHORTS: also the Shorts' comments already on file (no quota). */
+  fromShorts?: boolean;
 }): Promise<number> {
   const prior = await readRequests(d.db);
   if (prior && d.now.getTime() - new Date(prior.at).getTime() < 20 * 3600_000)
@@ -88,6 +90,15 @@ export async function collectRequests(d: {
         error: errorMessage(err),
       });
     }
+  }
+  if (d.fromShorts) {
+    const held = await d.db.query<{ comment: string }>(
+      `SELECT comment FROM comment_replies WHERE created_at > $1::timestamptz - interval '30 days' AND comment_id NOT LIKE '%.%'`,
+      [d.now],
+    );
+    texts.push(
+      ...held.map((c) => c.comment.replace(/\s+/g, " ").slice(0, 300)),
+    );
   }
   let requests: AudienceRequests["requests"] = [];
   if (texts.length) {

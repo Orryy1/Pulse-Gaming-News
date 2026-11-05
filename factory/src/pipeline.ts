@@ -2,6 +2,7 @@
 // Each step reads its inputs from Postgres/disk and writes its outputs before
 // the status moves, so any step can crash and be retried safely.
 
+import { firstComment } from "./social/firstcomment.ts";
 import { pollBlock, readPoll } from "./social/poll.ts";
 import {
   selectWhyTopic,
@@ -10169,7 +10170,9 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
       (script.twin?.pinned ||
         (script.evergreen_format === "documentary" && s.cfg.docPinMoment
           ? docPinnedComment(script, longChapters(ep))
-          : pinnedComment(script))) +
+          : s.cfg.firstCommentQuestion
+            ? firstComment(script)
+            : pinnedComment(script))) +
       (!script.twin && (await hypeOn(s, script))
         ? ` ${HYPE_COMMENT_LINE}`
         : "") +

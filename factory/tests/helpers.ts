@@ -35,6 +35,7 @@ export function testConfig(
   return {
     writerNotesGuard: true,
     longStockNotOnPeople: true,
+    shortPlateMax: 1,
     planSlateMax: 1,
     releaseGateMaxSlate: 1,
     releaseGateMinFootage: 0,

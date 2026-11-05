@@ -8746,7 +8746,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     const mediaRed = rubric.metrics.some(
       (m) =>
         m.grade === "red" &&
-        /^(unique_media_ratio|max_media_repeat|adjacent_repeats)$/.test(m.name),
+        /^(unique_media_ratio|max_media_repeat|adjacent_repeats|plate_share)$/.test(m.name),
     );
     if (rubric.grade === "red" && mediaRed && !assets.rich) {
       // Too little media to vary with: fetch more (screenshots, another clip) and plan again.
@@ -8792,6 +8792,14 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         JSON.stringify(assets),
       ]);
     }
+    const plateRed = rubric.metrics.find(
+      (m) => m.name === "plate_share" && m.grade === "red",
+    );
+    if (plateRed)
+      // Unlike the other notes this one is what the viewer sees: an empty screen. The story's slot goes to the next one.
+      throw new Error(
+        `QA failed: ${Math.round(Number(plateRed.value) * 100)}% of the Short would be an empty panel: too little media`,
+      );
     if (rubric.grade === "red") {
       // A slot is worth more than a perfect plan: render anyway and say so.
       log("warn", "rubric still red after rebuild; rendering anyway", {

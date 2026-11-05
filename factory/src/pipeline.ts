@@ -257,7 +257,7 @@ import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
 import { blurPlate, meanLuma } from "./assets/plates.ts";
 import { TIGHT_CAP_SECONDS } from "./assets/officialTrailer.ts";
-import { stillBigText } from "./assets/cliptext.ts";
+import { CLIP_DETAIL_FLOOR_KB, clipDetailKb, stillBigText } from "./assets/cliptext.ts";
 import { framesNeeded } from "./qa/mediarich.ts";
 import {
   argumentArm,
@@ -9248,6 +9248,21 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         files: (assets.images ?? []).filter((i) => i.bigText).map((i) => i.file),
       });
       assets.images = clean;
+    }
+  }
+  // A clip with no detail left in the crop is a smear, and footage for its own sake is worse than a sharp still.
+  if (s.cfg.shortClipTextCheck) {
+    for (const c of assets.clips ?? [])
+      if (c.detailKb === undefined)
+        c.detailKb = await clipDetailKb(path.join(dir, c.file), c.durationSeconds);
+    const sharp = (assets.clips ?? []).filter(
+      (c) => c.detailKb === undefined || c.detailKb >= CLIP_DETAIL_FLOOR_KB,
+    );
+    if (sharp.length < (assets.clips ?? []).length) {
+      await logEvent(s.db, ep.id, "smeared_clips_dropped", {
+        files: (assets.clips ?? []).filter((c) => !sharp.includes(c)).map((c) => c.file),
+      });
+      assets.clips = sharp;
     }
   }
   // Never CONFIRMED on an estimate or a report, on the chip or on a stamp: a rule, not a setting.

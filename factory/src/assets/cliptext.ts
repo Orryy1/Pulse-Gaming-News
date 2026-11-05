@@ -73,6 +73,50 @@ export async function stillBigText(file: string): Promise<string[]> {
   }
 }
 
+/** Under this, a clip's vertical crop is a smear: a 240p game blown up, or a whip pan. Read on real clips, 5 Nov 2026. */
+export const CLIP_DETAIL_FLOOR_KB = 8;
+
+/**
+ * How much detail survives the vertical crop: mean JPEG size of three frames at a fixed size and quality, in KB (fine
+ * detail costs bytes). The smeared clips the vision check failed on a ranking read 6 to 7; clean footage 9 to 15.
+ * Undefined when it cannot say, and a clip is never dropped on that.
+ */
+export async function clipDetailKb(
+  file: string,
+  seconds: number,
+): Promise<number | undefined> {
+  const work = `${file}.detail`;
+  try {
+    await fs.mkdir(work, { recursive: true });
+    const sizes: number[] = [];
+    for (const [i, k] of [0.2, 0.5, 0.8].entries()) {
+      const out = path.join(work, `${i}.jpg`);
+      await runCapped(FFMPEG, [
+        "-y",
+        "-loglevel",
+        "error",
+        "-ss",
+        (seconds * k).toFixed(2),
+        "-i",
+        file,
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale=-2:360,crop=200:360",
+        "-q:v",
+        "4",
+        out,
+      ]);
+      sizes.push((await fs.stat(out)).size / 1024);
+    }
+    return sizes.reduce((a, b) => a + b, 0) / sizes.length;
+  } catch {
+    return undefined;
+  } finally {
+    await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 export interface ClipTextResult {
   clean: boolean;
   words: string[];

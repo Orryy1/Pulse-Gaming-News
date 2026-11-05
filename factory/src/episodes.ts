@@ -118,6 +118,7 @@ export interface EpisodeAssets {
   poster?: string;
   musicFile?: string | null;
   clips?: Array<{
+    detailKb?: number; // detail left in the vertical crop (src/assets/cliptext.ts clipDetailKb)
     file: string;
     sourceUrl: string;
     provenance: string;

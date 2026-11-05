@@ -2352,3 +2352,42 @@ test("a long video no longer uses up a slot's turn in the day's count", async ()
   assert.equal((await listEpisodes(db)).filter((e) => e.lane === "news").length, 1);
   await db.close();
 });
+
+test("a planned Why on the story: no second Short from the big-story desk or from a news slot, under any hash", async () => {
+  const { db, s, setClock } = await setup({
+    bigStoryMode: "make",
+    newsSlots: ["18:00"],
+    breakingEnabled: false,
+  });
+  const file = path.join(s.cfg.dataDir, "run.json");
+  await fs.writeFile(
+    file,
+    JSON.stringify([
+      {
+        kind: "why",
+        date: "2026-10-17",
+        slot: "12:00",
+        question: "Why did God of War Laufey just lose three months?",
+        title: "Why God of War Laufey Slipped to May 2027",
+        game: "God of War Laufey",
+        arc: "The date moved three months to May 2027.",
+        angle: "Say only what the sources say.",
+        sources: [{ url: "https://example.com/a", source: "IGN" }],
+      },
+    ]),
+  );
+  s.cfg.shortRunFile = file;
+  const at = new Date("2026-10-16T17:30:00Z");
+  setClock(at);
+  godOfWarDelay(s, at);
+  const { discoverTick } = await import("../src/pipeline.ts");
+  await discoverTick(s);
+  await tick(s);
+  const eps = await listEpisodes(db);
+  assert.equal(eps.length, 0, JSON.stringify(eps.map((e) => [e.lane, e.story_json.headline])));
+  const ev = await db.query<{ detail: { action: string } }>(
+    `SELECT detail FROM events WHERE kind = 'big_story'`,
+  );
+  assert.equal(ev[0]!.detail.action, "planned");
+  await db.close();
+});

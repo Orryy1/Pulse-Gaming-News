@@ -208,6 +208,10 @@ export interface Config {
   bigStoryBumps: string[];
   /** The day's count (SHORTS_PER_DAY) counts Shorts only: a long video does not use up a slot's turn. */
   dailyTargetShortsOnly: boolean;
+  /** The launch calendar: reviews and launch days of known huge games (src/discovery/launches.ts); empty = none. */
+  launchCalendarFile: string;
+  /** Free chatter sources read for the story size (src/discovery/chatter.ts): bluesky, trends, youtube; empty = none. */
+  chatterSources: string[];
   /** The Claude credit a month in dollars (src/claudecredit.ts); 0 turns the forecast off. */
   claudeMonthlyCredit: number;
   /** The day of the month the credit renews. */
@@ -423,6 +427,24 @@ export interface Config {
   /** The daily question picture on Instagram as well (ENGAGE_INSTAGRAM): off, 9 posts drew 0 likes by 29 Oct 2026. */
   engageInstagram: boolean;
   engageSlot: string; // local time it goes out
+  /** The Short's first comment asks the video's own closing question (FIRST_COMMENT_QUESTION, src/social/firstcomment.ts). */
+  firstCommentQuestion: boolean;
+  /** Reads the public comment list to see whether first comments are really showing (FIRST_COMMENT_CHECK, src/social/commentcheck.ts). */
+  firstCommentCheck: boolean;
+  /** Replies lose their stock opener and do not all end on a question (REPLY_STYLE, src/youtube/replies.ts). */
+  replyStyle: boolean;
+  /** Answers a viewer who replies to our reply, up to REPLY_LIMITS.perThread in a thread (REPLY_FOLLOWUPS). */
+  replyFollowups: boolean;
+  /** Answers comments on our Instagram and Facebook reels (META_COMMENT_REPLIES, src/social/metacomments.ts). */
+  metaCommentReplies: boolean;
+  /** Per-platform lines in the Sunday growth report and what went quiet in the alert digest (SOCIAL_SCOREBOARD). */
+  socialScoreboard: boolean;
+  /** A community post that found no pictures tries again instead of leaving the day empty (ENGAGE_RETRY). */
+  engageRetry: boolean;
+  /** Viewer requests are also read from the Shorts' comments the factory already holds (REQUESTS_FROM_SHORTS). */
+  requestsFromShorts: boolean;
+  /** The GTA VI launch's fixed community posts, 18-21 Nov (LAUNCH_COMMUNITY_POSTS, src/social/launchcommunity.ts). */
+  launchCommunityPosts: boolean;
   /** The Meta login saved by /connect?account=meta; when present its page token wins over the .env tokens. */
   metaLoginPath: string;
   /** A Facebook Login for Business configuration id (FACEBOOK_LOGIN_CONFIG_ID), when the app uses one instead of scopes. */
@@ -851,6 +873,11 @@ export function loadConfig(): Config {
       .map((x) => x.trim())
       .filter(Boolean),
     dailyTargetShortsOnly: bool("DAILY_TARGET_SHORTS_ONLY", true),
+    launchCalendarFile: str("LAUNCH_CALENDAR_FILE", ""),
+    chatterSources: str("CHATTER_SOURCES", "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
     claudeMonthlyCredit: Math.max(0, Number(str("CLAUDE_MONTHLY_CREDIT", "100")) || 0),
     claudeCreditRenewDay: Math.max(1, int("CLAUDE_CREDIT_RENEW_DAY", 1)),
     claudeCreditWarnDays: Math.max(1, int("CLAUDE_CREDIT_WARN_DAYS", 10)),
@@ -1076,6 +1103,15 @@ export function loadConfig(): Config {
     engageEnabled: bool("ENGAGE_ENABLED", true),
     engageInstagram: bool("ENGAGE_INSTAGRAM", false),
     engageSlot: str("ENGAGE_SLOT", "15:00"),
+    firstCommentQuestion: bool("FIRST_COMMENT_QUESTION", false),
+    firstCommentCheck: bool("FIRST_COMMENT_CHECK", false),
+    replyStyle: bool("REPLY_STYLE", false),
+    replyFollowups: bool("REPLY_FOLLOWUPS", false),
+    metaCommentReplies: bool("META_COMMENT_REPLIES", false),
+    socialScoreboard: bool("SOCIAL_SCOREBOARD", false),
+    engageRetry: bool("ENGAGE_RETRY", false),
+    requestsFromShorts: bool("REQUESTS_FROM_SHORTS", false),
+    launchCommunityPosts: bool("LAUNCH_COMMUNITY_POSTS", false),
     metaLoginPath: str("META_LOGIN_PATH", path.join(tokenDir, "meta.json")),
     facebookLoginConfigId: str("FACEBOOK_LOGIN_CONFIG_ID"),
     facebookLinkComment: bool("FACEBOOK_LINK_COMMENT", true),

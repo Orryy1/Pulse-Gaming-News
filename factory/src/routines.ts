@@ -7,6 +7,7 @@
 // also arrives from 127.0.0.1, so anything that carries a proxy header is refused as if the page did
 // not exist. Nothing here needs or shows a secret.
 
+import { pinPlan } from "./social/commentcheck.ts";
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
@@ -133,6 +134,10 @@ export const DONE_KINDS = {
     valid: (k: string) => HEARTED.test(k) && /\S/.test(k),
   },
   poll: { file: ["admin", "poll_done.json"], valid: validDay },
+  pinned: {
+    file: ["admin", "comments_pinned.json"],
+    valid: (k: string) => VIDEO_ID.test(k),
+  },
 } as const;
 export type DoneKind = keyof typeof DONE_KINDS;
 
@@ -466,6 +471,17 @@ export async function handleRoutine(
             ready: ready(t),
           })),
         });
+        return true;
+      }
+      // New videos' first comments to pin in Studio: pinned ones were the only ones viewers could see (4 Nov 2026).
+      case "/routine/pins": {
+        const items = await pinPlan(
+          db,
+          now,
+          readList(doneFile(cfg, "pinned")),
+          Number(url.searchParams.get("max")) || 5,
+        );
+        json(res, 200, { count: items.length, items });
         return true;
       }
       case "/routine/hearted": {

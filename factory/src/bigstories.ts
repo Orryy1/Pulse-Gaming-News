@@ -13,7 +13,10 @@ import type { DiscordMessage } from "./approval/discord.ts";
 import type { StoryCluster } from "./discovery/cluster.ts";
 import type { RunEntry, RunWhy } from "./shortrun.ts";
 import {
+  centralHeadline,
   knownEntity,
+  newDevelopment,
+  outletOf,
   similarTitles,
   sizeStories,
   storyCluster,
@@ -87,6 +90,8 @@ export interface BigVerdict {
   episode?: string;
   /** Goes on the hash so a failed attempt can be tried again. */
   attempt: number;
+  /** A new development on a story already covered: the editor judges it, and may always pass. */
+  development?: string;
 }
 
 /** What an episode or a run entry is about: the known game and every kind of news its words carry. */
@@ -106,10 +111,16 @@ function coversStory(
 ): boolean {
   const about = aboutOf(texts);
   if (story.event === "other" || story.event === "update")
-    return similarTitles(story.headline, headline);
+    return (
+      similarTitles(story.headline, headline) ||
+      (!!texts[2] && similarTitles(story.headline, texts[2]))
+    );
+  const said = texts.filter(Boolean).join(" ").toLowerCase();
   const sameGame = story.entity.startsWith("w:")
-    ? headline.toLowerCase().includes(story.entity.slice(2))
+    ? said.includes(story.entity.slice(2))
     : about.entity === story.entity;
+  // A launch-day story is what a Why on the game that day already says: reviews, times, what changed.
+  if (story.key.includes("|launch:")) return sameGame;
   return sameGame && about.events.has(story.event);
 }
 
@@ -143,7 +154,31 @@ export function coveringEpisode(
   );
 }
 
-/** A Why Short planned for this story in the launch run, today or tomorrow, not yet made. */
+/** A planned Why this close holds a story back: it will say the same thing. */
+const PLANNED_AHEAD_HOURS = 24;
+const PLANNED_GRACE_MINUTES = 30;
+
+/** A big Short already out on what a planned Why was going to say, in the last two days (pure): the plan gives way. */
+export function runEntryCovered(
+  entry: Pick<RunWhy, "title" | "game" | "question" | "angle" | "arc">,
+  episodes: CoverEpisode[],
+  now: Date,
+): CoverEpisode | undefined {
+  const about = aboutOf([entry.title, entry.game, entry.question, entry.angle, entry.arc]);
+  return episodes.find((e) => {
+    const big = e.story_json.bigStory;
+    return (
+      !!big &&
+      e.status !== "failed" &&
+      e.status !== "rejected" &&
+      now.getTime() - new Date(e.created_at).getTime() < 48 * 3_600_000 &&
+      big.entity === about.entity &&
+      about.events.has(big.event as StoryEvent)
+    );
+  });
+}
+
+/** A Why Short planned for this story in the launch run within a day, not yet made. */
 export function plannedEntry(
   story: SizedStory,
   run: RunEntry[],
@@ -153,7 +188,12 @@ export function plannedEntry(
   return run.find((e): e is RunWhy => {
     if (e.kind !== "why") return false;
     const at = localTime(e.date, e.slot, timeZone).getTime();
-    if (at < now.getTime() || at > now.getTime() + 36 * 3_600_000) return false;
+    // Just past its slot the Why may still be starting: it is not given up on until its grace has run out.
+    if (
+      at < now.getTime() - PLANNED_GRACE_MINUTES * 60_000 ||
+      at > now.getTime() + PLANNED_AHEAD_HOURS * 3_600_000
+    )
+      return false;
     return coversStory(story, e.title, [
       e.title,
       e.game,
@@ -186,30 +226,56 @@ export function judgeBigStories(
   let bigMade = ctx.bigMadeToday;
   let makeTaken = false;
   const out: BigVerdict[] = [];
-  for (const story of stories) {
+  for (let story of stories) {
     if (story.size < cfg.bigStorySize) continue;
-    const base = { story, attempt: 1 };
+    let development: string | undefined;
+    const base = () => ({ story, attempt: 1, ...(development ? { development } : {}) });
     const cover = coveringEpisode(story, ctx.episodes);
-    if (cover) {
+    // Covered, unless the press has since moved to something the Short did not say.
+    const fresh =
+      cover && !story.hashes.includes(cover.story_hash)
+        ? newDevelopment(
+            story,
+            // Not the bare game name: every headline about the game reads like that.
+            [cover.story_json.headline, cover.story_json.why?.question, cover.story_json.why?.angle].filter((x): x is string => !!x),
+            new Date(cover.created_at).getTime(),
+          )
+        : undefined;
+    if (cover && fresh) {
+      // Only the new articles go forward, under a hash of their own; the same rules then apply as to any big story.
+      story = {
+        ...story,
+        items: fresh,
+        headline: centralHeadline(fresh),
+        outlets: [...new Set(fresh.map((i) => outletOf(i.source)))],
+        articles: fresh.length,
+        firstAt: fresh[fresh.length - 1]!.publishedAt,
+        newestAt: fresh[0]!.publishedAt,
+        hashes: [],
+      };
+      development = cover.id;
+    } else if (cover) {
       out.push({
-        ...base,
+        ...base(),
         action: "made",
         reason: `made as "${cover.story_json.headline}"`,
         episode: cover.id,
       });
       continue;
     }
-    const planned = plannedEntry(story, ctx.run, ctx.now, cfg.timezone);
+    const planned = development
+      ? undefined
+      : plannedEntry(story, ctx.run, ctx.now, cfg.timezone);
     if (planned) {
       out.push({
-        ...base,
+        ...base(),
         action: "planned",
         reason: `planned: "${planned.title}" at ${planned.slot} on ${planned.date}`,
       });
       continue;
     }
     const hold = (reason: string) =>
-      out.push({ ...base, action: "held", reason });
+      out.push({ ...base(), action: "held", reason });
     if (story.leak) {
       hold(
         "the coverage is of leaked or datamined material, which Pulse does not cover",
@@ -293,7 +359,7 @@ export function judgeBigStories(
     makeTaken = true;
     bigMade++;
     out.push({
-      ...base,
+      ...base(),
       action: "make",
       reason: "being made now",
       attempt: failed.length + 1,
@@ -311,7 +377,7 @@ export function bigCluster(verdict: BigVerdict, now: Date): StoryCluster {
   );
   return {
     ...base,
-    hash: verdict.attempt > 1 ? `${base.hash}:${verdict.attempt}` : base.hash,
+    hash: `${base.hash}${verdict.development ? `:after-${verdict.development}` : ""}${verdict.attempt > 1 ? `:${verdict.attempt}` : ""}`,
     bigStory: {
       key: s.key,
       entity: s.entity,
@@ -320,6 +386,15 @@ export function bigCluster(verdict: BigVerdict, now: Date): StoryCluster {
       ...(lateHours >= LATE_AFTER_HOURS ? { lateHours } : {}),
     },
   };
+}
+
+/** Sightings of stories already made or planned: not for the usual lanes either, or the day says it twice (pure). */
+export function coveredHashes(verdicts: BigVerdict[]): Set<string> {
+  const out = new Set<string>();
+  for (const v of verdicts)
+    if (v.action === "made" || v.action === "planned")
+      for (const h of v.story.hashes) out.add(h);
+  return out;
 }
 
 /** The note the editor reads with a big story: it is the day's news, and "avoid reviews" does not apply to it. */

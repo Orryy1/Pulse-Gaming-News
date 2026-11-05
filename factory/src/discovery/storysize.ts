@@ -201,6 +201,37 @@ const OUTLET_GROUP: Record<string, string> = {
   "Pure Xbox": "Hookshot",
 };
 
+/** The outlet an article counts as: sister sites are one. */
+export function outletOf(source: string): string {
+  return OUTLET_GROUP[source] ?? source;
+}
+
+/**
+ * Articles after `since` telling something the earlier Short did not: their headlines read alike, they do not read like
+ * what was already said, and three independent outlets carry them. The same delay reworded by more outlets has no words
+ * of its own to agree on, so it does not count (pure).
+ */
+export function newDevelopment(
+  story: SizedStory,
+  said: string[],
+  since: number,
+): FeedItem[] | undefined {
+  const fresh = story.items.filter(
+    (i) =>
+      new Date(i.publishedAt).getTime() > since &&
+      !said.some((s) => similarTitles(i.title, s)),
+  );
+  let best: FeedItem[] = [];
+  for (const a of fresh) {
+    const group = fresh.filter(
+      (b) => b === a || similarTitles(a.title, b.title),
+    );
+    const outlets = new Set(group.map((i) => outletOf(i.source)));
+    if (outlets.size >= 3 && group.length > best.length) best = group;
+  }
+  return best.length ? best : undefined;
+}
+
 /** The kind of news a headline carries (pure). */
 export function storyEvent(title: string): StoryEvent {
   return EVENTS.find(([, re]) => re.test(title))?.[0] ?? "other";
@@ -276,7 +307,7 @@ function peakPerSixHours(times: number[]): number {
 }
 
 /** The headline closest to all the others, a first-party one if there is one. */
-function centralHeadline(items: FeedItem[]): string {
+export function centralHeadline(items: FeedItem[]): string {
   const pool = items.filter(
     (i) => i.sourceKind === "official" && !NOT_A_SOURCE.has(i.source),
   );

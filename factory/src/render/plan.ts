@@ -44,6 +44,8 @@ export interface PlanImage {
   wordy?: boolean; // the local screen saw menu or HUD text on it: used after clean art
   frame?: boolean; // a trailer frame, last-resort: only after published art, once each, never two in a row
   then?: boolean; // the old version of a remade game: kept for the words about the old one (thenWindows)
+  forWords?: string; // the words the picture editor chose it for
+  role?: "hook"; // the picture editor chose it for the opening line: it is the hero
 }
 
 export interface PlanClip {
@@ -375,8 +377,42 @@ export function splitAtThen<T extends { start: number; end: number; segment: num
   return joined;
 }
 
+/** The still chosen for the words spoken over this cut: at least half of its clause is said here. */
+export function pictureForWords(
+  images: PlanImage[],
+  words: Word[],
+  cut: { start: number; end: number },
+  uses: number[],
+  last?: { type: string; index: number },
+): number | undefined {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9' ]/g, "").split(/\s+/).filter(Boolean);
+  const said = new Set(
+    words
+      .filter((w) => toFrame(w.start) >= cut.start - 1 && toFrame(w.start) < cut.end)
+      .flatMap((w) => norm(w.text)),
+  );
+  let best: number | undefined;
+  let bestScore = 0;
+  for (const [i, im] of images.entries()) {
+    if (!im.forWords || im.then || uses[i]! >= 1 || (last?.type === "image" && last.index === i)) continue;
+    const want = norm(im.forWords);
+    if (!want.length) continue;
+    const score = want.filter((w) => said.has(w)).length / want.length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  return bestScore >= 0.5 ? best : undefined;
+}
+
 /** The still that opens and closes the Short: a 16:9 shot if there is one, else the first image. */
 export function pickHero(images: PlanImage[], preferBright = false): number {
+  // The moment matched to the hook's own footage request leads; failing that, the picture the editor chose for the line.
+  const hookMoment = images.findIndex((x) => x.role === "hook" && !x.then && !x.forWords);
+  if (hookMoment >= 0) return hookMoment;
+  const chosen = images.findIndex((x) => x.role === "hook" && !x.then);
+  if (chosen >= 0) return chosen;
   // The topic's own art first; art tagged for a ranking entry belongs to that entry.
   const pools = [
     images
@@ -470,8 +506,10 @@ export function planShots(
     if (own.length) {
       // Clean art (hero, screenshots, footage stills) before art with the logo printed on it.
       const logo = (i: number) => artPenalty(images[i]!);
+      // A picture kept for other words of this line waits for them; the line's other art goes first.
+      const kept = (i: number) => Number(Boolean(images[i]!.forWords));
       const pick = own.sort(
-        (a, b) => logo(a) - logo(b) || stillUses[a]! - stillUses[b]! || a - b,
+        (a, b) => kept(a) - kept(b) || logo(a) - logo(b) || stillUses[a]! - stillUses[b]! || a - b,
       )[0]!;
       stillUses[pick]!++;
       return { type: "image", index: pick };
@@ -752,7 +790,12 @@ export function planShots(
         : ranking && seg.kind === "take"
           ? winnerBeat
           : undefined;
-    if (c.then) {
+    // A picture the editor chose for these very words comes first, whatever else this line would do.
+    const chosen = c.then || isOpening || isClosing ? undefined : pictureForWords(images, input.words, c, stillUses, last);
+    if (chosen !== undefined) {
+      stillUses[chosen]!++;
+      media = { type: "image", index: chosen };
+    } else if (c.then) {
       // The words about the old game show the old game, a different picture each time.
       const pick = images
         .map((_, i) => i)

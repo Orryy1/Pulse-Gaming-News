@@ -15,6 +15,7 @@ Object.assign(process.env, {
   PORT: "0",
   BIG_STORY_MODE: "off",
   CAPTURE_CHECKLIST: "false",
+  DOC_COLD_OPEN: "false",
   OFFICIAL_STILL_FRAMES: "8",
   DOC_SANDBOX_CHAPTERS: process.env.DOC_SANDBOX_CHAPTERS ?? "2",
   LONG_GUIDE_FORMAT: "true",

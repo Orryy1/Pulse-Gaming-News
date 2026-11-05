@@ -42,12 +42,18 @@ export interface PictureCapResult {
   thinEntries: number[];
 }
 
+/** The same IGDB picture downloaded for two chapters is one picture to the viewer. */
+const pictureFile = (file?: string) => {
+  const name = file?.split(/[\\/]/).pop() ?? "";
+  return /^igdb-/.test(name) ? name : file;
+};
+
 const keyOf = (
   m: LongMedia,
   media: Pick<PictureCapMedia, "images" | "clips">,
 ) =>
   m.type === "image"
-    ? `f:${media.images[m.index]?.file ?? `i${m.index}`}`
+    ? `f:${pictureFile(media.images[m.index]?.file) ?? `i${m.index}`}`
     : m.type === "clip"
       ? `f:${media.clips[m.index]?.file ?? `c${m.index}`}`
       : m.type === "filler"

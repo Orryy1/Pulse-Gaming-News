@@ -120,6 +120,7 @@ export interface EpisodeAssets {
     bigText?: boolean; // the local OCR found big lettering in what the vertical crop keeps
     then?: boolean;
     focusX?: number;
+    forWords?: string;
     role?: "hook";
     layers?: { bg: string; mid: string; fg: string; fgx?: number }; // 2.5D depth layers (src/render/parallax.ts)
   }>; // wordy: the local screen saw menu or HUD text on it

@@ -3,7 +3,7 @@
 // takes no priority-60 turn, so wrap the render step in `orch.cmd run ... --priority 20`.
 //   node --import tsx data/smoke/showpiece_short.mts <sandbox dir> <run file> <date> <slot> [max steps]
 const [SANDBOX, RUN, DATE, SLOT, MAX] = process.argv.slice(2);
-process.loadEnvFile("C:/PulseFactory/factory/.env");
+process.loadEnvFile(process.env.SHOW_ENV ?? "C:/PulseFactory/factory/.env");
 Object.assign(process.env, {
   DATA_DIR: SANDBOX,
   DRY_RUN: "true",
@@ -15,6 +15,7 @@ Object.assign(process.env, {
   GAMEPLAY_ENABLED: "false",
   ORCH_CLIENT: "file:///C:/nonexistent/orch.mjs",
   PORT: "0",
+  ...(process.env.SHOW_ENV ? { LOCAL_VISION: "off", YTDLP_PATH: "yt-dlp" } : {}),
   OFFICIAL_STILL_FRAMES: "8",
   SHORT_VIVID: "true",
   SHORT_SUITE_SHARE: "1",
@@ -49,7 +50,7 @@ if (process.env.SHOW_NO_RENDER) {
 }
 if (process.env.SHOW_RENDER === "mac") {
   const { macRender, syncCode } = await import("./showpiece_macrender.mts");
-  syncCode();
+  if (!process.env.SHOW_NOSYNC) syncCode();
   s.render = macRender as any;
 }
 let [ep] = await listEpisodes(db, 1);

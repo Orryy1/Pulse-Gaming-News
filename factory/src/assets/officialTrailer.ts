@@ -11,7 +11,6 @@ import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
 import { YTDLP_TEXT } from "../lib/bin.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
 import { stillBigText } from "./cliptext.ts";
-import { screenFrames } from "./localvision.ts";
 import type { VisualAsset } from "./steam.ts";
 import type { Llm } from "../editorial/llm.ts";
 
@@ -844,11 +843,11 @@ async function trailerStills(
       const st = await fs.stat(small).catch(() => undefined);
       if (st && st.size > 25_000) pool.push({ at, file: small });
     }
-    const flags = await screenFrames(pool.map((p) => p.file)).catch(() => []);
-    const clean = pool.filter((_, i) => !flags[i]?.text && !flags[i]?.webcam && !flags[i]?.gore);
-    const poolMax = poolOnly ?? 12;
-    const step = Math.max(1, Math.floor(clean.length / poolMax));
-    for (const [k, p] of clean.filter((_, i) => i % step === 0).slice(0, poolMax).entries())
+    // The picture editor reads these afterwards. The local screen is not asked: it calls a game's own interface text
+    // (the ocarina's music staff, the frame the "hum" line needs), and it adds a GPU job for no gain here.
+    const poolMax = poolOnly ?? 16;
+    const step = Math.max(1, Math.floor(pool.length / poolMax));
+    for (const [k, p] of pool.filter((_, i) => i % step === 0).slice(0, poolMax).entries())
       out.push({
         kind: "screenshot",
         file: await grab(p.at, `official_pool_${k}.jpg`),

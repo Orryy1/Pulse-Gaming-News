@@ -52,6 +52,7 @@ import { storyYearOf } from "./components/vertical/pulse/map.ts";
 import { VFiller, VFreezeLabel } from "./components/vertical/craft.tsx";
 import { HOUSE, SHORT_TRACK_FRAMES } from "./shortcraft.ts";
 import { arbitrate, keptSpan, OPENING_LABEL_FRAMES, overlaySpans, shortLayout } from "./cleanframe.ts";
+import { ENTRY_CARD_TOP, ENTRY_CARD_TOP_CHROME, isEntryCard } from "./rankcard.ts";
 import { motifsFor } from "./components/motifs/index.ts";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
@@ -211,6 +212,8 @@ export const Short: React.FC<ShortProps> = (props) => {
     const s = props.segments[i]!;
     const start = segmentStarts[i]!;
     const end = segmentEnds[i]!;
+    // A rank card stays up for its whole entry (src/render/rankcard.ts); word-level timing is for the small graphics.
+    if (isEntryCard(s)) return { from: start, len: Math.max(1, end - start) };
     const v = s.visual;
     const hold = Math.round(
       (s.kind === "take" ? 3.5 : v && ["list", "timeline", "compare"].includes(v.kind) ? 3 : 2.5) * fps,
@@ -631,6 +634,7 @@ export const Short: React.FC<ShortProps> = (props) => {
                 renderDate={props.renderDate}
                 images={props.images}
                 rankTotal={rankTotal}
+                entryTop={clean ? ENTRY_CARD_TOP : ENTRY_CARD_TOP_CHROME}
                 beatIndex={beatIndexOf[i]}
                 steamPrices={props.steam?.prices}
               />

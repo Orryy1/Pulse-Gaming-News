@@ -40,6 +40,9 @@ import type { RadarGame, FreeGame } from "./discovery/weekly.ts";
 import { rarest, type Achievement } from "./discovery/achievements.ts";
 import {
   EVERGREEN_MIN_SECONDS,
+  ACHIEVEMENT_ENTRIES,
+  ACHIEVEMENT_FORMATS,
+  achievementProblems,
   evergreenToScript,
   selectEvergreenTopic,
   validateEvergreen,
@@ -316,6 +319,19 @@ import { slotLabel } from "./cadence.ts";
 import { recentWhyHooks, sameGame } from "./editorial/why.ts";
 import { mediaRichNotice, shortMediaRichness } from "./qa/mediarich.ts";
 import { craftForShort, shortsCleanStep } from "./shortcraftstep.ts";
+import { arbitrate, overlaySpans, shortLayout } from "./render/cleanframe.ts";
+import {
+  cardRequirement,
+  entryCardProblems,
+  entryHolds,
+  fitRequirement,
+} from "./render/rankcard.ts";
+import {
+  normTitle as normRankTitle,
+  patchSpoilers,
+  spoilerProblems,
+  underFigure,
+} from "./editorial/spoilers.ts";
 import { ccCredit } from "./render/cleanframe.ts";
 import { offendingMedia, dropOffending } from "./qa/retry.ts";
 import { framesNamed } from "./qa/vision.ts";
@@ -2135,8 +2151,12 @@ export async function maybeSelectWeekly(
     for (const name of pool.slice(0, 24)) {
       const app = await s.findGame(name).catch(() => undefined);
       if (!app) continue;
-      const list = rarest(await s.achievements(app.appId), 6);
-      if (list.length < (across ? 1 : 5)) continue;
+      // An achievement Steam gives no description for can't say what it asks: it stays out, never made up.
+      const list = rarest(
+        (await s.achievements(app.appId)).filter((a) => a.description.trim()),
+        ACHIEVEMENT_ENTRIES,
+      );
+      if (list.length < (across ? 1 : ACHIEVEMENT_ENTRIES)) continue;
       const year =
         Number(
           String(app.details?.release_date?.date ?? "").match(
@@ -2165,7 +2185,7 @@ export async function maybeSelectWeekly(
           .map((g) => ({ ...g.list[0]!, game: g.game, year: g.year }))
           .filter((r) => r.percent <= 10)
           .sort((a, b) => a.percent - b.percent)
-          .slice(0, 6)
+          .slice(0, ACHIEVEMENT_ENTRIES)
       : (single?.list ?? []).map((a) => ({
           ...a,
           game: single!.game,
@@ -2189,7 +2209,10 @@ export async function maybeSelectWeekly(
       const brief = rows
         .map(
           (r) =>
-            `- ${r.name} | ${r.game}${r.year ? ` (${r.year})` : ""} | ${r.percent}% of players | ${r.description || "description hidden"}`,
+            `- ${r.name} | ${r.game}${r.year ? ` (${r.year})` : ""} | ${r.percent}% of players | ${r.description}`,
+        )
+        .concat(
+          `Hook figure: every achievement here is held by under ${underFigure(rows.map((r) => r.percent))}% of players. The hook may use that; it never gives the rarest one's percentage.`,
         )
         .join("\n");
       const achievements = rows.map((r) => ({
@@ -2198,6 +2221,7 @@ export async function maybeSelectWeekly(
         percent: r.percent,
         icon: r.icon,
         year: r.year,
+        description: r.description,
       }));
       return make(
         "achievements",
@@ -4744,6 +4768,18 @@ export function groundClimbers<
   };
 }
 
+/** What the card says you must do: Steam's words if they fit, the writer's shorter ones if not, always within the card. */
+export function achievementRequirement(
+  description: string | undefined,
+  written: string | undefined,
+): string {
+  const steam = (description ?? "").trim();
+  if (steam && fitRequirement(steam).fits) return steam;
+  const own = (written ?? "").trim();
+  if (own && fitRequirement(own).fits) return own;
+  return cardRequirement(steam || own);
+}
+
 export function groundAchievements<
   T extends {
     entries: Array<{
@@ -4754,6 +4790,7 @@ export function groundAchievements<
       year: number;
       percent?: number;
       icon?: string;
+      requirement?: string;
     }>;
   },
 >(
@@ -4764,6 +4801,7 @@ export function groundAchievements<
     percent: number;
     icon?: string;
     year?: number;
+    description?: string;
   }>,
 ): T {
   const norm = (t: string) =>
@@ -4789,6 +4827,8 @@ export function groundAchievements<
             year: d.year ?? e.year,
             percent: d.percent,
             icon: d.icon,
+            // The card's words: Steam's own when they fit three readable lines, else the writer's plain version.
+            requirement: achievementRequirement(d.description, e.requirement),
           }
         : undefined;
     })
@@ -4826,10 +4866,56 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   const recentTexts = await recentShortTexts(s.db, ep.id, s.now()).catch(
     () => [],
   );
+  // The format's own data (Steam's chart, deals or achievement rates) replaces the writer's numbers.
+  const data = (
+    ep.factcheck_json as {
+      achievements?: Array<{
+        name: string;
+        game: string;
+        percent: number;
+        icon?: string;
+        year?: number;
+        description?: string;
+      }>;
+    } | null
+  )?.achievements;
+  const climbers = (ep.factcheck_json as { climbers?: ClimberData[] } | null)
+    ?.climbers;
+  const deals = (ep.factcheck_json as { deals?: Deal[] } | null)?.deals;
+  const ground = (d: NonNullable<typeof draft>) => {
+    let g = d;
+    if (data?.length) g = groundAchievements(g, data);
+    if (climbers?.length) g = groundClimbers(g, climbers);
+    if (deals?.length) g = groundDeals(g, deals);
+    return g;
+  };
+  // What may never ship: number one given away, an achievement that goes unnamed or a condition made up. Read on
+  // the grounded script, because ranks and figures come from the data, not the writer.
+  const mustFix = (d: NonNullable<typeof draft>) => {
+    const g = ground(d);
+    return [
+      ...spoilerProblems(g),
+      ...(ACHIEVEMENT_FORMATS.has(g.format)
+        ? achievementProblems(
+            g,
+            data?.length
+              ? new Map(
+                  data
+                    .filter((x) => x.description)
+                    .map((x) => [normRankTitle(x.name), x.description!]),
+                )
+              : undefined,
+          )
+        : []),
+    ];
+  };
   for (let attempt = 0; attempt < 2; attempt++) {
     draft = await writeEvergreen(s.llm, topic, facts, feedback, brief);
     const problems = [
+      ...new Set([
       ...validateEvergreen(draft, recentScripts),
+        ...mustFix(draft),
+      ]),
       ...writerTitleProblems(s.cfg, draft.youtube.title, topic.format),
     ];
     // No title or hook phrase a few recent Shorts already used (REPEAT_MAX, src/authenticity.ts).
@@ -4877,28 +4963,6 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "style_warnings", { problems });
   }
   if (!draft) throw new Error("evergreen script produced nothing");
-  // The format's own data (Steam's chart, deals or achievement rates) replaces the writer's numbers.
-  const data = (
-    ep.factcheck_json as {
-      achievements?: Array<{
-        name: string;
-        game: string;
-        percent: number;
-        icon?: string;
-        year?: number;
-      }>;
-    } | null
-  )?.achievements;
-  const climbers = (ep.factcheck_json as { climbers?: ClimberData[] } | null)
-    ?.climbers;
-  const deals = (ep.factcheck_json as { deals?: Deal[] } | null)?.deals;
-  const ground = (d: typeof draft) => {
-    let g = d!;
-    if (data?.length) g = groundAchievements(g, data);
-    if (climbers?.length) g = groundClimbers(g, climbers);
-    if (deals?.length) g = groundDeals(g, deals);
-    return g;
-  };
   // The final adjudication, on the grounded script and against everything the writer was given: the Steam
   // facts and the format's own data (the chart's climbs, the deal prices). Without the data, a climbers
   // Short was dropped for chart moves that came from the chart itself (25 Oct 2026). One rewrite, then fail.
@@ -4923,7 +4987,16 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
     if (!factual.length) break;
     draft = await writeEvergreen(s.llm, topic, facts, factual, brief);
   }
-  draft = ground(draft);
+  // The fact-check's rewrite and a stubborn writer both get a last look: one more rewrite, then the plain wording.
+  let left = mustFix(draft);
+  if (left.length) {
+    await logEvent(s.db, ep.id, "style_warnings", { problems: left });
+    draft = await writeEvergreen(s.llm, topic, facts, left, brief);
+  }
+  draft = patchSpoilers(ground(draft));
+  left = mustFix(draft);
+  // An entry that still names number one or goes unnamed has no plain wording to fall back on: the step runs again.
+  if (left.length) throw new Error(`ranking script not fit to voice: ${left[0]}`);
   const script = evergreenToScript(draft);
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
@@ -9105,6 +9178,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   if (assets.suite) assets.shortThumb = "thumb_short.jpg";
+  const shortClean = await shortsCleanStep(s, ep.id, assets.test);
+  const entrySpans = overlaySpans({
+    segments,
+    words,
+    plan,
+    layout: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames),
+    stamps: stampsFor(script, words),
+    sting: false,
+  });
   await s.render({
     episodeDir: dir,
     outFile: raw,
@@ -9155,7 +9237,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       plan,
       suite: assets.suite,
       // The clean frame (src/render/cleanframe.ts): SHORTS_CLEAN, or the clean-frame retention test's arm or winner.
-      clean: await shortsCleanStep(s, ep.id, assets.test),
+      clean: shortClean,
       mascot: assets.mascot,
       heroCutFile: assets.heroCut,
       renderDate: s.now().toISOString().slice(0, 10),
@@ -9190,11 +9272,20 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       narration: narrationOf(script),
     });
   }
+  // Every rank card must stay up for its whole entry, in text the card can show (src/render/rankcard.ts).
+  const entryCards = entryHolds(
+    segments,
+    shortClean ? arbitrate(entrySpans) : entrySpans,
+    plan.fps,
+    plan.totalFrames,
+  );
+  const entryProblems = entryCardProblems(entryCards, segments);
   const qa = {
     technical: tech,
     vision: vision ?? null,
     rubric,
     media_rich: mediaRich,
+    ...(entryCards.length ? { entry_cards: entryCards } : {}),
     checked_at: s.now().toISOString(),
   };
   const visionProblems =
@@ -9203,7 +9294,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         ? vision.problems
         : [`vision QA failed: ${vision.notes || "no reason given"}`]
       : [];
-  const problems = [...tech.problems, ...visionProblems];
+  const problems = [...tech.problems, ...visionProblems, ...entryProblems];
   if (problems.length > 0) {
     // The retry re-plans from scratch (the planner or the components may have changed since) and judges fresh frames.
     const { plan: _dropped, ...withoutPlan } = assets;

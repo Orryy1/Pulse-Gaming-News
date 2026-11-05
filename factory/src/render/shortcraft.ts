@@ -30,6 +30,7 @@ import type { Db } from "../db.ts";
 import type { Segment } from "./timeline.ts";
 import type { RenderPlan } from "./plan.ts";
 import { keyTime } from "./longplan.ts";
+import { isEntryCard } from "./rankcard.ts";
 import { V_STYLES } from "./components/vertical/index.ts";
 import type { VGfxProps } from "./components/vertical/types.ts";
 import { storyYearOf } from "./components/vertical/pulse/map.ts";
@@ -176,6 +177,8 @@ export function cardWindow(
     i === segments.length - 1
       ? totalFrames
       : Math.round(segments[i + 1]!.start * fps);
+  // A rank card is what the viewer came to read: it stays from the start of its entry to the start of the next.
+  if (isEntryCard(s)) return { from: start, len: Math.max(1, end - start) };
   const v = s.visual;
   const hold = Math.round(HOLD_SECONDS(s) * fps);
   let at = start;
@@ -540,6 +543,8 @@ export function pickMoves(
   input: CraftInput,
   avoid: Span[],
   fixed: Set<number>,
+  /** What a push through a cut must clear, when that differs: a rank card stays up over its entry's cuts. */
+  avoidCuts: Span[] = avoid,
 ): CraftMove[] {
   const { plan, segments, words } = input;
   const fps = plan.fps;
@@ -595,10 +600,11 @@ export function pickMoves(
       if (a.end - a.start < 30 || b.end - b.start < 30) return false;
       if (at < hookEnd + 6 || at > loopStart - 30) return false;
       if (plan.turns.some((t) => Math.abs(t - at) < 20)) return false;
-      return free({
+      const span = {
         from: at - SHORT_TRACK_FRAMES - 2,
         to: at + SHORT_TRACK_FRAMES + 2,
-      });
+      };
+      return !avoidCuts.some((a) => overlaps(a, span));
     })
     .sort(
       (x, y) =>
@@ -644,6 +650,14 @@ export function planShortCraft(
       const w = cardWindow(segments, words, i, fps, plan.totalFrames);
       return { from: w.from, to: w.from + w.len };
     });
+  const smallWindows = windows.filter(
+    (w) =>
+      !segments.some(
+        (s, i) =>
+          isEntryCard(s) &&
+          cardWindow(segments, words, i, fps, plan.totalFrames).from === w.from,
+      ),
+  );
   const stamps: Span[] = input.stamps.map((st) => {
     const a = Math.round(st.at * fps);
     return { from: a - 6, to: a + STAMP_HOLD + 6 };
@@ -655,7 +669,11 @@ export function planShortCraft(
   const photos = settings.photos ? pickPhotos(input, recent, fillSpans) : [];
   const fixed = new Set(photos.map((p) => p.shot));
   const moves = settings.camera
-    ? pickMoves(input, [...windows, ...stamps, ...fillSpans], fixed)
+    ? pickMoves(input, [...windows, ...stamps, ...fillSpans], fixed, [
+        ...smallWindows,
+        ...stamps,
+        ...fillSpans,
+      ])
     : [];
   return { version: 1, cards, photos, fillers, moves };
 }

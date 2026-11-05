@@ -310,6 +310,8 @@ export const FactCard: React.FC<{
   renderDate: string;
   images?: ShortImage[];
   rankTotal?: number;
+  /** A rank card's top, higher than the other cards': it stays up for its entry, so it keeps clear of the subject. */
+  entryTop?: number;
   beatIndex?: number;
   steamPrices?: { usd?: string; gbp?: string; eur?: string };
 }> = ({
@@ -320,6 +322,7 @@ export const FactCard: React.FC<{
   renderDate,
   images = [],
   rankTotal = 0,
+  entryTop,
   beatIndex,
   steamPrices,
 }) => {
@@ -328,14 +331,17 @@ export const FactCard: React.FC<{
   const v = segment.visual;
   if (!v || v.kind === "none" || !v.primary.trim()) return null;
   const { rule, content } = ruleThenContent(frame, fps);
-  const out = exitProgress(frame, durationInFrames);
+  const isRank = v.kind === "rank" && typeof v.value_a === "number";
+  // A rank card hands straight over to the next one; only the last fades, into the take.
+  const lastRank = beatIndex !== undefined && beatIndex >= rankTotal - 1;
+  const out = isRank && !lastRank ? 1 : exitProgress(frame, durationInFrames);
   const label =
     segment.kind === "take" ? segment.label || takeLabel : v.secondary;
   const base: React.CSSProperties = {
     position: "absolute",
     left: SAFE.left,
     width: CONTENT_WIDTH,
-    top: HERO_TOP,
+    top: isRank && entryTop !== undefined ? entryTop : HERO_TOP,
     opacity: Math.min(content, out),
     transform: `translateX(${interpolate(content, [0, 1], [40, 0]) - (1 - out) * 24}px)`,
   };
@@ -478,12 +484,17 @@ export const FactCard: React.FC<{
   }
 
   // The entry's box art; a game off Steam has only its trailer still, which the card crops to the box.
+  const requirement = v.kind === "rank" ? v.items?.[2] : undefined;
   const capsule =
     beatIndex === undefined
       ? undefined
       : (images.find(
           (i) => i.beatIndex === beatIndex && i.kind === "capsule",
-        ) ?? images.find((i) => i.beatIndex === beatIndex));
+        ) ??
+        // An achievement shows its own icon or nothing: the game's art repeated on every card says nothing.
+        (requirement
+          ? undefined
+          : images.find((i) => i.beatIndex === beatIndex)));
   const dataCard =
     v.kind === "rank" && typeof v.value_a === "number" ? (
       <RankingCard
@@ -496,6 +507,7 @@ export const FactCard: React.FC<{
         capsuleSrc={capsule?.src ?? null}
         accent={accent}
         date={v.date_to}
+        requirement={requirement}
       />
     ) : v.kind === "timeline" && v.date_from && v.date_to ? (
       <Timeline
@@ -986,7 +998,10 @@ export const Captions: React.FC<{
       {page.words.map((w, i) => {
         const active = t >= w.start - 0.03 && t < w.end + 0.08;
         const spoken = t >= w.start - 0.03;
-        const shown = w.text.replace(/[.,;:!?]+$/, "");
+        // An achievement's name is spoken in quotes; the marks are for the voice, not the caption.
+        const shown = w.text
+          .replace(/^["\u201c\u201d]+/, "")
+          .replace(/["\u201c\u201d.,;:!?]+$/, "");
         const lit =
           spoken && (EMPHASIS.test(shown) || emphasis.has(shown.toLowerCase()));
         const activeScale = active

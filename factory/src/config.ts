@@ -260,6 +260,7 @@ export interface Config {
   gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
   longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
+  codeScenes: boolean; // src/render/codescene.ts: drawn scenes from a line's sourced data, over a plate or a repeated still, never over footage
   shortPlateMax: number; // 0-1, the share of a Short that may sit on the bare plate before more media is fetched and, failing that, it is stopped
   planSlateMax: number; // 0-1, the share of a long video that may sit on the empty slate before its render is stopped
   releaseGateMaxSlate: number; // 0-1, the same on the finished picture at the release gate
@@ -924,6 +925,7 @@ export function loadConfig(): Config {
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),
     longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
+    codeScenes: bool("CODE_SCENES", false),
     shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.15")) || 0.15,
     planSlateMax: Number(str("PLAN_SLATE_MAX", "0.08")) || 0.08,
     releaseGateMaxSlate: Number(str("RELEASE_GATE_MAX_SLATE", "0.08")) || 0.08,

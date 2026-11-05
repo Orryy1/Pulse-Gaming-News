@@ -10,6 +10,7 @@ import { leadFrames, LEVEL, SFX, sfxFile } from "./soundscape.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 import type { Segment } from "./timeline.ts";
 import { FRAMES, movePreset, type MovePreset } from "./motion.ts";
+import { applyCodeScenes, type PlannedScene, type SceneContext } from "./codescene.ts";
 
 export const PLAN_FPS = 30;
 export const STING_FRAMES = 12; // frames 0-11: brand sting over the hero still
@@ -75,10 +76,12 @@ export interface PlanInput {
   steam?: PlanSteam | null;
   /** Open on the hook's moving clip instead of the hero still (most viewers decide at the first frame). */
   openOnClip?: boolean;
+  /** Code scenes (src/render/codescene.ts, CODE_SCENES): absent, the plan is as it always was. */
+  codeScenes?: { ctx: SceneContext; stampsAt: number[] };
 }
 
 export type PlanMedia = {
-  type: "image" | "clip" | "plate";
+  type: "image" | "clip" | "plate" | "scene";
   index: number;
   trimFrom?: number;
 };
@@ -123,6 +126,8 @@ export interface RenderPlan {
   wordLook?: string;
   /** The long videos' craft on the Short (src/render/shortcraft.ts): cards, photos, fillers and camera moves. */
   craft?: import("./shortcraft.ts").ShortCraft;
+  /** Code scenes drawn over their shots (src/render/codescene.ts). `media.index` of a "scene" shot points here. */
+  scenes?: PlannedScene[];
 }
 
 const QUIET_KINDS = new Set([
@@ -823,7 +828,7 @@ export function buildPlan(input: PlanInput): RenderPlan {
     hook ? toFrame(hook.end) : 0,
     take ? toFrame(take.start) : 0,
   ].filter((f) => f > 0 && f < totalFrames);
-  return {
+  const plan: RenderPlan = {
     version: 1,
     fps: PLAN_FPS,
     totalFrames,
@@ -834,6 +839,9 @@ export function buildPlan(input: PlanInput): RenderPlan {
     sfx: planSfx(input.segments, totalFrames),
     shelf: planShelf(input, input.segments, totalFrames),
   };
+  return input.codeScenes
+    ? applyCodeScenes(plan, input.segments, input.words, input.codeScenes.ctx, input.codeScenes.stampsAt, input.images)
+    : plan;
 }
 
 /** The shot on screen at a frame. */

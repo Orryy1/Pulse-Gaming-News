@@ -33,6 +33,7 @@ export function testConfig(
   overrides: Partial<Config> = {},
 ): Config {
   return {
+    codeScenes: false,
     writerNotesGuard: true,
     longStockNotOnPeople: true,
     shortPlateMax: 1,

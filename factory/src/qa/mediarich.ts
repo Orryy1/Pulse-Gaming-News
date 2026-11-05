@@ -67,7 +67,7 @@ export function shortMediaRichness(
           ? beat !== undefined &&
             images[m.index]?.beatIndex !== undefined &&
             images[m.index]?.beatIndex === beat
-          : false;
+          : m.type === "scene";
     if (own) seg.own += secs;
   }
   let total = 0;

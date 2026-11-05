@@ -137,6 +137,8 @@ export function scorePlan(i: RubricInput): Rubric {
   const unique = new Set(keys).size / Math.max(1, keys.length);
   // With little media there is nothing to vary with: variety metrics can only warn, not reject.
   const scarce = new Set(keys.filter((k) => !k.startsWith("plate"))).size < 4;
+  // A code scene runs across its shots' cuts as one drawing: not a picture seen twice.
+  const isRepeatable = (k: string) => !k.startsWith("plate") && !k.startsWith("scene");
   const ranking = segments.some((s) => s.kind === "beat" && s.visual?.kind === "rank");
   m.push({
     name: "unique_media_ratio",
@@ -148,7 +150,7 @@ export function scorePlan(i: RubricInput): Rubric {
   });
   const counts = new Map<string, number>();
   for (const k of keys)
-    if (!k.startsWith("plate")) counts.set(k, (counts.get(k) ?? 0) + 1);
+    if (isRepeatable(k)) counts.set(k, (counts.get(k) ?? 0) + 1);
   const maxRepeat = Math.max(0, ...counts.values());
   m.push({
     name: "max_media_repeat",
@@ -164,7 +166,7 @@ export function scorePlan(i: RubricInput): Rubric {
     (k, n) =>
       n > 0 &&
       k === keys[n - 1] &&
-      !k.startsWith("plate") &&
+      isRepeatable(k) &&
       n !== loopStart &&
       !(n === keys.length - 1),
   ).length;

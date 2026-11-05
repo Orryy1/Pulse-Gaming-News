@@ -53,6 +53,7 @@ import { VFiller, VFreezeLabel } from "./components/vertical/craft.tsx";
 import { HOUSE, SHORT_TRACK_FRAMES } from "./shortcraft.ts";
 import { arbitrate, keptSpan, OPENING_LABEL_FRAMES, overlaySpans, shortLayout } from "./cleanframe.ts";
 import { motifsFor } from "./components/motifs/index.ts";
+import { CodeSceneView } from "./components/codescene/CodeScenes.tsx";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
 /** Frames the new-look motif sting lasts after the hook. */
@@ -192,6 +193,20 @@ export const Short: React.FC<ShortProps> = (props) => {
       return f >= w.from - 4 && f < w.from + w.len + 4;
     });
   const shelfLevel = () => (overShelf(frame) ? Math.min(shelfOpacity, 0.06) : shelfOpacity);
+  // A code scene (src/render/codescene.ts) has the screen to itself, and draws the line's card as its own figure.
+  // Over a bare landscape the line keeps its card. Either way the shelf stands back.
+  const scenes = plan.scenes ?? [];
+  const inScene = scenes.some((x) => frame >= x.from - 2 && frame < x.to + 2);
+  const sceneOwnsCard = (i: number) =>
+    scenes.find((x) => x.segment === i && !(x.scene.type === "terrain" && !x.scene.title));
+  // A take's verdict still has to be read: when a scene opens the take, its card closes it, once the scene is done.
+  const afterScene = (i: number) => {
+    const sc = sceneOwnsCard(i);
+    const end = segmentEnds[i]!;
+    if (!sc || props.segments[i]!.kind !== "take" || end - sc.to < 45) return undefined;
+    const len = Math.min(150, end - sc.to);
+    return { from: end - len, len };
+  };
   const loopStart =
     loopIndex >= 0
       ? segmentStarts[loopIndex]!
@@ -311,6 +326,7 @@ export const Short: React.FC<ShortProps> = (props) => {
         return;
       if ((i * 5 + props.variant) % 3 !== 0) return;
       if (crafted(i) || camera.get(i - 1)?.out) return;
+      if (s.media.type === "scene" || shots[i - 1]?.media.type === "scene") return;
       if (plan.turns.some((t) => Math.abs(t - at) < 20)) return;
       if (
         (props.stamps ?? []).some(
@@ -435,7 +451,8 @@ export const Short: React.FC<ShortProps> = (props) => {
   // A word moment over the hook: the headline is hidden for the moment's stretch (cleanframe.ts arbitrate).
   const headlineAside =
     !!kept && frame < hookEnd && kept.some((k) => k.kind === "stamp" && frame >= k.from && frame < k.to);
-  const cardAt = (i: number) => placed(`card${i}`, graphicWindow(i).from, graphicWindow(i).len);
+  const cardAt = (i: number) =>
+    sceneOwnsCard(i) ? afterScene(i) : placed(`card${i}`, graphicWindow(i).from, graphicWindow(i).len);
   // The flair, rule and source line: the opening 3 s (fading over its last 10 frames) and the loop's return to frame 0.
   const labelOpacity = !clean
     ? 1
@@ -523,6 +540,16 @@ export const Short: React.FC<ShortProps> = (props) => {
           ) : (
             <CutAccent kind={a.kind} variant={props.variant + k} />
           )}
+        </Sequence>
+      ))}
+      {scenes.map((x, k) => (
+        <Sequence key={`scene${k}`} from={x.from} durationInFrames={x.to - x.from} layout="none">
+          <CodeSceneView
+            planned={x}
+            len={x.to - x.from}
+            accent={accent}
+            src={props.images.find((im) => im.aspect >= 1.2)?.src}
+          />
         </Sequence>
       ))}
       <Scrim profile={hasPlate && !props.images.length ? "plate" : "footage"} />
@@ -671,7 +698,7 @@ export const Short: React.FC<ShortProps> = (props) => {
         </Sequence>
       ))}
       {/* The shelf steps back while a stamp holds the band, so the two never overlap. */}
-      <AbsoluteFill style={{ opacity: clean ? 1 : shelfLevel() }}>
+      <AbsoluteFill style={{ opacity: inScene ? 0 : clean ? 1 : shelfLevel() }}>
         <Shelf
           plan={cleanShelf}
           accent={accent}

@@ -51,6 +51,7 @@ import {
   guideActionProblems,
   guideChapterShape,
   hookStackProblems,
+  hookYouProblems,
   hookStackRule,
   longRulesOn,
   namedPayoffProblems,
@@ -1488,6 +1489,8 @@ export function validateBookends(
         b.outro.narration,
       ),
     );
+  if (opts.rules?.hookYouMin)
+    p.push(...hookYouProblems(b.intro.narration, opts.rules.hookYouMin));
   if (opts.rules?.verdicts) p.push(...verdictHookProblems(b.intro.narration));
   if (opts.loops?.length)
     p.push(...loopProblems(sentencesOf(b.intro.narration), opts.loops, 0));

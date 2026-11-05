@@ -461,6 +461,24 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         return streamFile(req, res, file, "video/mp4");
       }
       // GET shows a confirmation page (link unfurlers must never trigger an action); POST acts.
+      // GAMEPLAY_ONE_TAP: a gameplay card's link carries now=1 and the page posts itself as it opens, which a person's
+      // browser does and an unfurler, running no script, does not. A browser with no script still gets the button.
+      if (
+        req.method !== "POST" &&
+        cfg.gameplayOneTap &&
+        url.searchParams.get("now") === "1" &&
+        episode.lane === "gameplay"
+      )
+        return send(
+          200,
+          page(
+            kind === "approve" ? "Approving" : "Rejecting",
+            `<h1>${kind === "approve" ? "Approving" : "Rejecting"}: ${esc(episode.script_json?.youtube.title ?? episode.story_json.headline)}</h1>
+<form method="post" id="tap"><input type="hidden" name="t" value="${esc(token)}">
+<button class="${kind === "approve" ? "ok" : "no"}" type="submit">${kind === "approve" ? "Approve and publish" : "Reject this episode"}</button></form>
+<script>document.getElementById("tap").submit();</script>`,
+          ),
+        );
       if (req.method !== "POST") {
         const preview = `/episodes/${id}/video.mp4?t=${signToken(`preview:${id}`, cfg.appSecret, 3600)}`;
         return send(

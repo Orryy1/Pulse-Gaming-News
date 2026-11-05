@@ -190,7 +190,22 @@ import {
   heroRuleFallback,
   posterProblems,
 } from "./qa/thumbrule.ts";
-import type { renderCutdown } from "./render/render.ts";
+import type { renderCutdown, renderGameplayShort } from "./render/render.ts";
+import {
+  blackSpans,
+  cleanLine,
+  directClip,
+  directCut,
+  directFilter,
+  directFrames,
+  directProblems,
+  directTiming,
+  DIRECT_MIN_WPM,
+  fitLines,
+  loopLeadIn,
+  loopDangles,
+  loopRepeatsHook,
+} from "./gameplaydirect.ts";
 import {
   CUTDOWN_TAIL_SECONDS,
   cutdownRanks,
@@ -603,6 +618,7 @@ export interface Services {
   /** Single frames of the long composition for the graphics check before the render (absent in tests). */
   renderLongStills?(input: LongStillsInput): Promise<void>;
   renderCutdown?: typeof renderCutdown;
+  renderGameplayShort?: typeof renderGameplayShort;
   normalise(input: string, output: string): Promise<void>;
   technicalQa(
     file: string,
@@ -666,6 +682,18 @@ const IN_FLIGHT = [
 
 export function episodeDir(cfg: Config, id: string): string {
   return path.join(cfg.dataDir, "episodes", id);
+}
+
+/** A gameplay card's links: with GAMEPLAY_ONE_TAP, Approve and Reject act on the tap (src/server.ts). */
+export function gameplayLinks(cfg: Config, id: string) {
+  const links = approvalLinks(cfg, id);
+  return cfg.gameplayOneTap
+    ? {
+        ...links,
+        approve: `${links.approve}&now=1`,
+        reject: `${links.reject}&now=1`,
+      }
+    : links;
 }
 
 export function approvalLinks(cfg: Config, id: string) {
@@ -3635,7 +3663,75 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
   });
 }
 
+/** The rebuilt gameplay Short's render: its faults stop it here, before the owner is asked. */
+async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void> {
+  if (!s.renderGameplayShort) throw new Error("this build cannot render gameplay Shorts");
+  const dir = episodeDir(s.cfg, ep.id);
+  const script = ep.script_json!;
+  const assets = ep.assets_json ?? {};
+  const g = script.gameplay!;
+  const timing = assets.gameplayShort!;
+  const raw = path.join(dir, "render_raw.mp4");
+  const final = path.join(dir, "short.mp4");
+  const duration = assets.durationSeconds ?? 20;
+  await s.renderGameplayShort({
+    episodeDir: dir,
+    props: {
+      videoFile: assets.cutdown?.video ?? "cut.mp4",
+      voiceFile: "voice.mp3",
+      words: assets.words ?? [],
+      durationSeconds: duration,
+      hook: g.direct!.hook,
+      hookEnd: timing.hookEnd,
+      resultLine: g.result_line,
+      payoffAt: timing.payoffAt,
+      voiced: timing.voiced,
+      accent: "#FF6B1A",
+    },
+    outFile: raw,
+    posterFile: path.join(dir, "poster.jpg"),
+    concurrency: s.cfg.remotionConcurrency,
+    gl: s.cfg.remotionGl,
+    browserExecutable: s.cfg.browserExecutable,
+  });
+  await s.normalise(raw, final);
+  await fs.rm(raw, { force: true });
+  const tech = await s.technicalQa(final, duration, {
+    minSeconds: 8,
+    maxSeconds: 59.5,
+  });
+  const problems = [
+    ...tech.problems,
+    ...directProblems({
+      blacks: await blackSpans(final),
+      firstWordAt: assets.words?.[0]?.start,
+      payoffAt: timing.payoffAt,
+      seconds: duration,
+      answerAt: timing.answerAt,
+      loopLine: g.direct!.loop_line,
+    }),
+  ];
+  const qa = {
+    technical: { ...tech, ok: problems.length === 0, problems },
+    vision: null,
+    checked_at: s.now().toISOString(),
+  };
+  if (problems.length) {
+    await s.db.query(`UPDATE episodes SET qa_json = $2 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(qa),
+    ]);
+    throw new Error(`QA failed: ${problems.join(" | ")}`);
+  }
+  await transition(s.db, ep.id, "voiced", "rendered", {
+    assets_json: { ...assets, video: "short.mp4", poster: "poster.jpg" },
+    qa_json: qa,
+  });
+  await gameplayStatus(s.cfg, ep, "rendered");
+}
+
 async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
+  if (ep.script_json?.gameplay?.direct) return stepRenderGameplayDirect(s, ep);
   if (!s.renderCutdown) throw new Error("this build cannot render cutdowns");
   const dir = episodeDir(s.cfg, ep.id);
   const script = ep.script_json!;
@@ -3873,6 +3969,63 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     blacks,
     meta.clip.seconds,
   );
+  // The rebuilt Short: a second look times the attempt and the outcome and writes the lines; the cut waits for the
+  // voice, since the answer's real length decides how the ending runs.
+  if (s.cfg.gameplayDirect) {
+    const look = path.join(episodeDir(s.cfg, ep.id), "look");
+    const direction = await directClip(
+      s.llm,
+      await directFrames(source, meta.clip.seconds, look),
+      ref.review,
+      blacks,
+    );
+    await fs.rm(look, { recursive: true, force: true });
+    direction.hook = cleanLine(direction.hook);
+    direction.setup = cleanLine(direction.setup);
+    direction.payoff_line = cleanLine(direction.payoff_line);
+    direction.loop_line = cleanLine(direction.loop_line);
+    // A loop that says the hook again sounds like a stutter on the replay: a lead-in takes its place.
+    if (loopRepeatsHook(direction.loop_line, direction.hook) || loopDangles(direction.loop_line))
+      direction.loop_line = loopLeadIn(ref.id);
+    await logEvent(s.db, ep.id, "gameplay_direction", { clip: ref.id, direction });
+    if (!direction.payoff_visible && !(meta.rehearsal && meta.rehearsal_force))
+      throw new FatalError("no clean payoff: the clip stops before anything is answered");
+    const cut = directCut(direction, blacks, meta.clip.seconds);
+    const lines = fitLines(direction, cut.payoffAt);
+    const script = gameplayScript(ref.review, ref.id, await gameplayExperiments(s.cfg));
+    script.hook = lines.hook;
+    script.beats = [
+      {
+        narration: lines.setup,
+        visual: { kind: "none", primary: "", secondary: "" },
+      },
+    ];
+    script.pulse_take.narration = direction.payoff_line.trim();
+    script.loop_line = direction.loop_line.trim();
+    script.gameplay!.direct = {
+      hook: lines.hook,
+      setup: lines.setup,
+      payoff_line: direction.payoff_line.trim(),
+      loop_line: direction.loop_line.trim(),
+      segments: cut.segments,
+      seconds: cut.seconds,
+      payoff_at: cut.payoffAt,
+      focus_start: direction.focus_start,
+      focus_payoff: direction.focus_payoff,
+    };
+    await guardScript(s, ep, script, "after writing");
+    await transition(s.db, ep.id, "selected", "scripted", {
+      script_json: script,
+      assets_json: { words: [], durationSeconds: cut.seconds, clips: [] },
+    });
+    await logEvent(s.db, ep.id, "gameplay_cut", {
+      clip: ref.id,
+      segments: cut.segments,
+      payoff_at: cut.payoffAt,
+      title: script.youtube.title,
+    });
+    return;
+  }
   const len = win.end - win.start;
   // An HDR capture is tone-mapped so it does not look washed out.
   const tone = hdrFilter(
@@ -5272,9 +5425,157 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   });
 }
 
+/**
+ * The rebuilt gameplay Short's voice and cut. Two takes: the question and stake over the attempt, the answer and loop
+ * after the outcome, with the game's own sound alone between them. The answer's real length decides whether the
+ * ending replays slowed (directTiming), so the picture is cut here.
+ */
+async function stepVoiceGameplayDirect(s: Services, ep: Episode): Promise<void> {
+  const script = ep.script_json!;
+  const g = script.gameplay!;
+  const d = g.direct!;
+  const ref = ep.story_json.gameplay!;
+  const clipDir = gameplayDir(s.cfg, ref.id);
+  const meta = await readMeta(clipDir);
+  if (!meta) throw new FatalError("the gameplay clip is gone from the inbox");
+  const dir = episodeDir(s.cfg, ep.id);
+  await fs.mkdir(dir, { recursive: true });
+  const ctx = speakContext();
+  const voice = { id: s.cfg.elevenLabsVoiceId, name: s.cfg.narratorName };
+  const question = await s.synthesise(
+    speakable([d.hook, d.setup].filter(Boolean).join(" "), ctx),
+    path.join(dir, "voice_a.mp3"),
+    voice,
+    { minWpm: DIRECT_MIN_WPM },
+  );
+  const answer = await s.synthesise(
+    speakable([d.payoff_line, d.loop_line].filter(Boolean).join(" "), ctx),
+    path.join(dir, "voice_b.mp3"),
+    voice,
+    { minWpm: DIRECT_MIN_WPM },
+  );
+  const timing = directTiming(
+    d.seconds,
+    d.payoff_at,
+    question.durationSeconds,
+    answer.durationSeconds,
+  );
+  const run = promisify(execFile);
+  const source = path.join(clipDir, meta.clip.file || "clip.mp4");
+  const tone = hdrFilter(
+    await run(FFPROBE, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0", source])
+      .then((r) => r.stdout.trim())
+      .catch(() => ""),
+  );
+  await run(
+    FFMPEG,
+    [
+      "-v",
+      "error",
+      "-y",
+      "-i",
+      source,
+      "-filter_complex",
+      directFilter(
+        { segments: d.segments, seconds: d.seconds, payoffAt: d.payoff_at },
+        {
+          tone,
+          focusStart: d.focus_start,
+          focusPayoff: d.focus_payoff,
+          replaySource: timing.replaySource,
+        },
+      ),
+      "-map",
+      "[vout]",
+      "-map",
+      "[aout]",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "fast",
+      "-crf",
+      "18",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      path.join(dir, "cut.mp4"),
+    ],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
+  // The two takes on one clock, padded to the film's length.
+  await run(
+    FFMPEG,
+    [
+      "-v",
+      "error",
+      "-y",
+      "-i",
+      path.join(dir, "voice_a.mp3"),
+      "-i",
+      path.join(dir, "voice_b.mp3"),
+      "-filter_complex",
+      `[1]adelay=${Math.round(timing.answerAt * 1000)}:all=1[b];[0][b]amix=inputs=2:normalize=0:duration=longest,apad,atrim=0:${timing.seconds}[out]`,
+      "-map",
+      "[out]",
+      "-c:a",
+      "libmp3lame",
+      "-q:a",
+      "2",
+      path.join(dir, "voice.mp3"),
+    ],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
+  const hookWords = d.hook.trim().split(/\s+/).length;
+  const hookEnd =
+    question.words[Math.min(hookWords, question.words.length) - 1]?.end ?? 0;
+  const words = [
+    ...question.words,
+    ...answer.words.map((w) => ({
+      ...w,
+      start: w.start + timing.answerAt,
+      end: w.end + timing.answerAt,
+    })),
+  ];
+  await logEvent(s.db, ep.id, "voice", {
+    provider: question.voice?.provider ?? "unknown",
+    id: question.voice?.id,
+    name: question.voice?.name,
+  });
+  await transition(s.db, ep.id, "scripted", "voiced", {
+    assets_json: {
+      ...(ep.assets_json ?? {}),
+      words,
+      durationSeconds: timing.seconds,
+      clips: [],
+      audio: "voice.mp3",
+      voice: question.voice,
+      cutdown: {
+        start: 0,
+        end: timing.seconds,
+        video: "cut.mp4",
+        background: "",
+      },
+      gameplayShort: {
+        hookEnd: Math.round(hookEnd * 100) / 100,
+        payoffAt: d.payoff_at,
+        answerAt: timing.answerAt,
+        voiced: [
+          { start: 0, end: question.durationSeconds },
+          {
+            start: timing.answerAt,
+            end: timing.answerAt + answer.durationSeconds,
+          },
+        ],
+      },
+    },
+  });
+}
+
 async function stepVoice(s: Services, ep: Episode): Promise<void> {
   // The last door before any credit is spent, whatever the lane and however the script got here.
   await guardScript(s, ep, ep.script_json, "before the voice");
+  if (ep.script_json?.gameplay?.direct) return stepVoiceGameplayDirect(s, ep);
   // A cutdown speaks with the long video's own narration, cut with its section; a gameplay Short keeps the game's sound.
   if (ep.lane === "cutdown" || ep.lane === "gameplay") {
     await transition(s.db, ep.id, "scripted", "voiced");
@@ -9489,6 +9790,7 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const dir = episodeDir(s.cfg, ep.id);
   // Auto mode needs nothing from the owner: a short "going out" note with a Watch link, no buttons.
   const g = script.gameplay;
+  const tap = gameplayLinks(s.cfg, ep.id);
   const rehearsal = ep.lane === "gameplay" && !!ep.story_json.gameplay?.rehearsal;
   const description = rehearsal && g
     ? [
@@ -9513,7 +9815,7 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
           ? "⚠️ **Radio or licensed music may be audible.** That can trigger a Content ID claim; reject if you would rather not risk it."
           : "No licensed music heard.",
         "",
-        `▶️ [Watch preview](${links.preview})  ·  ✅ [Approve](${links.approve})  ·  ❌ [Reject](${links.reject})`,
+        `▶️ [Watch preview](${links.preview})  ·  ✅ [Approve](${tap.approve})  ·  ❌ [Reject](${tap.reject})`,
         when,
       ]
     : mode === "auto"
@@ -9605,7 +9907,7 @@ async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
         [ep.id],
       );
       if (Number(told?.n ?? 0) === 0) {
-        const links = approvalLinks(s.cfg, ep.id);
+        const links = gameplayLinks(s.cfg, ep.id);
         await logEvent(s.db, ep.id, "gameplay_reminded", {});
         await s.notify({
           ping: true,
@@ -9967,7 +10269,9 @@ export function videoMetadata(
       footage,
     ],
     [
-      script.gameplay
+      script.gameplay?.direct
+        ? `\nGameplay recorded by Pulse Gaming on Xbox Series X from our own copy of ${script.game_title}. Narration: AI-generated synthetic voice.`
+        : script.gameplay
         ? `\nGameplay recorded by Pulse Gaming on Xbox Series X from our own copy of ${script.game_title}. No AI voice: the sound is the game's own.`
         : "\nNarration: AI-generated synthetic voice. Visuals: official publisher material, credited.",
       script.gameplay
@@ -10139,7 +10443,9 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
         videoMetadata(
           ep,
           s.cfg.youtubePrivacy,
-          ep.lane === "gameplay" ? false : s.cfg.syntheticMedia,
+          ep.lane === "gameplay" && !ep.script_json?.gameplay?.direct
+            ? false
+            : s.cfg.syntheticMedia,
           affiliateTags(s.cfg, ep.id),
         ),
         marker,

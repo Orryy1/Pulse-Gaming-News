@@ -7,6 +7,11 @@ import { Long, SAMPLE_LONG_PROPS, type LongProps } from "./Long.tsx";
 import { LONG_FPS, LONG_WIDTH, LONG_HEIGHT } from "./longplan.ts";
 import { Engage, SAMPLE_ENGAGE } from "./Engage.tsx";
 import { Cutdown, SAMPLE_CUTDOWN, type CutdownProps } from "./Cutdown.tsx";
+import {
+  GameplayShort,
+  SAMPLE_GAMEPLAY_SHORT,
+  type GameplayShortProps,
+} from "./GameplayShort.tsx";
 import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
 import {
   ConceptAvatar,
@@ -101,6 +106,21 @@ export const RemotionRoot: React.FC = () => (
       durationInFrames={Math.ceil(SAMPLE_CUTDOWN.durationSeconds * FPS)}
       defaultProps={SAMPLE_CUTDOWN}
       calculateMetadata={({ props }: { props: CutdownProps }) => ({
+        durationInFrames: Math.max(
+          FPS * 5,
+          Math.ceil(props.durationSeconds * FPS),
+        ),
+      })}
+    />
+    <Composition
+      id="PulseGameplayShort"
+      component={GameplayShort}
+      fps={FPS}
+      width={WIDTH}
+      height={HEIGHT}
+      durationInFrames={Math.ceil(SAMPLE_GAMEPLAY_SHORT.durationSeconds * FPS)}
+      defaultProps={SAMPLE_GAMEPLAY_SHORT}
+      calculateMetadata={({ props }: { props: GameplayShortProps }) => ({
         durationInFrames: Math.max(
           FPS * 5,
           Math.ceil(props.durationSeconds * FPS),

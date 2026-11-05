@@ -69,6 +69,13 @@ export interface EpisodeAssets {
   };
   /** A Short cut from a long ranking: the section's seconds in the long video and the files cut from it. */
   cutdown?: { start: number; end: number; video: string; background: string };
+  /** The rebuilt gameplay Short: when its lines sit, for the render (src/render/GameplayShort.tsx). */
+  gameplayShort?: {
+    hookEnd: number;
+    payoffAt: number;
+    answerAt: number;
+    voiced: Array<{ start: number; end: number }>;
+  };
   audio?: string;
   words?: Array<{ text: string; start: number; end: number }>;
   durationSeconds?: number;

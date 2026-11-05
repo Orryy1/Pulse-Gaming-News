@@ -1,0 +1,74 @@
+[
+  {
+    "rank": 1,
+    "subject": "The GTA 6 hacker",
+    "wiki": "Lapsus$",
+    "angle": "The teenager who broke into Rockstar from a hotel room, how he was caught and what the court decided. Court reporting only, none of the stolen footage",
+    "title_idea": "The Teenager Who Hacked GTA 6 From a Hotel Room",
+    "aliases": ["Arion Kurtaj", "GTA 6 hacker", "GTA 6 leak", "Lapsus$"],
+    "steam": ""
+  },
+  {
+    "rank": 2,
+    "subject": "Leslie Benzies",
+    "wiki": "Leslie Benzies",
+    "angle": "The man who ran Grand Theft Auto, sued Rockstar when he was pushed out and then failed at launch with MindsEye",
+    "title_idea": "The Man Who Built GTA Then Tried to Beat It",
+    "aliases": ["Leslie Benzies", "MindsEye", "Build A Rocket Boy"],
+    "steam": "MindsEye"
+  },
+  {
+    "rank": 3,
+    "subject": "The player who fixed GTA Online",
+    "wiki": "Grand Theft Auto Online",
+    "angle": "The player who wanted to know why your GTA Online took six minutes to load, found the bug Rockstar missed for seven years and solved it alone",
+    "title_idea": "One Player Fixed What Rockstar Missed for 7 Years",
+    "aliases": ["t0st", "GTA Online loading"],
+    "steam": "Grand Theft Auto V"
+  },
+  {
+    "rank": 4,
+    "subject": "The Mount Chiliad mystery",
+    "wiki": "Grand Theft Auto V",
+    "angle": "The hunt for what Rockstar hid on Mount Chiliad: the mural, the players who searched for years, what they solved and what the search left unanswered",
+    "title_idea": "The 10-Year Hunt Rockstar Never Ended",
+    "aliases": ["Mount Chiliad", "Chiliad mystery"],
+    "steam": "Grand Theft Auto V"
+  },
+  {
+    "rank": 5,
+    "subject": "Curiosity and Peter Molyneux",
+    "wiki": "Curiosity: What's Inside the Cube?",
+    "angle": "The man who promised a life-changing prize inside a cube, the winner who found it, and the prize he never got",
+    "title_idea": "The Boy Who Won Peter Molyneux's Cube and Got Nothing",
+    "aliases": ["Peter Molyneux", "Curiosity cube", "Project Milo"],
+    "steam": ""
+  },
+  {
+    "rank": 6,
+    "subject": "P.T. and Hideo Kojima",
+    "wiki": "P.T. (video game)",
+    "angle": "The man Konami pushed out and the demo it pulled from every store, and why players still hunt for what was inside P.T.",
+    "title_idea": "The Demo Konami Tried to Erase",
+    "aliases": ["P.T.", "Silent Hills", "Hideo Kojima", "Kojima Konami"],
+    "steam": ""
+  },
+  {
+    "rank": 7,
+    "subject": "The boy who stole Half-Life 2",
+    "wiki": "Half-Life 2",
+    "angle": "The teenager who stole Half-Life 2 from Valve, the hunt that followed, and why he called Gabe Newell himself before the job offer that was a sting",
+    "title_idea": "The Boy Who Stole Half-Life 2 Then Called Gabe Newell",
+    "aliases": ["Axel Gembe", "Half-Life 2 leak"],
+    "steam": "Half-Life 2"
+  },
+  {
+    "rank": 8,
+    "subject": "Let Me Solo Her",
+    "wiki": "Elden Ring",
+    "angle": "The man in the jar helmet who beat the hardest boss for thousands of strangers, who he is, and what one player can still do for a whole game",
+    "title_idea": "Who Is the Man Who Beat Elden Ring for Everyone?",
+    "aliases": ["Let Me Solo Her", "Malenia"],
+    "steam": "Elden Ring"
+  }
+]

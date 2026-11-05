@@ -8733,6 +8733,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       footageSeconds,
       footageBudgetSeconds: footageBudget,
       hookWords: script.hook.split(/\s+/).filter(Boolean).length,
+      plateShareMax: s.cfg.shortPlateMax,
     });
   let plan = assets.plan ?? buildPlan(planInput);
   let rubric = rubricFor(plan);

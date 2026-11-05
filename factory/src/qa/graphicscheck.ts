@@ -187,9 +187,16 @@ export const checkFrame = (c: GraphicCheck, fps: number): number =>
 export async function judgeGraphics(
   items: Array<GraphicCheck & { file: string }>,
   visionQa: (frames: string[]) => Promise<VisionQa>,
+  /**
+   * GRAPHICS_SECOND_LOOK: a faulted graphic is looked at again before it is muted, and stays only if faulted
+   * twice. On 5 Nov 2026 eight Vice City stills faulted in one pass drew two faults when judged again unchanged.
+   */
+  opts: { secondLook?: boolean } = {},
 ): Promise<{
   faulted: string[];
   problems: Array<{ at: string[]; problems: string[] }>;
+  /** Faulted on the first look and cleared on the second. */
+  cleared?: string[];
 }> {
   const faulted: string[] = [];
   const problems: Array<{ at: string[]; problems: string[] }> = [];
@@ -204,7 +211,16 @@ export async function judgeGraphics(
     if (v.problems.length)
       problems.push({ at: batch.map((b) => b.what), problems: v.problems });
   }
-  return { faulted, problems };
+  if (!opts.secondLook || !faulted.length) return { faulted, problems };
+  const again = await judgeGraphics(
+    items.filter((i) => faulted.includes(i.what)),
+    visionQa,
+  );
+  return {
+    faulted: faulted.filter((k) => again.faulted.includes(k)),
+    problems: [...problems, ...again.problems],
+    cleared: faulted.filter((k) => !again.faulted.includes(k)),
+  };
 }
 
 /** The mute lists with the faulted keys added (no duplicates), and how many were new. */

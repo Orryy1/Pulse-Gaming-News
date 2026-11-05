@@ -7884,8 +7884,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           gl: s.cfg.remotionGl,
           browserExecutable: s.cfg.browserExecutable,
         });
-        const r = await judgeGraphics(items, (frames) =>
-          s.visionQa(frames, graphicsCtx),
+        const r = await judgeGraphics(
+          items,
+          (frames) => s.visionQa(frames, graphicsCtx),
+          { secondLook: s.cfg.graphicsSecondLook },
         );
         const muted = muteFaults(assets, r.faulted);
         assets.quietMoments = muted.quietMoments;
@@ -7925,6 +7927,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           faulted: r.faulted,
           problems: r.problems,
           byKind,
+          ...(r.cleared ? { cleared: r.cleared } : {}),
         });
         log(
           r.faulted.length ? "warn" : "info",

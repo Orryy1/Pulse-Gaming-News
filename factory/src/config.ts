@@ -441,6 +441,8 @@ export interface Config {
   graphicsPrepass: boolean;
   /** Long-video graphics fit their text and read as complete thoughts: the compare card's measured layout, kinetic lines whole, a scale card's giant word finishing its line (src/render/components/LongMoments.tsx, kinetic/words.ts). */
   graphicsFit: boolean;
+  /** The pre-pass looks again at a faulted graphic and mutes it only if faulted twice (src/qa/graphicscheck.ts). Off: one look mutes. */
+  graphicsSecondLook: boolean;
   graphicsPrepassMax: number; // graphics checked as stills before the render, at most
   /** Full re-renders the post-render graphics check may ask for; past that it accepts the video with the faults muted. */
   graphicsRerenderPasses: number;
@@ -1017,6 +1019,7 @@ export function loadConfig(): Config {
     shortsClean: bool("SHORTS_CLEAN", true),
     graphicsPrepass: bool("GRAPHICS_PREPASS", true),
     graphicsFit: bool("GRAPHICS_FIT", true),
+    graphicsSecondLook: bool("GRAPHICS_SECOND_LOOK", false),
     graphicsPrepassMax: int("GRAPHICS_PREPASS_MAX", 200),
     graphicsRerenderPasses: int("GRAPHICS_RERENDER_PASSES", 1),
     graphicsPostcheckMax: int("GRAPHICS_POSTCHECK_MAX", 32),

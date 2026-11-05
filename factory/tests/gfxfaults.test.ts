@@ -19,7 +19,11 @@ import {
 } from "../src/render/components/kinetic/words.ts";
 import { settledBy, shotTiming, SETTLED } from "../src/render/components/docs/layout.ts";
 import { wholeLineFiller } from "../src/render/fillerplan.ts";
-import { faultsByKind, graphicsNotice } from "../src/qa/graphicscheck.ts";
+import {
+  faultsByKind,
+  graphicsNotice,
+  judgeGraphics,
+} from "../src/qa/graphicscheck.ts";
 import { cueSide } from "../src/render/structure.ts";
 import { usefulGraphic } from "../src/render/longplan.ts";
 import { underFullScreen } from "../src/render/momentspan.ts";
@@ -189,6 +193,26 @@ test("a long line is no scale card", () => {
   const s = "Why hadn't that production effort delivered a better launch?";
   const k = keyWords(s)!;
   assert.ok(!fittingStyles({ sentence: s, ...k, tone: "punch", finish: true }).includes("scale"));
+});
+
+test("with a second look a graphic is muted only if faulted twice", async () => {
+  const items = ["a", "b", "c"].map((what, i) => ({ what, t: i, file: `${what}.jpg` }));
+  let calls = 0;
+  const judge = async (frames: string[]) => {
+    calls++;
+    return calls === 1
+      ? { verdict: "fail", problems: ["Frame 1: x", "Frame 2: y"], notes: "" }
+      : frames[0] === "a.jpg"
+        ? { verdict: "fail", problems: ["Frame 1: x"], notes: "" }
+        : { verdict: "pass", problems: [], notes: "" };
+  };
+  const r = await judgeGraphics(items, judge as never, { secondLook: true });
+  assert.deepEqual(r.faulted, ["a"]);
+  assert.deepEqual(r.cleared, ["b"]);
+  calls = 0;
+  const once = await judgeGraphics(items, judge as never);
+  assert.deepEqual(once.faulted, ["a", "b"]);
+  assert.equal(calls, 1);
 });
 
 test("a recall card crosses to the left while a corner card holds the right", () => {

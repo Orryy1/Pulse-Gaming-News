@@ -257,6 +257,7 @@ import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
 import { blurPlate, meanLuma } from "./assets/plates.ts";
 import { TIGHT_CAP_SECONDS } from "./assets/officialTrailer.ts";
+import { cardWindow } from "./render/shortcraft.ts";
 import { CLIP_DETAIL_FLOOR_KB, clipDetailKb, stillBigText } from "./assets/cliptext.ts";
 import { framesNeeded } from "./qa/mediarich.ts";
 import {
@@ -9714,8 +9715,19 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   let times: number[] = [];
   if (tech.ok && s.cfg.visionQa) {
     // Sampled after each card's counters have landed (24 frames) so a mid-count figure is never judged.
+    // A card now lands on its word, not at its line's start: judged after it has landed, or an empty panel still
+    // building up reads as a fault (ep_20261105_d8d0e098 at 0:05.3).
     times = shortSampleTimes(
-      segments.map((g) => g.start),
+      segments.map((g, i) =>
+        g.visual && g.visual.kind !== "none"
+          ? Math.max(
+              g.start,
+              cardWindow(segments, words, i, plan.fps, plan.totalFrames).from /
+                plan.fps -
+                0.3,
+            )
+          : g.start,
+      ),
       duration,
     );
     await fs.rm(path.join(dir, "qa"), { recursive: true, force: true });

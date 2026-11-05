@@ -485,6 +485,8 @@ export function planShots(
       .sort(
         (a, b) =>
           Number(!!images[a]!.frame) - Number(!!images[b]!.frame) ||
+          // Box art and logos fill the frame with lettering the cards then collide with: last, under footage first.
+          (footageFirst ? artPenalty(images[a]!) - artPenalty(images[b]!) : 0) ||
           stillUses[a]! - stillUses[b]! ||
           (input.preferBright
             ? (images[b]!.luma ?? 0) - (images[a]!.luma ?? 0)
@@ -858,8 +860,8 @@ export function planShots(
               .sort(
                 (a, b) =>
                   Number(!!images[a]!.frame) - Number(!!images[b]!.frame) ||
-                  stillUses[a]! - stillUses[b]! ||
                   artPenalty(images[a]!) - artPenalty(images[b]!) ||
+                  stillUses[a]! - stillUses[b]! ||
                   a - b,
               )[0]
           : undefined;

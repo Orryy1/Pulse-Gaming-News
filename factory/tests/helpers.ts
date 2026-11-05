@@ -174,6 +174,7 @@ export function testConfig(
     bigStoryMaxAgeHours: 36,
     bigStoryPerDay: 3,
     bigStoryBumps: ["deals", "spare", "evergreen", "why"],
+    bigStoryRetryHours: 6,
     dailyTargetShortsOnly: true,
     launchCalendarFile: "",
     chatterSources: [],

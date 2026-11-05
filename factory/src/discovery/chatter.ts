@@ -56,6 +56,8 @@ export function applyChatter(
   stories: SizedStory[],
   signal: ChatterSignal | undefined,
   now: Date,
+  /** Chatter can make a story big, never huge: it is about the game, not this story (5 Nov 2026: GTA at +12). */
+  hugeSize = Infinity,
 ): SizedStory[] {
   if (
     !signal ||
@@ -68,7 +70,7 @@ export function applyChatter(
       if (!points || s.outlets.length < MIN_OUTLETS) return s;
       return {
         ...s,
-        size: s.size + points,
+        size: Math.max(s.size, Math.min(s.size + points, hugeSize - 1)),
         why: `${s.why}, chatter +${points}`,
       };
     })
@@ -82,7 +84,8 @@ export function chatterTerms(
   const out = new Map<string, string>();
   for (const s of stories) {
     if (out.size >= MAX_TERMS) break;
-    if (s.entity.startsWith("t:") || out.has(s.entity)) continue;
+    // An unknown name is often an ordinary word ("Cloud", "Slop"): searching for it measures nothing.
+    if (/^[tw]:/.test(s.entity) || out.has(s.entity)) continue;
     out.set(s.entity, s.name);
   }
   return [...out].map(([entity, term]) => ({ entity, term }));

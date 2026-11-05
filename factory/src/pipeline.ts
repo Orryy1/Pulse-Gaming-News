@@ -290,6 +290,9 @@ import {
   refreshChatter,
   bigCluster,
   coveredHashes,
+  EDITOR_REPEAT,
+  noteEditorRepeat,
+  readEditorRepeats,
   runEntryCovered,
   bigEditorNote,
   bigMadeToday,
@@ -1088,14 +1091,21 @@ async function createFromChoice(
   lane: { lane: string; priority: number; slotAt?: Date },
   why: string,
   /** A big story (src/bigstories.ts): what the editor is told, and whether its pass is overruled. */
-  big?: { note: string; force: boolean; alsoSeen: string[]; onPass: (reason: string) => void },
+  big?: {
+    note: string;
+    force: boolean;
+    alsoSeen: string[];
+    onPass: (reason: string) => void;
+    /** Our own dropped attempts at this story: never published, so not "already covered". */
+    notCovered: string[];
+  },
 ): Promise<string | undefined> {
   const { db } = s;
   const pool = candidates;
   const choice = await selectStory(
     s.llm,
     pool,
-    await recentHeadlines(db),
+    (await recentHeadlines(db)).filter((h) => !big?.notCovered.includes(h)),
     [
       big?.note ?? "",
       focusBlock(s.cfg, s.now()),
@@ -1116,7 +1126,8 @@ async function createFromChoice(
       reason: choice.reason,
     });
     big?.onPass(choice.reason);
-    if (!big?.force) return undefined;
+    // Too big to pass, unless the editor says it has been told already.
+    if (!big?.force || EDITOR_REPEAT.test(choice.reason)) return undefined;
     picked = pool[0]!;
     choice.reason = `editor overruled, the story is too big to pass: ${choice.reason}`;
   }
@@ -1185,6 +1196,7 @@ async function maybeSelectBig(
     rumourCap: await rumoursPerDayNow(db, cfg),
     includeRumours: cfg.includeRumours,
     bigMadeToday: await bigMadeToday(db, cfg.timezone),
+    editorRepeats: await readEditorRepeats(db, now),
     ...(blocked ? { blocked } : {}),
   };
   const verdicts = judgeBigStories(stories, cfg, context);
@@ -1237,9 +1249,18 @@ async function createBig(s: Services, v: BigVerdict): Promise<string | undefined
       onPass: (reason) => {
         passed = reason;
       },
+      notCovered: (await recentCover(db, now))
+        .filter(
+          (e) =>
+            e.story_json.bigStory?.key === v.story.key &&
+            (e.status === "failed" || e.status === "rejected"),
+        )
+        .flatMap((e) => [e.story_json.headline, e.script_headline ?? ""]),
     },
   );
   if (!id) {
+    if (passed !== undefined && EDITOR_REPEAT.test(passed))
+      await noteEditorRepeat(db, v.story.key, passed, now);
     if (passed !== undefined)
       await recordVerdicts(
         db,

@@ -206,6 +206,8 @@ export interface Config {
   bigStoryPerDay: number;
   /** Filler that gives way, one lane for each big story made today, in this order. */
   bigStoryBumps: string[];
+  /** Hours after a dropped big story before one more go, which also needs an article the first go did not have. */
+  bigStoryRetryHours: number;
   /** The day's count (SHORTS_PER_DAY) counts Shorts only: a long video does not use up a slot's turn. */
   dailyTargetShortsOnly: boolean;
   /** The launch calendar: reviews and launch days of known huge games (src/discovery/launches.ts); empty = none. */
@@ -874,6 +876,7 @@ export function loadConfig(): Config {
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean),
+    bigStoryRetryHours: Math.max(0, int("BIG_STORY_RETRY_HOURS", 6)),
     dailyTargetShortsOnly: bool("DAILY_TARGET_SHORTS_ONLY", true),
     launchCalendarFile: str("LAUNCH_CALENDAR_FILE", ""),
     chatterSources: str("CHATTER_SOURCES", "")

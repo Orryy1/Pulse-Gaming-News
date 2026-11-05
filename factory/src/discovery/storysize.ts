@@ -50,6 +50,8 @@ export interface SizedStory {
   newestAt: string;
   /** Newest first, every article of the story. */
   items: FeedItem[];
+  /** What it is about, for telling it from another story on the same game. */
+  subject?: string;
   /** Every sighting holding one of the articles: all of them count as covered once the story is made. */
   hashes: string[];
   /** An episode older than this does not cover the story, whatever it says (a launch day; default: its first article). */
@@ -142,7 +144,7 @@ const GENERIC = new Set(
 
 // Never a story: the article is about something to buy, a how-to or a piece of site furniture.
 const JUNK =
-  /\bdeals?\b|black friday|cyber monday|% off|\bdiscount|last chance to save|\bsave \$|save \d+%|\bon sale\b|\bgift guide\b|\bbest .* to buy\b|\bgames? to buy\b|\bsale\b|\bguide\b|how to\b|walkthrough|where to find|\bcodes\b|\bwordle\b|\bcrossword\b|\bquiz\b|\bpodcast\b|^feature:|^countdown:|\bdungeon crawl #|\btier list\b|\bnyt\b/i;
+  /\bdeals?\b|black friday|cyber monday|% off|\bdiscount|last chance to save|\bsave \$|save \d+%|\bon sale\b|\bgift guide\b|\bbest .* to buy\b|\bgames? to buy\b|\bsale\b|\bguide\b|how to\b|walkthrough|where to find|\bcodes\b|\bwordle\b|\bcrossword\b|\bquiz\b|\bpodcast\b|^feature:|^countdown:|\bdungeon crawl #|\btier list\b|\bnyt\b|^every .*\b(revealed|released) so far|\bmap breakdown\b|everything we know/i;
 
 const EVENTS: ReadonlyArray<readonly [StoryEvent, RegExp]> = [
   [
@@ -230,6 +232,69 @@ export function newDevelopment(
     if (outlets.size >= 3 && group.length > best.length) best = group;
   }
   return best.length ? best : undefined;
+}
+
+// What a headline is about, finer than the kind of news: "revealed" says nothing of whether it is a download size or a
+// survey (5 Nov 2026: a story sized as the download size went to the writer with a survey and two listicles in it, and
+// the Short came out about the survey). A known game's articles are grouped by this.
+const SUBJECTS: ReadonlyArray<readonly [string, StoryEvent, RegExp]> = [
+  ["download", "release", /pre-?loads?\b|pre-?download|download size|install size|file size|\b\d+ ?gb\b/i],
+  ["commercial", "commercial", /pre-?orders?\b|pre-?sales?\b|\bsold\b|\bsells?\b|\bsales\b|million (copies|units|players)|\$[\d.,]+ ?(million|billion|m\b|bn\b)|\brevenue\b|\bpeaks?\b|concurrent/i],
+  ["survey", "other", /\bsurvey\b|\bpoll\b/i],
+  ["map", "other", /\bmap\b/i],
+  ["trailer", "reveal", /\btrailer|\bteaser/i],
+];
+
+/** A headline's subject and the kind of news it scores as (pure). Reviews, delays and studio news stay whole. */
+export function storySubject(title: string): { subject: string; event: StoryEvent } {
+  const event = storyEvent(title);
+  if (event === "acclaim" || event === "delay" || event === "business")
+    return { subject: event, event };
+  const hit = SUBJECTS.find(([, , re]) => re.test(title));
+  return hit ? { subject: hit[0], event: hit[1] } : { subject: event, event };
+}
+
+export interface Figure {
+  unit: "usd" | "copies" | "gb" | "players";
+  value: number;
+}
+
+/** The figures in a line: "$750 million", "8 million copies", "212GB" (pure). */
+export function figuresIn(text: string): Figure[] {
+  const out: Figure[] = [];
+  const scale = (w?: string) =>
+    /^(billion|bn|b)$/i.test(w ?? "") ? 1e9 : /^(million|m)$/i.test(w ?? "") ? 1e6 : 1;
+  for (const m of text.matchAll(/\$\s?([\d.,]+)\s?(million|billion|bn|m|b)?\b/gi))
+    out.push({ unit: "usd", value: Number(m[1]!.replace(/,/g, "")) * scale(m[2]) });
+  for (const m of text.matchAll(/(?<![$\d.,])([\d.,]+)\s?(million|m)\s+(copies|units|players)/gi))
+    out.push({
+      unit: /players/i.test(m[3]!) ? "players" : "copies",
+      value: Number(m[1]!.replace(/,/g, "")) * 1e6,
+    });
+  for (const m of text.matchAll(/([\d.,]+)\s?gb\b/gi))
+    out.push({ unit: "gb", value: Number(m[1]!.replace(/,/g, "")) });
+  return out.filter((f) => Number.isFinite(f.value) && f.value > 0);
+}
+
+/**
+ * Has a figure really changed? "same": one matches within 5%, so $750 million is a rounding of $751 million. "changed":
+ * they share a unit and none is close. "none": nothing to compare (pure).
+ */
+export function figureChange(
+  now: string[],
+  said: string[],
+): "same" | "changed" | "none" {
+  const a = now.flatMap(figuresIn);
+  const b = said.flatMap(figuresIn);
+  let shared = false;
+  for (const x of a)
+    for (const y of b) {
+      if (x.unit !== y.unit) continue;
+      shared = true;
+      if (Math.abs(x.value - y.value) / Math.max(x.value, y.value) <= 0.05)
+        return "same";
+    }
+  return shared ? "changed" : "none";
 }
 
 /** The kind of news a headline carries (pure). */
@@ -412,8 +477,15 @@ export function sizeStories(
   }
   items.forEach((x, i) => {
     const entity = entityOf(i);
-    const event = leadEvent.get(entity.key) ?? storyEvent(x.item.title);
-    const key = `${entity.key}|${event}`;
+    const lead = leadEvent.get(entity.key);
+    const about = known[i]
+      ? storySubject(x.item.title)
+      : {
+          subject: lead ?? storyEvent(x.item.title),
+          event: lead ?? storyEvent(x.item.title),
+        };
+    const event = about.event;
+    const key = `${entity.key}|${about.subject}`;
     if (!buckets.has(key)) buckets.set(key, { entity, event, at: [] });
     buckets.get(key)!.at.push(i);
     if (!entityOutlets.has(entity.key))
@@ -477,6 +549,7 @@ export function sizeStories(
             ? `${bucketKey}#${tokensKey(titles[titles.length - 1]!)}`
             : bucketKey,
         entity: b.entity.key,
+        subject: bucketKey.slice(bucketKey.indexOf("|") + 1),
         name: b.entity.name,
         event: b.event,
         size: Math.max(0, size),

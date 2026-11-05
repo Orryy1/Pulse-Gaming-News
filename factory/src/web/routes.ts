@@ -85,7 +85,7 @@ async function channelVideos(cfg: Config): Promise<ChannelVideo[]> {
 }
 
 const SITE_PATH =
-  /^\/($|news(\/|$)|games(\/|$)|videos$|about$|privacy$|disclosure$|rss\.xml$|sitemap\.xml$|news-sitemap\.xml$|robots\.txt$|[a-f0-9]{32}\.txt$|img\/|assets\/(fonts|icon-))/;
+  /^\/($|news(\/|$)|games(\/|$)|videos$|about$|media$|privacy$|disclosure$|rss\.xml$|sitemap\.xml$|news-sitemap\.xml$|robots\.txt$|[a-f0-9]{32}\.txt$|img\/|assets\/(fonts|icon-))/;
 
 /** A cut-down copy made once and kept: the story's thumbnail or art as a 960x540 JPEG, or the logo at an icon size. */
 async function derived(

@@ -83,7 +83,7 @@
     "title": "GTA 6's Map Size Is a Number Rockstar Never Gave",
     "game": "Grand Theft Auto VI",
     "arc": "A number on every thumbnail; it comes from fans, not Rockstar; what Rockstar's own people have compared it to.",
-    "angle": "Open close to: \"Rockstar never told you GTA 6's map size.\" Fan estimates disagree and Rockstar has given comparisons at most. Point to the long video on what is confirmed. Say only what the sources say and name them; anything Rockstar has not said is said to be unconfirmed.",
+    "angle": "Open close to: \"Rockstar never told you GTA 6's map size.\" Fan estimates differ widely, and the sources name them as estimates; say which outlet reports what, and never repeat anything drawn from leaks or leaked coordinates. Point to the long video on what is confirmed. Say only what the sources say and name them; anything Rockstar has not said is said to be unconfirmed.",
     "sources": [
       {
         "url": "https://en.wikipedia.org/wiki/Grand_Theft_Auto_VI",
@@ -93,6 +93,18 @@
         "url": "https://www.rockstargames.com/newswire/article/4k138k8okkk483/grand-theft-auto-vi-an-extended-look-now-playing",
         "source": "Rockstar Newswire",
         "official": true
+      },
+      {
+        "url": "https://www.gtabase.com/articles/gta-6/how-big-is-the-gta-6-map-size-compared-to-other-games",
+        "source": "GTA BASE"
+      },
+      {
+        "url": "https://esports.gg/guides/grand-theft-auto-6/how-big-is-the-map-of-leonida-in-gta-6-full-map-size-explained/",
+        "source": "esports.gg"
+      },
+      {
+        "url": "https://www.gfinityesports.com/article/how-big-is-the-gta-6-map-leonida-size-and-confirmed-locations",
+        "source": "Gfinity"
       }
     ]
   },

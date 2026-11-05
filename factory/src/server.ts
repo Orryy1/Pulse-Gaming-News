@@ -103,6 +103,8 @@ import { alert, postDiscord } from "./approval/discord.ts";
 import { sendDueNotices } from "./notices.ts";
 import { maybeReload } from "./reload.ts";
 import { primeTimeNow } from "./experiments.ts";
+import { sendMissReport } from "./bigstories.ts";
+import { creditForecastAlert } from "./claudecredit.ts";
 import {
   dailySummary,
   digestDue,
@@ -1980,6 +1982,14 @@ async function main(): Promise<void> {
         ),
       );
       log("info", "daily summary sent");
+      await sendMissReport(db, cfg, new Date(), (m) => services.notify(m)).catch(
+        (err) =>
+          log("error", "big story report failed", { error: errorMessage(err) }),
+      );
+      await creditForecastAlert(cfg, new Date(), db, (m) => services.notify(m)).catch(
+        (err) =>
+          log("error", "Claude credit forecast failed", { error: errorMessage(err) }),
+      );
     })().catch((err) =>
       log("error", "daily summary failed", { error: errorMessage(err) }),
     );

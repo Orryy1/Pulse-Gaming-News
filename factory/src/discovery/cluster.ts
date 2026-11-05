@@ -33,6 +33,8 @@ export interface StoryCluster {
   };
   /** A gameplay Short: the inbox clip's id and folder, and the reviewer's verdict. */
   gameplay?: { id: string; dir: string; review: import("../gameplay.ts").GameplayReview; rehearsal?: boolean };
+  /** One of the day's biggest stories (src/bigstories.ts): what made it big, and how long ago it broke when that was hours ago. */
+  bigStory?: { key: string; entity: string; size: number; event: string; lateHours?: number };
   /** A topic from the launch run (src/shortrun.ts): planned by hand, so the game's own names may repeat in titles. */
   run?: boolean;
   /** A twin of a published Short in another language: the original's episode, the language and the login it uploads with. */

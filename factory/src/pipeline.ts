@@ -283,6 +283,17 @@ import {
 } from "./growth.ts";
 import { holdSlotForCap, holdWhyForCap } from "./cadence.ts";
 import {
+  bigCluster,
+  bigEditorNote,
+  bigMadeToday,
+  bumpFiller,
+  currentStories,
+  judgeBigStories,
+  recentCover,
+  recordVerdicts,
+  type BigVerdict,
+} from "./bigstories.ts";
+import {
   breakingAllowance,
   breakingHeldLine,
   breakingScore,
@@ -691,7 +702,11 @@ async function recentSightings(
     `SELECT hash, first_seen, last_seen, item_count, has_official, max_score, cluster_json FROM cluster_sightings WHERE last_seen > $2::timestamptz - ($1 || ' hours')::interval ORDER BY max_score DESC`,
     [String(s.cfg.maxStoryAgeHours), s.now()],
   );
-  return rows.map((r) => ({ cluster: r.cluster_json, sighting: r }));
+  // Discovery may hold older articles for a late big story (BIG_STORY_MAX_AGE_HOURS); the usual lanes stay fresh.
+  const oldest = s.now().getTime() - s.cfg.maxStoryAgeHours * 3_600_000;
+  return rows
+    .filter((r) => new Date(r.cluster_json.newestAt).getTime() >= oldest)
+    .map((r) => ({ cluster: r.cluster_json, sighting: r }));
 }
 
 /**
@@ -758,6 +773,7 @@ export async function maybeSelectSpare(
   const { db, cfg } = s;
   if (!cfg.spareUploads || !cfg.evergreenEnabled) return undefined;
   const now = s.now();
+  if (await bumpFiller(db, cfg, "spare", now)) return undefined;
   const minutesLeft = (quotaResetAt(now).getTime() - now.getTime()) / 60_000;
   if (
     minutesLeft > SPARE_WINDOW_MINUTES ||
@@ -1048,6 +1064,8 @@ async function createFromChoice(
   candidates: StoryCluster[],
   lane: { lane: string; priority: number; slotAt?: Date },
   why: string,
+  /** A big story (src/bigstories.ts): what the editor is told, and whether its pass is overruled. */
+  big?: { note: string; force: boolean; alsoSeen: string[]; onPass: (reason: string) => void },
 ): Promise<string | undefined> {
   const { db } = s;
   const pool = candidates;
@@ -1056,6 +1074,7 @@ async function createFromChoice(
     pool,
     await recentHeadlines(db),
     [
+      big?.note ?? "",
       focusBlock(s.cfg, s.now()),
       hotBlock(await readHotTopic(db, s.now()).catch(() => undefined)),
       calendarFor(s.cfg, s.now(), "news", 3),
@@ -1067,13 +1086,16 @@ async function createFromChoice(
       .filter(Boolean)
       .join("\n\n"),
   );
-  const picked = pool[choice.candidate_index];
+  let picked = pool[choice.candidate_index];
   if (!picked) {
     log("info", "editor passed on every candidate", {
       lane: lane.lane,
       reason: choice.reason,
     });
-    return undefined;
+    big?.onPass(choice.reason);
+    if (!big?.force) return undefined;
+    picked = pool[0]!;
+    choice.reason = `editor overruled, the story is too big to pass: ${choice.reason}`;
   }
   const id = shortId();
   const created = await createEpisode(
@@ -1093,6 +1115,9 @@ async function createFromChoice(
     created ? "selected" : "duplicate",
     choice.reason,
   );
+  // Every split of a big story is the same story: none of them comes back through a news slot.
+  for (const h of big?.alsoSeen ?? [])
+    await markSeen(db, h, picked.headline, "big_story", "the same story as a big story made");
   if (!created) return undefined;
   await logEvent(db, id, "selected", {
     headline: picked.headline,
@@ -1113,6 +1138,106 @@ async function createFromChoice(
 }
 
 /**
+ * The big-story desk, ahead of every allowance (src/bigstories.ts): judges the day's biggest stories, records what is
+ * happening to each, and makes the biggest one not yet covered. It fills a news slot when one is open, else it goes
+ * out like a breaking Short. Report mode and a blocked factory still judge and record, so nothing is passed silently.
+ */
+async function maybeSelectBig(
+  s: Services,
+  blocked?: string,
+): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (cfg.bigStoryMode === "off") return undefined;
+  const now = s.now();
+  const stories = await currentStories(db, cfg, now);
+  const context = {
+    now,
+    episodes: await recentCover(db, now),
+    run: readRun(cfg.shortRunFile),
+    rumoursToday: cfg.includeRumours
+      ? await countRumoursToday(db, cfg.timezone)
+      : 0,
+    rumourCap: await rumoursPerDayNow(db, cfg),
+    includeRumours: cfg.includeRumours,
+    bigMadeToday: await bigMadeToday(db, cfg.timezone),
+    ...(blocked ? { blocked } : {}),
+  };
+  const verdicts = judgeBigStories(stories, cfg, context);
+  const make = verdicts.find((v) => v.action === "make");
+  if (make) {
+    // The quota is the one limit a big story cannot overrule: an upload past it just fails.
+    const headroom = await quotaHeadroom(db, cfg, now);
+    if (headroom < QUOTA_RESERVE_FOR_UPLOAD) {
+      make.action = "held";
+      make.reason = `YouTube's upload quota for today is spoken for (${headroom} units spare)`;
+    }
+  }
+  await recordVerdicts(db, cfg, verdicts, now);
+  if (!make || make.action !== "make") return undefined;
+  return createBig(s, make);
+}
+
+/** One editor call per story every three hours: a pass is reported, not retried each tick. */
+async function createBig(s: Services, v: BigVerdict): Promise<string | undefined> {
+  const { db, cfg } = s;
+  const now = s.now();
+  const bucket = Math.floor(now.getTime() / (3 * 3_600_000));
+  if (await weeklyTried(db, `big:${v.story.key}:${v.attempt}:${bucket}`)) return undefined;
+  const cluster = bigCluster(v, now);
+  const slot = dueSlot(
+    now,
+    {
+      slots: cfg.newsSlots,
+      leadMinutes: cfg.slotLeadMinutes,
+      graceMinutes: cfg.slotGraceMinutes,
+      timeZone: cfg.timezone,
+    },
+    await takenSlots(db),
+  );
+  const force = v.story.size >= cfg.bigStoryHuge;
+  let passed: string | undefined;
+  const id = await createFromChoice(
+    s,
+    [cluster],
+    slot
+      ? { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot }
+      : { lane: "news_breaking", priority: LANE_PRIORITY.news_breaking },
+    `big story: size ${v.story.size} (${v.story.why})`,
+    {
+      note: bigEditorNote(v.story),
+      force,
+      alsoSeen: v.story.hashes,
+      onPass: (reason) => {
+        passed = reason;
+      },
+    },
+  );
+  if (!id) {
+    if (passed !== undefined)
+      await recordVerdicts(
+        db,
+        cfg,
+        [{ ...v, action: "held", reason: `the editor passed on it: ${passed.slice(0, 200)}` }],
+        now,
+      );
+    return undefined;
+  }
+  if (!slot) {
+    const ep = await getEpisode(db, id);
+    await db.query(
+      `INSERT INTO breaking_log (story_hash, franchise, episode_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [ep!.story_hash, franchiseKey(ep!.story_json), id],
+    );
+  }
+  await recordVerdicts(db, cfg, [{ ...v, action: "made", reason: "in production", episode: id }], now);
+  await s.notify({
+    level: "info",
+    content: `Big story picked: "${v.story.headline}" (size ${v.story.size}: ${v.story.outlets.length} outlets, ${v.story.articles} articles)${cluster.bigStory?.lateHours ? `, ${cluster.bigStory.lateHours} hours old, so the angle is what has happened since` : ""}.`,
+  });
+  return id;
+}
+
+/**
  * Two lanes, one producer. The breaking lane fires on a massive official story
  * seen for the first time minutes ago, any time inside its window, at most a
  * few times a day with a per-franchise cooldown. The news lane fills fixed
@@ -1124,20 +1249,37 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   const { db, cfg } = s;
   const now = s.now();
   const paused = await selectionPause(db, now);
+  // A big story that cannot go yet is still judged and recorded; a fault here must never stop the usual lanes.
+  const bigStep = (blocked?: string) =>
+    maybeSelectBig(s, blocked).catch((err) => {
+      log("warn", "big story desk failed", { error: errorMessage(err) });
+      return undefined;
+    });
   if (paused) {
     log("info", "story selection paused", { reason: paused });
+    await bigStep(`story selection is paused: ${paused}`);
     return undefined;
   }
-  if ((await countProducing(db)) >= cfg.maxProducing) return undefined;
+  if ((await countProducing(db)) >= cfg.maxProducing) {
+    await bigStep(`waiting: ${cfg.maxProducing} Shorts are already in production`);
+    return undefined;
+  }
+  const big = await bigStep();
+  if (big) return big;
   const cut = await maybeSelectCutdown(s).catch((err) => {
     log("warn", "cutdown selection failed", { error: errorMessage(err) });
     return undefined;
   });
   if (cut) return cut;
-  // Spare-quota Shorts are extra: they never take one of the day's planned Shorts.
+  // Spare-quota Shorts are extra: they never take one of the day's planned Shorts. Nor does a big story, and a long
+  // video is not a Short at all (4 Nov 2026: a documentary and a ranking used up the 22:00 slot's turn, silently).
   const total =
     (await countToday(db, cfg.timezone)) -
-    (await countSpareToday(db, cfg.timezone));
+    (await countSpareToday(db, cfg.timezone)) -
+    (await bigMadeToday(db, cfg.timezone)) -
+    (cfg.dailyTargetShortsOnly
+      ? await countToday(db, cfg.timezone, "longform")
+      : 0);
   if (total >= cfg.dailyTarget + (launchWave(cfg, now) ? cfg.sprintExtra : 0))
     return (await maybeSelectSpare(s)) ?? undefined;
 
@@ -1327,6 +1469,7 @@ export async function maybeSelectEvergreen(
     await takenSlots(db),
   );
   if (!due) return undefined;
+  if (await bumpFiller(db, cfg, "evergreen", now)) return undefined;
   return createEvergreen(s, due);
 }
 
@@ -1544,6 +1687,8 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     });
     if (made) return made;
   }
+  // Only a free pick gives way to a big story: a planned run topic never does.
+  if (await bumpFiller(db, cfg, "why", now)) return undefined;
   const covered = (
     await db.query<{ headline: string }>(
       `SELECT story_json->>'headline' AS headline FROM episodes WHERE story_hash LIKE 'why:%' AND created_at > $1::timestamptz - interval '120 days'`,
@@ -2072,7 +2217,11 @@ export async function maybeSelectWeekly(
   const dealsDue = (await formatOpen(db, "steam_deals", now))
     ? evergreenDue(now, { ...plan(cfg.dealsDays), slot: cfg.dealsSlot }, taken)
     : undefined;
-  if (dealsDue && !(await weeklyTried(db, `deals:${today}`))) {
+  if (
+    dealsDue &&
+    !(await bumpFiller(db, cfg, "deals", now)) &&
+    !(await weeklyTried(db, `deals:${today}`))
+  ) {
     const recent = await db.query<{ script_json: Script }>(
       `SELECT script_json FROM episodes WHERE lane = 'evergreen' AND script_json->>'evergreen_format' = 'steam_deals' AND created_at > $1`,
       [new Date(now.getTime() - 14 * 86_400_000)],

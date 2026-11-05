@@ -42,6 +42,8 @@ const KINDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["crosspost_failed", /Could not post "|may or may not have posted/i],
   ["backup_failed", /backup failed/i],
   ["no_short", /No Short published/i],
+  ["big_story_missed", /^Biggest stories today:[^]*missed because/i],
+  ["claude_credit", /^Claude credit:/i],
   ["gate_unchecked", /release gate could not check/i],
   ["gather_cut", /media gather stopped/i],
   ["long_lane_stuck", /long-video lane has not finished/i],
@@ -53,7 +55,7 @@ const KINDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["held_up", /was held up/i],
   [
     ROUTINE,
-    /^✅ (?:Uploaded|Live now)|passed the release gate|found nothing wrong|^Breaking story picked|^Demand check|Taking off:|DRY_RUN:/iu,
+    /^✅ (?:Uploaded|Live now)|^Biggest stories today:|^Big story picked|passed the release gate|found nothing wrong|^Breaking story picked|^Demand check|Taking off:|DRY_RUN:/iu,
   ],
 ];
 

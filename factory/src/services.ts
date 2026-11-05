@@ -204,7 +204,10 @@ export function createServices(db: Db, cfg: Config): Services {
       return clusterItems(
         [...rss, ...rockstar],
         new Date(),
-        cfg.maxStoryAgeHours,
+        // After a day or two down, a big story is still in the feeds: keep it long enough to be made late.
+        cfg.bigStoryMode === "off"
+          ? cfg.maxStoryAgeHours
+          : Math.max(cfg.maxStoryAgeHours, cfg.bigStoryMaxAgeHours),
       );
     },
     discoverEvergreen: () =>

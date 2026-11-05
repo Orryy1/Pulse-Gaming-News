@@ -194,6 +194,26 @@ export interface Config {
   whyFreshDays: number;
   /** A breaking Short past BREAKING_PER_DAY is allowed once more only at or above this score; 0 = never (src/storymix.ts). */
   breakingBigScore: number;
+  /** Big stories (src/bigstories.ts): off, report (say what it would do, change nothing) or make. */
+  bigStoryMode: "off" | "report" | "make";
+  /** Size at which a story is big: never held by the cap, the breaking allowance or the day's count. */
+  bigStorySize: number;
+  /** Size past which a story ignores the day's ceiling and the same-game rule, and the editor cannot pass on it. */
+  bigStoryHuge: number;
+  /** How long after its newest article a big story can still be made, angled on what has happened since. */
+  bigStoryMaxAgeHours: number;
+  /** Most big-story Shorts a day below BIG_STORY_HUGE, a ceiling on the cost. */
+  bigStoryPerDay: number;
+  /** Filler that gives way, one lane for each big story made today, in this order. */
+  bigStoryBumps: string[];
+  /** The day's count (SHORTS_PER_DAY) counts Shorts only: a long video does not use up a slot's turn. */
+  dailyTargetShortsOnly: boolean;
+  /** The Claude credit a month in dollars (src/claudecredit.ts); 0 turns the forecast off. */
+  claudeMonthlyCredit: number;
+  /** The day of the month the credit renews. */
+  claudeCreditRenewDay: number;
+  /** First warning when the credit would run out in under this many days. */
+  claudeCreditWarnDays: number;
   /** The YouTube search demand check before evergreen, ranking and Why picks (src/discovery/searchdemand.ts). */
   demandCheck: boolean;
   /** Views on a topic's top recent YouTube hits (last week) below which it has no demand and is skipped. */
@@ -815,6 +835,21 @@ export function loadConfig(): Config {
     whySlots: whySlotsFrom(str("WHY_SLOTS"), str("WHY_SLOT")),
     whyFreshDays: Math.max(0, int("WHY_FRESH_DAYS", 14)),
     breakingBigScore: Math.max(0, int("BREAKING_BIG_SCORE", 95)),
+    bigStoryMode: (["off", "report", "make"] as const).find(
+      (m) => m === str("BIG_STORY_MODE", "report"),
+    ) ?? "report",
+    bigStorySize: Math.max(1, int("BIG_STORY_SIZE", 70)),
+    bigStoryHuge: Math.max(1, int("BIG_STORY_HUGE", 90)),
+    bigStoryMaxAgeHours: Math.max(1, int("BIG_STORY_MAX_AGE_HOURS", 36)),
+    bigStoryPerDay: Math.max(0, int("BIG_STORY_PER_DAY", 3)),
+    bigStoryBumps: str("BIG_STORY_BUMPS", "deals,spare,evergreen,why")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+    dailyTargetShortsOnly: bool("DAILY_TARGET_SHORTS_ONLY", true),
+    claudeMonthlyCredit: Math.max(0, Number(str("CLAUDE_MONTHLY_CREDIT", "100")) || 0),
+    claudeCreditRenewDay: Math.max(1, int("CLAUDE_CREDIT_RENEW_DAY", 1)),
+    claudeCreditWarnDays: Math.max(1, int("CLAUDE_CREDIT_WARN_DAYS", 10)),
     demandCheck: bool("DEMAND_CHECK", true),
     demandMinViews: Math.max(0, int("DEMAND_MIN_VIEWS", 20000)),
     demandLookups: Math.max(0, int("DEMAND_LOOKUPS", 12)),
@@ -1301,6 +1336,9 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     breaking: c.breakingEnabled
       ? `${c.breakingPerDay}/day, score>=${c.breakingScoreMin}, <=${c.breakingMaxAgeMinutes}min old${c.breakingBigScore ? `, one more at score>=${c.breakingBigScore}` : ""}`
       : "off",
+    bigStories: c.bigStoryMode === "off"
+      ? "off"
+      : `${c.bigStoryMode}, size>=${c.bigStorySize}, up to ${c.bigStoryPerDay}/day, ${c.bigStoryMaxAgeHours}h window`,
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
     demandCheck: c.demandCheck,
     approvalMode: c.approvalMode,

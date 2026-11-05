@@ -1,5 +1,6 @@
 // Production wiring for the pipeline's service seam.
 
+import { ReachClient } from "./reach.ts";
 import { logEvent } from "./episodes.ts";
 import fs from "node:fs/promises";
 import type { Config } from "./config.ts";
@@ -28,6 +29,7 @@ import {
   renderLong,
   renderLongStills,
   renderLongThumbs,
+  renderShortThumb,
   countAsRender,
   renderCutdown,
   renderGameplayShort,
@@ -484,7 +486,9 @@ export function createServices(db: Db, cfg: Config): Services {
             ),
           })
       : renderLong,
+    reachClient: () => new ReachClient(() => accessToken(db, oauthConfig(cfg))),
     renderLongStills,
+    renderShortThumb,
     renderCutdown,
     renderGameplayShort,
     normalise: normaliseLoudness,

@@ -381,6 +381,14 @@ export interface Config {
   /** The Sunday growth report (src/growthreport.ts, plan item 12): subscribers per 1,000 views for each format, week on
    * week, and one line on what to back, to the alerts channel on Sundays at 10:00: GROWTH_REPORT, default off. */
   growthReport: boolean;
+  /** Click-through per video from YouTube's Reporting API (src/reach.ts), in the Sunday report and the test queue: REACH_REPORT, default off. */
+  reachReport: boolean;
+  /** Share of Shorts that get a thumbnail made for the search tile instead of their first frame (src/shortthumb.ts); 0.5 is a fair test: SHORT_SEARCH_THUMB_SHARE, default 0. */
+  shortSearchThumbShare: number;
+  /** YouTube autocomplete terms this video really answers, in its tags and one description line (src/searchterms.ts): SEARCH_TERMS, default off. */
+  searchTerms: boolean;
+  /** The Test & compare queue drops replaced uploads and puts the most clicks lost first (src/reach.ts abQueueView): AB_QUEUE_CLEAN, default off. */
+  abQueueClean: boolean;
   /** Every post to the alerts channel also goes as one line to data/logs/alerts.jsonl (src/alertlog.ts): ALERT_LEDGER,
    * default off. */
   alertLedger: boolean;
@@ -1113,6 +1121,10 @@ export function loadConfig(): Config {
     newsSegment: bool("NEWS_SEGMENT", false),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
+    reachReport: bool("REACH_REPORT", false),
+    shortSearchThumbShare: Number(str("SHORT_SEARCH_THUMB_SHARE", "0")) || 0,
+    searchTerms: bool("SEARCH_TERMS", false),
+    abQueueClean: bool("AB_QUEUE_CLEAN", false),
     alertLedger: bool("ALERT_LEDGER", false),
     alertDigest: bool("ALERT_DIGEST", false),
     docBreakoutPicker: bool("DOC_BREAKOUT_PICKER", true),

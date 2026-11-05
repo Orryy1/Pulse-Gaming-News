@@ -101,6 +101,10 @@ export interface EpisodeAssets {
   graphicsPasses?: number;
   /** The new-look Short's custom thumbnail (frame 0), uploaded once the Short is processed. */
   shortThumb?: string;
+  /** Which side of the Shorts thumbnail test this Short is on (src/shortthumb.ts); unset when no test ran. */
+  shortThumbArm?: string;
+  /** Autocomplete terms this video really answers (src/searchterms.ts), for its tags and description. */
+  searchTerms?: string[];
   /** The new-look opening: the hero art's subject cut out by the depth model (src/render/parallax.ts). */
   heroCut?: { fg: string; x?: number };
   plan?: import("./render/plan.ts").RenderPlan; // the render plan, persisted so a retried render is identical

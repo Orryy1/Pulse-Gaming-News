@@ -7,6 +7,7 @@
 // also arrives from 127.0.0.1, so anything that carries a proxy header is refused as if the page did
 // not exist. Nothing here needs or shows a secret.
 
+import { CTR_FLOOR, abQueueView, ctrRows } from "./reach.ts";
 import { pinPlan } from "./social/commentcheck.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -450,7 +451,25 @@ export async function handleRoutine(
             }>)
           : [];
         const done = new Set(readList(doneFile(cfg, "abtest")));
-        const waiting = pending.filter((t) => !done.has(t.videoId));
+        let waiting = pending.filter((t) => !done.has(t.videoId));
+        // Replaced uploads out, and the most clicks lost first (src/reach.ts).
+        if (cfg.abQueueClean) {
+          const longs = await (ctx.channelLongs ?? channelLongs)().catch(
+            () => undefined,
+          );
+          const lost = new Map(
+            (await ctrRows(db)).map((r) => [
+              r.videoId,
+              r.impressions * CTR_FLOOR - r.clicks,
+            ]),
+          );
+          waiting = abQueueView(
+            waiting,
+            longs && new Set(longs.map((l) => l.id)),
+            now,
+            lost,
+          );
+        }
         // Only the ones a run can act on travel to the Mac.
         const ready = (t: { publishAt?: string | null }) =>
           Boolean(t.publishAt) &&

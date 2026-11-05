@@ -21,6 +21,7 @@ import { settledBy, shotTiming, SETTLED } from "../src/render/components/docs/la
 import { wholeLineFiller } from "../src/render/fillerplan.ts";
 import { faultsByKind, graphicsNotice } from "../src/qa/graphicscheck.ts";
 import { cueSide } from "../src/render/structure.ts";
+import { usefulGraphic } from "../src/render/longplan.ts";
 import { underFullScreen } from "../src/render/momentspan.ts";
 
 const row = (s: string) => {
@@ -173,6 +174,21 @@ test("a card from an older plan is brought up to a complete thought, or left out
   assert.equal(wholeLineFiller(f as never), undefined);
   const other = { family: "document", style: "memo", data: {} };
   assert.equal(wholeLineFiller(other as never), other);
+});
+
+test("a compare whose rows all say the same thing is not drawn", () => {
+  const g = (items: string[]) => ({ kind: "compare", primary: "Offline engine origins", secondary: "", items });
+  assert.equal(
+    usefulGraphic(g(["Luminous:optimized for offline games", "Crystal Tools:Optimized for offline games"])),
+    false,
+  );
+  assert.equal(usefulGraphic(g(["Vice City:$59", "San Andreas:$69"])), true);
+});
+
+test("a long line is no scale card", () => {
+  const s = "Why hadn't that production effort delivered a better launch?";
+  const k = keyWords(s)!;
+  assert.ok(!fittingStyles({ sentence: s, ...k, tone: "punch", finish: true }).includes("scale"));
 });
 
 test("a recall card crosses to the left while a corner card holds the right", () => {

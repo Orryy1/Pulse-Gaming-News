@@ -115,8 +115,10 @@ export const Ledger: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
     Math.min(84, Math.floor((W - MONEY_X - 110) / (valueLen * 0.62))),
   );
   // Rows enter one after another: the label types on, then the value is written; the circle comes last.
-  const rowAt = (i: number) => 18 + i * 16;
-  const lastValue = rowAt(n - 1) + 8 + 14;
+  // In a short moment the whole build is paced to finish before the cut (FFXIV 1:6 stopped at "Gameplay an").
+  const pace = Math.min(1, Math.max(0.35, (len - 24) / (18 + (n - 1) * 16 + 22)));
+  const rowAt = (i: number) => (18 + i * 16) * pace;
+  const lastValue = rowAt(n - 1) + (8 + 14) * pace;
   const circle = interpolate(frame, [lastValue + 4, lastValue + 22], [0, 1], {
     ...clamp,
     easing: Easing.inOut(Easing.quad),
@@ -229,9 +231,9 @@ export const Ledger: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
             const t = rowAt(i);
             const typed = Math.max(
               0,
-              Math.min(r.a.length, Math.floor((frame - t) * 2.2)),
+              Math.min(r.a.length, Math.floor(((frame - t) * 2.2) / pace)),
             );
-            const write = interpolate(frame, [t + 8, t + 22], [0, 1], {
+            const write = interpolate(frame, [t + 8 * pace, t + 22 * pace], [0, 1], {
               ...clamp,
               easing: Easing.out(Easing.quad),
             });

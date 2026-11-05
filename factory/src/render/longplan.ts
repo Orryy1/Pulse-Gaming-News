@@ -1162,9 +1162,24 @@ export function titleLines(text: string): string[] {
 
 /** A graphic worth showing: never the entry's own rank (the rank card already says it). */
 export function usefulGraphic<
-  G extends { kind: string; primary: string; secondary: string },
+  G extends {
+    kind: string;
+    primary: string;
+    secondary: string;
+    items?: string[];
+  },
 >(g: G): boolean {
   if (g.kind === "none") return false;
+  // Every row saying the same thing compares nothing (FFXIV 6:11: "optimized for offline games" twice).
+  if (g.kind === "compare" && (g.items?.length ?? 0) >= 2) {
+    const values = g.items!.map((x) =>
+      x
+        .slice(x.lastIndexOf(":") + 1)
+        .trim()
+        .toLowerCase(),
+    );
+    if (new Set(values).size === 1) return false;
+  }
   // A documentary's quote or timeline never restates a rank ("the best place to work" is not a ranking).
   if (
     [

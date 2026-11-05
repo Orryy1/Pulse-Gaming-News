@@ -537,7 +537,12 @@ export const MomentGraphicCard: React.FC<{
           <div
             key={i}
             style={{
-              marginBottom: i === rows.length - 1 && fitted && !showBar ? 0 : 14,
+              marginBottom:
+                i === rows.length - 1 && fitted && !showBar
+                  ? 0
+                  : fitted?.stacked
+                    ? 20
+                    : 14,
               opacity: fitted ? Math.min(1, s * 1.5) : 1,
             }}
           >
@@ -559,6 +564,8 @@ export const MomentGraphicCard: React.FC<{
                     lineHeight: 1.18,
                     color: COLOUR.amber,
                     marginTop: 2,
+                    // No word left alone on a second line ("... from Final Fantasy" / "XI").
+                    textWrap: "balance",
                   }}
                 >
                   {r.value}

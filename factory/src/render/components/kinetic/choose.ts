@@ -48,6 +48,8 @@ export interface KineticData {
 
 /** Longer than this and a sentence is narration to hear, not type to read. */
 export const KINETIC_MAX_WORDS = 22;
+/** The most words a finishing scale card takes: FFXIV 1:16's nine wrapped down onto its giant "LAUNCH?". */
+export const SCALE_MAX_WORDS = 7;
 /** Below this the chooser declines. */
 export const KINETIC_MIN_CONFIDENCE = 0.5;
 
@@ -95,7 +97,7 @@ export function fittingStyles(d: KineticData): KineticStyle[] {
     if (s === "highlight") return d.shown.length >= 3;
     if (s === "scale")
       return d.finish
-        ? canFinish(d.tokens, d.shown)
+        ? d.shown.length <= SCALE_MAX_WORDS && canFinish(d.tokens, d.shown)
         : norm(d.tokens[d.hero] ?? "").length >= 3;
     return true;
   });

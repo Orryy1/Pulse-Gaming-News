@@ -137,16 +137,20 @@ export async function findIgdbGame(
     ) ??
     pickIgdb(await q(`search "${safe}"; ${fields} limit 20;`), title, year) ??
     (await (async () => {
-      const other = numberVariant(safe);
-      if (!other) return undefined;
-      return (
-        pickIgdb(
-          await q(`${fields} where name ~ "${other}"; limit 20;`),
-          other,
-          year,
-        ) ??
-        pickIgdb(await q(`search "${other}"; ${fields} limit 20;`), other, year)
-      );
+      // The number written the other way, then the name without its subtitle ("Street Fighter II: The World Warrior"
+      // is "Street Fighter II" on IGDB; that one entry left a ranking 12% empty panel, 3 Nov 2026).
+      const short = safe.includes(":") ? safe.split(":")[0]!.trim() : undefined;
+      for (const other of [numberVariant(safe), short].filter(Boolean) as string[]) {
+        const hit =
+          pickIgdb(
+            await q(`${fields} where name ~ "${other}"; limit 20;`),
+            other,
+            year,
+          ) ??
+          pickIgdb(await q(`search "${other}"; ${fields} limit 20;`), other, year);
+        if (hit) return hit;
+      }
+      return undefined;
     })())
   );
 }

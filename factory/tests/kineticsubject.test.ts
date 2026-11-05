@@ -16,6 +16,6 @@ test("a kept clause keeps its subject (the Need for Speed Short showed 'If sold 
 test("an object pronoun can still come off", () => {
   assert.equal(
     shown("Nobody outside the studio knows it yet."),
-    "Nobody outside the studio knows yet",
+    "Nobody outside the studio knows yet.",
   );
 });

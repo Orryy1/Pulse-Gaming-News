@@ -35,6 +35,7 @@ export function testConfig(
   return {
     officialStillFrames: 0,
     shortVivid: false,
+    docSandboxChapters: 0,
     writerNotesGuard: true,
     longStockNotOnPeople: true,
     shortPlateMax: 1,

@@ -54,7 +54,21 @@ if (process.env.SHOW_RENDER === "mac") {
 }
 let [ep] = await listEpisodes(db, 1);
 if (!ep) {
-  const id = await selectRunWhy(s, whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone)!, due);
+  let id: string | undefined;
+  if (process.env.SHOW_TOPIC) {
+    // A ranking topic as the editor would pick it (createEvergreen), so the rest is the lane's own code.
+    const topic = JSON.parse(process.env.SHOW_TOPIC);
+    const { createEpisode } = await import("../../src/episodes.ts");
+    id = `ep_show_${Date.now()}`;
+    const now = s.now();
+    await createEpisode(
+      db,
+      id,
+      { hash: `evergreen:${topic.format}:${topic.theme}`, headline: topic.title_idea, items: [], sources: ["Steam"], hasOfficial: true, corroborated: true, rumourSignals: false, newestAt: now.toISOString(), score: 0, gameHint: topic.theme } as any,
+      { lane: "evergreen", priority: 2, slotAt: due },
+    );
+    await db.query("UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1", [id, JSON.stringify({ topic })]);
+  } else id = await selectRunWhy(s, whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone)!, due);
   console.log("selected", id);
   if (!id) process.exit(2);
   ep = (await getEpisode(db, id))!;

@@ -429,6 +429,7 @@ export interface RenderInput {
       blurFile?: string;
       beatIndex?: number;
       credit?: string;
+      focusX?: number;
     }>;
     clipFiles: Array<{
       file: string;
@@ -794,6 +795,7 @@ export async function renderShort(input: RenderInput): Promise<void> {
         blurSrc: i.blurFile ? `${files.url}/${webPath(i.blurFile)}` : null,
         beatIndex: i.beatIndex,
         credit: i.credit,
+        focusX: i.focusX,
       })),
       clips: clipFiles.map((c) => ({
         src: `${files.url}/${webPath(c.file)}`,

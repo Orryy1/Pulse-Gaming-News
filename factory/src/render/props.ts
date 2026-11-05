@@ -14,6 +14,7 @@ export interface ShortImage {
   luma?: number;
   beatIndex?: number; // tagged for one entry of a ranking Short
   credit?: string; // a credit its licence asks for on screen (a CC BY photo), shown while it shows
+  focusX?: number; // 0-1, the subject's place across a wide still, for the vertical crop
 }
 
 export interface ShortClip {

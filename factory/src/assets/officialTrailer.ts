@@ -729,7 +729,7 @@ async function sharpestFrames(
   take: number,
   scratch: string,
 ): Promise<number[]> {
-  const samples = 8;
+  const samples = 5;
   const found: Array<{ at: number; bytes: number }> = [];
   await fs.mkdir(scratch, { recursive: true });
   for (let i = 0; i < samples; i++) {
@@ -789,7 +789,7 @@ async function trailerStills(
     const used: number[] = [];
     for (const [k, m] of moments.entries()) {
       const seconds = m.durationSeconds ?? 2;
-      const ats = await sharpestFrames(keep, m.startSeconds ?? 0, seconds, 2, scratch);
+      const ats = await sharpestFrames(keep, m.startSeconds ?? 0, seconds, 1, scratch);
       for (const [j, at] of ats.entries()) {
         used.push(at);
         out.push({
@@ -816,7 +816,7 @@ async function trailerStills(
       const small = path.join(scratch, `p${i}.jpg`);
       await run(
         "ffmpeg",
-        ["-y", "-ss", at.toFixed(2), "-i", keep, "-frames:v", "1", "-vf", "scale=-2:540", "-q:v", "4", small],
+        ["-y", "-skip_frame", "nokey", "-ss", at.toFixed(2), "-i", keep, "-frames:v", "1", "-vf", "scale=-2:540", "-q:v", "4", small],
         { timeout: 60_000 },
       ).catch(() => undefined);
       const st = await fs.stat(small).catch(() => undefined);

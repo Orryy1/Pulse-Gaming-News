@@ -509,6 +509,7 @@ export interface Config {
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
+  docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
   ytdlpPath: string;
   /** Games the owner plays (and records): long videos about them send them a "record these moments" list. */
@@ -1150,6 +1151,7 @@ export function loadConfig(): Config {
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   shortVivid: bool("SHORT_VIVID", false),
+  docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
     ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
     ownerGames: str("OWNER_GAMES", "Grand Theft Auto V, Grand Theft Auto VI")
       .split(",")

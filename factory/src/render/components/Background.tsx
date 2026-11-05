@@ -113,6 +113,15 @@ const footageFilter = "contrast(1.03) saturate(1.05)";
 // bars live (the bottom tenth) never shows; the picture keeps its centre.
 const SUBTITLE_CROP = 1.24;
 
+/** Where a wide still sits in the vertical crop: the crop centred on its subject where one was found. */
+export function focusPosition(image: ShortImage): string | undefined {
+  const fx = image.focusX;
+  if (fx === undefined || !(image.aspect > 0.5625)) return undefined;
+  const w = 0.5625 / image.aspect; // the share of the picture's width a 9:16 crop shows
+  const left = Math.min(1 - w, Math.max(0, fx - w / 2));
+  return `${((left / (1 - w)) * 100).toFixed(1)}% 50%`;
+}
+
 /** Full-bleed cover crop with one ambient move. */
 const Still: React.FC<{
   image: ShortImage;
@@ -131,6 +140,7 @@ const Still: React.FC<{
           width: "100%",
           height: "100%",
           objectFit: "cover",
+          objectPosition: focusPosition(image),
           filter: footageFilter,
           transform: `scale(${m.scale * punch}) translate(${m.x}px, ${m.y}px)`,
         }}

@@ -2706,7 +2706,11 @@ async function stepScriptDocumentary(
   );
   const chapters: DocDraft["chapters"] = [];
   const warnings: string[] = [];
-  for (const [index, plan] of outline.chapters.entries()) {
+  // A sandbox writes only the opening chapters (DOC_SANDBOX_CHAPTERS, 0 in production).
+  for (const [index, plan] of (s.cfg.docSandboxChapters
+    ? outline.chapters.slice(0, s.cfg.docSandboxChapters)
+    : outline.chapters
+  ).entries()) {
     const article = await s.research(
       plan.wiki_title,
       `${plan.game_title} ${plan.year} video game`,
@@ -5774,6 +5778,75 @@ async function gatherMedia(
     }
     const thumb = images.findIndex((a) => a.file.endsWith("official_trailer.jpg"));
     if (thumb >= 0) images.splice(thumb, 1);
+    // The picture editor puts the pool on the lines it shows (the ocarina on "hum its songs"), and each frame is
+    // cropped on its subject for the vertical screen. Neither stops the Short if it fails.
+    const frames = official.stills.filter((a) => !a.file.endsWith("official_trailer.jpg"));
+    const clauses = (text: string) =>
+      text
+        .split(/(?<=[,.;?!])\s+/)
+        .reduce<string[]>((out, c) => {
+          // A short tail stays with the clause before it: it would be under a shot's length.
+          if (out.length && c.split(/\s+/).length < 3) out[out.length - 1] += ` ${c}`;
+          else out.push(c);
+          return out;
+        }, []);
+    // One target for each clause of a line, in order, so a line with two ideas cuts to two pictures.
+    const targets = targetsFor(script)
+      .filter((t) => t.key === "hook" || t.key.startsWith("beat:"))
+      .flatMap((t) => {
+        const parts = clauses(t.text);
+        return parts.map((sentence, k) => ({
+          key: `${t.key}#${k}`,
+          // The writer's keywords describe the whole line; a clause of it asks for what it says itself.
+          show: parts.length > 1 ? "exactly what this clause says" : [t.want, ...t.keywords].join(", "),
+          sentence,
+        }));
+      });
+    clauses(script.pulse_take.narration).forEach((sentence, k) =>
+      targets.push({ key: `take#${k}`, show: "what the line says", sentence }),
+    );
+    const order = new Map<VisualAsset, number>();
+    try {
+      const ranked = await rankStills(
+        s.llm,
+        targets,
+        frames.map((a) => ({ file: path.join(dir, a.file) })),
+        path.join(dir, "stillscore"),
+        undefined,
+        "documentary",
+      );
+      for (const p of ranked.picks) {
+        const a = frames[p.image]!;
+        a.label = p.label;
+        const [line, clause] = p.key.split("#");
+        order.set(a, targets.findIndex((t) => t.key === p.key));
+        if (line === "hook") {
+          a.role = "hook";
+          a.beatIndex = undefined;
+        } else if (line!.startsWith("beat:")) {
+          a.role = undefined;
+          a.beatIndex = Number(line!.slice(5));
+        }
+        else a.beatIndex = undefined;
+        void clause;
+      }
+      for (const [i, x] of ranked.focus?.entries() ?? [])
+        if (frames[i]) frames[i]!.focusX = x;
+      // A frame with no clear subject (spray, fog) shows nothing once it is cropped tall.
+      if (ranked.focus?.size)
+        for (const [i, a] of frames.entries())
+          if (!ranked.focus.has(i) && !order.has(a) && images.includes(a) && images.length > 12)
+            images.splice(images.indexOf(a), 1);
+      for (const i of ranked.withText) {
+        const at = images.indexOf(frames[i]!);
+        if (at >= 0 && images.length > 12) images.splice(at, 1);
+      }
+    } catch (err) {
+      log("warn", "trailer frames not ranked", { episode: ep.id, error: errorMessage(err) });
+    }
+    await fs.rm(path.join(dir, "stillscore"), { recursive: true, force: true }).catch(() => undefined);
+    // The frames the editor chose lead, in the order of the lines, ahead of the moments and the pool.
+    images.sort((x, y) => (order.get(x) ?? 999) - (order.get(y) ?? 999));
   }
   // First-party newsroom images (PlayStation Blog, Xbox Wire) are press
   // material meant for coverage. Outlet images are never used.
@@ -6112,6 +6185,8 @@ async function gatherMedia(
       label: a.label,
       ...(wordy.has(a.file) ? { wordy: true } : {}),
       ...(a.then ? { then: true } : {}),
+      ...(a.focusX !== undefined ? { focusX: a.focusX } : {}),
+      ...(a.role ? { role: a.role } : {}),
     });
   }
   // What the newer picture libraries gave this Short, in its log and the owner's note (long videos: after the top-up).
@@ -9241,6 +9316,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         blurFile: i.blurFile,
         beatIndex: i.beatIndex,
         credit: photoCredit(i),
+        focusX: i.focusX,
       })),
       clipFiles: (assets.clips ?? []).map((c) => ({
         file: c.file,

@@ -258,6 +258,7 @@ import { formatOpen } from "./formats.ts";
 import { blurPlate, meanLuma } from "./assets/plates.ts";
 import {
   argumentArm,
+  cardFigureProblems,
   endingProblems,
   evergreenRuleNote,
   shortRuleNote,
@@ -5151,6 +5152,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       ? thinProblems(narrationOf(script), script.thin_reason)
       : [];
     problems.push(...thin);
+    if (s.cfg.shortLabelsClean) problems.push(...cardFigureProblems(script.beats));
     if (s.cfg.shortEndPayoff) problems.push(...endingProblems(script.loop_line));
     if (pulseCheck) problems.push(...pulseCheckProblems(script));
     // The test variant is a house rule for this Short: a draft that ignored it is sent back like any other.
@@ -9431,6 +9433,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       attribution:
         s.cfg.shortLabelsClean && ownWorkShort(script) ? "" : script.attribution,
       bright: s.cfg.shortBright,
+      quickFigures: s.cfg.shortLabelsClean,
       ownWork: s.cfg.shortLabelsClean && !!script.evergreen_format,
       gameSubtitle,
       vivid: s.cfg.shortVivid,

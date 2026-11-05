@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildPlan, MIN_SHOT, pickHero, type PlanInput } from "../src/render/plan.ts";
-import { argumentArm, endingProblems, evergreenRuleNote, shortRuleNote, thinProblems } from "../src/editorial/shortrules.ts";
+import { argumentArm, cardFigureProblems, endingProblems, evergreenRuleNote, shortRuleNote, thinProblems } from "../src/editorial/shortrules.ts";
 import { whyFollowProblems } from "../src/editorial/why.ts";
 import { evergreenTitle } from "../src/editorial/seo.ts";
 import { scorePlan } from "../src/qa/rubric.ts";
@@ -464,4 +464,13 @@ test("a game's number is tried both ways", () => {
   assert.equal(numberVariant("Grand Theft Auto 6"), "Grand Theft Auto VI");
   assert.equal(numberVariant("Grand Theft Auto VI"), "Grand Theft Auto 6");
   assert.equal(numberVariant("Halo"), undefined);
+});
+
+test("a card's figure must be in the line it sits on", () => {
+  const b = (narration: string, primary: string, kind = "stat") => ({ narration, visual: { kind, primary } });
+  assert.equal(cardFigureProblems([b("And 40% plan extra purchases.", "40%")]).length, 0);
+  assert.equal(cardFigureProblems([b("Sixteen missions run seven hours.", "16 missions")]).length, 0);
+  assert.equal(cardFigureProblems([b("That's what players are reporting.", "~30GB")]).length, 1);
+  assert.equal(cardFigureProblems([b("That's 23 games over 24 years.", "$40B")]).length, 1);
+  assert.equal(cardFigureProblems([b("Any line.", "\"single-player\"", "quote")]).length, 0);
 });

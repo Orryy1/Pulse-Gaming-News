@@ -6,6 +6,8 @@
 // The rules join the variant note, the last thing the writer reads, so they outrank the general brief above them.
 // The checks are pure and cheap: a miss goes back to the writer once with the others, and only a thin story stops.
 
+import { numberWords } from "../voice/speakable.ts";
+
 /** The first line carries the stake. Worded so it holds for a question hook and a statement hook alike (hook style test). */
 export const STAKE_RULE = `First line: the hook has to carry a stake for the viewer, not just the fact: what this costs them, saves them, takes from them, or what they should do or not do. Whatever shape the hook takes (a question, a statement, a surprise), someone scrolling past should feel it is about them or their game. Shapes that work, in this story's own words: a warning ("Do not pre-order X yet"), a loss ("Your X save won't carry over"), a thing to do tonight ("Claim X before Friday"), a price they will pay. Keep the game's name in the first five words and every other hook rule.`;
 
@@ -116,4 +118,37 @@ export function evergreenRuleNote(cfg: ShortRuleSettings): string {
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+const FIGURE_CARDS = new Set(["stat", "score", "price", "countdown"]);
+
+/**
+ * A card's figure has to be in the line it sits on: the card lands on its word, and a viewer who reads "$40B" under
+ * "that's 23 games over 24 years" hears one number and sees another. Of 70 figure cards in 30 days about 10 did this
+ * ("That's what players are reporting" over ~30GB). Whole numbers only, in digits or words; a sum in other words
+ * ("half a million", "a third") is left to the writer.
+ */
+export function cardFigureProblems(
+  beats: Array<{ narration: string; visual: { kind: string; primary: string } }>,
+): string[] {
+  const out: string[] = [];
+  for (const b of beats) {
+    if (!FIGURE_CARDS.has(b.visual.kind)) continue;
+    const said = b.narration.toLowerCase().replace(/,/g, "");
+    const figs = b.visual.primary.replace(/,/g, "").match(/\d+(?:\.\d+)?/g) ?? [];
+    for (const fig of figs) {
+      const n = Number(fig);
+      const inWords =
+        Number.isInteger(n) && n < 1e12
+          ? new RegExp(`\\b${numberWords(n)}\\b`).test(said)
+          : false;
+      if (!said.includes(fig) && !inWords) {
+        out.push(
+          `The card "${b.visual.primary}" sits on the line "${b.narration.slice(0, 80)}", which does not say ${fig}. Say the figure in that line, or put the card on the line that says it.`,
+        );
+        break;
+      }
+    }
+  }
+  return out;
 }

@@ -678,6 +678,7 @@ export const Short: React.FC<ShortProps> = (props) => {
                 entryTop={clean ? ENTRY_CARD_TOP : ENTRY_CARD_TOP_CHROME}
                 beatIndex={beatIndexOf[i]}
                 steamPrices={props.steam?.prices}
+                quickFigures={props.quickFigures}
               />
             )}
           </Sequence>

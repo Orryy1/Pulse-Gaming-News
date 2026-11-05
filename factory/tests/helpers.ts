@@ -33,6 +33,10 @@ export function testConfig(
   overrides: Partial<Config> = {},
 ): Config {
   return {
+    docPickSingleSubject: false,
+    filmSlateFile: "",
+    gameplayDirect: false,
+    gameplayOneTap: false,
     writerNotesGuard: true,
     firstCommentQuestion: false,
     firstCommentCheck: false,

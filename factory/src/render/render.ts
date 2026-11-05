@@ -28,6 +28,7 @@ import { pocketOf } from "./soundfx.ts";
 import type { ThumbProps } from "./Brand.tsx";
 import type { EngageProps } from "./Engage.tsx";
 import type { CutdownProps } from "./Cutdown.tsx";
+import type { GameplayShortProps } from "./GameplayShort.tsx";
 
 /**
  * A file name as a URL path: on Windows path.join writes backslashes, and inside a CSS url() a backslash
@@ -961,6 +962,70 @@ export async function renderCutdown(input: {
       frame: Math.min(
         composition.durationInFrames - 1,
         Math.round(1.5 * composition.fps),
+      ),
+      imageFormat: "jpeg",
+      jpegQuality: 88,
+      browserExecutable,
+      chromiumOptions,
+    });
+  } finally {
+    await files.close();
+  }
+}
+
+/** Renders the rebuilt gameplay Short (src/render/GameplayShort.tsx), with a poster on the outcome. */
+export async function renderGameplayShort(input: {
+  episodeDir: string;
+  props: Omit<GameplayShortProps, "videoSrc" | "voiceSrc"> & {
+    videoFile: string;
+    voiceFile: string;
+  };
+  outFile: string;
+  posterFile: string;
+  concurrency: number;
+  gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
+  browserExecutable?: string;
+}): Promise<void> {
+  const serveUrl = await getBundle();
+  const files = await serveDir(input.episodeDir);
+  try {
+    const { videoFile, voiceFile, ...rest } = input.props;
+    const props: GameplayShortProps = {
+      ...rest,
+      videoSrc: `${files.url}/${webPath(videoFile)}`,
+      voiceSrc: `${files.url}/${webPath(voiceFile)}`,
+    };
+    const browserExecutable = input.browserExecutable || undefined;
+    const chromiumOptions = { gl: input.gl ?? "swangle" } as const;
+    const composition = await selectComposition({
+      serveUrl,
+      id: "PulseGameplayShort",
+      inputProps: props,
+      browserExecutable,
+    });
+    await renderWithTurn(`gameplay ${path.basename(input.outFile)}`, {
+      composition,
+      serveUrl,
+      codec: "h264",
+      crf: 20,
+      pixelFormat: "yuv420p",
+      audioCodec: "aac",
+      audioBitrate: "192k",
+      outputLocation: input.outFile,
+      inputProps: props,
+      concurrency: input.concurrency,
+      browserExecutable,
+      chromiumOptions,
+      timeoutInMilliseconds: 180_000,
+    });
+    await renderStill({
+      composition,
+      serveUrl,
+      output: input.posterFile,
+      inputProps: props,
+      frame: Math.min(
+        composition.durationInFrames - 1,
+        Math.round((props.payoffAt + 0.5) * composition.fps),
       ),
       imageFormat: "jpeg",
       jpegQuality: 88,

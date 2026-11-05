@@ -30,6 +30,7 @@ import {
   renderLongThumbs,
   countAsRender,
   renderCutdown,
+  renderGameplayShort,
 } from "./render/render.ts";
 import {
   extractFrames,
@@ -478,6 +479,7 @@ export function createServices(db: Db, cfg: Config): Services {
       : renderLong,
     renderLongStills,
     renderCutdown,
+    renderGameplayShort,
     normalise: normaliseLoudness,
     technicalQa,
     extractFrames,

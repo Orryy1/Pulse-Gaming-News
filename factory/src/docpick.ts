@@ -15,6 +15,7 @@
 // Each pick logs its breakdown and posts one Discord line. DOC_BREAKOUT_PICKER turns it off.
 // SEQUEL_WINNERS (src/sequels.ts) puts one thing ahead of the score: the long version of a Why Short that already did
 // well on the channel, since proof from our own viewers beats a prediction. It is still never a repeat of a documentary.
+import fs from "node:fs/promises";
 import {
   DOC_FRANCHISES,
   DOC_STORIES,
@@ -45,6 +46,8 @@ export interface DocCandidate {
   aliases: string[];
   /** A Steam search for its flagship game, for the fanbase figures; empty when it was never on Steam. */
   steam: string;
+  /** A film from the ranked slate (FILM_SLATE_FILE). */
+  slate?: { rank: number; title_idea: string };
   /** The long version of one of our own Shorts that did well: the Short, its question and its numbers. */
   sequel?: { short: string; title: string; question?: string; proof: string };
 }
@@ -409,6 +412,85 @@ export function scoreFreshness(c: DocCandidate, s: DocSignals): number {
   );
 }
 
+// ---------------------------------------------------------------- the shape (DOC_PICK_SINGLE_SUBJECT)
+
+/**
+ * How much a story is about one thing, 0-1. The audit's evidence (Nov 2026): the long videos that reach 100k from small
+ * channels follow a person, a hunt or a failure (Sewsh's strongest player, CRG's full story of one game, Joeseppi's
+ * cube); both of ours that surveyed a series held 11-12%. A person or a hunt in the angle raises it, a failure helps,
+ * and a list of topics ("GTA Online's money, Red Dead 2, Dan Houser leaving, the leak and the delays") is a survey.
+ */
+export function scoreShape(angle: string): { score: number; reasons: string[] } {
+  const reasons: string[] = [];
+  const hit = (re: RegExp) => re.test(angle);
+  let score = 0.4;
+  if (
+    hit(
+      /\b(the (man|woman|teen(ager)?|kid|boy|girl|player|programmer|lawyer|hacker|designer|founder|creator)|one (man|woman|player|person|fan)|who)\b/i,
+    )
+  ) {
+    score += 0.3;
+    reasons.push("a person");
+  }
+  if (
+    hit(
+      /\b(hunt|hunted|mystery|solved?|tracked|caught|search(ed)? for|chased?|prize|winner|sting)\b/i,
+    )
+  ) {
+    score += 0.25;
+    reasons.push("a hunt");
+  }
+  if (
+    hit(
+      /\b(fail(ed|ure)?|flop(ped)?|collapse[ds]?|shut ?down|closed|cancel(l)?ed|pulled|lost|fired|sued|lawsuit|disbarred|disaster)\b/i,
+    )
+  ) {
+    score += 0.15;
+    reasons.push("a failure");
+  }
+  const listed = (angle.match(/,/g) ?? []).length + (/:/.test(angle) ? 1 : 0);
+  if (listed >= 3) {
+    score -= 0.35;
+    reasons.push("a list of topics");
+  }
+  if (
+    hit(
+      /\b(game by game|history of|every game|the whole series|franchise|decade|the story of|lost years|years of)\b/i,
+    )
+  ) {
+    score -= 0.25;
+    reasons.push("a survey");
+  }
+  return {
+    score: Math.round(Math.max(0, Math.min(1, score)) * 100) / 100,
+    reasons,
+  };
+}
+
+/** A film on the slate as a documentary candidate (the writer treats it as it does a sequel: its own wiki and angle). */
+export interface SlateFilm {
+  rank: number;
+  subject: string;
+  wiki: string;
+  angle: string;
+  title_idea: string;
+  aliases?: string[];
+  steam?: string;
+}
+
+export function slateCandidate(f: SlateFilm): DocCandidate {
+  return {
+    kind: "story",
+    index: -1,
+    subject: f.subject,
+    wiki: f.wiki,
+    angle: f.angle,
+    aliases: f.aliases?.length ? f.aliases : [f.subject],
+    steam: f.steam ?? "",
+    slate: { rank: f.rank, title_idea: f.title_idea },
+  };
+}
+
 /** How much each part counts; they sum to 1. */
 export const DOC_PICK_WEIGHTS = {
   fame: 0.25,
@@ -509,11 +591,35 @@ export function rankDocCandidates(
   cands: DocCandidate[],
   signals: Map<string, DocSignals>,
   now: Date,
+  o: { singleSubject?: boolean } = {},
 ): DocScore[] {
   return cands
-    .map((c) =>
-      scoreCandidate(c, signals.get(c.subject) ?? emptySignals(c), now),
-    )
+    .map((c) => {
+      const scored = scoreCandidate(
+        c,
+        signals.get(c.subject) ?? emptySignals(c),
+        now,
+      );
+      if (!o.singleSubject) return scored;
+      // A survey leaves the running; a story keeps 60% of its score at worst, all of it at a clear shape.
+      if (c.kind === "franchise")
+        return {
+          ...scored,
+          excluded: scored.excluded ?? "a series survey (DOC_PICK_SINGLE_SUBJECT)",
+        };
+      const shape = scoreShape(c.angle);
+      return {
+        ...scored,
+        total:
+          Math.round(
+            scored.total * (0.6 + 0.4 * Math.min(1, shape.score / 0.7)) * 1000,
+          ) / 1000,
+        notes: [
+          ...scored.notes,
+          `shape ${shape.score} (${shape.reasons.join(" + ") || "no person, hunt or failure in the angle"})`,
+        ],
+      };
+    })
     .sort(
       (a, b) =>
         Number(!!a.excluded) - Number(!!b.excluded) || b.total - a.total,
@@ -745,11 +851,25 @@ export async function rankBreakoutDocs(
     demand?: DemandLookup;
     offline?: boolean;
     extra?: DocCandidate[];
+    singleSubject?: boolean;
   },
 ): Promise<DocScore[]> {
   const cands = [...(o.extra ?? []), ...docCandidates()];
   const deps = await pickDeps(s, o);
-  return rankDocCandidates(cands, await gatherDocSignals(cands, deps), o.now);
+  return rankDocCandidates(cands, await gatherDocSignals(cands, deps), o.now, {
+    singleSubject: o.singleSubject,
+  });
+}
+
+/** The slate file's films, best first; none when it is unset or unreadable. */
+export async function readFilmSlate(file: string): Promise<SlateFilm[]> {
+  if (!file) return [];
+  try {
+    const films = JSON.parse(await fs.readFile(file, "utf8")) as SlateFilm[];
+    return [...films].sort((a, b) => a.rank - b.rank);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -758,7 +878,12 @@ export async function rankBreakoutDocs(
  */
 export async function pickBreakoutDoc(
   s: PickServices & {
-    cfg: { docPickLookups: number; sequelWinners?: boolean };
+    cfg: {
+      docPickLookups: number;
+      sequelWinners?: boolean;
+      docPickSingleSubject?: boolean;
+      filmSlateFile?: string;
+    };
     now(): Date;
   },
 ): Promise<
@@ -773,18 +898,24 @@ export async function pickBreakoutDoc(
         .filter((w) => w.kind === "why" && w.subject)
         .map((w) => sequelCandidate(w, found.norm))
     : [];
+  const slate = (await readFilmSlate(s.cfg.filmSlateFile ?? "")).map(slateCandidate);
   const ranked = await rankBreakoutDocs(s, {
     now,
     lookups: s.cfg.docPickLookups,
     demand: docDemandLookup(s, () => s.now()),
-    extra,
+    extra: [...extra, ...slate],
+    singleSubject: s.cfg.docPickSingleSubject,
   });
   const open = ranked.filter((x) => !x.excluded);
   // The strongest winner not yet made goes first, in the order sequelWinners ranked them.
   const sequel = extra
     .map((c) => open.find((x) => x.candidate === c))
     .find(Boolean);
-  const win = sequel ?? open[0];
+  // Next the slate, in its own order: the evidence behind that order is broader than this score can see.
+  const onSlate = slate
+    .map((c) => open.find((x) => x.candidate === c))
+    .find(Boolean);
+  const win = sequel ?? onSlate ?? open[0];
   if (!win) return undefined;
   if (sequel) {
     const rest = open.filter((x) => x !== win);
@@ -808,9 +939,12 @@ export async function pickBreakoutDoc(
     };
   }
   return {
-    topic: topicFromScore(win),
+    topic: win.candidate.slate
+      ? { ...topicFromScore(win), title_idea: win.candidate.slate.title_idea }
+      : topicFromScore(win),
     detail: {
       pick: win.candidate.subject,
+      ...(win.candidate.slate ? { slate_rank: win.candidate.slate.rank } : {}),
       total: win.total,
       parts: win.parts,
       notes: win.notes,

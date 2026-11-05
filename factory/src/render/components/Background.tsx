@@ -403,7 +403,7 @@ export const Scrim: React.FC<{
       <AbsoluteFill
         style={{
           background:
-            "linear-gradient(180deg, rgba(5,5,7,0.42) 0%, rgba(5,5,7,0) 11%, rgba(5,5,7,0) 58%, rgba(5,5,7,0.28) 70%, rgba(5,5,7,0.28) 84%, rgba(5,5,7,0) 100%)",
+            "linear-gradient(180deg, rgba(5,5,7,0.42) 0%, rgba(5,5,7,0) 11%, rgba(5,5,7,0) 56%, rgba(5,5,7,0.45) 63%, rgba(5,5,7,0.45) 76%, rgba(5,5,7,0) 88%)",
         }}
       />
     );

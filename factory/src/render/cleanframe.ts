@@ -237,7 +237,7 @@ export function elementStats(
 
 
 /** Frames the word moment holds (components/Stamp.tsx STAMP_FRAMES). */
-const STAMP_HOLD = 51;
+const STAMP_HOLD = 84;
 /** Frames the motif sting holds after the hook (Short.tsx MOTIF_STING). */
 const STING_FRAMES = 30;
 

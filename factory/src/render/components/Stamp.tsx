@@ -25,7 +25,7 @@ export interface StampSpec {
 }
 
 /** Frames a stamp stays on screen. */
-export const STAMP_FRAMES = 51;
+export const STAMP_FRAMES = 84; // 2.8 s: long enough to read (owner, 5 Nov 2026)
 
 export const Stamp: React.FC<{
   stamp: StampSpec;

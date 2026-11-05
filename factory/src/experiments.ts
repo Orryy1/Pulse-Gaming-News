@@ -458,7 +458,10 @@ export async function experimentVerdicts(
     `- ${sideLine("With it", desk.withDesk)}`,
     `- ${sideLine("Without it", desk.without)}`,
   );
-  if (desk.decision === "keep") {
+  if (desk.decision === "keep" && cfg.deskShare <= 0) {
+    // The owner switched the desk voice off (5 Nov 2026: "grating and condescending"); numbers never turn it back on.
+    lines.push("Decision: **stays off**, the owner's choice.");
+  } else if (desk.decision === "keep") {
     deskShare = 1;
     lines.push(
       `Decision: **keep it.** With it, the share who stayed to watch was ${pts(desk.withDesk.stay - desk.without.stay)} higher and they watched no less of each Short. Every news Short with a question now gets it.`,

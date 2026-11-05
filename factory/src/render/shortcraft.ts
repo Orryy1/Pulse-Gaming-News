@@ -73,7 +73,7 @@ export const SHORT_TRACK_FRAMES = 8;
 export const SHORT_FREEZE_HOLD = 36;
 export const SHORT_FREEZE_LEAD = 15;
 /** Frames the word moment (components/Stamp.tsx STAMP_FRAMES) holds. */
-const STAMP_HOLD = 51;
+const STAMP_HOLD = 84;
 
 export type RecentCraft = { look: string; day: string };
 
@@ -152,15 +152,17 @@ function hash(s: string, seed: number): number {
 
 // ---- Card windows ---------------------------------------------------------------------------------
 
+// Long enough to read and take in (owner, 5 Nov 2026: graphics went "way too quick to digest"); a card never
+// outlasts its own segment.
 const HOLD_SECONDS = (s: Segment) =>
   s.kind === "take"
-    ? 3.5
+    ? 5
     : s.visual && ["list", "timeline", "compare"].includes(s.visual.kind)
-      ? 3
-      : 2.5;
+      ? 5.5
+      : 4.5;
 
 /**
- * When a beat's or the take's card is up: from the word it is about (6 frames early) for 2.5-3.5 s, inside
+ * When a beat's or the take's card is up: from the word it is about (6 frames early) for 4.5-5.5 s, inside
  * its segment. The Short (src/render/Short.tsx) draws its cards in these windows; the planner keeps its
  * fillers and camera moves clear of them.
  */

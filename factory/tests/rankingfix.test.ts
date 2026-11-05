@@ -614,13 +614,13 @@ const segments = [
 test("rank card: it holds its whole entry, while small graphics keep their word-level hold", () => {
   const w = cardWindow(segments, [], 1, 30, 960);
   assert.deepEqual(w, { from: 120, len: 240 });
-  assert.equal(cardWindow(segments, [], 3, 30, 960).len, 105);
+  assert.equal(cardWindow(segments, [], 3, 30, 960).len, 150);
   const news = [
     seg("hook", 0, 4),
     seg("beat", 4, 12, { kind: "stat", primary: "$70", secondary: "" }),
     seg("loop", 12, 16),
   ];
-  assert.equal(cardWindow(news, [], 1, 30, 480).len, 75);
+  assert.equal(cardWindow(news, [], 1, 30, 480).len, 135);
 });
 
 test("rank card: every other graphic in the beat gives way, and the gate measures what is drawn", () => {

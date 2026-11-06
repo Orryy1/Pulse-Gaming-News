@@ -931,7 +931,7 @@ test("LONG_CARD_SHARE: off, a line with its own still keeps it; on, a sure fille
 test("the launch file's Part 1 is a guide with named sources; a run entry carries them; Part 2 stays a documentary", () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const run = readRun(path.join(here, "..", "launch_run.json"));
-  const part1 = run.find((e) => e.kind === "doc" && e.date === "2026-11-13");
+  const part1 = run.find((e) => e.kind === "doc" && e.date === "2026-11-10");
   const part2 = run.find((e) => e.kind === "doc" && e.date === "2026-11-21");
   assert.equal(part1?.kind === "doc" && part1.format, "guide");
   assert.ok(part1?.kind === "doc" && (part1.sources?.length ?? 0) >= 5);
@@ -939,7 +939,7 @@ test("the launch file's Part 1 is a guide with named sources; a run entry carrie
   assert.equal(part2?.kind === "doc" ? part2.format : "x", undefined);
   const due = docRunDue(
     run,
-    new Date("2026-11-12T00:30:00Z"),
+    new Date("2026-11-09T00:30:00Z"),
     [],
     "Europe/London",
   );

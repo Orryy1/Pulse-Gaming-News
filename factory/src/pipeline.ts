@@ -11549,7 +11549,9 @@ async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
       fatal &&
       ep.lane !== "twin" && // the twin channel's login or quota must never pause the main channel
       (["uploading", "uploaded"].includes(ep.status) ||
-        /invalid_grant|quota|credential|api key|x-api-key|forbidden|unauthori[sz]ed|refused/i.test(
+        // "refused" alone caught an explainer part the writer refused for missing evidence and paused every lane
+        // for 12 hours (6 Nov 2026); only a platform's refusal of our login counts.
+        /invalid_grant|quota|credential|api key|x-api-key|forbidden|unauthori[sz]ed|(token|login|access|request) (was )?refused/i.test(
           msg,
         ));
     if (platformFault)

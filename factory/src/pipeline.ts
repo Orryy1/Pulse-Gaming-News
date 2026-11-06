@@ -11554,8 +11554,16 @@ async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
         /invalid_grant|quota|credential|api key|x-api-key|forbidden|unauthori[sz]ed|(token|login|access|request) (was )?refused/i.test(
           msg,
         ));
-    if (platformFault)
+    if (platformFault) {
       await pauseSelection(s.db, s.now(), FATAL_PAUSE_HOURS, msg);
+      // A pause stops every lane, so it is never silent (6 Nov 2026: a wrong one cost a day's Shorts unseen).
+      await s
+        .notify({
+          level: "info",
+          content: `⏸️ New stories are paused for ${FATAL_PAUSE_HOURS} hours after "${(ep.story_json?.headline ?? ep.id).slice(0, 90)}" failed: ${msg.slice(0, 200)}. No Shorts will start until it lapses or the factory is unpaused.`,
+        })
+        .catch(() => undefined);
+    }
     if (fatal || attempts >= s.cfg.maxAttempts) {
       const fresh = await getEpisode(s.db, ep.id);
       if (

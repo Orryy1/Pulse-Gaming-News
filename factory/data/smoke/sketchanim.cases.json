@@ -1,0 +1,10 @@
+[
+  { "name": "drawon", "treatment": "drawOn", "src": "sketch_1.jpg", "frames": [40, 150], "len": 180, "seed": 3 },
+  { "name": "stopmotion", "treatment": "stopMotion", "src": "sketch_2.jpg", "frames": [8, 90], "len": 180, "seed": 4 },
+  { "name": "flipbook", "treatment": "flipbook", "src": "sketch_3.jpg", "earlier": ["sketch_1.jpg"], "page": 2, "frames": [12, 90], "len": 150, "seed": 5 },
+  { "name": "lighttable", "treatment": "lightTable", "src": "sketch_1.jpg", "nextKind": "photo", "nextSrc": "ep:entry_0/assets/photo_0.jpg", "nextAspect": 1.65, "frames": [60, 168], "len": 180, "seed": 6, "tail": 30 },
+  { "name": "lighttable_screenshot", "treatment": "lightTable", "src": "sketch_2.jpg", "nextKind": "screenshot", "nextSrc": "ep:entry_0/assets/screenshot_12.jpg", "frames": [172, 180], "len": 180, "seed": 9, "tail": 30 },
+  { "name": "corkboard", "treatment": "corkBoard", "src": "sketch_3.jpg", "earlier": ["sketch_1.jpg", "sketch_2.jpg"], "page": 3, "runLength": 3, "frames": [6, 120], "len": 180, "seed": 7 },
+  { "name": "picked_solo", "src": "sketch_1.jpg", "nextKind": "clip", "frames": [60], "len": 180, "seed": 8 },
+  { "name": "picked_after_photo", "src": "sketch_2.jpg", "nextKind": "photo", "nextSrc": "ep:entry_0/assets/photo_1.jpg", "nextAspect": 1.5, "frames": [165], "len": 180, "seed": 8, "tail": 30 }
+]

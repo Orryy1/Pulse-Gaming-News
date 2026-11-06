@@ -277,6 +277,7 @@ export interface Config {
   shortClipTextCheck: boolean; // read each Short clip with the local OCR and cut away big burned-in trailer text (SHORT_CLIP_TEXT_CHECK)
   shortStakeFirst: boolean; // the hook carries a stake for the viewer (SHORT_STAKE_FIRST, src/editorial/shortrules.ts)
   shortRefuseThin: boolean; // a script that admits it has nothing goes back, then the story is dropped, big stories excepted (SHORT_REFUSE_THIN)
+  sourceMinChars: number; // a news Short whose richest source says fewer characters than this is dropped before writing; 0 = off (SOURCE_MIN_CHARS)
   shortEndPayoff: boolean; // the last line is a payoff or runs back into the hook, not a question or "next Why tomorrow" (SHORT_END_PAYOFF)
   shortTightScript: boolean; // fewer full stops and plainer words for a quicker read (SHORT_TIGHT_SCRIPT, off)
   shortArgumentShare: number; // 0-1, the share of news and Why Shorts written as one argument with no labelled take (SHORT_ARGUMENT_SHARE)
@@ -1015,6 +1016,7 @@ export function loadConfig(): Config {
     shortClipTextCheck: bool("SHORT_CLIP_TEXT_CHECK", true),
     shortStakeFirst: bool("SHORT_STAKE_FIRST", true),
     shortRefuseThin: bool("SHORT_REFUSE_THIN", true),
+    sourceMinChars: Math.max(0, int("SOURCE_MIN_CHARS", 600)),
     shortEndPayoff: bool("SHORT_END_PAYOFF", true),
     shortTightScript: bool("SHORT_TIGHT_SCRIPT", false),
     shortArgumentShare: Math.max(

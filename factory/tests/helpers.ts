@@ -60,6 +60,7 @@ export function testConfig(
     shortClipTextCheck: false,
     shortStakeFirst: false,
     shortRefuseThin: false,
+    sourceMinChars: 0,
     shortEndPayoff: false,
     shortTightScript: false,
     shortArgumentShare: 0,

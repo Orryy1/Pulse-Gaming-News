@@ -20,6 +20,7 @@ import {
   isFactCommaQuestion,
 } from "./phrasing.ts";
 import { numberWords } from "../voice/speakable.ts";
+import { SOURCE_TRUTH_RULE, absenceClaims } from "./shortrules.ts";
 import type { Llm } from "./llm.ts";
 import { reviseByEdits } from "./revise.ts";
 import {
@@ -100,6 +101,7 @@ ${desk ? "3b. desk_question: before the take, the sceptic's objection, the line 
 4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that echoes the hook's subject, so a rewatch feels connected: the game, the people or the stake, never the hook's number again (a price, size or date said in the hook stays out of the loop). Vary the closing shape: a fact, a comma, then a question ("After that, which one...?") is one shape of many, and never the shape the recent Shorts listed below just used. When it asks the viewer something, make it specific enough to answer in five words: a named fork ("Should Pokemon keep turn-based battles, or go full action?"), three options for a buying story ("Day one, wait for a sale, or skip it?"), "name one" ("Which starter deserves a Mega next?") or the viewer's own numbers ("How many raids before your first shiny?"); put the money in it, dollars first, when the story is about money. Specific questions were answered by 73% of top comments in the comment study, "thoughts?" by 46% and rhetorical ones by 12%. Never a rhetorical question, a punchline dressed as a question, or "will you play it?". Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
 
 Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone.
+${SOURCE_TRUTH_RULE}
 List every factual claim in "claims" with the URL of the provided source that supports it.
 "hashtags": 3-5 tags fans of this story actually search, most specific first (#GTA6, #GTA, #RockstarGames); never generic ones like #gaming or #fyp.
 The YouTube title reads like a sharp headline a friend would text you, not a press release: the game or company named early, a strong verb, the point (the consequence, the surprise or the stakes) and, when the story has one, the number that carries it (a price, a date, a count: titles with a number were more common among hits, and on our own channel they drew 2.7 times the views a day). A fifth of our views come from YouTube search, so name the game the way people type it into the search bar ("GTA 6", "Switch 2", "MW4", "Elden Ring Nightreign"), never only a subtitle or an internal code name. Under 60 characters, sentence-style with no "Game: fact" colon template, no exclamation marks, no all-caps words, no clickbait the video does not deliver: never "BIG problem" or "ruined" over a small detail, never "no one is talking about" (viewers answer that everyone noticed), and never "every", "ultimate" or "complete" unless the Short truly covers all of it (those titles drew lists of what was missing). Good: "Nintendo Just Made Switch 2 Games Cost $80", "GTA 6 Slips Again, and This Time It's Fall". Bad: "GTA 6: Release Date Delayed". A rumor's title says it is a rumor or report. The description opens with one conversational sentence on why it matters, then credits the sources by name.`;
@@ -112,7 +114,9 @@ Mark a "blocker" when the script:
 - states something the sources do not support (numbers, dates, platforms, prices, names, quotes),
 - presents a rumour, leak or analyst estimate as confirmed fact,
 - misattributes who said or reported something,
-- makes a claim that could be defamatory about a real person or company.
+- makes a claim that could be defamatory about a real person or company,
+- says what a source does not say or leaves out ("no price", "no release date", "no platforms", "little else", "the post runs thin"), unless a source's full body text plainly lacks that detail; a source with no body, or only a headline or an opening paragraph, supports no such claim,
+- calls something a new game, DLC, expansion or paid product, or tells viewers to wait on, hold off or not pre-order it, when the sources describe an event, update, season, questline or free content for a game that is already out, or say nothing is for sale.
 Opinion clearly framed as opinion, and long-established public knowledge, are fine. A price rounded and said to be rounded ("under two dollars", "about five dollars" for $1.99 and $4.99) is accurate, not a blocker; a flat "two dollars" for $1.99 is minor at most when the exact price is on screen.
 Spelling, style and tone are "minor" at most.
 verdict is "fail" if there is any blocker.`;
@@ -125,7 +129,9 @@ function sourcesBlock(articles: ArticleText[], cluster: StoryCluster): string {
       const art = byUrl.get(item.url);
       const body =
         art?.text || item.summary || "(no body text available; headline only)";
-      return `<source index="${i}" outlet="${item.source}" kind="${item.sourceKind}" url="${item.url}" published="${item.publishedAt}">
+      // A press reprint on Steam News is the outlet's article, not the game's own announcement.
+      const via = art?.via ? ` reprint-of="${art.via}"` : "";
+      return `<source index="${i}" outlet="${item.source}" kind="${art?.via ? "outlet" : item.sourceKind}" url="${item.url}"${via} published="${item.publishedAt}">
 <headline>${item.title}</headline>
 <body>${body}</body>
 </source>`;
@@ -293,10 +299,18 @@ export async function factCheck(
       .map((b) => `- ${cardText(b.visual)}`)
       .join(
         "\n",
-      )}\n- ${script.pulse_take.on_screen}\n\nYouTube title: ${script.youtube.title}\nYouTube description: ${script.youtube.description}\nScript labels this as rumour: ${script.is_rumour}`,
+      )}\n- ${script.pulse_take.on_screen}\n\nYouTube title: ${script.youtube.title}\nYouTube description: ${script.youtube.description}\nScript labels this as rumour: ${script.is_rumour}${absenceNote(narrationOf(script))}`,
     schema: FactCheckSchema,
     effort: "medium",
   });
+}
+
+/** The script's lines about what the sources leave out, put to the fact check one by one. */
+function absenceNote(narration: string): string {
+  const lines = absenceClaims(narration);
+  return lines.length
+    ? `\n\nThese lines say what the sources do not say. Each is a blocker unless a source's full body text plainly lacks that detail:\n${lines.map((l) => `- "${l}"`).join("\n")}`
+    : "";
 }
 
 const BANNED_OPENERS =

@@ -34,7 +34,7 @@ import {
 } from "./pcschedule.ts";
 import type { Llm } from "./editorial/llm.ts";
 import type { StoryCluster } from "./discovery/cluster.ts";
-import type { ArticleText } from "./discovery/article.ts";
+import { thinSourceProblem, type ArticleText } from "./discovery/article.ts";
 import type { Narration } from "./voice/elevenlabs.ts";
 import type { VisualAsset, SteamApp, SteamFacts } from "./assets/steam.ts";
 import { factsText } from "./assets/steam.ts";
@@ -292,6 +292,8 @@ import {
   evergreenRuleNote,
   shortRuleNote,
   thinProblems,
+  absenceProblems,
+  preorderProblems,
 } from "./editorial/shortrules.ts";
 import { scorePlan, rubricSummary } from "./qa/rubric.ts";
 import {
@@ -5291,6 +5293,26 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     await Promise.all(items.map((i) => s.fetchArticle(i.url)))
   ).filter((a): a is ArticleText => Boolean(a));
   const mustLabelRumour = !cluster.corroborated;
+  // A news Short is written from what its sources say, never from a headline. Elden Ring's questline (4 Nov 2026)
+  // reached the writer as a Steam reprint's teaser, read as a mystery product, and went out as misinformation.
+  // The richest of the story's sources has to say enough; a second outlet's article counts. Why and run topics
+  // carry their own picked sources.
+  const thinSource =
+    (ep.lane === "news" || ep.lane === "news_breaking") && !cluster.why && !cluster.run
+      ? thinSourceProblem(articles, cluster.items, s.cfg.sourceMinChars)
+      : undefined;
+  if (thinSource) {
+    await markSeen(s.db, cluster.hash, cluster.headline, "rejected", "source too thin");
+    await transition(s.db, ep.id, "selected", "rejected", {
+      last_error: thinSource,
+    });
+    await logEvent(s.db, ep.id, "thin_source", { why: thinSource });
+    await s.notify({
+      level: "info",
+      content: `Dropped before writing, the slot goes to the next story: "${cluster.headline}". ${thinSource}`,
+    });
+    return;
+  }
 
   // Live Steam numbers give the take something the headline doesn't have.
   let steam: EpisodeAssets["steam"];
@@ -5379,6 +5401,17 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       ? thinProblems(narrationOf(script), script.thin_reason)
       : [];
     problems.push(...thin);
+    // Never what a source leaves out, and no buying advice for something nobody sells (src/editorial/shortrules.ts).
+    problems.push(
+      ...absenceProblems(narrationOf(script)),
+      ...preorderProblems(
+        narrationOf(script),
+        [
+          ...articles.map((a) => a.text),
+          ...cluster.items.map((i) => `${i.title} ${i.summary}`),
+        ].join("\n"),
+      ),
+    );
     if (s.cfg.shortLabelsClean) problems.push(...cardFigureProblems(script.beats));
     if (s.cfg.shortEndPayoff) problems.push(...endingProblems(script.loop_line));
     if (pulseCheck) problems.push(...pulseCheckProblems(script));

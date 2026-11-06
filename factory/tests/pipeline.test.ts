@@ -716,6 +716,22 @@ test("a story that fails fact-check twice is dropped, never voiced", async () =>
   assert.match(rejected.last_error ?? "", /late 2027/);
 });
 
+test("a news story whose sources give only a headline or teaser is dropped before writing", async () => {
+  const { db, f, s } = await setup({ sourceMinChars: 600 });
+  s.fetchArticle = async () => undefined;
+  await tick(s);
+  const rejected = (await listEpisodes(db)).find((e) => e.status === "rejected");
+  assert.ok(rejected, "the thin story is rejected");
+  assert.match(rejected!.last_error ?? "", /source too thin/);
+  assert.equal(rejected!.script_json, null, "nothing was written from the headline");
+  assert.ok(f.notifications.some((n) => n.startsWith("Dropped before writing")));
+
+  // A source that says enough goes through as before.
+  const ok = await setup({ sourceMinChars: 600 });
+  await tick(ok.s);
+  assert.equal((await only(ok.db)).status, "published");
+});
+
 test("rumour-only stories are skipped while rumours are disabled", async () => {
   const { db, s } = await setup({}, { pick: 0 });
   s.discover = async () =>

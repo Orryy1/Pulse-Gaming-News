@@ -9,7 +9,7 @@
 import { numberWords } from "../voice/speakable.ts";
 
 /** The first line carries the stake. Worded so it holds for a question hook and a statement hook alike (hook style test). */
-export const STAKE_RULE = `First line: the hook has to carry a stake for the viewer, not just the fact: what this costs them, saves them, takes from them, or what they should do or not do. Whatever shape the hook takes (a question, a statement, a surprise), someone scrolling past should feel it is about them or their game. Shapes that work, in this story's own words: a warning ("Do not pre-order X yet"), a loss ("Your X save won't carry over"), a thing to do tonight ("Claim X before Friday"), a price they will pay. Keep the game's name in the first five words and every other hook rule.`;
+export const STAKE_RULE = `First line: the hook has to carry a stake for the viewer, not just the fact: what this costs them, saves them, takes from them, or what they should do or not do. Whatever shape the hook takes (a question, a statement, a surprise), someone scrolling past should feel it is about them or their game. Shapes that work, in this story's own words: a warning ("Do not pre-order X yet", only when the sources say X is on sale or open for pre-order), a loss ("Your X save won't carry over"), a thing to do tonight ("Claim X before Friday"), a price they will pay. Keep the game's name in the first five words and every other hook rule.`;
 
 /** The hook of a ranking or list: its premise stays, the stake is the argument fans will have. */
 export const STAKE_RULE_EVERGREEN = `First line: besides the premise, the hook gives fans something to fight over or a reason it matters to them ("Your favorite Fallout probably isn't number one"), never just the list's name. It still never hints at number one.`;
@@ -42,6 +42,54 @@ export function thinProblems(narration: string, thinReason?: string): string[] {
   if (thinReason?.trim())
     out.push(`The writer called this story thin: ${thinReason.trim()}`);
   return out;
+}
+
+/**
+ * Never report what a source leaves out. Elden Ring's third community questline (4 Nov 2026) reached the writer as a
+ * Steam reprint's opening paragraph; the Short said the post "runs thin" and "names no price, no platforms and no
+ * release date", told viewers to hold off pre-ordering, and 18,000 TikTok viewers called it misinformation.
+ */
+export const SOURCE_TRUTH_RULE = `Say only what the sources say. Never state what a source does not say ("no price", "no release date", "no platforms", "little else", "the post runs thin", "hasn't said when"): a source you were given may be only its headline or opening lines, so a missing detail is not news. The one exception is a full source text that genuinely lacks a detail the story turns on, and then only as a plain fact ("Sony hasn't given a price yet"). For a game that is already out, an "announced" name can be an event, a season, an update, a questline or a collaboration rather than a new game or DLC: say what it is in the sources' own terms, never guess that it is a new product, and never tell viewers to wait on or hold off pre-ordering something the sources do not say is for sale.`;
+
+const ABSENCE_PHRASES: RegExp[] = [
+  /\bruns? (?:thin|light|dry)\b/i,
+  /\b(?:post|announcement|report|article|source|reveal|trailer|statement)s? (?:is|are|was|were|stays?|stayed|goes|went|reads?) (?:thin|light|vague|silent|quiet|bare)\b/i,
+  /\b(?:names?|gives?|lists?|mentions?|shares?|offers?|confirms?|reveals?|includes?|has|had|with|carr(?:y|ies)) no (?:price|platforms?|(?:release |launch )?dates?|(?:release |launch )?window|details?|specifics)\b(?! (?:increases?|hikes?|rises?|changes?|cuts?|drops?)\b)/i,
+  /\bno (?:price|platforms?|release date|launch date|release window)(?! (?:increase|hike|rise|change|cut|drop|tag on)s?\b)(?:,| or\b| and\b| yet\b| so far\b| given\b| listed\b| named\b| mentioned\b|\.)/i,
+  /\b(?:doesn't|does not|didn't|did not|won't|hasn't|has not|haven't|have not|never) (?:say|said|says|mention|mentioned|name|named|give|given|list|listed|confirm|confirmed|reveal|revealed|share|shared|specify|specified) (?:a |the |any |its |their )?(?:price|platforms?|(?:release |launch )?date|window|when|what it costs|how much|which platforms|details?)\b/i,
+  /\b(?:silent|quiet|mum|vague) (?:on|about) (?:the )?(?:price|platforms?|(?:release |launch )?date|when|details?)\b/i,
+  /\bnothing (?:on|about) (?:the )?(?:price|platforms?|(?:a |the )?(?:release |launch )?date|when)\b/i,
+  /\bno word (?:yet )?(?:on|about)\b/i,
+  /\blittle else\b/i,
+];
+
+/** Each sentence that reports what the sources leave out: a miss for the writer, and a line the fact check must rule on. */
+export function absenceClaims(narration: string): string[] {
+  return narration
+    .split(/(?<=[.!?])\s+/)
+    .map((x) => x.trim())
+    .filter((x) => x && ABSENCE_PHRASES.some((re) => re.test(x)));
+}
+
+export function absenceProblems(narration: string): string[] {
+  return absenceClaims(narration).map(
+    (x) =>
+      `The script says "${x}", which reports what the sources leave out. Say what the sources do say: what the thing is, when, and what it gives the viewer.`,
+  );
+}
+
+const PREORDER_ADVICE =
+  /\b(?:pre-?orders?|pre-?ordering|hold off|before (?:you )?buy(?:ing)?|wait before (?:buying|paying)|don't buy|do not buy|keep your (?:money|wallet))\b/i;
+const FOR_SALE =
+  /\b(?:pre-?orders?|pre-?purchase|price[ds]?|\$\s?\d|£\s?\d|€\s?\d|\d+(?:\.\d\d)? ?(?:usd|dollars)|on sale|buy|purchase|wishlist|deluxe edition|season pass)\b/i;
+
+/** Buying advice ("don't pre-order", "hold off") for a story whose sources sell nothing. */
+export function preorderProblems(narration: string, sourceText: string): string[] {
+  const hit = narration.match(PREORDER_ADVICE);
+  if (!hit || FOR_SALE.test(sourceText)) return [];
+  return [
+    `The script gives buying advice ("${hit[0]}"), but no source says anything is for sale or open for pre-order. Say what the thing is per the sources.`,
+  ];
 }
 
 export const ENDING_RULE = `The ending: this overrides what the brief says about the loop line. The loop_line is a statement, never a question: either the payoff of the whole Short in its sharpest form, or a line whose last words run straight back into the hook, so the replay sounds like the next sentence. Never a question to the viewer, never an advert for ourselves ("the next Why lands tomorrow", "every day", "follow for"), never a summary of what was just said. The viewer's question goes in the pinned comment, not here.`;

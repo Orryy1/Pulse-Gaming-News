@@ -938,6 +938,17 @@ export function shortWpmMax(cfg: Pick<Config, "shortMinWpm" | "shortSpeed">): nu
   return Math.max(190, cfg.shortMinWpm ? cfg.shortMinWpm + 25 : 0, cfg.shortSpeed > 1 ? Math.round(205 * cfg.shortSpeed) : 0);
 }
 
+/** The personal voice for the voice test: a take, honestly held, never an invented experience. */
+export const PERSONAL_VOICE =
+  "Voice for this Short: a gamer talking to a friend, not a news report. Give Pulse's honest opinion in the first person (\"I think\", \"I'll be honest\", \"here's the catch\"). When the story has a downside, say it before the praise, so the praise is believed. One light in-joke gamers would get is welcome if it fits. Tie the story to the biggest game of the moment only when the sources make the link real. End on a question viewers will argue about, not a quiz. Never claim to have played, owned, watched or felt anything, and never put words in anyone's mouth: opinions only, and every fact stays exactly as the sources give it.";
+
+/** A stable 0-1 number for an id (FNV-1a), for splitting episodes between test sides. */
+export function unitHash(id: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193);
+  return (h >>> 0) / 4294967296;
+}
+
 /** True when a story or title is about the channel focus (FOCUS_MATCH). */
 export function focusMatch(cfg: Config, text: string): boolean {
   if (!cfg.focusMatch) return false;
@@ -5322,7 +5333,12 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const argument = argumentArm(s.cfg, ep);
   if (argument)
     await logEvent(s.db, ep.id, "short_argument", { arm: "argument" });
-  const variantNote = [growthNotes(test, testDefaults), shortRuleNote(s.cfg, ep)]
+  // The voice test (6 Nov 2026): the owner's examples, same story and day, 260k views against our 130, all lead
+  // with a person's take. Half the Shorts get that voice; assignment by episode, so a retry keeps its side.
+  const personal = s.cfg.voiceTestShare > 0 && unitHash(ep.id) < s.cfg.voiceTestShare;
+  if (s.cfg.voiceTestShare > 0)
+    await logEvent(s.db, ep.id, "voice_test", { personal }).catch(() => undefined);
+  const variantNote = [growthNotes(test, testDefaults), shortRuleNote(s.cfg, ep), personal ? PERSONAL_VOICE : ""]
     .filter(Boolean)
     .join("\n\n");
   const recentTexts = await recentShortTexts(s.db, ep.id, s.now()).catch(

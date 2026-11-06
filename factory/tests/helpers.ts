@@ -360,6 +360,7 @@ export function testConfig(
     longLeadMinutes: 0,
     minWordsPerMinute: 0,
     shortSpeed: 1,
+    voiceTestShare: 0,
     voiceTakeCheck: true,
     backupDir: "",
     tiktokDaily: 0,

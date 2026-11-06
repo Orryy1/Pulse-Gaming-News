@@ -332,6 +332,8 @@ export interface Config {
   minWordsPerMinute: number;
   /** Every Short's take played this much faster, pitch kept (SHORT_SPEED; 1 = as recorded, 1.25 at most). Chosen 5 Nov 2026: 1.15. */
   shortSpeed: number;
+  /** Share of news and Why Shorts written in the personal, opinionated voice (VOICE_TEST_SHARE; owner's test, 6 Nov 2026). */
+  voiceTestShare: number;
   /** The speed-up for this take (set per call, from shortSpeed): 1 = none. */
   speedFactor?: number;
   /** Long ElevenLabs narration: each take's pitch and brightness is measured and a take that strays from the
@@ -1108,6 +1110,7 @@ export function loadConfig(): Config {
     docLeadMinutes: int("DOC_LEAD_MINUTES", 600),
     longLeadMinutes: int("LONG_LEAD_MINUTES", 30 * 60),
     minWordsPerMinute: int("MIN_WORDS_PER_MINUTE", 145),
+    voiceTestShare: Math.min(1, Math.max(0, Number(str("VOICE_TEST_SHARE", "0")) || 0)),
     shortSpeed: Math.min(1.25, Math.max(1, Number(str("SHORT_SPEED", "1")) || 1)),
     voiceTakeCheck: bool("VOICE_TAKE_CHECK", true),
     docMaxSeconds: int("DOC_MAX_SECONDS", 3000),

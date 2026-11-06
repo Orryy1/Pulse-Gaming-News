@@ -132,6 +132,26 @@
   {
     "kind": "why",
     "date": "2026-11-08",
+    "slot": "12:00",
+    "question": "How long will GTA 6 take to beat?",
+    "title": "How Long Is GTA 6? The 80-Hour Number, Explained",
+    "game": "Grand Theft Auto VI",
+    "arc": "The number everyone repeats is 80 hours; where it comes from (one Rockstar studio head's own playthrough, with optional content); why that is not an official story length; what it means for your first week.",
+    "angle": "Open close to: \"80 hours. That's the GTA 6 number everyone is quoting.\" Then say exactly where it comes from: Rockstar North co-studio head Rob Nelson describing one of his own playthroughs, reported by outlets, and that Rockstar has published no official story length. Separate his playthrough from the main story alone. Name who said what. Never repeat leaked figures.",
+    "sources": [
+      {
+        "url": "https://www.vice.com/en/article/gta-6-how-long-to-complete-80-hours/",
+        "source": "VICE"
+      },
+      {
+        "url": "https://www.dexerto.com/gta/how-long-is-gta-6-3192656/",
+        "source": "Dexerto"
+      }
+    ]
+  },
+  {
+    "kind": "why",
+    "date": "2026-11-08",
     "slot": "18:30",
     "question": "Why isn't GTA 6 coming to PC at launch?",
     "title": "Why GTA 6 Skips PC at Launch, in Take-Two's Words",
@@ -218,6 +238,78 @@
       {
         "url": "https://en.wikipedia.org/wiki/Grand_Theft_Auto_VI",
         "source": "Wikipedia"
+      }
+    ]
+  },
+  {
+    "kind": "doc",
+    "date": "2026-11-10",
+    "slot": "20:00",
+    "make_hours_before": 44,
+    "title": "30 GTA 6 Claims Checked Before Launch: Confirmed, Reported or Busted",
+    "format": "guide",
+    "sources": [
+      {
+        "url": "https://support.rockstargames.com/articles/29jV3Cv2cCgvwM1XgtMO5o/grand-theft-auto-vi-regional-pre-load-and-release-times-on-playstation-5-and-xbox-series-x-or-s",
+        "source": "Rockstar Support",
+        "official": true
+      },
+      {
+        "url": "https://www.rockstargames.com/newswire/article/k4ak9okk485712/grand-theft-auto-vi-pre-load-begins-on-november-10",
+        "source": "Rockstar Newswire",
+        "official": true
+      },
+      {
+        "url": "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+        "source": "Rockstar Newswire",
+        "official": true
+      },
+      {
+        "url": "https://kotaku.com/gta-6-pre-load-times-install-size-and-global-release-times-confirmed-2000752787",
+        "source": "Kotaku"
+      },
+      {
+        "url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032",
+        "source": "Kotaku"
+      },
+      {
+        "url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support",
+        "source": "Tom's Hardware"
+      },
+      {
+        "url": "https://www.purexbox.com/news/2026/06/gta-6-costs-usd80-described-as-a-single-player-experience",
+        "source": "Pure Xbox"
+      },
+      {
+        "url": "https://hitmarker.net/news/take-two-ceo-comments-on-why-gta-vi-was-not-announced-for-pc-903138",
+        "source": "Hitmarker"
+      }
+    ],
+    "franchise": "Grand Theft Auto VI",
+    "wiki": "Grand Theft Auto VI",
+    "angle": "Open with a quick run of GTA 5 against GTA 6 contrasts the sources back (for example: in GTA 5 the police forget you after a block; in GTA 6, per Rockstar's own showing, what they remember), each concrete and sourced, before the guide begins. NOT a history and not 'everything you need to know'. The viewer's own first day: buy it, download it, where you are, who you are, the police, money, cars, what is missing, what is false. Teach three verdicts in the first minute (confirmed, reported, busted) and give every claim one, with its source named in the same breath. Plant loops and pay each one by name. Each chapter closes with one job to do on day one and asks for the next chapter. Say what is untested and promise the launch-day test video on Saturday November 21. No leaks, no datamined material, never a fan map number as fact."
+  },
+  {
+    "kind": "why",
+    "date": "2026-11-11",
+    "slot": "12:00",
+    "question": "Can you switch between Jason and Lucia whenever you like?",
+    "title": "Jason or Lucia? How GTA 6's Switching Really Works",
+    "game": "Grand Theft Auto VI",
+    "arc": "Yes, but not always: what Rockstar said about switching, when the story locks you to one of them, and the mid-chase swap they described.",
+    "angle": "Open close to: \"You can't always switch between Jason and Lucia.\" Say what Rockstar's studio head said in interviews: switching depends on story progress, some missions lock you to one character, and the two can work as a duo or separately. Name the interviews as the sources report them. Say only what the sources say; anything Rockstar hasn't explained is unknown.",
+    "sources": [
+      {
+        "url": "https://www.pcgamer.com/games/grand-theft-auto/gta-6s-story-is-too-important-for-rockstar-to-let-you-swap-between-lucia-and-jason-whenever-you-want/",
+        "source": "PC Gamer"
+      },
+      {
+        "url": "https://pcgamer.com/games/grand-theft-auto/big-new-gta-6-gameplay-details-revealed-including-specifics-about-jason-and-lucia-character-swapping-play-as-a-couple-or-go-off-and-cause-chaos-independently",
+        "source": "PC Gamer"
+      },
+      {
+        "url": "https://www.svg.com/2245115/rockstar-gta-6-players-switch-jason-lucia/",
+        "source": "SVG"
       }
     ]
   },
@@ -314,52 +406,24 @@
     ]
   },
   {
-    "kind": "doc",
-    "date": "2026-11-10",
-    "slot": "20:00",
-    "make_hours_before": 44,
-    "title": "30 GTA 6 Claims Checked Before Launch: Confirmed, Reported or Busted",
-    "format": "guide",
+    "kind": "why",
+    "date": "2026-11-14",
+    "slot": "12:00",
+    "question": "How much bigger is GTA 6's map than GTA 5's?",
+    "title": "GTA 6's Map Is About Twice GTA 5's. Here's What That Means",
+    "game": "Grand Theft Auto VI",
+    "arc": "Rockstar gave a comparison, not a size: about twice GTA 5, three times Red Dead Redemption 2 as outlets report it; why the square-kilometre numbers online are fan estimates; what you won't see on story missions alone.",
+    "angle": "Open close to: \"Rockstar never gave GTA 6's map a number. It gave a comparison.\" Give the comparisons exactly as the sources report them and who said them, and say plainly that any square-kilometre figure is a fan estimate. Never use leaks or leaked coordinates.",
     "sources": [
       {
-        "url": "https://support.rockstargames.com/articles/29jV3Cv2cCgvwM1XgtMO5o/grand-theft-auto-vi-regional-pre-load-and-release-times-on-playstation-5-and-xbox-series-x-or-s",
-        "source": "Rockstar Support",
-        "official": true
+        "url": "https://www.videogameschronicle.com/news/grand-theft-auto-6s-map-is-three-times-bigger-than-red-dead-redemption-2/",
+        "source": "VGC"
       },
       {
-        "url": "https://www.rockstargames.com/newswire/article/k4ak9okk485712/grand-theft-auto-vi-pre-load-begins-on-november-10",
-        "source": "Rockstar Newswire",
-        "official": true
-      },
-      {
-        "url": "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
-        "source": "Rockstar Newswire",
-        "official": true
-      },
-      {
-        "url": "https://kotaku.com/gta-6-pre-load-times-install-size-and-global-release-times-confirmed-2000752787",
-        "source": "Kotaku"
-      },
-      {
-        "url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032",
-        "source": "Kotaku"
-      },
-      {
-        "url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support",
-        "source": "Tom's Hardware"
-      },
-      {
-        "url": "https://www.purexbox.com/news/2026/06/gta-6-costs-usd80-described-as-a-single-player-experience",
-        "source": "Pure Xbox"
-      },
-      {
-        "url": "https://hitmarker.net/news/take-two-ceo-comments-on-why-gta-vi-was-not-announced-for-pc-903138",
-        "source": "Hitmarker"
+        "url": "https://www.dexerto.com/gta/rockstar-says-gta-6s-map-is-so-big-you-wont-see-it-all-just-by-playing-story-missions-3414118/",
+        "source": "Dexerto"
       }
-    ],
-    "franchise": "Grand Theft Auto VI",
-    "wiki": "Grand Theft Auto VI",
-    "angle": "Open with a quick run of GTA 5 against GTA 6 contrasts the sources back (for example: in GTA 5 the police forget you after a block; in GTA 6, per Rockstar's own showing, what they remember), each concrete and sourced, before the guide begins. NOT a history and not 'everything you need to know'. The viewer's own first day: buy it, download it, where you are, who you are, the police, money, cars, what is missing, what is false. Teach three verdicts in the first minute (confirmed, reported, busted) and give every claim one, with its source named in the same breath. Plant loops and pay each one by name. Each chapter closes with one job to do on day one and asks for the next chapter. Say what is untested and promise the launch-day test video on Saturday November 21. No leaks, no datamined material, never a fan map number as fact."
+    ]
   },
   {
     "kind": "why",

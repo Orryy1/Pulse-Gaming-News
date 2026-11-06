@@ -23,6 +23,7 @@ import {
   TikTokChallenge,
   TikTokSignedOut,
 } from "./tiktokBrowser.ts";
+import { bufferPostVideo } from "./buffer.ts";
 
 export type Platform =
   | "facebook"
@@ -57,7 +58,7 @@ export interface SocialPosters {
     caption: string,
     videoUrl?: string,
   ) => Promise<string>;
-  tiktok?: (file: string, caption: string) => Promise<string>;
+  tiktok?: (file: string, caption: string, videoUrl?: string) => Promise<string>;
   x?: (text: string) => Promise<string>;
   /** The page's own first comment under a reel (needs pages_manage_engagement); when set, the link moves there. */
   facebookComment?: (videoId: string, text: string) => Promise<string>;
@@ -499,7 +500,7 @@ export async function crosspostTick(
           : platform === "instagram"
             ? await d.posters.instagram!(file, caption, d.videoUrl?.(ep.id))
             : platform === "tiktok"
-              ? await d.posters.tiktok!(file, caption)
+              ? await d.posters.tiktok!(file, caption, d.videoUrl?.(ep.id))
               : platform === "threads"
                 ? await d.posters.threads!(file, caption, d.videoUrl?.(ep.id))
                 : platform === "bluesky"
@@ -811,7 +812,15 @@ export async function buildPosters(
         caption,
         link,
       );
-  if (
+  if (cfg.crosspost.tiktok && cfg.bufferApiKey && cfg.bufferTiktokChannel)
+    // Through Buffer, which TikTok approved for public posting: no draft, no tap (6 Nov 2026).
+    out.tiktok = async (_file, caption, videoUrl) => {
+      if (!videoUrl) throw new Error("no public link for the video");
+      return bufferPostVideo(cfg.bufferApiKey, cfg.bufferTiktokChannel, videoUrl, `${caption}
+
+Narrated with an AI voice.`);
+    };
+  else if (
     cfg.crosspost.tiktok &&
     cfg.tiktokClientKey &&
     cfg.tiktokTokenPath &&

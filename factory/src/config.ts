@@ -334,6 +334,9 @@ export interface Config {
   shortSpeed: number;
   /** Share of news and Why Shorts written in the personal, opinionated voice (VOICE_TEST_SHARE; owner's test, 6 Nov 2026). */
   voiceTestShare: number;
+  /** Buffer's API key and its Pulse TikTok channel (BUFFER_API_KEY, BUFFER_TIKTOK_CHANNEL): TikTok posts go out with no tap. */
+  bufferApiKey: string;
+  bufferTiktokChannel: string;
   /** The speed-up for this take (set per call, from shortSpeed): 1 = none. */
   speedFactor?: number;
   /** Long ElevenLabs narration: each take's pitch and brightness is measured and a take that strays from the
@@ -1110,6 +1113,8 @@ export function loadConfig(): Config {
     docLeadMinutes: int("DOC_LEAD_MINUTES", 600),
     longLeadMinutes: int("LONG_LEAD_MINUTES", 30 * 60),
     minWordsPerMinute: int("MIN_WORDS_PER_MINUTE", 145),
+    bufferApiKey: str("BUFFER_API_KEY", ""),
+    bufferTiktokChannel: str("BUFFER_TIKTOK_CHANNEL", ""),
     voiceTestShare: Math.min(1, Math.max(0, Number(str("VOICE_TEST_SHARE", "0")) || 0)),
     shortSpeed: Math.min(1.25, Math.max(1, Number(str("SHORT_SPEED", "1")) || 1)),
     voiceTakeCheck: bool("VOICE_TAKE_CHECK", true),

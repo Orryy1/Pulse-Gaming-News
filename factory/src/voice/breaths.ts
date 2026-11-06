@@ -18,6 +18,8 @@ const BEFORE_WORD = 0.04; // a word's first sound starts a little before its tim
 const MIN_GAP = 0.12; // shorter spans hold no breath worth touching
 const QUIET_DB = 22; // this far under typical speech is breath or room tone, not a word
 const RAMP = 0.03;
+/** Breaths in one volume filter: ffmpeg 9 refuses an expression of a long video's hundreds of them. */
+export const BREATHS_PER_FILTER = 40;
 export const BREATH_GAIN = 0.08; // about -22 dB
 // An in-breath before a new sentence or clause (31 Oct 2026, owner: "weird breathing"): the narration chain's
 // compressor lifts it to 15-19 dB under the voice, inside QUIET_DB, so the loudness walk took it for a word.
@@ -154,14 +156,17 @@ export async function quietBreaths(
   );
   const gaps = breathGaps(words, loudness(pcm));
   if (!gaps.length) return 0;
-  const dip = gaps
-    .map(([a, b]) => `clip(min((t-${a})/${RAMP},(${b}-t)/${RAMP}),0,1)`)
-    .join("+");
+  // One volume filter per few dozen breaths: a long video's 500-odd gaps in one expression is more than ffmpeg 9 will
+  // parse (the first explainer, 6 Nov 2026). The gaps never overlap, so the chained filters dip exactly the same.
+  const terms = gaps.map(([a, b]) => `clip(min((t-${a})/${RAMP},(${b}-t)/${RAMP}),0,1)`);
+  const chunks: string[] = [];
+  for (let i = 0; i < terms.length; i += BREATHS_PER_FILTER)
+    chunks.push(terms.slice(i, i + BREATHS_PER_FILTER).join("+"));
   const script = `${file}.breaths.txt`;
   const tmp = `${file}.breaths.mp3`;
   await fs.writeFile(
     script,
-    `${SMOOTH_FRAME},volume=eval=frame:volume='1-${1 - BREATH_GAIN}*min(1,${dip})'`,
+    [SMOOTH_FRAME, ...chunks.map((dip) => `volume=eval=frame:volume='1-${1 - BREATH_GAIN}*min(1,${dip})'`)].join(","),
     "utf8",
   );
   try {

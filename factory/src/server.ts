@@ -45,6 +45,7 @@ import {
   quotaUsed,
   setPublishHold,
 } from "./lanes.ts";
+import { quietAlert } from "./outputwatch.ts";
 import {
   productsFor,
   shopPageHtml,
@@ -2098,6 +2099,12 @@ async function main(): Promise<void> {
       log("error", "growth report failed", { error: errorMessage(err) }),
     );
   }, 5 * 60_000);
+  // The factory watching its own output: a working day with no new Short for hours is said once (src/outputwatch.ts).
+  setInterval(() => {
+    void quietAlert(db, new Date(), cfg.timezone)
+      .then((content) => (content ? services.notify({ content }) : undefined))
+      .catch((err) => log("warn", "output watch failed", { error: errorMessage(err) }));
+  }, 15 * 60_000);
   // Each morning from 09:00 local: what the alerts have been saying (ALERT_DIGEST). The page is written every day; the
   // channel hears about it only when a kind of alert is new or rising.
   setInterval(() => {

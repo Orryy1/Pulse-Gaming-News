@@ -466,6 +466,8 @@ export interface Config {
   tiktokDaily: number;
   /** Local hour (TIMEZONE) from which the day's TikTok picks are sent: 16 = US lunchtime. */
   tiktokFromHour: number;
+  /** Fewest minutes between two TikTok posts (TIKTOK_GAP_MINUTES), so a backlog never lands as a burst; 0 = no gap. */
+  tiktokGapMinutes: number;
   engageEnabled: boolean; // a daily community post on Facebook and Instagram
   /** The daily question picture on Instagram as well (ENGAGE_INSTAGRAM): off, 9 posts drew 0 likes by 29 Oct 2026. */
   engageInstagram: boolean;
@@ -1186,6 +1188,7 @@ export function loadConfig(): Config {
     crosspostWindowHours: int("CROSSPOST_WINDOW_HOURS", 36),
     tiktokDaily: int("TIKTOK_DAILY", 0),
     tiktokFromHour: int("TIKTOK_FROM_HOUR", 16),
+    tiktokGapMinutes: int("TIKTOK_GAP_MINUTES", 0),
     engageEnabled: bool("ENGAGE_ENABLED", true),
     engageInstagram: bool("ENGAGE_INSTAGRAM", false),
     engageSlot: str("ENGAGE_SLOT", "15:00"),

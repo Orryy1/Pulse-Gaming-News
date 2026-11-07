@@ -378,6 +378,24 @@ export interface CrosspostDeps {
   primeTime?: () => Promise<boolean>;
 }
 
+/**
+ * Buffer posts every Short to TikTok since 6 Nov 2026, so a backlog (a restart, a quiet morning) would land as a
+ * burst that splits each post's reach; TIKTOK_GAP_MINUTES keeps the posts apart.
+ */
+export async function tiktokTooSoon(
+  db: Db,
+  cfg: Pick<Config, "tiktokGapMinutes">,
+  now: Date,
+): Promise<boolean> {
+  if (cfg.tiktokGapMinutes <= 0) return false;
+  const [row] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM events WHERE kind = 'crosspost' AND detail->>'platform' = 'tiktok'
+       AND created_at > $1::timestamptz - make_interval(mins => $2)`,
+    [now, cfg.tiktokGapMinutes],
+  );
+  return Number(row?.n ?? 0) > 0;
+}
+
 /** One pass: at most one post per platform, oldest eligible Short first. */
 export async function crosspostTick(
   d: CrosspostDeps,
@@ -388,6 +406,8 @@ export async function crosspostTick(
   for (const platform of PLATFORMS) {
     const post = d.posters[platform];
     if (!post) continue;
+    if (platform === "tiktok" && (await tiktokTooSoon(d.db, d.cfg, d.now())))
+      continue;
     const base = d.cfg.crosspostDelays[platform];
     // Each platform keeps its place in the stagger inside the window (Facebook first, Instagram, then TikTok).
     const delayFor =

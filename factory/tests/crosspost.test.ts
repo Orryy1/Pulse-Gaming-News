@@ -6,6 +6,7 @@ import {
   crosspostTick,
   socialCaption,
   MAX_TRIES,
+  tiktokTooSoon,
 } from "../src/social/crosspost.ts";
 import { oauth1Header } from "../src/social/oauth1.ts";
 import { testDb, tmpDir, testConfig, goodScript } from "./helpers.ts";
@@ -244,4 +245,18 @@ test("TikTok and Instagram captions use all five hashtags, a ranking's own games
     const tags = socialCaption(platform, ranking, "abc").match(/#\w+/g) ?? [];
     assert.deepEqual(tags, ["#Fallout", "#FalloutNewVegas", "#Fallout4", "#Fallout3", "#gamingnews"], platform);
   }
+});
+
+test("TikTok posts keep TIKTOK_GAP_MINUTES apart so a backlog never lands as a burst", async () => {
+  const db = await testDb();
+  const now = new Date();
+  assert.equal(await tiktokTooSoon(db, { tiktokGapMinutes: 90 }, now), false, "nothing posted yet");
+  const { logEvent } = await import("../src/episodes.ts");
+  await logEvent(db, "ep_g", "crosspost", { platform: "instagram", id: "i1" });
+  assert.equal(await tiktokTooSoon(db, { tiktokGapMinutes: 90 }, now), false, "other platforms do not count");
+  await logEvent(db, "ep_g", "crosspost", { platform: "tiktok", id: "buffer:1" });
+  assert.equal(await tiktokTooSoon(db, { tiktokGapMinutes: 90 }, now), true, "a TikTok post just went");
+  assert.equal(await tiktokTooSoon(db, { tiktokGapMinutes: 0 }, now), false, "0 turns the gap off");
+  const later = new Date(now.getTime() + 91 * 60_000);
+  assert.equal(await tiktokTooSoon(db, { tiktokGapMinutes: 90 }, later), false, "free again after the gap");
 });

@@ -367,6 +367,7 @@ export function testConfig(
     voiceTakeCheck: true,
     backupDir: "",
     tiktokDaily: 0,
+    tiktokGapMinutes: 0,
     tiktokFromHour: 16,
     footage: true,
     maxClips: 4,

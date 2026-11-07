@@ -32,3 +32,11 @@ Ranked list the weekly improvement task (Thursdays 11:00) works from. Top item f
 **Build:** when a top-tier franchise has small news (an event, a patch, a quest), the writer leads with the real open question the news raises ("Here's what the community quest unlocks", "Is FromSoftware teasing something? Here's what we actually know") and the fact check confirms the question is genuine.
 
 **Measure:** views on small-news Shorts from top franchises against other news Shorts; no "misinformation" comments.
+
+## 3. The channel's first comments are hidden from viewers
+
+**Why:** the factory's first comment under each Short is posted fine, but a signed-out visitor sees it on 0 of 33 videos (alert, 7 Nov). Pinned comments did show on 4 Nov. Links are not the cause: first comments carry none. The token in the Mac .env only has the youtube and youtube.upload scopes, so moderation status can't be read with it; the factory's own stored login has to be used for that.
+
+**Build:** read moderationStatus for a sample through the factory's stored login; if YouTube is holding them as likely spam, stop posting identical-shaped comments (vary the wording, post later after the first viewer comments) or pin through Studio once the Brave cookie fault is fixed.
+
+**Measure:** visible share in the weekly first-comment check.

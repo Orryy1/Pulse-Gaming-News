@@ -914,7 +914,7 @@ const post = async (k: string, embeds: unknown[]) => {
   );
 };
 const links =
-  "[YouTube](https://youtube.com/@PulseGMG) · [TikTok](https://www.tiktok.com/@pulsegamingnews) · [Instagram](https://instagram.com/pulse.gmg) · [X](https://x.com/Pulse_GMG) · [pulsegmg.com](https://pulsegmg.com)";
+  "[YouTube](https://youtube.com/@PulseGMG) · [TikTok](https://www.tiktok.com/@pulse.gmg) · [Instagram](https://instagram.com/pulse.gmg) · [X](https://x.com/Pulse_GMG) · [pulsegmg.com](https://pulsegmg.com)";
 await post("welcome", [
   {
     color: BRAND,

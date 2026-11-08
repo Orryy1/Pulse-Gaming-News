@@ -45,7 +45,7 @@ const YT_CHANNEL = process.env.YOUTUBE_CHANNEL_ID || "UCvgNDjtTezrpxL8oUe6mYwA";
 const SITE = "https://pulsegmg.com";
 const BRAND = 0xff6b1a;
 const DIR = path.resolve("data/discord");
-const LINKS = `[YouTube](https://youtube.com/@PulseGMG) · [TikTok](https://www.tiktok.com/@pulsegamingnews) · [Instagram](https://instagram.com/pulse.gmg) · [X](https://x.com/Pulse_GMG) · [pulsegmg.com](${SITE})`;
+const LINKS = `[YouTube](https://youtube.com/@PulseGMG) · [TikTok](https://www.tiktok.com/@pulse.gmg) · [Instagram](https://instagram.com/pulse.gmg) · [X](https://x.com/Pulse_GMG) · [pulsegmg.com](${SITE})`;
 if (!TOKEN || !GUILD)
   throw new Error("DISCORD_BOT_TOKEN and DISCORD_GUILD_ID must be set");
 

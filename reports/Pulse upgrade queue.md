@@ -40,3 +40,11 @@ Ranked list the weekly improvement task (Thursdays 11:00) works from. Top item f
 **Build:** read moderationStatus for a sample through the factory's stored login; if YouTube is holding them as likely spam, stop posting identical-shaped comments (vary the wording, post later after the first viewer comments) or pin through Studio once the Brave cookie fault is fixed.
 
 **Measure:** visible share in the weekly first-comment check.
+
+## 4. Cutscenes from clean YouTube uploads, so the owner only captures gameplay
+
+**Why:** owner, 8 Nov: cutscenes are identical for every player, so hand-capturing them on the Switch 2 is wasted effort. He keeps capturing gameplay moments (30-second clips, Xbox streams to Twitch).
+
+**Build:** for a named game, search YouTube for "no commentary" cutscene or "full movie" uploads, download with yt-dlp, and accept only clean frames: no face cam, no channel logo or watermark, no subtitles burned in by the uploader, no commentary audio (game audio is muted under narration anyway). Short excerpts only, matched to the line like any footage, credited as the game's footage. Keep BROLL_YOUTUBE_FALLBACK's spirit: Content ID claims from the publisher land the same whether the footage was captured or downloaded, so a claim is a signal to cut that clip, not a reason to stop.
+
+**Measure:** share of Ocarina (and later GTA VI) Shorts and docs with real cutscene footage instead of trailers; claims per 100 videos.

@@ -17,7 +17,8 @@ import time
 from pathlib import Path
 
 # kind -> (model role, effort), as on the PC.
-KINDS = {"frontier": ("frontier", "ultra"), "bulk": ("workhorse", "high"), "quick": ("fast", "medium")}
+# 8 Nov 2026, owner: every call on the top frontier model to test whether it is viable (verdict 11 Nov).
+KINDS = {"frontier": ("frontier", "ultra"), "bulk": ("frontier", "ultra"), "quick": ("frontier", "ultra")}
 FALLBACK = {"frontier": "gpt-6-astra", "workhorse": "gpt-6.1-sol", "fast": "gpt-6-luna"}
 EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"]
 MODELS = Path(os.environ.get("CODEX_MODELS_FILE", str(Path.home() / "PulseFactory" / "codex-models.json")))

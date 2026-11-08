@@ -48,3 +48,11 @@ Ranked list the weekly improvement task (Thursdays 11:00) works from. Top item f
 **Build:** for a named game, search YouTube for "no commentary" cutscene or "full movie" uploads, download with yt-dlp, and accept only clean frames: no face cam, no channel logo or watermark, no subtitles burned in by the uploader, no commentary audio (game audio is muted under narration anyway). Short excerpts only, matched to the line like any footage, credited as the game's footage. Keep BROLL_YOUTUBE_FALLBACK's spirit: Content ID claims from the publisher land the same whether the footage was captured or downloaded, so a claim is a signal to cut that clip, not a reason to stop.
 
 **Measure:** share of Ocarina (and later GTA VI) Shorts and docs with real cutscene footage instead of trailers; claims per 100 videos.
+
+## 5. Scene-precise cutscenes and character quotes (built 8 Nov, held for review)
+
+**Status:** Codex built it on branch codex/scenes (pushed, not merged into claude/stage, not deployed). All 1,414 tests pass. It finds a line's moment through the movie's chapters and captions, then scene uploads ("All Ganondorf Scenes"), and a vision check must confirm the moment before it's used; otherwise the spread pick stays. Character quotes: lines are extracted from captions and the writers can use them, but playback with game audio is not built (plan in factory/docs/cutscene-quotes-plan.md). Note: Zelda's characters mostly don't speak, so quotes suit voiced games (GTA, God of War, Final Fantasy).
+
+**Before merging:** the 8 Nov Ocarina trial found the right scene upload, but the vision check accepted no frames, so it fell back. Check why (the check's frames, or the PC run's model access), then do a full Short render with it on and look at the frames on the word. Codex also changed src/render/plan.ts and longplan.ts: render-check a Short and a long video.
+
+**Measure:** share of named-moment lines whose clip shows that moment, from a contact sheet per video.

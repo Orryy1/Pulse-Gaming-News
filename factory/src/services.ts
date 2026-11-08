@@ -414,6 +414,8 @@ export function createServices(db: Db, cfg: Config): Services {
     fetchCutscenes: (options) => cutsceneMedia({
       ...options,
       enabled: cfg.cutsceneFootage,
+      scenes: cfg.cutsceneScenes,
+      quotes: cfg.cutsceneQuotes,
       ytdlp: cfg.ytdlpPath,
       llm: cfg.clipRanking === "llm" ? llm : undefined,
     }),

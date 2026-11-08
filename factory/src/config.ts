@@ -581,6 +581,8 @@ export interface Config {
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
   cutsceneFootage: boolean; // CUTSCENE_FOOTAGE: opt in to screened YouTube cutscene sections
+  cutsceneScenes: boolean; // CUTSCENE_SCENES: seek named scenes when cutscene footage is on
+  cutsceneQuotes: boolean; // CUTSCENE_QUOTES: collect caption quotes for future review
   cutsceneMaxSeconds: number; // CUTSCENE_MAX_SECONDS: per-Short budget, scaled for long videos
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
@@ -1278,6 +1280,8 @@ export function loadConfig(): Config {
       "llm" | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
     cutsceneFootage: bool("CUTSCENE_FOOTAGE", false),
+    cutsceneScenes: bool("CUTSCENE_SCENES", bool("CUTSCENE_FOOTAGE", false)),
+    cutsceneQuotes: bool("CUTSCENE_QUOTES", false),
     cutsceneMaxSeconds: Math.max(0, int("CUTSCENE_MAX_SECONDS", 20)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   shortVivid: bool("SHORT_VIVID", false),

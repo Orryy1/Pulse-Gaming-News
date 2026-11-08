@@ -284,6 +284,54 @@ test("a sentence naming a person opens on their photo, before its footage", () =
       assert.ok(x.start >= first.end, "footage after the photo");
 });
 
+test("a located cutscene waits for its sentence and opens it before other footage", () => {
+  const s = docToScript(draftWithMoments());
+  const entries = [...s.entries!].sort((a, b) => b.rank - a.rank);
+  const words = timed(s);
+  const segments = buildSegments(segmentInputs(s), words, words.at(-1)!.end + 6);
+  const counts = entries.map((entry) => entry.moments!.length);
+  const windows = momentWindows(segments, words, counts);
+  const images = Array.from({ length: 6 }, () => ({ kind: "screenshot", aspect: 1.78, beatIndex: 0 }));
+  const clips = [
+    { durationSeconds: 4, beatIndex: 0, moment: 7 },
+    { durationSeconds: 4, beatIndex: 0, moment: 7, cutsceneMatch: { targetKey: "beat:0#m7", how: "chapter" as const } },
+  ];
+  const plan = buildLongPlan({ segments, words, durationSeconds: words.at(-1)!.end + 6,
+    images, clips, variant: 0, momentCounts: counts });
+  const seven = windows.find((window) => window.entry === 0 && window.moment === 7)!;
+  const sceneShots = plan.shots.filter((shot) => shot.media.type === "clip" && shot.media.index === 1);
+  assert.ok(sceneShots.length > 0);
+  assert.ok(sceneShots.every((shot) => shot.start >= Math.round(seven.at * 30) - 1));
+  const first = plan.shots.find((shot) => shot.start >= Math.round(seven.at * 30) - 1)!;
+  assert.deepEqual(first.media, { type: "clip", index: 1 });
+});
+
+test("a chapter's reserved cutscene is not replayed during the documentary outro", () => {
+  const s = docToScript(draftWithMoments());
+  const entries = [...s.entries!].sort((a, b) => b.rank - a.rank);
+  const words = timed(s);
+  const segments = buildSegments(segmentInputs(s), words, words.at(-1)!.end + 6);
+  const clips = [{ durationSeconds: 4, beatIndex: 1, moment: 1,
+    cutsceneMatch: { targetKey: "beat:1#m1", how: "chapter" as const } }];
+  const images = [{ kind: "screenshot", aspect: 1.78, beatIndex: 0 }, { kind: "screenshot", aspect: 1.78, beatIndex: 1 }];
+  const plan = buildLongPlan({ segments, words, durationSeconds: words.at(-1)!.end + 6, images, clips,
+    variant: 0, momentCounts: entries.map((entry) => entry.moments!.length) });
+  assert.ok(plan.shots.some((item) => item.media.type === "clip"));
+  assert.ok(plan.shots.every((item) => item.media.type !== "clip" || segments[item.segment]!.kind !== "take"));
+});
+
+test("a beat-level cutscene plays on its chapter when there is no shot list", () => {
+  const s = docToScript(draftWithMoments());
+  const words = timed(s);
+  const segments = buildSegments(segmentInputs(s), words, words.at(-1)!.end + 6);
+  const clips = [{ durationSeconds: 4, beatIndex: 0, cutsceneMatch: { targetKey: "beat:0", how: "chapter" as const } }];
+  const images = [{ kind: "screenshot", aspect: 1.78, beatIndex: 0 }, { kind: "screenshot", aspect: 1.78, beatIndex: 1 }];
+  const plan = buildLongPlan({ segments, words, durationSeconds: words.at(-1)!.end + 6, images, clips, variant: 0 });
+  const scene = plan.shots.filter((item) => item.media.type === "clip");
+  assert.ok(scene.length > 0);
+  assert.ok(scene.every((item) => segments[item.segment]!.kind === "beat"));
+});
+
 test("a quote or timeline is never mistaken for a rank graphic", () => {
   assert.equal(
     usefulGraphic({

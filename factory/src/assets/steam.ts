@@ -27,6 +27,9 @@ export interface VisualAsset {
   sourceUrl: string;
   provenance: string;
   youtubeSource?: { videoId: string; title: string; uploader: string };
+  sourceSectionId?: string;
+  assignedTargetKey?: string;
+  cutsceneMatch?: { targetKey?: string; requestedTarget?: string; how: "chapter" | "caption" | "scene upload" | "spread" };
   width?: number;
   height?: number;
   durationSeconds?: number;

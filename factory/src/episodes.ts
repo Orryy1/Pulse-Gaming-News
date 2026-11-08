@@ -138,6 +138,7 @@ export interface EpisodeAssets {
     provenance: string;
     durationSeconds: number;
     youtubeSource?: { videoId: string; title: string; uploader: string };
+    cutsceneMatch?: { targetKey?: string; requestedTarget?: string; how: "chapter" | "caption" | "scene upload" | "spread" };
     blurFile?: string;
     beatIndex?: number;
     role?: "hook";

@@ -15,8 +15,18 @@ import {
   silentSectionArgs,
   cutsceneGrant,
   pickCutsceneUpload,
+  findCutsceneMoment,
+  parseCutsceneVtt,
+  extractCutsceneQuotes,
+  sceneQueries,
   type CutsceneUpload,
 } from "../src/assets/cutscenes.ts";
+import { preferredSceneAssignments, verifySceneAssignments } from "../src/assets/clipscore.ts";
+import { quoteProblems } from "../src/editorial/quotes.ts";
+import { writeScript } from "../src/editorial/editorial.ts";
+import { validateChapter, writeChapter } from "../src/editorial/documentary.ts";
+import { loadConfig } from "../src/config.ts";
+import { frameFlagsFromAnswer } from "../src/assets/localvision.ts";
 import { footageCredits, gatherMedia } from "../src/pipeline.ts";
 import { goodScript, testConfig } from "./helpers.ts";
 
@@ -328,4 +338,352 @@ test("a nearly blank frame (a white dialogue card) is screened out", async () =>
   const n = FRAME_WIDTH * FRAME_HEIGHT;
   const card = () => { const f = new Uint8Array(n).fill(225); for (let i = 0; i < 60; i++) f[4000 + i] = 60; return f; };
   assert.equal(cleanFrameReason([card(), card(), card()]), "nearly blank picture");
+});
+
+test("chapter and caption matches locate the named scene", () => {
+  const target = { key: "beat:0#m2", text: "Ganondorf rises over Hyrule Castle", want: "character" as const,
+    energy: "medium" as const, keywords: ["Ganondorf", "Hyrule Castle"] };
+  const chapters = [{ title: "Link leaves the forest", start: 100, end: 180 },
+    { title: "Ganondorf rises above Hyrule Castle", start: 1470, end: 1580 }];
+  assert.deepEqual(findCutsceneMoment(target, chapters, []), { how: "chapter", time: 1470 });
+  const captions = parseCutsceneVtt(`WEBVTT\n\n00:25:35.000 --> 00:25:38.000\nGanondorf rises over Hyrule Castle.\n`);
+  assert.deepEqual(findCutsceneMoment(target, [], captions), { how: "caption", time: 1535 });
+  assert.equal(findCutsceneMoment({ ...target, keywords: ["Sheik"], text: "Sheik returns" }, chapters, captions), undefined);
+  assert.deepEqual(findCutsceneMoment(target, [{ title: "Hyrule Castle", start: 20 }], captions), { how: "caption", time: 1535 });
+  assert.equal(findCutsceneMoment({ ...target, keywords: ["Example Game", "Ganondorf"] },
+    [{ title: "Example Game introduction", start: 10 }], [], "Example Game"), undefined);
+});
+
+test("scene fallback queries use the named character and omit generic or game-only terms", () => {
+  const target = { key: "beat:0", text: "Ganondorf rises over Hyrule", want: "character" as const,
+    energy: "medium" as const, keywords: ["Ganondorf", "Hyrule Castle"] };
+  assert.deepEqual(sceneQueries("Ocarina of Time", target), [
+    "Ocarina of Time Ganondorf scene", "Ocarina of Time all Ganondorf scenes",
+    "Ocarina of Time Hyrule Castle scene", "Ocarina of Time all Hyrule Castle scenes",
+  ]);
+  assert.deepEqual(sceneQueries("Halo 3", { ...target, text: "No gameplay shown", keywords: ["Halo 3", "gameplay"] }), []);
+  assert.deepEqual(sceneQueries("Ocarina of Time", { ...target, text: "Link draws the Master Sword", keywords: [] }), [
+    "Ocarina of Time Link scene", "Ocarina of Time all Link scenes",
+    "Ocarina of Time Master Sword scene", "Ocarina of Time all Master Sword scenes",
+  ]);
+});
+
+test("caption quotes keep their source timing and reject music, long and unsafe lines", () => {
+  const cues = parseCutsceneVtt(`WEBVTT\n\n1\n00:00:03.250 --> 00:00:05.750 align:start\n<v Zelda>Open your eyes, Link.</v>\n\n2\n00:00:06.000 --> 00:00:07.000\n[Music]\n\n3\n00:00:08.000 --> 00:00:15.000\nA line that takes far too long.\n\n4\n00:00:16.000 --> 00:00:18.000\nI will kill you.\n`);
+  const quotes = extractCutsceneQuotes(cues, "abcdefghijk");
+  assert.equal(quotes.length, 1);
+  assert.equal(quotes[0]!.text, "Open your eyes, Link.");
+  assert.equal(quotes[0]!.start, 3.25);
+  assert.equal(quotes[0]!.end, 5.75);
+  assert.equal(quotes[0]!.videoId, "abcdefghijk");
+});
+
+test("a quote must be available, exact, safe, surrounded by narration and used once", () => {
+  const quotes = [{ id: "q1", text: "Open your eyes, Link.", start: 3.25, end: 5.75, videoId: "abcdefghijk" }];
+  const beats = [{ narration: "Zelda calls out." }, { narration: "Open your eyes, Link.", quote: "q1" },
+    { narration: "Link wakes to a changed world." }];
+  assert.deepEqual(quoteProblems(beats, quotes), []);
+  assert.ok(quoteProblems([{ ...beats[1]!, quote: "unknown" }], quotes).length);
+  assert.ok(quoteProblems([beats[0]!, { ...beats[1]!, narration: "Open your eyes." }, beats[2]!], quotes).length);
+  assert.ok(quoteProblems([beats[1]!, beats[2]!], quotes).length);
+  assert.ok(quoteProblems([beats[0]!, beats[1]!, beats[1]!, beats[2]!], quotes).length);
+  assert.ok(quoteProblems([beats[0]!, beats[1]!, { narration: quotes[0]!.text }], quotes).length);
+  assert.ok(quoteProblems(beats, [{ ...quotes[0]!, text: "I will kill you." }]).length);
+});
+
+test("a located scene is assigned only to its own target and near its timestamp", () => {
+  const targets = [
+    { key: "beat:0#m0", text: "Ganondorf rises", want: "character" as const, energy: "medium" as const, keywords: ["Ganondorf"] },
+    { key: "beat:0#m1", text: "Link returns", want: "character" as const, energy: "medium" as const, keywords: ["Link"] },
+  ];
+  const trailers = [
+    { file: "ganon.mp4", name: "G", url: "g", total: 30, targetKey: targets[0]!.key, anchor: 15 },
+    { file: "link.mp4", name: "L", url: "l", total: 30, targetKey: targets[1]!.key, anchor: 15 },
+  ];
+  const candidate = (index: number, movie: number, time: number, motion: number) =>
+    ({ index, movie, time, motion, luma: 100, frame: "unused.jpg" });
+  const picks = preferredSceneAssignments(targets, [candidate(1, 1, 14, 5), candidate(2, 0, 14, 1),
+    candidate(3, 0, 10, 99), candidate(4, 1, 10, 99)], trailers);
+  assert.deepEqual(picks.map((p) => [p.key, p.candidate]), [["beat:0#m0", 2], ["beat:0#m1", 1]]);
+  const cutsBeforeAnchor = { ...candidate(5, 0, 14, 99), nextCut: 14.4, nextCut2: 19 };
+  const sameShot = { ...candidate(6, 0, 13, 1), nextCut: 19 };
+  assert.equal(preferredSceneAssignments([targets[0]!], [cutsBeforeAnchor, sameShot], trailers)[0]?.candidate, 6);
+});
+
+test("located frames require a real safety verdict and cannot be approved for another target", async () => {
+  const target = { key: "beat:0", text: "Alpha arrives", want: "character" as const, energy: "medium" as const, keywords: ["Alpha"] };
+  const trailers = [{ file: "alpha.mp4", name: "Alpha", url: "a", total: 30, targetKey: target.key, anchor: 15 }];
+  const candidates = [{ index: 1, movie: 0, time: 14, motion: 5, luma: 100, frame: "unused" }];
+  assert.deepEqual(await verifySceneAssignments([target], candidates, trailers, new Map()), []);
+  const clean = new Map([[1, { text: false, webcam: false, gore: false, dark: false, hud: false, letterbox: false, blurry: false }]]);
+  assert.equal((await verifySceneAssignments([target], candidates, trailers, clean)).length, 1);
+  assert.deepEqual(await verifySceneAssignments([target], candidates, trailers, clean, async () => []), []);
+  assert.deepEqual(await verifySceneAssignments([target], candidates, trailers, clean,
+    async () => [{ key: "beat:1", candidate: 1, confidence: 1, reason: "wrong target" }]), []);
+});
+
+test("a partial local vision response cannot be treated as a clean frame", () => {
+  assert.equal(frameFlagsFromAnswer({}), undefined);
+  assert.equal(frameFlagsFromAnswer({ message: { content: '{"text":false}' } }), undefined);
+  const body = { text: false, hud_only: false, webcam: false, gore: false, letterbox: false, dark: false, blurry: false };
+  assert.equal(frameFlagsFromAnswer({ message: { content: JSON.stringify(body) } })?.gore, false);
+});
+
+test("scene discovery downloads targeted sections, screens them and preserves source and target", async () => {
+  const dir = await fs.mkdtemp(path.join(process.cwd(), "cutscene-scene-test-"));
+  const movie = upload("Example Game All Cutscenes No Commentary", { chapters: [{ title: "Ganondorf rises", start: 1500 }] });
+  const scene = upload("Example Game All Sheik Scenes No Commentary", { videoId: "12345678901", duration: 120 });
+  const calls: Array<{ id: string; from: number; to: number }> = [];
+  const targets = [
+    { key: "beat:0#m0", text: "Ganondorf rises", want: "character" as const, energy: "medium" as const, keywords: ["Ganondorf"] },
+    { key: "beat:0#m1", text: "Sheik returns", want: "character" as const, energy: "medium" as const, keywords: ["Sheik"] },
+  ];
+  try {
+    const clips = await cutsceneMedia({ enabled: true, scenes: true, quotes: true, gameTitle: "Example Game", episodeDir: dir,
+      maxClips: 2, maxSeconds: 10, ytdlp: "unused", targets,
+      deps: {
+        search: async (query) => query.includes("Sheik") ? [scene] : [movie],
+        details: async (item) => item,
+        captions: async () => "WEBVTT\n\n00:01:00.000 --> 00:01:02.000\nOpen your eyes, Link.\n",
+        lease: async () => () => undefined,
+        download: async (item, from, to) => { calls.push({ id: item.videoId, from, to }); },
+        screen: async () => true,
+        match: async (options) => options.trailers.map((trailer, i) => ({
+          kind: "clip" as const, file: `assets/scene_${i}.mp4`, sourceUrl: trailer.url, durationSeconds: 4,
+          beatIndex: 0, moment: i, startSeconds: (trailer.anchor ?? 0) - 1,
+          provenance: options.describe(trailer, 4, (trailer.anchor ?? 0) - 1),
+        })),
+      },
+    });
+    assert.deepEqual(calls.map((c) => c.id), [movie.videoId, scene.videoId]);
+    assert.ok(calls[0]!.from < 1500 && calls[0]!.to > 1500);
+    assert.deepEqual(clips.map((c) => c.cutsceneMatch), [
+      { targetKey: "beat:0#m0", how: "chapter" }, { targetKey: "beat:0#m1", how: "scene upload" },
+    ]);
+    assert.deepEqual(clips.map((c) => c.youtubeSource?.videoId), [movie.videoId, scene.videoId]);
+    assert.ok(clips.every((c) => c.audio === false));
+    const saved = JSON.parse(await fs.readFile(path.join(dir, "cutscene_quotes.json"), "utf8"));
+    assert.equal(saved.quotes[0].text, "Open your eyes, Link.");
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("both writers receive available quotes and reject invented or changed wording", async () => {
+  const quote = { id: "q1", videoId: "abcdefghijk", text: "Open your eyes, Link.", start: 3, end: 5 };
+  const script = goodScript();
+  const visual = script.beats[0]!.visual;
+  script.beats = [{ narration: "Zelda calls out.", visual }, { narration: quote.text, quote: quote.id, visual },
+    { narration: "Link wakes to a changed world.", visual }];
+  const prompts: string[] = [];
+  const llm = { structured: async (options: { content: string }) => { prompts.push(options.content); return structuredClone(script); } } as never;
+  const cluster = { hash: "x", headline: "h", items: [] } as never;
+  assert.equal((await writeScript(llm, cluster, [], { mustLabelRumour: false, availableQuotes: [quote] })).beats[1]!.quote, "q1");
+  await assert.rejects(() => writeScript(llm, cluster, [], { mustLabelRumour: false }), /Invalid character quote/);
+  const repeated = { ...script, hook: quote.text };
+  const repeatLlm = { structured: async () => repeated } as never;
+  await assert.rejects(() => writeScript(repeatLlm, cluster, [], { mustLabelRumour: false, availableQuotes: [quote] }), /Invalid character quote/);
+  const deskLlm = { structured: async () => ({ ...script, desk_question: quote.text }) } as never;
+  await assert.rejects(() => writeScript(deskLlm, cluster, [], { mustLabelRumour: false, availableQuotes: [quote] }), /Invalid character quote/);
+  const paragraph = (narration: string, id?: string) => ({ narration, ...(id ? { quote: id } : {}),
+    footage: { want: "cinematic" as const, keywords: [] }, callout: { kind: "none" as const, primary: "", secondary: "" } });
+  const chapter = { paragraphs: [paragraph("Zelda calls out."), paragraph(quote.text, "q1"),
+    paragraph("Link wakes to a changed world.")], claims: [] };
+  const docLlm = { structured: async (options: { content: string }) => { prompts.push(options.content); return structuredClone(chapter); } } as never;
+  const plan = { chapter_title: "The awakening", game_title: "Example Game", year: 2001, platforms: "PC", focus: "story" } as never;
+  const ctx = { franchise: "Example Game", plan, index: 0, outline: { title: "Example", chapters: [plan] } as never,
+    source: { title: "Example", url: "https://example.test", text: "source" }, availableQuotes: [quote] };
+  assert.equal((await writeChapter(docLlm, ctx)).paragraphs[1]!.quote, "q1");
+  await assert.rejects(() => writeChapter(docLlm, { ...ctx, availableQuotes: [] }), /Invalid character quote/);
+  assert.ok(prompts[0]!.includes(quote.text));
+  assert.ok(prompts[2]!.includes(quote.text));
+});
+
+test("scene and quote settings follow their safe defaults and explicit overrides", () => {
+  const keys = ["CUTSCENE_FOOTAGE", "CUTSCENE_SCENES", "CUTSCENE_QUOTES"] as const;
+  const previous = keys.map((key) => process.env[key]);
+  try {
+    for (const key of keys) delete process.env[key];
+    assert.equal(loadConfig().cutsceneScenes, false);
+    assert.equal(loadConfig().cutsceneQuotes, false);
+    process.env.CUTSCENE_FOOTAGE = "true";
+    assert.equal(loadConfig().cutsceneScenes, true);
+    process.env.CUTSCENE_SCENES = "false";
+    process.env.CUTSCENE_QUOTES = "true";
+    const cfg = loadConfig();
+    assert.equal(cfg.cutsceneScenes, false);
+    assert.equal(cfg.cutsceneQuotes, true);
+  } finally {
+    keys.forEach((key, i) => previous[i] === undefined ? delete process.env[key] : process.env[key] = previous[i]);
+  }
+});
+
+test("a verified quote is exempt from documentary paragraph length without bypassing quote validation", () => {
+  const quote = { id: "q1", videoId: "abcdefghijk", text: "Open your eyes, Link.", start: 3, end: 5 };
+  const paragraph = (narration: string, id?: string) => ({ narration, ...(id ? { quote: id } : {}),
+    footage: { want: "cinematic" as const, keywords: [] }, callout: { kind: "none" as const, primary: "", secondary: "" } });
+  const filler = Array.from({ length: 96 }, (_, i) => `word${i}`).join(" ") + ".";
+  const chapter = { paragraphs: [paragraph(filler), paragraph(quote.text, quote.id), paragraph(filler), paragraph(filler), paragraph(filler)], claims: [] };
+  const accepted = validateChapter(chapter, { availableQuotes: [quote] });
+  assert.ok(accepted.every((problem) => !problem.includes("Paragraph 2 is") && !problem.includes("character quote")));
+  assert.ok(validateChapter(chapter).some((problem) => /character quote/i.test(problem)));
+});
+
+test("overlapping sections of one movie retain their separate target identities", async () => {
+  const dir = await fs.mkdtemp(path.join(process.cwd(), "cutscene-identity-test-"));
+  const movie = upload("Example Game All Cutscenes", { chapters: [{ title: "Alpha speaks", start: 5 }, { title: "Beta appears", start: 10 }] });
+  const targets = ["Alpha", "Beta"].map((name, i) => ({ key: `beat:${i}`, text: `${name} appears`, want: "character" as const,
+    energy: "medium" as const, keywords: [name] }));
+  try {
+    const clips = await cutsceneMedia({ enabled: true, scenes: true, gameTitle: "Example Game", episodeDir: dir,
+      maxClips: 2, maxSeconds: 10, ytdlp: "unused", targets,
+      deps: { search: async () => [movie], details: async (item) => item, captions: async () => "", lease: async () => () => undefined,
+        download: async () => undefined, screen: async () => true,
+        match: async (options) => options.trailers.map((trailer, i) => ({ kind: "clip" as const, file: `assets/identity_${i}.mp4`,
+          sourceUrl: trailer.url, sourceSectionId: trailer.sectionId, durationSeconds: 4, beatIndex: i,
+          startSeconds: trailer.anchor, provenance: options.describe(trailer, 4, trailer.anchor ?? 0) })) },
+    });
+    assert.deepEqual(clips.map((clip) => clip.cutsceneMatch?.targetKey), ["beat:0", "beat:1"]);
+    assert.deepEqual(clips.map((clip) => clip.span.from), [5, 10]);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("a scene rejected by matching retries a scene upload and then spread footage", async () => {
+  const dir = await fs.mkdtemp(path.join(process.cwd(), "cutscene-retry-test-"));
+  const movie = upload("Example Game All Cutscenes", { chapters: [{ title: "Alpha appears", start: 100 }] });
+  const scene = upload("Example Game Alpha Scene No Commentary", { videoId: "12345678901", duration: 120 });
+  const target = { key: "beat:0", text: "Alpha appears", want: "character" as const, energy: "medium" as const, keywords: ["Alpha"] };
+  let matchCalls = 0;
+  try {
+    const clips = await cutsceneMedia({ enabled: true, scenes: true, gameTitle: "Example Game", episodeDir: dir,
+      maxClips: 1, maxSeconds: 4.8, ytdlp: "unused", targets: [target],
+      deps: { search: async (query) => query.includes("Alpha") ? [scene] : [movie], details: async (item) => item,
+        captions: async () => "", lease: async () => () => undefined, download: async () => undefined,
+        screen: async () => true,
+        match: async (options) => {
+          matchCalls++;
+          if (matchCalls === 1) throw new Error("matcher unavailable");
+          if (matchCalls === 2) return [];
+          const trailer = options.trailers[0]!;
+          return [{ kind: "clip" as const, file: "assets/retry.mp4", sourceUrl: trailer.url,
+            sourceSectionId: trailer.sectionId, durationSeconds: 4, beatIndex: 0, startSeconds: 1,
+            provenance: `${options.describe(trailer, 4, 1)}; chosen for beat:0 by rule` }];
+        } },
+    });
+    assert.equal(matchCalls, 3);
+    assert.equal(clips[0]?.cutsceneMatch?.how, "spread");
+    assert.equal(clips[0]?.youtubeSource?.videoId, movie.videoId);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("a section rejected by the frame screen falls back to a scene upload", async () => {
+  const dir = await fs.mkdtemp(path.join(process.cwd(), "cutscene-screen-retry-test-"));
+  const movie = upload("Example Game All Cutscenes", { chapters: [{ title: "Alpha appears", start: 100 }] });
+  const scene = upload("Example Game Alpha Scene No Commentary", { videoId: "12345678901", duration: 120 });
+  const target = { key: "beat:0", text: "Alpha appears", want: "character" as const, energy: "medium" as const, keywords: ["Alpha"] };
+  try {
+    const clips = await cutsceneMedia({ enabled: true, scenes: true, gameTitle: "Example Game", episodeDir: dir,
+      maxClips: 1, maxSeconds: 4.8, ytdlp: "unused", targets: [target],
+      deps: { search: async (query) => query.includes("Alpha") ? [scene] : [movie], details: async (item) => item,
+        captions: async () => "", lease: async () => () => undefined, download: async () => undefined,
+        screen: async (file) => !file.endsWith("section_0.mp4"), match: async (options) => {
+          const trailer = options.trailers[0]!;
+          return [{ kind: "clip" as const, file: "assets/scene.mp4", sourceUrl: trailer.url, sourceSectionId: trailer.sectionId,
+            durationSeconds: 4, beatIndex: 0, startSeconds: trailer.anchor, provenance: options.describe(trailer, 4, trailer.anchor ?? 0) }];
+        } },
+    });
+    assert.equal(clips[0]?.cutsceneMatch?.how, "scene upload");
+    assert.equal(clips[0]?.youtubeSource?.videoId, scene.videoId);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("scene-specific uploads can be used when no full movie was found", async () => {
+  const dir = await fs.mkdtemp(path.join(process.cwd(), "cutscene-no-movie-test-"));
+  const scene = upload("Example Game Alpha Scene No Commentary", { videoId: "12345678901", duration: 120 });
+  const target = { key: "beat:0", text: "Alpha appears", want: "character" as const, energy: "medium" as const, keywords: ["Alpha"] };
+  try {
+    const clips = await cutsceneMedia({ enabled: true, scenes: true, gameTitle: "Example Game", episodeDir: dir,
+      maxClips: 1, maxSeconds: 4.8, ytdlp: "unused", targets: [target],
+      deps: { search: async (query) => query.includes("Alpha") ? [scene] : [], details: async (item) => item,
+        captions: async () => "", lease: async () => () => undefined, download: async () => undefined,
+        screen: async () => true, match: async (options) => {
+          const trailer = options.trailers[0]!;
+          return [{ kind: "clip" as const, file: "assets/scene.mp4", sourceUrl: trailer.url, sourceSectionId: trailer.sectionId,
+            durationSeconds: 4, beatIndex: 0, startSeconds: trailer.anchor, provenance: options.describe(trailer, 4, trailer.anchor ?? 0) }];
+        } },
+    });
+    assert.equal(clips[0]?.cutsceneMatch?.how, "scene upload");
+    assert.equal(clips[0]?.youtubeSource?.videoId, scene.videoId);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("many targets cannot exhaust all section attempts before fallback", async () => {
+  const dir = await fs.mkdtemp(path.join(process.cwd(), "cutscene-many-targets-test-"));
+  const names = Array.from({ length: 20 }, (_, i) => `Person${i}`);
+  const movie = upload("Example Game All Cutscenes", { chapters: names.map((name, i) => ({ title: `${name} appears`, start: 100 + i * 40 })) });
+  const targets = names.map((name, i) => ({ key: `beat:${i}`, text: `${name} appears`, want: "character" as const,
+    energy: "medium" as const, keywords: [name] }));
+  let calls = 0;
+  try {
+    const clips = await cutsceneMedia({ enabled: true, scenes: true, gameTitle: "Example Game", episodeDir: dir,
+      maxClips: 2, maxSeconds: 10, ytdlp: "unused", targets,
+      deps: { search: async (query) => query.includes("Person") ? [] : [movie], details: async (item) => item,
+        captions: async () => "", lease: async () => () => undefined, download: async () => undefined,
+        screen: async () => true, match: async (options) => {
+          calls++;
+          if (calls === 1) return [];
+          const trailer = options.trailers[0]!;
+          return [{ kind: "clip" as const, file: `assets/fallback_${calls}.mp4`, sourceUrl: trailer.url,
+            sourceSectionId: trailer.sectionId, durationSeconds: 4, beatIndex: calls - 2, startSeconds: 1,
+            provenance: options.describe(trailer, 4, 1) }];
+        } },
+    });
+    assert.equal(clips.length, 2);
+    assert.ok(clips.every((clip) => clip.cutsceneMatch?.how === "spread"));
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("a semantic spread match stays pinned while a motion-only fallback stays unpinned", async () => {
+  for (const semantic of [true, false]) {
+    const dir = await fs.mkdtemp(path.join(process.cwd(), "cutscene-spread-target-test-"));
+    const movie = upload("Example Game All Cutscenes");
+    const target = { key: "take", text: "Alpha appears", want: "character" as const, energy: "medium" as const, keywords: ["Alpha"] };
+    try {
+      const clips = await cutsceneMedia({ enabled: true, scenes: true, gameTitle: "Example Game", episodeDir: dir,
+        maxClips: 1, maxSeconds: 4.8, ytdlp: "unused", targets: [target],
+        deps: { search: async (query) => query.includes("Alpha") ? [] : [movie], details: async (item) => item,
+          captions: async () => "", lease: async () => () => undefined, download: async () => undefined,
+          screen: async () => true, match: async (options) => {
+            const trailer = options.trailers[0]!;
+            return [{ kind: "clip" as const, file: "assets/spread.mp4", sourceUrl: trailer.url,
+              sourceSectionId: trailer.sectionId, assignedTargetKey: semantic ? "take" : undefined,
+              durationSeconds: 4, startSeconds: 1, provenance: options.describe(trailer, 4, 1) }];
+          } },
+      });
+      assert.equal(clips[0]?.cutsceneMatch?.targetKey, semantic ? "take" : undefined);
+      assert.equal(clips[0]?.cutsceneMatch?.requestedTarget, "take");
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  }
+});
+
+test("later targets are attempted when earlier targets produce no usable clips", async () => {
+  const dir = await fs.mkdtemp(path.join(process.cwd(), "cutscene-later-target-test-"));
+  const names = ["Alpha", "Beta", "Gamma"];
+  const movie = upload("Example Game All Cutscenes", { chapters: names.map((name, i) => ({ title: `${name} appears`, start: 100 + i * 50 })) });
+  const targets = names.map((name, i) => ({ key: `beat:${i}`, text: `${name} appears`, want: "character" as const,
+    energy: "medium" as const, keywords: [name] }));
+  try {
+    const clips = await cutsceneMedia({ enabled: true, scenes: true, gameTitle: "Example Game", episodeDir: dir,
+      maxClips: 2, maxSeconds: 10, ytdlp: "unused", targets,
+      deps: { search: async (query) => names.some((name) => query.includes(name)) ? [] : [movie], details: async (item) => item,
+        captions: async () => "", lease: async () => () => undefined, download: async () => undefined,
+        screen: async () => true, match: async (options) => {
+          const trailer = options.trailers.find((item) => item.targetKey === "beat:2");
+          if (!trailer) return [];
+          return [{ kind: "clip" as const, file: "assets/later.mp4", sourceUrl: trailer.url, sourceSectionId: trailer.sectionId,
+            durationSeconds: 4, beatIndex: 2, startSeconds: trailer.anchor, provenance: options.describe(trailer, 4, trailer.anchor ?? 0) }];
+        } },
+    });
+    assert.equal(clips[0]?.cutsceneMatch?.targetKey, "beat:2");
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });

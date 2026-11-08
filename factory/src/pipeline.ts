@@ -8534,6 +8534,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     beatIndex: c.beatIndex,
     role: c.role,
     moment: c.moment,
+    cutsceneMatch: c.cutsceneMatch,
     credit: c.credit,
     audio: c.audio,
     stock: c.stock,
@@ -8567,6 +8568,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         beatIndex: c.beatIndex,
         role: c.role,
         moment: c.moment,
+        cutsceneMatch: c.cutsceneMatch,
         span: c.span,
         stock: c.stock,
       })),
@@ -9932,6 +9934,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       luma: c.luma,
       beatIndex: c.beatIndex,
       role: c.role,
+      cutsceneMatch: c.cutsceneMatch,
     })),
     storyType: script.is_rumour ? "rumour" : script.story_type,
     isRumour: script.is_rumour,
@@ -10031,6 +10034,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           luma: c.luma,
           beatIndex: c.beatIndex,
           role: c.role,
+          cutsceneMatch: c.cutsceneMatch,
         })),
       };
       const tries = [0, 1, 2, 3].map((k) =>

@@ -23,6 +23,7 @@ import { numberWords } from "../voice/speakable.ts";
 import { SOURCE_TRUTH_RULE, absenceClaims } from "./shortrules.ts";
 import type { Llm } from "./llm.ts";
 import { reviseByEdits } from "./revise.ts";
+import { quoteBrief, quoteProblems, type CutsceneQuote } from "./quotes.ts";
 import {
   parsePairs,
   parseMilestones,
@@ -187,6 +188,7 @@ export async function writeScript(
     segment?: boolean;
     /** SHORT_END_PAYOFF: a Why's last line does not point to tomorrow's Why. */
     noSeriesFollow?: boolean;
+    availableQuotes?: readonly CutsceneQuote[];
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -212,7 +214,7 @@ export async function writeScript(
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
   const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
   const late = lateAngleNote(cluster.bigStory?.lateHours);
-  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${recent}${variantNote}${segmentNote}`;
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${recent}${variantNote}${segmentNote}${quoteBrief(opts.availableQuotes)}`;
   // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
   const edited =
     opts.draft &&
@@ -235,6 +237,12 @@ export async function writeScript(
       schema: ScriptSchema,
       effort: "medium",
     }));
+  const problems = quoteProblems([
+    { narration: script.hook }, ...script.beats,
+    ...(script.desk_question?.trim() ? [{ narration: script.desk_question }] : []),
+    { narration: script.pulse_take.narration }, { narration: script.loop_line },
+  ], opts.availableQuotes);
+  if (problems.length) throw new Error(`Invalid character quote: ${problems.join(" ")}`);
   return varyOpinion(
     cluster.why ? { ...script, story_type: "explainer" } : script,
     cluster.hash,

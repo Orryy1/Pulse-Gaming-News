@@ -90,6 +90,19 @@ test("nothing is sent for games the owner does not play", () => {
   );
 });
 
+test("the owner is asked for gameplay rather than cutscenes or cinematic footage", () => {
+  const script = longScript([
+    entry(1, "Grand Theft Auto V", [
+      "The ending cutscene with Michael",
+      "A cinematic scene with Trevor",
+      "The ending scene with Franklin",
+      "A drive along the coast",
+    ]),
+  ]);
+  script.beats[0]!.footage = { want: "cinematic", keywords: ["Michael"] };
+  assert.deepEqual(captureChecklist(script, OWNER)?.games[0]?.shots, ["A drive along the coast"]);
+});
+
 test("at most five things per game and ten lines in all; real-world B-roll is left out", () => {
   const shots = (n: string) =>
     Array.from({ length: 8 }, (_, i) => `${n} moment number ${i + 1}`);

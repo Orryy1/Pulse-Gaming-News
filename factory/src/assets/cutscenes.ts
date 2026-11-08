@@ -1,0 +1,913 @@
+// Short, muted sections of a game's cutscenes, screened before they enter the footage pool.
+
+import fs from "node:fs/promises";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { runCapped } from "../lib/child.ts";
+import { FFMPEG, YTDLP_TEXT } from "../lib/bin.ts";
+import { errorMessage, log } from "../lib/util.ts";
+import { orchClientUrl } from "../platform.ts";
+import { capFootage, DEFAULT_FOOTAGE_SECONDS } from "./footage.ts";
+import { franchisePublisher, PUBLISHER_CHANNELS } from "./officialTrailer.ts";
+import {
+  matchClips,
+  type FootageTarget,
+  type MatchClipsOptions,
+  type TrailerFile,
+} from "./clipscore.ts";
+import type { VisualAsset } from "./steam.ts";
+import type { Llm } from "../editorial/llm.ts";
+
+export interface CutsceneUpload {
+  videoId: string;
+  title: string;
+  uploader: string;
+  duration: number;
+  height?: number;
+  viewCount?: number;
+  isLive?: boolean;
+  liveStatus?: string;
+}
+
+export function cutsceneQueries(gameTitle: string): string[] {
+  const game = gameTitle.trim();
+  return game
+    ? [
+        `${game} all cutscenes no commentary`,
+        `${game} full movie`,
+        `${game} cutscenes 4K`,
+        `${game} game movie`,
+      ]
+    : [];
+}
+
+const NUMERALS: Record<string, string> = {
+  ii: "2",
+  iii: "3",
+  iv: "4",
+  v: "5",
+  vi: "6",
+  vii: "7",
+  viii: "8",
+  ix: "9",
+};
+function titleWords(title: string): string {
+  return title
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .map((word) => NUMERALS[word] ?? word)
+    .join(" ");
+}
+
+const DISTRACTIONS =
+  /\b(commentar\w*|reactions?|reacts?|reacting|face\s*cam|web\s*cam|lets?\s+play|review\w*|explained|lore|theor(?:y|ies)|fan\s*(?:films?|movies?|made)|mods?|modded|rank(?:ed|ing|ings)?|top\s*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|twenty)|live\s*(?:stream|broadcast)|stream(?:ed|ing))\b/i;
+const EDITIONS =
+  /\b(remaster(?:ed)?|remake|reimagined|definitive\s+edition)\b/i;
+
+/**
+ * Requires the game's name (or its subtitle of two words or more: uploads say "Zelda: Ocarina of Time Remake", the
+ * factory "The Legend of Zelda: Ocarina of Time"); preference scores never make a rejected upload eligible. A remake
+ * or remaster upload passes only for a recent release (the 2026 Ocarina remake carries the original's name, and the
+ * 1998 cutscenes would be the wrong game), and then it is preferred.
+ */
+export function pickCutsceneUpload(
+  candidates: CutsceneUpload[],
+  gameTitle: string,
+  opts: { recentRelease?: boolean } = {},
+): CutsceneUpload | undefined {
+  const game = titleWords(gameTitle);
+  if (!game) return undefined;
+  const subtitle = gameTitle.includes(":")
+    ? titleWords(gameTitle.split(":").pop()!)
+    : "";
+  const names = [game, ...(subtitle.split(" ").length >= 2 ? [subtitle] : [])];
+  const edition = (item: CutsceneUpload) =>
+    EDITIONS.test(titleWords(item.title));
+  const cutsceneWords = /\b(cut\s*scenes?|movies?)\b/i;
+  return candidates
+    .filter((item) => {
+      if (
+        !/^[\w-]{11}$/.test(item.videoId) ||
+        !Number.isFinite(item.duration) ||
+        item.duration < 6
+      )
+        return false;
+      if (item.isLive || (item.liveStatus && item.liveStatus !== "not_live"))
+        return false;
+      const title = titleWords(item.title);
+      if (!names.some((name) => ` ${title} `.includes(` ${name} `)))
+        return false;
+      if (!/\b(cut\s*scenes?|movies?|no\s+commentary)\b/i.test(title))
+        return false;
+      if (DISTRACTIONS.test(title.replace(/\bno\s+commentary\b/g, "")))
+        return false;
+      if (EDITIONS.test(title) && !EDITIONS.test(game) && !opts.recentRelease)
+        return false;
+      return true;
+    })
+    .sort(
+      (a, b) =>
+        (opts.recentRelease ? Number(edition(b)) - Number(edition(a)) : 0) ||
+        // A cutscene compilation beats a "no commentary" walkthrough, which is mostly the uploader's own play.
+        Number(cutsceneWords.test(b.title)) -
+          Number(cutsceneWords.test(a.title)) ||
+        Number(b.duration >= 1200) - Number(a.duration >= 1200) ||
+        Number((b.height ?? 0) >= 1080) - Number((a.height ?? 0) >= 1080) ||
+        (b.viewCount ?? 0) - (a.viewCount ?? 0) ||
+        b.duration - a.duration,
+    )[0];
+}
+
+// The picture must move before a stable textured corner is treated as an overlay. The texture floor
+// excludes plain black bars; the edge threshold looks for persistent white lettering with dark outlines.
+export const FRAME_WIDTH = 160;
+export const FRAME_HEIGHT = 90;
+export const MIN_SCREEN_FRAMES = 3;
+export const PICTURE_MOTION = 10;
+export const CORNER_STABILITY = 4;
+export const CORNER_TEXTURE = 12;
+// A nearly flat frame (a white dialogue card, a fade, a loading screen) carries no picture: the 8 Nov Ocarina trial
+// kept a white "Go, Link." card. Real scenes, dark ones included, sit well above this spread of brightness.
+export const BLANK_TEXTURE = 14;
+export const TEXT_EDGE_FRACTION = 0.018;
+export const TEXT_EDGE_PERSISTENCE = 0.6;
+export const TEXT_PIXEL_TOLERANCE = 16;
+
+/** A reason to drop the sampled segment, or undefined when no persistent overlay is detected. */
+export function cleanFrameReason(
+  frames: readonly Uint8Array[],
+  width = FRAME_WIDTH,
+  height = FRAME_HEIGHT,
+): string | undefined {
+  if (
+    width < 20 ||
+    height < 20 ||
+    frames.length < MIN_SCREEN_FRAMES ||
+    frames.some((f) => f.length !== width * height)
+  )
+    return "too few valid frames";
+  const region = (x0: number, y0: number, x1: number, y1: number) => {
+    let diff = 0,
+      sum = 0,
+      square = 0,
+      count = 0;
+    for (let y = y0; y < y1; y++)
+      for (let x = x0; x < x1; x++) {
+        const p = y * width + x;
+        const value = frames[0]![p]!;
+        sum += value;
+        square += value * value;
+        count++;
+        for (let k = 1; k < frames.length; k++)
+          diff += Math.abs(frames[k]![p]! - frames[k - 1]![p]!);
+      }
+    const mean = sum / count;
+    return {
+      motion: diff / (count * (frames.length - 1)),
+      texture: Math.sqrt(Math.max(0, square / count - mean * mean)),
+    };
+  };
+  const picture = region(
+    Math.floor(width * 0.25),
+    Math.floor(height * 0.2),
+    Math.floor(width * 0.75),
+    Math.floor(height * 0.7),
+  );
+  const whole = region(0, 0, width, height);
+  if (whole.texture < BLANK_TEXTURE) return "nearly blank picture";
+  const cw = Math.floor(width * 0.2),
+    ch = Math.floor(height * 0.2);
+  if (picture.motion >= PICTURE_MOTION)
+    for (const [x, y] of [
+      [0, 0],
+      [width - cw, 0],
+      [0, height - ch],
+      [width - cw, height - ch],
+    ]) {
+      const corner = region(x!, y!, x! + cw, y! + ch);
+      if (corner.motion <= CORNER_STABILITY && corner.texture >= CORNER_TEXTURE)
+        return "persistent corner overlay";
+      // Smaller tiles catch a logo occupying only part of the corner.
+      for (let dy = 0; dy < 2; dy++)
+        for (let dx = 0; dx < 2; dx++) {
+          const tile = region(
+            x! + Math.floor((dx * cw) / 2),
+            y! + Math.floor((dy * ch) / 2),
+            x! + Math.floor(((dx + 1) * cw) / 2),
+            y! + Math.floor(((dy + 1) * ch) / 2),
+          );
+          if (tile.motion <= CORNER_STABILITY && tile.texture >= CORNER_TEXTURE)
+            return "persistent corner overlay";
+        }
+    }
+  let persistent = 0,
+    possible = 0;
+  for (let y = Math.floor(height * 0.72); y < Math.floor(height * 0.92); y++)
+    for (
+      let x = Math.floor(width * 0.2);
+      x < Math.floor(width * 0.8) - 1;
+      x++
+    ) {
+      const p = y * width + x;
+      const edge = (f: Uint8Array) =>
+        Math.max(f[p]!, f[p + 1]!) >= 220 && Math.min(f[p]!, f[p + 1]!) <= 90;
+      possible++;
+      if (
+        frames.some(
+          (reference) =>
+            edge(reference) &&
+            frames.filter(
+              (frame) =>
+                edge(frame) &&
+                Math.abs(frame[p]! - reference[p]!) <= TEXT_PIXEL_TOLERANCE &&
+                Math.abs(frame[p + 1]! - reference[p + 1]!) <=
+                  TEXT_PIXEL_TOLERANCE,
+            ).length >= Math.ceil(frames.length * TEXT_EDGE_PERSISTENCE),
+        )
+      )
+        persistent++;
+    }
+  if (persistent / possible >= TEXT_EDGE_FRACTION)
+    return "persistent bottom text";
+  return undefined;
+}
+
+/** A long video gets up to six times the Short allowance, still a single per-video ceiling. */
+export function cutsceneBudgetSeconds(
+  shortSeconds: number,
+  videoSeconds: number,
+): number {
+  return (
+    Math.max(0, shortSeconds) *
+    Math.min(6, Math.max(1, (videoSeconds || 0) / 60))
+  );
+}
+
+/** The same owner's cap applies regardless of the YouTube uploader. */
+export function cutscenePublisher(
+  gameTitle: string,
+  names: string[] = [],
+): { key: string; seconds: number } {
+  const owner = franchisePublisher(gameTitle);
+  const rule = owner
+    ? PUBLISHER_CHANNELS.find((r) => r.name === owner)
+    : PUBLISHER_CHANNELS.find((r) =>
+        names.some((name) => {
+          const n = name.toLowerCase().trim();
+          return (
+            r.match.test(name.trim()) ||
+            n === r.name.toLowerCase() ||
+            n.startsWith(`${r.name.toLowerCase()} `) ||
+            (r.name === "Rockstar Games" && n.startsWith("rockstar"))
+          );
+        }),
+      );
+  return rule
+    ? { key: rule.name, seconds: rule.clipSeconds }
+    : {
+        key: `game:${gameTitle.toLowerCase().trim()}`,
+        seconds: DEFAULT_FOOTAGE_SECONDS,
+      };
+}
+
+export function cutsceneAllowance(
+  videoLimit: number,
+  videoUsed: number,
+  publisherLimit: number,
+  publisherUsed: number,
+): number {
+  return Math.max(
+    0,
+    Math.min(videoLimit - videoUsed, publisherLimit - publisherUsed),
+  );
+}
+
+/** A fail-open or forced turn cannot protect another render on the shared PC. */
+export function cutsceneGrant(line: string): boolean {
+  return line.trim() === "GRANTED";
+}
+
+async function cutsceneLease(est: number): Promise<() => void> {
+  const held = new Set((process.env.ORCH_HELD ?? "").split(","));
+  if (["gpu", "cpu", "ram"].every((token) => held.has(token)))
+    return () => undefined;
+  const client = orchClientUrl(process.platform, process.env);
+  if (!client) return () => undefined; // The Mac runs under its own turn-taking wrapper.
+  const script = path.join(path.dirname(fileURLToPath(client)), "orch.py");
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.env.ORCH_PYTHON || "C:/Python314/python.exe",
+      [
+        script,
+        "hold",
+        "--class",
+        "heavy",
+        "--project",
+        "pulse",
+        "--job",
+        "cutscene footage",
+        "--priority",
+        "60",
+        "--est",
+        String(est),
+        "--max-wait",
+        "1",
+        "--owner-pid",
+        String(process.pid),
+      ],
+      { stdio: ["pipe", "pipe", "ignore"], windowsHide: true },
+    );
+    child.stdin.on("error", () => undefined);
+    let buffer = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      reject(new Error("cutscene PC turn timed out"));
+    }, 80_000);
+    const fail = (message: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.stdin.end();
+      reject(new Error(message));
+    };
+    child.on("error", (err) => fail(errorMessage(err)));
+    child.on("exit", () =>
+      fail("cutscene PC turn ended before it was granted"),
+    );
+    child.stdout.on("data", (chunk: Buffer) => {
+      buffer += chunk.toString();
+      let end: number;
+      while ((end = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, end).trim();
+        buffer = buffer.slice(end + 1);
+        if (line.startsWith("GRANTED")) {
+          if (!cutsceneGrant(line)) {
+            fail("cutscene PC turn was not reserved");
+            return;
+          }
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve(() => child.stdin.end());
+          }
+        } else if (line.startsWith("TIMEOUT"))
+          fail("cutscene PC turn timed out");
+      }
+    });
+  });
+}
+
+async function searchCutscenes(
+  query: string,
+  ytdlp: string,
+): Promise<CutsceneUpload[]> {
+  const { stdout } = await runCapped(
+    ytdlp,
+    [
+      ...YTDLP_TEXT.args,
+      "--no-warnings",
+      "--flat-playlist",
+      "--dump-json",
+      `ytsearch15:${query}`,
+    ],
+    { timeout: 60_000, maxBuffer: 8 * 1024 * 1024, env: YTDLP_TEXT.env },
+  );
+  return stdout.split(/\r?\n/).flatMap((line) => {
+    try {
+      const item = JSON.parse(line);
+      return [
+        {
+          videoId: String(item.id ?? ""),
+          title: String(item.title ?? ""),
+          uploader: String(item.uploader ?? item.channel ?? ""),
+          duration: Number(item.duration) || 0,
+          height: Number(item.height) || undefined,
+          viewCount: Number(item.view_count) || undefined,
+          isLive: item.is_live === true,
+          liveStatus: item.live_status || undefined,
+        },
+      ];
+    } catch {
+      return [];
+    }
+  });
+}
+
+async function uploadDetails(
+  upload: CutsceneUpload,
+  ytdlp: string,
+): Promise<CutsceneUpload | undefined> {
+  const { stdout } = await runCapped(
+    ytdlp,
+    [
+      ...YTDLP_TEXT.args,
+      "--no-warnings",
+      "--no-playlist",
+      "--skip-download",
+      "--dump-single-json",
+      `https://www.youtube.com/watch?v=${upload.videoId}`,
+    ],
+    { timeout: 60_000, maxBuffer: 16 * 1024 * 1024, env: YTDLP_TEXT.env },
+  );
+  const item = JSON.parse(stdout);
+  if (
+    item.id !== upload.videoId ||
+    item.was_live === true ||
+    !(
+      item.live_status === "not_live" ||
+      (item.is_live === false && item.was_live === false)
+    )
+  )
+    return undefined;
+  const heights = (Array.isArray(item.formats) ? item.formats : [])
+    .filter((format: { vcodec?: string }) => format.vcodec !== "none")
+    .map((format: { height?: number }) => Number(format.height) || 0);
+  return {
+    videoId: upload.videoId,
+    title: String(item.title ?? ""),
+    uploader: String(item.uploader ?? item.channel ?? ""),
+    duration: Number(item.duration) || 0,
+    height: Math.max(Number(item.height) || 0, ...heights) || undefined,
+    viewCount: Number(item.view_count) || undefined,
+    isLive: item.is_live === true,
+    liveStatus: item.live_status || undefined,
+  };
+}
+
+export function cutsceneDownloadArgs(
+  upload: CutsceneUpload,
+  from: number,
+  to: number,
+  file: string,
+): string[] {
+  return [
+    "--no-playlist",
+    "--no-warnings",
+    "-f",
+    "bv*[height<=1080][ext=mp4][vcodec^=avc1]/bv*[height<=1080][ext=mp4]/b[height<=1080][ext=mp4]",
+    "--download-sections",
+    `*${from.toFixed(2)}-${to.toFixed(2)}`,
+    "-o",
+    file,
+    `https://www.youtube.com/watch?v=${upload.videoId}`,
+  ];
+}
+
+export function silentSectionArgs(source: string, file: string): string[] {
+  return [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    source,
+    "-map",
+    "0:v:0",
+    "-c:v",
+    "copy",
+    "-an",
+    "-sn",
+    "-dn",
+    file,
+  ];
+}
+
+async function downloadSection(
+  upload: CutsceneUpload,
+  from: number,
+  to: number,
+  file: string,
+  ytdlp: string,
+): Promise<void> {
+  const downloaded = `${file}.download.mp4`;
+  try {
+    await runCapped(ytdlp, cutsceneDownloadArgs(upload, from, to, downloaded), {
+      timeout: 300_000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    await runCapped(FFMPEG, silentSectionArgs(downloaded, file), {
+      timeout: 60_000,
+      maxBuffer: 1024 * 1024,
+    });
+  } finally {
+    await fs.rm(downloaded, { force: true }).catch(() => undefined);
+  }
+}
+
+async function screenSection(file: string, seconds: number): Promise<boolean> {
+  const raw = `${file}.gray`;
+  try {
+    await runCapped(
+      FFMPEG,
+      [
+        "-v",
+        "error",
+        "-y",
+        "-i",
+        file,
+        "-vf",
+        `fps=${(5 / Math.max(1, seconds)).toFixed(4)},scale=${FRAME_WIDTH}:${FRAME_HEIGHT},format=gray`,
+        "-frames:v",
+        "5",
+        "-an",
+        "-f",
+        "rawvideo",
+        raw,
+      ],
+      { timeout: 60_000, maxBuffer: 1024 * 1024 },
+    );
+    const data = await fs.readFile(raw);
+    const size = FRAME_WIDTH * FRAME_HEIGHT;
+    const frames: Uint8Array[] = [];
+    for (let offset = 0; offset + size <= data.length; offset += size)
+      frames.push(data.subarray(offset, offset + size));
+    const reason = cleanFrameReason(frames);
+    if (reason) log("info", "cutscene section screened out", { file: path.basename(file), reason });
+    return reason === undefined;
+  } finally {
+    await fs.rm(raw, { force: true }).catch(() => undefined);
+  }
+}
+
+export interface CutsceneOptions {
+  enabled: boolean;
+  gameTitle: string;
+  recentRelease?: boolean;
+  episodeDir: string;
+  targets: FootageTarget[];
+  maxClips: number;
+  maxSeconds: number;
+  ytdlp: string;
+  publisher?: string;
+  llm?: Llm;
+  deps?: {
+    search?: (query: string) => Promise<CutsceneUpload[]>;
+    details?: (
+      upload: CutsceneUpload,
+      ytdlp: string,
+    ) => Promise<CutsceneUpload | undefined>;
+    download?: (
+      upload: CutsceneUpload,
+      from: number,
+      to: number,
+      file: string,
+      ytdlp: string,
+    ) => Promise<void>;
+    screen?: (file: string, seconds: number) => Promise<boolean>;
+    match?: (options: MatchClipsOptions) => Promise<VisualAsset[]>;
+    lease?: (est: number) => Promise<() => void>;
+  };
+}
+
+export type CutsceneClip = VisualAsset & {
+  credit: string;
+  span: { source: string; from: number; to: number };
+};
+
+// Source text must not masquerade as the publisher field used by the existing cap.
+function provenanceLabel(value: string): string {
+  return value
+    .replace(/[\r\n"]/g, " ")
+    .replace(/\bpublisher\s*:/gi, "publisher ");
+}
+
+export interface CutsceneJob {
+  gameTitle: string;
+  /** The video is about a release from the last year or so, or names its remake or remaster (pickCutsceneUpload). */
+  recentRelease?: boolean;
+  episodeDir: string;
+  pathPrefix?: string;
+  beatIndex?: number;
+  targets: FootageTarget[];
+  publisherNames?: string[];
+}
+
+/** Drop or shorten only cutscenes if a later footage pass has spent their allowance. */
+export function reconcileCutsceneBudgets<
+  T extends {
+    provenance: string;
+    durationSeconds: number;
+    beatIndex?: number;
+    stock?: boolean;
+    span?: { source: string; from: number; to: number };
+  },
+>(
+  clips: T[],
+  jobs: Array<Pick<CutsceneJob, "gameTitle" | "beatIndex" | "publisherNames">>,
+  videoLimit: number,
+): T[] {
+  const isCutscene = (clip: T) => /^Cutscenes for "/.test(clip.provenance);
+  const ownerByBeat = new Map(
+    jobs.flatMap((job) =>
+      job.beatIndex === undefined
+        ? []
+        : [
+            [
+              job.beatIndex,
+              cutscenePublisher(job.gameTitle, job.publisherNames).key,
+            ] as const,
+          ],
+    ),
+  );
+  const explicitOwner = (clip: T) =>
+    PUBLISHER_CHANNELS.find((rule) =>
+      clip.provenance.includes(`publisher: ${rule.name}`),
+    );
+  for (const clip of clips) {
+    const owner = isCutscene(clip) ? explicitOwner(clip) : undefined;
+    if (owner && clip.beatIndex !== undefined)
+      ownerByBeat.set(clip.beatIndex, owner.name);
+  }
+  const other = clips.filter((clip) => !isCutscene(clip));
+  const kept = new Map<T, T>();
+  let videoUsed = 0;
+  for (const clip of clips.filter(isCutscene)) {
+    const game = clip.provenance.match(/^Cutscenes for "([^"]+)"/)?.[1] ?? "";
+    const rule = explicitOwner(clip);
+    const owner = rule
+      ? { key: rule.name, seconds: rule.clipSeconds }
+      : cutscenePublisher(game);
+    const used = [...other, ...kept.values()].reduce((sum, item) => {
+      if (item.stock) return sum;
+      const known =
+        explicitOwner(item)?.name ??
+        (item.beatIndex === undefined
+          ? undefined
+          : ownerByBeat.get(item.beatIndex));
+      return sum + (!known || known === owner.key ? item.durationSeconds : 0);
+    }, 0);
+    const allowed = cutsceneAllowance(
+      videoLimit,
+      videoUsed,
+      owner.seconds,
+      used,
+    );
+    const next = capFootage([clip], allowed, 4.8, true)[0];
+    if (!next) continue;
+    const duration = next.durationSeconds;
+    const adjusted = next.span
+      ? { ...next, span: { ...next.span, to: next.span.from + duration } }
+      : next;
+    kept.set(clip, adjusted);
+    videoUsed += duration;
+  }
+  return clips.flatMap((clip) =>
+    isCutscene(clip) ? (kept.has(clip) ? [kept.get(clip)!] : []) : [clip],
+  );
+}
+
+/** The episode-level allowance is shared by every game and every clip already gathered for its publisher. */
+export async function gatherCutsceneSources(o: {
+  enabled: boolean;
+  videoLimit: number;
+  jobs: CutsceneJob[];
+  existing: Array<{
+    provenance: string;
+    durationSeconds: number;
+    beatIndex?: number;
+    stock?: boolean;
+  }>;
+  fetch: (
+    job: CutsceneJob & { maxSeconds: number; publisher?: string },
+  ) => Promise<CutsceneClip[]>;
+  shouldStop?: () => boolean;
+}): Promise<CutsceneClip[]> {
+  if (!o.enabled || o.videoLimit < 1.6) return [];
+  const owners = o.jobs.map((job) =>
+    cutscenePublisher(job.gameTitle, job.publisherNames),
+  );
+  const ownerByBeat = new Map(
+    o.jobs.flatMap((job, i) =>
+      job.beatIndex === undefined
+        ? []
+        : [[job.beatIndex, owners[i]!.key] as const],
+    ),
+  );
+  let videoUsed = o.existing
+    .filter((c) => /^Cutscenes for "/.test(c.provenance))
+    .reduce((n, c) => n + c.durationSeconds, 0);
+  const added: CutsceneClip[] = [];
+  for (const [i, job] of o.jobs.entries()) {
+    if (o.shouldStop?.()) break;
+    const owner = owners[i]!;
+    const used = [...o.existing, ...added].reduce((sum, clip) => {
+      if (clip.stock) return sum;
+      const explicit = PUBLISHER_CHANNELS.find((r) =>
+        clip.provenance.includes(`publisher: ${r.name}`),
+      )?.name;
+      const known =
+        explicit ??
+        (clip.beatIndex === undefined
+          ? undefined
+          : ownerByBeat.get(clip.beatIndex));
+      // An untagged hook can belong to any entry, so count it against each publisher until its owner is known.
+      return (
+        sum + (!known || known === owner.key ? (clip.durationSeconds ?? 0) : 0)
+      );
+    }, 0);
+    const maxSeconds = cutsceneAllowance(
+      o.videoLimit,
+      videoUsed,
+      owner.seconds,
+      used,
+    );
+    if (maxSeconds < 1.6 || !job.targets.length) continue;
+    const found = await o
+      .fetch({
+        ...job,
+        maxSeconds,
+        publisher: owner.key.startsWith("game:") ? undefined : owner.key,
+      })
+      .catch((err) => {
+        log("warn", "cutscene media failed", {
+          game: job.gameTitle,
+          error: errorMessage(err),
+        });
+        return [] as CutsceneClip[];
+      });
+    for (const clip of capFootage(found, maxSeconds, 4.8, true)) {
+      const durationSeconds = clip.durationSeconds ?? 4.8;
+      added.push({
+        ...clip,
+        file: job.pathPrefix ? path.join(job.pathPrefix, clip.file) : clip.file,
+        beatIndex: job.beatIndex ?? clip.beatIndex,
+        durationSeconds,
+        audio: false,
+        span: { ...clip.span, to: clip.span.from + durationSeconds },
+      });
+      videoUsed += durationSeconds;
+    }
+  }
+  return added;
+}
+
+/** Searches metadata first and downloads only small, bounded sections of the chosen upload. */
+export async function cutsceneMedia(
+  o: CutsceneOptions,
+): Promise<CutsceneClip[]> {
+  if (
+    !o.enabled ||
+    !o.gameTitle.trim() ||
+    !o.targets.length ||
+    o.maxClips <= 0 ||
+    o.maxSeconds < 1.6
+  )
+    return [];
+  const hits: CutsceneUpload[] = [];
+  for (const query of cutsceneQueries(o.gameTitle)) {
+    try {
+      hits.push(
+        ...(await (o.deps?.search?.(query) ?? searchCutscenes(query, o.ytdlp))),
+      );
+    } catch (err) {
+      log("warn", "cutscene search failed", {
+        game: o.gameTitle,
+        error: errorMessage(err),
+      });
+    }
+  }
+  // Flat search results often lack resolution or complete live status. Confirm the best few before downloading.
+  const pending = [...new Map(hits.map((hit) => [hit.videoId, hit])).values()];
+  const detailed: CutsceneUpload[] = [];
+  for (let i = 0; i < 6; i++) {
+    const hit = pickCutsceneUpload(pending, o.gameTitle, { recentRelease: o.recentRelease });
+    if (!hit) break;
+    pending.splice(pending.indexOf(hit), 1);
+    try {
+      const item = await (o.deps?.details ?? uploadDetails)(hit, o.ytdlp);
+      if (item && item.videoId === hit.videoId) detailed.push(item);
+    } catch (err) {
+      log("warn", "cutscene metadata failed", {
+        videoId: hit.videoId,
+        error: errorMessage(err),
+      });
+    }
+  }
+  const upload = pickCutsceneUpload(detailed, o.gameTitle, { recentRelease: o.recentRelease });
+  if (!upload) return [];
+  let release: () => void;
+  try {
+    release = await (o.deps?.lease ?? cutsceneLease)(
+      Math.max(5, Math.min(30, Math.ceil(o.maxSeconds / 4))),
+    );
+  } catch (err) {
+    log("warn", "cutscene footage skipped: PC turn unavailable", {
+      game: o.gameTitle,
+      error: errorMessage(err),
+    });
+    return [];
+  }
+  const url = `https://www.youtube.com/watch?v=${upload.videoId}`;
+  let work: string | undefined;
+  const offsets = new Map<string, number>();
+  const trailers: TrailerFile[] = [];
+  try {
+    await fs.mkdir(o.episodeDir, { recursive: true });
+    work = await fs.mkdtemp(path.join(o.episodeDir, "cutscene_work_"));
+    const count = Math.min(
+      12,
+      Math.max(2, Math.ceil(o.maxSeconds / 4.8) + 1),
+      Math.max(1, Math.floor(upload.duration / 10)),
+    );
+    // 30-second sections: a cutscene cuts every few seconds, and the matcher needs whole shots of about 5 s inside
+    // a section (10-second sections left fewer than two usable shots in the 8 Nov Ocarina trial).
+    const length = Math.min(30, upload.duration);
+    for (let i = 0; i < count; i++) {
+      const from = Math.max(
+        0,
+        ((upload.duration - length) * (i + 1)) / (count + 1),
+      );
+      const file = path.join(work, `section_${i}.mp4`);
+      try {
+        await (o.deps?.download ?? downloadSection)(
+          upload,
+          from,
+          Math.min(upload.duration, from + length),
+          file,
+          o.ytdlp,
+        );
+        if (!(await (o.deps?.screen ?? screenSection)(file, length))) {
+          await fs.rm(file, { force: true });
+          continue;
+        }
+        offsets.set(file, from);
+        trailers.push({ file, name: upload.title, url, total: length });
+      } catch (err) {
+        log("warn", "cutscene section rejected", {
+          videoId: upload.videoId,
+          error: errorMessage(err),
+        });
+        await fs.rm(file, { force: true }).catch(() => undefined);
+      }
+    }
+    log("info", "cutscene sections kept", { videoId: upload.videoId, kept: trailers.length, tried: count });
+    if (!trailers.length) return [];
+    const clips = await (o.deps?.match ?? matchClips)({
+      trailers,
+      episodeDir: o.episodeDir,
+      targets: o.targets,
+      maxClips: o.maxClips,
+      llm: o.llm,
+      prefix: path.basename(work),
+      textCheck: true,
+      fillSeconds: o.maxSeconds,
+      describe: (t, seconds, at) =>
+        `Cutscenes for "${provenanceLabel(o.gameTitle)}" from YouTube video "${provenanceLabel(upload.title)}" by ${provenanceLabel(upload.uploader)}, video ID: ${upload.videoId}${o.publisher ? `, publisher: ${o.publisher}` : ""} (${url}), ${seconds}s, section start: ${(offsets.get(t.file) ?? 0).toFixed(2)}s, source time: ${((offsets.get(t.file) ?? 0) + at).toFixed(2)}s, muted`,
+    });
+    const clean: CutsceneClip[] = [];
+    for (const clip of clips) {
+      const file = path.join(o.episodeDir, clip.file);
+      if (
+        !(await (o.deps?.screen ?? screenSection)(
+          file,
+          clip.durationSeconds ?? 4.8,
+        ).catch(() => false))
+      ) {
+        await fs.rm(file, { force: true }).catch(() => undefined);
+        continue;
+      }
+      const sectionStart = Number(
+        clip.provenance.match(/section start: ([\d.]+)s/)?.[1],
+      );
+      const from =
+        clip.startSeconds !== undefined && Number.isFinite(sectionStart)
+          ? Math.round((sectionStart + clip.startSeconds) * 100) / 100
+          : Number(clip.provenance.match(/source time: ([\d.]+)s/)?.[1]);
+      if (!Number.isFinite(from)) continue;
+      // The fill pass can land on a moment the matched pass already took (two identical clips in the 8 Nov trial).
+      if (clean.some((c) => Math.abs(c.span.from - from) < 3)) {
+        await fs.rm(file, { force: true }).catch(() => undefined);
+        continue;
+      }
+      clean.push({
+        ...clip,
+        provenance: clip.provenance.replace(
+          /source time: [\d.]+s/,
+          `source time: ${from.toFixed(2)}s`,
+        ),
+        audio: false,
+        credit: `FOOTAGE: ${o.gameTitle.toUpperCase()} CUTSCENES / YOUTUBE`,
+        youtubeSource: {
+          videoId: upload.videoId,
+          title: upload.title,
+          uploader: upload.uploader,
+        },
+        span: { source: url, from, to: from + (clip.durationSeconds ?? 0) },
+      });
+    }
+    return capFootage(clean, o.maxSeconds, 4.8, true);
+  } finally {
+    if (work)
+      await fs
+        .rm(work, { recursive: true, force: true })
+        .catch(() => undefined);
+    release();
+  }
+}

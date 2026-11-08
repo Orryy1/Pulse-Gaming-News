@@ -1,0 +1,45 @@
+{
+  "schema": "pulse-cutscene-footage-proof-v1",
+  "date": "2026-11-08",
+  "scope": "Uncommitted factory source candidate",
+  "status": "incomplete",
+  "settings": {
+    "CUTSCENE_FOOTAGE": { "default": false },
+    "CUTSCENE_MAX_SECONDS": { "short_default": 20, "long_scale": "duration divided by 60, between 1 and 6 times the Short limit" }
+  },
+  "checks": [
+    {
+      "command": "npx tsc --noEmit -p .",
+      "result": "passed"
+    },
+    {
+      "command": "node --import tsx --test tests/cutscenes.test.ts tests/capture.test.ts tests/officialTrailer.test.ts tests/clipscore.test.ts tests/footagefirst.test.ts tests/units.test.ts",
+      "result": "passed",
+      "tests": 94,
+      "failures": 0
+    },
+    {
+      "command": "node --import tsx --test --test-concurrency=2 on 76 non-rendering test files selected by source inspection",
+      "result": "passed",
+      "tests": 594,
+      "failures": 0,
+      "note": "This earlier batch overlaps the focused run and predates the final provenance and title-filter edits."
+    },
+    {
+      "command": "node --import tsx --test tests/*.test.ts through orch run --class heavy --priority 20 --est 10",
+      "result": "interrupted",
+      "reason": "The orchestrator could not access its lock and its CLI fell back to unscheduled execution. The suite was stopped and has no final result."
+    }
+  ],
+  "evidence": {
+    "live_youtube_acquisition": "not run",
+    "real_cutscene_frame_screen": "not run",
+    "copyright_or_reuse_permission": "not verified",
+    "claim_exclusion": "YouTube video ID, title and uploader are stored with each clip; no claim detection was added",
+    "publication": "not performed"
+  },
+  "remaining": [
+    "Restore access to the shared PC orchestrator and run the full requested suite with a real reservation.",
+    "Test a locally authorised source through actual yt-dlp and ffmpeg, then review the resulting frames and rights before production use."
+  ]
+}

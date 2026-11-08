@@ -137,6 +137,7 @@ export interface EpisodeAssets {
     sourceUrl: string;
     provenance: string;
     durationSeconds: number;
+    youtubeSource?: { videoId: string; title: string; uploader: string };
     blurFile?: string;
     beatIndex?: number;
     role?: "hook";

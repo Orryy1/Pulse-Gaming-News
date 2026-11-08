@@ -580,6 +580,8 @@ export interface Config {
   maxClips: number;
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
+  cutsceneFootage: boolean; // CUTSCENE_FOOTAGE: opt in to screened YouTube cutscene sections
+  cutsceneMaxSeconds: number; // CUTSCENE_MAX_SECONDS: per-Short budget, scaled for long videos
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
@@ -1275,6 +1277,8 @@ export function loadConfig(): Config {
     clipRanking: (str("CLIP_RANKING", "llm") === "rule" ? "rule" : "llm") as
       "llm" | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
+    cutsceneFootage: bool("CUTSCENE_FOOTAGE", false),
+    cutsceneMaxSeconds: Math.max(0, int("CUTSCENE_MAX_SECONDS", 20)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   shortVivid: bool("SHORT_VIVID", false),
   docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),

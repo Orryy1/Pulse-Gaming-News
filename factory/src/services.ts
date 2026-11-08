@@ -45,6 +45,7 @@ import { checkNarration, transcribeWords } from "./qa/narration.ts";
 import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken, storedRefreshToken } from "./youtube/oauth.ts";
 import { trailerFrames, officialMedia } from "./assets/officialTrailer.ts";
+import { cutsceneMedia } from "./assets/cutscenes.ts";
 import {
   archiveLibrary,
   libraryStockClips,
@@ -410,6 +411,12 @@ export function createServices(db: Db, cfg: Config): Services {
             avoidUrls,
           )
         : Promise.resolve([]),
+    fetchCutscenes: (options) => cutsceneMedia({
+      ...options,
+      enabled: cfg.cutsceneFootage,
+      ytdlp: cfg.ytdlpPath,
+      llm: cfg.clipRanking === "llm" ? llm : undefined,
+    }),
     fetchOfficialMedia: async (
       gameTitle,
       dir,

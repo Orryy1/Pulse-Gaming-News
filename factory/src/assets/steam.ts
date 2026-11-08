@@ -26,6 +26,7 @@ export interface VisualAsset {
   file: string; // path relative to the episode directory
   sourceUrl: string;
   provenance: string;
+  youtubeSource?: { videoId: string; title: string; uploader: string };
   width?: number;
   height?: number;
   durationSeconds?: number;

@@ -373,6 +373,8 @@ export function testConfig(
     maxClips: 4,
     clipRanking: "rule",
     officialTrailers: false,
+    cutsceneFootage: false,
+    cutsceneMaxSeconds: 20,
     ytdlpPath: "yt-dlp",
     pexelsApiKey: "",
     // Tests never reach the outside picture libraries.

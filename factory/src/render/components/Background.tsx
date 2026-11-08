@@ -393,8 +393,8 @@ export const ArtTrack: React.FC<{
           (clip?.credit ?? image?.credit) ? (
             <FootageCredit credit={(clip?.credit ?? image?.credit)!} durationFrames={len} small />
           ) : null
-        ) : clip && footageCredit ? (
-          <FootageCredit credit={footageCredit} durationFrames={len} />
+        ) : clip && (clip.credit || footageCredit) ? (
+          <FootageCredit credit={clip.credit || footageCredit} durationFrames={len} />
         ) : null}
       </Sequence>
     </AbsoluteFill>

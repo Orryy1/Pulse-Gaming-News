@@ -36,9 +36,9 @@ export function ownerPlays(
 }
 
 const gameplayPhrase = (w: string) => `Some gameplay with ${w}`;
+const CUTSCENE_ASK = /\b(?:cut[- ]?scenes?|cinematics?|(?:opening|closing|intro|outro|ending|final|dialogue|story)\s+(?:scenes?|sequences?))\b/i;
 const WANT_PHRASE: Record<string, (what: string) => string> = {
   gameplay: gameplayPhrase,
-  cinematic: (w) => `A big story moment with ${w}`,
   character: (w) => `A close look at ${w}`,
   world: (w) => `A slow look around ${w}`,
   vehicle: (w) => `A drive with ${w}`,
@@ -126,8 +126,9 @@ export function captureChecklist(
     };
     // Real-world B-roll (a studio, a court case) is stock footage, nothing to play.
     for (const m of entry.moments ?? [])
-      if (!m.broll?.trim() && m.show?.trim()) add(m.show);
+      if (!m.broll?.trim() && m.show?.trim() && !CUTSCENE_ASK.test(m.show)) add(m.show);
     for (const f of footageAsks(script, i)) {
+      if (f.want === "cinematic" || f.keywords.some((word) => CUTSCENE_ASK.test(word))) continue;
       const words = f.keywords
         .map((k) => k.trim())
         .filter((k) => k && key(k) !== titleKey && key(k) !== key(franchise))

@@ -41,6 +41,7 @@ import { factsText } from "./assets/steam.ts";
 import { capFootage, DEFAULT_FOOTAGE_SECONDS, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
+import { cutsceneBudgetSeconds, gatherCutsceneSources, reconcileCutsceneBudgets, type CutsceneClip, type CutsceneJob } from "./assets/cutscenes.ts";
 import type { RadarGame, FreeGame } from "./discovery/weekly.ts";
 import { rarest, type Achievement } from "./discovery/achievements.ts";
 import {
@@ -610,6 +611,16 @@ export interface Services {
     story?: { text: string; after: Date },
     fill?: { seconds?: number; textCheck?: boolean },
   ): Promise<OfficialMedia>;
+  /** Screened, muted sections of YouTube cutscenes, after Steam and official trailers. */
+  fetchCutscenes?(options: {
+    gameTitle: string;
+    recentRelease?: boolean;
+    episodeDir: string;
+    targets: FootageTarget[];
+    maxClips: number;
+    maxSeconds: number;
+    publisher?: string;
+  }): Promise<CutsceneClip[]>;
   /** A tight-cap publisher's trailer as last-resort stills, once published art has been counted. */
   trailerFrames?(
     trailer: { videoId: string; title: string; channelTitle: string; url: string },
@@ -6202,7 +6213,7 @@ export function mediaTitle(title: string): string {
   return title.replace(/\s*\([^)]*\)\s*$/, "").trim() || title;
 }
 
-async function gatherMedia(
+export async function gatherMedia(
   s: Services,
   ep: Episode,
   dir: string,
@@ -6876,6 +6887,41 @@ async function gatherMedia(
       before,
       after: { clips: clips.length, images: images.length },
     });
+  }
+  // Cutscenes are a separate opt-in and share the remaining budget with the footage already gathered.
+  if (s.cfg.cutsceneFootage && s.fetchCutscenes && !gatherBudget.over()) {
+    const jobs: CutsceneJob[] = [];
+    if (script.entries?.length) {
+      const entries = [...script.entries].sort((a, b) => b.rank - a.rank);
+      for (const [beatIndex, entry] of entries.entries()) {
+        if (!entry.game_title || entry.year > s.now().getFullYear() ||
+            (script.evergreen_format === "documentary" && upcomingGame(entry.year, s.now()))) continue;
+        const eapp = await steamAppForEntry(s, entry).catch(() => undefined);
+        const shots = docShotTargets(entry, chapterSentences(script, beatIndex), beatIndex);
+        const want = script.beats[beatIndex]?.footage;
+        const targets: FootageTarget[] = shots.length ? shots : want?.want === "none" ? [] : [{
+          key: `beat:${beatIndex}`, text: script.beats[beatIndex]?.narration ?? entry.game_title,
+          want: want?.want ?? "cinematic", energy: "medium", keywords: want?.keywords ?? [entry.game_title],
+        }];
+        jobs.push({ gameTitle: entry.game_title, recentRelease: entry.year >= s.now().getFullYear() - 1, episodeDir: path.join(dir, `entry_${beatIndex}`),
+          pathPrefix: `entry_${beatIndex}`, beatIndex, targets,
+          publisherNames: [...(eapp?.details?.publishers ?? []), ...(eapp?.details?.developers ?? [])] });
+      }
+    } else if (script.game_title) {
+      jobs.push({ gameTitle: script.game_title, episodeDir: dir, targets: topicTargets,
+        // A Short about the remake says so; then the remake's cutscenes are the right ones, not the original's.
+        recentRelease: /\b(remake|remaster(?:ed)?|reimagined)\b/i.test([script.headline, script.hook, ...script.beats.map((b) => b.narration)].join(" ")),
+        publisherNames: [...(app?.details?.publishers ?? []), ...(app?.details?.developers ?? []), ...(official.trailer ? [official.trailer.publisher] : [])] });
+    }
+    const added = await gatherCutsceneSources({
+      enabled: true,
+      videoLimit: isLongEpisode(ep) ? cutsceneBudgetSeconds(s.cfg.cutsceneMaxSeconds, narrationSeconds) : s.cfg.cutsceneMaxSeconds,
+      jobs, existing: clips, shouldStop: () => gatherBudget.over(),
+      fetch: (job) => s.fetchCutscenes!({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: job.episodeDir,
+        targets: job.targets, maxClips: Math.min(24, Math.max(job.targets.length, Math.ceil(job.maxSeconds / 4.8))),
+        maxSeconds: job.maxSeconds, publisher: job.publisher }),
+    });
+    clips.push(...added.map((c) => ({ ...c, durationSeconds: c.durationSeconds ?? 4.8 })));
   }
   // A story about a person shows the person: a freely licensed photo from Wikimedia Commons,
   // credited on screen, on the first line that names them (else wherever a still is needed).
@@ -8192,6 +8238,16 @@ async function deferLong(s: Services, ep: Episode): Promise<void> {
   ]);
 }
 
+function allowedEpisodeCutscenes(cfg: Config, script: Script, assets: EpisodeAssets, long: boolean): NonNullable<EpisodeAssets["clips"]> {
+  const jobs = script.entries?.length
+    ? [...script.entries].sort((a, b) => b.rank - a.rank).map((entry, beatIndex) => ({ gameTitle: entry.game_title, beatIndex }))
+    : [{ gameTitle: script.game_title }];
+  const limit = !cfg.cutsceneFootage ? 0 : long
+    ? cutsceneBudgetSeconds(cfg.cutsceneMaxSeconds, assets.durationSeconds ?? 45)
+    : cfg.cutsceneMaxSeconds;
+  return reconcileCutsceneBudgets(assets.clips ?? [], jobs, limit);
+}
+
 /** The long-form 16:9 render: its own plan, composition, QA band and thumbnail. */
 async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const dir = episodeDir(s.cfg, ep.id);
@@ -8258,6 +8314,15 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       ep.id,
       JSON.stringify(assets),
     ]);
+  }
+  // The footage-first pass may add more of the same publisher after cutscenes were gathered.
+  if (assets.clips?.some((c) => /^Cutscenes for "/.test(c.provenance))) {
+    const allowed = allowedEpisodeCutscenes(s.cfg, script, assets, true);
+    if (JSON.stringify(allowed) !== JSON.stringify(assets.clips)) {
+      assets.clips = allowed;
+      delete assets.longPlan;
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+    }
   }
   // Every sentence still without a picture or graphic of its own is searched for on its own, once per video
   // (src/assets/fill.ts; owner, 30 Oct 2026: "all videos must be fully media rich all the way through").
@@ -9760,6 +9825,14 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       JSON.stringify(assets),
     ]);
   }
+  if (assets.clips?.some((c) => /^Cutscenes for "/.test(c.provenance))) {
+    const allowed = allowedEpisodeCutscenes(s.cfg, script, assets, false);
+    if (JSON.stringify(allowed) !== JSON.stringify(assets.clips)) {
+      assets.clips = allowed;
+      delete assets.plan;
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+    }
+  }
   if (await belowMediaFloor(s, ep, assets)) return;
   const duration = (assets.durationSeconds ?? 30) + TAIL_SECONDS;
   const words = assets.words ?? [];
@@ -10210,7 +10283,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         motion: c.motion,
         luma: c.luma,
         stock: c.stock,
-        credit: ccCredit(c.provenance),
+        credit: c.credit ?? ccCredit(c.provenance),
       })),
       steam: steamLite,
       emphasis: emphasisWords(script),
@@ -10726,8 +10799,11 @@ export function footageCredits(
 ): string {
   if (!clips.length && !official) return "";
   const steamGames = new Set<string>();
+  const cutsceneGames = new Set<string>();
   const channels = new Map<string, string>(); // channel -> url
   for (const c of clips) {
+    const cutscene = c.provenance.match(/^Cutscenes for "([^"]+)" from YouTube video /);
+    if (cutscene) cutsceneGames.add(cutscene[1]!);
     const steam = c.provenance.match(
       /^Official Steam trailer "[^"]*" for "([^"]+)"/,
     );
@@ -10744,7 +10820,7 @@ export function footageCredits(
   if (official) channels.set(official.channelTitle, official.url);
   const lines: string[] = [];
   // Clips whose provenance names no trailer (older episodes, test fixtures) still get the generic credit.
-  if (!steamGames.size && !channels.size && clips.length)
+  if (!steamGames.size && !channels.size && !cutsceneGames.size && clips.length)
     lines.push(
       `Footage: ${script.game_title} official trailer${publisher ? ` (${publisher})` : ""}, via Steam. Store art: Steam.`,
     );
@@ -10756,6 +10832,7 @@ export function footageCredits(
     lines.push(
       `Footage: official Steam trailers, a few seconds each: ${[...steamGames].join(", ")}. Store art: Steam.`,
     );
+  for (const game of cutsceneGames) lines.push(`Footage: ${game} cutscenes, via YouTube.`);
   for (const [channel, url] of channels)
     lines.push(
       /on TikTok$/.test(channel)

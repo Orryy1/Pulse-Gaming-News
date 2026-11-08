@@ -93,7 +93,7 @@ Structure:
    Frame the story by what it does to the viewer (their money, their console, their pre-order, their weekend) or as players against a company, publisher against platform, studio against its own past: that framing carried the news Shorts that broke out, and a price is a conflict, never just a figure.
    Every beat also carries "footage": what the trailer picture should show while that line is spoken, with 1-4 keywords naming the thing, place, character or action in the line. The picture editor matches real trailer moments to these, so be concrete ("Hyrule Field", "the new ship interior", "a car chase"), and use "calm" for lines whose card needs a quiet background (numbers, dates, prices). "hook_footage" does the same for the opening line and should want the most striking gameplay moment.
 person: when the story is about one real person (a cameo, a hire, a departure, a statement), their name as commonly written, so the Short can show a licensed photo of them; otherwise empty.
-3. pulse_take: the Pulse angle, and the payoff: when the hook asked a question, the take answers it, plainly, in its first sentence. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Use the take shape this Short is given below (a concession then a verdict, a comparison, a consequence for the viewer, what happens next, or a plain verdict); when the shape is not a concession, no line in the Short concedes a point ("sure", "fair enough", "granted", "in fairness", "to be fair", "yes, but"). The opening words and the closing shape must differ from the recent Shorts listed below when a list is given. Opinions must be framed as opinion. Do not invent data.
+3. pulse_take: the Pulse angle, and the payoff: when the hook asked a question, the take answers it, plainly, in its first sentence. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Use the take shape this Short is given below (a concession then a verdict, a comparison, a consequence for the viewer, what happens next, or a plain verdict); never pose a question in the beats or the take and then answer it (no \"Why trust them? Not yet.\"): say the doubt as a statement (\"After September's hike, trust is thin.\"); when the shape is not a concession, no line in the Short concedes a point ("sure", "fair enough", "granted", "in fairness", "to be fair", "yes, but"). The opening words and the closing shape must differ from the recent Shorts listed below when a list is given. Opinions must be framed as opinion. Do not invent data.
 Talk to the viewer: at least two sentences in the script say "you" or "your" about what this means for them (their console, their money, their weekend).
 Community stakes: the framing says plainly what the fan gains, loses or can do about it (save, wait, claim, pre-order, skip), and when the loop line asks, it is a personal either/or the viewer answers about their own choice ("Keep your disc drive, or go all digital?"), never a question about the company.
 3a. stamp: the one word that carries the news gets a rubber stamp on screen as it is spoken: a date that was confirmed ("NOV 19" / "CONFIRMED"), a delay ("DELAYED" / "TO 2027"), a price ("$49.99"), "FREE", "LEAKED" (with "REPORTED" under it for a rumor). "word" is that word exactly as written in your narration; the stamp's figures must be the narration's own. Omit it when nothing deserves it.
@@ -524,6 +524,12 @@ export function writtenTells(s: Script, recent?: RecentShapes): string[] {
 }
 
 /** Deterministic house-rule checks. Returns human-readable problems; empty means valid. */
+/** Questions inside the body or the take (pure); the hook and loop line may ask, nothing between them does. */
+export function midQuestions(s: Pick<Script, "beats" | "pulse_take">): string[] {
+  const text = [...s.beats.map((b) => b.narration), s.pulse_take.narration].join(" ");
+  return (text.match(/[^.?!]*\?/g) ?? []).map((q) => q.trim()).filter(Boolean);
+}
+
 export function validateScript(s: Script, recent?: RecentShapes): string[] {
   const problems: string[] = [];
   const spoken = narrationOf(s);
@@ -607,6 +613,13 @@ export function validateScript(s: Script, recent?: RecentShapes): string[] {
   )
     problems.push(
       "The desk question must be one question of at most 14 words, ending with '?'.",
+    );
+  // The desk voice is gone (5 Nov 2026), yet takes still opened on a sceptic's question and answered it ("Why trust
+  // Nintendo after September's $50 hike? No, not anytime soon."): heard alone, the narrator answers nobody. Only the
+  // hook and the loop line may ask.
+  for (const q of midQuestions(s))
+    problems.push(
+      `"${q}" asks a question halfway through and then answers it, which sounds like replying to nobody; say it as a statement.`,
     );
   if (loopLineUnfinished(s.loop_line))
     problems.push(

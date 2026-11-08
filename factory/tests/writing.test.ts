@@ -756,3 +756,15 @@ test("a recap counts its stock lines across the whole video and bans 'speaking o
     ),
   );
 });
+
+test("a question halfway through a Short, answered by the narrator, goes back to the writer", async () => {
+  const { midQuestions } = await import("../src/editorial/editorial.ts");
+  const { goodScript } = await import("./helpers.ts");
+  const s = goodScript();
+  assert.deepEqual(midQuestions(s), [], "the fixture asks nothing mid-way");
+  const asked = goodScript({
+    pulse_take: { ...s.pulse_take, narration: "Why trust Nintendo after September's $50 hike? No, not anytime soon." },
+  });
+  assert.deepEqual(midQuestions(asked), ["Why trust Nintendo after September's $50 hike?"]);
+  assert.ok(validateScript(asked).some((p) => /halfway through/.test(p)));
+});

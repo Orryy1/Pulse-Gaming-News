@@ -131,13 +131,30 @@ const HOUR = 3_600_000;
  */
 export function nextJob(queue: SceneQueue, now: Date): QueuedGame | undefined {
   return queue.games.find((g) => {
-    if (g.state === "done") return false;
+    if (g.state === "done") return sourceRecheckDue(g, now);
     const since = g.lastTry ? now.getTime() - Date.parse(g.lastTry) : Infinity;
     if (g.state === "no-source")
       return (g.tries ?? 0) < 28 && since >= 12 * HOUR;
     if (g.state === "waiting") return since >= HOUR / 2;
     return true;
   });
+}
+
+/** A finished index is checked for a better source once a week for this long after it was asked for. */
+export const RECHECK_DAYS = 45;
+
+/**
+ * Whether a finished game is due a look for a better source (pure): weekly for its first weeks, when the clean
+ * full movies of a new release are still appearing (an index made on launch day from a playthrough is rebuilt
+ * from the movie that follows). After that the index is left alone.
+ */
+export function sourceRecheckDue(g: QueuedGame, now: Date): boolean {
+  if (g.state !== "done" || !g.lastTry) return false;
+  const day = 86_400_000;
+  return (
+    now.getTime() - Date.parse(g.lastTry) >= 7 * day &&
+    now.getTime() - Date.parse(g.requestedAt) <= RECHECK_DAYS * day
+  );
 }
 
 /** The queue after a turn: the game's state from the last word the build printed, the try counted. */
@@ -322,6 +339,7 @@ export async function sceneIndexTick(
         job.game,
         `--steps=${cfg.sceneIndexTurnSteps}`,
         ...(job.recentRelease ? ["--recent"] : []),
+        ...(job.state === "done" ? ["--refresh"] : []),
       ],
     );
     const env = {

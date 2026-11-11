@@ -661,8 +661,9 @@ export async function describeShots(
     }
     fresh.proxy = index.proxy ?? fresh.proxy;
     fresh.builtAt = (deps.now?.() ?? new Date()).toISOString();
-    await saveSceneIndex(s.dataDir, fresh);
-    return fresh;
+    const tidy = tidyIndex(fresh);
+    await saveSceneIndex(s.dataDir, tidy);
+    return tidy;
   };
   let described = 0;
   let failed = 0;
@@ -730,12 +731,6 @@ export async function describeShots(
   } finally {
     await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
   }
-  // A speaker's plate during a shot with one character in it confirms who that is; a place card names the place.
-  for (const shot of todo) {
-    const card =
-      shot.text && knownName(shot.text.split(" / ")[0]!, index.places);
-    if (card && !shot.where) shot.where = card;
-  }
   return { index: await persist(), described, failed };
 }
 
@@ -757,8 +752,8 @@ export async function buildStep(
   let index = await loadSceneIndex(s.dataDir, game);
   if (!index || o.refreshSource) {
     const source = await chooseSource(game, s, o, deps);
-    if (!source) return index ? { index, did: "done" } : { did: "no-source" };
-    if (!index || betterSource(index.source, source)) {
+    if (!source && !index) return { did: "no-source" };
+    if (source && (!index || betterSource(index.source, source))) {
       if (index) {
         log("info", "scene index: a better source replaces the old one", {
           game,
@@ -781,6 +776,7 @@ export async function buildStep(
       await saveSceneIndex(s.dataDir, index);
     }
   }
+  if (!index) return { did: "no-source" };
   const gap = nextGap(index, s.chunkSeconds);
   if (gap) {
     index = await indexStretch(index, s, gap, deps);

@@ -75,6 +75,7 @@ import {
   readQueue,
   requestSceneIndex,
   sceneIndexTick,
+  sourceRecheckDue,
   turnCommand,
   turnOutcome,
 } from "../src/sceneindex/job.ts";
@@ -1656,4 +1657,14 @@ test("in a game that names its speakers, a speakerless unvoiced line is the game
   assert.match(tidy.shots[4]!.text, /You got the Master Sword!/);
   assert.equal(findShots(tidy, { text: "Link gets the Master Sword" })[0]!.start, 2411);
   assert.deepEqual(tidyIndex(tidy), tidy);
+});
+
+test("a finished index looks for a better source weekly while the release is new, then is left alone", () => {
+  const asked = new Date("2026-11-19T09:00:00Z");
+  const done = afterTurn(queueGame({ games: [] }, "Grand Theft Auto VI", "launched", asked, true), "Grand Theft Auto VI", "done", asked);
+  const days = (n: number) => new Date(asked.getTime() + n * 86_400_000);
+  assert.equal(nextJob(done, days(3)), undefined);
+  assert.equal(nextJob(done, days(8))!.state, "done");
+  assert.equal(sourceRecheckDue(done.games[0]!, days(8)), true);
+  assert.equal(nextJob(afterTurn(done, "Grand Theft Auto VI", "done", days(40)), days(48)), undefined, "past its first weeks");
 });

@@ -422,6 +422,7 @@ async function main(): Promise<void> {
           s,
           {
             recentRelease: Boolean(flag("recent")),
+            refreshSource: i === 0 && Boolean(flag("refresh")),
             describeBatch: flag("no-describe") ? 0 : 300,
           },
           deps,

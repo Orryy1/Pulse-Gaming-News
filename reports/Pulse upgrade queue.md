@@ -72,10 +72,6 @@ Ranked list the weekly improvement task (Thursdays 11:00) works from. Top item f
 
 **Measure:** share of named-moment lines whose clip shows that moment (contact sheet per video), quote accuracy against the index text.
 
-## 7. Measure the translated titles (owner asked 11 Nov whether the Spanish side is worth it)
+## 7. Translated titles and the Spanish channel: switched off (owner, 11 Nov)
 
-**Why:** the separate Spanish channel was never switched on (no second channel connected), so the only non-English work is the translated titles and descriptions on the main channel (LOCALIZE_LANGUAGES=es,pt,de,fr,ja). Nobody has measured whether they bring viewers.
-
-**Build:** add a views-by-country and views-by-viewer-language breakdown (YouTube Analytics dimensions country and, where available, the localized-title traffic) to the weekly analytics loop, through the factory's stored login, compared with the weeks before translations started (26 Oct).
-
-**Decide:** keep the translations if Spanish, Portuguese, German, French or Japanese speaking countries grow their share of views; drop the languages that bring nothing. The Spanish twin channel stays off unless a language shows real pull.
+The owner switched off the translated titles (LOCALIZE_LANGUAGES=, on the Mac) and keeps the Spanish twin channel off. Nothing to build. Earlier videos keep the translations they already have.

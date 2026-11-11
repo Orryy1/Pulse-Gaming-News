@@ -112,13 +112,41 @@ export function namesWritten(text: string, list: string[]): string[] {
   });
 }
 
+/**
+ * A spoken line the game did not put a name to takes the one character in its shot (the shot at the middle of the
+ * line), marked as a guess. Only characters count: the names the game's own plates show when it has plates,
+ * otherwise anyone in the shot who is not a place. Two characters in the shot, or none: no guess.
+ */
+export function guessSpeakers(
+  lines: DialogueLine[],
+  shots: SceneIndex["shots"],
+  plateNames: Set<string>,
+  places: string[],
+): DialogueLine[] {
+  const placeSet = new Set(places.map(norm));
+  return lines.map((l) => {
+    if (l.speaker || l.via === "textbox") return l;
+    const shot = shots[shotAt(shots, (l.start + l.end) / 2)];
+    const people = (shot?.who ?? []).filter((w) =>
+      plateNames.size ? plateNames.has(w) : !placeSet.has(norm(w)),
+    );
+    return people.length === 1 ? { ...l, speaker: people[0]!, speakerGuessed: true } : l;
+  });
+}
+
 /** The index with its speakers respelt, its split lines joined and its cards read into who and where. */
 export function tidyIndex(index: SceneIndex): SceneIndex {
   const counts = new Map<string, number>();
-  for (const l of index.lines)
+  // A speaker guessed from the picture on an earlier pass is guessed afresh below, not counted as shown.
+  const shown = index.lines.map((l) => {
+    if (!l.speakerGuessed) return l;
+    const { speaker: _speaker, speakerGuessed: _guessed, ...rest } = l;
+    return rest as DialogueLine;
+  });
+  for (const l of shown)
     if (l.speaker) counts.set(l.speaker, (counts.get(l.speaker) ?? 0) + 1);
   const spell = speakerSpellings(counts, index.cast);
-  const respelt: DialogueLine[] = index.lines.map((l) => {
+  const respelt: DialogueLine[] = shown.map((l) => {
     const { speaker, ...rest } = l;
     const s = speaker ? spell.get(speaker) : undefined;
     return s ? { ...rest, speaker: s } : rest;
@@ -176,5 +204,5 @@ export function tidyIndex(index: SceneIndex): SceneIndex {
       where: s.where || where || "",
     };
   });
-  return { ...index, cast, shots, lines };
+  return { ...index, cast, shots, lines: guessSpeakers(lines, shots, new Set(speakers), index.places) };
 }

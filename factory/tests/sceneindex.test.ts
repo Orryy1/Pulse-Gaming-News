@@ -1668,3 +1668,23 @@ test("a finished index looks for a better source weekly while the release is new
   assert.equal(sourceRecheckDue(done.games[0]!, days(8)), true);
   assert.equal(nextJob(afterTurn(done, "Grand Theft Auto VI", "done", days(40)), days(48)), undefined, "past its first weeks");
 });
+
+test("a voiced line with no name plate takes the one character in its shot, marked as a guess", () => {
+  const index = sample();
+  // A voiced game without plates (GTA): strip the speakers the sample's plates gave.
+  const bare = { ...index, lines: index.lines.map(({ speaker: _s, ...l }) => ({ ...l, via: "voice" as const })) };
+  const tidy = tidyIndex(bare);
+  const tree = tidy.lines.find((l) => l.text.startsWith("I will entrust"))!;
+  assert.deepEqual([tree.speaker, tree.speakerGuessed], ["Great Deku Tree", true]);
+  const zelda = tidy.lines.find((l) => l.text.startsWith("Ganondorf, the King"))!;
+  assert.deepEqual([zelda.speaker, zelda.speakerGuessed], ["Princess Zelda", true]);
+  // Read from a file and tidied again, a guess stays a guess and is never counted as the game's own plate.
+  const again = tidyIndex(parseSceneIndex(JSON.parse(JSON.stringify(tidy)))!);
+  assert.deepEqual(again.lines, tidy.lines);
+  // With plates in the game, a shown speaker is never replaced and a text-only line is never guessed.
+  const plated = tidyIndex(index);
+  assert.ok(plated.lines.every((l) => !l.speakerGuessed));
+  // Two characters in the shot: no guess.
+  const two = tidyIndex({ ...bare, shots: bare.shots.map((s, i) => (i === 0 ? { ...s, who: ["Great Deku Tree", "Navi"] } : s)) });
+  assert.equal(two.lines.find((l) => l.text.startsWith("I will entrust"))!.speaker, undefined);
+});

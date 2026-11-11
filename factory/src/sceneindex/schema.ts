@@ -63,6 +63,12 @@ export interface DialogueLine {
   end: number;
   text: string;
   speaker?: string;
+  /**
+   * True when the game did not show who speaks and the speaker is taken from the picture: the only character in
+   * the shot the line is said in. Right most of the time, wrong when the speaker is off screen: never treat it
+   * as the game's own attribution.
+   */
+  speakerGuessed?: boolean;
   /** "voice": heard (Whisper); "textbox": read off the screen (text recognition); "both": heard and read. */
   via: "voice" | "textbox" | "both";
   /** The shot the line starts in. */
@@ -179,7 +185,10 @@ export function parseSceneIndex(raw: unknown): SceneIndex | undefined {
       end: x.end,
       text,
       ...(typeof x.speaker === "string" && x.speaker.trim()
-        ? { speaker: x.speaker.trim() }
+        ? {
+            speaker: x.speaker.trim(),
+            ...(x.speakerGuessed ? { speakerGuessed: true } : {}),
+          }
         : {}),
       via: x.via === "voice" || x.via === "both" ? x.via : "textbox",
       shot: shotAt(shots, x.start),

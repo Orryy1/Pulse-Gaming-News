@@ -692,6 +692,38 @@ export class YouTubeClient {
     );
   }
 
+  /**
+   * Where each of up to 25 videos' views came from, in one Analytics request (the weekly analytics loop reads
+   * every Short this way, about six requests a week). YouTube Analytics quota, not Data API units.
+   */
+  async trafficSourcesBatch(
+    videoIds: string[],
+    start: string,
+    end: string,
+  ): Promise<Record<string, Record<string, number>>> {
+    const out: Record<string, Record<string, number>> = {};
+    const ids = videoIds.slice(0, 25);
+    if (!ids.length) return out;
+    const q = new URLSearchParams({
+      ids: "channel==MINE",
+      startDate: start,
+      endDate: end,
+      metrics: "views",
+      dimensions: "video,insightTrafficSourceType",
+      filters: `video==${ids.join(",")}`,
+      maxResults: "500",
+    });
+    const res = await this.fetchFn(
+      `https://youtubeanalytics.googleapis.com/v2/reports?${q}`,
+      { headers: await this.auth() },
+    );
+    if (!res.ok) throw await apiError(res, "analytics.reports (traffic batch)");
+    for (const [video, source, views] of (((await res.json()) as any).rows ??
+      []) as Array<[string, string, number]>)
+      (out[String(video)] ??= {})[String(source)] = Number(views);
+    return out;
+  }
+
   /** Every upload's title, publish time, length, tags and public counts (about 2 quota units per 50 videos). */
   async allUploads(): Promise<Array<Record<string, unknown>>> {
     const h = await this.auth();

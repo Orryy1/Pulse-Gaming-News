@@ -1,0 +1,2322 @@
+{
+"note": "Trimmed from the 11 Nov 2026 hand-matched run (reports/Analytics loop spec.md section 4): public titles, hooks and the first caption line only.",
+"episodes": [
+{
+"id": "ep_20261111_b0585748",
+"title": "Zelda Ocarina of Time Tops 5.2 Million in Four Days",
+"hook": "Nintendo's sales record shouldn't sell you a $520 console.",
+"game": "The Legend of Zelda: Ocarina of Time",
+"headline": "Zelda remake tops 5.2 million",
+"loop": "Your wallet can skip this side quest.",
+"live_at": "2026-11-11T08:15:41.027000+00:00"
+},
+{
+"id": "ep_20261111_4ee05805",
+"title": "Fairgames Is Canceled, but Haven Keeps Its Team",
+"hook": "Should Fairgames' cancellation make you skip Sony's online games?",
+"game": "Fairgames",
+"headline": "Fairgames canceled without Haven layoffs",
+"loop": "Squad night can survive a canceled heist.",
+"live_at": "2026-11-11T00:29:00.696000+00:00"
+},
+{
+"id": "ep_20261110_c7faac87",
+"title": "GTA 6 Opens PS5 Preloads 9 Days Before Launch",
+"hook": "Grand Theft Auto 6 is ready for your download queue.",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6 PS5 preloads open early",
+"loop": "A download bar is a lousy opening scene.",
+"live_at": "2026-11-10T22:00:00+00:00"
+},
+{
+"id": "ep_20261110_2bba4750",
+"title": "Warhammer Survivors Brings 2 Worlds for $7.19",
+"hook": "Is Warhammer Survivors worth your $7.19?",
+"game": "Warhammer Survivors",
+"headline": "Warhammer Survivors costs $7.19",
+"loop": "Your first tactical decision happens before checkout.",
+"live_at": "2026-11-10T21:00:00+00:00"
+},
+{
+"id": "ep_20261110_67d9fca9",
+"title": "Can GTA 6 Really Run on Xbox Series S?",
+"hook": "Should Grand Theft Auto 6 worry you on Series S?",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6 on Xbox Series S",
+"loop": "The San Andreas sequel question gets answered in our documentary; this GTA question sits under your TV.",
+"live_at": "2026-11-10T18:30:00+00:00"
+},
+{
+"id": "ep_20261110_45dbc4a9",
+"title": "GTA 6 Reaches Xbox One With $12 for 50 Cloud Hours",
+"hook": "Grand Theft Auto 6 can spare you an upgrade.",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6 reaches Xbox One via cloud",
+"loop": "Let your playing hours set that Xbox's retirement date.",
+"live_at": "2026-11-10T17:00:00+00:00"
+},
+{
+"id": "ep_20261110_36486bac",
+"title": "Big Walk Dev Says AI Touched Well Under 0.1% of Code",
+"hook": "Should you skip Big Walk over its AI use?",
+"game": "Big Walk",
+"headline": "Big Walk discloses AI-assisted code",
+"loop": "Your library isn't an awards ballot.",
+"live_at": "2026-11-10T15:12:17.172000+00:00"
+},
+{
+"id": "ep_20261110_8cb6798c",
+"title": "GTA 6 Beats Forecasts While NBA 2K27 Misses Targets",
+"hook": "Grand Theft Auto 6's preorder success shouldn't rush you.",
+"game": "Grand Theft Auto 6",
+"headline": "GTA 6 preorders outpace expectations",
+"loop": "The company can hit its target without setting yours.",
+"live_at": "2026-11-10T14:18:40.953000+00:00"
+},
+{
+"id": "ep_20261110_1a72e447",
+"title": "GTA 6 Could Eat Half Your Xbox Series S at 212 GB",
+"hook": "GTA 6 could take half your Xbox Series S.",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6 Needs Up to 212 GB",
+"loop": "Our GTA documentary tells how Rockstar got here, and the last step is your delete button.",
+"live_at": "2026-11-10T12:00:00+00:00"
+},
+{
+"id": "ep_20261109_46ec0c8c",
+"title": "Hollow Knight Silksong Promises More Free DLC",
+"hook": "Will Hollow Knight Silksong's new adventures cost you extra?",
+"game": "Hollow Knight: Silksong",
+"headline": "Silksong manual promises free content",
+"loop": "Hornet gets new tricks; your thumbs get homework.",
+"live_at": "2026-11-09T22:00:00+00:00"
+},
+{
+"id": "ep_20261109_f346e606",
+"title": "Every Mainline Doom Ranked by Combat Worst to Best",
+"hook": "Seven Doom games compete on combat satisfaction, and nostalgia earns nothing.",
+"game": "Mainline Doom games",
+"headline": "Every Mainline Doom Ranked by Combat",
+"loop": "That's Doom combat with nostalgia switched off.",
+"live_at": "2026-11-09T20:18:02.745000+00:00"
+},
+{
+"id": "ep_20261109_cd01ffe9",
+"title": "Why Xbox Players Get the GTA 6 Pre-Load at 7 P.m. ET",
+"hook": "If you're on Xbox, your GTA 6 download starts tonight.",
+"game": "Grand Theft Auto VI",
+"headline": "Why Xbox Gets GTA 6 Pre-Load First in the US",
+"loop": "Your first GTA 6 heist is finding space on the drive.",
+"live_at": "2026-11-09T18:30:00+00:00"
+},
+{
+"id": "ep_20261109_53e317aa",
+"title": "Star Wars Zero Company Layoffs Follow 1 Million Sales",
+"hook": "Star Wars Zero Company layoffs aren't yours to fix.",
+"game": "Star Wars Zero Company",
+"headline": "Zero Company layoffs follow million sales",
+"loop": "Keeping developers employed shouldn't be your side quest.",
+"live_at": "2026-11-09T16:57:43.719000+00:00"
+},
+{
+"id": "ep_20261109_2b69f68c",
+"title": "GTA 6 Files Reportedly Tease Online, but Launch Is Solo",
+"hook": "Does your GTA 6 preload include GTA Online?",
+"game": "Grand Theft Auto 6",
+"headline": "GTA 6 Preload Files Mention Multiplayer",
+"loop": "Until then, what's sitting in your preload is a single-player game.",
+"live_at": "2026-11-09T14:54:28.468000+00:00"
+},
+{
+"id": "ep_20261108_1504baf9",
+"title": "Fortnite Reveals 1-in-137,500 Pirate Token Odds",
+"hook": "Fortnite's token odds are out, so save your weekend.",
+"game": "Fortnite",
+"headline": "Fortnite reveals Pirate Token odds",
+"loop": "Free cosmetics can still cost you Saturday.",
+"live_at": "2026-11-08T22:00:00+00:00"
+},
+{
+"id": "ep_20261108_4dfacbf5",
+"title": "Can Minecraft Change Its Look Without Losing Its Identity?",
+"hook": "Can Minecraft look different without losing what you love?",
+"game": "Minecraft",
+"headline": "Minecraft's blocks, your look",
+"loop": "Your next build can have a look of its own.",
+"live_at": "2026-11-08T18:36:56.065000+00:00"
+},
+{
+"id": "ep_20261108_9a363b40",
+"title": "Gears of War E-Day Makes RAAM Free With One Login",
+"hook": "Gears of War E-Day gives you RAAM for free.",
+"game": "Gears of War: E-Day",
+"headline": "Gears E-Day adds free General RAAM",
+"loop": "Claiming RAAM takes a login; Legacy needs to earn the extra hours.",
+"live_at": "2026-11-08T17:00:00+00:00"
+},
+{
+"id": "ep_20261108_011958bf",
+"title": "How Long Will GTA 6 Take to Beat?",
+"hook": "80 hours. Does GTA 6 need that from you?",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6's 80 hours explained",
+"loop": "Our documentary asks why San Andreas never got a sequel; Nelson's stopwatch shouldn't set your GTA 6 schedule.",
+"live_at": "2026-11-08T12:00:00+00:00"
+},
+{
+"id": "ep_20261108_5d2fee95",
+"title": "Rob Run, the Free GTA 6 Online Lite, Is 43% Negative",
+"hook": "Is Rob Run worth your weekend before GTA 6?",
+"game": "Rob Run",
+"headline": "Rob Run Draws GTA 6 Online Comparisons",
+"loop": "Until GTA 6 lands, the fence is free and the campers are waiting.",
+"live_at": "2026-11-08T00:34:44.281000+00:00"
+},
+{
+"id": "ep_20261107_da51c6da",
+"title": "Nier Automata Patch Bug Balloons PC Install to 366GB",
+"hook": "Nier: Automata's new patch wants 366GB of your PC.",
+"game": "NieR:Automata",
+"headline": "Nier: Automata Patch Bug Hits 366GB",
+"loop": "Leave those boxes ticked, and the same patch comes back for your drive.",
+"live_at": "2026-11-07T22:00:00+00:00"
+},
+{
+"id": "ep_20261107_0ab37e6e",
+"title": "Grand Theft Auto VI: Could AI Speed Up GTA 6 on PC?",
+"hook": "Could AI get GTA 6 onto your PC sooner?",
+"game": "Grand Theft Auto VI",
+"headline": "Could AI Speed Up GTA 6 on PC?",
+"loop": "Until then, your PC copy waits on how nervous Rockstar gets.",
+"live_at": "2026-11-07T17:30:00+00:00"
+},
+{
+"id": "ep_20261107_878e18db",
+"title": "This War of Mine for $1.99 Tops These Steam Deals",
+"hook": "Four Steam deals dip below $3. Your favorite might lose.",
+"game": "Steam deals",
+"headline": "Five Steam Deals, Four Under $3",
+"loop": "Your favorite can still win the weekend, but these Steam deals reward checking the discount and the reviews before you fill the cart.",
+"live_at": "2026-11-07T16:30:00+00:00"
+},
+{
+"id": "ep_20261107_fa894885",
+"title": "How Sands of Time Flopped, Then Built Assassin's Creed",
+"hook": "Sands of Time stumbled in America, then sold 14 million.",
+"game": "Prince of Persia: The Sands of Time",
+"headline": "The Rewind That Built Assassin's Creed",
+"loop": "One rewind dagger built two franchises, after a rough first Christmas.",
+"live_at": "2026-11-07T12:00:00+00:00"
+},
+{
+"id": "ep_20261106_5b0b7532",
+"title": "GTA 6 PC Reportedly Eyes Early 2027 as AI Clones Loom",
+"hook": "Will GTA 6 hit your PC sooner because of AI?",
+"game": "Grand Theft Auto VI",
+"headline": "AI Clones May Rush GTA 6 to PC",
+"loop": "Beat the clones to your PC, and Rockstar keeps the sale.",
+"live_at": "2026-11-06T22:10:59.409000+00:00"
+},
+{
+"id": "ep_20261106_3afaccd0",
+"title": "Ratchet & Clank Ranger Rumble Shuts Down May 1, 2027",
+"hook": "Ratchet and Clank's Ranger Rumble shuts down, so spend your currency.",
+"game": "Ratchet & Clank: Ranger Rumble",
+"headline": "Ratchet & Clank: Ranger Rumble Canceled",
+"loop": "Nothing you earned carries over to another Ratchet game.",
+"live_at": "2026-11-06T21:10:59.409000+00:00"
+},
+{
+"id": "ep_20261106_37bce92f",
+"title": "Mass Effect Studio BioWare's End Is Now a Documentary",
+"hook": "Is BioWare's documentary the last Mass Effect you'll get?",
+"game": "Mass Effect",
+"headline": "BioWare Documentary Filmed the Studio's Final Chapter",
+"loop": "Until then, the newest Mass Effect story is the one about its makers.",
+"live_at": "2026-11-06T20:27:47.780000+00:00"
+},
+{
+"id": "ep_20261106_713dc719",
+"title": "Why Sony Lost Crash Bandicoot After 6 Million Sales",
+"hook": "Crash Bandicoot sold over 6 million, and Sony still lost him.",
+"game": "Crash Bandicoot",
+"headline": "Why Sony Lost Crash Bandicoot",
+"loop": "That's how a mascot you only borrowed walks out the door.",
+"live_at": "2026-11-06T12:00:00+00:00"
+},
+{
+"id": "ep_20261105_3658bb74",
+"title": "Switch 2 Price Hike Off the Table for Now, Nintendo Says",
+"hook": "Is your Switch 2 about to cost more again?",
+"game": "Nintendo Switch 2",
+"headline": "Nintendo Rules Out Another Switch 2 Hike, For Now",
+"loop": "That slide is Nintendo's problem, not your wallet's.",
+"live_at": "2026-11-05T22:00:00+00:00"
+},
+{
+"id": "ep_20261105_b88d4645",
+"title": "Why God of War Laufey Just Slipped to May 2027",
+"hook": "God of War Laufey just lost three months.",
+"game": "God of War Laufey",
+"headline": "God of War Laufey Moves to May 2027",
+"loop": "Your February backlog just got lighter, because Faye stepped aside.",
+"live_at": "2026-11-05T20:00:00+00:00"
+},
+{
+"id": "ep_20261105_7f9a172a",
+"title": "GTA 6 Preloads Open Nov 10 as Rockstar Drops 37 Shots",
+"hook": "GTA 6 preloads open November 10, so clear your PS5.",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6 Preloads Open November 10",
+"loop": "Two weeks out, your only job is making room on your PS5.",
+"live_at": "2026-11-05T17:00:00+00:00"
+},
+{
+"id": "ep_20261105_8e28b468",
+"title": "WoW Forever's Smooth Launch Left Horde PvP Players Waiting",
+"hook": "Is WoW Forever's smooth launch shutting out Horde PvP players?",
+"game": "World of Warcraft: Forever",
+"headline": "Horde PvP Players Stuck at WoW Forever Launch",
+"loop": "What Horde PvP needs now isn't a patch, it's more Alliance players.",
+"live_at": "2026-11-05T14:00:00+00:00"
+},
+{
+"id": "ep_20261105_b7acbc6f",
+"title": "Wolverine Sold 2.4 Million in 50 Days, Behind Spider-Man 2",
+"hook": "Marvel's Wolverine hit 2.4 million, and it's already discounted.",
+"game": "Marvel's Wolverine",
+"headline": "Wolverine Sells 2.4 Million in 50 Days",
+"loop": "Insomniac needs a long tail, and your discounted copy builds it.",
+"live_at": "2026-11-05T13:00:00+00:00"
+},
+{
+"id": "ep_20261105_efbe393a",
+"title": "Ocarina of Time Remake Hits 96, Best of 2026 So Far",
+"hook": "The best-reviewed game of 2026 so far first came out in 1998.",
+"game": "The Legend of Zelda: Ocarina of Time",
+"headline": "A 1998 Classic Leads 2026 Reviews",
+"loop": "That's how a Nintendo 64 classic leads the year.",
+"live_at": "2026-11-05T12:00:00+00:00"
+},
+{
+"id": "ep_20261105_87bee491",
+"title": "GTA 6 Launches Single-Player, but 90% of Teens Want Online",
+"hook": "GTA 6 launches single-player, but 90% of teens expect online.",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6 Survey: Teens Want Online Mode",
+"loop": "Will you play Leonida solo on launch week, or wait for online?",
+"live_at": "2026-11-05T01:40:18.020000+00:00"
+},
+{
+"id": "ep_20261104_57aae3ad",
+"title": "Street Fighter 30th Anniversary's Rarest Achievements",
+"hook": "Street Fighter 30th Anniversary Collection's achievements get rarer, down to 0.9% unlocked.",
+"game": "Street Fighter 30th Anniversary Collection",
+"headline": "Street Fighter 30th Anniversary Rarest Achievements",
+"loop": "If you're chasing Street Fighter's rarest achievements, have you already earned the blue belt that tops this list?",
+"live_at": "2026-11-04T20:00:00+00:00"
+},
+{
+"id": "ep_20261104_706d5c1d",
+"title": "Elder Scrolls 6 Is Officially Sentinel, Still With No Date",
+"hook": "Elder Scrolls 6 is officially Sentinel, but there's no date.",
+"game": "The Elder Scrolls VI: Sentinel",
+"headline": "Elder Scrolls 6 Is Officially Named Sentinel",
+"loop": "Will you replay Skyrim before Sentinel, or save Tamriel for Hammerfell?",
+"live_at": "2026-11-04T17:08:18.355000+00:00"
+},
+{
+"id": "ep_20261104_bcc4e29b",
+"title": "Did EA Really Abandon Need for Speed Most Wanted?",
+"hook": "Why did EA stop making racers like Most Wanted?",
+"game": "Need for Speed: Most Wanted",
+"headline": "Did EA Really Abandon Most Wanted?",
+"loop": "The next Why lands tomorrow, so if EA remade one, Most Wanted or Carbon, which would you buy?",
+"live_at": "2026-11-04T12:00:00+00:00"
+},
+{
+"id": "ep_20261104_4aa2f60b",
+"title": "Path of the Elden Lord Is Elden Ring's Free Community Quest",
+"hook": "Elden Ring's new announcement has a name, and little else.",
+"game": "Elden Ring: Path of the Elden Lord",
+"headline": "Elden Ring: Path of the Elden Lord Announced",
+"loop": "Will you wait for Path of the Elden Lord, or start a fresh Tarnished run tonight?",
+"live_at": "2026-11-04T08:00:22.145000+00:00"
+},
+{
+"id": "ep_20261103_ff145481",
+"title": "Every Numbered Street Fighter Ranked Worst to Best",
+"hook": "Street Fighter 6 wins. We rank numbered entries by combat today.",
+"game": "Street Fighter's six numbered mainline games ranked by how well their core one-on-one combat holds up today",
+"headline": "Every Numbered Street Fighter Ranked",
+"loop": "When you want another round of Street Fighter, which game's combat would you put at number 1?",
+"live_at": "2026-11-03T21:26:11.674000+00:00"
+},
+{
+"id": "ep_20261103_6fc7f724",
+"title": "StarCraft: Why Blizzard Keeps Reviving StarCraft",
+"hook": "Why does Blizzard keep reviving the 1998 StarCraft?",
+"game": "StarCraft",
+"headline": "Why Blizzard Keeps Reviving StarCraft",
+"loop": "Before tomorrow's Why, would you rather Blizzard polish StarCraft again or start fresh?",
+"live_at": "2026-11-03T18:30:00+00:00"
+},
+{
+"id": "ep_20261103_63f8bb73",
+"title": "GTA 6 Pre-Loads Start November 10 and Need 212GB",
+"hook": "GTA 6 pre-loads open November 10, and you'll need 212GB.",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6 Pre-Loads Begin November 10",
+"loop": "Which installed game loses its spot to GTA 6?",
+"live_at": "2026-11-03T16:06:12.170000+00:00"
+},
+{
+"id": "ep_20261103_aa2f7c44",
+"title": "South of Midnight's Director Would Have Cut Its Funding",
+"hook": "Would South of Midnight's own director have funded it?",
+"game": "South of Midnight",
+"headline": "South of Midnight Director Would Cut Funding",
+"loop": "Will you play South of Midnight now, wait for a sale or skip it?",
+"live_at": "2026-11-03T13:06:08.239000+00:00"
+},
+{
+"id": "ep_20261103_523c8b88",
+"title": "Why Blizzard Brought Back WoW Classic After Saying No",
+"hook": "WoW Classic exists because expansions kept deleting what you loved.",
+"game": "World of Warcraft: Classic",
+"headline": "Why Blizzard Revived Vanilla WoW",
+"loop": "Tomorrow brings another Why, so why did Blizzard wait 11 years?",
+"live_at": "2026-11-03T12:00:00+00:00"
+},
+{
+"id": "ep_20261102_555f22e1",
+"title": "Every 3D Super Mario Games Game Ranked Worst to Best",
+"hook": "We rank every 3D Mario by how its platforming holds up.",
+"game": "3D Super Mario games",
+"headline": "Ranking Every 3D Super Mario Game",
+"loop": "Would you rank Mario's platforming this way?",
+"live_at": "2026-11-02T20:00:00+00:00"
+},
+{
+"id": "ep_20261102_0eb62cd3",
+"title": "Why Capcom Scrapped Resident Evil 4 Four Times",
+"hook": "Why did Capcom scrap Resident Evil 4 four times?",
+"game": "Resident Evil 4",
+"headline": "Why Capcom Restarted Resident Evil 4",
+"loop": "Which scrapped Resident Evil 4 would you play before tomorrow's Why, Kamiya's or the fog build?",
+"live_at": "2026-11-02T18:30:00+00:00"
+},
+{
+"id": "ep_20261102_1096e1d4",
+"title": "GTA 6 Reportedly Needs Newest PS5 Firmware",
+"hook": "Sony just patched PS5 again, and GTA 6 reportedly needs it.",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6 Reportedly Needs Newest PS5 Firmware",
+"loop": "Will you update your PS5 now, or wait for GTA 6 day?",
+"live_at": "2026-11-02T17:00:00+00:00"
+},
+{
+"id": "ep_20261102_d1020fd7",
+"title": "Zelda Ocarina of Time Remake Cut Its Own Fast Travel",
+"hook": "Why did the Ocarina of Time remake scrap fast travel?",
+"game": "The Legend of Zelda: Ocarina of Time",
+"headline": "Ocarina Remake Added Fast Travel, Then Cut It",
+"loop": "On November 5, will you sprint, ride Epona or keep rolling?",
+"live_at": "2026-11-02T16:10:33.315000+00:00"
+},
+{
+"id": "ep_20261102_066b727e",
+"title": "Silent Hill 2 Hit Casinos 9 Years Before Its Remake",
+"hook": "Silent Hill 2's 2015 return skipped your console for casinos.",
+"game": "Silent Hill 2",
+"headline": "Silent Hill 2's Road From PS2 to Remake",
+"loop": "The next Why lands tomorrow, so why did Konami's best Silent Hill reach casinos before a remake?",
+"live_at": "2026-11-02T12:27:30.642000+00:00"
+},
+{
+"id": "ep_20261101_d451543a",
+"title": "Pikmin 4 Gets a Free Switch 2 Demo on Nov 2, No Pikmin 5",
+"hook": "Did Nintendo's surprise Pikmin Day Direct tease Pikmin 5?",
+"game": "Pikmin 4 – Nintendo Switch 2 Edition + Dandori Academy",
+"headline": "Pikmin Day Direct Brings Free Switch 2 Demo",
+"loop": "Will you try the Pikmin 4 demo first, or wait on Pikmin 5?",
+"live_at": "2026-11-01T22:00:00+00:00"
+},
+{
+"id": "ep_20261101_fb2daac1",
+"title": "Steam's Biggest Climbers This Week (November 1)",
+"hook": "Six Steam climbers compete on minimum gains, week ending November 1.",
+"game": "Steam charts",
+"headline": "Steam's Biggest Weekly Climbers",
+"loop": "You can follow this week's Steam climbers, but would you trust their chart positions to choose what you play next?",
+"live_at": "2026-11-01T20:00:00+00:00"
+},
+{
+"id": "ep_20261101_ecf21d7c",
+"title": "The Dark Ages: Id Software Teams Up With MachineGames",
+"hook": "id Software lost half its studio, and Wolfenstein could gain.",
+"game": "Doom: The Dark Ages",
+"headline": "id Software Teams Up With MachineGames",
+"loop": "Which shooter do you want id and MachineGames making together?",
+"live_at": "2026-11-01T17:00:00+00:00"
+},
+{
+"id": "ep_20261101_fccb2c0a",
+"title": "Modern Warfare 4: MW4 Switch 2 Input Lag Doubles PS5",
+"hook": "Is MW4 on Switch 2 too laggy to compete?",
+"game": "Call of Duty: Modern Warfare 4",
+"headline": "MW4 Switch 2 Input Lag Doubles PS5",
+"loop": "Docked, handheld, or a different console for ranked MW4?",
+"live_at": "2026-11-01T00:39:12.097000+00:00"
+},
+{
+"id": "ep_20261031_f18f28d2",
+"title": "EA Reportedly Chose Battlefront 3 Over Mass Effect 5",
+"hook": "Mass Effect 5 reportedly lost to Battlefront 3 at EA.",
+"game": "Mass Effect 5",
+"headline": "EA Reportedly Chose Battlefront 3 Over Mass Effect",
+"loop": "Battlefront 3 or Mass Effect 5, which would you have greenlit?",
+"live_at": "2026-10-31T22:00:00+00:00"
+},
+{
+"id": "ep_20261031_eb699793",
+"title": "Every Core Halo Campaign Ranked Worst to Best",
+"hook": "We rank Halo's 8 FPS campaigns by solo combat replayability.",
+"game": "Halo",
+"headline": "Every Core Halo Campaign Ranked",
+"loop": "Which Halo would you replay solo?",
+"live_at": "2026-10-31T20:00:00+00:00"
+},
+{
+"id": "ep_20261031_5e0b8842",
+"title": "Final Fantasy 14 Evercold Slips Four Weeks to February 23",
+"hook": "Final Fantasy 14's Evercold slipped, but by how much?",
+"game": "Final Fantasy XIV: Evercold",
+"headline": "FFXIV Evercold Delayed to February 2027",
+"loop": "Which new job are you maining in Evercold, Zephyr or Bastion?",
+"live_at": "2026-10-31T07:00:00+00:00"
+},
+{
+"id": "ep_20261030_81eb4b90",
+"title": "Dark Souls 2 and 3 Servers Go Down With No Return Date",
+"hook": "Dark Souls 2 and 3 servers just went dark indefinitely.",
+"game": "Dark Souls 3",
+"headline": "Dark Souls 2 and 3 Servers Offline",
+"loop": "Will you tackle Dark Souls 3 solo, or shelve it until the summon signs return?",
+"live_at": "2026-10-30T18:30:00+00:00"
+},
+{
+"id": "ep_20261030_137d6305",
+"title": "PUBG Netflix Series Hands Donald Glover 4 Jobs",
+"hook": "PUBG's Netflix show has Donald Glover doing four jobs.",
+"game": "PUBG: Battlegrounds",
+"headline": "PUBG Live-Action Series Coming to Netflix",
+"loop": "Are you dropping into Erangel this weekend, or waiting for Glover's version?",
+"live_at": "2026-10-30T17:30:00+00:00"
+},
+{
+"id": "ep_20261030_1cf0ec6a",
+"title": "Grim Fandango Remastered Is $2.24, Plus 3 More Steam Deals",
+"hook": "Four great Steam games, and every one of them costs under $2.50.",
+"game": "Steam deals",
+"headline": "4 Great Steam Games Under $2.50",
+"loop": "That's four great Steam games under $2.50, so if you only buy one this week, which is it?",
+"live_at": "2026-10-30T16:30:00+00:00"
+},
+{
+"id": "ep_20261029_8de563f8",
+"title": "Elder Scrolls 6 Reportedly Named Sentinel After 8 Years",
+"hook": "Elder Scrolls 6 reportedly has a subtitle, and it's Sentinel.",
+"game": "The Elder Scrolls VI",
+"headline": "Elder Scrolls 6 Reportedly Named Sentinel",
+"loop": "Will you tune in for Sentinel's name, or hold out for gameplay?",
+"live_at": "2026-10-29T22:00:00+00:00"
+},
+{
+"id": "ep_20261029_c2ada2ee",
+"title": "Every Mainline Fallout, Ranked Today Worst to Best",
+"hook": "Every mainline Fallout, ranked by how it plays today, not at launch.",
+"game": "Fallout",
+"headline": "Every Mainline Fallout, Ranked Today",
+"loop": "Fallout plays best in the Mojave, so which one are you reinstalling tonight?",
+"live_at": "2026-10-29T20:00:00+00:00"
+},
+{
+"id": "ep_20261029_d715f49a",
+"title": "Gears of War E-Day Didn't Sell Xboxes, UK Sales Fell 22%",
+"hook": "Gears of War E-Day skipped PS5, yet Xbox sales fell.",
+"game": "Gears of War: E-Day",
+"headline": "Gears E-Day Exclusivity Didn't Lift Xbox Sales",
+"loop": "Would you buy an Xbox for Gears, play on PC, or skip it?",
+"live_at": "2026-10-29T18:00:00+00:00"
+},
+{
+"id": "ep_20261029_2af7158b",
+"title": "GTA 6 Adds Fuel Gauges and a Map Three Games Wide",
+"hook": "GTA 6's map is roughly three Rockstar worlds combined.",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6 Map, Fuel and Smell Details",
+"loop": "Will you cross Leonida refueling at the pump, or calling a fresh car on Scooter Bros?",
+"live_at": "2026-10-29T17:00:00+00:00"
+},
+{
+"id": "ep_20261028_9547f065",
+"title": "Rayman Legends Retold Gives PS5 a Free Astro Bot Suit",
+"hook": "Rayman Legends Retold gives PS5 owners an Astro Bot suit.",
+"game": "Rayman Legends Retold",
+"headline": "Rayman Gets a PS5-Exclusive Astro Bot Suit",
+"loop": "Rayman wears the robot on December 3, so which version are you buying, PS5 or Switch 2?",
+"live_at": "2026-10-29T16:06:13.903000+00:00"
+},
+{
+"id": "ep_20261029_2feae25f",
+"title": "The Duskbloods Slips to 2027 on Switch 2",
+"hook": "FromSoftware's Switch 2 exclusive just slipped out of 2026.",
+"game": "The Duskbloods",
+"headline": "The Duskbloods Delayed to 2027",
+"loop": "Will you buy a Switch 2 now for FromSoftware, or wait until The Duskbloods actually ships?",
+"live_at": "2026-10-29T15:04:33.193000+00:00"
+},
+{
+"id": "ep_20261027_a05bb60d",
+"title": "The Last Campfire Is $1.49 Right Now, Plus 4 More Steam",
+"hook": "Five great Steam games cost less than lunch right now, and one is just $1.49.",
+"game": "Steam deals",
+"headline": "5 Great Steam Games On Sale Now",
+"loop": "Together, all five cost $17.95, which is still less than Subnautica's regular $29.99 price.",
+"live_at": "2026-10-29T14:00:00+00:00"
+},
+{
+"id": "ep_20261028_b97edc0b",
+"title": "No Man's Sky Hits IPhone in 4GB With a Free Horror Update",
+"hook": "No Man's Sky now fits on your iPhone in 4GB.",
+"game": "No Man's Sky",
+"headline": "No Man's Sky Hits iPhone, Adds Forsaken",
+"loop": "Ten years in, would you fly No Man's Sky on your phone, yes or no?",
+"live_at": "2026-10-29T02:00:00+00:00"
+},
+{
+"id": "ep_20261027_310d9aff",
+"title": "Why Valve's Steam Machine Costs $1,049",
+"hook": "Why does Valve's Steam Machine cost $1,049 today?",
+"game": "Steam Machine",
+"headline": "Why the Steam Machine Costs $1,049",
+"loop": "At $1,049, would you buy it, build your own, or skip it?",
+"live_at": "2026-10-29T01:00:00+00:00"
+},
+{
+"id": "ep_20261027_50ef6035",
+"title": "Xbox: Microsoft Offers Buyouts to 60,000 Staff",
+"hook": "Microsoft will pay up to 60,000 staff to leave.",
+"game": "Xbox",
+"headline": "Microsoft offers buyouts to 60,000 staff",
+"loop": "If your job were among those 60,000, would you take the deal or stay?",
+"live_at": "2026-10-29T00:00:00+00:00"
+},
+{
+"id": "ep_20261027_1a815a87",
+"title": "Every Modern Warfare Campaign, Ranked Worst to Best",
+"hook": "Every Modern Warfare campaign from 2007 to 2023, ranked by the missions you still remember.",
+"game": "Call of Duty: Modern Warfare series, ranked by campaign",
+"headline": "Every Modern Warfare Campaign, Ranked",
+"loop": "Six campaigns later, the mission you still remember is from 2007.",
+"live_at": "2026-10-28T23:00:00+00:00"
+},
+{
+"id": "ep_20261028_035f75bb",
+"title": "GTA 6 Will Take 210 GB on PS5, Double GTA 5",
+"hook": "GTA 6 will eat 210 GB of your PS5.",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6 Reportedly Needs 210 GB on PS5",
+"loop": "Before GTA 6 eats 210 GB on November 19, which game are you deleting first?",
+"live_at": "2026-10-28T21:00:00+00:00"
+},
+{
+"id": "ep_20261028_214882c7",
+"title": "Why Konami Remade Metal Gear Solid 3 After Quitting AAA",
+"hook": "Konami quit big console games in 2015, then remade Snake Eater.",
+"game": "Metal Gear Solid Delta: Snake Eater",
+"headline": "Why Konami Remade Metal Gear Solid 3",
+"loop": "After 2 million copies of Snake Eater, which Metal Gear would you want Konami to remake next?",
+"live_at": "2026-10-28T20:00:00+00:00"
+},
+{
+"id": "ep_20261028_939d7b21",
+"title": "Witchbrook Slips to January 2027, but PS5 Gets It Day One",
+"hook": "Witchbrook finally has a date, and it's another delay.",
+"game": "Witchbrook",
+"headline": "Witchbrook Delayed to January 28, 2027",
+"loop": "Ten years after its first tease, what's keeping you busy until January 28?",
+"live_at": "2026-10-28T19:00:00+00:00"
+},
+{
+"id": "ep_20261026_b796a0f4",
+"title": "Phantom Blade Zero Scores 88, but Watch Out for Bushes",
+"hook": "Phantom Blade Zero scored an 88. Its toughest boss? Bushes.",
+"game": "Phantom Blade Zero",
+"headline": "Phantom Blade Zero Reviews Land at 88",
+"loop": "Pits and scenery took roughly 100 of IGN's lives. How many would you forgive?",
+"live_at": "2026-10-27T23:00:00+00:00"
+},
+{
+"id": "ep_20261026_f225c365",
+"title": "Call of Duty Passes $40 Billion as Modern Warfare 4 Lands",
+"hook": "Call of Duty just crossed $40 billion in lifetime revenue.",
+"game": "Call of Duty: Modern Warfare 4",
+"headline": "Call of Duty Passes $40 Billion Lifetime",
+"loop": "Call of Duty's at $40 billion and counting. How many have you bought since 2003?",
+"live_at": "2026-10-27T22:00:00+00:00"
+},
+{
+"id": "ep_20261026_c5f64f1c",
+"title": "Phantom Blade Zero Needs 300 GB Free Just to Pre-load",
+"hook": "Phantom Blade Zero wants 300 GB free just to pre-load.",
+"game": "Phantom Blade Zero",
+"headline": "Phantom Blade Zero Needs 300 GB to Pre-load",
+"loop": "At 300 GB and $59.99, will you clear space, wait or skip it?",
+"live_at": "2026-10-27T21:00:00+00:00"
+},
+{
+"id": "ep_20261026_7a9420a5",
+"title": "Mass Effect Petition Hits 200,000 After EA Closes BioWare",
+"hook": "Can 200,000 signatures save Mass Effect from EA's cancellation?",
+"game": "Mass Effect",
+"headline": "Save Mass Effect Petition Passes 200,000",
+"loop": "That's 200,000 names so far. Is yours one of them?",
+"live_at": "2026-10-27T20:00:00+00:00"
+},
+{
+"id": "ep_20261025_8ee0b928",
+"title": "Tomb Raider's Atlantis Remake Holds February 12 in New",
+"hook": "Tomb Raider: Legacy of Atlantis still lands February 12, 2027.",
+"game": "Tomb Raider: Legacy of Atlantis",
+"headline": "Legacy of Atlantis Keeps February 12 Launch",
+"loop": "Thirty years on, Lara still leads with two pistols. Is February 12 on your calendar?",
+"live_at": "2026-10-26T17:57:02.263000+00:00"
+},
+{
+"id": "ep_20261025_419e1934",
+"title": "Modern Warfare 4's 'Small' Switch 2 Patch Is About 30GB",
+"hook": "Modern Warfare 4's Switch 2 patch weighs about 30GB.",
+"game": "Call of Duty: Modern Warfare 4",
+"headline": "MW4 Switch 2 Patch Is Around 30GB",
+"loop": "Thirty gigs, and Activision still calls it small. Got room on your Switch 2?",
+"live_at": "2026-10-25T17:00:00+00:00"
+},
+{
+"id": "ep_20261025_ef6cb2e4",
+"title": "Did Konami Abandon Metal Gear After Kojima Left?",
+"hook": "Metal Gear Solid V grossed $179 million on day one.",
+"game": "Metal Gear",
+"headline": "What Happened to Metal Gear After Kojima",
+"loop": "So what really followed that $179 million day? The record still won't say.",
+"live_at": "2026-10-25T19:00:00+00:00"
+},
+{
+"id": "ep_20261025_ab90a0c8",
+"title": "Active Matter Sells 500,000 Copies in Under Six Weeks",
+"hook": "Active Matter just passed 500,000 copies sold.",
+"game": "Active Matter",
+"headline": "Active Matter Passes 500,000 Copies Sold",
+"loop": "Half a million operatives in. Are you number 500,001?",
+"live_at": "2026-10-25T18:00:00+00:00"
+},
+{
+"id": "ep_20261025_721b0689",
+"title": "Xbox's First COO Helen Chiang Exits After Three Months",
+"hook": "Xbox's first COO Helen Chiang is out after three months.",
+"game": "Xbox",
+"headline": "Xbox's First COO Leaves After Three Months",
+"loop": "Three months in, the COO chair is empty. Does your faith in Xbox's reset survive this?",
+"live_at": "2026-10-25T13:00:00+00:00"
+},
+{
+"id": "ep_20261024_fb50ce4f",
+"title": "Modern Warfare 4's First DLC Puts a Real Marine in the Game",
+"hook": "Modern Warfare 4's first DLC stars a real Marine.",
+"game": "Call of Duty: Modern Warfare 4",
+"headline": "MW4's First DLC Honors Marine Kyle Carpenter",
+"loop": "A real Marine in your lobby: would you run him?",
+"live_at": "2026-10-24T21:00:00+00:00"
+},
+{
+"id": "ep_20261024_e6ac5f86",
+"title": "Every GTA Ranked by Open-World Impact Worst to Best",
+"hook": "Every Grand Theft Auto, ranked by how far it pushed open worlds at launch.",
+"game": "Grand Theft Auto",
+"headline": "Every GTA Ranked by Open-World Impact",
+"loop": "Every Grand Theft Auto since still drives on roads III paved in 2001.",
+"live_at": "2026-10-24T19:00:00+00:00"
+},
+{
+"id": "ep_20261024_07b068d4",
+"title": "Modern Warfare 4's New Map Rebuilds Itself Every Match",
+"hook": "Modern Warfare 4's Kill Block map rebuilds itself every match.",
+"game": "Call of Duty: Modern Warfare 4",
+"headline": "MW4's Kill Block Map Reshuffles Every Match",
+"loop": "Kill Block rebuilds itself every match, so would you queue for it?",
+"live_at": "2026-10-24T16:00:00+00:00"
+},
+{
+"id": "ep_20261024_ef95529e",
+"title": "GTA 6's Launch Trailer Is Out, and November 19 Is Holding",
+"hook": "Grand Theft Auto VI's launch trailer is out, and Leonida opens November 19.",
+"game": "Grand Theft Auto VI",
+"headline": "GTA 6 Launch Trailer Drops, Date Holds",
+"loop": "Twenty-seven days until Leonida. Day one, or wait?",
+"live_at": "2026-10-24T12:00:00+00:00"
+},
+{
+"id": "ep_20261023_9c1c0a27",
+"title": "Cyberpunk 2077 Mods Lead the 5 Biggest Gaming Stories",
+"hook": "Five stories ran gaming this week. Ranked by how much each one changes things for you.",
+"game": "This week in gaming",
+"headline": "The 5 Biggest Gaming Stories This Week",
+"loop": "Five stories ran gaming this week, but only one changes a game you might already own.",
+"live_at": "2026-10-23T19:00:00+00:00"
+},
+{
+"id": "ep_20261023_df72f65b",
+"title": "How Cyberpunk 2077 Came Back From Its Broken Launch",
+"hook": "Cyberpunk 2077 launched broken in December 2020. Today, over 120,000 people are playing it on Steam. How?",
+"game": "Cyberpunk 2077",
+"headline": "How Cyberpunk 2077 Came Back",
+"loop": "So how did Cyberpunk come back? Slowly, then all at once.",
+"live_at": "2026-10-23T17:30:00+00:00"
+},
+{
+"id": "ep_20261023_b1227046",
+"title": "Phantom Blade Zero's PS5 Disc Won't Arrive Until 2027",
+"hook": "Phantom Blade Zero is getting a boxed PS5 release, but not until 2027.",
+"game": "Phantom Blade Zero",
+"headline": "Phantom Blade Zero Boxed PS5 Copy Hits 2027",
+"loop": "Phantom Blade Zero: box in 2027, or digital next week?",
+"live_at": "2026-10-23T16:30:00+00:00"
+},
+{
+"id": "ep_20261023_3616f3b2",
+"title": "House Flipper Is $1.99 Right Now, Plus 4 More Steam Deals",
+"hook": "These five great Steam games cost less than a movie ticket right now, some far less.",
+"game": "Steam deals",
+"headline": "5 Great Steam Games on Sale",
+"loop": "So that movie ticket can wait: the best deal on this list costs less than the popcorn.",
+"live_at": "2026-10-23T15:30:00+00:00"
+},
+{
+"id": "ep_20261023_2334c8ec",
+"title": "Xbox Cloud Gaming Now Charges $3.99 for 10 Hours",
+"hook": "Xbox Cloud Gaming now runs on a meter: 10 hours for $3.99, no Game Pass needed.",
+"game": "Xbox Cloud Gaming",
+"headline": "Xbox Cloud Gaming Now Sells Hours",
+"loop": "Is $3.99 for 10 hours worth it, yes or no?",
+"live_at": "2026-10-23T12:00:00+00:00"
+},
+{
+"id": "ep_20261022_046ff79f",
+"title": "Epic Is Giving Away Sker Ritual Free Until October 29",
+"hook": "Sker Ritual, a $24.99 co-op horror shooter, is free to keep on Epic until October 29.",
+"game": "Sker Ritual",
+"headline": "Sker Ritual Is Free on Epic",
+"loop": "Sorry We're Closed replaces it next week. So, Sker Ritual: claim it, or skip it?",
+"live_at": "2026-10-22T19:00:00+00:00"
+},
+{
+"id": "ep_20261022_3b4a6c28",
+"title": "Why Rockstar Never Made a San Andreas Sequel",
+"hook": "San Andreas sold 4.5 million copies in one week. Rockstar never made a sequel.",
+"game": "Grand Theft Auto: San Andreas",
+"headline": "Why San Andreas Never Got a Sequel",
+"loop": "So, should CJ ever get a sequel?",
+"live_at": "2026-10-22T17:30:00+00:00"
+},
+{
+"id": "ep_20261022_8e0906b0",
+"title": "Marvel's Wolverine Shrugs Off Mixed Reviews to Top US Sales",
+"hook": "Marvel's Wolverine got mixed reviews, and it still outsold every other game in America in September.",
+"game": "Marvel's Wolverine",
+"headline": "Wolverine Tops US Sales in September",
+"loop": "Mixed reviews, number one anyway. Did you pick it up?",
+"live_at": "2026-10-22T16:30:00+00:00"
+},
+{
+"id": "ep_20261022_d8735f26",
+"title": "To the Moon Is $1.49 Right Now, Plus 4 More Steam Deals",
+"hook": "These five great Steam games cost less than a sandwich right now, starting at $1.49.",
+"game": "Steam deals",
+"headline": "5 Great Steam Games on Sale",
+"loop": "All five together cost $16.95, and the best one is still cheaper than a sandwich.",
+"live_at": "2026-10-22T15:30:00+00:00"
+},
+{
+"id": "ep_20261022_60a966d7",
+"title": "Mass Effect's TV Show Survives BioWare's Closure",
+"hook": "BioWare closed this week, but Mass Effect isn't finished: Amazon's Prime Video series is still going ahead.",
+"game": "Mass Effect",
+"headline": "Mass Effect TV Series Survives BioWare Closure",
+"loop": "BioWare's gone, but Mass Effect lives on at Prime Video, so will you watch it or skip it?",
+"live_at": "2026-10-22T12:00:00+00:00"
+},
+{
+"id": "ep_20261021_a2bff016",
+"title": "The Rarest Achievements in GTA V Enhanced",
+"hook": "Only about three in a hundred GTA V Enhanced players own these six achievements.",
+"game": "Grand Theft Auto V Enhanced",
+"headline": "The Rarest GTA V Enhanced Achievements",
+"loop": "Three in a hundred players got here, mostly through one menu. Have you opened it?",
+"live_at": "2026-10-21T19:00:00+00:00"
+},
+{
+"id": "ep_20261021_80317fdd",
+"title": "Resident Evil Requiem's PS5 Discs Out-Earned All of Xbox",
+"hook": "Resident Evil Requiem's PS5 discs alone out-earned every Xbox copy combined, nearly twice over.",
+"game": "Resident Evil Requiem",
+"headline": "Requiem PS5 Discs Out-Earned All Xbox Sales",
+"loop": "Requiem's discs beat Xbox nearly twice over, so will you keep buying physical?",
+"live_at": "2026-10-21T16:30:00+00:00"
+},
+{
+"id": "ep_20261021_bdba8932",
+"title": "Super Meat Boy Is $1.19 Right Now, Plus 4 More Steam Deals",
+"hook": "These five great Steam games cost less than a sandwich right now, one under two dollars.",
+"game": "Steam deals",
+"headline": "5 Great Steam Games On Sale Now",
+"loop": "Prices move, so check before you buy, but right now, $1.19 still beats any sandwich in the building.",
+"live_at": "2026-10-21T15:30:00+00:00"
+},
+{
+"id": "ep_20261021_e51bc069",
+"title": "Final Fantasy 7 Remake Joins Game Pass on October 29",
+"hook": "Final Fantasy 7 Remake Intergrade joins Xbox Game Pass on October 29, Yuffie's expansion included.",
+"game": "Final Fantasy VII Remake Intergrade",
+"headline": "FF7 Remake Intergrade Joins Game Pass",
+"loop": "Midgar for the price of your subscription. Playing it October 29, or skipping it?",
+"live_at": "2026-10-21T12:34:49.364000+00:00"
+},
+{
+"id": "ep_20261021_b04e6f6a",
+"title": "Shrek 2 Remastered Launches November 10",
+"hook": "Shrek 2 Remastered launches November 10, just nine days before GTA 6.",
+"game": "DreamWorks Shrek 2 Remastered",
+"headline": "Shrek 2 Remastered Launches November 10",
+"loop": "Shrek 2 Remastered or GTA 6 this November: which one are you playing first?",
+"live_at": "2026-10-21T06:00:00+00:00"
+},
+{
+"id": "ep_20261020_8e390ad9",
+"title": "Nascor Descent: PS1-Style Soulslike Coming in 2027",
+"hook": "Nascor Descent, a PS1-era soulslike dungeon crawler, is officially headed to Steam in 2027.",
+"game": "Nascor Descent",
+"headline": "PS1-Era Soulslike Nascor Descent Announced",
+"loop": "Could Nascor Descent be the next solo-made soulslike to watch?",
+"live_at": "2026-10-20T20:00:00+00:00"
+},
+{
+"id": "ep_20261020_4b88bfdd",
+"title": "7 the Legend of Zelda Games Ranked Worst to Best",
+"hook": "We're ranking every 3D Zelda by one thing: how well it plays today.",
+"game": "The Legend of Zelda",
+"headline": "Ranking EVERY 3D Zelda Game",
+"loop": "So which 3D Zelda still plays best for you today?",
+"live_at": "2026-10-20T19:00:00+00:00"
+},
+{
+"id": "ep_20261020_15d8ab83",
+"title": "Grand Theft Auto IV: Why GTA 4 Went Darker",
+"hook": "Dan Houser says GTA 4 turned dark because San Andreas maxed out its pop energy.",
+"game": "Grand Theft Auto IV",
+"headline": "Why GTA 4 Went Darker",
+"loop": "So was going darker the right call for GTA 4?",
+"live_at": "2026-10-20T12:00:00+00:00"
+},
+{
+"id": "ep_20261019_5097ad8d",
+"title": "Edgerunners 2: Kojima Returns In Cyberpunk: Edgerunners 2",
+"hook": "Hideo Kojima is reprising his Cyberpunk 2077 role in the anime Cyberpunk: Edgerunners 2.",
+"game": "Cyberpunk: Edgerunners 2",
+"headline": "Kojima Returns in Cyberpunk: Edgerunners 2",
+"loop": "Did you find Kojima in Cyberpunk 2077?",
+"live_at": "2026-10-19T21:00:00+00:00"
+},
+{
+"id": "ep_20261019_2fd6a064",
+"title": "Saros: Free Zenith Update Adds Boss Rush And NG+",
+"hook": "Housemarque's free Zenith update for Saros is out now on PS5, bringing version 2.0.",
+"game": "Saros",
+"headline": "Saros Zenith Update Out Now, Free",
+"loop": "Saros Zenith is free right now, so is it time to go back to Carcosa?",
+"live_at": "2026-10-19T16:00:00+00:00"
+},
+{
+"id": "ep_20261019_3ebfaba6",
+"title": "WWE 2K26: Street Fighter Crossover Revealed",
+"hook": "WWE 2K26 is crossing over with Street Fighter, adding fighting game versions of WWE superstars.",
+"game": "WWE 2K26",
+"headline": "WWE 2K26 Crosses Over With Street Fighter",
+"loop": "And that spark starts now, because",
+"live_at": "2026-10-19T12:07:47.306000+00:00"
+},
+{
+"id": "ep_20261018_407b4bc0",
+"title": "Enshrouded, Call Of Duty Explode On Steam This Week",
+"hook": "These games just exploded on Steam this week, ranked by places climbed on the most-played chart.",
+"game": "Steam charts",
+"headline": "The Games That Exploded on Steam",
+"loop": "Pulse is watching which of these climbers holds on, because next week a fresh batch of games will explode on Steam, and Pulse will rank them.",
+"live_at": "2026-10-18T20:00:00+00:00"
+},
+{
+"id": "ep_20261018_c0bf3f07",
+"title": "Coral Island: Coming To Switch 2 This Winter",
+"hook": "Coral Island is officially coming to Switch 2 this winter, alongside its free 1.4 update.",
+"game": "Coral Island",
+"headline": "Coral Island Heads to Switch 2 This Winter",
+"loop": "That second wave starts this winter on Switch 2.",
+"live_at": "2026-10-18T19:00:00+00:00"
+},
+{
+"id": "ep_20261018_14ffc0f4",
+"title": "The Wolf Among Us Remastered: Switch Version Delayed",
+"hook": "The Wolf Among Us Remastered has been delayed on Switch, and only on Switch.",
+"game": "The Wolf Among Us Remastered",
+"headline": "Wolf Among Us Remastered Delayed on Switch",
+"loop": "Until Telltale shares that date, Fabletown on Switch stays on hold.",
+"live_at": "2026-10-18T12:00:00+00:00"
+},
+{
+"id": "ep_20261017_48bb5569",
+"title": "Modern Warfare 4: Campaign Reviews Are Glowing",
+"hook": "Modern Warfare 4's campaign is out in early access and the first reviews are glowing.",
+"game": "Call of Duty: Modern Warfare 4",
+"headline": "MW4 Campaign Reviews Land Strongly Positive",
+"loop": "And that comeback starts right now, because",
+"live_at": "2026-10-17T18:59:04.519000+00:00"
+},
+{
+"id": "ep_20261017_b0706d53",
+"title": "6 Resident Evil Games Ranked Worst To Best",
+"hook": "Six Resident Evil games, ranked by survival horror tension and how well they play today.",
+"game": "Resident Evil",
+"headline": "Six Resident Evil Games Ranked",
+"loop": "So if tension is what you want from Resident Evil, start in that Louisiana farmhouse, then work back through all six.",
+"live_at": "2026-10-17T18:00:00+00:00"
+},
+{
+"id": "ep_20261017_8d0a33fc",
+"title": "Call Of Duty: Modern Warfare 4: MW4 Hits Best CoD Steam",
+"hook": "Modern Warfare 4 has the best Call of Duty Steam rating in over a decade.",
+"game": "Call of Duty: Modern Warfare 4",
+"headline": "MW4 Hits Best CoD Steam Rating in Years",
+"loop": "For now though, the verdict stands.",
+"live_at": "2026-10-17T15:00:00+00:00"
+},
+{
+"id": "2XGEr0F8CIE",
+"title": "Cities: Skylines Switch 2 preview: 9 tiles become 25",
+"hook": "",
+"game": "",
+"headline": "",
+"loop": "",
+"live_at": "2026-10-15T19:00:11+00:00"
+},
+{
+"id": "IwGv58NtZEQ",
+"title": "Transport Fever 3 explained: profit isn't enough",
+"hook": "",
+"game": "",
+"headline": "",
+"loop": "",
+"live_at": "2026-10-14T19:00:11+00:00"
+}
+],
+"instagram": [
+{
+"caption": "Fairgames Is Canceled, but Haven Keeps Its Team",
+"posted_at": "2026-11-11T01:32:35Z",
+"episode": "ep_20261111_4ee05805"
+},
+{
+"caption": "GTA 6 Opens PS5 Preloads 9 Days Before Launch",
+"posted_at": "2026-11-10T23:02:53Z",
+"episode": "ep_20261110_c7faac87"
+},
+{
+"caption": "Warhammer Survivors Brings 2 Worlds for $7.19",
+"posted_at": "2026-11-10T22:10:40Z",
+"episode": "ep_20261110_2bba4750"
+},
+{
+"caption": "Can GTA 6 Really Run on Xbox Series S?",
+"posted_at": "2026-11-10T21:45:19Z",
+"episode": "ep_20261110_67d9fca9"
+},
+{
+"caption": "GTA 6 Reaches Xbox One With $12 for 50 Cloud Hours",
+"posted_at": "2026-11-10T21:33:21Z",
+"episode": "ep_20261110_45dbc4a9"
+},
+{
+"caption": "Big Walk Dev Says AI Touched Well Under 0.1% of Code",
+"posted_at": "2026-11-10T21:13:23Z",
+"episode": "ep_20261110_36486bac"
+},
+{
+"caption": "GTA 6 Beats Forecasts While NBA 2K27 Misses Targets",
+"posted_at": "2026-11-10T20:23:36Z",
+"episode": "ep_20261110_8cb6798c"
+},
+{
+"caption": "GTA 6 Could Eat Half Your Xbox Series S at 212 GB",
+"posted_at": "2026-11-10T18:03:55Z",
+"episode": "ep_20261110_1a72e447"
+},
+{
+"caption": "Hollow Knight Silksong Promises More Free DLC",
+"posted_at": "2026-11-09T23:01:37Z",
+"episode": "ep_20261109_46ec0c8c"
+},
+{
+"caption": "Every Mainline Doom Ranked by Combat Worst to Best",
+"posted_at": "2026-11-09T21:41:39Z",
+"episode": "ep_20261109_f346e606"
+},
+{
+"caption": "Why Xbox Players Get the GTA 6 Pre-Load at 7 P.m. ET",
+"posted_at": "2026-11-09T21:31:33Z",
+"episode": "ep_20261109_cd01ffe9"
+},
+{
+"caption": "Star Wars Zero Company Layoffs Follow 1 Million Sales",
+"posted_at": "2026-11-09T21:36:33Z",
+"episode": "ep_20261109_53e317aa"
+},
+{
+"caption": "GTA 6 Files Reportedly Tease Online, but Launch Is Solo",
+"posted_at": "2026-11-09T20:57:38Z",
+"episode": "ep_20261109_2b69f68c"
+},
+{
+"caption": "Fortnite Reveals 1-in-137,500 Pirate Token Odds",
+"posted_at": "2026-11-08T23:01:30Z",
+"episode": "ep_20261108_1504baf9"
+},
+{
+"caption": "Can Minecraft Change Its Look Without Losing Its Identity?",
+"posted_at": "2026-11-08T21:36:31Z",
+"episode": "ep_20261108_4dfacbf5"
+},
+{
+"caption": "Gears of War E-Day Makes RAAM Free With One Login",
+"posted_at": "2026-11-08T21:31:43Z",
+"episode": "ep_20261108_9a363b40"
+},
+{
+"caption": "How Long Will GTA 6 Take to Beat?",
+"posted_at": "2026-11-08T18:10:57Z",
+"episode": "ep_20261108_011958bf"
+},
+{
+"caption": "Rob Run, the Free GTA 6 Online Lite, Is 43% Negative",
+"posted_at": "2026-11-08T01:40:32Z",
+"episode": "ep_20261108_5d2fee95"
+},
+{
+"caption": "Nier Automata Patch Bug Balloons PC Install to 366GB",
+"posted_at": "2026-11-07T23:05:30Z",
+"episode": "ep_20261107_da51c6da"
+},
+{
+"caption": "Grand Theft Auto VI: Could AI Speed Up GTA 6 on PC?",
+"posted_at": "2026-11-07T21:45:31Z",
+"episode": "ep_20261107_0ab37e6e"
+},
+{
+"caption": "This War of Mine for $1.99 Tops These Steam Deals",
+"posted_at": "2026-11-07T21:44:20Z",
+"episode": "ep_20261107_878e18db"
+},
+{
+"caption": "How Sands of Time Flopped, Then Built Assassin's Creed",
+"posted_at": "2026-11-07T18:06:37Z",
+"episode": "ep_20261107_fa894885"
+},
+{
+"caption": "GTA 6 PC Reportedly Eyes Early 2027 as AI Clones Loom",
+"posted_at": "2026-11-06T23:15:05Z",
+"episode": "ep_20261106_5b0b7532"
+},
+{
+"caption": "Ratchet & Clank Ranger Rumble Shuts Down May 1, 2027",
+"posted_at": "2026-11-06T22:15:30Z",
+"episode": "ep_20261106_3afaccd0"
+},
+{
+"caption": "Mass Effect Studio BioWare's End Is Now a Documentary",
+"posted_at": "2026-11-06T21:35:35Z",
+"episode": "ep_20261106_37bce92f"
+},
+{
+"caption": "Why Sony Lost Crash Bandicoot After 6 Million Sales",
+"posted_at": "2026-11-06T18:06:44Z",
+"episode": "ep_20261106_713dc719"
+},
+{
+"caption": "Switch 2 Price Hike Off the Table for Now, Nintendo Says",
+"posted_at": "2026-11-05T23:02:34Z",
+"episode": "ep_20261105_3658bb74"
+},
+{
+"caption": "Why God of War Laufey Just Slipped to May 2027",
+"posted_at": "2026-11-05T21:40:09Z",
+"episode": "ep_20261105_b88d4645"
+},
+{
+"caption": "GTA 6 Preloads Open Nov 10 as Rockstar Drops 37 Shots",
+"posted_at": "2026-11-05T21:35:12Z",
+"episode": "ep_20261105_7f9a172a"
+},
+{
+"caption": "WoW Forever's Smooth Launch Left Horde PvP Players Waiting",
+"posted_at": "2026-11-05T20:02:11Z",
+"episode": "ep_20261105_8e28b468"
+},
+{
+"caption": "Wolverine Sold 2.4 Million in 50 Days, Behind Spider-Man 2",
+"posted_at": "2026-11-05T19:07:48Z",
+"episode": "ep_20261105_b7acbc6f"
+},
+{
+"caption": "Ocarina of Time Remake Hits 96, Best of 2026 So Far",
+"posted_at": "2026-11-05T18:08:50Z",
+"episode": "ep_20261105_efbe393a"
+},
+{
+"caption": "GTA 6 Launches Single-Player, but 90% of Teens Want Online",
+"posted_at": "2026-11-05T02:45:46Z",
+"episode": "ep_20261105_87bee491"
+},
+{
+"caption": "Street Fighter 30th Anniversary's Rarest Achievements",
+"posted_at": "2026-11-04T21:40:32Z",
+"episode": "ep_20261104_57aae3ad"
+},
+{
+"caption": "Elder Scrolls 6 Is Officially Sentinel, Still With No Date",
+"posted_at": "2026-11-04T21:46:09Z",
+"episode": "ep_20261104_706d5c1d"
+},
+{
+"caption": "Did EA Really Abandon Need for Speed Most Wanted?",
+"posted_at": "2026-11-04T18:05:21Z",
+"episode": "ep_20261104_bcc4e29b"
+},
+{
+"caption": "Every Numbered Street Fighter Ranked Worst to Best",
+"posted_at": "2026-11-03T22:31:29Z",
+"episode": "ep_20261103_ff145481"
+},
+{
+"caption": "StarCraft: Why Blizzard Keeps Reviving StarCraft",
+"posted_at": "2026-11-03T21:36:57Z",
+"episode": "ep_20261103_6fc7f724"
+},
+{
+"caption": "GTA 6 Pre-Loads Start November 10 and Need 212GB",
+"posted_at": "2026-11-03T21:31:58Z",
+"episode": "ep_20261103_63f8bb73"
+},
+{
+"caption": "South of Midnight's Director Would Have Cut Its Funding",
+"posted_at": "2026-11-03T19:13:12Z",
+"episode": "ep_20261103_aa2f7c44"
+},
+{
+"caption": "Why Blizzard Brought Back WoW Classic After Saying No",
+"posted_at": "2026-11-03T18:02:44Z",
+"episode": "ep_20261103_523c8b88"
+},
+{
+"caption": "Every 3D Super Mario Games Game Ranked Worst to Best",
+"posted_at": "2026-11-02T21:46:36Z",
+"episode": "ep_20261102_555f22e1"
+},
+{
+"caption": "Why Capcom Scrapped Resident Evil 4 Four Times",
+"posted_at": "2026-11-02T21:41:17Z",
+"episode": "ep_20261102_0eb62cd3"
+},
+{
+"caption": "GTA 6 Reportedly Needs Newest PS5 Firmware",
+"posted_at": "2026-11-02T21:31:25Z",
+"episode": "ep_20261102_1096e1d4"
+},
+{
+"caption": "Zelda Ocarina of Time Remake Cut Its Own Fast Travel",
+"posted_at": "2026-11-02T21:36:15Z",
+"episode": "ep_20261102_d1020fd7"
+},
+{
+"caption": "Silent Hill 2 Hit Casinos 9 Years Before Its Remake",
+"posted_at": "2026-11-02T18:32:31Z",
+"episode": "ep_20261102_066b727e"
+},
+{
+"caption": "Pikmin 4 Gets a Free Switch 2 Demo on Nov 2, No Pikmin 5",
+"posted_at": "2026-11-01T23:03:08Z",
+"episode": "ep_20261101_d451543a"
+},
+{
+"caption": "Steam's Biggest Climbers This Week (November 1)",
+"posted_at": "2026-11-01T21:47:06Z",
+"episode": "ep_20261101_fb2daac1"
+},
+{
+"caption": "The Dark Ages: Id Software Teams Up With MachineGames",
+"posted_at": "2026-11-01T21:33:06Z",
+"episode": "ep_20261101_ecf21d7c"
+},
+{
+"caption": "Modern Warfare 4: MW4 Switch 2 Input Lag Doubles PS5",
+"posted_at": "2026-11-01T01:45:06Z",
+"episode": "ep_20261101_fccb2c0a"
+},
+{
+"caption": "EA Reportedly Chose Battlefront 3 Over Mass Effect 5",
+"posted_at": "2026-10-31T23:05:03Z",
+"episode": "ep_20261031_f18f28d2"
+},
+{
+"caption": "Every Core Halo Campaign Ranked Worst to Best",
+"posted_at": "2026-10-31T21:13:11Z",
+"episode": "ep_20261031_eb699793"
+},
+{
+"caption": "Final Fantasy 14 Evercold Slips Four Weeks to February 23",
+"posted_at": "2026-10-31T13:06:43Z",
+"episode": "ep_20261031_5e0b8842"
+},
+{
+"caption": "PUBG Netflix Series Hands Donald Glover 4 Jobs",
+"posted_at": "2026-10-30T20:41:49Z",
+"episode": "ep_20261030_137d6305"
+},
+{
+"caption": "Grim Fandango Remastered Is $2.24, Plus 3 More Steam Deals",
+"posted_at": "2026-10-30T20:40:15Z",
+"episode": "ep_20261030_1cf0ec6a"
+},
+{
+"caption": "Elder Scrolls 6 Reportedly Named Sentinel After 8 Years",
+"posted_at": "2026-10-29T23:03:37Z",
+"episode": "ep_20261029_8de563f8"
+},
+{
+"caption": "Every Mainline Fallout, Ranked Today Worst to Best",
+"posted_at": "2026-10-29T21:04:41Z",
+"episode": "ep_20261029_c2ada2ee"
+},
+{
+"caption": "Gears of War E-Day Didn't Sell Xboxes, UK Sales Fell 22%",
+"posted_at": "2026-10-29T20:44:26Z",
+"episode": "ep_20261029_d715f49a"
+},
+{
+"caption": "GTA 6 Adds Fuel Gauges and a Map Three Games Wide",
+"posted_at": "2026-10-29T20:39:27Z",
+"episode": "ep_20261029_2af7158b"
+},
+{
+"caption": "The Duskbloods Slips to 2027 on Switch 2",
+"posted_at": "2026-10-29T20:35:22Z",
+"episode": "ep_20261029_2feae25f"
+},
+{
+"caption": "No Man's Sky Hits IPhone in 4GB With a Free Horror Update",
+"posted_at": "2026-10-29T08:00:24Z",
+"episode": "ep_20261028_b97edc0b"
+},
+{
+"caption": "Why Valve's Steam Machine Costs $1,049",
+"posted_at": "2026-10-29T07:51:43Z",
+"episode": "ep_20261027_310d9aff"
+},
+{
+"caption": "Xbox: Microsoft Offers Buyouts to 60,000 Staff",
+"posted_at": "2026-10-29T07:47:52Z",
+"episode": "ep_20261027_50ef6035"
+},
+{
+"caption": "Every Modern Warfare Campaign, Ranked Worst to Best",
+"posted_at": "2026-10-29T00:10:09Z",
+"episode": "ep_20261027_1a815a87"
+},
+{
+"caption": "GTA 6 Will Take 210 GB on PS5, Double GTA 5",
+"posted_at": "2026-10-28T22:01:43Z",
+"episode": "ep_20261028_035f75bb"
+},
+{
+"caption": "Why Konami Remade Metal Gear Solid 3 After Quitting AAA",
+"posted_at": "2026-10-28T21:02:32Z",
+"episode": "ep_20261028_214882c7"
+},
+{
+"caption": "Witchbrook Slips to January 2027, but PS5 Gets It Day One",
+"posted_at": "2026-10-28T20:02:44Z",
+"episode": "ep_20261028_939d7b21"
+},
+{
+"caption": "Phantom Blade Zero Scores 88, but Watch Out for Bushes",
+"posted_at": "2026-10-28T00:02:15Z",
+"episode": "ep_20261026_b796a0f4"
+},
+{
+"caption": "Call of Duty Passes $40 Billion as Modern Warfare 4 Lands",
+"posted_at": "2026-10-27T23:02:18Z",
+"episode": "ep_20261026_f225c365"
+},
+{
+"caption": "Phantom Blade Zero Needs 300 GB Free Just to Pre-load",
+"posted_at": "2026-10-27T22:04:12Z",
+"episode": "ep_20261026_c5f64f1c"
+},
+{
+"caption": "Mass Effect Petition Hits 200,000 After EA Closes BioWare",
+"posted_at": "2026-10-27T21:04:18Z",
+"episode": "ep_20261026_7a9420a5"
+},
+{
+"caption": "Tomb Raider's Atlantis Remake Holds February 12 in New",
+"posted_at": "2026-10-26T19:02:17Z",
+"episode": "ep_20261025_8ee0b928"
+},
+{
+"caption": "Modern Warfare 4's 'Small' Switch 2 Patch Is About 30GB",
+"posted_at": "2026-10-26T18:26:27Z",
+"episode": "ep_20261025_419e1934"
+},
+{
+"caption": "Active Matter Sells 500,000 Copies in Under Six Weeks",
+"posted_at": "2026-10-25T19:02:38Z",
+"episode": "ep_20261025_ab90a0c8"
+},
+{
+"caption": "Xbox's First COO Helen Chiang Exits After Three Months",
+"posted_at": "2026-10-25T14:04:12Z",
+"episode": "ep_20261025_721b0689"
+},
+{
+"caption": "Modern Warfare 4's First DLC Puts a Real Marine in the Game",
+"posted_at": "2026-10-24T22:01:03Z",
+"episode": "ep_20261024_fb50ce4f"
+},
+{
+"caption": "Every GTA Ranked by Open-World Impact Worst to Best",
+"posted_at": "2026-10-24T20:14:47Z",
+"episode": "ep_20261024_e6ac5f86"
+},
+{
+"caption": "Modern Warfare 4's New Map Rebuilds Itself Every Match",
+"posted_at": "2026-10-24T17:14:33Z",
+"episode": "ep_20261024_07b068d4"
+},
+{
+"caption": "GTA 6's Launch Trailer Is Out, and November 19 Is Holding",
+"posted_at": "2026-10-24T13:05:08Z",
+"episode": "ep_20261024_ef95529e"
+},
+{
+"caption": "Cyberpunk 2077 Mods Lead the 5 Biggest Gaming Stories",
+"posted_at": "2026-10-24T07:43:26Z",
+"episode": "ep_20261023_9c1c0a27"
+},
+{
+"caption": "How Cyberpunk 2077 Came Back From Its Broken Launch",
+"posted_at": "2026-10-24T07:35:40Z",
+"episode": "ep_20261023_df72f65b"
+},
+{
+"caption": "Phantom Blade Zero's PS5 Disc Won't Arrive Until 2027",
+"posted_at": "2026-10-24T07:18:09Z",
+"episode": "ep_20261023_b1227046"
+},
+{
+"caption": "House Flipper Is $1.99 Right Now, Plus 4 More Steam Deals",
+"posted_at": "2026-10-23T17:49:46Z",
+"episode": "ep_20261023_3616f3b2"
+},
+{
+"caption": "Xbox Cloud Gaming Now Charges $3.99 for 10 Hours",
+"posted_at": "2026-10-23T13:09:10Z",
+"episode": "ep_20261023_2334c8ec"
+},
+{
+"caption": "Epic Is Giving Away Sker Ritual Free Until October 29",
+"posted_at": "2026-10-23T07:39:19Z",
+"episode": "ep_20261022_046ff79f"
+},
+{
+"caption": "Why Rockstar Never Made a San Andreas Sequel",
+"posted_at": "2026-10-23T07:33:37Z",
+"episode": "ep_20261022_3b4a6c28"
+},
+{
+"caption": "Marvel's Wolverine Shrugs Off Mixed Reviews to Top US Sales",
+"posted_at": "2026-10-22T17:52:22Z",
+"episode": "ep_20261022_8e0906b0"
+},
+{
+"caption": "To the Moon Is $1.49 Right Now, Plus 4 More Steam Deals",
+"posted_at": "2026-10-22T16:40:52Z",
+"episode": "ep_20261022_d8735f26"
+},
+{
+"caption": "Mass Effect's TV Show Survives BioWare's Closure",
+"posted_at": "2026-10-22T14:50:08Z",
+"episode": "ep_20261022_60a966d7"
+},
+{
+"caption": "The Rarest Achievements in GTA V Enhanced",
+"posted_at": "2026-10-22T14:41:20Z",
+"episode": "ep_20261021_a2bff016"
+},
+{
+"caption": "Resident Evil Requiem's PS5 Discs Out-Earned All of Xbox",
+"posted_at": "2026-10-21T19:24:56Z",
+"episode": "ep_20261021_80317fdd"
+},
+{
+"caption": "Super Meat Boy Is $1.19 Right Now, Plus 4 More Steam Deals",
+"posted_at": "2026-10-21T20:50:31Z",
+"episode": "ep_20261021_bdba8932"
+},
+{
+"caption": "Final Fantasy 7 Remake Joins Game Pass on October 29",
+"posted_at": "2026-10-21T14:39:00Z",
+"episode": "ep_20261021_e51bc069"
+},
+{
+"caption": "Shrek 2 Remastered Launches November 10",
+"posted_at": "2026-10-21T07:24:10Z",
+"episode": "ep_20261021_b04e6f6a"
+},
+{
+"caption": "Nascor Descent: PS1-Style Soulslike Coming in 2027",
+"posted_at": "2026-10-20T21:05:18Z",
+"episode": "ep_20261020_8e390ad9"
+},
+{
+"caption": "7 the Legend of Zelda Games Ranked Worst to Best",
+"posted_at": "2026-10-20T20:10:39Z",
+"episode": "ep_20261020_4b88bfdd"
+},
+{
+"caption": "Grand Theft Auto IV: Why GTA 4 Went Darker",
+"posted_at": "2026-10-20T13:12:00Z",
+"episode": "ep_20261020_15d8ab83"
+},
+{
+"caption": "Edgerunners 2: Kojima Returns In Cyberpunk: Edgerunners 2",
+"posted_at": "2026-10-19T22:02:12Z",
+"episode": "ep_20261019_5097ad8d"
+},
+{
+"caption": "Saros: Free Zenith Update Adds Boss Rush And NG+",
+"posted_at": "2026-10-19T17:03:34Z",
+"episode": "ep_20261019_2fd6a064"
+},
+{
+"caption": "WWE 2K26: Street Fighter Crossover Revealed",
+"posted_at": "2026-10-19T13:14:27Z",
+"episode": "ep_20261019_3ebfaba6"
+},
+{
+"caption": "Enshrouded, Call Of Duty Explode On Steam This Week",
+"posted_at": "2026-10-18T21:06:34Z",
+"episode": "ep_20261018_407b4bc0"
+},
+{
+"caption": "Coral Island: Coming To Switch 2 This Winter",
+"posted_at": "2026-10-18T20:03:29Z",
+"episode": "ep_20261018_c0bf3f07"
+},
+{
+"caption": "The Wolf Among Us Remastered: Switch Version Delayed",
+"posted_at": "2026-10-18T14:42:31Z",
+"episode": "ep_20261018_14ffc0f4"
+},
+{
+"caption": "Modern Warfare 4: Campaign Reviews Are Glowing",
+"posted_at": "2026-10-18T14:38:20Z",
+"episode": "ep_20261017_48bb5569"
+},
+{
+"caption": "6 Resident Evil Games Ranked Worst To Best",
+"posted_at": "2026-10-18T14:33:00Z",
+"episode": "ep_20261017_b0706d53"
+}
+],
+"facebook": [
+{
+"caption": "Fairgames Is Canceled, but Haven Keeps Its Team",
+"posted_at": "2026-11-11T01:01:43Z",
+"episode": "ep_20261111_4ee05805"
+},
+{
+"caption": "GTA 6 Opens PS5 Preloads 9 Days Before Launch",
+"posted_at": "2026-11-10T22:31:43Z",
+"episode": "ep_20261110_c7faac87"
+},
+{
+"caption": "Warhammer Survivors Brings 2 Worlds for $7.19",
+"posted_at": "2026-11-10T21:31:43Z",
+"episode": "ep_20261110_2bba4750"
+},
+{
+"caption": "Can GTA 6 Really Run on Xbox Series S?",
+"posted_at": "2026-11-10T21:11:43Z",
+"episode": "ep_20261110_67d9fca9"
+},
+{
+"caption": "GTA 6 Reaches Xbox One With $12 for 50 Cloud Hours",
+"posted_at": "2026-11-10T21:06:43Z",
+"episode": "ep_20261110_45dbc4a9"
+},
+{
+"caption": "Big Walk Dev Says AI Touched Well Under 0.1% of Code",
+"posted_at": "2026-11-10T21:01:43Z",
+"episode": "ep_20261110_36486bac"
+},
+{
+"caption": "GTA 6 Beats Forecasts While NBA 2K27 Misses Targets",
+"posted_at": "2026-11-10T20:21:43Z",
+"episode": "ep_20261110_8cb6798c"
+},
+{
+"caption": "GTA 6 Could Eat Half Your Xbox Series S at 212 GB",
+"posted_at": "2026-11-10T18:01:43Z",
+"episode": "ep_20261110_1a72e447"
+},
+{
+"caption": "Hollow Knight Silksong Promises More Free DLC",
+"posted_at": "2026-11-09T22:30:38Z",
+"episode": "ep_20261109_46ec0c8c"
+},
+{
+"caption": "Every Mainline Doom Ranked by Combat Worst to Best",
+"posted_at": "2026-11-09T21:10:37Z",
+"episode": "ep_20261109_f346e606"
+},
+{
+"caption": "Why Xbox Players Get the GTA 6 Pre-Load at 7 P.m. ET",
+"posted_at": "2026-11-09T21:00:37Z",
+"episode": "ep_20261109_cd01ffe9"
+},
+{
+"caption": "Star Wars Zero Company Layoffs Follow 1 Million Sales",
+"posted_at": "2026-11-09T21:05:37Z",
+"episode": "ep_20261109_53e317aa"
+},
+{
+"caption": "GTA 6 Files Reportedly Tease Online, but Launch Is Solo",
+"posted_at": "2026-11-09T20:55:37Z",
+"episode": "ep_20261109_2b69f68c"
+},
+{
+"caption": "Fortnite Reveals 1-in-137,500 Pirate Token Odds",
+"posted_at": "2026-11-08T22:30:36Z",
+"episode": "ep_20261108_1504baf9"
+},
+{
+"caption": "Can Minecraft Change Its Look Without Losing Its Identity?",
+"posted_at": "2026-11-08T21:05:36Z",
+"episode": "ep_20261108_4dfacbf5"
+},
+{
+"caption": "Gears of War E-Day Makes RAAM Free With One Login",
+"posted_at": "2026-11-08T21:00:36Z",
+"episode": "ep_20261108_9a363b40"
+},
+{
+"caption": "How Long Will GTA 6 Take to Beat?",
+"posted_at": "2026-11-08T18:00:36Z",
+"episode": "ep_20261108_011958bf"
+},
+{
+"caption": "Rob Run, the Free GTA 6 Online Lite, Is 43% Negative",
+"posted_at": "2026-11-08T01:09:35Z",
+"episode": "ep_20261108_5d2fee95"
+},
+{
+"caption": "Nier Automata Patch Bug Balloons PC Install to 366GB",
+"posted_at": "2026-11-07T22:34:35Z",
+"episode": "ep_20261107_da51c6da"
+},
+{
+"caption": "Grand Theft Auto VI: Could AI Speed Up GTA 6 on PC?",
+"posted_at": "2026-11-07T21:09:35Z",
+"episode": "ep_20261107_0ab37e6e"
+},
+{
+"caption": "This War of Mine for $1.99 Tops These Steam Deals",
+"posted_at": "2026-11-07T21:04:35Z",
+"episode": "ep_20261107_878e18db"
+},
+{
+"caption": "How Sands of Time Flopped, Then Built Assassin's Creed",
+"posted_at": "2026-11-07T18:02:07Z",
+"episode": "ep_20261107_fa894885"
+},
+{
+"caption": "GTA 6 PC Reportedly Eyes Early 2027 as AI Clones Loom",
+"posted_at": "2026-11-06T22:43:26Z",
+"episode": "ep_20261106_5b0b7532"
+},
+{
+"caption": "Ratchet & Clank Ranger Rumble Shuts Down May 1, 2027",
+"posted_at": "2026-11-06T21:44:35Z",
+"episode": "ep_20261106_3afaccd0"
+},
+{
+"caption": "Mass Effect Studio BioWare's End Is Now a Documentary",
+"posted_at": "2026-11-06T21:04:35Z",
+"episode": "ep_20261106_37bce92f"
+},
+{
+"caption": "Why Sony Lost Crash Bandicoot After 6 Million Sales",
+"posted_at": "2026-11-06T18:04:51Z",
+"episode": "ep_20261106_713dc719"
+},
+{
+"caption": "Switch 2 Price Hike Off the Table for Now, Nintendo Says",
+"posted_at": "2026-11-05T22:31:25Z",
+"episode": "ep_20261105_3658bb74"
+},
+{
+"caption": "Why God of War Laufey Just Slipped to May 2027",
+"posted_at": "2026-11-05T21:09:05Z",
+"episode": "ep_20261105_b88d4645"
+},
+{
+"caption": "GTA 6 Preloads Open Nov 10 as Rockstar Drops 37 Shots",
+"posted_at": "2026-11-05T21:04:05Z",
+"episode": "ep_20261105_7f9a172a"
+},
+{
+"caption": "WoW Forever's Smooth Launch Left Horde PvP Players Waiting",
+"posted_at": "2026-11-05T20:00:06Z",
+"episode": "ep_20261105_8e28b468"
+},
+{
+"caption": "Wolverine Sold 2.4 Million in 50 Days, Behind Spider-Man 2",
+"posted_at": "2026-11-05T19:03:09Z",
+"episode": "ep_20261105_b7acbc6f"
+},
+{
+"caption": "Ocarina of Time Remake Hits 96, Best of 2026 So Far",
+"posted_at": "2026-11-05T18:03:01Z",
+"episode": "ep_20261105_efbe393a"
+},
+{
+"caption": "GTA 6 Launches Single-Player, but 90% of Teens Want Online",
+"posted_at": "2026-11-05T02:10:37Z",
+"episode": "ep_20261105_87bee491"
+},
+{
+"caption": "Street Fighter 30th Anniversary's Rarest Achievements",
+"posted_at": "2026-11-04T21:00:16Z",
+"episode": "ep_20261104_57aae3ad"
+},
+{
+"caption": "Elder Scrolls 6 Is Officially Sentinel, Still With No Date",
+"posted_at": "2026-11-04T21:05:16Z",
+"episode": "ep_20261104_706d5c1d"
+},
+{
+"caption": "Did EA Really Abandon Need for Speed Most Wanted?",
+"posted_at": "2026-11-04T18:03:16Z",
+"episode": "ep_20261104_bcc4e29b"
+},
+{
+"caption": "Every Numbered Street Fighter Ranked Worst to Best",
+"posted_at": "2026-11-03T22:01:02Z",
+"episode": "ep_20261103_ff145481"
+},
+{
+"caption": "StarCraft: Why Blizzard Keeps Reviving StarCraft",
+"posted_at": "2026-11-03T21:11:02Z",
+"episode": "ep_20261103_6fc7f724"
+},
+{
+"caption": "GTA 6 Pre-Loads Start November 10 and Need 212GB",
+"posted_at": "2026-11-03T21:06:02Z",
+"episode": "ep_20261103_63f8bb73"
+},
+{
+"caption": "South of Midnight's Director Would Have Cut Its Funding",
+"posted_at": "2026-11-03T19:11:02Z",
+"episode": "ep_20261103_aa2f7c44"
+},
+{
+"caption": "Why Blizzard Brought Back WoW Classic After Saying No",
+"posted_at": "2026-11-03T18:01:02Z",
+"episode": "ep_20261103_523c8b88"
+},
+{
+"caption": "Every 3D Super Mario Games Game Ranked Worst to Best",
+"posted_at": "2026-11-02T21:25:24Z",
+"episode": "ep_20261102_555f22e1"
+},
+{
+"caption": "Why Capcom Scrapped Resident Evil 4 Four Times",
+"posted_at": "2026-11-02T21:10:24Z",
+"episode": "ep_20261102_0eb62cd3"
+},
+{
+"caption": "GTA 6 Reportedly Needs Newest PS5 Firmware",
+"posted_at": "2026-11-02T21:00:24Z",
+"episode": "ep_20261102_1096e1d4"
+},
+{
+"caption": "Zelda Ocarina of Time Remake Cut Its Own Fast Travel",
+"posted_at": "2026-11-02T21:05:24Z",
+"episode": "ep_20261102_d1020fd7"
+},
+{
+"caption": "Silent Hill 2 Hit Casinos 9 Years Before Its Remake",
+"posted_at": "2026-11-02T18:30:24Z",
+"episode": "ep_20261102_066b727e"
+},
+{
+"caption": "Pikmin 4 Gets a Free Switch 2 Demo on Nov 2, No Pikmin 5",
+"posted_at": "2026-11-01T22:31:55Z",
+"episode": "ep_20261101_d451543a"
+},
+{
+"caption": "Steam's Biggest Climbers This Week (November 1)",
+"posted_at": "2026-11-01T21:07:07Z",
+"episode": "ep_20261101_fb2daac1"
+},
+{
+"caption": "The Dark Ages: Id Software Teams Up With MachineGames",
+"posted_at": "2026-11-01T21:02:07Z",
+"episode": "ep_20261101_ecf21d7c"
+},
+{
+"caption": "Modern Warfare 4: MW4 Switch 2 Input Lag Doubles PS5",
+"posted_at": "2026-11-01T01:14:07Z",
+"episode": "ep_20261101_fccb2c0a"
+},
+{
+"caption": "EA Reportedly Chose Battlefront 3 Over Mass Effect 5",
+"posted_at": "2026-10-31T22:34:07Z",
+"episode": "ep_20261031_f18f28d2"
+},
+{
+"caption": "Every Core Halo Campaign Ranked Worst to Best",
+"posted_at": "2026-10-31T20:34:07Z",
+"episode": "ep_20261031_eb699793"
+},
+{
+"caption": "Final Fantasy 14 Evercold Slips Four Weeks to February 23",
+"posted_at": "2026-10-31T13:04:45Z",
+"episode": "ep_20261031_5e0b8842"
+},
+{
+"caption": "Dark Souls 2 and 3 Servers Go Down With No Return Date",
+"posted_at": "2026-10-30T20:10:44Z",
+"episode": "ep_20261030_81eb4b90"
+},
+{
+"caption": "PUBG Netflix Series Hands Donald Glover 4 Jobs",
+"posted_at": "2026-10-30T20:06:44Z",
+"episode": "ep_20261030_137d6305"
+},
+{
+"caption": "Grim Fandango Remastered Is $2.24, Plus 3 More Steam Deals",
+"posted_at": "2026-10-30T20:03:39Z",
+"episode": "ep_20261030_1cf0ec6a"
+},
+{
+"caption": "Elder Scrolls 6 Reportedly Named Sentinel After 8 Years",
+"posted_at": "2026-10-29T22:32:44Z",
+"episode": "ep_20261029_8de563f8"
+},
+{
+"caption": "Every Mainline Fallout, Ranked Today Worst to Best",
+"posted_at": "2026-10-29T20:33:35Z",
+"episode": "ep_20261029_c2ada2ee"
+},
+{
+"caption": "Gears of War E-Day Didn't Sell Xboxes, UK Sales Fell 22%",
+"posted_at": "2026-10-29T20:23:35Z",
+"episode": "ep_20261029_d715f49a"
+},
+{
+"caption": "GTA 6 Adds Fuel Gauges and a Map Three Games Wide",
+"posted_at": "2026-10-29T20:18:35Z",
+"episode": "ep_20261029_2af7158b"
+},
+{
+"caption": "The Duskbloods Slips to 2027 on Switch 2",
+"posted_at": "2026-10-29T20:14:35Z",
+"episode": "ep_20261029_2feae25f"
+},
+{
+"caption": "The Last Campfire Is $1.49 Right Now, Plus 4 More Steam",
+"posted_at": "2026-10-29T20:03:43Z",
+"episode": "ep_20261027_a05bb60d"
+},
+{
+"caption": "No Man's Sky Hits IPhone in 4GB With a Free Horror Update",
+"posted_at": "2026-10-29T07:49:08Z",
+"episode": "ep_20261028_b97edc0b"
+},
+{
+"caption": "Why Valve's Steam Machine Costs $1,049",
+"posted_at": "2026-10-29T07:45:09Z",
+"episode": "ep_20261027_310d9aff"
+},
+{
+"caption": "Xbox: Microsoft Offers Buyouts to 60,000 Staff",
+"posted_at": "2026-10-29T00:30:39Z",
+"episode": "ep_20261027_50ef6035"
+},
+{
+"caption": "Every Modern Warfare Campaign, Ranked Worst to Best",
+"posted_at": "2026-10-28T23:30:41Z",
+"episode": "ep_20261027_1a815a87"
+},
+{
+"caption": "GTA 6 Will Take 210 GB on PS5, Double GTA 5",
+"posted_at": "2026-10-28T21:31:37Z",
+"episode": "ep_20261028_035f75bb"
+},
+{
+"caption": "Why Konami Remade Metal Gear Solid 3 After Quitting AAA",
+"posted_at": "2026-10-28T20:31:29Z",
+"episode": "ep_20261028_214882c7"
+},
+{
+"caption": "Witchbrook Slips to January 2027, but PS5 Gets It Day One",
+"posted_at": "2026-10-28T19:31:29Z",
+"episode": "ep_20261028_939d7b21"
+},
+{
+"caption": "Phantom Blade Zero Scores 88, but Watch Out for Bushes",
+"posted_at": "2026-10-27T23:31:13Z",
+"episode": "ep_20261026_b796a0f4"
+},
+{
+"caption": "Call of Duty Passes $40 Billion as Modern Warfare 4 Lands",
+"posted_at": "2026-10-27T22:31:13Z",
+"episode": "ep_20261026_f225c365"
+},
+{
+"caption": "Phantom Blade Zero Needs 300 GB Free Just to Pre-load",
+"posted_at": "2026-10-27T21:31:12Z",
+"episode": "ep_20261026_c5f64f1c"
+},
+{
+"caption": "Mass Effect Petition Hits 200,000 After EA Closes BioWare",
+"posted_at": "2026-10-27T20:31:12Z",
+"episode": "ep_20261026_7a9420a5"
+},
+{
+"caption": "Tomb Raider's Atlantis Remake Holds February 12 in New",
+"posted_at": "2026-10-26T18:31:58Z",
+"episode": "ep_20261025_8ee0b928"
+},
+{
+"caption": "Modern Warfare 4's 'Small' Switch 2 Patch Is About 30GB",
+"posted_at": "2026-10-26T18:01:58Z",
+"episode": "ep_20261025_419e1934"
+},
+{
+"caption": "Did Konami Abandon Metal Gear After Kojima Left?",
+"posted_at": "2026-10-25T19:33:22Z",
+"episode": "ep_20261025_ef6cb2e4"
+},
+{
+"caption": "Active Matter Sells 500,000 Copies in Under Six Weeks",
+"posted_at": "2026-10-25T18:31:14Z",
+"episode": "ep_20261025_ab90a0c8"
+},
+{
+"caption": "Xbox's First COO Helen Chiang Exits After Three Months",
+"posted_at": "2026-10-25T13:33:03Z",
+"episode": "ep_20261025_721b0689"
+},
+{
+"caption": "Modern Warfare 4's First DLC Puts a Real Marine in the Game",
+"posted_at": "2026-10-24T21:29:59Z",
+"episode": "ep_20261024_fb50ce4f"
+},
+{
+"caption": "Every GTA Ranked by Open-World Impact Worst to Best",
+"posted_at": "2026-10-24T19:34:57Z",
+"episode": "ep_20261024_e6ac5f86"
+},
+{
+"caption": "Modern Warfare 4's New Map Rebuilds Itself Every Match",
+"posted_at": "2026-10-24T16:34:57Z",
+"episode": "ep_20261024_07b068d4"
+},
+{
+"caption": "GTA 6's Launch Trailer Is Out, and November 19 Is Holding",
+"posted_at": "2026-10-24T12:32:57Z",
+"episode": "ep_20261024_ef95529e"
+},
+{
+"caption": "Cyberpunk 2077 Mods Lead the 5 Biggest Gaming Stories",
+"posted_at": "2026-10-24T07:41:09Z",
+"episode": "ep_20261023_9c1c0a27"
+},
+{
+"caption": "How Cyberpunk 2077 Came Back From Its Broken Launch",
+"posted_at": "2026-10-24T07:26:12Z",
+"episode": "ep_20261023_df72f65b"
+},
+{
+"caption": "Phantom Blade Zero's PS5 Disc Won't Arrive Until 2027",
+"posted_at": "2026-10-24T07:16:12Z",
+"episode": "ep_20261023_b1227046"
+},
+{
+"caption": "House Flipper Is $1.99 Right Now, Plus 4 More Steam Deals",
+"posted_at": "2026-10-23T16:00:26Z",
+"episode": "ep_20261023_3616f3b2"
+},
+{
+"caption": "Xbox Cloud Gaming Now Charges $3.99 for 10 Hours",
+"posted_at": "2026-10-23T12:30:25Z",
+"episode": "ep_20261023_2334c8ec"
+},
+{
+"caption": "Epic Is Giving Away Sker Ritual Free Until October 29",
+"posted_at": "2026-10-23T07:37:41Z",
+"episode": "ep_20261022_046ff79f"
+},
+{
+"caption": "Why Rockstar Never Made a San Andreas Sequel",
+"posted_at": "2026-10-23T07:22:41Z",
+"episode": "ep_20261022_3b4a6c28"
+},
+{
+"caption": "Marvel's Wolverine Shrugs Off Mixed Reviews to Top US Sales",
+"posted_at": "2026-10-22T17:29:19Z",
+"episode": "ep_20261022_8e0906b0"
+},
+{
+"caption": "To the Moon Is $1.49 Right Now, Plus 4 More Steam Deals",
+"posted_at": "2026-10-22T16:01:19Z",
+"episode": "ep_20261022_d8735f26"
+},
+{
+"caption": "Mass Effect's TV Show Survives BioWare's Closure",
+"posted_at": "2026-10-22T12:31:09Z",
+"episode": "ep_20261022_60a966d7"
+},
+{
+"caption": "The Rarest Achievements in GTA V Enhanced",
+"posted_at": "2026-10-22T07:16:15Z",
+"episode": "ep_20261021_a2bff016"
+},
+{
+"caption": "Resident Evil Requiem's PS5 Discs Out-Earned All of Xbox",
+"posted_at": "2026-10-21T17:00:47Z",
+"episode": "ep_20261021_80317fdd"
+},
+{
+"caption": "Super Meat Boy Is $1.19 Right Now, Plus 4 More Steam Deals",
+"posted_at": "2026-10-21T16:04:15Z",
+"episode": "ep_20261021_bdba8932"
+},
+{
+"caption": "Final Fantasy 7 Remake Joins Game Pass on October 29",
+"posted_at": "2026-10-21T13:09:47Z",
+"episode": "ep_20261021_e51bc069"
+},
+{
+"caption": "Shrek 2 Remastered Launches November 10",
+"posted_at": "2026-10-21T07:18:26Z",
+"episode": "ep_20261021_b04e6f6a"
+},
+{
+"caption": "Nascor Descent: PS1-Style Soulslike Coming in 2027",
+"posted_at": "2026-10-20T20:34:20Z",
+"episode": "ep_20261020_8e390ad9"
+},
+{
+"caption": "7 the Legend of Zelda Games Ranked Worst to Best",
+"posted_at": "2026-10-20T19:34:21Z",
+"episode": "ep_20261020_4b88bfdd"
+},
+{
+"caption": "Grand Theft Auto IV: Why GTA 4 Went Darker",
+"posted_at": "2026-10-20T12:34:18Z",
+"episode": "ep_20261020_15d8ab83"
+},
+{
+"caption": "Edgerunners 2: Kojima Returns In Cyberpunk: Edgerunners 2",
+"posted_at": "2026-10-19T21:34:46Z",
+"episode": "ep_20261019_5097ad8d"
+},
+{
+"caption": "Saros: Free Zenith Update Adds Boss Rush And NG+",
+"posted_at": "2026-10-19T16:32:14Z",
+"episode": "ep_20261019_2fd6a064"
+},
+{
+"caption": "WWE 2K26: Street Fighter Crossover Revealed",
+"posted_at": "2026-10-19T12:42:30Z",
+"episode": "ep_20261019_3ebfaba6"
+},
+{
+"caption": "Enshrouded, Call Of Duty Explode On Steam This Week",
+"posted_at": "2026-10-18T20:31:12Z",
+"episode": "ep_20261018_407b4bc0"
+},
+{
+"caption": "Coral Island: Coming To Switch 2 This Winter",
+"posted_at": "2026-10-18T19:31:00Z",
+"episode": "ep_20261018_c0bf3f07"
+},
+{
+"caption": "The Wolf Among Us Remastered: Switch Version Delayed",
+"posted_at": "2026-10-18T14:29:06Z",
+"episode": "ep_20261018_14ffc0f4"
+},
+{
+"caption": "Modern Warfare 4: Campaign Reviews Are Glowing",
+"posted_at": "2026-10-18T14:25:06Z",
+"episode": "ep_20261017_48bb5569"
+},
+{
+"caption": "6 Resident Evil Games Ranked Worst To Best",
+"posted_at": "2026-10-18T14:20:47Z",
+"episode": "ep_20261017_b0706d53"
+}
+],
+"tiktok": [
+{
+"caption": "Should Fairgames' cancellation make you skip Sony's online games?",
+"posted_at": "2026-11-11T02:03:38.154Z",
+"episode": "ep_20261111_4ee05805"
+},
+{
+"caption": "Grand Theft Auto 6 is ready for your download queue.",
+"posted_at": "2026-11-11T00:38:40.197Z",
+"episode": "ep_20261110_c7faac87"
+},
+{
+"caption": "Is Warhammer Survivors worth your $7.19?",
+"posted_at": "2026-11-10T23:48:44.170Z",
+"episode": "ep_20261110_2bba4750"
+},
+{
+"caption": "Should Grand Theft Auto 6 worry you on Series S?",
+"posted_at": "2026-11-10T22:58:43.397Z",
+"episode": "ep_20261110_67d9fca9"
+},
+{
+"caption": "Grand Theft Auto 6 can spare you an upgrade.",
+"posted_at": "2026-11-10T22:12:38.756Z",
+"episode": "ep_20261110_45dbc4a9"
+},
+{
+"caption": "Should you skip Big Walk over its AI use?",
+"posted_at": "2026-11-10T21:15:59.479Z",
+"episode": "ep_20261110_36486bac"
+},
+{
+"caption": "Grand Theft Auto 6's preorder success shouldn't rush you.",
+"posted_at": "2026-11-10T20:25:52.380Z",
+"episode": "ep_20261110_8cb6798c"
+},
+{
+"caption": "GTA 6 could take half your Xbox Series S.",
+"posted_at": "2026-11-10T18:05:11.823Z",
+"episode": "ep_20261110_1a72e447"
+},
+{
+"caption": "Will Hollow Knight Silksong's new adventures cost you extra?",
+"posted_at": "2026-11-10T00:27:41.353Z",
+"episode": "ep_20261109_46ec0c8c"
+},
+{
+"caption": "Seven Doom games compete on combat satisfaction, and nostalgia earns nothing.",
+"posted_at": "2026-11-09T23:37:33.183Z",
+"episode": "ep_20261109_f346e606"
+},
+{
+"caption": "If you're on Xbox, your GTA 6 download starts tonight.",
+"posted_at": "2026-11-09T22:02:52.375Z",
+"episode": "ep_20261109_cd01ffe9"
+},
+{
+"caption": "Star Wars Zero Company layoffs aren't yours to fix.",
+"posted_at": "2026-11-09T22:48:32.203Z",
+"episode": "ep_20261109_53e317aa"
+},
+{
+"caption": "Fortnite's token odds are out, so save your weekend.",
+"posted_at": "2026-11-08T23:37:29.611Z",
+"episode": "ep_20261108_1504baf9"
+},
+{
+"caption": "Can Minecraft look different without losing what you love?",
+"posted_at": "2026-11-08T22:48:26.074Z",
+"episode": "ep_20261108_4dfacbf5"
+},
+{
+"caption": "Gears of War E-Day gives you RAAM for free.",
+"posted_at": "2026-11-08T22:02:46.081Z",
+"episode": "ep_20261108_9a363b40"
+},
+{
+"caption": "80 hours. Does GTA 6 need that from you?",
+"posted_at": "2026-11-08T18:13:13.416Z",
+"episode": "ep_20261108_011958bf"
+},
+{
+"caption": "Is Rob Run worth your weekend before GTA 6?",
+"posted_at": "2026-11-08T02:11:29.463Z",
+"episode": "ep_20261108_5d2fee95"
+},
+{
+"caption": "Nier: Automata's new patch wants 366GB of your PC.",
+"posted_at": "2026-11-08T00:46:42.922Z",
+"episode": "ep_20261107_da51c6da"
+},
+{
+"caption": "Could AI get GTA 6 onto your PC sooner?",
+"posted_at": "2026-11-07T23:56:32.041Z",
+"episode": "ep_20261107_0ab37e6e"
+},
+{
+"caption": "Four Steam deals dip below $3. Your favorite might lose.",
+"posted_at": "2026-11-07T23:07:49.730Z",
+"episode": "ep_20261107_878e18db"
+},
+{
+"caption": "Sands of Time stumbled in America, then sold 14 million.",
+"posted_at": "2026-11-07T22:16:33.238Z",
+"episode": "ep_20261107_fa894885"
+},
+{
+"caption": "Will GTA 6 hit your PC sooner because of AI? Unconfirmed report: we will update when it is confirmed or denied.",
+"posted_at": "2026-11-07T21:26:29.062Z",
+"episode": "ep_20261106_5b0b7532"
+},
+{
+"caption": "Ratchet and Clank's Ranger Rumble shuts down, so spend your currency.",
+"posted_at": "2026-11-07T20:36:35.701Z",
+"episode": "ep_20261106_3afaccd0"
+},
+{
+"caption": "Is BioWare's documentary the last Mass Effect you'll get?",
+"posted_at": "2026-11-06T23:30:57.447Z",
+"episode": "ep_20261106_37bce92f"
+},
+{
+"caption": "Crash Bandicoot sold over 6 million, and Sony still lost him.",
+"posted_at": "2026-11-07T19:50:49.495Z",
+"episode": "ep_20261106_713dc719"
+},
+{
+"caption": "God of War Laufey just lost three months.",
+"posted_at": "2026-11-06T23:17:04.000Z",
+"episode": "ep_20261105_b88d4645"
+},
+{
+"caption": "Is WoW Forever's smooth launch shutting out Horde PvP players?",
+"posted_at": "2026-11-06T22:41:19.879Z",
+"episode": "ep_20261105_8e28b468"
+},
+{
+"caption": "The best-reviewed game of 2026 so far first came out in 1998.",
+"posted_at": "2026-11-06T23:17:26.000Z",
+"episode": "ep_20261105_efbe393a"
+},
+{
+"caption": "Why did EA stop making racers like Most Wanted? The next Why lands tomorrow, so if EA remade one, Most Wanted or Carbon, which would you buy?",
+"posted_at": "2026-11-04T22:43:25.000Z",
+"episode": "ep_20261104_bcc4e29b"
+},
+{
+"caption": "Elden Ring's new announcement has a name, and little else. Will you wait for Path of the Elden Lord, or start a fresh Tarnished run tonight?",
+"posted_at": "2026-11-05T19:47:46.000Z",
+"episode": "ep_20261104_4aa2f60b"
+},
+{
+"caption": "GTA 6 pre-loads open November 10, and you'll need 212GB. Which installed game loses its spot to GTA 6?",
+"posted_at": "2026-11-03T22:40:27.000Z",
+"episode": "ep_20261103_63f8bb73"
+},
+{
+"caption": "Why did Capcom scrap Resident Evil 4 four times? Which scrapped Resident Evil 4 would you play before tomorrow's Why, Kamiya's or the fog build?",
+"posted_at": "2026-11-04T10:27:44.000Z",
+"episode": "ep_20261102_0eb62cd3"
+},
+{
+"caption": "Sony just patched PS5 again, and GTA 6 reportedly needs it. Will you update your PS5 now, or wait for GTA 6 day?",
+"posted_at": "2026-11-03T18:54:43.000Z",
+"episode": "ep_20261102_1096e1d4"
+},
+{
+"caption": "Why did the Ocarina of Time remake scrap fast travel? On November 5, will you sprint, ride Epona or keep rolling?",
+"posted_at": "2026-11-03T18:55:44.000Z",
+"episode": "ep_20261102_d1020fd7"
+},
+{
+"caption": "Mass Effect 5 reportedly lost to Battlefront 3 at EA. Which would you have greenlit? Unconfirmed report: we will update when it is confirmed or denied.",
+"posted_at": "2026-11-02T20:40:26.000Z",
+"episode": "ep_20261031_f18f28d2"
+},
+{
+"caption": "We rank Halo's 8 FPS campaigns by solo combat replayability. Which Halo would you replay solo?",
+"posted_at": "2026-11-02T20:52:04.000Z",
+"episode": "ep_20261031_eb699793"
+},
+{
+"caption": "Final Fantasy 14's Evercold slipped, but by how much? Which new job are you maining in Evercold, Zephyr or Bastion?",
+"posted_at": "2026-11-02T21:11:54.000Z",
+"episode": "ep_20261031_5e0b8842"
+},
+{
+"caption": "Dark Souls 2 and 3 servers just went dark indefinitely. Will you tackle Dark Souls 3 solo, or shelve it until the summon signs return?",
+"posted_at": "2026-10-30T23:42:42.000Z",
+"episode": "ep_20261030_81eb4b90"
+},
+{
+"caption": "PUBG's Netflix show has Donald Glover doing four jobs. Are you dropping into Erangel this weekend, or waiting for Glover's version?",
+"posted_at": "2026-11-02T21:10:52.000Z",
+"episode": "ep_20261030_137d6305"
+},
+{
+"caption": "Every mainline Fallout, ranked by how it plays today, not at launch. Fallout plays best in the Mojave, so which one are you reinstalling tonight?",
+"posted_at": "2026-10-30T21:47:40.000Z",
+"episode": "ep_20261029_c2ada2ee"
+},
+{
+"caption": "GTA 6's map is roughly three Rockstar worlds combined. Will you cross Leonida refueling at the pump, or calling a fresh car on Scooter Bros?",
+"posted_at": "2026-10-29T22:51:05.000Z",
+"episode": "ep_20261029_2af7158b"
+},
+{
+"caption": "Konami quit big console games in 2015, then remade Snake Eater. Which Metal Gear would you want Konami to remake next?",
+"posted_at": "2026-10-28T22:34:28.000Z",
+"episode": "ep_20261028_214882c7"
+},
+{
+"caption": "Call of Duty just crossed $40 billion in lifetime revenue. Call of Duty's at $40 billion and counting. How many have you bought since 2003?",
+"posted_at": "2026-10-28T22:39:50.000Z",
+"episode": "ep_20261026_f225c365"
+},
+{
+"caption": "Phantom Blade Zero wants 300 GB free just to pre-load. At 300 GB and $59.99, will you clear space, wait or skip it?",
+"posted_at": "2026-10-27T22:36:11.000Z",
+"episode": "ep_20261026_c5f64f1c"
+}
+]
+}

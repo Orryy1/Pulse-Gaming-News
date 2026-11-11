@@ -311,6 +311,12 @@ import {
   visualLessons,
 } from "./analytics.ts";
 import {
+  guessKind,
+  loopLessonLines,
+  loopWeights,
+  storyWeight,
+} from "./loopfeedback.ts";
+import {
   deskShareNow,
   experimentVerdicts,
   mascotFor,
@@ -1208,7 +1214,9 @@ async function createFromChoice(
       calendarFor(s.cfg, s.now(), "news", 3),
       await performanceNotes(db, s.now()).catch(() => ""),
       await retentionNotes(db, s.now()).catch(() => ""),
-      await socialLessons(db, s.now()).catch(() => ""),
+      await socialLessons(db, s.now(), loopLessonLines(s.cfg, s.now())).catch(
+        () => "",
+      ),
       trendingBlock(await s.trending().catch(() => [])),
     ]
       .filter(Boolean)
@@ -1576,7 +1584,24 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
       (await maybeSelectWhy(s)) ??
       (await maybeSelectSpare(s))
     );
-  const candidates = eligible.map((x) => x.cluster).slice(0, 12);
+  // ANALYTICS_LOOP_SCORING (src/loopfeedback.ts): the weekly report's small multiplier per story type and format
+  // reorders the slot's candidates (sightings arrive best score first, so with no multipliers nothing moves).
+  // Breaking news above never passes through it: speed matters more than format.
+  const weights = loopWeights(cfg, now);
+  const weighted = (x: (typeof eligible)[number]) => {
+    const k = guessKind(x.cluster.headline, x.cluster.rumourSignals);
+    return (
+      breakingScore(x.cluster, x.sighting) *
+      storyWeight(weights, k.storyType, k.format)
+    );
+  };
+  const candidates = (
+    Object.keys(weights).length
+      ? [...eligible].sort((a, b) => weighted(b) - weighted(a))
+      : eligible
+  )
+    .map((x) => x.cluster)
+    .slice(0, 12);
   if (candidates.length === 0) {
     log("info", "no eligible stories for the slot", {
       slot: slot.toISOString(),
@@ -5395,7 +5420,11 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       // YouTube's lessons, then how the same Shorts did on Instagram, Facebook, Threads and TikTok.
       lessons: [
         await hookLessons(s.db, s.now(), segmentInputs).catch(() => ""),
-        await socialLessons(s.db, s.now()).catch(() => ""),
+        await socialLessons(
+          s.db,
+          s.now(),
+          loopLessonLines(s.cfg, s.now()),
+        ).catch(() => ""),
       ]
         .filter(Boolean)
         .join("\n\n"),

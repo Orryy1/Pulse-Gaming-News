@@ -119,6 +119,12 @@ import {
 } from "./analytics.ts";
 import { seriesBackfill } from "./seriesplaylists.ts";
 import {
+  analyticsLoopDue,
+  liveLoopSources,
+  markAnalyticsLoopSent,
+  runAnalyticsLoop,
+} from "./analyticsloop.ts";
+import {
   growthReport,
   growthReportDue,
   markGrowthReportSent,
@@ -745,6 +751,46 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         .end(
           JSON.stringify({ start, end, uploads, report, traffic, episodes }),
         );
+      return;
+    }
+    // Admin: the weekly analytics loop by hand (src/analyticsloop.ts), whatever ANALYTICS_LOOP says. It writes
+    // data/reports/analytics/latest.md, the dated copy and latest.json; the feedback settings still decide whether
+    // anything it found is applied.
+    if (url.pathname === "/admin/analytics-loop" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      try {
+        const out = await withLease(db, "analytics-loop", 30 * 60, () =>
+          runAnalyticsLoop(
+            db,
+            cfg,
+            liveLoopSources(cfg, services.youtube()),
+            new Date(),
+          ),
+        );
+        if (!out) {
+          res
+            .writeHead(409, { "content-type": "application/json" })
+            .end(JSON.stringify({ ok: false, error: "already running" }));
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json" }).end(
+          JSON.stringify({
+            ok: true,
+            files: out.files,
+            platforms: Object.fromEntries(
+              Object.entries(out.json.platforms).map(([k, v]) => [
+                k,
+                { read: v.read, posts: v.posts, views: v.views, source: v.source },
+              ]),
+            ),
+            changes: out.json.changes,
+          }),
+        );
+      } catch (err) {
+        res
+          .writeHead(500, { "content-type": "application/json" })
+          .end(JSON.stringify({ ok: false, error: errorMessage(err) }));
+      }
       return;
     }
     // Every note the factory's own checks wrote about its videos (the feedback the Discord posts carry):
@@ -2086,6 +2132,29 @@ async function main(): Promise<void> {
     })().catch((err) =>
       log("error", "weekly digest failed", { error: errorMessage(err) }),
     );
+  }, 5 * 60_000);
+  // Monday 09:00 local: the weekly cross-platform analytics loop (ANALYTICS_LOOP, src/analyticsloop.ts). A failed run
+  // keeps last week's latest.md and says so once; the PC's pull then shows the report as stale.
+  setInterval(() => {
+    void (async () => {
+      const key = await analyticsLoopDue(db, cfg, new Date());
+      if (!key) return;
+      await markAnalyticsLoopSent(db, key);
+      const out = await withLease(db, "analytics-loop", 30 * 60, () =>
+        runAnalyticsLoop(
+          db,
+          cfg,
+          liveLoopSources(cfg, services.youtube()),
+          new Date(),
+        ),
+      );
+      if (out) log("info", "analytics loop report written", { week: key });
+    })().catch((err) => {
+      log("error", "analytics loop failed", { error: errorMessage(err) });
+      void services.notify({
+        content: `⚠️ This week's analytics report failed: ${errorMessage(err).slice(0, 200)}. Last week's report stays in place; Claude will look at it.`,
+      });
+    });
   }, 5 * 60_000);
   // Sunday 10:00 local: subscribers per 1,000 views by format, and what to back (GROWTH_REPORT).
   setInterval(() => {

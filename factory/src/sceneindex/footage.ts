@@ -43,6 +43,30 @@ export interface PlannedClip {
   quote?: string;
 }
 
+/**
+ * The longest part of a shot with no dialogue written over the picture (pure): the shot minus the time each line
+ * read off the screen is up (a box stays about a second after its last word). Undefined when no part is at least
+ * `min` seconds long; the whole shot when nothing is written during it.
+ */
+export function clearStretch(
+  index: Pick<SceneIndex, "lines">,
+  shot: { start: number; end: number },
+  min: number,
+): { start: number; end: number } | undefined {
+  const boxes = index.lines
+    .filter((l) => l.via !== "voice" && l.start < shot.end && l.end + 1 > shot.start)
+    .map((l) => ({ from: l.start - 0.3, to: l.end + 1 }))
+    .sort((a, b) => a.from - b.from);
+  let best: { start: number; end: number } | undefined;
+  let at = shot.start;
+  for (const b of [...boxes, { from: shot.end, to: shot.end }]) {
+    const end = Math.min(shot.end, b.from);
+    if (end - at >= min && (!best || end - at > best.end - best.start)) best = { start: at, end };
+    at = Math.max(at, b.to);
+  }
+  return best;
+}
+
 /** Words in quotation marks in a narration line, four words or more: a line of the game's dialogue being quoted. */
 export function quotedWords(text: string): string[] {
   return [...text.matchAll(/["“]([^"”]{12,160})["”]/g)]
@@ -96,10 +120,15 @@ export function planIndexedClips(
     for (const c of candidates) {
       const shot = index.shots[c.shot];
       if (!shot || shot.blank || shot.menu) continue;
-      const from = Math.round((shot.start + 0.1) * 100) / 100;
+      // A quoted line is shown while it is on screen; any other line gets the part of its shot with no words
+      // over the picture when there is one (the clean-frame screen drops a clip with subtitles across it).
+      const span = c.quote
+        ? { start: shot.start, end: shot.end }
+        : (clearStretch(index, shot, MIN_CLIP_SECONDS + 0.3) ?? { start: shot.start, end: shot.end });
+      const from = Math.round((span.start + 0.1) * 100) / 100;
       const seconds =
         Math.round(
-          Math.min(clipSeconds, shot.end - from - 0.1, o.maxSeconds - total) *
+          Math.min(clipSeconds, span.end - from - 0.1, o.maxSeconds - total) *
             30,
         ) / 30;
       if (seconds < MIN_CLIP_SECONDS || !free(from)) continue;

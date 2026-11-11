@@ -83,6 +83,7 @@ import {
   turnOutcome,
 } from "../src/sceneindex/job.ts";
 import {
+  clearStretch,
   cutscenesIndexFirst,
   indexFirstCutscenes,
   indexFitsRelease,
@@ -1736,4 +1737,17 @@ test("the vision model gets each keyframe as its own picture", () => {
   const args = frameArgs("/data/proxy.mp4", 6350.5, "/work/s_1_0.jpg").join(" ");
   assert.ok(args.includes("-ss 6350.50 -i /data/proxy.mp4") && args.includes("scale=640:-2") && args.endsWith("/work/s_1_0.jpg"));
   assert.ok(!lookPrompt({ game: GAME, cast: [], places: [], dialogue: [], text: "", frames: 3 }).includes("side by side"));
+});
+
+test("a clip is cut from the part of its shot with no dialogue written over the picture", () => {
+  const index = sample();
+  // The rise shot runs 6900-6908 with a box up from 6901 to 6905 and another from 6905.5 to 6907.5.
+  assert.deepEqual(clearStretch(index, { start: 6900, end: 6908 }, 1.9), undefined);
+  assert.deepEqual(clearStretch(index, { start: 6890, end: 6908 }, 1.9), { start: 6890, end: 6900.7 });
+  assert.deepEqual(clearStretch(index, { start: 2400, end: 2406 }, 1.9), { start: 2400, end: 2406 }, "nothing written: the whole shot");
+  // The sword shot (2411-2418) has a box from 2412 to 2416: the clear second and a bit after it is too short, so
+  // the clip keeps the shot's start; the tree's shot (185-191) is clear before its line starts at 187.25.
+  const plan = planIndexedClips(index, [target("beat:0", "The Great Deku Tree in Kokiri Forest")], { maxClips: 2, maxSeconds: 20, minConfidence: 0.3 });
+  assert.equal(plan[0]!.shot, 0);
+  assert.deepEqual([plan[0]!.from, Math.round(plan[0]!.seconds * 100) / 100], [185.1, 1.73]);
 });

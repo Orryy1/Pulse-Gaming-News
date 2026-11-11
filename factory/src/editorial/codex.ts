@@ -42,6 +42,11 @@ export interface CodexOptions {
   sites: string[];
   /** CODEX_VISION: calls carrying images are routed too (each check wants its own side-by-side first). */
   vision?: boolean;
+  /**
+   * True while the PC vision relay is down (src/assets/visionrelay.ts). A picture call then goes to Codex even from a
+   * step not on CODEX_CALLS, when `vision` allows images at all: Codex, not the paid API, covers the outage.
+   */
+  outage?: () => Promise<boolean>;
   /** CODEX_TIMEOUT_MINUTES: the run is killed after this (default 20 minutes). */
   timeoutMs?: number;
   /** CODEX_PYTHON: the Python that can import codex_runner (default "python"). */
@@ -447,8 +452,14 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
     ): Promise<z.infer<S>> {
       const images = imagesOf(o.content);
       const site = siteOf(o.site);
-      if (!routeToCodex(opts, site, images.length > 0, claudeOut()))
-        return claude(o, site, images.length > 0);
+      const routed = routeToCodex(opts, site, images.length > 0, claudeOut());
+      const outageRoute =
+        !routed &&
+        opts.enabled &&
+        opts.vision === true &&
+        images.length > 0 &&
+        Boolean(await opts.outage?.().catch(() => false));
+      if (!routed && !outageRoute) return claude(o, site, images.length > 0);
       if (claudeOut() && !siteListed(site, opts.sites))
         opts.onLimitRouted?.(site);
       return viaCodex(o, site, images);

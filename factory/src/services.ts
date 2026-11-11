@@ -8,6 +8,8 @@ import type { Db } from "./db.ts";
 import type { Services } from "./pipeline.ts";
 import { createClaude, withVoiceTags } from "./editorial/llm.ts";
 import { codexRunnerPresent, createCodexLlm } from "./editorial/codex.ts";
+import { localVisionDown, onVisionRelayAlert } from "./assets/localvision.ts";
+import { withVisionGuard } from "./assets/visionrelay.ts";
 import { FEEDS } from "./discovery/feeds.ts";
 import { fetchFeeds } from "./discovery/rss.ts";
 import { clusterItems } from "./discovery/cluster.ts";
@@ -153,11 +155,21 @@ export function createServices(db: Db, cfg: Config): Services {
           tellMac,
         )(file)
       : transcribeWords(file, cfg.whisperPython);
-  const claude = createClaude({
-    top: cfg.anthropicModel,
-    mid: cfg.claudeModelMid,
-    low: cfg.claudeModelLow,
+  // The PC vision relay's down and back alerts, once each per outage, to the owner's alerts channel.
+  onVisionRelayAlert((text) => {
+    tellMac(`⚠️ ${text}`);
+    logEvent(db, null, "note", { text }).catch(() => undefined);
   });
+  // No picture goes to the paid API while the relay is down (VISION_PAID_FALLBACK off, the default): the guard sits
+  // under Codex's router too, so a Codex failure on a picture call can never fall through to Claude.
+  const claude = withVisionGuard(
+    createClaude({
+      top: cfg.anthropicModel,
+      mid: cfg.claudeModelMid,
+      low: cfg.claudeModelLow,
+    }),
+    { paidFallback: cfg.visionPaidFallback, relayDown: localVisionDown },
+  );
   // Codex answers the listed off-slot steps; anything else, and any Codex failure, is Claude as before.
   // Its helper lives in the PC orchestrator's folder: on a machine without it (the Mac mini) every routed
   // call would fail and then go to Claude, so routing is off there, said once, rather than failing each time.
@@ -176,6 +188,8 @@ export function createServices(db: Db, cfg: Config): Services {
           enabled: true,
           sites: cfg.codexCalls,
           vision: cfg.codexVision,
+          // While the relay is down a picture call goes to Codex even from a step not on CODEX_CALLS.
+          outage: localVisionDown,
           timeoutMs: cfg.codexTimeoutMinutes * 60_000,
           python: cfg.codexPython,
           runnerDir: cfg.codexRunnerDir,

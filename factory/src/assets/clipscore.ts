@@ -13,6 +13,7 @@ import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import type { Llm, LlmContent } from "../editorial/llm.ts";
 import { screenFrames } from "./localvision.ts";
+import { isVisionPaused } from "./visionrelay.ts";
 import { clipBigText } from "./cliptext.ts";
 import type { Script } from "../editorial/schema.ts";
 import {
@@ -766,9 +767,11 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         assignments = await rankByModel(o.llm, o.targets, pool, textFrames);
         how = "model";
       } catch (err) {
-        log("warn", "clip ranking by model failed; using the motion rule", {
-          error: errorMessage(err),
-        });
+        // The relay being down is said once per outage (src/assets/visionrelay.ts), not once a Short.
+        if (!isVisionPaused(err))
+          log("warn", "clip ranking by model failed; using the motion rule", {
+            error: errorMessage(err),
+          });
       }
     }
     // Lines the model left without a match get the rule's pick from what is left.

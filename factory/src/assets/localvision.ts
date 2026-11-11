@@ -2,10 +2,12 @@
 // through Ollama), so only clean frames reach Claude. Each frame is checked
 // for the things that disqualify footage outright: words on screen, a
 // streamer's webcam or recording overlay, gore, letterboxing, darkness, blur.
-// When Ollama is not running every frame passes through unchanged.
+// When Ollama is not running every frame passes through unchanged, and the relay is marked down
+// (src/assets/visionrelay.ts): with VISION_PAID_FALLBACK off no picture then goes to the paid API.
 
 import fs from "node:fs/promises";
-import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
+import { errorMessage, fetchWithTimeout } from "../lib/util.ts";
+import { createVisionRelay } from "./visionrelay.ts";
 
 export interface FrameFlags {
   hud: boolean; // only the game's own small HUD: fine on screen
@@ -104,6 +106,38 @@ export const rejectReason = (f: FrameFlags): string | undefined =>
 
 let downUntil = 0;
 
+let relayAlert: (text: string) => unknown = () => undefined;
+/** Where the relay's down and back alerts go (src/services.ts: Discord and the event log). */
+export function onVisionRelayAlert(fn: (text: string) => unknown): void {
+  relayAlert = fn;
+}
+
+/** The relay answers at all: its model list, no model run. */
+async function probeRelay(): Promise<boolean> {
+  const res = await fetchWithTimeout(`${LOCAL_VISION_URL}/api/tags`, {}, 4_000);
+  return res.ok;
+}
+
+/** This process's view of the relay: one alert when it goes down, one when it is back. */
+export const visionRelay = createVisionRelay({
+  probe: probeRelay,
+  alert: (text) => relayAlert(text),
+  // Back: screen locally again at once rather than after the ten-minute rest.
+  onUp: () => {
+    downUntil = 0;
+  },
+});
+
+/**
+ * The guard's question (src/services.ts withVisionGuard): is the relay down? Never while local vision is
+ * switched off on purpose (LOCAL_VISION=off: pictures go to Claude as configured) or under test.
+ */
+export function localVisionDown(): Promise<boolean> {
+  if (process.env.LOCAL_VISION === "off" || process.env.NODE_TEST_CONTEXT)
+    return Promise.resolve(false);
+  return visionRelay.down();
+}
+
 // One frame and a short answer fit easily: the default 32k context held gigabytes the renderer needs.
 const NUM_CTX = 8192;
 
@@ -185,7 +219,8 @@ async function checkOne(file: string): Promise<FrameFlags | undefined> {
 /**
  * Flags for each frame, in order; undefined for a frame the model could not
  * judge (or for all of them when the local model is not running), which
- * callers treat as "let Claude decide".
+ * callers treat as "let Claude decide" (only while the relay answers, or with
+ * VISION_PAID_FALLBACK on: src/assets/visionrelay.ts).
  */
 export async function screenFrames(
   files: string[],
@@ -208,16 +243,14 @@ export async function screenFrames(
       const i = next++;
       try {
         out[i] = await checkOne(files[i]!);
+        visionRelay.report(true);
       } catch (err) {
         failures++;
         if (failures === 3) {
-          // Not running or broken: stop trying for a while and let Claude see everything.
+          // Not running or broken: stop trying for a while. The relay says so once per outage, and with
+          // VISION_PAID_FALLBACK off the frames do not go to Claude either (src/assets/visionrelay.ts).
           downUntil = Date.now() + 10 * 60_000;
-          log(
-            "warn",
-            "local vision unavailable; frames go straight to Claude",
-            { error: errorMessage(err) },
-          );
+          visionRelay.report(false, errorMessage(err));
         }
       }
     }
@@ -668,17 +701,13 @@ export async function lookFrames(
       const i = next++;
       try {
         out[i] = await lookOne(files[i]!);
+        visionRelay.report(true);
       } catch (err) {
         failures++;
         if (failures === 3) {
+          // Footage segments are not looked at for a while; the relay logs and alerts once per outage.
           downUntil = Date.now() + 10 * 60_000;
-          log(
-            "warn",
-            "local vision unavailable; footage segments not looked at",
-            {
-              error: errorMessage(err),
-            },
-          );
+          visionRelay.report(false, errorMessage(err));
         }
       }
     }

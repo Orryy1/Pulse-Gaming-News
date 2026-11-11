@@ -258,6 +258,7 @@ import { hotBlock, readHotTopic, watchHits } from "./hits.ts";
 import type { Deal } from "./discovery/deals.ts";
 import { trendingBlock } from "./discovery/demand.ts";
 import { screenFrames } from "./assets/localvision.ts";
+import { isVisionPaused, whenVisionPaused } from "./assets/visionrelay.ts";
 import { readRequests, requestsBlock } from "./social/requests.ts";
 import {
   buildTags,
@@ -4078,10 +4079,12 @@ export async function ingestGameplay(
       // A failed look is tried again later, never thrown away (a write that fails here leaves "reviewing", which
       // newClips also comes back to).
       await writeMeta(dir, { status: "new" }).catch(() => undefined);
-      log("warn", "gameplay review failed", {
-        id: meta.id,
-        error: errorMessage(err),
-      });
+      // The PC vision relay being down is said once per outage; the clip simply waits for it.
+      if (!isVisionPaused(err))
+        log("warn", "gameplay review failed", {
+          id: meta.id,
+          error: errorMessage(err),
+        });
       break;
     }
   }
@@ -4112,15 +4115,19 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
   );
   // The rebuilt Short: a second look times the attempt and the outcome and writes the lines; the cut waits for the
   // voice, since the answer's real length decides how the ending runs.
-  if (s.cfg.gameplayDirect) {
-    const look = path.join(episodeDir(s.cfg, ep.id), "look");
-    const direction = await directClip(
-      s.llm,
-      await directFrames(source, meta.clip.seconds, look),
-      ref.review,
-      blacks,
-    );
-    await fs.rm(look, { recursive: true, force: true });
+  // With the PC vision relay down (and the paid fallback off) there is no second look: the reviewer's window is cut
+  // the old way below, and the Short still waits for the owner's tap.
+  const look = path.join(episodeDir(s.cfg, ep.id), "look");
+  const direction = s.cfg.gameplayDirect
+    ? await directClip(
+        s.llm,
+        await directFrames(source, meta.clip.seconds, look),
+        ref.review,
+        blacks,
+      ).catch(whenVisionPaused(undefined))
+    : undefined;
+  if (s.cfg.gameplayDirect) await fs.rm(look, { recursive: true, force: true });
+  if (direction) {
     direction.hook = cleanLine(direction.hook);
     direction.setup = cleanLine(direction.setup);
     direction.payoff_line = cleanLine(direction.payoff_line);

@@ -3,6 +3,18 @@
 import fs from "node:fs/promises";
 import type { Llm, LlmContent } from "../editorial/llm.ts";
 import { VisionQaSchema, type VisionQa } from "../editorial/schema.ts";
+import { whenVisionPaused } from "../assets/visionrelay.ts";
+
+/**
+ * What a check returns when it could not look: the PC vision relay is down and VISION_PAID_FALLBACK is off. It
+ * passes, exactly as with VISION_QA off, so no slot waits for the relay; the note says the check was skipped.
+ */
+export const VISION_SKIPPED: VisionQa = {
+  verdict: "pass",
+  problems: [],
+  notes:
+    "Not checked: the PC vision relay was down and the paid fallback is off (VISION_PAID_FALLBACK).",
+};
 
 export const VISION_PROMPT = `You are the final visual quality checker for a vertical YouTube Short from a gaming news channel.
 You see frames sampled across the video in order. Fail the video only for real problems a viewer would notice:
@@ -145,11 +157,13 @@ export async function visionQa(
           : VISION_PROMPT;
   // The graphics check now looks at every graphic of a long video (up to 200 stills before the render), so it
   // runs on the mid tier; the other checks are a handful of frames and keep the top tier.
-  return llm.structured({
-    system,
-    content,
-    schema: VisionQaSchema,
-    effort: "low",
-    ...(context.format === "graphics" ? { tier: "mid" as const } : {}),
-  });
+  return llm
+    .structured({
+      system,
+      content,
+      schema: VisionQaSchema,
+      effort: "low",
+      ...(context.format === "graphics" ? { tier: "mid" as const } : {}),
+    })
+    .catch(whenVisionPaused(VISION_SKIPPED));
 }

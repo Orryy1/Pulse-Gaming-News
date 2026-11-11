@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import type { Llm, LlmContent } from "../editorial/llm.ts";
 import { FFMPEG } from "../lib/bin.ts";
+import { whenVisionPaused } from "./visionrelay.ts";
 
 const run = promisify(execFile);
 const MAX_STILLS = 24;
@@ -186,7 +187,12 @@ These are licensed stock video previews for a real-world line in a documentary a
     content,
     schema: StillRankingSchema,
     effort: "low",
-  });
+  }).catch(whenVisionPaused(undefined));
+  // The PC vision relay is down and the paid fallback off: no picks, which every caller already handles.
+  if (!r) {
+    await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+    return empty;
+  }
   const withText = new Set(
     r.images.filter((x) => x.has_text).map((x) => x.index),
   );

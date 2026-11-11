@@ -88,6 +88,7 @@ export function testConfig(
     codexLlm: false,
     codexCalls: [],
     codexVision: false,
+    visionPaidFallback: false,
     codexTimeoutMinutes: 20,
     codexPython: "python",
     codexRunnerDir: "",

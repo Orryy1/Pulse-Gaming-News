@@ -124,6 +124,11 @@ export interface Config {
   codexCalls: string[];
   /** Listed steps that carry images (vision checks) go to Codex too; off until each check has its side-by-side. */
   codexVision: boolean;
+  /**
+   * VISION_PAID_FALLBACK: while the PC vision relay is down, picture checks may go to the paid Claude API. Off by
+   * default (owner's rule after the 7-11 Nov 2026 outage): they go to Codex where CODEX_VISION allows, or are skipped.
+   */
+  visionPaidFallback: boolean;
   /** A Codex run is killed after this many minutes and Claude answers instead. */
   codexTimeoutMinutes: number;
   /** The Python that can import the orchestrator's codex_runner, and where that file lives. */
@@ -859,6 +864,7 @@ export function loadConfig(): Config {
       .map((s) => s.trim())
       .filter(Boolean),
     codexVision: bool("CODEX_VISION", false),
+    visionPaidFallback: bool("VISION_PAID_FALLBACK", false),
     codexTimeoutMinutes: int("CODEX_TIMEOUT_MINUTES", 20),
     codexPython: str("CODEX_PYTHON", defaultCodexPython(process.platform)),
     codexRunnerDir: str(
@@ -1544,6 +1550,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     codexLlm: c.codexLlm,
     codexCalls: c.codexCalls,
     codexVision: c.codexVision,
+    visionPaidFallback: c.visionPaidFallback,
     voiceProvider: c.voiceProvider,
     localTtsUrl: c.localTtsUrl,
     elevenLabsFallback: Boolean(c.elevenLabsApiKey),

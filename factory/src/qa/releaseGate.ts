@@ -23,6 +23,7 @@ import { momentWindows, momentKeys } from "../render/longplan.ts";
 import type { Segment } from "../render/timeline.ts";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
+import { isVisionPaused } from "../assets/visionrelay.ts";
 import { COLOURS, type DiscordMessage } from "../approval/discord.ts";
 import { longFormatOf, longKindLabel } from "../longformat.ts";
 import { badTextMutes } from "./graphicscheck.ts";
@@ -296,8 +297,15 @@ export async function scoreShots(
   },
 ): Promise<ScoredShot[]> {
   const out: ScoredShot[] = [];
+  // The PC vision relay is down and the paid fallback off: the rest are left unscored without asking again.
+  let paused = false;
   for (let k = 0; k < shots.length; k += GATE_BATCH) {
     const batch = shots.slice(k, k + GATE_BATCH);
+    if (paused) {
+      for (const s of batch)
+        out.push({ ...s, score: undefined, reason: "not scored" });
+      continue;
+    }
     const content: LlmContent = [];
     const files: string[] = [];
     for (const [i, s] of batch.entries()) {
@@ -327,7 +335,9 @@ export async function scoreShots(
         schema: GateBatchSchema,
       })
       .catch((err) => {
-        log("warn", "release gate batch failed", { error: errorMessage(err) });
+        if (isVisionPaused(err)) paused = true;
+        else
+          log("warn", "release gate batch failed", { error: errorMessage(err) });
         return undefined;
       });
     const byFrame = new Map(

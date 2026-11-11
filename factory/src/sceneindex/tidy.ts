@@ -178,8 +178,22 @@ export function tidyIndex(index: SceneIndex): SceneIndex {
     }));
   const speakers = [
     ...new Set(lines.flatMap((l) => (l.speaker ? [l.speaker] : []))),
-  ].filter((s) => (counts.get(s) ?? 0) >= 2);
+  ].filter((s) => (counts.get(s) ?? 0) >= 3);
+  // The name plates the game itself shows, again and again, are the surest cast list there is.
   const cast = mergeNames(index.cast, speakers);
+  // The credits: after the last line anyone says, a run of shots most of which carry writing. A cast list scrolling
+  // past is not footage and must not answer a lookup for the characters it names.
+  const spoken = lines.filter((l) => l.speaker && (voiced.length < joined.length * 0.5 || l.via !== "textbox"));
+  const lastSaid = spoken.length ? spoken[spoken.length - 1]!.end : Infinity;
+  const tail = index.shots.filter((s) => s.start >= lastSaid + 5);
+  const lettered = (t: string) => t.replace(/[^\p{L}]/gu, "").length >= 10;
+  const wordy = (s: { id: number; text: string }) =>
+    lettered(s.text) || (cardText.get(s.id) ?? []).some(lettered);
+  const credits = new Set(
+    tail.length >= 8 && tail.filter(wordy).length / tail.length >= 0.3
+      ? tail.filter(wordy).map((s) => s.id)
+      : [],
+  );
   const shots = index.shots.map((shot) => {
     const extra = (cardText.get(shot.id) ?? []).filter(
       (t) => !norm(shot.text).includes(norm(t)),
@@ -188,6 +202,7 @@ export function tidyIndex(index: SceneIndex): SceneIndex {
       ? { ...shot, text: [shot.text, ...extra].filter(Boolean).join(" / ").slice(0, 200) }
       : shot;
     if (!s.text) return s;
+    if (credits.has(s.id)) return { ...s, menu: true };
     // The first name on a card is whose card it is ("SARIA  Link's Childhood Friend" is Saria's, not Link's).
     const low = ` ${norm(s.text)} `;
     const written = namesWritten(s.text, cast).sort(
@@ -205,4 +220,20 @@ export function tidyIndex(index: SceneIndex): SceneIndex {
     };
   });
   return { ...index, cast, shots, lines: guessSpeakers(lines, shots, new Set(speakers), index.places) };
+}
+
+/**
+ * The cast list the vision model is given (pure): the names the game itself uses, in its dialogue, on its name
+ * plates and on its cards, plus the first few of the list whatever happens (the plot's leads, who may go unnamed
+ * for a while: nobody says "Link" in the first minutes). Wikipedia's article about a series' characters also lists
+ * people from its other games; a name this game never says is not offered, so the model cannot pin it on anyone.
+ */
+export function groundedCast(index: Pick<SceneIndex, "cast" | "lines" | "shots">, lead = 5): string[] {
+  const said = ` ${norm(
+    [
+      ...index.lines.flatMap((l) => [l.speaker ?? "", l.text]),
+      ...index.shots.map((sh) => sh.text),
+    ].join(" "),
+  )} `;
+  return index.cast.filter((name, i) => i < lead || said.includes(` ${norm(name)} `));
 }

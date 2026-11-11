@@ -54,7 +54,7 @@ import {
   storyText,
 } from "../src/sceneindex/names.ts";
 import { lookAnswer, lookPrompt } from "../src/sceneindex/describe.ts";
-import { editDistance, joinSplitLines, namesWritten, speakerSpellings, tidyIndex } from "../src/sceneindex/tidy.ts";
+import { editDistance, groundedCast, joinSplitLines, namesWritten, speakerSpellings, tidyIndex } from "../src/sceneindex/tidy.ts";
 import {
   chooseSource,
   ocrFrameArgs,
@@ -1708,4 +1708,25 @@ test("several games asked for at once all reach the queue", async () => {
   const dir = await tmpDir();
   await requestSceneIndexes(testConfig(dir, { sceneIndex: true }), [{ game: "Halo 3" }, { game: "Grand Theft Auto VI", recentRelease: true }, { game: "halo 3" }], "a video about it");
   assert.deepEqual((await readQueue(dir)).games.map((g) => [g.game, g.recentRelease ?? false]), [["Halo 3", false], ["Grand Theft Auto VI", true]]);
+});
+
+test("the credits roll is not footage: its shots never answer a lookup for the cast it lists", () => {
+  const index = sample();
+  const shot = (start: number, text: string) => ({ start, end: start + 6, keyframes: [], desc: "", who: [], where: "", mood: "", tags: [], text, luma: 40, motion: 3 });
+  const names = ["Director HokWai Ng", "", "Voice Cast Ganondorf Fabio Azevedo", "Zelda Sheik Performance Capture", "", "Brazilian Portuguese Voice Navi Flavia Narciso", "Special Thanks Hyrule Castle Team", "", "Executive Producer", "Presented by Nintendo"];
+  const rolled = mergeStretch(index, { from: 7100, to: 7200 }, names.map((text, i) => shot(7100 + i * 8, text)), []);
+  const tidy = tidyIndex(rolled);
+  const credits = tidy.shots.filter((s) => s.start >= 7100);
+  assert.deepEqual(credits.map((s) => Boolean(s.menu)), names.map((n) => n.length > 0));
+  assert.ok(findShots(tidy, { text: "Ganondorf at Hyrule Castle" }).every((h) => h.start < 7100));
+  assert.ok(undescribed(tidy).every((s) => !s.menu), "and the GPU is not spent describing them");
+  // Writing on screen during the story (a place card before the last line) is not credits.
+  assert.ok(tidy.shots.filter((s) => s.start < 7000).every((s) => !s.menu));
+});
+
+test("the vision model is offered the names this game uses, not every name in the series", () => {
+  const index = sample();
+  index.cast = ["Link", "Ganondorf", "Majora's Mask", "Skull Kid", "Navi", "Princess Zelda", "Twilight Princess", "Rauru", "Great Deku Tree"];
+  assert.deepEqual(groundedCast(index, 2), ["Link", "Ganondorf", "Navi", "Princess Zelda", "Rauru", "Great Deku Tree"]);
+  assert.deepEqual(groundedCast({ ...index, lines: [], shots: [] }, 3), ["Link", "Ganondorf", "Majora's Mask"]);
 });

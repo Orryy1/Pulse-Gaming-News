@@ -3,7 +3,7 @@
 //   node --import tsx src/tools/sceneindex.ts build "<game>" [--recent] [--steps=N] [--from=s --to=s] [--no-describe]
 //                                              [--no-voice] [--ocr-ssh=<host>] [--hear-ssh=<host>] [--source=<video id>]
 //   node --import tsx src/tools/sceneindex.ts voice "<game>" [--from=s --to=s] [--hear-ssh=<host>]   listen to an indexed stretch
-//   node --import tsx src/tools/sceneindex.ts tidy "<game>"
+//   node --import tsx src/tools/sceneindex.ts tidy "<game>"      names "<game>" (cast and places again from Wikipedia)
 //   node --import tsx src/tools/sceneindex.ts describe "<game>" [--limit=N] [--from=s --to=s]
 //   node --import tsx src/tools/sceneindex.ts find "<game>" "<what the line shows>" [--keywords=a,b] [--sheet=out.jpg]
 //   node --import tsx src/tools/sceneindex.ts quote "<game>" "<the words>" [--speaker=name] [--sheet=out.jpg]
@@ -463,6 +463,15 @@ async function main(): Promise<void> {
     } finally {
       release();
     }
+    return;
+  }
+  if (command === "names") {
+    // The cast and place lists again from Wikipedia (a game's article gains its plot section after launch).
+    const index = await need(s);
+    const names = await gameNames(index.game);
+    const next = tidyIndex({ ...index, cast: names.cast, places: names.places });
+    await saveSceneIndex(s.dataDir, next);
+    console.log(`names: ${next.cast.length} characters and things, ${next.places.length} places`);
     return;
   }
   if (command === "tidy") {

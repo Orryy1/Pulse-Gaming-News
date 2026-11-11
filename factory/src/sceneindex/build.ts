@@ -47,7 +47,7 @@ import {
 } from "./dialogue.ts";
 import { gameNames, knownName, mergeNames } from "./names.ts";
 import { lookAtShot, visionUp, type ShotLook } from "./describe.ts";
-import { tidyIndex } from "./tidy.ts";
+import { groundedCast, tidyIndex } from "./tidy.ts";
 
 const exec = promisify(execFile);
 const run = (
@@ -584,13 +584,6 @@ export async function indexStretch(
       motion: sp.motion,
       ...(sp.blank ? { blank: true } : {}),
     }));
-    // The name plates the game itself showed are the surest cast list there is.
-    const plates = new Map<string, number>();
-    for (const l of lines)
-      if (l.speaker) plates.set(l.speaker, (plates.get(l.speaker) ?? 0) + 1);
-    const speakers = [...plates]
-      .filter(([, n]) => n >= 2)
-      .map(([name]) => name);
     // Read again just before writing: another pass (describing shots) may have saved while this one worked.
     const base = (await loadSceneIndex(s.dataDir, index.game)) ?? index;
     const next = tidyIndex(
@@ -598,7 +591,7 @@ export async function indexStretch(
         {
           ...base,
           proxy: index.proxy ?? base.proxy,
-          cast: mergeNames(base.cast, speakers),
+          cast: base.cast,
         },
         { from, to },
         shots,
@@ -642,6 +635,7 @@ export async function describeShots(
   const dir = sceneIndexDir(s.dataDir, index.game);
   const work = await fs.mkdtemp(path.join(dir, "look_"));
   const look = deps.look ?? lookAtShot;
+  const cast = groundedCast(index);
   // What was seen is written onto the index as it is on disk now, shot by shot: a stretch indexed meanwhile by
   // another pass is kept, not overwritten with this pass's older copy.
   const persist = async (): Promise<SceneIndex> => {
@@ -684,7 +678,7 @@ export async function describeShots(
           .map((l) => `${l.speaker ? `${l.speaker}: ` : ""}${l.text}`);
         const seen: ShotLook | undefined = await look(strip, {
           game: index.game,
-          cast: index.cast,
+          cast,
           places: index.places,
           dialogue,
           text: shot.text,

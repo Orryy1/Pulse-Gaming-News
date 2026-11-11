@@ -220,7 +220,7 @@ export function findShots(
       )
         for (const j of [i - step, i + step]) {
           const other = index.shots[j];
-          if (!other || Math.abs(other.start - shot.start) > NEIGHBOUR_SECONDS)
+          if (!other || other.blank || other.menu || Math.abs(other.start - shot.start) > NEIGHBOUR_SECONDS)
             continue;
           m = Math.max(m, match(docs[j]!, t) * NEIGHBOUR[step - 1]!);
         }

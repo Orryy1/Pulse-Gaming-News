@@ -1,7 +1,9 @@
 // The scene index by hand: build a game's index piece by piece, look moments and quotes up in it, and draw a
 // contact sheet of what a lookup found. The factory's own job (src/sceneindex/job.ts) runs the same "build".
 //   node --import tsx src/tools/sceneindex.ts build "<game>" [--recent] [--steps=N] [--from=s --to=s] [--no-describe]
-//                                              [--no-voice] [--ocr-ssh=<host>] [--source=<video id>]
+//                                              [--no-voice] [--ocr-ssh=<host>] [--hear-ssh=<host>] [--source=<video id>]
+//   node --import tsx src/tools/sceneindex.ts voice "<game>" [--from=s --to=s] [--hear-ssh=<host>]   listen to an indexed stretch
+//   node --import tsx src/tools/sceneindex.ts tidy "<game>"
 //   node --import tsx src/tools/sceneindex.ts describe "<game>" [--limit=N] [--from=s --to=s]
 //   node --import tsx src/tools/sceneindex.ts find "<game>" "<what the line shows>" [--keywords=a,b] [--sheet=out.jpg]
 //   node --import tsx src/tools/sceneindex.ts quote "<game>" "<the words>" [--speaker=name] [--sheet=out.jpg]
@@ -10,7 +12,8 @@
 // WHISPER_PYTHON and the SCENE_INDEX_* values of src/config.ts. Heavy steps take a turn themselves on the PC
 // (the orchestrator) unless ORCH_HELD says the caller already holds one; on the Mac run it behind ~/orch/macrun.sh.
 // --ocr-ssh reads the text on a Mac over ssh (Apple's text recogniser) when this machine is the PC: frames go to a
-// scratch folder in the Mac's home, outside the factory, and are removed afterwards.
+// scratch folder in the Mac's home, outside the factory, and are removed afterwards. --hear-ssh does the same for
+// the sound (the Mac's Whisper), so neither reading nor listening needs the PC's GPU.
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -138,6 +141,34 @@ function sshReader(
   };
 }
 
+/** Whisper's word timings for a sound file, from a Mac over ssh (MLX Whisper there), behind the Mac's turn-taker. */
+function sshHearer(host: string): (wav: string) => Promise<Array<{ text: string; start: number; end: number }>> {
+  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "qa", "whisperwords.py");
+  const job = `sceneindex-scratch/asr_${process.pid}`;
+  let ready = false;
+  return async (wav) => {
+    if (!ready) {
+      await exec("ssh", ["-o", "BatchMode=yes", host, `mkdir -p ~/${job}`]);
+      await exec("scp", ["-q", path.basename(script), `${host}:${job}/whisperwords.py`], { cwd: path.dirname(script) });
+      ready = true;
+    }
+    await exec("scp", ["-q", path.basename(wav), `${host}:${job}/in.wav`], { cwd: path.dirname(wav) });
+    const remote = [
+      "export PATH=/opt/homebrew/bin:$PATH",
+      `cd ~/${job}`,
+      `R="$HOME/orch/macrun.sh"; P="$HOME/PulseFactory/asr/bin/python"`,
+      `if [ -x "$R" ]; then MACRUN_WAIT_MIN=45 "$R" pulse-sceneindex-asr "$P" -I whisperwords.py in.wav out.json >/dev/null 2>&1; else "$P" -I whisperwords.py in.wav out.json >/dev/null 2>&1; fi`,
+      "S=$?; cat out.json 2>/dev/null; rm -f in.wav out.json; exit $S",
+    ].join("; ");
+    const { stdout } = await exec("ssh", ["-o", "BatchMode=yes", host, remote], {
+      maxBuffer: 256 * 1024 * 1024,
+      timeout: 90 * 60_000,
+    });
+    const words = (JSON.parse(stdout) as { words?: Array<{ text: string; start: number; end?: number }> }).words ?? [];
+    return words.map((w) => ({ text: w.text, start: w.start, end: w.end ?? w.start + 0.3 }));
+  };
+}
+
 /** A turn on the PC for the heavy steps, unless the caller holds one; nothing to take on the Mac. */
 async function turn(job: string, minutes: number): Promise<() => void> {
   const held = new Set((process.env.ORCH_HELD ?? "").split(","));
@@ -166,7 +197,7 @@ async function sheet(
   index: SceneIndex,
   dataDir: string,
   title: string,
-  rows: Array<{ shot: number; caption: string }>,
+  rows: Array<{ shot: number; caption: string; times?: number[] }>,
   out: string,
 ): Promise<void> {
   const proxy = path.join(
@@ -196,7 +227,7 @@ async function sheet(
       const before = index.shots[row.shot - 1];
       const after = index.shots[row.shot + 1];
       const mid = (s: { start: number; end: number }) => (s.start + s.end) / 2;
-      const own = keyframeTimes(shot.start, shot.end);
+      const own = row.times ?? keyframeTimes(shot.start, shot.end);
       const padded =
         own.length === 1
           ? [own[0]!, own[0]!, own[0]!]
@@ -289,8 +320,11 @@ async function main(): Promise<void> {
   }
   const s = settings();
   const host = flag("ocr-ssh");
-  const deps: BuildDeps =
-    host && host !== "true" ? { readText: sshReader(host) } : {};
+  const hearHost = flag("hear-ssh");
+  const deps: BuildDeps = {
+    ...(host && host !== "true" ? { readText: sshReader(host) } : {}),
+    ...(hearHost && hearHost !== "true" ? { hear: sshHearer(hearHost) } : {}),
+  };
   if (command === "status") {
     const index = await need(s);
     const dir = sceneIndexDir(s.dataDir, index.game);
@@ -502,6 +536,7 @@ async function main(): Promise<void> {
         `Quote "${text}" in ${index.game} (source ${index.source.videoId})`,
         hits.slice(0, 2).map((h, i) => ({
           shot: h.shot,
+          times: [h.start + 0.4, (h.start + h.end) / 2, Math.max(h.start + 0.5, h.end - 0.4)],
           caption: `#${i + 1}  ${hms(h.start)} (${h.start.toFixed(2)}-${h.end.toFixed(2)} s)  confidence ${h.confidence}\n${h.speaker ? `${h.speaker}: ` : ""}"${h.text}"\n${index.shots[h.shot]?.desc ?? ""}`,
         })),
         out,

@@ -152,7 +152,6 @@ function nameWords(index: SceneIndex): Set<string> {
     for (const t of tokens(name)) out.add(t);
   for (const s of index.shots) {
     for (const w of s.who) for (const t of tokens(w)) out.add(t);
-    for (const t of tokens(s.where)) out.add(t);
   }
   for (const l of index.lines)
     if (l.speaker) for (const t of tokens(l.speaker)) out.add(t);

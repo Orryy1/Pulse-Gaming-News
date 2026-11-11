@@ -12,11 +12,11 @@ const {
 } = require("../../lib/affiliate-targeting");
 
 test("amazonSearchUrl always appends the affiliate tag", () => {
-  const url = amazonSearchUrl("Pokemon Go Plus Plus", "pulsegaming-21");
+  const url = amazonSearchUrl("Pokemon Go Plus Plus", "pulsegamingnews-21");
 
   assert.equal(
     url,
-    "https://www.amazon.co.uk/s?k=Pokemon%20Go%20Plus%20Plus&tag=pulsegaming-21",
+    "https://www.amazon.co.uk/s?k=Pokemon%20Go%20Plus%20Plus&tag=pulsegamingnews-21",
   );
 });
 
@@ -28,12 +28,12 @@ test("buildAffiliateStack targets a Pokemon Go story with game-specific products
       source_type: "rss",
       subreddit: "Eurogamer",
     },
-    { tag: "pulsegaming-21" },
+    { tag: "pulsegamingnews-21" },
   );
 
   assert.equal(links[0].label, "Pokémon Go Plus+");
   assert.ok(links.some((link) => link.query === "Pokemon TCG booster box"));
-  assert.ok(links.every((link) => link.url.includes("tag=pulsegaming-21")));
+  assert.ok(links.every((link) => link.url.includes("tag=pulsegamingnews-21")));
   assert.ok(!links.some((link) => /gaming headset/i.test(link.query)));
 });
 
@@ -42,7 +42,7 @@ test("buildAffiliateStack combines franchise and platform targeting", () => {
     {
       title: "GTA 6 PS5 trailer report points to another huge reveal",
     },
-    { tag: "pulsegaming-21" },
+    { tag: "pulsegamingnews-21" },
   );
 
   assert.ok(links.some((link) => /Grand Theft Auto/i.test(link.query)));
@@ -54,14 +54,14 @@ test("buildPinnedComment uses non-reddit RSS sources without fake r/ prefix", ()
   const story = { source_type: "rss", subreddit: "Eurogamer" };
   const links = buildAffiliateStack(
     { title: "Nintendo Switch 2 launch accessories leak" },
-    { tag: "pulsegaming-21" },
+    { tag: "pulsegamingnews-21" },
   );
 
   const comment = buildPinnedComment(story, links);
 
   assert.match(comment, /Source: Eurogamer/);
   assert.doesNotMatch(comment, /Source: r\/Eurogamer/);
-  assert.match(comment, /tag=pulsegaming-21/);
+  assert.match(comment, /tag=pulsegamingnews-21/);
 });
 
 test("normaliseAffiliateLinks preserves new stacks and old single-url stories", () => {

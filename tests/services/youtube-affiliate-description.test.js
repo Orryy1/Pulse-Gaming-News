@@ -13,11 +13,11 @@ test("buildMetadata renders a targeted affiliate stack in the description", () =
     affiliate_links: [
       {
         label: "Pokemon Go Plus+",
-        url: "https://www.amazon.co.uk/s?k=Pokemon%20Go%20Plus%20Plus&tag=pulsegaming-21",
+        url: "https://www.amazon.co.uk/s?k=Pokemon%20Go%20Plus%20Plus&tag=pulsegamingnews-21",
       },
       {
         label: "Pokemon TCG",
-        url: "https://www.amazon.co.uk/s?k=Pokemon%20TCG&tag=pulsegaming-21",
+        url: "https://www.amazon.co.uk/s?k=Pokemon%20TCG&tag=pulsegamingnews-21",
       },
     ],
   });
@@ -25,5 +25,5 @@ test("buildMetadata renders a targeted affiliate stack in the description", () =
   assert.match(meta.description, /Related links:/);
   assert.match(meta.description, /Pokemon Go Plus\+/);
   assert.match(meta.description, /Pokemon TCG/);
-  assert.equal((meta.description.match(/tag=pulsegaming-21/g) || []).length, 2);
+  assert.equal((meta.description.match(/tag=pulsegamingnews-21/g) || []).length, 2);
 });

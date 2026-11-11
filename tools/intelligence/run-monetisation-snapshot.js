@@ -34,7 +34,7 @@ const FIXTURE_STATE = {
   subscribers: 320,
   shorts_views_90d: 28_000,
   longform_watch_hours_12m: 4,
-  amazon_affiliate_tag: "pulsegaming-21",
+  amazon_affiliate_tag: "pulsegamingnews-21",
   beehiiv_subscribers: 12,
   substack_subscribers: 0,
   indexed_pages: 5,

@@ -367,7 +367,12 @@ export function ocrFrameArgs(
   ];
 }
 
-/** ffmpeg arguments for one shot's keyframes side by side in one picture (pure). */
+/** ffmpeg arguments for one keyframe as the vision model sees it (pure). */
+export function frameArgs(proxy: string, time: number, file: string): string[] {
+  return ["-loglevel", "error", "-y", "-ss", time.toFixed(2), "-i", proxy, "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "3", file];
+}
+
+/** ffmpeg arguments for several moments side by side in one picture, for a contact sheet (pure). */
 export function stripArgs(
   proxy: string,
   times: number[],
@@ -667,16 +672,20 @@ export async function describeShots(
   const worker = async () => {
     while (next < todo.length && streak < 3) {
       const shot = todo[next++]!;
-      const strip = path.join(work, `s_${shot.id}.jpg`);
+      const frames: string[] = [];
       try {
         const times = shot.keyframes.length
           ? shot.keyframes
           : keyframeTimes(shot.start, shot.end);
-        await run(FFMPEG, stripArgs(proxy, times, strip), { timeout: 60_000 });
+        for (const [k, time] of times.entries()) {
+          const file = path.join(work, `s_${shot.id}_${k}.jpg`);
+          await run(FFMPEG, frameArgs(proxy, time, file), { timeout: 60_000 });
+          frames.push(file);
+        }
         const dialogue = index.lines
           .filter((l) => l.start < shot.end && l.end > shot.start)
           .map((l) => `${l.speaker ? `${l.speaker}: ` : ""}${l.text}`);
-        const seen: ShotLook | undefined = await look(strip, {
+        const seen: ShotLook | undefined = await look(frames, {
           game: index.game,
           cast,
           places: index.places,
@@ -714,7 +723,7 @@ export async function describeShots(
             },
           );
       } finally {
-        await fs.rm(strip, { force: true }).catch(() => undefined);
+        for (const file of frames) await fs.rm(file, { force: true }).catch(() => undefined);
       }
     }
   };

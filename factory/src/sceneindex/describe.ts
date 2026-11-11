@@ -1,6 +1,7 @@
 // What a shot shows, in the game's own names, from the free local vision model on the PC (Ollama, the same one
 // src/assets/localvision.ts screens frames with; reached over the network from the Mac). The model sees the shot's
-// keyframes side by side, the dialogue on screen during it and the game's cast and place lists, and answers in
+// keyframes (one picture each: a strip of frames side by side is squashed out of shape by models that take
+// square pictures), the dialogue on screen during it and the game's cast and place lists, and answers in
 // JSON. Nothing here costs money; when the model is not running a shot simply stays undescribed and is tried
 // again on the next pass (it is still found by its dialogue).
 
@@ -38,7 +39,7 @@ export interface LookContext {
 export function lookPrompt(c: LookContext): string {
   const list = (xs: string[], n: number) => xs.slice(0, n).join(", ");
   return [
-    `${c.frames > 1 ? `${c.frames} frames of one shot, in order, side by side,` : "One frame of a shot"} from the video game "${c.game}". Describe the shot for a footage search. Answer in JSON.`,
+    `${c.frames > 1 ? `${c.frames} frames of one shot, in order,` : "One frame of a shot"} from the video game "${c.game}". Describe the shot for a footage search. Answer in JSON.`,
     `description: one plain sentence, under 25 words: who does what, where. Use a character's name when you are confident who it is, otherwise describe them (for example "a red-haired man in dark armour").`,
     `characters: names of the characters visible, only from this list: ${list(c.cast, 40) || "(no list: leave empty unless the dialogue names them)"}.`,
     `place: where it is, from this list when it fits: ${list(c.places, 30) || "(no list)"}; otherwise two or three plain words ("a forest clearing").`,
@@ -120,12 +121,14 @@ export async function visionUp(url = LOCAL_VISION_URL): Promise<boolean> {
   }
 }
 
-/** One shot's strip of keyframes looked at by the local model. Throws when the model cannot be reached. */
+/** One shot's keyframes, in order, looked at by the local model. Throws when the model cannot be reached. */
 export async function lookAtShot(
-  file: string,
+  files: string[],
   c: LookContext,
 ): Promise<ShotLook | undefined> {
-  const image = (await fs.readFile(file)).toString("base64");
+  const images = await Promise.all(
+    files.map(async (file) => (await fs.readFile(file)).toString("base64")),
+  );
   const ask = (plain: boolean) =>
     fetchWithTimeout(
     `${LOCAL_VISION_URL}/api/chat`,
@@ -143,7 +146,7 @@ export async function lookAtShot(
           num_predict: 260 + 2 * THINK_ROOM,
           num_ctx: 8192,
         },
-        messages: [{ role: "user", content: lookPrompt(c), images: [image] }],
+        messages: [{ role: "user", content: lookPrompt(c), images }],
       }),
     },
     120_000,

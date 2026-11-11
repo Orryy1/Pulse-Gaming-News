@@ -57,6 +57,7 @@ import { lookAnswer, lookPrompt } from "../src/sceneindex/describe.ts";
 import { editDistance, groundedCast, joinSplitLines, namesWritten, speakerSpellings, tidyIndex } from "../src/sceneindex/tidy.ts";
 import {
   chooseSource,
+  frameArgs,
   ocrFrameArgs,
   pickSource,
   proxyArgs,
@@ -1729,4 +1730,10 @@ test("the vision model is offered the names this game uses, not every name in th
   index.cast = ["Link", "Ganondorf", "Majora's Mask", "Skull Kid", "Navi", "Princess Zelda", "Twilight Princess", "Rauru", "Great Deku Tree"];
   assert.deepEqual(groundedCast(index, 2), ["Link", "Ganondorf", "Navi", "Princess Zelda", "Rauru", "Great Deku Tree"]);
   assert.deepEqual(groundedCast({ ...index, lines: [], shots: [] }, 3), ["Link", "Ganondorf", "Majora's Mask"]);
+});
+
+test("the vision model gets each keyframe as its own picture", () => {
+  const args = frameArgs("/data/proxy.mp4", 6350.5, "/work/s_1_0.jpg").join(" ");
+  assert.ok(args.includes("-ss 6350.50 -i /data/proxy.mp4") && args.includes("scale=640:-2") && args.endsWith("/work/s_1_0.jpg"));
+  assert.ok(!lookPrompt({ game: GAME, cast: [], places: [], dialogue: [], text: "", frames: 3 }).includes("side by side"));
 });

@@ -521,6 +521,14 @@ export interface Config {
   tiktokFromHour: number;
   /** Fewest minutes between two TikTok posts (TIKTOK_GAP_MINUTES), so a backlog never lands as a burst; 0 = no gap. */
   tiktokGapMinutes: number;
+  /** Hard daily caps for the other platforms (INSTAGRAM_DAILY, FACEBOOK_DAILY, THREADS_DAILY), counted over the last 24 hours; above 0 the day's best Shorts are picked as for TikTok; 0 = every Short, oldest first. */
+  instagramDaily: number;
+  facebookDaily: number;
+  threadsDaily: number;
+  /** Fewest minutes between two posts on each (INSTAGRAM_GAP_MINUTES, FACEBOOK_GAP_MINUTES, THREADS_GAP_MINUTES); 0 = no gap. */
+  instagramGapMinutes: number;
+  facebookGapMinutes: number;
+  threadsGapMinutes: number;
   engageEnabled: boolean; // a daily community post on Facebook and Instagram
   /** The daily question picture on Instagram as well (ENGAGE_INSTAGRAM): off, 9 posts drew 0 likes by 29 Oct 2026. */
   engageInstagram: boolean;
@@ -1254,6 +1262,12 @@ export function loadConfig(): Config {
     tiktokDaily: int("TIKTOK_DAILY", 0),
     tiktokFromHour: int("TIKTOK_FROM_HOUR", 16),
     tiktokGapMinutes: int("TIKTOK_GAP_MINUTES", 0),
+    instagramDaily: int("INSTAGRAM_DAILY", 0),
+    facebookDaily: int("FACEBOOK_DAILY", 0),
+    threadsDaily: int("THREADS_DAILY", 0),
+    instagramGapMinutes: int("INSTAGRAM_GAP_MINUTES", 0),
+    facebookGapMinutes: int("FACEBOOK_GAP_MINUTES", 0),
+    threadsGapMinutes: int("THREADS_GAP_MINUTES", 0),
     engageEnabled: bool("ENGAGE_ENABLED", true),
     engageInstagram: bool("ENGAGE_INSTAGRAM", false),
     engageSlot: str("ENGAGE_SLOT", "15:00"),

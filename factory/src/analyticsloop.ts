@@ -41,6 +41,7 @@ import {
   WEIGHT_MAX,
   WEIGHT_MIN,
   WEIGHT_STEP,
+  FAVOUR_KEYS,
   durationBand,
   hasNumber,
   heldKeys,
@@ -50,6 +51,7 @@ import {
   stakeForYou,
   strongFandom,
   weightKey,
+  type PostingFavour,
 } from "./loopfeedback.ts";
 
 const DAY = 86_400_000;
@@ -774,7 +776,12 @@ export interface LoopJson {
   lessons_blocklist: string[];
   feedback: {
     lessons: string[];
-    posting: { tiktok_boost: number; instagram_held: string[] };
+    posting: {
+      tiktok_boost: number;
+      instagram_held: string[];
+      /** Per capped platform, the lift each favoured trait gets in its daily pick (absent in older reports). */
+      favour?: PostingFavour;
+    };
     weights: Record<string, number>;
     /** Last week's direction per weight key, so a weight only moves on two runs pointing the same way. */
     weight_signals: Record<string, number>;
@@ -1985,6 +1992,41 @@ export async function runAnalyticsLoop(
     ig?.n ?? 0,
     prev?.feedback.posting.instagram_held ?? [],
   );
+  // Capped platforms' daily picks (src/social/crosspost.ts): a trait (the fit test, a "why" story, a strong
+  // fandom) whose Shorts broke out at least 1.25 times as often as the rest there lifts its rank, by the TikTok
+  // boost's rule. TikTok keeps its own fit boost above.
+  const favour: PostingFavour = {};
+  const favourBasis: string[] = [];
+  for (const p of ["instagram", "facebook"]) {
+    const b = breakouts[p];
+    if (!b) continue;
+    const split = b.rows
+      .filter((r) => r.episode_id && eps.get(r.episode_id))
+      .map((r) => {
+        const f = features(r, eps.get(r.episode_id!));
+        return {
+          fit: f["fit"] === "yes",
+          why: f["format"] === "why",
+          strong_fandom: f["strong-identity fandom"] === "yes",
+          hit: r.v >= b.bar,
+        };
+      });
+    for (const k of FAVOUR_KEYS) {
+      const has = split.filter((x) => x[k]);
+      const rest = split.filter((x) => !x[k]);
+      const lift = tiktokBoost({
+        fit: has.length,
+        fitBreaks: has.filter((x) => x.hit).length,
+        rest: rest.length,
+        restBreaks: rest.filter((x) => x.hit).length,
+      });
+      if (!lift) continue;
+      (favour[p] ??= {})[k] = lift;
+      favourBasis.push(
+        `${PLATFORM_NAME[p] ?? p} ${k.replace("_", " ")}: ${has.filter((x) => x.hit).length} of ${has.length} broke out, the rest ${rest.filter((x) => x.hit).length} of ${rest.length}`,
+      );
+    }
+  }
   // Story picks, from YouTube 24-hour views and subscribers per 1,000 (counted double).
   const yt24 = all.filter(
     (r) =>
@@ -2054,6 +2096,23 @@ export async function runAnalyticsLoop(
           .join("; ") || "no held format is still supported",
       applied: cfg.analyticsLoopPosting,
     });
+  const favourText = (f: PostingFavour | undefined) =>
+    Object.entries(f ?? {})
+      .flatMap(([p, ks]) =>
+        Object.entries(ks).map(
+          ([k, v]) => `${PLATFORM_NAME[p] ?? p} ${k.replace("_", " ")} ${pct(v!)}`,
+        ),
+      )
+      .join(", ") || "none";
+  if (favourText(favour) !== favourText(prevPosting.favour))
+    changes.push({
+      date,
+      lever: "daily-pick favours on capped platforms",
+      old: favourText(prevPosting.favour),
+      new: favourText(favour),
+      basis: favourBasis.join("; ") || "no trait broke out clearly more often",
+      applied: cfg.analyticsLoopPosting,
+    });
   if (sw.moved)
     changes.push({
       date,
@@ -2086,7 +2145,7 @@ export async function runAnalyticsLoop(
     feedback: {
       lessons,
       // Written whatever the settings say: src/loopfeedback.ts applies each part only while its own setting is on.
-      posting: { tiktok_boost: boost, instagram_held: held },
+      posting: { tiktok_boost: boost, instagram_held: held, favour },
       weights: sw.weights,
       weight_signals: sw.signals,
     },

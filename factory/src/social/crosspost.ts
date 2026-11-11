@@ -28,8 +28,9 @@ import {
   heldKeys,
   heldMayPost,
   isFit,
+  loopFavour,
   loopPosting,
-  rankForTikTok,
+  rankForPlatform,
   shortFormat,
   type ShortTraits,
 } from "../loopfeedback.ts";
@@ -219,7 +220,7 @@ export interface CrosspostCandidate {
   lane?: string;
   story_hash?: string | null;
   duration?: number | string | null;
-  /** TikTok only: YouTube views per hour since it went live, the number it is ranked on. */
+  /** Capped platforms only: YouTube views per hour since it went live, the number it is ranked on. */
   vph?: number | string;
 }
 
@@ -234,17 +235,18 @@ export function traitsOf(c: CrosspostCandidate): ShortTraits {
   };
 }
 
+/** A candidate's format as the analytics loop groups it (why, ranking, deals, news and so on). */
+const formatOf = (c: CrosspostCandidate) =>
+  shortFormat({
+    lane: c.lane,
+    story_hash: c.story_hash,
+    evergreen_format: c.script_json?.evergreen_format,
+    is_rumour: c.script_json?.is_rumour,
+  });
+
 /** The keys a candidate would be held under on Instagram (its format, and 45s+). */
 const heldKeysOf = (c: CrosspostCandidate) =>
-  heldKeys(
-    shortFormat({
-      lane: c.lane,
-      story_hash: c.story_hash,
-      evergreen_format: c.script_json?.evergreen_format,
-      is_rumour: c.script_json?.is_rumour,
-    }),
-    traitsOf(c).durationSeconds,
-  );
+  heldKeys(formatOf(c), traitsOf(c).durationSeconds);
 
 /** The next Short a platform should get: public long enough, not done, not given up on. */
 export async function nextForPlatform(
@@ -286,10 +288,168 @@ function dueAfter(
 }
 
 /**
- * TikTok gets only the day's strongest Shorts: posting is a manual step for the owner until a paid,
- * TikTok-approved service is worth it, so from TIKTOK_FROM_HOUR (local) it sends at most TIKTOK_DAILY a
- * day, choosing the eligible Short with the most YouTube views per hour since it went live.
+ * Daily caps (hard limits, counted over the last 24 hours): TIKTOK_DAILY, INSTAGRAM_DAILY, FACEBOOK_DAILY and
+ * THREADS_DAILY; 0 = no cap, every Short oldest first. X and Bluesky are never capped.
  */
+export type CapConfig = Partial<
+  Pick<
+    Config,
+    "tiktokDaily" | "instagramDaily" | "facebookDaily" | "threadsDaily"
+  >
+>;
+export function dailyCap(cfg: CapConfig, platform: Platform): number {
+  const n =
+    platform === "tiktok"
+      ? cfg.tiktokDaily
+      : platform === "instagram"
+        ? cfg.instagramDaily
+        : platform === "facebook"
+          ? cfg.facebookDaily
+          : platform === "threads"
+            ? cfg.threadsDaily
+            : 0;
+  return Math.max(0, n ?? 0);
+}
+
+/** Fewest minutes between two posts on a platform (TIKTOK_GAP_MINUTES and the like); 0 = no gap. */
+export type GapConfig = Partial<
+  Pick<
+    Config,
+    | "tiktokGapMinutes"
+    | "instagramGapMinutes"
+    | "facebookGapMinutes"
+    | "threadsGapMinutes"
+  >
+>;
+export function gapMinutes(cfg: GapConfig, platform: Platform): number {
+  const n =
+    platform === "tiktok"
+      ? cfg.tiktokGapMinutes
+      : platform === "instagram"
+        ? cfg.instagramGapMinutes
+        : platform === "facebook"
+          ? cfg.facebookGapMinutes
+          : platform === "threads"
+            ? cfg.threadsGapMinutes
+            : 0;
+  return Math.max(0, n ?? 0);
+}
+
+/**
+ * Posts on a platform in the 24 hours before `now`, from the events table: every recorded post (first tries,
+ * retries and reconciled ones alike) plus every attempt that may have landed without a record (a "started" with
+ * no post after it), so a lost response can never let a platform past its cap.
+ */
+export async function postsLast24h(
+  db: Db,
+  platform: Platform,
+  now: Date,
+): Promise<number> {
+  const [row] = await db.query<{ n: string | number }>(
+    `SELECT (SELECT count(*) FROM events WHERE kind = 'crosspost' AND detail->>'platform' = $2
+               AND created_at > $1::timestamptz - interval '24 hours')
+          + (SELECT count(*) FROM events s WHERE s.kind = 'crosspost_started' AND s.detail->>'platform' = $2
+               AND s.created_at > $1::timestamptz - interval '24 hours'
+               AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = s.episode_id AND v.kind = 'crosspost'
+                                 AND v.detail->>'platform' = $2)) AS n`,
+    [now, platform],
+  );
+  return Number(row?.n ?? 0);
+}
+
+/** True when a capped platform already has its day's posts. */
+export async function capReached(
+  db: Db,
+  cfg: CapConfig,
+  platform: Platform,
+  now: Date,
+): Promise<boolean> {
+  const cap = dailyCap(cfg, platform);
+  return cap > 0 && (await postsLast24h(db, platform, now)) >= cap;
+}
+
+const localHour = (timeZone: string | undefined, now: Date) =>
+  Number(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      hour12: false,
+    }).format(now),
+  );
+
+export type CappedPickConfig = Pick<
+  Config,
+  "crosspostDelays" | "crosspostWindowHours"
+> &
+  CapConfig &
+  Partial<
+    Pick<
+      Config,
+      "tiktokFromHour" | "timezone" | "dataDir" | "analyticsLoopPosting"
+    >
+  >;
+
+/**
+ * A capped platform gets only the day's strongest Shorts: under its cap, the eligible Short with the most YouTube
+ * views per hour since it went live. With ANALYTICS_LOOP_POSTING (src/loopfeedback.ts) the weekly report may lift
+ * a Short's number by up to 25% for the traits it favours there (on TikTok, fit Shorts; elsewhere the fit test, a
+ * "why" story or a strong fandom, where those broke out more), and the fit flags break ties. TikTok also waits
+ * for TIKTOK_FROM_HOUR (local): posting there was a manual step for the owner until Buffer.
+ */
+export async function nextForCapped(
+  db: Db,
+  platform: Platform,
+  cfg: CappedPickConfig,
+  now: Date,
+  delayFor?: (liveAt: Date) => number,
+  /** Candidates to pass over this time (the analytics loop's Instagram holds). */
+  skip?: (r: CrosspostCandidate) => boolean,
+): Promise<CrosspostCandidate | undefined> {
+  if (
+    platform === "tiktok" &&
+    localHour(cfg.timezone, now) < (cfg.tiktokFromHour ?? 0)
+  )
+    return undefined;
+  if (await capReached(db, cfg, platform, now)) return undefined;
+  const rows = await db.query<CrosspostCandidate>(
+    `SELECT e.id, e.youtube_video_id, e.script_json, COALESCE(e.publish_at, e.updated_at) AS live_at,
+            e.lane, e.story_hash, e.assets_json->'durationSeconds' AS duration,
+            COALESCE((SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id), 0)
+              / GREATEST(1, EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(e.publish_at, e.updated_at))) / 3600) AS vph
+       FROM episodes e
+      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane NOT IN ('longform','twin')
+        AND COALESCE(e.script_json->>'runtime', 'short') = 'short'
+        AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
+        AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - make_interval(hours => $3)
+        AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('crosspost','crosspost_skip') AND v.detail->>'platform' = $6)
+        AND (SELECT count(*) FROM events v WHERE v.episode_id = e.id AND v.kind = 'crosspost_failed' AND v.detail->>'platform' = $6 AND v.created_at >= $5) < $4
+      ORDER BY COALESCE((SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id), 0)
+               / GREATEST(1, EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(e.publish_at, e.updated_at))) / 3600) DESC,
+               COALESCE(e.publish_at, e.updated_at) DESC
+      LIMIT 25`,
+    [
+      now,
+      cfg.crosspostDelays[platform],
+      cfg.crosspostWindowHours,
+      MAX_TRIES,
+      BOOT,
+      platform,
+    ],
+  );
+  const loop =
+    cfg.analyticsLoopPosting && cfg.dataDir
+      ? { dataDir: cfg.dataDir, analyticsLoopPosting: true }
+      : undefined;
+  const ranked = loop
+    ? rankForPlatform(rows, (r) => Number(r.vph ?? 0), traitsOf, formatOf, {
+        fit: platform === "tiktok" ? loopPosting(loop, now).tiktok_boost : 0,
+        favour: loopFavour(loop, platform, now),
+      })
+    : rows;
+  return ranked.find((r) => dueAfter(r, now, delayFor) && !skip?.(r));
+}
+
+/** TikTok's daily pick (TIKTOK_DAILY from TIKTOK_FROM_HOUR), the same as before the other platforms had caps. */
 export async function nextForTikTok(
   db: Db,
   cfg: Pick<
@@ -304,56 +464,7 @@ export async function nextForTikTok(
   now: Date,
   delayFor?: (liveAt: Date) => number,
 ): Promise<CrosspostCandidate | undefined> {
-  const hour = Number(
-    new Intl.DateTimeFormat("en-GB", {
-      timeZone: cfg.timezone,
-      hour: "2-digit",
-      hour12: false,
-    }).format(now),
-  );
-  if (hour < cfg.tiktokFromHour) return undefined;
-  const [sent] = await db.query<{ n: string | number }>(
-    `SELECT count(*) AS n FROM events WHERE kind = 'crosspost' AND detail->>'platform' = 'tiktok' AND created_at > $1::timestamptz - interval '24 hours'`,
-    [now],
-  );
-  if (Number(sent?.n ?? 0) >= cfg.tiktokDaily) return undefined;
-  const rows = await db.query<CrosspostCandidate>(
-    `SELECT e.id, e.youtube_video_id, e.script_json, COALESCE(e.publish_at, e.updated_at) AS live_at,
-            e.lane, e.story_hash, e.assets_json->'durationSeconds' AS duration,
-            COALESCE((SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id), 0)
-              / GREATEST(1, EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(e.publish_at, e.updated_at))) / 3600) AS vph
-       FROM episodes e
-      WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane NOT IN ('longform','twin')
-        AND COALESCE(e.script_json->>'runtime', 'short') = 'short'
-        AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
-        AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - make_interval(hours => $3)
-        AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('crosspost','crosspost_skip') AND v.detail->>'platform' = 'tiktok')
-        AND (SELECT count(*) FROM events v WHERE v.episode_id = e.id AND v.kind = 'crosspost_failed' AND v.detail->>'platform' = 'tiktok' AND v.created_at >= $5) < $4
-      ORDER BY COALESCE((SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id), 0)
-               / GREATEST(1, EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(e.publish_at, e.updated_at))) / 3600) DESC,
-               COALESCE(e.publish_at, e.updated_at) DESC
-      LIMIT 25`,
-    [
-      now,
-      cfg.crosspostDelays.tiktok,
-      cfg.crosspostWindowHours,
-      MAX_TRIES,
-      BOOT,
-    ],
-  );
-  // ANALYTICS_LOOP_POSTING (src/loopfeedback.ts): fit Shorts (35 s or under, a stake for the viewer, a strong
-  // fandom) rank up to 25% higher when the weekly report has the numbers for it, and the fit flags break ties.
-  const ranked =
-    cfg.analyticsLoopPosting && cfg.dataDir
-      ? rankForTikTok(
-          rows,
-          (r) => Number(r.vph ?? 0),
-          traitsOf,
-          loopPosting({ dataDir: cfg.dataDir, analyticsLoopPosting: true }, now)
-            .tiktok_boost,
-        )
-      : rows;
-  return ranked.find((r) => dueAfter(r, now, delayFor));
+  return nextForCapped(db, "tiktok", cfg, now, delayFor);
 }
 
 /**
@@ -458,6 +569,22 @@ export interface CrosspostDeps {
   primeTime?: () => Promise<boolean>;
 }
 
+/** True when the platform posted less than its gap ago (TIKTOK_GAP_MINUTES and the like; 0 = no gap). */
+export async function tooSoon(
+  db: Db,
+  platform: Platform,
+  minutes: number,
+  now: Date,
+): Promise<boolean> {
+  if (minutes <= 0) return false;
+  const [row] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM events WHERE kind = 'crosspost' AND detail->>'platform' = $3
+       AND created_at > $1::timestamptz - make_interval(mins => $2)`,
+    [now, minutes, platform],
+  );
+  return Number(row?.n ?? 0) > 0;
+}
+
 /**
  * Buffer posts every Short to TikTok since 6 Nov 2026, so a backlog (a restart, a quiet morning) would land as a
  * burst that splits each post's reach; TIKTOK_GAP_MINUTES keeps the posts apart.
@@ -467,16 +594,13 @@ export async function tiktokTooSoon(
   cfg: Pick<Config, "tiktokGapMinutes">,
   now: Date,
 ): Promise<boolean> {
-  if (cfg.tiktokGapMinutes <= 0) return false;
-  const [row] = await db.query<{ n: string | number }>(
-    `SELECT count(*) AS n FROM events WHERE kind = 'crosspost' AND detail->>'platform' = 'tiktok'
-       AND created_at > $1::timestamptz - make_interval(mins => $2)`,
-    [now, cfg.tiktokGapMinutes],
-  );
-  return Number(row?.n ?? 0) > 0;
+  return tooSoon(db, "tiktok", cfg.tiktokGapMinutes, now);
 }
 
-/** One pass: at most one post per platform, oldest eligible Short first. */
+/**
+ * One pass: at most one post per platform. An uncapped platform takes the oldest eligible Short; a capped one
+ * (TIKTOK_DAILY and the like) its best, and nothing at all once the last 24 hours hold its cap.
+ */
 export async function crosspostTick(
   d: CrosspostDeps,
 ): Promise<Array<{ platform: Platform; episode: string; ok: boolean }>> {
@@ -486,7 +610,9 @@ export async function crosspostTick(
   for (const platform of PLATFORMS) {
     const post = d.posters[platform];
     if (!post) continue;
-    if (platform === "tiktok" && (await tiktokTooSoon(d.db, d.cfg, d.now())))
+    // The hard limit, checked before anything else so no path (the Instagram hold's fallback included) passes it.
+    if (await capReached(d.db, d.cfg, platform, d.now())) continue;
+    if (await tooSoon(d.db, platform, gapMinutes(d.cfg, platform), d.now()))
       continue;
     const base = d.cfg.crosspostDelays[platform];
     // Each platform keeps its place in the stagger inside the window (Facebook first, Instagram, then TikTok).
@@ -503,33 +629,26 @@ export async function crosspostTick(
       platform === "instagram" && d.cfg.analyticsLoopPosting
         ? await instagramSkip(d.db, d.cfg, d.now())
         : undefined;
-    let ep =
-      platform === "tiktok" && d.cfg.tiktokDaily > 0
-        ? await nextForTikTok(d.db, d.cfg, d.now(), delayFor)
-        : await nextForPlatform(
+    const pick = (pass?: (r: CrosspostCandidate) => boolean) =>
+      dailyCap(d.cfg, platform) > 0
+        ? nextForCapped(d.db, platform, d.cfg, d.now(), delayFor, pass)
+        : nextForPlatform(
             d.db,
             platform,
             base,
             d.cfg.crosspostWindowHours,
             d.now(),
             delayFor,
-            skip,
+            pass,
           );
+    let ep = await pick(skip);
     // A hold never leaves Instagram under two posts a day: with nothing else to post, a held Short goes.
     if (!ep && skip) {
       const [today] = await d.db.query<{ n: string | number }>(
         `SELECT count(*) AS n FROM events WHERE kind = 'crosspost' AND detail->>'platform' = 'instagram' AND created_at > $1::timestamptz - interval '24 hours'`,
         [d.now()],
       );
-      if (Number(today?.n ?? 0) < 2)
-        ep = await nextForPlatform(
-          d.db,
-          platform,
-          base,
-          d.cfg.crosspostWindowHours,
-          d.now(),
-          delayFor,
-        );
+      if (Number(today?.n ?? 0) < 2) ep = await pick();
     }
     if (!ep) continue;
     const timing =

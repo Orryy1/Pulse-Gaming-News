@@ -20,11 +20,21 @@ export const WEIGHT_STEP = 0.05;
 /** A held Instagram format still gets one post in this many, so its numbers never dry up. */
 export const HELD_RETRY_EVERY = 5;
 
+/** Traits the weekly report may favour in a capped platform's daily pick (see `favourKeys`). */
+export const FAVOUR_KEYS = ["fit", "why", "strong_fandom"] as const;
+export type FavourKey = (typeof FAVOUR_KEYS)[number];
+/** Per platform, the lift the report gives each favoured trait (0 to MAX_TIKTOK_BOOST). */
+export type PostingFavour = Record<string, Partial<Record<FavourKey, number>>>;
+
 export interface LoopFeedback {
   run_at: string;
   lessons: string[];
   lessons_blocklist: string[];
-  posting: { tiktok_boost: number; instagram_held: string[] };
+  posting: {
+    tiktok_boost: number;
+    instagram_held: string[];
+    favour: PostingFavour;
+  };
   weights: Record<string, number>;
 }
 
@@ -68,6 +78,7 @@ export function readLoopFeedback(
           instagram_held: Array.isArray(j.feedback?.posting?.instagram_held)
             ? j.feedback.posting.instagram_held.map(String)
             : [],
+          favour: parseFavour(j.feedback?.posting?.favour),
         },
         weights: Object.fromEntries(
           Object.entries((j.feedback?.weights ?? {}) as Record<string, unknown>)
@@ -89,6 +100,22 @@ export function readLoopFeedback(
   if (now.getTime() - Date.parse(v.run_at) > LOOP_STALE_DAYS * 86_400_000)
     return undefined;
   return v;
+}
+
+/** The report's per-platform favours, each lift kept inside 0 to MAX_TIKTOK_BOOST; unknown keys dropped. */
+function parseFavour(v: unknown): PostingFavour {
+  const out: PostingFavour = {};
+  if (!v || typeof v !== "object") return out;
+  for (const [platform, keys] of Object.entries(v as Record<string, unknown>)) {
+    if (!keys || typeof keys !== "object") continue;
+    const kept: Partial<Record<FavourKey, number>> = {};
+    for (const k of FAVOUR_KEYS) {
+      const n = Number((keys as Record<string, unknown>)[k]);
+      if (Number.isFinite(n) && n > 0) kept[k] = Math.min(MAX_TIKTOK_BOOST, n);
+    }
+    if (Object.keys(kept).length) out[platform] = kept;
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ what a Short is (shared with the loop)
@@ -219,11 +246,48 @@ export function rankForTikTok<T>(
   traits: (r: T) => ShortTraits,
   boost: number,
 ): T[] {
+  return rankForPlatform(rows, vph, traits, () => "", { fit: boost });
+}
+
+/** Which of the favourable traits a Short has: the fit test, a "why" story, a strong-identity fandom. */
+export function favourKeys(t: ShortTraits, format: string): FavourKey[] {
+  return [
+    ...(isFit(t) ? (["fit"] as const) : []),
+    ...(format === "why" ? (["why"] as const) : []),
+    ...(strongFandom(t) ? (["strong_fandom"] as const) : []),
+  ];
+}
+
+/**
+ * A capped platform's ranking number: YouTube views per hour, raised for each trait the report favours on that
+ * platform (TikTok's fit boost counts as a favour of "fit"), never by more than MAX_TIKTOK_BOOST in all.
+ */
+export function platformRank(
+  viewsPerHour: number,
+  t: ShortTraits,
+  format: string,
+  boosts: { fit?: number; favour?: Partial<Record<FavourKey, number>> },
+): number {
+  const have = favourKeys(t, format);
+  const lift =
+    (have.includes("fit") ? Math.max(0, boosts.fit ?? 0) : 0) +
+    have.reduce((a, k) => a + Math.max(0, boosts.favour?.[k] ?? 0), 0);
+  return viewsPerHour * (1 + Math.min(MAX_TIKTOK_BOOST, lift));
+}
+
+/** Re-orders a capped platform's candidates by `platformRank`, the fit flags breaking ties (the original order otherwise). */
+export function rankForPlatform<T>(
+  rows: T[],
+  vph: (r: T) => number,
+  traits: (r: T) => ShortTraits,
+  format: (r: T) => string,
+  boosts: { fit?: number; favour?: Partial<Record<FavourKey, number>> },
+): T[] {
   return rows
     .map((r, i) => ({
       r,
       i,
-      rank: tiktokRank(vph(r), traits(r), boost),
+      rank: platformRank(vph(r), traits(r), format(r), boosts),
       flags: fitFlags(traits(r)),
     }))
     .sort((a, b) => b.rank - a.rank || b.flags - a.flags || a.i - b.i)
@@ -329,12 +393,21 @@ export function loopPosting(
   now = new Date(),
 ): { tiktok_boost: number; instagram_held: string[] } {
   if (!cfg.analyticsLoopPosting) return { tiktok_boost: 0, instagram_held: [] };
-  return (
-    readLoopFeedback(cfg, now)?.posting ?? {
-      tiktok_boost: 0,
-      instagram_held: [],
-    }
-  );
+  const p = readLoopFeedback(cfg, now)?.posting;
+  return {
+    tiktok_boost: p?.tiktok_boost ?? 0,
+    instagram_held: p?.instagram_held ?? [],
+  };
+}
+
+/** The traits the report favours in one platform's daily pick, or none when switched off or stale. */
+export function loopFavour(
+  cfg: Pick<Config, "dataDir" | "analyticsLoopPosting">,
+  platform: string,
+  now = new Date(),
+): Partial<Record<FavourKey, number>> {
+  if (!cfg.analyticsLoopPosting) return {};
+  return readLoopFeedback(cfg, now)?.posting.favour[platform] ?? {};
 }
 
 /** The story-pick multipliers, or none when switched off or stale. */

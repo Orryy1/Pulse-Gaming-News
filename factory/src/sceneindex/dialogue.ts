@@ -378,7 +378,17 @@ export function voiceLines(
       start: w.start + offset,
       end: w.end + offset,
     }))
-    .sort((a, b) => a.start - b.start);
+    .sort((a, b) => a.start - b.start)
+    // Whisper can hand a word over in two pieces, the second starting with its apostrophe ("Na" + "'vi", "I" +
+    // "'m"): one word again.
+    .reduce<TimedWord[]>((list, w) => {
+      const prev = list[list.length - 1];
+      if (prev && /^['’]\p{L}/u.test(w.text) && w.start - prev.end < 0.3) {
+        prev.text += w.text;
+        prev.end = w.end;
+      } else list.push({ ...w });
+      return list;
+    }, []);
   const groups: TimedWord[][] = [];
   let cur: TimedWord[] = [];
   for (const w of clean) {
@@ -430,39 +440,103 @@ export function voiceLines(
   return out;
 }
 
+const spoken = (t: string): string[] =>
+  t
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+
+/** Which of `words` (in order) say the tokens of a line: the indexes of the longest in-order match. */
+function saidBy(tokens: string[], words: string[]): Array<[number, number]> {
+  const n = tokens.length;
+  const m = words.length;
+  const table: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      table[i]![j] = tokens[i] === words[j] ? table[i + 1]![j + 1]! + 1 : Math.max(table[i + 1]![j]!, table[i]![j + 1]!);
+  const out: Array<[number, number]> = [];
+  for (let i = 0, j = 0; i < n && j < m; ) {
+    if (tokens[i] === words[j]) {
+      out.push([i, j]);
+      i++;
+      j++;
+    } else if (table[i + 1]![j]! >= table[i]![j + 1]!) i++;
+    else j++;
+  }
+  return out;
+}
+
 /**
- * Read and heard lines as one list in time order. A heard line and a read line that overlap in time and say much
- * the same are one line: the screen's spelling and speaker, the voice's start, end and word timings. In a game
- * that speaks through text boxes (`textFirst`: far more read lines than heard ones), a heard line that matches
- * nothing on screen is Whisper mishearing grunts and music, and is dropped.
+ * Read and heard lines as one list in time order. Each line read off the screen looks for its own words among the
+ * words heard around the time it was shown: when most of them are there, it becomes one line with the screen's
+ * spelling and speaker and the voice's start, end and word timings (a sentence heard in two breaths, or one breath
+ * shown as two boxes, lands where it belongs). Heard lines no box claimed stay as voice lines, unless the game
+ * plainly subtitles its speech (most of what was heard matched a box): then an unmatched one is Whisper hearing
+ * words in music and grunts, and is dropped. The same holds for a game that speaks only through text boxes.
  */
 export function mergeDialogue(read: TextLine[], heard: TextLine[]): TextLine[] {
-  const textFirst = read.length >= 20 && heard.length < read.length * 0.5;
-  const used = new Set<TextLine>();
+  const pool = heard
+    .flatMap((h, line) => (h.words ?? []).map((w) => ({ ...w, line, token: spoken(w.text).join("") })))
+    .filter((w) => w.token)
+    .sort((x, y) => x.start - y.start);
+  const taken = new Set<number>();
   const out: TextLine[] = [];
-  for (const v of heard) {
-    const match = read
-      .filter(
-        (r) =>
-          !used.has(r) &&
-          Math.min(r.end, v.end) - Math.max(r.start, v.start) > 0,
-      )
-      .map((r) => ({ r, score: alike(r.text, v.text) }))
-      .sort((a, b) => b.score - a.score)[0];
-    if (match && match.score >= 0.5) {
-      used.add(match.r);
-      out.push({
-        start: v.start,
-        end: v.end,
-        text: match.r.text,
-        ...(match.r.speaker ? { speaker: match.r.speaker } : {}),
-        via: "both",
-        ...(v.words ? { words: v.words } : {}),
-      });
-    } else if (!textFirst) out.push(v);
+  for (const r of [...read].sort((x, y) => x.start - y.start)) {
+    const tokens = spoken(r.text);
+    const from = pool.findIndex((w, i) => !taken.has(i) && w.end >= r.start - 2.5);
+    const idx: number[] = [];
+    for (let i = Math.max(0, from); from >= 0 && i < pool.length && pool[i]!.start <= r.end + 2.5; i++)
+      if (!taken.has(i)) idx.push(i);
+    const pairs = saidBy(
+      tokens,
+      idx.map((i) => pool[i]!.token),
+    );
+    const hit = pairs.map(([, k]) => idx[k]!);
+    const enough = hit.length >= Math.max(1, Math.ceil(tokens.length * 0.5)) && (hit.length >= 2 || tokens.length <= 2);
+    if (!enough) {
+      out.push(r);
+      continue;
+    }
+    let first = hit[0]!;
+    let last = hit[hit.length - 1]!;
+    // The line's first or last words were heard a little differently ("You" for "You've"): the words spoken right
+    // before and after the matched ones, in the same breath, are the line's too.
+    for (let need = pairs[0]![0]; need > 0; need--) {
+      const before = pool[first - 1];
+      if (!before || taken.has(first - 1) || before.line !== pool[first]!.line || pool[first]!.start - before.end > 0.5) break;
+      first--;
+    }
+    for (let need = tokens.length - 1 - pairs[pairs.length - 1]![0]; need > 0; need--) {
+      const after = pool[last + 1];
+      if (!after || taken.has(last + 1) || after.line !== pool[last]!.line || after.start - pool[last]!.end > 0.5) break;
+      last++;
+    }
+    const words = [];
+    for (let i = first; i <= last; i++) {
+      taken.add(i);
+      words.push({ text: pool[i]!.text, start: pool[i]!.start, end: pool[i]!.end });
+    }
+    out.push({
+      start: pool[first]!.start,
+      end: pool[last]!.end,
+      text: r.text,
+      ...(r.speaker ? { speaker: r.speaker } : {}),
+      via: "both",
+      words,
+    });
   }
-  out.push(...read.filter((r) => !used.has(r)));
-  return out.sort((a, b) => a.start - b.start);
+  // What was heard and no box claimed.
+  const left = heard.filter((h, line) => {
+    const mine = pool.map((w, i) => ({ w, i })).filter((x) => x.w.line === line);
+    if (!mine.length) return !h.words?.length;
+    return mine.filter((x) => taken.has(x.i)).length / mine.length < 0.4;
+  });
+  const matched = pool.length ? taken.size / pool.length : 0;
+  const subtitled = read.length >= 8 && matched >= 0.6;
+  const textOnly = read.length >= 20 && heard.length < read.length * 0.5;
+  if (!subtitled && !textOnly) out.push(...left);
+  return out.sort((x, y) => x.start - y.start);
 }
 
 /**
@@ -479,7 +553,7 @@ export function shotText(samples: OcrSample[], o: BoxOptions = {}): string {
   const counts = new Map<string, number>();
   for (const text of reads)
     for (const k of new Set(text.split(/\s+/).map(key)))
-      if (k.length >= 3) counts.set(k, (counts.get(k) ?? 0) + 1);
+      if (k.length >= 3 && /\p{L}{3}/u.test(k)) counts.set(k, (counts.get(k) ?? 0) + 1);
   const need = reads.length === 1 ? 1 : Math.max(2, Math.ceil(reads.length / 2));
   const kept = (text: string) =>
     text.split(/\s+/).filter((w) => (counts.get(key(w)) ?? 0) >= need);

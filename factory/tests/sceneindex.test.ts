@@ -1606,3 +1606,34 @@ test("the lines a video may quote: named speaker, a whole sentence, each once, i
   });
   assert.equal(quotableLines(sample(), 1).length, 1);
 });
+
+test("real recordings: Whisper's words and the text reader's boxes for the same half minute make one set of lines", () => {
+  const heard = voiceLines(
+    (JSON.parse(fsSync.readFileSync(path.join(here, "fixtures", "sceneindex_whisper.json"), "utf8")) as { words: Array<{ text: string; start: number; end: number }> }).words,
+  );
+  // Whisper heard the tree's long sentence in three breaths and split "Navi" in two.
+  assert.ok(heard.length >= 5);
+  assert.ok(heard.some((l) => l.text === "Na'vi!"));
+  const read = textBoxLines(pages("a_", 185), { step: 0.5 });
+  // The fixture's frames begin mid-line; the box had been on screen since 176.25 s.
+  read[0]!.start = 176.25;
+  const lines = mergeDialogue(read, heard).filter((l) => l.start >= 175 && l.start < 194);
+  assert.deepEqual(
+    lines.map((l) => [l.via, l.speaker, l.text]),
+    [
+      ["both", "Great Deku Tree", "My heart feels heavy. Soon I will no longer be able to protect the forest. I must ensure its safety."],
+      ["both", "Great Deku Tree", "I will entrust everything to the child."],
+      ["both", "Great Deku Tree", "Navi..."],
+    ],
+  );
+  // The voice gives each line its true start and end, to the word.
+  assert.deepEqual([lines[0]!.start, lines[1]!.start, lines[2]!.start], [175.8, 187.54, 192.66]);
+  assert.equal(lines[0]!.words!.length, 20);
+  assert.equal(lines[1]!.words![2]!.text, "entrust");
+  const index = mergeStretch(emptySceneIndex(GAME, source, new Date(0)), { from: 160, to: 200 }, [
+    { start: 160, end: 200, keyframes: [], desc: "", who: [], where: "", mood: "", tags: [], text: "", luma: 60, motion: 3 },
+  ], lines);
+  const hit = findQuote(index, "entrust everything to the child")[0]!;
+  assert.equal(hit.wordTimed, true);
+  assert.deepEqual([hit.start, hit.speaker], [188.14, "Great Deku Tree"]);
+});

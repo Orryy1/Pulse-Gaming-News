@@ -42,6 +42,7 @@ import { capFootage, DEFAULT_FOOTAGE_SECONDS, footageBudgetSeconds } from "./ass
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import { cutsceneBudgetSeconds, gatherCutsceneSources, reconcileCutsceneBudgets, type CutsceneClip, type CutsceneJob } from "./assets/cutscenes.ts";
+import { gamesOfScript, requestSceneIndex } from "./sceneindex/job.ts";
 import type { RadarGame, FreeGame } from "./discovery/weekly.ts";
 import { rarest, type Achievement } from "./discovery/achievements.ts";
 import {
@@ -6917,6 +6918,9 @@ export async function gatherMedia(
       after: { clips: clips.length, images: images.length },
     });
   }
+  // SCENE_INDEX: every game a video is about gets its scene index built in the background (src/sceneindex/job.ts).
+  if (s.cfg.sceneIndex)
+    for (const g of gamesOfScript(script, s.now())) void requestSceneIndex(s.cfg, g.game, "a video about it", g.recentRelease);
   // Cutscenes are a separate opt-in and share the remaining budget with the footage already gathered.
   if (s.cfg.cutsceneFootage && s.fetchCutscenes && !gatherBudget.over()) {
     const jobs: CutsceneJob[] = [];

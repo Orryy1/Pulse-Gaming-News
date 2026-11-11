@@ -72,6 +72,36 @@ export function queueGame(
   };
 }
 
+/**
+ * The games a script is about, for the queue (pure): each ranked entry's game, or the one game of a Short. A game
+ * counts as a recent release (its remake's or remaster's uploads are the right ones) when its entry is from this
+ * year or last, or when the script itself says remake or remaster. Games not out yet have nothing to index.
+ */
+export function gamesOfScript(
+  script: {
+    game_title?: string;
+    headline?: string;
+    hook?: string;
+    entries?: Array<{ game_title?: string; year?: number }>;
+  },
+  now: Date,
+): Array<{ game: string; recentRelease: boolean }> {
+  const year = now.getUTCFullYear();
+  const out = new Map<string, { game: string; recentRelease: boolean }>();
+  for (const e of script.entries ?? []) {
+    const game = e.game_title?.trim();
+    if (!game || (e.year ?? 0) > year) continue;
+    out.set(sceneSlug(game), { game, recentRelease: (e.year ?? 0) >= year - 1 });
+  }
+  const one = script.game_title?.trim();
+  if (!out.size && one)
+    out.set(sceneSlug(one), {
+      game: one,
+      recentRelease: /\b(remake|remaster(?:ed)?|reimagined)\b/i.test([script.headline, script.hook].join(" ")),
+    });
+  return [...out.values()];
+}
+
 /** Days after launch a big release is still looked for: the clean full movies appear within days, not hours. */
 export const LAUNCH_SEARCH_DAYS = 14;
 /** A dated calendar entry that names a launch-calendar game this many days ahead asks for its index now. */

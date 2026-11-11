@@ -68,6 +68,7 @@ import {
 } from "../src/sceneindex/build.ts";
 import {
   afterTurn,
+  gamesOfScript,
   launchGames,
   nextJob,
   parseQueue,
@@ -1687,4 +1688,17 @@ test("a voiced line with no name plate takes the one character in its shot, mark
   // Two characters in the shot: no guess.
   const two = tidyIndex({ ...bare, shots: bare.shots.map((s, i) => (i === 0 ? { ...s, who: ["Great Deku Tree", "Navi"] } : s)) });
   assert.equal(two.lines.find((l) => l.text.startsWith("I will entrust"))!.speaker, undefined);
+});
+
+test("the games a script is about are queued: each entry's game, recent when new or a remake", () => {
+  const now = new Date("2026-11-11T12:00:00Z");
+  assert.deepEqual(
+    gamesOfScript({ game_title: "Ignored", entries: [{ game_title: "Halo 3", year: 2007 }, { game_title: "Grand Theft Auto VI", year: 2026 }, { game_title: "Halo 3", year: 2007 }, { game_title: "Fable", year: 2027 }, {}] }, now),
+    [{ game: "Halo 3", recentRelease: false }, { game: "Grand Theft Auto VI", recentRelease: true }],
+  );
+  assert.deepEqual(gamesOfScript({ game_title: "The Legend of Zelda: Ocarina of Time", headline: "The Ocarina remake changes one scene" }, now), [
+    { game: "The Legend of Zelda: Ocarina of Time", recentRelease: true },
+  ]);
+  assert.deepEqual(gamesOfScript({ game_title: "Halo 3", hook: "Halo 3 still holds up" }, now), [{ game: "Halo 3", recentRelease: false }]);
+  assert.deepEqual(gamesOfScript({}, now), []);
 });

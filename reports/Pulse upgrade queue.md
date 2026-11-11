@@ -56,3 +56,18 @@ Ranked list the weekly improvement task (Thursdays 11:00) works from. Top item f
 **Before merging:** the 8 Nov Ocarina trial found the right scene upload, but the vision check accepted no frames, so it fell back. Check why (the check's frames, or the PC run's model access), then do a full Short render with it on and look at the frames on the word. Codex also changed src/render/plan.ts and longplan.ts: render-check a Short and a long video.
 
 **Measure:** share of named-moment lines whose clip shows that moment, from a contact sheet per video.
+
+## 6. A scene index for every game: every shot and every line, searchable (owner, 11 Nov)
+
+**Why:** owner, 11 Nov: investigate every scene of a downloaded playthrough so the factory knows exactly what each moment is and what every line of dialogue says, and can match moments to exact scenes in every Short, long video and documentary. This replaces searching per line with looking up a ready index.
+
+**Build:**
+- Per game, once: download the best clean cutscene movie or no-commentary playthrough (the cutscene source's picker), split it into shots by scene cuts, and keep a low-resolution proxy plus the index (full-resolution sections are fetched on demand, so disk stays small).
+- Every shot: keyframes described by the free local vision model on the PC (who is on screen, where, what happens, mood), characters and places named against the game's wiki cast list.
+- Every line: spoken dialogue transcribed with timestamps (Whisper on the Mac); text-box dialogue (Zelda and other unvoiced games) read with Apple's free on-device text recognition on the Mac; the speaker named where the box or the scene shows it.
+- Search: each script line is matched against the index (names, places, actions, quoted words) and gets the exact shot, and a quote gets its exact start and end. Feeds the existing footage matcher and the character-quote feature.
+- Index stored per game and reused by every video about it; refreshed when a new upload is better.
+
+**Order:** Fable designs it once the current helpers finish (no more than 3 workers at once), then Opus builds. First game: Ocarina of Time 2026, then GTA VI from launch.
+
+**Measure:** share of named-moment lines whose clip shows that moment (contact sheet per video), quote accuracy against the index text.

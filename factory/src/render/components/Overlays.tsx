@@ -326,7 +326,10 @@ export const FactCard: React.FC<{
   steamPrices?: { usd?: string; gbp?: string; eur?: string };
   /** SHORT_LABELS_CLEAN: a card's figure is right by the time the word is said. */
   quickFigures?: boolean;
+  /** A series in release order: the rank cards show the year in the badge. */
+  chrono?: boolean;
 }> = ({
+  chrono = false,
   quickFigures = false,
   segment,
   accent,
@@ -522,6 +525,7 @@ export const FactCard: React.FC<{
         accent={accent}
         date={v.date_to}
         requirement={requirement}
+        chrono={chrono}
       />
     ) : v.kind === "timeline" && v.date_from && v.date_to ? (
       <Timeline

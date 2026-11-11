@@ -32,6 +32,7 @@ import {
   renderLongStills,
   renderLongThumbs,
   renderShortThumb,
+  renderEraFrame,
   countAsRender,
   renderCutdown,
   renderGameplayShort,
@@ -76,7 +77,7 @@ import { parseDemandRows } from "./discovery/searchdemand.ts";
 import { runCapped } from "./lib/child.ts";
 import { YTDLP_TEXT } from "./lib/bin.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
-import { findIgdbGame, fetchIgdbArt } from "./assets/igdb.ts";
+import { findIgdbGame, fetchIgdbArt, findIgdbSeries } from "./assets/igdb.ts";
 import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
 import { footageFirstDeps } from "./assets/footagedeps.ts";
 import { macFootageDeps } from "./assets/footagemac.ts";
@@ -339,6 +340,11 @@ export function createServices(db: Db, cfg: Config): Services {
       ).catch(() => undefined);
       return game ? fetchIgdbArt(game, dir, max) : [];
     },
+    igdbSeries: (series) =>
+      findIgdbSeries(
+        { clientId: cfg.twitchClientId, secret: cfg.twitchClientSecret },
+        series,
+      ),
     downloadPhoto: (img, dest) => downloadCommons(img, dest),
     fetchClips: (app, dir, targets, maxClips, scope, fill) =>
       selectClips({
@@ -513,6 +519,7 @@ export function createServices(db: Db, cfg: Config): Services {
     reachClient: () => new ReachClient(() => accessToken(db, oauthConfig(cfg))),
     renderLongStills,
     renderShortThumb,
+    renderEraFrame,
     renderCutdown,
     renderGameplayShort,
     normalise: normaliseLoudness,

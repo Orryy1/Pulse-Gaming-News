@@ -126,6 +126,8 @@ export function testConfig(
     gameplayRemindHours: 12,
     gameplayRehearsalUntil: "",
     shortRunFile: "",
+    everyGameEnabled: false,
+    everyGameFile: "",
     docTestEvidence: false,
     cutdownsPerLong: 3,
     macWorkerHost: "pulse-mac",

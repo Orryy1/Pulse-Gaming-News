@@ -296,6 +296,10 @@ export interface Config {
   gameplayOneTap: boolean; // GAMEPLAY_ONE_TAP: the card's Approve and Reject act on the tap, with no confirmation page (src/server.ts)
   gameplayRehearsalUntil: string; // local YYYY-MM-DD: clips reviewed up to this date reach Discord and never publish; empty = off
   shortRunFile: string; // the launch run (src/shortrun.ts): topics planned by date and slot; empty = none
+  /** EVERYGAME_ENABLED: "The Story of Every [series] Game" (src/everygame.ts), a Short and a long video per planned series. Off by default. */
+  everyGameEnabled: boolean;
+  /** EVERYGAME_FILE: the plan of series, dates and slots; empty = everygame.json beside package.json. Each entry has its own "on". */
+  everyGameFile: string;
   longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
   codeScenes: boolean; // src/render/codescene.ts: drawn scenes from a line's sourced data, over a plate or a repeated still, never over footage
   shortPlateMax: number; // 0-1, the share of a Short that may sit on the bare plate before more media is fetched and, failing that, it is stopped
@@ -1077,6 +1081,8 @@ export function loadConfig(): Config {
     gameplayOneTap: bool("GAMEPLAY_ONE_TAP", false),
     gameplayRehearsalUntil: str("GAMEPLAY_REHEARSAL_UNTIL", ""),
     shortRunFile: str("SHORT_RUN_FILE", ""),
+    everyGameEnabled: bool("EVERYGAME_ENABLED", false),
+    everyGameFile: str("EVERYGAME_FILE", ""),
     longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
     codeScenes: bool("CODE_SCENES", false),
     shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.10")) || 0.1,

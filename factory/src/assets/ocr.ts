@@ -196,6 +196,7 @@ export function ocrCommand(
   platform: string,
   list: string,
   macPython = MAC_OCR_PYTHON,
+  sentences = false,
 ): { cmd: string; args: string[] } | undefined {
   if (platform === "win32")
     return {
@@ -211,7 +212,10 @@ export function ocrCommand(
       ],
     };
   if (platform === "darwin")
-    return { cmd: macPython, args: ["-I", MAC_SCRIPT, list] };
+    return {
+      cmd: macPython,
+      args: ["-I", MAC_SCRIPT, list, ...(sentences ? ["correct"] : [])],
+    };
   return undefined;
 }
 
@@ -233,14 +237,21 @@ async function macOcrReady(): Promise<boolean> {
   return ok;
 }
 
-/** Reads the text in pictures (absolute paths) on this machine; an empty map without an engine or on any failure. */
-export async function readText(files: string[]): Promise<Map<string, OcrPage>> {
+/**
+ * Reads the text in pictures (absolute paths) on this machine; an empty map without an engine or on any failure.
+ * `sentences`: the pictures hold running sentences (a game's dialogue), so the Mac's reader may correct a word by
+ * its neighbours; off for signs and names.
+ */
+export async function readText(
+  files: string[],
+  o: { sentences?: boolean } = {},
+): Promise<Map<string, OcrPage>> {
   if (!files.length || process.env.NODE_TEST_CONTEXT) return new Map();
   const list = path.join(
     os.tmpdir(),
     `pulse-ocr-${process.pid}-${Date.now()}.json`,
   );
-  const command = ocrCommand(process.platform, list);
+  const command = ocrCommand(process.platform, list, undefined, o.sentences);
   if (!command) return new Map();
   if (process.platform === "darwin" && !(await macOcrReady())) return new Map();
   try {

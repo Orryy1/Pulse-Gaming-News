@@ -6,6 +6,8 @@ Swift helper was tried first, 1 Nov 2026, but the Mac's Command Line Tools refus
 a JSON list of image paths; prints one JSON object in the Windows engine's shape:
 { "results": [ { "file": ..., "width": w, "height": h, "words": [ { "text", "x", "y", "w", "h" } ] } ] }
 in pixels of the picture, top-left origin. A picture it cannot read gets an empty word list and an error.
+A second argument "correct" turns Vision's language correction on: right for running sentences (a game's dialogue,
+src/sceneindex), wrong for signs and names, which is why it stays off by default.
 """
 import json
 import re
@@ -14,6 +16,9 @@ import sys
 import Quartz
 import Vision
 from Foundation import NSURL
+
+
+CORRECT = len(sys.argv) > 2 and sys.argv[2] == "correct"
 
 
 def read(path):
@@ -28,7 +33,7 @@ def read(path):
         page["width"], page["height"] = W, H
         req = Vision.VNRecognizeTextRequest.alloc().init()
         req.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
-        req.setUsesLanguageCorrection_(False)
+        req.setUsesLanguageCorrection_(CORRECT)
         handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(img, {})
         ok, err = handler.performRequests_error_([req], None)
         if not ok:

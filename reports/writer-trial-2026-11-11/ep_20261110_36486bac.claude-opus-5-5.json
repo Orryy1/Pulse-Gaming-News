@@ -1,0 +1,182 @@
+{
+ "id": "ep_20261110_36486bac",
+ "model": "claude-opus-5-5",
+ "secs": 114,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "Spoken word count is 102; it must be 70-100.",
+    "On-screen text \"\"We consider that lack of policy a failure\"\" is too long to read in a second."
+   ],
+   "blockers": [
+    "Fact-check: \"Big Walk's AI fuss is about 10 lines of code.\" - Per PC Gamer, House House gave 'about 10 lines of code' as one example of its LLM use. Its overall estimate is 'well under 0.1%' of the code, with snippets used 'in some cases'. The script presents one example as the total extent of AI use.",
+    "Fact-check: \"Big Walk's AI use was 10 lines of code, says House House\" - The YouTube title attributes to House House a claim it did not make. The studio said about 10 lines was an example of its usage, not the total."
+   ],
+   "verdict": "fail"
+  },
+  {
+   "attempt": 1,
+   "problems": [
+    "The stamp's word \"0.1%\" is not in the narration; use a word that is spoken.",
+    "The stamp's figure \"0.1\" is not in the narration."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": true,
+ "friendWhy": [],
+ "finalPass": true,
+ "problems": [
+  "The stamp's word \"0.1%\" is not in the narration; use a word that is spoken.",
+  "The stamp's figure \"0.1\" is not in the narration."
+ ],
+ "draftText": "Big Walk used AI on well under zero point one percent of its code. If it's your game of the year, this matters, because 19 IGF jurors won't vote for any game using generative AI. Here's the odd part. A chatbot came in after even a Unity engineer got stuck on a slowdown bug. House House now calls having no AI policy a failure. Fair enough, code is creative work too. Still, this is a bug fix, not a scandal. If I had a vote, it'd still get mine. Does Big Walk still get your vote, yes or no?",
+ "text": "Big Walk used AI on well under zero point one percent of its code. If it's your game of the year, this matters. 19 IGF jurors won't vote for any game using generative AI. Here's the odd part. A chatbot came in after even a Unity engineer got stuck on a slowdown bug. House House now calls having no AI policy a failure. Fair enough, code is creative work too. Still, a bug fix isn't a scandal. If I had a vote, it'd still get mine. Your vote on Big Walk is simple, yes or no.",
+ "title": "Big Walk studio admits AI touched under 0.1% of its code",
+ "headline": "Big Walk Studio Admits Limited AI Use",
+ "script": {
+  "story_type": "industry",
+  "game_title": "Big Walk",
+  "steam_search_term": "Big Walk",
+  "headline": "Big Walk Studio Admits Limited AI Use",
+  "hook": "Big Walk used AI on well under 0.1% of its code.",
+  "beats": [
+   {
+    "narration": "If it's your game of the year, this matters. 19 IGF jurors won't vote for any game using generative AI.",
+    "footage": {
+     "want": "gameplay",
+     "keywords": [
+      "co-op walk",
+      "friends exploring",
+      "puzzle"
+     ]
+    },
+    "visual": {
+     "kind": "stat",
+     "primary": "19 jurors",
+     "secondary": "IGF jurors refusing any AI game"
+    }
+   },
+   {
+    "narration": "Here's the odd part. A chatbot came in after even a Unity engineer got stuck on a slowdown bug.",
+    "footage": {
+     "want": "world",
+     "keywords": [
+      "open landscape",
+      "walking path"
+     ]
+    },
+    "visual": {
+     "kind": "title",
+     "primary": "Chatbot as last resort",
+     "secondary": "After a Unity engineer was stuck"
+    }
+   },
+   {
+    "narration": "House House now calls having no AI policy a failure.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "quiet scenery"
+     ]
+    },
+    "visual": {
+     "kind": "quote",
+     "primary": "\"A failure\"",
+     "secondary": "House House on having no AI policy"
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "THE TAKEAWAY",
+   "narration": "Fair enough, code is creative work too. Still, a bug fix isn't a scandal. If I had a vote, it'd still get mine.",
+   "on_screen": "A bug fix, not a scandal"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "co-op puzzle",
+    "group walking"
+   ]
+  },
+  "person": "",
+  "loop_line": "Your vote on Big Walk is simple, yes or no.",
+  "stamp": {
+   "word": "0.1%",
+   "text": "UNDER 0.1%",
+   "sub": "STUDIO ESTIMATE",
+   "tone": "neutral"
+  },
+  "story_year": 2026,
+  "is_rumour": false,
+  "attribution": "Source: Aftermath via VGC / PC Gamer / Eurogamer / GameSpot",
+  "hashtags": [
+   "#BigWalk",
+   "#HouseHouse",
+   "#IGF",
+   "#IndieGames"
+  ],
+  "youtube": {
+   "title": "Big Walk studio admits AI touched under 0.1% of its code",
+   "description": "One of the year's best-loved indie games is now at the center of the AI debate, right as IGF jurors draw a hard line. House House says LLMs were used sparingly on well under 0.1% of Big Walk's code and calls its lack of an AI policy a failure. Sources: Aftermath, VGC, PC Gamer, Eurogamer, GameSpot, Rock Paper Shotgun, GamesIndustry.biz, Nintendo Life.",
+   "tags": [
+    "Big Walk",
+    "House House",
+    "generative AI",
+    "IGF",
+    "Independent Games Festival",
+    "indie games",
+    "AI in games"
+   ],
+   "thumb_text": "UNDER 0.1% AI",
+   "title_variants": [
+    "Big Walk's AI admission lands as 19 IGF jurors push back",
+    "House House says Big Walk used AI sparingly"
+   ]
+  },
+  "claims": [
+   {
+    "claim": "House House estimates well under 0.1% of Big Walk's code had anything to do with LLM usage",
+    "source_url": "https://www.videogameschronicle.com/news/big-walk-studio-says-it-used-ai-sparingly-in-response-to-indie-award-jury-statement-against-its-use/"
+   },
+   {
+    "claim": "19 IGF jurors said they are declining to vote for any game that uses generative AI in any capacity",
+    "source_url": "https://www.gamespot.com/articles/big-walks-ai-usage-was-tiny-but-its-disclosure-has-sparked-a-bigger-debate/"
+   },
+   {
+    "claim": "The studio turned to a chatbot for a slowdown bug after its own staff and a Unity engineer were unable to solve it",
+    "source_url": "https://www.videogameschronicle.com/news/big-walk-studio-says-it-used-ai-sparingly-in-response-to-indie-award-jury-statement-against-its-use/"
+   },
+   {
+    "claim": "House House said Big Walk was developed without an internal AI usage policy and considers that lack of policy a failure",
+    "source_url": "https://www.pcgamer.com/games/puzzle/big-walk-developer-reveals-it-used-generative-ai-sparingly-estimates-well-under-0-1-percent-was-actually-coded-using-llms/"
+   },
+   {
+    "claim": "The IGF jury statement said programming is a creative discipline and AI code is not an exception",
+    "source_url": "https://www.eurogamer.net/house-house-big-walk-generative-ai-development"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "curious",
+    "after": "",
+    "before": "Here's the odd part."
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [
+   {
+    "quote": "Big Walk used AI on well under zero point one percent of its code.",
+    "problem": "The sub-0.1% figure is House House's own estimate ('we'd estimate'), but the script states it flatly as fact. The title and description attribute it correctly; the spoken line should too, e.g. 'House House estimates...'.",
+    "severity": "minor"
+   }
+  ],
+  "rumour_labelling_ok": true,
+  "summary": "All factual claims are supported by the sources: the jurors' pledge, the Unity engineer and slowdown-bug chatbot fix, the last-resort framing, and the 'failure' quote about having no AI policy. The opinion lines are clearly framed as the narrator's take. The only issue is minor: the spoken script does not attribute the 0.1% figure as the studio's own estimate."
+ }
+}

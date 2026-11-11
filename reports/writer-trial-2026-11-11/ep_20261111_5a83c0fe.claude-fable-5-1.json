@@ -1,0 +1,198 @@
+{
+ "id": "ep_20261111_5a83c0fe",
+ "model": "claude-fable-5-1",
+ "secs": 117,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "Spoken word count is 104; it must be 70-100.",
+    "Remove the serial (Oxford) comma before \"and\"."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [
+    "Remove the serial (Oxford) comma before \"and\"."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": true,
+ "friendWhy": [],
+ "finalPass": true,
+ "problems": [
+  "Remove the serial (Oxford) comma before \"and\"."
+ ],
+ "draftText": "Unknown nine's studio just got shut down for good. Bandai Namco expects a twenty-one million euros loss on the closure. Gematsu has the notice, citing 'profitability and business continuation.' If you bought a copy, you're in a small club. And it was slow. 18% of staff went a month after launch, more in January twenty twenty-five. Compare Arkane Lyon. Microsoft marked it for closure, but French labor law has it in limbo. Reflector's schedule is 'undecided.' I think one flop shouldn't end a studio. I'd have funded a second swing. Would you have given Reflector a second game?",
+ "text": "Unknown nine's studio just got shut down for good. Bandai Namco expects a twenty-one million euros loss on the closure. Gematsu has the notice, citing 'profitability and business continuation.' If you bought a copy, you're in a small club. And it was slow. 18% of staff went a month after launch, more in January twenty twenty-five. Compare Arkane Lyon. Microsoft marked it for closure, but French labor law has it in limbo. Reflector's schedule is 'undecided.' One flop shouldn't end a studio. I'd have funded a second swing. Maybe you'd have given Reflector a second game.",
+ "title": "Bandai Namco Shuts Down Unknown 9 Studio, Takes €21M Loss",
+ "headline": "Bandai Namco closes Unknown 9 studio Reflector",
+ "script": {
+  "story_type": "industry",
+  "game_title": "Unknown 9: Awakening",
+  "steam_search_term": "Unknown 9: Awakening",
+  "headline": "Bandai Namco closes Unknown 9 studio Reflector",
+  "hook": "Unknown 9's studio just got shut down for good.",
+  "beats": [
+   {
+    "narration": "Bandai Namco expects a €21 million loss on the closure.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "Unknown 9 Awakening",
+      "Haroona",
+      "the Fold"
+     ]
+    },
+    "visual": {
+     "kind": "stat",
+     "primary": "€21 million",
+     "secondary": "Expected loss for Bandai Namco"
+    }
+   },
+   {
+    "narration": "Gematsu has the notice, citing 'profitability and business continuation.' If you bought a copy, you're in a small club.",
+    "footage": {
+     "want": "gameplay",
+     "keywords": [
+      "Haroona combat",
+      "Unknown 9 Awakening"
+     ]
+    },
+    "visual": {
+     "kind": "quote",
+     "primary": "profitability and business continuation",
+     "secondary": "Bandai Namco notice"
+    }
+   },
+   {
+    "narration": "And it was slow. 18% of staff went a month after launch, more in January 2025.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "the Fold",
+      "Unknown 9 Awakening cinematic"
+     ]
+    },
+    "visual": {
+     "kind": "milestones",
+     "primary": "Two years to closure",
+     "secondary": "Reflector Entertainment",
+     "items": [
+      "2020-09:Acquired by Bandai",
+      "2024-10-18:Unknown 9 launches",
+      "2024-11:18% laid off",
+      "2025-01:More layoffs",
+      "2026-11:Closure announced"
+     ]
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "THE CONTEXT",
+   "narration": "Compare Arkane Lyon. Microsoft marked it for closure, but French labor law has it in limbo. Reflector's schedule is 'undecided.' One flop shouldn't end a studio. I'd have funded a second swing.",
+   "on_screen": "One flop, one studio gone"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "Unknown 9 Awakening",
+    "Haroona",
+    "the Fold"
+   ]
+  },
+  "person": "",
+  "loop_line": "Maybe you'd have given Reflector a second game.",
+  "stamp": {
+   "word": "down",
+   "text": "CLOSED",
+   "sub": "FOR GOOD",
+   "tone": "alert"
+  },
+  "story_year": 2026,
+  "is_rumour": false,
+  "attribution": "Source: Gematsu / PC Gamer / Rock Paper Shotgun",
+  "hashtags": [
+   "#Unknown9",
+   "#Unknown9Awakening",
+   "#ReflectorEntertainment",
+   "#BandaiNamco"
+  ],
+  "youtube": {
+   "title": "Bandai Namco Shuts Down Unknown 9 Studio, Takes €21M Loss",
+   "description": "Two years after Unknown 9: Awakening landed, Bandai Namco is dissolving Reflector Entertainment, the Montreal studio that made it, and booking a €21 million loss to do it. The closure follows an 18% layoff a month after launch and more cuts in January 2025 alongside a cancelled project. Sources: Gematsu, PC Gamer and Rock Paper Shotgun.",
+   "tags": [
+    "Unknown 9 Awakening",
+    "Reflector Entertainment",
+    "Bandai Namco",
+    "studio closure",
+    "Unknown 9",
+    "Anya Chalotra",
+    "gaming news",
+    "Arkane Lyon"
+   ],
+   "thumb_text": "STUDIO CLOSED",
+   "title_variants": [
+    "Unknown 9 Studio Reflector Is Being Shut Down by Bandai Namco",
+    "Bandai Namco Closes Reflector Two Years After Unknown 9 Flopped"
+   ]
+  },
+  "claims": [
+   {
+    "claim": "Bandai Namco passed a resolution to dissolve and liquidate Reflector Entertainment, the studio behind Unknown 9: Awakening.",
+    "source_url": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment"
+   },
+   {
+    "claim": "Bandai Namco expects an extraordinary loss of €21 million from the liquidation.",
+    "source_url": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment"
+   },
+   {
+    "claim": "The closure notice cites 'necessary additional investment' and 'the possibility of profitability and business continuation.'",
+    "source_url": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment"
+   },
+   {
+    "claim": "Reflector laid off 18% of its workforce a month after launch, with more layoffs in January 2025 as a project was cancelled.",
+    "source_url": "https://www.pcgamer.com/gaming-industry/2-years-after-unknown-9-awakening-bombed-bandai-namco-is-closing-the-studio-that-made-it/"
+   },
+   {
+    "claim": "Reflector was acquired by Bandai Namco in September 2020 and released Unknown 9: Awakening on October 18, 2024.",
+    "source_url": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment"
+   },
+   {
+    "claim": "Reflector is a Montreal studio and Unknown 9: Awakening is its only game.",
+    "source_url": "https://www.rockpapershotgun.com/bandai-namco-is-liquidating-unknown-9-awakening-studio-reflector-entertainment-following-multiple-previous-layoffs-since-the-games-launch"
+   },
+   {
+    "claim": "A concrete liquidation schedule is undecided.",
+    "source_url": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment"
+   },
+   {
+    "claim": "Arkane Lyon was chosen for closure by Microsoft but is temporarily protected by French labor laws.",
+    "source_url": "https://www.rockpapershotgun.com/bandai-namco-is-liquidating-unknown-9-awakening-studio-reflector-entertainment-following-multiple-previous-layoffs-since-the-games-launch"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "sarcastic",
+    "after": "'profitability and business continuation.'",
+    "before": "If you bought a"
+   },
+   {
+    "tag": "sighs",
+    "after": "",
+    "before": "And it was slow."
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [],
+  "rumour_labelling_ok": true,
+  "summary": "All spoken claims, on-screen figures, milestone dates, title and description are supported by the three sources: the €21 million expected loss (Gematsu, RPS), the 'profitability and business continuation' quote, the 18% layoff a month after launch and January 2025 cuts (PC Gamer), the September 2020 acquisition and October 18, 2024 launch (Gematsu), the Montreal location and Arkane Lyon comparison (RPS), and the 'undecided' schedule (Gematsu). The small-club remark and second-swing lines are clearly opinion. Correctly not labelled as rumour since the closure is an official Bandai Namco announcement."
+ }
+}

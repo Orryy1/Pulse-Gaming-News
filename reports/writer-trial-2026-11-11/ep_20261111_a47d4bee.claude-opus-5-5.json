@@ -1,0 +1,195 @@
+{
+ "id": "ep_20261111_a47d4bee",
+ "model": "claude-opus-5-5",
+ "secs": 127,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "The script says \"you\" 2 times in 104 words; say \"you\" or \"your\" at least 3 times (three per hundred words) about what this means for the viewer.",
+    "Spoken word count is 104; it must be 70-100.",
+    "On-screen text \"GTA 6 runs at 30fps on consoles for now\" is too long to read in a second."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": false,
+ "friendWhy": [
+  "The rewrite adds the quotation \"no promises\".",
+  "\"which is company for\" is copied from an example in the brief; say it in your own words.",
+  "\"which is company for\" is copied from an example in the brief; say it in your own words."
+ ],
+ "finalPass": true,
+ "problems": [],
+ "draftText": "Rockstar hasn't promised you 60 fps in GTA 6. Rockstar North's Rob Nelson reportedly told YouTuber Davy Jones consoles run it at 30 for now. On 60, he said he'd have to consult the technical team. Digital Foundry suspects crowds, weather and traffic AI overload the console CPU. Even your PS5 Pro might not save you. That's Rockstar's habit. GTA 5 waited for PS5 to hit 60, and Red Dead 2 still hasn't officially. I'd expect 30 at launch. Our GTA documentary covers which launch promises hold, so what has Rockstar actually promised you?",
+ "text": "Rockstar hasn't promised you 60 fps in GTA 6. Rockstar North's Rob Nelson reportedly told YouTuber Davy Jones consoles run it at 30 for now. On 60, he said he'd have to consult the technical team. Digital Foundry suspects crowds, weather and traffic AI overload the console CPU. Even your PS5 Pro might not save you. That's Rockstar's habit. GTA 5 waited for PS5 to hit 60, and Red Dead 2 still hasn't officially. I'd expect 30 at launch. Our GTA documentary covers which launch promises hold, so what has Rockstar actually promised you?",
+ "title": "GTA 6 reportedly runs at 30 fps on consoles, and here's why",
+ "headline": "Why GTA 6 Runs at 30fps on Consoles",
+ "script": {
+  "story_type": "explainer",
+  "game_title": "Grand Theft Auto VI",
+  "steam_search_term": "",
+  "headline": "Why GTA 6 Runs at 30fps on Consoles",
+  "hook": "Rockstar hasn't promised you 60 fps in GTA 6.",
+  "beats": [
+   {
+    "narration": "Rockstar North's Rob Nelson reportedly told YouTuber Davy Jones consoles run it at 30 for now.",
+    "footage": {
+     "want": "gameplay",
+     "keywords": [
+      "Vice City streets",
+      "driving",
+      "Lucia"
+     ]
+    },
+    "visual": {
+     "kind": "report",
+     "primary": "Console build running at 30fps",
+     "secondary": "Kotaku"
+    }
+   },
+   {
+    "narration": "On 60, he said he'd have to consult the technical team.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "city skyline",
+      "sunset"
+     ]
+    },
+    "visual": {
+     "kind": "quote",
+     "primary": "\"Consult the technical team\"",
+     "secondary": "Rob Nelson, Rockstar North"
+    }
+   },
+   {
+    "narration": "Digital Foundry suspects crowds, weather and traffic AI overload the console CPU. Even your PS5 Pro might not save you.",
+    "footage": {
+     "want": "world",
+     "keywords": [
+      "crowded beach",
+      "traffic",
+      "storm"
+     ]
+    },
+    "visual": {
+     "kind": "list",
+     "primary": "Crowds | Weather | Traffic AI",
+     "secondary": "Digital Foundry theory"
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "THE PATTERN",
+   "narration": "That's Rockstar's habit. GTA 5 waited for PS5 to hit 60, and Red Dead 2 still hasn't officially. I'd expect 30 at launch.",
+   "on_screen": "Rockstar launches at 30, patches later"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "police car chase",
+    "Vice City",
+    "motion blur"
+   ]
+  },
+  "person": "",
+  "loop_line": "Our GTA documentary covers which launch promises hold, so what has Rockstar actually promised you?",
+  "stamp": {
+   "word": "30",
+   "text": "30 FPS",
+   "sub": "REPORTED",
+   "tone": "alert"
+  },
+  "is_rumour": true,
+  "attribution": "Source: Kotaku / Tom's Hardware / Flow Games",
+  "hashtags": [
+   "#GTA6",
+   "#GTAVI",
+   "#RockstarGames",
+   "#PS5Pro"
+  ],
+  "youtube": {
+   "title": "GTA 6 reportedly runs at 30 fps on consoles, and here's why",
+   "description": "If you were hoping for a 60 fps mode on day one, Rockstar hasn't promised one. Rob Nelson reportedly told Davy Jones the console build runs at 30 fps for now, and Digital Foundry suspects the CPU is the bottleneck. Sources: Kotaku, Tom's Hardware, Flow Games.",
+   "tags": [
+    "GTA 6",
+    "GTA 6 30fps",
+    "GTA 6 60fps",
+    "GTA 6 PS5 Pro",
+    "Rockstar Games",
+    "Rob Nelson",
+    "Digital Foundry",
+    "GTA VI performance"
+   ],
+   "thumb_text": "30 FPS?",
+   "title_variants": [
+    "Rockstar won't promise 60 fps in GTA 6 yet",
+    "Why GTA 6 is reportedly stuck at 30 fps on PS5"
+   ]
+  },
+  "claims": [
+   {
+    "claim": "Rob Nelson of Rockstar North reportedly told YouTuber Davy Jones the game runs at 30 fps on consoles during development",
+    "source_url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032"
+   },
+   {
+    "claim": "Nelson said he'd need to consult the technical team about 60 fps at launch or later",
+    "source_url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support"
+   },
+   {
+    "claim": "Digital Foundry theorized NPC density, dynamic weather, physics and traffic AI are too much for the console CPU",
+    "source_url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support"
+   },
+   {
+    "claim": "Even the PS5 Pro might not get 60 fps support",
+    "source_url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support"
+   },
+   {
+    "claim": "GTA 5 didn't get a 60 fps option until the PS5 and Xbox Series X/S upgrade",
+    "source_url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032"
+   },
+   {
+    "claim": "Red Dead Redemption 2 still has no official 60 fps upgrade for modern consoles",
+    "source_url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "curious",
+    "after": "",
+    "before": "Digital Foundry suspects crowds,"
+   },
+   {
+    "tag": "sighs",
+    "after": "",
+    "before": "That's Rockstar's habit. GTA"
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [
+   {
+    "quote": "Why GTA 6 Runs at 30fps on Consoles",
+    "problem": "The on-screen title states the 30fps figure as settled fact, while the script and YouTube title correctly frame it as reported. Nelson said 30fps is 'for now' during development. Consider adding 'reportedly' for consistency.",
+    "severity": "minor"
+   },
+   {
+    "quote": "Our GTA documentary covers which launch promises hold",
+    "problem": "This is a channel self-promotion line. The sources don't address it, but it makes no factual claim about the story.",
+    "severity": "minor"
+   }
+  ],
+  "rumour_labelling_ok": true,
+  "summary": "The script's claims are supported by Kotaku and Tom's Hardware: the 30fps report via Davy Jones and Flow Games, Nelson's 'consult the technical team' quote, Digital Foundry's CPU-bottleneck theory, the PS5 Pro caveat, and Rockstar's history with GTA 5 and Red Dead 2. The report is appropriately hedged with 'reportedly'. There are only minor framing notes and no blockers."
+ }
+}

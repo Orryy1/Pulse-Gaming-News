@@ -1,0 +1,192 @@
+{
+ "id": "ep_20261109_46ec0c8c",
+ "model": "claude-opus-5-5",
+ "secs": 112,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "Spoken word count is 102; it must be 70-100.",
+    "\"Sea of Sorrow\" is said in full 4 times; give the full title once, then the short form people say (\"Red Dead 2\", \"GTA 5\")."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [
+    "On-screen text \"Manual reads like a step back from 2026\" is too long to read in a second."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": true,
+ "friendWhy": [],
+ "finalPass": true,
+ "problems": [
+  "On-screen text \"Manual reads like a step back from 2026\" is too long to read in a second."
+ ],
+ "draftText": "Silksong's new manual promises free content packs, plural. The booklet in your physical copy of Hollow Knight Silksong calls Sea of Sorrow its \"first giant expansion.\" Polygon says that one's free too. Here's the catch... the expansion just says \"coming soon,\" despite a twenty twenty-six window. GamesRadar calls that a possible step back, and some of you fear twenty twenty-seven. For you, that's more Silksong without spending another dollar. That's a great deal. I just wouldn't bet on that ocean this year. Which do you want first, the free packs or the giant expansion?",
+ "text": "Silksong's new manual promises free content packs, plural. The booklet in your physical copy of Hollow Knight Silksong calls Sea of Sorrow its \"first giant expansion.\" Polygon says that one's free too. Here's the catch... the expansion just says \"coming soon,\" despite a twenty twenty-six window. GamesRadar calls that a possible step back, and some of you fear twenty twenty-seven. For you, that's more Silksong without spending another dollar. That's a great deal. I wouldn't pack for that ocean this year, though. You already know which you want first, the free packs or the giant expansion.",
+ "title": "Silksong's manual just promised more free content packs",
+ "headline": "Silksong Manual Promises Free Content Packs",
+ "script": {
+  "story_type": "update",
+  "game_title": "Hollow Knight: Silksong",
+  "steam_search_term": "Hollow Knight: Silksong",
+  "headline": "Silksong Manual Promises Free Content Packs",
+  "hook": "Silksong's new manual promises free content packs, plural.",
+  "beats": [
+   {
+    "narration": "The booklet in your physical copy of Hollow Knight: Silksong calls Sea of Sorrow its \"first giant expansion.\" Polygon says that one's free too.",
+    "footage": {
+     "want": "world",
+     "keywords": [
+      "Sea of Sorrow",
+      "ocean",
+      "Hornet"
+     ]
+    },
+    "visual": {
+     "kind": "quote",
+     "primary": "\"first giant expansion\"",
+     "secondary": "Silksong physical edition manual"
+    }
+   },
+   {
+    "narration": "Here's the catch... the expansion just says \"coming soon,\" despite a 2026 window.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "Sea of Sorrow emblem",
+      "salt-stricken ocean"
+     ]
+    },
+    "visual": {
+     "kind": "date",
+     "primary": "\"Coming soon\"",
+     "secondary": "Announced with a 2026 window"
+    }
+   },
+   {
+    "narration": "GamesRadar calls that a possible step back, and some of you fear 2027.",
+    "footage": {
+     "want": "cinematic",
+     "keywords": [
+      "Hornet",
+      "Pharloom"
+     ]
+    },
+    "visual": {
+     "kind": "report",
+     "primary": "Manual reads like a step back from 2026",
+     "secondary": "GamesRadar+"
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "WHAT IT MEANS FOR YOU",
+   "narration": "For you, that's more Silksong without spending another dollar. That's a great deal. I wouldn't pack for that ocean this year, though.",
+   "on_screen": "More Silksong, no extra cost"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "Hornet",
+    "boss fight",
+    "Pharloom"
+   ]
+  },
+  "person": "",
+  "loop_line": "You already know which you want first, the free packs or the giant expansion.",
+  "stamp": {
+   "word": "free",
+   "text": "FREE",
+   "sub": "CONTENT PACKS",
+   "tone": "confirm"
+  },
+  "is_rumour": false,
+  "attribution": "Source: GamesRadar+ / Polygon / Eurogamer",
+  "hashtags": [
+   "#Silksong",
+   "#HollowKnightSilksong",
+   "#SeaOfSorrow",
+   "#HollowKnight"
+  ],
+  "youtube": {
+   "title": "Silksong's manual just promised more free content packs",
+   "description": "Your physical copy of Hollow Knight: Silksong hints at more free content than anyone expected, plus a giant expansion with no date beyond \"coming soon.\" Here's what that means for your save and your wallet. Sources: GamesRadar+, Polygon and Eurogamer.",
+   "tags": [
+    "Hollow Knight Silksong",
+    "Silksong",
+    "Sea of Sorrow",
+    "Silksong DLC",
+    "Team Cherry",
+    "Silksong free content packs",
+    "Silksong physical edition"
+   ],
+   "thumb_text": "FREE PACKS, PLURAL",
+   "title_variants": [
+    "Silksong booklet teases free content packs and a giant expansion",
+    "Silksong's Sea of Sorrow is now just \"coming soon\""
+   ]
+  },
+  "claims": [
+   {
+    "claim": "The Silksong physical edition manual says the world will expand with free content packs.",
+    "source_url": "https://www.eurogamer.net/hollow-knight-silksong-physical-free-content-packs-sea-of-sorrow"
+   },
+   {
+    "claim": "The manual calls Sea of Sorrow the first giant expansion.",
+    "source_url": "https://www.polygon.com/hollow-knight-silksong-free-dlc-rumor/"
+   },
+   {
+    "claim": "Sea of Sorrow will be free for players.",
+    "source_url": "https://www.polygon.com/hollow-knight-silksong-free-dlc-rumor/"
+   },
+   {
+    "claim": "The manual says Sea of Sorrow is coming soon.",
+    "source_url": "https://store.steampowered.com/news/group/38509069/view/668381571600876361"
+   },
+   {
+    "claim": "Sea of Sorrow was announced with a 2026 release window.",
+    "source_url": "https://www.polygon.com/hollow-knight-silksong-free-dlc-rumor/"
+   },
+   {
+    "claim": "GamesRadar says the wording reads like a step back from the 2026 target and players fear a delay into 2027.",
+    "source_url": "https://store.steampowered.com/news/group/38509069/view/668381571600876361"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "excited",
+    "after": "",
+    "before": "Silksong's new manual promises"
+   },
+   {
+    "tag": "sighs",
+    "after": "",
+    "before": "Here's the catch... the"
+   },
+   {
+    "tag": "chuckles",
+    "after": "ocean this year, though.",
+    "before": ""
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [
+   {
+    "quote": "hints at more free content than anyone expected",
+    "problem": "GamesRadar says there was 'little doubt' Team Cherry would add lots of content, and Eurogamer says it 'shouldn't be a huge shocker.' 'More than anyone expected' overstates the surprise. This is hype phrasing rather than a hard factual claim.",
+    "severity": "minor"
+   }
+  ],
+  "rumour_labelling_ok": true,
+  "summary": "The sources support the script's core claims. The physical manual promises free content packs, plural, and calls Sea of Sorrow the 'first giant expansion.' Polygon says the expansion will also be free. The manual gives only 'coming soon' despite the 2026 window. GamesRadar (reprinted on Steam News) says this reads like a step back from 2026, and players fear a 2027 delay. The 2027 delay is framed as a fear, not fact. The content packs come from official manual text, so not labelling the story as rumour is acceptable. The only issue is minor hype in the YouTube description."
+ }
+}

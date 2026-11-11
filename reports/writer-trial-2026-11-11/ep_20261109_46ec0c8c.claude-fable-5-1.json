@@ -1,0 +1,169 @@
+{
+ "id": "ep_20261109_46ec0c8c",
+ "model": "claude-fable-5-1",
+ "secs": 103,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "Spoken word count is 106; it must be 70-100."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": true,
+ "friendWhy": [],
+ "finalPass": true,
+ "problems": [],
+ "draftText": "Silksong's own manual just promised you free content packs, plural. Physical copies land November 10, and a Reddit user cracked one early. It promises new friends, new abilities and ferocious foes. Here's the odd part. Sea of Sorrow, that first giant expansion, is now 'coming soon.' Team Cherry said twenty twenty-six last December. For you, that's more Pharloom with nothing on your card. The cost is your calendar. Nobody's said when soon is. That's still a great deal. I'd stop refreshing their blog, and yes, I know you won't. Replay Pharloom now, or save your next run for the ocean?",
+ "text": "Silksong's own manual just promised you free content packs, plural. Physical copies land November 10, and a Reddit user cracked one early. It promises new friends, new abilities and ferocious foes. Sea of Sorrow, that first giant expansion, is now 'coming soon.' Team Cherry said twenty twenty-six last December. For you, that's more Pharloom with nothing on your card. The cost is your calendar. Nobody's said when soon is. That's still a great deal. I'd stop refreshing their blog, and yes, I know you won't. You can replay Pharloom now, or save your next run for the ocean.",
+ "title": "Silksong Manual Promises Free Content Packs, Plural",
+ "headline": "Silksong manual promises free content packs",
+ "script": {
+  "story_type": "update",
+  "game_title": "Hollow Knight: Silksong",
+  "steam_search_term": "Hollow Knight: Silksong",
+  "headline": "Silksong manual promises free content packs",
+  "hook": "Silksong's own manual just promised you free content packs, plural.",
+  "beats": [
+   {
+    "narration": "Physical copies land November 10, and a Reddit user cracked one early. It promises new friends, new abilities and ferocious foes.",
+    "footage": {
+     "want": "gameplay",
+     "keywords": [
+      "Hornet",
+      "new abilities",
+      "boss fight",
+      "Pharloom"
+     ]
+    },
+    "visual": {
+     "kind": "quote",
+     "primary": "New friends, new abilities, new ferocious foes",
+     "secondary": "Silksong physical edition manual"
+    }
+   },
+   {
+    "narration": "Sea of Sorrow, that first giant expansion, is now 'coming soon.' Team Cherry said 2026 last December.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "Sea of Sorrow",
+      "ocean",
+      "salt-stricken sea"
+     ]
+    },
+    "visual": {
+     "kind": "date",
+     "primary": "Coming soon",
+     "secondary": "Sea of Sorrow, announced with a 2026 window"
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "WHAT IT MEANS FOR YOU",
+   "narration": "For you, that's more Pharloom with nothing on your card. The cost is your calendar. Nobody's said when soon is. That's still a great deal. I'd stop refreshing their blog, and yes, I know you won't.",
+   "on_screen": "Free DLC, unknown date"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "Hornet",
+    "needle combat",
+    "Pharloom"
+   ]
+  },
+  "person": "",
+  "loop_line": "You can replay Pharloom now, or save your next run for the ocean.",
+  "stamp": {
+   "word": "free",
+   "text": "FREE",
+   "sub": "CONFIRMED",
+   "tone": "confirm"
+  },
+  "story_year": 2026,
+  "is_rumour": false,
+  "attribution": "Source: Eurogamer / Polygon / GamesRadar",
+  "hashtags": [
+   "#Silksong",
+   "#HollowKnight",
+   "#SeaOfSorrow",
+   "#TeamCherry"
+  ],
+  "youtube": {
+   "title": "Silksong Manual Promises Free Content Packs, Plural",
+   "description": "Silksong's physical edition is shipping, and the booklet inside says the game will grow with free content packs, while the Sea of Sorrow expansion is now listed only as coming soon. The 2026 window Team Cherry gave last December is nowhere in the manual, and nobody has given a date. Reporting by Eurogamer, Polygon and GamesRadar, based on photos shared by a Reddit user.",
+   "tags": [
+    "Hollow Knight Silksong",
+    "Silksong",
+    "Sea of Sorrow",
+    "Team Cherry",
+    "Silksong DLC",
+    "Silksong free content packs",
+    "Silksong physical edition",
+    "Hollow Knight"
+   ],
+   "thumb_text": "FREE DLC",
+   "title_variants": [
+    "Silksong Is Getting Free Content Packs, But Sea of Sorrow Is Just Coming Soon",
+    "Silksong's Manual Reveals Free DLC Packs and a Vanished 2026 Date"
+   ]
+  },
+  "claims": [
+   {
+    "claim": "Silksong's physical edition manual says the world will expand with free content packs",
+    "source_url": "https://www.eurogamer.net/hollow-knight-silksong-physical-free-content-packs-sea-of-sorrow"
+   },
+   {
+    "claim": "The manual promises new friends, new abilities and new ferocious foes",
+    "source_url": "https://www.polygon.com/hollow-knight-silksong-free-dlc-rumor/"
+   },
+   {
+    "claim": "Physical copies of Silksong were set to arrive November 10 and a Reddit user got one early",
+    "source_url": "https://store.steampowered.com/news/group/38509069/view/668381571600876361"
+   },
+   {
+    "claim": "The manual calls Sea of Sorrow the first giant expansion and lists it as coming soon",
+    "source_url": "https://www.eurogamer.net/hollow-knight-silksong-physical-free-content-packs-sea-of-sorrow"
+   },
+   {
+    "claim": "Sea of Sorrow was announced last December with a 2026 release window",
+    "source_url": "https://www.polygon.com/hollow-knight-silksong-free-dlc-rumor/"
+   },
+   {
+    "claim": "Sea of Sorrow will be free for players",
+    "source_url": "https://www.polygon.com/hollow-knight-silksong-free-dlc-rumor/"
+   },
+   {
+    "claim": "Team Cherry has said little on its blog or social feeds all year",
+    "source_url": "https://store.steampowered.com/news/group/38509069/view/668381571600876361"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "curious",
+    "after": "",
+    "before": "Sea of Sorrow, that"
+   },
+   {
+    "tag": "sighs",
+    "after": "said when soon is.",
+    "before": "That's still a great"
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [],
+  "rumour_labelling_ok": true,
+  "summary": "Every claim in the script, on-screen text, title and description is supported by the sources: the physical edition's November 10 arrival, the Reddit-shared manual photos, the exact 'free content packs' and 'new friends, new abilities, new ferocious foes' wording, Sea of Sorrow being the 'first giant expansion' now listed as 'coming soon', the December 2026-window announcement, and that the expansion is free (per Polygon). The 'delay' angle is kept as uncertainty ('nobody's said when soon is') rather than asserted as fact, and the rest is clearly framed opinion. Not labelling this as a rumour is fine since the content comes from the official manual itself."
+ }
+}

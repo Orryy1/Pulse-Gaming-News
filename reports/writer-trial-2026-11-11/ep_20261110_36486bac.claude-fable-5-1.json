@@ -1,0 +1,210 @@
+{
+ "id": "ep_20261110_36486bac",
+ "model": "claude-fable-5-1",
+ "secs": 259,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "Spoken word count is 107; it must be 70-100.",
+    "The stamp's word \"0.1%\" is not in the narration; use a word that is spoken.",
+    "The stamp's figure \"0.1\" is not in the narration.",
+    "Remove the serial (Oxford) comma before \"and\".",
+    "On-screen text \"\"We consider that lack of policy a failure\"\" is too long to read in a second."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [
+    "Spoken word count is 104; it must be 70-100.",
+    "The stamp's word \"0.1\" is not in the narration; use a word that is spoken.",
+    "The stamp's figure \"0.1\" is not in the narration."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": true,
+ "friendWhy": [],
+ "finalPass": true,
+ "problems": [
+  "The stamp's word \"0.1\" is not in the narration; use a word that is spoken.",
+  "The stamp's figure \"0.1\" is not in the narration."
+ ],
+ "draftText": "Big Walk used AI, and your indie darling has a problem. House House says under zero point one percent of the code, 10 lines for one bug. That's not the odd part. 19 IGF jurors refuse to vote for anything using generative AI. Steam never asks about code, so your store page said nothing. House House posted it anyway and called its missing policy a failure. Granted, the jurors have a point about code. But a bug fix isn't AI art, and the studio outed itself. I think that's disclosure, not scandal. I'd buy it. Big Walk, still on your list, or off it?",
+ "text": "Big Walk used AI, and your indie darling has a problem. House House says under zero point one percent of the code, 10 lines for one bug. Meanwhile, 19 IGF jurors refuse to vote for anything using generative AI. Steam never asks about code, so your store page said nothing. House House posted anyway, calling its missing policy a failure. Granted, the jurors have a point. But a bug fix isn't AI art, and the studio outed itself. That's disclosure, not a scandal. I'd still buy it. Big Walk stays on your list, or off it.",
+ "title": "Big Walk Used AI for 10 Lines of Code and Judges Noticed",
+ "headline": "Big Walk Admits Small AI Use in Code",
+ "script": {
+  "story_type": "industry",
+  "game_title": "Big Walk",
+  "steam_search_term": "Big Walk",
+  "headline": "Big Walk Admits Small AI Use in Code",
+  "hook": "Big Walk used AI, and your indie darling has a problem.",
+  "beats": [
+   {
+    "narration": "House House says under 0.1 percent of the code, 10 lines for one bug.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "Big Walk",
+      "hillside",
+      "walking together"
+     ]
+    },
+    "visual": {
+     "kind": "stat",
+     "primary": "Under 0.1%",
+     "secondary": "of Big Walk's code, House House says"
+    }
+   },
+   {
+    "narration": "Meanwhile, 19 IGF jurors refuse to vote for anything using generative AI.",
+    "footage": {
+     "want": "gameplay",
+     "keywords": [
+      "co-op puzzle",
+      "friends",
+      "walkie talkie"
+     ]
+    },
+    "visual": {
+     "kind": "stat",
+     "primary": "19 jurors",
+     "secondary": "won't vote for games using gen AI"
+    }
+   },
+   {
+    "narration": "Steam never asks about code, so your store page said nothing. House House posted anyway, calling its missing policy a failure.",
+    "footage": {
+     "want": "world",
+     "keywords": [
+      "valley",
+      "campfire",
+      "night"
+     ]
+    },
+    "visual": {
+     "kind": "quote",
+     "primary": "\"A failure\"",
+     "secondary": "House House on its missing AI policy"
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "THE TAKEAWAY",
+   "narration": "Granted, the jurors have a point. But a bug fix isn't AI art, and the studio outed itself. That's disclosure, not a scandal. I'd still buy it.",
+   "on_screen": "Disclosure, not scandal"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "Big Walk",
+    "friends walking",
+    "cliff"
+   ]
+  },
+  "person": "",
+  "loop_line": "Big Walk stays on your list, or off it.",
+  "stamp": {
+   "word": "0.1",
+   "text": "UNDER 0.1%",
+   "sub": "OF CODE",
+   "tone": "neutral"
+  },
+  "story_year": 2026,
+  "is_rumour": false,
+  "attribution": "Source: PC Gamer / VGC / Eurogamer",
+  "hashtags": [
+   "#BigWalk",
+   "#HouseHouse",
+   "#IGF",
+   "#IndieGames"
+  ],
+  "youtube": {
+   "title": "Big Walk Used AI for 10 Lines of Code and Judges Noticed",
+   "description": "Big Walk's studio House House says generative AI touched well under 0.1 percent of the game's code, and 19 Independent Games Festival jurors now refuse to vote for any game that used it at all. The studio posted the disclosure on its own FAQ, said it is not an endorsement and called its missing AI policy a failure. Here is what the row means for one of the year's best-liked indies. Sources: PC Gamer, GameSpot, VGC, Eurogamer, Rock Paper Shotgun, GamesIndustry.biz, Nintendo Life.",
+   "tags": [
+    "Big Walk",
+    "House House",
+    "Big Walk AI",
+    "generative AI games",
+    "IGF awards",
+    "Independent Games Festival",
+    "indie games",
+    "Untitled Goose Game developer"
+   ],
+   "thumb_text": "0.1% AI",
+   "title_variants": [
+    "Big Walk Studio Admits AI Helped Fix One Bug",
+    "19 IGF Jurors Won't Vote for AI Games, and Big Walk Used Some"
+   ]
+  },
+  "claims": [
+   {
+    "claim": "House House estimates well under 0.1% of Big Walk's code had anything to do with LLM usage.",
+    "source_url": "https://www.pcgamer.com/games/puzzle/big-walk-developer-reveals-it-used-generative-ai-sparingly-estimates-well-under-0-1-percent-was-actually-coded-using-llms/"
+   },
+   {
+    "claim": "The example given was about 10 lines of code used to fix a problem House House could not fix manually or with a Unity engineer.",
+    "source_url": "https://www.pcgamer.com/games/puzzle/big-walk-developer-reveals-it-used-generative-ai-sparingly-estimates-well-under-0-1-percent-was-actually-coded-using-llms/"
+   },
+   {
+    "claim": "19 IGF jurors said they are declining to vote for any game that uses generative AI in any capacity.",
+    "source_url": "https://www.videogameschronicle.com/news/big-walk-studio-says-it-used-ai-sparingly-in-response-to-indie-award-jury-statement-against-its-use/"
+   },
+   {
+    "claim": "House House made no disclosure on Steam because the platform does not request disclosure of code or chatbot usage.",
+    "source_url": "https://www.eurogamer.net/house-house-big-walk-generative-ai-development"
+   },
+   {
+    "claim": "House House posted the disclosure on the Big Walk website FAQ.",
+    "source_url": "https://www.nintendolife.com/news/2026/11/big-walk-devs-issue-statement-over-ai-usage"
+   },
+   {
+    "claim": "House House said the lack of an internal AI usage policy was a failure.",
+    "source_url": "https://www.videogameschronicle.com/news/big-walk-studio-says-it-used-ai-sparingly-in-response-to-indie-award-jury-statement-against-its-use/"
+   },
+   {
+    "claim": "House House said the statement is not an endorsement of AI tools.",
+    "source_url": "https://www.eurogamer.net/house-house-big-walk-generative-ai-development"
+   },
+   {
+    "claim": "LLMs were used in the final stretch of development to work through difficult technical challenges and bugs.",
+    "source_url": "https://www.gamesindustry.biz/house-house-clarifies-use-of-ai-tools-in-big-walks-final-stage-of-development"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "curious",
+    "after": "",
+    "before": "Meanwhile, 19 IGF jurors"
+   },
+   {
+    "tag": "sighs",
+    "after": "jurors have a point.",
+    "before": "But a bug fix"
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [
+   {
+    "quote": "Big Walk Used AI for 10 Lines of Code and Judges Noticed",
+    "problem": "The title compresses the story into 'used AI for 10 lines of code', but the sources describe the ~10 lines as one example (PC Gamer: 'about 10 lines of code' to fix one problem) within a broader 'well under 0.1%' estimate across 'some cases'; the title risks implying 10 lines was the total. The script itself correctly says '10 lines for one bug', so this is a headline simplification rather than a factual error.",
+    "severity": "minor"
+   },
+   {
+    "quote": "the studio outed itself. That's disclosure, not a scandal.",
+    "problem": "Framed as opinion and the studio did post the disclosure itself, but Eurogamer characterises it as done 'under pressure' after social media claims; 'outed itself' slightly flatters the voluntariness. Opinion, not a blocker.",
+    "severity": "minor"
+   }
+  ],
+  "rumour_labelling_ok": true,
+  "summary": "All core claims (AI used sparingly, under 0.1% of code, ~10-line bug-fix example, 19 IGF jurors declining to vote for gen-AI games, Steam not requesting code/chatbot disclosure, 'failure' quote about the missing policy, FAQ posting) are supported by the sources. On-screen text and description check out. Only minor issues: the YouTube title's '10 Lines of Code' compression and the opinion framing of the studio 'outing itself'. Correctly not labelled as rumour since the disclosure is confirmed."
+ }
+}

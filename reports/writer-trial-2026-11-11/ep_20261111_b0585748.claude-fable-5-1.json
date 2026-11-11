@@ -1,0 +1,199 @@
+{
+ "id": "ep_20261111_b0585748",
+ "model": "claude-fable-5-1",
+ "secs": 243,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "Spoken word count is 116; it must be 70-100.",
+    "The stamp's word \"5.2\" is not in the narration; use a word that is spoken.",
+    "The stamp's figure \"5.2\" is not in the narration."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [
+    "Spoken word count is 112; it must be 70-100.",
+    "The stamp's word \"5.2\" is not in the narration; use a word that is spoken.",
+    "The stamp's figure \"5.2\" is not in the narration.",
+    "\"$60 digital, $70 cartridge, or that $520 box?...\" stacks 3 figures in one sentence; keep two at most and move the rest to another sentence or the card."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": false,
+ "friendWhy": [
+  "fact check: \"Nintendo says no Switch 2 game sold faster.\" - Nintendo's claim (via Insider Gaming) is narrower: the highest first-four-day global sales for any Nintendo-published Switch 2 game. The script drops the 'Nintendo-published' qualifier and attributes to Nintendo a broader claim covering all Switch 2 games, including third-party titles, which the sources do not support. The YouTube description gets this right, but the spoken line does not."
+ ],
+ "finalPass": true,
+ "problems": [
+  "Spoken word count is 112; it must be 70-100.",
+  "The stamp's word \"5.2\" is not in the narration; use a word that is spoken.",
+  "The stamp's figure \"5.2\" is not in the narration.",
+  "\"$60 digital, $70 cartridge, or that $520 box?...\" stacks 3 figures in one sentence; keep two at most and move the rest to another sentence or the card."
+ ],
+ "draftText": "Ocarina of Time sold five point two million copies in four days. Nintendo says none of its own Switch 2 games sold faster. Metacritic has it at 96, and you've rated it nine point six. Your console cashed in. Circana says Switch 2 had its best US sales week of the year, off the five hundred twenty dollars Zelda edition. One catch. That box doesn't include the game you're after. Against the sixty dollars digital game, this cuts one way. I think the remake's the bargain, the console's a collector tax. I'd grab the cartridge and skip the box. sixty dollars digital, seventy dollars cartridge, or that five hundred twenty dollars box?",
+ "text": "Ocarina of Time sold five point two million copies in four days. Nintendo says none of its own Switch 2 games sold faster. Metacritic has it at 96, and you've rated it nine point six. Your console cashed in. Circana says Switch 2 had its best US sales week of the year, off the five hundred twenty dollars Zelda edition. One catch. That box doesn't include the game you're after. Against the sixty dollars digital game, this cuts one way. I think the remake's the bargain, the console's a collector tax. I'd grab the cartridge and skip the box. sixty dollars digital, seventy dollars cartridge, or that five hundred twenty dollars box?",
+ "title": "Ocarina of Time Sells 5.2 Million in Four Days on Switch 2",
+ "headline": "Ocarina Remake Sells 5.2 Million in Four Days",
+ "script": {
+  "story_type": "sales",
+  "game_title": "The Legend of Zelda: Ocarina of Time",
+  "steam_search_term": "",
+  "headline": "Ocarina Remake Sells 5.2 Million in Four Days",
+  "hook": "Ocarina of Time sold 5.2 million copies in four days.",
+  "beats": [
+   {
+    "narration": "Nintendo says none of its own Switch 2 games sold faster. Metacritic has it at 96, and you've rated it 9.6.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "Link",
+      "Hyrule Field",
+      "Ocarina"
+     ]
+    },
+    "visual": {
+     "kind": "score",
+     "primary": "96",
+     "secondary": "Metacritic",
+     "value_a": 96,
+     "items": []
+    }
+   },
+   {
+    "narration": "Your console cashed in. Circana says Switch 2 had its best US sales week of the year, off the $520 Zelda edition.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "Switch 2",
+      "Triforce dock",
+      "green and gold Joy-Con"
+     ]
+    },
+    "visual": {
+     "kind": "price",
+     "primary": "$520",
+     "secondary": "Zelda 40th Anniversary Switch 2",
+     "region": "US"
+    }
+   },
+   {
+    "narration": "One catch. That box doesn't include the game you're after.",
+    "footage": {
+     "want": "ui",
+     "keywords": [
+      "40th Anniversary console",
+      "box art",
+      "Triforce"
+     ]
+    },
+    "visual": {
+     "kind": "title",
+     "primary": "Game sold separately",
+     "secondary": "40th Anniversary console"
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "THE COMPARISON",
+   "narration": "Against the $60 digital game, this cuts one way. I think the remake's the bargain, the console's a collector tax. I'd grab the cartridge and skip the box.",
+   "on_screen": "$60 game beats the $520 box"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "Link",
+    "Epona",
+    "Hyrule Field",
+    "Ganon"
+   ]
+  },
+  "person": "",
+  "loop_line": "$60 digital, $70 cartridge, or that $520 box?",
+  "stamp": {
+   "word": "5.2",
+   "text": "5.2 MILLION",
+   "sub": "4 DAYS",
+   "tone": "confirm"
+  },
+  "story_year": 2026,
+  "is_rumour": false,
+  "attribution": "Source: Nintendo via Insider Gaming / Eurogamer / GameSpot",
+  "hashtags": [
+   "#OcarinaOfTime",
+   "#Zelda",
+   "#Switch2",
+   "#Nintendo"
+  ],
+  "youtube": {
+   "title": "Ocarina of Time Sells 5.2 Million in Four Days on Switch 2",
+   "description": "The Ocarina of Time remake moved 5.2 million copies in four days, a record for any Nintendo-published Switch 2 game, and the $520 Zelda edition console pushed Switch 2 to its best US sales week of 2026. Here's what the numbers look like for your wallet, and why the $60 game is the better buy than the box. Sources: Nintendo via Insider Gaming, Eurogamer and GameSpot, with Circana data from Mat Piscatella.",
+   "tags": [
+    "Ocarina of Time",
+    "Ocarina of Time remake",
+    "Zelda",
+    "Switch 2",
+    "Nintendo",
+    "Switch 2 sales",
+    "Zelda 40th Anniversary Switch 2",
+    "Circana"
+   ],
+   "thumb_text": "5.2 MILLION",
+   "title_variants": [
+    "Ocarina of Time Just Broke Nintendo's Switch 2 Sales Record",
+    "Zelda Sold 5.2 Million and Lifted Switch 2 to Its Best Week"
+   ]
+  },
+  "claims": [
+   {
+    "claim": "The Legend of Zelda: Ocarina of Time for Switch 2 sold over 5.2 million units worldwide in its first four days after launching November 5, 2026.",
+    "source_url": "https://insider-gaming.com/ocarina-of-time-sells-record-high-units-four-days/"
+   },
+   {
+    "claim": "This is the highest global sales for any Nintendo-published Switch 2 game in its first four days.",
+    "source_url": "https://insider-gaming.com/ocarina-of-time-sells-record-high-units-four-days/"
+   },
+   {
+    "claim": "The remake has a 96 on Metacritic and a user score of 9.6.",
+    "source_url": "https://insider-gaming.com/ocarina-of-time-sells-record-high-units-four-days/"
+   },
+   {
+    "claim": "Switch 2 had its highest dollar sales week of 2026 in the US, according to Circana analyst Mat Piscatella, driven by the Zelda 40th Anniversary Edition console.",
+    "source_url": "https://www.eurogamer.net/the-legend-of-zelda-ocarina-of-time-switch-2-best-week-sales"
+   },
+   {
+    "claim": "The 40th Anniversary Edition console is priced at $520 and does not include a copy of the game.",
+    "source_url": "https://www.eurogamer.net/the-legend-of-zelda-ocarina-of-time-switch-2-best-week-sales"
+   },
+   {
+    "claim": "The game is priced at $60 digitally and $70 on a physical cartridge.",
+    "source_url": "https://www.gamespot.com/articles/switch-2-just-had-its-best-sales-week-of-2026-and-its-all-because-of-zelda/"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "sighs",
+    "after": "",
+    "before": "One catch. That box"
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [
+   {
+    "quote": "I'd grab the cartridge and skip the box. sixty dollars digital",
+    "problem": "Sentence starts lowercase; style only.",
+    "severity": "minor"
+   }
+  ],
+  "rumour_labelling_ok": true,
+  "summary": "All factual claims (5.2M units in four days, record for Nintendo-published Switch 2 titles, Metacritic 96 and user score 9.6, Circana/Piscatella best US dollar sales week of 2026, $520 console sold without the game, $60 digital / $70 cartridge) are supported by the sources. Buy/skip advice is clearly framed as the narrator's opinion. On-screen cards, title and description check out."
+ }
+}

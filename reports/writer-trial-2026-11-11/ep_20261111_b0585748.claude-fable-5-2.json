@@ -1,0 +1,203 @@
+{
+ "id": "ep_20261111_b0585748",
+ "model": "claude-fable-5-2",
+ "secs": 234,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "Spoken word count is 115; it must be 70-100.",
+    "The stamp's word \"5.2\" is not in the narration; use a word that is spoken.",
+    "The stamp's figure \"5.2\" is not in the narration.",
+    "On-screen text \"Switch 2 has its best US sales week of 2026\" is too long to read in a second."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [
+    "Spoken word count is 111; it must be 70-100.",
+    "The stamp's figure \"5.2\" is not in the narration."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": true,
+ "friendWhy": [],
+ "finalPass": true,
+ "problems": [
+  "The stamp's figure \"5.2\" is not in the narration."
+ ],
+ "draftText": "Ocarina of Time is now Switch two's fastest-selling Nintendo game. Nintendo says you bought over five point two million copies in four days. Then it gets weird. Circana says the five hundred twenty dollars Zelda console gave Switch 2 its best US sales week of twenty twenty-six. Your five hundred twenty dollars doesn't include the game, though. The download's another sixty dollars, the cartridge seventy dollars. The N64 original came out in nineteen ninety-eight, and its remake is this year's highest-rated game. The game is your smart buy. I'd take the download and skip the fancy console. Is your Ocarina a sixty dollars download, a seventy dollars cartridge, or a skip?",
+ "text": "Ocarina of Time is now Switch two's fastest-selling Nintendo game. Nintendo says you bought over five point two million copies in four days. Circana says the five hundred twenty dollars Zelda console gave Switch 2 its best US sales week of twenty twenty-six. Your five hundred twenty dollars doesn't include the game, though. The download's another sixty dollars, the cartridge seventy dollars. The N64 original came out in nineteen ninety-eight, and its remake is this year's highest-rated game. I'd take the download. Your Ocarina is a sixty dollars download, a seventy dollars cartridge, or a skip.",
+ "title": "Ocarina of Time Sold 5.2 Million in 4 Days on Switch 2",
+ "headline": "Ocarina Remake Sets Switch 2 Sales Record",
+ "script": {
+  "story_type": "sales",
+  "game_title": "The Legend of Zelda: Ocarina of Time",
+  "steam_search_term": "",
+  "headline": "Ocarina Remake Sets Switch 2 Sales Record",
+  "hook": "Ocarina of Time is now Switch 2's fastest-selling Nintendo game.",
+  "beats": [
+   {
+    "narration": "Nintendo says you bought over 5.2 million copies in four days.",
+    "footage": {
+     "want": "gameplay",
+     "keywords": [
+      "Link",
+      "Hyrule Field",
+      "Epona"
+     ]
+    },
+    "visual": {
+     "kind": "stat",
+     "primary": "5.2 million",
+     "secondary": "copies sold in 4 days"
+    }
+   },
+   {
+    "narration": "Circana says the $520 Zelda console gave Switch 2 its best US sales week of 2026.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "Switch 2 console",
+      "Triforce dock"
+     ]
+    },
+    "visual": {
+     "kind": "title",
+     "primary": "Best week of 2026",
+     "secondary": "Switch 2 US dollar sales, per Circana"
+    }
+   },
+   {
+    "narration": "Your $520 doesn't include the game, though. The download's another $60, the cartridge $70.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "Joy-Cons",
+      "green and gold"
+     ]
+    },
+    "visual": {
+     "kind": "price",
+     "primary": "$60",
+     "secondary": "Digital. $70 on cartridge",
+     "region": "Switch 2"
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "THE TAKEAWAY",
+   "narration": "The N64 original came out in 1998, and its remake is this year's highest-rated game. I'd take the download.",
+   "on_screen": "Buy the game, skip the console"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "Link",
+    "Master Sword",
+    "Ganondorf"
+   ]
+  },
+  "person": "",
+  "loop_line": "Your Ocarina is a $60 download, a $70 cartridge, or a skip.",
+  "stamp": {
+   "word": "million",
+   "text": "5.2 MILLION",
+   "sub": "SOLD",
+   "tone": "confirm"
+  },
+  "story_year": 2026,
+  "is_rumour": false,
+  "attribution": "Source: Insider Gaming / Eurogamer / GameSpot",
+  "hashtags": [
+   "#OcarinaOfTime",
+   "#Zelda",
+   "#Switch2",
+   "#Nintendo"
+  ],
+  "youtube": {
+   "title": "Ocarina of Time Sold 5.2 Million in 4 Days on Switch 2",
+   "description": "The Ocarina of Time remake is the fastest-selling Nintendo-published Switch 2 game over its first four days, and the $520 Zelda console that launched alongside it doesn't include a copy. Here's what that means for your wallet and which one we'd actually buy. Sources: Insider Gaming, Eurogamer, GameSpot, with sales data from Nintendo and Circana's Mat Piscatella.",
+   "tags": [
+    "Ocarina of Time",
+    "Ocarina of Time remake",
+    "Zelda Ocarina of Time Switch 2",
+    "Switch 2",
+    "Nintendo",
+    "Zelda 40th Anniversary",
+    "Switch 2 sales",
+    "Zelda"
+   ],
+   "thumb_text": "5.2 MILLION IN 4 DAYS",
+   "title_variants": [
+    "Ocarina of Time Remake Breaks a Switch 2 Sales Record",
+    "The $520 Zelda Switch 2 Doesn't Include Ocarina of Time"
+   ]
+  },
+  "claims": [
+   {
+    "claim": "The Legend of Zelda: Ocarina of Time for Switch 2 sold over 5.2 million units worldwide in its first four days after launching November 5, 2026, according to Nintendo.",
+    "source_url": "https://insider-gaming.com/ocarina-of-time-sells-record-high-units-four-days/"
+   },
+   {
+    "claim": "That is the highest global sales for any Nintendo-published Switch 2 game in its first four days.",
+    "source_url": "https://insider-gaming.com/ocarina-of-time-sells-record-high-units-four-days/"
+   },
+   {
+    "claim": "Circana's Mat Piscatella said Switch 2 had its best US dollar sales week of 2026 so far, thanks to the 40th Anniversary Edition console.",
+    "source_url": "https://www.gamespot.com/articles/switch-2-just-had-its-best-sales-week-of-2026-and-its-all-because-of-zelda/"
+   },
+   {
+    "claim": "The Legend of Zelda: 40th Anniversary Edition Switch 2 console costs $520 and does not include a copy of the game.",
+    "source_url": "https://www.eurogamer.net/the-legend-of-zelda-ocarina-of-time-switch-2-best-week-sales"
+   },
+   {
+    "claim": "The game is priced at $60 digitally and $70 on a physical cartridge.",
+    "source_url": "https://www.gamespot.com/articles/switch-2-just-had-its-best-sales-week-of-2026-and-its-all-because-of-zelda/"
+   },
+   {
+    "claim": "The remake is the highest-rated video game of 2026.",
+    "source_url": "https://insider-gaming.com/ocarina-of-time-sells-record-high-units-four-days/"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "curious",
+    "after": "",
+    "before": "Circana says the $520"
+   },
+   {
+    "tag": "chuckles",
+    "after": "include the game, though.",
+    "before": "The download's another $60,"
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [
+   {
+    "quote": "the $520 Zelda console that launched alongside it",
+    "problem": "The sources say the console launched on October 29 and the game on November 5, a week apart. GameSpot does say the console 'debuted with the game', so 'alongside' is loose rather than unsupported.",
+    "severity": "minor"
+   },
+   {
+    "quote": "gave Switch 2 its best US sales week of twenty twenty-six",
+    "problem": "The sources say it was the best week of 2026 'so far' and measured in dollar sales. The script drops both qualifiers, though the on-screen card does specify dollar sales.",
+    "severity": "minor"
+   },
+   {
+    "quote": "$60 Digital. $70 on cartridge (region Switch 2)",
+    "problem": "The prices match GameSpot, but '(region Switch 2)' is unclear wording and looks like a template artefact. The sources give these as US dollar prices.",
+    "severity": "minor"
+   }
+  ],
+  "rumour_labelling_ok": true,
+  "summary": "Pass: every factual claim is supported by the sources, with three minor wording issues. The 5.2 million units in four days and the Nintendo-published Switch 2 four-day record come from Nintendo via Insider Gaming. The best US dollar sales week of 2026, attributed to Circana, and the $520 console without the game are in Eurogamer and GameSpot. The $60 digital and $70 physical prices are in GameSpot, and the highest-rated game of 2026 claim is in Insider Gaming. The 1998 N64 release is established public knowledge, and the buying advice is clearly framed as opinion. Nothing is rumour, so the non-rumour label is correct."
+ }
+}

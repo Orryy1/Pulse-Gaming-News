@@ -1,0 +1,188 @@
+{
+ "id": "ep_20261111_a47d4bee",
+ "model": "claude-fable-5-2",
+ "secs": 144,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "On-screen text \"GTA 6 runs at 30fps on console for now\" is too long to read in a second."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": true,
+ "friendWhy": [],
+ "finalPass": true,
+ "problems": [],
+ "draftText": "Rockstar hasn't promised you 60 fps in GTA 6. Rockstar North's Rob Nelson reportedly told YouTuber Davy Jones consoles run it at 30 right now. That's not the worrying bit. Per Kotaku, Nelson has to ask the technical team about your 60 option. You've seen this before. GTA 5 only got 60 on PS5, two generations later. Red Dead 2 still hasn't. Next to Red Dead 2, this points to years, not weeks. I'd plan your launch around 30. I wouldn't bet your weekend on a patch. Our GTA documentary tests the other launch promises, so why is it 30?",
+ "text": "Rockstar hasn't promised you 60 fps in GTA 6. Rockstar North's Rob Nelson reportedly told YouTuber Davy Jones consoles run it at 30 right now. That's not the worrying bit. Per Kotaku, Nelson has to ask the technical team about your 60 option. You've seen this before. GTA 5 only got 60 on PS5, two generations later. Red Dead 2 still hasn't. Unconfirmed, but Red Dead 2 says years, not weeks. I'd plan your launch around 30, not a patch. Our GTA documentary tests the other launch promises, so ask yourself why is it 30.",
+ "title": "Why GTA 6 reportedly runs at 30 fps on consoles",
+ "headline": "GTA 6 Reportedly 30 FPS On Console",
+ "script": {
+  "story_type": "explainer",
+  "game_title": "Grand Theft Auto VI",
+  "steam_search_term": "",
+  "headline": "GTA 6 Reportedly 30 FPS On Console",
+  "hook": "Rockstar hasn't promised you 60 fps in GTA 6.",
+  "beats": [
+   {
+    "narration": "Rockstar North's Rob Nelson reportedly told YouTuber Davy Jones consoles run it at 30 right now.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "Vice City skyline",
+      "street traffic"
+     ]
+    },
+    "visual": {
+     "kind": "stat",
+     "primary": "30 FPS",
+     "secondary": "On console, reported"
+    }
+   },
+   {
+    "narration": "That's not the worrying bit. Per Kotaku, Nelson has to ask the technical team about your 60 option.",
+    "footage": {
+     "want": "gameplay",
+     "keywords": [
+      "police car chase",
+      "driving"
+     ]
+    },
+    "visual": {
+     "kind": "quote",
+     "primary": "\"consult the technical team\"",
+     "secondary": "Rob Nelson, via Flow Games"
+    }
+   },
+   {
+    "narration": "You've seen this before. GTA 5 only got 60 on PS5, two generations later. Red Dead 2 still hasn't.",
+    "footage": {
+     "want": "world",
+     "keywords": [
+      "crowded beach",
+      "city streets"
+     ]
+    },
+    "visual": {
+     "kind": "versus",
+     "primary": "Rockstar's 60 fps record",
+     "secondary": "On console",
+     "items": [
+      "GTA 5:60 fps on PS5",
+      "*Red Dead 2:No 60 fps upgrade"
+     ]
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "THE TAKEAWAY",
+   "narration": "Unconfirmed, but Red Dead 2 says years, not weeks. I'd plan your launch around 30, not a patch.",
+   "on_screen": "Plan on 30 at launch"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "police car chase",
+    "high-speed driving"
+   ]
+  },
+  "person": "Rob Nelson",
+  "loop_line": "Our GTA documentary tests the other launch promises, so ask yourself why is it 30.",
+  "stamp": {
+   "word": "30",
+   "text": "30 FPS",
+   "sub": "REPORTED",
+   "tone": "alert"
+  },
+  "story_year": 2026,
+  "is_rumour": true,
+  "attribution": "Source: Kotaku / Tom's Hardware / Flow Games",
+  "hashtags": [
+   "#GTA6",
+   "#GTAVI",
+   "#RockstarGames",
+   "#PS5"
+  ],
+  "youtube": {
+   "title": "Why GTA 6 reportedly runs at 30 fps on consoles",
+   "description": "If you were counting on a 60 fps mode in GTA 6 on day one, Rockstar hasn't promised you one. Rockstar North's Rob Nelson reportedly told YouTuber Davy Jones that consoles currently run the game at 30 fps and that he would need to ask the technical team about a 60 fps option. GTA 5 only got 60 fps on PS5 and Xbox Series consoles, and Red Dead Redemption 2 still has no official 60 fps upgrade. Sources: Kotaku, Tom's Hardware, Flow Games.",
+   "tags": [
+    "GTA 6",
+    "GTA 6 30 fps",
+    "GTA 6 60 fps",
+    "GTA 6 performance mode",
+    "Grand Theft Auto 6",
+    "Rockstar Games",
+    "Rob Nelson",
+    "GTA 6 PS5",
+    "GTA 6 PS5 Pro",
+    "Red Dead Redemption 2 60 fps"
+   ],
+   "thumb_text": "30 FPS, FOR NOW",
+   "title_variants": [
+    "GTA 6 is reportedly 30 fps on console, with no 60 promised",
+    "Rockstar hasn't promised 60 fps in GTA 6, per reports"
+   ]
+  },
+  "claims": [
+   {
+    "claim": "Rob Nelson, head of development at Rockstar North, reportedly told YouTuber Davy Jones that GTA 6 currently runs at 30 fps on console during development.",
+    "source_url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032"
+   },
+   {
+    "claim": "Nelson said it is still necessary to consult the technical team to determine whether there will be a 60 fps option at launch or later.",
+    "source_url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032"
+   },
+   {
+    "claim": "Tom's Hardware quotes Nelson as needing to \"consult the technical team\" about 60 fps at launch or later, as relayed on Jones's Flow Games podcast.",
+    "source_url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support"
+   },
+   {
+    "claim": "GTA 5 did not get a 60 fps option until the upgrade for PS5 and Xbox Series X/S.",
+    "source_url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032"
+   },
+   {
+    "claim": "GTA 5 ran at 30 fps on PS3 and PS4 before getting 60 fps on PS5, two console generations after its original release.",
+    "source_url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support"
+   },
+   {
+    "claim": "Red Dead Redemption 2 still does not have an official 60 fps upgrade for modern consoles.",
+    "source_url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "sighs",
+    "after": "PS5, two generations later.",
+    "before": "Red Dead 2 still"
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [
+   {
+    "quote": "Why GTA 6 reportedly runs at 30 fps on consoles",
+    "problem": "The title promises an explanation of why, but the script gives no reason for the 30 fps cap. Tom's Hardware carries a Digital Foundry theory about CPU load, which the script does not use. This is a packaging mismatch, not an unsupported fact.",
+    "severity": "minor"
+   },
+   {
+    "quote": "GTA 5 only got 60 on PS5, two generations later.",
+    "problem": "The spoken line leaves out Xbox Series X/S, which Kotaku says got the 60 fps upgrade as well. The description states it correctly. \"Two generations later\" is consistent with Tom's Hardware's PS3/PS4 to PS5 history.",
+    "severity": "minor"
+   }
+  ],
+  "rumour_labelling_ok": true,
+  "summary": "The script passes with no blockers; every factual claim is supported by Kotaku and Tom's Hardware. Nelson's 30 fps comment is hedged with \"reportedly\", and the \"consult the technical team\" quote is correctly attributed via Flow Games. The GTA 5 and Red Dead 2 history matches the sources. The \"years, not weeks\" line and the advice to plan around 30 are flagged as unconfirmed or framed as opinion. The two minor issues are a title that promises a \"why\" the script does not deliver and the spoken omission of Xbox Series."
+ }
+}

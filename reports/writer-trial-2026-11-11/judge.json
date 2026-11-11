@@ -1,0 +1,287 @@
+[
+ {
+  "id": "ep_20261111_5a83c0fe",
+  "title": "Bandai Namco Shuts Unknown 9 Studio, Takes a €21M Hit",
+  "arms": {
+   "claude-opus-5-5": {
+    "words": 98,
+    "wordsPerSentence": 10.9,
+    "you": 3.1,
+    "i": 1,
+    "finalPass": true,
+    "attempts": 1,
+    "friendKept": true,
+    "problems": 0,
+    "secs": 61,
+    "judge": [
+     7,
+     7
+    ],
+    "caughtPlant": true
+   },
+   "claude-fable-5-1": {
+    "words": 96,
+    "wordsPerSentence": 9.6,
+    "you": 3.1,
+    "i": 1,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": true,
+    "problems": 1,
+    "secs": 117,
+    "judge": [
+     6,
+     5
+    ],
+    "caughtPlant": true
+   },
+   "claude-fable-5-2": {
+    "words": 96,
+    "wordsPerSentence": 10.7,
+    "you": 2.1,
+    "i": 1,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": true,
+    "problems": 0,
+    "secs": 112,
+    "judge": [
+     8,
+     6
+    ],
+    "caughtPlant": true
+   }
+  },
+  "reason_claude-sonnet-5-5": "B opens with a flat verdict, uses the sourced Reflector quote and the date, and keeps one owned opinion line, though 'Dumping the team was wrong' is a bit strong and the six-year framing is slightly loose. A has a good hook and a clear owned line, but 'You've seen this with Arkane Lyon' is an odd claim, 'pricey goodbye' is editorializing, and the buyout timeline is fuzzy. C is wordy and scattered: the 'small club' line is filler, the Arkane Lyon tangent distracts, and it stacks two opinion lines at the end, which weakens the voice.",
+  "reason_claude-opus-5-5": "A is the most accurate. The loss figure, the 18% layoffs, the shelved comics and novels, the Arkane Lyon parallel and the six years since the 2020 buyout all match the sources. Its voice is friendly and it closes with a question to you, but it stacks two verdicts (\"bad call\" plus \"I'd have\"), and the Arkane line reads a little awkwardly. B opens strongly and uses Reflector's own quote well. However, \"a slow way to spend 21 million euros\" treats the liquidation loss as money spent, which misleads. It also leans on two verdict lines. C has accurate details on the January 2025 layoffs, the 'undecided' schedule and Arkane Lyon. But \"you're in a small club\" implies sales figures the sources don't give, and \"And it was slow\" is confusing. It also has a grammar slip (\"twenty-one million euros loss\") and ends weakly, so it ranks last.",
+  "planted": "Bandai Namco expects a 70 million euro loss from closing Reflector, says Gematsu. That's a pricey goodbye."
+ },
+ {
+  "id": "ep_20261111_b0585748",
+  "title": "Zelda Ocarina of Time tops 5.2 million in four days",
+  "arms": {
+   "claude-opus-5-5": {
+    "words": 107,
+    "wordsPerSentence": 10.7,
+    "you": 2.8,
+    "i": 0.9,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": false,
+    "problems": 3,
+    "secs": 135,
+    "judge": [
+     7.6,
+     7.5
+    ],
+    "caughtPlant": true
+   },
+   "claude-fable-5-1": {
+    "words": 112,
+    "wordsPerSentence": 10.2,
+    "you": 2.7,
+    "i": 1.8,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": false,
+    "problems": 4,
+    "secs": 243,
+    "judge": [
+     5.8,
+     6.8
+    ],
+    "caughtPlant": true
+   },
+   "claude-fable-5-2": {
+    "words": 96,
+    "wordsPerSentence": 12,
+    "you": 3.1,
+    "i": 1,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": true,
+    "problems": 1,
+    "secs": 234,
+    "judge": [
+     5.6,
+     6.4
+    ],
+    "caughtPlant": true
+   }
+  },
+  "reason_claude-sonnet-5-5": "C has the clearest hook, a flat verdict, one owned line ('I'd start here'), and a useful caveat from the Insider Gaming review. Its risks: the 'best case for remakes yet' claim is an overreach, and the $60/$70 prices are not in the sources. A is muddled: 'Against the sixty dollars digital game, this cuts one way' is confusing, 'collector tax' is editorializing, and it states 'you've rated it nine point six' as if the viewer personally did, plus the unsourced $60/$70 prices. It also lumps the console sales (Circana) in without the date caveat. B has the same unsourced prices, plus a muddled 'Your five hundred twenty dollars' claim presumes the viewer bought the console, and 'Switch two's fastest-selling Nintendo game' slightly misstates the record. It also states you 'bought' the game when the record is global. Its closing line is awkward.",
+  "reason_claude-opus-5-5": "All three use $60 digital and $70 cartridge prices that appear nowhere in the sources. C reads cleanest. It balances the record with Insider Gaming's 'too easy' caveat, and its owned line ('If you're new to Zelda, I'd start here') is backed by the 'entry point' quote. Its weak spots are the unsourced 1998 date, the slight overreach in 'outsold every new Switch 2 game' and the mild hype of 'best case for remakes yet'. A has a strong verdict ('collector tax') and the useful point that the box doesn't include the game. But it has an awkward, meaningless line ('this cuts one way'), a lowercase sentence start, and it oddly credits the 9.6 user score to the viewer. B is accurate on the sourced figures but flat. It adds an unsourced 1998 date, its 'I'd take the download' has no reason behind it, and the closing line is clunky.",
+  "planted": "That's the best four-day start for any Nintendo-published Switch 13 game."
+ },
+ {
+  "id": "ep_20261110_36486bac",
+  "title": "Big Walk dev says AI touched well under 0.1% of code",
+  "arms": {
+   "claude-opus-5-5": {
+    "words": 96,
+    "wordsPerSentence": 9.6,
+    "you": 2.1,
+    "i": 1,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": true,
+    "problems": 2,
+    "secs": 114,
+    "judge": [
+     7.5,
+     8
+    ],
+    "caughtPlant": true
+   },
+   "claude-fable-5-1": {
+    "words": 96,
+    "wordsPerSentence": 9.6,
+    "you": 3.1,
+    "i": 1,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": true,
+    "problems": 2,
+    "secs": 259,
+    "judge": [
+     6,
+     6
+    ],
+    "caughtPlant": true
+   },
+   "claude-fable-5-2": {
+    "words": 99,
+    "wordsPerSentence": 11,
+    "you": 4,
+    "i": 1,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": true,
+    "problems": 3,
+    "secs": 161,
+    "judge": [
+     5,
+     6
+    ],
+    "caughtPlant": true
+   }
+  },
+  "reason_claude-sonnet-5-5": "C is the cleanest. It leads with the verified figure, keeps every fact in the sources (19 jurors, the Unity engineer stuck on a slowdown bug, the policy called a failure), and has an owned first-person line (\"If I had a vote, it'd still get mine\"). The ending is a bit flat and \"if it's your game of the year\" is slightly forced. B is solid but says \"your indie darling has a problem\", and \"your store page said nothing\" is awkward. It also asserts \"the studio outed itself\", which is a stretch since the disclosure followed the jury fallout and social media claims, and \"10 lines for one bug\" is slightly compressed. A opens with a loaded question, credits the 19 jurors to Eurogamer, which is not supported by the sources, and has a stray \"No.\", so it has the most accuracy and clarity risk.",
+  "reason_claude-opus-5-5": "C is the strongest. Its details are accurate and sourced: well under 0.1%, the slowdown bug after a Unity engineer got stuck, and the studio calling its missing policy a failure. It has one well-owned line ('If I had a vote, it'd still get mine') and a flat, fair verdict. A is accurate on the 10-line example, but its hook implies Big Walk is already losing awards, which the sources don't establish. It also has a confusing standalone 'No.' and a jokey 'robot uprising' quip. B has useful context on Steam disclosure and the policy failure. However, it conflates the 10-line example with the total AI use. 'Your indie darling has a problem' leans toward hype, and 'outed itself' overstates things, since the disclosure followed the social media claims.",
+  "planted": "If it's your game of the year, this matters. 64 IGF jurors won't vote for any game using generative AI."
+ },
+ {
+  "id": "ep_20261111_a47d4bee",
+  "title": "Why GTA 6 runs at 30 fps on PS5 and Xbox",
+  "arms": {
+   "claude-opus-5-5": {
+    "words": 94,
+    "wordsPerSentence": 10.4,
+    "you": 4.3,
+    "i": 1.1,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": false,
+    "problems": 0,
+    "secs": 127,
+    "judge": [
+     7.7,
+     8
+    ],
+    "caughtPlant": true
+   },
+   "claude-fable-5-1": {
+    "words": 99,
+    "wordsPerSentence": 11,
+    "you": 3,
+    "i": 2,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": false,
+    "problems": 1,
+    "secs": 213,
+    "judge": [
+     6.5,
+     6
+    ],
+    "caughtPlant": true
+   },
+   "claude-fable-5-2": {
+    "words": 95,
+    "wordsPerSentence": 9.5,
+    "you": 4.2,
+    "i": 1.1,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": true,
+    "problems": 0,
+    "secs": 144,
+    "judge": [
+     5.5,
+     5
+    ],
+    "caughtPlant": true
+   }
+  },
+  "reason_claude-sonnet-5-5": "B is the cleanest. It keeps the flat verdict, has one owned line ('I'd expect 30 at launch'), uses 'you' naturally, and stays close to the sources: Nelson would consult the technical team, DF suspects the CPU, GTA 5 got 60 on PS5, RDR2 has no official 60. Its PS5 Pro line is a mild stretch, and 'our GTA documentary' is an unsupported channel claim. A is decent but adds a 'wobbly answer' editorial, and its closing question about 'Rockstar's other promises get the full GTA documentary' is garbled. It also says 'Red Dead 2 still has no official 60 on your PS5', which is sourced. C is weakest: it attributes to Kotaku, which the sources do not support (the text is from Kotaku-like article but unlabeled), says 'two generations later' (GTA 5 to PS5 is not clearly two generations), invents 'years, not weeks', and has a muddled 'That's not the worrying bit' and awkward ending.",
+  "reason_claude-opus-5-5": "B is the strongest. It hedges correctly with 'reportedly' and 'Digital Foundry suspects,' and its PS5 Pro line matches the source's 'might not.' Its GTA 5 and Red Dead 2 history is accurate. It owns one first-person verdict ('I'd expect 30 at launch') and ends on a clear documentary CTA plus question. A has good voice moments ('wobbly answer this close'), but it says DF 'blames' the CPU when DF only theorized it. It also uses two first-person lines instead of one, and its closing sentence is garbled ('other promises get the full GTA documentary'). C has a nice turn in 'not the worrying bit.' However, it credits the Nelson quote to Kotaku when it originated with Flow Games, and 'Unconfirmed, but Red Dead 2 says years, not weeks' is muddled. It also ends weakly with 'ask yourself why is it 30.'",
+  "planted": "Rockstar North's Rob Nelson reportedly told YouTuber Davy Jones consoles run it at 97 for now."
+ },
+ {
+  "id": "ep_20261109_46ec0c8c",
+  "title": "Hollow Knight Silksong promises more free DLC",
+  "arms": {
+   "claude-opus-5-5": {
+    "words": 96,
+    "wordsPerSentence": 10.7,
+    "you": 5.2,
+    "i": 1,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": true,
+    "problems": 1,
+    "secs": 112,
+    "judge": [
+     5,
+     6
+    ],
+    "caughtPlant": true
+   },
+   "claude-fable-5-1": {
+    "words": 98,
+    "wordsPerSentence": 9.8,
+    "you": 7.1,
+    "i": 2,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": true,
+    "problems": 0,
+    "secs": 103,
+    "judge": [
+     8,
+     9
+    ],
+    "caughtPlant": true
+   },
+   "claude-fable-5-2": {
+    "words": 97,
+    "wordsPerSentence": 8.1,
+    "you": 5.2,
+    "i": 2.1,
+    "finalPass": true,
+    "attempts": 2,
+    "friendKept": true,
+    "problems": 0,
+    "secs": 86,
+    "judge": [
+     6,
+     7
+    ],
+    "caughtPlant": true
+   }
+  },
+  "reason_claude-sonnet-5-5": "B is the strongest: it opens with a clear hook, stays close to the sources (Nov 10, Reddit user, 2026 window announced last December, 'coming soon'), and carries the friend voice with a flat verdict ('great deal') plus an owned line ('I'd stop refreshing their blog'). A has a decent verdict but attributes the Switch 2 photos to Eurogamer rather than a Reddit user, says 'wallet stays shut' while overclaiming a bit, and has a clunky 'One detail's odd' / 'brilliant deal' feel. C invents facts: 'some of you fear twenty twenty-seven' is unsupported, it misattributes sources (Polygon is not in the sources), and 'a possible step back' is a GamesRadar attribution that does not appear in the provided text. That makes it the riskiest.",
+  "reason_claude-opus-5-5": "B is the strongest. It flows cleanly from the manual's plural promise to the November 10 date, the Reddit leak and the 2026-to-'coming soon' shift, and every one of those facts is sourced. It has one well-owned first-person line ('I'd stop refreshing their blog, and yes, I know you won't'). A is accurate but choppy. 'One detail's odd. That's Sea of Sorrow' is a confusing transition, and stacking 'I'd take it' with 'I wouldn't clear your December' dilutes the single owned line. C carries the most risk. It invents a fan fear of 2027 that no source mentions and attaches outlet names (Polygon, GamesRadar) that the text can't verify. It also leans on a hype-style 'Here's the catch...' and ends on a weak non-question.",
+  "planted": "Here's the catch... the expansion just says \"coming soon,\" despite a 6085 window."
+ }
+]

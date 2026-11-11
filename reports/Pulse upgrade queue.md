@@ -62,6 +62,7 @@ Ranked list the weekly improvement task (Thursdays 11:00) works from. Top item f
 **Why:** owner, 11 Nov: investigate every scene of a downloaded playthrough so the factory knows exactly what each moment is and what every line of dialogue says, and can match moments to exact scenes in every Short, long video and documentary. This replaces searching per line with looking up a ready index.
 
 **Build:**
+
 - Per game, once: download the best clean cutscene movie or no-commentary playthrough (the cutscene source's picker), split it into shots by scene cuts, and keep a low-resolution proxy plus the index (full-resolution sections are fetched on demand, so disk stays small).
 - Every shot: keyframes described by the free local vision model on the PC (who is on screen, where, what happens, mood), characters and places named against the game's wiki cast list.
 - Every line: spoken dialogue transcribed with timestamps (Whisper on the Mac); text-box dialogue (Zelda and other unvoiced games) read with Apple's free on-device text recognition on the Mac; the speaker named where the box or the scene shows it.
@@ -75,6 +76,7 @@ Ranked list the weekly improvement task (Thursdays 11:00) works from. Top item f
 ## 7. Translated titles and the Spanish channel: switched off (owner, 11 Nov)
 
 The owner switched off the translated titles (LOCALIZE_LANGUAGES=, on the Mac) and keeps the Spanish twin channel off. Nothing to build. Earlier videos keep the translations they already have.
+
 ## 8. One named GTA VI Shorts strand, daily at a fixed hour, on the owner's own footage
 
 From "Niche deep research November 2026", changes 1 and 5. Needs the owner: his captures (already in the launch plan). Any build work after 22 Nov.
@@ -204,6 +206,24 @@ From the report, changes 23, 24 and 25. Needs the owner: one step to approve the
 **Build:** an About text saying what Pulse is, that a person reviews every video and that narration is AI-voiced. The standard AI line on every description and one sources link per video on the Pulse website. The altered-content label ticked whenever a realistic synthetic picture or sound appears, and a gate against any AI image that could pass as official game material. Three private records: a per-video production log, a footage ledger and a claims log. The owner reads Rockstar's policy and records his decision.
 
 **Measure:** share of uploads with the line, a sources link and a complete log (target all); the decision recorded with its date.
+
+## 22. Try ElevenLabs v4 for the Pulse voice (found 11 Nov)
+
+From the weekly scout. After 22 Nov; nothing that changes the voice ships during the launch.
+
+**Why:** ElevenLabs released Eleven v4 on 28 Sept 2026, described as its most expressive model and ranked first on the Artificial Analysis voice leaderboard. Pulse still uses eleven_v3 with stability 1.0 and style 0, chosen on 29 Oct because v3's breaths were too audible. A newer model may give the friend voice more life without the breaths. Size: small (one setting, ELEVENLABS_MODEL), but the voice is channel-wide and the owner has strong views on it.
+
+**Build:** voice 5 real Shorts' scripts on v4 with the same voice id and on v3, then measure breaths (the breath detector), pace in words a minute and loudness, and check delivery tags still work. Only if v4 is clearly better on the numbers, send the owner one before-and-after pair to hear (one tap). Behind ELEVENLABS_MODEL, so rollback is one line.
+
+**Measure:** audible breaths per minute, words a minute, the owner's pick, then 3-second hold on the next 20 Shorts.
+
+## Done: writer model trial (11 Nov)
+
+The standing item "test Claude Fable against the current writer and final checks on 5 real Shorts" is done. Opus 5.5 stays: blind judges preferred it on 4 of 5 stories (7.1 against 6.5 for Fable 5.1 and 6.1 for Fable 5.2); every model's fact check stopped every planted wrong figure; Fable was 1.3 to 1.7 times slower. Full results are in `reports/Writer model trial November 2026.md`.
+
+## Done: voice test verdict
+
+VOICE_TEST_SHARE is 1 on the Mac (every news and Why Short uses the personal voice), set with the 11 Nov voice study and friend pass. Nothing left to apply.
 
 ## 21. Post-launch GTA VI rankings with a stance, and one "complete" GTA compilation
 

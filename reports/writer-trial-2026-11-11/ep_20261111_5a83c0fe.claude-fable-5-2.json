@@ -1,0 +1,204 @@
+{
+ "id": "ep_20261111_5a83c0fe",
+ "model": "claude-fable-5-2",
+ "secs": 112,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "Spoken word count is 108; it must be 70-100.",
+    "Remove the serial (Oxford) comma before \"and\".",
+    "On-screen text \"\"Could not justify several more years of investment\"\" is too long to read in a second."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": true,
+ "friendWhy": [],
+ "finalPass": true,
+ "problems": [],
+ "draftText": "Bandai Namco gave the Unknown 9 studio exactly one game. Closing Reflector Entertainment costs Bandai about 21 million euros, Gematsu reports. That's not the rough part. A month after launch, 18% of the team was laid off. Reflector's own message says Bandai \"could not justify several more years of investment.\" If you wanted their second game, it's gone. Bandai bought this studio in twenty twenty. That's six years for one release. That's a waste of a team. I'd have let them finish the second one. One game is all you'll ever see from Reflector.",
+ "text": "Bandai Namco gave the Unknown 9 studio exactly one game. Closing Reflector Entertainment costs Bandai about 21 million euros, Gematsu reports. A month after launch, 18% of the team was laid off. Reflector's own message says Bandai \"could not justify several more years of investment.\" If you wanted their second game, it's gone. Bandai bought this studio in twenty twenty. Six years for one release is a slow way to spend 21 million euros. Dumping the team was wrong. I'd have let them finish the second one. One game is all you'll ever see from Reflector.",
+ "title": "Bandai Namco Is Closing the Unknown 9 Studio After 1 Game",
+ "headline": "Bandai Namco Closes Unknown 9 Studio",
+ "script": {
+  "story_type": "industry",
+  "game_title": "Unknown 9: Awakening",
+  "steam_search_term": "Unknown 9: Awakening",
+  "headline": "Bandai Namco Closes Unknown 9 Studio",
+  "hook": "Bandai Namco gave the Unknown 9 studio exactly one game.",
+  "beats": [
+   {
+    "narration": "Closing Reflector Entertainment costs Bandai about 21 million euros, Gematsu reports.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "the Fold",
+      "quiet environment"
+     ]
+    },
+    "visual": {
+     "kind": "stat",
+     "primary": "€21 million",
+     "secondary": "Bandai Namco's expected extraordinary loss"
+    }
+   },
+   {
+    "narration": "A month after launch, 18% of the team was laid off.",
+    "footage": {
+     "want": "gameplay",
+     "keywords": [
+      "combat",
+      "the Fold",
+      "set piece"
+     ]
+    },
+    "visual": {
+     "kind": "milestones",
+     "primary": "Reflector's short run",
+     "secondary": "",
+     "items": [
+      "2020-09:Bandai buys studio",
+      "2024-10-18:Unknown 9 launches",
+      "2025-01:Project cancelled",
+      "2026-11:Closure announced"
+     ]
+    }
+   },
+   {
+    "narration": "Reflector's own message says Bandai \"could not justify several more years of investment.\" If you wanted their second game, it's gone.",
+    "footage": {
+     "want": "character",
+     "keywords": [
+      "Anya Chalotra character",
+      "close-up"
+     ]
+    },
+    "visual": {
+     "kind": "quote",
+     "primary": "\"Could not justify\"",
+     "secondary": "Reflector Entertainment, via LinkedIn"
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "THE COMPARISON",
+   "narration": "Bandai bought this studio in 2020. Six years for one release is a slow way to spend 21 million euros. Dumping the team was wrong. I'd have let them finish the second one.",
+   "on_screen": "Six years, one game, no second try"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "the Fold",
+    "powers",
+    "combat"
+   ]
+  },
+  "person": "",
+  "loop_line": "One game is all you'll ever see from Reflector.",
+  "stamp": {
+   "word": "Closing",
+   "text": "STUDIO CLOSED",
+   "sub": "",
+   "tone": "alert"
+  },
+  "story_year": 2026,
+  "is_rumour": false,
+  "attribution": "Source: PC Gamer / Rock Paper Shotgun / Gematsu",
+  "hashtags": [
+   "#Unknown9Awakening",
+   "#BandaiNamco",
+   "#ReflectorEntertainment",
+   "#Unknown9"
+  ],
+  "youtube": {
+   "title": "Bandai Namco Is Closing the Unknown 9 Studio After 1 Game",
+   "description": "Reflector Entertainment made one game, Unknown 9: Awakening. Now Bandai Namco is dissolving the studio and expecting a loss of about 21 million euros. Here's how a studio bought in September 2020 ended up with a single release and no second try. Sources: PC Gamer, Rock Paper Shotgun, Gematsu.",
+   "tags": [
+    "Unknown 9 Awakening",
+    "Unknown 9",
+    "Bandai Namco",
+    "Reflector Entertainment",
+    "studio closure",
+    "Bandai Namco studio closing",
+    "Montreal game studio",
+    "gaming news"
+   ],
+   "thumb_text": "ONE GAME, THEN CLOSED",
+   "title_variants": [
+    "Unknown 9 Studio Is Closing and It Costs Bandai €21 Million",
+    "Bandai Namco Shuts the Unknown 9 Studio 2 Years After Launch"
+   ]
+  },
+  "claims": [
+   {
+    "claim": "Bandai Namco passed a resolution to dissolve and liquidate its subsidiary Reflector Entertainment.",
+    "source_url": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment"
+   },
+   {
+    "claim": "Unknown 9: Awakening was Reflector Entertainment's one and only game.",
+    "source_url": "https://www.pcgamer.com/gaming-industry/2-years-after-unknown-9-awakening-bombed-bandai-namco-is-closing-the-studio-that-made-it/"
+   },
+   {
+    "claim": "Bandai Namco expects to post an extraordinary loss of 21 million euros as a result of the liquidation.",
+    "source_url": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment"
+   },
+   {
+    "claim": "Unknown 9: Awakening was released on October 18, 2024.",
+    "source_url": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment"
+   },
+   {
+    "claim": "A month after launch, Reflector laid off 18% of its workforce.",
+    "source_url": "https://www.pcgamer.com/gaming-industry/2-years-after-unknown-9-awakening-bombed-bandai-namco-is-closing-the-studio-that-made-it/"
+   },
+   {
+    "claim": "In January 2025, more layoffs followed as an in-development project was cancelled.",
+    "source_url": "https://www.pcgamer.com/gaming-industry/2-years-after-unknown-9-awakening-bombed-bandai-namco-is-closing-the-studio-that-made-it/"
+   },
+   {
+    "claim": "Reflector wrote on LinkedIn that Bandai Namco concluded it \"could not justify several more years of investment\" after reviewing a project in pre-production.",
+    "source_url": "https://www.pcgamer.com/gaming-industry/2-years-after-unknown-9-awakening-bombed-bandai-namco-is-closing-the-studio-that-made-it/"
+   },
+   {
+    "claim": "Bandai Namco acquired Reflector Entertainment in September 2020.",
+    "source_url": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment"
+   },
+   {
+    "claim": "The closure was announced in November 2026, about six years after the acquisition.",
+    "source_url": "https://www.rockpapershotgun.com/bandai-namco-is-liquidating-unknown-9-awakening-studio-reflector-entertainment-following-multiple-previous-layoffs-since-the-games-launch"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "sighs",
+    "after": "",
+    "before": "A month after launch,"
+   },
+   {
+    "tag": "chuckles",
+    "after": "spend 21 million euros.",
+    "before": "Dumping the team was"
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [
+   {
+    "quote": "Six years for one release is a slow way to spend 21 million euros.",
+    "problem": "The €21 million is the extraordinary loss Bandai Namco expects from the liquidation, not the amount spent on the studio over six years. The line reads as a wry aside, but it loosely conflates the two.",
+    "severity": "minor"
+   }
+  ],
+  "rumour_labelling_ok": true,
+  "summary": "All factual claims and on-screen figures are supported by the sources: the closure, the €21 million expected loss, the 18% layoff a month after launch, the LinkedIn quote, the September 2020 acquisition, the 18 October 2024 launch and the January 2025 project cancellation. Opinion lines are clearly framed as opinion. The only issue is a minor imprecision in the joke that treats the liquidation loss as money spent over six years."
+ }
+}

@@ -1,0 +1,197 @@
+{
+ "id": "ep_20261111_a47d4bee",
+ "model": "claude-fable-5-1",
+ "secs": 213,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "Spoken word count is 104; it must be 70-100.",
+    "Remove the serial (Oxford) comma before \"and\".",
+    "On-screen text \"GTA 6 running at 30 fps on consoles for now\" is too long to read in a second.",
+    "On-screen text \"NPC crowds | Dynamic weather | Traffic AI\" is too long to read in a second."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [
+    "Remove the serial (Oxford) comma before \"and\"."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": false,
+ "friendWhy": [
+  "The rewrite drops the name AI.",
+  "The rewrite adds the quotation \"Consult\"."
+ ],
+ "finalPass": true,
+ "problems": [
+  "Remove the serial (Oxford) comma before \"and\"."
+ ],
+ "draftText": "Rockstar hasn't promised you 60 fps in GTA 6. Rob Nelson, Rockstar North's development head, reportedly told YouTuber Davy Jones the consoles run at 30 for now. He'd have to 'consult the technical team' about 60, at launch or later. That's a wobbly answer this close. Digital Foundry blames the CPU, not the GPU, choking on crowds, weather and traffic AI. Red Dead 2 still has no official 60 on your PS5. I think GTA 6 follows that pattern. I'd plan your launch week around 30. Rockstar's other promises get the full GTA documentary, so why is it 30?",
+ "text": "Rockstar hasn't promised you 60 fps in GTA 6. Rob Nelson, Rockstar North's development head, reportedly told YouTuber Davy Jones the consoles run at 30 for now. He'd have to 'consult the technical team' about 60, at launch or later. That's a wobbly answer this close. Digital Foundry blames the CPU, not the GPU, choking on crowds, weather and traffic AI. Red Dead 2 still has no official 60 on your PS5. I think GTA 6 follows that pattern. I'd plan your launch week around 30. Rockstar's other promises get the full GTA documentary, so why is it 30?",
+ "title": "Why GTA 6 Runs at 30 FPS on Your PS5",
+ "headline": "GTA 6 reportedly 30 fps at launch",
+ "script": {
+  "story_type": "explainer",
+  "game_title": "Grand Theft Auto VI",
+  "steam_search_term": "",
+  "headline": "GTA 6 reportedly 30 fps at launch",
+  "hook": "Rockstar hasn't promised you 60 fps in GTA 6.",
+  "beats": [
+   {
+    "narration": "Rob Nelson, Rockstar North's development head, reportedly told YouTuber Davy Jones the consoles run at 30 for now.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "Vice City street",
+      "base PS5 gameplay"
+     ]
+    },
+    "visual": {
+     "kind": "stat",
+     "primary": "30 FPS",
+     "secondary": "Consoles, for now"
+    }
+   },
+   {
+    "narration": "He'd have to 'consult the technical team' about 60, at launch or later. That's a wobbly answer this close.",
+    "footage": {
+     "want": "gameplay",
+     "keywords": [
+      "police car chase",
+      "motion blur"
+     ]
+    },
+    "visual": {
+     "kind": "quote",
+     "primary": "\"consult the technical team\"",
+     "secondary": "Rob Nelson, via Flow Games"
+    }
+   },
+   {
+    "narration": "Digital Foundry blames the CPU, not the GPU, choking on crowds, weather and traffic AI.",
+    "footage": {
+     "want": "world",
+     "keywords": [
+      "crowded beach",
+      "traffic jam",
+      "rainstorm"
+     ]
+    },
+    "visual": {
+     "kind": "list",
+     "primary": "Crowds | Weather | Traffic",
+     "secondary": "Digital Foundry's theory"
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "THE PATTERN",
+   "narration": "Red Dead 2 still has no official 60 on your PS5. I think GTA 6 follows that pattern. I'd plan your launch week around 30.",
+   "on_screen": "Red Dead 2 never got 60 either"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "Lucia and Jason",
+    "Vice City skyline"
+   ]
+  },
+  "person": "Rob Nelson",
+  "loop_line": "Rockstar's other promises get the full GTA documentary, so why is it 30?",
+  "stamp": {
+   "word": "30",
+   "text": "30 FPS",
+   "sub": "REPORTED",
+   "tone": "alert"
+  },
+  "story_year": 2026,
+  "is_rumour": false,
+  "attribution": "Source: Kotaku / Tom's Hardware / Flow Games",
+  "hashtags": [
+   "#GTA6",
+   "#GTA",
+   "#RockstarGames",
+   "#PS5"
+  ],
+  "youtube": {
+   "title": "Why GTA 6 Runs at 30 FPS on Your PS5",
+   "description": "If you're buying GTA 6 on console, you may want to know Rockstar hasn't committed to a 60 fps mode at launch. Rob Nelson, Rockstar North's head of development, reportedly told YouTuber Davy Jones the consoles run at 30 fps for now, and Digital Foundry thinks the CPU is the bottleneck. Red Dead 2 still has no official 60 fps upgrade, so the pattern is familiar. Sources: Kotaku, Tom's Hardware, Flow Games.",
+   "tags": [
+    "GTA 6",
+    "Grand Theft Auto VI",
+    "GTA 6 30fps",
+    "GTA 6 60fps",
+    "Rockstar Games",
+    "Rob Nelson",
+    "PS5 Pro",
+    "Digital Foundry"
+   ],
+   "thumb_text": "30 FPS ONLY?",
+   "title_variants": [
+    "GTA 6 Is 30 FPS on Console and Rockstar Won't Promise 60",
+    "Why Rockstar Hasn't Promised GTA 6 at 60 FPS"
+   ]
+  },
+  "claims": [
+   {
+    "claim": "Rockstar has not committed to a 60 fps option for GTA 6 on consoles at launch.",
+    "source_url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032"
+   },
+   {
+    "claim": "Rob Nelson, head of development at Rockstar North, reportedly told YouTuber Davy Jones the consoles are currently running the game at 30 fps.",
+    "source_url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032"
+   },
+   {
+    "claim": "Nelson said he would need to 'consult the technical team' about whether 60 fps comes at launch or later.",
+    "source_url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support"
+   },
+   {
+    "claim": "The interview was reported via Davy Jones's Flow Games podcast.",
+    "source_url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support"
+   },
+   {
+    "claim": "Digital Foundry theorizes that NPC density, dynamic weather, physics and traffic AI make the CPU the bottleneck rather than the GPU.",
+    "source_url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support"
+   },
+   {
+    "claim": "Red Dead Redemption 2 still has no official 60 fps upgrade on modern consoles.",
+    "source_url": "https://kotaku.com/gta-6-will-be-30fps-at-launch-rockstar-reportedly-not-sure-about-60fps-performance-mode-2000729032"
+   },
+   {
+    "claim": "The gameplay reveal happened about three months before launch.",
+    "source_url": "https://www.tomshardware.com/video-games/grand-theft-auto-6-will-run-at-only-30-fps-on-consoles-at-launch-no-performance-mode-promised-even-the-souped-up-ps5-pro-might-not-get-60-fps-support"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "sighs",
+    "after": "at launch or later.",
+    "before": "That's a wobbly answer"
+   },
+   {
+    "tag": "curious",
+    "after": "",
+    "before": "Digital Foundry blames the"
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [
+   {
+    "quote": "Digital Foundry blames the CPU, not the GPU, choking on crowds, weather and traffic AI.",
+    "problem": "Tom's Hardware describes this as Digital Foundry 'theorizing'; 'blames' is a touch firmer than the source, though the on-screen card correctly labels it 'Digital Foundry's theory'.",
+    "severity": "minor"
+   }
+  ],
+  "rumour_labelling_ok": true,
+  "summary": "All factual claims trace to Kotaku and Tom's Hardware: Nelson's 'consult the technical team' remark via Flow Games, the 30 fps 'for now' statement, Digital Foundry's CPU-bottleneck theory, and RDR2 lacking an official 60 fps upgrade on current consoles. The script consistently hedges with 'reportedly' and on-screen text is supported. Only a slight overstatement of Digital Foundry's theory as 'blame'."
+ }
+}

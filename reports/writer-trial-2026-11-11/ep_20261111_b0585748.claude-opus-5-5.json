@@ -1,0 +1,215 @@
+{
+ "id": "ep_20261111_b0585748",
+ "model": "claude-opus-5-5",
+ "secs": 135,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "The script says \"you\" once in 119 words; say \"you\" or \"your\" at least 3 times (three per hundred words) about what this means for the viewer.",
+    "Spoken word count is 119; it must be 70-100.",
+    "The stamp's figure \"5.2\" is not in the narration."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [
+    "Spoken word count is 107; it must be 70-100.",
+    "The stamp's word \"5.2\" is not in the narration; use a word that is spoken.",
+    "The stamp's figure \"5.2\" is not in the narration."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": false,
+ "friendWhy": [
+  "fact check: \"Still, a nineteen ninety-eight classic outsold every Switch 2 game Nintendo launched.\" - The sources only say it had the highest sales of any Nintendo-published Switch 2 game in its first four days. They do not say it outsold every Nintendo Switch 2 game overall. Dropping the four-day qualifier overstates the record.",
+  "fact check: \"A 1998 classic beat every new launch\" - This on-screen claim is broader still and unsupported. It drops both the 'first four days' and the 'Nintendo-published' qualifiers, implying it beat every new game launch."
+ ],
+ "finalPass": true,
+ "problems": [
+  "Spoken word count is 107; it must be 70-100.",
+  "The stamp's word \"5.2\" is not in the narration; use a word that is spoken.",
+  "The stamp's figure \"5.2\" is not in the narration."
+ ],
+ "draftText": "Ocarina of Time sold five point two million copies in four days. That's the best four-day start for any Nintendo-published Switch 2 game. Here's the catch for your wallet. The five hundred twenty dollars Zelda console doesn't even include the game. Critics love it too, with a 96 on Metacritic. Insider Gaming says veterans might find it too easy. Even so, a nineteen ninety-eight classic outsold every new Switch 2 game Nintendo has made at launch. That's the best case for remakes yet. If you're new to Zelda, I'd start here. Are you going digital for sixty dollars, cartridge for seventy dollars, or waiting for a sale?",
+ "text": "Ocarina of Time sold five point two million copies in four days. That's the best four-day start for any Nintendo-published Switch 2 game. Here's the catch for your wallet. The five hundred twenty dollars Zelda console doesn't even include the game. Critics love it too, with a 96 on Metacritic. Insider Gaming says veterans might find it too easy. Even so, a nineteen ninety-eight classic outsold every new Switch 2 game Nintendo has made at launch. That's the best case for remakes yet. If you're new to Zelda, I'd start here. Are you going digital for sixty dollars, cartridge for seventy dollars, or waiting for a sale?",
+ "title": "Zelda Ocarina of Time Remake Sells 5.2 Million in 4 Days",
+ "headline": "Ocarina of Time Remake Sells 5.2 Million",
+ "script": {
+  "story_type": "sales",
+  "game_title": "The Legend of Zelda: Ocarina of Time",
+  "steam_search_term": "",
+  "headline": "Ocarina of Time Remake Sells 5.2 Million",
+  "hook": "Ocarina of Time sold 5.2 million copies in four days.",
+  "beats": [
+   {
+    "narration": "That's the best four-day start for any Nintendo-published Switch 2 game.",
+    "footage": {
+     "want": "gameplay",
+     "keywords": [
+      "Link",
+      "Hyrule Field",
+      "Ocarina remake"
+     ]
+    },
+    "visual": {
+     "kind": "compare",
+     "primary": "Record Switch 2 launch",
+     "secondary": "First four days, Nintendo-published",
+     "items": [
+      "*Ocarina of Time:5.2M worldwide",
+      "Japan share:810,000"
+     ]
+    }
+   },
+   {
+    "narration": "Here's the catch for your wallet. The $520 Zelda console doesn't even include the game.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "40th Anniversary Edition console",
+      "Triforce dock"
+     ]
+    },
+    "visual": {
+     "kind": "specs",
+     "primary": "What you pay",
+     "secondary": "US prices",
+     "items": [
+      "Zelda console:$520",
+      "Game digital:$60",
+      "Game cartridge:$70"
+     ]
+    }
+   },
+   {
+    "narration": "Critics love it too, with a 96 on Metacritic.",
+    "footage": {
+     "want": "calm",
+     "keywords": [
+      "Link",
+      "Ocarina"
+     ]
+    },
+    "visual": {
+     "kind": "score",
+     "primary": "96",
+     "secondary": "Metacritic",
+     "value_a": 96,
+     "items": []
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "THE COMPARISON",
+   "narration": "Insider Gaming says veterans might find it too easy. Even so, a 1998 classic outsold every new Switch 2 game Nintendo has made at launch. That's the best case for remakes yet. If you're new to Zelda, I'd start here.",
+   "on_screen": "A 1998 classic beat every new launch"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "Link",
+    "Hyrule Field",
+    "Master Sword"
+   ]
+  },
+  "person": "",
+  "loop_line": "Are you going digital for $60, cartridge for $70, or waiting for a sale?",
+  "stamp": {
+   "word": "5.2",
+   "text": "5.2 MILLION",
+   "sub": "IN 4 DAYS",
+   "tone": "confirm"
+  },
+  "story_year": 2026,
+  "is_rumour": false,
+  "attribution": "Source: Nintendo via Insider Gaming / Eurogamer / GameSpot",
+  "hashtags": [
+   "#OcarinaOfTime",
+   "#Zelda",
+   "#NintendoSwitch2",
+   "#Nintendo"
+  ],
+  "youtube": {
+   "title": "Zelda Ocarina of Time Remake Sells 5.2 Million in 4 Days",
+   "description": "A 1998 classic just gave Nintendo its best four-day Switch 2 launch, and that says a lot about where your money is going. Nintendo reports 5.2 million copies sold worldwide, with a 96 on Metacritic. Sources: Insider Gaming, Eurogamer, GameSpot, Circana's Mat Piscatella.",
+   "tags": [
+    "Ocarina of Time",
+    "Zelda",
+    "Ocarina of Time remake",
+    "Switch 2",
+    "Nintendo",
+    "Zelda sales",
+    "Switch 2 sales"
+   ],
+   "thumb_text": "5.2M IN 4 DAYS",
+   "title_variants": [
+    "Ocarina of Time Remake Hits 5.2 Million in Four Days",
+    "Switch 2's Biggest Nintendo Launch Is a 1998 Zelda"
+   ]
+  },
+  "claims": [
+   {
+    "claim": "The Ocarina of Time remake sold over 5.2 million units worldwide in its first four days after launching November 5, 2026.",
+    "source_url": "https://insider-gaming.com/ocarina-of-time-sells-record-high-units-four-days/"
+   },
+   {
+    "claim": "810,000 of those units were sold in Japan.",
+    "source_url": "https://insider-gaming.com/ocarina-of-time-sells-record-high-units-four-days/"
+   },
+   {
+    "claim": "It is the highest global four-day sales for any Nintendo-published Switch 2 game.",
+    "source_url": "https://insider-gaming.com/ocarina-of-time-sells-record-high-units-four-days/"
+   },
+   {
+    "claim": "The game scored 96 on Metacritic.",
+    "source_url": "https://insider-gaming.com/ocarina-of-time-sells-record-high-units-four-days/"
+   },
+   {
+    "claim": "Insider Gaming's review said veterans might find the remake too easy.",
+    "source_url": "https://insider-gaming.com/ocarina-of-time-sells-record-high-units-four-days/"
+   },
+   {
+    "claim": "The $520 40th Anniversary Edition console does not include the game.",
+    "source_url": "https://www.gamespot.com/articles/switch-2-just-had-its-best-sales-week-of-2026-and-its-all-because-of-zelda/"
+   },
+   {
+    "claim": "The game costs $60 digitally and $70 on a physical cartridge.",
+    "source_url": "https://www.gamespot.com/articles/switch-2-just-had-its-best-sales-week-of-2026-and-its-all-because-of-zelda/"
+   },
+   {
+    "claim": "Retailers ran out of the Zelda console and scalping rose.",
+    "source_url": "https://www.eurogamer.net/the-legend-of-zelda-ocarina-of-time-switch-2-best-week-sales"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "sighs",
+    "after": "",
+    "before": "Here's the catch for"
+   },
+   {
+    "tag": "excited",
+    "after": "case for remakes yet.",
+    "before": "If you're new to"
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [
+   {
+    "quote": "A 1998 classic beat every new launch",
+    "problem": "The on-screen text drops the qualifier. The sources only say it was the best four-day start for a Nintendo-published Switch 2 game, not every launch. The spoken script carries the qualifier correctly.",
+    "severity": "minor"
+   }
+  ],
+  "rumour_labelling_ok": true,
+  "summary": "The sources support every factual claim: 5.2M units in four days (810,000 in Japan), the record for a Nintendo-published Switch 2 game, the 96 Metacritic score, the $520 console that doesn't include the game, $60 digital and $70 cartridge pricing, and Insider Gaming's 'too easy for veterans' remark. The 1998 original release is established public knowledge. Opinions are clearly framed as opinion. The only issue is a slightly over-broad on-screen line."
+ }
+}

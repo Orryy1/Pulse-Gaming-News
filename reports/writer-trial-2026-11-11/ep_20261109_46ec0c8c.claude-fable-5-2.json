@@ -1,0 +1,184 @@
+{
+ "id": "ep_20261109_46ec0c8c",
+ "model": "claude-fable-5-2",
+ "secs": 86,
+ "attempts": 2,
+ "log": [
+  {
+   "attempt": 0,
+   "problems": [
+    "Spoken word count is 109; it must be 70-100.",
+    "Remove the serial (Oxford) comma before \"and\"."
+   ],
+   "blockers": [],
+   "verdict": "pass"
+  },
+  {
+   "attempt": 1,
+   "problems": [],
+   "blockers": [],
+   "verdict": "pass"
+  }
+ ],
+ "friendKept": true,
+ "friendWhy": [],
+ "finalPass": true,
+ "problems": [],
+ "draftText": "Silksong's paper manual just promised you more free stuff. It says the game 'will expand with free content packs'. That's plural and generous. Eurogamer says the photos show an early Switch 2 copy, and the page names a 'first giant expansion'. One detail's odd, though. That's Sea of Sorrow, due in twenty twenty-six. The booklet only says 'Coming soon'. For you, the game you own keeps growing and your wallet stays shut. That's a brilliant deal. I'd take it. I just wouldn't clear your December for that ocean. Replay Silksong now, or save your run for Sea of Sorrow?",
+ "text": "Silksong's paper manual just promised you more free stuff. It says the game 'will expand with free content packs'. That's plural and generous. Eurogamer says the photos show an early Switch 2 copy, and the page names a 'first giant expansion'. One detail's odd. That's Sea of Sorrow, due in twenty twenty-six. The booklet only says 'Coming soon', which isn't a date. Your game keeps growing and your wallet stays shut. That's a brilliant deal. I'd take it. I wouldn't clear your December for that ocean. Replay Silksong now, or save your run for Sea of Sorrow?",
+ "title": "Silksong's Manual Promises More Free Content Packs",
+ "headline": "Silksong Manual Promises Free Content Packs",
+ "script": {
+  "story_type": "update",
+  "game_title": "Hollow Knight: Silksong",
+  "steam_search_term": "Hollow Knight: Silksong",
+  "headline": "Silksong Manual Promises Free Content Packs",
+  "hook": "Silksong's paper manual just promised you more free stuff.",
+  "beats": [
+   {
+    "narration": "It says the game 'will expand with free content packs'. That's plural and generous.",
+    "footage": {
+     "want": "gameplay",
+     "keywords": [
+      "Hornet",
+      "new abilities",
+      "combat"
+     ]
+    },
+    "visual": {
+     "kind": "quote",
+     "primary": "\"free content packs\"",
+     "secondary": "Silksong physical edition manual"
+    }
+   },
+   {
+    "narration": "Eurogamer says the photos show an early Switch 2 copy, and the page names a 'first giant expansion'.",
+    "footage": {
+     "want": "world",
+     "keywords": [
+      "Pharloom",
+      "map"
+     ]
+    },
+    "visual": {
+     "kind": "report",
+     "primary": "Silksong manual mentions multiple free content packs",
+     "secondary": "Eurogamer"
+    }
+   },
+   {
+    "narration": "One detail's odd. That's Sea of Sorrow, due in 2026. The booklet only says 'Coming soon', which isn't a date.",
+    "footage": {
+     "want": "cinematic",
+     "keywords": [
+      "Sea of Sorrow",
+      "ocean",
+      "ship"
+     ]
+    },
+    "visual": {
+     "kind": "quote",
+     "primary": "\"Coming soon\"",
+     "secondary": "Sea of Sorrow, announced for 2026"
+    }
+   }
+  ],
+  "pulse_take": {
+   "label": "WHAT IT MEANS FOR YOU",
+   "narration": "Your game keeps growing and your wallet stays shut. That's a brilliant deal. I'd take it. I wouldn't clear your December for that ocean.",
+   "on_screen": "More Silksong, no extra cost"
+  },
+  "hook_footage": {
+   "want": "gameplay",
+   "keywords": [
+    "Hornet",
+    "boss fight"
+   ]
+  },
+  "loop_line": "Replay Silksong now, or save your run for Sea of Sorrow?",
+  "stamp": {
+   "word": "free",
+   "text": "FREE",
+   "sub": "CONTENT PACKS",
+   "tone": "confirm"
+  },
+  "story_year": 2026,
+  "is_rumour": false,
+  "attribution": "Source: Eurogamer / Polygon / GamesRadar+",
+  "hashtags": [
+   "#Silksong",
+   "#HollowKnightSilksong",
+   "#SeaOfSorrow",
+   "#TeamCherry",
+   "#HollowKnight"
+  ],
+  "youtube": {
+   "title": "Silksong's Manual Promises More Free Content Packs",
+   "description": "The game you already own is getting bigger for nothing, and the news came from a paper booklet. Early physical copies of Hollow Knight: Silksong include a manual that mentions multiple free content packs and calls Sea of Sorrow the first giant expansion, now listed only as coming soon. Sources: Eurogamer, Polygon, GamesRadar+.",
+   "tags": [
+    "Hollow Knight Silksong",
+    "Silksong",
+    "Silksong DLC",
+    "Sea of Sorrow",
+    "Team Cherry",
+    "Silksong free content packs",
+    "Silksong physical edition",
+    "Silksong Switch 2",
+    "Hollow Knight"
+   ],
+   "thumb_text": "FREE PACKS",
+   "title_variants": [
+    "Silksong Is Getting Free Content Packs, Says Its Manual",
+    "Silksong's Sea of Sorrow Is Now Just \"Coming Soon\""
+   ]
+  },
+  "claims": [
+   {
+    "claim": "The Silksong physical edition manual says the game 'will expand with free content packs'.",
+    "source_url": "https://www.eurogamer.net/hollow-knight-silksong-physical-free-content-packs-sea-of-sorrow"
+   },
+   {
+    "claim": "The manual promises new abilities among the content pack additions.",
+    "source_url": "https://www.polygon.com/hollow-knight-silksong-free-dlc-rumor/"
+   },
+   {
+    "claim": "The photos were posted by a Redditor with an early Nintendo Switch 2 physical copy.",
+    "source_url": "https://www.eurogamer.net/hollow-knight-silksong-physical-free-content-packs-sea-of-sorrow"
+   },
+   {
+    "claim": "The manual refers to a 'first giant expansion'.",
+    "source_url": "https://www.eurogamer.net/hollow-knight-silksong-physical-free-content-packs-sea-of-sorrow"
+   },
+   {
+    "claim": "Sea of Sorrow was announced with a 2026 release window.",
+    "source_url": "https://www.polygon.com/hollow-knight-silksong-free-dlc-rumor/"
+   },
+   {
+    "claim": "The booklet says Sea of Sorrow is 'Coming soon' without a date.",
+    "source_url": "https://store.steampowered.com/news/group/38509069/view/668381571600876361"
+   },
+   {
+    "claim": "Sea of Sorrow will be free for players.",
+    "source_url": "https://www.polygon.com/hollow-knight-silksong-free-dlc-rumor/"
+   }
+  ],
+  "voice_tags": [
+   {
+    "tag": "excited",
+    "after": "",
+    "before": "It says the game"
+   },
+   {
+    "tag": "chuckles",
+    "after": "which isn't a date.",
+    "before": ""
+   }
+  ]
+ },
+ "check": {
+  "verdict": "pass",
+  "issues": [],
+  "rumour_labelling_ok": true,
+  "summary": "All script claims, quotes and on-screen cards are supported: the manual's 'free content packs' and 'first giant expansion' quotes, Eurogamer's attribution of photos to an early Switch 2 copy, Sea of Sorrow's 2026 window and the 'Coming soon' wording all match the sources. Polygon states Sea of Sorrow will also be free, supporting the 'no extra cost' framing. The December remark is first-person opinion. The content comes from an official printed manual, so not labelling it as rumour is acceptable."
+ }
+}

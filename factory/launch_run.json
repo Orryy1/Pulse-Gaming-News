@@ -378,6 +378,22 @@
   {
     "kind": "why",
     "date": "2026-11-13",
+    "slot": "12:00",
+    "question": "What is the WAINK app in GTA 6?",
+    "title": "GTA 6's Stolen Cars Come With a Shopping List",
+    "game": "Grand Theft Auto VI",
+    "arc": "A phone app in a preview build; fences ask for specific models; a tracked car can bring the police.",
+    "angle": "Open close to: \"Your stolen cars in GTA 6 have a shopping list.\" Say it comes from Edge's hands-on preview of a preview build, as reported by GTA BOOM, and that the final game may differ. Say \"stolen cars\", never a how-to tone.",
+    "sources": [
+      {
+        "url": "https://gtaboom.com/gta-6-edge-preview-new-gameplay-details-5848",
+        "source": "GTA BOOM, summarising Edge issue 430's hands-on preview (29 Oct 2026)"
+      }
+    ]
+  },
+  {
+    "kind": "why",
+    "date": "2026-11-13",
     "slot": "18:30",
     "question": "Which GTA 6 claims are confirmed, and which are busted?",
     "title": "5 GTA 6 Claims We Checked Before Launch",
@@ -443,6 +459,22 @@
         "url": "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
         "source": "Rockstar Newswire",
         "official": true
+      }
+    ]
+  },
+  {
+    "kind": "why",
+    "date": "2026-11-15",
+    "slot": "12:00",
+    "question": "Why did Rockstar make GTA 6's roads narrower?",
+    "title": "Rockstar Shrank the Roads in GTA 6. Here's Why",
+    "game": "Grand Theft Auto VI",
+    "arc": "Narrower streets in Edge's preview; a city that feels lived in; what that does to chases.",
+    "angle": "Open close to: \"Rockstar shrank the roads you drive in GTA 6.\" The why is believability: say it as Edge's preview impression, not Rockstar's stated reason, unless a Rockstar quote is in the sources.",
+    "sources": [
+      {
+        "url": "https://gtaboom.com/gta-6-edge-preview-new-gameplay-details-5848",
+        "source": "GTA BOOM, summarising Edge issue 430's hands-on preview (29 Oct 2026)"
       }
     ]
   },
@@ -628,6 +660,22 @@
         "url": "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
         "source": "Rockstar Newswire",
         "official": true
+      }
+    ]
+  },
+  {
+    "kind": "why",
+    "date": "2026-11-20",
+    "slot": "12:00",
+    "question": "What is Scooter Bros in GTA 6?",
+    "title": "You'll Never Walk Back to Your Car in GTA 6",
+    "game": "Grand Theft Auto VI",
+    "arc": "An in-game delivery app from Edge's preview; your ride brought to you in seconds; now checkable in the released game.",
+    "angle": "Open close to: \"You'll never walk back to your car in GTA 6.\" The game is out today, so say only what Edge's preview described unless launch-day sources confirm more.",
+    "sources": [
+      {
+        "url": "https://gtaboom.com/gta-6-edge-preview-new-gameplay-details-5848",
+        "source": "GTA BOOM, summarising Edge issue 430's hands-on preview (29 Oct 2026)"
       }
     ]
   },

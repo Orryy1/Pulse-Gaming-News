@@ -286,6 +286,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   recap?: boolean;
   /** The week's biggest story, explained (src/editorial/explained.ts): a documentary-shaped script about one story. */
   explained?: boolean;
+  /** A news Short's structure (src/editorial/skeletons.ts skeletonKey), under SHORT_SKELETONS; absent otherwise. */
+  skeleton?: string;
   /** Long video: the entry whose media plays behind the outro, when it is not the last. */
   take_entry?: number;
   /** A Short cut from a long ranking: the full video, this entry's rank and the comment question. */

@@ -41,6 +41,9 @@ import { TwinScriptSchema } from "../src/editorial/twin.ts";
 import { LongformPlanSchema } from "../src/editorial/longform.ts";
 import { WhyTopicSchema, type WhyTopic } from "../src/editorial/why.ts";
 import { maybeSelectWhy } from "../src/pipeline.ts";
+import { recentShapes } from "../src/pipeline.ts";
+import { parseSkeleton } from "../src/editorial/skeletons.ts";
+import { DROP_ANGLE_RULE } from "../src/editorial/dropangle.ts";
 
 /** A small, valid ranking draft for the fake writer. */
 function rankingDraft(): EvergreenScript {
@@ -1182,6 +1185,133 @@ test("the breaking lane fires on a huge fresh official story outside any news sl
     );
   await tick(s);
   assert.equal((await listEpisodes(db)).length, 1, "franchise cooldown holds");
+});
+
+/** Records every brief the news writer reads. */
+function recordBriefs(s: Services): string[] {
+  const briefs: string[] = [];
+  const inner = s.llm;
+  s.llm = {
+    ...inner,
+    structured: (async (req: { schema: unknown; content?: string }) => {
+      if (req.schema === ScriptSchema) briefs.push(String(req.content ?? ""));
+      return inner.structured(req as never);
+    }) as Llm["structured"],
+  } as Llm;
+  return briefs;
+}
+
+test("DROP_ANGLE: an official trailer drop never races as breaking; it keeps the usual slot and gets one reframing idea", async () => {
+  // Off: the same drop goes out at once as a breaking Short, as before.
+  const off = await setup({
+    dailyTarget: 4,
+    newsSlots: ["10:00"],
+    breakingScoreMin: 40,
+  });
+  const at = new Date("2026-10-16T08:00:00Z");
+  off.setClock(at);
+  breakingStory(off.s, at);
+  const offBriefs = recordBriefs(off.s);
+  await tick(off.s);
+  assert.equal((await only(off.db)).lane, "news_breaking");
+  assert.ok(!offBriefs.some((b) => b.includes(DROP_ANGLE_RULE)));
+
+  // On, with no news slot due: nothing races.
+  const wait = await setup({
+    dailyTarget: 4,
+    newsSlots: ["19:30"],
+    breakingScoreMin: 40,
+    dropAngle: true,
+  });
+  wait.setClock(at);
+  breakingStory(wait.s, at);
+  await tick(wait.s);
+  assert.equal((await listEpisodes(wait.db)).length, 0, "no breaking Short");
+
+  // On, with the 10:00 slot due (09:00Z, its lead time begun): the drop fills the usual slot, written to one idea.
+  const on = await setup({
+    dailyTarget: 4,
+    newsSlots: ["10:00"],
+    breakingScoreMin: 40,
+    dropAngle: true,
+  });
+  on.setClock(at);
+  breakingStory(on.s, at);
+  const briefs = recordBriefs(on.s);
+  await tick(on.s);
+  const ep = await only(on.db);
+  assert.equal(ep.lane, "news");
+  assert.equal(ep.slot_at && new Date(ep.slot_at).toISOString(), "2026-10-16T09:00:00.000Z");
+  assert.ok(briefs.length > 0 && briefs.every((b) => b.includes(DROP_ANGLE_RULE)));
+});
+
+test("SHORT_SKELETONS: a news Short is written to a structure, kept on the script for the next one; off, none", async () => {
+  const off = await setup();
+  const offBriefs = recordBriefs(off.s);
+  await tick(off.s);
+  const plain = await only(off.db);
+  assert.equal(plain.status, "published", plain.last_error ?? "");
+  assert.equal(plain.script_json?.skeleton, undefined);
+  assert.ok(!offBriefs.some((b) => /This Short's structure/.test(b)));
+  assert.deepEqual((await recentShapes(off.db, "other")).skeletons, [""]);
+
+  const { db, s } = await setup({ shortSkeletons: true });
+  const briefs = recordBriefs(s);
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(ep.status, "published", ep.last_error ?? "");
+  const structure = parseSkeleton(ep.script_json?.skeleton);
+  assert.ok(structure, `stored "${ep.script_json?.skeleton}"`);
+  assert.ok(briefs[0]!.includes("This Short's structure"));
+  assert.ok(briefs[0]!.includes(structure.opening.rule));
+  // The next Short's writer sees it among the newest structures.
+  assert.deepEqual((await recentShapes(db, "other")).skeletons, [structure.key]);
+});
+
+test("SHORT_ARGUES_CHECK: a Short that only narrates its picture waits for the owner; off, or when it argues, it goes out", async () => {
+  const flat = goodScript({
+    hook: "Here is the new Starfield expansion trailer.",
+    beats: [
+      {
+        narration: "You can see the new ship flying over a desert planet.",
+        visual: { kind: "none", primary: "", secondary: "" },
+      },
+      {
+        narration: "In this shot a crew walks into a city at night.",
+        visual: { kind: "none", primary: "", secondary: "" },
+      },
+    ],
+    pulse_take: {
+      label: "",
+      narration: "The trailer shows a big space station near the end.",
+      on_screen: "",
+    },
+    loop_line: "Watch as the ship lands on the moon.",
+    desk_question: "",
+  });
+  const checks = (db: Db) =>
+    db.query<{ detail: { pass: boolean; problems: string[] } }>(
+      `SELECT detail FROM events WHERE kind = 'argues_check'`,
+    );
+
+  const off = await setup({}, { script: flat });
+  await tick(off.s);
+  assert.equal((await only(off.db)).status, "published");
+  assert.equal((await checks(off.db)).length, 0, "off: nothing checked or logged");
+
+  const held = await setup({ shortArguesCheck: true }, { script: flat });
+  await tick(held.s);
+  const ep = await only(held.db);
+  assert.equal(ep.status, "awaiting_approval");
+  assert.equal(ep.approval_mode, "manual");
+  const [c] = await checks(held.db);
+  assert.equal(c!.detail.pass, false);
+  assert.ok(c!.detail.problems.length >= 2);
+
+  const fine = await setup({ shortArguesCheck: true });
+  await tick(fine.s);
+  assert.equal((await only(fine.db)).status, "published");
+  assert.equal((await checks(fine.db))[0]!.detail.pass, true);
 });
 
 test("news Shorts are made for their slots and publish at the slot; a waiting episode never blocks the next one", async () => {

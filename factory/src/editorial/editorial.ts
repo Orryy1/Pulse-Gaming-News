@@ -23,6 +23,8 @@ import { numberWords } from "../voice/speakable.ts";
 import { SOURCE_TRUTH_RULE, absenceClaims } from "./shortrules.ts";
 import type { Llm } from "./llm.ts";
 import { reviseByEdits } from "./revise.ts";
+import { skeletonRule, type Skeleton } from "./skeletons.ts";
+import { DROP_ANGLE_RULE } from "./dropangle.ts";
 import {
   parsePairs,
   parseMilestones,
@@ -187,6 +189,10 @@ export async function writeScript(
     segment?: boolean;
     /** SHORT_END_PAYOFF: a Why's last line does not point to tomorrow's Why. */
     noSeriesFollow?: boolean;
+    /** SHORT_SKELETONS: this Short's structure (src/editorial/skeletons.ts), read after the take shape. */
+    skeleton?: Skeleton;
+    /** DROP_ANGLE: an official drop, written as one reframing idea (src/editorial/dropangle.ts). */
+    dropAngle?: boolean;
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -208,11 +214,12 @@ export async function writeScript(
     opts.recent ? recentConcessions(opts.recent) : [],
   );
   const shapeNote = `\n\nThis Short's take shape: ${shape.rule}.${shape.id === "concession" ? "" : " Concede nothing anywhere in this Short."}`;
+  const structureNote = `${opts.skeleton ? `\n\n${skeletonRule(opts.skeleton)}` : ""}${opts.dropAngle ? `\n\n${DROP_ANGLE_RULE}` : ""}`;
   // The test variant comes last, after the general shapes, so it is the rule the writer reads nearest the draft.
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
   const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
   const late = lateAngleNote(cluster.bigStory?.lateHours);
-  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${recent}${variantNote}${segmentNote}`;
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}`;
   // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
   const edited =
     opts.draft &&
@@ -352,6 +359,11 @@ export interface RecentShapes {
    * concession, data-feed and repeated-story checks see whole scripts, not just the take's first words.
    */
   scripts?: string[];
+  /**
+   * The newest Shorts' structures (src/editorial/skeletons.ts), newest first, "" for a Short written without one, up
+   * to SKELETON_WINDOW: no two of them may share one.
+   */
+  skeletons?: string[];
 }
 
 /** Whether each recent Short (newest first, up to eight) conceded a point. */

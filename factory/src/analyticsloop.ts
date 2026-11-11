@@ -53,6 +53,7 @@ import {
   weightKey,
   type PostingFavour,
 } from "./loopfeedback.ts";
+import { parseSkeleton, structureLine } from "./editorial/skeletons.ts";
 
 const DAY = 86_400_000;
 const H = 3_600_000;
@@ -208,6 +209,8 @@ export interface EpisodeInfo {
   events_per_minute?: number;
   wpm?: number;
   long: boolean;
+  /** The Short's structure (SHORT_SKELETONS, src/editorial/skeletons.ts), when it was written to one. */
+  skeleton?: string;
 }
 
 // ------------------------------------------------------------------ matching (spec section 4)
@@ -469,6 +472,8 @@ export function features(
   out["fit"] = (r.fit_tag ?? isFit(traits)) ? "yes" : "no";
   if (e.opening)
     out["opening"] = e.opening === "clip" ? "moving footage" : "a still";
+  const structure = parseSkeleton(e.skeleton);
+  if (structure) out["structure opening"] = structure.opening.label;
   if (r.platform !== "youtube") {
     const gap = (Date.parse(r.posted_at) - Date.parse(e.live_at)) / H;
     out["gap after the YouTube publish"] =
@@ -1349,6 +1354,7 @@ export async function runAnalyticsLoop(
       events_per_minute: metric("events_per_minute"),
       wpm: metric("wpm"),
       long: sc?.runtime === "long" || r.lane === "longform",
+      ...(sc?.skeleton ? { skeleton: sc.skeleton } : {}),
     });
   }
   const snaps = new Map<
@@ -1837,6 +1843,15 @@ export async function runAnalyticsLoop(
       });
   }
   const signalLines: string[] = [];
+  // SHORT_SKELETONS: how often each Short structure ran in the period, newest first (src/editorial/skeletons.ts).
+  const periodStart = new Date(now.getTime() - WINDOW_DAYS * DAY).toISOString();
+  const structures = structureLine(
+    [...eps.values()]
+      .filter((e) => !e.long && e.live_at >= periodStart)
+      .sort((a, b) => b.live_at.localeCompare(a.live_at))
+      .map((e) => e.skeleton),
+  );
+  if (structures) signalLines.push(structures);
   const signal = (
     label: string,
     p: LoopPlatform,

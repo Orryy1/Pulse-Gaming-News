@@ -6,6 +6,9 @@
 // Each tag is kept beside the script as a mark anchored on the words either side of it, and put back
 // only into the text sent to ElevenLabs (voiceTexts). A sentence rewritten later loses its tag with it,
 // which is the safe way round: a missed chuckle costs nothing, a "[chuckles]" on screen would.
+// How many and where is the writers' guidance (VOICE_TAG_RULE in src/editorial/voice.ts, voice study of 11 Nov
+// 2026): tags follow the humor and the reactions, one to three in a Short and no more than a documentary chapter's
+// one or two asides need, never on a plain fact or a flat verdict. The rules below hold whatever a writer did.
 
 import type { Word } from "./elevenlabs.ts";
 

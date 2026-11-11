@@ -39,7 +39,7 @@ export function pulseCheckRule(): string {
 - weak: confirmed and worse for you: you pay more, wait longer or get less.
 - faint: not confirmed. A leak, a report, an unnamed source or a rumor. Whenever is_rumour is true the reading is faint, with no exception, and the reason says so ("Pulse check: faint, until Sony says it.").
 Example shapes only, in your own words for this story, never these words: "My Pulse check? Steady, but don't hold your breath for a sequel." "Pulse check: weak, if you were planning on launch day." "So my Pulse check on this one? Faint, until Sony says it."
-The take's other sentences come first and still answer the desk question or the hook; the reading never replaces that answer, and it is never the take's only sentence. It rates the news for players, never a person, and never people losing their jobs: on a layoffs or closure story rate only what it means for the games, usually steady.
+The take's other sentences come first and still answer the desk question or the hook, with the take's flat verdict and its one "I" line; the reading never replaces that answer, and it is never the take's only sentence. The Pulse Check sums the verdict up in one word, so it carries no second "I think" or "honestly". It rates the news for players, never a person, and never people losing their jobs: on a layoffs or closure story rate only what it means for the games, usually steady.
 It does not lengthen the Short: the word limit stands, so cut a weaker line to make room. The loop_line still follows and closes the Short. Say "Pulse check" nowhere else in the script.
 Set pulse_take.label to "${PULSE_CHECK_LABEL}" and start pulse_take.on_screen with the reading in capitals and a colon ("STEADY: 212GB, nothing else changes"), still 3-8 words.`;
 }

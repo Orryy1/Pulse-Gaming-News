@@ -768,3 +768,68 @@ test("a question halfway through a Short, answered by the narrator, goes back to
   assert.deepEqual(midQuestions(asked), ["Why trust Nintendo after September's $50 hike?"]);
   assert.ok(validateScript(asked).some((p) => /halfway through/.test(p)));
 });
+
+test("the voice study (11 Nov 2026) reaches every writer and no rule contradicts it", async () => {
+  // Shorts: "you" three to five per hundred words, short sentences, one owned verdict, no "So" opener.
+  assert.match(PULSE_VOICE, /three to five "you" or "your" per hundred words/);
+  assert.match(PULSE_VOICE, /sentences average 9-12 words/);
+  assert.match(PULSE_VOICE, /flat claim followed by one "I" line/);
+  assert.match(PULSE_VOICE, /never "So", which the hook rules ban/);
+  assert.doesNotMatch(PULSE_VOICE, /\("So,"/);
+  // The lines between hook and loop line state their doubts (midQuestions sends a mid-Short question back).
+  assert.match(PULSE_VOICE, /the lines between say their doubts as statements/);
+  // Documentaries pull back: one owned take per chapter, "I" rare, in the format note and the chapter brief alike.
+  assert.match(FORMAT_VOICE.documentary, /at most once per hundred words/);
+  assert.doesNotMatch(chapterPrompt(), /at least two honest takes/);
+  assert.match(chapterPrompt(), /steps forward as "I" once in the chapter/);
+  assert.match(FORMAT_VOICE.longform, /asks nothing of the viewer/);
+  const { longformPrompt } = await import("../src/editorial/longform.ts");
+  assert.doesNotMatch(longformPrompt(), /No more than one sentence inviting comments/);
+  assert.match(longformPrompt(), /no sentence inviting comments/);
+  // The long-video "you" rule no longer forbids the narrator's own "I" take.
+  const { youRule } = await import("../src/editorial/longrules.ts");
+  assert.doesNotMatch(youRule(25), /no "I"/);
+  assert.match(youRule(25), /"I" is only ever an opinion/);
+  // The news writer's brief asks for the rate the check counts.
+  assert.match(scriptPrompt(), /three to five times per hundred words/);
+  const { PERSONAL_VOICE } = await import("../src/pipeline.ts");
+  assert.doesNotMatch(PERSONAL_VOICE, /End on a question viewers will argue about/);
+  assert.match(PERSONAL_VOICE, /never stacked/);
+  for (const t of [PULSE_VOICE, ...Object.values(FORMAT_VOICE), PERSONAL_VOICE])
+    assert.doesNotMatch(t, /\u2014/, "no em dashes");
+});
+
+test("the voice study's example lines are sent back when copied, and asking endings are banned", () => {
+  assert.deepEqual(copiedExamples("Ubisoft calls it a pivot, which is company for a delay."), [
+    "which is company for",
+  ]);
+  assert.ok(copiedExamples("I'd have made the same call, honestly.").includes("I'd have made the same call"));
+  assert.match(phraseProblems("Stay tuned for more.").join(" "), /stay tuned/i);
+  assert.match(phraseProblems("Let us know below.").join(" "), /let us know/i);
+});
+
+test('a Short says "you" three times per hundred words, never fewer than two', async () => {
+  const { shortYouMin } = await import("../src/editorial/editorial.ts");
+  assert.equal(shortYouMin(60), 2);
+  assert.equal(shortYouMin(70), 2);
+  assert.equal(shortYouMin(100), 3);
+  assert.equal(shortYouMin(115), 3);
+  assert.deepEqual(validateScript(goodScript()), []);
+});
+
+test("a documentary chapter's friend pass carries at most three delivery tags", async () => {
+  const { friendChapterProblems, CHAPTER_TAGS_MOST } = await import("../src/editorial/friendpass.ts");
+  assert.equal(CHAPTER_TAGS_MOST, 3);
+  const narration = Array.from({ length: 30 }, (_, i) => `Sentence ${i + 1} says one thing.`).join(" ");
+  const chapter = {
+    paragraphs: [{ narration, callout: { kind: "none", primary: "", secondary: "" }, footage: { keywords: [] } }],
+    claims: [],
+  } as any;
+  const tags = (n: number) =>
+    Array.from({ length: n }, () => ({ tag: "chuckles" as const, after: "", before: "Sentence" }));
+  assert.deepEqual(friendChapterProblems(chapter, { ...chapter, voice_tags: tags(3) }), []);
+  assert.match(
+    friendChapterProblems(chapter, { ...chapter, voice_tags: tags(4) }).join(" "),
+    /4 delivery tags; 3 at most/,
+  );
+});

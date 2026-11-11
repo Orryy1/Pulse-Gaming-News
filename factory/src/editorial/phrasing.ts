@@ -106,7 +106,7 @@ export const TAKE_SHAPES: TakeShape[] = [
   },
   {
     id: "verdict",
-    rule: "a plain verdict: your honest call in one sentence, in the first person where it fits (\"I'd wait\", \"honestly, this is a mistake\"), then the single reason",
+    rule: "a plain verdict: the flat call in one sentence (\"this is a mistake\"), then one first-person line that owns it with the single reason (\"I'd wait for the first patch\")",
   },
 ];
 

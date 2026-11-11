@@ -93,8 +93,8 @@ Structure:
    Frame the story by what it does to the viewer (their money, their console, their pre-order, their weekend) or as players against a company, publisher against platform, studio against its own past: that framing carried the news Shorts that broke out, and a price is a conflict, never just a figure.
    Every beat also carries "footage": what the trailer picture should show while that line is spoken, with 1-4 keywords naming the thing, place, character or action in the line. The picture editor matches real trailer moments to these, so be concrete ("Hyrule Field", "the new ship interior", "a car chase"), and use "calm" for lines whose card needs a quiet background (numbers, dates, prices). "hook_footage" does the same for the opening line and should want the most striking gameplay moment.
 person: when the story is about one real person (a cameo, a hire, a departure, a statement), their name as commonly written, so the Short can show a licensed photo of them; otherwise empty.
-3. pulse_take: the Pulse angle, and the payoff: when the hook asked a question, the take answers it, plainly, in its first sentence. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Use the take shape this Short is given below (a concession then a verdict, a comparison, a consequence for the viewer, what happens next, or a plain verdict); never pose a question in the beats or the take and then answer it (no \"Why trust them? Not yet.\"): say the doubt as a statement (\"After September's hike, trust is thin.\"); when the shape is not a concession, no line in the Short concedes a point ("sure", "fair enough", "granted", "in fairness", "to be fair", "yes, but"). The opening words and the closing shape must differ from the recent Shorts listed below when a list is given. Opinions must be framed as opinion. Say it as the narrator's own honest call, in the first person where it fits ("I'd wait for a sale", "honestly, this one's on Sony"), with a dry aside at the company or the situation if one comes naturally: a friend's verdict, never a neutral summary. Do not invent data.
-Talk to the viewer: at least two sentences in the script say "you" or "your" about what this means for them (their console, their money, their weekend).
+3. pulse_take: the Pulse angle, and the payoff: when the hook asked a question, the take answers it, plainly, in its first sentence. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Use the take shape this Short is given below (a concession then a verdict, a comparison, a consequence for the viewer, what happens next, or a plain verdict); never pose a question in the beats or the take and then answer it (no \"Why trust them? Not yet.\"): say the doubt as a statement (\"After September's hike, trust is thin.\"); when the shape is not a concession, no line in the Short concedes a point ("sure", "fair enough", "granted", "in fairness", "to be fair", "yes, but"). The opening words and the closing shape must differ from the recent Shorts listed below when a list is given. Opinions must be framed as opinion. Say it as the narrator's own call: a flat verdict, then one first-person line that owns it ("That's steep for a remaster. I'd wait for a sale."), with a dry aside at the company or the situation if one comes naturally: a friend's verdict, never a neutral summary. One "I think" or "honestly" in the whole Short at most, never stacked. Do not invent data.
+Talk to the viewer: "you" or "your" three to five times per hundred words, starting in the hook or the first beat, about what this means for them (their console, their money, their weekend); "you" rather than "fans" or "gamers" wherever it would do.
 Community stakes: the framing says plainly what the fan gains, loses or can do about it (save, wait, claim, pre-order, skip), and when the loop line asks, it is a personal either/or the viewer answers about their own choice ("Keep your disc drive, or go all digital?"), never a question about the company.
 3a. stamp: the one word that carries the news gets a rubber stamp on screen as it is spoken: a date that was confirmed ("NOV 19" / "CONFIRMED"), a delay ("DELAYED" / "TO 2027"), a price ("$49.99"), "FREE", "LEAKED" (with "REPORTED" under it for a rumor). "word" is that word exactly as written in your narration; the stamp's figures must be the narration's own. Omit it when nothing deserves it.
 ${desk ? "3b. desk_question: before the take, the sceptic's objection, the line the top comment would otherwise make, put by a second presenter at the desk in 5-12 words, ending with \"?\". Shapes that work, always in this story's own specifics and fresh words: the feature an older game already had, who wanted this at all, whether it's worth the price on day one, what it means for people who already bought in. Never open two Shorts' questions the same way. The take then answers it head on. In a study of 12,679 top comments on gaming Shorts, the most-liked comment on news Shorts was very often exactly that objection; saying it first takes it off the table. Always provide one." : "3b. desk_question: leave it out. The take answers the hook, so it must make sense on its own."}
@@ -523,6 +523,11 @@ export function writtenTells(s: Script, recent?: RecentShapes): string[] {
   return p;
 }
 
+/** The fewest "you" or "your" a Short of this many spoken words carries: three per hundred, and never under two. */
+export function shortYouMin(words: number): number {
+  return Math.max(2, Math.floor((words * 3) / 100));
+}
+
 /** Deterministic house-rule checks. Returns human-readable problems; empty means valid. */
 /** Questions inside the body or the take (pure); the hook and loop line may ask, nothing between them does. */
 export function midQuestions(s: Pick<Script, "beats" | "pulse_take">): string[] {
@@ -537,11 +542,13 @@ export function validateScript(s: Script, recent?: RecentShapes): string[] {
   const problems: string[] = [];
   const spoken = narrationOf(s);
   const words = wordCount(spoken);
-  // The viewer is in the room: a script that never says "you" reads as a bulletin.
+  // The viewer is in the room: a script that never says "you" reads as a bulletin. The voice study (11 Nov 2026) put
+  // the best quarter of narrated Shorts at 3.6 "you" per 100 words and the worst at 1.5, so the floor is three per 100.
   const yous = (spoken.match(/\byou(r|'re|'ve|'ll|'d)?\b/gi) ?? []).length;
-  if (yous < 2)
+  const youMin = shortYouMin(words);
+  if (yous < youMin)
     problems.push(
-      `The script says "you" ${yous === 1 ? "once" : "never"}; at least two sentences should speak to the viewer about what this means for them.`,
+      `The script says "you" ${yous === 0 ? "never" : yous === 1 ? "once" : `${yous} times`} in ${words} words; say "you" or "your" at least ${youMin} times (three per hundred words) about what this means for the viewer.`,
     );
   // Shapes the last few Shorts used become tics: the take's opener and the loop's closing words must differ.
   if (recent) {

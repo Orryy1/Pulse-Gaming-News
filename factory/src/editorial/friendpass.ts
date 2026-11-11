@@ -256,6 +256,9 @@ export function tagLimit(sentences: number, most = 3): number {
   return Math.min(most, Math.max(1, Math.round(sentences / 3)));
 }
 
+/** A documentary chapter's most delivery tags: they follow its one or two asides (voice study, 11 Nov 2026: about one joke every two minutes in documentaries). */
+export const CHAPTER_TAGS_MOST = 3;
+
 /** A length that strays more than this share from the original is a rewrite of the content, not the delivery. */
 const LENGTH_DRIFT = 0.2;
 
@@ -277,14 +280,15 @@ export const FRIEND_STYLE = `The friend pass
 You're given a finished script whose facts are settled and fact-checked. Rewrite its delivery only, so it sounds like the viewer's gaming friend telling them this on the sofa, not a news desk reading a bulletin. Same story, same facts, same order, a better voice.
 
 Add, where the script doesn't already have them:
-- The narrator's own honest take in the first person, once or twice: "honestly, I'd wait", "I think this one's on Sony", "I'll be honest, that stings". It's an opinion about a company's decision, a price or what the viewer should do, said with some conviction. Never an experience: never "I played", "I tried", "I've seen", "when I was", "my copy", because the narrator has never played, bought, watched or attended anything.
-- One or two light, dry jokes or cheeky asides at a company, a price, a decision or the situation, made only from what the script already says: a deadpan understatement, a wry turn on two facts already there, an honest groan. Never at players, fans, developers who lost their jobs or any group of people; on a layoffs or closure story be kind about the people and keep the dryness for the business decision. No profanity, nothing mean, nothing an advertiser would mind.
-- Spoken rhythm: contractions, a short line after a long one, joining words where a person would use them ("so", "which", "and honestly"), at most one rhetorical "right?". Every sentence still has a verb.
-- Delivery tags where a person would truly react: [sighs] before a catch or a groan, [chuckles] right after the dry line, [sarcastic] on it, [excited] before good news, [curious] before something odd. Never on a line that isn't funny, never two within two sentences, never inside a quotation.
+- One owned verdict: a flat claim, then one first-person line that owns it ("That's steep for a remaster. I'd wait for a sale.", "I think this one's on Sony"). It's an opinion about a company's decision, a price or what the viewer should do, said with conviction. One "I think" or "honestly" is plenty: never stack them ("honestly, I feel like, personally") and never put one in the first sentence. Never an experience: never "I played", "I tried", "I've seen", "when I was", "my copy", because the narrator has never played, bought, watched or attended anything.
+- "You" where a fact lands on the viewer: turn a line about "fans" or "gamers" into one about you, your money, your console or your weekend, so the Short says "you" or "your" three to five times per hundred words.
+- One or two light, dry jokes or asides at a company, a price, a decision or the situation, each a short line straight after a fact and made only from what the script already says: a deadpan understatement, a translation of company-speak (only of a phrase the script already quotes, then what it really means, in a full sentence), a wry turn on two facts already there, an honest groan, or a small joke at the narrator's own expense about his opinions or his optimism. Never at players, fans, developers who lost their jobs or any group of people; on a layoffs or closure story be kind about the people and keep the dryness for the business decision. No profanity, nothing mean, nothing an advertiser would mind. Warm beats sharp about three to one: when the news is good for you, let the friend sound pleased.
+- Spoken rhythm: contractions, short sentences (in a Short about 9-12 words on average, one in three under eight), a short line after a long one, and a spoken joining word ("right", "well", "look", "of course", "so", "which") about once per hundred words, at most one rhetorical "right?". Every sentence still has a verb.
+- Delivery tags where a person would truly react: [sighs] before a catch or a groan, [chuckles] right after the dry line, [sarcastic] on it, [excited] before good news, [curious] before something odd. Never on a plain fact or a flat verdict, never two within two sentences, never inside a quotation.
 
-Be noticeably more personal than the original: the flat, news-desk register is exactly what the owner turned down (11 Nov 2026). A friend reading both should hear the difference within the first few lines: at least one real first-person take and one aside that would make a friend smirk (on a closure or layoffs story the smirk is at the business decision, never the people).
+Be noticeably more personal than the original: the flat, news-desk register is exactly what the owner turned down (11 Nov 2026). A friend reading both should hear the difference within the first few lines: one real first-person take and one aside that would make a friend smirk (on a closure or layoffs story the smirk is at the business decision, never the people). More opinion words don't make it more personal: one committed verdict beats four hedged ones.
 
-Sound like a person, not a parody of one: no meme slang ("bro", "it's giving", "no cap"), no "folks", "guys" or "y'all", no "let's be real", "plot twist", "spoiler alert" or "buckle up", no exclamation marks, no pun for its own sake, no laughing at your own line. One good aside beats three forced ones: if a joke doesn't come naturally from the facts, leave it out and let the take carry the warmth.
+Sound like a person, not a parody of one: no meme slang ("bro", "it's giving", "no cap"), no "folks", "guys" or "y'all", no "let's be real", "plot twist", "spoiler alert" or "buckle up", no exclamation marks, no "um", "literally", "basically" or filler "like", no pun for its own sake, no laughing at your own line. One good aside beats three forced ones: if a joke doesn't come naturally from the facts, leave it out and let the take carry the warmth.
 
 What the change sounds like, with made-up facts (copy the move, never the words):
 Desk: "Ubisoft delayed Skull Raiders to March 2027. The studio said it needs more time for polish. It's the third delay since 2024. Pulse check: weak, if you pre-ordered."
@@ -452,7 +456,7 @@ export async function friendShort(
           ...opts.recent.loops.map((l) => `- closed "${l}"`),
         ].join("\n")}`
       : "",
-    `Delivery tags: two or three in the whole Short. A laugh or chuckle goes right after the line that earns it, never in front of a plain fact.`,
+    `Delivery tags: one to three in the whole Short, on the jokes, the groans and the good news. A laugh or chuckle goes right after the line that earns it, never in front of a plain fact.`,
     `Length is a hard limit, because a Short runs 25-40 seconds: the original has ${words} written words and yours must have ${lo}-${hi}, so your edits together add at most ${Math.max(0, hi - words)} words${words > lo ? ` or remove at most ${words - lo}` : ""} (tags don't count). Pay for a take or an aside by trimming a restatement or a weak clause, or by merging two short facts, but never a line that speaks to the viewer. Never pad with an idiom or a stock line ("the writing was on the wall", "at the end of the day"): every word you add is a take, a joke or rhythm.`,
   ].filter(Boolean);
   const lines: Record<string, string> = {};
@@ -597,9 +601,9 @@ export async function friendChapter(
   const sentences = sentencesIn(chapterText(chapter)).length;
   const words = wordsIn(chapterText(chapter));
   const notes = [
-    `This is one chapter of a long documentary, told by a friend who knows the whole story and has opinions about it. Edit the paragraphs; each keeps telling what it told (its on-screen callout and footage stay with it).`,
-    `Across the chapter: two or three honest first-person takes on the decisions in it ("honestly, this was the moment the studio got cocky", "I'd have made the same call"), one or two dry asides, and the chapter's last sentence keeps its job (a look ahead or a plain consequence). Where the chapter already reacts like a person, change little.`,
-    `Delivery tags: at most ${tagLimit(sentences, 5)} in the chapter, at least four sentences apart.`,
+    `This is one chapter of a long documentary, told by someone who knows the whole story and cares about it. Edit the paragraphs; each keeps telling what it told (its on-screen callout and footage stay with it).`,
+    `Across the chapter: the judgement goes in plain verdict words on the decisions ("a reckless bet"), and the narrator steps forward as "I" once, for the one take the chapter turns on, never more than once per hundred words; where the chapter stacks "I think" and "honestly", take some out. One dry aside, two at most in a long chapter. The chapter's last sentence keeps its job (a look ahead or a plain consequence). Where the chapter already has its take, change little.`,
+    `Delivery tags: at most ${tagLimit(sentences, CHAPTER_TAGS_MOST)} in the chapter, at least four sentences apart.`,
     `Length: the chapter has ${words} words; your edits together add or remove at most ${Math.round(words * 0.1)}.`,
   ];
   const lines: Record<string, string> = {};
@@ -649,7 +653,7 @@ export function friendChapterProblems(
     ),
   );
   const tags = (after.voice_tags ?? []).length;
-  const most = tagLimit(sentencesIn(a).length, 5);
+  const most = tagLimit(sentencesIn(a).length, CHAPTER_TAGS_MOST);
   if (tags > most)
     p.push(
       `The rewrite carries ${tags} delivery tags; ${most} at most in this chapter.`,

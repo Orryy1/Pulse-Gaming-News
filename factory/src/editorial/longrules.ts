@@ -156,7 +156,7 @@ export function scriptMeasures(text: string): {
 
 /** The writer's line for LONG_YOU_PER_1000. */
 export function youRule(floor: number): string {
-  return `Talk to the viewer: at least ${floor} "you", "your" or "you're" per 1,000 spoken words across the whole video, about ${Math.ceil(floor / 10)} in every 100 words. Say what each fact means for the person watching: what you see, what you pay, what you'd do with it, what you'd have noticed. Second person belongs to what a player experiences; history stays in the past tense, and the viewer was never in the room for it. Never tell the viewer what they personally did, own or feel as if it were a fact ("you bought it in 2001"); use "if you played it", "you can see it in", "here's what that means for you". Never give the narrator a life of its own: no "I", no taxes, no cousin, no memories.`;
+  return `Talk to the viewer: at least ${floor} "you", "your" or "you're" per 1,000 spoken words across the whole video, about ${Math.ceil(floor / 10)} in every 100 words. Say what each fact means for the person watching: what you see, what you pay, what you'd do with it, what you'd have noticed. Second person belongs to what a player experiences; history stays in the past tense, and the viewer was never in the room for it. Never tell the viewer what they personally did, own or feel as if it were a fact ("you bought it in 2001"); use "if you played it", "you can see it in", "here's what that means for you". Never give the narrator a life of its own: his "I" is only ever an opinion, never taxes, a cousin, memories or anything he did.`;
 }
 
 /**
@@ -182,7 +182,7 @@ export function youShortfall(
 
 /** The writer's line for LONG_SENTENCE_GATE. Halo's 19.6 came partly from a brief asking for 3-5 sentences in 130-240 words. */
 export function sentenceRule(gate: number): string {
-  return `Short sentences: the mean across this narration stays under ${gate} words. One thought per sentence. Follow a long line with a short one, and let about one sentence in five run six words or fewer. Never join two thoughts with "and" or a comma when a full stop works. Every line is still a full sentence with a verb.`;
+  return `Short sentences: the mean across this narration stays under ${gate} words. One thought per sentence. Follow a long line with a short one, and let about one sentence in five run seven words or fewer. Never join two thoughts with "and" or a comma when a full stop works. Every line is still a full sentence with a verb.`;
 }
 
 /** The sentence count a narration of this many words needs to stay under the gate. */

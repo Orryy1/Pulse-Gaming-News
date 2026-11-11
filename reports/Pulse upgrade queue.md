@@ -238,7 +238,7 @@ From the report, changes 16, 22 and 26. Rankings from week 2 or 3 of the plan; t
 ## Pre-built 11 Nov, ready to merge after 22 Nov
 
 - **Items 8 and 11 (GTA strand, Shorts length lanes):** branch claude/strand-lengths, commit ed1e21d07, 1,481 tests pass, all off by default. To switch on after merging into claude/stage: STRAND_NAME (pick a name), STRAND_SLOT (the verdict slot, must be in NEWS_SLOTS), STRAND_FRANCHISE=GTA VI|GTA 6|Grand Theft Auto VI, SHORT_LENGTHS=news=22-35,why=22-35,strand=60-75, INSTAGRAM_MAX_SECONDS=35. Over-length Shorts skip Instagram (the cutdown code only cuts rankings).
-- **Items 10 and 16 (skeleton rotation, same-day angles):** branch claude/skeletons (in progress 11 Nov).
+- **Items 10 and 16 (skeleton rotation, same-day angles):** branch claude/skeletons, commit 03f767622, 1,479 tests pass, off by default. Switch on after merging: SHORT_SKELETONS=true, SHORT_ARGUES_CHECK=true, DROP_ANGLE=true (DROP_ANGLE_HOURS=12). Before switching on SHORT_ARGUES_CHECK, change its miss path from 'waits for the owner' to 'sent back to the writer once, then released with a note', so it never needs Martin (he wants hands-off). The trailer-shot reuse counter was not built.
 - **Item 1 ("The Story of Every GTA Game"):** branch claude/everygame (Fable, in progress 11 Nov).
 - **Apple Vision tools (smart crops, subject lift, hardware encode):** branch claude/appletools (in progress 11 Nov).
 - **Scene index:** branch claude/sceneindex, commit 3a11a78fc; vision proof pending. Scene-precise matching: branch codex/scenes (in progress).

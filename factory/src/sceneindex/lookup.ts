@@ -158,7 +158,7 @@ function nameWords(index: SceneIndex): Set<string> {
   return out;
 }
 
-const FIELD = { who: 1, where: 1, seen: 0.9, said: 0.45 } as const;
+const FIELD = { who: 1, where: 1, seen: 0.9, said: 0.6 } as const;
 /** What a shot borrows from the shots beside it (same scene), per step away. */
 const NEIGHBOUR = [0.45, 0.25];
 const NEIGHBOUR_SECONDS = 25;

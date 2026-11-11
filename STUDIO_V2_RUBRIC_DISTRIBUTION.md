@@ -21,3 +21,7 @@ One row per weekly run. Anchor commit + storyId + verdict.
 - Reds (if any): none
 - Ambers: n/a
 - Note: engine could not load. `node_modules` in this checkout has been empty since 2026-10-18, so `lib/studio/v2/story-package` fails with "Cannot find module 'fs-extra'". No package build or render happened. Dependencies were not reinstalled, as the task does not ask for that. Story pick still worked: 1sn9xhe (METRO 2039, breaking score 185) was the only one of 9 stories with a cached trailer and 3+ trailerframes (20 frames). `data/pulse.db` was last written 2026-07-17, so no fresh story is available from it. Not committed: branch has no upstream and the tree has uncommitted changes.
+
+## 2026-11-11: retired
+
+The owner retired this weekly check. The live factory has replaced the Studio v2 engine, the v2 code has not changed since 2026-05-02, and the last two runs could not produce a verdict. The scheduled task `studio-v2-rubric-validate` is switched off, not deleted, so it can be switched back on if v2 is ever revived.

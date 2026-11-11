@@ -47,6 +47,7 @@ import {
 } from "./dialogue.ts";
 import { gameNames, knownName, mergeNames } from "./names.ts";
 import { lookAtShot, visionUp, type ShotLook } from "./describe.ts";
+import { tidyIndex } from "./tidy.ts";
 
 const exec = promisify(execFile);
 const run = (
@@ -505,11 +506,13 @@ export async function hearInto(
     const read = base.lines
       .filter((l) => inside(l.start) && l.via !== "voice")
       .map(({ id: _id, shot: _shot, words: _words, ...l }) => ({ ...l, via: "textbox" as const }));
-    const next = mergeStretch(
-      base,
-      stretch,
-      base.shots.filter((x) => inside(x.start)).map(({ id: _id, ...x }) => x),
-      mergeDialogue(read, heard),
+    const next = tidyIndex(
+      mergeStretch(
+        base,
+        stretch,
+        base.shots.filter((x) => inside(x.start)).map(({ id: _id, ...x }) => x),
+        mergeDialogue(read, heard),
+      ),
     );
     await saveSceneIndex(s.dataDir, next);
     return { index: next, heard: heard.length };
@@ -590,15 +593,17 @@ export async function indexStretch(
       .map(([name]) => name);
     // Read again just before writing: another pass (describing shots) may have saved while this one worked.
     const base = (await loadSceneIndex(s.dataDir, index.game)) ?? index;
-    const next = mergeStretch(
-      {
-        ...base,
-        proxy: index.proxy ?? base.proxy,
-        cast: mergeNames(base.cast, speakers),
-      },
-      { from, to },
-      shots,
-      lines,
+    const next = tidyIndex(
+      mergeStretch(
+        {
+          ...base,
+          proxy: index.proxy ?? base.proxy,
+          cast: mergeNames(base.cast, speakers),
+        },
+        { from, to },
+        shots,
+        lines,
+      ),
     );
     next.builtAt = (deps.now?.() ?? new Date()).toISOString();
     await saveSceneIndex(s.dataDir, next);

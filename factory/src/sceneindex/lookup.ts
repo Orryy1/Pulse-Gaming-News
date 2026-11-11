@@ -418,3 +418,43 @@ export function quoteShot(
 ): SceneShot | undefined {
   return index.shots[hit.shot];
 }
+
+/** A line a video may quote, in the shape the character-quote feature takes (src/editorial/quotes.ts CutsceneQuote on codex/scenes). */
+export interface QuotableLine {
+  id: string;
+  videoId: string;
+  text: string;
+  start: number;
+  end: number;
+  speaker?: string;
+}
+
+/**
+ * The game's lines worth quoting, for the writer's brief: said by a named speaker, three to fifteen words, a
+ * complete sentence, each once (the first time it is said), longest speakers' lines first up to `max`. The ID is
+ * stable across rebuilds of the same source ("q" and the line's start in tenths of a second).
+ */
+export function quotableLines(index: SceneIndex, max = 40): QuotableLine[] {
+  const seen = new Set<string>();
+  const out: QuotableLine[] = [];
+  for (const line of index.lines) {
+    const words = line.text.trim().split(/\s+/);
+    if (!line.speaker || words.length < 3 || words.length > 15) continue;
+    if (!/[.!?]["'”’]?$/.test(line.text.trim()) || /\.\.\.$|…$/.test(line.text.trim())) continue;
+    const k = quoteWords(line.text).join(" ");
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({
+      id: `q${Math.round(line.start * 10)}`,
+      videoId: index.source.videoId,
+      text: line.text.trim(),
+      start: line.start,
+      end: line.end,
+      speaker: line.speaker,
+    });
+  }
+  // Spread across the game rather than its first ten minutes: every nth line when there are too many.
+  if (out.length <= max) return out;
+  const step = out.length / max;
+  return Array.from({ length: max }, (_, i) => out[Math.floor(i * step)]!);
+}

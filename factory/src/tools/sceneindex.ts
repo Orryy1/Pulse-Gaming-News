@@ -45,6 +45,7 @@ import {
 import { findQuote, findShots } from "../sceneindex/lookup.ts";
 import { gameNames } from "../sceneindex/names.ts";
 import { keyframeTimes } from "../sceneindex/shots.ts";
+import { tidyIndex } from "../sceneindex/tidy.ts";
 
 const exec = promisify(execFile);
 const [, , command, game, ...rest] = process.argv;
@@ -427,6 +428,13 @@ async function main(): Promise<void> {
     } finally {
       release();
     }
+    return;
+  }
+  if (command === "tidy") {
+    const index = await need(s);
+    const next = tidyIndex(index);
+    await saveSceneIndex(s.dataDir, next);
+    console.log(`tidied: ${index.lines.length} -> ${next.lines.length} lines, ${next.cast.length} names`);
     return;
   }
   if (command === "voice") {

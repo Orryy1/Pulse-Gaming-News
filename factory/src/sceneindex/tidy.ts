@@ -1,0 +1,154 @@
+// Tidying a whole index after a stretch is added (pure, and safe to run again and again): the things that can
+// only be judged with the whole game in view.
+//   - A name plate misread in one frame ("Roto", "Zeida") takes the spelling the game shows hundreds of times
+//     ("Ruto", "Zelda"); a plate seen once or twice that is close to nothing else is a misread scrap and goes.
+//   - A line cut in two (by a stretch boundary, or by a frame the reader got wrong) is one line again.
+//   - A character card ("SARIA  Link's Childhood Friend") or a place card ("KOKIRI FOREST") names who or where
+//     a shot is: the surest naming there is, straight from the game.
+
+import { alike } from "./dialogue.ts";
+import { knownName, mergeNames } from "./names.ts";
+import { shotAt, type DialogueLine, type SceneIndex } from "./schema.ts";
+
+const norm = (t: string) =>
+  t
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+/** Edits between two short strings (insert, delete, swap one for another, swap two neighbours). */
+export function editDistance(a: string, b: string): number {
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [
+    i,
+    ...new Array<number>(b.length).fill(0),
+  ]);
+  for (let j = 0; j <= b.length; j++) d[0]![j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i]![j] = Math.min(
+        d[i - 1]![j]! + 1,
+        d[i]![j - 1]! + 1,
+        d[i - 1]![j - 1]! + cost,
+      );
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+        d[i]![j] = Math.min(d[i]![j]!, d[i - 2]![j - 2]! + 1);
+    }
+  return d[a.length]![b.length]!;
+}
+
+/**
+ * Each speaker reading mapped to the spelling to keep, or to "" when it is a scrap. A reading seen five times or
+ * more stands. A rarer one takes a standing name within two edits of it (one for a short name); otherwise it
+ * stays when it is on the game's cast list or was seen at least three times, and goes when it was not.
+ */
+export function speakerSpellings(
+  counts: Map<string, number>,
+  cast: string[],
+): Map<string, string> {
+  const standing = [...counts]
+    .filter(([, n]) => n >= 5)
+    .sort((a, b) => b[1] - a[1]);
+  const known = new Set(cast.map(norm));
+  const out = new Map<string, string>();
+  for (const [name, n] of counts) {
+    const k = norm(name);
+    if (n >= 5) {
+      out.set(name, name);
+      continue;
+    }
+    const near = standing.find(([s]) => {
+      const sk = norm(s);
+      if (sk === k) return true;
+      return (
+        editDistance(sk, k) <= (Math.min(sk.length, k.length) >= 5 ? 2 : 1)
+      );
+    });
+    if (near) out.set(name, near[0]);
+    else out.set(name, known.has(k) || n >= 3 ? name : "");
+  }
+  return out;
+}
+
+/** Adjacent lines that are one line cut in two: the same words (or one the start of the other), less than a second apart. */
+export function joinSplitLines<
+  L extends Pick<
+    DialogueLine,
+    "start" | "end" | "text" | "speaker" | "via" | "words"
+  >,
+>(lines: L[]): L[] {
+  const out: L[] = [];
+  for (const line of [...lines].sort((a, b) => a.start - b.start)) {
+    const prev = out[out.length - 1];
+    const a = prev ? norm(prev.text) : "";
+    const b = norm(line.text);
+    const same =
+      prev !== undefined &&
+      line.start - prev.end <= 1 &&
+      prev.via === line.via &&
+      !prev.words &&
+      !line.words &&
+      (a === b ||
+        alike(prev.text, line.text) >= 0.9 ||
+        (Math.min(a.length, b.length) >= 8 &&
+          (a.startsWith(b) || b.startsWith(a))));
+    if (!same) {
+      out.push({ ...line });
+      continue;
+    }
+    prev.end = Math.max(prev.end, line.end);
+    if (b.length > a.length) prev.text = line.text;
+    if (!prev.speaker && line.speaker) prev.speaker = line.speaker;
+  }
+  return out;
+}
+
+/** The names from a list that are written, whole, in a text ("SARIA Link's Childhood Friend" -> Saria, Link). */
+export function namesWritten(text: string, list: string[]): string[] {
+  const t = ` ${norm(text)} `;
+  return list.filter((name) => {
+    const k = norm(name);
+    return k.length >= 4 && t.includes(` ${k} `);
+  });
+}
+
+/** The index with its speakers respelt, its split lines joined and its cards read into who and where. */
+export function tidyIndex(index: SceneIndex): SceneIndex {
+  const counts = new Map<string, number>();
+  for (const l of index.lines)
+    if (l.speaker) counts.set(l.speaker, (counts.get(l.speaker) ?? 0) + 1);
+  const spell = speakerSpellings(counts, index.cast);
+  const respelt: DialogueLine[] = index.lines.map((l) => {
+    const { speaker, ...rest } = l;
+    const s = speaker ? spell.get(speaker) : undefined;
+    return s ? { ...rest, speaker: s } : rest;
+  });
+  const lines = joinSplitLines(respelt).map((l, i) => ({
+    ...l,
+    id: i,
+    shot: shotAt(index.shots, l.start),
+  }));
+  const speakers = [
+    ...new Set(lines.flatMap((l) => (l.speaker ? [l.speaker] : []))),
+  ].filter((s) => (counts.get(s) ?? 0) >= 2);
+  const cast = mergeNames(index.cast, speakers);
+  const shots = index.shots.map((s) => {
+    if (!s.text) return s;
+    // The first name on a card is whose card it is ("SARIA  Link's Childhood Friend" is Saria's, not Link's).
+    const low = ` ${norm(s.text)} `;
+    const written = namesWritten(s.text, cast).sort(
+      (a, b) => low.indexOf(` ${norm(a)} `) - low.indexOf(` ${norm(b)} `),
+    );
+    const first = s.text.trim().split(/\s+/)[0] ?? "";
+    const card =
+      written[0] ?? (first.length >= 4 ? knownName(first, cast) : undefined);
+    const who = card ? [card] : [];
+    const where = namesWritten(s.text, index.places)[0];
+    return {
+      ...s,
+      who: mergeNames(s.who, who),
+      where: s.where || where || "",
+    };
+  });
+  return { ...index, cast, shots, lines };
+}

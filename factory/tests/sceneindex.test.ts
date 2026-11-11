@@ -42,6 +42,7 @@ import {
 import {
   findQuote,
   findShots,
+  quotableLines,
   stem,
   tokens,
 } from "../src/sceneindex/lookup.ts";
@@ -53,6 +54,7 @@ import {
   storyText,
 } from "../src/sceneindex/names.ts";
 import { lookAnswer, lookPrompt } from "../src/sceneindex/describe.ts";
+import { editDistance, joinSplitLines, namesWritten, speakerSpellings, tidyIndex } from "../src/sceneindex/tidy.ts";
 import {
   chooseSource,
   ocrFrameArgs,
@@ -1540,4 +1542,67 @@ test("SCENE_INDEX on: a game's index is found under the script's name, a remake'
     q.games.map((g) => [g.game, g.recentRelease]),
     [["Hollow Knight: Silksong", true]],
   );
+});
+
+// ---- tidying the whole index ----
+
+test("a misread name plate takes the game's spelling, a split line is one again, a card names who and where", () => {
+  const counts = new Map([
+    ["Ruto", 27],
+    ["Roto", 1],
+    ["Ruto-", 1],
+    ["Zelda", 26],
+    ["Zeida", 2],
+    ["Darunia", 44],
+    ["Durania", 1],
+    ["Impa", 4],
+    ["DELO TREE", 1],
+    ["Sheik", 3],
+  ]);
+  const spell = speakerSpellings(counts, ["Impa", "Sheik", "Link"]);
+  assert.equal(spell.get("Roto"), "Ruto");
+  assert.equal(spell.get("Ruto-"), "Ruto");
+  assert.equal(spell.get("Zeida"), "Zelda");
+  assert.equal(spell.get("Durania"), "Darunia");
+  assert.equal(spell.get("Impa"), "Impa", "rare but on the cast list");
+  assert.equal(spell.get("Sheik"), "Sheik");
+  assert.equal(spell.get("DELO TREE"), "", "a scrap seen once and close to nothing");
+  assert.equal(editDistance("darunia", "durania"), 2);
+  const joined = joinSplitLines([
+    { start: 1797.5, end: 1799.5, text: "The Zora Sapphire shall be yours!", speaker: "Ruto", via: "textbox" as const },
+    { start: 1799.5, end: 1800.5, text: "The Zora Sapphire shall be yours!", speaker: "Ruto", via: "textbox" as const },
+    { start: 1803, end: 1805, text: "The Zora Sapphire shall be yours!", speaker: "Ruto", via: "textbox" as const },
+  ]);
+  assert.deepEqual(joined.map((l) => [l.start, l.end]), [[1797.5, 1800.5], [1803, 1805]]);
+  assert.deepEqual(namesWritten("SARIA Link's Childhood Friend", ["Link", "Saria", "Navi"]), ["Link", "Saria"]);
+  const index = sample();
+  index.shots[1]!.text = "SARIA Link's Childhood Friend";
+  index.shots[1]!.who = [];
+  index.shots[2]!.text = "TEMPLE OF TIME";
+  index.shots[2]!.where = "";
+  index.cast.push("Saria");
+  index.lines[1]!.speaker = "Great Deku Tee";
+  const tidy = tidyIndex({ ...index, lines: [...index.lines, ...Array.from({ length: 5 }, (_, i) => ({ ...index.lines[0]!, start: 300 + i * 10, end: 304 + i * 10, text: `Line ${i} of the tree's long speech.` }))] });
+  assert.deepEqual(tidy.shots[1]!.who, ["Saria"], "the first name on a card is whose card it is");
+  assert.equal(tidy.shots[2]!.where, "Temple of Time");
+  assert.equal(tidy.lines[1]!.speaker, "Great Deku Tree");
+  assert.deepEqual(tidyIndex(tidy), tidy, "tidying twice changes nothing");
+});
+
+test("the lines a video may quote: named speaker, a whole sentence, each once, in the quote feature's shape", () => {
+  const lines = quotableLines(sample());
+  assert.deepEqual(lines.map((l) => l.text), [
+    "I will entrust everything to the child.",
+    "The Master Sword... the blade of evil's bane.",
+    "Ganondorf, the King of Evil, is no more.",
+  ]);
+  assert.deepEqual(lines[0], {
+    id: "q1873",
+    videoId: "8UVbiI44V_c",
+    text: "I will entrust everything to the child.",
+    start: 187.25,
+    end: 190.75,
+    speaker: "Great Deku Tree",
+  });
+  assert.equal(quotableLines(sample(), 1).length, 1);
 });

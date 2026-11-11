@@ -196,6 +196,8 @@ export function isName(text: string): boolean {
   if (/[.!?,;:…]/.test(t)) return false;
   const words = t.split(/\s+/);
   if (words.length > 4) return false;
+  // Two words or more all in capitals is a card ("KOKIRI FOREST"), not a name plate.
+  if (words.length >= 2 && t === t.toUpperCase()) return false;
   if (!/^[\p{Lu}?]/u.test(words[0]!)) return false;
   return words.every((w) => /^[\p{L}\p{N}'’&-]+$/u.test(w));
 }
@@ -317,13 +319,7 @@ export function textBoxLines(
     const same =
       cur !== undefined &&
       s.time - cur.last <= step * 2.5 &&
-      (grows || alike(read.text, cur.longest) >= 0.8) &&
-      // A different speaker's plate means a different line even when the words are alike ("Yes." / "Yes!").
-      !(
-        read.speaker &&
-        cur.speakers.length &&
-        alike(read.speaker, vote(cur.speakers)) < 0.6
-      );
+      (grows || alike(read.text, cur.longest) >= 0.8);
     if (!same) {
       close();
       cur = {

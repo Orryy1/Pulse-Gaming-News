@@ -651,6 +651,15 @@ export interface Config {
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
+  /** APPLE_SMART_CROP (Mac mini only, off until switched on): Apple Vision follows the subject so a wide clip's
+   * upright crop keeps the action in frame, not the middle third (src/render/smartcrop.ts). */
+  appleSmartCrop: boolean;
+  /** APPLE_SUBJECT_LIFT (Mac mini only, off until switched on): Apple Vision's foreground mask cuts the subject out
+   * for thumbnails and the Short's opening poster, ahead of the depth model (src/assets/applevision.ts). */
+  appleSubjectLift: boolean;
+  /** APPLE_HW_ENCODE (Mac mini only, off until switched on): clip cuts and other in-between encodes on the Mac's
+   * VideoToolbox encoder (src/lib/videoenc.ts); final masters stay on libx264. */
+  appleHwEncode: boolean;
   ytdlpPath: string;
   /** Games the owner plays (and records): long videos about them send them a "record these moments" list. */
   ownerGames: string[];
@@ -1364,6 +1373,9 @@ export function loadConfig(): Config {
     cutsceneMaxSeconds: Math.max(0, int("CUTSCENE_MAX_SECONDS", 20)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   shortVivid: bool("SHORT_VIVID", false),
+  appleSmartCrop: bool("APPLE_SMART_CROP", false),
+  appleSubjectLift: bool("APPLE_SUBJECT_LIFT", false),
+  appleHwEncode: bool("APPLE_HW_ENCODE", false),
   docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
     ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
     ownerGames: str("OWNER_GAMES", "Grand Theft Auto V, Grand Theft Auto VI")

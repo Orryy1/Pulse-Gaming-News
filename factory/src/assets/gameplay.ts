@@ -29,6 +29,7 @@ import { trailerMatchesGame, distinguishing } from "./commons.ts";
 import { normTitle } from "./igdb.ts";
 import { junkTitleReason, notOutYet } from "./junk.ts";
 import { fetchWithTimeout, errorMessage, log } from "../lib/util.ts";
+import { intermediateVideoArgs } from "../lib/videoenc.ts";
 
 // Every child (yt-dlp, ffmpeg) runs under the download cap and is killed on overrun (src/lib/child.ts).
 const run = runCapped;
@@ -612,12 +613,7 @@ export async function cropEdge(
       edge === "bottom"
         ? "crop=iw:trunc(ih*0.74/2)*2:0:0"
         : "crop=iw:trunc(ih*0.74/2)*2:0:trunc(ih*0.26/2)*2",
-      "-c:v",
-      "libx264",
-      "-crf",
-      "17",
-      "-preset",
-      "fast",
+      ...intermediateVideoArgs({ crf: 17, preset: "fast" }),
       "-pix_fmt",
       "yuv420p",
       "-c:a",
@@ -821,12 +817,7 @@ export async function trimToJumpFree(
     file,
     "-t",
     len.toFixed(3),
-    "-c:v",
-    "libx264",
-    "-crf",
-    "17",
-    "-preset",
-    "fast",
+    ...intermediateVideoArgs({ crf: 17, preset: "fast" }),
     "-pix_fmt",
     "yuv420p",
     "-c:a",

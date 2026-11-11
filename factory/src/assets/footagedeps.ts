@@ -29,6 +29,7 @@ import { readText } from "./ocr.ts";
 import { loadOrch } from "../lib/orch.ts";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { intermediateVideoArgs } from "../lib/videoenc.ts";
 
 /** A child whose stdout is bytes (the hash thumbnail), not text. */
 const runRaw = (cmd: string, args: string[]) =>
@@ -315,12 +316,7 @@ export function footageFirstDeps(o: {
         "-an",
         "-vf",
         "scale=-2:1080,fps=30",
-        "-c:v",
-        "libx264",
-        "-crf",
-        "18",
-        "-preset",
-        "veryfast",
+        ...intermediateVideoArgs({ crf: 18, preset: "veryfast" }),
         "-pix_fmt",
         "yuv420p",
         dest,

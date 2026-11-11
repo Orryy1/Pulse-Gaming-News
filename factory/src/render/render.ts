@@ -442,6 +442,7 @@ export interface RenderInput {
       luma?: number;
       stock?: boolean;
       credit?: string;
+      crop?: import("./smartcrop.ts").ClipCrop;
     }>;
     musicFile: string | null;
     /** The new-look opening's cut-out of the hero art, relative to the episode folder. */
@@ -848,6 +849,7 @@ export async function renderShort(input: RenderInput): Promise<void> {
         luma: c.luma,
         stock: c.stock,
         credit: c.credit,
+        crop: c.crop,
       })),
       // Brand files ship in the bundle's public dir; Short resolves bare
       // names with staticFile().

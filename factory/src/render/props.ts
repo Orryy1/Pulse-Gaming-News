@@ -28,6 +28,7 @@ export interface ShortClip {
   stock?: boolean; // licensed stock: shown with an ILLUSTRATIVE tag
   audio?: boolean; // gameplay with its game sound kept: played low under the narrator
   credit?: string; // a credit its licence asks for on screen (CC BY gameplay), shown while it plays
+  crop?: import("./smartcrop.ts").ClipCrop; // APPLE_SMART_CROP: where the upright crop centres, moment by moment
 }
 
 // A type alias (not an interface) so it satisfies Remotion's Record<string, unknown> props constraint.

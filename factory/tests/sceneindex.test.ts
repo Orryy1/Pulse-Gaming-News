@@ -75,6 +75,7 @@ import {
   queueGame,
   readQueue,
   requestSceneIndex,
+  requestSceneIndexes,
   sceneIndexTick,
   sourceRecheckDue,
   turnCommand,
@@ -1701,4 +1702,10 @@ test("the games a script is about are queued: each entry's game, recent when new
   ]);
   assert.deepEqual(gamesOfScript({ game_title: "Halo 3", hook: "Halo 3 still holds up" }, now), [{ game: "Halo 3", recentRelease: false }]);
   assert.deepEqual(gamesOfScript({}, now), []);
+});
+
+test("several games asked for at once all reach the queue", async () => {
+  const dir = await tmpDir();
+  await requestSceneIndexes(testConfig(dir, { sceneIndex: true }), [{ game: "Halo 3" }, { game: "Grand Theft Auto VI", recentRelease: true }, { game: "halo 3" }], "a video about it");
+  assert.deepEqual((await readQueue(dir)).games.map((g) => [g.game, g.recentRelease ?? false]), [["Halo 3", false], ["Grand Theft Auto VI", true]]);
 });

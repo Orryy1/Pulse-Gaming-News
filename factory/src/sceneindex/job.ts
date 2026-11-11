@@ -306,6 +306,15 @@ export async function requestSceneIndex(
   }
 }
 
+/** Several games at once, one after another (two writers at once would lose one's entry). Never throws. */
+export async function requestSceneIndexes(
+  cfg: Pick<Config, "dataDir" | "sceneIndex">,
+  games: Array<{ game: string; recentRelease?: boolean }>,
+  reason: string,
+): Promise<void> {
+  for (const g of games) await requestSceneIndex(cfg, g.game, reason, Boolean(g.recentRelease));
+}
+
 let running = false;
 const TOOL = path.join(
   path.dirname(fileURLToPath(import.meta.url)),

@@ -173,8 +173,28 @@ export function tidyIndex(index: SceneIndex): SceneIndex {
     for (let i = at; i < index.shots.length && index.shots[i]!.start < c.end; i++)
       cardTimes.set(i, [...(cardTimes.get(i) ?? []), { from: c.start, to: c.end }]);
   }
+  // A game that writes out what it says (nearly every heard line was also read): a line that was only heard is
+  // kept when the screen bears it out (battle chatter the game captions in another corner), and is otherwise
+  // Whisper finding words in music and sword clashes.
+  const heardOnly = joined.filter((l) => l.via === "voice");
+  const subtitled =
+    voiced.length >= 50 && voiced.length / (voiced.length + heardOnly.length) >= 0.8;
+  const wordsOf = (t: string) => norm(t).split(" ").filter(Boolean);
+  const unheard = new Set(
+    subtitled
+      ? heardOnly.filter((l) => {
+          const seen = new Set(
+            index.shots
+              .filter((sh) => sh.start < l.end + 2 && sh.end > l.start - 2)
+              .flatMap((sh) => wordsOf(sh.text)),
+          );
+          const said = wordsOf(l.text);
+          return said.filter((w) => seen.has(w)).length < Math.max(2, said.length * 0.5);
+        })
+      : [],
+  );
   const lines = joined
-    .filter((l) => !cards.includes(l))
+    .filter((l) => !cards.includes(l) && !unheard.has(l))
     .map((l, i) => ({
       ...l,
       id: i,

@@ -1753,3 +1753,27 @@ test("a clip is cut from the part of its shot with no dialogue written over the 
   assert.equal(plan[0]!.shot, 0);
   assert.deepEqual([plan[0]!.from, Math.round(plan[0]!.seconds * 100) / 100], [185.1, 1.73]);
 });
+
+test("in a game that writes out what it says, a line only heard stays when the screen bears it out", () => {
+  const index = sample();
+  const spoken = Array.from({ length: 60 }, (_, i) => ({
+    id: 0,
+    shot: 0,
+    start: 3000 + i * 10,
+    end: 3004 + i * 10,
+    text: `Sentence number ${i} of a long conversation.`,
+    speaker: i % 2 ? "Navi" : "Rauru",
+    via: "both" as const,
+  }));
+  const heard = (start: number, text: string) => ({ id: 0, shot: 0, start, end: start + 2, text, via: "voice" as const });
+  index.shots[6]!.text = "What is this... His power-it's running wild!";
+  const tidy = tidyIndex({
+    ...index,
+    lines: [...index.lines, ...spoken, heard(6902, "It's power, it's running wild!"), heard(6904, "And by the way, that's an effects test."), heard(2401, "This is for you! This is for you!")],
+  });
+  const only = tidy.lines.filter((l) => l.via === "voice").map((l) => l.text);
+  assert.deepEqual(only, ["It's power, it's running wild!"]);
+  // A voiced game with no subtitles keeps everything it hears.
+  const unsubtitled = tidyIndex({ ...index, lines: [heard(6902, "Nobody wrote this down."), heard(6904, "Or this.")] });
+  assert.equal(unsubtitled.lines.length, 2);
+});

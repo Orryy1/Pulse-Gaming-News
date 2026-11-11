@@ -2,7 +2,7 @@
 // this file enforces the rules that must never depend on model compliance.
 
 import { lateAngleNote } from "../bigstories.ts";
-import { pulseCheckRule } from "./newssegment.ts";
+import { pulseCheckRule, PULSE_CHECK_ASK } from "./newssegment.ts";
 import { whyBrief } from "./why.ts";
 import {
   voiceFor,
@@ -93,7 +93,7 @@ Structure:
    Frame the story by what it does to the viewer (their money, their console, their pre-order, their weekend) or as players against a company, publisher against platform, studio against its own past: that framing carried the news Shorts that broke out, and a price is a conflict, never just a figure.
    Every beat also carries "footage": what the trailer picture should show while that line is spoken, with 1-4 keywords naming the thing, place, character or action in the line. The picture editor matches real trailer moments to these, so be concrete ("Hyrule Field", "the new ship interior", "a car chase"), and use "calm" for lines whose card needs a quiet background (numbers, dates, prices). "hook_footage" does the same for the opening line and should want the most striking gameplay moment.
 person: when the story is about one real person (a cameo, a hire, a departure, a statement), their name as commonly written, so the Short can show a licensed photo of them; otherwise empty.
-3. pulse_take: the Pulse angle, and the payoff: when the hook asked a question, the take answers it, plainly, in its first sentence. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Use the take shape this Short is given below (a concession then a verdict, a comparison, a consequence for the viewer, what happens next, or a plain verdict); never pose a question in the beats or the take and then answer it (no \"Why trust them? Not yet.\"): say the doubt as a statement (\"After September's hike, trust is thin.\"); when the shape is not a concession, no line in the Short concedes a point ("sure", "fair enough", "granted", "in fairness", "to be fair", "yes, but"). The opening words and the closing shape must differ from the recent Shorts listed below when a list is given. Opinions must be framed as opinion. Do not invent data.
+3. pulse_take: the Pulse angle, and the payoff: when the hook asked a question, the take answers it, plainly, in its first sentence. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Use the take shape this Short is given below (a concession then a verdict, a comparison, a consequence for the viewer, what happens next, or a plain verdict); never pose a question in the beats or the take and then answer it (no \"Why trust them? Not yet.\"): say the doubt as a statement (\"After September's hike, trust is thin.\"); when the shape is not a concession, no line in the Short concedes a point ("sure", "fair enough", "granted", "in fairness", "to be fair", "yes, but"). The opening words and the closing shape must differ from the recent Shorts listed below when a list is given. Opinions must be framed as opinion. Say it as the narrator's own honest call, in the first person where it fits ("I'd wait for a sale", "honestly, this one's on Sony"), with a dry aside at the company or the situation if one comes naturally: a friend's verdict, never a neutral summary. Do not invent data.
 Talk to the viewer: at least two sentences in the script say "you" or "your" about what this means for them (their console, their money, their weekend).
 Community stakes: the framing says plainly what the fan gains, loses or can do about it (save, wait, claim, pre-order, skip), and when the loop line asks, it is a personal either/or the viewer answers about their own choice ("Keep your disc drive, or go all digital?"), never a question about the company.
 3a. stamp: the one word that carries the news gets a rubber stamp on screen as it is spoken: a date that was confirmed ("NOV 19" / "CONFIRMED"), a delay ("DELAYED" / "TO 2027"), a price ("$49.99"), "FREE", "LEAKED" (with "REPORTED" under it for a rumor). "word" is that word exactly as written in your narration; the stamp's figures must be the narration's own. Omit it when nothing deserves it.
@@ -117,7 +117,7 @@ Mark a "blocker" when the script:
 - makes a claim that could be defamatory about a real person or company,
 - says what a source does not say or leaves out ("no price", "no release date", "no platforms", "little else", "the post runs thin"), unless a source's full body text plainly lacks that detail; a source with no body, or only a headline or an opening paragraph, supports no such claim,
 - calls something a new game, DLC, expansion or paid product, or tells viewers to wait on, hold off or not pre-order it, when the sources describe an event, update, season, questline or free content for a game that is already out, or say nothing is for sale.
-Opinion clearly framed as opinion, and long-established public knowledge, are fine. A price rounded and said to be rounded ("under two dollars", "about five dollars" for $1.99 and $4.99) is accurate, not a blocker; a flat "two dollars" for $1.99 is minor at most when the exact price is on screen.
+Opinion clearly framed as opinion, and long-established public knowledge, are fine. The narrator's first-person takes ("I'd wait", "honestly, I think this is a mistake"), jokes, sarcastic asides and wry comparisons are opinion, never blockers, unless one of them states a fact the sources don't support. A price rounded and said to be rounded ("under two dollars", "about five dollars" for $1.99 and $4.99) is accurate, not a blocker; a flat "two dollars" for $1.99 is minor at most when the exact price is on screen.
 Spelling, style and tone are "minor" at most.
 verdict is "fail" if there is any blocker.`;
 }
@@ -527,7 +527,10 @@ export function writtenTells(s: Script, recent?: RecentShapes): string[] {
 /** Questions inside the body or the take (pure); the hook and loop line may ask, nothing between them does. */
 export function midQuestions(s: Pick<Script, "beats" | "pulse_take">): string[] {
   const text = [...s.beats.map((b) => b.narration), s.pulse_take.narration].join(" ");
-  return (text.match(/[^.?!]*\?/g) ?? []).map((q) => q.trim()).filter(Boolean);
+  // "My Pulse check? Steady." is the segment's own lead-in, not a question answered to nobody.
+  return (text.match(/[^.?!]*\?/g) ?? [])
+    .map((q) => q.trim())
+    .filter((q) => q && !PULSE_CHECK_ASK.test(q));
 }
 
 export function validateScript(s: Script, recent?: RecentShapes): string[] {

@@ -2430,3 +2430,60 @@ test("an editor's repeat is never overruled, and the story is not asked about ag
   assert.equal(f.selections ?? 0, calls, "no second editor call");
   await db.close();
 });
+
+/** A model that answers the friend pass with these edits and everything else as the usual fakes do. */
+function withFriendEdits(s: Services, edits: Array<{ find: string; replace: string }>): string[] {
+  const sites: string[] = [];
+  const base = s.llm;
+  s.llm = {
+    structured: async (o: any) => {
+      sites.push(o.site ?? "");
+      return o.site === "friend.short" ? { edits } : base.structured(o);
+    },
+  } as Llm;
+  return sites;
+}
+
+test("FRIEND_PASS: a settled Short gets its delivery pass, fact-checked again, and keeps the narrator's take", async () => {
+  const { db, s } = await setup({ friendPass: ["shorts"] });
+  const sites = withFriendEdits(s, [
+    { find: "For us, Bethesda has delayed", replace: "{sighs} Honestly, I think Bethesda has delayed" },
+  ]);
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(sites.filter((x) => x === "friend.short").length, 1);
+  // The desk question rides in front of the take by the time the Short is voiced.
+  assert.match(ep.script_json!.pulse_take.narration, /(?:^|\? )Honestly, I think Bethesda has delayed/);
+  assert.equal(ep.script_json!.voice_tags?.[0]?.tag, "sighs");
+  assert.equal(ep.script_json!.hook, goodScript().hook);
+  const [ev] = await db.query<{ detail: { kept: boolean } }>(
+    `SELECT detail FROM events WHERE episode_id = $1 AND kind = 'friend_pass'`,
+    [ep.id],
+  );
+  assert.equal(ev!.detail.kept, true);
+});
+
+test("FRIEND_PASS: a pass that moves a fact is thrown away and the settled Short goes out as it was", async () => {
+  const { db, s } = await setup({ friendPass: ["shorts"] });
+  withFriendEdits(s, [
+    { find: "For us, Bethesda has delayed big content before", replace: "Honestly, Bethesda has delayed big content 5 times before" },
+  ]);
+  await tick(s);
+  const ep = await only(db);
+  assert.ok(ep.script_json!.pulse_take.narration.endsWith(goodScript().pulse_take.narration));
+  const [ev] = await db.query<{ detail: { kept: boolean; why: string[] } }>(
+    `SELECT detail FROM events WHERE episode_id = $1 AND kind = 'friend_pass'`,
+    [ep.id],
+  );
+  assert.equal(ev!.detail.kept, false);
+  assert.match(ev!.detail.why.join(" "), /adds the figure 5/);
+});
+
+test("FRIEND_PASS off: no pass is asked for and the Short is as written", async () => {
+  const { db, s } = await setup({ friendPass: [] });
+  const sites = withFriendEdits(s, [{ find: "For us,", replace: "Honestly," }]);
+  await tick(s);
+  const ep = await only(db);
+  assert.ok(!sites.includes("friend.short"));
+  assert.ok(ep.script_json!.pulse_take.narration.endsWith(goodScript().pulse_take.narration));
+});

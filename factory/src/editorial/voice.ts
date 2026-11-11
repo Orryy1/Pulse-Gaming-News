@@ -20,7 +20,7 @@ Pulse sounds like your gaming friend, the one in the group chat who reads every 
 How Pulse writes (the examples use placeholder facts: copy the rhythm, never the words or the facts):
 - Open on a fact, a number or a scene, never a greeting or a vague tease. "GTA 5 came out 4,767 days ago. Rockstar just told us how much longer." Not "Big news for GTA fans today."
 - Say what you think early, then prove it. A hot take in the first two sentences beats a take saved for the last five seconds. Take a side: "this is a mistake", "this is the best news Xbox owners have had all year", "I'd wait". A take that could never upset anyone is not a take. The edge is aimed at companies, prices, delays and decisions, never at players, groups of people or anyone's identity, and it stays advertiser-friendly.
-- Give opinions one of several shapes, and when the brief names a shape for this script, use that one: a concession then a verdict (grant the other side one point in a few words, then say where we land), a comparison with a named earlier game, price or date, a consequence for you, what happens next, or a plain verdict with its one reason. A concession is the rarest shape (at most one Short in three) and takes different words each time (sure, fair enough, yes, granted, to be fair, in fairness, credit where it's due), never the same opener two Shorts running. One "I think" or "honestly" per Short is plenty, then commit. Never "objectively the worst ever".
+- Give opinions one of several shapes, and when the brief names a shape for this script, use that one: a concession then a verdict (grant the other side one point in a few words, then give your own call), a comparison with a named earlier game, price or date, a consequence for you, what happens next, or a plain verdict with its one reason. A concession is the rarest shape (at most one Short in three) and takes different words each time (sure, fair enough, yes, granted, to be fair, in fairness, credit where it's due), never the same opener two Shorts running. One "I think" or "honestly" per Short is plenty, then commit. Never "objectively the worst ever".
 - Be specific: at least two hard specifics in every Short (a number, a date, a named source, a price). "$69.99, ten dollars more than Tears of the Kingdom", not "a huge price jump".
 - Attribute like a reporter, then translate: name the outlet, quote one short line if the sources give one, then say what it means in plain words. Never repeat PR adjectives ("immersive next-generation experience").
 - Talk to the viewer like a friend: "you" for consequences ("if you own a PS5 Pro, this patch is for you"), "I" for the narrator's own honest take ("I'd wait a week", "I'll be honest, this one stings"), "we" for Pulse remembering what it said before. Roughly two to four "you" per hundred words. Never claim to have played, owned, attended or felt something you can't have: the take is an opinion, never an invented experience.
@@ -169,12 +169,14 @@ export function voiceProblems(spoken: string): string[] {
     p.push(
       `Too many hype words (${hype.join(", ")}); keep at most one and let the numbers do the work.`,
     );
-  if (
-    /\bI (think|thought|played|love|loved|guess|mean|believe|feel|felt|was|am|have|had|would|will|can|really|just|know)\b|\bI'(m|ve|ll|d)\b/.test(
-      spoken,
-    )
-  )
-    p.push(`Pulse speaks as "we" and "you", never "I".`);
+  // The narrator's own "I" is the take (owner, 11 Nov 2026: "like a viewer's friend"), so "I think" and "I'd wait"
+  // stand. This check used to send back every "I" ("Pulse speaks as we and you, never I") while the voice and the
+  // personal-voice test asked for one, so each revision stripped the take. Only an experience he can't have had goes back.
+  const invented = inventedExperience(spoken);
+  if (invented)
+    p.push(
+      `"${invented}" claims something the narrator never did; keep the take as an opinion ("I'd wait", "honestly, I think...") and never claim to have played, bought, watched or attended anything.`,
+    );
   // A bare Roman numeral standing in for a game ("but III let you", "V let you swap") reads as nonsense
   // aloud: the GTA ranking's outro said "roads three paved in 2001" (25 Oct 2026).
   const bare = spoken.match(
@@ -192,6 +194,17 @@ export function voiceProblems(spoken: string): string[] {
     );
   }
   return p;
+}
+
+/**
+ * A first-person experience an AI narrator can't have had ("I played it", "I've seen", "when I was", "my copy"),
+ * outside quotations: the first one found, or undefined. Opinions ("I think", "I'd wait") never count.
+ */
+export const INVENTED_EXPERIENCE =
+  /\bI(?:'ve| have| had|'d)? (?:just |already |actually |finally |first |never )?(?:played|tried|bought|owned|finished|beat|beaten|completed|watched|attended|visited|spent|sunk|pre-?ordered|downloaded|installed|went|saw|seen|met|heard|remember|grew up)\b|\bwhen I (?:was|played|first|bought|saw)\b|\bmy (?:copy|save|saves|playthrough|console|PS5|PS4|Xbox|Switch|PC|run|hours|backlog|childhood)\b/i;
+
+export function inventedExperience(text: string): string | undefined {
+  return outsideQuotes(text).match(INVENTED_EXPERIENCE)?.[0];
 }
 
 /** A long video's or recap's closing narration with the sign-off, never doubled. */
@@ -258,6 +271,12 @@ export const EXAMPLE_LINES: string[] = [
   "it still has the best maps the series ever made",
   "if 7 was all spectacle",
   "good catch on the PS4 version",
+  // The Pulse Check's examples (newssegment.ts).
+  "hold your breath for a sequel",
+  "if you were planning on launch day",
+  // The friend pass's example (friendpass.ts).
+  "three delays since 2024, tracks",
+  "pull that pre-order and decide when it's out",
   // The news Short (editorial.ts and schema.ts).
   "launch trailer is out, and November 19 holds",
   "Switch 2's $80 Zelda",

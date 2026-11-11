@@ -6,13 +6,14 @@ import type { Script } from "./schema.ts";
 const STOCK_OPENER = /^\s*our read\s*[:,-]?\s*/i;
 
 /** Ways to introduce the channel's opinion in speech, each followed by the opinion itself. */
+// The narrator's own voice (owner, 11 Nov 2026: a viewer's friend, not a news desk), so "I", not the desk's "we".
 const SPOKEN = [
-  "For us, ",
+  "If you ask me, ",
   "Honestly, ",
   // A full stop, not a colon: aloud a colon sounds like a slide label (audit, 28 Oct 2026).
-  "Here's our take. ",
-  "The way we see it, ",
-  "We think ",
+  "Here's my take. ",
+  "The way I see it, ",
+  "I think ",
 ];
 
 /** Ways to introduce the opinion in a pinned comment, each followed by the on-screen take. */
@@ -89,7 +90,7 @@ export interface TakeShape {
 export const TAKE_SHAPES: TakeShape[] = [
   {
     id: "concession",
-    rule: "a concession then a verdict: grant the other side one point in a few words of your own, then say plainly where we land",
+    rule: "a concession then a verdict: grant the other side one point in a few words of your own, then give your own call plainly, the way a friend would",
   },
   {
     id: "comparison",
@@ -105,7 +106,7 @@ export const TAKE_SHAPES: TakeShape[] = [
   },
   {
     id: "verdict",
-    rule: "a plain verdict: what we think in one sentence, then the single reason",
+    rule: "a plain verdict: your honest call in one sentence, in the first person where it fits (\"I'd wait\", \"honestly, this is a mistake\"), then the single reason",
   },
 ];
 

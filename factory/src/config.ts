@@ -55,6 +55,25 @@ function bool(name: string, fallback: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(raw.toLowerCase());
 }
 
+/** The writers the friend pass runs for (src/editorial/friendpass.ts). */
+export type FriendPassFormat = "shorts" | "documentary";
+export const FRIEND_PASS_FORMATS: FriendPassFormat[] = ["shorts", "documentary"];
+
+/**
+ * FRIEND_PASS as a list (pure): unset means the default, Shorts and documentary chapters; "off", "none", "0" or
+ * "false" means none; "on", "all", "1" or "true" means both; otherwise the named formats ("shorts,documentary").
+ */
+export function friendPassFrom(raw: string | undefined): FriendPassFormat[] {
+  const v = (raw ?? "").trim().toLowerCase();
+  if (!v) return [...FRIEND_PASS_FORMATS];
+  if (["off", "none", "0", "false", "no"].includes(v)) return [];
+  if (["on", "all", "1", "true", "yes"].includes(v)) return [...FRIEND_PASS_FORMATS];
+  const named = v
+    .split(/[\s,]+/)
+    .map((x) => (x === "short" ? "shorts" : ["doc", "docs", "documentaries"].includes(x) ? "documentary" : x));
+  return FRIEND_PASS_FORMATS.filter((f) => named.includes(f));
+}
+
 /** VOICE_TAGS on its own: the writers' prompts are built when their modules load, before any Config exists. */
 export function voiceTagsSetting(): boolean {
   return bool("VOICE_TAGS", true);
@@ -395,6 +414,11 @@ export interface Config {
   /** Sequels to winners (src/sequels.ts, plan item 9): a Why Short well ahead of the channel's own norm becomes the next
    * documentary, ahead of the breakout score, and a ranking Short the next long ranking: SEQUEL_WINNERS, default off. */
   sequelWinners: boolean;
+  /** The friend pass (src/editorial/friendpass.ts, owner 11 Nov 2026): after a script's facts are settled, one mid-model
+   * rewrite of the delivery only (the narrator's own take, a joke or two at companies, spoken rhythm, delivery tags),
+   * kept only when no figure, name or quote moved and the fact check passes again. FRIEND_PASS lists the writers it
+   * runs for ("shorts", "documentary"), "off" for none: default Shorts and documentary chapters. */
+  friendPass: FriendPassFormat[];
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1168,6 +1192,7 @@ export function loadConfig(): Config {
     seriesPlaylists: bool("SERIES_PLAYLISTS", false),
     sequelWinners: bool("SEQUEL_WINNERS", false),
     newsSegment: bool("NEWS_SEGMENT", false),
+    friendPass: friendPassFrom(process.env.FRIEND_PASS),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     reachReport: bool("REACH_REPORT", false),

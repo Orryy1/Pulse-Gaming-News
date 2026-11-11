@@ -237,7 +237,21 @@ import {
   factCheck,
   factCheckRanking,
   validateScript,
+  WORDS_MIN,
+  WORDS_MAX,
 } from "./editorial/editorial.ts";
+import {
+  friendPassOn,
+  friendPass,
+  friendShort,
+  friendShortProblems,
+  friendChapter,
+  friendChapterProblems,
+  newProblems,
+  shortText,
+  friendCheckVerdict,
+  shortSettledText,
+} from "./editorial/friendpass.ts";
 import { narrationOf, tidyLoopLine, type Script } from "./editorial/schema.ts";
 import { translateMetadata } from "./editorial/localize.ts";
 import { hotBlock, readHotTopic, watchHits } from "./hits.ts";
@@ -2918,6 +2932,8 @@ async function stepScriptDocumentary(
     let checkRan = false;
     // Only the rules asked for this revision: if its edits don't land the draft stands, and it isn't checked again.
     let ruleOnly = false;
+    // The last fact check came back clean with no other problem: only then does the friend pass touch the chapter.
+    let clean = false;
     let attempts = 3;
     for (let attempt = 0; attempt < attempts; attempt++) {
       const previous = chapter;
@@ -3024,6 +3040,7 @@ async function stepScriptDocumentary(
           (u) => `Not supported by the source, remove or correct it: ${u}`,
         ),
       ];
+      clean = !feedback.length;
       if (!feedback.length) break;
       ruleOnly = misses.length > 0 && feedback.length === misses.length;
       if (attempt === attempts - 1)
@@ -3076,6 +3093,34 @@ async function stepScriptDocumentary(
           `${plan.game_title}: ${stillUnsupported.length} unsupported line${stillUnsupported.length === 1 ? "" : "s"} cut.`,
         );
       chapter = cut.chapter;
+    }
+    // The friend pass (FRIEND_PASS) on a chapter the fact check passed clean: the delivery only, kept when no figure,
+    // name or quote moved, no chapter rule newly breaks and the fact check passes it again.
+    if (clean && friendPassOn(s.cfg, "documentary")) {
+      const before = chapter!;
+      const rulesFor = (c: typeof before) =>
+        validateChapter(c, {
+          earlier: chapters,
+          priorDoc,
+          loops: openLoops.loops,
+          chapter: index + 1,
+        });
+      const friend = await friendPass({
+        before,
+        write: () => friendChapter(s.llm, before),
+        guard: (after) => [
+          ...friendChapterProblems(before, after),
+          ...newProblems(rulesFor(before), rulesFor(after)),
+          ...chapterRefusal(after),
+        ],
+        check: (after) => checkChapter(s.llm, after, source),
+      });
+      chapter = friend.value;
+      await logEvent(s.db, ep.id, "doc_friend_pass", {
+        chapter: index + 1,
+        kept: friend.kept,
+        why: friend.why.slice(0, 4),
+      }).catch(() => undefined);
     }
     const grounded = groundCallouts(chapter!, source);
     if (grounded.removed.length)
@@ -5413,6 +5458,68 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     !argument &&
     !cluster.why &&
     (ep.lane === "news" || ep.lane === "news_breaking");
+  // Every house rule a news Short answers to, besides the fact check: run on each draft and on the friend pass.
+  const houseProblems = (sc: Script) => {
+    const problems = validateScript(sc, recent);
+    const thin = s.cfg.shortRefuseThin
+      ? thinProblems(narrationOf(sc), sc.thin_reason)
+      : [];
+    problems.push(...thin);
+    // Never what a source leaves out, and no buying advice for something nobody sells (src/editorial/shortrules.ts).
+    problems.push(
+      ...absenceProblems(narrationOf(sc)),
+      ...preorderProblems(
+        narrationOf(sc),
+        [
+          ...articles.map((a) => a.text),
+          ...cluster.items.map((i) => `${i.title} ${i.summary}`),
+        ].join("\n"),
+      ),
+    );
+    if (s.cfg.shortLabelsClean) problems.push(...cardFigureProblems(sc.beats));
+    if (s.cfg.shortEndPayoff) problems.push(...endingProblems(sc.loop_line));
+    if (pulseCheck) problems.push(...pulseCheckProblems(sc));
+    // The test variant is a house rule for this Short: a draft that ignored it is sent back like any other.
+    problems.push(...growthProblems(sc, test, testDefaults));
+    // No title or hook phrase a few recent Shorts already used (REPEAT_MAX, src/authenticity.ts); a Why
+    // Short also opens unlike the last two weeks' and gives its reason to follow (src/editorial/why.ts).
+    problems.push(
+      ...repetitionProblems(
+        {
+          title: sc.youtube.title,
+          hook: sc.hook,
+          game: runRepeatGame(sc.game_title, cluster.run),
+        },
+        recentTexts,
+        s.cfg.repeatMax,
+      ),
+    );
+    if (cluster.why)
+      problems.push(
+        ...whyHookProblems(sc.hook, whyHooks),
+        ...whyFollowProblems(
+          sc.loop_line,
+          cluster.why.follow,
+          s.cfg.shortEndPayoff,
+        ),
+        ...whyAnswerProblems(narrationOf(sc)),
+      );
+    // A report card is credited to an outlet: it must be one of this story's own sources.
+    const outlets = cluster.items.map((i) => i.source.toLowerCase());
+    for (const b of sc.beats)
+      if (
+        b.visual.kind === "report" &&
+        !outlets.some(
+          (o) =>
+            o.includes(b.visual.secondary.toLowerCase().trim()) ||
+            b.visual.secondary.toLowerCase().includes(o),
+        )
+      )
+        problems.push(
+          `Report card names "${b.visual.secondary}", which is not one of this story's sources (${[...new Set(cluster.items.map((i) => i.source))].join(", ")}).`,
+        );
+    return { problems, thin };
+  };
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
       desk: s.cfg.deskShare > 0,
@@ -5436,64 +5543,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       segment: pulseCheck,
       noSeriesFollow: s.cfg.shortEndPayoff,
     });
-    const problems = validateScript(script, recent);
-    const thin = s.cfg.shortRefuseThin
-      ? thinProblems(narrationOf(script), script.thin_reason)
-      : [];
-    problems.push(...thin);
-    // Never what a source leaves out, and no buying advice for something nobody sells (src/editorial/shortrules.ts).
-    problems.push(
-      ...absenceProblems(narrationOf(script)),
-      ...preorderProblems(
-        narrationOf(script),
-        [
-          ...articles.map((a) => a.text),
-          ...cluster.items.map((i) => `${i.title} ${i.summary}`),
-        ].join("\n"),
-      ),
-    );
-    if (s.cfg.shortLabelsClean) problems.push(...cardFigureProblems(script.beats));
-    if (s.cfg.shortEndPayoff) problems.push(...endingProblems(script.loop_line));
-    if (pulseCheck) problems.push(...pulseCheckProblems(script));
-    // The test variant is a house rule for this Short: a draft that ignored it is sent back like any other.
-    problems.push(...growthProblems(script, test, testDefaults));
-    // No title or hook phrase a few recent Shorts already used (REPEAT_MAX, src/authenticity.ts); a Why
-    // Short also opens unlike the last two weeks' and gives its reason to follow (src/editorial/why.ts).
-    problems.push(
-      ...repetitionProblems(
-        {
-          title: script.youtube.title,
-          hook: script.hook,
-          game: runRepeatGame(script.game_title, cluster.run),
-        },
-        recentTexts,
-        s.cfg.repeatMax,
-      ),
-    );
-    if (cluster.why)
-      problems.push(
-        ...whyHookProblems(script.hook, whyHooks),
-        ...whyFollowProblems(
-          script.loop_line,
-          cluster.why.follow,
-          s.cfg.shortEndPayoff,
-        ),
-        ...whyAnswerProblems(narrationOf(script)),
-      );
-    // A report card is credited to an outlet: it must be one of this story's own sources.
-    const outlets = cluster.items.map((i) => i.source.toLowerCase());
-    for (const b of script.beats)
-      if (
-        b.visual.kind === "report" &&
-        !outlets.some(
-          (o) =>
-            o.includes(b.visual.secondary.toLowerCase().trim()) ||
-            b.visual.secondary.toLowerCase().includes(o),
-        )
-      )
-        problems.push(
-          `Report card names "${b.visual.secondary}", which is not one of this story's sources (${[...new Set(cluster.items.map((i) => i.source))].join(", ")}).`,
-        );
+    const { problems, thin } = houseProblems(script);
     check = await factCheck(s.llm, script, cluster, articles, storeData);
     const blockers = check.issues
       .filter((i) => i.severity === "blocker")
@@ -5585,6 +5635,55 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     }
   }
   if (!script || !check) throw new Error("script step produced nothing");
+  // The friend pass (FRIEND_PASS): with the facts settled, one rewrite of the delivery, kept only when nothing
+  // factual moved, no house rule newly breaks and the fact check passes it again.
+  if (
+    friendPassOn(s.cfg, "shorts") &&
+    check.verdict === "pass" &&
+    check.rumour_labelling_ok &&
+    !check.issues.some((i) => i.severity === "blocker")
+  ) {
+    const before = script;
+    const beforeProblems = houseProblems(before).problems;
+    let afterCheck: typeof check | undefined;
+    const friend = await friendPass({
+      before,
+      write: () =>
+        friendShort(s.llm, before, {
+          segment: pulseCheck,
+          endStatement: s.cfg.shortEndPayoff,
+          recent,
+          wordsMin: WORDS_MIN,
+          wordsMax: WORDS_MAX,
+        }),
+      guard: (after) => [
+        ...friendShortProblems(before, after, {
+          wordsMin: WORDS_MIN,
+          wordsMax: WORDS_MAX,
+        }),
+        ...newProblems(beforeProblems, houseProblems(after).problems),
+      ],
+      // Judged on what the pass changed: a blocker on a line the settled check already passed doesn't count.
+      check: async (after) => {
+        const v = friendCheckVerdict(
+          await factCheck(s.llm, after, cluster, articles, storeData),
+          shortSettledText(before),
+        );
+        afterCheck = v.check;
+        return v.blockers;
+      },
+    });
+    if (friend.kept && afterCheck) {
+      script = friend.value;
+      check = afterCheck;
+    }
+    await logEvent(s.db, ep.id, "friend_pass", {
+      kept: friend.kept,
+      why: friend.why.slice(0, 6),
+      before: shortText(before),
+      ...(friend.kept ? { tags: (script.voice_tags ?? []).length } : {}),
+    }).catch(() => undefined);
+  }
   if ((script.is_rumour || mustLabelRumour) && !s.cfg.includeRumours) {
     log("info", "story dropped: a rumour, and rumours are off", {
       episode: ep.id,

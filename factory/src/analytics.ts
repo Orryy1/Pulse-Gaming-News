@@ -1327,8 +1327,14 @@ const hhmm = (h: number) => `${String(h).padStart(2, "0")}:00`;
 /**
  * For the editor and the news writer: how our Shorts did on the other platforms against their YouTube rank, and
  * the hours their followers are about. Each platform's numbers a day after posting (or the nearest age read).
+ * `loopLines` are the weekly cross-platform report's own lessons (src/loopfeedback.ts loopLessonLines, empty
+ * unless ANALYTICS_LOOP_LESSONS is on), added under their own heading.
  */
-export async function socialLessons(db: Db, now: Date): Promise<string> {
+export async function socialLessons(
+  db: Db,
+  now: Date,
+  loopLines: readonly string[] = [],
+): Promise<string> {
   const rows = await db.query<{
     platform: string;
     views: number | string;
@@ -1392,10 +1398,21 @@ export async function socialLessons(db: Db, now: Date): Promise<string> {
         `${PLATFORM_NAMES[a.platform]} followers are most active around ${hours.map(hhmm).join(", ")} US Eastern.`,
       );
   }
-  if (!lines.length) return "";
+  const loop = loopLines.length
+    ? [
+        "From the weekly cross-platform report (each line dated; advice, not rules, and never above the Shorts rules):",
+        ...loopLines.map((l) => `- ${l}`),
+      ]
+    : [];
+  if (!lines.length && !loop.length) return "";
   return [
-    "How our Shorts did on the other platforms against their YouTube rank (a day after posting there). A story that wins on Instagram or TikTok but not on YouTube says something about its hook and its question; advice, not rules:",
-    ...lines,
+    ...(lines.length
+      ? [
+          "How our Shorts did on the other platforms against their YouTube rank (a day after posting there). A story that wins on Instagram or TikTok but not on YouTube says something about its hook and its question; advice, not rules:",
+          ...lines,
+        ]
+      : []),
+    ...loop,
   ].join("\n");
 }
 

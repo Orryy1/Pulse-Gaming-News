@@ -24,6 +24,15 @@ import {
   TikTokSignedOut,
 } from "./tiktokBrowser.ts";
 import { bufferPostVideo } from "./buffer.ts";
+import {
+  heldKeys,
+  heldMayPost,
+  isFit,
+  loopPosting,
+  rankForTikTok,
+  shortFormat,
+  type ShortTraits,
+} from "../loopfeedback.ts";
 
 export type Platform =
   | "facebook"
@@ -207,7 +216,35 @@ export interface CrosspostCandidate {
   youtube_video_id: string;
   script_json: Script;
   live_at?: string | Date;
+  lane?: string;
+  story_hash?: string | null;
+  duration?: number | string | null;
+  /** TikTok only: YouTube views per hour since it went live, the number it is ranked on. */
+  vph?: number | string;
 }
+
+/** What the weekly analytics loop judges a Short on (src/loopfeedback.ts). */
+export function traitsOf(c: CrosspostCandidate): ShortTraits {
+  const d = Number(c.duration);
+  return {
+    title: c.script_json?.youtube?.title ?? c.script_json?.headline ?? "",
+    hook: c.script_json?.hook ?? "",
+    game: c.script_json?.game_title ?? "",
+    durationSeconds: Number.isFinite(d) && d > 0 ? d : undefined,
+  };
+}
+
+/** The keys a candidate would be held under on Instagram (its format, and 45s+). */
+const heldKeysOf = (c: CrosspostCandidate) =>
+  heldKeys(
+    shortFormat({
+      lane: c.lane,
+      story_hash: c.story_hash,
+      evergreen_format: c.script_json?.evergreen_format,
+      is_rumour: c.script_json?.is_rumour,
+    }),
+    traitsOf(c).durationSeconds,
+  );
 
 /** The next Short a platform should get: public long enough, not done, not given up on. */
 export async function nextForPlatform(
@@ -218,9 +255,12 @@ export async function nextForPlatform(
   now: Date,
   /** The delay for a Short that went live at this time, when it depends on the hour (the posting-time test). */
   delayFor?: (liveAt: Date) => number,
+  /** Candidates to pass over this time (the analytics loop's Instagram holds). */
+  skip?: (r: CrosspostCandidate) => boolean,
 ): Promise<CrosspostCandidate | undefined> {
   const rows = await db.query<CrosspostCandidate>(
-    `SELECT e.id, e.youtube_video_id, e.script_json, COALESCE(e.publish_at, e.updated_at) AS live_at FROM episodes e
+    `SELECT e.id, e.youtube_video_id, e.script_json, COALESCE(e.publish_at, e.updated_at) AS live_at,
+            e.lane, e.story_hash, e.assets_json->'durationSeconds' AS duration FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane NOT IN ('longform','twin')
         AND COALESCE(e.script_json->>'runtime', 'short') = 'short'
         AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
@@ -231,7 +271,7 @@ export async function nextForPlatform(
       LIMIT 25`,
     [now, delayMinutes, windowHours, platform, MAX_TRIES, BOOT],
   );
-  return rows.find((r) => dueAfter(r, now, delayFor));
+  return rows.find((r) => dueAfter(r, now, delayFor) && !skip?.(r));
 }
 
 /** Whether a candidate's own delay has passed (always, when the delay is the same for every Short). */
@@ -259,7 +299,8 @@ export async function nextForTikTok(
     | "timezone"
     | "crosspostDelays"
     | "crosspostWindowHours"
-  >,
+  > &
+    Partial<Pick<Config, "dataDir" | "analyticsLoopPosting">>,
   now: Date,
   delayFor?: (liveAt: Date) => number,
 ): Promise<CrosspostCandidate | undefined> {
@@ -277,7 +318,11 @@ export async function nextForTikTok(
   );
   if (Number(sent?.n ?? 0) >= cfg.tiktokDaily) return undefined;
   const rows = await db.query<CrosspostCandidate>(
-    `SELECT e.id, e.youtube_video_id, e.script_json, COALESCE(e.publish_at, e.updated_at) AS live_at FROM episodes e
+    `SELECT e.id, e.youtube_video_id, e.script_json, COALESCE(e.publish_at, e.updated_at) AS live_at,
+            e.lane, e.story_hash, e.assets_json->'durationSeconds' AS duration,
+            COALESCE((SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id), 0)
+              / GREATEST(1, EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(e.publish_at, e.updated_at))) / 3600) AS vph
+       FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane NOT IN ('longform','twin')
         AND COALESCE(e.script_json->>'runtime', 'short') = 'short'
         AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
@@ -296,7 +341,42 @@ export async function nextForTikTok(
       BOOT,
     ],
   );
-  return rows.find((r) => dueAfter(r, now, delayFor));
+  // ANALYTICS_LOOP_POSTING (src/loopfeedback.ts): fit Shorts (35 s or under, a stake for the viewer, a strong
+  // fandom) rank up to 25% higher when the weekly report has the numbers for it, and the fit flags break ties.
+  const ranked =
+    cfg.analyticsLoopPosting && cfg.dataDir
+      ? rankForTikTok(
+          rows,
+          (r) => Number(r.vph ?? 0),
+          traitsOf,
+          loopPosting({ dataDir: cfg.dataDir, analyticsLoopPosting: true }, now)
+            .tiktok_boost,
+        )
+      : rows;
+  return ranked.find((r) => dueAfter(r, now, delayFor));
+}
+
+/**
+ * ANALYTICS_LOOP_POSTING: which Instagram candidates to pass over this time. A format the weekly report holds (30 or
+ * more Reels, not one breakout) still goes out one post in five, so its numbers never dry up.
+ */
+export async function instagramSkip(
+  db: Db,
+  cfg: Pick<Config, "dataDir" | "analyticsLoopPosting">,
+  now: Date,
+): Promise<((r: CrosspostCandidate) => boolean) | undefined> {
+  const held = loopPosting(cfg, now).instagram_held;
+  if (!held.length) return undefined;
+  const isHeld = (r: CrosspostCandidate) =>
+    heldKeysOf(r).some((k) => held.includes(k));
+  const recent = await db.query<CrosspostCandidate>(
+    `SELECT e.id, e.youtube_video_id, e.script_json, e.lane, e.story_hash, e.assets_json->'durationSeconds' AS duration
+       FROM events v JOIN episodes e ON e.id = v.episode_id
+      WHERE v.kind = 'crosspost' AND v.detail->>'platform' = 'instagram'
+      ORDER BY v.id DESC LIMIT 4`,
+  );
+  if (heldMayPost(recent.map(isHeld), false)) return undefined;
+  return isHeld;
 }
 
 /**
@@ -419,7 +499,11 @@ export async function crosspostTick(
               Math.max(0, base - d.cfg.crosspostDelays.facebook),
             )
         : undefined;
-    const ep =
+    const skip =
+      platform === "instagram" && d.cfg.analyticsLoopPosting
+        ? await instagramSkip(d.db, d.cfg, d.now())
+        : undefined;
+    let ep =
       platform === "tiktok" && d.cfg.tiktokDaily > 0
         ? await nextForTikTok(d.db, d.cfg, d.now(), delayFor)
         : await nextForPlatform(
@@ -429,7 +513,24 @@ export async function crosspostTick(
             d.cfg.crosspostWindowHours,
             d.now(),
             delayFor,
+            skip,
           );
+    // A hold never leaves Instagram under two posts a day: with nothing else to post, a held Short goes.
+    if (!ep && skip) {
+      const [today] = await d.db.query<{ n: string | number }>(
+        `SELECT count(*) AS n FROM events WHERE kind = 'crosspost' AND detail->>'platform' = 'instagram' AND created_at > $1::timestamptz - interval '24 hours'`,
+        [d.now()],
+      );
+      if (Number(today?.n ?? 0) < 2)
+        ep = await nextForPlatform(
+          d.db,
+          platform,
+          base,
+          d.cfg.crosspostWindowHours,
+          d.now(),
+          delayFor,
+        );
+    }
     if (!ep) continue;
     const timing =
       delayFor && ep.live_at
@@ -534,6 +635,8 @@ export async function crosspostTick(
         platform,
         id,
         ...(timing ? { timing } : {}),
+        // The weekly analytics loop's test: tagged when posted, so the definition cannot drift while it runs.
+        ...(d.cfg.analyticsLoop ? { fit: isFit(traitsOf(ep)) } : {}),
       });
       if (linkInComment) await linkComment(d, ep, id);
       // TikTok has not approved the app for public posting yet: the video waits in the owner's TikTok inbox.

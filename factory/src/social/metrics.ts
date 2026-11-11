@@ -14,6 +14,7 @@ import { dayKey } from "../lanes.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import { GRAPH, THREADS, threadsLogin } from "./platforms.ts";
 import { socialCaption } from "./crosspost.ts";
+import { bufferNumbers, bufferPostStats, type BufferPostStat } from "./buffer.ts";
 
 type FetchLike = typeof fetch;
 export type SocialPlatform = "instagram" | "facebook" | "threads" | "tiktok";
@@ -186,6 +187,8 @@ export interface SocialReaders {
   instagram?: (mediaId: string) => Promise<SocialNumbers | undefined>;
   facebook?: (videoId: string) => Promise<SocialNumbers | undefined>;
   threads?: (mediaId: string) => Promise<SocialNumbers | undefined>;
+  /** Pulse's TikTok posts with their numbers, from Buffer (ANALYTICS_LOOP), newest first. */
+  tiktokPosts?: (since: Date) => Promise<BufferPostStat[]>;
   /** One account's numbers for the day (followers, reach, online hours). */
   accounts?: Partial<
     Record<ApiPlatform, () => Promise<SocialNumbers | undefined>>
@@ -310,7 +313,7 @@ export class GraphError extends Error {
   }
 }
 
-async function graphGet(url: string, fetchFn: FetchLike): Promise<any> {
+export async function graphGet(url: string, fetchFn: FetchLike): Promise<any> {
   const res = await fetchFn(url, { signal: AbortSignal.timeout(20_000) });
   const text = await res.text();
   let body: any;
@@ -500,6 +503,11 @@ export function socialReaders(
   };
   const q = (token: string) => `access_token=${encodeURIComponent(token)}`;
   const out: SocialReaders = { accounts: {} };
+  // TikTok's numbers through Buffer replace the Studio routine that needed the owner to press Run; started with the
+  // weekly analytics loop (ANALYTICS_LOOP), which is what reads them.
+  if (cfg.analyticsLoop && cfg.bufferApiKey && cfg.bufferTiktokChannel)
+    out.tiktokPosts = (since) =>
+      bufferPostStats(cfg.bufferApiKey, cfg.bufferTiktokChannel, since, fetchFn);
 
   if (cfg.instagramToken && cfg.instagramAccountId) {
     const publicIg = async (id: string): Promise<SocialNumbers> => {
@@ -745,16 +753,95 @@ function safeMtime(file: string): number {
   }
 }
 
-/** One pass for the scheduler: the posts that are due, then each account once a day. */
+/** One pass for the scheduler: the posts that are due, TikTok's from Buffer, then each account once a day. */
 export async function socialMetricsTick(
   db: Db,
   cfg: Config,
   readers: SocialReaders,
   now: Date,
 ): Promise<{ posts: number; accounts: number }> {
-  const posts = await captureSocialMetrics(db, readers, now);
+  const posts =
+    (await captureSocialMetrics(db, readers, now)) +
+    (await captureBufferTikTok(db, readers, now).catch((err) => {
+      log("warn", "buffer tiktok numbers could not be read", {
+        error: errorMessage(err).slice(0, 300),
+      });
+      return 0;
+    }));
   const accounts = await captureSocialAccounts(db, readers, now, cfg.timezone);
   return { posts, accounts };
+}
+
+/** Buffer refreshes a post's numbers about once a day, so reading more often than this only spends calls. */
+export const BUFFER_READ_HOURS = 6;
+
+/**
+ * TikTok's numbers from Buffer, stored like the other platforms' (24h, 72h and 7d, the first reading in each age
+ * window standing) under post id buffer:<id>, the id the crosspost ledger holds, so Buffer-made posts join their
+ * Short exactly. Posts made in the TikTok app are matched by caption, as the Studio routine's are; unmatched ones
+ * are left for the weekly report to count. A post under a day old has no reading yet (Buffer shows 0).
+ */
+export async function captureBufferTikTok(
+  db: Db,
+  readers: SocialReaders,
+  now: Date,
+): Promise<number> {
+  if (!readers.tiktokPosts) return 0;
+  const [last] = await db.query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = 'buffer_stats_at'`,
+  );
+  if (last && now.getTime() - Date.parse(last.value) < BUFFER_READ_HOURS * 3_600_000)
+    return 0;
+  await db.query(
+    `INSERT INTO settings (key, value) VALUES ('buffer_stats_at', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [now.toISOString()],
+  );
+  const posts = await readers.tiktokPosts(new Date(now.getTime() - 10 * 86_400_000));
+  if (!posts.length) return 0;
+  const ledger = new Map<string, { episode_id: string; youtube_video_id: string | null }>();
+  for (const r of await db.query<{ id: string; episode_id: string; youtube_video_id: string | null }>(
+    `SELECT v.detail->>'id' AS id, v.episode_id, e.youtube_video_id FROM events v JOIN episodes e ON e.id = v.episode_id
+      WHERE v.kind = 'crosspost' AND v.detail->>'platform' = 'tiktok' AND v.detail->>'id' LIKE 'buffer:%'`,
+  ))
+    ledger.set(r.id, r);
+  const candidates = await tiktokCandidates(db, now);
+  let n = 0;
+  for (const p of posts) {
+    const numbers = bufferNumbers(p, now);
+    if (!numbers || !p.sentAt) continue;
+    const postId = `buffer:${p.id}`;
+    let ep = ledger.get(postId);
+    if (!ep && p.text) {
+      const c = matchTikTok(
+        { text: p.text.split(/\n?\s*Narrated with/i)[0]!, postedAt: p.sentAt },
+        candidates,
+      );
+      if (c) ep = { episode_id: c.episodeId, youtube_video_id: c.youtubeVideoId };
+    }
+    if (!ep) continue;
+    for (const label of socialLabelsDue(p.sentAt, now, new Set())) {
+      if (label === "1h") continue;
+      await saveSocial(db, {
+        platform: "tiktok",
+        postId,
+        episodeId: ep.episode_id,
+        youtubeVideoId: ep.youtube_video_id,
+        label,
+        capturedAt: now,
+        numbers: {
+          ...numbers,
+          extra: {
+            ...numbers.extra,
+            age_hours:
+              Math.round(((now.getTime() - p.sentAt.getTime()) / 3_600_000) * 10) / 10,
+          },
+        },
+      });
+      n++;
+    }
+  }
+  if (n) log("info", "buffer tiktok numbers captured", { captures: n });
+  return n;
 }
 
 // ------------------------------------------------------------------ TikTok, from the Studio routine

@@ -393,6 +393,18 @@ export interface Config {
   growthReport: boolean;
   /** Click-through per video from YouTube's Reporting API (src/reach.ts), in the Sunday report and the test queue: REACH_REPORT, default off. */
   reachReport: boolean;
+  /** The weekly cross-platform analytics loop (src/analyticsloop.ts): Mondays from 09:00 it reads every platform, writes
+   * data/reports/analytics/latest.md and latest.json for the PC to pull, reads TikTok's numbers from Buffer every six
+   * hours and tags each crosspost fit or not fit for the report's test: ANALYTICS_LOOP, default off. Report only. */
+  analyticsLoop: boolean;
+  /** Up to six advice lines from that report added to the writers' lessons (src/loopfeedback.ts): ANALYTICS_LOOP_LESSONS, default off. */
+  analyticsLoopLessons: boolean;
+  /** The report's posting choices: fit Shorts ranked up to 25% higher for TikTok, and formats with 30+ Reels and no breakout
+   * held back from Instagram (still 1 post in 5): ANALYTICS_LOOP_POSTING, default off. */
+  analyticsLoopPosting: boolean;
+  /** The report's story-pick multiplier (0.85 to 1.15, moved 0.05 a week at most) on the news slot's candidates; breaking
+   * news never: ANALYTICS_LOOP_SCORING, default off. */
+  analyticsLoopScoring: boolean;
   /** Share of Shorts that get a thumbnail made for the search tile instead of their first frame (src/shortthumb.ts); 0.5 is a fair test: SHORT_SEARCH_THUMB_SHARE, default 0. */
   shortSearchThumbShare: number;
   /** YouTube autocomplete terms this video really answers, in its tags and one description line (src/searchterms.ts): SEARCH_TERMS, default off. */
@@ -1143,6 +1155,10 @@ export function loadConfig(): Config {
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     reachReport: bool("REACH_REPORT", false),
+    analyticsLoop: bool("ANALYTICS_LOOP", false),
+    analyticsLoopLessons: bool("ANALYTICS_LOOP_LESSONS", false),
+    analyticsLoopPosting: bool("ANALYTICS_LOOP_POSTING", false),
+    analyticsLoopScoring: bool("ANALYTICS_LOOP_SCORING", false),
     shortSearchThumbShare: Number(str("SHORT_SEARCH_THUMB_SHARE", "0")) || 0,
     searchTerms: bool("SEARCH_TERMS", false),
     abQueueClean: bool("AB_QUEUE_CLEAN", false),

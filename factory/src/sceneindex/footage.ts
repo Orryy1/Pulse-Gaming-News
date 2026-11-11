@@ -50,12 +50,13 @@ export interface PlannedClip {
  */
 export function clearStretch(
   index: Pick<SceneIndex, "lines">,
-  shot: { start: number; end: number },
+  shot: { start: number; end: number; written?: Array<{ from: number; to: number }> },
   min: number,
 ): { start: number; end: number } | undefined {
   const boxes = index.lines
     .filter((l) => l.via !== "voice" && l.start < shot.end && l.end + 1 > shot.start)
     .map((l) => ({ from: l.start - 0.3, to: l.end + 1 }))
+    .concat((shot.written ?? []).map((w) => ({ from: w.from - 0.5, to: w.to + 0.5 })))
     .sort((a, b) => a.from - b.from);
   let best: { start: number; end: number } | undefined;
   let at = shot.start;

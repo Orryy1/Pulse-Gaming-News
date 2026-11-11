@@ -8,7 +8,7 @@
 
 import { alike } from "./dialogue.ts";
 import { knownName, mergeNames } from "./names.ts";
-import { shotAt, type DialogueLine, type SceneIndex } from "./schema.ts";
+import { mergeCoverage, shotAt, type DialogueLine, type SceneIndex } from "./schema.ts";
 
 const norm = (t: string) =>
   t
@@ -165,9 +165,13 @@ export function tidyIndex(index: SceneIndex): SceneIndex {
       ? joined.filter((l) => !l.speaker && l.via === "textbox")
       : [];
   const cardText = new Map<number, string[]>();
+  const cardTimes = new Map<number, Array<{ from: number; to: number }>>();
   for (const c of cards) {
     const at = shotAt(index.shots, c.start);
     cardText.set(at, [...(cardText.get(at) ?? []), c.text]);
+    // A message can stay up across a cut: every shot it is over knows when.
+    for (let i = at; i < index.shots.length && index.shots[i]!.start < c.end; i++)
+      cardTimes.set(i, [...(cardTimes.get(i) ?? []), { from: c.start, to: c.end }]);
   }
   const lines = joined
     .filter((l) => !cards.includes(l))
@@ -198,9 +202,13 @@ export function tidyIndex(index: SceneIndex): SceneIndex {
     const extra = (cardText.get(shot.id) ?? []).filter(
       (t) => !norm(shot.text).includes(norm(t)),
     );
-    const s = extra.length
-      ? { ...shot, text: [shot.text, ...extra].filter(Boolean).join(" / ").slice(0, 200) }
+    const times = cardTimes.get(shot.id);
+    const timed = times
+      ? { ...shot, written: mergeCoverage([...(shot.written ?? []), ...times]) }
       : shot;
+    const s = extra.length
+      ? { ...timed, text: [shot.text, ...extra].filter(Boolean).join(" / ").slice(0, 200) }
+      : timed;
     if (!s.text) return s;
     if (credits.has(s.id)) return { ...s, menu: true };
     // The first name on a card is whose card it is ("SARIA  Link's Childhood Friend" is Saria's, not Link's).

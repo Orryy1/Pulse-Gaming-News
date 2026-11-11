@@ -42,6 +42,8 @@ export interface SceneShot {
   tags: string[];
   /** Writing on screen that is not dialogue: a place card, a title, an item name. */
   text: string;
+  /** When the game's own messages are written over the shot ("You got the Master Sword!"), in source seconds. */
+  written?: Array<{ from: number; to: number }>;
   /** Mean brightness 0-255 and mean frame difference 0-255 over the shot. */
   luma: number;
   motion: number;
@@ -163,6 +165,9 @@ export function parseSceneIndex(raw: unknown): SceneIndex | undefined {
       text: String(x.text ?? ""),
       luma: num(x.luma) ? x.luma : 0,
       motion: num(x.motion) ? x.motion : 0,
+      ...(Array.isArray(x.written) && x.written.length
+        ? { written: x.written.filter((w) => w && num(w.from) && num(w.to) && w.to > w.from) }
+        : {}),
       ...(x.blank ? { blank: true } : {}),
       ...(x.menu ? { menu: true } : {}),
     });

@@ -1659,6 +1659,8 @@ test("in a game that names its speakers, a speakerless unvoiced line is the game
   const tidy = tidyIndex({ ...index, lines: [...index.lines, ...spoken, message, half] });
   assert.ok(!tidy.lines.some((l) => l.text === "You got the Master Sword!"));
   assert.match(tidy.shots[4]!.text, /You got the Master Sword!/);
+  assert.deepEqual(tidy.shots[4]!.written, [{ from: 2413, to: 2416 }], "and the shot knows when the message is up");
+  assert.deepEqual(clearStretch({ lines: [] }, tidy.shots[4]!, 1), { start: 2411, end: 2412.5 });
   assert.equal(findShots(tidy, { text: "Link gets the Master Sword" })[0]!.start, 2411);
   assert.deepEqual(tidyIndex(tidy), tidy);
 });

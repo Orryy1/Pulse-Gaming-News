@@ -83,13 +83,15 @@ test("sitemaps, robots and the channel feed", () => {
   assert.deepEqual(feed, [{ id: "abc123", title: "Fish & chips", published: "2026-10-18T12:00:00+00:00", short: true }]);
 });
 
-test("the privacy notice says what the code does with personal data, never who runs it", () => {
+test("the privacy notice says what the code does with personal data and names the controller the owner chose", () => {
   const html = staticPage("privacy", "https://pulsegmg.com")!;
   assert.match(html, /<link rel="canonical" href="https:\/\/pulsegmg\.com\/privacy">/);
   // The old notice claimed no personal data was processed. The code reads comments, sends them to Claude and keeps records.
   assert.doesNotMatch(html, /do(es)? not (collect|process|store) (any )?personal (data|information)/i);
   for (const must of [
-    /a trading name of a UK sole trader/,
+    // The owner chose on 11 Nov 2026 to be named as the controller, with his ICO registration.
+    /a trading name of Martin Orr, a UK sole trader/,
+    /ZC281432/,
     /youtube\.com\/@PulseGMG/,
     /Anthropic/,
     /legitimate interests/i,
@@ -104,7 +106,7 @@ test("the privacy notice says what the code does with personal data, never who r
     /https:\/\/ico\.org\.uk\/make-a-complaint\//,
   ])
     assert.match(html, must);
-  // Burner identity: the controller is the trading name; the only email is the Pulse mailbox, and no postal address.
+  // The only email is the Pulse mailbox, and no postal address.
   assert.match(html, /mailto:hello@pulsegmg\.com/);
   assert.doesNotMatch(html.replaceAll("hello@pulsegmg.com", ""), /[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
   assert.doesNotMatch(html, /\b[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}\b/);

@@ -5,16 +5,17 @@
 // competitor_monitor.js, hunter.js / assemble.js (Reddit comments) and discord/bot.js.
 // Keep it in step with the root server.js /privacy page (lib/privacy-notice.js on main)
 // and update the date whenever what the code does changes.
-// Burner identity rule: never name the owner here. The controller is the trading name.
+// The owner chose on 11 Nov 2026 ("yes add my name its fine") to name himself as the controller with his ICO
+// registration, as UK data protection expects; elsewhere the keep-him-separate rule still holds.
 
-export const PRIVACY_LAST_UPDATED = "22 October 2026";
+export const PRIVACY_LAST_UPDATED = "11 November 2026";
 
 export const PRIVACY_NOTICE_HTML = `<h1>Privacy policy</h1>
 <p class="meta">Last updated: ${PRIVACY_LAST_UPDATED}</p>
 <p>This notice explains what personal data Pulse Gaming uses, why, who else handles it, how long we keep it and what you can do about it. It covers this website, our channels on YouTube, TikTok, Instagram, Facebook and X, and our Discord server.</p>
 
 <h2>Who we are</h2>
-<p>Pulse Gaming (also published as Pulse Gaming News) is a trading name of a UK sole trader, who is the controller of the personal data described here.</p>
+<p>Pulse Gaming (also published as Pulse Gaming News) is a trading name of Martin Orr, a UK sole trader, who is the controller of the personal data described here. Registered with the UK Information Commissioner's Office, registration number ZC281432.</p>
 <p>To contact us about privacy, including any of the requests below, email <a href="mailto:hello@pulsegmg.com">hello@pulsegmg.com</a>. We will only ask for what we need to find your data. You can also reach us through our YouTube channel, <a href="https://www.youtube.com/@PulseGMG" rel="noopener">youtube.com/@PulseGMG</a>, but email keeps your request private.</p>
 
 <h2>The short version</h2>

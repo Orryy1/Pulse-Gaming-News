@@ -55,6 +55,11 @@ function bool(name: string, fallback: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(raw.toLowerCase());
 }
 
+/** VOICE_TAGS on its own: the writers' prompts are built when their modules load, before any Config exists. */
+export function voiceTagsSetting(): boolean {
+  return bool("VOICE_TAGS", true);
+}
+
 export type ApprovalMode = "manual" | "timeout" | "auto";
 export type PrivacyStatus = "public" | "unlisted" | "private";
 // local: the Codex Liam clone only. elevenlabs: ElevenLabs only. auto: local first,
@@ -344,6 +349,15 @@ export interface Config {
    * others (5% in pitch, 10% in centroid) is re-voiced once, the closer kept, at most 3 a narration
    * (VOICE_TAKE_CHECK, default on; 31 Oct 2026). */
   voiceTakeCheck: boolean;
+  /** ElevenLabs stability (VOICE_STABILITY, default 0.5, eleven_v3's "Natural"): the owner's pick, sample C,
+   * 11 Nov 2026, over 1.0 ("Robust", sample B of 29 Oct). eleven_v3 takes only 0, 0.5 and 1. */
+  voiceStability: number;
+  /** Writers may add eleven_v3 delivery tags ([chuckles], [sighs]) that only the voice sees (VOICE_TAGS,
+   * default on; src/voice/tags.ts). */
+  voiceTags: boolean;
+  /** The "creator mic" EQ, compression and room on every narration after the speed-up (VOICE_MIC_CHAIN,
+   * default on; sample C). */
+  voiceMicChain: boolean;
   docMaxSeconds: number;
   docClipsPerChapter: number;
   /** The documentary mix follows the writer's beats and plays an era bed under each chapter's opening
@@ -1136,6 +1150,10 @@ export function loadConfig(): Config {
     voiceTestShare: Math.min(1, Math.max(0, Number(str("VOICE_TEST_SHARE", "0")) || 0)),
     shortSpeed: Math.min(1.25, Math.max(1, Number(str("SHORT_SPEED", "1")) || 1)),
     voiceTakeCheck: bool("VOICE_TAKE_CHECK", true),
+    // Not a number keeps the default rather than 0, the most erratic delivery.
+    voiceStability: ((n) => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5))(Number(str("VOICE_STABILITY", "0.5"))),
+    voiceTags: voiceTagsSetting(),
+    voiceMicChain: bool("VOICE_MIC_CHAIN", true),
     docMaxSeconds: int("DOC_MAX_SECONDS", 3000),
     docClipsPerChapter: int("DOC_CLIPS_PER_CHAPTER", 4),
     docSoundBeats: bool("DOC_SOUND_BEATS", true),

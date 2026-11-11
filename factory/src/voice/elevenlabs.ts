@@ -61,9 +61,15 @@ export interface VoiceSettings {
   speed: number;
 }
 
-// Owner's pick of 29 Oct 2026 (sample B of three): on eleven_v3, stability 1.0 is the "robust" delivery, which
-// breathes far less audibly than 0.4; style 0 with it. The pace stays at 1.05.
-export const DEFAULT_VOICE_SETTINGS: VoiceSettings = { stability: 1.0, similarity_boost: 0.8, style: 0.0, use_speaker_boost: true, speed: 1.05 };
+// Owner's pick of 11 Nov 2026 (sample C): on eleven_v3, stability 0.5 is the "Natural" delivery, which reacts to the
+// delivery tags (src/voice/tags.ts) where 1.0 ("Robust", sample B of 29 Oct) read through them flat. It breathes more
+// audibly, which the breath softener handles. Style 0 with it; the pace stays at 1.05. VOICE_STABILITY sets it.
+export const DEFAULT_VOICE_SETTINGS: VoiceSettings = { stability: 0.5, similarity_boost: 0.8, style: 0.0, use_speaker_boost: true, speed: 1.05 };
+
+/** eleven_v3 takes only three stabilities (Creative 0, Natural 0.5, Robust 1): any other is sent as the nearest. */
+export function stabilityFor(modelId: string, stability: number): number {
+  return modelId.startsWith("eleven_v3") ? Math.round(Math.min(1, Math.max(0, stability)) * 2) / 2 : stability;
+}
 
 /**
  * Continuity for one take of a long narration (30 Oct 2026): the neighbouring takes' text, the earlier
@@ -101,6 +107,8 @@ export function requestBody(text: string, opts: Pick<SynthOptions, "modelId" | "
     language_code: opts.modelId.includes("multilingual") || opts.modelId.startsWith("eleven_v3") ? undefined : "en",
     voice_settings: { ...DEFAULT_VOICE_SETTINGS, ...(opts.settings ?? {}) },
   };
+  const vs = body.voice_settings as VoiceSettings;
+  vs.stability = stabilityFor(opts.modelId, vs.stability);
   const c = opts.context;
   if (c) {
     const put = (field: string, value: unknown) => {

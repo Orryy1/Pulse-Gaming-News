@@ -20,6 +20,7 @@ import {
   writingProblems,
 } from "./voice.ts";
 import { z } from "zod";
+import { voiceTagsField } from "../voice/tags.ts";
 import type { Llm } from "./llm.ts";
 import { reviseByEdits } from "./revise.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
@@ -1654,6 +1655,8 @@ export function docToScript(d: DocDraft): Script {
     kicker: d.bookends.intro.on_screen || d.outline.kicker,
     sources,
     ...(d.loops ? { open_loops: d.loops } : {}),
+    // Every chapter and the bookends were their own writer's answer, each with its own delivery tags.
+    ...voiceTagsField(d),
   } as Script;
 }
 

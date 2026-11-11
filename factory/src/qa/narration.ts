@@ -284,12 +284,21 @@ function benign(meant: string[], heard: string[]): boolean {
   return meant.length === 1 && heard.length === 1;
 }
 
+/**
+ * What Whisper heard minus the sounds it writes as cues ("(laughs)", "[chuckles]", "*sighs*"): a delivery tag
+ * the voice acted (src/voice/tags.ts) is not a word the script left out, and must not cost a second voicing.
+ */
+export function heardSpeech(heard: TimedWord[]): TimedWord[] {
+  return heard.filter((w) => !/^[[(*][a-z ]+[\])*][.,!?]*$/i.test(w.text.trim()));
+}
+
 /** Compares the script's words (with their timings) with what Whisper heard. Pure. */
 export function checkNarration(
   meant: TimedWord[],
-  heard: TimedWord[],
+  allHeard: TimedWord[],
   maxDrift = 0.35,
 ): NarrationCheck {
+  const heard = heardSpeech(allHeard);
   const A: Array<{ t: string; at: number; w: string }> = [];
   for (const w of meant)
     for (const t of tokens(w.text)) A.push({ t, at: w.start, w: w.text });

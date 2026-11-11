@@ -8,6 +8,10 @@
 // to reuse their facts, and a draft that copies an example line word for word is sent back (EXAMPLE_LINES).
 
 import { writerNoteProblems } from "./writernotes.ts";
+import { voiceTagsSetting } from "../config.ts";
+
+/** The sign-off that closes every long video and weekly recap (Shorts loop instead). */
+export const SIGN_OFF = "That's the Pulse. Play something good this week.";
 
 /** Who Pulse is and how it talks: the opening of every writer's system prompt. */
 export const PULSE_VOICE = `The Pulse voice
@@ -38,6 +42,7 @@ How Pulse writes (the examples use placeholder facts: copy the rhythm, never the
 - Vary the shape from video to video so no two scripts read like a template.
 - Store stats are seasoning, not the meal, and a live number is one fact, not a feed: at most one "today" or "right now" and one "on Steam" in a Short, and not in two Shorts running. Steam review percentages, players online right now and Metacritic scores appear only when they are the story or the proof of a point: at most one in a Short, in no more than a third of a long video's entries, and never in two entries running. Reach first for what makes the game itself worth talking about: how and by whom it was made, what it sold, a design decision, what was cut or changed, a record, its legacy, how it plays today.
 - Round big counts the way people say them: "almost 350,000 reviews", "over 16,000 players", never "346,258 reviews". Keep exact figures for prices, dates, scores and records, where the precision is the point.
+- Sound like a person, not a script, with these allowances and their limits so none becomes a tic: at most one self-correction in a Short and two in a long video, only where it's natural and both halves are true ("it's out on the 18th... well, the 19th if you're in the US"); a rhetorical "right?" or "honestly?" at most once in a Short. Long videos and the weekly recap end on the Pulse sign-off, "${SIGN_OFF}", added for you word for word; a Short never signs off.
 - Never use: "buckle up", "without further ado", "let's dive in", "delve", "in a world where", "hey guys", "welcome back", "in this video", "today we're going to", "game-changer", "it's worth noting", "here's where it gets interesting", "this changes everything", "bigger than you think", "but wait", "you won't believe", "living under a rock", "our read", "speaking of", "let me know in the comments", "like and subscribe", "nobody is talking about", "the internet is losing its mind", "epic" as an adjective. Use "quietly" and "accidentally" only when literally true.`;
 
 /** Facts and safety: identical for every writer. */
@@ -48,9 +53,6 @@ export const PULSE_FACT_RULES = `Facts and safety (non-negotiable):
 - Advertiser-friendly: no profanity, no graphic violence, no shock language, no fake stakes or outrage. Sexual material is "adult content" or "mature content", never "sex"; drugs are "drugs"; real deaths and self-harm are mentioned gently or not at all.
 - The channel speaks as "we", never about itself in the third person ("Pulse is"); the name is on screen. No personal details about whoever runs it. No calls to like, subscribe or comment.
 - Everything you write in a narration field is recorded and published as it stands, with no human reading it first. It only ever tells the story. Never mention the source, an excerpt, the brief, a draft, these rules or what you were asked to do, never explain why you can't write something, and never ask for anything. Where the material is thin, say less about that part.`;
-
-/** The sign-off that closes every long video and weekly recap (Shorts loop instead). */
-export const SIGN_OFF = "That's the Pulse. Play something good this week.";
 
 /** The running question that brings viewers back: asked in long-video and recap comments and posts. */
 export const RUNNING_QUESTION = "What are you playing this week?";
@@ -69,9 +71,20 @@ export const FORMAT_VOICE = {
 
 export type VoiceFormat = keyof typeof FORMAT_VOICE;
 
+/**
+ * The delivery tags the narration may carry (VOICE_TAGS, owner's sample C, 11 Nov 2026). The voice acts them
+ * and the factory takes them out of everything else (src/voice/tags.ts), so the limits here are about taste:
+ * a reaction on every line is a laugh track.
+ */
+export const VOICE_TAG_RULE = `Delivery tags: the voice is a real performer, and narration fields may carry a few of its delivery tags in square brackets where a person would react. [excited] before a hot take or a surprise, [chuckles] or [laughs] right after a joke, [sighs] before a catch or a groan, and [whispers], [curious] or [sarcastic] where one truly fits. Only those seven, at most one every two or three sentences, never two in a row and never inside a quotation. They go in spoken narration only: never in a title, label, stamp, card, on-screen text, description or comment. An ellipsis gives a beat ("Here's the catch, though... downloading early isn't playing early"). A tag is acted, never read aloud or shown, so the sentence must read complete without it.`;
+
+/** Formats whose writers write narration, and so may use delivery tags. */
+const SPOKEN_FORMATS = new Set<VoiceFormat>(["news", "ranking", "longform", "recap", "documentary"]);
+
 /** The full voice block for one writer: who Pulse is, the facts rules and the format's own notes. */
-export function voiceFor(format: VoiceFormat): string {
-  return `${PULSE_VOICE}\n\n${PULSE_FACT_RULES}\n\n${FORMAT_VOICE[format]}`;
+export function voiceFor(format: VoiceFormat, tags = voiceTagsSetting()): string {
+  const delivery = tags && SPOKEN_FORMATS.has(format) ? `\n\n${VOICE_TAG_RULE}` : "";
+  return `${PULSE_VOICE}\n\n${PULSE_FACT_RULES}\n\n${FORMAT_VOICE[format]}${delivery}`;
 }
 
 /** Phrases the voice never uses: a script containing one is sent back for a rewrite. */
@@ -431,6 +444,18 @@ export function writingProblems(
     p.push(
       `Say the platforms the way people do ("PS5, Xbox and PC"); the platforms card carries the full list, so drop "Series X|S" from a spoken list.`,
     );
+  // The human touches are allowances with limits (PULSE_VOICE): past the limit they are a tic.
+  const corrections = selfCorrections(text);
+  const correctionsAllowed = opts.long ? 2 : 1;
+  if (corrections > correctionsAllowed)
+    p.push(
+      `The narration corrects itself ${corrections} times ("... well, the 19th"); keep at most ${correctionsAllowed === 1 ? "one in a Short" : "two in a long video"}, only where it's natural.`,
+    );
+  const asides = (t.match(/\b(?:right|honestly)\?/gi) ?? []).length;
+  if (!opts.long && asides > 1)
+    p.push(
+      `"right?" or "honestly?" comes ${asides} times; once in a Short is the most, or it becomes a tic.`,
+    );
   const stacked = sentences.filter((s) => figuresIn(s).length > 2);
   const stackedAllowed = opts.long ? Math.max(1, Math.floor(words / 400)) : 0;
   if (stacked.length > stackedAllowed)
@@ -438,6 +463,18 @@ export function writingProblems(
       `"${stacked[0]!.split(/\s+/).slice(0, 10).join(" ")}..." stacks ${figuresIn(stacked[0]!).length} figures in one sentence; keep two at most and move the rest to another sentence or the card.`,
     );
   return p;
+}
+
+/**
+ * Self-corrections in narration, outside quotations: a beat or comma, then "well,", "or rather", "make that",
+ * "scratch that", "sorry," or "wait," ("it's out on the 18th... well, the 19th if you're in the US").
+ */
+export function selfCorrections(text: string): number {
+  return (
+    outsideQuotes(text).match(
+      /(?:\.\.\.|…|[,\u2013\u2014])\s*(?:well,|or rather\b|make that\b|scratch that\b|sorry,|wait,)/gi,
+    ) ?? []
+  ).length;
 }
 
 /** Stock lines a long script leans on, with how many times one video may use each. */

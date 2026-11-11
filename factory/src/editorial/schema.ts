@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { speakable, speakContext } from "../voice/speakable.ts";
+import { stripVoiceTags, voiceTexts, type VoiceTagMark } from "../voice/tags.ts";
 
 export const STORY_TYPES = [
   "explainer",
@@ -243,6 +244,8 @@ export const ScriptSchema = z.object({
   ),
 });
 export type Script = z.infer<typeof ScriptSchema> & {
+  /** The writer's delivery tags, lifted out of the fields and kept for the voice only (src/voice/tags.ts). */
+  voice_tags?: VoiceTagMark[];
   /** Evergreen ranking Shorts carry their entries so media can be gathered per entry. */
   entries?: Array<{
     rank: number;
@@ -372,21 +375,28 @@ export function tidyLoopLine(line: string): string {
   return t;
 }
 
+/**
+ * What the voice says, as one text. Only the voice asks for `tags` (pipeline.ts, the narration step): the
+ * writer's delivery tags go back in where their words still stand. Every other caller gets plain words.
+ */
 export function narrationOf(
-  s: Pick<Script, "hook" | "beats" | "pulse_take" | "loop_line">,
+  s: Pick<Script, "hook" | "beats" | "pulse_take" | "loop_line" | "voice_tags">,
+  opts: { tags?: boolean } = {},
 ): string {
   const ctx = speakContext(); // one script: "gigabytes" in the hook, "gigs" after it
-  return [
+  const texts = [
     s.hook,
     ...s.beats.map((b) => b.narration),
     s.pulse_take.narration,
     tidyLoopLine(s.loop_line),
-  ]
-    .map((t) => speakable(t.trim(), ctx))
+  ].map((t) => t.trim());
+  return (opts.tags ? voiceTexts(texts, s.voice_tags) : texts)
+    .map((t) => speakable(t, ctx))
     .filter(Boolean)
     .join(" ");
 }
 
 export function wordCount(text: string): number {
-  return text.split(/\s+/).filter(Boolean).length;
+  // A delivery tag is acted, not said: it is never a word.
+  return stripVoiceTags(text).split(/\s+/).filter(Boolean).length;
 }

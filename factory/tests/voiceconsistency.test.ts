@@ -106,8 +106,8 @@ test("the request body carries the context and seed, minus refused fields", () =
   assert.equal(body.next_request_ids, undefined);
   assert.equal(
     (body.voice_settings as { stability: number }).stability,
-    1.0,
-    "the owner's settings are untouched",
+    0.5,
+    "the owner's settings are untouched (sample C, 11 Nov 2026)",
   );
   const without = requestBody("Now.", {
     modelId: "eleven_v3",

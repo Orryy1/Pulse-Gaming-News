@@ -8,6 +8,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { FFMPEG, audioFilterScriptArgs, installedFfmpegMajor } from "../lib/bin.ts";
 import type { Word } from "./elevenlabs.ts";
+import { dropTagWords, soundTagSpans } from "./tags.ts";
 
 const run = promisify(execFile);
 
@@ -124,6 +125,19 @@ function mergeSpans(spans: [number, number][]): [number, number][] {
   return out;
 }
 
+/**
+ * The breath spans with any that overlap a sound tag's span dropped (pure): a [chuckles] or [sighs] is a sound
+ * the voice was asked for, sitting where a breath would, and it must stay at full level.
+ */
+export function sparingSoundTags(
+  gaps: [number, number][],
+  words: Word[],
+): [number, number][] {
+  const keep = soundTagSpans(words);
+  if (!keep.length) return gaps;
+  return gaps.filter(([a, b]) => !keep.some(([lo, hi]) => a < hi && b > lo));
+}
+
 /** Turns the breaths between words down, in place. Returns how many spans it quietened. */
 export async function quietBreaths(
   file: string,
@@ -154,7 +168,8 @@ export async function quietBreaths(
     stdout.byteOffset,
     Math.floor(stdout.byteLength / 2),
   );
-  const gaps = breathGaps(words, loudness(pcm));
+  // The words may still carry delivery tags (src/voice/tags.ts): the breaths are found between the real words.
+  const gaps = sparingSoundTags(breathGaps(dropTagWords(words), loudness(pcm)), words);
   if (!gaps.length) return 0;
   // One volume filter per few dozen breaths: a long video's 500-odd gaps in one expression is more than ffmpeg 9 will
   // parse (the first explainer, 6 Nov 2026). The gaps never overlap, so the chained filters dip exactly the same.

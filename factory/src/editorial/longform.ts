@@ -12,6 +12,7 @@ import {
   writingProblems,
 } from "./voice.ts";
 import { z } from "zod";
+import { voiceTagsField } from "../voice/tags.ts";
 import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
 import type { SteamFacts } from "../assets/steam.ts";
@@ -828,5 +829,6 @@ export function longformToScript(e: LongformScript): Script {
     criterion: e.criterion,
     kicker: e.intro.on_screen,
     ...(e.placed_loops?.length ? { open_loops: e.placed_loops } : {}),
+    ...voiceTagsField(e),
   };
 }

@@ -8,6 +8,7 @@
 import { z } from "zod";
 import type { Llm, Tier } from "./llm.ts";
 import { errorMessage, log } from "../lib/util.ts";
+import { voiceTagsField } from "../voice/tags.ts";
 
 const EditsSchema = z.object({
   edits: z.array(
@@ -86,7 +87,7 @@ export async function reviseByEdits<S extends z.ZodType>(
     const r = await llm.structured({
       ...(opts.site ? { site: opts.site } : {}),
       system: opts.system,
-      content: `${opts.content}\n\nYOUR DRAFT (JSON):\n${JSON.stringify(opts.draft, null, 1)}\n\nThe draft was rejected for these problems:\n${opts.problems.map((p) => `- ${p}`).join("\n")}\n\n${HOW}`,
+      content: `${opts.content}\n\nYOUR DRAFT (JSON):\n${JSON.stringify(opts.draft, (k, v) => (k === "voice_tags" ? undefined : v), 1)}\n\nThe draft was rejected for these problems:\n${opts.problems.map((p) => `- ${p}`).join("\n")}\n\n${HOW}`,
       schema: EditsSchema,
       effort: opts.effort ?? "medium",
       tier: opts.tier,
@@ -105,7 +106,11 @@ export async function reviseByEdits<S extends z.ZodType>(
       job: opts.job,
       edits: r.edits.length,
     });
-    return parsed.data as z.infer<S>;
+    // The schema drops what it does not name: the draft's delivery tags, and any the edits wrote, ride on.
+    const tags = voiceTagsField([opts.draft, r]);
+    return (
+      tags.voice_tags ? { ...(parsed.data as object), ...tags } : parsed.data
+    ) as z.infer<S>;
   } catch (err) {
     log("warn", "draft edit failed; writing it again", {
       job: opts.job,

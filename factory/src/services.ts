@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import type { Config } from "./config.ts";
 import type { Db } from "./db.ts";
 import type { Services } from "./pipeline.ts";
-import { createClaude } from "./editorial/llm.ts";
+import { createClaude, withVoiceTags } from "./editorial/llm.ts";
 import { codexRunnerPresent, createCodexLlm } from "./editorial/codex.ts";
 import { FEEDS } from "./discovery/feeds.ts";
 import { fetchFeeds } from "./discovery/rss.ts";
@@ -171,7 +171,7 @@ export function createServices(db: Db, cfg: Config): Services {
       text: `Codex is switched on (CODEX_LLM) but its helper codex_runner.py is not in ${cfg.codexRunnerDir} on this machine, so these steps use Claude: ${cfg.codexCalls.join(", ")}. Setting: CODEX_RUNNER_DIR.`,
     }).catch(() => undefined);
   }
-  const llm = codexHere
+  const routed = codexHere
       ? createCodexLlm(claude, {
           enabled: true,
           sites: cfg.codexCalls,
@@ -190,7 +190,9 @@ export function createServices(db: Db, cfg: Config): Services {
           })(new Set<string>()),
         })
       : claude;
-  if (llm !== claude)
+  // Codex's answers get the same treatment as Claude's: delivery tags out of every field, kept for the voice only.
+  const llm = withVoiceTags(routed);
+  if (routed !== claude)
     logEvent(db, null, "note", {
       text: `Codex (the ChatGPT plan) now answers these steps instead of Claude, with Claude as the fallback: ${cfg.codexCalls.join(", ")}${cfg.codexVision ? " (vision checks included)" : ""}.`,
     }).catch(() => undefined);

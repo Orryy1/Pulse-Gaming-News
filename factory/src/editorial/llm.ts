@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { FatalError } from "../lib/util.ts";
 import { PULSE_FACT_RULES, PULSE_VOICE } from "./voice.ts";
+import { liftVoiceTags } from "../voice/tags.ts";
 
 /** One usage line as the logs keep it; Codex answers add provider "codex" at zero tokens (src/editorial/codex.ts). */
 export interface UsageLine {
@@ -155,6 +156,18 @@ export type Tier = "top" | "mid" | "low";
 
 export type CacheTtl = "5m" | "1h";
 
+/**
+ * Any Llm with the writers' delivery tags lifted out of every answer (src/voice/tags.ts): whichever provider
+ * wrote it, no field the factory reads ever holds a tag. Lifting twice changes nothing.
+ */
+export function withVoiceTags(llm: Llm): Llm {
+  return {
+    async structured(opts) {
+      return liftVoiceTags(await llm.structured(opts));
+    },
+  };
+}
+
 export function createClaude(
   models: string | Partial<Record<Tier, string>>,
 ): Llm {
@@ -217,7 +230,7 @@ export function createClaude(
         throw new Error("model output hit max_tokens");
       if (response.parsed_output == null)
         throw new Error("model output did not match the schema");
-      return response.parsed_output as z.infer<typeof schema>;
+      return liftVoiceTags(response.parsed_output) as z.infer<typeof schema>;
     },
   };
 }

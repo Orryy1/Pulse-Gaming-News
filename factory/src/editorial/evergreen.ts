@@ -16,6 +16,7 @@ import {
 } from "./voice.ts";
 import { spoilerProblems, normTitle } from "./spoilers.ts";
 import { z } from "zod";
+import { voiceTagsField } from "../voice/tags.ts";
 import type { Llm } from "./llm.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
 import type { SteamFacts } from "../assets/steam.ts";
@@ -542,5 +543,6 @@ export function evergreenToScript(e: EvergreenScript): Script {
       platforms: x.platforms,
       ...(x.icon ? { icon: x.icon } : {}),
     })),
+    ...voiceTagsField(e),
   };
 }

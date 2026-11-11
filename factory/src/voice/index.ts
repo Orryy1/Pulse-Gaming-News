@@ -15,6 +15,7 @@ import { synthesise as synthesiseElevenLabs, type Narration } from "./elevenlabs
 import { synthesiseElevenLabsLong, LONG_TEXT_CHARS } from "./elevenlabsLong.ts";
 import { decodedSeconds, synthesiseLocal } from "./local.ts";
 import { quietBreaths } from "./breaths.ts";
+import { dropTagWords, stripVoiceTags } from "./tags.ts";
 
 const run = promisify(execFile);
 
@@ -60,12 +61,35 @@ export async function speedUp(file: string, factor: number): Promise<void> {
   await fs.rename(tmp, file);
 }
 
+/** The narration's level after the polish: the mix and the -16 LUFS master are set against it. */
+export const VOICE_LOUDNORM = "loudnorm=I=-17:TP=-2.5:LRA=5";
+
+/**
+ * The "creator mic" of the owner's sample C (11 Nov 2026): a little warmth at 180 Hz, presence at 4.5 kHz, a
+ * gentler second compressor and a faint 22 ms room, so the voice sounds like a person at a good microphone
+ * rather than a dry studio read. Sample C ended on loudnorm at -14 LUFS; here it ends back at the polish's
+ * -17 instead, because the music mix is balanced against that level and the master sets the final loudness.
+ */
+export const MIC_CHAIN = "highpass=f=80,equalizer=f=180:t=q:w=1:g=2,equalizer=f=4500:t=q:w=1.2:g=3,acompressor=threshold=-20dB:ratio=3:attack=5:release=80:makeup=3,aecho=0.8:0.85:22:0.06";
+
+/** The filter the finished narration gets after the speed-up, or undefined when VOICE_MIC_CHAIN is off. */
+export function micChainFilter(cfg: Pick<Config, "voiceMicChain">): string | undefined {
+  return cfg.voiceMicChain ? `${MIC_CHAIN},${VOICE_LOUDNORM}` : undefined;
+}
+
+/** Runs a filter over the narration in place; durations and word timings are unchanged. */
+export async function filterVoice(file: string, filter: string): Promise<void> {
+  const tmp = `${file}.mic.mp3`;
+  await run(FFMPEG, ["-loglevel", "error", "-y", "-i", file, "-af", filter, "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", tmp]);
+  await fs.rename(tmp, file);
+}
+
 export async function polishVoice(file: string): Promise<number> {
   const tmp = `${file}.polished.mp3`;
   const before = await decodedSeconds(file);
   await run(FFMPEG, [
     "-loglevel", "error", "-y", "-i", file,
-    "-af", "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,highpass=f=70,acompressor=threshold=-30dB:ratio=5.5:attack=5:release=120:makeup=4,alimiter=limit=0.95,loudnorm=I=-17:TP=-2.5:LRA=5",
+    "-af", `silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,highpass=f=70,acompressor=threshold=-30dB:ratio=5.5:attack=5:release=120:makeup=4,alimiter=limit=0.95,${VOICE_LOUDNORM}`,
     "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", tmp,
   ]);
   await fs.rename(tmp, file);
@@ -99,7 +123,7 @@ export async function narrate(
 ): Promise<NarrationWithVoice> {
   // The very last door: nothing that talks about the writing task reaches a voice, whoever is calling.
   if (cfg.writerNotesGuard !== false) {
-    const notes = writerNoteHits(text);
+    const notes = writerNoteHits(stripVoiceTags(text));
     if (notes.length)
       throw new FatalError(
         `writer's notes in the narration, not voiced: "${notes[0]!.sentence.slice(0, 160)}"`,
@@ -108,10 +132,13 @@ export async function narrate(
   const order = providerOrder(cfg.voiceProvider);
   const errors: string[] = [];
   for (const provider of order) {
+    // Delivery tags are acted only by eleven_v3; the local clone and older models would read them out.
+    const spoken =
+      provider === "elevenlabs" && cfg.voiceTags && cfg.elevenLabsModel.startsWith("eleven_v3") ? text : stripVoiceTags(text);
     try {
       let n: Narration;
       if (provider === "local") {
-        n = await synthesiseLocal(text, outPath, {
+        n = await synthesiseLocal(spoken, outPath, {
           baseUrl: cfg.localTtsUrl,
           voiceId: cfg.localVoiceId,
           speakingRate: cfg.localSpeakingRate,
@@ -124,18 +151,26 @@ export async function narrate(
         // the point of elevenlabs-first is to use paid-for credits, not to risk a bill.
         if (left === undefined && cfg.voiceProvider === "elevenlabs-first") throw new Error("ElevenLabs balance unknown (check the API key)");
         // Never into overage: the job plus a cushion must fit the balance, or the local voice takes it.
-        if (left !== undefined && left < text.length * 1.2 + cfg.elevenLabsReserve) throw new Error(`ElevenLabs has ${left} characters left this month`);
-        const elOpts = { apiKey: cfg.elevenLabsApiKey, voiceId: voice?.id ?? cfg.elevenLabsVoiceId, modelId: cfg.elevenLabsModel };
+        if (left !== undefined && left < spoken.length * 1.2 + cfg.elevenLabsReserve) throw new Error(`ElevenLabs has ${left} characters left this month`);
+        const elOpts = {
+          apiKey: cfg.elevenLabsApiKey,
+          voiceId: voice?.id ?? cfg.elevenLabsVoiceId,
+          modelId: cfg.elevenLabsModel,
+          settings: { stability: cfg.voiceStability },
+        };
         // A long-form script is spoken in takes: the timestamps endpoint takes a few thousand characters at a time.
         // Re-voicing a stray take spends extra characters, only out of what the balance holds beyond this job and the reserve.
-        const revoiceChars = left === undefined ? undefined : Math.max(0, left - text.length * 1.2 - cfg.elevenLabsReserve);
+        const revoiceChars = left === undefined ? undefined : Math.max(0, left - spoken.length * 1.2 - cfg.elevenLabsReserve);
         n =
-          text.length > LONG_TEXT_CHARS
-            ? await synthesiseElevenLabsLong(text, outPath, { ...elOpts, takeCheck: cfg.voiceTakeCheck, revoiceChars, onEvent: hooks.onEvent })
-            : await synthesiseElevenLabs(text, outPath, elOpts);
+          spoken.length > LONG_TEXT_CHARS
+            ? await synthesiseElevenLabsLong(spoken, outPath, { ...elOpts, takeCheck: cfg.voiceTakeCheck, revoiceChars, onEvent: hooks.onEvent })
+            : await synthesiseElevenLabs(spoken, outPath, elOpts);
       }
-      // ElevenLabs voices breathe audibly between lines; its timestamps say where, so those gaps go quiet.
+      // ElevenLabs voices breathe audibly between lines; its timestamps say where, so those gaps go quiet. The
+      // timings still hold the tags here, so the breath pass can leave a chuckle or a sigh alone.
       if (provider === "elevenlabs") await quietBreaths(outPath, n.words);
+      // From here on the timings are the words alone: captions, pause trims and the narration check never see a tag.
+      n = { ...n, words: dropTagWords(n.words) };
       const trimmed = await polishVoice(outPath);
       if (trimmed > 0.005)
         n = {
@@ -155,6 +190,8 @@ export async function narrate(
         };
         log("info", "narration sped up", { factor: factor.toFixed(3) });
       }
+      const mic = micChainFilter(cfg);
+      if (mic) await filterVoice(outPath, mic);
       const used = provider === "local" ? { provider, id: cfg.localVoiceId, name: `${cfg.narratorName} (local clone)` } : { provider, id: voice?.id ?? cfg.elevenLabsVoiceId, name: voice?.name ?? cfg.elevenLabsVoiceId };
       log("info", "narration ready", { provider, voice: used.name, seconds: n.durationSeconds.toFixed(1) });
       return { ...n, voice: used };

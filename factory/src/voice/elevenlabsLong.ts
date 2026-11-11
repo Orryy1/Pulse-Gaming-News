@@ -44,6 +44,7 @@ import {
   MAX_REVOICES,
   type TakeMeasure,
 } from "./takecheck.ts";
+import { hasVoiceTags } from "./tags.ts";
 
 /** Most characters in one take: eleven_v3 takes 5,000 per request; this stays well under it. */
 export const LONG_TAKE_CHARS = 3000;
@@ -110,6 +111,14 @@ export function chunkTakes(text: string, maxChars = LONG_TAKE_CHARS): string[] {
     prevEndsParagraph = u.endsParagraph;
   }
   if (cur) takes.push(cur);
+  // A delivery tag cues the words after it: one left at the end of a take opens the next instead, so a seam
+  // never parts a tag from its line (a tag has no spaces, so no split can cut one in half).
+  for (let i = 0; i + 1 < takes.length; i++) {
+    const m = /\s*(\[[a-z ]+\])$/i.exec(takes[i]!);
+    if (!m || !hasVoiceTags(m[1]!)) continue;
+    takes[i] = takes[i]!.slice(0, m.index);
+    takes[i + 1] = `${m[1]} ${takes[i + 1]}`;
+  }
   return takes;
 }
 

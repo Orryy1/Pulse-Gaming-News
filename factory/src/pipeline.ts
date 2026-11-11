@@ -5934,7 +5934,10 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     });
   } else {
     narration = await s.synthesise(
-      twin ? twinNarration(ep.script_json!) : narrationOf(ep.script_json!),
+      // The one text that carries the writer's delivery tags: the voice acts them, nothing else sees them.
+      twin
+        ? twinNarration(ep.script_json!)
+        : narrationOf(ep.script_json!, { tags: true }),
       path.join(dir, "voice.mp3"),
       voice,
       twin

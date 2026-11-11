@@ -2487,3 +2487,148 @@ test("FRIEND_PASS off: no pass is asked for and the Short is as written", async 
   assert.ok(!sites.includes("friend.short"));
   assert.ok(ep.script_json!.pulse_take.narration.endsWith(goodScript().pulse_take.narration));
 });
+
+// ---------------------------------------------- the named strand (src/strand.ts) and the length lanes (src/shortlengths.ts)
+
+import { maybeSelect, discoverTick } from "../src/pipeline.ts";
+import { parseShortLengths } from "../src/shortlengths.ts";
+
+const STRAND = {
+  strandName: "GTA 6, Checked",
+  strandSlot: "13:00", // the fixtures' one news slot
+  strandFranchise: "GTA VI|GTA 6|Grand Theft Auto VI",
+  breakingEnabled: false,
+};
+
+function gtaStories(s: Services, now: Date) {
+  s.discover = async () =>
+    clusterItems(
+      [
+        item("Take-Two raises GTA 6 sales forecast after record pre-orders", "Take-Two", "official", 10, now),
+        item("GTA 6 lets you lose the police by changing your clothes", "Rockstar Newswire", "official", 20, now),
+        item("Starfield second expansion delayed to early 2027", "Xbox Wire", "official", 15, now),
+      ],
+      now,
+    );
+}
+
+/** What the editor and the writer were sent. */
+function llmLog(s: Services) {
+  const seen = { selection: [] as string[], script: [] as string[], system: [] as string[] };
+  const inner = s.llm;
+  s.llm = {
+    ...inner,
+    structured: (o: { schema: unknown; content?: unknown; system?: string }) => {
+      if (o.schema === SelectionSchema) seen.selection.push(String(o.content ?? ""));
+      if (o.schema === ScriptSchema) {
+        seen.script.push(String(o.content ?? ""));
+        seen.system.push(String(o.system ?? ""));
+      }
+      return inner.structured(o as never);
+    },
+  } as Llm;
+  return seen;
+}
+
+test("the strand's slot takes the franchise's player-facing stories first and company numbers last; off, the slot is unchanged", async () => {
+  {
+    const { s, db } = await setup(STRAND);
+    gtaStories(s, s.now());
+    const seen = llmLog(s);
+    await discoverTick(s);
+    const id = await maybeSelect(s);
+    assert.ok(id, "the strand fills the news slot; no slot is added");
+    const ep = await getEpisode(db, id!);
+    assert.deepEqual(ep!.story_json.strand, { name: "GTA 6, Checked", franchise: "GTA VI", ownFootage: false });
+    const list = seen.selection[0]!.split("Candidates:\n")[1]!;
+    assert.match(list, /^0\. "GTA 6 lets you lose the police/);
+    assert.match(list, /\n1\. "Take-Two raises GTA 6 sales forecast/);
+    assert.doesNotMatch(list, /Starfield/, "the franchise's stories only");
+    assert.match(seen.selection[0]!, /This is the "GTA 6, Checked" slot/);
+    await db.close();
+  }
+  {
+    const { s, db } = await setup({ breakingEnabled: false });
+    gtaStories(s, s.now());
+    const seen = llmLog(s);
+    await discoverTick(s);
+    const ep = await getEpisode(db, (await maybeSelect(s))!);
+    assert.equal(ep!.story_json.strand, undefined);
+    assert.match(seen.selection[0]!, /Starfield/);
+    assert.doesNotMatch(seen.selection[0]!, /Pulse's daily/);
+    await db.close();
+  }
+  {
+    // A strand set on an hour that is not a news slot stays off: it never adds a slot.
+    const { s, db } = await setup({ ...STRAND, strandSlot: "20:00" });
+    gtaStories(s, s.now());
+    await discoverTick(s);
+    const ep = await getEpisode(db, (await maybeSelect(s))!);
+    assert.equal(ep!.story_json.strand, undefined);
+    assert.equal((await listEpisodes(db)).length, 1);
+    await db.close();
+  }
+});
+
+test("a strand Short opens on the owner's clip when the inbox has one, in the long lane SHORT_LENGTHS sets", async () => {
+  const { s, db, dir } = await setup({
+    ...STRAND,
+    shortLengths: parseShortLengths("news=22-35,why=22-35,strand=60-75"),
+  });
+  const root = path.join(dir, "gameplay");
+  const clipDir = path.join(root, "inbox", "c1");
+  await fs.mkdir(clipDir, { recursive: true });
+  await fs.writeFile(path.join(clipDir, "clip.mp4"), "mp4");
+  await fs.writeFile(
+    path.join(clipDir, "meta.json"),
+    JSON.stringify({ id: "c1", status: "published", clip: { file: "clip.mp4", seconds: 40 }, review: { at: "", keep: true, reason: "x", game: "Grand Theft Auto VI" } }),
+  );
+  s.cfg.gameplayRoot = root;
+  gtaStories(s, s.now());
+  const seen = llmLog(s);
+  const asked: string[] = [];
+  s.ownClips = async (game, franchise, d, targets, max) => {
+    asked.push(`${game}|${franchise}|${targets.map((t) => t.key).join(",")}|${max}`);
+    await fs.writeFile(path.join(d, "own_0.mp4"), "mp4");
+    return [
+      {
+        kind: "clip",
+        file: "own_0.mp4",
+        sourceUrl: "own:clip.mp4",
+        provenance: "Pulse's own gameplay capture of Grand Theft Auto VI (clip.mp4), 6s at 3.0s, with game sound",
+        durationSeconds: 6,
+        audio: true,
+      },
+    ] as never;
+  };
+  await tick(s);
+  const [ep] = await db.query<{ story_json: any; assets_json: any }>(`SELECT story_json, assets_json FROM episodes`);
+  assert.equal(ep!.story_json.strand.ownFootage, true);
+  assert.deepEqual(asked, ["Grand Theft Auto VI|GTA VI|hook|1"], "one clip of the game the inbox names, for the hook");
+  const first = ep!.assets_json.clips[0];
+  assert.equal(first.role, "hook");
+  assert.match(first.provenance, /own gameplay capture/);
+  assert.match(seen.system[0]!, /Write a 60-75 second vertical Short script \(156-195 spoken words/);
+  assert.match(seen.script[0]!, /belongs to "GTA 6, Checked"/);
+  assert.match(seen.script[0]!, /opens on the owner's own gameplay of GTA VI/);
+  assert.match(seen.script[0]!, /runs 60 to 75 seconds/);
+  await db.close();
+});
+
+test("with SHORT_LENGTHS off the writer is briefed exactly as before; on, news Shorts get 22-35 seconds", async () => {
+  {
+    const { s, db } = await setup();
+    const seen = llmLog(s);
+    await tick(s);
+    assert.match(seen.system[0]!, /Write a 25-40 second vertical Short script \(70-100 spoken words/);
+    assert.doesNotMatch(seen.script[0]!, /Pulse's daily/);
+    await db.close();
+  }
+  {
+    const { s, db } = await setup({ shortLengths: parseShortLengths("news=22-35") });
+    const seen = llmLog(s);
+    await tick(s);
+    assert.match(seen.system[0]!, /Write a 22-35 second vertical Short script \(57-91 spoken words/);
+    await db.close();
+  }
+});

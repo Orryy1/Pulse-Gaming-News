@@ -24,6 +24,7 @@ import {
   TikTokSignedOut,
 } from "./tiktokBrowser.ts";
 import { bufferPostVideo } from "./buffer.ts";
+import { overInstagramLength } from "../shortlengths.ts";
 import {
   heldKeys,
   heldMayPost,
@@ -649,6 +650,22 @@ export async function crosspostTick(
         [d.now()],
       );
       if (Number(today?.n ?? 0) < 2) ep = await pick();
+    }
+    // INSTAGRAM_MAX_SECONDS (src/shortlengths.ts): a Short over it is skipped on Instagram for good. The cutdown code cuts
+    // entries out of long rankings and cannot make a shorter cut of a Short, so there is no 20-35 second version to send.
+    while (
+      ep &&
+      platform === "instagram" &&
+      overInstagramLength(
+        d.cfg.instagramMaxSeconds,
+        traitsOf(ep).durationSeconds,
+      )
+    ) {
+      await logEvent(d.db, ep.id, "crosspost_skip", {
+        platform,
+        reason: `runs ${Math.round(traitsOf(ep).durationSeconds ?? 0)} s, over INSTAGRAM_MAX_SECONDS (${d.cfg.instagramMaxSeconds} s)`,
+      });
+      ep = await pick(skip);
     }
     if (!ep) continue;
     const timing =

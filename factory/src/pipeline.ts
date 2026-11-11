@@ -371,6 +371,23 @@ import {
   whySlotsAhead,
 } from "./storymix.ts";
 import {
+  isStrandSlot,
+  openOnOwnClip,
+  rankForStrand,
+  strandClip,
+  strandEditorNote,
+  strandFrom,
+  strandProblems,
+  strandSeries,
+  type Strand,
+} from "./strand.ts";
+import {
+  lengthFormatOf,
+  SHORT_NARRATION_CAP_SECONDS,
+  shortTarget,
+} from "./shortlengths.ts";
+import { inboxFiles } from "./assets/library.ts";
+import {
   fitDescription,
   recentShortTexts,
   repetitionProblems,
@@ -1061,6 +1078,8 @@ export function seriesFor(
     out.push(SERIES.rankedShort);
   else if (ep.lane === "news" || ep.lane === "news_breaking")
     out.push(SERIES.news);
+  // A strand Short also joins the strand's own shelf, named as the strand (src/strand.ts).
+  if (ep.story_json?.strand) out.push(strandSeries(ep.story_json.strand));
   const focusOn =
     cfg.focusPlaylist &&
     (!cfg.focusUntil || dayKey(now, cfg.timezone) <= cfg.focusUntil);
@@ -1215,6 +1234,8 @@ async function createFromChoice(
     /** Our own dropped attempts at this story: never published, so not "already covered". */
     notCovered: string[];
   },
+  /** A word for the editor about this slot (the strand's, src/strand.ts). */
+  note?: string,
 ): Promise<string | undefined> {
   const { db } = s;
   const pool = candidates;
@@ -1224,6 +1245,7 @@ async function createFromChoice(
     (await recentHeadlines(db)).filter((h) => !big?.notCovered.includes(h)),
     [
       big?.note ?? "",
+      note ?? "",
       focusBlock(s.cfg, s.now()),
       hotBlock(await readHotTopic(db, s.now()).catch(() => undefined)),
       calendarFor(s.cfg, s.now(), "news", 3),
@@ -1599,6 +1621,34 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
       (await maybeSelectWhy(s)) ??
       (await maybeSelectSpare(s))
     );
+  // The named strand (STRAND_NAME, src/strand.ts): its slot is one of the news slots, so it adds none. The slot takes the
+  // franchise's stories only, player-facing first and company numbers last; with none, it stays an ordinary news slot.
+  const strand = strandFrom(cfg);
+  if (strand && isStrandSlot(strand, slot, cfg.timezone)) {
+    const ranked = rankForStrand(
+      strand,
+      eligible.map((x) => x.cluster),
+      storyText,
+    ).slice(0, 12);
+    if (ranked.length) {
+      const ownFootage = await strandOwnFootage(cfg, strand).catch(() => false);
+      return createFromChoice(
+        s,
+        ranked.map((c) => ({
+          ...c,
+          strand: { name: strand.name, franchise: strand.franchise, ownFootage },
+        })),
+        { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot },
+        `strand "${strand.name}" ${slot.toISOString()}`,
+        undefined,
+        strandEditorNote(strand),
+      );
+    }
+    log("info", "no story for the strand; an ordinary news slot", {
+      strand: strand.name,
+      slot: slot.toISOString(),
+    });
+  }
   // ANALYTICS_LOOP_SCORING (src/loopfeedback.ts): the weekly report's small multiplier per story type and format
   // reorders the slot's candidates (sightings arrive best score first, so with no multipliers nothing moves).
   // Breaking news above never passes through it: speed matters more than format.
@@ -1630,6 +1680,15 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot },
     `news slot ${slot.toISOString()}`,
   );
+}
+
+/** Whether the gameplay inbox holds a clip of the strand's franchise, so the strand Short can open on the owner's footage. */
+export async function strandOwnFootage(
+  cfg: Pick<Config, "footage" | "gameplayRoot">,
+  strand: Pick<Strand, "aliases">,
+): Promise<boolean> {
+  if (!cfg.footage || !cfg.gameplayRoot) return false;
+  return Boolean(strandClip(strand, await inboxFiles(cfg.gameplayRoot)));
 }
 
 /**
@@ -5465,9 +5524,13 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     !argument &&
     !cluster.why &&
     (ep.lane === "news" || ep.lane === "news_breaking");
+  // SHORT_LENGTHS (src/shortlengths.ts): the lane's seconds, word budget and beats; unset, the old 25-40 s and 70-100 words.
+  const length = shortTarget(s.cfg.shortLengths, lengthFormatOf(ep));
   // Every house rule a news Short answers to, besides the fact check: run on each draft and on the friend pass.
   const houseProblems = (sc: Script) => {
-    const problems = validateScript(sc, recent);
+    const problems = validateScript(sc, recent, length);
+    // A strand Short (src/strand.ts) never reads as an announcement.
+    if (cluster.strand) problems.push(...strandProblems(sc));
     const thin = s.cfg.shortRefuseThin
       ? thinProblems(narrationOf(sc), sc.thin_reason)
       : [];
@@ -5549,6 +5612,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       draft: attempt > 0 ? script : undefined,
       segment: pulseCheck,
       noSeriesFollow: s.cfg.shortEndPayoff,
+      length,
     });
     const { problems, thin } = houseProblems(script);
     check = await factCheck(s.llm, script, cluster, articles, storeData);
@@ -5661,13 +5725,13 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           segment: pulseCheck,
           endStatement: s.cfg.shortEndPayoff,
           recent,
-          wordsMin: WORDS_MIN,
-          wordsMax: WORDS_MAX,
+          wordsMin: length?.wordsMin ?? WORDS_MIN,
+          wordsMax: length?.wordsMax ?? WORDS_MAX,
         }),
       guard: (after) => [
         ...friendShortProblems(before, after, {
-          wordsMin: WORDS_MIN,
-          wordsMax: WORDS_MAX,
+          wordsMin: length?.wordsMin ?? WORDS_MIN,
+          wordsMax: length?.wordsMax ?? WORDS_MAX,
         }),
         ...newProblems(beforeProblems, houseProblems(after).problems),
       ],
@@ -6198,7 +6262,9 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
         ? ep.script_json?.evergreen_format === "documentary"
           ? s.cfg.docMaxSeconds
           : s.cfg.longformMaxSeconds
-        : 58;
+        : // SHORT_LENGTHS: the strand's 60-75 s lane needs room past the minute; every other Short keeps 58 s.
+          (shortTarget(s.cfg.shortLengths, lengthFormatOf(ep))?.capSeconds ??
+          SHORT_NARRATION_CAP_SECONDS);
   if (narration.durationSeconds > maxSeconds)
     throw new FatalError(
       `narration is ${narration.durationSeconds.toFixed(1)}s, over the ${maxSeconds}s cap for the ${ep.lane} lane`,
@@ -6515,6 +6581,59 @@ export async function gatherMedia(
     startSeconds: c.startSeconds,
     stock: c.stock,
   }));
+  // A strand Short (src/strand.ts) opens on the owner's own gameplay when the inbox holds a clip of the franchise.
+  const strand = ep.story_json.strand;
+  if (strand?.ownFootage && s.cfg.footage) {
+    const hook = targetsFor(script).find((t) => t.key === "hook") ?? {
+      key: "hook",
+      text: script.hook,
+      want: "gameplay" as const,
+      energy: "high" as const,
+      keywords: [],
+    };
+    // The game as the inbox's reviewer named it, so the library finds the same clip the selection saw.
+    const clipGame = s.cfg.gameplayRoot
+      ? strandClip(
+          strandFrom(s.cfg) ?? { aliases: [strand.franchise] },
+          await inboxFiles(s.cfg.gameplayRoot).catch(() => []),
+        )?.game
+      : undefined;
+    const [own] = await s
+      .ownClips(
+        clipGame || script.game_title || strand.franchise,
+        strand.franchise,
+        dir,
+        [hook],
+        1,
+      )
+      .catch(() => [] as VisualAsset[]);
+    if (own) {
+      clips.splice(
+        0,
+        clips.length,
+        ...openOnOwnClip(clips, {
+          file: own.file,
+          sourceUrl: own.sourceUrl,
+          provenance: own.provenance,
+          durationSeconds: Math.min(own.durationSeconds ?? 4, 8),
+          motion: own.motion,
+          luma: own.luma,
+          label: own.label,
+          reason: own.reason,
+          startSeconds: own.startSeconds,
+          audio: own.audio,
+        }),
+      );
+      await logEvent(s.db, ep.id, "strand_own_footage", {
+        strand: strand.name,
+        clip: own.provenance,
+      });
+    } else
+      log("info", "strand Short has no own clip to open on", {
+        episode: ep.id,
+        strand: strand.name,
+      });
+  }
   // Licensed stock for the real-world lines of a picture story that has no publisher video of it.
   if (pictureStory && !official.storyVideo) {
     // Every fact line can carry an illustrative shot: quiet lines show it in the framed panel under their card.

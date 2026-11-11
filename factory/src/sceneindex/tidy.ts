@@ -91,7 +91,7 @@ export function joinSplitLines<
       (a === b ||
         alike(prev.text, line.text) >= 0.9 ||
         (Math.min(a.length, b.length) >= 8 &&
-          (a.startsWith(b) || b.startsWith(a))));
+          (a.startsWith(b) || b.startsWith(a) || a.endsWith(b) || b.endsWith(a))));
     if (!same) {
       out.push({ ...line });
       continue;
@@ -123,16 +123,42 @@ export function tidyIndex(index: SceneIndex): SceneIndex {
     const s = speaker ? spell.get(speaker) : undefined;
     return s ? { ...rest, speaker: s } : rest;
   });
-  const lines = joinSplitLines(respelt).map((l, i) => ({
-    ...l,
-    id: i,
-    shot: shotAt(index.shots, l.start),
-  }));
+  const joined = joinSplitLines(respelt);
+  // In a game that names the speaker of nearly every line, a line with no speaker and no voice is not dialogue:
+  // it is a card or a message from the game itself ("You got the Master Sword!"). It still says what the moment
+  // is, so it moves to the writing on screen of the shot it appears in.
+  // Judged on the lines that were also heard when the game is voiced (its credits roll is read too, and would
+  // drown the count), on all of them when it is not.
+  const voiced = joined.filter((l) => l.via === "both");
+  const judged = voiced.length >= joined.length * 0.5 ? voiced : joined;
+  const named = judged.filter((l) => l.speaker).length;
+  const cards =
+    judged.length >= 20 && named / judged.length >= 0.85
+      ? joined.filter((l) => !l.speaker && l.via === "textbox")
+      : [];
+  const cardText = new Map<number, string[]>();
+  for (const c of cards) {
+    const at = shotAt(index.shots, c.start);
+    cardText.set(at, [...(cardText.get(at) ?? []), c.text]);
+  }
+  const lines = joined
+    .filter((l) => !cards.includes(l))
+    .map((l, i) => ({
+      ...l,
+      id: i,
+      shot: shotAt(index.shots, l.start),
+    }));
   const speakers = [
     ...new Set(lines.flatMap((l) => (l.speaker ? [l.speaker] : []))),
   ].filter((s) => (counts.get(s) ?? 0) >= 2);
   const cast = mergeNames(index.cast, speakers);
-  const shots = index.shots.map((s) => {
+  const shots = index.shots.map((shot) => {
+    const extra = (cardText.get(shot.id) ?? []).filter(
+      (t) => !norm(shot.text).includes(norm(t)),
+    );
+    const s = extra.length
+      ? { ...shot, text: [shot.text, ...extra].filter(Boolean).join(" / ").slice(0, 200) }
+      : shot;
     if (!s.text) return s;
     // The first name on a card is whose card it is ("SARIA  Link's Childhood Friend" is Saria's, not Link's).
     const low = ` ${norm(s.text)} `;

@@ -1637,3 +1637,23 @@ test("real recordings: Whisper's words and the text reader's boxes for the same 
   assert.equal(hit.wordTimed, true);
   assert.deepEqual([hit.start, hit.speaker], [188.14, "Great Deku Tree"]);
 });
+
+test("in a game that names its speakers, a speakerless unvoiced line is the game's own message: writing on screen, not dialogue", () => {
+  const index = sample();
+  const spoken = Array.from({ length: 24 }, (_, i) => ({
+    id: 0,
+    shot: 0,
+    start: 3000 + i * 10,
+    end: 3004 + i * 10,
+    text: `Sentence number ${i} of a long conversation.`,
+    speaker: i % 2 ? "Navi" : "Rauru",
+    via: "both" as const,
+  }));
+  const message = { id: 0, shot: 0, start: 2413, end: 2416, text: "You got the Master Sword!", via: "textbox" as const };
+  const half = { id: 0, shot: 0, start: 3004.5, end: 3005.5, text: "of a long conversation.", speaker: "Rauru", via: "textbox" as const };
+  const tidy = tidyIndex({ ...index, lines: [...index.lines, ...spoken, message, half] });
+  assert.ok(!tidy.lines.some((l) => l.text === "You got the Master Sword!"));
+  assert.match(tidy.shots[4]!.text, /You got the Master Sword!/);
+  assert.equal(findShots(tidy, { text: "Link gets the Master Sword" })[0]!.start, 2411);
+  assert.deepEqual(tidyIndex(tidy), tidy);
+});

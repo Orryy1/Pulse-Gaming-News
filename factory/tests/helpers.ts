@@ -108,6 +108,7 @@ export function testConfig(
     newsSegment: false,
     // Off in tests, so a scripted fake model is never asked for a rewrite it wasn't given; the friend pass tests turn it on.
     friendPass: [],
+    friendPassTier: "mid",
     sequelWinners: false,
     cutdownSlot: "15:30",
     elevenLabsLowCredits: 0,

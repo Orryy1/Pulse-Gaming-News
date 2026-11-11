@@ -3107,7 +3107,7 @@ async function stepScriptDocumentary(
         });
       const friend = await friendPass({
         before,
-        write: () => friendChapter(s.llm, before),
+        write: () => friendChapter(s.llm, before, { tier: s.cfg.friendPassTier }),
         guard: (after) => [
           ...friendChapterProblems(before, after),
           ...newProblems(rulesFor(before), rulesFor(after)),
@@ -5650,6 +5650,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       before,
       write: () =>
         friendShort(s.llm, before, {
+          tier: s.cfg.friendPassTier,
           segment: pulseCheck,
           endStatement: s.cfg.shortEndPayoff,
           recent,

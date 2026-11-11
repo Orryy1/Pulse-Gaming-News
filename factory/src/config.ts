@@ -419,6 +419,9 @@ export interface Config {
    * kept only when no figure, name or quote moved and the fact check passes again. FRIEND_PASS lists the writers it
    * runs for ("shorts", "documentary"), "off" for none: default Shorts and documentary chapters. */
   friendPass: FriendPassFormat[];
+  /** FRIEND_PASS_TIER: the model for the friend pass. "top" (Opus) wrote the edgier, funnier lines in the 11 Nov tuning
+   * at about three times the mid model's few cents per Short; "mid" is the cheaper fallback. */
+  friendPassTier: "top" | "mid";
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1193,6 +1196,7 @@ export function loadConfig(): Config {
     sequelWinners: bool("SEQUEL_WINNERS", false),
     newsSegment: bool("NEWS_SEGMENT", false),
     friendPass: friendPassFrom(process.env.FRIEND_PASS),
+    friendPassTier: str("FRIEND_PASS_TIER", "top") === "mid" ? "mid" : "top",
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     reachReport: bool("REACH_REPORT", false),

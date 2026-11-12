@@ -43,6 +43,8 @@ export interface StoryCluster {
   premade?: boolean;
   /** A spare from the launch run: no slot of its own until a slot would go out empty; the days it may fill. */
   spare?: { from?: string; until?: string };
+  /** The series a selector made this story for (src/series.ts): kept on the script as its series tag. */
+  series?: import("../series.ts").SeriesTag;
   /** A twin of a published Short in another language: the original's episode, the language and the login it uploads with. */
   twin?: { parent: string; language: string; account: string };
   /** A Short in the named daily strand (src/strand.ts): its name, its franchise and whether it opens on the owner's own footage. */

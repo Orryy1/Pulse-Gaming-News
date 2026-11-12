@@ -91,3 +91,46 @@ export function pulseCheckProblems(s: Script): string[] {
     );
   return out;
 }
+
+// ---- The series (format redesign plan item 6) ------------------------------------------------------------------------
+
+/** The series whose Shorts end on the Pulse Check once NEWS_SEGMENT_SERIES is on. */
+const SERIES_WITH_CHECK = new Set(["why", "gta_file", "verdict"]);
+
+/**
+ * Whether a Short's take ends on the Pulse Check: a news Short with NEWS_SEGMENT (as before), and since the format
+ * redesign every series Short (The Why, The GTA File, Buy, Wait or Skip) with NEWS_SEGMENT_SERIES. A Short in the
+ * argument test has no labelled take, so it never carries one.
+ */
+export function pulseCheckFor(
+  cfg: { newsSegment: boolean; newsSegmentSeries?: boolean },
+  x: { lane: string; why: boolean; argument: boolean; series?: string },
+): boolean {
+  if (x.argument) return false;
+  if (cfg.newsSegmentSeries && x.series && SERIES_WITH_CHECK.has(x.series))
+    return true;
+  return (
+    cfg.newsSegment &&
+    !x.why &&
+    (x.lane === "news" || x.lane === "news_breaking")
+  );
+}
+
+const SERIES_NOTE: Record<string, string> = {
+  why: "This Short is The Why, our numbered series: the reading rates what the answer means for the viewer today (strong: worth playing or revisiting now; steady: a good story, nothing to do; weak: it aged badly or costs you; faint: the answer rests on a report, not a confirmed fact).",
+  gta_file:
+    "This Short is The GTA File, our numbered GTA VI serial: the reading rates what today's confirmed fact means for a GTA VI player.",
+  verdict:
+    "This Short is Buy, Wait or Skip: the Pulse Check sums up the verdict in one reading after the BUY, WAIT or SKIP call: strong for a buy, steady for a wait, weak for a skip, and faint when the price or the scores are only reported.",
+};
+
+/** What the reading means in a series Short, for its writer's note; empty for a Short in no series. */
+export function seriesPulseCheckNote(series: string | undefined): string {
+  return (series && SERIES_NOTE[series]) || "";
+}
+
+/** The whole Pulse Check brief for a series Short (for a writer of its own, such as Buy, Wait or Skip's). */
+export function seriesPulseCheckRule(series: string): string {
+  const note = seriesPulseCheckNote(series);
+  return note ? `${pulseCheckRule()}\n${note}` : pulseCheckRule();
+}

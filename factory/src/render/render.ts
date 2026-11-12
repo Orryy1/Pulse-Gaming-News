@@ -677,6 +677,7 @@ export async function renderShortThumb(input: {
   imageFile: string;
   words: string;
   label?: string;
+  series?: import("./seriesstrip.ts").SeriesCover;
   gl?: LongRenderInput["gl"];
   browserExecutable?: string;
 }): Promise<void> {
@@ -688,6 +689,7 @@ export async function renderShortThumb(input: {
       imageSrc: `${files.url}/${webPath(input.imageFile)}`,
       words: input.words,
       label: input.label,
+      series: input.series,
     };
     const still = await selectComposition({
       serveUrl,

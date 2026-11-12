@@ -5,12 +5,20 @@ import React from "react";
 import { AbsoluteFill, Img } from "remotion";
 import { COLOUR } from "./brand.ts";
 import { DISPLAY } from "./components/fonts.ts";
+import { SeriesStrip } from "./components/SeriesStrip.tsx";
+import {
+  THUMB_STRIP_HEIGHT,
+  THUMB_STRIP_TOP,
+  type SeriesCover,
+} from "./seriesstrip.ts";
 
 export type ShortSearchThumbProps = {
   imageSrc: string;
   words: string;
   /** A label above the words: "REPORTED" for an unconfirmed story. */
   label?: string;
+  /** SERIES_COVER_STYLE=strip: the series strip at the top, as on the Short's opening poster. */
+  series?: SeriesCover;
 };
 
 export const SHORT_THUMB_W = 720;
@@ -20,6 +28,7 @@ export const ShortSearchThumb: React.FC<ShortSearchThumbProps> = ({
   imageSrc,
   words,
   label,
+  series,
 }) => {
   const list = words.split(/\s+/);
   const longest = Math.max(...list.map((w) => w.length));
@@ -105,6 +114,15 @@ export const ShortSearchThumb: React.FC<ShortSearchThumbProps> = ({
           background: COLOUR.amber,
         }}
       />
+      {series ? (
+        <SeriesStrip
+          cover={series}
+          left={44}
+          width={SHORT_THUMB_W - 88}
+          top={THUMB_STRIP_TOP}
+          height={THUMB_STRIP_HEIGHT}
+        />
+      ) : null}
     </AbsoluteFill>
   );
 };

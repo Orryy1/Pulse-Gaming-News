@@ -172,6 +172,13 @@ import {
   selectExplainedEpisode,
   stepScriptExplained,
 } from "./explainedstep.ts";
+import { seriesCoverOf, seriesTagOf } from "./seriescover.ts";
+import {
+  recentVerdicts,
+  stepScriptVerdict,
+  verdictCluster,
+  verdictSelection,
+} from "./verdictstep.ts";
 import type { ExplainedStory } from "./editorial/explained.ts";
 import { recordWeeklyArm, weeklyArm, weeklyVerdict, fallbackNotice } from "./weeklytest.ts";
 import {
@@ -665,6 +672,10 @@ export interface Services {
   steamClimbers(now: Date): Promise<import("./discovery/charts.ts").Climber[]>;
   /** Today's best Steam deals, skipping games featured recently. */
   steamDeals(exclude: string[]): Promise<import("./discovery/deals.ts").Deal[]>;
+  /** Buy, Wait or Skip candidates confirmed on Steam (src/discovery/verdicts.ts); absent in tests. */
+  verdictCandidates?(
+    exclude: string[],
+  ): Promise<import("./editorial/verdict.ts").VerdictData[]>;
   /** YouTube's most-popular US charts (Gaming and everything), cached hourly, for the editor. */
   trending(): Promise<import("./discovery/demand.ts").TrendingVideo[]>;
   /** One YouTube search page's videos with their views, read without the API (src/discovery/searchdemand.ts); absent in tests. */
@@ -847,7 +858,11 @@ export function uploadsLeftToday(cfg: Config, now: Date): number {
   for (const d of [today, addDays(today, 1)]) {
     const day = weekday(localTime(d, "12:00", cfg.timezone), cfg.timezone);
     const slots = [...cfg.newsSlots, cfg.weeklySlot];
-    if (cfg.dealsDays.includes(day)) slots.push(cfg.dealsSlot);
+    if (
+      cfg.dealsDays.includes(day) ||
+      (cfg.seriesVerdictEnabled && cfg.seriesVerdictDays.includes(day))
+    )
+      slots.push(cfg.dealsSlot);
     if (cfg.longformEnabled && cfg.longformDays.includes(day))
       slots.push(cfg.longformSlot);
     if (cfg.whyEnabled && cfg.whyDays.includes(day))
@@ -1031,7 +1046,30 @@ const SERIES = {
     description:
       "Fast gaming news, checked and explained. New Shorts every day.",
   },
+  // The two new series shelves (format plan, 11 Nov 2026, item 8), filed only with SERIES_PLAYLISTS on.
+  gtaFile: {
+    title: "The GTA File",
+    description:
+      "The one GTA VI thing worth knowing today and what it means for you as a player. Confirmed facts only, a new numbered part every day.",
+  },
+  verdict: {
+    title: "Buy, Wait or Skip",
+    description:
+      "Before you spend: one game, one price and one straight verdict. Prices from Steam, scores from Steam reviews. Tuesday, Thursday and Saturday.",
+  },
 };
+
+/** The new series shelves' titles, in the channel page's order (src/channelpage.ts). */
+export const SERIES_SHELF_TITLES = {
+  gtaFile: SERIES.gtaFile.title,
+  why: SERIES.why.title,
+  verdict: SERIES.verdict.title,
+  docs: SERIES.docs.title,
+  rankedLong: SERIES.rankedLong.title,
+} as const;
+export const SERIES_SHELF_DESCRIPTIONS: Record<string, string> = Object.fromEntries(
+  Object.values(SERIES).map((x) => [x.title, x.description]),
+);
 
 /** The playlists a published video belongs to. */
 export function seriesFor(
@@ -1042,8 +1080,13 @@ export function seriesFor(
   const sc = ep.script_json;
   if (!sc) return [];
   const out: Array<{ title: string; description: string }> = [];
+  // The series build's tag (src/seriescover.ts): with SERIES_PLAYLISTS on, a GTA File part and a verdict file on
+  // their own shelves, and only there.
+  const tag = cfg.seriesPlaylists ? seriesTagOf(sc, ep.story_hash) : undefined;
+  if (tag === "gta_file") out.push(SERIES.gtaFile);
+  else if (tag === "verdict") out.push(SERIES.verdict);
   // The explainer takes the weekly slot in turn with the recap (src/weeklytest.ts), so it shares the weekly shelf.
-  if (sc.recap || sc.explained) out.push(SERIES.weekly);
+  else if (sc.recap || sc.explained) out.push(SERIES.weekly);
   else if (sc.runtime === "long")
     out.push(
       sc.evergreen_format === "documentary" ? SERIES.docs : SERIES.rankedLong,
@@ -1054,7 +1097,7 @@ export function seriesFor(
     (ep.lane === "evergreen" &&
       sc.entries?.length &&
       // A deals list or a release list has entries but ranks nothing: it stays off the rankings shelf.
-      !["steam_deals", "release_radar", "steam_climbers", "weekly_recap"].includes(
+      !["steam_deals", "release_radar", "steam_climbers", "weekly_recap", "buy_wait_skip"].includes(
         sc.evergreen_format ?? "",
       ))
   )
@@ -2417,6 +2460,36 @@ export async function maybeSelectWeekly(
     log("info", "achievement hunt skipped: not enough achievement data", {
       games: games.length,
     });
+  }
+
+  // Buy, Wait or Skip (SERIES_VERDICT_ENABLED, src/verdictstep.ts): one game, one price, one verdict, in the deals slot
+  // on its days. It takes the slot ahead of the deals list, and is judged by the series test, not the format trials.
+  const verdictDue = cfg.seriesVerdictEnabled
+    ? evergreenDue(
+        now,
+        { ...plan(cfg.seriesVerdictDays), slot: cfg.dealsSlot },
+        taken,
+      )
+    : undefined;
+  if (
+    verdictDue &&
+    s.verdictCandidates &&
+    !(await weeklyTried(db, `verdict:${today}`))
+  ) {
+    const recent = await recentVerdicts(db, now);
+    const pick = verdictSelection(
+      await s.verdictCandidates(recent.games),
+      recent.verdicts,
+    );
+    if (pick)
+      return make(
+        "verdict",
+        verdictCluster(today, pick, now),
+        verdictDue,
+        pick as unknown as Record<string, unknown>,
+        "evergreen",
+      );
+    log("info", "buy, wait or skip skipped: no game confirmed on Steam", {});
   }
 
   // Steam deals: their own daily slot, only when at least four strong deals are new to the channel.
@@ -5206,6 +5279,11 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   // Weekly formats carry the week's data for the writer.
   const brief = (ep.factcheck_json as { brief?: string } | null)?.brief ?? "";
   if (!topic) throw new FatalError("evergreen episode has no topic");
+  // Buy, Wait or Skip has its own writer and the data's own verdict (src/verdictstep.ts).
+  if ((topic.format as string) === "buy_wait_skip")
+    return stepScriptVerdict(s, ep, (script, attempt, data) =>
+      adjudicateRanking(s, ep, script, [], attempt, data),
+    );
   let facts: Array<{ title: string; facts: SteamFacts }> = [];
   let feedback: string[] = [];
   let draft: import("./editorial/evergreen.ts").EvergreenScript | undefined;
@@ -10367,6 +10445,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const final = path.join(dir, "short.mp4");
   if (assets.suite) assets.shortThumb = "thumb_short.jpg";
   const shortClean = await shortsCleanStep(s, ep.id, assets.test);
+  // The series strip on the opening poster and the search thumbnail (SERIES_COVER_STYLE, src/seriescover.ts).
+  const seriesCover = await seriesCoverOf(s.db, s.cfg, ep, script);
   const entrySpans = overlaySpans({
     segments,
     words,
@@ -10434,12 +10514,13 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       clean: shortClean,
       mascot: assets.mascot,
       heroCutFile: assets.heroCut,
+      ...(seriesCover ? { seriesCover } : {}),
       renderDate: s.now().toISOString().slice(0, 10),
     },
   });
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
-  await designShortThumb(s, ep.id, dir, script, assets, plan.heroIndex);
+  await designShortThumb(s, ep.id, dir, script, assets, plan.heroIndex, seriesCover);
 
   const tech = await s.technicalQa(
     final,
@@ -11626,6 +11707,7 @@ export async function designShortThumb(
   script: Script,
   assets: NonNullable<Episode["assets_json"]>,
   heroIndex: number | undefined,
+  series?: import("./render/seriesstrip.ts").SeriesCover,
 ): Promise<void> {
   const share = s.cfg.shortSearchThumbShare;
   if (share <= 0 || !s.renderShortThumb) return;
@@ -11644,6 +11726,7 @@ export async function designShortThumb(
       imageFile: image.file,
       words,
       label: script.is_rumour ? "REPORTED" : undefined,
+      ...(series ? { series } : {}),
       gl: s.cfg.remotionGl,
       browserExecutable: s.cfg.browserExecutable,
     });

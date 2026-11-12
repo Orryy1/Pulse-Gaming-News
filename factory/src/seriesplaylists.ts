@@ -30,6 +30,9 @@ export const BACKFILL_SHELVES = [
   "Gaming Documentaries",
   "The Pulse Weekly: This Week in Gaming",
   "Ranked in 60 Seconds",
+  // The format plan's two new series (item 8), filed only with SERIES_PLAYLISTS on (src/pipeline.ts seriesFor).
+  "The GTA File",
+  "Buy, Wait or Skip",
 ] as const;
 
 export interface WantedAdd {

@@ -509,3 +509,154 @@ export const BroadcastCover: React.FC<{ width: number; height: number; contentWi
     </AbsoluteFill>
   );
 };
+
+// ------------------------------------------------------------------ the series banner (format plan item 8)
+
+/** The three series on the banner, with when they run (the channel description says the same, src/channelpage.ts). */
+export type SeriesBannerProps = {
+  line: string;
+  series: Array<{ name: string; when: string }>;
+};
+
+export const SERIES_BANNER: SeriesBannerProps = {
+  line: "The Why. The GTA File. Buy, Wait or Skip. New every day.",
+  series: [
+    { name: "THE WHY", when: "DAILY" },
+    { name: "THE GTA FILE", when: "DAILY" },
+    { name: "BUY, WAIT OR SKIP", when: "TUE · THU · SAT" },
+  ],
+};
+
+/**
+ * The broadcast banner the channel has today, re-cut around the series: the same ink field, lockup, mark and amber
+ * ticker, with the three series as tiles inside the safe box a phone shows, and the plan's line in amber under them.
+ */
+export const SeriesBanner: React.FC<SeriesBannerProps> = ({ line, series }) => (
+  <AbsoluteFill
+    style={{
+      background: `radial-gradient(80% 60% at 50% 45%, #1b1b22 0%, ${INK} 70%)`,
+      overflow: "hidden",
+    }}
+  >
+    <Box
+      style={{
+        flexDirection: "column",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        gap: 20,
+        paddingLeft: 40,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "stretch" }}>
+        <div
+          style={{
+            background: PAPER,
+            color: INK,
+            fontFamily: DISPLAY,
+            fontSize: 112,
+            lineHeight: 1,
+            padding: "6px 24px 2px",
+          }}
+        >
+          PULSE
+        </div>
+        <div
+          style={{
+            background: AMBER,
+            color: INK,
+            fontFamily: DISPLAY,
+            fontSize: 112,
+            lineHeight: 1,
+            padding: "6px 24px 2px",
+          }}
+        >
+          GAMING
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 16 }}>
+        {series.map((x) => (
+          <div
+            key={x.name}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              background: "rgba(245,245,242,0.06)",
+              borderLeft: `10px solid ${AMBER}`,
+              padding: "10px 22px 12px 18px",
+            }}
+          >
+            <div
+              style={{
+                fontFamily: DISPLAY,
+                fontSize: 54,
+                lineHeight: 1,
+                color: PAPER,
+                letterSpacing: 1,
+              }}
+            >
+              {x.name}
+            </div>
+            <div
+              style={{
+                fontFamily: BODY,
+                fontWeight: 900,
+                fontSize: 22,
+                letterSpacing: 4,
+                color: AMBER,
+                marginTop: 6,
+              }}
+            >
+              {x.when}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div
+        style={{
+          fontFamily: BODY,
+          fontWeight: 900,
+          fontSize: 36,
+          color: AMBER,
+          letterSpacing: 0.5,
+        }}
+      >
+        {line}
+      </div>
+    </Box>
+    {/* The ticker runs the full width under the safe box, as on today's banner. */}
+    <div
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: SAFE.top + SAFE.height + 30,
+        height: 74,
+        background: AMBER,
+        display: "flex",
+        alignItems: "center",
+        overflow: "hidden",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <div
+        style={{
+          fontFamily: DISPLAY,
+          fontSize: 52,
+          color: INK,
+          letterSpacing: 2,
+          paddingLeft: 40,
+        }}
+      >
+        {Array.from({ length: 4 }, () => series.map((x) => x.name).join(" ◆ ")).join(" ◆ ")}
+      </div>
+    </div>
+    <Mark
+      size={280}
+      style={{
+        position: "absolute",
+        left: SAFE.left + SAFE.width - 300,
+        top: SAFE.top + 70,
+      }}
+    />
+  </AbsoluteFill>
+);

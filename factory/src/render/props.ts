@@ -56,6 +56,7 @@ export type ShortProps = {
   clean?: boolean; // the clean frame (src/render/cleanframe.ts): full-bleed, one overlay at a time, a small mark
   mascot?: boolean; // Pip the mascot test: the amber mascot in the brand band, beside the logo
   heroCut?: { fg: string; x?: number }; // the new-look opening: the hero art's subject cut out (src/render/parallax.ts)
+  seriesCover?: import("./seriesstrip.ts").SeriesCover; // SERIES_COVER_STYLE=strip: the series strip on the opening poster
   logoSrc: string | null;
   audioSrc: string | null;
   musicSrc: string | null;

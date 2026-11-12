@@ -2487,3 +2487,54 @@ test("FRIEND_PASS off: no pass is asked for and the Short is as written", async 
   assert.ok(!sites.includes("friend.short"));
   assert.ok(ep.script_json!.pulse_take.narration.endsWith(goodScript().pulse_take.narration));
 });
+
+test("Buy, Wait or Skip takes the deals slot on its days only with SERIES_VERDICT_ENABLED, with Steam's data", async () => {
+  const data = {
+    appId: 227300,
+    name: "Euro Truck Simulator 2",
+    usd: { final: "$4.99", initial: "$19.99", pct: 75 },
+    gbp: "£4.24",
+    eur: "4,99€",
+    rating: 97,
+    reviews: 147541,
+    lowest: "$1.99",
+    checkedAt: "2026-11-24T15:00:00.000Z",
+  };
+  const cfg = {
+    weeklyEnabled: true,
+    newsSlots: [],
+    breakingEnabled: false,
+    evergreenEnabled: false,
+  };
+  {
+    // Off (the default): nothing, and Steam is never asked.
+    const { db, s, setClock } = await setup(cfg);
+    let asked = 0;
+    s.verdictCandidates = async () => {
+      asked++;
+      return [data];
+    };
+    setClock(new Date("2026-11-24T15:30:00Z")); // Tuesday, an hour before 16:30 London
+    assert.equal(await maybeSelectWeekly(s), undefined);
+    assert.equal(asked, 0);
+    await db.close();
+  }
+  {
+    const { db, s, setClock } = await setup({ ...cfg, seriesVerdictEnabled: true });
+    s.verdictCandidates = async () => [data];
+    setClock(new Date("2026-11-23T15:30:00Z")); // Monday: not a verdict day
+    assert.equal(await maybeSelectWeekly(s), undefined);
+    setClock(new Date("2026-11-24T15:30:00Z"));
+    const id = await maybeSelectWeekly(s);
+    assert.ok(id);
+    const ep = await getEpisode(db, id!);
+    assert.equal(ep!.lane, "evergreen");
+    const fc = ep!.factcheck_json as any;
+    assert.equal(fc.topic.format, "buy_wait_skip");
+    assert.equal(fc.verdict.verdict, "BUY");
+    assert.match(fc.brief, /\$4\.99, down from \$19\.99/);
+    assert.equal(new Date(ep!.slot_at!).toISOString(), "2026-11-24T16:30:00.000Z");
+    assert.equal(await maybeSelectWeekly(s), undefined, "not twice in a day");
+    await db.close();
+  }
+});

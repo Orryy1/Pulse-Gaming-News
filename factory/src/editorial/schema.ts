@@ -271,7 +271,9 @@ export type Script = z.infer<typeof ScriptSchema> & {
     | "hardest_achievements"
     | "documentary"
     | "steam_climbers"
-    | "steam_deals";
+    | "steam_deals"
+    /** Buy, Wait or Skip (src/editorial/verdict.ts): one game, one price, one verdict. */
+    | "buy_wait_skip";
   /** "long" for the weekly 16:9 ranking video; absent or "short" otherwise. */
   runtime?: "short" | "long";
   /** Long-form: the one criterion the ranking uses, shown under the title. */

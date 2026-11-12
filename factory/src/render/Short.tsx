@@ -630,6 +630,7 @@ export const Short: React.FC<ShortProps> = (props) => {
             durationInFrames={posterEnd}
             vivid={props.vivid}
             heroPosition={props.images[plan.heroIndex] ? focusPosition(props.images[plan.heroIndex]!) : undefined}
+            series={props.seriesCover}
           />
         ) : (
           <HookHeadline
@@ -658,6 +659,7 @@ export const Short: React.FC<ShortProps> = (props) => {
               durationInFrames={Number.POSITIVE_INFINITY}
               vivid={props.vivid}
               heroPosition={props.images[plan.heroIndex] ? focusPosition(props.images[plan.heroIndex]!) : undefined}
+              series={props.seriesCover}
             />
           ) : (
             <HookHeadline

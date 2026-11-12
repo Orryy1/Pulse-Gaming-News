@@ -32,7 +32,8 @@ import {
 import { DISPLAY, BODY } from "./fonts.ts";
 import { Timeline } from "./cards/Timeline.tsx";
 import { PriceTag } from "./cards/PriceTag.tsx";
-import { Platforms, Versus, Specs, Milestones } from "./cards/InfoCards.tsx";
+import { Platforms, Versus, Specs, Milestones, BuyPass } from "./cards/InfoCards.tsx";
+import { buyPassColumns } from "../rankcard.ts";
 import { Ring } from "./cards/Ring.tsx";
 import { Calendar } from "./cards/Calendar.tsx";
 import { BarCompare } from "./cards/BarCompare.tsx";
@@ -563,6 +564,13 @@ export const FactCard: React.FC<{
           .slice(0, 6)}
         label={v.primary}
         note={v.secondary}
+        accent={accent}
+      />
+    ) : v.kind === "versus" && buyPassColumns(v.items) ? (
+      <BuyPass
+        buy={buyPassColumns(v.items)!.buy}
+        pass={buyPassColumns(v.items)!.pass}
+        label={v.primary}
         accent={accent}
       />
     ) : v.kind === "versus" && parsePairs(v.items ?? []).length >= 2 ? (

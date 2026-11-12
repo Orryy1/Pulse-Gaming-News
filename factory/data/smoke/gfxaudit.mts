@@ -22,6 +22,9 @@ for (const row of dump.shorts ?? []) {
   const words = assets.words ?? [];
   const duration = (assets.durationSeconds ?? 30) + TAIL_SECONDS;
   const segments = buildSegments(segmentInputs(script, Boolean(assets.desk)), words, duration);
+  // The argument test's arm: the take is spoken, not labelled, so it had no card (src/pipeline.ts argumentArm).
+  if ((dump.events ?? []).some((e: { episode_id: string; kind: string; detail?: { arm?: string } }) => e.episode_id === row.id && e.kind === "short_argument" && e.detail?.arm === "argument"))
+    for (const g of segments) if (g.kind === "take") g.visual = undefined;
   const stamps = [
     ...stampsFor(script, words),
     ...eraStampsFor(script, segments.filter((g) => g.kind === "beat").map((g) => g.start), stampColour("neutral")),

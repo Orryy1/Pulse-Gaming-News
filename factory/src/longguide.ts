@@ -252,7 +252,7 @@ export function guideDueFor(
     franchise_index: -1,
     story_index: -1,
     title_idea: title,
-    angle: `${entry.angle} A practical guide from real play in ${plan.game}: every chapter is something the viewer can do in their own game, told from what was found playing it. Only the opening of the story: no late missions, endings, twists or late characters.`,
+    angle: `${entry.angle} A practical guide from real play in ${plan.game}: every chapter is something the viewer can do in their own game, told from what was found playing it. Lead each chapter with what we found in our own play (the "[Pulse's own play]" lines in the source) and use the articles only to confirm and add context. No chapter on setup, editions, platforms, release history or modes: the first chapter starts on the first practical step. Only the opening of the story: no late missions, endings, twists or late characters.`,
     reason: `Weekly guide, week ${week + 1}`,
     franchise: plan.game,
     wiki: plan.wiki,

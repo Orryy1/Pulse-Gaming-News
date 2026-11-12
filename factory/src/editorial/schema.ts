@@ -277,7 +277,9 @@ export type Script = z.infer<typeof ScriptSchema> & {
     | "documentary"
     | "steam_climbers"
     | "steam_deals"
-    | "every_game";
+    | "every_game"
+    /** Buy, Wait or Skip (src/editorial/verdict.ts): one game, one price, one verdict. */
+    | "buy_wait_skip";
   /** "The Story of Every [series] Game" (src/editorial/everygame.ts): each beat's game, year, hardware and year stamp. */
   every_game?: import("./everygame.ts").EveryGameMeta;
   /** "long" for the weekly 16:9 ranking video; absent or "short" otherwise. */

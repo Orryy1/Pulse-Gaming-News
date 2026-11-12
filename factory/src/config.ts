@@ -505,6 +505,26 @@ export interface Config {
   breakingHomeOnly: boolean;
   /** The home shelf, "|"-separated names a headline would use: HOME_SHELF, default GTA and Resident Evil. */
   homeShelf: string[];
+  /** The series cover strip (src/render/components/SeriesStrip.tsx, format plan item 5): an amber strip at the top of
+   * a series Short's opening poster and search thumbnail naming its series ("THE WHY", "THE GTA FILE", "BUY, WAIT OR
+   * SKIP"), always in the same place. "strip" draws it, "off" leaves covers as they are: SERIES_COVER_STYLE, default off. */
+  seriesCoverStyle: "off" | "strip";
+  /** The part number in the strip ("THE WHY #24"), counted from the series' earlier Shorts: SERIES_EPISODE_NUMBERS,
+   * default off. Only drawn when the strip is on. */
+  seriesEpisodeNumbers: boolean;
+  /** Buy, Wait or Skip (src/editorial/verdict.ts, format plan item 7): one game, one price, one verdict, in the deals
+   * slot on its days. Prices from Steam (dollars first, pounds and euros beside), scores from Steam reviews and the
+   * store's Metacritic figure, the lowest price from CheapShark: SERIES_VERDICT_ENABLED, default off. */
+  seriesVerdictEnabled: boolean;
+  /** Its days (SERIES_VERDICT_DAYS, default "tue,thu,sat"); the slot is DEALS_SLOT. */
+  seriesVerdictDays: string[];
+  /** The series channel page (src/channelpage.ts, format plan item 8): banner, description, featured Short and shelf
+   * order, applied once through the YouTube API by src/tools/channel-page.ts --apply. Off, the tool only prints what
+   * it would change: SERIES_CHANNEL_PAGE, default off. */
+  seriesChannelPage: boolean;
+  /** The Short a new visitor sees first on the channel page (a YouTube video id), when the page is applied:
+   * SERIES_FEATURED_VIDEO, default empty (the featured Short is left as it is). */
+  seriesFeaturedVideo: string;
   /** The Hype ask (src/youtube/hype.ts, plan item 11): a short line in a documentary's end card and pinned comment. YouTube
    * offers Hype only to Partner Programme channels of 500-500,000 subscribers, so leave this off until Pulse has joined;
    * with it on, the subscriber count is still checked before each ask: HYPE_ASK, default off. */
@@ -1352,6 +1372,16 @@ export function loadConfig(): Config {
     newsLateSlotEnabled: bool("NEWS_LATE_SLOT_ENABLED", true),
     breakingHomeOnly: bool("BREAKING_HOME_ONLY", false),
     homeShelf: parseHomeShelf(str("HOME_SHELF", "GTA|Grand Theft Auto|Resident Evil")),
+    seriesCoverStyle: str("SERIES_COVER_STYLE", "off").toLowerCase() === "strip" ? "strip" : "off",
+    seriesEpisodeNumbers: bool("SERIES_EPISODE_NUMBERS", false),
+    seriesVerdictEnabled: bool("SERIES_VERDICT_ENABLED", false),
+    seriesVerdictDays: str("SERIES_VERDICT_DAYS", "tue,thu,sat")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
+    seriesChannelPage: bool("SERIES_CHANNEL_PAGE", false),
+    seriesFeaturedVideo: str("SERIES_FEATURED_VIDEO", "").trim(),
     friendPass: friendPassFrom(process.env.FRIEND_PASS),
     friendPassTier: str("FRIEND_PASS_TIER", "top") === "mid" ? "mid" : "top",
     hypeAsk: bool("HYPE_ASK", false),

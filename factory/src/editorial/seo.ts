@@ -175,6 +175,10 @@ export function rankingTheme(raw: string): string {
 }
 
 export function evergreenTitle(script: Script): string | undefined {
+  // Buy, Wait or Skip keeps its series pattern word for word ("Hades at $9.99: buy, wait or skip?"): it is how a
+  // viewer knows the series at a glance (src/editorial/verdict.ts verdictTitle).
+  if (script.evergreen_format === "buy_wait_skip" && script.youtube.title.trim())
+    return script.youtube.title.trim();
   const n = script.entries?.length ?? 0;
   if (!n) return undefined;
   const theme = rankingTheme(script.game_title);
@@ -440,6 +444,8 @@ export function keywordLead(script: Script): string {
     return `The biggest climbers on Steam this week: ${script.headline.replace(/\.$/, "")}. Steam charts, most played games on Steam, trending games, by Pulse Gaming News.`;
   if (script.evergreen_format === "steam_deals")
     return `The best Steam deals right now: ${script.headline.replace(/\.$/, "")}. Steam sale, cheap PC games, best game deals today, by Pulse Gaming News.`;
+  if (script.evergreen_format === "buy_wait_skip")
+    return `Is ${script.game_title} worth buying at ${script.beats.find((b) => b.visual.kind === "price")?.visual.primary ?? "this price"}? Buy, wait or skip, one straight verdict. ${script.game_title} deal, ${script.game_title} worth it, Steam sale, by Pulse Gaming News.`;
   if (script.evergreen_format === "weekly_recap")
     return `This week in gaming: ${script.headline.replace(/\.$/, "")}. Gaming news recap, biggest gaming news this week, by Pulse Gaming News.`;
   if (script.evergreen_format === "every_game") {
@@ -485,6 +491,8 @@ export function pinnedComment(script: Script): string {
     return `Which of these are you playing right now?`;
   if (script.evergreen_format === "steam_deals")
     return `Our pick: ${take}. Prices are Steam's at the time we checked and can change. Which one are you grabbing?`;
+  if (script.evergreen_format === "buy_wait_skip")
+    return `Our verdict: ${take}. Prices are Steam's at the time we checked and can change. Would you buy, wait or skip ${game}?`;
   if (script.evergreen_format === "weekly_recap")
     return `Which story was the biggest one for you this week?`;
   if (script.evergreen_format === "every_game")

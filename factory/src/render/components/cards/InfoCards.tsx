@@ -11,6 +11,11 @@ import {
   type Milestone,
   type Pair,
 } from "./helpers.ts";
+import {
+  BUY_PASS_GAP,
+  BUY_PASS_PAD,
+  type BuyPassColumn,
+} from "../../rankcard.ts";
 
 const Label: React.FC<{ text?: string }> = ({ text }) =>
   text ? (
@@ -94,6 +99,72 @@ export const Platforms: React.FC<{
           {note.toUpperCase()}
         </div>
       ) : null}
+    </div>
+  );
+};
+
+/**
+ * Buy, Wait or Skip's two-column card (src/render/rankcard.ts buyPassColumns): who should buy on the left, lit in
+ * the accent, who should pass on the right, plain. No VS badge: it is advice, not a match-up.
+ */
+export const BuyPass: React.FC<{
+  buy: BuyPassColumn;
+  pass: BuyPassColumn;
+  label?: string;
+  accent: string;
+}> = ({ buy, pass, label, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const t = frame - FRAMES.ruleLead;
+  const left = spring({ frame: t, fps, config: SPRING.ENTER });
+  const right = spring({ frame: t - 6, fps, config: SPRING.ENTER });
+  const column = (c: BuyPassColumn, lit: boolean, inP: number, dir: 1 | -1) => (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        padding: `${BUY_PASS_PAD}px`,
+        borderRadius: 14,
+        background: lit ? `${accent}26` : "rgba(245,245,242,0.06)",
+        border: `3px solid ${lit ? accent : "rgba(245,245,242,0.2)"}`,
+        opacity: inP,
+        transform: `translateX(${(1 - inP) * 30 * dir}px)`,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: DISPLAY,
+          fontSize: 64,
+          lineHeight: 1,
+          letterSpacing: 2,
+          color: lit ? accent : COLOUR.paper,
+          marginBottom: 16,
+        }}
+      >
+        {c.label}
+      </div>
+      <div
+        style={{
+          fontFamily: BODY,
+          fontWeight: 800,
+          fontSize: c.size,
+          lineHeight: 1.12,
+          color: COLOUR.paper,
+        }}
+      >
+        {c.lines.map((l, i) => (
+          <div key={i}>{l}</div>
+        ))}
+      </div>
+    </div>
+  );
+  return (
+    <div style={{ width: CARD_WIDTH }}>
+      <Label text={label} />
+      <div style={{ display: "flex", gap: BUY_PASS_GAP, alignItems: "stretch" }}>
+        {column(buy, true, left, -1)}
+        {column(pass, false, right, 1)}
+      </div>
     </div>
   );
 };

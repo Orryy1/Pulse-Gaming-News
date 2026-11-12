@@ -76,7 +76,14 @@ import {
   replyToComments,
 } from "./youtube/replies.ts";
 import { collectRequests } from "./social/requests.ts";
-import { setChannelBanner } from "./youtube/branding.ts";
+import {
+  findPlaylistId,
+  listChannelSections,
+  putPlaylistSection,
+  setChannelBanner,
+  setChannelText,
+} from "./youtube/branding.ts";
+import { channelPage, SERIES_BANNER_FILE } from "./channelpage.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import {
@@ -968,6 +975,59 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       res
         .writeHead(200, { "content-type": "application/json" })
         .end(JSON.stringify(report));
+      return;
+    }
+    // The series channel page (src/channelpage.ts, src/tools/channel-page.ts): banner, description, featured Short,
+    // the two new series playlists and the shelf order. Reads only unless apply=1 and SERIES_CHANNEL_PAGE is on.
+    if (url.pathname === "/admin/channel-page" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      try {
+        const token = await accessToken(db, oauthConfig(cfg));
+        const banner = path.join(
+          path.dirname(fileURLToPath(import.meta.url)),
+          "..",
+          "brand",
+          "final",
+          SERIES_BANNER_FILE,
+        );
+        const yt = services.youtube() as unknown as {
+          findOrCreatePlaylist: (
+            t: string,
+            d: string,
+          ) => Promise<{ id: string; created: boolean }>;
+        };
+        const report = await channelPage({
+          cfg,
+          now: new Date(),
+          apply: url.searchParams.get("apply") === "1",
+          bannerFile: fs.existsSync(banner) ? banner : null,
+          held: await publishHeld(db),
+          yt: {
+            findOrCreatePlaylist: (t, d) => yt.findOrCreatePlaylist(t, d),
+            findPlaylist: (t) => findPlaylistId(token, t),
+            listSections: () => listChannelSections(token),
+            putSection: (op) => putPlaylistSection(token, op),
+            setText: async (o) => {
+              await setChannelText(token, o);
+            },
+            setBanner: async (file) => {
+              await setChannelBanner(token, file);
+            },
+          },
+        });
+        if (report.applied.length)
+          await logEvent(db, null, "channel_page", {
+            applied: report.applied,
+            errors: report.errors,
+          });
+        res
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify(report));
+      } catch (err) {
+        res
+          .writeHead(500, { "content-type": "application/json" })
+          .end(JSON.stringify({ ok: false, error: errorMessage(err) }));
+      }
       return;
     }
     if (url.pathname === "/unpause" && req.method === "POST") {

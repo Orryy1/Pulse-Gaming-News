@@ -18,6 +18,8 @@ import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
 import {
   ConceptAvatar,
   ConceptBanner,
+  SeriesBanner,
+  SERIES_BANNER,
   BroadcastCover,
 } from "./BrandConcepts.tsx";
 import {
@@ -272,6 +274,13 @@ export const RemotionRoot: React.FC = () => (
       width={800}
       height={800}
       defaultProps={{ concept: "signal" as const }}
+    />
+    <Still
+      id="SeriesBanner"
+      component={SeriesBanner}
+      width={2560}
+      height={1440}
+      defaultProps={SERIES_BANNER}
     />
     <Still
       id="ConceptBanner"

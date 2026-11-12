@@ -117,6 +117,12 @@ export function testConfig(
     newsLateSlotEnabled: true,
     breakingHomeOnly: false,
     homeShelf: ["GTA", "Grand Theft Auto", "Resident Evil"],
+    seriesCoverStyle: "off",
+    seriesEpisodeNumbers: false,
+    seriesVerdictEnabled: false,
+    seriesVerdictDays: ["tue", "thu", "sat"],
+    seriesChannelPage: false,
+    seriesFeaturedVideo: "",
     // Off in tests, so a scripted fake model is never asked for a rewrite it wasn't given; the friend pass tests turn it on.
     friendPass: [],
     friendPassTier: "mid",

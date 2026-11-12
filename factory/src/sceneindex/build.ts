@@ -46,6 +46,7 @@ import {
   type TextLine,
 } from "./dialogue.ts";
 import { gameNames, knownName, mergeNames } from "./names.ts";
+import { canonicalGame } from "./gamefetch.ts";
 import { lookAtShot, visionUp, type ShotLook } from "./describe.ts";
 import { groundedCast, tidyIndex } from "./tidy.ts";
 
@@ -153,7 +154,7 @@ export function sourceQueries(game: string): string[] {
 export function pickSource(
   candidates: CutsceneUpload[],
   game: string,
-  o: { recentRelease?: boolean; maxHours?: number; complete?: boolean; releasedOn?: string } = {},
+  o: { recentRelease?: boolean; maxHours?: number; complete?: boolean; releasedOn?: string; siblings?: string[] } = {},
 ): (CutsceneUpload & { kind: SceneSource["kind"] }) | undefined {
   if (o.complete) return pickComplete(candidates, game, o);
   const max = (o.maxHours ?? 12) * 3600;
@@ -199,6 +200,24 @@ const OTHER_LANGUAGE =
 /** A cutscene compilation, not a playthrough with the uploader's play in it. */
 const CUTSCENE_WORDS = /\bcut\s*scenes?\b/i;
 
+/**
+ * The sibling game an upload's title names instead of this one (pure), or undefined: a longer title of the same
+ * series that contains this game's name ("GTA Vice City Stories" when "GTA Vice City" is asked for, "Half-Life 2"
+ * for "Half-Life"). Matched however the names are written (canonicalGame), as the full name or as this name's last
+ * two words followed by the sibling's own ending ("Vice City Stories").
+ */
+export function siblingNamed(title: string, game: string, siblings: string[]): string | undefined {
+  const t = ` ${canonicalGame(title)} `;
+  const g = canonicalGame(game);
+  if (!g) return undefined;
+  for (const sib of siblings) {
+    const k = canonicalGame(sib);
+    if (!k || k === g || !k.startsWith(`${g} `)) continue;
+    if (t.includes(` ${k} `) || t.includes(` ${g.split(" ").slice(-2).join(" ")} ${k.slice(g.length + 1)} `)) return sib;
+  }
+  return undefined;
+}
+
 export interface UploadVerdict {
   upload: CutsceneUpload;
   ok: boolean;
@@ -218,7 +237,7 @@ export interface UploadVerdict {
 export function judgeUploads(
   candidates: CutsceneUpload[],
   game: string,
-  o: { recentRelease?: boolean; maxHours?: number; releasedOn?: string } = {},
+  o: { recentRelease?: boolean; maxHours?: number; releasedOn?: string; siblings?: string[] } = {},
 ): UploadVerdict[] {
   const max = (o.maxHours ?? 12) * 3600;
   // Uploaded at least the day before the release day: anything older is marketing, not the released game.
@@ -251,6 +270,8 @@ export function judgeUploads(
         return no("another edition");
       return no("not this game, or mods, reviews, lore or rankings");
     }
+    const sibling = siblingNamed(upload.title, game, o.siblings ?? []);
+    if (sibling) return no(`another game of the series (${sibling})`);
     if (NOT_THE_GAME.test(upload.title))
       return no("not the game itself (trailers, leaks, fan remakes)");
     if (SUBTITLED.test(upload.title.replace(NO_SUBTITLES, " "))) return no("burned-in subtitles, a dub or another language");
@@ -293,7 +314,7 @@ export function judgeUploads(
 export function pickComplete(
   candidates: CutsceneUpload[],
   game: string,
-  o: { recentRelease?: boolean; maxHours?: number; releasedOn?: string } = {},
+  o: { recentRelease?: boolean; maxHours?: number; releasedOn?: string; siblings?: string[] } = {},
 ): (CutsceneUpload & { kind: SceneSource["kind"] }) | undefined {
   const best = judgeUploads(candidates, game, o)
     .filter((v) => v.ok)
@@ -324,6 +345,11 @@ export function moreCompleteSource(
     betterSource(current, candidate) &&
     candidate.duration >= current.duration * 0.9
   );
+}
+
+/** One YouTube search (flat results), as the launch picker reads them. */
+export function launchSearch(query: string, ytdlp: string): Promise<CutsceneUpload[]> {
+  return searchUploads(query, ytdlp);
 }
 
 async function searchUploads(
@@ -407,7 +433,7 @@ async function uploadDetails(
 export async function chooseSource(
   game: string,
   s: Pick<BuildSettings, "ytdlp" | "maxHours">,
-  o: { recentRelease?: boolean; complete?: boolean; releasedOn?: string } = {},
+  o: { recentRelease?: boolean; complete?: boolean; releasedOn?: string; siblings?: string[] } = {},
   deps: BuildDeps = {},
 ): Promise<SceneSource | undefined> {
   const hits: CutsceneUpload[] = [];
@@ -506,6 +532,113 @@ async function ensureProxy(
   const size = (await fs.stat(file)).size;
   index.proxy = { file: "proxy.mp4", height: s.proxyHeight, bytes: size };
   return file;
+}
+
+/** yt-dlp arguments for a short low-resolution section of the source, [from, to) (pure); `format` overrides the picture-only pick. */
+export function sectionArgs(videoId: string, from: number, to: number, height: number, file: string, format?: string): string[] {
+  return [
+    "--no-playlist",
+    "--no-warnings",
+    "--no-progress",
+    "-f",
+    format ?? `bv*[height<=${height}][vcodec^=avc1]/bv*[height<=${height}]/b[height<=${height}]`,
+    "--download-sections",
+    `*${from.toFixed(2)}-${to.toFixed(2)}`,
+    "--force-keyframes-at-cuts",
+    "-o",
+    file,
+    `https://www.youtube.com/watch?v=${videoId}`,
+  ];
+}
+
+/** True when the index's proxy is on this machine. */
+export async function proxyHere(dataDir: string, index: Pick<SceneIndex, "game" | "proxy">): Promise<boolean> {
+  const file = path.join(sceneIndexDir(dataDir, index.game), index.proxy?.file || "proxy.mp4");
+  return fs
+    .stat(file)
+    .then((st) => st.size > 1_000_000)
+    .catch(() => false);
+}
+
+/** Seconds of the source one section fetch covers when describing without the proxy. */
+export const SECTION_SECONDS = 300;
+
+/**
+ * Frames at given source times for describing (ARCHIVE_PROXY / ARCHIVE_BACKLOG): from the proxy when it is here;
+ * for a light index, the storyboard frames; for a full index whose proxy was removed, five-minute low-resolution
+ * sections fetched from YouTube one at a time (only the section in use is on disk).
+ */
+export function frameSource(
+  index: SceneIndex,
+  s: BuildSettings,
+  work: string,
+  proxy: string | undefined,
+): { grab: (times: number[], tag: string) => Promise<string[]>; close: () => Promise<void> } {
+  if (proxy)
+    return {
+      grab: async (times, tag) => {
+        const out: string[] = [];
+        for (const [k, time] of times.entries()) {
+          const file = path.join(work, `${tag}_${k}.jpg`);
+          await run(FFMPEG, frameArgs(proxy, time, file), { timeout: 60_000 });
+          out.push(file);
+        }
+        return out;
+      },
+      close: async () => undefined,
+    };
+  if (index.tier === "light")
+    return {
+      grab: async (times) => {
+        const { lightFrames } = await import("./light.ts");
+        const map = await lightFrames(index, times, work, s.ytdlp);
+        return times.flatMap((t) => (map.get(t) ? [map.get(t)!] : []));
+      },
+      close: async () => undefined,
+    };
+  let current: { from: number; file: string } | undefined;
+  return {
+    grab: async (times, tag) => {
+      const out: string[] = [];
+      for (const [k, time] of times.entries()) {
+        const from = Math.floor(time / SECTION_SECONDS) * SECTION_SECONDS;
+        if (current?.from !== from) {
+          if (current) await fs.rm(current.file, { force: true }).catch(() => undefined);
+          const file = path.join(work, `section_${from}.mp4`);
+          await run(
+            s.ytdlp,
+            sectionArgs(index.source.videoId, from, Math.min(index.source.duration, from + SECTION_SECONDS), s.proxyHeight, file),
+            { timeout: 20 * 60_000 },
+          );
+          current = { from, file };
+        }
+        const file = path.join(work, `${tag}_${k}.jpg`);
+        await run(FFMPEG, frameArgs(current.file, time - from, file), { timeout: 60_000 });
+        out.push(file);
+      }
+      return out;
+    },
+    close: async () => {
+      if (current) await fs.rm(current.file, { force: true }).catch(() => undefined);
+    },
+  };
+}
+
+/**
+ * ARCHIVE_PROXY=delete: a full index's proxy removed once every stretch of the source is indexed (the index keeps
+ * what it was; describing and prechecks fetch short sections from YouTube instead). Returns the bytes freed.
+ */
+export async function releaseProxy(index: SceneIndex, s: Pick<BuildSettings, "dataDir">, now: Date): Promise<number> {
+  if (!indexComplete(index) || index.tier === "light" || index.tier === "upgrading") return 0;
+  const file = path.join(sceneIndexDir(s.dataDir, index.game), index.proxy?.file || "proxy.mp4");
+  const st = await fs.stat(file).catch(() => undefined);
+  if (!st) return 0;
+  await fs.rm(file, { force: true });
+  const fresh = (await loadSceneIndex(s.dataDir, index.game)) ?? index;
+  fresh.proxy = { file: "proxy.mp4", height: fresh.proxy?.height ?? 0, bytes: st.size, released: now.toISOString() };
+  await saveSceneIndex(s.dataDir, fresh);
+  log("info", "scene index: proxy removed after indexing", { game: index.game, mb: Math.round(st.size / 1e6) });
+  return st.size;
 }
 
 /** ffmpeg arguments for the cut scan of one stretch; run inside the work folder (pure). */
@@ -694,11 +827,24 @@ export async function hearInto(
   stretch: { from: number; to: number },
   deps: BuildDeps = {},
 ): Promise<{ index: SceneIndex; heard: number }> {
-  const proxy = await ensureProxy(index, s);
   const dir = sceneIndexDir(s.dataDir, index.game);
   const work = await fs.mkdtemp(path.join(dir, "hear_"));
   try {
-    const heard = await hearStretch(proxy, stretch.from, stretch.to, work, s, deps);
+    // A removed proxy: the stretch alone is fetched from YouTube (small picture, its sound), times shifted back.
+    const released = !!index.proxy?.released && !(await proxyHere(s.dataDir, index));
+    let heard: TextLine[];
+    if (released) {
+      const file = path.join(work, "stretch.mp4");
+      await run(s.ytdlp, sectionArgs(index.source.videoId, stretch.from, stretch.to, 360, file, "bv*[height<=360]+wa/b"), {
+        timeout: 30 * 60_000,
+      });
+      heard = (await hearStretch(file, 0, stretch.to - stretch.from, work, s, deps)).map((l) => ({
+        ...l,
+        start: l.start + stretch.from,
+        end: l.end + stretch.from,
+        ...(l.words ? { words: l.words.map((w) => ({ ...w, start: w.start + stretch.from, end: w.end + stretch.from })) } : {}),
+      }));
+    } else heard = await hearStretch(await ensureProxy(index, s), stretch.from, stretch.to, work, s, deps);
     const base = (await loadSceneIndex(s.dataDir, index.game)) ?? index;
     const inside = (t: number) => t >= stretch.from && t < stretch.to;
     const read = base.lines
@@ -832,9 +978,12 @@ export async function describeShots(
     )
     .slice(0, limit);
   if (!todo.length) return { index, described: 0, failed: 0 };
-  const proxy = await ensureProxy(index, s);
+  // The proxy when it is here or still to be fetched; a light index or a removed proxy reads frames elsewhere.
+  const released = index.tier === "light" || (!!index.proxy?.released && !(await proxyHere(s.dataDir, index)));
+  const proxy = released ? undefined : await ensureProxy(index, s);
   const dir = sceneIndexDir(s.dataDir, index.game);
   const work = await fs.mkdtemp(path.join(dir, "look_"));
+  const frameGrab = frameSource(index, s, work, proxy);
   const look = deps.look ?? lookAtShot;
   const cast = groundedCast(index);
   // What was seen is written onto the index as it is on disk now, shot by shot: a stretch indexed meanwhile by
@@ -873,11 +1022,8 @@ export async function describeShots(
         const times = shot.keyframes.length
           ? shot.keyframes
           : keyframeTimes(shot.start, shot.end);
-        for (const [k, time] of times.entries()) {
-          const file = path.join(work, `s_${shot.id}_${k}.jpg`);
-          await run(FFMPEG, frameArgs(proxy, time, file), { timeout: 60_000 });
-          frames.push(file);
-        }
+        frames.push(...(await frameGrab.grab(times, `s_${shot.id}`)));
+        if (!frames.length) throw new Error("no frames for the shot");
         const dialogue = index.lines
           .filter((l) => l.start < shot.end && l.end > shot.start)
           .map((l) => `${l.speaker ? `${l.speaker}: ` : ""}${l.text}`);
@@ -924,10 +1070,12 @@ export async function describeShots(
     }
   };
   try {
+    // Without the proxy, sections are fetched in order by a single worker.
     await Promise.all(
-      Array.from({ length: Math.min(o.concurrency ?? 2, todo.length) }, worker),
+      Array.from({ length: proxy ? Math.min(o.concurrency ?? 2, todo.length) : 1 }, worker),
     );
   } finally {
+    await frameGrab.close();
     await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
   }
   return { index: await persist(), described, failed };
@@ -949,6 +1097,8 @@ export async function buildStep(
     complete?: boolean;
     /** GAME_FETCH: the release day; uploads from before it are marketing, not the game. */
     releasedOn?: string;
+    /** ARCHIVE_PROXY=delete: remove the proxy once every stretch is indexed. */
+    releaseProxy?: boolean;
   } = {},
   deps: BuildDeps = {},
 ): Promise<BuildResult> {
@@ -981,11 +1131,23 @@ export async function buildStep(
     }
   }
   if (!index) return { did: "no-source" };
+  // A light index asked to build is upgraded to the full one on the same upload, stretch by stretch: each stretch's
+  // light shots and caption lines are replaced as it is indexed, so lookups keep working meanwhile.
+  if (index.tier === "light") {
+    index = { ...index, tier: "upgrading", coverage: [] };
+    await saveSceneIndex(s.dataDir, index);
+  }
   const gap = nextGap(index, s.chunkSeconds);
   if (gap) {
     index = await indexStretch(index, s, gap, deps);
     return { index, did: "stretch", detail: gap };
   }
+  if (index.tier === "upgrading") {
+    index = { ...((await loadSceneIndex(s.dataDir, index.game)) ?? index), tier: "full" };
+    await saveSceneIndex(s.dataDir, index);
+  }
+  if (o.releaseProxy && (await releaseProxy(index, s, deps.now?.() ?? new Date())))
+    index = (await loadSceneIndex(s.dataDir, index.game)) ?? index;
   if (undescribed(index).length) {
     if (!(await (deps.visionUp ?? visionUp)()))
       return { index, did: "waiting" };

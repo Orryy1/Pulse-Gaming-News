@@ -9,6 +9,10 @@
 //   node --import tsx src/tools/sceneindex.ts find "<game>" "<what the line shows>" [--keywords=a,b] [--sheet=out.jpg]
 //   node --import tsx src/tools/sceneindex.ts quote "<game>" "<the words>" [--speaker=name] [--sheet=out.jpg]
 //   node --import tsx src/tools/sceneindex.ts status "<game>"
+//   node --import tsx src/tools/sceneindex.ts light "<game>" [--recent] [--comments=N] [--ocr] [--source=<video id>] [--exclude=id,id] [--repick]
+//                                              (the light index: captions, chapters, storyboard, comments; no video downloaded)
+//   node --import tsx src/tools/sceneindex.ts alive "<game>"    (is the index's upload still up: "alive" or "gone")
+//   (the archive ranking and its picks: src/tools/archive.ts)
 // Settings come from the environment (the factory's .env when run from its folder): DATA_DIR, YTDLP_PATH,
 // WHISPER_PYTHON and the SCENE_INDEX_* values of src/config.ts. Heavy steps take a turn themselves on the PC
 // (the orchestrator) unless ORCH_HELD says the caller already holds one; on the Mac run it behind ~/orch/macrun.sh.
@@ -35,6 +39,8 @@ import {
   judgeUploads,
   launchCandidates,
   launchDetails,
+  launchSearch,
+  sourceKind,
   pickComplete,
   sceneIndexReady,
   stripArgs,
@@ -51,6 +57,8 @@ import {
   type SceneIndex,
 } from "../sceneindex/schema.ts";
 import { findQuote, findShots } from "../sceneindex/lookup.ts";
+import { buildLight, hasCaptions, uploadInfo } from "../sceneindex/light.ts";
+import { siblingsOf } from "../sceneindex/archive.ts";
 import { gameNames } from "../sceneindex/names.ts";
 import { keyframeTimes } from "../sceneindex/shots.ts";
 import { tidyIndex } from "../sceneindex/tidy.ts";
@@ -461,6 +469,7 @@ async function main(): Promise<void> {
             complete: Boolean(flag("complete")),
             releasedOn: flag("released"),
             describeBatch: flag("no-describe") ? 0 : 300,
+            releaseProxy: process.env.SCENE_INDEX_RELEASE_PROXY === "delete" || Boolean(flag("release-proxy")),
           },
           deps,
         );
@@ -480,6 +489,72 @@ async function main(): Promise<void> {
     } finally {
       release();
     }
+    return;
+  }
+  if (command === "light") {
+    // ARCHIVE_BACKLOG: the light index. The source by the launch picker's rules (or --source), then captions,
+    // chapters, storyboard frames and comments; nothing but index.json is kept.
+    const exclude = new Set((flag("exclude") ?? "").split(",").filter(Boolean));
+    let index = await loadSceneIndex(s.dataDir, game);
+    if (index && exclude.has(index.source.videoId)) index = undefined;
+    const forced = flag("source");
+    let source = forced
+      ? ((await launchDetails({ videoId: forced, title: "", uploader: "", duration: 0 }, s.ytdlp).then((d) =>
+          d ? { videoId: d.videoId, title: d.title, uploader: d.uploader, duration: d.duration, ...(d.height ? { height: d.height } : {}), kind: sourceKind(d.title), pickedAt: new Date().toISOString() } : undefined,
+        )) as SceneIndex["source"] | undefined)
+      : !flag("repick") && index
+        ? index.source
+        : undefined;
+    if (!source) {
+      // The light index reads the captions: of the clean uploads, the best one that has them (up to three looked
+      // at), else the best one without. The searches are made once.
+      const found = new Map<string, Awaited<ReturnType<typeof launchSearch>>>();
+      const search = async (q: string) => {
+        if (!found.has(q)) found.set(q, await launchSearch(q, s.ytdlp));
+        return found.get(q)!.filter((u) => !exclude.has(u.videoId));
+      };
+      let first: SceneIndex["source"] | undefined;
+      for (let i = 0; i < 3; i++) {
+        const picked = await chooseSource(game, s, { recentRelease: Boolean(flag("recent")), complete: true, siblings: siblingsOf(game) }, { search });
+        if (!picked) break;
+        first ??= picked;
+        const info = await uploadInfo(picked.videoId, s.ytdlp).catch(() => undefined);
+        if (info && hasCaptions(info)) {
+          source = picked;
+          break;
+        }
+        exclude.add(picked.videoId);
+      }
+      source ??= first;
+    }
+    if (!source) {
+      console.log("no-source");
+      return;
+    }
+    if (index && index.tier !== "light" && index.source.videoId === source.videoId) {
+      // A full index of the same upload is already better than a light one.
+      console.log(`light ${source.videoId} 0 (full index kept)`);
+      return;
+    }
+    const r = await buildLight(
+      game,
+      source,
+      { dataDir: s.dataDir, ytdlp: s.ytdlp, comments: num(flag("comments"), 300), ocr: Boolean(flag("ocr")) },
+      { names: gameNames },
+    );
+    console.log(JSON.stringify(r.stats));
+    console.log(`light ${source.videoId} ${r.stats.bytes}`);
+    return;
+  }
+  if (command === "alive") {
+    const index = await need(s);
+    const info = await launchDetails(
+      { videoId: index.source.videoId, title: "", uploader: "", duration: 0 },
+      s.ytdlp,
+    ).catch((err: unknown) => (/unavailable|private|removed|terminated|not available|copyright/i.test(String((err as Error)?.message ?? err)) ? undefined : null));
+    // null: the check itself failed (network): say nothing.
+    if (info === null) throw new Error("could not check the upload");
+    console.log(info ? "alive" : "gone");
     return;
   }
   if (command === "describe") {

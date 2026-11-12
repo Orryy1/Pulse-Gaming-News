@@ -16,7 +16,7 @@ import { errorMessage, log } from "../lib/util.ts";
 import type { Config } from "../config.ts";
 import type { LaunchEntry } from "../discovery/launches.ts";
 import type { CalendarEntry } from "../calendar.ts";
-import { sceneSlug } from "./schema.ts";
+import { sceneIndexDir, sceneSlug } from "./schema.ts";
 
 export interface QueuedGame {
   game: string;
@@ -275,6 +275,7 @@ export function turnOutcome(stdout: string): string {
   return (
     lines
       .reverse()
+      .map((w) => (w === "light" ? "done" : w))
       .find((w) =>
         ["stretch", "described", "done", "waiting", "no-source"].includes(w),
       ) ?? ""
@@ -309,7 +310,8 @@ type JobConfig = Pick<
   | "ytdlpPath"
   | "whisperPython"
   | "macMinFreeGb"
->;
+> &
+  Partial<Pick<Config, "archiveProxy" | "archiveBacklog" | "archiveComments">>;
 
 const queueFile = (dataDir: string) =>
   path.join(dataDir, "sceneindex", "queue.json");
@@ -366,6 +368,28 @@ export async function requestSceneIndexes(
 }
 
 let running = false;
+
+/** One turn's child process: its output and exit code (75: the Mac's turn-taker gave no turn). */
+function runTool(c: string, a: string[], e: NodeJS.ProcessEnv): Promise<{ stdout: string; code: number }> {
+  return new Promise((resolve) => {
+    execFile(
+      c,
+      a,
+      {
+        env: e,
+        cwd: path.join(path.dirname(TOOL), "..", ".."),
+        timeout: 4 * HOUR,
+        maxBuffer: 16 * 1024 * 1024,
+        windowsHide: true,
+      },
+      (err, stdout) =>
+        resolve({
+          stdout: String(stdout),
+          code: err ? Number((err as { code?: number }).code ?? 1) : 0,
+        }),
+    );
+  });
+}
 const TOOL = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -416,6 +440,30 @@ export async function sceneIndexTick(
       return undefined;
     }
     const macrun = path.join(os.homedir(), "orch", "macrun.sh");
+    // ARCHIVE_BACKLOG (src/sceneindex/light.ts): a game a video asked for gets the light index first, built in a
+    // minute from what YouTube serves without the video; the full build is for launch plans and the archive's top.
+    const lightFirst =
+      Boolean(cfg.archiveBacklog) &&
+      !job.fetch &&
+      !job.reason.startsWith("archive: full") &&
+      job.state !== "done" &&
+      !fs.existsSync(path.join(sceneIndexDir(cfg.dataDir, job.game), "index.json"));
+    if (lightFirst) {
+      const [lc, la] = turnCommand(process.platform, fs.existsSync(macrun) ? macrun : undefined, process.execPath, [
+        "--import",
+        "tsx",
+        TOOL,
+        "light",
+        job.game,
+        `--comments=${cfg.archiveComments ?? 300}`,
+        ...(job.recentRelease ? ["--recent"] : []),
+      ]);
+      const lr = await (deps.run ?? runTool)(lc, la, { ...process.env, DATA_DIR: cfg.dataDir, YTDLP_PATH: cfg.ytdlpPath, MACRUN_WAIT_MIN: "20" });
+      const lightOut = lr.code === 75 ? "waiting" : turnOutcome(lr.stdout) || "waiting";
+      await writeQueue(cfg.dataDir, afterTurn(await readQueue(cfg.dataDir), job.game, lightOut, now()));
+      log("info", "scene index: light turn finished", { game: job.game, outcome: lightOut });
+      return lightOut;
+    }
     const [cmd, args] = turnCommand(
       process.platform,
       fs.existsSync(macrun) ? macrun : undefined,
@@ -442,29 +490,10 @@ export async function sceneIndexTick(
       SCENE_INDEX_CHUNK_MINUTES: String(cfg.sceneIndexChunkMinutes),
       SCENE_INDEX_MAX_HOURS: String(cfg.sceneIndexMaxHours),
       MACRUN_WAIT_MIN: "20",
+      // ARCHIVE_PROXY=delete: the build removes the proxy once every stretch is indexed.
+      ...(cfg.archiveProxy === "delete" ? { SCENE_INDEX_RELEASE_PROXY: "delete" } : {}),
     };
-    const r = await (
-      deps.run ??
-      ((c: string, a: string[], e: NodeJS.ProcessEnv) =>
-        new Promise<{ stdout: string; code: number }>((resolve) => {
-          execFile(
-            c,
-            a,
-            {
-              env: e,
-              cwd: path.join(path.dirname(TOOL), "..", ".."),
-              timeout: 4 * HOUR,
-              maxBuffer: 16 * 1024 * 1024,
-              windowsHide: true,
-            },
-            (err, stdout) =>
-              resolve({
-                stdout: String(stdout),
-                code: err ? Number((err as { code?: number }).code ?? 1) : 0,
-              }),
-          );
-        }))
-    )(cmd, args, env);
+    const r = await (deps.run ?? runTool)(cmd, args, env);
     // Exit 75 is the turn-taker saying a render had the Mac the whole time: wait, it is not a failure.
     const outcome =
       r.code === 75 ? "waiting" : turnOutcome(r.stdout) || "waiting";

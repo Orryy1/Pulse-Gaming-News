@@ -32,6 +32,7 @@ import type { VisualAsset } from "../assets/steam.ts";
 import { findQuote, findShots } from "./lookup.ts";
 import { loadSceneIndex, sceneSlug, type SceneIndex, type SceneShot } from "./schema.ts";
 import { requestSceneIndex } from "./job.ts";
+import { sectionArgs } from "./build.ts";
 import {
   footageAllowed,
   LONG_SPOILER_FREE_SECONDS,
@@ -581,19 +582,33 @@ export async function proxyPrecheck(
   dataDir: string,
   index: SceneIndex,
   workDir: string,
+  /** ARCHIVE_SECTIONS: with no proxy here, the shot's seconds are fetched small from YouTube instead. */
+  sectionsVia?: string,
 ): Promise<IndexedOptions["precheck"]> {
   const proxy = path.join(dataDir, "sceneindex", index.slug || sceneSlug(index.game), index.proxy?.file || "proxy.mp4");
-  if (!(await fs.stat(proxy).then((s) => s.size > 0).catch(() => false))) return undefined;
+  const here = await fs.stat(proxy).then((s) => s.size > 0).catch(() => false);
+  if (!here && !sectionsVia) return undefined;
   return async (from, seconds, ask) => {
     const dir = await fs.mkdtemp(path.join(workDir, "scenematch_"));
     try {
-      const r = await checkClip(proxy, seconds, ask, {
+      // Without the proxy: the shot's own seconds at 360p (a few hundred kilobytes), its times from zero.
+      let video = proxy;
+      let offset = from;
+      if (!here) {
+        video = path.join(dir, "section.mp4");
+        await runCapped(sectionsVia!, sectionArgs(index.source.videoId, from, from + seconds, 360, video), {
+          timeout: 300_000,
+          maxBuffer: 8 * 1024 * 1024,
+        });
+        offset = 0;
+      }
+      const r = await checkClip(video, seconds, ask, {
         // The frames go to this run's own folder, never beside the index.
         grab: async (_f, times) => {
           const out: string[] = [];
           for (const [i, t] of times.entries()) {
             const jpg = path.join(dir, `proxy_${i}.jpg`);
-            await runCapped(FFMPEG, ["-v", "error", "-y", "-ss", (from + t).toFixed(2), "-i", proxy, "-frames:v", "1", "-q:v", "3", jpg], {
+            await runCapped(FFMPEG, ["-v", "error", "-y", "-ss", (offset + t).toFixed(2), "-i", video, "-frames:v", "1", "-q:v", "3", jpg], {
               timeout: 60_000,
               maxBuffer: 1024 * 1024,
             });
@@ -654,7 +669,7 @@ export async function indexFirstCutscenes<
   },
 >(
   cfg: Pick<Config, "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"> &
-    Partial<Pick<Config, "spoilerGuard" | "sceneMatch">>,
+    Partial<Pick<Config, "spoilerGuard" | "sceneMatch" | "archiveSections">>,
   options: O,
   search: (o: O) => Promise<CutsceneClip[]>,
   deps?: IndexedOptions["deps"],
@@ -706,7 +721,7 @@ export async function indexFirstCutscenes<
         ...(cfg.sceneMatch
           ? {
               check: async (file: string, seconds: number, ask: SubjectAsk) => (await checkClip(file, seconds, ask)).ok,
-              precheck: await proxyPrecheck(cfg.dataDir, index, o.episodeDir),
+              precheck: await proxyPrecheck(cfg.dataDir, index, o.episodeDir, cfg.archiveSections ? cfg.ytdlpPath : undefined),
             }
           : {}),
         ...(allow
@@ -773,7 +788,7 @@ export async function indexedSceneStills(
     Config,
     "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"
   > &
-    Partial<Pick<Config, "spoilerGuard" | "sceneMatch">>,
+    Partial<Pick<Config, "spoilerGuard" | "sceneMatch" | "archiveSections">>,
   o: SceneStillOptions,
   deps: {
     /** Fetches [from, to) of the source at full quality into `file`. */
@@ -827,7 +842,7 @@ export async function indexedSceneStills(
     deps.precheck === null
       ? undefined
       : (deps.precheck ??
-        (await proxyPrecheck(cfg.dataDir, index, o.episodeDir)));
+        (await proxyPrecheck(cfg.dataDir, index, o.episodeDir, cfg.archiveSections ? cfg.ytdlpPath : undefined)));
   const src = index.source;
   const url = `https://www.youtube.com/watch?v=${src.videoId}`;
   await fs.mkdir(path.join(o.episodeDir, "assets"), { recursive: true });

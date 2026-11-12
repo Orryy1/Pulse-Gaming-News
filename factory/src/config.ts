@@ -799,6 +799,18 @@ export interface Config {
   gameFetchHours: number; // GAME_FETCH_HOURS: hours between searches from release until a clean upload is found
   gameFetchRecheckHours: number; // GAME_FETCH_RECHECK_HOURS: hours between looks for a longer or better upload
   gameFetchRecheckDays: number; // GAME_FETCH_RECHECK_DAYS: days after release the looks go on (at least the spoiler window)
+  /**
+   * ARCHIVE_BACKLOG: the curated evergreen archive (src/sceneindex/archive.ts): a light index (captions, chapters,
+   * storyboard frames, comments; no video downloaded) for every backlog game, one at a time, at night; needs SCENE_INDEX.
+   */
+  archiveBacklog: boolean;
+  archiveFullTop: number; // ARCHIVE_FULL_TOP: the best-ranked games that also get the full index (proxy, Whisper, text reading)
+  archiveHours: string; // ARCHIVE_HOURS: local hours the archive works, "22-7" (wraps midnight); "all" is any time
+  archiveComments: number; // ARCHIVE_COMMENTS: top comments read for moment names per game (0: none)
+  /** ARCHIVE_PROXY: "keep" (as before) or "delete": a full index's proxy is removed once every stretch is indexed. */
+  archiveProxy: "keep" | "delete";
+  /** ARCHIVE_SECTIONS: with no proxy on this machine, picture prechecks and describing fetch short low-resolution sections from YouTube. */
+  archiveSections: boolean;
   /** SPOILER_GUARD: no late-story footage, words or stream cutscenes during a game's spoiler window (src/sceneindex/spoilers.ts). */
   spoilerGuard: boolean;
   /** STREAM_ASKS and VOD_MINER: the living list of things to test on stream and the moment miner (src/streamasks). */
@@ -1637,6 +1649,12 @@ export function loadConfig(): Config {
     gameFetchHours: Math.max(1, int("GAME_FETCH_HOURS", 3)),
     gameFetchRecheckHours: Math.max(6, int("GAME_FETCH_RECHECK_HOURS", 24)),
     gameFetchRecheckDays: Math.max(1, int("GAME_FETCH_RECHECK_DAYS", 28)),
+    archiveBacklog: bool("ARCHIVE_BACKLOG", false),
+    archiveFullTop: Math.max(0, int("ARCHIVE_FULL_TOP", 15)),
+    archiveHours: str("ARCHIVE_HOURS", "22-7"),
+    archiveComments: Math.max(0, int("ARCHIVE_COMMENTS", 300)),
+    archiveProxy: str("ARCHIVE_PROXY", "keep") === "delete" ? "delete" : "keep",
+    archiveSections: bool("ARCHIVE_SECTIONS", false),
     spoilerGuard: bool("SPOILER_GUARD", false),
     streamAsks: streamAsksSettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),

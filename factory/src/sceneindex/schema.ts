@@ -79,15 +79,41 @@ export interface DialogueLine {
   words?: TimedWord[];
 }
 
+/** A chapter of the source, from its chapter list (light index). */
+export interface IndexChapter {
+  start: number;
+  end: number;
+  title: string;
+}
+
+/** A moment the upload's description or its comments name by time ("Ganondorf reveal 3:21:05"). */
+export interface IndexMoment {
+  at: number;
+  label: string;
+  from: "description" | "comment";
+  likes?: number;
+}
+
 export interface SceneIndex {
   version: number;
+  /**
+   * ARCHIVE_LIGHT (src/sceneindex/light.ts): "light" is built from captions, chapters, storyboard frames and
+   * comments without downloading the video; "upgrading" is a light index a full build is replacing stretch by
+   * stretch; unset or "full" is the full index (proxy, Whisper, per-shot text reading).
+   */
+  tier?: "light" | "upgrading" | "full";
+  chapters?: IndexChapter[];
+  moments?: IndexMoment[];
+  /** The storyboard the light index read: its format, frame size and seconds between frames. */
+  storyboard?: { format: string; width: number; height: number; interval: number };
   game: string;
   slug: string;
   source: SceneSource;
   builtAt: string;
   /** The stretches of the source that have been indexed, merged and in order. A finished index is one stretch, 0 to the end. */
   coverage: Array<{ from: number; to: number }>;
-  proxy?: { file: string; height: number; bytes: number };
+  /** The low-resolution copy; `released` when it was removed after the index was built (ARCHIVE_PROXY). */
+  proxy?: { file: string; height: number; bytes: number; released?: string };
   /** The game's characters and places (Wikipedia), used to name what the model and the text reader saw. */
   cast: string[];
   places: string[];
@@ -227,9 +253,26 @@ export function parseSceneIndex(raw: unknown): SceneIndex | undefined {
             file: o.proxy.file,
             height: Number(o.proxy.height) || 0,
             bytes: Number(o.proxy.bytes) || 0,
+            ...(typeof o.proxy.released === "string" ? { released: o.proxy.released } : {}),
           },
         }
       : {}),
+    ...(o.tier === "light" || o.tier === "upgrading" || o.tier === "full" ? { tier: o.tier } : {}),
+    ...(Array.isArray(o.chapters)
+      ? {
+          chapters: o.chapters.filter(
+            (c) => c && num(c.start) && num(c.end) && typeof c.title === "string",
+          ),
+        }
+      : {}),
+    ...(Array.isArray(o.moments)
+      ? {
+          moments: o.moments.filter(
+            (m) => m && num(m.at) && typeof m.label === "string",
+          ),
+        }
+      : {}),
+    ...(o.storyboard && typeof o.storyboard.format === "string" ? { storyboard: o.storyboard } : {}),
     cast: strs(o.cast),
     places: strs(o.places),
     shots,

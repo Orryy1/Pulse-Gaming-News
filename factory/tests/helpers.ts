@@ -5,6 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Db } from "../src/db.ts";
 import { migrate } from "../src/db.ts";
 import type { Config } from "../src/config.ts";
+import { streamAsksSettings } from "../src/streamasks/settings.ts";
 import type { FeedItem } from "../src/discovery/rss.ts";
 import type { Script } from "../src/editorial/schema.ts";
 
@@ -433,6 +434,7 @@ export function testConfig(
     gameFetchRecheckHours: 24,
     gameFetchRecheckDays: 28,
     spoilerGuard: false,
+    streamAsks: streamAsksSettings({}),
     spoilerWindowDays: 28,
     spoilerOpeningShare: 0.1,
     ytdlpPath: "yt-dlp",

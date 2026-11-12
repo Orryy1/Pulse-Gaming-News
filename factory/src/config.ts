@@ -19,6 +19,7 @@ import {
   type ShortLengths,
 } from "./shortlengths.ts";
 import { strandSummary } from "./strand.ts";
+import { streamAsksSettings, streamAsksSummary, type StreamAsksSettings } from "./streamasks/settings.ts";
 
 // Local installs keep settings in factory/.env (never committed).
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
@@ -718,6 +719,8 @@ export interface Config {
   gameFetchRecheckDays: number; // GAME_FETCH_RECHECK_DAYS: days after release the looks go on (at least the spoiler window)
   /** SPOILER_GUARD: no late-story footage, words or stream cutscenes during a game's spoiler window (src/sceneindex/spoilers.ts). */
   spoilerGuard: boolean;
+  /** STREAM_ASKS and VOD_MINER: the living list of things to test on stream and the moment miner (src/streamasks). */
+  streamAsks: StreamAsksSettings;
   spoilerWindowDays: number; // SPOILER_WINDOW_DAYS: days after release a game's story is protected
   spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
@@ -1484,6 +1487,7 @@ export function loadConfig(): Config {
     gameFetchRecheckHours: Math.max(6, int("GAME_FETCH_RECHECK_HOURS", 24)),
     gameFetchRecheckDays: Math.max(1, int("GAME_FETCH_RECHECK_DAYS", 28)),
     spoilerGuard: bool("SPOILER_GUARD", false),
+    streamAsks: streamAsksSettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
     spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
@@ -1697,6 +1701,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
       : `${c.bigStoryMode}, size>=${c.bigStorySize}, up to ${c.bigStoryPerDay}/day, ${c.bigStoryMaxAgeHours}h window`,
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
     strand: strandSummary(c),
+    streamAsks: streamAsksSummary(c.streamAsks),
     shortLengths: shortLengthsSummary(c.shortLengths, c.instagramMaxSeconds),
     runPremake: `${c.runPremakeHours}h ahead, upload ${c.runPremakeUploadHours}h before the slot`,
     runSpareSlots: (c.runSpareSlots.length ? c.runSpareSlots : c.whySlots).join(","),

@@ -608,6 +608,7 @@ import {
   countProducing,
   takenSlots,
 } from "./episodes.ts";
+import { askExperiments } from "./streamasks/job.ts";
 
 export interface Services {
   db: Db;
@@ -4563,7 +4564,11 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
 
 async function gameplayExperiments(cfg: Config) {
   const md = await fs.readFile(cfg.gameplayExperiments, "utf8").catch(() => "");
-  return parseExperiments(md);
+  const listed = parseExperiments(md);
+  // STREAM_ASKS: what people want tested right now, after the hand-made list (src/streamasks).
+  if (!cfg.streamAsks.enabled) return listed;
+  const next = listed.reduce((n, e) => Math.max(n, e.number), 0) + 1;
+  return [...listed, ...(await askExperiments(cfg.dataDir, next))];
 }
 
 /** The full verdict a clip got in the last day, when its file write never landed. */

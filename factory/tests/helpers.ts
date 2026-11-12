@@ -35,6 +35,9 @@ export function testConfig(
   return {
     officialStillFrames: 0,
     shortVivid: false,
+    appleSmartCrop: false,
+    appleSubjectLift: false,
+    appleHwEncode: false,
     codeScenes: false,
     docPickSingleSubject: false,
     filmSlateFile: "",

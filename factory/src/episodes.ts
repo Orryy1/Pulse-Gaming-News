@@ -152,6 +152,8 @@ export interface EpisodeAssets {
     credit?: string;
     /** Where in its source video the clip was cut (seconds): the planner never plays one moment twice in a chapter. */
     span?: { source: string; from: number; to: number };
+    /** APPLE_SMART_CROP: the subject-following upright crop (src/render/smartcrop.ts), made once on the Mac. */
+    crop?: import("./render/smartcrop.ts").ClipCrop;
   }>;
   steam?: {
     appId: number;

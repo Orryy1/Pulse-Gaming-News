@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
 import { tokens } from "../discovery/cluster.ts";
 import { FFMPEG } from "../lib/bin.ts";
+import { intermediateVideoArgs } from "../lib/videoenc.ts";
 
 const run = promisify(execFile);
 
@@ -455,12 +456,7 @@ async function grabClip(
       "-an",
       "-vf",
       "scale=-2:1080,fps=30",
-      "-c:v",
-      "libx264",
-      "-crf",
-      "17",
-      "-preset",
-      "fast",
+      ...intermediateVideoArgs({ crf: 17, preset: "fast" }),
       "-pix_fmt",
       "yuv420p",
       dest,

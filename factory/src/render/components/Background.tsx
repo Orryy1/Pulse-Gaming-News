@@ -7,6 +7,7 @@ import {
   Sequence,
   interpolate,
   useCurrentFrame,
+  useVideoConfig,
 } from "remotion";
 import type { ShortImage, ShortClip } from "../props.ts";
 import type { RenderPlan } from "../plan.ts";
@@ -25,6 +26,7 @@ import { ShotCamera } from "./CameraMoves.tsx";
 import { VPhotoShot } from "./vertical/craft.tsx";
 import type { CutMove, ShotMove } from "../camera.ts";
 import type { PhotoTreatment } from "../photoplan.ts";
+import { CLIP_ZOOM, cropAt, cropPosition } from "../smartcrop.ts";
 
 /** The new-look dressing of a Short's shots (src/render/Short.tsx): punch-ins and an old game's period looks. */
 export interface ShotDressing {
@@ -111,7 +113,7 @@ export const BrandPlate: React.FC<{ accent: string; title: string }> = ({
 const footageFilter = "contrast(1.03) saturate(1.05)";
 // Trailer clips are zoomed so the strip where burned-in subtitles and letterbox
 // bars live (the bottom tenth) never shows; the picture keeps its centre.
-const SUBTITLE_CROP = 1.24;
+const SUBTITLE_CROP = CLIP_ZOOM;
 
 /** Where a wide still sits in the vertical crop: the crop centred on its subject where one was found. */
 export function focusPosition(image: ShortImage): string | undefined {
@@ -228,7 +230,10 @@ const Clip: React.FC<{
   framed: boolean;
 }> = ({ clip, trimFrom, framed }) => {
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const punch = framed ? 1 : cutPunch(frame);
+  // APPLE_SMART_CROP: full bleed, the crop follows the subject Vision found (src/render/smartcrop.ts).
+  const crop = !framed && clip.crop?.path.length ? clip.crop : undefined;
   return (
     <OffthreadVideo
       src={clip.src}
@@ -238,7 +243,9 @@ const Clip: React.FC<{
         width: "100%",
         height: "100%",
         objectFit: "cover",
-        objectPosition: "center 46%",
+        objectPosition: crop
+          ? cropPosition(crop.aspect, cropAt(crop.path, (trimFrom + frame) / fps))
+          : "center 46%",
         filter: framed ? undefined : footageFilter,
         transform: `scale(${punch * SUBTITLE_CROP})`,
       }}

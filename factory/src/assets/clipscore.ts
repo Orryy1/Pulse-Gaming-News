@@ -22,6 +22,7 @@ import {
   type SteamApp,
   type VisualAsset,
 } from "./steam.ts";
+import { intermediateVideoArgs } from "../lib/videoenc.ts";
 
 // Every child (yt-dlp, ffmpeg) runs under the download cap and is killed on overrun (src/lib/child.ts).
 const run = runCapped;
@@ -590,12 +591,7 @@ async function cutClip(
     "-shortest",
     "-vf",
     "scale=-2:1080,fps=30",
-    "-c:v",
-    "libx264",
-    "-crf",
-    "17",
-    "-preset",
-    "fast",
+    ...intermediateVideoArgs({ crf: 17, preset: "fast" }),
     "-pix_fmt",
     "yuv420p",
     dest,

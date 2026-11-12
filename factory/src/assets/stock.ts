@@ -19,6 +19,7 @@ import type { VisualAsset } from "./steam.ts";
 import type { FootageTarget } from "./clipscore.ts";
 import { freeName, samePath } from "./repeats.ts";
 import { interleave } from "./libraries.ts";
+import { intermediateVideoArgs } from "../lib/videoenc.ts";
 
 const run = promisify(execFile);
 const API = "https://api.pexels.com/videos/search";
@@ -529,12 +530,7 @@ export async function libraryStockClips(
             "-an",
             "-vf",
             "scale=-2:1080,fps=30",
-            "-c:v",
-            "libx264",
-            "-crf",
-            "18",
-            "-preset",
-            "fast",
+            ...intermediateVideoArgs({ crf: 18, preset: "fast" }),
             "-pix_fmt",
             "yuv420p",
             path.join(episodeDir, rel),

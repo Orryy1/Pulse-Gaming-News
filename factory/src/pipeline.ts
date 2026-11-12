@@ -93,6 +93,7 @@ import {
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
 export const MEDIA_RICH_TARGET = 0.85;
 import { makeParallax, LAYERED_KINDS } from "./render/parallax.ts";
+import { appleCut, smartCrop } from "./assets/applevision.ts";
 import { annotationLabel, locate } from "./assets/annotate.ts";
 import { unloadLocalVision } from "./assets/localvision.ts";
 import {
@@ -9322,7 +9323,17 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // The second design: the subject cut out in front of the headline when the art has depth layers (the
   // big creators' trick), else the full-bleed art. The third: last place against the winner for a ranking,
   // the headline as a newspaper cutting for a documentary.
+  // APPLE_SUBJECT_LIFT (Mac mini): Apple Vision's foreground mask cuts the thumbnail art's subject out, cleaner
+  // than the depth model's nearest layer on busy scenes; the depth layers stay the fallback.
+  const lifted =
+    s.cfg.appleSubjectLift && thumbArt ? await appleCut(dir, thumbArt.file) : undefined;
   const depthArt =
+    (lifted && thumbArt
+      ? {
+          ...thumbArt,
+          layers: { bg: "", mid: "", ...thumbArt.layers, fg: lifted.fg, fgx: lifted.x },
+        }
+      : undefined) ??
     (thumbArt?.layers ? thumbArt : undefined) ??
     images.find(
       (i) =>
@@ -10486,6 +10497,22 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     assets.mascot = mascotFor(mascotShare, ep);
   // The new-look opening poster (src/render/components/HookPoster.tsx): the hero art's subject cut out once.
   const heroImage = assets.images?.[plan.heroIndex];
+  const heroFirst =
+    heroImage &&
+    plan.shots[0]?.media.type === "image" &&
+    plan.shots[0].media.index === plan.heroIndex;
+  // APPLE_SUBJECT_LIFT (Mac mini): Apple Vision's foreground mask first, the depth model after.
+  if (assets.suite && !assets.heroCut && s.cfg.appleSubjectLift && heroFirst) {
+    const cut = await appleCut(dir, heroImage.file);
+    if (cut) assets.heroCut = cut;
+  }
+  // APPLE_SMART_CROP (Mac mini): each full-bleed clip's upright crop follows its subject (src/render/smartcrop.ts).
+  if (s.cfg.appleSmartCrop)
+    for (const c of assets.clips ?? [])
+      if (!c.crop) {
+        const crop = await smartCrop(path.join(dir, c.file));
+        if (crop) c.crop = crop;
+      }
   if (
     assets.suite &&
     !assets.heroCut &&
@@ -10593,6 +10620,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         luma: c.luma,
         stock: c.stock,
         credit: c.credit ?? ccCredit(c.provenance),
+        crop: c.crop,
       })),
       steam: steamLite,
       emphasis: emphasisWords(script),

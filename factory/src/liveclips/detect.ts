@@ -137,9 +137,13 @@ export function rateCheck(
   at: number,
   sent: number[],
   o: Pick<DetectOptions, "perHour" | "perDay" | "gapMinutes" | "dayStart">,
+  /** This moment's score and the last one sent's: a moment at least twice as strong (and 2 or more) may come sooner. */
+  score = 0,
+  lastScore = Infinity,
 ): string | undefined {
   const last = Math.max(-Infinity, ...sent);
-  if (at - last < o.gapMinutes * 60_000)
+  const muchBigger = score >= 2 && score >= 2 * lastScore;
+  if (at - last < o.gapMinutes * 60_000 && !muchBigger)
     return `within ${o.gapMinutes} min of the last one`;
   if (sent.filter((t) => at - t < 3_600_000).length >= o.perHour)
     return `${o.perHour} already this hour`;
@@ -162,6 +166,8 @@ export class LiveDetector {
   private pending: Moment[] = [];
   /** Times of moments already sent (restored across restarts by the job). */
   sent: number[] = [];
+  /** The last sent moment's score (a much bigger moment may come before the gap is out). */
+  lastScore = Infinity;
   readonly skipped: Skipped[] = [];
   title = "";
   asks: AskRef[] = [];
@@ -326,12 +332,13 @@ export class LiveDetector {
         });
         continue;
       }
-      const why = rateCheck(m.at, this.sent, this.o);
+      const why = rateCheck(m.at, this.sent, this.o, m.score, this.lastScore);
       if (why) {
         this.skipped.push({ moment: m, why });
         continue;
       }
       this.sent.push(m.at);
+      this.lastScore = m.score;
       ready.push(m);
     }
     // Chat older than the longest look back is not needed.

@@ -418,3 +418,11 @@ test("simulcast: the live eligibility check is read only and reads YouTube's ans
   assert.equal(r2.liveEnabled, true);
   assert.equal(r2.broadcasts, 0);
 });
+
+test("liveclips: a moment twice as strong may come before the gap is out; the hourly cap still holds", () => {
+  const day = dayStartIn("Europe/London");
+  const o = { perHour: 2, perDay: 8, gapMinutes: 10, dayStart: day };
+  assert.equal(rateCheck(T0, [T0 - 300_000], o, 3, 1.4), undefined);
+  assert.match(rateCheck(T0, [T0 - 300_000], o, 2.5, 1.4) ?? "", /within 10 min/);
+  assert.match(rateCheck(T0, [T0 - 600_000, T0 - 300_000], o, 6, 1) ?? "", /2 already this hour/);
+});

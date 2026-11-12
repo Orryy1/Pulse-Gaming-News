@@ -110,7 +110,7 @@ import {
 } from "./voice/pauses.ts";
 import { quietBeatGaps } from "./voice/quietbeats.ts";
 import { soundDesignLine, soundDesignSummary } from "./render/sounddesign.ts";
-import { soundCraftLine } from "./render/soundfx.ts";
+import { GAME_UNDER, soundCraftLine } from "./render/soundfx.ts";
 import { prepareSoundCraft, type SoundCraftPrep } from "./render/voicefx.ts";
 
 /** Seconds of breather before each documentary chapter: narrator silent, music up, the chapter's title full screen. */
@@ -680,6 +680,11 @@ import {
   quoteRenderFiles,
   quoteScriptStep,
 } from "./charquotestep.ts";
+import {
+  buildShortBed,
+  clipSoundKind,
+  longSoundClips,
+} from "./assets/gameaudio.ts";
 
 export interface Services {
   db: Db;
@@ -1140,6 +1145,21 @@ export function unitHash(id: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193);
   return (h >>> 0) / 4294967296;
+}
+
+/**
+ * GAME_AUDIO_BED's test side for an episode (src/assets/gameaudio.ts): on for GAME_AUDIO_SHARE of videos, split by
+ * episode like the voice test (its own key, so the two splits are independent), so a retry keeps its side.
+ */
+export function gameAudioOn(
+  cfg: Pick<Config, "gameAudioBed" | "gameAudioShare">,
+  id: string,
+): boolean {
+  return (
+    cfg.gameAudioBed &&
+    cfg.gameAudioShare > 0 &&
+    unitHash(`gameaudio:${id}`) < cfg.gameAudioShare
+  );
 }
 
 /** True when a story or title is about the channel focus (FOCUS_MATCH). */
@@ -9968,7 +9988,31 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     .sort((a, b) => b.rank - a.rank)
     .map((e) => e.moments ?? []);
   const hasMoments = moments.some((m) => m.length);
-  const clips = (assets.clips ?? []).map((c) => ({
+  // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the cutscenes' own sound goes into their clips and
+  // the long render's game-sound envelope plays it (under the voice, up in long pauses, silent under a quote).
+  const gameAudio = gameAudioOn(s.cfg, ep.id);
+  const sounded =
+    gameAudio && assets.clips?.length
+      ? await longSoundClips({
+          dir,
+          dataDir: s.cfg.dataDir,
+          ytdlp: s.cfg.ytdlpPath,
+          clips: assets.clips,
+          underLufs: s.cfg.gameAudioUnderLufs,
+          underGain: GAME_UNDER,
+          trailers: s.cfg.gameAudioTrailers,
+        })
+      : undefined;
+  if (s.cfg.gameAudioBed)
+    await logEvent(s.db, ep.id, "game_audio", {
+      on: gameAudio,
+      hearable: (assets.clips ?? []).filter((c) => clipSoundKind(c) !== "none")
+        .length,
+      ...(sounded
+        ? { heard: sounded.heard, skipped: sounded.skipped.slice(0, 12) }
+        : {}),
+    }).catch(() => undefined);
+  const clips = (sounded?.clips ?? assets.clips ?? []).map((c) => ({
     file: c.file,
     durationSeconds: c.durationSeconds,
     beatIndex: c.beatIndex,
@@ -11832,6 +11876,37 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     stamps: shownStamps,
     sting: false,
   });
+  // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the footage's own sound as one bed, cut with the
+  // plan, ducked under the voice, up between sentences and silent under a quote; logged for the weekly split.
+  const gameAudio = gameAudioOn(s.cfg, ep.id);
+  const gameBed =
+    gameAudio && assets.clips?.length
+      ? await buildShortBed({
+          dir,
+          dataDir: s.cfg.dataDir,
+          ytdlp: s.cfg.ytdlpPath,
+          clips: assets.clips,
+          plan,
+          words,
+          quotes: assets.quotes ?? [],
+          underLufs: s.cfg.gameAudioUnderLufs,
+          gapLufs: s.cfg.gameAudioGapLufs,
+          trailers: s.cfg.gameAudioTrailers,
+        })
+      : undefined;
+  if (s.cfg.gameAudioBed)
+    await logEvent(s.db, ep.id, "game_audio", {
+      on: gameAudio,
+      hearable: (assets.clips ?? []).filter((c) => clipSoundKind(c) !== "none")
+        .length,
+      ...(gameBed
+        ? {
+            seconds: gameBed.seconds,
+            heard: gameBed.heard,
+            skipped: gameBed.skipped.slice(0, 12),
+          }
+        : {}),
+    }).catch(() => undefined);
   await s.render({
     episodeDir: dir,
     outFile: raw,
@@ -11896,6 +11971,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       ...(seriesCover ? { seriesCover } : {}),
       renderDate: s.now().toISOString().slice(0, 10),
       quoteFiles: quoteRenderFiles(assets),
+      ...(gameBed
+        ? {
+            gameBedFile: {
+              file: gameBed.file,
+              spans: gameBed.spans,
+              dip: s.cfg.gameAudioMusicDip,
+            },
+          }
+        : {}),
     },
   });
   await s.normalise(raw, final);

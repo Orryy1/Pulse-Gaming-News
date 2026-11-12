@@ -2561,17 +2561,22 @@ export const Long: React.FC<LongProps> = (props) => {
     () => (craft.pockets ? gameEnvelope(speaking, fps) : undefined),
     [craft.pockets, speaking, fps],
   );
-  const gameLevel = gameLevels
-    ? (f: number) =>
-        gameLevels[Math.min(durationInFrames, Math.max(0, Math.round(f)))] ??
-        GAME_UNDER
-    : undefined;
   // CHARACTER_QUOTES: the quotes' spans, for the overlay and the bed's dip under them.
   const quoteSpans = (props.quotes ?? []).map((q) => ({
     q,
     from: Math.round(q.start * fps),
     frames: Math.max(1, Math.round(q.seconds * fps)),
   }));
+  // A quote's own clip plays alone: the footage's game sound is silent under it (GAME_AUDIO_BED, 12 Nov 2026).
+  const gameLevel =
+    gameLevels || quoteSpans.length
+      ? (f: number) =>
+          (gameLevels
+            ? (gameLevels[
+                Math.min(durationInFrames, Math.max(0, Math.round(f)))
+              ] ?? GAME_UNDER)
+            : GAME_UNDER) * (inQuote(quoteSpans, f) ? 0 : 1)
+      : undefined;
   const musicVolume = (f: number) => {
     const fadeIn = interpolate(f, [0, 24], [0, 1], {
       extrapolateLeft: "clamp",

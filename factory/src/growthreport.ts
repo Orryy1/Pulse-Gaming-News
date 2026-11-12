@@ -11,6 +11,7 @@ import type { Db } from "./db.ts";
 import { dayKey, weekday } from "./lanes.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
 import { filedLines, readFiled } from "./sceneindex/gamefetch.ts";
+import { shortStats, type ShortStat } from "./experiments.ts";
 
 export type GrowthFormat =
   | "news"
@@ -196,10 +197,64 @@ export async function growthRows(db: Db): Promise<GrowthRow[]> {
   });
 }
 
+/** Shorts a side before the game audio test's line gives numbers. */
+export const GAME_AUDIO_MIN_EACH = 3;
+
+/**
+ * The game audio split's line (pure; GAME_AUDIO_BED, src/assets/gameaudio.ts): average viewed and views a day for
+ * Shorts that played the game's own sound against Shorts on the other side that had footage it could have played.
+ * `sides` is each Short's latest game_audio event.
+ */
+export function gameAudioLine(
+  stats: readonly ShortStat[],
+  sides: ReadonlyMap<string, { on: boolean; heard: boolean; hearable: number }>,
+): string {
+  const on: ShortStat[] = [];
+  const off: ShortStat[] = [];
+  for (const r of stats) {
+    const s = sides.get(r.id);
+    if (!s) continue;
+    if (s.on && s.heard) on.push(r);
+    else if (!s.on && s.hearable > 0) off.push(r);
+  }
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+  const side = (xs: ShortStat[]) => {
+    const pct = xs.filter((x) => x.pct !== undefined).map((x) => x.pct!);
+    return `${xs.length} Shorts, ${pct.length ? `${mean(pct).toFixed(1)}% viewed` : "viewed not in yet"}, ${Math.round(mean(xs.map((x) => x.viewsPerDay))).toLocaleString("en-GB")} views a day`;
+  };
+  if (on.length < GAME_AUDIO_MIN_EACH || off.length < GAME_AUDIO_MIN_EACH)
+    return `🎮 **Game audio test:** ${on.length} Shorts with the game's sound and ${off.length} without so far; too few to call (${GAME_AUDIO_MIN_EACH} a side).`;
+  return `🎮 **Game audio test:** with the game's own sound ${side(on)}; without ${side(off)}.`;
+}
+
+/** Each Short's latest game_audio event. */
+export async function gameAudioSides(
+  db: Db,
+): Promise<Map<string, { on: boolean; heard: boolean; hearable: number }>> {
+  const rows = await db.query<{ episode_id: string; detail: unknown }>(
+    `SELECT DISTINCT ON (episode_id) episode_id, detail FROM events WHERE kind = 'game_audio' AND episode_id IS NOT NULL ORDER BY episode_id, id DESC`,
+  );
+  const out = new Map<string, { on: boolean; heard: boolean; hearable: number }>();
+  for (const r of rows) {
+    const d = (typeof r.detail === "string" ? JSON.parse(r.detail) : r.detail) as {
+      on?: boolean;
+      seconds?: number;
+      heard?: unknown;
+      hearable?: number;
+    } | null;
+    out.set(r.episode_id, {
+      on: Boolean(d?.on),
+      heard: Number(d?.seconds ?? 0) > 0 || (typeof d?.heard === "number" && d.heard > 0),
+      hearable: Number(d?.hearable ?? 0),
+    });
+  }
+  return out;
+}
+
 /** The Discord message. */
 export async function growthReport(
   db: Db,
-  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir">>,
+  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed">>,
   now: Date,
 ): Promise<DiscordMessage> {
   return {
@@ -214,6 +269,8 @@ export async function growthReport(
             : []),
           // GAME_FETCH: what the footage library has filed (src/sceneindex/gamefetch.ts).
           ...(cfg.gameFetch && cfg.dataDir ? filedLines(await readFiled(cfg.dataDir), now) : []),
+          // GAME_AUDIO_BED: the split between Shorts with the game's own sound and without (src/assets/gameaudio.ts).
+          ...(cfg.gameAudioBed ? [gameAudioLine(await shortStats(db, now), await gameAudioSides(db))] : []),
         ]
           .join("\n")
           .slice(0, 3900),

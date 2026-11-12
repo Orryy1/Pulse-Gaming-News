@@ -465,6 +465,13 @@ export function testConfig(
     spoilerOpeningShare: 0.1,
     characterQuotes: false,
     characterQuotesLong: 3,
+    characterQuotesShort: 1,
+    gameAudioBed: false,
+    gameAudioShare: 0.5,
+    gameAudioUnderLufs: -30,
+    gameAudioGapLufs: -24,
+    gameAudioTrailers: false,
+    gameAudioMusicDip: 0.6,
     ytdlpPath: "yt-dlp",
     pexelsApiKey: "",
     // Tests never reach the outside picture libraries.

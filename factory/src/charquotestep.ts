@@ -131,7 +131,12 @@ export interface QuoteStepOptions {
   footageCap?: { key: string; seconds: number };
 }
 
-/** After a Short's script is settled: at most one quote, or the script unchanged. Never throws. */
+/**
+ * After a Short's script is settled: up to CHARACTER_QUOTES_SHORT quotes (default one), or the script unchanged.
+ * A second quote is offered only lines that fit the story itself (never a filler line), in a beat at least two
+ * away from the first, inside what is left of the publisher's footage cap and the Short's length; the writer may
+ * decline it. Never throws.
+ */
 export async function quoteScriptStep(
   s: Pick<Services, "cfg" | "db" | "llm" | "now">,
   ep: Pick<Episode, "id">,
@@ -178,42 +183,81 @@ export async function quoteScriptStep(
     const window = s.cfg.spoilerGuard
       ? windowFor(o.windows ?? spoilerWindows(), game, now)
       : undefined;
-    const narration = narrationOf({ ...script, voice_tags: undefined });
     const speed = Math.max(1, s.cfg.shortSpeed || 1);
+    const max = Math.max(1, s.cfg.characterQuotesShort ?? 1);
+    const story = o.story ?? script.headline;
+    let next = script;
+    let used = 0; // seconds of quotes placed so far
+    for (let k = 0; k < max; k++) {
+      const narration = narrationOf({ ...next, voice_tags: undefined });
     const estimate = (wordCount(narration) / (ESTIMATE_WPM * speed)) * 60;
     const room =
       (o.capSeconds ?? 58) -
       LENGTH_MARGIN -
       estimate -
+        used -
       (24 / (ESTIMATE_WPM * speed)) * 60;
-    const candidates = quoteCandidates(
-      index,
-      `${o.story ?? script.headline} ${narration}`,
-      {
+      const taken = new Set((next.character_quotes ?? []).map((q) => q.id));
+      // A second quote keeps a beat's distance from the first: two lines back to back read as a montage.
+      const placedBeats = (next.character_quotes ?? []).map((q) => q.beat);
+      const beats = script.beats
+        .map((_, i) => i)
+        .filter((i) => placedBeats.every((b) => Math.abs(b - i) >= 2));
+      const candidates = quoteCandidates(index, `${story} ${narration}`, {
         window,
         now,
         use: "short",
         max: 10,
-      },
-    ).filter((c) => playedSeconds(index, c) <= Math.min(cap.seconds, room));
-    if (!candidates.length)
+        // The second only when the story genuinely calls for it: lines that fit the story, never the filler.
+        ...(k > 0 ? { general: 0 } : {}),
+      }).filter(
+        (c) =>
+          !taken.has(c.id) &&
+          playedSeconds(index, c) <= Math.min(cap.seconds - used, room),
+      );
+      if (!candidates.length || !beats.length) {
+        if (k === 0)
       return skip(
         room < 1 ? "no room in the Short's length" : "no quotable line fits",
       );
-    const r = await writeQuoteMoment(s.llm, script, candidates, {
+        await logEvent(s.db, ep.id, "character_quote", {
+          used: false,
+          second: true,
+          why: !beats.length
+            ? "no beat far enough from the first quote"
+            : room < 1
+              ? "no room left in the Short's length"
+              : "no second line fits the story",
+        }).catch(() => undefined);
+        break;
+      }
+      const r = await writeQuoteMoment(s.llm, next, candidates, {
       site: "quote.short",
       wordsMax: o.wordsMax,
       names: [...index.cast, ...index.places],
       house: o.house,
-      beats: script.beats.map((_, i) => i),
+        beats,
       now,
     });
-    if (!r.quote)
-      return skip(`declined: ${r.why.slice(0, 3).join(" | ").slice(0, 300)}`);
-    const check = verifyQuote(index, r.quote);
-    if (!check.ok) return skip(`the quote failed its check: ${check.reason}`);
+      const check = r.quote ? verifyQuote(index, r.quote) : undefined;
+      if (!r.quote || !check?.ok) {
+        const why = !r.quote
+          ? `declined: ${r.why.slice(0, 3).join(" | ").slice(0, 300)}`
+          : `the quote failed its check: ${check?.reason}`;
+        if (k === 0) return skip(why);
+        await logEvent(s.db, ep.id, "character_quote", {
+          used: false,
+          second: true,
+          why,
+        }).catch(() => undefined);
+        break;
+      }
+      next = r.script;
+      const picked = candidates.find((c) => c.id === r.quote!.id);
+      used += picked ? playedSeconds(index, picked) : 0;
     await logEvent(s.db, ep.id, "character_quote", {
       used: true,
+        ...(k > 0 ? { second: true } : {}),
       id: r.quote.id,
       speaker: r.quote.speaker,
       text: r.quote.text,
@@ -222,7 +266,8 @@ export async function quoteScriptStep(
       after: r.quote.after,
       why: r.why.slice(0, 3),
     }).catch(() => undefined);
-    return r.script;
+    }
+    return next;
   } catch (err) {
     log("warn", "character quote skipped", {
       episode: ep.id,
@@ -557,11 +602,23 @@ export async function openQuotes(
       `character quote taken out (${why}); voicing again without it`,
     );
   };
-  if (voice.durationSeconds + added > capSeconds)
+  if (voice.durationSeconds + added > capSeconds) {
+    // Over the cap: the later quotes go first, so a Short with two keeps the one that still fits.
+    const seconds = (id: string) =>
+      prepared.find((p) => p.id === id)?.seconds ?? 0;
+    const order = [...placed].sort((a, b) => b.beat - a.beat);
+    const ids: string[] = [];
+    let total = voice.durationSeconds + added;
+    for (const q of order) {
+      if (total <= capSeconds) break;
+      ids.push(q.id);
+      total -= seconds(q.id);
+    }
     await drop(
-      placed.map((q) => q.id),
-      `${(voice.durationSeconds + added).toFixed(1)} s with the quote, over the ${capSeconds} s cap`,
+      ids,
+      `${(voice.durationSeconds + added).toFixed(1)} s with the quote${placed.length > 1 ? "s" : ""}, over the ${capSeconds} s cap`,
     );
+  }
   const target = await loudness(voice.file);
   const matched: PreparedQuote[] = [];
   for (const p of prepared)

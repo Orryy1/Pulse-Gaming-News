@@ -807,7 +807,16 @@ export interface Config {
   spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
   /** CHARACTER_QUOTES: one real line from the game's cutscene, with its own voice, set up and answered by the narrator (src/charquotestep.ts). */
   characterQuotes: boolean;
-  characterQuotesLong: number; // CHARACTER_QUOTES_LONG: the most quotes in one long video (a Short takes one)
+  characterQuotesLong: number; // CHARACTER_QUOTES_LONG: the most quotes in one long video
+  characterQuotesShort: number; // CHARACTER_QUOTES_SHORT: the most quotes in one Short (default 1; a second only when the story fits)
+  /** GAME_AUDIO_BED (off by default; owner, 12 Nov 2026): the footage's own game sound under the narration, ducked
+   * well under the voice, up in the gaps between sentences, silent under a character quote (src/assets/gameaudio.ts). */
+  gameAudioBed: boolean;
+  gameAudioShare: number; // GAME_AUDIO_SHARE: share of videos that get the bed, split by episode (default 0.5)
+  gameAudioUnderLufs: number; // GAME_AUDIO_UNDER_LUFS: the bed's loudness under the voice (default -30; narration is -16)
+  gameAudioGapLufs: number; // GAME_AUDIO_GAP_LUFS: the bed's loudness in the gaps between sentences (default -24)
+  gameAudioTrailers: boolean; // GAME_AUDIO_TRAILERS: trailer clips' sound too, 8 dB lower (default off: trailer music)
+  gameAudioMusicDip: number; // GAME_AUDIO_MUSIC_DIP: the music bed's level where the game sound plays (default 0.6)
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
@@ -1634,6 +1643,13 @@ export function loadConfig(): Config {
     spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
     characterQuotes: bool("CHARACTER_QUOTES", false),
     characterQuotesLong: Math.max(0, int("CHARACTER_QUOTES_LONG", 3)),
+    characterQuotesShort: Math.min(2, Math.max(1, int("CHARACTER_QUOTES_SHORT", 1))),
+    gameAudioBed: bool("GAME_AUDIO_BED", false),
+    gameAudioShare: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_SHARE", "0.5")) || 0)),
+    gameAudioUnderLufs: Math.min(-18, Math.max(-50, Number(str("GAME_AUDIO_UNDER_LUFS", "-30")) || -30)),
+    gameAudioGapLufs: Math.min(-16, Math.max(-50, Number(str("GAME_AUDIO_GAP_LUFS", "-24")) || -24)),
+    gameAudioTrailers: bool("GAME_AUDIO_TRAILERS", false),
+    gameAudioMusicDip: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_MUSIC_DIP", "0.6")) || 0)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   shortVivid: bool("SHORT_VIVID", false),
   appleSmartCrop: bool("APPLE_SMART_CROP", false),

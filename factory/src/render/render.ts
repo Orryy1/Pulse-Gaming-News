@@ -420,11 +420,13 @@ export interface RenderInput {
   episodeDir: string;
   props: Omit<
     ShortProps,
-    "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc" | "quotes"
+    "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc" | "quotes" | "gameBed"
   > & {
     audioFile: string | null;
     /** CHARACTER_QUOTES: the quotes' clips, relative to the episode folder. */
     quoteFiles?: Array<Omit<import("./props.ts").ShortQuote, "src"> & { file: string }>;
+    /** GAME_AUDIO_BED: the footage's own sound, mixed (src/assets/gameaudio.ts), relative to the episode folder. */
+    gameBedFile?: Omit<import("./gamebed.ts").GameBed, "src"> & { file: string };
     imageFiles: Array<{
       file: string;
       kind: string;
@@ -874,10 +876,20 @@ export async function renderShort(input: RenderInput): Promise<void> {
       musicFile,
       heroCutFile,
       quoteFiles,
+      gameBedFile,
       ...rest
     } = input.props;
     const props: ShortProps = {
       ...rest,
+      ...(gameBedFile
+        ? {
+            gameBed: {
+              src: `${files.url}/${webPath(gameBedFile.file)}`,
+              spans: gameBedFile.spans,
+              dip: gameBedFile.dip,
+            },
+          }
+        : {}),
       ...(quoteFiles?.length
         ? { quotes: quoteFiles.map(({ file, ...q }) => ({ ...q, src: `${files.url}/${webPath(file)}` })) }
         : {}),
